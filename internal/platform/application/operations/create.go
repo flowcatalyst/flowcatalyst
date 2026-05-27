@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -23,46 +24,36 @@ type CreateCommand struct {
 	DefaultBaseURL *string `json:"defaultBaseUrl,omitempty"`
 }
 
-// CreateUseCase implements UseCase.
-type CreateUseCase struct {
-	repo *application.Repository
-	uow  *usecasepgx.UnitOfWork
-}
+// CreateApplication validates cmd, enforces uniqueness on code, persists
+// the application, and atomically emits an [ApplicationCreated] event.
+func CreateApplication(
+	ctx context.Context,
+	repo *application.Repository,
+	uow *usecasepgx.UnitOfWork,
+	cmd CreateCommand,
+	ec usecase.ExecutionContext,
+) (commit.Committed[ApplicationCreated], error) {
+	var zero commit.Committed[ApplicationCreated]
 
-// NewCreateUseCase wires the use case.
-func NewCreateUseCase(repo *application.Repository, uow *usecasepgx.UnitOfWork) *CreateUseCase {
-	return &CreateUseCase{repo: repo, uow: uow}
-}
-
-func (uc *CreateUseCase) Validate(_ context.Context, cmd CreateCommand) error {
 	code := strings.ToLower(strings.TrimSpace(cmd.Code))
 	if code == "" {
-		return usecase.Validation("CODE_REQUIRED", "code is required")
+		return zero, usecase.Validation("CODE_REQUIRED", "code is required")
 	}
 	if !codePattern.MatchString(code) {
-		return usecase.Validation("INVALID_CODE_FORMAT",
+		return zero, usecase.Validation("INVALID_CODE_FORMAT",
 			"code must start with lowercase letter, contain only lowercase alphanumeric and hyphens")
 	}
 	if strings.TrimSpace(cmd.Name) == "" {
-		return usecase.Validation("NAME_REQUIRED", "name is required")
+		return zero, usecase.Validation("NAME_REQUIRED", "name is required")
 	}
-	return nil
-}
 
-func (uc *CreateUseCase) Authorize(_ context.Context, _ CreateCommand, _ usecase.ExecutionContext) error {
-	return nil
-}
-
-func (uc *CreateUseCase) Execute(ctx context.Context, cmd CreateCommand, ec usecase.ExecutionContext) usecase.Result[ApplicationCreated] {
-	code := strings.ToLower(strings.TrimSpace(cmd.Code))
-
-	existing, err := uc.repo.FindByCode(ctx, code)
+	existing, err := repo.FindByCode(ctx, code)
 	if err != nil {
-		return usecase.Failure[ApplicationCreated](usecase.Internal("REPO", "find_by_code failed", err))
+		return zero, usecase.Internal("REPO", "find_by_code failed", err)
 	}
 	if existing != nil {
-		return usecase.Failure[ApplicationCreated](usecase.Conflict(
-			"CODE_EXISTS", "Application with code '"+code+"' already exists"))
+		return zero, usecase.Conflict(
+			"CODE_EXISTS", "Application with code '"+code+"' already exists")
 	}
 
 	var a *application.Application
@@ -82,9 +73,5 @@ func (uc *CreateUseCase) Execute(ctx context.Context, cmd CreateCommand, ec usec
 		Code:          a.Code,
 		Name:          a.Name,
 	}
-	return usecasepgx.Commit[application.Application, ApplicationCreated, CreateCommand](
-		ctx, uc.uow, a, uc.repo, event, cmd,
-	)
+	return commit.Save(ctx, uow, a, repo, event, cmd)
 }
-
-var _ usecase.UseCase[CreateCommand, ApplicationCreated] = (*CreateUseCase)(nil)

@@ -6,6 +6,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -20,42 +21,33 @@ type UpdateCommand struct {
 	ClientManaged *bool    `json:"clientManaged,omitempty"`
 }
 
-// UpdateUseCase implements UseCase.
-type UpdateUseCase struct {
-	repo *role.Repository
-	uow  *usecasepgx.UnitOfWork
-}
+// UpdateRole mutates an existing role and emits RoleUpdated. Roles with
+// source=CODE are immutable.
+func UpdateRole(
+	ctx context.Context,
+	repo *role.Repository,
+	uow *usecasepgx.UnitOfWork,
+	cmd UpdateCommand,
+	ec usecase.ExecutionContext,
+) (commit.Committed[RoleUpdated], error) {
+	var zero commit.Committed[RoleUpdated]
 
-// NewUpdateUseCase wires the use case.
-func NewUpdateUseCase(repo *role.Repository, uow *usecasepgx.UnitOfWork) *UpdateUseCase {
-	return &UpdateUseCase{repo: repo, uow: uow}
-}
-
-func (uc *UpdateUseCase) Validate(_ context.Context, cmd UpdateCommand) error {
 	if strings.TrimSpace(cmd.ID) == "" {
-		return usecase.Validation("ID_REQUIRED", "id is required")
+		return zero, usecase.Validation("ID_REQUIRED", "id is required")
 	}
 	if cmd.DisplayName != nil && strings.TrimSpace(*cmd.DisplayName) == "" {
-		return usecase.Validation("DISPLAY_NAME_REQUIRED", "displayName cannot be empty")
+		return zero, usecase.Validation("DISPLAY_NAME_REQUIRED", "displayName cannot be empty")
 	}
-	return nil
-}
 
-func (uc *UpdateUseCase) Authorize(_ context.Context, _ UpdateCommand, _ usecase.ExecutionContext) error {
-	return nil
-}
-
-func (uc *UpdateUseCase) Execute(ctx context.Context, cmd UpdateCommand, ec usecase.ExecutionContext) usecase.Result[RoleUpdated] {
-	r, err := uc.repo.FindByID(ctx, cmd.ID)
+	r, err := repo.FindByID(ctx, cmd.ID)
 	if err != nil {
-		return usecase.Failure[RoleUpdated](usecase.Internal("REPO", "find_by_id failed", err))
+		return zero, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if r == nil {
-		return usecase.Failure[RoleUpdated](httperror.NotFound("Role", cmd.ID))
+		return zero, httperror.NotFound("Role", cmd.ID)
 	}
 	if r.Source == role.SourceCode {
-		return usecase.Failure[RoleUpdated](usecase.Conflict(
-			"CODE_ROLE_IMMUTABLE", "Roles with source=CODE cannot be modified"))
+		return zero, usecase.Conflict("CODE_ROLE_IMMUTABLE", "Roles with source=CODE cannot be modified")
 	}
 	if cmd.DisplayName != nil {
 		r.DisplayName = strings.TrimSpace(*cmd.DisplayName)
@@ -75,9 +67,5 @@ func (uc *UpdateUseCase) Execute(ctx context.Context, cmd UpdateCommand, ec usec
 		RoleID:   r.ID,
 		Name:     r.Name,
 	}
-	return usecasepgx.Commit[role.Role, RoleUpdated, UpdateCommand](
-		ctx, uc.uow, r, uc.repo, event, cmd,
-	)
+	return commit.Save(ctx, uow, r, repo, event, cmd)
 }
-
-var _ usecase.UseCase[UpdateCommand, RoleUpdated] = (*UpdateUseCase)(nil)

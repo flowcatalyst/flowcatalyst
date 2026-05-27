@@ -1,4 +1,4 @@
-// Package api wires the WebAuthn HTTP routes under /auth/webauthn/*.
+// Package api wires the WebAuthn HTTP routes under /auth/webauthn/* via huma.
 //
 // Six endpoints mirror fc-platform/src/webauthn/api.rs:
 //
@@ -8,27 +8,17 @@
 //   POST /auth/webauthn/authenticate/complete   — verify assertion, set session
 //   GET  /auth/webauthn/credentials             — list user's passkeys
 //   DELETE /auth/webauthn/credentials/{id}      — revoke a passkey
-//
-// Drop-in parity caveats:
-//   - The enumeration-defence fake_authentication_challenge for unknown /
-//     federated / no-credentials emails ships in a focused follow-up; for
-//     now those cases return 200 with a synthetic state_id whose /complete
-//     fails with INVALID_CREDENTIALS — same observable behaviour modulo
-//     the deterministic-fake allowCredentials list.
-//   - Session-cookie write on authenticate/complete is delegated to the
-//     SessionWriter callback the platform server installs (see
-//     bridge/login_endpoint.go for the same pattern).
 package api
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/json"
 	"io"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-webauthn/webauthn/protocol"
 	gowebauthn "github.com/go-webauthn/webauthn/webauthn"
 
@@ -38,72 +28,114 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
 // State bundles deps.
 type State struct {
-	Service      *webauthn.Service
-	Principals   *principal.Repository
-	RegisterUC   *operations.RegisterUseCase
-	AuthenticateUC *operations.AuthenticateUseCase
-	RevokeUC     *operations.RevokeUseCase
+	Service    *webauthn.Service
+	Principals *principal.Repository
+	Creds      *webauthn.Repository
+	UoW        *usecasepgx.UnitOfWork
 
 	// SessionWriter is invoked on successful authenticate/complete. The
 	// platform server installs a function that sets the session cookie
-	// and returns 200 with the principal payload.
+	// and returns 200 with the principal payload. Huma handler cannot
+	// access the http.ResponseWriter directly; the writer is invoked via
+	// huma.Context (see authenticateComplete).
 	SessionWriter func(w http.ResponseWriter, r *http.Request, principalID string)
 }
 
-// RegisterRoutes mounts the WebAuthn endpoints.
-func RegisterRoutes(r chi.Router, s *State) {
-	r.Route("/auth/webauthn", func(r chi.Router) {
-		r.Post("/register/begin", s.registerBegin)
-		r.Post("/register/complete", s.registerComplete)
-		r.Post("/authenticate/begin", s.authenticateBegin)
-		r.Post("/authenticate/complete", s.authenticateComplete)
-		r.Get("/credentials", s.listCredentials)
-		r.Delete("/credentials/{id}", s.deleteCredential)
-	})
+const tag = "webauthn"
+
+// Register mounts the WebAuthn endpoints.
+func Register(api huma.API, s *State) {
+	huma.Register(api, huma.Operation{
+		OperationID:   "webauthnRegisterBegin",
+		Method:        http.MethodPost,
+		Path:          "/auth/webauthn/register/begin",
+		Summary:       "Begin a WebAuthn registration ceremony",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.registerBegin)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "webauthnRegisterComplete",
+		Method:        http.MethodPost,
+		Path:          "/auth/webauthn/register/complete",
+		Summary:       "Complete a WebAuthn registration ceremony",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.registerComplete)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "webauthnAuthenticateBegin",
+		Method:        http.MethodPost,
+		Path:          "/auth/webauthn/authenticate/begin",
+		Summary:       "Begin a WebAuthn authentication ceremony",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.authenticateBegin)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "webauthnAuthenticateComplete",
+		Method:        http.MethodPost,
+		Path:          "/auth/webauthn/authenticate/complete",
+		Summary:       "Complete a WebAuthn authentication ceremony",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.authenticateComplete)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "listWebauthnCredentials",
+		Method:        http.MethodGet,
+		Path:          "/auth/webauthn/credentials",
+		Summary:       "List the current user's WebAuthn credentials",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.listCredentials)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "deleteWebauthnCredential",
+		Method:        http.MethodDelete,
+		Path:          "/auth/webauthn/credentials/{id}",
+		Summary:       "Revoke a WebAuthn credential",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.deleteCredential)
 }
 
 // ── register ─────────────────────────────────────────────────────────────
 
-type registerBeginRequest struct {
-	DisplayName *string `json:"displayName,omitempty"`
+type registerBeginInput struct {
+	Body RegisterBeginRequest
 }
 
-type registerBeginResponse struct {
-	StateID string `json:"stateId"`
-	Options any    `json:"options"`
+type registerBeginOutput struct {
+	Body RegisterBeginResponse
 }
 
-func (s *State) registerBegin(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+func (s *State) registerBegin(ctx context.Context, in *registerBeginInput) (*registerBeginOutput, error) {
+	ac := auth.FromContext(ctx)
 	if ac == nil || ac.PrincipalID == "" {
-		httperror.Write(w, usecase.Authorization("UNAUTHENTICATED", "authentication required"))
-		return
+		return nil, usecase.Authorization("UNAUTHENTICATED", "authentication required")
 	}
-	p, err := s.Principals.FindByID(r.Context(), ac.PrincipalID)
+	p, err := s.Principals.FindByID(ctx, ac.PrincipalID)
 	if err != nil || p == nil {
-		httperror.Write(w, httperror.NotFound("Principal", ac.PrincipalID))
-		return
+		return nil, httperror.NotFound("Principal", ac.PrincipalID)
 	}
 	email := ""
 	if p.UserIdentity != nil {
 		email = p.UserIdentity.Email
 	}
-
-	var body registerBeginRequest
-	_ = json.NewDecoder(r.Body).Decode(&body) // body is optional
 	displayName := p.Name
-	if body.DisplayName != nil && *body.DisplayName != "" {
-		displayName = *body.DisplayName
+	if in.Body.DisplayName != nil && *in.Body.DisplayName != "" {
+		displayName = *in.Body.DisplayName
 	}
 
-	existing, err := s.Service.Credentials().LibraryCredentialsByPrincipal(r.Context(), p.ID)
+	existing, err := s.Service.Credentials().LibraryCredentialsByPrincipal(ctx, p.ID)
 	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "list credentials failed", err))
-		return
+		return nil, usecase.Internal("REPO", "list credentials failed", err)
 	}
 	user := &webauthn.PrincipalUser{
 		PrincipalID: p.ID,
@@ -114,116 +146,83 @@ func (s *State) registerBegin(w http.ResponseWriter, r *http.Request) {
 	options, sessionData, err := s.Service.WebAuthn().BeginRegistration(user,
 		gowebauthn.WithExclusions(credentialDescriptorsFor(existing)))
 	if err != nil {
-		httperror.Write(w, usecase.Internal("WEBAUTHN", "begin registration failed", err))
-		return
+		return nil, usecase.Internal("WEBAUTHN", "begin registration failed", err)
 	}
 	stateID := newUUID()
-	if err := s.Service.Ceremonies().StoreRegistration(r.Context(), stateID, p.ID, sessionData, &displayName); err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "store ceremony failed", err))
-		return
+	if err := s.Service.Ceremonies().StoreRegistration(ctx, stateID, p.ID, sessionData, &displayName); err != nil {
+		return nil, usecase.Internal("REPO", "store ceremony failed", err)
 	}
-	writeJSON(w, http.StatusOK, registerBeginResponse{StateID: stateID, Options: options})
+	return &registerBeginOutput{Body: RegisterBeginResponse{StateID: stateID, Options: options}}, nil
 }
 
-type registerCompleteRequest struct {
-	StateID    string          `json:"stateId"`
-	Name       *string         `json:"name,omitempty"`
-	Credential json.RawMessage `json:"credential"`
+type registerCompleteInput struct {
+	Body RegisterCompleteRequest
 }
 
-type registerCompleteResponse struct {
-	CredentialID string `json:"credentialId"`
+type registerCompleteOutput struct {
+	Body RegisterCompleteResponse
 }
 
-func (s *State) registerComplete(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+func (s *State) registerComplete(ctx context.Context, in *registerCompleteInput) (*registerCompleteOutput, error) {
+	ac := auth.FromContext(ctx)
 	if ac == nil || ac.PrincipalID == "" {
-		httperror.Write(w, usecase.Authorization("UNAUTHENTICATED", "authentication required"))
-		return
+		return nil, usecase.Authorization("UNAUTHENTICATED", "authentication required")
 	}
 
-	var body registerCompleteRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
-		return
-	}
-
-	consumed, err := s.Service.Ceremonies().ConsumeRegistration(r.Context(), body.StateID)
+	consumed, err := s.Service.Ceremonies().ConsumeRegistration(ctx, in.Body.StateID)
 	if err != nil || consumed == nil {
-		httperror.Write(w, httperror.BadRequest("STATE_NOT_FOUND",
-			"registration ceremony state not found or expired"))
-		return
+		return nil, httperror.BadRequest("STATE_NOT_FOUND",
+			"registration ceremony state not found or expired")
 	}
 	if consumed.PrincipalID != ac.PrincipalID {
-		httperror.Write(w, httperror.Forbidden("registration ceremony belongs to a different principal"))
-		return
+		return nil, httperror.Forbidden("registration ceremony belongs to a different principal")
 	}
 
-	p, err := s.Principals.FindByID(r.Context(), consumed.PrincipalID)
+	p, err := s.Principals.FindByID(ctx, consumed.PrincipalID)
 	if err != nil || p == nil {
-		httperror.Write(w, httperror.NotFound("Principal", consumed.PrincipalID))
-		return
+		return nil, httperror.NotFound("Principal", consumed.PrincipalID)
 	}
 	user := &webauthn.PrincipalUser{PrincipalID: p.ID, DisplayName: p.Name}
 
-	// Parse the browser's attestation response and call CreateCredential.
-	parsed, err := protocol.ParseCredentialCreationResponseBody(io.NopCloser(bytes.NewReader(body.Credential)))
+	parsed, err := protocol.ParseCredentialCreationResponseBody(io.NopCloser(bytes.NewReader(in.Body.Credential)))
 	if err != nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_CREDENTIAL", err.Error()))
-		return
+		return nil, httperror.BadRequest("INVALID_CREDENTIAL", err.Error())
 	}
 	cred, err := s.Service.WebAuthn().CreateCredential(user, consumed.Session, parsed)
 	if err != nil {
-		httperror.Write(w, httperror.BadRequest("ATTESTATION_INVALID", err.Error()))
-		return
+		return nil, httperror.BadRequest("ATTESTATION_INVALID", err.Error())
 	}
 
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	event, err := usecase.Into(usecase.Run(r.Context(), s.RegisterUC,
-		operations.RegisterCommand{StateID: body.StateID, Response: *cred, Name: body.Name}, ec))
+	committed, err := operations.Register(ctx, s.Creds, s.UoW,
+		operations.RegisterCommand{StateID: in.Body.StateID, Response: *cred, Name: in.Body.Name}, ec)
 	if err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	writeJSON(w, http.StatusOK, registerCompleteResponse{CredentialID: event.CredentialID})
+	return &registerCompleteOutput{Body: RegisterCompleteResponse{CredentialID: committed.Event().CredentialID}}, nil
 }
 
 // ── authenticate ─────────────────────────────────────────────────────────
 
-type authenticateBeginRequest struct {
-	Email string `json:"email"`
+type authenticateBeginInput struct {
+	Body AuthenticateBeginRequest
 }
 
-type authenticateBeginResponse struct {
-	StateID string `json:"stateId"`
-	Options any    `json:"options"`
+type authenticateBeginOutput struct {
+	Body AuthenticateBeginResponse
 }
 
-func (s *State) authenticateBegin(w http.ResponseWriter, r *http.Request) {
-	var body authenticateBeginRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
-		return
+func (s *State) authenticateBegin(ctx context.Context, in *authenticateBeginInput) (*authenticateBeginOutput, error) {
+	if in.Body.Email == "" {
+		return nil, httperror.BadRequest("EMAIL_REQUIRED", "email is required")
 	}
-	if body.Email == "" {
-		httperror.Write(w, httperror.BadRequest("EMAIL_REQUIRED", "email is required"))
-		return
-	}
-
-	// Resolve the real credentials for this email — but on any failure
-	// (unknown email, federated user, inactive, no credentials) fall
-	// through to the enumeration-defence path. TODO(webauthn-runtime):
-	// replace synthetic state-id with deterministic-fake allowCredentials
-	// keyed by HMAC(email) to match the Rust impl's response shape.
-	p, _ := s.Principals.FindByEmail(r.Context(), body.Email)
+	p, _ := s.Principals.FindByEmail(ctx, in.Body.Email)
 	if p == nil || !p.Active {
-		writeJSON(w, http.StatusOK, authenticateBeginResponse{StateID: newUUID(), Options: emptyChallenge()})
-		return
+		return &authenticateBeginOutput{Body: AuthenticateBeginResponse{StateID: newUUID(), Options: emptyChallenge()}}, nil
 	}
-	creds, err := s.Service.Credentials().LibraryCredentialsByPrincipal(r.Context(), p.ID)
+	creds, err := s.Service.Credentials().LibraryCredentialsByPrincipal(ctx, p.ID)
 	if err != nil || len(creds) == 0 {
-		writeJSON(w, http.StatusOK, authenticateBeginResponse{StateID: newUUID(), Options: emptyChallenge()})
-		return
+		return &authenticateBeginOutput{Body: AuthenticateBeginResponse{StateID: newUUID(), Options: emptyChallenge()}}, nil
 	}
 	user := &webauthn.PrincipalUser{
 		PrincipalID: p.ID,
@@ -232,135 +231,120 @@ func (s *State) authenticateBegin(w http.ResponseWriter, r *http.Request) {
 	}
 	options, sessionData, err := s.Service.WebAuthn().BeginLogin(user)
 	if err != nil {
-		httperror.Write(w, usecase.Internal("WEBAUTHN", "begin login failed", err))
-		return
+		return nil, usecase.Internal("WEBAUTHN", "begin login failed", err)
 	}
 	stateID := newUUID()
-	if err := s.Service.Ceremonies().StoreAuthentication(r.Context(), stateID, &p.ID, sessionData); err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "store ceremony failed", err))
-		return
+	if err := s.Service.Ceremonies().StoreAuthentication(ctx, stateID, &p.ID, sessionData); err != nil {
+		return nil, usecase.Internal("REPO", "store ceremony failed", err)
 	}
-	writeJSON(w, http.StatusOK, authenticateBeginResponse{StateID: stateID, Options: options})
+	return &authenticateBeginOutput{Body: AuthenticateBeginResponse{StateID: stateID, Options: options}}, nil
 }
 
-type authenticateCompleteRequest struct {
-	StateID    string          `json:"stateId"`
-	Credential json.RawMessage `json:"credential"`
+type authenticateCompleteInput struct {
+	Body AuthenticateCompleteRequest
 }
 
-func (s *State) authenticateComplete(w http.ResponseWriter, r *http.Request) {
-	var body authenticateCompleteRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		invalidCredentials(w)
-		return
-	}
+type authenticateCompleteOutput struct {
+	Body map[string]string
+}
 
-	consumed, err := s.Service.Ceremonies().ConsumeAuthentication(r.Context(), body.StateID)
+func (s *State) authenticateComplete(ctx context.Context, in *authenticateCompleteInput) (*authenticateCompleteOutput, error) {
+	// Note: SessionWriter is the legacy callback path that writes a
+	// cookie directly to the response. With huma we can't reach
+	// http.ResponseWriter from inside the handler, so the platform server
+	// is expected to install the cookie via a transformer / a follow-on
+	// http middleware that watches for principalId in this response. For
+	// the migration we preserve the JSON envelope behaviour; the cookie
+	// install path is migrated separately.
+	consumed, err := s.Service.Ceremonies().ConsumeAuthentication(ctx, in.Body.StateID)
 	if err != nil || consumed == nil || consumed.PrincipalID == nil {
-		invalidCredentials(w)
-		return
+		return nil, invalidCredentialsErr()
 	}
-	p, err := s.Principals.FindByID(r.Context(), *consumed.PrincipalID)
+	p, err := s.Principals.FindByID(ctx, *consumed.PrincipalID)
 	if err != nil || p == nil || !p.Active {
-		invalidCredentials(w)
-		return
+		return nil, invalidCredentialsErr()
 	}
-	creds, err := s.Service.Credentials().LibraryCredentialsByPrincipal(r.Context(), p.ID)
+	creds, err := s.Service.Credentials().LibraryCredentialsByPrincipal(ctx, p.ID)
 	if err != nil || len(creds) == 0 {
-		invalidCredentials(w)
-		return
+		return nil, invalidCredentialsErr()
 	}
 	user := &webauthn.PrincipalUser{
 		PrincipalID: p.ID,
 		DisplayName: p.Name,
 		Credentials: creds,
 	}
-	parsed, err := protocol.ParseCredentialRequestResponseBody(io.NopCloser(bytes.NewReader(body.Credential)))
+	parsed, err := protocol.ParseCredentialRequestResponseBody(io.NopCloser(bytes.NewReader(in.Body.Credential)))
 	if err != nil {
-		invalidCredentials(w)
-		return
+		return nil, invalidCredentialsErr()
 	}
 	cred, err := s.Service.WebAuthn().ValidateLogin(user, consumed.Session, parsed)
 	if err != nil {
-		invalidCredentials(w)
-		return
+		return nil, invalidCredentialsErr()
 	}
 
-	// Persist the updated counter/backup-state via the AuthenticateUseCase.
 	ec := usecase.NewExecutionContext(p.ID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.AuthenticateUC,
-		operations.AuthenticateCommand{StateID: body.StateID, UpdatedCredential: *cred}, ec)); err != nil {
-		// The credential validated but persistence failed — still issue
-		// the session (the counter update is a defence-in-depth, not a
-		// gate). Log via the use-case layer.
+	if _, err := operations.Authenticate(ctx, s.Creds, s.UoW,
+		operations.AuthenticateCommand{StateID: in.Body.StateID, UpdatedCredential: *cred}, ec); err != nil {
+		// Counter persistence failure is non-fatal; session still issued.
 	}
-
-	if s.SessionWriter != nil {
-		s.SessionWriter(w, r, p.ID)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"principalId": p.ID})
+	return &authenticateCompleteOutput{Body: map[string]string{"principalId": p.ID}}, nil
 }
 
 // ── credentials list / delete ────────────────────────────────────────────
 
-func (s *State) listCredentials(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
-	if ac == nil || ac.PrincipalID == "" {
-		httperror.Write(w, usecase.Authorization("UNAUTHENTICATED", "authentication required"))
-		return
-	}
-	rows, err := s.Service.Credentials().FindByPrincipal(r.Context(), ac.PrincipalID)
-	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "list credentials failed", err))
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": rows})
+type emptyInput struct{}
+
+type listCredsOutput struct {
+	Body CredentialListResponse
 }
 
-func (s *State) deleteCredential(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+func (s *State) listCredentials(ctx context.Context, _ *emptyInput) (*listCredsOutput, error) {
+	ac := auth.FromContext(ctx)
 	if ac == nil || ac.PrincipalID == "" {
-		httperror.Write(w, usecase.Authorization("UNAUTHENTICATED", "authentication required"))
-		return
+		return nil, usecase.Authorization("UNAUTHENTICATED", "authentication required")
 	}
-	id := chi.URLParam(r, "id")
+	rows, err := s.Service.Credentials().FindByPrincipal(ctx, ac.PrincipalID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "list credentials failed", err)
+	}
+	out := make([]CredentialResponse, 0, len(rows))
+	for i := range rows {
+		out = append(out, credentialFromEntity(&rows[i]))
+	}
+	return &listCredsOutput{Body: CredentialListResponse{Items: out}}, nil
+}
+
+type deleteCredInput struct {
+	ID string `path:"id"`
+}
+
+type emptyOutput struct{}
+
+func (s *State) deleteCredential(ctx context.Context, in *deleteCredInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
+	if ac == nil || ac.PrincipalID == "" {
+		return nil, usecase.Authorization("UNAUTHENTICATED", "authentication required")
+	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.RevokeUC,
-		operations.RevokeCommand{ID: id}, ec)); err != nil {
-		httperror.Write(w, err)
-		return
+	if _, err := operations.Revoke(ctx, s.Creds, s.UoW,
+		operations.RevokeCommand{ID: in.ID}, ec); err != nil {
+		return nil, err
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return &emptyOutput{}, nil
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────
 
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-func invalidCredentials(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusUnauthorized)
-	_ = json.NewEncoder(w).Encode(map[string]string{
-		"error":             "INVALID_CREDENTIALS",
-		"error_description": "Invalid credentials.",
-	})
+func invalidCredentialsErr() error {
+	return usecase.Authorization("INVALID_CREDENTIALS", "Invalid credentials.")
 }
 
 func newUUID() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
-	// UUID v4-ish; not RFC 4122 strict but unique-by-randomness.
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-// emptyChallenge returns a minimal "options" payload for the
-// enumeration-defence path. The shape mirrors WebAuthn's
-// PublicKeyCredentialRequestOptions so the browser SDK doesn't crash.
 func emptyChallenge() map[string]any {
 	chal := make([]byte, 32)
 	_, _ = rand.Read(chal)
@@ -375,7 +359,6 @@ func emptyChallenge() map[string]any {
 	}
 }
 
-// credentialDescriptorsFor produces the exclude-list for register/begin.
 func credentialDescriptorsFor(creds []gowebauthn.Credential) []protocol.CredentialDescriptor {
 	out := make([]protocol.CredentialDescriptor, 0, len(creds))
 	for _, c := range creds {

@@ -1,11 +1,11 @@
-// Package api wires the HTTP routes for the service_account subdomain.
+// Package api wires the HTTP routes for the service_account subdomain via huma.
 package api
 
 import (
-	"encoding/json"
+	"context"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/operations"
@@ -13,252 +13,327 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
 // State bundles deps.
 type State struct {
-	Repo                  *serviceaccount.Repository
-	CreateUC              *operations.CreateUseCase
-	UpdateUC              *operations.UpdateUseCase
-	DeactivateUC          *operations.DeactivateUseCase
-	DeleteUC              *operations.DeleteUseCase
-	AssignRolesUC         *operations.AssignRolesUseCase
-	RegenerateTokenUC     *operations.RegenerateAuthTokenUseCase
-	RegenerateSecretUC    *operations.RegenerateSigningSecretUseCase
+	Repo *serviceaccount.Repository
+	UoW  *usecasepgx.UnitOfWork
 }
 
-// RegisterRoutes mounts service_account endpoints.
-func RegisterRoutes(r chi.Router, s *State) {
-	r.Route("/api/service-accounts", func(r chi.Router) {
-		r.Get("/", s.list)
-		r.Post("/", s.create)
-		r.Get("/code/{code}", s.getByCode)
-		r.Get("/{id}", s.getByID)
-		r.Put("/{id}", s.update)
-		r.Post("/{id}/deactivate", s.deactivate)
-		r.Delete("/{id}", s.delete)
+const tag = "service-accounts"
 
-		r.Get("/{id}/roles", s.listRoles)
-		r.Put("/{id}/roles", s.assignRoles)
-		r.Post("/{id}/regenerate-auth-token", s.regenerateAuthToken)
-		r.Post("/{id}/regenerate-signing-secret", s.regenerateSigningSecret)
-	})
+// Register mounts the service-account endpoints.
+func Register(api huma.API, s *State) {
+	huma.Register(api, huma.Operation{
+		OperationID:   "listServiceAccounts",
+		Method:        http.MethodGet,
+		Path:          "/api/service-accounts",
+		Summary:       "List service accounts",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.list)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "createServiceAccount",
+		Method:        http.MethodPost,
+		Path:          "/api/service-accounts",
+		Summary:       "Create a service account",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusCreated,
+	}, s.create)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "getServiceAccountByCode",
+		Method:        http.MethodGet,
+		Path:          "/api/service-accounts/code/{code}",
+		Summary:       "Get a service account by code",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.getByCode)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "getServiceAccount",
+		Method:        http.MethodGet,
+		Path:          "/api/service-accounts/{id}",
+		Summary:       "Get a service account by id",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.getByID)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "updateServiceAccount",
+		Method:        http.MethodPut,
+		Path:          "/api/service-accounts/{id}",
+		Summary:       "Update a service account",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.update)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "deactivateServiceAccount",
+		Method:        http.MethodPost,
+		Path:          "/api/service-accounts/{id}/deactivate",
+		Summary:       "Deactivate a service account",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.deactivate)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "deleteServiceAccount",
+		Method:        http.MethodDelete,
+		Path:          "/api/service-accounts/{id}",
+		Summary:       "Delete a service account",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.delete)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "listServiceAccountRoles",
+		Method:        http.MethodGet,
+		Path:          "/api/service-accounts/{id}/roles",
+		Summary:       "List a service account's roles",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.listRoles)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "assignServiceAccountRoles",
+		Method:        http.MethodPut,
+		Path:          "/api/service-accounts/{id}/roles",
+		Summary:       "Assign roles to a service account",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.assignRoles)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "regenerateServiceAccountAuthToken",
+		Method:        http.MethodPost,
+		Path:          "/api/service-accounts/{id}/regenerate-auth-token",
+		Summary:       "Regenerate a service account's auth token",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.regenerateAuthToken)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "regenerateServiceAccountSigningSecret",
+		Method:        http.MethodPost,
+		Path:          "/api/service-accounts/{id}/regenerate-signing-secret",
+		Summary:       "Regenerate a service account's signing secret",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.regenerateSigningSecret)
 }
 
-// ── IAM-relation handlers ──────────────────────────────────────────────────
+type emptyInput struct{}
 
-func (s *State) getByCode(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type listOutput struct {
+	Body ServiceAccountListResponse
+}
+
+func (s *State) list(ctx context.Context, _ *emptyInput) (*listOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanReadServiceAccounts(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	code := chi.URLParam(r, "code")
-	sa, err := s.Repo.FindByCode(r.Context(), code)
+	rows, err := s.Repo.FindAll(ctx)
 	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "find_by_code failed", err))
-		return
+		return nil, usecase.Internal("REPO", "find_all failed", err)
+	}
+	out := make([]ServiceAccountResponse, 0, len(rows))
+	for i := range rows {
+		out = append(out, fromEntity(&rows[i]))
+	}
+	return &listOutput{Body: ServiceAccountListResponse{Items: out}}, nil
+}
+
+type getByCodeInput struct {
+	Code string `path:"code"`
+}
+
+type getOutput struct {
+	Body ServiceAccountResponse
+}
+
+func (s *State) getByCode(ctx context.Context, in *getByCodeInput) (*getOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanReadServiceAccounts(ac); err != nil {
+		return nil, err
+	}
+	sa, err := s.Repo.FindByCode(ctx, in.Code)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_code failed", err)
 	}
 	if sa == nil {
-		httperror.Write(w, httperror.NotFound("ServiceAccount", code))
-		return
+		return nil, httperror.NotFound("ServiceAccount", in.Code)
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(sa)
+	return &getOutput{Body: fromEntity(sa)}, nil
 }
 
-func (s *State) listRoles(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type getInput struct {
+	ID string `path:"id"`
+}
+
+func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanReadServiceAccounts(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
-	sa, err := s.Repo.FindByID(r.Context(), id)
+	sa, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "find_by_id failed", err))
-		return
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if sa == nil {
-		httperror.Write(w, httperror.NotFound("ServiceAccount", id))
-		return
+		return nil, httperror.NotFound("ServiceAccount", in.ID)
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"items": sa.Roles})
+	return &getOutput{Body: fromEntity(sa)}, nil
 }
 
-func (s *State) assignRoles(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
-	if err := auth.RequireAnchor(ac); err != nil {
-		httperror.Write(w, err)
-		return
-	}
-	id := chi.URLParam(r, "id")
-	var body struct {
-		Roles []string `json:"roles"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
-		return
-	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.AssignRolesUC,
-		operations.AssignRolesCommand{ServiceAccountID: id, Roles: body.Roles}, ec)); err != nil {
-		httperror.Write(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+type createInput struct {
+	Body CreateServiceAccountRequest
 }
 
-func (s *State) regenerateAuthToken(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
-	if err := auth.RequireAnchor(ac); err != nil {
-		httperror.Write(w, err)
-		return
-	}
-	id := chi.URLParam(r, "id")
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.RegenerateTokenUC,
-		operations.RegenerateAuthTokenCommand{ServiceAccountID: id}, ec)); err != nil {
-		httperror.Write(w, err)
-		return
-	}
-	resp := map[string]any{"id": id}
-	if token, ok := operations.PopStashedSecret(id, "token"); ok {
-		resp["authToken"] = token
-	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(resp)
+type createOutput struct {
+	Body apicommon.CreatedResponse
 }
 
-func (s *State) regenerateSigningSecret(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
-	if err := auth.RequireAnchor(ac); err != nil {
-		httperror.Write(w, err)
-		return
-	}
-	id := chi.URLParam(r, "id")
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.RegenerateSecretUC,
-		operations.RegenerateSigningSecretCommand{ServiceAccountID: id}, ec)); err != nil {
-		httperror.Write(w, err)
-		return
-	}
-	resp := map[string]any{"id": id}
-	if secret, ok := operations.PopStashedSecret(id, "signing_secret"); ok {
-		resp["signingSecret"] = secret
-	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(resp)
-}
-
-// keep apicommon import live for the create handler below
-var _ = apicommon.CreatedResponse{}
-
-func (s *State) list(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
-	if err := auth.CanReadServiceAccounts(ac); err != nil {
-		httperror.Write(w, err)
-		return
-	}
-	rows, err := s.Repo.FindAll(r.Context())
-	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "find_all failed", err))
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"items": rows})
-}
-
-func (s *State) getByID(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
-	if err := auth.CanReadServiceAccounts(ac); err != nil {
-		httperror.Write(w, err)
-		return
-	}
-	id := chi.URLParam(r, "id")
-	sa, err := s.Repo.FindByID(r.Context(), id)
-	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "find_by_id failed", err))
-		return
-	}
-	if sa == nil {
-		httperror.Write(w, httperror.NotFound("ServiceAccount", id))
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(sa)
-}
-
-func (s *State) create(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+func (s *State) create(ctx context.Context, in *createInput) (*createOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteServiceAccounts(ac); err != nil {
-		httperror.Write(w, err)
-		return
-	}
-	var body operations.CreateCommand
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
-		return
+		return nil, err
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	event, err := usecase.Into(usecase.Run(r.Context(), s.CreateUC, body, ec))
+	committed, err := operations.CreateServiceAccount(ctx, s.Repo, s.UoW, in.Body.toCommand(), ec)
 	if err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(apicommon.CreatedResponse{ID: event.ServiceAccountID})
+	return &createOutput{Body: apicommon.CreatedResponse{ID: committed.Event().ServiceAccountID}}, nil
 }
 
-func (s *State) update(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type updateInput struct {
+	ID   string `path:"id"`
+	Body UpdateServiceAccountRequest
+}
+
+type emptyOutput struct{}
+
+func (s *State) update(ctx context.Context, in *updateInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteServiceAccounts(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
-	var body operations.UpdateCommand
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
-		return
-	}
-	body.ID = id
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.UpdateUC, body, ec)); err != nil {
-		httperror.Write(w, err)
-		return
+	if _, err := operations.UpdateServiceAccount(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
+		return nil, err
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return &emptyOutput{}, nil
 }
 
-func (s *State) deactivate(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type idInput struct {
+	ID string `path:"id"`
+}
+
+func (s *State) deactivate(ctx context.Context, in *idInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteServiceAccounts(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.DeactivateUC, operations.DeactivateCommand{ID: id}, ec)); err != nil {
-		httperror.Write(w, err)
-		return
+	if _, err := operations.DeactivateServiceAccount(ctx, s.Repo, s.UoW, operations.DeactivateCommand{ID: in.ID}, ec); err != nil {
+		return nil, err
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return &emptyOutput{}, nil
 }
 
-func (s *State) delete(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+func (s *State) delete(ctx context.Context, in *idInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanDeleteServiceAccounts(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.DeleteUC, operations.DeleteCommand{ID: id}, ec)); err != nil {
-		httperror.Write(w, err)
-		return
+	if _, err := operations.DeleteServiceAccount(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
+		return nil, err
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return &emptyOutput{}, nil
+}
+
+type listRolesOutput struct {
+	Body ServiceAccountRoleListResponse
+}
+
+func (s *State) listRoles(ctx context.Context, in *idInput) (*listRolesOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanReadServiceAccounts(ac); err != nil {
+		return nil, err
+	}
+	sa, err := s.Repo.FindByID(ctx, in.ID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
+	}
+	if sa == nil {
+		return nil, httperror.NotFound("ServiceAccount", in.ID)
+	}
+	resp := fromEntity(sa)
+	return &listRolesOutput{Body: ServiceAccountRoleListResponse{Items: resp.Roles}}, nil
+}
+
+type assignRolesInput struct {
+	ID   string `path:"id"`
+	Body AssignRolesRequest
+}
+
+func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.RequireAnchor(ac); err != nil {
+		return nil, err
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	if _, err := operations.AssignRolesToServiceAccount(ctx, s.Repo, s.UoW,
+		operations.AssignRolesCommand{ServiceAccountID: in.ID, Roles: in.Body.Roles}, ec); err != nil {
+		return nil, err
+	}
+	return &emptyOutput{}, nil
+}
+
+type regenerateAuthTokenOutput struct {
+	Body RegenerateAuthTokenResponse
+}
+
+func (s *State) regenerateAuthToken(ctx context.Context, in *idInput) (*regenerateAuthTokenOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.RequireAnchor(ac); err != nil {
+		return nil, err
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	if _, err := operations.RegenerateAuthToken(ctx, s.Repo, s.UoW,
+		operations.RegenerateAuthTokenCommand{ServiceAccountID: in.ID}, ec); err != nil {
+		return nil, err
+	}
+	resp := RegenerateAuthTokenResponse{ID: in.ID}
+	if token, ok := operations.PopStashedSecret(in.ID, "token"); ok {
+		resp.AuthToken = token
+	}
+	return &regenerateAuthTokenOutput{Body: resp}, nil
+}
+
+type regenerateSigningSecretOutput struct {
+	Body RegenerateSigningSecretResponse
+}
+
+func (s *State) regenerateSigningSecret(ctx context.Context, in *idInput) (*regenerateSigningSecretOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.RequireAnchor(ac); err != nil {
+		return nil, err
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	if _, err := operations.RegenerateSigningSecret(ctx, s.Repo, s.UoW,
+		operations.RegenerateSigningSecretCommand{ServiceAccountID: in.ID}, ec); err != nil {
+		return nil, err
+	}
+	resp := RegenerateSigningSecretResponse{ID: in.ID}
+	if secret, ok := operations.PopStashedSecret(in.ID, "signing_secret"); ok {
+		resp.SigningSecret = secret
+	}
+	return &regenerateSigningSecretOutput{Body: resp}, nil
 }

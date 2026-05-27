@@ -6,6 +6,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/process"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -15,35 +16,26 @@ type ArchiveCommand struct {
 	ID string `json:"id"`
 }
 
-// ArchiveUseCase implements UseCase.
-type ArchiveUseCase struct {
-	repo *process.Repository
-	uow  *usecasepgx.UnitOfWork
-}
+// ArchiveProcess marks a process archived and emits [ProcessArchived].
+func ArchiveProcess(
+	ctx context.Context,
+	repo *process.Repository,
+	uow *usecasepgx.UnitOfWork,
+	cmd ArchiveCommand,
+	ec usecase.ExecutionContext,
+) (commit.Committed[ProcessArchived], error) {
+	var zero commit.Committed[ProcessArchived]
 
-// NewArchiveUseCase wires the use case.
-func NewArchiveUseCase(repo *process.Repository, uow *usecasepgx.UnitOfWork) *ArchiveUseCase {
-	return &ArchiveUseCase{repo: repo, uow: uow}
-}
-
-func (uc *ArchiveUseCase) Validate(_ context.Context, cmd ArchiveCommand) error {
 	if strings.TrimSpace(cmd.ID) == "" {
-		return usecase.Validation("ID_REQUIRED", "id is required")
+		return zero, usecase.Validation("ID_REQUIRED", "id is required")
 	}
-	return nil
-}
 
-func (uc *ArchiveUseCase) Authorize(_ context.Context, _ ArchiveCommand, _ usecase.ExecutionContext) error {
-	return nil
-}
-
-func (uc *ArchiveUseCase) Execute(ctx context.Context, cmd ArchiveCommand, ec usecase.ExecutionContext) usecase.Result[ProcessArchived] {
-	p, err := uc.repo.FindByID(ctx, cmd.ID)
+	p, err := repo.FindByID(ctx, cmd.ID)
 	if err != nil {
-		return usecase.Failure[ProcessArchived](usecase.Internal("REPO", "find_by_id failed", err))
+		return zero, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if p == nil {
-		return usecase.Failure[ProcessArchived](httperror.NotFound("Process", cmd.ID))
+		return zero, httperror.NotFound("Process", cmd.ID)
 	}
 	p.Archive()
 	event := ProcessArchived{
@@ -51,9 +43,5 @@ func (uc *ArchiveUseCase) Execute(ctx context.Context, cmd ArchiveCommand, ec us
 		ProcessID: p.ID,
 		Code:      p.Code,
 	}
-	return usecasepgx.Commit[process.Process, ProcessArchived, ArchiveCommand](
-		ctx, uc.uow, p, uc.repo, event, cmd,
-	)
+	return commit.Save(ctx, uow, p, repo, event, cmd)
 }
-
-var _ usecase.UseCase[ArchiveCommand, ProcessArchived] = (*ArchiveUseCase)(nil)

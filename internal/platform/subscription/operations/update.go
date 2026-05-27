@@ -7,6 +7,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -29,41 +30,32 @@ type UpdateCommand struct {
 	DataOnly         *bool                           `json:"dataOnly,omitempty"`
 }
 
-// UpdateUseCase implements UseCase.
-type UpdateUseCase struct {
-	repo *subscription.Repository
-	uow  *usecasepgx.UnitOfWork
-}
+// UpdateSubscription mutates mutable fields and emits [SubscriptionUpdated].
+func UpdateSubscription(
+	ctx context.Context,
+	repo *subscription.Repository,
+	uow *usecasepgx.UnitOfWork,
+	cmd UpdateCommand,
+	ec usecase.ExecutionContext,
+) (commit.Committed[SubscriptionUpdated], error) {
+	var zero commit.Committed[SubscriptionUpdated]
 
-// NewUpdateUseCase wires the use case.
-func NewUpdateUseCase(repo *subscription.Repository, uow *usecasepgx.UnitOfWork) *UpdateUseCase {
-	return &UpdateUseCase{repo: repo, uow: uow}
-}
-
-func (uc *UpdateUseCase) Validate(_ context.Context, cmd UpdateCommand) error {
 	if strings.TrimSpace(cmd.ID) == "" {
-		return usecase.Validation("ID_REQUIRED", "id is required")
+		return zero, usecase.Validation("ID_REQUIRED", "id is required")
 	}
 	if cmd.Name != nil && strings.TrimSpace(*cmd.Name) == "" {
-		return usecase.Validation("NAME_REQUIRED", "name cannot be empty")
+		return zero, usecase.Validation("NAME_REQUIRED", "name cannot be empty")
 	}
 	if cmd.Endpoint != nil && !urlPattern.MatchString(*cmd.Endpoint) {
-		return usecase.Validation("INVALID_ENDPOINT", "endpoint must be a http(s) URL")
+		return zero, usecase.Validation("INVALID_ENDPOINT", "endpoint must be a http(s) URL")
 	}
-	return nil
-}
 
-func (uc *UpdateUseCase) Authorize(_ context.Context, _ UpdateCommand, _ usecase.ExecutionContext) error {
-	return nil
-}
-
-func (uc *UpdateUseCase) Execute(ctx context.Context, cmd UpdateCommand, ec usecase.ExecutionContext) usecase.Result[SubscriptionUpdated] {
-	s, err := uc.repo.FindByID(ctx, cmd.ID)
+	s, err := repo.FindByID(ctx, cmd.ID)
 	if err != nil {
-		return usecase.Failure[SubscriptionUpdated](usecase.Internal("REPO", "find_by_id failed", err))
+		return zero, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if s == nil {
-		return usecase.Failure[SubscriptionUpdated](httperror.NotFound("Subscription", cmd.ID))
+		return zero, httperror.NotFound("Subscription", cmd.ID)
 	}
 
 	if cmd.Name != nil {
@@ -111,9 +103,5 @@ func (uc *UpdateUseCase) Execute(ctx context.Context, cmd UpdateCommand, ec usec
 		SubscriptionID: s.ID,
 		Name:           s.Name,
 	}
-	return usecasepgx.Commit[subscription.Subscription, SubscriptionUpdated, UpdateCommand](
-		ctx, uc.uow, s, uc.repo, event, cmd,
-	)
+	return commit.Save(ctx, uow, s, repo, event, cmd)
 }
-
-var _ usecase.UseCase[UpdateCommand, SubscriptionUpdated] = (*UpdateUseCase)(nil)

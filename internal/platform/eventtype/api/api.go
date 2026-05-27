@@ -1,14 +1,14 @@
-// Package api wires the HTTP routes for the event_type subdomain.
-// Kept in a subpackage to avoid the import cycle that would form if it
-// lived in the parent package (operations imports eventtype, api would
-// need to import both).
+// Package api wires the HTTP routes for the event_type subdomain via
+// danielgtaylor/huma/v2. The Input/Output structs in dto.go are the
+// source of truth for the OpenAPI spec; huma derives the spec from
+// them at registration time.
 package api
 
 import (
-	"encoding/json"
+	"context"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/operations"
@@ -16,230 +16,265 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
-// State bundles the dependencies the HTTP handlers reach into. Wired
-// once at startup in cmd/fc-platform-server; per-request handlers
-// receive it via closure.
+// State bundles deps for the event-type handlers.
 type State struct {
-	Repo        *eventtype.Repository
-	CreateUC    *operations.CreateUseCase
-	UpdateUC    *operations.UpdateUseCase
-	DeleteUC    *operations.DeleteUseCase
-	AddSchemaUC *operations.AddSchemaUseCase
+	Repo *eventtype.Repository
+	UoW  *usecasepgx.UnitOfWork
 }
 
-// RegisterRoutes mounts the event-type endpoints onto the supplied router.
-//
-// Routes match the Rust event_type/api.rs exactly (path, method, status code).
-// JSON shapes match: CreatedResponse on POST, full EventType on GET, 204 on PUT/DELETE.
-func RegisterRoutes(r chi.Router, s *State) {
-	r.Route("/api/event-types", func(r chi.Router) {
-		r.Post("/", s.create)
-		r.Get("/", s.list)
-		r.Get("/{id}", s.getByID)
-		r.Get("/by-code/{code}", s.getByCode)
-		r.Put("/{id}", s.update)
-		r.Delete("/{id}", s.delete)
-		r.Post("/{id}/schemas", s.addSchema)
-	})
+const tag = "event-types"
+
+// Register mounts the event-type endpoints on the supplied huma API.
+// Routes match the existing Rust eventtype/api.rs exactly (path,
+// method, status code).
+func Register(api huma.API, s *State) {
+	huma.Register(api, huma.Operation{
+		OperationID:   "listEventTypes",
+		Method:        http.MethodGet,
+		Path:          "/api/event-types",
+		Summary:       "List event types",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.list)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "createEventType",
+		Method:        http.MethodPost,
+		Path:          "/api/event-types",
+		Summary:       "Create an event type",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusCreated,
+	}, s.create)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "getEventType",
+		Method:        http.MethodGet,
+		Path:          "/api/event-types/{id}",
+		Summary:       "Get an event type by id",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.getByID)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "getEventTypeByCode",
+		Method:        http.MethodGet,
+		Path:          "/api/event-types/by-code/{code}",
+		Summary:       "Get an event type by code",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.getByCode)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "updateEventType",
+		Method:        http.MethodPut,
+		Path:          "/api/event-types/{id}",
+		Summary:       "Update an event type",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.update)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "deleteEventType",
+		Method:        http.MethodDelete,
+		Path:          "/api/event-types/{id}",
+		Summary:       "Archive an event type",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.delete)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "addEventTypeSchema",
+		Method:        http.MethodPost,
+		Path:          "/api/event-types/{id}/schemas",
+		Summary:       "Add a schema version to an event type",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusCreated,
+	}, s.addSchema)
 }
 
-// POST /api/event-types
-func (s *State) create(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
-	if err := auth.CanWriteEventTypes(ac); err != nil {
-		httperror.Write(w, err)
-		return
-	}
+// ── Handlers ──────────────────────────────────────────────────────────────
 
-	var body operations.CreateCommand
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
-		return
-	}
-	// Resource-level access: anchor for anchor-level, client access for client-scoped.
-	if body.ClientID != nil {
-		if !ac.CanAccessClient(*body.ClientID) {
-			httperror.Write(w, httperror.Forbidden("No access to client: "+*body.ClientID))
-			return
-		}
-	} else if !ac.IsAnchor() {
-		httperror.Write(w, httperror.Forbidden("Only anchor users can create anchor-level event types"))
-		return
-	}
-
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	event, err := usecase.Into(usecase.Run(r.Context(), s.CreateUC, body, ec))
-	if err != nil {
-		httperror.Write(w, err)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(apicommon.CreatedResponse{ID: event.EventTypeID})
+type listInput struct {
+	Application string `query:"application" doc:"Filter by application code"`
+	ClientID    string `query:"clientId" doc:"Filter by client id"`
+	Status      string `query:"status" doc:"Filter by status (CURRENT, ARCHIVED)"`
+	Subdomain   string `query:"subdomain" doc:"Filter by subdomain"`
+	Aggregate   string `query:"aggregate" doc:"Filter by aggregate"`
 }
 
-// GET /api/event-types/{id}
-func (s *State) getByID(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type listOutput struct {
+	Body EventTypeListResponse
+}
+
+func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanReadEventTypes(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
-	et, err := s.Repo.FindByID(r.Context(), id)
-	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "find_by_id failed", err))
-		return
-	}
-	if et == nil {
-		httperror.Write(w, httperror.NotFound("EventType", id))
-		return
-	}
-	if et.ClientID != nil && !ac.CanAccessClient(*et.ClientID) {
-		httperror.Write(w, httperror.Forbidden("No access to this event type"))
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(et)
-}
 
-// GET /api/event-types/by-code/{code}
-func (s *State) getByCode(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
-	if err := auth.CanReadEventTypes(ac); err != nil {
-		httperror.Write(w, err)
-		return
-	}
-	code := chi.URLParam(r, "code")
-	et, err := s.Repo.FindByCode(r.Context(), code)
-	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "find_by_code failed", err))
-		return
-	}
-	if et == nil {
-		httperror.Write(w, httperror.NotFound("EventType", code))
-		return
-	}
-	if et.ClientID != nil && !ac.CanAccessClient(*et.ClientID) {
-		httperror.Write(w, httperror.Forbidden("No access to this event type"))
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(et)
-}
-
-// GET /api/event-types
-func (s *State) list(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
-	if err := auth.CanReadEventTypes(ac); err != nil {
-		httperror.Write(w, err)
-		return
-	}
-	q := r.URL.Query()
 	var application, clientID, status, subdomain, aggregate *string
-	if v := q.Get("application"); v != "" {
-		application = &v
+	if in.Application != "" {
+		application = &in.Application
 	}
-	if v := q.Get("clientId"); v != "" {
-		clientID = &v
+	if in.ClientID != "" {
+		clientID = &in.ClientID
 	}
-	if v := q.Get("status"); v != "" {
-		status = &v
+	if in.Status != "" {
+		status = &in.Status
 	}
-	if v := q.Get("subdomain"); v != "" {
-		subdomain = &v
+	if in.Subdomain != "" {
+		subdomain = &in.Subdomain
 	}
-	if v := q.Get("aggregate"); v != "" {
-		aggregate = &v
+	if in.Aggregate != "" {
+		aggregate = &in.Aggregate
 	}
-	// Default to CURRENT when no filters supplied (matches Rust find_active default).
 	if application == nil && clientID == nil && status == nil && subdomain == nil && aggregate == nil {
 		def := "CURRENT"
 		status = &def
 	}
 
-	rows, err := s.Repo.FindWithFilters(r.Context(), application, clientID, status, subdomain, aggregate)
+	rows, err := s.Repo.FindWithFilters(ctx, application, clientID, status, subdomain, aggregate)
 	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "find_with_filters failed", err))
-		return
+		return nil, usecase.Internal("REPO", "find_with_filters failed", err)
 	}
-	// Filter by client access.
-	out := rows[:0]
+	out := make([]EventTypeResponse, 0, len(rows))
 	for _, et := range rows {
 		if et.ClientID == nil || ac.CanAccessClient(*et.ClientID) {
-			out = append(out, et)
+			out = append(out, fromEntity(&et))
 		}
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"items": out})
+	return &listOutput{Body: EventTypeListResponse{Items: out}}, nil
 }
 
-// PUT /api/event-types/{id}
-func (s *State) update(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
-	if err := auth.CanWriteEventTypes(ac); err != nil {
-		httperror.Write(w, err)
-		return
-	}
-	id := chi.URLParam(r, "id")
-
-	var body operations.UpdateCommand
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
-		return
-	}
-	body.ID = id // path is authoritative
-
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.UpdateUC, body, ec)); err != nil {
-		httperror.Write(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+type getByIDInput struct {
+	ID string `path:"id" doc:"Event type id (TSID)"`
 }
 
-// DELETE /api/event-types/{id}
-func (s *State) delete(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
-	if err := auth.CanDeleteEventTypes(ac); err != nil {
-		httperror.Write(w, err)
-		return
-	}
-	id := chi.URLParam(r, "id")
-
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.DeleteUC, operations.DeleteCommand{ID: id}, ec)); err != nil {
-		httperror.Write(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+type getOutput struct {
+	Body EventTypeResponse
 }
 
-// POST /api/event-types/{id}/schemas
-func (s *State) addSchema(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
-	if err := auth.CanWriteEventTypes(ac); err != nil {
-		httperror.Write(w, err)
-		return
+func (s *State) getByID(ctx context.Context, in *getByIDInput) (*getOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanReadEventTypes(ac); err != nil {
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
-	var body operations.AddSchemaCommand
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
-		return
-	}
-	body.EventTypeID = id // path is authoritative
-
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	event, err := usecase.Into(usecase.Run(r.Context(), s.AddSchemaUC, body, ec))
+	et, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(apicommon.CreatedResponse{ID: event.EventTypeID})
+	if et == nil {
+		return nil, httperror.NotFound("EventType", in.ID)
+	}
+	if et.ClientID != nil && !ac.CanAccessClient(*et.ClientID) {
+		return nil, httperror.Forbidden("No access to this event type")
+	}
+	return &getOutput{Body: fromEntity(et)}, nil
+}
+
+type getByCodeInput struct {
+	Code string `path:"code" doc:"Event type code (e.g. platform:iam:user:created)"`
+}
+
+func (s *State) getByCode(ctx context.Context, in *getByCodeInput) (*getOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanReadEventTypes(ac); err != nil {
+		return nil, err
+	}
+	et, err := s.Repo.FindByCode(ctx, in.Code)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_code failed", err)
+	}
+	if et == nil {
+		return nil, httperror.NotFound("EventType", in.Code)
+	}
+	if et.ClientID != nil && !ac.CanAccessClient(*et.ClientID) {
+		return nil, httperror.Forbidden("No access to this event type")
+	}
+	return &getOutput{Body: fromEntity(et)}, nil
+}
+
+type createInput struct {
+	Body CreateEventTypeRequest
+}
+
+type createOutput struct {
+	Body apicommon.CreatedResponse
+}
+
+func (s *State) create(ctx context.Context, in *createInput) (*createOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWriteEventTypes(ac); err != nil {
+		return nil, err
+	}
+	if in.Body.ClientID != nil {
+		if !ac.CanAccessClient(*in.Body.ClientID) {
+			return nil, httperror.Forbidden("No access to client: " + *in.Body.ClientID)
+		}
+	} else if !ac.IsAnchor() {
+		return nil, httperror.Forbidden("Only anchor users can create anchor-level event types")
+	}
+
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	committed, err := operations.CreateEventType(ctx, s.Repo, s.UoW, in.Body.toCommand(), ec)
+	if err != nil {
+		return nil, err
+	}
+	return &createOutput{Body: apicommon.CreatedResponse{ID: committed.Event().EventTypeID}}, nil
+}
+
+type updateInput struct {
+	ID   string `path:"id"`
+	Body UpdateEventTypeRequest
+}
+
+type emptyOutput struct{}
+
+func (s *State) update(ctx context.Context, in *updateInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWriteEventTypes(ac); err != nil {
+		return nil, err
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	if _, err := operations.UpdateEventType(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
+		return nil, err
+	}
+	return &emptyOutput{}, nil
+}
+
+type deleteInput struct {
+	ID string `path:"id"`
+}
+
+func (s *State) delete(ctx context.Context, in *deleteInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanDeleteEventTypes(ac); err != nil {
+		return nil, err
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	if _, err := operations.DeleteEventType(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
+		return nil, err
+	}
+	return &emptyOutput{}, nil
+}
+
+type addSchemaInput struct {
+	ID   string `path:"id"`
+	Body AddSchemaRequest
+}
+
+func (s *State) addSchema(ctx context.Context, in *addSchemaInput) (*createOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWriteEventTypes(ac); err != nil {
+		return nil, err
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	committed, err := operations.AddSchema(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec)
+	if err != nil {
+		return nil, err
+	}
+	return &createOutput{Body: apicommon.CreatedResponse{ID: committed.Event().EventTypeID}}, nil
 }

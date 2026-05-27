@@ -15,6 +15,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -38,52 +39,41 @@ type CreateCommand struct {
 	TargetURL           *string         `json:"targetUrl,omitempty"`
 }
 
-type CreateUseCase struct {
-	repo *scheduledjob.Repository
-	uow  *usecasepgx.UnitOfWork
-}
+func CreateScheduledJob(
+	ctx context.Context,
+	repo *scheduledjob.Repository,
+	uow *usecasepgx.UnitOfWork,
+	cmd CreateCommand,
+	ec usecase.ExecutionContext,
+) (commit.Committed[ScheduledJobCreated], error) {
+	var zero commit.Committed[ScheduledJobCreated]
 
-func NewCreateUseCase(repo *scheduledjob.Repository, uow *usecasepgx.UnitOfWork) *CreateUseCase {
-	return &CreateUseCase{repo: repo, uow: uow}
-}
-
-func (uc *CreateUseCase) Validate(_ context.Context, cmd CreateCommand) error {
 	code := strings.ToLower(strings.TrimSpace(cmd.Code))
 	if code == "" {
-		return usecase.Validation("CODE_REQUIRED", "code is required")
+		return zero, usecase.Validation("CODE_REQUIRED", "code is required")
 	}
 	if !codePattern.MatchString(code) {
-		return usecase.Validation("INVALID_CODE_FORMAT",
+		return zero, usecase.Validation("INVALID_CODE_FORMAT",
 			"code must start with a lowercase letter and contain only lowercase alphanumeric and hyphens")
 	}
 	if strings.TrimSpace(cmd.Name) == "" {
-		return usecase.Validation("NAME_REQUIRED", "name is required")
+		return zero, usecase.Validation("NAME_REQUIRED", "name is required")
 	}
 	if len(cmd.Crons) == 0 {
-		return usecase.Validation("CRONS_REQUIRED", "at least one cron expression is required")
+		return zero, usecase.Validation("CRONS_REQUIRED", "at least one cron expression is required")
 	}
 	for _, c := range cmd.Crons {
 		if strings.TrimSpace(c) == "" {
-			return usecase.Validation("INVALID_CRON", "cron expressions cannot be empty")
+			return zero, usecase.Validation("INVALID_CRON", "cron expressions cannot be empty")
 		}
-		// TODO(wave-3g): full cron validation via robfig/cron parser.
 	}
-	return nil
-}
 
-func (uc *CreateUseCase) Authorize(_ context.Context, _ CreateCommand, _ usecase.ExecutionContext) error {
-	return nil
-}
-
-func (uc *CreateUseCase) Execute(ctx context.Context, cmd CreateCommand, ec usecase.ExecutionContext) usecase.Result[ScheduledJobCreated] {
-	code := strings.ToLower(strings.TrimSpace(cmd.Code))
-	existing, err := uc.repo.FindByCode(ctx, code, cmd.ClientID)
+	existing, err := repo.FindByCode(ctx, code, cmd.ClientID)
 	if err != nil {
-		return usecase.Failure[ScheduledJobCreated](usecase.Internal("REPO", "find_by_code failed", err))
+		return zero, usecase.Internal("REPO", "find_by_code failed", err)
 	}
 	if existing != nil {
-		return usecase.Failure[ScheduledJobCreated](usecase.Conflict(
-			"CODE_EXISTS", "Scheduled job with code '"+code+"' already exists"))
+		return zero, usecase.Conflict("CODE_EXISTS", "Scheduled job with code '"+code+"' already exists")
 	}
 	j := scheduledjob.New(code, strings.TrimSpace(cmd.Name), cmd.Crons)
 	j.ClientID = cmd.ClientID
@@ -106,12 +96,8 @@ func (uc *CreateUseCase) Execute(ctx context.Context, cmd CreateCommand, ec usec
 		ScheduledJobID: j.ID,
 		Code:           j.Code,
 	}}
-	return usecasepgx.Commit[scheduledjob.ScheduledJob, ScheduledJobCreated, CreateCommand](
-		ctx, uc.uow, j, uc.repo, event, cmd,
-	)
+	return commit.Save(ctx, uow, j, repo, event, cmd)
 }
-
-var _ usecase.UseCase[CreateCommand, ScheduledJobCreated] = (*CreateUseCase)(nil)
 
 // ── Update ────────────────────────────────────────────────────────────────
 
@@ -129,36 +115,28 @@ type UpdateCommand struct {
 	TargetURL           *string         `json:"targetUrl,omitempty"`
 }
 
-type UpdateUseCase struct {
-	repo *scheduledjob.Repository
-	uow  *usecasepgx.UnitOfWork
-}
+func UpdateScheduledJob(
+	ctx context.Context,
+	repo *scheduledjob.Repository,
+	uow *usecasepgx.UnitOfWork,
+	cmd UpdateCommand,
+	ec usecase.ExecutionContext,
+) (commit.Committed[ScheduledJobUpdated], error) {
+	var zero commit.Committed[ScheduledJobUpdated]
 
-func NewUpdateUseCase(repo *scheduledjob.Repository, uow *usecasepgx.UnitOfWork) *UpdateUseCase {
-	return &UpdateUseCase{repo: repo, uow: uow}
-}
-
-func (uc *UpdateUseCase) Validate(_ context.Context, cmd UpdateCommand) error {
 	if strings.TrimSpace(cmd.ID) == "" {
-		return usecase.Validation("ID_REQUIRED", "id is required")
+		return zero, usecase.Validation("ID_REQUIRED", "id is required")
 	}
 	if cmd.Name != nil && strings.TrimSpace(*cmd.Name) == "" {
-		return usecase.Validation("NAME_REQUIRED", "name cannot be empty")
+		return zero, usecase.Validation("NAME_REQUIRED", "name cannot be empty")
 	}
-	return nil
-}
 
-func (uc *UpdateUseCase) Authorize(_ context.Context, _ UpdateCommand, _ usecase.ExecutionContext) error {
-	return nil
-}
-
-func (uc *UpdateUseCase) Execute(ctx context.Context, cmd UpdateCommand, ec usecase.ExecutionContext) usecase.Result[ScheduledJobUpdated] {
-	j, err := uc.repo.FindByID(ctx, cmd.ID)
+	j, err := repo.FindByID(ctx, cmd.ID)
 	if err != nil {
-		return usecase.Failure[ScheduledJobUpdated](usecase.Internal("REPO", "find_by_id failed", err))
+		return zero, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if j == nil {
-		return usecase.Failure[ScheduledJobUpdated](httperror.NotFound("ScheduledJob", cmd.ID))
+		return zero, httperror.NotFound("ScheduledJob", cmd.ID)
 	}
 	if cmd.Name != nil {
 		j.Name = strings.TrimSpace(*cmd.Name)
@@ -198,19 +176,15 @@ func (uc *UpdateUseCase) Execute(ctx context.Context, cmd UpdateCommand, ec usec
 		ScheduledJobID: j.ID,
 		Code:           j.Code,
 	}}
-	return usecasepgx.Commit[scheduledjob.ScheduledJob, ScheduledJobUpdated, UpdateCommand](
-		ctx, uc.uow, j, uc.repo, event, cmd,
-	)
+	return commit.Save(ctx, uow, j, repo, event, cmd)
 }
-
-var _ usecase.UseCase[UpdateCommand, ScheduledJobUpdated] = (*UpdateUseCase)(nil)
 
 // ── Pause / Resume / Archive ──────────────────────────────────────────────
 
 // transition is the shared body for the three status-flip ops. Returns
 // the updated job (caller wraps the typed event).
-func (s sharedRepoUOW) transition(ctx context.Context, id, eventType string, ec usecase.ExecutionContext, apply func(*scheduledjob.ScheduledJob)) (*scheduledjob.ScheduledJob, error) {
-	j, err := s.repo.FindByID(ctx, id)
+func transition(ctx context.Context, repo *scheduledjob.Repository, id string, ec usecase.ExecutionContext, apply func(*scheduledjob.ScheduledJob)) (*scheduledjob.ScheduledJob, error) {
+	j, err := repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
@@ -222,180 +196,145 @@ func (s sharedRepoUOW) transition(ctx context.Context, id, eventType string, ec 
 	return j, nil
 }
 
-type sharedRepoUOW struct {
-	repo *scheduledjob.Repository
-	uow  *usecasepgx.UnitOfWork
+type PauseCommand struct {
+	ID string `json:"id"`
 }
 
-// PauseCommand is the input DTO.
-type PauseCommand struct{ ID string `json:"id"` }
-
-type PauseUseCase struct{ sharedRepoUOW }
-
-func NewPauseUseCase(repo *scheduledjob.Repository, uow *usecasepgx.UnitOfWork) *PauseUseCase {
-	return &PauseUseCase{sharedRepoUOW{repo: repo, uow: uow}}
-}
-func (uc *PauseUseCase) Validate(_ context.Context, cmd PauseCommand) error {
+func PauseScheduledJob(
+	ctx context.Context,
+	repo *scheduledjob.Repository,
+	uow *usecasepgx.UnitOfWork,
+	cmd PauseCommand,
+	ec usecase.ExecutionContext,
+) (commit.Committed[ScheduledJobPaused], error) {
+	var zero commit.Committed[ScheduledJobPaused]
 	if strings.TrimSpace(cmd.ID) == "" {
-		return usecase.Validation("ID_REQUIRED", "id is required")
+		return zero, usecase.Validation("ID_REQUIRED", "id is required")
 	}
-	return nil
-}
-func (uc *PauseUseCase) Authorize(_ context.Context, _ PauseCommand, _ usecase.ExecutionContext) error { return nil }
-func (uc *PauseUseCase) Execute(ctx context.Context, cmd PauseCommand, ec usecase.ExecutionContext) usecase.Result[ScheduledJobPaused] {
-	j, err := uc.transition(ctx, cmd.ID, ScheduledJobPausedType, ec, func(j *scheduledjob.ScheduledJob) { j.Pause() })
+	j, err := transition(ctx, repo, cmd.ID, ec, func(j *scheduledjob.ScheduledJob) { j.Pause() })
 	if err != nil {
-		return usecase.Failure[ScheduledJobPaused](err)
+		return zero, err
 	}
 	event := ScheduledJobPaused{commonEvent: commonEvent{
 		Metadata:       usecase.NewEventMetadata(ec, ScheduledJobPausedType, Source, subjectFor(j.ID)),
 		ScheduledJobID: j.ID, Code: j.Code,
 	}}
-	return usecasepgx.Commit[scheduledjob.ScheduledJob, ScheduledJobPaused, PauseCommand](
-		ctx, uc.uow, j, uc.repo, event, cmd,
-	)
+	return commit.Save(ctx, uow, j, repo, event, cmd)
 }
 
-var _ usecase.UseCase[PauseCommand, ScheduledJobPaused] = (*PauseUseCase)(nil)
-
-// ResumeCommand is the input DTO.
-type ResumeCommand struct{ ID string `json:"id"` }
-
-type ResumeUseCase struct{ sharedRepoUOW }
-
-func NewResumeUseCase(repo *scheduledjob.Repository, uow *usecasepgx.UnitOfWork) *ResumeUseCase {
-	return &ResumeUseCase{sharedRepoUOW{repo: repo, uow: uow}}
+type ResumeCommand struct {
+	ID string `json:"id"`
 }
-func (uc *ResumeUseCase) Validate(_ context.Context, cmd ResumeCommand) error {
+
+func ResumeScheduledJob(
+	ctx context.Context,
+	repo *scheduledjob.Repository,
+	uow *usecasepgx.UnitOfWork,
+	cmd ResumeCommand,
+	ec usecase.ExecutionContext,
+) (commit.Committed[ScheduledJobResumed], error) {
+	var zero commit.Committed[ScheduledJobResumed]
 	if strings.TrimSpace(cmd.ID) == "" {
-		return usecase.Validation("ID_REQUIRED", "id is required")
+		return zero, usecase.Validation("ID_REQUIRED", "id is required")
 	}
-	return nil
-}
-func (uc *ResumeUseCase) Authorize(_ context.Context, _ ResumeCommand, _ usecase.ExecutionContext) error { return nil }
-func (uc *ResumeUseCase) Execute(ctx context.Context, cmd ResumeCommand, ec usecase.ExecutionContext) usecase.Result[ScheduledJobResumed] {
-	j, err := uc.transition(ctx, cmd.ID, ScheduledJobResumedType, ec, func(j *scheduledjob.ScheduledJob) { j.Resume() })
+	j, err := transition(ctx, repo, cmd.ID, ec, func(j *scheduledjob.ScheduledJob) { j.Resume() })
 	if err != nil {
-		return usecase.Failure[ScheduledJobResumed](err)
+		return zero, err
 	}
 	event := ScheduledJobResumed{commonEvent: commonEvent{
 		Metadata:       usecase.NewEventMetadata(ec, ScheduledJobResumedType, Source, subjectFor(j.ID)),
 		ScheduledJobID: j.ID, Code: j.Code,
 	}}
-	return usecasepgx.Commit[scheduledjob.ScheduledJob, ScheduledJobResumed, ResumeCommand](
-		ctx, uc.uow, j, uc.repo, event, cmd,
-	)
+	return commit.Save(ctx, uow, j, repo, event, cmd)
 }
 
-var _ usecase.UseCase[ResumeCommand, ScheduledJobResumed] = (*ResumeUseCase)(nil)
-
-// ArchiveCommand is the input DTO.
-type ArchiveCommand struct{ ID string `json:"id"` }
-
-type ArchiveUseCase struct{ sharedRepoUOW }
-
-func NewArchiveUseCase(repo *scheduledjob.Repository, uow *usecasepgx.UnitOfWork) *ArchiveUseCase {
-	return &ArchiveUseCase{sharedRepoUOW{repo: repo, uow: uow}}
+type ArchiveCommand struct {
+	ID string `json:"id"`
 }
-func (uc *ArchiveUseCase) Validate(_ context.Context, cmd ArchiveCommand) error {
+
+func ArchiveScheduledJob(
+	ctx context.Context,
+	repo *scheduledjob.Repository,
+	uow *usecasepgx.UnitOfWork,
+	cmd ArchiveCommand,
+	ec usecase.ExecutionContext,
+) (commit.Committed[ScheduledJobArchived], error) {
+	var zero commit.Committed[ScheduledJobArchived]
 	if strings.TrimSpace(cmd.ID) == "" {
-		return usecase.Validation("ID_REQUIRED", "id is required")
+		return zero, usecase.Validation("ID_REQUIRED", "id is required")
 	}
-	return nil
-}
-func (uc *ArchiveUseCase) Authorize(_ context.Context, _ ArchiveCommand, _ usecase.ExecutionContext) error { return nil }
-func (uc *ArchiveUseCase) Execute(ctx context.Context, cmd ArchiveCommand, ec usecase.ExecutionContext) usecase.Result[ScheduledJobArchived] {
-	j, err := uc.transition(ctx, cmd.ID, ScheduledJobArchivedType, ec, func(j *scheduledjob.ScheduledJob) { j.Archive() })
+	j, err := transition(ctx, repo, cmd.ID, ec, func(j *scheduledjob.ScheduledJob) { j.Archive() })
 	if err != nil {
-		return usecase.Failure[ScheduledJobArchived](err)
+		return zero, err
 	}
 	event := ScheduledJobArchived{commonEvent: commonEvent{
 		Metadata:       usecase.NewEventMetadata(ec, ScheduledJobArchivedType, Source, subjectFor(j.ID)),
 		ScheduledJobID: j.ID, Code: j.Code,
 	}}
-	return usecasepgx.Commit[scheduledjob.ScheduledJob, ScheduledJobArchived, ArchiveCommand](
-		ctx, uc.uow, j, uc.repo, event, cmd,
-	)
+	return commit.Save(ctx, uow, j, repo, event, cmd)
 }
-
-var _ usecase.UseCase[ArchiveCommand, ScheduledJobArchived] = (*ArchiveUseCase)(nil)
 
 // ── Delete ────────────────────────────────────────────────────────────────
 
-type DeleteCommand struct{ ID string `json:"id"` }
-
-type DeleteUseCase struct {
-	repo *scheduledjob.Repository
-	uow  *usecasepgx.UnitOfWork
+type DeleteCommand struct {
+	ID string `json:"id"`
 }
 
-func NewDeleteUseCase(repo *scheduledjob.Repository, uow *usecasepgx.UnitOfWork) *DeleteUseCase {
-	return &DeleteUseCase{repo: repo, uow: uow}
-}
-
-func (uc *DeleteUseCase) Validate(_ context.Context, cmd DeleteCommand) error {
+func DeleteScheduledJob(
+	ctx context.Context,
+	repo *scheduledjob.Repository,
+	uow *usecasepgx.UnitOfWork,
+	cmd DeleteCommand,
+	ec usecase.ExecutionContext,
+) (commit.Committed[ScheduledJobDeleted], error) {
+	var zero commit.Committed[ScheduledJobDeleted]
 	if strings.TrimSpace(cmd.ID) == "" {
-		return usecase.Validation("ID_REQUIRED", "id is required")
+		return zero, usecase.Validation("ID_REQUIRED", "id is required")
 	}
-	return nil
-}
-func (uc *DeleteUseCase) Authorize(_ context.Context, _ DeleteCommand, _ usecase.ExecutionContext) error { return nil }
-func (uc *DeleteUseCase) Execute(ctx context.Context, cmd DeleteCommand, ec usecase.ExecutionContext) usecase.Result[ScheduledJobDeleted] {
-	j, err := uc.repo.FindByID(ctx, cmd.ID)
+	j, err := repo.FindByID(ctx, cmd.ID)
 	if err != nil {
-		return usecase.Failure[ScheduledJobDeleted](usecase.Internal("REPO", "find_by_id failed", err))
+		return zero, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if j == nil {
-		return usecase.Failure[ScheduledJobDeleted](httperror.NotFound("ScheduledJob", cmd.ID))
+		return zero, httperror.NotFound("ScheduledJob", cmd.ID)
 	}
 	event := ScheduledJobDeleted{commonEvent: commonEvent{
 		Metadata:       usecase.NewEventMetadata(ec, ScheduledJobDeletedType, Source, subjectFor(j.ID)),
 		ScheduledJobID: j.ID, Code: j.Code,
 	}}
-	return usecasepgx.CommitDelete[scheduledjob.ScheduledJob, ScheduledJobDeleted, DeleteCommand](
-		ctx, uc.uow, j, uc.repo, event, cmd,
-	)
+	return commit.Delete(ctx, uow, j, repo, event, cmd)
 }
-
-var _ usecase.UseCase[DeleteCommand, ScheduledJobDeleted] = (*DeleteUseCase)(nil)
 
 // ── FireNow ───────────────────────────────────────────────────────────────
 
 // FireNowCommand triggers a manual fire. The scheduler's dispatcher
 // (Wave 3g) actually writes the msg_scheduled_job_instances row; this
 // use case emits the audit event recording the human action.
-type FireNowCommand struct{ ID string `json:"id"` }
-
-type FireNowUseCase struct {
-	repo *scheduledjob.Repository
-	uow  *usecasepgx.UnitOfWork
+type FireNowCommand struct {
+	ID string `json:"id"`
 }
 
-func NewFireNowUseCase(repo *scheduledjob.Repository, uow *usecasepgx.UnitOfWork) *FireNowUseCase {
-	return &FireNowUseCase{repo: repo, uow: uow}
-}
-
-func (uc *FireNowUseCase) Validate(_ context.Context, cmd FireNowCommand) error {
+func FireNow(
+	ctx context.Context,
+	repo *scheduledjob.Repository,
+	uow *usecasepgx.UnitOfWork,
+	cmd FireNowCommand,
+	ec usecase.ExecutionContext,
+) (commit.Committed[ScheduledJobFiredManually], error) {
+	var zero commit.Committed[ScheduledJobFiredManually]
 	if strings.TrimSpace(cmd.ID) == "" {
-		return usecase.Validation("ID_REQUIRED", "id is required")
+		return zero, usecase.Validation("ID_REQUIRED", "id is required")
 	}
-	return nil
-}
-func (uc *FireNowUseCase) Authorize(_ context.Context, _ FireNowCommand, _ usecase.ExecutionContext) error { return nil }
-func (uc *FireNowUseCase) Execute(ctx context.Context, cmd FireNowCommand, ec usecase.ExecutionContext) usecase.Result[ScheduledJobFiredManually] {
-	j, err := uc.repo.FindByID(ctx, cmd.ID)
+	j, err := repo.FindByID(ctx, cmd.ID)
 	if err != nil {
-		return usecase.Failure[ScheduledJobFiredManually](usecase.Internal("REPO", "find_by_id failed", err))
+		return zero, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if j == nil {
-		return usecase.Failure[ScheduledJobFiredManually](httperror.NotFound("ScheduledJob", cmd.ID))
+		return zero, httperror.NotFound("ScheduledJob", cmd.ID)
 	}
 	if j.Status != scheduledjob.StatusActive {
-		return usecase.Failure[ScheduledJobFiredManually](usecase.Conflict(
-			"NOT_ACTIVE", "Only ACTIVE jobs can be fired manually"))
+		return zero, usecase.Conflict("NOT_ACTIVE", "Only ACTIVE jobs can be fired manually")
 	}
-	// The instance ID is generated here; the dispatcher (Wave 3g) reads
-	// the FiredManually event and inserts the corresponding instance row.
 	instanceID := tsid.Generate(tsid.ScheduledJobInstance)
 	event := ScheduledJobFiredManually{
 		commonEvent: commonEvent{
@@ -404,10 +343,5 @@ func (uc *FireNowUseCase) Execute(ctx context.Context, cmd FireNowCommand, ec us
 		},
 		InstanceID: instanceID,
 	}
-	// EmitEvent (not Commit) because we're not modifying the aggregate.
-	return usecasepgx.EmitEvent[ScheduledJobFiredManually, FireNowCommand](
-		ctx, uc.uow, event, cmd,
-	)
+	return commit.Emit(ctx, uow, event, cmd)
 }
-
-var _ usecase.UseCase[FireNowCommand, ScheduledJobFiredManually] = (*FireNowUseCase)(nil)

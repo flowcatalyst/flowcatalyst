@@ -10,6 +10,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -19,37 +20,28 @@ type RegenerateAuthTokenCommand struct {
 	ServiceAccountID string `json:"serviceAccountId"`
 }
 
-// RegenerateAuthTokenUseCase implements UseCase. After the commit, the
-// plaintext token lands in a process-local stash so the HTTP handler can
-// return it once and only once.
-type RegenerateAuthTokenUseCase struct {
-	repo *serviceaccount.Repository
-	uow  *usecasepgx.UnitOfWork
-}
+// RegenerateAuthToken rotates the service account's bearer token. After
+// the commit, the plaintext token lands in a process-local stash so the
+// HTTP handler can return it once and only once.
+func RegenerateAuthToken(
+	ctx context.Context,
+	repo *serviceaccount.Repository,
+	uow *usecasepgx.UnitOfWork,
+	cmd RegenerateAuthTokenCommand,
+	ec usecase.ExecutionContext,
+) (commit.Committed[ServiceAccountTokenRegenerated], error) {
+	var zero commit.Committed[ServiceAccountTokenRegenerated]
 
-// NewRegenerateAuthTokenUseCase wires the use case.
-func NewRegenerateAuthTokenUseCase(repo *serviceaccount.Repository, uow *usecasepgx.UnitOfWork) *RegenerateAuthTokenUseCase {
-	return &RegenerateAuthTokenUseCase{repo: repo, uow: uow}
-}
-
-func (uc *RegenerateAuthTokenUseCase) Validate(_ context.Context, cmd RegenerateAuthTokenCommand) error {
 	if strings.TrimSpace(cmd.ServiceAccountID) == "" {
-		return usecase.Validation("SERVICE_ACCOUNT_ID_REQUIRED", "Service account ID is required")
+		return zero, usecase.Validation("SERVICE_ACCOUNT_ID_REQUIRED", "Service account ID is required")
 	}
-	return nil
-}
 
-func (uc *RegenerateAuthTokenUseCase) Authorize(_ context.Context, _ RegenerateAuthTokenCommand, _ usecase.ExecutionContext) error {
-	return nil
-}
-
-func (uc *RegenerateAuthTokenUseCase) Execute(ctx context.Context, cmd RegenerateAuthTokenCommand, ec usecase.ExecutionContext) usecase.Result[ServiceAccountTokenRegenerated] {
-	sa, err := uc.repo.FindByID(ctx, cmd.ServiceAccountID)
+	sa, err := repo.FindByID(ctx, cmd.ServiceAccountID)
 	if err != nil {
-		return usecase.Failure[ServiceAccountTokenRegenerated](usecase.Internal("REPO", "find_by_id failed", err))
+		return zero, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if sa == nil {
-		return usecase.Failure[ServiceAccountTokenRegenerated](httperror.NotFound("ServiceAccount", cmd.ServiceAccountID))
+		return zero, httperror.NotFound("ServiceAccount", cmd.ServiceAccountID)
 	}
 
 	token := generateAuthToken()
@@ -64,12 +56,8 @@ func (uc *RegenerateAuthTokenUseCase) Execute(ctx context.Context, cmd Regenerat
 		ServiceAccountID: sa.ID,
 		Code:             sa.Code,
 	}
-	return usecasepgx.Commit[serviceaccount.ServiceAccount, ServiceAccountTokenRegenerated, RegenerateAuthTokenCommand](
-		ctx, uc.uow, sa, uc.repo, event, cmd,
-	)
+	return commit.Save(ctx, uow, sa, repo, event, cmd)
 }
-
-var _ usecase.UseCase[RegenerateAuthTokenCommand, ServiceAccountTokenRegenerated] = (*RegenerateAuthTokenUseCase)(nil)
 
 // generateAuthToken returns "fc_" + 32 lowercase-alphanumeric chars.
 // Matches the Rust port byte-for-byte (length 35, prefix fc_).

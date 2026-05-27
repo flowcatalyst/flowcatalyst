@@ -1,11 +1,11 @@
-// Package api wires HTTP routes for dispatch_pool.
+// Package api wires HTTP routes for dispatch_pool via huma.
 package api
 
 import (
-	"encoding/json"
+	"context"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool/operations"
@@ -13,160 +13,209 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
 // State bundles deps.
 type State struct {
-	Repo      *dispatchpool.Repository
-	CreateUC  *operations.CreateUseCase
-	UpdateUC  *operations.UpdateUseCase
-	ArchiveUC *operations.ArchiveUseCase
-	DeleteUC  *operations.DeleteUseCase
+	Repo *dispatchpool.Repository
+	UoW  *usecasepgx.UnitOfWork
 }
 
-// RegisterRoutes mounts the dispatch pool endpoints.
-// TODO(wave-3b): port sync.go (bulk SDK upsert).
-func RegisterRoutes(r chi.Router, s *State) {
-	r.Route("/api/dispatch-pools", func(r chi.Router) {
-		r.Get("/", s.list)
-		r.Post("/", s.create)
-		r.Get("/{id}", s.getByID)
-		r.Put("/{id}", s.update)
-		r.Post("/{id}/archive", s.archive)
-		r.Delete("/{id}", s.delete)
-	})
+const tag = "dispatch-pools"
+
+// Register mounts the dispatch-pool endpoints.
+func Register(api huma.API, s *State) {
+	huma.Register(api, huma.Operation{
+		OperationID:   "listDispatchPools",
+		Method:        http.MethodGet,
+		Path:          "/api/dispatch-pools",
+		Summary:       "List dispatch pools",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.list)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "createDispatchPool",
+		Method:        http.MethodPost,
+		Path:          "/api/dispatch-pools",
+		Summary:       "Create a dispatch pool",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusCreated,
+	}, s.create)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "getDispatchPool",
+		Method:        http.MethodGet,
+		Path:          "/api/dispatch-pools/{id}",
+		Summary:       "Get a dispatch pool by id",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.getByID)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "updateDispatchPool",
+		Method:        http.MethodPut,
+		Path:          "/api/dispatch-pools/{id}",
+		Summary:       "Update a dispatch pool",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.update)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "archiveDispatchPool",
+		Method:        http.MethodPost,
+		Path:          "/api/dispatch-pools/{id}/archive",
+		Summary:       "Archive a dispatch pool",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.archive)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "deleteDispatchPool",
+		Method:        http.MethodDelete,
+		Path:          "/api/dispatch-pools/{id}",
+		Summary:       "Delete a dispatch pool",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.delete)
 }
 
-func (s *State) list(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type listInput struct {
+	Status   string `query:"status" doc:"Filter by status (ACTIVE, SUSPENDED, ARCHIVED)"`
+	ClientID string `query:"clientId" doc:"Filter by client id"`
+}
+
+type listOutput struct {
+	Body DispatchPoolListResponse
+}
+
+func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanReadDispatchPools(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	q := r.URL.Query()
 	var status, clientID *string
-	if v := q.Get("status"); v != "" {
-		status = &v
+	if in.Status != "" {
+		status = &in.Status
 	}
-	if v := q.Get("clientId"); v != "" {
-		clientID = &v
+	if in.ClientID != "" {
+		clientID = &in.ClientID
 	}
-	rows, err := s.Repo.FindWithFilters(r.Context(), status, clientID)
+	rows, err := s.Repo.FindWithFilters(ctx, status, clientID)
 	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "find_with_filters failed", err))
-		return
+		return nil, usecase.Internal("REPO", "find_with_filters failed", err)
 	}
-	out := rows[:0]
-	for _, p := range rows {
+	out := make([]DispatchPoolResponse, 0, len(rows))
+	for i := range rows {
+		p := &rows[i]
 		if p.ClientID == nil || ac.CanAccessClient(*p.ClientID) {
-			out = append(out, p)
+			out = append(out, fromEntity(p))
 		}
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"items": out})
+	return &listOutput{Body: DispatchPoolListResponse{Items: out}}, nil
 }
 
-func (s *State) getByID(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type getInput struct {
+	ID string `path:"id"`
+}
+
+type getOutput struct {
+	Body DispatchPoolResponse
+}
+
+func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanReadDispatchPools(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
-	p, err := s.Repo.FindByID(r.Context(), id)
+	p, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "find_by_id failed", err))
-		return
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if p == nil {
-		httperror.Write(w, httperror.NotFound("DispatchPool", id))
-		return
+		return nil, httperror.NotFound("DispatchPool", in.ID)
 	}
 	if p.ClientID != nil && !ac.CanAccessClient(*p.ClientID) {
-		httperror.Write(w, httperror.Forbidden("No access to this dispatch pool"))
-		return
+		return nil, httperror.Forbidden("No access to this dispatch pool")
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(p)
+	return &getOutput{Body: fromEntity(p)}, nil
 }
 
-func (s *State) create(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type createInput struct {
+	Body CreateDispatchPoolRequest
+}
+
+type createOutput struct {
+	Body apicommon.CreatedResponse
+}
+
+func (s *State) create(ctx context.Context, in *createInput) (*createOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteDispatchPools(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	var body operations.CreateCommand
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
-		return
+	if in.Body.ClientID != nil && !ac.CanAccessClient(*in.Body.ClientID) {
+		return nil, httperror.Forbidden("No access to client: " + *in.Body.ClientID)
 	}
-	if body.ClientID != nil && !ac.CanAccessClient(*body.ClientID) {
-		httperror.Write(w, httperror.Forbidden("No access to client: "+*body.ClientID))
-		return
-	}
-	if body.ClientID == nil && !ac.IsAnchor() {
-		httperror.Write(w, httperror.Forbidden("Only anchor users can create anchor-level dispatch pools"))
-		return
+	if in.Body.ClientID == nil && !ac.IsAnchor() {
+		return nil, httperror.Forbidden("Only anchor users can create anchor-level dispatch pools")
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	event, err := usecase.Into(usecase.Run(r.Context(), s.CreateUC, body, ec))
+	committed, err := operations.CreateDispatchPool(ctx, s.Repo, s.UoW, in.Body.toCommand(), ec)
 	if err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(apicommon.CreatedResponse{ID: event.PoolID})
+	return &createOutput{Body: apicommon.CreatedResponse{ID: committed.Event().PoolID}}, nil
 }
 
-func (s *State) update(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type updateInput struct {
+	ID   string `path:"id"`
+	Body UpdateDispatchPoolRequest
+}
+
+type emptyOutput struct{}
+
+func (s *State) update(ctx context.Context, in *updateInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteDispatchPools(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
-	var body operations.UpdateCommand
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
-		return
-	}
-	body.ID = id
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.UpdateUC, body, ec)); err != nil {
-		httperror.Write(w, err)
-		return
+	if _, err := operations.UpdateDispatchPool(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
+		return nil, err
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return &emptyOutput{}, nil
 }
 
-func (s *State) archive(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type archiveInput struct {
+	ID string `path:"id"`
+}
+
+func (s *State) archive(ctx context.Context, in *archiveInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteDispatchPools(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.ArchiveUC, operations.ArchiveCommand{ID: id}, ec)); err != nil {
-		httperror.Write(w, err)
-		return
+	if _, err := operations.ArchiveDispatchPool(ctx, s.Repo, s.UoW, operations.ArchiveCommand{ID: in.ID}, ec); err != nil {
+		return nil, err
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return &emptyOutput{}, nil
 }
 
-func (s *State) delete(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type deleteInput struct {
+	ID string `path:"id"`
+}
+
+func (s *State) delete(ctx context.Context, in *deleteInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanDeleteDispatchPools(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.DeleteUC, operations.DeleteCommand{ID: id}, ec)); err != nil {
-		httperror.Write(w, err)
-		return
+	if _, err := operations.DeleteDispatchPool(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
+		return nil, err
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return &emptyOutput{}, nil
 }

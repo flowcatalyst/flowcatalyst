@@ -1,11 +1,11 @@
-// Package api wires the HTTP routes for the process subdomain.
+// Package api wires the HTTP routes for the process subdomain via huma.
 package api
 
 import (
-	"encoding/json"
+	"context"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/process"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/process/operations"
@@ -13,144 +13,201 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
 // State bundles deps.
 type State struct {
-	Repo      *process.Repository
-	CreateUC  *operations.CreateUseCase
-	UpdateUC  *operations.UpdateUseCase
-	ArchiveUC *operations.ArchiveUseCase
-	DeleteUC  *operations.DeleteUseCase
+	Repo *process.Repository
+	UoW  *usecasepgx.UnitOfWork
 }
 
-// RegisterRoutes mounts the process endpoints. TODO(wave-3b): sync.
-func RegisterRoutes(r chi.Router, s *State) {
-	r.Route("/api/processes", func(r chi.Router) {
-		r.Get("/", s.list)
-		r.Post("/", s.create)
-		r.Get("/{id}", s.getByID)
-		r.Put("/{id}", s.update)
-		r.Post("/{id}/archive", s.archive)
-		r.Delete("/{id}", s.delete)
-	})
+const tag = "processes"
+
+// Register mounts the process endpoints.
+func Register(api huma.API, s *State) {
+	huma.Register(api, huma.Operation{
+		OperationID:   "listProcesses",
+		Method:        http.MethodGet,
+		Path:          "/api/processes",
+		Summary:       "List processes",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.list)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "createProcess",
+		Method:        http.MethodPost,
+		Path:          "/api/processes",
+		Summary:       "Create a process",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusCreated,
+	}, s.create)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "getProcess",
+		Method:        http.MethodGet,
+		Path:          "/api/processes/{id}",
+		Summary:       "Get a process by id",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.getByID)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "updateProcess",
+		Method:        http.MethodPut,
+		Path:          "/api/processes/{id}",
+		Summary:       "Update a process",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.update)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "archiveProcess",
+		Method:        http.MethodPost,
+		Path:          "/api/processes/{id}/archive",
+		Summary:       "Archive a process",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.archive)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "deleteProcess",
+		Method:        http.MethodDelete,
+		Path:          "/api/processes/{id}",
+		Summary:       "Delete a process",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.delete)
 }
 
-func (s *State) list(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type listInput struct {
+	Application string `query:"application"`
+	Subdomain   string `query:"subdomain"`
+	Status      string `query:"status"`
+}
+
+type listOutput struct {
+	Body ProcessListResponse
+}
+
+func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanReadProcesses(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	q := r.URL.Query()
 	var application, subdomain, status *string
-	if v := q.Get("application"); v != "" {
-		application = &v
+	if in.Application != "" {
+		application = &in.Application
 	}
-	if v := q.Get("subdomain"); v != "" {
-		subdomain = &v
+	if in.Subdomain != "" {
+		subdomain = &in.Subdomain
 	}
-	if v := q.Get("status"); v != "" {
-		status = &v
+	if in.Status != "" {
+		status = &in.Status
 	}
-	rows, err := s.Repo.FindWithFilters(r.Context(), application, subdomain, status)
+	rows, err := s.Repo.FindWithFilters(ctx, application, subdomain, status)
 	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "find_with_filters failed", err))
-		return
+		return nil, usecase.Internal("REPO", "find_with_filters failed", err)
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"items": rows})
+	out := make([]ProcessResponse, 0, len(rows))
+	for i := range rows {
+		out = append(out, fromEntity(&rows[i]))
+	}
+	return &listOutput{Body: ProcessListResponse{Items: out}}, nil
 }
 
-func (s *State) getByID(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type getInput struct {
+	ID string `path:"id"`
+}
+
+type getOutput struct {
+	Body ProcessResponse
+}
+
+func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanReadProcesses(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
-	p, err := s.Repo.FindByID(r.Context(), id)
+	p, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "find_by_id failed", err))
-		return
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if p == nil {
-		httperror.Write(w, httperror.NotFound("Process", id))
-		return
+		return nil, httperror.NotFound("Process", in.ID)
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(p)
+	return &getOutput{Body: fromEntity(p)}, nil
 }
 
-func (s *State) create(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type createInput struct {
+	Body CreateProcessRequest
+}
+
+type createOutput struct {
+	Body apicommon.CreatedResponse
+}
+
+func (s *State) create(ctx context.Context, in *createInput) (*createOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteProcesses(ac); err != nil {
-		httperror.Write(w, err)
-		return
-	}
-	var body operations.CreateCommand
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
-		return
+		return nil, err
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	event, err := usecase.Into(usecase.Run(r.Context(), s.CreateUC, body, ec))
+	committed, err := operations.CreateProcess(ctx, s.Repo, s.UoW, in.Body.toCommand(), ec)
 	if err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(apicommon.CreatedResponse{ID: event.ProcessID})
+	return &createOutput{Body: apicommon.CreatedResponse{ID: committed.Event().ProcessID}}, nil
 }
 
-func (s *State) update(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type updateInput struct {
+	ID   string `path:"id"`
+	Body UpdateProcessRequest
+}
+
+type emptyOutput struct{}
+
+func (s *State) update(ctx context.Context, in *updateInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteProcesses(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
-	var body operations.UpdateCommand
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
-		return
-	}
-	body.ID = id
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.UpdateUC, body, ec)); err != nil {
-		httperror.Write(w, err)
-		return
+	if _, err := operations.UpdateProcess(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
+		return nil, err
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return &emptyOutput{}, nil
 }
 
-func (s *State) archive(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type archiveInput struct {
+	ID string `path:"id"`
+}
+
+func (s *State) archive(ctx context.Context, in *archiveInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteProcesses(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.ArchiveUC, operations.ArchiveCommand{ID: id}, ec)); err != nil {
-		httperror.Write(w, err)
-		return
+	if _, err := operations.ArchiveProcess(ctx, s.Repo, s.UoW, operations.ArchiveCommand{ID: in.ID}, ec); err != nil {
+		return nil, err
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return &emptyOutput{}, nil
 }
 
-func (s *State) delete(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type deleteInput struct {
+	ID string `path:"id"`
+}
+
+func (s *State) delete(ctx context.Context, in *deleteInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanDeleteProcesses(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.DeleteUC, operations.DeleteCommand{ID: id}, ec)); err != nil {
-		httperror.Write(w, err)
-		return
+	if _, err := operations.DeleteProcess(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
+		return nil, err
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return &emptyOutput{}, nil
 }

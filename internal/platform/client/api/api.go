@@ -1,11 +1,11 @@
-// Package api wires the HTTP routes for the client (tenant) subdomain.
+// Package api wires HTTP routes for the client (tenant) subdomain via huma.
 package api
 
 import (
-	"encoding/json"
+	"context"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
@@ -13,223 +13,296 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
 // State bundles deps.
 type State struct {
-	Repo       *client.Repository
-	CreateUC   *operations.CreateUseCase
-	UpdateUC   *operations.UpdateUseCase
-	ActivateUC *operations.ActivateUseCase
-	SuspendUC  *operations.SuspendUseCase
-	AddNoteUC  *operations.AddNoteUseCase
-	DeleteUC   *operations.DeleteUseCase
+	Repo *client.Repository
+	UoW  *usecasepgx.UnitOfWork
 }
 
-// RegisterRoutes mounts the client (tenant) endpoints. Anchor-only.
-func RegisterRoutes(r chi.Router, s *State) {
-	r.Route("/api/clients", func(r chi.Router) {
-		r.Get("/", s.list)
-		r.Post("/", s.create)
-		r.Post("/search", s.search)
-		r.Get("/by-identifier/{identifier}", s.byIdentifier)
-		r.Get("/{id}", s.getByID)
-		r.Put("/{id}", s.update)
-		r.Post("/{id}/activate", s.activate)
-		r.Post("/{id}/suspend", s.suspend)
-		r.Post("/{id}/notes", s.addNote)
-		r.Delete("/{id}", s.delete)
-	})
+const tag = "clients"
+
+// Register mounts the client endpoints. Anchor-only.
+func Register(api huma.API, s *State) {
+	huma.Register(api, huma.Operation{
+		OperationID:   "listClients",
+		Method:        http.MethodGet,
+		Path:          "/api/clients",
+		Summary:       "List clients",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.list)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "createClient",
+		Method:        http.MethodPost,
+		Path:          "/api/clients",
+		Summary:       "Create a client",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusCreated,
+	}, s.create)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "searchClients",
+		Method:        http.MethodPost,
+		Path:          "/api/clients/search",
+		Summary:       "Search clients",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.search)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "getClientByIdentifier",
+		Method:        http.MethodGet,
+		Path:          "/api/clients/by-identifier/{identifier}",
+		Summary:       "Get a client by identifier",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.byIdentifier)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "getClient",
+		Method:        http.MethodGet,
+		Path:          "/api/clients/{id}",
+		Summary:       "Get a client by id",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.getByID)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "updateClient",
+		Method:        http.MethodPut,
+		Path:          "/api/clients/{id}",
+		Summary:       "Update a client",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.update)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "activateClient",
+		Method:        http.MethodPost,
+		Path:          "/api/clients/{id}/activate",
+		Summary:       "Activate a client",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.activate)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "suspendClient",
+		Method:        http.MethodPost,
+		Path:          "/api/clients/{id}/suspend",
+		Summary:       "Suspend a client",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.suspend)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "addClientNote",
+		Method:        http.MethodPost,
+		Path:          "/api/clients/{id}/notes",
+		Summary:       "Add a note to a client",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.addNote)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "deleteClient",
+		Method:        http.MethodDelete,
+		Path:          "/api/clients/{id}",
+		Summary:       "Delete a client",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.delete)
 }
 
-func (s *State) search(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type emptyInput struct{}
+
+type listOutput struct {
+	Body ClientListResponse
+}
+
+func (s *State) list(ctx context.Context, _ *emptyInput) (*listOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanReadClients(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	var body struct {
-		Term string `json:"term"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
-		return
-	}
-	rows, err := s.Repo.Search(r.Context(), body.Term)
+	rows, err := s.Repo.FindAll(ctx)
 	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "search failed", err))
-		return
+		return nil, usecase.Internal("REPO", "find_all failed", err)
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"items": rows})
+	out := make([]ClientResponse, 0, len(rows))
+	for i := range rows {
+		out = append(out, fromEntity(&rows[i]))
+	}
+	return &listOutput{Body: ClientListResponse{Items: out}}, nil
 }
 
-func (s *State) byIdentifier(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type searchInput struct {
+	Body SearchClientRequest
+}
+
+func (s *State) search(ctx context.Context, in *searchInput) (*listOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanReadClients(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	identifier := chi.URLParam(r, "identifier")
-	c, err := s.Repo.FindByIdentifier(r.Context(), identifier)
+	rows, err := s.Repo.Search(ctx, in.Body.Term)
 	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "find_by_identifier failed", err))
-		return
+		return nil, usecase.Internal("REPO", "search failed", err)
+	}
+	out := make([]ClientResponse, 0, len(rows))
+	for i := range rows {
+		out = append(out, fromEntity(&rows[i]))
+	}
+	return &listOutput{Body: ClientListResponse{Items: out}}, nil
+}
+
+type byIdentifierInput struct {
+	Identifier string `path:"identifier"`
+}
+
+type getOutput struct {
+	Body ClientResponse
+}
+
+func (s *State) byIdentifier(ctx context.Context, in *byIdentifierInput) (*getOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanReadClients(ac); err != nil {
+		return nil, err
+	}
+	c, err := s.Repo.FindByIdentifier(ctx, in.Identifier)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_identifier failed", err)
 	}
 	if c == nil {
-		httperror.Write(w, httperror.NotFound("Client", identifier))
-		return
+		return nil, httperror.NotFound("Client", in.Identifier)
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(c)
+	return &getOutput{Body: fromEntity(c)}, nil
 }
 
-func (s *State) list(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
-	if err := auth.CanReadClients(ac); err != nil {
-		httperror.Write(w, err)
-		return
-	}
-	rows, err := s.Repo.FindAll(r.Context())
-	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "find_all failed", err))
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"items": rows})
+type getInput struct {
+	ID string `path:"id"`
 }
 
-func (s *State) getByID(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanReadClients(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
-	c, err := s.Repo.FindByID(r.Context(), id)
+	c, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "find_by_id failed", err))
-		return
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if c == nil {
-		httperror.Write(w, httperror.NotFound("Client", id))
-		return
+		return nil, httperror.NotFound("Client", in.ID)
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(c)
+	return &getOutput{Body: fromEntity(c)}, nil
 }
 
-func (s *State) create(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type createInput struct {
+	Body CreateClientRequest
+}
+
+type createOutput struct {
+	Body apicommon.CreatedResponse
+}
+
+func (s *State) create(ctx context.Context, in *createInput) (*createOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanCreateClients(ac); err != nil {
-		httperror.Write(w, err)
-		return
-	}
-	var body operations.CreateCommand
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
-		return
+		return nil, err
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	event, err := usecase.Into(usecase.Run(r.Context(), s.CreateUC, body, ec))
+	committed, err := operations.CreateClient(ctx, s.Repo, s.UoW, in.Body.toCommand(), ec)
 	if err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(apicommon.CreatedResponse{ID: event.ClientID})
+	return &createOutput{Body: apicommon.CreatedResponse{ID: committed.Event().ClientID}}, nil
 }
 
-func (s *State) update(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type updateInput struct {
+	ID   string `path:"id"`
+	Body UpdateClientRequest
+}
+
+type emptyOutput struct{}
+
+func (s *State) update(ctx context.Context, in *updateInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanUpdateClients(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
-	var body operations.UpdateCommand
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
-		return
-	}
-	body.ID = id
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.UpdateUC, body, ec)); err != nil {
-		httperror.Write(w, err)
-		return
+	if _, err := operations.UpdateClient(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
+		return nil, err
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return &emptyOutput{}, nil
 }
 
-func (s *State) activate(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type idInput struct {
+	ID string `path:"id"`
+}
+
+func (s *State) activate(ctx context.Context, in *idInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanUpdateClients(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.ActivateUC, operations.ActivateCommand{ID: id}, ec)); err != nil {
-		httperror.Write(w, err)
-		return
+	if _, err := operations.ActivateClient(ctx, s.Repo, s.UoW, operations.ActivateCommand{ID: in.ID}, ec); err != nil {
+		return nil, err
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return &emptyOutput{}, nil
 }
 
-func (s *State) suspend(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type suspendInput struct {
+	ID   string `path:"id"`
+	Body SuspendClientRequest
+}
+
+func (s *State) suspend(ctx context.Context, in *suspendInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanUpdateClients(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
-	var body operations.SuspendCommand
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
-		return
-	}
-	body.ID = id
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.SuspendUC, body, ec)); err != nil {
-		httperror.Write(w, err)
-		return
+	if _, err := operations.SuspendClient(ctx, s.Repo, s.UoW, operations.SuspendCommand{ID: in.ID, Reason: in.Body.Reason}, ec); err != nil {
+		return nil, err
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return &emptyOutput{}, nil
 }
 
-func (s *State) addNote(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type addNoteInput struct {
+	ID   string `path:"id"`
+	Body AddNoteRequest
+}
+
+func (s *State) addNote(ctx context.Context, in *addNoteInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanUpdateClients(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
-	var body operations.AddNoteCommand
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
-		return
-	}
-	body.ClientID = id
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.AddNoteUC, body, ec)); err != nil {
-		httperror.Write(w, err)
-		return
+	if _, err := operations.AddNote(ctx, s.Repo, s.UoW, operations.AddNoteCommand{
+		ClientID: in.ID,
+		Category: in.Body.Category,
+		Text:     in.Body.Text,
+	}, ec); err != nil {
+		return nil, err
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return &emptyOutput{}, nil
 }
 
-func (s *State) delete(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+func (s *State) delete(ctx context.Context, in *idInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanDeleteClients(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.DeleteUC, operations.DeleteCommand{ID: id}, ec)); err != nil {
-		httperror.Write(w, err)
-		return
+	if _, err := operations.DeleteClient(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
+		return nil, err
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return &emptyOutput{}, nil
 }

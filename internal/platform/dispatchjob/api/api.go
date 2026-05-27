@@ -1,26 +1,12 @@
-// Package api wires the dispatch-job read-only HTTP endpoints. All ops
-// against msg_dispatch_jobs are scheduler-internal (poller + dispatcher
-// in internal/platform/scheduler); these endpoints expose the data for
-// admin / debug views.
-//
-// Routes:
-//
-//   GET /api/dispatch-jobs                — paginated list with filters
-//   GET /api/dispatch-jobs/list-raw       — same with view-raw permission
-//   GET /api/dispatch-jobs/filter-options — distinct facet values
-//   GET /api/dispatch-jobs/{id}           — detail
-//   GET /api/dispatch-jobs/{id}/raw       — raw row (view-raw permission)
-//   GET /api/dispatch-jobs/{id}/attempts  — per-attempt history
-//   GET /api/dispatch-jobs/event/{eventId} — jobs spawned by a single event
+// Package api wires the dispatch-job read-only HTTP endpoints via huma.
 package api
 
 import (
-	"encoding/json"
+	"context"
 	"net/http"
-	"strconv"
 	"time"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -33,172 +19,255 @@ type State struct {
 	Repo *dispatchjob.Repository
 }
 
-// RegisterRoutes mounts the endpoints.
-func RegisterRoutes(r chi.Router, s *State) {
-	r.Route("/api/dispatch-jobs", func(r chi.Router) {
-		r.Get("/", s.list)
-		r.Get("/list-raw", s.listRaw)
-		r.Get("/filter-options", s.filterOptions)
-		r.Get("/event/{eventId}", s.byEvent)
-		r.Get("/{id}", s.getByID)
-		r.Get("/{id}/raw", s.getRaw)
-		r.Get("/{id}/attempts", s.attempts)
-	})
+const (
+	tag         = "dispatch-jobs"
+	viewPerm    = "platform:messaging:dispatch-job:view"
+	viewRawPerm = "platform:messaging:dispatch-job:view-raw"
+)
+
+// Register mounts the dispatch-job endpoints.
+func Register(api huma.API, s *State) {
+	huma.Register(api, huma.Operation{
+		OperationID:   "listDispatchJobs",
+		Method:        http.MethodGet,
+		Path:          "/api/dispatch-jobs",
+		Summary:       "List dispatch jobs with filters",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.list)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "listDispatchJobsRaw",
+		Method:        http.MethodGet,
+		Path:          "/api/dispatch-jobs/list-raw",
+		Summary:       "List dispatch jobs (raw)",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.listRaw)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "dispatchJobFilterOptions",
+		Method:        http.MethodGet,
+		Path:          "/api/dispatch-jobs/filter-options",
+		Summary:       "Distinct facet values for dispatch jobs",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.filterOptions)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "dispatchJobsByEvent",
+		Method:        http.MethodGet,
+		Path:          "/api/dispatch-jobs/event/{eventId}",
+		Summary:       "Dispatch jobs spawned by a specific event",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.byEvent)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "getDispatchJob",
+		Method:        http.MethodGet,
+		Path:          "/api/dispatch-jobs/{id}",
+		Summary:       "Get a dispatch job by id",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.getByID)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "getDispatchJobRaw",
+		Method:        http.MethodGet,
+		Path:          "/api/dispatch-jobs/{id}/raw",
+		Summary:       "Get a dispatch job (raw)",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.getRaw)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "listDispatchJobAttempts",
+		Method:        http.MethodGet,
+		Path:          "/api/dispatch-jobs/{id}/attempts",
+		Summary:       "List a dispatch job's attempt history",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.attempts)
 }
 
-// ── list / detail ────────────────────────────────────────────────────────
-
-func (s *State) list(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
-	if err := auth.CanWritePermission(ac, "platform:messaging:dispatch-job:view"); err != nil {
-		httperror.Write(w, err)
-		return
-	}
-	rows, err := s.Repo.FindWithFilters(r.Context(), parseFilters(r))
-	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "find_with_filters failed", err))
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": rows})
+type listInput struct {
+	Status         string `query:"status"`
+	ClientID       string `query:"clientId"`
+	DispatchPoolID string `query:"dispatchPoolId"`
+	SubscriptionID string `query:"subscriptionId"`
+	Code           string `query:"code"`
+	Since          string `query:"since" doc:"RFC3339 timestamp"`
+	Until          string `query:"until" doc:"RFC3339 timestamp"`
+	Limit          int    `query:"limit"`
+	Offset         int    `query:"offset"`
 }
 
-func (s *State) listRaw(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
-	if err := auth.CanWritePermission(ac, "platform:messaging:dispatch-job:view-raw"); err != nil {
-		httperror.Write(w, err)
-		return
+func (in *listInput) toFilters() dispatchjob.FilterParams {
+	str := func(v string) *string {
+		if v == "" {
+			return nil
+		}
+		s := v
+		return &s
 	}
-	rows, err := s.Repo.FindWithFilters(r.Context(), parseFilters(r))
-	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "find_raw failed", err))
-		return
+	ts := func(v string) *time.Time {
+		if v == "" {
+			return nil
+		}
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			return &t
+		}
+		return nil
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": rows})
+	return dispatchjob.FilterParams{
+		Status:         str(in.Status),
+		ClientID:       str(in.ClientID),
+		DispatchPoolID: str(in.DispatchPoolID),
+		SubscriptionID: str(in.SubscriptionID),
+		Code:           str(in.Code),
+		Since:          ts(in.Since),
+		Until:          ts(in.Until),
+		Limit:          in.Limit,
+		Offset:         in.Offset,
+	}
 }
 
-func (s *State) getByID(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
-	if err := auth.CanWritePermission(ac, "platform:messaging:dispatch-job:view"); err != nil {
-		httperror.Write(w, err)
-		return
+type listOutput struct {
+	Body DispatchJobListResponse
+}
+
+func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
-	j, err := s.Repo.FindByID(r.Context(), id)
+	rows, err := s.Repo.FindWithFilters(ctx, in.toFilters())
 	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "find_by_id failed", err))
-		return
+		return nil, usecase.Internal("REPO", "find_with_filters failed", err)
+	}
+	out := make([]DispatchJobResponse, 0, len(rows))
+	for i := range rows {
+		out = append(out, fromEntity(&rows[i]))
+	}
+	return &listOutput{Body: DispatchJobListResponse{Items: out}}, nil
+}
+
+func (s *State) listRaw(ctx context.Context, in *listInput) (*listOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, viewRawPerm); err != nil {
+		return nil, err
+	}
+	rows, err := s.Repo.FindWithFilters(ctx, in.toFilters())
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_raw failed", err)
+	}
+	out := make([]DispatchJobResponse, 0, len(rows))
+	for i := range rows {
+		out = append(out, fromEntity(&rows[i]))
+	}
+	return &listOutput{Body: DispatchJobListResponse{Items: out}}, nil
+}
+
+type getInput struct {
+	ID string `path:"id"`
+}
+
+type getOutput struct {
+	Body DispatchJobResponse
+}
+
+func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
+		return nil, err
+	}
+	j, err := s.Repo.FindByID(ctx, in.ID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if j == nil {
-		httperror.Write(w, httperror.NotFound("DispatchJob", id))
-		return
+		return nil, httperror.NotFound("DispatchJob", in.ID)
 	}
-	writeJSON(w, http.StatusOK, j)
+	return &getOutput{Body: fromEntity(j)}, nil
 }
 
-func (s *State) getRaw(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
-	if err := auth.CanWritePermission(ac, "platform:messaging:dispatch-job:view-raw"); err != nil {
-		httperror.Write(w, err)
-		return
+func (s *State) getRaw(ctx context.Context, in *getInput) (*getOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, viewRawPerm); err != nil {
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
-	j, err := s.Repo.FindByID(r.Context(), id)
+	j, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "find_raw failed", err))
-		return
+		return nil, usecase.Internal("REPO", "find_raw failed", err)
 	}
 	if j == nil {
-		httperror.Write(w, httperror.NotFound("DispatchJob", id))
-		return
+		return nil, httperror.NotFound("DispatchJob", in.ID)
 	}
-	writeJSON(w, http.StatusOK, j)
+	return &getOutput{Body: fromEntity(j)}, nil
 }
 
-func (s *State) attempts(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
-	if err := auth.CanWritePermission(ac, "platform:messaging:dispatch-job:view"); err != nil {
-		httperror.Write(w, err)
-		return
+type attemptsOutput struct {
+	Body AttemptListResponse
+}
+
+func (s *State) attempts(ctx context.Context, in *getInput) (*attemptsOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
-	rows, err := s.Repo.AttemptsByJob(r.Context(), id)
+	rows, err := s.Repo.AttemptsByJob(ctx, in.ID)
 	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "attempts failed", err))
-		return
+		return nil, usecase.Internal("REPO", "attempts failed", err)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": rows})
+	out := make([]AttemptDTO, 0, len(rows))
+	for i := range rows {
+		out = append(out, attemptFromEntity(&rows[i]))
+	}
+	return &attemptsOutput{Body: AttemptListResponse{Items: out}}, nil
 }
 
-func (s *State) byEvent(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
-	if err := auth.CanWritePermission(ac, "platform:messaging:dispatch-job:view"); err != nil {
-		httperror.Write(w, err)
-		return
+type byEventInput struct {
+	EventID string `path:"eventId"`
+}
+
+func (s *State) byEvent(ctx context.Context, in *byEventInput) (*listOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
+		return nil, err
 	}
-	eventID := chi.URLParam(r, "eventId")
-	rows, err := s.Repo.FindByEventID(r.Context(), eventID)
+	rows, err := s.Repo.FindByEventID(ctx, in.EventID)
 	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "by_event failed", err))
-		return
+		return nil, usecase.Internal("REPO", "by_event failed", err)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": rows})
+	out := make([]DispatchJobResponse, 0, len(rows))
+	for i := range rows {
+		out = append(out, fromEntity(&rows[i]))
+	}
+	return &listOutput{Body: DispatchJobListResponse{Items: out}}, nil
 }
 
-func (s *State) filterOptions(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
-	if err := auth.CanWritePermission(ac, "platform:messaging:dispatch-job:view"); err != nil {
-		httperror.Write(w, err)
-		return
+type emptyInput struct{}
+
+type filterOptionsOutput struct {
+	Body DispatchJobFilterOptionsResponse
+}
+
+func (s *State) filterOptions(ctx context.Context, _ *emptyInput) (*filterOptionsOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
+		return nil, err
 	}
 	q := func(col string) []string {
-		out, _ := s.Repo.DistinctValues(r.Context(), col, 200)
+		out, _ := s.Repo.DistinctValues(ctx, col, 200)
 		return out
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"statuses":         q("status"),
-		"codes":            q("code"),
-		"clientIds":        q("client_id"),
-		"dispatchPoolIds":  q("dispatch_pool_id"),
-		"subscriptionIds":  q("subscription_id"),
-		"kinds":            q("kind"),
-	})
-}
-
-// ── helpers ──────────────────────────────────────────────────────────────
-
-func parseFilters(r *http.Request) dispatchjob.FilterParams {
-	q := r.URL.Query()
-	str := func(k string) *string {
-		if v := q.Get(k); v != "" {
-			return &v
-		}
-		return nil
-	}
-	ts := func(k string) *time.Time {
-		if v := q.Get(k); v != "" {
-			if t, err := time.Parse(time.RFC3339, v); err == nil {
-				return &t
-			}
-		}
-		return nil
-	}
-	limit, _ := strconv.Atoi(q.Get("limit"))
-	offset, _ := strconv.Atoi(q.Get("offset"))
-	return dispatchjob.FilterParams{
-		Status:         str("status"),
-		ClientID:       str("clientId"),
-		DispatchPoolID: str("dispatchPoolId"),
-		SubscriptionID: str("subscriptionId"),
-		Code:           str("code"),
-		Since:          ts("since"),
-		Until:          ts("until"),
-		Limit:          limit,
-		Offset:         offset,
-	}
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	return &filterOptionsOutput{Body: DispatchJobFilterOptionsResponse{
+		Statuses:        q("status"),
+		Codes:           q("code"),
+		ClientIDs:       q("client_id"),
+		DispatchPoolIDs: q("dispatch_pool_id"),
+		SubscriptionIDs: q("subscription_id"),
+		Kinds:           q("kind"),
+	}}, nil
 }

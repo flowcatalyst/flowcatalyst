@@ -1,11 +1,11 @@
-// Package api wires HTTP routes for platform_config.
+// Package api wires HTTP routes for platform_config via huma.
 package api
 
 import (
-	"encoding/json"
+	"context"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig/operations"
@@ -13,152 +13,189 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
 // State bundles deps.
 type State struct {
-	Repo           *platformconfig.Repository
-	SetPropertyUC  *operations.SetPropertyUseCase
-	GrantAccessUC  *operations.GrantAccessUseCase
-	RevokeAccessUC *operations.RevokeAccessUseCase
+	Repo *platformconfig.Repository
+	UoW  *usecasepgx.UnitOfWork
 }
 
-// RegisterRoutes mounts the platform_config endpoints. Anchor-only by
-// default; per-app/per-role access is enforced by HasAccess against
-// app_platform_config_access for non-anchor callers.
-func RegisterRoutes(r chi.Router, s *State) {
-	r.Route("/api/platform-config", func(r chi.Router) {
-		r.Get("/{app}", s.listProperties)
-		r.Put("/{app}/{section}/{property}", s.setProperty)
-		r.Get("/{app}/access", s.listAccess)
-		r.Post("/{app}/access", s.grantAccess)
-		r.Delete("/access/{id}", s.revokeAccess)
-	})
+const tag = "platform-config"
+
+// Register mounts the platform_config endpoints.
+func Register(api huma.API, s *State) {
+	huma.Register(api, huma.Operation{
+		OperationID:   "listPlatformConfigProperties",
+		Method:        http.MethodGet,
+		Path:          "/api/platform-config/{app}",
+		Summary:       "List platform-config properties for an application",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.listProperties)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "setPlatformConfigProperty",
+		Method:        http.MethodPut,
+		Path:          "/api/platform-config/{app}/{section}/{property}",
+		Summary:       "Set a platform-config property",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.setProperty)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "listPlatformConfigAccess",
+		Method:        http.MethodGet,
+		Path:          "/api/platform-config/{app}/access",
+		Summary:       "List access grants for an application",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.listAccess)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "grantPlatformConfigAccess",
+		Method:        http.MethodPost,
+		Path:          "/api/platform-config/{app}/access",
+		Summary:       "Grant access to platform-config for a role",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusCreated,
+	}, s.grantAccess)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "revokePlatformConfigAccess",
+		Method:        http.MethodDelete,
+		Path:          "/api/platform-config/access/{id}",
+		Summary:       "Revoke a platform-config access grant",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.revokeAccess)
 }
 
-func (s *State) listProperties(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
-	app := chi.URLParam(r, "app")
+type listPropsInput struct {
+	App string `path:"app"`
+}
 
-	// Check access: anchor always allowed; otherwise any of the principal's
-	// roles must have can_read for this app.
+type listPropsOutput struct {
+	Body ConfigListResponse
+}
+
+func (s *State) listProperties(ctx context.Context, in *listPropsInput) (*listPropsOutput, error) {
+	ac := auth.FromContext(ctx)
 	if !ac.IsAnchor() {
-		ok, err := s.Repo.HasAccess(r.Context(), app, ac.Roles, false)
+		ok, err := s.Repo.HasAccess(ctx, in.App, ac.Roles, false)
 		if err != nil {
-			httperror.Write(w, usecase.Internal("REPO", "has_access failed", err))
-			return
+			return nil, usecase.Internal("REPO", "has_access failed", err)
 		}
 		if !ok {
-			httperror.Write(w, httperror.Forbidden("No read access to platform config for "+app))
-			return
+			return nil, httperror.Forbidden("No read access to platform config for " + in.App)
 		}
 	}
-
-	rows, err := s.Repo.FindConfigsByApplication(r.Context(), app)
+	rows, err := s.Repo.FindConfigsByApplication(ctx, in.App)
 	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "find_configs_by_application failed", err))
-		return
+		return nil, usecase.Internal("REPO", "find_configs_by_application failed", err)
 	}
-	// Mask SECRET values for non-anchor callers.
-	if !ac.IsAnchor() {
-		for i := range rows {
-			if rows[i].ValueType == platformconfig.ValueSecret {
-				rows[i].Value = "***"
-			}
+	out := make([]ConfigResponse, 0, len(rows))
+	for i := range rows {
+		c := rows[i]
+		if !ac.IsAnchor() && c.ValueType == platformconfig.ValueSecret {
+			c.Value = "***"
 		}
+		out = append(out, configFromEntity(&c))
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"items": rows})
+	return &listPropsOutput{Body: ConfigListResponse{Items: out}}, nil
 }
 
-func (s *State) setProperty(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
-	app := chi.URLParam(r, "app")
-	section := chi.URLParam(r, "section")
-	property := chi.URLParam(r, "property")
+type setPropertyInput struct {
+	App      string `path:"app"`
+	Section  string `path:"section"`
+	Property string `path:"property"`
+	Body     SetPropertyRequest
+}
 
+type setPropertyOutput struct {
+	Body apicommon.CreatedResponse
+}
+
+func (s *State) setProperty(ctx context.Context, in *setPropertyInput) (*setPropertyOutput, error) {
+	ac := auth.FromContext(ctx)
 	if !ac.IsAnchor() {
-		ok, err := s.Repo.HasAccess(r.Context(), app, ac.Roles, true)
+		ok, err := s.Repo.HasAccess(ctx, in.App, ac.Roles, true)
 		if err != nil {
-			httperror.Write(w, usecase.Internal("REPO", "has_access failed", err))
-			return
+			return nil, usecase.Internal("REPO", "has_access failed", err)
 		}
 		if !ok {
-			httperror.Write(w, httperror.Forbidden("No write access to platform config for "+app))
-			return
+			return nil, httperror.Forbidden("No write access to platform config for " + in.App)
 		}
 	}
-
-	var body operations.SetPropertyCommand
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
-		return
-	}
-	body.ApplicationCode = app
-	body.Section = section
-	body.Property = property
-
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	event, err := usecase.Into(usecase.Run(r.Context(), s.SetPropertyUC, body, ec))
+	committed, err := operations.SetProperty(ctx, s.Repo, s.UoW, in.Body.toCommand(in.App, in.Section, in.Property), ec)
 	if err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(apicommon.CreatedResponse{ID: event.ConfigID})
+	return &setPropertyOutput{Body: apicommon.CreatedResponse{ID: committed.Event().ConfigID}}, nil
 }
 
-func (s *State) listAccess(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
-	if err := auth.RequireAnchor(ac); err != nil {
-		httperror.Write(w, err)
-		return
-	}
-	app := chi.URLParam(r, "app")
-	rows, err := s.Repo.FindAccessByApplication(r.Context(), app)
-	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "find_access_by_application failed", err))
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"items": rows})
+type listAccessInput struct {
+	App string `path:"app"`
 }
 
-func (s *State) grantAccess(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
-	if err := auth.RequireAnchor(ac); err != nil {
-		httperror.Write(w, err)
-		return
-	}
-	app := chi.URLParam(r, "app")
-	var body operations.GrantAccessCommand
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
-		return
-	}
-	body.ApplicationCode = app
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	event, err := usecase.Into(usecase.Run(r.Context(), s.GrantAccessUC, body, ec))
-	if err != nil {
-		httperror.Write(w, err)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(apicommon.CreatedResponse{ID: event.AccessID})
+type listAccessOutput struct {
+	Body AccessListResponse
 }
 
-func (s *State) revokeAccess(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+func (s *State) listAccess(ctx context.Context, in *listAccessInput) (*listAccessOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
+	rows, err := s.Repo.FindAccessByApplication(ctx, in.App)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_access_by_application failed", err)
+	}
+	out := make([]AccessResponse, 0, len(rows))
+	for i := range rows {
+		out = append(out, accessFromEntity(&rows[i]))
+	}
+	return &listAccessOutput{Body: AccessListResponse{Items: out}}, nil
+}
+
+type grantAccessInput struct {
+	App  string `path:"app"`
+	Body GrantAccessRequest
+}
+
+type grantAccessOutput struct {
+	Body apicommon.CreatedResponse
+}
+
+func (s *State) grantAccess(ctx context.Context, in *grantAccessInput) (*grantAccessOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.RequireAnchor(ac); err != nil {
+		return nil, err
+	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.RevokeAccessUC, operations.RevokeAccessCommand{ID: id}, ec)); err != nil {
-		httperror.Write(w, err)
-		return
+	committed, err := operations.GrantAccess(ctx, s.Repo, s.UoW, in.Body.toCommand(in.App), ec)
+	if err != nil {
+		return nil, err
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return &grantAccessOutput{Body: apicommon.CreatedResponse{ID: committed.Event().AccessID}}, nil
+}
+
+type revokeAccessInput struct {
+	ID string `path:"id"`
+}
+
+type emptyOutput struct{}
+
+func (s *State) revokeAccess(ctx context.Context, in *revokeAccessInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.RequireAnchor(ac); err != nil {
+		return nil, err
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	if _, err := operations.RevokeAccess(ctx, s.Repo, s.UoW, operations.RevokeAccessCommand{ID: in.ID}, ec); err != nil {
+		return nil, err
+	}
+	return &emptyOutput{}, nil
 }

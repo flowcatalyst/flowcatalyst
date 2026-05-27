@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -16,35 +17,27 @@ type GrantAccessCommand struct {
 	CanWrite        bool   `json:"canWrite"`
 }
 
-// GrantAccessUseCase implements UseCase.
-type GrantAccessUseCase struct {
-	repo *platformconfig.Repository
-	uow  *usecasepgx.UnitOfWork
-}
+// GrantAccess creates or updates a platform-config access grant for a
+// role and emits [AccessGranted].
+func GrantAccess(
+	ctx context.Context,
+	repo *platformconfig.Repository,
+	uow *usecasepgx.UnitOfWork,
+	cmd GrantAccessCommand,
+	ec usecase.ExecutionContext,
+) (commit.Committed[AccessGranted], error) {
+	var zero commit.Committed[AccessGranted]
 
-// NewGrantAccessUseCase wires the use case.
-func NewGrantAccessUseCase(repo *platformconfig.Repository, uow *usecasepgx.UnitOfWork) *GrantAccessUseCase {
-	return &GrantAccessUseCase{repo: repo, uow: uow}
-}
-
-func (uc *GrantAccessUseCase) Validate(_ context.Context, cmd GrantAccessCommand) error {
 	if strings.TrimSpace(cmd.ApplicationCode) == "" {
-		return usecase.Validation("APPLICATION_REQUIRED", "applicationCode is required")
+		return zero, usecase.Validation("APPLICATION_REQUIRED", "applicationCode is required")
 	}
 	if strings.TrimSpace(cmd.RoleCode) == "" {
-		return usecase.Validation("ROLE_REQUIRED", "roleCode is required")
+		return zero, usecase.Validation("ROLE_REQUIRED", "roleCode is required")
 	}
-	return nil
-}
 
-func (uc *GrantAccessUseCase) Authorize(_ context.Context, _ GrantAccessCommand, _ usecase.ExecutionContext) error {
-	return nil
-}
-
-func (uc *GrantAccessUseCase) Execute(ctx context.Context, cmd GrantAccessCommand, ec usecase.ExecutionContext) usecase.Result[AccessGranted] {
-	existing, err := uc.repo.FindAccessByRole(ctx, cmd.ApplicationCode, cmd.RoleCode)
+	existing, err := repo.FindAccessByRole(ctx, cmd.ApplicationCode, cmd.RoleCode)
 	if err != nil {
-		return usecase.Failure[AccessGranted](usecase.Internal("REPO", "find_access_by_role failed", err))
+		return zero, usecase.Internal("REPO", "find_access_by_role failed", err)
 	}
 	var a *platformconfig.Access
 	if existing != nil {
@@ -63,9 +56,5 @@ func (uc *GrantAccessUseCase) Execute(ctx context.Context, cmd GrantAccessComman
 		RoleCode:        a.RoleCode,
 		CanWrite:        a.CanWrite,
 	}
-	return usecasepgx.Commit[platformconfig.Access, AccessGranted, GrantAccessCommand](
-		ctx, uc.uow, a, newAccessRepo(uc.repo), event, cmd,
-	)
+	return commit.Save(ctx, uow, a, newAccessRepo(repo), event, cmd)
 }
-
-var _ usecase.UseCase[GrantAccessCommand, AccessGranted] = (*GrantAccessUseCase)(nil)

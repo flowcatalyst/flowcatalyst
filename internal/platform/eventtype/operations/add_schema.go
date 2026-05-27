@@ -7,62 +7,52 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
-// AddSchemaCommand is the input DTO for the AddSchema use case.
+// AddSchemaCommand is the input DTO for AddSchema.
 type AddSchemaCommand struct {
 	EventTypeID string          `json:"eventTypeId"`
 	Version     string          `json:"version"`
 	Schema      json.RawMessage `json:"schema"`
 }
 
-// AddSchemaUseCase implements UseCase[AddSchemaCommand, EventTypeSchemaAdded].
-type AddSchemaUseCase struct {
-	repo *eventtype.Repository
-	uow  *usecasepgx.UnitOfWork
-}
+// AddSchema appends a new schema version to an event type and atomically
+// emits an [EventTypeSchemaAdded] event. The (id, version) pair must be
+// unique.
+func AddSchema(
+	ctx context.Context,
+	repo *eventtype.Repository,
+	uow *usecasepgx.UnitOfWork,
+	cmd AddSchemaCommand,
+	ec usecase.ExecutionContext,
+) (commit.Committed[EventTypeSchemaAdded], error) {
+	var zero commit.Committed[EventTypeSchemaAdded]
 
-// NewAddSchemaUseCase wires the use case.
-func NewAddSchemaUseCase(repo *eventtype.Repository, uow *usecasepgx.UnitOfWork) *AddSchemaUseCase {
-	return &AddSchemaUseCase{repo: repo, uow: uow}
-}
-
-func (uc *AddSchemaUseCase) Validate(_ context.Context, cmd AddSchemaCommand) error {
 	if strings.TrimSpace(cmd.EventTypeID) == "" {
-		return usecase.Validation("ID_REQUIRED", "eventTypeId is required")
+		return zero, usecase.Validation("ID_REQUIRED", "eventTypeId is required")
 	}
 	if strings.TrimSpace(cmd.Version) == "" {
-		return usecase.Validation("VERSION_REQUIRED", "version is required")
+		return zero, usecase.Validation("VERSION_REQUIRED", "version is required")
 	}
 	if len(cmd.Schema) == 0 {
-		return usecase.Validation("SCHEMA_REQUIRED", "schema payload is required")
+		return zero, usecase.Validation("SCHEMA_REQUIRED", "schema payload is required")
 	}
-	return nil
-}
 
-func (uc *AddSchemaUseCase) Authorize(_ context.Context, _ AddSchemaCommand, _ usecase.ExecutionContext) error {
-	return nil
-}
-
-func (uc *AddSchemaUseCase) Execute(ctx context.Context, cmd AddSchemaCommand, ec usecase.ExecutionContext) usecase.Result[EventTypeSchemaAdded] {
-	et, err := uc.repo.FindByID(ctx, cmd.EventTypeID)
+	et, err := repo.FindByID(ctx, cmd.EventTypeID)
 	if err != nil {
-		return usecase.Failure[EventTypeSchemaAdded](usecase.Internal("REPO", "find_by_id failed", err))
+		return zero, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if et == nil {
-		return usecase.Failure[EventTypeSchemaAdded](httperror.NotFound("EventType", cmd.EventTypeID))
+		return zero, httperror.NotFound("EventType", cmd.EventTypeID)
 	}
 
-	// Uniqueness: a (eventTypeId, version) pair should be unique. Repo
-	// loads spec_versions on hydrate; check in memory.
 	for _, sv := range et.SpecVersions {
 		if sv.Version == cmd.Version {
-			return usecase.Failure[EventTypeSchemaAdded](usecase.Conflict(
-				"VERSION_EXISTS",
-				"Schema version '"+cmd.Version+"' already exists for this event type",
-			))
+			return zero, usecase.Conflict("VERSION_EXISTS",
+				"Schema version '"+cmd.Version+"' already exists for this event type")
 		}
 	}
 
@@ -74,9 +64,5 @@ func (uc *AddSchemaUseCase) Execute(ctx context.Context, cmd AddSchemaCommand, e
 		EventTypeID: et.ID,
 		Version:     sv.Version,
 	}
-	return usecasepgx.Commit[eventtype.EventType, EventTypeSchemaAdded, AddSchemaCommand](
-		ctx, uc.uow, et, uc.repo, event, cmd,
-	)
+	return commit.Save(ctx, uow, et, repo, event, cmd)
 }
-
-var _ usecase.UseCase[AddSchemaCommand, EventTypeSchemaAdded] = (*AddSchemaUseCase)(nil)

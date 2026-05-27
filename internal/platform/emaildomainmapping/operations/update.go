@@ -6,6 +6,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -23,38 +24,30 @@ type UpdateCommand struct {
 	SyncRolesFromIDP     *bool    `json:"syncRolesFromIdp,omitempty"`
 }
 
-// UpdateUseCase implements UseCase.
-type UpdateUseCase struct {
-	repo *emaildomainmapping.Repository
-	uow  *usecasepgx.UnitOfWork
-}
+// UpdateMapping mutates an existing mapping and emits
+// EmailDomainMappingUpdated.
+func UpdateMapping(
+	ctx context.Context,
+	repo *emaildomainmapping.Repository,
+	uow *usecasepgx.UnitOfWork,
+	cmd UpdateCommand,
+	ec usecase.ExecutionContext,
+) (commit.Committed[EmailDomainMappingUpdated], error) {
+	var zero commit.Committed[EmailDomainMappingUpdated]
 
-// NewUpdateUseCase wires the use case.
-func NewUpdateUseCase(repo *emaildomainmapping.Repository, uow *usecasepgx.UnitOfWork) *UpdateUseCase {
-	return &UpdateUseCase{repo: repo, uow: uow}
-}
-
-func (uc *UpdateUseCase) Validate(_ context.Context, cmd UpdateCommand) error {
 	if strings.TrimSpace(cmd.ID) == "" {
-		return usecase.Validation("ID_REQUIRED", "id is required")
+		return zero, usecase.Validation("ID_REQUIRED", "id is required")
 	}
 	if cmd.IdentityProviderID != nil && strings.TrimSpace(*cmd.IdentityProviderID) == "" {
-		return usecase.Validation("INVALID_IDP", "identityProviderId cannot be empty when supplied")
+		return zero, usecase.Validation("INVALID_IDP", "identityProviderId cannot be empty when supplied")
 	}
-	return nil
-}
 
-func (uc *UpdateUseCase) Authorize(_ context.Context, _ UpdateCommand, _ usecase.ExecutionContext) error {
-	return nil
-}
-
-func (uc *UpdateUseCase) Execute(ctx context.Context, cmd UpdateCommand, ec usecase.ExecutionContext) usecase.Result[EmailDomainMappingUpdated] {
-	e, err := uc.repo.FindByID(ctx, cmd.ID)
+	e, err := repo.FindByID(ctx, cmd.ID)
 	if err != nil {
-		return usecase.Failure[EmailDomainMappingUpdated](usecase.Internal("REPO", "find_by_id failed", err))
+		return zero, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if e == nil {
-		return usecase.Failure[EmailDomainMappingUpdated](httperror.NotFound("EmailDomainMapping", cmd.ID))
+		return zero, httperror.NotFound("EmailDomainMapping", cmd.ID)
 	}
 
 	if cmd.IdentityProviderID != nil {
@@ -80,9 +73,5 @@ func (uc *UpdateUseCase) Execute(ctx context.Context, cmd UpdateCommand, ec usec
 		MappingID:   e.ID,
 		EmailDomain: e.EmailDomain,
 	}
-	return usecasepgx.Commit[emaildomainmapping.EmailDomainMapping, EmailDomainMappingUpdated, UpdateCommand](
-		ctx, uc.uow, e, uc.repo, event, cmd,
-	)
+	return commit.Save(ctx, uow, e, repo, event, cmd)
 }
-
-var _ usecase.UseCase[UpdateCommand, EmailDomainMappingUpdated] = (*UpdateUseCase)(nil)

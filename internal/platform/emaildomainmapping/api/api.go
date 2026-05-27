@@ -1,11 +1,12 @@
-// Package api wires HTTP routes for email_domain_mapping.
+// Package api wires HTTP routes for email_domain_mapping via
+// danielgtaylor/huma/v2. Anchor-only.
 package api
 
 import (
-	"encoding/json"
+	"context"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping/operations"
@@ -13,144 +14,196 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
 // State bundles the dependencies.
 type State struct {
-	Repo     *emaildomainmapping.Repository
-	CreateUC *operations.CreateUseCase
-	UpdateUC *operations.UpdateUseCase
-	DeleteUC *operations.DeleteUseCase
+	Repo *emaildomainmapping.Repository
+	UoW  *usecasepgx.UnitOfWork
 }
 
-// RegisterRoutes mounts the endpoints. Anchor-only.
-func RegisterRoutes(r chi.Router, s *State) {
-	r.Route("/api/email-domain-mappings", func(r chi.Router) {
-		r.Get("/", s.list)
-		r.Post("/", s.create)
-		r.Get("/{id}", s.getByID)
-		r.Put("/{id}", s.update)
-		r.Delete("/{id}", s.delete)
-	})
+const tag = "email-domain-mappings"
+
+// Register mounts the email-domain-mapping endpoints.
+func Register(api huma.API, s *State) {
+	huma.Register(api, huma.Operation{
+		OperationID:   "listEmailDomainMappings",
+		Method:        http.MethodGet,
+		Path:          "/api/email-domain-mappings",
+		Summary:       "List email-domain mappings",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.list)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "createEmailDomainMapping",
+		Method:        http.MethodPost,
+		Path:          "/api/email-domain-mappings",
+		Summary:       "Create an email-domain mapping",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusCreated,
+	}, s.create)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "lookupEmailDomainMapping",
+		Method:        http.MethodGet,
+		Path:          "/api/email-domain-mappings/lookup",
+		Summary:       "Resolve an email domain to its mapping",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.lookup)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "getEmailDomainMapping",
+		Method:        http.MethodGet,
+		Path:          "/api/email-domain-mappings/{id}",
+		Summary:       "Get an email-domain mapping by id",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.getByID)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "updateEmailDomainMapping",
+		Method:        http.MethodPut,
+		Path:          "/api/email-domain-mappings/{id}",
+		Summary:       "Update an email-domain mapping",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.update)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "deleteEmailDomainMapping",
+		Method:        http.MethodDelete,
+		Path:          "/api/email-domain-mappings/{id}",
+		Summary:       "Delete an email-domain mapping",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.delete)
 }
 
-func (s *State) list(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type emptyInput struct{}
+
+type listOutput struct {
+	Body MappingListResponse
+}
+
+func (s *State) list(ctx context.Context, _ *emptyInput) (*listOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	rows, err := s.Repo.FindAll(r.Context())
+	rows, err := s.Repo.FindAll(ctx)
 	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "find_all failed", err))
-		return
+		return nil, usecase.Internal("REPO", "find_all failed", err)
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"items": rows})
+	out := make([]MappingResponse, 0, len(rows))
+	for i := range rows {
+		out = append(out, fromEntity(&rows[i]))
+	}
+	return &listOutput{Body: MappingListResponse{Items: out}}, nil
 }
 
-func (s *State) getByID(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type getInput struct {
+	ID string `path:"id"`
+}
+
+type getOutput struct {
+	Body MappingResponse
+}
+
+func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
-	e, err := s.Repo.FindByID(r.Context(), id)
+	e, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "find_by_id failed", err))
-		return
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if e == nil {
-		httperror.Write(w, httperror.NotFound("EmailDomainMapping", id))
-		return
+		return nil, httperror.NotFound("EmailDomainMapping", in.ID)
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(e)
+	return &getOutput{Body: fromEntity(e)}, nil
 }
 
-func (s *State) create(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type createInput struct {
+	Body CreateMappingRequest
+}
+
+type createOutput struct {
+	Body apicommon.CreatedResponse
+}
+
+func (s *State) create(ctx context.Context, in *createInput) (*createOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
-		httperror.Write(w, err)
-		return
-	}
-	var body operations.CreateCommand
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
-		return
+		return nil, err
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	event, err := usecase.Into(usecase.Run(r.Context(), s.CreateUC, body, ec))
+	committed, err := operations.CreateMapping(ctx, s.Repo, s.UoW, in.Body.toCommand(), ec)
 	if err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(apicommon.CreatedResponse{ID: event.MappingID})
+	return &createOutput{Body: apicommon.CreatedResponse{ID: committed.Event().MappingID}}, nil
 }
 
-func (s *State) update(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type updateInput struct {
+	ID   string `path:"id"`
+	Body UpdateMappingRequest
+}
+
+type emptyOutput struct{}
+
+func (s *State) update(ctx context.Context, in *updateInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
-	var body operations.UpdateCommand
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
-		return
-	}
-	body.ID = id
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.UpdateUC, body, ec)); err != nil {
-		httperror.Write(w, err)
-		return
+	if _, err := operations.UpdateMapping(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
+		return nil, err
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return &emptyOutput{}, nil
 }
 
-func (s *State) delete(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type deleteInput struct {
+	ID string `path:"id"`
+}
+
+func (s *State) delete(ctx context.Context, in *deleteInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.DeleteUC, operations.DeleteCommand{ID: id}, ec)); err != nil {
-		httperror.Write(w, err)
-		return
+	if _, err := operations.DeleteMapping(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
+		return nil, err
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return &emptyOutput{}, nil
 }
 
-// lookup resolves an email domain to its mapping (which IDP, which scope).
-// Used by the frontend's login page + the OIDC bridge's check-domain
-// fallback. Public-readable so unauthenticated clients can probe
-// available login methods.
-func (s *State) lookup(w http.ResponseWriter, r *http.Request) {
-	domain := r.URL.Query().Get("domain")
-	if domain == "" {
-		httperror.Write(w, httperror.BadRequest("DOMAIN_REQUIRED", "domain query param is required"))
-		return
+type lookupInput struct {
+	Domain string `query:"domain" doc:"Email domain to look up (e.g. example.com)"`
+}
+
+// lookupOutput uses huma's anonymous body so it can hold either a
+// MappingResponse or a {found:false} envelope. The handler writes one of
+// the two via the Body field.
+type lookupOutput struct {
+	Body any
+}
+
+func (s *State) lookup(ctx context.Context, in *lookupInput) (*lookupOutput, error) {
+	if in.Domain == "" {
+		return nil, httperror.BadRequest("DOMAIN_REQUIRED", "domain query param is required")
 	}
-	m, err := s.Repo.FindByEmailDomain(r.Context(), domain)
+	m, err := s.Repo.FindByEmailDomain(ctx, in.Domain)
 	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "lookup failed", err))
-		return
+		return nil, usecase.Internal("REPO", "lookup failed", err)
 	}
 	if m == nil {
-		writeJSON(w, http.StatusNotFound, map[string]any{"found": false})
-		return
+		return &lookupOutput{Body: LookupNotFoundResponse{Found: false}}, nil
 	}
-	writeJSON(w, http.StatusOK, m)
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	return &lookupOutput{Body: fromEntity(m)}, nil
 }

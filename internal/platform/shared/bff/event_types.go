@@ -13,17 +13,15 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
 // EventTypesState holds the deps the BFF event-type endpoints reach into.
 // Hold by reference so future BFF endpoints can grow the state without
 // re-threading every caller.
 type EventTypesState struct {
-	Repo        *eventtype.Repository
-	CreateUC    *operations.CreateUseCase
-	UpdateUC    *operations.UpdateUseCase
-	DeleteUC    *operations.DeleteUseCase
-	AddSchemaUC *operations.AddSchemaUseCase
+	Repo *eventtype.Repository
+	UoW  *usecasepgx.UnitOfWork
 }
 
 // RegisterEventTypes mounts the dashboard's `/bff/event-types/*`
@@ -188,16 +186,14 @@ func (s *EventTypesState) create(w http.ResponseWriter, r *http.Request) {
 		Schema:      body.Schema,
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	event, err := usecase.Into(usecase.Run(r.Context(), s.CreateUC, cmd, ec))
+	committed, err := operations.CreateEventType(r.Context(), s.Repo, s.UoW, cmd, ec)
 	if err != nil {
 		httperror.Write(w, err)
 		return
 	}
-	// CreateUseCase emits EventTypeCreated; the aggregate is on the
-	// event. Re-fetch the row so the response carries the persisted
-	// spec_versions ordering (use case may not populate them on the
-	// emitted struct).
-	et, err := s.Repo.FindByID(r.Context(), event.EventTypeID)
+	// Re-fetch the row so the response carries the persisted
+	// spec_versions ordering (the emitted event doesn't carry them).
+	et, err := s.Repo.FindByID(r.Context(), committed.Event().EventTypeID)
 	if err != nil || et == nil {
 		httperror.Write(w, usecase.Internal("REPO", "post-create reload failed", err))
 		return
@@ -226,7 +222,7 @@ func (s *EventTypesState) update(w http.ResponseWriter, r *http.Request) {
 	}
 	cmd.Description = body.Description
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.UpdateUC, cmd, ec)); err != nil {
+	if _, err := operations.UpdateEventType(r.Context(), s.Repo, s.UoW, cmd, ec); err != nil {
 		httperror.Write(w, err)
 		return
 	}
@@ -246,7 +242,7 @@ func (s *EventTypesState) delete(w http.ResponseWriter, r *http.Request) {
 	}
 	cmd := operations.DeleteCommand{ID: chi.URLParam(r, "id")}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.DeleteUC, cmd, ec)); err != nil {
+	if _, err := operations.DeleteEventType(r.Context(), s.Repo, s.UoW, cmd, ec); err != nil {
 		httperror.Write(w, err)
 		return
 	}
@@ -278,7 +274,7 @@ func (s *EventTypesState) addSchema(w http.ResponseWriter, r *http.Request) {
 		Schema:      body.Schema,
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.AddSchemaUC, cmd, ec)); err != nil {
+	if _, err := operations.AddSchema(r.Context(), s.Repo, s.UoW, cmd, ec); err != nil {
 		httperror.Write(w, err)
 		return
 	}

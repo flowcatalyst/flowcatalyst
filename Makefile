@@ -1,4 +1,4 @@
-.PHONY: build go-build frontend frontend-install test test-unit test-integration lint analyze fmt sqlc sqlc-verify ci clean
+.PHONY: build go-build frontend frontend-install test test-unit test-integration lint analyze fmt sqlc sqlc-verify ci clean dump-spec api-bump api-diff
 
 GO ?= go
 PNPM ?= pnpm
@@ -47,7 +47,19 @@ sqlc-verify: ## Verify sqlc dbq matches the queries (no diff). For CI.
 	@git diff --exit-code internal/sqlc/dbq/ || \
 		(echo "sqlc out of date; run 'make sqlc' and commit the diff" && exit 1)
 
-ci: lint sqlc-verify test analyze ## Run everything CI runs
+dump-spec: ## Emit the current huma-generated OpenAPI spec to stdout
+	@$(GO) run ./tools/dump-spec
+
+api-bump: ## Regenerate api/openapi.lock.json from the current code
+	@$(GO) run ./tools/dump-spec > api/openapi.lock.json
+	@echo ">> wrote api/openapi.lock.json"
+
+api-diff: ## Fail if the committed lockfile differs from the live spec
+	@$(GO) run ./tools/dump-spec > tmp/openapi.live.json
+	@diff -u api/openapi.lock.json tmp/openapi.live.json || \
+		(echo "openapi.lock.json out of date; run 'make api-bump' and commit the diff" && exit 1)
+
+ci: lint sqlc-verify test analyze api-diff ## Run everything CI runs
 
 clean:
 	rm -rf bin/ tmp/ coverage.*

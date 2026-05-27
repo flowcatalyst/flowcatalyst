@@ -7,6 +7,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -34,53 +35,43 @@ type CreateCommand struct {
 	DataOnly         *bool                           `json:"dataOnly,omitempty"`
 }
 
-// CreateUseCase implements UseCase.
-type CreateUseCase struct {
-	repo *subscription.Repository
-	uow  *usecasepgx.UnitOfWork
-}
+// CreateSubscription validates cmd, enforces code uniqueness within the
+// client scope, persists the subscription, and emits [SubscriptionCreated].
+func CreateSubscription(
+	ctx context.Context,
+	repo *subscription.Repository,
+	uow *usecasepgx.UnitOfWork,
+	cmd CreateCommand,
+	ec usecase.ExecutionContext,
+) (commit.Committed[SubscriptionCreated], error) {
+	var zero commit.Committed[SubscriptionCreated]
 
-// NewCreateUseCase wires the use case.
-func NewCreateUseCase(repo *subscription.Repository, uow *usecasepgx.UnitOfWork) *CreateUseCase {
-	return &CreateUseCase{repo: repo, uow: uow}
-}
-
-func (uc *CreateUseCase) Validate(_ context.Context, cmd CreateCommand) error {
 	code := strings.ToLower(strings.TrimSpace(cmd.Code))
 	if code == "" {
-		return usecase.Validation("CODE_REQUIRED", "code is required")
+		return zero, usecase.Validation("CODE_REQUIRED", "code is required")
 	}
 	if !codePattern.MatchString(code) {
-		return usecase.Validation("INVALID_CODE_FORMAT",
+		return zero, usecase.Validation("INVALID_CODE_FORMAT",
 			"code must start with a lowercase letter and contain only lowercase alphanumeric and hyphens")
 	}
 	if strings.TrimSpace(cmd.Name) == "" {
-		return usecase.Validation("NAME_REQUIRED", "name is required")
+		return zero, usecase.Validation("NAME_REQUIRED", "name is required")
 	}
 	if !urlPattern.MatchString(cmd.Endpoint) {
-		return usecase.Validation("INVALID_ENDPOINT", "endpoint must be a http(s) URL")
+		return zero, usecase.Validation("INVALID_ENDPOINT", "endpoint must be a http(s) URL")
 	}
 	if len(cmd.EventTypes) == 0 {
-		return usecase.Validation("EVENT_TYPES_REQUIRED", "at least one event type binding is required")
+		return zero, usecase.Validation("EVENT_TYPES_REQUIRED", "at least one event type binding is required")
 	}
-	return nil
-}
 
-func (uc *CreateUseCase) Authorize(_ context.Context, _ CreateCommand, _ usecase.ExecutionContext) error {
-	return nil
-}
-
-func (uc *CreateUseCase) Execute(ctx context.Context, cmd CreateCommand, ec usecase.ExecutionContext) usecase.Result[SubscriptionCreated] {
-	code := strings.ToLower(strings.TrimSpace(cmd.Code))
-
-	existing, err := uc.repo.FindByCode(ctx, code, cmd.ClientID)
+	existing, err := repo.FindByCode(ctx, code, cmd.ClientID)
 	if err != nil {
-		return usecase.Failure[SubscriptionCreated](usecase.Internal("REPO", "find_by_code failed", err))
+		return zero, usecase.Internal("REPO", "find_by_code failed", err)
 	}
 	if existing != nil {
-		return usecase.Failure[SubscriptionCreated](usecase.Conflict(
+		return zero, usecase.Conflict(
 			"CODE_EXISTS",
-			"Subscription with code '"+code+"' already exists"))
+			"Subscription with code '"+code+"' already exists")
 	}
 
 	s := subscription.New(code, strings.TrimSpace(cmd.Name), cmd.Endpoint)
@@ -119,9 +110,5 @@ func (uc *CreateUseCase) Execute(ctx context.Context, cmd CreateCommand, ec usec
 		Code:           s.Code,
 		Name:           s.Name,
 	}
-	return usecasepgx.Commit[subscription.Subscription, SubscriptionCreated, CreateCommand](
-		ctx, uc.uow, s, uc.repo, event, cmd,
-	)
+	return commit.Save(ctx, uow, s, repo, event, cmd)
 }
-
-var _ usecase.UseCase[CreateCommand, SubscriptionCreated] = (*CreateUseCase)(nil)

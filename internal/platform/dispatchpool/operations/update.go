@@ -6,6 +6,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -19,44 +20,36 @@ type UpdateCommand struct {
 	Concurrency *int32  `json:"concurrency,omitempty"`
 }
 
-// UpdateUseCase implements UseCase.
-type UpdateUseCase struct {
-	repo *dispatchpool.Repository
-	uow  *usecasepgx.UnitOfWork
-}
+// UpdateDispatchPool mutates an existing dispatch pool and emits
+// DispatchPoolUpdated.
+func UpdateDispatchPool(
+	ctx context.Context,
+	repo *dispatchpool.Repository,
+	uow *usecasepgx.UnitOfWork,
+	cmd UpdateCommand,
+	ec usecase.ExecutionContext,
+) (commit.Committed[DispatchPoolUpdated], error) {
+	var zero commit.Committed[DispatchPoolUpdated]
 
-// NewUpdateUseCase wires the use case.
-func NewUpdateUseCase(repo *dispatchpool.Repository, uow *usecasepgx.UnitOfWork) *UpdateUseCase {
-	return &UpdateUseCase{repo: repo, uow: uow}
-}
-
-func (uc *UpdateUseCase) Validate(_ context.Context, cmd UpdateCommand) error {
 	if strings.TrimSpace(cmd.ID) == "" {
-		return usecase.Validation("ID_REQUIRED", "id is required")
+		return zero, usecase.Validation("ID_REQUIRED", "id is required")
 	}
 	if cmd.Name != nil && strings.TrimSpace(*cmd.Name) == "" {
-		return usecase.Validation("NAME_REQUIRED", "name cannot be empty")
+		return zero, usecase.Validation("NAME_REQUIRED", "name cannot be empty")
 	}
 	if cmd.Concurrency != nil && *cmd.Concurrency < 1 {
-		return usecase.Validation("INVALID_CONCURRENCY", "concurrency must be >= 1")
+		return zero, usecase.Validation("INVALID_CONCURRENCY", "concurrency must be >= 1")
 	}
 	if cmd.RateLimit != nil && *cmd.RateLimit < 0 {
-		return usecase.Validation("INVALID_RATE_LIMIT", "rateLimit cannot be negative")
+		return zero, usecase.Validation("INVALID_RATE_LIMIT", "rateLimit cannot be negative")
 	}
-	return nil
-}
 
-func (uc *UpdateUseCase) Authorize(_ context.Context, _ UpdateCommand, _ usecase.ExecutionContext) error {
-	return nil
-}
-
-func (uc *UpdateUseCase) Execute(ctx context.Context, cmd UpdateCommand, ec usecase.ExecutionContext) usecase.Result[DispatchPoolUpdated] {
-	p, err := uc.repo.FindByID(ctx, cmd.ID)
+	p, err := repo.FindByID(ctx, cmd.ID)
 	if err != nil {
-		return usecase.Failure[DispatchPoolUpdated](usecase.Internal("REPO", "find_by_id failed", err))
+		return zero, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if p == nil {
-		return usecase.Failure[DispatchPoolUpdated](httperror.NotFound("DispatchPool", cmd.ID))
+		return zero, httperror.NotFound("DispatchPool", cmd.ID)
 	}
 	if cmd.Name != nil {
 		p.Name = strings.TrimSpace(*cmd.Name)
@@ -76,9 +69,5 @@ func (uc *UpdateUseCase) Execute(ctx context.Context, cmd UpdateCommand, ec usec
 		PoolID:   p.ID,
 		Name:     p.Name,
 	}
-	return usecasepgx.Commit[dispatchpool.DispatchPool, DispatchPoolUpdated, UpdateCommand](
-		ctx, uc.uow, p, uc.repo, event, cmd,
-	)
+	return commit.Save(ctx, uow, p, repo, event, cmd)
 }
-
-var _ usecase.UseCase[UpdateCommand, DispatchPoolUpdated] = (*UpdateUseCase)(nil)

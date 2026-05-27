@@ -6,11 +6,11 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
-// UpdateCommand is the input DTO. Nil pointers mean "don't change".
 type UpdateCommand struct {
 	ID        string  `json:"id"`
 	Name      *string `json:"name,omitempty"`
@@ -19,38 +19,26 @@ type UpdateCommand struct {
 	Phone     *string `json:"phone,omitempty"`
 }
 
-// UpdateUseCase implements UseCase.
-type UpdateUseCase struct {
-	repo *principal.Repository
-	uow  *usecasepgx.UnitOfWork
-}
-
-// NewUpdateUseCase wires the use case.
-func NewUpdateUseCase(repo *principal.Repository, uow *usecasepgx.UnitOfWork) *UpdateUseCase {
-	return &UpdateUseCase{repo: repo, uow: uow}
-}
-
-func (uc *UpdateUseCase) Validate(_ context.Context, cmd UpdateCommand) error {
+func UpdateUser(
+	ctx context.Context,
+	repo *principal.Repository,
+	uow *usecasepgx.UnitOfWork,
+	cmd UpdateCommand,
+	ec usecase.ExecutionContext,
+) (commit.Committed[UserUpdated], error) {
+	var zero commit.Committed[UserUpdated]
 	if strings.TrimSpace(cmd.ID) == "" {
-		return usecase.Validation("ID_REQUIRED", "id is required")
+		return zero, usecase.Validation("ID_REQUIRED", "id is required")
 	}
 	if cmd.Name != nil && strings.TrimSpace(*cmd.Name) == "" {
-		return usecase.Validation("NAME_REQUIRED", "name cannot be empty")
+		return zero, usecase.Validation("NAME_REQUIRED", "name cannot be empty")
 	}
-	return nil
-}
-
-func (uc *UpdateUseCase) Authorize(_ context.Context, _ UpdateCommand, _ usecase.ExecutionContext) error {
-	return nil
-}
-
-func (uc *UpdateUseCase) Execute(ctx context.Context, cmd UpdateCommand, ec usecase.ExecutionContext) usecase.Result[UserUpdated] {
-	p, err := uc.repo.FindByID(ctx, cmd.ID)
+	p, err := repo.FindByID(ctx, cmd.ID)
 	if err != nil {
-		return usecase.Failure[UserUpdated](usecase.Internal("REPO", "find_by_id failed", err))
+		return zero, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if p == nil {
-		return usecase.Failure[UserUpdated](httperror.NotFound("Principal", cmd.ID))
+		return zero, httperror.NotFound("Principal", cmd.ID)
 	}
 	if cmd.Name != nil {
 		p.Name = strings.TrimSpace(*cmd.Name)
@@ -72,9 +60,5 @@ func (uc *UpdateUseCase) Execute(ctx context.Context, cmd UpdateCommand, ec usec
 		UserID:   p.ID,
 		Name:     p.Name,
 	}
-	return usecasepgx.Commit[principal.Principal, UserUpdated, UpdateCommand](
-		ctx, uc.uow, p, uc.repo, event, cmd,
-	)
+	return commit.Save(ctx, uow, p, repo, event, cmd)
 }
-
-var _ usecase.UseCase[UpdateCommand, UserUpdated] = (*UpdateUseCase)(nil)

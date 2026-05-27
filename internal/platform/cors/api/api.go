@@ -1,11 +1,11 @@
-// Package api wires HTTP routes for the cors subdomain.
+// Package api wires HTTP routes for the cors subdomain via huma.
 package api
 
 import (
-	"encoding/json"
+	"context"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/cors"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/cors/operations"
@@ -13,91 +13,130 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
-// State bundles the dependencies.
 type State struct {
-	Repo     *cors.Repository
-	AddUC    *operations.AddUseCase
-	DeleteUC *operations.DeleteUseCase
+	Repo *cors.Repository
+	UoW  *usecasepgx.UnitOfWork
 }
 
-// RegisterRoutes mounts the CORS endpoints.
-//
-// The admin endpoints under /api/cors-origins are anchor-only; the
-// platform/cors/allowed GET is public — browsers / SDKs hit it
-// pre-flight to learn which origins are allowed.
-func RegisterRoutes(r chi.Router, s *State) {
-	r.Route("/api/cors-origins", func(r chi.Router) {
-		r.Get("/", s.list)
-		r.Post("/", s.add)
-		r.Delete("/{id}", s.delete)
-	})
-	r.Get("/api/platform/cors/allowed", s.publicAllowed)
+const tag = "cors-origins"
+
+func Register(api huma.API, s *State) {
+	huma.Register(api, huma.Operation{
+		OperationID:   "publicAllowedOrigins",
+		Method:        http.MethodGet,
+		Path:          "/api/platform/cors/allowed",
+		Summary:       "List allowed CORS origins (public)",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.publicAllowed)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "listCorsOrigins",
+		Method:        http.MethodGet,
+		Path:          "/api/cors-origins",
+		Summary:       "List CORS origins (anchor)",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.list)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "addCorsOrigin",
+		Method:        http.MethodPost,
+		Path:          "/api/cors-origins",
+		Summary:       "Add a CORS origin",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusCreated,
+	}, s.add)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "deleteCorsOrigin",
+		Method:        http.MethodDelete,
+		Path:          "/api/cors-origins/{id}",
+		Summary:       "Remove a CORS origin",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.delete)
 }
 
-func (s *State) publicAllowed(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.Repo.FindAll(r.Context())
+type emptyInput struct{}
+
+type publicOutput struct {
+	Body PublicAllowedResponse
+}
+
+func (s *State) publicAllowed(ctx context.Context, _ *emptyInput) (*publicOutput, error) {
+	rows, err := s.Repo.FindAll(ctx)
 	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "find_all failed", err))
-		return
+		return nil, usecase.Internal("REPO", "find_all failed", err)
 	}
 	origins := make([]string, 0, len(rows))
 	for _, o := range rows {
 		origins = append(origins, o.Origin)
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"allowedOrigins": origins})
+	return &publicOutput{Body: PublicAllowedResponse{AllowedOrigins: origins}}, nil
 }
 
-func (s *State) list(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type listOutput struct {
+	Body AllowedOriginListResponse
+}
+
+func (s *State) list(ctx context.Context, _ *emptyInput) (*listOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	rows, err := s.Repo.FindAll(r.Context())
+	rows, err := s.Repo.FindAll(ctx)
 	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "find_all failed", err))
-		return
+		return nil, usecase.Internal("REPO", "find_all failed", err)
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"items": rows})
+	out := make([]AllowedOriginResponse, 0, len(rows))
+	for i := range rows {
+		out = append(out, fromEntity(&rows[i]))
+	}
+	return &listOutput{Body: AllowedOriginListResponse{Items: out}}, nil
 }
 
-func (s *State) add(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type addInput struct {
+	Body AddOriginRequest
+}
+
+type addOutput struct {
+	Body apicommon.CreatedResponse
+}
+
+func (s *State) add(ctx context.Context, in *addInput) (*addOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
-		httperror.Write(w, err)
-		return
-	}
-	var body operations.AddCommand
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
-		return
+		return nil, err
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	event, err := usecase.Into(usecase.Run(r.Context(), s.AddUC, body, ec))
+	committed, err := operations.AddOrigin(ctx, s.Repo, s.UoW, in.Body.toCommand(), ec)
 	if err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(apicommon.CreatedResponse{ID: event.OriginID})
+	return &addOutput{Body: apicommon.CreatedResponse{ID: committed.Event().OriginID}}, nil
 }
 
-func (s *State) delete(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type deleteInput struct {
+	ID string `path:"id"`
+}
+
+type emptyOutput struct{}
+
+func (s *State) delete(ctx context.Context, in *deleteInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.DeleteUC, operations.DeleteCommand{OriginID: id}, ec)); err != nil {
-		httperror.Write(w, err)
-		return
+	if _, err := operations.DeleteOrigin(ctx, s.Repo, s.UoW, operations.DeleteCommand{OriginID: in.ID}, ec); err != nil {
+		if httperror.IsNotFound(err) {
+			return nil, err
+		}
+		return nil, err
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return &emptyOutput{}, nil
 }

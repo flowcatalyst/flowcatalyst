@@ -6,6 +6,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -22,38 +23,29 @@ type UpdateCommand struct {
 	AllowedEmailDomains []string `json:"allowedEmailDomains,omitempty"`
 }
 
-// UpdateUseCase implements UseCase.
-type UpdateUseCase struct {
-	repo *identityprovider.Repository
-	uow  *usecasepgx.UnitOfWork
-}
+// UpdateIdentityProvider mutates an existing IdP and emits IdentityProviderUpdated.
+func UpdateIdentityProvider(
+	ctx context.Context,
+	repo *identityprovider.Repository,
+	uow *usecasepgx.UnitOfWork,
+	cmd UpdateCommand,
+	ec usecase.ExecutionContext,
+) (commit.Committed[IdentityProviderUpdated], error) {
+	var zero commit.Committed[IdentityProviderUpdated]
 
-// NewUpdateUseCase wires the use case.
-func NewUpdateUseCase(repo *identityprovider.Repository, uow *usecasepgx.UnitOfWork) *UpdateUseCase {
-	return &UpdateUseCase{repo: repo, uow: uow}
-}
-
-func (uc *UpdateUseCase) Validate(_ context.Context, cmd UpdateCommand) error {
 	if strings.TrimSpace(cmd.ID) == "" {
-		return usecase.Validation("ID_REQUIRED", "id is required")
+		return zero, usecase.Validation("ID_REQUIRED", "id is required")
 	}
 	if cmd.Name != nil && strings.TrimSpace(*cmd.Name) == "" {
-		return usecase.Validation("NAME_REQUIRED", "name cannot be empty")
+		return zero, usecase.Validation("NAME_REQUIRED", "name cannot be empty")
 	}
-	return nil
-}
 
-func (uc *UpdateUseCase) Authorize(_ context.Context, _ UpdateCommand, _ usecase.ExecutionContext) error {
-	return nil
-}
-
-func (uc *UpdateUseCase) Execute(ctx context.Context, cmd UpdateCommand, ec usecase.ExecutionContext) usecase.Result[IdentityProviderUpdated] {
-	ip, err := uc.repo.FindByID(ctx, cmd.ID)
+	ip, err := repo.FindByID(ctx, cmd.ID)
 	if err != nil {
-		return usecase.Failure[IdentityProviderUpdated](usecase.Internal("REPO", "find_by_id failed", err))
+		return zero, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if ip == nil {
-		return usecase.Failure[IdentityProviderUpdated](httperror.NotFound("IdentityProvider", cmd.ID))
+		return zero, httperror.NotFound("IdentityProvider", cmd.ID)
 	}
 	if cmd.Name != nil {
 		ip.Name = strings.TrimSpace(*cmd.Name)
@@ -82,9 +74,5 @@ func (uc *UpdateUseCase) Execute(ctx context.Context, cmd UpdateCommand, ec usec
 		IdentityProviderID: ip.ID,
 		Code:               ip.Code,
 	}
-	return usecasepgx.Commit[identityprovider.IdentityProvider, IdentityProviderUpdated, UpdateCommand](
-		ctx, uc.uow, ip, uc.repo, event, cmd,
-	)
+	return commit.Save(ctx, uow, ip, repo, event, cmd)
 }
-
-var _ usecase.UseCase[UpdateCommand, IdentityProviderUpdated] = (*UpdateUseCase)(nil)

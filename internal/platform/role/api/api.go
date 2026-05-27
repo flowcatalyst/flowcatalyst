@@ -1,11 +1,12 @@
-// Package api wires the HTTP routes for the role subdomain.
+// Package api wires the HTTP routes for the role subdomain via
+// danielgtaylor/huma/v2.
 package api
 
 import (
-	"encoding/json"
+	"context"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/operations"
@@ -13,116 +14,164 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
-// State bundles deps.
+// State bundles deps for the role handlers.
 type State struct {
-	Repo     *role.Repository
-	CreateUC *operations.CreateUseCase
-	UpdateUC *operations.UpdateUseCase
-	DeleteUC *operations.DeleteUseCase
+	Repo *role.Repository
+	UoW  *usecasepgx.UnitOfWork
 }
 
-// RegisterRoutes mounts role endpoints. TODO(wave-3c): sync.
-func RegisterRoutes(r chi.Router, s *State) {
-	r.Route("/api/roles", func(r chi.Router) {
-		r.Get("/", s.list)
-		r.Post("/", s.create)
-		r.Get("/{id}", s.getByID)
-		r.Put("/{id}", s.update)
-		r.Delete("/{id}", s.delete)
-	})
+const tag = "roles"
+
+// Register mounts the role endpoints on the supplied huma API.
+func Register(api huma.API, s *State) {
+	huma.Register(api, huma.Operation{
+		OperationID:   "listRoles",
+		Method:        http.MethodGet,
+		Path:          "/api/roles",
+		Summary:       "List roles",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.list)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "createRole",
+		Method:        http.MethodPost,
+		Path:          "/api/roles",
+		Summary:       "Create a role",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusCreated,
+	}, s.create)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "getRole",
+		Method:        http.MethodGet,
+		Path:          "/api/roles/{id}",
+		Summary:       "Get a role by id",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.getByID)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "updateRole",
+		Method:        http.MethodPut,
+		Path:          "/api/roles/{id}",
+		Summary:       "Update a role",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.update)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "deleteRole",
+		Method:        http.MethodDelete,
+		Path:          "/api/roles/{id}",
+		Summary:       "Delete a role",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.delete)
 }
 
-func (s *State) list(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+// ── Handlers ──────────────────────────────────────────────────────────
+
+type emptyInput struct{}
+
+type listOutput struct {
+	Body RoleListResponse
+}
+
+func (s *State) list(ctx context.Context, _ *emptyInput) (*listOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanReadRoles(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	rows, err := s.Repo.FindAll(r.Context())
+	rows, err := s.Repo.FindAll(ctx)
 	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "find_all failed", err))
-		return
+		return nil, usecase.Internal("REPO", "find_all failed", err)
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"items": rows})
+	out := make([]RoleResponse, 0, len(rows))
+	for i := range rows {
+		out = append(out, fromEntity(&rows[i]))
+	}
+	return &listOutput{Body: RoleListResponse{Items: out}}, nil
 }
 
-func (s *State) getByID(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type getInput struct {
+	ID string `path:"id" doc:"Role id (TSID)"`
+}
+
+type getOutput struct {
+	Body RoleResponse
+}
+
+func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanReadRoles(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
-	rr, err := s.Repo.FindByID(r.Context(), id)
+	r, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "find_by_id failed", err))
-		return
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
-	if rr == nil {
-		httperror.Write(w, httperror.NotFound("Role", id))
-		return
+	if r == nil {
+		return nil, httperror.NotFound("Role", in.ID)
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(rr)
+	return &getOutput{Body: fromEntity(r)}, nil
 }
 
-func (s *State) create(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type createInput struct {
+	Body CreateRoleRequest
+}
+
+type createOutput struct {
+	Body apicommon.CreatedResponse
+}
+
+func (s *State) create(ctx context.Context, in *createInput) (*createOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteRoles(ac); err != nil {
-		httperror.Write(w, err)
-		return
-	}
-	var body operations.CreateCommand
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
-		return
+		return nil, err
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	event, err := usecase.Into(usecase.Run(r.Context(), s.CreateUC, body, ec))
+	committed, err := operations.CreateRole(ctx, s.Repo, s.UoW, in.Body.toCommand(), ec)
 	if err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(apicommon.CreatedResponse{ID: event.RoleID})
+	return &createOutput{Body: apicommon.CreatedResponse{ID: committed.Event().RoleID}}, nil
 }
 
-func (s *State) update(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type updateInput struct {
+	ID   string `path:"id"`
+	Body UpdateRoleRequest
+}
+
+type emptyOutput struct{}
+
+func (s *State) update(ctx context.Context, in *updateInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteRoles(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
-	var body operations.UpdateCommand
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
-		return
-	}
-	body.ID = id
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.UpdateUC, body, ec)); err != nil {
-		httperror.Write(w, err)
-		return
+	if _, err := operations.UpdateRole(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
+		return nil, err
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return &emptyOutput{}, nil
 }
 
-func (s *State) delete(w http.ResponseWriter, r *http.Request) {
-	ac := auth.FromContext(r.Context())
+type deleteInput struct {
+	ID string `path:"id"`
+}
+
+func (s *State) delete(ctx context.Context, in *deleteInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
 	if err := auth.CanDeleteRoles(ac); err != nil {
-		httperror.Write(w, err)
-		return
+		return nil, err
 	}
-	id := chi.URLParam(r, "id")
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := usecase.Into(usecase.Run(r.Context(), s.DeleteUC, operations.DeleteCommand{ID: id}, ec)); err != nil {
-		httperror.Write(w, err)
-		return
+	if _, err := operations.DeleteRole(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
+		return nil, err
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return &emptyOutput{}, nil
 }
