@@ -1,0 +1,23 @@
+name: "POST /bff/developer/sync-platform-openapi — push live huma spec"
+
+# Captures the live huma-generated platform OpenAPI document, hashes
+# it, and either no-ops (UNCHANGED) or rotates the prior CURRENT to
+# ARCHIVED before inserting a new CURRENT row. First call returns
+# CURRENT + unchanged=false; immediately re-running returns UNCHANGED
+# + unchanged=true.
+
+request:
+  method: POST
+  path: /bff/developer/sync-platform-openapi
+  headers:
+    Authorization: "Bearer ${ANCHOR_TOKEN}"
+
+expect:
+  status: 200
+  body_shape:
+    applicationCode: any-string
+    specId: tsid
+    version: any-string
+    status: any-string
+    hasBreaking: any-bool
+    unchanged: any-bool

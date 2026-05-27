@@ -1,0 +1,16 @@
+name: "GET /bff/developer/applications — developer-portal apps list"
+
+# Returns every active application with the current OpenAPI spec
+# summary (version + id + synced_at). On a fresh boot only the seeded
+# "platform" application exists, with no OpenAPI spec yet.
+
+request:
+  method: GET
+  path: /bff/developer/applications
+  headers:
+    Authorization: "Bearer ${ANCHOR_TOKEN}"
+
+expect:
+  status: 200
+  body_shape:
+    items: any-array

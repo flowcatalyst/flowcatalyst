@@ -51,6 +51,13 @@ func (r *Repository) FindByCode(ctx context.Context, code string) (*Application,
 
 // FindWithFilters returns apps matching non-nil filters. Hand-rolled
 // dynamic query — see docs/sqlc.md.
+// FindActive returns every active application. Convenience wrapper
+// around FindWithFilters used by the developer BFF.
+func (r *Repository) FindActive(ctx context.Context) ([]Application, error) {
+	active := "true"
+	return r.FindWithFilters(ctx, nil, &active)
+}
+
 func (r *Repository) FindWithFilters(ctx context.Context, appType, active *string) ([]Application, error) {
 	const baseSelect = `SELECT id, type, code, name, description, icon_url, website,
 		logo, logo_mime_type, default_base_url, service_account_id, active,

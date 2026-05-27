@@ -62,11 +62,10 @@ place (`tools/parityharness/`, 14 YAML cases). The procedure is the
 last gate before cutover.
 
 **Parity surface gaps (P1)**
-1. **BFF routes** for the embedded frontend. Done: dashboard stats,
-   filter-options, event-types (13 of 13), roles (9 of 9), processes
-   (7 of 7, mount-twice refactor), **scheduled-jobs (6 of 6 — landed
-   with a new `ScheduledJobInstance` + `InstanceRepository`)**.
-   Pending: developer BFF (8).
+1. **BFF routes** for the embedded frontend. **All landed:** dashboard
+   stats, filter-options, event-types (13/13), roles (9/9), processes
+   (7/7, mount-twice), scheduled-jobs (6/6), **developer (7/7 — adds a
+   new `openapispecs` package with diff/hash/sync use case)**.
    **Caveat on event-types sync-platform:** the `schemas` tally in the
    response is wire-compatible but currently zeroed — the eventtype
    sync use case doesn't yet track per-schema outcomes

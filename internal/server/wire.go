@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -30,6 +31,7 @@ import (
 	dispatchpoolapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
 	emaildomainapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping/api"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/openapispecs"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/event"
 	eventapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/event/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
@@ -303,6 +305,17 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 			Jobs:      scheduledJobRepo,
 			Instances: scheduledjob.NewInstanceRepository(pool),
 			Clients:   clientRepo,
+		})
+		bff.RegisterDeveloper(r, &bff.DeveloperState{
+			Applications: applicationRepo,
+			Specs:        openapispecs.NewRepository(pool),
+			EventTypes:   eventTypeRepo,
+			UoW:          uow,
+			PlatformOpenAPI: func() (json.RawMessage, error) {
+				// humaAPI is captured by closure — the OpenAPI() call
+				// reflects whatever routes are registered at request time.
+				return humaAPI.OpenAPI().MarshalJSON()
+			},
 		})
 		sdkapi.RegisterRoutes(r, &sdkapi.DispatchJobsBatchState{Repo: dispatchJobRepo})
 	})
