@@ -188,6 +188,88 @@ func (e EventTypeSchemaAdded) ToDataJSON() ([]byte, error) {
 	}{e.EventTypeID, e.Version})
 }
 
+// EventTypeArchived is emitted when an event type transitions
+// CURRENT → ARCHIVED via the archive endpoint.
+type EventTypeArchived struct {
+	Metadata    usecase.EventMetadata
+	EventTypeID string
+	Code        string
+}
+
+func (e EventTypeArchived) EventID() string       { return e.Metadata.EventID }
+func (e EventTypeArchived) EventType() string     { return EventTypeArchivedType }
+func (e EventTypeArchived) SpecVersion() string   { return "1.0" }
+func (e EventTypeArchived) Source() string        { return EventTypeSourceConst }
+func (e EventTypeArchived) Subject() string       { return subjectFor(e.EventTypeID) }
+func (e EventTypeArchived) Time() time.Time       { return e.Metadata.OccurredAt }
+func (e EventTypeArchived) PrincipalID() string   { return e.Metadata.PrincipalID }
+func (e EventTypeArchived) CorrelationID() string { return e.Metadata.CorrelationID }
+func (e EventTypeArchived) CausationID() string   { return e.Metadata.CausationID }
+func (e EventTypeArchived) ExecutionID() string   { return e.Metadata.ExecutionID }
+func (e EventTypeArchived) MessageGroup() string  { return e.Metadata.MessageGroup }
+func (e EventTypeArchived) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		EventTypeID string `json:"eventTypeId"`
+		Code        string `json:"code"`
+	}{e.EventTypeID, e.Code})
+}
+
+// EventTypeSchemaFinalised is emitted when a spec version transitions
+// FINALISING → CURRENT. If finalising forced another existing CURRENT
+// spec to DEPRECATED (auto-deprecate by major-version), the version
+// string of that side-effect is carried in DeprecatedVersion.
+type EventTypeSchemaFinalised struct {
+	Metadata          usecase.EventMetadata
+	EventTypeID       string
+	Version           string
+	DeprecatedVersion *string
+}
+
+func (e EventTypeSchemaFinalised) EventID() string       { return e.Metadata.EventID }
+func (e EventTypeSchemaFinalised) EventType() string     { return EventTypeSchemaFinalisedType }
+func (e EventTypeSchemaFinalised) SpecVersion() string   { return "1.0" }
+func (e EventTypeSchemaFinalised) Source() string        { return EventTypeSourceConst }
+func (e EventTypeSchemaFinalised) Subject() string       { return subjectFor(e.EventTypeID) }
+func (e EventTypeSchemaFinalised) Time() time.Time       { return e.Metadata.OccurredAt }
+func (e EventTypeSchemaFinalised) PrincipalID() string   { return e.Metadata.PrincipalID }
+func (e EventTypeSchemaFinalised) CorrelationID() string { return e.Metadata.CorrelationID }
+func (e EventTypeSchemaFinalised) CausationID() string   { return e.Metadata.CausationID }
+func (e EventTypeSchemaFinalised) ExecutionID() string   { return e.Metadata.ExecutionID }
+func (e EventTypeSchemaFinalised) MessageGroup() string  { return e.Metadata.MessageGroup }
+func (e EventTypeSchemaFinalised) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		EventTypeID       string  `json:"eventTypeId"`
+		Version           string  `json:"specVersion"`
+		DeprecatedVersion *string `json:"deprecatedVersion,omitempty"`
+	}{e.EventTypeID, e.Version, e.DeprecatedVersion})
+}
+
+// EventTypeSchemaDeprecated is emitted when a spec version transitions
+// CURRENT → DEPRECATED via the deprecate endpoint.
+type EventTypeSchemaDeprecated struct {
+	Metadata    usecase.EventMetadata
+	EventTypeID string
+	Version     string
+}
+
+func (e EventTypeSchemaDeprecated) EventID() string       { return e.Metadata.EventID }
+func (e EventTypeSchemaDeprecated) EventType() string     { return EventTypeSchemaDeprecatedType }
+func (e EventTypeSchemaDeprecated) SpecVersion() string   { return "1.0" }
+func (e EventTypeSchemaDeprecated) Source() string        { return EventTypeSourceConst }
+func (e EventTypeSchemaDeprecated) Subject() string       { return subjectFor(e.EventTypeID) }
+func (e EventTypeSchemaDeprecated) Time() time.Time       { return e.Metadata.OccurredAt }
+func (e EventTypeSchemaDeprecated) PrincipalID() string   { return e.Metadata.PrincipalID }
+func (e EventTypeSchemaDeprecated) CorrelationID() string { return e.Metadata.CorrelationID }
+func (e EventTypeSchemaDeprecated) CausationID() string   { return e.Metadata.CausationID }
+func (e EventTypeSchemaDeprecated) ExecutionID() string   { return e.Metadata.ExecutionID }
+func (e EventTypeSchemaDeprecated) MessageGroup() string  { return e.Metadata.MessageGroup }
+func (e EventTypeSchemaDeprecated) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		EventTypeID string `json:"eventTypeId"`
+		Version     string `json:"specVersion"`
+	}{e.EventTypeID, e.Version})
+}
+
 // Helper for sanity checks that the event type code is parseable
 // (avoids importing eventtype package into this file for cycle reasons).
 func ensureFourPartCode(code string) error {

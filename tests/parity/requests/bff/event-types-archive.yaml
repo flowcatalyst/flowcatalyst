@@ -1,0 +1,18 @@
+name: "POST /bff/event-types/{id}/archive — archive an event type"
+
+# Requires an existing CURRENT event type id. Smoke value: assumes
+# the platform seed has run and at least one event type is present;
+# the harness skips if PLATFORM_EVENT_TYPE_ID is not set.
+
+request:
+  method: POST
+  path: /bff/event-types/${PLATFORM_EVENT_TYPE_ID}/archive
+  headers:
+    Authorization: "Bearer ${ANCHOR_TOKEN}"
+
+expect:
+  status: 200
+  body_shape:
+    id: tsid
+    code: any-string
+    status: any-string

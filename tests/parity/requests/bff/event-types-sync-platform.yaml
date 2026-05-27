@@ -1,0 +1,24 @@
+name: "POST /bff/event-types/sync-platform — re-run code event-type sync"
+
+# Anchor-only. Bulk-upserts seed.PlatformEventTypes() against the
+# applicationCode in the body (default "platform") with
+# RemoveUnlisted=true. On a fresh boot every code event type is
+# already seeded so created/deleted should be 0; updated bumps for
+# any whose name differs.
+
+request:
+  method: POST
+  path: /bff/event-types/sync-platform
+  headers:
+    Authorization: "Bearer ${ANCHOR_TOKEN}"
+    Content-Type: application/json
+  body: '{"applicationCode":"platform"}'
+
+expect:
+  status: 200
+  body_shape:
+    created: any-number
+    updated: any-number
+    deleted: any-number
+    total: any-number
+    schemas: any-object

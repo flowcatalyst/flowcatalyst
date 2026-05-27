@@ -7,7 +7,7 @@ import (
 )
 
 func TestPlatformEventTypesCatalogShape(t *testing.T) {
-	defs := platformEventTypes()
+	defs := PlatformEventTypes()
 	if len(defs) < 41 {
 		t.Fatalf("expected 41+ event-type definitions, got %d", len(defs))
 	}
@@ -27,7 +27,7 @@ func TestPlatformEventTypesCatalogShape(t *testing.T) {
 }
 
 func TestSchemasAlignedWithDefinitions(t *testing.T) {
-	defs := platformEventTypes()
+	defs := PlatformEventTypes()
 	schemas := platformEventSchemas()
 	for _, d := range defs {
 		if _, ok := schemas[d.Code]; !ok {
@@ -71,7 +71,7 @@ func TestSchemasAreValidJSONObjects(t *testing.T) {
 }
 
 func TestNoWebhookOrDeliveryEvents(t *testing.T) {
-	defs := platformEventTypes()
+	defs := PlatformEventTypes()
 	for _, d := range defs {
 		if strings.Contains(d.Code, "webhook") || strings.Contains(d.Code, "delivery") {
 			t.Errorf("forbidden event type: %s", d.Code)

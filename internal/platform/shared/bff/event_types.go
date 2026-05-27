@@ -10,6 +10,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/seed"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -31,26 +32,21 @@ type EventTypesState struct {
 // embedded spec_versions with stringified schema) and accepts
 // camelCase request bodies.
 //
-// **Not yet ported** (each needs a corresponding use case that
-// doesn't exist on the Go side today, or a more complex wiring
-// touchpoint):
-//
-//   - POST /bff/event-types/{id}/archive          — needs ArchiveUseCase
-//   - POST /bff/event-types/{id}/schemas/{v}/finalise   — needs FinaliseSchemaUseCase
-//   - POST /bff/event-types/{id}/schemas/{v}/deprecate  — needs DeprecateSchemaUseCase
-//   - POST /bff/event-types/sync-platform          — needs SyncEventTypesUseCase wired through state
-//
 // Mirrors `crates/fc-platform/src/shared/bff_event_types_api.rs`.
 func RegisterEventTypes(r chi.Router, s *EventTypesState) {
 	r.Route("/bff/event-types", func(r chi.Router) {
 		r.Get("/", s.list)
 		r.Post("/", s.create)
+		r.Post("/sync-platform", s.syncPlatform)
 		r.Get("/filters/subdomains", s.filterSubdomains)
 		r.Get("/filters/aggregates", s.filterAggregates)
 		r.Get("/{id}", s.getByID)
 		r.Put("/{id}", s.update)
 		r.Delete("/{id}", s.delete)
+		r.Post("/{id}/archive", s.archive)
 		r.Post("/{id}/schemas", s.addSchema)
+		r.Post("/{id}/schemas/{version}/finalise", s.finaliseSchema)
+		r.Post("/{id}/schemas/{version}/deprecate", s.deprecateSchema)
 	})
 }
 
@@ -381,4 +377,163 @@ func strPtr(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+// POST /bff/event-types/{id}/archive
+//
+// Transitions an event type CURRENT → ARCHIVED. Returns the
+// re-hydrated bffEventTypeResponse so the frontend can update its
+// row without a follow-up GET.
+func (s *EventTypesState) archive(w http.ResponseWriter, r *http.Request) {
+	ac := auth.FromContext(r.Context())
+	if err := auth.CanUpdateEventTypes(ac); err != nil {
+		httperror.Write(w, err)
+		return
+	}
+	cmd := operations.ArchiveCommand{ID: chi.URLParam(r, "id")}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	if _, err := operations.ArchiveEventType(r.Context(), s.Repo, s.UoW, cmd, ec); err != nil {
+		httperror.Write(w, err)
+		return
+	}
+	et, err := s.Repo.FindByID(r.Context(), cmd.ID)
+	if err != nil || et == nil {
+		httperror.Write(w, usecase.Internal("REPO", "post-archive reload failed", err))
+		return
+	}
+	writeJSON(w, http.StatusOK, toBffEventType(*et))
+}
+
+// POST /bff/event-types/{id}/schemas/{version}/finalise
+//
+// Transitions a spec version FINALISING → CURRENT. If another spec
+// version is already CURRENT with the same major version, that one is
+// auto-deprecated in the same transaction.
+func (s *EventTypesState) finaliseSchema(w http.ResponseWriter, r *http.Request) {
+	ac := auth.FromContext(r.Context())
+	if err := auth.CanUpdateEventTypes(ac); err != nil {
+		httperror.Write(w, err)
+		return
+	}
+	cmd := operations.FinaliseSchemaCommand{
+		EventTypeID: chi.URLParam(r, "id"),
+		Version:     chi.URLParam(r, "version"),
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	if _, err := operations.FinaliseEventTypeSchema(r.Context(), s.Repo, s.UoW, cmd, ec); err != nil {
+		httperror.Write(w, err)
+		return
+	}
+	et, err := s.Repo.FindByID(r.Context(), cmd.EventTypeID)
+	if err != nil || et == nil {
+		httperror.Write(w, usecase.Internal("REPO", "post-finalise reload failed", err))
+		return
+	}
+	writeJSON(w, http.StatusOK, toBffEventType(*et))
+}
+
+// POST /bff/event-types/{id}/schemas/{version}/deprecate
+//
+// Transitions a spec version CURRENT → DEPRECATED. Refuses
+// FINALISING and already-DEPRECATED versions with a conflict.
+func (s *EventTypesState) deprecateSchema(w http.ResponseWriter, r *http.Request) {
+	ac := auth.FromContext(r.Context())
+	if err := auth.CanUpdateEventTypes(ac); err != nil {
+		httperror.Write(w, err)
+		return
+	}
+	cmd := operations.DeprecateSchemaCommand{
+		EventTypeID: chi.URLParam(r, "id"),
+		Version:     chi.URLParam(r, "version"),
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	if _, err := operations.DeprecateEventTypeSchema(r.Context(), s.Repo, s.UoW, cmd, ec); err != nil {
+		httperror.Write(w, err)
+		return
+	}
+	et, err := s.Repo.FindByID(r.Context(), cmd.EventTypeID)
+	if err != nil || et == nil {
+		httperror.Write(w, usecase.Internal("REPO", "post-deprecate reload failed", err))
+		return
+	}
+	writeJSON(w, http.StatusOK, toBffEventType(*et))
+}
+
+// bffSyncPlatformRequest matches Rust's BffSyncPlatformRequest.
+type bffSyncPlatformRequest struct {
+	ApplicationCode string `json:"applicationCode"`
+}
+
+// bffSyncPlatformResponse matches Rust's BffSyncPlatformResponse —
+// schemas tally is wire-compatible but currently not instrumented
+// (created=updated=unchanged=0). The event-type-level counts ARE
+// correct.
+type bffSyncPlatformResponse struct {
+	Created uint32                  `json:"created"`
+	Updated uint32                  `json:"updated"`
+	Deleted uint32                  `json:"deleted"`
+	Total   uint32                  `json:"total"`
+	Schemas bffSyncPlatformSchemas  `json:"schemas"`
+}
+
+type bffSyncPlatformSchemas struct {
+	Created   uint32 `json:"created"`
+	Updated   uint32 `json:"updated"`
+	Unchanged uint32 `json:"unchanged"`
+}
+
+// POST /bff/event-types/sync-platform
+//
+// Re-runs the code-defined event-type catalogue sync against the
+// supplied applicationCode (defaults to "platform"). Mirrors Rust's
+// sync-platform handler. RemoveUnlisted is hard-coded true to keep
+// the catalogue authoritative — stale API-sourced rows in the same
+// application get dropped, matching Rust.
+//
+// Schemas-tally fields in the response are currently zero;
+// instrumenting them needs a tighter sync use case that tracks per-
+// schema outcomes (the underlying commit.Sync helper has the data;
+// it's the eventtype sync use case that doesn't extract it). Filed
+// as a follow-up in HANDOFF §0.
+func (s *EventTypesState) syncPlatform(w http.ResponseWriter, r *http.Request) {
+	ac := auth.FromContext(r.Context())
+	if err := auth.RequireAnchor(ac); err != nil {
+		httperror.Write(w, err)
+		return
+	}
+	var body bffSyncPlatformRequest
+	_ = json.NewDecoder(r.Body).Decode(&body) // body is optional
+	applicationCode := body.ApplicationCode
+	if applicationCode == "" {
+		applicationCode = "platform"
+	}
+
+	defs := seed.PlatformEventTypes()
+	inputs := make([]operations.SyncEventTypeInput, 0, len(defs))
+	for _, d := range defs {
+		inputs = append(inputs, operations.SyncEventTypeInput{
+			Code:   d.Code,
+			Name:   d.Name,
+			Schema: d.Schema,
+		})
+	}
+
+	cmd := operations.SyncEventTypesCommand{
+		ApplicationCode: applicationCode,
+		EventTypes:      inputs,
+		RemoveUnlisted:  true,
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	committed, err := operations.SyncEventTypes(r.Context(), s.Repo, s.UoW, cmd, ec)
+	if err != nil {
+		httperror.Write(w, err)
+		return
+	}
+	ev := committed.Event()
+	writeJSON(w, http.StatusOK, bffSyncPlatformResponse{
+		Created: ev.Created,
+		Updated: ev.Updated,
+		Deleted: ev.Deleted,
+		Total:   uint32(len(defs)),
+	})
 }

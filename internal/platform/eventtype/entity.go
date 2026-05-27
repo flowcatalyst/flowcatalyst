@@ -124,6 +124,25 @@ func NewSpecVersion(eventTypeID, version string, schemaContent json.RawMessage) 
 func (s *SpecVersion) IsCurrent() bool    { return s.Status == SpecCurrent }
 func (s *SpecVersion) IsDeprecated() bool { return s.Status == SpecDeprecated }
 
+// majorVersion returns the leading numeric segment of a semver-style
+// version string (e.g. "1.0" → "1", "2.3.4-alpha" → "2"). Returns
+// "" when no major segment can be parsed; callers treat that as "no
+// auto-deprecate sibling lookup possible".
+func majorVersion(v string) string {
+	for i, c := range v {
+		if c == '.' || c == '-' || c == '+' {
+			return v[:i]
+		}
+	}
+	return v
+}
+
+// Major returns the leading numeric major segment of the version
+// string. Used by the finalise logic to find sibling CURRENT versions
+// that should be auto-deprecated. Exposed so use cases can match
+// without re-implementing the parse.
+func (s *SpecVersion) Major() string { return majorVersion(s.Version) }
+
 // EventType is the aggregate root.
 type EventType struct {
 	ID           string        `json:"id"`

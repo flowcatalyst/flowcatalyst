@@ -12,25 +12,25 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
-// platformEventTypeDef mirrors fc-platform/src/event_type/operations::SyncEventTypeInput.
-type platformEventTypeDef struct {
+// PlatformEventTypeDef mirrors fc-platform/src/event_type/operations::SyncEventTypeInput.
+type PlatformEventTypeDef struct {
 	Code   string
 	Name   string
 	Schema json.RawMessage // nil-OK; empty means "no schema attached yet"
 }
 
-// platformEventTypes returns the full catalog in the same order as
+// PlatformEventTypes returns the full catalog in the same order as
 // fc-platform/src/seed/platform_event_types.rs::definitions(). Codes are
 // {application}:{subdomain}:{aggregate}:{event}.
-func platformEventTypes() []platformEventTypeDef {
+func PlatformEventTypes() []PlatformEventTypeDef {
 	schemas := platformEventSchemas()
-	out := make([]platformEventTypeDef, 0, 64)
+	out := make([]PlatformEventTypeDef, 0, 64)
 
 	group := func(prefix string, events ...string) {
 		aggregate := lastSegment(prefix, ':')
 		for _, ev := range events {
 			code := prefix + ":" + ev
-			out = append(out, platformEventTypeDef{
+			out = append(out, PlatformEventTypeDef{
 				Code:   code,
 				Name:   titleCase(aggregate) + " " + titleCase(ev),
 				Schema: schemas[code],
@@ -38,7 +38,7 @@ func platformEventTypes() []platformEventTypeDef {
 		}
 	}
 	push := func(code, name string) {
-		out = append(out, platformEventTypeDef{
+		out = append(out, PlatformEventTypeDef{
 			Code:   code,
 			Name:   name,
 			Schema: schemas[code],
@@ -100,7 +100,7 @@ func platformEventTypes() []platformEventTypeDef {
 // (by code), update name on existing rows, and attach a SpecVersion if
 // the catalog supplies one and no version with that name exists yet.
 func (s *Seeder) seedPlatformEventTypes(ctx context.Context) error {
-	defs := platformEventTypes()
+	defs := PlatformEventTypes()
 	var inserted int
 	for _, d := range defs {
 		et, err := eventtype.New(d.Code, d.Name)

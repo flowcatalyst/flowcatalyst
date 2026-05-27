@@ -63,13 +63,15 @@ last gate before cutover.
 
 **Parity surface gaps (P1)**
 1. **BFF routes** for the embedded frontend. Done: dashboard stats,
-   filter-options, event-types (9 of 13), **roles (9 of 9 — sync-platform
-   landed via the new SyncPlatformRoles use case), processes (7 of 7,
-   mount-twice refactor landed)**. Pending: scheduled-jobs BFF (6,
-   needs the ScheduledJobInstance + InstanceLog read repos first),
-   developer BFF (8), event-types lifecycle 4 (archive,
-   finalise-schema, deprecate-schema, sync-platform — each needs a use
-   case).
+   filter-options, **event-types (13 of 13 — archive, finalise-schema,
+   deprecate-schema, sync-platform landed)**, roles (9 of 9), processes
+   (7 of 7, mount-twice refactor). Pending: scheduled-jobs BFF (6,
+   needs ScheduledJobInstance + InstanceLog read repos first),
+   developer BFF (8).
+   **Caveat on sync-platform:** the `schemas` tally in the response is
+   wire-compatible but currently zeroed — the eventtype sync use case
+   doesn't yet track per-schema outcomes (created/updated/unchanged).
+   Event-type-level counts (created/updated/deleted/total) ARE correct.
 2. **Per-row sync events.** ~~`eventtype/operations/sync.go` emits only
    the rollup.~~ **Done for eventtype + role.** `commit.Sync` (backed
    by `usecasepgx.CommitSync`) persists a batch of save + delete
