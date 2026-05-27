@@ -1,3 +1,4 @@
+-- +goose Up
 -- One-time cleanup: remove orphaned rows from iam_principal_roles whose
 -- role_name no longer matches any iam_roles.name.
 --

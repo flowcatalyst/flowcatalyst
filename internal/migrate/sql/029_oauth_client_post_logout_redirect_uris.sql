@@ -1,3 +1,4 @@
+-- +goose Up
 -- FlowCatalyst — post-logout redirect URI whitelist
 --
 -- Per OIDC RP-Initiated Logout 1.0 §2: "If a post_logout_redirect_uri parameter

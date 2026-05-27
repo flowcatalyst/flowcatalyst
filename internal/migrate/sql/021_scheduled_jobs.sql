@@ -1,3 +1,4 @@
+-- +goose Up
 -- Scheduled Jobs: cron-triggered webhook jobs with optional completion callback.
 --
 -- Tables:

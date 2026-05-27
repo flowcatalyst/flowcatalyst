@@ -1,3 +1,4 @@
+-- +goose Up
 -- 028_application_service_account_fk.sql
 --
 -- Adds a foreign key from `app_applications.service_account_id` to

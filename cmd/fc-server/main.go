@@ -60,7 +60,7 @@ func main() {
 	defer pool.Close()
 	slog.Info("postgres connected")
 
-	if err := migrate.Run(rootCtx, pool, migrate.Embedded()); err != nil {
+	if err := migrate.Run(rootCtx, pool); err != nil {
 		slog.Error("migrations failed", "err", err)
 		os.Exit(1)
 	}

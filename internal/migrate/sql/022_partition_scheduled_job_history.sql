@@ -1,3 +1,4 @@
+-- +goose Up
 -- Partition msg_scheduled_job_instances and msg_scheduled_job_instance_logs
 -- by RANGE (created_at), monthly. Mirrors the dispatch-job partitioning in 019.
 --

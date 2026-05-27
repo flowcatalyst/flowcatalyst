@@ -1,3 +1,4 @@
+-- +goose Up
 -- FlowCatalyst Auth Tracking Tables
 -- Login attempts and password reset tokens
 

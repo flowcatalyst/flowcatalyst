@@ -1,3 +1,4 @@
+-- +goose Up
 -- FlowCatalyst — distributed rate-limit events
 --
 -- Postgres-backed implementation of the `RateLimitStore` trait. Used when

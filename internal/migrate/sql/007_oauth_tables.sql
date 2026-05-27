@@ -1,3 +1,4 @@
+-- +goose Up
 -- FlowCatalyst OAuth Tables
 -- Matches TypeScript Drizzle schema exactly
 

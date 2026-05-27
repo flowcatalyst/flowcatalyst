@@ -1,3 +1,4 @@
+-- +goose Up
 -- FlowCatalyst Outbox/Projection Feed Tables
 -- Matches TypeScript Drizzle schema exactly
 

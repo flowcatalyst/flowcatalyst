@@ -1,3 +1,4 @@
+-- +goose Up
 -- 027_oauth_clients_service_account_fk.sql
 --
 -- Adds a foreign key from `oauth_clients.service_account_principal_id`

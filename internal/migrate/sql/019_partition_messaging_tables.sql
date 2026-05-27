@@ -1,3 +1,4 @@
+-- +goose Up
 -- Partition the high-volume messaging tables by `created_at`, monthly.
 --
 -- Runs on every profile, including fc-dev's embedded postgres, so dev mirrors

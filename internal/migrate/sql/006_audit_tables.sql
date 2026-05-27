@@ -1,3 +1,4 @@
+-- +goose Up
 -- FlowCatalyst Audit Tables
 -- Matches TypeScript Drizzle schema exactly
 

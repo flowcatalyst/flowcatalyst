@@ -134,7 +134,7 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	}
 	defer pool.Close()
 
-	if err := migrate.Run(rootCtx, pool, migrate.Embedded()); err != nil {
+	if err := migrate.Run(rootCtx, pool); err != nil {
 		return fmt.Errorf("migrations: %w", err)
 	}
 	if err := seed.NewSeeder(pool).Run(rootCtx); err != nil {

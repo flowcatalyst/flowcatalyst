@@ -1,3 +1,4 @@
+-- +goose Up
 -- 025_application_openapi_specs.sql
 --
 -- Per-application OpenAPI document storage with versioning. At most one row

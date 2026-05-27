@@ -1,3 +1,4 @@
+-- +goose Up
 -- FlowCatalyst WebAuthn Credentials Table
 -- Stores public-key credentials registered by internal-auth users.
 -- Federated users never have rows here (gated at application layer by

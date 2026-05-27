@@ -1,3 +1,4 @@
+-- +goose Up
 -- Add projected_at columns directly to source tables so the stream processor
 -- can read from msg_events / msg_dispatch_jobs instead of requiring separate
 -- projection feed tables.

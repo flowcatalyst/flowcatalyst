@@ -1,3 +1,4 @@
+-- +goose Up
 -- Reshape the messaging tables to the partitioning-ready schema.
 --
 -- Runs on every profile, including the embedded fc-dev DB. It puts the

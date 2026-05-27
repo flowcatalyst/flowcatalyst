@@ -1,3 +1,4 @@
+-- +goose Up
 -- Optimize msg_dispatch_jobs indexes for write performance.
 --
 -- This table is high-throughput (batch inserts, frequent status transitions).

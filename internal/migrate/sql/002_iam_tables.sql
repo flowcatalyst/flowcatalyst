@@ -1,3 +1,4 @@
+-- +goose Up
 -- FlowCatalyst IAM Tables
 -- Matches TypeScript Drizzle schema exactly
 

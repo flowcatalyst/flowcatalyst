@@ -1,3 +1,4 @@
+-- +goose Up
 -- FlowCatalyst Dispatch Job Tables
 -- NOTE: These tables are superseded by 004_messaging_tables.sql which creates
 -- msg_dispatch_jobs, msg_dispatch_jobs_read, and msg_dispatch_job_attempts

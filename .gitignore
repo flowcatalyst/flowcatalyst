@@ -15,6 +15,7 @@
 /fc-outbox-processor
 /fc-mcp-server
 /parityharness
+/dump-spec
 
 # Test artifacts
 *.test

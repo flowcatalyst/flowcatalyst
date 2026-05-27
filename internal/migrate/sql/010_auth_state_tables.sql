@@ -1,3 +1,4 @@
+-- +goose Up
 -- FlowCatalyst Auth State Tables
 -- NOTE: These tables are superseded by 007_oauth_tables.sql which creates
 -- oauth_oidc_login_states and oauth_oidc_payloads (matching the TypeScript reference).

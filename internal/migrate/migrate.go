@@ -1,133 +1,135 @@
-// Package migrate is a focused, no-deps SQL migration runner.
+// Package migrate applies the embedded schema migrations to a Postgres
+// database using github.com/pressly/goose/v3 as the runner.
 //
-// Reads every *.sql file from the supplied embed.FS (or directory),
-// applies them in filename order, and tracks applied migrations in a
-// _fc_migrations table.
+// Each migration is a numbered .sql file under internal/migrate/sql/
+// prefixed with `-- +goose Up`. Forward-only by design — we don't write
+// down migrations. New migrations: `internal/migrate/sql/NNN_subject.sql`
+// where NNN is the next zero-padded sequence.
 //
-// Mirrors the Rust fc-platform/src/shared/database.rs::run_migrations
-// behaviour: production profile applies everything in lexicographic order
-// once each. No down migrations — this is forward-only by design.
+// Run is idempotent. A pre-goose database (one whose history is tracked
+// in the legacy `_fc_migrations` table) is upgraded transparently: the
+// applied versions are seeded into `goose_db_version` and the legacy
+// table is dropped before goose runs.
 package migrate
 
 import (
 	"context"
+	"database/sql"
 	"embed"
 	"fmt"
-	"io/fs"
-	"sort"
-	"strings"
-	"time"
+	"regexp"
+	"strconv"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
 )
 
-// Source is anything that can list + read .sql files. The two impls in
-// this package are FS (embed.FS) and Dir (filesystem directory).
-type Source interface {
-	List() ([]string, error)
-	Read(name string) ([]byte, error)
+//go:embed all:sql
+var migrationsFS embed.FS
+
+// Run applies every pending migration to pool's database.
+func Run(ctx context.Context, pool *pgxpool.Pool) error {
+	db := stdlib.OpenDBFromPool(pool)
+	defer db.Close()
+
+	if err := goose.SetDialect("postgres"); err != nil {
+		return fmt.Errorf("set dialect: %w", err)
+	}
+	goose.SetBaseFS(migrationsFS)
+
+	if err := bootstrap(ctx, db); err != nil {
+		return fmt.Errorf("bootstrap: %w", err)
+	}
+
+	return goose.UpContext(ctx, db, "sql")
 }
 
-// FS wraps an embed.FS rooted at "migrations/".
-type FS struct {
-	FS   embed.FS
-	Root string // e.g. "migrations"
-}
+// bootstrap seeds goose_db_version from the legacy _fc_migrations
+// tracker (if present) so existing databases skip re-application on the
+// cutover. Drops _fc_migrations once seeded. Safe to call on fresh
+// databases: returns immediately when no legacy tracker exists.
+func bootstrap(ctx context.Context, db *sql.DB) error {
+	var hasLegacy bool
+	if err := db.QueryRowContext(ctx,
+		`SELECT EXISTS (
+		     SELECT 1 FROM information_schema.tables
+		     WHERE table_name = '_fc_migrations'
+		 )`,
+	).Scan(&hasLegacy); err != nil {
+		return fmt.Errorf("probe _fc_migrations: %w", err)
+	}
+	if !hasLegacy {
+		return nil
+	}
 
-func (s FS) List() ([]string, error) {
-	entries, err := fs.ReadDir(s.FS, s.Root)
+	if _, err := db.ExecContext(ctx, gooseSchemaDDL); err != nil {
+		return fmt.Errorf("ensure goose_db_version: %w", err)
+	}
+
+	rows, err := db.QueryContext(ctx, `SELECT name FROM _fc_migrations`)
 	if err != nil {
-		return nil, err
-	}
-	var out []string
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
-			out = append(out, e.Name())
-		}
-	}
-	sort.Strings(out)
-	return out, nil
-}
-
-func (s FS) Read(name string) ([]byte, error) {
-	return s.FS.ReadFile(s.Root + "/" + name)
-}
-
-// Run applies every pending migration in order. Idempotent — already-
-// applied migrations (by filename) are skipped.
-func Run(ctx context.Context, pool *pgxpool.Pool, src Source) error {
-	if err := ensureTrackerTable(ctx, pool); err != nil {
-		return fmt.Errorf("ensure tracker: %w", err)
-	}
-
-	applied, err := loadApplied(ctx, pool)
-	if err != nil {
-		return fmt.Errorf("load applied: %w", err)
-	}
-
-	names, err := src.List()
-	if err != nil {
-		return fmt.Errorf("list migrations: %w", err)
-	}
-
-	for _, name := range names {
-		if applied[name] {
-			continue
-		}
-		body, err := src.Read(name)
-		if err != nil {
-			return fmt.Errorf("read %s: %w", name, err)
-		}
-		if err := applyOne(ctx, pool, name, body); err != nil {
-			return fmt.Errorf("apply %s: %w", name, err)
-		}
-	}
-	return nil
-}
-
-func ensureTrackerTable(ctx context.Context, pool *pgxpool.Pool) error {
-	_, err := pool.Exec(ctx,
-		`CREATE TABLE IF NOT EXISTS _fc_migrations (
-		    name VARCHAR(255) PRIMARY KEY,
-		    applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-		 )`)
-	return err
-}
-
-func loadApplied(ctx context.Context, pool *pgxpool.Pool) (map[string]bool, error) {
-	rows, err := pool.Query(ctx, `SELECT name FROM _fc_migrations`)
-	if err != nil {
-		return nil, err
+		return fmt.Errorf("read _fc_migrations: %w", err)
 	}
 	defer rows.Close()
-	out := map[string]bool{}
-	for rows.Next() {
-		var n string
-		if err := rows.Scan(&n); err != nil {
-			return nil, err
-		}
-		out[n] = true
-	}
-	return out, rows.Err()
-}
 
-// applyOne runs a migration in a transaction so partial application is
-// impossible. The SQL file may contain multiple statements separated by
-// semicolons — pgx accepts that via Exec.
-func applyOne(ctx context.Context, pool *pgxpool.Pool, name string, body []byte) error {
-	tx, err := pool.Begin(ctx)
+	versionRe := regexp.MustCompile(`^(\d+)_`)
+	var versions []int64
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return err
+		}
+		m := versionRe.FindStringSubmatch(name)
+		if m == nil {
+			continue
+		}
+		v, err := strconv.ParseInt(m[1], 10, 64)
+		if err != nil {
+			continue
+		}
+		versions = append(versions, v)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.Exec(ctx, string(body)); err != nil {
-		return fmt.Errorf("exec sql: %w", err)
+	for _, v := range versions {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO goose_db_version (version_id, is_applied)
+			 SELECT $1, TRUE
+			 WHERE NOT EXISTS (
+			     SELECT 1 FROM goose_db_version WHERE version_id = $1
+			 )`, v); err != nil {
+			return fmt.Errorf("seed goose version %d: %w", v, err)
+		}
 	}
-	if _, err := tx.Exec(ctx,
-		`INSERT INTO _fc_migrations (name, applied_at) VALUES ($1, $2)`,
-		name, time.Now().UTC()); err != nil {
-		return err
+	if _, err := tx.ExecContext(ctx, `DROP TABLE _fc_migrations`); err != nil {
+		return fmt.Errorf("drop _fc_migrations: %w", err)
 	}
-	return tx.Commit(ctx)
+	return tx.Commit()
 }
+
+// gooseSchemaDDL matches the table goose creates lazily on first use.
+// Declaring it here lets us populate the table during bootstrap without
+// having to call goose.Up first (which would attempt to apply all
+// migrations against a database that already has the schema).
+const gooseSchemaDDL = `
+CREATE TABLE IF NOT EXISTS goose_db_version (
+    id serial NOT NULL,
+    version_id bigint NOT NULL,
+    is_applied boolean NOT NULL,
+    tstamp timestamp NULL default now(),
+    PRIMARY KEY(id)
+);
+
+INSERT INTO goose_db_version (version_id, is_applied)
+SELECT 0, TRUE
+WHERE NOT EXISTS (SELECT 1 FROM goose_db_version WHERE version_id = 0);
+`

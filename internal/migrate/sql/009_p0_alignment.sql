@@ -1,3 +1,4 @@
+-- +goose Up
 -- P0 Alignment: Schema fixes to match TypeScript reference
 --
 -- 1. Add connection_id to msg_subscriptions (replaces target)

@@ -1,3 +1,4 @@
+-- +goose Up
 -- FlowCatalyst Application Tables
 -- Matches TypeScript Drizzle schema exactly
 

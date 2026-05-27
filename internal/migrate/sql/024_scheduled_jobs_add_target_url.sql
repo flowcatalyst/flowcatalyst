@@ -1,3 +1,4 @@
+-- +goose Up
 -- Add `target_url` to msg_scheduled_jobs.
 --
 -- The column was added to migration 021 after some dev DBs had already run

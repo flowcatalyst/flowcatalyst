@@ -1,3 +1,4 @@
+-- +goose Up
 -- FlowCatalyst Messaging Tables
 -- Matches TypeScript Drizzle schema exactly
 

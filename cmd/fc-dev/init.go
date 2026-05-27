@@ -101,7 +101,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	defer pool.Close()
 
 	// Migrations + system seeds are idempotent — re-runnable.
-	if err := migrate.Run(ctx, pool, migrate.Embedded()); err != nil {
+	if err := migrate.Run(ctx, pool); err != nil {
 		return fmt.Errorf("migrations: %w", err)
 	}
 	if err := seed.NewSeeder(pool).Run(ctx); err != nil {

@@ -1,3 +1,4 @@
+-- +goose Up
 -- Make rate_limit opt-in: a dispatch pool can run on concurrency only.
 -- Drops the NOT NULL and DEFAULT 100 introduced in 004; existing rows keep
 -- their stored rate_limit value, but new pools and updates may set NULL to

@@ -1,3 +1,4 @@
+-- +goose Up
 -- Process documentation — free-form Mermaid diagrams describing workflows
 -- inside an application. Mirrors msg_event_types: code is application:subdomain:process,
 -- platform-owned aggregate, status CURRENT/ARCHIVED, source CODE/API/UI.
