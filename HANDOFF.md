@@ -106,9 +106,18 @@ last gate before cutover.
    `oauth_oidc_payloads`, `oauth_oidc_login_states`, and
    `webauthn_ceremonies`. Wired into `fc-server` (when
    `FC_PLATFORM_ENABLED=true`) and `fc-dev start` unconditionally.
-10. **OIDC bridge auto-provisioning** — Go fails with
-    `USER_NOT_PROVISIONED` for unknown emails; Rust auto-creates via
-    the anchor-domain row.
+10. **OIDC bridge auto-provisioning** — ~~Go fails with
+    `USER_NOT_PROVISIONED` for unknown emails.~~ **Logic landed.**
+    `LoginEndpoint.autoProvision` now looks up the
+    `EmailDomainMapping` carried by the login_state row, creates the
+    Principal via `principalops.CreateUser` with the mapping's scope
+    + primary-client-id, and proceeds. Role-mapping from IDP claims
+    (Rust's `sync_oidc_login_with_allowed_roles`) is still pending.
+    **CAVEAT:** `bridge.LoginEndpoint` is constructed by
+    `NewLoginEndpoint` but **not wired into `WirePlatform`** — the
+    handlers `POST /oauth/check-domain`, `GET /oauth/oidc/login`, and
+    `GET /oauth/oidc/callback` aren't served today. Auto-provisioning
+    works once the bridge is wired (separate item).
 11. **WebAuthn enumeration defence** — Rust returns deterministic-fake
     `allowCredentials` for unknown emails; Go returns empty.
 12. **Fanout subscription cache race** — 5s TTL race window between

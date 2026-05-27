@@ -12,9 +12,12 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
+	principalops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
 // LoginEndpoint serves the OIDC bridge HTTP surface:
@@ -30,6 +33,8 @@ type LoginEndpoint struct {
 	bridge     *Bridge
 	states     *LoginStateRepo
 	principals *principal.Repository
+	mappings   *emaildomainmapping.Repository
+	uow        *usecasepgx.UnitOfWork
 
 	// SessionWriter is called after the callback exchange completes
 	// successfully. It receives the resolved principal ID + the
@@ -40,12 +45,25 @@ type LoginEndpoint struct {
 	SessionWriter func(w http.ResponseWriter, r *http.Request, principalID string, returnURL string)
 }
 
-// NewLoginEndpoint wires the bridge HTTP handlers.
-func NewLoginEndpoint(b *Bridge, states *LoginStateRepo, principals *principal.Repository) *LoginEndpoint {
+// NewLoginEndpoint wires the bridge HTTP handlers. The mappings repo
+// and UoW power the auto-provisioning path in handleCallback — when a
+// successful OIDC handshake yields an email that doesn't match a
+// FlowCatalyst principal, the bridge creates one using the scope and
+// primary-client-id carried by the matching email-domain mapping
+// (drop-in parity with the Rust impl).
+func NewLoginEndpoint(
+	b *Bridge,
+	states *LoginStateRepo,
+	principals *principal.Repository,
+	mappings *emaildomainmapping.Repository,
+	uow *usecasepgx.UnitOfWork,
+) *LoginEndpoint {
 	return &LoginEndpoint{
 		bridge:     b,
 		states:     states,
 		principals: principals,
+		mappings:   mappings,
+		uow:        uow,
 		SessionWriter: func(w http.ResponseWriter, _ *http.Request, principalID string, returnURL string) {
 			if returnURL != "" {
 				http.Redirect(w, nil, returnURL, http.StatusFound)
@@ -197,19 +215,22 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Resolve or create the FlowCatalyst principal. Drop-in parity with
-	// the Rust impl: lookup by email, create if missing (PARTNER scope —
-	// the role-assignment step happens via the IDP's role mapping in a
-	// follow-up).
+	// the Rust impl: lookup by email; if missing, auto-provision using
+	// the scope + primary-client-id carried by the email-domain mapping
+	// that drove this login. Role-mapping from IDP claims is a separate
+	// follow-up (Rust calls sync_oidc_login_with_allowed_roles; Go
+	// today plumbs no roles into the new principal).
 	p, err := e.principals.FindByEmail(r.Context(), claims.Email)
 	if err != nil {
 		httperror.Write(w, usecase.Internal("REPO", "principal lookup failed", err))
 		return
 	}
 	if p == nil {
-		httperror.Write(w, usecase.Authorization("USER_NOT_PROVISIONED",
-			"No FlowCatalyst user for "+claims.Email+
-				" — auto-provisioning happens via the assigned anchor domain"))
-		return
+		p, err = e.autoProvision(r.Context(), claims.Email, loginState.EmailDomainMappingID)
+		if err != nil {
+			httperror.Write(w, err)
+			return
+		}
 	}
 
 	// Best-effort cleanup of the state row.
@@ -220,6 +241,54 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 		returnURL = *loginState.ReturnURL
 	}
 	e.SessionWriter(w, r, p.ID, returnURL)
+}
+
+// autoProvision creates a Principal for `email` using the scope +
+// primary-client-id carried by the EmailDomainMapping that drove this
+// login. Returns the newly-created Principal, or an error suitable for
+// surfacing to the user. The mapping ID is the same one the bridge
+// resolved at login-time and persisted in the login_state row.
+//
+// Roles are intentionally NOT assigned here. Rust calls
+// sync_oidc_login_with_allowed_roles to apply IDP-claim-derived role
+// mappings; that step is a follow-up. The provisioned user has no
+// roles and will only be useful for flows that don't depend on
+// platform-permission gating (typical first-login UX).
+func (e *LoginEndpoint) autoProvision(ctx context.Context, email, mappingID string) (*principal.Principal, error) {
+	mapping, err := e.mappings.FindByID(ctx, mappingID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "email_domain_mapping lookup failed", err)
+	}
+	if mapping == nil {
+		return nil, usecase.Authorization("MAPPING_GONE",
+			"The email-domain mapping that drove this login no longer exists; cannot auto-provision")
+	}
+
+	idpType := "OIDC"
+	cmd := principalops.CreateCommand{
+		Email:    email,
+		Scope:    string(mapping.ScopeType),
+		ClientID: mapping.PrimaryClientID,
+		IDPType:  &idpType,
+	}
+	// The execution context's PrincipalID is empty — the new user is
+	// being created by the system in response to a self-service login,
+	// not by an authenticated actor. Audit rows will record an empty
+	// principal, matching the Rust convention for self-provisioning.
+	ec := usecase.NewExecutionContext("")
+	committed, err := principalops.CreateUser(ctx, e.principals, e.uow, cmd, ec)
+	if err != nil {
+		return nil, err
+	}
+	created, err := e.principals.FindByID(ctx, committed.Event().UserID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "post-create principal lookup failed", err)
+	}
+	if created == nil {
+		// Shouldn't happen — Persist just succeeded.
+		return nil, usecase.Internal("REPO", "post-create principal missing", errors.New("not found"))
+	}
+	return created, nil
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────
