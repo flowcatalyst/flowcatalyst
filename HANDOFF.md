@@ -63,11 +63,12 @@ last gate before cutover.
 
 **Parity surface gaps (P1)**
 1. **BFF routes** for the embedded frontend. Done: dashboard stats,
-   filter-options, event-types (9 of 13). Pending: roles BFF (6),
-   processes BFF (7, needs mount-twice refactor), scheduled-jobs BFF
-   (6), developer BFF (8), event-types lifecycle 4 (archive,
-   finalise-schema, deprecate-schema, sync-platform — each needs a use
-   case).
+   filter-options, event-types (9 of 13), **roles (8 of 9 — sync-platform
+   skipped, needs a RoleSyncService), processes (7 of 7, mount-twice
+   refactor landed)**. Pending: scheduled-jobs BFF (6, needs the
+   ScheduledJobInstance + InstanceLog read repos first), developer BFF
+   (8), event-types lifecycle 4 (archive, finalise-schema, deprecate-schema,
+   sync-platform — each needs a use case), roles sync-platform.
 2. **Per-row sync events** — `eventtype/operations/sync.go` emits only
    the rollup; Rust emits per-row Created/Updated/Deleted. Same gap
    for role, dispatch_pool, subscription, scheduled_job, process,
@@ -95,8 +96,12 @@ last gate before cutover.
    separate `BlockOnErrorChecker` component.
 
 **Background workers + glue**
-9. **WebAuthn ceremony purger** — `PurgeExpired` exists but nothing
-   calls it on a loop. Rust runs it as a background task.
+9. ~~**WebAuthn ceremony purger**~~ **Done.** `StartPurger` in
+   `internal/server/subsystems.go` runs every minute on a single
+   goroutine and calls `PurgeExpired` on three ephemeral-auth repos:
+   `oauth_oidc_payloads`, `oauth_oidc_login_states`, and
+   `webauthn_ceremonies`. Wired into `fc-server` (when
+   `FC_PLATFORM_ENABLED=true`) and `fc-dev start` unconditionally.
 10. **OIDC bridge auto-provisioning** — Go fails with
     `USER_NOT_PROVISIONED` for unknown emails; Rust auto-creates via
     the anchor-domain row.

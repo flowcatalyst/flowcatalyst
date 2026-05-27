@@ -11,7 +11,10 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/outbox"
 	outboxpg "github.com/flowcatalyst/flowcatalyst-go/internal/outbox/postgres"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/bridge"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/payload"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduler"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/queue"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/router"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/stream"
@@ -136,6 +139,48 @@ func StartRouter(ctx context.Context, _ *pgxpool.Pool, cfg EnvCfg) {
 	}
 	if err := srv.Run(ctx); err != nil {
 		slog.Error("router run failed", "err", err)
+	}
+}
+
+// StartPurger runs the periodic housekeeping loop that drops expired
+// rows from the three ephemeral auth tables: oauth_oidc_payloads
+// (access/refresh tokens), oauth_oidc_login_states (the in-flight OIDC
+// bridge state), and webauthn_ceremonies (in-flight registration /
+// authentication challenges). Mirrors Rust's background
+// payload_purge_loop. Always-on; no env toggle.
+//
+// Cadence: every minute. Idempotent — each purge is a DELETE WHERE
+// expires_at < NOW(). Failures are logged and the loop keeps going.
+func StartPurger(ctx context.Context, pool *pgxpool.Pool) {
+	payloadRepo := payload.NewRepository(pool)
+	loginStateRepo := bridge.NewLoginStateRepo(pool)
+	ceremonyRepo := webauthn.NewCeremonyRepository(pool)
+
+	tick := time.NewTicker(time.Minute)
+	defer tick.Stop()
+	slog.Info("auth purger started")
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("auth purger stopped")
+			return
+		case <-tick.C:
+			if n, err := payloadRepo.PurgeExpired(ctx); err != nil {
+				slog.Warn("oauth payload purge failed", "err", err)
+			} else if n > 0 {
+				slog.Debug("oauth payload purge", "removed", n)
+			}
+			if n, err := loginStateRepo.PurgeExpired(ctx); err != nil {
+				slog.Warn("oidc login state purge failed", "err", err)
+			} else if n > 0 {
+				slog.Debug("oidc login state purge", "removed", n)
+			}
+			if n, err := ceremonyRepo.PurgeExpired(ctx); err != nil {
+				slog.Warn("webauthn ceremony purge failed", "err", err)
+			} else if n > 0 {
+				slog.Debug("webauthn ceremony purge", "removed", n)
+			}
+		}
 	}
 }
 

@@ -156,6 +156,7 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	if err := server.WirePlatform(r, pool, devEnvCfg(databaseURL)); err != nil {
 		return fmt.Errorf("wire platform: %w", err)
 	}
+	go server.StartPurger(rootCtx, pool)
 
 	// Embedded Vue SPA (built by `make frontend`). Mounted as the
 	// NotFound handler so every API route registered above takes

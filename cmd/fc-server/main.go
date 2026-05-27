@@ -85,6 +85,7 @@ func main() {
 			os.Exit(1)
 		}
 		slog.Info("platform API wired")
+		go server.StartPurger(rootCtx, pool)
 	}
 
 	// ── Background processors ──────────────────────────────────────────────
