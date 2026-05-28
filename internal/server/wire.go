@@ -281,6 +281,7 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 		oauthTokenEP.RegisterTokenRoutes(r)
 		oauthTokenEP.RegisterIntrospectRoutes(r)
 		oauthTokenEP.RegisterRevokeRoutes(r)
+		oauthTokenEP.RegisterUserinfoRoutes(r)
 		provider.NewAuthorizeEndpoint(authProvider).RegisterRoutes(r)
 		if disc, err := provider.NewDiscoveryEndpoint(provider.Config{
 			Issuer:       cfg.JWTIssuer,
