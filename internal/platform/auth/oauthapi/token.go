@@ -11,6 +11,7 @@
 package oauthapi
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -22,6 +23,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 )
@@ -47,6 +49,23 @@ type State struct {
 	// BaseURL is the external issuer/base URL the discovery document
 	// advertises its endpoint URLs from (e.g. https://flowcatalyst.example).
 	BaseURL string
+	// LoginAttempts records SERVICE_ACCOUNT_TOKEN outcomes on
+	// client_credentials. Optional (nil disables recording).
+	LoginAttempts *loginattempt.Repository
+}
+
+// recordAttempt best-effort logs a login attempt; failures are swallowed
+// (a logging miss must never fail the auth flow). No-op when the repo is
+// unset.
+func (s *State) recordAttempt(ctx context.Context, t loginattempt.AttemptType, outcome loginattempt.Outcome, identifier string, principalID, failureReason *string) {
+	if s.LoginAttempts == nil {
+		return
+	}
+	a := loginattempt.New(t, outcome)
+	a.Identifier = &identifier
+	a.PrincipalID = principalID
+	a.FailureReason = failureReason
+	_ = s.LoginAttempts.Record(ctx, a)
 }
 
 // RegisterTokenRoutes mounts POST /oauth/token.
@@ -236,7 +255,8 @@ func (s *State) handleClientCredentialsGrant(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if !s.verifyClientSecret(*client.SecretRef, req.ClientSecret) {
-		// TODO(task 8): record a failed ServiceAccountToken login attempt.
+		reason := "Invalid client secret"
+		s.recordAttempt(r.Context(), loginattempt.AttemptServiceAccountToken, loginattempt.OutcomeFailure, req.ClientID, nil, &reason)
 		writeOAuthError(w, http.StatusUnauthorized, "invalid_client", "Invalid client credentials")
 		return
 	}
@@ -264,7 +284,7 @@ func (s *State) handleClientCredentialsGrant(w http.ResponseWriter, r *http.Requ
 		writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 		return
 	}
-	// TODO(task 8): record a successful ServiceAccountToken login attempt.
+	s.recordAttempt(r.Context(), loginattempt.AttemptServiceAccountToken, loginattempt.OutcomeSuccess, req.ClientID, &p.ID, nil)
 	writeToken(w, tokenResponse{
 		AccessToken: accessToken,
 		TokenType:   "Bearer",

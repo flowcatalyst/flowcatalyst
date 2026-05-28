@@ -21,6 +21,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/bridge"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/login"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/loginbackoff"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/oauthapi"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/payload"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/provider"
@@ -157,6 +158,7 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 		PendingAuth:   grantstore.NewPendingAuthRepository(pool),
 		Encryption:    encSvc,
 		BaseURL:       cfg.JWTIssuer,
+		LoginAttempts: loginAttemptRepo,
 		// /oauth/authorize treats an invalid/absent session as
 		// redirect-to-login, so it validates the session cookie itself
 		// (it's mounted outside the rejecting auth middleware).
@@ -203,6 +205,8 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 		Mappings:          edmRepo,
 		IdentityProviders: idpRepo,
 		CookieSecure:      !cfg.AuthAllowTestHeaders,
+		LoginAttempts:     loginAttemptRepo,
+		BackoffPolicy:     loginbackoff.PolicyFromEnv(),
 	})
 	loginEP.RegisterPublicRoutes(r)
 
