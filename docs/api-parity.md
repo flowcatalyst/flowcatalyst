@@ -306,6 +306,25 @@ JWKS endpoint at `/.well-known/jwks.json` must return the same key set in the sa
 
 OAuth client_credentials grant endpoint at `/oauth/token` must return the same response shape, same `Cache-Control: no-store` header, same `Content-Type: application/json`.
 
+**Known behavioral gap — `/oauth/authorize?provider=<idp-id>` (not implemented):**
+the Rust server supports a *direct-IDP* entry point on the authorize endpoint
+(`oidc_service.get_authorization_url`). A downstream OAuth client of FlowCatalyst
+can name an upstream IdP by id to deep-link the user straight into that IdP's
+login — e.g. a "Login with Acme SSO" button — skipping the email-domain lookup.
+The Go port does **not** implement this branch yet: it returns an OAuth
+`server_error` redirect (see `oauthapi/authorize.go`, `TODO(oidc-by-provider)`).
+
+This gap is **not visible in the OpenAPI spec diff** (same path, just an error
+response), so it's recorded here. Normal logins are unaffected — the SPA enters
+SSO via `/auth/oidc/login?domain=` (the email-domain path), which the Go server
+fully supports end-to-end (start → IdP → `/auth/oidc/callback`). The `?provider=`
+branch only matters for the *chained* case: a third-party app uses FlowCatalyst
+as its OAuth provider **and** wants to pre-select a specific upstream IdP. To
+close it: add a bridge method to resolve an IdP by provider id and build its
+authorization URL, wire the authorize `?provider=` branch, and complete the
+code flow on the callback (the bridge's `AuthCodeURL`/`Exchange` machinery in
+`bridge/login_endpoint.go` already exists for the email-domain path).
+
 ### HMAC signing sites (audit result)
 
 Audit of the Rust codebase identified **three HMAC-SHA256 signing sites**. Of these, **only one signs the result of JSON serialization**; the others sign raw bytes or plain strings, so JSON library choice is irrelevant.

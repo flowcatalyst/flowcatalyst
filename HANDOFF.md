@@ -58,8 +58,9 @@ file is unaffected).
 
 ### Deferred (follow-ups, not blockers)
 - `/oauth/authorize?provider=` direct-IDP branch (returns server_error) —
-  the Go bridge resolves IDPs by **email domain**, not provider-id; needs a
-  bridge method to build an IDP authorization URL from a provider id.
+  documented as a known parity gap in `docs/api-parity.md` (§Authentication).
+  Deep-links a downstream OAuth client's user into a named upstream IdP;
+  only needed for that chained case. Normal SSO uses `/auth/oidc/login`.
 - In-memory per-instance rate-limit governor (perf layer atop the
   distributed store; `rate_limit_middleware.rs`).
 

@@ -148,10 +148,15 @@ func (s *State) Authorize(w http.ResponseWriter, r *http.Request) {
 
 	if providerID != "" {
 		// TODO(oidc-by-provider): the ?provider= direct-IDP entry point is
-		// not wired — the Go OIDC bridge resolves IDPs by email domain, not
-		// by provider id. The SPA's SSO path goes through /auth/oidc/login
-		// instead. Port the Rust oidc_service.get_authorization_url path
-		// (resolve IDP by id + build the authorization URL) to close this.
+		// not wired. It deep-links a downstream OAuth client's user straight
+		// into a named upstream IdP (e.g. a "Login with Acme SSO" button),
+		// skipping the email-domain lookup the SPA uses via /auth/oidc/login.
+		// Normal logins don't need it; only matters when a third-party app
+		// uses FlowCatalyst as its OAuth provider AND wants to pre-select an
+		// upstream IdP. To close it, port Rust's
+		// oidc_service.get_authorization_url (resolve IDP by id + build the
+		// authorization URL) and complete the code flow on callback. Tracked
+		// as a known parity gap in docs/api-parity.md (§Authentication).
 		errorRedirect(w, r, redirectURI, "server_error", "Direct provider authorization is not supported", stateParam)
 		return
 	}
