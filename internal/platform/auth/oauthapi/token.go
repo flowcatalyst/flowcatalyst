@@ -26,6 +26,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
 )
 
 // State bundles the dependencies the OAuth endpoints need.
@@ -52,6 +53,11 @@ type State struct {
 	// LoginAttempts records SERVICE_ACCOUNT_TOKEN outcomes on
 	// client_credentials. Optional (nil disables recording).
 	LoginAttempts *loginattempt.Repository
+	// RateLimit is the cluster-wide per-client_id throttle on
+	// /oauth/{token,authorize}. Optional (nil disables it; the per-IP
+	// middleware layer still applies when mounted).
+	RateLimit         ratelimit.Store
+	RateLimitPolicies ratelimit.Policies
 }
 
 // recordAttempt best-effort logs a login attempt; failures are swallowed
@@ -117,6 +123,16 @@ func (s *State) Token(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeOAuthError(w, http.StatusBadRequest, "invalid_request", "Malformed form body")
 		return
+	}
+
+	// Cluster-wide per-client_id throttle. Runs before the DB lookup so a
+	// client spamming us can't amplify load on the client cache. Composes
+	// with the per-IP middleware wrapping /oauth/*.
+	if req.ClientID != "" {
+		if rej := ratelimit.Enforce(r.Context(), s.RateLimit, ratelimit.BucketOAuthTokenClient, req.ClientID, s.RateLimitPolicies.OAuthTokenClient); rej != nil {
+			ratelimit.WriteTooManyRequests(w, rej.RetryAfterSecs, "this client_id has exceeded its token endpoint rate limit")
+			return
+		}
 	}
 
 	// Authenticate the client up-front for code/refresh grants;

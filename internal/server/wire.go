@@ -65,6 +65,7 @@ import (
 	meapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/me"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	platformsink "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/platformsink"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
 	sdkapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/sdk"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
 	subscriptionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription/api"
@@ -149,16 +150,23 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 	if err != nil {
 		return fmt.Errorf("encryption init: %w", err)
 	}
+	// Distributed rate-limit store: Redis when FC_REDIS_URL is reachable,
+	// else Postgres, else Noop (FC_RATE_LIMIT_DISABLE=1). Throttles
+	// /oauth/{token,authorize} per-client_id (+ per-IP via middleware).
+	rlStore := ratelimit.Build(context.Background(), pool)
+	rlPolicies := ratelimit.PoliciesFromEnv()
 	oauthTokenEP := &oauthapi.State{
-		OAuthClients:  authRepo.OAuthClients,
-		Principals:    principalRepo,
-		Auth:          authSvc,
-		AuthCodes:     grantstore.NewAuthorizationCodeRepository(pool),
-		RefreshTokens: grantstore.NewRefreshTokenRepository(pool),
-		PendingAuth:   grantstore.NewPendingAuthRepository(pool),
-		Encryption:    encSvc,
-		BaseURL:       cfg.JWTIssuer,
-		LoginAttempts: loginAttemptRepo,
+		OAuthClients:      authRepo.OAuthClients,
+		Principals:        principalRepo,
+		Auth:              authSvc,
+		AuthCodes:         grantstore.NewAuthorizationCodeRepository(pool),
+		RefreshTokens:     grantstore.NewRefreshTokenRepository(pool),
+		PendingAuth:       grantstore.NewPendingAuthRepository(pool),
+		Encryption:        encSvc,
+		BaseURL:           cfg.JWTIssuer,
+		LoginAttempts:     loginAttemptRepo,
+		RateLimit:         rlStore,
+		RateLimitPolicies: rlPolicies,
 		// /oauth/authorize treats an invalid/absent session as
 		// redirect-to-login, so it validates the session cookie itself
 		// (it's mounted outside the rejecting auth middleware).
@@ -217,8 +225,8 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 
 	// /oauth/authorize is mounted OUTSIDE the auth middleware: an absent or
 	// expired session must redirect to login (not 401), and the handler
-	// validates the session cookie itself.
-	oauthTokenEP.RegisterAuthorizeRoutes(r)
+	// validates the session cookie itself. Wrapped in the per-IP throttle.
+	oauthTokenEP.RegisterAuthorizeRoutes(r.With(ratelimit.IPLimitMiddleware(rlStore, ratelimit.BucketOAuthAuthorizeIP, rlPolicies.OAuthAuthorizeIP)))
 
 	r.Group(func(r chi.Router) {
 		r.Use(platformmw.CorrelationID)
@@ -299,7 +307,7 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 		// OAuth provider routes — all hand-rolled now (authservice +
 		// encryption). /oauth/authorize is registered above, outside this
 		// auth group. fosite is no longer wired.
-		oauthTokenEP.RegisterTokenRoutes(r)
+		oauthTokenEP.RegisterTokenRoutes(r.With(ratelimit.IPLimitMiddleware(rlStore, ratelimit.BucketOAuthTokenIP, rlPolicies.OAuthTokenIP)))
 		oauthTokenEP.RegisterIntrospectRoutes(r)
 		oauthTokenEP.RegisterRevokeRoutes(r)
 		oauthTokenEP.RegisterUserinfoRoutes(r)

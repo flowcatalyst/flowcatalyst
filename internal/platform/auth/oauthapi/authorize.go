@@ -10,6 +10,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
 )
 
 // RegisterAuthorizeRoutes mounts GET /oauth/authorize. It MUST be mounted
@@ -44,6 +45,12 @@ func (s *State) Authorize(w http.ResponseWriter, r *http.Request) {
 	// 400 (not a redirect) — we can't safely bounce the UA without it.
 	if strings.TrimSpace(stateParam) == "" {
 		writeOAuthError(w, http.StatusBadRequest, "invalid_request", "`state` parameter is required for CSRF protection")
+		return
+	}
+
+	// Cluster-wide per-client_id throttle, before the DB lookup.
+	if rej := ratelimit.Enforce(r.Context(), s.RateLimit, ratelimit.BucketOAuthAuthorizeClient, clientID, s.RateLimitPolicies.OAuthAuthorizeClient); rej != nil {
+		ratelimit.WriteTooManyRequests(w, rej.RetryAfterSecs, "rate limit exceeded")
 		return
 	}
 
