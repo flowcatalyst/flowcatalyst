@@ -52,10 +52,13 @@ type OAuthClient struct {
 	// reversibly-encrypted blob (AES-GCM via the encryption package),
 	// matching Rust's oauth_clients.client_secret_ref. Verification
 	// decrypts and compares; nil for PUBLIC. Set via rotate-secret.
-	SecretRef    *string   `json:"-"`
-	RedirectURIs []string  `json:"redirectUris"`
-	GrantTypes   []string  `json:"grantTypes"` // "authorization_code", "client_credentials", "refresh_token"
-	Scopes       []string  `json:"scopes"`
+	SecretRef    *string  `json:"-"`
+	RedirectURIs []string `json:"redirectUris"`
+	GrantTypes   []string `json:"grantTypes"` // "authorization_code", "client_credentials", "refresh_token"
+	Scopes       []string `json:"scopes"`
+	// PKCERequired gates whether /oauth/authorize demands a code_challenge.
+	// Maps to oauth_clients.pkce_required (DEFAULT TRUE).
+	PKCERequired bool      `json:"pkceRequired"`
 	Active       bool      `json:"active"`
 	PrincipalID  *string   `json:"principalId,omitempty"` // owning principal (for token-issued-on-behalf claims)
 	CreatedAt    time.Time `json:"createdAt"`
@@ -76,6 +79,7 @@ func NewOAuthClient(clientID, name string, t OAuthClientType) *OAuthClient {
 		RedirectURIs: []string{},
 		GrantTypes:   []string{},
 		Scopes:       []string{},
+		PKCERequired: true,
 		Active:       true,
 		CreatedAt:    now,
 		UpdatedAt:    now,

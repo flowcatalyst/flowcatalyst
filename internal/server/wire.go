@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -153,8 +154,19 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 		Auth:          authSvc,
 		AuthCodes:     grantstore.NewAuthorizationCodeRepository(pool),
 		RefreshTokens: grantstore.NewRefreshTokenRepository(pool),
+		PendingAuth:   grantstore.NewPendingAuthRepository(pool),
 		Encryption:    encSvc,
 		BaseURL:       cfg.JWTIssuer,
+		// /oauth/authorize treats an invalid/absent session as
+		// redirect-to-login, so it validates the session cookie itself
+		// (it's mounted outside the rejecting auth middleware).
+		ValidateSession: func(token string) (string, bool) {
+			c, err := authProvider.ValidateSessionToken(context.Background(), token)
+			if err != nil || c == nil {
+				return "", false
+			}
+			return c.Subject, true
+		},
 	}
 
 	// ── Webauthn service ───────────────────────────────────────────────
@@ -198,6 +210,11 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 	// (login-theme branding, platform feature flags). Mounted outside
 	// the auth middleware for the same reason as the login surface.
 	publicapi.New(platformConfigRepo).RegisterRoutes(r)
+
+	// /oauth/authorize is mounted OUTSIDE the auth middleware: an absent or
+	// expired session must redirect to login (not 401), and the handler
+	// validates the session cookie itself.
+	oauthTokenEP.RegisterAuthorizeRoutes(r)
 
 	r.Group(func(r chi.Router) {
 		r.Use(platformmw.CorrelationID)
@@ -275,15 +292,14 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 			UoW:  uow,
 		})
 
-		// OAuth provider routes. /oauth/{token,introspect,revoke,userinfo}
-		// + .well-known/* are the hand-rolled port (authservice +
-		// encryption); /oauth/authorize remains on fosite until task 4.
+		// OAuth provider routes — all hand-rolled now (authservice +
+		// encryption). /oauth/authorize is registered above, outside this
+		// auth group. fosite is no longer wired.
 		oauthTokenEP.RegisterTokenRoutes(r)
 		oauthTokenEP.RegisterIntrospectRoutes(r)
 		oauthTokenEP.RegisterRevokeRoutes(r)
 		oauthTokenEP.RegisterUserinfoRoutes(r)
 		oauthTokenEP.RegisterDiscoveryRoutes(r)
-		provider.NewAuthorizeEndpoint(authProvider).RegisterRoutes(r)
 
 		// OIDC bridge — POST /auth/check-domain, GET /auth/oidc/login,
 		// GET /auth/oidc/callback. The bridge resolves the external IDP
