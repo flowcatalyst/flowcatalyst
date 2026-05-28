@@ -275,12 +275,13 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 		})
 
 		// OAuth provider routes (token, authorize, revoke, introspect, .well-known/*)
-		// /oauth/token is the hand-rolled port (authservice + encryption);
-		// the rest remain on fosite until their ports land (tasks 4-9).
+		// /oauth/token, /oauth/introspect, /oauth/revoke are the hand-rolled
+		// port (authservice + encryption); /oauth/authorize + discovery
+		// remain on fosite until their ports land (tasks 4, 7).
 		oauthTokenEP.RegisterTokenRoutes(r)
+		oauthTokenEP.RegisterIntrospectRoutes(r)
+		oauthTokenEP.RegisterRevokeRoutes(r)
 		provider.NewAuthorizeEndpoint(authProvider).RegisterRoutes(r)
-		provider.NewRevokeEndpoint(authProvider).RegisterRoutes(r)
-		provider.NewIntrospectEndpoint(authProvider).RegisterRoutes(r)
 		if disc, err := provider.NewDiscoveryEndpoint(provider.Config{
 			Issuer:       cfg.JWTIssuer,
 			SigningKey:   signingKey,
