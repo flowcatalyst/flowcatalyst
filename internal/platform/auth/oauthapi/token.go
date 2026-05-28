@@ -37,6 +37,9 @@ type State struct {
 	// May be nil when no app key is configured — confidential auth then
 	// fails closed.
 	Encryption *encryption.Service
+	// BaseURL is the external issuer/base URL the discovery document
+	// advertises its endpoint URLs from (e.g. https://flowcatalyst.example).
+	BaseURL string
 }
 
 // RegisterTokenRoutes mounts POST /oauth/token.

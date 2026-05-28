@@ -154,6 +154,7 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 		AuthCodes:     grantstore.NewAuthorizationCodeRepository(pool),
 		RefreshTokens: grantstore.NewRefreshTokenRepository(pool),
 		Encryption:    encSvc,
+		BaseURL:       cfg.JWTIssuer,
 	}
 
 	// ── Webauthn service ───────────────────────────────────────────────
@@ -274,22 +275,15 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 			UoW:  uow,
 		})
 
-		// OAuth provider routes (token, authorize, revoke, introspect, .well-known/*)
-		// /oauth/token, /oauth/introspect, /oauth/revoke are the hand-rolled
-		// port (authservice + encryption); /oauth/authorize + discovery
-		// remain on fosite until their ports land (tasks 4, 7).
+		// OAuth provider routes. /oauth/{token,introspect,revoke,userinfo}
+		// + .well-known/* are the hand-rolled port (authservice +
+		// encryption); /oauth/authorize remains on fosite until task 4.
 		oauthTokenEP.RegisterTokenRoutes(r)
 		oauthTokenEP.RegisterIntrospectRoutes(r)
 		oauthTokenEP.RegisterRevokeRoutes(r)
 		oauthTokenEP.RegisterUserinfoRoutes(r)
+		oauthTokenEP.RegisterDiscoveryRoutes(r)
 		provider.NewAuthorizeEndpoint(authProvider).RegisterRoutes(r)
-		if disc, err := provider.NewDiscoveryEndpoint(provider.Config{
-			Issuer:       cfg.JWTIssuer,
-			SigningKey:   signingKey,
-			SigningKeyID: cfg.JWTSigningKeyID,
-		}, cfg.JWTIssuer); err == nil {
-			disc.RegisterRoutes(r)
-		}
 
 		// OIDC bridge — POST /auth/check-domain, GET /auth/oidc/login,
 		// GET /auth/oidc/callback. The bridge resolves the external IDP
