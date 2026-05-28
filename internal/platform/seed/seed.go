@@ -43,6 +43,9 @@ func (s *Seeder) Run(ctx context.Context) error {
 	if err := s.seedEventSchemas(ctx); err != nil {
 		return fmt.Errorf("seed event schemas: %w", err)
 	}
+	if err := s.seedBootstrapAdmin(ctx); err != nil {
+		return fmt.Errorf("seed bootstrap admin: %w", err)
+	}
 	return nil
 }
 

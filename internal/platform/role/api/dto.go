@@ -85,7 +85,45 @@ func fromEntity(r *role.Role) RoleResponse {
 	}
 }
 
-// RoleListResponse is the wire shape for GET /api/roles.
+// RoleListResponse is the wire shape for GET /api/roles. Matches the
+// Rust fc-platform shape `{roles, total}`.
 type RoleListResponse struct {
-	Items []RoleResponse `json:"items"`
+	Roles []RoleResponse `json:"roles"`
+	Total int            `json:"total"`
+}
+
+// RolePermissionListResponse is the wire shape for
+// GET /api/roles/{roleName}/permissions.
+type RolePermissionListResponse struct {
+	Permissions []string `json:"permissions"`
+}
+
+// PermissionResponse is the wire shape for a catalog row.
+type PermissionResponse struct {
+	Permission  string  `json:"permission"`
+	Name        string  `json:"name"`
+	Description *string `json:"description,omitempty"`
+	Category    *string `json:"category,omitempty"`
+}
+
+func permissionToResponse(p *role.Permission) PermissionResponse {
+	return PermissionResponse{
+		Permission:  p.Permission,
+		Name:        p.Name,
+		Description: p.Description,
+		Category:    p.Category,
+	}
+}
+
+// PermissionListResponse is the wire shape for GET /api/roles/permissions.
+// Matches the Rust fc-platform shape `{permissions, total}`.
+type PermissionListResponse struct {
+	Permissions []PermissionResponse `json:"permissions"`
+	Total       int                  `json:"total"`
+}
+
+// ApplicationFilterListResponse is the wire shape for
+// GET /api/roles/filters/applications.
+type ApplicationFilterListResponse struct {
+	ApplicationCodes []string `json:"applicationCodes"`
 }

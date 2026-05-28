@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -49,6 +50,11 @@ type ServerConfig struct {
 	StandbyEnabled  bool
 	StandbyRedisURL string
 	StandbyLockKey  string
+
+	// Traffic management. When enabled, this instance is
+	// registered/deregistered with the ALB target group as it
+	// gains/loses leadership. Disabled by default.
+	Traffic TrafficConfig
 }
 
 // Server is the reusable router wiring used by both cmd/fc-router (with
@@ -63,10 +69,13 @@ type Server struct {
 	Mediator  Mediator
 	Breakers  *BreakerRegistry
 	Tracker   *InFlightTracker
-	Manager   *Manager
-	Warnings  *WarningService
-	Health    *HealthService
-	Lifecycle *LifecycleManager
+	Manager      *Manager
+	Warnings     *WarningService
+	Health       *HealthService
+	Lifecycle    *LifecycleManager
+	BrokerStats  *CachedBrokerStats
+	ConfigSource *ConfigSource
+	Traffic      *TrafficStrategy
 
 	election *standby.Election
 }
@@ -96,6 +105,10 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		Tracker:  NewInFlightTracker(),
 	}
 	s.Manager = NewManager(s.Mediator, s.Breakers, s.Tracker)
+	s.BrokerStats = NewCachedBrokerStats(s.Manager)
+	if cfg.ConfigURL != "" {
+		s.ConfigSource = NewConfigSource(cfg.ConfigURL)
+	}
 
 	// Warning + health services back the deferred /monitoring/* and
 	// /warnings/* HTTP surface; for now they're observable via slog
@@ -117,7 +130,33 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		}
 		s.election = el
 	}
+	// Traffic strategy is constructed eagerly so /monitoring/traffic-status
+	// has something to report even when disabled. NewTrafficStrategy is
+	// a no-op when cfg.Traffic.Enabled=false.
+	ts, err := NewTrafficStrategy(context.Background(), cfg.Traffic)
+	if err != nil {
+		return nil, err
+	}
+	s.Traffic = ts
 	return s, nil
+}
+
+// Reload triggers an immediate config refetch + reconfigure. Returns
+// nil when the source reports ErrUnchanged — the config is still
+// "applied" in the sense that what's running matches the source.
+// Used by POST /config/reload to force-sync ahead of the watcher tick.
+func (s *Server) Reload(ctx context.Context) error {
+	if s.ConfigSource == nil {
+		return errors.New("router has no config source configured")
+	}
+	cfg, err := s.ConfigSource.Fetch(ctx)
+	if err != nil {
+		if errors.Is(err, ErrUnchanged) {
+			return nil
+		}
+		return err
+	}
+	return s.Manager.Reconfigure(ctx, *cfg)
 }
 
 // IsLeader reports whether this instance currently holds the standby
@@ -137,24 +176,39 @@ func (s *Server) Run(ctx context.Context) error {
 	go NewStallDetector(DefaultStallConfig(), s.Tracker, s.Notifier).Watch(ctx)
 	go NewQueueHealthMonitor(DefaultQueueHealthConfig(), s.Notifier).Watch(ctx, s.Manager.Consumers)
 	go s.reapInFlight(ctx)
+	SpawnBrokerStatsRefresh(ctx, s.BrokerStats)
 	s.Lifecycle.Start(ctx)
 
 	startPools := func(c context.Context) {
-		if s.Cfg.ConfigURL == "" {
+		if s.ConfigSource == nil {
+			// Pools may already be running because the caller bootstrapped
+			// them via a default broker (e.g. server.newRouterServer when
+			// FC_DEFAULT_BROKER=postgres). Don't warn in that case — the
+			// router is correctly configured, there's just no remote URL
+			// to poll for hot reloads.
+			if s.Manager.PoolCount() > 0 {
+				slog.Info("router config URL not set; using bootstrapped pools (no hot reload)",
+					"pool_count", s.Manager.PoolCount())
+				return
+			}
 			slog.Warn("router config URL not set; no pools will start")
 			return
 		}
-		cs := NewConfigSource(s.Cfg.ConfigURL)
-		go Watch(c, cs, s.Manager, s.Cfg.ConfigPollInterval)
+		go Watch(c, s.ConfigSource, s.Manager, s.Cfg.ConfigPollInterval)
 	}
 
 	if s.election != nil {
 		if err := s.election.Start(ctx); err != nil {
 			return err
 		}
-		go gateOnLeadership(ctx, s.election, s.Manager, startPools)
+		go gateOnLeadership(ctx, s.election, s.Manager, s.Traffic, startPools)
 	} else {
 		startPools(ctx)
+		// Non-standby mode: still register with the ALB if traffic
+		// management is enabled (single-instance deployment).
+		if err := s.Traffic.Register(ctx); err != nil {
+			slog.Warn("traffic register failed", "err", err)
+		}
 	}
 
 	<-ctx.Done()
@@ -171,6 +225,11 @@ func (s *Server) Run(ctx context.Context) error {
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
+	// Deregister early in shutdown so the ALB stops routing new traffic
+	// before the drain finishes.
+	if err := s.Traffic.Deregister(shutdownCtx); err != nil {
+		slog.Warn("traffic deregister on shutdown failed", "err", err)
+	}
 	if err := s.Lifecycle.Shutdown(shutdownCtx); err != nil {
 		slog.Warn("router lifecycle shutdown error", "err", err)
 	}
@@ -219,8 +278,10 @@ func pickMediator(devMode bool) Mediator {
 
 // gateOnLeadership starts the pool config watcher only when this
 // instance is the leader. On loss of leadership it cancels the
-// per-leadership context so pools wind down.
-func gateOnLeadership(ctx context.Context, election *standby.Election, manager *Manager, startPools func(context.Context)) {
+// per-leadership context so pools wind down. Also drives the traffic
+// strategy: register on leader-gain, deregister on leader-loss so an
+// ALB stops routing requests to standing-by replicas.
+func gateOnLeadership(ctx context.Context, election *standby.Election, manager *Manager, traffic *TrafficStrategy, startPools func(context.Context)) {
 	sub := election.Subscribe()
 	var poolCtx context.Context
 	var poolCancel context.CancelFunc
@@ -232,14 +293,22 @@ func gateOnLeadership(ctx context.Context, election *standby.Election, manager *
 			}
 			poolCtx, poolCancel = context.WithCancel(ctx)
 			startPools(poolCtx)
+			if err := traffic.Register(ctx); err != nil {
+				slog.Warn("traffic register on leader-gain failed", "err", err)
+			}
 			slog.Info("router assumed leadership; pools started")
 			return
 		}
 		if poolCancel != nil {
 			poolCancel()
 			poolCtx, poolCancel = nil, nil
+			// Deregister BEFORE draining so the ALB stops routing new
+			// requests; in-flight work then finishes naturally.
 			drainCtx, drainCancel := context.WithTimeout(ctx, 30*time.Second)
 			defer drainCancel()
+			if err := traffic.Deregister(drainCtx); err != nil {
+				slog.Warn("traffic deregister on leader-loss failed", "err", err)
+			}
 			_ = manager.Shutdown(drainCtx)
 			slog.Info("router lost leadership; pools drained")
 		}

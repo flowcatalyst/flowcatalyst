@@ -14,11 +14,11 @@ func TestExtractBearerToken(t *testing.T) {
 	}{
 		{"", ""},
 		{"Bearer abc.def.ghi", "abc.def.ghi"},
-		{"bearer abc.def.ghi", "abc.def.ghi"},        // case-insensitive scheme
-		{"Bearer  spaced", "spaced"},                  // trims
-		{"Basic dXNlcjpwYXNz", ""},                    // wrong scheme
-		{"Bearer", ""},                                // no token
-		{"BearerNoSpace", ""},                         // malformed
+		{"bearer abc.def.ghi", "abc.def.ghi"}, // case-insensitive scheme
+		{"Bearer  spaced", "spaced"},          // trims
+		{"Basic dXNlcjpwYXNz", ""},            // wrong scheme
+		{"Bearer", ""},                        // no token
+		{"BearerNoSpace", ""},                 // malformed
 	}
 	for _, tc := range cases {
 		r := httptest.NewRequest(http.MethodGet, "/", nil)

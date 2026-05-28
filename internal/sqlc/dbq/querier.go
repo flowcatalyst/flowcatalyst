@@ -35,6 +35,7 @@ type Querier interface {
 	ClientConfigDelete(ctx context.Context, id string) error
 	ClientConfigFindByApp(ctx context.Context, applicationID string) ([]AppClientConfig, error)
 	ClientConfigFindByAppAndClient(ctx context.Context, arg ClientConfigFindByAppAndClientParams) (AppClientConfig, error)
+	ClientConfigFindByClient(ctx context.Context, clientID string) ([]AppClientConfig, error)
 	ClientConfigUpsert(ctx context.Context, arg ClientConfigUpsertParams) error
 	ClientDelete(ctx context.Context, id string) error
 	ClientFindAll(ctx context.Context) ([]TntClient, error)
@@ -184,6 +185,9 @@ type Querier interface {
 	OAuthPayloadInsert(ctx context.Context, arg OAuthPayloadInsertParams) error
 	OAuthPayloadMarkConsumed(ctx context.Context, id string) error
 	OAuthPayloadPurgeExpired(ctx context.Context) (int64, error)
+	PermissionDeleteByCode(ctx context.Context, code string) error
+	PermissionFindAll(ctx context.Context) ([]IamPermission, error)
+	PermissionFindByCode(ctx context.Context, code string) (IamPermission, error)
 	PlatformConfigAccessDelete(ctx context.Context, id string) error
 	PlatformConfigAccessFindByApplication(ctx context.Context, applicationCode string) ([]AppPlatformConfigAccess, error)
 	PlatformConfigAccessFindByID(ctx context.Context, id string) (AppPlatformConfigAccess, error)
@@ -221,9 +225,11 @@ type Querier interface {
 	// matches the Rust source which hard-codes CreatedBy: None on read.
 	ProcessFindByID(ctx context.Context, id string) (MsgProcess, error)
 	ProcessUpsert(ctx context.Context, arg ProcessUpsertParams) error
+	RoleApplicationCodes(ctx context.Context) ([]*string, error)
 	RoleCountAssignments(ctx context.Context, roleName string) (int64, error)
 	RoleDelete(ctx context.Context, id string) error
 	RoleFindAll(ctx context.Context) ([]IamRole, error)
+	RoleFindByApplicationID(ctx context.Context, applicationID *string) ([]IamRole, error)
 	// Queries for iam_roles + iam_role_permissions. Permissions are
 	// many-to-many; Persist replaces them wholesale.
 	RoleFindByID(ctx context.Context, id string) (IamRole, error)

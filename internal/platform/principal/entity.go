@@ -141,6 +141,12 @@ type Principal struct {
 // IDStr satisfies usecase.HasID.
 func (p Principal) IDStr() string { return p.ID }
 
+// IsUser reports whether this principal is a USER (vs SERVICE).
+func (p Principal) IsUser() bool { return p.Type == TypeUser }
+
+// IsService reports whether this principal is a SERVICE account.
+func (p Principal) IsService() bool { return p.Type == TypeService }
+
 // NewUser constructs a USER-type Principal with the supplied email/scope.
 func NewUser(email string, scope UserScope) *Principal {
 	now := time.Now().UTC()

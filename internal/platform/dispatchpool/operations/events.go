@@ -8,11 +8,13 @@ import (
 )
 
 const (
-	DispatchPoolCreatedType  = "platform:admin:dispatch-pool:created"
-	DispatchPoolUpdatedType  = "platform:admin:dispatch-pool:updated"
-	DispatchPoolArchivedType = "platform:admin:dispatch-pool:archived"
-	DispatchPoolDeletedType  = "platform:admin:dispatch-pool:deleted"
-	Source                   = "platform:admin"
+	DispatchPoolCreatedType   = "platform:admin:dispatch-pool:created"
+	DispatchPoolUpdatedType   = "platform:admin:dispatch-pool:updated"
+	DispatchPoolArchivedType  = "platform:admin:dispatch-pool:archived"
+	DispatchPoolDeletedType   = "platform:admin:dispatch-pool:deleted"
+	DispatchPoolSuspendedType = "platform:admin:dispatch-pool:suspended"
+	DispatchPoolActivatedType = "platform:admin:dispatch-pool:activated"
+	Source                    = "platform:admin"
 )
 
 func subjectFor(id string) string { return "platform.dispatchpool." + id }
@@ -110,6 +112,54 @@ func (e DispatchPoolDeleted) CausationID() string   { return e.Metadata.Causatio
 func (e DispatchPoolDeleted) ExecutionID() string   { return e.Metadata.ExecutionID }
 func (e DispatchPoolDeleted) MessageGroup() string  { return groupFor(e.PoolID) }
 func (e DispatchPoolDeleted) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		PoolID string `json:"poolId"`
+		Code   string `json:"code"`
+	}{e.PoolID, e.Code})
+}
+
+type DispatchPoolSuspended struct {
+	Metadata usecase.EventMetadata
+	PoolID   string
+	Code     string
+}
+
+func (e DispatchPoolSuspended) EventID() string       { return e.Metadata.EventID }
+func (e DispatchPoolSuspended) EventType() string     { return DispatchPoolSuspendedType }
+func (e DispatchPoolSuspended) SpecVersion() string   { return "1.0" }
+func (e DispatchPoolSuspended) Source() string        { return Source }
+func (e DispatchPoolSuspended) Subject() string       { return subjectFor(e.PoolID) }
+func (e DispatchPoolSuspended) Time() time.Time       { return e.Metadata.OccurredAt }
+func (e DispatchPoolSuspended) PrincipalID() string   { return e.Metadata.PrincipalID }
+func (e DispatchPoolSuspended) CorrelationID() string { return e.Metadata.CorrelationID }
+func (e DispatchPoolSuspended) CausationID() string   { return e.Metadata.CausationID }
+func (e DispatchPoolSuspended) ExecutionID() string   { return e.Metadata.ExecutionID }
+func (e DispatchPoolSuspended) MessageGroup() string  { return groupFor(e.PoolID) }
+func (e DispatchPoolSuspended) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		PoolID string `json:"poolId"`
+		Code   string `json:"code"`
+	}{e.PoolID, e.Code})
+}
+
+type DispatchPoolActivated struct {
+	Metadata usecase.EventMetadata
+	PoolID   string
+	Code     string
+}
+
+func (e DispatchPoolActivated) EventID() string       { return e.Metadata.EventID }
+func (e DispatchPoolActivated) EventType() string     { return DispatchPoolActivatedType }
+func (e DispatchPoolActivated) SpecVersion() string   { return "1.0" }
+func (e DispatchPoolActivated) Source() string        { return Source }
+func (e DispatchPoolActivated) Subject() string       { return subjectFor(e.PoolID) }
+func (e DispatchPoolActivated) Time() time.Time       { return e.Metadata.OccurredAt }
+func (e DispatchPoolActivated) PrincipalID() string   { return e.Metadata.PrincipalID }
+func (e DispatchPoolActivated) CorrelationID() string { return e.Metadata.CorrelationID }
+func (e DispatchPoolActivated) CausationID() string   { return e.Metadata.CausationID }
+func (e DispatchPoolActivated) ExecutionID() string   { return e.Metadata.ExecutionID }
+func (e DispatchPoolActivated) MessageGroup() string  { return groupFor(e.PoolID) }
+func (e DispatchPoolActivated) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		PoolID string `json:"poolId"`
 		Code   string `json:"code"`

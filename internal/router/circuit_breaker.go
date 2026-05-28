@@ -146,6 +146,24 @@ func (cb *CircuitBreaker) recentFailures() int {
 	return failed
 }
 
+// Reset forces the breaker back to Closed and clears the sliding
+// failure window + cumulative counters. Used by the dashboard's
+// circuit-breaker reset endpoint.
+func (cb *CircuitBreaker) Reset() {
+	cb.state.Store(int32(CircuitClosed))
+	cb.openedAt.Store(0)
+	cb.successes.Store(0)
+	cb.failures.Store(0)
+	cb.lastActivity.Store(time.Now().UnixNano())
+	cb.mu.Lock()
+	for i := range cb.window {
+		cb.window[i] = false
+	}
+	cb.head = 0
+	cb.count = 0
+	cb.mu.Unlock()
+}
+
 // Stats is a snapshot for metrics export.
 type BreakerStats struct {
 	State           CircuitState
@@ -246,6 +264,34 @@ func (r *BreakerRegistry) Evict(maxIdle time.Duration) int {
 		evicted++
 	}
 	return evicted
+}
+
+// Reset clears a single breaker's state (by URL key). Returns false if
+// the URL has no registered breaker.
+func (r *BreakerRegistry) Reset(url string) bool {
+	r.mu.RLock()
+	cb, ok := r.m[url]
+	r.mu.RUnlock()
+	if !ok {
+		return false
+	}
+	cb.Reset()
+	return true
+}
+
+// ResetAll clears every registered breaker. Returns the number of
+// breakers reset.
+func (r *BreakerRegistry) ResetAll() int {
+	r.mu.RLock()
+	breakers := make([]*CircuitBreaker, 0, len(r.m))
+	for _, cb := range r.m {
+		breakers = append(breakers, cb)
+	}
+	r.mu.RUnlock()
+	for _, cb := range breakers {
+		cb.Reset()
+	}
+	return len(breakers)
 }
 
 // Len reports the number of active breakers in the registry.

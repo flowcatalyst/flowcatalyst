@@ -2,21 +2,17 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
-	"sync"
 	"syscall"
 	"time"
 
 	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 	"github.com/spf13/cobra"
 
 	"github.com/flowcatalyst/flowcatalyst-go/frontend"
@@ -30,17 +26,18 @@ import (
 // startOpts captures the flag set for `fc-dev start`. Defaults match
 // the Rust fc-dev so existing dev workflows transfer 1:1.
 type startOpts struct {
-	APIPort           int
-	MetricsPort       int
-	EmbeddedDB        bool
-	EmbeddedDBPort    int
-	EmbeddedDBPath    string
-	EmbeddedDBReset   bool
-	DatabaseURL       string
-	SchedulerEnabled  bool
-	StreamEnabled     bool
-	OutboxEnabled     bool
-	RouterEnabled     bool
+	APIPort          int
+	MetricsPort      int
+	EmbeddedDB       bool
+	EmbeddedDBPort   int
+	EmbeddedDBPath   string
+	EmbeddedDBReset  bool
+	DatabaseURL      string
+	SchedulerEnabled bool
+	StreamEnabled    bool
+	OutboxEnabled    bool
+	RouterEnabled    bool
+	MCPEnabled       bool
 }
 
 func newStartCmd() *cobra.Command {
@@ -54,17 +51,18 @@ func newStartCmd() *cobra.Command {
 }
 
 func addStartFlags(cmd *cobra.Command) {
-	cmd.Flags().Int("api-port", envIntDefault("FC_API_PORT", 3000), "API server port")
+	cmd.Flags().Int("api-port", envIntDefault("FC_API_PORT", 8080), "API server port")
 	cmd.Flags().Int("metrics-port", envIntDefault("FC_METRICS_PORT", 9090), "metrics server port")
 	cmd.Flags().Bool("embedded-db", envBoolDefault("FC_EMBEDDED_DB", true), "start an embedded Postgres")
-	cmd.Flags().Int("embedded-db-port", envIntDefault("FC_EMBEDDED_DB_PORT", 5433), "embedded Postgres port")
+	cmd.Flags().Int("embedded-db-port", envIntDefault("FC_EMBEDDED_DB_PORT", 15432), "embedded Postgres port")
 	cmd.Flags().String("embedded-db-path", envStrDefault("FC_EMBEDDED_DB_PATH", defaultEmbeddedPath()), "embedded Postgres data directory")
 	cmd.Flags().Bool("embedded-db-reset", false, "wipe the embedded Postgres data directory before starting")
 	cmd.Flags().String("database-url", envStrDefault("FC_DATABASE_URL", ""), "Postgres URL (overrides --embedded-db)")
 	cmd.Flags().Bool("scheduler", envBoolDefault("FC_SCHEDULER_ENABLED", true), "run the dispatch scheduler")
 	cmd.Flags().Bool("stream", envBoolDefault("FC_STREAM_PROCESSOR_ENABLED", true), "run the stream processor")
 	cmd.Flags().Bool("outbox", envBoolDefault("FC_OUTBOX_ENABLED", false), "run the outbox processor")
-	cmd.Flags().Bool("router", envBoolDefault("FC_ROUTER_ENABLED", false), "run the message router")
+	cmd.Flags().Bool("router", envBoolDefault("FC_ROUTER_ENABLED", true), "run the message router (uses the embedded Postgres broker by default)")
+	cmd.Flags().Bool("mcp", envBoolDefault("FC_MCP_ENABLED", false), "run the MCP HTTP server")
 }
 
 func optsFromFlags(cmd *cobra.Command) startOpts {
@@ -83,6 +81,7 @@ func optsFromFlags(cmd *cobra.Command) startOpts {
 		StreamEnabled:    getBool("stream"),
 		OutboxEnabled:    getBool("outbox"),
 		RouterEnabled:    getBool("router"),
+		MCPEnabled:       getBool("mcp"),
 	}
 }
 
@@ -137,88 +136,50 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	if err := migrate.Run(rootCtx, pool); err != nil {
 		return fmt.Errorf("migrations: %w", err)
 	}
+
+	// Pre-set bootstrap-admin defaults so the dev workflow yields a
+	// usable login on first run. fc-server requires operators to set
+	// these explicitly. Existing env values win.
+	setEnvDefault(seed.EnvBootstrapEmail, "admin@flowcatalyst.local")
+	setEnvDefault(seed.EnvBootstrapPassword, "DevPassword123!")
+	setEnvDefault(seed.EnvBootstrapName, "Local Admin")
+
+	// Ensure a persistent JWT signing key exists so tokens survive a
+	// restart. fc-dev stores it under ~/.flowcatalyst/jwt-signing-key.pem
+	// (0600). fc-server requires operators to supply one via env.
+	if os.Getenv("FC_JWT_SIGNING_KEY_PATH") == "" {
+		defaultKey := filepath.Join(filepath.Dir(opts.EmbeddedDBPath), "jwt-signing-key.pem")
+		if resolved, err := server.EnsureSigningKeyFile(defaultKey); err == nil {
+			_ = os.Setenv("FC_JWT_SIGNING_KEY_PATH", resolved)
+		} else {
+			slog.Warn("unable to persist JWT signing key — falling back to ephemeral", "err", err)
+		}
+	}
+
 	if err := seed.NewSeeder(pool).Run(rootCtx); err != nil {
 		return fmt.Errorf("seed: %w", err)
 	}
 
-	// ── Platform API ───────────────────────────────────────────────────
-	r := chi.NewRouter()
-	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
-	r.Use(middleware.Recoverer)
-	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-	})
+	// SIGTERM / SIGINT → cancel rootCtx so server.Run drains.
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-stop
+		slog.Info("shutdown signal received")
+		cancel()
+	}()
 
-	// fc-dev shares server.WirePlatform with fc-server but with a dev-friendly
-	// envCfg (ephemeral JWT signing key, dev OAuth secret).
-	if err := server.WirePlatform(r, pool, devEnvCfg(databaseURL)); err != nil {
-		return fmt.Errorf("wire platform: %w", err)
-	}
-	go server.StartPurger(rootCtx, pool)
-
-	// Embedded Vue SPA (built by `make frontend`). Mounted as the
-	// NotFound handler so every API route registered above takes
-	// precedence; only paths the API doesn't know fall through to
-	// asset-or-SPA-fallback. When the binary was built without
-	// `make frontend` the handler reports a clear "frontend not
-	// built" message instead of an opaque 404.
+	// ── Delegate to the shared run-loop ────────────────────────────────
+	cfg := devEnvCfg(opts, databaseURL)
+	runOpts := server.RunOptions{}
 	if frontend.IsAvailable() {
-		r.NotFound(frontend.Handler().ServeHTTP)
-		slog.Info("embedded Vue SPA mounted on /")
+		runOpts.Fallback = frontend.Handler()
+		slog.Info("embedded Vue SPA available")
 	} else {
 		slog.Warn("frontend not embedded — run `make frontend` and rebuild to ship the SPA")
 	}
-
-	// ── Optional subsystems ────────────────────────────────────────────
-	var wg sync.WaitGroup
-	if opts.SchedulerEnabled {
-		wg.Add(1)
-		go func() { defer wg.Done(); server.StartScheduler(rootCtx, pool, devEnvCfg(databaseURL)) }()
-	}
-	if opts.StreamEnabled {
-		wg.Add(1)
-		go func() { defer wg.Done(); server.StartStreamProcessor(rootCtx, pool, devEnvCfg(databaseURL)) }()
-	}
-	if opts.OutboxEnabled {
-		wg.Add(1)
-		go func() { defer wg.Done(); server.StartOutboxProcessor(rootCtx, pool, devEnvCfg(databaseURL)) }()
-	}
-	if opts.RouterEnabled {
-		wg.Add(1)
-		go func() { defer wg.Done(); server.StartRouter(rootCtx, pool, devEnvCfg(databaseURL)) }()
-	}
-
-	// ── HTTP server ────────────────────────────────────────────────────
-	srv := &http.Server{
-		Addr:              fmt.Sprintf(":%d", opts.APIPort),
-		Handler:           r,
-		ReadHeaderTimeout: 10 * time.Second,
-	}
-	go func() {
-		slog.Info("fc-dev API listening", "addr", srv.Addr)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			slog.Error("api server error", "err", err)
-			cancel()
-		}
-	}()
-
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-	select {
-	case <-stop:
-		slog.Info("shutdown signal received")
-	case <-rootCtx.Done():
-	}
-	cancel()
-
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer shutdownCancel()
-	_ = srv.Shutdown(shutdownCtx)
-	wg.Wait()
-	slog.Info("fc-dev stopped")
-	return nil
+	runOpts.ExtraAPIRoutes = func(_ chi.Router) {} // no extras today
+	return server.Run(rootCtx, pool, cfg, runOpts)
 }
 
 // banner prints the startup summary the way Rust fc-dev does.
@@ -232,6 +193,7 @@ func banner(opts startOpts) {
 		"stream", opts.StreamEnabled,
 		"outbox", opts.OutboxEnabled,
 		"router", opts.RouterEnabled,
+		"mcp", opts.MCPEnabled,
 	)
 }
 

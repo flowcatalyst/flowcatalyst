@@ -16,11 +16,11 @@ const Source = "platform:admin"
 // ── event type constants ──────────────────────────────────────────────────
 
 const (
-	OAuthClientCreatedType     = "platform:admin:oauth-client:created"
-	OAuthClientUpdatedType     = "platform:admin:oauth-client:updated"
-	OAuthClientActivatedType   = "platform:admin:oauth-client:activated"
-	OAuthClientDeactivatedType = "platform:admin:oauth-client:deactivated"
-	OAuthClientDeletedType     = "platform:admin:oauth-client:deleted"
+	OAuthClientCreatedType       = "platform:admin:oauth-client:created"
+	OAuthClientUpdatedType       = "platform:admin:oauth-client:updated"
+	OAuthClientActivatedType     = "platform:admin:oauth-client:activated"
+	OAuthClientDeactivatedType   = "platform:admin:oauth-client:deactivated"
+	OAuthClientDeletedType       = "platform:admin:oauth-client:deleted"
 	OAuthClientSecretRotatedType = "platform:admin:oauth-client:secret-rotated"
 
 	AnchorDomainCreatedType = "platform:admin:anchor-domain:created"
@@ -35,19 +35,31 @@ const (
 	IdpRoleMappingDeletedType = "platform:admin:idp-role-mapping:deleted"
 )
 
-func oauthSubject(id string) string  { return "platform.oauthclient." + id }
-func oauthGroup(id string) string    { return "platform:oauthclient:" + id }
-func anchorSubject(id string) string { return "platform.anchordomain." + id }
-func anchorGroup(id string) string   { return "platform:anchordomain:" + id }
-func configSubject(id string) string { return "platform.authconfig." + id }
-func configGroup(id string) string   { return "platform:authconfig:" + id }
+func oauthSubject(id string) string   { return "platform.oauthclient." + id }
+func oauthGroup(id string) string     { return "platform:oauthclient:" + id }
+func anchorSubject(id string) string  { return "platform.anchordomain." + id }
+func anchorGroup(id string) string    { return "platform:anchordomain:" + id }
+func configSubject(id string) string  { return "platform.authconfig." + id }
+func configGroup(id string) string    { return "platform:authconfig:" + id }
 func mappingSubject(id string) string { return "platform.idprolemapping." + id }
 func mappingGroup(id string) string   { return "platform:idprolemapping:" + id }
 
 // ── OAuthClient events ────────────────────────────────────────────────────
 
+// NewOAuthClientCreatedEvent builds the created event with the canonical
+// subject. Exported for cross-aggregate orchestrations (application
+// provision-service-account) that emit it inside their own transaction.
+func NewOAuthClientCreatedEvent(ec usecase.ExecutionContext, oauthID, clientID, clientName string) OAuthClientCreated {
+	return OAuthClientCreated{
+		Metadata:      usecase.NewEventMetadata(ec, OAuthClientCreatedType, Source, oauthSubject(oauthID)),
+		OAuthClientID: oauthID,
+		ClientID:      clientID,
+		ClientName:    clientName,
+	}
+}
+
 type OAuthClientCreated struct {
-	Metadata     usecase.EventMetadata
+	Metadata      usecase.EventMetadata
 	OAuthClientID string
 	ClientID      string
 	ClientName    string
@@ -113,7 +125,9 @@ func (e OAuthClientActivated) CausationID() string   { return e.Metadata.Causati
 func (e OAuthClientActivated) ExecutionID() string   { return e.Metadata.ExecutionID }
 func (e OAuthClientActivated) MessageGroup() string  { return oauthGroup(e.OAuthClientID) }
 func (e OAuthClientActivated) ToDataJSON() ([]byte, error) {
-	return json.Marshal(struct{ ID string `json:"oauthClientId"` }{e.OAuthClientID})
+	return json.Marshal(struct {
+		ID string `json:"oauthClientId"`
+	}{e.OAuthClientID})
 }
 
 type OAuthClientDeactivated struct {
@@ -133,7 +147,9 @@ func (e OAuthClientDeactivated) CausationID() string   { return e.Metadata.Causa
 func (e OAuthClientDeactivated) ExecutionID() string   { return e.Metadata.ExecutionID }
 func (e OAuthClientDeactivated) MessageGroup() string  { return oauthGroup(e.OAuthClientID) }
 func (e OAuthClientDeactivated) ToDataJSON() ([]byte, error) {
-	return json.Marshal(struct{ ID string `json:"oauthClientId"` }{e.OAuthClientID})
+	return json.Marshal(struct {
+		ID string `json:"oauthClientId"`
+	}{e.OAuthClientID})
 }
 
 type OAuthClientDeleted struct {
@@ -177,7 +193,9 @@ func (e OAuthClientSecretRotated) CausationID() string   { return e.Metadata.Cau
 func (e OAuthClientSecretRotated) ExecutionID() string   { return e.Metadata.ExecutionID }
 func (e OAuthClientSecretRotated) MessageGroup() string  { return oauthGroup(e.OAuthClientID) }
 func (e OAuthClientSecretRotated) ToDataJSON() ([]byte, error) {
-	return json.Marshal(struct{ ID string `json:"oauthClientId"` }{e.OAuthClientID})
+	return json.Marshal(struct {
+		ID string `json:"oauthClientId"`
+	}{e.OAuthClientID})
 }
 
 // ── AnchorDomain events ───────────────────────────────────────────────────

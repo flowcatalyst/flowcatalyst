@@ -76,12 +76,18 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*Event, error) {
 	return r.fetchOne(ctx,
 		`SELECT id, spec_version, type, source, subject, time, data,
 		        deduplication_id, client_id, message_group, correlation_id,
-		        causation_id, created_at
+		        causation_id, created_at, application, subdomain, aggregate,
+		        projected_at
 		   FROM msg_events_read WHERE id = $1`, id)
 }
 
 // FilterParams is the query DTO for list endpoints. `PrincipalID` is
 // not yet wired (no backing column on msg_events_read).
+//
+// The plural slice fields back the SPA's CSV multi-filters
+// (clientIds/applications/subdomains/aggregates/types). When set they
+// build `col = ANY($n)` conditions; the singular fields stay for the SDK
+// callers and build `col = $n`.
 type FilterParams struct {
 	Type          *string
 	Source        *string
@@ -93,6 +99,13 @@ type FilterParams struct {
 	Until         *time.Time
 	Limit         int
 	Offset        int
+
+	// CSV multi-filters from the SPA.
+	ClientIDs    []string
+	Applications []string
+	Subdomains   []string
+	Aggregates   []string
+	Types        []string
 }
 
 // FindWithFilters returns events from the read table matching non-nil
@@ -100,7 +113,8 @@ type FilterParams struct {
 func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Event, error) {
 	q := `SELECT id, spec_version, type, source, subject, time, data,
 		     deduplication_id, client_id, message_group, correlation_id,
-		     causation_id, created_at
+		     causation_id, created_at, application, subdomain, aggregate,
+		     projected_at
 		  FROM msg_events_read`
 	args := []any{}
 	conds := []string{}
@@ -108,8 +122,15 @@ func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Eve
 		args = append(args, v)
 		conds = append(conds, fmt.Sprintf("%s = $%d", col, len(args)))
 	}
+	addAny := func(col string, vs []string) {
+		args = append(args, vs)
+		conds = append(conds, fmt.Sprintf("%s = ANY($%d)", col, len(args)))
+	}
 	if p.Type != nil {
 		add("type", *p.Type)
+	}
+	if len(p.Types) > 0 {
+		addAny("type", p.Types)
 	}
 	if p.Source != nil {
 		add("source", *p.Source)
@@ -119,6 +140,18 @@ func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Eve
 	}
 	if p.ClientID != nil {
 		add("client_id", *p.ClientID)
+	}
+	if len(p.ClientIDs) > 0 {
+		addAny("client_id", p.ClientIDs)
+	}
+	if len(p.Applications) > 0 {
+		addAny("application", p.Applications)
+	}
+	if len(p.Subdomains) > 0 {
+		addAny("subdomain", p.Subdomains)
+	}
+	if len(p.Aggregates) > 0 {
+		addAny("aggregate", p.Aggregates)
 	}
 	// PrincipalID filter dropped — no backing column on msg_events_read.
 	if p.CorrelationID != nil {
@@ -162,6 +195,65 @@ func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Eve
 	return out, rows.Err()
 }
 
+// FindRecentRaw returns the most-recent `limit` rows from the write-side
+// msg_events table, including context_data. Powers the debug raw-event
+// view (GET /bff/debug/events) which needs the un-projected envelope —
+// the read table drops context_data. Ordered most-recent first.
+func (r *Repository) FindRecentRaw(ctx context.Context, limit int) ([]Event, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 100
+	}
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, spec_version, type, source, subject, time, data,
+		        deduplication_id, client_id, message_group, correlation_id,
+		        causation_id, context_data, created_at
+		   FROM msg_events
+		  ORDER BY created_at DESC
+		  LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Event
+	for rows.Next() {
+		e, err := scanRawRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *e)
+	}
+	return out, rows.Err()
+}
+
+// scanRawRow scans a write-side msg_events row, including context_data.
+func scanRawRow(rows pgx.Rows) (*Event, error) {
+	var e Event
+	var dataBytes, ctxBytes []byte
+	var subject, dedupID *string
+	if err := rows.Scan(&e.ID, &e.SpecVersion, &e.Type, &e.Source, &subject,
+		&e.Time, &dataBytes, &dedupID, &e.ClientID, &e.MessageGroup,
+		&e.CorrelationID, &e.CausationID, &ctxBytes, &e.CreatedAt); err != nil {
+		return nil, err
+	}
+	if subject != nil {
+		e.Subject = *subject
+	}
+	if dedupID != nil {
+		e.DeduplicationID = *dedupID
+	}
+	if len(dataBytes) > 0 {
+		e.Data = json.RawMessage(dataBytes)
+	}
+	e.Context = []ContextEntry{}
+	if len(ctxBytes) > 0 {
+		_ = json.Unmarshal(ctxBytes, &e.Context)
+		if e.Context == nil {
+			e.Context = []ContextEntry{}
+		}
+	}
+	return &e, nil
+}
+
 // DistinctValues lists up to `limit` distinct non-null values for the
 // given column. Used to populate the frontend's filter-options dropdowns
 // (event types, sources, client IDs). The column name is hardcoded by
@@ -170,6 +262,7 @@ func (r *Repository) DistinctValues(ctx context.Context, column string, limit in
 	allowed := map[string]bool{
 		"type": true, "source": true, "subject": true,
 		"client_id": true, "correlation_id": true,
+		"application": true, "subdomain": true, "aggregate": true,
 		// principal_id has no backing column on msg_events_read.
 	}
 	if !allowed[column] {
@@ -222,7 +315,8 @@ func scanRow(rows pgx.Rows) (*Event, error) {
 	var subject, dedupID *string
 	if err := rows.Scan(&e.ID, &e.SpecVersion, &e.Type, &e.Source, &subject,
 		&e.Time, &dataBytes, &dedupID, &e.ClientID, &e.MessageGroup,
-		&e.CorrelationID, &e.CausationID, &e.CreatedAt); err != nil {
+		&e.CorrelationID, &e.CausationID, &e.CreatedAt,
+		&e.Application, &e.Subdomain, &e.Aggregate, &e.ProjectedAt); err != nil {
 		return nil, err
 	}
 	if subject != nil {

@@ -16,11 +16,11 @@ import (
 type WebhookAuthType string
 
 const (
-	AuthNone      WebhookAuthType = "NONE"
-	AuthBearer    WebhookAuthType = "BEARER_TOKEN"
-	AuthBasic     WebhookAuthType = "BASIC_AUTH"
-	AuthAPIKey    WebhookAuthType = "API_KEY"
-	AuthHMAC      WebhookAuthType = "HMAC_SIGNATURE"
+	AuthNone   WebhookAuthType = "NONE"
+	AuthBearer WebhookAuthType = "BEARER_TOKEN"
+	AuthBasic  WebhookAuthType = "BASIC_AUTH"
+	AuthAPIKey WebhookAuthType = "API_KEY"
+	AuthHMAC   WebhookAuthType = "HMAC_SIGNATURE"
 )
 
 // ParseAuthType is the lenient parser. Unknown → NONE.

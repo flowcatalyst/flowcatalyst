@@ -34,7 +34,15 @@ no docker-compose, no separate migration step.
 Invoking ` + "`fc-dev`" + ` with no subcommand is identical to ` + "`fc-dev start`" + `.`,
 		// No-arg invocation runs start. Matches the Rust fc-dev UX.
 		RunE: runStart,
+		// Runtime failures (port in use, DB unreachable) shouldn't trigger
+		// cobra's "did you mean…" help dump — that noise hides the real
+		// slog.Error line. We log + exit ourselves in main.
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
+	// Mirror start's flag set onto the root command so `fc-dev` and
+	// `fc-dev start` accept the same options.
+	addStartFlags(root)
 
 	root.AddCommand(newStartCmd())
 	root.AddCommand(newInitCmd())

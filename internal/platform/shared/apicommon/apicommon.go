@@ -9,13 +9,35 @@ type CreatedResponse struct {
 	ID string `json:"id"`
 }
 
-// PaginatedResponse is the standard offset-paginated envelope.
-type PaginatedResponse[T any] struct {
-	Items      []T   `json:"items"`
-	TotalCount int64 `json:"totalCount"`
+// StatusChangeResponse is the standard envelope for lifecycle endpoints
+// (deactivate, send-password-reset, …) that return a human-readable
+// message. Matches Rust's {"message": "..."} shape.
+type StatusChangeResponse struct {
+	Message string `json:"message"`
+}
+
+// OffsetPage is the offset-paginated envelope matching Rust fc-platform's
+// PaginatedResponse<T>: `{data, page, size, total, total_pages}` with a
+// 0-based page index.
+type OffsetPage[T any] struct {
+	Data       []T   `json:"data"`
 	Page       int   `json:"page"`
-	PageSize   int   `json:"pageSize"`
-	TotalPages int   `json:"totalPages"`
+	Size       int   `json:"size"`
+	Total      int64 `json:"total"`
+	TotalPages int   `json:"total_pages"`
+}
+
+// NewOffsetPage builds an OffsetPage, computing total_pages and ensuring a
+// non-nil Data slice so it serializes as `[]` rather than `null`.
+func NewOffsetPage[T any](data []T, page, size int, total int64) OffsetPage[T] {
+	if data == nil {
+		data = []T{}
+	}
+	totalPages := 0
+	if size > 0 {
+		totalPages = int((total + int64(size) - 1) / int64(size))
+	}
+	return OffsetPage[T]{Data: data, Page: page, Size: size, Total: total, TotalPages: totalPages}
 }
 
 // CursorResponse is the cursor-based pagination envelope used for
@@ -31,21 +53,36 @@ type SizeOnlyResponse[T any] struct {
 	Items []T `json:"items"`
 }
 
-// PaginationParams is the typical offset-based query.
-type PaginationParams struct {
-	Page     int `query:"page"`
-	PageSize int `query:"pageSize"`
+// PageQuery is the embeddable offset-pagination query, matching Rust's
+// PaginationParams: `page` (0-based, default 0) and `size` (default 20),
+// accepting the historical aliases `limit`/`pageSize`/`page_size` for size.
+type PageQuery struct {
+	Page          int `query:"page"`
+	Size          int `query:"size"`
+	Limit         int `query:"limit"`
+	PageSizeCamel int `query:"pageSize"`
+	PageSizeSnake int `query:"page_size"`
 }
 
-// Defaults applies the canonical defaults (page=1, pageSize=50).
-func (p *PaginationParams) Defaults() {
-	if p.Page < 1 {
-		p.Page = 1
+// PageIndex returns the resolved 0-based page index (default 0).
+func (p PageQuery) PageIndex() int {
+	if p.Page < 0 {
+		return 0
 	}
-	if p.PageSize < 1 || p.PageSize > 200 {
-		p.PageSize = 50
-	}
+	return p.Page
 }
 
-// Offset returns the SQL offset for the current page/page-size.
-func (p *PaginationParams) Offset() int { return (p.Page - 1) * p.PageSize }
+// PageSizeVal returns the resolved page size (default 20), honoring the size
+// aliases in priority order: size, limit, pageSize, page_size.
+func (p PageQuery) PageSizeVal() int {
+	for _, v := range []int{p.Size, p.Limit, p.PageSizeCamel, p.PageSizeSnake} {
+		if v > 0 {
+			return v
+		}
+	}
+	return 20
+}
+
+// OffsetVal and LimitVal return the SQL offset/limit for the resolved page.
+func (p PageQuery) OffsetVal() int64 { return int64(p.PageIndex()) * int64(p.PageSizeVal()) }
+func (p PageQuery) LimitVal() int64  { return int64(p.PageSizeVal()) }

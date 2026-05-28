@@ -59,3 +59,26 @@ VALUES (@role_id, @permission);
 SELECT role_id, permission
 FROM iam_role_permissions
 WHERE role_id = ANY(@role_ids::text[]);
+
+-- name: RoleFindByApplicationID :many
+SELECT id, application_id, application_code, name, display_name, description,
+       source, client_managed, created_at, updated_at
+FROM iam_roles
+WHERE application_id = $1
+ORDER BY name;
+
+-- name: RoleApplicationCodes :many
+SELECT DISTINCT application_code FROM iam_roles ORDER BY application_code;
+
+-- name: PermissionFindAll :many
+SELECT id, code, subdomain, context, aggregate, action, description, created_at, updated_at
+FROM iam_permissions
+ORDER BY code;
+
+-- name: PermissionFindByCode :one
+SELECT id, code, subdomain, context, aggregate, action, description, created_at, updated_at
+FROM iam_permissions
+WHERE code = $1;
+
+-- name: PermissionDeleteByCode :exec
+DELETE FROM iam_permissions WHERE code = $1;

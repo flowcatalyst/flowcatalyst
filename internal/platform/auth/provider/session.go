@@ -85,4 +85,21 @@ func (s *FCSession) applyClaims(c *Claims) {
 	if c.Email != "" {
 		jc.Extra["email"] = c.Email
 	}
+	if c.Name != "" {
+		jc.Extra["name"] = c.Name
+	}
+	// OIDC ID-token claims. Populated only when the caller hydrated the
+	// ID-token side of the request (authorize flow with openid scope).
+	if c.Nonce != "" {
+		jc.Extra["nonce"] = c.Nonce
+	}
+	if c.AuthorizedParty != "" {
+		jc.Extra["azp"] = c.AuthorizedParty
+	}
+	if c.AuthTime > 0 {
+		jc.Extra["auth_time"] = c.AuthTime
+	}
+	if c.EmailVerified != nil {
+		jc.Extra["email_verified"] = *c.EmailVerified
+	}
 }

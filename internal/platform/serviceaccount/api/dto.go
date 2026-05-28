@@ -33,19 +33,6 @@ func (w WebhookCredentialsDTO) toEntity() serviceaccount.WebhookCredentials {
 	}
 }
 
-func webhookCredsFromEntity(c serviceaccount.WebhookCredentials) WebhookCredentialsDTO {
-	return WebhookCredentialsDTO{
-		AuthType:         string(c.AuthType),
-		Token:            c.Token,
-		Username:         c.Username,
-		Password:         c.Password,
-		HeaderName:       c.HeaderName,
-		SigningSecret:    c.SigningSecret,
-		SigningAlgorithm: c.SigningAlgorithm,
-		SignatureHeader:  c.SignatureHeader,
-	}
-}
-
 // RoleAssignmentDTO mirrors serviceaccount.RoleAssignment.
 type RoleAssignmentDTO struct {
 	Role             string          `json:"roleName"`
@@ -55,12 +42,28 @@ type RoleAssignmentDTO struct {
 	AssignedBy       *string         `json:"assignedBy,omitempty"`
 }
 
+// roleDTOs maps entity role assignments to wire rows.
+func roleDTOs(roles []serviceaccount.RoleAssignment) []RoleAssignmentDTO {
+	out := make([]RoleAssignmentDTO, 0, len(roles))
+	for _, r := range roles {
+		out = append(out, RoleAssignmentDTO{
+			Role:             r.Role,
+			ClientID:         r.ClientID,
+			AssignmentSource: r.AssignmentSource,
+			AssignedAt:       jsontime.New(r.AssignedAt),
+			AssignedBy:       r.AssignedBy,
+		})
+	}
+	return out
+}
+
 // CreateServiceAccountRequest is the wire body for POST /api/service-accounts.
 type CreateServiceAccountRequest struct {
 	Code               string                 `json:"code"`
 	Name               string                 `json:"name"`
 	Description        *string                `json:"description,omitempty"`
 	Scope              *string                `json:"scope,omitempty"`
+	ClientIDs          []string               `json:"clientIds,omitempty"`
 	ApplicationID      *string                `json:"applicationId,omitempty"`
 	WebhookCredentials *WebhookCredentialsDTO `json:"webhookCredentials,omitempty"`
 }
@@ -76,6 +79,7 @@ func (r CreateServiceAccountRequest) toCommand() operations.CreateCommand {
 		Name:               r.Name,
 		Description:        r.Description,
 		Scope:              r.Scope,
+		ClientIDs:          r.ClientIDs,
 		ApplicationID:      r.ApplicationID,
 		WebhookCredentials: creds,
 	}
@@ -85,6 +89,8 @@ func (r CreateServiceAccountRequest) toCommand() operations.CreateCommand {
 type UpdateServiceAccountRequest struct {
 	Name               *string                `json:"name,omitempty"`
 	Description        *string                `json:"description,omitempty"`
+	Scope              *string                `json:"scope,omitempty"`
+	ClientIDs          []string               `json:"clientIds,omitempty"`
 	WebhookCredentials *WebhookCredentialsDTO `json:"webhookCredentials,omitempty"`
 }
 
@@ -98,6 +104,8 @@ func (r UpdateServiceAccountRequest) toCommand(id string) operations.UpdateComma
 		ID:                 id,
 		Name:               r.Name,
 		Description:        r.Description,
+		Scope:              r.Scope,
+		ClientIDs:          r.ClientIDs,
 		WebhookCredentials: creds,
 	}
 }
@@ -107,21 +115,45 @@ type AssignRolesRequest struct {
 	Roles []string `json:"roles"`
 }
 
-// ServiceAccountResponse mirrors serviceaccount.ServiceAccount.
+// ServiceAccountOAuthSecrets carries the one-time OAuth client credentials.
+type ServiceAccountOAuthSecrets struct {
+	ClientID     string `json:"clientId"`
+	ClientSecret string `json:"clientSecret"`
+}
+
+// ServiceAccountWebhookSecrets carries the one-time webhook credentials.
+type ServiceAccountWebhookSecrets struct {
+	AuthToken     string `json:"authToken"`
+	SigningSecret string `json:"signingSecret"`
+}
+
+// CreateServiceAccountResponse is the 201 body for POST /api/service-accounts.
+// The plaintext secrets are returned exactly once, at creation.
+type CreateServiceAccountResponse struct {
+	ServiceAccount ServiceAccountResponse       `json:"serviceAccount"`
+	PrincipalID    string                       `json:"principalId"`
+	OAuth          ServiceAccountOAuthSecrets   `json:"oauth"`
+	Webhook        ServiceAccountWebhookSecrets `json:"webhook"`
+}
+
+// ServiceAccountResponse is the wire shape the SPA + fcsdk expect: flat,
+// with `authType` hoisted out of the webhook credentials and `roles` as a
+// plain name list. Webhook secrets (token/signingSecret/password) are NEVER
+// exposed here — they are only returned once at create/regenerate time.
 type ServiceAccountResponse struct {
-	ID                 string                `json:"id"`
-	Code               string                `json:"code"`
-	Name               string                `json:"name"`
-	Description        *string               `json:"description,omitempty"`
-	Active             bool                  `json:"active"`
-	ClientIDs          []string              `json:"clientIds"`
-	Scope              *string               `json:"scope,omitempty"`
-	ApplicationID      *string               `json:"applicationId,omitempty"`
-	WebhookCredentials WebhookCredentialsDTO `json:"webhookCredentials"`
-	Roles              []RoleAssignmentDTO   `json:"roles"`
-	LastUsedAt         *httpcompat.Time      `json:"lastUsedAt,omitempty"`
-	CreatedAt          httpcompat.Time       `json:"createdAt"`
-	UpdatedAt          httpcompat.Time       `json:"updatedAt"`
+	ID            string           `json:"id"`
+	Code          string           `json:"code"`
+	Name          string           `json:"name"`
+	Description   *string          `json:"description,omitempty"`
+	Active        bool             `json:"active"`
+	ClientIDs     []string         `json:"clientIds"`
+	Scope         *string          `json:"scope,omitempty"`
+	ApplicationID *string          `json:"applicationId,omitempty"`
+	AuthType      string           `json:"authType"`
+	Roles         []string         `json:"roles"`
+	LastUsedAt    *httpcompat.Time `json:"lastUsedAt,omitempty"`
+	CreatedAt     httpcompat.Time  `json:"createdAt"`
+	UpdatedAt     httpcompat.Time  `json:"updatedAt"`
 }
 
 func fromEntity(sa *serviceaccount.ServiceAccount) ServiceAccountResponse {
@@ -129,15 +161,9 @@ func fromEntity(sa *serviceaccount.ServiceAccount) ServiceAccountResponse {
 	if clientIDs == nil {
 		clientIDs = []string{}
 	}
-	roles := make([]RoleAssignmentDTO, 0, len(sa.Roles))
+	roles := make([]string, 0, len(sa.Roles))
 	for _, r := range sa.Roles {
-		roles = append(roles, RoleAssignmentDTO{
-			Role:             r.Role,
-			ClientID:         r.ClientID,
-			AssignmentSource: r.AssignmentSource,
-			AssignedAt:       jsontime.New(r.AssignedAt),
-			AssignedBy:       r.AssignedBy,
-		})
+		roles = append(roles, r.Role)
 	}
 	var lastUsed *httpcompat.Time
 	if sa.LastUsedAt != nil {
@@ -145,31 +171,43 @@ func fromEntity(sa *serviceaccount.ServiceAccount) ServiceAccountResponse {
 		lastUsed = &v
 	}
 	return ServiceAccountResponse{
-		ID:                 sa.ID,
-		Code:               sa.Code,
-		Name:               sa.Name,
-		Description:        sa.Description,
-		Active:             sa.Active,
-		ClientIDs:          clientIDs,
-		Scope:              sa.Scope,
-		ApplicationID:      sa.ApplicationID,
-		WebhookCredentials: webhookCredsFromEntity(sa.WebhookCredentials),
-		Roles:              roles,
-		LastUsedAt:         lastUsed,
-		CreatedAt:          jsontime.New(sa.CreatedAt),
-		UpdatedAt:          jsontime.New(sa.UpdatedAt),
+		ID:            sa.ID,
+		Code:          sa.Code,
+		Name:          sa.Name,
+		Description:   sa.Description,
+		Active:        sa.Active,
+		ClientIDs:     clientIDs,
+		Scope:         sa.Scope,
+		ApplicationID: sa.ApplicationID,
+		AuthType:      string(sa.WebhookCredentials.AuthType),
+		Roles:         roles,
+		LastUsedAt:    lastUsed,
+		CreatedAt:     jsontime.New(sa.CreatedAt),
+		UpdatedAt:     jsontime.New(sa.UpdatedAt),
 	}
 }
 
 // ServiceAccountListResponse is the wire shape for GET /api/service-accounts.
+// Matches the Rust shape: `{serviceAccounts, total}`. The SPA's
+// ServiceAccountListPage reads `response.serviceAccounts` directly.
 type ServiceAccountListResponse struct {
-	Items []ServiceAccountResponse `json:"items"`
+	ServiceAccounts []ServiceAccountResponse `json:"serviceAccounts"`
+	Total           int                      `json:"total"`
 }
 
 // ServiceAccountRoleListResponse is the wire shape for
 // GET /api/service-accounts/{id}/roles.
 type ServiceAccountRoleListResponse struct {
-	Items []RoleAssignmentDTO `json:"items"`
+	Roles []RoleAssignmentDTO `json:"roles"`
+}
+
+// ServiceAccountRolesAssignedResponse is the wire shape for
+// PUT /api/service-accounts/{id}/roles. Note the SPA uses addedRoles /
+// removedRoles here (distinct from the principal endpoint's added/removed).
+type ServiceAccountRolesAssignedResponse struct {
+	Roles        []RoleAssignmentDTO `json:"roles"`
+	AddedRoles   []string            `json:"addedRoles"`
+	RemovedRoles []string            `json:"removedRoles"`
 }
 
 // RegenerateAuthTokenResponse is the wire shape for

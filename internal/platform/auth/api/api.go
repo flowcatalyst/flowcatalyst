@@ -76,7 +76,7 @@ func Register(api huma.API, s *State) {
 		Path:          "/api/oauth-clients/{id}/activate",
 		Summary:       "Activate an OAuth client",
 		Tags:          []string{tagOAuth},
-		DefaultStatus: http.StatusNoContent,
+		DefaultStatus: http.StatusOK,
 	}, s.activateOAuthClient)
 
 	huma.Register(api, huma.Operation{
@@ -85,7 +85,7 @@ func Register(api huma.API, s *State) {
 		Path:          "/api/oauth-clients/{id}/deactivate",
 		Summary:       "Deactivate an OAuth client",
 		Tags:          []string{tagOAuth},
-		DefaultStatus: http.StatusNoContent,
+		DefaultStatus: http.StatusOK,
 	}, s.deactivateOAuthClient)
 
 	huma.Register(api, huma.Operation{
@@ -244,7 +244,7 @@ func (s *State) listOAuthClients(ctx context.Context, _ *emptyInput) (*listOAuth
 	for i := range rows {
 		out = append(out, oauthClientFromEntity(&rows[i]))
 	}
-	return &listOAuthClientsOutput{Body: OAuthClientListResponse{Items: out}}, nil
+	return &listOAuthClientsOutput{Body: OAuthClientListResponse{Clients: out}}, nil
 }
 
 type getOAuthClientOutput struct {
@@ -284,11 +284,17 @@ func (s *State) createOAuthClient(ctx context.Context, in *createOAuthClientInpu
 		return nil, err
 	}
 	event := committed.Event()
-	resp := CreateOAuthClientResponse{
-		ID:         event.OAuthClientID,
-		ClientID:   event.ClientID,
-		ClientName: event.ClientName,
+	// Re-fetch the persisted client so the SPA receives the full
+	// OAuthClientResponse under `client` (oauth-clients.ts:56). Matches
+	// Rust oauth_clients_api.rs:294-305.
+	c, err := s.Repo.OAuthClients.FindByID(ctx, event.OAuthClientID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
+	if c == nil {
+		return nil, usecase.Internal("REPO", "oauth client created but row not found", nil)
+	}
+	resp := CreateOAuthClientResponse{Client: oauthClientFromEntity(c)}
 	if plaintext, ok := operations.PopStashedSecret(event.OAuthClientID); ok {
 		resp.ClientSecret = plaintext
 	}
@@ -312,7 +318,14 @@ func (s *State) updateOAuthClient(ctx context.Context, in *updateOAuthClientInpu
 	return &emptyOutput{}, nil
 }
 
-func (s *State) activateOAuthClient(ctx context.Context, in *idInput) (*emptyOutput, error) {
+// oauthClientStatusChangeOutput carries the {message} body the SPA expects
+// from activate/deactivate (oauth-clients.ts:109-117). Returns 200 + body
+// rather than 204 so apiFetch does not resolve to undefined.
+type oauthClientStatusChangeOutput struct {
+	Body apicommon.StatusChangeResponse
+}
+
+func (s *State) activateOAuthClient(ctx context.Context, in *idInput) (*oauthClientStatusChangeOutput, error) {
 	ac, err := authedAnchor(ctx)
 	if err != nil {
 		return nil, err
@@ -322,10 +335,10 @@ func (s *State) activateOAuthClient(ctx context.Context, in *idInput) (*emptyOut
 		operations.ActivateOAuthClientCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &oauthClientStatusChangeOutput{Body: apicommon.StatusChangeResponse{Message: "OAuth client activated"}}, nil
 }
 
-func (s *State) deactivateOAuthClient(ctx context.Context, in *idInput) (*emptyOutput, error) {
+func (s *State) deactivateOAuthClient(ctx context.Context, in *idInput) (*oauthClientStatusChangeOutput, error) {
 	ac, err := authedAnchor(ctx)
 	if err != nil {
 		return nil, err
@@ -335,7 +348,7 @@ func (s *State) deactivateOAuthClient(ctx context.Context, in *idInput) (*emptyO
 		operations.DeactivateOAuthClientCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &oauthClientStatusChangeOutput{Body: apicommon.StatusChangeResponse{Message: "OAuth client deactivated"}}, nil
 }
 
 type rotateOAuthClientSecretOutput struct {
@@ -354,7 +367,16 @@ func (s *State) rotateOAuthClientSecret(ctx context.Context, in *idInput) (*rota
 		return nil, err
 	}
 	event := committed.Event()
-	resp := RotateOAuthClientSecretResponse{ID: event.OAuthClientID}
+	// The SPA expects the public client_id string, not the internal id
+	// (oauth-clients.ts:62-65). Re-fetch to obtain it.
+	c, err := s.Repo.OAuthClients.FindByID(ctx, event.OAuthClientID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
+	}
+	if c == nil {
+		return nil, httperror.NotFound("OAuthClient", event.OAuthClientID)
+	}
+	resp := RotateOAuthClientSecretResponse{ClientID: c.ClientID}
 	if plaintext, ok := operations.PopStashedSecret(event.OAuthClientID); ok {
 		resp.ClientSecret = plaintext
 	}

@@ -85,6 +85,19 @@ func (r *ClientConfigRepo) FindByApplication(ctx context.Context, applicationID 
 	return out, nil
 }
 
+// FindByClient lists every (application) config row for a client.
+func (r *ClientConfigRepo) FindByClient(ctx context.Context, clientID string) ([]ClientConfig, error) {
+	rows, err := r.q.ClientConfigFindByClient(ctx, clientID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ClientConfig, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, *rowToClientConfig(row))
+	}
+	return out, nil
+}
+
 // Persist implements usecasepgx.Persist[ClientConfig].
 func (r *ClientConfigRepo) Persist(ctx context.Context, c *ClientConfig, tx *usecasepgx.DbTx) error {
 	return r.q.WithTx(tx.Inner()).ClientConfigUpsert(ctx, dbq.ClientConfigUpsertParams{

@@ -34,6 +34,7 @@ type UpdateConnectionRequest struct {
 	Name        string  `json:"name"`
 	Description *string `json:"description,omitempty"`
 	ExternalID  *string `json:"externalId,omitempty"`
+	Status      *string `json:"status,omitempty"`
 }
 
 func (r UpdateConnectionRequest) toCommand(id string) operations.UpdateCommand {
@@ -42,6 +43,7 @@ func (r UpdateConnectionRequest) toCommand(id string) operations.UpdateCommand {
 		Name:        r.Name,
 		Description: r.Description,
 		ExternalID:  r.ExternalID,
+		Status:      r.Status,
 	}
 }
 
@@ -77,6 +79,8 @@ func fromEntity(c *connection.Connection) ConnectionResponse {
 }
 
 // ConnectionListResponse is the wire shape for GET /api/connections.
+// SPA's ConnectionListPage reads `response.connections`.
 type ConnectionListResponse struct {
-	Items []ConnectionResponse `json:"items"`
+	Connections []ConnectionResponse `json:"connections"`
+	Total       int                  `json:"total"`
 }

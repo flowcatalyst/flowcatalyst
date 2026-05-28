@@ -68,13 +68,17 @@ func (r *Repository) FindByCode(ctx context.Context, code string, clientID *stri
 //     (client_id IS NULL). A nil pointer means "don't filter on
 //     client_id".
 //   - Search: case-insensitive prefix match against code OR name.
+//   - AccessibleClientIDs: a non-nil pointer scopes results to
+//     platform-scoped jobs (client_id IS NULL) plus jobs whose client_id is
+//     in the set; a nil pointer means "no access scoping" (anchor/all-access).
 //   - Limit / Offset: applied only by List; Count ignores them.
 type ListFilters struct {
-	ClientID *string
-	Status   *string
-	Search   *string
-	Limit    *int64
-	Offset   *int64
+	ClientID            *string
+	Status              *string
+	Search              *string
+	AccessibleClientIDs *[]string
+	Limit               *int64
+	Offset              *int64
 }
 
 // FindWithFilters returns jobs matching non-nil filters, ordered by
@@ -136,6 +140,10 @@ func buildJobQuery(base string, f ListFilters, withPagination bool) (string, []a
 	if f.Search != nil && *f.Search != "" {
 		args = append(args, "%"+*f.Search+"%")
 		conds = append(conds, fmt.Sprintf("(code ILIKE $%d OR name ILIKE $%d)", len(args), len(args)))
+	}
+	if f.AccessibleClientIDs != nil {
+		args = append(args, *f.AccessibleClientIDs)
+		conds = append(conds, fmt.Sprintf("(client_id IS NULL OR client_id = ANY($%d))", len(args)))
 	}
 	if len(conds) > 0 {
 		q += " WHERE " + strings.Join(conds, " AND ")

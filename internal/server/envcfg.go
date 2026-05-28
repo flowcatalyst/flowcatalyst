@@ -24,6 +24,21 @@ type EnvCfg struct {
 	SchedulerEnabled bool
 	StreamEnabled    bool
 	OutboxEnabled    bool
+	MCPEnabled       bool
+
+	// Router HTTP mount prefix on the unified API listener. Default
+	// /router. fc-router (when it exists) ignores this and mounts at root.
+	RouterHTTPPrefix string
+
+	// DefaultBroker picks the fallback queue backend when no
+	// FLOWCATALYST_CONFIG_URL is configured. "postgres" synthesises a
+	// single 'default' pool against the shared Postgres pool. Empty
+	// means "no pools start" — the historical behaviour. fc-dev sets
+	// this to "postgres"; fc-server leaves it empty in prod.
+	DefaultBroker string
+
+	// MCPPort is the listener for the MCP subsystem. Default 8090.
+	MCPPort int
 
 	// Stream processor — per-projection sub-toggles (default true when
 	// StreamEnabled is on, so the top-level flag is enough on its own).
@@ -61,6 +76,13 @@ type EnvCfg struct {
 	// HMAC global secret (used by fosite for non-JWT tokens).
 	OAuthGlobalSecret string
 
+	// MCP — the read-only MCP server proxies into the platform. URL is
+	// where it dials the platform itself; for fc-dev it's the local
+	// listener (http://localhost:<APIPort>).
+	MCPPlatformURL  string
+	MCPClientID     string
+	MCPClientSecret string
+
 	// AuthAllowTestHeaders enables the X-FC-Test-Principal dev fallback
 	// in the platform Authenticator middleware. Defaults to false in
 	// production. fc-dev flips it on for the local embedded-PG flow.
@@ -69,17 +91,22 @@ type EnvCfg struct {
 
 func LoadEnv() EnvCfg {
 	c := EnvCfg{
-		APIPort:     envIntAlias("FC_API_PORT", "PORT", 3000),
+		APIPort:     envIntAlias("FC_API_PORT", "PORT", 8080),
 		MetricsPort: envInt("FC_METRICS_PORT", 9090),
 
 		DatabaseURL: ResolveDatabaseURL(),
-		JWTIssuer:   envFirst("FC_JWT_ISSUER", "FC_EXTERNAL_BASE_URL", "EXTERNAL_BASE_URL", "http://localhost:3000"),
+		JWTIssuer:   envFirst("FC_JWT_ISSUER", "FC_EXTERNAL_BASE_URL", "EXTERNAL_BASE_URL", "http://localhost:8080"),
 
 		PlatformEnabled:  envBoolAlias("FC_PLATFORM_ENABLED", "PLATFORM_ENABLED", true),
 		RouterEnabled:    envBoolAlias("FC_ROUTER_ENABLED", "MESSAGE_ROUTER_ENABLED", false),
 		SchedulerEnabled: envBoolAlias("FC_SCHEDULER_ENABLED", "DISPATCH_SCHEDULER_ENABLED", false),
 		StreamEnabled:    envBoolAlias("FC_STREAM_PROCESSOR_ENABLED", "STREAM_PROCESSOR_ENABLED", false),
 		OutboxEnabled:    envBoolAlias("FC_OUTBOX_ENABLED", "OUTBOX_PROCESSOR_ENABLED", false),
+		MCPEnabled:       envBool("FC_MCP_ENABLED", false),
+
+		RouterHTTPPrefix: envOr("FC_ROUTER_HTTP_PREFIX", "/router"),
+		DefaultBroker:    envOr("FC_DEFAULT_BROKER", ""),
+		MCPPort:          envInt("FC_MCP_PORT", 8090),
 
 		// Stream sub-toggles default ON so FC_STREAM_PROCESSOR_ENABLED=true
 		// is sufficient to bring up the whole stream pipeline.
@@ -108,6 +135,10 @@ func LoadEnv() EnvCfg {
 		JWTSigningKeyID:      envOr("FC_JWT_SIGNING_KEY_ID", "fc-key-1"),
 		OAuthGlobalSecret:    envOr("FC_OAUTH_GLOBAL_SECRET", "change-me-please-this-is-only-for-dev-32b"),
 		AuthAllowTestHeaders: envBool("FC_AUTH_ALLOW_TEST_HEADERS", false),
+
+		MCPPlatformURL:  envFirst("FLOWCATALYST_URL", "FC_MCP_PLATFORM_URL", "", ""),
+		MCPClientID:     os.Getenv("FLOWCATALYST_CLIENT_ID"),
+		MCPClientSecret: os.Getenv("FLOWCATALYST_CLIENT_SECRET"),
 	}
 	return c
 }

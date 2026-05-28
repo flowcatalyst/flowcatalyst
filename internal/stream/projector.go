@@ -47,6 +47,11 @@ type Projector struct {
 	// Step claims a batch and processes it. Returns rowsProcessed and
 	// any error. err is logged, not fatal — the loop continues.
 	Step func(ctx context.Context, batchSize int) (rowsProcessed int, err error)
+	// Health is an optional tracker. When non-nil the loop toggles
+	// Running on entry/exit, bumps AddProcessed per non-empty step, and
+	// RecordError per Step failure. nil is fine — the projector then
+	// reports no health (the stream HealthService will mark it stopped).
+	Health *Health
 }
 
 // Run drives the projector until ctx is cancelled.
@@ -56,6 +61,10 @@ func (p *Projector) Run(ctx context.Context) {
 		return
 	}
 	slog.Info("projector starting", "name", p.Name, "batch_size", p.Cfg.BatchSize)
+	if p.Health != nil {
+		p.Health.SetRunning(true)
+		defer p.Health.SetRunning(false)
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -67,12 +76,18 @@ func (p *Projector) Run(ctx context.Context) {
 		n, err := p.Step(ctx, p.Cfg.BatchSize)
 		if err != nil {
 			slog.Warn("projector step error", "name", p.Name, "err", err)
+			if p.Health != nil {
+				p.Health.RecordError()
+			}
 			sleep(ctx, p.Cfg.IdleSleep)
 			continue
 		}
 		if n == 0 {
 			sleep(ctx, p.Cfg.IdleSleep)
 			continue
+		}
+		if p.Health != nil {
+			p.Health.AddProcessed(uint64(n))
 		}
 		// Got work — go again immediately, with a tiny pause to let
 		// transactions on the read side commit.

@@ -223,27 +223,42 @@ But beware: `[]Item{}` (initialized to empty) with `omitempty` will still be **o
 
 ### Error envelope
 
-Rust `PlatformError` serializes errors as:
+**Correction (verified against source 2026-05-28):** an earlier version of this
+section claimed the envelope key was `code` with a `details` object. That is
+**wrong** — and it caused Go to ship `{code, message, details}`. The real Rust
+`PlatformError -> ErrorResponse` (`crates/fc-platform/src/shared/error.rs`)
+serializes errors as:
 
 ```json
 {
-  "code": "VALIDATION_ERROR",
-  "message": "Event type code is required",
-  "details": { "field": "code" }
+  "error": "VALIDATION_ERROR",
+  "message": "Event type code is required"
 }
 ```
 
-Go must emit the same shape. Centralize in `internal/platform/shared/httperror/`:
+The `error` field carries the error **code** string. The dominant path
+(`ErrorResponse`) has **no** `details` field; only the middleware `ApiError`
+(`shared/api_common.rs`, used by auth/rate-limit middleware) carries an optional
+`details` that is omitted when absent. So in practice the wire shape is
+`{ "error", "message" }`.
+
+Go emits the same shape. Centralized in `internal/platform/shared/httperror/`
+(legacy chi path) and `internal/platform/shared/httpcompat/` (huma path):
 
 ```go
-type ErrorResponse struct {
-    Code    string                 `json:"code"`
+type Envelope struct {
+    Code    string                 `json:"error"` // the error CODE string
     Message string                 `json:"message"`
-    Details map[string]interface{} `json:"details,omitempty"`
+    Details map[string]interface{} `json:"details,omitempty"` // middleware ApiError only
 }
 ```
 
-Status code mapping must match Rust's `PlatformError -> Response` conversion exactly. Capture the mapping in a test: feed every Rust error variant in, check the resulting status + envelope.
+Status code mapping must match Rust's `PlatformError -> Response` conversion
+exactly: Validation→400, Unauthorized/InvalidCredentials/TokenExpired/InvalidToken→401,
+Forbidden→403, NotFound→404, Duplicate/BusinessRule/Concurrency→409,
+TooManyRequests→429, catch-all→500. **There is no 422 in the Rust mapping.**
+Capture the mapping in a test: feed every Rust error variant in, check the
+resulting status + envelope.
 
 ### Pagination shapes
 

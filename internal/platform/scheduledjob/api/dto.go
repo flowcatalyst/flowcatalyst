@@ -131,13 +131,103 @@ func fromEntity(j *scheduledjob.ScheduledJob) ScheduledJobResponse {
 	}
 }
 
-// ScheduledJobListResponse is the wire shape for GET /api/scheduled-jobs.
-type ScheduledJobListResponse struct {
-	Items []ScheduledJobResponse `json:"items"`
-}
-
 // FireNowResponse is the wire shape for POST /api/scheduled-jobs/{id}/fire-now.
 type FireNowResponse struct {
 	ScheduledJobID string `json:"scheduledJobId"`
 	InstanceID     string `json:"instanceId"`
+}
+
+// ScheduledJobInstanceResponse mirrors scheduledjob.ScheduledJobInstance.
+type ScheduledJobInstanceResponse struct {
+	ID               string          `json:"id"`
+	ScheduledJobID   string          `json:"scheduledJobId"`
+	ClientID         *string         `json:"clientId,omitempty"`
+	JobCode          string          `json:"jobCode"`
+	TriggerKind      string          `json:"triggerKind"`
+	ScheduledFor     *httpcompat.Time `json:"scheduledFor,omitempty"`
+	FiredAt          httpcompat.Time `json:"firedAt"`
+	DeliveredAt      *httpcompat.Time `json:"deliveredAt,omitempty"`
+	CompletedAt      *httpcompat.Time `json:"completedAt,omitempty"`
+	Status           string          `json:"status"`
+	DeliveryAttempts int32           `json:"deliveryAttempts"`
+	DeliveryError    *string         `json:"deliveryError,omitempty"`
+	CompletionStatus *string         `json:"completionStatus,omitempty"`
+	CompletionResult json.RawMessage `json:"completionResult,omitempty"`
+	CorrelationID    *string         `json:"correlationId,omitempty"`
+	CreatedAt        httpcompat.Time `json:"createdAt"`
+}
+
+func instanceToResponse(i *scheduledjob.ScheduledJobInstance) ScheduledJobInstanceResponse {
+	var sched *httpcompat.Time
+	if i.ScheduledFor != nil {
+		t := jsontime.New(*i.ScheduledFor)
+		sched = &t
+	}
+	var delivered *httpcompat.Time
+	if i.DeliveredAt != nil {
+		t := jsontime.New(*i.DeliveredAt)
+		delivered = &t
+	}
+	var completed *httpcompat.Time
+	if i.CompletedAt != nil {
+		t := jsontime.New(*i.CompletedAt)
+		completed = &t
+	}
+	return ScheduledJobInstanceResponse{
+		ID:               i.ID,
+		ScheduledJobID:   i.ScheduledJobID,
+		ClientID:         i.ClientID,
+		JobCode:          i.JobCode,
+		TriggerKind:      string(i.TriggerKind),
+		ScheduledFor:     sched,
+		FiredAt:          jsontime.New(i.FiredAt),
+		DeliveredAt:      delivered,
+		CompletedAt:      completed,
+		Status:           string(i.Status),
+		DeliveryAttempts: i.DeliveryAttempts,
+		DeliveryError:    i.DeliveryError,
+		CompletionStatus: i.CompletionStatus,
+		CompletionResult: i.CompletionResult,
+		CorrelationID:    i.CorrelationID,
+		CreatedAt:        jsontime.New(i.CreatedAt),
+	}
+}
+
+// ScheduledJobInstanceLogResponse mirrors scheduledjob.ScheduledJobInstanceLog.
+type ScheduledJobInstanceLogResponse struct {
+	ID             string          `json:"id"`
+	InstanceID     string          `json:"instanceId"`
+	ScheduledJobID *string         `json:"scheduledJobId,omitempty"`
+	ClientID       *string         `json:"clientId,omitempty"`
+	Level          string          `json:"level"`
+	Message        string          `json:"message"`
+	Metadata       json.RawMessage `json:"metadata,omitempty"`
+	CreatedAt      httpcompat.Time `json:"createdAt"`
+}
+
+func instanceLogToResponse(l *scheduledjob.ScheduledJobInstanceLog) ScheduledJobInstanceLogResponse {
+	return ScheduledJobInstanceLogResponse{
+		ID:             l.ID,
+		InstanceID:     l.InstanceID,
+		ScheduledJobID: l.ScheduledJobID,
+		ClientID:       l.ClientID,
+		Level:          l.Level,
+		Message:        l.Message,
+		Metadata:       l.Metadata,
+		CreatedAt:      jsontime.New(l.CreatedAt),
+	}
+}
+
+// WriteInstanceLogRequest is the body for POST .../log.
+type WriteInstanceLogRequest struct {
+	Level    string          `json:"level" doc:"DEBUG | INFO | WARN | ERROR"`
+	Message  string          `json:"message"`
+	Metadata json.RawMessage `json:"metadata,omitempty"`
+}
+
+// CompleteInstanceRequest is the body for POST .../complete.
+type CompleteInstanceRequest struct {
+	Status           string          `json:"status,omitempty" doc:"Defaults to COMPLETED"`
+	CompletionStatus string          `json:"completionStatus,omitempty"`
+	CompletionResult json.RawMessage `json:"completionResult,omitempty"`
 }

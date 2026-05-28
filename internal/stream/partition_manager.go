@@ -15,7 +15,8 @@ import (
 // Runs on a 60-minute tick. Idempotent: CREATE TABLE ... PARTITION OF
 // ... IF NOT EXISTS doesn't exist in Postgres, so we check first.
 type PartitionManager struct {
-	pool *pgxpool.Pool
+	pool   *pgxpool.Pool
+	Health *Health
 }
 
 // PartitionedTables is the canonical list. Mirrors the Rust source.
@@ -37,9 +38,19 @@ func NewPartitionManager(pool *pgxpool.Pool) *PartitionManager {
 
 // Run watches for new months and creates partitions. Returns when ctx is cancelled.
 func (m *PartitionManager) Run(ctx context.Context) {
+	if m.Health != nil {
+		m.Health.SetRunning(true)
+		defer m.Health.SetRunning(false)
+	}
 	// Initial ensure on startup.
 	if err := m.ensureNext(ctx); err != nil {
 		slog.Warn("partition manager initial ensure failed", "err", err)
+		if m.Health != nil {
+			m.Health.RecordError()
+		}
+	} else if m.Health != nil {
+		// Stamp last-poll on the successful initial ensure.
+		m.Health.AddProcessed(0)
 	}
 	tick := time.NewTicker(60 * time.Minute)
 	defer tick.Stop()
@@ -51,6 +62,11 @@ func (m *PartitionManager) Run(ctx context.Context) {
 		case <-tick.C:
 			if err := m.ensureNext(ctx); err != nil {
 				slog.Warn("partition manager tick failed", "err", err)
+				if m.Health != nil {
+					m.Health.RecordError()
+				}
+			} else if m.Health != nil {
+				m.Health.AddProcessed(0)
 			}
 		}
 	}

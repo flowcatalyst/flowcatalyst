@@ -38,6 +38,23 @@ go vet -vettool=$(which uowseal) ./internal/platform/...
 go test ./tests/parity/... -rust=$RUST_FC_URL
 ```
 
+## Operator notes
+
+### Default HTTP port
+
+`fc-server` defaults to `FC_API_PORT=8080`. The Rust `fc-server` defaults
+to `3000`. Operators running both side-by-side, or running Go behind
+load-balancer rules that hard-code `3000`, should set `FC_API_PORT=3000`
+explicitly. The `FC_API_PORT` env var (or its legacy alias `PORT`)
+overrides the binary default.
+
+| Service       | Go default          | Rust default        | Override env             |
+|---------------|---------------------|---------------------|--------------------------|
+| Platform HTTP | `FC_API_PORT=8080`  | `HTTP_PORT=3000`    | `FC_API_PORT` / `PORT`   |
+| fc-dev        | `--api-port 8080`   | `--api-port 8080`   | `FC_API_PORT` / `--api-port` |
+| Metrics       | `FC_METRICS_PORT=9090` | `9090`           | `FC_METRICS_PORT`        |
+| MCP           | `FC_MCP_PORT=8090`  | `FC_MCP_BIND=127.0.0.1:3100` | `FC_MCP_PORT`   |
+
 ## Relationship to the Rust codebase
 
 Until cutover, both codebases coexist:

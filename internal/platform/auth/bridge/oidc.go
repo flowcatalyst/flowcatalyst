@@ -23,6 +23,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 )
 
 // Bridge constructs and caches OIDC clients per (issuerURL, clientID)
@@ -32,9 +33,10 @@ import (
 // per IDP per process.
 type Bridge struct {
 	authRepo *auth.Repository
+	enc      *encryption.Service // optional; decrypts OIDCClientSecretRef
 
-	mu       sync.Mutex
-	cache    map[string]*resolved
+	mu    sync.Mutex
+	cache map[string]*resolved
 }
 
 type resolved struct {
@@ -43,9 +45,11 @@ type resolved struct {
 	oauth    *oauth2.Config
 }
 
-// NewBridge wires the bridge.
-func NewBridge(authRepo *auth.Repository) *Bridge {
-	return &Bridge{authRepo: authRepo, cache: make(map[string]*resolved)}
+// NewBridge wires the bridge. enc may be nil — confidential OIDC clients
+// will fail to authenticate against the external IDP in that case, but
+// public clients (no client secret) still work.
+func NewBridge(authRepo *auth.Repository, enc *encryption.Service) *Bridge {
+	return &Bridge{authRepo: authRepo, enc: enc, cache: make(map[string]*resolved)}
 }
 
 // ResolveForEmail picks the right ClientAuthConfig (and therefore the
@@ -82,19 +86,41 @@ func (b *Bridge) ResolveForEmail(ctx context.Context, email string) (*resolved, 
 	if err != nil {
 		return nil, cfg, fmt.Errorf("oidc.NewProvider: %w", err)
 	}
+	clientSecret, err := b.resolveClientSecret(cfg)
+	if err != nil {
+		return nil, cfg, err
+	}
 	r := &resolved{
 		provider: provider,
 		verifier: provider.Verifier(&oidc.Config{ClientID: *cfg.OIDCClientID}),
 		oauth: &oauth2.Config{
-			ClientID: *cfg.OIDCClientID,
-			// ClientSecret resolved from the platform's secrets service
-			// using cfg.OIDCClientSecretRef. TODO(auth-runtime).
-			Endpoint: provider.Endpoint(),
-			Scopes:   []string{oidc.ScopeOpenID, "profile", "email"},
+			ClientID:     *cfg.OIDCClientID,
+			ClientSecret: clientSecret,
+			Endpoint:     provider.Endpoint(),
+			Scopes:       []string{oidc.ScopeOpenID, "profile", "email"},
 		},
 	}
 	b.cache[key] = r
 	return r, cfg, nil
+}
+
+// resolveClientSecret decrypts cfg.OIDCClientSecretRef using the
+// configured encryption service. Empty ref → no secret (public client).
+// If a ref is present but no encryption service is configured, or
+// decryption fails, returns an error so the caller surfaces a clear
+// misconfiguration rather than silently mis-authing.
+func (b *Bridge) resolveClientSecret(cfg *auth.ClientAuthConfig) (string, error) {
+	if cfg.OIDCClientSecretRef == nil || *cfg.OIDCClientSecretRef == "" {
+		return "", nil
+	}
+	if b.enc == nil {
+		return "", errors.New("OIDC client_secret_ref present but no encryption service configured (set FLOWCATALYST_APP_KEY)")
+	}
+	pt, err := b.enc.Decrypt(*cfg.OIDCClientSecretRef)
+	if err != nil {
+		return "", fmt.Errorf("decrypt OIDC client secret: %w", err)
+	}
+	return pt, nil
 }
 
 // VerifyIDToken validates a raw ID token JWT against the bridge cache.

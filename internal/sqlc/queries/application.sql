@@ -44,6 +44,12 @@ FROM app_client_configs
 WHERE application_id = $1
 ORDER BY created_at;
 
+-- name: ClientConfigFindByClient :many
+SELECT id, application_id, client_id, enabled, created_at, updated_at
+FROM app_client_configs
+WHERE client_id = $1
+ORDER BY created_at;
+
 -- name: ClientConfigUpsert :exec
 INSERT INTO app_client_configs
     (id, application_id, client_id, enabled, created_at, updated_at)

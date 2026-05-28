@@ -64,6 +64,7 @@ type MappingResponse struct {
 	ID                   string          `json:"id"`
 	EmailDomain          string          `json:"emailDomain"`
 	IdentityProviderID   string          `json:"identityProviderId"`
+	IdentityProviderName *string         `json:"identityProviderName,omitempty"`
 	ScopeType            string          `json:"scopeType"`
 	PrimaryClientID      *string         `json:"primaryClientId,omitempty"`
 	AdditionalClientIDs  []string        `json:"additionalClientIds"`
@@ -75,7 +76,9 @@ type MappingResponse struct {
 	UpdatedAt            httpcompat.Time `json:"updatedAt"`
 }
 
-func fromEntity(e *emaildomainmapping.EmailDomainMapping) MappingResponse {
+// fromEntity builds the wire shape. idpName is the resolved identity-provider
+// display name (nil when it could not be looked up).
+func fromEntity(e *emaildomainmapping.EmailDomainMapping, idpName *string) MappingResponse {
 	addl := e.AdditionalClientIDs
 	if addl == nil {
 		addl = []string{}
@@ -92,6 +95,7 @@ func fromEntity(e *emaildomainmapping.EmailDomainMapping) MappingResponse {
 		ID:                   e.ID,
 		EmailDomain:          e.EmailDomain,
 		IdentityProviderID:   e.IdentityProviderID,
+		IdentityProviderName: idpName,
 		ScopeType:            string(e.ScopeType),
 		PrimaryClientID:      e.PrimaryClientID,
 		AdditionalClientIDs:  addl,
@@ -105,8 +109,10 @@ func fromEntity(e *emaildomainmapping.EmailDomainMapping) MappingResponse {
 }
 
 // MappingListResponse is the wire shape for GET /api/email-domain-mappings.
+// SPA's EmailDomainMappingListPage reads `response.mappings`.
 type MappingListResponse struct {
-	Items []MappingResponse `json:"items"`
+	Mappings []MappingResponse `json:"mappings"`
+	Total    int               `json:"total"`
 }
 
 // LookupNotFoundResponse is returned by the lookup endpoint when no

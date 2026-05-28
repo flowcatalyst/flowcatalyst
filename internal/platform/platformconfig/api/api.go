@@ -36,13 +36,33 @@ func Register(api huma.API, s *State) {
 	}, s.listProperties)
 
 	huma.Register(api, huma.Operation{
+		OperationID:   "getPlatformConfigProperty",
+		Method:        http.MethodGet,
+		Path:          "/api/config/{app}/{section}/{property}",
+		Summary:       "Get a single platform-config property",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.getProperty)
+
+	// The SPA calls /api/config/...; the legacy /api/platform-config/...
+	// path is kept for the list/access admin routes below.
+	huma.Register(api, huma.Operation{
 		OperationID:   "setPlatformConfigProperty",
 		Method:        http.MethodPut,
-		Path:          "/api/platform-config/{app}/{section}/{property}",
+		Path:          "/api/config/{app}/{section}/{property}",
 		Summary:       "Set a platform-config property",
 		Tags:          []string{tag},
 		DefaultStatus: http.StatusOK,
 	}, s.setProperty)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "deletePlatformConfigProperty",
+		Method:        http.MethodDelete,
+		Path:          "/api/config/{app}/{section}/{property}",
+		Summary:       "Delete a platform-config property",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.deleteProperty)
 
 	huma.Register(api, huma.Operation{
 		OperationID:   "listPlatformConfigAccess",
@@ -106,18 +126,61 @@ func (s *State) listProperties(ctx context.Context, in *listPropsInput) (*listPr
 	return &listPropsOutput{Body: ConfigListResponse{Items: out}}, nil
 }
 
+// scopeFor derives the config scope from an optional clientId, matching the
+// set-property operation's own scoping logic.
+func scopeFor(clientID string) (platformconfig.Scope, *string) {
+	if clientID != "" {
+		cid := clientID
+		return platformconfig.ScopeClient, &cid
+	}
+	return platformconfig.ScopeGlobal, nil
+}
+
+type propertyInput struct {
+	App      string `path:"app"`
+	Section  string `path:"section"`
+	Property string `path:"property"`
+	ClientID string `query:"clientId"`
+}
+
+type configOutput struct {
+	Body ConfigResponse
+}
+
+func (s *State) getProperty(ctx context.Context, in *propertyInput) (*configOutput, error) {
+	ac := auth.FromContext(ctx)
+	if !ac.IsAnchor() {
+		ok, err := s.Repo.HasAccess(ctx, in.App, ac.Roles, false)
+		if err != nil {
+			return nil, usecase.Internal("REPO", "has_access failed", err)
+		}
+		if !ok {
+			return nil, httperror.Forbidden("No read access to platform config for " + in.App)
+		}
+	}
+	scope, clientID := scopeFor(in.ClientID)
+	c, err := s.Repo.FindByCoordinate(ctx, in.App, in.Section, in.Property, scope, clientID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_coordinate failed", err)
+	}
+	if c == nil {
+		return nil, httperror.NotFound("Config", in.App+"/"+in.Section+"/"+in.Property)
+	}
+	if !ac.IsAnchor() && c.ValueType == platformconfig.ValueSecret {
+		c.Value = "***"
+	}
+	return &configOutput{Body: configFromEntity(c)}, nil
+}
+
 type setPropertyInput struct {
 	App      string `path:"app"`
 	Section  string `path:"section"`
 	Property string `path:"property"`
+	ClientID string `query:"clientId"`
 	Body     SetPropertyRequest
 }
 
-type setPropertyOutput struct {
-	Body apicommon.CreatedResponse
-}
-
-func (s *State) setProperty(ctx context.Context, in *setPropertyInput) (*setPropertyOutput, error) {
+func (s *State) setProperty(ctx context.Context, in *setPropertyInput) (*configOutput, error) {
 	ac := auth.FromContext(ctx)
 	if !ac.IsAnchor() {
 		ok, err := s.Repo.HasAccess(ctx, in.App, ac.Roles, true)
@@ -128,12 +191,58 @@ func (s *State) setProperty(ctx context.Context, in *setPropertyInput) (*setProp
 			return nil, httperror.Forbidden("No write access to platform config for " + in.App)
 		}
 	}
+	// The SPA passes clientId as a query param; the body carries only
+	// value/valueType/description. Fold the query value into the command.
+	if in.ClientID != "" {
+		cid := in.ClientID
+		in.Body.ClientID = &cid
+	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.SetProperty(ctx, s.Repo, s.UoW, in.Body.toCommand(in.App, in.Section, in.Property), ec)
-	if err != nil {
+	if _, err := operations.SetProperty(ctx, s.Repo, s.UoW, in.Body.toCommand(in.App, in.Section, in.Property), ec); err != nil {
 		return nil, err
 	}
-	return &setPropertyOutput{Body: apicommon.CreatedResponse{ID: committed.Event().ConfigID}}, nil
+	scope, clientID := scopeFor(in.ClientID)
+	c, err := s.Repo.FindByCoordinate(ctx, in.App, in.Section, in.Property, scope, clientID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_coordinate failed", err)
+	}
+	if c == nil {
+		return nil, usecase.Internal("REPO", "config missing after set", nil)
+	}
+	return &configOutput{Body: configFromEntity(c)}, nil
+}
+
+func (s *State) deleteProperty(ctx context.Context, in *propertyInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
+	if !ac.IsAnchor() {
+		ok, err := s.Repo.HasAccess(ctx, in.App, ac.Roles, true)
+		if err != nil {
+			return nil, usecase.Internal("REPO", "has_access failed", err)
+		}
+		if !ok {
+			return nil, httperror.Forbidden("No write access to platform config for " + in.App)
+		}
+	}
+	scope, clientID := scopeFor(in.ClientID)
+	c, err := s.Repo.FindByCoordinate(ctx, in.App, in.Section, in.Property, scope, clientID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_coordinate failed", err)
+	}
+	if c == nil {
+		return &emptyOutput{}, nil // idempotent
+	}
+	tx, err := s.UoW.Pool().Begin(ctx)
+	if err != nil {
+		return nil, usecase.Internal("TX", "begin failed", err)
+	}
+	defer tx.Rollback(ctx)
+	if err := s.Repo.Delete(ctx, c, usecasepgx.WrapTxForBootstrap(tx)); err != nil {
+		return nil, usecase.Internal("REPO", "delete failed", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, usecase.Internal("TX", "commit failed", err)
+	}
+	return &emptyOutput{}, nil
 }
 
 type listAccessInput struct {

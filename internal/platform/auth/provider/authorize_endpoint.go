@@ -2,6 +2,8 @@ package provider
 
 import (
 	"net/http"
+	"net/url"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ory/fosite"
@@ -57,8 +59,9 @@ func (e *AuthorizeEndpoint) handle(w http.ResponseWriter, r *http.Request) {
 	// can resume after auth completes.
 	principalID := e.provider.SessionResolver(r)
 	if principalID == "" {
-		// Defer to the OIDC bridge's login start endpoint.
-		login := "/oauth/oidc/login?returnUrl=" + r.URL.String()
+		// Defer to the OIDC bridge's login start endpoint. Path + param
+		// name match Rust's fc-platform /auth/oidc/login?return_url=…
+		login := "/auth/oidc/login?return_url=" + url.QueryEscape(r.URL.String())
 		http.Redirect(w, r, login, http.StatusFound)
 		return
 	}
@@ -69,6 +72,18 @@ func (e *AuthorizeEndpoint) handle(w http.ResponseWriter, r *http.Request) {
 			fosite.ErrServerError.WithWrap(err).WithDescription("Principal resolution failed."))
 		return
 	}
+	// Hydrate OIDC ID-token-only claims from the authorize request.
+	// nonce echoes back what the client supplied; azp is the client_id
+	// when there's a single audience (RFC 7519 / OIDC Core 2). auth_time
+	// is now — Rust uses the same: the moment we mint the token is the
+	// canonical auth_time for a fresh session.
+	if nonce := authorizeRequest.GetRequestForm().Get("nonce"); nonce != "" {
+		claims.Nonce = nonce
+	}
+	if c := authorizeRequest.GetClient(); c != nil {
+		claims.AuthorizedParty = c.GetID()
+	}
+	claims.AuthTime = time.Now().Unix()
 	session.applyClaims(claims)
 
 	// Auto-grant requested scopes that are within the client's allowed

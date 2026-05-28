@@ -89,6 +89,17 @@ func Register(api huma.API, s *State) {
 		OperationID:   "addEventTypeSchema",
 		Method:        http.MethodPost,
 		Path:          "/api/event-types/{id}/schemas",
+		Summary:       "Add a schema version to an event type (Go-historical alias)",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusCreated,
+	}, s.addSchema)
+
+	// /versions is the Rust-canonical path. Same handler; both paths
+	// remain registered so existing SPA clients on /schemas keep working.
+	huma.Register(api, huma.Operation{
+		OperationID:   "addEventTypeVersion",
+		Method:        http.MethodPost,
+		Path:          "/api/event-types/{id}/versions",
 		Summary:       "Add a schema version to an event type",
 		Tags:          []string{tag},
 		DefaultStatus: http.StatusCreated,

@@ -7,19 +7,24 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/operations"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
-// State bundles deps.
+// State bundles deps. Principals + OAuthClients are needed because creating
+// a service account also provisions its linked SERVICE principal and a
+// confidential OAuth client (matching the Rust platform).
 type State struct {
-	Repo *serviceaccount.Repository
-	UoW  *usecasepgx.UnitOfWork
+	Repo         *serviceaccount.Repository
+	Principals   *principal.Repository
+	OAuthClients *platformauth.OAuthClientRepo
+	UoW          *usecasepgx.UnitOfWork
 }
 
 const tag = "service-accounts"
@@ -104,26 +109,33 @@ func Register(api huma.API, s *State) {
 		Path:          "/api/service-accounts/{id}/roles",
 		Summary:       "Assign roles to a service account",
 		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
+		DefaultStatus: http.StatusOK,
 	}, s.assignRoles)
 
-	huma.Register(api, huma.Operation{
-		OperationID:   "regenerateServiceAccountAuthToken",
-		Method:        http.MethodPost,
-		Path:          "/api/service-accounts/{id}/regenerate-auth-token",
-		Summary:       "Regenerate a service account's auth token",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.regenerateAuthToken)
+	// The SPA calls /regenerate-token + /regenerate-secret; the longer
+	// /regenerate-auth-token + /regenerate-signing-secret paths match the
+	// Rust platform + fcsdk. Both are registered against the same handlers.
+	for _, p := range []string{"regenerate-token", "regenerate-auth-token"} {
+		huma.Register(api, huma.Operation{
+			OperationID:   "regenerateServiceAccountAuthToken_" + p,
+			Method:        http.MethodPost,
+			Path:          "/api/service-accounts/{id}/" + p,
+			Summary:       "Regenerate a service account's auth token",
+			Tags:          []string{tag},
+			DefaultStatus: http.StatusOK,
+		}, s.regenerateAuthToken)
+	}
 
-	huma.Register(api, huma.Operation{
-		OperationID:   "regenerateServiceAccountSigningSecret",
-		Method:        http.MethodPost,
-		Path:          "/api/service-accounts/{id}/regenerate-signing-secret",
-		Summary:       "Regenerate a service account's signing secret",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.regenerateSigningSecret)
+	for _, p := range []string{"regenerate-secret", "regenerate-signing-secret"} {
+		huma.Register(api, huma.Operation{
+			OperationID:   "regenerateServiceAccountSigningSecret_" + p,
+			Method:        http.MethodPost,
+			Path:          "/api/service-accounts/{id}/" + p,
+			Summary:       "Regenerate a service account's signing secret",
+			Tags:          []string{tag},
+			DefaultStatus: http.StatusOK,
+		}, s.regenerateSigningSecret)
+	}
 }
 
 type emptyInput struct{}
@@ -145,7 +157,7 @@ func (s *State) list(ctx context.Context, _ *emptyInput) (*listOutput, error) {
 	for i := range rows {
 		out = append(out, fromEntity(&rows[i]))
 	}
-	return &listOutput{Body: ServiceAccountListResponse{Items: out}}, nil
+	return &listOutput{Body: ServiceAccountListResponse{ServiceAccounts: out, Total: len(out)}}, nil
 }
 
 type getByCodeInput struct {
@@ -195,7 +207,7 @@ type createInput struct {
 }
 
 type createOutput struct {
-	Body apicommon.CreatedResponse
+	Body CreateServiceAccountResponse
 }
 
 func (s *State) create(ctx context.Context, in *createInput) (*createOutput, error) {
@@ -204,11 +216,17 @@ func (s *State) create(ctx context.Context, in *createInput) (*createOutput, err
 		return nil, err
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.CreateServiceAccount(ctx, s.Repo, s.UoW, in.Body.toCommand(), ec)
+	res, err := operations.CreateServiceAccountWithCredentials(
+		ctx, s.Repo, s.Principals, s.OAuthClients, s.UoW, in.Body.toCommand(), ec)
 	if err != nil {
 		return nil, err
 	}
-	return &createOutput{Body: apicommon.CreatedResponse{ID: committed.Event().ServiceAccountID}}, nil
+	return &createOutput{Body: CreateServiceAccountResponse{
+		ServiceAccount: fromEntity(res.ServiceAccount),
+		PrincipalID:    res.PrincipalID,
+		OAuth:          ServiceAccountOAuthSecrets{ClientID: res.OAuthClientID, ClientSecret: res.OAuthClientSecret},
+		Webhook:        ServiceAccountWebhookSecrets{AuthToken: res.AuthToken, SigningSecret: res.SigningSecret},
+	}}, nil
 }
 
 type updateInput struct {
@@ -274,8 +292,7 @@ func (s *State) listRoles(ctx context.Context, in *idInput) (*listRolesOutput, e
 	if sa == nil {
 		return nil, httperror.NotFound("ServiceAccount", in.ID)
 	}
-	resp := fromEntity(sa)
-	return &listRolesOutput{Body: ServiceAccountRoleListResponse{Items: resp.Roles}}, nil
+	return &listRolesOutput{Body: ServiceAccountRoleListResponse{Roles: roleDTOs(sa.Roles)}}, nil
 }
 
 type assignRolesInput struct {
@@ -283,17 +300,70 @@ type assignRolesInput struct {
 	Body AssignRolesRequest
 }
 
-func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*emptyOutput, error) {
+type rolesAssignedOutput struct {
+	Body ServiceAccountRolesAssignedResponse
+}
+
+func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*rolesAssignedOutput, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
 	}
+	sa, err := s.Repo.FindByID(ctx, in.ID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
+	}
+	if sa == nil {
+		return nil, httperror.NotFound("ServiceAccount", in.ID)
+	}
+	old := roleNameSet(sa.Roles)
+	desired := sliceSet(in.Body.Roles)
+	added := setDifference(desired, old)
+	removed := setDifference(old, desired)
+
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
 	if _, err := operations.AssignRolesToServiceAccount(ctx, s.Repo, s.UoW,
 		operations.AssignRolesCommand{ServiceAccountID: in.ID, Roles: in.Body.Roles}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	refreshed, err := s.Repo.FindByID(ctx, in.ID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
+	}
+	if refreshed == nil {
+		return nil, httperror.NotFound("ServiceAccount", in.ID)
+	}
+	return &rolesAssignedOutput{Body: ServiceAccountRolesAssignedResponse{
+		Roles:        roleDTOs(refreshed.Roles),
+		AddedRoles:   added,
+		RemovedRoles: removed,
+	}}, nil
+}
+
+func roleNameSet(rs []serviceaccount.RoleAssignment) map[string]struct{} {
+	out := make(map[string]struct{}, len(rs))
+	for _, r := range rs {
+		out[r.Role] = struct{}{}
+	}
+	return out
+}
+
+func sliceSet(vs []string) map[string]struct{} {
+	out := make(map[string]struct{}, len(vs))
+	for _, v := range vs {
+		out[v] = struct{}{}
+	}
+	return out
+}
+
+func setDifference(a, b map[string]struct{}) []string {
+	out := make([]string, 0)
+	for v := range a {
+		if _, ok := b[v]; !ok {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 type regenerateAuthTokenOutput struct {

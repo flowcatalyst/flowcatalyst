@@ -36,8 +36,9 @@ func fromEntity(o *cors.AllowedOrigin) AllowedOriginResponse {
 	}
 }
 
-type AllowedOriginListResponse struct {
-	Items []AllowedOriginResponse `json:"items"`
+type CorsOriginListResponse struct {
+	CorsOrigins []AllowedOriginResponse `json:"corsOrigins"`
+	Total       int                     `json:"total"`
 }
 
 type PublicAllowedResponse struct {

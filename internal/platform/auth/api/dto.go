@@ -2,6 +2,8 @@
 package api
 
 import (
+	"strings"
+
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
@@ -11,24 +13,45 @@ import (
 // ── OAuthClient ───────────────────────────────────────────────────────────
 
 // CreateOAuthClientRequest is the wire body for POST /api/oauth-clients.
+// Matches the SPA's CreateOAuthClientRequest (oauth-clients.ts:33-43).
 type CreateOAuthClientRequest struct {
 	ClientID     string   `json:"clientId"`
 	ClientName   string   `json:"clientName"`
 	ClientType   string   `json:"clientType" doc:"PUBLIC or CONFIDENTIAL"`
 	RedirectURIs []string `json:"redirectUris,omitempty"`
 	GrantTypes   []string `json:"grantTypes,omitempty"`
-	Scopes       []string `json:"scopes,omitempty"`
-	PrincipalID  *string  `json:"principalId,omitempty"`
+	// DefaultScopes is sent by the SPA as a space-delimited string (e.g.
+	// "openid profile"); legacy callers may still send Scopes. Either is
+	// accepted and folded into the entity's Scopes slice.
+	DefaultScopes string `json:"defaultScopes,omitempty"`
+	// Scopes is the legacy array form (kept for back-compat with older callers).
+	Scopes []string `json:"scopes,omitempty"`
+	// PKCERequired is accepted but not persisted — the Go entity does not
+	// store a pkce flag. See OAuthClientResponse.PKCERequired (always false).
+	PKCERequired bool `json:"pkceRequired,omitempty"`
+	// PostLogoutRedirectURIs is accepted but not persisted (no entity field).
+	PostLogoutRedirectURIs []string `json:"postLogoutRedirectUris,omitempty"`
+	// AllowedOrigins is accepted but not persisted (no entity field).
+	AllowedOrigins []string `json:"allowedOrigins,omitempty"`
+	// ApplicationIDs is accepted but not persisted (no entity field).
+	ApplicationIDs []string `json:"applicationIds,omitempty"`
+	PrincipalID    *string  `json:"principalId,omitempty"`
 }
 
 func (r CreateOAuthClientRequest) toCommand() operations.CreateOAuthClientCommand {
+	scopes := r.Scopes
+	// SPA sends defaultScopes as a space-delimited string; split it into the
+	// entity's scope slice. Falls back to the legacy Scopes array if empty.
+	if s := strings.TrimSpace(r.DefaultScopes); s != "" {
+		scopes = strings.Fields(s)
+	}
 	return operations.CreateOAuthClientCommand{
 		ClientID:     r.ClientID,
 		ClientName:   r.ClientName,
 		ClientType:   r.ClientType,
 		RedirectURIs: r.RedirectURIs,
 		GrantTypes:   r.GrantTypes,
-		Scopes:       r.Scopes,
+		Scopes:       scopes,
 		PrincipalID:  r.PrincipalID,
 	}
 }
@@ -51,19 +74,43 @@ func (r UpdateOAuthClientRequest) toCommand(id string) operations.UpdateOAuthCli
 	}
 }
 
-// OAuthClientResponse mirrors auth.OAuthClient.
+// OAuthClientApplicationRef is the {id, name} shape the SPA's ApplicationRef
+// expects (oauth-clients.ts:5-8). The Go entity does not track applications,
+// so this is only ever emitted as an empty slice today.
+type OAuthClientApplicationRef struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// OAuthClientResponse mirrors the SPA's OAuthClient (oauth-clients.ts:10-26).
+// Several fields have no backing column on the Go auth.OAuthClient entity and
+// are emitted as safe defaults (see oauthClientFromEntity) so the SPA — which
+// reads e.g. data.applications.length unconditionally — never crashes.
 type OAuthClientResponse struct {
-	ID           string          `json:"id"`
-	ClientID     string          `json:"clientId"`
-	ClientName   string          `json:"clientName"`
-	ClientType   string          `json:"clientType"`
-	RedirectURIs []string        `json:"redirectUris"`
-	GrantTypes   []string        `json:"grantTypes"`
-	Scopes       []string        `json:"scopes"`
-	Active       bool            `json:"active"`
-	PrincipalID  *string         `json:"principalId,omitempty"`
-	CreatedAt    httpcompat.Time `json:"createdAt"`
-	UpdatedAt    httpcompat.Time `json:"updatedAt"`
+	ID           string   `json:"id"`
+	ClientID     string   `json:"clientId"`
+	ClientName   string   `json:"clientName"`
+	ClientType   string   `json:"clientType"`
+	RedirectURIs []string `json:"redirectUris"`
+	// PostLogoutRedirectURIs has no entity field — always []. (defaulted)
+	PostLogoutRedirectURIs []string `json:"postLogoutRedirectUris"`
+	// AllowedOrigins has no entity field — always []. (defaulted)
+	AllowedOrigins []string `json:"allowedOrigins"`
+	GrantTypes     []string `json:"grantTypes"`
+	// DefaultScopes is the entity's Scopes slice (renamed for the SPA).
+	DefaultScopes []string `json:"defaultScopes"`
+	// PKCERequired has no entity field — always false. (defaulted)
+	PKCERequired bool `json:"pkceRequired"`
+	// ApplicationIDs has no entity field — always []. (defaulted)
+	ApplicationIDs []string `json:"applicationIds"`
+	// Applications has no entity field — always []. The SPA list page reads
+	// data.applications.length unconditionally, so this MUST be present. (defaulted)
+	Applications []OAuthClientApplicationRef `json:"applications"`
+	Active       bool                        `json:"active"`
+	// ServiceAccountPrincipalID maps from the entity's PrincipalID.
+	ServiceAccountPrincipalID *string         `json:"serviceAccountPrincipalId,omitempty"`
+	CreatedAt                 httpcompat.Time `json:"createdAt"`
+	UpdatedAt                 httpcompat.Time `json:"updatedAt"`
 }
 
 func oauthClientFromEntity(c *auth.OAuthClient) OAuthClientResponse {
@@ -80,37 +127,46 @@ func oauthClientFromEntity(c *auth.OAuthClient) OAuthClientResponse {
 		scopes = []string{}
 	}
 	return OAuthClientResponse{
-		ID:           c.ID,
-		ClientID:     c.ClientID,
-		ClientName:   c.ClientName,
-		ClientType:   string(c.ClientType),
-		RedirectURIs: uris,
-		GrantTypes:   grants,
-		Scopes:       scopes,
-		Active:       c.Active,
-		PrincipalID:  c.PrincipalID,
-		CreatedAt:    jsontime.New(c.CreatedAt),
-		UpdatedAt:    jsontime.New(c.UpdatedAt),
+		ID:                        c.ID,
+		ClientID:                  c.ClientID,
+		ClientName:                c.ClientName,
+		ClientType:                string(c.ClientType),
+		RedirectURIs:              uris,
+		PostLogoutRedirectURIs:    []string{},
+		AllowedOrigins:            []string{},
+		GrantTypes:                grants,
+		DefaultScopes:             scopes,
+		PKCERequired:              false,
+		ApplicationIDs:            []string{},
+		Applications:              []OAuthClientApplicationRef{},
+		Active:                    c.Active,
+		ServiceAccountPrincipalID: c.PrincipalID,
+		CreatedAt:                 jsontime.New(c.CreatedAt),
+		UpdatedAt:                 jsontime.New(c.UpdatedAt),
 	}
 }
 
 // OAuthClientListResponse is the wire shape for GET /api/oauth-clients.
+// Matches the Rust fc-platform shape `{clients}` (no total). SPA's
+// OAuthClientListPage reads `response.clients`.
 type OAuthClientListResponse struct {
-	Items []OAuthClientResponse `json:"items"`
+	Clients []OAuthClientResponse `json:"clients"`
 }
 
 // CreateOAuthClientResponse is the wire shape for POST /api/oauth-clients.
+// The SPA reads response.client.* and response.clientSecret
+// (oauth-clients.ts:56-60, OAuthClientCreatePage.vue:176-184).
 // The client_secret plaintext is only emitted once, on creation.
 type CreateOAuthClientResponse struct {
-	ID           string `json:"id"`
-	ClientID     string `json:"clientId"`
-	ClientName   string `json:"clientName"`
-	ClientSecret string `json:"clientSecret,omitempty"`
+	Client       OAuthClientResponse `json:"client"`
+	ClientSecret string              `json:"clientSecret,omitempty"`
 }
 
-// RotateOAuthClientSecretResponse is returned on rotate.
+// RotateOAuthClientSecretResponse is returned on rotate. The SPA reads
+// {clientId, clientSecret} (oauth-clients.ts:62-65) — note clientId is the
+// public client_id string, not the internal id.
 type RotateOAuthClientSecretResponse struct {
-	ID           string `json:"id"`
+	ClientID     string `json:"clientId"`
 	ClientSecret string `json:"clientSecret,omitempty"`
 }
 

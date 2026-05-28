@@ -5,8 +5,10 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 )
 
 // LoadSigningKeyOrEphemeral returns the PEM-encoded RSA private key for
@@ -29,6 +31,35 @@ func LoadSigningKeyOrEphemeral(path string) []byte {
 		return []byte(pemStr)
 	}
 	slog.Warn("no JWT signing key configured — generating ephemeral RSA key (tokens won't survive restart)")
+	return generateRSAPEM()
+}
+
+// EnsureSigningKeyFile guarantees a PEM-encoded RSA private key exists
+// at path. If the file is absent (or empty), generate one and write it
+// with 0600. Used by fc-dev so tokens survive restarts without forcing
+// engineers to manage a keyring locally. Returns the path that the
+// caller should set FC_JWT_SIGNING_KEY_PATH to.
+func EnsureSigningKeyFile(path string) (string, error) {
+	if path == "" {
+		return "", fmt.Errorf("signing key path is empty")
+	}
+	if st, err := os.Stat(path); err == nil && st.Size() > 0 {
+		return path, nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return "", fmt.Errorf("create signing key dir: %w", err)
+	}
+	pemBytes := generateRSAPEM()
+	if err := os.WriteFile(path, pemBytes, 0o600); err != nil {
+		return "", fmt.Errorf("write signing key: %w", err)
+	}
+	slog.Info("generated persistent JWT signing key", "path", path)
+	return path, nil
+}
+
+// generateRSAPEM mints a fresh 2048-bit RSA private key in PKCS#1 PEM.
+// Used by both the ephemeral fallback and the dev key-file generator.
+func generateRSAPEM() []byte {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		panic("rsa generate: " + err.Error())

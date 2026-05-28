@@ -2,9 +2,9 @@ name: "GET /api/event-types without auth — 403"
 
 # Confirms the authenticator middleware is wired identically on both
 # binaries and returns the same status + error envelope shape. The
-# envelope is `{ "code": "UNAUTHENTICATED", "message": "..." }` —
-# distinct from the OAuth `{ "error": ..., "error_description": ... }`
-# envelope used by the /oauth/* endpoints.
+# platform envelope is `{ "error": "UNAUTHENTICATED", "message": "..." }`
+# (the `error` field carries the code, matching Rust ErrorResponse) —
+# the OAuth `/oauth/*` endpoints use `{ "error": ..., "error_description": ... }`.
 #
 # (Earlier docs/api-parity.md suggested 401 — the binary returns 403.
 # The harness's first self-test caught this divergence in the YAML
@@ -18,5 +18,5 @@ request:
 expect:
   status: 403
   body_shape:
-    code: any-string
+    error: any-string
     message: any-string

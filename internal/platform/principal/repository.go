@@ -30,14 +30,18 @@ import (
 // shape; fields with no backing column (email_verified, first_name,
 // last_name, picture_url, phone) are zero-valued on read and dropped
 // on write. Mirrors the Rust impl.
-type Repository struct{ q *dbq.Queries }
+type Repository struct {
+	q    *dbq.Queries
+	pool *pgxpool.Pool
+}
 
 // NewRepository wires a repo.
 func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{q: dbq.New(pool)}
+	return &Repository{q: dbq.New(pool), pool: pool}
 }
 
-// FindByID loads a principal by id.
+// FindByID loads a principal by id, with role assignments hydrated
+// from iam_principal_roles.
 func (r *Repository) FindByID(ctx context.Context, id string) (*Principal, error) {
 	row, err := r.q.PrincipalFindByID(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -46,10 +50,15 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*Principal, error
 	if err != nil {
 		return nil, fmt.Errorf("principal repo: %w", err)
 	}
-	return rowToPrincipal(row), nil
+	p := rowToPrincipal(row)
+	if err := r.hydrateRoles(ctx, p); err != nil {
+		return nil, err
+	}
+	return p, nil
 }
 
-// FindByEmail loads a user-type principal by email.
+// FindByEmail loads a user-type principal by email, with role
+// assignments hydrated from iam_principal_roles.
 func (r *Repository) FindByEmail(ctx context.Context, email string) (*Principal, error) {
 	row, err := r.q.PrincipalFindByEmail(ctx, &email)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -58,7 +67,41 @@ func (r *Repository) FindByEmail(ctx context.Context, email string) (*Principal,
 	if err != nil {
 		return nil, fmt.Errorf("principal repo: %w", err)
 	}
-	return rowToPrincipal(row), nil
+	p := rowToPrincipal(row)
+	if err := r.hydrateRoles(ctx, p); err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+// hydrateRoles populates p.Roles from iam_principal_roles. Returns nil
+// for a principal with no role assignments (Roles stays an empty slice
+// from rowToPrincipal). Inline SQL rather than a sqlc-generated query
+// to avoid a regen step — the row shape (principal_id, role_name,
+// assignment_source, assigned_at) is stable and the query is trivial.
+func (r *Repository) hydrateRoles(ctx context.Context, p *Principal) error {
+	if r.pool == nil || p == nil {
+		return nil
+	}
+	rows, err := r.pool.Query(ctx,
+		`SELECT role_name, assignment_source, assigned_at
+		 FROM iam_principal_roles
+		 WHERE principal_id = $1
+		 ORDER BY assigned_at`, p.ID)
+	if err != nil {
+		return fmt.Errorf("principal roles: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var ra serviceaccount.RoleAssignment
+		var src *string
+		if err := rows.Scan(&ra.Role, &src, &ra.AssignedAt); err != nil {
+			return fmt.Errorf("principal roles scan: %w", err)
+		}
+		ra.AssignmentSource = src
+		p.Roles = append(p.Roles, ra)
+	}
+	return rows.Err()
 }
 
 // FindByServiceAccount loads the SERVICE-type principal linked to the

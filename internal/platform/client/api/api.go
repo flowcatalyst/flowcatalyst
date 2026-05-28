@@ -7,6 +7,8 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
+	appops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
@@ -16,10 +18,13 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
-// State bundles deps.
+// State bundles deps. Applications / ClientConfigs are optional — when
+// nil the client→application endpoints surface 501s instead.
 type State struct {
-	Repo *client.Repository
-	UoW  *usecasepgx.UnitOfWork
+	Repo          *client.Repository
+	Applications  *application.Repository
+	ClientConfigs *application.ClientConfigRepo
+	UoW           *usecasepgx.UnitOfWork
 }
 
 const tag = "clients"
@@ -115,6 +120,54 @@ func Register(api huma.API, s *State) {
 		Tags:          []string{tag},
 		DefaultStatus: http.StatusNoContent,
 	}, s.delete)
+
+	// Deactivate is an alias for delete (soft-delete with a reason for
+	// the audit log). Mirrors Rust's POST /{id}/deactivate handler in
+	// crates/fc-platform/src/client/api.rs.
+	huma.Register(api, huma.Operation{
+		OperationID:   "deactivateClient",
+		Method:        http.MethodPost,
+		Path:          "/api/clients/{id}/deactivate",
+		Summary:       "Deactivate a client (soft delete)",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.deactivate)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "getClientApplications",
+		Method:        http.MethodGet,
+		Path:          "/api/clients/{id}/applications",
+		Summary:       "List applications and their enabled state for the client",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.getApplications)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "updateClientApplications",
+		Method:        http.MethodPut,
+		Path:          "/api/clients/{id}/applications",
+		Summary:       "Replace the client's enabled applications (bulk)",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.updateApplications)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "enableClientApplication",
+		Method:        http.MethodPost,
+		Path:          "/api/clients/{id}/applications/{applicationId}/enable",
+		Summary:       "Enable an application for the client",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.enableApplication)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "disableClientApplication",
+		Method:        http.MethodPost,
+		Path:          "/api/clients/{id}/applications/{applicationId}/disable",
+		Summary:       "Disable an application for the client",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.disableApplication)
 }
 
 type emptyInput struct{}
@@ -136,7 +189,7 @@ func (s *State) list(ctx context.Context, _ *emptyInput) (*listOutput, error) {
 	for i := range rows {
 		out = append(out, fromEntity(&rows[i]))
 	}
-	return &listOutput{Body: ClientListResponse{Items: out}}, nil
+	return &listOutput{Body: ClientListResponse{Clients: out, Total: len(out)}}, nil
 }
 
 type searchInput struct {
@@ -156,7 +209,7 @@ func (s *State) search(ctx context.Context, in *searchInput) (*listOutput, error
 	for i := range rows {
 		out = append(out, fromEntity(&rows[i]))
 	}
-	return &listOutput{Body: ClientListResponse{Items: out}}, nil
+	return &listOutput{Body: ClientListResponse{Clients: out, Total: len(out)}}, nil
 }
 
 type byIdentifierInput struct {
@@ -302,6 +355,155 @@ func (s *State) delete(ctx context.Context, in *idInput) (*emptyOutput, error) {
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
 	if _, err := operations.DeleteClient(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
+		return nil, err
+	}
+	return &emptyOutput{}, nil
+}
+
+// ── deactivate (alias for delete with a reason) ──────────────────────────
+
+type deactivateInput struct {
+	ID   string `path:"id"`
+	Body StatusChangeRequest
+}
+
+type statusChangeOutput struct {
+	Body apicommon.StatusChangeResponse
+}
+
+func (s *State) deactivate(ctx context.Context, in *deactivateInput) (*statusChangeOutput, error) {
+	ac := auth.FromContext(ctx)
+	// Deactivate is a soft-delete — same permission as delete.
+	if err := auth.CanDeleteClients(ac); err != nil {
+		return nil, err
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	if _, err := operations.DeleteClient(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
+		return nil, err
+	}
+	return &statusChangeOutput{Body: apicommon.StatusChangeResponse{Message: "Client deactivated"}}, nil
+}
+
+// ── client→application linking ───────────────────────────────────────────
+
+type clientApplicationsOutput struct {
+	Body ClientApplicationsResponse
+}
+
+func (s *State) getApplications(ctx context.Context, in *idInput) (*clientApplicationsOutput, error) {
+	ac := auth.FromContext(ctx)
+	if !ac.IsAnchor() && !ac.CanAccessClient(in.ID) {
+		return nil, httperror.Forbidden("No access to this client")
+	}
+	if s.Applications == nil {
+		return nil, usecase.Internal("WIRING", "applications repo not configured", nil)
+	}
+
+	c, err := s.Repo.FindByID(ctx, in.ID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_client failed", err)
+	}
+	if c == nil {
+		return nil, httperror.NotFound("Client", in.ID)
+	}
+
+	allApps, err := s.Applications.FindWithFilters(ctx, nil, nil)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_all applications failed", err)
+	}
+
+	enabledByApp := make(map[string]bool, len(allApps))
+	if s.ClientConfigs != nil {
+		cfgs, err := s.ClientConfigs.FindByClient(ctx, in.ID)
+		if err != nil {
+			return nil, usecase.Internal("REPO", "find_configs failed", err)
+		}
+		for _, cfg := range cfgs {
+			enabledByApp[cfg.ApplicationID] = cfg.Enabled
+		}
+	}
+
+	out := make([]ClientApplicationResponse, 0, len(allApps))
+	for i := range allApps {
+		a := &allApps[i]
+		out = append(out, ClientApplicationResponse{
+			ID:               a.ID,
+			Code:             a.Code,
+			Name:             a.Name,
+			Description:      a.Description,
+			IconURL:          a.IconURL,
+			Active:           a.Active,
+			EnabledForClient: enabledByApp[a.ID],
+		})
+	}
+	return &clientApplicationsOutput{Body: ClientApplicationsResponse{
+		Applications: out,
+		Total:        len(out),
+	}}, nil
+}
+
+type updateApplicationsInput struct {
+	ID   string `path:"id"`
+	Body UpdateClientApplicationsRequest
+}
+
+func (s *State) updateApplications(ctx context.Context, in *updateApplicationsInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
+	if !ac.IsAnchor() {
+		return nil, httperror.Forbidden("Anchor scope required")
+	}
+	if s.Applications == nil || s.ClientConfigs == nil {
+		return nil, usecase.Internal("WIRING", "application repos not configured", nil)
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	cmd := appops.UpdateClientApplicationsCommand{
+		ClientID:              in.ID,
+		EnabledApplicationIDs: in.Body.EnabledApplicationIDs,
+	}
+	if _, err := appops.UpdateClientApplications(ctx, s.Applications, s.Repo, s.ClientConfigs, s.UoW, cmd, ec); err != nil {
+		return nil, err
+	}
+	return &emptyOutput{}, nil
+}
+
+type appLinkInput struct {
+	ID            string `path:"id"`
+	ApplicationID string `path:"applicationId"`
+}
+
+func (s *State) enableApplication(ctx context.Context, in *appLinkInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
+	if !ac.IsAnchor() {
+		return nil, httperror.Forbidden("Anchor scope required")
+	}
+	if s.Applications == nil || s.ClientConfigs == nil {
+		return nil, usecase.Internal("WIRING", "application repos not configured", nil)
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	cmd := appops.EnableForClientCommand{
+		ApplicationID: in.ApplicationID,
+		ClientID:      in.ID,
+	}
+	if _, err := appops.EnableApplicationForClient(ctx, s.Applications, s.Repo, s.ClientConfigs, s.UoW, cmd, ec); err != nil {
+		return nil, err
+	}
+	return &emptyOutput{}, nil
+}
+
+func (s *State) disableApplication(ctx context.Context, in *appLinkInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
+	if !ac.IsAnchor() {
+		return nil, httperror.Forbidden("Anchor scope required")
+	}
+	if s.ClientConfigs == nil {
+		return nil, usecase.Internal("WIRING", "client_configs repo not configured", nil)
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	cmd := appops.DisableForClientCommand{
+		ApplicationID: in.ApplicationID,
+		ClientID:      in.ID,
+	}
+	if _, err := appops.DisableApplicationForClient(ctx, s.ClientConfigs, s.UoW, cmd, ec); err != nil {
 		return nil, err
 	}
 	return &emptyOutput{}, nil

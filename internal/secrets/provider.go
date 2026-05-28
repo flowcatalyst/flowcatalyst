@@ -33,7 +33,7 @@ var ErrNotFound = errors.New("secret not found")
 //   - "aws-sm://name"           → AWS Secrets Manager
 //   - "aws-ps://parameter"      → AWS Parameter Store / SSM
 //   - "vault://path#field"      → HashiCorp Vault
-//   - "enc://key"               → encrypted local file
+//   - "encrypted:key"           → encrypted local file (matches Rust)
 //   - "literal:value"           → bypass; return value as-is (for dev)
 //   - bare "value"              → also bypass (assume literal)
 type Service struct {
@@ -49,7 +49,7 @@ func NewService(defaultProvider string) *Service {
 }
 
 // Register adds a provider keyed by its name. Names match the scheme
-// in references ("env", "aws-sm", "aws-ps", "vault", "enc").
+// in references ("env", "aws-sm", "aws-ps", "vault", "encrypted").
 func (s *Service) Register(p Provider) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -96,9 +96,15 @@ func (s *Service) Validate(ctx context.Context, ref string) error {
 
 // parseRef extracts the scheme + key from a reference. Returns
 // isRef=false for bare literals.
+//
+// "encrypted:" uses a single colon (no "://") to match Rust's syntax
+// (crates/fc-secrets/src/service.rs strip_prefix("encrypted:")).
 func parseRef(ref string) (scheme, key string, isRef bool) {
 	if strings.HasPrefix(ref, "literal:") {
 		return "", strings.TrimPrefix(ref, "literal:"), false
+	}
+	if strings.HasPrefix(ref, "encrypted:") {
+		return "encrypted", strings.TrimPrefix(ref, "encrypted:"), true
 	}
 	idx := strings.Index(ref, "://")
 	if idx < 0 {

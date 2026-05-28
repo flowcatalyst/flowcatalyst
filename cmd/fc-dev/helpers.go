@@ -22,6 +22,15 @@ func envIntDefault(key string, def int) int {
 	return def
 }
 
+// setEnvDefault sets an env var only when it isn't already populated.
+// Used to seed dev defaults (bootstrap admin email/password) without
+// trampling an explicit operator override.
+func setEnvDefault(key, value string) {
+	if os.Getenv(key) == "" {
+		_ = os.Setenv(key, value)
+	}
+}
+
 func envBoolDefault(key string, def bool) bool {
 	v := os.Getenv(key)
 	if v == "" {

@@ -16,6 +16,8 @@ type UpdateCommand struct {
 	ID                 string                             `json:"id"`
 	Name               *string                            `json:"name,omitempty"`
 	Description        *string                            `json:"description,omitempty"`
+	Scope              *string                            `json:"scope,omitempty"`
+	ClientIDs          []string                           `json:"clientIds,omitempty"`
 	WebhookCredentials *serviceaccount.WebhookCredentials `json:"webhookCredentials,omitempty"`
 }
 
@@ -48,6 +50,12 @@ func UpdateServiceAccount(
 	}
 	if cmd.Description != nil {
 		sa.Description = cmd.Description
+	}
+	if cmd.Scope != nil {
+		sa.Scope = cmd.Scope
+	}
+	if cmd.ClientIDs != nil {
+		sa.ClientIDs = cmd.ClientIDs
 	}
 	if cmd.WebhookCredentials != nil {
 		sa.WebhookCredentials = *cmd.WebhookCredentials

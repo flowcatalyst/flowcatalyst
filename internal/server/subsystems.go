@@ -2,13 +2,18 @@ package server
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
+	"net/http"
 	"sync"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/mcp"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/outbox"
 	outboxpg "github.com/flowcatalyst/flowcatalyst-go/internal/outbox/postgres"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/bridge"
@@ -18,8 +23,10 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/queue"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/router"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/stream"
+	fcsdkclient "github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/client"
 
 	// Queue backend registrations needed by router.
+	_ "github.com/flowcatalyst/flowcatalyst-go/internal/queue/nats"
 	_ "github.com/flowcatalyst/flowcatalyst-go/internal/queue/postgres"
 	_ "github.com/flowcatalyst/flowcatalyst-go/internal/queue/sqs"
 )
@@ -45,6 +52,14 @@ func StartScheduler(ctx context.Context, pool *pgxpool.Pool, _ EnvCfg) {
 // Blocks until ctx is cancelled, at which point all child loops drain
 // and the function returns.
 func StartStreamProcessor(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg) {
+	StartStreamProcessorWithHealth(ctx, pool, cfg, nil)
+}
+
+// StartStreamProcessorWithHealth is the variant that takes an externally
+// owned HealthService. Each enabled projection registers a Health on
+// the service before starting. Callers (fc-server) can hand the same
+// service to the router so /monitoring/stream-health reflects live state.
+func StartStreamProcessorWithHealth(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, healths *stream.HealthService) {
 	pcfg := stream.DefaultProjectorConfig()
 	if cfg.StreamBatchSize > 0 {
 		pcfg.BatchSize = cfg.StreamBatchSize
@@ -60,17 +75,38 @@ func StartStreamProcessor(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg) {
 		slog.Info("stream subsystem started", "name", name)
 	}
 
+	registerProjector := func(name string, p *stream.Projector) *stream.Projector {
+		if healths != nil {
+			h := stream.NewHealth(name)
+			p.Health = h
+			healths.Register(h)
+		}
+		return p
+	}
+
 	if cfg.StreamEventsEnabled {
-		launch("event_projection", stream.NewEventProjection(pool).Projector(pcfg).Run)
+		p := registerProjector("event_projection",
+			stream.NewEventProjection(pool).Projector(pcfg))
+		launch("event_projection", p.Run)
 	}
 	if cfg.StreamDispatchJobsEnabled {
-		launch("dispatch_job_projection", stream.NewDispatchJobProjection(pool).Projector(pcfg).Run)
+		p := registerProjector("dispatch_job_projection",
+			stream.NewDispatchJobProjection(pool).Projector(pcfg))
+		launch("dispatch_job_projection", p.Run)
 	}
 	if cfg.StreamFanOutEnabled {
-		launch("event_fan_out", stream.NewFanOut(pool).Projector(pcfg).Run)
+		p := registerProjector("event_fan_out",
+			stream.NewFanOut(pool).Projector(pcfg))
+		launch("event_fan_out", p.Run)
 	}
 	if cfg.StreamPartitionsEnabled {
-		launch("partition_manager", stream.NewPartitionManager(pool).Run)
+		pm := stream.NewPartitionManager(pool)
+		if healths != nil {
+			h := stream.NewHealth("partition_manager")
+			pm.Health = h
+			healths.Register(h)
+		}
+		launch("partition_manager", pm.Run)
 	}
 
 	wg.Wait()
@@ -111,6 +147,50 @@ func StartOutboxProcessor(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg) {
 	slog.Info("outbox processor started", "platform_url", cfg.OutboxPlatformURL)
 	p.Run(ctx)
 	slog.Info("outbox processor stopped")
+}
+
+// StartMCP runs the read-only MCP HTTP server on its own port.
+// Defaults to localhost dial when MCPPlatformURL is empty so that
+// fc-dev's --mcp just-works against the in-process platform listener.
+//
+// Blocks until ctx is cancelled.
+func StartMCP(ctx context.Context, cfg EnvCfg) {
+	platformURL := cfg.MCPPlatformURL
+	if platformURL == "" {
+		platformURL = fmt.Sprintf("http://localhost:%d", cfg.APIPort)
+	}
+	pc := fcsdkclient.New(platformURL,
+		fcsdkclient.WithToken(cfg.MCPClientSecret),
+		fcsdkclient.WithTimeout(10*time.Second),
+	)
+	srv := mcp.New(pc)
+
+	r := chi.NewRouter()
+	r.Post("/mcp", srv.HandleHTTP)
+	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	addr := fmt.Sprintf(":%d", cfg.MCPPort)
+	httpSrv := &http.Server{Addr: addr, Handler: r, ReadHeaderTimeout: 5 * time.Second}
+	errCh := make(chan error, 1)
+	go func() {
+		slog.Info("mcp listening", "addr", addr, "platform_url", platformURL)
+		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- err
+		}
+	}()
+
+	select {
+	case <-ctx.Done():
+	case err := <-errCh:
+		slog.Error("mcp listener exited", "err", err)
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = httpSrv.Shutdown(shutdownCtx)
+	slog.Info("mcp stopped")
 }
 
 // StartRouter runs the SQS message router in-process. Shares the

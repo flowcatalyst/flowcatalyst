@@ -200,7 +200,11 @@ func signWebhook(payload []byte, signingSecret string) (sigHex, ts string) {
 // Mediate delivers the message with retry. Returns the outcome.
 func (m *HTTPMediator) Mediate(ctx context.Context, msg *common.Message) common.MediationOutcome {
 	var last common.MediationOutcome
-	for attempt := 0; attempt <= m.cfg.MaxRetries; attempt++ {
+	// Mirrors crates/fc-router/src/mediator/retry.rs exactly: MaxRetries is
+	// the max TOTAL attempts (default 3), and a delay is taken only between
+	// attempts (after attempt 1 and 2 for the default), never after the last.
+	attempts := 0
+	for {
 		last = m.mediateOnce(ctx, msg)
 
 		// Don't retry on success, config errors, or rate-limit responses.
@@ -209,14 +213,15 @@ func (m *HTTPMediator) Mediate(ctx context.Context, msg *common.Message) common.
 		case common.MediationSuccess, common.MediationErrorConfig, common.MediationRateLimited:
 			return last
 		}
-		if attempt == m.cfg.MaxRetries {
+		attempts++
+		if attempts >= m.cfg.MaxRetries {
 			return last
 		}
 
-		// Backoff according to configured retry_delays.
+		// Backoff according to configured retry_delays (index = attempts-1).
 		delay := 3 * time.Second
-		if attempt < len(m.cfg.RetryDelays) {
-			delay = m.cfg.RetryDelays[attempt]
+		if attempts-1 < len(m.cfg.RetryDelays) {
+			delay = m.cfg.RetryDelays[attempts-1]
 		}
 		select {
 		case <-ctx.Done():
@@ -224,7 +229,6 @@ func (m *HTTPMediator) Mediate(ctx context.Context, msg *common.Message) common.
 		case <-time.After(delay):
 		}
 	}
-	return last
 }
 
 func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) common.MediationOutcome {

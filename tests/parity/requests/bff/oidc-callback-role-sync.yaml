@@ -12,4 +12,5 @@ request:
 expect:
   status: 400
   body_shape:
-    error: any-string
+    code: any-string
+    message: any-string

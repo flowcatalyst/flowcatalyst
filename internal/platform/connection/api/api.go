@@ -70,6 +70,24 @@ func Register(api huma.API, s *State) {
 		Tags:          []string{tag},
 		DefaultStatus: http.StatusNoContent,
 	}, s.delete)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "pauseConnection",
+		Method:        http.MethodPost,
+		Path:          "/api/connections/{id}/pause",
+		Summary:       "Pause a connection",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.pause)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "activateConnection",
+		Method:        http.MethodPost,
+		Path:          "/api/connections/{id}/activate",
+		Summary:       "Activate a connection",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.activate)
 }
 
 type listInput struct {
@@ -104,7 +122,7 @@ func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
 			out = append(out, fromEntity(c))
 		}
 	}
-	return &listOutput{Body: ConnectionListResponse{Items: out}}, nil
+	return &listOutput{Body: ConnectionListResponse{Connections: out, Total: len(out)}}, nil
 }
 
 type getInput struct {
@@ -181,4 +199,45 @@ func (s *State) delete(ctx context.Context, in *deleteInput) (*emptyOutput, erro
 		return nil, err
 	}
 	return &emptyOutput{}, nil
+}
+
+type statusInput struct {
+	ID string `path:"id"`
+}
+
+func (s *State) pause(ctx context.Context, in *statusInput) (*getOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanUpdateConnections(ac); err != nil {
+		return nil, err
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	if _, err := operations.PauseConnection(ctx, s.Repo, s.UoW, operations.PauseCommand{ID: in.ID}, ec); err != nil {
+		return nil, err
+	}
+	return s.reload(ctx, in.ID)
+}
+
+func (s *State) activate(ctx context.Context, in *statusInput) (*getOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanUpdateConnections(ac); err != nil {
+		return nil, err
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	if _, err := operations.ActivateConnection(ctx, s.Repo, s.UoW, operations.ActivateCommand{ID: in.ID}, ec); err != nil {
+		return nil, err
+	}
+	return s.reload(ctx, in.ID)
+}
+
+// reload re-fetches the connection so the status-flip handlers can return the
+// updated ConnectionResponse (matching the Rust reference shape).
+func (s *State) reload(ctx context.Context, id string) (*getOutput, error) {
+	c, err := s.Repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
+	}
+	if c == nil {
+		return nil, httperror.NotFound("Connection", id)
+	}
+	return &getOutput{Body: fromEntity(c)}, nil
 }

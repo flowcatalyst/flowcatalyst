@@ -83,6 +83,36 @@ func (r *Repository) CountAssignments(ctx context.Context, name string) (int64, 
 	return r.q.RoleCountAssignments(ctx, name)
 }
 
+// FindByApplicationID returns every role whose application_id matches,
+// hydrated with permissions.
+func (r *Repository) FindByApplicationID(ctx context.Context, applicationID string) ([]Role, error) {
+	rows, err := r.q.RoleFindByApplicationID(ctx, &applicationID)
+	if err != nil {
+		return nil, err
+	}
+	bare := make([]Role, 0, len(rows))
+	for _, row := range rows {
+		bare = append(bare, *rowToRole(row))
+	}
+	return r.hydrateAll(ctx, bare)
+}
+
+// ApplicationCodes returns the distinct set of application_code values
+// across all roles — backs GET /api/roles/filters/applications.
+func (r *Repository) ApplicationCodes(ctx context.Context) ([]string, error) {
+	rows, err := r.q.RoleApplicationCodes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(rows))
+	for _, s := range rows {
+		if s != nil {
+			out = append(out, *s)
+		}
+	}
+	return out, nil
+}
+
 // Persist implements usecasepgx.Persist[Role]. Replaces the role
 // permissions wholesale.
 func (r *Repository) Persist(ctx context.Context, role *Role, tx *usecasepgx.DbTx) error {

@@ -60,6 +60,8 @@ func (r UpdateIdentityProviderRequest) toCommand(id string) operations.UpdateCom
 }
 
 // IdentityProviderResponse mirrors identityprovider.IdentityProvider.
+// The OIDC client secret reference is intentionally NOT serialized; the SPA
+// only needs to know whether a secret is configured via hasClientSecret.
 type IdentityProviderResponse struct {
 	ID                  string          `json:"id"`
 	Code                string          `json:"code"`
@@ -67,7 +69,7 @@ type IdentityProviderResponse struct {
 	Type                string          `json:"type"`
 	OIDCIssuerURL       *string         `json:"oidcIssuerUrl,omitempty"`
 	OIDCClientID        *string         `json:"oidcClientId,omitempty"`
-	OIDCClientSecretRef *string         `json:"oidcClientSecretRef,omitempty"`
+	HasClientSecret     bool            `json:"hasClientSecret"`
 	OIDCMultiTenant     bool            `json:"oidcMultiTenant"`
 	OIDCIssuerPattern   *string         `json:"oidcIssuerPattern,omitempty"`
 	AllowedEmailDomains []string        `json:"allowedEmailDomains"`
@@ -87,7 +89,7 @@ func fromEntity(ip *identityprovider.IdentityProvider) IdentityProviderResponse 
 		Type:                string(ip.Type),
 		OIDCIssuerURL:       ip.OIDCIssuerURL,
 		OIDCClientID:        ip.OIDCClientID,
-		OIDCClientSecretRef: ip.OIDCClientSecretRef,
+		HasClientSecret:     ip.HasClientSecret(),
 		OIDCMultiTenant:     ip.OIDCMultiTenant,
 		OIDCIssuerPattern:   ip.OIDCIssuerPattern,
 		AllowedEmailDomains: domains,
@@ -97,6 +99,8 @@ func fromEntity(ip *identityprovider.IdentityProvider) IdentityProviderResponse 
 }
 
 // IdentityProviderListResponse is the wire shape for GET /api/identity-providers.
+// SPA's IdentityProviderListPage reads `response.identityProviders`.
 type IdentityProviderListResponse struct {
-	Items []IdentityProviderResponse `json:"items"`
+	IdentityProviders []IdentityProviderResponse `json:"identityProviders"`
+	Total             int                        `json:"total"`
 }

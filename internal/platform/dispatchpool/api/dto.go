@@ -79,6 +79,8 @@ func fromEntity(p *dispatchpool.DispatchPool) DispatchPoolResponse {
 }
 
 // DispatchPoolListResponse is the wire shape for GET /api/dispatch-pools.
+// SPA's DispatchPoolListPage reads `response.pools`.
 type DispatchPoolListResponse struct {
-	Items []DispatchPoolResponse `json:"items"`
+	Pools []DispatchPoolResponse `json:"pools"`
+	Total int                    `json:"total"`
 }

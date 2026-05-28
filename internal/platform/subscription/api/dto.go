@@ -224,6 +224,8 @@ func fromEntity(s *subscription.Subscription) SubscriptionResponse {
 }
 
 // SubscriptionListResponse is the wire shape for GET /api/subscriptions.
+// SPA's SubscriptionListPage reads `response.subscriptions`.
 type SubscriptionListResponse struct {
-	Items []SubscriptionResponse `json:"items"`
+	Subscriptions []SubscriptionResponse `json:"subscriptions"`
+	Total         int                    `json:"total"`
 }

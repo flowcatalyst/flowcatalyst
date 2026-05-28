@@ -2,7 +2,7 @@
 
 GO ?= go
 PNPM ?= pnpm
-BINARIES := fc-platform-server fc-router fc-stream-processor fc-outbox-processor fc-mcp-server fc-server fc-dev
+BINARIES := fc-server fc-dev
 
 build: frontend go-build ## Build the frontend then every Go binary
 

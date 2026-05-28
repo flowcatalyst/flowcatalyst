@@ -8,11 +8,13 @@ import (
 )
 
 const (
-	RoleCreatedType = "platform:admin:role:created"
-	RoleUpdatedType = "platform:admin:role:updated"
-	RoleDeletedType = "platform:admin:role:deleted"
-	RolesSyncedType = "platform:admin:roles:synced"
-	Source          = "platform:admin"
+	RoleCreatedType           = "platform:admin:role:created"
+	RoleUpdatedType           = "platform:admin:role:updated"
+	RoleDeletedType           = "platform:admin:role:deleted"
+	RolesSyncedType           = "platform:admin:roles:synced"
+	RolePermissionGrantedType = "platform:admin:role:permission-granted"
+	RolePermissionRevokedType = "platform:admin:role:permission-revoked"
+	Source                    = "platform:admin"
 )
 
 func subjectFor(id string) string { return "platform.role." + id }

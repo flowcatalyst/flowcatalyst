@@ -4,8 +4,6 @@ package api
 import (
 	"encoding/json"
 
-	"github.com/go-webauthn/webauthn/webauthn"
-
 	wa "github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/jsontime"
@@ -54,33 +52,35 @@ type AuthenticateCompleteRequest struct {
 	Credential json.RawMessage `json:"credential"`
 }
 
-// CredentialResponse mirrors webauthn.Credential.
-type CredentialResponse struct {
-	ID          string              `json:"id"`
-	PrincipalID string              `json:"principalId"`
-	Credential  webauthn.Credential `json:"credential"`
-	Name        *string             `json:"name,omitempty"`
-	CreatedAt   httpcompat.Time     `json:"createdAt"`
-	LastUsedAt  *httpcompat.Time    `json:"lastUsedAt,omitempty"`
+// WebauthnAuthenticateCompleteResponse is returned by
+// POST /auth/webauthn/authenticate/complete on success.
+type WebauthnAuthenticateCompleteResponse struct {
+	PrincipalID string   `json:"principalId"`
+	Email       *string  `json:"email"`
+	Name        string   `json:"name"`
+	Roles       []string `json:"roles"`
 }
 
-func credentialFromEntity(c *wa.Credential) CredentialResponse {
+// WebauthnCredentialSummary is the public, safe-to-expose view of a passkey
+// returned by GET /auth/webauthn/credentials. It deliberately omits the raw
+// credential blob and the principalId.
+type WebauthnCredentialSummary struct {
+	ID         string           `json:"id"`
+	Name       *string          `json:"name,omitempty"`
+	CreatedAt  httpcompat.Time  `json:"createdAt"`
+	LastUsedAt *httpcompat.Time `json:"lastUsedAt,omitempty"`
+}
+
+func credentialSummaryFromEntity(c *wa.Credential) WebauthnCredentialSummary {
 	var lastUsed *httpcompat.Time
 	if c.LastUsedAt != nil {
 		v := jsontime.New(*c.LastUsedAt)
 		lastUsed = &v
 	}
-	return CredentialResponse{
-		ID:          c.ID,
-		PrincipalID: c.PrincipalID,
-		Credential:  c.Credential,
-		Name:        c.Name,
-		CreatedAt:   jsontime.New(c.CreatedAt),
-		LastUsedAt:  lastUsed,
+	return WebauthnCredentialSummary{
+		ID:         c.ID,
+		Name:       c.Name,
+		CreatedAt:  jsontime.New(c.CreatedAt),
+		LastUsedAt: lastUsed,
 	}
-}
-
-// CredentialListResponse is the wire shape for GET /auth/webauthn/credentials.
-type CredentialListResponse struct {
-	Items []CredentialResponse `json:"items"`
 }

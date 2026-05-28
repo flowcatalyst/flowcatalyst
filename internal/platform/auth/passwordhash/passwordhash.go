@@ -4,13 +4,13 @@
 // Hashes are stored in the PHC string format
 // (https://github.com/P-H-C/phc-string-format) using argon2id:
 //
-//	$argon2id$v=19$m=65536,t=1,p=4$<salt-b64>$<hash-b64>
+//	$argon2id$v=19$m=65536,t=3,p=4$<salt-b64>$<hash-b64>
 //
 // `m`/`t`/`p` mirror the Rust impl
 // (crates/fc-platform/src/auth/password_service.rs):
 //
 //	memory      64 MiB (65536 KiB)
-//	iterations  1
+//	iterations  3
 //	parallelism 4
 //	key length  32 bytes
 //	salt length 16 bytes
@@ -47,7 +47,7 @@ type Params struct {
 // params in their PHC envelope; Verify reads those rather than these.
 var DefaultParams = Params{
 	Memory:      64 * 1024,
-	Iterations:  1,
+	Iterations:  3,
 	Parallelism: 4,
 	KeyLength:   32,
 	SaltLength:  16,

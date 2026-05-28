@@ -45,6 +45,13 @@ type Event struct {
 	CorrelationID   *string         `json:"correlationId,omitempty"`
 	CausationID     *string         `json:"causationId,omitempty"`
 	CreatedAt       time.Time       `json:"createdAt"`
+
+	// Read-projection fields (msg_events_read). Empty/zero on the write
+	// side; populated by the read queries.
+	Application *string    `json:"application,omitempty"`
+	Subdomain   *string    `json:"subdomain,omitempty"`
+	Aggregate   *string    `json:"aggregate,omitempty"`
+	ProjectedAt *time.Time `json:"projectedAt,omitempty"`
 }
 
 // New constructs an Event with a fresh untyped TSID. Used by the

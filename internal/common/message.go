@@ -61,10 +61,14 @@ type Message struct {
 
 // QueuedMessage is a Message received from a queue with broker tracking.
 type QueuedMessage struct {
-	Message          Message
-	ReceiptHandle    string
-	BrokerMessageID  string // empty if not provided
-	QueueIdentifier  string
+	Message         Message
+	ReceiptHandle   string
+	BrokerMessageID string // empty if not provided
+	QueueIdentifier string
+	// BatchID is a router-assigned grouping over messages received in the
+	// same poll batch (Rust BatchMessage.batch_id). It is set by the pool's
+	// poll loop, not the broker, and drives batch+group FIFO cascade NACKs.
+	BatchID string
 }
 
 // InFlightMessage tracks a message currently being processed.

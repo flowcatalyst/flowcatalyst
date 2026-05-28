@@ -72,6 +72,24 @@ func Register(api huma.API, s *State) {
 	}, s.archive)
 
 	huma.Register(api, huma.Operation{
+		OperationID:   "suspendDispatchPool",
+		Method:        http.MethodPost,
+		Path:          "/api/dispatch-pools/{id}/suspend",
+		Summary:       "Suspend dispatch into a pool",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.suspend)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "activateDispatchPool",
+		Method:        http.MethodPost,
+		Path:          "/api/dispatch-pools/{id}/activate",
+		Summary:       "Resume a suspended dispatch pool",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.activate)
+
+	huma.Register(api, huma.Operation{
 		OperationID:   "deleteDispatchPool",
 		Method:        http.MethodDelete,
 		Path:          "/api/dispatch-pools/{id}",
@@ -113,7 +131,7 @@ func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
 			out = append(out, fromEntity(p))
 		}
 	}
-	return &listOutput{Body: DispatchPoolListResponse{Items: out}}, nil
+	return &listOutput{Body: DispatchPoolListResponse{Pools: out, Total: len(out)}}, nil
 }
 
 type getInput struct {
@@ -199,6 +217,30 @@ func (s *State) archive(ctx context.Context, in *archiveInput) (*emptyOutput, er
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
 	if _, err := operations.ArchiveDispatchPool(ctx, s.Repo, s.UoW, operations.ArchiveCommand{ID: in.ID}, ec); err != nil {
+		return nil, err
+	}
+	return &emptyOutput{}, nil
+}
+
+func (s *State) suspend(ctx context.Context, in *archiveInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWriteDispatchPools(ac); err != nil {
+		return nil, err
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	if _, err := operations.SuspendDispatchPool(ctx, s.Repo, s.UoW, operations.SuspendCommand{ID: in.ID}, ec); err != nil {
+		return nil, err
+	}
+	return &emptyOutput{}, nil
+}
+
+func (s *State) activate(ctx context.Context, in *archiveInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWriteDispatchPools(ac); err != nil {
+		return nil, err
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	if _, err := operations.ActivateDispatchPool(ctx, s.Repo, s.UoW, operations.ActivateCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &emptyOutput{}, nil

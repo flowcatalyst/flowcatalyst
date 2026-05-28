@@ -56,6 +56,109 @@ type FilterParams struct {
 	Offset      int
 }
 
+// Cursor is the keyset position for cursor pagination, mirroring the Rust
+// platform's keyset on (performed_at, id) DESC.
+type Cursor struct {
+	PerformedAt time.Time
+	ID          string
+}
+
+// CursorFilterParams is the query DTO for the cursor-paginated list endpoint.
+// EntityType/Operation are scalar equality filters; ApplicationIDs/ClientIDs
+// are IN-list filters (sent as CSV by the SPA). After is the keyset position
+// from a previous page (nil for the first page). Limit is the fetch size and
+// should already include the +1 over-fetch used to compute hasMore.
+type CursorFilterParams struct {
+	EntityType     *string
+	EntityID       *string
+	PrincipalID    *string
+	Operation      *string
+	ApplicationIDs []string
+	ClientIDs      []string
+	After          *Cursor
+	Limit          int
+}
+
+// FindWithCursor returns audit logs matching the filters, ordered by
+// (performed_at, id) DESC, starting strictly after the given cursor. It is
+// hand-rolled (rather than sqlc-generated) because the variadic IN-lists and
+// the keyset comparison can't be expressed in the existing static query.
+func (r *Repository) FindWithCursor(ctx context.Context, p CursorFilterParams) ([]Log, error) {
+	limit := p.Limit
+	if limit <= 0 || limit > 501 {
+		limit = 101
+	}
+
+	var (
+		sb   []byte
+		args []any
+	)
+	add := func(v any) string {
+		args = append(args, v)
+		return fmt.Sprintf("$%d", len(args))
+	}
+
+	sb = append(sb, []byte(`SELECT a.id, a.entity_type, a.entity_id, a.operation, a.operation_json,
+       a.principal_id, p.name AS principal_name,
+       a.application_id, a.client_id, a.performed_at
+FROM aud_logs a
+LEFT JOIN iam_principals p ON p.id = a.principal_id
+WHERE 1=1`)...)
+
+	if p.EntityType != nil {
+		sb = append(sb, []byte(" AND a.entity_type = "+add(*p.EntityType))...)
+	}
+	if p.EntityID != nil {
+		sb = append(sb, []byte(" AND a.entity_id = "+add(*p.EntityID))...)
+	}
+	if p.PrincipalID != nil {
+		sb = append(sb, []byte(" AND a.principal_id = "+add(*p.PrincipalID))...)
+	}
+	if p.Operation != nil {
+		sb = append(sb, []byte(" AND a.operation = "+add(*p.Operation))...)
+	}
+	if len(p.ApplicationIDs) > 0 {
+		sb = append(sb, []byte(" AND a.application_id = ANY("+add(p.ApplicationIDs)+")")...)
+	}
+	if len(p.ClientIDs) > 0 {
+		sb = append(sb, []byte(" AND a.client_id = ANY("+add(p.ClientIDs)+")")...)
+	}
+	if p.After != nil {
+		// Keyset: rows strictly before the cursor in (performed_at, id) DESC.
+		ph1 := add(p.After.PerformedAt)
+		ph2 := add(p.After.ID)
+		sb = append(sb, []byte(" AND (a.performed_at, a.id) < ("+ph1+", "+ph2+")")...)
+	}
+
+	sb = append(sb, []byte(" ORDER BY a.performed_at DESC, a.id DESC LIMIT "+add(int32(limit)))...)
+
+	rows, err := r.pool.Query(ctx, string(sb), args...)
+	if err != nil {
+		return nil, fmt.Errorf("audit FindWithCursor: %w", err)
+	}
+	defer rows.Close()
+	out := make([]Log, 0, limit)
+	for rows.Next() {
+		var l Log
+		if err := rows.Scan(
+			&l.ID,
+			&l.EntityType,
+			&l.EntityID,
+			&l.Operation,
+			&l.OperationJSON,
+			&l.PrincipalID,
+			&l.PrincipalName,
+			&l.ApplicationID,
+			&l.ClientID,
+			&l.PerformedAt,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
+}
+
 // FindWithFilters returns audit logs matching non-nil filters, ordered by
 // most recent first.
 func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Log, error) {

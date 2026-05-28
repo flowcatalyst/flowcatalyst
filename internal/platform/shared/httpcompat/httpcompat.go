@@ -4,7 +4,7 @@
 // What it owns:
 //
 //   - The error envelope: huma errors marshal as the same
-//     `{code, message, details}` envelope that [httperror.Write]
+//     `{error, message}` envelope that [httperror.Write]
 //     produces, so the wire format is identical whether a request flows
 //     through a huma-registered handler or a legacy chi handler.
 //   - The status-code mapping: [*usecase.Error.Kind] → HTTP status,
@@ -22,6 +22,7 @@ package httpcompat
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -34,14 +35,15 @@ import (
 // don't need a separate import.
 type Time = jsontime.Time
 
-// ErrorModel is the wire shape for every error response. Matches what
-// the existing [httperror.Write] emits, which matches what the Rust
-// platform emits, which is what the consumer SDKs parse.
+// ErrorModel is the wire shape for every error response. Matches Rust's
+// PlatformError → ErrorResponse { error, message } and what [httperror.Write]
+// emits, which is what the consumer SDKs parse. Code is serialized as the
+// wire field "error".
 //
 // The unexported `status` field is set at construct time so huma can
 // honor whatever HTTP status the source [*usecase.Error] mapped to.
 type ErrorModel struct {
-	Code    string         `json:"code"`
+	Code    string         `json:"error"`
 	Message string         `json:"message"`
 	Details map[string]any `json:"details,omitempty"`
 	status  int
@@ -69,6 +71,27 @@ func (e *ErrorModel) GetStatus() int {
 // code/message/details; other errors fall back to a generic 500.
 func Init() {
 	huma.NewError = newError
+	// Rust serializes arrays as non-nullable (`{"type":"array"}`). huma
+	// defaults arrays to nullable (`{"type":["array","null"]}`), which would
+	// diverge both the OpenAPI spec and the generated frontend client. All
+	// our list handlers return non-nil slices (`make(...)`), so match Rust.
+	huma.DefaultArrayNullable = false
+}
+
+// StripBFFPaths removes /bff/* paths from the API's OpenAPI document so the
+// published spec matches Rust (which excludes BFF endpoints from its spec).
+// The handlers stay mounted and keep serving; only the spec omits them. Call
+// once after all routes are registered, before the spec is served/dumped.
+func StripBFFPaths(api huma.API) {
+	doc := api.OpenAPI()
+	if doc == nil || doc.Paths == nil {
+		return
+	}
+	for p := range doc.Paths {
+		if strings.HasPrefix(p, "/bff/") {
+			delete(doc.Paths, p)
+		}
+	}
 }
 
 // newError is huma's pluggable constructor for error responses. We
@@ -108,14 +131,16 @@ func statusFor(code string) int {
 		return http.StatusInternalServerError
 	}
 	// Default: derive from suffix conventions used in the codebase.
-	// `*_NOT_FOUND` → 404; `*_EXISTS` → 409; everything else falls back
-	// to 422 (BusinessRule) per the Rust mapping table.
+	// `*_NOT_FOUND` → 404; `*_EXISTS` → 409; unknown codes fall back to
+	// 500, matching Rust's PlatformError catch-all (the Rust platform
+	// mapping has no 422). The live path always carries a Kind via
+	// *usecase.Error, so this fallback only fires for bare code strings.
 	if len(code) > 10 && code[len(code)-10:] == "_NOT_FOUND" {
 		return http.StatusNotFound
 	}
 	if len(code) > 7 && code[len(code)-7:] == "_EXISTS" {
 		return http.StatusConflict
 	}
-	return http.StatusUnprocessableEntity
+	return http.StatusInternalServerError
 }
 

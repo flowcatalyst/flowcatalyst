@@ -1,13 +1,11 @@
 package router
 
-// Shared types referenced by HealthService + the deferred /monitoring/*
-// HTTP surface. Mirrors `fc_common::{HealthStatus, HealthReport,
+import "github.com/flowcatalyst/flowcatalyst-go/internal/common"
+
+// Shared types referenced by HealthService + the /monitoring/* HTTP
+// surface. Mirrors `fc_common::{HealthStatus, HealthReport,
 // ConsumerHealth, PoolStats}`. Field names use Rust-camelCase JSON tags
-// so the eventual API surface lands without translation.
-//
-// PoolStats today carries only the fields HealthService reads. The
-// EnhancedPoolMetrics / ProcessingTimeMetrics / WindowedMetrics
-// sub-structs land alongside the metrics port (HANDOFF §4 #7 follow-up).
+// so the API surface lands without translation.
 
 // HealthStatus is the coarse system-health verdict.
 type HealthStatus string
@@ -41,14 +39,14 @@ type ConsumerHealth struct {
 }
 
 // PoolStats is the per-pool snapshot returned by /monitoring/pools.
-// The metrics-heavy fields land later — HealthService only reads PoolCode.
 type PoolStats struct {
-	PoolCode            string  `json:"poolCode"`
-	Concurrency         uint32  `json:"concurrency"`
-	ActiveWorkers       uint32  `json:"activeWorkers"`
-	QueueSize           uint32  `json:"queueSize"`
-	QueueCapacity       uint32  `json:"queueCapacity"`
-	MessageGroupCount   uint32  `json:"messageGroupCount"`
-	RateLimitPerMinute  *uint32 `json:"rateLimitPerMinute,omitempty"`
-	IsRateLimited       bool    `json:"isRateLimited"`
+	PoolCode           string                       `json:"poolCode"`
+	Concurrency        uint32                       `json:"concurrency"`
+	ActiveWorkers      uint32                       `json:"activeWorkers"`
+	QueueSize          uint32                       `json:"queueSize"`
+	QueueCapacity      uint32                       `json:"queueCapacity"`
+	MessageGroupCount  uint32                       `json:"messageGroupCount"`
+	RateLimitPerMinute *uint32                      `json:"rateLimitPerMinute,omitempty"`
+	IsRateLimited      bool                         `json:"isRateLimited"`
+	Metrics            *common.EnhancedPoolMetrics  `json:"metrics,omitempty"`
 }

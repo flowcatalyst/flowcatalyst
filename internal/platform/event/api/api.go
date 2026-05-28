@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -67,6 +68,74 @@ func Register(api huma.API, s *State) {
 		Tags:          []string{tag},
 		DefaultStatus: http.StatusOK,
 	}, s.getByID)
+
+	// BFF tier — cookie-auth, SPA-facing. /bff/events mirrors the regular
+	// list/detail handlers under cookie-auth. Mirrors Rust's events_router.
+	registerBFF(api, s, "/bff/events", "Bff", "bff-events")
+
+	// /bff/debug/events is a SEPARATE raw-event view (write-side
+	// msg_events incl. context_data). The SPA's RawEventListPage binds
+	// field="eventType"/field="deduplicationId" — a different item shape
+	// from the regular list — so it gets its own handler returning a bare
+	// array of RawEventResponse. Mirrors Rust's shared/debug_api.rs.
+	huma.Register(api, huma.Operation{
+		OperationID:   "listDebugEvents",
+		Method:        http.MethodGet,
+		Path:          "/bff/debug/events",
+		Summary:       "List raw events (debug view of msg_events)",
+		Tags:          []string{"bff-debug-events"},
+		DefaultStatus: http.StatusOK,
+	}, s.listDebugRaw)
+}
+
+// registerBFF mirrors Register under a different base path. Used so the
+// SPA hits /bff/events with cookie-auth while SDK callers use /api/events
+// with bearer-auth — the handlers are the same; the auth layer differs.
+func registerBFF(api huma.API, s *State, base, opPrefix, tag string) {
+	huma.Register(api, huma.Operation{
+		OperationID:   "batchIngestEvents" + opPrefix,
+		Method:        http.MethodPost,
+		Path:          base + "/batch",
+		Summary:       "Ingest a batch of events (SPA fan-out)",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusCreated,
+	}, s.batchIngest)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "eventFilterOptions" + opPrefix,
+		Method:        http.MethodGet,
+		Path:          base + "/filter-options",
+		Summary:       "Distinct event types/sources/clients for filter UI",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.filterOptions)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "listEventsRaw" + opPrefix,
+		Method:        http.MethodGet,
+		Path:          base + "/list-raw",
+		Summary:       "List events with raw JSONB rows",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.listRaw)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "listEvents" + opPrefix,
+		Method:        http.MethodGet,
+		Path:          base,
+		Summary:       "List events with filters",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.list)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "getEvent" + opPrefix,
+		Method:        http.MethodGet,
+		Path:          base + "/{id}",
+		Summary:       "Get an event by id",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.getByID)
 }
 
 // ── batch ingest ─────────────────────────────────────────────────────────
@@ -121,6 +190,30 @@ type listInput struct {
 	Until         string `query:"until" doc:"RFC3339 timestamp"`
 	Limit         int    `query:"limit"`
 	Offset        int    `query:"offset"`
+
+	// SPA params (events.ts:50-61). `size` caps the row count; the
+	// plural params are comma-separated multi-filters.
+	Size         int    `query:"size" doc:"Max rows (default 50, max 1000)"`
+	ClientIDs    string `query:"clientIds" doc:"CSV of client ids"`
+	Applications string `query:"applications" doc:"CSV of application codes"`
+	Subdomains   string `query:"subdomains" doc:"CSV of subdomains"`
+	Aggregates   string `query:"aggregates" doc:"CSV of aggregates"`
+	Types        string `query:"types" doc:"CSV of event types"`
+}
+
+// splitCSV mirrors Rust's split_csv (event/api.rs): trim, drop empties.
+func splitCSV(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if v := strings.TrimSpace(p); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func (in *listInput) toFilters() event.FilterParams {
@@ -140,6 +233,11 @@ func (in *listInput) toFilters() event.FilterParams {
 		}
 		return nil
 	}
+	// `size` (SPA) and `limit` (SDK) both cap rows; size wins when set.
+	limit := in.Limit
+	if in.Size > 0 {
+		limit = in.Size
+	}
 	return event.FilterParams{
 		Type:          str(in.Type),
 		Source:        str(in.Source),
@@ -149,13 +247,21 @@ func (in *listInput) toFilters() event.FilterParams {
 		CorrelationID: str(in.CorrelationID),
 		Since:         ts(in.Since),
 		Until:         ts(in.Until),
-		Limit:         in.Limit,
+		Limit:         limit,
 		Offset:        in.Offset,
+		ClientIDs:     splitCSV(in.ClientIDs),
+		Applications:  splitCSV(in.Applications),
+		Subdomains:    splitCSV(in.Subdomains),
+		Aggregates:    splitCSV(in.Aggregates),
+		Types:         splitCSV(in.Types),
 	}
 }
 
+// listOutput Body is a bare JSON array — the SPA's EventListPage binds the
+// returned array directly to its DataTable, so {items:[...]} would render
+// zero rows. Mirrors Rust's list_events returning Vec<EventRead>.
 type listOutput struct {
-	Body EventListResponse
+	Body []EventRead
 }
 
 func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
@@ -167,11 +273,11 @@ func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_with_filters failed", err)
 	}
-	out := make([]EventResponse, 0, len(rows))
+	out := make([]EventRead, 0, len(rows))
 	for i := range rows {
-		out = append(out, fromEntity(&rows[i]))
+		out = append(out, readFromEntity(&rows[i]))
 	}
-	return &listOutput{Body: EventListResponse{Items: out}}, nil
+	return &listOutput{Body: out}, nil
 }
 
 func (s *State) listRaw(ctx context.Context, in *listInput) (*listOutput, error) {
@@ -183,11 +289,44 @@ func (s *State) listRaw(ctx context.Context, in *listInput) (*listOutput, error)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_raw failed", err)
 	}
-	out := make([]EventResponse, 0, len(rows))
+	out := make([]EventRead, 0, len(rows))
 	for i := range rows {
-		out = append(out, fromEntity(&rows[i]))
+		out = append(out, readFromEntity(&rows[i]))
 	}
-	return &listOutput{Body: EventListResponse{Items: out}}, nil
+	return &listOutput{Body: out}, nil
+}
+
+// ── debug raw events ─────────────────────────────────────────────────────
+
+type rawListInput struct {
+	Size int `query:"size" doc:"Max rows (default 50, max 1000)"`
+}
+
+// rawListOutput Body is a bare array of RawEventResponse — the SPA's
+// RawEventListPage binds it directly and its Type column reads
+// field="eventType".
+type rawListOutput struct {
+	Body []RawEventResponse
+}
+
+func (s *State) listDebugRaw(ctx context.Context, in *rawListInput) (*rawListOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, "platform:messaging:event:view-raw"); err != nil {
+		return nil, err
+	}
+	limit := in.Size
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.Repo.FindRecentRaw(ctx, limit)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_recent_raw failed", err)
+	}
+	out := make([]RawEventResponse, 0, len(rows))
+	for i := range rows {
+		out = append(out, rawFromEntity(&rows[i]))
+	}
+	return &rawListOutput{Body: out}, nil
 }
 
 type getInput struct {
@@ -222,13 +361,13 @@ type filterOptionsOutput struct {
 }
 
 func (s *State) filterOptions(ctx context.Context, _ *emptyInput) (*filterOptionsOutput, error) {
-	q := func(col string) []string {
+	q := func(col string) []EventFilterOption {
 		out, _ := s.Repo.DistinctValues(ctx, col, 200)
-		return out
+		return toFilterOptions(out)
 	}
 	return &filterOptionsOutput{Body: EventFilterOptionsResponse{
-		Types:     q("type"),
-		Sources:   q("source"),
-		ClientIDs: q("client_id"),
+		Applications: q("application"),
+		Subdomains:   q("subdomain"),
+		EventTypes:   q("type"),
 	}}, nil
 }

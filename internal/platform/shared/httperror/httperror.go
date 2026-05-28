@@ -1,8 +1,10 @@
 // Package httperror maps internal errors to HTTP responses with the
 // JSON envelope shape used by the Rust platform:
 //
-//	{ "code": "ERR_CODE", "message": "human readable", "details": {...} }
+//	{ "error": "ERR_CODE", "message": "human readable" }
 //
+// The `error` field carries the error CODE string, matching Rust's
+// PlatformError → ErrorResponse { error, message } (shared/error.rs).
 // Status code mapping must match the Rust PlatformError → response
 // mapping byte-for-byte during the cutover. See docs/api-parity.md.
 package httperror
@@ -16,9 +18,11 @@ import (
 )
 
 // Envelope is the JSON response shape for all error responses.
-// Matches Rust PlatformError serialization.
+// Matches Rust's PlatformError → ErrorResponse { error, message }.
+// Code is serialized as the wire field "error"; Details is emitted only
+// by the middleware ApiError path and omitted otherwise.
 type Envelope struct {
-	Code    string         `json:"code"`
+	Code    string         `json:"error"`
 	Message string         `json:"message"`
 	Details map[string]any `json:"details,omitempty"`
 }

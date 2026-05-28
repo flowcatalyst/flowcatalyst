@@ -77,16 +77,21 @@ func (e *APIError) codeAndMessage() (string, string) {
 		return "", ""
 	}
 	var env struct {
-		Code    string `json:"code"`
-		Message string `json:"message"`
-		Error   string `json:"error"`
+		Error            string `json:"error"`             // platform code + OAuth error code
+		Code             string `json:"code"`              // legacy envelope shape
+		Message          string `json:"message"`           // platform message
+		ErrorDescription string `json:"error_description"` // OAuth message
 	}
 	if err := json.Unmarshal([]byte(e.Body), &env); err != nil {
 		return "", ""
 	}
+	code := env.Error
+	if code == "" {
+		code = env.Code
+	}
 	msg := env.Message
 	if msg == "" {
-		msg = env.Error
+		msg = env.ErrorDescription
 	}
-	return env.Code, msg
+	return code, msg
 }

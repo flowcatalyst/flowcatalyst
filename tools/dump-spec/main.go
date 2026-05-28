@@ -71,6 +71,10 @@ func main() {
 	subscriptionapi.Register(api, &subscriptionapi.State{})
 	webauthnapi.Register(api, &webauthnapi.State{})
 
+	// Match Rust: exclude /bff/* from the published spec (handlers stay
+	// mounted in the server). Keep in sync with WirePlatform.
+	httpcompat.StripBFFPaths(api)
+
 	spec := api.OpenAPI()
 	out, err := json.MarshalIndent(spec, "", "  ")
 	if err != nil {

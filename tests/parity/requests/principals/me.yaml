@@ -15,4 +15,9 @@ request:
 expect:
   status: 200
   body_shape:
-    id: any-string
+    principalId: any-string
+    principalType: any-string
+    scope: any-string
+    roles: any-array
+    accessibleClientIds: any-array
+    accessibleApplicationIds: any-array

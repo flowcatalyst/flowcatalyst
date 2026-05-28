@@ -112,7 +112,8 @@ func TestMediatorServerErrorRetries(t *testing.T) {
 	defer srv.Close()
 
 	cfg := router.DevMediatorConfig()
-	cfg.MaxRetries = 2
+	// MaxRetries is the max TOTAL attempts (Rust parity): 3 → 1 initial + 2 retries.
+	cfg.MaxRetries = 3
 	cfg.RetryDelays = []time.Duration{1 * time.Millisecond, 1 * time.Millisecond}
 
 	out := router.NewHTTPMediator(cfg).Mediate(
@@ -120,7 +121,7 @@ func TestMediatorServerErrorRetries(t *testing.T) {
 		&common.Message{ID: "m", MediationType: common.MediationTypeHTTP, MediationTarget: srv.URL},
 	)
 	assert.Equal(t, common.MediationErrorProcess, out.Result)
-	assert.Equal(t, 3, attempts, "should attempt initial + 2 retries")
+	assert.Equal(t, 3, attempts, "MaxRetries=3 → 3 total attempts")
 }
 
 // TestMediatorHTTP2_StrictMaxConcurrentStreams smoke-tests the

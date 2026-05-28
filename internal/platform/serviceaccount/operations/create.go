@@ -19,6 +19,7 @@ type CreateCommand struct {
 	Name               string                             `json:"name"`
 	Description        *string                            `json:"description,omitempty"`
 	Scope              *string                            `json:"scope,omitempty"`
+	ClientIDs          []string                           `json:"clientIds,omitempty"`
 	ApplicationID      *string                            `json:"applicationId,omitempty"`
 	WebhookCredentials *serviceaccount.WebhookCredentials `json:"webhookCredentials,omitempty"`
 }
@@ -59,6 +60,9 @@ func CreateServiceAccount(
 	sa.Description = cmd.Description
 	sa.Scope = cmd.Scope
 	sa.ApplicationID = cmd.ApplicationID
+	if cmd.ClientIDs != nil {
+		sa.ClientIDs = cmd.ClientIDs
+	}
 	if cmd.WebhookCredentials != nil {
 		sa.WebhookCredentials = *cmd.WebhookCredentials
 	}

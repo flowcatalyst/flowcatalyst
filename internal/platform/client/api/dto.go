@@ -95,7 +95,39 @@ func fromEntity(c *client.Client) ClientResponse {
 	}
 }
 
-// ClientListResponse is the wire shape for GET /api/clients.
+// ClientListResponse is the wire shape for GET /api/clients. Matches
+// the Rust shape (`clients` + `total`); SPA's ClientListPage reads
+// `response.clients` directly.
 type ClientListResponse struct {
-	Items []ClientResponse `json:"items"`
+	Clients []ClientResponse `json:"clients"`
+	Total   int              `json:"total"`
+}
+
+// StatusChangeRequest is the body for POST /{id}/deactivate (and any
+// other lifecycle endpoints that record a reason on the audit row).
+type StatusChangeRequest struct {
+	Reason string `json:"reason"`
+}
+
+// ClientApplicationResponse mirrors Rust's ClientApplicationResponse —
+// the per-application row in the /clients/{id}/applications list.
+type ClientApplicationResponse struct {
+	ID               string  `json:"id"`
+	Code             string  `json:"code"`
+	Name             string  `json:"name"`
+	Description      *string `json:"description,omitempty"`
+	IconURL          *string `json:"iconUrl,omitempty"`
+	Active           bool    `json:"active"`
+	EnabledForClient bool    `json:"enabledForClient"`
+}
+
+// ClientApplicationsResponse is the wire shape for GET /api/clients/{id}/applications.
+type ClientApplicationsResponse struct {
+	Applications []ClientApplicationResponse `json:"applications"`
+	Total        int                         `json:"total"`
+}
+
+// UpdateClientApplicationsRequest replaces the client's enabled set.
+type UpdateClientApplicationsRequest struct {
+	EnabledApplicationIDs []string `json:"enabledApplicationIds"`
 }

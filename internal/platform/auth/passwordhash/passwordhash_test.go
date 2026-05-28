@@ -10,7 +10,7 @@ func TestHashRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Hash: %v", err)
 	}
-	if !strings.HasPrefix(encoded, "$argon2id$v=19$m=65536,t=1,p=4$") {
+	if !strings.HasPrefix(encoded, "$argon2id$v=19$m=65536,t=3,p=4$") {
 		t.Fatalf("unexpected PHC prefix: %s", encoded)
 	}
 	if err := Verify("correct horse battery staple", encoded); err != nil {
@@ -33,10 +33,10 @@ func TestVerifyInvalidEnvelope(t *testing.T) {
 	for _, bad := range []string{
 		"",
 		"not-a-phc-string",
-		"$argon2id$v=19$m=64,t=1,p=4$short",                                            // missing hash
-		"$argon2i$v=19$m=64,t=1,p=4$AAAA$AAAA",                                         // wrong variant
-		"$argon2id$v=18$m=64,t=1,p=4$AAAA$AAAA",                                        // wrong version
-		"$argon2id$v=19$m=64,t=1,p=4$!!!!$AAAA",                                        // bad base64 salt
+		"$argon2id$v=19$m=64,t=1,p=4$short",     // missing hash
+		"$argon2i$v=19$m=64,t=1,p=4$AAAA$AAAA",  // wrong variant
+		"$argon2id$v=18$m=64,t=1,p=4$AAAA$AAAA", // wrong version
+		"$argon2id$v=19$m=64,t=1,p=4$!!!!$AAAA", // bad base64 salt
 	} {
 		if err := Verify("x", bad); err != ErrInvalidHash {
 			t.Errorf("Verify(%q): got %v, want ErrInvalidHash", bad, err)

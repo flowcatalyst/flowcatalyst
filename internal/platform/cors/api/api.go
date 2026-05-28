@@ -36,7 +36,7 @@ func Register(api huma.API, s *State) {
 	huma.Register(api, huma.Operation{
 		OperationID:   "listCorsOrigins",
 		Method:        http.MethodGet,
-		Path:          "/api/cors-origins",
+		Path:          "/api/platform/cors",
 		Summary:       "List CORS origins (anchor)",
 		Tags:          []string{tag},
 		DefaultStatus: http.StatusOK,
@@ -45,7 +45,7 @@ func Register(api huma.API, s *State) {
 	huma.Register(api, huma.Operation{
 		OperationID:   "addCorsOrigin",
 		Method:        http.MethodPost,
-		Path:          "/api/cors-origins",
+		Path:          "/api/platform/cors",
 		Summary:       "Add a CORS origin",
 		Tags:          []string{tag},
 		DefaultStatus: http.StatusCreated,
@@ -54,7 +54,7 @@ func Register(api huma.API, s *State) {
 	huma.Register(api, huma.Operation{
 		OperationID:   "deleteCorsOrigin",
 		Method:        http.MethodDelete,
-		Path:          "/api/cors-origins/{id}",
+		Path:          "/api/platform/cors/{id}",
 		Summary:       "Remove a CORS origin",
 		Tags:          []string{tag},
 		DefaultStatus: http.StatusNoContent,
@@ -80,7 +80,7 @@ func (s *State) publicAllowed(ctx context.Context, _ *emptyInput) (*publicOutput
 }
 
 type listOutput struct {
-	Body AllowedOriginListResponse
+	Body CorsOriginListResponse
 }
 
 func (s *State) list(ctx context.Context, _ *emptyInput) (*listOutput, error) {
@@ -96,7 +96,7 @@ func (s *State) list(ctx context.Context, _ *emptyInput) (*listOutput, error) {
 	for i := range rows {
 		out = append(out, fromEntity(&rows[i]))
 	}
-	return &listOutput{Body: AllowedOriginListResponse{Items: out}}, nil
+	return &listOutput{Body: CorsOriginListResponse{CorsOrigins: out, Total: len(out)}}, nil
 }
 
 type addInput struct {

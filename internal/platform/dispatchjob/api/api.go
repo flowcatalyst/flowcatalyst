@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -89,6 +90,90 @@ func Register(api huma.API, s *State) {
 		Tags:          []string{tag},
 		DefaultStatus: http.StatusOK,
 	}, s.attempts)
+
+	// BFF tier — /bff/dispatch-jobs mirrors the regular handlers under
+	// cookie-auth. Mirrors Rust.
+	registerBFF(api, s, "/bff/dispatch-jobs", "Bff", "bff-dispatch-jobs")
+
+	// /bff/debug/dispatch-jobs is a SEPARATE raw-job view (write-side
+	// msg_dispatch_jobs). The SPA's RawDispatchJobListPage binds a bare
+	// array of the raw envelope shape, so it gets its own handler.
+	// Mirrors Rust's shared/debug_api.rs.
+	huma.Register(api, huma.Operation{
+		OperationID:   "listDebugDispatchJobs",
+		Method:        http.MethodGet,
+		Path:          "/bff/debug/dispatch-jobs",
+		Summary:       "List raw dispatch jobs (debug view of msg_dispatch_jobs)",
+		Tags:          []string{"bff-debug-dispatch-jobs"},
+		DefaultStatus: http.StatusOK,
+	}, s.listDebugRaw)
+}
+
+// registerBFF dual-mounts the dispatch-job handlers under an alternate
+// base path so the SPA can hit /bff/dispatch-jobs with cookie-auth.
+func registerBFF(api huma.API, s *State, base, opPrefix, tag string) {
+	huma.Register(api, huma.Operation{
+		OperationID:   "listDispatchJobs" + opPrefix,
+		Method:        http.MethodGet,
+		Path:          base,
+		Summary:       "List dispatch jobs",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.list)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "listDispatchJobsRaw" + opPrefix,
+		Method:        http.MethodGet,
+		Path:          base + "/list-raw",
+		Summary:       "List dispatch jobs with raw rows",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.listRaw)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "dispatchJobFilterOptions" + opPrefix,
+		Method:        http.MethodGet,
+		Path:          base + "/filter-options",
+		Summary:       "Distinct filter values for dispatch jobs",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.filterOptions)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "listDispatchJobsByEvent" + opPrefix,
+		Method:        http.MethodGet,
+		Path:          base + "/event/{eventId}",
+		Summary:       "List dispatch jobs created by an event",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.byEvent)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "getDispatchJob" + opPrefix,
+		Method:        http.MethodGet,
+		Path:          base + "/{id}",
+		Summary:       "Get a dispatch job by id",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.getByID)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "getDispatchJobRaw" + opPrefix,
+		Method:        http.MethodGet,
+		Path:          base + "/{id}/raw",
+		Summary:       "Get a dispatch job with raw row",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.getRaw)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "listDispatchJobAttempts" + opPrefix,
+		Method:        http.MethodGet,
+		Path:          base + "/{id}/attempts",
+		Summary:       "List a dispatch job's attempt history",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.attempts)
 }
 
 type listInput struct {
@@ -101,6 +186,32 @@ type listInput struct {
 	Until          string `query:"until" doc:"RFC3339 timestamp"`
 	Limit          int    `query:"limit"`
 	Offset         int    `query:"offset"`
+
+	// SPA params (dispatch-jobs.ts:35-44). `size` caps rows; the plural
+	// params are comma-separated multi-filters.
+	Size         int    `query:"size" doc:"Max rows (default 50, max 1000)"`
+	ClientIDs    string `query:"clientIds" doc:"CSV of client ids"`
+	Statuses     string `query:"statuses" doc:"CSV of statuses"`
+	Applications string `query:"applications" doc:"CSV of application codes"`
+	Subdomains   string `query:"subdomains" doc:"CSV of subdomains"`
+	Aggregates   string `query:"aggregates" doc:"CSV of aggregates"`
+	Codes        string `query:"codes" doc:"CSV of codes"`
+	Source       string `query:"source" doc:"Free-text source filter"`
+}
+
+// splitCSV mirrors Rust's split_csv (dispatch_job/api.rs): trim, drop empties.
+func splitCSV(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if v := strings.TrimSpace(p); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func (in *listInput) toFilters() dispatchjob.FilterParams {
@@ -120,21 +231,39 @@ func (in *listInput) toFilters() dispatchjob.FilterParams {
 		}
 		return nil
 	}
+	// `size` (SPA) and `limit` (SDK) both cap rows; size wins when set.
+	limit := in.Limit
+	if in.Size > 0 {
+		limit = in.Size
+	}
+	// `source` free-text reuses the singular Source filter.
+	src := str(in.Source)
 	return dispatchjob.FilterParams{
 		Status:         str(in.Status),
 		ClientID:       str(in.ClientID),
 		DispatchPoolID: str(in.DispatchPoolID),
 		SubscriptionID: str(in.SubscriptionID),
 		Code:           str(in.Code),
+		Source:         src,
 		Since:          ts(in.Since),
 		Until:          ts(in.Until),
-		Limit:          in.Limit,
+		Limit:          limit,
 		Offset:         in.Offset,
+		ClientIDs:      splitCSV(in.ClientIDs),
+		Statuses:       splitCSV(in.Statuses),
+		Applications:   splitCSV(in.Applications),
+		Subdomains:     splitCSV(in.Subdomains),
+		Aggregates:     splitCSV(in.Aggregates),
+		Codes:          splitCSV(in.Codes),
 	}
 }
 
+// listOutput Body is a bare JSON array — the SPA's DispatchJobListPage
+// binds the returned array directly to its DataTable, so {items:[...]}
+// would render zero rows. Mirrors Rust's list_dispatch_jobs returning
+// Vec<DispatchJobReadResponse>.
 type listOutput struct {
-	Body DispatchJobListResponse
+	Body []DispatchJobRead
 }
 
 func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
@@ -146,11 +275,11 @@ func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_with_filters failed", err)
 	}
-	out := make([]DispatchJobResponse, 0, len(rows))
+	out := make([]DispatchJobRead, 0, len(rows))
 	for i := range rows {
-		out = append(out, fromEntity(&rows[i]))
+		out = append(out, readFromEntity(&rows[i]))
 	}
-	return &listOutput{Body: DispatchJobListResponse{Items: out}}, nil
+	return &listOutput{Body: out}, nil
 }
 
 func (s *State) listRaw(ctx context.Context, in *listInput) (*listOutput, error) {
@@ -162,11 +291,46 @@ func (s *State) listRaw(ctx context.Context, in *listInput) (*listOutput, error)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_raw failed", err)
 	}
-	out := make([]DispatchJobResponse, 0, len(rows))
+	out := make([]DispatchJobRead, 0, len(rows))
 	for i := range rows {
-		out = append(out, fromEntity(&rows[i]))
+		out = append(out, readFromEntity(&rows[i]))
 	}
-	return &listOutput{Body: DispatchJobListResponse{Items: out}}, nil
+	return &listOutput{Body: out}, nil
+}
+
+// ── debug raw dispatch jobs ──────────────────────────────────────────────
+
+type rawListInput struct {
+	Size int `query:"size" doc:"Max rows (default 50, max 1000)"`
+}
+
+// rawListOutput Body is a bare array of RawDispatchJobResponse — the SPA's
+// RawDispatchJobListPage binds it directly.
+type rawListOutput struct {
+	Body []RawDispatchJobResponse
+}
+
+func (s *State) listDebugRaw(ctx context.Context, in *rawListInput) (*rawListOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, viewRawPerm); err != nil {
+		return nil, err
+	}
+	limit := in.Size
+	if limit <= 0 {
+		limit = 50
+	}
+	// FindWithFilters already reads the write-side msg_dispatch_jobs table
+	// (which carries the un-projected envelope the debug view needs); with
+	// no filters set it returns the most-recent N jobs.
+	rows, err := s.Repo.FindWithFilters(ctx, dispatchjob.FilterParams{Limit: limit})
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_recent_raw failed", err)
+	}
+	out := make([]RawDispatchJobResponse, 0, len(rows))
+	for i := range rows {
+		out = append(out, rawFromEntity(&rows[i]))
+	}
+	return &rawListOutput{Body: out}, nil
 }
 
 type getInput struct {
@@ -207,8 +371,10 @@ func (s *State) getRaw(ctx context.Context, in *getInput) (*getOutput, error) {
 	return &getOutput{Body: fromEntity(j)}, nil
 }
 
+// attemptsOutput Body is a bare JSON array — the Rust shape for
+// GET /api/dispatch-jobs/{id}/attempts.
 type attemptsOutput struct {
-	Body AttemptListResponse
+	Body []AttemptDTO
 }
 
 func (s *State) attempts(ctx context.Context, in *getInput) (*attemptsOutput, error) {
@@ -224,7 +390,7 @@ func (s *State) attempts(ctx context.Context, in *getInput) (*attemptsOutput, er
 	for i := range rows {
 		out = append(out, attemptFromEntity(&rows[i]))
 	}
-	return &attemptsOutput{Body: AttemptListResponse{Items: out}}, nil
+	return &attemptsOutput{Body: out}, nil
 }
 
 type byEventInput struct {
@@ -240,11 +406,11 @@ func (s *State) byEvent(ctx context.Context, in *byEventInput) (*listOutput, err
 	if err != nil {
 		return nil, usecase.Internal("REPO", "by_event failed", err)
 	}
-	out := make([]DispatchJobResponse, 0, len(rows))
+	out := make([]DispatchJobRead, 0, len(rows))
 	for i := range rows {
-		out = append(out, fromEntity(&rows[i]))
+		out = append(out, readFromEntity(&rows[i]))
 	}
-	return &listOutput{Body: DispatchJobListResponse{Items: out}}, nil
+	return &listOutput{Body: out}, nil
 }
 
 type emptyInput struct{}

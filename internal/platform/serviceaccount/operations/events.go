@@ -10,18 +10,31 @@ import (
 const (
 	// Aggregate is "serviceaccount" (no hyphen) — matches the
 	// platform_event_types.rs catalog. HTTP routes still use /service-accounts.
-	ServiceAccountCreatedType            = "platform:iam:serviceaccount:created"
-	ServiceAccountUpdatedType            = "platform:iam:serviceaccount:updated"
-	ServiceAccountDeactivatedType        = "platform:iam:serviceaccount:deactivated"
-	ServiceAccountDeletedType            = "platform:iam:serviceaccount:deleted"
-	ServiceAccountRolesAssignedType      = "platform:iam:serviceaccount:roles-assigned"
-	ServiceAccountTokenRegeneratedType   = "platform:iam:serviceaccount:token-regenerated"
-	ServiceAccountSecretRegeneratedType  = "platform:iam:serviceaccount:secret-regenerated"
-	Source                               = "platform:iam"
+	ServiceAccountCreatedType           = "platform:iam:serviceaccount:created"
+	ServiceAccountUpdatedType           = "platform:iam:serviceaccount:updated"
+	ServiceAccountDeactivatedType       = "platform:iam:serviceaccount:deactivated"
+	ServiceAccountDeletedType           = "platform:iam:serviceaccount:deleted"
+	ServiceAccountRolesAssignedType     = "platform:iam:serviceaccount:roles-assigned"
+	ServiceAccountTokenRegeneratedType  = "platform:iam:serviceaccount:token-regenerated"
+	ServiceAccountSecretRegeneratedType = "platform:iam:serviceaccount:secret-regenerated"
+	Source                              = "platform:iam"
 )
 
 func subjectFor(id string) string { return "platform.serviceaccount." + id }
 func groupFor(id string) string   { return "platform:serviceaccount:" + id }
+
+// NewServiceAccountCreatedEvent builds the created event with the
+// canonical subject. Exported so cross-aggregate orchestrations (e.g.
+// application provision-service-account) can emit it inside their own
+// transaction without reaching into this package's private helpers.
+func NewServiceAccountCreatedEvent(ec usecase.ExecutionContext, saID, code, name string) ServiceAccountCreated {
+	return ServiceAccountCreated{
+		Metadata:         usecase.NewEventMetadata(ec, ServiceAccountCreatedType, Source, subjectFor(saID)),
+		ServiceAccountID: saID,
+		Code:             code,
+		Name:             name,
+	}
+}
 
 type ServiceAccountCreated struct {
 	Metadata         usecase.EventMetadata
@@ -182,8 +195,10 @@ type ServiceAccountSecretRegenerated struct {
 	Code             string
 }
 
-func (e ServiceAccountSecretRegenerated) EventID() string       { return e.Metadata.EventID }
-func (e ServiceAccountSecretRegenerated) EventType() string     { return ServiceAccountSecretRegeneratedType }
+func (e ServiceAccountSecretRegenerated) EventID() string { return e.Metadata.EventID }
+func (e ServiceAccountSecretRegenerated) EventType() string {
+	return ServiceAccountSecretRegeneratedType
+}
 func (e ServiceAccountSecretRegenerated) SpecVersion() string   { return "1.0" }
 func (e ServiceAccountSecretRegenerated) Source() string        { return Source }
 func (e ServiceAccountSecretRegenerated) Subject() string       { return subjectFor(e.ServiceAccountID) }

@@ -122,7 +122,7 @@ func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
 			out = append(out, fromEntity(sub))
 		}
 	}
-	return &listOutput{Body: SubscriptionListResponse{Items: out}}, nil
+	return &listOutput{Body: SubscriptionListResponse{Subscriptions: out, Total: len(out)}}, nil
 }
 
 type getInput struct {

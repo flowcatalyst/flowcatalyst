@@ -25,9 +25,16 @@ import (
 
 // LoginEndpoint serves the OIDC bridge HTTP surface:
 //
-//   POST /oauth/check-domain
-//   GET  /oauth/oidc/login
-//   GET  /oauth/oidc/callback
+//	GET  /auth/oidc/login
+//	GET  /auth/oidc/callback
+//
+// The paths match Rust fc-platform (`/auth/oidc/*`) so the frontend and
+// Rust clients work against either backend without per-implementation
+// hacks.
+//
+// /auth/check-domain is owned by the login package, not the bridge —
+// it does the email-domain-mapping lookup and only needs the bridge for
+// the redirect URL it returns.
 //
 // The handlers do the redirect-and-exchange dance; the per-request
 // session-cookie write (and any consent UI) is owned by the
@@ -89,57 +96,43 @@ func NewLoginEndpoint(
 	}
 }
 
-// RegisterRoutes mounts the OIDC bridge endpoints.
+// RegisterRoutes mounts the OIDC bridge endpoints. /auth/check-domain
+// is intentionally NOT registered here — the login package owns that
+// path and uses identity_provider / email_domain_mapping to compute
+// the redirect URL the SPA follows back into this bridge.
 func (e *LoginEndpoint) RegisterRoutes(r chi.Router) {
-	r.Post("/oauth/check-domain", e.handleCheckDomain)
-	r.Get("/oauth/oidc/login", e.handleLogin)
-	r.Get("/oauth/oidc/callback", e.handleCallback)
+	r.Get("/auth/oidc/login", e.handleLogin)
+	r.Get("/auth/oidc/callback", e.handleCallback)
 }
 
-// handleCheckDomain answers "is this email's domain configured for OIDC?".
-// Used by the frontend's login page to decide whether to show a password
-// field (INTERNAL) or kick off an OIDC redirect.
-func (e *LoginEndpoint) handleCheckDomain(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Email string `json:"email"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
-		return
-	}
-	if body.Email == "" {
-		httperror.Write(w, httperror.BadRequest("EMAIL_REQUIRED", "email is required"))
-		return
-	}
-	_, cfg, err := e.bridge.ResolveForEmail(r.Context(), body.Email)
-	if err != nil {
-		// Resolution failures (not configured / IDP unreachable) collapse
-		// into "internal" so the UI doesn't leak whether a domain has OIDC.
-		writeJSON(w, http.StatusOK, map[string]any{"provider": "INTERNAL"})
-		return
-	}
-	resp := map[string]any{"provider": string(cfg.AuthProvider)}
-	if cfg.OIDCIssuerURL != nil {
-		resp["issuerUrl"] = *cfg.OIDCIssuerURL
-	}
-	writeJSON(w, http.StatusOK, resp)
-}
-
-// handleLogin starts an OIDC login. Takes ?email=X (required) and
-// optional ?returnUrl=Y. Generates state/nonce/PKCE verifier, persists
-// the state row, then 302-redirects to the IDP's authorize URL.
+// handleLogin starts an OIDC login. Takes ?domain=X (required) and
+// optional ?return_url=Y. Generates state/nonce/PKCE verifier, persists
+// the state row, then 302-redirects to the IDP's authorize URL. Matches
+// Rust's /auth/oidc/login signature (snake_case `return_url`,
+// `domain` over `email` so users don't leak the local part).
 func (e *LoginEndpoint) handleLogin(w http.ResponseWriter, r *http.Request) {
-	email := r.URL.Query().Get("email")
-	returnURL := r.URL.Query().Get("returnUrl")
-	if email == "" {
-		httperror.Write(w, httperror.BadRequest("EMAIL_REQUIRED", "email query param is required"))
+	q := r.URL.Query()
+	domain := q.Get("domain")
+	if domain == "" {
+		// Back-compat: also accept ?email= and derive the domain.
+		if email := q.Get("email"); email != "" {
+			domain = emailDomain(email)
+		}
+	}
+	returnURL := q.Get("return_url")
+	if returnURL == "" {
+		returnURL = q.Get("returnUrl") // tolerate camelCase legacy callers
+	}
+	if domain == "" {
+		httperror.Write(w, httperror.BadRequest("DOMAIN_REQUIRED", "domain query param is required"))
 		return
 	}
 
-	resolved, cfg, err := e.bridge.ResolveForEmail(r.Context(), email)
+	// Resolve uses email; synthesise one with a throwaway local-part.
+	resolved, cfg, err := e.bridge.ResolveForEmail(r.Context(), "x@"+domain)
 	if err != nil || resolved == nil {
 		httperror.Write(w, httperror.BadRequest("OIDC_NOT_CONFIGURED",
-			"OIDC is not configured for this email's domain"))
+			"OIDC is not configured for this domain"))
 		return
 	}
 
@@ -147,7 +140,7 @@ func (e *LoginEndpoint) handleLogin(w http.ResponseWriter, r *http.Request) {
 	nonce := randString(32)
 	verifier := randString(64)
 	challenge := pkceChallenge(verifier)
-	loginState := NewLoginState(state, emailDomain(email),
+	loginState := NewLoginState(state, domain,
 		"", // identityProviderID — populated once the IDP table is wired in
 		cfg.ID, nonce, verifier)
 	if returnURL != "" {
@@ -408,7 +401,7 @@ func principalEmail(p *principal.Principal) string {
 
 // ── helpers ──────────────────────────────────────────────────────────────
 
-// absoluteCallbackURL derives the public-facing /oauth/oidc/callback
+// absoluteCallbackURL derives the public-facing /auth/oidc/callback
 // URL the IDP will redirect to. Prefers the X-Forwarded-* headers when
 // the platform is behind a load balancer.
 func absoluteCallbackURL(r *http.Request) string {
@@ -422,7 +415,7 @@ func absoluteCallbackURL(r *http.Request) string {
 	if fwd := r.Header.Get("X-Forwarded-Host"); fwd != "" {
 		host = fwd
 	}
-	return scheme + "://" + host + "/oauth/oidc/callback"
+	return scheme + "://" + host + "/auth/oidc/callback"
 }
 
 // randString returns a URL-safe base64 string with at least n bytes of

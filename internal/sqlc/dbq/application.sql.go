@@ -203,6 +203,40 @@ func (q *Queries) ClientConfigFindByAppAndClient(ctx context.Context, arg Client
 	return i, err
 }
 
+const clientConfigFindByClient = `-- name: ClientConfigFindByClient :many
+SELECT id, application_id, client_id, enabled, created_at, updated_at
+FROM app_client_configs
+WHERE client_id = $1
+ORDER BY created_at
+`
+
+func (q *Queries) ClientConfigFindByClient(ctx context.Context, clientID string) ([]AppClientConfig, error) {
+	rows, err := q.db.Query(ctx, clientConfigFindByClient, clientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AppClientConfig{}
+	for rows.Next() {
+		var i AppClientConfig
+		if err := rows.Scan(
+			&i.ID,
+			&i.ApplicationID,
+			&i.ClientID,
+			&i.Enabled,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const clientConfigUpsert = `-- name: ClientConfigUpsert :exec
 INSERT INTO app_client_configs
     (id, application_id, client_id, enabled, created_at, updated_at)

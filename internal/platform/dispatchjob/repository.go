@@ -34,16 +34,31 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 }
 
 // FilterParams is the query DTO for /api/dispatch-jobs.
+//
+// The plural slice fields back the SPA's CSV multi-filters
+// (clientIds/statuses/codes). `Source` is a free-text source filter.
+// applications/subdomains/aggregates have no dedicated columns on the
+// write-side msg_dispatch_jobs table, so they're matched as colon-
+// delimited prefixes of the `code` column (code = "app:subdomain:agg:..").
 type FilterParams struct {
 	Status         *string
 	ClientID       *string
 	DispatchPoolID *string
 	SubscriptionID *string
 	Code           *string
+	Source         *string
 	Since          *time.Time
 	Until          *time.Time
 	Limit          int
 	Offset         int
+
+	// CSV multi-filters from the SPA.
+	ClientIDs    []string
+	Statuses     []string
+	Codes        []string
+	Applications []string
+	Subdomains   []string
+	Aggregates   []string
 }
 
 // FindByID loads a single job (write table).
@@ -121,11 +136,39 @@ func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Dis
 		args = append(args, v)
 		conds = append(conds, fmt.Sprintf("%s = $%d", col, len(args)))
 	}
+	addAny := func(col string, vs []string) {
+		args = append(args, vs)
+		conds = append(conds, fmt.Sprintf("%s = ANY($%d)", col, len(args)))
+	}
+	// codePrefix matches code segments (app:subdomain:aggregate:...) for
+	// the facet filters that have no dedicated column.
+	codePrefix := func(vs []string, depth int) {
+		if len(vs) == 0 {
+			return
+		}
+		ors := make([]string, 0, len(vs))
+		for _, v := range vs {
+			prefix := v
+			for i := 0; i < depth; i++ {
+				prefix = "%:" + prefix
+			}
+			args = append(args, prefix+":%")
+			// depth 0 → "v:%", depth 1 → "%:v:%", etc.
+			ors = append(ors, fmt.Sprintf("code LIKE $%d", len(args)))
+		}
+		conds = append(conds, "("+strings.Join(ors, " OR ")+")")
+	}
 	if p.Status != nil {
 		add("status", *p.Status)
 	}
+	if len(p.Statuses) > 0 {
+		addAny("status", p.Statuses)
+	}
 	if p.ClientID != nil {
 		add("client_id", *p.ClientID)
+	}
+	if len(p.ClientIDs) > 0 {
+		addAny("client_id", p.ClientIDs)
 	}
 	if p.DispatchPoolID != nil {
 		add("dispatch_pool_id", *p.DispatchPoolID)
@@ -136,6 +179,15 @@ func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Dis
 	if p.Code != nil {
 		add("code", *p.Code)
 	}
+	if len(p.Codes) > 0 {
+		addAny("code", p.Codes)
+	}
+	if p.Source != nil {
+		add("source", *p.Source)
+	}
+	codePrefix(p.Applications, 0)
+	codePrefix(p.Subdomains, 1)
+	codePrefix(p.Aggregates, 2)
 	if p.Since != nil {
 		args = append(args, *p.Since)
 		conds = append(conds, fmt.Sprintf("created_at >= $%d", len(args)))

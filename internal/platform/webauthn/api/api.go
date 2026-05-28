@@ -245,7 +245,7 @@ type authenticateCompleteInput struct {
 }
 
 type authenticateCompleteOutput struct {
-	Body map[string]string
+	Body WebauthnAuthenticateCompleteResponse
 }
 
 func (s *State) authenticateComplete(ctx context.Context, in *authenticateCompleteInput) (*authenticateCompleteOutput, error) {
@@ -287,7 +287,22 @@ func (s *State) authenticateComplete(ctx context.Context, in *authenticateComple
 		operations.AuthenticateCommand{StateID: in.Body.StateID, UpdatedCredential: *cred}, ec); err != nil {
 		// Counter persistence failure is non-fatal; session still issued.
 	}
-	return &authenticateCompleteOutput{Body: map[string]string{"principalId": p.ID}}, nil
+
+	var email *string
+	if p.UserIdentity != nil && p.UserIdentity.Email != "" {
+		e := p.UserIdentity.Email
+		email = &e
+	}
+	roles := make([]string, 0, len(p.Roles))
+	for _, r := range p.Roles {
+		roles = append(roles, r.Role)
+	}
+	return &authenticateCompleteOutput{Body: WebauthnAuthenticateCompleteResponse{
+		PrincipalID: p.ID,
+		Email:       email,
+		Name:        p.Name,
+		Roles:       roles,
+	}}, nil
 }
 
 // ── credentials list / delete ────────────────────────────────────────────
@@ -295,7 +310,7 @@ func (s *State) authenticateComplete(ctx context.Context, in *authenticateComple
 type emptyInput struct{}
 
 type listCredsOutput struct {
-	Body CredentialListResponse
+	Body []WebauthnCredentialSummary
 }
 
 func (s *State) listCredentials(ctx context.Context, _ *emptyInput) (*listCredsOutput, error) {
@@ -307,11 +322,11 @@ func (s *State) listCredentials(ctx context.Context, _ *emptyInput) (*listCredsO
 	if err != nil {
 		return nil, usecase.Internal("REPO", "list credentials failed", err)
 	}
-	out := make([]CredentialResponse, 0, len(rows))
+	out := make([]WebauthnCredentialSummary, 0, len(rows))
 	for i := range rows {
-		out = append(out, credentialFromEntity(&rows[i]))
+		out = append(out, credentialSummaryFromEntity(&rows[i]))
 	}
-	return &listCredsOutput{Body: CredentialListResponse{Items: out}}, nil
+	return &listCredsOutput{Body: out}, nil
 }
 
 type deleteCredInput struct {

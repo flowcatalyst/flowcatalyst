@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"log/slog"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -25,18 +26,37 @@ type Pool struct {
 	breakers  *BreakerRegistry
 	limiter   *RateLimiter
 	tracker   *InFlightTracker
+	metrics   *PoolMetricsCollector
 
-	// sem is the pool-wide concurrency semaphore. Buffered with capacity
-	// = cfg.Concurrency. Owners: every drainGroup goroutine sends on it
-	// before processOne and receives after. Closed: never — lives for the
-	// Pool's lifetime. A send blocks when concurrency is saturated; the
-	// matching `<-p.sem` after processOne releases a slot.
-	sem chan struct{}
+	// sem is the pool-wide concurrency semaphore. Buffered chan: a send
+	// is an acquire (blocks when full); the matching receive is a
+	// release. UpdateConcurrency swaps the chan atomically; workers
+	// snapshot the chan locally before acquire so the matching release
+	// goes back to the same chan they acquired from. During a resize,
+	// in-flight workers continue against the old chan (effective
+	// concurrency = old_in_flight + new_cap) and the old chan is GC'd
+	// once those workers finish.
+	sem         atomic.Value // chan struct{}
+	concurrency atomic.Uint32
 
-	mu         sync.Mutex
-	groupQs    map[string]*groupQueue // ordered FIFO queues per message-group
-	inFlight   atomic.Int64
-	stopped    atomic.Bool
+	mu      sync.Mutex
+	groupQs map[string]*groupQueue // ordered FIFO queues per message-group
+
+	queueSize     atomic.Uint32 // pending in groupQs (pre-dispatch)
+	activeWorkers atomic.Uint32 // currently inside processOne
+
+	stopped atomic.Bool
+
+	// Batch+group FIFO cascade tracking. Mirrors Rust pool.rs
+	// failed_batch_groups / batch_group_message_count: once any message in a
+	// (batch_id, message_group) fails, the rest of that batch+group is NACKed
+	// un-attempted to preserve FIFO ordering. The state clears once all of the
+	// batch+group's messages have drained (count → 0). Only messages carrying
+	// a BatchID participate.
+	bgMu              sync.Mutex
+	failedBatchGroups map[string]struct{}
+	batchGroupCount   map[string]int
+	batchCounter      atomic.Uint64 // monotonic per-poll-batch id (Rust batch_counter)
 }
 
 // groupQueue is the per-message-group buffer. High-priority messages
@@ -80,19 +100,36 @@ func NewPool(cfg common.PoolConfig, consumer queue.Consumer, mediator Mediator, 
 	}
 	concurrency := cfg.Concurrency
 	if concurrency == 0 {
-		concurrency = 1
+		// Rust parity (pool.rs): when concurrency is unset, derive it from
+		// the rate limit — max(rate_per_minute/60, 1) — rather than always 1.
+		concurrency = rate / 60
+		if concurrency < 1 {
+			concurrency = 1
+		}
 	}
-	return &Pool{
+	p := &Pool{
 		cfg:      cfg,
 		consumer: consumer,
 		mediator: mediator,
 		breakers: breakers,
 		limiter:  NewRateLimiter(rate),
 		tracker:  tracker,
-		sem:      make(chan struct{}, concurrency),
+		metrics:  NewPoolMetricsCollector(),
 		groupQs:  make(map[string]*groupQueue),
+
+		failedBatchGroups: make(map[string]struct{}),
+		batchGroupCount:   make(map[string]int),
 	}
+	p.sem.Store(make(chan struct{}, concurrency))
+	p.concurrency.Store(concurrency)
+	return p
 }
+
+// loadSem returns the current concurrency channel. Callers should
+// snapshot it locally before an acquire so that the matching release
+// receives from the same channel even if UpdateConcurrency swaps it
+// mid-flight.
+func (p *Pool) loadSem() chan struct{} { return p.sem.Load().(chan struct{}) }
 
 // Consumer exposes the underlying queue consumer (for metrics aggregation).
 func (p *Pool) Consumer() queue.Consumer { return p.consumer }
@@ -102,6 +139,39 @@ func (p *Pool) Identifier() string { return p.cfg.Code }
 
 // SetRateLimit hot-swaps the rate-limit-per-minute value.
 func (p *Pool) SetRateLimit(perMinute uint32) { p.limiter.SetRate(perMinute) }
+
+// UpdateRateLimit is the API-facing alias for SetRateLimit. A nil value
+// disables rate limiting (the Rust equivalent of `Option::None`).
+func (p *Pool) UpdateRateLimit(perMinute *uint32) {
+	var v uint32
+	if perMinute != nil {
+		v = *perMinute
+	}
+	p.limiter.SetRate(v)
+}
+
+// UpdateConcurrency swaps the semaphore to a new capacity. Returns false
+// on n==0 (invalid). Existing in-flight workers continue to release into
+// the old channel, which is GC'd once empty; new work uses the new
+// channel. Effective concurrency during the transition is bounded by
+// old_in_flight + new_cap; steady state is new_cap.
+func (p *Pool) UpdateConcurrency(n uint32) bool {
+	if n == 0 {
+		return false
+	}
+	old := p.concurrency.Load()
+	if n == old {
+		return true
+	}
+	p.sem.Store(make(chan struct{}, n))
+	p.concurrency.Store(n)
+	slog.Info("pool concurrency updated", "pool", p.cfg.Code, "from", old, "to", n)
+	return true
+}
+
+// Metrics exposes the pool's metric collector. The HTTP API hits this
+// when building EnhancedPoolMetrics for /monitoring/pool-stats.
+func (p *Pool) Metrics() *PoolMetricsCollector { return p.metrics }
 
 // Run starts the drain loop. Owns the polling cadence; spawns one
 // drainGroup goroutine per active message group via tryDrainGroup.
@@ -158,11 +228,31 @@ func (p *Pool) Run(ctx context.Context) {
 			}
 		}
 
+		// Assign one batch id to every message in this poll batch (Rust
+		// manager.rs batch_counter) so a failure preserves FIFO order across
+		// the messages received together.
+		batchID := strconv.FormatUint(p.batchCounter.Add(1), 10)
+
 		// Enqueue messages into per-group buffers and kick off drains.
 		for _, m := range msgs {
+			m.BatchID = batchID
 			group := ""
 			if m.Message.MessageGroupID != nil {
 				group = *m.Message.MessageGroupID
+			}
+			// Batch+group FIFO cascade (Rust pool.rs submit): count the
+			// message, and if its batch+group already failed, NACK it now
+			// instead of enqueueing so ordering is preserved.
+			if key, ok := p.batchKey(m); ok {
+				p.bgIncrement(key)
+				if p.bgFailed(key) {
+					p.bgDecrementAndCleanup(key)
+					delay := uint32(10)
+					if err := p.consumer.Nack(ctx, m.ReceiptHandle, &delay); err != nil {
+						slog.Warn("nack (batch+group failed) failed", "msg", m.Message.ID, "err", err)
+					}
+					continue
+				}
 			}
 			p.enqueue(group, m)
 			p.tryDrainGroup(ctx, group)
@@ -174,7 +264,121 @@ func (p *Pool) Run(ctx context.Context) {
 func (p *Pool) Stop() { p.stopped.Store(true) }
 
 // InFlight returns the count of messages currently in worker goroutines.
-func (p *Pool) InFlight() int64 { return p.inFlight.Load() }
+// Backward-compat shim for callers that still read inFlight as int64.
+func (p *Pool) InFlight() int64 { return int64(p.activeWorkers.Load()) }
+
+// ActiveWorkers returns the count of goroutines currently inside processOne.
+func (p *Pool) ActiveWorkers() uint32 { return p.activeWorkers.Load() }
+
+// QueueSize returns the count of messages buffered in group queues
+// awaiting dispatch (pre-semaphore).
+func (p *Pool) QueueSize() uint32 { return p.queueSize.Load() }
+
+// Concurrency returns the current concurrency cap.
+func (p *Pool) Concurrency() uint32 { return p.concurrency.Load() }
+
+// RateLimitPerMinute returns the current rate-limit (or nil if disabled).
+// Mirrors the way Rust's PoolStats reports the field.
+func (p *Pool) RateLimitPerMinute() *uint32 {
+	rate := p.limiter.Rate()
+	if rate == 0 {
+		return nil
+	}
+	return &rate
+}
+
+// IsRateLimited reports whether the limiter currently has no spare tokens.
+func (p *Pool) IsRateLimited() bool { return p.limiter.IsLimited() }
+
+// MessageGroupCount returns the number of message groups currently
+// holding buffered messages.
+func (p *Pool) MessageGroupCount() uint32 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return uint32(len(p.groupQs))
+}
+
+// Stats returns the dashboard-shaped snapshot of this pool.
+func (p *Pool) Stats() PoolStats {
+	concurrency := p.concurrency.Load()
+	capacity := concurrency * queueCapacityMultiplier
+	if capacity < minQueueCapacity {
+		capacity = minQueueCapacity
+	}
+	m := p.metrics.Snapshot()
+	return PoolStats{
+		PoolCode:           p.cfg.Code,
+		Concurrency:        concurrency,
+		ActiveWorkers:      p.activeWorkers.Load(),
+		QueueSize:          p.queueSize.Load(),
+		QueueCapacity:      capacity,
+		MessageGroupCount:  p.MessageGroupCount(),
+		RateLimitPerMinute: p.RateLimitPerMinute(),
+		IsRateLimited:      p.IsRateLimited(),
+		Metrics:            &m,
+	}
+}
+
+// queueCapacityMultiplier and minQueueCapacity mirror the Java/Rust
+// derivation: capacity = max(concurrency * 20, 50). Used by Stats() so
+// the dashboard's "queue capacity" matches the reference implementations.
+const (
+	queueCapacityMultiplier uint32 = 20
+	minQueueCapacity        uint32 = 50
+)
+
+// batchKey returns the batch+group tracking key for m and whether m
+// participates in batch+group FIFO tracking (only messages with a BatchID
+// do). The key is internal-only and never crosses the wire.
+func (p *Pool) batchKey(m common.QueuedMessage) (string, bool) {
+	if m.BatchID == "" {
+		return "", false
+	}
+	group := ""
+	if m.Message.MessageGroupID != nil {
+		group = *m.Message.MessageGroupID
+	}
+	return m.BatchID + "\x00" + group, true
+}
+
+// bgIncrement records one more in-flight message for the batch+group.
+func (p *Pool) bgIncrement(key string) {
+	p.bgMu.Lock()
+	p.batchGroupCount[key]++
+	p.bgMu.Unlock()
+}
+
+// bgFailed reports whether the batch+group has already had a failure.
+func (p *Pool) bgFailed(key string) bool {
+	p.bgMu.Lock()
+	_, ok := p.failedBatchGroups[key]
+	p.bgMu.Unlock()
+	return ok
+}
+
+// bgMarkFailed marks the batch+group failed so its remaining messages cascade-NACK.
+func (p *Pool) bgMarkFailed(key string) {
+	p.bgMu.Lock()
+	p.failedBatchGroups[key] = struct{}{}
+	p.bgMu.Unlock()
+}
+
+// bgDecrementAndCleanup decrements the batch+group's in-flight count and, when
+// it reaches zero, drops both the count and failed-state entries so a later
+// batch reusing the same key starts clean. Mirrors Rust
+// decrement_and_cleanup_batch_group.
+func (p *Pool) bgDecrementAndCleanup(key string) {
+	p.bgMu.Lock()
+	if n, ok := p.batchGroupCount[key]; ok {
+		if n <= 1 {
+			delete(p.batchGroupCount, key)
+			delete(p.failedBatchGroups, key)
+		} else {
+			p.batchGroupCount[key] = n - 1
+		}
+	}
+	p.bgMu.Unlock()
+}
 
 func (p *Pool) enqueue(group string, m common.QueuedMessage) {
 	p.mu.Lock()
@@ -189,6 +393,7 @@ func (p *Pool) enqueue(group string, m common.QueuedMessage) {
 		gq.regular = append(gq.regular, m)
 	}
 	p.mu.Unlock()
+	p.queueSize.Add(1)
 }
 
 // tryDrainGroup starts a drainer for the group if none is running.
@@ -233,32 +438,56 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 		}
 		msg, _ := gq.pop()
 		p.mu.Unlock()
+		// Pop happens under p.mu before any await, so queueSize stays
+		// consistent with what's actually buffered in groupQs.
+		p.queueSize.Add(^uint32(0)) // atomic decrement
 
-		// Acquire a concurrency slot. Wakeup conditions:
-		//   <-ctx.Done()         — shutdown; abandon this message (it stays
-		//                          on the broker and will be redelivered).
-		//   p.sem <- struct{}{}  — slot acquired; proceed.
+		// Batch+group FIFO cascade re-check (Rust pool.rs drain loop): the
+		// group may have failed after this message was enqueued. If so, NACK
+		// it instead of dispatching, preserving order.
+		if key, ok := p.batchKey(msg); ok && p.bgFailed(key) {
+			p.bgDecrementAndCleanup(key)
+			delay := uint32(10)
+			if err := p.consumer.Nack(ctx, msg.ReceiptHandle, &delay); err != nil {
+				slog.Warn("nack (batch+group failed) failed", "msg", msg.Message.ID, "err", err)
+			}
+			continue
+		}
+
+		// Acquire a concurrency slot. Snapshot the channel locally so a
+		// resize between acquire and release doesn't cross channels.
+		// Wakeup conditions:
+		//   <-ctx.Done()         — shutdown; abandon this message.
+		//   sem <- struct{}{}    — slot acquired; proceed.
+		sem := p.loadSem()
 		select {
 		case <-ctx.Done():
 			return
-		case p.sem <- struct{}{}:
+		case sem <- struct{}{}:
 		}
 
 		p.processOne(ctx, msg)
-		// Release the concurrency slot. Pairs 1:1 with the send above.
-		// Safe: this goroutine is the only writer of its slot.
-		<-p.sem
+		// Release the slot back to the same channel we acquired from.
+		<-sem
 	}
 }
 
 func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) {
-	p.inFlight.Add(1)
-	defer p.inFlight.Add(-1)
+	p.activeWorkers.Add(1)
+	defer p.activeWorkers.Add(^uint32(0)) // atomic decrement
+
+	// Batch+group FIFO cascade: this delivery was counted at enqueue, so
+	// release its slot on every exit path. Mirrors Rust's post-process
+	// decrement_and_cleanup_batch_group.
+	bgKey, hasBatchGroup := p.batchKey(qm)
+	if hasBatchGroup {
+		defer p.bgDecrementAndCleanup(bgKey)
+	}
 
 	// Record in-flight (and short-circuit on duplicate redelivery).
 	var imRef *common.InFlightMessage
 	if p.tracker != nil {
-		im := common.NewInFlightMessage(&qm.Message, qm.BrokerMessageID, qm.QueueIdentifier, "", qm.ReceiptHandle)
+		im := common.NewInFlightMessage(&qm.Message, qm.BrokerMessageID, qm.QueueIdentifier, qm.BatchID, qm.ReceiptHandle)
 		existing, isDuplicate := p.tracker.Insert(im)
 		if isDuplicate {
 			// Broker redelivered while we're still processing. Swap the
@@ -273,7 +502,11 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) {
 	}
 	_ = imRef // referenced via defer
 
-	// Rate limit (per-pool token bucket).
+	// Rate limit (per-pool token bucket). Record a rate-limited event
+	// when the limiter actually held us back (current tokens exhausted).
+	if p.limiter.IsLimited() {
+		p.metrics.RecordRateLimited()
+	}
 	if err := p.limiter.Wait(ctx); err != nil {
 		// Context cancelled mid-wait — defer the message and exit.
 		_ = p.consumer.Defer(ctx, qm.ReceiptHandle, ptrU32(5))
@@ -283,15 +516,24 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) {
 	// Circuit breaker per target URL.
 	cb := p.breakers.Get(qm.Message.MediationTarget)
 	if err := cb.Allow(); err != nil {
-		// Defer until the breaker's open timeout elapses.
+		// Breaker open: the message can't be delivered now, so mark its
+		// batch+group failed (Rust pool.rs) to keep later messages in order,
+		// then defer until the breaker's open timeout elapses.
+		if hasBatchGroup {
+			p.bgMarkFailed(bgKey)
+		}
 		_ = p.consumer.Defer(ctx, qm.ReceiptHandle, ptrU32(uint32(DefaultBreakerConfig().OpenTimeout.Seconds())))
 		return
 	}
 
+	start := time.Now()
 	outcome := p.mediator.Mediate(ctx, &qm.Message)
+	durationMs := uint64(time.Since(start).Milliseconds())
+
 	switch outcome.Result {
 	case common.MediationSuccess:
 		cb.RecordSuccess()
+		p.metrics.RecordSuccess(durationMs)
 		if err := p.consumer.Ack(ctx, qm.ReceiptHandle); err != nil {
 			slog.Warn("ack failed", "msg", qm.Message.ID, "err", err)
 		}
@@ -299,12 +541,22 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) {
 	case common.MediationErrorConfig:
 		// 4xx — ACK to avoid infinite retries. Do NOT trip the breaker.
 		// (The destination is "healthy" in the sense that it responded.)
+		// Rust counts this against total_failure (it was a non-success
+		// terminal outcome), so we do the same.
+		p.metrics.RecordFailure(durationMs)
 		if err := p.consumer.Ack(ctx, qm.ReceiptHandle); err != nil {
 			slog.Warn("ack (config error) failed", "msg", qm.Message.ID, "err", err)
 		}
 
 	case common.MediationErrorProcess:
 		cb.RecordFailure()
+		// Transient: message will be redelivered, so don't penalise
+		// the all-time failure counter. Matches Rust record_transient.
+		p.metrics.RecordTransient(durationMs)
+		// FIFO cascade: mark the batch+group failed so remaining messages NACK.
+		if hasBatchGroup {
+			p.bgMarkFailed(bgKey)
+		}
 		delay := uint32(outcome.DelaySeconds)
 		if err := p.consumer.Nack(ctx, qm.ReceiptHandle, &delay); err != nil {
 			slog.Warn("nack (process error) failed", "msg", qm.Message.ID, "err", err)
@@ -312,6 +564,11 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) {
 
 	case common.MediationErrorConnection:
 		cb.RecordFailure()
+		p.metrics.RecordFailure(durationMs)
+		// FIFO cascade: mark the batch+group failed so remaining messages NACK.
+		if hasBatchGroup {
+			p.bgMarkFailed(bgKey)
+		}
 		delay := uint32(outcome.DelaySeconds)
 		if err := p.consumer.Nack(ctx, qm.ReceiptHandle, &delay); err != nil {
 			slog.Warn("nack (connection error) failed", "msg", qm.Message.ID, "err", err)
@@ -319,6 +576,7 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) {
 
 	case common.MediationRateLimited:
 		// 429 — defer with Retry-After; NOT a breaker failure.
+		p.metrics.RecordRateLimited()
 		delay := uint32(outcome.DelaySeconds)
 		if err := p.consumer.Defer(ctx, qm.ReceiptHandle, &delay); err != nil {
 			slog.Warn("defer (rate limited) failed", "msg", qm.Message.ID, "err", err)

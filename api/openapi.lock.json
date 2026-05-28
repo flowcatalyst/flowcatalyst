@@ -17,10 +17,7 @@
             "items": {
               "$ref": "#/components/schemas/AccessResponse"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           }
         },
         "required": [
@@ -110,6 +107,27 @@
         ],
         "type": "object"
       },
+      "AddRoleRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/AddRoleRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "type": "object"
+      },
       "AddSchemaRequest": {
         "additionalProperties": false,
         "properties": {
@@ -136,33 +154,6 @@
         "required": [
           "version",
           "schema"
-        ],
-        "type": "object"
-      },
-      "AllowedOriginListResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "$schema": {
-            "description": "A URL to the JSON Schema for this object.",
-            "examples": [
-              "https://example.com/schemas/AllowedOriginListResponse.json"
-            ],
-            "format": "uri",
-            "readOnly": true,
-            "type": "string"
-          },
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/AllowedOriginResponse"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "items"
         ],
         "type": "object"
       },
@@ -212,10 +203,7 @@
             "items": {
               "$ref": "#/components/schemas/AnchorDomainResponse"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           }
         },
         "required": [
@@ -247,6 +235,79 @@
         ],
         "type": "object"
       },
+      "ApplicationAccessListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ApplicationAccessListResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "applications": {
+            "items": {
+              "$ref": "#/components/schemas/ApplicationAccessResponse"
+            },
+            "type": "array"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "applications",
+          "total"
+        ],
+        "type": "object"
+      },
+      "ApplicationAccessResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "applicationCode": {
+            "type": "string"
+          },
+          "applicationId": {
+            "type": "string"
+          },
+          "applicationName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "applicationId",
+          "applicationCode",
+          "applicationName"
+        ],
+        "type": "object"
+      },
+      "ApplicationFilterListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ApplicationFilterListResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "applicationCodes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "applicationCodes"
+        ],
+        "type": "object"
+      },
       "ApplicationListResponse": {
         "additionalProperties": false,
         "properties": {
@@ -259,18 +320,112 @@
             "readOnly": true,
             "type": "string"
           },
-          "items": {
+          "applications": {
             "items": {
               "$ref": "#/components/schemas/ApplicationResponse"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
           }
         },
         "required": [
-          "items"
+          "applications",
+          "total"
+        ],
+        "type": "object"
+      },
+      "ApplicationLoginClientCredentials": {
+        "additionalProperties": false,
+        "properties": {
+          "clientType": {
+            "type": "string"
+          },
+          "oauthClient": {
+            "$ref": "#/components/schemas/ApplicationOAuthClientCredentials"
+          },
+          "redirectUris": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "clientType",
+          "redirectUris",
+          "oauthClient"
+        ],
+        "type": "object"
+      },
+      "ApplicationOAuthClientCredentials": {
+        "additionalProperties": false,
+        "properties": {
+          "clientId": {
+            "type": "string"
+          },
+          "clientSecret": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "clientId"
+        ],
+        "type": "object"
+      },
+      "ApplicationProvisionLoginClientResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ApplicationProvisionLoginClientResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "loginClient": {
+            "$ref": "#/components/schemas/ApplicationLoginClientCredentials"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message",
+          "loginClient"
+        ],
+        "type": "object"
+      },
+      "ApplicationProvisionServiceAccountResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ApplicationProvisionServiceAccountResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "serviceAccount": {
+            "$ref": "#/components/schemas/ApplicationServiceAccountCredentials"
+          }
+        },
+        "required": [
+          "message",
+          "serviceAccount"
         ],
         "type": "object"
       },
@@ -300,6 +455,9 @@
           },
           "description": {
             "type": "string"
+          },
+          "hasLoginClient": {
+            "type": "boolean"
           },
           "iconUrl": {
             "type": "string"
@@ -335,8 +493,53 @@
           "code",
           "name",
           "active",
+          "hasLoginClient",
           "createdAt",
           "updatedAt"
+        ],
+        "type": "object"
+      },
+      "ApplicationRolesResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ApplicationRolesResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "roles"
+        ],
+        "type": "object"
+      },
+      "ApplicationServiceAccountCredentials": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "oauthClient": {
+            "$ref": "#/components/schemas/ApplicationOAuthClientCredentials"
+          },
+          "principalId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "principalId",
+          "name",
+          "oauthClient"
         ],
         "type": "object"
       },
@@ -356,10 +559,7 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           }
         },
         "required": [
@@ -383,10 +583,7 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           }
         },
         "required": [
@@ -410,10 +607,7 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           }
         },
         "required": [
@@ -487,30 +681,75 @@
         ],
         "type": "object"
       },
-      "AttemptListResponse": {
+      "AuditLogApplicationIDsResponse": {
         "additionalProperties": false,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
             "examples": [
-              "https://example.com/schemas/AttemptListResponse.json"
+              "https://example.com/schemas/AuditLogApplicationIDsResponse.json"
             ],
             "format": "uri",
             "readOnly": true,
             "type": "string"
           },
-          "items": {
+          "applicationIds": {
             "items": {
-              "$ref": "#/components/schemas/AttemptDTO"
+              "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           }
         },
         "required": [
-          "items"
+          "applicationIds"
+        ],
+        "type": "object"
+      },
+      "AuditLogClientIDsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/AuditLogClientIDsResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "clientIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "clientIds"
+        ],
+        "type": "object"
+      },
+      "AuditLogEntityTypesResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/AuditLogEntityTypesResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "entityTypes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "entityTypes"
         ],
         "type": "object"
       },
@@ -526,18 +765,46 @@
             "readOnly": true,
             "type": "string"
           },
-          "items": {
+          "auditLogs": {
             "items": {
               "$ref": "#/components/schemas/AuditLogResponse"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "nextCursor": {
+            "type": "string"
           }
         },
         "required": [
-          "items"
+          "auditLogs",
+          "hasMore"
+        ],
+        "type": "object"
+      },
+      "AuditLogOperationsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/AuditLogOperationsResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "operations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "operations"
         ],
         "type": "object"
       },
@@ -571,7 +838,9 @@
           "operation": {
             "type": "string"
           },
-          "operationJson": {},
+          "operationJson": {
+            "type": "string"
+          },
           "performedAt": {
             "$ref": "#/components/schemas/Time"
           },
@@ -607,10 +876,7 @@
             "items": {
               "$ref": "#/components/schemas/AuthConfigResponse"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           }
         },
         "required": [
@@ -625,10 +891,7 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "authProvider": {
             "type": "string"
@@ -646,10 +909,7 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "id": {
             "type": "string"
@@ -756,27 +1016,6 @@
         ],
         "type": "object"
       },
-      "Authenticator": {
-        "additionalProperties": false,
-        "properties": {
-          "AAGUID": {
-            "contentEncoding": "base64",
-            "type": "string"
-          },
-          "attachment": {
-            "type": "string"
-          },
-          "cloneWarning": {
-            "type": "boolean"
-          },
-          "signCount": {
-            "format": "int32",
-            "minimum": 0,
-            "type": "integer"
-          }
-        },
-        "type": "object"
-      },
       "BatchEventItem": {
         "additionalProperties": false,
         "properties": {
@@ -830,10 +1069,7 @@
             "items": {
               "$ref": "#/components/schemas/BatchEventItem"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           }
         },
         "required": [
@@ -863,6 +1099,33 @@
         ],
         "type": "object"
       },
+      "CheckEmailDomainResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CheckEmailDomainResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "authMethod": {
+            "type": "string"
+          },
+          "idpIssuer": {
+            "type": "string"
+          },
+          "loginUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "authMethod"
+        ],
+        "type": "object"
+      },
       "ClientAccessGrantListResponse": {
         "additionalProperties": false,
         "properties": {
@@ -875,46 +1138,110 @@
             "readOnly": true,
             "type": "string"
           },
-          "items": {
+          "grants": {
             "items": {
               "$ref": "#/components/schemas/ClientAccessGrantResponse"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           }
         },
         "required": [
-          "items"
+          "grants"
         ],
         "type": "object"
       },
       "ClientAccessGrantResponse": {
         "additionalProperties": false,
         "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ClientAccessGrantResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
           "clientId": {
             "type": "string"
+          },
+          "expiresAt": {
+            "$ref": "#/components/schemas/Time"
           },
           "grantedAt": {
             "$ref": "#/components/schemas/Time"
           },
-          "grantedBy": {
-            "type": "string"
-          },
           "id": {
-            "type": "string"
-          },
-          "principalId": {
             "type": "string"
           }
         },
         "required": [
           "id",
-          "principalId",
           "clientId",
-          "grantedBy",
           "grantedAt"
+        ],
+        "type": "object"
+      },
+      "ClientApplicationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "code": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "enabledForClient": {
+            "type": "boolean"
+          },
+          "iconUrl": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name",
+          "active",
+          "enabledForClient"
+        ],
+        "type": "object"
+      },
+      "ClientApplicationsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ClientApplicationsResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "applications": {
+            "items": {
+              "$ref": "#/components/schemas/ClientApplicationResponse"
+            },
+            "type": "array"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "applications",
+          "total"
         ],
         "type": "object"
       },
@@ -934,10 +1261,7 @@
             "items": {
               "$ref": "#/components/schemas/ClientConfigResponse"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           }
         },
         "required": [
@@ -948,6 +1272,15 @@
       "ClientConfigResponse": {
         "additionalProperties": false,
         "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ClientConfigResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
           "applicationId": {
             "type": "string"
           },
@@ -993,18 +1326,20 @@
             "readOnly": true,
             "type": "string"
           },
-          "items": {
+          "clients": {
             "items": {
               "$ref": "#/components/schemas/ClientResponse"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
           }
         },
         "required": [
-          "items"
+          "clients",
+          "total"
         ],
         "type": "object"
       },
@@ -1036,10 +1371,7 @@
             "items": {
               "$ref": "#/components/schemas/NoteResponse"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "status": {
             "type": "string"
@@ -1063,6 +1395,29 @@
           "createdAt",
           "updatedAt"
         ],
+        "type": "object"
+      },
+      "CompleteInstanceRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CompleteInstanceRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "completionResult": {},
+          "completionStatus": {
+            "type": "string"
+          },
+          "status": {
+            "description": "Defaults to COMPLETED",
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "ConfigEntryDTO": {
@@ -1097,10 +1452,7 @@
             "items": {
               "$ref": "#/components/schemas/ConfigResponse"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           }
         },
         "required": [
@@ -1111,6 +1463,15 @@
       "ConfigResponse": {
         "additionalProperties": false,
         "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ConfigResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
           "applicationCode": {
             "type": "string"
           },
@@ -1170,18 +1531,20 @@
             "readOnly": true,
             "type": "string"
           },
-          "items": {
+          "connections": {
             "items": {
               "$ref": "#/components/schemas/ConnectionResponse"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
           }
         },
         "required": [
-          "items"
+          "connections",
+          "total"
         ],
         "type": "object"
       },
@@ -1255,6 +1618,35 @@
         "required": [
           "key",
           "value"
+        ],
+        "type": "object"
+      },
+      "CorsOriginListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CorsOriginListResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "corsOrigins": {
+            "items": {
+              "$ref": "#/components/schemas/AllowedOriginResponse"
+            },
+            "type": "array"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "corsOrigins",
+          "total"
         ],
         "type": "object"
       },
@@ -1337,10 +1729,7 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "authProvider": {
             "type": "string"
@@ -1355,10 +1744,7 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "oidcClientId": {
             "type": "string"
@@ -1550,10 +1936,7 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "code": {
             "description": "IDP code (e.g. internal, entra)",
@@ -1636,19 +2019,13 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "allowedRoleIds": {
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "emailDomain": {
             "description": "DNS-like email domain (e.g. example.com)",
@@ -1658,10 +2035,7 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "identityProviderId": {
             "type": "string"
@@ -1700,6 +2074,18 @@
             "readOnly": true,
             "type": "string"
           },
+          "allowedOrigins": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "applicationIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "clientId": {
             "type": "string"
           },
@@ -1710,14 +2096,23 @@
             "description": "PUBLIC or CONFIDENTIAL",
             "type": "string"
           },
+          "defaultScopes": {
+            "type": "string"
+          },
           "grantTypes": {
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
+          },
+          "pkceRequired": {
+            "type": "boolean"
+          },
+          "postLogoutRedirectUris": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "principalId": {
             "type": "string"
@@ -1726,19 +2121,13 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "scopes": {
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           }
         },
         "required": [
@@ -1760,23 +2149,15 @@
             "readOnly": true,
             "type": "string"
           },
-          "clientId": {
-            "type": "string"
-          },
-          "clientName": {
-            "type": "string"
+          "client": {
+            "$ref": "#/components/schemas/OAuthClientResponse"
           },
           "clientSecret": {
-            "type": "string"
-          },
-          "id": {
             "type": "string"
           }
         },
         "required": [
-          "id",
-          "clientId",
-          "clientName"
+          "client"
         ],
         "type": "object"
       },
@@ -1852,10 +2233,7 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           }
         },
         "required": [
@@ -1896,10 +2274,7 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "roleName": {
             "description": "Role name within the application",
@@ -1939,10 +2314,7 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "deliveryMaxAttempts": {
             "format": "int32",
@@ -1993,6 +2365,12 @@
           "applicationId": {
             "type": "string"
           },
+          "clientIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "code": {
             "type": "string"
           },
@@ -2012,6 +2390,39 @@
         "required": [
           "code",
           "name"
+        ],
+        "type": "object"
+      },
+      "CreateServiceAccountResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CreateServiceAccountResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "oauth": {
+            "$ref": "#/components/schemas/ServiceAccountOAuthSecrets"
+          },
+          "principalId": {
+            "type": "string"
+          },
+          "serviceAccount": {
+            "$ref": "#/components/schemas/ServiceAccountResponse"
+          },
+          "webhook": {
+            "$ref": "#/components/schemas/ServiceAccountWebhookSecrets"
+          }
+        },
+        "required": [
+          "serviceAccount",
+          "principalId",
+          "oauth",
+          "webhook"
         ],
         "type": "object"
       },
@@ -2040,10 +2451,7 @@
             "items": {
               "$ref": "#/components/schemas/ConfigEntryDTO"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "dataOnly": {
             "type": "boolean"
@@ -2066,10 +2474,7 @@
             "items": {
               "$ref": "#/components/schemas/EventTypeBindingDTO"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "maxAgeSeconds": {
             "format": "int32",
@@ -2122,158 +2527,6 @@
         ],
         "type": "object"
       },
-      "Credential": {
-        "additionalProperties": false,
-        "properties": {
-          "attestation": {
-            "$ref": "#/components/schemas/CredentialAttestation"
-          },
-          "attestationFormat": {
-            "type": "string"
-          },
-          "attestationType": {
-            "type": "string"
-          },
-          "authenticator": {
-            "$ref": "#/components/schemas/Authenticator"
-          },
-          "flags": {
-            "$ref": "#/components/schemas/CredentialFlags"
-          },
-          "id": {
-            "contentEncoding": "base64",
-            "type": "string"
-          },
-          "publicKey": {
-            "contentEncoding": "base64",
-            "type": "string"
-          },
-          "transport": {
-            "items": {
-              "type": "string"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "publicKey",
-          "flags",
-          "authenticator",
-          "attestation"
-        ],
-        "type": "object"
-      },
-      "CredentialAttestation": {
-        "additionalProperties": false,
-        "properties": {
-          "authenticatorData": {
-            "contentEncoding": "base64",
-            "type": "string"
-          },
-          "clientDataHash": {
-            "contentEncoding": "base64",
-            "type": "string"
-          },
-          "clientDataJSON": {
-            "contentEncoding": "base64",
-            "type": "string"
-          },
-          "object": {
-            "contentEncoding": "base64",
-            "type": "string"
-          },
-          "publicKeyAlgorithm": {
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "type": "object"
-      },
-      "CredentialFlags": {
-        "additionalProperties": false,
-        "properties": {
-          "backupEligible": {
-            "type": "boolean"
-          },
-          "backupState": {
-            "type": "boolean"
-          },
-          "userPresent": {
-            "type": "boolean"
-          },
-          "userVerified": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "userPresent",
-          "userVerified",
-          "backupEligible",
-          "backupState"
-        ],
-        "type": "object"
-      },
-      "CredentialListResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "$schema": {
-            "description": "A URL to the JSON Schema for this object.",
-            "examples": [
-              "https://example.com/schemas/CredentialListResponse.json"
-            ],
-            "format": "uri",
-            "readOnly": true,
-            "type": "string"
-          },
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/CredentialResponse"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "items"
-        ],
-        "type": "object"
-      },
-      "CredentialResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "createdAt": {
-            "$ref": "#/components/schemas/Time"
-          },
-          "credential": {
-            "$ref": "#/components/schemas/Credential"
-          },
-          "id": {
-            "type": "string"
-          },
-          "lastUsedAt": {
-            "$ref": "#/components/schemas/Time"
-          },
-          "name": {
-            "type": "string"
-          },
-          "principalId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "principalId",
-          "credential",
-          "createdAt"
-        ],
-        "type": "object"
-      },
       "DispatchJobFilterOptionsResponse": {
         "additionalProperties": false,
         "properties": {
@@ -2290,55 +2543,37 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "codes": {
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "dispatchPoolIds": {
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "kinds": {
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "statuses": {
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "subscriptionIds": {
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           }
         },
         "required": [
@@ -2351,30 +2586,94 @@
         ],
         "type": "object"
       },
-      "DispatchJobListResponse": {
+      "DispatchJobRead": {
         "additionalProperties": false,
         "properties": {
-          "$schema": {
-            "description": "A URL to the JSON Schema for this object.",
-            "examples": [
-              "https://example.com/schemas/DispatchJobListResponse.json"
-            ],
-            "format": "uri",
-            "readOnly": true,
+          "aggregate": {
             "type": "string"
           },
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/DispatchJobResponse"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
+          "application": {
+            "type": "string"
+          },
+          "attemptCount": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "clientIdentifier": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "completedAt": {
+            "$ref": "#/components/schemas/Time"
+          },
+          "correlationId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "$ref": "#/components/schemas/Time"
+          },
+          "dispatchMode": {
+            "type": "string"
+          },
+          "eventId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "lastAttemptAt": {
+            "$ref": "#/components/schemas/Time"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "priority": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "scheduledFor": {
+            "$ref": "#/components/schemas/Time"
+          },
+          "source": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "subdomain": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "subscriptionId": {
+            "type": "string"
+          },
+          "targetUrl": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "$ref": "#/components/schemas/Time"
           }
         },
         "required": [
-          "items"
+          "id",
+          "code",
+          "status",
+          "kind",
+          "targetUrl",
+          "mode",
+          "createdAt",
+          "updatedAt",
+          "attemptCount"
         ],
         "type": "object"
       },
@@ -2398,10 +2697,7 @@
             "items": {
               "$ref": "#/components/schemas/AttemptDTO"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "clientId": {
             "type": "string"
@@ -2464,10 +2760,7 @@
             "items": {
               "$ref": "#/components/schemas/MetadataDTO"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "mode": {
             "type": "string"
@@ -2553,18 +2846,20 @@
             "readOnly": true,
             "type": "string"
           },
-          "items": {
+          "pools": {
             "items": {
               "$ref": "#/components/schemas/DispatchPoolResponse"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
           }
         },
         "required": [
-          "items"
+          "pools",
+          "total"
         ],
         "type": "object"
       },
@@ -2627,33 +2922,6 @@
         ],
         "type": "object"
       },
-      "DistinctValuesResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "$schema": {
-            "description": "A URL to the JSON Schema for this object.",
-            "examples": [
-              "https://example.com/schemas/DistinctValuesResponse.json"
-            ],
-            "format": "uri",
-            "readOnly": true,
-            "type": "string"
-          },
-          "items": {
-            "items": {
-              "type": "string"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "items"
-        ],
-        "type": "object"
-      },
       "ErrorModel": {
         "additionalProperties": false,
         "properties": {
@@ -2666,20 +2934,36 @@
             "readOnly": true,
             "type": "string"
           },
-          "code": {
-            "type": "string"
-          },
           "details": {
             "additionalProperties": {},
             "type": "object"
+          },
+          "error": {
+            "type": "string"
           },
           "message": {
             "type": "string"
           }
         },
         "required": [
-          "code",
+          "error",
           "message"
+        ],
+        "type": "object"
+      },
+      "EventFilterOption": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "label"
         ],
         "type": "object"
       },
@@ -2695,65 +2979,78 @@
             "readOnly": true,
             "type": "string"
           },
-          "clientIds": {
+          "applications": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/EventFilterOption"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
-          "sources": {
+          "eventTypes": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/EventFilterOption"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
-          "types": {
+          "subdomains": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/EventFilterOption"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           }
         },
         "required": [
-          "types",
-          "sources",
-          "clientIds"
+          "applications",
+          "subdomains",
+          "eventTypes"
         ],
         "type": "object"
       },
-      "EventListResponse": {
+      "EventRead": {
         "additionalProperties": false,
         "properties": {
-          "$schema": {
-            "description": "A URL to the JSON Schema for this object.",
-            "examples": [
-              "https://example.com/schemas/EventListResponse.json"
-            ],
-            "format": "uri",
-            "readOnly": true,
+          "aggregate": {
             "type": "string"
           },
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/EventResponse"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
+          "application": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "correlationId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "messageGroup": {
+            "type": "string"
+          },
+          "projectedAt": {
+            "$ref": "#/components/schemas/Time"
+          },
+          "source": {
+            "type": "string"
+          },
+          "subdomain": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "time": {
+            "$ref": "#/components/schemas/Time"
+          },
+          "type": {
+            "type": "string"
           }
         },
         "required": [
-          "items"
+          "id",
+          "type",
+          "source",
+          "time",
+          "projectedAt"
         ],
         "type": "object"
       },
@@ -2769,6 +3066,12 @@
             "readOnly": true,
             "type": "string"
           },
+          "aggregate": {
+            "type": "string"
+          },
+          "application": {
+            "type": "string"
+          },
           "causationId": {
             "type": "string"
           },
@@ -2779,10 +3082,7 @@
             "items": {
               "$ref": "#/components/schemas/ContextEntryDTO"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "correlationId": {
             "type": "string"
@@ -2800,10 +3100,16 @@
           "messageGroup": {
             "type": "string"
           },
+          "projectedAt": {
+            "$ref": "#/components/schemas/Time"
+          },
           "source": {
             "type": "string"
           },
           "specVersion": {
+            "type": "string"
+          },
+          "subdomain": {
             "type": "string"
           },
           "subject": {
@@ -2865,10 +3171,7 @@
             "items": {
               "$ref": "#/components/schemas/EventTypeResponse"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           }
         },
         "required": [
@@ -2925,10 +3228,7 @@
             "items": {
               "$ref": "#/components/schemas/SpecVersionResponse"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "status": {
             "type": "string"
@@ -2953,22 +3253,6 @@
           "createdAt",
           "updatedAt",
           "specVersions"
-        ],
-        "type": "object"
-      },
-      "ExternalIdentityDTO": {
-        "additionalProperties": false,
-        "properties": {
-          "externalId": {
-            "type": "string"
-          },
-          "providerId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "providerId",
-          "externalId"
         ],
         "type": "object"
       },
@@ -3055,18 +3339,20 @@
             "readOnly": true,
             "type": "string"
           },
-          "items": {
+          "identityProviders": {
             "items": {
               "$ref": "#/components/schemas/IdentityProviderResponse"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
           }
         },
         "required": [
-          "items"
+          "identityProviders",
+          "total"
         ],
         "type": "object"
       },
@@ -3086,16 +3372,16 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "code": {
             "type": "string"
           },
           "createdAt": {
             "$ref": "#/components/schemas/Time"
+          },
+          "hasClientSecret": {
+            "type": "boolean"
           },
           "id": {
             "type": "string"
@@ -3104,9 +3390,6 @@
             "type": "string"
           },
           "oidcClientId": {
-            "type": "string"
-          },
-          "oidcClientSecretRef": {
             "type": "string"
           },
           "oidcIssuerPattern": {
@@ -3130,6 +3413,7 @@
           "code",
           "name",
           "type",
+          "hasClientSecret",
           "oidcMultiTenant",
           "allowedEmailDomains",
           "createdAt",
@@ -3153,10 +3437,7 @@
             "items": {
               "$ref": "#/components/schemas/IdpRoleMappingResponse"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           }
         },
         "required": [
@@ -3208,18 +3489,20 @@
             "readOnly": true,
             "type": "string"
           },
-          "items": {
+          "mappings": {
             "items": {
               "$ref": "#/components/schemas/MappingResponse"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
           }
         },
         "required": [
-          "items"
+          "mappings",
+          "total"
         ],
         "type": "object"
       },
@@ -3239,19 +3522,13 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "allowedRoleIds": {
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "createdAt": {
             "$ref": "#/components/schemas/Time"
@@ -3263,15 +3540,15 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "id": {
             "type": "string"
           },
           "identityProviderId": {
+            "type": "string"
+          },
+          "identityProviderName": {
             "type": "string"
           },
           "primaryClientId": {
@@ -3343,6 +3620,22 @@
         ],
         "type": "object"
       },
+      "OAuthClientApplicationRef": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object"
+      },
       "OAuthClientListResponse": {
         "additionalProperties": false,
         "properties": {
@@ -3355,18 +3648,15 @@
             "readOnly": true,
             "type": "string"
           },
-          "items": {
+          "clients": {
             "items": {
               "$ref": "#/components/schemas/OAuthClientResponse"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           }
         },
         "required": [
-          "items"
+          "clients"
         ],
         "type": "object"
       },
@@ -3385,6 +3675,24 @@
           "active": {
             "type": "boolean"
           },
+          "allowedOrigins": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "applicationIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "applications": {
+            "items": {
+              "$ref": "#/components/schemas/OAuthClientApplicationRef"
+            },
+            "type": "array"
+          },
           "clientId": {
             "type": "string"
           },
@@ -3397,38 +3705,38 @@
           "createdAt": {
             "$ref": "#/components/schemas/Time"
           },
+          "defaultScopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "grantTypes": {
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "id": {
             "type": "string"
           },
-          "principalId": {
-            "type": "string"
+          "pkceRequired": {
+            "type": "boolean"
+          },
+          "postLogoutRedirectUris": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "redirectUris": {
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
-          "scopes": {
-            "items": {
-              "type": "string"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
+          "serviceAccountPrincipalId": {
+            "type": "string"
           },
           "updatedAt": {
             "$ref": "#/components/schemas/Time"
@@ -3440,11 +3748,208 @@
           "clientName",
           "clientType",
           "redirectUris",
+          "postLogoutRedirectUris",
+          "allowedOrigins",
           "grantTypes",
-          "scopes",
+          "defaultScopes",
+          "pkceRequired",
+          "applicationIds",
+          "applications",
           "active",
           "createdAt",
           "updatedAt"
+        ],
+        "type": "object"
+      },
+      "OffsetPageScheduledJobInstanceResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/OffsetPageScheduledJobInstanceResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduledJobInstanceResponse"
+            },
+            "type": "array"
+          },
+          "page": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "total_pages": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "page",
+          "size",
+          "total",
+          "total_pages"
+        ],
+        "type": "object"
+      },
+      "OffsetPageScheduledJobResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/OffsetPageScheduledJobResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduledJobResponse"
+            },
+            "type": "array"
+          },
+          "page": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "total_pages": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "page",
+          "size",
+          "total",
+          "total_pages"
+        ],
+        "type": "object"
+      },
+      "PermissionListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PermissionListResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "permissions": {
+            "items": {
+              "$ref": "#/components/schemas/PermissionResponse"
+            },
+            "type": "array"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "permissions",
+          "total"
+        ],
+        "type": "object"
+      },
+      "PermissionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PermissionResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "permission": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "permission",
+          "name"
+        ],
+        "type": "object"
+      },
+      "PrincipalAvailableApplication": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name"
+        ],
+        "type": "object"
+      },
+      "PrincipalAvailableApplicationsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PrincipalAvailableApplicationsResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "applications": {
+            "items": {
+              "$ref": "#/components/schemas/PrincipalAvailableApplication"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "applications"
         ],
         "type": "object"
       },
@@ -3460,18 +3965,20 @@
             "readOnly": true,
             "type": "string"
           },
-          "items": {
+          "principals": {
             "items": {
               "$ref": "#/components/schemas/PrincipalResponse"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
           }
         },
         "required": [
-          "items"
+          "principals",
+          "total"
         ],
         "type": "object"
       },
@@ -3487,64 +3994,43 @@
             "readOnly": true,
             "type": "string"
           },
-          "accessibleApplicationIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
           "active": {
             "type": "boolean"
-          },
-          "applicationId": {
-            "type": "string"
-          },
-          "assignedClients": {
-            "items": {
-              "type": "string"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
           },
           "clientId": {
             "type": "string"
           },
-          "clientIdentifierMap": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object"
-          },
           "createdAt": {
             "$ref": "#/components/schemas/Time"
           },
-          "externalIdentity": {
-            "$ref": "#/components/schemas/ExternalIdentityDTO"
+          "email": {
+            "type": "string"
+          },
+          "grantedClientIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "id": {
             "type": "string"
+          },
+          "idpType": {
+            "type": "string"
+          },
+          "isAnchorUser": {
+            "type": "boolean"
           },
           "name": {
             "type": "string"
           },
           "roles": {
             "items": {
-              "$ref": "#/components/schemas/PrincipalRoleAssignmentDTO"
+              "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "scope": {
-            "type": "string"
-          },
-          "serviceAccountId": {
             "type": "string"
           },
           "type": {
@@ -3552,9 +4038,6 @@
           },
           "updatedAt": {
             "$ref": "#/components/schemas/Time"
-          },
-          "userIdentity": {
-            "$ref": "#/components/schemas/UserIdentityDTO"
           }
         },
         "required": [
@@ -3564,8 +4047,8 @@
           "name",
           "active",
           "roles",
-          "assignedClients",
-          "accessibleApplicationIds",
+          "isAnchorUser",
+          "grantedClientIds",
           "createdAt",
           "updatedAt"
         ],
@@ -3577,13 +4060,10 @@
           "assignedAt": {
             "$ref": "#/components/schemas/Time"
           },
-          "assignedBy": {
-            "type": "string"
-          },
           "assignmentSource": {
             "type": "string"
           },
-          "clientId": {
+          "id": {
             "type": "string"
           },
           "roleName": {
@@ -3591,8 +4071,34 @@
           }
         },
         "required": [
+          "id",
           "roleName",
+          "assignmentSource",
           "assignedAt"
+        ],
+        "type": "object"
+      },
+      "PrincipalRoleListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PrincipalRoleListResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/PrincipalRoleAssignmentDTO"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "roles"
         ],
         "type": "object"
       },
@@ -3612,10 +4118,7 @@
             "items": {
               "$ref": "#/components/schemas/ProcessResponse"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           }
         },
         "required": [
@@ -3678,10 +4181,7 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "updatedAt": {
             "$ref": "#/components/schemas/Time"
@@ -3704,6 +4204,40 @@
         ],
         "type": "object"
       },
+      "ProvisionLoginClientRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ProvisionLoginClientRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "allowedOrigins": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "clientType": {
+            "description": "PUBLIC (default) or CONFIDENTIAL",
+            "type": "string"
+          },
+          "redirectUris": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "redirectUris"
+        ],
+        "type": "object"
+      },
       "PublicAllowedResponse": {
         "additionalProperties": false,
         "properties": {
@@ -3720,14 +4254,190 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           }
         },
         "required": [
           "allowedOrigins"
+        ],
+        "type": "object"
+      },
+      "RawDispatchJobResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "attemptCount": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "attemptHistoryCount": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "completedAt": {
+            "$ref": "#/components/schemas/Time"
+          },
+          "correlationId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "$ref": "#/components/schemas/Time"
+          },
+          "dispatchPoolId": {
+            "type": "string"
+          },
+          "eventId": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "lastError": {
+            "type": "string"
+          },
+          "maxRetries": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "messageGroup": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "payloadContentType": {
+            "type": "string"
+          },
+          "payloadLength": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "protocol": {
+            "type": "string"
+          },
+          "retryStrategy": {
+            "type": "string"
+          },
+          "scheduledFor": {
+            "$ref": "#/components/schemas/Time"
+          },
+          "sequence": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "serviceAccountId": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "subscriptionId": {
+            "type": "string"
+          },
+          "targetUrl": {
+            "type": "string"
+          },
+          "timeoutSeconds": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "updatedAt": {
+            "$ref": "#/components/schemas/Time"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "code",
+          "targetUrl",
+          "protocol",
+          "mode",
+          "sequence",
+          "status",
+          "attemptCount",
+          "maxRetries",
+          "timeoutSeconds",
+          "retryStrategy",
+          "createdAt",
+          "updatedAt",
+          "payloadContentType",
+          "payloadLength",
+          "attemptHistoryCount"
+        ],
+        "type": "object"
+      },
+      "RawEventResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "causationId": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "contextData": {
+            "items": {
+              "$ref": "#/components/schemas/ContextEntryDTO"
+            },
+            "type": "array"
+          },
+          "correlationId": {
+            "type": "string"
+          },
+          "data": {},
+          "deduplicationId": {
+            "type": "string"
+          },
+          "eventType": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "messageGroup": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "specVersion": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "time": {
+            "$ref": "#/components/schemas/Time"
+          }
+        },
+        "required": [
+          "id",
+          "specVersion",
+          "eventType",
+          "source",
+          "time"
         ],
         "type": "object"
       },
@@ -3925,18 +4635,44 @@
             "readOnly": true,
             "type": "string"
           },
-          "items": {
+          "roles": {
             "items": {
               "$ref": "#/components/schemas/RoleResponse"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
           }
         },
         "required": [
-          "items"
+          "roles",
+          "total"
+        ],
+        "type": "object"
+      },
+      "RolePermissionListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RolePermissionListResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "permissions"
         ],
         "type": "object"
       },
@@ -3980,10 +4716,7 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "source": {
             "type": "string"
@@ -4005,6 +4738,44 @@
         ],
         "type": "object"
       },
+      "RolesAssignedResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RolesAssignedResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "added": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "removed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/PrincipalRoleAssignmentDTO"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "roles",
+          "added",
+          "removed"
+        ],
+        "type": "object"
+      },
       "RotateOAuthClientSecretResponse": {
         "additionalProperties": false,
         "properties": {
@@ -4017,42 +4788,122 @@
             "readOnly": true,
             "type": "string"
           },
-          "clientSecret": {
+          "clientId": {
             "type": "string"
           },
-          "id": {
+          "clientSecret": {
             "type": "string"
           }
         },
         "required": [
-          "id"
+          "clientId"
         ],
         "type": "object"
       },
-      "ScheduledJobListResponse": {
+      "ScheduledJobInstanceLogResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "clientId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "$ref": "#/components/schemas/Time"
+          },
+          "id": {
+            "type": "string"
+          },
+          "instanceId": {
+            "type": "string"
+          },
+          "level": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "metadata": {},
+          "scheduledJobId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "instanceId",
+          "level",
+          "message",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "ScheduledJobInstanceResponse": {
         "additionalProperties": false,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
             "examples": [
-              "https://example.com/schemas/ScheduledJobListResponse.json"
+              "https://example.com/schemas/ScheduledJobInstanceResponse.json"
             ],
             "format": "uri",
             "readOnly": true,
             "type": "string"
           },
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/ScheduledJobResponse"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
+          "clientId": {
+            "type": "string"
+          },
+          "completedAt": {
+            "$ref": "#/components/schemas/Time"
+          },
+          "completionResult": {},
+          "completionStatus": {
+            "type": "string"
+          },
+          "correlationId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "$ref": "#/components/schemas/Time"
+          },
+          "deliveredAt": {
+            "$ref": "#/components/schemas/Time"
+          },
+          "deliveryAttempts": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "deliveryError": {
+            "type": "string"
+          },
+          "firedAt": {
+            "$ref": "#/components/schemas/Time"
+          },
+          "id": {
+            "type": "string"
+          },
+          "jobCode": {
+            "type": "string"
+          },
+          "scheduledFor": {
+            "$ref": "#/components/schemas/Time"
+          },
+          "scheduledJobId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "triggerKind": {
+            "type": "string"
           }
         },
         "required": [
-          "items"
+          "id",
+          "scheduledJobId",
+          "jobCode",
+          "triggerKind",
+          "firedAt",
+          "status",
+          "deliveryAttempts",
+          "createdAt"
         ],
         "type": "object"
       },
@@ -4087,10 +4938,7 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "deliveryMaxAttempts": {
             "format": "int32",
@@ -4185,18 +5033,36 @@
             "readOnly": true,
             "type": "string"
           },
-          "items": {
+          "serviceAccounts": {
             "items": {
               "$ref": "#/components/schemas/ServiceAccountResponse"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
           }
         },
         "required": [
-          "items"
+          "serviceAccounts",
+          "total"
+        ],
+        "type": "object"
+      },
+      "ServiceAccountOAuthSecrets": {
+        "additionalProperties": false,
+        "properties": {
+          "clientId": {
+            "type": "string"
+          },
+          "clientSecret": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "clientId",
+          "clientSecret"
         ],
         "type": "object"
       },
@@ -4218,14 +5084,14 @@
           "applicationId": {
             "type": "string"
           },
+          "authType": {
+            "type": "string"
+          },
           "clientIds": {
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "code": {
             "type": "string"
@@ -4247,21 +5113,15 @@
           },
           "roles": {
             "items": {
-              "$ref": "#/components/schemas/RoleAssignmentDTO"
+              "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "scope": {
             "type": "string"
           },
           "updatedAt": {
             "$ref": "#/components/schemas/Time"
-          },
-          "webhookCredentials": {
-            "$ref": "#/components/schemas/WebhookCredentialsDTO"
           }
         },
         "required": [
@@ -4270,7 +5130,7 @@
           "name",
           "active",
           "clientIds",
-          "webhookCredentials",
+          "authType",
           "roles",
           "createdAt",
           "updatedAt"
@@ -4289,18 +5149,103 @@
             "readOnly": true,
             "type": "string"
           },
-          "items": {
+          "roles": {
             "items": {
               "$ref": "#/components/schemas/RoleAssignmentDTO"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           }
         },
         "required": [
-          "items"
+          "roles"
+        ],
+        "type": "object"
+      },
+      "ServiceAccountRolesAssignedResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ServiceAccountRolesAssignedResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "addedRoles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "removedRoles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/RoleAssignmentDTO"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "roles",
+          "addedRoles",
+          "removedRoles"
+        ],
+        "type": "object"
+      },
+      "ServiceAccountWebhookSecrets": {
+        "additionalProperties": false,
+        "properties": {
+          "authToken": {
+            "type": "string"
+          },
+          "signingSecret": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "authToken",
+          "signingSecret"
+        ],
+        "type": "object"
+      },
+      "SetApplicationAccessResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SetApplicationAccessResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "added": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "applications": {
+            "items": {
+              "$ref": "#/components/schemas/ApplicationAccessResponse"
+            },
+            "type": "array"
+          },
+          "removed": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "applications",
+          "added",
+          "removed"
         ],
         "type": "object"
       },
@@ -4357,6 +5302,48 @@
         ],
         "type": "object"
       },
+      "StatusChangeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/StatusChangeRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "type": "object"
+      },
+      "StatusChangeResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/StatusChangeResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
       "SubscriptionListResponse": {
         "additionalProperties": false,
         "properties": {
@@ -4369,18 +5356,20 @@
             "readOnly": true,
             "type": "string"
           },
-          "items": {
+          "subscriptions": {
             "items": {
               "$ref": "#/components/schemas/SubscriptionResponse"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
           }
         },
         "required": [
-          "items"
+          "subscriptions",
+          "total"
         ],
         "type": "object"
       },
@@ -4424,10 +5413,7 @@
             "items": {
               "$ref": "#/components/schemas/ConfigEntryDTO"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "dataOnly": {
             "type": "boolean"
@@ -4452,10 +5438,7 @@
             "items": {
               "$ref": "#/components/schemas/EventTypeBindingDTO"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "id": {
             "type": "string"
@@ -4612,10 +5595,7 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "authProvider": {
             "type": "string"
@@ -4624,10 +5604,7 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "oidcClientId": {
             "type": "string"
@@ -4648,6 +5625,30 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "UpdateClientApplicationsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/UpdateClientApplicationsRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "enabledApplicationIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabledApplicationIds"
+        ],
         "type": "object"
       },
       "UpdateClientRequest": {
@@ -4687,6 +5688,9 @@
             "type": "string"
           },
           "name": {
+            "type": "string"
+          },
+          "status": {
             "type": "string"
           }
         },
@@ -4764,10 +5768,7 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "name": {
             "type": "string"
@@ -4806,28 +5807,19 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "allowedRoleIds": {
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "grantedClientIds": {
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "identityProviderId": {
             "type": "string"
@@ -4863,28 +5855,19 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "redirectUris": {
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "scopes": {
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           }
         },
         "type": "object"
@@ -4944,10 +5927,7 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           }
         },
         "type": "object"
@@ -4977,10 +5957,7 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           }
         },
         "type": "object"
@@ -5004,10 +5981,7 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "deliveryMaxAttempts": {
             "format": "int32",
@@ -5048,10 +6022,19 @@
             "readOnly": true,
             "type": "string"
           },
+          "clientIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "description": {
             "type": "string"
           },
           "name": {
+            "type": "string"
+          },
+          "scope": {
             "type": "string"
           },
           "webhookCredentials": {
@@ -5076,10 +6059,7 @@
             "items": {
               "$ref": "#/components/schemas/ConfigEntryDTO"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "dataOnly": {
             "type": "boolean"
@@ -5101,10 +6081,7 @@
             "items": {
               "$ref": "#/components/schemas/EventTypeBindingDTO"
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "type": "array"
           },
           "maxAgeSeconds": {
             "format": "int32",
@@ -5130,43 +6107,64 @@
         },
         "type": "object"
       },
-      "UserIdentityDTO": {
+      "WebauthnAuthenticateCompleteResponse": {
         "additionalProperties": false,
         "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/WebauthnAuthenticateCompleteResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
           "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
             "type": "string"
           },
-          "emailVerified": {
-            "type": "boolean"
-          },
-          "externalId": {
+          "principalId": {
             "type": "string"
           },
-          "firstName": {
-            "type": "string"
-          },
-          "lastLoginAt": {
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "principalId",
+          "email",
+          "name",
+          "roles"
+        ],
+        "type": "object"
+      },
+      "WebauthnCredentialSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
             "$ref": "#/components/schemas/Time"
           },
-          "lastName": {
+          "id": {
             "type": "string"
           },
-          "passwordHash": {
-            "type": "string"
+          "lastUsedAt": {
+            "$ref": "#/components/schemas/Time"
           },
-          "phone": {
-            "type": "string"
-          },
-          "pictureUrl": {
-            "type": "string"
-          },
-          "provider": {
+          "name": {
             "type": "string"
           }
         },
         "required": [
-          "email",
-          "emailVerified"
+          "id",
+          "createdAt"
         ],
         "type": "object"
       },
@@ -5200,6 +6198,33 @@
         },
         "required": [
           "authType"
+        ],
+        "type": "object"
+      },
+      "WriteInstanceLogRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/WriteInstanceLogRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "level": {
+            "description": "DEBUG | INFO | WARN | ERROR",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "metadata": {}
+        },
+        "required": [
+          "level",
+          "message"
         ],
         "type": "object"
       }
@@ -5486,6 +6511,47 @@
         ]
       }
     },
+    "/api/applications/by-id/{id}/roles": {
+      "get": {
+        "operationId": "listApplicationRoles",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationRolesResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List roles registered against an application",
+        "tags": [
+          "applications"
+        ]
+      }
+    },
     "/api/applications/{id}": {
       "delete": {
         "operationId": "deleteApplication",
@@ -5615,8 +6681,15 @@
           }
         ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationResponse"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -5671,6 +6744,55 @@
           }
         },
         "summary": "List per-client configurations for an application",
+        "tags": [
+          "applications"
+        ]
+      }
+    },
+    "/api/applications/{id}/clients/{clientId}": {
+      "get": {
+        "operationId": "getApplicationClientConfig",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "clientId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientConfigResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get a single application-client config",
         "tags": [
           "applications"
         ]
@@ -5774,8 +6896,15 @@
           }
         ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationResponse"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -5789,6 +6918,98 @@
           }
         },
         "summary": "Deactivate an application",
+        "tags": [
+          "applications"
+        ]
+      }
+    },
+    "/api/applications/{id}/provision-login-client": {
+      "post": {
+        "operationId": "provisionApplicationLoginClient",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProvisionLoginClientRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProvisionLoginClientResponse"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Create a public OAuth login client for the application",
+        "tags": [
+          "applications"
+        ]
+      }
+    },
+    "/api/applications/{id}/provision-service-account": {
+      "post": {
+        "operationId": "provisionApplicationServiceAccount",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationProvisionServiceAccountResponse"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Create + attach a dedicated service account for the application",
         "tags": [
           "applications"
         ]
@@ -5843,6 +7064,27 @@
         "operationId": "listAuditLogs",
         "parameters": [
           {
+            "description": "Opaque cursor from a previous page's nextCursor",
+            "explode": false,
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "description": "Opaque cursor from a previous page's nextCursor",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size (default 50, capped at 200)",
+            "explode": false,
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "description": "Page size (default 50, capped at 200)",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
             "explode": false,
             "in": "query",
             "name": "entityType",
@@ -5869,47 +7111,29 @@
           {
             "explode": false,
             "in": "query",
-            "name": "clientId",
+            "name": "operation",
             "schema": {
               "type": "string"
             }
           },
           {
-            "description": "RFC3339 timestamp",
+            "description": "CSV of application ids",
             "explode": false,
             "in": "query",
-            "name": "since",
+            "name": "applicationIds",
             "schema": {
-              "description": "RFC3339 timestamp",
+              "description": "CSV of application ids",
               "type": "string"
             }
           },
           {
-            "description": "RFC3339 timestamp",
+            "description": "CSV of client ids",
             "explode": false,
             "in": "query",
-            "name": "until",
+            "name": "clientIds",
             "schema": {
-              "description": "RFC3339 timestamp",
+              "description": "CSV of client ids",
               "type": "string"
-            }
-          },
-          {
-            "explode": false,
-            "in": "query",
-            "name": "limit",
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          {
-            "explode": false,
-            "in": "query",
-            "name": "offset",
-            "schema": {
-              "format": "int64",
-              "type": "integer"
             }
           }
         ],
@@ -5949,7 +7173,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DistinctValuesResponse"
+                  "$ref": "#/components/schemas/AuditLogApplicationIDsResponse"
                 }
               }
             },
@@ -5980,7 +7204,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DistinctValuesResponse"
+                  "$ref": "#/components/schemas/AuditLogClientIDsResponse"
                 }
               }
             },
@@ -6011,7 +7235,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DistinctValuesResponse"
+                  "$ref": "#/components/schemas/AuditLogEntityTypesResponse"
                 }
               }
             },
@@ -6034,10 +7258,18 @@
         ]
       }
     },
-    "/api/audit-logs/entity/{entityId}": {
+    "/api/audit-logs/entity/{entityType}/{entityId}": {
       "get": {
         "operationId": "auditLogsByEntity",
         "parameters": [
+          {
+            "in": "path",
+            "name": "entityType",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
           {
             "in": "path",
             "name": "entityId",
@@ -6083,7 +7315,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DistinctValuesResponse"
+                  "$ref": "#/components/schemas/AuditLogOperationsResponse"
                 }
               }
             },
@@ -6152,6 +7384,27 @@
         "operationId": "listAuditLogsRecent",
         "parameters": [
           {
+            "description": "Opaque cursor from a previous page's nextCursor",
+            "explode": false,
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "description": "Opaque cursor from a previous page's nextCursor",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size (default 50, capped at 200)",
+            "explode": false,
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "description": "Page size (default 50, capped at 200)",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
             "explode": false,
             "in": "query",
             "name": "entityType",
@@ -6178,47 +7431,29 @@
           {
             "explode": false,
             "in": "query",
-            "name": "clientId",
+            "name": "operation",
             "schema": {
               "type": "string"
             }
           },
           {
-            "description": "RFC3339 timestamp",
+            "description": "CSV of application ids",
             "explode": false,
             "in": "query",
-            "name": "since",
+            "name": "applicationIds",
             "schema": {
-              "description": "RFC3339 timestamp",
+              "description": "CSV of application ids",
               "type": "string"
             }
           },
           {
-            "description": "RFC3339 timestamp",
+            "description": "CSV of client ids",
             "explode": false,
             "in": "query",
-            "name": "until",
+            "name": "clientIds",
             "schema": {
-              "description": "RFC3339 timestamp",
+              "description": "CSV of client ids",
               "type": "string"
-            }
-          },
-          {
-            "explode": false,
-            "in": "query",
-            "name": "limit",
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          {
-            "explode": false,
-            "in": "query",
-            "name": "offset",
-            "schema": {
-              "format": "int64",
-              "type": "integer"
             }
           }
         ],
@@ -6738,6 +7973,224 @@
         ]
       }
     },
+    "/api/clients/{id}/applications": {
+      "get": {
+        "operationId": "getClientApplications",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientApplicationsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List applications and their enabled state for the client",
+        "tags": [
+          "clients"
+        ]
+      },
+      "put": {
+        "operationId": "updateClientApplications",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateClientApplicationsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Replace the client's enabled applications (bulk)",
+        "tags": [
+          "clients"
+        ]
+      }
+    },
+    "/api/clients/{id}/applications/{applicationId}/disable": {
+      "post": {
+        "operationId": "disableClientApplication",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "applicationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Disable an application for the client",
+        "tags": [
+          "clients"
+        ]
+      }
+    },
+    "/api/clients/{id}/applications/{applicationId}/enable": {
+      "post": {
+        "operationId": "enableClientApplication",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "applicationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Enable an application for the client",
+        "tags": [
+          "clients"
+        ]
+      }
+    },
+    "/api/clients/{id}/deactivate": {
+      "post": {
+        "operationId": "deactivateClient",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatusChangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusChangeResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Deactivate a client (soft delete)",
+        "tags": [
+          "clients"
+        ]
+      }
+    },
     "/api/clients/{id}/notes": {
       "post": {
         "operationId": "addClientNote",
@@ -6823,6 +8276,200 @@
         "summary": "Suspend a client",
         "tags": [
           "clients"
+        ]
+      }
+    },
+    "/api/config/{app}/{section}/{property}": {
+      "delete": {
+        "operationId": "deletePlatformConfigProperty",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "section",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "property",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "clientId",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete a platform-config property",
+        "tags": [
+          "platform-config"
+        ]
+      },
+      "get": {
+        "operationId": "getPlatformConfigProperty",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "section",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "property",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "clientId",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get a single platform-config property",
+        "tags": [
+          "platform-config"
+        ]
+      },
+      "put": {
+        "operationId": "setPlatformConfigProperty",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "section",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "property",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "clientId",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPropertyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Set a platform-config property",
+        "tags": [
+          "platform-config"
         ]
       }
     },
@@ -7029,15 +8676,25 @@
         ]
       }
     },
-    "/api/cors-origins": {
-      "get": {
-        "operationId": "listCorsOrigins",
+    "/api/connections/{id}/activate": {
+      "post": {
+        "operationId": "activateConnection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AllowedOriginListResponse"
+                  "$ref": "#/components/schemas/ConnectionResponse"
                 }
               }
             },
@@ -7054,54 +8711,15 @@
             "description": "Error"
           }
         },
-        "summary": "List CORS origins (anchor)",
+        "summary": "Activate a connection",
         "tags": [
-          "cors-origins"
-        ]
-      },
-      "post": {
-        "operationId": "addCorsOrigin",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AddOriginRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CreatedResponse"
-                }
-              }
-            },
-            "description": "Created"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorModel"
-                }
-              }
-            },
-            "description": "Error"
-          }
-        },
-        "summary": "Add a CORS origin",
-        "tags": [
-          "cors-origins"
+          "connections"
         ]
       }
     },
-    "/api/cors-origins/{id}": {
-      "delete": {
-        "operationId": "deleteCorsOrigin",
+    "/api/connections/{id}/pause": {
+      "post": {
+        "operationId": "pauseConnection",
         "parameters": [
           {
             "in": "path",
@@ -7113,8 +8731,15 @@
           }
         ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionResponse"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -7127,9 +8752,9 @@
             "description": "Error"
           }
         },
-        "summary": "Remove a CORS origin",
+        "summary": "Pause a connection",
         "tags": [
-          "cors-origins"
+          "connections"
         ]
       }
     },
@@ -7214,6 +8839,87 @@
               "format": "int64",
               "type": "integer"
             }
+          },
+          {
+            "description": "Max rows (default 50, max 1000)",
+            "explode": false,
+            "in": "query",
+            "name": "size",
+            "schema": {
+              "description": "Max rows (default 50, max 1000)",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "CSV of client ids",
+            "explode": false,
+            "in": "query",
+            "name": "clientIds",
+            "schema": {
+              "description": "CSV of client ids",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV of statuses",
+            "explode": false,
+            "in": "query",
+            "name": "statuses",
+            "schema": {
+              "description": "CSV of statuses",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV of application codes",
+            "explode": false,
+            "in": "query",
+            "name": "applications",
+            "schema": {
+              "description": "CSV of application codes",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV of subdomains",
+            "explode": false,
+            "in": "query",
+            "name": "subdomains",
+            "schema": {
+              "description": "CSV of subdomains",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV of aggregates",
+            "explode": false,
+            "in": "query",
+            "name": "aggregates",
+            "schema": {
+              "description": "CSV of aggregates",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV of codes",
+            "explode": false,
+            "in": "query",
+            "name": "codes",
+            "schema": {
+              "description": "CSV of codes",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Free-text source filter",
+            "explode": false,
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "description": "Free-text source filter",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -7221,7 +8927,10 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DispatchJobListResponse"
+                  "items": {
+                    "$ref": "#/components/schemas/DispatchJobRead"
+                  },
+                  "type": "array"
                 }
               }
             },
@@ -7262,7 +8971,10 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DispatchJobListResponse"
+                  "items": {
+                    "$ref": "#/components/schemas/DispatchJobRead"
+                  },
+                  "type": "array"
                 }
               }
             },
@@ -7397,6 +9109,87 @@
               "format": "int64",
               "type": "integer"
             }
+          },
+          {
+            "description": "Max rows (default 50, max 1000)",
+            "explode": false,
+            "in": "query",
+            "name": "size",
+            "schema": {
+              "description": "Max rows (default 50, max 1000)",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "CSV of client ids",
+            "explode": false,
+            "in": "query",
+            "name": "clientIds",
+            "schema": {
+              "description": "CSV of client ids",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV of statuses",
+            "explode": false,
+            "in": "query",
+            "name": "statuses",
+            "schema": {
+              "description": "CSV of statuses",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV of application codes",
+            "explode": false,
+            "in": "query",
+            "name": "applications",
+            "schema": {
+              "description": "CSV of application codes",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV of subdomains",
+            "explode": false,
+            "in": "query",
+            "name": "subdomains",
+            "schema": {
+              "description": "CSV of subdomains",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV of aggregates",
+            "explode": false,
+            "in": "query",
+            "name": "aggregates",
+            "schema": {
+              "description": "CSV of aggregates",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV of codes",
+            "explode": false,
+            "in": "query",
+            "name": "codes",
+            "schema": {
+              "description": "CSV of codes",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Free-text source filter",
+            "explode": false,
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "description": "Free-text source filter",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -7404,7 +9197,10 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DispatchJobListResponse"
+                  "items": {
+                    "$ref": "#/components/schemas/DispatchJobRead"
+                  },
+                  "type": "array"
                 }
               }
             },
@@ -7486,7 +9282,10 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AttemptListResponse"
+                  "items": {
+                    "$ref": "#/components/schemas/AttemptDTO"
+                  },
+                  "type": "array"
                 }
               }
             },
@@ -7757,6 +9556,40 @@
         ]
       }
     },
+    "/api/dispatch-pools/{id}/activate": {
+      "post": {
+        "operationId": "activateDispatchPool",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Resume a suspended dispatch pool",
+        "tags": [
+          "dispatch-pools"
+        ]
+      }
+    },
     "/api/dispatch-pools/{id}/archive": {
       "post": {
         "operationId": "archiveDispatchPool",
@@ -7786,6 +9619,40 @@
           }
         },
         "summary": "Archive a dispatch pool",
+        "tags": [
+          "dispatch-pools"
+        ]
+      }
+    },
+    "/api/dispatch-pools/{id}/suspend": {
+      "post": {
+        "operationId": "suspendDispatchPool",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Suspend dispatch into a pool",
         "tags": [
           "dispatch-pools"
         ]
@@ -7856,6 +9723,49 @@
           }
         },
         "summary": "Create an email-domain mapping",
+        "tags": [
+          "email-domain-mappings"
+        ]
+      }
+    },
+    "/api/email-domain-mappings/by-domain/{domain}": {
+      "get": {
+        "operationId": "getEmailDomainMappingByDomain",
+        "parameters": [
+          {
+            "description": "Email domain to look up (e.g. example.com)",
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "description": "Email domain to look up (e.g. example.com)",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MappingResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Resolve an email domain to its mapping (path param)",
         "tags": [
           "email-domain-mappings"
         ]
@@ -8344,6 +10254,57 @@
             "description": "Error"
           }
         },
+        "summary": "Add a schema version to an event type (Go-historical alias)",
+        "tags": [
+          "event-types"
+        ]
+      }
+    },
+    "/api/event-types/{id}/versions": {
+      "post": {
+        "operationId": "addEventTypeVersion",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddSchemaRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedResponse"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
         "summary": "Add a schema version to an event type",
         "tags": [
           "event-types"
@@ -8439,6 +10400,67 @@
               "format": "int64",
               "type": "integer"
             }
+          },
+          {
+            "description": "Max rows (default 50, max 1000)",
+            "explode": false,
+            "in": "query",
+            "name": "size",
+            "schema": {
+              "description": "Max rows (default 50, max 1000)",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "CSV of client ids",
+            "explode": false,
+            "in": "query",
+            "name": "clientIds",
+            "schema": {
+              "description": "CSV of client ids",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV of application codes",
+            "explode": false,
+            "in": "query",
+            "name": "applications",
+            "schema": {
+              "description": "CSV of application codes",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV of subdomains",
+            "explode": false,
+            "in": "query",
+            "name": "subdomains",
+            "schema": {
+              "description": "CSV of subdomains",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV of aggregates",
+            "explode": false,
+            "in": "query",
+            "name": "aggregates",
+            "schema": {
+              "description": "CSV of aggregates",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV of event types",
+            "explode": false,
+            "in": "query",
+            "name": "types",
+            "schema": {
+              "description": "CSV of event types",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -8446,7 +10468,10 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EventListResponse"
+                  "items": {
+                    "$ref": "#/components/schemas/EventRead"
+                  },
+                  "type": "array"
                 }
               }
             },
@@ -8630,6 +10655,67 @@
               "format": "int64",
               "type": "integer"
             }
+          },
+          {
+            "description": "Max rows (default 50, max 1000)",
+            "explode": false,
+            "in": "query",
+            "name": "size",
+            "schema": {
+              "description": "Max rows (default 50, max 1000)",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "CSV of client ids",
+            "explode": false,
+            "in": "query",
+            "name": "clientIds",
+            "schema": {
+              "description": "CSV of client ids",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV of application codes",
+            "explode": false,
+            "in": "query",
+            "name": "applications",
+            "schema": {
+              "description": "CSV of application codes",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV of subdomains",
+            "explode": false,
+            "in": "query",
+            "name": "subdomains",
+            "schema": {
+              "description": "CSV of subdomains",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV of aggregates",
+            "explode": false,
+            "in": "query",
+            "name": "aggregates",
+            "schema": {
+              "description": "CSV of aggregates",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV of event types",
+            "explode": false,
+            "in": "query",
+            "name": "types",
+            "schema": {
+              "description": "CSV of event types",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -8637,7 +10723,10 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EventListResponse"
+                  "items": {
+                    "$ref": "#/components/schemas/EventRead"
+                  },
+                  "type": "array"
                 }
               }
             },
@@ -9189,8 +11278,15 @@
           }
         ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusChangeResponse"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -9223,8 +11319,15 @@
           }
         ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusChangeResponse"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -9449,51 +11552,15 @@
         ]
       }
     },
-    "/api/platform-config/{app}/{section}/{property}": {
-      "put": {
-        "operationId": "setPlatformConfigProperty",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "app",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "section",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "property",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetPropertyRequest"
-              }
-            }
-          },
-          "required": true
-        },
+    "/api/platform/cors": {
+      "get": {
+        "operationId": "listCorsOrigins",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CreatedResponse"
+                  "$ref": "#/components/schemas/CorsOriginListResponse"
                 }
               }
             },
@@ -9510,9 +11577,48 @@
             "description": "Error"
           }
         },
-        "summary": "Set a platform-config property",
+        "summary": "List CORS origins (anchor)",
         "tags": [
-          "platform-config"
+          "cors-origins"
+        ]
+      },
+      "post": {
+        "operationId": "addCorsOrigin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddOriginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedResponse"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Add a CORS origin",
+        "tags": [
+          "cors-origins"
         ]
       }
     },
@@ -9542,6 +11648,40 @@
           }
         },
         "summary": "List allowed CORS origins (public)",
+        "tags": [
+          "cors-origins"
+        ]
+      }
+    },
+    "/api/platform/cors/{id}": {
+      "delete": {
+        "operationId": "deleteCorsOrigin",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Remove a CORS origin",
         "tags": [
           "cors-origins"
         ]
@@ -9612,6 +11752,47 @@
           }
         },
         "summary": "Create a principal",
+        "tags": [
+          "principals"
+        ]
+      }
+    },
+    "/api/principals/check-email-domain": {
+      "get": {
+        "operationId": "checkPrincipalEmailDomain",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "email",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckEmailDomainResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Resolve auth-method for an email's domain",
         "tags": [
           "principals"
         ]
@@ -9712,8 +11893,15 @@
           "required": true
         },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrincipalResponse"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -9767,6 +11955,45 @@
       }
     },
     "/api/principals/{id}/application-access": {
+      "get": {
+        "operationId": "listPrincipalApplicationAccess",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationAccessListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List application IDs the principal can access",
+        "tags": [
+          "principals"
+        ]
+      },
       "put": {
         "operationId": "assignPrincipalApplicationAccess",
         "parameters": [
@@ -9790,8 +12017,15 @@
           "required": true
         },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetApplicationAccessResponse"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -9805,6 +12039,47 @@
           }
         },
         "summary": "Assign application access to a principal",
+        "tags": [
+          "principals"
+        ]
+      }
+    },
+    "/api/principals/{id}/available-applications": {
+      "get": {
+        "operationId": "listPrincipalAvailableApplications",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrincipalAvailableApplicationsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List applications a principal can be granted access to",
         "tags": [
           "principals"
         ]
@@ -9873,8 +12148,15 @@
           "required": true
         },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientAccessGrantResponse"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -9993,8 +12275,15 @@
           "required": true
         },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusChangeResponse"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -10014,6 +12303,87 @@
       }
     },
     "/api/principals/{id}/roles": {
+      "get": {
+        "operationId": "listPrincipalRoles",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrincipalRoleListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List a principal's assigned roles",
+        "tags": [
+          "principals"
+        ]
+      },
+      "post": {
+        "operationId": "addPrincipalRole",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddRoleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Add a single role to a principal",
+        "tags": [
+          "principals"
+        ]
+      },
       "put": {
         "operationId": "assignPrincipalRoles",
         "parameters": [
@@ -10037,6 +12407,55 @@
           "required": true
         },
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RolesAssignedResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Assign roles to a principal (replaces full set)",
+        "tags": [
+          "principals"
+        ]
+      }
+    },
+    "/api/principals/{id}/roles/{role}": {
+      "delete": {
+        "operationId": "removePrincipalRole",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "role",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
           "204": {
             "description": "No Content"
           },
@@ -10051,7 +12470,48 @@
             "description": "Error"
           }
         },
-        "summary": "Assign roles to a principal",
+        "summary": "Remove a single role from a principal",
+        "tags": [
+          "principals"
+        ]
+      }
+    },
+    "/api/principals/{id}/send-password-reset": {
+      "post": {
+        "operationId": "sendPrincipalPasswordReset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusChangeResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Send a password-reset email to a user",
         "tags": [
           "principals"
         ]
@@ -10413,6 +12873,270 @@
         ]
       }
     },
+    "/api/roles/by-application/{applicationId}": {
+      "get": {
+        "operationId": "getRolesByApplication",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "applicationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RoleResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List roles for an application",
+        "tags": [
+          "roles"
+        ]
+      }
+    },
+    "/api/roles/by-code/{code}": {
+      "get": {
+        "operationId": "getRoleByCode",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get a role by name (code)",
+        "tags": [
+          "roles"
+        ]
+      }
+    },
+    "/api/roles/by-source/{source}": {
+      "get": {
+        "operationId": "getRolesBySource",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RoleResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List roles by source (CODE | DATABASE | SDK)",
+        "tags": [
+          "roles"
+        ]
+      }
+    },
+    "/api/roles/filters/applications": {
+      "get": {
+        "operationId": "getRoleApplicationFilters",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationFilterListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List distinct application codes used by roles",
+        "tags": [
+          "roles"
+        ]
+      }
+    },
+    "/api/roles/permissions": {
+      "get": {
+        "operationId": "listPermissions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List the platform permission catalog",
+        "tags": [
+          "roles"
+        ]
+      }
+    },
+    "/api/roles/permissions/{permission}": {
+      "delete": {
+        "operationId": "deletePermission",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "permission",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete a permission from the catalog",
+        "tags": [
+          "roles"
+        ]
+      },
+      "get": {
+        "operationId": "getPermission",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "permission",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get a single permission catalog entry",
+        "tags": [
+          "roles"
+        ]
+      }
+    },
     "/api/roles/{id}": {
       "delete": {
         "operationId": "deleteRole",
@@ -10530,6 +13254,129 @@
         ]
       }
     },
+    "/api/roles/{roleName}/permissions": {
+      "get": {
+        "operationId": "listRolePermissions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "roleName",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RolePermissionListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List permissions granted to a role",
+        "tags": [
+          "roles"
+        ]
+      }
+    },
+    "/api/roles/{roleName}/permissions/{permission}": {
+      "delete": {
+        "operationId": "revokeRolePermission",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "roleName",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "permission",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Revoke a permission from a role",
+        "tags": [
+          "roles"
+        ]
+      },
+      "post": {
+        "operationId": "grantRolePermission",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "roleName",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "permission",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Grant a permission to a role",
+        "tags": [
+          "roles"
+        ]
+      }
+    },
     "/api/scheduled-jobs": {
       "get": {
         "operationId": "listScheduledJobs",
@@ -10549,6 +13396,59 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "size",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "page_size",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -10556,7 +13456,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ScheduledJobListResponse"
+                  "$ref": "#/components/schemas/OffsetPageScheduledJobResponse"
                 }
               }
             },
@@ -10613,6 +13513,230 @@
           }
         },
         "summary": "Create a scheduled job",
+        "tags": [
+          "scheduled-jobs"
+        ]
+      }
+    },
+    "/api/scheduled-jobs/by-code/{code}": {
+      "get": {
+        "operationId": "getScheduledJobByCode",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional client scope; omit for platform-scoped lookup",
+            "explode": false,
+            "in": "query",
+            "name": "clientId",
+            "schema": {
+              "description": "Optional client scope; omit for platform-scoped lookup",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledJobResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get a scheduled job by code",
+        "tags": [
+          "scheduled-jobs"
+        ]
+      }
+    },
+    "/api/scheduled-jobs/instances/{instanceId}": {
+      "get": {
+        "operationId": "getScheduledJobInstance",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "instanceId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledJobInstanceResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get a single scheduled-job instance",
+        "tags": [
+          "scheduled-jobs"
+        ]
+      }
+    },
+    "/api/scheduled-jobs/instances/{instanceId}/complete": {
+      "post": {
+        "operationId": "completeScheduledJobInstance",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "instanceId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteInstanceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Mark a scheduled-job instance as completed",
+        "tags": [
+          "scheduled-jobs"
+        ]
+      }
+    },
+    "/api/scheduled-jobs/instances/{instanceId}/log": {
+      "post": {
+        "operationId": "writeScheduledJobInstanceLog",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "instanceId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WriteInstanceLogRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Append a log entry to an instance",
+        "tags": [
+          "scheduled-jobs"
+        ]
+      }
+    },
+    "/api/scheduled-jobs/instances/{instanceId}/logs": {
+      "get": {
+        "operationId": "listScheduledJobInstanceLogs",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "instanceId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ScheduledJobInstanceLogResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List log entries for an instance",
         "tags": [
           "scheduled-jobs"
         ]
@@ -10767,7 +13891,7 @@
         ]
       }
     },
-    "/api/scheduled-jobs/{id}/fire-now": {
+    "/api/scheduled-jobs/{id}/fire": {
       "post": {
         "operationId": "fireScheduledJobNow",
         "parameters": [
@@ -10803,6 +13927,100 @@
           }
         },
         "summary": "Fire a scheduled job immediately",
+        "tags": [
+          "scheduled-jobs"
+        ]
+      }
+    },
+    "/api/scheduled-jobs/{id}/instances": {
+      "get": {
+        "operationId": "listScheduledJobInstances",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "size",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "page_size",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffsetPageScheduledJobInstanceResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List firings for a scheduled job",
         "tags": [
           "scheduled-jobs"
         ]
@@ -10923,7 +14141,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CreatedResponse"
+                  "$ref": "#/components/schemas/CreateServiceAccountResponse"
                 }
               }
             },
@@ -11138,7 +14356,7 @@
     },
     "/api/service-accounts/{id}/regenerate-auth-token": {
       "post": {
-        "operationId": "regenerateServiceAccountAuthToken",
+        "operationId": "regenerateServiceAccountAuthToken_regenerate-auth-token",
         "parameters": [
           {
             "in": "path",
@@ -11177,9 +14395,9 @@
         ]
       }
     },
-    "/api/service-accounts/{id}/regenerate-signing-secret": {
+    "/api/service-accounts/{id}/regenerate-secret": {
       "post": {
-        "operationId": "regenerateServiceAccountSigningSecret",
+        "operationId": "regenerateServiceAccountSigningSecret_regenerate-secret",
         "parameters": [
           {
             "in": "path",
@@ -11213,6 +14431,88 @@
           }
         },
         "summary": "Regenerate a service account's signing secret",
+        "tags": [
+          "service-accounts"
+        ]
+      }
+    },
+    "/api/service-accounts/{id}/regenerate-signing-secret": {
+      "post": {
+        "operationId": "regenerateServiceAccountSigningSecret_regenerate-signing-secret",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegenerateSigningSecretResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Regenerate a service account's signing secret",
+        "tags": [
+          "service-accounts"
+        ]
+      }
+    },
+    "/api/service-accounts/{id}/regenerate-token": {
+      "post": {
+        "operationId": "regenerateServiceAccountAuthToken_regenerate-token",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegenerateAuthTokenResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Regenerate a service account's auth token",
         "tags": [
           "service-accounts"
         ]
@@ -11281,8 +14581,15 @@
           "required": true
         },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceAccountRolesAssignedResponse"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -11631,10 +14938,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "type": "object"
+                  "$ref": "#/components/schemas/WebauthnAuthenticateCompleteResponse"
                 }
               }
             },
@@ -11665,7 +14969,10 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CredentialListResponse"
+                  "items": {
+                    "$ref": "#/components/schemas/WebauthnCredentialSummary"
+                  },
+                  "type": "array"
                 }
               }
             },
@@ -11801,292 +15108,6 @@
         "summary": "Complete a WebAuthn registration ceremony",
         "tags": [
           "webauthn"
-        ]
-      }
-    },
-    "/bff/processes": {
-      "get": {
-        "operationId": "listBffProcesses",
-        "parameters": [
-          {
-            "explode": false,
-            "in": "query",
-            "name": "application",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "explode": false,
-            "in": "query",
-            "name": "subdomain",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "explode": false,
-            "in": "query",
-            "name": "status",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProcessListResponse"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorModel"
-                }
-              }
-            },
-            "description": "Error"
-          }
-        },
-        "summary": "List processes",
-        "tags": [
-          "bff-processes"
-        ]
-      },
-      "post": {
-        "operationId": "createBffProcess",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateProcessRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CreatedResponse"
-                }
-              }
-            },
-            "description": "Created"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorModel"
-                }
-              }
-            },
-            "description": "Error"
-          }
-        },
-        "summary": "Create a process",
-        "tags": [
-          "bff-processes"
-        ]
-      }
-    },
-    "/bff/processes/by-code/{code}": {
-      "get": {
-        "operationId": "getBffProcessByCode",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "code",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProcessResponse"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorModel"
-                }
-              }
-            },
-            "description": "Error"
-          }
-        },
-        "summary": "Get a process by code",
-        "tags": [
-          "bff-processes"
-        ]
-      }
-    },
-    "/bff/processes/{id}": {
-      "delete": {
-        "operationId": "deleteBffProcess",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "No Content"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorModel"
-                }
-              }
-            },
-            "description": "Error"
-          }
-        },
-        "summary": "Delete a process",
-        "tags": [
-          "bff-processes"
-        ]
-      },
-      "get": {
-        "operationId": "getBffProcess",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProcessResponse"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorModel"
-                }
-              }
-            },
-            "description": "Error"
-          }
-        },
-        "summary": "Get a process by id",
-        "tags": [
-          "bff-processes"
-        ]
-      },
-      "put": {
-        "operationId": "updateBffProcess",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateProcessRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "204": {
-            "description": "No Content"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorModel"
-                }
-              }
-            },
-            "description": "Error"
-          }
-        },
-        "summary": "Update a process",
-        "tags": [
-          "bff-processes"
-        ]
-      }
-    },
-    "/bff/processes/{id}/archive": {
-      "post": {
-        "operationId": "archiveBffProcess",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "No Content"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorModel"
-                }
-              }
-            },
-            "description": "Error"
-          }
-        },
-        "summary": "Archive a process",
-        "tags": [
-          "bff-processes"
         ]
       }
     }

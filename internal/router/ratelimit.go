@@ -13,6 +13,7 @@ import (
 // wrapped so we can hot-swap the underlying limiter on config reload.
 type RateLimiter struct {
 	limiter atomic.Pointer[rate.Limiter]
+	rpm     atomic.Uint32 // 0 means unlimited
 }
 
 // NewRateLimiter constructs a limiter at the requested rate. perMinute=0
@@ -30,7 +31,22 @@ func (rl *RateLimiter) SetRate(perMinute uint32) {
 	rl.replaceUnsafe(perMinute)
 }
 
+// Rate returns the configured rate in messages-per-minute. Zero means
+// unlimited.
+func (rl *RateLimiter) Rate() uint32 { return rl.rpm.Load() }
+
+// IsLimited reports whether the next call to Wait would block (i.e. the
+// bucket currently has no token). Non-consuming check used by the
+// metrics collector — does not modify limiter state.
+func (rl *RateLimiter) IsLimited() bool {
+	if rl.rpm.Load() == 0 {
+		return false
+	}
+	return rl.limiter.Load().Tokens() < 1.0
+}
+
 func (rl *RateLimiter) replaceUnsafe(perMinute uint32) {
+	rl.rpm.Store(perMinute)
 	if perMinute == 0 {
 		// Effectively unlimited: 1 second of bucket at math.MaxFloat64-ish.
 		rl.limiter.Store(rate.NewLimiter(rate.Inf, 1))

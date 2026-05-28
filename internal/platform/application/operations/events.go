@@ -8,15 +8,16 @@ import (
 )
 
 const (
-	ApplicationCreatedType                 = "platform:iam:application:created"
-	ApplicationUpdatedType                 = "platform:iam:application:updated"
-	ApplicationActivatedType               = "platform:iam:application:activated"
-	ApplicationDeactivatedType             = "platform:iam:application:deactivated"
-	ApplicationDeletedType                 = "platform:iam:application:deleted"
-	ApplicationServiceAccountProvisioned   = "platform:iam:application:service-account-provisioned"
-	ApplicationEnabledForClientType        = "platform:iam:application:enabled-for-client"
-	ApplicationDisabledForClientType       = "platform:iam:application:disabled-for-client"
-	Source                                 = "platform:iam"
+	ApplicationCreatedType               = "platform:iam:application:created"
+	ApplicationUpdatedType               = "platform:iam:application:updated"
+	ApplicationActivatedType             = "platform:iam:application:activated"
+	ApplicationDeactivatedType           = "platform:iam:application:deactivated"
+	ApplicationDeletedType               = "platform:iam:application:deleted"
+	ApplicationServiceAccountProvisioned = "platform:iam:application:service-account-provisioned"
+	ApplicationEnabledForClientType      = "platform:iam:application:enabled-for-client"
+	ApplicationDisabledForClientType     = "platform:iam:application:disabled-for-client"
+	ClientApplicationsUpdatedType        = "platform:iam:client:applications-updated"
+	Source                               = "platform:iam"
 )
 
 func subjectFor(id string) string { return "platform.application." + id }
@@ -156,15 +157,27 @@ func (e ApplicationServiceAccountProvisionedEvent) EventID() string {
 func (e ApplicationServiceAccountProvisionedEvent) EventType() string {
 	return ApplicationServiceAccountProvisioned
 }
-func (e ApplicationServiceAccountProvisionedEvent) SpecVersion() string   { return "1.0" }
-func (e ApplicationServiceAccountProvisionedEvent) Source() string        { return Source }
-func (e ApplicationServiceAccountProvisionedEvent) Subject() string       { return subjectFor(e.ApplicationID) }
-func (e ApplicationServiceAccountProvisionedEvent) Time() time.Time       { return e.Metadata.OccurredAt }
-func (e ApplicationServiceAccountProvisionedEvent) PrincipalID() string   { return e.Metadata.PrincipalID }
-func (e ApplicationServiceAccountProvisionedEvent) CorrelationID() string { return e.Metadata.CorrelationID }
-func (e ApplicationServiceAccountProvisionedEvent) CausationID() string   { return e.Metadata.CausationID }
-func (e ApplicationServiceAccountProvisionedEvent) ExecutionID() string   { return e.Metadata.ExecutionID }
-func (e ApplicationServiceAccountProvisionedEvent) MessageGroup() string  { return groupFor(e.ApplicationID) }
+func (e ApplicationServiceAccountProvisionedEvent) SpecVersion() string { return "1.0" }
+func (e ApplicationServiceAccountProvisionedEvent) Source() string      { return Source }
+func (e ApplicationServiceAccountProvisionedEvent) Subject() string {
+	return subjectFor(e.ApplicationID)
+}
+func (e ApplicationServiceAccountProvisionedEvent) Time() time.Time { return e.Metadata.OccurredAt }
+func (e ApplicationServiceAccountProvisionedEvent) PrincipalID() string {
+	return e.Metadata.PrincipalID
+}
+func (e ApplicationServiceAccountProvisionedEvent) CorrelationID() string {
+	return e.Metadata.CorrelationID
+}
+func (e ApplicationServiceAccountProvisionedEvent) CausationID() string {
+	return e.Metadata.CausationID
+}
+func (e ApplicationServiceAccountProvisionedEvent) ExecutionID() string {
+	return e.Metadata.ExecutionID
+}
+func (e ApplicationServiceAccountProvisionedEvent) MessageGroup() string {
+	return groupFor(e.ApplicationID)
+}
 func (e ApplicationServiceAccountProvisionedEvent) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		ApplicationID      string `json:"applicationId"`
@@ -226,4 +239,36 @@ func (e ApplicationDisabledForClient) ToDataJSON() ([]byte, error) {
 		ClientID      string `json:"clientId"`
 		ConfigID      string `json:"configId"`
 	}{e.ApplicationID, e.ClientID, e.ConfigID})
+}
+
+// ClientApplicationsUpdated — emitted by the bulk update endpoint
+// (`PUT /api/clients/{id}/applications`). Replaces the per-row enable/
+// disable events with a single rollup describing the diff. Mirrors Rust
+// crates/fc-platform/src/application/operations/update_client_applications.rs.
+type ClientApplicationsUpdated struct {
+	Metadata        usecase.EventMetadata
+	ClientID        string
+	EnabledIDs      []string // requested final-state set
+	EnabledAdded    []string // newly enabled
+	DisabledRemoved []string // newly disabled
+}
+
+func (e ClientApplicationsUpdated) EventID() string       { return e.Metadata.EventID }
+func (e ClientApplicationsUpdated) EventType() string     { return ClientApplicationsUpdatedType }
+func (e ClientApplicationsUpdated) SpecVersion() string   { return "1.0" }
+func (e ClientApplicationsUpdated) Source() string        { return Source }
+func (e ClientApplicationsUpdated) Subject() string       { return "platform.client." + e.ClientID }
+func (e ClientApplicationsUpdated) Time() time.Time       { return e.Metadata.OccurredAt }
+func (e ClientApplicationsUpdated) PrincipalID() string   { return e.Metadata.PrincipalID }
+func (e ClientApplicationsUpdated) CorrelationID() string { return e.Metadata.CorrelationID }
+func (e ClientApplicationsUpdated) CausationID() string   { return e.Metadata.CausationID }
+func (e ClientApplicationsUpdated) ExecutionID() string   { return e.Metadata.ExecutionID }
+func (e ClientApplicationsUpdated) MessageGroup() string  { return "platform:client:" + e.ClientID }
+func (e ClientApplicationsUpdated) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		ClientID        string   `json:"clientId"`
+		EnabledIDs      []string `json:"enabledApplicationIds"`
+		EnabledAdded    []string `json:"enabledAdded"`
+		DisabledRemoved []string `json:"disabledRemoved"`
+	}{e.ClientID, e.EnabledIDs, e.EnabledAdded, e.DisabledRemoved})
 }

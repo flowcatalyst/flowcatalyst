@@ -10,6 +10,98 @@ import (
 	"time"
 )
 
+const permissionDeleteByCode = `-- name: PermissionDeleteByCode :exec
+DELETE FROM iam_permissions WHERE code = $1
+`
+
+func (q *Queries) PermissionDeleteByCode(ctx context.Context, code string) error {
+	_, err := q.db.Exec(ctx, permissionDeleteByCode, code)
+	return err
+}
+
+const permissionFindAll = `-- name: PermissionFindAll :many
+SELECT id, code, subdomain, context, aggregate, action, description, created_at, updated_at
+FROM iam_permissions
+ORDER BY code
+`
+
+func (q *Queries) PermissionFindAll(ctx context.Context) ([]IamPermission, error) {
+	rows, err := q.db.Query(ctx, permissionFindAll)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []IamPermission{}
+	for rows.Next() {
+		var i IamPermission
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Subdomain,
+			&i.Context,
+			&i.Aggregate,
+			&i.Action,
+			&i.Description,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const permissionFindByCode = `-- name: PermissionFindByCode :one
+SELECT id, code, subdomain, context, aggregate, action, description, created_at, updated_at
+FROM iam_permissions
+WHERE code = $1
+`
+
+func (q *Queries) PermissionFindByCode(ctx context.Context, code string) (IamPermission, error) {
+	row := q.db.QueryRow(ctx, permissionFindByCode, code)
+	var i IamPermission
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Subdomain,
+		&i.Context,
+		&i.Aggregate,
+		&i.Action,
+		&i.Description,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const roleApplicationCodes = `-- name: RoleApplicationCodes :many
+SELECT DISTINCT application_code FROM iam_roles ORDER BY application_code
+`
+
+func (q *Queries) RoleApplicationCodes(ctx context.Context) ([]*string, error) {
+	rows, err := q.db.Query(ctx, roleApplicationCodes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []*string{}
+	for rows.Next() {
+		var application_code *string
+		if err := rows.Scan(&application_code); err != nil {
+			return nil, err
+		}
+		items = append(items, application_code)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const roleCountAssignments = `-- name: RoleCountAssignments :one
 SELECT COUNT(*) FROM iam_principal_roles WHERE role_name = $1
 `
@@ -39,6 +131,45 @@ ORDER BY name
 
 func (q *Queries) RoleFindAll(ctx context.Context) ([]IamRole, error) {
 	rows, err := q.db.Query(ctx, roleFindAll)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []IamRole{}
+	for rows.Next() {
+		var i IamRole
+		if err := rows.Scan(
+			&i.ID,
+			&i.ApplicationID,
+			&i.ApplicationCode,
+			&i.Name,
+			&i.DisplayName,
+			&i.Description,
+			&i.Source,
+			&i.ClientManaged,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const roleFindByApplicationID = `-- name: RoleFindByApplicationID :many
+SELECT id, application_id, application_code, name, display_name, description,
+       source, client_managed, created_at, updated_at
+FROM iam_roles
+WHERE application_id = $1
+ORDER BY name
+`
+
+func (q *Queries) RoleFindByApplicationID(ctx context.Context, applicationID *string) ([]IamRole, error) {
+	rows, err := q.db.Query(ctx, roleFindByApplicationID, applicationID)
 	if err != nil {
 		return nil, err
 	}

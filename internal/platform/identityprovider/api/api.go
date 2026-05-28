@@ -92,7 +92,7 @@ func (s *State) list(ctx context.Context, _ *emptyInput) (*listOutput, error) {
 	for i := range rows {
 		out = append(out, fromEntity(&rows[i]))
 	}
-	return &listOutput{Body: IdentityProviderListResponse{Items: out}}, nil
+	return &listOutput{Body: IdentityProviderListResponse{IdentityProviders: out, Total: len(out)}}, nil
 }
 
 type getInput struct {
