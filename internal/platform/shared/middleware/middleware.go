@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/ory/fosite"
-	"github.com/ory/fosite/token/jwt"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/logging"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/provider"
@@ -121,54 +120,45 @@ func extractBearerToken(r *http.Request) string {
 	return ""
 }
 
-// introspect runs the token through fosite and projects the resulting
-// session onto an AuthContext. Returns (nil, nil) for tokens that are
-// well-formed but inactive (revoked or expired-and-introspection-says-so),
-// (nil, error) for malformed or rejected tokens, and (ctx, nil) on success.
+// introspect validates the session-cookie JWT via the sessiontoken
+// package (signature + standard claim checks) and projects the parsed
+// claims onto an AuthContext. Returns (nil, error) for malformed or
+// expired tokens, (ctx, nil) on success.
+//
+// Cookie + Bearer transports share this path. The line between this
+// path and fosite's `/oauth/introspect` is deliberate — see ADR-0001.
 func introspect(ctx context.Context, p *provider.Provider, token string) (*auth.AuthContext, error) {
-	session := provider.NewSession()
-	_, ar, err := p.OAuth2.IntrospectToken(ctx, token, fosite.AccessToken, session)
+	c, err := p.ValidateSessionToken(ctx, token)
 	if err != nil {
 		return nil, err
 	}
-	if ar == nil {
+	if c == nil {
 		return nil, nil
 	}
-
-	// fosite populates the supplied session with the token's claims on
-	// successful introspection. GetJWTClaims returns the abstract
-	// container interface — cast to the concrete *jwt.JWTClaims to read
-	// the fields the platform stamps on at mint time.
-	container := session.GetJWTClaims()
-	jc, _ := container.(*jwt.JWTClaims)
-	if jc == nil {
-		return nil, nil
-	}
-
-	ac := &auth.AuthContext{
-		PrincipalID: jc.Subject,
-	}
-	// JWTClaims.Scope is the granted-scope slice; we stored the
-	// principal's UserScope ("ANCHOR"/"PARTNER"/"CLIENT") as the
-	// scope claim at mint time.
-	if len(jc.Scope) > 0 {
-		ac.Scope = auth.Scope(jc.Scope[0])
-	}
-	if jc.Extra != nil {
-		if v, ok := jc.Extra["email"].(string); ok {
-			ac.Email = v
+	// OAuth access tokens (minted by authservice) carry roles but no
+	// permissions claim — matching Rust, which never bakes permissions
+	// into the JWT. Derive them from the roles here so permission-gated
+	// handlers see the same set regardless of token source. Session-cookie
+	// tokens already carry permissions; keep those as-is.
+	perms := c.Permissions
+	if len(perms) == 0 && len(c.Roles) > 0 {
+		if derived, derr := p.FlattenPermissions(ctx, c.Roles); derr == nil {
+			perms = derived
 		}
-		ac.Clients = stringSlice(jc.Extra["clients"])
-		ac.Roles = stringSlice(jc.Extra["roles"])
-		ac.Applications = stringSlice(jc.Extra["applications"])
-		ac.Permissions = stringSlice(jc.Extra["permissions"])
 	}
-	return ac, nil
+	return &auth.AuthContext{
+		PrincipalID:  c.Subject,
+		Scope:        auth.Scope(c.Scope),
+		Email:        c.Email,
+		Clients:      c.Clients,
+		Roles:        c.Roles,
+		Applications: c.Applications,
+		Permissions:  perms,
+	}, nil
 }
 
-// stringSlice coerces a JWT Extra claim into []string. Tokens minted by
-// this server emit []string directly, but tokens that round-trip through
-// JSON serialization arrive as []interface{} with string elements.
+// stringSlice coerces a claim into []string — kept here for any future
+// adapter that needs it. Tokens we mint already arrive as []string.
 func stringSlice(v any) []string {
 	switch x := v.(type) {
 	case []string:

@@ -44,13 +44,15 @@ func ParseOAuthClientType(s string) OAuthClientType {
 // OAuthClient is a registered client of the OAuth provider.
 // Maps to oauth_clients.
 type OAuthClient struct {
-	ID           string          `json:"id"`
-	ClientID     string          `json:"clientId"`
-	ClientName   string          `json:"clientName"`
-	ClientType   OAuthClientType `json:"clientType"`
-	// SecretHash stores Argon2id of the client_secret for CONFIDENTIAL clients.
-	// Nil for PUBLIC. Set via rotate_oauth_client_secret.
-	SecretHash   *string   `json:"-"`
+	ID         string          `json:"id"`
+	ClientID   string          `json:"clientId"`
+	ClientName string          `json:"clientName"`
+	ClientType OAuthClientType `json:"clientType"`
+	// SecretRef stores the client_secret for CONFIDENTIAL clients as a
+	// reversibly-encrypted blob (AES-GCM via the encryption package),
+	// matching Rust's oauth_clients.client_secret_ref. Verification
+	// decrypts and compares; nil for PUBLIC. Set via rotate-secret.
+	SecretRef    *string   `json:"-"`
 	RedirectURIs []string  `json:"redirectUris"`
 	GrantTypes   []string  `json:"grantTypes"` // "authorization_code", "client_credentials", "refresh_token"
 	Scopes       []string  `json:"scopes"`
@@ -193,9 +195,9 @@ func NewClientAuthConfig(emailDomain string, configType AuthConfigType) *ClientA
 // name. Maps to oauth_idp_role_mappings.
 type IdpRoleMapping struct {
 	ID               string    `json:"id"`
-	IdpType          string    `json:"idpType"`           // e.g. "keycloak", "entra"
-	IdpRoleName      string    `json:"idpRoleName"`       // upstream role name
-	PlatformRoleName string    `json:"platformRoleName"`  // FlowCatalyst role name (app:role)
+	IdpType          string    `json:"idpType"`          // e.g. "keycloak", "entra"
+	IdpRoleName      string    `json:"idpRoleName"`      // upstream role name
+	PlatformRoleName string    `json:"platformRoleName"` // FlowCatalyst role name (app:role)
 	CreatedAt        time.Time `json:"createdAt"`
 	UpdatedAt        time.Time `json:"updatedAt"`
 }
@@ -230,9 +232,10 @@ func (c *OAuthClient) Deactivate() {
 	c.UpdatedAt = time.Now().UTC()
 }
 
-// SetSecretHash records a rotated secret hash. Plaintext lives only in
-// memory long enough to return it once via the rotate API.
-func (c *OAuthClient) SetSecretHash(hash string) {
-	c.SecretHash = &hash
+// SetSecretRef records a rotated encrypted secret reference. The
+// plaintext lives only in memory long enough to return it once via the
+// rotate API.
+func (c *OAuthClient) SetSecretRef(ref string) {
+	c.SecretRef = &ref
 	c.UpdatedAt = time.Now().UTC()
 }

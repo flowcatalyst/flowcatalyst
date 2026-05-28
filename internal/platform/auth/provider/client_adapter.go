@@ -17,10 +17,10 @@ func AdaptClient(c *auth.OAuthClient) fosite.Client { return &fositeClient{c: c}
 func (a *fositeClient) GetID() string { return a.c.ClientID }
 
 func (a *fositeClient) GetHashedSecret() []byte {
-	if a.c.SecretHash == nil {
+	if a.c.SecretRef == nil {
 		return nil
 	}
-	return []byte(*a.c.SecretHash)
+	return []byte(*a.c.SecretRef)
 }
 
 func (a *fositeClient) GetRedirectURIs() []string { return a.c.RedirectURIs }

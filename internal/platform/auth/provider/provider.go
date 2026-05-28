@@ -35,6 +35,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/payload"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/sessiontoken"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 )
@@ -64,12 +65,12 @@ type Config struct {
 	GlobalSecret []byte
 }
 
-// DefaultConfig returns the canonical defaults: 15min access, 7d refresh,
-// 10min auth code.
+// DefaultConfig returns the canonical defaults, matching Rust
+// fc-platform's auth_service.rs: 1h access, 30d refresh, 10min auth code.
 func DefaultConfig() Config {
 	return Config{
-		AccessTokenTTL:       15 * time.Minute,
-		RefreshTokenTTL:      7 * 24 * time.Hour,
+		AccessTokenTTL:       1 * time.Hour,
+		RefreshTokenTTL:      30 * 24 * time.Hour,
 		AuthorizationCodeTTL: 10 * time.Minute,
 	}
 }
@@ -88,6 +89,17 @@ type Claims struct {
 	Applications []string
 	Permissions  []string // de-duplicated, flattened from Roles
 	Email        string
+	Name         string // user display name (OIDC "name" claim)
+
+	// OIDC ID-token-specific claims. These are populated only when the
+	// caller is minting an ID token, not a plain access token. Rust's
+	// auth_service.rs ships them on the ID token; we match the same set
+	// (nonce, azp, auth_time, email_verified). acr/amr are not populated
+	// by Rust either, so we leave them off.
+	Nonce           string // OIDC nonce echoed from the authorize request
+	AuthorizedParty string // OIDC "azp" — typically the client_id
+	AuthTime        int64  // OIDC "auth_time" — Unix seconds
+	EmailVerified   *bool  // OIDC "email_verified" — pointer to distinguish "unset"
 }
 
 // BuildClaims projects a principal onto our Claims shape. Called by the
@@ -131,7 +143,17 @@ func BuildClaims(ctx context.Context, cfg Config, principals *principal.Reposito
 		Applications: apps,
 		Permissions:  perms,
 		Email:        email,
+		Name:         p.Name,
 	}, nil
+}
+
+// FlattenPermissions resolves a principal's role names into their
+// de-duplicated permission set. The auth middleware calls this to derive
+// permissions for tokens that carry roles but no permissions claim
+// (e.g. OAuth access tokens minted by authservice, matching Rust which
+// never bakes permissions into the JWT).
+func (p *Provider) FlattenPermissions(ctx context.Context, roleNames []string) ([]string, error) {
+	return flattenPermissions(ctx, p.roles, roleNames)
 }
 
 // flattenPermissions looks up each role by name and concatenates its
@@ -173,6 +195,10 @@ type Provider struct {
 	principals      *principal.Repository
 	roles           *role.Repository
 	SessionResolver func(*http.Request) string
+	// signingKey is the RSA key shared by fosite (for /oauth/token JWTs)
+	// and the sessiontoken package (for /auth/login cookies). The
+	// session-cookie path lives outside fosite entirely — see ADR-0001.
+	signingKey *rsa.PrivateKey
 }
 
 // SetSessionResolver lets callers plug in the principal-id resolver
@@ -192,22 +218,22 @@ func NewProvider(cfg Config, authRepo *auth.Repository, payloads *payload.Reposi
 		return nil, errors.New("auth provider: GlobalSecret must be at least 32 bytes")
 	}
 	if cfg.AccessTokenTTL == 0 {
-		cfg.AccessTokenTTL = 15 * time.Minute
+		cfg.AccessTokenTTL = 1 * time.Hour
 	}
 	if cfg.RefreshTokenTTL == 0 {
-		cfg.RefreshTokenTTL = 7 * 24 * time.Hour
+		cfg.RefreshTokenTTL = 30 * 24 * time.Hour
 	}
 	if cfg.AuthorizationCodeTTL == 0 {
 		cfg.AuthorizationCodeTTL = 10 * time.Minute
 	}
 
 	fc := &fosite.Config{
-		AccessTokenLifespan:      cfg.AccessTokenTTL,
-		RefreshTokenLifespan:     cfg.RefreshTokenTTL,
-		AuthorizeCodeLifespan:    cfg.AuthorizationCodeTTL,
-		IDTokenIssuer:            cfg.Issuer,
-		GlobalSecret:             cfg.GlobalSecret,
-		ClientSecretsHasher:      Argon2idHasher{},
+		AccessTokenLifespan:        cfg.AccessTokenTTL,
+		RefreshTokenLifespan:       cfg.RefreshTokenTTL,
+		AuthorizeCodeLifespan:      cfg.AuthorizationCodeTTL,
+		IDTokenIssuer:              cfg.Issuer,
+		GlobalSecret:               cfg.GlobalSecret,
+		ClientSecretsHasher:        Argon2idHasher{},
 		SendDebugMessagesToClients: false,
 	}
 
@@ -232,6 +258,7 @@ func NewProvider(cfg Config, authRepo *auth.Repository, payloads *payload.Reposi
 	return &Provider{
 		cfg:             cfg,
 		OAuth2:          provider,
+		signingKey:      key,
 		storage:         storage,
 		principals:      principals,
 		roles:           roles,
@@ -239,8 +266,61 @@ func NewProvider(cfg Config, authRepo *auth.Repository, payloads *payload.Reposi
 	}, nil
 }
 
+// SigningKey exposes the RSA private key the provider was constructed
+// with. Used by sessiontoken-aware callers (the auth middleware, the
+// /auth/login handler) to share the same key pair fosite uses, without
+// reaching into fosite's strategy.
+func (p *Provider) SigningKey() *rsa.PrivateKey { return p.signingKey }
+
+// Issuer returns the configured JWT issuer claim.
+func (p *Provider) Issuer() string { return p.cfg.Issuer }
+
 // AccessTokenTTL returns the configured access-token lifetime.
 func (p *Provider) AccessTokenTTL() time.Duration { return p.cfg.AccessTokenTTL }
+
+// ResolveClaims is the exported BuildClaims wrapper bound to this
+// provider's repos + config. Used by callers that need the flattened
+// claim set for a principal (e.g. /auth/login's response body, which
+// includes the `permissions` list so the SPA's route guards can run).
+func (p *Provider) ResolveClaims(ctx context.Context, principalID string) (*Claims, error) {
+	return BuildClaims(ctx, p.cfg, p.principals, p.roles, principalID)
+}
+
+// MintSessionToken issues a self-contained JWT access token for the
+// supplied principal. Used by /auth/login: the resulting token is set
+// as the session cookie. Now backed by the sessiontoken package
+// directly — no fosite reach-through — so the claim shape is exactly
+// what we put in.
+//
+// ttl=0 falls back to AccessTokenTTL.
+func (p *Provider) MintSessionToken(ctx context.Context, principalID string, ttl time.Duration) (string, error) {
+	if ttl <= 0 {
+		ttl = p.cfg.AccessTokenTTL
+	}
+	c, err := BuildClaims(ctx, p.cfg, p.principals, p.roles, principalID)
+	if err != nil {
+		return "", fmt.Errorf("build claims: %w", err)
+	}
+	return sessiontoken.Mint(sessiontoken.Claims{
+		Subject:      c.Subject,
+		Scope:        c.Scope,
+		Email:        c.Email,
+		Clients:      c.Clients,
+		Roles:        c.Roles,
+		Applications: c.Applications,
+		Permissions:  c.Permissions,
+	}, p.signingKey, p.cfg.Issuer, ttl)
+}
+
+// ValidateSessionToken verifies a session-cookie JWT (signature + std
+// claim checks) and returns the parsed claims. Used by the platform's
+// auth middleware to verify both Authorization: Bearer tokens and
+// fc_session cookies. Both transports carry tokens minted by
+// MintSessionToken (or its fosite-grant equivalent for /oauth/token —
+// fosite signs with the same RSA key so the signature path lines up).
+func (p *Provider) ValidateSessionToken(_ context.Context, token string) (*sessiontoken.Claims, error) {
+	return sessiontoken.Validate(token, &p.signingKey.PublicKey)
+}
 
 // parseRSAPrivateKey accepts PKCS#1 or PKCS#8 PEM blocks.
 func parseRSAPrivateKey(pemBytes []byte) (*rsa.PrivateKey, error) {
@@ -264,4 +344,3 @@ func parseRSAPrivateKey(pemBytes []byte) (*rsa.PrivateKey, error) {
 	}
 	return rsaKey, nil
 }
-

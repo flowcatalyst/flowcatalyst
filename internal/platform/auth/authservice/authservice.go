@@ -187,7 +187,7 @@ type keyEntry struct {
 type AuthService struct {
 	config Config
 
-	algorithm     string          // "RS256" | "HS256"
+	algorithm     string // "RS256" | "HS256"
 	signingMethod jwt.SigningMethod
 	signKey       any // *rsa.PrivateKey (RS256) or []byte (HS256)
 
@@ -239,10 +239,19 @@ func NewWithSecret(config Config) *AuthService {
 	}
 }
 
-// New builds a service using RSA when both RSA keys are present, falling
-// back to HS256 otherwise. Loads the previous RSA key for rotation when
-// configured.
+// New builds a service using RSA when an RSA private key is present
+// (deriving the public key if not supplied), falling back to HS256
+// otherwise. Loads the previous RSA key for rotation when configured.
 func New(config Config) (*AuthService, error) {
+	// Derive the public PEM from the private key when only the private is
+	// configured (the common case in this codebase, which loads a single
+	// signing key). The kid is then this service's own — clients read it
+	// from the JWKS, so it need not match any external value.
+	if config.RSAPrivateKeyPEM != "" && config.RSAPublicKeyPEM == "" {
+		if pub, err := publicPEMFromPrivatePEM(config.RSAPrivateKeyPEM); err == nil {
+			config.RSAPublicKeyPEM = pub
+		}
+	}
 	if config.RSAPrivateKeyPEM != "" && config.RSAPublicKeyPEM != "" {
 		svc, err := NewWithRSA(config, config.RSAPrivateKeyPEM, config.RSAPublicKeyPEM)
 		if err == nil {
@@ -569,6 +578,20 @@ func parseRSAPrivateKey(pemBytes []byte) (*rsa.PrivateKey, error) {
 		return nil, errors.New("private key is not RSA")
 	}
 	return rsaKey, nil
+}
+
+// publicPEMFromPrivatePEM derives the PKIX public-key PEM from an RSA
+// private-key PEM.
+func publicPEMFromPrivatePEM(privPEM string) (string, error) {
+	priv, err := parseRSAPrivateKey([]byte(privPEM))
+	if err != nil {
+		return "", err
+	}
+	der, err := x509.MarshalPKIXPublicKey(&priv.PublicKey)
+	if err != nil {
+		return "", err
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der})), nil
 }
 
 func parseRSAPublicKey(pemBytes []byte) (*rsa.PublicKey, error) {

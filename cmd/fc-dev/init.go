@@ -30,6 +30,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/seed"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/database"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -78,7 +79,7 @@ func newInitCmd() *cobra.Command {
 	cmd.Flags().String("client-name", "Default Client", "default client display name")
 
 	// .env target
-	cmd.Flags().String("api-base-url", "http://localhost:3000", "API base URL written to FLOWCATALYST_BASE_URL")
+	cmd.Flags().String("api-base-url", "http://localhost:8080", "API base URL written to FLOWCATALYST_BASE_URL")
 	return cmd
 }
 
@@ -88,7 +89,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 
 	dbURL := get("database-url")
 	if dbURL == "" {
-		dbURL = "postgresql://postgres:postgres@localhost:5433/flowcatalyst?sslmode=disable"
+		dbURL = "postgresql://postgres:postgres@localhost:15432/flowcatalyst?sslmode=disable"
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -243,9 +244,27 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	// Client secrets are stored reversibly-encrypted (Rust parity:
+	// client_secret_ref), so an app key must exist. Generate + persist one
+	// when absent so a fresh dev box works without manual setup.
+	appKey := os.Getenv("FLOWCATALYST_APP_KEY")
+	if appKey == "" {
+		appKey, err = encryption.GenerateKey()
+		if err != nil {
+			return fmt.Errorf("generate app key: %w", err)
+		}
+		_ = os.Setenv("FLOWCATALYST_APP_KEY", appKey)
+	}
+	enc, err := encryption.FromEnv()
+	if err != nil {
+		return fmt.Errorf("init encryption: %w", err)
+	}
+	secretRef, err := enc.Encrypt(clientSecretPlain)
+	if err != nil {
+		return fmt.Errorf("encrypt client secret: %w", err)
+	}
 	oauthClient := auth.NewOAuthClient(publicClientID, appName+" Service Account Client", auth.OAuthClientConfidential)
-	hash := hashSecret(clientSecretPlain)
-	oauthClient.SecretHash = &hash
+	oauthClient.SecretRef = &secretRef
 	oauthClient.GrantTypes = []string{"client_credentials"}
 	oauthClient.PrincipalID = &saPrincipal.ID
 
@@ -274,6 +293,9 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		{"FLOWCATALYST_APP_CODE", appCode},
 		{"FLOWCATALYST_CLIENT_ID", publicClientID},
 		{"FLOWCATALYST_CLIENT_SECRET", clientSecretPlain},
+		// Persist the app key so the same encrypted client_secret_ref stays
+		// decryptable across restarts (the /oauth/token verify path reads it).
+		{"FLOWCATALYST_APP_KEY", appKey},
 	}
 	if err := writeEnvUpdates(envPath, updates); err != nil {
 		return fmt.Errorf("write .env: %w", err)
@@ -547,4 +569,3 @@ func quoteEnvValue(v string) string {
 	}
 	return v
 }
-

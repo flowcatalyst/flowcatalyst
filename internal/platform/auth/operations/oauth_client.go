@@ -4,10 +4,11 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordhash"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -55,8 +56,11 @@ func CreateOAuthClient(
 	c.Scopes = cmd.Scopes
 	c.PrincipalID = cmd.PrincipalID
 	if t == auth.OAuthClientConfidential {
-		plaintext, hash := generateSecret()
-		c.SetSecretHash(hash)
+		plaintext, ref, err := generateSecret()
+		if err != nil {
+			return zero, usecase.Internal("SECRET", "generate client secret failed", err)
+		}
+		c.SetSecretRef(ref)
 		stashSecret(c.ID, plaintext)
 	}
 
@@ -244,8 +248,11 @@ func RotateOAuthClientSecret(
 	if c.ClientType != auth.OAuthClientConfidential {
 		return zero, usecase.Conflict("NOT_CONFIDENTIAL", "Only CONFIDENTIAL clients have rotatable secrets")
 	}
-	plaintext, hash := generateSecret()
-	c.SetSecretHash(hash)
+	plaintext, ref, err := generateSecret()
+	if err != nil {
+		return zero, usecase.Internal("SECRET", "generate client secret failed", err)
+	}
+	c.SetSecretRef(ref)
 	stashSecret(c.ID, plaintext)
 
 	event := OAuthClientSecretRotated{
@@ -257,16 +264,29 @@ func RotateOAuthClientSecret(
 
 // ── helpers ───────────────────────────────────────────────────────────────
 
-func generateSecret() (plaintext, hash string) {
+// generateSecret mints a random client secret and returns it alongside
+// its encrypted reference (the value stored in client_secret_ref).
+// Mirrors Rust: the secret is reversibly encrypted with FLOWCATALYST_APP_KEY
+// and verified at /oauth/token by decrypt-and-compare. Fails if no app
+// key is configured rather than storing a plaintext or unverifiable secret.
+func generateSecret() (plaintext, ref string, err error) {
 	b := make([]byte, 32)
-	_, _ = rand.Read(b)
-	plaintext = base64.RawURLEncoding.EncodeToString(b)
-	h, err := passwordhash.Hash(plaintext)
-	if err != nil {
-		panic("oauth_client: passwordhash.Hash: " + err.Error())
+	if _, err = rand.Read(b); err != nil {
+		return "", "", err
 	}
-	hash = h
-	return plaintext, hash
+	plaintext = base64.RawURLEncoding.EncodeToString(b)
+	enc, err := encryption.FromEnv()
+	if err != nil {
+		return "", "", err
+	}
+	if enc == nil {
+		return "", "", errors.New("FLOWCATALYST_APP_KEY not configured; cannot encrypt client secret")
+	}
+	ref, err = enc.Encrypt(plaintext)
+	if err != nil {
+		return "", "", err
+	}
+	return plaintext, ref, nil
 }
 
 func stashSecret(clientID, plaintext string) { secretStash.Store(clientID, plaintext) }

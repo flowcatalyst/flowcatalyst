@@ -16,7 +16,11 @@ import (
 	auditapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	authapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/api"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/bridge"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/login"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/oauthapi"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/payload"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/provider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
@@ -31,19 +35,22 @@ import (
 	dispatchpoolapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
 	emaildomainapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping/api"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/openapispecs"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/event"
 	eventapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/event/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	eventtypeapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
 	identityproviderapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider/api"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt"
+	loginattemptapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt/api"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/openapispecs"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
 	platformconfigapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	principalapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/process"
 	processapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/process/api"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/publicapi"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	roleapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
@@ -51,7 +58,9 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	serviceaccountapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/api"
 	bff "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/bff"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
+	meapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/me"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	platformsink "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/platformsink"
 	sdkapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/sdk"
@@ -98,6 +107,7 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 	auditRepo := audit.NewRepository(pool)
 	idpRepo := identityprovider.NewRepository(pool)
 	edmRepo := emaildomainmapping.NewRepository(pool)
+	loginAttemptRepo := loginattempt.NewRepository(pool)
 	platformConfigRepo := platformconfig.NewRepository(pool)
 	processRepo := process.NewRepository(pool)
 	scheduledJobRepo := scheduledjob.NewRepository(pool)
@@ -120,11 +130,37 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 		return fmt.Errorf("auth provider init: %w", err)
 	}
 
+	// ── Hand-rolled OAuth token service (replaces fosite for /oauth/token) ─
+	// authservice signs/validates with the same RSA key as the fosite
+	// provider, so existing JWKS + cookie paths line up. encSvc verifies
+	// confidential client secrets (decrypt + compare).
+	authSvc, err := authservice.New(authservice.Config{
+		Issuer:                cfg.JWTIssuer,
+		Audience:              cfg.JWTIssuer,
+		RSAPrivateKeyPEM:      string(signingKey),
+		AccessTokenExpirySecs: 3600,
+	})
+	if err != nil {
+		return fmt.Errorf("authservice init: %w", err)
+	}
+	encSvc, err := encryption.FromEnv()
+	if err != nil {
+		return fmt.Errorf("encryption init: %w", err)
+	}
+	oauthTokenEP := &oauthapi.State{
+		OAuthClients:  authRepo.OAuthClients,
+		Principals:    principalRepo,
+		Auth:          authSvc,
+		AuthCodes:     grantstore.NewAuthorizationCodeRepository(pool),
+		RefreshTokens: grantstore.NewRefreshTokenRepository(pool),
+		Encryption:    encSvc,
+	}
+
 	// ── Webauthn service ───────────────────────────────────────────────
 	webauthnService, err := webauthn.NewService(webauthn.Config{
 		RPDisplayName: "FlowCatalyst",
 		RPID:          envOr("FC_WEBAUTHN_RP_ID", "localhost"),
-		RPOrigins:     []string{envOr("FC_WEBAUTHN_RP_ORIGIN", "http://localhost:3000")},
+		RPOrigins:     []string{envOr("FC_WEBAUTHN_RP_ORIGIN", "http://localhost:8080")},
 	}, webauthnCredRepo, webauthnCeremonyRepo)
 	if err != nil {
 		return fmt.Errorf("webauthn service init: %w", err)
@@ -144,12 +180,34 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 	// hey-api codegen, the Hey-API frontend client) can access it.
 	var humaAPI huma.API
 
+	// Public auth surface: SPA login + cookie acquisition. MUST live
+	// outside the bearer-token middleware below — a stale fc_session
+	// cookie from a previous run would otherwise 401 the request before
+	// the SPA could re-authenticate.
+	loginEP := login.New(login.Config{
+		Provider:          authProvider,
+		Principals:        principalRepo,
+		Mappings:          edmRepo,
+		IdentityProviders: idpRepo,
+		CookieSecure:      !cfg.AuthAllowTestHeaders,
+	})
+	loginEP.RegisterPublicRoutes(r)
+
+	// Public read-only endpoints the SPA hits before sign-in
+	// (login-theme branding, platform feature flags). Mounted outside
+	// the auth middleware for the same reason as the login surface.
+	publicapi.New(platformConfigRepo).RegisterRoutes(r)
+
 	r.Group(func(r chi.Router) {
 		r.Use(platformmw.CorrelationID)
 		r.Use(platformmw.Authenticator(platformmw.AuthConfig{
 			Provider:         authProvider,
 			AllowTestHeaders: cfg.AuthAllowTestHeaders,
 		}))
+		// /auth/me — needs the AuthContext, so mounted INSIDE the auth
+		// group. /auth/check-domain + /auth/login + /auth/logout are
+		// public (see RegisterPublicRoutes above).
+		loginEP.RegisterAuthenticatedRoutes(r)
 
 		// huma API shared by every aggregate's Register call. Routes
 		// register against this; the chi router scope above gives them
@@ -160,17 +218,26 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 		humaCfg := huma.DefaultConfig("FlowCatalyst Platform API", "dev")
 		humaCfg.OpenAPIPath = ""
 		humaCfg.DocsPath = ""
+		// Drop huma's $schema link injection. The Rust API never emits it
+		// and the field clutters response bodies that SPAs / SDKs parse
+		// strictly. The OpenAPI document still describes every response
+		// (served from the parent router via /openapi.json) — clients
+		// that want the schema can fetch it there.
+		humaCfg.SchemasPath = ""
 		humaAPI = humachi.New(r, humaCfg)
 
 		// ── api.State + RegisterRoutes per subdomain ───────────────────
 		clientapi.Register(humaAPI, &clientapi.State{
-			Repo: clientRepo,
-			UoW:  uow,
+			Repo:          clientRepo,
+			Applications:  applicationRepo,
+			ClientConfigs: applicationClientConfigRepo,
+			UoW:           uow,
 		})
 
 		roleapi.Register(humaAPI, &roleapi.State{
-			Repo: roleRepo,
-			UoW:  uow,
+			Repo:        roleRepo,
+			Permissions: role.NewPermissionRepo(pool),
+			UoW:         uow,
 		})
 
 		applicationapi.Register(humaAPI, &applicationapi.State{
@@ -178,21 +245,28 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 			ClientConfigRepo: applicationClientConfigRepo,
 			ClientRepo:       clientRepo,
 			Principals:       principalRepo,
+			Roles:            roleRepo,
+			ServiceAccounts:  serviceAccountRepo,
+			OAuthClients:     authRepo.OAuthClients,
 			UoW:              uow,
 		})
 
 		principalapi.Register(humaAPI, &principalapi.State{
-			Repo:         principalRepo,
-			GrantRepo:    principalGrantRepo,
-			Roles:        roleRepo,
-			Applications: applicationRepo,
-			Clients:      clientRepo,
-			UoW:          uow,
+			Repo:              principalRepo,
+			GrantRepo:         principalGrantRepo,
+			Roles:             roleRepo,
+			Applications:      applicationRepo,
+			Clients:           clientRepo,
+			Mappings:          edmRepo,
+			IdentityProviders: idpRepo,
+			UoW:               uow,
 		})
 
 		serviceaccountapi.Register(humaAPI, &serviceaccountapi.State{
-			Repo: serviceAccountRepo,
-			UoW:  uow,
+			Repo:         serviceAccountRepo,
+			Principals:   principalRepo,
+			OAuthClients: authRepo.OAuthClients,
+			UoW:          uow,
 		})
 
 		authapi.Register(humaAPI, &authapi.State{
@@ -201,7 +275,9 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 		})
 
 		// OAuth provider routes (token, authorize, revoke, introspect, .well-known/*)
-		provider.NewTokenEndpoint(authProvider).RegisterRoutes(r)
+		// /oauth/token is the hand-rolled port (authservice + encryption);
+		// the rest remain on fosite until their ports land (tasks 4-9).
+		oauthTokenEP.RegisterTokenRoutes(r)
 		provider.NewAuthorizeEndpoint(authProvider).RegisterRoutes(r)
 		provider.NewRevokeEndpoint(authProvider).RegisterRoutes(r)
 		provider.NewIntrospectEndpoint(authProvider).RegisterRoutes(r)
@@ -213,18 +289,46 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 			disc.RegisterRoutes(r)
 		}
 
-		// OIDC bridge — POST /oauth/check-domain, GET /oauth/oidc/login,
-		// GET /oauth/oidc/callback. The bridge resolves the external IDP
+		// OIDC bridge — POST /auth/check-domain, GET /auth/oidc/login,
+		// GET /auth/oidc/callback. The bridge resolves the external IDP
 		// for an email's domain, drives the redirect dance, and on
 		// callback either uses the existing FlowCatalyst Principal or
 		// auto-provisions one via the EmailDomainMapping that drove the
-		// login. The SessionWriter is left at its default (200 + JSON
-		// {principalId}) — the frontend's OIDC bridge handler swaps it
-		// for a session-cookie write at startup.
-		bridgeClient := bridge.NewBridge(authRepo)
+		// login. The default SessionWriter just emits JSON; we override
+		// here to mint a session-cookie JWT (same path as /auth/login)
+		// so a successful SSO round-trip produces a usable browser
+		// session.
+		// Field-level encryption (FLOWCATALYST_APP_KEY) — nil-safe; the
+		// bridge will surface a clear error if a confidential OIDC config
+		// needs a secret and the key isn't set.
+		appEnc, _ := encryption.FromEnv()
+		bridgeClient := bridge.NewBridge(authRepo, appEnc)
 		loginStateRepo := bridge.NewLoginStateRepo(pool)
-		bridge.NewLoginEndpoint(bridgeClient, loginStateRepo, principalRepo, edmRepo,
-			roleRepo, authRepo.IdpRoleMappings, uow).RegisterRoutes(r)
+		bridgeLoginEP := bridge.NewLoginEndpoint(bridgeClient, loginStateRepo, principalRepo, edmRepo,
+			roleRepo, authRepo.IdpRoleMappings, uow)
+		bridgeLoginEP.SessionWriter = func(w http.ResponseWriter, r *http.Request, principalID, returnURL string) {
+			token, err := authProvider.MintSessionToken(r.Context(), principalID, login.SessionTTL)
+			if err != nil {
+				http.Error(w, "session mint failed: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			http.SetCookie(w, &http.Cookie{
+				Name:     platformmw.SessionCookieName,
+				Value:    token,
+				Path:     "/",
+				HttpOnly: true,
+				Secure:   !cfg.AuthAllowTestHeaders,
+				SameSite: http.SameSiteLaxMode,
+				MaxAge:   int(login.SessionTTL.Seconds()),
+			})
+			if returnURL != "" {
+				http.Redirect(w, r, returnURL, http.StatusFound)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]string{"principalId": principalID})
+		}
+		bridgeLoginEP.RegisterRoutes(r)
 
 		corsapi.Register(humaAPI, &corsapi.State{
 			Repo: corsRepo,
@@ -261,9 +365,12 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 		})
 
 		emaildomainapi.Register(humaAPI, &emaildomainapi.State{
-			Repo: edmRepo,
-			UoW:  uow,
+			Repo:    edmRepo,
+			IDPRepo: idpRepo,
+			UoW:     uow,
 		})
+
+		loginattemptapi.Register(humaAPI, &loginattemptapi.State{Repo: loginAttemptRepo})
 
 		platformconfigapi.Register(humaAPI, &platformconfigapi.State{
 			Repo: platformConfigRepo,
@@ -276,8 +383,9 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 		})
 
 		scheduledjobapi.Register(humaAPI, &scheduledjobapi.State{
-			Repo: scheduledJobRepo,
-			UoW:  uow,
+			Repo:      scheduledJobRepo,
+			Instances: scheduledjob.NewInstanceRepository(pool),
+			UoW:       uow,
 		})
 
 		webauthnapi.Register(humaAPI, &webauthnapi.State{
@@ -318,8 +426,14 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 				return humaAPI.OpenAPI().MarshalJSON()
 			},
 		})
+		meapi.RegisterRoutes(r, &meapi.State{Principals: principalRepo})
 		sdkapi.RegisterRoutes(r, &sdkapi.DispatchJobsBatchState{Repo: dispatchJobRepo})
 	})
+
+	// Match Rust: exclude /bff/* from the published OpenAPI spec (the BFF
+	// handlers stay mounted and keep serving). Must run after every route
+	// has registered.
+	httpcompat.StripBFFPaths(humaAPI)
 
 	// Spec + Swagger UI mounted on the PARENT router (outside the
 	// Authenticator Group) so tooling — oasdiff, the Hey-API codegen
@@ -343,6 +457,23 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 		}
 		w.Header().Set("Content-Type", "application/yaml")
 		_, _ = w.Write(spec)
+	})
+
+	// Rust serves the spec at /q/openapi and Swagger UI at /swagger-ui;
+	// alias both for drop-in tooling parity. /api/openapi.json is kept for
+	// the existing make/Hey-API codegen tooling.
+	r.Get("/q/openapi", func(w http.ResponseWriter, _ *http.Request) {
+		spec, err := humaAPI.OpenAPI().MarshalJSON()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(spec)
+	})
+	r.Get("/swagger-ui", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(swaggerUIHTML))
 	})
 
 	return nil
