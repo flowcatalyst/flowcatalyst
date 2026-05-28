@@ -1,0 +1,19 @@
+# Live-reload config for `make dev` (air-verse/air).
+# Rebuilds + restarts fc-dev (embedded Postgres) on .go changes.
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/fc-dev ./cmd/fc-dev"
+  bin = "./tmp/fc-dev"
+  args_bin = ["start"]
+  include_ext = ["go"]
+  exclude_dir = ["tmp", "bin", "frontend", "node_modules", ".git", "docs", "migrations", "api"]
+  exclude_regex = ["_test\\.go"]
+  delay = 800
+  stop_on_error = true
+  send_interrupt = true
+  kill_delay = "2s"
+
+[misc]
+  clean_on_exit = true
