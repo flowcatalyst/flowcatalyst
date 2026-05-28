@@ -23,7 +23,6 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/login"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/loginbackoff"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/oauthapi"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/payload"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/provider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	clientapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/api"
@@ -99,7 +98,6 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 	principalGrantRepo := principal.NewClientAccessGrantRepo(pool)
 	serviceAccountRepo := serviceaccount.NewRepository(pool)
 	authRepo := auth.NewRepository(pool)
-	authPayloadRepo := payload.NewRepository(pool)
 	corsRepo := cors.NewRepository(pool)
 	connectionRepo := connection.NewRepository(pool)
 	subscriptionRepo := subscription.NewRepository(pool)
@@ -117,25 +115,23 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 	webauthnCredRepo := webauthn.NewRepository(pool)
 	webauthnCeremonyRepo := webauthn.NewCeremonyRepository(pool)
 
-	// ── OAuth provider (fosite) ────────────────────────────────────────
+	// ── Auth provider (claims projection + session JWTs) ───────────────
 	// SigningKey is supplied via cfg.JWTSigningKeyPath in production. In
 	// dev we fall back to a generated ephemeral key so the binary can
 	// boot without filesystem deps. See fc-dev for the persistent-key
 	// path used by local development.
 	signingKey := LoadSigningKeyOrEphemeral(cfg.JWTSigningKeyPath)
 	authProvider, err := provider.NewProvider(provider.Config{
-		Issuer:       cfg.JWTIssuer,
-		SigningKey:   signingKey,
-		SigningKeyID: cfg.JWTSigningKeyID,
-		GlobalSecret: []byte(cfg.OAuthGlobalSecret),
-	}, authRepo, authPayloadRepo, principalRepo, roleRepo)
+		Issuer:     cfg.JWTIssuer,
+		SigningKey: signingKey,
+	}, principalRepo, roleRepo)
 	if err != nil {
 		return fmt.Errorf("auth provider init: %w", err)
 	}
 
-	// ── Hand-rolled OAuth token service (replaces fosite for /oauth/token) ─
-	// authservice signs/validates with the same RSA key as the fosite
-	// provider, so existing JWKS + cookie paths line up. encSvc verifies
+	// ── Hand-rolled OAuth token service (/oauth/token) ────────────────
+	// authservice signs/validates with the same RSA key the auth provider
+	// loaded, so the JWKS + session-cookie paths line up. encSvc verifies
 	// confidential client secrets (decrypt + compare).
 	authSvc, err := authservice.New(authservice.Config{
 		Issuer:                cfg.JWTIssuer,
@@ -304,9 +300,9 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 			UoW:  uow,
 		})
 
-		// OAuth provider routes — all hand-rolled now (authservice +
+		// OAuth provider routes — all hand-rolled (authservice +
 		// encryption). /oauth/authorize is registered above, outside this
-		// auth group. fosite is no longer wired.
+		// auth group.
 		oauthTokenEP.RegisterTokenRoutes(r.With(ratelimit.IPLimitMiddleware(rlStore, ratelimit.BucketOAuthTokenIP, rlPolicies.OAuthTokenIP)))
 		oauthTokenEP.RegisterIntrospectRoutes(r)
 		oauthTokenEP.RegisterRevokeRoutes(r)

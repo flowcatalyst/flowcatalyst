@@ -10,8 +10,8 @@ import (
 // (Postgres-backed queue on the shared pool), and the X-FC-Test-Principal
 // escape hatch so engineers can hit /api/* without a real token.
 //
-// JWT signing keys + OAuth global secret stay ephemeral in dev — pin
-// them with FC_JWT_SIGNING_KEY_PATH / FC_OAUTH_GLOBAL_SECRET if needed.
+// JWT signing keys stay ephemeral in dev — pin them with
+// FC_JWT_SIGNING_KEY_PATH if needed.
 func devEnvCfg(opts startOpts, databaseURL string) server.EnvCfg {
 	cfg := server.LoadEnv()
 	cfg.DatabaseURL = databaseURL

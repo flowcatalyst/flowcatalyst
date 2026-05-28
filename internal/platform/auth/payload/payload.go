@@ -1,13 +1,12 @@
-// Package payload backs the oauth_oidc_payloads table that holds all
+// Package payload backs the oauth_oidc_payloads table that holds the
 // OIDC artifacts the provider issues: access tokens, refresh tokens,
 // authorization codes, client_credentials sessions, etc.
 //
-// The schema (migration 007) is type+id keyed with a JSONB payload —
-// fosite's notion of "one Storage method per artifact type" maps onto
-// this as `(type=access_token|refresh_token|authorization_code, id=key)`.
-// That keeps the provider library swap-free as long as fosite stays
-// agreement-shaped (or we switch off it). See provider/provider.go for
-// the rest of the wiring.
+// The schema (migration 007) is type+id keyed with a JSONB payload,
+// e.g. `(type=access_token|refresh_token|authorization_code, id=key)`.
+// Artifact read/write is owned by auth/grantstore; this package now
+// serves the background purge of expired rows (see PurgeExpired, called
+// by the auth purger in internal/server/subsystems.go).
 //
 // All access goes through pgxpool directly — these are infrastructure
 // rows (no UoW, per docs/conventions.md §3): they're not domain

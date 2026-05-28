@@ -1,7 +1,7 @@
 // Package authservice is a hand-rolled, 1:1 port of the Rust
 // crates/fc-platform/src/auth/auth_service.rs. It owns JWT token
-// generation and validation for the OAuth/OIDC surface, replacing the
-// fosite-backed JWT strategy.
+// generation and validation for the OAuth/OIDC surface (the former
+// fosite-backed JWT strategy was removed — see ADR-0001).
 //
 // It supports RS256 (RSA) for production and HS256 (HMAC) for
 // development, plus JWT key rotation: it signs with the current key and

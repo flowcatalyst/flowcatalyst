@@ -1,6 +1,7 @@
 # ADR-0001: Session tokens are owned by `sessiontoken`, not fosite
 
-**Status**: Accepted
+**Status**: Accepted (2026-05-27). The fosite half is now moot — see
+[Update (2026-05-28)](#update-2026-05-28).
 **Date**: 2026-05-27
 
 ## Context
@@ -95,5 +96,20 @@ about option 2 — hand-rolling `/oauth/*` entirely and dropping
 fosite), the line drawn here is the foothold. `sessiontoken` already
 demonstrates the pattern; the OAuth endpoints would each move out one
 at a time, with this package as the precedent.
+
+## Update (2026-05-28)
+
+The "option 2" anticipated above happened: every `/oauth/*` endpoint was
+hand-rolled and **fosite was removed entirely** — no `ory/fosite` dependency
+remains. OAuth/OIDC now lives in `internal/platform/auth/oauthapi`
+(token/authorize/introspect/revoke/userinfo + `.well-known` + JWKS), backed
+by `auth/authservice` (JWT mint/validate) and `auth/grantstore` (auth-code,
+refresh-token, and pending-auth storage in `oauth_oidc_payloads`).
+
+`internal/platform/auth/provider` no longer composes fosite — it now holds
+only the principal→`Claims` projection plus the shared session-cookie
+`Mint`/`Validate` helpers this ADR introduced. The layering line drawn here
+became the seam the OAuth endpoints moved out along, one at a time, exactly
+as predicted.
 
 [fosite]: https://github.com/ory/fosite

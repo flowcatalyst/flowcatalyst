@@ -3,6 +3,81 @@
 This document is the canonical "where we are, where we're going" reference
 for the Rust → Go port. Read it cold to pick up the work.
 
+---
+
+## ✅ DONE: OIDC fosite-replacement — STATUS (2026-05-28)
+
+Replaced `ory/fosite` with a 1:1 hand-rolled port of the Rust OIDC server
+(`crates/fc-platform/src/auth/*`, `shared/well_known_api.rs`). **All 10
+plan tasks done.** Tasks 1–9 committed (`aec24be` → `13e37cb`); the task-9
+teardown is complete (committed separately — see git log for the fosite
+removal). Only the deferred follow-ups below remain, and none block.
+
+**Done & committed (each its own commit, tree green throughout):**
+- `internal/platform/auth/authservice` — JWT mint/validate, exact Rust
+  claim shapes (`type`/`jti`/`nbf`, bare-string `aud`, **no** `permissions`
+  claim), RS256 + HS256 fallback, multi-key JWKS (SHA-256 kid).
+- `internal/platform/auth/grantstore` — auth-code + refresh-token +
+  pending-auth storage in `oauth_oidc_payloads` (composite ids, camelCase
+  payloads; the `iam_authorization_codes`/`iam_refresh_tokens` tables are
+  legacy/unused in Rust).
+- `internal/platform/auth/oauthapi` — hand-rolled `/oauth/{token,authorize,
+  introspect,revoke,userinfo}` + `.well-known/openid-configuration` +
+  `jwks.json`. 3 grants + PKCE (S256+plain). RFC-6749 `{error,
+  error_description}` bodies.
+- **OAuth client secrets switched Argon2→encryption** (`client_secret_ref`,
+  via `internal/platform/shared/encryption`) — Rust parity. Touches
+  oauth_client create/rotate, serviceaccount/application provisioning, and
+  `fc-dev init` (now provisions+persists `FLOWCATALYST_APP_KEY`).
+- Auth middleware now derives permissions from roles when a token lacks a
+  `permissions` claim (`provider.FlattenPermissions`).
+- `internal/platform/auth/loginbackoff` — failed-login backoff +
+  attempt recording on `/auth/login` and `/oauth/token`.
+- `internal/platform/shared/ratelimit` — distributed rate-limit store
+  (Redis `INCR+EXPIRE` / Postgres `iam_rate_limit_events` / Noop;
+  `FC_REDIS_URL` → Redis else Postgres else `FC_RATE_LIMIT_DISABLE=1`).
+  Per-client + per-IP throttle on `/oauth/token` + `/oauth/authorize`.
+
+**fosite is fully removed** — no `ory/fosite` dependency remains (and
+`go-jose/v3` went with it via `go mod tidy`). The `provider/` package is
+now a single `provider.go` holding only the session/claims helpers
+(`ValidateSessionToken`, `MintSessionToken`, `ResolveClaims`,
+`BuildClaims`, `FlattenPermissions`, `SigningKey`, `Issuer`,
+`AccessTokenTTL`) plus a trimmed `Config{Issuer, SigningKey,
+AccessTokenTTL}`. The 10 fosite endpoint/storage/hasher/session files +
+their 2 tests were deleted; middleware's `writeInvalidTokenError` no longer
+calls `fosite.ErrorToRFC6749Error`; `wire.go`/`envcfg.go` dropped
+`GlobalSecret`, `SigningKeyID`, and the `payload.Repository` arg to
+`NewProvider` (the `payload` package still lives — `subsystems.go`'s purger
+uses it). Docs updated: ADR-0001 has an Update note, `architecture.md` and
+`PLAN.md` describe the hand-rolled provider.
+
+**Verified:** `go build ./...` clean, auth/middleware/server tests pass,
+`make api-diff` exit 0 (OAuth routes are chi handlers, not huma — the lock
+file is unaffected).
+
+### Deferred (follow-ups, not blockers)
+- `/oauth/authorize?provider=` direct-IDP branch (returns server_error) —
+  the Go bridge resolves IDPs by **email domain**, not provider-id; needs a
+  bridge method to build an IDP authorization URL from a provider id.
+- `max_age` enforcement in authorize — the session-cookie validator doesn't
+  expose `iat`. Unify session-cookie minting onto `authservice`
+  (Rust uses one claim shape for access + session tokens) to fix cleanly.
+- In-memory per-instance rate-limit governor (perf layer atop the
+  distributed store; `rate_limit_middleware.rs`).
+- **Pre-existing break**: `internal/router/pool_cascade_test.go` doesn't
+  compile (`cascadeConsumer` missing `Counters()` after `queue.Consumer`
+  grew) — from the prior-session WIP, not the OIDC work.
+
+### Parity references
+- Rust source: `crates/fc-platform/src/auth/{auth_service,oauth_api,
+  authorization_code*,refresh_token*,pending_auth_repository,login_backoff}.rs`,
+  `shared/{well_known_api,rate_limit_store/*}.rs`.
+- ADR-0001 (`docs/adr/0001-session-token-vs-oauth.md`) — why sessiontoken
+  is split from fosite.
+
+---
+
 ## 0. Session orientation (read this first)
 
 **Where to start cold:**

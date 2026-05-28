@@ -1,23 +1,16 @@
-// Package provider hosts the OAuth/OIDC provider runtime — FlowCatalyst
-// issues access/refresh/ID tokens via this provider for SDK consumers
-// (client_credentials grant) and users (authorization_code grant).
+// Package provider hosts the JWT claims projection and session-cookie
+// token helpers shared across FlowCatalyst's auth surfaces. The OAuth/OIDC
+// HTTP endpoints are hand-rolled in internal/platform/auth/oauthapi
+// (token/authorize/introspect/revoke/userinfo + .well-known), backed by
+// authservice (token mint/validate) and grantstore (codes/refresh).
 //
-// Wiring shape:
+// What remains here:
 //
-//	provider.go         — Config, Claims, BuildClaims, Provider+New
-//	hasher.go           — Argon2id fosite.Hasher for client-secret verify
-//	client_adapter.go   — auth.OAuthClient → fosite.Client adapter
-//	client_manager.go   — fosite.ClientManager (GetClient + JTI replay store)
-//	session.go          — FCSession (JWTSession + Extra claims)
-//	storage.go          — fosite.Storage + oauth2.CoreStorage + revocation
-//	token_endpoint.go   — POST /oauth/token (delegates to fosite)
-//	payload/            — oauth_oidc_payloads-backed artifact store
-//
-// Today's compose lights up the client_credentials grant. The
-// authorization_code + refresh_token grants are wired into the storage
-// adapter already; switching them on is a matter of adding their
-// factories to NewProvider's compose call once we expose
-// /oauth/authorize.
+//	Config              — issuer + signing key + access-token TTL
+//	Claims, BuildClaims — project a principal onto the JWT claim shape
+//	FlattenPermissions  — resolve role names → permission set
+//	Mint/ValidateSessionToken — /auth/login session cookies
+//	SigningKey, Issuer, AccessTokenTTL — shared config accessors
 package provider
 
 import (
@@ -27,20 +20,14 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"net/http"
 	"time"
 
-	"github.com/ory/fosite"
-	"github.com/ory/fosite/compose"
-
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/payload"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/sessiontoken"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 )
 
-// Config bundles the construction-time settings for the OAuth provider.
+// Config bundles the construction-time settings for the auth provider.
 type Config struct {
 	// Issuer is the JWT iss claim, e.g. "https://flowcatalyst.example.com".
 	Issuer string
@@ -48,37 +35,14 @@ type Config struct {
 	// AccessTokenTTL is how long access tokens are valid.
 	AccessTokenTTL time.Duration
 
-	// RefreshTokenTTL is how long refresh tokens are valid.
-	RefreshTokenTTL time.Duration
-
-	// AuthorizationCodeTTL is how long authorization codes are valid.
-	AuthorizationCodeTTL time.Duration
-
 	// SigningKey is the RS256 private key used to sign JWTs. PEM-encoded.
 	SigningKey []byte
-
-	// SigningKeyID is the kid claim in issued JWTs.
-	SigningKeyID string
-
-	// GlobalSecret is the HMAC secret used by fosite for non-JWT tokens
-	// (refresh tokens, authorize codes). 32 bytes minimum.
-	GlobalSecret []byte
 }
 
-// DefaultConfig returns the canonical defaults, matching Rust
-// fc-platform's auth_service.rs: 1h access, 30d refresh, 10min auth code.
-func DefaultConfig() Config {
-	return Config{
-		AccessTokenTTL:       1 * time.Hour,
-		RefreshTokenTTL:      30 * 24 * time.Hour,
-		AuthorizationCodeTTL: 10 * time.Minute,
-	}
-}
-
-// Claims is the FlowCatalyst-specific JWT payload. The fields land in
-// fosite's JWT under "extra" (which fosite serializes top-level — see
-// jwt.JWTClaims.ToMap). Keep names in sync with what SDK consumers
-// expect.
+// Claims is the FlowCatalyst-specific JWT payload. These fields are
+// projected onto the wire token by the token-issuing layer (authservice
+// for /oauth/token, sessiontoken for /auth/login cookies). Keep names in
+// sync with what SDK consumers expect.
 type Claims struct {
 	Issuer       string
 	Subject      string
@@ -102,10 +66,10 @@ type Claims struct {
 	EmailVerified   *bool  // OIDC "email_verified" — pointer to distinguish "unset"
 }
 
-// BuildClaims projects a principal onto our Claims shape. Called by the
-// /oauth/token handler before fosite mints the JWT. roles may be nil —
-// in that case Permissions is left empty (handlers without permission
-// gates still work, gated handlers reject with PERMISSION_REQUIRED).
+// BuildClaims projects a principal onto our Claims shape. roles may be
+// nil — in that case Permissions is left empty (handlers without
+// permission gates still work, gated handlers reject with
+// PERMISSION_REQUIRED).
 func BuildClaims(ctx context.Context, cfg Config, principals *principal.Repository, roles *role.Repository, principalID string) (*Claims, error) {
 	p, err := principals.FindByID(ctx, principalID)
 	if err != nil {
@@ -185,91 +149,39 @@ func flattenPermissions(ctx context.Context, roles *role.Repository, roleNames [
 	return out, nil
 }
 
-// Provider bundles the live fosite OAuth2Provider plus the deps the
-// HTTP layer needs (principal + role repos for BuildClaims, config for
-// TTLs).
+// Provider bundles the session/claims helpers plus the deps the HTTP
+// layer needs (principal + role repos for BuildClaims, config for TTLs).
 type Provider struct {
-	cfg             Config
-	OAuth2          fosite.OAuth2Provider
-	storage         *Storage
-	principals      *principal.Repository
-	roles           *role.Repository
-	SessionResolver func(*http.Request) string
-	// signingKey is the RSA key shared by fosite (for /oauth/token JWTs)
-	// and the sessiontoken package (for /auth/login cookies). The
-	// session-cookie path lives outside fosite entirely — see ADR-0001.
+	cfg        Config
+	principals *principal.Repository
+	roles      *role.Repository
+	// signingKey is the RSA key shared with the sessiontoken package (for
+	// /auth/login cookies) and authservice (for /oauth/token JWTs) — all
+	// three sign with the same pair so JWKS + cookie validation line up.
 	signingKey *rsa.PrivateKey
 }
 
-// SetSessionResolver lets callers plug in the principal-id resolver
-// the /oauth/authorize endpoint uses to detect logged-in users.
-func (p *Provider) SetSessionResolver(resolver func(*http.Request) string) {
-	p.SessionResolver = resolver
-}
-
-// NewProvider wires fosite end-to-end. Returns an error if the RSA key
-// is missing or malformed.
-func NewProvider(cfg Config, authRepo *auth.Repository, payloads *payload.Repository, principals *principal.Repository, roles *role.Repository) (*Provider, error) {
+// NewProvider parses the RSA signing key and wires the claims/session
+// helpers. Returns an error if the RSA key is missing or malformed.
+func NewProvider(cfg Config, principals *principal.Repository, roles *role.Repository) (*Provider, error) {
 	key, err := parseRSAPrivateKey(cfg.SigningKey)
 	if err != nil {
 		return nil, fmt.Errorf("auth provider: %w", err)
 	}
-	if len(cfg.GlobalSecret) < 32 {
-		return nil, errors.New("auth provider: GlobalSecret must be at least 32 bytes")
-	}
 	if cfg.AccessTokenTTL == 0 {
 		cfg.AccessTokenTTL = 1 * time.Hour
 	}
-	if cfg.RefreshTokenTTL == 0 {
-		cfg.RefreshTokenTTL = 30 * 24 * time.Hour
-	}
-	if cfg.AuthorizationCodeTTL == 0 {
-		cfg.AuthorizationCodeTTL = 10 * time.Minute
-	}
-
-	fc := &fosite.Config{
-		AccessTokenLifespan:        cfg.AccessTokenTTL,
-		RefreshTokenLifespan:       cfg.RefreshTokenTTL,
-		AuthorizeCodeLifespan:      cfg.AuthorizationCodeTTL,
-		IDTokenIssuer:              cfg.Issuer,
-		GlobalSecret:               cfg.GlobalSecret,
-		ClientSecretsHasher:        Argon2idHasher{},
-		SendDebugMessagesToClients: false,
-	}
-
-	storage := NewStorage(authRepo.OAuthClients, payloads)
-
-	keyGetter := func(_ context.Context) (any, error) { return key, nil }
-	hmacStrategy := compose.NewOAuth2HMACStrategy(fc)
-	jwtStrategy := compose.NewOAuth2JWTStrategy(keyGetter, hmacStrategy, fc)
-
-	provider := compose.Compose(
-		fc,
-		storage,
-		jwtStrategy,
-		compose.OAuth2AuthorizeExplicitFactory,
-		compose.OAuth2ClientCredentialsGrantFactory,
-		compose.OAuth2RefreshTokenGrantFactory,
-		compose.OAuth2TokenRevocationFactory,
-		compose.OAuth2TokenIntrospectionFactory,
-		compose.OAuth2PKCEFactory,
-	)
-
 	return &Provider{
-		cfg:             cfg,
-		OAuth2:          provider,
-		signingKey:      key,
-		storage:         storage,
-		principals:      principals,
-		roles:           roles,
-		SessionResolver: func(*http.Request) string { return "" },
+		cfg:        cfg,
+		signingKey: key,
+		principals: principals,
+		roles:      roles,
 	}, nil
 }
 
 // SigningKey exposes the RSA private key the provider was constructed
 // with. Used by sessiontoken-aware callers (the auth middleware, the
-// /auth/login handler) to share the same key pair fosite uses, without
-// reaching into fosite's strategy.
+// /auth/login handler) to share the same key pair token issuance uses.
 func (p *Provider) SigningKey() *rsa.PrivateKey { return p.signingKey }
 
 // Issuer returns the configured JWT issuer claim.
@@ -288,9 +200,8 @@ func (p *Provider) ResolveClaims(ctx context.Context, principalID string) (*Clai
 
 // MintSessionToken issues a self-contained JWT access token for the
 // supplied principal. Used by /auth/login: the resulting token is set
-// as the session cookie. Now backed by the sessiontoken package
-// directly — no fosite reach-through — so the claim shape is exactly
-// what we put in.
+// as the session cookie. Backed by the sessiontoken package directly, so
+// the claim shape is exactly what we put in.
 //
 // ttl=0 falls back to AccessTokenTTL.
 func (p *Provider) MintSessionToken(ctx context.Context, principalID string, ttl time.Duration) (string, error) {
@@ -315,9 +226,9 @@ func (p *Provider) MintSessionToken(ctx context.Context, principalID string, ttl
 // ValidateSessionToken verifies a session-cookie JWT (signature + std
 // claim checks) and returns the parsed claims. Used by the platform's
 // auth middleware to verify both Authorization: Bearer tokens and
-// fc_session cookies. Both transports carry tokens minted by
-// MintSessionToken (or its fosite-grant equivalent for /oauth/token —
-// fosite signs with the same RSA key so the signature path lines up).
+// fc_session cookies. Both transports carry tokens signed with the same
+// RSA key (sessiontoken for cookies, authservice for /oauth/token), so
+// the signature path lines up.
 func (p *Provider) ValidateSessionToken(_ context.Context, token string) (*sessiontoken.Claims, error) {
 	return sessiontoken.Validate(token, &p.signingKey.PublicKey)
 }

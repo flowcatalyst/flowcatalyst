@@ -71,10 +71,6 @@ type EnvCfg struct {
 
 	// JWT signing.
 	JWTSigningKeyPath string
-	JWTSigningKeyID   string
-
-	// HMAC global secret (used by fosite for non-JWT tokens).
-	OAuthGlobalSecret string
 
 	// MCP — the read-only MCP server proxies into the platform. URL is
 	// where it dials the platform itself; for fc-dev it's the local
@@ -132,8 +128,6 @@ func LoadEnv() EnvCfg {
 		StandbyLockKey:  envOr("FC_STANDBY_LOCK_KEY", "fc:server:leader"),
 
 		JWTSigningKeyPath:    os.Getenv("FC_JWT_SIGNING_KEY_PATH"),
-		JWTSigningKeyID:      envOr("FC_JWT_SIGNING_KEY_ID", "fc-key-1"),
-		OAuthGlobalSecret:    envOr("FC_OAUTH_GLOBAL_SECRET", "change-me-please-this-is-only-for-dev-32b"),
 		AuthAllowTestHeaders: envBool("FC_AUTH_ALLOW_TEST_HEADERS", false),
 
 		MCPPlatformURL:  envFirst("FLOWCATALYST_URL", "FC_MCP_PLATFORM_URL", "", ""),

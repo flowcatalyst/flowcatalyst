@@ -221,17 +221,17 @@ If anywhere in the platform we do `Marshal(event) → sign(bytes)` (e.g., outbox
 
 ### Auth
 
-The Rust auth subdomain is ~15k LOC; ~80% of that is RFC-compliant OAuth/OIDC protocol mechanics. We replace it with a library stack instead of porting line-by-line.
+The Rust auth subdomain is ~15k LOC; ~80% of that is RFC-compliant OAuth/OIDC protocol mechanics. The OIDC **client** side (bridging to external IDPs) leans on libraries; the OAuth/OIDC **provider** side is hand-rolled as a close port of the Rust server, for exact wire parity.
 
-- **`golang-jwt/jwt/v5`** for JWT encode/decode (RS256, RS512). Used transitively by the OIDC libraries below.
+- **`golang-jwt/jwt/v5`** for JWT encode/decode (RS256, with an HS256 dev fallback). Used directly by `authservice` (OAuth/OIDC tokens + JWKS) and `sessiontoken` (session cookies).
 - **`github.com/coreos/go-oidc/v3`** + **`golang.org/x/oauth2`** for the OIDC **bridge** (FlowCatalyst as an OIDC client of Entra / Keycloak / Google). Reads `EmailDomainMapping` to route users to the right external IDP.
-- **`github.com/ory/fosite`** for FlowCatalyst as an OIDC/OAuth **provider** — issues access tokens to SDK consumers (`client_credentials` grant) and to users (`authorization_code` grant). The library handles all RFC mechanics: token endpoint, authorize endpoint, discovery, JWKS, PKCE, refresh flow. We implement its `Storage` interface against our existing `iam_oauth_clients` / `iam_refresh_tokens` / `iam_authorization_codes` tables and an `OAuth2.SessionData`-shaped struct that carries our FlowCatalyst-specific claims (`scope`, `clients[]`, `roles[]`, `applications[]`, `email`).
-- **`github.com/go-jose/go-jose/v4`** for direct JWT/JWS/JWK primitives where we need them outside fosite (e.g. the platform's own signed cookies, webhook signing keys exported via the JWKS endpoint).
+- **Hand-rolled OAuth/OIDC provider** (`internal/platform/auth/oauthapi`) — FlowCatalyst as an OIDC/OAuth **provider**, issuing access/refresh/ID tokens to SDK consumers (`client_credentials` grant) and users (`authorization_code` + PKCE). Owns the token / authorize / introspect / revoke / userinfo endpoints plus `.well-known/openid-configuration` and JWKS. JWT mint/validate lives in `auth/authservice`; auth-code, refresh-token, and pending-auth artifacts persist in `oauth_oidc_payloads` via `auth/grantstore`. Tokens carry FlowCatalyst-specific claims (`scope`, `clients[]`, `roles[]`, `applications[]`, `email`). Originally built on `ory/fosite`; removed 2026-05-28 (see [ADR-0001](adr/0001-session-token-vs-oauth.md)) because its storage-backed model didn't fit Rust's custom claim shapes, multi-key JWKS rotation, `plain` PKCE, and per-client rate limiting.
+- **`github.com/go-jose/go-jose/v4`** — JWK/JWS primitives, now pulled in only transitively by the OIDC bridge. We don't use it directly (JWKS is hand-rolled in `authservice`).
 - **`go-webauthn/webauthn`** for passkeys. The `webauthn-rs` `danger-allow-state-serialisation` feature is equivalent to `go-webauthn`'s `SessionData` shape — both let you persist the in-flight ceremony.
 - **`x/crypto/argon2`** for password hashing.
 - **`crypto/aes`** + **`crypto/cipher`** for AES-GCM (cookie sessions, secret encryption).
 
-**Library longevity** (per [`PLAN.md` §10 decision]): `go-oidc` is Red Hat / Kubernetes-grade; `x/oauth2` is an official Go subrepository; `fosite` has ~10 years of broad independent OSS adoption beyond its parent company (Ory); `go-jose` originated at Square and is now community-maintained; `go-webauthn` is the de-facto Go passkey library. All Apache 2.0 — pinned versions are forever-freely-usable.
+**Library longevity** (per [`PLAN.md` §10 decision]): `go-oidc` is Red Hat / Kubernetes-grade; `x/oauth2` is an official Go subrepository; `go-jose` originated at Square and is now community-maintained; `go-webauthn` is the de-facto Go passkey library. All Apache 2.0 — pinned versions are forever-freely-usable. (The OAuth/OIDC **provider** is no longer a library at all — it's the hand-rolled port described above.)
 
 **Token compatibility:** existing tokens issued by the Rust binary will NOT validate against the Go binary after cutover (different signing-key lineage, possibly different JWT claim shape). This was explicitly accepted as part of the rewrite — users re-authenticate post-cutover.
 

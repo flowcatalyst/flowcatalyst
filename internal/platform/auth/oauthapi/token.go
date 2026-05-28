@@ -1,7 +1,7 @@
 // Package oauthapi is the hand-rolled OAuth2 endpoint surface, a 1:1 port
-// of crates/fc-platform/src/auth/oauth_api.rs. It replaces the
-// fosite-backed provider for /oauth/token (and, as later tasks land,
-// /oauth/{authorize,introspect,revoke,userinfo}).
+// of crates/fc-platform/src/auth/oauth_api.rs. It owns
+// /oauth/{token,authorize,introspect,revoke,userinfo} end-to-end (the
+// former fosite-backed provider was removed — see ADR-0001).
 //
 // Wire contract notes carried over from Rust:
 //   - Error bodies are RFC-6749 {error, error_description?} — NOT the

@@ -18,8 +18,10 @@
 // `Verify` parses the stored PHC envelope so future param changes are
 // backwards-compatible: each row carries the params it was hashed with.
 //
-// All callers (principal password, OAuth client secret, fosite-bound
-// client hasher) go through `Hash` + `Verify`. There is no other path.
+// Callers are principal/user passwords (create, reset, seed, login
+// verify) — they go through `Hash` + `Verify`, there is no other path.
+// OAuth client secrets do NOT use this; they're reversibly encrypted via
+// shared/encryption (decrypt + compare), matching Rust.
 package passwordhash
 
 import (

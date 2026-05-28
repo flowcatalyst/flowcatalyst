@@ -188,8 +188,8 @@ Full rationale and alternatives in [`docs/architecture.md`](./docs/architecture.
 | Validation | `github.com/go-playground/validator/v10` |
 | JWT | `github.com/golang-jwt/jwt/v5` |
 | OIDC client (external IDP bridge) | `github.com/coreos/go-oidc/v3` + `golang.org/x/oauth2` |
-| OIDC/OAuth provider (issuing our own tokens) | `github.com/ory/fosite` — replaces ~12k LOC of Rust protocol mechanics with ~2k LOC of storage adapter. Chosen over zitadel/oidc because fosite has much broader independent OSS adoption beyond its parent company (Ory), lowering single-vendor concentration risk. |
-| JWT / JWK / JWS primitives | `github.com/go-jose/go-jose/v4` (originally Square, now community-maintained). Used transitively by fosite; explicit usage in our own signing/verification helpers. |
+| OIDC/OAuth provider (issuing our own tokens) | **Hand-rolled** (`internal/platform/auth/oauthapi` + `authservice` + `grantstore`) — a close port of the Rust OIDC server for exact wire parity. Originally `github.com/ory/fosite`; removed 2026-05-28 (see ADR-0001) because its storage-backed model didn't fit Rust's custom JWT claim shapes, multi-key JWKS rotation, `plain` PKCE, and per-client rate limiting. |
+| JWK / JWS primitives | `github.com/go-jose/go-jose/v4` (originally Square, now community-maintained) — now pulled in only transitively by the `go-oidc` bridge; no direct use (JWKS is hand-rolled in `authservice` on `golang-jwt/jwt/v5`). |
 | WebAuthn | `github.com/go-webauthn/webauthn` |
 | Argon2 | `golang.org/x/crypto/argon2` |
 | AWS | `github.com/aws/aws-sdk-go-v2` |

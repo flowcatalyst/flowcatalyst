@@ -7,13 +7,13 @@
 //
 // Plus runtime adapters for:
 //
-//   - The OAuth/OIDC provider role (ory/fosite Storage interface impl)
+//   - The OAuth/OIDC provider role (hand-rolled in auth/oauthapi)
 //   - The OIDC client role / bridge to external IDPs (coreos/go-oidc)
 //
 // Token issuance, validation, refresh, and the OIDC login flow are handled
-// by the libraries (see docs/architecture.md §Auth). This subdomain owns
-// the admin-side CRUD of the OAuth/IDP configuration plus the storage
-// adapters that the libraries call into.
+// by auth/oauthapi + auth/authservice (see docs/architecture.md §Auth).
+// This subdomain owns the admin-side CRUD of the OAuth/IDP configuration
+// plus the storage adapters that oauthapi/authservice call into.
 package auth
 
 import (

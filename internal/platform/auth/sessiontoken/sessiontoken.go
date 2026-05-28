@@ -1,10 +1,10 @@
 // Package sessiontoken is the platform's session-cookie JWT layer.
 //
-// Decoupled from fosite by design: the cookie/middleware path is small
-// enough that we own it end-to-end. fosite stays in charge of the OAuth
-// 2.0 surface (/oauth/token, /oauth/authorize, /oauth/introspect, …);
-// session tokens — minted on /auth/login, validated by the auth
-// middleware — live here.
+// Split from the OAuth 2.0 surface by design (see ADR-0001): the
+// cookie/middleware path is small enough that we own it end-to-end. The
+// OAuth endpoints (/oauth/token, /oauth/authorize, /oauth/introspect, …)
+// live in auth/oauthapi; session tokens — minted on /auth/login,
+// validated by the auth middleware — live here.
 //
 // Wire format: RS256 JWT with the FlowCatalyst-standard claim shape:
 //
@@ -22,9 +22,9 @@
 //	  "permissions": [...]
 //	}
 //
-// Same claim names + types the existing auth middleware reads, so the
-// switch from fosite-minted tokens to sessiontoken-minted tokens is
-// transparent to downstream consumers.
+// Same claim names + types the auth middleware reads, so session-cookie
+// tokens and authservice-minted OAuth tokens are interchangeable to
+// downstream consumers.
 package sessiontoken
 
 import (

@@ -178,7 +178,7 @@ type Querier interface {
 	OAuthPayloadDelete(ctx context.Context, id string) error
 	OAuthPayloadDeleteByGrant(ctx context.Context, grantID *string) error
 	OAuthPayloadFindByID(ctx context.Context, arg OAuthPayloadFindByIDParams) (OauthOidcPayload, error)
-	// Queries for oauth_oidc_payloads — fosite-backed OIDC artifact store
+	// Queries for oauth_oidc_payloads — the OIDC artifact store
 	// (access/refresh tokens, authorization codes, PKCE sessions, etc.).
 	// Webauthn ceremonies use this same table; their queries live in
 	// webauthn_ceremony.sql so each subsystem owns its own slice.

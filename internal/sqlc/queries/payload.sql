@@ -1,4 +1,4 @@
--- Queries for oauth_oidc_payloads — fosite-backed OIDC artifact store
+-- Queries for oauth_oidc_payloads — the OIDC artifact store
 -- (access/refresh tokens, authorization codes, PKCE sessions, etc.).
 -- Webauthn ceremonies use this same table; their queries live in
 -- webauthn_ceremony.sql so each subsystem owns its own slice.

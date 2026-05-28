@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/ory/fosite"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/logging"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/provider"
@@ -32,8 +31,8 @@ func CorrelationID(next http.Handler) http.Handler {
 
 // AuthConfig governs how the Authenticator middleware behaves.
 type AuthConfig struct {
-	// Provider hosts the fosite OAuth2Provider used to introspect bearer
-	// tokens. Required.
+	// Provider validates bearer/session JWTs and projects principal
+	// claims. Required.
 	Provider *provider.Provider
 
 	// AllowTestHeaders enables the X-FC-Test-Principal dev fallback.
@@ -126,7 +125,8 @@ func extractBearerToken(r *http.Request) string {
 // expired tokens, (ctx, nil) on success.
 //
 // Cookie + Bearer transports share this path. The line between this
-// path and fosite's `/oauth/introspect` is deliberate — see ADR-0001.
+// local validation path and the `/oauth/introspect` endpoint is
+// deliberate — see ADR-0001.
 func introspect(ctx context.Context, p *provider.Provider, token string) (*auth.AuthContext, error) {
 	c, err := p.ValidateSessionToken(ctx, token)
 	if err != nil {
@@ -183,11 +183,8 @@ func writeInvalidTokenError(w http.ResponseWriter, err error) {
 	w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
 	w.WriteHeader(http.StatusUnauthorized)
 	desc := "invalid bearer token"
-	if rfcErr := fosite.ErrorToRFC6749Error(err); rfcErr != nil {
-		desc = rfcErr.ErrorField
-		if rfcErr.DescriptionField != "" {
-			desc = rfcErr.DescriptionField
-		}
+	if err != nil && err.Error() != "" {
+		desc = err.Error()
 	}
 	_ = json.NewEncoder(w).Encode(map[string]string{
 		"error":             "invalid_token",
