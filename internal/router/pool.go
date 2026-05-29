@@ -355,6 +355,7 @@ func (p *Pool) Stats() PoolStats {
 		RateLimitPerMinute: p.RateLimitPerMinute(),
 		IsRateLimited:      p.IsRateLimited(),
 		Metrics:            &m,
+		Histogram:          p.metrics.HistogramSnapshot(),
 	}
 }
 

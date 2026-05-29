@@ -52,6 +52,10 @@ type runningConsumer struct {
 	consumer queue.Consumer
 	cancel   context.CancelFunc
 	queueCfg common.QueueConfig
+	// lastPoll is the unix-nano of the most recent completed poll; a poll
+	// loop wedged inside consumer.Poll leaves it stale, which the
+	// consumer-restart watchdog (RestartStalledConsumers) detects.
+	lastPoll atomic.Int64
 }
 
 // NewManager builds a manager. The mediator is shared by all pools; the
@@ -306,6 +310,7 @@ func (m *Manager) runConsumer(ctx context.Context, rc *runningConsumer) {
 		}
 
 		msgs, err := rc.consumer.Poll(ctx, maxPoll)
+		rc.lastPoll.Store(time.Now().UnixNano()) // progress heartbeat for the restart watchdog
 		if err != nil {
 			if ctx.Err() != nil {
 				return
@@ -426,6 +431,7 @@ func (m *Manager) Reconfigure(ctx context.Context, cfg common.RouterConfig) erro
 		}
 		cctx, cancel := context.WithCancel(ctx)
 		rc := &runningConsumer{consumer: consumer, cancel: cancel, queueCfg: qc}
+		rc.lastPoll.Store(time.Now().UnixNano())
 		m.consumers[name] = rc
 		m.queues[name] = qc
 		m.wg.Add(1)
@@ -457,6 +463,67 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+// RestartStalledConsumers re-spawns any consumer whose poll loop has not
+// completed a poll within threshold — a wedged loop (stuck inside
+// consumer.Poll) leaves its lastPoll stale. The stalled consumer is
+// cancelled and its connection rebuilt with a fresh poll loop. Returns the
+// number restarted. Mirrors the Rust LifecycleManager consumer auto-restart.
+func (m *Manager) RestartStalledConsumers(ctx context.Context, threshold time.Duration) int {
+	if threshold <= 0 {
+		return 0
+	}
+	cutoff := time.Now().Add(-threshold).UnixNano()
+
+	type candidate struct {
+		name string
+		qc   common.QueueConfig
+		old  *runningConsumer
+	}
+	m.mu.Lock()
+	var stalled []candidate
+	for name, rc := range m.consumers {
+		if lp := rc.lastPoll.Load(); lp != 0 && lp < cutoff {
+			stalled = append(stalled, candidate{name: name, qc: rc.queueCfg, old: rc})
+		}
+	}
+	m.mu.Unlock()
+	if len(stalled) == 0 {
+		return 0
+	}
+
+	restarted := 0
+	for _, c := range stalled {
+		c.old.cancel()
+		c.old.consumer.Stop()
+
+		consumer, err := queue.NewConsumer(ctx, c.qc)
+		if err != nil {
+			slog.Error("failed to rebuild stalled consumer", "queue", c.name, "err", err)
+			continue
+		}
+		cctx, cancel := context.WithCancel(ctx)
+		rc := &runningConsumer{consumer: consumer, cancel: cancel, queueCfg: c.qc}
+		rc.lastPoll.Store(time.Now().UnixNano())
+
+		m.mu.Lock()
+		// Only replace if the entry is still the one we found stalled — a
+		// concurrent Reconfigure may have already swapped or removed it.
+		if cur, ok := m.consumers[c.name]; ok && cur == c.old {
+			m.consumers[c.name] = rc
+			m.mu.Unlock()
+			m.wg.Add(1)
+			go m.runConsumer(cctx, rc)
+			slog.Warn("restarted stalled consumer", "queue", c.name, "stalled_threshold", threshold)
+			restarted++
+		} else {
+			m.mu.Unlock()
+			cancel()
+			consumer.Stop()
+		}
+	}
+	return restarted
 }
 
 // PoolCount returns the count of running pools (for /health or /metrics).

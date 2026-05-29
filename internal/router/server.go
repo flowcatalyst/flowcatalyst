@@ -64,11 +64,11 @@ type ServerConfig struct {
 // Fields are public so callers can wire a /health, /ready, /metrics
 // surface without depending on private state.
 type Server struct {
-	Cfg       ServerConfig
-	Notifier  *Notifier
-	Mediator  Mediator
-	Breakers  *BreakerRegistry
-	Tracker   *InFlightTracker
+	Cfg          ServerConfig
+	Notifier     *Notifier
+	Mediator     Mediator
+	Breakers     *BreakerRegistry
+	Tracker      *InFlightTracker
 	Manager      *Manager
 	Warnings     *WarningService
 	Health       *HealthService
@@ -118,6 +118,10 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	s.Warnings.SetNotifier(s.Notifier)
 	s.Health = NewHealthService(DefaultHealthServiceConfig(), s.Warnings)
 	s.Lifecycle = NewLifecycleManager(DefaultLifecycleConfig(), s.Warnings, s.Health)
+	// The Manager owns the consumer poll loops, so it is the consumer-restart
+	// source; the lifecycle consumer-health tick restarts any stalled loop.
+	s.Lifecycle.SetConsumerRestarter(s.Manager)
+	s.Lifecycle.SetPoolStatsProvider(s.Manager)
 
 	if cfg.StandbyEnabled {
 		ecfg := common.NewLeaderElectionConfig(cfg.StandbyRedisURL)
@@ -343,4 +347,3 @@ func drain(ctx context.Context, tracker *InFlightTracker) error {
 		}
 	}
 }
-
