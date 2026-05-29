@@ -478,7 +478,7 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 				return humaAPI.OpenAPI().MarshalJSON()
 			},
 		})
-		meapi.RegisterRoutes(r, &meapi.State{Principals: principalRepo})
+		meapi.RegisterRoutes(r, &meapi.State{Principals: principalRepo, Applications: applicationRepo})
 		sdkapi.RegisterRoutes(r, &sdkapi.DispatchJobsBatchState{Repo: dispatchJobRepo})
 	})
 
