@@ -563,7 +563,7 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage, cascade 
 		if cascade && hasBatchGroup {
 			p.bgMarkFailed(bgKey)
 		}
-		p.deferMsg(ctx, qm, ptrU32(uint32(DefaultBreakerConfig().OpenTimeout.Seconds())), "circuit breaker open")
+		p.deferMsg(ctx, qm, ptrU32(uint32(DefaultBreakerConfig().ResetTimeout.Seconds())), "circuit breaker open")
 		return
 	}
 
