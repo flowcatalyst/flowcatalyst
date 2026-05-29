@@ -89,6 +89,9 @@ const (
 	permAppSvcRoleCreate      = "platform:application-service:role:create"
 	permAppSvcRoleUpdate      = "platform:application-service:role:update"
 	permAppSvcRoleDelete      = "platform:application-service:role:delete"
+	// Developer (application OpenAPI documents)
+	permAppOpenApiSync   = "platform:developer:application-openapi:sync"
+	permAppOpenApiManage = "platform:developer:application-openapi:manage"
 	// ServiceAccount (iam)
 	permServiceAccountView   = "platform:iam:service-account:view"
 	permServiceAccountCreate = "platform:iam:service-account:create"
@@ -128,6 +131,11 @@ type AuthContext struct {
 
 // IsAnchor reports whether the principal has anchor scope.
 func (a *AuthContext) IsAnchor() bool { return a.Scope == ScopeAnchor }
+
+// IsSuperAdmin reports whether the principal holds the super-admin wildcard
+// permission (platform:*:*:*). Mirrors Rust has_permission(ADMIN_ALL) — used
+// by handlers (e.g. SDK openapi sync) that gate on the admin-all grant.
+func (a *AuthContext) IsSuperAdmin() bool { return a.HasPermission(permSuperAdmin) }
 
 // CanAccessClient reports whether the principal has access to a specific tenant.
 func (a *AuthContext) CanAccessClient(clientID string) bool {
@@ -351,6 +359,14 @@ func CanSyncRoles(a *AuthContext) error {
 	return requireAny(a,
 		permRoleManage, permRoleCreate, permRoleUpdate, permRoleDelete,
 		permAppSvcRoleCreate, permAppSvcRoleUpdate, permAppSvcRoleDelete)
+}
+
+// CanSyncApplicationOpenAPI guards POST /api/applications/{appCode}/openapi/sync.
+// Mirrors Rust can_sync_application_openapi (developer sync/manage). The
+// handler additionally enforces a resource-level guard (anchor, super-admin,
+// or the application's own bound service account).
+func CanSyncApplicationOpenAPI(a *AuthContext) error {
+	return requireAny(a, permAppOpenApiSync, permAppOpenApiManage)
 }
 
 // ── Service account permissions ──────────────────────────────────────────

@@ -21,6 +21,7 @@ package sdksync
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -28,6 +29,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	eventtypeops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/openapispecs"
+	openapiops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/openapispecs/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	roleops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -43,6 +46,7 @@ type State struct {
 	Apps       *application.Repository
 	EventTypes *eventtype.Repository
 	Roles      *role.Repository
+	Specs      *openapispecs.Repository
 	UoW        *usecasepgx.UnitOfWork
 }
 
@@ -76,6 +80,15 @@ func Register(api huma.API, s *State) {
 		Tags:          []string{tag},
 		DefaultStatus: http.StatusOK,
 	}, s.syncEventTypes)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "syncOpenapi",
+		Method:        http.MethodPost,
+		Path:          "/api/applications/{appCode}/openapi/sync",
+		Summary:       "Sync an application's OpenAPI document (SDK self-registration)",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.syncOpenapi)
 }
 
 // resolveApp loads the application by code, returning a 404 when unknown —
@@ -211,5 +224,77 @@ func (s *State) syncRoles(ctx context.Context, in *syncRolesInput) (*syncResultO
 		Updated:         ev.Updated,
 		Deleted:         ev.Removed,
 		SyncedCodes:     ev.SyncedCodes,
+	}}, nil
+}
+
+// ── OpenAPI document ──────────────────────────────────────────────────────
+
+// SyncOpenApiSpecResponse is the openapi sync result. Unlike the list-based
+// resources this is a single-document, versioned sync, so it has its own
+// shape (mirrors the Rust SyncOpenApiSpecResponse).
+type SyncOpenApiSpecResponse struct {
+	ApplicationCode      string  `json:"applicationCode"`
+	SpecID               string  `json:"specId"`
+	Version              string  `json:"version"`
+	Status               string  `json:"status"`
+	ArchivedPriorVersion *string `json:"archivedPriorVersion,omitempty"`
+	HasBreaking          bool    `json:"hasBreaking"`
+	Unchanged            bool    `json:"unchanged"`
+}
+
+type syncOpenapiRequest struct {
+	Spec json.RawMessage `json:"spec" doc:"The OpenAPI document (OpenAPI 3.x or Swagger 2.x)"`
+}
+
+type syncOpenapiInput struct {
+	AppCode string `path:"appCode" doc:"Application code"`
+	Body    syncOpenapiRequest
+}
+
+type syncOpenapiOutput struct {
+	Body SyncOpenApiSpecResponse
+}
+
+func (s *State) syncOpenapi(ctx context.Context, in *syncOpenapiInput) (*syncOpenapiOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanSyncApplicationOpenAPI(ac); err != nil {
+		return nil, err
+	}
+	app, err := s.resolveApp(ctx, in.AppCode)
+	if err != nil {
+		return nil, err
+	}
+
+	// Resource-level guard: anchor / super-admin may sync any application;
+	// otherwise the caller must BE this application's bound service account.
+	// Mirrors the Rust handler's per-application gate.
+	isAppServiceAccount := app.ServiceAccountID != nil && *app.ServiceAccountID == ac.PrincipalID
+	if !(ac.IsAnchor() || ac.IsSuperAdmin() || isAppServiceAccount) {
+		return nil, httperror.Forbidden("Service account is not authorised for application '" + app.Code + "'")
+	}
+
+	cmd := openapiops.SyncOpenApiSpecCommand{
+		ApplicationID:   app.ID,
+		ApplicationCode: app.Code,
+		Spec:            in.Body.Spec,
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	committed, err := openapiops.SyncOpenApiSpec(ctx, s.Specs, s.UoW, cmd, ec)
+	if err != nil {
+		return nil, err
+	}
+	ev := committed.Event()
+	status := "CURRENT"
+	if ev.Unchanged {
+		status = "UNCHANGED"
+	}
+	return &syncOpenapiOutput{Body: SyncOpenApiSpecResponse{
+		ApplicationCode:      ev.ApplicationCode,
+		SpecID:               ev.SpecID,
+		Version:              ev.Version,
+		Status:               status,
+		ArchivedPriorVersion: ev.ArchivedPriorVersion,
+		HasBreaking:          ev.HasBreaking,
+		Unchanged:            ev.Unchanged,
 	}}, nil
 }
