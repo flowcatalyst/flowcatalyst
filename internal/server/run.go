@@ -103,6 +103,11 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 		go func() { defer wg.Done(); StartScheduler(ctx, pool, cfg) }()
 		slog.Info("scheduler started")
 	}
+	if cfg.ScheduledJobEnabled {
+		wg.Add(1)
+		go func() { defer wg.Done(); StartScheduledJobScheduler(ctx, pool, cfg) }()
+		slog.Info("scheduled-job scheduler started")
+	}
 	if cfg.StreamEnabled {
 		wg.Add(1)
 		go func() {

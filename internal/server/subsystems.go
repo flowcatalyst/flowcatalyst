@@ -18,10 +18,13 @@ import (
 	outboxpg "github.com/flowcatalyst/flowcatalyst-go/internal/outbox/postgres"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/bridge"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/payload"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
+	sjscheduler "github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob/scheduler"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduler"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/queue"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/router"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/standby"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/stream"
 	fcsdkclient "github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/client"
 
@@ -44,6 +47,54 @@ func StartScheduler(ctx context.Context, pool *pgxpool.Pool, _ EnvCfg) {
 	s := scheduler.New(cfg, pool, NoopPublisher{}, "fc-dispatch-hmac-secret-todo")
 	s.Run(ctx)
 	slog.Info("scheduler stopped")
+}
+
+// StartScheduledJobScheduler runs the scheduled-job cron + dispatch engine
+// (poller + dispatcher). Leader-gated: when standby is enabled only the lock
+// holder fires, because the loops intentionally have no SELECT … FOR UPDATE
+// SKIP LOCKED claim (mirrors the Rust single-active-replica design). Blocks
+// until ctx is cancelled.
+//
+// (The dispatch-job scheduler — StartScheduler — is deliberately NOT
+// leader-gated: its poller claims rows with FOR UPDATE SKIP LOCKED, so
+// concurrent replicas are already safe and gating would only cut throughput.)
+func StartScheduledJobScheduler(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg) {
+	isLeader := newLeaderGate(ctx, cfg, "scheduled-job")
+	jobs := scheduledjob.NewRepository(pool)
+	instances := scheduledjob.NewInstanceRepository(pool)
+	svc := sjscheduler.NewService(sjscheduler.ConfigFromEnv(), jobs, instances, isLeader)
+	svc.Run(ctx)
+}
+
+// newLeaderGate returns an IsLeader predicate for a leader-only background
+// subsystem. When standby is disabled it always returns true (single
+// instance). When enabled it runs a dedicated Redis election on a
+// subsystem-suffixed lock key, so it elects independently of the router's own
+// election (sharing the router's exact key with a different instance id would
+// starve this gate). The election is stopped when ctx is cancelled.
+func newLeaderGate(ctx context.Context, cfg EnvCfg, subsystem string) func() bool {
+	if !cfg.StandbyEnabled {
+		return func() bool { return true }
+	}
+	ecfg := common.NewLeaderElectionConfig(cfg.StandbyRedisURL)
+	ecfg.Enabled = true
+	ecfg.LockKey = cfg.StandbyLockKey + ":" + subsystem
+	el, err := standby.New(ecfg)
+	if err != nil {
+		slog.Error("leader election init failed; running un-gated", "subsystem", subsystem, "err", err)
+		return func() bool { return true }
+	}
+	if err := el.Start(ctx); err != nil {
+		slog.Error("leader election start failed; running un-gated", "subsystem", subsystem, "err", err)
+		return func() bool { return true }
+	}
+	go func() {
+		<-ctx.Done()
+		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = el.Stop(shutCtx)
+	}()
+	return el.IsLeader
 }
 
 // StartStreamProcessor runs the CQRS projections (events + dispatch

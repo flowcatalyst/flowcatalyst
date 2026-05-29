@@ -337,7 +337,7 @@ func (s *State) fireNow(ctx context.Context, in *idInput) (*fireNowOutput, error
 		return nil, err
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.FireNow(ctx, s.Repo, s.UoW, operations.FireNowCommand{ID: in.ID}, ec)
+	committed, err := operations.FireNow(ctx, s.Repo, s.Instances, s.UoW, operations.FireNowCommand{ID: in.ID}, ec)
 	if err != nil {
 		return nil, err
 	}

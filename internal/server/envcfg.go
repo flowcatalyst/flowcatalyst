@@ -19,12 +19,13 @@ type EnvCfg struct {
 	JWTIssuer   string
 
 	// Subsystem toggles.
-	PlatformEnabled  bool
-	RouterEnabled    bool
-	SchedulerEnabled bool
-	StreamEnabled    bool
-	OutboxEnabled    bool
-	MCPEnabled       bool
+	PlatformEnabled     bool
+	RouterEnabled       bool
+	SchedulerEnabled    bool // dispatch-job scheduler (internal/platform/scheduler)
+	ScheduledJobEnabled bool // scheduled-job cron + dispatch engine
+	StreamEnabled       bool
+	OutboxEnabled       bool
+	MCPEnabled          bool
 
 	// Router HTTP mount prefix on the unified API listener. Default
 	// /router. fc-router (when it exists) ignores this and mounts at root.
@@ -93,12 +94,13 @@ func LoadEnv() EnvCfg {
 		DatabaseURL: ResolveDatabaseURL(),
 		JWTIssuer:   envFirst("FC_JWT_ISSUER", "FC_EXTERNAL_BASE_URL", "EXTERNAL_BASE_URL", "http://localhost:8080"),
 
-		PlatformEnabled:  envBoolAlias("FC_PLATFORM_ENABLED", "PLATFORM_ENABLED", true),
-		RouterEnabled:    envBoolAlias("FC_ROUTER_ENABLED", "MESSAGE_ROUTER_ENABLED", false),
-		SchedulerEnabled: envBoolAlias("FC_SCHEDULER_ENABLED", "DISPATCH_SCHEDULER_ENABLED", false),
-		StreamEnabled:    envBoolAlias("FC_STREAM_PROCESSOR_ENABLED", "STREAM_PROCESSOR_ENABLED", false),
-		OutboxEnabled:    envBoolAlias("FC_OUTBOX_ENABLED", "OUTBOX_PROCESSOR_ENABLED", false),
-		MCPEnabled:       envBool("FC_MCP_ENABLED", false),
+		PlatformEnabled:     envBoolAlias("FC_PLATFORM_ENABLED", "PLATFORM_ENABLED", true),
+		RouterEnabled:       envBoolAlias("FC_ROUTER_ENABLED", "MESSAGE_ROUTER_ENABLED", false),
+		SchedulerEnabled:    envBoolAlias("FC_SCHEDULER_ENABLED", "DISPATCH_SCHEDULER_ENABLED", false),
+		ScheduledJobEnabled: envBoolAlias("FC_SCHEDULED_JOB_ENABLED", "SCHEDULED_JOB_SCHEDULER_ENABLED", false),
+		StreamEnabled:       envBoolAlias("FC_STREAM_PROCESSOR_ENABLED", "STREAM_PROCESSOR_ENABLED", false),
+		OutboxEnabled:       envBoolAlias("FC_OUTBOX_ENABLED", "OUTBOX_PROCESSOR_ENABLED", false),
+		MCPEnabled:          envBool("FC_MCP_ENABLED", false),
 
 		RouterHTTPPrefix: envOr("FC_ROUTER_HTTP_PREFIX", "/router"),
 		DefaultBroker:    envOr("FC_DEFAULT_BROKER", ""),
