@@ -18,13 +18,14 @@ import (
 // ── Create ────────────────────────────────────────────────────────────────
 
 type CreateOAuthClientCommand struct {
-	ClientID     string   `json:"clientId"`
-	ClientName   string   `json:"clientName"`
-	ClientType   string   `json:"clientType"`
-	RedirectURIs []string `json:"redirectUris,omitempty"`
-	GrantTypes   []string `json:"grantTypes,omitempty"`
-	Scopes       []string `json:"scopes,omitempty"`
-	PrincipalID  *string  `json:"principalId,omitempty"`
+	ClientID               string   `json:"clientId"`
+	ClientName             string   `json:"clientName"`
+	ClientType             string   `json:"clientType"`
+	RedirectURIs           []string `json:"redirectUris,omitempty"`
+	PostLogoutRedirectURIs []string `json:"postLogoutRedirectUris,omitempty"`
+	GrantTypes             []string `json:"grantTypes,omitempty"`
+	Scopes                 []string `json:"scopes,omitempty"`
+	PrincipalID            *string  `json:"principalId,omitempty"`
 }
 
 func CreateOAuthClient(
@@ -52,6 +53,7 @@ func CreateOAuthClient(
 	t := auth.ParseOAuthClientType(cmd.ClientType)
 	c := auth.NewOAuthClient(cmd.ClientID, cmd.ClientName, t)
 	c.RedirectURIs = cmd.RedirectURIs
+	c.PostLogoutRedirectURIs = cmd.PostLogoutRedirectURIs
 	c.GrantTypes = cmd.GrantTypes
 	c.Scopes = cmd.Scopes
 	c.PrincipalID = cmd.PrincipalID
@@ -76,11 +78,12 @@ func CreateOAuthClient(
 // ── Update ────────────────────────────────────────────────────────────────
 
 type UpdateOAuthClientCommand struct {
-	ID           string   `json:"id"`
-	ClientName   *string  `json:"clientName,omitempty"`
-	RedirectURIs []string `json:"redirectUris,omitempty"`
-	GrantTypes   []string `json:"grantTypes,omitempty"`
-	Scopes       []string `json:"scopes,omitempty"`
+	ID                     string   `json:"id"`
+	ClientName             *string  `json:"clientName,omitempty"`
+	RedirectURIs           []string `json:"redirectUris,omitempty"`
+	PostLogoutRedirectURIs []string `json:"postLogoutRedirectUris,omitempty"`
+	GrantTypes             []string `json:"grantTypes,omitempty"`
+	Scopes                 []string `json:"scopes,omitempty"`
 }
 
 func UpdateOAuthClient(
@@ -109,6 +112,9 @@ func UpdateOAuthClient(
 	}
 	if cmd.RedirectURIs != nil {
 		c.RedirectURIs = cmd.RedirectURIs
+	}
+	if cmd.PostLogoutRedirectURIs != nil {
+		c.PostLogoutRedirectURIs = cmd.PostLogoutRedirectURIs
 	}
 	if cmd.GrantTypes != nil {
 		c.GrantTypes = cmd.GrantTypes

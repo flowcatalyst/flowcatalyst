@@ -8,8 +8,8 @@ import (
 
 // PoolConfig is the per-pool routing configuration.
 type PoolConfig struct {
-	Code               string `json:"code"`
-	Concurrency        uint32 `json:"concurrency"`
+	Code               string  `json:"code"`
+	Concurrency        uint32  `json:"concurrency"`
 	RateLimitPerMinute *uint32 `json:"rateLimitPerMinute,omitempty"`
 }
 
@@ -86,12 +86,12 @@ type RouterConfig struct {
 // LeaderElectionConfig is the unified leader-election configuration
 // shared by fc-outbox and fc-standby in Rust.
 type LeaderElectionConfig struct {
-	Enabled                    bool
-	RedisURL                   string
-	LockKey                    string
-	LockTTLSeconds             uint64
-	HeartbeatIntervalSeconds   uint64
-	InstanceID                 string
+	Enabled                  bool
+	RedisURL                 string
+	LockKey                  string
+	LockTTLSeconds           uint64
+	HeartbeatIntervalSeconds uint64
+	InstanceID               string
 }
 
 // NewLeaderElectionConfig creates a config with sane defaults.
