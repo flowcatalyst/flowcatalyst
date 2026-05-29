@@ -1,4 +1,4 @@
-package router_test
+package router
 
 import (
 	"context"
@@ -10,35 +10,26 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/queue"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/router"
 )
 
-// cascadeConsumer delivers a single poll batch, then empty polls. It records
-// the terminal action per receipt handle and closes `done` once the expected
-// number of terminal actions has been observed.
+// cascadeConsumer records the terminal action per receipt handle and closes
+// `done` once wantTotal terminal actions have been observed. Poll is unused
+// (these tests drive the passive pool via submit) but kept for the
+// queue.Consumer interface.
 type cascadeConsumer struct {
-	batch     []common.QueuedMessage
 	wantTotal int
 	done      chan struct{}
 
-	mu        sync.Mutex
-	delivered bool
-	nacked    []string
-	acked     []string
-	deferred  []string
-	doneOnce  sync.Once
+	mu       sync.Mutex
+	nacked   []string
+	acked    []string
+	deferred []string
+	doneOnce sync.Once
 }
 
-func (c *cascadeConsumer) Poll(_ context.Context, _ uint32) ([]common.QueuedMessage, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if !c.delivered {
-		c.delivered = true
-		return c.batch, nil
-	}
+func (c *cascadeConsumer) Poll(context.Context, uint32) ([]common.QueuedMessage, error) {
 	return nil, nil
 }
-
 func (c *cascadeConsumer) record(list *[]string, rh string) {
 	c.mu.Lock()
 	*list = append(*list, rh)
@@ -48,7 +39,6 @@ func (c *cascadeConsumer) record(list *[]string, rh string) {
 		c.doneOnce.Do(func() { close(c.done) })
 	}
 }
-
 func (c *cascadeConsumer) Ack(_ context.Context, rh string) error { c.record(&c.acked, rh); return nil }
 func (c *cascadeConsumer) Nack(_ context.Context, rh string, _ *uint32) error {
 	c.record(&c.nacked, rh)
@@ -58,17 +48,17 @@ func (c *cascadeConsumer) Defer(_ context.Context, rh string, _ *uint32) error {
 	c.record(&c.deferred, rh)
 	return nil
 }
-func (c *cascadeConsumer) ExtendVisibility(_ context.Context, _ string, _ uint32) error { return nil }
-func (c *cascadeConsumer) Identifier() string                                           { return "cascade-test" }
-func (c *cascadeConsumer) Healthy() bool                                                { return true }
-func (c *cascadeConsumer) Stop()                                                        {}
-func (c *cascadeConsumer) Metrics(_ context.Context) (*queue.Metrics, error) {
+func (c *cascadeConsumer) ExtendVisibility(context.Context, string, uint32) error { return nil }
+func (c *cascadeConsumer) Identifier() string                                     { return "cascade-test" }
+func (c *cascadeConsumer) Healthy() bool                                          { return true }
+func (c *cascadeConsumer) Stop()                                                  {}
+func (c *cascadeConsumer) Metrics(context.Context) (*queue.Metrics, error) {
 	return &queue.Metrics{}, nil
 }
 func (c *cascadeConsumer) Counters() *queue.Metrics { return nil }
 
-// cascadeMediator fails the message whose ID == failID and records every ID it
-// was actually asked to mediate.
+// cascadeMediator fails the message whose ID == failID and records every ID
+// it was asked to mediate.
 type cascadeMediator struct {
 	failID string
 	mu     sync.Mutex
@@ -85,14 +75,26 @@ func (m *cascadeMediator) Mediate(_ context.Context, msg *common.Message) common
 	return common.MediationOutcome{Result: common.MediationSuccess}
 }
 
+// submitBatch tags each message with a shared batch id and submits it to the
+// passive pool — the role the Manager's route() plays in production.
+func submitBatch(ctx context.Context, p *Pool, msgs []common.QueuedMessage) {
+	for _, m := range msgs {
+		m.BatchID = "b1"
+		p.submit(ctx, m)
+	}
+}
+
+func newCascadePool(med Mediator, resolve func(string) queue.Consumer) *Pool {
+	cfg := common.PoolConfig{Code: "test", Concurrency: 1}
+	return NewPool(cfg, med, NewBreakerRegistry(DefaultBreakerConfig()), nil, resolve)
+}
+
 // TestPoolBatchGroupCascadeNack verifies Rust-parity FIFO behaviour for
 // ORDERED-mode messages: when the first message in a (batch, group) fails
-// transiently, the remaining ordered messages in that same batch+group are
-// NACKed without being attempted, preserving ordering. All three arrive in
-// one poll batch (one batch id) and share a message group. The cascade is an
-// ordering feature, so the messages carry BLOCK_ON_ERROR — IMMEDIATE-mode
-// messages dispatch concurrently and do NOT cascade (see
-// TestPoolImmediateModeNoCascade).
+// transiently, the remaining ordered messages in that batch+group are NACKed
+// without being attempted, preserving ordering. The cascade is an ordering
+// feature, so the messages carry BLOCK_ON_ERROR — IMMEDIATE-mode messages
+// dispatch concurrently and do NOT cascade (see TestPoolImmediateModeNoCascade).
 func TestPoolBatchGroupCascadeNack(t *testing.T) {
 	group := "g"
 	mk := func(id string) common.QueuedMessage {
@@ -107,26 +109,17 @@ func TestPoolBatchGroupCascadeNack(t *testing.T) {
 			ReceiptHandle: id,
 		}
 	}
-	cons := &cascadeConsumer{
-		batch:     []common.QueuedMessage{mk("m1"), mk("m2"), mk("m3")},
-		wantTotal: 3,
-		done:      make(chan struct{}),
-	}
+	cons := &cascadeConsumer{wantTotal: 3, done: make(chan struct{})}
 	med := &cascadeMediator{failID: "m1"}
+	pool := newCascadePool(med, func(string) queue.Consumer { return cons })
 
-	cfg := common.PoolConfig{Code: "test", Concurrency: 1}
-	pool := router.NewPool(cfg, cons, med, router.NewBreakerRegistry(router.DefaultBreakerConfig()), nil)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go pool.Run(ctx)
+	submitBatch(context.Background(), pool, []common.QueuedMessage{mk("m1"), mk("m2"), mk("m3")})
 
 	select {
 	case <-cons.done:
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for 3 terminal actions")
 	}
-	cancel()
 
 	med.mu.Lock()
 	seen := append([]string(nil), med.seen...)
@@ -157,26 +150,17 @@ func TestPoolImmediateModeNoCascade(t *testing.T) {
 			ReceiptHandle: id,
 		}
 	}
-	cons := &cascadeConsumer{
-		batch:     []common.QueuedMessage{mk("m1"), mk("m2"), mk("m3")},
-		wantTotal: 3,
-		done:      make(chan struct{}),
-	}
+	cons := &cascadeConsumer{wantTotal: 3, done: make(chan struct{})}
 	med := &cascadeMediator{failID: "m1"}
+	pool := newCascadePool(med, func(string) queue.Consumer { return cons })
 
-	cfg := common.PoolConfig{Code: "test", Concurrency: 1}
-	pool := router.NewPool(cfg, cons, med, router.NewBreakerRegistry(router.DefaultBreakerConfig()), nil)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go pool.Run(ctx)
+	submitBatch(context.Background(), pool, []common.QueuedMessage{mk("m1"), mk("m2"), mk("m3")})
 
 	select {
 	case <-cons.done:
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for 3 terminal actions")
 	}
-	cancel()
 
 	med.mu.Lock()
 	seen := append([]string(nil), med.seen...)

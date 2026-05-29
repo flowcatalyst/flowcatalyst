@@ -3,7 +3,6 @@ package router
 import (
 	"context"
 	"log/slog"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,21 +11,29 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/queue"
 )
 
-// Pool is a per-pool drain that respects:
+// Pool is a passive dispatch worker that respects:
 //   - configured concurrency (semaphore-style worker cap),
 //   - configured rate limit (per-pool token bucket),
 //   - per-endpoint circuit breakers,
 //   - FIFO ordering within message groups (when DispatchMode requires it).
 //
-// One Pool services exactly one queue. Multiple queues fan into multiple Pools.
+// A Pool does NOT own a queue or poll. The Manager polls every queue and
+// routes each message to the pool named by its pool_code (DEFAULT-POOL
+// fallback), then calls Submit. Because a pool processes messages from many
+// queues, ack/nack/defer target each message's SOURCE consumer, resolved by
+// the message's QueueIdentifier via resolveConsumer.
 type Pool struct {
-	cfg       common.PoolConfig
-	consumer  queue.Consumer
-	mediator  Mediator
-	breakers  *BreakerRegistry
-	limiter   *RateLimiter
-	tracker   *InFlightTracker
-	metrics   *PoolMetricsCollector
+	cfg      common.PoolConfig
+	mediator Mediator
+	breakers *BreakerRegistry
+	limiter  *RateLimiter
+	tracker  *InFlightTracker
+	metrics  *PoolMetricsCollector
+
+	// resolveConsumer maps a message's origin queue (QueueIdentifier) to the
+	// consumer that delivered it. nil result → the queue was deregistered
+	// between routing and processing; the action is skipped (logged).
+	resolveConsumer func(queueID string) queue.Consumer
 
 	// sem is the pool-wide concurrency semaphore. Buffered chan: a send
 	// is an acquire (blocks when full); the matching receive is a
@@ -56,7 +63,6 @@ type Pool struct {
 	bgMu              sync.Mutex
 	failedBatchGroups map[string]struct{}
 	batchGroupCount   map[string]int
-	batchCounter      atomic.Uint64 // monotonic per-poll-batch id (Rust batch_counter)
 }
 
 // groupQueue is the per-message-group buffer. High-priority messages
@@ -93,7 +99,7 @@ func (gq *groupQueue) empty() bool {
 // NewPool wires a pool. tracker may be nil; if so, in-flight tracking
 // (and consequently stall detection + duplicate filtering) is disabled
 // for messages handled by this pool.
-func NewPool(cfg common.PoolConfig, consumer queue.Consumer, mediator Mediator, breakers *BreakerRegistry, tracker *InFlightTracker) *Pool {
+func NewPool(cfg common.PoolConfig, mediator Mediator, breakers *BreakerRegistry, tracker *InFlightTracker, resolveConsumer func(queueID string) queue.Consumer) *Pool {
 	rate := uint32(0)
 	if cfg.RateLimitPerMinute != nil {
 		rate = *cfg.RateLimitPerMinute
@@ -108,14 +114,14 @@ func NewPool(cfg common.PoolConfig, consumer queue.Consumer, mediator Mediator, 
 		}
 	}
 	p := &Pool{
-		cfg:      cfg,
-		consumer: consumer,
-		mediator: mediator,
-		breakers: breakers,
-		limiter:  NewRateLimiter(rate),
-		tracker:  tracker,
-		metrics:  NewPoolMetricsCollector(),
-		groupQs:  make(map[string]*groupQueue),
+		cfg:             cfg,
+		mediator:        mediator,
+		breakers:        breakers,
+		limiter:         NewRateLimiter(rate),
+		tracker:         tracker,
+		metrics:         NewPoolMetricsCollector(),
+		resolveConsumer: resolveConsumer,
+		groupQs:         make(map[string]*groupQueue),
 
 		failedBatchGroups: make(map[string]struct{}),
 		batchGroupCount:   make(map[string]int),
@@ -131,8 +137,52 @@ func NewPool(cfg common.PoolConfig, consumer queue.Consumer, mediator Mediator, 
 // mid-flight.
 func (p *Pool) loadSem() chan struct{} { return p.sem.Load().(chan struct{}) }
 
-// Consumer exposes the underlying queue consumer (for metrics aggregation).
-func (p *Pool) Consumer() queue.Consumer { return p.consumer }
+// consumerFor resolves the source consumer for a message via its origin
+// queue (QueueIdentifier); nil when that queue was deregistered between
+// routing and processing.
+func (p *Pool) consumerFor(qm common.QueuedMessage) queue.Consumer {
+	if p.resolveConsumer == nil {
+		return nil
+	}
+	return p.resolveConsumer(qm.QueueIdentifier)
+}
+
+// ackMsg / nackMsg / deferMsg resolve a message's source consumer and apply
+// the terminal action there — a pool processes messages routed from many
+// queues, so the action must target the queue the message arrived on. A
+// missing consumer (deregistered queue) is logged and skipped.
+func (p *Pool) ackMsg(ctx context.Context, qm common.QueuedMessage) {
+	c := p.consumerFor(qm)
+	if c == nil {
+		slog.Warn("ack: no consumer for queue", "queue", qm.QueueIdentifier, "msg", qm.Message.ID)
+		return
+	}
+	if err := c.Ack(ctx, qm.ReceiptHandle); err != nil {
+		slog.Warn("ack failed", "msg", qm.Message.ID, "err", err)
+	}
+}
+
+func (p *Pool) nackMsg(ctx context.Context, qm common.QueuedMessage, delay *uint32, reason string) {
+	c := p.consumerFor(qm)
+	if c == nil {
+		slog.Warn("nack: no consumer for queue", "queue", qm.QueueIdentifier, "msg", qm.Message.ID, "reason", reason)
+		return
+	}
+	if err := c.Nack(ctx, qm.ReceiptHandle, delay); err != nil {
+		slog.Warn("nack failed", "reason", reason, "msg", qm.Message.ID, "err", err)
+	}
+}
+
+func (p *Pool) deferMsg(ctx context.Context, qm common.QueuedMessage, delay *uint32, reason string) {
+	c := p.consumerFor(qm)
+	if c == nil {
+		slog.Warn("defer: no consumer for queue", "queue", qm.QueueIdentifier, "msg", qm.Message.ID, "reason", reason)
+		return
+	}
+	if err := c.Defer(ctx, qm.ReceiptHandle, delay); err != nil {
+		slog.Warn("defer failed", "reason", reason, "msg", qm.Message.ID, "err", err)
+	}
+}
 
 // Identifier is the pool code.
 func (p *Pool) Identifier() string { return p.cfg.Code }
@@ -173,75 +223,6 @@ func (p *Pool) UpdateConcurrency(n uint32) bool {
 // when building EnhancedPoolMetrics for /monitoring/pool-stats.
 func (p *Pool) Metrics() *PoolMetricsCollector { return p.metrics }
 
-// Run starts the drain loop. Owns the polling cadence; spawns one
-// drainGroup goroutine per active message group via tryDrainGroup.
-//
-// Exit conditions (any one returns):
-//   - ctx is cancelled (graceful shutdown via Manager).
-//   - p.Stop() was called (sets stopped=true; observed at top of loop).
-//   - p.consumer.Poll returns an error AND ctx is already cancelled.
-//
-// Run does NOT wait for in-flight drainGroup goroutines to finish.
-// Manager.Shutdown is responsible for joining workers via the wait group.
-func (p *Pool) Run(ctx context.Context) {
-	const maxPoll = 10
-	pollInterval := 100 * time.Millisecond
-
-	for {
-		if p.stopped.Load() {
-			return
-		}
-		// Non-blocking ctx check before poll — exits without paying the
-		// poll round-trip on shutdown.
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		msgs, err := p.consumer.Poll(ctx, maxPoll)
-		if err != nil {
-			if ctx.Err() != nil {
-				return
-			}
-			slog.Warn("pool poll error", "pool", p.cfg.Code, "err", err)
-			// Backoff 1s on transient poll failure. Wakeup conditions:
-			//   <-ctx.Done()       — shutdown; exit immediately.
-			//   <-time.After(1s)   — backoff elapsed; retry the poll.
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(time.Second):
-			}
-			continue
-		}
-
-		if len(msgs) == 0 {
-			// Empty poll — sleep pollInterval before next poll. Wakeup:
-			//   <-ctx.Done()                  — shutdown; exit.
-			//   <-time.After(pollInterval)    — go poll again.
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(pollInterval):
-				continue
-			}
-		}
-
-		// Assign one batch id to every message in this poll batch (Rust
-		// manager.rs batch_counter) so a failure preserves FIFO order across
-		// the messages received together.
-		batchID := strconv.FormatUint(p.batchCounter.Add(1), 10)
-
-		// Submit each message. IMMEDIATE-mode messages (the default) dispatch
-		// concurrently; ordered modes serialize per message group.
-		for _, m := range msgs {
-			m.BatchID = batchID
-			p.submit(ctx, m)
-		}
-	}
-}
-
 // submit routes one polled message, 1:1 with Rust ProcessPool::submit. It
 // runs the shared bookkeeping — capacity backpressure, batch+group FIFO
 // count, and the early failed-group NACK — then branches on DispatchMode:
@@ -250,6 +231,11 @@ func (p *Pool) Run(ctx context.Context) {
 // the pool semaphore), while ordered modes enqueue into the per-group FIFO
 // buffer and drain serially.
 func (p *Pool) submit(ctx context.Context, m common.QueuedMessage) {
+	// Reject when the pool is stopping (Rust submit nacks on !running).
+	if p.stopped.Load() {
+		p.nackMsg(ctx, m, ptrU32(10), "pool stopped")
+		return
+	}
 	// Capacity backpressure: NACK (delay 10) when the pre-dispatch buffer is
 	// already at capacity = max(concurrency*20, 50). Mirrors Rust's submit.
 	capacity := p.concurrency.Load() * queueCapacityMultiplier
@@ -257,10 +243,7 @@ func (p *Pool) submit(ctx context.Context, m common.QueuedMessage) {
 		capacity = minQueueCapacity
 	}
 	if p.queueSize.Load() >= capacity {
-		delay := uint32(10)
-		if err := p.consumer.Nack(ctx, m.ReceiptHandle, &delay); err != nil {
-			slog.Warn("nack (pool at capacity) failed", "msg", m.Message.ID, "err", err)
-		}
+		p.nackMsg(ctx, m, ptrU32(10), "pool at capacity")
 		return
 	}
 
@@ -270,10 +253,7 @@ func (p *Pool) submit(ctx context.Context, m common.QueuedMessage) {
 		p.bgIncrement(key)
 		if p.bgFailed(key) {
 			p.bgDecrementAndCleanup(key)
-			delay := uint32(10)
-			if err := p.consumer.Nack(ctx, m.ReceiptHandle, &delay); err != nil {
-				slog.Warn("nack (batch+group failed) failed", "msg", m.Message.ID, "err", err)
-			}
+			p.nackMsg(ctx, m, ptrU32(10), "batch+group failed")
 			return
 		}
 	}
@@ -310,8 +290,7 @@ func (p *Pool) runImmediate(ctx context.Context, m common.QueuedMessage) {
 		if key, ok := p.batchKey(m); ok {
 			p.bgDecrementAndCleanup(key)
 		}
-		delay := uint32(10)
-		_ = p.consumer.Nack(ctx, m.ReceiptHandle, &delay)
+		p.nackMsg(ctx, m, ptrU32(10), "shutdown before dispatch")
 		return
 	case sem <- struct{}{}:
 	}
@@ -507,10 +486,7 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 		// it instead of dispatching, preserving order.
 		if key, ok := p.batchKey(msg); ok && p.bgFailed(key) {
 			p.bgDecrementAndCleanup(key)
-			delay := uint32(10)
-			if err := p.consumer.Nack(ctx, msg.ReceiptHandle, &delay); err != nil {
-				slog.Warn("nack (batch+group failed) failed", "msg", msg.Message.ID, "err", err)
-			}
+			p.nackMsg(ctx, msg, ptrU32(10), "batch+group failed")
 			continue
 		}
 
@@ -574,7 +550,7 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage, cascade 
 	}
 	if err := p.limiter.Wait(ctx); err != nil {
 		// Context cancelled mid-wait — defer the message and exit.
-		_ = p.consumer.Defer(ctx, qm.ReceiptHandle, ptrU32(5))
+		p.deferMsg(ctx, qm, ptrU32(5), "rate-limit wait cancelled")
 		return
 	}
 
@@ -587,7 +563,7 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage, cascade 
 		if cascade && hasBatchGroup {
 			p.bgMarkFailed(bgKey)
 		}
-		_ = p.consumer.Defer(ctx, qm.ReceiptHandle, ptrU32(uint32(DefaultBreakerConfig().OpenTimeout.Seconds())))
+		p.deferMsg(ctx, qm, ptrU32(uint32(DefaultBreakerConfig().OpenTimeout.Seconds())), "circuit breaker open")
 		return
 	}
 
@@ -599,9 +575,7 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage, cascade 
 	case common.MediationSuccess:
 		cb.RecordSuccess()
 		p.metrics.RecordSuccess(durationMs)
-		if err := p.consumer.Ack(ctx, qm.ReceiptHandle); err != nil {
-			slog.Warn("ack failed", "msg", qm.Message.ID, "err", err)
-		}
+		p.ackMsg(ctx, qm)
 
 	case common.MediationErrorConfig:
 		// 4xx — ACK to avoid infinite retries. Do NOT trip the breaker.
@@ -609,9 +583,7 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage, cascade 
 		// Rust counts this against total_failure (it was a non-success
 		// terminal outcome), so we do the same.
 		p.metrics.RecordFailure(durationMs)
-		if err := p.consumer.Ack(ctx, qm.ReceiptHandle); err != nil {
-			slog.Warn("ack (config error) failed", "msg", qm.Message.ID, "err", err)
-		}
+		p.ackMsg(ctx, qm)
 
 	case common.MediationErrorProcess:
 		cb.RecordFailure()
@@ -623,10 +595,7 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage, cascade 
 		if cascade && hasBatchGroup {
 			p.bgMarkFailed(bgKey)
 		}
-		delay := uint32(outcome.DelaySeconds)
-		if err := p.consumer.Nack(ctx, qm.ReceiptHandle, &delay); err != nil {
-			slog.Warn("nack (process error) failed", "msg", qm.Message.ID, "err", err)
-		}
+		p.nackMsg(ctx, qm, ptrU32(uint32(outcome.DelaySeconds)), "process error")
 
 	case common.MediationErrorConnection:
 		cb.RecordFailure()
@@ -636,18 +605,12 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage, cascade 
 		if cascade && hasBatchGroup {
 			p.bgMarkFailed(bgKey)
 		}
-		delay := uint32(outcome.DelaySeconds)
-		if err := p.consumer.Nack(ctx, qm.ReceiptHandle, &delay); err != nil {
-			slog.Warn("nack (connection error) failed", "msg", qm.Message.ID, "err", err)
-		}
+		p.nackMsg(ctx, qm, ptrU32(uint32(outcome.DelaySeconds)), "connection error")
 
 	case common.MediationRateLimited:
 		// 429 — defer with Retry-After; NOT a breaker failure.
 		p.metrics.RecordRateLimited()
-		delay := uint32(outcome.DelaySeconds)
-		if err := p.consumer.Defer(ctx, qm.ReceiptHandle, &delay); err != nil {
-			slog.Warn("defer (rate limited) failed", "msg", qm.Message.ID, "err", err)
-		}
+		p.deferMsg(ctx, qm, ptrU32(uint32(outcome.DelaySeconds)), "rate limited")
 	}
 }
 
