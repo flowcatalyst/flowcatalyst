@@ -63,11 +63,14 @@ const (
 	permDispatchPoolCreate = "platform:messaging:dispatch-pool:create"
 	permDispatchPoolUpdate = "platform:messaging:dispatch-pool:update"
 	permDispatchPoolDelete = "platform:messaging:dispatch-pool:delete"
+	permDispatchPoolSync   = "platform:messaging:dispatch-pool:sync"
+	permDispatchPoolManage = "platform:messaging:dispatch-pool:manage"
 	// Process (messaging)
 	permProcessView   = "platform:messaging:process:view"
 	permProcessCreate = "platform:messaging:process:create"
 	permProcessUpdate = "platform:messaging:process:update"
 	permProcessDelete = "platform:messaging:process:delete"
+	permProcessSync   = "platform:messaging:process:sync"
 	// Application (admin)
 	permApplicationView   = "platform:admin:application:view"
 	permApplicationCreate = "platform:admin:application:create"
@@ -89,6 +92,7 @@ const (
 	permAppSvcRoleCreate      = "platform:application-service:role:create"
 	permAppSvcRoleUpdate      = "platform:application-service:role:update"
 	permAppSvcRoleDelete      = "platform:application-service:role:delete"
+	permAppSvcProcessSync     = "platform:application-service:process:sync"
 	// Developer (application OpenAPI documents)
 	permAppOpenApiSync   = "platform:developer:application-openapi:sync"
 	permAppOpenApiManage = "platform:developer:application-openapi:manage"
@@ -359,6 +363,20 @@ func CanSyncRoles(a *AuthContext) error {
 	return requireAny(a,
 		permRoleManage, permRoleCreate, permRoleUpdate, permRoleDelete,
 		permAppSvcRoleCreate, permAppSvcRoleUpdate, permAppSvcRoleDelete)
+}
+
+// CanSyncProcesses guards POST /api/applications/{appCode}/processes/sync.
+// Mirrors Rust can_sync_processes: admin process:sync or the
+// application-service process:sync permission an SDK service account holds.
+func CanSyncProcesses(a *AuthContext) error {
+	return requireAny(a, permProcessSync, permAppSvcProcessSync)
+}
+
+// CanSyncDispatchPools guards POST /api/applications/{appCode}/dispatch-pools/sync.
+// Mirrors Rust can_sync_dispatch_pools: admin-tier only (dispatch-pool
+// sync/manage) — pools are global, so there is no application-service grant.
+func CanSyncDispatchPools(a *AuthContext) error {
+	return requireAny(a, permDispatchPoolSync, permDispatchPoolManage)
 }
 
 // CanSyncApplicationOpenAPI guards POST /api/applications/{appCode}/openapi/sync.

@@ -394,11 +394,13 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 		// SDK self-registration ("sync") endpoints, scoped under
 		// /api/applications/{appCode}. Mirrors the Rust sdk_sync_router.
 		sdksync.Register(humaAPI, &sdksync.State{
-			Apps:       applicationRepo,
-			EventTypes: eventTypeRepo,
-			Roles:      roleRepo,
-			Specs:      openapispecs.NewRepository(pool),
-			UoW:        uow,
+			Apps:          applicationRepo,
+			EventTypes:    eventTypeRepo,
+			Roles:         roleRepo,
+			Processes:     processRepo,
+			DispatchPools: dispatchPoolRepo,
+			Specs:         openapispecs.NewRepository(pool),
+			UoW:           uow,
 		})
 
 		eventapi.Register(humaAPI, &eventapi.State{Repo: eventRepo})

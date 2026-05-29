@@ -27,10 +27,14 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
+	dispatchpoolops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	eventtypeops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/openapispecs"
 	openapiops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/openapispecs/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/process"
+	processops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/process/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	roleops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -43,11 +47,13 @@ const tag = "sdk-sync"
 
 // State bundles the deps shared by the SDK sync handlers.
 type State struct {
-	Apps       *application.Repository
-	EventTypes *eventtype.Repository
-	Roles      *role.Repository
-	Specs      *openapispecs.Repository
-	UoW        *usecasepgx.UnitOfWork
+	Apps          *application.Repository
+	EventTypes    *eventtype.Repository
+	Roles         *role.Repository
+	Processes     *process.Repository
+	DispatchPools *dispatchpool.Repository
+	Specs         *openapispecs.Repository
+	UoW           *usecasepgx.UnitOfWork
 }
 
 // SyncResultResponse is the shared result for the list-based sync
@@ -80,6 +86,24 @@ func Register(api huma.API, s *State) {
 		Tags:          []string{tag},
 		DefaultStatus: http.StatusOK,
 	}, s.syncEventTypes)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "syncDispatchPools",
+		Method:        http.MethodPost,
+		Path:          "/api/applications/{appCode}/dispatch-pools/sync",
+		Summary:       "Sync dispatch pools (SDK self-registration)",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.syncDispatchPools)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "syncProcesses",
+		Method:        http.MethodPost,
+		Path:          "/api/applications/{appCode}/processes/sync",
+		Summary:       "Sync an application's processes (SDK self-registration)",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.syncProcesses)
 
 	huma.Register(api, huma.Operation{
 		OperationID:   "syncOpenapi",
@@ -223,6 +247,135 @@ func (s *State) syncRoles(ctx context.Context, in *syncRolesInput) (*syncResultO
 		Created:         ev.Created,
 		Updated:         ev.Updated,
 		Deleted:         ev.Removed,
+		SyncedCodes:     ev.SyncedCodes,
+	}}, nil
+}
+
+// ── Dispatch pools ────────────────────────────────────────────────────────
+
+type syncDispatchPoolInputRequest struct {
+	Code        string  `json:"code"`
+	Name        string  `json:"name"`
+	Description *string `json:"description,omitempty"`
+	RateLimit   *int32  `json:"rateLimit,omitempty" doc:"Messages per minute; omit for concurrency-only"`
+	// Concurrency defaults to 10 when omitted (matches the Rust default).
+	Concurrency *int32 `json:"concurrency,omitempty"`
+}
+
+type syncDispatchPoolsRequest struct {
+	Pools []syncDispatchPoolInputRequest `json:"pools"`
+}
+
+type syncDispatchPoolsInput struct {
+	AppCode        string `path:"appCode" doc:"Application code"`
+	RemoveUnlisted bool   `query:"removeUnlisted" doc:"Archive pools not in the list"`
+	Body           syncDispatchPoolsRequest
+}
+
+func (s *State) syncDispatchPools(ctx context.Context, in *syncDispatchPoolsInput) (*syncResultOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanSyncDispatchPools(ac); err != nil {
+		return nil, err
+	}
+	app, err := s.resolveApp(ctx, in.AppCode)
+	if err != nil {
+		return nil, err
+	}
+
+	inputs := make([]dispatchpoolops.SyncDispatchPoolInput, 0, len(in.Body.Pools))
+	for _, p := range in.Body.Pools {
+		concurrency := int32(10) // serde default_concurrency
+		if p.Concurrency != nil {
+			concurrency = *p.Concurrency
+		}
+		inputs = append(inputs, dispatchpoolops.SyncDispatchPoolInput{
+			Code:        p.Code,
+			Name:        p.Name,
+			Description: p.Description,
+			RateLimit:   p.RateLimit,
+			Concurrency: concurrency,
+		})
+	}
+
+	cmd := dispatchpoolops.SyncDispatchPoolsCommand{
+		ApplicationCode: app.Code,
+		Pools:           inputs,
+		RemoveUnlisted:  in.RemoveUnlisted,
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	committed, err := dispatchpoolops.SyncDispatchPools(ctx, s.DispatchPools, s.UoW, cmd, ec)
+	if err != nil {
+		return nil, err
+	}
+	ev := committed.Event()
+	return &syncResultOutput{Body: SyncResultResponse{
+		ApplicationCode: ev.ApplicationCode,
+		Created:         ev.Created,
+		Updated:         ev.Updated,
+		Deleted:         ev.Deleted,
+		SyncedCodes:     ev.SyncedCodes,
+	}}, nil
+}
+
+// ── Processes ─────────────────────────────────────────────────────────────
+
+type syncProcessInputRequest struct {
+	Code        string   `json:"code" doc:"Full code (application:subdomain:process-name)"`
+	Name        string   `json:"name"`
+	Description *string  `json:"description,omitempty"`
+	Body        string   `json:"body,omitempty" doc:"Diagram body (typically Mermaid source)"`
+	DiagramType *string  `json:"diagramType,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+}
+
+type syncProcessesRequest struct {
+	Processes []syncProcessInputRequest `json:"processes"`
+}
+
+type syncProcessesInput struct {
+	AppCode        string `path:"appCode" doc:"Application code"`
+	RemoveUnlisted bool   `query:"removeUnlisted" doc:"Remove API/CODE processes not in the list"`
+	Body           syncProcessesRequest
+}
+
+func (s *State) syncProcesses(ctx context.Context, in *syncProcessesInput) (*syncResultOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanSyncProcesses(ac); err != nil {
+		return nil, err
+	}
+	app, err := s.resolveApp(ctx, in.AppCode)
+	if err != nil {
+		return nil, err
+	}
+
+	inputs := make([]processops.SyncProcessInput, 0, len(in.Body.Processes))
+	for _, p := range in.Body.Processes {
+		inputs = append(inputs, processops.SyncProcessInput{
+			Code:        p.Code,
+			Name:        p.Name,
+			Description: p.Description,
+			Body:        p.Body,
+			DiagramType: p.DiagramType,
+			Tags:        p.Tags,
+		})
+	}
+
+	cmd := processops.SyncProcessesCommand{
+		ApplicationCode: app.Code,
+		Processes:       inputs,
+		RemoveUnlisted:  in.RemoveUnlisted,
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	committed, err := processops.SyncProcesses(ctx, s.Processes, s.UoW, cmd, ec)
+	if err != nil {
+		return nil, err
+	}
+	ev := committed.Event()
+	return &syncResultOutput{Body: SyncResultResponse{
+		ApplicationCode: ev.ApplicationCode,
+		Created:         ev.Created,
+		Updated:         ev.Updated,
+		Deleted:         ev.Deleted,
 		SyncedCodes:     ev.SyncedCodes,
 	}}, nil
 }
