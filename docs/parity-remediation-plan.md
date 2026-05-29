@@ -2,6 +2,32 @@
 
 _Created 2026-05-29. Source: full read-only parity audit (Go `flowcatalyst-go` vs Rust reference `flowcatalyst-rust`). This plan tracks closing the behavioural/operational gaps found in that audit._
 
+## Progress & Handover (updated 2026-05-29)
+
+**Branch:** `parity-remediation` (off `main`). **Build:** `go build ./...` clean. **Tests:** every touched suite green.
+
+### Status by phase
+- ✅ **Phase 0 — verify (V1–V4):** all confirmed. V1 config wire-shape (`queueName`/`queueUri`), V2 permission-lockout (real, critical), V3 outbox schema mismatch vs SDK, V4 WebAuthn blob-format divergence.
+- ✅ **Phase 1 — drop-in schema & wire (S1–S5):** `ccd5f93`. Postgres `queue_messages` schema, config `queueName`/`queueUri` (+`name`/`uri` aliases), outbox SDK schema + delete-on-success, OAuth secret `encrypted:` prefix, migration idempotency audit + `tools/baseline-goose-ledger.sql`.
+- ✅ **Phase 2 — OIDC (O1/O2/O4/O5/O6):** `9889a77`. end_session/RP-logout (+persisted post_logout_redirect_uris), `POST /auth/refresh`, in-memory token governor + RFC-6749 `rate_limit_exceeded` 429, `max_age` (in-flight), `GET /auth/check-domain`. Folded in the in-flight governor work. **Remaining → #13** (O3 `?provider=`, O7 document `/auth/*` in spec).
+- ✅ **Phase 3 — message router (R1–R8): COMPLETE.** `a16c927`, `3d00f02`, `2545ba8`, `e346d3e`. IMMEDIATE concurrency + capacity backpressure, route-by-`poolCode` + DEFAULT-POOL (topology rewrite: consumers decoupled from passive pools), external-requeue dedup, failure-rate circuit breaker, multi-URL config-sync + retry + first-wins merge, stalled-consumer auto-restart, Rust-aligned Prometheus metrics (real `fc_mediation_duration_seconds` histogram).
+- 🟡 **Phase 4 — IAM/authz (A1/A3/A4a done):** `6cb1539`, `8e2bdc2`. A1 permission wildcard matcher + real 4-segment strings (THE critical lockout fix), A3 connection mutations anchor-only (was zero authz), A4a WebAuthn delete ownership. **Remaining → #15** (A2 scope-isolation sweep, A4b passkey blob convert-on-read, A5 password-reset flow build-out).
+- ⬜ **Phases 5–10 — not started:** Phase 5 SDK `/sync` self-registration (audit CRITICAL), Phase 6 cron+dispatch scheduler, Phase 7 stream processor, Phase 8 outbox processor, Phase 9 MCP server, Phase 10 ops/Docker.
+
+### Commits on `parity-remediation`
+`ccd5f93` P1 · `9889a77` P2 · `a16c927` P3-R1 · `3d00f02` P3-R2/R4 · `2545ba8` P3-R3/R5 · `e346d3e` P3-R7/R8 · `6cb1539` P4-A1 · `8e2bdc2` P4-A3/A4a
+
+### Open tracked follow-ups
+- **#13** — O3 (`?provider=` direct-IDP) + O7 (document `/auth/*` in `api/openapi.lock.json`). Niche / doc-only.
+- **#15** — A2 (per-resource scope checks on by-ID mutations; scheduled-jobs overlaps Phase 6) + A4b (convert-on-read for `webauthn-rs` Passkey → `go-webauthn` Credential; only bites if prod has passkeys) + A5 (unauthenticated password-reset request/confirm flow, **lowercase-hex** SHA-256 tokens).
+
+### Resume notes / handover
+- **Recommended next:** Phase 5 (SDK `/sync`) — highest-value remaining (external SDK contract, drop-in priority).
+- **Verify-before-deploy decisions:** run `tools/baseline-goose-ledger.sql` before first Go boot against an existing migrated DB (goose ledger baseline; owner accepted msg_events recreation otherwise).
+- **Intentionally uncommitted:** `.claude/settings.json` (read-only Bash allowlist added this session) and `HANDOFF.md` (a separate, pre-existing in-flight working doc — not part of this effort).
+- **Parity method:** Rust reference at `~/Developer/flowcatalyst-rust`; for platform-API shapes diff the OpenAPI specs (`api/openapi.lock.json` vs `frontend/openapi/openapi.json`), not source. Behavioural parity (OIDC/router/crypto/etc.) is verified against Rust source 1:1.
+- **Re-run gate before any commit:** `go build ./...` + `go test ./internal/...` + `gofmt -l` on touched files.
+
 ## Decisions baked in (from project owner)
 
 - **Port:** `8080` is the canonical default. We do **not** chase Rust's `3000`; instead fix Go's internal inconsistency and the docs.
