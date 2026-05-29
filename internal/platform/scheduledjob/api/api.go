@@ -186,7 +186,15 @@ func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
 		filters.Status = &in.Status
 	}
 	if in.ClientID != "" {
-		filters.ClientID = &in.ClientID
+		// The literal "platform" selects platform-scoped jobs (client_id IS
+		// NULL), which the repo expresses as a pointer-to-"". Mirrors the
+		// Rust list handler's Some("platform") => Some(None) mapping.
+		if in.ClientID == "platform" {
+			empty := ""
+			filters.ClientID = &empty
+		} else {
+			filters.ClientID = &in.ClientID
+		}
 	}
 	if in.Search != "" {
 		filters.Search = &in.Search
@@ -209,7 +217,11 @@ func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
 	}
 	out := make([]ScheduledJobResponse, 0, len(rows))
 	for i := range rows {
-		out = append(out, fromEntity(&rows[i]))
+		resp := fromEntity(&rows[i])
+		if active, err := s.Instances.HasActiveInstance(ctx, rows[i].ID); err == nil {
+			resp.HasActiveInstance = active
+		}
+		out = append(out, resp)
 	}
 	page := apicommon.NewOffsetPage(out, in.PageIndex(), in.PageSizeVal(), total)
 	return &listOutput{Body: page}, nil
@@ -238,7 +250,11 @@ func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
 	if j.ClientID != nil && !ac.CanAccessClient(*j.ClientID) {
 		return nil, httperror.Forbidden("No access to this scheduled job")
 	}
-	return &getOutput{Body: fromEntity(j)}, nil
+	resp := fromEntity(j)
+	if active, err := s.Instances.HasActiveInstance(ctx, j.ID); err == nil {
+		resp.HasActiveInstance = active
+	}
+	return &getOutput{Body: resp}, nil
 }
 
 type createInput struct {
@@ -327,17 +343,27 @@ func (s *State) archive(ctx context.Context, in *idInput) (*emptyOutput, error) 
 	return &emptyOutput{}, nil
 }
 
+type fireNowInput struct {
+	ID   string `path:"id"`
+	Body *FireNowRequest
+}
+
 type fireNowOutput struct {
 	Body FireNowResponse
 }
 
-func (s *State) fireNow(ctx context.Context, in *idInput) (*fireNowOutput, error) {
+func (s *State) fireNow(ctx context.Context, in *fireNowInput) (*fireNowOutput, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanFireScheduledJobs(ac); err != nil {
 		return nil, err
 	}
+	var correlationID *string
+	if in.Body != nil {
+		correlationID = in.Body.CorrelationID
+	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.FireNow(ctx, s.Repo, s.Instances, s.UoW, operations.FireNowCommand{ID: in.ID}, ec)
+	committed, err := operations.FireNow(ctx, s.Repo, s.Instances, s.UoW,
+		operations.FireNowCommand{ID: in.ID, CorrelationID: correlationID}, ec)
 	if err != nil {
 		return nil, err
 	}
@@ -385,7 +411,11 @@ func (s *State) getByCode(ctx context.Context, in *byCodeInput) (*getOutput, err
 	if j.ClientID != nil && !ac.CanAccessClient(*j.ClientID) {
 		return nil, httperror.Forbidden("No access to this scheduled job")
 	}
-	return &getOutput{Body: fromEntity(j)}, nil
+	resp := fromEntity(j)
+	if active, err := s.Instances.HasActiveInstance(ctx, j.ID); err == nil {
+		resp.HasActiveInstance = active
+	}
+	return &getOutput{Body: resp}, nil
 }
 
 // ── instance endpoints ──────────────────────────────────────────────────
