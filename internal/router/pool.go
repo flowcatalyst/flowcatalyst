@@ -233,31 +233,91 @@ func (p *Pool) Run(ctx context.Context) {
 		// the messages received together.
 		batchID := strconv.FormatUint(p.batchCounter.Add(1), 10)
 
-		// Enqueue messages into per-group buffers and kick off drains.
+		// Submit each message. IMMEDIATE-mode messages (the default) dispatch
+		// concurrently; ordered modes serialize per message group.
 		for _, m := range msgs {
 			m.BatchID = batchID
-			group := ""
-			if m.Message.MessageGroupID != nil {
-				group = *m.Message.MessageGroupID
-			}
-			// Batch+group FIFO cascade (Rust pool.rs submit): count the
-			// message, and if its batch+group already failed, NACK it now
-			// instead of enqueueing so ordering is preserved.
-			if key, ok := p.batchKey(m); ok {
-				p.bgIncrement(key)
-				if p.bgFailed(key) {
-					p.bgDecrementAndCleanup(key)
-					delay := uint32(10)
-					if err := p.consumer.Nack(ctx, m.ReceiptHandle, &delay); err != nil {
-						slog.Warn("nack (batch+group failed) failed", "msg", m.Message.ID, "err", err)
-					}
-					continue
-				}
-			}
-			p.enqueue(group, m)
-			p.tryDrainGroup(ctx, group)
+			p.submit(ctx, m)
 		}
 	}
+}
+
+// submit routes one polled message, 1:1 with Rust ProcessPool::submit. It
+// runs the shared bookkeeping — capacity backpressure, batch+group FIFO
+// count, and the early failed-group NACK — then branches on DispatchMode:
+// IMMEDIATE-mode messages (the default, RequiresOrdering()==false) dispatch
+// concurrently via runImmediate (one worker per message, bounded only by
+// the pool semaphore), while ordered modes enqueue into the per-group FIFO
+// buffer and drain serially.
+func (p *Pool) submit(ctx context.Context, m common.QueuedMessage) {
+	// Capacity backpressure: NACK (delay 10) when the pre-dispatch buffer is
+	// already at capacity = max(concurrency*20, 50). Mirrors Rust's submit.
+	capacity := p.concurrency.Load() * queueCapacityMultiplier
+	if capacity < minQueueCapacity {
+		capacity = minQueueCapacity
+	}
+	if p.queueSize.Load() >= capacity {
+		delay := uint32(10)
+		if err := p.consumer.Nack(ctx, m.ReceiptHandle, &delay); err != nil {
+			slog.Warn("nack (pool at capacity) failed", "msg", m.Message.ID, "err", err)
+		}
+		return
+	}
+
+	// Batch+group FIFO cascade (Rust pool.rs submit): count the message, and
+	// if its batch+group already failed, NACK it now so ordering is preserved.
+	if key, ok := p.batchKey(m); ok {
+		p.bgIncrement(key)
+		if p.bgFailed(key) {
+			p.bgDecrementAndCleanup(key)
+			delay := uint32(10)
+			if err := p.consumer.Nack(ctx, m.ReceiptHandle, &delay); err != nil {
+				slog.Warn("nack (batch+group failed) failed", "msg", m.Message.ID, "err", err)
+			}
+			return
+		}
+	}
+
+	if !m.Message.DispatchMode.RequiresOrdering() {
+		// IMMEDIATE: no ordering — dispatch concurrently. queueSize is
+		// incremented here and decremented once the worker holds a semaphore
+		// slot, so the "queued (pre-dispatch)" gauge mirrors the ordered path.
+		p.queueSize.Add(1)
+		go p.runImmediate(ctx, m)
+		return
+	}
+
+	group := ""
+	if m.Message.MessageGroupID != nil {
+		group = *m.Message.MessageGroupID
+	}
+	p.enqueue(group, m)
+	p.tryDrainGroup(ctx, group)
+}
+
+// runImmediate dispatches a single IMMEDIATE-mode message concurrently:
+// acquire a pool semaphore slot, then process it. Unlike the ordered drain,
+// an IMMEDIATE message does NOT mark its batch+group failed on error
+// (cascade=false) — each message is independent. 1:1 with Rust
+// spawn_immediate_task.
+func (p *Pool) runImmediate(ctx context.Context, m common.QueuedMessage) {
+	sem := p.loadSem()
+	select {
+	case <-ctx.Done():
+		// Shutdown before we could start — release the bookkeeping and NACK
+		// for prompt redelivery (mirrors Rust's semaphore-closed path).
+		p.queueSize.Add(^uint32(0))
+		if key, ok := p.batchKey(m); ok {
+			p.bgDecrementAndCleanup(key)
+		}
+		delay := uint32(10)
+		_ = p.consumer.Nack(ctx, m.ReceiptHandle, &delay)
+		return
+	case sem <- struct{}{}:
+	}
+	p.queueSize.Add(^uint32(0)) // now active, not queued
+	p.processOne(ctx, m, false)
+	<-sem
 }
 
 // Stop signals the pool to exit. Run will return on its next loop.
@@ -396,11 +456,11 @@ func (p *Pool) enqueue(group string, m common.QueuedMessage) {
 	p.queueSize.Add(1)
 }
 
-// tryDrainGroup starts a drainer for the group if none is running.
-// Group ordering: only one outstanding message per group at a time when
-// DispatchMode requires ordering. For Immediate mode each message can
-// be processed concurrently (but we still single-thread per group for
-// simplicity; the concurrency budget across groups is the pool's `sem`).
+// tryDrainGroup starts a serial drainer for an ordered message group if
+// none is running. Only ordered-mode messages (NEXT_ON_ERROR /
+// BLOCK_ON_ERROR) reach here — IMMEDIATE-mode messages dispatch
+// concurrently via runImmediate. The drainer processes one message per
+// group at a time to preserve FIFO order, bounded across groups by `sem`.
 func (p *Pool) tryDrainGroup(ctx context.Context, group string) {
 	p.mu.Lock()
 	gq := p.groupQs[group]
@@ -466,13 +526,18 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 		case sem <- struct{}{}:
 		}
 
-		p.processOne(ctx, msg)
+		p.processOne(ctx, msg, true)
 		// Release the slot back to the same channel we acquired from.
 		<-sem
 	}
 }
 
-func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) {
+// processOne runs the full per-message pipeline: dedup, rate limit,
+// circuit breaker, mediate, and ack/nack/defer by outcome. cascade controls
+// whether a transient failure marks this message's batch+group failed so
+// later ordered messages cascade-NACK — true for the ordered serial drain,
+// false for IMMEDIATE-mode workers (which are independent of each other).
+func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage, cascade bool) {
 	p.activeWorkers.Add(1)
 	defer p.activeWorkers.Add(^uint32(0)) // atomic decrement
 
@@ -516,10 +581,10 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) {
 	// Circuit breaker per target URL.
 	cb := p.breakers.Get(qm.Message.MediationTarget)
 	if err := cb.Allow(); err != nil {
-		// Breaker open: the message can't be delivered now, so mark its
-		// batch+group failed (Rust pool.rs) to keep later messages in order,
-		// then defer until the breaker's open timeout elapses.
-		if hasBatchGroup {
+		// Breaker open: the message can't be delivered now, so (for ordered
+		// messages) mark its batch+group failed to keep later messages in
+		// order, then defer until the breaker's open timeout elapses.
+		if cascade && hasBatchGroup {
 			p.bgMarkFailed(bgKey)
 		}
 		_ = p.consumer.Defer(ctx, qm.ReceiptHandle, ptrU32(uint32(DefaultBreakerConfig().OpenTimeout.Seconds())))
@@ -553,8 +618,9 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) {
 		// Transient: message will be redelivered, so don't penalise
 		// the all-time failure counter. Matches Rust record_transient.
 		p.metrics.RecordTransient(durationMs)
-		// FIFO cascade: mark the batch+group failed so remaining messages NACK.
-		if hasBatchGroup {
+		// FIFO cascade (ordered only): mark the batch+group failed so the
+		// remaining ordered messages NACK.
+		if cascade && hasBatchGroup {
 			p.bgMarkFailed(bgKey)
 		}
 		delay := uint32(outcome.DelaySeconds)
@@ -565,8 +631,9 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) {
 	case common.MediationErrorConnection:
 		cb.RecordFailure()
 		p.metrics.RecordFailure(durationMs)
-		// FIFO cascade: mark the batch+group failed so remaining messages NACK.
-		if hasBatchGroup {
+		// FIFO cascade (ordered only): mark the batch+group failed so the
+		// remaining ordered messages NACK.
+		if cascade && hasBatchGroup {
 			p.bgMarkFailed(bgKey)
 		}
 		delay := uint32(outcome.DelaySeconds)

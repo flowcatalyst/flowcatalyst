@@ -85,11 +85,14 @@ func (m *cascadeMediator) Mediate(_ context.Context, msg *common.Message) common
 	return common.MediationOutcome{Result: common.MediationSuccess}
 }
 
-// TestPoolBatchGroupCascadeNack verifies Rust-parity FIFO behaviour: when the
-// first message in a (batch, group) fails transiently, the remaining messages
-// in that same batch+group are NACKed without being attempted, preserving
-// ordering. All three messages arrive in one poll batch (one batch id) and
-// share a message group.
+// TestPoolBatchGroupCascadeNack verifies Rust-parity FIFO behaviour for
+// ORDERED-mode messages: when the first message in a (batch, group) fails
+// transiently, the remaining ordered messages in that same batch+group are
+// NACKed without being attempted, preserving ordering. All three arrive in
+// one poll batch (one batch id) and share a message group. The cascade is an
+// ordering feature, so the messages carry BLOCK_ON_ERROR — IMMEDIATE-mode
+// messages dispatch concurrently and do NOT cascade (see
+// TestPoolImmediateModeNoCascade).
 func TestPoolBatchGroupCascadeNack(t *testing.T) {
 	group := "g"
 	mk := func(id string) common.QueuedMessage {
@@ -99,6 +102,7 @@ func TestPoolBatchGroupCascadeNack(t *testing.T) {
 				MediationType:   common.MediationTypeHTTP,
 				MediationTarget: "http://example.invalid",
 				MessageGroupID:  &group,
+				DispatchMode:    common.DispatchBlockOnError,
 			},
 			ReceiptHandle: id,
 		}
@@ -133,4 +137,56 @@ func TestPoolBatchGroupCascadeNack(t *testing.T) {
 
 	assert.Equal(t, []string{"m1"}, seen, "only the first message in the batch+group should be attempted")
 	assert.ElementsMatch(t, []string{"m1", "m2", "m3"}, nacked, "all three should be NACKed (m1 transient, m2/m3 cascade)")
+}
+
+// TestPoolImmediateModeNoCascade verifies R1: IMMEDIATE-mode messages (the
+// default) dispatch independently — a transient failure of one does NOT
+// cascade-NACK the others in the same batch+group. With concurrency 1 the
+// three run one at a time, but each is attempted regardless of m1's failure.
+func TestPoolImmediateModeNoCascade(t *testing.T) {
+	group := "g"
+	mk := func(id string) common.QueuedMessage {
+		return common.QueuedMessage{
+			Message: common.Message{
+				ID:              id,
+				MediationType:   common.MediationTypeHTTP,
+				MediationTarget: "http://example.invalid",
+				MessageGroupID:  &group,
+				DispatchMode:    common.DispatchImmediate,
+			},
+			ReceiptHandle: id,
+		}
+	}
+	cons := &cascadeConsumer{
+		batch:     []common.QueuedMessage{mk("m1"), mk("m2"), mk("m3")},
+		wantTotal: 3,
+		done:      make(chan struct{}),
+	}
+	med := &cascadeMediator{failID: "m1"}
+
+	cfg := common.PoolConfig{Code: "test", Concurrency: 1}
+	pool := router.NewPool(cfg, cons, med, router.NewBreakerRegistry(router.DefaultBreakerConfig()), nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go pool.Run(ctx)
+
+	select {
+	case <-cons.done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for 3 terminal actions")
+	}
+	cancel()
+
+	med.mu.Lock()
+	seen := append([]string(nil), med.seen...)
+	med.mu.Unlock()
+	cons.mu.Lock()
+	nacked := append([]string(nil), cons.nacked...)
+	acked := append([]string(nil), cons.acked...)
+	cons.mu.Unlock()
+
+	assert.ElementsMatch(t, []string{"m1", "m2", "m3"}, seen, "all three IMMEDIATE messages should be attempted (no cascade)")
+	assert.ElementsMatch(t, []string{"m1"}, nacked, "only the failing message should be NACKed")
+	assert.ElementsMatch(t, []string{"m2", "m3"}, acked, "the two successful messages should be ACKed")
 }
