@@ -46,6 +46,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt"
 	loginattemptapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/openapispecs"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/passwordreset"
+	passwordresetapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/passwordreset/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
 	platformconfigapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
@@ -231,6 +233,16 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 	// (login-theme branding, platform feature flags). Mounted outside
 	// the auth middleware for the same reason as the login surface.
 	publicapi.New(platformConfigRepo).RegisterRoutes(r)
+
+	// Unauthenticated password-reset flow (request/validate/confirm). Public
+	// like /auth/login. Emailer is nil until a mailer is wired — tokens are
+	// created but not delivered (best-effort, matching Rust on email failure).
+	passwordresetapi.RegisterRoutes(r, &passwordresetapi.State{
+		Principals:      principalRepo,
+		Tokens:          passwordreset.NewRepository(pool),
+		UoW:             uow,
+		ExternalBaseURL: cfg.JWTIssuer,
+	})
 
 	// /oauth/authorize is mounted OUTSIDE the auth middleware: an absent or
 	// expired session must redirect to login (not 401), and the handler
