@@ -48,6 +48,11 @@ type EnvCfg struct {
 	StreamFanOutEnabled       bool
 	StreamPartitionsEnabled   bool
 	StreamBatchSize           int
+	// Partition manager tuning (months forward, retention, tick cadence).
+	// 0 = use the package default (3 / 90 / 24h).
+	StreamPartitionMonthsForward int
+	StreamPartitionRetentionDays int
+	StreamPartitionTickHours     int
 
 	// Outbox processor — only Postgres is supported in the unified
 	// binary; the standalone cmd/fc-outbox-processor remains the home
@@ -111,8 +116,13 @@ func LoadEnv() EnvCfg {
 		StreamEventsEnabled:       envBool("FC_STREAM_EVENTS_ENABLED", true),
 		StreamDispatchJobsEnabled: envBool("FC_STREAM_DISPATCH_JOBS_ENABLED", true),
 		StreamFanOutEnabled:       envBool("FC_STREAM_FAN_OUT_ENABLED", true),
-		StreamPartitionsEnabled:   envBool("FC_STREAM_PARTITIONS_ENABLED", true),
-		StreamBatchSize:           envInt("FC_STREAM_BATCH_SIZE", 0),
+		// Toggle renamed to FC_STREAM_PARTITION_MANAGER_ENABLED; the old
+		// FC_STREAM_PARTITIONS_ENABLED stays as a back-compat alias.
+		StreamPartitionsEnabled:      envBoolAlias("FC_STREAM_PARTITION_MANAGER_ENABLED", "FC_STREAM_PARTITIONS_ENABLED", true),
+		StreamBatchSize:              envInt("FC_STREAM_BATCH_SIZE", 0),
+		StreamPartitionMonthsForward: envInt("FC_STREAM_PARTITION_MONTHS_FORWARD", 0),
+		StreamPartitionRetentionDays: envInt("FC_STREAM_PARTITION_RETENTION_DAYS", 0),
+		StreamPartitionTickHours:     envInt("FC_STREAM_PARTITION_TICK_HOURS", 0),
 
 		OutboxPlatformURL:       envFirst("FC_OUTBOX_PLATFORM_URL", "FLOWCATALYST_URL", "", ""),
 		OutboxPlatformAuthToken: os.Getenv("FC_OUTBOX_PLATFORM_AUTH_TOKEN"),

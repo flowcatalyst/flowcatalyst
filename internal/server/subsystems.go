@@ -135,23 +135,44 @@ func StartStreamProcessorWithHealth(ctx context.Context, pool *pgxpool.Pool, cfg
 		return p
 	}
 
+	// projCfg derives a per-projection config from the base (global) config,
+	// honouring an optional per-projection batch-size override env var.
+	projCfg := func(batchEnv string) stream.ProjectorConfig {
+		c := pcfg
+		if b := envInt(batchEnv, 0); b > 0 {
+			c.BatchSize = b
+		}
+		return c
+	}
+
 	if cfg.StreamEventsEnabled {
 		p := registerProjector("event_projection",
-			stream.NewEventProjection(pool).Projector(pcfg))
+			stream.NewEventProjection(pool).Projector(projCfg("FC_STREAM_EVENTS_BATCH_SIZE")))
 		launch("event_projection", p.Run)
 	}
 	if cfg.StreamDispatchJobsEnabled {
 		p := registerProjector("dispatch_job_projection",
-			stream.NewDispatchJobProjection(pool).Projector(pcfg))
+			stream.NewDispatchJobProjection(pool).Projector(projCfg("FC_STREAM_DISPATCH_JOBS_BATCH_SIZE")))
 		launch("dispatch_job_projection", p.Run)
 	}
 	if cfg.StreamFanOutEnabled {
 		p := registerProjector("event_fan_out",
-			stream.NewFanOut(pool).Projector(pcfg))
+			stream.NewFanOut(pool).Projector(projCfg("FC_STREAM_FAN_OUT_BATCH_SIZE")))
 		launch("event_fan_out", p.Run)
 	}
 	if cfg.StreamPartitionsEnabled {
+		// The projections are multi-replica safe (FOR UPDATE SKIP LOCKED
+		// claims), so they are intentionally NOT leader-gated — concurrent
+		// replicas just share the work. The partition manager does DDL
+		// (CREATE/DROP), so it is leader-gated to avoid needless churn,
+		// matching the Rust spawn_stream_processor leadership gate.
 		pm := stream.NewPartitionManager(pool)
+		pm.Config = stream.PartitionManagerConfig{
+			MonthsForward: cfg.StreamPartitionMonthsForward,
+			RetentionDays: cfg.StreamPartitionRetentionDays,
+			TickInterval:  time.Duration(cfg.StreamPartitionTickHours) * time.Hour,
+		}
+		pm.IsLeader = newLeaderGate(ctx, cfg, "stream-partition-manager")
 		if healths != nil {
 			h := stream.NewHealth("partition_manager")
 			pm.Health = h
