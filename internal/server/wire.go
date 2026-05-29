@@ -397,6 +397,8 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 			Apps:          applicationRepo,
 			EventTypes:    eventTypeRepo,
 			Roles:         roleRepo,
+			Subscriptions: subscriptionRepo,
+			Connections:   connectionRepo,
 			Processes:     processRepo,
 			DispatchPools: dispatchPoolRepo,
 			Specs:         openapispecs.NewRepository(pool),

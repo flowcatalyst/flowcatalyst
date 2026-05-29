@@ -27,6 +27,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	dispatchpoolops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
@@ -39,6 +40,8 @@ import (
 	roleops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
+	subscriptionops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -50,6 +53,8 @@ type State struct {
 	Apps          *application.Repository
 	EventTypes    *eventtype.Repository
 	Roles         *role.Repository
+	Subscriptions *subscription.Repository
+	Connections   *connection.Repository
 	Processes     *process.Repository
 	DispatchPools *dispatchpool.Repository
 	Specs         *openapispecs.Repository
@@ -86,6 +91,15 @@ func Register(api huma.API, s *State) {
 		Tags:          []string{tag},
 		DefaultStatus: http.StatusOK,
 	}, s.syncEventTypes)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "syncSubscriptions",
+		Method:        http.MethodPost,
+		Path:          "/api/applications/{appCode}/subscriptions/sync",
+		Summary:       "Sync an application's subscriptions (SDK self-registration)",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.syncSubscriptions)
 
 	huma.Register(api, huma.Operation{
 		OperationID:   "syncDispatchPools",
@@ -247,6 +261,91 @@ func (s *State) syncRoles(ctx context.Context, in *syncRolesInput) (*syncResultO
 		Created:         ev.Created,
 		Updated:         ev.Updated,
 		Deleted:         ev.Removed,
+		SyncedCodes:     ev.SyncedCodes,
+	}}, nil
+}
+
+// ── Subscriptions ─────────────────────────────────────────────────────────
+
+type syncSubscriptionEventTypeRequest struct {
+	EventTypeCode string  `json:"eventTypeCode"`
+	Filter        *string `json:"filter,omitempty"`
+}
+
+type syncSubscriptionInputRequest struct {
+	Code             string                             `json:"code"`
+	Name             string                             `json:"name"`
+	Description      *string                            `json:"description,omitempty"`
+	Target           string                             `json:"target"`
+	ConnectionID     *string                            `json:"connectionId,omitempty"`
+	EventTypes       []syncSubscriptionEventTypeRequest `json:"eventTypes"`
+	DispatchPoolCode *string                            `json:"dispatchPoolCode,omitempty"`
+	Mode             *string                            `json:"mode,omitempty"`
+	MaxRetries       *int32                             `json:"maxRetries,omitempty"`
+	TimeoutSeconds   *int32                             `json:"timeoutSeconds,omitempty"`
+	DataOnly         bool                               `json:"dataOnly,omitempty"`
+}
+
+type syncSubscriptionsRequest struct {
+	Subscriptions []syncSubscriptionInputRequest `json:"subscriptions"`
+}
+
+type syncSubscriptionsInput struct {
+	AppCode        string `path:"appCode" doc:"Application code"`
+	RemoveUnlisted bool   `query:"removeUnlisted" doc:"Remove API/CODE subscriptions not in the list"`
+	Body           syncSubscriptionsRequest
+}
+
+func (s *State) syncSubscriptions(ctx context.Context, in *syncSubscriptionsInput) (*syncResultOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanSyncSubscriptions(ac); err != nil {
+		return nil, err
+	}
+	app, err := s.resolveApp(ctx, in.AppCode)
+	if err != nil {
+		return nil, err
+	}
+
+	inputs := make([]subscriptionops.SyncSubscriptionInput, 0, len(in.Body.Subscriptions))
+	for _, sub := range in.Body.Subscriptions {
+		bindings := make([]subscriptionops.SyncEventTypeBindingInput, 0, len(sub.EventTypes))
+		for _, et := range sub.EventTypes {
+			bindings = append(bindings, subscriptionops.SyncEventTypeBindingInput{
+				EventTypeCode: et.EventTypeCode,
+				Filter:        et.Filter,
+			})
+		}
+		inputs = append(inputs, subscriptionops.SyncSubscriptionInput{
+			Code:             sub.Code,
+			Name:             sub.Name,
+			Description:      sub.Description,
+			Target:           sub.Target,
+			ConnectionID:     sub.ConnectionID,
+			EventTypes:       bindings,
+			DispatchPoolCode: sub.DispatchPoolCode,
+			Mode:             sub.Mode,
+			MaxRetries:       sub.MaxRetries,
+			TimeoutSeconds:   sub.TimeoutSeconds,
+			DataOnly:         sub.DataOnly,
+		})
+	}
+
+	cmd := subscriptionops.SyncSubscriptionsCommand{
+		ApplicationCode: app.Code,
+		Subscriptions:   inputs,
+		RemoveUnlisted:  in.RemoveUnlisted,
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	committed, err := subscriptionops.SyncSubscriptions(ctx, s.Subscriptions, s.Connections, s.DispatchPools, s.UoW, cmd, ec)
+	if err != nil {
+		return nil, err
+	}
+	ev := committed.Event()
+	return &syncResultOutput{Body: SyncResultResponse{
+		ApplicationCode: ev.ApplicationCode,
+		Created:         ev.Created,
+		Updated:         ev.Updated,
+		Deleted:         ev.Deleted,
 		SyncedCodes:     ev.SyncedCodes,
 	}}, nil
 }

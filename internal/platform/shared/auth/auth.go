@@ -58,6 +58,8 @@ const (
 	permSubscriptionCreate = "platform:messaging:subscription:create"
 	permSubscriptionUpdate = "platform:messaging:subscription:update"
 	permSubscriptionDelete = "platform:messaging:subscription:delete"
+	permSubscriptionSync   = "platform:messaging:subscription:sync"
+	permSubscriptionManage = "platform:messaging:subscription:manage"
 	// DispatchPool (messaging)
 	permDispatchPoolView   = "platform:messaging:dispatch-pool:view"
 	permDispatchPoolCreate = "platform:messaging:dispatch-pool:create"
@@ -86,13 +88,16 @@ const (
 	// accounts so an application can self-register its own resources via
 	// the /api/applications/{appCode}/{resource}/sync endpoints. They sit
 	// in the dedicated application-service context (not messaging/iam).
-	permAppSvcEventTypeCreate = "platform:application-service:event-type:create"
-	permAppSvcEventTypeUpdate = "platform:application-service:event-type:update"
-	permAppSvcEventTypeDelete = "platform:application-service:event-type:delete"
-	permAppSvcRoleCreate      = "platform:application-service:role:create"
-	permAppSvcRoleUpdate      = "platform:application-service:role:update"
-	permAppSvcRoleDelete      = "platform:application-service:role:delete"
-	permAppSvcProcessSync     = "platform:application-service:process:sync"
+	permAppSvcEventTypeCreate    = "platform:application-service:event-type:create"
+	permAppSvcEventTypeUpdate    = "platform:application-service:event-type:update"
+	permAppSvcEventTypeDelete    = "platform:application-service:event-type:delete"
+	permAppSvcRoleCreate         = "platform:application-service:role:create"
+	permAppSvcRoleUpdate         = "platform:application-service:role:update"
+	permAppSvcRoleDelete         = "platform:application-service:role:delete"
+	permAppSvcProcessSync        = "platform:application-service:process:sync"
+	permAppSvcSubscriptionCreate = "platform:application-service:subscription:create"
+	permAppSvcSubscriptionUpdate = "platform:application-service:subscription:update"
+	permAppSvcSubscriptionDelete = "platform:application-service:subscription:delete"
 	// Developer (application OpenAPI documents)
 	permAppOpenApiSync   = "platform:developer:application-openapi:sync"
 	permAppOpenApiManage = "platform:developer:application-openapi:manage"
@@ -363,6 +368,16 @@ func CanSyncRoles(a *AuthContext) error {
 	return requireAny(a,
 		permRoleManage, permRoleCreate, permRoleUpdate, permRoleDelete,
 		permAppSvcRoleCreate, permAppSvcRoleUpdate, permAppSvcRoleDelete)
+}
+
+// CanSyncSubscriptions guards POST /api/applications/{appCode}/subscriptions/sync.
+// Mirrors Rust can_sync_subscriptions: admin sync/manage plus the
+// application-service create/update/delete permissions an SDK service account
+// holds. Per-application scope is enforced inside the use case.
+func CanSyncSubscriptions(a *AuthContext) error {
+	return requireAny(a,
+		permSubscriptionSync, permSubscriptionManage,
+		permAppSvcSubscriptionCreate, permAppSvcSubscriptionUpdate, permAppSvcSubscriptionDelete)
 }
 
 // CanSyncProcesses guards POST /api/applications/{appCode}/processes/sync.
