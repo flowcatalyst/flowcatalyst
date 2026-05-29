@@ -27,7 +27,6 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/router"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/standby"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/stream"
-	fcsdkclient "github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/client"
 
 	// Queue backend registrations needed by router.
 	_ "github.com/flowcatalyst/flowcatalyst-go/internal/queue/nats"
@@ -266,19 +265,22 @@ func StartMCP(ctx context.Context, cfg EnvCfg) {
 	if platformURL == "" {
 		platformURL = fmt.Sprintf("http://localhost:%d", cfg.APIPort)
 	}
-	pc := fcsdkclient.New(platformURL,
-		fcsdkclient.WithToken(cfg.MCPClientSecret),
-		fcsdkclient.WithTimeout(10*time.Second),
-	)
-	srv := mcp.New(pc)
+	// Build the MCP server from resolved config: client_id+secret →
+	// client_credentials token manager; secret-only → static bearer; neither →
+	// unauthenticated (localhost in-process).
+	srv := mcp.New(mcp.Config{
+		BaseURL:      platformURL,
+		ClientID:     cfg.MCPClientID,
+		ClientSecret: cfg.MCPClientSecret,
+	})
 
 	r := chi.NewRouter()
-	r.Post("/mcp", srv.HandleHTTP)
+	r.Handle("/mcp", srv.HTTPHandler()) // streamable-HTTP: POST + GET(SSE) + DELETE
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	addr := fmt.Sprintf(":%d", cfg.MCPPort)
+	addr := fmt.Sprintf("%s:%d", cfg.MCPBind, cfg.MCPPort)
 	httpSrv := &http.Server{Addr: addr, Handler: r, ReadHeaderTimeout: 5 * time.Second}
 	errCh := make(chan error, 1)
 	go func() {

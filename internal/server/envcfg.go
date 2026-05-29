@@ -41,6 +41,11 @@ type EnvCfg struct {
 	// MCPPort is the listener for the MCP subsystem. Default 8090.
 	MCPPort int
 
+	// MCPBind is the bind host for the MCP listener. Default 127.0.0.1
+	// (localhost-only): the MCP server is an agent-facing surface, not a
+	// public API. Set FC_MCP_BIND=0.0.0.0 to expose it (e.g. in a container).
+	MCPBind string
+
 	// Stream processor — per-projection sub-toggles (default true when
 	// StreamEnabled is on, so the top-level flag is enough on its own).
 	StreamEventsEnabled       bool
@@ -114,6 +119,7 @@ func LoadEnv() EnvCfg {
 		RouterHTTPPrefix: envOr("FC_ROUTER_HTTP_PREFIX", "/router"),
 		DefaultBroker:    envOr("FC_DEFAULT_BROKER", ""),
 		MCPPort:          envInt("FC_MCP_PORT", 8090),
+		MCPBind:          envOr("FC_MCP_BIND", "127.0.0.1"),
 
 		// Stream sub-toggles default ON so FC_STREAM_PROCESSOR_ENABLED=true
 		// is sufficient to bring up the whole stream pipeline.
