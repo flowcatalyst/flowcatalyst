@@ -401,6 +401,7 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 			Connections:   connectionRepo,
 			Processes:     processRepo,
 			DispatchPools: dispatchPoolRepo,
+			Principals:    principalRepo,
 			Specs:         openapispecs.NewRepository(pool),
 			UoW:           uow,
 		})

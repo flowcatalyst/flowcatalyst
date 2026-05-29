@@ -107,10 +107,12 @@ const (
 	permServiceAccountUpdate = "platform:iam:service-account:update"
 	permServiceAccountDelete = "platform:iam:service-account:delete"
 	// User / Principal (iam)
-	permUserView   = "platform:iam:user:view"
-	permUserCreate = "platform:iam:user:create"
-	permUserUpdate = "platform:iam:user:update"
-	permUserDelete = "platform:iam:user:delete"
+	permUserView        = "platform:iam:user:view"
+	permUserCreate      = "platform:iam:user:create"
+	permUserUpdate      = "platform:iam:user:update"
+	permUserDelete      = "platform:iam:user:delete"
+	permUserManage      = "platform:iam:user:manage"
+	permUserAssignRoles = "platform:iam:user:assign-roles"
 	// ScheduledJob (messaging)
 	permScheduledJobView   = "platform:messaging:scheduled-job:view"
 	permScheduledJobCreate = "platform:messaging:scheduled-job:create"
@@ -378,6 +380,14 @@ func CanSyncSubscriptions(a *AuthContext) error {
 	return requireAny(a,
 		permSubscriptionSync, permSubscriptionManage,
 		permAppSvcSubscriptionCreate, permAppSvcSubscriptionUpdate, permAppSvcSubscriptionDelete)
+}
+
+// CanSyncPrincipals guards POST /api/applications/{appCode}/principals/sync.
+// Mirrors Rust can_sync_principals: admin-tier IAM user manage/create/update/
+// delete or assign-roles (no application-service grant — users are global).
+func CanSyncPrincipals(a *AuthContext) error {
+	return requireAny(a,
+		permUserManage, permUserCreate, permUserUpdate, permUserDelete, permUserAssignRoles)
 }
 
 // CanSyncProcesses guards POST /api/applications/{appCode}/processes/sync.

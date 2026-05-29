@@ -34,6 +34,8 @@ import (
 	eventtypeops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/openapispecs"
 	openapiops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/openapispecs/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
+	principalops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/process"
 	processops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/process/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
@@ -57,6 +59,7 @@ type State struct {
 	Connections   *connection.Repository
 	Processes     *process.Repository
 	DispatchPools *dispatchpool.Repository
+	Principals    *principal.Repository
 	Specs         *openapispecs.Repository
 	UoW           *usecasepgx.UnitOfWork
 }
@@ -109,6 +112,15 @@ func Register(api huma.API, s *State) {
 		Tags:          []string{tag},
 		DefaultStatus: http.StatusOK,
 	}, s.syncDispatchPools)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "syncPrincipals",
+		Method:        http.MethodPost,
+		Path:          "/api/applications/{appCode}/principals/sync",
+		Summary:       "Sync an application's principals (SDK self-registration)",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.syncPrincipals)
 
 	huma.Register(api, huma.Operation{
 		OperationID:   "syncProcesses",
@@ -347,6 +359,69 @@ func (s *State) syncSubscriptions(ctx context.Context, in *syncSubscriptionsInpu
 		Updated:         ev.Updated,
 		Deleted:         ev.Deleted,
 		SyncedCodes:     ev.SyncedCodes,
+	}}, nil
+}
+
+// ── Principals ────────────────────────────────────────────────────────────
+
+type syncPrincipalInputRequest struct {
+	Email  string   `json:"email" doc:"User's email address (unique identifier for matching)"`
+	Name   string   `json:"name"`
+	Roles  []string `json:"roles,omitempty" doc:"Role short names (prefixed with applicationCode)"`
+	Active *bool    `json:"active,omitempty" doc:"Whether the user is active (default true)"`
+}
+
+type syncPrincipalsRequest struct {
+	Principals []syncPrincipalInputRequest `json:"principals"`
+}
+
+type syncPrincipalsInput struct {
+	AppCode        string `path:"appCode" doc:"Application code"`
+	RemoveUnlisted bool   `query:"removeUnlisted" doc:"Strip SDK_SYNC roles from unlisted principals"`
+	Body           syncPrincipalsRequest
+}
+
+func (s *State) syncPrincipals(ctx context.Context, in *syncPrincipalsInput) (*syncResultOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanSyncPrincipals(ac); err != nil {
+		return nil, err
+	}
+	app, err := s.resolveApp(ctx, in.AppCode)
+	if err != nil {
+		return nil, err
+	}
+
+	inputs := make([]principalops.SyncPrincipalInput, 0, len(in.Body.Principals))
+	for _, p := range in.Body.Principals {
+		active := true // serde default_active
+		if p.Active != nil {
+			active = *p.Active
+		}
+		inputs = append(inputs, principalops.SyncPrincipalInput{
+			Email:  p.Email,
+			Name:   p.Name,
+			Roles:  p.Roles,
+			Active: active,
+		})
+	}
+
+	cmd := principalops.SyncPrincipalsCommand{
+		ApplicationCode: app.Code,
+		Principals:      inputs,
+		RemoveUnlisted:  in.RemoveUnlisted,
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	committed, err := principalops.SyncPrincipals(ctx, s.Principals, s.UoW, cmd, ec)
+	if err != nil {
+		return nil, err
+	}
+	ev := committed.Event()
+	return &syncResultOutput{Body: SyncResultResponse{
+		ApplicationCode: ev.ApplicationCode,
+		Created:         ev.Created,
+		Updated:         ev.Updated,
+		Deleted:         ev.Deactivated,
+		SyncedCodes:     ev.SyncedEmails,
 	}}, nil
 }
 
