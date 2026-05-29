@@ -282,10 +282,16 @@ func generateSecret() (plaintext, ref string, err error) {
 	if enc == nil {
 		return "", "", errors.New("FLOWCATALYST_APP_KEY not configured; cannot encrypt client secret")
 	}
-	ref, err = enc.Encrypt(plaintext)
+	encrypted, err := enc.Encrypt(plaintext)
 	if err != nil {
 		return "", "", err
 	}
+	// Store with the "encrypted:" prefix so the persisted string is
+	// byte-identical to what Rust writes (oauth_clients_api.rs:
+	// format!("encrypted:{}", encrypted)). Decrypt strips the prefix on
+	// read, so verification is unaffected; this keeps client_secret_ref
+	// values uniform across a mixed Go/Rust deployment.
+	ref = "encrypted:" + encrypted
 	return plaintext, ref, nil
 }
 

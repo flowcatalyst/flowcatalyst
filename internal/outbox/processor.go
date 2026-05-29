@@ -106,13 +106,12 @@ func (p *Processor) dispatch(ctx context.Context, item Item) {
 		p.totalSucceed.Add(1)
 		return
 	}
-	// Failed — backoff with exponential delay capped at 5 minutes.
-	delay := time.Duration(1<<min(item.AttemptCount, 8)) * time.Second
-	if delay > 5*time.Minute {
-		delay = 5 * time.Minute
-	}
-	nextRetry := time.Now().Add(delay)
-	if err := p.repo.MarkFailed(ctx, []string{item.ID}, out.Status, out.Message, nextRetry); err != nil {
+	// Failed. The repository bumps retry_count + records the error; retryable
+	// statuses are returned to PENDING and re-claimed on the next poll, while
+	// terminal statuses stop here. The in-memory max-retries cap (to avoid a
+	// hot retry loop on a persistently-failing row) and stuck-item recovery
+	// land in Phase 8 (OB6/OB3).
+	if err := p.repo.MarkFailed(ctx, []string{item.ID}, out.Status, out.Message); err != nil {
 		slog.Warn("outbox mark failed", "id", item.ID, "err", err)
 	}
 	p.totalFailed.Add(1)
@@ -124,11 +123,4 @@ func (p *Processor) InFlight() int64 { return p.inFlight.Load() }
 // Totals returns (success, failure) counters since process start.
 func (p *Processor) Totals() (uint64, uint64) {
 	return p.totalSucceed.Load(), p.totalFailed.Load()
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

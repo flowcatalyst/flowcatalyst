@@ -42,8 +42,10 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 // The schema also has oauth_client_post_logout_redirect_uris,
 // oauth_client_allowed_origins, and oauth_client_application_ids junctions;
 // the Go entity doesn't carry those fields yet so they're untouched.
-// The Go side stores Argon2-hashed secrets in the client_secret_ref column
-// (Rust uses it as an external secret-manager reference). See HANDOFF.md §4.
+// client_secret_ref holds the reversibly-encrypted client secret
+// (AES-256-GCM under FLOWCATALYST_APP_KEY, "encrypted:"-prefixed),
+// matching Rust; it is verified at /oauth/token by decrypt-and-compare,
+// NOT by hashing. See internal/platform/shared/encryption.
 
 type OAuthClientRepo struct{ q *dbq.Queries }
 
