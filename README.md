@@ -50,7 +50,7 @@ overrides the binary default.
 
 | Service       | Go default          | Rust default        | Override env             |
 |---------------|---------------------|---------------------|--------------------------|
-| Platform HTTP | `FC_API_PORT=8080`  | `HTTP_PORT=3000`    | `FC_API_PORT` / `PORT`   |
+| Platform HTTP | `FC_API_PORT=8080`  | `PORT=3000`         | `FC_API_PORT` / `PORT`   |
 | fc-dev        | `--api-port 8080`   | `--api-port 8080`   | `FC_API_PORT` / `--api-port` |
 | Metrics       | `FC_METRICS_PORT=9090` | `9090`           | `FC_METRICS_PORT`        |
 | MCP           | `127.0.0.1:8090`    | `127.0.0.1:3100`    | `FC_MCP_PORT` / `FC_MCP_BIND` |

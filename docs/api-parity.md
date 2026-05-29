@@ -48,8 +48,8 @@ The Rust binary emits its OpenAPI spec at `/api/openapi.json`. The Go binary doe
 ```bash
 # Build & start the Rust binary against an ephemeral Postgres.
 docker run -d --name rust-fc -p 3001:3000 ghcr.io/flowcatalyst/rust:HEAD
-# Build & start the Go binary against an ephemeral Postgres.
-docker run -d --name go-fc -p 3002:3000 ghcr.io/flowcatalyst/go:HEAD
+# Build & start the Go binary against an ephemeral Postgres (Go binds 8080).
+docker run -d --name go-fc -p 3002:8080 ghcr.io/flowcatalyst/go:HEAD
 
 curl -s localhost:3001/api/openapi.json > /tmp/rust.json
 curl -s localhost:3002/api/openapi.json > /tmp/go.json

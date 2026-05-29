@@ -79,6 +79,16 @@ type EnvCfg struct {
 	RouterNotifyWebhookURL string
 	RouterDrainTimeoutSec  int
 
+	// ALB self-registration (router). When ALBEnabled, the router registers
+	// this instance's IP with the target group on leader-gain (or non-standby
+	// start) and deregisters on leader-loss / shutdown. Mirrors Rust FC_ALB_*.
+	ALBEnabled        bool
+	ALBTargetGroupARN string
+	ALBInstanceIP     string // FC_ALB_TARGET_ID / FC_ALB_INSTANCE_IP — the target id (IP) for RegisterTargets
+	ALBPort           int
+	ALBRegion         string
+	ALBDeregDelaySec  int
+
 	// Standby / HA.
 	StandbyEnabled  bool
 	StandbyRedisURL string
@@ -135,9 +145,11 @@ func LoadEnv() EnvCfg {
 		StreamPartitionTickHours:     envInt("FC_STREAM_PARTITION_TICK_HOURS", 0),
 
 		// FC_OUTBOX_API_URL / FC_OUTBOX_TOKEN align with the standalone Rust
-		// outbox CLI; FC_OUTBOX_PLATFORM_* + FLOWCATALYST_URL kept as aliases.
-		OutboxPlatformURL:       envFirst("FC_OUTBOX_PLATFORM_URL", "FC_OUTBOX_API_URL", "FLOWCATALYST_URL", "", ""),
-		OutboxPlatformAuthToken: envFirst("FC_OUTBOX_PLATFORM_AUTH_TOKEN", "FC_OUTBOX_TOKEN", "", ""),
+		// outbox CLI; FC_API_BASE_URL / FC_API_TOKEN align with the Rust
+		// fc-outbox-processor binary; FC_OUTBOX_PLATFORM_* + FLOWCATALYST_URL
+		// kept as aliases.
+		OutboxPlatformURL:       envFirst("FC_OUTBOX_PLATFORM_URL", "FC_OUTBOX_API_URL", "FC_API_BASE_URL", "FLOWCATALYST_URL", "", ""),
+		OutboxPlatformAuthToken: envFirst("FC_OUTBOX_PLATFORM_AUTH_TOKEN", "FC_OUTBOX_TOKEN", "FC_API_TOKEN", "", ""),
 		OutboxBatchSize:         envInt("FC_OUTBOX_BATCH_SIZE", 0),
 		OutboxMaxInFlight:       envInt("FC_OUTBOX_MAX_IN_FLIGHT", 0),
 		OutboxPollIntervalMS:    envInt("FC_OUTBOX_POLL_INTERVAL_MS", 0),
@@ -149,6 +161,13 @@ func LoadEnv() EnvCfg {
 		RouterDevMode:          envBool("FLOWCATALYST_DEV_MODE", false),
 		RouterNotifyWebhookURL: os.Getenv("FC_NOTIFY_WEBHOOK_URL"),
 		RouterDrainTimeoutSec:  envInt("FC_DRAIN_TIMEOUT_SECONDS", 60),
+
+		ALBEnabled:        envBool("FC_ALB_ENABLED", false),
+		ALBTargetGroupARN: os.Getenv("FC_ALB_TARGET_GROUP_ARN"),
+		ALBInstanceIP:     envFirst("FC_ALB_TARGET_ID", "FC_ALB_INSTANCE_IP", "", ""),
+		ALBPort:           envInt("FC_ALB_TARGET_PORT", 8080),
+		ALBRegion:         os.Getenv("FC_ALB_REGION"), // empty → AWS SDK default region chain
+		ALBDeregDelaySec:  envInt("FC_ALB_DEREGISTRATION_DELAY_SECONDS", 0),
 
 		StandbyEnabled:  envBoolAlias("FC_STANDBY_ENABLED", "STANDBY_ENABLED", false),
 		StandbyRedisURL: envFirst("FC_STANDBY_REDIS_URL", "REDIS_URL", "", "redis://127.0.0.1:6379"),

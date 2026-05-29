@@ -16,6 +16,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/flowcatalyst/flowcatalyst-go/frontend"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/config"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/logging"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/migrate"
@@ -42,6 +43,17 @@ func main() {
 
 	rootCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// AWS Secrets Manager DB mode: when DB_SECRET_ARN + DB_HOST are set (and no
+	// explicit FC_DATABASE_URL/DATABASE_URL), resolve the connection from the
+	// secret. Mirrors the Rust fc-server DB-secret resolution.
+	if dbURL, ok, err := server.ResolveDBSecretURL(rootCtx); err != nil {
+		slog.Error("resolve DB secret failed", "err", err)
+		os.Exit(1)
+	} else if ok {
+		cfg.DatabaseURL = dbURL
+		slog.Info("resolved database URL from AWS Secrets Manager")
+	}
 
 	pool, err := database.NewPool(rootCtx, config.DBConfig{URL: cfg.DatabaseURL})
 	if err != nil {
@@ -72,7 +84,16 @@ func main() {
 		cancel()
 	}()
 
-	if err := server.Run(rootCtx, pool, cfg, server.RunOptions{}); err != nil {
+	// Serve the embedded Vue SPA when it was built into the binary (parity
+	// with the Rust fc-server, which hosts the dashboard). No-op when dist
+	// wasn't embedded — fc-server then runs API-only.
+	runOpts := server.RunOptions{}
+	if frontend.IsAvailable() {
+		runOpts.Fallback = frontend.Handler()
+		slog.Info("embedded Vue SPA available")
+	}
+
+	if err := server.Run(rootCtx, pool, cfg, runOpts); err != nil {
 		slog.Error("fc-server exited with error", "err", err)
 		os.Exit(1)
 	}
