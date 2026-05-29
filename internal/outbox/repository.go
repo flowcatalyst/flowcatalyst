@@ -43,11 +43,18 @@ type Repository interface {
 	// dispatched rows (matches Rust/Java) to keep the customer table bounded.
 	MarkSuccess(ctx context.Context, ids []string) error
 	// MarkFailed records the failure: it bumps retry_count, stores the
-	// error_message, and sets the status. Retryable statuses are returned to
-	// PENDING so the next poll re-claims them (matching Rust
-	// increment_retry_count); terminal statuses stop the row from being
-	// re-claimed. There is no next-retry-at backoff column upstream.
-	MarkFailed(ctx context.Context, ids []string, status common.OutboxStatus, msg string) error
+	// error_message, and sets the status. When requeue is true the row is
+	// returned to PENDING so the next poll re-claims it; when false it keeps
+	// the failure status code so it is NOT re-claimed (a terminal failure or
+	// an exhausted-retries item). The caller (processor) decides requeue from
+	// the status' retryability AND the max-retries cap. There is no
+	// next-retry-at backoff column upstream.
+	MarkFailed(ctx context.Context, ids []string, status common.OutboxStatus, msg string, requeue bool) error
+	// RecoverStuck resets rows stuck in IN_PROGRESS (claimed but never
+	// resolved — e.g. the processor crashed mid-dispatch) whose updated_at is
+	// older than olderThan, returning them to PENDING for re-claim. Returns
+	// the number recovered. Mirrors the Rust recovery loop.
+	RecoverStuck(ctx context.Context, olderThan time.Duration) (int, error)
 	// Healthy reports whether the backend can be reached.
 	Healthy(ctx context.Context) bool
 	// InitSchema ensures the outbox table/collection exists.

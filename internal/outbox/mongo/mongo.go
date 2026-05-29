@@ -172,12 +172,12 @@ func (r *Repository) MarkSuccess(ctx context.Context, ids []string) error {
 // MarkFailed bumps retry_count, records error_message, and sets the status.
 // Retryable statuses are returned to PENDING (0) so the next poll re-claims
 // them; terminal statuses keep their code. Mirrors the SQL backends.
-func (r *Repository) MarkFailed(ctx context.Context, ids []string, status common.OutboxStatus, msg string) error {
+func (r *Repository) MarkFailed(ctx context.Context, ids []string, status common.OutboxStatus, msg string, requeue bool) error {
 	if len(ids) == 0 {
 		return nil
 	}
 	newStatus := status.Code()
-	if status.IsRetryable() {
+	if requeue {
 		newStatus = int(common.OutboxPending)
 	}
 	_, err := r.coll.UpdateMany(ctx,
@@ -187,6 +187,20 @@ func (r *Repository) MarkFailed(ctx context.Context, ids []string, status common
 			"$inc": bson.M{"retry_count": 1},
 		})
 	return err
+}
+
+// RecoverStuck resets IN_PROGRESS docs older than olderThan back to PENDING.
+// updated_at is an RFC3339 string, so the cutoff is compared lexically (RFC3339
+// is lexicographically ordered for a fixed offset — the SDK writes UTC "Z").
+func (r *Repository) RecoverStuck(ctx context.Context, olderThan time.Duration) (int, error) {
+	cutoff := time.Now().UTC().Add(-olderThan).Format(time.RFC3339)
+	res, err := r.coll.UpdateMany(ctx,
+		bson.M{"status": int(common.OutboxInProgress), "updated_at": bson.M{"$lt": cutoff}},
+		bson.M{"$set": bson.M{"status": int(common.OutboxPending), "updated_at": nowISO()}})
+	if err != nil {
+		return 0, err
+	}
+	return int(res.ModifiedCount), nil
 }
 
 // Healthy pings the server.

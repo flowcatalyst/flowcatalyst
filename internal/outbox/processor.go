@@ -17,15 +17,28 @@ type Config struct {
 	HTTPTimeout  time.Duration
 	PlatformURL  string
 	AuthToken    string
+	// MaxRetries caps re-queues of a retryable failure (OB6): once an item
+	// has been attempted MaxRetries times it keeps its failure status instead
+	// of returning to PENDING, so it stops hot-looping. Mirrors the Rust
+	// MessageGroupProcessorConfig.max_retries (default 3).
+	MaxRetries int
+	// RecoveryInterval / RecoveryThreshold drive crash recovery (OB2): every
+	// RecoveryInterval, rows stuck IN_PROGRESS longer than RecoveryThreshold
+	// (claimed by a since-crashed processor) are reset to PENDING.
+	RecoveryInterval  time.Duration
+	RecoveryThreshold time.Duration
 }
 
 // DefaultConfig matches the Rust outbox defaults.
 func DefaultConfig() Config {
 	return Config{
-		PollInterval: 1 * time.Second,
-		BatchSize:    100,
-		MaxInFlight:  1000,
-		HTTPTimeout:  30 * time.Second,
+		PollInterval:      1 * time.Second,
+		BatchSize:         100,
+		MaxInFlight:       1000,
+		HTTPTimeout:       30 * time.Second,
+		MaxRetries:        3,
+		RecoveryInterval:  60 * time.Second,
+		RecoveryThreshold: 5 * time.Minute,
 	}
 }
 
@@ -61,10 +74,17 @@ func NewProcessor(cfg Config, repo Repository) *Processor {
 	}
 }
 
-// Run drives the processor until ctx is cancelled.
+// Run drives the processor until ctx is cancelled. Two tickers: the poll
+// loop (claim + dispatch) and the crash-recovery loop (reset stuck rows).
 func (p *Processor) Run(ctx context.Context) {
 	tick := time.NewTicker(p.cfg.PollInterval)
 	defer tick.Stop()
+	recoveryInterval := p.cfg.RecoveryInterval
+	if recoveryInterval <= 0 {
+		recoveryInterval = 60 * time.Second
+	}
+	recoveryTick := time.NewTicker(recoveryInterval)
+	defer recoveryTick.Stop()
 	for {
 		select {
 		case <-ctx.Done():
@@ -78,6 +98,19 @@ func (p *Processor) Run(ctx context.Context) {
 				continue // backpressure
 			}
 			p.tick(ctx)
+		case <-recoveryTick.C:
+			if p.IsLeader != nil && !p.IsLeader() {
+				continue
+			}
+			threshold := p.cfg.RecoveryThreshold
+			if threshold <= 0 {
+				threshold = 5 * time.Minute
+			}
+			if n, err := p.repo.RecoverStuck(ctx, threshold); err != nil {
+				slog.Warn("outbox recover stuck failed", "err", err)
+			} else if n > 0 {
+				slog.Info("outbox recovered stuck items", "count", n)
+			}
 		}
 	}
 }
@@ -115,12 +148,17 @@ func (p *Processor) dispatch(ctx context.Context, item Item) {
 		p.totalSucceed.Add(1)
 		return
 	}
-	// Failed. The repository bumps retry_count + records the error; retryable
-	// statuses are returned to PENDING and re-claimed on the next poll, while
-	// terminal statuses stop here. The in-memory max-retries cap (to avoid a
-	// hot retry loop on a persistently-failing row) and stuck-item recovery
-	// land in Phase 8 (OB6/OB3).
-	if err := p.repo.MarkFailed(ctx, []string{item.ID}, out.Status, out.Message); err != nil {
+	// Failed. Re-queue (back to PENDING) only when the status is retryable AND
+	// the item hasn't hit the max-retries cap (OB6): item.AttemptCount is the
+	// retry_count before this attempt, so this is attempt #(AttemptCount+1);
+	// once that reaches MaxRetries we stop re-queuing and the row keeps its
+	// failure code (not re-claimed). Non-retryable statuses never re-queue.
+	maxRetries := p.cfg.MaxRetries
+	if maxRetries <= 0 {
+		maxRetries = 3
+	}
+	requeue := out.Status.IsRetryable() && item.AttemptCount+1 < maxRetries
+	if err := p.repo.MarkFailed(ctx, []string{item.ID}, out.Status, out.Message, requeue); err != nil {
 		slog.Warn("outbox mark failed", "id", item.ID, "err", err)
 	}
 	p.totalFailed.Add(1)

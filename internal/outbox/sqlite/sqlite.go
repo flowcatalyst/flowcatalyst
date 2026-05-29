@@ -13,6 +13,7 @@ package sqlite
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/outbox"
@@ -75,9 +76,15 @@ func (*Repository) MarkSuccess(_ context.Context, _ []string) error {
 	return errors.New("sqlite outbox: MarkSuccess wired in phase 4 follow-up")
 }
 
-// MarkFailed records the failure (retry_count bump + error_message).
-func (*Repository) MarkFailed(_ context.Context, _ []string, _ common.OutboxStatus, _ string) error {
+// MarkFailed records the failure (retry_count bump + error_message; requeue
+// returns the row to PENDING).
+func (*Repository) MarkFailed(_ context.Context, _ []string, _ common.OutboxStatus, _ string, _ bool) error {
 	return errors.New("sqlite outbox: MarkFailed wired in phase 4 follow-up")
+}
+
+// RecoverStuck resets stuck IN_PROGRESS rows to PENDING.
+func (*Repository) RecoverStuck(_ context.Context, _ time.Duration) (int, error) {
+	return 0, errors.New("sqlite outbox: RecoverStuck wired in phase 4 follow-up")
 }
 
 // Healthy pings the DB.

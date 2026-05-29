@@ -145,9 +145,9 @@ func (r *Repository) MarkSuccess(ctx context.Context, ids []string) error {
 // Retryable statuses are returned to PENDING (0) so the next poll re-claims
 // them (matching Rust increment_retry_count); terminal statuses keep their
 // code so they are not re-claimed. There is no next_retry_at column upstream.
-func (r *Repository) MarkFailed(ctx context.Context, ids []string, status common.OutboxStatus, msg string) error {
+func (r *Repository) MarkFailed(ctx context.Context, ids []string, status common.OutboxStatus, msg string, requeue bool) error {
 	newStatus := status.Code()
-	if status.IsRetryable() {
+	if requeue {
 		newStatus = int(common.OutboxPending)
 	}
 	_, err := r.pool.Exec(ctx,
@@ -156,6 +156,19 @@ func (r *Repository) MarkFailed(ctx context.Context, ids []string, status common
 		  WHERE id = ANY($3)`,
 		newStatus, msg, ids)
 	return err
+}
+
+// RecoverStuck resets IN_PROGRESS (9) rows older than olderThan back to
+// PENDING (0) so a crash that left rows claimed-but-unresolved self-heals.
+func (r *Repository) RecoverStuck(ctx context.Context, olderThan time.Duration) (int, error) {
+	cutoff := time.Now().Add(-olderThan)
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE outbox_messages SET status = 0, updated_at = NOW()
+		  WHERE status = 9 AND updated_at < $1`, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return int(tag.RowsAffected()), nil
 }
 
 // Healthy pings the pool.
