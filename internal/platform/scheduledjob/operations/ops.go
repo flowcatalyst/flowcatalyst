@@ -66,6 +66,9 @@ func CreateScheduledJob(
 		if strings.TrimSpace(c) == "" {
 			return zero, usecase.Validation("INVALID_CRON", "cron expressions cannot be empty")
 		}
+		if err := scheduledjob.ValidateCronShape(c); err != nil {
+			return zero, usecase.Validation("CRON_INVALID_SHAPE", err.Error())
+		}
 	}
 
 	existing, err := repo.FindByCode(ctx, code, cmd.ClientID)
@@ -145,6 +148,17 @@ func UpdateScheduledJob(
 		j.Description = cmd.Description
 	}
 	if cmd.Crons != nil {
+		if len(cmd.Crons) == 0 {
+			return zero, usecase.Validation("CRONS_REQUIRED", "at least one cron expression is required")
+		}
+		for _, c := range cmd.Crons {
+			if strings.TrimSpace(c) == "" {
+				return zero, usecase.Validation("INVALID_CRON", "cron expressions cannot be empty")
+			}
+			if err := scheduledjob.ValidateCronShape(c); err != nil {
+				return zero, usecase.Validation("CRON_INVALID_SHAPE", err.Error())
+			}
+		}
 		j.Crons = cmd.Crons
 	}
 	if cmd.Timezone != nil {
