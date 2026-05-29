@@ -15,6 +15,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/mcp"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/outbox"
+	outboxmongo "github.com/flowcatalyst/flowcatalyst-go/internal/outbox/mongo"
 	outboxpg "github.com/flowcatalyst/flowcatalyst-go/internal/outbox/postgres"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/bridge"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/payload"
@@ -185,18 +186,27 @@ func StartStreamProcessorWithHealth(ctx context.Context, pool *pgxpool.Pool, cfg
 	slog.Info("stream processor stopped")
 }
 
-// StartOutboxProcessor runs the consumer-app SDK outbox poller against
-// the same Postgres pool that hosts the platform. The standalone
-// cmd/fc-outbox-processor binary remains the home for the (forthcoming)
-// sqlite/mysql/mongo backends — fc-server only supports the Postgres
-// path so it can reuse the shared pool.
+// StartOutboxProcessor runs the consumer-app SDK outbox poller. The backend
+// is selected by FC_OUTBOX_BACKEND: "postgres" (default) reuses the shared
+// pool; "mongo" dials FC_OUTBOX_MONGO_URI. Blocks until ctx is cancelled.
+//
+// The processor is leader-gated (newLeaderGate): when standby is enabled only
+// the leader polls — the Mongo backend has no atomic claim, so a single
+// active poller avoids double-claims. Mirrors the Rust outbox leadership gate.
 func StartOutboxProcessor(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg) {
 	if cfg.OutboxPlatformURL == "" {
-		slog.Error("outbox processor enabled but FC_OUTBOX_PLATFORM_URL not set; skipping")
+		slog.Error("outbox processor enabled but FC_OUTBOX_PLATFORM_URL / FC_OUTBOX_API_URL not set; skipping")
 		return
 	}
 
-	repo := outboxpg.New(pool)
+	repo, closeRepo, err := buildOutboxRepo(ctx, pool, cfg)
+	if err != nil {
+		slog.Error("outbox backend init failed", "backend", cfg.OutboxBackend, "err", err)
+		return
+	}
+	if closeRepo != nil {
+		defer closeRepo()
+	}
 	if err := repo.InitSchema(ctx); err != nil {
 		slog.Error("outbox init schema failed", "err", err)
 		return
@@ -216,9 +226,34 @@ func StartOutboxProcessor(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg) {
 	}
 
 	p := outbox.NewProcessor(pcfg, repo)
-	slog.Info("outbox processor started", "platform_url", cfg.OutboxPlatformURL)
+	p.IsLeader = newLeaderGate(ctx, cfg, "outbox")
+	slog.Info("outbox processor started", "platform_url", cfg.OutboxPlatformURL, "backend", cfg.OutboxBackend)
 	p.Run(ctx)
 	slog.Info("outbox processor stopped")
+}
+
+// buildOutboxRepo selects the outbox backend. Returns an optional cleanup
+// func (non-nil for Mongo, which owns a client connection).
+func buildOutboxRepo(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg) (outbox.Repository, func(), error) {
+	switch cfg.OutboxBackend {
+	case "mongo", "mongodb":
+		if cfg.OutboxMongoURI == "" {
+			return nil, nil, fmt.Errorf("FC_OUTBOX_BACKEND=mongo requires FC_OUTBOX_MONGO_URI")
+		}
+		repo, err := outboxmongo.Connect(ctx, cfg.OutboxMongoURI, cfg.OutboxMongoDB)
+		if err != nil {
+			return nil, nil, err
+		}
+		return repo, func() {
+			cctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = repo.Close(cctx)
+		}, nil
+	case "", "postgres", "postgresql":
+		return outboxpg.New(pool), nil, nil
+	default:
+		return nil, nil, fmt.Errorf("unknown FC_OUTBOX_BACKEND %q (want postgres|mongo)", cfg.OutboxBackend)
+	}
 }
 
 // StartMCP runs the read-only MCP HTTP server on its own port.

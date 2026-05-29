@@ -42,6 +42,12 @@ type Processor struct {
 	inFlight     atomic.Int64
 	totalSucceed atomic.Uint64
 	totalFailed  atomic.Uint64
+
+	// IsLeader gates polling; nil means always-leader (single instance /
+	// standby disabled). When standby is enabled only the leader polls — the
+	// Mongo backend has no atomic claim, so a single active poller avoids
+	// double-claims. Mirrors the Rust outbox leadership gate.
+	IsLeader func() bool
 }
 
 // NewProcessor wires a processor.
@@ -65,6 +71,9 @@ func (p *Processor) Run(ctx context.Context) {
 			slog.Info("outbox processor stopped")
 			return
 		case <-tick.C:
+			if p.IsLeader != nil && !p.IsLeader() {
+				continue // only the leader polls
+			}
 			if p.inFlight.Load() >= p.cfg.MaxInFlight {
 				continue // backpressure
 			}

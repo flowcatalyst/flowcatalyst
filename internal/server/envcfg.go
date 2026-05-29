@@ -62,6 +62,10 @@ type EnvCfg struct {
 	OutboxBatchSize         int
 	OutboxMaxInFlight       int
 	OutboxPollIntervalMS    int
+	// Backend selection: "postgres" (default, shared pool) or "mongo".
+	OutboxBackend  string
+	OutboxMongoURI string
+	OutboxMongoDB  string
 
 	// Router — used when FC_ROUTER_ENABLED=true. Mirrors the env vars
 	// the standalone cmd/fc-router binary reads.
@@ -124,11 +128,16 @@ func LoadEnv() EnvCfg {
 		StreamPartitionRetentionDays: envInt("FC_STREAM_PARTITION_RETENTION_DAYS", 0),
 		StreamPartitionTickHours:     envInt("FC_STREAM_PARTITION_TICK_HOURS", 0),
 
-		OutboxPlatformURL:       envFirst("FC_OUTBOX_PLATFORM_URL", "FLOWCATALYST_URL", "", ""),
-		OutboxPlatformAuthToken: os.Getenv("FC_OUTBOX_PLATFORM_AUTH_TOKEN"),
+		// FC_OUTBOX_API_URL / FC_OUTBOX_TOKEN align with the standalone Rust
+		// outbox CLI; FC_OUTBOX_PLATFORM_* + FLOWCATALYST_URL kept as aliases.
+		OutboxPlatformURL:       envFirst("FC_OUTBOX_PLATFORM_URL", "FC_OUTBOX_API_URL", "FLOWCATALYST_URL", "", ""),
+		OutboxPlatformAuthToken: envFirst("FC_OUTBOX_PLATFORM_AUTH_TOKEN", "FC_OUTBOX_TOKEN", "", ""),
 		OutboxBatchSize:         envInt("FC_OUTBOX_BATCH_SIZE", 0),
 		OutboxMaxInFlight:       envInt("FC_OUTBOX_MAX_IN_FLIGHT", 0),
 		OutboxPollIntervalMS:    envInt("FC_OUTBOX_POLL_INTERVAL_MS", 0),
+		OutboxBackend:           envOr("FC_OUTBOX_BACKEND", "postgres"),
+		OutboxMongoURI:          envFirst("FC_OUTBOX_MONGO_URI", "FC_OUTBOX_DB_URL", "", ""),
+		OutboxMongoDB:           envOr("FC_OUTBOX_MONGO_DB", "flowcatalyst"),
 
 		RouterConfigURL:        os.Getenv("FLOWCATALYST_CONFIG_URL"),
 		RouterDevMode:          envBool("FLOWCATALYST_DEV_MODE", false),
