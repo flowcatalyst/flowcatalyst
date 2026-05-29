@@ -46,6 +46,7 @@ const (
 	permEventTypeCreate = "platform:messaging:event-type:create"
 	permEventTypeUpdate = "platform:messaging:event-type:update"
 	permEventTypeDelete = "platform:messaging:event-type:delete"
+	permEventTypeSync   = "platform:messaging:event-type:sync"
 	// Connection (messaging)
 	permConnectionView   = "platform:messaging:connection:view"
 	permConnectionCreate = "platform:messaging:connection:create"
@@ -250,6 +251,7 @@ func CanReadEventTypes(a *AuthContext) error   { return requirePermission(a, per
 func CanCreateEventTypes(a *AuthContext) error { return requirePermission(a, permEventTypeCreate) }
 func CanUpdateEventTypes(a *AuthContext) error { return requirePermission(a, permEventTypeUpdate) }
 func CanDeleteEventTypes(a *AuthContext) error { return requirePermission(a, permEventTypeDelete) }
+func CanSyncEventTypes(a *AuthContext) error   { return requirePermission(a, permEventTypeSync) }
 func CanWriteEventTypes(a *AuthContext) error {
 	return requireAny(a, permEventTypeCreate, permEventTypeUpdate, permEventTypeDelete)
 }

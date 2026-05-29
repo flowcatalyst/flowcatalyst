@@ -57,6 +57,7 @@ import (
 	roleapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 	scheduledjobapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob/api"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/sdksync"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	serviceaccountapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/api"
 	bff "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/bff"
@@ -388,6 +389,14 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 		eventtypeapi.Register(humaAPI, &eventtypeapi.State{
 			Repo: eventTypeRepo,
 			UoW:  uow,
+		})
+
+		// SDK self-registration ("sync") endpoints, scoped under
+		// /api/applications/{appCode}. Mirrors the Rust sdk_sync_router.
+		sdksync.Register(humaAPI, &sdksync.State{
+			Apps:       applicationRepo,
+			EventTypes: eventTypeRepo,
+			UoW:        uow,
 		})
 
 		eventapi.Register(humaAPI, &eventapi.State{Repo: eventRepo})
