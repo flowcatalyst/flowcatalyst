@@ -98,6 +98,7 @@ const (
 	permAppSvcSubscriptionCreate = "platform:application-service:subscription:create"
 	permAppSvcSubscriptionUpdate = "platform:application-service:subscription:update"
 	permAppSvcSubscriptionDelete = "platform:application-service:subscription:delete"
+	permAppSvcScheduledJobSync   = "platform:application-service:scheduled-job:sync"
 	// Developer (application OpenAPI documents)
 	permAppOpenApiSync   = "platform:developer:application-openapi:sync"
 	permAppOpenApiManage = "platform:developer:application-openapi:manage"
@@ -119,6 +120,8 @@ const (
 	permScheduledJobUpdate = "platform:messaging:scheduled-job:update"
 	permScheduledJobDelete = "platform:messaging:scheduled-job:delete"
 	permScheduledJobFire   = "platform:messaging:scheduled-job:fire"
+	permScheduledJobSync   = "platform:messaging:scheduled-job:sync"
+	permScheduledJobManage = "platform:messaging:scheduled-job:manage"
 	// Super-admin wildcard.
 	permSuperAdmin = "platform:*:*:*"
 )
@@ -388,6 +391,15 @@ func CanSyncSubscriptions(a *AuthContext) error {
 func CanSyncPrincipals(a *AuthContext) error {
 	return requireAny(a,
 		permUserManage, permUserCreate, permUserUpdate, permUserDelete, permUserAssignRoles)
+}
+
+// CanSyncScheduledJobs guards POST /api/applications/{appCode}/scheduled-jobs/sync.
+// Mirrors Rust can_sync_scheduled_jobs_app: the application-service
+// scheduled-job sync permission plus admin sync/manage. The handler
+// additionally enforces target-client access (or anchor for platform-scoped).
+func CanSyncScheduledJobs(a *AuthContext) error {
+	return requireAny(a,
+		permAppSvcScheduledJobSync, permScheduledJobSync, permScheduledJobManage)
 }
 
 // CanSyncProcesses guards POST /api/applications/{appCode}/processes/sync.

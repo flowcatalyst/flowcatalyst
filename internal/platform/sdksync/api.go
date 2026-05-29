@@ -40,6 +40,8 @@ import (
 	processops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/process/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	roleops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
+	scheduledjobops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
@@ -60,6 +62,7 @@ type State struct {
 	Processes     *process.Repository
 	DispatchPools *dispatchpool.Repository
 	Principals    *principal.Repository
+	ScheduledJobs *scheduledjob.Repository
 	Specs         *openapispecs.Repository
 	UoW           *usecasepgx.UnitOfWork
 }
@@ -130,6 +133,15 @@ func Register(api huma.API, s *State) {
 		Tags:          []string{tag},
 		DefaultStatus: http.StatusOK,
 	}, s.syncProcesses)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "syncScheduledJobs",
+		Method:        http.MethodPost,
+		Path:          "/api/applications/{appCode}/scheduled-jobs/sync",
+		Summary:       "Sync scheduled jobs (SDK self-registration)",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.syncScheduledJobs)
 
 	huma.Register(api, huma.Operation{
 		OperationID:   "syncOpenapi",
@@ -552,6 +564,124 @@ func (s *State) syncProcesses(ctx context.Context, in *syncProcessesInput) (*syn
 		Deleted:         ev.Deleted,
 		SyncedCodes:     ev.SyncedCodes,
 	}}, nil
+}
+
+// ── Scheduled jobs ────────────────────────────────────────────────────────
+
+// SyncScheduledJobsResultResponse is the scheduled-job sync result. Unlike
+// the list-based resources it returns the affected job IDs (not counts) and
+// uses archive (not delete) semantics — mirrors the Rust shape.
+type SyncScheduledJobsResultResponse struct {
+	ApplicationCode string   `json:"applicationCode"`
+	Created         []string `json:"created"`
+	Updated         []string `json:"updated"`
+	Archived        []string `json:"archived"`
+}
+
+type syncScheduledJobInputRequest struct {
+	Code                string          `json:"code"`
+	Name                string          `json:"name"`
+	Description         *string         `json:"description,omitempty"`
+	Crons               []string        `json:"crons"`
+	Timezone            string          `json:"timezone,omitempty" doc:"IANA timezone (default UTC)"`
+	Payload             json.RawMessage `json:"payload,omitempty"`
+	Concurrent          bool            `json:"concurrent,omitempty"`
+	TracksCompletion    bool            `json:"tracksCompletion,omitempty"`
+	TimeoutSeconds      *int32          `json:"timeoutSeconds,omitempty"`
+	DeliveryMaxAttempts *int32          `json:"deliveryMaxAttempts,omitempty" doc:"Default 3 when omitted"`
+	TargetURL           *string         `json:"targetUrl,omitempty"`
+}
+
+type syncScheduledJobsRequest struct {
+	// ClientID nil/omitted = platform-scoped jobs (anchor only).
+	ClientID        *string                        `json:"clientId,omitempty"`
+	Jobs            []syncScheduledJobInputRequest `json:"jobs"`
+	ArchiveUnlisted bool                           `json:"archiveUnlisted,omitempty"`
+}
+
+type syncScheduledJobsInput struct {
+	AppCode string `path:"appCode" doc:"Application code"`
+	Body    syncScheduledJobsRequest
+}
+
+type syncScheduledJobsOutput struct {
+	Body SyncScheduledJobsResultResponse
+}
+
+func (s *State) syncScheduledJobs(ctx context.Context, in *syncScheduledJobsInput) (*syncScheduledJobsOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanSyncScheduledJobs(ac); err != nil {
+		return nil, err
+	}
+
+	// Resource-level scope check: caller must have access to the target client
+	// (or be anchor/super-admin when targeting platform-scoped jobs). Mirrors
+	// the Rust handler.
+	if cid := in.Body.ClientID; cid != nil {
+		if !ac.CanAccessClient(*cid) {
+			return nil, httperror.Forbidden("No access to client: " + *cid)
+		}
+	} else if !ac.IsAnchor() && !ac.IsSuperAdmin() {
+		return nil, httperror.Forbidden("Only anchor users can sync platform-scoped scheduled jobs")
+	}
+
+	app, err := s.resolveApp(ctx, in.AppCode)
+	if err != nil {
+		return nil, err
+	}
+
+	jobs := make([]scheduledjobops.ScheduledJobSyncEntry, 0, len(in.Body.Jobs))
+	for _, j := range in.Body.Jobs {
+		tz := j.Timezone // serde default_tz
+		if tz == "" {
+			tz = "UTC"
+		}
+		maxAttempts := int32(3) // serde default_attempts
+		if j.DeliveryMaxAttempts != nil {
+			maxAttempts = *j.DeliveryMaxAttempts
+		}
+		jobs = append(jobs, scheduledjobops.ScheduledJobSyncEntry{
+			Code:                j.Code,
+			Name:                j.Name,
+			Description:         j.Description,
+			Crons:               j.Crons,
+			Timezone:            tz,
+			Payload:             j.Payload,
+			Concurrent:          j.Concurrent,
+			TracksCompletion:    j.TracksCompletion,
+			TimeoutSeconds:      j.TimeoutSeconds,
+			DeliveryMaxAttempts: maxAttempts,
+			TargetURL:           j.TargetURL,
+		})
+	}
+
+	cmd := scheduledjobops.SyncScheduledJobsCommand{
+		ApplicationCode: app.Code,
+		ClientID:        in.Body.ClientID,
+		Jobs:            jobs,
+		ArchiveUnlisted: in.Body.ArchiveUnlisted,
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	committed, err := scheduledjobops.SyncScheduledJobs(ctx, s.ScheduledJobs, s.UoW, cmd, ec)
+	if err != nil {
+		return nil, err
+	}
+	ev := committed.Event()
+	return &syncScheduledJobsOutput{Body: SyncScheduledJobsResultResponse{
+		ApplicationCode: app.Code,
+		Created:         defaultEmptySlice(ev.Created),
+		Updated:         defaultEmptySlice(ev.Updated),
+		Archived:        defaultEmptySlice(ev.Archived),
+	}}, nil
+}
+
+// defaultEmptySlice returns a non-nil empty slice so the JSON arrays serialize
+// as [] rather than null.
+func defaultEmptySlice(xs []string) []string {
+	if xs == nil {
+		return []string{}
+	}
+	return xs
 }
 
 // ── OpenAPI document ──────────────────────────────────────────────────────
