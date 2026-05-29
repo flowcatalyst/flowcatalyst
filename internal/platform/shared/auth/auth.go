@@ -47,6 +47,7 @@ const (
 	permEventTypeUpdate = "platform:messaging:event-type:update"
 	permEventTypeDelete = "platform:messaging:event-type:delete"
 	permEventTypeSync   = "platform:messaging:event-type:sync"
+	permEventTypeManage = "platform:messaging:event-type:manage"
 	// Connection (messaging)
 	permConnectionView   = "platform:messaging:connection:view"
 	permConnectionCreate = "platform:messaging:connection:create"
@@ -77,6 +78,17 @@ const (
 	permRoleCreate = "platform:iam:role:create"
 	permRoleUpdate = "platform:iam:role:update"
 	permRoleDelete = "platform:iam:role:delete"
+	permRoleManage = "platform:iam:role:manage"
+	// Application-service permissions. These are held by SDK service
+	// accounts so an application can self-register its own resources via
+	// the /api/applications/{appCode}/{resource}/sync endpoints. They sit
+	// in the dedicated application-service context (not messaging/iam).
+	permAppSvcEventTypeCreate = "platform:application-service:event-type:create"
+	permAppSvcEventTypeUpdate = "platform:application-service:event-type:update"
+	permAppSvcEventTypeDelete = "platform:application-service:event-type:delete"
+	permAppSvcRoleCreate      = "platform:application-service:role:create"
+	permAppSvcRoleUpdate      = "platform:application-service:role:update"
+	permAppSvcRoleDelete      = "platform:application-service:role:delete"
 	// ServiceAccount (iam)
 	permServiceAccountView   = "platform:iam:service-account:view"
 	permServiceAccountCreate = "platform:iam:service-account:create"
@@ -251,7 +263,16 @@ func CanReadEventTypes(a *AuthContext) error   { return requirePermission(a, per
 func CanCreateEventTypes(a *AuthContext) error { return requirePermission(a, permEventTypeCreate) }
 func CanUpdateEventTypes(a *AuthContext) error { return requirePermission(a, permEventTypeUpdate) }
 func CanDeleteEventTypes(a *AuthContext) error { return requirePermission(a, permEventTypeDelete) }
-func CanSyncEventTypes(a *AuthContext) error   { return requirePermission(a, permEventTypeSync) }
+
+// CanSyncEventTypes guards POST /api/applications/{appCode}/event-types/sync.
+// Mirrors Rust can_sync_event_types: admits admin sync/manage plus the
+// application-service create/update/delete permissions an SDK service
+// account holds. Per-application scope is enforced inside the use case.
+func CanSyncEventTypes(a *AuthContext) error {
+	return requireAny(a,
+		permEventTypeSync, permEventTypeManage,
+		permAppSvcEventTypeCreate, permAppSvcEventTypeUpdate, permAppSvcEventTypeDelete)
+}
 func CanWriteEventTypes(a *AuthContext) error {
 	return requireAny(a, permEventTypeCreate, permEventTypeUpdate, permEventTypeDelete)
 }
@@ -320,6 +341,16 @@ func CanUpdateRoles(a *AuthContext) error { return requirePermission(a, permRole
 func CanDeleteRoles(a *AuthContext) error { return requirePermission(a, permRoleDelete) }
 func CanWriteRoles(a *AuthContext) error {
 	return requireAny(a, permRoleCreate, permRoleUpdate, permRoleDelete)
+}
+
+// CanSyncRoles guards POST /api/applications/{appCode}/roles/sync. Mirrors
+// Rust can_sync_roles: admits the iam manage/create/update/delete tier plus
+// the application-service create/update/delete permissions an SDK service
+// account holds. Per-application scope is enforced inside the use case.
+func CanSyncRoles(a *AuthContext) error {
+	return requireAny(a,
+		permRoleManage, permRoleCreate, permRoleUpdate, permRoleDelete,
+		permAppSvcRoleCreate, permAppSvcRoleUpdate, permAppSvcRoleDelete)
 }
 
 // ── Service account permissions ──────────────────────────────────────────

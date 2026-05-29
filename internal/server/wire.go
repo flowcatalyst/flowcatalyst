@@ -396,6 +396,7 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 		sdksync.Register(humaAPI, &sdksync.State{
 			Apps:       applicationRepo,
 			EventTypes: eventTypeRepo,
+			Roles:      roleRepo,
 			UoW:        uow,
 		})
 

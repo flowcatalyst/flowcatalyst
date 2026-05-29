@@ -28,6 +28,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	eventtypeops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
+	roleops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -40,6 +42,7 @@ const tag = "sdk-sync"
 type State struct {
 	Apps       *application.Repository
 	EventTypes *eventtype.Repository
+	Roles      *role.Repository
 	UoW        *usecasepgx.UnitOfWork
 }
 
@@ -56,6 +59,15 @@ type SyncResultResponse struct {
 // Register mounts the SDK sync endpoints on the supplied huma API. Paths
 // match the Rust sdk_sync_router nested under /api/applications.
 func Register(api huma.API, s *State) {
+	huma.Register(api, huma.Operation{
+		OperationID:   "syncRoles",
+		Method:        http.MethodPost,
+		Path:          "/api/applications/{appCode}/roles/sync",
+		Summary:       "Sync an application's roles (SDK self-registration)",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.syncRoles)
+
 	huma.Register(api, huma.Operation{
 		OperationID:   "syncEventTypes",
 		Method:        http.MethodPost,
@@ -136,6 +148,68 @@ func (s *State) syncEventTypes(ctx context.Context, in *syncEventTypesInput) (*s
 		Created:         ev.Created,
 		Updated:         ev.Updated,
 		Deleted:         ev.Deleted,
+		SyncedCodes:     ev.SyncedCodes,
+	}}, nil
+}
+
+// ── Roles ─────────────────────────────────────────────────────────────────
+
+type syncRoleInputRequest struct {
+	Name          string   `json:"name"`
+	DisplayName   *string  `json:"displayName,omitempty"`
+	Description   *string  `json:"description,omitempty"`
+	Permissions   []string `json:"permissions,omitempty"`
+	ClientManaged bool     `json:"clientManaged,omitempty"`
+}
+
+type syncRolesRequest struct {
+	Roles []syncRoleInputRequest `json:"roles"`
+}
+
+type syncRolesInput struct {
+	AppCode        string `path:"appCode" doc:"Application code"`
+	RemoveUnlisted bool   `query:"removeUnlisted" doc:"Remove SDK roles not in the list"`
+	Body           syncRolesRequest
+}
+
+func (s *State) syncRoles(ctx context.Context, in *syncRolesInput) (*syncResultOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanSyncRoles(ac); err != nil {
+		return nil, err
+	}
+	app, err := s.resolveApp(ctx, in.AppCode)
+	if err != nil {
+		return nil, err
+	}
+
+	inputs := make([]roleops.SyncRoleInput, 0, len(in.Body.Roles))
+	for _, r := range in.Body.Roles {
+		inputs = append(inputs, roleops.SyncRoleInput{
+			Name:          r.Name,
+			DisplayName:   r.DisplayName,
+			Description:   r.Description,
+			Permissions:   r.Permissions,
+			ClientManaged: r.ClientManaged,
+		})
+	}
+
+	cmd := roleops.SyncRolesCommand{
+		ApplicationCode: app.Code,
+		ApplicationID:   app.ID,
+		Roles:           inputs,
+		RemoveUnlisted:  in.RemoveUnlisted,
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	committed, err := roleops.SyncRoles(ctx, s.Roles, s.UoW, cmd, ec)
+	if err != nil {
+		return nil, err
+	}
+	ev := committed.Event()
+	return &syncResultOutput{Body: SyncResultResponse{
+		ApplicationCode: ev.ApplicationCode,
+		Created:         ev.Created,
+		Updated:         ev.Updated,
+		Deleted:         ev.Removed,
 		SyncedCodes:     ev.SyncedCodes,
 	}}, nil
 }
