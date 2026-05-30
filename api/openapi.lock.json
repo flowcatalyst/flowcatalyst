@@ -3256,6 +3256,24 @@
         ],
         "type": "object"
       },
+      "FireNowRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/FireNowRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "correlationId": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "FireNowResponse": {
         "additionalProperties": false,
         "properties": {
@@ -4947,6 +4965,9 @@
           "description": {
             "type": "string"
           },
+          "hasActiveInstance": {
+            "type": "boolean"
+          },
           "id": {
             "type": "string"
           },
@@ -4996,7 +5017,8 @@
           "deliveryMaxAttempts",
           "createdAt",
           "updatedAt",
-          "version"
+          "version",
+          "hasActiveInstance"
         ],
         "type": "object"
       },
@@ -5852,6 +5874,12 @@
             "type": "string"
           },
           "grantTypes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "postLogoutRedirectUris": {
             "items": {
               "type": "string"
             },
@@ -13904,6 +13932,15 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FireNowRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "202": {
             "content": {
