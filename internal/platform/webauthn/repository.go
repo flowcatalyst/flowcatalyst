@@ -111,5 +111,32 @@ func rowToCredential(row dbq.WebauthnCredential) (*Credential, error) {
 	if err := json.Unmarshal(row.PasskeyData, &c.Credential); err != nil {
 		return nil, fmt.Errorf("unmarshal credential: %w", err)
 	}
+	// A4b safety: a legacy webauthn-rs Passkey blob ({"cred":{...}}, written by
+	// the Rust system) unmarshals into a go-webauthn Credential WITHOUT error but
+	// yields an empty id/publicKey (incompatible schema) — a silently-broken
+	// credential that would fail assertion opaquely. Detect it and fail loudly
+	// with an actionable message instead. Full convert-on-read of legacy
+	// passkeys (COSE-key re-encoding) is a tracked follow-up that needs a real
+	// webauthn-rs sample to implement + validate safely; until then a user with
+	// a legacy passkey must re-register it.
+	if len(c.Credential.ID) == 0 && isLegacyRustPasskey(row.PasskeyData) {
+		return nil, fmt.Errorf("credential %s is a legacy webauthn-rs passkey (Rust format); "+
+			"convert-on-read is not yet implemented — the user must re-register this passkey", row.ID)
+	}
 	return &c, nil
+}
+
+// isLegacyRustPasskey reports whether a passkey_data blob is the webauthn-rs
+// Passkey shape (a top-level "cred" object) rather than the go-webauthn
+// Credential shape (top-level "id" + "publicKey"). Used to turn a silent schema
+// mismatch into a clear error.
+func isLegacyRustPasskey(raw []byte) bool {
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return false
+	}
+	_, hasCred := probe["cred"]
+	_, hasID := probe["id"]
+	_, hasPublicKey := probe["publicKey"]
+	return hasCred && !hasID && !hasPublicKey
 }
