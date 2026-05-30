@@ -306,6 +306,26 @@ JWKS endpoint at `/.well-known/jwks.json` must return the same key set in the sa
 
 OAuth client_credentials grant endpoint at `/oauth/token` must return the same response shape, same `Cache-Control: no-store` header, same `Content-Type: application/json`.
 
+**Chi-mounted auth/session endpoints (intentionally absent from `api/openapi.lock.json`).**
+`api/openapi.lock.json` is generated from the huma-registered platform routes
+(`make api-bump`) and CI-gated (`make api-diff`). The auth/session surface is
+served by plain `chi` handlers, so it does **not** appear in that lock — by
+design, mirroring how the Rust server documents `/auth/*` outside its utoipa
+spec. The inventory (O7):
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/auth/login` | password → session cookie + principal |
+| POST | `/auth/refresh` | rotate a refresh token without an existing session |
+| GET | `/auth/check-domain` | resolve auth method for an email's domain |
+| GET | `/auth/me` | read the current session cookie's principal |
+| GET | `/auth/oidc/login`, `/auth/oidc/callback` | OIDC SSO (email-domain path) |
+| POST | `/auth/password-reset/request`, `/auth/password-reset/confirm` | unauthenticated password reset (hex SHA-256 tokens) |
+| GET | `/auth/password-reset/validate` | check a reset token |
+| GET | `/api/me`, `/api/me/applications` | caller identity + accessible applications |
+| GET/POST | `/oauth/authorize`, `/oauth/token` | OAuth/OIDC provider surface |
+| GET | `/.well-known/openid-configuration`, `/.well-known/jwks.json` | OIDC discovery + JWKS |
+
 **Known behavioral gap — `/oauth/authorize?provider=<idp-id>` (not implemented):**
 the Rust server supports a *direct-IDP* entry point on the authorize endpoint
 (`oidc_service.get_authorization_url`). A downstream OAuth client of FlowCatalyst
