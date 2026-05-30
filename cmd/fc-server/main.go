@@ -16,6 +16,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/flowcatalyst/flowcatalyst-go/frontend"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/config"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/logging"
@@ -55,7 +57,20 @@ func main() {
 		slog.Info("resolved database URL from AWS Secrets Manager")
 	}
 
-	pool, err := database.NewPool(rootCtx, config.DBConfig{URL: cfg.DatabaseURL})
+	// DB-secret rotation: when SM mode + DB_SECRET_REFRESH_INTERVAL_MS != 0,
+	// poll for rotated creds and inject them into new connections (no restart).
+	dbCfg := config.DBConfig{URL: cfg.DatabaseURL}
+	var beforeConnect func(context.Context, *pgx.ConnConfig) error
+	if refresher, err := server.NewDBSecretRefresher(rootCtx); err != nil {
+		slog.Error("DB secret refresher init failed", "err", err)
+		os.Exit(1)
+	} else if refresher != nil {
+		beforeConnect = refresher.BeforeConnect
+		go refresher.Run(rootCtx)
+		slog.Info("DB secret rotation enabled")
+	}
+
+	pool, err := database.NewPoolWithBeforeConnect(rootCtx, dbCfg, beforeConnect)
 	if err != nil {
 		slog.Error("postgres connect failed", "err", err)
 		os.Exit(1)

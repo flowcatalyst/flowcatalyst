@@ -86,3 +86,28 @@ func TestResolveDBSecretURLNotApplicable(t *testing.T) {
 		t.Fatal("non-aws DB_SECRET_PROVIDER must error")
 	}
 }
+
+func TestNewDBSecretRefresherNotApplicable(t *testing.T) {
+	// Explicit URL → no refresher (and no AWS call).
+	t.Setenv("FC_DATABASE_URL", "postgresql://x@h/db")
+	t.Setenv("DB_SECRET_ARN", "arn:aws:secretsmanager:...")
+	t.Setenv("DB_HOST", "db.internal")
+	if r, err := NewDBSecretRefresher(context.Background()); r != nil || err != nil {
+		t.Fatalf("explicit URL must yield no refresher; got r=%v err=%v", r, err)
+	}
+
+	// No DB_SECRET_ARN → not applicable.
+	t.Setenv("FC_DATABASE_URL", "")
+	t.Setenv("DB_SECRET_ARN", "")
+	if r, err := NewDBSecretRefresher(context.Background()); r != nil || err != nil {
+		t.Fatalf("no ARN must yield no refresher; got r=%v err=%v", r, err)
+	}
+
+	// Rotation disabled (interval 0) → no refresher, even with ARN+host set.
+	t.Setenv("DB_SECRET_ARN", "arn:aws:secretsmanager:...")
+	t.Setenv("DB_HOST", "db.internal")
+	t.Setenv("DB_SECRET_REFRESH_INTERVAL_MS", "0")
+	if r, err := NewDBSecretRefresher(context.Background()); r != nil || err != nil {
+		t.Fatalf("interval 0 must disable rotation; got r=%v err=%v", r, err)
+	}
+}
