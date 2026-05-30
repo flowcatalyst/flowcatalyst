@@ -300,8 +300,10 @@ func (s *State) create(ctx context.Context, in *createInput) (*createOutput, err
 
 // requireScopeByID loads the principal and enforces per-resource scope (A2) on
 // top of the coarse permission already checked: a non-anchor principal must not
-// mutate another tenant's principal by id. (Rust additionally restricts
-// scope/client_id *changes* to anchors — a separate nuance not covered here.)
+// mutate another tenant's principal by id. (Rust additionally gates scope/
+// client_id *changes* to anchors; the Go UpdatePrincipalRequest deliberately
+// doesn't expose scope/client_id at all, so that escalation vector can't exist
+// here — no extra gate needed.)
 func (s *State) requireScopeByID(ctx context.Context, ac *auth.AuthContext, id string) error {
 	p, err := s.Repo.FindByID(ctx, id)
 	if err != nil {
