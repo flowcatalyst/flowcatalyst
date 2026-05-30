@@ -4,7 +4,7 @@ _Created 2026-05-29. Source: full read-only parity audit (Go `flowcatalyst-go` v
 
 ## Progress & Handover (updated 2026-05-30)
 
-**Branch:** `parity-remediation` (off `main`). **Build:** `go build ./...` clean. **Tests:** every touched suite green.
+**STATUS (2026-05-30): COMPLETE + MERGED TO `main`.** All 10 phases + every high/medium-value follow-up are done and **merged into `main`** via two merge commits — `9e7f38a` (parity-remediation: Phases 0–10 + follow-ups) and `1ce9cd7` (outbox #16 batching + state machine). `go build ./...` clean; full `go test ./internal/...` green. **NOT pushed yet** — `main` is ahead of `origin/main`; run `git push` when ready. The `parity-remediation` and `outbox-batching-statemachine` branches are fully contained in `main` and can be deleted. **No open correctness gaps**; only the explicitly-deferred low-priority items below remain (O3 `?provider=`, full passkey COSE converter, Phase 5/6 nits). Resume from the "Remaining" / "Resume notes" sections.
 
 ### Status by phase
 - ✅ **Phase 0 — verify (V1–V4):** all confirmed. V1 config wire-shape (`queueName`/`queueUri`), V2 permission-lockout (real, critical), V3 outbox schema mismatch vs SDK, V4 WebAuthn blob-format divergence.
