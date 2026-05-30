@@ -134,22 +134,66 @@ func (p *Processor) tick(ctx context.Context) {
 		return
 	}
 
-	// Route through the group distributor: items with the same message_group
-	// execute serially (FIFO) and, with BlockOnError, stop the group on a
-	// failure (releasing the rest to re-run in order behind it); items without
-	// a group or in different groups execute concurrently (bounded by OB7).
+	// Partition the claim: grouped items keep strict per-group FIFO +
+	// block-on-error (serial via the distributor, OB7-bounded); ungrouped items
+	// are batched by ItemType into a single HTTP call each (OB4 throughput —
+	// there's no ordering to preserve for them).
+	byType := make(map[common.OutboxItemType][]Item)
 	for _, item := range items {
 		item := item
-		p.inFlight.Add(1)
-		p.distributor.Submit(item,
-			func() bool {
-				defer p.inFlight.Add(-1)
-				return p.dispatch(ctx, item)
-			},
-			func() {
-				defer p.inFlight.Add(-1)
-				p.release(ctx, item)
-			})
+		if item.MessageGroup != nil && *item.MessageGroup != "" {
+			p.inFlight.Add(1)
+			p.distributor.Submit(item,
+				func() bool {
+					defer p.inFlight.Add(-1)
+					return p.dispatch(ctx, item)
+				},
+				func() {
+					defer p.inFlight.Add(-1)
+					p.release(ctx, item)
+				})
+			continue
+		}
+		byType[item.ItemType] = append(byType[item.ItemType], item)
+	}
+	for _, batch := range byType {
+		batch := batch
+		p.inFlight.Add(int64(len(batch)))
+		go p.dispatchBatch(ctx, batch)
+	}
+}
+
+// dispatchBatch sends a batch of ungrouped, same-ItemType items in one HTTP
+// call (OB4) and records each item's outcome — MarkSuccess in bulk, MarkFailed
+// per item (same retryable + max-retries requeue rule as dispatch).
+func (p *Processor) dispatchBatch(ctx context.Context, batch []Item) {
+	defer p.inFlight.Add(-int64(len(batch)))
+	outcomes := p.dispatcher.SendBatch(ctx, batch)
+	maxRetries := p.cfg.MaxRetries
+	if maxRetries <= 0 {
+		maxRetries = 3
+	}
+	var succeeded []string
+	for _, item := range batch {
+		out, ok := outcomes[item.ID]
+		if !ok {
+			out = DispatchOutcome{Status: common.OutboxInternalError, Message: "no per-item result"}
+		}
+		if out.Status == common.OutboxSuccess {
+			succeeded = append(succeeded, item.ID)
+			p.totalSucceed.Add(1)
+			continue
+		}
+		requeue := out.Status.IsRetryable() && item.AttemptCount+1 < maxRetries
+		if err := p.repo.MarkFailed(ctx, []string{item.ID}, out.Status, out.Message, requeue); err != nil {
+			slog.Warn("outbox mark failed", "id", item.ID, "err", err)
+		}
+		p.totalFailed.Add(1)
+	}
+	if len(succeeded) > 0 {
+		if err := p.repo.MarkSuccess(ctx, succeeded); err != nil {
+			slog.Warn("outbox mark success failed (batch)", "count", len(succeeded), "err", err)
+		}
 	}
 }
 
