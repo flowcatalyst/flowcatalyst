@@ -130,6 +130,18 @@ func Register(api huma.API, s *State) {
 		DefaultStatus: http.StatusNoContent,
 	}, s.grantPermission)
 
+	// SDK-compatibility alias: the Laravel/Rust client grants a permission by
+	// POSTing {permission} in the body to /permissions (rather than naming it
+	// in the path). Same grant operation.
+	huma.Register(api, huma.Operation{
+		OperationID:   "grantRolePermissionByBody",
+		Method:        http.MethodPost,
+		Path:          "/api/roles/{roleName}/permissions",
+		Summary:       "Grant a permission to a role (SDK; permission in body)",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusNoContent,
+	}, s.grantPermissionByBody)
+
 	huma.Register(api, huma.Operation{
 		OperationID:   "revokeRolePermission",
 		Method:        http.MethodDelete,
@@ -211,14 +223,32 @@ func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
 	if err := auth.CanReadRoles(ac); err != nil {
 		return nil, err
 	}
-	r, err := s.Repo.FindByID(ctx, in.ID)
+	r, err := s.resolveRole(ctx, in.ID)
+	if err != nil {
+		return nil, err
+	}
+	return &getOutput{Body: fromEntity(r)}, nil
+}
+
+// resolveRole loads a role by TSID id, falling back to its name. The SPA
+// addresses roles by id; the Laravel/Rust SDK addresses them by name on the
+// same /api/roles/{…} routes — so the {id} handlers accept either. TSIDs and
+// role names don't overlap, so the fallback is unambiguous.
+func (s *State) resolveRole(ctx context.Context, idOrName string) (*role.Role, error) {
+	r, err := s.Repo.FindByID(ctx, idOrName)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if r == nil {
-		return nil, httperror.NotFound("Role", in.ID)
+		r, err = s.Repo.FindByName(ctx, idOrName)
+		if err != nil {
+			return nil, usecase.Internal("REPO", "find_by_name failed", err)
+		}
 	}
-	return &getOutput{Body: fromEntity(r)}, nil
+	if r == nil {
+		return nil, httperror.NotFound("Role", idOrName)
+	}
+	return r, nil
 }
 
 type createInput struct {
@@ -254,8 +284,12 @@ func (s *State) update(ctx context.Context, in *updateInput) (*emptyOutput, erro
 	if err := auth.CanWriteRoles(ac); err != nil {
 		return nil, err
 	}
+	r, err := s.resolveRole(ctx, in.ID)
+	if err != nil {
+		return nil, err
+	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.UpdateRole(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
+	if _, err := operations.UpdateRole(ctx, s.Repo, s.UoW, in.Body.toCommand(r.ID), ec); err != nil {
 		return nil, err
 	}
 	return &emptyOutput{}, nil
@@ -270,8 +304,12 @@ func (s *State) delete(ctx context.Context, in *deleteInput) (*emptyOutput, erro
 	if err := auth.CanDeleteRoles(ac); err != nil {
 		return nil, err
 	}
+	r, err := s.resolveRole(ctx, in.ID)
+	if err != nil {
+		return nil, err
+	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.DeleteRole(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
+	if _, err := operations.DeleteRole(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: r.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &emptyOutput{}, nil
@@ -393,6 +431,28 @@ func (s *State) grantPermission(ctx context.Context, in *rolePermissionGrantInpu
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
 	if _, err := operations.GrantPermission(ctx, s.Repo, s.UoW, operations.GrantPermissionCommand{
 		RoleName: in.RoleName, Permission: in.Permission,
+	}, ec); err != nil {
+		return nil, err
+	}
+	return &emptyOutput{}, nil
+}
+
+type rolePermissionGrantBodyInput struct {
+	RoleName string `path:"roleName"`
+	Body     GrantPermissionRequest
+}
+
+// grantPermissionByBody backs POST /api/roles/{roleName}/permissions with the
+// permission in the body (SDK shape). Delegates to the same grant operation as
+// the path-param variant.
+func (s *State) grantPermissionByBody(ctx context.Context, in *rolePermissionGrantBodyInput) (*emptyOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWriteRoles(ac); err != nil {
+		return nil, err
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	if _, err := operations.GrantPermission(ctx, s.Repo, s.UoW, operations.GrantPermissionCommand{
+		RoleName: in.RoleName, Permission: in.Body.Permission,
 	}, ec); err != nil {
 		return nil, err
 	}

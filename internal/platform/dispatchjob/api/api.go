@@ -91,6 +91,28 @@ func Register(api huma.API, s *State) {
 		DefaultStatus: http.StatusOK,
 	}, s.attempts)
 
+	// SDK-compatibility aliases. The Laravel/Rust client addresses these as
+	// /api/dispatch-jobs/by-event/{eventId} and the collection-level
+	// /api/dispatch-jobs/raw; Go's canonical paths are /event/{eventId} and
+	// /list-raw. Same handlers — keeps the existing SDK working unmodified.
+	huma.Register(api, huma.Operation{
+		OperationID:   "dispatchJobsByEventAlias",
+		Method:        http.MethodGet,
+		Path:          "/api/dispatch-jobs/by-event/{eventId}",
+		Summary:       "Dispatch jobs spawned by an event (SDK alias of /event/{eventId})",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.byEvent)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "listDispatchJobsRawAlias",
+		Method:        http.MethodGet,
+		Path:          "/api/dispatch-jobs/raw",
+		Summary:       "List dispatch jobs raw (SDK alias of /list-raw)",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.listRaw)
+
 	// BFF tier — /bff/dispatch-jobs mirrors the regular handlers under
 	// cookie-auth. Mirrors Rust.
 	registerBFF(api, s, "/bff/dispatch-jobs", "Bff", "bff-dispatch-jobs")

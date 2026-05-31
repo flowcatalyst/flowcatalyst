@@ -32,6 +32,18 @@ func (r CreatePrincipalRequest) toCommand() operations.CreateCommand {
 	}
 }
 
+// CreateUserRequest is the wire body for POST /api/principals/users — the
+// SDK/Rust create-user shape. Unlike CreatePrincipalRequest it carries NO
+// scope: scope + client association are derived from the email domain
+// (anchor-domain check + email-domain-mapping). Mirrors Rust CreateUserRequest.
+type CreateUserRequest struct {
+	Email                     string  `json:"email"`
+	Name                      string  `json:"name"`
+	Password                  *string `json:"password,omitempty"`
+	ClientID                  *string `json:"clientId,omitempty"`
+	EnforcePasswordComplexity *bool   `json:"enforcePasswordComplexity,omitempty"`
+}
+
 // UpdatePrincipalRequest is the wire body for PUT /api/principals/{id}.
 type UpdatePrincipalRequest struct {
 	Name      *string `json:"name,omitempty"`
@@ -205,8 +217,8 @@ type PrincipalRoleListResponse struct {
 // RolesAssignedResponse is the wire shape for PUT /api/principals/{id}/roles.
 type RolesAssignedResponse struct {
 	Roles   []PrincipalRoleAssignmentDTO `json:"roles"`
-	Added   []string            `json:"added"`
-	Removed []string            `json:"removed"`
+	Added   []string                     `json:"added"`
+	Removed []string                     `json:"removed"`
 }
 
 // AddRoleRequest is the body for POST /api/principals/{id}/roles.

@@ -10,6 +10,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
+	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
@@ -32,8 +33,9 @@ type State struct {
 	Roles             *role.Repository
 	Applications      *application.Repository
 	Clients           *client.Repository
-	Mappings          *emaildomainmapping.Repository // for /check-email-domain
-	IdentityProviders *identityprovider.Repository   // for /check-email-domain
+	Mappings          *emaildomainmapping.Repository // for /check-email-domain + create-user scope derivation
+	IdentityProviders *identityprovider.Repository   // for /check-email-domain + create-user idp-type
+	AnchorDomains     *platformauth.AnchorDomainRepo // for create-user anchor-domain check (optional)
 	UoW               *usecasepgx.UnitOfWork
 	PasswordEmailer   operations.PasswordResetEmailer // optional; gates /send-password-reset
 }
@@ -59,6 +61,15 @@ func Register(api huma.API, s *State) {
 		Tags:          []string{tag},
 		DefaultStatus: http.StatusCreated,
 	}, s.create)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "createUser",
+		Method:        http.MethodPost,
+		Path:          "/api/principals/users",
+		Summary:       "Create a user principal (scope derived from email domain)",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.createUser)
 
 	huma.Register(api, huma.Operation{
 		OperationID:   "getPrincipal",
@@ -296,6 +307,165 @@ func (s *State) create(ctx context.Context, in *createInput) (*createOutput, err
 		return nil, err
 	}
 	return &createOutput{Body: apicommon.CreatedResponse{ID: committed.Event().UserID}}, nil
+}
+
+type createUserInput struct {
+	Body CreateUserRequest
+}
+
+// createUser ports Rust create_user (fc-platform principal/api.rs): anchor-only,
+// derives scope + client association from the email domain (anchor-domain check
+// + email-domain-mapping), then delegates to the shared CreateUser operation.
+// Returns the full principal (the SDK reads it back). The SDK's
+// enforcePasswordComplexity is accepted but not enforced (Go's create doesn't
+// apply a complexity policy). Magic-link-on-passwordless-create is intentionally
+// not ported — the SDK always supplies a password and the reset emailer isn't
+// wired (matching Rust's unconfigured-emailer fallback).
+func (s *State) createUser(ctx context.Context, in *createUserInput) (*getOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.RequireAnchor(ac); err != nil {
+		return nil, err
+	}
+	email := strings.ToLower(strings.TrimSpace(in.Body.Email))
+	at := strings.IndexByte(email, '@')
+	if at < 0 || at == len(email)-1 {
+		return nil, httperror.BadRequest("INVALID_EMAIL", "Invalid email format")
+	}
+	domain := email[at+1:]
+
+	isAnchorDomain := false
+	if s.AnchorDomains != nil {
+		ad, err := s.AnchorDomains.FindByDomain(ctx, domain)
+		if err != nil {
+			return nil, usecase.Internal("REPO", "anchor_domain lookup failed", err)
+		}
+		isAnchorDomain = ad != nil
+	}
+
+	var mapping *emaildomainmapping.EmailDomainMapping
+	if s.Mappings != nil {
+		m, err := s.Mappings.FindByEmailDomain(ctx, domain)
+		if err != nil {
+			return nil, usecase.Internal("REPO", "email_domain_mapping lookup failed", err)
+		}
+		mapping = m
+	}
+
+	// Resolve IdP type (INTERNAL / OIDC). Unmapped domains default to INTERNAL.
+	idpType := "INTERNAL"
+	if mapping != nil && s.IdentityProviders != nil {
+		if idp, _ := s.IdentityProviders.FindByID(ctx, mapping.IdentityProviderID); idp != nil {
+			idpType = string(idp.Type)
+		}
+	}
+
+	scope, clientID, err := deriveUserScope(isAnchorDomain, mapping, in.Body.ClientID)
+	if err != nil {
+		return nil, err
+	}
+
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+
+	// Partner-merge: when a PARTNER user already exists for this email, grant
+	// access to the requested client rather than recreating (keeps events +
+	// audit accurate). Mirrors Rust's GrantClientAccess branch.
+	if scope == "PARTNER" {
+		existing, ferr := s.Repo.FindByEmail(ctx, email)
+		if ferr != nil {
+			return nil, usecase.Internal("REPO", "find_by_email failed", ferr)
+		}
+		if existing != nil {
+			if existing.ClientID != nil && clientID != nil && *existing.ClientID == *clientID {
+				return nil, usecase.Conflict("EMAIL_EXISTS", "User with email '"+email+"' already exists")
+			}
+			if _, gerr := operations.GrantClientAccess(ctx, s.Repo, s.Clients, s.GrantRepo, s.UoW,
+				operations.GrantClientAccessCommand{UserID: existing.ID, ClientID: derefStr(clientID)}, ec); gerr != nil {
+				return nil, gerr
+			}
+			refreshed, rerr := s.Repo.FindByID(ctx, existing.ID)
+			if rerr != nil || refreshed == nil {
+				return nil, httperror.NotFound("Principal", existing.ID)
+			}
+			return &getOutput{Body: fromEntity(refreshed)}, nil
+		}
+	}
+
+	name := in.Body.Name
+	committed, err := operations.CreateUser(ctx, s.Repo, s.UoW, operations.CreateCommand{
+		Email:    email,
+		Name:     &name,
+		Scope:    scope,
+		ClientID: clientID,
+		Password: in.Body.Password,
+		IDPType:  &idpType,
+	}, ec)
+	if err != nil {
+		return nil, err
+	}
+
+	// New PARTNER user: grant the requested client (parity with Rust's
+	// granted_client_ids = [clientId]).
+	if scope == "PARTNER" && clientID != nil {
+		if _, gerr := operations.GrantClientAccess(ctx, s.Repo, s.Clients, s.GrantRepo, s.UoW,
+			operations.GrantClientAccessCommand{UserID: committed.Event().UserID, ClientID: *clientID}, ec); gerr != nil {
+			return nil, gerr
+		}
+	}
+
+	created, err := s.Repo.FindByID(ctx, committed.Event().UserID)
+	if err != nil || created == nil {
+		return nil, httperror.NotFound("Principal", committed.Event().UserID)
+	}
+	return &getOutput{Body: fromEntity(created)}, nil
+}
+
+// deriveUserScope resolves (scope, home-client) from the email domain, mirroring
+// Rust create_user. An anchor domain (or an ANCHOR mapping) → ANCHOR with no
+// client. A PARTNER mapping requires a clientId allowed by the mapping. A CLIENT
+// mapping uses the request's clientId or the mapping's primary. An unmapped
+// domain → CLIENT with the request's clientId verbatim. Pure + unit-tested.
+func deriveUserScope(isAnchorDomain bool, mapping *emaildomainmapping.EmailDomainMapping, reqClientID *string) (string, *string, error) {
+	if isAnchorDomain {
+		return "ANCHOR", nil, nil
+	}
+	if mapping == nil {
+		return "CLIENT", reqClientID, nil
+	}
+	switch mapping.ScopeType {
+	case emaildomainmapping.ScopeAnchor:
+		return "ANCHOR", nil, nil
+	case emaildomainmapping.ScopePartner:
+		if reqClientID == nil || *reqClientID == "" {
+			return "", nil, usecase.Validation("CLIENT_REQUIRED", "clientId is required for partner users")
+		}
+		allowed := (mapping.PrimaryClientID != nil && *mapping.PrimaryClientID == *reqClientID)
+		for _, c := range mapping.GrantedClientIDs {
+			if c == *reqClientID {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return "", nil, usecase.Validation("CLIENT_NOT_ALLOWED",
+				"clientId "+*reqClientID+" is not allowed for partner domain "+mapping.EmailDomain)
+		}
+		return "PARTNER", reqClientID, nil
+	case emaildomainmapping.ScopeClient:
+		primary := reqClientID
+		if primary == nil {
+			primary = mapping.PrimaryClientID
+		}
+		return "CLIENT", primary, nil
+	default:
+		return "ANCHOR", nil, nil
+	}
+}
+
+func derefStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // requireScopeByID loads the principal and enforces per-resource scope (A2) on

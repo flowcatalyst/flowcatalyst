@@ -310,6 +310,7 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 			Clients:           clientRepo,
 			Mappings:          edmRepo,
 			IdentityProviders: idpRepo,
+			AnchorDomains:     authRepo.AnchorDomains,
 			UoW:               uow,
 		})
 
@@ -453,10 +454,13 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 		})
 
 		webauthnapi.Register(humaAPI, &webauthnapi.State{
-			Service:    webauthnService,
-			Principals: principalRepo,
-			Creds:      webauthnCredRepo,
-			UoW:        uow,
+			Service:      webauthnService,
+			Principals:   principalRepo,
+			Creds:        webauthnCredRepo,
+			UoW:          uow,
+			Provider:     authProvider,
+			CookieSecure: !cfg.AuthAllowTestHeaders,
+			SessionTTL:   login.SessionTTL,
 		})
 
 		// Shared BFF/SDK endpoints (dashboard + SDK ingest)

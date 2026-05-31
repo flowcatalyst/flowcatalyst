@@ -51,6 +51,18 @@ func Register(api huma.API, s *State) {
 		DefaultStatus: http.StatusOK,
 	}, s.listRaw)
 
+	// SDK-compatibility alias: the Laravel/Rust client addresses the raw
+	// collection as /api/events/raw; Go's canonical path is /list-raw. Same
+	// handler.
+	huma.Register(api, huma.Operation{
+		OperationID:   "listEventsRawAlias",
+		Method:        http.MethodGet,
+		Path:          "/api/events/raw",
+		Summary:       "List events raw (SDK alias of /list-raw)",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.listRaw)
+
 	huma.Register(api, huma.Operation{
 		OperationID:   "listEvents",
 		Method:        http.MethodGet,

@@ -11,11 +11,15 @@ import (
 	"time"
 )
 
-// Headers and timestamp format used by the FlowCatalyst (Rust) router and
-// other peer SDKs. Note: this *parallel* shape differs from the
-// [Verifier] form above — the legacy Verifier matches this Go platform's
-// own router (uppercase headers, ISO8601 timestamps). Validator matches
-// the Rust SDK shape (mixed-case headers, Unix-second timestamps).
+// Header names accepted by the Validator. HTTP header lookups are
+// case-insensitive, so these match the router's uppercase X-FLOWCATALYST-*
+// headers in any compliant framework.
+//
+// Both this Validator and [Verifier] expect the timestamp format the
+// FlowCatalyst router actually emits: ISO8601 with millisecond precision
+// (e.g. 2026-05-24T08:30:00.123Z). A bare Unix-seconds integer is also
+// accepted for backward compatibility. The two types differ only in API
+// style; prefer [Verifier] for new code.
 const (
 	ValidatorSignatureHeader = "X-FlowCatalyst-Signature"
 	ValidatorTimestampHeader = "X-FlowCatalyst-Timestamp"
@@ -32,20 +36,20 @@ const FutureGraceSecs = 60
 var (
 	ErrValidatorMissingSignature = errors.New("webhook: missing signature header (" + ValidatorSignatureHeader + ")")
 	ErrValidatorMissingTimestamp = errors.New("webhook: missing timestamp header (" + ValidatorTimestampHeader + ")")
-	ErrValidatorInvalidTimestamp = errors.New("webhook: invalid timestamp: not an integer")
+	ErrValidatorInvalidTimestamp = errors.New("webhook: invalid timestamp")
 	ErrValidatorInvalidSignature = errors.New("webhook: invalid signature")
 	ErrTimestampExpired          = errors.New("webhook: timestamp expired")
 	ErrTimestampInFuture         = errors.New("webhook: timestamp is in the future")
 	ErrMissingSecret             = errors.New("webhook: signing secret not configured")
 )
 
-// Validator validates HMAC-SHA256 webhook signatures using the Rust-SDK
-// wire format: timestamp as Unix seconds, signed message = timestamp ||
-// payload, signature hex-encoded.
+// Validator validates HMAC-SHA256 webhook signatures. The signed message is
+// timestamp || payload (hex-encoded). The timestamp is the ISO8601
+// millisecond value emitted by the FlowCatalyst router (a bare Unix-seconds
+// integer is also accepted for backward compatibility).
 //
-// Use this when the sender is the Rust platform or any peer SDK. For
-// webhooks signed by THIS Go platform's router (uppercase headers,
-// ISO8601 timestamps), use [Verifier] instead.
+// Validator and [Verifier] are functionally equivalent; they differ only in
+// API style. Prefer [Verifier] for new code.
 type Validator struct {
 	secret    []byte
 	tolerance time.Duration
@@ -92,7 +96,8 @@ func ValidatorFromEnv(opts ...ValidatorOption) (*Validator, error) {
 // Validate checks the signature against the body and timestamp.
 //
 //   - signature: value of X-FlowCatalyst-Signature header (hex HMAC-SHA256)
-//   - timestamp: value of X-FlowCatalyst-Timestamp header (Unix seconds)
+//   - timestamp: value of X-FlowCatalyst-Timestamp header (ISO8601 ms, e.g.
+//     2026-05-24T08:30:00.123Z; a bare Unix-seconds integer is also accepted)
 //   - payload: raw request body
 //
 // Returns nil on success, or one of the sentinel errors. The signature
@@ -104,7 +109,7 @@ func (v *Validator) Validate(signature, timestamp string, payload []byte) error 
 	if timestamp == "" {
 		return ErrValidatorMissingTimestamp
 	}
-	tsSecs, err := strconv.ParseInt(timestamp, 10, 64)
+	tsSecs, err := parseTimestamp(timestamp)
 	if err != nil {
 		return ErrValidatorInvalidTimestamp
 	}
@@ -127,6 +132,24 @@ func (v *Validator) ComputeSignature(timestamp string, payload []byte) string {
 	mac.Write([]byte(timestamp))
 	mac.Write(payload)
 	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// parseTimestamp accepts the X-FlowCatalyst-Timestamp value. The FlowCatalyst
+// router emits ISO8601 with millisecond precision (e.g.
+// 2026-05-24T08:30:00.123Z); we also accept any RFC3339 fractional precision
+// and, for backward compatibility, a bare Unix-seconds integer. Returns Unix
+// seconds.
+func parseTimestamp(s string) (int64, error) {
+	if t, err := time.Parse("2006-01-02T15:04:05.000Z", s); err == nil {
+		return t.UTC().Unix(), nil
+	}
+	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+		return t.UTC().Unix(), nil
+	}
+	if secs, err := strconv.ParseInt(s, 10, 64); err == nil {
+		return secs, nil
+	}
+	return 0, errors.New("webhook: unparseable timestamp")
 }
 
 func (v *Validator) validateTimestamp(tsSecs int64) error {

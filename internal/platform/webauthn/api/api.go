@@ -17,14 +17,17 @@ import (
 	"encoding/base64"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-webauthn/webauthn/protocol"
 	gowebauthn "github.com/go-webauthn/webauthn/webauthn"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/provider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -38,12 +41,19 @@ type State struct {
 	Creds      *webauthn.Repository
 	UoW        *usecasepgx.UnitOfWork
 
-	// SessionWriter is invoked on successful authenticate/complete. The
-	// platform server installs a function that sets the session cookie
-	// and returns 200 with the principal payload. Huma handler cannot
-	// access the http.ResponseWriter directly; the writer is invoked via
-	// huma.Context (see authenticateComplete).
-	SessionWriter func(w http.ResponseWriter, r *http.Request, principalID string)
+	// Provider mints the fc_session JWT issued on a successful passkey
+	// login — the same token platformmw.Authenticator verifies for
+	// password and Bearer auth. Required by authenticate/complete to
+	// establish a session; without it the browser "logs in" but holds no
+	// cookie, so it has no permissions and bounces to /login on reload.
+	Provider *provider.Provider
+	// CookieSecure flips the session cookie's Secure flag (false on
+	// fc-dev's HTTP localhost, true on fc-server's HTTPS). Mirrors
+	// login.Config.CookieSecure.
+	CookieSecure bool
+	// SessionTTL is the session cookie lifetime. Defaults to 24h when zero
+	// (matches login.SessionTTL).
+	SessionTTL time.Duration
 }
 
 const tag = "webauthn"
@@ -245,17 +255,21 @@ type authenticateCompleteInput struct {
 }
 
 type authenticateCompleteOutput struct {
-	Body WebauthnAuthenticateCompleteResponse
+	// SetCookie carries the fc_session cookie so a passkey login
+	// establishes a session exactly like POST /auth/login. huma maps this
+	// field to the Set-Cookie response header.
+	SetCookie string `header:"Set-Cookie"`
+	Body      WebauthnAuthenticateCompleteResponse
 }
 
 func (s *State) authenticateComplete(ctx context.Context, in *authenticateCompleteInput) (*authenticateCompleteOutput, error) {
-	// Note: SessionWriter is the legacy callback path that writes a
-	// cookie directly to the response. With huma we can't reach
-	// http.ResponseWriter from inside the handler, so the platform server
-	// is expected to install the cookie via a transformer / a follow-on
-	// http middleware that watches for principalId in this response. For
-	// the migration we preserve the JSON envelope behaviour; the cookie
-	// install path is migrated separately.
+	// On success we mint an fc_session JWT and return it as a Set-Cookie,
+	// so a passkey login establishes a session exactly like POST
+	// /auth/login (and like the Rust webauthn authenticate_complete). The
+	// SPA seeds permissions:[] from this response and then loads the real
+	// set from /auth/me using the cookie — so the cookie, not the body, is
+	// what unblocks the user. Without it the browser appears logged in but
+	// has no session: no permissions, and a reload bounces to /login.
 	consumed, err := s.Service.Ceremonies().ConsumeAuthentication(ctx, in.Body.StateID)
 	if err != nil || consumed == nil || consumed.PrincipalID == nil {
 		return nil, invalidCredentialsErr()
@@ -297,12 +311,40 @@ func (s *State) authenticateComplete(ctx context.Context, in *authenticateComple
 	for _, r := range p.Roles {
 		roles = append(roles, r.Role)
 	}
-	return &authenticateCompleteOutput{Body: WebauthnAuthenticateCompleteResponse{
-		PrincipalID: p.ID,
-		Email:       email,
-		Name:        p.Name,
-		Roles:       roles,
-	}}, nil
+
+	// Establish the session: mint the fc_session JWT and serialize it as a
+	// Set-Cookie with the same attributes as POST /auth/login.
+	if s.Provider == nil {
+		return nil, usecase.Internal("WIRING", "session provider not configured", nil)
+	}
+	ttl := s.SessionTTL
+	if ttl <= 0 {
+		ttl = 24 * time.Hour
+	}
+	token, err := s.Provider.MintSessionToken(ctx, p.ID, ttl)
+	if err != nil {
+		return nil, usecase.Internal("MINT_FAILED", "failed to mint session token", err)
+	}
+	cookie := http.Cookie{
+		Name:     platformmw.SessionCookieName,
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   s.CookieSecure,
+		SameSite: http.SameSiteLaxMode,
+		Expires:  time.Now().Add(ttl),
+		MaxAge:   int(ttl.Seconds()),
+	}
+
+	return &authenticateCompleteOutput{
+		SetCookie: cookie.String(),
+		Body: WebauthnAuthenticateCompleteResponse{
+			PrincipalID: p.ID,
+			Email:       email,
+			Name:        p.Name,
+			Roles:       roles,
+		},
+	}, nil
 }
 
 // ── credentials list / delete ────────────────────────────────────────────
