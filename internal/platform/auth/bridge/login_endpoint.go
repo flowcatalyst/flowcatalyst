@@ -335,6 +335,19 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Bind the token to the domain the login was initiated for. With a
+	// multi-tenant IdP, the provider's shared signing keys sign tokens from ANY
+	// tenant, so without this a user in an unrelated/attacker-controlled tenant
+	// could pass signature + issuer-pattern checks and authenticate. An email
+	// domain is verified within its owning tenant, so requiring the token's
+	// email domain to equal the login domain pins the token to the correct
+	// tenant. 1:1 with Rust's email_domain != mapping.email_domain rejection.
+	if !strings.EqualFold(emailDomain(claims.Email), loginState.EmailDomain) {
+		httperror.Write(w, usecase.Authorization("EMAIL_DOMAIN_MISMATCH",
+			"the token's email domain does not match the login domain"))
+		return
+	}
+
 	// Resolve or create the FlowCatalyst principal. Drop-in parity with
 	// Rust's sync_oidc_login_with_allowed_roles: lookup by email; if
 	// missing, auto-provision using the scope + primary-client-id from
