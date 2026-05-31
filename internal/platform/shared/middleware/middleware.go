@@ -65,16 +65,23 @@ func Authenticator(cfg AuthConfig) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
 
-			token := extractBearerToken(r)
+			token, fromCookie := extractToken(r)
 			switch {
 			case token != "":
 				ac, err := introspect(ctx, cfg.Provider, token)
 				if err != nil {
-					if !cfg.IgnoreInvalidTokens {
+					// A stale / invalid fc_session cookie must not hard-fail the
+					// request: the browser replays it on every call — including
+					// the public login routes (/auth/login, /auth/oidc/login) —
+					// so treat it as logged-out and proceed unauthenticated. An
+					// explicit Authorization: Bearer carrying a bad token is
+					// still rejected (unless IgnoreInvalidTokens) so API callers
+					// get a clear error rather than a silent downgrade.
+					if !fromCookie && !cfg.IgnoreInvalidTokens {
 						writeInvalidTokenError(w, err)
 						return
 					}
-					// Strip the token and proceed.
+					// Strip the token and proceed unauthenticated.
 				} else if ac != nil {
 					ctx = auth.WithContext(ctx, ac)
 					ctx = logging.WithPrincipalID(ctx, ac.PrincipalID)
@@ -98,25 +105,27 @@ func Authenticator(cfg AuthConfig) func(http.Handler) http.Handler {
 // carrier.
 const SessionCookieName = "fc_session"
 
-// extractBearerToken pulls the JWT out of the Authorization header,
-// falling back to the fc_session cookie. Returns "" when neither is
-// present (or the header is malformed).
-func extractBearerToken(r *http.Request) string {
+// extractToken pulls the JWT out of the Authorization header (fromCookie
+// false), falling back to the fc_session cookie (fromCookie true). Returns
+// ("", false) when neither is present (or the header is malformed). The source
+// matters: a bad bearer token is an explicit error, a stale cookie is a
+// graceful logout.
+func extractToken(r *http.Request) (token string, fromCookie bool) {
 	h := r.Header.Get("Authorization")
 	if h != "" {
 		const prefix = "Bearer "
 		if len(h) > len(prefix) && strings.EqualFold(h[:len(prefix)], prefix) {
-			return strings.TrimSpace(h[len(prefix):])
+			return strings.TrimSpace(h[len(prefix):]), false
 		}
 		// Header present but not a Bearer scheme — don't fall through
 		// to the cookie. A request that declares Basic / Digest /
 		// anything-else is signalling its intent explicitly.
-		return ""
+		return "", false
 	}
 	if c, err := r.Cookie(SessionCookieName); err == nil {
-		return strings.TrimSpace(c.Value)
+		return strings.TrimSpace(c.Value), true
 	}
-	return ""
+	return "", false
 }
 
 // introspect validates the session-cookie JWT via the sessiontoken

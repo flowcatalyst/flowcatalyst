@@ -25,9 +25,9 @@ func TestExtractBearerToken(t *testing.T) {
 		if tc.header != "" {
 			r.Header.Set("Authorization", tc.header)
 		}
-		got := extractBearerToken(r)
+		got, _ := extractToken(r)
 		if got != tc.want {
-			t.Errorf("extractBearerToken(%q) = %q; want %q", tc.header, got, tc.want)
+			t.Errorf("extractToken(%q) = %q; want %q", tc.header, got, tc.want)
 		}
 	}
 }
@@ -36,23 +36,23 @@ func TestExtractBearerTokenSessionCookie(t *testing.T) {
 	// No Authorization header — cookie wins.
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	r.AddCookie(&http.Cookie{Name: SessionCookieName, Value: "cookie-jwt"})
-	if got := extractBearerToken(r); got != "cookie-jwt" {
-		t.Errorf("cookie path: got %q want cookie-jwt", got)
+	if got, fromCookie := extractToken(r); got != "cookie-jwt" || !fromCookie {
+		t.Errorf("cookie path: got %q fromCookie=%v want cookie-jwt/true", got, fromCookie)
 	}
 
-	// Both present — Authorization wins.
+	// Both present — Authorization wins (and is not flagged as a cookie).
 	r = httptest.NewRequest(http.MethodGet, "/", nil)
 	r.Header.Set("Authorization", "Bearer header-jwt")
 	r.AddCookie(&http.Cookie{Name: SessionCookieName, Value: "cookie-jwt"})
-	if got := extractBearerToken(r); got != "header-jwt" {
-		t.Errorf("header preferred: got %q want header-jwt", got)
+	if got, fromCookie := extractToken(r); got != "header-jwt" || fromCookie {
+		t.Errorf("header preferred: got %q fromCookie=%v want header-jwt/false", got, fromCookie)
 	}
 
 	// Non-Bearer Authorization — do NOT fall through to cookie.
 	r = httptest.NewRequest(http.MethodGet, "/", nil)
 	r.Header.Set("Authorization", "Basic dXNlcjpwYXNz")
 	r.AddCookie(&http.Cookie{Name: SessionCookieName, Value: "cookie-jwt"})
-	if got := extractBearerToken(r); got != "" {
+	if got, _ := extractToken(r); got != "" {
 		t.Errorf("non-bearer header should suppress cookie fallback: got %q", got)
 	}
 }
