@@ -252,7 +252,12 @@ func (s *State) list(ctx context.Context, _ *emptyInput) (*listOutput, error) {
 	out := make([]PrincipalResponse, 0, len(rows))
 	for i := range rows {
 		p := &rows[i]
-		if p.ClientID == nil || ac.CanAccessClient(*p.ClientID) {
+		// Access control (1:1 with Rust list_principals): anchors see all;
+		// non-anchors see only client-scoped principals they can access.
+		// Platform-level principals (client_id == nil) are hidden from
+		// non-anchors. (get-by-id stays lenient on the nil case, matching
+		// Rust get_principal, which only checks access when client_id is set.)
+		if ac.IsAnchor() || (p.ClientID != nil && ac.CanAccessClient(*p.ClientID)) {
 			out = append(out, fromEntity(p))
 		}
 	}
