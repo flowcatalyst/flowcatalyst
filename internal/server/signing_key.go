@@ -4,11 +4,13 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // LoadSigningKeyOrEphemeral returns the PEM-encoded RSA private key for
@@ -36,11 +38,37 @@ func LoadSigningKeyOrEphemeral(path string) []byte {
 	// no other replica — or the Rust side — can verify).
 	for _, env := range []string{"FLOWCATALYST_JWT_PRIVATE_KEY", "FC_JWT_SIGNING_KEY_PEM"} {
 		if pemStr := os.Getenv(env); pemStr != "" {
-			return []byte(pemStr)
+			return []byte(NormalizePEM(pemStr))
 		}
 	}
 	slog.Warn("no JWT signing key configured — generating ephemeral RSA key (tokens won't survive restart)")
 	return generateRSAPEM()
+}
+
+// NormalizePEM repairs the common ways a PEM key gets mangled when carried in
+// an environment variable (AWS SSM / Secrets Manager → ECS task def):
+//
+//   - literal "\n" (and "\r\n") escape sequences instead of real newlines —
+//     the value was stored as a single-line / JSON-escaped string, so
+//     encoding/pem can't find the BEGIN/END block;
+//   - surrounding double quotes;
+//   - the whole PEM base64-encoded.
+//
+// A value that is already a clean PEM passes through unchanged.
+func NormalizePEM(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.Trim(s, `"`)
+	if strings.Contains(s, `\n`) {
+		s = strings.ReplaceAll(s, `\r\n`, "\n")
+		s = strings.ReplaceAll(s, `\n`, "\n")
+	}
+	if !strings.Contains(s, "-----BEGIN") {
+		if decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(s)); err == nil &&
+			strings.Contains(string(decoded), "-----BEGIN") {
+			return string(decoded)
+		}
+	}
+	return s
 }
 
 // EnsureSigningKeyFile guarantees a PEM-encoded RSA private key exists
