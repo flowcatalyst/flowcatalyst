@@ -92,6 +92,19 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 	}
 	if opts.Fallback != nil {
 		r.NotFound(opts.Fallback.ServeHTTP)
+		// SPA history-mode routes (e.g. GET /auth/login, which an /oauth/authorize
+		// redirect lands on) can collide with an API path registered for another
+		// method (POST /auth/login). chi answers the method mismatch with 405
+		// instead of falling through to NotFound, so the SPA never renders. Serve
+		// the SPA for a GET method-mismatch; keep 405 for genuine API method
+		// errors (non-GET).
+		r.MethodNotAllowed(func(w http.ResponseWriter, req *http.Request) {
+			if req.Method == http.MethodGet {
+				opts.Fallback.ServeHTTP(w, req)
+				return
+			}
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		})
 	}
 
 	// ── Background subsystems ─────────────────────────────────────────────
