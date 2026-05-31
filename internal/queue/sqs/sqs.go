@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	neturl "net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -59,7 +60,16 @@ func publisherFactory(ctx context.Context, cfg common.QueueConfig) (queue.Publis
 }
 
 func build(ctx context.Context, cfg common.QueueConfig) (*Queue, error) {
-	awsCfg, err := awsconfig.LoadDefaultConfig(ctx)
+	// The queue's own URL encodes its region (sqs.<region>.amazonaws.com), so
+	// use it: an SQS queue must be reached in its own region, and this works
+	// even when AWS_REGION/AWS_DEFAULT_REGION isn't set in the environment
+	// (e.g. an ECS task def that doesn't export it). Falls back to the SDK's
+	// default region chain when the URL isn't a recognisable SQS endpoint.
+	var opts []func(*awsconfig.LoadOptions) error
+	if region := regionFromSQSURL(cfg.URI); region != "" {
+		opts = append(opts, awsconfig.WithRegion(region))
+	}
+	awsCfg, err := awsconfig.LoadDefaultConfig(ctx, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("aws config: %w", err)
 	}
@@ -83,6 +93,21 @@ func build(ctx context.Context, cfg common.QueueConfig) (*Queue, error) {
 	}
 	q.running.Store(true)
 	return q, nil
+}
+
+// regionFromSQSURL extracts the AWS region from an SQS queue URL whose host is
+// sqs.<region>.amazonaws.com (or sqs-fips.<region>.amazonaws.com[.cn]). Returns
+// "" when uri is not a recognisable SQS endpoint (e.g. a non-AWS test URI).
+func regionFromSQSURL(uri string) string {
+	u, err := neturl.Parse(uri)
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	parts := strings.Split(u.Host, ".")
+	if len(parts) >= 4 && strings.HasPrefix(parts[0], "sqs") && parts[2] == "amazonaws" {
+		return parts[1]
+	}
+	return ""
 }
 
 func queueNameFromURL(url string) string {

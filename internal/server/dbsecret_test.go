@@ -56,6 +56,24 @@ func TestBuildDBSecretDSN(t *testing.T) {
 	}
 }
 
+func TestRegionFromARN(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"arn:aws:secretsmanager:eu-west-1:392314734354:secret:rds!db-78fb8253-mArzZr", "eu-west-1"},
+		{"arn:aws:secretsmanager:us-east-2:111122223333:secret:prod/db-AbCdEf", "us-east-2"},
+		{"arn:aws-us-gov:secretsmanager:us-gov-west-1:111122223333:secret:x", "us-gov-west-1"},
+		{"my-secret-name", ""},         // bare name → no region
+		{"arn:aws:secretsmanager", ""}, // truncated ARN → no region
+		{"", ""},
+	}
+	for _, tc := range cases {
+		if got := regionFromARN(tc.in); got != tc.want {
+			t.Fatalf("regionFromARN(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestResolveDBSecretURLNotApplicable(t *testing.T) {
 	// Explicit URL present → SM never consulted (no AWS call).
 	t.Setenv("FC_DATABASE_URL", "postgresql://x@h/db")

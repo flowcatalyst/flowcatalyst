@@ -54,7 +54,7 @@ func ResolveDBSecretURL(ctx context.Context) (string, bool, error) {
 		return "", false, fmt.Errorf("DB_SECRET_PROVIDER %q not supported (only \"aws\")", provider)
 	}
 
-	sm, err := newSMClient(ctx)
+	sm, err := newSMClient(ctx, arn)
 	if err != nil {
 		return "", false, err
 	}
@@ -66,13 +66,33 @@ func ResolveDBSecretURL(ctx context.Context) (string, bool, error) {
 }
 
 // newSMClient builds an AWS Secrets Manager client from the default credential
-// chain (env, instance profile, ECS task role, …).
-func newSMClient(ctx context.Context) (*secretsmanager.Client, error) {
-	awsCfg, err := awsconfig.LoadDefaultConfig(ctx)
+// chain (env, instance profile, ECS task role, …). The region is taken from
+// the secret's own ARN: a Secrets Manager secret is regional and must be read
+// from the region it lives in, and that region is encoded in the ARN — so this
+// works even when AWS_REGION/AWS_DEFAULT_REGION isn't set in the environment
+// (e.g. an ECS task def that doesn't export it). Falls back to the SDK's
+// default region chain when the ARN has no region segment (a bare name).
+func newSMClient(ctx context.Context, arn string) (*secretsmanager.Client, error) {
+	var opts []func(*awsconfig.LoadOptions) error
+	if region := regionFromARN(arn); region != "" {
+		opts = append(opts, awsconfig.WithRegion(region))
+	}
+	awsCfg, err := awsconfig.LoadDefaultConfig(ctx, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("load AWS config: %w", err)
 	}
 	return secretsmanager.NewFromConfig(awsCfg), nil
+}
+
+// regionFromARN extracts the region from an ARN of the form
+// arn:partition:service:REGION:account:resource. Returns "" when s is not an
+// ARN with a region segment (e.g. a bare secret name was supplied instead).
+func regionFromARN(s string) string {
+	parts := strings.Split(s, ":")
+	if len(parts) < 4 || parts[0] != "arn" {
+		return ""
+	}
+	return parts[3]
 }
 
 // fetchDBSecret loads + parses the RDS-style secret (username/password/port).
@@ -148,7 +168,7 @@ func NewDBSecretRefresher(ctx context.Context) (*DBSecretRefresher, error) {
 	if intervalMS <= 0 {
 		return nil, nil // rotation disabled
 	}
-	sm, err := newSMClient(ctx)
+	sm, err := newSMClient(ctx, arn)
 	if err != nil {
 		return nil, err
 	}
