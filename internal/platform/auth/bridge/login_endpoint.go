@@ -283,18 +283,19 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	loginState, err := e.states.FindByState(r.Context(), state)
+	// Atomically consume the state: single-use, replay-proof, and rejects an
+	// expired row — all in one DELETE … RETURNING. Consuming up-front (rather
+	// than deleting at the end) means a failed callback can't be retried with
+	// the same state, matching Rust.
+	loginState, err := e.states.Consume(r.Context(), state)
 	if err != nil {
 		httperror.Write(w, usecase.Internal("OIDC_STATE", "lookup state failed", err))
 		return
 	}
 	if loginState == nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_STATE", "unknown state"))
-		return
-	}
-	if loginState.IsExpired() {
-		_ = e.states.Delete(r.Context(), state)
-		httperror.Write(w, httperror.BadRequest("STATE_EXPIRED", "login state expired"))
+		// Unknown, already-consumed (replay), or expired — indistinguishable by
+		// design, all rejected.
+		httperror.Write(w, httperror.BadRequest("INVALID_STATE", "unknown or expired login session"))
 		return
 	}
 
@@ -406,14 +407,27 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 			"principalId", p.ID, "err", err)
 	}
 
-	// Best-effort cleanup of the state row.
-	_ = e.states.Delete(r.Context(), state)
+	// The state row was already consumed atomically up-front, so no cleanup here.
 
+	// Sanitise the post-login redirect target: only a same-site relative path is
+	// allowed. Absolute URLs and protocol-relative ("//host") / backslash forms
+	// are open-redirect vectors, so they're dropped (the SessionWriter then
+	// falls back to its default landing page).
 	returnURL := ""
 	if loginState.ReturnURL != nil {
-		returnURL = *loginState.ReturnURL
+		returnURL = safeRelativeReturnURL(*loginState.ReturnURL)
 	}
 	e.SessionWriter(w, r, p.ID, returnURL)
+}
+
+// safeRelativeReturnURL returns u only when it is a safe same-site relative
+// path — it must start with a single "/" and not "//" or "/\" (which browsers
+// treat as host-relative and would redirect off-site). Anything else → "".
+func safeRelativeReturnURL(u string) string {
+	if u == "" || u[0] != '/' || strings.HasPrefix(u, "//") || strings.HasPrefix(u, "/\\") {
+		return ""
+	}
+	return u
 }
 
 // autoProvision creates a Principal for `email` using the scope +

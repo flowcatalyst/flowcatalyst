@@ -110,6 +110,35 @@ func (r *LoginStateRepo) FindByState(ctx context.Context, state string) (*OIDCLo
 	return &s, nil
 }
 
+// Consume atomically deletes and returns the state row, but only if it exists
+// and has not expired. This is single-use / replay-proof: a second concurrent
+// (or later) callback for the same state gets (nil, nil) because the row is
+// gone. Mirrors Rust's find_and_consume_state (DELETE … WHERE expires_at > NOW()
+// RETURNING …) and replaces the non-atomic FindByState + IsExpired + Delete
+// dance, which left the row replayable on every error path.
+func (r *LoginStateRepo) Consume(ctx context.Context, state string) (*OIDCLoginState, error) {
+	row := r.pool.QueryRow(ctx,
+		`DELETE FROM oauth_oidc_login_states
+		  WHERE state = $1 AND expires_at > NOW()
+		 RETURNING state, email_domain, identity_provider_id, email_domain_mapping_id,
+		           nonce, code_verifier, return_url,
+		           oauth_client_id, oauth_redirect_uri, oauth_scope, oauth_state,
+		           oauth_code_challenge, oauth_code_challenge_method, oauth_nonce,
+		           interaction_uid, created_at, expires_at`, state)
+	var s OIDCLoginState
+	if err := row.Scan(&s.State, &s.EmailDomain, &s.IdentityProviderID, &s.EmailDomainMappingID,
+		&s.Nonce, &s.CodeVerifier, &s.ReturnURL,
+		&s.OAuthClientID, &s.OAuthRedirectURI, &s.OAuthScope, &s.OAuthState,
+		&s.OAuthCodeChallenge, &s.OAuthCodeChallengeMethod, &s.OAuthNonce,
+		&s.InteractionUID, &s.CreatedAt, &s.ExpiresAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("oauth_oidc_login_states consume: %w", err)
+	}
+	return &s, nil
+}
+
 // Delete removes a state row. Called after the callback exchange so the
 // state isn't replayable.
 func (r *LoginStateRepo) Delete(ctx context.Context, state string) error {
