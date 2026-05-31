@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -37,6 +39,48 @@ func TestOpenAPISpecLocked(t *testing.T) {
 			"Lockfile:  %s\nGenerated: <stdout from `go run ./tools/dump-spec`>",
 			lockPath)
 	}
+}
+
+// TestDumpSpecCoversAllWiredHumaRoutes guards against the lockfile silently
+// under-reporting the served API: every aggregate registered against the
+// huma API in WirePlatform (internal/server/wire.go) must also be registered
+// here in dump-spec, or its routes won't appear in api/openapi.lock.json
+// (and `oasdiff`/parity checks would be blind to them). This is exactly how
+// the sdksync + loginattempt routes went missing. Compares the set of
+// `<pkg>.Register(humaAPI, …)` idents in wire.go to `<pkg>.Register(api, …)`
+// idents here.
+func TestDumpSpecCoversAllWiredHumaRoutes(t *testing.T) {
+	repoRoot := findRepoRoot(t)
+
+	wireSrc, err := os.ReadFile(filepath.Join(repoRoot, "internal", "server", "wire.go"))
+	require.NoError(t, err, "read wire.go")
+	dumpSrc, err := os.ReadFile(filepath.Join(repoRoot, "tools", "dump-spec", "main.go"))
+	require.NoError(t, err, "read dump-spec/main.go")
+
+	wired := registerIdents(wireSrc, "humaAPI")
+	dumped := registerIdents(dumpSrc, "api")
+
+	var missing []string
+	for pkg := range wired {
+		if !dumped[pkg] {
+			missing = append(missing, pkg)
+		}
+	}
+	sort.Strings(missing)
+	require.Empty(t, missing,
+		"these aggregates are registered on the huma API in wire.go but NOT in tools/dump-spec/main.go,\n"+
+			"so their routes are missing from api/openapi.lock.json. Add them to dump-spec and run `make api-bump`:\n%v",
+		missing)
+}
+
+// registerIdents returns the set of package idents X in `X.Register(<apiVar>, …)`.
+func registerIdents(src []byte, apiVar string) map[string]bool {
+	re := regexp.MustCompile(`(\w+)\.Register\(` + regexp.QuoteMeta(apiVar) + `\b`)
+	out := map[string]bool{}
+	for _, m := range re.FindAllSubmatch(src, -1) {
+		out[string(m[1])] = true
+	}
+	return out
 }
 
 func normaliseJSON(t *testing.T, b []byte) []byte {

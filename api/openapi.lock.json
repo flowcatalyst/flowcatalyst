@@ -1413,8 +1413,11 @@
           "completionStatus": {
             "type": "string"
           },
+          "result": {
+            "description": "SDK alias for completionResult"
+          },
           "status": {
-            "description": "Defaults to COMPLETED",
+            "description": "COMPLETED|FAILED|… (instance status) or SUCCESS|FAILURE (completion outcome)",
             "type": "string"
           }
         },
@@ -2506,6 +2509,40 @@
         ],
         "type": "object"
       },
+      "CreateUserRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CreateUserRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "enforcePasswordComplexity": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "name"
+        ],
+        "type": "object"
+      },
       "CreatedResponse": {
         "additionalProperties": false,
         "properties": {
@@ -3345,6 +3382,27 @@
         ],
         "type": "object"
       },
+      "GrantPermissionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/GrantPermissionRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "permission": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "permission"
+        ],
+        "type": "object"
+      },
       "IdentityProviderListResponse": {
         "additionalProperties": false,
         "properties": {
@@ -3492,6 +3550,93 @@
           "platformRoleName",
           "createdAt",
           "updatedAt"
+        ],
+        "type": "object"
+      },
+      "LoginAttemptListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/LoginAttemptListResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LoginAttemptResponse"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "hasMore"
+        ],
+        "type": "object"
+      },
+      "LoginAttemptResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "attemptType": {
+            "type": "string"
+          },
+          "attemptedAt": {
+            "$ref": "#/components/schemas/Time"
+          },
+          "failureReason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "identifier": {
+            "type": "string"
+          },
+          "ipAddress": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "principalId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "userAgent": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "attemptType",
+          "outcome",
+          "failureReason",
+          "identifier",
+          "principalId",
+          "ipAddress",
+          "userAgent",
+          "attemptedAt"
         ],
         "type": "object"
       },
@@ -5546,6 +5691,583 @@
         ],
         "type": "object"
       },
+      "SyncDispatchPoolInputRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "concurrency": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rateLimit": {
+            "description": "Messages per minute; omit for concurrency-only",
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ],
+        "type": "object"
+      },
+      "SyncDispatchPoolsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SyncDispatchPoolsRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "pools": {
+            "items": {
+              "$ref": "#/components/schemas/SyncDispatchPoolInputRequest"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "pools"
+        ],
+        "type": "object"
+      },
+      "SyncEventTypeInputRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "Full code (application:subdomain:aggregate:event)",
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ],
+        "type": "object"
+      },
+      "SyncEventTypesRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SyncEventTypesRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "eventTypes": {
+            "items": {
+              "$ref": "#/components/schemas/SyncEventTypeInputRequest"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "eventTypes"
+        ],
+        "type": "object"
+      },
+      "SyncOpenApiSpecResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SyncOpenApiSpecResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "applicationCode": {
+            "type": "string"
+          },
+          "archivedPriorVersion": {
+            "type": "string"
+          },
+          "hasBreaking": {
+            "type": "boolean"
+          },
+          "specId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "unchanged": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "applicationCode",
+          "specId",
+          "version",
+          "status",
+          "hasBreaking",
+          "unchanged"
+        ],
+        "type": "object"
+      },
+      "SyncOpenapiRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SyncOpenapiRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "spec": {
+            "description": "The OpenAPI document (OpenAPI 3.x or Swagger 2.x)"
+          }
+        },
+        "required": [
+          "spec"
+        ],
+        "type": "object"
+      },
+      "SyncPrincipalInputRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "description": "Whether the user is active (default true)",
+            "type": "boolean"
+          },
+          "email": {
+            "description": "User's email address (unique identifier for matching)",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "roles": {
+            "description": "Role short names (prefixed with applicationCode)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "email",
+          "name"
+        ],
+        "type": "object"
+      },
+      "SyncPrincipalsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SyncPrincipalsRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "principals": {
+            "items": {
+              "$ref": "#/components/schemas/SyncPrincipalInputRequest"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "principals"
+        ],
+        "type": "object"
+      },
+      "SyncProcessInputRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "description": "Diagram body (typically Mermaid source)",
+            "type": "string"
+          },
+          "code": {
+            "description": "Full code (application:subdomain:process-name)",
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "diagramType": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ],
+        "type": "object"
+      },
+      "SyncProcessesRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SyncProcessesRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "processes": {
+            "items": {
+              "$ref": "#/components/schemas/SyncProcessInputRequest"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "processes"
+        ],
+        "type": "object"
+      },
+      "SyncResultResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SyncResultResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "applicationCode": {
+            "type": "string"
+          },
+          "created": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "deleted": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "syncedCodes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "updated": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "applicationCode",
+          "created",
+          "updated",
+          "deleted",
+          "syncedCodes"
+        ],
+        "type": "object"
+      },
+      "SyncRoleInputRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "clientManaged": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "SyncRolesRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SyncRolesRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/SyncRoleInputRequest"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "roles"
+        ],
+        "type": "object"
+      },
+      "SyncScheduledJobInputRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "concurrent": {
+            "type": "boolean"
+          },
+          "crons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "deliveryMaxAttempts": {
+            "description": "Default 3 when omitted",
+            "format": "int32",
+            "type": "integer"
+          },
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "payload": {},
+          "targetUrl": {
+            "type": "string"
+          },
+          "timeoutSeconds": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "timezone": {
+            "description": "IANA timezone (default UTC)",
+            "type": "string"
+          },
+          "tracksCompletion": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "crons"
+        ],
+        "type": "object"
+      },
+      "SyncScheduledJobsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SyncScheduledJobsRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "archiveUnlisted": {
+            "type": "boolean"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/SyncScheduledJobInputRequest"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "jobs"
+        ],
+        "type": "object"
+      },
+      "SyncScheduledJobsResultResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SyncScheduledJobsResultResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "applicationCode": {
+            "type": "string"
+          },
+          "archived": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "created": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "updated": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "applicationCode",
+          "created",
+          "updated",
+          "archived"
+        ],
+        "type": "object"
+      },
+      "SyncSubscriptionEventTypeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "eventTypeCode": {
+            "type": "string"
+          },
+          "filter": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "eventTypeCode"
+        ],
+        "type": "object"
+      },
+      "SyncSubscriptionInputRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "connectionId": {
+            "type": "string"
+          },
+          "dataOnly": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string"
+          },
+          "dispatchPoolCode": {
+            "type": "string"
+          },
+          "eventTypes": {
+            "items": {
+              "$ref": "#/components/schemas/SyncSubscriptionEventTypeRequest"
+            },
+            "type": "array"
+          },
+          "maxRetries": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "timeoutSeconds": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "target",
+          "eventTypes"
+        ],
+        "type": "object"
+      },
+      "SyncSubscriptionsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SyncSubscriptionsRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "subscriptions": {
+            "items": {
+              "$ref": "#/components/schemas/SyncSubscriptionInputRequest"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "subscriptions"
+        ],
+        "type": "object"
+      },
       "Time": {
         "additionalProperties": false,
         "type": "object"
@@ -6577,6 +7299,490 @@
         "summary": "List roles registered against an application",
         "tags": [
           "applications"
+        ]
+      }
+    },
+    "/api/applications/{appCode}/dispatch-pools/sync": {
+      "post": {
+        "operationId": "syncDispatchPools",
+        "parameters": [
+          {
+            "description": "Application code",
+            "in": "path",
+            "name": "appCode",
+            "required": true,
+            "schema": {
+              "description": "Application code",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Archive pools not in the list",
+            "explode": false,
+            "in": "query",
+            "name": "removeUnlisted",
+            "schema": {
+              "description": "Archive pools not in the list",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncDispatchPoolsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncResultResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Sync dispatch pools (SDK self-registration)",
+        "tags": [
+          "sdk-sync"
+        ]
+      }
+    },
+    "/api/applications/{appCode}/event-types/sync": {
+      "post": {
+        "operationId": "syncEventTypes",
+        "parameters": [
+          {
+            "description": "Application code",
+            "in": "path",
+            "name": "appCode",
+            "required": true,
+            "schema": {
+              "description": "Application code",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Remove API-sourced event types not in the list",
+            "explode": false,
+            "in": "query",
+            "name": "removeUnlisted",
+            "schema": {
+              "description": "Remove API-sourced event types not in the list",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncEventTypesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncResultResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Sync an application's event types (SDK self-registration)",
+        "tags": [
+          "sdk-sync"
+        ]
+      }
+    },
+    "/api/applications/{appCode}/openapi/sync": {
+      "post": {
+        "operationId": "syncOpenapi",
+        "parameters": [
+          {
+            "description": "Application code",
+            "in": "path",
+            "name": "appCode",
+            "required": true,
+            "schema": {
+              "description": "Application code",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncOpenapiRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncOpenApiSpecResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Sync an application's OpenAPI document (SDK self-registration)",
+        "tags": [
+          "sdk-sync"
+        ]
+      }
+    },
+    "/api/applications/{appCode}/principals/sync": {
+      "post": {
+        "operationId": "syncPrincipals",
+        "parameters": [
+          {
+            "description": "Application code",
+            "in": "path",
+            "name": "appCode",
+            "required": true,
+            "schema": {
+              "description": "Application code",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Strip SDK_SYNC roles from unlisted principals",
+            "explode": false,
+            "in": "query",
+            "name": "removeUnlisted",
+            "schema": {
+              "description": "Strip SDK_SYNC roles from unlisted principals",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncPrincipalsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncResultResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Sync an application's principals (SDK self-registration)",
+        "tags": [
+          "sdk-sync"
+        ]
+      }
+    },
+    "/api/applications/{appCode}/processes/sync": {
+      "post": {
+        "operationId": "syncProcesses",
+        "parameters": [
+          {
+            "description": "Application code",
+            "in": "path",
+            "name": "appCode",
+            "required": true,
+            "schema": {
+              "description": "Application code",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Remove API/CODE processes not in the list",
+            "explode": false,
+            "in": "query",
+            "name": "removeUnlisted",
+            "schema": {
+              "description": "Remove API/CODE processes not in the list",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncProcessesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncResultResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Sync an application's processes (SDK self-registration)",
+        "tags": [
+          "sdk-sync"
+        ]
+      }
+    },
+    "/api/applications/{appCode}/roles/sync": {
+      "post": {
+        "operationId": "syncRoles",
+        "parameters": [
+          {
+            "description": "Application code",
+            "in": "path",
+            "name": "appCode",
+            "required": true,
+            "schema": {
+              "description": "Application code",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Remove SDK roles not in the list",
+            "explode": false,
+            "in": "query",
+            "name": "removeUnlisted",
+            "schema": {
+              "description": "Remove SDK roles not in the list",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncRolesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncResultResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Sync an application's roles (SDK self-registration)",
+        "tags": [
+          "sdk-sync"
+        ]
+      }
+    },
+    "/api/applications/{appCode}/scheduled-jobs/sync": {
+      "post": {
+        "operationId": "syncScheduledJobs",
+        "parameters": [
+          {
+            "description": "Application code",
+            "in": "path",
+            "name": "appCode",
+            "required": true,
+            "schema": {
+              "description": "Application code",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncScheduledJobsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncScheduledJobsResultResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Sync scheduled jobs (SDK self-registration)",
+        "tags": [
+          "sdk-sync"
+        ]
+      }
+    },
+    "/api/applications/{appCode}/subscriptions/sync": {
+      "post": {
+        "operationId": "syncSubscriptions",
+        "parameters": [
+          {
+            "description": "Application code",
+            "in": "path",
+            "name": "appCode",
+            "required": true,
+            "schema": {
+              "description": "Application code",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Remove API/CODE subscriptions not in the list",
+            "explode": false,
+            "in": "query",
+            "name": "removeUnlisted",
+            "schema": {
+              "description": "Remove API/CODE subscriptions not in the list",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncSubscriptionsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncResultResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Sync an application's subscriptions (SDK self-registration)",
+        "tags": [
+          "sdk-sync"
         ]
       }
     },
@@ -7812,6 +9018,45 @@
       }
     },
     "/api/clients/search": {
+      "get": {
+        "operationId": "searchClientsByQuery",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Search clients (SDK alias; ?q=\u003cterm\u003e)",
+        "tags": [
+          "clients"
+        ]
+      },
       "post": {
         "operationId": "searchClients",
         "requestBody": {
@@ -8981,6 +10226,50 @@
         ]
       }
     },
+    "/api/dispatch-jobs/by-event/{eventId}": {
+      "get": {
+        "operationId": "dispatchJobsByEventAlias",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eventId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DispatchJobRead"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Dispatch jobs spawned by an event (SDK alias of /event/{eventId})",
+        "tags": [
+          "dispatch-jobs"
+        ]
+      }
+    },
     "/api/dispatch-jobs/event/{eventId}": {
       "get": {
         "operationId": "dispatchJobsByEvent",
@@ -9246,6 +10535,201 @@
           }
         },
         "summary": "List dispatch jobs (raw)",
+        "tags": [
+          "dispatch-jobs"
+        ]
+      }
+    },
+    "/api/dispatch-jobs/raw": {
+      "get": {
+        "operationId": "listDispatchJobsRawAlias",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "clientId",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "dispatchPoolId",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "subscriptionId",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "code",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC3339 timestamp",
+            "explode": false,
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "description": "RFC3339 timestamp",
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC3339 timestamp",
+            "explode": false,
+            "in": "query",
+            "name": "until",
+            "schema": {
+              "description": "RFC3339 timestamp",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Max rows (default 50, max 1000)",
+            "explode": false,
+            "in": "query",
+            "name": "size",
+            "schema": {
+              "description": "Max rows (default 50, max 1000)",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "CSV of client ids",
+            "explode": false,
+            "in": "query",
+            "name": "clientIds",
+            "schema": {
+              "description": "CSV of client ids",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV of statuses",
+            "explode": false,
+            "in": "query",
+            "name": "statuses",
+            "schema": {
+              "description": "CSV of statuses",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV of application codes",
+            "explode": false,
+            "in": "query",
+            "name": "applications",
+            "schema": {
+              "description": "CSV of application codes",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV of subdomains",
+            "explode": false,
+            "in": "query",
+            "name": "subdomains",
+            "schema": {
+              "description": "CSV of subdomains",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV of aggregates",
+            "explode": false,
+            "in": "query",
+            "name": "aggregates",
+            "schema": {
+              "description": "CSV of aggregates",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV of codes",
+            "explode": false,
+            "in": "query",
+            "name": "codes",
+            "schema": {
+              "description": "CSV of codes",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Free-text source filter",
+            "explode": false,
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "description": "Free-text source filter",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DispatchJobRead"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List dispatch jobs raw (SDK alias of /list-raw)",
         "tags": [
           "dispatch-jobs"
         ]
@@ -10777,6 +12261,189 @@
         ]
       }
     },
+    "/api/events/raw": {
+      "get": {
+        "operationId": "listEventsRawAlias",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "type",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "subject",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "clientId",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "principalId",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "correlationId",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC3339 timestamp",
+            "explode": false,
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "description": "RFC3339 timestamp",
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC3339 timestamp",
+            "explode": false,
+            "in": "query",
+            "name": "until",
+            "schema": {
+              "description": "RFC3339 timestamp",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Max rows (default 50, max 1000)",
+            "explode": false,
+            "in": "query",
+            "name": "size",
+            "schema": {
+              "description": "Max rows (default 50, max 1000)",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "CSV of client ids",
+            "explode": false,
+            "in": "query",
+            "name": "clientIds",
+            "schema": {
+              "description": "CSV of client ids",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV of application codes",
+            "explode": false,
+            "in": "query",
+            "name": "applications",
+            "schema": {
+              "description": "CSV of application codes",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV of subdomains",
+            "explode": false,
+            "in": "query",
+            "name": "subdomains",
+            "schema": {
+              "description": "CSV of subdomains",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV of aggregates",
+            "explode": false,
+            "in": "query",
+            "name": "aggregates",
+            "schema": {
+              "description": "CSV of aggregates",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV of event types",
+            "explode": false,
+            "in": "query",
+            "name": "types",
+            "schema": {
+              "description": "CSV of event types",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EventRead"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List events raw (SDK alias of /list-raw)",
+        "tags": [
+          "events"
+        ]
+      }
+    },
     "/api/events/{id}": {
       "get": {
         "operationId": "getEvent",
@@ -11107,6 +12774,104 @@
         ]
       }
     },
+    "/api/login-attempts": {
+      "get": {
+        "operationId": "listLoginAttempts",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "attemptType",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "outcome",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "identifier",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "principalId",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "dateFrom",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "dateTo",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginAttemptListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List login attempts (cursor-paginated)",
+        "tags": [
+          "login-attempts"
+        ]
+      }
+    },
     "/api/oauth-clients": {
       "get": {
         "operationId": "listOAuthClients",
@@ -11172,6 +12937,47 @@
           }
         },
         "summary": "Create an OAuth client",
+        "tags": [
+          "oauth-clients"
+        ]
+      }
+    },
+    "/api/oauth-clients/by-client-id/{clientId}": {
+      "get": {
+        "operationId": "getOAuthClientByClientID",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "clientId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthClientResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get an OAuth client by its client_id (SDK lookup)",
         "tags": [
           "oauth-clients"
         ]
@@ -11369,6 +13175,47 @@
           }
         },
         "summary": "Deactivate an OAuth client",
+        "tags": [
+          "oauth-clients"
+        ]
+      }
+    },
+    "/api/oauth-clients/{id}/regenerate-secret": {
+      "post": {
+        "operationId": "regenerateOAuthClientSecret",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RotateOAuthClientSecretResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Regenerate an OAuth client's secret (SDK alias of rotate-secret)",
         "tags": [
           "oauth-clients"
         ]
@@ -11821,6 +13668,47 @@
           }
         },
         "summary": "Resolve auth-method for an email's domain",
+        "tags": [
+          "principals"
+        ]
+      }
+    },
+    "/api/principals/users": {
+      "post": {
+        "operationId": "createUser",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrincipalResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Create a user principal (scope derived from email domain)",
         "tags": [
           "principals"
         ]
@@ -13318,6 +15206,48 @@
           }
         },
         "summary": "List permissions granted to a role",
+        "tags": [
+          "roles"
+        ]
+      },
+      "post": {
+        "operationId": "grantRolePermissionByBody",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "roleName",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantPermissionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Grant a permission to a role (SDK; permission in body)",
         "tags": [
           "roles"
         ]
@@ -14979,7 +16909,14 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "default": {
             "content": {

@@ -31,6 +31,16 @@ jobs:
           go-version: "1.26"
           cache: true
 
+      # `make build` builds the embedded Vue SPA, which needs pnpm + node.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.27.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
       - name: Verify go.mod tidy
         run: |
           go mod tidy
@@ -58,10 +68,12 @@ jobs:
         with:
           go-version: "1.26"
           cache: true
-      - uses: golangci/golangci-lint-action@v6
+      # v7 installs golangci-lint v2 (matches the v2 .golangci.yml and is
+      # built with a Go new enough for the repo's go1.26). Timeout comes from
+      # .golangci.yml (run.timeout).
+      - uses: golangci/golangci-lint-action@v7
         with:
           version: latest
-          args: --timeout=5m
 
   parity-spec:
     runs-on: ubuntu-latest

@@ -29,15 +29,17 @@ import (
 	eventapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/event/api"
 	eventtypeapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/api"
 	identityproviderapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider/api"
+	loginattemptapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt/api"
 	platformconfigapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig/api"
 	principalapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/api"
 	processapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/process/api"
 	roleapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/api"
 	scheduledjobapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob/api"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/sdksync"
 	serviceaccountapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/api"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 	subscriptionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription/api"
 	webauthnapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn/api"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 )
 
 func main() {
@@ -70,6 +72,11 @@ func main() {
 	serviceaccountapi.Register(api, &serviceaccountapi.State{})
 	subscriptionapi.Register(api, &subscriptionapi.State{})
 	webauthnapi.Register(api, &webauthnapi.State{})
+	// SDK self-registration ("sync") routes and the login-attempt admin
+	// routes are served by WirePlatform too; they were historically
+	// omitted here, so they were missing from the committed lockfile.
+	loginattemptapi.Register(api, &loginattemptapi.State{})
+	sdksync.Register(api, &sdksync.State{})
 
 	// Match Rust: exclude /bff/* from the published spec (handlers stay
 	// mounted in the server). Keep in sync with WirePlatform.

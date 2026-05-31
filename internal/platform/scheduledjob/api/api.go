@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -609,16 +610,46 @@ func (s *State) completeInstance(ctx context.Context, in *completeInstanceInput)
 	if err := auth.CheckScopeAccess(ac, inst.ClientID); err != nil { // A2: per-instance client scope
 		return nil, err
 	}
-	status := scheduledjob.InstanceStatusCompleted
-	if in.Body.Status != "" {
-		status = scheduledjob.ParseInstanceStatus(in.Body.Status)
-	}
+	status, completion := resolveInstanceCompletion(in.Body.Status, in.Body.CompletionStatus)
 	var compStatus *string
-	if in.Body.CompletionStatus != "" {
-		compStatus = &in.Body.CompletionStatus
+	if completion != "" {
+		compStatus = &completion
 	}
-	if err := s.Instances.MarkComplete(ctx, in.InstanceID, status, compStatus, in.Body.CompletionResult); err != nil {
+	// The SDK sends the payload as `result`; the SPA sends `completionResult`.
+	// Prefer the explicit completionResult, fall back to result.
+	result := in.Body.CompletionResult
+	if len(result) == 0 {
+		result = in.Body.Result
+	}
+	if err := s.Instances.MarkComplete(ctx, in.InstanceID, status, compStatus, result); err != nil {
 		return nil, usecase.Internal("REPO", "mark_complete failed", err)
 	}
 	return &emptyOutput{}, nil
+}
+
+// resolveInstanceCompletion disambiguates the two complete-instance request
+// dialects (see CompleteInstanceRequest) into an instance lifecycle status and
+// a completion outcome ("" when none):
+//
+//   - SDK (Laravel/Rust): {status:"SUCCESS"|"FAILURE"} — `status` carries the
+//     completion OUTCOME and the instance becomes COMPLETED.
+//   - SPA/internal: {status:"<instance-status>", completionStatus} — `status`
+//     is the instance lifecycle status.
+//
+// SUCCESS/FAILURE never collide with the instance statuses
+// (QUEUED/IN_FLIGHT/DELIVERED/COMPLETED/FAILED/DELIVERY_FAILED), so the value
+// alone disambiguates. An explicit completionStatus always wins.
+func resolveInstanceCompletion(status, completionStatus string) (scheduledjob.InstanceStatus, string) {
+	completion := completionStatus
+	switch strings.ToUpper(status) {
+	case "":
+		return scheduledjob.InstanceStatusCompleted, completion
+	case "SUCCESS", "FAILURE":
+		if completion == "" {
+			completion = strings.ToUpper(status)
+		}
+		return scheduledjob.InstanceStatusCompleted, completion
+	default:
+		return scheduledjob.ParseInstanceStatus(status), completion
+	}
 }

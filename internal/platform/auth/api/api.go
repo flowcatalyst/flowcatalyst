@@ -97,6 +97,27 @@ func Register(api huma.API, s *State) {
 		DefaultStatus: http.StatusOK,
 	}, s.rotateOAuthClientSecret)
 
+	// SDK-compatibility aliases. The Laravel/Rust client calls
+	// /api/oauth-clients/{id}/regenerate-secret (same as rotate-secret) and
+	// looks clients up by their client_id via /by-client-id/{clientId}.
+	huma.Register(api, huma.Operation{
+		OperationID:   "regenerateOAuthClientSecret",
+		Method:        http.MethodPost,
+		Path:          "/api/oauth-clients/{id}/regenerate-secret",
+		Summary:       "Regenerate an OAuth client's secret (SDK alias of rotate-secret)",
+		Tags:          []string{tagOAuth},
+		DefaultStatus: http.StatusOK,
+	}, s.rotateOAuthClientSecret)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "getOAuthClientByClientID",
+		Method:        http.MethodGet,
+		Path:          "/api/oauth-clients/by-client-id/{clientId}",
+		Summary:       "Get an OAuth client by its client_id (SDK lookup)",
+		Tags:          []string{tagOAuth},
+		DefaultStatus: http.StatusOK,
+	}, s.getOAuthClientByClientID)
+
 	huma.Register(api, huma.Operation{
 		OperationID:   "deleteOAuthClient",
 		Method:        http.MethodDelete,
@@ -261,6 +282,26 @@ func (s *State) getOAuthClient(ctx context.Context, in *idInput) (*getOAuthClien
 	}
 	if c == nil {
 		return nil, httperror.NotFound("OAuthClient", in.ID)
+	}
+	return &getOAuthClientOutput{Body: oauthClientFromEntity(c)}, nil
+}
+
+type clientIDPathInput struct {
+	ClientID string `path:"clientId"`
+}
+
+// getOAuthClientByClientID backs GET /api/oauth-clients/by-client-id/{clientId}
+// (SDK lookup by the OAuth client_id rather than the internal TSID).
+func (s *State) getOAuthClientByClientID(ctx context.Context, in *clientIDPathInput) (*getOAuthClientOutput, error) {
+	if _, err := authedAnchor(ctx); err != nil {
+		return nil, err
+	}
+	c, err := s.Repo.OAuthClients.FindByClientID(ctx, in.ClientID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_client_id failed", err)
+	}
+	if c == nil {
+		return nil, httperror.NotFound("OAuthClient", in.ClientID)
 	}
 	return &getOAuthClientOutput{Body: oauthClientFromEntity(c)}, nil
 }

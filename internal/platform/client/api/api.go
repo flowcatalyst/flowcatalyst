@@ -58,6 +58,17 @@ func Register(api huma.API, s *State) {
 		DefaultStatus: http.StatusOK,
 	}, s.search)
 
+	// SDK-compatibility alias: the Laravel/Rust client issues
+	// GET /api/clients/search?q=<term>. Same search, query-param input.
+	huma.Register(api, huma.Operation{
+		OperationID:   "searchClientsByQuery",
+		Method:        http.MethodGet,
+		Path:          "/api/clients/search",
+		Summary:       "Search clients (SDK alias; ?q=<term>)",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.searchByQuery)
+
 	huma.Register(api, huma.Operation{
 		OperationID:   "getClientByIdentifier",
 		Method:        http.MethodGet,
@@ -202,6 +213,28 @@ func (s *State) search(ctx context.Context, in *searchInput) (*listOutput, error
 		return nil, err
 	}
 	rows, err := s.Repo.Search(ctx, in.Body.Term)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "search failed", err)
+	}
+	out := make([]ClientResponse, 0, len(rows))
+	for i := range rows {
+		out = append(out, fromEntity(&rows[i]))
+	}
+	return &listOutput{Body: ClientListResponse{Clients: out, Total: len(out)}}, nil
+}
+
+// searchByQuery backs GET /api/clients/search?q=<term> (SDK alias of the POST
+// search). Same logic; the term comes from the query string.
+type searchQueryInput struct {
+	Q string `query:"q"`
+}
+
+func (s *State) searchByQuery(ctx context.Context, in *searchQueryInput) (*listOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanReadClients(ac); err != nil {
+		return nil, err
+	}
+	rows, err := s.Repo.Search(ctx, in.Q)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "search failed", err)
 	}

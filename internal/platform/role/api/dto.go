@@ -65,6 +65,12 @@ type RoleResponse struct {
 	UpdatedAt       httpcompat.Time `json:"updatedAt"`
 }
 
+// GrantPermissionRequest is the body for POST /api/roles/{roleName}/permissions
+// (the SDK grant-by-body variant). Mirrors Rust GrantPermissionRequest.
+type GrantPermissionRequest struct {
+	Permission string `json:"permission"`
+}
+
 func fromEntity(r *role.Role) RoleResponse {
 	perms := r.Permissions
 	if perms == nil {

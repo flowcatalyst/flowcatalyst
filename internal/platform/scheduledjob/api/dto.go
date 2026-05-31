@@ -151,22 +151,22 @@ type FireNowResponse struct {
 
 // ScheduledJobInstanceResponse mirrors scheduledjob.ScheduledJobInstance.
 type ScheduledJobInstanceResponse struct {
-	ID               string          `json:"id"`
-	ScheduledJobID   string          `json:"scheduledJobId"`
-	ClientID         *string         `json:"clientId,omitempty"`
-	JobCode          string          `json:"jobCode"`
-	TriggerKind      string          `json:"triggerKind"`
+	ID               string           `json:"id"`
+	ScheduledJobID   string           `json:"scheduledJobId"`
+	ClientID         *string          `json:"clientId,omitempty"`
+	JobCode          string           `json:"jobCode"`
+	TriggerKind      string           `json:"triggerKind"`
 	ScheduledFor     *httpcompat.Time `json:"scheduledFor,omitempty"`
-	FiredAt          httpcompat.Time `json:"firedAt"`
+	FiredAt          httpcompat.Time  `json:"firedAt"`
 	DeliveredAt      *httpcompat.Time `json:"deliveredAt,omitempty"`
 	CompletedAt      *httpcompat.Time `json:"completedAt,omitempty"`
-	Status           string          `json:"status"`
-	DeliveryAttempts int32           `json:"deliveryAttempts"`
-	DeliveryError    *string         `json:"deliveryError,omitempty"`
-	CompletionStatus *string         `json:"completionStatus,omitempty"`
-	CompletionResult json.RawMessage `json:"completionResult,omitempty"`
-	CorrelationID    *string         `json:"correlationId,omitempty"`
-	CreatedAt        httpcompat.Time `json:"createdAt"`
+	Status           string           `json:"status"`
+	DeliveryAttempts int32            `json:"deliveryAttempts"`
+	DeliveryError    *string          `json:"deliveryError,omitempty"`
+	CompletionStatus *string          `json:"completionStatus,omitempty"`
+	CompletionResult json.RawMessage  `json:"completionResult,omitempty"`
+	CorrelationID    *string          `json:"correlationId,omitempty"`
+	CreatedAt        httpcompat.Time  `json:"createdAt"`
 }
 
 func instanceToResponse(i *scheduledjob.ScheduledJobInstance) ScheduledJobInstanceResponse {
@@ -238,8 +238,14 @@ type WriteInstanceLogRequest struct {
 }
 
 // CompleteInstanceRequest is the body for POST .../complete.
+//
+// Accepts two dialects (see completeInstance handler): the SDK sends
+// {status:"SUCCESS"|"FAILURE", result}; the SPA sends
+// {status:"<instance-status>", completionStatus, completionResult}. Result
+// is the SDK alias for CompletionResult.
 type CompleteInstanceRequest struct {
-	Status           string          `json:"status,omitempty" doc:"Defaults to COMPLETED"`
+	Status           string          `json:"status,omitempty" doc:"COMPLETED|FAILED|… (instance status) or SUCCESS|FAILURE (completion outcome)"`
 	CompletionStatus string          `json:"completionStatus,omitempty"`
 	CompletionResult json.RawMessage `json:"completionResult,omitempty"`
+	Result           json.RawMessage `json:"result,omitempty" doc:"SDK alias for completionResult"`
 }
