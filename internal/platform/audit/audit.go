@@ -1,9 +1,10 @@
 // Package audit is the port of fc-platform/src/audit. Audit log entity
-// and read-only repository.
+// and repository (read API + a direct batch-ingest Insert).
 //
-// Rows are written by the UoW Sink (platformsink.Sink.WriteAudit) — not
-// by a use case in this package. This subdomain only provides the read
-// API for the platform's audit-trail screens.
+// During platform mutations, rows are written by the UoW Sink
+// (platformsink.Sink.WriteAudit) — not by a use case in this package. The
+// repository's read API backs the audit-trail screens; its Insert backs the
+// SDK/outbox batch audit-ingest endpoint (POST /api/audit-logs/batch).
 package audit
 
 import (
@@ -42,6 +43,31 @@ type Repository struct {
 // NewRepository wires a repo.
 func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool, q: dbq.New(pool)}
+}
+
+// Insert writes a single audit-log row to aud_logs. The subdomain is otherwise
+// read-only — platform mutations write audit rows through the UoW Sink
+// (platformsink.WriteAudit). This direct insert backs the SDK/outbox batch
+// audit-ingest endpoint (POST /api/audit-logs/batch), mirroring Rust
+// audit_log_repo.insert (a plain insert outside the UoW). The column set
+// matches WriteAudit + migrations 006/009.
+func (r *Repository) Insert(ctx context.Context, l *Log) error {
+	var opJSON any
+	if len(l.OperationJSON) > 0 {
+		opJSON = []byte(l.OperationJSON)
+	}
+	_, err := r.pool.Exec(ctx,
+		`INSERT INTO aud_logs
+		     (id, entity_type, entity_id, operation,
+		      operation_json, principal_id, application_id,
+		      client_id, performed_at)
+		 VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9)`,
+		l.ID, l.EntityType, l.EntityID, l.Operation,
+		opJSON, l.PrincipalID, l.ApplicationID, l.ClientID, l.PerformedAt)
+	if err != nil {
+		return fmt.Errorf("insert aud_logs: %w", err)
+	}
+	return nil
 }
 
 // FilterParams is the query DTO for list endpoints.
@@ -253,4 +279,3 @@ func (r *Repository) DistinctValues(ctx context.Context, column string, limit in
 	}
 	return out, rows.Err()
 }
-

@@ -391,7 +391,14 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]string{"principalId": principalID})
 		}
-		bridgeLoginEP.RegisterRoutes(r)
+		// Per-IP rate limit on the public OIDC bridge routes (login start +
+		// callback + session/end) — blunts authorization-code probing / DoS
+		// without impeding a real interactive login.
+		oidcGov := ratelimit.NewGovernor(ratelimit.OIDCBridgeGovernorFromEnv())
+		r.Group(func(g chi.Router) {
+			g.Use(ratelimit.GovernorMiddleware(oidcGov, "Too many authentication requests"))
+			bridgeLoginEP.RegisterRoutes(g)
+		})
 
 		corsapi.Register(humaAPI, &corsapi.State{
 			Repo: corsRepo,
@@ -517,6 +524,7 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 			Auth:       authSvc,
 		})
 		sdkapi.RegisterRoutes(r, &sdkapi.DispatchJobsBatchState{Repo: dispatchJobRepo})
+		sdkapi.RegisterAuditRoutes(r, &sdkapi.AuditBatchState{Repo: auditRepo, Apps: applicationRepo, Clients: clientRepo})
 	})
 
 	// Match Rust: exclude /bff/* from the published OpenAPI spec (the BFF
