@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -138,15 +139,21 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 	// authservice signs/validates with the same RSA key the auth provider
 	// loaded, so the JWKS + session-cookie paths line up. encSvc verifies
 	// confidential client secrets (decrypt + compare).
+	// Validation-only previous public key for zero-downtime key rotation —
+	// tokens signed with the prior key still verify. Matches Rust's
+	// FLOWCATALYST_JWT_PREVIOUS_PUBLIC_KEY. Normalize the SSM/env PEM (same \n
+	// mangling as the private key) and skip it unless it's a real PEM: it's
+	// optional, so a missing or unparseable value must NOT stop the platform
+	// booting. (The current key's public half is derived from signingKey.)
+	prevPubKey := NormalizePEM(os.Getenv("FLOWCATALYST_JWT_PREVIOUS_PUBLIC_KEY"))
+	if !strings.Contains(prevPubKey, "-----BEGIN") {
+		prevPubKey = ""
+	}
 	authSvc, err := authservice.New(authservice.Config{
-		Issuer:           cfg.JWTIssuer,
-		Audience:         cfg.JWTIssuer,
-		RSAPrivateKeyPEM: string(signingKey),
-		// Validation-only previous public key for zero-downtime key rotation —
-		// tokens signed with the prior key still verify. Matches Rust's
-		// FLOWCATALYST_JWT_PREVIOUS_PUBLIC_KEY. (The public key for the current
-		// key is derived from signingKey, so it always matches.)
-		RSAPublicKeyPreviousPEM: os.Getenv("FLOWCATALYST_JWT_PREVIOUS_PUBLIC_KEY"),
+		Issuer:                  cfg.JWTIssuer,
+		Audience:                cfg.JWTIssuer,
+		RSAPrivateKeyPEM:        string(signingKey),
+		RSAPublicKeyPreviousPEM: prevPubKey,
 		AccessTokenExpirySecs:   3600,
 	})
 	if err != nil {
