@@ -15,10 +15,13 @@ import (
 // JWT signing. Resolution order:
 //
 //  1. cfg.JWTSigningKeyPath — read from disk if set.
-//  2. FC_JWT_SIGNING_KEY_PEM — read inline from env (handy for ECS).
+//  2. Inline PEM from env: FLOWCATALYST_JWT_PRIVATE_KEY (the name the Rust
+//     platform + the deploy IaC use — load-bearing for drop-in token parity)
+//     or FC_JWT_SIGNING_KEY_PEM (the Go-native alias).
 //  3. Otherwise, generate an ephemeral 2048-bit RSA key and log a warning.
-//     Ephemeral keys are fine for dev / first-boot smoke tests but lose
-//     every token's signature on restart. Production must supply (1) or (2).
+//     Ephemeral keys are fine for dev / first-boot smoke tests but lose every
+//     token's signature on restart AND differ per instance (so a multi-replica
+//     service rejects each other's tokens). Production must supply (1) or (2).
 func LoadSigningKeyOrEphemeral(path string) []byte {
 	if path != "" {
 		if b, err := os.ReadFile(path); err == nil {
@@ -27,8 +30,14 @@ func LoadSigningKeyOrEphemeral(path string) []byte {
 			slog.Warn("FC_JWT_SIGNING_KEY_PATH unreadable, falling back", "err", err)
 		}
 	}
-	if pemStr := os.Getenv("FC_JWT_SIGNING_KEY_PEM"); pemStr != "" {
-		return []byte(pemStr)
+	// FLOWCATALYST_JWT_PRIVATE_KEY first: it's the key the Rust system signs
+	// with, so reading it keeps Go RS256 tokens validating against the same
+	// keypair (and stops the silent ephemeral-key fallback that mints tokens
+	// no other replica — or the Rust side — can verify).
+	for _, env := range []string{"FLOWCATALYST_JWT_PRIVATE_KEY", "FC_JWT_SIGNING_KEY_PEM"} {
+		if pemStr := os.Getenv(env); pemStr != "" {
+			return []byte(pemStr)
+		}
 	}
 	slog.Warn("no JWT signing key configured — generating ephemeral RSA key (tokens won't survive restart)")
 	return generateRSAPEM()
