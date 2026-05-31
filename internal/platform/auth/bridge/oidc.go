@@ -17,6 +17,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"sync"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -45,6 +46,13 @@ type resolved struct {
 	provider *oidc.Provider
 	verifier *oidc.IDTokenVerifier
 	oauth    *oauth2.Config
+
+	// Multi-tenant issuer validation (Entra "common"/"organizations" etc.):
+	// the verifier's built-in issuer check is skipped, so VerifyIDToken
+	// validates the token's issuer against issuerPattern after the fact.
+	issuerURL     string
+	multiTenant   bool
+	issuerPattern *string
 }
 
 // NewBridge wires the bridge. enc may be nil — confidential OIDC clients
@@ -92,7 +100,20 @@ func (b *Bridge) ResolveForEmail(ctx context.Context, email string) (*resolved, 
 		return r, idp, mapping, nil
 	}
 
-	provider, err := oidc.NewProvider(ctx, *idp.OIDCIssuerURL)
+	// Multi-tenant IdPs (Entra "common"/"organizations", …) report a
+	// {tenantid}-templated issuer in discovery and mint tokens with a
+	// tenant-specific iss/aud, so the standard issuer/audience checks reject
+	// them. Mirror Rust: accept the discovery-doc issuer (don't fail on the
+	// mismatch), skip the built-in iss/aud checks, and validate the token's
+	// issuer against oidc_issuer_pattern after verification (see VerifyIDToken).
+	discoveryCtx := ctx
+	verifierCfg := &oidc.Config{ClientID: *idp.OIDCClientID}
+	if idp.OIDCMultiTenant {
+		discoveryCtx = oidc.InsecureIssuerURLContext(ctx, *idp.OIDCIssuerURL)
+		verifierCfg.SkipIssuerCheck = true
+		verifierCfg.SkipClientIDCheck = true
+	}
+	provider, err := oidc.NewProvider(discoveryCtx, *idp.OIDCIssuerURL)
 	if err != nil {
 		return nil, idp, mapping, fmt.Errorf("oidc.NewProvider: %w", err)
 	}
@@ -101,8 +122,11 @@ func (b *Bridge) ResolveForEmail(ctx context.Context, email string) (*resolved, 
 		return nil, idp, mapping, err
 	}
 	r := &resolved{
-		provider: provider,
-		verifier: provider.Verifier(&oidc.Config{ClientID: *idp.OIDCClientID}),
+		provider:      provider,
+		verifier:      provider.Verifier(verifierCfg),
+		issuerURL:     *idp.OIDCIssuerURL,
+		multiTenant:   idp.OIDCMultiTenant,
+		issuerPattern: idp.OIDCIssuerPattern,
 		oauth: &oauth2.Config{
 			ClientID:     *idp.OIDCClientID,
 			ClientSecret: clientSecret,
@@ -133,11 +157,35 @@ func (b *Bridge) resolveClientSecret(secretRef *string) (string, error) {
 	return pt, nil
 }
 
-// VerifyIDToken validates a raw ID token JWT against the bridge cache.
-// The verifier checks signature, issuer, audience (== ClientID),
-// expiration, and not-before.
+// VerifyIDToken validates a raw ID token JWT. The verifier checks signature,
+// expiration, and not-before; for a single-tenant IdP it also checks issuer +
+// audience. For a multi-tenant IdP those built-in checks are skipped (the iss
+// is tenant-specific), so the token's issuer is instead validated against the
+// configured pattern here — 1:1 with Rust is_valid_issuer_for_idp.
 func (r *resolved) VerifyIDToken(ctx context.Context, raw string) (*oidc.IDToken, error) {
-	return r.verifier.Verify(ctx, raw)
+	tok, err := r.verifier.Verify(ctx, raw)
+	if err != nil {
+		return nil, err
+	}
+	if r.multiTenant && !isValidIssuer(tok.Issuer, r.issuerURL, true, r.issuerPattern) {
+		return nil, fmt.Errorf("invalid issuer for multi-tenant IdP: %s", tok.Issuer)
+	}
+	return tok, nil
+}
+
+// isValidIssuer mirrors Rust is_valid_issuer_for_idp: an exact match against the
+// configured issuer URL, else (multi-tenant only) a regex match against the
+// configured pattern.
+func isValidIssuer(iss, issuerURL string, multiTenant bool, pattern *string) bool {
+	if issuerURL == iss {
+		return true
+	}
+	if multiTenant && pattern != nil && *pattern != "" {
+		if re, err := regexp.Compile(*pattern); err == nil {
+			return re.MatchString(iss)
+		}
+	}
+	return false
 }
 
 // AuthCodeURL builds the redirect URL for an OIDC login start. The state
