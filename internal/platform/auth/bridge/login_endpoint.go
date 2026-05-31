@@ -298,15 +298,15 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resolved, _, _, err := e.bridge.ResolveForEmail(r.Context(),
+	resolved, _, mapping, err := e.bridge.ResolveForEmail(r.Context(),
 		"x@"+loginState.EmailDomain)
-	if err != nil || resolved == nil {
+	if err != nil || resolved == nil || mapping == nil {
 		httperror.Write(w, httperror.BadRequest("OIDC_NOT_CONFIGURED", "OIDC config lost"))
 		return
 	}
 
 	redirectURI := absoluteCallbackURL(r)
-	tok, err := resolved.Exchange(r.Context(), code, redirectURI)
+	tok, err := resolved.Exchange(r.Context(), code, redirectURI, loginState.CodeVerifier)
 	if err != nil {
 		httperror.Write(w, usecase.Internal("OIDC_EXCHANGE", "code exchange failed", err))
 		return
@@ -322,9 +322,11 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var claims struct {
-		Email string   `json:"email"`
-		Nonce string   `json:"nonce"`
-		Roles []string `json:"roles"`
+		Email             string   `json:"email"`
+		PreferredUsername string   `json:"preferred_username"`
+		Tid               string   `json:"tid"`
+		Nonce             string   `json:"nonce"`
+		Roles             []string `json:"roles"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		httperror.Write(w, httperror.BadRequest("OIDC_CLAIMS", "id_token claims malformed"))
@@ -335,17 +337,44 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Bind the token to the domain the login was initiated for. With a
-	// multi-tenant IdP, the provider's shared signing keys sign tokens from ANY
-	// tenant, so without this a user in an unrelated/attacker-controlled tenant
-	// could pass signature + issuer-pattern checks and authenticate. An email
-	// domain is verified within its owning tenant, so requiring the token's
-	// email domain to equal the login domain pins the token to the correct
-	// tenant. 1:1 with Rust's email_domain != mapping.email_domain rejection.
-	if !strings.EqualFold(emailDomain(claims.Email), loginState.EmailDomain) {
+	// Resolve the user's email — some IdPs only populate preferred_username.
+	email := claims.Email
+	if email == "" {
+		email = claims.PreferredUsername
+	}
+	if email == "" {
+		httperror.Write(w, usecase.Authorization("NO_EMAIL", "id_token has no email / preferred_username claim"))
+		return
+	}
+
+	// Reject Entra external/guest accounts (#EXT# UPNs): their identity is owned
+	// by another organisation and falls outside this domain's trust boundary.
+	// 1:1 with Rust.
+	if strings.Contains(strings.ToLower(email), "#ext#") {
+		httperror.Write(w, usecase.Authorization("EXTERNAL_GUEST", "external guest accounts are not supported"))
+		return
+	}
+
+	// Tenant binding. A multi-tenant IdP's shared keys sign tokens from ANY
+	// tenant, so we pin the token to the right one two ways (1:1 with Rust):
+	//   1. The token's email domain MUST equal the login domain — an email
+	//      domain is verified inside its owning tenant.
+	//   2. If the mapping pins an explicit tenant (required_oidc_tenant_id), the
+	//      token's `tid` claim MUST match it exactly.
+	if !strings.EqualFold(emailDomain(email), loginState.EmailDomain) {
 		httperror.Write(w, usecase.Authorization("EMAIL_DOMAIN_MISMATCH",
 			"the token's email domain does not match the login domain"))
 		return
+	}
+	if mapping.RequiredOIDCTenantID != nil && *mapping.RequiredOIDCTenantID != "" {
+		if claims.Tid == "" {
+			httperror.Write(w, usecase.Authorization("TENANT_MISMATCH", "id_token has no tenant id (tid) claim"))
+			return
+		}
+		if claims.Tid != *mapping.RequiredOIDCTenantID {
+			httperror.Write(w, usecase.Authorization("TENANT_MISMATCH", "id_token tenant does not match the configured tenant"))
+			return
+		}
 	}
 
 	// Resolve or create the FlowCatalyst principal. Drop-in parity with
@@ -356,13 +385,13 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 	// SyncIdpRoles. Existing users get the same role sync — if HR
 	// removed someone from a group upstream, their next login drops the
 	// corresponding platform role.
-	p, err := e.principals.FindByEmail(r.Context(), claims.Email)
+	p, err := e.principals.FindByEmail(r.Context(), email)
 	if err != nil {
 		httperror.Write(w, usecase.Internal("REPO", "principal lookup failed", err))
 		return
 	}
 	if p == nil {
-		p, err = e.autoProvision(r.Context(), claims.Email, loginState.EmailDomainMappingID)
+		p, err = e.autoProvision(r.Context(), email, loginState.EmailDomainMappingID)
 		if err != nil {
 			httperror.Write(w, err)
 			return

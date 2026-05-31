@@ -196,11 +196,19 @@ func (r *resolved) AuthCodeURL(state, redirectURI string) string {
 	return cfg.AuthCodeURL(state)
 }
 
-// Exchange swaps an authorization code for tokens.
-func (r *resolved) Exchange(ctx context.Context, code, redirectURI string) (*oauth2.Token, error) {
+// Exchange swaps an authorization code for tokens. The PKCE code_verifier is
+// REQUIRED: the login redirect sends a code_challenge, so the IdP rejects the
+// exchange ("code_verifier does not match") unless the matching verifier is
+// presented here. (This both completes PKCE and is what unblocks the token
+// exchange against providers that enforce it, e.g. Entra.)
+func (r *resolved) Exchange(ctx context.Context, code, redirectURI, codeVerifier string) (*oauth2.Token, error) {
 	cfg := *r.oauth
 	cfg.RedirectURL = redirectURI
-	return cfg.Exchange(ctx, code)
+	var opts []oauth2.AuthCodeOption
+	if codeVerifier != "" {
+		opts = append(opts, oauth2.SetAuthURLParam("code_verifier", codeVerifier))
+	}
+	return cfg.Exchange(ctx, code, opts...)
 }
 
 func emailDomain(email string) string {
