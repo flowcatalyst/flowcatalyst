@@ -95,7 +95,7 @@ func Register(api huma.API, s *State) {
 		Path:          "/api/principals/{id}/activate",
 		Summary:       "Activate a principal",
 		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
+		DefaultStatus: http.StatusOK,
 	}, s.activate)
 
 	huma.Register(api, huma.Operation{
@@ -104,7 +104,7 @@ func Register(api huma.API, s *State) {
 		Path:          "/api/principals/{id}/deactivate",
 		Summary:       "Deactivate a principal",
 		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
+		DefaultStatus: http.StatusOK,
 	}, s.deactivate)
 
 	huma.Register(api, huma.Operation{
@@ -167,7 +167,7 @@ func Register(api huma.API, s *State) {
 		Path:          "/api/principals/{id}/roles",
 		Summary:       "Add a single role to a principal",
 		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
+		DefaultStatus: http.StatusOK,
 	}, s.addRole)
 
 	huma.Register(api, huma.Operation{
@@ -176,7 +176,7 @@ func Register(api huma.API, s *State) {
 		Path:          "/api/principals/{id}/roles/{role}",
 		Summary:       "Remove a single role from a principal",
 		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
+		DefaultStatus: http.StatusOK,
 	}, s.removeRole)
 
 	huma.Register(api, huma.Operation{
@@ -295,7 +295,10 @@ type createOutput struct {
 
 func (s *State) create(ctx context.Context, in *createInput) (*createOutput, error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanWritePrincipals(ac); err != nil {
+	// Creating principals is anchor-only (1:1 with Rust create_user's
+	// require_anchor). The created principal's scope/clientId is taken from the
+	// request body, so an anchor can create a user of any scope.
+	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
 	}
 	if in.Body.ClientID != nil && !ac.CanAccessClient(*in.Body.ClientID) {
@@ -518,7 +521,7 @@ type idInput struct {
 	ID string `path:"id"`
 }
 
-func (s *State) activate(ctx context.Context, in *idInput) (*emptyOutput, error) {
+func (s *State) activate(ctx context.Context, in *idInput) (*statusMessageOutput, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePrincipals(ac); err != nil {
 		return nil, err
@@ -527,10 +530,10 @@ func (s *State) activate(ctx context.Context, in *idInput) (*emptyOutput, error)
 	if _, err := operations.ActivateUser(ctx, s.Repo, s.UoW, operations.ActivateCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &statusMessageOutput{Body: apicommon.StatusChangeResponse{Message: "Principal activated"}}, nil
 }
 
-func (s *State) deactivate(ctx context.Context, in *idInput) (*emptyOutput, error) {
+func (s *State) deactivate(ctx context.Context, in *idInput) (*statusMessageOutput, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePrincipals(ac); err != nil {
 		return nil, err
@@ -539,7 +542,7 @@ func (s *State) deactivate(ctx context.Context, in *idInput) (*emptyOutput, erro
 	if _, err := operations.DeactivateUser(ctx, s.Repo, s.UoW, operations.DeactivateCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &statusMessageOutput{Body: apicommon.StatusChangeResponse{Message: "Principal deactivated"}}, nil
 }
 
 type resetPasswordInput struct {
@@ -822,7 +825,7 @@ type addRoleInput struct {
 	Body AddRoleRequest
 }
 
-func (s *State) addRole(ctx context.Context, in *addRoleInput) (*emptyOutput, error) {
+func (s *State) addRole(ctx context.Context, in *addRoleInput) (*getOutput, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
@@ -835,16 +838,21 @@ func (s *State) addRole(ctx context.Context, in *addRoleInput) (*emptyOutput, er
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
 	roles := uniqueRoleNames(p.Roles)
-	if _, ok := roles[in.Body.Role]; ok {
-		return &emptyOutput{}, nil // idempotent
+	if _, ok := roles[in.Body.Role]; !ok { // skip mutation when already present (idempotent)
+		desired := append(roleNamesFrom(p.Roles), in.Body.Role)
+		ec := usecase.NewExecutionContext(ac.PrincipalID)
+		if _, err := operations.AssignRoles(ctx, s.Repo, s.Roles, s.UoW,
+			operations.AssignRolesCommand{UserID: in.ID, Roles: desired}, ec); err != nil {
+			return nil, err
+		}
+		if p, err = s.Repo.FindByID(ctx, in.ID); err != nil {
+			return nil, usecase.Internal("REPO", "find_by_id failed", err)
+		} else if p == nil {
+			return nil, httperror.NotFound("Principal", in.ID)
+		}
 	}
-	desired := append(roleNamesFrom(p.Roles), in.Body.Role)
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.AssignRoles(ctx, s.Repo, s.Roles, s.UoW,
-		operations.AssignRolesCommand{UserID: in.ID, Roles: desired}, ec); err != nil {
-		return nil, err
-	}
-	return &emptyOutput{}, nil
+	// Return the updated principal (1:1 with Rust assign_role → PrincipalResponse).
+	return &getOutput{Body: fromEntity(p)}, nil
 }
 
 type removeRoleInput struct {
@@ -852,7 +860,7 @@ type removeRoleInput struct {
 	Role string `path:"role"`
 }
 
-func (s *State) removeRole(ctx context.Context, in *removeRoleInput) (*emptyOutput, error) {
+func (s *State) removeRole(ctx context.Context, in *removeRoleInput) (*getOutput, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
@@ -874,15 +882,20 @@ func (s *State) removeRole(ctx context.Context, in *removeRoleInput) (*emptyOutp
 		}
 		desired = append(desired, r)
 	}
-	if !found {
-		return &emptyOutput{}, nil // idempotent
+	if found { // skip mutation when absent (idempotent)
+		ec := usecase.NewExecutionContext(ac.PrincipalID)
+		if _, err := operations.AssignRoles(ctx, s.Repo, s.Roles, s.UoW,
+			operations.AssignRolesCommand{UserID: in.ID, Roles: desired}, ec); err != nil {
+			return nil, err
+		}
+		if p, err = s.Repo.FindByID(ctx, in.ID); err != nil {
+			return nil, usecase.Internal("REPO", "find_by_id failed", err)
+		} else if p == nil {
+			return nil, httperror.NotFound("Principal", in.ID)
+		}
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.AssignRoles(ctx, s.Repo, s.Roles, s.UoW,
-		operations.AssignRolesCommand{UserID: in.ID, Roles: desired}, ec); err != nil {
-		return nil, err
-	}
-	return &emptyOutput{}, nil
+	// Return the updated principal (1:1 with Rust remove_role → PrincipalResponse).
+	return &getOutput{Body: fromEntity(p)}, nil
 }
 
 func roleNamesFrom(rs []serviceaccount.RoleAssignment) []string {

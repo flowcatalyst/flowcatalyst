@@ -30,27 +30,27 @@ type DispatchJobsBatchState struct {
 
 // BatchItem is one row in the inbound batch.
 type BatchItem struct {
-	ID                 *string             `json:"id,omitempty"` // SDK may supply for idempotency; otherwise minted server-side
-	ExternalID         *string             `json:"externalId,omitempty"`
-	Kind               string              `json:"kind"`
-	Code               string              `json:"code"`
-	Source             *string             `json:"source,omitempty"`
-	Subject            *string             `json:"subject,omitempty"`
-	TargetURL          string              `json:"targetUrl"`
-	Payload            *string             `json:"payload,omitempty"`
-	PayloadContentType string              `json:"payloadContentType,omitempty"`
-	DataOnly           bool                `json:"dataOnly"`
-	EventID            *string             `json:"eventId,omitempty"`
-	CorrelationID      *string             `json:"correlationId,omitempty"`
-	ClientID           *string             `json:"clientId,omitempty"`
-	SubscriptionID     *string             `json:"subscriptionId,omitempty"`
-	ServiceAccountID   *string             `json:"serviceAccountId,omitempty"`
-	DispatchPoolID     *string             `json:"dispatchPoolId,omitempty"`
-	MessageGroup       *string             `json:"messageGroup,omitempty"`
-	Mode               string              `json:"mode,omitempty"`
-	Sequence           int32               `json:"sequence,omitempty"`
-	TimeoutSeconds     uint32              `json:"timeoutSeconds,omitempty"`
-	MaxRetries         uint32              `json:"maxRetries,omitempty"`
+	ID                 *string                `json:"id,omitempty"` // SDK may supply for idempotency; otherwise minted server-side
+	ExternalID         *string                `json:"externalId,omitempty"`
+	Kind               string                 `json:"kind"`
+	Code               string                 `json:"code"`
+	Source             *string                `json:"source,omitempty"`
+	Subject            *string                `json:"subject,omitempty"`
+	TargetURL          string                 `json:"targetUrl"`
+	Payload            *string                `json:"payload,omitempty"`
+	PayloadContentType string                 `json:"payloadContentType,omitempty"`
+	DataOnly           bool                   `json:"dataOnly"`
+	EventID            *string                `json:"eventId,omitempty"`
+	CorrelationID      *string                `json:"correlationId,omitempty"`
+	ClientID           *string                `json:"clientId,omitempty"`
+	SubscriptionID     *string                `json:"subscriptionId,omitempty"`
+	ServiceAccountID   *string                `json:"serviceAccountId,omitempty"`
+	DispatchPoolID     *string                `json:"dispatchPoolId,omitempty"`
+	MessageGroup       *string                `json:"messageGroup,omitempty"`
+	Mode               string                 `json:"mode,omitempty"`
+	Sequence           int32                  `json:"sequence,omitempty"`
+	TimeoutSeconds     uint32                 `json:"timeoutSeconds,omitempty"`
+	MaxRetries         uint32                 `json:"maxRetries,omitempty"`
 	Metadata           []dispatchjob.Metadata `json:"metadata,omitempty"`
 }
 
@@ -60,8 +60,18 @@ type BatchRequest struct {
 }
 
 // BatchResponse is the outbound JSON.
+// BatchResultItem is one per-item outcome. Status is the SCREAMING_SNAKE
+// OutboxStatus the outbox dispatcher parses.
+type BatchResultItem struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+	Error  string `json:"error,omitempty"`
+}
+
+// BatchResponse is the wire body for the batch endpoints: a per-item result
+// list, 1:1 with the outbox/SDK contract {results:[{id,status,error?}]}.
 type BatchResponse struct {
-	Accepted int `json:"accepted"`
+	Results []BatchResultItem `json:"results"`
 }
 
 // RegisterRoutes mounts /api/dispatch-jobs/batch.
@@ -84,7 +94,8 @@ func (s *DispatchJobsBatchState) batchIngest(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if len(body.Items) == 0 {
-		_ = json.NewEncoder(w).Encode(BatchResponse{Accepted: 0})
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(BatchResponse{Results: []BatchResultItem{}})
 		return
 	}
 	if len(body.Items) > 1000 {
@@ -139,9 +150,15 @@ func (s *DispatchJobsBatchState) batchIngest(w http.ResponseWriter, r *http.Requ
 		httperror.Write(w, usecase.Internal("REPO", "insert batch failed", err))
 		return
 	}
+	// Per-item result list — 1:1 with the outbox/SDK contract. Insert is
+	// all-or-nothing here, so every persisted job reports SUCCESS.
+	results := make([]BatchResultItem, len(jobs))
+	for i := range jobs {
+		results[i] = BatchResultItem{ID: jobs[i].ID, Status: "SUCCESS"}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(BatchResponse{Accepted: len(jobs)})
+	_ = json.NewEncoder(w).Encode(BatchResponse{Results: results})
 }
 
 func defaultIfEmpty(v, fallback string) string {

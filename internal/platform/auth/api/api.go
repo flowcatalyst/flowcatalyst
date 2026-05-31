@@ -359,11 +359,12 @@ func (s *State) updateOAuthClient(ctx context.Context, in *updateOAuthClientInpu
 	return &emptyOutput{}, nil
 }
 
-// oauthClientStatusChangeOutput carries the {message} body the SPA expects
-// from activate/deactivate (oauth-clients.ts:109-117). Returns 200 + body
-// rather than 204 so apiFetch does not resolve to undefined.
+// oauthClientStatusChangeOutput carries the {success, message?} body, matching
+// Rust's SuccessResponse from activate/deactivate. The SPA reads `.message`
+// (oauth-clients.ts:109-117), which is preserved. Returns 200 + body rather
+// than 204 so apiFetch does not resolve to undefined.
 type oauthClientStatusChangeOutput struct {
-	Body apicommon.StatusChangeResponse
+	Body apicommon.SuccessResponse
 }
 
 func (s *State) activateOAuthClient(ctx context.Context, in *idInput) (*oauthClientStatusChangeOutput, error) {
@@ -376,7 +377,7 @@ func (s *State) activateOAuthClient(ctx context.Context, in *idInput) (*oauthCli
 		operations.ActivateOAuthClientCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &oauthClientStatusChangeOutput{Body: apicommon.StatusChangeResponse{Message: "OAuth client activated"}}, nil
+	return &oauthClientStatusChangeOutput{Body: apicommon.SuccessResponse{Success: true, Message: "OAuth client activated"}}, nil
 }
 
 func (s *State) deactivateOAuthClient(ctx context.Context, in *idInput) (*oauthClientStatusChangeOutput, error) {
@@ -389,7 +390,7 @@ func (s *State) deactivateOAuthClient(ctx context.Context, in *idInput) (*oauthC
 		operations.DeactivateOAuthClientCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &oauthClientStatusChangeOutput{Body: apicommon.StatusChangeResponse{Message: "OAuth client deactivated"}}, nil
+	return &oauthClientStatusChangeOutput{Body: apicommon.SuccessResponse{Success: true, Message: "OAuth client deactivated"}}, nil
 }
 
 type rotateOAuthClientSecretOutput struct {

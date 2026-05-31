@@ -22,6 +22,7 @@ import (
 	authapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/bridge"
+	clientselectionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/clientselection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/login"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/loginbackoff"
@@ -507,7 +508,14 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 				return humaAPI.OpenAPI().MarshalJSON()
 			},
 		})
-		meapi.RegisterRoutes(r, &meapi.State{Principals: principalRepo, Applications: applicationRepo})
+		meapi.RegisterRoutes(r, &meapi.State{Principals: principalRepo, Applications: applicationRepo, Clients: clientRepo, AppConfigs: applicationClientConfigRepo})
+		clientselectionapi.RegisterRoutes(r, &clientselectionapi.State{
+			Principals: principalRepo,
+			Clients:    clientRepo,
+			Roles:      roleRepo,
+			Grants:     principalGrantRepo,
+			Auth:       authSvc,
+		})
 		sdkapi.RegisterRoutes(r, &sdkapi.DispatchJobsBatchState{Repo: dispatchJobRepo})
 	})
 

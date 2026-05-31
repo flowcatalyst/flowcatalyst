@@ -127,7 +127,7 @@ func Register(api huma.API, s *State) {
 		Path:          "/api/roles/{roleName}/permissions/{permission}",
 		Summary:       "Grant a permission to a role",
 		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
+		DefaultStatus: http.StatusOK,
 	}, s.grantPermission)
 
 	// SDK-compatibility alias: the Laravel/Rust client grants a permission by
@@ -139,7 +139,7 @@ func Register(api huma.API, s *State) {
 		Path:          "/api/roles/{roleName}/permissions",
 		Summary:       "Grant a permission to a role (SDK; permission in body)",
 		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
+		DefaultStatus: http.StatusOK,
 	}, s.grantPermissionByBody)
 
 	huma.Register(api, huma.Operation{
@@ -148,7 +148,7 @@ func Register(api huma.API, s *State) {
 		Path:          "/api/roles/{roleName}/permissions/{permission}",
 		Summary:       "Revoke a permission from a role",
 		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
+		DefaultStatus: http.StatusOK,
 	}, s.revokePermission)
 
 	// Permission catalog.
@@ -423,7 +423,7 @@ type rolePermissionGrantInput struct {
 	Permission string `path:"permission"`
 }
 
-func (s *State) grantPermission(ctx context.Context, in *rolePermissionGrantInput) (*emptyOutput, error) {
+func (s *State) grantPermission(ctx context.Context, in *rolePermissionGrantInput) (*getOutput, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteRoles(ac); err != nil {
 		return nil, err
@@ -434,7 +434,12 @@ func (s *State) grantPermission(ctx context.Context, in *rolePermissionGrantInpu
 	}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	r, err := s.resolveRole(ctx, in.RoleName)
+	if err != nil {
+		return nil, err
+	}
+	// Return the updated role (1:1 with Rust grant_permission → RoleResponse).
+	return &getOutput{Body: fromEntity(r)}, nil
 }
 
 type rolePermissionGrantBodyInput struct {
@@ -445,7 +450,7 @@ type rolePermissionGrantBodyInput struct {
 // grantPermissionByBody backs POST /api/roles/{roleName}/permissions with the
 // permission in the body (SDK shape). Delegates to the same grant operation as
 // the path-param variant.
-func (s *State) grantPermissionByBody(ctx context.Context, in *rolePermissionGrantBodyInput) (*emptyOutput, error) {
+func (s *State) grantPermissionByBody(ctx context.Context, in *rolePermissionGrantBodyInput) (*getOutput, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteRoles(ac); err != nil {
 		return nil, err
@@ -456,10 +461,14 @@ func (s *State) grantPermissionByBody(ctx context.Context, in *rolePermissionGra
 	}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	r, err := s.resolveRole(ctx, in.RoleName)
+	if err != nil {
+		return nil, err
+	}
+	return &getOutput{Body: fromEntity(r)}, nil
 }
 
-func (s *State) revokePermission(ctx context.Context, in *rolePermissionGrantInput) (*emptyOutput, error) {
+func (s *State) revokePermission(ctx context.Context, in *rolePermissionGrantInput) (*getOutput, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteRoles(ac); err != nil {
 		return nil, err
@@ -470,7 +479,12 @@ func (s *State) revokePermission(ctx context.Context, in *rolePermissionGrantInp
 	}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	r, err := s.resolveRole(ctx, in.RoleName)
+	if err != nil {
+		return nil, err
+	}
+	// Return the updated role (1:1 with Rust revoke_permission → RoleResponse).
+	return &getOutput{Body: fromEntity(r)}, nil
 }
 
 // ── permission catalog ──────────────────────────────────────────────────

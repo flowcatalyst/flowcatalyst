@@ -174,17 +174,79 @@ func rawFromEntity(e *event.Event) RawEventResponse {
 	}
 }
 
-// BatchEventItem is one item in the batch ingest body.
+// BatchEventItem is one item in the batch ingest body. Fields are optional in
+// the generated schema so the endpoint accepts both the camelCase API form (the
+// SPA fan-out) and the snake_case SDK-outbox payload form (event_type,
+// correlation_id, …); the alias coalescing in UnmarshalJSON is 1:1 with Rust
+// shared/batch_api.rs BatchEventItem's serde aliases.
 type BatchEventItem struct {
 	ID              string          `json:"id,omitempty"`
-	Type            string          `json:"type"`
-	Source          string          `json:"source"`
-	Subject         string          `json:"subject"`
-	Data            json.RawMessage `json:"data"`
+	SpecVersion     string          `json:"specVersion,omitempty"`
+	Type            string          `json:"type,omitempty"`
+	Source          string          `json:"source,omitempty"`
+	Subject         string          `json:"subject,omitempty"`
+	Data            json.RawMessage `json:"data,omitempty"`
 	DeduplicationID string          `json:"deduplicationId,omitempty"`
 	ClientID        *string         `json:"clientId,omitempty"`
+	MessageGroup    *string         `json:"messageGroup,omitempty"`
 	CorrelationID   *string         `json:"correlationId,omitempty"`
 	CausationID     *string         `json:"causationId,omitempty"`
+}
+
+// UnmarshalJSON accepts both the camelCase API keys and the snake_case SDK
+// outbox-payload keys (event_type, spec_version, correlation_id, causation_id,
+// deduplication_id, message_group, client_id). Mirrors the serde aliases on the
+// Rust BatchEventItem so the platform ingests whatever a deployed outbox sends.
+func (b *BatchEventItem) UnmarshalJSON(data []byte) error {
+	var r struct {
+		ID                 string          `json:"id"`
+		SpecVersion        string          `json:"specVersion"`
+		SpecVersionAlt     string          `json:"spec_version"`
+		Type               string          `json:"type"`
+		TypeAlt            string          `json:"event_type"`
+		Source             string          `json:"source"`
+		Subject            string          `json:"subject"`
+		Data               json.RawMessage `json:"data"`
+		DeduplicationID    string          `json:"deduplicationId"`
+		DeduplicationIDAlt string          `json:"deduplication_id"`
+		ClientID           *string         `json:"clientId"`
+		ClientIDAlt        *string         `json:"client_id"`
+		MessageGroup       *string         `json:"messageGroup"`
+		MessageGroupAlt    *string         `json:"message_group"`
+		CorrelationID      *string         `json:"correlationId"`
+		CorrelationIDAlt   *string         `json:"correlation_id"`
+		CausationID        *string         `json:"causationId"`
+		CausationIDAlt     *string         `json:"causation_id"`
+	}
+	if err := json.Unmarshal(data, &r); err != nil {
+		return err
+	}
+	b.ID = r.ID
+	b.SpecVersion = coalesceStr(r.SpecVersion, r.SpecVersionAlt)
+	b.Type = coalesceStr(r.Type, r.TypeAlt)
+	b.Source = r.Source
+	b.Subject = r.Subject
+	b.Data = r.Data
+	b.DeduplicationID = coalesceStr(r.DeduplicationID, r.DeduplicationIDAlt)
+	b.ClientID = coalescePtr(r.ClientID, r.ClientIDAlt)
+	b.MessageGroup = coalescePtr(r.MessageGroup, r.MessageGroupAlt)
+	b.CorrelationID = coalescePtr(r.CorrelationID, r.CorrelationIDAlt)
+	b.CausationID = coalescePtr(r.CausationID, r.CausationIDAlt)
+	return nil
+}
+
+func coalesceStr(primary, alt string) string {
+	if primary != "" {
+		return primary
+	}
+	return alt
+}
+
+func coalescePtr(primary, alt *string) *string {
+	if primary != nil {
+		return primary
+	}
+	return alt
 }
 
 // BatchRequest is the wire body for POST /api/events/batch.
@@ -192,9 +254,20 @@ type BatchRequest struct {
 	Items []BatchEventItem `json:"items"`
 }
 
-// BatchResponse reports how many items were accepted.
+// BatchResultItem is one per-item outcome in the batch-ingest response. The
+// status is the SCREAMING_SNAKE OutboxStatus the outbox dispatcher parses
+// (SUCCESS / BAD_REQUEST / INTERNAL_ERROR / …).
+type BatchResultItem struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+	Error  string `json:"error,omitempty"`
+}
+
+// BatchResponse is the wire body for POST /api/events/batch: a per-item result
+// list, 1:1 with Rust BatchResponse {results:[…]} and the contract the outbox
+// dispatcher (fc-outbox/http_dispatcher.rs) requires on a 2xx.
 type BatchResponse struct {
-	Accepted int `json:"accepted"`
+	Results []BatchResultItem `json:"results"`
 }
 
 // EventFilterOption is one {value,label} pair for the SPA's cascading

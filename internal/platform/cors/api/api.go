@@ -52,6 +52,15 @@ func Register(api huma.API, s *State) {
 	}, s.add)
 
 	huma.Register(api, huma.Operation{
+		OperationID:   "getCorsOrigin",
+		Method:        http.MethodGet,
+		Path:          "/api/platform/cors/{id}",
+		Summary:       "Get a CORS origin by id (anchor)",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.getByID)
+
+	huma.Register(api, huma.Operation{
 		OperationID:   "deleteCorsOrigin",
 		Method:        http.MethodDelete,
 		Path:          "/api/platform/cors/{id}",
@@ -76,7 +85,30 @@ func (s *State) publicAllowed(ctx context.Context, _ *emptyInput) (*publicOutput
 	for _, o := range rows {
 		origins = append(origins, o.Origin)
 	}
-	return &publicOutput{Body: PublicAllowedResponse{AllowedOrigins: origins}}, nil
+	return &publicOutput{Body: PublicAllowedResponse{Origins: origins}}, nil
+}
+
+type getInput struct {
+	ID string `path:"id"`
+}
+
+type getOutput struct {
+	Body AllowedOriginResponse
+}
+
+func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.RequireAnchor(ac); err != nil {
+		return nil, err
+	}
+	o, err := s.Repo.FindByID(ctx, in.ID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
+	}
+	if o == nil {
+		return nil, httperror.NotFound("CorsOrigin", in.ID)
+	}
+	return &getOutput{Body: fromEntity(o)}, nil
 }
 
 type listOutput struct {

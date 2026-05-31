@@ -16,6 +16,13 @@ type StatusChangeResponse struct {
 	Message string `json:"message"`
 }
 
+// SuccessResponse matches Rust's shared SuccessResponse {success, message?}
+// returned by oauth-client activate/deactivate. `message` is omitted when empty.
+type SuccessResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message,omitempty"`
+}
+
 // OffsetPage is the offset-paginated envelope matching Rust fc-platform's
 // PaginatedResponse<T>: `{data, page, size, total, total_pages}` with a
 // 0-based page index.

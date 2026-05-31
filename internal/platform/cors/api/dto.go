@@ -42,5 +42,7 @@ type CorsOriginListResponse struct {
 }
 
 type PublicAllowedResponse struct {
-	AllowedOrigins []string `json:"allowedOrigins"`
+	// Wire key is `origins` to match Rust AllowedOriginsResponse (the public
+	// browser-facing contract at GET /api/platform/cors/allowed).
+	Origins []string `json:"origins"`
 }

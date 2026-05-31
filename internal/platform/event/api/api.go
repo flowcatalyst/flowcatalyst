@@ -174,19 +174,28 @@ func (s *State) batchIngest(ctx context.Context, in *batchInput) (*batchOutput, 
 		if it.ID != "" {
 			ev.ID = it.ID
 		}
+		if it.SpecVersion != "" {
+			ev.SpecVersion = it.SpecVersion
+		}
 		if it.DeduplicationID != "" {
 			ev.DeduplicationID = it.DeduplicationID
 		}
 		ev.ClientID = it.ClientID
+		ev.MessageGroup = it.MessageGroup
 		ev.CorrelationID = it.CorrelationID
 		ev.CausationID = it.CausationID
 		events = append(events, *ev)
 	}
-	n, err := s.Repo.InsertBatch(ctx, events)
-	if err != nil {
+	if _, err := s.Repo.InsertBatch(ctx, events); err != nil {
 		return nil, usecase.Internal("REPO", "insert batch failed", err)
 	}
-	return &batchOutput{Body: BatchResponse{Accepted: n}}, nil
+	// Per-item result list — 1:1 with the outbox/SDK contract. Insert is
+	// all-or-nothing here, so every persisted event reports SUCCESS.
+	results := make([]BatchResultItem, len(events))
+	for i := range events {
+		results[i] = BatchResultItem{ID: events[i].ID, Status: "SUCCESS"}
+	}
+	return &batchOutput{Body: BatchResponse{Results: results}}, nil
 }
 
 // ── list / detail ────────────────────────────────────────────────────────

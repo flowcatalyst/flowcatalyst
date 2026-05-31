@@ -160,6 +160,15 @@
       "AllowedOriginResponse": {
         "additionalProperties": false,
         "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/AllowedOriginResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
           "createdAt": {
             "$ref": "#/components/schemas/Time"
           },
@@ -1035,7 +1044,13 @@
           "id": {
             "type": "string"
           },
+          "messageGroup": {
+            "type": "string"
+          },
           "source": {
+            "type": "string"
+          },
+          "specVersion": {
             "type": "string"
           },
           "subject": {
@@ -1045,12 +1060,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "type",
-          "source",
-          "subject",
-          "data"
-        ],
         "type": "object"
       },
       "BatchRequest": {
@@ -1089,13 +1098,34 @@
             "readOnly": true,
             "type": "string"
           },
-          "accepted": {
-            "format": "int64",
-            "type": "integer"
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/BatchResultItem"
+            },
+            "type": "array"
           }
         },
         "required": [
-          "accepted"
+          "results"
+        ],
+        "type": "object"
+      },
+      "BatchResultItem": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status"
         ],
         "type": "object"
       },
@@ -4413,7 +4443,7 @@
             "readOnly": true,
             "type": "string"
           },
-          "allowedOrigins": {
+          "origins": {
             "items": {
               "type": "string"
             },
@@ -4421,7 +4451,7 @@
           }
         },
         "required": [
-          "allowedOrigins"
+          "origins"
         ],
         "type": "object"
       },
@@ -5667,6 +5697,30 @@
           "dataOnly",
           "createdAt",
           "updatedAt"
+        ],
+        "type": "object"
+      },
+      "SuccessResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SuccessResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success"
         ],
         "type": "object"
       },
@@ -9226,8 +9280,15 @@
           }
         ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusChangeResponse"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -9488,8 +9549,15 @@
           "required": true
         },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusChangeResponse"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -9532,8 +9600,15 @@
           "required": true
         },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusChangeResponse"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -11745,15 +11820,15 @@
           "required": true
         },
         "responses": {
-          "201": {
+          "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CreatedResponse"
+                  "$ref": "#/components/schemas/EventTypeResponse"
                 }
               }
             },
-            "description": "Created"
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -11796,15 +11871,15 @@
           "required": true
         },
         "responses": {
-          "201": {
+          "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CreatedResponse"
+                  "$ref": "#/components/schemas/EventTypeResponse"
                 }
               }
             },
-            "description": "Created"
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -13116,7 +13191,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StatusChangeResponse"
+                  "$ref": "#/components/schemas/SuccessResponse"
                 }
               }
             },
@@ -13157,7 +13232,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StatusChangeResponse"
+                  "$ref": "#/components/schemas/SuccessResponse"
                 }
               }
             },
@@ -13560,6 +13635,45 @@
         "tags": [
           "cors-origins"
         ]
+      },
+      "get": {
+        "operationId": "getCorsOrigin",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllowedOriginResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get a CORS origin by id (anchor)",
+        "tags": [
+          "cors-origins"
+        ]
       }
     },
     "/api/principals": {
@@ -13850,8 +13964,15 @@
           }
         ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusChangeResponse"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -14147,8 +14268,15 @@
           }
         ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusChangeResponse"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -14281,8 +14409,15 @@
           "required": true
         },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrincipalResponse"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -14372,8 +14507,15 @@
           }
         ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrincipalResponse"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -15233,8 +15375,15 @@
           "required": true
         },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleResponse"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -15275,8 +15424,15 @@
           }
         ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleResponse"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {
@@ -15315,8 +15471,15 @@
           }
         ],
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleResponse"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {

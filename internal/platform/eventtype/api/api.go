@@ -91,7 +91,7 @@ func Register(api huma.API, s *State) {
 		Path:          "/api/event-types/{id}/schemas",
 		Summary:       "Add a schema version to an event type (Go-historical alias)",
 		Tags:          []string{tag},
-		DefaultStatus: http.StatusCreated,
+		DefaultStatus: http.StatusOK,
 	}, s.addSchema)
 
 	// /versions is the Rust-canonical path. Same handler; both paths
@@ -102,7 +102,7 @@ func Register(api huma.API, s *State) {
 		Path:          "/api/event-types/{id}/versions",
 		Summary:       "Add a schema version to an event type",
 		Tags:          []string{tag},
-		DefaultStatus: http.StatusCreated,
+		DefaultStatus: http.StatusOK,
 	}, s.addSchema)
 }
 
@@ -297,7 +297,7 @@ type addSchemaInput struct {
 	Body AddSchemaRequest
 }
 
-func (s *State) addSchema(ctx context.Context, in *addSchemaInput) (*createOutput, error) {
+func (s *State) addSchema(ctx context.Context, in *addSchemaInput) (*getOutput, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteEventTypes(ac); err != nil {
 		return nil, err
@@ -306,9 +306,16 @@ func (s *State) addSchema(ctx context.Context, in *addSchemaInput) (*createOutpu
 		return nil, err
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.AddSchema(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec)
-	if err != nil {
+	if _, err := operations.AddSchema(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
-	return &createOutput{Body: apicommon.CreatedResponse{ID: committed.Event().EventTypeID}}, nil
+	et, err := s.Repo.FindByID(ctx, in.ID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
+	}
+	if et == nil {
+		return nil, httperror.NotFound("EventType", in.ID)
+	}
+	// Return the updated event type (1:1 with Rust add_schema_version → EventTypeResponse).
+	return &getOutput{Body: fromEntity(et)}, nil
 }

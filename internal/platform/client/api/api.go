@@ -102,7 +102,7 @@ func Register(api huma.API, s *State) {
 		Path:          "/api/clients/{id}/activate",
 		Summary:       "Activate a client",
 		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
+		DefaultStatus: http.StatusOK,
 	}, s.activate)
 
 	huma.Register(api, huma.Operation{
@@ -111,7 +111,7 @@ func Register(api huma.API, s *State) {
 		Path:          "/api/clients/{id}/suspend",
 		Summary:       "Suspend a client",
 		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
+		DefaultStatus: http.StatusOK,
 	}, s.suspend)
 
 	huma.Register(api, huma.Operation{
@@ -120,7 +120,7 @@ func Register(api huma.API, s *State) {
 		Path:          "/api/clients/{id}/notes",
 		Summary:       "Add a note to a client",
 		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
+		DefaultStatus: http.StatusOK,
 	}, s.addNote)
 
 	huma.Register(api, huma.Operation{
@@ -331,7 +331,7 @@ type idInput struct {
 	ID string `path:"id"`
 }
 
-func (s *State) activate(ctx context.Context, in *idInput) (*emptyOutput, error) {
+func (s *State) activate(ctx context.Context, in *idInput) (*statusChangeOutput, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanUpdateClients(ac); err != nil {
 		return nil, err
@@ -340,7 +340,7 @@ func (s *State) activate(ctx context.Context, in *idInput) (*emptyOutput, error)
 	if _, err := operations.ActivateClient(ctx, s.Repo, s.UoW, operations.ActivateCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &statusChangeOutput{Body: apicommon.StatusChangeResponse{Message: "Client activated"}}, nil
 }
 
 type suspendInput struct {
@@ -348,7 +348,7 @@ type suspendInput struct {
 	Body SuspendClientRequest
 }
 
-func (s *State) suspend(ctx context.Context, in *suspendInput) (*emptyOutput, error) {
+func (s *State) suspend(ctx context.Context, in *suspendInput) (*statusChangeOutput, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanUpdateClients(ac); err != nil {
 		return nil, err
@@ -357,7 +357,7 @@ func (s *State) suspend(ctx context.Context, in *suspendInput) (*emptyOutput, er
 	if _, err := operations.SuspendClient(ctx, s.Repo, s.UoW, operations.SuspendCommand{ID: in.ID, Reason: in.Body.Reason}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &statusChangeOutput{Body: apicommon.StatusChangeResponse{Message: "Client suspended"}}, nil
 }
 
 type addNoteInput struct {
@@ -365,7 +365,7 @@ type addNoteInput struct {
 	Body AddNoteRequest
 }
 
-func (s *State) addNote(ctx context.Context, in *addNoteInput) (*emptyOutput, error) {
+func (s *State) addNote(ctx context.Context, in *addNoteInput) (*statusChangeOutput, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanUpdateClients(ac); err != nil {
 		return nil, err
@@ -378,7 +378,8 @@ func (s *State) addNote(ctx context.Context, in *addNoteInput) (*emptyOutput, er
 	}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	// Rust returns AddNoteResponse {message}; same wire shape as StatusChangeResponse.
+	return &statusChangeOutput{Body: apicommon.StatusChangeResponse{Message: "Note added"}}, nil
 }
 
 func (s *State) delete(ctx context.Context, in *idInput) (*emptyOutput, error) {
