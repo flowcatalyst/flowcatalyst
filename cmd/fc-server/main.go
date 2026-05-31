@@ -116,11 +116,14 @@ func main() {
 		cancel()
 	}()
 
-	// Serve the embedded Vue SPA when it was built into the binary (parity
-	// with the Rust fc-server, which hosts the dashboard). No-op when dist
-	// wasn't embedded — fc-server then runs API-only.
+	// Serve the embedded Vue SPA when it was built in AND the platform API is
+	// enabled — it's the platform dashboard and it does client-side OIDC login.
+	// A router-only or worker-only instance must NOT serve it, otherwise hitting
+	// "/" redirects to an OIDC flow that instance can't satisfy; the router's own
+	// UI/API lives under the /router prefix (basic-auth). No-op when dist wasn't
+	// embedded.
 	runOpts := server.RunOptions{}
-	if frontend.IsAvailable() {
+	if cfg.PlatformEnabled && frontend.IsAvailable() {
 		runOpts.Fallback = frontend.Handler()
 		slog.Info("embedded Vue SPA available")
 	}
