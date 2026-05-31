@@ -15,6 +15,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	neturl "net/url"
+	"strings"
 	"sync"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
@@ -25,13 +27,13 @@ var ErrNotImplemented = errors.New("queue: not implemented for this backend")
 
 // Metrics captures queue health snapshot.
 type Metrics struct {
-	QueueIdentifier   string
-	PendingMessages   uint64
-	InFlightMessages  uint64
-	TotalPolled       uint64
-	TotalAcked        uint64
-	TotalNacked       uint64
-	TotalDeferred     uint64
+	QueueIdentifier  string
+	PendingMessages  uint64
+	InFlightMessages uint64
+	TotalPolled      uint64
+	TotalAcked       uint64
+	TotalNacked      uint64
+	TotalDeferred    uint64
 }
 
 // Consumer is the trait every queue backend implements for the consume side.
@@ -81,8 +83,8 @@ type ConsumerFactory func(ctx context.Context, cfg common.QueueConfig) (Consumer
 type PublisherFactory func(ctx context.Context, cfg common.QueueConfig) (Publisher, error)
 
 var (
-	registryMu sync.RWMutex
-	consumerFs = make(map[string]ConsumerFactory)
+	registryMu  sync.RWMutex
+	consumerFs  = make(map[string]ConsumerFactory)
 	publisherFs = make(map[string]PublisherFactory)
 )
 
@@ -104,7 +106,7 @@ func RegisterPublisher(scheme string, f PublisherFactory) {
 // NewConsumer builds a Consumer for the supplied URI. The URI scheme
 // (e.g. "sqs", "postgres", "sqlite") determines the backend.
 func NewConsumer(ctx context.Context, cfg common.QueueConfig) (Consumer, error) {
-	scheme := schemeOf(cfg.URI)
+	scheme := backendScheme(cfg.URI)
 	registryMu.RLock()
 	f, ok := consumerFs[scheme]
 	registryMu.RUnlock()
@@ -116,7 +118,7 @@ func NewConsumer(ctx context.Context, cfg common.QueueConfig) (Consumer, error) 
 
 // NewPublisher builds a Publisher for the supplied URI.
 func NewPublisher(ctx context.Context, cfg common.QueueConfig) (Publisher, error) {
-	scheme := schemeOf(cfg.URI)
+	scheme := backendScheme(cfg.URI)
 	registryMu.RLock()
 	f, ok := publisherFs[scheme]
 	registryMu.RUnlock()
@@ -133,4 +135,29 @@ func schemeOf(uri string) string {
 		}
 	}
 	return uri
+}
+
+// backendScheme maps a queue URI to the registered backend key. It's normally
+// just the URI scheme, but AWS SQS queue URLs are full https endpoints
+// (https://sqs.<region>.amazonaws.com/<account>/<queue>) — the platform's
+// config-sync hands these out verbatim — so an http(s) URL pointing at an SQS
+// endpoint is routed to the "sqs" backend rather than a nonexistent "https" one.
+func backendScheme(uri string) string {
+	scheme := schemeOf(uri)
+	if (scheme == "https" || scheme == "http") && isSQSEndpoint(uri) {
+		return "sqs"
+	}
+	return scheme
+}
+
+// isSQSEndpoint reports whether uri's host is an AWS SQS service endpoint
+// (sqs.<region>.amazonaws.com or sqs-fips.<region>.amazonaws.com[.cn]).
+func isSQSEndpoint(uri string) bool {
+	u, err := neturl.Parse(uri)
+	if err != nil {
+		return false
+	}
+	host := u.Hostname()
+	return (strings.HasPrefix(host, "sqs.") || strings.HasPrefix(host, "sqs-fips.")) &&
+		strings.Contains(host, ".amazonaws.")
 }
