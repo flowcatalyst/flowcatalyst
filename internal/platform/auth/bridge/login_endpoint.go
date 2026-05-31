@@ -259,6 +259,17 @@ func (e *LoginEndpoint) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if returnURL != "" {
 		loginState.ReturnURL = &returnURL
 	}
+	// OAuth chaining: when this SSO login was started inside an /oauth/authorize
+	// flow (a downstream app using FlowCatalyst as its IdP), the SPA forwards the
+	// OAuth request params here so the callback can resume /oauth/authorize and
+	// issue the code back to the app. 1:1 with Rust's OidcLoginParams.
+	loginState.OAuthClientID = optParam(q, "oauth_client_id")
+	loginState.OAuthRedirectURI = optParam(q, "oauth_redirect_uri")
+	loginState.OAuthScope = optParam(q, "oauth_scope")
+	loginState.OAuthState = optParam(q, "oauth_state")
+	loginState.OAuthCodeChallenge = optParam(q, "oauth_code_challenge")
+	loginState.OAuthCodeChallengeMethod = optParam(q, "oauth_code_challenge_method")
+	loginState.OAuthNonce = optParam(q, "oauth_nonce")
 	if err := e.states.Insert(r.Context(), loginState); err != nil {
 		httperror.Write(w, usecase.Internal("OIDC_STATE", "persist state failed", err))
 		return
@@ -409,19 +420,50 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 
 	// The state row was already consumed atomically up-front, so no cleanup here.
 
-	// Post-login redirect target. Only a same-site relative path is allowed
-	// (absolute / protocol-relative "//host" / backslash forms are open-redirect
-	// vectors). Anything unsafe — including an empty return_url — falls back to
-	// the dashboard, so an SSO round-trip always lands somewhere useful. A
-	// chained OAuth login arrives here with return_url = "/oauth/authorize?…"
-	// (relative), which passes the sanitiser and resumes the OAuth flow.
-	returnURL := "/dashboard"
-	if loginState.ReturnURL != nil {
+	// Decide where to send the now-authenticated user (the SessionWriter sets the
+	// session cookie first, then redirects here):
+	//   1. a chained OAuth login (started inside /oauth/authorize) resumes that
+	//      flow so the downstream app receives its code;
+	//   2. otherwise a safe same-site relative return_url (absolute / "//host" /
+	//      backslash forms are open-redirect vectors and are dropped);
+	//   3. otherwise the dashboard, so a plain SSO login lands somewhere useful.
+	target := "/dashboard"
+	switch {
+	case loginState.OAuthClientID != nil && *loginState.OAuthClientID != "":
+		target = buildAuthorizeRedirect(loginState)
+	case loginState.ReturnURL != nil:
 		if safe := safeRelativeReturnURL(*loginState.ReturnURL); safe != "" {
-			returnURL = safe
+			target = safe
 		}
 	}
-	e.SessionWriter(w, r, p.ID, returnURL)
+	e.SessionWriter(w, r, p.ID, target)
+}
+
+// buildAuthorizeRedirect resumes a chained OAuth flow: a relative /oauth/authorize
+// URL carrying the stored OAuth request params, so the downstream app's code is
+// issued once the session cookie is in place. 1:1 with Rust determine_redirect_url.
+func buildAuthorizeRedirect(s *OIDCLoginState) string {
+	u := "/oauth/authorize?response_type=code&client_id=" + url.QueryEscape(*s.OAuthClientID)
+	add := func(key string, val *string) {
+		if val != nil && *val != "" {
+			u += "&" + key + "=" + url.QueryEscape(*val)
+		}
+	}
+	add("redirect_uri", s.OAuthRedirectURI)
+	add("scope", s.OAuthScope)
+	add("state", s.OAuthState)
+	add("code_challenge", s.OAuthCodeChallenge)
+	add("code_challenge_method", s.OAuthCodeChallengeMethod)
+	add("nonce", s.OAuthNonce)
+	return u
+}
+
+// optParam returns a pointer to q[key], or nil when the param is absent/empty.
+func optParam(q url.Values, key string) *string {
+	if v := q.Get(key); v != "" {
+		return &v
+	}
+	return nil
 }
 
 // safeRelativeReturnURL returns u only when it is a safe same-site relative
