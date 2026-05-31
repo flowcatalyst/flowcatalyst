@@ -195,6 +195,18 @@ func (r *Repository) Persist(ctx context.Context, p *Principal, tx *usecasepgx.D
 	})
 }
 
+// UpdatePasswordHash overwrites only the password_hash for a principal. Used by
+// the login flow to transparently re-encode a legacy hash (e.g. an upstream
+// Laravel argon2i hash) to the native scheme after a successful verify. A
+// direct UPDATE — not a domain event — because it's an internal migration, not
+// a user-initiated password change.
+func (r *Repository) UpdatePasswordHash(ctx context.Context, principalID, hash string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE iam_principals SET password_hash = $1, updated_at = NOW() WHERE id = $2`,
+		hash, principalID)
+	return err
+}
+
 // Delete removes the principal and the two non-FK-cascade junctions.
 // iam_principal_roles has FK ON DELETE CASCADE so it goes via the main row.
 func (r *Repository) Delete(ctx context.Context, p *Principal, tx *usecasepgx.DbTx) error {

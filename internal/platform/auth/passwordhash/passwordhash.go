@@ -33,6 +33,7 @@ import (
 	"strings"
 
 	"golang.org/x/crypto/argon2"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Params is the Argon2id parameter set. The defaults match the Rust
@@ -75,16 +76,78 @@ func HashWithParams(plaintext string, p Params) (string, error) {
 // Verify returns nil iff `plaintext` re-hashes to the same value as the
 // stored PHC string. `ErrInvalidHash` for malformed input; `ErrMismatch`
 // for a hash that parsed but didn't match.
+//
+// Both argon2id (the native scheme) and argon2i are accepted — the argon2i
+// variant is what an upstream Laravel app produces, and existing users carry
+// those hashes. The algorithm is read from the PHC envelope, matching the
+// Rust/TS implementations (which verify the whole argon2 family). Migrate an
+// argon2i row to argon2id on next login by pairing Verify with NeedsRehash.
 func Verify(plaintext, encoded string) error {
-	p, salt, want, err := decode(encoded)
+	// bcrypt ($2a$/$2b$/$2y$) — the Laravel default. bcrypt only considers the
+	// first 72 bytes; truncate to match PHP's password_verify so long passwords
+	// compare identically.
+	if isBcrypt(encoded) {
+		pw := []byte(plaintext)
+		if len(pw) > 72 {
+			pw = pw[:72]
+		}
+		switch err := bcrypt.CompareHashAndPassword([]byte(encoded), pw); {
+		case err == nil:
+			return nil
+		case errors.Is(err, bcrypt.ErrMismatchedHashAndPassword):
+			return ErrMismatch
+		default:
+			return ErrInvalidHash
+		}
+	}
+
+	variant, p, salt, want, err := decode(encoded)
 	if err != nil {
 		return err
 	}
-	got := argon2.IDKey([]byte(plaintext), salt, p.Iterations, p.Memory, p.Parallelism, p.KeyLength)
+	got := deriveKey(variant, plaintext, p, salt)
+	if got == nil {
+		return ErrInvalidHash
+	}
 	if subtle.ConstantTimeCompare(got, want) != 1 {
 		return ErrMismatch
 	}
 	return nil
+}
+
+// isBcrypt reports whether the encoded hash is a bcrypt string (the Laravel
+// default password algorithm).
+func isBcrypt(s string) bool {
+	return strings.HasPrefix(s, "$2a$") || strings.HasPrefix(s, "$2b$") || strings.HasPrefix(s, "$2y$")
+}
+
+// deriveKey runs the argon2 variant named in the PHC envelope. Returns nil for
+// an unsupported variant.
+func deriveKey(variant, plaintext string, p Params, salt []byte) []byte {
+	switch variant {
+	case "argon2id":
+		return argon2.IDKey([]byte(plaintext), salt, p.Iterations, p.Memory, p.Parallelism, p.KeyLength)
+	case "argon2i":
+		return argon2.Key([]byte(plaintext), salt, p.Iterations, p.Memory, p.Parallelism, p.KeyLength)
+	default:
+		return nil
+	}
+}
+
+// NeedsRehash reports whether a stored hash should be re-encoded to the native
+// scheme after a successful verify. True for any non-native variant (e.g.
+// Laravel's argon2i), for argon2id rows whose params differ from DefaultParams,
+// and for anything that doesn't parse. Mirrors the Rust/TS needs_rehash so a
+// login transparently upgrades a legacy hash without disrupting the user.
+func NeedsRehash(encoded string) bool {
+	variant, p, _, _, err := decode(encoded)
+	if err != nil || variant != "argon2id" {
+		return true
+	}
+	return p.Memory != DefaultParams.Memory ||
+		p.Iterations != DefaultParams.Iterations ||
+		p.Parallelism != DefaultParams.Parallelism ||
+		p.KeyLength != DefaultParams.KeyLength
 }
 
 // ErrInvalidHash signals a stored hash that doesn't parse as a PHC
@@ -102,35 +165,38 @@ func encode(p Params, salt, hash []byte) string {
 		base64.RawStdEncoding.EncodeToString(hash))
 }
 
-func decode(s string) (Params, []byte, []byte, error) {
-	// Expected: $argon2id$v=19$m=…,t=…,p=…$<salt>$<hash>
-	if !strings.HasPrefix(s, "$argon2id$") {
-		return Params{}, nil, nil, ErrInvalidHash
-	}
+// decode parses a PHC argon2 envelope and returns the variant ("argon2id" or
+// "argon2i") alongside its params/salt/hash.
+func decode(s string) (string, Params, []byte, []byte, error) {
+	// Expected: $argon2id$v=19$m=…,t=…,p=…$<salt>$<hash>  (or $argon2i$…)
 	parts := strings.Split(s, "$")
 	// parts: ["", "argon2id", "v=19", "m=...,t=...,p=...", "<salt>", "<hash>"]
-	if len(parts) != 6 {
-		return Params{}, nil, nil, ErrInvalidHash
+	if len(parts) != 6 || parts[0] != "" {
+		return "", Params{}, nil, nil, ErrInvalidHash
+	}
+	variant := parts[1]
+	if variant != "argon2id" && variant != "argon2i" {
+		return "", Params{}, nil, nil, ErrInvalidHash
 	}
 	var version int
 	if _, err := fmt.Sscanf(parts[2], "v=%d", &version); err != nil {
-		return Params{}, nil, nil, ErrInvalidHash
+		return "", Params{}, nil, nil, ErrInvalidHash
 	}
 	if version != argon2.Version {
-		return Params{}, nil, nil, ErrInvalidHash
+		return "", Params{}, nil, nil, ErrInvalidHash
 	}
 	var m, t uint32
 	var par uint8
 	if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &m, &t, &par); err != nil {
-		return Params{}, nil, nil, ErrInvalidHash
+		return "", Params{}, nil, nil, ErrInvalidHash
 	}
 	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
 	if err != nil {
-		return Params{}, nil, nil, ErrInvalidHash
+		return "", Params{}, nil, nil, ErrInvalidHash
 	}
 	hash, err := base64.RawStdEncoding.DecodeString(parts[5])
 	if err != nil {
-		return Params{}, nil, nil, ErrInvalidHash
+		return "", Params{}, nil, nil, ErrInvalidHash
 	}
 	p := Params{
 		Memory:      m,
@@ -139,5 +205,5 @@ func decode(s string) (Params, []byte, []byte, error) {
 		KeyLength:   uint32(len(hash)),
 		SaltLength:  uint32(len(salt)),
 	}
-	return p, salt, hash, nil
+	return variant, p, salt, hash, nil
 }

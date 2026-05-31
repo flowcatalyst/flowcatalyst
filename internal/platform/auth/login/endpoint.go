@@ -15,6 +15,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -376,6 +377,18 @@ func (e *Endpoint) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if err := passwordhash.Verify(req.Password, *p.UserIdentity.PasswordHash); err != nil {
 		rejectInvalid()
 		return
+	}
+
+	// Transparent migration: if the stored hash is a legacy/foreign format (an
+	// upstream Laravel bcrypt or argon2i hash, or off-params argon2id), re-encode
+	// it to the native scheme now that we hold the plaintext. Best-effort — a
+	// persist failure must not block a valid login.
+	if passwordhash.NeedsRehash(*p.UserIdentity.PasswordHash) {
+		if newHash, herr := passwordhash.Hash(req.Password); herr == nil {
+			if uerr := e.cfg.Principals.UpdatePasswordHash(r.Context(), p.ID, newHash); uerr != nil {
+				slog.Warn("password rehash persist failed; login continues", "principal", p.ID, "err", uerr)
+			}
+		}
 	}
 
 	token, err := e.cfg.Provider.MintSessionToken(r.Context(), p.ID, SessionTTL)
