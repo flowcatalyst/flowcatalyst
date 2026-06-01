@@ -134,6 +134,18 @@ func Register(api huma.API, s *State) {
 		DefaultStatus: http.StatusOK,
 	}, s.syncProcesses)
 
+	// SDK compatibility alias: the Laravel SDK's processes()->sync() posts to
+	// /api/processes/sync with applicationCode in the body (unlike every other
+	// resource, which is URL-scoped). Serve that path too so the SDK works.
+	huma.Register(api, huma.Operation{
+		OperationID:   "syncProcessesByBody",
+		Method:        http.MethodPost,
+		Path:          "/api/processes/sync",
+		Summary:       "Sync processes (SDK alias; applicationCode in the body)",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.syncProcessesByBody)
+
 	huma.Register(api, huma.Operation{
 		OperationID:   "syncScheduledJobs",
 		Method:        http.MethodPost,
@@ -525,17 +537,44 @@ type syncProcessesInput struct {
 }
 
 func (s *State) syncProcesses(ctx context.Context, in *syncProcessesInput) (*syncResultOutput, error) {
+	return s.runProcessSync(ctx, in.AppCode, in.Body.Processes, in.RemoveUnlisted)
+}
+
+// syncProcessesByBodyRequest is the SDK-shaped body for POST /api/processes/sync:
+// the application code travels in the body, not the URL.
+type syncProcessesByBodyRequest struct {
+	ApplicationCode string                    `json:"applicationCode" doc:"Application code (carried in the body for /api/processes/sync)"`
+	Processes       []syncProcessInputRequest `json:"processes"`
+}
+
+type syncProcessesByBodyInput struct {
+	RemoveUnlisted bool `query:"removeUnlisted" doc:"Remove API/CODE processes not in the list"`
+	Body           syncProcessesByBodyRequest
+}
+
+// syncProcessesByBody serves POST /api/processes/sync — the path the Laravel
+// SDK's processes()->sync() uses (it sends applicationCode in the body rather
+// than the URL). Aliases the application-scoped handler 1:1 so the SDK works
+// against Go unchanged. (Every other resource's sync() is URL-scoped; only
+// processes is body-scoped on the SDK side.)
+func (s *State) syncProcessesByBody(ctx context.Context, in *syncProcessesByBodyInput) (*syncResultOutput, error) {
+	return s.runProcessSync(ctx, in.Body.ApplicationCode, in.Body.Processes, in.RemoveUnlisted)
+}
+
+// runProcessSync is the shared core for both the URL-scoped and body-scoped
+// process-sync endpoints.
+func (s *State) runProcessSync(ctx context.Context, appCode string, processes []syncProcessInputRequest, removeUnlisted bool) (*syncResultOutput, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanSyncProcesses(ac); err != nil {
 		return nil, err
 	}
-	app, err := s.resolveApp(ctx, in.AppCode)
+	app, err := s.resolveApp(ctx, appCode)
 	if err != nil {
 		return nil, err
 	}
 
-	inputs := make([]processops.SyncProcessInput, 0, len(in.Body.Processes))
-	for _, p := range in.Body.Processes {
+	inputs := make([]processops.SyncProcessInput, 0, len(processes))
+	for _, p := range processes {
 		inputs = append(inputs, processops.SyncProcessInput{
 			Code:        p.Code,
 			Name:        p.Name,
@@ -549,7 +588,7 @@ func (s *State) syncProcesses(ctx context.Context, in *syncProcessesInput) (*syn
 	cmd := processops.SyncProcessesCommand{
 		ApplicationCode: app.Code,
 		Processes:       inputs,
-		RemoveUnlisted:  in.RemoveUnlisted,
+		RemoveUnlisted:  removeUnlisted,
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
 	committed, err := processops.SyncProcesses(ctx, s.Processes, s.UoW, cmd, ec)

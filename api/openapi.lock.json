@@ -5994,6 +5994,35 @@
         ],
         "type": "object"
       },
+      "SyncProcessesByBodyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SyncProcessesByBodyRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "applicationCode": {
+            "description": "Application code (carried in the body for /api/processes/sync)",
+            "type": "string"
+          },
+          "processes": {
+            "items": {
+              "$ref": "#/components/schemas/SyncProcessInputRequest"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "applicationCode",
+          "processes"
+        ],
+        "type": "object"
+      },
       "SyncProcessesRequest": {
         "additionalProperties": false,
         "properties": {
@@ -14806,6 +14835,59 @@
         "summary": "Get a process by code",
         "tags": [
           "processes"
+        ]
+      }
+    },
+    "/api/processes/sync": {
+      "post": {
+        "operationId": "syncProcessesByBody",
+        "parameters": [
+          {
+            "description": "Remove API/CODE processes not in the list",
+            "explode": false,
+            "in": "query",
+            "name": "removeUnlisted",
+            "schema": {
+              "description": "Remove API/CODE processes not in the list",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncProcessesByBodyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncResultResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Sync processes (SDK alias; applicationCode in the body)",
+        "tags": [
+          "sdk-sync"
         ]
       }
     },
