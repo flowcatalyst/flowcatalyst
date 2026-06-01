@@ -112,9 +112,6 @@ func StartStreamProcessor(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg) {
 // service to the router so /monitoring/stream-health reflects live state.
 func StartStreamProcessorWithHealth(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, healths *stream.HealthService) {
 	pcfg := stream.DefaultProjectorConfig()
-	if cfg.StreamBatchSize > 0 {
-		pcfg.BatchSize = cfg.StreamBatchSize
-	}
 
 	var wg sync.WaitGroup
 	launch := func(name string, run func(context.Context)) {
@@ -135,10 +132,16 @@ func StartStreamProcessorWithHealth(ctx context.Context, pool *pgxpool.Pool, cfg
 		return p
 	}
 
-	// projCfg derives a per-projection config from the base (global) config,
-	// honouring an optional per-projection batch-size override env var.
-	projCfg := func(batchEnv string) stream.ProjectorConfig {
+	// projCfg derives a per-projection config from the base config. BatchSize
+	// precedence (matches Rust): per-projection env var > global
+	// FC_STREAM_BATCH_SIZE > the Rust per-projection default (events/dispatch
+	// 100, fan-out 200).
+	projCfg := func(batchEnv string, defaultBatch int) stream.ProjectorConfig {
 		c := pcfg
+		c.BatchSize = defaultBatch
+		if cfg.StreamBatchSize > 0 {
+			c.BatchSize = cfg.StreamBatchSize
+		}
 		if b := envInt(batchEnv, 0); b > 0 {
 			c.BatchSize = b
 		}
@@ -147,17 +150,23 @@ func StartStreamProcessorWithHealth(ctx context.Context, pool *pgxpool.Pool, cfg
 
 	if cfg.StreamEventsEnabled {
 		p := registerProjector("event_projection",
-			stream.NewEventProjection(pool).Projector(projCfg("FC_STREAM_EVENTS_BATCH_SIZE")))
+			stream.NewEventProjection(pool).Projector(projCfg("FC_STREAM_EVENTS_BATCH_SIZE", 100)))
 		launch("event_projection", p.Run)
 	}
 	if cfg.StreamDispatchJobsEnabled {
 		p := registerProjector("dispatch_job_projection",
-			stream.NewDispatchJobProjection(pool).Projector(projCfg("FC_STREAM_DISPATCH_JOBS_BATCH_SIZE")))
+			stream.NewDispatchJobProjection(pool).Projector(projCfg("FC_STREAM_DISPATCH_JOBS_BATCH_SIZE", 100)))
 		launch("dispatch_job_projection", p.Run)
 	}
 	if cfg.StreamFanOutEnabled {
+		// FC_STREAM_FAN_OUT_SUBS_REFRESH_SECS tunes the subscription cache TTL
+		// (Rust EventFanOutConfig.subscription_refresh; default 5s).
+		foCfg := stream.DefaultFanOutConfig()
+		if cfg.StreamFanOutSubsRefreshSecs > 0 {
+			foCfg.SubscriptionTTL = time.Duration(cfg.StreamFanOutSubsRefreshSecs) * time.Second
+		}
 		p := registerProjector("event_fan_out",
-			stream.NewFanOut(pool).Projector(projCfg("FC_STREAM_FAN_OUT_BATCH_SIZE")))
+			stream.NewFanOutWithConfig(pool, foCfg).Projector(projCfg("FC_STREAM_FAN_OUT_BATCH_SIZE", 200)))
 		launch("event_fan_out", p.Run)
 	}
 	if cfg.StreamPartitionsEnabled {

@@ -53,6 +53,9 @@ type EnvCfg struct {
 	StreamFanOutEnabled       bool
 	StreamPartitionsEnabled   bool
 	StreamBatchSize           int
+	// Fan-out subscription cache TTL in seconds (Rust
+	// FC_STREAM_FAN_OUT_SUBS_REFRESH_SECS; 0 = use the 5s default).
+	StreamFanOutSubsRefreshSecs int
 	// Partition manager tuning (months forward, retention, tick cadence).
 	// 0 = use the package default (3 / 90 / 24h).
 	StreamPartitionMonthsForward int
@@ -148,6 +151,7 @@ func LoadEnv() EnvCfg {
 		// FC_STREAM_PARTITIONS_ENABLED stays as a back-compat alias.
 		StreamPartitionsEnabled:      envBoolAlias("FC_STREAM_PARTITION_MANAGER_ENABLED", "FC_STREAM_PARTITIONS_ENABLED", true),
 		StreamBatchSize:              envInt("FC_STREAM_BATCH_SIZE", 0),
+		StreamFanOutSubsRefreshSecs:  envInt("FC_STREAM_FAN_OUT_SUBS_REFRESH_SECS", 0),
 		StreamPartitionMonthsForward: envInt("FC_STREAM_PARTITION_MONTHS_FORWARD", 0),
 		StreamPartitionRetentionDays: envInt("FC_STREAM_PARTITION_RETENTION_DAYS", 0),
 		StreamPartitionTickHours:     envInt("FC_STREAM_PARTITION_TICK_HOURS", 0),

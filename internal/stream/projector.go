@@ -21,19 +21,26 @@ type ProjectorConfig struct {
 	Enabled bool
 	// BatchSize is the max rows claimed per tick.
 	BatchSize int
-	// PollInterval is the sleep between empty polls.
+	// PollInterval is the sleep after a partial (non-full, non-empty) batch.
 	PollInterval time.Duration
 	// IdleSleep is the sleep when no rows are claimed.
 	IdleSleep time.Duration
+	// ErrorSleep is the back-off after a Step error.
+	ErrorSleep time.Duration
 }
 
-// DefaultProjectorConfig matches the Rust StreamConfig defaults.
+// DefaultProjectorConfig holds the per-projection defaults. BatchSize 100
+// matches the Rust events/dispatch defaults (the fan-out projection overrides
+// it to 200 — Rust's fan-out default — at wiring time). The sleep tiers mirror
+// Rust's adaptive_sleep: a full batch loops with no sleep, a partial batch
+// pauses 100ms, an empty poll idles 1s, and a Step error backs off 5s.
 func DefaultProjectorConfig() ProjectorConfig {
 	return ProjectorConfig{
 		Enabled:      true,
-		BatchSize:    500,
+		BatchSize:    100,
 		PollInterval: 100 * time.Millisecond,
 		IdleSleep:    1 * time.Second,
+		ErrorSleep:   5 * time.Second,
 	}
 }
 
@@ -79,23 +86,34 @@ func (p *Projector) Run(ctx context.Context) {
 			if p.Health != nil {
 				p.Health.RecordError()
 			}
-			sleep(ctx, p.Cfg.IdleSleep)
-			continue
-		}
-		if n == 0 {
-			sleep(ctx, p.Cfg.IdleSleep)
-			continue
-		}
-		if p.Health != nil {
+		} else if n > 0 && p.Health != nil {
 			p.Health.AddProcessed(uint64(n))
 		}
-		// Got work — go again immediately, with a tiny pause to let
-		// transactions on the read side commit.
-		sleep(ctx, p.Cfg.PollInterval)
+		sleep(ctx, nextSleep(p.Cfg, n, err))
+	}
+}
+
+// nextSleep picks the back-off after a Step, mirroring Rust's adaptive_sleep
+// (event_projection.rs / event_fan_out.rs): a full batch (rows == BatchSize)
+// loops immediately so a backlog drains at full speed; a partial batch pauses
+// PollInterval; an empty poll idles; a Step error backs off hardest.
+func nextSleep(cfg ProjectorConfig, n int, err error) time.Duration {
+	switch {
+	case err != nil:
+		return cfg.ErrorSleep
+	case n == 0:
+		return cfg.IdleSleep
+	case n >= cfg.BatchSize:
+		return 0
+	default:
+		return cfg.PollInterval
 	}
 }
 
 func sleep(ctx context.Context, d time.Duration) {
+	if d <= 0 {
+		return
+	}
 	select {
 	case <-ctx.Done():
 	case <-time.After(d):

@@ -132,7 +132,10 @@ func (m *PartitionManager) runPass(ctx context.Context) {
 		return
 	}
 	if m.Health != nil {
-		m.Health.AddProcessed(0) // stamp last-poll
+		// Count partitions created+dropped this pass (Rust
+		// partition_manager.rs add_processed(created+dropped)); 0 still
+		// stamps last-poll on a quiet tick.
+		m.Health.AddProcessed(uint64(created + dropped))
 	}
 	if created > 0 || dropped > 0 {
 		slog.Info("partition manager pass", "created", created, "dropped", dropped)
