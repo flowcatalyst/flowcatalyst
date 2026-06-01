@@ -2,7 +2,8 @@
 	run run-server dev dev-debug dev-full check setup init fresh db-reset \
 	test test-unit test-integration test-platform test-verbose watch-test \
 	lint lint-fix analyze fmt fmt-check sqlc sqlc-verify ci clean \
-	dump-spec api-bump api-diff install-tools help
+	dump-spec api-bump api-diff release-dev sdk-spec sdk-generate \
+	release-ts-sdk release-laravel-sdk install-tools help
 
 GO ?= go
 PNPM ?= pnpm
@@ -137,6 +138,41 @@ api-diff: ## Fail if the committed lockfile differs from the live spec
 		(echo "openapi.lock.json out of date; run 'make api-bump' and commit the diff" && exit 1)
 
 ci: lint sqlc-verify test analyze api-diff ## Run everything CI runs
+
+# ── Release ──────────────────────────────────────────────────────────
+# Version source of truth is cmd/fc-dev/VERSION (seeded from the Rust
+# monorepo's last fc-dev release so numbering continues). The release
+# workflow (.github/workflows/release-fc-dev.yml) fires on the pushed tag.
+
+release-dev: ## Cut an fc-dev release: BUMP=patch|minor|major|X.Y.Z (tags fc-dev/vX.Y.Z, pushes)
+	@scripts/release.sh dev "$(BUMP)"
+
+# ── SDKs ─────────────────────────────────────────────────────────────
+# The TS + Laravel client SDKs (clients/) are generated from the huma
+# OpenAPI spec — `make dump-spec` emits it with no DB. Releases tag
+# <sdk>/vX.Y.Z; the split-*-sdk workflows mirror each to its standalone
+# repo. VERSION files are seeded from the Rust monorepo (0.6.15) so the
+# numbering continues — first release is 0.6.16.
+
+sdk-spec: ## Refresh each SDK's OpenAPI input from the current huma spec
+	@$(GO) run ./tools/dump-spec > clients/typescript-sdk/openapi/openapi.json
+	@$(GO) run ./tools/dump-spec > clients/laravel-sdk/openapi/openapi.json
+	@echo ">> refreshed clients/{typescript,laravel}-sdk/openapi/openapi.json"
+
+sdk-generate: sdk-spec ## Regenerate the TS + Laravel SDK clients from the spec
+	@echo ">> TypeScript SDK"
+	cd clients/typescript-sdk && $(PNPM) install --frozen-lockfile && $(PNPM) run generate && $(PNPM) run build
+	@echo ">> Laravel SDK (XDEBUG_MODE=off — Homebrew Xdebug blocks CLI PHP otherwise)"
+	cd clients/laravel-sdk && XDEBUG_MODE=off composer install --no-interaction \
+		&& XDEBUG_MODE=off php scripts/prepare-openapi.php \
+		&& XDEBUG_MODE=off vendor/bin/jane-openapi generate --config-file=jane-openapi.php
+	@echo ">> SDKs regenerated — review the diff and commit before releasing"
+
+release-ts-sdk: ## Cut a TypeScript SDK release: BUMP=… (bumps package.json, tags typescript-sdk/vX.Y.Z)
+	@scripts/release.sh ts "$(BUMP)"
+
+release-laravel-sdk: ## Cut a Laravel SDK release: BUMP=… (tags laravel-sdk/vX.Y.Z)
+	@scripts/release.sh laravel "$(BUMP)"
 
 install-tools: ## Install dev tools (air, gotestsum, golangci-lint, sqlc)
 	$(GO) install github.com/air-verse/air@latest

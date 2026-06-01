@@ -1,0 +1,155 @@
+name: Release fc-dev
+
+# Triggered by pushing a tag like `fc-dev/v0.4.17` (cut via `make release-dev
+# BUMP=patch`). Cross-compiles the fc-dev developer binary for macOS
+# (arm64/amd64), Linux (amd64/arm64) and Windows (amd64), then publishes a
+# GitHub Release with each archive + a SHA256 sidecar. Linux archives are
+# additionally cosign-signed (keyless: GitHub OIDC → Fulcio cert → Rekor log,
+# no managed keys), matching the Rust release pipeline.
+#
+# Why one runner (no native build matrix like the Rust fc-dev): Go cross-
+# compiles cleanly. The embedded Postgres (fergusstrange/embedded-postgres)
+# downloads platform binaries at *runtime*, so there is nothing platform-
+# specific to embed at build time — unlike Rust's postgresql_embedded, which
+# bundles PG at build time and forced native runners. The Vue SPA is built once
+# and embedded via //go:embed all:dist.
+
+on:
+  push:
+    tags:
+      - "fc-dev/v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build, e.g. fc-dev/v0.4.17"
+        required: true
+
+permissions:
+  contents: write
+  id-token: write # cosign keyless signing (Linux artifacts)
+
+jobs:
+  release:
+    name: Build + publish fc-dev
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag + version
+        id: meta
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          if [[ ! "$TAG" =~ ^fc-dev/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Tag '$TAG' does not match fc-dev/vX.Y.Z[-suffix]" >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#fc-dev/v}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.meta.outputs.tag }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Build frontend (embedded SPA)
+        working-directory: frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Cross-compile, package, checksum, sign
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+
+          # GOOS GOARCH archive-ext  (blank lines skipped)
+          targets="
+          darwin arm64 tar.gz
+          darwin amd64 tar.gz
+          linux amd64 tar.gz
+          linux arm64 tar.gz
+          windows amd64 zip
+          "
+
+          echo "$targets" | while read -r goos goarch ext; do
+            [ -z "$goos" ] && continue
+            bin="fc-dev"; [ "$goos" = "windows" ] && bin="fc-dev.exe"
+            stage="fc-dev-v${VERSION}-${goos}-${goarch}"
+            mkdir -p "$stage"
+            echo ">> building ${goos}/${goarch}"
+            CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
+              go build -trimpath -ldflags='-s -w' -o "$stage/$bin" ./cmd/fc-dev
+            cp README.md LICENSE "$stage/" 2>/dev/null || true
+
+            archive="${stage}.${ext}"
+            case "$ext" in
+              zip)    (cd "$stage" && zip -qr "../dist/$archive" .) ;;
+              tar.gz) tar -czf "dist/$archive" "$stage" ;;
+            esac
+
+            (cd dist && sha256sum "$archive" > "$archive.sha256")
+
+            if [ "$goos" = "linux" ]; then
+              cosign sign-blob --yes \
+                --output-signature "dist/$archive.sig" \
+                --output-certificate "dist/$archive.pem" \
+                "dist/$archive"
+            fi
+          done
+
+          echo "── artifacts ──"
+          ls -lh dist/
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          NOTES="fc-dev v${VERSION}
+
+          ### Install
+          Download the archive for your platform, extract, and put \`fc-dev\` on your PATH.
+
+          ### Verify
+          Each archive ships a \`.sha256\` sidecar:
+          \`\`\`
+          shasum -a 256 -c fc-dev-v${VERSION}-<os>-<arch>.tar.gz.sha256
+          \`\`\`
+          Linux archives are additionally cosign-signed (keyless):
+          \`\`\`
+          cosign verify-blob \\
+            --signature fc-dev-v${VERSION}-linux-amd64.tar.gz.sig \\
+            --certificate fc-dev-v${VERSION}-linux-amd64.tar.gz.pem \\
+            --certificate-identity-regexp '^https://github.com/flowcatalyst/flowcatalyst-go/.github/workflows/release-fc-dev.yml@refs/tags/fc-dev/v' \\
+            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \\
+            fc-dev-v${VERSION}-linux-amd64.tar.gz
+          \`\`\`"
+
+          # Upload to an existing (e.g. draft) release for this tag, else create one.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* \
+              --title "fc-dev v${VERSION}" \
+              --notes "$NOTES" \
+              --verify-tag
+          fi

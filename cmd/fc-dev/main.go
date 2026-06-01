@@ -49,6 +49,7 @@ Invoking ` + "`fc-dev`" + ` with no subcommand is identical to ` + "`fc-dev star
 	root.AddCommand(newFreshCmd())
 	root.AddCommand(newMCPCmd())
 	root.AddCommand(newOutboxCmd())
+	root.AddCommand(newVersionCmd())
 
 	if err := root.Execute(); err != nil {
 		slog.Error("fc-dev exited with error", "err", err)
