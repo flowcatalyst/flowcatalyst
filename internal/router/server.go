@@ -186,7 +186,7 @@ func (s *Server) IsLeader() bool {
 // then a full Manager + Notifier + Election shutdown.
 func (s *Server) Run(ctx context.Context) error {
 	go s.Notifier.Run(ctx)
-	go NewStallDetector(DefaultStallConfig(), s.Tracker, s.Notifier).Watch(ctx)
+	go NewStallDetector(DefaultStallConfig(), s.Tracker, s.Notifier, s.Manager.NackInFlight).Watch(ctx)
 	go NewQueueHealthMonitor(DefaultQueueHealthConfig(), s.Notifier).Watch(ctx, s.Manager.Consumers)
 	go s.reapInFlight(ctx)
 	SpawnBrokerStatsRefresh(ctx, s.BrokerStats)

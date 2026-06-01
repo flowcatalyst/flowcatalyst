@@ -22,6 +22,15 @@ const defaultPoolCode = "DEFAULT-POOL"
 // used when the config doesn't define an explicit DEFAULT-POOL.
 const defaultPoolConcurrency uint32 = 20
 
+// consumerRestartDelay is the pause before re-spawning a stalled consumer —
+// avoids a thundering-herd of reconnects when several stall at once. 1:1 with
+// the Rust LifecycleConfig.consumer_restart_delay (5s).
+const consumerRestartDelay = 5 * time.Second
+
+// consumerRestartCriticalAfter escalates a repeatedly-stalling consumer's
+// warning to CRITICAL after this many restart attempts. 1:1 with Rust.
+const consumerRestartCriticalAfter = 10
+
 // Manager owns the running consumers and pools and the routing between them.
 //
 // Topology (1:1 with the Rust QueueManager): N consumers (one per queue)
@@ -41,6 +50,12 @@ type Manager struct {
 	consumers map[string]*runningConsumer   // queue name → consumer + poll loop
 	queues    map[string]common.QueueConfig // queue name → cfg (for publishers)
 	wg        sync.WaitGroup
+
+	// restartAttempts tracks consecutive restart attempts per stalled consumer
+	// so a repeatedly-failing consumer escalates to a CRITICAL warning, and a
+	// recovered one is cleared. Touched only by RestartStalledConsumers, which
+	// the lifecycle watchdog calls from a single goroutine — no lock needed.
+	restartAttempts map[string]int
 
 	batchCounter atomic.Uint64
 
@@ -63,12 +78,13 @@ type runningConsumer struct {
 // run without in-flight tracking.
 func NewManager(mediator Mediator, tracker *InFlightTracker) *Manager {
 	return &Manager{
-		mediator:   mediator,
-		tracker:    tracker,
-		pools:      make(map[string]*Pool),
-		consumers:  make(map[string]*runningConsumer),
-		queues:     make(map[string]common.QueueConfig),
-		publishers: make(map[string]queue.Publisher),
+		mediator:        mediator,
+		tracker:         tracker,
+		pools:           make(map[string]*Pool),
+		consumers:       make(map[string]*runningConsumer),
+		queues:          make(map[string]common.QueueConfig),
+		publishers:      make(map[string]queue.Publisher),
+		restartAttempts: make(map[string]int),
 	}
 }
 
@@ -85,6 +101,18 @@ func (m *Manager) resolveConsumer(queueID string) queue.Consumer {
 		return rc.consumer
 	}
 	return nil
+}
+
+// NackInFlight returns a stuck in-flight message to its source queue for
+// redelivery, resolving the source consumer by queue identifier. Backs the
+// StallDetector's force-NACK path (see StallConfig.ForceNackStalled). Errors if
+// the source queue was deregistered. Mirrors the Rust force-nack-stalled path.
+func (m *Manager) NackInFlight(ctx context.Context, queueID, receiptHandle string, delaySeconds uint32) error {
+	c := m.resolveConsumer(queueID)
+	if c == nil {
+		return fmt.Errorf("no consumer for queue %q", queueID)
+	}
+	return c.Nack(ctx, receiptHandle, &delaySeconds)
 }
 
 // Consumers returns every running consumer (for the QueueHealthMonitor /
@@ -507,12 +535,50 @@ func (m *Manager) RestartStalledConsumers(ctx context.Context, threshold time.Du
 		}
 	}
 	m.mu.Unlock()
+
+	// Clear restart-attempt counters for consumers that have recovered (are no
+	// longer stalled), so a transient stall doesn't escalate a later, unrelated
+	// one. 1:1 with the Rust lifecycle's healthy-consumer cleanup.
+	stalledSet := make(map[string]struct{}, len(stalled))
+	for _, c := range stalled {
+		stalledSet[c.name] = struct{}{}
+	}
+	for name := range m.restartAttempts {
+		if _, ok := stalledSet[name]; !ok {
+			delete(m.restartAttempts, name)
+		}
+	}
+
 	if len(stalled) == 0 {
 		return 0
 	}
 
 	restarted := 0
 	for _, c := range stalled {
+		attempts := m.restartAttempts[c.name]
+		// Escalate to CRITICAL once a consumer keeps stalling across many
+		// restarts (1:1 with Rust: Critical after 10 attempts).
+		severity := WarningWarning
+		if attempts >= consumerRestartCriticalAfter {
+			severity = WarningCritical
+		}
+		if w := m.warnings.Load(); w != nil {
+			w.Add(WarningCategoryConsumerHealth, severity,
+				fmt.Sprintf("Consumer %s is stalled, restart attempt %d", c.name, attempts+1),
+				"router")
+		}
+		slog.Warn("stalled consumer detected, attempting restart",
+			"queue", c.name, "attempt", attempts+1, "stalled_threshold", threshold)
+
+		// Brief pause before reconnecting — avoids a thundering herd when
+		// several consumers stall together (1:1 with Rust consumer_restart_delay).
+		// Abort cleanly on shutdown.
+		select {
+		case <-ctx.Done():
+			return restarted
+		case <-time.After(consumerRestartDelay):
+		}
+
 		c.old.cancel()
 		c.old.consumer.Stop()
 
@@ -533,7 +599,7 @@ func (m *Manager) RestartStalledConsumers(ctx context.Context, threshold time.Du
 			m.mu.Unlock()
 			m.wg.Add(1)
 			go m.runConsumer(cctx, rc)
-			slog.Warn("restarted stalled consumer", "queue", c.name, "stalled_threshold", threshold)
+			m.restartAttempts[c.name]++
 			restarted++
 		} else {
 			m.mu.Unlock()

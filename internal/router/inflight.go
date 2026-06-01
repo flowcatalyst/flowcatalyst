@@ -134,17 +134,24 @@ func DefaultStallConfig() StallConfig {
 	}
 }
 
+// NackFunc returns a stuck in-flight message to its source queue for
+// redelivery (resolving the queue by identifier). The Manager implements it.
+type NackFunc func(ctx context.Context, queueID, receiptHandle string, delaySeconds uint32) error
+
 // StallDetector watches the in-flight tracker for messages stuck longer
 // than the threshold. Emits warnings and optionally force-NACKs.
 type StallDetector struct {
 	cfg      StallConfig
 	tracker  *InFlightTracker
 	notifier *Notifier
+	nackFn   NackFunc // optional; required for the force-NACK path
 }
 
-// NewStallDetector wires a detector. notifier may be nil.
-func NewStallDetector(cfg StallConfig, tracker *InFlightTracker, notifier *Notifier) *StallDetector {
-	return &StallDetector{cfg: cfg, tracker: tracker, notifier: notifier}
+// NewStallDetector wires a detector. notifier may be nil. nackFn may be nil,
+// in which case the force-NACK path is skipped even when ForceNackStalled is
+// set (warnings still fire).
+func NewStallDetector(cfg StallConfig, tracker *InFlightTracker, notifier *Notifier, nackFn NackFunc) *StallDetector {
+	return &StallDetector{cfg: cfg, tracker: tracker, notifier: notifier, nackFn: nackFn}
 }
 
 // Watch runs the periodic check until ctx is cancelled.
@@ -159,12 +166,12 @@ func (d *StallDetector) Watch(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-tick.C:
-			d.tick()
+			d.tick(ctx)
 		}
 	}
 }
 
-func (d *StallDetector) tick() {
+func (d *StallDetector) tick(ctx context.Context) {
 	stalled := []common.InFlightMessage{}
 	for _, im := range d.tracker.Snapshot() {
 		if im.ElapsedSeconds() >= int64(d.cfg.StallThresholdSeconds) {
@@ -175,16 +182,31 @@ func (d *StallDetector) tick() {
 		return
 	}
 	slog.Warn("stalled messages detected", "count", len(stalled))
-	if d.notifier == nil {
-		return
-	}
-	for _, im := range stalled {
-		d.notifier.Add(Warning{
-			Category: WarningCategoryStall,
-			Severity: WarningWarning,
-			Message: "Message " + im.MessageID + " stalled for " +
-				utoa(uint64(im.ElapsedSeconds())) + "s in pool " + im.PoolCode,
-			Source: "StallDetector",
-		})
+	for i := range stalled {
+		im := stalled[i]
+		if d.notifier != nil {
+			d.notifier.Add(Warning{
+				Category: WarningCategoryStall,
+				Severity: WarningWarning,
+				Message: "Message " + im.MessageID + " stalled for " +
+					utoa(uint64(im.ElapsedSeconds())) + "s in pool " + im.PoolCode,
+				Source: "StallDetector",
+			})
+		}
+		// Force-NACK messages stuck well past the threshold back to their
+		// source queue for redelivery, if enabled (default off). Mirrors the
+		// Rust force-nack-stalled path. On success, drop the tracker entry so
+		// it isn't re-NACKed every tick.
+		if d.cfg.ForceNackStalled && d.nackFn != nil &&
+			im.ElapsedSeconds() >= int64(d.cfg.ForceNackAfterSeconds) {
+			if err := d.nackFn(ctx, im.QueueIdentifier, im.ReceiptHandle, d.cfg.NackDelaySeconds); err != nil {
+				slog.Warn("force-nack stalled message failed",
+					"msg", im.MessageID, "queue", im.QueueIdentifier, "err", err)
+				continue
+			}
+			d.tracker.Remove(im.MessageID, im.BrokerMessageID)
+			slog.Warn("force-nacked stalled message",
+				"msg", im.MessageID, "elapsed_s", im.ElapsedSeconds(), "queue", im.QueueIdentifier)
+		}
 	}
 }

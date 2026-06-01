@@ -41,8 +41,8 @@ type QueueHealthMonitor struct {
 }
 
 type queueSizeHistory struct {
-	lastSize                  *uint64
-	consecutiveGrowthPeriods  uint32
+	lastSize                 *uint64
+	consecutiveGrowthPeriods uint32
 }
 
 // NewQueueHealthMonitor wires a monitor. notifier may be nil (warnings → log only).
@@ -91,7 +91,7 @@ func (m *QueueHealthMonitor) checkBacklog(name string, size uint64) {
 	slog.Warn("queue backlog", "queue", name, "size", size, "threshold", m.cfg.BacklogThreshold)
 	if m.notifier != nil {
 		m.notifier.Add(Warning{
-			Category: WarningCategoryStall,
+			Category: WarningCategoryQueueHealth,
 			Severity: WarningWarning,
 			Message:  msg,
 			Source:   "QueueHealthMonitor",
@@ -118,7 +118,7 @@ func (m *QueueHealthMonitor) checkGrowth(name string, size uint64) {
 						"consecutive_periods", h.consecutiveGrowthPeriods)
 					if m.notifier != nil {
 						m.notifier.Add(Warning{
-							Category: WarningCategoryStall,
+							Category: WarningCategoryQueueHealth,
 							Severity: WarningWarning,
 							Message:  msg,
 							Source:   "QueueHealthMonitor",

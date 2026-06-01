@@ -17,14 +17,16 @@ import (
 type WarningCategory string
 
 const (
-	WarningCategoryConfiguration WarningCategory = "CONFIGURATION"
-	WarningCategoryConnection    WarningCategory = "CONNECTION"
-	WarningCategoryRateLimit     WarningCategory = "RATE_LIMIT"
-	WarningCategoryCircuitBreak  WarningCategory = "CIRCUIT_BREAKER"
-	WarningCategoryStall         WarningCategory = "STALL"
-	WarningCategoryResource      WarningCategory = "RESOURCE"
-	WarningCategoryRouting       WarningCategory = "ROUTING"
-	WarningCategoryPoolCapacity  WarningCategory = "POOL_CAPACITY"
+	WarningCategoryConfiguration  WarningCategory = "CONFIGURATION"
+	WarningCategoryConnection     WarningCategory = "CONNECTION"
+	WarningCategoryRateLimit      WarningCategory = "RATE_LIMIT"
+	WarningCategoryCircuitBreak   WarningCategory = "CIRCUIT_BREAKER"
+	WarningCategoryStall          WarningCategory = "STALL"
+	WarningCategoryResource       WarningCategory = "RESOURCE"
+	WarningCategoryRouting        WarningCategory = "ROUTING"
+	WarningCategoryPoolCapacity   WarningCategory = "POOL_CAPACITY"
+	WarningCategoryQueueHealth    WarningCategory = "QUEUE_HEALTH"
+	WarningCategoryConsumerHealth WarningCategory = "CONSUMER_HEALTH"
 )
 
 // WarningSeverity mirrors the Rust enum.
@@ -72,16 +74,32 @@ func (w Warning) AgeMinutes() int64 {
 // Notifier delivers warnings to an external channel (Teams, Slack, etc.).
 // Batches warnings to avoid hammering the destination during incidents.
 type Notifier struct {
-	webhookURL string
-	batchSize  int
-	interval   time.Duration
-	client     *http.Client
+	webhookURL  string
+	batchSize   int
+	interval    time.Duration
+	minSeverity WarningSeverity // "" = deliver all; else drop warnings below it
+	client      *http.Client
 
 	mu    sync.Mutex
 	queue []Warning
 
 	stopOnce sync.Once
 	stopCh   chan struct{}
+}
+
+// severityRank orders severities for the MinSeverity filter (higher = more
+// severe). Unknown/INFO rank lowest.
+func severityRank(s WarningSeverity) int {
+	switch s {
+	case WarningCritical:
+		return 3
+	case WarningError:
+		return 2
+	case WarningWarning:
+		return 1
+	default:
+		return 0
+	}
 }
 
 // NewNotifier builds a notifier. webhookURL empty → noop.
@@ -116,8 +134,20 @@ func (n *Notifier) Run(ctx context.Context) {
 	}
 }
 
-// Add enqueues a warning. Flushed by the next tick or when the batch is full.
-// Fills in ID + CreatedAt if the caller passed a bare-literal Warning.
+// SetMinSeverity sets the minimum severity that will be delivered; warnings
+// below it are dropped before enqueue. Zero value ("") delivers everything.
+// Mirrors the Rust BatchingNotificationService min_severity filter.
+func (n *Notifier) SetMinSeverity(s WarningSeverity) {
+	n.mu.Lock()
+	n.minSeverity = s
+	n.mu.Unlock()
+}
+
+// Add enqueues a warning. Flushed by the next tick, when the batch is full, or
+// immediately for a CRITICAL warning (fast-track, so incidents aren't delayed
+// by the batch interval — 1:1 with the Rust notify_critical_error path).
+// Warnings below MinSeverity are dropped. Fills in ID + CreatedAt if the caller
+// passed a bare-literal Warning.
 func (n *Notifier) Add(w Warning) {
 	if w.ID == "" {
 		w.ID = uuid.NewString()
@@ -126,10 +156,14 @@ func (n *Notifier) Add(w Warning) {
 		w.CreatedAt = time.Now().UTC()
 	}
 	n.mu.Lock()
+	if n.minSeverity != "" && severityRank(w.Severity) < severityRank(n.minSeverity) {
+		n.mu.Unlock()
+		return
+	}
 	n.queue = append(n.queue, w)
-	overflow := len(n.queue) >= n.batchSize
+	flushNow := len(n.queue) >= n.batchSize || w.Severity == WarningCritical
 	n.mu.Unlock()
-	if overflow {
+	if flushNow {
 		go n.flush(context.Background())
 	}
 }

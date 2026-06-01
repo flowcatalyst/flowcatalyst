@@ -21,8 +21,10 @@ type LifecycleConfig struct {
 	// runs on this same tick.
 	ConsumerHealthInterval time.Duration
 	// ConsumerStallThreshold is how long a consumer poll loop may go without
-	// completing a poll before the restart watchdog re-spawns it. Generous
-	// vs the ~20s SQS long-poll. Mirrors the Rust consumer auto-restart delay.
+	// completing a poll before the restart watchdog re-spawns it. Set to 60s
+	// to match the HealthService stall threshold (DefaultHealthServiceConfig)
+	// and the Rust consumer_stall_threshold — a single, consistent notion of
+	// "stalled" across restart + health reporting.
 	ConsumerStallThreshold time.Duration
 }
 
@@ -39,7 +41,7 @@ func DefaultLifecycleConfig() LifecycleConfig {
 		WarningCleanupInterval: 5 * time.Minute,
 		HealthReportInterval:   1 * time.Minute,
 		ConsumerHealthInterval: 30 * time.Second,
-		ConsumerStallThreshold: 90 * time.Second,
+		ConsumerStallThreshold: 60 * time.Second,
 	}
 }
 
