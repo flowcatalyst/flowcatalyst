@@ -1275,6 +1275,32 @@
         ],
         "type": "object"
       },
+      "ClientAssociationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ClientAssociationRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "clientId": {
+            "description": "Target client id, or \"*\" for anchor (all-client) access",
+            "type": "string"
+          },
+          "mode": {
+            "description": "CHANGE_CLIENT | TO_PARTNER — required for a specific clientId, ignored for \"*\"",
+            "type": "string"
+          }
+        },
+        "required": [
+          "clientId"
+        ],
+        "type": "object"
+      },
       "ClientConfigListResponse": {
         "additionalProperties": false,
         "properties": {
@@ -6720,16 +6746,14 @@
             "readOnly": true,
             "type": "string"
           },
-          "firstName": {
-            "type": "string"
+          "active": {
+            "type": "boolean"
           },
-          "lastName": {
+          "email": {
+            "description": "Optional; asserted against the stored email — a different value is rejected, not treated as a rename",
             "type": "string"
           },
           "name": {
-            "type": "string"
-          },
-          "phone": {
             "type": "string"
           }
         },
@@ -14375,6 +14399,57 @@
           }
         },
         "summary": "Revoke a client-access grant",
+        "tags": [
+          "principals"
+        ]
+      }
+    },
+    "/api/principals/{id}/client-association": {
+      "put": {
+        "operationId": "setPrincipalClientAssociation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientAssociationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrincipalResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Change a principal's scope/client association (anchor-gated)",
         "tags": [
           "principals"
         ]

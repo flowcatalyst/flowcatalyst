@@ -12,11 +12,10 @@ import (
 )
 
 type UpdateCommand struct {
-	ID        string  `json:"id"`
-	Name      *string `json:"name,omitempty"`
-	FirstName *string `json:"firstName,omitempty"`
-	LastName  *string `json:"lastName,omitempty"`
-	Phone     *string `json:"phone,omitempty"`
+	ID     string  `json:"id"`
+	Name   *string `json:"name,omitempty"`
+	Active *bool   `json:"active,omitempty"`
+	Email  *string `json:"email,omitempty"`
 }
 
 func UpdateUser(
@@ -43,15 +42,22 @@ func UpdateUser(
 	if cmd.Name != nil {
 		p.Name = strings.TrimSpace(*cmd.Name)
 	}
-	if p.UserIdentity != nil {
-		if cmd.FirstName != nil {
-			p.UserIdentity.FirstName = cmd.FirstName
+	if cmd.Active != nil {
+		p.Active = *cmd.Active
+	}
+	if cmd.Email != nil {
+		// Email is the identity key (login, scope derivation, and the sync's own
+		// findByEmail match key). Accept it so callers can PUT a full object, but
+		// only as a stable assertion: a different value is an identity change this
+		// endpoint deliberately does not perform.
+		got := strings.ToLower(strings.TrimSpace(*cmd.Email))
+		cur := ""
+		if p.UserIdentity != nil {
+			cur = strings.ToLower(strings.TrimSpace(p.UserIdentity.Email))
 		}
-		if cmd.LastName != nil {
-			p.UserIdentity.LastName = cmd.LastName
-		}
-		if cmd.Phone != nil {
-			p.UserIdentity.Phone = cmd.Phone
+		if got != "" && got != cur {
+			return zero, usecase.Validation("EMAIL_IMMUTABLE",
+				"email cannot be changed here; it is the principal's identity")
 		}
 	}
 

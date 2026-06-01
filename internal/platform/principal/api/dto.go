@@ -44,21 +44,25 @@ type CreateUserRequest struct {
 	EnforcePasswordComplexity *bool   `json:"enforcePasswordComplexity,omitempty"`
 }
 
-// UpdatePrincipalRequest is the wire body for PUT /api/principals/{id}.
+// UpdatePrincipalRequest is the wire body for PUT /api/principals/{id}. It
+// carries only a principal's display + status: the full name (`name`), active
+// status (`active`), and `email` as a stable identity assertion. Scope and
+// client association are deliberately NOT here — those are sensitive,
+// anchor-gated changes served by the /client-access sub-resource (see
+// GrantClientAccessRequest's `mode`). A principal in FlowCatalyst is, in
+// practice, a full name + email + status, so that's all this endpoint mutates.
 type UpdatePrincipalRequest struct {
-	Name      *string `json:"name,omitempty"`
-	FirstName *string `json:"firstName,omitempty"`
-	LastName  *string `json:"lastName,omitempty"`
-	Phone     *string `json:"phone,omitempty"`
+	Name   *string `json:"name,omitempty"`
+	Active *bool   `json:"active,omitempty"`
+	Email  *string `json:"email,omitempty" doc:"Optional; asserted against the stored email — a different value is rejected, not treated as a rename"`
 }
 
 func (r UpdatePrincipalRequest) toCommand(id string) operations.UpdateCommand {
 	return operations.UpdateCommand{
-		ID:        id,
-		Name:      r.Name,
-		FirstName: r.FirstName,
-		LastName:  r.LastName,
-		Phone:     r.Phone,
+		ID:     id,
+		Name:   r.Name,
+		Active: r.Active,
+		Email:  r.Email,
 	}
 }
 
@@ -92,6 +96,17 @@ type AssignApplicationAccessRequest struct {
 // POST /api/principals/{id}/client-access.
 type GrantClientAccessRequest struct {
 	ClientID string `json:"clientId"`
+}
+
+// ClientAssociationRequest is the wire body for
+// PUT /api/principals/{id}/client-association. It changes a principal's scope +
+// client with explicit intent. clientId "*" makes the principal an ANCHOR; for a
+// specific clientId, mode disambiguates: CHANGE_CLIENT replaces the home client
+// (stays CLIENT scope), TO_PARTNER promotes to PARTNER keeping the old client and
+// adding the new one. Anchor-gated.
+type ClientAssociationRequest struct {
+	ClientID string  `json:"clientId" doc:"Target client id, or \"*\" for anchor (all-client) access"`
+	Mode     *string `json:"mode,omitempty" doc:"CHANGE_CLIENT | TO_PARTNER — required for a specific clientId, ignored for \"*\""`
 }
 
 // PrincipalResponse is the wire shape for a principal. It is intentionally

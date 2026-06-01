@@ -233,6 +233,15 @@ func Register(api huma.API, s *State) {
 		Tags:          []string{tag},
 		DefaultStatus: http.StatusNoContent,
 	}, s.revokeClientAccess)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "setPrincipalClientAssociation",
+		Method:        http.MethodPut,
+		Path:          "/api/principals/{id}/client-association",
+		Summary:       "Change a principal's scope/client association (anchor-gated)",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.setClientAssociation)
 }
 
 // listInput carries the filter / sort / pagination query params for
@@ -864,6 +873,43 @@ func (s *State) grantClientAccess(ctx context.Context, in *grantClientAccessInpu
 		return nil, usecase.Internal("REPO", "grant not found after create", nil)
 	}
 	return &clientAccessGrantOutput{Body: clientAccessGrantFromEntity(g)}, nil
+}
+
+type setClientAssociationInput struct {
+	ID   string `path:"id"`
+	Body ClientAssociationRequest
+}
+
+// setClientAssociation changes a principal's scope + client association with
+// explicit intent (anchor-gated). clientId "*" → ANCHOR; mode CHANGE_CLIENT →
+// new home client; mode TO_PARTNER → promote to PARTNER (old + new client).
+// Returns the updated principal.
+func (s *State) setClientAssociation(ctx context.Context, in *setClientAssociationInput) (*getOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.RequireAnchor(ac); err != nil {
+		return nil, err
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	mode := ""
+	if in.Body.Mode != nil {
+		mode = strings.ToUpper(strings.TrimSpace(*in.Body.Mode))
+	}
+	if _, err := operations.SetClientAssociation(ctx, s.Repo, s.Clients, s.GrantRepo, s.UoW,
+		operations.SetClientAssociationCommand{
+			UserID:   in.ID,
+			ClientID: in.Body.ClientID,
+			Mode:     operations.ClientAssociationMode(mode),
+		}, ec); err != nil {
+		return nil, err
+	}
+	p, err := s.Repo.FindByID(ctx, in.ID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
+	}
+	if p == nil {
+		return nil, httperror.NotFound("Principal", in.ID)
+	}
+	return &getOutput{Body: fromEntity(p)}, nil
 }
 
 type revokeClientAccessInput struct {
