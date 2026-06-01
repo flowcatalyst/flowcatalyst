@@ -13679,6 +13679,100 @@
     "/api/principals": {
       "get": {
         "operationId": "listPrincipals",
+        "parameters": [
+          {
+            "description": "Filter by principal type (USER or SERVICE)",
+            "explode": false,
+            "in": "query",
+            "name": "type",
+            "schema": {
+              "description": "Filter by principal type (USER or SERVICE)",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to principals homed at, or granted access to, this client",
+            "explode": false,
+            "in": "query",
+            "name": "clientId",
+            "schema": {
+              "description": "Filter to principals homed at, or granted access to, this client",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by active status (true/false); absent = both",
+            "explode": false,
+            "in": "query",
+            "name": "active",
+            "schema": {
+              "description": "Filter by active status (true/false); absent = both",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Case-insensitive substring search across name and email",
+            "explode": false,
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "description": "Case-insensitive substring search across name and email",
+              "type": "string"
+            }
+          },
+          {
+            "description": "CSV of role names; matches principals holding any of them",
+            "explode": false,
+            "in": "query",
+            "name": "roles",
+            "schema": {
+              "description": "CSV of role names; matches principals holding any of them",
+              "type": "string"
+            }
+          },
+          {
+            "description": "0-based page index (default 0)",
+            "explode": false,
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "description": "0-based page index (default 0)",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Page size; \u003c=0 returns all matches (default: all)",
+            "explode": false,
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "description": "Page size; \u003c=0 returns all matches (default: all)",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Sort key: name | email | createdAt (default createdAt)",
+            "explode": false,
+            "in": "query",
+            "name": "sortField",
+            "schema": {
+              "description": "Sort key: name | email | createdAt (default createdAt)",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sort direction: asc | desc (default asc)",
+            "explode": false,
+            "in": "query",
+            "name": "sortOrder",
+            "schema": {
+              "description": "Sort direction: asc | desc (default asc)",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {

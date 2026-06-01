@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -234,13 +235,27 @@ func Register(api huma.API, s *State) {
 	}, s.revokeClientAccess)
 }
 
-type emptyInput struct{}
+// listInput carries the filter / sort / pagination query params for
+// GET /api/principals. Every field is optional; an absent param means
+// "no filter" (or the documented default). The SPA's UserListPage drives all
+// of these.
+type listInput struct {
+	Type      string `query:"type" doc:"Filter by principal type (USER or SERVICE)"`
+	ClientID  string `query:"clientId" doc:"Filter to principals homed at, or granted access to, this client"`
+	Active    string `query:"active" doc:"Filter by active status (true/false); absent = both"`
+	Q         string `query:"q" doc:"Case-insensitive substring search across name and email"`
+	Roles     string `query:"roles" doc:"CSV of role names; matches principals holding any of them"`
+	Page      int    `query:"page" doc:"0-based page index (default 0)"`
+	PageSize  int    `query:"pageSize" doc:"Page size; <=0 returns all matches (default: all)"`
+	SortField string `query:"sortField" doc:"Sort key: name | email | createdAt (default createdAt)"`
+	SortOrder string `query:"sortOrder" doc:"Sort direction: asc | desc (default asc)"`
+}
 
 type listOutput struct {
 	Body PrincipalListResponse
 }
 
-func (s *State) list(ctx context.Context, _ *emptyInput) (*listOutput, error) {
+func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadPrincipals(ac); err != nil {
 		return nil, err
@@ -249,7 +264,14 @@ func (s *State) list(ctx context.Context, _ *emptyInput) (*listOutput, error) {
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_all failed", err)
 	}
-	out := make([]PrincipalResponse, 0, len(rows))
+
+	// Normalise the filter inputs once, outside the row loop.
+	q := strings.ToLower(strings.TrimSpace(in.Q))
+	wantType := strings.ToUpper(strings.TrimSpace(in.Type))
+	wantClient := strings.TrimSpace(in.ClientID)
+	wantRoles := splitCSV(in.Roles)
+
+	filtered := make([]*principal.Principal, 0, len(rows))
 	for i := range rows {
 		p := &rows[i]
 		// Access control (1:1 with Rust list_principals): anchors see all;
@@ -257,11 +279,135 @@ func (s *State) list(ctx context.Context, _ *emptyInput) (*listOutput, error) {
 		// Platform-level principals (client_id == nil) are hidden from
 		// non-anchors. (get-by-id stays lenient on the nil case, matching
 		// Rust get_principal, which only checks access when client_id is set.)
-		if ac.IsAnchor() || (p.ClientID != nil && ac.CanAccessClient(*p.ClientID)) {
-			out = append(out, fromEntity(p))
+		if !(ac.IsAnchor() || (p.ClientID != nil && ac.CanAccessClient(*p.ClientID))) {
+			continue
+		}
+		if wantType != "" && string(p.Type) != wantType {
+			continue
+		}
+		if in.Active == "true" && !p.Active {
+			continue
+		}
+		if in.Active == "false" && p.Active {
+			continue
+		}
+		if wantClient != "" && !principalMatchesClient(p, wantClient) {
+			continue
+		}
+		if q != "" && !principalMatchesQuery(p, q) {
+			continue
+		}
+		if len(wantRoles) > 0 && !principalHasAnyRole(p, wantRoles) {
+			continue
+		}
+		filtered = append(filtered, p)
+	}
+
+	sortPrincipals(filtered, in.SortField, in.SortOrder)
+
+	// Total is the full filtered count (pre-pagination) so the SPA paginator
+	// can compute page counts correctly.
+	total := len(filtered)
+	filtered = paginate(filtered, in.Page, in.PageSize)
+
+	out := make([]PrincipalResponse, 0, len(filtered))
+	for _, p := range filtered {
+		out = append(out, fromEntity(p))
+	}
+	return &listOutput{Body: PrincipalListResponse{Principals: out, Total: total}}, nil
+}
+
+// --- list filtering / sorting / pagination helpers ---
+
+func principalEmail(p *principal.Principal) string {
+	if p.UserIdentity != nil {
+		return p.UserIdentity.Email
+	}
+	return ""
+}
+
+func principalMatchesQuery(p *principal.Principal, qLower string) bool {
+	return strings.Contains(strings.ToLower(p.Name), qLower) ||
+		strings.Contains(strings.ToLower(principalEmail(p)), qLower)
+}
+
+// principalMatchesClient matches a principal's home client OR any granted
+// client, so the Client filter surfaces both client-homed and partner users
+// who can reach that client.
+func principalMatchesClient(p *principal.Principal, clientID string) bool {
+	if p.ClientID != nil && *p.ClientID == clientID {
+		return true
+	}
+	for _, c := range p.AssignedClients {
+		if c == clientID {
+			return true
 		}
 	}
-	return &listOutput{Body: PrincipalListResponse{Principals: out, Total: len(out)}}, nil
+	return false
+}
+
+// principalHasAnyRole reports whether the principal holds at least one of the
+// requested role names (OR semantics, matching the multi-select filter UX).
+func principalHasAnyRole(p *principal.Principal, want []string) bool {
+	for _, r := range p.Roles {
+		for _, w := range want {
+			if r.Role == w {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func splitCSV(s string) []string {
+	out := make([]string, 0)
+	for _, part := range strings.Split(s, ",") {
+		if t := strings.TrimSpace(part); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// sortPrincipals orders in place. Unknown/empty field falls back to createdAt;
+// any order other than "desc" is treated as ascending.
+func sortPrincipals(ps []*principal.Principal, field, order string) {
+	var less func(i, j int) bool
+	switch field {
+	case "name":
+		less = func(i, j int) bool { return strings.ToLower(ps[i].Name) < strings.ToLower(ps[j].Name) }
+	case "email":
+		less = func(i, j int) bool {
+			return strings.ToLower(principalEmail(ps[i])) < strings.ToLower(principalEmail(ps[j]))
+		}
+	default: // "createdAt" and any unknown key
+		less = func(i, j int) bool { return ps[i].CreatedAt.Before(ps[j].CreatedAt) }
+	}
+	sort.SliceStable(ps, less)
+	if strings.EqualFold(order, "desc") {
+		for i, j := 0, len(ps)-1; i < j; i, j = i+1, j-1 {
+			ps[i], ps[j] = ps[j], ps[i]
+		}
+	}
+}
+
+// paginate returns the 0-based page slice. pageSize <= 0 returns everything.
+func paginate(ps []*principal.Principal, page, pageSize int) []*principal.Principal {
+	if pageSize <= 0 {
+		return ps
+	}
+	if page < 0 {
+		page = 0
+	}
+	start := page * pageSize
+	if start > len(ps) {
+		start = len(ps)
+	}
+	end := start + pageSize
+	if end > len(ps) {
+		end = len(ps)
+	}
+	return ps[start:end]
 }
 
 type getInput struct {
