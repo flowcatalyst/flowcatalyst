@@ -91,6 +91,12 @@ type PendingJobPoller struct {
 	pool        *pgxpool.Pool
 	dispatcher  *MessageGroupDispatcher
 	pausedCache *PausedConnectionCache
+	// IsLeader gates claiming: when non-nil and false, the poller idles.
+	// The per-group FIFO dispatcher is in-process only, so within-group
+	// ordering requires a single active scheduler — concurrent SKIP-LOCKED
+	// claims across replicas would dispatch a group's jobs out of order.
+	// nil = always run (standby disabled). Set by Scheduler.Run.
+	IsLeader func() bool
 }
 
 // NewPendingJobPoller wires the poller.
@@ -109,6 +115,9 @@ func (p *PendingJobPoller) Run(ctx context.Context) {
 			slog.Info("dispatch job poller stopped")
 			return
 		case <-tick.C:
+			if p.IsLeader != nil && !p.IsLeader() {
+				continue // only the leader claims
+			}
 			if err := p.pollOnce(ctx); err != nil {
 				slog.Warn("poll error", "err", err)
 			}

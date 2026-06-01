@@ -59,6 +59,14 @@ type Projector struct {
 	// RecordError per Step failure. nil is fine — the projector then
 	// reports no health (the stream HealthService will mark it stopped).
 	Health *Health
+	// IsLeader gates the loop: when non-nil and it returns false, the
+	// projector idles without claiming. Fan-out ordering (a later event's
+	// dispatch job must never become deliverable before an earlier
+	// same-group event's) requires a single active processor — concurrent
+	// SKIP-LOCKED claims across replicas would reorder a message group.
+	// Mirrors Rust's whole-stream-processor leadership gate (active_rx). nil
+	// = always run (single-node / standby disabled).
+	IsLeader func() bool
 }
 
 // Run drives the projector until ctx is cancelled.
@@ -78,6 +86,11 @@ func (p *Projector) Run(ctx context.Context) {
 			slog.Info("projector stopped", "name", p.Name)
 			return
 		default:
+		}
+
+		if p.IsLeader != nil && !p.IsLeader() {
+			sleep(ctx, p.Cfg.IdleSleep) // only the leader claims
+			continue
 		}
 
 		n, err := p.Step(ctx, p.Cfg.BatchSize)

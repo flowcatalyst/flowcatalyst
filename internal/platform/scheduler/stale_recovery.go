@@ -17,6 +17,10 @@ type StaleQueuedJobPoller struct {
 	pool         *pgxpool.Pool
 	staleAfter   time.Duration
 	scanInterval time.Duration
+	// IsLeader gates recovery: when non-nil and false, the loop idles so
+	// only the single active scheduler reclaims stuck QUEUED jobs. nil =
+	// always run. Set by Scheduler.Run.
+	IsLeader func() bool
 }
 
 // NewStaleQueuedJobPoller wires the recovery loop.
@@ -36,6 +40,9 @@ func (p *StaleQueuedJobPoller) Run(ctx context.Context) {
 			slog.Info("stale-queued recovery stopped")
 			return
 		case <-tick.C:
+			if p.IsLeader != nil && !p.IsLeader() {
+				continue // only the leader reclaims
+			}
 			if n, err := p.recoverOnce(ctx); err != nil {
 				slog.Warn("stale recovery error", "err", err)
 			} else if n > 0 {

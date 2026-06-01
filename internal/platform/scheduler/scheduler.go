@@ -6,10 +6,10 @@
 //
 // Mirrors the Rust scheduler subdomain layout:
 //
-//   poller.go          — PendingJobPoller + PausedConnectionCache
-//   dispatcher.go      — MessageGroupDispatcher with per-group FIFO + semaphore
-//   stale_recovery.go  — StaleQueuedJobPoller recovers stuck QUEUED jobs
-//   auth.go            — DispatchAuthService (HMAC tokens for dispatch callbacks)
+//	poller.go          — PendingJobPoller + PausedConnectionCache
+//	dispatcher.go      — MessageGroupDispatcher with per-group FIFO + semaphore
+//	stale_recovery.go  — StaleQueuedJobPoller recovers stuck QUEUED jobs
+//	auth.go            — DispatchAuthService (HMAC tokens for dispatch callbacks)
 //
 // All long-running goroutines respect ctx.Done() for graceful shutdown.
 package scheduler
@@ -66,11 +66,18 @@ type Scheduler struct {
 	pool      *pgxpool.Pool
 	publisher queue.Publisher
 
-	poller        *PendingJobPoller
-	dispatcher    *MessageGroupDispatcher
-	stale         *StaleQueuedJobPoller
-	pausedCache   *PausedConnectionCache
-	authService   *DispatchAuthService
+	poller      *PendingJobPoller
+	dispatcher  *MessageGroupDispatcher
+	stale       *StaleQueuedJobPoller
+	pausedCache *PausedConnectionCache
+	authService *DispatchAuthService
+
+	// IsLeader, when set, gates the poller + stale-recovery loops so only the
+	// single active scheduler claims/reclaims jobs. Required for within-
+	// message-group ordering in HA (the per-group FIFO dispatcher is in-process
+	// only). nil = always run (standby disabled). Mirrors Rust's active_rx gate
+	// on spawn_scheduler.
+	IsLeader func() bool
 }
 
 // New wires the scheduler. publisher publishes to the queue (typically
@@ -108,6 +115,8 @@ func (s *Scheduler) AuthService() *DispatchAuthService { return s.authService }
 // poller, so it doesn't need its own loop. fc-server uses this entry
 // point when FC_SCHEDULER_ENABLED=true.
 func (s *Scheduler) Run(ctx context.Context) {
+	s.poller.IsLeader = s.IsLeader
+	s.stale.IsLeader = s.IsLeader
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() { defer wg.Done(); s.poller.Run(ctx) }()

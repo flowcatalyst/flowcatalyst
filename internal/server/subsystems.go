@@ -37,14 +37,20 @@ import (
 // StartScheduler runs the dispatch-job scheduler (poller + dispatcher +
 // stale recovery). Blocks until ctx is cancelled.
 //
+// Leader-gated: the per-message-group FIFO dispatcher is in-process only, so
+// within-group ordering requires a single active scheduler. Concurrent
+// SKIP-LOCKED claims across replicas would let two nodes dispatch the same
+// group's jobs out of order. Mirrors Rust's active_rx gate on spawn_scheduler.
+//
 // The publisher is supplied by env-configured queue backend in
 // production; in development the noop publisher below keeps the loops
 // alive without external dependencies. TODO(scheduler-runtime): wire
 // the real queue.Publisher via internal/queue.NewPublisher once the
 // QueueConfig env knobs are exposed in envcfg.go.
-func StartScheduler(ctx context.Context, pool *pgxpool.Pool, _ EnvCfg) {
-	cfg := scheduler.DefaultConfig()
-	s := scheduler.New(cfg, pool, NoopPublisher{}, "fc-dispatch-hmac-secret-todo")
+func StartScheduler(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg) {
+	scfg := scheduler.DefaultConfig()
+	s := scheduler.New(scfg, pool, NoopPublisher{}, "fc-dispatch-hmac-secret-todo")
+	s.IsLeader = newLeaderGate(ctx, cfg, "scheduler")
 	s.Run(ctx)
 	slog.Info("scheduler stopped")
 }
@@ -54,10 +60,6 @@ func StartScheduler(ctx context.Context, pool *pgxpool.Pool, _ EnvCfg) {
 // holder fires, because the loops intentionally have no SELECT … FOR UPDATE
 // SKIP LOCKED claim (mirrors the Rust single-active-replica design). Blocks
 // until ctx is cancelled.
-//
-// (The dispatch-job scheduler — StartScheduler — is deliberately NOT
-// leader-gated: its poller claims rows with FOR UPDATE SKIP LOCKED, so
-// concurrent replicas are already safe and gating would only cut throughput.)
 func StartScheduledJobScheduler(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg) {
 	isLeader := newLeaderGate(ctx, cfg, "scheduled-job")
 	jobs := scheduledjob.NewRepository(pool)
@@ -113,6 +115,15 @@ func StartStreamProcessor(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg) {
 func StartStreamProcessorWithHealth(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, healths *stream.HealthService) {
 	pcfg := stream.DefaultProjectorConfig()
 
+	// One leader gate for the whole stream processor (projections + fan-out +
+	// partition manager), mirroring Rust's single active_rx hand-off. The
+	// fan-out and the downstream dispatch scheduler must be single-active to
+	// preserve within-message-group ordering: concurrent SKIP-LOCKED claims
+	// across replicas, combined with an in-process-only per-group FIFO, would
+	// let a later event's dispatch job become deliverable before an earlier
+	// same-group event's. When standby is disabled this is always-leader.
+	streamLeader := newLeaderGate(ctx, cfg, "stream")
+
 	var wg sync.WaitGroup
 	launch := func(name string, run func(context.Context)) {
 		wg.Add(1)
@@ -124,6 +135,7 @@ func StartStreamProcessorWithHealth(ctx context.Context, pool *pgxpool.Pool, cfg
 	}
 
 	registerProjector := func(name string, p *stream.Projector) *stream.Projector {
+		p.IsLeader = streamLeader
 		if healths != nil {
 			h := stream.NewHealth(name)
 			p.Health = h
@@ -170,18 +182,17 @@ func StartStreamProcessorWithHealth(ctx context.Context, pool *pgxpool.Pool, cfg
 		launch("event_fan_out", p.Run)
 	}
 	if cfg.StreamPartitionsEnabled {
-		// The projections are multi-replica safe (FOR UPDATE SKIP LOCKED
-		// claims), so they are intentionally NOT leader-gated — concurrent
-		// replicas just share the work. The partition manager does DDL
-		// (CREATE/DROP), so it is leader-gated to avoid needless churn,
-		// matching the Rust spawn_stream_processor leadership gate.
+		// The whole stream processor is leader-gated on one election
+		// (streamLeader), matching Rust's spawn_stream_processor: the fan-out
+		// must be single-active for message-group ordering, and the partition
+		// manager does DDL (CREATE/DROP) that only the leader should run.
 		pm := stream.NewPartitionManager(pool)
 		pm.Config = stream.PartitionManagerConfig{
 			MonthsForward: cfg.StreamPartitionMonthsForward,
 			RetentionDays: cfg.StreamPartitionRetentionDays,
 			TickInterval:  time.Duration(cfg.StreamPartitionTickHours) * time.Hour,
 		}
-		pm.IsLeader = newLeaderGate(ctx, cfg, "stream-partition-manager")
+		pm.IsLeader = streamLeader
 		if healths != nil {
 			h := stream.NewHealth("partition_manager")
 			pm.Health = h
