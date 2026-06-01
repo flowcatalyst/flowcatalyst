@@ -238,6 +238,23 @@ func envOr(key, def string) string {
 	return def
 }
 
+// webauthnOrigins returns the allowed WebAuthn origins. It reads
+// FC_WEBAUTHN_ORIGINS (comma-separated — go-webauthn needs every origin listed
+// verbatim since it matches by exact scheme+host), falling back to the legacy
+// singular FC_WEBAUTHN_RP_ORIGIN, then a localhost default for dev. Blank
+// entries are dropped so a trailing comma can't inject an empty origin.
+func webauthnOrigins() []string {
+	raw := envFirst("FC_WEBAUTHN_ORIGINS", "FC_WEBAUTHN_RP_ORIGIN", "http://localhost:8080")
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 func envFirst(keys ...string) string {
 	// Last argument is the default; everything else is a key in priority order.
 	def := keys[len(keys)-1]

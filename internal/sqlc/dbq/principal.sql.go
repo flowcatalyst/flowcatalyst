@@ -91,9 +91,13 @@ SELECT id, type, scope, client_id, application_id, name, active,
        email, email_domain, idp_type, external_idp_id, password_hash,
        last_login_at, service_account_id, created_at, updated_at
 FROM iam_principals
-WHERE type = 'USER' AND email = $1
+WHERE type = 'USER' AND LOWER(email) = $1
 `
 
+// Case-insensitive match: emails are stored lower-cased (see repository.Persist),
+// but callers pass values from sources whose casing we don't control (OIDC
+// tokens, the login form). LOWER(email) also finds any legacy mixed-case row so
+// the login self-heal can normalise it. The repo lower-cases $1 before binding.
 func (q *Queries) PrincipalFindByEmail(ctx context.Context, email *string) (IamPrincipal, error) {
 	row := q.db.QueryRow(ctx, principalFindByEmail, email)
 	var i IamPrincipal

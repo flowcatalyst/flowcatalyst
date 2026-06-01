@@ -210,6 +210,10 @@ type Querier interface {
 	PrincipalClientAccessGrantsClear(ctx context.Context, principalID string) error
 	PrincipalDelete(ctx context.Context, id string) error
 	PrincipalFindAll(ctx context.Context) ([]IamPrincipal, error)
+	// Case-insensitive match: emails are stored lower-cased (see repository.Persist),
+	// but callers pass values from sources whose casing we don't control (OIDC
+	// tokens, the login form). LOWER(email) also finds any legacy mixed-case row so
+	// the login self-heal can normalise it. The repo lower-cases $1 before binding.
 	PrincipalFindByEmail(ctx context.Context, email *string) (IamPrincipal, error)
 	// Queries for iam_principals + junction tables.
 	//

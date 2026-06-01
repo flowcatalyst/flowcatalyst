@@ -60,15 +60,15 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*Principal, error
 // FindByEmail loads a user-type principal by email, with role
 // assignments hydrated from iam_principal_roles.
 //
-// The lookup is normalised to lower-case + trimmed because emails are always
-// stored that way (operations.CreateUser and SyncPrincipals both lower-case
-// before persisting, and email is immutable after create). Callers receive the
-// email verbatim from external sources whose casing we don't control — e.g. an
-// OIDC IdP like Entra returns "John.Doe@contoso.com", and the internal login
-// form passes whatever the user typed. Without this normalisation a case-only
-// difference makes the SQL `email = $1` exact-match miss the existing row,
-// which broke federated login (auto-provision then hit the EMAIL_EXISTS
-// uniqueness check) and case-insensitive password login.
+// Matching is case-insensitive: the input is lower-cased + trimmed here and the
+// query compares `LOWER(email) = $1`. Callers receive the email verbatim from
+// external sources whose casing we don't control — e.g. an OIDC IdP like Entra
+// returns "John.Doe@contoso.com", and the internal login form passes whatever
+// the user typed. Without this, a case-only difference made the old `email = $1`
+// exact-match miss the existing (lower-cased) row, which broke federated login
+// (auto-provision then hit the EMAIL_EXISTS uniqueness check) and password
+// login. LOWER(email) also matches any legacy mixed-case row so the login
+// self-heal (LowercaseEmail) can normalise it in place.
 func (r *Repository) FindByEmail(ctx context.Context, email string) (*Principal, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	row, err := r.q.PrincipalFindByEmail(ctx, &email)
@@ -152,7 +152,12 @@ func (r *Repository) Persist(ctx context.Context, p *Principal, tx *usecasepgx.D
 	var lastLoginAt *time.Time
 
 	if p.UserIdentity != nil {
-		em := p.UserIdentity.Email
+		// Normalise on the way to the DB: every write to the email column goes
+		// through Persist, so lower-casing here guarantees the stored value (and
+		// the derived email_domain) is always lower-case, regardless of which
+		// operation built the entity. Pairs with the lower-cased lookup in
+		// FindByEmail. Trim too, so stray whitespace never lands in a key column.
+		em := strings.ToLower(strings.TrimSpace(p.UserIdentity.Email))
 		email = &em
 		if domain := domainOf(em); domain != "" {
 			emailDomain = &domain
@@ -216,6 +221,36 @@ func (r *Repository) UpdatePasswordHash(ctx context.Context, principalID, hash s
 		`UPDATE iam_principals SET password_hash = $1, updated_at = NOW() WHERE id = $2`,
 		hash, principalID)
 	return err
+}
+
+// LowercaseEmail normalises a principal's stored email (and the derived
+// email_domain) to lower-case in place, but only when it isn't already
+// normalised — an already-lower-case row triggers no write. Like
+// UpdatePasswordHash, this is a transparent migration of a legacy row run after
+// a successful login, not a user-initiated change, so it's a direct UPDATE
+// rather than a domain event. It also rewrites p.UserIdentity.Email in memory so
+// the caller's principal reflects the stored value. Callers should treat any
+// error as non-fatal: the user is already authenticated; healing can wait for
+// the next login.
+func (r *Repository) LowercaseEmail(ctx context.Context, p *Principal) error {
+	if p == nil || p.UserIdentity == nil {
+		return nil
+	}
+	lowered := strings.ToLower(strings.TrimSpace(p.UserIdentity.Email))
+	if lowered == p.UserIdentity.Email {
+		return nil // already normalised — no write
+	}
+	var domainPtr *string
+	if d := domainOf(lowered); d != "" {
+		domainPtr = &d
+	}
+	if _, err := r.pool.Exec(ctx,
+		`UPDATE iam_principals SET email = $1, email_domain = $2, updated_at = NOW() WHERE id = $3`,
+		lowered, domainPtr, p.ID); err != nil {
+		return fmt.Errorf("principal repo: lowercase email: %w", err)
+	}
+	p.UserIdentity.Email = lowered
+	return nil
 }
 
 // Delete removes the principal and the two non-FK-cascade junctions.

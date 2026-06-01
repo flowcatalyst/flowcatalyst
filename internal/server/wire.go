@@ -202,10 +202,16 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 	}
 
 	// ── Webauthn service ───────────────────────────────────────────────
+	// go-webauthn matches the browser's origin against RPOrigins by exact
+	// scheme+host (no wildcard/subdomain support), so every allowed origin must
+	// be listed verbatim. RPID is the registrable parent domain (e.g.
+	// inhanceapps.com) and validly covers any subdomain origin. Origins come from
+	// FC_WEBAUTHN_ORIGINS (comma-separated, the deploy env's name); the singular
+	// FC_WEBAUTHN_RP_ORIGIN is kept as a fallback for older configs.
 	webauthnService, err := webauthn.NewService(webauthn.Config{
 		RPDisplayName: "FlowCatalyst",
 		RPID:          envOr("FC_WEBAUTHN_RP_ID", "localhost"),
-		RPOrigins:     []string{envOr("FC_WEBAUTHN_RP_ORIGIN", "http://localhost:8080")},
+		RPOrigins:     webauthnOrigins(),
 	}, webauthnCredRepo, webauthnCeremonyRepo)
 	if err != nil {
 		return fmt.Errorf("webauthn service init: %w", err)

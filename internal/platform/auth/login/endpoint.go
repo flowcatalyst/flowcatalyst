@@ -391,6 +391,12 @@ func (e *Endpoint) handleLogin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Same best-effort migration for a legacy mixed-case email: normalise it now
+	// that the user has authenticated. No-op when already lower-case.
+	if herr := e.cfg.Principals.LowercaseEmail(r.Context(), p); herr != nil {
+		slog.Warn("email lowercase self-heal failed; login continues", "principal", p.ID, "err", herr)
+	}
+
 	token, err := e.cfg.Provider.MintSessionToken(r.Context(), p.ID, SessionTTL)
 	if err != nil {
 		httperror.Write(w, httperror.BadRequest("MINT_FAILED", err.Error()))

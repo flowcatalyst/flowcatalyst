@@ -408,6 +408,11 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 			httperror.Write(w, err)
 			return
 		}
+	} else if herr := e.principals.LowercaseEmail(r.Context(), p); herr != nil {
+		// Self-heal a legacy mixed-case row in place. Non-fatal: the user is
+		// already authenticated; if the write fails we just retry next login.
+		slog.Warn("OIDC login: email lowercase self-heal failed; continuing",
+			"principalId", p.ID, "err", herr)
 	}
 	if err := e.syncIdpRoles(r.Context(), p, claims.Roles, loginState.EmailDomainMappingID); err != nil {
 		// Role sync failure shouldn't block login — the principal is
