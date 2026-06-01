@@ -24,19 +24,22 @@ type dispatcher struct {
 }
 
 // webhookEnvelope is the POST body delivered to a job's target URL. Field
-// names are snake_case to match the Rust WebhookEnvelope exactly — this is an
-// external SDK contract (the receiver parses it).
+// names are camelCase to match the Rust dispatcher's WebhookEnvelope and the
+// SDK runner's ScheduledJobEnvelope (both #[serde(rename_all="camelCase")]) —
+// this is an external SDK contract: the receiver deserializes these exact keys
+// and rejects (HTTP 400) on a missing required field, so snake_case would fail
+// every firing.
 type webhookEnvelope struct {
-	JobID            string           `json:"job_id"`
-	JobCode          string           `json:"job_code"`
-	InstanceID       string           `json:"instance_id"`
-	ScheduledFor     *time.Time       `json:"scheduled_for,omitempty"`
-	FiredAt          time.Time        `json:"fired_at"`
-	TriggerKind      string           `json:"trigger_kind"`
-	CorrelationID    *string          `json:"correlation_id,omitempty"`
+	JobID            string           `json:"jobId"`
+	JobCode          string           `json:"jobCode"`
+	InstanceID       string           `json:"instanceId"`
+	ScheduledFor     *time.Time       `json:"scheduledFor,omitempty"`
+	FiredAt          time.Time        `json:"firedAt"`
+	TriggerKind      string           `json:"triggerKind"`
+	CorrelationID    *string          `json:"correlationId,omitempty"`
 	Payload          *json.RawMessage `json:"payload,omitempty"`
-	TracksCompletion bool             `json:"tracks_completion"`
-	TimeoutSeconds   *int32           `json:"timeout_seconds,omitempty"`
+	TracksCompletion bool             `json:"tracksCompletion"`
+	TimeoutSeconds   *int32           `json:"timeoutSeconds,omitempty"`
 }
 
 func (d *dispatcher) run(ctx context.Context) {

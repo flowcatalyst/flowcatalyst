@@ -46,7 +46,11 @@ type Config struct {
 	StaleScanInterval time.Duration
 }
 
-// DefaultConfig matches the Rust scheduler defaults.
+// DefaultConfig holds the Go dispatch-job scheduler defaults. These are
+// intentionally Go's own (more standard) values, NOT a 1:1 copy of the Rust
+// scheduler: Rust uses poll 5s / batch 200 / max_concurrent_groups 10 /
+// stale 15m. The owner chose to keep Go's faster, more conventional defaults
+// (poll 1s / batch 100 / in-flight 1000 / stale 5m). All are env-overridable.
 func DefaultConfig() Config {
 	return Config{
 		PollInterval:      1 * time.Second,
