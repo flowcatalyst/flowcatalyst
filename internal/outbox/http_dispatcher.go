@@ -109,7 +109,9 @@ func (d *HTTPDispatcher) SendBatch(ctx context.Context, items []Item) map[string
 
 	resp, err := d.client.Do(req)
 	if err != nil {
-		return failAll(items, common.OutboxInternalError, "request: "+err.Error())
+		// Transport failure (connect/DNS/timeout) → GATEWAY_ERROR, matching Rust
+		// http_dispatcher.rs send() Err arm. Retryable.
+		return failAll(items, common.OutboxGatewayError, "request: "+err.Error())
 	}
 	defer resp.Body.Close()
 
@@ -147,7 +149,12 @@ func (d *HTTPDispatcher) SendBatch(ctx context.Context, items []Item) map[string
 		resp.StatusCode == http.StatusServiceUnavailable,
 		resp.StatusCode == http.StatusGatewayTimeout:
 		return failAll(items, common.OutboxGatewayError, fmt.Sprintf("%d", resp.StatusCode))
-	case resp.StatusCode >= 400 && resp.StatusCode < 500:
+	case resp.StatusCode == http.StatusBadRequest:
+		// Only an exact 400 is terminal BAD_REQUEST. Every other unmatched
+		// status (other 4xx — 404/409/422/429 — and other 5xx) falls through to
+		// INTERNAL_ERROR (retryable), byte-matching Rust http_dispatcher.rs's
+		// match arms (400/401/403/500/502..=504, _ => INTERNAL_ERROR). This keeps
+		// a transient 429/404 retryable instead of permanently blocking a group.
 		return failAll(items, common.OutboxBadRequest, fmt.Sprintf("%d", resp.StatusCode))
 	default:
 		return failAll(items, common.OutboxInternalError, fmt.Sprintf("%d", resp.StatusCode))
@@ -183,7 +190,8 @@ func (d *HTTPDispatcher) Send(ctx context.Context, item Item) DispatchOutcome {
 
 	resp, err := d.client.Do(req)
 	if err != nil {
-		return DispatchOutcome{Status: common.OutboxInternalError, Message: "request: " + err.Error()}
+		// Transport failure → GATEWAY_ERROR (retryable), matching Rust.
+		return DispatchOutcome{Status: common.OutboxGatewayError, Message: "request: " + err.Error()}
 	}
 	defer resp.Body.Close()
 
@@ -213,7 +221,9 @@ func (d *HTTPDispatcher) Send(ctx context.Context, item Item) DispatchOutcome {
 		resp.StatusCode == http.StatusServiceUnavailable,
 		resp.StatusCode == http.StatusGatewayTimeout:
 		return DispatchOutcome{Status: common.OutboxGatewayError, Message: fmt.Sprintf("%d", resp.StatusCode)}
-	case resp.StatusCode >= 400 && resp.StatusCode < 500:
+	case resp.StatusCode == http.StatusBadRequest:
+		// Only an exact 400 is terminal; all other unmatched 4xx/5xx →
+		// INTERNAL_ERROR (retryable), matching Rust http_dispatcher.rs. See SendBatch.
 		return DispatchOutcome{Status: common.OutboxBadRequest, Message: fmt.Sprintf("%d", resp.StatusCode)}
 	default:
 		return DispatchOutcome{Status: common.OutboxInternalError, Message: fmt.Sprintf("%d", resp.StatusCode)}

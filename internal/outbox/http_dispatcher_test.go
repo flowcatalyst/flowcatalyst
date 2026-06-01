@@ -64,6 +64,63 @@ func TestSend_Non2xxFallsBackToHTTPStatus(t *testing.T) {
 	}
 }
 
+// Rust parity (http_dispatcher.rs match arms): only an EXACT 400 is terminal
+// BAD_REQUEST. Every other 4xx — notably a transient 429 — must map to
+// INTERNAL_ERROR (retryable), so the item retries instead of permanently
+// failing and blocking its message group.
+func TestSend_400IsTerminalBadRequest(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer srv.Close()
+	d := NewHTTPDispatcher(srv.URL, "", 5*time.Second)
+	out := d.Send(context.Background(), newItem())
+	if out.Status != common.OutboxBadRequest {
+		t.Fatalf("400 → %v, want BAD_REQUEST", out.Status)
+	}
+	if out.Status.IsRetryable() {
+		t.Error("400 BAD_REQUEST must not be retryable")
+	}
+}
+
+func TestSend_Transient4xxIsRetryable(t *testing.T) {
+	for _, code := range []int{
+		http.StatusTooManyRequests,     // 429
+		http.StatusNotFound,            // 404
+		http.StatusConflict,            // 409
+		http.StatusUnprocessableEntity, // 422
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(code)
+		}))
+		d := NewHTTPDispatcher(srv.URL, "", 5*time.Second)
+		out := d.Send(context.Background(), newItem())
+		srv.Close()
+		if out.Status != common.OutboxInternalError {
+			t.Errorf("%d → %v, want INTERNAL_ERROR (retryable, Rust parity)", code, out.Status)
+		}
+		if !out.Status.IsRetryable() {
+			t.Errorf("%d must be retryable", code)
+		}
+	}
+}
+
+// A transport failure (connection refused) maps to GATEWAY_ERROR (retryable),
+// matching Rust's send() Err arm — not INTERNAL_ERROR.
+func TestSend_TransportErrorIsGatewayError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	url := srv.URL
+	srv.Close() // nothing listening now → connection refused
+	d := NewHTTPDispatcher(url, "", 1*time.Second)
+	out := d.Send(context.Background(), newItem())
+	if out.Status != common.OutboxGatewayError {
+		t.Fatalf("transport error → %v, want GATEWAY_ERROR", out.Status)
+	}
+	if !out.Status.IsRetryable() {
+		t.Error("transport error must be retryable")
+	}
+}
+
 func batchItem(id string) Item {
 	return Item{ID: id, ItemType: common.OutboxItemEvent, Payload: json.RawMessage(`{"id":"` + id + `"}`)}
 }
@@ -114,6 +171,23 @@ func TestSendBatch_Non2xxFailsAll(t *testing.T) {
 	for _, id := range []string{"a", "b"} {
 		if out[id].Status != common.OutboxGatewayError {
 			t.Fatalf("%s = %v, want GATEWAY_ERROR for 502", id, out[id].Status)
+		}
+	}
+}
+
+// Batch parity: a transient 4xx (429) fails the whole batch as INTERNAL_ERROR
+// (retryable), not terminal BAD_REQUEST. Guards the same regression as the
+// single-item TestSend_Transient4xxIsRetryable across the batch path.
+func TestSendBatch_Transient4xxIsRetryable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer srv.Close()
+	d := NewHTTPDispatcher(srv.URL, "", 5*time.Second)
+	out := d.SendBatch(context.Background(), []Item{batchItem("a"), batchItem("b")})
+	for _, id := range []string{"a", "b"} {
+		if out[id].Status != common.OutboxInternalError || !out[id].Status.IsRetryable() {
+			t.Fatalf("%s = %v, want retryable INTERNAL_ERROR for 429", id, out[id].Status)
 		}
 	}
 }

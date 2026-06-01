@@ -164,9 +164,12 @@ func LoadEnv() EnvCfg {
 		OutboxMaxConcurrentGroups: envIntAlias("FC_OUTBOX_MAX_CONCURRENT_GROUPS", "FC_MAX_CONCURRENT_GROUPS", 0),
 		OutboxBlockOnError:        envBool("FC_OUTBOX_BLOCK_ON_ERROR", true),
 		OutboxAdminPort:           envInt("FC_OUTBOX_ADMIN_PORT", 0),
-		OutboxBackend:             envOr("FC_OUTBOX_BACKEND", "postgres"),
-		OutboxMongoURI:            envFirst("FC_OUTBOX_MONGO_URI", "FC_OUTBOX_DB_URL", "", ""),
-		OutboxMongoDB:             envOr("FC_OUTBOX_MONGO_DB", "flowcatalyst"),
+		// FC_OUTBOX_DB_TYPE is the Rust fc-outbox-processor / fc-server var name,
+		// honoured as an alias so an existing Rust outbox env drops in unchanged
+		// (values: postgres|mongo; sqlite is out of scope and errors clearly).
+		OutboxBackend:  envFirst("FC_OUTBOX_BACKEND", "FC_OUTBOX_DB_TYPE", "postgres"),
+		OutboxMongoURI: envFirst("FC_OUTBOX_MONGO_URI", "FC_OUTBOX_DB_URL", "", ""),
+		OutboxMongoDB:  envOr("FC_OUTBOX_MONGO_DB", "flowcatalyst"),
 
 		RouterConfigURL:        os.Getenv("FLOWCATALYST_CONFIG_URL"),
 		RouterDevMode:          envBool("FLOWCATALYST_DEV_MODE", false),
