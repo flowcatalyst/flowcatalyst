@@ -66,6 +66,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	serviceaccountapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/api"
 	bff "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/bff"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/email"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 	meapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/me"
@@ -249,14 +250,21 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 	publicapi.New(platformConfigRepo).RegisterRoutes(r)
 
 	// Unauthenticated password-reset flow (request/validate/confirm). Public
-	// like /auth/login. Emailer is nil until a mailer is wired — tokens are
-	// created but not delivered (best-effort, matching Rust on email failure).
+	// like /auth/login. Email is delivered via the SMTP_* env (SendGrid in
+	// prod); when SMTP isn't configured the message is logged instead. Delivery
+	// is best-effort — a send failure never fails the request (matching Rust).
+	emailSvc := email.FromEnv()
+	resetTokenRepo := passwordreset.NewRepository(pool)
 	passwordresetapi.RegisterRoutes(r, &passwordresetapi.State{
 		Principals:      principalRepo,
-		Tokens:          passwordreset.NewRepository(pool),
+		Tokens:          resetTokenRepo,
 		UoW:             uow,
 		ExternalBaseURL: cfg.JWTIssuer,
+		Emailer:         passwordresetapi.NewEmailer(emailSvc),
 	})
+	// Admin-triggered reset (POST /api/principals/{id}/send-password-reset)
+	// shares the same token repo + mailer.
+	principalResetEmailer := passwordresetapi.NewPrincipalEmailer(resetTokenRepo, cfg.JWTIssuer, emailSvc)
 
 	// /oauth/authorize is mounted OUTSIDE the auth middleware: an absent or
 	// expired session must redirect to login (not 401), and the handler
@@ -325,6 +333,7 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 			Mappings:          edmRepo,
 			IdentityProviders: idpRepo,
 			AnchorDomains:     authRepo.AnchorDomains,
+			PasswordEmailer:   principalResetEmailer,
 			UoW:               uow,
 		})
 

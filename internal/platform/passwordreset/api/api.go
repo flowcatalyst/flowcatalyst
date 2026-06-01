@@ -21,6 +21,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/passwordreset"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	principalops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/email"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
@@ -31,11 +32,64 @@ const resetTokenTTL = 15 * time.Minute
 
 // Emailer delivers the reset link to the user. Optional: when nil the token is
 // still created and stored (best-effort delivery, mirroring Rust's "email
-// failure is logged not propagated"). No mailer is wired in the Go platform
-// yet, so in practice the token is created but not emailed — see the package
-// note. Wire an implementation when an email service lands.
+// failure is logged not propagated"). Use NewEmailer to build one from an
+// email.Service (wired in WirePlatform from the SMTP_* env).
 type Emailer interface {
 	SendResetLink(ctx context.Context, to, resetLink string) error
+}
+
+// linkEmailer wraps an email.Service and renders the reset-link email. The
+// subject + body are 1:1 with Rust password_reset_api's EmailMessage.
+type linkEmailer struct{ svc email.Service }
+
+// NewEmailer adapts an email.Service to the Emailer interface.
+func NewEmailer(svc email.Service) Emailer { return linkEmailer{svc: svc} }
+
+func (e linkEmailer) SendResetLink(ctx context.Context, to, resetLink string) error {
+	return e.svc.Send(ctx, email.Message{
+		To:      to,
+		Subject: "Reset your password",
+		HTMLBody: "<p>You requested a password reset.</p>" +
+			"<p><a href=\"" + resetLink + "\">Click here to reset your password</a></p>" +
+			"<p>This link expires in 15 minutes.</p>" +
+			"<p>If you did not request this, you can safely ignore this email.</p>",
+	})
+}
+
+// principalEmailer mints a reset token for a principal and emails the link. It
+// implements principal/operations.PasswordResetEmailer, powering the admin
+// trigger POST /api/principals/{id}/send-password-reset. Lives here so it can
+// reuse the token generation/hashing + the same email template.
+type principalEmailer struct {
+	tokens *passwordreset.Repository
+	base   string
+	mail   Emailer
+}
+
+// NewPrincipalEmailer adapts the token repo + email.Service to the admin
+// SendResetEmail(ctx, principal) shape.
+func NewPrincipalEmailer(tokens *passwordreset.Repository, baseURL string, svc email.Service) *principalEmailer {
+	return &principalEmailer{tokens: tokens, base: baseURL, mail: NewEmailer(svc)}
+}
+
+// SendResetEmail creates a fresh single-use token for p and emails the link.
+func (e *principalEmailer) SendResetEmail(ctx context.Context, p *principal.Principal) error {
+	if p == nil || p.UserIdentity == nil || strings.TrimSpace(p.UserIdentity.Email) == "" {
+		return nil
+	}
+	if err := e.tokens.DeleteByPrincipalID(ctx, p.ID); err != nil {
+		return err
+	}
+	raw, err := generateRawToken()
+	if err != nil {
+		return err
+	}
+	tok := passwordreset.New(p.ID, hashToken(raw), time.Now().UTC().Add(resetTokenTTL))
+	if err := e.tokens.Insert(ctx, tok); err != nil {
+		return err
+	}
+	link := strings.TrimRight(e.base, "/") + "/auth/reset-password?token=" + raw
+	return e.mail.SendResetLink(ctx, p.UserIdentity.Email, link)
 }
 
 // State holds the deps the password-reset handlers reach into.
