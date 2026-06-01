@@ -59,7 +59,18 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*Principal, error
 
 // FindByEmail loads a user-type principal by email, with role
 // assignments hydrated from iam_principal_roles.
+//
+// The lookup is normalised to lower-case + trimmed because emails are always
+// stored that way (operations.CreateUser and SyncPrincipals both lower-case
+// before persisting, and email is immutable after create). Callers receive the
+// email verbatim from external sources whose casing we don't control — e.g. an
+// OIDC IdP like Entra returns "John.Doe@contoso.com", and the internal login
+// form passes whatever the user typed. Without this normalisation a case-only
+// difference makes the SQL `email = $1` exact-match miss the existing row,
+// which broke federated login (auto-provision then hit the EMAIL_EXISTS
+// uniqueness check) and case-insensitive password login.
 func (r *Repository) FindByEmail(ctx context.Context, email string) (*Principal, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
 	row, err := r.q.PrincipalFindByEmail(ctx, &email)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
