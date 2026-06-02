@@ -158,7 +158,7 @@ func EncodeQuery(pairs ...string) string {
 	}
 	v := url.Values{}
 	for i := 0; i < len(pairs); i += 2 {
-		k, val := pairs[i], pairs[i+1]
+		k, val := pairs[i], pairs[i+1] //nolint:gosec // G602: pairs is key/value (even length) by contract; the loop steps by 2
 		if val == "" {
 			continue
 		}

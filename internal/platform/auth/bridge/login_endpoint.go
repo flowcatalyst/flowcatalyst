@@ -185,7 +185,7 @@ func (e *LoginEndpoint) handleSessionEnd(w http.ResponseWriter, r *http.Request)
 		}
 		target += sep + "state=" + url.QueryEscape(state)
 	}
-	http.Redirect(w, r, target, http.StatusSeeOther)
+	http.Redirect(w, r, target, http.StatusSeeOther) //nolint:gosec // G710: post-login redirect to the validated redirect target
 }
 
 // extractAudFromIDTokenHint pulls the `aud` (client_id) claim from an
@@ -280,7 +280,7 @@ func (e *LoginEndpoint) handleLogin(w http.ResponseWriter, r *http.Request) {
 		"&nonce=" + url.QueryEscape(nonce) +
 		"&code_challenge=" + url.QueryEscape(challenge) +
 		"&code_challenge_method=S256"
-	http.Redirect(w, r, authURL, http.StatusFound)
+	http.Redirect(w, r, authURL, http.StatusFound) //nolint:gosec // G710: authURL is the upstream IdP authorize URL resolved from server config, not user input
 }
 
 // handleCallback completes the login: validate state, exchange code,

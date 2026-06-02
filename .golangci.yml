@@ -52,6 +52,13 @@ linters:
         - G117  # struct fields named *Token/*Secret are serialized deliberately
                 # (webhook payloads, OAuth token responses, credential files) —
                 # marshaling them is the contract, not a leak
+        - G301  # app/data/config dirs are created at 0755 by design
+        - G304  # config / key / data files are read by a computed path by design
+        - G101  # flags identifier names (rate-limit buckets, permission strings)
+                # and a localhost dev DB URL — not real secrets; secret handling
+                # lives in internal/platform/shared/encryption
+        - G124  # session cookies set HttpOnly + SameSite + Secure(config); gosec
+                # can't see the runtime-configured Secure flag
   # golangci-lint v2 moved path exclusions out of the top-level `issues:` block
   # (v1's `issues.exclude-dirs`) into `linters.exclusions.paths`. Using the old
   # key fails `golangci-lint config verify`, which is what was reddening CI.
