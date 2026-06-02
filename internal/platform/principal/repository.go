@@ -28,6 +28,7 @@ import (
 //     (assign_roles, sync_idp_roles, sync_principals)
 //   - AppAccessPersister → iam_principal_application_access
 //     (assign_application_access)
+//
 // Client-access grants are their own aggregate (ClientAccessGrantRepo).
 // Delete still cleans the non-cascade junctions to avoid orphans (only
 // iam_principal_roles has FK ON DELETE CASCADE; the other two don't).
@@ -398,10 +399,12 @@ type RolesPersister struct{ *Repository }
 
 // Persist upserts the principal row, then replaces its role junction.
 func (rp RolesPersister) Persist(ctx context.Context, p *Principal, tx *usecasepgx.DbTx) error {
+	// Qualify the embedded repo explicitly — bare rp.Persist would recurse
+	// into this method. replaceRolesTx isn't shadowed, so it promotes directly.
 	if err := rp.Repository.Persist(ctx, p, tx); err != nil {
 		return err
 	}
-	return rp.Repository.replaceRolesTx(ctx, p, tx)
+	return rp.replaceRolesTx(ctx, p, tx)
 }
 
 // AppAccessPersister is the application-access analogue of RolesPersister:
@@ -411,10 +414,12 @@ type AppAccessPersister struct{ *Repository }
 
 // Persist upserts the principal row, then replaces its app-access junction.
 func (ap AppAccessPersister) Persist(ctx context.Context, p *Principal, tx *usecasepgx.DbTx) error {
+	// Explicit selector on Persist avoids recursing into this method; the
+	// junction helper isn't shadowed and promotes directly.
 	if err := ap.Repository.Persist(ctx, p, tx); err != nil {
 		return err
 	}
-	return ap.Repository.replaceAppAccessTx(ctx, p, tx)
+	return ap.replaceAppAccessTx(ctx, p, tx)
 }
 
 // UpdatePasswordHash overwrites only the password_hash for a principal. Used by
