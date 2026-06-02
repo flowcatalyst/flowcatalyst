@@ -36,4 +36,4 @@ func TestSealCannotBePopulatedExternally(t *testing.T) {
 // fakeEvent is just enough to instantiate Committed[E] in tests. The
 // production E type satisfies usecase.DomainEvent, but the seal works
 // for any E.
-type fakeEvent struct{ id string }
+type fakeEvent struct{}

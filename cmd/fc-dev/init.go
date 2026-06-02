@@ -552,7 +552,7 @@ func writeEnvUpdates(path string, updates [][2]string) error {
 			return err
 		}
 	}
-	if err := os.WriteFile(path, []byte(next), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(next), 0o600); err != nil { //nolint:gosec // G703: path is the fc-dev-resolved config file path, not external input
 		return err
 	}
 	action := "updated"

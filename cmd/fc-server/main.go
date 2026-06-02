@@ -63,7 +63,7 @@ func main() {
 		// secret. Mirrors the Rust fc-server DB-secret resolution.
 		if dbURL, ok, err := server.ResolveDBSecretURL(rootCtx); err != nil {
 			slog.Error("resolve DB secret failed", "err", err)
-			os.Exit(1)
+			os.Exit(1) //nolint:gocritic // fatal startup error before the run loop; the deferred cancel is moot as the process is exiting
 		} else if ok {
 			cfg.DatabaseURL = dbURL
 			slog.Info("resolved database URL from AWS Secrets Manager")

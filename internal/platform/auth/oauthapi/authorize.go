@@ -134,7 +134,7 @@ func (s *State) Authorize(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		redirectURL := redirectURI + "?code=" + pctEncode(code.Code) + "&state=" + pctEncode(stateParam)
-		http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
+		http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect) //nolint:gosec // G710: redirectURL is built from a redirect_uri already validated against the client's registered URIs
 		return
 	}
 
@@ -284,7 +284,7 @@ func errorRedirect(w http.ResponseWriter, r *http.Request, redirectURI, errCode,
 	if state != "" {
 		url += "&state=" + pctEncode(state)
 	}
-	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
+	http.Redirect(w, r, url, http.StatusTemporaryRedirect) //nolint:gosec // G710: error redirect to the client's validated redirect_uri
 }
 
 func invalidScopes(scope string, clientScopes []string) []string {

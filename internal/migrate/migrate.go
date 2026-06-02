@@ -152,7 +152,7 @@ func gooseHasMigrations(ctx context.Context, db *sql.DB) (bool, error) {
 // version prefix of each entry. table/column are trusted in-package
 // constants, not user input.
 func trackerVersions(ctx context.Context, db *sql.DB, table, column string) ([]int64, error) {
-	rows, err := db.QueryContext(ctx, "SELECT "+column+" FROM "+table)
+	rows, err := db.QueryContext(ctx, "SELECT "+column+" FROM "+table) //nolint:gosec // G202: table/column are internal constants (see doc), not user input
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", table, err)
 	}

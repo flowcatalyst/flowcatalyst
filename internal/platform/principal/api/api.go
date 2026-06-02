@@ -288,7 +288,7 @@ func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
 		// Platform-level principals (client_id == nil) are hidden from
 		// non-anchors. (get-by-id stays lenient on the nil case, matching
 		// Rust get_principal, which only checks access when client_id is set.)
-		if !(ac.IsAnchor() || (p.ClientID != nil && ac.CanAccessClient(*p.ClientID))) {
+		if !ac.IsAnchor() && (p.ClientID == nil || !ac.CanAccessClient(*p.ClientID)) {
 			continue
 		}
 		if wantType != "" && string(p.Type) != wantType {

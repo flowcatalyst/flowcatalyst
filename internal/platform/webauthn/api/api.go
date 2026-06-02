@@ -297,10 +297,9 @@ func (s *State) authenticateComplete(ctx context.Context, in *authenticateComple
 	}
 
 	ec := usecase.NewExecutionContext(p.ID)
-	if _, err := operations.Authenticate(ctx, s.Creds, s.UoW,
-		operations.AuthenticateCommand{StateID: in.Body.StateID, UpdatedCredential: *cred}, ec); err != nil {
-		// Counter persistence failure is non-fatal; session still issued.
-	}
+	// Counter persistence failure is non-fatal; session still issued.
+	_, _ = operations.Authenticate(ctx, s.Creds, s.UoW,
+		operations.AuthenticateCommand{StateID: in.Body.StateID, UpdatedCredential: *cred}, ec)
 
 	var email *string
 	if p.UserIdentity != nil && p.UserIdentity.Email != "" {

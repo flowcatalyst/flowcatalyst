@@ -67,11 +67,11 @@ func (r *runner) run(ctx context.Context, c parityCase) caseResult {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		rustOut.resp, rustOut.body, rustOut.err = r.fire(ctx, r.rustURL, c.Request.Method, path, hdrs, body)
+		rustOut.resp, rustOut.body, rustOut.err = r.fire(ctx, r.rustURL, c.Request.Method, path, hdrs, body) //nolint:bodyclose // fire closes the body; resp kept only for status/headers
 	}()
 	go func() {
 		defer wg.Done()
-		goOut.resp, goOut.body, goOut.err = r.fire(ctx, r.goURL, c.Request.Method, path, hdrs, body)
+		goOut.resp, goOut.body, goOut.err = r.fire(ctx, r.goURL, c.Request.Method, path, hdrs, body) //nolint:bodyclose // fire closes the body; resp kept only for status/headers
 	}()
 	wg.Wait()
 

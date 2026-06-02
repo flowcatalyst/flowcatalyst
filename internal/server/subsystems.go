@@ -90,7 +90,7 @@ func newLeaderGate(ctx context.Context, cfg EnvCfg, subsystem string) func() boo
 		slog.Error("leader election start failed; running un-gated", "subsystem", subsystem, "err", err)
 		return func() bool { return true }
 	}
-	go func() {
+	go func() { //nolint:gosec // G118: shutdown drain: parent ctx is already done, so a fresh Background context is required
 		<-ctx.Done()
 		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -262,7 +262,7 @@ func StartOutboxProcessor(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg) {
 				slog.Error("outbox admin listener exited", "err", err)
 			}
 		}()
-		go func() {
+		go func() { //nolint:gosec // G118: shutdown drain: parent ctx is already done, so a fresh Background context is required
 			<-ctx.Done()
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
@@ -441,6 +441,7 @@ func (NoopPublisher) Identifier() string { return "noop" }
 func (NoopPublisher) Publish(_ context.Context, _ common.Message) (string, error) {
 	return "noop", nil
 }
+
 func (NoopPublisher) PublishBatch(_ context.Context, msgs []common.Message) ([]string, error) {
 	out := make([]string, len(msgs))
 	for i := range msgs {

@@ -10,12 +10,12 @@ func TestMatchShape_TSID(t *testing.T) {
 		body string
 		want bool
 	}{
-		{`{"id":"6F68K4CRY247K"}`, true},        // untyped
-		{`{"id":"clt_6F68K4CRY247K"}`, true},    // typed (3-char prefix)
-		{`{"id":"djbr_6F68K4CRY247K"}`, true},   // typed (4-char prefix)
+		{`{"id":"6F68K4CRY247K"}`, true},      // untyped
+		{`{"id":"clt_6F68K4CRY247K"}`, true},  // typed (3-char prefix)
+		{`{"id":"djbr_6F68K4CRY247K"}`, true}, // typed (4-char prefix)
 		{`{"id":"too-short"}`, false},
-		{`{"id":"6F68K4CRY247KQ"}`, false},      // 14 chars
-		{`{"id":42}`, false},                    // wrong type
+		{`{"id":"6F68K4CRY247KQ"}`, false}, // 14 chars
+		{`{"id":42}`, false},               // wrong type
 	}
 	for _, tc := range cases {
 		err := matchShape([]byte(tc.body), map[string]any{"id": "tsid"}, "go")
@@ -32,9 +32,9 @@ func TestMatchShape_ISO8601Microsecond(t *testing.T) {
 		want bool
 	}{
 		{`{"t":"2026-05-26T10:30:00.123456Z"}`, true},
-		{`{"t":"2026-05-26T10:30:00.123Z"}`, false},          // millisecond
-		{`{"t":"2026-05-26T10:30:00.123456789Z"}`, false},    // nanosecond
-		{`{"t":"2026-05-26T10:30:00Z"}`, false},              // no subsec
+		{`{"t":"2026-05-26T10:30:00.123Z"}`, false},       // millisecond
+		{`{"t":"2026-05-26T10:30:00.123456789Z"}`, false}, // nanosecond
+		{`{"t":"2026-05-26T10:30:00Z"}`, false},           // no subsec
 	}
 	for _, tc := range cases {
 		err := matchShape([]byte(tc.body), map[string]any{"t": "iso8601-microsecond"}, "go")

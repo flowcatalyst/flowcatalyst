@@ -33,6 +33,6 @@ func handleDashboardHTML() http.HandlerFunc {
 		body := strings.ReplaceAll(dashboardHTML, "__FC_API_BASE__", prefix)
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(body))
+		_, _ = w.Write([]byte(body)) //nolint:gosec // G705: static dashboard HTML with the matched router mount-path prefix substituted, not free user input
 	}
 }

@@ -106,7 +106,7 @@ func (s *State) testSlow(ctx context.Context, in *testSlowInput) (*testOKOutput,
 
 func (s *State) testFaulty(_ context.Context, _ *emptyInput) (*testOKOutput, error) {
 	s.Mocks.Faulty.Add(1)
-	if rand.IntN(2) == 0 {
+	if rand.IntN(2) == 0 { //nolint:gosec // G404: mock fault injection for dev/testing; not security-sensitive
 		s.Mocks.FaultyFail.Add(1)
 		return nil, huma.Error500InternalServerError("faulty endpoint randomly failed")
 	}

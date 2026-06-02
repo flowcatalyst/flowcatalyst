@@ -52,7 +52,7 @@ func TestDiffJSON_NonJSONFallback(t *testing.T) {
 }
 
 func TestCompareResponses_StatusMismatch(t *testing.T) {
-	rust := mkResp(200, "application/json", `{"x":1}`)
+	rust := mkResp(200, "application/json", `{"x":1}`) //nolint:bodyclose // fabricated test response; no real body to close
 	go_ := mkResp(201, "application/json", `{"x":1}`)
 	d := compareResponses(expectSpec{}, rust, []byte(`{"x":1}`), go_, []byte(`{"x":1}`))
 	if !strings.Contains(d, "status: rust=200 go=201") {
