@@ -40,10 +40,10 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 //
 // Schema: oauth_clients + oauth_client_redirect_uris +
 // oauth_client_grant_types + oauth_client_post_logout_redirect_uris (the
-// OIDC RP-Initiated Logout whitelist consulted by /auth/oidc/session/end).
-// The post-logout junction is loaded/persisted via raw pgx (it isn't wired
-// through sqlc). The schema also has oauth_client_allowed_origins and
-// oauth_client_application_ids junctions the Go entity doesn't carry yet.
+// OIDC RP-Initiated Logout whitelist consulted by /auth/oidc/session/end) +
+// oauth_client_allowed_origins + oauth_client_application_ids. The
+// post-logout, allowed-origins, and application-ids junctions are
+// loaded/persisted via raw pgx (they aren't wired through sqlc).
 // client_secret_ref holds the reversibly-encrypted client secret
 // (AES-256-GCM under FLOWCATALYST_APP_KEY, "encrypted:"-prefixed),
 // matching Rust; it is verified at /oauth/token by decrypt-and-compare,
@@ -143,6 +143,30 @@ func (r *OAuthClientRepo) Persist(ctx context.Context, c *OAuthClient, tx *useca
 			return fmt.Errorf("post_logout uri insert: %w", err)
 		}
 	}
+	// Allowed origins + application ids — raw pgx (not wired through sqlc),
+	// clear-then-reinsert like the redirect_uris path.
+	if _, err := tx.Inner().Exec(ctx,
+		`DELETE FROM oauth_client_allowed_origins WHERE oauth_client_id = $1`, c.ID); err != nil {
+		return fmt.Errorf("allowed_origins clear: %w", err)
+	}
+	for _, o := range c.AllowedOrigins {
+		if _, err := tx.Inner().Exec(ctx,
+			`INSERT INTO oauth_client_allowed_origins (oauth_client_id, allowed_origin)
+			 VALUES ($1, $2) ON CONFLICT DO NOTHING`, c.ID, o); err != nil {
+			return fmt.Errorf("allowed_origin insert: %w", err)
+		}
+	}
+	if _, err := tx.Inner().Exec(ctx,
+		`DELETE FROM oauth_client_application_ids WHERE oauth_client_id = $1`, c.ID); err != nil {
+		return fmt.Errorf("application_ids clear: %w", err)
+	}
+	for _, a := range c.ApplicationIDs {
+		if _, err := tx.Inner().Exec(ctx,
+			`INSERT INTO oauth_client_application_ids (oauth_client_id, application_id)
+			 VALUES ($1, $2) ON CONFLICT DO NOTHING`, c.ID, a); err != nil {
+			return fmt.Errorf("application_id insert: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -158,6 +182,14 @@ func (r *OAuthClientRepo) Delete(ctx context.Context, c *OAuthClient, tx *usecas
 	}
 	if _, err := tx.Inner().Exec(ctx,
 		`DELETE FROM oauth_client_post_logout_redirect_uris WHERE oauth_client_id = $1`, c.ID); err != nil {
+		return err
+	}
+	if _, err := tx.Inner().Exec(ctx,
+		`DELETE FROM oauth_client_allowed_origins WHERE oauth_client_id = $1`, c.ID); err != nil {
+		return err
+	}
+	if _, err := tx.Inner().Exec(ctx,
+		`DELETE FROM oauth_client_application_ids WHERE oauth_client_id = $1`, c.ID); err != nil {
 		return err
 	}
 	return q.OAuthClientDelete(ctx, c.ID)
@@ -210,6 +242,17 @@ func (r *OAuthClientRepo) hydrateAll(ctx context.Context, clients []OAuthClient)
 	if err := plRows.Err(); err != nil {
 		return nil, err
 	}
+	// Allowed origins + application ids — raw pgx (not wired through sqlc).
+	originsByID, err := r.loadClientStringJunction(ctx,
+		`SELECT oauth_client_id, allowed_origin FROM oauth_client_allowed_origins WHERE oauth_client_id = ANY($1)`, ids)
+	if err != nil {
+		return nil, fmt.Errorf("allowed_origins load: %w", err)
+	}
+	appsByID, err := r.loadClientStringJunction(ctx,
+		`SELECT oauth_client_id, application_id FROM oauth_client_application_ids WHERE oauth_client_id = ANY($1)`, ids)
+	if err != nil {
+		return nil, fmt.Errorf("application_ids load: %w", err)
+	}
 	urisByID := map[string][]string{}
 	for _, u := range uriRows {
 		urisByID[u.OauthClientID] = append(urisByID[u.OauthClientID], u.RedirectUri)
@@ -222,6 +265,8 @@ func (r *OAuthClientRepo) hydrateAll(ctx context.Context, clients []OAuthClient)
 		clients[i].RedirectURIs = urisByID[clients[i].ID]
 		clients[i].GrantTypes = grantsByID[clients[i].ID]
 		clients[i].PostLogoutRedirectURIs = plByID[clients[i].ID]
+		clients[i].AllowedOrigins = originsByID[clients[i].ID]
+		clients[i].ApplicationIDs = appsByID[clients[i].ID]
 		if clients[i].RedirectURIs == nil {
 			clients[i].RedirectURIs = []string{}
 		}
@@ -231,8 +276,34 @@ func (r *OAuthClientRepo) hydrateAll(ctx context.Context, clients []OAuthClient)
 		if clients[i].PostLogoutRedirectURIs == nil {
 			clients[i].PostLogoutRedirectURIs = []string{}
 		}
+		if clients[i].AllowedOrigins == nil {
+			clients[i].AllowedOrigins = []string{}
+		}
+		if clients[i].ApplicationIDs == nil {
+			clients[i].ApplicationIDs = []string{}
+		}
 	}
 	return clients, nil
+}
+
+// loadClientStringJunction runs a (oauth_client_id, value) query against a
+// raw-pgx junction table and returns the values grouped by client id.
+// Shared by the allowed-origins and application-ids hydration paths.
+func (r *OAuthClientRepo) loadClientStringJunction(ctx context.Context, query string, ids []string) (map[string][]string, error) {
+	rows, err := r.pool.Query(ctx, query, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string][]string{}
+	for rows.Next() {
+		var cid, val string
+		if err := rows.Scan(&cid, &val); err != nil {
+			return nil, err
+		}
+		out[cid] = append(out[cid], val)
+	}
+	return out, rows.Err()
 }
 
 func rowToOAuthClient(row dbq.OauthClient) *OAuthClient {
@@ -251,6 +322,8 @@ func rowToOAuthClient(row dbq.OauthClient) *OAuthClient {
 		PostLogoutRedirectURIs: []string{},
 		GrantTypes:             []string{},
 		Scopes:                 []string{},
+		AllowedOrigins:         []string{},
+		ApplicationIDs:         []string{},
 	}
 	if row.DefaultScopes != nil && *row.DefaultScopes != "" {
 		for _, s := range strings.Split(*row.DefaultScopes, ",") {

@@ -32,9 +32,9 @@ type CreateOAuthClientRequest struct {
 	// PostLogoutRedirectURIs is the OIDC RP-Initiated Logout whitelist,
 	// persisted and validated by /auth/oidc/session/end.
 	PostLogoutRedirectURIs []string `json:"postLogoutRedirectUris,omitempty"`
-	// AllowedOrigins is accepted but not persisted (no entity field).
+	// AllowedOrigins is the CORS origin allowlist (persisted).
 	AllowedOrigins []string `json:"allowedOrigins,omitempty"`
-	// ApplicationIDs is accepted but not persisted (no entity field).
+	// ApplicationIDs scopes the client to specific applications (persisted).
 	ApplicationIDs []string `json:"applicationIds,omitempty"`
 	PrincipalID    *string  `json:"principalId,omitempty"`
 }
@@ -54,6 +54,8 @@ func (r CreateOAuthClientRequest) toCommand() operations.CreateOAuthClientComman
 		PostLogoutRedirectURIs: r.PostLogoutRedirectURIs,
 		GrantTypes:             r.GrantTypes,
 		Scopes:                 scopes,
+		AllowedOrigins:         r.AllowedOrigins,
+		ApplicationIDs:         r.ApplicationIDs,
 		PrincipalID:            r.PrincipalID,
 	}
 }
@@ -65,6 +67,8 @@ type UpdateOAuthClientRequest struct {
 	PostLogoutRedirectURIs []string `json:"postLogoutRedirectUris,omitempty"`
 	GrantTypes             []string `json:"grantTypes,omitempty"`
 	Scopes                 []string `json:"scopes,omitempty"`
+	AllowedOrigins         []string `json:"allowedOrigins,omitempty"`
+	ApplicationIDs         []string `json:"applicationIds,omitempty"`
 }
 
 func (r UpdateOAuthClientRequest) toCommand(id string) operations.UpdateOAuthClientCommand {
@@ -75,6 +79,8 @@ func (r UpdateOAuthClientRequest) toCommand(id string) operations.UpdateOAuthCli
 		PostLogoutRedirectURIs: r.PostLogoutRedirectURIs,
 		GrantTypes:             r.GrantTypes,
 		Scopes:                 r.Scopes,
+		AllowedOrigins:         r.AllowedOrigins,
+		ApplicationIDs:         r.ApplicationIDs,
 	}
 }
 
@@ -95,20 +101,19 @@ type OAuthClientResponse struct {
 	ClientID     string   `json:"clientId"`
 	ClientName   string   `json:"clientName"`
 	ClientType   string   `json:"clientType"`
-	RedirectURIs []string `json:"redirectUris"`
-	// PostLogoutRedirectURIs has no entity field — always []. (defaulted)
+	RedirectURIs           []string `json:"redirectUris"`
 	PostLogoutRedirectURIs []string `json:"postLogoutRedirectUris"`
-	// AllowedOrigins has no entity field — always []. (defaulted)
-	AllowedOrigins []string `json:"allowedOrigins"`
-	GrantTypes     []string `json:"grantTypes"`
+	AllowedOrigins         []string `json:"allowedOrigins"`
+	GrantTypes             []string `json:"grantTypes"`
 	// DefaultScopes is the entity's Scopes slice (renamed for the SPA).
 	DefaultScopes []string `json:"defaultScopes"`
 	// PKCERequired has no entity field — always false. (defaulted)
-	PKCERequired bool `json:"pkceRequired"`
-	// ApplicationIDs has no entity field — always []. (defaulted)
+	PKCERequired   bool     `json:"pkceRequired"`
 	ApplicationIDs []string `json:"applicationIds"`
-	// Applications has no entity field — always []. The SPA list page reads
-	// data.applications.length unconditionally, so this MUST be present. (defaulted)
+	// Applications is the {id, name} display form of ApplicationIDs. Names
+	// require an application lookup this endpoint doesn't wire yet, so it's
+	// emitted empty; clients should use applicationIds. The SPA list page
+	// reads data.applications.length unconditionally, so it MUST be present.
 	Applications []OAuthClientApplicationRef `json:"applications"`
 	Active       bool                        `json:"active"`
 	// ServiceAccountPrincipalID maps from the entity's PrincipalID.
@@ -134,6 +139,14 @@ func oauthClientFromEntity(c *auth.OAuthClient) OAuthClientResponse {
 	if plUris == nil {
 		plUris = []string{}
 	}
+	origins := c.AllowedOrigins
+	if origins == nil {
+		origins = []string{}
+	}
+	appIDs := c.ApplicationIDs
+	if appIDs == nil {
+		appIDs = []string{}
+	}
 	return OAuthClientResponse{
 		ID:                        c.ID,
 		ClientID:                  c.ClientID,
@@ -141,11 +154,11 @@ func oauthClientFromEntity(c *auth.OAuthClient) OAuthClientResponse {
 		ClientType:                string(c.ClientType),
 		RedirectURIs:              uris,
 		PostLogoutRedirectURIs:    plUris,
-		AllowedOrigins:            []string{},
+		AllowedOrigins:            origins,
 		GrantTypes:                grants,
 		DefaultScopes:             scopes,
 		PKCERequired:              false,
-		ApplicationIDs:            []string{},
+		ApplicationIDs:            appIDs,
 		Applications:              []OAuthClientApplicationRef{},
 		Active:                    c.Active,
 		ServiceAccountPrincipalID: c.PrincipalID,
