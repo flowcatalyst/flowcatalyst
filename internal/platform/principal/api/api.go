@@ -964,40 +964,145 @@ func (s *State) checkEmailDomain(ctx context.Context, in *checkEmailDomainInput)
 	if err := auth.CanReadPrincipals(ac); err != nil {
 		return nil, err
 	}
-	email := strings.TrimSpace(in.Email)
+	email := strings.ToLower(strings.TrimSpace(in.Email))
 	if email == "" {
 		return nil, httperror.BadRequest("EMAIL_REQUIRED", "email query param is required")
 	}
 	at := strings.IndexByte(email, '@')
 	if at < 0 || at == len(email)-1 {
-		// Malformed — soft-fall-back to internal so the UI shows a password
-		// prompt rather than leaking that the domain is unparseable.
-		return &checkEmailDomainOutput{Body: CheckEmailDomainResponse{AuthMethod: "internal"}}, nil
+		return nil, httperror.BadRequest("INVALID_EMAIL", "Invalid email format")
 	}
-	domain := strings.ToLower(email[at+1:])
+	domain := email[at+1:]
 
-	// Resolve the domain → email-domain-mapping → identity-provider chain.
-	// Any miss (no mapping, no IDP, internal IDP, repos not wired) collapses
-	// to "internal" so the UI doesn't leak whether a domain has OIDC.
-	if s.Mappings == nil || s.IdentityProviders == nil {
-		return &checkEmailDomainOutput{Body: CheckEmailDomainResponse{AuthMethod: "internal"}}, nil
+	// Does a principal already exist for this exact address? Drives the SPA's
+	// "email already exists" guard so the create form can't double-create.
+	emailExists := false
+	if s.Repo != nil {
+		existing, err := s.Repo.FindByEmail(ctx, email)
+		if err != nil {
+			return nil, usecase.Internal("REPO", "find_by_email failed", err)
+		}
+		emailExists = existing != nil
 	}
-	edm, err := s.Mappings.FindByEmailDomain(ctx, domain)
-	if err != nil || edm == nil {
-		return &checkEmailDomainOutput{Body: CheckEmailDomainResponse{AuthMethod: "internal"}}, nil
+
+	// Resolve the domain → scope exactly the way createUser does, so the
+	// preview matches what submit will actually do: an anchor domain → ANCHOR;
+	// otherwise the email-domain-mapping's scope (or CLIENT when unmapped).
+	isAnchorDomain := false
+	if s.AnchorDomains != nil {
+		ad, err := s.AnchorDomains.FindByDomain(ctx, domain)
+		if err != nil {
+			return nil, usecase.Internal("REPO", "anchor_domain lookup failed", err)
+		}
+		isAnchorDomain = ad != nil
 	}
-	idp, err := s.IdentityProviders.FindByID(ctx, edm.IdentityProviderID)
-	if err != nil || idp == nil || idp.Type != identityprovider.TypeOIDC {
-		return &checkEmailDomainOutput{Body: CheckEmailDomainResponse{AuthMethod: "internal"}}, nil
+
+	var mapping *emaildomainmapping.EmailDomainMapping
+	if s.Mappings != nil {
+		m, err := s.Mappings.FindByEmailDomain(ctx, domain)
+		if err != nil {
+			return nil, usecase.Internal("REPO", "email_domain_mapping lookup failed", err)
+		}
+		mapping = m
 	}
+
+	// IdP type (INTERNAL / OIDC / SAML). Unmapped domains and missing IDPs
+	// default to INTERNAL — the SPA shows a password field for those.
+	idpType := "INTERNAL"
+	idpIssuer := ""
+	if mapping != nil && s.IdentityProviders != nil {
+		if idp, _ := s.IdentityProviders.FindByID(ctx, mapping.IdentityProviderID); idp != nil {
+			idpType = string(idp.Type)
+			if idp.OIDCIssuerURL != nil {
+				idpIssuer = *idp.OIDCIssuerURL
+			}
+		}
+	}
+	external := idpType == string(identityprovider.TypeOIDC)
+
+	scope := deriveScopeForDomain(isAnchorDomain, mapping)
 	resp := CheckEmailDomainResponse{
-		AuthMethod: "external",
-		LoginURL:   "/auth/oidc/login?domain=" + url.QueryEscape(domain),
+		AuthMethod:       "internal",
+		Domain:           domain,
+		AuthProvider:     idpType,
+		IsAnchorDomain:   isAnchorDomain,
+		HasIDPConfig:     external,
+		EmailExists:      emailExists,
+		DerivedScope:     scope,
+		RequiresClientID: scope != "ANCHOR",
+		AllowedClientIDs: allowedClientIDsForDomain(mapping),
 	}
-	if idp.OIDCIssuerURL != nil {
-		resp.IDPIssuer = *idp.OIDCIssuerURL
+	if external {
+		resp.AuthMethod = "external"
+		resp.LoginURL = "/auth/oidc/login?domain=" + url.QueryEscape(domain)
+		resp.IDPIssuer = idpIssuer
+	}
+	if emailExists {
+		w := "A user with this email address already exists."
+		resp.Warning = &w
 	}
 	return &checkEmailDomainOutput{Body: resp}, nil
+}
+
+// deriveScopeForDomain reports the scope a new user from this domain will get,
+// independent of any chosen clientId (the check runs before the client is
+// picked). Mirrors the scope branch of [deriveUserScope]: an anchor domain or
+// an ANCHOR mapping → ANCHOR; a PARTNER mapping → PARTNER; a CLIENT mapping or
+// an unmapped domain → CLIENT.
+func deriveScopeForDomain(isAnchorDomain bool, mapping *emaildomainmapping.EmailDomainMapping) string {
+	if isAnchorDomain {
+		return "ANCHOR"
+	}
+	if mapping == nil {
+		return "CLIENT"
+	}
+	switch mapping.ScopeType {
+	case emaildomainmapping.ScopeAnchor:
+		return "ANCHOR"
+	case emaildomainmapping.ScopePartner:
+		return "PARTNER"
+	case emaildomainmapping.ScopeClient:
+		return "CLIENT"
+	default:
+		return "ANCHOR"
+	}
+}
+
+// allowedClientIDsForDomain returns the client IDs the create-user picker
+// should be constrained to, or an empty slice when the domain imposes no
+// restriction (the form then shows the full active-clients list). A PARTNER
+// mapping allows the primary plus any granted clients; a CLIENT mapping allows
+// just the primary (when set). Always non-nil so the field serializes as [].
+func allowedClientIDsForDomain(mapping *emaildomainmapping.EmailDomainMapping) []string {
+	out := []string{}
+	if mapping == nil {
+		return out
+	}
+	switch mapping.ScopeType {
+	case emaildomainmapping.ScopePartner:
+		seen := map[string]struct{}{}
+		add := func(id string) {
+			if id == "" {
+				return
+			}
+			if _, ok := seen[id]; ok {
+				return
+			}
+			seen[id] = struct{}{}
+			out = append(out, id)
+		}
+		if mapping.PrimaryClientID != nil {
+			add(*mapping.PrimaryClientID)
+		}
+		for _, c := range mapping.GrantedClientIDs {
+			add(c)
+		}
+	case emaildomainmapping.ScopeClient:
+		if mapping.PrimaryClientID != nil && *mapping.PrimaryClientID != "" {
+			out = append(out, *mapping.PrimaryClientID)
+		}
+	}
+	return out
 }
 
 // ── granular role endpoints ──────────────────────────────────────────────

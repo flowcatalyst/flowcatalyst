@@ -197,11 +197,32 @@ type ClientAccessGrantListResponse struct {
 	Grants []ClientAccessGrantResponse `json:"grants"`
 }
 
-// CheckEmailDomainResponse is the 200 body for /check-email-domain.
+// CheckEmailDomainResponse is the 200 body for
+// GET /api/principals/check-email-domain. It is the SUPERSET of two shapes:
+//
+//   - The slim auth fields (authMethod/loginUrl/idpIssuer) — retained for
+//     back-compat. Note the login page does NOT use this endpoint; it checks
+//     domains via the separate POST /auth/check-domain handler, so nothing
+//     here drives login.
+//   - The rich fields the SPA's UserCreatePage needs to preview the new user's
+//     derived scope, decide whether a clientId must be supplied, and constrain
+//     the client picker. `info`/`warning` are display strings, nullable
+//     (serialized as JSON null when absent) to match the SPA's `string | null`.
 type CheckEmailDomainResponse struct {
 	AuthMethod string `json:"authMethod"` // "internal" | "external"
 	LoginURL   string `json:"loginUrl,omitempty"`
 	IDPIssuer  string `json:"idpIssuer,omitempty"`
+
+	Domain           string   `json:"domain"`
+	AuthProvider     string   `json:"authProvider"` // IdP type: "INTERNAL" | "OIDC" | "SAML"
+	IsAnchorDomain   bool     `json:"isAnchorDomain"`
+	HasIDPConfig     bool     `json:"hasIdpConfig"`
+	EmailExists      bool     `json:"emailExists"`
+	Info             *string  `json:"info"`         // display hint; null when none
+	Warning          *string  `json:"warning"`      // display warning; null when none
+	DerivedScope     string   `json:"derivedScope"` // "ANCHOR" | "PARTNER" | "CLIENT"
+	RequiresClientID bool     `json:"requiresClientId"`
+	AllowedClientIDs []string `json:"allowedClientIds"`
 }
 
 // PrincipalRoleAssignmentDTO is a single role assignment row. Matches the Rust

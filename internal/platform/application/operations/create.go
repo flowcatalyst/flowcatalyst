@@ -21,6 +21,8 @@ type CreateCommand struct {
 	Description    *string `json:"description,omitempty"`
 	IconURL        *string `json:"iconUrl,omitempty"`
 	Website        *string `json:"website,omitempty"`
+	Logo           *string `json:"logo,omitempty"`
+	LogoMimeType   *string `json:"logoMimeType,omitempty"`
 	DefaultBaseURL *string `json:"defaultBaseUrl,omitempty"`
 }
 
@@ -65,6 +67,8 @@ func CreateApplication(
 	a.Description = cmd.Description
 	a.IconURL = cmd.IconURL
 	a.Website = cmd.Website
+	a.Logo = cmd.Logo
+	a.LogoMimeType = cmd.LogoMimeType
 	a.DefaultBaseURL = cmd.DefaultBaseURL
 
 	event := ApplicationCreated{

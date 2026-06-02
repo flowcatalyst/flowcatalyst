@@ -18,6 +18,7 @@ type UpdateCommand struct {
 	Name             *string                         `json:"name,omitempty"`
 	Description      *string                         `json:"description,omitempty"`
 	Endpoint         *string                         `json:"endpoint,omitempty"`
+	ConnectionID     *string                         `json:"connectionId,omitempty"`
 	EventTypes       []subscription.EventTypeBinding `json:"eventTypes,omitempty"`
 	CustomConfig     []subscription.ConfigEntry      `json:"customConfig,omitempty"`
 	Mode             *string                         `json:"mode,omitempty"`
@@ -66,6 +67,12 @@ func UpdateSubscription(
 	}
 	if cmd.Endpoint != nil {
 		s.Endpoint = *cmd.Endpoint
+	}
+	// Set-if-provided, matching Rust's update use case: a nil/omitted value
+	// leaves the existing binding, so connectionId can be re-pointed but not
+	// cleared via this endpoint.
+	if cmd.ConnectionID != nil {
+		s.ConnectionID = cmd.ConnectionID
 	}
 	if cmd.EventTypes != nil {
 		s.EventTypes = cmd.EventTypes

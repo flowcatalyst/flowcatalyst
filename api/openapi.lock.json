@@ -58,7 +58,7 @@
         "type": "object"
       },
       "AddNoteRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -83,7 +83,7 @@
         "type": "object"
       },
       "AddOriginRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -108,7 +108,7 @@
         "type": "object"
       },
       "AddRoleRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -129,7 +129,7 @@
         "type": "object"
       },
       "AddSchemaRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -553,7 +553,7 @@
         "type": "object"
       },
       "AssignApplicationAccessRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -577,7 +577,7 @@
         "type": "object"
       },
       "AssignPrincipalRolesRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -601,7 +601,7 @@
         "type": "object"
       },
       "AssignRolesRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -625,7 +625,7 @@
         "type": "object"
       },
       "AttachServiceAccountRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -959,7 +959,7 @@
         "type": "object"
       },
       "AuthenticateBeginRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -1003,7 +1003,7 @@
         "type": "object"
       },
       "AuthenticateCompleteRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -1063,7 +1063,7 @@
         "type": "object"
       },
       "BatchRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -1141,18 +1141,67 @@
             "readOnly": true,
             "type": "string"
           },
+          "allowedClientIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "authMethod": {
             "type": "string"
+          },
+          "authProvider": {
+            "type": "string"
+          },
+          "derivedScope": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "emailExists": {
+            "type": "boolean"
+          },
+          "hasIdpConfig": {
+            "type": "boolean"
           },
           "idpIssuer": {
             "type": "string"
           },
+          "info": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "isAnchorDomain": {
+            "type": "boolean"
+          },
           "loginUrl": {
             "type": "string"
+          },
+          "requiresClientId": {
+            "type": "boolean"
+          },
+          "warning": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
-          "authMethod"
+          "authMethod",
+          "domain",
+          "authProvider",
+          "isAnchorDomain",
+          "hasIdpConfig",
+          "emailExists",
+          "info",
+          "warning",
+          "derivedScope",
+          "requiresClientId",
+          "allowedClientIds"
         ],
         "type": "object"
       },
@@ -1276,7 +1325,7 @@
         "type": "object"
       },
       "ClientAssociationRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -1454,7 +1503,7 @@
         "type": "object"
       },
       "CompleteInstanceRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -1710,7 +1759,7 @@
         "type": "object"
       },
       "CreateAnchorDomainRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -1731,7 +1780,7 @@
         "type": "object"
       },
       "CreateApplicationRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -1755,6 +1804,13 @@
           "iconUrl": {
             "type": "string"
           },
+          "logo": {
+            "description": "Inline SVG logo content",
+            "type": "string"
+          },
+          "logoMimeType": {
+            "type": "string"
+          },
           "name": {
             "type": "string"
           },
@@ -1773,7 +1829,7 @@
         "type": "object"
       },
       "CreateAuthConfigRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -1833,7 +1889,7 @@
         "type": "object"
       },
       "CreateClientRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -1859,7 +1915,7 @@
         "type": "object"
       },
       "CreateConnectionRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -1898,7 +1954,7 @@
         "type": "object"
       },
       "CreateDispatchPoolRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -1940,7 +1996,7 @@
         "type": "object"
       },
       "CreateEventTypeRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -1980,7 +2036,7 @@
         "type": "object"
       },
       "CreateIdentityProviderRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -2034,7 +2090,7 @@
         "type": "object"
       },
       "CreateIdpRoleMappingRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -2063,7 +2119,7 @@
         "type": "object"
       },
       "CreateMappingRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -2122,7 +2178,7 @@
         "type": "object"
       },
       "CreateOAuthClientRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -2221,7 +2277,7 @@
         "type": "object"
       },
       "CreatePrincipalRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -2259,7 +2315,7 @@
         "type": "object"
       },
       "CreateProcessRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -2302,7 +2358,7 @@
         "type": "object"
       },
       "CreateRoleRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -2349,7 +2405,7 @@
         "type": "object"
       },
       "CreateScheduledJobRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -2410,7 +2466,7 @@
         "type": "object"
       },
       "CreateServiceAccountRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -2486,7 +2542,7 @@
         "type": "object"
       },
       "CreateSubscriptionRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -2566,7 +2622,7 @@
         "type": "object"
       },
       "CreateUserRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -3350,7 +3406,7 @@
         "type": "object"
       },
       "FireNowRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -3397,7 +3453,7 @@
         "type": "object"
       },
       "GrantAccessRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -3422,7 +3478,7 @@
         "type": "object"
       },
       "GrantClientAccessRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -3443,7 +3499,7 @@
         "type": "object"
       },
       "GrantPermissionRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -4428,7 +4484,7 @@
         "type": "object"
       },
       "ProvisionLoginClientRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -4713,7 +4769,7 @@
         "type": "object"
       },
       "RegisterBeginRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -4754,7 +4810,7 @@
         "type": "object"
       },
       "RegisterCompleteRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -4801,7 +4857,7 @@
         "type": "object"
       },
       "ResetPasswordRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -5231,7 +5287,7 @@
         "type": "object"
       },
       "SearchClientRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -5480,7 +5536,7 @@
         "type": "object"
       },
       "SetPropertyRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -5533,7 +5589,7 @@
         "type": "object"
       },
       "StatusChangeRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -5758,7 +5814,7 @@
         "type": "object"
       },
       "SuspendClientRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -5807,7 +5863,7 @@
         "type": "object"
       },
       "SyncDispatchPoolsRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -5851,7 +5907,7 @@
         "type": "object"
       },
       "SyncEventTypesRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -5919,7 +5975,7 @@
         "type": "object"
       },
       "SyncOpenapiRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -5968,7 +6024,7 @@
         "type": "object"
       },
       "SyncPrincipalsRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -6025,7 +6081,7 @@
         "type": "object"
       },
       "SyncProcessesByBodyRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -6054,7 +6110,7 @@
         "type": "object"
       },
       "SyncProcessesRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -6151,7 +6207,7 @@
         "type": "object"
       },
       "SyncRolesRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -6224,7 +6280,7 @@
         "type": "object"
       },
       "SyncScheduledJobsRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -6361,7 +6417,7 @@
         "type": "object"
       },
       "SyncSubscriptionsRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -6389,7 +6445,7 @@
         "type": "object"
       },
       "UpdateAnchorDomainRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -6410,7 +6466,7 @@
         "type": "object"
       },
       "UpdateApplicationRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -6430,6 +6486,12 @@
           "iconUrl": {
             "type": "string"
           },
+          "logo": {
+            "type": "string"
+          },
+          "logoMimeType": {
+            "type": "string"
+          },
           "name": {
             "type": "string"
           },
@@ -6440,7 +6502,7 @@
         "type": "object"
       },
       "UpdateAuthConfigRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -6488,7 +6550,7 @@
         "type": "object"
       },
       "UpdateClientApplicationsRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -6512,7 +6574,7 @@
         "type": "object"
       },
       "UpdateClientRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -6530,7 +6592,7 @@
         "type": "object"
       },
       "UpdateConnectionRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -6560,7 +6622,7 @@
         "type": "object"
       },
       "UpdateDispatchPoolRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -6589,7 +6651,7 @@
         "type": "object"
       },
       "UpdateEventTypeRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -6613,7 +6675,7 @@
         "type": "object"
       },
       "UpdateIdentityProviderRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -6652,7 +6714,7 @@
         "type": "object"
       },
       "UpdateMappingRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -6697,7 +6759,7 @@
         "type": "object"
       },
       "UpdateOAuthClientRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -6760,7 +6822,7 @@
         "type": "object"
       },
       "UpdatePrincipalRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -6785,7 +6847,7 @@
         "type": "object"
       },
       "UpdateProcessRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -6818,7 +6880,7 @@
         "type": "object"
       },
       "UpdateRoleRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -6848,7 +6910,7 @@
         "type": "object"
       },
       "UpdateScheduledJobRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -6896,7 +6958,7 @@
         "type": "object"
       },
       "UpdateServiceAccountRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -6929,7 +6991,7 @@
         "type": "object"
       },
       "UpdateSubscriptionRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
@@ -6938,6 +7000,9 @@
             ],
             "format": "uri",
             "readOnly": true,
+            "type": "string"
+          },
+          "connectionId": {
             "type": "string"
           },
           "customConfig": {
@@ -7087,7 +7152,7 @@
         "type": "object"
       },
       "WriteInstanceLogRequest": {
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",

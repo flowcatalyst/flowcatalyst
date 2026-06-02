@@ -18,6 +18,8 @@ type UpdateCommand struct {
 	Description    *string `json:"description,omitempty"`
 	IconURL        *string `json:"iconUrl,omitempty"`
 	Website        *string `json:"website,omitempty"`
+	Logo           *string `json:"logo,omitempty"`
+	LogoMimeType   *string `json:"logoMimeType,omitempty"`
 	DefaultBaseURL *string `json:"defaultBaseUrl,omitempty"`
 }
 
@@ -56,6 +58,12 @@ func UpdateApplication(
 	}
 	if cmd.Website != nil {
 		a.Website = cmd.Website
+	}
+	if cmd.Logo != nil {
+		a.Logo = cmd.Logo
+	}
+	if cmd.LogoMimeType != nil {
+		a.LogoMimeType = cmd.LogoMimeType
 	}
 	if cmd.DefaultBaseURL != nil {
 		a.DefaultBaseURL = cmd.DefaultBaseURL

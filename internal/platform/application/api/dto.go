@@ -18,6 +18,8 @@ type CreateApplicationRequest struct {
 	Description    *string `json:"description,omitempty"`
 	IconURL        *string `json:"iconUrl,omitempty"`
 	Website        *string `json:"website,omitempty"`
+	Logo           *string `json:"logo,omitempty" doc:"Inline SVG logo content"`
+	LogoMimeType   *string `json:"logoMimeType,omitempty"`
 	DefaultBaseURL *string `json:"defaultBaseUrl,omitempty"`
 }
 
@@ -29,6 +31,8 @@ func (r CreateApplicationRequest) toCommand() operations.CreateCommand {
 		Description:    r.Description,
 		IconURL:        r.IconURL,
 		Website:        r.Website,
+		Logo:           r.Logo,
+		LogoMimeType:   r.LogoMimeType,
 		DefaultBaseURL: r.DefaultBaseURL,
 	}
 }
@@ -39,6 +43,8 @@ type UpdateApplicationRequest struct {
 	Description    *string `json:"description,omitempty"`
 	IconURL        *string `json:"iconUrl,omitempty"`
 	Website        *string `json:"website,omitempty"`
+	Logo           *string `json:"logo,omitempty"`
+	LogoMimeType   *string `json:"logoMimeType,omitempty"`
 	DefaultBaseURL *string `json:"defaultBaseUrl,omitempty"`
 }
 
@@ -49,6 +55,8 @@ func (r UpdateApplicationRequest) toCommand(id string) operations.UpdateCommand 
 		Description:    r.Description,
 		IconURL:        r.IconURL,
 		Website:        r.Website,
+		Logo:           r.Logo,
+		LogoMimeType:   r.LogoMimeType,
 		DefaultBaseURL: r.DefaultBaseURL,
 	}
 }

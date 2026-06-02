@@ -101,10 +101,15 @@ func (r CreateSubscriptionRequest) toCommand() operations.CreateCommand {
 }
 
 // UpdateSubscriptionRequest is the wire body for PUT /api/subscriptions/{id}.
+//
+// queue/sequence are intentionally absent: like Rust they are server-derived
+// and dropped on input (the leniency net accepts them without persisting).
+// connectionId IS accepted + persisted, mirroring Rust's update use case.
 type UpdateSubscriptionRequest struct {
 	Name             *string               `json:"name,omitempty"`
 	Description      *string               `json:"description,omitempty"`
 	Endpoint         *string               `json:"endpoint,omitempty"`
+	ConnectionID     *string               `json:"connectionId,omitempty"`
 	EventTypes       []EventTypeBindingDTO `json:"eventTypes,omitempty"`
 	CustomConfig     []ConfigEntryDTO      `json:"customConfig,omitempty"`
 	Mode             *string               `json:"mode,omitempty"`
@@ -137,6 +142,7 @@ func (r UpdateSubscriptionRequest) toCommand(id string) operations.UpdateCommand
 		Name:             r.Name,
 		Description:      r.Description,
 		Endpoint:         r.Endpoint,
+		ConnectionID:     r.ConnectionID,
 		EventTypes:       events,
 		CustomConfig:     config,
 		Mode:             r.Mode,
