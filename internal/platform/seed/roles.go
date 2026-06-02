@@ -162,12 +162,13 @@ func PlatformRoles() []role.Role {
 
 func ptr[T any](v T) *T { return &v }
 
-// Silence the unused-symbol linter for permission constants that don't
-// land in any built-in role today (CLIENT_MANAGE, EVENT_TYPE_MANAGE, etc.).
-// They're still part of the catalog and are referenced by SDK consumers
-// or future role definitions. Listing them here keeps the catalog
+// Reference permission constants that don't land in any built-in role
+// today (CLIENT_MANAGE, EVENT_TYPE_MANAGE, etc.) so the unused-symbol
+// linter leaves them — they're still part of the catalog, referenced by
+// SDK consumers and future role definitions. The blank-identifier var is
+// itself exempt from the linter, so listing them here keeps the catalog
 // honest without forcing fake usage elsewhere.
-var _unusedPermRefs = []string{
+var _ = []string{
 	permAdminClientDelete, permAdminClientManage,
 	permAdminAnchorDomainManage,
 	permAdminApplicationManage, permAdminApplicationActivate, permAdminApplicationDeactivate,

@@ -27,12 +27,6 @@ func NewMemory() *MemoryCache {
 	return &MemoryCache{m: map[string]memEntry{}, now: time.Now}
 }
 
-// withClock is the test seam for deterministic expiry.
-func (c *MemoryCache) withClock(now func() time.Time) *MemoryCache {
-	c.now = now
-	return c
-}
-
 // GetBytes returns the value if present and not expired.
 func (c *MemoryCache) GetBytes(_ context.Context, key string) ([]byte, bool, error) {
 	now := c.now()

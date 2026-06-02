@@ -17,8 +17,10 @@ linters:
     - gosec
     - misspell
     - revive
-    - unparam
     - whitespace
+    # unparam intentionally not enabled: its findings here were all benign
+    # generality — helper params (writeJSON status, appendPerm app) that are
+    # constant today but reasonable to keep across 16–43 call sites.
   settings:
     revive:
       rules:
@@ -59,10 +61,9 @@ linters:
       - pkg/fcsdk/examples  # illustrative demo programs, not shipped
     rules:
       # Test fixtures intentionally use fake credentials, insecure cookies, and
-      # fixed file modes, fabricate http responses with no body to close, and
-      # use helpers whose params are constant within the suite; gosec +
-      # bodyclose + unparam findings there are noise.
-      - linters: [gosec, bodyclose, unparam]
+      # fixed file modes, and fabricate http responses with no body to close;
+      # gosec + bodyclose findings there are noise.
+      - linters: [gosec, bodyclose]
         path: _test\.go
 
 formatters:

@@ -269,18 +269,3 @@ func (e EventTypeSchemaDeprecated) ToDataJSON() ([]byte, error) {
 		Version     string `json:"specVersion"`
 	}{e.EventTypeID, e.Version})
 }
-
-// Helper for sanity checks that the event type code is parseable
-// (avoids importing eventtype package into this file for cycle reasons).
-func ensureFourPartCode(code string) error {
-	count := 1
-	for _, c := range code {
-		if c == ':' {
-			count++
-		}
-	}
-	if count != 4 {
-		return fmt.Errorf("code must be application:subdomain:aggregate:event")
-	}
-	return nil
-}

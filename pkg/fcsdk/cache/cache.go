@@ -24,7 +24,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
 )
 
@@ -138,10 +137,4 @@ func GetOrSet[T any](
 		return fresh, err
 	}
 	return fresh, nil
-}
-
-// backendErr wraps a driver error as ErrBackend so callers can use
-// errors.Is(err, cache.ErrBackend).
-func backendErr(format string, a ...any) error {
-	return fmt.Errorf("%w: "+format, append([]any{ErrBackend}, a...)...)
 }

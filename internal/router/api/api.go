@@ -349,9 +349,6 @@ func (a leaderAdapter) InstanceID() string {
 // emptyInput is the placeholder for handlers with no input.
 type emptyInput struct{}
 
-// emptyOutput is the placeholder for handlers that return only a status.
-type emptyOutput struct{}
-
 // notConfigured returns the 503 error used when an optional provider
 // is nil on the State.
 func notConfigured(name string) error {
