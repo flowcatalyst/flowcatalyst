@@ -125,7 +125,7 @@ func buildAuditPayload(event usecase.DomainEvent, command any) ([]byte, error) {
 	cmdName := "Unknown"
 	if command != nil {
 		t := reflect.TypeOf(command)
-		if t.Kind() == reflect.Ptr {
+		if t.Kind() == reflect.Pointer {
 			t = t.Elem()
 		}
 		if t.Name() != "" {

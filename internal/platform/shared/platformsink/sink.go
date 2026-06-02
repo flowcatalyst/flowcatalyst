@@ -105,7 +105,7 @@ func (*Sink) WriteAudit(ctx context.Context, tx *usecasepgx.DbTx, event usecase.
 	cmdName := "Unknown"
 	if command != nil {
 		t := reflect.TypeOf(command)
-		if t.Kind() == reflect.Ptr {
+		if t.Kind() == reflect.Pointer {
 			t = t.Elem()
 		}
 		if t.Name() != "" {

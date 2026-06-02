@@ -765,7 +765,7 @@ func (s *State) syncOpenapi(ctx context.Context, in *syncOpenapiInput) (*syncOpe
 	// otherwise the caller must BE this application's bound service account.
 	// Mirrors the Rust handler's per-application gate.
 	isAppServiceAccount := app.ServiceAccountID != nil && *app.ServiceAccountID == ac.PrincipalID
-	if !(ac.IsAnchor() || ac.IsSuperAdmin() || isAppServiceAccount) {
+	if !ac.IsAnchor() && !ac.IsSuperAdmin() && !isAppServiceAccount {
 		return nil, httperror.Forbidden("Service account is not authorised for application '" + app.Code + "'")
 	}
 

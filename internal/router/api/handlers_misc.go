@@ -73,15 +73,7 @@ func (s *State) streamHealth(_ context.Context, _ *emptyInput) (*streamHealthOut
 	agg := s.StreamHealth.Aggregate()
 	streams := make([]StreamProjectionHealth, 0, len(agg.Streams))
 	for _, h := range agg.Streams {
-		streams = append(streams, StreamProjectionHealth{
-			Name:           h.Name,
-			Status:         h.Status,
-			Running:        h.Running,
-			Healthy:        h.Healthy,
-			BatchSequence:  h.BatchSequence,
-			ErrorCount:     h.ErrorCount,
-			LastPollTimeMs: h.LastPollTimeMs,
-		})
+		streams = append(streams, StreamProjectionHealth(h))
 	}
 	status := "RUNNING"
 	if !agg.Healthy {

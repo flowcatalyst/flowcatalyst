@@ -154,6 +154,7 @@ type ApplicationServiceAccountProvisionedEvent struct {
 func (e ApplicationServiceAccountProvisionedEvent) EventID() string {
 	return e.Metadata.EventID
 }
+
 func (e ApplicationServiceAccountProvisionedEvent) EventType() string {
 	return ApplicationServiceAccountProvisioned
 }
@@ -166,18 +167,23 @@ func (e ApplicationServiceAccountProvisionedEvent) Time() time.Time { return e.M
 func (e ApplicationServiceAccountProvisionedEvent) PrincipalID() string {
 	return e.Metadata.PrincipalID
 }
+
 func (e ApplicationServiceAccountProvisionedEvent) CorrelationID() string {
 	return e.Metadata.CorrelationID
 }
+
 func (e ApplicationServiceAccountProvisionedEvent) CausationID() string {
 	return e.Metadata.CausationID
 }
+
 func (e ApplicationServiceAccountProvisionedEvent) ExecutionID() string {
 	return e.Metadata.ExecutionID
 }
+
 func (e ApplicationServiceAccountProvisionedEvent) MessageGroup() string {
 	return groupFor(e.ApplicationID)
 }
+
 func (e ApplicationServiceAccountProvisionedEvent) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		ApplicationID      string `json:"applicationId"`

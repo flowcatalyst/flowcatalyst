@@ -18,7 +18,7 @@ func TestHashTokenIsLowercaseHexSHA256(t *testing.T) {
 		t.Fatalf("empty-string hash mismatch; got %q", got)
 	}
 	// Deterministic + collision-distinct.
-	if hashToken("same") != hashToken("same") {
+	if a, b := hashToken("same"), hashToken("same"); a != b {
 		t.Fatal("hash must be deterministic")
 	}
 	if hashToken("a") == hashToken("b") {

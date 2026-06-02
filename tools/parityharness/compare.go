@@ -20,9 +20,9 @@ import (
 //     legitimately differ between runtimes.
 //  3. Bodies:
 //     - When expect.body_shape is present, both responses are matched
-//       against the shape (placeholder types resolve via matchPlaceholder).
+//     against the shape (placeholder types resolve via matchPlaceholder).
 //     - Otherwise the Rust body and Go body are diffed against each
-//       other directly (every key, every value, recursive).
+//     other directly (every key, every value, recursive).
 func compareResponses(expect expectSpec, rustResp *http.Response, rustBody []byte, goResp *http.Response, goBody []byte) string {
 	var diffs []string
 

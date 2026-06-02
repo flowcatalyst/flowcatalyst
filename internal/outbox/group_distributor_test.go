@@ -38,7 +38,7 @@ func TestGroupDistributorBlockOnError(t *testing.T) {
 	// Gate dispatch on `start` so all three are queued before the drain runs —
 	// otherwise the drain could outrun submission and the test would be racy.
 	start := make(chan struct{})
-	var remaining int32 = int32(len(items))
+	remaining := int32(len(items))
 	done := make(chan struct{})
 	finish := func() {
 		if atomic.AddInt32(&remaining, -1) == 0 {

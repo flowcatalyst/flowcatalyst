@@ -175,11 +175,11 @@ func (e EventType) IDStr() string { return e.ID }
 func New(code, name string) (*EventType, error) {
 	parts := strings.Split(code, ":")
 	if len(parts) != 4 {
-		return nil, errors.New("Event type code must follow format: application:subdomain:aggregate:event")
+		return nil, errors.New("event type code must follow format: application:subdomain:aggregate:event")
 	}
 	for _, p := range parts {
 		if strings.TrimSpace(p) == "" {
-			return nil, errors.New("Event type code segments cannot be empty")
+			return nil, errors.New("event type code segments cannot be empty")
 		}
 	}
 	now := time.Now().UTC()
