@@ -292,7 +292,27 @@ func (s *State) listRoles(ctx context.Context, in *idInput) (*listRolesOutput, e
 	if sa == nil {
 		return nil, httperror.NotFound("ServiceAccount", in.ID)
 	}
-	return &listRolesOutput{Body: ServiceAccountRoleListResponse{Roles: roleDTOs(sa.Roles)}}, nil
+	// Roles live on the linked SERVICE principal (iam_principal_roles), not
+	// the service-account row itself.
+	roles, err := s.serviceAccountRoles(ctx, in.ID)
+	if err != nil {
+		return nil, err
+	}
+	return &listRolesOutput{Body: ServiceAccountRoleListResponse{Roles: roleDTOs(roles)}}, nil
+}
+
+// serviceAccountRoles returns the role assignments of the service account's
+// linked SERVICE principal (where they're actually stored), or nil if no
+// linked principal exists.
+func (s *State) serviceAccountRoles(ctx context.Context, saID string) ([]serviceaccount.RoleAssignment, error) {
+	p, err := s.Principals.FindByServiceAccount(ctx, saID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_service_account failed", err)
+	}
+	if p == nil {
+		return nil, nil
+	}
+	return p.Roles, nil
 }
 
 type assignRolesInput struct {
@@ -309,61 +329,25 @@ func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*rolesAs
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
 	}
-	sa, err := s.Repo.FindByID(ctx, in.ID)
-	if err != nil {
-		return nil, usecase.Internal("REPO", "find_by_id failed", err)
-	}
-	if sa == nil {
-		return nil, httperror.NotFound("ServiceAccount", in.ID)
-	}
-	old := roleNameSet(sa.Roles)
-	desired := sliceSet(in.Body.Roles)
-	added := setDifference(desired, old)
-	removed := setDifference(old, desired)
-
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.AssignRolesToServiceAccount(ctx, s.Repo, s.UoW,
-		operations.AssignRolesCommand{ServiceAccountID: in.ID, Roles: in.Body.Roles}, ec); err != nil {
+	// The operation resolves the linked SERVICE principal, computes the
+	// added/removed diff, and writes iam_principal_roles in one transaction;
+	// the 404 for an unknown id is raised there too.
+	committed, err := operations.AssignRolesToServiceAccount(ctx, s.Repo, s.Principals, s.UoW,
+		operations.AssignRolesCommand{ServiceAccountID: in.ID, Roles: in.Body.Roles}, ec)
+	if err != nil {
 		return nil, err
 	}
-	refreshed, err := s.Repo.FindByID(ctx, in.ID)
+	roles, err := s.serviceAccountRoles(ctx, in.ID)
 	if err != nil {
-		return nil, usecase.Internal("REPO", "find_by_id failed", err)
+		return nil, err
 	}
-	if refreshed == nil {
-		return nil, httperror.NotFound("ServiceAccount", in.ID)
-	}
+	ev := committed.Event()
 	return &rolesAssignedOutput{Body: ServiceAccountRolesAssignedResponse{
-		Roles:        roleDTOs(refreshed.Roles),
-		AddedRoles:   added,
-		RemovedRoles: removed,
+		Roles:        roleDTOs(roles),
+		AddedRoles:   ev.RolesAdded,
+		RemovedRoles: ev.RolesRemoved,
 	}}, nil
-}
-
-func roleNameSet(rs []serviceaccount.RoleAssignment) map[string]struct{} {
-	out := make(map[string]struct{}, len(rs))
-	for _, r := range rs {
-		out[r.Role] = struct{}{}
-	}
-	return out
-}
-
-func sliceSet(vs []string) map[string]struct{} {
-	out := make(map[string]struct{}, len(vs))
-	for _, v := range vs {
-		out[v] = struct{}{}
-	}
-	return out
-}
-
-func setDifference(a, b map[string]struct{}) []string {
-	out := make([]string, 0)
-	for v := range a {
-		if _, ok := b[v]; !ok {
-			out = append(out, v)
-		}
-	}
-	return out
 }
 
 type regenerateAuthTokenOutput struct {

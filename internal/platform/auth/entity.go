@@ -60,6 +60,12 @@ type OAuthClient struct {
 	PostLogoutRedirectURIs []string `json:"postLogoutRedirectUris"`
 	GrantTypes             []string `json:"grantTypes"` // "authorization_code", "client_credentials", "refresh_token"
 	Scopes                 []string `json:"scopes"`
+	// AllowedOrigins is the CORS origin allowlist
+	// (oauth_client_allowed_origins).
+	AllowedOrigins []string `json:"allowedOrigins"`
+	// ApplicationIDs scopes the client to specific applications
+	// (oauth_client_application_ids).
+	ApplicationIDs []string `json:"applicationIds"`
 	// PKCERequired gates whether /oauth/authorize demands a code_challenge.
 	// Maps to oauth_clients.pkce_required (DEFAULT TRUE).
 	PKCERequired bool      `json:"pkceRequired"`
@@ -84,6 +90,8 @@ func NewOAuthClient(clientID, name string, t OAuthClientType) *OAuthClient {
 		PostLogoutRedirectURIs: []string{},
 		GrantTypes:             []string{},
 		Scopes:                 []string{},
+		AllowedOrigins:         []string{},
+		ApplicationIDs:         []string{},
 		PKCERequired:           true,
 		Active:                 true,
 		CreatedAt:              now,

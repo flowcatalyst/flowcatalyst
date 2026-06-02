@@ -240,10 +240,11 @@ func (r *Repository) hydrateAppAccess(ctx context.Context, p *Principal) error {
 }
 
 // FindByServiceAccount loads the SERVICE-type principal linked to the
-// given service-account row. Used by callers that need to translate a
-// SA id into the principal id its FKs reference (e.g.
-// `app_applications.service_account_id`, which has a FK to
-// `iam_principals.id` per migration 028).
+// given service-account row, with role assignments hydrated from
+// iam_principal_roles. Used both to translate a SA id into the principal
+// id its FKs reference (e.g. `app_applications.service_account_id`, which
+// has a FK to `iam_principals.id` per migration 028) and by the
+// service-account roles endpoints, whose roles live on this principal.
 func (r *Repository) FindByServiceAccount(ctx context.Context, serviceAccountID string) (*Principal, error) {
 	row, err := r.q.PrincipalFindByServiceAccount(ctx, &serviceAccountID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -252,7 +253,11 @@ func (r *Repository) FindByServiceAccount(ctx context.Context, serviceAccountID 
 	if err != nil {
 		return nil, fmt.Errorf("principal repo: %w", err)
 	}
-	return rowToPrincipal(row), nil
+	p := rowToPrincipal(row)
+	if err := r.hydrateRoles(ctx, p); err != nil {
+		return nil, err
+	}
+	return p, nil
 }
 
 // FindAll lists every principal.

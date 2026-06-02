@@ -25,6 +25,8 @@ type CreateOAuthClientCommand struct {
 	PostLogoutRedirectURIs []string `json:"postLogoutRedirectUris,omitempty"`
 	GrantTypes             []string `json:"grantTypes,omitempty"`
 	Scopes                 []string `json:"scopes,omitempty"`
+	AllowedOrigins         []string `json:"allowedOrigins,omitempty"`
+	ApplicationIDs         []string `json:"applicationIds,omitempty"`
 	PrincipalID            *string  `json:"principalId,omitempty"`
 }
 
@@ -56,6 +58,8 @@ func CreateOAuthClient(
 	c.PostLogoutRedirectURIs = cmd.PostLogoutRedirectURIs
 	c.GrantTypes = cmd.GrantTypes
 	c.Scopes = cmd.Scopes
+	c.AllowedOrigins = cmd.AllowedOrigins
+	c.ApplicationIDs = cmd.ApplicationIDs
 	c.PrincipalID = cmd.PrincipalID
 	if t == auth.OAuthClientConfidential {
 		plaintext, ref, err := generateSecret()
@@ -84,6 +88,8 @@ type UpdateOAuthClientCommand struct {
 	PostLogoutRedirectURIs []string `json:"postLogoutRedirectUris,omitempty"`
 	GrantTypes             []string `json:"grantTypes,omitempty"`
 	Scopes                 []string `json:"scopes,omitempty"`
+	AllowedOrigins         []string `json:"allowedOrigins,omitempty"`
+	ApplicationIDs         []string `json:"applicationIds,omitempty"`
 }
 
 func UpdateOAuthClient(
@@ -121,6 +127,12 @@ func UpdateOAuthClient(
 	}
 	if cmd.Scopes != nil {
 		c.Scopes = cmd.Scopes
+	}
+	if cmd.AllowedOrigins != nil {
+		c.AllowedOrigins = cmd.AllowedOrigins
+	}
+	if cmd.ApplicationIDs != nil {
+		c.ApplicationIDs = cmd.ApplicationIDs
 	}
 
 	event := OAuthClientUpdated{
