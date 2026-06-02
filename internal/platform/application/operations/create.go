@@ -11,7 +11,11 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
-var codePattern = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+// Underscores are allowed: the Rust reference enforced no pattern at all
+// (only non-empty + unique), and real application codes use them
+// (logistics_portal, transport_order, master_data). Matches the dispatch-pool
+// sync pattern. Keep the lowercase-letter start as a light convention.
+var codePattern = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
 
 // CreateCommand is the input DTO.
 type CreateCommand struct {
@@ -43,7 +47,7 @@ func CreateApplication(
 	}
 	if !codePattern.MatchString(code) {
 		return zero, usecase.Validation("INVALID_CODE_FORMAT",
-			"code must start with lowercase letter, contain only lowercase alphanumeric and hyphens")
+			"code must start with a lowercase letter and contain only lowercase alphanumerics, hyphens, and underscores")
 	}
 	if strings.TrimSpace(cmd.Name) == "" {
 		return zero, usecase.Validation("NAME_REQUIRED", "name is required")

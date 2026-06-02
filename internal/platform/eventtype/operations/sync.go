@@ -3,6 +3,7 @@ package operations
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
@@ -88,7 +89,10 @@ func SyncEventTypes(
 		}
 		et, err := eventtype.New(in.Code, in.Name)
 		if err != nil {
-			return zero, usecase.Validation("INVALID_CODE", err.Error())
+			// Name the offending code: sync aborts on the first bad row, and a
+			// bare format message gives no clue which of N codes failed.
+			return zero, usecase.Validation("INVALID_CODE",
+				fmt.Sprintf("%s (offending code: %q)", err.Error(), in.Code))
 		}
 		et.Description = in.Description
 		et.Source = eventtype.SourceAPI
