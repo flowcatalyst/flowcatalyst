@@ -33,12 +33,26 @@ linters:
       excludes:
         - G104  # audit errors not checked — we use revive's error-return instead
         - G115  # int conversion overflow — handled by pgx
+        - G117  # struct fields named *Token/*Secret are serialized deliberately
+                # (webhook payloads, OAuth token responses, credential files) —
+                # marshaling them is the contract, not a leak
   # golangci-lint v2 moved path exclusions out of the top-level `issues:` block
   # (v1's `issues.exclude-dirs`) into `linters.exclusions.paths`. Using the old
   # key fails `golangci-lint config verify`, which is what was reddening CI.
   exclusions:
     paths:
-      - internal/db/gen  # go-jet generated code
+      - internal/db/gen     # go-jet generated code
+      - pkg/fcsdk/examples  # illustrative demo programs, not shipped
+    rules:
+      # Keep existing exported names stable rather than rename — renaming
+      # exported types/consts churns callers and, for pkg/fcsdk, would break
+      # the published SDK. We accept the stutter nits.
+      - linters: [revive]
+        text: stutters
+      # Test fixtures intentionally use fake credentials, insecure cookies, and
+      # fixed file modes; gosec findings there are noise.
+      - linters: [gosec]
+        path: _test\.go
 
 formatters:
   enable:
