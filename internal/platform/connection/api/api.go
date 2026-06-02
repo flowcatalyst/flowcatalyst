@@ -9,7 +9,6 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection/operations"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -153,9 +152,12 @@ type createInput struct {
 }
 
 type createOutput struct {
-	Body apicommon.CreatedResponse
+	Body ConnectionResponse
 }
 
+// create returns the full connection (201), not just `{id}`: the SPA's
+// SubscriptionCreatePage pushes the returned connection straight into a
+// Select, where a bare id renders with a blank label until reload.
 func (s *State) create(ctx context.Context, in *createInput) (*createOutput, error) {
 	ac := auth.FromContext(ctx)
 	// Connections are anchor-only across all mutations (1:1 with Rust
@@ -168,7 +170,15 @@ func (s *State) create(ctx context.Context, in *createInput) (*createOutput, err
 	if err != nil {
 		return nil, err
 	}
-	return &createOutput{Body: apicommon.CreatedResponse{ID: committed.Event().ConnectionID}}, nil
+	id := committed.Event().ConnectionID
+	c, err := s.Repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "post-create reload failed", err)
+	}
+	if c == nil {
+		return nil, httperror.NotFound("Connection", id)
+	}
+	return &createOutput{Body: fromEntity(c)}, nil
 }
 
 type updateInput struct {

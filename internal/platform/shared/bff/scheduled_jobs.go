@@ -346,7 +346,11 @@ func (s *ScheduledJobsState) listInstanceLogs(w http.ResponseWriter, r *http.Req
 	for i := range logs {
 		out = append(out, toBffInstanceLog(&logs[i]))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": out})
+	// Bare array: the SPA's listInstanceLogs is typed
+	// `Promise<ScheduledJobInstanceLog[]>` and consumes the result directly
+	// (`logs.length`, `<DataTable :value="logs">`). The other
+	// /bff/scheduled-jobs list handlers keep their `{data,…}` wrapper.
+	writeJSON(w, http.StatusOK, out)
 }
 
 // GET /bff/scheduled-jobs/filter-options

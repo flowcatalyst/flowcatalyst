@@ -42,6 +42,10 @@ func RegisterEventTypes(r chi.Router, s *EventTypesState) {
 		r.Get("/filters/aggregates", s.filterAggregates)
 		r.Get("/{id}", s.getByID)
 		r.Put("/{id}", s.update)
+		// The SPA's event-types detail page sends PATCH for metadata edits;
+		// chi 405s an unregistered method before any handler runs, so alias
+		// PATCH onto the same update handler (body shape is identical).
+		r.Patch("/{id}", s.update)
 		r.Delete("/{id}", s.delete)
 		r.Post("/{id}/archive", s.archive)
 		r.Post("/{id}/schemas", s.addSchema)

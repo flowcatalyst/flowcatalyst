@@ -77,7 +77,10 @@ func (s *FilterOptionsState) clientOptions(w http.ResponseWriter, r *http.Reques
 
 // GET /bff/event-types/filters/applications
 //
-// Rust shape: `{"applications": [{"value": "<app>", "label": "<app>"}, ...]}`
+// Shape: `{"options": ["<app>", ...]}` — a sorted list of distinct
+// application codes. The SPA's useEventTypes.loadApplications() reads
+// `response.options` as `string[]`, matching the sibling cascading filter
+// endpoints (subdomains/aggregates) which already return this shape.
 // Extracted from the `application:subdomain:aggregate:event` event-type
 // codes by splitting on `:` and taking the first segment.
 func (s *FilterOptionsState) eventTypeApplications(w http.ResponseWriter, r *http.Request) {
@@ -107,12 +110,12 @@ func (s *FilterOptionsState) eventTypeApplications(w http.ResponseWriter, r *htt
 		}
 		seen[app] = struct{}{}
 	}
-	out := make([]FilterOption, 0, len(seen))
+	out := make([]string, 0, len(seen))
 	for app := range seen {
-		out = append(out, FilterOption{Value: app, Label: app})
+		out = append(out, app)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Label < out[j].Label })
-	writeJSON(w, http.StatusOK, map[string]any{"applications": out})
+	sort.Strings(out)
+	writeJSON(w, http.StatusOK, map[string]any{"options": out})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

@@ -399,6 +399,7 @@ func (s *State) fireNow(ctx context.Context, in *fireNowInput) (*fireNowOutput, 
 		return nil, err
 	}
 	return &fireNowOutput{Body: FireNowResponse{
+		ID:             committed.Event().InstanceID,
 		ScheduledJobID: committed.Event().ScheduledJobID,
 		InstanceID:     committed.Event().InstanceID,
 	}}, nil

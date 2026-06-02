@@ -26,7 +26,7 @@ type EventResponse struct {
 	Subject         string            `json:"subject"`
 	Time            httpcompat.Time   `json:"time"`
 	Data            json.RawMessage   `json:"data,omitempty"`
-	Context         []ContextEntryDTO `json:"context,omitempty"`
+	Context         []ContextEntryDTO `json:"contextData,omitempty"`
 	DeduplicationID string            `json:"deduplicationId"`
 	ClientID        *string           `json:"clientId,omitempty"`
 	MessageGroup    *string           `json:"messageGroup,omitempty"`

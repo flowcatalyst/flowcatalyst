@@ -3171,7 +3171,7 @@
           "clientId": {
             "type": "string"
           },
-          "context": {
+          "contextData": {
             "items": {
               "$ref": "#/components/schemas/ContextEntryDTO"
             },
@@ -3379,6 +3379,9 @@
             "readOnly": true,
             "type": "string"
           },
+          "id": {
+            "type": "string"
+          },
           "instanceId": {
             "type": "string"
           },
@@ -3387,6 +3390,7 @@
           }
         },
         "required": [
+          "id",
           "scheduledJobId",
           "instanceId"
         ],
@@ -9963,7 +9967,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CreatedResponse"
+                  "$ref": "#/components/schemas/ConnectionResponse"
                 }
               }
             },
@@ -12684,7 +12688,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CreatedResponse"
+                  "$ref": "#/components/schemas/IdentityProviderResponse"
                 }
               }
             },
@@ -12802,8 +12806,15 @@
           "required": true
         },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityProviderResponse"
+                }
+              }
+            },
+            "description": "OK"
           },
           "default": {
             "content": {

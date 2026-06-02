@@ -144,7 +144,10 @@ type FireNowRequest struct {
 }
 
 // FireNowResponse is the wire shape for POST /api/scheduled-jobs/{id}/fire.
+// `id` duplicates `instanceId`: the SPA's fire toast reads `result.id`, and
+// a bare scheduledJobId/instanceId pair renders as "Instance undefined".
 type FireNowResponse struct {
+	ID             string `json:"id"`
 	ScheduledJobID string `json:"scheduledJobId"`
 	InstanceID     string `json:"instanceId"`
 }

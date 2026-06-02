@@ -10,7 +10,6 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider/operations"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -60,7 +59,7 @@ func Register(api huma.API, s *State) {
 		Path:          "/api/identity-providers/{id}",
 		Summary:       "Update an identity provider",
 		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
+		DefaultStatus: http.StatusOK,
 	}, s.update)
 
 	huma.Register(api, huma.Operation{
@@ -123,9 +122,12 @@ type createInput struct {
 }
 
 type createOutput struct {
-	Body apicommon.CreatedResponse
+	Body IdentityProviderResponse
 }
 
+// create returns the full provider (201), not just `{id}`: the SPA's
+// create toast reads the response `name`, and a bare id renders as
+// "undefined".
 func (s *State) create(ctx context.Context, in *createInput) (*createOutput, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteIdentityProviders(ac); err != nil {
@@ -136,7 +138,15 @@ func (s *State) create(ctx context.Context, in *createInput) (*createOutput, err
 	if err != nil {
 		return nil, err
 	}
-	return &createOutput{Body: apicommon.CreatedResponse{ID: committed.Event().IdentityProviderID}}, nil
+	id := committed.Event().IdentityProviderID
+	ip, err := s.Repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "post-create reload failed", err)
+	}
+	if ip == nil {
+		return nil, httperror.NotFound("IdentityProvider", id)
+	}
+	return &createOutput{Body: fromEntity(ip)}, nil
 }
 
 type updateInput struct {
@@ -144,9 +154,16 @@ type updateInput struct {
 	Body UpdateIdentityProviderRequest
 }
 
+type updateOutput struct {
+	Body IdentityProviderResponse
+}
+
 type emptyOutput struct{}
 
-func (s *State) update(ctx context.Context, in *updateInput) (*emptyOutput, error) {
+// update returns the updated provider with 200 (not 204): the SPA's
+// detail page sets `provider.value = updated` after PUT, and its card is
+// gated on a truthy provider — a 204/undefined collapses the view.
+func (s *State) update(ctx context.Context, in *updateInput) (*updateOutput, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteIdentityProviders(ac); err != nil {
 		return nil, err
@@ -155,7 +172,14 @@ func (s *State) update(ctx context.Context, in *updateInput) (*emptyOutput, erro
 	if _, err := operations.UpdateIdentityProvider(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	ip, err := s.Repo.FindByID(ctx, in.ID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "post-update reload failed", err)
+	}
+	if ip == nil {
+		return nil, httperror.NotFound("IdentityProvider", in.ID)
+	}
+	return &updateOutput{Body: fromEntity(ip)}, nil
 }
 
 type deleteInput struct {
