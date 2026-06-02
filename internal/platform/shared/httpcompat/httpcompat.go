@@ -94,6 +94,83 @@ func StripBFFPaths(api huma.API) {
 	}
 }
 
+// RelaxRequestBodies makes every operation's JSON request body accept and
+// silently ignore unknown fields, matching Rust/serde's default leniency.
+//
+// huma generates request-body schemas with `additionalProperties: false`, so
+// ANY field a client sends that the Go DTO doesn't declare makes huma reject
+// the whole request with a 400 before the handler runs. The SPA — generated
+// against the lenient Rust API — routinely sends supersets of what the Go DTO
+// models, which silently breaks flows. This is the #1 recurring parity bug
+// class (see the spa-go-compat audit). Flipping the top-level request-body
+// schema to `additionalProperties: true` accepts those extra fields and drops
+// the ones the DTO doesn't bind.
+//
+// Scope is deliberately narrow:
+//   - Only the directly-referenced request-body schema is relaxed. Response
+//     schemas stay strict so the Hey-API-generated frontend client keeps tight
+//     response types, and nested request objects (which may be shared with
+//     responses) are left alone — every known break is a top-level field.
+//   - It only flips an explicit/absent `additionalProperties:false`; a
+//     schema-valued additionalProperties (a typed map body) is never clobbered.
+//
+// This stops the 400 — it does NOT make a dropped field round-trip. Fields the
+// SPA expects PERSISTED (e.g. subscription connectionId, application logo)
+// still have to be modeled on the DTO and written through; leniency is just the
+// safety net so future SPA-superset fields stop 400-ing.
+//
+// Call once after all routes are registered, before the spec is served. The
+// runtime path honors this too: [huma.Validate] re-resolves the body $ref
+// against the live registry on every request, so mutating the component schema
+// here changes validation, not just the emitted document. Must be applied in
+// both the server (WirePlatform) and the spec dumper so the lockfile matches.
+func RelaxRequestBodies(api huma.API) {
+	doc := api.OpenAPI()
+	if doc == nil || doc.Paths == nil || doc.Components == nil || doc.Components.Schemas == nil {
+		return
+	}
+	reg := doc.Components.Schemas
+	for _, item := range doc.Paths {
+		if item == nil {
+			continue
+		}
+		for _, op := range []*huma.Operation{
+			item.Get, item.Put, item.Post, item.Delete,
+			item.Options, item.Head, item.Patch, item.Trace,
+		} {
+			relaxOperationBody(reg, op)
+		}
+	}
+}
+
+func relaxOperationBody(reg huma.Registry, op *huma.Operation) {
+	if op == nil || op.RequestBody == nil {
+		return
+	}
+	for _, mt := range op.RequestBody.Content {
+		if mt == nil || mt.Schema == nil {
+			continue
+		}
+		// Struct bodies are stored as a $ref into the registry — resolve it
+		// to the live component schema that validation also resolves to.
+		s := mt.Schema
+		for s != nil && s.Ref != "" {
+			s = reg.SchemaFromRef(s.Ref)
+		}
+		if s == nil || s.Type != huma.TypeObject {
+			continue
+		}
+		switch v := s.AdditionalProperties.(type) {
+		case bool:
+			if !v {
+				s.AdditionalProperties = true
+			}
+		case nil:
+			s.AdditionalProperties = true
+		}
+	}
+}
+
 // newError is huma's pluggable constructor for error responses. We
 // intentionally ignore the supplied status — the status is derived
 // from the [*usecase.Error.Kind] so handlers don't have to thread it.

@@ -78,6 +78,10 @@ func main() {
 	loginattemptapi.Register(api, &loginattemptapi.State{})
 	sdksync.Register(api, &sdksync.State{})
 
+	// Accept-and-ignore unknown request-body fields (serde-style leniency).
+	// Keep in sync with WirePlatform so the lockfile matches the live spec.
+	httpcompat.RelaxRequestBodies(api)
+
 	// Match Rust: exclude /bff/* from the published spec (handlers stay
 	// mounted in the server). Keep in sync with WirePlatform.
 	httpcompat.StripBFFPaths(api)

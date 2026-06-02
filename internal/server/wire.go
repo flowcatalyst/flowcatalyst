@@ -543,6 +543,11 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 		sdkapi.RegisterAuditRoutes(r, &sdkapi.AuditBatchState{Repo: auditRepo, Apps: applicationRepo, Clients: clientRepo})
 	})
 
+	// Accept-and-ignore unknown request-body fields (serde-style leniency) so
+	// the SPA's superset payloads stop 400-ing. Must run after every route has
+	// registered; keep in sync with the dump-spec tool so the lockfile matches.
+	httpcompat.RelaxRequestBodies(humaAPI)
+
 	// Match Rust: exclude /bff/* from the published OpenAPI spec (the BFF
 	// handlers stay mounted and keep serving). Must run after every route
 	// has registered.
