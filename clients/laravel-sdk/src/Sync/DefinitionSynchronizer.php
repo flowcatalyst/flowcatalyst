@@ -227,7 +227,7 @@ class DefinitionSynchronizer
         try {
             $entries = array_map(
                 fn(array $row) => new SyncEventTypeEntry(
-                    code: (string) ($row['code'] ?? ''),
+                    code: $this->eventTypeCode($row),
                     name: (string) ($row['name'] ?? ''),
                     description: isset($row['description']) ? (string) $row['description'] : null,
                 ),
@@ -248,6 +248,37 @@ class DefinitionSynchronizer
                 'error' => $e->getMessage(),
             ];
         }
+    }
+
+    /**
+     * Resolve the full event-type code from a definition row.
+     *
+     * Prefers an explicit `code`; otherwise assembles it from the individual
+     * {application,subdomain,aggregate,event} segments. This covers both
+     * EventTypeDefinition::toArray() rows and raw scanned-attribute rows, and
+     * prevents a missing key from silently becoming an empty code (which the
+     * API rejects with "must follow format application:subdomain:aggregate:event").
+     *
+     * @param array<string, mixed> $row
+     */
+    private function eventTypeCode(array $row): string
+    {
+        $code = (string) ($row['code'] ?? '');
+        if ($code !== '') {
+            return $code;
+        }
+
+        $segments = [
+            $row['application'] ?? null,
+            $row['subdomain'] ?? null,
+            $row['aggregate'] ?? null,
+            $row['event'] ?? null,
+        ];
+        if (!in_array(null, $segments, true) && !in_array('', $segments, true)) {
+            return implode(':', array_map('strval', $segments));
+        }
+
+        return $code;
     }
 
     /**
