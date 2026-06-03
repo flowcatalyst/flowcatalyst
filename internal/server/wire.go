@@ -464,6 +464,7 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 		identityproviderapi.Register(humaAPI, &identityproviderapi.State{
 			Repo: idpRepo,
 			UoW:  uow,
+			Enc:  encSvc,
 		})
 
 		emaildomainapi.Register(humaAPI, &emaildomainapi.State{

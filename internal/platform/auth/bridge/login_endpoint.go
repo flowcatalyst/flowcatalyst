@@ -245,7 +245,16 @@ func (e *LoginEndpoint) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	// Resolve uses email; synthesise one with a throwaway local-part.
 	resolved, idp, mapping, err := e.bridge.ResolveForEmail(r.Context(), "x@"+domain)
-	if err != nil || resolved == nil {
+	if err != nil {
+		// A real failure (client-secret decrypt, issuer discovery, lookup) —
+		// surface it as an init error with the cause logged, not a misleading
+		// "not configured". A domain genuinely lacking an OIDC provider is the
+		// resolved==nil case below.
+		httperror.Write(w, usecase.Internal("OIDC_RESOLVE_FAILED",
+			"OIDC could not be initialised for this domain", err))
+		return
+	}
+	if resolved == nil {
 		httperror.Write(w, httperror.BadRequest("OIDC_NOT_CONFIGURED",
 			"OIDC is not configured for this domain"))
 		return
@@ -312,8 +321,14 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 
 	resolved, _, mapping, err := e.bridge.ResolveForEmail(r.Context(),
 		"x@"+loginState.EmailDomain)
-	if err != nil || resolved == nil || mapping == nil {
-		httperror.Write(w, httperror.BadRequest("OIDC_NOT_CONFIGURED", "OIDC config lost"))
+	if err != nil {
+		httperror.Write(w, usecase.Internal("OIDC_RESOLVE_FAILED",
+			"OIDC could not be initialised for this domain", err))
+		return
+	}
+	if resolved == nil || mapping == nil {
+		httperror.Write(w, httperror.BadRequest("OIDC_NOT_CONFIGURED",
+			"OIDC is not configured for this domain"))
 		return
 	}
 
