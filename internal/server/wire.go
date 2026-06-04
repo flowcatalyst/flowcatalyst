@@ -354,6 +354,7 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 			Repo:         authRepo,
 			Applications: applicationRepo,
 			UoW:          uow,
+			Enc:          encSvc,
 		})
 
 		// OAuth provider routes — all hand-rolled (authservice +

@@ -218,7 +218,13 @@ func SyncRoles(
 			}
 			cur.DisplayName = displayNameOr(in.DisplayName, in.Name)
 			cur.Description = in.Description
-			cur.Permissions = append([]string(nil), in.Permissions...)
+			// Preserve existing permissions when the payload supplies none.
+			// Apps typically declare role NAMES while permissions are curated
+			// in the FlowCatalyst UI; an empty/omitted list must NOT wipe them.
+			// Only a non-empty list replaces the stored permissions.
+			if len(in.Permissions) > 0 {
+				cur.Permissions = append([]string(nil), in.Permissions...)
+			}
 			cur.ClientManaged = in.ClientManaged
 			saves = append(saves, commit.SyncSave[role.Role]{
 				Aggregate: cur,

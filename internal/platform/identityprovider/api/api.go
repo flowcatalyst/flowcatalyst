@@ -4,8 +4,8 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
-	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -29,44 +29,19 @@ type State struct {
 	Enc *encryption.Service
 }
 
-// externalSecretSchemes are secret-manager reference prefixes that are stored
-// verbatim and resolved at read time — never encrypted inline.
-var externalSecretSchemes = []string{"aws-sm://", "aws-ps://", "gcp-sm://", "vault://", "env://", "literal:"}
-
-// encryptSecretRef converts an incoming OIDC client-secret value into its
-// at-rest form. A plaintext secret — optionally carrying the SecretRefInput
-// "encrypt:" directive — is encrypted inline as "encrypted:<blob>", matching
-// the Rust/TS producers (which Decrypt already reads). Already-encrypted blobs
-// and external provider references pass through unchanged. A nil pointer
-// (field omitted) is preserved so an update leaves the stored secret untouched.
+// encryptSecretRef encrypts a plaintext OIDC client secret inline before it is
+// stored (see encryption.EncryptSecretRef), mapping its errors to the API's
+// validation/internal envelopes.
 func encryptSecretRef(enc *encryption.Service, ref *string) (*string, error) {
-	if ref == nil {
-		return nil, nil
-	}
-	v := strings.TrimSpace(*ref)
-	if v == "" {
-		return ref, nil // empty clears the secret; preserve as-is
-	}
-	if strings.HasPrefix(v, "encrypted:") {
-		return &v, nil // already an inline ciphertext — idempotent
-	}
-	for _, scheme := range externalSecretSchemes {
-		if strings.HasPrefix(v, scheme) {
-			return &v, nil // external reference, resolved at read time
-		}
-	}
-	// Plaintext (optionally with the "encrypt:" directive) → encrypt inline.
-	plaintext := strings.TrimPrefix(v, "encrypt:")
-	if enc == nil {
+	out, err := encryption.EncryptSecretRef(enc, ref)
+	switch {
+	case errors.Is(err, encryption.ErrNotConfigured):
 		return nil, usecase.Validation("ENCRYPTION_NOT_CONFIGURED",
 			"cannot store OIDC client secret: FLOWCATALYST_APP_KEY is not configured")
-	}
-	blob, err := enc.Encrypt(plaintext)
-	if err != nil {
+	case err != nil:
 		return nil, usecase.Internal("ENCRYPT", "encrypt OIDC client secret", err)
 	}
-	out := "encrypted:" + blob
-	return &out, nil
+	return out, nil
 }
 
 const tag = "identity-providers"

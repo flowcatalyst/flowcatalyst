@@ -5,6 +5,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -14,6 +15,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
@@ -27,6 +29,24 @@ type State struct {
 	// leaves Applications empty (clients can still use applicationIds).
 	Applications *application.Repository
 	UoW          *usecasepgx.UnitOfWork
+	// Enc encrypts the auth-config OIDC client secret before it is persisted,
+	// so a plaintext secret is never stored verbatim. May be nil when
+	// FLOWCATALYST_APP_KEY is unset (saving a plaintext secret is then rejected).
+	Enc *encryption.Service
+}
+
+// encryptOIDCSecretRef encrypts a plaintext OIDC client secret inline before
+// storage (see encryption.EncryptSecretRef), mapping errors to API envelopes.
+func encryptOIDCSecretRef(enc *encryption.Service, ref *string) (*string, error) {
+	out, err := encryption.EncryptSecretRef(enc, ref)
+	switch {
+	case errors.Is(err, encryption.ErrNotConfigured):
+		return nil, usecase.Validation("ENCRYPTION_NOT_CONFIGURED",
+			"cannot store OIDC client secret: FLOWCATALYST_APP_KEY is not configured")
+	case err != nil:
+		return nil, usecase.Internal("ENCRYPT", "encrypt OIDC client secret", err)
+	}
+	return out, nil
 }
 
 // fillApplicationRefs populates each response's Applications ({id,name})
@@ -613,6 +633,11 @@ func (s *State) createAuthConfig(ctx context.Context, in *createAuthConfigInput)
 	if err != nil {
 		return nil, err
 	}
+	secretRef, err := encryptOIDCSecretRef(s.Enc, in.Body.OIDCClientSecretRef)
+	if err != nil {
+		return nil, err
+	}
+	in.Body.OIDCClientSecretRef = secretRef
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
 	committed, err := operations.CreateAuthConfig(ctx, s.Repo.ClientAuthConfigs, s.UoW, in.Body.toCommand(), ec)
 	if err != nil {
@@ -631,6 +656,11 @@ func (s *State) updateAuthConfig(ctx context.Context, in *updateAuthConfigInput)
 	if err != nil {
 		return nil, err
 	}
+	secretRef, err := encryptOIDCSecretRef(s.Enc, in.Body.OIDCClientSecretRef)
+	if err != nil {
+		return nil, err
+	}
+	in.Body.OIDCClientSecretRef = secretRef
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
 	if _, err := operations.UpdateAuthConfig(ctx, s.Repo.ClientAuthConfigs, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err

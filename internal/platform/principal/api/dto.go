@@ -135,10 +135,16 @@ func fromEntity(p *principal.Principal) PrincipalResponse {
 	if p.UserIdentity != nil {
 		e := p.UserIdentity.Email
 		email = &e
-		// Rust derives idpType as "INTERNAL" for any principal that carries a
-		// user identity; replicated here for wire parity.
-		t := "INTERNAL"
-		idpType = &t
+		// Report the actual stored provider (INTERNAL / OIDC). The Rust source
+		// hardcoded "INTERNAL" here, which mislabels OIDC-linked users in the
+		// admin UI; we surface the real value from the principal's identity
+		// (idp_type column → UserIdentity.Provider).
+		if p.UserIdentity.Provider != nil && *p.UserIdentity.Provider != "" {
+			idpType = p.UserIdentity.Provider
+		} else {
+			internal := "INTERNAL"
+			idpType = &internal
+		}
 	}
 	roles := make([]string, 0, len(p.Roles))
 	for _, r := range p.Roles {

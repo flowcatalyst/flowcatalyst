@@ -178,6 +178,25 @@ func (s *State) resolveApp(ctx context.Context, code string) (*application.Appli
 	return app, nil
 }
 
+// requireAppAccess enforces that the caller may manage this application's
+// definitions. An anchor / super-admin may sync any application; otherwise the
+// caller MUST be the application's bound service account. Without this, any
+// service account holding a sync permission could sync — and, with
+// removeUnlisted, PRUNE — another application's roles/definitions. The
+// per-app SDK syncs all funnel through here so removeUnlisted can only ever
+// remove rows for an application the caller actually owns. Platform CODE roles
+// (no application binding) are additionally protected by the source check in
+// the role sync use case.
+func (s *State) requireAppAccess(ac *auth.AuthContext, app *application.Application) error {
+	if ac.IsAnchor() || ac.IsSuperAdmin() {
+		return nil
+	}
+	if app.ServiceAccountID != nil && *app.ServiceAccountID == ac.PrincipalID {
+		return nil
+	}
+	return httperror.Forbidden("Service account is not authorised for application '" + app.Code + "'")
+}
+
 // ── Event types ─────────────────────────────────────────────────────────
 
 type syncEventTypeInputRequest struct {
@@ -207,6 +226,9 @@ func (s *State) syncEventTypes(ctx context.Context, in *syncEventTypesInput) (*s
 	}
 	app, err := s.resolveApp(ctx, in.AppCode)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireAppAccess(ac, app); err != nil {
 		return nil, err
 	}
 
@@ -266,6 +288,9 @@ func (s *State) syncRoles(ctx context.Context, in *syncRolesInput) (*syncResultO
 	}
 	app, err := s.resolveApp(ctx, in.AppCode)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireAppAccess(ac, app); err != nil {
 		return nil, err
 	}
 
@@ -341,6 +366,9 @@ func (s *State) syncSubscriptions(ctx context.Context, in *syncSubscriptionsInpu
 	if err != nil {
 		return nil, err
 	}
+	if err := s.requireAppAccess(ac, app); err != nil {
+		return nil, err
+	}
 
 	inputs := make([]subscriptionops.SyncSubscriptionInput, 0, len(in.Body.Subscriptions))
 	for _, sub := range in.Body.Subscriptions {
@@ -414,6 +442,9 @@ func (s *State) syncPrincipals(ctx context.Context, in *syncPrincipalsInput) (*s
 	if err != nil {
 		return nil, err
 	}
+	if err := s.requireAppAccess(ac, app); err != nil {
+		return nil, err
+	}
 
 	inputs := make([]principalops.SyncPrincipalInput, 0, len(in.Body.Principals))
 	for _, p := range in.Body.Principals {
@@ -477,6 +508,9 @@ func (s *State) syncDispatchPools(ctx context.Context, in *syncDispatchPoolsInpu
 	}
 	app, err := s.resolveApp(ctx, in.AppCode)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireAppAccess(ac, app); err != nil {
 		return nil, err
 	}
 
@@ -570,6 +604,9 @@ func (s *State) runProcessSync(ctx context.Context, appCode string, processes []
 	}
 	app, err := s.resolveApp(ctx, appCode)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireAppAccess(ac, app); err != nil {
 		return nil, err
 	}
 
@@ -760,13 +797,8 @@ func (s *State) syncOpenapi(ctx context.Context, in *syncOpenapiInput) (*syncOpe
 	if err != nil {
 		return nil, err
 	}
-
-	// Resource-level guard: anchor / super-admin may sync any application;
-	// otherwise the caller must BE this application's bound service account.
-	// Mirrors the Rust handler's per-application gate.
-	isAppServiceAccount := app.ServiceAccountID != nil && *app.ServiceAccountID == ac.PrincipalID
-	if !ac.IsAnchor() && !ac.IsSuperAdmin() && !isAppServiceAccount {
-		return nil, httperror.Forbidden("Service account is not authorised for application '" + app.Code + "'")
+	if err := s.requireAppAccess(ac, app); err != nil {
+		return nil, err
 	}
 
 	cmd := openapiops.SyncOpenApiSpecCommand{
