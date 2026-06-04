@@ -58,8 +58,39 @@ class FlowCatalystServiceProvider extends ServiceProvider
         $this->publishConfig();
         $this->publishMigrations();
         $this->registerMiddleware();
+        $this->registerTokenGuard();
         $this->registerOidcRoutes();
         $this->registerCommands();
+    }
+
+    /**
+     * Register the stateless `fc-token` auth guard and route Gate checks for
+     * FlowCatalyst token identities through their RBAC permissions.
+     *
+     * Usage:
+     *   - FlowCatalyst-only:        ->middleware('auth:fc-token')
+     *   - FlowCatalyst OR Passport: ->middleware('auth:fc-token,api')
+     *   - in front of Passport's
+     *     client-credentials chain:  ->middleware('fc.or-passport')
+     */
+    protected function registerTokenGuard(): void
+    {
+        // Expose the guard by name without the app having to edit config/auth.php.
+        config(['auth.guards.fc-token' => ['driver' => 'fc-token']]);
+
+        \Illuminate\Support\Facades\Auth::viaRequest('fc-token', function ($request) {
+            return $this->app->make(\FlowCatalyst\Auth\FlowCatalystTokenGuard::class)->resolve($request);
+        });
+
+        // $user->can(...) / @can / policies → checkPermissionTo (FlowCatalyst
+        // wildcard RBAC). Scoped to our identity so it never interferes with
+        // Eloquent/Spatie users resolved by other guards.
+        \Illuminate\Support\Facades\Gate::before(function ($user, $ability) {
+            if ($user instanceof \FlowCatalyst\Auth\FlowCatalystAuthenticatable) {
+                return $user->checkPermissionTo($ability) ? true : null;
+            }
+            return null;
+        });
     }
 
     /**
@@ -195,6 +226,10 @@ class FlowCatalystServiceProvider extends ServiceProvider
         $router->aliasMiddleware('fc.session', RequireSession::class);
         $router->aliasMiddleware('fc.bearer', RequireBearer::class);
         $router->aliasMiddleware('fc.any', RequireAuth::class);
+        $router->aliasMiddleware(
+            'fc.or-passport',
+            \FlowCatalyst\Auth\Http\Middleware\AuthenticateServiceTokenOrFallback::class,
+        );
     }
 
     /**
@@ -230,6 +265,13 @@ class FlowCatalystServiceProvider extends ServiceProvider
 
         $this->app->singleton(AuthenticateFc::class, function ($app) {
             return new AuthenticateFc(
+                validator: $app->make(AccessTokenValidator::class),
+                rbac: $app->bound(RbacCatalogue::class) ? $app->make(RbacCatalogue::class) : null,
+            );
+        });
+
+        $this->app->singleton(\FlowCatalyst\Auth\FlowCatalystTokenGuard::class, function ($app) {
+            return new \FlowCatalyst\Auth\FlowCatalystTokenGuard(
                 validator: $app->make(AccessTokenValidator::class),
                 rbac: $app->bound(RbacCatalogue::class) ? $app->make(RbacCatalogue::class) : null,
             );

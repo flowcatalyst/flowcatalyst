@@ -195,6 +195,21 @@ return [
 
         /*
         |----------------------------------------------------------------------
+        | Service-token fallback middleware
+        |----------------------------------------------------------------------
+        |
+        | Used by the `fc.or-passport` middleware: a request that is NOT a valid
+        | FlowCatalyst access token is handed to this middleware chain instead
+        | (e.g. your existing Passport client-credentials guard). FlowCatalyst
+        | tokens never touch it. Leave empty for FlowCatalyst-only routes.
+        |
+        */
+        'token_fallback_middleware' => [
+            // 'client', 'passport.app.identity',
+        ],
+
+        /*
+        |----------------------------------------------------------------------
         | Route Middleware
         |----------------------------------------------------------------------
         |
