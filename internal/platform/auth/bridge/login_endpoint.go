@@ -112,14 +112,16 @@ func (e *LoginEndpoint) RegisterRoutes(r chi.Router) {
 	r.Get("/auth/oidc/session/end", e.handleSessionEnd)
 }
 
-// handleSessionEnd implements OIDC RP-Initiated Logout 1.0 — a 1:1 port of
-// Rust oidc_login_api.rs::session_end. It always clears the fc_session
-// cookie, and when a post_logout_redirect_uri is supplied it verifies the
-// URI is registered for the requesting client before redirecting. The
-// client is identified via the unverified `aud` claim of id_token_hint;
-// the registered whitelist (not the token signature) is the security
-// boundary, so a URI we cannot tie to a client is refused rather than
-// redirected to (CWE-601 open-redirect defence).
+// handleSessionEnd implements OIDC RP-Initiated Logout 1.0. It always clears
+// the fc_session cookie, and when a post_logout_redirect_uri is supplied it
+// verifies the URI is registered for the requesting client before redirecting.
+// The client is identified via the `aud` claim of id_token_hint, or via an
+// explicit client_id parameter (the spec-sanctioned alternative) when no hint
+// is sent. The registered whitelist — matched by MatchPostLogoutRedirectURI,
+// which is URL-component-aware and blocks host-confusion — is the security
+// boundary (not the token signature, which is intentionally not verified), so a
+// URI we cannot tie to a client's whitelist is refused rather than redirected
+// to (CWE-601 open-redirect defence).
 func (e *LoginEndpoint) handleSessionEnd(w http.ResponseWriter, r *http.Request) {
 	// Always clear the session cookie.
 	http.SetCookie(w, &http.Cookie{
@@ -134,6 +136,7 @@ func (e *LoginEndpoint) handleSessionEnd(w http.ResponseWriter, r *http.Request)
 	q := r.URL.Query()
 	redirectURI := q.Get("post_logout_redirect_uri")
 	idTokenHint := q.Get("id_token_hint")
+	clientIDParam := q.Get("client_id")
 	state := q.Get("state")
 
 	// No redirect requested — session ended.
@@ -154,13 +157,21 @@ func (e *LoginEndpoint) handleSessionEnd(w http.ResponseWriter, r *http.Request)
 		})
 	}
 
-	if idTokenHint == "" {
-		reject("id_token_hint is required to verify post_logout_redirect_uri")
-		return
+	// Identify the requesting client to scope the post_logout_redirect_uri
+	// whitelist check. Prefer the id_token_hint's aud (OIDC RP-Initiated
+	// Logout), and accept an explicit client_id as the spec-sanctioned
+	// alternative when no hint is supplied. The registered whitelist — not the
+	// hint — is the security boundary, and the hint is not signature-verified,
+	// so either identifier is equally acceptable here.
+	clientID := ""
+	if idTokenHint != "" {
+		clientID = extractAudFromIDTokenHint(idTokenHint)
 	}
-	clientID := extractAudFromIDTokenHint(idTokenHint)
 	if clientID == "" {
-		reject("id_token_hint is malformed")
+		clientID = clientIDParam
+	}
+	if clientID == "" {
+		reject("id_token_hint or client_id is required to verify post_logout_redirect_uri")
 		return
 	}
 	client, err := e.oauthClients.FindByClientID(r.Context(), clientID)
@@ -172,7 +183,7 @@ func (e *LoginEndpoint) handleSessionEnd(w http.ResponseWriter, r *http.Request)
 		reject("id_token_hint audience does not match any registered client")
 		return
 	}
-	if !oauthapi.MatchesRedirectURI(redirectURI, client.PostLogoutRedirectURIs) {
+	if !oauthapi.MatchPostLogoutRedirectURI(redirectURI, client.PostLogoutRedirectURIs) {
 		reject("not in the client's registered post_logout_redirect_uris")
 		return
 	}

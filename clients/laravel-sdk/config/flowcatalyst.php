@@ -179,6 +179,22 @@ return [
 
         /*
         |----------------------------------------------------------------------
+        | Single Logout (RP-Initiated Logout)
+        |----------------------------------------------------------------------
+        |
+        | When true, logout redirects through FlowCatalyst's end-session
+        | endpoint so the user is signed out of the IdP too — not just this
+        | app. The `redirect_after_logout` URL is sent as post_logout_redirect_uri
+        | and MUST be registered in this client's `postLogoutRedirectUris`
+        | whitelist on the platform (exact, or a subdomain wildcard such as
+        | https://*.inhanceapps.com). Defaults to off to preserve local-only
+        | logout behaviour.
+        |
+        */
+        'single_logout' => env('FLOWCATALYST_OIDC_SINGLE_LOGOUT', false),
+
+        /*
+        |----------------------------------------------------------------------
         | Route Middleware
         |----------------------------------------------------------------------
         |

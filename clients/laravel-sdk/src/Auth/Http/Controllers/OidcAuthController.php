@@ -33,6 +33,12 @@ class OidcAuthController extends Controller
     private const NONCE_SESSION_KEY = 'flowcatalyst_oidc_nonce';
     private const RETURN_URL_SESSION_KEY = 'flowcatalyst_oidc_return_url';
 
+    /**
+     * Session key holding the raw OIDC ID token, kept so logout can pass it as
+     * id_token_hint for RP-Initiated Logout (single sign-out at the IdP).
+     */
+    private const ID_TOKEN_SESSION_KEY = 'flowcatalyst_oidc_id_token';
+
     private Client $httpClient;
 
     public function __construct(
@@ -138,6 +144,12 @@ class OidcAuthController extends Controller
                 $tokens['refresh_token'] ?? null
             );
 
+            // Keep the raw ID token so logout() can send it as id_token_hint
+            // for RP-Initiated Logout (ends the user's IdP session too).
+            if (!empty($tokens['id_token'])) {
+                session()->put(self::ID_TOKEN_SESSION_KEY, $tokens['id_token']);
+            }
+
             // Call the user handler (this is where the app customizes login)
             $this->userHandler->handleAuthenticatedUser($fcUser);
 
@@ -161,10 +173,36 @@ class OidcAuthController extends Controller
      */
     public function logout(Request $request): RedirectResponse
     {
+        // Capture the ID token before the handler tears the session down, so it
+        // can be sent as id_token_hint for RP-Initiated Logout.
+        $idToken = session(self::ID_TOKEN_SESSION_KEY);
+        session()->forget(self::ID_TOKEN_SESSION_KEY);
+
         $this->userHandler->handleLogout();
 
-        $redirectUrl = $this->userHandler->getPostLogoutRedirect();
-        return redirect()->to($redirectUrl);
+        $postLogout = $this->userHandler->getPostLogoutRedirect();
+
+        // RP-Initiated Logout: when enabled, bounce through the IdP's
+        // end-session endpoint so the user is signed out of FlowCatalyst too —
+        // not just locally. The post_logout_redirect_uri MUST be registered in
+        // this client's postLogoutRedirectUris whitelist on the platform.
+        if (config('flowcatalyst.oidc.single_logout', false)) {
+            $base = rtrim((string) config('flowcatalyst.base_url'), '/');
+            $absolute = (str_starts_with($postLogout, 'http://') || str_starts_with($postLogout, 'https://'))
+                ? $postLogout
+                : url($postLogout);
+
+            $params = ['post_logout_redirect_uri' => $absolute];
+            if (!empty($idToken)) {
+                $params['id_token_hint'] = $idToken;                 // preferred
+            } elseif ($clientId = config('flowcatalyst.oidc.client_id')) {
+                $params['client_id'] = $clientId;                    // spec-sanctioned fallback
+            }
+
+            return redirect()->away($base . '/auth/oidc/session/end?' . http_build_query($params));
+        }
+
+        return redirect()->to($postLogout);
     }
 
     /**
