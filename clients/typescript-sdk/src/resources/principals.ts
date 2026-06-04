@@ -9,33 +9,30 @@ import type { SdkError } from "../errors.js";
 import type { FlowCatalystClient } from "../client.js";
 import * as sdk from "../generated/sdk.gen.js";
 import type {
-	GetApiPrincipalsData,
-	GetApiPrincipalsResponse,
-	GetApiPrincipalsByIdResponse,
-	PostApiPrincipalsUsersData,
-	PutApiPrincipalsByIdData,
-	PostApiPrincipalsByIdResetPasswordData,
-	GetApiPrincipalsByIdRolesResponse,
-	GetApiPrincipalsByIdClientAccessResponse,
-	PostApiApplicationsByAppCodePrincipalsSyncData,
-	PostApiApplicationsByAppCodePrincipalsSyncResponse,
+	ListPrincipalsData,
+	ListPrincipalsResponse,
+	GetPrincipalResponse,
+	CreateUserData,
+	UpdatePrincipalData,
+	ResetPrincipalPasswordData,
+	ListPrincipalRolesResponse,
+	ListPrincipalClientAccessResponse,
+	SyncPrincipalsData,
+	SyncPrincipalsResponse as SyncPrincipalsResponseType,
 } from "../generated/types.gen.js";
 
-export type PrincipalListResponse = GetApiPrincipalsResponse;
-export type PrincipalDto = GetApiPrincipalsByIdResponse;
-export type CreateUserRequest = PostApiPrincipalsUsersData["body"];
-export type UpdatePrincipalRequest = PutApiPrincipalsByIdData["body"];
-export type ResetPasswordRequest =
-	PostApiPrincipalsByIdResetPasswordData["body"];
-export type RoleListResponse = GetApiPrincipalsByIdRolesResponse;
-export type ClientAccessListResponse =
-	GetApiPrincipalsByIdClientAccessResponse;
-export type SyncPrincipalsResponse =
-	PostApiApplicationsByAppCodePrincipalsSyncResponse;
+export type PrincipalListResponse = ListPrincipalsResponse;
+export type PrincipalDto = GetPrincipalResponse;
+export type CreateUserRequest = CreateUserData["body"];
+export type UpdatePrincipalRequest = UpdatePrincipalData["body"];
+export type ResetPasswordRequest = ResetPrincipalPasswordData["body"];
+export type RoleListResponse = ListPrincipalRolesResponse;
+export type ClientAccessListResponse = ListPrincipalClientAccessResponse;
+export type SyncPrincipalsResponse = SyncPrincipalsResponseType;
 
 // Derived from the generated query type so it stays in sync with the platform
 // spec automatically — adding a query param upstream surfaces here on regen.
-export type PrincipalFilters = GetApiPrincipalsData["query"];
+export type PrincipalFilters = ListPrincipalsData["query"];
 
 /**
  * Principals resource for managing users and service accounts.
@@ -54,7 +51,7 @@ export class PrincipalsResource {
 		filters?: PrincipalFilters,
 	): ResultAsync<PrincipalListResponse, SdkError> {
 		return this.client.request<PrincipalListResponse>((httpClient, headers) =>
-			sdk.getApiPrincipals({
+			sdk.listPrincipals({
 				client: httpClient,
 				headers,
 				query: filters,
@@ -67,7 +64,7 @@ export class PrincipalsResource {
 	 */
 	get(id: string): ResultAsync<PrincipalDto, SdkError> {
 		return this.client.request<PrincipalDto>((httpClient, headers) =>
-			sdk.getApiPrincipalsById({
+			sdk.getPrincipal({
 				client: httpClient,
 				headers,
 				path: { id },
@@ -85,7 +82,7 @@ export class PrincipalsResource {
 	 */
 	findByEmail(email: string): ResultAsync<PrincipalListResponse, SdkError> {
 		const needle = email.toLowerCase();
-		return this.list({ email }).map((response) => {
+		return this.list({ q: email }).map((response) => {
 			const principals = response.principals.filter(
 				(p) => (p.email ?? "").toLowerCase() === needle,
 			);
@@ -98,7 +95,7 @@ export class PrincipalsResource {
 	 */
 	createUser(data: CreateUserRequest): ResultAsync<PrincipalDto, SdkError> {
 		return this.client.request<PrincipalDto>((httpClient, headers) =>
-			sdk.postApiPrincipalsUsers({
+			sdk.createUser({
 				client: httpClient,
 				headers,
 				body: data,
@@ -114,7 +111,7 @@ export class PrincipalsResource {
 		data: UpdatePrincipalRequest,
 	): ResultAsync<PrincipalDto, SdkError> {
 		return this.client.request<PrincipalDto>((httpClient, headers) =>
-			sdk.putApiPrincipalsById({
+			sdk.updatePrincipal({
 				client: httpClient,
 				headers,
 				path: { id },
@@ -128,7 +125,7 @@ export class PrincipalsResource {
 	 */
 	activate(id: string): ResultAsync<PrincipalDto, SdkError> {
 		return this.client.request<PrincipalDto>((httpClient, headers) =>
-			sdk.postApiPrincipalsByIdActivate({
+			sdk.activatePrincipal({
 				client: httpClient,
 				headers,
 				path: { id },
@@ -141,7 +138,7 @@ export class PrincipalsResource {
 	 */
 	deactivate(id: string): ResultAsync<PrincipalDto, SdkError> {
 		return this.client.request<PrincipalDto>((httpClient, headers) =>
-			sdk.postApiPrincipalsByIdDeactivate({
+			sdk.deactivatePrincipal({
 				client: httpClient,
 				headers,
 				path: { id },
@@ -161,7 +158,7 @@ export class PrincipalsResource {
 		data: ResetPasswordRequest,
 	): ResultAsync<unknown, SdkError> {
 		return this.client.request<unknown>((httpClient, headers) =>
-			sdk.postApiPrincipalsByIdResetPassword({
+			sdk.resetPrincipalPassword({
 				client: httpClient,
 				headers,
 				path: { id },
@@ -175,7 +172,7 @@ export class PrincipalsResource {
 	 */
 	getRoles(id: string): ResultAsync<RoleListResponse, SdkError> {
 		return this.client.request<RoleListResponse>((httpClient, headers) =>
-			sdk.getApiPrincipalsByIdRoles({
+			sdk.listPrincipalRoles({
 				client: httpClient,
 				headers,
 				path: { id },
@@ -191,7 +188,7 @@ export class PrincipalsResource {
 	 */
 	addRole(id: string, roleName: string): ResultAsync<unknown, SdkError> {
 		return this.client.request<unknown>((httpClient, headers) =>
-			sdk.postApiPrincipalsByIdRoles({
+			sdk.addPrincipalRole({
 				client: httpClient,
 				headers,
 				path: { id },
@@ -205,7 +202,7 @@ export class PrincipalsResource {
 	 */
 	removeRole(id: string, roleName: string): ResultAsync<unknown, SdkError> {
 		return this.client.request<unknown>((httpClient, headers) =>
-			sdk.deleteApiPrincipalsByIdRolesByRoleName({
+			sdk.removePrincipalRole({
 				client: httpClient,
 				headers,
 				path: { id, role: roleName },
@@ -221,7 +218,7 @@ export class PrincipalsResource {
 	 */
 	setRoles(id: string, roles: string[]): ResultAsync<unknown, SdkError> {
 		return this.client.request<unknown>((httpClient, headers) =>
-			sdk.putApiPrincipalsByIdRoles({
+			sdk.assignPrincipalRoles({
 				client: httpClient,
 				headers,
 				path: { id },
@@ -238,7 +235,7 @@ export class PrincipalsResource {
 	): ResultAsync<ClientAccessListResponse, SdkError> {
 		return this.client.request<ClientAccessListResponse>(
 			(httpClient, headers) =>
-				sdk.getApiPrincipalsByIdClientAccess({
+				sdk.listPrincipalClientAccess({
 					client: httpClient,
 					headers,
 					path: { id },
@@ -254,7 +251,7 @@ export class PrincipalsResource {
 		clientId: string,
 	): ResultAsync<unknown, SdkError> {
 		return this.client.request<unknown>((httpClient, headers) =>
-			sdk.postApiPrincipalsByIdClientAccess({
+			sdk.grantPrincipalClientAccess({
 				client: httpClient,
 				headers,
 				path: { id },
@@ -271,7 +268,7 @@ export class PrincipalsResource {
 		clientId: string,
 	): ResultAsync<unknown, SdkError> {
 		return this.client.request<unknown>((httpClient, headers) =>
-			sdk.deleteApiPrincipalsByIdClientAccessByClientId({
+			sdk.revokePrincipalClientAccess({
 				client: httpClient,
 				headers,
 				path: { id, clientId },
@@ -289,12 +286,12 @@ export class PrincipalsResource {
 	 */
 	sync(
 		applicationCode: string,
-		principals: PostApiApplicationsByAppCodePrincipalsSyncData["body"]["principals"],
+		principals: SyncPrincipalsData["body"]["principals"],
 		removeUnlisted = false,
 	): ResultAsync<SyncPrincipalsResponse, SdkError> {
 		return this.client.request<SyncPrincipalsResponse>(
 			(httpClient, headers) =>
-				sdk.postApiApplicationsByAppCodePrincipalsSync({
+				sdk.syncPrincipals({
 					client: httpClient,
 					headers,
 					path: { appCode: applicationCode },

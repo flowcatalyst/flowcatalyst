@@ -8,7 +8,9 @@ import (
 	"time"
 )
 
-func TestMatchesRedirectURI(t *testing.T) {
+// TestMatchRedirectURIParityCases keeps the original /oauth/authorize
+// redirect_uri cases, now exercising the unified MatchRedirectURI.
+func TestMatchRedirectURIParityCases(t *testing.T) {
 	cases := []struct {
 		uri        string
 		registered []string
@@ -23,8 +25,8 @@ func TestMatchesRedirectURI(t *testing.T) {
 		{"https://evil.com/cb", []string{"https://app.example.com/cb", "https://*.x.com/cb"}, false},
 	}
 	for _, c := range cases {
-		if got := matchesRedirectURI(c.uri, c.registered); got != c.want {
-			t.Errorf("matchesRedirectURI(%q, %v) = %v, want %v", c.uri, c.registered, got, c.want)
+		if got := MatchRedirectURI(c.uri, c.registered); got != c.want {
+			t.Errorf("MatchRedirectURI(%q, %v) = %v, want %v", c.uri, c.registered, got, c.want)
 		}
 	}
 }

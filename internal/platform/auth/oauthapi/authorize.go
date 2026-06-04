@@ -69,7 +69,7 @@ func (s *State) Authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !matchesRedirectURI(redirectURI, client.RedirectURIs) {
+	if !MatchRedirectURI(redirectURI, client.RedirectURIs) {
 		writeOAuthError(w, http.StatusBadRequest, "invalid_request", "Invalid redirect_uri")
 		return
 	}
@@ -212,67 +212,6 @@ func maxAgeExceeded(maxAge string, issuedAt time.Time) bool {
 		return false
 	}
 	return time.Since(issuedAt) > time.Duration(secs)*time.Second
-}
-
-// ─── redirect-uri matching (1:1 with Rust) ──────────────────────────────
-
-// MatchesRedirectURI is the exported form of the redirect-uri matcher,
-// used by the OIDC bridge's /auth/oidc/session/end handler to validate a
-// post_logout_redirect_uri against a client's registered whitelist with the
-// exact same rules /oauth/authorize applies to redirect_uri (1:1 with Rust,
-// which shares oauth_api::matches_redirect_uri for both checks).
-func MatchesRedirectURI(uri string, registered []string) bool {
-	return matchesRedirectURI(uri, registered)
-}
-
-func matchesRedirectURI(uri string, registered []string) bool {
-	for _, r := range registered {
-		if r == uri {
-			return true
-		}
-	}
-	for _, pattern := range registered {
-		if strings.Contains(pattern, "*") && wildcardMatches(uri, pattern) {
-			return true
-		}
-	}
-	return false
-}
-
-// wildcardMatches matches uri against a pattern with `*` wildcards, where
-// each `*` matches exactly one path/subdomain segment (no dots, non-empty).
-func wildcardMatches(uri, pattern string) bool {
-	parts := strings.Split(pattern, "*")
-	if len(parts) == 0 {
-		return false
-	}
-	remaining, ok := strings.CutPrefix(uri, parts[0])
-	if !ok {
-		return false
-	}
-	for i, part := range parts[1:] {
-		isLast := i == len(parts)-2
-		if isLast {
-			if !strings.HasSuffix(remaining, part) {
-				return false
-			}
-			seg := remaining[:len(remaining)-len(part)]
-			if strings.Contains(seg, ".") || seg == "" {
-				return false
-			}
-			return true
-		}
-		pos := strings.Index(remaining, part)
-		if pos < 0 {
-			return false
-		}
-		seg := remaining[:pos]
-		if strings.Contains(seg, ".") || seg == "" {
-			return false
-		}
-		remaining = remaining[pos+len(part):]
-	}
-	return !strings.Contains(remaining, ".") && remaining != ""
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────

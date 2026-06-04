@@ -117,7 +117,7 @@ func (e *LoginEndpoint) RegisterRoutes(r chi.Router) {
 // verifies the URI is registered for the requesting client before redirecting.
 // The client is identified via the `aud` claim of id_token_hint, or via an
 // explicit client_id parameter (the spec-sanctioned alternative) when no hint
-// is sent. The registered whitelist — matched by MatchPostLogoutRedirectURI,
+// is sent. The registered whitelist — matched by MatchRedirectURI,
 // which is URL-component-aware and blocks host-confusion — is the security
 // boundary (not the token signature, which is intentionally not verified), so a
 // URI we cannot tie to a client's whitelist is refused rather than redirected
@@ -183,7 +183,7 @@ func (e *LoginEndpoint) handleSessionEnd(w http.ResponseWriter, r *http.Request)
 		reject("id_token_hint audience does not match any registered client")
 		return
 	}
-	if !oauthapi.MatchPostLogoutRedirectURI(redirectURI, client.PostLogoutRedirectURIs) {
+	if !oauthapi.MatchRedirectURI(redirectURI, client.PostLogoutRedirectURIs) {
 		reject("not in the client's registered post_logout_redirect_uris")
 		return
 	}

@@ -2,7 +2,7 @@ package oauthapi
 
 import "testing"
 
-func TestMatchPostLogoutRedirectURI(t *testing.T) {
+func TestMatchRedirectURI(t *testing.T) {
 	cases := []struct {
 		name       string
 		uri        string
@@ -17,6 +17,14 @@ func TestMatchPostLogoutRedirectURI(t *testing.T) {
 		{"subdomain wildcard host-only matches bare", "https://app.inhanceapps.com", []string{"https://*.inhanceapps.com"}, true},
 		{"subdomain wildcard host-only matches path", "https://app.inhanceapps.com/auth/logged-out", []string{"https://*.inhanceapps.com"}, true},
 		{"subdomain wildcard different sub", "https://portal.inhanceapps.com/x", []string{"https://*.inhanceapps.com"}, true},
+
+		// partial-label leftmost wildcard (multi-tenant: one pattern, many tenants)
+		{"partial wildcard matches", "https://qa-acme.inhanceapps.com/done", []string{"https://qa-*.inhanceapps.com"}, true},
+		{"partial wildcard matches any path", "https://qa-acme.inhanceapps.com/x/y", []string{"https://qa-*.inhanceapps.com"}, true},
+		{"partial wildcard wrong prefix", "https://prod-acme.inhanceapps.com/x", []string{"https://qa-*.inhanceapps.com"}, false},
+		{"partial wildcard empty expansion rejected", "https://qa-.inhanceapps.com/x", []string{"https://qa-*.inhanceapps.com"}, false},
+		{"partial wildcard cannot cross dot", "https://qa-a.b.inhanceapps.com/x", []string{"https://qa-*.inhanceapps.com"}, false},
+		{"suffix-label wildcard", "https://acme-qa.inhanceapps.com/x", []string{"https://*-qa.inhanceapps.com"}, true},
 
 		// host-confusion / over-broad — all must fail
 		{"bare base domain rejected", "https://inhanceapps.com/x", []string{"https://*.inhanceapps.com"}, false},
@@ -38,8 +46,8 @@ func TestMatchPostLogoutRedirectURI(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := MatchPostLogoutRedirectURI(c.uri, c.registered); got != c.want {
-				t.Errorf("MatchPostLogoutRedirectURI(%q, %v) = %v, want %v", c.uri, c.registered, got, c.want)
+			if got := MatchRedirectURI(c.uri, c.registered); got != c.want {
+				t.Errorf("MatchRedirectURI(%q, %v) = %v, want %v", c.uri, c.registered, got, c.want)
 			}
 		})
 	}
