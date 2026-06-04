@@ -102,8 +102,10 @@ final class AsRole
         }
 
         if (!empty($this->permissions)) {
+            // The roles-sync API expects a flat list of
+            // "app:context:aggregate:action" strings (not objects).
             $data['permissions'] = array_map(
-                fn(PermissionInput $p) => $p->toArray(),
+                fn(PermissionInput $p) => $p->toPermissionString(),
                 $this->permissions
             );
         }

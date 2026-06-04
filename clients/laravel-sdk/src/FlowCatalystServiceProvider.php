@@ -270,10 +270,31 @@ class FlowCatalystServiceProvider extends ServiceProvider
             );
         });
 
+        $this->app->singleton(\FlowCatalyst\Auth\Support\ApiMePermissionResolver::class, function ($app) {
+            $config = $app['config']['flowcatalyst'];
+            return new \FlowCatalyst\Auth\Support\ApiMePermissionResolver(
+                http: new \GuzzleHttp\Client(['timeout' => 10]),
+                cache: $app['cache']->driver($config['oidc']['me_cache_driver'] ?? null),
+                baseUrl: $config['base_url'],
+                ttlSeconds: (int) ($config['oidc']['me_cache_ttl_seconds'] ?? 60),
+            );
+        });
+
+        // Default PermissionResolver — apps can bind their own
+        // (FlowCatalyst\Auth\Contracts\PermissionResolver) to override. With a
+        // local RbacCatalogue bound we use it (offline); otherwise the
+        // server-backed /api/me resolver.
+        $this->app->bindIf(\FlowCatalyst\Auth\Contracts\PermissionResolver::class, function ($app) {
+            if ($app->bound(RbacCatalogue::class)) {
+                return new \FlowCatalyst\Auth\Rbac\CataloguePermissionResolver($app->make(RbacCatalogue::class));
+            }
+            return $app->make(\FlowCatalyst\Auth\Support\ApiMePermissionResolver::class);
+        });
+
         $this->app->singleton(\FlowCatalyst\Auth\FlowCatalystTokenGuard::class, function ($app) {
             return new \FlowCatalyst\Auth\FlowCatalystTokenGuard(
                 validator: $app->make(AccessTokenValidator::class),
-                rbac: $app->bound(RbacCatalogue::class) ? $app->make(RbacCatalogue::class) : null,
+                permissions: $app->make(\FlowCatalyst\Auth\Contracts\PermissionResolver::class),
             );
         });
     }

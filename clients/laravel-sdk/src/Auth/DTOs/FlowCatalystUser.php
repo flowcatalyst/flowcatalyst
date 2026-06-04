@@ -332,6 +332,27 @@ final readonly class FlowCatalystUser
     }
 
     /**
+     * Return a copy with the given effective permissions (resolved by a
+     * {@see \FlowCatalyst\Auth\Contracts\PermissionResolver}). Roles/clients/
+     * applications keep their token-derived values. The original is unchanged.
+     *
+     * @param array<int,string> $permissions
+     */
+    public function withPermissions(array $permissions): self
+    {
+        return new self(
+            sub: $this->sub,
+            email: $this->email,
+            name: $this->name,
+            claims: $this->claims,
+            accessToken: $this->accessToken,
+            refreshToken: $this->refreshToken,
+            permissions: $permissions,
+            mechanism: $this->mechanism,
+        );
+    }
+
+    /**
      * Return a copy with a different `$mechanism` field. Used by the
      * middleware to tag Bearer-vs-session principals consistently.
      */

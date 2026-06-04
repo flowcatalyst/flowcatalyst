@@ -68,6 +68,14 @@ final class FlowCatalystAuthenticatableTest extends TestCase
 
         $this->assertTrue($auth->hasAnyPermission('platform:iam:user:view', 'platform:messaging:event:view'));
         $this->assertFalse($auth->hasAllPermissions('platform:messaging:event:view', 'platform:iam:user:view'));
+
+        // FlowCatalyst is pure RBAC: every permission is role-derived, none direct.
+        $this->assertFalse($auth->hasDirectPermission('platform:messaging:event:view'));
+        $this->assertCount(0, $auth->getDirectPermissions());
+        $this->assertEqualsCanonicalizing(
+            ['platform:messaging:event:view', 'platform:messaging:dispatch-job:*'],
+            $auth->getAllPermissions()->all(),
+        );
     }
 
     public function test_application_and_client_scope(): void

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace FlowCatalyst\Auth;
 
-use FlowCatalyst\Auth\Rbac\RbacCatalogue;
+use FlowCatalyst\Auth\Contracts\PermissionResolver;
 use FlowCatalyst\Auth\Support\AccessTokenValidator;
 use Illuminate\Http\Request;
 
@@ -24,7 +24,7 @@ final class FlowCatalystTokenGuard
 {
     public function __construct(
         private readonly AccessTokenValidator $validator,
-        private readonly ?RbacCatalogue $rbac = null,
+        private readonly ?PermissionResolver $permissions = null,
     ) {
     }
 
@@ -34,13 +34,21 @@ final class FlowCatalystTokenGuard
         if ($token === null) {
             return null;
         }
+
+        // Offline JWKS check first: confirms this is a FlowCatalyst token (and
+        // yields sub + roles) with no network call, so non-FlowCatalyst tokens
+        // fall through to any fallback (e.g. Passport) fast.
         $user = $this->validator->validate($token);
         if ($user === null) {
             return null;
         }
-        if ($this->rbac !== null) {
-            $user = $user->withRbac($this->rbac);
+
+        // Effective permissions come from the pluggable resolver, passed the
+        // principal's roles (and the token, for server-backed resolvers).
+        if ($this->permissions !== null) {
+            $user = $user->withPermissions($this->permissions->resolve($user->getRoles(), $token));
         }
+
         return new FlowCatalystAuthenticatable($user->withMechanism('token'));
     }
 

@@ -46,6 +46,7 @@ type whoamiResponse struct {
 	Email                    *string  `json:"email,omitempty"`
 	Active                   bool     `json:"active"`
 	Roles                    []string `json:"roles"`
+	Permissions              []string `json:"permissions"`
 	AccessibleClientIDs      []string `json:"accessibleClientIds"`
 	AccessibleApplicationIDs []string `json:"accessibleApplicationIds"`
 }
@@ -62,6 +63,7 @@ func (s *State) whoami(w http.ResponseWriter, r *http.Request) {
 		Scope:               string(ac.Scope),
 		Active:              true,
 		Roles:               stringSliceOrEmpty(ac.Roles),
+		Permissions:         stringSliceOrEmpty(ac.Permissions),
 		AccessibleClientIDs: stringSliceOrEmpty(ac.Clients),
 	}
 

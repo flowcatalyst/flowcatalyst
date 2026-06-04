@@ -210,6 +210,21 @@ return [
 
         /*
         |----------------------------------------------------------------------
+        | Service-token permission resolution (GET /api/me)
+        |----------------------------------------------------------------------
+        |
+        | The token guard fetches the caller's server-resolved roles +
+        | permissions from /api/me and caches them keyed by the access token for
+        | this many seconds (one HTTP call per token, then cached). A short TTL
+        | keeps revocation/role changes responsive. If /api/me is unreachable
+        | the guard falls back to a bound RbacCatalogue (if any).
+        |
+        */
+        'me_cache_ttl_seconds' => (int) env('FLOWCATALYST_OIDC_ME_CACHE_TTL', 60),
+        'me_cache_driver' => env('FLOWCATALYST_OIDC_ME_CACHE_DRIVER'),
+
+        /*
+        |----------------------------------------------------------------------
         | Route Middleware
         |----------------------------------------------------------------------
         |

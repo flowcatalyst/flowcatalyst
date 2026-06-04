@@ -166,10 +166,15 @@ final class FlowCatalystAuthenticatable implements AuthenticatableContract, Auth
         return true;
     }
 
-    /** Token-resolved principals have no role/direct distinction — all direct. */
+    /**
+     * FlowCatalyst is pure RBAC — every permission is granted via a role, none
+     * are assigned directly to the principal. So "direct" permissions are
+     * always empty/false; use hasPermissionTo()/getAllPermissions() for the
+     * effective set.
+     */
     public function hasDirectPermission($permission): bool
     {
-        return $this->hasPermissionTo($permission);
+        return false;
     }
 
     public function getPermissionNames(): Collection
@@ -184,7 +189,8 @@ final class FlowCatalystAuthenticatable implements AuthenticatableContract, Auth
 
     public function getDirectPermissions(): Collection
     {
-        return $this->getPermissionNames();
+        // FlowCatalyst grants permissions only via roles — none are "direct".
+        return collect();
     }
 
     // ── Application / client scope (parity with passport.app.identity) ───
