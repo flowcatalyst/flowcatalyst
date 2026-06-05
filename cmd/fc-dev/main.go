@@ -6,10 +6,9 @@
 //	fc-dev start  — run the dev monolith (default; matches `fc-dev` no-arg).
 //	fc-dev init   — bootstrap admin user + default tenant + .env file.
 //	fc-dev fresh  — truncate every FlowCatalyst table (preserves schema).
-//	fc-dev mcp    — run the FlowCatalyst MCP server.
-//	fc-dev outbox — standalone outbox poller for external apps.
-//
-// (`upgrade` is intentionally deferred — it needs a release pipeline.)
+//	fc-dev mcp     — run the FlowCatalyst MCP server.
+//	fc-dev outbox  — standalone outbox poller for external apps.
+//	fc-dev upgrade — self-update to the latest GitHub release.
 package main
 
 import (
@@ -39,7 +38,12 @@ Invoking ` + "`fc-dev`" + ` with no subcommand is identical to ` + "`fc-dev star
 		// slog.Error line. We log + exit ourselves in main.
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		// `fc-dev --version` prints the same string as `fc-dev version` (users
+		// reach for the flag reflexively). The subcommand stays for parity with
+		// the Rust CLI's surface.
+		Version: version() + vcsSuffix(),
 	}
+	root.SetVersionTemplate("fc-dev {{.Version}}\n")
 	// Mirror start's flag set onto the root command so `fc-dev` and
 	// `fc-dev start` accept the same options.
 	addStartFlags(root)
@@ -49,6 +53,7 @@ Invoking ` + "`fc-dev`" + ` with no subcommand is identical to ` + "`fc-dev star
 	root.AddCommand(newFreshCmd())
 	root.AddCommand(newMCPCmd())
 	root.AddCommand(newOutboxCmd())
+	root.AddCommand(newUpgradeCmd())
 	root.AddCommand(newVersionCmd())
 
 	if err := root.Execute(); err != nil {
