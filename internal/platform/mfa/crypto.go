@@ -1,11 +1,13 @@
 package mfa
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
+	"image/png"
 	"math/big"
 	"strings"
 	"time"
@@ -54,6 +56,21 @@ func newTOTPKey(issuer, account string) (*otp.Key, error) {
 		Digits:      totpDigits,
 		Algorithm:   totpAlgo,
 	})
+}
+
+// qrDataURI renders the key's otpauth:// URI as a size×size QR code and returns
+// it as a base64 PNG data URI (for an <img src>). Uses pquerna/otp's built-in
+// QR renderer (boombuler/barcode under the hood).
+func qrDataURI(key *otp.Key, size int) (string, error) {
+	img, err := key.Image(size, size)
+	if err != nil {
+		return "", err
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return "", err
+	}
+	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(buf.Bytes()), nil
 }
 
 // validateTOTP checks code against the base32 secret at time now, allowing

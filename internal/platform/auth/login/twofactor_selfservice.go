@@ -107,7 +107,7 @@ func (e *Endpoint) handle2FASelfTOTPBegin(w http.ResponseWriter, r *http.Request
 		e.writeEnrollErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"secret": enr.Secret, "uri": enr.URI})
+	writeJSON(w, http.StatusOK, map[string]any{"secret": enr.Secret, "uri": enr.URI, "qr": enr.QR})
 }
 
 func (e *Endpoint) handle2FASelfTOTPConfirm(w http.ResponseWriter, r *http.Request) {
@@ -219,6 +219,16 @@ func (e *Endpoint) handle2FARemoveMethod(w http.ResponseWriter, r *http.Request)
 func (e *Endpoint) handle2FARegenRecovery(w http.ResponseWriter, r *http.Request) {
 	p := e.principalFromSession(w, r)
 	if p == nil {
+		return
+	}
+	// Recovery codes only back authenticator-app (TOTP) 2FA.
+	confirmed, err := e.cfg.MFA.ConfirmedMethods(r.Context(), p.ID)
+	if err != nil {
+		writeServerError(w, "REGEN_FAILED", "could not load methods")
+		return
+	}
+	if !containsMethodType(confirmed, mfa.MethodTOTP) {
+		writeJSON(w, http.StatusBadRequest, errBody("NO_TOTP", "recovery codes apply to authenticator-app 2FA"))
 		return
 	}
 	codes, err := e.cfg.MFA.GenerateRecoveryCodes(r.Context(), p.ID)

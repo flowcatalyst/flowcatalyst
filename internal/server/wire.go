@@ -62,6 +62,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/process"
 	processapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/process/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/publicapi"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/resetapproval"
+	resetapprovalapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/resetapproval/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	roleapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
@@ -283,6 +285,7 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 	// is best-effort — a send failure never fails the request (matching Rust).
 	// emailSvc is the shared mailer constructed above with the 2FA services.
 	resetTokenRepo := passwordreset.NewRepository(pool)
+	resetApprovalRepo := resetapproval.NewRepository(pool)
 	passwordresetapi.RegisterRoutes(r, &passwordresetapi.State{
 		Principals:      principalRepo,
 		Tokens:          resetTokenRepo,
@@ -295,6 +298,10 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 		MFATokens: mfaTokens,
 		Policy:    twofaPolicy,
 		Notifier:  notifier,
+		// Phase 8: a self-service reset with no strong factor queues for
+		// client-admin approval and notifies them, instead of issuing a token.
+		Approvals:    resetApprovalRepo,
+		ClientAdmins: principalRepo,
 	})
 	// Admin-triggered reset (POST /api/principals/{id}/send-password-reset)
 	// shares the same token repo + mailer.
@@ -373,6 +380,13 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 			MFA:               mfaSvc,
 			Audit:             auditRepo,
 			UoW:               uow,
+		})
+
+		// Phase 8: lost-device reset approval queue (client-admin gated).
+		resetapprovalapi.Register(humaAPI, &resetapprovalapi.State{
+			Approvals:  resetApprovalRepo,
+			Principals: principalRepo,
+			Sender:     principalResetEmailer,
 		})
 
 		serviceaccountapi.Register(humaAPI, &serviceaccountapi.State{

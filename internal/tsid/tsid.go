@@ -69,6 +69,7 @@ const (
 	MfaRecoveryCode
 	MfaEmailPin
 	MfaTrustedDevice
+	ResetApprovalRequest
 )
 
 // Prefix returns the 3-character prefix for this entity type. Mirrors
@@ -159,6 +160,8 @@ func (e EntityType) Prefix() string {
 		return "mep"
 	case MfaTrustedDevice:
 		return "mtd"
+	case ResetApprovalRequest:
+		return "rar"
 	default:
 		return "unk"
 	}

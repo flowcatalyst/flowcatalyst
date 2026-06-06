@@ -486,14 +486,14 @@ type createOutput struct {
 
 func (s *State) create(ctx context.Context, in *createInput) (*createOutput, error) {
 	ac := auth.FromContext(ctx)
-	// Creating principals is anchor-only (1:1 with Rust create_user's
-	// require_anchor). The created principal's scope/clientId is taken from the
-	// request body, so an anchor can create a user of any scope.
-	if err := auth.RequireAnchor(ac); err != nil {
-		return nil, err
+	// Anchors create any scope/client. A non-anchor administrator
+	// (client-admin) may only create CLIENT-scope users in a client they can
+	// access — never ANCHOR/PARTNER users, and never a clientless principal.
+	if !ac.IsAnchor() && in.Body.Scope != "CLIENT" {
+		return nil, httperror.Forbidden("Client administrators can only create client-scope users")
 	}
-	if in.Body.ClientID != nil && !ac.CanAccessClient(*in.Body.ClientID) {
-		return nil, httperror.Forbidden("No access to client: " + *in.Body.ClientID)
+	if err := auth.RequireUserAdmin(ac, in.Body.ClientID); err != nil {
+		return nil, err
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
 	committed, err := operations.CreateUser(ctx, s.Repo, s.UoW, in.Body.toCommand(), ec)
@@ -520,9 +520,8 @@ type createUserInput struct {
 // wired (matching Rust's unconfigured-emailer fallback).
 func (s *State) createUser(ctx context.Context, in *createUserInput) (*getOutput, error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
-		return nil, err
-	}
+	// Authorization is enforced after scope derivation below (a client-admin may
+	// only create CLIENT-scope users in a client they can access).
 	email := strings.ToLower(strings.TrimSpace(in.Body.Email))
 	at := strings.IndexByte(email, '@')
 	if at < 0 || at == len(email)-1 {
@@ -558,6 +557,15 @@ func (s *State) createUser(ctx context.Context, in *createUserInput) (*getOutput
 
 	scope, clientID, err := deriveUserScope(isAnchorDomain, mapping, in.Body.ClientID)
 	if err != nil {
+		return nil, err
+	}
+
+	// Anchors create any scope/client. A non-anchor administrator (client-admin)
+	// may only create CLIENT-scope users in a client they can access.
+	if !ac.IsAnchor() && scope != "CLIENT" {
+		return nil, httperror.Forbidden("Client administrators can only create client-scope users")
+	}
+	if err := auth.RequireUserAdmin(ac, clientID); err != nil {
 		return nil, err
 	}
 
@@ -714,6 +722,72 @@ func (s *State) requireScopeByID(ctx context.Context, ac *auth.AuthContext, id s
 	return auth.CheckScopeAccess(ac, p.ClientID)
 }
 
+// assertAssignableRoles bounds a non-anchor (client-admin) role assignment:
+// every role must be application-scoped (ApplicationID set — i.e. NOT a platform
+// role) and belong to an application the caller can access. This is what stops a
+// client-admin from granting platform roles (escalation) or app roles their
+// client isn't entitled to. Anchors are not subject to this (callers skip it).
+func (s *State) assertAssignableRoles(ctx context.Context, ac *auth.AuthContext, roleNames []string) error {
+	for _, name := range roleNames {
+		r, err := s.Roles.FindByName(ctx, name)
+		if err != nil {
+			return usecase.Internal("REPO", "find_role failed", err)
+		}
+		if r == nil {
+			return usecase.Validation("UNKNOWN_ROLE", "role not found: "+name)
+		}
+		if r.ApplicationID == nil {
+			return usecase.Authorization("PLATFORM_ROLE_FORBIDDEN",
+				"client administrators cannot assign platform roles")
+		}
+		if !containsStr(ac.Applications, *r.ApplicationID) {
+			return usecase.Authorization("ROLE_APP_FORBIDDEN",
+				"role belongs to an application your client cannot access")
+		}
+	}
+	return nil
+}
+
+func containsStr(xs []string, s string) bool {
+	for _, x := range xs {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
+
+// protectedRoleNames returns the subset of roleNames a non-anchor admin may NOT
+// manage — platform roles (ApplicationID nil), unknown roles, or roles for apps
+// the admin can't access. A client-admin's role SET preserves these so it can't
+// strip a user's platform / other-application roles.
+func (s *State) protectedRoleNames(ctx context.Context, ac *auth.AuthContext, roleNames []string) ([]string, error) {
+	var out []string
+	for _, name := range roleNames {
+		r, err := s.Roles.FindByName(ctx, name)
+		if err != nil {
+			return nil, usecase.Internal("REPO", "find_role failed", err)
+		}
+		if r == nil || r.ApplicationID == nil || !containsStr(ac.Applications, *r.ApplicationID) {
+			out = append(out, name)
+		}
+	}
+	return out, nil
+}
+
+func dedupeStrings(xs []string) []string {
+	seen := make(map[string]struct{}, len(xs))
+	out := make([]string, 0, len(xs))
+	for _, x := range xs {
+		if _, ok := seen[x]; ok {
+			continue
+		}
+		seen[x] = struct{}{}
+		out = append(out, x)
+	}
+	return out
+}
+
 type updateInput struct {
 	ID   string `path:"id"`
 	Body UpdatePrincipalRequest
@@ -752,6 +826,9 @@ func (s *State) activate(ctx context.Context, in *idInput) (*statusMessageOutput
 	if err := auth.CanWritePrincipals(ac); err != nil {
 		return nil, err
 	}
+	if err := s.requireScopeByID(ctx, ac, in.ID); err != nil {
+		return nil, err
+	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
 	if _, err := operations.ActivateUser(ctx, s.Repo, s.UoW, operations.ActivateCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
@@ -762,6 +839,9 @@ func (s *State) activate(ctx context.Context, in *idInput) (*statusMessageOutput
 func (s *State) deactivate(ctx context.Context, in *idInput) (*statusMessageOutput, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePrincipals(ac); err != nil {
+		return nil, err
+	}
+	if err := s.requireScopeByID(ctx, ac, in.ID); err != nil {
 		return nil, err
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
@@ -781,6 +861,9 @@ func (s *State) resetPassword(ctx context.Context, in *resetPasswordInput) (*sta
 	if err := auth.CanWritePrincipals(ac); err != nil {
 		return nil, err
 	}
+	if err := s.requireScopeByID(ctx, ac, in.ID); err != nil {
+		return nil, err
+	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
 	if _, err := operations.ResetPassword(ctx, s.Repo, s.UoW,
 		operations.ResetPasswordCommand{
@@ -796,6 +879,9 @@ func (s *State) resetPassword(ctx context.Context, in *resetPasswordInput) (*sta
 func (s *State) delete(ctx context.Context, in *idInput) (*emptyOutput, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanDeletePrincipals(ac); err != nil {
+		return nil, err
+	}
+	if err := s.requireScopeByID(ctx, ac, in.ID); err != nil {
 		return nil, err
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
@@ -816,9 +902,6 @@ type rolesAssignedOutput struct {
 
 func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*rolesAssignedOutput, error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
-		return nil, err
-	}
 	p, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
@@ -826,14 +909,33 @@ func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*rolesAs
 	if p == nil {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
+	if err := auth.RequireUserAdmin(ac, p.ClientID); err != nil {
+		return nil, err
+	}
+	// A non-anchor administrator (client-admin) may only assign
+	// application-scoped roles for applications their client can access —
+	// never platform roles, never apps outside their reach. Because this is a
+	// SET, we also preserve the user's existing protected roles so the client
+	// admin can't strip a user's platform / other-application roles.
+	effectiveRoles := in.Body.Roles
+	if !ac.IsAnchor() {
+		if err := s.assertAssignableRoles(ctx, ac, in.Body.Roles); err != nil {
+			return nil, err
+		}
+		preserved, perr := s.protectedRoleNames(ctx, ac, roleNamesFrom(p.Roles))
+		if perr != nil {
+			return nil, perr
+		}
+		effectiveRoles = dedupeStrings(append(append([]string{}, in.Body.Roles...), preserved...))
+	}
 	old := stringSet(roleNamesFrom(p.Roles))
-	desired := stringSet(in.Body.Roles)
+	desired := stringSet(effectiveRoles)
 	added := setDifference(desired, old)
 	removed := setDifference(old, desired)
 
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
 	if _, err := operations.AssignRoles(ctx, s.Repo, s.Roles, s.UoW,
-		operations.AssignRolesCommand{UserID: in.ID, Roles: in.Body.Roles}, ec); err != nil {
+		operations.AssignRolesCommand{UserID: in.ID, Roles: effectiveRoles}, ec); err != nil {
 		return nil, err
 	}
 	refreshed, err := s.Repo.FindByID(ctx, in.ID)
@@ -1013,7 +1115,14 @@ type sendPasswordResetInput struct {
 
 func (s *State) sendPasswordReset(ctx context.Context, in *sendPasswordResetInput) (*statusMessageOutput, error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	p, err := s.Repo.FindByID(ctx, in.ID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
+	}
+	if p == nil {
+		return nil, httperror.NotFound("Principal", in.ID)
+	}
+	if err := auth.RequireUserAdmin(ac, p.ClientID); err != nil {
 		return nil, err
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
@@ -1025,13 +1134,10 @@ func (s *State) sendPasswordReset(ctx context.Context, in *sendPasswordResetInpu
 }
 
 // resetTwoFactor clears a user's enrolled 2FA (factors, recovery codes, pending
-// PINs, trusted devices). Anchor-only. The user must re-enroll at next sign-in
-// if their domain requires 2FA.
+// PINs, trusted devices). Anchor or a client-administrator of the user's client.
+// The user must re-enroll at next sign-in if their domain requires 2FA.
 func (s *State) resetTwoFactor(ctx context.Context, in *idInput) (*statusMessageOutput, error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
-		return nil, err
-	}
 	if s.MFA == nil {
 		return nil, usecase.Internal("MFA_NOT_CONFIGURED", "Two-factor service not configured", nil)
 	}
@@ -1041,6 +1147,9 @@ func (s *State) resetTwoFactor(ctx context.Context, in *idInput) (*statusMessage
 	}
 	if p == nil {
 		return nil, httperror.NotFound("Principal", in.ID)
+	}
+	if err := auth.RequireUserAdmin(ac, p.ClientID); err != nil {
+		return nil, err
 	}
 	if !p.IsUser() {
 		return nil, usecase.Validation("NOT_USER", "Two-factor reset only applies to user accounts")
@@ -1249,15 +1358,20 @@ type addRoleInput struct {
 
 func (s *State) addRole(ctx context.Context, in *addRoleInput) (*getOutput, error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
-		return nil, err
-	}
 	p, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if p == nil {
 		return nil, httperror.NotFound("Principal", in.ID)
+	}
+	if err := auth.RequireUserAdmin(ac, p.ClientID); err != nil {
+		return nil, err
+	}
+	if !ac.IsAnchor() {
+		if err := s.assertAssignableRoles(ctx, ac, []string{in.Body.Role}); err != nil {
+			return nil, err
+		}
 	}
 	roles := uniqueRoleNames(p.Roles)
 	if _, ok := roles[in.Body.Role]; !ok { // skip mutation when already present (idempotent)
@@ -1284,15 +1398,22 @@ type removeRoleInput struct {
 
 func (s *State) removeRole(ctx context.Context, in *removeRoleInput) (*getOutput, error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
-		return nil, err
-	}
 	p, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if p == nil {
 		return nil, httperror.NotFound("Principal", in.ID)
+	}
+	if err := auth.RequireUserAdmin(ac, p.ClientID); err != nil {
+		return nil, err
+	}
+	// A non-anchor admin may only remove roles they could also assign — so they
+	// can't strip a user's platform / other-application roles.
+	if !ac.IsAnchor() {
+		if err := s.assertAssignableRoles(ctx, ac, []string{in.Role}); err != nil {
+			return nil, err
+		}
 	}
 	current := roleNamesFrom(p.Roles)
 	desired := make([]string, 0, len(current))

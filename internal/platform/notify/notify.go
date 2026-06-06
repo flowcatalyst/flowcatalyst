@@ -99,6 +99,16 @@ func (n *Notifier) NewTrustedDevice(ctx context.Context, to, label string) {
 	n.send(ctx, to, "A new device was remembered", body+footer)
 }
 
+// ResetApprovalNeeded asks a client-administrator to approve a lost-device
+// password reset (the requesting user has no second factor on file).
+func (n *Notifier) ResetApprovalNeeded(ctx context.Context, to, link string) {
+	n.send(ctx, to, "A password reset needs your approval",
+		"<p>A user in your organisation has requested a password reset but has no "+
+			"authenticator or passkey on file, so it needs an administrator to "+
+			"approve it.</p>"+
+			"<p><a href=\""+link+"\">Review the request</a></p>")
+}
+
 func methodLabel(method string) string {
 	switch method {
 	case "TOTP":

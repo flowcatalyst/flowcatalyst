@@ -33,6 +33,7 @@ import (
 	platformconfigapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig/api"
 	principalapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/api"
 	processapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/process/api"
+	resetapprovalapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/resetapproval/api"
 	roleapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/api"
 	scheduledjobapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/sdksync"
@@ -67,6 +68,7 @@ func main() {
 	platformconfigapi.Register(api, &platformconfigapi.State{})
 	principalapi.Register(api, &principalapi.State{})
 	processapi.Register(api, &processapi.State{})
+	resetapprovalapi.Register(api, &resetapprovalapi.State{})
 	roleapi.Register(api, &roleapi.State{})
 	scheduledjobapi.Register(api, &scheduledjobapi.State{})
 	serviceaccountapi.Register(api, &serviceaccountapi.State{})

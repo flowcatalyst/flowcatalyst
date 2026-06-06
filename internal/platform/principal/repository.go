@@ -49,6 +49,33 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{q: dbq.New(pool), pool: pool}
 }
 
+// FindClientAdminEmails returns the emails of active client-administrators whose
+// home client is clientID — used to notify them of a pending lost-device reset
+// (Phase 8). Matches the seeded platform:client-admin role.
+func (r *Repository) FindClientAdminEmails(ctx context.Context, clientID string) ([]string, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT DISTINCT p.email
+		   FROM iam_principals p
+		   JOIN iam_principal_roles pr ON pr.principal_id = p.id
+		  WHERE pr.role_name = 'platform:client-admin'
+		    AND p.active = TRUE
+		    AND p.email IS NOT NULL
+		    AND p.client_id = $1`, clientID)
+	if err != nil {
+		return nil, fmt.Errorf("find client admins: %w", err)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var email string
+		if err := rows.Scan(&email); err != nil {
+			return nil, err
+		}
+		out = append(out, email)
+	}
+	return out, rows.Err()
+}
+
 // FindByID loads a principal by id, with role assignments hydrated
 // from iam_principal_roles.
 func (r *Repository) FindByID(ctx context.Context, id string) (*Principal, error) {

@@ -44,9 +44,12 @@ type Token struct {
 	Purpose     Purpose `json:"purpose"`
 	// Reset2FA, when set, clears the user's enrolled second factors on
 	// confirm and forces re-enrollment (lost-device recovery path).
-	Reset2FA  bool      `json:"reset2fa"`
-	ExpiresAt time.Time `json:"expiresAt"`
-	CreatedAt time.Time `json:"createdAt"`
+	Reset2FA bool `json:"reset2fa"`
+	// RequiresFactor, when set, means confirming additionally requires proving
+	// an authenticator (TOTP) code — email alone can't authorize the reset.
+	RequiresFactor bool      `json:"requiresFactor"`
+	ExpiresAt      time.Time `json:"expiresAt"`
+	CreatedAt      time.Time `json:"createdAt"`
 }
 
 // New constructs a standard reset Token.
@@ -82,9 +85,9 @@ func (r *Repository) Insert(ctx context.Context, t *Token) error {
 	}
 	_, err := r.pool.Exec(ctx,
 		`INSERT INTO iam_password_reset_tokens
-		     (id, principal_id, token_hash, purpose, reset_2fa, expires_at, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		t.ID, t.PrincipalID, t.TokenHash, string(purpose), t.Reset2FA, t.ExpiresAt, t.CreatedAt)
+		     (id, principal_id, token_hash, purpose, reset_2fa, requires_factor, expires_at, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		t.ID, t.PrincipalID, t.TokenHash, string(purpose), t.Reset2FA, t.RequiresFactor, t.ExpiresAt, t.CreatedAt)
 	return err
 }
 
@@ -94,7 +97,7 @@ func (r *Repository) Consume(ctx context.Context, tokenHash string) (*Token, err
 	row := r.pool.QueryRow(ctx,
 		`DELETE FROM iam_password_reset_tokens
 		   WHERE token_hash = $1 AND expires_at > NOW()
-		 RETURNING id, principal_id, token_hash, purpose, reset_2fa, expires_at, created_at`,
+		 RETURNING id, principal_id, token_hash, purpose, reset_2fa, requires_factor, expires_at, created_at`,
 		tokenHash)
 	return scanToken(row)
 }
@@ -104,7 +107,7 @@ func (r *Repository) Consume(ctx context.Context, tokenHash string) (*Token, err
 // when absent. Expiry is reported by the caller via Token.IsExpired.
 func (r *Repository) FindByTokenHash(ctx context.Context, tokenHash string) (*Token, error) {
 	row := r.pool.QueryRow(ctx,
-		`SELECT id, principal_id, token_hash, purpose, reset_2fa, expires_at, created_at
+		`SELECT id, principal_id, token_hash, purpose, reset_2fa, requires_factor, expires_at, created_at
 		   FROM iam_password_reset_tokens WHERE token_hash = $1`,
 		tokenHash)
 	return scanToken(row)
@@ -114,7 +117,7 @@ func (r *Repository) FindByTokenHash(ctx context.Context, tokenHash string) (*To
 func scanToken(row pgx.Row) (*Token, error) {
 	var t Token
 	var purpose string
-	if err := row.Scan(&t.ID, &t.PrincipalID, &t.TokenHash, &purpose, &t.Reset2FA, &t.ExpiresAt, &t.CreatedAt); err != nil {
+	if err := row.Scan(&t.ID, &t.PrincipalID, &t.TokenHash, &purpose, &t.Reset2FA, &t.RequiresFactor, &t.ExpiresAt, &t.CreatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}

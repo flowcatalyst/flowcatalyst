@@ -25,6 +25,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/passwordreset"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	principalops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/resetapproval"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/email"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -154,6 +155,21 @@ type State struct {
 	Policy         twofa.Policy
 	Notifier       *notify.Notifier
 	EnrollTokenTTL time.Duration // default 30m
+
+	// Lost-device approval queue (Phase 8). When Approvals is wired, a
+	// self-service reset for a user with no strong factor files a request here
+	// and notifies the user's client-administrators (found via ClientAdmins)
+	// instead of issuing a token. All optional.
+	Approvals    *resetapproval.Repository
+	ClientAdmins ClientAdminFinder
+	ApprovalTTL  time.Duration // default 72h
+}
+
+// ClientAdminFinder returns the email addresses of the client-administrators of
+// a client (to notify them of a pending reset). The principal repo implements
+// it.
+type ClientAdminFinder interface {
+	FindClientAdminEmails(ctx context.Context, clientID string) ([]string, error)
 }
 
 func (s *State) enrollTTL() time.Duration {
@@ -179,6 +195,8 @@ type validateTokenResponse struct {
 	Valid bool `json:"valid"`
 	// Reason is null when valid (Rust emits null, not absent) → no omitempty.
 	Reason *string `json:"reason"`
+	// RequiresFactor tells the SPA to ask for an authenticator code on confirm.
+	RequiresFactor bool `json:"requiresFactor"`
 }
 
 // ── POST /auth/password-reset/request ───────────────────────────────────────
@@ -224,6 +242,14 @@ func (s *State) tryIssueToken(ctx context.Context, email string) error {
 		return nil
 	}
 
+	// Strong-factor gate (Phase 8): a self-service reset must be authorized by an
+	// authenticator (TOTP) at confirm time — email alone (incl. email PIN) can't.
+	// Passkey users sign in with their passkey rather than resetting. No strong
+	// factor → route to the client-admin approval queue (queueApproval).
+	if !s.hasStrongFactor(ctx, p.ID) {
+		return s.queueApproval(ctx, p)
+	}
+
 	if err := s.Tokens.DeleteByPrincipalID(ctx, p.ID); err != nil {
 		return err
 	}
@@ -232,6 +258,7 @@ func (s *State) tryIssueToken(ctx context.Context, email string) error {
 		return err
 	}
 	tok := passwordreset.New(p.ID, hashToken(raw), time.Now().UTC().Add(resetTokenTTL))
+	tok.RequiresFactor = true
 	if err := s.Tokens.Insert(ctx, tok); err != nil {
 		return err
 	}
@@ -244,6 +271,55 @@ func (s *State) tryIssueToken(ctx context.Context, email string) error {
 		}
 	}
 	return nil
+}
+
+// hasStrongFactor reports whether the user has a confirmed authenticator (TOTP)
+// — the only factor that authorizes a self-service reset confirm.
+func (s *State) hasStrongFactor(ctx context.Context, principalID string) bool {
+	if s.MFA == nil {
+		return false
+	}
+	methods, err := s.MFA.ConfirmedMethods(ctx, principalID)
+	if err != nil {
+		return false
+	}
+	for _, m := range methods {
+		if m == mfa.MethodTOTP {
+			return true
+		}
+	}
+	return false
+}
+
+// queueApproval files a lost-device reset for client-admin approval and notifies
+// the user's client-administrators. Internal anchor users (no client) get
+// nothing — they are expected to be OIDC-federated. Best-effort throughout.
+func (s *State) queueApproval(ctx context.Context, p *principal.Principal) error {
+	if s.Approvals == nil || p.ClientID == nil {
+		return nil
+	}
+	if pending, _ := s.Approvals.HasPending(ctx, p.ID); pending {
+		return nil
+	}
+	req := resetapproval.New(p.ID, p.ClientID, s.approvalTTL())
+	if err := s.Approvals.Insert(ctx, req); err != nil {
+		return err
+	}
+	if s.ClientAdmins != nil && s.Notifier != nil {
+		admins, _ := s.ClientAdmins.FindClientAdminEmails(ctx, *p.ClientID)
+		link := strings.TrimRight(s.ExternalBaseURL, "/") + "/authentication/reset-approvals/" + req.ID
+		for _, addr := range admins {
+			s.Notifier.ResetApprovalNeeded(ctx, addr, link)
+		}
+	}
+	return nil
+}
+
+func (s *State) approvalTTL() time.Duration {
+	if s.ApprovalTTL > 0 {
+		return s.ApprovalTTL
+	}
+	return 72 * time.Hour
 }
 
 // ── GET /auth/password-reset/validate?token= ────────────────────────────────
@@ -259,7 +335,7 @@ func (s *State) validateToken(w http.ResponseWriter, r *http.Request) {
 	case t.IsExpired():
 		writeJSON(w, http.StatusOK, validateTokenResponse{Valid: false, Reason: reason("expired")})
 	default:
-		writeJSON(w, http.StatusOK, validateTokenResponse{Valid: true, Reason: nil})
+		writeJSON(w, http.StatusOK, validateTokenResponse{Valid: true, Reason: nil, RequiresFactor: t.RequiresFactor})
 	}
 }
 
@@ -267,8 +343,9 @@ func (s *State) validateToken(w http.ResponseWriter, r *http.Request) {
 
 func (s *State) confirmReset(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Token    string `json:"token"`
-		Password string `json:"password"`
+		Token      string `json:"token"`
+		Password   string `json:"password"`
+		FactorCode string `json:"factorCode"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		httperror.Write(w, usecase.Validation("INVALID_BODY", "malformed request body"))
@@ -288,6 +365,25 @@ func (s *State) confirmReset(w http.ResponseWriter, r *http.Request) {
 		_ = s.Tokens.DeleteByPrincipalID(r.Context(), t.PrincipalID) // best-effort cleanup
 		httperror.Write(w, usecase.Validation("EXPIRED_TOKEN", "Reset token has expired."))
 		return
+	}
+
+	// Strong-factor gate (Phase 8): a factor-flagged token additionally requires
+	// a valid authenticator (TOTP) code. We do NOT consume the token on a failed
+	// factor, so the user can retry. Email PIN is never accepted here.
+	if t.RequiresFactor {
+		if s.MFA == nil {
+			httperror.Write(w, usecase.Validation("FACTOR_REQUIRED", "Two-factor verification is required."))
+			return
+		}
+		ok, verr := s.MFA.VerifyTOTP(r.Context(), t.PrincipalID, strings.TrimSpace(body.FactorCode))
+		if verr != nil {
+			httperror.Write(w, usecase.Internal("MFA", "factor verification failed", verr))
+			return
+		}
+		if !ok {
+			httperror.Write(w, usecase.Validation("INVALID_FACTOR", "Invalid authenticator code."))
+			return
+		}
 	}
 
 	// The password write + UserPasswordReset event + audit log commit

@@ -101,8 +101,11 @@ func (s *Service) HasConfirmedMethod(ctx context.Context, principalID string) (b
 type TOTPEnrollment struct {
 	// Secret is the base32 shared secret (for manual entry).
 	Secret string `json:"secret"`
-	// URI is the otpauth:// provisioning URI (rendered as a QR code).
+	// URI is the otpauth:// provisioning URI.
 	URI string `json:"uri"`
+	// QR is the URI pre-rendered as a base64 PNG data URI (for an <img src>).
+	// Empty if rendering failed; the SPA falls back to the secret + URI.
+	QR string `json:"qr,omitempty"`
 }
 
 // BeginTOTPEnrollment generates a secret, stores it as an unconfirmed factor
@@ -139,7 +142,12 @@ func (s *Service) BeginTOTPEnrollment(ctx context.Context, principalID, accountN
 	if err := s.repo.InsertMethod(ctx, m); err != nil {
 		return nil, err
 	}
-	return &TOTPEnrollment{Secret: key.Secret(), URI: key.URL()}, nil
+	out := &TOTPEnrollment{Secret: key.Secret(), URI: key.URL()}
+	// QR is best-effort — manual-entry secret + URI still work without it.
+	if qr, qerr := qrDataURI(key, 240); qerr == nil {
+		out.QR = qr
+	}
+	return out, nil
 }
 
 // ConfirmTOTPEnrollment validates the first code against the pending secret and

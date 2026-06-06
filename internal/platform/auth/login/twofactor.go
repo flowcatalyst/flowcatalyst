@@ -266,7 +266,7 @@ func (e *Endpoint) handle2FAEnrollTOTPBegin(w http.ResponseWriter, r *http.Reque
 		e.writeEnrollErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"secret": enr.Secret, "uri": enr.URI})
+	writeJSON(w, http.StatusOK, map[string]any{"secret": enr.Secret, "uri": enr.URI, "qr": enr.QR})
 }
 
 func (e *Endpoint) handle2FAEnrollTOTPConfirm(w http.ResponseWriter, r *http.Request) {
@@ -364,8 +364,13 @@ func (e *Endpoint) auditMFA(ctx context.Context, principalID, operation string) 
 
 // ensureRecoveryCodes generates a first recovery-code set only when the user
 // has none, returning the plaintext codes (shown once) or nil. Notifies on
-// generation.
+// generation. Recovery codes only back authenticator-app (TOTP) 2FA — email is
+// its own recovery channel, so an email-only user never gets them.
 func (e *Endpoint) ensureRecoveryCodes(ctx context.Context, p *principal.Principal) []string {
+	confirmed, err := e.cfg.MFA.ConfirmedMethods(ctx, p.ID)
+	if err != nil || !containsMethodType(confirmed, mfa.MethodTOTP) {
+		return nil
+	}
 	n, err := e.cfg.MFA.RemainingRecoveryCodes(ctx, p.ID)
 	if err != nil || n > 0 {
 		return nil
@@ -509,6 +514,15 @@ func methodStrings(ms []mfa.MethodType) []string {
 		out = append(out, string(m))
 	}
 	return out
+}
+
+func containsMethodType(ms []mfa.MethodType, t mfa.MethodType) bool {
+	for _, m := range ms {
+		if m == t {
+			return true
+		}
+	}
+	return false
 }
 
 func intersect(a, allowed []string) []string {

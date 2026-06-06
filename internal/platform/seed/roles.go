@@ -72,6 +72,21 @@ func PlatformRoles() []role.Role {
 				permIAMClientAccessRead,
 			}),
 
+		// platform:client-admin — delegated user management scoped to the
+		// administrator's own client(s). Same user permissions as iam-admin
+		// MINUS client-access grant/revoke and role authoring. Every action is
+		// additionally scope-gated to the client(s) the admin can access (via
+		// auth.RequireUserAdmin), and role assignment is bounded to the client's
+		// own application roles — never platform roles. See
+		// docs/auth-hardening-plan.md.
+		mk("client-admin", "Client Administrator",
+			"Manages users within the administrator's own client",
+			[]string{
+				permIAMUserRead, permIAMUserCreate, permIAMUserUpdate, permIAMUserDelete,
+				permIAMUserActivate, permIAMUserDeactivate, permIAMUserAssignRoles,
+				permIAMRoleRead,
+			}),
+
 		// platform:auth-admin
 		mk("auth-admin", "Platform Auth Admin",
 			"Manages authentication configuration",
