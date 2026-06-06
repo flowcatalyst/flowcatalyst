@@ -2189,10 +2189,7 @@
         "required": [
           "emailDomain",
           "identityProviderId",
-          "scopeType",
-          "syncRolesFromIdp",
-          "require2fa",
-          "rememberDeviceEnabled"
+          "scopeType"
         ],
         "type": "object"
       },

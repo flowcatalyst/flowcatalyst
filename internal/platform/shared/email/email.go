@@ -32,12 +32,16 @@ type Service interface {
 }
 
 // LogService logs the email instead of sending it — used when SMTP isn't
-// configured. 1:1 with Rust LogEmailService.
+// configured. Diverges from Rust's LogEmailService by also logging the body:
+// with no mailer, set-password links and 2FA email PINs live in the body, so
+// dumping it to the console is what makes those flows testable locally.
 type LogService struct{}
 
-// Send logs the would-be email and returns nil.
+// Send logs the would-be email (including the body, so dev can read the
+// link/PIN) and returns nil.
 func (LogService) Send(_ context.Context, m Message) error {
-	slog.Warn("[email] SMTP not configured — not sending", "to", m.To, "subject", m.Subject)
+	slog.Warn("[email] SMTP not configured — logging instead of sending",
+		"to", m.To, "subject", m.Subject, "body", m.HTMLBody)
 	return nil
 }
 

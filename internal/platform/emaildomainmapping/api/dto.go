@@ -18,11 +18,14 @@ type CreateMappingRequest struct {
 	GrantedClientIDs     []string `json:"grantedClientIds,omitempty"`
 	RequiredOIDCTenantID *string  `json:"requiredOidcTenantId,omitempty"`
 	AllowedRoleIDs       []string `json:"allowedRoleIds,omitempty"`
-	SyncRolesFromIDP     bool     `json:"syncRolesFromIdp"`
-	// 2FA enforcement for internal-auth users of this domain.
-	Require2FA            bool     `json:"require2fa"`
+	// syncRolesFromIdp is only meaningful for OIDC domains; omitempty keeps it
+	// optional (default false) so internal-domain creates needn't send it.
+	SyncRolesFromIDP bool `json:"syncRolesFromIdp,omitempty"`
+	// 2FA enforcement for internal-auth users of this domain. All optional
+	// (default false / empty) — OIDC-domain creates omit them entirely.
+	Require2FA            bool     `json:"require2fa,omitempty"`
 	Allowed2FAMethods     []string `json:"allowed2faMethods,omitempty" doc:"Permitted 2FA methods (TOTP, EMAIL_PIN). ≥1 required when require2fa is set."`
-	RememberDeviceEnabled bool     `json:"rememberDeviceEnabled"`
+	RememberDeviceEnabled bool     `json:"rememberDeviceEnabled,omitempty"`
 	RememberDeviceDays    int      `json:"rememberDeviceDays,omitempty"`
 }
 

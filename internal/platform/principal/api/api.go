@@ -623,8 +623,17 @@ func (s *State) createUser(ctx context.Context, in *createUserInput) (*getOutput
 // password gets a plain "account created" welcome (2FA, if required, is then
 // enforced at first sign-in). Federated/OIDC users get nothing.
 func (s *State) notifyNewUser(ctx context.Context, p *principal.Principal, password *string) {
-	if p == nil || p.UserIdentity == nil || p.UserIdentity.Provider != nil {
-		return // service account, or federated user
+	if p == nil || p.UserIdentity == nil {
+		return // service account
+	}
+	// Skip federated/OIDC users — they manage credentials at their IdP. NB:
+	// the repo loads UserIdentity.Provider from idp_type for ALL users (so it's
+	// "INTERNAL" for internal users, not nil) — federated must be detected via
+	// ExternalIdentity, or Provider=="OIDC" for an OIDC user created before its
+	// first callback populates ExternalIdentity.
+	if p.ExternalIdentity != nil ||
+		(p.UserIdentity.Provider != nil && *p.UserIdentity.Provider == "OIDC") {
+		return
 	}
 	emailAddr := strings.TrimSpace(p.UserIdentity.Email)
 	if emailAddr == "" {
