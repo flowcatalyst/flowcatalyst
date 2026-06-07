@@ -719,7 +719,23 @@ func (s *State) requireScopeByID(ctx context.Context, ac *auth.AuthContext, id s
 	if p == nil {
 		return httperror.NotFound("Principal", id)
 	}
+	if err := blockNonClientTarget(ac, p); err != nil {
+		return err
+	}
 	return auth.CheckScopeAccess(ac, p.ClientID)
+}
+
+// blockNonClientTarget stops a non-anchor administrator (client-admin) from
+// acting on an ANCHOR- or PARTNER-scoped principal. Anchors are unrestricted.
+// Client access alone is not enough: a PARTNER user's home client may be one the
+// admin can reach, but partner/anchor users are out of a client-admin's remit —
+// they manage only CLIENT-scope users. Pairs with CanAccessClient/CheckScopeAccess,
+// which bound *which* client; this bounds *which kind* of user.
+func blockNonClientTarget(ac *auth.AuthContext, p *principal.Principal) error {
+	if ac != nil && !ac.IsAnchor() && p != nil && p.Scope != principal.ScopeClient {
+		return httperror.Forbidden("Client administrators can only manage client-scope users")
+	}
+	return nil
 }
 
 // assertAssignableRoles bounds a non-anchor (client-admin) role assignment:
@@ -910,6 +926,9 @@ func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*rolesAs
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
 	if err := auth.RequireUserAdmin(ac, p.ClientID); err != nil {
+		return nil, err
+	}
+	if err := blockNonClientTarget(ac, p); err != nil {
 		return nil, err
 	}
 	// A non-anchor administrator (client-admin) may only assign
@@ -1125,6 +1144,9 @@ func (s *State) sendPasswordReset(ctx context.Context, in *sendPasswordResetInpu
 	if err := auth.RequireUserAdmin(ac, p.ClientID); err != nil {
 		return nil, err
 	}
+	if err := blockNonClientTarget(ac, p); err != nil {
+		return nil, err
+	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
 	if err := operations.SendPasswordReset(ctx, s.Repo, s.PasswordEmailer,
 		operations.SendPasswordResetCommand{ID: in.ID, Reset2FA: in.Body.Reset2FA}, ec); err != nil {
@@ -1149,6 +1171,9 @@ func (s *State) resetTwoFactor(ctx context.Context, in *idInput) (*statusMessage
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
 	if err := auth.RequireUserAdmin(ac, p.ClientID); err != nil {
+		return nil, err
+	}
+	if err := blockNonClientTarget(ac, p); err != nil {
 		return nil, err
 	}
 	if !p.IsUser() {
@@ -1368,6 +1393,9 @@ func (s *State) addRole(ctx context.Context, in *addRoleInput) (*getOutput, erro
 	if err := auth.RequireUserAdmin(ac, p.ClientID); err != nil {
 		return nil, err
 	}
+	if err := blockNonClientTarget(ac, p); err != nil {
+		return nil, err
+	}
 	if !ac.IsAnchor() {
 		if err := s.assertAssignableRoles(ctx, ac, []string{in.Body.Role}); err != nil {
 			return nil, err
@@ -1406,6 +1434,9 @@ func (s *State) removeRole(ctx context.Context, in *removeRoleInput) (*getOutput
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
 	if err := auth.RequireUserAdmin(ac, p.ClientID); err != nil {
+		return nil, err
+	}
+	if err := blockNonClientTarget(ac, p); err != nil {
 		return nil, err
 	}
 	// A non-anchor admin may only remove roles they could also assign — so they

@@ -101,6 +101,32 @@ TUID=$(json POST /api/principals "$CA" \
 check "client-admin BLOCKED from assigning a platform role" \
 	"$(code PUT "/api/principals/$TUID/roles" "$CA" '{"roles":["platform:admin"]}')" "403"
 
+# ── client-admin must not act on ANCHOR users (no client of their own) ──
+AUID=$(json POST /api/principals "$ADMIN" \
+	"{\"email\":\"anchor-$SUFFIX@example.test\",\"name\":\"Anchor U\",\"scope\":\"ANCHOR\"}" \
+	| jq -r '.id // empty')
+check "admin created an ANCHOR user (setup)" "$([ -n "$AUID" ] && echo yes || echo no)" "yes"
+check "client-admin BLOCKED from deactivating an anchor user" \
+	"$(code POST "/api/principals/$AUID/deactivate" "$CA")" "403"
+check "client-admin BLOCKED from assigning roles to an anchor user" \
+	"$(code PUT "/api/principals/$AUID/roles" "$CA" '{"roles":[]}')" "403"
+
+# ── the key new control: a PARTNER user whose HOME CLIENT the admin CAN access
+# must still be off-limits (scope, not just client). Without blockNonClientTarget
+# these would wrongly succeed because CanAccessClient(CLIENT) passes.
+PUID=$(json POST /api/principals "$ADMIN" \
+	"{\"email\":\"partner-$SUFFIX@example.test\",\"name\":\"Partner U\",\"scope\":\"PARTNER\",\"clientId\":\"$CLIENT\"}" \
+	| jq -r '.id // empty')
+check "admin created a PARTNER user in the client (setup)" "$([ -n "$PUID" ] && echo yes || echo no)" "yes"
+check "client-admin BLOCKED from deactivating a partner user in their client" \
+	"$(code POST "/api/principals/$PUID/deactivate" "$CA")" "403"
+check "client-admin BLOCKED from resetting a partner user's password" \
+	"$(code POST "/api/principals/$PUID/reset-password" "$CA" '{"newPassword":"Whatever123!"}')" "403"
+check "client-admin BLOCKED from assigning roles to a partner user" \
+	"$(code PUT "/api/principals/$PUID/roles" "$CA" '{"roles":[]}')" "403"
+check "client-admin BLOCKED from resetting a partner user's 2FA" \
+	"$(code POST "/api/principals/$PUID/reset-2fa" "$CA")" "403"
+
 echo "----------------------------------------------------------------------"
 echo "PASS=$PASS  FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]
