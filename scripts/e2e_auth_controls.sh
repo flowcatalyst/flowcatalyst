@@ -109,6 +109,12 @@ check "client-admin CAN set application access (declarative) on own user" \
 check "client-admin BLOCKED from granting an application the client cannot access" \
 	"$(code PUT "/api/principals/$TUID/application-access" "$CA" '{"applicationIds":["app_unreachable"]}')" "403"
 
+# ── bulk import: clean row created, platform-role row rejected (role bounding) ──
+check "client-admin bulk-import: clean row created (1), platform-role row failed (1)" \
+	"$(json POST /api/principals/bulk-import "$CA" \
+		"{\"clientId\":\"$CLIENT\",\"users\":[{\"name\":\"Imp Clean\",\"email\":\"imp1-$SUFFIX@example.test\",\"roles\":[]},{\"name\":\"Imp BadRole\",\"email\":\"imp2-$SUFFIX@example.test\",\"roles\":[\"platform:admin\"]}]}" \
+		| jq -r '.created==1 and .failed==1')" "true"
+
 # ── client-admin must not act on ANCHOR users (no client of their own) ──
 AUID=$(json POST /api/principals "$ADMIN" \
 	"{\"email\":\"anchor-$SUFFIX@example.test\",\"name\":\"Anchor U\",\"scope\":\"ANCHOR\"}" \

@@ -3,6 +3,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -93,6 +94,15 @@ func Register(api huma.API, s *State) {
 		Tags:          []string{tag},
 		DefaultStatus: http.StatusOK,
 	}, s.createUser)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "bulkImportUsers",
+		Method:        http.MethodPost,
+		Path:          "/api/principals/bulk-import",
+		Summary:       "Bulk-import CLIENT users for a client (CSV onboarding)",
+		Tags:          []string{tag},
+		DefaultStatus: http.StatusOK,
+	}, s.bulkImport)
 
 	huma.Register(api, huma.Operation{
 		OperationID:   "getPrincipal",
@@ -504,6 +514,132 @@ func (s *State) create(ctx context.Context, in *createInput) (*createOutput, err
 		s.notifyNewUser(ctx, created, in.Body.Password)
 	}
 	return &createOutput{Body: apicommon.CreatedResponse{ID: committed.Event().UserID}}, nil
+}
+
+type bulkImportInput struct {
+	Body BulkImportRequest
+}
+
+type bulkImportOutput struct {
+	Body BulkImportResponse
+}
+
+// bulkImport onboards a list of CLIENT users under one client (CSV import).
+// Each missing user is created (passwordless → invite email) with its listed
+// roles; existing users are skipped. Roles are validated against the client's
+// applications for a non-anchor administrator — exactly like single role
+// assignment — so a client-admin can't grant a role the client isn't entitled to.
+func (s *State) bulkImport(ctx context.Context, in *bulkImportInput) (*bulkImportOutput, error) {
+	ac := auth.FromContext(ctx)
+	clientID := strings.TrimSpace(in.Body.ClientID)
+	if clientID == "" {
+		return nil, httperror.BadRequest("CLIENT_REQUIRED", "A target client is required")
+	}
+	// Non-anchor administrators create only CLIENT-scope users in a client they
+	// can access; RequireUserAdmin enforces both.
+	if err := auth.RequireUserAdmin(ac, &clientID); err != nil {
+		return nil, err
+	}
+	if len(in.Body.Users) == 0 {
+		return nil, httperror.BadRequest("NO_ROWS", "No users to import")
+	}
+	if len(in.Body.Users) > 1000 {
+		return nil, httperror.BadRequest("TOO_MANY", "Import is limited to 1000 users at a time")
+	}
+
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	out := BulkImportResponse{Results: make([]BulkImportResult, 0, len(in.Body.Users))}
+	seen := make(map[string]struct{}, len(in.Body.Users))
+
+	for i, u := range in.Body.Users {
+		email := strings.ToLower(strings.TrimSpace(u.Email))
+		status, msg := s.importRow(ctx, ac, ec, clientID, strings.TrimSpace(u.Name), email, cleanRoles(u.Roles), seen)
+		switch status {
+		case "created":
+			out.Created++
+		case "exists":
+			out.Skipped++
+		default:
+			out.Failed++
+		}
+		out.Results = append(out.Results, BulkImportResult{Row: i + 1, Email: email, Status: status, Message: msg})
+	}
+	return &bulkImportOutput{Body: out}, nil
+}
+
+// importRow processes one CSV row and returns its outcome status
+// ("created" | "exists" | "error") plus a human message.
+func (s *State) importRow(ctx context.Context, ac *auth.AuthContext, ec usecase.ExecutionContext, clientID, name, email string, roles []string, seen map[string]struct{}) (string, string) {
+	if email == "" || !strings.Contains(email, "@") {
+		return "error", "invalid email address"
+	}
+	if name == "" {
+		return "error", "name is required"
+	}
+	if _, dup := seen[email]; dup {
+		return "error", "duplicate email in file"
+	}
+	seen[email] = struct{}{}
+
+	// Validate the row's roles are available to the client (non-anchor admins).
+	if !ac.IsAnchor() {
+		if err := s.assertAssignableRoles(ctx, ac, roles); err != nil {
+			return "error", errMessage(err)
+		}
+	}
+	// Only create missing users; an existing email is skipped untouched.
+	existing, err := s.Repo.FindByEmail(ctx, email)
+	if err != nil {
+		return "error", "lookup failed"
+	}
+	if existing != nil {
+		return "exists", "already exists — skipped"
+	}
+	// Create the CLIENT user with no password → notifyNewUser sends the invite
+	// ("set your password") so they can onboard.
+	cid := clientID
+	uname := name
+	committed, err := operations.CreateUser(ctx, s.Repo, s.UoW, operations.CreateCommand{
+		Email: email, Name: &uname, Scope: "CLIENT", ClientID: &cid,
+	}, ec)
+	if err != nil {
+		return "error", errMessage(err)
+	}
+	userID := committed.Event().UserID
+	if len(roles) > 0 {
+		if _, err := operations.AssignRoles(ctx, s.Repo, s.Roles, s.UoW,
+			operations.AssignRolesCommand{UserID: userID, Roles: roles}, ec); err != nil {
+			return "created", "created, but roles not applied: " + errMessage(err)
+		}
+	}
+	if created, gerr := s.Repo.FindByID(ctx, userID); gerr == nil && created != nil {
+		s.notifyNewUser(ctx, created, nil)
+	}
+	return "created", ""
+}
+
+// cleanRoles trims, drops blanks, and dedupes the role names from a CSV cell.
+func cleanRoles(roles []string) []string {
+	out := make([]string, 0, len(roles))
+	for _, r := range roles {
+		if t := strings.TrimSpace(r); t != "" {
+			out = append(out, t)
+		}
+	}
+	return dedupeStrings(out)
+}
+
+// errMessage extracts a user-facing message from a usecase error (or falls back
+// to the raw error text).
+func errMessage(err error) string {
+	var ue *usecase.Error
+	if errors.As(err, &ue) {
+		return ue.Message
+	}
+	if err != nil {
+		return err.Error()
+	}
+	return ""
 }
 
 type createUserInput struct {

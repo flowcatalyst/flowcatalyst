@@ -312,3 +312,35 @@ type PrincipalAvailableApplication struct {
 type PrincipalAvailableApplicationsResponse struct {
 	Applications []PrincipalAvailableApplication `json:"applications"`
 }
+
+// BulkImportRequest is the body of POST /api/principals/bulk-import: a list of
+// users to onboard under a single client. Each missing user is created as a
+// CLIENT-scope user with the listed roles (validated against the client's
+// applications); existing users are skipped.
+type BulkImportRequest struct {
+	ClientID string           `json:"clientId" doc:"Client all imported users are created under"`
+	Users    []BulkImportUser `json:"users"`
+}
+
+// BulkImportUser is one CSV row: full name, email, and the roles to assign.
+type BulkImportUser struct {
+	Name  string   `json:"name"`
+	Email string   `json:"email"`
+	Roles []string `json:"roles,omitempty" doc:"Role names to assign (pipe-separated in the CSV)"`
+}
+
+// BulkImportResult is the per-row outcome.
+type BulkImportResult struct {
+	Row     int    `json:"row"`
+	Email   string `json:"email"`
+	Status  string `json:"status" doc:"created | exists | error"`
+	Message string `json:"message,omitempty"`
+}
+
+// BulkImportResponse summarises a bulk import.
+type BulkImportResponse struct {
+	Created int                `json:"created"`
+	Skipped int                `json:"skipped"`
+	Failed  int                `json:"failed"`
+	Results []BulkImportResult `json:"results"`
+}
