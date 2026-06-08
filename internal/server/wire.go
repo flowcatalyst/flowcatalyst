@@ -30,6 +30,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/oauthapi"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/provider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/twofa"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/branding"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	clientapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
@@ -215,7 +216,10 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 	// FC_WEBAUTHN_ORIGINS (comma-separated, the deploy env's name); the singular
 	// FC_WEBAUTHN_RP_ORIGIN is kept as a fallback for older configs.
 	webauthnService, err := webauthn.NewService(webauthn.Config{
-		RPDisplayName: "FlowCatalyst",
+		// Read once at startup: the passkey prompt shows this. A platform-name
+		// change takes effect on next restart (the library fixes RPDisplayName at
+		// construction); the live-read paths (2FA issuer, emails) update instantly.
+		RPDisplayName: branding.PlatformName(context.Background(), platformConfigRepo),
 		RPID:          envOr("FC_WEBAUTHN_RP_ID", "localhost"),
 		RPOrigins:     webauthnOrigins(),
 	}, webauthnCredRepo, webauthnCeremonyRepo)
@@ -244,9 +248,14 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 	// mfaTokens signs the short-lived pending/enroll tokens with a secret
 	// derived from the session-signing key (rejected by the RS256 middleware).
 	emailSvc := email.FromEnv()
-	mfaSvc := mfa.NewService(mfa.NewRepository(pool), encSvc, emailSvc, mfa.DefaultConfig())
+	// Resolve the configurable platform/brand name live for the authenticator-app
+	// issuer and security emails (re-read per use, so a change applies instantly).
+	platformName := branding.Provider(platformConfigRepo)
+	mfaCfg := mfa.DefaultConfig()
+	mfaCfg.PlatformName = platformName
+	mfaSvc := mfa.NewService(mfa.NewRepository(pool), encSvc, emailSvc, mfaCfg)
 	mfaTokens := mfatoken.NewIssuer(authProvider.SigningKey(), authProvider.Issuer())
-	notifier := notify.New(emailSvc)
+	notifier := notify.New(emailSvc).WithName(platformName)
 	twofaPolicy := twofa.Policy{Mappings: edmRepo, IDPs: idpRepo}
 
 	// Public auth surface: SPA login + cookie acquisition. MUST live

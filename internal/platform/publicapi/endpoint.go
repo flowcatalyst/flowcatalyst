@@ -17,6 +17,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/branding"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
 )
 
@@ -45,15 +46,19 @@ func (e *Endpoint) RegisterRoutes(r chi.Router) {
 // future expansion adds env-driven flags.
 type platformResponse struct {
 	Features featuresResponse `json:"features"`
+	// PlatformName is the configurable brand name, defaulting to "Flowcatalyst".
+	// The SPA uses it for the document title and as the fallback brand.
+	PlatformName string `json:"platformName"`
 }
 
 type featuresResponse struct {
 	MessagingEnabled bool `json:"messagingEnabled"`
 }
 
-func (e *Endpoint) handlePlatform(w http.ResponseWriter, _ *http.Request) {
+func (e *Endpoint) handlePlatform(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, platformResponse{
-		Features: featuresResponse{MessagingEnabled: true},
+		Features:     featuresResponse{MessagingEnabled: true},
+		PlatformName: branding.PlatformName(r.Context(), e.configs),
 	})
 }
 

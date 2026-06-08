@@ -27,6 +27,10 @@ var (
 type Config struct {
 	// Issuer is the label shown in authenticator apps (the otpauth issuer).
 	Issuer string
+	// PlatformName, when set, resolves the issuer at enrollment time (so a
+	// configured brand name shows in the authenticator app). Falls back to
+	// Issuer when nil or when it returns "".
+	PlatformName func(context.Context) string
 	// EmailPinLength is the number of digits in an email PIN.
 	EmailPinLength int
 	// EmailPinTTL is how long an email PIN stays valid.
@@ -66,6 +70,17 @@ type Service struct {
 // ErrEncryptionUnavailable); mail may be a LogService.
 func NewService(repo *Repository, enc *encryption.Service, mail email.Service, cfg Config) *Service {
 	return &Service{repo: repo, enc: enc, mail: mail, cfg: cfg}
+}
+
+// issuer resolves the authenticator-app issuer: the live platform name when a
+// resolver is configured, otherwise the static Config.Issuer.
+func (s *Service) issuer(ctx context.Context) string {
+	if s.cfg.PlatformName != nil {
+		if name := s.cfg.PlatformName(ctx); name != "" {
+			return name
+		}
+	}
+	return s.cfg.Issuer
 }
 
 // ── status ───────────────────────────────────────────────────────────────
@@ -129,7 +144,7 @@ func (s *Service) BeginTOTPEnrollment(ctx context.Context, principalID, accountN
 		}
 	}
 
-	key, err := newTOTPKey(s.cfg.Issuer, accountName)
+	key, err := newTOTPKey(s.issuer(ctx), accountName)
 	if err != nil {
 		return nil, fmt.Errorf("mfa: generate totp: %w", err)
 	}

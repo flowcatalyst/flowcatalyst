@@ -14,11 +14,34 @@ import (
 )
 
 // Notifier renders + sends security notifications over an email.Service.
-type Notifier struct{ svc email.Service }
+type Notifier struct {
+	svc  email.Service
+	name func(context.Context) string // resolves the platform/brand name; nil → default
+}
 
 // New wires a Notifier. svc is typically email.FromEnv() (a LogService when
 // SMTP isn't configured, so this still "works" in dev).
 func New(svc email.Service) *Notifier { return &Notifier{svc: svc} }
+
+// WithName sets the resolver for the platform/brand name used in email copy.
+// Fluent so existing New() call sites are unaffected; nil receiver-safe.
+func (n *Notifier) WithName(f func(context.Context) string) *Notifier {
+	if n != nil {
+		n.name = f
+	}
+	return n
+}
+
+// platformName resolves the brand name for email copy, defaulting to
+// "Flowcatalyst" when no resolver is set or it returns "".
+func (n *Notifier) platformName(ctx context.Context) string {
+	if n != nil && n.name != nil {
+		if s := n.name(ctx); s != "" {
+			return s
+		}
+	}
+	return "Flowcatalyst"
+}
 
 // send is the best-effort core: nil receiver / nil service → no-op; errors are
 // logged and swallowed.
@@ -37,7 +60,7 @@ const footer = "<p style=\"color:#888;font-size:12px\">If this wasn't you, " +
 // AccountCreated welcomes a newly-created internal user.
 func (n *Notifier) AccountCreated(ctx context.Context, to string) {
 	n.send(ctx, to, "Your account has been created",
-		"<p>Your FlowCatalyst account has been created.</p>"+
+		"<p>Your "+n.platformName(ctx)+" account has been created.</p>"+
 			"<p>Sign in to get started. If two-factor authentication is required "+
 			"for your organisation, you'll be guided through setting it up.</p>")
 }
@@ -45,7 +68,7 @@ func (n *Notifier) AccountCreated(ctx context.Context, to string) {
 // PasswordChanged confirms a password change/reset.
 func (n *Notifier) PasswordChanged(ctx context.Context, to string) {
 	n.send(ctx, to, "Your password was changed",
-		"<p>Your FlowCatalyst password was just changed.</p>"+footer)
+		"<p>Your "+n.platformName(ctx)+" password was just changed.</p>"+footer)
 }
 
 // TwoFactorEnrolled confirms a new second factor was added.
