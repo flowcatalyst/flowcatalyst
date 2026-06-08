@@ -101,6 +101,14 @@ TUID=$(json POST /api/principals "$CA" \
 check "client-admin BLOCKED from assigning a platform role" \
 	"$(code PUT "/api/principals/$TUID/roles" "$CA" '{"roles":["platform:admin"]}')" "403"
 
+# ── application access: client-admin may assign apps the client has, bounded ──
+check "client-admin CAN list a user's available applications (scoped)" \
+	"$(code GET "/api/principals/$TUID/available-applications" "$CA")" "200"
+check "client-admin CAN set application access (declarative) on own user" \
+	"$(code PUT "/api/principals/$TUID/application-access" "$CA" '{"applicationIds":[]}')" "200"
+check "client-admin BLOCKED from granting an application the client cannot access" \
+	"$(code PUT "/api/principals/$TUID/application-access" "$CA" '{"applicationIds":["app_unreachable"]}')" "403"
+
 # ── client-admin must not act on ANCHOR users (no client of their own) ──
 AUID=$(json POST /api/principals "$ADMIN" \
 	"{\"email\":\"anchor-$SUFFIX@example.test\",\"name\":\"Anchor U\",\"scope\":\"ANCHOR\"}" \

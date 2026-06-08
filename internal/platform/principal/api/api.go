@@ -773,6 +773,34 @@ func containsStr(xs []string, s string) bool {
 	return false
 }
 
+// assertAssignableApplications bounds a non-anchor (client-admin) application
+// grant: every application in the requested set must be one the caller's client
+// can access. This stops a client-admin from granting a user access to an
+// application the client isn't entitled to. Anchors are not subject to this.
+func (s *State) assertAssignableApplications(ac *auth.AuthContext, appIDs []string) error {
+	for _, id := range appIDs {
+		if !containsStr(ac.Applications, id) {
+			return usecase.Authorization("APP_FORBIDDEN",
+				"application your client cannot access: "+id)
+		}
+	}
+	return nil
+}
+
+// preservedApplications returns the subset of a user's existing application
+// grants that a non-anchor admin may NOT manage (apps outside the client's
+// reach). A client-admin's SET preserves these so it can't strip a user's access
+// to applications the client itself can't see — mirrors protectedRoleNames.
+func preservedApplications(ac *auth.AuthContext, existing []string) []string {
+	var out []string
+	for _, id := range existing {
+		if !containsStr(ac.Applications, id) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
 // protectedRoleNames returns the subset of roleNames a non-anchor admin may NOT
 // manage — platform roles (ApplicationID nil), unknown roles, or roles for apps
 // the admin can't access. A client-admin's role SET preserves these so it can't
@@ -982,9 +1010,6 @@ type setAppAccessOutput struct {
 
 func (s *State) assignApplicationAccess(ctx context.Context, in *assignAppAccessInput) (*setAppAccessOutput, error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
-		return nil, err
-	}
 	p, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
@@ -992,17 +1017,35 @@ func (s *State) assignApplicationAccess(ctx context.Context, in *assignAppAccess
 	if p == nil {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
+	// Anchors manage any user's application access. A non-anchor administrator
+	// (client-admin) may manage their own CLIENT users, bounded to applications
+	// the client can access — they can't grant an app outside the client's reach
+	// and can't strip an existing grant for an app outside it.
+	if err := auth.RequireUserAdmin(ac, p.ClientID); err != nil {
+		return nil, err
+	}
+	if err := blockNonClientTarget(ac, p); err != nil {
+		return nil, err
+	}
+	desiredIDs := in.Body.ApplicationIDs
+	if !ac.IsAnchor() {
+		if err := s.assertAssignableApplications(ac, in.Body.ApplicationIDs); err != nil {
+			return nil, err
+		}
+		preserved := preservedApplications(ac, p.AccessibleApplicationIDs)
+		desiredIDs = dedupeStrings(append(append([]string{}, in.Body.ApplicationIDs...), preserved...))
+	}
 	old := stringSet(p.AccessibleApplicationIDs)
-	desired := stringSet(in.Body.ApplicationIDs)
+	desired := stringSet(desiredIDs)
 	added := len(setDifference(desired, old))
 	removed := len(setDifference(old, desired))
 
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
 	if _, err := operations.AssignApplicationAccess(ctx, s.Repo, s.Applications, s.UoW,
-		operations.AssignApplicationAccessCommand{UserID: in.ID, ApplicationIDs: in.Body.ApplicationIDs}, ec); err != nil {
+		operations.AssignApplicationAccessCommand{UserID: in.ID, ApplicationIDs: desiredIDs}, ec); err != nil {
 		return nil, err
 	}
-	apps, err := s.resolveApplications(ctx, in.Body.ApplicationIDs)
+	apps, err := s.resolveApplications(ctx, desiredIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -1575,6 +1618,9 @@ func (s *State) listAvailableApplications(ctx context.Context, in *idInput) (*li
 	// Available = all active applications the system knows about. Rust
 	// filters by what's already enabled in the principal's clients;
 	// Go matches the simpler "all active" pending product confirmation.
+	// For a non-anchor administrator (client-admin) we bound the menu to the
+	// applications the caller's client can access, so they can only grant what
+	// the client is entitled to (mirrors the role-assignment bounding).
 	apps, err := s.Applications.FindActive(ctx)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_active_apps failed", err)
@@ -1582,6 +1628,9 @@ func (s *State) listAvailableApplications(ctx context.Context, in *idInput) (*li
 	out := make([]PrincipalAvailableApplication, 0, len(apps))
 	for i := range apps {
 		a := &apps[i]
+		if !ac.IsAnchor() && !containsStr(ac.Applications, a.ID) {
+			continue
+		}
 		out = append(out, PrincipalAvailableApplication{
 			ID:   a.ID,
 			Code: a.Code,
