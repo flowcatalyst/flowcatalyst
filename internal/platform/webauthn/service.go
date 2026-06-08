@@ -11,6 +11,7 @@ type Service struct {
 	wa         *webauthn.WebAuthn
 	creds      *Repository
 	ceremonies *CeremonyRepository
+	rpID       string
 }
 
 // Config is the construction-time settings.
@@ -31,11 +32,16 @@ func NewService(cfg Config, creds *Repository, ceremonies *CeremonyRepository) (
 	if err != nil {
 		return nil, err
 	}
-	return &Service{wa: wa, creds: creds, ceremonies: ceremonies}, nil
+	return &Service{wa: wa, creds: creds, ceremonies: ceremonies, rpID: cfg.RPID}, nil
 }
 
 // WebAuthn exposes the underlying library instance.
 func (s *Service) WebAuthn() *webauthn.WebAuthn { return s.wa }
+
+// RPID returns the configured Relying Party ID (the registrable domain). Used to
+// build a decoy assertion challenge that's indistinguishable from a real one —
+// it must carry the real RP ID or the browser rejects it outright.
+func (s *Service) RPID() string { return s.rpID }
 
 // Credentials exposes the persisted-credentials repo.
 func (s *Service) Credentials() *Repository { return s.creds }

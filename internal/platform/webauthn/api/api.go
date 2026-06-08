@@ -235,11 +235,11 @@ func (s *State) authenticateBegin(ctx context.Context, in *authenticateBeginInpu
 	}
 	p, _ := s.Principals.FindByEmail(ctx, in.Body.Email)
 	if p == nil || !p.Active {
-		return &authenticateBeginOutput{Body: AuthenticateBeginResponse{StateID: newUUID(), Options: emptyChallenge()}}, nil
+		return &authenticateBeginOutput{Body: AuthenticateBeginResponse{StateID: newUUID(), Options: decoyChallenge(s.Service.RPID())}}, nil
 	}
 	creds, err := s.Service.Credentials().LibraryCredentialsByPrincipal(ctx, p.ID)
 	if err != nil || len(creds) == 0 {
-		return &authenticateBeginOutput{Body: AuthenticateBeginResponse{StateID: newUUID(), Options: emptyChallenge()}}, nil
+		return &authenticateBeginOutput{Body: AuthenticateBeginResponse{StateID: newUUID(), Options: decoyChallenge(s.Service.RPID())}}, nil
 	}
 	user := &webauthn.PrincipalUser{
 		PrincipalID: p.ID,
@@ -426,15 +426,29 @@ func newUUID() string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-func emptyChallenge() map[string]any {
+// decoyChallenge builds an assertion challenge for the unknown-user / no-usable-
+// credential case so the response is indistinguishable from a real one (anti-
+// enumeration) — same shape, a random challenge, the REAL rpId, and one random
+// allowCredentials entry (a real non-discoverable challenge lists the user's
+// credential ids). It must carry the configured rpId: an empty rpId makes the
+// browser throw "The RP ID \"\" is invalid for this domain", which both breaks
+// the flow and reveals the decoy. Completion then fails like a wrong passkey.
+func decoyChallenge(rpID string) map[string]any {
 	chal := make([]byte, 32)
 	_, _ = rand.Read(chal)
+	fakeCredID := make([]byte, 32)
+	_, _ = rand.Read(fakeCredID)
 	return map[string]any{
 		"publicKey": map[string]any{
-			"challenge":        base64.RawURLEncoding.EncodeToString(chal),
-			"timeout":          60000,
-			"rpId":             "",
-			"allowCredentials": []any{},
+			"challenge": base64.RawURLEncoding.EncodeToString(chal),
+			"timeout":   60000,
+			"rpId":      rpID,
+			"allowCredentials": []any{
+				map[string]any{
+					"type": "public-key",
+					"id":   base64.RawURLEncoding.EncodeToString(fakeCredID),
+				},
+			},
 			"userVerification": "preferred",
 		},
 	}
