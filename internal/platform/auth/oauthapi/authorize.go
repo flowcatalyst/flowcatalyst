@@ -39,10 +39,6 @@ func (s *State) Authorize(w http.ResponseWriter, r *http.Request) {
 	prompt := q.Get("prompt")
 	maxAge := q.Get("max_age")
 
-	if responseType != "code" {
-		errorRedirect(w, r, redirectURI, "unsupported_response_type", "Only 'code' response type is supported", stateParam)
-		return
-	}
 	// `state` is mandatory for CSRF protection on the callback. Reject with
 	// 400 (not a redirect) — we can't safely bounce the UA without it.
 	if strings.TrimSpace(stateParam) == "" {
@@ -56,26 +52,36 @@ func (s *State) Authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Resolve and validate the client + redirect_uri BEFORE any errorRedirect.
+	// RFC 6749 §4.1.2.1: when the client is unknown/invalid or the redirect_uri
+	// is unregistered, we MUST NOT auto-redirect the user-agent to that URI
+	// (open-redirect / phishing vector). Until redirect_uri is matched against
+	// the client's registered set, every failure is a direct 4xx, not a bounce.
 	client, err := s.OAuthClients.FindByClientID(r.Context(), clientID)
 	switch {
 	case err != nil:
-		errorRedirect(w, r, redirectURI, "server_error", "Internal error", stateParam)
+		writeOAuthError(w, http.StatusInternalServerError, "server_error", "Internal error")
 		return
 	case client == nil:
-		errorRedirect(w, r, redirectURI, "unauthorized_client", "Unknown client", stateParam)
+		writeOAuthError(w, http.StatusBadRequest, "unauthorized_client", "Unknown client")
 		return
 	case !client.Active:
-		errorRedirect(w, r, redirectURI, "unauthorized_client", "Client is not active", stateParam)
+		writeOAuthError(w, http.StatusBadRequest, "unauthorized_client", "Client is not active")
 		return
 	}
-
 	if !MatchRedirectURI(redirectURI, client.RedirectURIs) {
 		writeOAuthError(w, http.StatusBadRequest, "invalid_request", "Invalid redirect_uri")
 		return
 	}
+
+	// redirect_uri is now validated against the client — from here on, errors
+	// may safely bounce the user-agent back to it with OAuth error params.
+	if responseType != "code" {
+		errorRedirect(w, r, redirectURI, "unsupported_response_type", "Only 'code' response type is supported", stateParam)
+		return
+	}
 	// The authorization-code flow starts here, so the client must be
-	// permitted the authorization_code grant. Checked after redirect_uri
-	// validation so we only bounce the UA back to a vetted URI.
+	// permitted the authorization_code grant.
 	if !grantAllowed(client, "authorization_code") {
 		errorRedirect(w, r, redirectURI, "unauthorized_client", "Client is not permitted to use the authorization_code grant", stateParam)
 		return
@@ -125,9 +131,19 @@ func (s *State) Authorize(w http.ResponseWriter, r *http.Request) {
 		code.Scope = strPtrOrNil(scope)
 		code.Nonce = strPtrOrNil(nonce)
 		code.State = strPtrOrNil(stateParam)
-		if codeChallenge != "" && codeChallengeMethod != "" {
+		if codeChallenge != "" {
+			// RFC 7636 §4.3: a present code_challenge with an absent
+			// code_challenge_method defaults to "plain". Persist the binding
+			// unconditionally so PKCE can never be silently stripped by omitting
+			// the method — which would otherwise pass the PKCERequired gate
+			// above yet store nothing, letting an intercepted code be redeemed
+			// without a verifier.
+			method := codeChallengeMethod
+			if method == "" {
+				method = "plain"
+			}
 			code.CodeChallenge = &codeChallenge
-			code.CodeChallengeMethod = &codeChallengeMethod
+			code.CodeChallengeMethod = &method
 		}
 		if err := s.AuthCodes.Insert(r.Context(), code); err != nil {
 			errorRedirect(w, r, redirectURI, "server_error", "Failed to create authorization code", stateParam)

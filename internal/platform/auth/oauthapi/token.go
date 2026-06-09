@@ -31,9 +31,17 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
 )
 
+// OAuthClientFinder resolves OAuth clients by their public client_id. It is
+// satisfied by *auth.OAuthClientRepo in production; narrowing it to an
+// interface lets the authorize/token handler tests inject clients (and the
+// "unknown client" case) without a database.
+type OAuthClientFinder interface {
+	FindByClientID(ctx context.Context, clientID string) (*auth.OAuthClient, error)
+}
+
 // State bundles the dependencies the OAuth endpoints need.
 type State struct {
-	OAuthClients  *auth.OAuthClientRepo
+	OAuthClients  OAuthClientFinder
 	Principals    *principal.Repository
 	Auth          *authservice.AuthService
 	AuthCodes     *grantstore.AuthorizationCodeRepository
@@ -418,6 +426,11 @@ func (s *State) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Requ
 		cid := code.ClientID
 		entity.OAuthClientID = &cid
 		entity.Scopes = strings.Fields(scope)
+		// Root a rotation family on this first token so every later rotation
+		// can be traced to it and the whole family revoked if a rotated-out
+		// token is ever replayed (reuse detection in handleRefreshTokenGrant).
+		fam := entity.ID
+		entity.TokenFamily = &fam
 		if err := s.RefreshTokens.Insert(r.Context(), entity); err != nil {
 			writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 			return
@@ -450,6 +463,15 @@ func (s *State) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	if stored == nil {
+		// Reuse detection (OAuth 2.0 Security BCP §4.14.2): a token we don't
+		// accept as valid might be one we already rotated out. If we recognise
+		// the hash as a previously-replaced token, the family is presumed
+		// compromised — revoke every token in it so a stolen, already-rotated
+		// token cannot keep the chain alive.
+		if prior, ferr := s.RefreshTokens.FindByHash(r.Context(), tokenHash); ferr == nil &&
+			prior != nil && prior.ReplacedBy != nil && prior.TokenFamily != nil {
+			_, _ = s.RefreshTokens.RevokeAllInFamily(r.Context(), *prior.TokenFamily)
+		}
 		writeOAuthError(w, http.StatusUnauthorized, "invalid_grant", "Invalid or expired refresh token")
 		return
 	}
@@ -511,10 +533,21 @@ func (s *State) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request, 
 	entity.Scopes = stored.Scopes
 	entity.AccessibleClients = stored.AccessibleClients
 	entity.OAuthClientID = stored.OAuthClientID
+	// Keep the replacement in the presented token's rotation family (rooting a
+	// fresh family for legacy tokens that predate family tracking).
+	if stored.TokenFamily != nil {
+		entity.TokenFamily = stored.TokenFamily
+	} else {
+		fam := entity.ID
+		entity.TokenFamily = &fam
+	}
 	if err := s.RefreshTokens.Insert(r.Context(), entity); err != nil {
 		writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 		return
 	}
+	// Link the rotated-out token to its replacement so a later replay of it
+	// trips the reuse-detection path above.
+	_, _ = s.RefreshTokens.MarkAsReplaced(r.Context(), tokenHash, entity.TokenHash)
 
 	var scope *string
 	if len(stored.Scopes) > 0 {
@@ -548,6 +581,11 @@ func verifyPKCE(challenge string, method *string, verifier string) *oauthError {
 			return newOAuthError(http.StatusBadRequest, "invalid_grant", "code_verifier contains invalid characters")
 		}
 	}
+	// RFC 7636 §4.3's "absent method ⇒ plain" default is applied at mint time
+	// (authorize.go persists an explicit method), so a real code always carries
+	// one here. This default therefore only guards malformed/corrupt input,
+	// where the stricter S256 (preimage-resistant) interpretation is safer than
+	// a plain string compare.
 	m := "S256"
 	if method != nil && *method != "" {
 		m = *method

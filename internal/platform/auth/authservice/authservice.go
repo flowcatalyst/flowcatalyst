@@ -247,22 +247,34 @@ func New(config Config) (*AuthService, error) {
 	// configured (the common case in this codebase, which loads a single
 	// signing key). The kid is then this service's own — clients read it
 	// from the JWKS, so it need not match any external value.
-	if config.RSAPrivateKeyPEM != "" && config.RSAPublicKeyPEM == "" {
-		if pub, err := publicPEMFromPrivatePEM(config.RSAPrivateKeyPEM); err == nil {
+	// RSA configured: it MUST succeed, or we fail closed. Silently downgrading
+	// to HS256 on a bad key — and, when no SecretKey is set, to an EMPTY-secret
+	// HS256 — would turn a key misconfiguration into trivially forgeable
+	// tokens. Refuse to start instead. (This is a deliberate divergence from
+	// the Rust port's warn-and-fall-back behaviour.)
+	if config.RSAPrivateKeyPEM != "" {
+		if config.RSAPublicKeyPEM == "" {
+			pub, err := publicPEMFromPrivatePEM(config.RSAPrivateKeyPEM)
+			if err != nil {
+				return nil, fmt.Errorf("derive RSA public key from private key: %w", err)
+			}
 			config.RSAPublicKeyPEM = pub
 		}
-	}
-	if config.RSAPrivateKeyPEM != "" && config.RSAPublicKeyPEM != "" {
 		svc, err := NewWithRSA(config, config.RSAPrivateKeyPEM, config.RSAPublicKeyPEM)
-		if err == nil {
-			if config.RSAPublicKeyPreviousPEM != "" {
-				if err := svc.AddPreviousRSAKey(config.RSAPublicKeyPreviousPEM); err != nil {
-					return nil, fmt.Errorf("load previous RSA key: %w", err)
-				}
-			}
-			return svc, nil
+		if err != nil {
+			return nil, fmt.Errorf("initialise RS256 signer: %w", err)
 		}
-		// Fall through to HS256 on RSA init failure (matches Rust's warn+fallback).
+		if config.RSAPublicKeyPreviousPEM != "" {
+			if err := svc.AddPreviousRSAKey(config.RSAPublicKeyPreviousPEM); err != nil {
+				return nil, fmt.Errorf("load previous RSA key: %w", err)
+			}
+		}
+		return svc, nil
+	}
+	// No RSA configured → HS256 (development only). Refuse an empty secret,
+	// which would make every token forgeable by anyone.
+	if config.SecretKey == "" {
+		return nil, errors.New("no signing key configured: set an RSA private key (production) or a non-empty HS256 SecretKey (development)")
 	}
 	return NewWithSecret(config), nil
 }
