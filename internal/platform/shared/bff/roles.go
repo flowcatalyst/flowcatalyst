@@ -3,6 +3,7 @@ package bff
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -325,6 +326,14 @@ func (s *RolesState) delete(w http.ResponseWriter, r *http.Request) {
 // resolveRole dispatches between FindByName (colon-containing) and
 // FindByID. Returns a typed NotFound error when missing.
 func (s *RolesState) resolveRole(r *http.Request, key string) (*role.Role, error) {
+	// chi hands back the raw path segment, so a role identifier's ':' arrives
+	// percent-encoded as %3A (role ids are "{appCode}:{roleName}", e.g.
+	// "logistics_portal:administrator"). Decode it before dispatching, or the
+	// colon check below fails and FindByID is tried with a bogus encoded key —
+	// surfacing as "Role not found: logistics_portal%3Aadministrator".
+	if decoded, derr := url.PathUnescape(key); derr == nil {
+		key = decoded
+	}
 	var (
 		out *role.Role
 		err error
