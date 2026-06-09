@@ -22,7 +22,6 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-webauthn/webauthn/protocol"
-	gowebauthn "github.com/go-webauthn/webauthn/webauthn"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/provider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/notify"
@@ -158,8 +157,12 @@ func (s *State) registerBegin(ctx context.Context, in *registerBeginInput) (*reg
 		Username:    email,
 		Credentials: existing,
 	}
-	options, sessionData, err := s.Service.WebAuthn().BeginRegistration(user,
-		gowebauthn.WithExclusions(credentialDescriptorsFor(existing)))
+	// No excludeCredentials. This is an explicit "add another passkey" action,
+	// so it must not be blocked just because the user already holds a credential
+	// on this authenticator — with exclusions the browser throws
+	// InvalidStateError ("authenticator previously registered"). Omitting them
+	// lets a password manager, phone, or extra security key each add a passkey.
+	options, sessionData, err := s.Service.WebAuthn().BeginRegistration(user)
 	if err != nil {
 		return nil, usecase.Internal("WEBAUTHN", "begin registration failed", err)
 	}
@@ -464,15 +467,4 @@ func decoyChallenge(rpID string) map[string]any {
 			"userVerification": "preferred",
 		},
 	}
-}
-
-func credentialDescriptorsFor(creds []gowebauthn.Credential) []protocol.CredentialDescriptor {
-	out := make([]protocol.CredentialDescriptor, 0, len(creds))
-	for _, c := range creds {
-		out = append(out, protocol.CredentialDescriptor{
-			Type:         protocol.PublicKeyCredentialType,
-			CredentialID: c.ID,
-		})
-	}
-	return out
 }
