@@ -1,6 +1,7 @@
 package bff
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -179,22 +180,117 @@ func (s *RolesState) filterApplications(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, bffApplicationOptionsResponse{Options: options})
 }
 
-// GET /bff/roles/permissions
+// GET /bff/roles/permissions?application=
+//
+// Without an application filter, returns the full catalogue (the static
+// platform builtins plus every permission declared across non-platform roles)
+// — this powers the global Permissions page. With ?application=platform it
+// returns the builtins; with any other code it returns just that
+// application's permissions, sourced from its roles. A non-platform
+// application has no catalogue of its own — its permissions live only inside
+// its roles — so editing/creating one of its roles must scope here by code
+// rather than fall back to the platform builtins.
 func (s *RolesState) listPermissions(w http.ResponseWriter, r *http.Request) {
-	perms := builtinPermissions()
+	perms, err := s.permissionCatalog(r.Context(), r.URL.Query().Get("application"))
+	if err != nil {
+		httperror.Write(w, usecase.Internal("REPO", "list permissions failed", err))
+		return
+	}
 	writeJSON(w, http.StatusOK, bffPermissionListResponse{Items: perms, Total: len(perms)})
 }
 
 // GET /bff/roles/permissions/{permission}
 func (s *RolesState) getPermission(w http.ResponseWriter, r *http.Request) {
 	wanted := chi.URLParam(r, "permission")
-	for _, p := range builtinPermissions() {
+	catalog, err := s.permissionCatalog(r.Context(), "")
+	if err != nil {
+		httperror.Write(w, usecase.Internal("REPO", "lookup permission failed", err))
+		return
+	}
+	for _, p := range catalog {
 		if p.Permission == wanted {
 			writeJSON(w, http.StatusOK, p)
 			return
 		}
 	}
 	httperror.Write(w, httperror.NotFound("Permission", wanted))
+}
+
+// permissionCatalog returns the permission catalogue for an application code:
+//   - ""         → every application: the platform builtins plus the distinct
+//     permissions declared across all non-platform roles.
+//   - "platform" → the static platform builtins.
+//   - other code → the distinct permissions declared across that application's
+//     roles (the app has no catalogue of its own).
+func (s *RolesState) permissionCatalog(ctx context.Context, app string) ([]bffPermissionResponse, error) {
+	switch app {
+	case "platform":
+		return builtinPermissions(), nil
+	case "":
+		derived, err := s.rolePermissions(ctx, "")
+		if err != nil {
+			return nil, err
+		}
+		return append(builtinPermissions(), derived...), nil
+	default:
+		return s.rolePermissions(ctx, app)
+	}
+}
+
+// rolePermissions collects the distinct, well-formed (4-segment) permissions
+// declared across roles, optionally restricted to one application code.
+// Platform-coded roles are skipped — the platform catalogue is the static
+// builtin set — so the all-applications case can append role-derived
+// permissions to the builtins without duplicating platform entries.
+func (s *RolesState) rolePermissions(ctx context.Context, appCode string) ([]bffPermissionResponse, error) {
+	rows, err := s.Roles.FindAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]struct{}{}
+	out := []bffPermissionResponse{}
+	for _, role := range rows {
+		if role.ApplicationCode == "platform" {
+			continue
+		}
+		if appCode != "" && role.ApplicationCode != appCode {
+			continue
+		}
+		for _, p := range role.Permissions {
+			if _, ok := seen[p]; ok {
+				continue
+			}
+			seen[p] = struct{}{}
+			entry, ok := parsePermission(p)
+			if !ok {
+				continue
+			}
+			if appCode != "" && entry.Application != appCode {
+				continue
+			}
+			out = append(out, entry)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Permission < out[j].Permission })
+	return out, nil
+}
+
+// parsePermission splits a 4-segment permission string
+// (application:context:aggregate:action) into a catalogue entry. Returns
+// ok=false for malformed strings (any arity other than four segments, e.g. a
+// differently-shaped wildcard), which are then skipped.
+func parsePermission(p string) (bffPermissionResponse, bool) {
+	parts := strings.Split(p, ":")
+	if len(parts) != 4 {
+		return bffPermissionResponse{}, false
+	}
+	return bffPermissionResponse{
+		Permission:  p,
+		Application: parts[0],
+		Context:     parts[1],
+		Aggregate:   parts[2],
+		Action:      parts[3],
+	}, true
 }
 
 // GET /bff/roles/{roleName}

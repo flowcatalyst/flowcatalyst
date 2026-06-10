@@ -65,8 +65,17 @@ type AccessTokenClaims struct {
 	// PrincipalType is "USER" or "SERVICE" (Rust serde rename: "type").
 	PrincipalType string `json:"type"`
 
-	// Scope is "ANCHOR" | "PARTNER" | "CLIENT".
-	Scope string `json:"scope"`
+	// Tier is the tenancy tier: "ANCHOR" | "PARTNER" | "CLIENT". (Formerly
+	// carried on the "scope" claim; renamed so "scope" can hold real OAuth
+	// scopes — see the Scope field below. This diverges from the Rust wire
+	// contract by design.)
+	Tier string `json:"tier"`
+
+	// Scope is the granted OAuth scope: a space-delimited list of permission
+	// codes (the principal's ceiling, optionally narrowed to the requested
+	// scope at mint time). Omitted when the token carries no scope claim, in
+	// which case permissions are derived downstream from Roles.
+	Scope string `json:"scope,omitempty"`
 
 	// Email is the user email; omitted for SERVICE principals.
 	Email *string `json:"email,omitempty"`
@@ -108,8 +117,9 @@ type IDTokenClaims struct {
 
 	// PrincipalType is "USER" or "SERVICE" (serde rename: "type").
 	PrincipalType string `json:"type"`
-	// Scope is the user scope.
-	Scope string `json:"scope"`
+	// Tier is the tenancy tier (ANCHOR|PARTNER|CLIENT). Renamed from the
+	// former "scope" claim — see AccessTokenClaims.Tier.
+	Tier string `json:"tier"`
 	// ClientID is the home client id; omitted when absent.
 	ClientID *string `json:"client_id,omitempty"`
 	// Roles, Applications, Clients always emitted (possibly empty).
@@ -330,15 +340,24 @@ func (s *AuthService) AllJWKSKeys() []JWKSKey {
 
 // GenerateAccessToken mints a short-lived access token for API calls.
 func (s *AuthService) GenerateAccessToken(p *principal.Principal) (string, error) {
-	return s.generateTokenWithExpiry(p, s.config.AccessTokenExpirySecs)
+	return s.generateTokenWithExpiry(p, s.config.AccessTokenExpirySecs, nil)
+}
+
+// GenerateAccessTokenWithScope mints a short-lived access token whose "scope"
+// claim carries the supplied granted permissions (space-delimited). Callers
+// compute the granted set as the principal's permission ceiling intersected
+// with any requested scope; passing nil/empty is equivalent to
+// GenerateAccessToken (no scope claim).
+func (s *AuthService) GenerateAccessTokenWithScope(p *principal.Principal, scope []string) (string, error) {
+	return s.generateTokenWithExpiry(p, s.config.AccessTokenExpirySecs, scope)
 }
 
 // GenerateSessionToken mints a longer-lived token for cookie sessions.
 func (s *AuthService) GenerateSessionToken(p *principal.Principal) (string, error) {
-	return s.generateTokenWithExpiry(p, s.config.SessionTokenExpirySecs)
+	return s.generateTokenWithExpiry(p, s.config.SessionTokenExpirySecs, nil)
 }
 
-func (s *AuthService) generateTokenWithExpiry(p *principal.Principal, expirySecs int64) (string, error) {
+func (s *AuthService) generateTokenWithExpiry(p *principal.Principal, expirySecs int64, scope []string) (string, error) {
 	now := time.Now().UTC()
 	exp := now.Add(time.Duration(expirySecs) * time.Second)
 
@@ -353,7 +372,8 @@ func (s *AuthService) generateTokenWithExpiry(p *principal.Principal, expirySecs
 		},
 		Aud:           s.config.Audience,
 		PrincipalType: string(p.Type),
-		Scope:         string(p.Scope),
+		Tier:          string(p.Scope),
+		Scope:         strings.Join(scope, " "),
 		Email:         principalEmail(p),
 		Name:          p.Name,
 		Clients:       buildClients(p),
@@ -395,7 +415,7 @@ func (s *AuthService) GenerateIDToken(p *principal.Principal, clientID string, n
 		UpdatedAt:     &nowUnix,
 		AZP:           &azp,
 		PrincipalType: string(p.Type),
-		Scope:         string(p.Scope),
+		Tier:          string(p.Scope),
 		ClientID:      p.ClientID,
 		Roles:         roleNames(p),
 		Applications:  buildApplications(roleNames(p)),
@@ -473,8 +493,8 @@ func (s *AuthService) HasRole(claims *AccessTokenClaims, role string) bool {
 	return false
 }
 
-// IsAnchor reports whether the claims are for an anchor-scoped principal.
-func (s *AuthService) IsAnchor(claims *AccessTokenClaims) bool { return claims.Scope == "ANCHOR" }
+// IsAnchor reports whether the claims are for an anchor-tier principal.
+func (s *AuthService) IsAnchor(claims *AccessTokenClaims) bool { return claims.Tier == "ANCHOR" }
 
 // ─── principal → claim helpers (1:1 with Rust) ──────────────────────────
 

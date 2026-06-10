@@ -14,23 +14,26 @@
 //	  "iat":   <unix>,
 //	  "exp":   <unix>,
 //	  "nbf":   <unix>,
-//	  "scope": "ANCHOR" | "PARTNER" | "CLIENT",
+//	  "tier":  "ANCHOR" | "PARTNER" | "CLIENT",
+//	  "scope": "perm:a:b:c perm:d:e:f"   (space-delimited granted permissions),
 //	  "email": "...",
 //	  "clients":     [...],
 //	  "roles":       [...],
-//	  "applications": [...],
-//	  "permissions": [...]
+//	  "applications": [...]
 //	}
 //
 // Same claim names + types the auth middleware reads, so session-cookie
 // tokens and authservice-minted OAuth tokens are interchangeable to
-// downstream consumers.
+// downstream consumers. Note: "tier" carries the tenancy tier (formerly the
+// "scope" claim) and "scope" now carries OAuth permission scopes — the field
+// names changed together across sessiontoken and authservice.
 package sessiontoken
 
 import (
 	"crypto/rsa"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -66,11 +69,11 @@ func Mint(c Claims, key *rsa.PrivateKey, issuer string, ttl time.Duration) (stri
 
 	now := time.Now().UTC()
 	mc := jwt.MapClaims{
-		"iss":   issuer,
-		"sub":   c.Subject,
-		"iat":   now.Unix(),
-		"nbf":   now.Unix(),
-		"scope": c.Scope,
+		"iss":  issuer,
+		"sub":  c.Subject,
+		"iat":  now.Unix(),
+		"nbf":  now.Unix(),
+		"tier": c.Scope, // tenancy tier (ANCHOR|PARTNER|CLIENT)
 	}
 	if ttl != 0 {
 		mc["exp"] = now.Add(ttl).Unix()
@@ -87,8 +90,10 @@ func Mint(c Claims, key *rsa.PrivateKey, issuer string, ttl time.Duration) (stri
 	if len(c.Applications) > 0 {
 		mc["applications"] = c.Applications
 	}
+	// Granted permissions ride the OAuth "scope" claim as a space-delimited
+	// string (the standard scope wire form), not a JSON array.
 	if len(c.Permissions) > 0 {
-		mc["permissions"] = c.Permissions
+		mc["scope"] = strings.Join(c.Permissions, " ")
 	}
 
 	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, mc)
@@ -130,13 +135,14 @@ func Validate(token string, key *rsa.PublicKey) (*Claims, error) {
 
 	out := &Claims{
 		Subject:      stringClaim(mc, "sub"),
-		Scope:        stringClaim(mc, "scope"),
+		Scope:        stringClaim(mc, "tier"), // tenancy tier
 		Email:        stringClaim(mc, "email"),
 		Clients:      stringSliceClaim(mc, "clients"),
 		Roles:        stringSliceClaim(mc, "roles"),
 		Applications: stringSliceClaim(mc, "applications"),
-		Permissions:  stringSliceClaim(mc, "permissions"),
-		IssuedAt:     unixClaim(mc, "iat"),
+		// Granted permissions arrive on the space-delimited "scope" claim.
+		Permissions: strings.Fields(stringClaim(mc, "scope")),
+		IssuedAt:    unixClaim(mc, "iat"),
 	}
 	if out.Subject == "" {
 		return nil, errors.New("sessiontoken: token is missing sub claim")

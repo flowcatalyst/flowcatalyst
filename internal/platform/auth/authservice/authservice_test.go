@@ -68,8 +68,8 @@ func TestGenerateAndValidateAccessToken(t *testing.T) {
 	if claims.Subject != p.ID {
 		t.Errorf("sub = %q, want %q", claims.Subject, p.ID)
 	}
-	if claims.Scope != "ANCHOR" {
-		t.Errorf("scope = %q, want ANCHOR", claims.Scope)
+	if claims.Tier != "ANCHOR" {
+		t.Errorf("tier = %q, want ANCHOR", claims.Tier)
 	}
 	if claims.PrincipalType != "USER" {
 		t.Errorf("type = %q, want USER", claims.PrincipalType)
@@ -88,9 +88,11 @@ func TestGenerateAndValidateAccessToken(t *testing.T) {
 	}
 }
 
-// TestAccessTokenWireShape asserts the raw JSON payload matches the Rust
-// shape: aud is a bare string (not an array), type/jti present, clients/
-// roles/applications always present, no permissions field.
+// TestAccessTokenWireShape asserts the raw JSON payload: aud is a bare string
+// (not an array), type/jti present, clients/roles/applications always present.
+// Tenancy rides "tier" (was "scope"); "scope" now carries granted permissions
+// and is omitted when a token is minted without one (the GenerateAccessToken
+// path here). The legacy "permissions" array claim is never emitted.
 func TestAccessTokenWireShape(t *testing.T) {
 	svc := newRS256(t)
 	tok, err := svc.GenerateAccessToken(anchorUser())
@@ -102,7 +104,7 @@ func TestAccessTokenWireShape(t *testing.T) {
 	if _, ok := payload["aud"].(string); !ok {
 		t.Errorf("aud must be a bare string, got %T (%v)", payload["aud"], payload["aud"])
 	}
-	for _, k := range []string{"type", "jti", "nbf", "iat", "exp", "iss", "sub", "scope", "name", "clients", "roles", "applications"} {
+	for _, k := range []string{"type", "jti", "nbf", "iat", "exp", "iss", "sub", "tier", "name", "clients", "roles", "applications"} {
 		if _, ok := payload[k]; !ok {
 			t.Errorf("missing required claim %q", k)
 		}
@@ -110,8 +112,36 @@ func TestAccessTokenWireShape(t *testing.T) {
 	if payload["type"] != "USER" {
 		t.Errorf(`type = %v, want "USER"`, payload["type"])
 	}
+	if _, ok := payload["scope"]; ok {
+		t.Error("scope claim must be omitted when no scope is granted")
+	}
 	if _, ok := payload["permissions"]; ok {
-		t.Error("permissions claim must NOT be present (Rust parity)")
+		t.Error("permissions claim must NOT be present")
+	}
+}
+
+// TestAccessTokenScopeClaim asserts that a token minted with a granted scope
+// carries those permissions on the space-delimited "scope" claim and round-
+// trips through validation.
+func TestAccessTokenScopeClaim(t *testing.T) {
+	svc := newRS256(t)
+	granted := []string{"platform:messaging:event-type:view", "platform:billing:invoice:read"}
+
+	tok, err := svc.GenerateAccessTokenWithScope(anchorUser(), granted)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	payload := decodeJWTPayload(t, tok)
+	if got, want := payload["scope"], strings.Join(granted, " "); got != want {
+		t.Errorf("scope = %v, want %q", got, want)
+	}
+
+	claims, err := svc.ValidateToken(tok)
+	if err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	if claims.Scope != strings.Join(granted, " ") {
+		t.Errorf("claims.Scope = %q, want %q", claims.Scope, strings.Join(granted, " "))
 	}
 }
 
@@ -130,8 +160,8 @@ func TestClientScopeClients(t *testing.T) {
 	if err != nil {
 		t.Fatalf("validate: %v", err)
 	}
-	if claims.Scope != "CLIENT" {
-		t.Errorf("scope = %q, want CLIENT", claims.Scope)
+	if claims.Tier != "CLIENT" {
+		t.Errorf("tier = %q, want CLIENT", claims.Tier)
 	}
 	if len(claims.Clients) != 1 || claims.Clients[0] != "clt_123:acme" {
 		t.Errorf(`clients = %v, want ["clt_123:acme"]`, claims.Clients)

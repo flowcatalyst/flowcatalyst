@@ -16,13 +16,15 @@ func (s *State) RegisterUserinfoRoutes(r chi.Router) {
 	r.Post("/oauth/userinfo", s.Userinfo)
 }
 
-// userInfoResponse is the OIDC UserInfo body. sub/name/scope/type and the
-// array claims are always present (Rust wraps them in Some); email and
-// client_id are omitted when absent.
+// userInfoResponse is the OIDC UserInfo body. sub/name/tier/type and the
+// array claims are always present; scope carries the token's granted
+// permissions (empty for tokens without a scope claim); email and client_id
+// are omitted when absent.
 type userInfoResponse struct {
 	Sub           string   `json:"sub"`
 	Email         *string  `json:"email,omitempty"`
 	Name          string   `json:"name"`
+	Tier          string   `json:"tier"`
 	Scope         string   `json:"scope"`
 	PrincipalType string   `json:"type"`
 	ClientID      *string  `json:"client_id,omitempty"`
@@ -43,6 +45,7 @@ func (s *State) Userinfo(w http.ResponseWriter, r *http.Request) {
 		Sub:           claims.Subject,
 		Email:         claims.Email,
 		Name:          claims.Name,
+		Tier:          claims.Tier,
 		Scope:         claims.Scope,
 		PrincipalType: claims.PrincipalType,
 		ClientID:      userinfoClientID(claims.Clients),

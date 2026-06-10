@@ -178,6 +178,21 @@ func (a *AuthContext) HasPermission(code string) bool {
 	return false
 }
 
+// Grants reports whether any permission pattern in held satisfies required
+// (wildcard-aware, via permissionMatches). Exposed so the token-mint path can
+// narrow a requested OAuth scope down to a principal's permission ceiling
+// using the exact same matching rule that enforcement uses — a requested
+// permission is granted only if the ceiling already authorizes it, so a scope
+// request can never escalate beyond the principal's roles.
+func Grants(held []string, required string) bool {
+	for _, p := range held {
+		if permissionMatches(p, required) {
+			return true
+		}
+	}
+	return false
+}
+
 // permissionMatches reports whether a held permission pattern satisfies the
 // required permission. Segment counts must match; each held segment must be
 // "*" or equal the required segment. 1:1 with Rust matches_pattern.

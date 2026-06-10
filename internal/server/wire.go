@@ -206,6 +206,9 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 			}
 			return c.Subject, c.IssuedAt, true
 		},
+		// Flatten roles → permission ceiling for the granted "scope" claim and
+		// requested-scope narrowing on /oauth/token.
+		FlattenPermissions: authProvider.FlattenPermissions,
 	}
 
 	// ── Webauthn service ───────────────────────────────────────────────

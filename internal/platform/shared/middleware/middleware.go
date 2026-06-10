@@ -168,10 +168,11 @@ func introspect(ctx context.Context, p *provider.Provider, token string, fromCoo
 	}
 
 	// Bearer transport (OAuth access tokens minted by authservice) is
-	// self-contained for stateless validation: it carries roles but no
-	// permissions claim — matching Rust, which never bakes permissions into the
-	// JWT. Derive them from the roles here so permission-gated handlers see the
-	// same set regardless of token source.
+	// self-contained for stateless validation. Tokens minted with a requested
+	// or full scope carry their granted permissions on the "scope" claim
+	// (parsed into c.Permissions); tokens minted without one carry only roles,
+	// so we derive permissions from the roles here. Either way permission-gated
+	// handlers see the same set regardless of token source.
 	perms := c.Permissions
 	if len(perms) == 0 && len(c.Roles) > 0 {
 		if derived, derr := p.FlattenPermissions(ctx, c.Roles); derr == nil {

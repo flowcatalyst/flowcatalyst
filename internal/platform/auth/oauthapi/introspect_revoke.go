@@ -47,6 +47,7 @@ type introspectResponse struct {
 	Active        bool    `json:"active"`
 	Sub           *string `json:"sub,omitempty"`
 	Scope         *string `json:"scope,omitempty"`
+	Tier          *string `json:"tier,omitempty"`
 	ClientID      *string `json:"client_id,omitempty"`
 	Email         *string `json:"email,omitempty"`
 	Name          *string `json:"name,omitempty"`
@@ -80,12 +81,16 @@ func (s *State) Introspect(w http.ResponseWriter, r *http.Request) {
 	resp := introspectResponse{
 		Active:        true,
 		Sub:           ptr(claims.Subject),
-		Scope:         ptr(claims.Scope),
+		Tier:          ptr(claims.Tier),
 		Email:         claims.Email,
 		Name:          ptr(claims.Name),
 		PrincipalType: ptr(claims.PrincipalType),
 		Iss:           ptr(claims.Issuer),
 		TokenType:     ptr("Bearer"),
+	}
+	// RFC 7662 `scope` carries the token's granted scopes (now permissions).
+	if claims.Scope != "" {
+		resp.Scope = ptr(claims.Scope)
 	}
 	if len(claims.Clients) > 0 {
 		resp.ClientID = ptr(claims.Clients[0])

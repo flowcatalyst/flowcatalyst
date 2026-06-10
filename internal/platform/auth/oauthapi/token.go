@@ -27,6 +27,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
+	sharedauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
 )
@@ -54,6 +55,13 @@ type State struct {
 	// max_age enforcement (zero time = unknown). Injected so this package
 	// stays decoupled from the session-token validator.
 	ValidateSession func(token string) (subject string, issuedAt time.Time, ok bool)
+	// FlattenPermissions resolves a principal's role names into their full
+	// permission set (the grant ceiling), used to compute the granted "scope"
+	// claim. Injected from provider.FlattenPermissions to keep this package
+	// decoupled from the role repository. When nil, scope narrowing is
+	// disabled: tokens carry no scope claim and the requested scope parameter
+	// is ignored (permissions are then derived downstream from roles).
+	FlattenPermissions func(ctx context.Context, roleNames []string) ([]string, error)
 	// Encryption verifies confidential-client secrets (decrypt + compare).
 	// May be nil when no app key is configured — confidential auth then
 	// fails closed.
@@ -103,6 +111,7 @@ type tokenRequest struct {
 	ClientSecret string
 	CodeVerifier string
 	RefreshToken string
+	Scope        string
 }
 
 func parseTokenRequest(r *http.Request) (tokenRequest, error) {
@@ -117,6 +126,7 @@ func parseTokenRequest(r *http.Request) (tokenRequest, error) {
 		ClientSecret: r.PostFormValue("client_secret"),
 		CodeVerifier: r.PostFormValue("code_verifier"),
 		RefreshToken: r.PostFormValue("refresh_token"),
+		Scope:        r.PostFormValue("scope"),
 	}, nil
 }
 
@@ -334,7 +344,21 @@ func (s *State) handleClientCredentialsGrant(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	accessToken, err := s.Auth.GenerateAccessToken(p)
+	granted, explicit, err := s.grantedScope(r.Context(), p, req.Scope)
+	if err != nil {
+		writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
+		return
+	}
+	if explicit && len(granted) == 0 {
+		// The client explicitly requested permission scopes but holds none of
+		// them — a scope request can't escalate, so this is a client error.
+		reason := "requested scope exceeds granted permissions"
+		s.recordAttempt(r.Context(), loginattempt.AttemptServiceAccountToken, loginattempt.OutcomeFailure, req.ClientID, &p.ID, &reason)
+		writeOAuthError(w, http.StatusBadRequest, "invalid_scope",
+			"Requested scope exceeds the service account's granted permissions")
+		return
+	}
+	accessToken, err := s.Auth.GenerateAccessTokenWithScope(p, granted)
 	if err != nil {
 		writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 		return
@@ -344,6 +368,7 @@ func (s *State) handleClientCredentialsGrant(w http.ResponseWriter, r *http.Requ
 		AccessToken: accessToken,
 		TokenType:   "Bearer",
 		ExpiresIn:   3600,
+		Scope:       scopeResponse(granted),
 	})
 }
 
@@ -395,15 +420,24 @@ func (s *State) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	accessToken, err := s.Auth.GenerateAccessToken(p)
+	scope := ""
+	if code.Scope != nil {
+		scope = *code.Scope
+	}
+
+	// Narrow the token's permission scope to the ceiling ∩ the scope captured
+	// at authorize time. Interactive logins commonly request only OIDC scopes
+	// (openid/profile/…), which leaves the permission request empty → the
+	// principal's full permissions, so we never reject here.
+	granted, _, err := s.grantedScope(r.Context(), p, scope)
 	if err != nil {
 		writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 		return
 	}
-
-	scope := ""
-	if code.Scope != nil {
-		scope = *code.Scope
+	accessToken, err := s.Auth.GenerateAccessTokenWithScope(p, granted)
+	if err != nil {
+		writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
+		return
 	}
 
 	var idToken *string
@@ -509,7 +543,15 @@ func (s *State) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	accessToken, err := s.Auth.GenerateAccessToken(p)
+	// Re-narrow against the CURRENT ceiling intersected with the originally
+	// granted scope: roles may have shrunk since the grant (the refreshed
+	// token must reflect that) but a refresh can never widen scope.
+	granted, _, err := s.grantedScope(r.Context(), p, strings.Join(stored.Scopes, " "))
+	if err != nil {
+		writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
+		return
+	}
+	accessToken, err := s.Auth.GenerateAccessTokenWithScope(p, granted)
 	if err != nil {
 		writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 		return
@@ -633,6 +675,79 @@ func grantAllowed(client *auth.OAuthClient, grant string) bool {
 		}
 	}
 	return false
+}
+
+// oidcReservedScopes are OAuth/OIDC flow scopes that are NOT authorization
+// permissions. They drive separate behaviour (openid → id_token,
+// offline_access → refresh_token) and are excluded from permission-scope
+// narrowing so a login requesting only "openid profile" isn't mistaken for a
+// permission request that intersects the ceiling to nothing.
+var oidcReservedScopes = map[string]struct{}{
+	"openid": {}, "profile": {}, "email": {}, "address": {}, "phone": {}, "offline_access": {},
+}
+
+// grantedScope computes the permission set to embed in a minted access token's
+// "scope" claim: the principal's full permission ceiling (flattened from its
+// roles), optionally narrowed to the intersection with the requested
+// permission scopes.
+//
+//   - no permission scopes requested (OIDC flow scopes aside) → the full
+//     ceiling, the conventional client_credentials / login default.
+//   - permission scopes requested → only those the ceiling authorises;
+//     requests for permissions the principal lacks are silently dropped, so a
+//     scope request can never escalate beyond the principal's roles. Anchor
+//     principals have an unbounded ceiling, so their requests pass through
+//     verbatim. explicit reports whether any permission scopes were requested,
+//     so callers can reject an empty intersection with invalid_scope.
+//
+// Returns (nil, false, nil) when scope support is unwired (FlattenPermissions
+// nil): callers then mint with no scope claim (legacy behaviour, permissions
+// derived downstream from roles).
+func (s *State) grantedScope(ctx context.Context, p *principal.Principal, requested string) (granted []string, explicit bool, err error) {
+	if s.FlattenPermissions == nil {
+		return nil, false, nil
+	}
+	ceiling, err := s.FlattenPermissions(ctx, roleNamesOf(p))
+	if err != nil {
+		return nil, false, err
+	}
+	var reqPerms []string
+	for _, f := range strings.Fields(requested) {
+		if _, reserved := oidcReservedScopes[f]; reserved {
+			continue
+		}
+		reqPerms = append(reqPerms, f)
+	}
+	if len(reqPerms) == 0 {
+		return ceiling, false, nil
+	}
+	anchor := p.Scope == principal.ScopeAnchor
+	granted = make([]string, 0, len(reqPerms))
+	for _, r := range reqPerms {
+		if anchor || sharedauth.Grants(ceiling, r) {
+			granted = append(granted, r)
+		}
+	}
+	return granted, true, nil
+}
+
+// roleNamesOf extracts a principal's assigned role names.
+func roleNamesOf(p *principal.Principal) []string {
+	out := make([]string, 0, len(p.Roles))
+	for _, ra := range p.Roles {
+		out = append(out, ra.Role)
+	}
+	return out
+}
+
+// scopeResponse renders a granted permission set as the optional response
+// `scope` field, nil when empty.
+func scopeResponse(granted []string) *string {
+	if len(granted) == 0 {
+		return nil
+	}
+	j := strings.Join(granted, " ")
+	return &j
 }
 
 func scopeHas(scope, want string) bool { return scopesContain(strings.Fields(scope), want) }
