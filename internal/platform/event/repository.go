@@ -324,12 +324,17 @@ func (r *Repository) fetchOne(ctx context.Context, sql string, args ...any) (*Ev
 func scanRow(rows pgx.Rows) (*Event, error) {
 	var e Event
 	var dataBytes []byte
-	var subject, dedupID *string
-	if err := rows.Scan(&e.ID, &e.SpecVersion, &e.Type, &e.Source, &subject,
+	// spec_version is nullable in the schema (like subject/dedup): scan via
+	// a pointer so one NULL row can't 500 the whole list query.
+	var specVersion, subject, dedupID *string
+	if err := rows.Scan(&e.ID, &specVersion, &e.Type, &e.Source, &subject,
 		&e.Time, &dataBytes, &dedupID, &e.ClientID, &e.MessageGroup,
 		&e.CorrelationID, &e.CausationID, &e.CreatedAt,
 		&e.Application, &e.Subdomain, &e.Aggregate, &e.ProjectedAt); err != nil {
 		return nil, err
+	}
+	if specVersion != nil {
+		e.SpecVersion = *specVersion
 	}
 	if subject != nil {
 		e.Subject = *subject

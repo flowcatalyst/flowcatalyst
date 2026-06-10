@@ -391,16 +391,22 @@ func (r *RefreshTokenRepository) MarkAsReplaced(ctx context.Context, tokenHash, 
 }
 
 // RevokeByHash revokes a single refresh token by its hash.
+//
+// The revocation timestamp is passed twice on purpose: $3 as a timestamptz
+// for the consumed_at column and $4 as an RFC3339 string for the JSON
+// payload. A single parameter can't serve both — Postgres refuses to infer
+// one placeholder as two types (42804), which made every revocation path
+// error until the integration tests caught it.
 func (r *RefreshTokenRepository) RevokeByHash(ctx context.Context, tokenHash string) (bool, error) {
 	now := time.Now().UTC()
 	tag, err := r.pool.Exec(ctx,
 		`UPDATE oauth_oidc_payloads
 		SET payload = jsonb_set(
 			jsonb_set(payload, '{revoked}', 'true'::jsonb),
-			'{revokedAt}', to_jsonb($3::text)
+			'{revokedAt}', to_jsonb($4::text)
 		), consumed_at = $3
 		WHERE type = $1 AND payload->>'tokenHash' = $2`,
-		refreshTokenPayloadType, tokenHash, now)
+		refreshTokenPayloadType, tokenHash, now, now.Format(time.RFC3339))
 	if err != nil {
 		return false, err
 	}
@@ -410,16 +416,17 @@ func (r *RefreshTokenRepository) RevokeByHash(ctx context.Context, tokenHash str
 // RevokeAllInFamily revokes every still-active token in a rotation family
 // (by grant_id). Returns the number revoked.
 func (r *RefreshTokenRepository) RevokeAllInFamily(ctx context.Context, familyID string) (int64, error) {
+	// $3/$4 split: see RevokeByHash.
 	now := time.Now().UTC()
 	tag, err := r.pool.Exec(ctx,
 		`UPDATE oauth_oidc_payloads
 		SET payload = jsonb_set(
 			jsonb_set(payload, '{revoked}', 'true'::jsonb),
-			'{revokedAt}', to_jsonb($3::text)
+			'{revokedAt}', to_jsonb($4::text)
 		), consumed_at = $3
 		WHERE type = $1 AND grant_id = $2
 		  AND (payload->>'revoked' IS NULL OR payload->>'revoked' = 'false')`,
-		refreshTokenPayloadType, familyID, now)
+		refreshTokenPayloadType, familyID, now, now.Format(time.RFC3339))
 	if err != nil {
 		return 0, err
 	}
@@ -429,17 +436,18 @@ func (r *RefreshTokenRepository) RevokeAllInFamily(ctx context.Context, familyID
 // RevokeAllForPrincipal revokes every active refresh token for a
 // principal (logout-all). Returns the number revoked.
 func (r *RefreshTokenRepository) RevokeAllForPrincipal(ctx context.Context, principalID string) (int64, error) {
+	// $3/$4 split: see RevokeByHash.
 	now := time.Now().UTC()
 	tag, err := r.pool.Exec(ctx,
 		`UPDATE oauth_oidc_payloads
 		SET payload = jsonb_set(
 			jsonb_set(payload, '{revoked}', 'true'::jsonb),
-			'{revokedAt}', to_jsonb($3::text)
+			'{revokedAt}', to_jsonb($4::text)
 		), consumed_at = $3
 		WHERE type = $1 AND payload->>'accountId' = $2
 		  AND consumed_at IS NULL AND expires_at > NOW()
 		  AND (payload->>'revoked' IS NULL OR payload->>'revoked' = 'false')`,
-		refreshTokenPayloadType, principalID, now)
+		refreshTokenPayloadType, principalID, now, now.Format(time.RFC3339))
 	if err != nil {
 		return 0, err
 	}

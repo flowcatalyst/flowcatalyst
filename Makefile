@@ -83,8 +83,11 @@ test: test-unit test-integration ## Run all tests
 test-unit: ## Run unit tests (no DB required)
 	$(GO) test -race -short ./...
 
-test-integration: ## Run integration tests (testcontainers Postgres)
-	$(GO) test -race -tags=integration ./...
+test-integration: ## Run integration tests (embedded Postgres via internal/testpg)
+	# -p 1 serializes test binaries: each integration package boots its own
+	# embedded Postgres (internal/testpg.RunMain), and the first-ever run
+	# also downloads the postgres binaries — concurrent extraction races.
+	$(GO) test -race -p 1 -tags=integration ./...
 
 test-platform: ## Run platform package tests (no DB)
 	$(GO) test -race -short ./internal/platform/...
