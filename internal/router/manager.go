@@ -501,6 +501,12 @@ func (m *Manager) Reconfigure(ctx context.Context, cfg common.RouterConfig) erro
 
 // Shutdown cancels all consumer poll loops, stops the pools, and waits for
 // the poll loops to exit.
+//
+// Shutdown is not necessarily terminal: in standby/HA mode it runs on
+// leadership LOSS, and a later regain calls Reconfigure on the same Manager.
+// The maps are therefore re-made empty rather than nil'd — Reconfigure
+// assigns into them, and writing to a nil map panics (in the Watch
+// goroutine, taking the process down on the designed failover path).
 func (m *Manager) Shutdown(ctx context.Context) error {
 	m.mu.Lock()
 	for _, rc := range m.consumers {
@@ -510,8 +516,9 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 	for _, p := range m.pools {
 		p.Stop()
 	}
-	m.consumers = nil
-	m.pools = nil
+	m.consumers = make(map[string]*runningConsumer)
+	m.pools = make(map[string]*Pool)
+	m.queues = make(map[string]common.QueueConfig)
 	m.mu.Unlock()
 
 	done := make(chan struct{})

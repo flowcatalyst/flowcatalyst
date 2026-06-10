@@ -288,7 +288,11 @@ func (r *Repository) FindByServiceAccount(ctx context.Context, serviceAccountID 
 	return p, nil
 }
 
-// FindAll lists every principal.
+// FindAll lists every principal, with role assignments and granted-client
+// access hydrated in bulk (two `= ANY` queries total, not 2N). Without the
+// hydration every row in the list endpoint serialized `roles: []` /
+// `grantedClientIds: []`, the `?roles=` filter could never match, and
+// principalMatchesClient's granted-clients branch was dead code.
 func (r *Repository) FindAll(ctx context.Context) ([]Principal, error) {
 	rows, err := r.q.PrincipalFindAll(ctx)
 	if err != nil {
@@ -298,7 +302,89 @@ func (r *Repository) FindAll(ctx context.Context) ([]Principal, error) {
 	for _, row := range rows {
 		out = append(out, *rowToPrincipal(row))
 	}
+	if err := r.hydrateRolesAll(ctx, out); err != nil {
+		return nil, err
+	}
+	if err := r.hydrateClientGrantsAll(ctx, out); err != nil {
+		return nil, err
+	}
 	return out, nil
+}
+
+// principalIndex builds the id → *Principal lookup plus the id list used by
+// the batched hydrators below.
+func principalIndex(ps []Principal) (map[string]*Principal, []string) {
+	idx := make(map[string]*Principal, len(ps))
+	ids := make([]string, 0, len(ps))
+	for i := range ps {
+		idx[ps[i].ID] = &ps[i]
+		ids = append(ids, ps[i].ID)
+	}
+	return idx, ids
+}
+
+// hydrateRolesAll is the batched form of hydrateRoles: one
+// `principal_id = ANY($1)` query populates .Roles for every principal in ps,
+// so FindAll doesn't pay one roles query per row.
+func (r *Repository) hydrateRolesAll(ctx context.Context, ps []Principal) error {
+	if r.pool == nil || len(ps) == 0 {
+		return nil
+	}
+	idx, ids := principalIndex(ps)
+	rows, err := r.pool.Query(ctx,
+		`SELECT principal_id, role_name, assignment_source, assigned_at
+		 FROM iam_principal_roles
+		 WHERE principal_id = ANY($1)
+		 ORDER BY assigned_at`, ids)
+	if err != nil {
+		return fmt.Errorf("principal roles (bulk): %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var pid string
+		var ra serviceaccount.RoleAssignment
+		var src *string
+		if err := rows.Scan(&pid, &ra.Role, &src, &ra.AssignedAt); err != nil {
+			return fmt.Errorf("principal roles (bulk) scan: %w", err)
+		}
+		ra.AssignmentSource = src
+		if p := idx[pid]; p != nil {
+			p.Roles = append(p.Roles, ra)
+		}
+	}
+	return rows.Err()
+}
+
+// hydrateClientGrantsAll is the batched form of hydrateClientAccess's
+// granted-clients read: one `principal_id = ANY($1)` query populates
+// .AssignedClients for every principal in ps. The per-principal identifier
+// map (ClientIdentifierMap) is deliberately NOT hydrated here — it exists
+// for the JWT `clients` claim on the single-principal auth paths, and the
+// list endpoint doesn't serialize it.
+func (r *Repository) hydrateClientGrantsAll(ctx context.Context, ps []Principal) error {
+	if r.pool == nil || len(ps) == 0 {
+		return nil
+	}
+	idx, ids := principalIndex(ps)
+	rows, err := r.pool.Query(ctx,
+		`SELECT principal_id, client_id
+		 FROM iam_client_access_grants
+		 WHERE principal_id = ANY($1)
+		 ORDER BY client_id`, ids)
+	if err != nil {
+		return fmt.Errorf("principal client grants (bulk): %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var pid, cid string
+		if err := rows.Scan(&pid, &cid); err != nil {
+			return fmt.Errorf("principal client grants (bulk) scan: %w", err)
+		}
+		if p := idx[pid]; p != nil {
+			p.AssignedClients = append(p.AssignedClients, cid)
+		}
+	}
+	return rows.Err()
 }
 
 // Persist implements usecasepgx.Persist[Principal].

@@ -285,12 +285,25 @@ type listOutput struct {
 	Body []EventRead
 }
 
+// scopeFilters applies SQL-side tenant scoping (anchor sees all → no
+// scoping). Without it a non-anchor holding event:view could read any
+// tenant's events by passing arbitrary clientId/clientIds filters — the
+// caller-controlled filters must only narrow within the principal's own
+// tenants. Same pattern as scheduledjob's list.
+func scopeFilters(ac *auth.AuthContext, f event.FilterParams) event.FilterParams {
+	if !ac.IsAnchor() {
+		clients := ac.Clients
+		f.AccessibleClientIDs = &clients
+	}
+	return f
+}
+
 func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePermission(ac, "platform:messaging:event:view"); err != nil {
 		return nil, err
 	}
-	rows, err := s.Repo.FindWithFilters(ctx, in.toFilters())
+	rows, err := s.Repo.FindWithFilters(ctx, scopeFilters(ac, in.toFilters()))
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_with_filters failed", err)
 	}
@@ -306,7 +319,7 @@ func (s *State) listRaw(ctx context.Context, in *listInput) (*listOutput, error)
 	if err := auth.CanWritePermission(ac, "platform:messaging:event:view-raw"); err != nil {
 		return nil, err
 	}
-	rows, err := s.Repo.FindWithFilters(ctx, in.toFilters())
+	rows, err := s.Repo.FindWithFilters(ctx, scopeFilters(ac, in.toFilters()))
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_raw failed", err)
 	}
@@ -370,6 +383,13 @@ func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
 	if ev == nil {
 		return nil, httperror.NotFound("Event", in.ID)
 	}
+	// Per-resource tenant scoping, matching the list semantics: a
+	// client-scoped event is only visible to principals with access to that
+	// client; platform-scoped events (nil ClientID) stay visible to any
+	// holder of event:view.
+	if ev.ClientID != nil && !ac.CanAccessClient(*ev.ClientID) {
+		return nil, httperror.Forbidden("No access to this event")
+	}
 	return &getOutput{Body: fromEntity(ev)}, nil
 }
 
@@ -382,6 +402,13 @@ type filterOptionsOutput struct {
 }
 
 func (s *State) filterOptions(ctx context.Context, _ *emptyInput) (*filterOptionsOutput, error) {
+	// Same gate as list: the option values (application codes, subdomains,
+	// event types) are derived from event rows — without this check the
+	// endpoint leaked them to unauthenticated callers.
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, "platform:messaging:event:view"); err != nil {
+		return nil, err
+	}
 	q := func(col string) []EventFilterOption {
 		out, _ := s.Repo.DistinctValues(ctx, col, 200)
 		return toFilterOptions(out)

@@ -47,7 +47,12 @@ type Token struct {
 	Reset2FA bool `json:"reset2fa"`
 	// RequiresFactor, when set, means confirming additionally requires proving
 	// an authenticator (TOTP) code — email alone can't authorize the reset.
-	RequiresFactor bool      `json:"requiresFactor"`
+	RequiresFactor bool `json:"requiresFactor"`
+	// FactorAttempts counts failed factor proofs against this token. The
+	// confirm handler burns the principal's token set once it crosses the
+	// wrong-guess ceiling (the token is deliberately not consumed on a wrong
+	// code, so without this the retry allowance is a TOTP brute-force window).
+	FactorAttempts int       `json:"factorAttempts"`
 	ExpiresAt      time.Time `json:"expiresAt"`
 	CreatedAt      time.Time `json:"createdAt"`
 }
@@ -97,7 +102,7 @@ func (r *Repository) Consume(ctx context.Context, tokenHash string) (*Token, err
 	row := r.pool.QueryRow(ctx,
 		`DELETE FROM iam_password_reset_tokens
 		   WHERE token_hash = $1 AND expires_at > NOW()
-		 RETURNING id, principal_id, token_hash, purpose, reset_2fa, requires_factor, expires_at, created_at`,
+		 RETURNING id, principal_id, token_hash, purpose, reset_2fa, requires_factor, factor_attempts, expires_at, created_at`,
 		tokenHash)
 	return scanToken(row)
 }
@@ -107,17 +112,33 @@ func (r *Repository) Consume(ctx context.Context, tokenHash string) (*Token, err
 // when absent. Expiry is reported by the caller via Token.IsExpired.
 func (r *Repository) FindByTokenHash(ctx context.Context, tokenHash string) (*Token, error) {
 	row := r.pool.QueryRow(ctx,
-		`SELECT id, principal_id, token_hash, purpose, reset_2fa, requires_factor, expires_at, created_at
+		`SELECT id, principal_id, token_hash, purpose, reset_2fa, requires_factor, factor_attempts, expires_at, created_at
 		   FROM iam_password_reset_tokens WHERE token_hash = $1`,
 		tokenHash)
 	return scanToken(row)
+}
+
+// IncrementFactorAttempts records a failed factor proof against the token and
+// returns the new count. Atomic (UPDATE ... RETURNING) so concurrent wrong
+// guesses can't share a slot under the ceiling.
+func (r *Repository) IncrementFactorAttempts(ctx context.Context, id string) (int, error) {
+	var n int
+	err := r.pool.QueryRow(ctx,
+		`UPDATE iam_password_reset_tokens
+		    SET factor_attempts = factor_attempts + 1
+		  WHERE id = $1
+		 RETURNING factor_attempts`, id).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("increment factor attempts: %w", err)
+	}
+	return n, nil
 }
 
 // scanToken reads a token row, mapping pgx.ErrNoRows to (nil, nil).
 func scanToken(row pgx.Row) (*Token, error) {
 	var t Token
 	var purpose string
-	if err := row.Scan(&t.ID, &t.PrincipalID, &t.TokenHash, &purpose, &t.Reset2FA, &t.RequiresFactor, &t.ExpiresAt, &t.CreatedAt); err != nil {
+	if err := row.Scan(&t.ID, &t.PrincipalID, &t.TokenHash, &purpose, &t.Reset2FA, &t.RequiresFactor, &t.FactorAttempts, &t.ExpiresAt, &t.CreatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}

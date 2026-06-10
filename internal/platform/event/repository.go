@@ -106,6 +106,14 @@ type FilterParams struct {
 	Subdomains   []string
 	Aggregates   []string
 	Types        []string
+
+	// AccessibleClientIDs: a non-nil pointer scopes results to
+	// platform-scoped events (client_id IS NULL) plus events whose
+	// client_id is in the set; nil means no access scoping (anchor).
+	// Mirrors scheduledjob.FilterParams — enforced in SQL so the caller's
+	// clientId/clientIds filters can only ever narrow within the
+	// principal's tenants, never reach across them.
+	AccessibleClientIDs *[]string
 }
 
 // FindWithFilters returns events from the read table matching non-nil
@@ -143,6 +151,10 @@ func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Eve
 	}
 	if len(p.ClientIDs) > 0 {
 		addAny("client_id", p.ClientIDs)
+	}
+	if p.AccessibleClientIDs != nil {
+		args = append(args, *p.AccessibleClientIDs)
+		conds = append(conds, fmt.Sprintf("(client_id IS NULL OR client_id = ANY($%d))", len(args)))
 	}
 	if len(p.Applications) > 0 {
 		addAny("application", p.Applications)

@@ -288,12 +288,25 @@ type listOutput struct {
 	Body []DispatchJobRead
 }
 
+// scopeFilters applies SQL-side tenant scoping (anchor sees all → no
+// scoping). Without it a non-anchor holding dispatch-job:view could read any
+// tenant's jobs by passing arbitrary clientId/clientIds filters — the
+// caller-controlled filters must only narrow within the principal's own
+// tenants. Same pattern as scheduledjob's and event's list.
+func scopeFilters(ac *auth.AuthContext, f dispatchjob.FilterParams) dispatchjob.FilterParams {
+	if !ac.IsAnchor() {
+		clients := ac.Clients
+		f.AccessibleClientIDs = &clients
+	}
+	return f
+}
+
 func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
 		return nil, err
 	}
-	rows, err := s.Repo.FindWithFilters(ctx, in.toFilters())
+	rows, err := s.Repo.FindWithFilters(ctx, scopeFilters(ac, in.toFilters()))
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_with_filters failed", err)
 	}
@@ -309,7 +322,7 @@ func (s *State) listRaw(ctx context.Context, in *listInput) (*listOutput, error)
 	if err := auth.CanWritePermission(ac, viewRawPerm); err != nil {
 		return nil, err
 	}
-	rows, err := s.Repo.FindWithFilters(ctx, in.toFilters())
+	rows, err := s.Repo.FindWithFilters(ctx, scopeFilters(ac, in.toFilters()))
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_raw failed", err)
 	}

@@ -134,6 +134,9 @@ type getOutput struct {
 
 func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
 	ac := auth.FromContext(ctx)
+	if err := auth.CanReadConnections(ac); err != nil {
+		return nil, err
+	}
 	c, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)

@@ -75,9 +75,11 @@ func (d *MessageGroupDispatcher) drainGroup(ctx context.Context, group string) {
 		d.mu.Lock()
 		g := d.groups[group]
 		if g == nil || len(g.pending) == 0 {
-			if g != nil {
-				g.running = false
-			}
+			// Fully drained — drop the entry so `groups` doesn't accumulate
+			// one empty groupQueue per message-group ID ever seen (unbounded
+			// growth with high-cardinality groups). A later Submit re-creates
+			// it.
+			delete(d.groups, group)
 			d.mu.Unlock()
 			return
 		}

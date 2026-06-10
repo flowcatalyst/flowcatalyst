@@ -189,6 +189,17 @@ func (s *State) Token(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A body client_id supplied alongside Basic auth must match the
+	// authenticated identity (RFC 6749 §3.2.1 — a request must not use two
+	// client identities). Basic auth wins inside authenticateClient, so
+	// without this check a divergent body client_id would silently ride
+	// along into the grant handlers.
+	if authenticatedClient != nil && req.ClientID != "" && req.ClientID != authenticatedClient.ClientID {
+		writeOAuthError(w, http.StatusBadRequest, "invalid_request",
+			"client_id does not match the authenticated client")
+		return
+	}
+
 	switch req.GrantType {
 	case "authorization_code":
 		s.handleAuthorizationCodeGrant(w, r, req, authenticatedClient)
@@ -374,7 +385,7 @@ func (s *State) handleClientCredentialsGrant(w http.ResponseWriter, r *http.Requ
 
 // ─── authorization_code grant ───────────────────────────────────────────
 
-func (s *State) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Request, req tokenRequest, _ *auth.OAuthClient) {
+func (s *State) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Request, req tokenRequest, client *auth.OAuthClient) {
 	if req.Code == "" {
 		writeOAuthError(w, http.StatusBadRequest, "invalid_request", "Missing 'code' parameter")
 		return
@@ -394,7 +405,13 @@ func (s *State) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Requ
 		writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "Authorization code has expired")
 		return
 	}
-	if req.ClientID != code.ClientID {
+	// Bind the code to the AUTHENTICATED client identity (resolved from
+	// Basic auth or body by authenticateClient), not the body client_id: a
+	// different valid client could otherwise authenticate as itself while
+	// echoing the victim's client_id in the body and redeem a code that was
+	// never issued to it. (handleTokenEndpoint guarantees client != nil for
+	// this grant; the nil check is belt-and-braces.)
+	if client == nil || client.ClientID != code.ClientID {
 		writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "Client ID mismatch")
 		return
 	}

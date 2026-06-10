@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/queue"
@@ -193,4 +194,127 @@ func TestPoolImmediateRetriesIndependently(t *testing.T) {
 	assert.Equal(t, 3, m1Attempts, "m1 is retried in-pipeline until it succeeds (2 fails + 1 success)")
 	assert.Empty(t, nacked, "in-pipeline retries must not NACK to the broker")
 	assert.ElementsMatch(t, []string{"m1", "m2", "m3"}, acked, "all three should ACK on success")
+}
+
+// mkOrdered builds a BLOCK_ON_ERROR message in the given group — the shape the
+// drainer-recovery tests below submit.
+func mkOrdered(id string, group *string) common.QueuedMessage {
+	return common.QueuedMessage{
+		Message: common.Message{
+			ID:              id,
+			MediationType:   common.MediationTypeHTTP,
+			MediationTarget: "http://example.invalid",
+			MessageGroupID:  group,
+			DispatchMode:    common.DispatchBlockOnError,
+		},
+		ReceiptHandle: id,
+	}
+}
+
+// groupIdleWithBuffered reports whether the group has no drainer running and
+// exactly n messages buffered — the resumable state a cancelled drainer must
+// leave behind.
+func groupIdleWithBuffered(p *Pool, group string, n int) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	gq := p.groupQs[group]
+	return gq != nil && !gq.working && len(gq.msgs) == n
+}
+
+// TestPoolOrderedGroupRecoversAfterCancelDuringSemWait pins a wedge
+// regression: a drainer cancelled while parked on the semaphore acquire used
+// to return with the group's working flag still set (and the popped message
+// dropped from the buffer). Since the ctx belongs to the submitting consumer
+// — cancelled on stalled-consumer restart / queue reconfigure while the pool
+// lives on — every later message for that group buffered forever and no
+// drainer could ever be spawned again. The cancelled drainer must instead
+// re-front the in-hand message and clear working so a later submit resumes
+// the group.
+func TestPoolOrderedGroupRecoversAfterCancelDuringSemWait(t *testing.T) {
+	group := "g"
+	cons := &cascadeConsumer{wantTotal: 2, done: make(chan struct{})}
+	med := &cascadeMediator{}
+	pool := newCascadePool(med, func(string) queue.Consumer { return cons })
+
+	// Occupy the single concurrency slot so the drainer parks on the acquire.
+	sem := pool.loadSem()
+	sem <- struct{}{}
+
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	pool.submit(ctx1, mkOrdered("m1", &group))
+
+	// queueSize back to 0 ⇒ the drainer popped m1 and is parked on the
+	// semaphore. Cancel the consumer ctx (the "restart").
+	require.Eventually(t, func() bool { return pool.QueueSize() == 0 },
+		time.Second, 5*time.Millisecond, "drainer never popped m1")
+	cancel1()
+
+	require.Eventually(t, func() bool { return groupIdleWithBuffered(pool, group, 1) },
+		time.Second, 5*time.Millisecond,
+		"cancelled drainer must leave the group idle with m1 re-fronted")
+
+	// Free the slot, then submit from the "restarted consumer".
+	<-sem
+	pool.submit(context.Background(), mkOrdered("m2", &group))
+
+	select {
+	case <-cons.done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("group wedged: nothing dispatched after consumer restart")
+	}
+
+	med.mu.Lock()
+	seen := append([]string(nil), med.seen...)
+	med.mu.Unlock()
+	assert.Equal(t, []string{"m1", "m2"}, seen, "FIFO preserved across the drainer hand-off")
+
+	// Once fully drained the group's entry is GC'd from groupQs.
+	require.Eventually(t, func() bool { return pool.MessageGroupCount() == 0 },
+		time.Second, 5*time.Millisecond, "drained group entry must be removed")
+}
+
+// TestPoolOrderedGroupRecoversAfterCancelDuringBackoff pins the same wedge on
+// the other cancellation exit: the consumer ctx is cancelled while the
+// drainer sits out the retry backoff of a transiently-failing head message.
+// The message is already re-fronted at that point; working must still be
+// cleared so the group resumes under a fresh drainer.
+func TestPoolOrderedGroupRecoversAfterCancelDuringBackoff(t *testing.T) {
+	group := "g"
+	cons := &cascadeConsumer{wantTotal: 2, done: make(chan struct{})}
+	med := &cascadeMediator{failID: "m1"} // failTimes 0 = fail forever (lifted below)
+	pool := newCascadePool(med, func(string) queue.Consumer { return cons })
+
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	pool.submit(ctx1, mkOrdered("m1", &group))
+
+	// Wait for the first failed attempt, then cancel: the drainer is in (or
+	// headed into) a ctx-aware select — backoff or next sem acquire — and
+	// must exit through the resumable path either way.
+	require.Eventually(t, func() bool {
+		med.mu.Lock()
+		defer med.mu.Unlock()
+		return len(med.seen) >= 1
+	}, time.Second, 5*time.Millisecond, "m1 was never attempted")
+	cancel1()
+
+	require.Eventually(t, func() bool { return groupIdleWithBuffered(pool, group, 1) },
+		5*time.Second, 5*time.Millisecond,
+		"cancelled drainer must leave the group idle with m1 re-fronted")
+
+	// Lift the failure and resume via a fresh consumer submit.
+	med.mu.Lock()
+	med.failTimes = med.failed
+	med.mu.Unlock()
+	pool.submit(context.Background(), mkOrdered("m2", &group))
+
+	select {
+	case <-cons.done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("group wedged: nothing dispatched after consumer restart")
+	}
+
+	med.mu.Lock()
+	last2 := append([]string(nil), med.seen[len(med.seen)-2:]...)
+	med.mu.Unlock()
+	assert.Equal(t, []string{"m1", "m2"}, last2, "m1 dispatches before m2 after recovery")
 }

@@ -87,9 +87,11 @@ func (d *GroupDistributor) drain(group string) {
 		d.mu.Lock()
 		q := d.groups[group]
 		if q == nil || len(q.pending) == 0 {
-			if q != nil {
-				q.running = false
-			}
+			// Fully drained — drop the entry so `groups` doesn't accumulate
+			// one empty groupQueue per message-group ID ever seen (unbounded
+			// growth with high-cardinality groups). A later Submit re-creates
+			// it.
+			delete(d.groups, group)
 			d.mu.Unlock()
 			return
 		}
@@ -102,11 +104,13 @@ func (d *GroupDistributor) drain(group string) {
 		}
 		// Block-on-error: this item failed. Release the rest of the group's
 		// claimed-but-undispatched items so they re-run in order on the next
-		// poll, behind the failed item, and stop draining this group.
+		// poll, behind the failed item, and stop draining this group. The
+		// entry is dropped (not just flagged idle) for the same GC reason as
+		// the empty exit above; items Submitted to it before the delete are
+		// in `remaining` and released via onAbort.
 		d.mu.Lock()
 		remaining := q.pending
-		q.pending = nil
-		q.running = false
+		delete(d.groups, group)
 		d.mu.Unlock()
 		for _, w := range remaining {
 			if w.onAbort != nil {

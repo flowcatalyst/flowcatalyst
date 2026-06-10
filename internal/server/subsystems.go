@@ -2,10 +2,15 @@ package server
 
 import (
 	"context"
+	"crypto/hkdf"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -47,12 +52,45 @@ import (
 // alive without external dependencies. TODO(scheduler-runtime): wire
 // the real queue.Publisher via internal/queue.NewPublisher once the
 // QueueConfig env knobs are exposed in envcfg.go.
+//
+// Fail-closed: the dispatch-auth HMAC secret is derived from
+// FLOWCATALYST_APP_KEY; without it the scheduler refuses to start rather
+// than signing with a known literal.
 func StartScheduler(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg) {
+	secret, err := dispatchAuthSecret()
+	if err != nil {
+		slog.Error("scheduler disabled: cannot derive dispatch-auth secret; set FLOWCATALYST_APP_KEY", "err", err)
+		return
+	}
+	// Until the real publisher is wired (TODO above), claimed jobs are
+	// published into the void and recovered by stale recovery — make that
+	// impossible to miss in the logs.
+	slog.Warn("scheduler running with NOOP publisher: dispatch jobs will be claimed but NOT delivered; " +
+		"do not enable FC_SCHEDULER_ENABLED in production until a real queue.Publisher is wired")
 	scfg := scheduler.DefaultConfig()
-	s := scheduler.New(scfg, pool, NoopPublisher{}, "fc-dispatch-hmac-secret-todo")
+	s := scheduler.New(scfg, pool, NoopPublisher{}, secret)
 	s.IsLeader = newLeaderGate(ctx, cfg, "scheduler")
 	s.Run(ctx)
 	slog.Info("scheduler stopped")
+}
+
+// dispatchAuthSecret derives the HMAC key for dispatch-job auth tokens from
+// FLOWCATALYST_APP_KEY via HKDF-SHA256 with a purpose-bound info string.
+// Deriving (rather than reusing the raw key) keeps the field-encryption key
+// and this signing key cryptographically independent — compromise or
+// rotation of one doesn't silently affect the other — while adding no new
+// secret to operate. Sign and Verify both live in this process, so the
+// derived value never needs to be shared.
+func dispatchAuthSecret() (string, error) {
+	appKey := strings.TrimSpace(os.Getenv("FLOWCATALYST_APP_KEY"))
+	if appKey == "" {
+		return "", errors.New("FLOWCATALYST_APP_KEY is not set")
+	}
+	key, err := hkdf.Key(sha256.New, []byte(appKey), nil, "fc-dispatch-auth", 32)
+	if err != nil {
+		return "", fmt.Errorf("derive dispatch-auth key: %w", err)
+	}
+	return hex.EncodeToString(key), nil
 }
 
 // StartScheduledJobScheduler runs the scheduled-job cron + dispatch engine
@@ -81,14 +119,19 @@ func newLeaderGate(ctx context.Context, cfg EnvCfg, subsystem string) func() boo
 	ecfg := common.NewLeaderElectionConfig(cfg.StandbyRedisURL)
 	ecfg.Enabled = true
 	ecfg.LockKey = cfg.StandbyLockKey + ":" + subsystem
+	// Election failures fail CLOSED (never leader): standby is enabled, so
+	// other replicas exist, and an un-gated fallback would let every replica
+	// go active simultaneously — violating exactly the single-active
+	// invariant (per-message-group FIFO ordering) this gate exists to
+	// protect. A node that can't elect sits out until it can.
 	el, err := standby.New(ecfg)
 	if err != nil {
-		slog.Error("leader election init failed; running un-gated", "subsystem", subsystem, "err", err)
-		return func() bool { return true }
+		slog.Error("leader election init failed; failing closed (never leader)", "subsystem", subsystem, "err", err)
+		return func() bool { return false }
 	}
 	if err := el.Start(ctx); err != nil {
-		slog.Error("leader election start failed; running un-gated", "subsystem", subsystem, "err", err)
-		return func() bool { return true }
+		slog.Error("leader election start failed; failing closed (never leader)", "subsystem", subsystem, "err", err)
+		return func() bool { return false }
 	}
 	go func() { //nolint:gosec // G118: shutdown drain: parent ctx is already done, so a fresh Background context is required
 		<-ctx.Done()

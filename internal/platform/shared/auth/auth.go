@@ -143,8 +143,14 @@ type AuthContext struct {
 	Permissions []string
 }
 
+// The boolean methods below are nil-receiver-safe and fail closed: an
+// unauthenticated request (FromContext returns nil) has no scope, no
+// tenants, and no permissions. Handlers still owe a Can*/Require* check
+// for the 401/403 envelope — the guards here only ensure a missed check
+// degrades to "no access" instead of a nil-deref panic.
+
 // IsAnchor reports whether the principal has anchor scope.
-func (a *AuthContext) IsAnchor() bool { return a.Scope == ScopeAnchor }
+func (a *AuthContext) IsAnchor() bool { return a != nil && a.Scope == ScopeAnchor }
 
 // IsSuperAdmin reports whether the principal holds the super-admin wildcard
 // permission (platform:*:*:*). Mirrors Rust has_permission(ADMIN_ALL) — used
@@ -153,6 +159,9 @@ func (a *AuthContext) IsSuperAdmin() bool { return a.HasPermission(permSuperAdmi
 
 // CanAccessClient reports whether the principal has access to a specific tenant.
 func (a *AuthContext) CanAccessClient(clientID string) bool {
+	if a == nil {
+		return false
+	}
 	if a.IsAnchor() {
 		return true
 	}
@@ -170,6 +179,9 @@ func (a *AuthContext) CanAccessClient(clientID string) bool {
 // `platform:*:*:*`); such a permission matches any concrete code with the
 // same segment count whose non-wildcard segments are equal.
 func (a *AuthContext) HasPermission(code string) bool {
+	if a == nil {
+		return false
+	}
 	for _, p := range a.Permissions {
 		if permissionMatches(p, code) {
 			return true

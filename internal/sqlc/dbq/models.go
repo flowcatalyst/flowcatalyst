@@ -162,13 +162,15 @@ type IamOidcLoginState struct {
 }
 
 type IamPasswordResetToken struct {
-	ID          string
-	PrincipalID string
-	TokenHash   string
-	ExpiresAt   time.Time
-	CreatedAt   time.Time
-	Purpose     string
-	Reset2fa    bool
+	ID             string
+	PrincipalID    string
+	TokenHash      string
+	ExpiresAt      time.Time
+	CreatedAt      time.Time
+	Purpose        string
+	Reset2fa       bool
+	RequiresFactor bool
+	FactorAttempts int32
 }
 
 type IamPermission struct {
@@ -238,6 +240,19 @@ type IamRefreshToken struct {
 	LastUsedAt        *time.Time
 	CreatedFromIp     *string
 	UserAgent         *string
+}
+
+type IamResetApprovalRequest struct {
+	ID          string
+	PrincipalID string
+	ClientID    *string
+	Status      string
+	Reset2fa    bool
+	Note        *string
+	DecidedBy   *string
+	DecidedAt   *time.Time
+	ExpiresAt   time.Time
+	CreatedAt   time.Time
 }
 
 type IamRole struct {

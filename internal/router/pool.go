@@ -413,20 +413,31 @@ func (p *Pool) tryDrainGroup(ctx context.Context, group string) {
 // FIFO order within the group), gated by the pool-wide `sem` semaphore.
 //
 // Exit conditions:
-//   - the group buffer is empty (working flag flipped back to false).
-//   - ctx is cancelled while waiting for a semaphore slot.
+//   - the group buffer is empty (the groupQs entry is removed).
+//   - ctx is cancelled while waiting for a semaphore slot or sitting out a
+//     retry backoff (the in-hand message is re-fronted and the working flag
+//     cleared so a later submit can spawn a replacement drainer).
 //
 // Note: ctx cancellation between processOne calls does NOT stop the loop
-// — only the semaphore-acquire select is ctx-aware. This is intentional;
-// a cancellation mid-process is handled inside processOne / mediator.
+// — only the semaphore-acquire and backoff selects are ctx-aware. This is
+// intentional; a cancellation mid-process is handled inside processOne /
+// mediator.
+//
+// The ctx here belongs to the SUBMITTING CONSUMER, not the pool: a
+// queue-config reconfigure or stalled-consumer restart cancels it while the
+// pool — and this group's buffer — live on. Every cancellation exit must
+// therefore leave the group resumable: message back in the buffer, working
+// flag off. A bare return with working still true wedges the group
+// permanently (tryDrainGroup will never spawn another drainer).
 func (p *Pool) drainGroup(ctx context.Context, group string) {
 	for {
 		p.mu.Lock()
 		gq := p.groupQs[group]
 		if gq == nil || gq.empty() {
-			if gq != nil {
-				gq.working = false
-			}
+			// Fully drained — remove the entry so groupQs doesn't accumulate
+			// one empty groupQueue per group ID ever seen, and so
+			// MessageGroupCount reports only groups actually holding work.
+			delete(p.groupQs, group)
 			p.mu.Unlock()
 			return
 		}
@@ -439,11 +450,16 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 		// Acquire a concurrency slot. Snapshot the channel locally so a
 		// resize between acquire and release doesn't cross channels.
 		// Wakeup conditions:
-		//   <-ctx.Done()         — shutdown; abandon this message.
+		//   <-ctx.Done()         — consumer stopping; park the message and exit.
 		//   sem <- struct{}{}    — slot acquired; proceed.
 		sem := p.loadSem()
 		select {
 		case <-ctx.Done():
+			// Re-front the popped message (preserving FIFO — dropping just the
+			// head while later messages stay buffered would reorder the group)
+			// and clear working so the group resumes under a fresh drainer.
+			p.enqueueFront(group, msg)
+			p.clearWorking(group)
 			return
 		case sem <- struct{}{}:
 		}
@@ -467,11 +483,27 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 			p.enqueueFront(group, msg)
 			select {
 			case <-ctx.Done():
+				// Cancelled mid-backoff. The message is already re-fronted;
+				// clear working so the group resumes under a fresh drainer.
+				p.clearWorking(group)
 				return
 			case <-time.After(retryAfter):
 			}
 		}
 	}
+}
+
+// clearWorking flips a group's working flag back off so a subsequent submit
+// can spawn a replacement drainer. Called only by the exiting drainer itself
+// on a ctx-cancelled exit — the single-drainer invariant holds because
+// tryDrainGroup spawns only when working is false, and only the drainer that
+// set the flag clears it.
+func (p *Pool) clearWorking(group string) {
+	p.mu.Lock()
+	if gq := p.groupQs[group]; gq != nil {
+		gq.working = false
+	}
+	p.mu.Unlock()
 }
 
 // processResult is processOne's verdict, consumed by the caller (drainGroup /

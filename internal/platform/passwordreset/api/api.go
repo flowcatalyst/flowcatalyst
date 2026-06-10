@@ -39,6 +39,13 @@ const resetTokenTTL = 15 * time.Minute
 // reset so a newly-invited user has time to act on the email.
 const inviteTokenTTL = 72 * time.Hour
 
+// maxFactorAttempts caps wrong TOTP guesses against a factor-gated reset
+// token before the principal's whole token set is burned. The confirm step
+// deliberately keeps the token alive on a wrong code so a legitimate user can
+// retry — but unbounded retries against a 6-digit keyspace inside the 15-min
+// TTL is a brute-force window. Matches the MFA email-PIN ceiling (5).
+const maxFactorAttempts = 5
+
 // Emailer delivers the reset link to the user. Optional: when nil the token is
 // still created and stored (best-effort delivery, mirroring Rust's "email
 // failure is logged not propagated"). Use NewEmailer to build one from an
@@ -369,10 +376,19 @@ func (s *State) confirmReset(w http.ResponseWriter, r *http.Request) {
 
 	// Strong-factor gate (Phase 8): a factor-flagged token additionally requires
 	// a valid authenticator (TOTP) code. We do NOT consume the token on a failed
-	// factor, so the user can retry. Email PIN is never accepted here.
+	// factor, so the user can retry — up to maxFactorAttempts wrong guesses,
+	// after which the principal's token set is burned and a fresh link is
+	// required. Email PIN is never accepted here.
 	if t.RequiresFactor {
 		if s.MFA == nil {
 			httperror.Write(w, usecase.Validation("FACTOR_REQUIRED", "Two-factor verification is required."))
+			return
+		}
+		if t.FactorAttempts >= maxFactorAttempts {
+			// Defense in depth: an exhausted token that somehow survived the
+			// burn below is dead on arrival.
+			_ = s.Tokens.DeleteByPrincipalID(r.Context(), t.PrincipalID)
+			httperror.Write(w, usecase.Validation("INVALID_TOKEN", "Invalid or expired reset token."))
 			return
 		}
 		ok, verr := s.MFA.VerifyTOTP(r.Context(), t.PrincipalID, strings.TrimSpace(body.FactorCode))
@@ -381,6 +397,17 @@ func (s *State) confirmReset(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !ok {
+			n, ierr := s.Tokens.IncrementFactorAttempts(r.Context(), t.ID)
+			if ierr != nil {
+				slog.Warn("factor attempt increment failed", "token", t.ID, "err", ierr)
+			}
+			if ierr == nil && n >= maxFactorAttempts {
+				slog.Warn("password-reset factor attempts exhausted; burning token set",
+					"principal", t.PrincipalID)
+				_ = s.Tokens.DeleteByPrincipalID(r.Context(), t.PrincipalID)
+				httperror.Write(w, usecase.Validation("INVALID_TOKEN", "Invalid or expired reset token."))
+				return
+			}
 			httperror.Write(w, usecase.Validation("INVALID_FACTOR", "Invalid authenticator code."))
 			return
 		}

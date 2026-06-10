@@ -79,12 +79,19 @@ func (p PageQuery) PageIndex() int {
 	return p.Page
 }
 
-// PageSizeVal returns the resolved page size (default 20), honoring the size
-// aliases in priority order: size, limit, pageSize, page_size.
+// MaxPageSize caps the resolved page size. Matches the 1000-row clamp the
+// event/dispatch-job firehose repos already apply — without a ceiling,
+// ?size=10000000 was honored verbatim and turned a list call into a
+// full-table dump.
+const MaxPageSize = 1000
+
+// PageSizeVal returns the resolved page size (default 20, capped at
+// MaxPageSize), honoring the size aliases in priority order: size, limit,
+// pageSize, page_size.
 func (p PageQuery) PageSizeVal() int {
 	for _, v := range []int{p.Size, p.Limit, p.PageSizeCamel, p.PageSizeSnake} {
 		if v > 0 {
-			return v
+			return min(v, MaxPageSize)
 		}
 	}
 	return 20
