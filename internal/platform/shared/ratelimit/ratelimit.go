@@ -218,17 +218,26 @@ func IPLimitMiddleware(store Store, bucket Bucket, policy Policy) func(http.Hand
 // header is forgeable either way; rightmost is never worse and is correct
 // behind ≥1 trusted hop.
 func ClientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		parts := strings.Split(xff, ",")
-		if ip := strings.TrimSpace(parts[len(parts)-1]); ip != "" {
-			return ip
-		}
+	if ip := RightmostForwardedFor(r.Header.Get("X-Forwarded-For")); ip != "" {
+		return ip
 	}
 	host := r.RemoteAddr
 	if i := strings.LastIndexByte(host, ':'); i >= 0 {
 		host = host[:i]
 	}
 	return strings.TrimSpace(host)
+}
+
+// RightmostForwardedFor returns the rightmost entry of an X-Forwarded-For
+// value ("" when absent/degenerate) — the trustworthy-hop selection ClientIP
+// documents, exposed for handlers that receive the header without the
+// *http.Request (e.g. huma inputs).
+func RightmostForwardedFor(xff string) string {
+	if xff == "" {
+		return ""
+	}
+	parts := strings.Split(xff, ",")
+	return strings.TrimSpace(parts[len(parts)-1])
 }
 
 func jsonEscape(s string) string {

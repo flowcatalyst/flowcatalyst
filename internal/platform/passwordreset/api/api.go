@@ -186,6 +186,11 @@ type State struct {
 	Notifier       *notify.Notifier
 	EnrollTokenTTL time.Duration // default 30m
 
+	// RefreshTokens (optional) revokes the principal's refresh tokens after a
+	// successful reset — same hygiene as the self-service change-password
+	// path: a credential change must cut off whoever held the old one.
+	RefreshTokens RefreshTokenRevoker
+
 	// Lost-device approval queue (Phase 8). When Approvals is wired, a
 	// self-service reset for a user with no strong factor files a request here
 	// and notifies the user's client-administrators (found via ClientAdmins)
@@ -200,6 +205,14 @@ type State struct {
 // it.
 type ClientAdminFinder interface {
 	FindClientAdminEmails(ctx context.Context, clientID string) ([]string, error)
+}
+
+// RefreshTokenRevoker revokes every active refresh token for a principal.
+// *grantstore.RefreshTokenRepository implements it; declared here as the
+// narrow per-consumer interface so this package doesn't depend on the
+// grantstore concretely.
+type RefreshTokenRevoker interface {
+	RevokeAllForPrincipal(ctx context.Context, principalID string) (int64, error)
 }
 
 func (s *State) enrollTTL() time.Duration {
@@ -496,6 +509,13 @@ func (s *State) postResetTwoFactor(ctx context.Context, t *passwordreset.Token) 
 		// Any password change invalidates remembered devices (hygiene).
 		if err := s.MFA.RevokeAllTrustedDevices(ctx, p.ID); err != nil {
 			slog.Warn("revoke trusted devices failed", "principal", p.ID, "err", err)
+		}
+	}
+	// Refresh tokens minted under the old credential die with it — same
+	// posture as the self-service change-password path. Best-effort.
+	if s.RefreshTokens != nil {
+		if _, err := s.RefreshTokens.RevokeAllForPrincipal(ctx, p.ID); err != nil {
+			slog.Warn("revoke refresh tokens after reset failed", "principal", p.ID, "err", err)
 		}
 	}
 	s.Notifier.PasswordChanged(ctx, emailAddr)

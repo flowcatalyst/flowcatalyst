@@ -23,12 +23,15 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-webauthn/webauthn/protocol"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/loginbackoff"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/provider"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/notify"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -58,6 +61,15 @@ type State struct {
 	// Notifier (optional) sends the best-effort "a new passkey was registered"
 	// security email after a successful registration.
 	Notifier *notify.Notifier
+
+	// LoginAttempts (optional) records passkey sign-in outcomes alongside
+	// password logins, so /auth/login-history shows them and the
+	// per-(email, IP) brute-force backoff covers the passkey path too.
+	// Mirrors login.Config.LoginAttempts — nil disables both.
+	LoginAttempts *loginattempt.Repository
+	// BackoffPolicy tunes the failed-attempt backoff (shared with the
+	// password path so failures on either count against the same budget).
+	BackoffPolicy loginbackoff.Policy
 }
 
 const tag = "webauthn"
@@ -237,7 +249,10 @@ func (s *State) registerComplete(ctx context.Context, in *registerCompleteInput)
 // ── authenticate ─────────────────────────────────────────────────────────
 
 type authenticateBeginInput struct {
-	Body AuthenticateBeginRequest
+	// XForwardedFor feeds the brute-force backoff's IP key. Hidden:
+	// telemetry transport, not wire contract.
+	XForwardedFor string `header:"X-Forwarded-For" hidden:"true"`
+	Body          AuthenticateBeginRequest
 }
 
 type authenticateBeginOutput struct {
@@ -248,6 +263,20 @@ func (s *State) authenticateBegin(ctx context.Context, in *authenticateBeginInpu
 	if in.Body.Email == "" {
 		return nil, httperror.BadRequest("EMAIL_REQUIRED", "email is required")
 	}
+
+	// Brute-force backoff, same store/policy/keys as the password path —
+	// failed passkey completes (recorded in authenticateComplete) and failed
+	// password logins count against one shared (email, IP) budget. Note this
+	// is not an enumeration oracle: failures are only ever recorded for real
+	// principals after a real ceremony, so probing unknown emails never
+	// trips it.
+	if s.LoginAttempts != nil {
+		ip := ratelimit.RightmostForwardedFor(in.XForwardedFor)
+		if d, derr := loginbackoff.Check(ctx, s.LoginAttempts, s.BackoffPolicy, in.Body.Email, ip); derr == nil && !d.Allowed {
+			return nil, huma.Error429TooManyRequests("Too many failed attempts — try again later")
+		}
+	}
+
 	p, _ := s.Principals.FindByEmail(ctx, in.Body.Email)
 	if p == nil || !p.Active {
 		return &authenticateBeginOutput{Body: AuthenticateBeginResponse{StateID: newUUID(), Options: decoyChallenge(s.Service.RPID())}}, nil
@@ -273,7 +302,36 @@ func (s *State) authenticateBegin(ctx context.Context, in *authenticateBeginInpu
 }
 
 type authenticateCompleteInput struct {
-	Body AuthenticateCompleteRequest
+	// Telemetry-only headers (hidden from the OpenAPI doc — not part of
+	// the wire contract): recorded on the sign-in attempt.
+	XForwardedFor string `header:"X-Forwarded-For" hidden:"true"`
+	UserAgent     string `header:"User-Agent" hidden:"true"`
+	Body          AuthenticateCompleteRequest
+}
+
+// recordPasskeyAttempt writes a USER_LOGIN attempt for a passkey sign-in so
+// /auth/login-history (keyed on the lower-cased email identifier) includes
+// passkey activity and failures feed the shared login backoff. Best-effort;
+// nil repo or principal-without-email are silent no-ops.
+func (s *State) recordPasskeyAttempt(ctx context.Context, p *principal.Principal, in *authenticateCompleteInput, outcome loginattempt.Outcome, failureReason string) {
+	if s.LoginAttempts == nil || p == nil || p.UserIdentity == nil || p.UserIdentity.Email == "" {
+		return
+	}
+	email := strings.ToLower(strings.TrimSpace(p.UserIdentity.Email))
+	a := loginattempt.New(loginattempt.AttemptUserLogin, outcome)
+	a.Identifier = &email
+	a.PrincipalID = &p.ID
+	if ip := ratelimit.RightmostForwardedFor(in.XForwardedFor); ip != "" {
+		a.IPAddress = &ip
+	}
+	if in.UserAgent != "" {
+		ua := in.UserAgent
+		a.UserAgent = &ua
+	}
+	if failureReason != "" {
+		a.FailureReason = &failureReason
+	}
+	_ = s.LoginAttempts.Record(ctx, a)
 }
 
 type authenticateCompleteOutput struct {
@@ -311,10 +369,14 @@ func (s *State) authenticateComplete(ctx context.Context, in *authenticateComple
 	}
 	parsed, err := protocol.ParseCredentialRequestResponseBody(io.NopCloser(bytes.NewReader(in.Body.Credential)))
 	if err != nil {
+		s.recordPasskeyAttempt(ctx, p, in, loginattempt.OutcomeFailure, "Invalid passkey")
 		return nil, invalidCredentialsErr()
 	}
 	cred, err := s.Service.WebAuthn().ValidateLogin(user, consumed.Session, parsed)
 	if err != nil {
+		// The failed assertion feeds the shared (email, IP) backoff the
+		// password path uses, and shows in the user's sign-in history.
+		s.recordPasskeyAttempt(ctx, p, in, loginattempt.OutcomeFailure, "Invalid passkey")
 		return nil, invalidCredentialsErr()
 	}
 
@@ -346,6 +408,9 @@ func (s *State) authenticateComplete(ctx context.Context, in *authenticateComple
 	if err != nil {
 		return nil, usecase.Internal("MINT_FAILED", "failed to mint session token", err)
 	}
+	// Session established — record the successful sign-in (the password
+	// path records at the same point, after the mint).
+	s.recordPasskeyAttempt(ctx, p, in, loginattempt.OutcomeSuccess, "")
 	cookie := http.Cookie{
 		Name:     platformmw.SessionCookieName,
 		Value:    token,

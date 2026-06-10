@@ -308,6 +308,9 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 		UoW:             uow,
 		ExternalBaseURL: cfg.JWTIssuer,
 		Emailer:         passwordresetapi.NewEmailer(emailSvc, platformConfigRepo),
+		// Post-reset hygiene: refresh tokens minted under the old
+		// credential are revoked (matches change-password).
+		RefreshTokens: grantstore.NewRefreshTokenRepository(pool),
 		// 2FA hand-off: clear-on-reset_2fa, revoke remembered devices, and
 		// return enrollment_required when the domain compels a second factor.
 		MFA:       mfaSvc,
@@ -570,6 +573,10 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 			CookieSecure: !cfg.AuthAllowTestHeaders,
 			SessionTTL:   login.SessionTTL,
 			Notifier:     notifier,
+			// Passkey sign-ins record to the same attempt store and share
+			// the same (email, IP) backoff budget as password logins.
+			LoginAttempts: loginAttemptRepo,
+			BackoffPolicy: loginbackoff.PolicyFromEnv(),
 		})
 
 		// Shared BFF/SDK endpoints (dashboard + SDK ingest)
