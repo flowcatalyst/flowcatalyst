@@ -52,6 +52,16 @@ Consequences:
    `"USER" | "SERVICE"`. Two options: tighten the backend spec with enums
    (preferred — fixes every consumer including the published SDKs), or
    narrow locally with `as` + a runtime guard at the module boundary.
+
+   > ⚠️ **SDK coordination required for the enum option.** Adding enums
+   > changes `api/openapi.lock.json`, and the split-and-push pipeline
+   > regenerates the published TS/Laravel SDKs from it — their generated
+   > types change signature (`string` → enum union), which is
+   > compile-time breaking for typed SDK consumers. Enum tightening must
+   > ship as a deliberate, release-noted SDK version bump via
+   > `make api-bump` + the SDK release pipeline — never as a side effect
+   > of a frontend type migration. The local-narrowing option has zero
+   > SDK impact and is the right default while migrating.
 3. **One module ripples**: changing `users.ts`'s `User` touches every page
    that imports it. Migrate **one module per PR**, run `pnpm build`, fix the
    fallout, stop.
