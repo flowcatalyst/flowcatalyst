@@ -36,16 +36,16 @@ import (
 // State bundles deps. Principal ops need cross-aggregate validation
 // against roles, applications, and clients.
 type State struct {
-	Repo              *principal.Repository
-	GrantRepo         *principal.ClientAccessGrantRepo
-	Roles             *role.Repository
-	Applications      *application.Repository
+	Repo         *principal.Repository
+	GrantRepo    *principal.ClientAccessGrantRepo
+	Roles        *role.Repository
+	Applications *application.Repository
 	// ClientConfigs resolves which applications a client is entitled to (its
 	// enabled client-configs). It bounds what a non-anchor (client-admin) may
 	// assign: a client-admin can grant a user ANY application the client can
 	// access, not merely the apps the admin personally holds.
-	ClientConfigs *application.ClientConfigRepo
-	Clients       *client.Repository
+	ClientConfigs     *application.ClientConfigRepo
+	Clients           *client.Repository
 	Mappings          *emaildomainmapping.Repository // for /check-email-domain + create-user scope derivation
 	IdentityProviders *identityprovider.Repository   // for /check-email-domain + create-user idp-type
 	AnchorDomains     *platformauth.AnchorDomainRepo // for create-user anchor-domain check (optional)

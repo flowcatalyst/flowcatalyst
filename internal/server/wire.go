@@ -307,7 +307,7 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 		Tokens:          resetTokenRepo,
 		UoW:             uow,
 		ExternalBaseURL: cfg.JWTIssuer,
-		Emailer:         passwordresetapi.NewEmailer(emailSvc),
+		Emailer:         passwordresetapi.NewEmailer(emailSvc, platformConfigRepo),
 		// 2FA hand-off: clear-on-reset_2fa, revoke remembered devices, and
 		// return enrollment_required when the domain compels a second factor.
 		MFA:       mfaSvc,
@@ -321,7 +321,7 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 	})
 	// Admin-triggered reset (POST /api/principals/{id}/send-password-reset)
 	// shares the same token repo + mailer.
-	principalResetEmailer := passwordresetapi.NewPrincipalEmailer(resetTokenRepo, cfg.JWTIssuer, emailSvc)
+	principalResetEmailer := passwordresetapi.NewPrincipalEmailer(resetTokenRepo, cfg.JWTIssuer, emailSvc, platformConfigRepo)
 
 	// /oauth/authorize is mounted OUTSIDE the auth middleware: an absent or
 	// expired session must redirect to login (not 401), and the handler
@@ -449,6 +449,12 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 		loginStateRepo := bridge.NewLoginStateRepo(pool)
 		bridgeLoginEP := bridge.NewLoginEndpoint(bridgeClient, loginStateRepo, principalRepo, edmRepo,
 			roleRepo, authRepo.IdpRoleMappings, uow, authRepo.OAuthClients)
+		// Pin the OIDC callback URL to the configured public base instead of
+		// deriving it from forwardable X-Forwarded-Proto/Host headers, and
+		// give the logout cookie-clear the same Secure attribute the
+		// SessionWriter sets below.
+		bridgeLoginEP.ExternalBaseURL = cfg.JWTIssuer
+		bridgeLoginEP.CookieSecure = !cfg.AuthAllowTestHeaders
 		bridgeLoginEP.SessionWriter = func(w http.ResponseWriter, r *http.Request, principalID, returnURL string) {
 			token, err := authProvider.MintSessionToken(r.Context(), principalID, login.SessionTTL)
 			if err != nil {

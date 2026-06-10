@@ -45,6 +45,7 @@ linters:
         - (github.com/jackc/pgx/v5.Tx).Rollback
         - (*go.mongodb.org/mongo-driver/mongo.Cursor).Close
         - fmt.Fprintf
+        - fmt.Fprintln
     gosec:
       excludes:
         - G104  # audit errors not checked — we use revive's error-return instead

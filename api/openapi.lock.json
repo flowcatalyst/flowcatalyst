@@ -15179,8 +15179,7 @@
                 "$ref": "#/components/schemas/SendPasswordResetInputBody"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {

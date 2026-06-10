@@ -263,7 +263,7 @@ func extractFromTarGz(archive []byte, innerPath string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open gzip: %w", err)
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 	want := filepath.ToSlash(filepath.Clean(innerPath))
 	tr := tar.NewReader(gz)
 	for {
@@ -322,16 +322,16 @@ func replaceBinary(dest string, newBin []byte) error {
 		return fmt.Errorf("cannot write to %s — re-run with elevated permissions or use the install script: %w", dir, err)
 	}
 	tmpName := tmp.Name()
-	defer os.Remove(tmpName) // harmless no-op once the rename consumes it
+	defer func() { _ = os.Remove(tmpName) }() // harmless no-op once the rename consumes it
 
 	if _, err := tmp.Write(newBin); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return fmt.Errorf("write new binary: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("flush new binary: %w", err)
 	}
-	if err := os.Chmod(tmpName, 0o755); err != nil {
+	if err := os.Chmod(tmpName, 0o755); err != nil { // #nosec G302 -- upgrade target is an executable binary; 0755 is required
 		return fmt.Errorf("chmod new binary: %w", err)
 	}
 

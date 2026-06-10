@@ -20,6 +20,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/mfatoken"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/twofa"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/branding"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/mfa"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/notify"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/passwordreset"
@@ -55,33 +56,54 @@ type Emailer interface {
 	SendInviteLink(ctx context.Context, to, inviteLink string) error
 }
 
-// linkEmailer wraps an email.Service and renders the reset-link email. The
-// subject + body are 1:1 with Rust password_reset_api's EmailMessage.
-type linkEmailer struct{ svc email.Service }
+// linkEmailer wraps an email.Service and renders the reset/invite emails using
+// the platform login theme (logo + colours), falling back to the defaults when
+// no theme is configured. brand may be nil (then defaults are always used).
+type linkEmailer struct {
+	svc   email.Service
+	brand branding.Reader
+}
 
-// NewEmailer adapts an email.Service to the Emailer interface.
-func NewEmailer(svc email.Service) Emailer { return linkEmailer{svc: svc} }
+// NewEmailer adapts an email.Service to the Emailer interface. brand resolves
+// the per-business theme (logo/colours) applied to the email; pass the platform
+// config repository (it satisfies branding.Reader), or nil for defaults only.
+func NewEmailer(svc email.Service, brand branding.Reader) Emailer {
+	return linkEmailer{svc: svc, brand: brand}
+}
 
 func (e linkEmailer) SendResetLink(ctx context.Context, to, resetLink string) error {
+	theme := branding.LoadTheme(ctx, e.brand)
 	return e.svc.Send(ctx, email.Message{
 		To:      to,
 		Subject: "Reset your password",
-		HTMLBody: "<p>You requested a password reset.</p>" +
-			"<p><a href=\"" + resetLink + "\">Click here to reset your password</a></p>" +
-			"<p>This link expires in 15 minutes.</p>" +
-			"<p>If you did not request this, you can safely ignore this email.</p>",
+		HTMLBody: theme.RenderEmail(branding.EmailContent{
+			Heading:     "Reset your password",
+			Intro:       "We received a request to reset your password. Click the button below to choose a new one.",
+			ButtonLabel: "Reset password",
+			ButtonURL:   resetLink,
+			AfterButton: []string{
+				"This link expires in 15 minutes.",
+				"If you didn't request this, you can safely ignore this email.",
+			},
+		}),
 	})
 }
 
 func (e linkEmailer) SendInviteLink(ctx context.Context, to, inviteLink string) error {
+	theme := branding.LoadTheme(ctx, e.brand)
 	return e.svc.Send(ctx, email.Message{
 		To:      to,
 		Subject: "Set your password",
-		HTMLBody: "<p>An account has been created for you on FlowCatalyst.</p>" +
-			"<p><a href=\"" + inviteLink + "\">Click here to set your password</a></p>" +
-			"<p>If two-factor authentication is required for your organisation, " +
-			"you'll be guided through setting it up.</p>" +
-			"<p>This link expires in 72 hours.</p>",
+		HTMLBody: theme.RenderEmail(branding.EmailContent{
+			Heading:     "Welcome to " + theme.BrandName,
+			Intro:       "An account has been created for you. Click the button below to set your password and sign in.",
+			ButtonLabel: "Set your password",
+			ButtonURL:   inviteLink,
+			AfterButton: []string{
+				"If two-factor authentication is required for your organisation, you'll be guided through setting it up.",
+				"This link expires in 72 hours.",
+			},
+		}),
 	})
 }
 
@@ -96,9 +118,10 @@ type principalEmailer struct {
 }
 
 // NewPrincipalEmailer adapts the token repo + email.Service to the admin
-// SendResetEmail(ctx, principal) shape.
-func NewPrincipalEmailer(tokens *passwordreset.Repository, baseURL string, svc email.Service) *principalEmailer {
-	return &principalEmailer{tokens: tokens, base: baseURL, mail: NewEmailer(svc)}
+// SendResetEmail(ctx, principal) shape. brand resolves the per-business theme
+// applied to the email (pass the platform config repo, or nil for defaults).
+func NewPrincipalEmailer(tokens *passwordreset.Repository, baseURL string, svc email.Service, brand branding.Reader) *principalEmailer {
+	return &principalEmailer{tokens: tokens, base: baseURL, mail: NewEmailer(svc, brand)}
 }
 
 // SendResetEmail creates a fresh single-use token for p and emails the link.
@@ -240,7 +263,10 @@ func (s *State) tryIssueToken(ctx context.Context, email string) error {
 		return err
 	}
 	if p == nil {
-		slog.Warn("password reset requested for unknown email", "email", email)
+		// Log the domain only: the full address is PII, and on this branch
+		// it's an arbitrary unverified string a caller chose to submit —
+		// logging it verbatim turns the logs into a write target.
+		slog.Warn("password reset requested for unknown email", "domain", emailDomain(email))
 		return nil
 	}
 	// Eligibility (mirrors the admin send-password-reset op): USER, has email,
@@ -506,6 +532,16 @@ func (s *State) postResetTwoFactor(ctx context.Context, t *passwordreset.Token) 
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
+
+// emailDomain returns the part after the last '@' (empty when absent) — the
+// log-safe slice of an address: enough signal for "who is probing the reset
+// endpoint" without recording the PII half.
+func emailDomain(email string) string {
+	if i := strings.LastIndexByte(email, '@'); i >= 0 && i+1 < len(email) {
+		return email[i+1:]
+	}
+	return ""
+}
 
 // hashToken returns the lowercase-hex SHA-256 of the raw token (the stored
 // token_hash). 1:1 with Rust hash_token.
