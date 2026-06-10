@@ -206,14 +206,23 @@ func IPLimitMiddleware(store Store, bucket Bucket, policy Policy) func(http.Hand
 	}
 }
 
-// ClientIP returns the best-effort client IP: the first hop of
+// ClientIP returns the best-effort client IP: the RIGHTMOST hop of
 // X-Forwarded-For when present, else the request RemoteAddr (host only).
+//
+// Rightmost, not leftmost: every proxy APPENDS the peer address it saw, so
+// the last entry is the only one written by our own infrastructure (an ALB
+// appends the true client IP even when the client sends a forged header).
+// The leftmost entries arrive attacker-controlled — keying per-IP rate
+// limits or login backoff on them let a client mint a fresh identity per
+// request by rotating the header. With no proxy in front at all the whole
+// header is forgeable either way; rightmost is never worse and is correct
+// behind ≥1 trusted hop.
 func ClientIP(r *http.Request) string {
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if i := strings.IndexByte(xff, ','); i >= 0 {
-			return strings.TrimSpace(xff[:i])
+		parts := strings.Split(xff, ",")
+		if ip := strings.TrimSpace(parts[len(parts)-1]); ip != "" {
+			return ip
 		}
-		return strings.TrimSpace(xff)
 	}
 	host := r.RemoteAddr
 	if i := strings.LastIndexByte(host, ':'); i >= 0 {

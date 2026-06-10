@@ -1,6 +1,7 @@
 package login
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordhash"
@@ -75,6 +76,23 @@ func (e *Endpoint) handleChangePassword(w http.ResponseWriter, r *http.Request) 
 		writeServerError(w, "UPDATE_FAILED", "could not save the new password")
 		return
 	}
+
+	// Post-change hygiene, matching the reset flow's posture: remembered
+	// 2FA devices are invalidated, and refresh tokens minted under the old
+	// credential are revoked — a password change must cut off whoever held
+	// the old one, not just future logins. Best-effort: the password is
+	// already changed, so failures are logged rather than surfaced.
+	if e.cfg.MFA != nil {
+		if err := e.cfg.MFA.RevokeAllTrustedDevices(r.Context(), p.ID); err != nil {
+			slog.Warn("revoke trusted devices after password change failed", "principal", p.ID, "err", err)
+		}
+	}
+	if e.cfg.RefreshTokens != nil {
+		if _, err := e.cfg.RefreshTokens.RevokeAllForPrincipal(r.Context(), p.ID); err != nil {
+			slog.Warn("revoke refresh tokens after password change failed", "principal", p.ID, "err", err)
+		}
+	}
+
 	if e.cfg.Notifier != nil {
 		e.cfg.Notifier.PasswordChanged(r.Context(), emailOf(p))
 	}

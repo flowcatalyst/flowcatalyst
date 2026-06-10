@@ -85,15 +85,31 @@ func TestRedactURL(t *testing.T) {
 }
 
 func TestClientIP(t *testing.T) {
+	// Rightmost XFF hop: the leftmost entries are client-supplied; only the
+	// last was appended by our own proxy. A spoofed prefix must not let a
+	// caller choose its rate-limit identity.
 	r := httptest.NewRequest("GET", "/", nil)
-	r.Header.Set("X-Forwarded-For", "203.0.113.7, 10.0.0.1")
+	r.Header.Set("X-Forwarded-For", "1.2.3.4, 203.0.113.7")
 	if got := ClientIP(r); got != "203.0.113.7" {
-		t.Errorf("XFF first hop = %q, want 203.0.113.7", got)
+		t.Errorf("XFF rightmost hop = %q, want 203.0.113.7", got)
+	}
+	// Single-entry header (one trusted proxy in front).
+	r1 := httptest.NewRequest("GET", "/", nil)
+	r1.Header.Set("X-Forwarded-For", "203.0.113.7")
+	if got := ClientIP(r1); got != "203.0.113.7" {
+		t.Errorf("single XFF hop = %q, want 203.0.113.7", got)
 	}
 	r2 := httptest.NewRequest("GET", "/", nil)
 	r2.RemoteAddr = "198.51.100.4:54321"
 	if got := ClientIP(r2); got != "198.51.100.4" {
 		t.Errorf("RemoteAddr host = %q, want 198.51.100.4", got)
+	}
+	// Degenerate trailing comma falls back to RemoteAddr.
+	r3 := httptest.NewRequest("GET", "/", nil)
+	r3.RemoteAddr = "198.51.100.4:54321"
+	r3.Header.Set("X-Forwarded-For", "203.0.113.7,")
+	if got := ClientIP(r3); got != "198.51.100.4" {
+		t.Errorf("trailing-comma XFF = %q, want RemoteAddr fallback 198.51.100.4", got)
 	}
 }
 

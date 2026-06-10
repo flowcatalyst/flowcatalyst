@@ -47,10 +47,13 @@ type resolved struct {
 	verifier *oidc.IDTokenVerifier
 	oauth    *oauth2.Config
 
-	// Multi-tenant issuer validation (Entra "common"/"organizations" etc.):
-	// the verifier's built-in issuer check is skipped, so VerifyIDToken
-	// validates the token's issuer against issuerPattern after the fact.
+	// Multi-tenant issuer/audience validation (Entra "common"/
+	// "organizations" etc.): the verifier's built-in issuer + client-ID
+	// checks are skipped, so VerifyIDToken validates the token's issuer
+	// against issuerPattern and its audience against clientID after the
+	// fact.
 	issuerURL     string
+	clientID      string
 	multiTenant   bool
 	issuerPattern *string
 }
@@ -125,6 +128,7 @@ func (b *Bridge) ResolveForEmail(ctx context.Context, email string) (*resolved, 
 		provider:      provider,
 		verifier:      provider.Verifier(verifierCfg),
 		issuerURL:     *idp.OIDCIssuerURL,
+		clientID:      *idp.OIDCClientID,
 		multiTenant:   idp.OIDCMultiTenant,
 		issuerPattern: idp.OIDCIssuerPattern,
 		oauth: &oauth2.Config{
@@ -160,17 +164,37 @@ func (b *Bridge) resolveClientSecret(secretRef *string) (string, error) {
 // VerifyIDToken validates a raw ID token JWT. The verifier checks signature,
 // expiration, and not-before; for a single-tenant IdP it also checks issuer +
 // audience. For a multi-tenant IdP those built-in checks are skipped (the iss
-// is tenant-specific), so the token's issuer is instead validated against the
-// configured pattern here — 1:1 with Rust is_valid_issuer_for_idp.
+// is tenant-specific), so both are re-applied manually after verification:
+// the issuer against the configured pattern (1:1 with Rust
+// is_valid_issuer_for_idp), and the audience against our registered client
+// ID — only the issuer varies per tenant; the aud is OUR client_id at every
+// tenant, so skipping it permanently would accept an ID token minted for a
+// completely different relying party at the same IdP.
 func (r *resolved) VerifyIDToken(ctx context.Context, raw string) (*oidc.IDToken, error) {
 	tok, err := r.verifier.Verify(ctx, raw)
 	if err != nil {
 		return nil, err
 	}
-	if r.multiTenant && !isValidIssuer(tok.Issuer, r.issuerURL, true, r.issuerPattern) {
-		return nil, fmt.Errorf("invalid issuer for multi-tenant IdP: %s", tok.Issuer)
+	if r.multiTenant {
+		if !isValidIssuer(tok.Issuer, r.issuerURL, true, r.issuerPattern) {
+			return nil, fmt.Errorf("invalid issuer for multi-tenant IdP: %s", tok.Issuer)
+		}
+		if !audienceContains(tok.Audience, r.clientID) {
+			return nil, fmt.Errorf("ID token audience %v does not include this client", tok.Audience)
+		}
 	}
 	return tok, nil
+}
+
+// audienceContains reports whether the token's aud list includes our
+// registered client ID.
+func audienceContains(auds []string, clientID string) bool {
+	for _, a := range auds {
+		if a == clientID {
+			return true
+		}
+	}
+	return false
 }
 
 // isValidIssuer mirrors Rust is_valid_issuer_for_idp: an exact match against the

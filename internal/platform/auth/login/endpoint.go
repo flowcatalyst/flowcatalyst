@@ -24,7 +24,6 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit"
-	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/loginbackoff"
@@ -40,6 +39,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
 )
 
 // SessionTTL is the cookie lifetime fc-server uses. Matches the Rust
@@ -601,21 +601,11 @@ func (e *Endpoint) recordAttempt(ctx context.Context, outcome loginattempt.Outco
 	_ = e.cfg.LoginAttempts.Record(ctx, a)
 }
 
-// clientIP extracts the best-effort client IP: the first hop of
-// X-Forwarded-For when present, else the request RemoteAddr (host only).
-func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if i := strings.IndexByte(xff, ','); i >= 0 {
-			return strings.TrimSpace(xff[:i])
-		}
-		return strings.TrimSpace(xff)
-	}
-	host := r.RemoteAddr
-	if i := strings.LastIndexByte(host, ':'); i >= 0 {
-		host = host[:i]
-	}
-	return strings.TrimSpace(host)
-}
+// clientIP extracts the best-effort client IP. Delegates to the canonical
+// ratelimit.ClientIP (rightmost X-Forwarded-For hop — see its doc for why
+// leftmost is spoofable) so the backoff keys and the per-IP rate limiter
+// always agree on what "the client's IP" means.
+func clientIP(r *http.Request) string { return ratelimit.ClientIP(r) }
 
 // writeTooManyRequests emits a 429 with a Retry-After header, mirroring
 // Rust's backoff rejection.
@@ -699,11 +689,3 @@ func utf8Encode(buf []byte, r rune) int {
 		return 4
 	}
 }
-
-// _platformauth references the auth subdomain package so the import
-// stays even if the only use disappears during edits. Removing the
-// blank doesn't change behavior.
-var (
-	_ = platformauth.ProviderOIDC
-	_ = errors.New
-)

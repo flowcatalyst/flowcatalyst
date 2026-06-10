@@ -59,6 +59,19 @@ type LoginEndpoint struct {
 	// response. The default implementation just emits a 200 with the
 	// principal ID — replace at startup.
 	SessionWriter func(w http.ResponseWriter, r *http.Request, principalID string, returnURL string)
+
+	// ExternalBaseURL, when set (wire.go supplies the configured public
+	// base), pins the OIDC callback URL the IdP redirects to. Without it
+	// the URL falls back to being derived from X-Forwarded-Proto/Host —
+	// forwardable, client-controllable headers that don't belong in a
+	// security-relevant URL. Set at startup alongside SessionWriter.
+	ExternalBaseURL string
+
+	// CookieSecure mirrors the flag the SessionWriter sets on the session
+	// cookie. The logout clear must carry the same attributes as the set —
+	// some browsers treat a Secure and a non-Secure cookie of the same name
+	// as distinct, leaving the real session cookie standing after "logout".
+	CookieSecure bool
 }
 
 // NewLoginEndpoint wires the bridge HTTP handlers. The mappings repo
@@ -123,12 +136,15 @@ func (e *LoginEndpoint) RegisterRoutes(r chi.Router) {
 // URI we cannot tie to a client's whitelist is refused rather than redirected
 // to (CWE-601 open-redirect defence).
 func (e *LoginEndpoint) handleSessionEnd(w http.ResponseWriter, r *http.Request) {
-	// Always clear the session cookie.
+	// Always clear the session cookie — with the same attributes the
+	// SessionWriter set it with (notably Secure), or the clear may not
+	// match the original cookie.
 	http.SetCookie(w, &http.Cookie{
 		Name:     platformmw.SessionCookieName,
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   e.CookieSecure,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
 	})
@@ -295,7 +311,7 @@ func (e *LoginEndpoint) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	redirectURI := absoluteCallbackURL(r)
+	redirectURI := e.absoluteCallbackURL(r)
 	authURL := resolved.AuthCodeURL(state, redirectURI) +
 		"&nonce=" + url.QueryEscape(nonce) +
 		"&code_challenge=" + url.QueryEscape(challenge) +
@@ -343,7 +359,7 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	redirectURI := absoluteCallbackURL(r)
+	redirectURI := e.absoluteCallbackURL(r)
 	tok, err := resolved.Exchange(r.Context(), code, redirectURI, loginState.CodeVerifier)
 	if err != nil {
 		httperror.Write(w, usecase.Internal("OIDC_EXCHANGE", "code exchange failed", err))
@@ -600,9 +616,10 @@ func (e *LoginEndpoint) syncIdpRoles(ctx context.Context, p *principal.Principal
 		platformRole, ok := byIdpRoleName[idpRole]
 		if !ok {
 			// Unknown role — Rust logs this at warn as a security
-			// rejection. Match that.
+			// rejection. Match that (minus the email: the principal ID
+			// already identifies the user without putting PII in the logs).
 			slog.Warn("REJECTED unauthorized IDP role: not found in idp_role_mappings",
-				"principalId", p.ID, "idpRole", idpRole, "email", principalEmail(p))
+				"principalId", p.ID, "idpRole", idpRole)
 			continue
 		}
 		if hasAllowList {
@@ -635,22 +652,19 @@ func (e *LoginEndpoint) applySyncIdpRoles(ctx context.Context, p *principal.Prin
 	return nil
 }
 
-// principalEmail returns the user-identity email, or empty string when
-// the principal has no UserIdentity attached (shouldn't happen for
-// OIDC-resolved principals but defends against the nil case).
-func principalEmail(p *principal.Principal) string {
-	if p == nil || p.UserIdentity == nil {
-		return ""
-	}
-	return p.UserIdentity.Email
-}
-
 // ── helpers ──────────────────────────────────────────────────────────────
 
-// absoluteCallbackURL derives the public-facing /auth/oidc/callback
-// URL the IDP will redirect to. Prefers the X-Forwarded-* headers when
-// the platform is behind a load balancer.
-func absoluteCallbackURL(r *http.Request) string {
+// absoluteCallbackURL derives the public-facing /auth/oidc/callback URL the
+// IDP will redirect to. Prefers the configured ExternalBaseURL — request
+// headers (X-Forwarded-Proto/Host, Host) are forwardable and client-
+// controllable, so deriving a security-relevant URL from them is a last
+// resort kept only for unconfigured dev setups. (The blast radius of a
+// spoofed host is bounded — IdPs only redirect to registered URIs — but the
+// header trust is gratuitous when the public base is known.)
+func (e *LoginEndpoint) absoluteCallbackURL(r *http.Request) string {
+	if e.ExternalBaseURL != "" {
+		return strings.TrimRight(e.ExternalBaseURL, "/") + "/auth/oidc/callback"
+	}
 	scheme := "https"
 	if fwd := r.Header.Get("X-Forwarded-Proto"); fwd != "" {
 		scheme = fwd
@@ -679,10 +693,3 @@ func pkceChallenge(verifier string) string {
 	sum := sha256.Sum256([]byte(verifier))
 	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
-
-// Compile-time guard: ensure the context import stays live as the
-// callback expands.
-var (
-	_ = context.Background
-	_ = errors.New
-)

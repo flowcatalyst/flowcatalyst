@@ -2,6 +2,7 @@ package oauthapi
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"net/http"
 	"strconv"
 	"strings"
@@ -270,16 +271,19 @@ func strPtrOrNil(s string) *string {
 	return &s
 }
 
-const randomCharset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-
-// randomString returns a cryptographically-random alphanumeric string.
+// randomString returns a URL-safe random string built from n bytes of
+// crypto entropy (base64url, no padding — length ≈ 4n/3). The previous
+// charset[b%62] mapping was modulo-biased (256 % 62 ≠ 0 over-weights the
+// first 8 charset entries) and silently discarded rand.Read errors; raw
+// bytes through base64 are unbiased, and the panic matches the bridge's
+// randString posture — a failed CSPRNG is not a condition to limp past
+// while minting authorization codes.
 func randomString(n int) string {
 	b := make([]byte, n)
-	_, _ = rand.Read(b)
-	for i := range b {
-		b[i] = randomCharset[int(b[i])%len(randomCharset)]
+	if _, err := rand.Read(b); err != nil {
+		panic("crypto/rand failed: " + err.Error())
 	}
-	return string(b)
+	return base64.RawURLEncoding.EncodeToString(b)
 }
 
 // pctEncode percent-encodes per RFC 3986 (unreserved set preserved),
