@@ -38,7 +38,8 @@
             "type": "boolean"
           },
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "id": {
             "type": "string"
@@ -170,7 +171,8 @@
             "type": "string"
           },
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "createdBy": {
             "type": "string"
@@ -185,7 +187,8 @@
             "type": "string"
           },
           "updatedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -224,7 +227,8 @@
         "additionalProperties": false,
         "properties": {
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "domain": {
             "type": "string"
@@ -233,7 +237,8 @@
             "type": "string"
           },
           "updatedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -457,7 +462,8 @@
             "type": "string"
           },
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "defaultBaseUrl": {
             "type": "string"
@@ -490,7 +496,8 @@
             "type": "string"
           },
           "updatedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "website": {
             "type": "string"
@@ -660,10 +667,12 @@
             "type": "integer"
           },
           "attemptedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "completedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "durationMillis": {
             "format": "int64",
@@ -854,7 +863,8 @@
             "type": "string"
           },
           "performedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "principalId": {
             "type": "string"
@@ -912,7 +922,8 @@
             "type": "string"
           },
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "emailDomain": {
             "type": "string"
@@ -945,7 +956,8 @@
             "type": "string"
           },
           "updatedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -1364,10 +1376,12 @@
             "type": "string"
           },
           "expiresAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "grantedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "id": {
             "type": "string"
@@ -1516,7 +1530,8 @@
           },
           "configJson": {},
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "enabled": {
             "type": "boolean"
@@ -1525,7 +1540,8 @@
             "type": "string"
           },
           "updatedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -1580,7 +1596,8 @@
             "type": "string"
           },
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "id": {
             "type": "string"
@@ -1601,13 +1618,15 @@
             "type": "string"
           },
           "statusChangedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "statusReason": {
             "type": "string"
           },
           "updatedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -1706,7 +1725,8 @@
             "type": "string"
           },
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "description": {
             "type": "string"
@@ -1724,7 +1744,8 @@
             "type": "string"
           },
           "updatedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "value": {
             "type": "string"
@@ -1797,7 +1818,8 @@
             "type": "string"
           },
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "description": {
             "type": "string"
@@ -1818,7 +1840,8 @@
             "type": "string"
           },
           "updatedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -2889,13 +2912,15 @@
             "type": "string"
           },
           "completedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "correlationId": {
             "type": "string"
           },
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "dispatchMode": {
             "type": "string"
@@ -2910,7 +2935,8 @@
             "type": "string"
           },
           "lastAttemptAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "mode": {
             "type": "string"
@@ -2920,7 +2946,8 @@
             "type": "integer"
           },
           "scheduledFor": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "source": {
             "type": "string"
@@ -2941,7 +2968,8 @@
             "type": "string"
           },
           "updatedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -2986,13 +3014,15 @@
             "type": "string"
           },
           "completedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "correlationId": {
             "type": "string"
           },
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "dataOnly": {
             "type": "boolean"
@@ -3008,7 +3038,8 @@
             "type": "string"
           },
           "expiresAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "externalId": {
             "type": "string"
@@ -3023,7 +3054,8 @@
             "type": "string"
           },
           "lastAttemptAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "lastError": {
             "type": "string"
@@ -3058,7 +3090,8 @@
             "type": "string"
           },
           "scheduledFor": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "schemaId": {
             "type": "string"
@@ -3091,7 +3124,8 @@
             "type": "integer"
           },
           "updatedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -3169,7 +3203,8 @@
             "type": "integer"
           },
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "description": {
             "type": "string"
@@ -3188,7 +3223,8 @@
             "type": "string"
           },
           "updatedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -3307,7 +3343,8 @@
             "type": "string"
           },
           "projectedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "source": {
             "type": "string"
@@ -3319,7 +3356,8 @@
             "type": "string"
           },
           "time": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "type": {
             "type": "string"
@@ -3368,7 +3406,8 @@
             "type": "string"
           },
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "data": {},
           "deduplicationId": {
@@ -3381,7 +3420,8 @@
             "type": "string"
           },
           "projectedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "source": {
             "type": "string"
@@ -3396,7 +3436,8 @@
             "type": "string"
           },
           "time": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "type": {
             "type": "string"
@@ -3484,7 +3525,8 @@
             "type": "string"
           },
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "createdBy": {
             "type": "string"
@@ -3517,7 +3559,8 @@
             "type": "string"
           },
           "updatedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -3701,7 +3744,8 @@
             "type": "string"
           },
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "hasClientSecret": {
             "type": "boolean"
@@ -3728,7 +3772,8 @@
             "type": "string"
           },
           "updatedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -3772,7 +3817,8 @@
         "additionalProperties": false,
         "properties": {
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "id": {
             "type": "string"
@@ -3787,7 +3833,8 @@
             "type": "string"
           },
           "updatedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -3862,7 +3909,8 @@
             "type": "string"
           },
           "attemptedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "failureReason": {
             "type": [
@@ -3971,7 +4019,8 @@
             "type": "array"
           },
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "emailDomain": {
             "type": "string"
@@ -4014,7 +4063,8 @@
             "type": "boolean"
           },
           "updatedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -4055,7 +4105,8 @@
         "additionalProperties": false,
         "properties": {
           "addedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "addedBy": {
             "type": "string"
@@ -4157,7 +4208,8 @@
             "type": "string"
           },
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "defaultScopes": {
             "items": {
@@ -4193,7 +4245,8 @@
             "type": "string"
           },
           "updatedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -4455,7 +4508,8 @@
             "type": "string"
           },
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "email": {
             "type": "string"
@@ -4491,7 +4545,8 @@
             "type": "string"
           },
           "updatedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -4512,7 +4567,8 @@
         "additionalProperties": false,
         "properties": {
           "assignedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "assignmentSource": {
             "type": "string"
@@ -4602,7 +4658,8 @@
             "type": "string"
           },
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "createdBy": {
             "type": "string"
@@ -4638,7 +4695,8 @@
             "type": "array"
           },
           "updatedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -4734,13 +4792,15 @@
             "type": "string"
           },
           "completedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "correlationId": {
             "type": "string"
           },
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "dispatchPoolId": {
             "type": "string"
@@ -4788,7 +4848,8 @@
             "type": "string"
           },
           "scheduledFor": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "sequence": {
             "format": "int32",
@@ -4818,7 +4879,8 @@
             "type": "integer"
           },
           "updatedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -4883,7 +4945,8 @@
             "type": "string"
           },
           "time": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -5038,13 +5101,15 @@
             "type": "string"
           },
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "email": {
             "type": "string"
           },
           "expiresAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "id": {
             "type": "string"
@@ -5094,7 +5159,8 @@
         "additionalProperties": false,
         "properties": {
           "assignedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "assignedBy": {
             "type": "string"
@@ -5190,7 +5256,8 @@
             "type": "boolean"
           },
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "description": {
             "type": "string"
@@ -5214,7 +5281,8 @@
             "type": "string"
           },
           "updatedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -5299,7 +5367,8 @@
             "type": "string"
           },
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "id": {
             "type": "string"
@@ -5343,7 +5412,8 @@
             "type": "string"
           },
           "completedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "completionResult": {},
           "completionStatus": {
@@ -5353,10 +5423,12 @@
             "type": "string"
           },
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "deliveredAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "deliveryAttempts": {
             "format": "int32",
@@ -5366,7 +5438,8 @@
             "type": "string"
           },
           "firedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "id": {
             "type": "string"
@@ -5375,7 +5448,8 @@
             "type": "string"
           },
           "scheduledFor": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "scheduledJobId": {
             "type": "string"
@@ -5421,7 +5495,8 @@
             "type": "boolean"
           },
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "createdBy": {
             "type": "string"
@@ -5446,7 +5521,8 @@
             "type": "string"
           },
           "lastFiredAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "name": {
             "type": "string"
@@ -5469,7 +5545,8 @@
             "type": "boolean"
           },
           "updatedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "updatedBy": {
             "type": "string"
@@ -5611,7 +5688,8 @@
             "type": "string"
           },
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "description": {
             "type": "string"
@@ -5620,7 +5698,8 @@
             "type": "string"
           },
           "lastUsedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "name": {
             "type": "string"
@@ -5635,7 +5714,8 @@
             "type": "string"
           },
           "updatedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -5798,7 +5878,8 @@
         "additionalProperties": false,
         "properties": {
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "schema": {},
           "status": {
@@ -5918,7 +5999,8 @@
             "type": "string"
           },
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "createdBy": {
             "type": "string"
@@ -5992,7 +6074,8 @@
             "type": "integer"
           },
           "updatedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -6668,10 +6751,6 @@
         ],
         "type": "object"
       },
-      "Time": {
-        "additionalProperties": false,
-        "type": "object"
-      },
       "UpdateAnchorDomainRequest": {
         "additionalProperties": true,
         "properties": {
@@ -7344,13 +7423,15 @@
         "additionalProperties": false,
         "properties": {
           "createdAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "id": {
             "type": "string"
           },
           "lastUsedAt": {
-            "$ref": "#/components/schemas/Time"
+            "format": "date-time",
+            "type": "string"
           },
           "name": {
             "type": "string"

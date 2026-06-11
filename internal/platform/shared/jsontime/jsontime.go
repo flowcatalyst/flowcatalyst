@@ -17,6 +17,8 @@ package jsontime
 import (
 	"fmt"
 	"time"
+
+	"github.com/danielgtaylor/huma/v2"
 )
 
 // Time wraps time.Time. Marshal/Unmarshal preserve microsecond
@@ -48,6 +50,15 @@ func (jt Time) IsZero() bool { return jt.t.IsZero() }
 
 // String returns the wire-format representation. Useful for logging.
 func (jt Time) String() string { return jt.t.Format(Layout) }
+
+// Schema implements huma.SchemaProvider so the OpenAPI spec models this
+// type as the RFC-3339 string it marshals to. Without it, huma's
+// reflection sees a struct with no exported fields and emits an empty
+// object schema — which is what the published SDK types and the SPA's
+// generated types then carry.
+func (Time) Schema(_ huma.Registry) *huma.Schema {
+	return &huma.Schema{Type: "string", Format: "date-time"}
+}
 
 // MarshalJSON emits the fixed-precision microsecond ISO-8601 string.
 func (jt Time) MarshalJSON() ([]byte, error) {
