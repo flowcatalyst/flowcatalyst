@@ -2,6 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(git *)",
+      "Bash(GOROOT=/opt/homebrew/opt/go/libexec go *)",
+      "Bash(GOROOT=/opt/homebrew/opt/go/libexec make *)",
       "Bash(go build *)",
       "Bash(go test *)",
       "Bash(go vet *)",
