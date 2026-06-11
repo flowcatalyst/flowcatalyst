@@ -43,22 +43,33 @@ func TestOpenAPISpecLocked(t *testing.T) {
 
 // TestDumpSpecCoversAllWiredHumaRoutes guards against the lockfile silently
 // under-reporting the served API: every aggregate registered against the
-// huma API in WirePlatform (internal/server/wire.go) must also be registered
-// here in dump-spec, or its routes won't appear in api/openapi.lock.json
-// (and `oasdiff`/parity checks would be blind to them). This is exactly how
-// the sdksync + loginattempt routes went missing. Compares the set of
-// `<pkg>.Register(humaAPI, …)` idents in wire.go to `<pkg>.Register(api, …)`
-// idents here.
+// huma API in WirePlatform (any internal/server/*.go file) must also be
+// registered here in dump-spec, or its routes won't appear in
+// api/openapi.lock.json (and `oasdiff`/parity checks would be blind to
+// them). This is exactly how the sdksync + loginattempt routes went
+// missing. Compares the set of `<pkg>.Register(humaAPI, …)` idents across
+// the server package to `<pkg>.Register(api, …)` idents here.
 func TestDumpSpecCoversAllWiredHumaRoutes(t *testing.T) {
 	repoRoot := findRepoRoot(t)
 
-	wireSrc, err := os.ReadFile(filepath.Join(repoRoot, "internal", "server", "wire.go"))
-	require.NoError(t, err, "read wire.go")
+	serverFiles, err := filepath.Glob(filepath.Join(repoRoot, "internal", "server", "*.go"))
+	require.NoError(t, err, "glob internal/server")
+	require.NotEmpty(t, serverFiles, "no files under internal/server — discovery broke")
+	var wireSrc []byte
+	for _, f := range serverFiles {
+		src, err := os.ReadFile(f)
+		require.NoError(t, err, "read %s", f)
+		wireSrc = append(wireSrc, src...)
+		wireSrc = append(wireSrc, '\n')
+	}
 	dumpSrc, err := os.ReadFile(filepath.Join(repoRoot, "tools", "dump-spec", "main.go"))
 	require.NoError(t, err, "read dump-spec/main.go")
 
 	wired := registerIdents(wireSrc, "humaAPI")
 	dumped := registerIdents(dumpSrc, "api")
+	// An empty wired set means the regex no longer matches how the server
+	// registers routes — the guard would pass vacuously. Fail loudly instead.
+	require.NotEmpty(t, wired, "no `<pkg>.Register(humaAPI, …)` calls found in internal/server — discovery broke")
 
 	var missing []string
 	for pkg := range wired {
