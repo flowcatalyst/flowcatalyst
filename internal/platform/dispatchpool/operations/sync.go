@@ -3,18 +3,14 @@ package operations
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/validate"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
-
-// poolCodePattern matches the Rust pool_code_pattern: must start with a
-// lowercase letter, then lowercase alphanumerics, hyphens, underscores.
-var poolCodePattern = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
 
 // SyncDispatchPoolInput is one pool definition in an SDK sync payload.
 // RateLimit nil means concurrency-only (no rate limiter).
@@ -38,7 +34,8 @@ type SyncDispatchPoolsCommand struct {
 // SyncDispatchPools bulk-upserts dispatch pools within a single transaction.
 // Mirrors the Rust SyncDispatchPoolsUseCase exactly:
 //
-//   - Validates each pool code against poolCodePattern; name required;
+//   - Validates each pool code against validate.CodeUnderscorePattern
+//     (the Rust pool_code_pattern); name required;
 //     rateLimit (when set) ≥ 1; concurrency ≥ 1.
 //   - Matches existing pools by code over ALL pools (pools are global).
 //   - RemoveUnlisted ARCHIVES (soft, not hard-delete) pools absent from the
@@ -59,7 +56,7 @@ func SyncDispatchPools(
 		return zero, usecase.Validation("APPLICATION_CODE_REQUIRED", "Application code is required")
 	}
 	for _, in := range cmd.Pools {
-		if strings.TrimSpace(in.Code) == "" || !poolCodePattern.MatchString(in.Code) {
+		if strings.TrimSpace(in.Code) == "" || !validate.CodeUnderscorePattern.MatchString(in.Code) {
 			return zero, usecase.Validation("INVALID_POOL_CODE", fmt.Sprintf(
 				"Pool code '%s' is invalid. Must start with lowercase letter, contain only lowercase alphanumeric, hyphens, underscores.", in.Code))
 		}

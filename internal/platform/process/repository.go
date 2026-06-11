@@ -2,14 +2,12 @@ package process
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -30,70 +28,49 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 
 // FindByID loads by id.
 func (r *Repository) FindByID(ctx context.Context, id string) (*Process, error) {
-	row, err := r.q.ProcessFindByID(ctx, id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	res, err := r.q.ProcessFindByID(ctx, id)
+	row, err := repocommon.One(res, err, "process repo")
+	if row == nil || err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("process repo: %w", err)
-	}
-	return rowToProcess(row), nil
+	return rowToProcess(*row), nil
 }
 
 // FindByCode loads by unique code.
 func (r *Repository) FindByCode(ctx context.Context, code string) (*Process, error) {
-	row, err := r.q.ProcessFindByCode(ctx, code)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	res, err := r.q.ProcessFindByCode(ctx, code)
+	row, err := repocommon.One(res, err, "process repo")
+	if row == nil || err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("process repo: %w", err)
-	}
-	return rowToProcess(row), nil
+	return rowToProcess(*row), nil
 }
 
 // FindWithFilters returns processes matching non-nil filters. Hand-rolled
 // dynamic query — see docs/sqlc.md.
 func (r *Repository) FindWithFilters(ctx context.Context, application, subdomain, status *string) ([]Process, error) {
-	const baseSelect = `SELECT id, code, name, description, status, source, application,
-		subdomain, process_name, body, diagram_type, tags, created_at, updated_at FROM msg_processes`
-	q := baseSelect
-	args := []any{}
-	conds := []string{}
-	if application != nil {
-		args = append(args, *application)
-		conds = append(conds, fmt.Sprintf("application = $%d", len(args)))
-	}
-	if subdomain != nil {
-		args = append(args, *subdomain)
-		conds = append(conds, fmt.Sprintf("subdomain = $%d", len(args)))
-	}
-	if status != nil {
-		args = append(args, *status)
-		conds = append(conds, fmt.Sprintf("status = $%d", len(args)))
-	}
-	if len(conds) > 0 {
-		q += ` WHERE ` + strings.Join(conds, ` AND `)
-	}
-	q += ` ORDER BY code`
-	rows, err := r.pool.Query(ctx, q, args...)
+	var f repocommon.Filter
+	f.EqPtr("application", application)
+	f.EqPtr("subdomain", subdomain)
+	f.EqPtr("status", status)
+
+	q := `SELECT id, code, name, description, status, source, application,
+		subdomain, process_name, body, diagram_type, tags, created_at, updated_at FROM msg_processes` +
+		f.Where() + ` ORDER BY code`
+
+	rows, err := r.pool.Query(ctx, q, f.Args()...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var out []Process
-	for rows.Next() {
-		var row dbq.MsgProcess
-		if err := rows.Scan(
-			&row.ID, &row.Code, &row.Name, &row.Description, &row.Status, &row.Source,
-			&row.Application, &row.Subdomain, &row.ProcessName, &row.Body, &row.DiagramType,
-			&row.Tags, &row.CreatedAt, &row.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
+	collected, err := pgx.CollectRows(rows, pgx.RowToStructByName[dbq.MsgProcess])
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Process, 0, len(collected))
+	for _, row := range collected {
 		out = append(out, *rowToProcess(row))
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 // Persist implements usecasepgx.Persist[Process]. CreatedBy is dropped

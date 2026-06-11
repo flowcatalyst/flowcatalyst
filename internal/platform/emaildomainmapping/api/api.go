@@ -12,6 +12,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -33,77 +34,17 @@ const tag = "email-domain-mappings"
 
 // Register mounts the email-domain-mapping endpoints.
 func Register(api huma.API, s *State) {
-	huma.Register(api, huma.Operation{
-		OperationID:   "listEmailDomainMappings",
-		Method:        http.MethodGet,
-		Path:          "/api/email-domain-mappings",
-		Summary:       "List email-domain mappings",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.list)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "createEmailDomainMapping",
-		Method:        http.MethodPost,
-		Path:          "/api/email-domain-mappings",
-		Summary:       "Create an email-domain mapping",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusCreated,
-	}, s.create)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "lookupEmailDomainMapping",
-		Method:        http.MethodGet,
-		Path:          "/api/email-domain-mappings/lookup",
-		Summary:       "Resolve an email domain to its mapping",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.lookup)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getEmailDomainMappingByDomain",
-		Method:        http.MethodGet,
-		Path:          "/api/email-domain-mappings/by-domain/{domain}",
-		Summary:       "Resolve an email domain to its mapping (path param)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.byDomain)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getEmailDomainMapping",
-		Method:        http.MethodGet,
-		Path:          "/api/email-domain-mappings/{id}",
-		Summary:       "Get an email-domain mapping by id",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.getByID)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "updateEmailDomainMapping",
-		Method:        http.MethodPut,
-		Path:          "/api/email-domain-mappings/{id}",
-		Summary:       "Update an email-domain mapping",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.update)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "deleteEmailDomainMapping",
-		Method:        http.MethodDelete,
-		Path:          "/api/email-domain-mappings/{id}",
-		Summary:       "Delete an email-domain mapping",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.delete)
+	g := apiroute.New(api, tag)
+	apiroute.Get(g, "listEmailDomainMappings", "/api/email-domain-mappings", "List email-domain mappings", s.list)
+	apiroute.Post(g, "createEmailDomainMapping", "/api/email-domain-mappings", "Create an email-domain mapping", http.StatusCreated, s.create)
+	apiroute.Get(g, "lookupEmailDomainMapping", "/api/email-domain-mappings/lookup", "Resolve an email domain to its mapping", s.lookup)
+	apiroute.Get(g, "getEmailDomainMappingByDomain", "/api/email-domain-mappings/by-domain/{domain}", "Resolve an email domain to its mapping (path param)", s.byDomain)
+	apiroute.Get(g, "getEmailDomainMapping", "/api/email-domain-mappings/{id}", "Get an email-domain mapping by id", s.getByID)
+	apiroute.Put(g, "updateEmailDomainMapping", "/api/email-domain-mappings/{id}", "Update an email-domain mapping", http.StatusNoContent, s.update)
+	apiroute.Delete(g, "deleteEmailDomainMapping", "/api/email-domain-mappings/{id}", "Delete an email-domain mapping", http.StatusNoContent, s.delete)
 }
 
-type emptyInput struct{}
-
-type listOutput struct {
-	Body MappingListResponse
-}
-
-func (s *State) list(ctx context.Context, _ *emptyInput) (*listOutput, error) {
+func (s *State) list(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[MappingListResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
@@ -113,11 +54,10 @@ func (s *State) list(ctx context.Context, _ *emptyInput) (*listOutput, error) {
 		return nil, usecase.Internal("REPO", "find_all failed", err)
 	}
 	names := s.idpNames(ctx, rows)
-	out := make([]MappingResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, fromEntity(&rows[i], names[rows[i].IdentityProviderID]))
-	}
-	return &listOutput{Body: MappingListResponse{Mappings: out, Total: len(out)}}, nil
+	out := apicommon.MapSlice(rows, func(e *emaildomainmapping.EmailDomainMapping) MappingResponse {
+		return fromEntity(e, names[e.IdentityProviderID])
+	})
+	return &apicommon.Out[MappingListResponse]{Body: MappingListResponse{Mappings: out, Total: len(out)}}, nil
 }
 
 // idpNames batch-resolves identity-provider display names keyed by IDP id.
@@ -157,15 +97,7 @@ func (s *State) idpName(ctx context.Context, idpID string) *string {
 	return &name
 }
 
-type getInput struct {
-	ID string `path:"id"`
-}
-
-type getOutput struct {
-	Body MappingResponse
-}
-
-func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
+func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[MappingResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
@@ -177,18 +109,10 @@ func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
 	if e == nil {
 		return nil, httperror.NotFound("EmailDomainMapping", in.ID)
 	}
-	return &getOutput{Body: fromEntity(e, s.idpName(ctx, e.IdentityProviderID))}, nil
+	return &apicommon.Out[MappingResponse]{Body: fromEntity(e, s.idpName(ctx, e.IdentityProviderID))}, nil
 }
 
-type createInput struct {
-	Body CreateMappingRequest
-}
-
-type createOutput struct {
-	Body apicommon.CreatedResponse
-}
-
-func (s *State) create(ctx context.Context, in *createInput) (*createOutput, error) {
+func (s *State) create(ctx context.Context, in *apicommon.In[CreateMappingRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
@@ -198,7 +122,7 @@ func (s *State) create(ctx context.Context, in *createInput) (*createOutput, err
 	if err != nil {
 		return nil, err
 	}
-	return &createOutput{Body: apicommon.CreatedResponse{ID: committed.Event().MappingID}}, nil
+	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: committed.Event().MappingID}}, nil
 }
 
 type updateInput struct {
@@ -206,9 +130,7 @@ type updateInput struct {
 	Body UpdateMappingRequest
 }
 
-type emptyOutput struct{}
-
-func (s *State) update(ctx context.Context, in *updateInput) (*emptyOutput, error) {
+func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
@@ -217,14 +139,10 @@ func (s *State) update(ctx context.Context, in *updateInput) (*emptyOutput, erro
 	if _, err := operations.UpdateMapping(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
-type deleteInput struct {
-	ID string `path:"id"`
-}
-
-func (s *State) delete(ctx context.Context, in *deleteInput) (*emptyOutput, error) {
+func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
@@ -233,7 +151,7 @@ func (s *State) delete(ctx context.Context, in *deleteInput) (*emptyOutput, erro
 	if _, err := operations.DeleteMapping(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
 type lookupInput struct {
@@ -268,7 +186,7 @@ type byDomainInput struct {
 // byDomain resolves an email domain to its mapping via a path param. Mirrors
 // the SPA's GET /api/email-domain-mappings/by-domain/{domain}. Returns 404
 // when no mapping exists for the domain.
-func (s *State) byDomain(ctx context.Context, in *byDomainInput) (*getOutput, error) {
+func (s *State) byDomain(ctx context.Context, in *byDomainInput) (*apicommon.Out[MappingResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
@@ -283,5 +201,5 @@ func (s *State) byDomain(ctx context.Context, in *byDomainInput) (*getOutput, er
 	if m == nil {
 		return nil, httperror.NotFound("EmailDomainMapping", in.Domain)
 	}
-	return &getOutput{Body: fromEntity(m, s.idpName(ctx, m.IdentityProviderID))}, nil
+	return &apicommon.Out[MappingResponse]{Body: fromEntity(m, s.idpName(ctx, m.IdentityProviderID))}, nil
 }

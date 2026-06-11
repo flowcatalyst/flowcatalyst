@@ -2,18 +2,14 @@ package operations
 
 import (
 	"context"
-	"regexp"
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/validate"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
-
-// codePattern matches the Rust regex: start with lowercase letter, then
-// lowercase alphanumeric + hyphens.
-var codePattern = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
 // CreateCommand is the input DTO.
 type CreateCommand struct {
@@ -43,7 +39,7 @@ func CreateConnection(
 	if code == "" {
 		return zero, usecase.Validation("CODE_REQUIRED", "Connection code is required")
 	}
-	if !codePattern.MatchString(code) {
+	if !validate.CodePattern.MatchString(code) {
 		return zero, usecase.Validation("INVALID_CODE_FORMAT",
 			"Code must start with lowercase letter, contain only lowercase alphanumeric and hyphens")
 	}

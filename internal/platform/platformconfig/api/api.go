@@ -10,6 +10,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -26,81 +27,23 @@ const tag = "platform-config"
 
 // Register mounts the platform_config endpoints.
 func Register(api huma.API, s *State) {
-	huma.Register(api, huma.Operation{
-		OperationID:   "listPlatformConfigProperties",
-		Method:        http.MethodGet,
-		Path:          "/api/platform-config/{app}",
-		Summary:       "List platform-config properties for an application",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.listProperties)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getPlatformConfigProperty",
-		Method:        http.MethodGet,
-		Path:          "/api/config/{app}/{section}/{property}",
-		Summary:       "Get a single platform-config property",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.getProperty)
-
+	g := apiroute.New(api, tag)
+	apiroute.Get(g, "listPlatformConfigProperties", "/api/platform-config/{app}", "List platform-config properties for an application", s.listProperties)
+	apiroute.Get(g, "getPlatformConfigProperty", "/api/config/{app}/{section}/{property}", "Get a single platform-config property", s.getProperty)
 	// The SPA calls /api/config/...; the legacy /api/platform-config/...
 	// path is kept for the list/access admin routes below.
-	huma.Register(api, huma.Operation{
-		OperationID:   "setPlatformConfigProperty",
-		Method:        http.MethodPut,
-		Path:          "/api/config/{app}/{section}/{property}",
-		Summary:       "Set a platform-config property",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.setProperty)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "deletePlatformConfigProperty",
-		Method:        http.MethodDelete,
-		Path:          "/api/config/{app}/{section}/{property}",
-		Summary:       "Delete a platform-config property",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.deleteProperty)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "listPlatformConfigAccess",
-		Method:        http.MethodGet,
-		Path:          "/api/platform-config/{app}/access",
-		Summary:       "List access grants for an application",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.listAccess)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "grantPlatformConfigAccess",
-		Method:        http.MethodPost,
-		Path:          "/api/platform-config/{app}/access",
-		Summary:       "Grant access to platform-config for a role",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusCreated,
-	}, s.grantAccess)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "revokePlatformConfigAccess",
-		Method:        http.MethodDelete,
-		Path:          "/api/platform-config/access/{id}",
-		Summary:       "Revoke a platform-config access grant",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.revokeAccess)
+	apiroute.Put(g, "setPlatformConfigProperty", "/api/config/{app}/{section}/{property}", "Set a platform-config property", http.StatusOK, s.setProperty)
+	apiroute.Delete(g, "deletePlatformConfigProperty", "/api/config/{app}/{section}/{property}", "Delete a platform-config property", http.StatusNoContent, s.deleteProperty)
+	apiroute.Get(g, "listPlatformConfigAccess", "/api/platform-config/{app}/access", "List access grants for an application", s.listAccess)
+	apiroute.Post(g, "grantPlatformConfigAccess", "/api/platform-config/{app}/access", "Grant access to platform-config for a role", http.StatusCreated, s.grantAccess)
+	apiroute.Delete(g, "revokePlatformConfigAccess", "/api/platform-config/access/{id}", "Revoke a platform-config access grant", http.StatusNoContent, s.revokeAccess)
 }
 
 type listPropsInput struct {
 	App string `path:"app"`
 }
 
-type listPropsOutput struct {
-	Body ConfigListResponse
-}
-
-func (s *State) listProperties(ctx context.Context, in *listPropsInput) (*listPropsOutput, error) {
+func (s *State) listProperties(ctx context.Context, in *listPropsInput) (*apicommon.Out[ConfigListResponse], error) {
 	ac := auth.FromContext(ctx)
 	if !ac.IsAnchor() {
 		ok, err := s.Repo.HasAccess(ctx, in.App, ac.Roles, false)
@@ -123,7 +66,7 @@ func (s *State) listProperties(ctx context.Context, in *listPropsInput) (*listPr
 		}
 		out = append(out, configFromEntity(&c))
 	}
-	return &listPropsOutput{Body: ConfigListResponse{Items: out}}, nil
+	return &apicommon.Out[ConfigListResponse]{Body: ConfigListResponse{Items: out}}, nil
 }
 
 // scopeFor derives the config scope from an optional clientId, matching the
@@ -143,11 +86,7 @@ type propertyInput struct {
 	ClientID string `query:"clientId"`
 }
 
-type configOutput struct {
-	Body ConfigResponse
-}
-
-func (s *State) getProperty(ctx context.Context, in *propertyInput) (*configOutput, error) {
+func (s *State) getProperty(ctx context.Context, in *propertyInput) (*apicommon.Out[ConfigResponse], error) {
 	ac := auth.FromContext(ctx)
 	if !ac.IsAnchor() {
 		ok, err := s.Repo.HasAccess(ctx, in.App, ac.Roles, false)
@@ -169,7 +108,7 @@ func (s *State) getProperty(ctx context.Context, in *propertyInput) (*configOutp
 	if !ac.IsAnchor() && c.ValueType == platformconfig.ValueSecret {
 		c.Value = "***"
 	}
-	return &configOutput{Body: configFromEntity(c)}, nil
+	return &apicommon.Out[ConfigResponse]{Body: configFromEntity(c)}, nil
 }
 
 type setPropertyInput struct {
@@ -180,7 +119,7 @@ type setPropertyInput struct {
 	Body     SetPropertyRequest
 }
 
-func (s *State) setProperty(ctx context.Context, in *setPropertyInput) (*configOutput, error) {
+func (s *State) setProperty(ctx context.Context, in *setPropertyInput) (*apicommon.Out[ConfigResponse], error) {
 	ac := auth.FromContext(ctx)
 	if !ac.IsAnchor() {
 		ok, err := s.Repo.HasAccess(ctx, in.App, ac.Roles, true)
@@ -209,10 +148,10 @@ func (s *State) setProperty(ctx context.Context, in *setPropertyInput) (*configO
 	if c == nil {
 		return nil, usecase.Internal("REPO", "config missing after set", nil)
 	}
-	return &configOutput{Body: configFromEntity(c)}, nil
+	return &apicommon.Out[ConfigResponse]{Body: configFromEntity(c)}, nil
 }
 
-func (s *State) deleteProperty(ctx context.Context, in *propertyInput) (*emptyOutput, error) {
+func (s *State) deleteProperty(ctx context.Context, in *propertyInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if !ac.IsAnchor() {
 		ok, err := s.Repo.HasAccess(ctx, in.App, ac.Roles, true)
@@ -229,7 +168,7 @@ func (s *State) deleteProperty(ctx context.Context, in *propertyInput) (*emptyOu
 		return nil, usecase.Internal("REPO", "find_by_coordinate failed", err)
 	}
 	if c == nil {
-		return &emptyOutput{}, nil // idempotent
+		return &apicommon.Empty{}, nil // idempotent
 	}
 	tx, err := s.UoW.Pool().Begin(ctx)
 	if err != nil {
@@ -242,18 +181,14 @@ func (s *State) deleteProperty(ctx context.Context, in *propertyInput) (*emptyOu
 	if err := tx.Commit(ctx); err != nil {
 		return nil, usecase.Internal("TX", "commit failed", err)
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
 type listAccessInput struct {
 	App string `path:"app"`
 }
 
-type listAccessOutput struct {
-	Body AccessListResponse
-}
-
-func (s *State) listAccess(ctx context.Context, in *listAccessInput) (*listAccessOutput, error) {
+func (s *State) listAccess(ctx context.Context, in *listAccessInput) (*apicommon.Out[AccessListResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
@@ -262,11 +197,8 @@ func (s *State) listAccess(ctx context.Context, in *listAccessInput) (*listAcces
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_access_by_application failed", err)
 	}
-	out := make([]AccessResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, accessFromEntity(&rows[i]))
-	}
-	return &listAccessOutput{Body: AccessListResponse{Items: out}}, nil
+	out := apicommon.MapSlice(rows, accessFromEntity)
+	return &apicommon.Out[AccessListResponse]{Body: AccessListResponse{Items: out}}, nil
 }
 
 type grantAccessInput struct {
@@ -274,11 +206,7 @@ type grantAccessInput struct {
 	Body GrantAccessRequest
 }
 
-type grantAccessOutput struct {
-	Body apicommon.CreatedResponse
-}
-
-func (s *State) grantAccess(ctx context.Context, in *grantAccessInput) (*grantAccessOutput, error) {
+func (s *State) grantAccess(ctx context.Context, in *grantAccessInput) (*apicommon.Out[apicommon.CreatedResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
@@ -288,16 +216,10 @@ func (s *State) grantAccess(ctx context.Context, in *grantAccessInput) (*grantAc
 	if err != nil {
 		return nil, err
 	}
-	return &grantAccessOutput{Body: apicommon.CreatedResponse{ID: committed.Event().AccessID}}, nil
+	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: committed.Event().AccessID}}, nil
 }
 
-type revokeAccessInput struct {
-	ID string `path:"id"`
-}
-
-type emptyOutput struct{}
-
-func (s *State) revokeAccess(ctx context.Context, in *revokeAccessInput) (*emptyOutput, error) {
+func (s *State) revokeAccess(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
@@ -306,5 +228,5 @@ func (s *State) revokeAccess(ctx context.Context, in *revokeAccessInput) (*empty
 	if _, err := operations.RevokeAccess(ctx, s.Repo, s.UoW, operations.RevokeAccessCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }

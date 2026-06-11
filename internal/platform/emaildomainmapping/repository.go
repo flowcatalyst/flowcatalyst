@@ -2,13 +2,12 @@ package emaildomainmapping
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -26,26 +25,22 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 
 // FindByID loads a mapping with hydrated junction tables.
 func (r *Repository) FindByID(ctx context.Context, id string) (*EmailDomainMapping, error) {
-	row, err := r.q.EmailDomainMappingFindByID(ctx, id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	res, err := r.q.EmailDomainMappingFindByID(ctx, id)
+	row, err := repocommon.One(res, err, "edm repo")
+	if row == nil || err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("edm repo: %w", err)
-	}
-	return r.hydrateOne(ctx, rowToEDM(row))
+	return r.hydrateOne(ctx, rowToEDM(*row))
 }
 
 // FindByEmailDomain loads by the unique email domain.
 func (r *Repository) FindByEmailDomain(ctx context.Context, domain string) (*EmailDomainMapping, error) {
-	row, err := r.q.EmailDomainMappingFindByDomain(ctx, domain)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	res, err := r.q.EmailDomainMappingFindByDomain(ctx, domain)
+	row, err := repocommon.One(res, err, "edm repo")
+	if row == nil || err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("edm repo: %w", err)
-	}
-	return r.hydrateOne(ctx, rowToEDM(row))
+	return r.hydrateOne(ctx, rowToEDM(*row))
 }
 
 // FindAll loads every mapping, hydrated.

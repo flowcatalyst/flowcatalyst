@@ -2,14 +2,12 @@ package connection
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -27,36 +25,32 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 
 // FindByID loads by primary key.
 func (r *Repository) FindByID(ctx context.Context, id string) (*Connection, error) {
-	row, err := r.q.ConnectionFindByID(ctx, id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	res, err := r.q.ConnectionFindByID(ctx, id)
+	row, err := repocommon.One(res, err, "connection repo")
+	if row == nil || err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("connection repo: %w", err)
-	}
-	return rowToConnection(row), nil
+	return rowToConnection(*row), nil
 }
 
 // FindByCodeAndClient locates by (code, client_id). clientID may be nil.
 func (r *Repository) FindByCodeAndClient(ctx context.Context, code string, clientID *string) (*Connection, error) {
 	var (
-		row dbq.MsgConnection
+		res dbq.MsgConnection
 		err error
 	)
 	if clientID != nil {
-		row, err = r.q.ConnectionFindByCodeClient(ctx, dbq.ConnectionFindByCodeClientParams{
+		res, err = r.q.ConnectionFindByCodeClient(ctx, dbq.ConnectionFindByCodeClientParams{
 			Code: code, ClientID: clientID,
 		})
 	} else {
-		row, err = r.q.ConnectionFindByCodeAnchor(ctx, code)
+		res, err = r.q.ConnectionFindByCodeAnchor(ctx, code)
 	}
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	row, err := repocommon.One(res, err, "connection repo")
+	if row == nil || err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("connection repo: %w", err)
-	}
-	return rowToConnection(row), nil
+	return rowToConnection(*row), nil
 }
 
 // FindAll returns every connection.
@@ -75,42 +69,27 @@ func (r *Repository) FindAll(ctx context.Context) ([]Connection, error) {
 // FindWithFilters returns connections matching supplied non-nil filters.
 // Hand-rolled dynamic query — see docs/sqlc.md.
 func (r *Repository) FindWithFilters(ctx context.Context, status, clientID *string) ([]Connection, error) {
-	const baseSelect = `SELECT id, code, name, description, external_id, status,
+	var f repocommon.Filter
+	f.EqPtr("status", status)
+	f.EqPtr("client_id", clientID)
+
+	q := `SELECT id, code, name, description, external_id, status,
 		service_account_id, client_id, client_identifier, created_at, updated_at
-		FROM msg_connections`
-	q := baseSelect
-	args := []any{}
-	conds := []string{}
-	if status != nil {
-		args = append(args, *status)
-		conds = append(conds, fmt.Sprintf("status = $%d", len(args)))
-	}
-	if clientID != nil {
-		args = append(args, *clientID)
-		conds = append(conds, fmt.Sprintf("client_id = $%d", len(args)))
-	}
-	if len(conds) > 0 {
-		q += ` WHERE ` + strings.Join(conds, ` AND `)
-	}
-	q += ` ORDER BY code`
-	rows, err := r.pool.Query(ctx, q, args...)
+		FROM msg_connections` + f.Where() + ` ORDER BY code`
+
+	rows, err := r.pool.Query(ctx, q, f.Args()...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	collected, err := pgx.CollectRows(rows, pgx.RowToStructByName[dbq.MsgConnection])
+	if err != nil {
+		return nil, err
+	}
 	var out []Connection
-	for rows.Next() {
-		var row dbq.MsgConnection
-		if err := rows.Scan(
-			&row.ID, &row.Code, &row.Name, &row.Description, &row.ExternalID, &row.Status,
-			&row.ServiceAccountID, &row.ClientID, &row.ClientIdentifier,
-			&row.CreatedAt, &row.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
+	for _, row := range collected {
 		out = append(out, *rowToConnection(row))
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 // Persist implements usecasepgx.Persist[Connection].

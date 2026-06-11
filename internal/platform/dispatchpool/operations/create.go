@@ -2,16 +2,14 @@ package operations
 
 import (
 	"context"
-	"regexp"
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/validate"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
-
-var codePattern = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
 // CreateCommand is the input DTO.
 type CreateCommand struct {
@@ -37,9 +35,11 @@ func CreateDispatchPool(
 	if code == "" {
 		return zero, usecase.Validation("CODE_REQUIRED", "code is required")
 	}
-	if !codePattern.MatchString(code) {
+	// Deliberately the underscore-tolerant pattern: matches sync and the
+	// Rust pool_code_pattern (owner-approved widening from hyphen-only).
+	if !validate.CodeUnderscorePattern.MatchString(code) {
 		return zero, usecase.Validation("INVALID_CODE_FORMAT",
-			"code must start with a lowercase letter and contain only lowercase alphanumeric and hyphens")
+			"code must start with a lowercase letter and contain only lowercase alphanumeric, hyphens, underscores")
 	}
 	if strings.TrimSpace(cmd.Name) == "" {
 		return zero, usecase.Validation("NAME_REQUIRED", "name is required")

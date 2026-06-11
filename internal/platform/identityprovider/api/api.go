@@ -11,6 +11,8 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
@@ -48,59 +50,15 @@ const tag = "identity-providers"
 
 // Register mounts the IDP endpoints on the supplied huma API.
 func Register(api huma.API, s *State) {
-	huma.Register(api, huma.Operation{
-		OperationID:   "listIdentityProviders",
-		Method:        http.MethodGet,
-		Path:          "/api/identity-providers",
-		Summary:       "List identity providers",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.list)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "createIdentityProvider",
-		Method:        http.MethodPost,
-		Path:          "/api/identity-providers",
-		Summary:       "Create an identity provider",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusCreated,
-	}, s.create)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getIdentityProvider",
-		Method:        http.MethodGet,
-		Path:          "/api/identity-providers/{id}",
-		Summary:       "Get an identity provider by id",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.getByID)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "updateIdentityProvider",
-		Method:        http.MethodPut,
-		Path:          "/api/identity-providers/{id}",
-		Summary:       "Update an identity provider",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.update)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "deleteIdentityProvider",
-		Method:        http.MethodDelete,
-		Path:          "/api/identity-providers/{id}",
-		Summary:       "Delete an identity provider",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.delete)
+	g := apiroute.New(api, tag)
+	apiroute.Get(g, "listIdentityProviders", "/api/identity-providers", "List identity providers", s.list)
+	apiroute.Post(g, "createIdentityProvider", "/api/identity-providers", "Create an identity provider", http.StatusCreated, s.create)
+	apiroute.Get(g, "getIdentityProvider", "/api/identity-providers/{id}", "Get an identity provider by id", s.getByID)
+	apiroute.Put(g, "updateIdentityProvider", "/api/identity-providers/{id}", "Update an identity provider", http.StatusOK, s.update)
+	apiroute.Delete(g, "deleteIdentityProvider", "/api/identity-providers/{id}", "Delete an identity provider", http.StatusNoContent, s.delete)
 }
 
-type emptyInput struct{}
-
-type listOutput struct {
-	Body IdentityProviderListResponse
-}
-
-func (s *State) list(ctx context.Context, _ *emptyInput) (*listOutput, error) {
+func (s *State) list(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[IdentityProviderListResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadIdentityProviders(ac); err != nil {
 		return nil, err
@@ -109,22 +67,11 @@ func (s *State) list(ctx context.Context, _ *emptyInput) (*listOutput, error) {
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_all failed", err)
 	}
-	out := make([]IdentityProviderResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, fromEntity(&rows[i]))
-	}
-	return &listOutput{Body: IdentityProviderListResponse{IdentityProviders: out, Total: len(out)}}, nil
+	out := apicommon.MapSlice(rows, fromEntity)
+	return &apicommon.Out[IdentityProviderListResponse]{Body: IdentityProviderListResponse{IdentityProviders: out, Total: len(out)}}, nil
 }
 
-type getInput struct {
-	ID string `path:"id"`
-}
-
-type getOutput struct {
-	Body IdentityProviderResponse
-}
-
-func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
+func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[IdentityProviderResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadIdentityProviders(ac); err != nil {
 		return nil, err
@@ -136,21 +83,13 @@ func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
 	if ip == nil {
 		return nil, httperror.NotFound("IdentityProvider", in.ID)
 	}
-	return &getOutput{Body: fromEntity(ip)}, nil
-}
-
-type createInput struct {
-	Body CreateIdentityProviderRequest
-}
-
-type createOutput struct {
-	Body IdentityProviderResponse
+	return &apicommon.Out[IdentityProviderResponse]{Body: fromEntity(ip)}, nil
 }
 
 // create returns the full provider (201), not just `{id}`: the SPA's
 // create toast reads the response `name`, and a bare id renders as
 // "undefined".
-func (s *State) create(ctx context.Context, in *createInput) (*createOutput, error) {
+func (s *State) create(ctx context.Context, in *apicommon.In[CreateIdentityProviderRequest]) (*apicommon.Out[IdentityProviderResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteIdentityProviders(ac); err != nil {
 		return nil, err
@@ -173,7 +112,7 @@ func (s *State) create(ctx context.Context, in *createInput) (*createOutput, err
 	if ip == nil {
 		return nil, httperror.NotFound("IdentityProvider", id)
 	}
-	return &createOutput{Body: fromEntity(ip)}, nil
+	return &apicommon.Out[IdentityProviderResponse]{Body: fromEntity(ip)}, nil
 }
 
 type updateInput struct {
@@ -181,16 +120,10 @@ type updateInput struct {
 	Body UpdateIdentityProviderRequest
 }
 
-type updateOutput struct {
-	Body IdentityProviderResponse
-}
-
-type emptyOutput struct{}
-
 // update returns the updated provider with 200 (not 204): the SPA's
 // detail page sets `provider.value = updated` after PUT, and its card is
 // gated on a truthy provider — a 204/undefined collapses the view.
-func (s *State) update(ctx context.Context, in *updateInput) (*updateOutput, error) {
+func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Out[IdentityProviderResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteIdentityProviders(ac); err != nil {
 		return nil, err
@@ -211,14 +144,10 @@ func (s *State) update(ctx context.Context, in *updateInput) (*updateOutput, err
 	if ip == nil {
 		return nil, httperror.NotFound("IdentityProvider", in.ID)
 	}
-	return &updateOutput{Body: fromEntity(ip)}, nil
+	return &apicommon.Out[IdentityProviderResponse]{Body: fromEntity(ip)}, nil
 }
 
-type deleteInput struct {
-	ID string `path:"id"`
-}
-
-func (s *State) delete(ctx context.Context, in *deleteInput) (*emptyOutput, error) {
+func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteIdentityProviders(ac); err != nil {
 		return nil, err
@@ -227,5 +156,5 @@ func (s *State) delete(ctx context.Context, in *deleteInput) (*emptyOutput, erro
 	if _, err := operations.DeleteIdentityProvider(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }

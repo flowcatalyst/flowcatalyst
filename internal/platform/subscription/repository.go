@@ -2,15 +2,14 @@ package subscription
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -30,36 +29,32 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 
 // FindByID loads a subscription with hydrated junction tables.
 func (r *Repository) FindByID(ctx context.Context, id string) (*Subscription, error) {
-	row, err := r.q.SubscriptionFindByID(ctx, id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	res, err := r.q.SubscriptionFindByID(ctx, id)
+	row, err := repocommon.One(res, err, "subscription repo")
+	if row == nil || err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("subscription repo: %w", err)
-	}
-	return r.hydrateOne(ctx, rowToSubscription(row))
+	return r.hydrateOne(ctx, rowToSubscription(*row))
 }
 
 // FindByCode loads by (code, client_id).
 func (r *Repository) FindByCode(ctx context.Context, code string, clientID *string) (*Subscription, error) {
 	var (
-		row dbq.MsgSubscription
+		res dbq.MsgSubscription
 		err error
 	)
 	if clientID != nil {
-		row, err = r.q.SubscriptionFindByCodeClient(ctx, dbq.SubscriptionFindByCodeClientParams{
+		res, err = r.q.SubscriptionFindByCodeClient(ctx, dbq.SubscriptionFindByCodeClientParams{
 			Code: code, ClientID: clientID,
 		})
 	} else {
-		row, err = r.q.SubscriptionFindByCodeAnchor(ctx, code)
+		res, err = r.q.SubscriptionFindByCodeAnchor(ctx, code)
 	}
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	row, err := repocommon.One(res, err, "subscription repo")
+	if row == nil || err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("subscription repo: %w", err)
-	}
-	return r.hydrateOne(ctx, rowToSubscription(row))
+	return r.hydrateOne(ctx, rowToSubscription(*row))
 }
 
 // FindAll returns every subscription, hydrated.
@@ -77,48 +72,27 @@ func (r *Repository) FindAll(ctx context.Context) ([]Subscription, error) {
 
 // FindWithFilters returns subscriptions matching non-nil filters.
 func (r *Repository) FindWithFilters(ctx context.Context, status, clientID *string) ([]Subscription, error) {
-	const baseSelect = `SELECT id, code, application_code, name, description, client_id,
+	var f repocommon.Filter
+	f.EqPtr("status", status)
+	f.EqPtr("client_id", clientID)
+
+	q := `SELECT id, code, application_code, name, description, client_id,
 		client_identifier, client_scoped, target, queue, source, status,
 		max_age_seconds, dispatch_pool_id, dispatch_pool_code, delay_seconds, sequence,
 		mode, timeout_seconds, max_retries, service_account_id, data_only,
-		created_at, updated_at, connection_id FROM msg_subscriptions`
-	q := baseSelect
-	args := []any{}
-	conds := []string{}
-	if status != nil {
-		args = append(args, *status)
-		conds = append(conds, fmt.Sprintf("status = $%d", len(args)))
-	}
-	if clientID != nil {
-		args = append(args, *clientID)
-		conds = append(conds, fmt.Sprintf("client_id = $%d", len(args)))
-	}
-	if len(conds) > 0 {
-		q += ` WHERE ` + strings.Join(conds, ` AND `)
-	}
-	q += ` ORDER BY code`
-	rows, err := r.pool.Query(ctx, q, args...)
+		created_at, updated_at, connection_id FROM msg_subscriptions` + f.Where() + ` ORDER BY code`
+
+	rows, err := r.pool.Query(ctx, q, f.Args()...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var bare []Subscription
-	for rows.Next() {
-		var row dbq.MsgSubscription
-		if err := rows.Scan(
-			&row.ID, &row.Code, &row.ApplicationCode, &row.Name, &row.Description,
-			&row.ClientID, &row.ClientIdentifier, &row.ClientScoped,
-			&row.Target, &row.Queue, &row.Source, &row.Status, &row.MaxAgeSeconds,
-			&row.DispatchPoolID, &row.DispatchPoolCode, &row.DelaySeconds, &row.Sequence,
-			&row.Mode, &row.TimeoutSeconds, &row.MaxRetries, &row.ServiceAccountID,
-			&row.DataOnly, &row.CreatedAt, &row.UpdatedAt, &row.ConnectionID,
-		); err != nil {
-			return nil, err
-		}
-		bare = append(bare, *rowToSubscription(row))
-	}
-	if err := rows.Err(); err != nil {
+	collected, err := pgx.CollectRows(rows, pgx.RowToStructByName[dbq.MsgSubscription])
+	if err != nil {
 		return nil, err
+	}
+	var bare []Subscription
+	for _, row := range collected {
+		bare = append(bare, *rowToSubscription(row))
 	}
 	return r.hydrateAll(ctx, bare)
 }
@@ -138,24 +112,13 @@ func (r *Repository) FindByApplicationCode(ctx context.Context, appCode string) 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var bare []Subscription
-	for rows.Next() {
-		var row dbq.MsgSubscription
-		if err := rows.Scan(
-			&row.ID, &row.Code, &row.ApplicationCode, &row.Name, &row.Description,
-			&row.ClientID, &row.ClientIdentifier, &row.ClientScoped,
-			&row.Target, &row.Queue, &row.Source, &row.Status, &row.MaxAgeSeconds,
-			&row.DispatchPoolID, &row.DispatchPoolCode, &row.DelaySeconds, &row.Sequence,
-			&row.Mode, &row.TimeoutSeconds, &row.MaxRetries, &row.ServiceAccountID,
-			&row.DataOnly, &row.CreatedAt, &row.UpdatedAt, &row.ConnectionID,
-		); err != nil {
-			return nil, err
-		}
-		bare = append(bare, *rowToSubscription(row))
-	}
-	if err := rows.Err(); err != nil {
+	collected, err := pgx.CollectRows(rows, pgx.RowToStructByName[dbq.MsgSubscription])
+	if err != nil {
 		return nil, err
+	}
+	var bare []Subscription
+	for _, row := range collected {
+		bare = append(bare, *rowToSubscription(row))
 	}
 	return r.hydrateAll(ctx, bare)
 }

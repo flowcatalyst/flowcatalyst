@@ -10,6 +10,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/process"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/process/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -33,68 +34,14 @@ func Register(api huma.API, s *State) {
 }
 
 func registerAt(api huma.API, s *State, base, opSuffix, tag string) {
-	huma.Register(api, huma.Operation{
-		OperationID:   "list" + opSuffix + "Processes",
-		Method:        http.MethodGet,
-		Path:          base,
-		Summary:       "List processes",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.list)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "create" + opSuffix + "Process",
-		Method:        http.MethodPost,
-		Path:          base,
-		Summary:       "Create a process",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusCreated,
-	}, s.create)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "get" + opSuffix + "ProcessByCode",
-		Method:        http.MethodGet,
-		Path:          base + "/by-code/{code}",
-		Summary:       "Get a process by code",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.getByCode)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "get" + opSuffix + "Process",
-		Method:        http.MethodGet,
-		Path:          base + "/{id}",
-		Summary:       "Get a process by id",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.getByID)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "update" + opSuffix + "Process",
-		Method:        http.MethodPut,
-		Path:          base + "/{id}",
-		Summary:       "Update a process",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.update)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "archive" + opSuffix + "Process",
-		Method:        http.MethodPost,
-		Path:          base + "/{id}/archive",
-		Summary:       "Archive a process",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.archive)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "delete" + opSuffix + "Process",
-		Method:        http.MethodDelete,
-		Path:          base + "/{id}",
-		Summary:       "Delete a process",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.delete)
+	g := apiroute.New(api, tag)
+	apiroute.Get(g, "list"+opSuffix+"Processes", base, "List processes", s.list)
+	apiroute.Post(g, "create"+opSuffix+"Process", base, "Create a process", http.StatusCreated, s.create)
+	apiroute.Get(g, "get"+opSuffix+"ProcessByCode", base+"/by-code/{code}", "Get a process by code", s.getByCode)
+	apiroute.Get(g, "get"+opSuffix+"Process", base+"/{id}", "Get a process by id", s.getByID)
+	apiroute.Put(g, "update"+opSuffix+"Process", base+"/{id}", "Update a process", http.StatusNoContent, s.update)
+	apiroute.Post(g, "archive"+opSuffix+"Process", base+"/{id}/archive", "Archive a process", http.StatusNoContent, s.archive)
+	apiroute.Delete(g, "delete"+opSuffix+"Process", base+"/{id}", "Delete a process", http.StatusNoContent, s.delete)
 }
 
 type listInput struct {
@@ -103,45 +50,23 @@ type listInput struct {
 	Status      string `query:"status"`
 }
 
-type listOutput struct {
-	Body ProcessListResponse
-}
-
-func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
+func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[ProcessListResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadProcesses(ac); err != nil {
 		return nil, err
 	}
-	var application, subdomain, status *string
-	if in.Application != "" {
-		application = &in.Application
-	}
-	if in.Subdomain != "" {
-		subdomain = &in.Subdomain
-	}
-	if in.Status != "" {
-		status = &in.Status
-	}
+	application := apicommon.OptStr(in.Application)
+	subdomain := apicommon.OptStr(in.Subdomain)
+	status := apicommon.OptStr(in.Status)
 	rows, err := s.Repo.FindWithFilters(ctx, application, subdomain, status)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_with_filters failed", err)
 	}
-	out := make([]ProcessResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, fromEntity(&rows[i]))
-	}
-	return &listOutput{Body: ProcessListResponse{Items: out}}, nil
+	out := apicommon.MapSlice(rows, fromEntity)
+	return &apicommon.Out[ProcessListResponse]{Body: ProcessListResponse{Items: out}}, nil
 }
 
-type getInput struct {
-	ID string `path:"id"`
-}
-
-type getOutput struct {
-	Body ProcessResponse
-}
-
-func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
+func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ProcessResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadProcesses(ac); err != nil {
 		return nil, err
@@ -153,14 +78,14 @@ func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
 	if p == nil {
 		return nil, httperror.NotFound("Process", in.ID)
 	}
-	return &getOutput{Body: fromEntity(p)}, nil
+	return &apicommon.Out[ProcessResponse]{Body: fromEntity(p)}, nil
 }
 
 type getByCodeInput struct {
 	Code string `path:"code"`
 }
 
-func (s *State) getByCode(ctx context.Context, in *getByCodeInput) (*getOutput, error) {
+func (s *State) getByCode(ctx context.Context, in *getByCodeInput) (*apicommon.Out[ProcessResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadProcesses(ac); err != nil {
 		return nil, err
@@ -172,18 +97,10 @@ func (s *State) getByCode(ctx context.Context, in *getByCodeInput) (*getOutput, 
 	if p == nil {
 		return nil, httperror.NotFound("Process", in.Code)
 	}
-	return &getOutput{Body: fromEntity(p)}, nil
+	return &apicommon.Out[ProcessResponse]{Body: fromEntity(p)}, nil
 }
 
-type createInput struct {
-	Body CreateProcessRequest
-}
-
-type createOutput struct {
-	Body apicommon.CreatedResponse
-}
-
-func (s *State) create(ctx context.Context, in *createInput) (*createOutput, error) {
+func (s *State) create(ctx context.Context, in *apicommon.In[CreateProcessRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteProcesses(ac); err != nil {
 		return nil, err
@@ -193,7 +110,7 @@ func (s *State) create(ctx context.Context, in *createInput) (*createOutput, err
 	if err != nil {
 		return nil, err
 	}
-	return &createOutput{Body: apicommon.CreatedResponse{ID: committed.Event().ProcessID}}, nil
+	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: committed.Event().ProcessID}}, nil
 }
 
 type updateInput struct {
@@ -201,9 +118,7 @@ type updateInput struct {
 	Body UpdateProcessRequest
 }
 
-type emptyOutput struct{}
-
-func (s *State) update(ctx context.Context, in *updateInput) (*emptyOutput, error) {
+func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteProcesses(ac); err != nil {
 		return nil, err
@@ -212,14 +127,10 @@ func (s *State) update(ctx context.Context, in *updateInput) (*emptyOutput, erro
 	if _, err := operations.UpdateProcess(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
-type archiveInput struct {
-	ID string `path:"id"`
-}
-
-func (s *State) archive(ctx context.Context, in *archiveInput) (*emptyOutput, error) {
+func (s *State) archive(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteProcesses(ac); err != nil {
 		return nil, err
@@ -228,14 +139,10 @@ func (s *State) archive(ctx context.Context, in *archiveInput) (*emptyOutput, er
 	if _, err := operations.ArchiveProcess(ctx, s.Repo, s.UoW, operations.ArchiveCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
-type deleteInput struct {
-	ID string `path:"id"`
-}
-
-func (s *State) delete(ctx context.Context, in *deleteInput) (*emptyOutput, error) {
+func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanDeleteProcesses(ac); err != nil {
 		return nil, err
@@ -244,5 +151,5 @@ func (s *State) delete(ctx context.Context, in *deleteInput) (*emptyOutput, erro
 	if _, err := operations.DeleteProcess(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }

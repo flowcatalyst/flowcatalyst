@@ -10,6 +10,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -26,77 +27,15 @@ const tag = "dispatch-pools"
 
 // Register mounts the dispatch-pool endpoints.
 func Register(api huma.API, s *State) {
-	huma.Register(api, huma.Operation{
-		OperationID:   "listDispatchPools",
-		Method:        http.MethodGet,
-		Path:          "/api/dispatch-pools",
-		Summary:       "List dispatch pools",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.list)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "createDispatchPool",
-		Method:        http.MethodPost,
-		Path:          "/api/dispatch-pools",
-		Summary:       "Create a dispatch pool",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusCreated,
-	}, s.create)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getDispatchPool",
-		Method:        http.MethodGet,
-		Path:          "/api/dispatch-pools/{id}",
-		Summary:       "Get a dispatch pool by id",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.getByID)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "updateDispatchPool",
-		Method:        http.MethodPut,
-		Path:          "/api/dispatch-pools/{id}",
-		Summary:       "Update a dispatch pool",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.update)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "archiveDispatchPool",
-		Method:        http.MethodPost,
-		Path:          "/api/dispatch-pools/{id}/archive",
-		Summary:       "Archive a dispatch pool",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.archive)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "suspendDispatchPool",
-		Method:        http.MethodPost,
-		Path:          "/api/dispatch-pools/{id}/suspend",
-		Summary:       "Suspend dispatch into a pool",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.suspend)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "activateDispatchPool",
-		Method:        http.MethodPost,
-		Path:          "/api/dispatch-pools/{id}/activate",
-		Summary:       "Resume a suspended dispatch pool",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.activate)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "deleteDispatchPool",
-		Method:        http.MethodDelete,
-		Path:          "/api/dispatch-pools/{id}",
-		Summary:       "Delete a dispatch pool",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.delete)
+	g := apiroute.New(api, tag)
+	apiroute.Get(g, "listDispatchPools", "/api/dispatch-pools", "List dispatch pools", s.list)
+	apiroute.Post(g, "createDispatchPool", "/api/dispatch-pools", "Create a dispatch pool", http.StatusCreated, s.create)
+	apiroute.Get(g, "getDispatchPool", "/api/dispatch-pools/{id}", "Get a dispatch pool by id", s.getByID)
+	apiroute.Put(g, "updateDispatchPool", "/api/dispatch-pools/{id}", "Update a dispatch pool", http.StatusNoContent, s.update)
+	apiroute.Post(g, "archiveDispatchPool", "/api/dispatch-pools/{id}/archive", "Archive a dispatch pool", http.StatusNoContent, s.archive)
+	apiroute.Post(g, "suspendDispatchPool", "/api/dispatch-pools/{id}/suspend", "Suspend dispatch into a pool", http.StatusNoContent, s.suspend)
+	apiroute.Post(g, "activateDispatchPool", "/api/dispatch-pools/{id}/activate", "Resume a suspended dispatch pool", http.StatusNoContent, s.activate)
+	apiroute.Delete(g, "deleteDispatchPool", "/api/dispatch-pools/{id}", "Delete a dispatch pool", http.StatusNoContent, s.delete)
 }
 
 type listInput struct {
@@ -104,45 +43,23 @@ type listInput struct {
 	ClientID string `query:"clientId" doc:"Filter by client id"`
 }
 
-type listOutput struct {
-	Body DispatchPoolListResponse
-}
-
-func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
+func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[DispatchPoolListResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadDispatchPools(ac); err != nil {
 		return nil, err
 	}
-	var status, clientID *string
-	if in.Status != "" {
-		status = &in.Status
-	}
-	if in.ClientID != "" {
-		clientID = &in.ClientID
-	}
+	status := apicommon.OptStr(in.Status)
+	clientID := apicommon.OptStr(in.ClientID)
 	rows, err := s.Repo.FindWithFilters(ctx, status, clientID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_with_filters failed", err)
 	}
-	out := make([]DispatchPoolResponse, 0, len(rows))
-	for i := range rows {
-		p := &rows[i]
-		if p.ClientID == nil || ac.CanAccessClient(*p.ClientID) {
-			out = append(out, fromEntity(p))
-		}
-	}
-	return &listOutput{Body: DispatchPoolListResponse{Pools: out, Total: len(out)}}, nil
+	visible := auth.FilterClientScoped(ac, rows, func(p *dispatchpool.DispatchPool) *string { return p.ClientID })
+	out := apicommon.MapSlice(visible, fromEntity)
+	return &apicommon.Out[DispatchPoolListResponse]{Body: DispatchPoolListResponse{Pools: out, Total: len(out)}}, nil
 }
 
-type getInput struct {
-	ID string `path:"id"`
-}
-
-type getOutput struct {
-	Body DispatchPoolResponse
-}
-
-func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
+func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[DispatchPoolResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadDispatchPools(ac); err != nil {
 		return nil, err
@@ -157,18 +74,10 @@ func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
 	if p.ClientID != nil && !ac.CanAccessClient(*p.ClientID) {
 		return nil, httperror.Forbidden("No access to this dispatch pool")
 	}
-	return &getOutput{Body: fromEntity(p)}, nil
+	return &apicommon.Out[DispatchPoolResponse]{Body: fromEntity(p)}, nil
 }
 
-type createInput struct {
-	Body CreateDispatchPoolRequest
-}
-
-type createOutput struct {
-	Body apicommon.CreatedResponse
-}
-
-func (s *State) create(ctx context.Context, in *createInput) (*createOutput, error) {
+func (s *State) create(ctx context.Context, in *apicommon.In[CreateDispatchPoolRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteDispatchPools(ac); err != nil {
 		return nil, err
@@ -184,7 +93,7 @@ func (s *State) create(ctx context.Context, in *createInput) (*createOutput, err
 	if err != nil {
 		return nil, err
 	}
-	return &createOutput{Body: apicommon.CreatedResponse{ID: committed.Event().PoolID}}, nil
+	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: committed.Event().PoolID}}, nil
 }
 
 // requireScopeByID loads the pool and enforces per-resource scope (A2) on top
@@ -206,9 +115,7 @@ type updateInput struct {
 	Body UpdateDispatchPoolRequest
 }
 
-type emptyOutput struct{}
-
-func (s *State) update(ctx context.Context, in *updateInput) (*emptyOutput, error) {
+func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteDispatchPools(ac); err != nil {
 		return nil, err
@@ -220,14 +127,10 @@ func (s *State) update(ctx context.Context, in *updateInput) (*emptyOutput, erro
 	if _, err := operations.UpdateDispatchPool(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
-type archiveInput struct {
-	ID string `path:"id"`
-}
-
-func (s *State) archive(ctx context.Context, in *archiveInput) (*emptyOutput, error) {
+func (s *State) archive(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteDispatchPools(ac); err != nil {
 		return nil, err
@@ -239,10 +142,10 @@ func (s *State) archive(ctx context.Context, in *archiveInput) (*emptyOutput, er
 	if _, err := operations.ArchiveDispatchPool(ctx, s.Repo, s.UoW, operations.ArchiveCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
-func (s *State) suspend(ctx context.Context, in *archiveInput) (*emptyOutput, error) {
+func (s *State) suspend(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteDispatchPools(ac); err != nil {
 		return nil, err
@@ -254,10 +157,10 @@ func (s *State) suspend(ctx context.Context, in *archiveInput) (*emptyOutput, er
 	if _, err := operations.SuspendDispatchPool(ctx, s.Repo, s.UoW, operations.SuspendCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
-func (s *State) activate(ctx context.Context, in *archiveInput) (*emptyOutput, error) {
+func (s *State) activate(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteDispatchPools(ac); err != nil {
 		return nil, err
@@ -269,14 +172,10 @@ func (s *State) activate(ctx context.Context, in *archiveInput) (*emptyOutput, e
 	if _, err := operations.ActivateDispatchPool(ctx, s.Repo, s.UoW, operations.ActivateCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
-type deleteInput struct {
-	ID string `path:"id"`
-}
-
-func (s *State) delete(ctx context.Context, in *deleteInput) (*emptyOutput, error) {
+func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanDeleteDispatchPools(ac); err != nil {
 		return nil, err
@@ -288,5 +187,5 @@ func (s *State) delete(ctx context.Context, in *deleteInput) (*emptyOutput, erro
 	if _, err := operations.DeleteDispatchPool(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }

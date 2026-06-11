@@ -2,13 +2,11 @@ package platformconfig
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -24,24 +22,22 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 
 // FindByID loads a config row by id.
 func (r *Repository) FindByID(ctx context.Context, id string) (*Config, error) {
-	row, err := r.q.PlatformConfigFindByID(ctx, id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	res, err := r.q.PlatformConfigFindByID(ctx, id)
+	row, err := repocommon.One(res, err, "platform_config repo")
+	if row == nil || err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("platform_config repo: %w", err)
-	}
-	return rowToConfig(row), nil
+	return rowToConfig(*row), nil
 }
 
 // FindByCoordinate loads a config row by its (app, section, property, scope, clientID) key.
 func (r *Repository) FindByCoordinate(ctx context.Context, app, section, property string, scope Scope, clientID *string) (*Config, error) {
 	var (
-		row dbq.AppPlatformConfig
+		res dbq.AppPlatformConfig
 		err error
 	)
 	if clientID != nil {
-		row, err = r.q.PlatformConfigFindByCoordinateClient(ctx, dbq.PlatformConfigFindByCoordinateClientParams{
+		res, err = r.q.PlatformConfigFindByCoordinateClient(ctx, dbq.PlatformConfigFindByCoordinateClientParams{
 			ApplicationCode: app,
 			Section:         section,
 			Property:        property,
@@ -49,20 +45,18 @@ func (r *Repository) FindByCoordinate(ctx context.Context, app, section, propert
 			ClientID:        clientID,
 		})
 	} else {
-		row, err = r.q.PlatformConfigFindByCoordinateAnchor(ctx, dbq.PlatformConfigFindByCoordinateAnchorParams{
+		res, err = r.q.PlatformConfigFindByCoordinateAnchor(ctx, dbq.PlatformConfigFindByCoordinateAnchorParams{
 			ApplicationCode: app,
 			Section:         section,
 			Property:        property,
 			Scope:           string(scope),
 		})
 	}
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	row, err := repocommon.One(res, err, "platform_config repo")
+	if row == nil || err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("platform_config repo: %w", err)
-	}
-	return rowToConfig(row), nil
+	return rowToConfig(*row), nil
 }
 
 // FindConfigsByApplication returns all configs for an app.
@@ -104,28 +98,24 @@ func (r *Repository) Delete(ctx context.Context, c *Config, tx *usecasepgx.DbTx)
 
 // FindAccessByID loads an access row.
 func (r *Repository) FindAccessByID(ctx context.Context, id string) (*Access, error) {
-	row, err := r.q.PlatformConfigAccessFindByID(ctx, id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	res, err := r.q.PlatformConfigAccessFindByID(ctx, id)
+	row, err := repocommon.One(res, err, "platform_config_access repo")
+	if row == nil || err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("platform_config_access repo: %w", err)
-	}
-	return rowToAccess(row), nil
+	return rowToAccess(*row), nil
 }
 
 // FindAccessByRole returns the access row for a (app, role) pair, if any.
 func (r *Repository) FindAccessByRole(ctx context.Context, app, role string) (*Access, error) {
-	row, err := r.q.PlatformConfigAccessFindByRole(ctx, dbq.PlatformConfigAccessFindByRoleParams{
+	res, err := r.q.PlatformConfigAccessFindByRole(ctx, dbq.PlatformConfigAccessFindByRoleParams{
 		ApplicationCode: app, RoleCode: role,
 	})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	row, err := repocommon.One(res, err, "platform_config_access repo")
+	if row == nil || err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("platform_config_access repo: %w", err)
-	}
-	return rowToAccess(row), nil
+	return rowToAccess(*row), nil
 }
 
 // FindAccessByApplication returns all access grants for an app.
