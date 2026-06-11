@@ -10,6 +10,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
@@ -39,8 +40,12 @@ func CreateOAuthClient(
 	ec usecase.ExecutionContext,
 ) (commit.Committed[OAuthClientCreated], error) {
 	var zero commit.Committed[OAuthClientCreated]
+	// The OAuth2 client_id is backend-generated — a branded TSID, exactly
+	// like the service-account provision flows — when the caller omits it.
+	// Callers that supply their own (SDK/legacy) keep working and still hit
+	// the uniqueness check below.
 	if strings.TrimSpace(cmd.ClientID) == "" {
-		return zero, usecase.Validation("CLIENT_ID_REQUIRED", "clientId is required")
+		cmd.ClientID = tsid.Generate(tsid.OAuthClient)
 	}
 	if strings.TrimSpace(cmd.ClientName) == "" {
 		return zero, usecase.Validation("CLIENT_NAME_REQUIRED", "clientName is required")

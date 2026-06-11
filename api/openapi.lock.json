@@ -2336,9 +2336,6 @@
             },
             "type": "array"
           },
-          "clientId": {
-            "type": "string"
-          },
           "clientName": {
             "type": "string"
           },
@@ -2381,7 +2378,6 @@
           }
         },
         "required": [
-          "clientId",
           "clientName",
           "clientType"
         ],

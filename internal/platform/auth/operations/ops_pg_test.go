@@ -504,9 +504,12 @@ func TestCreateOAuthClient_Validation(t *testing.T) {
 	repo := auth.NewRepository(testpg.Pool(t)).OAuthClients
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.CreateOAuthClient(context.Background(), repo, uow,
-		operations.CreateOAuthClientCommand{ClientName: "X"}, testpg.TestEC())
-	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "CLIENT_ID_REQUIRED")
+	// Omitted clientId is NOT an error: the backend generates a branded
+	// TSID, exactly like the service-account provision flows.
+	committed, err := operations.CreateOAuthClient(context.Background(), repo, uow,
+		operations.CreateOAuthClientCommand{ClientName: "Generated ID", ClientType: "PUBLIC"}, testpg.TestEC())
+	require.NoError(t, err)
+	assert.Regexp(t, `^oac_`, committed.Event().ClientID, "omitted clientId → backend-generated branded TSID")
 
 	_, err = operations.CreateOAuthClient(context.Background(), repo, uow,
 		operations.CreateOAuthClientCommand{ClientID: "oc-val-noname"}, testpg.TestEC())

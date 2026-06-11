@@ -13,9 +13,11 @@ import (
 // ── OAuthClient ───────────────────────────────────────────────────────────
 
 // CreateOAuthClientRequest is the wire body for POST /api/oauth-clients.
-// Matches the SPA's CreateOAuthClientRequest (oauth-clients.ts:33-43).
+// The OAuth2 client_id is NOT part of the request: it is always
+// backend-generated as a branded TSID (`oac_…`), exactly like the
+// service-account and login-client provision flows. Internal callers that
+// pre-generate one set it on the operations command directly.
 type CreateOAuthClientRequest struct {
-	ClientID     string   `json:"clientId"`
 	ClientName   string   `json:"clientName"`
 	ClientType   string   `json:"clientType" doc:"PUBLIC or CONFIDENTIAL"`
 	RedirectURIs []string `json:"redirectUris,omitempty"`
@@ -48,7 +50,6 @@ func (r CreateOAuthClientRequest) toCommand() operations.CreateOAuthClientComman
 		scopes = strings.Fields(s)
 	}
 	return operations.CreateOAuthClientCommand{
-		ClientID:               r.ClientID,
 		ClientName:             r.ClientName,
 		ClientType:             r.ClientType,
 		RedirectURIs:           r.RedirectURIs,
