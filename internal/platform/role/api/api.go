@@ -11,6 +11,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -29,172 +30,34 @@ const tag = "roles"
 
 // Register mounts the role endpoints on the supplied huma API.
 func Register(api huma.API, s *State) {
-	huma.Register(api, huma.Operation{
-		OperationID:   "listRoles",
-		Method:        http.MethodGet,
-		Path:          "/api/roles",
-		Summary:       "List roles",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.list)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "createRole",
-		Method:        http.MethodPost,
-		Path:          "/api/roles",
-		Summary:       "Create a role",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusCreated,
-	}, s.create)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getRole",
-		Method:        http.MethodGet,
-		Path:          "/api/roles/{id}",
-		Summary:       "Get a role by id",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.getByID)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "updateRole",
-		Method:        http.MethodPut,
-		Path:          "/api/roles/{id}",
-		Summary:       "Update a role",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.update)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "deleteRole",
-		Method:        http.MethodDelete,
-		Path:          "/api/roles/{id}",
-		Summary:       "Delete a role",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.delete)
-
+	g := apiroute.New(api, tag)
+	apiroute.Get(g, "listRoles", "/api/roles", "List roles", s.list)
+	apiroute.Post(g, "createRole", "/api/roles", "Create a role", http.StatusCreated, s.create)
+	apiroute.Get(g, "getRole", "/api/roles/{id}", "Get a role by id", s.getByID)
+	apiroute.Put(g, "updateRole", "/api/roles/{id}", "Update a role", http.StatusNoContent, s.update)
+	apiroute.Delete(g, "deleteRole", "/api/roles/{id}", "Delete a role", http.StatusNoContent, s.delete)
 	// Role lookups by code/source/application + filter options.
-	huma.Register(api, huma.Operation{
-		OperationID:   "getRoleByCode",
-		Method:        http.MethodGet,
-		Path:          "/api/roles/by-code/{code}",
-		Summary:       "Get a role by name (code)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.byCode)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getRolesBySource",
-		Method:        http.MethodGet,
-		Path:          "/api/roles/by-source/{source}",
-		Summary:       "List roles by source (CODE | DATABASE | SDK)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.bySource)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getRolesByApplication",
-		Method:        http.MethodGet,
-		Path:          "/api/roles/by-application/{applicationId}",
-		Summary:       "List roles for an application",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.byApplication)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getRoleApplicationFilters",
-		Method:        http.MethodGet,
-		Path:          "/api/roles/filters/applications",
-		Summary:       "List distinct application codes used by roles",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.applicationFilters)
-
+	apiroute.Get(g, "getRoleByCode", "/api/roles/by-code/{code}", "Get a role by name (code)", s.byCode)
+	apiroute.Get(g, "getRolesBySource", "/api/roles/by-source/{source}", "List roles by source (CODE | DATABASE | SDK)", s.bySource)
+	apiroute.Get(g, "getRolesByApplication", "/api/roles/by-application/{applicationId}", "List roles for an application", s.byApplication)
+	apiroute.Get(g, "getRoleApplicationFilters", "/api/roles/filters/applications", "List distinct application codes used by roles", s.applicationFilters)
 	// Permission grants on a role.
-	huma.Register(api, huma.Operation{
-		OperationID:   "listRolePermissions",
-		Method:        http.MethodGet,
-		Path:          "/api/roles/{roleName}/permissions",
-		Summary:       "List permissions granted to a role",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.listRolePermissions)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "grantRolePermission",
-		Method:        http.MethodPost,
-		Path:          "/api/roles/{roleName}/permissions/{permission}",
-		Summary:       "Grant a permission to a role",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.grantPermission)
-
+	apiroute.Get(g, "listRolePermissions", "/api/roles/{roleName}/permissions", "List permissions granted to a role", s.listRolePermissions)
+	apiroute.Post(g, "grantRolePermission", "/api/roles/{roleName}/permissions/{permission}", "Grant a permission to a role", http.StatusOK, s.grantPermission)
 	// SDK-compatibility alias: the Laravel/Rust client grants a permission by
 	// POSTing {permission} in the body to /permissions (rather than naming it
 	// in the path). Same grant operation.
-	huma.Register(api, huma.Operation{
-		OperationID:   "grantRolePermissionByBody",
-		Method:        http.MethodPost,
-		Path:          "/api/roles/{roleName}/permissions",
-		Summary:       "Grant a permission to a role (SDK; permission in body)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.grantPermissionByBody)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "revokeRolePermission",
-		Method:        http.MethodDelete,
-		Path:          "/api/roles/{roleName}/permissions/{permission}",
-		Summary:       "Revoke a permission from a role",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.revokePermission)
-
+	apiroute.Post(g, "grantRolePermissionByBody", "/api/roles/{roleName}/permissions", "Grant a permission to a role (SDK; permission in body)", http.StatusOK, s.grantPermissionByBody)
+	apiroute.Delete(g, "revokeRolePermission", "/api/roles/{roleName}/permissions/{permission}", "Revoke a permission from a role", http.StatusOK, s.revokePermission)
 	// Permission catalog.
-	huma.Register(api, huma.Operation{
-		OperationID:   "listPermissions",
-		Method:        http.MethodGet,
-		Path:          "/api/roles/permissions",
-		Summary:       "List the platform permission catalog",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.listPermissions)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getPermission",
-		Method:        http.MethodGet,
-		Path:          "/api/roles/permissions/{permission}",
-		Summary:       "Get a single permission catalog entry",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.getPermission)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "deletePermission",
-		Method:        http.MethodDelete,
-		Path:          "/api/roles/permissions/{permission}",
-		Summary:       "Delete a permission from the catalog",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.deletePermission)
+	apiroute.Get(g, "listPermissions", "/api/roles/permissions", "List the platform permission catalog", s.listPermissions)
+	apiroute.Get(g, "getPermission", "/api/roles/permissions/{permission}", "Get a single permission catalog entry", s.getPermission)
+	apiroute.Delete(g, "deletePermission", "/api/roles/permissions/{permission}", "Delete a permission from the catalog", http.StatusNoContent, s.deletePermission)
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────
 
-type emptyInput struct{}
-
-type listOutput struct {
-	Body RoleListResponse
-}
-
-// roleArrayOutput renders a bare JSON array `[...]`, the Rust shape for
-// /api/roles/by-application/{id} and /api/roles/by-source/{source}.
-type roleArrayOutput struct {
-	Body []RoleResponse
-}
-
-func (s *State) list(ctx context.Context, _ *emptyInput) (*listOutput, error) {
+func (s *State) list(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[RoleListResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadRoles(ac); err != nil {
 		return nil, err
@@ -203,22 +66,15 @@ func (s *State) list(ctx context.Context, _ *emptyInput) (*listOutput, error) {
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_all failed", err)
 	}
-	out := make([]RoleResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, fromEntity(&rows[i]))
-	}
-	return &listOutput{Body: RoleListResponse{Roles: out, Total: len(out)}}, nil
+	out := apicommon.MapSlice(rows, fromEntity)
+	return &apicommon.Out[RoleListResponse]{Body: RoleListResponse{Roles: out, Total: len(out)}}, nil
 }
 
 type getInput struct {
 	ID string `path:"id" doc:"Role id (TSID)"`
 }
 
-type getOutput struct {
-	Body RoleResponse
-}
-
-func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
+func (s *State) getByID(ctx context.Context, in *getInput) (*apicommon.Out[RoleResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadRoles(ac); err != nil {
 		return nil, err
@@ -227,7 +83,7 @@ func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &getOutput{Body: fromEntity(r)}, nil
+	return &apicommon.Out[RoleResponse]{Body: fromEntity(r)}, nil
 }
 
 // resolveRole loads a role by TSID id, falling back to its name. The SPA
@@ -251,15 +107,7 @@ func (s *State) resolveRole(ctx context.Context, idOrName string) (*role.Role, e
 	return r, nil
 }
 
-type createInput struct {
-	Body CreateRoleRequest
-}
-
-type createOutput struct {
-	Body apicommon.CreatedResponse
-}
-
-func (s *State) create(ctx context.Context, in *createInput) (*createOutput, error) {
+func (s *State) create(ctx context.Context, in *apicommon.In[CreateRoleRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteRoles(ac); err != nil {
 		return nil, err
@@ -269,7 +117,7 @@ func (s *State) create(ctx context.Context, in *createInput) (*createOutput, err
 	if err != nil {
 		return nil, err
 	}
-	return &createOutput{Body: apicommon.CreatedResponse{ID: committed.Event().RoleID}}, nil
+	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: committed.Event().RoleID}}, nil
 }
 
 type updateInput struct {
@@ -277,9 +125,7 @@ type updateInput struct {
 	Body UpdateRoleRequest
 }
 
-type emptyOutput struct{}
-
-func (s *State) update(ctx context.Context, in *updateInput) (*emptyOutput, error) {
+func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteRoles(ac); err != nil {
 		return nil, err
@@ -292,14 +138,10 @@ func (s *State) update(ctx context.Context, in *updateInput) (*emptyOutput, erro
 	if _, err := operations.UpdateRole(ctx, s.Repo, s.UoW, in.Body.toCommand(r.ID), ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
-type deleteInput struct {
-	ID string `path:"id"`
-}
-
-func (s *State) delete(ctx context.Context, in *deleteInput) (*emptyOutput, error) {
+func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanDeleteRoles(ac); err != nil {
 		return nil, err
@@ -312,7 +154,7 @@ func (s *State) delete(ctx context.Context, in *deleteInput) (*emptyOutput, erro
 	if _, err := operations.DeleteRole(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: r.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
 // ── by-code / by-source / by-application / filters ─────────────────────
@@ -321,7 +163,7 @@ type byCodeInput struct {
 	Code string `path:"code"`
 }
 
-func (s *State) byCode(ctx context.Context, in *byCodeInput) (*getOutput, error) {
+func (s *State) byCode(ctx context.Context, in *byCodeInput) (*apicommon.Out[RoleResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadRoles(ac); err != nil {
 		return nil, err
@@ -333,14 +175,16 @@ func (s *State) byCode(ctx context.Context, in *byCodeInput) (*getOutput, error)
 	if r == nil {
 		return nil, httperror.NotFound("Role", in.Code)
 	}
-	return &getOutput{Body: fromEntity(r)}, nil
+	return &apicommon.Out[RoleResponse]{Body: fromEntity(r)}, nil
 }
 
 type bySourceInput struct {
 	Source string `path:"source"`
 }
 
-func (s *State) bySource(ctx context.Context, in *bySourceInput) (*roleArrayOutput, error) {
+// Out[[]RoleResponse] renders a bare JSON array `[...]`, the Rust shape
+// for /api/roles/by-application/{id} and /api/roles/by-source/{source}.
+func (s *State) bySource(ctx context.Context, in *bySourceInput) (*apicommon.Out[[]RoleResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadRoles(ac); err != nil {
 		return nil, err
@@ -349,18 +193,15 @@ func (s *State) bySource(ctx context.Context, in *bySourceInput) (*roleArrayOutp
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_source failed", err)
 	}
-	out := make([]RoleResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, fromEntity(&rows[i]))
-	}
-	return &roleArrayOutput{Body: out}, nil
+	out := apicommon.MapSlice(rows, fromEntity)
+	return &apicommon.Out[[]RoleResponse]{Body: out}, nil
 }
 
 type byApplicationInput struct {
 	ApplicationID string `path:"applicationId"`
 }
 
-func (s *State) byApplication(ctx context.Context, in *byApplicationInput) (*roleArrayOutput, error) {
+func (s *State) byApplication(ctx context.Context, in *byApplicationInput) (*apicommon.Out[[]RoleResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadRoles(ac); err != nil {
 		return nil, err
@@ -369,18 +210,11 @@ func (s *State) byApplication(ctx context.Context, in *byApplicationInput) (*rol
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_application_id failed", err)
 	}
-	out := make([]RoleResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, fromEntity(&rows[i]))
-	}
-	return &roleArrayOutput{Body: out}, nil
+	out := apicommon.MapSlice(rows, fromEntity)
+	return &apicommon.Out[[]RoleResponse]{Body: out}, nil
 }
 
-type applicationFiltersOutput struct {
-	Body ApplicationFilterListResponse
-}
-
-func (s *State) applicationFilters(ctx context.Context, _ *emptyInput) (*applicationFiltersOutput, error) {
+func (s *State) applicationFilters(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[ApplicationFilterListResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadRoles(ac); err != nil {
 		return nil, err
@@ -389,7 +223,7 @@ func (s *State) applicationFilters(ctx context.Context, _ *emptyInput) (*applica
 	if err != nil {
 		return nil, usecase.Internal("REPO", "application_codes failed", err)
 	}
-	return &applicationFiltersOutput{Body: ApplicationFilterListResponse{ApplicationCodes: codes}}, nil
+	return &apicommon.Out[ApplicationFilterListResponse]{Body: ApplicationFilterListResponse{ApplicationCodes: codes}}, nil
 }
 
 // ── per-role permission grants ──────────────────────────────────────────
@@ -398,11 +232,7 @@ type roleNameInput struct {
 	RoleName string `path:"roleName"`
 }
 
-type rolePermissionListOutput struct {
-	Body RolePermissionListResponse
-}
-
-func (s *State) listRolePermissions(ctx context.Context, in *roleNameInput) (*rolePermissionListOutput, error) {
+func (s *State) listRolePermissions(ctx context.Context, in *roleNameInput) (*apicommon.Out[RolePermissionListResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadRoles(ac); err != nil {
 		return nil, err
@@ -415,7 +245,7 @@ func (s *State) listRolePermissions(ctx context.Context, in *roleNameInput) (*ro
 		return nil, httperror.NotFound("Role", in.RoleName)
 	}
 	perms := append([]string(nil), r.Permissions...)
-	return &rolePermissionListOutput{Body: RolePermissionListResponse{Permissions: perms}}, nil
+	return &apicommon.Out[RolePermissionListResponse]{Body: RolePermissionListResponse{Permissions: perms}}, nil
 }
 
 type rolePermissionGrantInput struct {
@@ -423,7 +253,7 @@ type rolePermissionGrantInput struct {
 	Permission string `path:"permission"`
 }
 
-func (s *State) grantPermission(ctx context.Context, in *rolePermissionGrantInput) (*getOutput, error) {
+func (s *State) grantPermission(ctx context.Context, in *rolePermissionGrantInput) (*apicommon.Out[RoleResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteRoles(ac); err != nil {
 		return nil, err
@@ -439,7 +269,7 @@ func (s *State) grantPermission(ctx context.Context, in *rolePermissionGrantInpu
 		return nil, err
 	}
 	// Return the updated role (1:1 with Rust grant_permission → RoleResponse).
-	return &getOutput{Body: fromEntity(r)}, nil
+	return &apicommon.Out[RoleResponse]{Body: fromEntity(r)}, nil
 }
 
 type rolePermissionGrantBodyInput struct {
@@ -450,7 +280,7 @@ type rolePermissionGrantBodyInput struct {
 // grantPermissionByBody backs POST /api/roles/{roleName}/permissions with the
 // permission in the body (SDK shape). Delegates to the same grant operation as
 // the path-param variant.
-func (s *State) grantPermissionByBody(ctx context.Context, in *rolePermissionGrantBodyInput) (*getOutput, error) {
+func (s *State) grantPermissionByBody(ctx context.Context, in *rolePermissionGrantBodyInput) (*apicommon.Out[RoleResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteRoles(ac); err != nil {
 		return nil, err
@@ -465,10 +295,10 @@ func (s *State) grantPermissionByBody(ctx context.Context, in *rolePermissionGra
 	if err != nil {
 		return nil, err
 	}
-	return &getOutput{Body: fromEntity(r)}, nil
+	return &apicommon.Out[RoleResponse]{Body: fromEntity(r)}, nil
 }
 
-func (s *State) revokePermission(ctx context.Context, in *rolePermissionGrantInput) (*getOutput, error) {
+func (s *State) revokePermission(ctx context.Context, in *rolePermissionGrantInput) (*apicommon.Out[RoleResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteRoles(ac); err != nil {
 		return nil, err
@@ -484,43 +314,32 @@ func (s *State) revokePermission(ctx context.Context, in *rolePermissionGrantInp
 		return nil, err
 	}
 	// Return the updated role (1:1 with Rust revoke_permission → RoleResponse).
-	return &getOutput{Body: fromEntity(r)}, nil
+	return &apicommon.Out[RoleResponse]{Body: fromEntity(r)}, nil
 }
 
 // ── permission catalog ──────────────────────────────────────────────────
 
-type permissionListOutput struct {
-	Body PermissionListResponse
-}
-
-func (s *State) listPermissions(ctx context.Context, _ *emptyInput) (*permissionListOutput, error) {
+func (s *State) listPermissions(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[PermissionListResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadRoles(ac); err != nil {
 		return nil, err
 	}
 	if s.Permissions == nil {
-		return &permissionListOutput{Body: PermissionListResponse{Permissions: []PermissionResponse{}, Total: 0}}, nil
+		return &apicommon.Out[PermissionListResponse]{Body: PermissionListResponse{Permissions: []PermissionResponse{}, Total: 0}}, nil
 	}
 	rows, err := s.Permissions.FindAll(ctx)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "permission_find_all failed", err)
 	}
-	out := make([]PermissionResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, permissionToResponse(&rows[i]))
-	}
-	return &permissionListOutput{Body: PermissionListResponse{Permissions: out, Total: len(out)}}, nil
+	out := apicommon.MapSlice(rows, permissionToResponse)
+	return &apicommon.Out[PermissionListResponse]{Body: PermissionListResponse{Permissions: out, Total: len(out)}}, nil
 }
 
 type permissionPathInput struct {
 	Permission string `path:"permission"`
 }
 
-type permissionOutput struct {
-	Body PermissionResponse
-}
-
-func (s *State) getPermission(ctx context.Context, in *permissionPathInput) (*permissionOutput, error) {
+func (s *State) getPermission(ctx context.Context, in *permissionPathInput) (*apicommon.Out[PermissionResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadRoles(ac); err != nil {
 		return nil, err
@@ -535,10 +354,10 @@ func (s *State) getPermission(ctx context.Context, in *permissionPathInput) (*pe
 	if p == nil {
 		return nil, httperror.NotFound("Permission", in.Permission)
 	}
-	return &permissionOutput{Body: permissionToResponse(p)}, nil
+	return &apicommon.Out[PermissionResponse]{Body: permissionToResponse(p)}, nil
 }
 
-func (s *State) deletePermission(ctx context.Context, in *permissionPathInput) (*emptyOutput, error) {
+func (s *State) deletePermission(ctx context.Context, in *permissionPathInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanDeleteRoles(ac); err != nil {
 		return nil, err
@@ -549,5 +368,5 @@ func (s *State) deletePermission(ctx context.Context, in *permissionPathInput) (
 	if err := s.Permissions.DeleteByCode(ctx, in.Permission); err != nil {
 		return nil, usecase.Internal("REPO", "permission_delete failed", err)
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }

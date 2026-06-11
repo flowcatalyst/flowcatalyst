@@ -3,13 +3,14 @@ package api
 
 import (
 	"context"
-	"net/http"
 	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -28,90 +29,21 @@ const (
 
 // Register mounts the dispatch-job endpoints.
 func Register(api huma.API, s *State) {
-	huma.Register(api, huma.Operation{
-		OperationID:   "listDispatchJobs",
-		Method:        http.MethodGet,
-		Path:          "/api/dispatch-jobs",
-		Summary:       "List dispatch jobs with filters",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.list)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "listDispatchJobsRaw",
-		Method:        http.MethodGet,
-		Path:          "/api/dispatch-jobs/list-raw",
-		Summary:       "List dispatch jobs (raw)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.listRaw)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "dispatchJobFilterOptions",
-		Method:        http.MethodGet,
-		Path:          "/api/dispatch-jobs/filter-options",
-		Summary:       "Distinct facet values for dispatch jobs",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.filterOptions)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "dispatchJobsByEvent",
-		Method:        http.MethodGet,
-		Path:          "/api/dispatch-jobs/event/{eventId}",
-		Summary:       "Dispatch jobs spawned by a specific event",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.byEvent)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getDispatchJob",
-		Method:        http.MethodGet,
-		Path:          "/api/dispatch-jobs/{id}",
-		Summary:       "Get a dispatch job by id",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.getByID)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getDispatchJobRaw",
-		Method:        http.MethodGet,
-		Path:          "/api/dispatch-jobs/{id}/raw",
-		Summary:       "Get a dispatch job (raw)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.getRaw)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "listDispatchJobAttempts",
-		Method:        http.MethodGet,
-		Path:          "/api/dispatch-jobs/{id}/attempts",
-		Summary:       "List a dispatch job's attempt history",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.attempts)
+	g := apiroute.New(api, tag)
+	apiroute.Get(g, "listDispatchJobs", "/api/dispatch-jobs", "List dispatch jobs with filters", s.list)
+	apiroute.Get(g, "listDispatchJobsRaw", "/api/dispatch-jobs/list-raw", "List dispatch jobs (raw)", s.listRaw)
+	apiroute.Get(g, "dispatchJobFilterOptions", "/api/dispatch-jobs/filter-options", "Distinct facet values for dispatch jobs", s.filterOptions)
+	apiroute.Get(g, "dispatchJobsByEvent", "/api/dispatch-jobs/event/{eventId}", "Dispatch jobs spawned by a specific event", s.byEvent)
+	apiroute.Get(g, "getDispatchJob", "/api/dispatch-jobs/{id}", "Get a dispatch job by id", s.getByID)
+	apiroute.Get(g, "getDispatchJobRaw", "/api/dispatch-jobs/{id}/raw", "Get a dispatch job (raw)", s.getRaw)
+	apiroute.Get(g, "listDispatchJobAttempts", "/api/dispatch-jobs/{id}/attempts", "List a dispatch job's attempt history", s.attempts)
 
 	// SDK-compatibility aliases. The Laravel/Rust client addresses these as
 	// /api/dispatch-jobs/by-event/{eventId} and the collection-level
 	// /api/dispatch-jobs/raw; Go's canonical paths are /event/{eventId} and
 	// /list-raw. Same handlers — keeps the existing SDK working unmodified.
-	huma.Register(api, huma.Operation{
-		OperationID:   "dispatchJobsByEventAlias",
-		Method:        http.MethodGet,
-		Path:          "/api/dispatch-jobs/by-event/{eventId}",
-		Summary:       "Dispatch jobs spawned by an event (SDK alias of /event/{eventId})",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.byEvent)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "listDispatchJobsRawAlias",
-		Method:        http.MethodGet,
-		Path:          "/api/dispatch-jobs/raw",
-		Summary:       "List dispatch jobs raw (SDK alias of /list-raw)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.listRaw)
+	apiroute.Get(g, "dispatchJobsByEventAlias", "/api/dispatch-jobs/by-event/{eventId}", "Dispatch jobs spawned by an event (SDK alias of /event/{eventId})", s.byEvent)
+	apiroute.Get(g, "listDispatchJobsRawAlias", "/api/dispatch-jobs/raw", "List dispatch jobs raw (SDK alias of /list-raw)", s.listRaw)
 
 	// BFF tier — /bff/dispatch-jobs mirrors the regular handlers under
 	// cookie-auth. Mirrors Rust.
@@ -121,81 +53,21 @@ func Register(api huma.API, s *State) {
 	// msg_dispatch_jobs). The SPA's RawDispatchJobListPage binds a bare
 	// array of the raw envelope shape, so it gets its own handler.
 	// Mirrors Rust's shared/debug_api.rs.
-	huma.Register(api, huma.Operation{
-		OperationID:   "listDebugDispatchJobs",
-		Method:        http.MethodGet,
-		Path:          "/bff/debug/dispatch-jobs",
-		Summary:       "List raw dispatch jobs (debug view of msg_dispatch_jobs)",
-		Tags:          []string{"bff-debug-dispatch-jobs"},
-		DefaultStatus: http.StatusOK,
-	}, s.listDebugRaw)
+	gd := apiroute.New(api, "bff-debug-dispatch-jobs")
+	apiroute.Get(gd, "listDebugDispatchJobs", "/bff/debug/dispatch-jobs", "List raw dispatch jobs (debug view of msg_dispatch_jobs)", s.listDebugRaw)
 }
 
 // registerBFF dual-mounts the dispatch-job handlers under an alternate
 // base path so the SPA can hit /bff/dispatch-jobs with cookie-auth.
 func registerBFF(api huma.API, s *State, base, opPrefix, tag string) {
-	huma.Register(api, huma.Operation{
-		OperationID:   "listDispatchJobs" + opPrefix,
-		Method:        http.MethodGet,
-		Path:          base,
-		Summary:       "List dispatch jobs",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.list)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "listDispatchJobsRaw" + opPrefix,
-		Method:        http.MethodGet,
-		Path:          base + "/list-raw",
-		Summary:       "List dispatch jobs with raw rows",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.listRaw)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "dispatchJobFilterOptions" + opPrefix,
-		Method:        http.MethodGet,
-		Path:          base + "/filter-options",
-		Summary:       "Distinct filter values for dispatch jobs",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.filterOptions)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "listDispatchJobsByEvent" + opPrefix,
-		Method:        http.MethodGet,
-		Path:          base + "/event/{eventId}",
-		Summary:       "List dispatch jobs created by an event",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.byEvent)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getDispatchJob" + opPrefix,
-		Method:        http.MethodGet,
-		Path:          base + "/{id}",
-		Summary:       "Get a dispatch job by id",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.getByID)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getDispatchJobRaw" + opPrefix,
-		Method:        http.MethodGet,
-		Path:          base + "/{id}/raw",
-		Summary:       "Get a dispatch job with raw row",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.getRaw)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "listDispatchJobAttempts" + opPrefix,
-		Method:        http.MethodGet,
-		Path:          base + "/{id}/attempts",
-		Summary:       "List a dispatch job's attempt history",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.attempts)
+	g := apiroute.New(api, tag)
+	apiroute.Get(g, "listDispatchJobs"+opPrefix, base, "List dispatch jobs", s.list)
+	apiroute.Get(g, "listDispatchJobsRaw"+opPrefix, base+"/list-raw", "List dispatch jobs with raw rows", s.listRaw)
+	apiroute.Get(g, "dispatchJobFilterOptions"+opPrefix, base+"/filter-options", "Distinct filter values for dispatch jobs", s.filterOptions)
+	apiroute.Get(g, "listDispatchJobsByEvent"+opPrefix, base+"/event/{eventId}", "List dispatch jobs created by an event", s.byEvent)
+	apiroute.Get(g, "getDispatchJob"+opPrefix, base+"/{id}", "Get a dispatch job by id", s.getByID)
+	apiroute.Get(g, "getDispatchJobRaw"+opPrefix, base+"/{id}/raw", "Get a dispatch job with raw row", s.getRaw)
+	apiroute.Get(g, "listDispatchJobAttempts"+opPrefix, base+"/{id}/attempts", "List a dispatch job's attempt history", s.attempts)
 }
 
 type listInput struct {
@@ -237,13 +109,6 @@ func splitCSV(s string) []string {
 }
 
 func (in *listInput) toFilters() dispatchjob.FilterParams {
-	str := func(v string) *string {
-		if v == "" {
-			return nil
-		}
-		s := v
-		return &s
-	}
 	ts := func(v string) *time.Time {
 		if v == "" {
 			return nil
@@ -259,13 +124,13 @@ func (in *listInput) toFilters() dispatchjob.FilterParams {
 		limit = in.Size
 	}
 	// `source` free-text reuses the singular Source filter.
-	src := str(in.Source)
+	src := apicommon.OptStr(in.Source)
 	return dispatchjob.FilterParams{
-		Status:         str(in.Status),
-		ClientID:       str(in.ClientID),
-		DispatchPoolID: str(in.DispatchPoolID),
-		SubscriptionID: str(in.SubscriptionID),
-		Code:           str(in.Code),
+		Status:         apicommon.OptStr(in.Status),
+		ClientID:       apicommon.OptStr(in.ClientID),
+		DispatchPoolID: apicommon.OptStr(in.DispatchPoolID),
+		SubscriptionID: apicommon.OptStr(in.SubscriptionID),
+		Code:           apicommon.OptStr(in.Code),
 		Source:         src,
 		Since:          ts(in.Since),
 		Until:          ts(in.Until),
@@ -278,14 +143,6 @@ func (in *listInput) toFilters() dispatchjob.FilterParams {
 		Aggregates:     splitCSV(in.Aggregates),
 		Codes:          splitCSV(in.Codes),
 	}
-}
-
-// listOutput Body is a bare JSON array — the SPA's DispatchJobListPage
-// binds the returned array directly to its DataTable, so {items:[...]}
-// would render zero rows. Mirrors Rust's list_dispatch_jobs returning
-// Vec<DispatchJobReadResponse>.
-type listOutput struct {
-	Body []DispatchJobRead
 }
 
 // scopeFilters applies SQL-side tenant scoping (anchor sees all → no
@@ -301,7 +158,11 @@ func scopeFilters(ac *auth.AuthContext, f dispatchjob.FilterParams) dispatchjob.
 	return f
 }
 
-func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
+// list's Body is a bare JSON array — the SPA's DispatchJobListPage binds
+// the returned array directly to its DataTable, so {items:[...]} would
+// render zero rows. Mirrors Rust's list_dispatch_jobs returning
+// Vec<DispatchJobReadResponse>. (Shared by listRaw + byEvent.)
+func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[[]DispatchJobRead], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
 		return nil, err
@@ -310,14 +171,11 @@ func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_with_filters failed", err)
 	}
-	out := make([]DispatchJobRead, 0, len(rows))
-	for i := range rows {
-		out = append(out, readFromEntity(&rows[i]))
-	}
-	return &listOutput{Body: out}, nil
+	out := apicommon.MapSlice(rows, readFromEntity)
+	return &apicommon.Out[[]DispatchJobRead]{Body: out}, nil
 }
 
-func (s *State) listRaw(ctx context.Context, in *listInput) (*listOutput, error) {
+func (s *State) listRaw(ctx context.Context, in *listInput) (*apicommon.Out[[]DispatchJobRead], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePermission(ac, viewRawPerm); err != nil {
 		return nil, err
@@ -326,11 +184,8 @@ func (s *State) listRaw(ctx context.Context, in *listInput) (*listOutput, error)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_raw failed", err)
 	}
-	out := make([]DispatchJobRead, 0, len(rows))
-	for i := range rows {
-		out = append(out, readFromEntity(&rows[i]))
-	}
-	return &listOutput{Body: out}, nil
+	out := apicommon.MapSlice(rows, readFromEntity)
+	return &apicommon.Out[[]DispatchJobRead]{Body: out}, nil
 }
 
 // ── debug raw dispatch jobs ──────────────────────────────────────────────
@@ -339,13 +194,9 @@ type rawListInput struct {
 	Size int `query:"size" doc:"Max rows (default 50, max 1000)"`
 }
 
-// rawListOutput Body is a bare array of RawDispatchJobResponse — the SPA's
-// RawDispatchJobListPage binds it directly.
-type rawListOutput struct {
-	Body []RawDispatchJobResponse
-}
-
-func (s *State) listDebugRaw(ctx context.Context, in *rawListInput) (*rawListOutput, error) {
+// listDebugRaw's Body is a bare array of RawDispatchJobResponse — the
+// SPA's RawDispatchJobListPage binds it directly.
+func (s *State) listDebugRaw(ctx context.Context, in *rawListInput) (*apicommon.Out[[]RawDispatchJobResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePermission(ac, viewRawPerm); err != nil {
 		return nil, err
@@ -361,22 +212,11 @@ func (s *State) listDebugRaw(ctx context.Context, in *rawListInput) (*rawListOut
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_recent_raw failed", err)
 	}
-	out := make([]RawDispatchJobResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, rawFromEntity(&rows[i]))
-	}
-	return &rawListOutput{Body: out}, nil
+	out := apicommon.MapSlice(rows, rawFromEntity)
+	return &apicommon.Out[[]RawDispatchJobResponse]{Body: out}, nil
 }
 
-type getInput struct {
-	ID string `path:"id"`
-}
-
-type getOutput struct {
-	Body DispatchJobResponse
-}
-
-func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
+func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[DispatchJobResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
 		return nil, err
@@ -391,10 +231,10 @@ func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
 	if err := auth.CheckScopeAccess(ac, j.ClientID); err != nil { // A2: per-resource client scope
 		return nil, err
 	}
-	return &getOutput{Body: fromEntity(j)}, nil
+	return &apicommon.Out[DispatchJobResponse]{Body: fromEntity(j)}, nil
 }
 
-func (s *State) getRaw(ctx context.Context, in *getInput) (*getOutput, error) {
+func (s *State) getRaw(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[DispatchJobResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePermission(ac, viewRawPerm); err != nil {
 		return nil, err
@@ -409,16 +249,12 @@ func (s *State) getRaw(ctx context.Context, in *getInput) (*getOutput, error) {
 	if err := auth.CheckScopeAccess(ac, j.ClientID); err != nil { // A2: per-resource client scope
 		return nil, err
 	}
-	return &getOutput{Body: fromEntity(j)}, nil
+	return &apicommon.Out[DispatchJobResponse]{Body: fromEntity(j)}, nil
 }
 
-// attemptsOutput Body is a bare JSON array — the Rust shape for
+// attempts' Body is a bare JSON array — the Rust shape for
 // GET /api/dispatch-jobs/{id}/attempts.
-type attemptsOutput struct {
-	Body []AttemptDTO
-}
-
-func (s *State) attempts(ctx context.Context, in *getInput) (*attemptsOutput, error) {
+func (s *State) attempts(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[[]AttemptDTO], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
 		return nil, err
@@ -439,18 +275,15 @@ func (s *State) attempts(ctx context.Context, in *getInput) (*attemptsOutput, er
 	if err != nil {
 		return nil, usecase.Internal("REPO", "attempts failed", err)
 	}
-	out := make([]AttemptDTO, 0, len(rows))
-	for i := range rows {
-		out = append(out, attemptFromEntity(&rows[i]))
-	}
-	return &attemptsOutput{Body: out}, nil
+	out := apicommon.MapSlice(rows, attemptFromEntity)
+	return &apicommon.Out[[]AttemptDTO]{Body: out}, nil
 }
 
 type byEventInput struct {
 	EventID string `path:"eventId"`
 }
 
-func (s *State) byEvent(ctx context.Context, in *byEventInput) (*listOutput, error) {
+func (s *State) byEvent(ctx context.Context, in *byEventInput) (*apicommon.Out[[]DispatchJobRead], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
 		return nil, err
@@ -462,21 +295,17 @@ func (s *State) byEvent(ctx context.Context, in *byEventInput) (*listOutput, err
 	out := make([]DispatchJobRead, 0, len(rows))
 	for i := range rows {
 		// A2: a non-anchor caller only sees jobs for clients it can access.
+		// NOTE: CanAccessScope (not FilterClientScoped) — platform-scoped
+		// jobs (nil client) are visible to anchors/super-admins only here.
 		if !auth.CanAccessScope(ac, rows[i].ClientID) {
 			continue
 		}
 		out = append(out, readFromEntity(&rows[i]))
 	}
-	return &listOutput{Body: out}, nil
+	return &apicommon.Out[[]DispatchJobRead]{Body: out}, nil
 }
 
-type emptyInput struct{}
-
-type filterOptionsOutput struct {
-	Body DispatchJobFilterOptionsResponse
-}
-
-func (s *State) filterOptions(ctx context.Context, _ *emptyInput) (*filterOptionsOutput, error) {
+func (s *State) filterOptions(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[DispatchJobFilterOptionsResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
 		return nil, err
@@ -485,7 +314,7 @@ func (s *State) filterOptions(ctx context.Context, _ *emptyInput) (*filterOption
 		out, _ := s.Repo.DistinctValues(ctx, col, 200)
 		return out
 	}
-	return &filterOptionsOutput{Body: DispatchJobFilterOptionsResponse{
+	return &apicommon.Out[DispatchJobFilterOptionsResponse]{Body: DispatchJobFilterOptionsResponse{
 		Statuses:        q("status"),
 		Codes:           q("code"),
 		ClientIDs:       q("client_id"),

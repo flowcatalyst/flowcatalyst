@@ -3,13 +3,11 @@ package application
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
@@ -59,17 +57,15 @@ func NewClientConfigRepo(pool *pgxpool.Pool) *ClientConfigRepo {
 
 // FindByApplicationAndClient returns the per-(app, client) config or nil.
 func (r *ClientConfigRepo) FindByApplicationAndClient(ctx context.Context, applicationID, clientID string) (*ClientConfig, error) {
-	row, err := r.q.ClientConfigFindByAppAndClient(ctx, dbq.ClientConfigFindByAppAndClientParams{
+	res, err := r.q.ClientConfigFindByAppAndClient(ctx, dbq.ClientConfigFindByAppAndClientParams{
 		ApplicationID: applicationID,
 		ClientID:      clientID,
 	})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	row, err := repocommon.One(res, err, "app_client_configs repo")
+	if row == nil || err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("app_client_configs repo: %w", err)
-	}
-	return rowToClientConfig(row), nil
+	return rowToClientConfig(*row), nil
 }
 
 // FindByApplication lists every config for the application.

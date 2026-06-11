@@ -11,6 +11,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -31,120 +33,32 @@ const tag = "service-accounts"
 
 // Register mounts the service-account endpoints.
 func Register(api huma.API, s *State) {
-	huma.Register(api, huma.Operation{
-		OperationID:   "listServiceAccounts",
-		Method:        http.MethodGet,
-		Path:          "/api/service-accounts",
-		Summary:       "List service accounts",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.list)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "createServiceAccount",
-		Method:        http.MethodPost,
-		Path:          "/api/service-accounts",
-		Summary:       "Create a service account",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusCreated,
-	}, s.create)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getServiceAccountByCode",
-		Method:        http.MethodGet,
-		Path:          "/api/service-accounts/code/{code}",
-		Summary:       "Get a service account by code",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.getByCode)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getServiceAccount",
-		Method:        http.MethodGet,
-		Path:          "/api/service-accounts/{id}",
-		Summary:       "Get a service account by id",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.getByID)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "updateServiceAccount",
-		Method:        http.MethodPut,
-		Path:          "/api/service-accounts/{id}",
-		Summary:       "Update a service account",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.update)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "deactivateServiceAccount",
-		Method:        http.MethodPost,
-		Path:          "/api/service-accounts/{id}/deactivate",
-		Summary:       "Deactivate a service account",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.deactivate)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "deleteServiceAccount",
-		Method:        http.MethodDelete,
-		Path:          "/api/service-accounts/{id}",
-		Summary:       "Delete a service account",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.delete)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "listServiceAccountRoles",
-		Method:        http.MethodGet,
-		Path:          "/api/service-accounts/{id}/roles",
-		Summary:       "List a service account's roles",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.listRoles)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "assignServiceAccountRoles",
-		Method:        http.MethodPut,
-		Path:          "/api/service-accounts/{id}/roles",
-		Summary:       "Assign roles to a service account",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.assignRoles)
+	g := apiroute.New(api, tag)
+	apiroute.Get(g, "listServiceAccounts", "/api/service-accounts", "List service accounts", s.list)
+	apiroute.Post(g, "createServiceAccount", "/api/service-accounts", "Create a service account", http.StatusCreated, s.create)
+	apiroute.Get(g, "getServiceAccountByCode", "/api/service-accounts/code/{code}", "Get a service account by code", s.getByCode)
+	apiroute.Get(g, "getServiceAccount", "/api/service-accounts/{id}", "Get a service account by id", s.getByID)
+	apiroute.Put(g, "updateServiceAccount", "/api/service-accounts/{id}", "Update a service account", http.StatusNoContent, s.update)
+	apiroute.Post(g, "deactivateServiceAccount", "/api/service-accounts/{id}/deactivate", "Deactivate a service account", http.StatusNoContent, s.deactivate)
+	apiroute.Delete(g, "deleteServiceAccount", "/api/service-accounts/{id}", "Delete a service account", http.StatusNoContent, s.delete)
+	apiroute.Get(g, "listServiceAccountRoles", "/api/service-accounts/{id}/roles", "List a service account's roles", s.listRoles)
+	apiroute.Put(g, "assignServiceAccountRoles", "/api/service-accounts/{id}/roles", "Assign roles to a service account", http.StatusOK, s.assignRoles)
 
 	// The SPA calls /regenerate-token + /regenerate-secret; the longer
 	// /regenerate-auth-token + /regenerate-signing-secret paths match the
 	// Rust platform + fcsdk. Both are registered against the same handlers.
 	for _, p := range []string{"regenerate-token", "regenerate-auth-token"} {
-		huma.Register(api, huma.Operation{
-			OperationID:   "regenerateServiceAccountAuthToken_" + p,
-			Method:        http.MethodPost,
-			Path:          "/api/service-accounts/{id}/" + p,
-			Summary:       "Regenerate a service account's auth token",
-			Tags:          []string{tag},
-			DefaultStatus: http.StatusOK,
-		}, s.regenerateAuthToken)
+		apiroute.Post(g, "regenerateServiceAccountAuthToken_"+p, "/api/service-accounts/{id}/"+p,
+			"Regenerate a service account's auth token", http.StatusOK, s.regenerateAuthToken)
 	}
 
 	for _, p := range []string{"regenerate-secret", "regenerate-signing-secret"} {
-		huma.Register(api, huma.Operation{
-			OperationID:   "regenerateServiceAccountSigningSecret_" + p,
-			Method:        http.MethodPost,
-			Path:          "/api/service-accounts/{id}/" + p,
-			Summary:       "Regenerate a service account's signing secret",
-			Tags:          []string{tag},
-			DefaultStatus: http.StatusOK,
-		}, s.regenerateSigningSecret)
+		apiroute.Post(g, "regenerateServiceAccountSigningSecret_"+p, "/api/service-accounts/{id}/"+p,
+			"Regenerate a service account's signing secret", http.StatusOK, s.regenerateSigningSecret)
 	}
 }
 
-type emptyInput struct{}
-
-type listOutput struct {
-	Body ServiceAccountListResponse
-}
-
-func (s *State) list(ctx context.Context, _ *emptyInput) (*listOutput, error) {
+func (s *State) list(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[ServiceAccountListResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadServiceAccounts(ac); err != nil {
 		return nil, err
@@ -153,22 +67,15 @@ func (s *State) list(ctx context.Context, _ *emptyInput) (*listOutput, error) {
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_all failed", err)
 	}
-	out := make([]ServiceAccountResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, fromEntity(&rows[i]))
-	}
-	return &listOutput{Body: ServiceAccountListResponse{ServiceAccounts: out, Total: len(out)}}, nil
+	out := apicommon.MapSlice(rows, fromEntity)
+	return &apicommon.Out[ServiceAccountListResponse]{Body: ServiceAccountListResponse{ServiceAccounts: out, Total: len(out)}}, nil
 }
 
 type getByCodeInput struct {
 	Code string `path:"code"`
 }
 
-type getOutput struct {
-	Body ServiceAccountResponse
-}
-
-func (s *State) getByCode(ctx context.Context, in *getByCodeInput) (*getOutput, error) {
+func (s *State) getByCode(ctx context.Context, in *getByCodeInput) (*apicommon.Out[ServiceAccountResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadServiceAccounts(ac); err != nil {
 		return nil, err
@@ -180,14 +87,10 @@ func (s *State) getByCode(ctx context.Context, in *getByCodeInput) (*getOutput, 
 	if sa == nil {
 		return nil, httperror.NotFound("ServiceAccount", in.Code)
 	}
-	return &getOutput{Body: fromEntity(sa)}, nil
+	return &apicommon.Out[ServiceAccountResponse]{Body: fromEntity(sa)}, nil
 }
 
-type getInput struct {
-	ID string `path:"id"`
-}
-
-func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
+func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ServiceAccountResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadServiceAccounts(ac); err != nil {
 		return nil, err
@@ -199,18 +102,10 @@ func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
 	if sa == nil {
 		return nil, httperror.NotFound("ServiceAccount", in.ID)
 	}
-	return &getOutput{Body: fromEntity(sa)}, nil
+	return &apicommon.Out[ServiceAccountResponse]{Body: fromEntity(sa)}, nil
 }
 
-type createInput struct {
-	Body CreateServiceAccountRequest
-}
-
-type createOutput struct {
-	Body CreateServiceAccountResponse
-}
-
-func (s *State) create(ctx context.Context, in *createInput) (*createOutput, error) {
+func (s *State) create(ctx context.Context, in *apicommon.In[CreateServiceAccountRequest]) (*apicommon.Out[CreateServiceAccountResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteServiceAccounts(ac); err != nil {
 		return nil, err
@@ -221,7 +116,7 @@ func (s *State) create(ctx context.Context, in *createInput) (*createOutput, err
 	if err != nil {
 		return nil, err
 	}
-	return &createOutput{Body: CreateServiceAccountResponse{
+	return &apicommon.Out[CreateServiceAccountResponse]{Body: CreateServiceAccountResponse{
 		ServiceAccount: fromEntity(res.ServiceAccount),
 		PrincipalID:    res.PrincipalID,
 		OAuth:          ServiceAccountOAuthSecrets{ClientID: res.OAuthClientID, ClientSecret: res.OAuthClientSecret},
@@ -234,9 +129,7 @@ type updateInput struct {
 	Body UpdateServiceAccountRequest
 }
 
-type emptyOutput struct{}
-
-func (s *State) update(ctx context.Context, in *updateInput) (*emptyOutput, error) {
+func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteServiceAccounts(ac); err != nil {
 		return nil, err
@@ -245,14 +138,10 @@ func (s *State) update(ctx context.Context, in *updateInput) (*emptyOutput, erro
 	if _, err := operations.UpdateServiceAccount(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
-type idInput struct {
-	ID string `path:"id"`
-}
-
-func (s *State) deactivate(ctx context.Context, in *idInput) (*emptyOutput, error) {
+func (s *State) deactivate(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteServiceAccounts(ac); err != nil {
 		return nil, err
@@ -261,10 +150,10 @@ func (s *State) deactivate(ctx context.Context, in *idInput) (*emptyOutput, erro
 	if _, err := operations.DeactivateServiceAccount(ctx, s.Repo, s.UoW, operations.DeactivateCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
-func (s *State) delete(ctx context.Context, in *idInput) (*emptyOutput, error) {
+func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanDeleteServiceAccounts(ac); err != nil {
 		return nil, err
@@ -273,14 +162,10 @@ func (s *State) delete(ctx context.Context, in *idInput) (*emptyOutput, error) {
 	if _, err := operations.DeleteServiceAccount(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
-type listRolesOutput struct {
-	Body ServiceAccountRoleListResponse
-}
-
-func (s *State) listRoles(ctx context.Context, in *idInput) (*listRolesOutput, error) {
+func (s *State) listRoles(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ServiceAccountRoleListResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadServiceAccounts(ac); err != nil {
 		return nil, err
@@ -298,7 +183,7 @@ func (s *State) listRoles(ctx context.Context, in *idInput) (*listRolesOutput, e
 	if err != nil {
 		return nil, err
 	}
-	return &listRolesOutput{Body: ServiceAccountRoleListResponse{Roles: roleDTOs(roles)}}, nil
+	return &apicommon.Out[ServiceAccountRoleListResponse]{Body: ServiceAccountRoleListResponse{Roles: roleDTOs(roles)}}, nil
 }
 
 // serviceAccountRoles returns the role assignments of the service account's
@@ -320,11 +205,7 @@ type assignRolesInput struct {
 	Body AssignRolesRequest
 }
 
-type rolesAssignedOutput struct {
-	Body ServiceAccountRolesAssignedResponse
-}
-
-func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*rolesAssignedOutput, error) {
+func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*apicommon.Out[ServiceAccountRolesAssignedResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
@@ -343,18 +224,14 @@ func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*rolesAs
 		return nil, err
 	}
 	ev := committed.Event()
-	return &rolesAssignedOutput{Body: ServiceAccountRolesAssignedResponse{
+	return &apicommon.Out[ServiceAccountRolesAssignedResponse]{Body: ServiceAccountRolesAssignedResponse{
 		Roles:        roleDTOs(roles),
 		AddedRoles:   ev.RolesAdded,
 		RemovedRoles: ev.RolesRemoved,
 	}}, nil
 }
 
-type regenerateAuthTokenOutput struct {
-	Body RegenerateAuthTokenResponse
-}
-
-func (s *State) regenerateAuthToken(ctx context.Context, in *idInput) (*regenerateAuthTokenOutput, error) {
+func (s *State) regenerateAuthToken(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[RegenerateAuthTokenResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
@@ -368,14 +245,10 @@ func (s *State) regenerateAuthToken(ctx context.Context, in *idInput) (*regenera
 	if token, ok := operations.PopStashedSecret(in.ID, "token"); ok {
 		resp.AuthToken = token
 	}
-	return &regenerateAuthTokenOutput{Body: resp}, nil
+	return &apicommon.Out[RegenerateAuthTokenResponse]{Body: resp}, nil
 }
 
-type regenerateSigningSecretOutput struct {
-	Body RegenerateSigningSecretResponse
-}
-
-func (s *State) regenerateSigningSecret(ctx context.Context, in *idInput) (*regenerateSigningSecretOutput, error) {
+func (s *State) regenerateSigningSecret(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[RegenerateSigningSecretResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
@@ -389,5 +262,5 @@ func (s *State) regenerateSigningSecret(ctx context.Context, in *idInput) (*rege
 	if secret, ok := operations.PopStashedSecret(in.ID, "signing_secret"); ok {
 		resp.SigningSecret = secret
 	}
-	return &regenerateSigningSecretOutput{Body: resp}, nil
+	return &apicommon.Out[RegenerateSigningSecretResponse]{Body: resp}, nil
 }

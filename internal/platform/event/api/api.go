@@ -10,6 +10,8 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/event"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -24,62 +26,16 @@ const tag = "events"
 
 // Register mounts the event endpoints.
 func Register(api huma.API, s *State) {
-	huma.Register(api, huma.Operation{
-		OperationID:   "batchIngestEvents",
-		Method:        http.MethodPost,
-		Path:          "/api/events/batch",
-		Summary:       "Ingest a batch of events (SDK)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusCreated,
-	}, s.batchIngest)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "eventFilterOptions",
-		Method:        http.MethodGet,
-		Path:          "/api/events/filter-options",
-		Summary:       "Distinct event types/sources/clients for filter UI",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.filterOptions)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "listEventsRaw",
-		Method:        http.MethodGet,
-		Path:          "/api/events/list-raw",
-		Summary:       "List events with raw JSONB rows",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.listRaw)
-
+	g := apiroute.New(api, tag)
+	apiroute.Post(g, "batchIngestEvents", "/api/events/batch", "Ingest a batch of events (SDK)", http.StatusCreated, s.batchIngest)
+	apiroute.Get(g, "eventFilterOptions", "/api/events/filter-options", "Distinct event types/sources/clients for filter UI", s.filterOptions)
+	apiroute.Get(g, "listEventsRaw", "/api/events/list-raw", "List events with raw JSONB rows", s.listRaw)
 	// SDK-compatibility alias: the Laravel/Rust client addresses the raw
 	// collection as /api/events/raw; Go's canonical path is /list-raw. Same
 	// handler.
-	huma.Register(api, huma.Operation{
-		OperationID:   "listEventsRawAlias",
-		Method:        http.MethodGet,
-		Path:          "/api/events/raw",
-		Summary:       "List events raw (SDK alias of /list-raw)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.listRaw)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "listEvents",
-		Method:        http.MethodGet,
-		Path:          "/api/events",
-		Summary:       "List events with filters",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.list)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getEvent",
-		Method:        http.MethodGet,
-		Path:          "/api/events/{id}",
-		Summary:       "Get an event by id",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.getByID)
+	apiroute.Get(g, "listEventsRawAlias", "/api/events/raw", "List events raw (SDK alias of /list-raw)", s.listRaw)
+	apiroute.Get(g, "listEvents", "/api/events", "List events with filters", s.list)
+	apiroute.Get(g, "getEvent", "/api/events/{id}", "Get an event by id", s.getByID)
 
 	// BFF tier — cookie-auth, SPA-facing. /bff/events mirrors the regular
 	// list/detail handlers under cookie-auth. Mirrors Rust's events_router.
@@ -90,77 +46,25 @@ func Register(api huma.API, s *State) {
 	// field="eventType"/field="deduplicationId" — a different item shape
 	// from the regular list — so it gets its own handler returning a bare
 	// array of RawEventResponse. Mirrors Rust's shared/debug_api.rs.
-	huma.Register(api, huma.Operation{
-		OperationID:   "listDebugEvents",
-		Method:        http.MethodGet,
-		Path:          "/bff/debug/events",
-		Summary:       "List raw events (debug view of msg_events)",
-		Tags:          []string{"bff-debug-events"},
-		DefaultStatus: http.StatusOK,
-	}, s.listDebugRaw)
+	gd := apiroute.New(api, "bff-debug-events")
+	apiroute.Get(gd, "listDebugEvents", "/bff/debug/events", "List raw events (debug view of msg_events)", s.listDebugRaw)
 }
 
 // registerBFF mirrors Register under a different base path. Used so the
 // SPA hits /bff/events with cookie-auth while SDK callers use /api/events
 // with bearer-auth — the handlers are the same; the auth layer differs.
 func registerBFF(api huma.API, s *State, base, opPrefix, tag string) {
-	huma.Register(api, huma.Operation{
-		OperationID:   "batchIngestEvents" + opPrefix,
-		Method:        http.MethodPost,
-		Path:          base + "/batch",
-		Summary:       "Ingest a batch of events (SPA fan-out)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusCreated,
-	}, s.batchIngest)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "eventFilterOptions" + opPrefix,
-		Method:        http.MethodGet,
-		Path:          base + "/filter-options",
-		Summary:       "Distinct event types/sources/clients for filter UI",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.filterOptions)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "listEventsRaw" + opPrefix,
-		Method:        http.MethodGet,
-		Path:          base + "/list-raw",
-		Summary:       "List events with raw JSONB rows",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.listRaw)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "listEvents" + opPrefix,
-		Method:        http.MethodGet,
-		Path:          base,
-		Summary:       "List events with filters",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.list)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getEvent" + opPrefix,
-		Method:        http.MethodGet,
-		Path:          base + "/{id}",
-		Summary:       "Get an event by id",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.getByID)
+	g := apiroute.New(api, tag)
+	apiroute.Post(g, "batchIngestEvents"+opPrefix, base+"/batch", "Ingest a batch of events (SPA fan-out)", http.StatusCreated, s.batchIngest)
+	apiroute.Get(g, "eventFilterOptions"+opPrefix, base+"/filter-options", "Distinct event types/sources/clients for filter UI", s.filterOptions)
+	apiroute.Get(g, "listEventsRaw"+opPrefix, base+"/list-raw", "List events with raw JSONB rows", s.listRaw)
+	apiroute.Get(g, "listEvents"+opPrefix, base, "List events with filters", s.list)
+	apiroute.Get(g, "getEvent"+opPrefix, base+"/{id}", "Get an event by id", s.getByID)
 }
 
 // ── batch ingest ─────────────────────────────────────────────────────────
 
-type batchInput struct {
-	Body BatchRequest
-}
-
-type batchOutput struct {
-	Body BatchResponse
-}
-
-func (s *State) batchIngest(ctx context.Context, in *batchInput) (*batchOutput, error) {
+func (s *State) batchIngest(ctx context.Context, in *apicommon.In[BatchRequest]) (*apicommon.Out[BatchResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePermission(ac, "platform:messaging:batch:events-write"); err != nil {
 		return nil, err
@@ -191,11 +95,10 @@ func (s *State) batchIngest(ctx context.Context, in *batchInput) (*batchOutput, 
 	}
 	// Per-item result list — 1:1 with the outbox/SDK contract. Insert is
 	// all-or-nothing here, so every persisted event reports SUCCESS.
-	results := make([]BatchResultItem, len(events))
-	for i := range events {
-		results[i] = BatchResultItem{ID: events[i].ID, Status: "SUCCESS"}
-	}
-	return &batchOutput{Body: BatchResponse{Results: results}}, nil
+	results := apicommon.MapSlice(events, func(e *event.Event) BatchResultItem {
+		return BatchResultItem{ID: e.ID, Status: "SUCCESS"}
+	})
+	return &apicommon.Out[BatchResponse]{Body: BatchResponse{Results: results}}, nil
 }
 
 // ── list / detail ────────────────────────────────────────────────────────
@@ -238,13 +141,6 @@ func splitCSV(s string) []string {
 }
 
 func (in *listInput) toFilters() event.FilterParams {
-	str := func(v string) *string {
-		if v == "" {
-			return nil
-		}
-		s := v
-		return &s
-	}
 	ts := func(v string) *time.Time {
 		if v == "" {
 			return nil
@@ -260,12 +156,12 @@ func (in *listInput) toFilters() event.FilterParams {
 		limit = in.Size
 	}
 	return event.FilterParams{
-		Type:          str(in.Type),
-		Source:        str(in.Source),
-		Subject:       str(in.Subject),
-		ClientID:      str(in.ClientID),
-		PrincipalID:   str(in.PrincipalID),
-		CorrelationID: str(in.CorrelationID),
+		Type:          apicommon.OptStr(in.Type),
+		Source:        apicommon.OptStr(in.Source),
+		Subject:       apicommon.OptStr(in.Subject),
+		ClientID:      apicommon.OptStr(in.ClientID),
+		PrincipalID:   apicommon.OptStr(in.PrincipalID),
+		CorrelationID: apicommon.OptStr(in.CorrelationID),
 		Since:         ts(in.Since),
 		Until:         ts(in.Until),
 		Limit:         limit,
@@ -278,12 +174,9 @@ func (in *listInput) toFilters() event.FilterParams {
 	}
 }
 
-// listOutput Body is a bare JSON array — the SPA's EventListPage binds the
-// returned array directly to its DataTable, so {items:[...]} would render
-// zero rows. Mirrors Rust's list_events returning Vec<EventRead>.
-type listOutput struct {
-	Body []EventRead
-}
+// The list endpoints' Body is a bare JSON array — the SPA's EventListPage
+// binds the returned array directly to its DataTable, so {items:[...]} would
+// render zero rows. Mirrors Rust's list_events returning Vec<EventRead>.
 
 // scopeFilters applies SQL-side tenant scoping (anchor sees all → no
 // scoping). Without it a non-anchor holding event:view could read any
@@ -298,7 +191,7 @@ func scopeFilters(ac *auth.AuthContext, f event.FilterParams) event.FilterParams
 	return f
 }
 
-func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
+func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[[]EventRead], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePermission(ac, "platform:messaging:event:view"); err != nil {
 		return nil, err
@@ -307,14 +200,11 @@ func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_with_filters failed", err)
 	}
-	out := make([]EventRead, 0, len(rows))
-	for i := range rows {
-		out = append(out, readFromEntity(&rows[i]))
-	}
-	return &listOutput{Body: out}, nil
+	out := apicommon.MapSlice(rows, readFromEntity)
+	return &apicommon.Out[[]EventRead]{Body: out}, nil
 }
 
-func (s *State) listRaw(ctx context.Context, in *listInput) (*listOutput, error) {
+func (s *State) listRaw(ctx context.Context, in *listInput) (*apicommon.Out[[]EventRead], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePermission(ac, "platform:messaging:event:view-raw"); err != nil {
 		return nil, err
@@ -323,11 +213,8 @@ func (s *State) listRaw(ctx context.Context, in *listInput) (*listOutput, error)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_raw failed", err)
 	}
-	out := make([]EventRead, 0, len(rows))
-	for i := range rows {
-		out = append(out, readFromEntity(&rows[i]))
-	}
-	return &listOutput{Body: out}, nil
+	out := apicommon.MapSlice(rows, readFromEntity)
+	return &apicommon.Out[[]EventRead]{Body: out}, nil
 }
 
 // ── debug raw events ─────────────────────────────────────────────────────
@@ -336,14 +223,10 @@ type rawListInput struct {
 	Size int `query:"size" doc:"Max rows (default 50, max 1000)"`
 }
 
-// rawListOutput Body is a bare array of RawEventResponse — the SPA's
+// listDebugRaw's Body is a bare array of RawEventResponse — the SPA's
 // RawEventListPage binds it directly and its Type column reads
 // field="eventType".
-type rawListOutput struct {
-	Body []RawEventResponse
-}
-
-func (s *State) listDebugRaw(ctx context.Context, in *rawListInput) (*rawListOutput, error) {
+func (s *State) listDebugRaw(ctx context.Context, in *rawListInput) (*apicommon.Out[[]RawEventResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePermission(ac, "platform:messaging:event:view-raw"); err != nil {
 		return nil, err
@@ -356,22 +239,11 @@ func (s *State) listDebugRaw(ctx context.Context, in *rawListInput) (*rawListOut
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_recent_raw failed", err)
 	}
-	out := make([]RawEventResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, rawFromEntity(&rows[i]))
-	}
-	return &rawListOutput{Body: out}, nil
+	out := apicommon.MapSlice(rows, rawFromEntity)
+	return &apicommon.Out[[]RawEventResponse]{Body: out}, nil
 }
 
-type getInput struct {
-	ID string `path:"id"`
-}
-
-type getOutput struct {
-	Body EventResponse
-}
-
-func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
+func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[EventResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePermission(ac, "platform:messaging:event:view"); err != nil {
 		return nil, err
@@ -390,18 +262,12 @@ func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
 	if ev.ClientID != nil && !ac.CanAccessClient(*ev.ClientID) {
 		return nil, httperror.Forbidden("No access to this event")
 	}
-	return &getOutput{Body: fromEntity(ev)}, nil
+	return &apicommon.Out[EventResponse]{Body: fromEntity(ev)}, nil
 }
 
 // ── filter-options ───────────────────────────────────────────────────────
 
-type emptyInput struct{}
-
-type filterOptionsOutput struct {
-	Body EventFilterOptionsResponse
-}
-
-func (s *State) filterOptions(ctx context.Context, _ *emptyInput) (*filterOptionsOutput, error) {
+func (s *State) filterOptions(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[EventFilterOptionsResponse], error) {
 	// Same gate as list: the option values (application codes, subdomains,
 	// event types) are derived from event rows — without this check the
 	// endpoint leaked them to unauthenticated callers.
@@ -413,7 +279,7 @@ func (s *State) filterOptions(ctx context.Context, _ *emptyInput) (*filterOption
 		out, _ := s.Repo.DistinctValues(ctx, col, 200)
 		return toFilterOptions(out)
 	}
-	return &filterOptionsOutput{Body: EventFilterOptionsResponse{
+	return &apicommon.Out[EventFilterOptionsResponse]{Body: EventFilterOptionsResponse{
 		Applications: q("application"),
 		Subdomains:   q("subdomain"),
 		EventTypes:   q("type"),

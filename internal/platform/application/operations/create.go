@@ -2,20 +2,14 @@ package operations
 
 import (
 	"context"
-	"regexp"
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/validate"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
-
-// Underscores are allowed: the Rust reference enforced no pattern at all
-// (only non-empty + unique), and real application codes use them
-// (logistics_portal, transport_order, master_data). Matches the dispatch-pool
-// sync pattern. Keep the lowercase-letter start as a light convention.
-var codePattern = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
 
 // CreateCommand is the input DTO.
 type CreateCommand struct {
@@ -45,7 +39,11 @@ func CreateApplication(
 	if code == "" {
 		return zero, usecase.Validation("CODE_REQUIRED", "code is required")
 	}
-	if !codePattern.MatchString(code) {
+	// Underscores are allowed: the Rust reference enforced no pattern at all
+	// (only non-empty + unique), and real application codes use them
+	// (logistics_portal, transport_order, master_data). Matches the
+	// dispatch-pool sync pattern.
+	if !validate.CodeUnderscorePattern.MatchString(code) {
 		return zero, usecase.Validation("INVALID_CODE_FORMAT",
 			"code must start with a lowercase letter and contain only lowercase alphanumerics, hyphens, and underscores")
 	}

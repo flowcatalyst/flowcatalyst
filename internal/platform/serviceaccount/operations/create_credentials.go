@@ -14,6 +14,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/validate"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
@@ -53,7 +54,7 @@ func CreateServiceAccountWithCredentials(
 	if code == "" {
 		return zero, usecase.Validation("CODE_REQUIRED", "code is required")
 	}
-	if !codePattern.MatchString(code) {
+	if !validate.CodePattern.MatchString(code) {
 		return zero, usecase.Validation("INVALID_CODE_FORMAT",
 			"code must start with a lowercase letter and contain only lowercase alphanumeric and hyphens")
 	}

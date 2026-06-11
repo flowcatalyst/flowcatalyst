@@ -12,6 +12,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -31,163 +32,31 @@ const tag = "clients"
 
 // Register mounts the client endpoints. Anchor-only.
 func Register(api huma.API, s *State) {
-	huma.Register(api, huma.Operation{
-		OperationID:   "listClients",
-		Method:        http.MethodGet,
-		Path:          "/api/clients",
-		Summary:       "List clients",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.list)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "createClient",
-		Method:        http.MethodPost,
-		Path:          "/api/clients",
-		Summary:       "Create a client",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusCreated,
-	}, s.create)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "searchClients",
-		Method:        http.MethodPost,
-		Path:          "/api/clients/search",
-		Summary:       "Search clients",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.search)
-
+	g := apiroute.New(api, tag)
+	apiroute.Get(g, "listClients", "/api/clients", "List clients", s.list)
+	apiroute.Post(g, "createClient", "/api/clients", "Create a client", http.StatusCreated, s.create)
+	apiroute.Post(g, "searchClients", "/api/clients/search", "Search clients", http.StatusOK, s.search)
 	// SDK-compatibility alias: the Laravel/Rust client issues
 	// GET /api/clients/search?q=<term>. Same search, query-param input.
-	huma.Register(api, huma.Operation{
-		OperationID:   "searchClientsByQuery",
-		Method:        http.MethodGet,
-		Path:          "/api/clients/search",
-		Summary:       "Search clients (SDK alias; ?q=<term>)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.searchByQuery)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getClientByIdentifier",
-		Method:        http.MethodGet,
-		Path:          "/api/clients/by-identifier/{identifier}",
-		Summary:       "Get a client by identifier",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.byIdentifier)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getClient",
-		Method:        http.MethodGet,
-		Path:          "/api/clients/{id}",
-		Summary:       "Get a client by id",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.getByID)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "updateClient",
-		Method:        http.MethodPut,
-		Path:          "/api/clients/{id}",
-		Summary:       "Update a client",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.update)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "activateClient",
-		Method:        http.MethodPost,
-		Path:          "/api/clients/{id}/activate",
-		Summary:       "Activate a client",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.activate)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "suspendClient",
-		Method:        http.MethodPost,
-		Path:          "/api/clients/{id}/suspend",
-		Summary:       "Suspend a client",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.suspend)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "addClientNote",
-		Method:        http.MethodPost,
-		Path:          "/api/clients/{id}/notes",
-		Summary:       "Add a note to a client",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.addNote)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "deleteClient",
-		Method:        http.MethodDelete,
-		Path:          "/api/clients/{id}",
-		Summary:       "Delete a client",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.delete)
-
+	apiroute.Get(g, "searchClientsByQuery", "/api/clients/search", "Search clients (SDK alias; ?q=<term>)", s.searchByQuery)
+	apiroute.Get(g, "getClientByIdentifier", "/api/clients/by-identifier/{identifier}", "Get a client by identifier", s.byIdentifier)
+	apiroute.Get(g, "getClient", "/api/clients/{id}", "Get a client by id", s.getByID)
+	apiroute.Put(g, "updateClient", "/api/clients/{id}", "Update a client", http.StatusNoContent, s.update)
+	apiroute.Post(g, "activateClient", "/api/clients/{id}/activate", "Activate a client", http.StatusOK, s.activate)
+	apiroute.Post(g, "suspendClient", "/api/clients/{id}/suspend", "Suspend a client", http.StatusOK, s.suspend)
+	apiroute.Post(g, "addClientNote", "/api/clients/{id}/notes", "Add a note to a client", http.StatusOK, s.addNote)
+	apiroute.Delete(g, "deleteClient", "/api/clients/{id}", "Delete a client", http.StatusNoContent, s.delete)
 	// Deactivate is an alias for delete (soft-delete with a reason for
 	// the audit log). Mirrors Rust's POST /{id}/deactivate handler in
 	// crates/fc-platform/src/client/api.rs.
-	huma.Register(api, huma.Operation{
-		OperationID:   "deactivateClient",
-		Method:        http.MethodPost,
-		Path:          "/api/clients/{id}/deactivate",
-		Summary:       "Deactivate a client (soft delete)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.deactivate)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getClientApplications",
-		Method:        http.MethodGet,
-		Path:          "/api/clients/{id}/applications",
-		Summary:       "List applications and their enabled state for the client",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.getApplications)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "updateClientApplications",
-		Method:        http.MethodPut,
-		Path:          "/api/clients/{id}/applications",
-		Summary:       "Replace the client's enabled applications (bulk)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.updateApplications)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "enableClientApplication",
-		Method:        http.MethodPost,
-		Path:          "/api/clients/{id}/applications/{applicationId}/enable",
-		Summary:       "Enable an application for the client",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.enableApplication)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "disableClientApplication",
-		Method:        http.MethodPost,
-		Path:          "/api/clients/{id}/applications/{applicationId}/disable",
-		Summary:       "Disable an application for the client",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.disableApplication)
+	apiroute.Post(g, "deactivateClient", "/api/clients/{id}/deactivate", "Deactivate a client (soft delete)", http.StatusOK, s.deactivate)
+	apiroute.Get(g, "getClientApplications", "/api/clients/{id}/applications", "List applications and their enabled state for the client", s.getApplications)
+	apiroute.Put(g, "updateClientApplications", "/api/clients/{id}/applications", "Replace the client's enabled applications (bulk)", http.StatusNoContent, s.updateApplications)
+	apiroute.Post(g, "enableClientApplication", "/api/clients/{id}/applications/{applicationId}/enable", "Enable an application for the client", http.StatusNoContent, s.enableApplication)
+	apiroute.Post(g, "disableClientApplication", "/api/clients/{id}/applications/{applicationId}/disable", "Disable an application for the client", http.StatusNoContent, s.disableApplication)
 }
 
-type emptyInput struct{}
-
-type listOutput struct {
-	Body ClientListResponse
-}
-
-func (s *State) list(ctx context.Context, _ *emptyInput) (*listOutput, error) {
+func (s *State) list(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[ClientListResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadClients(ac); err != nil {
 		return nil, err
@@ -196,18 +65,11 @@ func (s *State) list(ctx context.Context, _ *emptyInput) (*listOutput, error) {
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_all failed", err)
 	}
-	out := make([]ClientResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, fromEntity(&rows[i]))
-	}
-	return &listOutput{Body: ClientListResponse{Clients: out, Total: len(out)}}, nil
+	out := apicommon.MapSlice(rows, fromEntity)
+	return &apicommon.Out[ClientListResponse]{Body: ClientListResponse{Clients: out, Total: len(out)}}, nil
 }
 
-type searchInput struct {
-	Body SearchClientRequest
-}
-
-func (s *State) search(ctx context.Context, in *searchInput) (*listOutput, error) {
+func (s *State) search(ctx context.Context, in *apicommon.In[SearchClientRequest]) (*apicommon.Out[ClientListResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadClients(ac); err != nil {
 		return nil, err
@@ -216,11 +78,8 @@ func (s *State) search(ctx context.Context, in *searchInput) (*listOutput, error
 	if err != nil {
 		return nil, usecase.Internal("REPO", "search failed", err)
 	}
-	out := make([]ClientResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, fromEntity(&rows[i]))
-	}
-	return &listOutput{Body: ClientListResponse{Clients: out, Total: len(out)}}, nil
+	out := apicommon.MapSlice(rows, fromEntity)
+	return &apicommon.Out[ClientListResponse]{Body: ClientListResponse{Clients: out, Total: len(out)}}, nil
 }
 
 // searchByQuery backs GET /api/clients/search?q=<term> (SDK alias of the POST
@@ -229,7 +88,7 @@ type searchQueryInput struct {
 	Q string `query:"q"`
 }
 
-func (s *State) searchByQuery(ctx context.Context, in *searchQueryInput) (*listOutput, error) {
+func (s *State) searchByQuery(ctx context.Context, in *searchQueryInput) (*apicommon.Out[ClientListResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadClients(ac); err != nil {
 		return nil, err
@@ -238,22 +97,15 @@ func (s *State) searchByQuery(ctx context.Context, in *searchQueryInput) (*listO
 	if err != nil {
 		return nil, usecase.Internal("REPO", "search failed", err)
 	}
-	out := make([]ClientResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, fromEntity(&rows[i]))
-	}
-	return &listOutput{Body: ClientListResponse{Clients: out, Total: len(out)}}, nil
+	out := apicommon.MapSlice(rows, fromEntity)
+	return &apicommon.Out[ClientListResponse]{Body: ClientListResponse{Clients: out, Total: len(out)}}, nil
 }
 
 type byIdentifierInput struct {
 	Identifier string `path:"identifier"`
 }
 
-type getOutput struct {
-	Body ClientResponse
-}
-
-func (s *State) byIdentifier(ctx context.Context, in *byIdentifierInput) (*getOutput, error) {
+func (s *State) byIdentifier(ctx context.Context, in *byIdentifierInput) (*apicommon.Out[ClientResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadClients(ac); err != nil {
 		return nil, err
@@ -265,14 +117,10 @@ func (s *State) byIdentifier(ctx context.Context, in *byIdentifierInput) (*getOu
 	if c == nil {
 		return nil, httperror.NotFound("Client", in.Identifier)
 	}
-	return &getOutput{Body: fromEntity(c)}, nil
+	return &apicommon.Out[ClientResponse]{Body: fromEntity(c)}, nil
 }
 
-type getInput struct {
-	ID string `path:"id"`
-}
-
-func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
+func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ClientResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadClients(ac); err != nil {
 		return nil, err
@@ -284,18 +132,10 @@ func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
 	if c == nil {
 		return nil, httperror.NotFound("Client", in.ID)
 	}
-	return &getOutput{Body: fromEntity(c)}, nil
+	return &apicommon.Out[ClientResponse]{Body: fromEntity(c)}, nil
 }
 
-type createInput struct {
-	Body CreateClientRequest
-}
-
-type createOutput struct {
-	Body apicommon.CreatedResponse
-}
-
-func (s *State) create(ctx context.Context, in *createInput) (*createOutput, error) {
+func (s *State) create(ctx context.Context, in *apicommon.In[CreateClientRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanCreateClients(ac); err != nil {
 		return nil, err
@@ -305,7 +145,7 @@ func (s *State) create(ctx context.Context, in *createInput) (*createOutput, err
 	if err != nil {
 		return nil, err
 	}
-	return &createOutput{Body: apicommon.CreatedResponse{ID: committed.Event().ClientID}}, nil
+	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: committed.Event().ClientID}}, nil
 }
 
 type updateInput struct {
@@ -313,9 +153,7 @@ type updateInput struct {
 	Body UpdateClientRequest
 }
 
-type emptyOutput struct{}
-
-func (s *State) update(ctx context.Context, in *updateInput) (*emptyOutput, error) {
+func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanUpdateClients(ac); err != nil {
 		return nil, err
@@ -324,14 +162,10 @@ func (s *State) update(ctx context.Context, in *updateInput) (*emptyOutput, erro
 	if _, err := operations.UpdateClient(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
-type idInput struct {
-	ID string `path:"id"`
-}
-
-func (s *State) activate(ctx context.Context, in *idInput) (*statusChangeOutput, error) {
+func (s *State) activate(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[apicommon.StatusChangeResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanUpdateClients(ac); err != nil {
 		return nil, err
@@ -340,7 +174,7 @@ func (s *State) activate(ctx context.Context, in *idInput) (*statusChangeOutput,
 	if _, err := operations.ActivateClient(ctx, s.Repo, s.UoW, operations.ActivateCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &statusChangeOutput{Body: apicommon.StatusChangeResponse{Message: "Client activated"}}, nil
+	return &apicommon.Out[apicommon.StatusChangeResponse]{Body: apicommon.StatusChangeResponse{Message: "Client activated"}}, nil
 }
 
 type suspendInput struct {
@@ -348,7 +182,7 @@ type suspendInput struct {
 	Body SuspendClientRequest
 }
 
-func (s *State) suspend(ctx context.Context, in *suspendInput) (*statusChangeOutput, error) {
+func (s *State) suspend(ctx context.Context, in *suspendInput) (*apicommon.Out[apicommon.StatusChangeResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanUpdateClients(ac); err != nil {
 		return nil, err
@@ -357,7 +191,7 @@ func (s *State) suspend(ctx context.Context, in *suspendInput) (*statusChangeOut
 	if _, err := operations.SuspendClient(ctx, s.Repo, s.UoW, operations.SuspendCommand{ID: in.ID, Reason: in.Body.Reason}, ec); err != nil {
 		return nil, err
 	}
-	return &statusChangeOutput{Body: apicommon.StatusChangeResponse{Message: "Client suspended"}}, nil
+	return &apicommon.Out[apicommon.StatusChangeResponse]{Body: apicommon.StatusChangeResponse{Message: "Client suspended"}}, nil
 }
 
 type addNoteInput struct {
@@ -365,7 +199,7 @@ type addNoteInput struct {
 	Body AddNoteRequest
 }
 
-func (s *State) addNote(ctx context.Context, in *addNoteInput) (*statusChangeOutput, error) {
+func (s *State) addNote(ctx context.Context, in *addNoteInput) (*apicommon.Out[apicommon.StatusChangeResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanUpdateClients(ac); err != nil {
 		return nil, err
@@ -379,10 +213,10 @@ func (s *State) addNote(ctx context.Context, in *addNoteInput) (*statusChangeOut
 		return nil, err
 	}
 	// Rust returns AddNoteResponse {message}; same wire shape as StatusChangeResponse.
-	return &statusChangeOutput{Body: apicommon.StatusChangeResponse{Message: "Note added"}}, nil
+	return &apicommon.Out[apicommon.StatusChangeResponse]{Body: apicommon.StatusChangeResponse{Message: "Note added"}}, nil
 }
 
-func (s *State) delete(ctx context.Context, in *idInput) (*emptyOutput, error) {
+func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanDeleteClients(ac); err != nil {
 		return nil, err
@@ -391,7 +225,7 @@ func (s *State) delete(ctx context.Context, in *idInput) (*emptyOutput, error) {
 	if _, err := operations.DeleteClient(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
 // ── deactivate (alias for delete with a reason) ──────────────────────────
@@ -401,11 +235,7 @@ type deactivateInput struct {
 	Body StatusChangeRequest
 }
 
-type statusChangeOutput struct {
-	Body apicommon.StatusChangeResponse
-}
-
-func (s *State) deactivate(ctx context.Context, in *deactivateInput) (*statusChangeOutput, error) {
+func (s *State) deactivate(ctx context.Context, in *deactivateInput) (*apicommon.Out[apicommon.StatusChangeResponse], error) {
 	ac := auth.FromContext(ctx)
 	// Deactivate is a soft-delete — same permission as delete.
 	if err := auth.CanDeleteClients(ac); err != nil {
@@ -415,16 +245,12 @@ func (s *State) deactivate(ctx context.Context, in *deactivateInput) (*statusCha
 	if _, err := operations.DeleteClient(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &statusChangeOutput{Body: apicommon.StatusChangeResponse{Message: "Client deactivated"}}, nil
+	return &apicommon.Out[apicommon.StatusChangeResponse]{Body: apicommon.StatusChangeResponse{Message: "Client deactivated"}}, nil
 }
 
 // ── client→application linking ───────────────────────────────────────────
 
-type clientApplicationsOutput struct {
-	Body ClientApplicationsResponse
-}
-
-func (s *State) getApplications(ctx context.Context, in *idInput) (*clientApplicationsOutput, error) {
+func (s *State) getApplications(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ClientApplicationsResponse], error) {
 	ac := auth.FromContext(ctx)
 	if !ac.IsAnchor() && !ac.CanAccessClient(in.ID) {
 		return nil, httperror.Forbidden("No access to this client")
@@ -457,10 +283,8 @@ func (s *State) getApplications(ctx context.Context, in *idInput) (*clientApplic
 		}
 	}
 
-	out := make([]ClientApplicationResponse, 0, len(allApps))
-	for i := range allApps {
-		a := &allApps[i]
-		out = append(out, ClientApplicationResponse{
+	out := apicommon.MapSlice(allApps, func(a *application.Application) ClientApplicationResponse {
+		return ClientApplicationResponse{
 			ID:               a.ID,
 			Code:             a.Code,
 			Name:             a.Name,
@@ -468,9 +292,9 @@ func (s *State) getApplications(ctx context.Context, in *idInput) (*clientApplic
 			IconURL:          a.IconURL,
 			Active:           a.Active,
 			EnabledForClient: enabledByApp[a.ID],
-		})
-	}
-	return &clientApplicationsOutput{Body: ClientApplicationsResponse{
+		}
+	})
+	return &apicommon.Out[ClientApplicationsResponse]{Body: ClientApplicationsResponse{
 		Applications: out,
 		Total:        len(out),
 	}}, nil
@@ -481,7 +305,7 @@ type updateApplicationsInput struct {
 	Body UpdateClientApplicationsRequest
 }
 
-func (s *State) updateApplications(ctx context.Context, in *updateApplicationsInput) (*emptyOutput, error) {
+func (s *State) updateApplications(ctx context.Context, in *updateApplicationsInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if !ac.IsAnchor() {
 		return nil, httperror.Forbidden("Anchor scope required")
@@ -497,7 +321,7 @@ func (s *State) updateApplications(ctx context.Context, in *updateApplicationsIn
 	if _, err := appops.UpdateClientApplications(ctx, s.Applications, s.Repo, s.ClientConfigs, s.UoW, cmd, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
 type appLinkInput struct {
@@ -505,7 +329,7 @@ type appLinkInput struct {
 	ApplicationID string `path:"applicationId"`
 }
 
-func (s *State) enableApplication(ctx context.Context, in *appLinkInput) (*emptyOutput, error) {
+func (s *State) enableApplication(ctx context.Context, in *appLinkInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if !ac.IsAnchor() {
 		return nil, httperror.Forbidden("Anchor scope required")
@@ -521,10 +345,10 @@ func (s *State) enableApplication(ctx context.Context, in *appLinkInput) (*empty
 	if _, err := appops.EnableApplicationForClient(ctx, s.Applications, s.Repo, s.ClientConfigs, s.UoW, cmd, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
-func (s *State) disableApplication(ctx context.Context, in *appLinkInput) (*emptyOutput, error) {
+func (s *State) disableApplication(ctx context.Context, in *appLinkInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if !ac.IsAnchor() {
 		return nil, httperror.Forbidden("Anchor scope required")
@@ -540,5 +364,5 @@ func (s *State) disableApplication(ctx context.Context, in *appLinkInput) (*empt
 	if _, err := appops.DisableApplicationForClient(ctx, s.ClientConfigs, s.UoW, cmd, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }

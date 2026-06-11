@@ -2,14 +2,12 @@ package application
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -27,26 +25,22 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 
 // FindByID loads by id.
 func (r *Repository) FindByID(ctx context.Context, id string) (*Application, error) {
-	row, err := r.q.ApplicationFindByID(ctx, id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	res, err := r.q.ApplicationFindByID(ctx, id)
+	row, err := repocommon.One(res, err, "application repo")
+	if row == nil || err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("application repo: %w", err)
-	}
-	return rowToApplication(row), nil
+	return rowToApplication(*row), nil
 }
 
 // FindByCode loads by unique code.
 func (r *Repository) FindByCode(ctx context.Context, code string) (*Application, error) {
-	row, err := r.q.ApplicationFindByCode(ctx, code)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	res, err := r.q.ApplicationFindByCode(ctx, code)
+	row, err := repocommon.One(res, err, "application repo")
+	if row == nil || err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("application repo: %w", err)
-	}
-	return rowToApplication(row), nil
+	return rowToApplication(*row), nil
 }
 
 // FindWithFilters returns apps matching non-nil filters. Hand-rolled
@@ -59,42 +53,29 @@ func (r *Repository) FindActive(ctx context.Context) ([]Application, error) {
 }
 
 func (r *Repository) FindWithFilters(ctx context.Context, appType, active *string) ([]Application, error) {
-	const baseSelect = `SELECT id, type, code, name, description, icon_url, website,
-		logo, logo_mime_type, default_base_url, service_account_id, active,
-		created_at, updated_at FROM app_applications`
-	q := baseSelect
-	args := []any{}
-	conds := []string{}
-	if appType != nil {
-		args = append(args, *appType)
-		conds = append(conds, fmt.Sprintf("type = $%d", len(args)))
-	}
+	var f repocommon.Filter
+	f.EqPtr("type", appType)
 	if active != nil {
-		args = append(args, *active == "true")
-		conds = append(conds, fmt.Sprintf("active = $%d", len(args)))
+		f.Eq("active", *active == "true")
 	}
-	if len(conds) > 0 {
-		q += ` WHERE ` + strings.Join(conds, ` AND `)
-	}
-	q += ` ORDER BY code`
-	rows, err := r.pool.Query(ctx, q, args...)
+
+	q := `SELECT id, type, code, name, description, icon_url, website,
+		logo, logo_mime_type, default_base_url, service_account_id, active,
+		created_at, updated_at FROM app_applications` + f.Where() + ` ORDER BY code`
+
+	rows, err := r.pool.Query(ctx, q, f.Args()...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	collected, err := pgx.CollectRows(rows, pgx.RowToStructByName[dbq.AppApplication])
+	if err != nil {
+		return nil, err
+	}
 	var out []Application
-	for rows.Next() {
-		var row dbq.AppApplication
-		if err := rows.Scan(
-			&row.ID, &row.Type, &row.Code, &row.Name, &row.Description, &row.IconUrl,
-			&row.Website, &row.Logo, &row.LogoMimeType, &row.DefaultBaseUrl,
-			&row.ServiceAccountID, &row.Active, &row.CreatedAt, &row.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
+	for _, row := range collected {
 		out = append(out, *rowToApplication(row))
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 // Persist implements usecasepgx.Persist[Application].

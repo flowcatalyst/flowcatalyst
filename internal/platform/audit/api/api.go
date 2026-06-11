@@ -5,13 +5,14 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
-	"net/http"
 	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -26,86 +27,16 @@ const tag = "audit-logs"
 
 // Register mounts the audit log endpoints.
 func Register(api huma.API, s *State) {
-	huma.Register(api, huma.Operation{
-		OperationID:   "listAuditLogs",
-		Method:        http.MethodGet,
-		Path:          "/api/audit-logs",
-		Summary:       "List audit logs with filters",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.list)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "listAuditLogsRecent",
-		Method:        http.MethodGet,
-		Path:          "/api/audit-logs/recent",
-		Summary:       "List recent audit logs (alias for list)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.list)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "auditLogEntityTypes",
-		Method:        http.MethodGet,
-		Path:          "/api/audit-logs/entity-types",
-		Summary:       "Distinct entity types",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.entityTypes)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "auditLogOperations",
-		Method:        http.MethodGet,
-		Path:          "/api/audit-logs/operations",
-		Summary:       "Distinct operations",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.operations)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "auditLogApplicationIDs",
-		Method:        http.MethodGet,
-		Path:          "/api/audit-logs/application-ids",
-		Summary:       "Distinct application ids",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.applicationIDs)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "auditLogClientIDs",
-		Method:        http.MethodGet,
-		Path:          "/api/audit-logs/client-ids",
-		Summary:       "Distinct client ids",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.clientIDs)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getAuditLog",
-		Method:        http.MethodGet,
-		Path:          "/api/audit-logs/{id}",
-		Summary:       "Get an audit log by id",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.getByID)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "auditLogsByEntity",
-		Method:        http.MethodGet,
-		Path:          "/api/audit-logs/entity/{entityType}/{entityId}",
-		Summary:       "Audit logs for a specific entity",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.byEntity)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "auditLogsByPrincipal",
-		Method:        http.MethodGet,
-		Path:          "/api/audit-logs/principal/{principalId}",
-		Summary:       "Audit logs for a specific principal",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.byPrincipal)
+	g := apiroute.New(api, tag)
+	apiroute.Get(g, "listAuditLogs", "/api/audit-logs", "List audit logs with filters", s.list)
+	apiroute.Get(g, "listAuditLogsRecent", "/api/audit-logs/recent", "List recent audit logs (alias for list)", s.list)
+	apiroute.Get(g, "auditLogEntityTypes", "/api/audit-logs/entity-types", "Distinct entity types", s.entityTypes)
+	apiroute.Get(g, "auditLogOperations", "/api/audit-logs/operations", "Distinct operations", s.operations)
+	apiroute.Get(g, "auditLogApplicationIDs", "/api/audit-logs/application-ids", "Distinct application ids", s.applicationIDs)
+	apiroute.Get(g, "auditLogClientIDs", "/api/audit-logs/client-ids", "Distinct client ids", s.clientIDs)
+	apiroute.Get(g, "getAuditLog", "/api/audit-logs/{id}", "Get an audit log by id", s.getByID)
+	apiroute.Get(g, "auditLogsByEntity", "/api/audit-logs/entity/{entityType}/{entityId}", "Audit logs for a specific entity", s.byEntity)
+	apiroute.Get(g, "auditLogsByPrincipal", "/api/audit-logs/principal/{principalId}", "Audit logs for a specific principal", s.byPrincipal)
 }
 
 const viewPerm = "platform:admin:audit-log:view"
@@ -125,14 +56,6 @@ type listInput struct {
 	ClientIDs      string `query:"clientIds" doc:"CSV of client ids"`
 }
 
-func strPtr(v string) *string {
-	if v == "" {
-		return nil
-	}
-	s := v
-	return &s
-}
-
 // csv splits a comma-separated query value, trimming blanks.
 func csv(v string) []string {
 	if v == "" {
@@ -149,11 +72,7 @@ func csv(v string) []string {
 	return out
 }
 
-type listOutput struct {
-	Body AuditLogListResponse
-}
-
-func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
+func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[AuditLogListResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
 		return nil, err
@@ -174,10 +93,10 @@ func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
 	}
 
 	rows, err := s.Repo.FindWithCursor(ctx, audit.CursorFilterParams{
-		EntityType:     strPtr(in.EntityType),
-		EntityID:       strPtr(in.EntityID),
-		PrincipalID:    strPtr(in.PrincipalID),
-		Operation:      strPtr(in.Operation),
+		EntityType:     apicommon.OptStr(in.EntityType),
+		EntityID:       apicommon.OptStr(in.EntityID),
+		PrincipalID:    apicommon.OptStr(in.PrincipalID),
+		Operation:      apicommon.OptStr(in.Operation),
 		ApplicationIDs: csv(in.ApplicationIDs),
 		ClientIDs:      csv(in.ClientIDs),
 		After:          after,
@@ -192,18 +111,13 @@ func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
 		rows = rows[:size]
 	}
 
-	out := make([]AuditLogResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, fromEntity(&rows[i]))
-	}
-
-	body := AuditLogListResponse{AuditLogs: out, HasMore: hasMore}
+	body := AuditLogListResponse{AuditLogs: apicommon.MapSlice(rows, fromEntity), HasMore: hasMore}
 	if hasMore && len(rows) > 0 {
 		last := rows[len(rows)-1]
 		cur := encodeCursor(audit.Cursor{PerformedAt: last.PerformedAt, ID: last.ID})
 		body.NextCursor = &cur
 	}
-	return &listOutput{Body: body}, nil
+	return &apicommon.Out[AuditLogListResponse]{Body: body}, nil
 }
 
 // encodeCursor serializes a keyset position into an opaque base64 token of
@@ -232,15 +146,7 @@ func decodeCursor(s string) (*audit.Cursor, error) {
 
 var errBadCursor = errors.New("malformed cursor")
 
-type getInput struct {
-	ID string `path:"id"`
-}
-
-type getOutput struct {
-	Body AuditLogResponse
-}
-
-func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
+func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[AuditLogResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
 		return nil, err
@@ -252,7 +158,7 @@ func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
 	if l == nil {
 		return nil, httperror.NotFound("AuditLog", in.ID)
 	}
-	return &getOutput{Body: fromEntity(l)}, nil
+	return &apicommon.Out[AuditLogResponse]{Body: fromEntity(l)}, nil
 }
 
 type byEntityInput struct {
@@ -260,7 +166,7 @@ type byEntityInput struct {
 	EntityID   string `path:"entityId"`
 }
 
-func (s *State) byEntity(ctx context.Context, in *byEntityInput) (*listOutput, error) {
+func (s *State) byEntity(ctx context.Context, in *byEntityInput) (*apicommon.Out[AuditLogListResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
 		return nil, err
@@ -273,18 +179,15 @@ func (s *State) byEntity(ctx context.Context, in *byEntityInput) (*listOutput, e
 	if err != nil {
 		return nil, usecase.Internal("REPO", "by_entity failed", err)
 	}
-	out := make([]AuditLogResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, fromEntity(&rows[i]))
-	}
-	return &listOutput{Body: AuditLogListResponse{AuditLogs: out}}, nil
+	out := apicommon.MapSlice(rows, fromEntity)
+	return &apicommon.Out[AuditLogListResponse]{Body: AuditLogListResponse{AuditLogs: out}}, nil
 }
 
 type byPrincipalInput struct {
 	PrincipalID string `path:"principalId"`
 }
 
-func (s *State) byPrincipal(ctx context.Context, in *byPrincipalInput) (*listOutput, error) {
+func (s *State) byPrincipal(ctx context.Context, in *byPrincipalInput) (*apicommon.Out[AuditLogListResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
 		return nil, err
@@ -293,16 +196,11 @@ func (s *State) byPrincipal(ctx context.Context, in *byPrincipalInput) (*listOut
 	if err != nil {
 		return nil, usecase.Internal("REPO", "by_principal failed", err)
 	}
-	out := make([]AuditLogResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, fromEntity(&rows[i]))
-	}
-	return &listOutput{Body: AuditLogListResponse{AuditLogs: out}}, nil
+	out := apicommon.MapSlice(rows, fromEntity)
+	return &apicommon.Out[AuditLogListResponse]{Body: AuditLogListResponse{AuditLogs: out}}, nil
 }
 
 // ── facets ──────────────────────────────────────────────────────────────
-
-type emptyInput struct{}
 
 // distinct fetches whitelisted distinct column values for the facet endpoints.
 func (s *State) distinct(ctx context.Context, column string) ([]string, error) {
@@ -317,50 +215,34 @@ func (s *State) distinct(ctx context.Context, column string) ([]string, error) {
 	return out, nil
 }
 
-type entityTypesOutput struct {
-	Body AuditLogEntityTypesResponse
-}
-
-func (s *State) entityTypes(ctx context.Context, _ *emptyInput) (*entityTypesOutput, error) {
+func (s *State) entityTypes(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[AuditLogEntityTypesResponse], error) {
 	vals, err := s.distinct(ctx, "entity_type")
 	if err != nil {
 		return nil, err
 	}
-	return &entityTypesOutput{Body: AuditLogEntityTypesResponse{EntityTypes: vals}}, nil
+	return &apicommon.Out[AuditLogEntityTypesResponse]{Body: AuditLogEntityTypesResponse{EntityTypes: vals}}, nil
 }
 
-type operationsOutput struct {
-	Body AuditLogOperationsResponse
-}
-
-func (s *State) operations(ctx context.Context, _ *emptyInput) (*operationsOutput, error) {
+func (s *State) operations(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[AuditLogOperationsResponse], error) {
 	vals, err := s.distinct(ctx, "operation")
 	if err != nil {
 		return nil, err
 	}
-	return &operationsOutput{Body: AuditLogOperationsResponse{Operations: vals}}, nil
+	return &apicommon.Out[AuditLogOperationsResponse]{Body: AuditLogOperationsResponse{Operations: vals}}, nil
 }
 
-type applicationIDsOutput struct {
-	Body AuditLogApplicationIDsResponse
-}
-
-func (s *State) applicationIDs(ctx context.Context, _ *emptyInput) (*applicationIDsOutput, error) {
+func (s *State) applicationIDs(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[AuditLogApplicationIDsResponse], error) {
 	vals, err := s.distinct(ctx, "application_id")
 	if err != nil {
 		return nil, err
 	}
-	return &applicationIDsOutput{Body: AuditLogApplicationIDsResponse{ApplicationIDs: vals}}, nil
+	return &apicommon.Out[AuditLogApplicationIDsResponse]{Body: AuditLogApplicationIDsResponse{ApplicationIDs: vals}}, nil
 }
 
-type clientIDsOutput struct {
-	Body AuditLogClientIDsResponse
-}
-
-func (s *State) clientIDs(ctx context.Context, _ *emptyInput) (*clientIDsOutput, error) {
+func (s *State) clientIDs(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[AuditLogClientIDsResponse], error) {
 	vals, err := s.distinct(ctx, "client_id")
 	if err != nil {
 		return nil, err
 	}
-	return &clientIDsOutput{Body: AuditLogClientIDsResponse{ClientIDs: vals}}, nil
+	return &apicommon.Out[AuditLogClientIDsResponse]{Body: AuditLogClientIDsResponse{ClientIDs: vals}}, nil
 }

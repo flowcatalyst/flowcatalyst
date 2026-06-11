@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 )
 
@@ -115,74 +116,51 @@ func (r *Repository) FindWithCursor(ctx context.Context, p CursorFilterParams) (
 		limit = 101
 	}
 
-	var (
-		sb   []byte
-		args []any
-	)
-	add := func(v any) string {
-		args = append(args, v)
-		return fmt.Sprintf("$%d", len(args))
+	var f repocommon.Filter
+	f.EqPtr("a.entity_type", p.EntityType)
+	f.EqPtr("a.entity_id", p.EntityID)
+	f.EqPtr("a.principal_id", p.PrincipalID)
+	f.EqPtr("a.operation", p.Operation)
+	f.Any("a.application_id", p.ApplicationIDs)
+	f.Any("a.client_id", p.ClientIDs)
+	if p.After != nil {
+		// Keyset: rows strictly before the cursor in (performed_at, id) DESC.
+		ph1 := f.Arg(p.After.PerformedAt)
+		f.Clause(fmt.Sprintf("(a.performed_at, a.id) < ($%d, $%%d)", ph1), p.After.ID)
 	}
+	lim := f.Arg(int32(limit))
 
-	sb = append(sb, []byte(`SELECT a.id, a.entity_type, a.entity_id, a.operation, a.operation_json,
+	q := `SELECT a.id, a.entity_type, a.entity_id, a.operation, a.operation_json,
        a.principal_id, p.name AS principal_name,
        a.application_id, a.client_id, a.performed_at
 FROM aud_logs a
-LEFT JOIN iam_principals p ON p.id = a.principal_id
-WHERE 1=1`)...)
+LEFT JOIN iam_principals p ON p.id = a.principal_id` + f.Where() +
+		fmt.Sprintf(" ORDER BY a.performed_at DESC, a.id DESC LIMIT $%d", lim)
 
-	if p.EntityType != nil {
-		sb = append(sb, []byte(" AND a.entity_type = "+add(*p.EntityType))...)
-	}
-	if p.EntityID != nil {
-		sb = append(sb, []byte(" AND a.entity_id = "+add(*p.EntityID))...)
-	}
-	if p.PrincipalID != nil {
-		sb = append(sb, []byte(" AND a.principal_id = "+add(*p.PrincipalID))...)
-	}
-	if p.Operation != nil {
-		sb = append(sb, []byte(" AND a.operation = "+add(*p.Operation))...)
-	}
-	if len(p.ApplicationIDs) > 0 {
-		sb = append(sb, []byte(" AND a.application_id = ANY("+add(p.ApplicationIDs)+")")...)
-	}
-	if len(p.ClientIDs) > 0 {
-		sb = append(sb, []byte(" AND a.client_id = ANY("+add(p.ClientIDs)+")")...)
-	}
-	if p.After != nil {
-		// Keyset: rows strictly before the cursor in (performed_at, id) DESC.
-		ph1 := add(p.After.PerformedAt)
-		ph2 := add(p.After.ID)
-		sb = append(sb, []byte(" AND (a.performed_at, a.id) < ("+ph1+", "+ph2+")")...)
-	}
-
-	sb = append(sb, []byte(" ORDER BY a.performed_at DESC, a.id DESC LIMIT "+add(int32(limit)))...)
-
-	rows, err := r.pool.Query(ctx, string(sb), args...)
+	rows, err := r.pool.Query(ctx, q, f.Args()...)
 	if err != nil {
 		return nil, fmt.Errorf("audit FindWithCursor: %w", err)
 	}
-	defer rows.Close()
-	out := make([]Log, 0, limit)
-	for rows.Next() {
-		var l Log
-		if err := rows.Scan(
-			&l.ID,
-			&l.EntityType,
-			&l.EntityID,
-			&l.Operation,
-			&l.OperationJSON,
-			&l.PrincipalID,
-			&l.PrincipalName,
-			&l.ApplicationID,
-			&l.ClientID,
-			&l.PerformedAt,
-		); err != nil {
-			return nil, err
-		}
-		out = append(out, l)
+	collected, err := pgx.CollectRows(rows, pgx.RowToStructByName[dbq.AuditFindByIDRow])
+	if err != nil {
+		return nil, err
 	}
-	return out, rows.Err()
+	out := make([]Log, 0, len(collected))
+	for _, row := range collected {
+		out = append(out, Log{
+			ID:            row.ID,
+			EntityType:    row.EntityType,
+			EntityID:      row.EntityID,
+			Operation:     row.Operation,
+			OperationJSON: row.OperationJson,
+			PrincipalID:   row.PrincipalID,
+			PrincipalName: row.PrincipalName,
+			ApplicationID: row.ApplicationID,
+			ClientID:      row.ClientID,
+			PerformedAt:   row.PerformedAt,
+		})
+	}
+	return out, nil
 }
 
 // FindWithFilters returns audit logs matching non-nil filters, ordered by

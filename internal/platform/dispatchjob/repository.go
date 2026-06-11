@@ -3,7 +3,6 @@ package dispatchjob
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -12,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
@@ -71,26 +71,22 @@ type FilterParams struct {
 
 // FindByID loads a single job (write table).
 func (r *Repository) FindByID(ctx context.Context, id string) (*DispatchJob, error) {
-	row, err := r.q.DispatchJobFindByID(ctx, id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	res, err := r.q.DispatchJobFindByID(ctx, id)
+	row, err := repocommon.One(res, err, "dispatch_job repo")
+	if row == nil || err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("dispatch_job repo: %w", err)
-	}
-	return findByIDRowToJob(row), nil
+	return findByIDRowToJob(*row), nil
 }
 
 // FindByExternalID loads by external_id (used by idempotent ingest).
 func (r *Repository) FindByExternalID(ctx context.Context, externalID string) (*DispatchJob, error) {
-	row, err := r.q.DispatchJobFindByExternalID(ctx, &externalID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	res, err := r.q.DispatchJobFindByExternalID(ctx, &externalID)
+	row, err := repocommon.One(res, err, "dispatch_job repo")
+	if row == nil || err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("dispatch_job repo: %w", err)
-	}
-	return findByExternalIDRowToJob(row), nil
+	return findByExternalIDRowToJob(*row), nil
 }
 
 // FindByEventID lists jobs spawned by a single event. Used for the
@@ -137,17 +133,7 @@ func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Dis
 		scheduled_for, expires_at, attempt_count, last_attempt_at, completed_at,
 		duration_millis, last_error, idempotency_key, created_at, updated_at
 		FROM msg_dispatch_jobs`
-	q := baseSelect
-	args := []any{}
-	conds := []string{}
-	add := func(col string, v any) {
-		args = append(args, v)
-		conds = append(conds, fmt.Sprintf("%s = $%d", col, len(args)))
-	}
-	addAny := func(col string, vs []string) {
-		args = append(args, vs)
-		conds = append(conds, fmt.Sprintf("%s = ANY($%d)", col, len(args)))
-	}
+	var f repocommon.Filter
 	// codePrefix matches code segments (app:subdomain:aggregate:...) for
 	// the facet filters that have no dedicated column.
 	codePrefix := func(vs []string, depth int) {
@@ -155,87 +141,70 @@ func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Dis
 			return
 		}
 		ors := make([]string, 0, len(vs))
-		for _, v := range vs {
+		for i, v := range vs {
 			prefix := v
-			for i := 0; i < depth; i++ {
+			for d := 0; d < depth; d++ {
 				prefix = "%:" + prefix
 			}
-			args = append(args, prefix+":%")
 			// depth 0 → "v:%", depth 1 → "%:v:%", etc.
-			ors = append(ors, fmt.Sprintf("code LIKE $%d", len(args)))
+			if i < len(vs)-1 {
+				ors = append(ors, fmt.Sprintf("code LIKE $%d", f.Arg(prefix+":%")))
+			} else {
+				// The last value rides Clause so the whole OR group lands
+				// as one condition; $%d is its positional placeholder.
+				ors = append(ors, "code LIKE $%d")
+				f.Clause("("+strings.Join(ors, " OR ")+")", prefix+":%")
+			}
 		}
-		conds = append(conds, "("+strings.Join(ors, " OR ")+")")
 	}
-	if p.Status != nil {
-		add("status", *p.Status)
-	}
-	if len(p.Statuses) > 0 {
-		addAny("status", p.Statuses)
-	}
-	if p.ClientID != nil {
-		add("client_id", *p.ClientID)
-	}
-	if len(p.ClientIDs) > 0 {
-		addAny("client_id", p.ClientIDs)
-	}
+	f.EqPtr("status", p.Status)
+	f.Any("status", p.Statuses)
+	f.EqPtr("client_id", p.ClientID)
+	f.Any("client_id", p.ClientIDs)
 	if p.AccessibleClientIDs != nil {
-		args = append(args, *p.AccessibleClientIDs)
-		conds = append(conds, fmt.Sprintf("(client_id IS NULL OR client_id = ANY($%d))", len(args)))
+		// SECURITY: SQL-level tenant scoping — platform-scoped rows plus the
+		// principal's own tenants. Parenthesization matters: the OR group
+		// must AND with the caller's other filters.
+		f.Clause("(client_id IS NULL OR client_id = ANY($%d))", *p.AccessibleClientIDs)
 	}
-	if p.DispatchPoolID != nil {
-		add("dispatch_pool_id", *p.DispatchPoolID)
-	}
-	if p.SubscriptionID != nil {
-		add("subscription_id", *p.SubscriptionID)
-	}
-	if p.Code != nil {
-		add("code", *p.Code)
-	}
-	if len(p.Codes) > 0 {
-		addAny("code", p.Codes)
-	}
-	if p.Source != nil {
-		add("source", *p.Source)
-	}
+	f.EqPtr("dispatch_pool_id", p.DispatchPoolID)
+	f.EqPtr("subscription_id", p.SubscriptionID)
+	f.EqPtr("code", p.Code)
+	f.Any("code", p.Codes)
+	f.EqPtr("source", p.Source)
 	codePrefix(p.Applications, 0)
 	codePrefix(p.Subdomains, 1)
 	codePrefix(p.Aggregates, 2)
 	if p.Since != nil {
-		args = append(args, *p.Since)
-		conds = append(conds, fmt.Sprintf("created_at >= $%d", len(args)))
+		f.Clause("created_at >= $%d", *p.Since)
 	}
 	if p.Until != nil {
-		args = append(args, *p.Until)
-		conds = append(conds, fmt.Sprintf("created_at <= $%d", len(args)))
+		f.Clause("created_at <= $%d", *p.Until)
 	}
-	if len(conds) > 0 {
-		q += " WHERE " + strings.Join(conds, " AND ")
-	}
-	q += " ORDER BY created_at DESC"
+	q := baseSelect + f.Where() + " ORDER BY created_at DESC"
 	limit := p.Limit
 	if limit <= 0 || limit > 1000 {
 		limit = 100
 	}
-	args = append(args, limit)
-	q += fmt.Sprintf(" LIMIT $%d", len(args))
+	q += fmt.Sprintf(" LIMIT $%d", f.Arg(limit))
 	if p.Offset > 0 {
-		args = append(args, p.Offset)
-		q += fmt.Sprintf(" OFFSET $%d", len(args))
+		q += fmt.Sprintf(" OFFSET $%d", f.Arg(p.Offset))
 	}
-	rows, err := r.pool.Query(ctx, q, args...)
+	rows, err := r.pool.Query(ctx, q, f.Args()...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	out := []DispatchJob{}
-	for rows.Next() {
-		j, err := scanFilteredRow(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, *j)
+	// The SELECT column list is exactly DispatchJobFindByIDRow's field set,
+	// so the sqlc row type doubles as the collect target.
+	collected, err := pgx.CollectRows(rows, pgx.RowToStructByName[dbq.DispatchJobFindByIDRow])
+	if err != nil {
+		return nil, err
 	}
-	return out, rows.Err()
+	out := make([]DispatchJob, 0, len(collected))
+	for _, row := range collected {
+		out = append(out, *findByIDRowToJob(row))
+	}
+	return out, nil
 }
 
 // DistinctValues lists distinct non-null values for a whitelisted column.
@@ -657,24 +626,6 @@ func rowToJob(r rawRow) *DispatchJob {
 	}
 	_ = r.Protocol // single protocol today — see Rust DispatchProtocol::from_str
 	return j
-}
-
-// scanFilteredRow is the FindWithFilters scan path — kept hand-rolled
-// because the dynamic SELECT can't be sqlc-generated.
-func scanFilteredRow(rows pgx.Rows) (*DispatchJob, error) {
-	var r rawRow
-	if err := rows.Scan(&r.ID, &r.ExternalID, &r.Source, &r.Kind, &r.Code,
-		&r.Subject, &r.EventID, &r.CorrelationID, &r.Metadata, &r.TargetUrl,
-		&r.Protocol, &r.Payload, &r.PayloadContentType, &r.DataOnly,
-		&r.ServiceAccountID, &r.ClientID, &r.SubscriptionID, &r.Mode,
-		&r.DispatchPoolID, &r.MessageGroup, &r.Sequence, &r.TimeoutSeconds,
-		&r.SchemaID, &r.Status, &r.MaxRetries, &r.RetryStrategy,
-		&r.ScheduledFor, &r.ExpiresAt, &r.AttemptCount, &r.LastAttemptAt,
-		&r.CompletedAt, &r.DurationMillis, &r.LastError, &r.IdempotencyKey,
-		&r.CreatedAt, &r.UpdatedAt); err != nil {
-		return nil, err
-	}
-	return rowToJob(r), nil
 }
 
 // metadataOrEmpty returns an empty slice for nil so the JSONB column

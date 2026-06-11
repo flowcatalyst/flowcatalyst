@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 )
 
 // Repository owns the msg_events (write) + msg_events_read (read)
@@ -119,79 +120,41 @@ type FilterParams struct {
 // FindWithFilters returns events from the read table matching non-nil
 // filters, ordered most-recent first.
 func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Event, error) {
+	var f repocommon.Filter
+	f.EqPtr("type", p.Type)
+	f.Any("type", p.Types)
+	f.EqPtr("source", p.Source)
+	f.EqPtr("subject", p.Subject)
+	f.EqPtr("client_id", p.ClientID)
+	f.Any("client_id", p.ClientIDs)
+	if p.AccessibleClientIDs != nil {
+		f.Clause("(client_id IS NULL OR client_id = ANY($%d))", *p.AccessibleClientIDs)
+	}
+	f.Any("application", p.Applications)
+	f.Any("subdomain", p.Subdomains)
+	f.Any("aggregate", p.Aggregates)
+	// PrincipalID filter dropped — no backing column on msg_events_read.
+	f.EqPtr("correlation_id", p.CorrelationID)
+	if p.Since != nil {
+		f.Clause("created_at >= $%d", *p.Since)
+	}
+	if p.Until != nil {
+		f.Clause("created_at <= $%d", *p.Until)
+	}
 	q := `SELECT id, spec_version, type, source, subject, time, data,
 		     deduplication_id, client_id, message_group, correlation_id,
 		     causation_id, created_at, application, subdomain, aggregate,
 		     projected_at
-		  FROM msg_events_read`
-	args := []any{}
-	conds := []string{}
-	add := func(col string, v any) {
-		args = append(args, v)
-		conds = append(conds, fmt.Sprintf("%s = $%d", col, len(args)))
-	}
-	addAny := func(col string, vs []string) {
-		args = append(args, vs)
-		conds = append(conds, fmt.Sprintf("%s = ANY($%d)", col, len(args)))
-	}
-	if p.Type != nil {
-		add("type", *p.Type)
-	}
-	if len(p.Types) > 0 {
-		addAny("type", p.Types)
-	}
-	if p.Source != nil {
-		add("source", *p.Source)
-	}
-	if p.Subject != nil {
-		add("subject", *p.Subject)
-	}
-	if p.ClientID != nil {
-		add("client_id", *p.ClientID)
-	}
-	if len(p.ClientIDs) > 0 {
-		addAny("client_id", p.ClientIDs)
-	}
-	if p.AccessibleClientIDs != nil {
-		args = append(args, *p.AccessibleClientIDs)
-		conds = append(conds, fmt.Sprintf("(client_id IS NULL OR client_id = ANY($%d))", len(args)))
-	}
-	if len(p.Applications) > 0 {
-		addAny("application", p.Applications)
-	}
-	if len(p.Subdomains) > 0 {
-		addAny("subdomain", p.Subdomains)
-	}
-	if len(p.Aggregates) > 0 {
-		addAny("aggregate", p.Aggregates)
-	}
-	// PrincipalID filter dropped — no backing column on msg_events_read.
-	if p.CorrelationID != nil {
-		add("correlation_id", *p.CorrelationID)
-	}
-	if p.Since != nil {
-		args = append(args, *p.Since)
-		conds = append(conds, fmt.Sprintf("created_at >= $%d", len(args)))
-	}
-	if p.Until != nil {
-		args = append(args, *p.Until)
-		conds = append(conds, fmt.Sprintf("created_at <= $%d", len(args)))
-	}
-	if len(conds) > 0 {
-		q += " WHERE " + strings.Join(conds, " AND ")
-	}
-	q += " ORDER BY created_at DESC"
+		  FROM msg_events_read` + f.Where() + " ORDER BY created_at DESC"
 	limit := p.Limit
 	if limit <= 0 || limit > 1000 {
 		limit = 100
 	}
-	args = append(args, limit)
-	q += fmt.Sprintf(" LIMIT $%d", len(args))
+	q += fmt.Sprintf(" LIMIT $%d", f.Arg(limit))
 	if p.Offset > 0 {
-		args = append(args, p.Offset)
-		q += fmt.Sprintf(" OFFSET $%d", len(args))
+		q += fmt.Sprintf(" OFFSET $%d", f.Arg(p.Offset))
 	}
-	rows, err := r.pool.Query(ctx, q, args...)
+	rows, err := r.pool.Query(ctx, q, f.Args()...)
 	if err != nil {
 		return nil, err
 	}

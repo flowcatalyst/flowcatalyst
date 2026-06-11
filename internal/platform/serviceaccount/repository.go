@@ -2,13 +2,11 @@ package serviceaccount
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -31,26 +29,22 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 
 // FindByID loads by id.
 func (r *Repository) FindByID(ctx context.Context, id string) (*ServiceAccount, error) {
-	row, err := r.q.ServiceAccountFindByID(ctx, id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	res, err := r.q.ServiceAccountFindByID(ctx, id)
+	row, err := repocommon.One(res, err, "service_account repo")
+	if row == nil || err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("service_account repo: %w", err)
-	}
-	return rowToServiceAccount(row), nil
+	return rowToServiceAccount(*row), nil
 }
 
 // FindByCode loads by unique code.
 func (r *Repository) FindByCode(ctx context.Context, code string) (*ServiceAccount, error) {
-	row, err := r.q.ServiceAccountFindByCode(ctx, code)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	res, err := r.q.ServiceAccountFindByCode(ctx, code)
+	row, err := repocommon.One(res, err, "service_account repo")
+	if row == nil || err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("service_account repo: %w", err)
-	}
-	return rowToServiceAccount(row), nil
+	return rowToServiceAccount(*row), nil
 }
 
 // FindAll returns every service account.

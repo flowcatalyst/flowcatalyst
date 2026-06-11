@@ -9,12 +9,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
@@ -171,59 +172,42 @@ type ListParams struct {
 // optional filters + keyset cursor. The caller fetches Limit+1 to detect
 // whether more pages exist.
 func (r *Repository) FindPage(ctx context.Context, p ListParams) ([]LoginAttempt, error) {
-	conds := []string{"1=1"}
-	var args []any
-	add := func(frag string, val any) {
-		args = append(args, val)
-		conds = append(conds, fmt.Sprintf(frag, len(args)))
-	}
-	if p.AttemptType != nil {
-		add("attempt_type = $%d", *p.AttemptType)
-	}
-	if p.Outcome != nil {
-		add("outcome = $%d", *p.Outcome)
-	}
-	if p.Identifier != nil {
-		add("identifier = $%d", *p.Identifier)
-	}
-	if p.PrincipalID != nil {
-		add("principal_id = $%d", *p.PrincipalID)
-	}
+	var f repocommon.Filter
+	f.EqPtr("attempt_type", p.AttemptType)
+	f.EqPtr("outcome", p.Outcome)
+	f.EqPtr("identifier", p.Identifier)
+	f.EqPtr("principal_id", p.PrincipalID)
 	if p.DateFrom != nil {
-		add("attempted_at >= $%d", *p.DateFrom)
+		f.Clause("attempted_at >= $%d", *p.DateFrom)
 	}
 	if p.DateTo != nil {
-		add("attempted_at <= $%d", *p.DateTo)
+		f.Clause("attempted_at <= $%d", *p.DateTo)
 	}
 	if p.AfterTime != nil && p.AfterID != nil {
-		args = append(args, *p.AfterTime, *p.AfterID)
-		conds = append(conds, fmt.Sprintf("(attempted_at, id) < ($%d, $%d)", len(args)-1, len(args)))
+		// Two-argument keyset condition: push AfterTime first, then let
+		// Clause append AfterID and fill in its positional index.
+		t := f.Arg(*p.AfterTime)
+		f.Clause(fmt.Sprintf("(attempted_at, id) < ($%d, $%%d)", t), *p.AfterID)
 	}
-	args = append(args, p.Limit)
+	limit := f.Arg(p.Limit)
 	q := `SELECT id, attempt_type, outcome, failure_reason, identifier, principal_id,
 	             ip_address, user_agent, attempted_at
-	        FROM iam_login_attempts
-	       WHERE ` + strings.Join(conds, " AND ") +
-		fmt.Sprintf(" ORDER BY attempted_at DESC, id DESC LIMIT $%d", len(args))
+	        FROM iam_login_attempts` + f.Where() +
+		fmt.Sprintf(" ORDER BY attempted_at DESC, id DESC LIMIT $%d", limit)
 
-	rows, err := r.pool.Query(ctx, q, args...)
+	rows, err := r.pool.Query(ctx, q, f.Args()...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var out []LoginAttempt
-	for rows.Next() {
-		var a LoginAttempt
-		var attemptType, outcome string
-		if err := rows.Scan(&a.ID, &attemptType, &outcome, &a.FailureReason,
-			&a.Identifier, &a.PrincipalID, &a.IPAddress, &a.UserAgent, &a.AttemptedAt); err != nil {
-			return nil, err
-		}
-		a.AttemptType = ParseAttemptType(attemptType)
-		a.Outcome = ParseOutcome(outcome)
-		out = append(out, a)
+	collected, err := pgx.CollectRows(rows, pgx.RowToStructByName[dbq.IamLoginAttempt])
+	if err != nil {
+		return nil, err
 	}
-	return out, rows.Err()
+	var out []LoginAttempt
+	for _, row := range collected {
+		out = append(out, rowToLoginAttempt(row))
+	}
+	return out, nil
 }
 
 // FindRecentByIdentifier returns the most recent attempts for an identifier.
@@ -236,18 +220,27 @@ func (r *Repository) FindRecentByIdentifier(ctx context.Context, identifier stri
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var out []LoginAttempt
-	for rows.Next() {
-		var a LoginAttempt
-		var attemptType, outcome string
-		if err := rows.Scan(&a.ID, &attemptType, &outcome, &a.FailureReason,
-			&a.Identifier, &a.PrincipalID, &a.IPAddress, &a.UserAgent, &a.AttemptedAt); err != nil {
-			return nil, err
-		}
-		a.AttemptType = ParseAttemptType(attemptType)
-		a.Outcome = ParseOutcome(outcome)
-		out = append(out, a)
+	collected, err := pgx.CollectRows(rows, pgx.RowToStructByName[dbq.IamLoginAttempt])
+	if err != nil {
+		return nil, err
 	}
-	return out, rows.Err()
+	var out []LoginAttempt
+	for _, row := range collected {
+		out = append(out, rowToLoginAttempt(row))
+	}
+	return out, nil
+}
+
+func rowToLoginAttempt(row dbq.IamLoginAttempt) LoginAttempt {
+	return LoginAttempt{
+		ID:            row.ID,
+		AttemptType:   ParseAttemptType(row.AttemptType),
+		Outcome:       ParseOutcome(row.Outcome),
+		FailureReason: row.FailureReason,
+		Identifier:    row.Identifier,
+		PrincipalID:   row.PrincipalID,
+		IPAddress:     row.IpAddress,
+		UserAgent:     row.UserAgent,
+		AttemptedAt:   row.AttemptedAt,
+	}
 }

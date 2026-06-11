@@ -16,6 +16,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
@@ -39,149 +40,23 @@ const tag = "applications"
 
 // Register mounts the application endpoints.
 func Register(api huma.API, s *State) {
-	huma.Register(api, huma.Operation{
-		OperationID:   "listApplications",
-		Method:        http.MethodGet,
-		Path:          "/api/applications",
-		Summary:       "List applications",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.list)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "createApplication",
-		Method:        http.MethodPost,
-		Path:          "/api/applications",
-		Summary:       "Create an application",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusCreated,
-	}, s.create)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getApplicationByCode",
-		Method:        http.MethodGet,
-		Path:          "/api/applications/by-code/{code}",
-		Summary:       "Get an application by code",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.getByCode)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getApplication",
-		Method:        http.MethodGet,
-		Path:          "/api/applications/{id}",
-		Summary:       "Get an application by id",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.getByID)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "updateApplication",
-		Method:        http.MethodPut,
-		Path:          "/api/applications/{id}",
-		Summary:       "Update an application",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.update)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "activateApplication",
-		Method:        http.MethodPost,
-		Path:          "/api/applications/{id}/activate",
-		Summary:       "Activate an application",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.activate)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "deactivateApplication",
-		Method:        http.MethodPost,
-		Path:          "/api/applications/{id}/deactivate",
-		Summary:       "Deactivate an application",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.deactivate)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "deleteApplication",
-		Method:        http.MethodDelete,
-		Path:          "/api/applications/{id}",
-		Summary:       "Delete an application",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.delete)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "attachApplicationServiceAccount",
-		Method:        http.MethodPost,
-		Path:          "/api/applications/{id}/service-account",
-		Summary:       "Attach a service account to an application",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.attachServiceAccount)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "listApplicationClientConfigs",
-		Method:        http.MethodGet,
-		Path:          "/api/applications/{id}/clients",
-		Summary:       "List per-client configurations for an application",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.listClientConfigs)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "enableApplicationForClient",
-		Method:        http.MethodPost,
-		Path:          "/api/applications/{id}/clients/{clientId}/enable",
-		Summary:       "Enable an application for a client",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.enableForClient)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "disableApplicationForClient",
-		Method:        http.MethodPost,
-		Path:          "/api/applications/{id}/clients/{clientId}/disable",
-		Summary:       "Disable an application for a client",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.disableForClient)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "provisionApplicationServiceAccount",
-		Method:        http.MethodPost,
-		Path:          "/api/applications/{id}/provision-service-account",
-		Summary:       "Create + attach a dedicated service account for the application",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusCreated,
-	}, s.provisionServiceAccount)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "provisionApplicationLoginClient",
-		Method:        http.MethodPost,
-		Path:          "/api/applications/{id}/provision-login-client",
-		Summary:       "Create a public OAuth login client for the application",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusCreated,
-	}, s.provisionLoginClient)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "listApplicationRoles",
-		Method:        http.MethodGet,
-		Path:          "/api/applications/by-id/{id}/roles",
-		Summary:       "List roles registered against an application",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.listApplicationRoles)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getApplicationClientConfig",
-		Method:        http.MethodGet,
-		Path:          "/api/applications/{id}/clients/{clientId}",
-		Summary:       "Get a single application-client config",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.getClientConfig)
+	g := apiroute.New(api, tag)
+	apiroute.Get(g, "listApplications", "/api/applications", "List applications", s.list)
+	apiroute.Post(g, "createApplication", "/api/applications", "Create an application", http.StatusCreated, s.create)
+	apiroute.Get(g, "getApplicationByCode", "/api/applications/by-code/{code}", "Get an application by code", s.getByCode)
+	apiroute.Get(g, "getApplication", "/api/applications/{id}", "Get an application by id", s.getByID)
+	apiroute.Put(g, "updateApplication", "/api/applications/{id}", "Update an application", http.StatusNoContent, s.update)
+	apiroute.Post(g, "activateApplication", "/api/applications/{id}/activate", "Activate an application", http.StatusOK, s.activate)
+	apiroute.Post(g, "deactivateApplication", "/api/applications/{id}/deactivate", "Deactivate an application", http.StatusOK, s.deactivate)
+	apiroute.Delete(g, "deleteApplication", "/api/applications/{id}", "Delete an application", http.StatusNoContent, s.delete)
+	apiroute.Post(g, "attachApplicationServiceAccount", "/api/applications/{id}/service-account", "Attach a service account to an application", http.StatusNoContent, s.attachServiceAccount)
+	apiroute.Get(g, "listApplicationClientConfigs", "/api/applications/{id}/clients", "List per-client configurations for an application", s.listClientConfigs)
+	apiroute.Post(g, "enableApplicationForClient", "/api/applications/{id}/clients/{clientId}/enable", "Enable an application for a client", http.StatusNoContent, s.enableForClient)
+	apiroute.Post(g, "disableApplicationForClient", "/api/applications/{id}/clients/{clientId}/disable", "Disable an application for a client", http.StatusNoContent, s.disableForClient)
+	apiroute.Post(g, "provisionApplicationServiceAccount", "/api/applications/{id}/provision-service-account", "Create + attach a dedicated service account for the application", http.StatusCreated, s.provisionServiceAccount)
+	apiroute.Post(g, "provisionApplicationLoginClient", "/api/applications/{id}/provision-login-client", "Create a public OAuth login client for the application", http.StatusCreated, s.provisionLoginClient)
+	apiroute.Get(g, "listApplicationRoles", "/api/applications/by-id/{id}/roles", "List roles registered against an application", s.listApplicationRoles)
+	apiroute.Get(g, "getApplicationClientConfig", "/api/applications/{id}/clients/{clientId}", "Get a single application-client config", s.getClientConfig)
 }
 
 type listInput struct {
@@ -189,42 +64,22 @@ type listInput struct {
 	Active string `query:"active"`
 }
 
-type listOutput struct {
-	Body ApplicationListResponse
-}
-
-func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
+func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[ApplicationListResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadApplications(ac); err != nil {
 		return nil, err
 	}
-	var appType, active *string
-	if in.Type != "" {
-		appType = &in.Type
-	}
-	if in.Active != "" {
-		active = &in.Active
-	}
+	appType := apicommon.OptStr(in.Type)
+	active := apicommon.OptStr(in.Active)
 	rows, err := s.Repo.FindWithFilters(ctx, appType, active)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_with_filters failed", err)
 	}
-	out := make([]ApplicationResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, fromEntity(&rows[i]))
-	}
-	return &listOutput{Body: ApplicationListResponse{Applications: out, Total: len(out)}}, nil
+	out := apicommon.MapSlice(rows, fromEntity)
+	return &apicommon.Out[ApplicationListResponse]{Body: ApplicationListResponse{Applications: out, Total: len(out)}}, nil
 }
 
-type getInput struct {
-	ID string `path:"id"`
-}
-
-type getOutput struct {
-	Body ApplicationResponse
-}
-
-func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
+func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ApplicationResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadApplications(ac); err != nil {
 		return nil, err
@@ -236,14 +91,14 @@ func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
 	if a == nil {
 		return nil, httperror.NotFound("Application", in.ID)
 	}
-	return &getOutput{Body: fromEntity(a)}, nil
+	return &apicommon.Out[ApplicationResponse]{Body: fromEntity(a)}, nil
 }
 
 type getByCodeInput struct {
 	Code string `path:"code"`
 }
 
-func (s *State) getByCode(ctx context.Context, in *getByCodeInput) (*getOutput, error) {
+func (s *State) getByCode(ctx context.Context, in *getByCodeInput) (*apicommon.Out[ApplicationResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadApplications(ac); err != nil {
 		return nil, err
@@ -255,18 +110,10 @@ func (s *State) getByCode(ctx context.Context, in *getByCodeInput) (*getOutput, 
 	if a == nil {
 		return nil, httperror.NotFound("Application", in.Code)
 	}
-	return &getOutput{Body: fromEntity(a)}, nil
+	return &apicommon.Out[ApplicationResponse]{Body: fromEntity(a)}, nil
 }
 
-type createInput struct {
-	Body CreateApplicationRequest
-}
-
-type createOutput struct {
-	Body apicommon.CreatedResponse
-}
-
-func (s *State) create(ctx context.Context, in *createInput) (*createOutput, error) {
+func (s *State) create(ctx context.Context, in *apicommon.In[CreateApplicationRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteApplications(ac); err != nil {
 		return nil, err
@@ -276,7 +123,7 @@ func (s *State) create(ctx context.Context, in *createInput) (*createOutput, err
 	if err != nil {
 		return nil, err
 	}
-	return &createOutput{Body: apicommon.CreatedResponse{ID: committed.Event().ApplicationID}}, nil
+	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: committed.Event().ApplicationID}}, nil
 }
 
 type updateInput struct {
@@ -284,9 +131,7 @@ type updateInput struct {
 	Body UpdateApplicationRequest
 }
 
-type emptyOutput struct{}
-
-func (s *State) update(ctx context.Context, in *updateInput) (*emptyOutput, error) {
+func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteApplications(ac); err != nil {
 		return nil, err
@@ -295,14 +140,10 @@ func (s *State) update(ctx context.Context, in *updateInput) (*emptyOutput, erro
 	if _, err := operations.UpdateApplication(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
-type idInput struct {
-	ID string `path:"id"`
-}
-
-func (s *State) activate(ctx context.Context, in *idInput) (*getOutput, error) {
+func (s *State) activate(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ApplicationResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteApplications(ac); err != nil {
 		return nil, err
@@ -314,7 +155,7 @@ func (s *State) activate(ctx context.Context, in *idInput) (*getOutput, error) {
 	return s.refreshedApp(ctx, in.ID)
 }
 
-func (s *State) deactivate(ctx context.Context, in *idInput) (*getOutput, error) {
+func (s *State) deactivate(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ApplicationResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteApplications(ac); err != nil {
 		return nil, err
@@ -328,7 +169,7 @@ func (s *State) deactivate(ctx context.Context, in *idInput) (*getOutput, error)
 
 // refreshedApp re-fetches an application and returns it as the standard
 // ApplicationResponse body. Used by mutations whose result the SPA reads.
-func (s *State) refreshedApp(ctx context.Context, id string) (*getOutput, error) {
+func (s *State) refreshedApp(ctx context.Context, id string) (*apicommon.Out[ApplicationResponse], error) {
 	a, err := s.Repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
@@ -336,10 +177,10 @@ func (s *State) refreshedApp(ctx context.Context, id string) (*getOutput, error)
 	if a == nil {
 		return nil, httperror.NotFound("Application", id)
 	}
-	return &getOutput{Body: fromEntity(a)}, nil
+	return &apicommon.Out[ApplicationResponse]{Body: fromEntity(a)}, nil
 }
 
-func (s *State) delete(ctx context.Context, in *idInput) (*emptyOutput, error) {
+func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanDeleteApplications(ac); err != nil {
 		return nil, err
@@ -348,7 +189,7 @@ func (s *State) delete(ctx context.Context, in *idInput) (*emptyOutput, error) {
 	if _, err := operations.DeleteApplication(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
 type attachSAInput struct {
@@ -356,7 +197,7 @@ type attachSAInput struct {
 	Body AttachServiceAccountRequest
 }
 
-func (s *State) attachServiceAccount(ctx context.Context, in *attachSAInput) (*emptyOutput, error) {
+func (s *State) attachServiceAccount(ctx context.Context, in *attachSAInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
@@ -370,18 +211,10 @@ func (s *State) attachServiceAccount(ctx context.Context, in *attachSAInput) (*e
 		}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
-type listConfigsInput struct {
-	ID string `path:"id"`
-}
-
-type listConfigsOutput struct {
-	Body ClientConfigListResponse
-}
-
-func (s *State) listClientConfigs(ctx context.Context, in *listConfigsInput) (*listConfigsOutput, error) {
+func (s *State) listClientConfigs(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ClientConfigListResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadApplications(ac); err != nil {
 		return nil, err
@@ -390,11 +223,8 @@ func (s *State) listClientConfigs(ctx context.Context, in *listConfigsInput) (*l
 	if err != nil {
 		return nil, usecase.Internal("REPO", "list client configs failed", err)
 	}
-	out := make([]ClientConfigResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, clientConfigFromEntity(&rows[i]))
-	}
-	return &listConfigsOutput{Body: ClientConfigListResponse{Items: out}}, nil
+	out := apicommon.MapSlice(rows, clientConfigFromEntity)
+	return &apicommon.Out[ClientConfigListResponse]{Body: ClientConfigListResponse{Items: out}}, nil
 }
 
 type clientToggleInput struct {
@@ -402,7 +232,7 @@ type clientToggleInput struct {
 	ClientID string `path:"clientId"`
 }
 
-func (s *State) enableForClient(ctx context.Context, in *clientToggleInput) (*emptyOutput, error) {
+func (s *State) enableForClient(ctx context.Context, in *clientToggleInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
@@ -412,10 +242,10 @@ func (s *State) enableForClient(ctx context.Context, in *clientToggleInput) (*em
 		operations.EnableForClientCommand{ApplicationID: in.ID, ClientID: in.ClientID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
-func (s *State) disableForClient(ctx context.Context, in *clientToggleInput) (*emptyOutput, error) {
+func (s *State) disableForClient(ctx context.Context, in *clientToggleInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
@@ -425,21 +255,17 @@ func (s *State) disableForClient(ctx context.Context, in *clientToggleInput) (*e
 		operations.DisableForClientCommand{ApplicationID: in.ID, ClientID: in.ClientID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
 // ── provisioning ────────────────────────────────────────────────────────
-
-type provisionSAOutput struct {
-	Body ApplicationProvisionServiceAccountResponse
-}
 
 // provisionServiceAccount creates a dedicated service account, its
 // SERVICE principal, attaches it to the application, and creates a
 // confidential OAuth client — atomically. Mirrors Rust's three-step
 // transactional flow. The OAuth client secret is returned once
 // (plaintext); it's stored hashed.
-func (s *State) provisionServiceAccount(ctx context.Context, in *idInput) (*provisionSAOutput, error) {
+func (s *State) provisionServiceAccount(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ApplicationProvisionServiceAccountResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
@@ -450,7 +276,7 @@ func (s *State) provisionServiceAccount(ctx context.Context, in *idInput) (*prov
 	if err != nil {
 		return nil, err
 	}
-	return &provisionSAOutput{Body: ApplicationProvisionServiceAccountResponse{
+	return &apicommon.Out[ApplicationProvisionServiceAccountResponse]{Body: ApplicationProvisionServiceAccountResponse{
 		Message: "Service account provisioned",
 		ServiceAccount: ApplicationServiceAccountCredentials{
 			PrincipalID: result.ServicePrincipalID,
@@ -469,15 +295,11 @@ type provisionLoginClientInput struct {
 	Body ProvisionLoginClientRequest
 }
 
-type provisionLoginClientOutput struct {
-	Body ApplicationProvisionLoginClientResponse
-}
-
 // provisionLoginClient creates an OAuth client (authorization_code grant)
 // for use as a login client by the application's frontend. PUBLIC clients
 // (the default — SPAs, native apps) enforce PKCE and have no secret;
 // CONFIDENTIAL clients get a plaintext secret returned exactly once.
-func (s *State) provisionLoginClient(ctx context.Context, in *provisionLoginClientInput) (*provisionLoginClientOutput, error) {
+func (s *State) provisionLoginClient(ctx context.Context, in *provisionLoginClientInput) (*apicommon.Out[ApplicationProvisionLoginClientResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
@@ -524,7 +346,7 @@ func (s *State) provisionLoginClient(ctx context.Context, in *provisionLoginClie
 		}
 	}
 
-	return &provisionLoginClientOutput{Body: ApplicationProvisionLoginClientResponse{
+	return &apicommon.Out[ApplicationProvisionLoginClientResponse]{Body: ApplicationProvisionLoginClientResponse{
 		Message: "Login client provisioned",
 		LoginClient: ApplicationLoginClientCredentials{
 			ClientType:   clientType,
@@ -540,27 +362,20 @@ func (s *State) provisionLoginClient(ctx context.Context, in *provisionLoginClie
 
 // ── application roles + single client config ────────────────────────────
 
-type appRolesOutput struct {
-	Body ApplicationRolesResponse
-}
-
-func (s *State) listApplicationRoles(ctx context.Context, in *idInput) (*appRolesOutput, error) {
+func (s *State) listApplicationRoles(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ApplicationRolesResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadApplications(ac); err != nil {
 		return nil, err
 	}
 	if s.Roles == nil {
-		return &appRolesOutput{Body: ApplicationRolesResponse{Roles: []string{}}}, nil
+		return &apicommon.Out[ApplicationRolesResponse]{Body: ApplicationRolesResponse{Roles: []string{}}}, nil
 	}
 	rows, err := s.Roles.FindByApplicationID(ctx, in.ID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "roles_by_application_id failed", err)
 	}
-	out := make([]string, 0, len(rows))
-	for i := range rows {
-		out = append(out, rows[i].Name)
-	}
-	return &appRolesOutput{Body: ApplicationRolesResponse{Roles: out}}, nil
+	out := apicommon.MapSlice(rows, func(r *role.Role) string { return r.Name })
+	return &apicommon.Out[ApplicationRolesResponse]{Body: ApplicationRolesResponse{Roles: out}}, nil
 }
 
 type singleConfigInput struct {
@@ -568,11 +383,7 @@ type singleConfigInput struct {
 	ClientID string `path:"clientId"`
 }
 
-type singleConfigOutput struct {
-	Body ClientConfigResponse
-}
-
-func (s *State) getClientConfig(ctx context.Context, in *singleConfigInput) (*singleConfigOutput, error) {
+func (s *State) getClientConfig(ctx context.Context, in *singleConfigInput) (*apicommon.Out[ClientConfigResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadApplications(ac); err != nil {
 		return nil, err
@@ -584,5 +395,5 @@ func (s *State) getClientConfig(ctx context.Context, in *singleConfigInput) (*si
 	if cfg == nil {
 		return nil, httperror.NotFound("ClientConfig", in.ID+":"+in.ClientID)
 	}
-	return &singleConfigOutput{Body: clientConfigFromEntity(cfg)}, nil
+	return &apicommon.Out[ClientConfigResponse]{Body: clientConfigFromEntity(cfg)}, nil
 }

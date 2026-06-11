@@ -2,14 +2,13 @@ package role
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -26,26 +25,22 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 
 // FindByID loads a role with hydrated permissions.
 func (r *Repository) FindByID(ctx context.Context, id string) (*Role, error) {
-	row, err := r.q.RoleFindByID(ctx, id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	res, err := r.q.RoleFindByID(ctx, id)
+	row, err := repocommon.One(res, err, "role repo")
+	if row == nil || err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("role repo: %w", err)
-	}
-	return r.hydrateOne(ctx, rowToRole(row))
+	return r.hydrateOne(ctx, rowToRole(*row))
 }
 
 // FindByName loads a role by unique name.
 func (r *Repository) FindByName(ctx context.Context, name string) (*Role, error) {
-	row, err := r.q.RoleFindByName(ctx, name)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	res, err := r.q.RoleFindByName(ctx, name)
+	row, err := repocommon.One(res, err, "role repo")
+	if row == nil || err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("role repo: %w", err)
-	}
-	return r.hydrateOne(ctx, rowToRole(row))
+	return r.hydrateOne(ctx, rowToRole(*row))
 }
 
 // FindAll returns every role with permissions hydrated.

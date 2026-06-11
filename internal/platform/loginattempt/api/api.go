@@ -4,13 +4,14 @@ package api
 import (
 	"context"
 	"encoding/base64"
-	"net/http"
 	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/jsontime"
@@ -26,14 +27,8 @@ const tag = "login-attempts"
 
 // Register mounts the login-attempt endpoints.
 func Register(api huma.API, s *State) {
-	huma.Register(api, huma.Operation{
-		OperationID:   "listLoginAttempts",
-		Method:        http.MethodGet,
-		Path:          "/api/login-attempts",
-		Summary:       "List login attempts (cursor-paginated)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.list)
+	g := apiroute.New(api, tag)
+	apiroute.Get(g, "listLoginAttempts", "/api/login-attempts", "List login attempts (cursor-paginated)", s.list)
 }
 
 // LoginAttemptResponse is the wire shape for a single attempt.
@@ -85,11 +80,7 @@ type listInput struct {
 	PageSize    int    `query:"pageSize"`
 }
 
-type listOutput struct {
-	Body LoginAttemptListResponse
-}
-
-func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
+func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[LoginAttemptListResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
@@ -99,18 +90,12 @@ func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
 	if size <= 0 || size > 200 {
 		size = 50
 	}
-	params := loginattempt.ListParams{Limit: size + 1}
-	if in.AttemptType != "" {
-		params.AttemptType = &in.AttemptType
-	}
-	if in.Outcome != "" {
-		params.Outcome = &in.Outcome
-	}
-	if in.Identifier != "" {
-		params.Identifier = &in.Identifier
-	}
-	if in.PrincipalID != "" {
-		params.PrincipalID = &in.PrincipalID
+	params := loginattempt.ListParams{
+		Limit:       size + 1,
+		AttemptType: apicommon.OptStr(in.AttemptType),
+		Outcome:     apicommon.OptStr(in.Outcome),
+		Identifier:  apicommon.OptStr(in.Identifier),
+		PrincipalID: apicommon.OptStr(in.PrincipalID),
 	}
 	if t, ok := parseTime(in.DateFrom); ok {
 		params.DateFrom = &t
@@ -131,17 +116,14 @@ func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
 	if hasMore {
 		rows = rows[:size]
 	}
-	items := make([]LoginAttemptResponse, 0, len(rows))
-	for i := range rows {
-		items = append(items, attemptFromEntity(&rows[i]))
-	}
+	items := apicommon.MapSlice(rows, attemptFromEntity)
 	var next *string
 	if hasMore && len(rows) > 0 {
 		last := rows[len(rows)-1]
 		c := encodeCursor(last.AttemptedAt, last.ID)
 		next = &c
 	}
-	return &listOutput{Body: LoginAttemptListResponse{Items: items, HasMore: hasMore, NextCursor: next}}, nil
+	return &apicommon.Out[LoginAttemptListResponse]{Body: LoginAttemptListResponse{Items: items, HasMore: hasMore, NextCursor: next}}, nil
 }
 
 func parseTime(s string) (time.Time, bool) {

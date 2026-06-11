@@ -3,13 +3,12 @@ package client
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -31,26 +30,22 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 
 // FindByID loads by id.
 func (r *Repository) FindByID(ctx context.Context, id string) (*Client, error) {
-	row, err := r.q.ClientFindByID(ctx, id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	res, err := r.q.ClientFindByID(ctx, id)
+	row, err := repocommon.One(res, err, "client repo")
+	if row == nil || err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("client repo: %w", err)
-	}
-	return rowToClient(row)
+	return rowToClient(*row)
 }
 
 // FindByIdentifier loads by unique identifier (URL-safe slug).
 func (r *Repository) FindByIdentifier(ctx context.Context, identifier string) (*Client, error) {
-	row, err := r.q.ClientFindByIdentifier(ctx, identifier)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	res, err := r.q.ClientFindByIdentifier(ctx, identifier)
+	row, err := repocommon.One(res, err, "client repo")
+	if row == nil || err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("client repo: %w", err)
-	}
-	return rowToClient(row)
+	return rowToClient(*row)
 }
 
 // Search performs a case-insensitive prefix match on name + identifier.
