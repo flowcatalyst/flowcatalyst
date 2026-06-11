@@ -85,7 +85,15 @@ func (d *dispatcher) tick(ctx context.Context) error {
 			jobCache[inst.ScheduledJobID] = job
 		}
 		if job == nil {
-			slog.Warn("scheduled-job dispatcher: orphan instance (job gone)", "instance_id", inst.ID)
+			// Job was deleted while the instance sat QUEUED. Mark the
+			// instance terminally DELIVERY_FAILED so it doesn't stay QUEUED
+			// forever (mirrors the Rust tick's orphan handling; no FK/CASCADE
+			// — instances are firing history).
+			slog.Warn("scheduled-job dispatcher: orphan instance (job gone); marking DELIVERY_FAILED",
+				"instance_id", inst.ID, "job_id", inst.ScheduledJobID)
+			if err := d.instances.MarkDeliveryFailed(ctx, inst.ID, "ScheduledJob no longer exists", true); err != nil {
+				slog.Warn("scheduled-job dispatcher: mark_delivery_failed failed", "instance_id", inst.ID, "err", err)
+			}
 			continue
 		}
 		d.dispatchOne(ctx, job, inst)
