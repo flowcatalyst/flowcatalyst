@@ -300,6 +300,23 @@ func CanAccessScope(a *AuthContext, clientID *string) bool {
 	return a.IsAnchor() || a.IsSuperAdmin()
 }
 
+// FilterClientScoped returns the items visible to a under the standard
+// list rule: platform-scoped items (nil client id) are visible to any
+// caller holding the read permission the handler already checked;
+// client-scoped items additionally require CanAccessClient. Not every
+// list uses this rule — principal's is inverted (non-anchors must NOT
+// see platform users) — so only adopt it where the hand-rolled loop had
+// the exact `cid == nil || CanAccessClient(*cid)` shape.
+func FilterClientScoped[T any](a *AuthContext, items []T, clientID func(*T) *string) []T {
+	out := make([]T, 0, len(items))
+	for i := range items {
+		if cid := clientID(&items[i]); cid == nil || a.CanAccessClient(*cid) {
+			out = append(out, items[i])
+		}
+	}
+	return out
+}
+
 // CheckScopeAccess enforces per-resource scope on a by-id operation, on top of
 // the coarse Can* permission check: a client/tenant-scoped resource (clientID
 // non-nil) requires the caller can access that client; a platform-level
