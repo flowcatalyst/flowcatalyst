@@ -9,12 +9,19 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-
-	"github.com/flowcatalyst/flowcatalyst-go/internal/config"
 )
 
+// Config is the Postgres connection config. Zero-valued limits fall back
+// to pgxpool defaults.
+type Config struct {
+	URL                string
+	MaxConnections     int
+	MinConnections     int
+	MaxLifetimeSeconds int
+}
+
 // NewPool creates a pgxpool.Pool tuned to FlowCatalyst defaults.
-func NewPool(ctx context.Context, cfg config.DBConfig) (*pgxpool.Pool, error) {
+func NewPool(ctx context.Context, cfg Config) (*pgxpool.Pool, error) {
 	return NewPoolWithBeforeConnect(ctx, cfg, nil)
 }
 
@@ -23,7 +30,7 @@ func NewPool(ctx context.Context, cfg config.DBConfig) (*pgxpool.Pool, error) {
 // growth + lifetime-recycled connections), so it can inject freshly-rotated
 // credentials — used by the AWS Secrets Manager rotation refresher. nil hook =
 // plain NewPool behaviour.
-func NewPoolWithBeforeConnect(ctx context.Context, cfg config.DBConfig, beforeConnect func(context.Context, *pgx.ConnConfig) error) (*pgxpool.Pool, error) {
+func NewPoolWithBeforeConnect(ctx context.Context, cfg Config, beforeConnect func(context.Context, *pgx.ConnConfig) error) (*pgxpool.Pool, error) {
 	if cfg.URL == "" {
 		return nil, fmt.Errorf("database URL is empty")
 	}

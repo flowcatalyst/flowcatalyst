@@ -20,7 +20,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/frontend"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/config"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/logging"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/migrate"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/seed"
@@ -71,7 +70,7 @@ func main() {
 
 		// DB-secret rotation: when SM mode + DB_SECRET_REFRESH_INTERVAL_MS != 0,
 		// poll for rotated creds and inject them into new connections (no restart).
-		dbCfg := config.DBConfig{URL: cfg.DatabaseURL}
+		dbCfg := database.Config{URL: cfg.DatabaseURL}
 		var beforeConnect func(context.Context, *pgx.ConnConfig) error
 		if refresher, err := server.NewDBSecretRefresher(rootCtx); err != nil {
 			slog.Error("DB secret refresher init failed", "err", err)

@@ -12,7 +12,6 @@ import (
 	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
 	"github.com/spf13/cobra"
 
-	"github.com/flowcatalyst/flowcatalyst-go/internal/config"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/migrate"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/seed"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/database"
@@ -150,7 +149,7 @@ func runFresh(cmd *cobra.Command, _ []string) error {
 		slog.Info("embedded postgres started for fresh", "port", port, "path", dataPath)
 	}
 
-	pool, err := database.NewPool(ctx, config.DBConfig{URL: url})
+	pool, err := database.NewPool(ctx, database.Config{URL: url})
 	if err != nil {
 		return fmt.Errorf("connect: %w", err)
 	}

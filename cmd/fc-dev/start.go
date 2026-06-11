@@ -16,7 +16,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/flowcatalyst/flowcatalyst-go/frontend"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/config"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/migrate"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/seed"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/database"
@@ -131,7 +130,7 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	}
 
 	// ── Connect + migrate + seed ───────────────────────────────────────
-	pool, err := database.NewPool(rootCtx, config.DBConfig{URL: databaseURL})
+	pool, err := database.NewPool(rootCtx, database.Config{URL: databaseURL})
 	if err != nil {
 		return fmt.Errorf("connect: %w", err)
 	}

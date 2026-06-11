@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"golang.org/x/time/rate"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/envutil"
 )
 
 // Governor is a per-instance, in-memory keyed token-bucket limiter that sits
@@ -46,8 +48,8 @@ type GovernorConfig struct {
 // FC_OAUTH_TOKEN_IP_BURST (60) — the per-IP quota at /oauth/token.
 func OAuthTokenIPGovernorFromEnv() GovernorConfig {
 	return GovernorConfig{
-		PerMinute: envU32("FC_OAUTH_TOKEN_IP_RATE_PER_MIN", 120),
-		Burst:     envU32("FC_OAUTH_TOKEN_IP_BURST", 60),
+		PerMinute: envutil.Uint32("FC_OAUTH_TOKEN_IP_RATE_PER_MIN", 120),
+		Burst:     envutil.Uint32("FC_OAUTH_TOKEN_IP_BURST", 60),
 	}
 }
 
@@ -56,8 +58,8 @@ func OAuthTokenIPGovernorFromEnv() GovernorConfig {
 // /oauth/token.
 func OAuthTokenClientGovernorFromEnv() GovernorConfig {
 	return GovernorConfig{
-		PerMinute: envU32("FC_OAUTH_TOKEN_CLIENT_RATE_PER_MIN", 60),
-		Burst:     envU32("FC_OAUTH_TOKEN_CLIENT_BURST", 30),
+		PerMinute: envutil.Uint32("FC_OAUTH_TOKEN_CLIENT_RATE_PER_MIN", 60),
+		Burst:     envutil.Uint32("FC_OAUTH_TOKEN_CLIENT_BURST", 30),
 	}
 }
 
@@ -67,8 +69,8 @@ func OAuthTokenClientGovernorFromEnv() GovernorConfig {
 // interactive login.
 func OIDCBridgeGovernorFromEnv() GovernorConfig {
 	return GovernorConfig{
-		PerMinute: envU32("FC_OIDC_RATE_PER_MIN", 60),
-		Burst:     envU32("FC_OIDC_BURST", 30),
+		PerMinute: envutil.Uint32("FC_OIDC_RATE_PER_MIN", 60),
+		Burst:     envutil.Uint32("FC_OIDC_BURST", 30),
 	}
 }
 

@@ -107,6 +107,11 @@ type EnvCfg struct {
 
 	// JWT signing.
 	JWTSigningKeyPath string
+	// JWTPreviousPublicKey is the validation-only previous public key for
+	// zero-downtime key rotation (FLOWCATALYST_JWT_PREVIOUS_PUBLIC_KEY),
+	// PEM-normalized; empty when unset or not a real PEM — it's optional,
+	// so a missing or unparseable value must NOT stop the platform booting.
+	JWTPreviousPublicKey string
 
 	// MCP — the read-only MCP server proxies into the platform. URL is
 	// where it dials the platform itself; for fc-dev it's the local
@@ -192,6 +197,7 @@ func LoadEnv() EnvCfg {
 		StandbyLockKey:  envOr("FC_STANDBY_LOCK_KEY", "fc:server:leader"),
 
 		JWTSigningKeyPath:    os.Getenv("FC_JWT_SIGNING_KEY_PATH"),
+		JWTPreviousPublicKey: normalizedPreviousPublicKey(),
 		AuthAllowTestHeaders: envBool("FC_AUTH_ALLOW_TEST_HEADERS", false),
 
 		MCPPlatformURL:  envFirst("FLOWCATALYST_URL", "FC_MCP_PLATFORM_URL", "", ""),
@@ -227,6 +233,19 @@ func ResolveDatabaseURL() string {
 		return "postgresql://" + username + "@" + hostPort + "/" + name
 	}
 	return "postgresql://" + username + ":" + url.QueryEscape(password) + "@" + hostPort + "/" + name
+}
+
+// normalizedPreviousPublicKey reads FLOWCATALYST_JWT_PREVIOUS_PUBLIC_KEY,
+// normalizes the SSM/env PEM (same \n mangling as the private key), and
+// drops it unless it's a real PEM. Matches Rust's
+// FLOWCATALYST_JWT_PREVIOUS_PUBLIC_KEY. (The current key's public half is
+// derived from the signing key.)
+func normalizedPreviousPublicKey() string {
+	v := NormalizePEM(os.Getenv("FLOWCATALYST_JWT_PREVIOUS_PUBLIC_KEY"))
+	if !strings.Contains(v, "-----BEGIN") {
+		return ""
+	}
+	return v
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────

@@ -325,6 +325,8 @@ env var (or its legacy alias `PORT`) overrides the binary default.
 | Metrics       | `FC_METRICS_PORT=9090` | `9090`           | `FC_METRICS_PORT`        |
 | MCP           | `127.0.0.1:8090`    | `127.0.0.1:3100`    | `FC_MCP_PORT` / `FC_MCP_BIND` |
 
+The complete environment-variable reference (every variable the server, subsystems, and `fc-dev` read, with defaults and aliases) is in [`docs/environment-variables.md`](docs/environment-variables.md).
+
 ---
 
 ## Documentation

@@ -18,11 +18,10 @@ package loginbackoff
 
 import (
 	"context"
-	"os"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/envutil"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt"
 )
 
@@ -40,20 +39,13 @@ type Policy struct {
 // the Rust defaults.
 func PolicyFromEnv() Policy {
 	return Policy{
-		FreeAttempts:     uint32(envInt("FC_LOGIN_BACKOFF_FREE_ATTEMPTS", 3)),
-		BaseDelaySecs:    uint32(envInt("FC_LOGIN_BACKOFF_BASE_SECS", 2)),
-		MaxDelaySecs:     uint32(envInt("FC_LOGIN_BACKOFF_MAX_SECS", 300)),
-		GlobalWindowSecs: int64(envInt("FC_LOGIN_GLOBAL_WINDOW_SECS", 3600)),
-		GlobalCeiling:    int64(envInt("FC_LOGIN_GLOBAL_CEILING", 100)),
-		GlobalLockSecs:   int64(envInt("FC_LOGIN_GLOBAL_LOCK_SECS", 900)),
+		FreeAttempts:     uint32(envutil.Int("FC_LOGIN_BACKOFF_FREE_ATTEMPTS", 3)),
+		BaseDelaySecs:    uint32(envutil.Int("FC_LOGIN_BACKOFF_BASE_SECS", 2)),
+		MaxDelaySecs:     uint32(envutil.Int("FC_LOGIN_BACKOFF_MAX_SECS", 300)),
+		GlobalWindowSecs: int64(envutil.Int("FC_LOGIN_GLOBAL_WINDOW_SECS", 3600)),
+		GlobalCeiling:    int64(envutil.Int("FC_LOGIN_GLOBAL_CEILING", 100)),
+		GlobalLockSecs:   int64(envutil.Int("FC_LOGIN_GLOBAL_LOCK_SECS", 900)),
 	}
-}
-
-func envInt(name string, def int) int {
-	if v, err := strconv.Atoi(os.Getenv(name)); err == nil {
-		return v
-	}
-	return def
 }
 
 // ComputeDelaySecs returns the required delay given the failure count since

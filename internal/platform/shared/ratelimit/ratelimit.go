@@ -22,6 +22,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/envutil"
 )
 
 // Bucket names a limiter scope. Keys/rows are scoped under it so distinct
@@ -60,12 +62,12 @@ type Policies struct {
 // PoliciesFromEnv reads the FC_RL_* knobs, matching the Rust defaults.
 func PoliciesFromEnv() Policies {
 	return Policies{
-		OAuthTokenIP:         Policy{time.Minute, envU32("FC_RL_OAUTH_TOKEN_IP_PER_MIN", 600)},
-		OAuthTokenClient:     Policy{time.Minute, envU32("FC_RL_OAUTH_TOKEN_CLIENT_PER_MIN", 300)},
-		OAuthAuthorizeIP:     Policy{time.Minute, envU32("FC_RL_OAUTH_AUTHORIZE_IP_PER_MIN", 600)},
-		OAuthAuthorizeClient: Policy{time.Minute, envU32("FC_RL_OAUTH_AUTHORIZE_CLIENT_PER_MIN", 300)},
-		PasswordResetIP:      Policy{time.Hour, envU32("FC_RL_PASSWORD_RESET_IP_PER_HOUR", 20)},
-		PasswordResetEmail:   Policy{time.Hour, envU32("FC_RL_PASSWORD_RESET_EMAIL_PER_HOUR", 5)},
+		OAuthTokenIP:         Policy{time.Minute, envutil.Uint32("FC_RL_OAUTH_TOKEN_IP_PER_MIN", 600)},
+		OAuthTokenClient:     Policy{time.Minute, envutil.Uint32("FC_RL_OAUTH_TOKEN_CLIENT_PER_MIN", 300)},
+		OAuthAuthorizeIP:     Policy{time.Minute, envutil.Uint32("FC_RL_OAUTH_AUTHORIZE_IP_PER_MIN", 600)},
+		OAuthAuthorizeClient: Policy{time.Minute, envutil.Uint32("FC_RL_OAUTH_AUTHORIZE_CLIENT_PER_MIN", 300)},
+		PasswordResetIP:      Policy{time.Hour, envutil.Uint32("FC_RL_PASSWORD_RESET_IP_PER_HOUR", 20)},
+		PasswordResetEmail:   Policy{time.Hour, envutil.Uint32("FC_RL_PASSWORD_RESET_EMAIL_PER_HOUR", 5)},
 	}
 }
 
@@ -83,13 +85,6 @@ func (p Policies) MaxWindow() time.Duration {
 		}
 	}
 	return max
-}
-
-func envU32(name string, def uint32) uint32 {
-	if v, err := strconv.ParseUint(os.Getenv(name), 10, 32); err == nil {
-		return uint32(v)
-	}
-	return def
 }
 
 // Decision is the outcome of CheckAndRecord. RetryAfterSecs is a

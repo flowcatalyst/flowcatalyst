@@ -12,7 +12,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/flowcatalyst/flowcatalyst-go/internal/config"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/outbox"
 	outboxpg "github.com/flowcatalyst/flowcatalyst-go/internal/outbox/postgres"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/database"
@@ -52,7 +51,7 @@ func runOutbox(cmd *cobra.Command, _ []string) error {
 	rootCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	pool, err := database.NewPool(rootCtx, config.DBConfig{URL: sourceURL})
+	pool, err := database.NewPool(rootCtx, database.Config{URL: sourceURL})
 	if err != nil {
 		return fmt.Errorf("connect source: %w", err)
 	}

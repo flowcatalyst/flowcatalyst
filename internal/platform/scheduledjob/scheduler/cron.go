@@ -23,11 +23,10 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
-	"os"
-	"strconv"
 	"sync"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/envutil"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 )
 
@@ -59,31 +58,19 @@ func DefaultConfig() Config {
 //	FC_SCHEDULED_JOB_HTTP_TIMEOUT_SECONDS
 func ConfigFromEnv() Config {
 	c := DefaultConfig()
-	if n, ok := envUint("FC_SCHEDULED_JOB_POLL_SECONDS"); ok {
+	if n, ok := envutil.Uint("FC_SCHEDULED_JOB_POLL_SECONDS"); ok {
 		c.PollInterval = time.Duration(n) * time.Second
 	}
-	if n, ok := envUint("FC_SCHEDULED_JOB_DISPATCH_SECONDS"); ok {
+	if n, ok := envutil.Uint("FC_SCHEDULED_JOB_DISPATCH_SECONDS"); ok {
 		c.DispatchInterval = time.Duration(n) * time.Second
 	}
-	if n, ok := envUint("FC_SCHEDULED_JOB_DISPATCH_BATCH"); ok {
+	if n, ok := envutil.Uint("FC_SCHEDULED_JOB_DISPATCH_BATCH"); ok {
 		c.DispatchBatchSize = int64(n)
 	}
-	if n, ok := envUint("FC_SCHEDULED_JOB_HTTP_TIMEOUT_SECONDS"); ok {
+	if n, ok := envutil.Uint("FC_SCHEDULED_JOB_HTTP_TIMEOUT_SECONDS"); ok {
 		c.HTTPTimeout = time.Duration(n) * time.Second
 	}
 	return c
-}
-
-func envUint(key string) (uint64, bool) {
-	v := os.Getenv(key)
-	if v == "" {
-		return 0, false
-	}
-	n, err := strconv.ParseUint(v, 10, 64)
-	if err != nil {
-		return 0, false
-	}
-	return n, true
 }
 
 // Service owns the poller + dispatcher loops.
