@@ -1,9 +1,24 @@
 # Frontend: adopting the generated OpenAPI types
 
-Status: **infrastructure done, module adoption not started** (2026-06-10).
-This is the punch-list for migrating the SPA's ~30 hand-rolled API modules
-(`frontend/src/api/*.ts`) onto the types generated from the backend's
-OpenAPI lockfile.
+Status: **DONE** (2026-06-11). All 17 migratable (apiFetch) modules alias
+the generated response types; the `Time` schema is patched to `string` at
+generate time (openapi-ts.config.ts — backend Time types carry no JSON
+schema); `make frontend-types-verify` (in `make ci`) regenerates and fails
+on diff, mirroring sqlc-verify. The BFF set (dashboard, filter-options,
+developer, event-types, roles, permissions, processes — all on bffFetch,
+stripped from the spec) and the auth surface (auth, twofactor,
+changePassword — chi-mounted; webauthn — ceremony-shaped) stay hand-rolled,
+each with a header comment saying why. Note: the original priority table
+below listed event-types/roles before discovering they are BFF modules.
+
+Migration surfaced and fixed real drift: creates returning {id} not full
+entities, 204 no-body mutations typed as message envelopes, phantom fields
+(EDM identityProviderType, dispatch-job filter-option shapes — empty
+dropdowns at runtime), a cors create toasting undefined, a nonexistent
+identity-provider by-code route, a phantom scope=GLOBAL config param, and
+one OPEN issue: OAuthClientCreatePage never sends the contract-required
+clientId, so SPA oauth-client creation is rejected today (needs a product
+decision: SPA generates one vs backend derives).
 
 ## Why
 
