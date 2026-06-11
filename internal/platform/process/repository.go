@@ -88,9 +88,11 @@ func (r *Repository) Persist(ctx context.Context, p *Process, tx *usecasepgx.DbT
 		ProcessName: p.ProcessName,
 		Body:        p.Body,
 		DiagramType: p.DiagramType,
-		Tags:        p.Tags,
-		CreatedAt:   p.CreatedAt,
-		UpdatedAt:   time.Now().UTC(),
+		// msg_processes.tags is NOT NULL; normalize here so a nil slice
+		// from any caller (reload round-trip, sync update) can't 23502.
+		Tags:      append([]string{}, p.Tags...),
+		CreatedAt: p.CreatedAt,
+		UpdatedAt: time.Now().UTC(),
 	})
 }
 
@@ -112,7 +114,7 @@ func rowToProcess(row dbq.MsgProcess) *Process {
 		ProcessName: row.ProcessName,
 		Body:        row.Body,
 		DiagramType: row.DiagramType,
-		Tags:        append([]string(nil), row.Tags...),
+		Tags:        append([]string{}, row.Tags...),
 		CreatedAt:   row.CreatedAt,
 		UpdatedAt:   row.UpdatedAt,
 	}
