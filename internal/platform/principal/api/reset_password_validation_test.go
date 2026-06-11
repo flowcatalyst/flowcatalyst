@@ -9,6 +9,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 )
 
@@ -29,9 +30,9 @@ func TestResetPasswordAcceptsSDKBody(t *testing.T) {
 		OperationID: "test-reset-password-validation",
 		Method:      http.MethodPost,
 		Path:        "/api/principals/{id}/reset-password",
-	}, func(_ context.Context, _ *resetPasswordInput) (*statusMessageOutput, error) {
+	}, func(_ context.Context, _ *resetPasswordInput) (*apicommon.Out[apicommon.StatusChangeResponse], error) {
 		// Reaching the handler means body validation passed.
-		return &statusMessageOutput{}, nil
+		return &apicommon.Out[apicommon.StatusChangeResponse]{}, nil
 	})
 
 	// The exact SDK payload must pass validation (no 400).
@@ -66,8 +67,8 @@ func TestSendPasswordResetAllowsEmptyBody(t *testing.T) {
 		OperationID: "test-send-password-reset-body",
 		Method:      http.MethodPost,
 		Path:        "/api/principals/{id}/send-password-reset",
-	}, func(_ context.Context, _ *sendPasswordResetInput) (*statusMessageOutput, error) {
-		return &statusMessageOutput{}, nil
+	}, func(_ context.Context, _ *sendPasswordResetInput) (*apicommon.Out[apicommon.StatusChangeResponse], error) {
+		return &apicommon.Out[apicommon.StatusChangeResponse]{}, nil
 	})
 
 	// Body-less POST (what the SPA sends) must not be a 400.

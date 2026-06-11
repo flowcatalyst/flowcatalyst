@@ -42,6 +42,7 @@ import (
 	roleops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 	scheduledjobops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
@@ -80,89 +81,19 @@ type SyncResultResponse struct {
 // Register mounts the SDK sync endpoints on the supplied huma API. Paths
 // match the Rust sdk_sync_router nested under /api/applications.
 func Register(api huma.API, s *State) {
-	huma.Register(api, huma.Operation{
-		OperationID:   "syncRoles",
-		Method:        http.MethodPost,
-		Path:          "/api/applications/{appCode}/roles/sync",
-		Summary:       "Sync an application's roles (SDK self-registration)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.syncRoles)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "syncEventTypes",
-		Method:        http.MethodPost,
-		Path:          "/api/applications/{appCode}/event-types/sync",
-		Summary:       "Sync an application's event types (SDK self-registration)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.syncEventTypes)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "syncSubscriptions",
-		Method:        http.MethodPost,
-		Path:          "/api/applications/{appCode}/subscriptions/sync",
-		Summary:       "Sync an application's subscriptions (SDK self-registration)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.syncSubscriptions)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "syncDispatchPools",
-		Method:        http.MethodPost,
-		Path:          "/api/applications/{appCode}/dispatch-pools/sync",
-		Summary:       "Sync dispatch pools (SDK self-registration)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.syncDispatchPools)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "syncPrincipals",
-		Method:        http.MethodPost,
-		Path:          "/api/applications/{appCode}/principals/sync",
-		Summary:       "Sync an application's principals (SDK self-registration)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.syncPrincipals)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "syncProcesses",
-		Method:        http.MethodPost,
-		Path:          "/api/applications/{appCode}/processes/sync",
-		Summary:       "Sync an application's processes (SDK self-registration)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.syncProcesses)
-
+	g := apiroute.New(api, tag)
+	apiroute.Post(g, "syncRoles", "/api/applications/{appCode}/roles/sync", "Sync an application's roles (SDK self-registration)", http.StatusOK, s.syncRoles)
+	apiroute.Post(g, "syncEventTypes", "/api/applications/{appCode}/event-types/sync", "Sync an application's event types (SDK self-registration)", http.StatusOK, s.syncEventTypes)
+	apiroute.Post(g, "syncSubscriptions", "/api/applications/{appCode}/subscriptions/sync", "Sync an application's subscriptions (SDK self-registration)", http.StatusOK, s.syncSubscriptions)
+	apiroute.Post(g, "syncDispatchPools", "/api/applications/{appCode}/dispatch-pools/sync", "Sync dispatch pools (SDK self-registration)", http.StatusOK, s.syncDispatchPools)
+	apiroute.Post(g, "syncPrincipals", "/api/applications/{appCode}/principals/sync", "Sync an application's principals (SDK self-registration)", http.StatusOK, s.syncPrincipals)
+	apiroute.Post(g, "syncProcesses", "/api/applications/{appCode}/processes/sync", "Sync an application's processes (SDK self-registration)", http.StatusOK, s.syncProcesses)
 	// SDK compatibility alias: the Laravel SDK's processes()->sync() posts to
 	// /api/processes/sync with applicationCode in the body (unlike every other
 	// resource, which is URL-scoped). Serve that path too so the SDK works.
-	huma.Register(api, huma.Operation{
-		OperationID:   "syncProcessesByBody",
-		Method:        http.MethodPost,
-		Path:          "/api/processes/sync",
-		Summary:       "Sync processes (SDK alias; applicationCode in the body)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.syncProcessesByBody)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "syncScheduledJobs",
-		Method:        http.MethodPost,
-		Path:          "/api/applications/{appCode}/scheduled-jobs/sync",
-		Summary:       "Sync scheduled jobs (SDK self-registration)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.syncScheduledJobs)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "syncOpenapi",
-		Method:        http.MethodPost,
-		Path:          "/api/applications/{appCode}/openapi/sync",
-		Summary:       "Sync an application's OpenAPI document (SDK self-registration)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.syncOpenapi)
+	apiroute.Post(g, "syncProcessesByBody", "/api/processes/sync", "Sync processes (SDK alias; applicationCode in the body)", http.StatusOK, s.syncProcessesByBody)
+	apiroute.Post(g, "syncScheduledJobs", "/api/applications/{appCode}/scheduled-jobs/sync", "Sync scheduled jobs (SDK self-registration)", http.StatusOK, s.syncScheduledJobs)
+	apiroute.Post(g, "syncOpenapi", "/api/applications/{appCode}/openapi/sync", "Sync an application's OpenAPI document (SDK self-registration)", http.StatusOK, s.syncOpenapi)
 }
 
 // resolveApp loads the application by code, returning a 404 when unknown —

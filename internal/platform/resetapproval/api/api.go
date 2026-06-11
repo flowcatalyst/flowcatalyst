@@ -14,6 +14,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/resetapproval"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/jsontime"
@@ -37,30 +38,10 @@ const tag = "reset-approvals"
 
 // Register mounts the queue endpoints.
 func Register(api huma.API, s *State) {
-	huma.Register(api, huma.Operation{
-		OperationID:   "listResetApprovals",
-		Method:        http.MethodGet,
-		Path:          "/api/reset-approvals",
-		Summary:       "List pending lost-device reset requests for your client(s)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.list)
-	huma.Register(api, huma.Operation{
-		OperationID:   "approveResetApproval",
-		Method:        http.MethodPost,
-		Path:          "/api/reset-approvals/{id}/approve",
-		Summary:       "Approve a lost-device reset (emails the user a reset link)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.approve)
-	huma.Register(api, huma.Operation{
-		OperationID:   "denyResetApproval",
-		Method:        http.MethodPost,
-		Path:          "/api/reset-approvals/{id}/deny",
-		Summary:       "Deny a lost-device reset request",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.deny)
+	g := apiroute.New(api, tag)
+	apiroute.Get(g, "listResetApprovals", "/api/reset-approvals", "List pending lost-device reset requests for your client(s)", s.list)
+	apiroute.Post(g, "approveResetApproval", "/api/reset-approvals/{id}/approve", "Approve a lost-device reset (emails the user a reset link)", http.StatusOK, s.approve)
+	apiroute.Post(g, "denyResetApproval", "/api/reset-approvals/{id}/deny", "Deny a lost-device reset request", http.StatusOK, s.deny)
 }
 
 type RequestDTO struct {

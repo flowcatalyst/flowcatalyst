@@ -9,19 +9,17 @@ package operations
 import (
 	"context"
 	"encoding/json"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/validate"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
-
-var codePattern = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
 // ── Create ────────────────────────────────────────────────────────────────
 
@@ -53,7 +51,7 @@ func CreateScheduledJob(
 	if code == "" {
 		return zero, usecase.Validation("CODE_REQUIRED", "code is required")
 	}
-	if !codePattern.MatchString(code) {
+	if !validate.CodePattern.MatchString(code) {
 		return zero, usecase.Validation("INVALID_CODE_FORMAT",
 			"code must start with a lowercase letter and contain only lowercase alphanumeric and hyphens")
 	}

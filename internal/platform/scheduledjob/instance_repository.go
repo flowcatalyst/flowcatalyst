@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 )
 
 // InstanceRepository is the read-side repo for msg_scheduled_job_instances
@@ -235,47 +236,33 @@ func (r *InstanceRepository) ListLogs(ctx context.Context, instanceID string, li
 // buildInstanceQuery composes the WHERE clause + args from filters.
 // withPagination controls whether ORDER BY / LIMIT / OFFSET are
 // appended — Count callers pass false.
-func buildInstanceQuery(base string, f InstanceListFilters, withPagination bool) (string, []any) {
-	q := base
-	args := []any{}
-	conds := []string{}
-	add := func(cond string, val any) {
-		args = append(args, val)
-		conds = append(conds, fmt.Sprintf(cond, len(args)))
+func buildInstanceQuery(base string, fl InstanceListFilters, withPagination bool) (string, []any) {
+	var f repocommon.Filter
+	f.EqPtr("scheduled_job_id", fl.ScheduledJobID)
+	f.EqPtr("client_id", fl.ClientID)
+	if fl.Status != nil {
+		f.Eq("status", string(*fl.Status))
 	}
-	if f.ScheduledJobID != nil {
-		add("scheduled_job_id = $%d", *f.ScheduledJobID)
+	if fl.TriggerKind != nil {
+		f.Eq("trigger_kind", string(*fl.TriggerKind))
 	}
-	if f.ClientID != nil {
-		add("client_id = $%d", *f.ClientID)
+	if fl.From != nil {
+		f.Clause("created_at >= $%d", *fl.From)
 	}
-	if f.Status != nil {
-		add("status = $%d", string(*f.Status))
+	if fl.To != nil {
+		f.Clause("created_at < $%d", *fl.To)
 	}
-	if f.TriggerKind != nil {
-		add("trigger_kind = $%d", string(*f.TriggerKind))
-	}
-	if f.From != nil {
-		add("created_at >= $%d", *f.From)
-	}
-	if f.To != nil {
-		add("created_at < $%d", *f.To)
-	}
-	if len(conds) > 0 {
-		q += " WHERE " + strings.Join(conds, " AND ")
-	}
+	q := base + f.Where()
 	if withPagination {
 		q += " ORDER BY created_at DESC, id DESC"
-		if f.Limit != nil {
-			args = append(args, *f.Limit)
-			q += fmt.Sprintf(" LIMIT $%d", len(args))
+		if fl.Limit != nil {
+			q += fmt.Sprintf(" LIMIT $%d", f.Arg(*fl.Limit))
 		}
-		if f.Offset != nil {
-			args = append(args, *f.Offset)
-			q += fmt.Sprintf(" OFFSET $%d", len(args))
+		if fl.Offset != nil {
+			q += fmt.Sprintf(" OFFSET $%d", f.Arg(*fl.Offset))
 		}
 	}
-	return q, args
+	return q, f.Args()
 }
 
 // scanInstance reads a row into a ScheduledJobInstance. Works for both

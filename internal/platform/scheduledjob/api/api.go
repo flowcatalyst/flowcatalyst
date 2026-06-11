@@ -11,6 +11,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
@@ -30,140 +31,22 @@ const tag = "scheduled-jobs"
 
 // Register mounts the scheduled-job endpoints.
 func Register(api huma.API, s *State) {
-	huma.Register(api, huma.Operation{
-		OperationID:   "listScheduledJobs",
-		Method:        http.MethodGet,
-		Path:          "/api/scheduled-jobs",
-		Summary:       "List scheduled jobs",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.list)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "createScheduledJob",
-		Method:        http.MethodPost,
-		Path:          "/api/scheduled-jobs",
-		Summary:       "Create a scheduled job",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusCreated,
-	}, s.create)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getScheduledJob",
-		Method:        http.MethodGet,
-		Path:          "/api/scheduled-jobs/{id}",
-		Summary:       "Get a scheduled job by id",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.getByID)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "updateScheduledJob",
-		Method:        http.MethodPut,
-		Path:          "/api/scheduled-jobs/{id}",
-		Summary:       "Update a scheduled job",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.update)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "pauseScheduledJob",
-		Method:        http.MethodPost,
-		Path:          "/api/scheduled-jobs/{id}/pause",
-		Summary:       "Pause a scheduled job",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.pause)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "resumeScheduledJob",
-		Method:        http.MethodPost,
-		Path:          "/api/scheduled-jobs/{id}/resume",
-		Summary:       "Resume a scheduled job",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.resume)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "archiveScheduledJob",
-		Method:        http.MethodPost,
-		Path:          "/api/scheduled-jobs/{id}/archive",
-		Summary:       "Archive a scheduled job",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.archive)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "fireScheduledJobNow",
-		Method:        http.MethodPost,
-		Path:          "/api/scheduled-jobs/{id}/fire",
-		Summary:       "Fire a scheduled job immediately",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusAccepted,
-	}, s.fireNow)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "deleteScheduledJob",
-		Method:        http.MethodDelete,
-		Path:          "/api/scheduled-jobs/{id}",
-		Summary:       "Delete a scheduled job",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.delete)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getScheduledJobByCode",
-		Method:        http.MethodGet,
-		Path:          "/api/scheduled-jobs/by-code/{code}",
-		Summary:       "Get a scheduled job by code",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.getByCode)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "listScheduledJobInstances",
-		Method:        http.MethodGet,
-		Path:          "/api/scheduled-jobs/{id}/instances",
-		Summary:       "List firings for a scheduled job",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.listInstances)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getScheduledJobInstance",
-		Method:        http.MethodGet,
-		Path:          "/api/scheduled-jobs/instances/{instanceId}",
-		Summary:       "Get a single scheduled-job instance",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.getInstance)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "listScheduledJobInstanceLogs",
-		Method:        http.MethodGet,
-		Path:          "/api/scheduled-jobs/instances/{instanceId}/logs",
-		Summary:       "List log entries for an instance",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.listInstanceLogs)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "writeScheduledJobInstanceLog",
-		Method:        http.MethodPost,
-		Path:          "/api/scheduled-jobs/instances/{instanceId}/log",
-		Summary:       "Append a log entry to an instance",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.writeInstanceLog)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "completeScheduledJobInstance",
-		Method:        http.MethodPost,
-		Path:          "/api/scheduled-jobs/instances/{instanceId}/complete",
-		Summary:       "Mark a scheduled-job instance as completed",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.completeInstance)
+	g := apiroute.New(api, tag)
+	apiroute.Get(g, "listScheduledJobs", "/api/scheduled-jobs", "List scheduled jobs", s.list)
+	apiroute.Post(g, "createScheduledJob", "/api/scheduled-jobs", "Create a scheduled job", http.StatusCreated, s.create)
+	apiroute.Get(g, "getScheduledJob", "/api/scheduled-jobs/{id}", "Get a scheduled job by id", s.getByID)
+	apiroute.Put(g, "updateScheduledJob", "/api/scheduled-jobs/{id}", "Update a scheduled job", http.StatusNoContent, s.update)
+	apiroute.Post(g, "pauseScheduledJob", "/api/scheduled-jobs/{id}/pause", "Pause a scheduled job", http.StatusNoContent, s.pause)
+	apiroute.Post(g, "resumeScheduledJob", "/api/scheduled-jobs/{id}/resume", "Resume a scheduled job", http.StatusNoContent, s.resume)
+	apiroute.Post(g, "archiveScheduledJob", "/api/scheduled-jobs/{id}/archive", "Archive a scheduled job", http.StatusNoContent, s.archive)
+	apiroute.Post(g, "fireScheduledJobNow", "/api/scheduled-jobs/{id}/fire", "Fire a scheduled job immediately", http.StatusAccepted, s.fireNow)
+	apiroute.Delete(g, "deleteScheduledJob", "/api/scheduled-jobs/{id}", "Delete a scheduled job", http.StatusNoContent, s.delete)
+	apiroute.Get(g, "getScheduledJobByCode", "/api/scheduled-jobs/by-code/{code}", "Get a scheduled job by code", s.getByCode)
+	apiroute.Get(g, "listScheduledJobInstances", "/api/scheduled-jobs/{id}/instances", "List firings for a scheduled job", s.listInstances)
+	apiroute.Get(g, "getScheduledJobInstance", "/api/scheduled-jobs/instances/{instanceId}", "Get a single scheduled-job instance", s.getInstance)
+	apiroute.Get(g, "listScheduledJobInstanceLogs", "/api/scheduled-jobs/instances/{instanceId}/logs", "List log entries for an instance", s.listInstanceLogs)
+	apiroute.Post(g, "writeScheduledJobInstanceLog", "/api/scheduled-jobs/instances/{instanceId}/log", "Append a log entry to an instance", http.StatusNoContent, s.writeInstanceLog)
+	apiroute.Post(g, "completeScheduledJobInstance", "/api/scheduled-jobs/instances/{instanceId}/complete", "Mark a scheduled-job instance as completed", http.StatusNoContent, s.completeInstance)
 }
 
 type listInput struct {
@@ -173,19 +56,13 @@ type listInput struct {
 	apicommon.PageQuery
 }
 
-type listOutput struct {
-	Body apicommon.OffsetPage[ScheduledJobResponse]
-}
-
-func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
+func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[apicommon.OffsetPage[ScheduledJobResponse]], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadScheduledJobs(ac); err != nil {
 		return nil, err
 	}
 	filters := scheduledjob.ListFilters{}
-	if in.Status != "" {
-		filters.Status = &in.Status
-	}
+	filters.Status = apicommon.OptStr(in.Status)
 	if in.ClientID != "" {
 		// The literal "platform" selects platform-scoped jobs (client_id IS
 		// NULL), which the repo expresses as a pointer-to-"". Mirrors the
@@ -197,9 +74,7 @@ func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
 			filters.ClientID = &in.ClientID
 		}
 	}
-	if in.Search != "" {
-		filters.Search = &in.Search
-	}
+	filters.Search = apicommon.OptStr(in.Search)
 	// Scope to accessible clients in SQL (anchor sees all → no scoping) so
 	// COUNT and LIMIT/OFFSET stay consistent across pages.
 	if !ac.IsAnchor() {
@@ -225,18 +100,10 @@ func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
 		out = append(out, resp)
 	}
 	page := apicommon.NewOffsetPage(out, in.PageIndex(), in.PageSizeVal(), total)
-	return &listOutput{Body: page}, nil
+	return &apicommon.Out[apicommon.OffsetPage[ScheduledJobResponse]]{Body: page}, nil
 }
 
-type getInput struct {
-	ID string `path:"id"`
-}
-
-type getOutput struct {
-	Body ScheduledJobResponse
-}
-
-func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
+func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ScheduledJobResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadScheduledJobs(ac); err != nil {
 		return nil, err
@@ -255,18 +122,10 @@ func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
 	if active, err := s.Instances.HasActiveInstance(ctx, j.ID); err == nil {
 		resp.HasActiveInstance = active
 	}
-	return &getOutput{Body: resp}, nil
+	return &apicommon.Out[ScheduledJobResponse]{Body: resp}, nil
 }
 
-type createInput struct {
-	Body CreateScheduledJobRequest
-}
-
-type createOutput struct {
-	Body apicommon.CreatedResponse
-}
-
-func (s *State) create(ctx context.Context, in *createInput) (*createOutput, error) {
+func (s *State) create(ctx context.Context, in *apicommon.In[CreateScheduledJobRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteScheduledJobs(ac); err != nil {
 		return nil, err
@@ -282,7 +141,7 @@ func (s *State) create(ctx context.Context, in *createInput) (*createOutput, err
 	if err != nil {
 		return nil, err
 	}
-	return &createOutput{Body: apicommon.CreatedResponse{ID: committed.Event().ScheduledJobID}}, nil
+	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: committed.Event().ScheduledJobID}}, nil
 }
 
 // requireScopeByID loads the scheduled job and enforces per-resource scope
@@ -305,9 +164,7 @@ type updateInput struct {
 	Body UpdateScheduledJobRequest
 }
 
-type emptyOutput struct{}
-
-func (s *State) update(ctx context.Context, in *updateInput) (*emptyOutput, error) {
+func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteScheduledJobs(ac); err != nil {
 		return nil, err
@@ -319,14 +176,10 @@ func (s *State) update(ctx context.Context, in *updateInput) (*emptyOutput, erro
 	if _, err := operations.UpdateScheduledJob(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
-type idInput struct {
-	ID string `path:"id"`
-}
-
-func (s *State) pause(ctx context.Context, in *idInput) (*emptyOutput, error) {
+func (s *State) pause(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteScheduledJobs(ac); err != nil {
 		return nil, err
@@ -338,10 +191,10 @@ func (s *State) pause(ctx context.Context, in *idInput) (*emptyOutput, error) {
 	if _, err := operations.PauseScheduledJob(ctx, s.Repo, s.UoW, operations.PauseCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
-func (s *State) resume(ctx context.Context, in *idInput) (*emptyOutput, error) {
+func (s *State) resume(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteScheduledJobs(ac); err != nil {
 		return nil, err
@@ -353,10 +206,10 @@ func (s *State) resume(ctx context.Context, in *idInput) (*emptyOutput, error) {
 	if _, err := operations.ResumeScheduledJob(ctx, s.Repo, s.UoW, operations.ResumeCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
-func (s *State) archive(ctx context.Context, in *idInput) (*emptyOutput, error) {
+func (s *State) archive(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteScheduledJobs(ac); err != nil {
 		return nil, err
@@ -368,7 +221,7 @@ func (s *State) archive(ctx context.Context, in *idInput) (*emptyOutput, error) 
 	if _, err := operations.ArchiveScheduledJob(ctx, s.Repo, s.UoW, operations.ArchiveCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
 type fireNowInput struct {
@@ -376,11 +229,7 @@ type fireNowInput struct {
 	Body *FireNowRequest
 }
 
-type fireNowOutput struct {
-	Body FireNowResponse
-}
-
-func (s *State) fireNow(ctx context.Context, in *fireNowInput) (*fireNowOutput, error) {
+func (s *State) fireNow(ctx context.Context, in *fireNowInput) (*apicommon.Out[FireNowResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanFireScheduledJobs(ac); err != nil {
 		return nil, err
@@ -398,14 +247,14 @@ func (s *State) fireNow(ctx context.Context, in *fireNowInput) (*fireNowOutput, 
 	if err != nil {
 		return nil, err
 	}
-	return &fireNowOutput{Body: FireNowResponse{
+	return &apicommon.Out[FireNowResponse]{Body: FireNowResponse{
 		ID:             committed.Event().InstanceID,
 		ScheduledJobID: committed.Event().ScheduledJobID,
 		InstanceID:     committed.Event().InstanceID,
 	}}, nil
 }
 
-func (s *State) delete(ctx context.Context, in *idInput) (*emptyOutput, error) {
+func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanDeleteScheduledJobs(ac); err != nil {
 		return nil, err
@@ -417,7 +266,7 @@ func (s *State) delete(ctx context.Context, in *idInput) (*emptyOutput, error) {
 	if _, err := operations.DeleteScheduledJob(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
 // ── by-code lookup ──────────────────────────────────────────────────────
@@ -427,15 +276,12 @@ type byCodeInput struct {
 	ClientID string `query:"clientId" doc:"Optional client scope; omit for platform-scoped lookup"`
 }
 
-func (s *State) getByCode(ctx context.Context, in *byCodeInput) (*getOutput, error) {
+func (s *State) getByCode(ctx context.Context, in *byCodeInput) (*apicommon.Out[ScheduledJobResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadScheduledJobs(ac); err != nil {
 		return nil, err
 	}
-	var clientID *string
-	if in.ClientID != "" {
-		clientID = &in.ClientID
-	}
+	clientID := apicommon.OptStr(in.ClientID)
 	j, err := s.Repo.FindByCode(ctx, in.Code, clientID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_code failed", err)
@@ -450,7 +296,7 @@ func (s *State) getByCode(ctx context.Context, in *byCodeInput) (*getOutput, err
 	if active, err := s.Instances.HasActiveInstance(ctx, j.ID); err == nil {
 		resp.HasActiveInstance = active
 	}
-	return &getOutput{Body: resp}, nil
+	return &apicommon.Out[ScheduledJobResponse]{Body: resp}, nil
 }
 
 // ── instance endpoints ──────────────────────────────────────────────────
@@ -461,11 +307,7 @@ type listInstancesInput struct {
 	apicommon.PageQuery
 }
 
-type listInstancesOutput struct {
-	Body apicommon.OffsetPage[ScheduledJobInstanceResponse]
-}
-
-func (s *State) listInstances(ctx context.Context, in *listInstancesInput) (*listInstancesOutput, error) {
+func (s *State) listInstances(ctx context.Context, in *listInstancesInput) (*apicommon.Out[apicommon.OffsetPage[ScheduledJobInstanceResponse]], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadScheduledJobs(ac); err != nil {
 		return nil, err
@@ -488,23 +330,16 @@ func (s *State) listInstances(ctx context.Context, in *listInstancesInput) (*lis
 	if err != nil {
 		return nil, usecase.Internal("REPO", "list_instances failed", err)
 	}
-	out := make([]ScheduledJobInstanceResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, instanceToResponse(&rows[i]))
-	}
+	out := apicommon.MapSlice(rows, instanceToResponse)
 	page := apicommon.NewOffsetPage(out, in.PageIndex(), in.PageSizeVal(), total)
-	return &listInstancesOutput{Body: page}, nil
+	return &apicommon.Out[apicommon.OffsetPage[ScheduledJobInstanceResponse]]{Body: page}, nil
 }
 
 type instanceInput struct {
 	InstanceID string `path:"instanceId"`
 }
 
-type instanceOutput struct {
-	Body ScheduledJobInstanceResponse
-}
-
-func (s *State) getInstance(ctx context.Context, in *instanceInput) (*instanceOutput, error) {
+func (s *State) getInstance(ctx context.Context, in *instanceInput) (*apicommon.Out[ScheduledJobInstanceResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadScheduledJobs(ac); err != nil {
 		return nil, err
@@ -522,16 +357,12 @@ func (s *State) getInstance(ctx context.Context, in *instanceInput) (*instanceOu
 	if inst.ClientID != nil && !ac.CanAccessClient(*inst.ClientID) {
 		return nil, httperror.Forbidden("No access to this instance")
 	}
-	return &instanceOutput{Body: instanceToResponse(inst)}, nil
+	return &apicommon.Out[ScheduledJobInstanceResponse]{Body: instanceToResponse(inst)}, nil
 }
 
-// instanceLogsOutput Body is a bare JSON array — the Rust shape for
-// GET /api/scheduled-jobs/instances/{instanceId}/logs.
-type instanceLogsOutput struct {
-	Body []ScheduledJobInstanceLogResponse
-}
-
-func (s *State) listInstanceLogs(ctx context.Context, in *instanceInput) (*instanceLogsOutput, error) {
+// listInstanceLogs's Out[[]…] Body is a bare JSON array — the Rust shape
+// for GET /api/scheduled-jobs/instances/{instanceId}/logs.
+func (s *State) listInstanceLogs(ctx context.Context, in *instanceInput) (*apicommon.Out[[]ScheduledJobInstanceLogResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadScheduledJobs(ac); err != nil {
 		return nil, err
@@ -543,11 +374,8 @@ func (s *State) listInstanceLogs(ctx context.Context, in *instanceInput) (*insta
 	if err != nil {
 		return nil, usecase.Internal("REPO", "list_logs failed", err)
 	}
-	out := make([]ScheduledJobInstanceLogResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, instanceLogToResponse(&rows[i]))
-	}
-	return &instanceLogsOutput{Body: out}, nil
+	out := apicommon.MapSlice(rows, instanceLogToResponse)
+	return &apicommon.Out[[]ScheduledJobInstanceLogResponse]{Body: out}, nil
 }
 
 type writeLogInput struct {
@@ -555,7 +383,7 @@ type writeLogInput struct {
 	Body       WriteInstanceLogRequest
 }
 
-func (s *State) writeInstanceLog(ctx context.Context, in *writeLogInput) (*emptyOutput, error) {
+func (s *State) writeInstanceLog(ctx context.Context, in *writeLogInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteScheduledJobs(ac); err != nil {
 		return nil, err
@@ -585,7 +413,7 @@ func (s *State) writeInstanceLog(ctx context.Context, in *writeLogInput) (*empty
 	if err := s.Instances.WriteLog(ctx, log); err != nil {
 		return nil, usecase.Internal("REPO", "write_log failed", err)
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
 type completeInstanceInput struct {
@@ -593,7 +421,7 @@ type completeInstanceInput struct {
 	Body       CompleteInstanceRequest
 }
 
-func (s *State) completeInstance(ctx context.Context, in *completeInstanceInput) (*emptyOutput, error) {
+func (s *State) completeInstance(ctx context.Context, in *completeInstanceInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWriteScheduledJobs(ac); err != nil {
 		return nil, err
@@ -625,7 +453,7 @@ func (s *State) completeInstance(ctx context.Context, in *completeInstanceInput)
 	if err := s.Instances.MarkComplete(ctx, in.InstanceID, status, compStatus, result); err != nil {
 		return nil, usecase.Internal("REPO", "mark_complete failed", err)
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
 // resolveInstanceCompletion disambiguates the two complete-instance request

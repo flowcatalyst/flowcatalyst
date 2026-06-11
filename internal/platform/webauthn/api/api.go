@@ -28,6 +28,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/notify"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
@@ -76,59 +77,13 @@ const tag = "webauthn"
 
 // Register mounts the WebAuthn endpoints.
 func Register(api huma.API, s *State) {
-	huma.Register(api, huma.Operation{
-		OperationID:   "webauthnRegisterBegin",
-		Method:        http.MethodPost,
-		Path:          "/auth/webauthn/register/begin",
-		Summary:       "Begin a WebAuthn registration ceremony",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.registerBegin)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "webauthnRegisterComplete",
-		Method:        http.MethodPost,
-		Path:          "/auth/webauthn/register/complete",
-		Summary:       "Complete a WebAuthn registration ceremony",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.registerComplete)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "webauthnAuthenticateBegin",
-		Method:        http.MethodPost,
-		Path:          "/auth/webauthn/authenticate/begin",
-		Summary:       "Begin a WebAuthn authentication ceremony",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.authenticateBegin)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "webauthnAuthenticateComplete",
-		Method:        http.MethodPost,
-		Path:          "/auth/webauthn/authenticate/complete",
-		Summary:       "Complete a WebAuthn authentication ceremony",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.authenticateComplete)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "listWebauthnCredentials",
-		Method:        http.MethodGet,
-		Path:          "/auth/webauthn/credentials",
-		Summary:       "List the current user's WebAuthn credentials",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.listCredentials)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "deleteWebauthnCredential",
-		Method:        http.MethodDelete,
-		Path:          "/auth/webauthn/credentials/{id}",
-		Summary:       "Revoke a WebAuthn credential",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.deleteCredential)
+	g := apiroute.New(api, tag)
+	apiroute.Post(g, "webauthnRegisterBegin", "/auth/webauthn/register/begin", "Begin a WebAuthn registration ceremony", http.StatusOK, s.registerBegin)
+	apiroute.Post(g, "webauthnRegisterComplete", "/auth/webauthn/register/complete", "Complete a WebAuthn registration ceremony", http.StatusOK, s.registerComplete)
+	apiroute.Post(g, "webauthnAuthenticateBegin", "/auth/webauthn/authenticate/begin", "Begin a WebAuthn authentication ceremony", http.StatusOK, s.authenticateBegin)
+	apiroute.Post(g, "webauthnAuthenticateComplete", "/auth/webauthn/authenticate/complete", "Complete a WebAuthn authentication ceremony", http.StatusOK, s.authenticateComplete)
+	apiroute.Get(g, "listWebauthnCredentials", "/auth/webauthn/credentials", "List the current user's WebAuthn credentials", s.listCredentials)
+	apiroute.Delete(g, "deleteWebauthnCredential", "/auth/webauthn/credentials/{id}", "Revoke a WebAuthn credential", http.StatusNoContent, s.deleteCredential)
 }
 
 // ── register ─────────────────────────────────────────────────────────────

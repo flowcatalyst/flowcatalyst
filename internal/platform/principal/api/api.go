@@ -26,6 +26,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
@@ -73,221 +74,31 @@ const tag = "principals"
 
 // Register mounts the principal endpoints.
 func Register(api huma.API, s *State) {
-	huma.Register(api, huma.Operation{
-		OperationID:   "listPrincipals",
-		Method:        http.MethodGet,
-		Path:          "/api/principals",
-		Summary:       "List principals",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.list)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "createPrincipal",
-		Method:        http.MethodPost,
-		Path:          "/api/principals",
-		Summary:       "Create a principal",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusCreated,
-	}, s.create)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "createUser",
-		Method:        http.MethodPost,
-		Path:          "/api/principals/users",
-		Summary:       "Create a user principal (scope derived from email domain)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.createUser)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "bulkImportUsers",
-		Method:        http.MethodPost,
-		Path:          "/api/principals/bulk-import",
-		Summary:       "Bulk-import CLIENT users for a client (CSV onboarding)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.bulkImport)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getPrincipal",
-		Method:        http.MethodGet,
-		Path:          "/api/principals/{id}",
-		Summary:       "Get a principal by id",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.getByID)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "updatePrincipal",
-		Method:        http.MethodPut,
-		Path:          "/api/principals/{id}",
-		Summary:       "Update a principal",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.update)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "activatePrincipal",
-		Method:        http.MethodPost,
-		Path:          "/api/principals/{id}/activate",
-		Summary:       "Activate a principal",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.activate)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "deactivatePrincipal",
-		Method:        http.MethodPost,
-		Path:          "/api/principals/{id}/deactivate",
-		Summary:       "Deactivate a principal",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.deactivate)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "resetPrincipalPassword",
-		Method:        http.MethodPost,
-		Path:          "/api/principals/{id}/reset-password",
-		Summary:       "Reset a user's password",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.resetPassword)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "sendPrincipalPasswordReset",
-		Method:        http.MethodPost,
-		Path:          "/api/principals/{id}/send-password-reset",
-		Summary:       "Send a password-reset email to a user",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.sendPasswordReset)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "resetPrincipalTwoFactor",
-		Method:        http.MethodPost,
-		Path:          "/api/principals/{id}/reset-2fa",
-		Summary:       "Clear a user's two-factor methods (forces re-enrollment)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.resetTwoFactor)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "checkPrincipalEmailDomain",
-		Method:        http.MethodGet,
-		Path:          "/api/principals/check-email-domain",
-		Summary:       "Resolve auth-method for an email's domain",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.checkEmailDomain)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "deletePrincipal",
-		Method:        http.MethodDelete,
-		Path:          "/api/principals/{id}",
-		Summary:       "Delete a principal",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.delete)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "assignPrincipalRoles",
-		Method:        http.MethodPut,
-		Path:          "/api/principals/{id}/roles",
-		Summary:       "Assign roles to a principal (replaces full set)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.assignRoles)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "listPrincipalRoles",
-		Method:        http.MethodGet,
-		Path:          "/api/principals/{id}/roles",
-		Summary:       "List a principal's assigned roles",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.listRoles)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "addPrincipalRole",
-		Method:        http.MethodPost,
-		Path:          "/api/principals/{id}/roles",
-		Summary:       "Add a single role to a principal",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.addRole)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "removePrincipalRole",
-		Method:        http.MethodDelete,
-		Path:          "/api/principals/{id}/roles/{role}",
-		Summary:       "Remove a single role from a principal",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.removeRole)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "assignPrincipalApplicationAccess",
-		Method:        http.MethodPut,
-		Path:          "/api/principals/{id}/application-access",
-		Summary:       "Assign application access to a principal",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.assignApplicationAccess)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "listPrincipalApplicationAccess",
-		Method:        http.MethodGet,
-		Path:          "/api/principals/{id}/application-access",
-		Summary:       "List application IDs the principal can access",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.listApplicationAccess)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "listPrincipalAvailableApplications",
-		Method:        http.MethodGet,
-		Path:          "/api/principals/{id}/available-applications",
-		Summary:       "List applications a principal can be granted access to",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.listAvailableApplications)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "listPrincipalClientAccess",
-		Method:        http.MethodGet,
-		Path:          "/api/principals/{id}/client-access",
-		Summary:       "List client-access grants for a principal",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.listClientAccess)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "grantPrincipalClientAccess",
-		Method:        http.MethodPost,
-		Path:          "/api/principals/{id}/client-access",
-		Summary:       "Grant a client-access for a principal",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.grantClientAccess)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "revokePrincipalClientAccess",
-		Method:        http.MethodDelete,
-		Path:          "/api/principals/{id}/client-access/{clientId}",
-		Summary:       "Revoke a client-access grant",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusNoContent,
-	}, s.revokeClientAccess)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "setPrincipalClientAssociation",
-		Method:        http.MethodPut,
-		Path:          "/api/principals/{id}/client-association",
-		Summary:       "Change a principal's scope/client association (anchor-gated)",
-		Tags:          []string{tag},
-		DefaultStatus: http.StatusOK,
-	}, s.setClientAssociation)
+	g := apiroute.New(api, tag)
+	apiroute.Get(g, "listPrincipals", "/api/principals", "List principals", s.list)
+	apiroute.Post(g, "createPrincipal", "/api/principals", "Create a principal", http.StatusCreated, s.create)
+	apiroute.Post(g, "createUser", "/api/principals/users", "Create a user principal (scope derived from email domain)", http.StatusOK, s.createUser)
+	apiroute.Post(g, "bulkImportUsers", "/api/principals/bulk-import", "Bulk-import CLIENT users for a client (CSV onboarding)", http.StatusOK, s.bulkImport)
+	apiroute.Get(g, "getPrincipal", "/api/principals/{id}", "Get a principal by id", s.getByID)
+	apiroute.Put(g, "updatePrincipal", "/api/principals/{id}", "Update a principal", http.StatusOK, s.update)
+	apiroute.Post(g, "activatePrincipal", "/api/principals/{id}/activate", "Activate a principal", http.StatusOK, s.activate)
+	apiroute.Post(g, "deactivatePrincipal", "/api/principals/{id}/deactivate", "Deactivate a principal", http.StatusOK, s.deactivate)
+	apiroute.Post(g, "resetPrincipalPassword", "/api/principals/{id}/reset-password", "Reset a user's password", http.StatusOK, s.resetPassword)
+	apiroute.Post(g, "sendPrincipalPasswordReset", "/api/principals/{id}/send-password-reset", "Send a password-reset email to a user", http.StatusOK, s.sendPasswordReset)
+	apiroute.Post(g, "resetPrincipalTwoFactor", "/api/principals/{id}/reset-2fa", "Clear a user's two-factor methods (forces re-enrollment)", http.StatusOK, s.resetTwoFactor)
+	apiroute.Get(g, "checkPrincipalEmailDomain", "/api/principals/check-email-domain", "Resolve auth-method for an email's domain", s.checkEmailDomain)
+	apiroute.Delete(g, "deletePrincipal", "/api/principals/{id}", "Delete a principal", http.StatusNoContent, s.delete)
+	apiroute.Put(g, "assignPrincipalRoles", "/api/principals/{id}/roles", "Assign roles to a principal (replaces full set)", http.StatusOK, s.assignRoles)
+	apiroute.Get(g, "listPrincipalRoles", "/api/principals/{id}/roles", "List a principal's assigned roles", s.listRoles)
+	apiroute.Post(g, "addPrincipalRole", "/api/principals/{id}/roles", "Add a single role to a principal", http.StatusOK, s.addRole)
+	apiroute.Delete(g, "removePrincipalRole", "/api/principals/{id}/roles/{role}", "Remove a single role from a principal", http.StatusOK, s.removeRole)
+	apiroute.Put(g, "assignPrincipalApplicationAccess", "/api/principals/{id}/application-access", "Assign application access to a principal", http.StatusOK, s.assignApplicationAccess)
+	apiroute.Get(g, "listPrincipalApplicationAccess", "/api/principals/{id}/application-access", "List application IDs the principal can access", s.listApplicationAccess)
+	apiroute.Get(g, "listPrincipalAvailableApplications", "/api/principals/{id}/available-applications", "List applications a principal can be granted access to", s.listAvailableApplications)
+	apiroute.Get(g, "listPrincipalClientAccess", "/api/principals/{id}/client-access", "List client-access grants for a principal", s.listClientAccess)
+	apiroute.Post(g, "grantPrincipalClientAccess", "/api/principals/{id}/client-access", "Grant a client-access for a principal", http.StatusOK, s.grantClientAccess)
+	apiroute.Delete(g, "revokePrincipalClientAccess", "/api/principals/{id}/client-access/{clientId}", "Revoke a client-access grant", http.StatusNoContent, s.revokeClientAccess)
+	apiroute.Put(g, "setPrincipalClientAssociation", "/api/principals/{id}/client-association", "Change a principal's scope/client association (anchor-gated)", http.StatusOK, s.setClientAssociation)
 }
 
 // listInput carries the filter / sort / pagination query params for
@@ -306,11 +117,7 @@ type listInput struct {
 	SortOrder string `query:"sortOrder" doc:"Sort direction: asc | desc (default asc)"`
 }
 
-type listOutput struct {
-	Body PrincipalListResponse
-}
-
-func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
+func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[PrincipalListResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadPrincipals(ac); err != nil {
 		return nil, err
@@ -369,7 +176,7 @@ func (s *State) list(ctx context.Context, in *listInput) (*listOutput, error) {
 	for _, p := range filtered {
 		out = append(out, fromEntity(p))
 	}
-	return &listOutput{Body: PrincipalListResponse{Principals: out, Total: total}}, nil
+	return &apicommon.Out[PrincipalListResponse]{Body: PrincipalListResponse{Principals: out, Total: total}}, nil
 }
 
 // --- list filtering / sorting / pagination helpers ---
@@ -465,15 +272,7 @@ func paginate(ps []*principal.Principal, page, pageSize int) []*principal.Princi
 	return ps[start:end]
 }
 
-type getInput struct {
-	ID string `path:"id"`
-}
-
-type getOutput struct {
-	Body PrincipalResponse
-}
-
-func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
+func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[PrincipalResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadPrincipals(ac); err != nil {
 		return nil, err
@@ -488,18 +287,10 @@ func (s *State) getByID(ctx context.Context, in *getInput) (*getOutput, error) {
 	if p.ClientID != nil && !ac.CanAccessClient(*p.ClientID) {
 		return nil, httperror.Forbidden("No access to this principal")
 	}
-	return &getOutput{Body: fromEntity(p)}, nil
+	return &apicommon.Out[PrincipalResponse]{Body: fromEntity(p)}, nil
 }
 
-type createInput struct {
-	Body CreatePrincipalRequest
-}
-
-type createOutput struct {
-	Body apicommon.CreatedResponse
-}
-
-func (s *State) create(ctx context.Context, in *createInput) (*createOutput, error) {
+func (s *State) create(ctx context.Context, in *apicommon.In[CreatePrincipalRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
 	ac := auth.FromContext(ctx)
 	// Anchors create any scope/client. A non-anchor administrator
 	// (client-admin) may only create CLIENT-scope users in a client they can
@@ -518,15 +309,7 @@ func (s *State) create(ctx context.Context, in *createInput) (*createOutput, err
 	if created, ferr := s.Repo.FindByID(ctx, committed.Event().UserID); ferr == nil && created != nil {
 		s.notifyNewUser(ctx, created, in.Body.Password)
 	}
-	return &createOutput{Body: apicommon.CreatedResponse{ID: committed.Event().UserID}}, nil
-}
-
-type bulkImportInput struct {
-	Body BulkImportRequest
-}
-
-type bulkImportOutput struct {
-	Body BulkImportResponse
+	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: committed.Event().UserID}}, nil
 }
 
 // bulkImport onboards a list of CLIENT users under one client (CSV import).
@@ -534,7 +317,7 @@ type bulkImportOutput struct {
 // roles; existing users are skipped. Roles are validated against the client's
 // applications for a non-anchor administrator — exactly like single role
 // assignment — so a client-admin can't grant a role the client isn't entitled to.
-func (s *State) bulkImport(ctx context.Context, in *bulkImportInput) (*bulkImportOutput, error) {
+func (s *State) bulkImport(ctx context.Context, in *apicommon.In[BulkImportRequest]) (*apicommon.Out[BulkImportResponse], error) {
 	ac := auth.FromContext(ctx)
 	clientID := strings.TrimSpace(in.Body.ClientID)
 	if clientID == "" {
@@ -569,7 +352,7 @@ func (s *State) bulkImport(ctx context.Context, in *bulkImportInput) (*bulkImpor
 		}
 		out.Results = append(out.Results, BulkImportResult{Row: i + 1, Email: email, Status: status, Message: msg})
 	}
-	return &bulkImportOutput{Body: out}, nil
+	return &apicommon.Out[BulkImportResponse]{Body: out}, nil
 }
 
 // importRow processes one CSV row and returns its outcome status
@@ -651,10 +434,6 @@ func errMessage(err error) string {
 	return ""
 }
 
-type createUserInput struct {
-	Body CreateUserRequest
-}
-
 // createUser ports Rust create_user (fc-platform principal/api.rs): anchor-only,
 // derives scope + client association from the email domain (anchor-domain check
 // + email-domain-mapping), then delegates to the shared CreateUser operation.
@@ -663,7 +442,7 @@ type createUserInput struct {
 // apply a complexity policy). Magic-link-on-passwordless-create is intentionally
 // not ported — the SDK always supplies a password and the reset emailer isn't
 // wired (matching Rust's unconfigured-emailer fallback).
-func (s *State) createUser(ctx context.Context, in *createUserInput) (*getOutput, error) {
+func (s *State) createUser(ctx context.Context, in *apicommon.In[CreateUserRequest]) (*apicommon.Out[PrincipalResponse], error) {
 	ac := auth.FromContext(ctx)
 	// Authorization is enforced after scope derivation below (a client-admin may
 	// only create CLIENT-scope users in a client they can access).
@@ -736,7 +515,7 @@ func (s *State) createUser(ctx context.Context, in *createUserInput) (*getOutput
 			if rerr != nil || refreshed == nil {
 				return nil, httperror.NotFound("Principal", existing.ID)
 			}
-			return &getOutput{Body: fromEntity(refreshed)}, nil
+			return &apicommon.Out[PrincipalResponse]{Body: fromEntity(refreshed)}, nil
 		}
 	}
 
@@ -767,7 +546,7 @@ func (s *State) createUser(ctx context.Context, in *createUserInput) (*getOutput
 		return nil, httperror.NotFound("Principal", committed.Event().UserID)
 	}
 	s.notifyNewUser(ctx, created, in.Body.Password)
-	return &getOutput{Body: fromEntity(created)}, nil
+	return &apicommon.Out[PrincipalResponse]{Body: fromEntity(created)}, nil
 }
 
 // notifyNewUser emails a freshly-created INTERNAL user (best-effort): a
@@ -1003,9 +782,7 @@ type updateInput struct {
 	Body UpdatePrincipalRequest
 }
 
-type emptyOutput struct{}
-
-func (s *State) update(ctx context.Context, in *updateInput) (*getOutput, error) {
+func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Out[PrincipalResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePrincipals(ac); err != nil {
 		return nil, err
@@ -1024,14 +801,10 @@ func (s *State) update(ctx context.Context, in *updateInput) (*getOutput, error)
 	if p == nil {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
-	return &getOutput{Body: fromEntity(p)}, nil
+	return &apicommon.Out[PrincipalResponse]{Body: fromEntity(p)}, nil
 }
 
-type idInput struct {
-	ID string `path:"id"`
-}
-
-func (s *State) activate(ctx context.Context, in *idInput) (*statusMessageOutput, error) {
+func (s *State) activate(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[apicommon.StatusChangeResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePrincipals(ac); err != nil {
 		return nil, err
@@ -1043,10 +816,10 @@ func (s *State) activate(ctx context.Context, in *idInput) (*statusMessageOutput
 	if _, err := operations.ActivateUser(ctx, s.Repo, s.UoW, operations.ActivateCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &statusMessageOutput{Body: apicommon.StatusChangeResponse{Message: "Principal activated"}}, nil
+	return &apicommon.Out[apicommon.StatusChangeResponse]{Body: apicommon.StatusChangeResponse{Message: "Principal activated"}}, nil
 }
 
-func (s *State) deactivate(ctx context.Context, in *idInput) (*statusMessageOutput, error) {
+func (s *State) deactivate(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[apicommon.StatusChangeResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePrincipals(ac); err != nil {
 		return nil, err
@@ -1058,7 +831,7 @@ func (s *State) deactivate(ctx context.Context, in *idInput) (*statusMessageOutp
 	if _, err := operations.DeactivateUser(ctx, s.Repo, s.UoW, operations.DeactivateCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &statusMessageOutput{Body: apicommon.StatusChangeResponse{Message: "Principal deactivated"}}, nil
+	return &apicommon.Out[apicommon.StatusChangeResponse]{Body: apicommon.StatusChangeResponse{Message: "Principal deactivated"}}, nil
 }
 
 type resetPasswordInput struct {
@@ -1066,7 +839,7 @@ type resetPasswordInput struct {
 	Body ResetPasswordRequest
 }
 
-func (s *State) resetPassword(ctx context.Context, in *resetPasswordInput) (*statusMessageOutput, error) {
+func (s *State) resetPassword(ctx context.Context, in *resetPasswordInput) (*apicommon.Out[apicommon.StatusChangeResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePrincipals(ac); err != nil {
 		return nil, err
@@ -1083,10 +856,10 @@ func (s *State) resetPassword(ctx context.Context, in *resetPasswordInput) (*sta
 		}, ec); err != nil {
 		return nil, err
 	}
-	return &statusMessageOutput{Body: apicommon.StatusChangeResponse{Message: "Password reset successfully"}}, nil
+	return &apicommon.Out[apicommon.StatusChangeResponse]{Body: apicommon.StatusChangeResponse{Message: "Password reset successfully"}}, nil
 }
 
-func (s *State) delete(ctx context.Context, in *idInput) (*emptyOutput, error) {
+func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanDeletePrincipals(ac); err != nil {
 		return nil, err
@@ -1098,7 +871,7 @@ func (s *State) delete(ctx context.Context, in *idInput) (*emptyOutput, error) {
 	if _, err := operations.DeleteUser(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
 type assignRolesInput struct {
@@ -1106,11 +879,7 @@ type assignRolesInput struct {
 	Body AssignPrincipalRolesRequest
 }
 
-type rolesAssignedOutput struct {
-	Body RolesAssignedResponse
-}
-
-func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*rolesAssignedOutput, error) {
+func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*apicommon.Out[RolesAssignedResponse], error) {
 	ac := auth.FromContext(ctx)
 	p, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
@@ -1162,7 +931,7 @@ func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*rolesAs
 	if refreshed == nil {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
-	return &rolesAssignedOutput{Body: RolesAssignedResponse{
+	return &apicommon.Out[RolesAssignedResponse]{Body: RolesAssignedResponse{
 		Roles:   roleAssignmentDTOs(in.ID, refreshed.Roles),
 		Added:   added,
 		Removed: removed,
@@ -1174,11 +943,7 @@ type assignAppAccessInput struct {
 	Body AssignApplicationAccessRequest
 }
 
-type setAppAccessOutput struct {
-	Body SetApplicationAccessResponse
-}
-
-func (s *State) assignApplicationAccess(ctx context.Context, in *assignAppAccessInput) (*setAppAccessOutput, error) {
+func (s *State) assignApplicationAccess(ctx context.Context, in *assignAppAccessInput) (*apicommon.Out[SetApplicationAccessResponse], error) {
 	ac := auth.FromContext(ctx)
 	p, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
@@ -1223,18 +988,14 @@ func (s *State) assignApplicationAccess(ctx context.Context, in *assignAppAccess
 	if err != nil {
 		return nil, err
 	}
-	return &setAppAccessOutput{Body: SetApplicationAccessResponse{
+	return &apicommon.Out[SetApplicationAccessResponse]{Body: SetApplicationAccessResponse{
 		Applications: apps,
 		Added:        added,
 		Removed:      removed,
 	}}, nil
 }
 
-type listClientAccessOutput struct {
-	Body ClientAccessGrantListResponse
-}
-
-func (s *State) listClientAccess(ctx context.Context, in *idInput) (*listClientAccessOutput, error) {
+func (s *State) listClientAccess(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ClientAccessGrantListResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
@@ -1243,11 +1004,8 @@ func (s *State) listClientAccess(ctx context.Context, in *idInput) (*listClientA
 	if err != nil {
 		return nil, usecase.Internal("REPO", "list grants failed", err)
 	}
-	out := make([]ClientAccessGrantResponse, 0, len(grants))
-	for i := range grants {
-		out = append(out, clientAccessGrantFromEntity(&grants[i]))
-	}
-	return &listClientAccessOutput{Body: ClientAccessGrantListResponse{Grants: out}}, nil
+	out := apicommon.MapSlice(grants, clientAccessGrantFromEntity)
+	return &apicommon.Out[ClientAccessGrantListResponse]{Body: ClientAccessGrantListResponse{Grants: out}}, nil
 }
 
 type grantClientAccessInput struct {
@@ -1255,11 +1013,7 @@ type grantClientAccessInput struct {
 	Body GrantClientAccessRequest
 }
 
-type clientAccessGrantOutput struct {
-	Body ClientAccessGrantResponse
-}
-
-func (s *State) grantClientAccess(ctx context.Context, in *grantClientAccessInput) (*clientAccessGrantOutput, error) {
+func (s *State) grantClientAccess(ctx context.Context, in *grantClientAccessInput) (*apicommon.Out[ClientAccessGrantResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
@@ -1276,7 +1030,7 @@ func (s *State) grantClientAccess(ctx context.Context, in *grantClientAccessInpu
 	if g == nil {
 		return nil, usecase.Internal("REPO", "grant not found after create", nil)
 	}
-	return &clientAccessGrantOutput{Body: clientAccessGrantFromEntity(g)}, nil
+	return &apicommon.Out[ClientAccessGrantResponse]{Body: clientAccessGrantFromEntity(g)}, nil
 }
 
 type setClientAssociationInput struct {
@@ -1288,7 +1042,7 @@ type setClientAssociationInput struct {
 // explicit intent (anchor-gated). clientId "*" → ANCHOR; mode CHANGE_CLIENT →
 // new home client; mode TO_PARTNER → promote to PARTNER (old + new client).
 // Returns the updated principal.
-func (s *State) setClientAssociation(ctx context.Context, in *setClientAssociationInput) (*getOutput, error) {
+func (s *State) setClientAssociation(ctx context.Context, in *setClientAssociationInput) (*apicommon.Out[PrincipalResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
@@ -1313,7 +1067,7 @@ func (s *State) setClientAssociation(ctx context.Context, in *setClientAssociati
 	if p == nil {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
-	return &getOutput{Body: fromEntity(p)}, nil
+	return &apicommon.Out[PrincipalResponse]{Body: fromEntity(p)}, nil
 }
 
 type revokeClientAccessInput struct {
@@ -1321,7 +1075,7 @@ type revokeClientAccessInput struct {
 	ClientID string `path:"clientId"`
 }
 
-func (s *State) revokeClientAccess(ctx context.Context, in *revokeClientAccessInput) (*emptyOutput, error) {
+func (s *State) revokeClientAccess(ctx context.Context, in *revokeClientAccessInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
@@ -1331,14 +1085,10 @@ func (s *State) revokeClientAccess(ctx context.Context, in *revokeClientAccessIn
 		operations.RevokeClientAccessCommand{UserID: in.ID, ClientID: in.ClientID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
 // ── send-password-reset (admin trigger) ──────────────────────────────────
-
-type statusMessageOutput struct {
-	Body apicommon.StatusChangeResponse
-}
 
 // sendPasswordResetInput carries the path id plus an optional body asking to
 // also reset the user's 2FA as part of the reset (lost-device recovery). Body
@@ -1352,7 +1102,7 @@ type sendPasswordResetInput struct {
 	}
 }
 
-func (s *State) sendPasswordReset(ctx context.Context, in *sendPasswordResetInput) (*statusMessageOutput, error) {
+func (s *State) sendPasswordReset(ctx context.Context, in *sendPasswordResetInput) (*apicommon.Out[apicommon.StatusChangeResponse], error) {
 	ac := auth.FromContext(ctx)
 	p, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
@@ -1376,13 +1126,13 @@ func (s *State) sendPasswordReset(ctx context.Context, in *sendPasswordResetInpu
 		operations.SendPasswordResetCommand{ID: in.ID, Reset2FA: reset2FA}, ec); err != nil {
 		return nil, err
 	}
-	return &statusMessageOutput{Body: apicommon.StatusChangeResponse{Message: "Password reset email sent"}}, nil
+	return &apicommon.Out[apicommon.StatusChangeResponse]{Body: apicommon.StatusChangeResponse{Message: "Password reset email sent"}}, nil
 }
 
 // resetTwoFactor clears a user's enrolled 2FA (factors, recovery codes, pending
 // PINs, trusted devices). Anchor or a client-administrator of the user's client.
 // The user must re-enroll at next sign-in if their domain requires 2FA.
-func (s *State) resetTwoFactor(ctx context.Context, in *idInput) (*statusMessageOutput, error) {
+func (s *State) resetTwoFactor(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[apicommon.StatusChangeResponse], error) {
 	ac := auth.FromContext(ctx)
 	if s.MFA == nil {
 		return nil, usecase.Internal("MFA_NOT_CONFIGURED", "Two-factor service not configured", nil)
@@ -1420,7 +1170,7 @@ func (s *State) resetTwoFactor(ctx context.Context, in *idInput) (*statusMessage
 			PerformedAt: time.Now().UTC(),
 		})
 	}
-	return &statusMessageOutput{Body: apicommon.StatusChangeResponse{Message: "Two-factor authentication reset"}}, nil
+	return &apicommon.Out[apicommon.StatusChangeResponse]{Body: apicommon.StatusChangeResponse{Message: "Two-factor authentication reset"}}, nil
 }
 
 // ── check-email-domain (admin) ───────────────────────────────────────────
@@ -1429,11 +1179,7 @@ type checkEmailDomainInput struct {
 	Email string `query:"email"`
 }
 
-type checkEmailDomainOutput struct {
-	Body CheckEmailDomainResponse
-}
-
-func (s *State) checkEmailDomain(ctx context.Context, in *checkEmailDomainInput) (*checkEmailDomainOutput, error) {
+func (s *State) checkEmailDomain(ctx context.Context, in *checkEmailDomainInput) (*apicommon.Out[CheckEmailDomainResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadPrincipals(ac); err != nil {
 		return nil, err
@@ -1515,7 +1261,7 @@ func (s *State) checkEmailDomain(ctx context.Context, in *checkEmailDomainInput)
 		w := "A user with this email address already exists."
 		resp.Warning = &w
 	}
-	return &checkEmailDomainOutput{Body: resp}, nil
+	return &apicommon.Out[CheckEmailDomainResponse]{Body: resp}, nil
 }
 
 // deriveScopeForDomain reports the scope a new user from this domain will get,
@@ -1581,11 +1327,7 @@ func allowedClientIDsForDomain(mapping *emaildomainmapping.EmailDomainMapping) [
 
 // ── granular role endpoints ──────────────────────────────────────────────
 
-type listRolesOutput struct {
-	Body PrincipalRoleListResponse
-}
-
-func (s *State) listRoles(ctx context.Context, in *idInput) (*listRolesOutput, error) {
+func (s *State) listRoles(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[PrincipalRoleListResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadPrincipals(ac); err != nil {
 		return nil, err
@@ -1597,7 +1339,7 @@ func (s *State) listRoles(ctx context.Context, in *idInput) (*listRolesOutput, e
 	if p == nil {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
-	return &listRolesOutput{Body: PrincipalRoleListResponse{Roles: roleAssignmentDTOs(in.ID, p.Roles)}}, nil
+	return &apicommon.Out[PrincipalRoleListResponse]{Body: PrincipalRoleListResponse{Roles: roleAssignmentDTOs(in.ID, p.Roles)}}, nil
 }
 
 type addRoleInput struct {
@@ -1605,7 +1347,7 @@ type addRoleInput struct {
 	Body AddRoleRequest
 }
 
-func (s *State) addRole(ctx context.Context, in *addRoleInput) (*getOutput, error) {
+func (s *State) addRole(ctx context.Context, in *addRoleInput) (*apicommon.Out[PrincipalResponse], error) {
 	ac := auth.FromContext(ctx)
 	p, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
@@ -1644,7 +1386,7 @@ func (s *State) addRole(ctx context.Context, in *addRoleInput) (*getOutput, erro
 		}
 	}
 	// Return the updated principal (1:1 with Rust assign_role → PrincipalResponse).
-	return &getOutput{Body: fromEntity(p)}, nil
+	return &apicommon.Out[PrincipalResponse]{Body: fromEntity(p)}, nil
 }
 
 type removeRoleInput struct {
@@ -1652,7 +1394,7 @@ type removeRoleInput struct {
 	Role string `path:"role"`
 }
 
-func (s *State) removeRole(ctx context.Context, in *removeRoleInput) (*getOutput, error) {
+func (s *State) removeRole(ctx context.Context, in *removeRoleInput) (*apicommon.Out[PrincipalResponse], error) {
 	ac := auth.FromContext(ctx)
 	p, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
@@ -1701,15 +1443,11 @@ func (s *State) removeRole(ctx context.Context, in *removeRoleInput) (*getOutput
 		}
 	}
 	// Return the updated principal (1:1 with Rust remove_role → PrincipalResponse).
-	return &getOutput{Body: fromEntity(p)}, nil
+	return &apicommon.Out[PrincipalResponse]{Body: fromEntity(p)}, nil
 }
 
 func roleNamesFrom(rs []serviceaccount.RoleAssignment) []string {
-	out := make([]string, 0, len(rs))
-	for _, r := range rs {
-		out = append(out, r.Role)
-	}
-	return out
+	return apicommon.MapSlice(rs, func(r *serviceaccount.RoleAssignment) string { return r.Role })
 }
 
 func uniqueRoleNames(rs []serviceaccount.RoleAssignment) map[string]struct{} {
@@ -1741,11 +1479,7 @@ func setDifference(a, b map[string]struct{}) []string {
 
 // ── application-access listing ───────────────────────────────────────────
 
-type listApplicationAccessOutput struct {
-	Body ApplicationAccessListResponse
-}
-
-func (s *State) listApplicationAccess(ctx context.Context, in *idInput) (*listApplicationAccessOutput, error) {
+func (s *State) listApplicationAccess(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ApplicationAccessListResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadPrincipals(ac); err != nil {
 		return nil, err
@@ -1761,7 +1495,7 @@ func (s *State) listApplicationAccess(ctx context.Context, in *idInput) (*listAp
 	if err != nil {
 		return nil, err
 	}
-	return &listApplicationAccessOutput{Body: ApplicationAccessListResponse{
+	return &apicommon.Out[ApplicationAccessListResponse]{Body: ApplicationAccessListResponse{
 		Applications: apps,
 		Total:        len(apps),
 	}}, nil
@@ -1788,11 +1522,7 @@ func (s *State) resolveApplications(ctx context.Context, ids []string) ([]Applic
 	return out, nil
 }
 
-type listAvailableAppsOutput struct {
-	Body PrincipalAvailableApplicationsResponse
-}
-
-func (s *State) listAvailableApplications(ctx context.Context, in *idInput) (*listAvailableAppsOutput, error) {
+func (s *State) listAvailableApplications(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[PrincipalAvailableApplicationsResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanReadPrincipals(ac); err != nil {
 		return nil, err
@@ -1836,7 +1566,7 @@ func (s *State) listAvailableApplications(ctx context.Context, in *idInput) (*li
 			Name: a.Name,
 		})
 	}
-	return &listAvailableAppsOutput{Body: PrincipalAvailableApplicationsResponse{
+	return &apicommon.Out[PrincipalAvailableApplicationsResponse]{Body: PrincipalAvailableApplicationsResponse{
 		Applications: out,
 	}}, nil
 }

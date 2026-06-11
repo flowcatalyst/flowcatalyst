@@ -3,7 +3,6 @@ package scheduledjob
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -28,36 +28,32 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 
 // FindByID loads by id.
 func (r *Repository) FindByID(ctx context.Context, id string) (*ScheduledJob, error) {
-	row, err := r.q.ScheduledJobFindByID(ctx, id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	res, err := r.q.ScheduledJobFindByID(ctx, id)
+	row, err := repocommon.One(res, err, "scheduled_job repo")
+	if row == nil || err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("scheduled_job repo: %w", err)
-	}
-	return rowToScheduledJob(row), nil
+	return rowToScheduledJob(*row), nil
 }
 
 // FindByCode loads by (code, client_id). clientID may be nil for platform-scoped.
 func (r *Repository) FindByCode(ctx context.Context, code string, clientID *string) (*ScheduledJob, error) {
 	var (
-		row dbq.MsgScheduledJob
+		res dbq.MsgScheduledJob
 		err error
 	)
 	if clientID != nil {
-		row, err = r.q.ScheduledJobFindByCodeClient(ctx, dbq.ScheduledJobFindByCodeClientParams{
+		res, err = r.q.ScheduledJobFindByCodeClient(ctx, dbq.ScheduledJobFindByCodeClientParams{
 			Code: code, ClientID: clientID,
 		})
 	} else {
-		row, err = r.q.ScheduledJobFindByCodePlatform(ctx, code)
+		res, err = r.q.ScheduledJobFindByCodePlatform(ctx, code)
 	}
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	row, err := repocommon.One(res, err, "scheduled_job repo")
+	if row == nil || err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("scheduled_job repo: %w", err)
-	}
-	return rowToScheduledJob(row), nil
+	return rowToScheduledJob(*row), nil
 }
 
 // ListFilters drives FindWithFilters / CountWithFilters. AND semantics
@@ -93,21 +89,15 @@ func (r *Repository) FindWithFilters(ctx context.Context, f ListFilters) ([]Sche
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	collected, err := pgx.CollectRows(rows, pgx.RowToStructByName[dbq.MsgScheduledJob])
+	if err != nil {
+		return nil, err
+	}
 	var out []ScheduledJob
-	for rows.Next() {
-		var row dbq.MsgScheduledJob
-		if err := rows.Scan(
-			&row.ID, &row.ClientID, &row.Code, &row.Name, &row.Description, &row.Status,
-			&row.Crons, &row.Timezone, &row.Payload, &row.Concurrent, &row.TracksCompletion,
-			&row.TimeoutSeconds, &row.DeliveryMaxAttempts, &row.TargetUrl, &row.LastFiredAt,
-			&row.CreatedAt, &row.UpdatedAt, &row.CreatedBy, &row.UpdatedBy, &row.Version,
-		); err != nil {
-			return nil, err
-		}
+	for _, row := range collected {
 		out = append(out, *rowToScheduledJob(row))
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 // CountWithFilters returns the total job count for the filters,

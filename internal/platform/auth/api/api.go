@@ -14,6 +14,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
@@ -80,15 +81,13 @@ func (s *State) fillApplicationRefs(ctx context.Context, resps ...*OAuthClientRe
 		}
 	}
 	for _, r := range resps {
-		refs := make([]OAuthClientApplicationRef, 0, len(r.ApplicationIDs))
-		for _, id := range r.ApplicationIDs {
-			name := nameByID[id]
+		r.Applications = apicommon.MapSlice(r.ApplicationIDs, func(id *string) OAuthClientApplicationRef {
+			name := nameByID[*id]
 			if name == "" {
-				name = id
+				name = *id
 			}
-			refs = append(refs, OAuthClientApplicationRef{ID: id, Name: name})
-		}
-		r.Applications = refs
+			return OAuthClientApplicationRef{ID: *id, Name: name}
+		})
 	}
 	return nil
 }
@@ -102,213 +101,45 @@ const (
 
 // Register mounts the auth admin endpoints. Anchor-only.
 func Register(api huma.API, s *State) {
+	gClients := apiroute.New(api, tagOAuth)
+	gDomains := apiroute.New(api, tagAnchorDomains)
+	gConfigs := apiroute.New(api, tagAuthConfigs)
+	gMappings := apiroute.New(api, tagIdpRoleMapping)
+
 	// OAuth clients
-	huma.Register(api, huma.Operation{
-		OperationID:   "listOAuthClients",
-		Method:        http.MethodGet,
-		Path:          "/api/oauth-clients",
-		Summary:       "List OAuth clients",
-		Tags:          []string{tagOAuth},
-		DefaultStatus: http.StatusOK,
-	}, s.listOAuthClients)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "createOAuthClient",
-		Method:        http.MethodPost,
-		Path:          "/api/oauth-clients",
-		Summary:       "Create an OAuth client",
-		Tags:          []string{tagOAuth},
-		DefaultStatus: http.StatusCreated,
-	}, s.createOAuthClient)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getOAuthClient",
-		Method:        http.MethodGet,
-		Path:          "/api/oauth-clients/{id}",
-		Summary:       "Get an OAuth client by id",
-		Tags:          []string{tagOAuth},
-		DefaultStatus: http.StatusOK,
-	}, s.getOAuthClient)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "updateOAuthClient",
-		Method:        http.MethodPut,
-		Path:          "/api/oauth-clients/{id}",
-		Summary:       "Update an OAuth client",
-		Tags:          []string{tagOAuth},
-		DefaultStatus: http.StatusNoContent,
-	}, s.updateOAuthClient)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "activateOAuthClient",
-		Method:        http.MethodPost,
-		Path:          "/api/oauth-clients/{id}/activate",
-		Summary:       "Activate an OAuth client",
-		Tags:          []string{tagOAuth},
-		DefaultStatus: http.StatusOK,
-	}, s.activateOAuthClient)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "deactivateOAuthClient",
-		Method:        http.MethodPost,
-		Path:          "/api/oauth-clients/{id}/deactivate",
-		Summary:       "Deactivate an OAuth client",
-		Tags:          []string{tagOAuth},
-		DefaultStatus: http.StatusOK,
-	}, s.deactivateOAuthClient)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "rotateOAuthClientSecret",
-		Method:        http.MethodPost,
-		Path:          "/api/oauth-clients/{id}/rotate-secret",
-		Summary:       "Rotate an OAuth client's secret",
-		Tags:          []string{tagOAuth},
-		DefaultStatus: http.StatusOK,
-	}, s.rotateOAuthClientSecret)
-
+	apiroute.Get(gClients, "listOAuthClients", "/api/oauth-clients", "List OAuth clients", s.listOAuthClients)
+	apiroute.Post(gClients, "createOAuthClient", "/api/oauth-clients", "Create an OAuth client", http.StatusCreated, s.createOAuthClient)
+	apiroute.Get(gClients, "getOAuthClient", "/api/oauth-clients/{id}", "Get an OAuth client by id", s.getOAuthClient)
+	apiroute.Put(gClients, "updateOAuthClient", "/api/oauth-clients/{id}", "Update an OAuth client", http.StatusNoContent, s.updateOAuthClient)
+	apiroute.Post(gClients, "activateOAuthClient", "/api/oauth-clients/{id}/activate", "Activate an OAuth client", http.StatusOK, s.activateOAuthClient)
+	apiroute.Post(gClients, "deactivateOAuthClient", "/api/oauth-clients/{id}/deactivate", "Deactivate an OAuth client", http.StatusOK, s.deactivateOAuthClient)
+	apiroute.Post(gClients, "rotateOAuthClientSecret", "/api/oauth-clients/{id}/rotate-secret", "Rotate an OAuth client's secret", http.StatusOK, s.rotateOAuthClientSecret)
 	// SDK-compatibility aliases. The Laravel/Rust client calls
 	// /api/oauth-clients/{id}/regenerate-secret (same as rotate-secret) and
 	// looks clients up by their client_id via /by-client-id/{clientId}.
-	huma.Register(api, huma.Operation{
-		OperationID:   "regenerateOAuthClientSecret",
-		Method:        http.MethodPost,
-		Path:          "/api/oauth-clients/{id}/regenerate-secret",
-		Summary:       "Regenerate an OAuth client's secret (SDK alias of rotate-secret)",
-		Tags:          []string{tagOAuth},
-		DefaultStatus: http.StatusOK,
-	}, s.rotateOAuthClientSecret)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "getOAuthClientByClientID",
-		Method:        http.MethodGet,
-		Path:          "/api/oauth-clients/by-client-id/{clientId}",
-		Summary:       "Get an OAuth client by its client_id (SDK lookup)",
-		Tags:          []string{tagOAuth},
-		DefaultStatus: http.StatusOK,
-	}, s.getOAuthClientByClientID)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "deleteOAuthClient",
-		Method:        http.MethodDelete,
-		Path:          "/api/oauth-clients/{id}",
-		Summary:       "Delete an OAuth client",
-		Tags:          []string{tagOAuth},
-		DefaultStatus: http.StatusNoContent,
-	}, s.deleteOAuthClient)
+	apiroute.Post(gClients, "regenerateOAuthClientSecret", "/api/oauth-clients/{id}/regenerate-secret", "Regenerate an OAuth client's secret (SDK alias of rotate-secret)", http.StatusOK, s.rotateOAuthClientSecret)
+	apiroute.Get(gClients, "getOAuthClientByClientID", "/api/oauth-clients/by-client-id/{clientId}", "Get an OAuth client by its client_id (SDK lookup)", s.getOAuthClientByClientID)
+	apiroute.Delete(gClients, "deleteOAuthClient", "/api/oauth-clients/{id}", "Delete an OAuth client", http.StatusNoContent, s.deleteOAuthClient)
 
 	// Anchor domains
-	huma.Register(api, huma.Operation{
-		OperationID:   "listAnchorDomains",
-		Method:        http.MethodGet,
-		Path:          "/api/anchor-domains",
-		Summary:       "List anchor domains",
-		Tags:          []string{tagAnchorDomains},
-		DefaultStatus: http.StatusOK,
-	}, s.listAnchorDomains)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "createAnchorDomain",
-		Method:        http.MethodPost,
-		Path:          "/api/anchor-domains",
-		Summary:       "Create an anchor domain",
-		Tags:          []string{tagAnchorDomains},
-		DefaultStatus: http.StatusCreated,
-	}, s.createAnchorDomain)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "updateAnchorDomain",
-		Method:        http.MethodPut,
-		Path:          "/api/anchor-domains/{id}",
-		Summary:       "Update an anchor domain",
-		Tags:          []string{tagAnchorDomains},
-		DefaultStatus: http.StatusNoContent,
-	}, s.updateAnchorDomain)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "deleteAnchorDomain",
-		Method:        http.MethodDelete,
-		Path:          "/api/anchor-domains/{id}",
-		Summary:       "Delete an anchor domain",
-		Tags:          []string{tagAnchorDomains},
-		DefaultStatus: http.StatusNoContent,
-	}, s.deleteAnchorDomain)
+	apiroute.Get(gDomains, "listAnchorDomains", "/api/anchor-domains", "List anchor domains", s.listAnchorDomains)
+	apiroute.Post(gDomains, "createAnchorDomain", "/api/anchor-domains", "Create an anchor domain", http.StatusCreated, s.createAnchorDomain)
+	apiroute.Put(gDomains, "updateAnchorDomain", "/api/anchor-domains/{id}", "Update an anchor domain", http.StatusNoContent, s.updateAnchorDomain)
+	apiroute.Delete(gDomains, "deleteAnchorDomain", "/api/anchor-domains/{id}", "Delete an anchor domain", http.StatusNoContent, s.deleteAnchorDomain)
 
 	// Auth configs
-	huma.Register(api, huma.Operation{
-		OperationID:   "listAuthConfigs",
-		Method:        http.MethodGet,
-		Path:          "/api/auth-configs",
-		Summary:       "List client auth configs",
-		Tags:          []string{tagAuthConfigs},
-		DefaultStatus: http.StatusOK,
-	}, s.listAuthConfigs)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "createAuthConfig",
-		Method:        http.MethodPost,
-		Path:          "/api/auth-configs",
-		Summary:       "Create a client auth config",
-		Tags:          []string{tagAuthConfigs},
-		DefaultStatus: http.StatusCreated,
-	}, s.createAuthConfig)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "updateAuthConfig",
-		Method:        http.MethodPut,
-		Path:          "/api/auth-configs/{id}",
-		Summary:       "Update a client auth config",
-		Tags:          []string{tagAuthConfigs},
-		DefaultStatus: http.StatusNoContent,
-	}, s.updateAuthConfig)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "deleteAuthConfig",
-		Method:        http.MethodDelete,
-		Path:          "/api/auth-configs/{id}",
-		Summary:       "Delete a client auth config",
-		Tags:          []string{tagAuthConfigs},
-		DefaultStatus: http.StatusNoContent,
-	}, s.deleteAuthConfig)
+	apiroute.Get(gConfigs, "listAuthConfigs", "/api/auth-configs", "List client auth configs", s.listAuthConfigs)
+	apiroute.Post(gConfigs, "createAuthConfig", "/api/auth-configs", "Create a client auth config", http.StatusCreated, s.createAuthConfig)
+	apiroute.Put(gConfigs, "updateAuthConfig", "/api/auth-configs/{id}", "Update a client auth config", http.StatusNoContent, s.updateAuthConfig)
+	apiroute.Delete(gConfigs, "deleteAuthConfig", "/api/auth-configs/{id}", "Delete a client auth config", http.StatusNoContent, s.deleteAuthConfig)
 
 	// IDP role mappings
-	huma.Register(api, huma.Operation{
-		OperationID:   "listIdpRoleMappings",
-		Method:        http.MethodGet,
-		Path:          "/api/idp-role-mappings",
-		Summary:       "List IDP role mappings",
-		Tags:          []string{tagIdpRoleMapping},
-		DefaultStatus: http.StatusOK,
-	}, s.listIdpRoleMappings)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "createIdpRoleMapping",
-		Method:        http.MethodPost,
-		Path:          "/api/idp-role-mappings",
-		Summary:       "Create an IDP role mapping",
-		Tags:          []string{tagIdpRoleMapping},
-		DefaultStatus: http.StatusCreated,
-	}, s.createIdpRoleMapping)
-
-	huma.Register(api, huma.Operation{
-		OperationID:   "deleteIdpRoleMapping",
-		Method:        http.MethodDelete,
-		Path:          "/api/idp-role-mappings/{id}",
-		Summary:       "Delete an IDP role mapping",
-		Tags:          []string{tagIdpRoleMapping},
-		DefaultStatus: http.StatusNoContent,
-	}, s.deleteIdpRoleMapping)
+	apiroute.Get(gMappings, "listIdpRoleMappings", "/api/idp-role-mappings", "List IDP role mappings", s.listIdpRoleMappings)
+	apiroute.Post(gMappings, "createIdpRoleMapping", "/api/idp-role-mappings", "Create an IDP role mapping", http.StatusCreated, s.createIdpRoleMapping)
+	apiroute.Delete(gMappings, "deleteIdpRoleMapping", "/api/idp-role-mappings/{id}", "Delete an IDP role mapping", http.StatusNoContent, s.deleteIdpRoleMapping)
 }
 
-// ── shared types ──────────────────────────────────────────────────────────
-
-type (
-	emptyInput  struct{}
-	emptyOutput struct{}
-)
-
-type idInput struct {
-	ID string `path:"id"`
-}
+// ── shared helpers ────────────────────────────────────────────────────────
 
 func authedAnchor(ctx context.Context) (*platformauth.AuthContext, error) {
 	ac := platformauth.FromContext(ctx)
@@ -320,11 +151,7 @@ func authedAnchor(ctx context.Context) (*platformauth.AuthContext, error) {
 
 // ── OAuthClient ───────────────────────────────────────────────────────────
 
-type listOAuthClientsOutput struct {
-	Body OAuthClientListResponse
-}
-
-func (s *State) listOAuthClients(ctx context.Context, _ *emptyInput) (*listOAuthClientsOutput, error) {
+func (s *State) listOAuthClients(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[OAuthClientListResponse], error) {
 	if _, err := authedAnchor(ctx); err != nil {
 		return nil, err
 	}
@@ -332,10 +159,7 @@ func (s *State) listOAuthClients(ctx context.Context, _ *emptyInput) (*listOAuth
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_all failed", err)
 	}
-	out := make([]OAuthClientResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, oauthClientFromEntity(&rows[i]))
-	}
+	out := apicommon.MapSlice(rows, oauthClientFromEntity)
 	ptrs := make([]*OAuthClientResponse, len(out))
 	for i := range out {
 		ptrs[i] = &out[i]
@@ -343,14 +167,10 @@ func (s *State) listOAuthClients(ctx context.Context, _ *emptyInput) (*listOAuth
 	if err := s.fillApplicationRefs(ctx, ptrs...); err != nil {
 		return nil, err
 	}
-	return &listOAuthClientsOutput{Body: OAuthClientListResponse{Clients: out}}, nil
+	return &apicommon.Out[OAuthClientListResponse]{Body: OAuthClientListResponse{Clients: out}}, nil
 }
 
-type getOAuthClientOutput struct {
-	Body OAuthClientResponse
-}
-
-func (s *State) getOAuthClient(ctx context.Context, in *idInput) (*getOAuthClientOutput, error) {
+func (s *State) getOAuthClient(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[OAuthClientResponse], error) {
 	if _, err := authedAnchor(ctx); err != nil {
 		return nil, err
 	}
@@ -365,7 +185,7 @@ func (s *State) getOAuthClient(ctx context.Context, in *idInput) (*getOAuthClien
 	if err := s.fillApplicationRefs(ctx, &resp); err != nil {
 		return nil, err
 	}
-	return &getOAuthClientOutput{Body: resp}, nil
+	return &apicommon.Out[OAuthClientResponse]{Body: resp}, nil
 }
 
 type clientIDPathInput struct {
@@ -374,7 +194,7 @@ type clientIDPathInput struct {
 
 // getOAuthClientByClientID backs GET /api/oauth-clients/by-client-id/{clientId}
 // (SDK lookup by the OAuth client_id rather than the internal TSID).
-func (s *State) getOAuthClientByClientID(ctx context.Context, in *clientIDPathInput) (*getOAuthClientOutput, error) {
+func (s *State) getOAuthClientByClientID(ctx context.Context, in *clientIDPathInput) (*apicommon.Out[OAuthClientResponse], error) {
 	if _, err := authedAnchor(ctx); err != nil {
 		return nil, err
 	}
@@ -389,18 +209,10 @@ func (s *State) getOAuthClientByClientID(ctx context.Context, in *clientIDPathIn
 	if err := s.fillApplicationRefs(ctx, &resp); err != nil {
 		return nil, err
 	}
-	return &getOAuthClientOutput{Body: resp}, nil
+	return &apicommon.Out[OAuthClientResponse]{Body: resp}, nil
 }
 
-type createOAuthClientInput struct {
-	Body CreateOAuthClientRequest
-}
-
-type createOAuthClientOutput struct {
-	Body CreateOAuthClientResponse
-}
-
-func (s *State) createOAuthClient(ctx context.Context, in *createOAuthClientInput) (*createOAuthClientOutput, error) {
+func (s *State) createOAuthClient(ctx context.Context, in *apicommon.In[CreateOAuthClientRequest]) (*apicommon.Out[CreateOAuthClientResponse], error) {
 	ac, err := authedAnchor(ctx)
 	if err != nil {
 		return nil, err
@@ -428,7 +240,7 @@ func (s *State) createOAuthClient(ctx context.Context, in *createOAuthClientInpu
 	if plaintext, ok := operations.PopStashedSecret(event.OAuthClientID); ok {
 		resp.ClientSecret = plaintext
 	}
-	return &createOAuthClientOutput{Body: resp}, nil
+	return &apicommon.Out[CreateOAuthClientResponse]{Body: resp}, nil
 }
 
 type updateOAuthClientInput struct {
@@ -436,7 +248,7 @@ type updateOAuthClientInput struct {
 	Body UpdateOAuthClientRequest
 }
 
-func (s *State) updateOAuthClient(ctx context.Context, in *updateOAuthClientInput) (*emptyOutput, error) {
+func (s *State) updateOAuthClient(ctx context.Context, in *updateOAuthClientInput) (*apicommon.Empty, error) {
 	ac, err := authedAnchor(ctx)
 	if err != nil {
 		return nil, err
@@ -445,18 +257,14 @@ func (s *State) updateOAuthClient(ctx context.Context, in *updateOAuthClientInpu
 	if _, err := operations.UpdateOAuthClient(ctx, s.Repo.OAuthClients, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
-// oauthClientStatusChangeOutput carries the {success, message?} body, matching
-// Rust's SuccessResponse from activate/deactivate. The SPA reads `.message`
-// (oauth-clients.ts:109-117), which is preserved. Returns 200 + body rather
-// than 204 so apiFetch does not resolve to undefined.
-type oauthClientStatusChangeOutput struct {
-	Body apicommon.SuccessResponse
-}
-
-func (s *State) activateOAuthClient(ctx context.Context, in *idInput) (*oauthClientStatusChangeOutput, error) {
+// activate/deactivate carry the {success, message?} body, matching Rust's
+// SuccessResponse. The SPA reads `.message` (oauth-clients.ts:109-117), which
+// is preserved. Returns 200 + body rather than 204 so apiFetch does not
+// resolve to undefined.
+func (s *State) activateOAuthClient(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[apicommon.SuccessResponse], error) {
 	ac, err := authedAnchor(ctx)
 	if err != nil {
 		return nil, err
@@ -466,10 +274,10 @@ func (s *State) activateOAuthClient(ctx context.Context, in *idInput) (*oauthCli
 		operations.ActivateOAuthClientCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &oauthClientStatusChangeOutput{Body: apicommon.SuccessResponse{Success: true, Message: "OAuth client activated"}}, nil
+	return &apicommon.Out[apicommon.SuccessResponse]{Body: apicommon.SuccessResponse{Success: true, Message: "OAuth client activated"}}, nil
 }
 
-func (s *State) deactivateOAuthClient(ctx context.Context, in *idInput) (*oauthClientStatusChangeOutput, error) {
+func (s *State) deactivateOAuthClient(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[apicommon.SuccessResponse], error) {
 	ac, err := authedAnchor(ctx)
 	if err != nil {
 		return nil, err
@@ -479,14 +287,10 @@ func (s *State) deactivateOAuthClient(ctx context.Context, in *idInput) (*oauthC
 		operations.DeactivateOAuthClientCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &oauthClientStatusChangeOutput{Body: apicommon.SuccessResponse{Success: true, Message: "OAuth client deactivated"}}, nil
+	return &apicommon.Out[apicommon.SuccessResponse]{Body: apicommon.SuccessResponse{Success: true, Message: "OAuth client deactivated"}}, nil
 }
 
-type rotateOAuthClientSecretOutput struct {
-	Body RotateOAuthClientSecretResponse
-}
-
-func (s *State) rotateOAuthClientSecret(ctx context.Context, in *idInput) (*rotateOAuthClientSecretOutput, error) {
+func (s *State) rotateOAuthClientSecret(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[RotateOAuthClientSecretResponse], error) {
 	ac, err := authedAnchor(ctx)
 	if err != nil {
 		return nil, err
@@ -511,10 +315,10 @@ func (s *State) rotateOAuthClientSecret(ctx context.Context, in *idInput) (*rota
 	if plaintext, ok := operations.PopStashedSecret(event.OAuthClientID); ok {
 		resp.ClientSecret = plaintext
 	}
-	return &rotateOAuthClientSecretOutput{Body: resp}, nil
+	return &apicommon.Out[RotateOAuthClientSecretResponse]{Body: resp}, nil
 }
 
-func (s *State) deleteOAuthClient(ctx context.Context, in *idInput) (*emptyOutput, error) {
+func (s *State) deleteOAuthClient(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	ac, err := authedAnchor(ctx)
 	if err != nil {
 		return nil, err
@@ -524,16 +328,12 @@ func (s *State) deleteOAuthClient(ctx context.Context, in *idInput) (*emptyOutpu
 		operations.DeleteOAuthClientCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
 // ── AnchorDomain ──────────────────────────────────────────────────────────
 
-type listAnchorDomainsOutput struct {
-	Body AnchorDomainListResponse
-}
-
-func (s *State) listAnchorDomains(ctx context.Context, _ *emptyInput) (*listAnchorDomainsOutput, error) {
+func (s *State) listAnchorDomains(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[AnchorDomainListResponse], error) {
 	if _, err := authedAnchor(ctx); err != nil {
 		return nil, err
 	}
@@ -541,22 +341,11 @@ func (s *State) listAnchorDomains(ctx context.Context, _ *emptyInput) (*listAnch
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_all failed", err)
 	}
-	out := make([]AnchorDomainResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, anchorDomainFromEntity(&rows[i]))
-	}
-	return &listAnchorDomainsOutput{Body: AnchorDomainListResponse{Items: out}}, nil
+	out := apicommon.MapSlice(rows, anchorDomainFromEntity)
+	return &apicommon.Out[AnchorDomainListResponse]{Body: AnchorDomainListResponse{Items: out}}, nil
 }
 
-type createAnchorDomainInput struct {
-	Body CreateAnchorDomainRequest
-}
-
-type createAnchorDomainOutput struct {
-	Body apicommon.CreatedResponse
-}
-
-func (s *State) createAnchorDomain(ctx context.Context, in *createAnchorDomainInput) (*createAnchorDomainOutput, error) {
+func (s *State) createAnchorDomain(ctx context.Context, in *apicommon.In[CreateAnchorDomainRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
 	ac, err := authedAnchor(ctx)
 	if err != nil {
 		return nil, err
@@ -566,7 +355,7 @@ func (s *State) createAnchorDomain(ctx context.Context, in *createAnchorDomainIn
 	if err != nil {
 		return nil, err
 	}
-	return &createAnchorDomainOutput{Body: apicommon.CreatedResponse{ID: committed.Event().AnchorDomainID}}, nil
+	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: committed.Event().AnchorDomainID}}, nil
 }
 
 type updateAnchorDomainInput struct {
@@ -574,7 +363,7 @@ type updateAnchorDomainInput struct {
 	Body UpdateAnchorDomainRequest
 }
 
-func (s *State) updateAnchorDomain(ctx context.Context, in *updateAnchorDomainInput) (*emptyOutput, error) {
+func (s *State) updateAnchorDomain(ctx context.Context, in *updateAnchorDomainInput) (*apicommon.Empty, error) {
 	ac, err := authedAnchor(ctx)
 	if err != nil {
 		return nil, err
@@ -583,10 +372,10 @@ func (s *State) updateAnchorDomain(ctx context.Context, in *updateAnchorDomainIn
 	if _, err := operations.UpdateAnchorDomain(ctx, s.Repo.AnchorDomains, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
-func (s *State) deleteAnchorDomain(ctx context.Context, in *idInput) (*emptyOutput, error) {
+func (s *State) deleteAnchorDomain(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	ac, err := authedAnchor(ctx)
 	if err != nil {
 		return nil, err
@@ -596,16 +385,12 @@ func (s *State) deleteAnchorDomain(ctx context.Context, in *idInput) (*emptyOutp
 		operations.DeleteAnchorDomainCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
 // ── AuthConfig ────────────────────────────────────────────────────────────
 
-type listAuthConfigsOutput struct {
-	Body AuthConfigListResponse
-}
-
-func (s *State) listAuthConfigs(ctx context.Context, _ *emptyInput) (*listAuthConfigsOutput, error) {
+func (s *State) listAuthConfigs(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[AuthConfigListResponse], error) {
 	if _, err := authedAnchor(ctx); err != nil {
 		return nil, err
 	}
@@ -613,22 +398,11 @@ func (s *State) listAuthConfigs(ctx context.Context, _ *emptyInput) (*listAuthCo
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_all failed", err)
 	}
-	out := make([]AuthConfigResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, authConfigFromEntity(&rows[i]))
-	}
-	return &listAuthConfigsOutput{Body: AuthConfigListResponse{Items: out}}, nil
+	out := apicommon.MapSlice(rows, authConfigFromEntity)
+	return &apicommon.Out[AuthConfigListResponse]{Body: AuthConfigListResponse{Items: out}}, nil
 }
 
-type createAuthConfigInput struct {
-	Body CreateAuthConfigRequest
-}
-
-type createAuthConfigOutput struct {
-	Body apicommon.CreatedResponse
-}
-
-func (s *State) createAuthConfig(ctx context.Context, in *createAuthConfigInput) (*createAuthConfigOutput, error) {
+func (s *State) createAuthConfig(ctx context.Context, in *apicommon.In[CreateAuthConfigRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
 	ac, err := authedAnchor(ctx)
 	if err != nil {
 		return nil, err
@@ -643,7 +417,7 @@ func (s *State) createAuthConfig(ctx context.Context, in *createAuthConfigInput)
 	if err != nil {
 		return nil, err
 	}
-	return &createAuthConfigOutput{Body: apicommon.CreatedResponse{ID: committed.Event().AuthConfigID}}, nil
+	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: committed.Event().AuthConfigID}}, nil
 }
 
 type updateAuthConfigInput struct {
@@ -651,7 +425,7 @@ type updateAuthConfigInput struct {
 	Body UpdateAuthConfigRequest
 }
 
-func (s *State) updateAuthConfig(ctx context.Context, in *updateAuthConfigInput) (*emptyOutput, error) {
+func (s *State) updateAuthConfig(ctx context.Context, in *updateAuthConfigInput) (*apicommon.Empty, error) {
 	ac, err := authedAnchor(ctx)
 	if err != nil {
 		return nil, err
@@ -665,10 +439,10 @@ func (s *State) updateAuthConfig(ctx context.Context, in *updateAuthConfigInput)
 	if _, err := operations.UpdateAuthConfig(ctx, s.Repo.ClientAuthConfigs, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
-func (s *State) deleteAuthConfig(ctx context.Context, in *idInput) (*emptyOutput, error) {
+func (s *State) deleteAuthConfig(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	ac, err := authedAnchor(ctx)
 	if err != nil {
 		return nil, err
@@ -678,16 +452,12 @@ func (s *State) deleteAuthConfig(ctx context.Context, in *idInput) (*emptyOutput
 		operations.DeleteAuthConfigCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }
 
 // ── IdpRoleMapping ────────────────────────────────────────────────────────
 
-type listIdpRoleMappingsOutput struct {
-	Body IdpRoleMappingListResponse
-}
-
-func (s *State) listIdpRoleMappings(ctx context.Context, _ *emptyInput) (*listIdpRoleMappingsOutput, error) {
+func (s *State) listIdpRoleMappings(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[IdpRoleMappingListResponse], error) {
 	if _, err := authedAnchor(ctx); err != nil {
 		return nil, err
 	}
@@ -695,22 +465,11 @@ func (s *State) listIdpRoleMappings(ctx context.Context, _ *emptyInput) (*listId
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_all failed", err)
 	}
-	out := make([]IdpRoleMappingResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, idpRoleMappingFromEntity(&rows[i]))
-	}
-	return &listIdpRoleMappingsOutput{Body: IdpRoleMappingListResponse{Items: out}}, nil
+	out := apicommon.MapSlice(rows, idpRoleMappingFromEntity)
+	return &apicommon.Out[IdpRoleMappingListResponse]{Body: IdpRoleMappingListResponse{Items: out}}, nil
 }
 
-type createIdpRoleMappingInput struct {
-	Body CreateIdpRoleMappingRequest
-}
-
-type createIdpRoleMappingOutput struct {
-	Body apicommon.CreatedResponse
-}
-
-func (s *State) createIdpRoleMapping(ctx context.Context, in *createIdpRoleMappingInput) (*createIdpRoleMappingOutput, error) {
+func (s *State) createIdpRoleMapping(ctx context.Context, in *apicommon.In[CreateIdpRoleMappingRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
 	ac, err := authedAnchor(ctx)
 	if err != nil {
 		return nil, err
@@ -720,10 +479,10 @@ func (s *State) createIdpRoleMapping(ctx context.Context, in *createIdpRoleMappi
 	if err != nil {
 		return nil, err
 	}
-	return &createIdpRoleMappingOutput{Body: apicommon.CreatedResponse{ID: committed.Event().MappingID}}, nil
+	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: committed.Event().MappingID}}, nil
 }
 
-func (s *State) deleteIdpRoleMapping(ctx context.Context, in *idInput) (*emptyOutput, error) {
+func (s *State) deleteIdpRoleMapping(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	ac, err := authedAnchor(ctx)
 	if err != nil {
 		return nil, err
@@ -733,5 +492,5 @@ func (s *State) deleteIdpRoleMapping(ctx context.Context, in *idInput) (*emptyOu
 		operations.DeleteIdpRoleMappingCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
-	return &emptyOutput{}, nil
+	return &apicommon.Empty{}, nil
 }

@@ -2,15 +2,14 @@ package principal
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -79,14 +78,12 @@ func (r *Repository) FindClientAdminEmails(ctx context.Context, clientID string)
 // FindByID loads a principal by id, with role assignments hydrated
 // from iam_principal_roles.
 func (r *Repository) FindByID(ctx context.Context, id string) (*Principal, error) {
-	row, err := r.q.PrincipalFindByID(ctx, id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	res, err := r.q.PrincipalFindByID(ctx, id)
+	row, err := repocommon.One(res, err, "principal repo")
+	if row == nil || err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("principal repo: %w", err)
-	}
-	p := rowToPrincipal(row)
+	p := rowToPrincipal(*row)
 	if err := r.hydrateRoles(ctx, p); err != nil {
 		return nil, err
 	}
@@ -113,14 +110,12 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*Principal, error
 // self-heal (LowercaseEmail) can normalise it in place.
 func (r *Repository) FindByEmail(ctx context.Context, email string) (*Principal, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
-	row, err := r.q.PrincipalFindByEmail(ctx, &email)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	res, err := r.q.PrincipalFindByEmail(ctx, &email)
+	row, err := repocommon.One(res, err, "principal repo")
+	if row == nil || err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("principal repo: %w", err)
-	}
-	p := rowToPrincipal(row)
+	p := rowToPrincipal(*row)
 	if err := r.hydrateRoles(ctx, p); err != nil {
 		return nil, err
 	}
@@ -274,14 +269,12 @@ func (r *Repository) hydrateAppAccess(ctx context.Context, p *Principal) error {
 // has a FK to `iam_principals.id` per migration 028) and by the
 // service-account roles endpoints, whose roles live on this principal.
 func (r *Repository) FindByServiceAccount(ctx context.Context, serviceAccountID string) (*Principal, error) {
-	row, err := r.q.PrincipalFindByServiceAccount(ctx, &serviceAccountID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	res, err := r.q.PrincipalFindByServiceAccount(ctx, &serviceAccountID)
+	row, err := repocommon.One(res, err, "principal repo")
+	if row == nil || err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return nil, fmt.Errorf("principal repo: %w", err)
-	}
-	p := rowToPrincipal(row)
+	p := rowToPrincipal(*row)
 	if err := r.hydrateRoles(ctx, p); err != nil {
 		return nil, err
 	}
