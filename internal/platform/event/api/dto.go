@@ -174,6 +174,83 @@ func rawFromEntity(e *event.Event) RawEventResponse {
 	}
 }
 
+// ── singular create (POST /api/events) ──────────────────────────────────
+
+// CreateEventRequest is the wire body for POST /api/events, the singular
+// SDK ingest. 1:1 with Rust event/api.rs CreateEventRequest and the
+// Laravel SDK's Model\CreateEventRequest: required eventType/source/data,
+// the rest optional.
+type CreateEventRequest struct {
+	EventType       string            `json:"eventType" doc:"Event type code (e.g., \"orders:fulfillment:shipment:shipped\")"`
+	Source          string            `json:"source" doc:"Event source URI"`
+	Subject         string            `json:"subject,omitempty" doc:"Event subject (optional context)"`
+	Data            json.RawMessage   `json:"data" doc:"Event payload data"`
+	MessageGroup    *string           `json:"messageGroup,omitempty" doc:"Message group for FIFO ordering"`
+	CorrelationID   *string           `json:"correlationId,omitempty" doc:"Correlation ID for request tracing"`
+	CausationID     *string           `json:"causationId,omitempty" doc:"Causation ID - the event that caused this event"`
+	DeduplicationID string            `json:"deduplicationId,omitempty" doc:"Deduplication ID for exactly-once delivery"`
+	ClientID        *string           `json:"clientId,omitempty" doc:"Client ID (optional, defaults to caller's client)"`
+	ContextData     []ContextEntryDTO `json:"contextData,omitempty" doc:"Context data for filtering/searching"`
+}
+
+// CreatedEvent is the event envelope inside CreateEventResponse. It
+// mirrors Rust's EventResponse (event/api.rs) — note `eventType`, NOT the
+// `type` key used by this package's read-side EventResponse — because the
+// Laravel SDK's Model\EventResponse decodes `eventType`. A distinct Go
+// type so the OpenAPI schema name can't collide with the existing
+// EventResponse component.
+type CreatedEvent struct {
+	ID              string            `json:"id"`
+	SpecVersion     string            `json:"specVersion"`
+	EventType       string            `json:"eventType"`
+	Source          string            `json:"source"`
+	Subject         string            `json:"subject,omitempty"`
+	Time            httpcompat.Time   `json:"time"`
+	Data            json.RawMessage   `json:"data"`
+	MessageGroup    *string           `json:"messageGroup,omitempty"`
+	CorrelationID   *string           `json:"correlationId,omitempty"`
+	CausationID     *string           `json:"causationId,omitempty"`
+	DeduplicationID string            `json:"deduplicationId,omitempty"`
+	ClientID        *string           `json:"clientId,omitempty"`
+	ContextData     []ContextEntryDTO `json:"contextData,omitempty"`
+	CreatedAt       httpcompat.Time   `json:"createdAt"`
+}
+
+// CreateEventResponse is the wire body for POST /api/events. 1:1 with
+// Rust CreateEventResponse {event, dispatchJobCount, isDuplicate} and the
+// SDK's Model\CreateEventResponse.
+type CreateEventResponse struct {
+	Event            CreatedEvent `json:"event"`
+	DispatchJobCount int          `json:"dispatchJobCount" doc:"Number of dispatch jobs created for matching subscriptions"`
+	IsDuplicate      bool         `json:"isDuplicate" doc:"True if this was a deduplicated request (event already existed)"`
+}
+
+func createdFromEntity(e *event.Event) CreatedEvent {
+	var ctx []ContextEntryDTO
+	if len(e.Context) > 0 {
+		ctx = make([]ContextEntryDTO, 0, len(e.Context))
+		for _, c := range e.Context {
+			ctx = append(ctx, ContextEntryDTO{Key: c.Key, Value: c.Value})
+		}
+	}
+	return CreatedEvent{
+		ID:              e.ID,
+		SpecVersion:     e.SpecVersion,
+		EventType:       e.Type,
+		Source:          e.Source,
+		Subject:         e.Subject,
+		Time:            jsontime.New(e.Time),
+		Data:            e.Data,
+		MessageGroup:    e.MessageGroup,
+		CorrelationID:   e.CorrelationID,
+		CausationID:     e.CausationID,
+		DeduplicationID: e.DeduplicationID,
+		ClientID:        e.ClientID,
+		ContextData:     ctx,
+		CreatedAt:       jsontime.New(e.CreatedAt),
+	}
+}
+
 // BatchEventItem is one item in the batch ingest body. Fields are optional in
 // the generated schema so the endpoint accepts both the camelCase API form (the
 // SPA fan-out) and the snake_case SDK-outbox payload form (event_type,

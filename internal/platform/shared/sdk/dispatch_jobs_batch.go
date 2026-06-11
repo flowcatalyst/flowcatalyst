@@ -74,9 +74,50 @@ type BatchResponse struct {
 	Results []BatchResultItem `json:"results"`
 }
 
-// RegisterRoutes mounts /api/dispatch-jobs/batch.
+// RegisterRoutes mounts the SDK dispatch-job ingest endpoints:
+// POST /api/dispatch-jobs (singular) and /api/dispatch-jobs/batch.
 func RegisterRoutes(r chi.Router, s *DispatchJobsBatchState) {
+	r.Post("/api/dispatch-jobs", s.createOne)
 	r.Post("/api/dispatch-jobs/batch", s.batchIngest)
+}
+
+// jobFromItem maps one inbound ingest item to a DispatchJob with the
+// shared ingest defaults. Used by both the batch loop and the singular
+// create so the two endpoints persist identically-shaped rows.
+func jobFromItem(it BatchItem) dispatchjob.DispatchJob {
+	j := dispatchjob.DispatchJob{
+		Kind:               dispatchjob.ParseKind(it.Kind),
+		Code:               it.Code,
+		Source:             it.Source,
+		Subject:            it.Subject,
+		TargetURL:          it.TargetURL,
+		Protocol:           dispatchjob.ProtocolHTTPWebhook,
+		Payload:            it.Payload,
+		PayloadContentType: defaultIfEmpty(it.PayloadContentType, "application/json"),
+		DataOnly:           it.DataOnly,
+		ExternalID:         it.ExternalID,
+		EventID:            it.EventID,
+		CorrelationID:      it.CorrelationID,
+		ClientID:           it.ClientID,
+		SubscriptionID:     it.SubscriptionID,
+		ServiceAccountID:   it.ServiceAccountID,
+		DispatchPoolID:     it.DispatchPoolID,
+		MessageGroup:       it.MessageGroup,
+		Mode:               common.ParseDispatchMode(it.Mode),
+		Sequence:           defaultI32(it.Sequence, 99),
+		TimeoutSeconds:     defaultU32(it.TimeoutSeconds, 30),
+		MaxRetries:         defaultU32(it.MaxRetries, 3),
+		RetryStrategy:      dispatchjob.RetryExponentialBackoff,
+		Status:             common.DispatchPending,
+		Metadata:           it.Metadata,
+	}
+	if it.ID != nil && *it.ID != "" {
+		j.ID = *it.ID
+	} else {
+		// 13-char untyped TSID — `msg_dispatch_jobs.id` is VARCHAR(13).
+		j.ID = tsid.GenerateUntyped()
+	}
+	return j
 }
 
 func (s *DispatchJobsBatchState) batchIngest(w http.ResponseWriter, r *http.Request) {
@@ -105,38 +146,7 @@ func (s *DispatchJobsBatchState) batchIngest(w http.ResponseWriter, r *http.Requ
 
 	jobs := make([]dispatchjob.DispatchJob, 0, len(body.Items))
 	for _, it := range body.Items {
-		j := dispatchjob.DispatchJob{
-			Kind:               dispatchjob.ParseKind(it.Kind),
-			Code:               it.Code,
-			Source:             it.Source,
-			Subject:            it.Subject,
-			TargetURL:          it.TargetURL,
-			Protocol:           dispatchjob.ProtocolHTTPWebhook,
-			Payload:            it.Payload,
-			PayloadContentType: defaultIfEmpty(it.PayloadContentType, "application/json"),
-			DataOnly:           it.DataOnly,
-			ExternalID:         it.ExternalID,
-			EventID:            it.EventID,
-			CorrelationID:      it.CorrelationID,
-			ClientID:           it.ClientID,
-			SubscriptionID:     it.SubscriptionID,
-			ServiceAccountID:   it.ServiceAccountID,
-			DispatchPoolID:     it.DispatchPoolID,
-			MessageGroup:       it.MessageGroup,
-			Mode:               common.ParseDispatchMode(it.Mode),
-			Sequence:           defaultI32(it.Sequence, 99),
-			TimeoutSeconds:     defaultU32(it.TimeoutSeconds, 30),
-			MaxRetries:         defaultU32(it.MaxRetries, 3),
-			RetryStrategy:      dispatchjob.RetryExponentialBackoff,
-			Status:             common.DispatchPending,
-			Metadata:           it.Metadata,
-		}
-		if it.ID != nil && *it.ID != "" {
-			j.ID = *it.ID
-		} else {
-			// 13-char untyped TSID — `msg_dispatch_jobs.id` is VARCHAR(13).
-			j.ID = tsid.GenerateUntyped()
-		}
+		j := jobFromItem(it)
 		// Tenant guard: SDK service accounts can only ingest for clients
 		// they have access to.
 		if j.ClientID != nil && !ac.CanAccessClient(*j.ClientID) {

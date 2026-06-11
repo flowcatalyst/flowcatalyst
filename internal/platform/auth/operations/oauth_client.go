@@ -325,4 +325,3 @@ func generateSecret() (plaintext, ref string, err error) {
 	ref = "encrypted:" + encrypted
 	return plaintext, ref, nil
 }
-

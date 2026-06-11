@@ -27,6 +27,7 @@ const tag = "events"
 // Register mounts the event endpoints.
 func Register(api huma.API, s *State) {
 	g := apiroute.New(api, tag)
+	apiroute.Post(g, "createEvent", "/api/events", "Create a single event (SDK)", http.StatusCreated, s.create)
 	apiroute.Post(g, "batchIngestEvents", "/api/events/batch", "Ingest a batch of events (SDK)", http.StatusCreated, s.batchIngest)
 	apiroute.Get(g, "eventFilterOptions", "/api/events/filter-options", "Distinct event types/sources/clients for filter UI", s.filterOptions)
 	apiroute.Get(g, "listEventsRaw", "/api/events/list-raw", "List events with raw JSONB rows", s.listRaw)
@@ -60,6 +61,66 @@ func registerBFF(api huma.API, s *State, base, opPrefix, tag string) {
 	apiroute.Get(g, "listEventsRaw"+opPrefix, base+"/list-raw", "List events with raw JSONB rows", s.listRaw)
 	apiroute.Get(g, "listEvents"+opPrefix, base, "List events with filters", s.list)
 	apiroute.Get(g, "getEvent"+opPrefix, base+"/{id}", "Get an event by id", s.getByID)
+}
+
+// ── singular create ──────────────────────────────────────────────────────
+
+// create is POST /api/events — the singular SDK ingest, mirroring Rust's
+// create_event (event/api.rs). Validation/normalization happens here; the
+// row goes through the SAME repository insert path as the batch endpoint
+// (InsertBatch with one item — event ingest bypasses the UoW per
+// docs/conventions.md §3).
+//
+// Known divergence from Rust: the Go event repository deliberately has no
+// find_by_deduplication_id, so the idempotent dedup-hit path (200 +
+// isDuplicate=true returning the existing event) is not implemented —
+// every accepted request inserts and responds 201 with isDuplicate=false.
+// The Laravel SDK decodes CreateEventResponse on both 200 and 201, so the
+// contract holds either way. dispatchJobCount is always 0, exactly like
+// Rust (jobs are fanned out by the stream processor, not inline).
+func (s *State) create(ctx context.Context, in *apicommon.In[CreateEventRequest]) (*apicommon.Out[CreateEventResponse], error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, "platform:messaging:batch:events-write"); err != nil {
+		return nil, err
+	}
+	req := in.Body
+	// eventType/source/data are schema-required; huma rejects absent fields
+	// before the handler runs. Guard data here too so an explicit JSON
+	// `null` doesn't slip an empty payload through.
+	if len(req.Data) == 0 || string(req.Data) == "null" {
+		return nil, httperror.BadRequest("VALIDATION", "data is required")
+	}
+
+	// Client ID: explicit value wins; otherwise non-anchor callers default
+	// to their first accessible client (1:1 with Rust create_event).
+	clientID := req.ClientID
+	if clientID == nil && !ac.IsAnchor() && len(ac.Clients) > 0 {
+		clientID = &ac.Clients[0]
+	}
+	if clientID != nil && !ac.CanAccessClient(*clientID) {
+		return nil, httperror.Forbidden("No access to client: " + *clientID)
+	}
+
+	ev := event.New(req.EventType, req.Source, req.Subject, req.Data)
+	if req.DeduplicationID != "" {
+		ev.DeduplicationID = req.DeduplicationID
+	}
+	ev.ClientID = clientID
+	ev.MessageGroup = req.MessageGroup
+	ev.CorrelationID = req.CorrelationID
+	ev.CausationID = req.CausationID
+	for _, c := range req.ContextData {
+		ev.Context = append(ev.Context, event.ContextEntry{Key: c.Key, Value: c.Value})
+	}
+
+	if _, err := s.Repo.InsertBatch(ctx, []event.Event{*ev}); err != nil {
+		return nil, usecase.Internal("REPO", "insert failed", err)
+	}
+	return &apicommon.Out[CreateEventResponse]{Body: CreateEventResponse{
+		Event:            createdFromEntity(ev),
+		DispatchJobCount: 0,
+		IsDuplicate:      false,
+	}}, nil
 }
 
 // ── batch ingest ─────────────────────────────────────────────────────────

@@ -2137,6 +2137,100 @@
         ],
         "type": "object"
       },
+      "CreateEventRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CreateEventRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "causationId": {
+            "description": "Causation ID - the event that caused this event",
+            "type": "string"
+          },
+          "clientId": {
+            "description": "Client ID (optional, defaults to caller's client)",
+            "type": "string"
+          },
+          "contextData": {
+            "description": "Context data for filtering/searching",
+            "items": {
+              "$ref": "#/components/schemas/ContextEntryDTO"
+            },
+            "type": "array"
+          },
+          "correlationId": {
+            "description": "Correlation ID for request tracing",
+            "type": "string"
+          },
+          "data": {
+            "description": "Event payload data"
+          },
+          "deduplicationId": {
+            "description": "Deduplication ID for exactly-once delivery",
+            "type": "string"
+          },
+          "eventType": {
+            "description": "Event type code (e.g., \"orders:fulfillment:shipment:shipped\")",
+            "type": "string"
+          },
+          "messageGroup": {
+            "description": "Message group for FIFO ordering",
+            "type": "string"
+          },
+          "source": {
+            "description": "Event source URI",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Event subject (optional context)",
+            "type": "string"
+          }
+        },
+        "required": [
+          "eventType",
+          "source",
+          "data"
+        ],
+        "type": "object"
+      },
+      "CreateEventResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CreateEventResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "dispatchJobCount": {
+            "description": "Number of dispatch jobs created for matching subscriptions",
+            "format": "int64",
+            "type": "integer"
+          },
+          "event": {
+            "$ref": "#/components/schemas/CreatedEvent"
+          },
+          "isDuplicate": {
+            "description": "True if this was a deduplicated request (event already existed)",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "event",
+          "dispatchJobCount",
+          "isDuplicate"
+        ],
+        "type": "object"
+      },
       "CreateEventTypeRequest": {
         "additionalProperties": true,
         "properties": {
@@ -2806,6 +2900,66 @@
         "required": [
           "email",
           "name"
+        ],
+        "type": "object"
+      },
+      "CreatedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "causationId": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "contextData": {
+            "items": {
+              "$ref": "#/components/schemas/ContextEntryDTO"
+            },
+            "type": "array"
+          },
+          "correlationId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "data": {},
+          "deduplicationId": {
+            "type": "string"
+          },
+          "eventType": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "messageGroup": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "specVersion": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "time": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "specVersion",
+          "eventType",
+          "source",
+          "time",
+          "data",
+          "createdAt"
         ],
         "type": "object"
       },
@@ -12547,6 +12701,45 @@
           }
         },
         "summary": "List events with filters",
+        "tags": [
+          "events"
+        ]
+      },
+      "post": {
+        "operationId": "createEvent",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEventRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateEventResponse"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Create a single event (SDK)",
         "tags": [
           "events"
         ]
