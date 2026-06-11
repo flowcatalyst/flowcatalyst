@@ -165,15 +165,15 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type ClientUpsertParams struct {
-	ID              string
-	Name            string
-	Identifier      string
-	Status          string
-	StatusReason    *string
-	StatusChangedAt *time.Time
-	Notes           json.RawMessage
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID              string          `db:"id"`
+	Name            string          `db:"name"`
+	Identifier      string          `db:"identifier"`
+	Status          string          `db:"status"`
+	StatusReason    *string         `db:"status_reason"`
+	StatusChangedAt *time.Time      `db:"status_changed_at"`
+	Notes           json.RawMessage `db:"notes"`
+	CreatedAt       time.Time       `db:"created_at"`
+	UpdatedAt       time.Time       `db:"updated_at"`
 }
 
 func (q *Queries) ClientUpsert(ctx context.Context, arg ClientUpsertParams) error {

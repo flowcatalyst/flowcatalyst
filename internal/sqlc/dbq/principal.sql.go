@@ -216,22 +216,22 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type PrincipalUpsertParams struct {
-	ID               string
-	Type             string
-	Scope            *string
-	ClientID         *string
-	ApplicationID    *string
-	Name             string
-	Active           bool
-	Email            *string
-	EmailDomain      *string
-	IdpType          *string
-	ExternalIdpID    *string
-	PasswordHash     *string
-	LastLoginAt      *time.Time
-	ServiceAccountID *string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID               string     `db:"id"`
+	Type             string     `db:"type"`
+	Scope            *string    `db:"scope"`
+	ClientID         *string    `db:"client_id"`
+	ApplicationID    *string    `db:"application_id"`
+	Name             string     `db:"name"`
+	Active           bool       `db:"active"`
+	Email            *string    `db:"email"`
+	EmailDomain      *string    `db:"email_domain"`
+	IdpType          *string    `db:"idp_type"`
+	ExternalIdpID    *string    `db:"external_idp_id"`
+	PasswordHash     *string    `db:"password_hash"`
+	LastLoginAt      *time.Time `db:"last_login_at"`
+	ServiceAccountID *string    `db:"service_account_id"`
+	CreatedAt        time.Time  `db:"created_at"`
+	UpdatedAt        time.Time  `db:"updated_at"`
 }
 
 func (q *Queries) PrincipalUpsert(ctx context.Context, arg PrincipalUpsertParams) error {

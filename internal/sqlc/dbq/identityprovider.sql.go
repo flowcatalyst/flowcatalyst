@@ -26,8 +26,8 @@ VALUES ($1, $2)
 `
 
 type IdentityProviderDomainInsertParams struct {
-	IdentityProviderID string
-	EmailDomain        string
+	IdentityProviderID string `db:"identity_provider_id"`
+	EmailDomain        string `db:"email_domain"`
 }
 
 func (q *Queries) IdentityProviderDomainInsert(ctx context.Context, arg IdentityProviderDomainInsertParams) error {
@@ -52,8 +52,8 @@ ORDER BY identity_provider_id, email_domain
 `
 
 type IdentityProviderDomainsForIDPsRow struct {
-	IdentityProviderID string
-	EmailDomain        string
+	IdentityProviderID string `db:"identity_provider_id"`
+	EmailDomain        string `db:"email_domain"`
 }
 
 func (q *Queries) IdentityProviderDomainsForIDPs(ctx context.Context, idpIds []string) ([]IdentityProviderDomainsForIDPsRow, error) {
@@ -193,17 +193,17 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type IdentityProviderUpsertParams struct {
-	ID                  string
-	Code                string
-	Name                string
-	Type                string
-	OidcIssuerUrl       *string
-	OidcClientID        *string
-	OidcClientSecretRef *string
-	OidcMultiTenant     bool
-	OidcIssuerPattern   *string
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
+	ID                  string    `db:"id"`
+	Code                string    `db:"code"`
+	Name                string    `db:"name"`
+	Type                string    `db:"type"`
+	OidcIssuerUrl       *string   `db:"oidc_issuer_url"`
+	OidcClientID        *string   `db:"oidc_client_id"`
+	OidcClientSecretRef *string   `db:"oidc_client_secret_ref"`
+	OidcMultiTenant     bool      `db:"oidc_multi_tenant"`
+	OidcIssuerPattern   *string   `db:"oidc_issuer_pattern"`
+	CreatedAt           time.Time `db:"created_at"`
+	UpdatedAt           time.Time `db:"updated_at"`
 }
 
 func (q *Queries) IdentityProviderUpsert(ctx context.Context, arg IdentityProviderUpsertParams) error {

@@ -129,12 +129,12 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type CorsOriginUpsertParams struct {
-	ID          string
-	Origin      string
-	Description *string
-	CreatedBy   *string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID          string    `db:"id"`
+	Origin      string    `db:"origin"`
+	Description *string   `db:"description"`
+	CreatedBy   *string   `db:"created_by"`
+	CreatedAt   time.Time `db:"created_at"`
+	UpdatedAt   time.Time `db:"updated_at"`
 }
 
 func (q *Queries) CorsOriginUpsert(ctx context.Context, arg CorsOriginUpsertParams) error {

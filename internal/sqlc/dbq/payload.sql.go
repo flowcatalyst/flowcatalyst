@@ -36,8 +36,8 @@ WHERE id = $1 AND type = $2
 `
 
 type OAuthPayloadFindByIDParams struct {
-	ID   string
-	Type string
+	ID   string `db:"id"`
+	Type string `db:"type"`
 }
 
 func (q *Queries) OAuthPayloadFindByID(ctx context.Context, arg OAuthPayloadFindByIDParams) (OauthOidcPayload, error) {
@@ -65,15 +65,15 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 `
 
 type OAuthPayloadInsertParams struct {
-	ID         string
-	Type       string
-	Payload    json.RawMessage
-	GrantID    *string
-	UserCode   *string
-	Uid        *string
-	ExpiresAt  *time.Time
-	ConsumedAt *time.Time
-	CreatedAt  time.Time
+	ID         string          `db:"id"`
+	Type       string          `db:"type"`
+	Payload    json.RawMessage `db:"payload"`
+	GrantID    *string         `db:"grant_id"`
+	UserCode   *string         `db:"user_code"`
+	Uid        *string         `db:"uid"`
+	ExpiresAt  *time.Time      `db:"expires_at"`
+	ConsumedAt *time.Time      `db:"consumed_at"`
+	CreatedAt  time.Time       `db:"created_at"`
 }
 
 // Queries for oauth_oidc_payloads — the OIDC artifact store

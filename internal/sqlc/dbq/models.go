@@ -10,819 +10,819 @@ import (
 )
 
 type AppApplication struct {
-	ID               string
-	Type             string
-	Code             string
-	Name             string
-	Description      *string
-	IconUrl          *string
-	Website          *string
-	Logo             *string
-	LogoMimeType     *string
-	DefaultBaseUrl   *string
-	ServiceAccountID *string
-	Active           bool
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID               string    `db:"id"`
+	Type             string    `db:"type"`
+	Code             string    `db:"code"`
+	Name             string    `db:"name"`
+	Description      *string   `db:"description"`
+	IconUrl          *string   `db:"icon_url"`
+	Website          *string   `db:"website"`
+	Logo             *string   `db:"logo"`
+	LogoMimeType     *string   `db:"logo_mime_type"`
+	DefaultBaseUrl   *string   `db:"default_base_url"`
+	ServiceAccountID *string   `db:"service_account_id"`
+	Active           bool      `db:"active"`
+	CreatedAt        time.Time `db:"created_at"`
+	UpdatedAt        time.Time `db:"updated_at"`
 }
 
 type AppApplicationOpenapiSpec struct {
-	ID              string
-	ApplicationID   string
-	Version         string
-	Status          string
-	Spec            json.RawMessage
-	SpecHash        string
-	ChangeNotes     json.RawMessage
-	ChangeNotesText *string
-	SyncedAt        time.Time
-	SyncedBy        *string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID              string          `db:"id"`
+	ApplicationID   string          `db:"application_id"`
+	Version         string          `db:"version"`
+	Status          string          `db:"status"`
+	Spec            json.RawMessage `db:"spec"`
+	SpecHash        string          `db:"spec_hash"`
+	ChangeNotes     json.RawMessage `db:"change_notes"`
+	ChangeNotesText *string         `db:"change_notes_text"`
+	SyncedAt        time.Time       `db:"synced_at"`
+	SyncedBy        *string         `db:"synced_by"`
+	CreatedAt       time.Time       `db:"created_at"`
+	UpdatedAt       time.Time       `db:"updated_at"`
 }
 
 type AppClientConfig struct {
-	ID            string
-	ApplicationID string
-	ClientID      string
-	Enabled       bool
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID            string    `db:"id"`
+	ApplicationID string    `db:"application_id"`
+	ClientID      string    `db:"client_id"`
+	Enabled       bool      `db:"enabled"`
+	CreatedAt     time.Time `db:"created_at"`
+	UpdatedAt     time.Time `db:"updated_at"`
 }
 
 type AppPlatformConfig struct {
-	ID              string
-	ApplicationCode string
-	Section         string
-	Property        string
-	Scope           string
-	ClientID        *string
-	ValueType       string
-	Value           string
-	Description     *string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID              string    `db:"id"`
+	ApplicationCode string    `db:"application_code"`
+	Section         string    `db:"section"`
+	Property        string    `db:"property"`
+	Scope           string    `db:"scope"`
+	ClientID        *string   `db:"client_id"`
+	ValueType       string    `db:"value_type"`
+	Value           string    `db:"value"`
+	Description     *string   `db:"description"`
+	CreatedAt       time.Time `db:"created_at"`
+	UpdatedAt       time.Time `db:"updated_at"`
 }
 
 type AppPlatformConfigAccess struct {
-	ID              string
-	ApplicationCode string
-	RoleCode        string
-	CanRead         bool
-	CanWrite        bool
-	CreatedAt       time.Time
+	ID              string    `db:"id"`
+	ApplicationCode string    `db:"application_code"`
+	RoleCode        string    `db:"role_code"`
+	CanRead         bool      `db:"can_read"`
+	CanWrite        bool      `db:"can_write"`
+	CreatedAt       time.Time `db:"created_at"`
 }
 
 type AudLog struct {
-	ID            string
-	EntityType    string
-	EntityID      string
-	Operation     string
-	OperationJson json.RawMessage
-	PrincipalID   *string
-	PerformedAt   time.Time
-	ApplicationID *string
-	ClientID      *string
+	ID            string          `db:"id"`
+	EntityType    string          `db:"entity_type"`
+	EntityID      string          `db:"entity_id"`
+	Operation     string          `db:"operation"`
+	OperationJson json.RawMessage `db:"operation_json"`
+	PrincipalID   *string         `db:"principal_id"`
+	PerformedAt   time.Time       `db:"performed_at"`
+	ApplicationID *string         `db:"application_id"`
+	ClientID      *string         `db:"client_id"`
 }
 
 type IamAuthorizationCode struct {
-	Code                string
-	ClientID            string
-	PrincipalID         string
-	RedirectUri         string
-	Scope               *string
-	CodeChallenge       *string
-	CodeChallengeMethod *string
-	Nonce               *string
-	State               *string
-	ContextClientID     *string
-	CreatedAt           time.Time
-	ExpiresAt           time.Time
-	Used                bool
+	Code                string    `db:"code"`
+	ClientID            string    `db:"client_id"`
+	PrincipalID         string    `db:"principal_id"`
+	RedirectUri         string    `db:"redirect_uri"`
+	Scope               *string   `db:"scope"`
+	CodeChallenge       *string   `db:"code_challenge"`
+	CodeChallengeMethod *string   `db:"code_challenge_method"`
+	Nonce               *string   `db:"nonce"`
+	State               *string   `db:"state"`
+	ContextClientID     *string   `db:"context_client_id"`
+	CreatedAt           time.Time `db:"created_at"`
+	ExpiresAt           time.Time `db:"expires_at"`
+	Used                bool      `db:"used"`
 }
 
 type IamClientAccessGrant struct {
-	ID          string
-	PrincipalID string
-	ClientID    string
-	GrantedBy   string
-	GrantedAt   time.Time
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID          string    `db:"id"`
+	PrincipalID string    `db:"principal_id"`
+	ClientID    string    `db:"client_id"`
+	GrantedBy   string    `db:"granted_by"`
+	GrantedAt   time.Time `db:"granted_at"`
+	CreatedAt   time.Time `db:"created_at"`
+	UpdatedAt   time.Time `db:"updated_at"`
 }
 
 type IamLoginAttempt struct {
-	ID            string
-	AttemptType   string
-	Outcome       string
-	FailureReason *string
-	Identifier    *string
-	PrincipalID   *string
-	IpAddress     *string
-	UserAgent     *string
-	AttemptedAt   time.Time
+	ID            string    `db:"id"`
+	AttemptType   string    `db:"attempt_type"`
+	Outcome       string    `db:"outcome"`
+	FailureReason *string   `db:"failure_reason"`
+	Identifier    *string   `db:"identifier"`
+	PrincipalID   *string   `db:"principal_id"`
+	IpAddress     *string   `db:"ip_address"`
+	UserAgent     *string   `db:"user_agent"`
+	AttemptedAt   time.Time `db:"attempted_at"`
 }
 
 type IamMfaEmailPin struct {
-	ID          string
-	PrincipalID string
-	Purpose     string
-	PinHash     string
-	Attempts    int32
-	ExpiresAt   time.Time
-	CreatedAt   time.Time
+	ID          string    `db:"id"`
+	PrincipalID string    `db:"principal_id"`
+	Purpose     string    `db:"purpose"`
+	PinHash     string    `db:"pin_hash"`
+	Attempts    int32     `db:"attempts"`
+	ExpiresAt   time.Time `db:"expires_at"`
+	CreatedAt   time.Time `db:"created_at"`
 }
 
 type IamMfaTrustedDevice struct {
-	ID          string
-	PrincipalID string
-	TokenHash   string
-	Label       *string
-	ExpiresAt   time.Time
-	CreatedAt   time.Time
-	LastUsedAt  *time.Time
+	ID          string     `db:"id"`
+	PrincipalID string     `db:"principal_id"`
+	TokenHash   string     `db:"token_hash"`
+	Label       *string    `db:"label"`
+	ExpiresAt   time.Time  `db:"expires_at"`
+	CreatedAt   time.Time  `db:"created_at"`
+	LastUsedAt  *time.Time `db:"last_used_at"`
 }
 
 type IamOidcLoginState struct {
-	State                    string
-	EmailDomain              string
-	AuthConfigID             string
-	Nonce                    string
-	CodeVerifier             string
-	ReturnUrl                *string
-	OauthClientID            *string
-	OauthRedirectUri         *string
-	OauthScope               *string
-	OauthState               *string
-	OauthCodeChallenge       *string
-	OauthCodeChallengeMethod *string
-	OauthNonce               *string
-	CreatedAt                time.Time
-	ExpiresAt                time.Time
+	State                    string    `db:"state"`
+	EmailDomain              string    `db:"email_domain"`
+	AuthConfigID             string    `db:"auth_config_id"`
+	Nonce                    string    `db:"nonce"`
+	CodeVerifier             string    `db:"code_verifier"`
+	ReturnUrl                *string   `db:"return_url"`
+	OauthClientID            *string   `db:"oauth_client_id"`
+	OauthRedirectUri         *string   `db:"oauth_redirect_uri"`
+	OauthScope               *string   `db:"oauth_scope"`
+	OauthState               *string   `db:"oauth_state"`
+	OauthCodeChallenge       *string   `db:"oauth_code_challenge"`
+	OauthCodeChallengeMethod *string   `db:"oauth_code_challenge_method"`
+	OauthNonce               *string   `db:"oauth_nonce"`
+	CreatedAt                time.Time `db:"created_at"`
+	ExpiresAt                time.Time `db:"expires_at"`
 }
 
 type IamPasswordResetToken struct {
-	ID             string
-	PrincipalID    string
-	TokenHash      string
-	ExpiresAt      time.Time
-	CreatedAt      time.Time
-	Purpose        string
-	Reset2fa       bool
-	RequiresFactor bool
-	FactorAttempts int32
+	ID             string    `db:"id"`
+	PrincipalID    string    `db:"principal_id"`
+	TokenHash      string    `db:"token_hash"`
+	ExpiresAt      time.Time `db:"expires_at"`
+	CreatedAt      time.Time `db:"created_at"`
+	Purpose        string    `db:"purpose"`
+	Reset2fa       bool      `db:"reset_2fa"`
+	RequiresFactor bool      `db:"requires_factor"`
+	FactorAttempts int32     `db:"factor_attempts"`
 }
 
 type IamPermission struct {
-	ID          string
-	Code        string
-	Subdomain   string
-	Context     string
-	Aggregate   string
-	Action      string
-	Description *string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID          string    `db:"id"`
+	Code        string    `db:"code"`
+	Subdomain   string    `db:"subdomain"`
+	Context     string    `db:"context"`
+	Aggregate   string    `db:"aggregate"`
+	Action      string    `db:"action"`
+	Description *string   `db:"description"`
+	CreatedAt   time.Time `db:"created_at"`
+	UpdatedAt   time.Time `db:"updated_at"`
 }
 
 type IamPrincipal struct {
-	ID               string
-	Type             string
-	Scope            *string
-	ClientID         *string
-	ApplicationID    *string
-	Name             string
-	Active           bool
-	Email            *string
-	EmailDomain      *string
-	IdpType          *string
-	ExternalIdpID    *string
-	PasswordHash     *string
-	LastLoginAt      *time.Time
-	ServiceAccountID *string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID               string     `db:"id"`
+	Type             string     `db:"type"`
+	Scope            *string    `db:"scope"`
+	ClientID         *string    `db:"client_id"`
+	ApplicationID    *string    `db:"application_id"`
+	Name             string     `db:"name"`
+	Active           bool       `db:"active"`
+	Email            *string    `db:"email"`
+	EmailDomain      *string    `db:"email_domain"`
+	IdpType          *string    `db:"idp_type"`
+	ExternalIdpID    *string    `db:"external_idp_id"`
+	PasswordHash     *string    `db:"password_hash"`
+	LastLoginAt      *time.Time `db:"last_login_at"`
+	ServiceAccountID *string    `db:"service_account_id"`
+	CreatedAt        time.Time  `db:"created_at"`
+	UpdatedAt        time.Time  `db:"updated_at"`
 }
 
 type IamPrincipalApplicationAccess struct {
-	PrincipalID   string
-	ApplicationID string
-	GrantedAt     time.Time
+	PrincipalID   string    `db:"principal_id"`
+	ApplicationID string    `db:"application_id"`
+	GrantedAt     time.Time `db:"granted_at"`
 }
 
 type IamPrincipalRole struct {
-	PrincipalID      string
-	RoleName         string
-	AssignmentSource *string
-	AssignedAt       time.Time
+	PrincipalID      string    `db:"principal_id"`
+	RoleName         string    `db:"role_name"`
+	AssignmentSource *string   `db:"assignment_source"`
+	AssignedAt       time.Time `db:"assigned_at"`
 }
 
 type IamRateLimitEvent struct {
-	ID         int64
-	Bucket     string
-	Key        string
-	OccurredAt time.Time
+	ID         int64     `db:"id"`
+	Bucket     string    `db:"bucket"`
+	Key        string    `db:"key"`
+	OccurredAt time.Time `db:"occurred_at"`
 }
 
 type IamRefreshToken struct {
-	ID                string
-	TokenHash         string
-	PrincipalID       string
-	OauthClientID     *string
-	Scopes            *string
-	AccessibleClients *string
-	Revoked           bool
-	RevokedAt         *time.Time
-	TokenFamily       *string
-	ReplacedBy        *string
-	CreatedAt         time.Time
-	ExpiresAt         time.Time
-	LastUsedAt        *time.Time
-	CreatedFromIp     *string
-	UserAgent         *string
+	ID                string     `db:"id"`
+	TokenHash         string     `db:"token_hash"`
+	PrincipalID       string     `db:"principal_id"`
+	OauthClientID     *string    `db:"oauth_client_id"`
+	Scopes            *string    `db:"scopes"`
+	AccessibleClients *string    `db:"accessible_clients"`
+	Revoked           bool       `db:"revoked"`
+	RevokedAt         *time.Time `db:"revoked_at"`
+	TokenFamily       *string    `db:"token_family"`
+	ReplacedBy        *string    `db:"replaced_by"`
+	CreatedAt         time.Time  `db:"created_at"`
+	ExpiresAt         time.Time  `db:"expires_at"`
+	LastUsedAt        *time.Time `db:"last_used_at"`
+	CreatedFromIp     *string    `db:"created_from_ip"`
+	UserAgent         *string    `db:"user_agent"`
 }
 
 type IamResetApprovalRequest struct {
-	ID          string
-	PrincipalID string
-	ClientID    *string
-	Status      string
-	Reset2fa    bool
-	Note        *string
-	DecidedBy   *string
-	DecidedAt   *time.Time
-	ExpiresAt   time.Time
-	CreatedAt   time.Time
+	ID          string     `db:"id"`
+	PrincipalID string     `db:"principal_id"`
+	ClientID    *string    `db:"client_id"`
+	Status      string     `db:"status"`
+	Reset2fa    bool       `db:"reset_2fa"`
+	Note        *string    `db:"note"`
+	DecidedBy   *string    `db:"decided_by"`
+	DecidedAt   *time.Time `db:"decided_at"`
+	ExpiresAt   time.Time  `db:"expires_at"`
+	CreatedAt   time.Time  `db:"created_at"`
 }
 
 type IamRole struct {
-	ID              string
-	ApplicationID   *string
-	ApplicationCode *string
-	Name            string
-	DisplayName     string
-	Description     *string
-	Source          string
-	ClientManaged   bool
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID              string    `db:"id"`
+	ApplicationID   *string   `db:"application_id"`
+	ApplicationCode *string   `db:"application_code"`
+	Name            string    `db:"name"`
+	DisplayName     string    `db:"display_name"`
+	Description     *string   `db:"description"`
+	Source          string    `db:"source"`
+	ClientManaged   bool      `db:"client_managed"`
+	CreatedAt       time.Time `db:"created_at"`
+	UpdatedAt       time.Time `db:"updated_at"`
 }
 
 type IamRolePermission struct {
-	RoleID     string
-	Permission string
+	RoleID     string `db:"role_id"`
+	Permission string `db:"permission"`
 }
 
 type IamServiceAccount struct {
-	ID                         string
-	Code                       string
-	Name                       string
-	Description                *string
-	ApplicationID              *string
-	Active                     bool
-	WhAuthType                 *string
-	WhAuthTokenRef             *string
-	WhSigningSecretRef         *string
-	WhSigningAlgorithm         *string
-	WhCredentialsCreatedAt     *time.Time
-	WhCredentialsRegeneratedAt *time.Time
-	LastUsedAt                 *time.Time
-	CreatedAt                  time.Time
-	UpdatedAt                  time.Time
+	ID                         string     `db:"id"`
+	Code                       string     `db:"code"`
+	Name                       string     `db:"name"`
+	Description                *string    `db:"description"`
+	ApplicationID              *string    `db:"application_id"`
+	Active                     bool       `db:"active"`
+	WhAuthType                 *string    `db:"wh_auth_type"`
+	WhAuthTokenRef             *string    `db:"wh_auth_token_ref"`
+	WhSigningSecretRef         *string    `db:"wh_signing_secret_ref"`
+	WhSigningAlgorithm         *string    `db:"wh_signing_algorithm"`
+	WhCredentialsCreatedAt     *time.Time `db:"wh_credentials_created_at"`
+	WhCredentialsRegeneratedAt *time.Time `db:"wh_credentials_regenerated_at"`
+	LastUsedAt                 *time.Time `db:"last_used_at"`
+	CreatedAt                  time.Time  `db:"created_at"`
+	UpdatedAt                  time.Time  `db:"updated_at"`
 }
 
 type IamUserMfaMethod struct {
-	ID              string
-	PrincipalID     string
-	Method          string
-	SecretEncrypted *string
-	ConfirmedAt     *time.Time
-	LastUsedAt      *time.Time
-	CreatedAt       time.Time
+	ID              string     `db:"id"`
+	PrincipalID     string     `db:"principal_id"`
+	Method          string     `db:"method"`
+	SecretEncrypted *string    `db:"secret_encrypted"`
+	ConfirmedAt     *time.Time `db:"confirmed_at"`
+	LastUsedAt      *time.Time `db:"last_used_at"`
+	CreatedAt       time.Time  `db:"created_at"`
 }
 
 type IamUserMfaRecoveryCode struct {
-	ID          string
-	PrincipalID string
-	CodeHash    string
-	UsedAt      *time.Time
-	CreatedAt   time.Time
+	ID          string     `db:"id"`
+	PrincipalID string     `db:"principal_id"`
+	CodeHash    string     `db:"code_hash"`
+	UsedAt      *time.Time `db:"used_at"`
+	CreatedAt   time.Time  `db:"created_at"`
 }
 
 type MsgConnection struct {
-	ID               string
-	Code             string
-	Name             string
-	Description      *string
-	ExternalID       *string
-	Status           string
-	ServiceAccountID string
-	ClientID         *string
-	ClientIdentifier *string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID               string    `db:"id"`
+	Code             string    `db:"code"`
+	Name             string    `db:"name"`
+	Description      *string   `db:"description"`
+	ExternalID       *string   `db:"external_id"`
+	Status           string    `db:"status"`
+	ServiceAccountID string    `db:"service_account_id"`
+	ClientID         *string   `db:"client_id"`
+	ClientIdentifier *string   `db:"client_identifier"`
+	CreatedAt        time.Time `db:"created_at"`
+	UpdatedAt        time.Time `db:"updated_at"`
 }
 
 type MsgDispatchJob struct {
-	ID                 string
-	ExternalID         *string
-	Source             *string
-	Kind               string
-	Code               string
-	Subject            *string
-	EventID            *string
-	CorrelationID      *string
-	Metadata           json.RawMessage
-	TargetUrl          string
-	Protocol           string
-	Payload            *string
-	PayloadContentType *string
-	DataOnly           bool
-	ServiceAccountID   *string
-	ClientID           *string
-	SubscriptionID     *string
-	Mode               string
-	DispatchPoolID     *string
-	MessageGroup       *string
-	Sequence           int32
-	TimeoutSeconds     int32
-	SchemaID           *string
-	Status             string
-	MaxRetries         int32
-	RetryStrategy      *string
-	ScheduledFor       *time.Time
-	ExpiresAt          *time.Time
-	AttemptCount       int32
-	LastAttemptAt      *time.Time
-	CompletedAt        *time.Time
-	DurationMillis     *int64
-	LastError          *string
-	IdempotencyKey     *string
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
-	ProjectedAt        *time.Time
-	QueuedAt           *time.Time
+	ID                 string          `db:"id"`
+	ExternalID         *string         `db:"external_id"`
+	Source             *string         `db:"source"`
+	Kind               string          `db:"kind"`
+	Code               string          `db:"code"`
+	Subject            *string         `db:"subject"`
+	EventID            *string         `db:"event_id"`
+	CorrelationID      *string         `db:"correlation_id"`
+	Metadata           json.RawMessage `db:"metadata"`
+	TargetUrl          string          `db:"target_url"`
+	Protocol           string          `db:"protocol"`
+	Payload            *string         `db:"payload"`
+	PayloadContentType *string         `db:"payload_content_type"`
+	DataOnly           bool            `db:"data_only"`
+	ServiceAccountID   *string         `db:"service_account_id"`
+	ClientID           *string         `db:"client_id"`
+	SubscriptionID     *string         `db:"subscription_id"`
+	Mode               string          `db:"mode"`
+	DispatchPoolID     *string         `db:"dispatch_pool_id"`
+	MessageGroup       *string         `db:"message_group"`
+	Sequence           int32           `db:"sequence"`
+	TimeoutSeconds     int32           `db:"timeout_seconds"`
+	SchemaID           *string         `db:"schema_id"`
+	Status             string          `db:"status"`
+	MaxRetries         int32           `db:"max_retries"`
+	RetryStrategy      *string         `db:"retry_strategy"`
+	ScheduledFor       *time.Time      `db:"scheduled_for"`
+	ExpiresAt          *time.Time      `db:"expires_at"`
+	AttemptCount       int32           `db:"attempt_count"`
+	LastAttemptAt      *time.Time      `db:"last_attempt_at"`
+	CompletedAt        *time.Time      `db:"completed_at"`
+	DurationMillis     *int64          `db:"duration_millis"`
+	LastError          *string         `db:"last_error"`
+	IdempotencyKey     *string         `db:"idempotency_key"`
+	CreatedAt          time.Time       `db:"created_at"`
+	UpdatedAt          time.Time       `db:"updated_at"`
+	ProjectedAt        *time.Time      `db:"projected_at"`
+	QueuedAt           *time.Time      `db:"queued_at"`
 }
 
 type MsgDispatchJobAttempt struct {
-	ID              string
-	DispatchJobID   string
-	AttemptNumber   *int32
-	Status          *string
-	ResponseCode    *int32
-	ResponseBody    *string
-	ErrorMessage    *string
-	ErrorStackTrace *string
-	ErrorType       *string
-	DurationMillis  *int64
-	AttemptedAt     *time.Time
-	CompletedAt     *time.Time
-	CreatedAt       time.Time
+	ID              string     `db:"id"`
+	DispatchJobID   string     `db:"dispatch_job_id"`
+	AttemptNumber   *int32     `db:"attempt_number"`
+	Status          *string    `db:"status"`
+	ResponseCode    *int32     `db:"response_code"`
+	ResponseBody    *string    `db:"response_body"`
+	ErrorMessage    *string    `db:"error_message"`
+	ErrorStackTrace *string    `db:"error_stack_trace"`
+	ErrorType       *string    `db:"error_type"`
+	DurationMillis  *int64     `db:"duration_millis"`
+	AttemptedAt     *time.Time `db:"attempted_at"`
+	CompletedAt     *time.Time `db:"completed_at"`
+	CreatedAt       time.Time  `db:"created_at"`
 }
 
 type MsgDispatchJobProjectionFeed struct {
-	ID            int64
-	DispatchJobID string
-	Operation     string
-	Payload       json.RawMessage
-	CreatedAt     time.Time
-	Processed     int16
-	ProcessedAt   *time.Time
-	ErrorMessage  *string
+	ID            int64           `db:"id"`
+	DispatchJobID string          `db:"dispatch_job_id"`
+	Operation     string          `db:"operation"`
+	Payload       json.RawMessage `db:"payload"`
+	CreatedAt     time.Time       `db:"created_at"`
+	Processed     int16           `db:"processed"`
+	ProcessedAt   *time.Time      `db:"processed_at"`
+	ErrorMessage  *string         `db:"error_message"`
 }
 
 type MsgDispatchJobsRead struct {
-	ID               string
-	ExternalID       *string
-	Source           *string
-	Kind             string
-	Code             string
-	Subject          *string
-	EventID          *string
-	CorrelationID    *string
-	TargetUrl        string
-	Protocol         string
-	ServiceAccountID *string
-	ClientID         *string
-	SubscriptionID   *string
-	DispatchPoolID   *string
-	Mode             string
-	MessageGroup     *string
-	Sequence         *int32
-	TimeoutSeconds   *int32
-	Status           string
-	MaxRetries       int32
-	RetryStrategy    *string
-	ScheduledFor     *time.Time
-	ExpiresAt        *time.Time
-	AttemptCount     int32
-	LastAttemptAt    *time.Time
-	CompletedAt      *time.Time
-	DurationMillis   *int64
-	LastError        *string
-	IdempotencyKey   *string
-	IsCompleted      *bool
-	IsTerminal       *bool
-	Application      *string
-	Subdomain        *string
-	Aggregate        *string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-	ProjectedAt      *time.Time
+	ID               string     `db:"id"`
+	ExternalID       *string    `db:"external_id"`
+	Source           *string    `db:"source"`
+	Kind             string     `db:"kind"`
+	Code             string     `db:"code"`
+	Subject          *string    `db:"subject"`
+	EventID          *string    `db:"event_id"`
+	CorrelationID    *string    `db:"correlation_id"`
+	TargetUrl        string     `db:"target_url"`
+	Protocol         string     `db:"protocol"`
+	ServiceAccountID *string    `db:"service_account_id"`
+	ClientID         *string    `db:"client_id"`
+	SubscriptionID   *string    `db:"subscription_id"`
+	DispatchPoolID   *string    `db:"dispatch_pool_id"`
+	Mode             string     `db:"mode"`
+	MessageGroup     *string    `db:"message_group"`
+	Sequence         *int32     `db:"sequence"`
+	TimeoutSeconds   *int32     `db:"timeout_seconds"`
+	Status           string     `db:"status"`
+	MaxRetries       int32      `db:"max_retries"`
+	RetryStrategy    *string    `db:"retry_strategy"`
+	ScheduledFor     *time.Time `db:"scheduled_for"`
+	ExpiresAt        *time.Time `db:"expires_at"`
+	AttemptCount     int32      `db:"attempt_count"`
+	LastAttemptAt    *time.Time `db:"last_attempt_at"`
+	CompletedAt      *time.Time `db:"completed_at"`
+	DurationMillis   *int64     `db:"duration_millis"`
+	LastError        *string    `db:"last_error"`
+	IdempotencyKey   *string    `db:"idempotency_key"`
+	IsCompleted      *bool      `db:"is_completed"`
+	IsTerminal       *bool      `db:"is_terminal"`
+	Application      *string    `db:"application"`
+	Subdomain        *string    `db:"subdomain"`
+	Aggregate        *string    `db:"aggregate"`
+	CreatedAt        time.Time  `db:"created_at"`
+	UpdatedAt        time.Time  `db:"updated_at"`
+	ProjectedAt      *time.Time `db:"projected_at"`
 }
 
 type MsgDispatchPool struct {
-	ID               string
-	Code             string
-	Name             string
-	Description      *string
-	RateLimit        *int32
-	Concurrency      int32
-	ClientID         *string
-	ClientIdentifier *string
-	Status           string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID               string    `db:"id"`
+	Code             string    `db:"code"`
+	Name             string    `db:"name"`
+	Description      *string   `db:"description"`
+	RateLimit        *int32    `db:"rate_limit"`
+	Concurrency      int32     `db:"concurrency"`
+	ClientID         *string   `db:"client_id"`
+	ClientIdentifier *string   `db:"client_identifier"`
+	Status           string    `db:"status"`
+	CreatedAt        time.Time `db:"created_at"`
+	UpdatedAt        time.Time `db:"updated_at"`
 }
 
 type MsgEvent struct {
-	ID              string
-	SpecVersion     *string
-	Type            string
-	Source          string
-	Subject         *string
-	Time            time.Time
-	Data            json.RawMessage
-	CorrelationID   *string
-	CausationID     *string
-	DeduplicationID *string
-	MessageGroup    *string
-	ClientID        *string
-	ContextData     json.RawMessage
-	CreatedAt       time.Time
-	ProjectedAt     *time.Time
-	FannedOutAt     *time.Time
+	ID              string          `db:"id"`
+	SpecVersion     *string         `db:"spec_version"`
+	Type            string          `db:"type"`
+	Source          string          `db:"source"`
+	Subject         *string         `db:"subject"`
+	Time            time.Time       `db:"time"`
+	Data            json.RawMessage `db:"data"`
+	CorrelationID   *string         `db:"correlation_id"`
+	CausationID     *string         `db:"causation_id"`
+	DeduplicationID *string         `db:"deduplication_id"`
+	MessageGroup    *string         `db:"message_group"`
+	ClientID        *string         `db:"client_id"`
+	ContextData     json.RawMessage `db:"context_data"`
+	CreatedAt       time.Time       `db:"created_at"`
+	ProjectedAt     *time.Time      `db:"projected_at"`
+	FannedOutAt     *time.Time      `db:"fanned_out_at"`
 }
 
 type MsgEventProjectionFeed struct {
-	ID           int64
-	EventID      string
-	Payload      json.RawMessage
-	CreatedAt    time.Time
-	Processed    int16
-	ProcessedAt  *time.Time
-	ErrorMessage *string
+	ID           int64           `db:"id"`
+	EventID      string          `db:"event_id"`
+	Payload      json.RawMessage `db:"payload"`
+	CreatedAt    time.Time       `db:"created_at"`
+	Processed    int16           `db:"processed"`
+	ProcessedAt  *time.Time      `db:"processed_at"`
+	ErrorMessage *string         `db:"error_message"`
 }
 
 type MsgEventType struct {
-	ID           string
-	Code         string
-	Name         string
-	Description  *string
-	Status       string
-	Source       string
-	ClientScoped bool
-	Application  string
-	Subdomain    string
-	Aggregate    string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID           string    `db:"id"`
+	Code         string    `db:"code"`
+	Name         string    `db:"name"`
+	Description  *string   `db:"description"`
+	Status       string    `db:"status"`
+	Source       string    `db:"source"`
+	ClientScoped bool      `db:"client_scoped"`
+	Application  string    `db:"application"`
+	Subdomain    string    `db:"subdomain"`
+	Aggregate    string    `db:"aggregate"`
+	CreatedAt    time.Time `db:"created_at"`
+	UpdatedAt    time.Time `db:"updated_at"`
 }
 
 type MsgEventTypeSpecVersion struct {
-	ID            string
-	EventTypeID   string
-	Version       string
-	MimeType      string
-	SchemaContent json.RawMessage
-	SchemaType    string
-	Status        string
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID            string          `db:"id"`
+	EventTypeID   string          `db:"event_type_id"`
+	Version       string          `db:"version"`
+	MimeType      string          `db:"mime_type"`
+	SchemaContent json.RawMessage `db:"schema_content"`
+	SchemaType    string          `db:"schema_type"`
+	Status        string          `db:"status"`
+	CreatedAt     time.Time       `db:"created_at"`
+	UpdatedAt     time.Time       `db:"updated_at"`
 }
 
 type MsgEventsRead struct {
-	ID              string
-	SpecVersion     *string
-	Type            string
-	Source          string
-	Subject         *string
-	Time            time.Time
-	Data            *string
-	CorrelationID   *string
-	CausationID     *string
-	DeduplicationID *string
-	MessageGroup    *string
-	ClientID        *string
-	Application     *string
-	Subdomain       *string
-	Aggregate       *string
-	ProjectedAt     time.Time
-	CreatedAt       time.Time
+	ID              string    `db:"id"`
+	SpecVersion     *string   `db:"spec_version"`
+	Type            string    `db:"type"`
+	Source          string    `db:"source"`
+	Subject         *string   `db:"subject"`
+	Time            time.Time `db:"time"`
+	Data            *string   `db:"data"`
+	CorrelationID   *string   `db:"correlation_id"`
+	CausationID     *string   `db:"causation_id"`
+	DeduplicationID *string   `db:"deduplication_id"`
+	MessageGroup    *string   `db:"message_group"`
+	ClientID        *string   `db:"client_id"`
+	Application     *string   `db:"application"`
+	Subdomain       *string   `db:"subdomain"`
+	Aggregate       *string   `db:"aggregate"`
+	ProjectedAt     time.Time `db:"projected_at"`
+	CreatedAt       time.Time `db:"created_at"`
 }
 
 type MsgProcess struct {
-	ID          string
-	Code        string
-	Name        string
-	Description *string
-	Status      string
-	Source      string
-	Application string
-	Subdomain   string
-	ProcessName string
-	Body        string
-	DiagramType string
-	Tags        []string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID          string    `db:"id"`
+	Code        string    `db:"code"`
+	Name        string    `db:"name"`
+	Description *string   `db:"description"`
+	Status      string    `db:"status"`
+	Source      string    `db:"source"`
+	Application string    `db:"application"`
+	Subdomain   string    `db:"subdomain"`
+	ProcessName string    `db:"process_name"`
+	Body        string    `db:"body"`
+	DiagramType string    `db:"diagram_type"`
+	Tags        []string  `db:"tags"`
+	CreatedAt   time.Time `db:"created_at"`
+	UpdatedAt   time.Time `db:"updated_at"`
 }
 
 type MsgScheduledJob struct {
-	ID                  string
-	ClientID            *string
-	Code                string
-	Name                string
-	Description         *string
-	Status              string
-	Crons               []string
-	Timezone            string
-	Payload             json.RawMessage
-	Concurrent          bool
-	TracksCompletion    bool
-	TimeoutSeconds      *int32
-	DeliveryMaxAttempts int32
-	TargetUrl           *string
-	LastFiredAt         *time.Time
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
-	CreatedBy           *string
-	UpdatedBy           *string
-	Version             int32
+	ID                  string          `db:"id"`
+	ClientID            *string         `db:"client_id"`
+	Code                string          `db:"code"`
+	Name                string          `db:"name"`
+	Description         *string         `db:"description"`
+	Status              string          `db:"status"`
+	Crons               []string        `db:"crons"`
+	Timezone            string          `db:"timezone"`
+	Payload             json.RawMessage `db:"payload"`
+	Concurrent          bool            `db:"concurrent"`
+	TracksCompletion    bool            `db:"tracks_completion"`
+	TimeoutSeconds      *int32          `db:"timeout_seconds"`
+	DeliveryMaxAttempts int32           `db:"delivery_max_attempts"`
+	TargetUrl           *string         `db:"target_url"`
+	LastFiredAt         *time.Time      `db:"last_fired_at"`
+	CreatedAt           time.Time       `db:"created_at"`
+	UpdatedAt           time.Time       `db:"updated_at"`
+	CreatedBy           *string         `db:"created_by"`
+	UpdatedBy           *string         `db:"updated_by"`
+	Version             int32           `db:"version"`
 }
 
 type MsgScheduledJobInstance struct {
-	ID               string
-	ScheduledJobID   string
-	ClientID         *string
-	JobCode          string
-	TriggerKind      string
-	ScheduledFor     *time.Time
-	FiredAt          time.Time
-	DeliveredAt      *time.Time
-	CompletedAt      *time.Time
-	Status           string
-	DeliveryAttempts int32
-	DeliveryError    *string
-	CompletionStatus *string
-	CompletionResult json.RawMessage
-	CorrelationID    *string
-	CreatedAt        time.Time
+	ID               string          `db:"id"`
+	ScheduledJobID   string          `db:"scheduled_job_id"`
+	ClientID         *string         `db:"client_id"`
+	JobCode          string          `db:"job_code"`
+	TriggerKind      string          `db:"trigger_kind"`
+	ScheduledFor     *time.Time      `db:"scheduled_for"`
+	FiredAt          time.Time       `db:"fired_at"`
+	DeliveredAt      *time.Time      `db:"delivered_at"`
+	CompletedAt      *time.Time      `db:"completed_at"`
+	Status           string          `db:"status"`
+	DeliveryAttempts int32           `db:"delivery_attempts"`
+	DeliveryError    *string         `db:"delivery_error"`
+	CompletionStatus *string         `db:"completion_status"`
+	CompletionResult json.RawMessage `db:"completion_result"`
+	CorrelationID    *string         `db:"correlation_id"`
+	CreatedAt        time.Time       `db:"created_at"`
 }
 
 type MsgScheduledJobInstanceLog struct {
-	ID             string
-	InstanceID     string
-	ScheduledJobID *string
-	ClientID       *string
-	Level          string
-	Message        string
-	Metadata       json.RawMessage
-	CreatedAt      time.Time
+	ID             string          `db:"id"`
+	InstanceID     string          `db:"instance_id"`
+	ScheduledJobID *string         `db:"scheduled_job_id"`
+	ClientID       *string         `db:"client_id"`
+	Level          string          `db:"level"`
+	Message        string          `db:"message"`
+	Metadata       json.RawMessage `db:"metadata"`
+	CreatedAt      time.Time       `db:"created_at"`
 }
 
 type MsgSubscription struct {
-	ID               string
-	Code             string
-	ApplicationCode  *string
-	Name             string
-	Description      *string
-	ClientID         *string
-	ClientIdentifier *string
-	ClientScoped     bool
-	Target           string
-	Queue            *string
-	Source           string
-	Status           string
-	MaxAgeSeconds    int32
-	DispatchPoolID   *string
-	DispatchPoolCode *string
-	DelaySeconds     int32
-	Sequence         int32
-	Mode             string
-	TimeoutSeconds   int32
-	MaxRetries       int32
-	ServiceAccountID *string
-	DataOnly         bool
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-	ConnectionID     *string
+	ID               string    `db:"id"`
+	Code             string    `db:"code"`
+	ApplicationCode  *string   `db:"application_code"`
+	Name             string    `db:"name"`
+	Description      *string   `db:"description"`
+	ClientID         *string   `db:"client_id"`
+	ClientIdentifier *string   `db:"client_identifier"`
+	ClientScoped     bool      `db:"client_scoped"`
+	Target           string    `db:"target"`
+	Queue            *string   `db:"queue"`
+	Source           string    `db:"source"`
+	Status           string    `db:"status"`
+	MaxAgeSeconds    int32     `db:"max_age_seconds"`
+	DispatchPoolID   *string   `db:"dispatch_pool_id"`
+	DispatchPoolCode *string   `db:"dispatch_pool_code"`
+	DelaySeconds     int32     `db:"delay_seconds"`
+	Sequence         int32     `db:"sequence"`
+	Mode             string    `db:"mode"`
+	TimeoutSeconds   int32     `db:"timeout_seconds"`
+	MaxRetries       int32     `db:"max_retries"`
+	ServiceAccountID *string   `db:"service_account_id"`
+	DataOnly         bool      `db:"data_only"`
+	CreatedAt        time.Time `db:"created_at"`
+	UpdatedAt        time.Time `db:"updated_at"`
+	ConnectionID     *string   `db:"connection_id"`
 }
 
 type MsgSubscriptionCustomConfig struct {
-	ID             int32
-	SubscriptionID string
-	ConfigKey      string
-	ConfigValue    string
+	ID             int32  `db:"id"`
+	SubscriptionID string `db:"subscription_id"`
+	ConfigKey      string `db:"config_key"`
+	ConfigValue    string `db:"config_value"`
 }
 
 type MsgSubscriptionEventType struct {
-	ID             int32
-	SubscriptionID string
-	EventTypeID    *string
-	EventTypeCode  string
-	SpecVersion    *string
+	ID             int32   `db:"id"`
+	SubscriptionID string  `db:"subscription_id"`
+	EventTypeID    *string `db:"event_type_id"`
+	EventTypeCode  string  `db:"event_type_code"`
+	SpecVersion    *string `db:"spec_version"`
 }
 
 type OauthClient struct {
-	ID                        string
-	ClientID                  string
-	ClientName                string
-	ClientType                string
-	ClientSecretRef           *string
-	DefaultScopes             *string
-	PkceRequired              bool
-	ServiceAccountPrincipalID *string
-	Active                    bool
-	CreatedAt                 time.Time
-	UpdatedAt                 time.Time
+	ID                        string    `db:"id"`
+	ClientID                  string    `db:"client_id"`
+	ClientName                string    `db:"client_name"`
+	ClientType                string    `db:"client_type"`
+	ClientSecretRef           *string   `db:"client_secret_ref"`
+	DefaultScopes             *string   `db:"default_scopes"`
+	PkceRequired              bool      `db:"pkce_required"`
+	ServiceAccountPrincipalID *string   `db:"service_account_principal_id"`
+	Active                    bool      `db:"active"`
+	CreatedAt                 time.Time `db:"created_at"`
+	UpdatedAt                 time.Time `db:"updated_at"`
 }
 
 type OauthClientAllowedOrigin struct {
-	OauthClientID string
-	AllowedOrigin string
+	OauthClientID string `db:"oauth_client_id"`
+	AllowedOrigin string `db:"allowed_origin"`
 }
 
 type OauthClientApplicationID struct {
-	OauthClientID string
-	ApplicationID string
+	OauthClientID string `db:"oauth_client_id"`
+	ApplicationID string `db:"application_id"`
 }
 
 type OauthClientGrantType struct {
-	OauthClientID string
-	GrantType     string
+	OauthClientID string `db:"oauth_client_id"`
+	GrantType     string `db:"grant_type"`
 }
 
 type OauthClientPostLogoutRedirectUri struct {
-	OauthClientID         string
-	PostLogoutRedirectUri string
+	OauthClientID         string `db:"oauth_client_id"`
+	PostLogoutRedirectUri string `db:"post_logout_redirect_uri"`
 }
 
 type OauthClientRedirectUri struct {
-	OauthClientID string
-	RedirectUri   string
+	OauthClientID string `db:"oauth_client_id"`
+	RedirectUri   string `db:"redirect_uri"`
 }
 
 type OauthIdentityProvider struct {
-	ID                  string
-	Code                string
-	Name                string
-	Type                string
-	OidcIssuerUrl       *string
-	OidcClientID        *string
-	OidcClientSecretRef *string
-	OidcMultiTenant     bool
-	OidcIssuerPattern   *string
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
+	ID                  string    `db:"id"`
+	Code                string    `db:"code"`
+	Name                string    `db:"name"`
+	Type                string    `db:"type"`
+	OidcIssuerUrl       *string   `db:"oidc_issuer_url"`
+	OidcClientID        *string   `db:"oidc_client_id"`
+	OidcClientSecretRef *string   `db:"oidc_client_secret_ref"`
+	OidcMultiTenant     bool      `db:"oidc_multi_tenant"`
+	OidcIssuerPattern   *string   `db:"oidc_issuer_pattern"`
+	CreatedAt           time.Time `db:"created_at"`
+	UpdatedAt           time.Time `db:"updated_at"`
 }
 
 type OauthIdentityProviderAllowedDomain struct {
-	ID                 int32
-	IdentityProviderID string
-	EmailDomain        string
+	ID                 int32  `db:"id"`
+	IdentityProviderID string `db:"identity_provider_id"`
+	EmailDomain        string `db:"email_domain"`
 }
 
 type OauthIdpRoleMapping struct {
-	ID               string
-	IdpRoleName      string
-	InternalRoleName string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID               string    `db:"id"`
+	IdpRoleName      string    `db:"idp_role_name"`
+	InternalRoleName string    `db:"internal_role_name"`
+	CreatedAt        time.Time `db:"created_at"`
+	UpdatedAt        time.Time `db:"updated_at"`
 }
 
 type OauthOidcLoginState struct {
-	State                    string
-	EmailDomain              string
-	IdentityProviderID       string
-	EmailDomainMappingID     string
-	Nonce                    string
-	CodeVerifier             string
-	ReturnUrl                *string
-	OauthClientID            *string
-	OauthRedirectUri         *string
-	OauthScope               *string
-	OauthState               *string
-	OauthCodeChallenge       *string
-	OauthCodeChallengeMethod *string
-	OauthNonce               *string
-	InteractionUid           *string
-	CreatedAt                time.Time
-	ExpiresAt                time.Time
+	State                    string    `db:"state"`
+	EmailDomain              string    `db:"email_domain"`
+	IdentityProviderID       string    `db:"identity_provider_id"`
+	EmailDomainMappingID     string    `db:"email_domain_mapping_id"`
+	Nonce                    string    `db:"nonce"`
+	CodeVerifier             string    `db:"code_verifier"`
+	ReturnUrl                *string   `db:"return_url"`
+	OauthClientID            *string   `db:"oauth_client_id"`
+	OauthRedirectUri         *string   `db:"oauth_redirect_uri"`
+	OauthScope               *string   `db:"oauth_scope"`
+	OauthState               *string   `db:"oauth_state"`
+	OauthCodeChallenge       *string   `db:"oauth_code_challenge"`
+	OauthCodeChallengeMethod *string   `db:"oauth_code_challenge_method"`
+	OauthNonce               *string   `db:"oauth_nonce"`
+	InteractionUid           *string   `db:"interaction_uid"`
+	CreatedAt                time.Time `db:"created_at"`
+	ExpiresAt                time.Time `db:"expires_at"`
 }
 
 type OauthOidcPayload struct {
-	ID         string
-	Type       string
-	Payload    json.RawMessage
-	GrantID    *string
-	UserCode   *string
-	Uid        *string
-	ExpiresAt  *time.Time
-	ConsumedAt *time.Time
-	CreatedAt  time.Time
+	ID         string          `db:"id"`
+	Type       string          `db:"type"`
+	Payload    json.RawMessage `db:"payload"`
+	GrantID    *string         `db:"grant_id"`
+	UserCode   *string         `db:"user_code"`
+	Uid        *string         `db:"uid"`
+	ExpiresAt  *time.Time      `db:"expires_at"`
+	ConsumedAt *time.Time      `db:"consumed_at"`
+	CreatedAt  time.Time       `db:"created_at"`
 }
 
 type TntAnchorDomain struct {
-	ID        string
-	Domain    string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID        string    `db:"id"`
+	Domain    string    `db:"domain"`
+	CreatedAt time.Time `db:"created_at"`
+	UpdatedAt time.Time `db:"updated_at"`
 }
 
 type TntClient struct {
-	ID              string
-	Name            string
-	Identifier      string
-	Status          string
-	StatusReason    *string
-	StatusChangedAt *time.Time
-	Notes           json.RawMessage
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID              string          `db:"id"`
+	Name            string          `db:"name"`
+	Identifier      string          `db:"identifier"`
+	Status          string          `db:"status"`
+	StatusReason    *string         `db:"status_reason"`
+	StatusChangedAt *time.Time      `db:"status_changed_at"`
+	Notes           json.RawMessage `db:"notes"`
+	CreatedAt       time.Time       `db:"created_at"`
+	UpdatedAt       time.Time       `db:"updated_at"`
 }
 
 type TntClientAuthConfig struct {
-	ID                  string
-	EmailDomain         string
-	ConfigType          string
-	PrimaryClientID     *string
-	AdditionalClientIds json.RawMessage
-	GrantedClientIds    json.RawMessage
-	AuthProvider        string
-	OidcIssuerUrl       *string
-	OidcClientID        *string
-	OidcMultiTenant     bool
-	OidcIssuerPattern   *string
-	OidcClientSecretRef *string
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
+	ID                  string          `db:"id"`
+	EmailDomain         string          `db:"email_domain"`
+	ConfigType          string          `db:"config_type"`
+	PrimaryClientID     *string         `db:"primary_client_id"`
+	AdditionalClientIds json.RawMessage `db:"additional_client_ids"`
+	GrantedClientIds    json.RawMessage `db:"granted_client_ids"`
+	AuthProvider        string          `db:"auth_provider"`
+	OidcIssuerUrl       *string         `db:"oidc_issuer_url"`
+	OidcClientID        *string         `db:"oidc_client_id"`
+	OidcMultiTenant     bool            `db:"oidc_multi_tenant"`
+	OidcIssuerPattern   *string         `db:"oidc_issuer_pattern"`
+	OidcClientSecretRef *string         `db:"oidc_client_secret_ref"`
+	CreatedAt           time.Time       `db:"created_at"`
+	UpdatedAt           time.Time       `db:"updated_at"`
 }
 
 type TntCorsAllowedOrigin struct {
-	ID          string
-	Origin      string
-	Description *string
-	CreatedBy   *string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID          string    `db:"id"`
+	Origin      string    `db:"origin"`
+	Description *string   `db:"description"`
+	CreatedBy   *string   `db:"created_by"`
+	CreatedAt   time.Time `db:"created_at"`
+	UpdatedAt   time.Time `db:"updated_at"`
 }
 
 type TntEmailDomainMapping struct {
-	ID                    string
-	EmailDomain           string
-	IdentityProviderID    string
-	ScopeType             string
-	PrimaryClientID       *string
-	RequiredOidcTenantID  *string
-	SyncRolesFromIdp      bool
-	CreatedAt             time.Time
-	UpdatedAt             time.Time
-	Require2fa            bool
-	RememberDeviceEnabled bool
-	RememberDeviceDays    int32
+	ID                    string    `db:"id"`
+	EmailDomain           string    `db:"email_domain"`
+	IdentityProviderID    string    `db:"identity_provider_id"`
+	ScopeType             string    `db:"scope_type"`
+	PrimaryClientID       *string   `db:"primary_client_id"`
+	RequiredOidcTenantID  *string   `db:"required_oidc_tenant_id"`
+	SyncRolesFromIdp      bool      `db:"sync_roles_from_idp"`
+	CreatedAt             time.Time `db:"created_at"`
+	UpdatedAt             time.Time `db:"updated_at"`
+	Require2fa            bool      `db:"require_2fa"`
+	RememberDeviceEnabled bool      `db:"remember_device_enabled"`
+	RememberDeviceDays    int32     `db:"remember_device_days"`
 }
 
 type TntEmailDomainMapping2faMethod struct {
-	ID                   int32
-	EmailDomainMappingID string
-	Method               string
+	ID                   int32  `db:"id"`
+	EmailDomainMappingID string `db:"email_domain_mapping_id"`
+	Method               string `db:"method"`
 }
 
 type TntEmailDomainMappingAdditionalClient struct {
-	ID                   int32
-	EmailDomainMappingID string
-	ClientID             string
+	ID                   int32  `db:"id"`
+	EmailDomainMappingID string `db:"email_domain_mapping_id"`
+	ClientID             string `db:"client_id"`
 }
 
 type TntEmailDomainMappingAllowedRole struct {
-	ID                   int32
-	EmailDomainMappingID string
-	RoleID               string
+	ID                   int32  `db:"id"`
+	EmailDomainMappingID string `db:"email_domain_mapping_id"`
+	RoleID               string `db:"role_id"`
 }
 
 type TntEmailDomainMappingGrantedClient struct {
-	ID                   int32
-	EmailDomainMappingID string
-	ClientID             string
+	ID                   int32  `db:"id"`
+	EmailDomainMappingID string `db:"email_domain_mapping_id"`
+	ClientID             string `db:"client_id"`
 }
 
 type WebauthnCredential struct {
-	ID           string
-	PrincipalID  string
-	CredentialID []byte
-	PasskeyData  json.RawMessage
-	Name         *string
-	CreatedAt    time.Time
-	LastUsedAt   *time.Time
+	ID           string          `db:"id"`
+	PrincipalID  string          `db:"principal_id"`
+	CredentialID []byte          `db:"credential_id"`
+	PasskeyData  json.RawMessage `db:"passkey_data"`
+	Name         *string         `db:"name"`
+	CreatedAt    time.Time       `db:"created_at"`
+	LastUsedAt   *time.Time      `db:"last_used_at"`
 }

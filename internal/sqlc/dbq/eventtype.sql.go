@@ -134,18 +134,18 @@ ON CONFLICT (code) DO UPDATE SET
 `
 
 type EventTypeUpsertByCodeParams struct {
-	ID           string
-	Code         string
-	Name         string
-	Description  *string
-	Status       string
-	Source       string
-	ClientScoped bool
-	Application  string
-	Subdomain    string
-	Aggregate    string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID           string    `db:"id"`
+	Code         string    `db:"code"`
+	Name         string    `db:"name"`
+	Description  *string   `db:"description"`
+	Status       string    `db:"status"`
+	Source       string    `db:"source"`
+	ClientScoped bool      `db:"client_scoped"`
+	Application  string    `db:"application"`
+	Subdomain    string    `db:"subdomain"`
+	Aggregate    string    `db:"aggregate"`
+	CreatedAt    time.Time `db:"created_at"`
+	UpdatedAt    time.Time `db:"updated_at"`
 }
 
 func (q *Queries) EventTypeUpsertByCode(ctx context.Context, arg EventTypeUpsertByCodeParams) error {
@@ -185,18 +185,18 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type EventTypeUpsertByIDParams struct {
-	ID           string
-	Code         string
-	Name         string
-	Description  *string
-	Status       string
-	Source       string
-	ClientScoped bool
-	Application  string
-	Subdomain    string
-	Aggregate    string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID           string    `db:"id"`
+	Code         string    `db:"code"`
+	Name         string    `db:"name"`
+	Description  *string   `db:"description"`
+	Status       string    `db:"status"`
+	Source       string    `db:"source"`
+	ClientScoped bool      `db:"client_scoped"`
+	Application  string    `db:"application"`
+	Subdomain    string    `db:"subdomain"`
+	Aggregate    string    `db:"aggregate"`
+	CreatedAt    time.Time `db:"created_at"`
+	UpdatedAt    time.Time `db:"updated_at"`
 }
 
 func (q *Queries) EventTypeUpsertByID(ctx context.Context, arg EventTypeUpsertByIDParams) error {
@@ -230,15 +230,15 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type SpecVersionUpsertParams struct {
-	ID            string
-	EventTypeID   string
-	Version       string
-	MimeType      string
-	SchemaContent json.RawMessage
-	SchemaType    string
-	Status        string
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID            string          `db:"id"`
+	EventTypeID   string          `db:"event_type_id"`
+	Version       string          `db:"version"`
+	MimeType      string          `db:"mime_type"`
+	SchemaContent json.RawMessage `db:"schema_content"`
+	SchemaType    string          `db:"schema_type"`
+	Status        string          `db:"status"`
+	CreatedAt     time.Time       `db:"created_at"`
+	UpdatedAt     time.Time       `db:"updated_at"`
 }
 
 func (q *Queries) SpecVersionUpsert(ctx context.Context, arg SpecVersionUpsertParams) error {

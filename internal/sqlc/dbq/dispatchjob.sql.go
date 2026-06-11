@@ -20,18 +20,18 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 `
 
 type DispatchJobAttemptInsertParams struct {
-	ID             string
-	DispatchJobID  string
-	AttemptNumber  *int32
-	Status         *string
-	ResponseCode   *int32
-	ResponseBody   *string
-	ErrorMessage   *string
-	ErrorType      *string
-	DurationMillis *int64
-	AttemptedAt    *time.Time
-	CompletedAt    *time.Time
-	CreatedAt      time.Time
+	ID             string     `db:"id"`
+	DispatchJobID  string     `db:"dispatch_job_id"`
+	AttemptNumber  *int32     `db:"attempt_number"`
+	Status         *string    `db:"status"`
+	ResponseCode   *int32     `db:"response_code"`
+	ResponseBody   *string    `db:"response_body"`
+	ErrorMessage   *string    `db:"error_message"`
+	ErrorType      *string    `db:"error_type"`
+	DurationMillis *int64     `db:"duration_millis"`
+	AttemptedAt    *time.Time `db:"attempted_at"`
+	CompletedAt    *time.Time `db:"completed_at"`
+	CreatedAt      time.Time  `db:"created_at"`
 }
 
 // One row per delivery attempt. The schema column `status` stores the
@@ -64,15 +64,15 @@ ORDER BY attempt_number ASC
 `
 
 type DispatchJobAttemptsByJobRow struct {
-	AttemptNumber  *int32
-	AttemptedAt    *time.Time
-	CompletedAt    *time.Time
-	DurationMillis *int64
-	ResponseCode   *int32
-	ResponseBody   *string
-	Status         *string
-	ErrorMessage   *string
-	ErrorType      *string
+	AttemptNumber  *int32     `db:"attempt_number"`
+	AttemptedAt    *time.Time `db:"attempted_at"`
+	CompletedAt    *time.Time `db:"completed_at"`
+	DurationMillis *int64     `db:"duration_millis"`
+	ResponseCode   *int32     `db:"response_code"`
+	ResponseBody   *string    `db:"response_body"`
+	Status         *string    `db:"status"`
+	ErrorMessage   *string    `db:"error_message"`
+	ErrorType      *string    `db:"error_type"`
 }
 
 func (q *Queries) DispatchJobAttemptsByJob(ctx context.Context, dispatchJobID string) ([]DispatchJobAttemptsByJobRow, error) {
@@ -120,42 +120,42 @@ ORDER BY created_at
 `
 
 type DispatchJobFindByEventIDRow struct {
-	ID                 string
-	ExternalID         *string
-	Source             *string
-	Kind               string
-	Code               string
-	Subject            *string
-	EventID            *string
-	CorrelationID      *string
-	Metadata           json.RawMessage
-	TargetUrl          string
-	Protocol           string
-	Payload            *string
-	PayloadContentType *string
-	DataOnly           bool
-	ServiceAccountID   *string
-	ClientID           *string
-	SubscriptionID     *string
-	Mode               string
-	DispatchPoolID     *string
-	MessageGroup       *string
-	Sequence           int32
-	TimeoutSeconds     int32
-	SchemaID           *string
-	Status             string
-	MaxRetries         int32
-	RetryStrategy      *string
-	ScheduledFor       *time.Time
-	ExpiresAt          *time.Time
-	AttemptCount       int32
-	LastAttemptAt      *time.Time
-	CompletedAt        *time.Time
-	DurationMillis     *int64
-	LastError          *string
-	IdempotencyKey     *string
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	ID                 string          `db:"id"`
+	ExternalID         *string         `db:"external_id"`
+	Source             *string         `db:"source"`
+	Kind               string          `db:"kind"`
+	Code               string          `db:"code"`
+	Subject            *string         `db:"subject"`
+	EventID            *string         `db:"event_id"`
+	CorrelationID      *string         `db:"correlation_id"`
+	Metadata           json.RawMessage `db:"metadata"`
+	TargetUrl          string          `db:"target_url"`
+	Protocol           string          `db:"protocol"`
+	Payload            *string         `db:"payload"`
+	PayloadContentType *string         `db:"payload_content_type"`
+	DataOnly           bool            `db:"data_only"`
+	ServiceAccountID   *string         `db:"service_account_id"`
+	ClientID           *string         `db:"client_id"`
+	SubscriptionID     *string         `db:"subscription_id"`
+	Mode               string          `db:"mode"`
+	DispatchPoolID     *string         `db:"dispatch_pool_id"`
+	MessageGroup       *string         `db:"message_group"`
+	Sequence           int32           `db:"sequence"`
+	TimeoutSeconds     int32           `db:"timeout_seconds"`
+	SchemaID           *string         `db:"schema_id"`
+	Status             string          `db:"status"`
+	MaxRetries         int32           `db:"max_retries"`
+	RetryStrategy      *string         `db:"retry_strategy"`
+	ScheduledFor       *time.Time      `db:"scheduled_for"`
+	ExpiresAt          *time.Time      `db:"expires_at"`
+	AttemptCount       int32           `db:"attempt_count"`
+	LastAttemptAt      *time.Time      `db:"last_attempt_at"`
+	CompletedAt        *time.Time      `db:"completed_at"`
+	DurationMillis     *int64          `db:"duration_millis"`
+	LastError          *string         `db:"last_error"`
+	IdempotencyKey     *string         `db:"idempotency_key"`
+	CreatedAt          time.Time       `db:"created_at"`
+	UpdatedAt          time.Time       `db:"updated_at"`
 }
 
 func (q *Queries) DispatchJobFindByEventID(ctx context.Context, eventID *string) ([]DispatchJobFindByEventIDRow, error) {
@@ -229,42 +229,42 @@ WHERE external_id = $1
 `
 
 type DispatchJobFindByExternalIDRow struct {
-	ID                 string
-	ExternalID         *string
-	Source             *string
-	Kind               string
-	Code               string
-	Subject            *string
-	EventID            *string
-	CorrelationID      *string
-	Metadata           json.RawMessage
-	TargetUrl          string
-	Protocol           string
-	Payload            *string
-	PayloadContentType *string
-	DataOnly           bool
-	ServiceAccountID   *string
-	ClientID           *string
-	SubscriptionID     *string
-	Mode               string
-	DispatchPoolID     *string
-	MessageGroup       *string
-	Sequence           int32
-	TimeoutSeconds     int32
-	SchemaID           *string
-	Status             string
-	MaxRetries         int32
-	RetryStrategy      *string
-	ScheduledFor       *time.Time
-	ExpiresAt          *time.Time
-	AttemptCount       int32
-	LastAttemptAt      *time.Time
-	CompletedAt        *time.Time
-	DurationMillis     *int64
-	LastError          *string
-	IdempotencyKey     *string
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	ID                 string          `db:"id"`
+	ExternalID         *string         `db:"external_id"`
+	Source             *string         `db:"source"`
+	Kind               string          `db:"kind"`
+	Code               string          `db:"code"`
+	Subject            *string         `db:"subject"`
+	EventID            *string         `db:"event_id"`
+	CorrelationID      *string         `db:"correlation_id"`
+	Metadata           json.RawMessage `db:"metadata"`
+	TargetUrl          string          `db:"target_url"`
+	Protocol           string          `db:"protocol"`
+	Payload            *string         `db:"payload"`
+	PayloadContentType *string         `db:"payload_content_type"`
+	DataOnly           bool            `db:"data_only"`
+	ServiceAccountID   *string         `db:"service_account_id"`
+	ClientID           *string         `db:"client_id"`
+	SubscriptionID     *string         `db:"subscription_id"`
+	Mode               string          `db:"mode"`
+	DispatchPoolID     *string         `db:"dispatch_pool_id"`
+	MessageGroup       *string         `db:"message_group"`
+	Sequence           int32           `db:"sequence"`
+	TimeoutSeconds     int32           `db:"timeout_seconds"`
+	SchemaID           *string         `db:"schema_id"`
+	Status             string          `db:"status"`
+	MaxRetries         int32           `db:"max_retries"`
+	RetryStrategy      *string         `db:"retry_strategy"`
+	ScheduledFor       *time.Time      `db:"scheduled_for"`
+	ExpiresAt          *time.Time      `db:"expires_at"`
+	AttemptCount       int32           `db:"attempt_count"`
+	LastAttemptAt      *time.Time      `db:"last_attempt_at"`
+	CompletedAt        *time.Time      `db:"completed_at"`
+	DurationMillis     *int64          `db:"duration_millis"`
+	LastError          *string         `db:"last_error"`
+	IdempotencyKey     *string         `db:"idempotency_key"`
+	CreatedAt          time.Time       `db:"created_at"`
+	UpdatedAt          time.Time       `db:"updated_at"`
 }
 
 func (q *Queries) DispatchJobFindByExternalID(ctx context.Context, externalID *string) (DispatchJobFindByExternalIDRow, error) {
@@ -326,42 +326,42 @@ WHERE id = $1
 `
 
 type DispatchJobFindByIDRow struct {
-	ID                 string
-	ExternalID         *string
-	Source             *string
-	Kind               string
-	Code               string
-	Subject            *string
-	EventID            *string
-	CorrelationID      *string
-	Metadata           json.RawMessage
-	TargetUrl          string
-	Protocol           string
-	Payload            *string
-	PayloadContentType *string
-	DataOnly           bool
-	ServiceAccountID   *string
-	ClientID           *string
-	SubscriptionID     *string
-	Mode               string
-	DispatchPoolID     *string
-	MessageGroup       *string
-	Sequence           int32
-	TimeoutSeconds     int32
-	SchemaID           *string
-	Status             string
-	MaxRetries         int32
-	RetryStrategy      *string
-	ScheduledFor       *time.Time
-	ExpiresAt          *time.Time
-	AttemptCount       int32
-	LastAttemptAt      *time.Time
-	CompletedAt        *time.Time
-	DurationMillis     *int64
-	LastError          *string
-	IdempotencyKey     *string
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	ID                 string          `db:"id"`
+	ExternalID         *string         `db:"external_id"`
+	Source             *string         `db:"source"`
+	Kind               string          `db:"kind"`
+	Code               string          `db:"code"`
+	Subject            *string         `db:"subject"`
+	EventID            *string         `db:"event_id"`
+	CorrelationID      *string         `db:"correlation_id"`
+	Metadata           json.RawMessage `db:"metadata"`
+	TargetUrl          string          `db:"target_url"`
+	Protocol           string          `db:"protocol"`
+	Payload            *string         `db:"payload"`
+	PayloadContentType *string         `db:"payload_content_type"`
+	DataOnly           bool            `db:"data_only"`
+	ServiceAccountID   *string         `db:"service_account_id"`
+	ClientID           *string         `db:"client_id"`
+	SubscriptionID     *string         `db:"subscription_id"`
+	Mode               string          `db:"mode"`
+	DispatchPoolID     *string         `db:"dispatch_pool_id"`
+	MessageGroup       *string         `db:"message_group"`
+	Sequence           int32           `db:"sequence"`
+	TimeoutSeconds     int32           `db:"timeout_seconds"`
+	SchemaID           *string         `db:"schema_id"`
+	Status             string          `db:"status"`
+	MaxRetries         int32           `db:"max_retries"`
+	RetryStrategy      *string         `db:"retry_strategy"`
+	ScheduledFor       *time.Time      `db:"scheduled_for"`
+	ExpiresAt          *time.Time      `db:"expires_at"`
+	AttemptCount       int32           `db:"attempt_count"`
+	LastAttemptAt      *time.Time      `db:"last_attempt_at"`
+	CompletedAt        *time.Time      `db:"completed_at"`
+	DurationMillis     *int64          `db:"duration_millis"`
+	LastError          *string         `db:"last_error"`
+	IdempotencyKey     *string         `db:"idempotency_key"`
+	CreatedAt          time.Time       `db:"created_at"`
+	UpdatedAt          time.Time       `db:"updated_at"`
 }
 
 // Queries for msg_dispatch_jobs + msg_dispatch_job_attempts. The
@@ -439,47 +439,47 @@ FOR UPDATE SKIP LOCKED
 `
 
 type DispatchJobFindPendingForPoolParams struct {
-	DispatchPoolID *string
-	Limit          int32
+	DispatchPoolID *string `db:"dispatch_pool_id"`
+	Limit          int32   `db:"limit"`
 }
 
 type DispatchJobFindPendingForPoolRow struct {
-	ID                 string
-	ExternalID         *string
-	Source             *string
-	Kind               string
-	Code               string
-	Subject            *string
-	EventID            *string
-	CorrelationID      *string
-	Metadata           json.RawMessage
-	TargetUrl          string
-	Protocol           string
-	Payload            *string
-	PayloadContentType *string
-	DataOnly           bool
-	ServiceAccountID   *string
-	ClientID           *string
-	SubscriptionID     *string
-	Mode               string
-	DispatchPoolID     *string
-	MessageGroup       *string
-	Sequence           int32
-	TimeoutSeconds     int32
-	SchemaID           *string
-	Status             string
-	MaxRetries         int32
-	RetryStrategy      *string
-	ScheduledFor       *time.Time
-	ExpiresAt          *time.Time
-	AttemptCount       int32
-	LastAttemptAt      *time.Time
-	CompletedAt        *time.Time
-	DurationMillis     *int64
-	LastError          *string
-	IdempotencyKey     *string
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	ID                 string          `db:"id"`
+	ExternalID         *string         `db:"external_id"`
+	Source             *string         `db:"source"`
+	Kind               string          `db:"kind"`
+	Code               string          `db:"code"`
+	Subject            *string         `db:"subject"`
+	EventID            *string         `db:"event_id"`
+	CorrelationID      *string         `db:"correlation_id"`
+	Metadata           json.RawMessage `db:"metadata"`
+	TargetUrl          string          `db:"target_url"`
+	Protocol           string          `db:"protocol"`
+	Payload            *string         `db:"payload"`
+	PayloadContentType *string         `db:"payload_content_type"`
+	DataOnly           bool            `db:"data_only"`
+	ServiceAccountID   *string         `db:"service_account_id"`
+	ClientID           *string         `db:"client_id"`
+	SubscriptionID     *string         `db:"subscription_id"`
+	Mode               string          `db:"mode"`
+	DispatchPoolID     *string         `db:"dispatch_pool_id"`
+	MessageGroup       *string         `db:"message_group"`
+	Sequence           int32           `db:"sequence"`
+	TimeoutSeconds     int32           `db:"timeout_seconds"`
+	SchemaID           *string         `db:"schema_id"`
+	Status             string          `db:"status"`
+	MaxRetries         int32           `db:"max_retries"`
+	RetryStrategy      *string         `db:"retry_strategy"`
+	ScheduledFor       *time.Time      `db:"scheduled_for"`
+	ExpiresAt          *time.Time      `db:"expires_at"`
+	AttemptCount       int32           `db:"attempt_count"`
+	LastAttemptAt      *time.Time      `db:"last_attempt_at"`
+	CompletedAt        *time.Time      `db:"completed_at"`
+	DurationMillis     *int64          `db:"duration_millis"`
+	LastError          *string         `db:"last_error"`
+	IdempotencyKey     *string         `db:"idempotency_key"`
+	CreatedAt          time.Time       `db:"created_at"`
+	UpdatedAt          time.Time       `db:"updated_at"`
 }
 
 // Used by the scheduler's PendingJobPoller. FOR UPDATE SKIP LOCKED so
@@ -556,42 +556,42 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
 `
 
 type DispatchJobInsertParams struct {
-	ID                 string
-	ExternalID         *string
-	Source             *string
-	Kind               string
-	Code               string
-	Subject            *string
-	EventID            *string
-	CorrelationID      *string
-	Metadata           json.RawMessage
-	TargetUrl          string
-	Protocol           string
-	Payload            *string
-	PayloadContentType *string
-	DataOnly           bool
-	ServiceAccountID   *string
-	ClientID           *string
-	SubscriptionID     *string
-	Mode               string
-	DispatchPoolID     *string
-	MessageGroup       *string
-	Sequence           int32
-	TimeoutSeconds     int32
-	SchemaID           *string
-	Status             string
-	MaxRetries         int32
-	RetryStrategy      *string
-	ScheduledFor       *time.Time
-	ExpiresAt          *time.Time
-	AttemptCount       int32
-	LastAttemptAt      *time.Time
-	CompletedAt        *time.Time
-	DurationMillis     *int64
-	LastError          *string
-	IdempotencyKey     *string
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	ID                 string          `db:"id"`
+	ExternalID         *string         `db:"external_id"`
+	Source             *string         `db:"source"`
+	Kind               string          `db:"kind"`
+	Code               string          `db:"code"`
+	Subject            *string         `db:"subject"`
+	EventID            *string         `db:"event_id"`
+	CorrelationID      *string         `db:"correlation_id"`
+	Metadata           json.RawMessage `db:"metadata"`
+	TargetUrl          string          `db:"target_url"`
+	Protocol           string          `db:"protocol"`
+	Payload            *string         `db:"payload"`
+	PayloadContentType *string         `db:"payload_content_type"`
+	DataOnly           bool            `db:"data_only"`
+	ServiceAccountID   *string         `db:"service_account_id"`
+	ClientID           *string         `db:"client_id"`
+	SubscriptionID     *string         `db:"subscription_id"`
+	Mode               string          `db:"mode"`
+	DispatchPoolID     *string         `db:"dispatch_pool_id"`
+	MessageGroup       *string         `db:"message_group"`
+	Sequence           int32           `db:"sequence"`
+	TimeoutSeconds     int32           `db:"timeout_seconds"`
+	SchemaID           *string         `db:"schema_id"`
+	Status             string          `db:"status"`
+	MaxRetries         int32           `db:"max_retries"`
+	RetryStrategy      *string         `db:"retry_strategy"`
+	ScheduledFor       *time.Time      `db:"scheduled_for"`
+	ExpiresAt          *time.Time      `db:"expires_at"`
+	AttemptCount       int32           `db:"attempt_count"`
+	LastAttemptAt      *time.Time      `db:"last_attempt_at"`
+	CompletedAt        *time.Time      `db:"completed_at"`
+	DurationMillis     *int64          `db:"duration_millis"`
+	LastError          *string         `db:"last_error"`
+	IdempotencyKey     *string         `db:"idempotency_key"`
+	CreatedAt          time.Time       `db:"created_at"`
+	UpdatedAt          time.Time       `db:"updated_at"`
 }
 
 func (q *Queries) DispatchJobInsert(ctx context.Context, arg DispatchJobInsertParams) error {
@@ -646,9 +646,9 @@ UPDATE msg_dispatch_jobs
 `
 
 type DispatchJobMarkCompletedParams struct {
-	ID             string
-	CompletedAt    *time.Time
-	DurationMillis *int64
+	ID             string     `db:"id"`
+	CompletedAt    *time.Time `db:"completed_at"`
+	DurationMillis *int64     `db:"duration_millis"`
 }
 
 // Status → COMPLETED. Stamps completed_at + duration_millis.
@@ -668,10 +668,10 @@ UPDATE msg_dispatch_jobs
 `
 
 type DispatchJobMarkFailedParams struct {
-	ID             string
-	CompletedAt    *time.Time
-	DurationMillis *int64
-	LastError      *string
+	ID             string     `db:"id"`
+	CompletedAt    *time.Time `db:"completed_at"`
+	DurationMillis *int64     `db:"duration_millis"`
+	LastError      *string    `db:"last_error"`
 }
 
 // Terminal failure. Stamps last_error + completed_at + duration_millis.
@@ -694,8 +694,8 @@ UPDATE msg_dispatch_jobs
 `
 
 type DispatchJobMarkInProgressParams struct {
-	ID            string
-	LastAttemptAt *time.Time
+	ID            string     `db:"id"`
+	LastAttemptAt *time.Time `db:"last_attempt_at"`
 }
 
 // Status → PROCESSING. Stamps last_attempt_at. Called by the router
@@ -717,9 +717,9 @@ UPDATE msg_dispatch_jobs
 `
 
 type DispatchJobScheduleRetryParams struct {
-	ID           string
-	ScheduledFor *time.Time
-	LastError    *string
+	ID           string     `db:"id"`
+	ScheduledFor *time.Time `db:"scheduled_for"`
+	LastError    *string    `db:"last_error"`
 }
 
 // Bumps attempt_count + stamps scheduled_for so the next poll picks

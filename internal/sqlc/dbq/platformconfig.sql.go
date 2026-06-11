@@ -80,8 +80,8 @@ WHERE application_code = $1 AND role_code = $2
 `
 
 type PlatformConfigAccessFindByRoleParams struct {
-	ApplicationCode string
-	RoleCode        string
+	ApplicationCode string `db:"application_code"`
+	RoleCode        string `db:"role_code"`
 }
 
 func (q *Queries) PlatformConfigAccessFindByRole(ctx context.Context, arg PlatformConfigAccessFindByRoleParams) (AppPlatformConfigAccess, error) {
@@ -108,8 +108,8 @@ SELECT EXISTS(
 `
 
 type PlatformConfigAccessHasReadByRolesParams struct {
-	ApplicationCode string
-	RoleCodes       []string
+	ApplicationCode string   `db:"application_code"`
+	RoleCodes       []string `db:"role_codes"`
 }
 
 func (q *Queries) PlatformConfigAccessHasReadByRoles(ctx context.Context, arg PlatformConfigAccessHasReadByRolesParams) (bool, error) {
@@ -129,8 +129,8 @@ SELECT EXISTS(
 `
 
 type PlatformConfigAccessHasWriteByRolesParams struct {
-	ApplicationCode string
-	RoleCodes       []string
+	ApplicationCode string   `db:"application_code"`
+	RoleCodes       []string `db:"role_codes"`
 }
 
 func (q *Queries) PlatformConfigAccessHasWriteByRoles(ctx context.Context, arg PlatformConfigAccessHasWriteByRolesParams) (bool, error) {
@@ -150,12 +150,12 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type PlatformConfigAccessUpsertParams struct {
-	ID              string
-	ApplicationCode string
-	RoleCode        string
-	CanRead         bool
-	CanWrite        bool
-	CreatedAt       time.Time
+	ID              string    `db:"id"`
+	ApplicationCode string    `db:"application_code"`
+	RoleCode        string    `db:"role_code"`
+	CanRead         bool      `db:"can_read"`
+	CanWrite        bool      `db:"can_write"`
+	CreatedAt       time.Time `db:"created_at"`
 }
 
 func (q *Queries) PlatformConfigAccessUpsert(ctx context.Context, arg PlatformConfigAccessUpsertParams) error {
@@ -228,10 +228,10 @@ WHERE application_code = $1 AND section = $2 AND property = $3
 `
 
 type PlatformConfigFindByCoordinateAnchorParams struct {
-	ApplicationCode string
-	Section         string
-	Property        string
-	Scope           string
+	ApplicationCode string `db:"application_code"`
+	Section         string `db:"section"`
+	Property        string `db:"property"`
+	Scope           string `db:"scope"`
 }
 
 func (q *Queries) PlatformConfigFindByCoordinateAnchor(ctx context.Context, arg PlatformConfigFindByCoordinateAnchorParams) (AppPlatformConfig, error) {
@@ -267,11 +267,11 @@ WHERE application_code = $1 AND section = $2 AND property = $3
 `
 
 type PlatformConfigFindByCoordinateClientParams struct {
-	ApplicationCode string
-	Section         string
-	Property        string
-	Scope           string
-	ClientID        *string
+	ApplicationCode string  `db:"application_code"`
+	Section         string  `db:"section"`
+	Property        string  `db:"property"`
+	Scope           string  `db:"scope"`
+	ClientID        *string `db:"client_id"`
 }
 
 func (q *Queries) PlatformConfigFindByCoordinateClient(ctx context.Context, arg PlatformConfigFindByCoordinateClientParams) (AppPlatformConfig, error) {
@@ -341,17 +341,17 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type PlatformConfigUpsertParams struct {
-	ID              string
-	ApplicationCode string
-	Section         string
-	Property        string
-	Scope           string
-	ClientID        *string
-	ValueType       string
-	Value           string
-	Description     *string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID              string    `db:"id"`
+	ApplicationCode string    `db:"application_code"`
+	Section         string    `db:"section"`
+	Property        string    `db:"property"`
+	Scope           string    `db:"scope"`
+	ClientID        *string   `db:"client_id"`
+	ValueType       string    `db:"value_type"`
+	Value           string    `db:"value"`
+	Description     *string   `db:"description"`
+	CreatedAt       time.Time `db:"created_at"`
+	UpdatedAt       time.Time `db:"updated_at"`
 }
 
 func (q *Queries) PlatformConfigUpsert(ctx context.Context, arg PlatformConfigUpsertParams) error {

@@ -297,8 +297,8 @@ VALUES ($1, $2)
 `
 
 type RolePermissionInsertParams struct {
-	RoleID     string
-	Permission string
+	RoleID     string `db:"role_id"`
+	Permission string `db:"permission"`
 }
 
 func (q *Queries) RolePermissionInsert(ctx context.Context, arg RolePermissionInsertParams) error {
@@ -359,16 +359,16 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type RoleUpsertParams struct {
-	ID              string
-	ApplicationID   *string
-	Name            string
-	DisplayName     string
-	Description     *string
-	ApplicationCode *string
-	Source          string
-	ClientManaged   bool
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID              string    `db:"id"`
+	ApplicationID   *string   `db:"application_id"`
+	Name            string    `db:"name"`
+	DisplayName     string    `db:"display_name"`
+	Description     *string   `db:"description"`
+	ApplicationCode *string   `db:"application_code"`
+	Source          string    `db:"source"`
+	ClientManaged   bool      `db:"client_managed"`
+	CreatedAt       time.Time `db:"created_at"`
+	UpdatedAt       time.Time `db:"updated_at"`
 }
 
 func (q *Queries) RoleUpsert(ctx context.Context, arg RoleUpsertParams) error {

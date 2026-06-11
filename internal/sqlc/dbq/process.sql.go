@@ -96,20 +96,20 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type ProcessUpsertParams struct {
-	ID          string
-	Code        string
-	Name        string
-	Description *string
-	Status      string
-	Source      string
-	Application string
-	Subdomain   string
-	ProcessName string
-	Body        string
-	DiagramType string
-	Tags        []string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID          string    `db:"id"`
+	Code        string    `db:"code"`
+	Name        string    `db:"name"`
+	Description *string   `db:"description"`
+	Status      string    `db:"status"`
+	Source      string    `db:"source"`
+	Application string    `db:"application"`
+	Subdomain   string    `db:"subdomain"`
+	ProcessName string    `db:"process_name"`
+	Body        string    `db:"body"`
+	DiagramType string    `db:"diagram_type"`
+	Tags        []string  `db:"tags"`
+	CreatedAt   time.Time `db:"created_at"`
+	UpdatedAt   time.Time `db:"updated_at"`
 }
 
 func (q *Queries) ProcessUpsert(ctx context.Context, arg ProcessUpsertParams) error {

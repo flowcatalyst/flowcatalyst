@@ -92,8 +92,8 @@ WHERE code = $1 AND client_id = $2
 `
 
 type ConnectionFindByCodeClientParams struct {
-	Code     string
-	ClientID *string
+	Code     string  `db:"code"`
+	ClientID *string `db:"client_id"`
 }
 
 func (q *Queries) ConnectionFindByCodeClient(ctx context.Context, arg ConnectionFindByCodeClientParams) (MsgConnection, error) {
@@ -161,17 +161,17 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type ConnectionUpsertParams struct {
-	ID               string
-	Code             string
-	Name             string
-	Description      *string
-	ExternalID       *string
-	Status           string
-	ServiceAccountID string
-	ClientID         *string
-	ClientIdentifier *string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID               string    `db:"id"`
+	Code             string    `db:"code"`
+	Name             string    `db:"name"`
+	Description      *string   `db:"description"`
+	ExternalID       *string   `db:"external_id"`
+	Status           string    `db:"status"`
+	ServiceAccountID string    `db:"service_account_id"`
+	ClientID         *string   `db:"client_id"`
+	ClientIdentifier *string   `db:"client_identifier"`
+	CreatedAt        time.Time `db:"created_at"`
+	UpdatedAt        time.Time `db:"updated_at"`
 }
 
 func (q *Queries) ConnectionUpsert(ctx context.Context, arg ConnectionUpsertParams) error {

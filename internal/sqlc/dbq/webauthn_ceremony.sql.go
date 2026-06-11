@@ -32,8 +32,8 @@ WHERE type IN ($1, $2)
 `
 
 type WebauthnCeremonyPurgeExpiredParams struct {
-	Type   string
-	Type_2 string
+	Type   string `db:"type"`
+	Type_2 string `db:"type_2"`
 }
 
 func (q *Queries) WebauthnCeremonyPurgeExpired(ctx context.Context, arg WebauthnCeremonyPurgeExpiredParams) (int64, error) {
@@ -54,10 +54,10 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type WebauthnCeremonyUpsertParams struct {
-	ID        string
-	Type      string
-	Payload   json.RawMessage
-	ExpiresAt *time.Time
+	ID        string          `db:"id"`
+	Type      string          `db:"type"`
+	Payload   json.RawMessage `db:"payload"`
+	ExpiresAt *time.Time      `db:"expires_at"`
 }
 
 // Queries for WebAuthn ceremony state in oauth_oidc_payloads.

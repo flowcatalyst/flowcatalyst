@@ -99,20 +99,20 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type ApplicationUpsertParams struct {
-	ID               string
-	Type             string
-	Code             string
-	Name             string
-	Description      *string
-	IconUrl          *string
-	Website          *string
-	Logo             *string
-	LogoMimeType     *string
-	DefaultBaseUrl   *string
-	ServiceAccountID *string
-	Active           bool
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID               string    `db:"id"`
+	Type             string    `db:"type"`
+	Code             string    `db:"code"`
+	Name             string    `db:"name"`
+	Description      *string   `db:"description"`
+	IconUrl          *string   `db:"icon_url"`
+	Website          *string   `db:"website"`
+	Logo             *string   `db:"logo"`
+	LogoMimeType     *string   `db:"logo_mime_type"`
+	DefaultBaseUrl   *string   `db:"default_base_url"`
+	ServiceAccountID *string   `db:"service_account_id"`
+	Active           bool      `db:"active"`
+	CreatedAt        time.Time `db:"created_at"`
+	UpdatedAt        time.Time `db:"updated_at"`
 }
 
 func (q *Queries) ApplicationUpsert(ctx context.Context, arg ApplicationUpsertParams) error {
@@ -185,8 +185,8 @@ WHERE application_id = $1 AND client_id = $2
 `
 
 type ClientConfigFindByAppAndClientParams struct {
-	ApplicationID string
-	ClientID      string
+	ApplicationID string `db:"application_id"`
+	ClientID      string `db:"client_id"`
 }
 
 func (q *Queries) ClientConfigFindByAppAndClient(ctx context.Context, arg ClientConfigFindByAppAndClientParams) (AppClientConfig, error) {
@@ -247,12 +247,12 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type ClientConfigUpsertParams struct {
-	ID            string
-	ApplicationID string
-	ClientID      string
-	Enabled       bool
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID            string    `db:"id"`
+	ApplicationID string    `db:"application_id"`
+	ClientID      string    `db:"client_id"`
+	Enabled       bool      `db:"enabled"`
+	CreatedAt     time.Time `db:"created_at"`
+	UpdatedAt     time.Time `db:"updated_at"`
 }
 
 func (q *Queries) ClientConfigUpsert(ctx context.Context, arg ClientConfigUpsertParams) error {

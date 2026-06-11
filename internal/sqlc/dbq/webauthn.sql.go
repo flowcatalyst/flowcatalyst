@@ -112,13 +112,13 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type WebauthnCredentialUpsertParams struct {
-	ID           string
-	PrincipalID  string
-	CredentialID []byte
-	PasskeyData  json.RawMessage
-	Name         *string
-	CreatedAt    time.Time
-	LastUsedAt   *time.Time
+	ID           string          `db:"id"`
+	PrincipalID  string          `db:"principal_id"`
+	CredentialID []byte          `db:"credential_id"`
+	PasskeyData  json.RawMessage `db:"passkey_data"`
+	Name         *string         `db:"name"`
+	CreatedAt    time.Time       `db:"created_at"`
+	LastUsedAt   *time.Time      `db:"last_used_at"`
 }
 
 func (q *Queries) WebauthnCredentialUpsert(ctx context.Context, arg WebauthnCredentialUpsertParams) error {

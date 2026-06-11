@@ -17,9 +17,9 @@ VALUES ($1, $2, $3)
 `
 
 type SubscriptionConfigInsertParams struct {
-	SubscriptionID string
-	ConfigKey      string
-	ConfigValue    string
+	SubscriptionID string `db:"subscription_id"`
+	ConfigKey      string `db:"config_key"`
+	ConfigValue    string `db:"config_value"`
 }
 
 func (q *Queries) SubscriptionConfigInsert(ctx context.Context, arg SubscriptionConfigInsertParams) error {
@@ -43,9 +43,9 @@ WHERE subscription_id = ANY($1::text[])
 `
 
 type SubscriptionConfigsForSubsRow struct {
-	SubscriptionID string
-	ConfigKey      string
-	ConfigValue    string
+	SubscriptionID string `db:"subscription_id"`
+	ConfigKey      string `db:"config_key"`
+	ConfigValue    string `db:"config_value"`
 }
 
 func (q *Queries) SubscriptionConfigsForSubs(ctx context.Context, subscriptionIds []string) ([]SubscriptionConfigsForSubsRow, error) {
@@ -84,10 +84,10 @@ VALUES ($1, $2, $3, $4)
 `
 
 type SubscriptionEventTypeInsertParams struct {
-	SubscriptionID string
-	EventTypeID    *string
-	EventTypeCode  string
-	SpecVersion    *string
+	SubscriptionID string  `db:"subscription_id"`
+	EventTypeID    *string `db:"event_type_id"`
+	EventTypeCode  string  `db:"event_type_code"`
+	SpecVersion    *string `db:"spec_version"`
 }
 
 func (q *Queries) SubscriptionEventTypeInsert(ctx context.Context, arg SubscriptionEventTypeInsertParams) error {
@@ -116,10 +116,10 @@ WHERE subscription_id = ANY($1::text[])
 `
 
 type SubscriptionEventTypesForSubsRow struct {
-	SubscriptionID string
-	EventTypeID    *string
-	EventTypeCode  string
-	SpecVersion    *string
+	SubscriptionID string  `db:"subscription_id"`
+	EventTypeID    *string `db:"event_type_id"`
+	EventTypeCode  string  `db:"event_type_code"`
+	SpecVersion    *string `db:"spec_version"`
 }
 
 func (q *Queries) SubscriptionEventTypesForSubs(ctx context.Context, subscriptionIds []string) ([]SubscriptionEventTypesForSubsRow, error) {
@@ -257,8 +257,8 @@ WHERE code = $1 AND client_id = $2
 `
 
 type SubscriptionFindByCodeClientParams struct {
-	Code     string
-	ClientID *string
+	Code     string  `db:"code"`
+	ClientID *string `db:"client_id"`
 }
 
 func (q *Queries) SubscriptionFindByCodeClient(ctx context.Context, arg SubscriptionFindByCodeClientParams) (MsgSubscription, error) {
@@ -375,31 +375,31 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type SubscriptionUpsertParams struct {
-	ID               string
-	Code             string
-	ApplicationCode  *string
-	Name             string
-	Description      *string
-	ClientID         *string
-	ClientIdentifier *string
-	ClientScoped     bool
-	ConnectionID     *string
-	Target           string
-	Queue            *string
-	Source           string
-	Status           string
-	MaxAgeSeconds    int32
-	DispatchPoolID   *string
-	DispatchPoolCode *string
-	DelaySeconds     int32
-	Sequence         int32
-	Mode             string
-	TimeoutSeconds   int32
-	MaxRetries       int32
-	ServiceAccountID *string
-	DataOnly         bool
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID               string    `db:"id"`
+	Code             string    `db:"code"`
+	ApplicationCode  *string   `db:"application_code"`
+	Name             string    `db:"name"`
+	Description      *string   `db:"description"`
+	ClientID         *string   `db:"client_id"`
+	ClientIdentifier *string   `db:"client_identifier"`
+	ClientScoped     bool      `db:"client_scoped"`
+	ConnectionID     *string   `db:"connection_id"`
+	Target           string    `db:"target"`
+	Queue            *string   `db:"queue"`
+	Source           string    `db:"source"`
+	Status           string    `db:"status"`
+	MaxAgeSeconds    int32     `db:"max_age_seconds"`
+	DispatchPoolID   *string   `db:"dispatch_pool_id"`
+	DispatchPoolCode *string   `db:"dispatch_pool_code"`
+	DelaySeconds     int32     `db:"delay_seconds"`
+	Sequence         int32     `db:"sequence"`
+	Mode             string    `db:"mode"`
+	TimeoutSeconds   int32     `db:"timeout_seconds"`
+	MaxRetries       int32     `db:"max_retries"`
+	ServiceAccountID *string   `db:"service_account_id"`
+	DataOnly         bool      `db:"data_only"`
+	CreatedAt        time.Time `db:"created_at"`
+	UpdatedAt        time.Time `db:"updated_at"`
 }
 
 func (q *Queries) SubscriptionUpsert(ctx context.Context, arg SubscriptionUpsertParams) error {

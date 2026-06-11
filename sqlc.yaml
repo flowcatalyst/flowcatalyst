@@ -21,6 +21,9 @@ sql:
         # from zero-value in the repository layer.
         emit_pointers_for_null_types: true
         emit_json_tags: false
+        # db tags let repos scan with pgx.RowToStructByName (the
+        # conventions §4.3 form) instead of hand-rolled Scan loops.
+        emit_db_tags: true
         overrides:
           # TIMESTAMPTZ → time.Time directly (sqlc defaults to
           # pgtype.Timestamptz; for NOT NULL columns we don't want the

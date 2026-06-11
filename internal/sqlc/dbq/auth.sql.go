@@ -98,10 +98,10 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type AnchorDomainUpsertParams struct {
-	ID        string
-	Domain    string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID        string    `db:"id"`
+	Domain    string    `db:"domain"`
+	CreatedAt time.Time `db:"created_at"`
+	UpdatedAt time.Time `db:"updated_at"`
 }
 
 func (q *Queries) AnchorDomainUpsert(ctx context.Context, arg AnchorDomainUpsertParams) error {
@@ -254,20 +254,20 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type ClientAuthConfigUpsertParams struct {
-	ID                  string
-	EmailDomain         string
-	ConfigType          string
-	PrimaryClientID     *string
-	AdditionalClientIds json.RawMessage
-	GrantedClientIds    json.RawMessage
-	AuthProvider        string
-	OidcIssuerUrl       *string
-	OidcClientID        *string
-	OidcMultiTenant     bool
-	OidcIssuerPattern   *string
-	OidcClientSecretRef *string
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
+	ID                  string          `db:"id"`
+	EmailDomain         string          `db:"email_domain"`
+	ConfigType          string          `db:"config_type"`
+	PrimaryClientID     *string         `db:"primary_client_id"`
+	AdditionalClientIds json.RawMessage `db:"additional_client_ids"`
+	GrantedClientIds    json.RawMessage `db:"granted_client_ids"`
+	AuthProvider        string          `db:"auth_provider"`
+	OidcIssuerUrl       *string         `db:"oidc_issuer_url"`
+	OidcClientID        *string         `db:"oidc_client_id"`
+	OidcMultiTenant     bool            `db:"oidc_multi_tenant"`
+	OidcIssuerPattern   *string         `db:"oidc_issuer_pattern"`
+	OidcClientSecretRef *string         `db:"oidc_client_secret_ref"`
+	CreatedAt           time.Time       `db:"created_at"`
+	UpdatedAt           time.Time       `db:"updated_at"`
 }
 
 func (q *Queries) ClientAuthConfigUpsert(ctx context.Context, arg ClientAuthConfigUpsertParams) error {
@@ -399,11 +399,11 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type IdpRoleMappingUpsertParams struct {
-	ID               string
-	IdpRoleName      string
-	InternalRoleName string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID               string    `db:"id"`
+	IdpRoleName      string    `db:"idp_role_name"`
+	InternalRoleName string    `db:"internal_role_name"`
+	CreatedAt        time.Time `db:"created_at"`
+	UpdatedAt        time.Time `db:"updated_at"`
 }
 
 func (q *Queries) IdpRoleMappingUpsert(ctx context.Context, arg IdpRoleMappingUpsertParams) error {
@@ -537,8 +537,8 @@ VALUES ($1, $2)
 `
 
 type OAuthClientGrantTypeInsertParams struct {
-	OauthClientID string
-	GrantType     string
+	OauthClientID string `db:"oauth_client_id"`
+	GrantType     string `db:"grant_type"`
 }
 
 func (q *Queries) OAuthClientGrantTypeInsert(ctx context.Context, arg OAuthClientGrantTypeInsertParams) error {
@@ -612,8 +612,8 @@ VALUES ($1, $2)
 `
 
 type OAuthClientRedirectURIInsertParams struct {
-	OauthClientID string
-	RedirectUri   string
+	OauthClientID string `db:"oauth_client_id"`
+	RedirectUri   string `db:"redirect_uri"`
 }
 
 func (q *Queries) OAuthClientRedirectURIInsert(ctx context.Context, arg OAuthClientRedirectURIInsertParams) error {
@@ -700,17 +700,17 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type OAuthClientUpsertParams struct {
-	ID                        string
-	ClientID                  string
-	ClientName                string
-	ClientType                string
-	ClientSecretRef           *string
-	DefaultScopes             *string
-	PkceRequired              bool
-	ServiceAccountPrincipalID *string
-	Active                    bool
-	CreatedAt                 time.Time
-	UpdatedAt                 time.Time
+	ID                        string    `db:"id"`
+	ClientID                  string    `db:"client_id"`
+	ClientName                string    `db:"client_name"`
+	ClientType                string    `db:"client_type"`
+	ClientSecretRef           *string   `db:"client_secret_ref"`
+	DefaultScopes             *string   `db:"default_scopes"`
+	PkceRequired              bool      `db:"pkce_required"`
+	ServiceAccountPrincipalID *string   `db:"service_account_principal_id"`
+	Active                    bool      `db:"active"`
+	CreatedAt                 time.Time `db:"created_at"`
+	UpdatedAt                 time.Time `db:"updated_at"`
 }
 
 func (q *Queries) OAuthClientUpsert(ctx context.Context, arg OAuthClientUpsertParams) error {

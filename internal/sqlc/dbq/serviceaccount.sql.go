@@ -156,21 +156,21 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type ServiceAccountUpsertParams struct {
-	ID                         string
-	Code                       string
-	Name                       string
-	Description                *string
-	ApplicationID              *string
-	Active                     bool
-	WhAuthType                 *string
-	WhAuthTokenRef             *string
-	WhSigningSecretRef         *string
-	WhSigningAlgorithm         *string
-	WhCredentialsCreatedAt     *time.Time
-	WhCredentialsRegeneratedAt *time.Time
-	LastUsedAt                 *time.Time
-	CreatedAt                  time.Time
-	UpdatedAt                  time.Time
+	ID                         string     `db:"id"`
+	Code                       string     `db:"code"`
+	Name                       string     `db:"name"`
+	Description                *string    `db:"description"`
+	ApplicationID              *string    `db:"application_id"`
+	Active                     bool       `db:"active"`
+	WhAuthType                 *string    `db:"wh_auth_type"`
+	WhAuthTokenRef             *string    `db:"wh_auth_token_ref"`
+	WhSigningSecretRef         *string    `db:"wh_signing_secret_ref"`
+	WhSigningAlgorithm         *string    `db:"wh_signing_algorithm"`
+	WhCredentialsCreatedAt     *time.Time `db:"wh_credentials_created_at"`
+	WhCredentialsRegeneratedAt *time.Time `db:"wh_credentials_regenerated_at"`
+	LastUsedAt                 *time.Time `db:"last_used_at"`
+	CreatedAt                  time.Time  `db:"created_at"`
+	UpdatedAt                  time.Time  `db:"updated_at"`
 }
 
 func (q *Queries) ServiceAccountUpsert(ctx context.Context, arg ServiceAccountUpsertParams) error {

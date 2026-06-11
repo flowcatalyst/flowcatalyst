@@ -17,8 +17,8 @@ VALUES ($1, $2)
 `
 
 type EmailDomainMapping2FAMethodInsertParams struct {
-	EmailDomainMappingID string
-	Method               string
+	EmailDomainMappingID string `db:"email_domain_mapping_id"`
+	Method               string `db:"method"`
 }
 
 func (q *Queries) EmailDomainMapping2FAMethodInsert(ctx context.Context, arg EmailDomainMapping2FAMethodInsertParams) error {
@@ -43,8 +43,8 @@ WHERE email_domain_mapping_id = ANY($1::varchar[])
 `
 
 type EmailDomainMapping2FAMethodsForMappingsRow struct {
-	EmailDomainMappingID string
-	Method               string
+	EmailDomainMappingID string `db:"email_domain_mapping_id"`
+	Method               string `db:"method"`
 }
 
 func (q *Queries) EmailDomainMapping2FAMethodsForMappings(ctx context.Context, dollar_1 []string) ([]EmailDomainMapping2FAMethodsForMappingsRow, error) {
@@ -74,8 +74,8 @@ VALUES ($1, $2)
 `
 
 type EmailDomainMappingAdditionalClientInsertParams struct {
-	EmailDomainMappingID string
-	ClientID             string
+	EmailDomainMappingID string `db:"email_domain_mapping_id"`
+	ClientID             string `db:"client_id"`
 }
 
 func (q *Queries) EmailDomainMappingAdditionalClientInsert(ctx context.Context, arg EmailDomainMappingAdditionalClientInsertParams) error {
@@ -103,8 +103,8 @@ WHERE email_domain_mapping_id = ANY($1::varchar[])
 `
 
 type EmailDomainMappingAdditionalClientsForMappingsRow struct {
-	EmailDomainMappingID string
-	ClientID             string
+	EmailDomainMappingID string `db:"email_domain_mapping_id"`
+	ClientID             string `db:"client_id"`
 }
 
 // ── junctions: batch hydrate via ANY($1) ─────────────────────────────
@@ -135,8 +135,8 @@ VALUES ($1, $2)
 `
 
 type EmailDomainMappingAllowedRoleInsertParams struct {
-	EmailDomainMappingID string
-	RoleID               string
+	EmailDomainMappingID string `db:"email_domain_mapping_id"`
+	RoleID               string `db:"role_id"`
 }
 
 func (q *Queries) EmailDomainMappingAllowedRoleInsert(ctx context.Context, arg EmailDomainMappingAllowedRoleInsertParams) error {
@@ -161,8 +161,8 @@ WHERE email_domain_mapping_id = ANY($1::varchar[])
 `
 
 type EmailDomainMappingAllowedRolesForMappingsRow struct {
-	EmailDomainMappingID string
-	RoleID               string
+	EmailDomainMappingID string `db:"email_domain_mapping_id"`
+	RoleID               string `db:"role_id"`
 }
 
 func (q *Queries) EmailDomainMappingAllowedRolesForMappings(ctx context.Context, dollar_1 []string) ([]EmailDomainMappingAllowedRolesForMappingsRow, error) {
@@ -303,8 +303,8 @@ VALUES ($1, $2)
 `
 
 type EmailDomainMappingGrantedClientInsertParams struct {
-	EmailDomainMappingID string
-	ClientID             string
+	EmailDomainMappingID string `db:"email_domain_mapping_id"`
+	ClientID             string `db:"client_id"`
 }
 
 func (q *Queries) EmailDomainMappingGrantedClientInsert(ctx context.Context, arg EmailDomainMappingGrantedClientInsertParams) error {
@@ -329,8 +329,8 @@ WHERE email_domain_mapping_id = ANY($1::varchar[])
 `
 
 type EmailDomainMappingGrantedClientsForMappingsRow struct {
-	EmailDomainMappingID string
-	ClientID             string
+	EmailDomainMappingID string `db:"email_domain_mapping_id"`
+	ClientID             string `db:"client_id"`
 }
 
 func (q *Queries) EmailDomainMappingGrantedClientsForMappings(ctx context.Context, dollar_1 []string) ([]EmailDomainMappingGrantedClientsForMappingsRow, error) {
@@ -373,18 +373,18 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type EmailDomainMappingUpsertParams struct {
-	ID                    string
-	EmailDomain           string
-	IdentityProviderID    string
-	ScopeType             string
-	PrimaryClientID       *string
-	RequiredOidcTenantID  *string
-	SyncRolesFromIdp      bool
-	Require2fa            bool
-	RememberDeviceEnabled bool
-	RememberDeviceDays    int32
-	CreatedAt             time.Time
-	UpdatedAt             time.Time
+	ID                    string    `db:"id"`
+	EmailDomain           string    `db:"email_domain"`
+	IdentityProviderID    string    `db:"identity_provider_id"`
+	ScopeType             string    `db:"scope_type"`
+	PrimaryClientID       *string   `db:"primary_client_id"`
+	RequiredOidcTenantID  *string   `db:"required_oidc_tenant_id"`
+	SyncRolesFromIdp      bool      `db:"sync_roles_from_idp"`
+	Require2fa            bool      `db:"require_2fa"`
+	RememberDeviceEnabled bool      `db:"remember_device_enabled"`
+	RememberDeviceDays    int32     `db:"remember_device_days"`
+	CreatedAt             time.Time `db:"created_at"`
+	UpdatedAt             time.Time `db:"updated_at"`
 }
 
 func (q *Queries) EmailDomainMappingUpsert(ctx context.Context, arg EmailDomainMappingUpsertParams) error {

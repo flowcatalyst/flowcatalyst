@@ -22,16 +22,16 @@ WHERE a.id = $1
 `
 
 type AuditFindByIDRow struct {
-	ID            string
-	EntityType    string
-	EntityID      string
-	Operation     string
-	OperationJson json.RawMessage
-	PrincipalID   *string
-	PrincipalName *string
-	ApplicationID *string
-	ClientID      *string
-	PerformedAt   time.Time
+	ID            string          `db:"id"`
+	EntityType    string          `db:"entity_type"`
+	EntityID      string          `db:"entity_id"`
+	Operation     string          `db:"operation"`
+	OperationJson json.RawMessage `db:"operation_json"`
+	PrincipalID   *string         `db:"principal_id"`
+	PrincipalName *string         `db:"principal_name"`
+	ApplicationID *string         `db:"application_id"`
+	ClientID      *string         `db:"client_id"`
+	PerformedAt   time.Time       `db:"performed_at"`
 }
 
 // Queries for aud_logs (read-only — writes happen in platformsink).
@@ -70,27 +70,27 @@ LIMIT $8::int OFFSET $7::int
 `
 
 type AuditFindWithFiltersParams struct {
-	EntityType  *string
-	EntityID    *string
-	PrincipalID *string
-	ClientID    *string
-	Since       *time.Time
-	Until       *time.Time
-	Off         int32
-	Lim         int32
+	EntityType  *string    `db:"entity_type"`
+	EntityID    *string    `db:"entity_id"`
+	PrincipalID *string    `db:"principal_id"`
+	ClientID    *string    `db:"client_id"`
+	Since       *time.Time `db:"since"`
+	Until       *time.Time `db:"until"`
+	Off         int32      `db:"off"`
+	Lim         int32      `db:"lim"`
 }
 
 type AuditFindWithFiltersRow struct {
-	ID            string
-	EntityType    string
-	EntityID      string
-	Operation     string
-	OperationJson json.RawMessage
-	PrincipalID   *string
-	PrincipalName *string
-	ApplicationID *string
-	ClientID      *string
-	PerformedAt   time.Time
+	ID            string          `db:"id"`
+	EntityType    string          `db:"entity_type"`
+	EntityID      string          `db:"entity_id"`
+	Operation     string          `db:"operation"`
+	OperationJson json.RawMessage `db:"operation_json"`
+	PrincipalID   *string         `db:"principal_id"`
+	PrincipalName *string         `db:"principal_name"`
+	ApplicationID *string         `db:"application_id"`
+	ClientID      *string         `db:"client_id"`
+	PerformedAt   time.Time       `db:"performed_at"`
 }
 
 // All filters are optional via the IS-NULL-OR pattern. Limit + offset
