@@ -16,6 +16,9 @@ import (
 type AssignApplicationAccessCommand struct {
 	UserID         string   `json:"userId"`
 	ApplicationIDs []string `json:"applicationIds"`
+	// AllApplications, when non-nil, sets the principal's all-applications flag.
+	// Nil leaves it unchanged.
+	AllApplications *bool `json:"allApplications,omitempty"`
 }
 
 func AssignApplicationAccess(
@@ -58,6 +61,9 @@ func AssignApplicationAccess(
 	removed := stringDifference(p.AccessibleApplicationIDs, cmd.ApplicationIDs)
 
 	p.AccessibleApplicationIDs = append([]string(nil), cmd.ApplicationIDs...)
+	if cmd.AllApplications != nil {
+		p.AllApplications = *cmd.AllApplications
+	}
 	p.UpdatedAt = time.Now().UTC()
 
 	event := ApplicationAccessAssigned{

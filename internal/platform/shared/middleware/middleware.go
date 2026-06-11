@@ -157,13 +157,14 @@ func introspect(ctx context.Context, p *provider.Provider, token string, fromCoo
 			return nil, rerr
 		}
 		return &auth.AuthContext{
-			PrincipalID:  rc.Subject,
-			Scope:        auth.Scope(rc.Scope),
-			Email:        rc.Email,
-			Clients:      rc.Clients,
-			Roles:        rc.Roles,
-			Applications: rc.Applications,
-			Permissions:  rc.Permissions,
+			PrincipalID:     rc.Subject,
+			Scope:           auth.Scope(rc.Scope),
+			Email:           rc.Email,
+			Clients:         rc.Clients,
+			Roles:           rc.Roles,
+			Applications:    rc.Applications,
+			AllApplications: rc.AllApplications,
+			Permissions:     rc.Permissions,
 		}, nil
 	}
 
@@ -180,13 +181,14 @@ func introspect(ctx context.Context, p *provider.Provider, token string, fromCoo
 		}
 	}
 	return &auth.AuthContext{
-		PrincipalID:  c.Subject,
-		Scope:        auth.Scope(c.Scope),
-		Email:        c.Email,
-		Clients:      c.Clients,
-		Roles:        c.Roles,
-		Applications: c.Applications,
-		Permissions:  perms,
+		PrincipalID:     c.Subject,
+		Scope:           auth.Scope(c.Scope),
+		Email:           c.Email,
+		Clients:         c.Clients,
+		Roles:           c.Roles,
+		Applications:    c.Applications,
+		AllApplications: c.AllApplications,
+		Permissions:     perms,
 	}, nil
 }
 
@@ -239,13 +241,25 @@ func buildTestAuthContext(r *http.Request) *auth.AuthContext {
 	if scope == "" {
 		scope = auth.ScopeClient
 	}
+	// Application scope. Default all-applications=true so existing tests keep
+	// full app reach; X-FC-Test-All-Applications overrides explicitly, and
+	// supplying X-FC-Test-Applications (an id list) flips to scoped access.
+	apps := splitCSV(r.Header.Get("X-FC-Test-Applications"))
+	allApps := true
+	if v := r.Header.Get("X-FC-Test-All-Applications"); v != "" {
+		allApps = v == "true"
+	} else if len(apps) > 0 {
+		allApps = false
+	}
 	return &auth.AuthContext{
-		PrincipalID: r.Header.Get("X-FC-Test-Principal"),
-		Email:       r.Header.Get("X-FC-Test-Email"),
-		Scope:       scope,
-		Clients:     splitCSV(r.Header.Get("X-FC-Test-Clients")),
-		Roles:       splitCSV(r.Header.Get("X-FC-Test-Roles")),
-		Permissions: splitCSV(r.Header.Get("X-FC-Test-Permissions")),
+		PrincipalID:     r.Header.Get("X-FC-Test-Principal"),
+		Email:           r.Header.Get("X-FC-Test-Email"),
+		Scope:           scope,
+		Clients:         splitCSV(r.Header.Get("X-FC-Test-Clients")),
+		Roles:           splitCSV(r.Header.Get("X-FC-Test-Roles")),
+		Applications:    apps,
+		AllApplications: allApps,
+		Permissions:     splitCSV(r.Header.Get("X-FC-Test-Permissions")),
 	}
 }
 

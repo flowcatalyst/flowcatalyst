@@ -90,9 +90,15 @@ type AccessTokenClaims struct {
 	// Roles is the assigned role names. Always emitted.
 	Roles []string `json:"roles"`
 
-	// Applications is the application codes derived from role-name
-	// prefixes. Always emitted.
+	// Applications is the principal's accessible application ids (the
+	// iam_principal_application_access bindings). Always emitted (possibly
+	// empty); ignored when AllApplications is true.
 	Applications []string `json:"applications"`
+
+	// AllApplications grants access to every application (present and future) —
+	// the application-axis analogue of the anchor tier. When true the
+	// Applications list is not a restriction.
+	AllApplications bool `json:"all_applications"`
 }
 
 // IDTokenClaims is the JWT payload for OIDC ID tokens. As in Rust, it
@@ -125,7 +131,9 @@ type IDTokenClaims struct {
 	// Roles, Applications, Clients always emitted (possibly empty).
 	Roles        []string `json:"roles"`
 	Applications []string `json:"applications"`
-	Clients      []string `json:"clients"`
+	// AllApplications — see AccessTokenClaims.AllApplications.
+	AllApplications bool     `json:"all_applications"`
+	Clients         []string `json:"clients"`
 }
 
 // Config bundles the construction-time settings, mirroring Rust's
@@ -370,15 +378,16 @@ func (s *AuthService) generateTokenWithExpiry(p *principal.Principal, expirySecs
 			NotBefore: jwt.NewNumericDate(now),
 			ID:        tsid.GenerateUntyped(),
 		},
-		Aud:           s.config.Audience,
-		PrincipalType: string(p.Type),
-		Tier:          string(p.Scope),
-		Scope:         strings.Join(scope, " "),
-		Email:         principalEmail(p),
-		Name:          p.Name,
-		Clients:       buildClients(p),
-		Roles:         roleNames(p),
-		Applications:  buildApplications(roleNames(p)),
+		Aud:             s.config.Audience,
+		PrincipalType:   string(p.Type),
+		Tier:            string(p.Scope),
+		Scope:           strings.Join(scope, " "),
+		Email:           principalEmail(p),
+		Name:            p.Name,
+		Clients:         buildClients(p),
+		Roles:           roleNames(p),
+		Applications:    appAccessOf(p),
+		AllApplications: p.AllApplications,
 	}
 	return s.sign(claims)
 }
@@ -406,20 +415,21 @@ func (s *AuthService) GenerateIDToken(p *principal.Principal, clientID string, n
 			ExpiresAt: jwt.NewNumericDate(exp),
 			IssuedAt:  jwt.NewNumericDate(now),
 		},
-		Aud:           clientID,
-		AuthTime:      &nowUnix,
-		Nonce:         nonce,
-		Name:          &name,
-		Email:         email,
-		EmailVerified: emailVerified,
-		UpdatedAt:     &nowUnix,
-		AZP:           &azp,
-		PrincipalType: string(p.Type),
-		Tier:          string(p.Scope),
-		ClientID:      p.ClientID,
-		Roles:         roleNames(p),
-		Applications:  buildApplications(roleNames(p)),
-		Clients:       buildClients(p),
+		Aud:             clientID,
+		AuthTime:        &nowUnix,
+		Nonce:           nonce,
+		Name:            &name,
+		Email:           email,
+		EmailVerified:   emailVerified,
+		UpdatedAt:       &nowUnix,
+		AZP:             &azp,
+		PrincipalType:   string(p.Type),
+		Tier:            string(p.Scope),
+		ClientID:        p.ClientID,
+		Roles:           roleNames(p),
+		Applications:    appAccessOf(p),
+		AllApplications: p.AllApplications,
+		Clients:         buildClients(p),
 	}
 	return s.sign(claims)
 }
@@ -543,26 +553,17 @@ func clientPair(p *principal.Principal, id string) string {
 	return id
 }
 
-// buildApplications extracts app codes from role names that contain a
-// ':' separator (e.g. "operant:admin" → "operant"), de-duplicated.
-// First-seen order is preserved (Rust uses an unordered HashSet, so any
-// order is wire-compatible).
-func buildApplications(roles []string) []string {
-	seen := make(map[string]struct{})
-	out := make([]string, 0)
-	for _, role := range roles {
-		idx := strings.IndexByte(role, ':')
-		if idx <= 0 {
-			continue
-		}
-		app := role[:idx]
-		if _, ok := seen[app]; ok {
-			continue
-		}
-		seen[app] = struct{}{}
-		out = append(out, app)
+// appAccessOf returns the principal's accessible application ids (the
+// iam_principal_application_access bindings) as a non-nil slice. This is the
+// `applications` claim — the principal's real application scope, honoured by
+// resource-level authorization (auth.AuthContext.CanAccessApplication) and the
+// /me application list. (Previously the claim was derived from role-name
+// prefixes, which neither matched the bindings nor scoped service accounts.)
+func appAccessOf(p *principal.Principal) []string {
+	if len(p.AccessibleApplicationIDs) == 0 {
+		return []string{}
 	}
-	return out
+	return append([]string(nil), p.AccessibleApplicationIDs...)
 }
 
 // ExtractBearerToken returns the token after a "Bearer " prefix, or ""

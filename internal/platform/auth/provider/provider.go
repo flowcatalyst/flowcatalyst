@@ -59,9 +59,12 @@ type Claims struct {
 	Clients      []string // tenant IDs accessible
 	Roles        []string
 	Applications []string
-	Permissions  []string // de-duplicated, flattened from Roles
-	Email        string
-	Name         string // user display name (OIDC "name" claim)
+	// AllApplications grants access to every application (present and future);
+	// when true Applications is not a restriction.
+	AllApplications bool
+	Permissions     []string // de-duplicated, flattened from Roles
+	Email           string
+	Name            string // user display name (OIDC "name" claim)
 
 	// OIDC ID-token-specific claims. These are populated only when the
 	// caller is minting an ID token, not a plain access token. Rust's
@@ -107,15 +110,16 @@ func BuildClaims(ctx context.Context, cfg Config, principals *principal.Reposito
 		return nil, fmt.Errorf("flatten permissions: %w", err)
 	}
 	return &Claims{
-		Issuer:       cfg.Issuer,
-		Subject:      p.ID,
-		Scope:        string(p.Scope),
-		Clients:      clients,
-		Roles:        roleNames,
-		Applications: apps,
-		Permissions:  perms,
-		Email:        email,
-		Name:         p.Name,
+		Issuer:          cfg.Issuer,
+		Subject:         p.ID,
+		Scope:           string(p.Scope),
+		Clients:         clients,
+		Roles:           roleNames,
+		Applications:    apps,
+		AllApplications: p.AllApplications,
+		Permissions:     perms,
+		Email:           email,
+		Name:            p.Name,
 	}, nil
 }
 

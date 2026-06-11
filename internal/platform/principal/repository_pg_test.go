@@ -73,3 +73,47 @@ func TestFindAll_HydratesRolesAndClientGrants(t *testing.T) {
 	assert.ElementsMatch(t, roleNames, oneRoles)
 	assert.ElementsMatch(t, got.AssignedClients, one.AssignedClients)
 }
+
+// TestAllApplications_RoundTrip pins the application-scope wiring an application
+// service account relies on: a principal with all_applications=false and a
+// single application-access row reads back as scoped to exactly that app (the
+// CanAccessApplication input), while a principal without an access row but
+// all_applications=true reads back as unrestricted.
+func TestAllApplications_RoundTrip(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := principal.NewRepository(pool)
+
+	// Scoped service account: all_applications=false + one access row.
+	const (
+		saPID = "prn_appscoped01"
+		appID = "app_scoped00001"
+	)
+	_, err := pool.Exec(ctx,
+		`INSERT INTO iam_principals (id, type, scope, name, active, all_applications)
+		 VALUES ($1, 'SERVICE', 'ANCHOR', 'Scoped SA', TRUE, FALSE)`, saPID)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx,
+		`INSERT INTO iam_principal_application_access (principal_id, application_id)
+		 VALUES ($1, $2)`, saPID, appID)
+	require.NoError(t, err)
+
+	sa, err := repo.FindByID(ctx, saPID)
+	require.NoError(t, err)
+	require.NotNil(t, sa)
+	assert.False(t, sa.AllApplications, "scoped SA must read all_applications=false")
+	assert.ElementsMatch(t, []string{appID}, sa.AccessibleApplicationIDs)
+
+	// Unrestricted principal: all_applications=true, no access rows.
+	const adminPID = "prn_allapps00001"
+	_, err = pool.Exec(ctx,
+		`INSERT INTO iam_principals (id, type, scope, name, active, all_applications)
+		 VALUES ($1, 'USER', 'ANCHOR', 'All Apps Admin', TRUE, TRUE)`, adminPID)
+	require.NoError(t, err)
+
+	admin, err := repo.FindByID(ctx, adminPID)
+	require.NoError(t, err)
+	require.NotNil(t, admin)
+	assert.True(t, admin.AllApplications, "admin must read all_applications=true")
+	assert.Empty(t, admin.AccessibleApplicationIDs)
+}

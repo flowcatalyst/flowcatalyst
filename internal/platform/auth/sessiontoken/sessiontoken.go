@@ -49,7 +49,11 @@ type Claims struct {
 	Clients      []string
 	Roles        []string
 	Applications []string
-	Permissions  []string
+	// AllApplications grants access to every application (present and future);
+	// when true the Applications list is not a restriction. Rides the
+	// "all_applications" claim.
+	AllApplications bool
+	Permissions     []string
 	// IssuedAt is the token's `iat` (when it was minted ≈ login time).
 	// Zero if the token carried no iat. Used for OIDC max_age enforcement.
 	IssuedAt time.Time
@@ -90,6 +94,7 @@ func Mint(c Claims, key *rsa.PrivateKey, issuer string, ttl time.Duration) (stri
 	if len(c.Applications) > 0 {
 		mc["applications"] = c.Applications
 	}
+	mc["all_applications"] = c.AllApplications
 	// Granted permissions ride the OAuth "scope" claim as a space-delimited
 	// string (the standard scope wire form), not a JSON array.
 	if len(c.Permissions) > 0 {
@@ -166,12 +171,13 @@ func Validate(token string, key *rsa.PublicKey, expect Expect) (*Claims, error) 
 	}
 
 	out := &Claims{
-		Subject:      stringClaim(mc, "sub"),
-		Scope:        stringClaim(mc, "tier"), // tenancy tier
-		Email:        stringClaim(mc, "email"),
-		Clients:      stringSliceClaim(mc, "clients"),
-		Roles:        stringSliceClaim(mc, "roles"),
-		Applications: stringSliceClaim(mc, "applications"),
+		Subject:         stringClaim(mc, "sub"),
+		Scope:           stringClaim(mc, "tier"), // tenancy tier
+		Email:           stringClaim(mc, "email"),
+		Clients:         stringSliceClaim(mc, "clients"),
+		Roles:           stringSliceClaim(mc, "roles"),
+		Applications:    stringSliceClaim(mc, "applications"),
+		AllApplications: boolClaim(mc, "all_applications"),
 		// Granted permissions arrive on the space-delimited "scope" claim.
 		Permissions: strings.Fields(stringClaim(mc, "scope")),
 		IssuedAt:    unixClaim(mc, "iat"),
@@ -187,6 +193,13 @@ func stringClaim(mc jwt.MapClaims, key string) string {
 		return v
 	}
 	return ""
+}
+
+func boolClaim(mc jwt.MapClaims, key string) bool {
+	if v, ok := mc[key].(bool); ok {
+		return v
+	}
+	return false
 }
 
 // audienceClaim reads the aud claim in either RFC 7519 wire form: a bare

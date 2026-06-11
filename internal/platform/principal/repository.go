@@ -442,6 +442,7 @@ func (r *Repository) Persist(ctx context.Context, p *Principal, tx *usecasepgx.D
 		PasswordHash:     passwordHash,
 		LastLoginAt:      lastLoginAt,
 		ServiceAccountID: p.ServiceAccountID,
+		AllApplications:  p.AllApplications,
 		CreatedAt:        p.CreatedAt,
 		UpdatedAt:        now,
 	})
@@ -594,6 +595,7 @@ func rowToPrincipal(row dbq.IamPrincipal) *Principal {
 		Name:                     row.Name,
 		Active:                   row.Active,
 		ServiceAccountID:         row.ServiceAccountID,
+		AllApplications:          row.AllApplications,
 		CreatedAt:                row.CreatedAt,
 		UpdatedAt:                row.UpdatedAt,
 		Roles:                    []serviceaccount.RoleAssignment{},

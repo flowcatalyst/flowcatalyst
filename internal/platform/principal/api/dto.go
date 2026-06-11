@@ -90,6 +90,12 @@ type AssignPrincipalRolesRequest struct {
 // PUT /api/principals/{id}/application-access.
 type AssignApplicationAccessRequest struct {
 	ApplicationIDs []string `json:"applicationIds"`
+	// AllApplications, when present, sets whether the principal has access to
+	// every application (present and future) — the application-axis analogue of
+	// the anchor tier. Omitted (nil) leaves the current value unchanged, so a
+	// caller that only edits the explicit list never accidentally flips it. Only
+	// an assigner that itself holds all-applications access may set it true.
+	AllApplications *bool `json:"allApplications,omitempty"`
 }
 
 // GrantClientAccessRequest is the wire body for

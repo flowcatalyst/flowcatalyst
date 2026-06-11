@@ -133,9 +133,15 @@ type Principal struct {
 	AssignedClients          []string                        `json:"assignedClients"`
 	ClientIdentifierMap      map[string]string               `json:"clientIdentifierMap,omitempty"`
 	AccessibleApplicationIDs []string                        `json:"accessibleApplicationIds"`
-	ExternalIdentity         *ExternalIdentity               `json:"externalIdentity,omitempty"`
-	CreatedAt                time.Time                       `json:"createdAt"`
-	UpdatedAt                time.Time                       `json:"updatedAt"`
+	// AllApplications grants access to every application (present and future),
+	// the application-axis analogue of the anchor client tier. When false, the
+	// principal is restricted to AccessibleApplicationIDs. Stored (not derived
+	// from Scope) so an anchor-tier service account can be pinned to a single
+	// application. See migration 034.
+	AllApplications  bool              `json:"allApplications"`
+	ExternalIdentity *ExternalIdentity `json:"externalIdentity,omitempty"`
+	CreatedAt        time.Time         `json:"createdAt"`
+	UpdatedAt        time.Time         `json:"updatedAt"`
 }
 
 // IDStr satisfies usecase.HasID.
@@ -161,6 +167,7 @@ func NewUser(email string, scope UserScope) *Principal {
 		Roles:                    []serviceaccount.RoleAssignment{},
 		AssignedClients:          []string{},
 		AccessibleApplicationIDs: []string{},
+		AllApplications:          true,
 		CreatedAt:                now,
 		UpdatedAt:                now,
 	}
@@ -179,6 +186,7 @@ func NewService(serviceAccountID, name string) *Principal {
 		Roles:                    []serviceaccount.RoleAssignment{},
 		AssignedClients:          []string{},
 		AccessibleApplicationIDs: []string{},
+		AllApplications:          true,
 		CreatedAt:                now,
 		UpdatedAt:                now,
 	}

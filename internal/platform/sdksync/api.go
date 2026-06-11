@@ -110,22 +110,20 @@ func (s *State) resolveApp(ctx context.Context, code string) (*application.Appli
 }
 
 // requireAppAccess enforces that the caller may manage this application's
-// definitions. An anchor / super-admin may sync any application; otherwise the
-// caller MUST be the application's bound service account. Without this, any
-// service account holding a sync permission could sync — and, with
-// removeUnlisted, PRUNE — another application's roles/definitions. The
-// per-app SDK syncs all funnel through here so removeUnlisted can only ever
-// remove rows for an application the caller actually owns. Platform CODE roles
-// (no application binding) are additionally protected by the source check in
-// the role sync use case.
+// definitions. Authority is the principal's application scope: a caller with
+// all-applications access may sync any application; an application-scoped caller
+// (e.g. an application service account) may sync only the applications in its
+// binding — even at anchor tier. Without this, any service account holding a
+// sync permission could sync — and, with removeUnlisted, PRUNE — another
+// application's roles/definitions. The per-app SDK syncs all funnel through here
+// so removeUnlisted can only ever remove rows for an application the caller
+// actually has access to. Platform CODE roles (no application binding) are
+// additionally protected by the source check in the role sync use case.
 func (s *State) requireAppAccess(ac *auth.AuthContext, app *application.Application) error {
-	if ac.IsAnchor() || ac.IsSuperAdmin() {
+	if ac.CanAccessApplication(app.ID) {
 		return nil
 	}
-	if app.ServiceAccountID != nil && *app.ServiceAccountID == ac.PrincipalID {
-		return nil
-	}
-	return httperror.Forbidden("Service account is not authorised for application '" + app.Code + "'")
+	return httperror.Forbidden("Not authorised for application '" + app.Code + "'")
 }
 
 // ── Event types ─────────────────────────────────────────────────────────

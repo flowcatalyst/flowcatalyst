@@ -564,6 +564,9 @@
             "readOnly": true,
             "type": "string"
           },
+          "allApplications": {
+            "type": "boolean"
+          },
           "applicationIds": {
             "items": {
               "type": "string"

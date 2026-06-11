@@ -117,8 +117,17 @@ func ProvisionServiceAccount(
 		// 2. Linked SERVICE principal — raw persist (no separate event;
 		//    the principal row is a persistence detail of SA creation,
 		//    matching Rust where the principal is created "behind" the SA).
+		//    Scope the SA to its own application: AllApplications=false plus a
+		//    single application-access grant. The token's `applications` claim
+		//    then carries exactly this app, and resource-level authorization
+		//    (sdksync.requireAppAccess) confines the SA's writes to it — even at
+		//    anchor tier. AppAccessPersister writes the base row AND the
+		//    iam_principal_application_access junction in this transaction.
+		saPrincipal.AllApplications = false
+		saPrincipal.AccessibleApplicationIDs = []string{app.ID}
 		if err := s.WithTx(ctx, func(tx pgx.Tx) error {
-			return principals.Persist(ctx, saPrincipal, usecasepgx.WrapTxForBootstrap(tx))
+			return principal.AppAccessPersister{Repository: principals}.Persist(
+				ctx, saPrincipal, usecasepgx.WrapTxForBootstrap(tx))
 		}); err != nil {
 			return usecase.Failure[authops.OAuthClientCreated](
 				usecase.Internal("PERSIST", "service principal persist failed", err))

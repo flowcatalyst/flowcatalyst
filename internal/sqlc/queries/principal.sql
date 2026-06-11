@@ -7,7 +7,7 @@
 -- name: PrincipalFindByID :one
 SELECT id, type, scope, client_id, application_id, name, active,
        email, email_domain, idp_type, external_idp_id, password_hash,
-       last_login_at, service_account_id, created_at, updated_at
+       last_login_at, service_account_id, created_at, updated_at, all_applications
 FROM iam_principals
 WHERE id = $1;
 
@@ -18,21 +18,21 @@ WHERE id = $1;
 -- the login self-heal can normalise it. The repo lower-cases $1 before binding.
 SELECT id, type, scope, client_id, application_id, name, active,
        email, email_domain, idp_type, external_idp_id, password_hash,
-       last_login_at, service_account_id, created_at, updated_at
+       last_login_at, service_account_id, created_at, updated_at, all_applications
 FROM iam_principals
 WHERE type = 'USER' AND LOWER(email) = $1;
 
 -- name: PrincipalFindAll :many
 SELECT id, type, scope, client_id, application_id, name, active,
        email, email_domain, idp_type, external_idp_id, password_hash,
-       last_login_at, service_account_id, created_at, updated_at
+       last_login_at, service_account_id, created_at, updated_at, all_applications
 FROM iam_principals
 ORDER BY created_at DESC;
 
 -- name: PrincipalFindByServiceAccount :one
 SELECT id, type, scope, client_id, application_id, name, active,
        email, email_domain, idp_type, external_idp_id, password_hash,
-       last_login_at, service_account_id, created_at, updated_at
+       last_login_at, service_account_id, created_at, updated_at, all_applications
 FROM iam_principals
 WHERE type = 'SERVICE' AND service_account_id = $1;
 
@@ -40,8 +40,8 @@ WHERE type = 'SERVICE' AND service_account_id = $1;
 INSERT INTO iam_principals
     (id, type, scope, client_id, application_id, name, active,
      email, email_domain, idp_type, external_idp_id, password_hash,
-     last_login_at, service_account_id, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+     last_login_at, service_account_id, all_applications, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 ON CONFLICT (id) DO UPDATE SET
     type = EXCLUDED.type,
     scope = EXCLUDED.scope,
@@ -56,6 +56,7 @@ ON CONFLICT (id) DO UPDATE SET
     password_hash = EXCLUDED.password_hash,
     last_login_at = EXCLUDED.last_login_at,
     service_account_id = EXCLUDED.service_account_id,
+    all_applications = EXCLUDED.all_applications,
     updated_at = EXCLUDED.updated_at;
 
 -- name: PrincipalDelete :exec

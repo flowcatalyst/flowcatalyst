@@ -962,6 +962,12 @@ func (s *State) assignApplicationAccess(ctx context.Context, in *assignAppAccess
 	if err := blockNonClientTarget(ac, p); err != nil {
 		return nil, err
 	}
+	// Granting all-applications access exceeds any client-bounded reach, so only
+	// an assigner that itself holds all-applications access (e.g. an anchor admin)
+	// may set it true. Clearing it (false) or leaving it unchanged (nil) is open.
+	if in.Body.AllApplications != nil && *in.Body.AllApplications && !ac.AllApplications {
+		return nil, httperror.Forbidden("Only an all-applications administrator may grant all-applications access")
+	}
 	desiredIDs := in.Body.ApplicationIDs
 	if !ac.IsAnchor() {
 		allowed, aerr := s.clientAppIDs(ctx, clientIDOf(p))
@@ -981,7 +987,11 @@ func (s *State) assignApplicationAccess(ctx context.Context, in *assignAppAccess
 
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
 	if _, err := operations.AssignApplicationAccess(ctx, s.Repo, s.Applications, s.UoW,
-		operations.AssignApplicationAccessCommand{UserID: in.ID, ApplicationIDs: desiredIDs}, ec); err != nil {
+		operations.AssignApplicationAccessCommand{
+			UserID:          in.ID,
+			ApplicationIDs:  desiredIDs,
+			AllApplications: in.Body.AllApplications,
+		}, ec); err != nil {
 		return nil, err
 	}
 	apps, err := s.resolveApplications(ctx, desiredIDs)

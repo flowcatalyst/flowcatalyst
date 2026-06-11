@@ -202,6 +202,7 @@ type IamPrincipal struct {
 	ServiceAccountID *string    `db:"service_account_id"`
 	CreatedAt        time.Time  `db:"created_at"`
 	UpdatedAt        time.Time  `db:"updated_at"`
+	AllApplications  bool       `db:"all_applications"`
 }
 
 type IamPrincipalApplicationAccess struct {

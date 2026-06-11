@@ -44,7 +44,7 @@ func (q *Queries) PrincipalDelete(ctx context.Context, id string) error {
 const principalFindAll = `-- name: PrincipalFindAll :many
 SELECT id, type, scope, client_id, application_id, name, active,
        email, email_domain, idp_type, external_idp_id, password_hash,
-       last_login_at, service_account_id, created_at, updated_at
+       last_login_at, service_account_id, created_at, updated_at, all_applications
 FROM iam_principals
 ORDER BY created_at DESC
 `
@@ -75,6 +75,7 @@ func (q *Queries) PrincipalFindAll(ctx context.Context) ([]IamPrincipal, error) 
 			&i.ServiceAccountID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.AllApplications,
 		); err != nil {
 			return nil, err
 		}
@@ -89,7 +90,7 @@ func (q *Queries) PrincipalFindAll(ctx context.Context) ([]IamPrincipal, error) 
 const principalFindByEmail = `-- name: PrincipalFindByEmail :one
 SELECT id, type, scope, client_id, application_id, name, active,
        email, email_domain, idp_type, external_idp_id, password_hash,
-       last_login_at, service_account_id, created_at, updated_at
+       last_login_at, service_account_id, created_at, updated_at, all_applications
 FROM iam_principals
 WHERE type = 'USER' AND LOWER(email) = $1
 `
@@ -118,6 +119,7 @@ func (q *Queries) PrincipalFindByEmail(ctx context.Context, email *string) (IamP
 		&i.ServiceAccountID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AllApplications,
 	)
 	return i, err
 }
@@ -126,7 +128,7 @@ const principalFindByID = `-- name: PrincipalFindByID :one
 
 SELECT id, type, scope, client_id, application_id, name, active,
        email, email_domain, idp_type, external_idp_id, password_hash,
-       last_login_at, service_account_id, created_at, updated_at
+       last_login_at, service_account_id, created_at, updated_at, all_applications
 FROM iam_principals
 WHERE id = $1
 `
@@ -156,6 +158,7 @@ func (q *Queries) PrincipalFindByID(ctx context.Context, id string) (IamPrincipa
 		&i.ServiceAccountID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AllApplications,
 	)
 	return i, err
 }
@@ -163,7 +166,7 @@ func (q *Queries) PrincipalFindByID(ctx context.Context, id string) (IamPrincipa
 const principalFindByServiceAccount = `-- name: PrincipalFindByServiceAccount :one
 SELECT id, type, scope, client_id, application_id, name, active,
        email, email_domain, idp_type, external_idp_id, password_hash,
-       last_login_at, service_account_id, created_at, updated_at
+       last_login_at, service_account_id, created_at, updated_at, all_applications
 FROM iam_principals
 WHERE type = 'SERVICE' AND service_account_id = $1
 `
@@ -188,6 +191,7 @@ func (q *Queries) PrincipalFindByServiceAccount(ctx context.Context, serviceAcco
 		&i.ServiceAccountID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AllApplications,
 	)
 	return i, err
 }
@@ -196,8 +200,8 @@ const principalUpsert = `-- name: PrincipalUpsert :exec
 INSERT INTO iam_principals
     (id, type, scope, client_id, application_id, name, active,
      email, email_domain, idp_type, external_idp_id, password_hash,
-     last_login_at, service_account_id, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+     last_login_at, service_account_id, all_applications, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 ON CONFLICT (id) DO UPDATE SET
     type = EXCLUDED.type,
     scope = EXCLUDED.scope,
@@ -212,6 +216,7 @@ ON CONFLICT (id) DO UPDATE SET
     password_hash = EXCLUDED.password_hash,
     last_login_at = EXCLUDED.last_login_at,
     service_account_id = EXCLUDED.service_account_id,
+    all_applications = EXCLUDED.all_applications,
     updated_at = EXCLUDED.updated_at
 `
 
@@ -230,6 +235,7 @@ type PrincipalUpsertParams struct {
 	PasswordHash     *string    `db:"password_hash"`
 	LastLoginAt      *time.Time `db:"last_login_at"`
 	ServiceAccountID *string    `db:"service_account_id"`
+	AllApplications  bool       `db:"all_applications"`
 	CreatedAt        time.Time  `db:"created_at"`
 	UpdatedAt        time.Time  `db:"updated_at"`
 }
@@ -250,6 +256,7 @@ func (q *Queries) PrincipalUpsert(ctx context.Context, arg PrincipalUpsertParams
 		arg.PasswordHash,
 		arg.LastLoginAt,
 		arg.ServiceAccountID,
+		arg.AllApplications,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)

@@ -137,8 +137,16 @@ type AuthContext struct {
 	Clients []string
 	// Roles is the set of role codes assigned to this principal.
 	Roles []string
-	// Applications is the set of application IDs in scope.
+	// Applications is the explicit set of application IDs this principal may
+	// access (the iam_principal_application_access bindings). Ignored when
+	// AllApplications is true.
 	Applications []string
+	// AllApplications grants access to every application (present and future) —
+	// the application-axis analogue of the anchor client tier. When true the
+	// principal is not restricted to Applications. Stored on the principal (not
+	// derived from Scope), so an anchor-tier service account can still be
+	// pinned to a single application.
+	AllApplications bool
 	// Permissions is the flattened set of permission codes from all roles.
 	Permissions []string
 }
@@ -167,6 +175,35 @@ func (a *AuthContext) CanAccessClient(clientID string) bool {
 	}
 	for _, c := range a.Clients {
 		if c == clientID {
+			return true
+		}
+	}
+	return false
+}
+
+// IsApplicationScoped reports whether the principal is restricted to an explicit
+// set of applications (i.e. it does NOT hold all-applications access). An
+// application-scoped principal — e.g. an application service account — may only
+// act on applications in its Applications list, even at anchor tier.
+func (a *AuthContext) IsApplicationScoped() bool {
+	return a != nil && !a.AllApplications
+}
+
+// CanAccessApplication reports whether the principal may act on the application
+// with the given id. True when it holds all-applications access, or when the id
+// is in its explicit Applications list. This is the application-axis analogue of
+// CanAccessClient and is the single rule resource-level authorization uses to
+// confine app-scoped principals (e.g. application service accounts) to their own
+// application(s).
+func (a *AuthContext) CanAccessApplication(applicationID string) bool {
+	if a == nil {
+		return false
+	}
+	if a.AllApplications {
+		return true
+	}
+	for _, id := range a.Applications {
+		if id == applicationID {
 			return true
 		}
 	}

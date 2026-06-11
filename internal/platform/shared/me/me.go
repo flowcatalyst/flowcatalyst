@@ -49,6 +49,10 @@ type whoamiResponse struct {
 	Permissions              []string `json:"permissions"`
 	AccessibleClientIDs      []string `json:"accessibleClientIds"`
 	AccessibleApplicationIDs []string `json:"accessibleApplicationIds"`
+	// AllApplications reports whether the principal has access to every
+	// application (present and future); when true AccessibleApplicationIDs is
+	// not a restriction. Additive Go field (not in the Rust contract).
+	AllApplications bool `json:"allApplications"`
 }
 
 func (s *State) whoami(w http.ResponseWriter, r *http.Request) {
@@ -85,6 +89,7 @@ func (s *State) whoami(w http.ResponseWriter, r *http.Request) {
 	}
 	if p != nil {
 		out.AccessibleApplicationIDs = stringSliceOrEmpty(p.AccessibleApplicationIDs)
+		out.AllApplications = p.AllApplications
 		out.PrincipalType = string(p.Type)
 		if p.UserIdentity != nil {
 			out.Name = p.UserIdentity.DisplayName()
@@ -94,6 +99,7 @@ func (s *State) whoami(w http.ResponseWriter, r *http.Request) {
 		// Fall back to the context fields so the handler still
 		// returns a useful response.
 		out.AccessibleApplicationIDs = stringSliceOrEmpty(ac.Applications)
+		out.AllApplications = ac.AllApplications
 		out.PrincipalType = "USER"
 		if out.Email != nil {
 			out.Name = *out.Email
@@ -126,9 +132,12 @@ type myApplicationsListResponse struct {
 }
 
 // listMyApplications serves GET /api/me/applications: the applications the
-// calling principal can access. Anchors see every application; others see the
-// apps granted on their principal row (accessible_application_ids). Mirrors
-// Rust me_api.rs list_my_applications.
+// calling principal can access. Principals with all-applications access see
+// every application; others see the apps granted on their principal row
+// (accessible_application_ids). Mirrors Rust me_api.rs list_my_applications.
+// Note: the predicate is the application-axis flag (AllApplications), not the
+// client tier — an anchor-tier service account scoped to one application sees
+// only that application here.
 func (s *State) listMyApplications(w http.ResponseWriter, r *http.Request) {
 	ac := auth.FromContext(r.Context())
 	if ac == nil {
@@ -142,9 +151,10 @@ func (s *State) listMyApplications(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resolve the accessible-app set for non-anchors (anchors see all).
+	// Resolve the accessible-app set for application-scoped principals
+	// (all-applications principals see all).
 	accessible := map[string]bool{}
-	if !ac.IsAnchor() {
+	if !ac.AllApplications {
 		if p, err := s.Principals.FindByID(r.Context(), ac.PrincipalID); err != nil {
 			httperror.Write(w, usecase.Internal("REPO", "principal lookup failed", err))
 			return
@@ -160,7 +170,7 @@ func (s *State) listMyApplications(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	apps := filterMyApplications(all, ac.IsAnchor(), accessible)
+	apps := filterMyApplications(all, ac.AllApplications, accessible)
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(myApplicationsListResponse{
@@ -170,15 +180,15 @@ func (s *State) listMyApplications(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// filterMyApplications keeps the apps the caller can see (anchors see all,
-// others only those in accessible) and maps each to the wire shape
-// (DefaultBaseURL → baseUrl). Pure, so the access filter + field mapping are
-// unit-testable without a DB. 1:1 with Rust's mapping.
-func filterMyApplications(all []application.Application, isAnchor bool, accessible map[string]bool) []myApplicationResponse {
+// filterMyApplications keeps the apps the caller can see (all-applications
+// principals see all, others only those in accessible) and maps each to the wire
+// shape (DefaultBaseURL → baseUrl). Pure, so the access filter + field mapping
+// are unit-testable without a DB. 1:1 with Rust's mapping.
+func filterMyApplications(all []application.Application, allApplications bool, accessible map[string]bool) []myApplicationResponse {
 	apps := make([]myApplicationResponse, 0, len(all))
 	for i := range all {
 		a := &all[i]
-		if isAnchor || accessible[a.ID] {
+		if allApplications || accessible[a.ID] {
 			apps = append(apps, myApplicationResponse{
 				ID:           a.ID,
 				Code:         a.Code,

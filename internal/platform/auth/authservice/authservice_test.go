@@ -34,6 +34,9 @@ func genRSAPEMs(t *testing.T) (privPEM, pubPEM string) {
 func anchorUser() *principal.Principal {
 	p := principal.NewUser("admin@example.com", principal.ScopeAnchor)
 	p.Roles = []serviceaccount.RoleAssignment{{Role: "platform:admin"}, {Role: "operant:viewer"}}
+	// The `applications` claim is the principal's explicit application bindings
+	// (iam_principal_application_access), not derived from role-name prefixes.
+	p.AccessibleApplicationIDs = []string{"app_alpha", "app_beta"}
 	return p
 }
 
@@ -83,8 +86,11 @@ func TestGenerateAndValidateAccessToken(t *testing.T) {
 	if len(claims.Clients) != 1 || claims.Clients[0] != "*" {
 		t.Errorf("clients = %v, want [*]", claims.Clients)
 	}
-	if len(claims.Applications) != 2 || claims.Applications[0] != "platform" || claims.Applications[1] != "operant" {
-		t.Errorf("applications = %v, want [platform operant]", claims.Applications)
+	if len(claims.Applications) != 2 || claims.Applications[0] != "app_alpha" || claims.Applications[1] != "app_beta" {
+		t.Errorf("applications = %v, want [app_alpha app_beta]", claims.Applications)
+	}
+	if !claims.AllApplications {
+		t.Errorf("all_applications = false, want true (anchor user via NewUser)")
 	}
 }
 
