@@ -34,6 +34,7 @@ class FlowCatalystClient
 {
     private Client $httpClient;
     private TokenProviderInterface $tokenProvider;
+    private readonly string $baseUrl;
     private ?GeneratedClient $generatedClient = null;
     private ?EventTypes $eventTypes = null;
     private ?Subscriptions $subscriptions = null;
@@ -54,21 +55,28 @@ class FlowCatalystClient
     /**
      * Create a new FlowCatalyst client.
      *
-     * @param TokenProviderInterface|OidcTokenManager $tokenProvider Token provider for authentication
-     * @param string $baseUrl Base URL of the FlowCatalyst API
+     * Both $tokenProvider and $baseUrl fall back to config when omitted, so the
+     * container can autowire this class. The union type was dropped to a plain
+     * interface because Laravel's container cannot autowire a union-typed
+     * parameter (it can't pick which member to resolve), which silently broke
+     * resolution when this client was resolved without an explicit binding.
+     *
+     * @param TokenProviderInterface|null $tokenProvider Token provider for authentication (defaults to a config-driven OidcTokenManager)
+     * @param string|null $baseUrl Base URL of the FlowCatalyst API (defaults to config('flowcatalyst.base_url'))
      * @param int $timeout Request timeout in seconds
      * @param int $retryAttempts Number of retry attempts for transient errors
      * @param int $retryDelay Base delay between retries in milliseconds
      */
     public function __construct(
-        TokenProviderInterface|OidcTokenManager $tokenProvider,
-        private readonly string $baseUrl,
+        ?TokenProviderInterface $tokenProvider = null,
+        ?string $baseUrl = null,
         private readonly int $timeout = 30,
         private readonly int $retryAttempts = 3,
         private readonly int $retryDelay = 100,
         private readonly ?string $routerBaseUrl = null
     ) {
-        $this->tokenProvider = $tokenProvider;
+        $this->tokenProvider = $tokenProvider ?? new OidcTokenManager();
+        $this->baseUrl = $baseUrl ?? (string) config('flowcatalyst.base_url', '');
         $this->httpClient = new Client([
             'base_uri' => rtrim($this->baseUrl, '/'),
             'timeout' => $this->timeout,

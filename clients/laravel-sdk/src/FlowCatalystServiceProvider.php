@@ -111,8 +111,13 @@ class FlowCatalystServiceProvider extends ServiceProvider
             );
         });
 
-        // Bind interface to concrete implementation (allows type-hinting against interface)
-        $this->app->bind(TokenProviderInterface::class, OidcTokenManager::class);
+        // Bind the interface to the config-built singleton explicitly. Binding
+        // to the class *string* (bind(..., OidcTokenManager::class)) relies on
+        // the container cascading to the singleton above; if that cascade isn't
+        // in effect it autowires OidcTokenManager instead, which can't supply
+        // the scalar credentials and yields a token manager with empty creds.
+        // Resolving through make() guarantees the config-driven instance.
+        $this->app->singleton(TokenProviderInterface::class, fn ($app) => $app->make(OidcTokenManager::class));
     }
 
     /**
