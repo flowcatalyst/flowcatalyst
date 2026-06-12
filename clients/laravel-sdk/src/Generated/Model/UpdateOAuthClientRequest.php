@@ -13,78 +13,70 @@ class UpdateOAuthClientRequest extends \ArrayObject
         return array_key_exists($property, $this->initialized);
     }
     /**
-     * Whether client is active
+     * A URL to the JSON Schema for this object.
      *
-     * @var bool|null
+     * @var string|null
      */
-    protected $active;
+    protected $dollarSchema;
     /**
-     * Allowed CORS origins
-     *
      * @var list<string>|null
      */
     protected $allowedOrigins;
     /**
-     * Application IDs this client can access
-     *
      * @var list<string>|null
      */
     protected $applicationIds;
     /**
-     * Human-readable name
-     *
      * @var string|null
      */
     protected $clientName;
     /**
-     * Allowed grant types
-     *
+     * @var list<string>|null
+     */
+    protected $defaultScopes;
+    /**
      * @var list<string>|null
      */
     protected $grantTypes;
     /**
-     * Whether PKCE is required
-     *
      * @var bool|null
      */
     protected $pkceRequired;
     /**
-     * Allowed post-logout redirect URIs (OIDC RP-Initiated Logout)
-     *
      * @var list<string>|null
      */
     protected $postLogoutRedirectUris;
     /**
-     * Allowed redirect URIs
-     *
      * @var list<string>|null
      */
     protected $redirectUris;
     /**
-     * Whether client is active
-     *
-     * @return bool|null
+     * @var list<string>|null
      */
-    public function getActive(): ?bool
+    protected $scopes;
+    /**
+     * A URL to the JSON Schema for this object.
+     *
+     * @return string|null
+     */
+    public function getDollarSchema(): ?string
     {
-        return $this->active;
+        return $this->dollarSchema;
     }
     /**
-     * Whether client is active
+     * A URL to the JSON Schema for this object.
      *
-     * @param bool|null $active
+     * @param string|null $dollarSchema
      *
      * @return self
      */
-    public function setActive(?bool $active): self
+    public function setDollarSchema(?string $dollarSchema): self
     {
-        $this->initialized['active'] = true;
-        $this->active = $active;
+        $this->initialized['dollarSchema'] = true;
+        $this->dollarSchema = $dollarSchema;
         return $this;
     }
     /**
-     * Allowed CORS origins
-     *
      * @return list<string>|null
      */
     public function getAllowedOrigins(): ?array
@@ -92,8 +84,6 @@ class UpdateOAuthClientRequest extends \ArrayObject
         return $this->allowedOrigins;
     }
     /**
-     * Allowed CORS origins
-     *
      * @param list<string>|null $allowedOrigins
      *
      * @return self
@@ -105,8 +95,6 @@ class UpdateOAuthClientRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Application IDs this client can access
-     *
      * @return list<string>|null
      */
     public function getApplicationIds(): ?array
@@ -114,8 +102,6 @@ class UpdateOAuthClientRequest extends \ArrayObject
         return $this->applicationIds;
     }
     /**
-     * Application IDs this client can access
-     *
      * @param list<string>|null $applicationIds
      *
      * @return self
@@ -127,8 +113,6 @@ class UpdateOAuthClientRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Human-readable name
-     *
      * @return string|null
      */
     public function getClientName(): ?string
@@ -136,8 +120,6 @@ class UpdateOAuthClientRequest extends \ArrayObject
         return $this->clientName;
     }
     /**
-     * Human-readable name
-     *
      * @param string|null $clientName
      *
      * @return self
@@ -149,8 +131,24 @@ class UpdateOAuthClientRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Allowed grant types
+     * @return list<string>|null
+     */
+    public function getDefaultScopes(): ?array
+    {
+        return $this->defaultScopes;
+    }
+    /**
+     * @param list<string>|null $defaultScopes
      *
+     * @return self
+     */
+    public function setDefaultScopes(?array $defaultScopes): self
+    {
+        $this->initialized['defaultScopes'] = true;
+        $this->defaultScopes = $defaultScopes;
+        return $this;
+    }
+    /**
      * @return list<string>|null
      */
     public function getGrantTypes(): ?array
@@ -158,8 +156,6 @@ class UpdateOAuthClientRequest extends \ArrayObject
         return $this->grantTypes;
     }
     /**
-     * Allowed grant types
-     *
      * @param list<string>|null $grantTypes
      *
      * @return self
@@ -171,8 +167,6 @@ class UpdateOAuthClientRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Whether PKCE is required
-     *
      * @return bool|null
      */
     public function getPkceRequired(): ?bool
@@ -180,8 +174,6 @@ class UpdateOAuthClientRequest extends \ArrayObject
         return $this->pkceRequired;
     }
     /**
-     * Whether PKCE is required
-     *
      * @param bool|null $pkceRequired
      *
      * @return self
@@ -193,8 +185,6 @@ class UpdateOAuthClientRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Allowed post-logout redirect URIs (OIDC RP-Initiated Logout)
-     *
      * @return list<string>|null
      */
     public function getPostLogoutRedirectUris(): ?array
@@ -202,8 +192,6 @@ class UpdateOAuthClientRequest extends \ArrayObject
         return $this->postLogoutRedirectUris;
     }
     /**
-     * Allowed post-logout redirect URIs (OIDC RP-Initiated Logout)
-     *
      * @param list<string>|null $postLogoutRedirectUris
      *
      * @return self
@@ -215,8 +203,6 @@ class UpdateOAuthClientRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Allowed redirect URIs
-     *
      * @return list<string>|null
      */
     public function getRedirectUris(): ?array
@@ -224,8 +210,6 @@ class UpdateOAuthClientRequest extends \ArrayObject
         return $this->redirectUris;
     }
     /**
-     * Allowed redirect URIs
-     *
      * @param list<string>|null $redirectUris
      *
      * @return self
@@ -234,6 +218,24 @@ class UpdateOAuthClientRequest extends \ArrayObject
     {
         $this->initialized['redirectUris'] = true;
         $this->redirectUris = $redirectUris;
+        return $this;
+    }
+    /**
+     * @return list<string>|null
+     */
+    public function getScopes(): ?array
+    {
+        return $this->scopes;
+    }
+    /**
+     * @param list<string>|null $scopes
+     *
+     * @return self
+     */
+    public function setScopes(?array $scopes): self
+    {
+        $this->initialized['scopes'] = true;
+        $this->scopes = $scopes;
         return $this;
     }
 }

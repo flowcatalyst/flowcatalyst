@@ -13,86 +13,102 @@ class CreateSubscriptionRequest extends \ArrayObject
         return array_key_exists($property, $this->initialized);
     }
     /**
-     * Client ID (optional, null = anchor-level)
+     * A URL to the JSON Schema for this object.
      *
+     * @var string|null
+     */
+    protected $dollarSchema;
+    /**
      * @var string|null
      */
     protected $clientId;
     /**
-     * Unique code
-     *
      * @var string|null
      */
     protected $code;
     /**
-     * Connection ID (references msg_connections, optional)
-     *
      * @var string|null
      */
     protected $connectionId;
     /**
-     * Send raw event data only
-     *
+     * @var list<ConfigEntryDTO>|null
+     */
+    protected $customConfig;
+    /**
      * @var bool|null
      */
     protected $dataOnly;
     /**
-     * Description
-     *
+     * @var int|null
+     */
+    protected $delaySeconds;
+    /**
      * @var string|null
      */
     protected $description;
     /**
-     * Dispatch pool ID for rate limiting
-     *
      * @var string|null
      */
     protected $dispatchPoolId;
     /**
-     * Webhook endpoint URL
+     * http(s) URL delivery target
      *
      * @var string|null
      */
     protected $endpoint;
     /**
-     * Event types to listen to
-     *
-     * @var list<EventTypeBindingRequest>|null
+     * @var list<EventTypeBindingDTO>|null
      */
     protected $eventTypes;
     /**
-     * Maximum retry attempts
-     *
+     * @var int|null
+     */
+    protected $maxAgeSeconds;
+    /**
      * @var int|null
      */
     protected $maxRetries;
     /**
-     * Dispatch mode
+     * Dispatch mode (IMMEDIATE, NEXT_ON_ERROR, BLOCK_ON_ERROR)
      *
      * @var string|null
      */
     protected $mode;
     /**
-     * Human-readable name
-     *
      * @var string|null
      */
     protected $name;
     /**
-     * Service account ID for authentication
-     *
      * @var string|null
      */
     protected $serviceAccountId;
     /**
-     * Timeout in seconds
-     *
      * @var int|null
      */
     protected $timeoutSeconds;
     /**
-     * Client ID (optional, null = anchor-level)
+     * A URL to the JSON Schema for this object.
      *
+     * @return string|null
+     */
+    public function getDollarSchema(): ?string
+    {
+        return $this->dollarSchema;
+    }
+    /**
+     * A URL to the JSON Schema for this object.
+     *
+     * @param string|null $dollarSchema
+     *
+     * @return self
+     */
+    public function setDollarSchema(?string $dollarSchema): self
+    {
+        $this->initialized['dollarSchema'] = true;
+        $this->dollarSchema = $dollarSchema;
+        return $this;
+    }
+    /**
      * @return string|null
      */
     public function getClientId(): ?string
@@ -100,8 +116,6 @@ class CreateSubscriptionRequest extends \ArrayObject
         return $this->clientId;
     }
     /**
-     * Client ID (optional, null = anchor-level)
-     *
      * @param string|null $clientId
      *
      * @return self
@@ -113,8 +127,6 @@ class CreateSubscriptionRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Unique code
-     *
      * @return string|null
      */
     public function getCode(): ?string
@@ -122,8 +134,6 @@ class CreateSubscriptionRequest extends \ArrayObject
         return $this->code;
     }
     /**
-     * Unique code
-     *
      * @param string|null $code
      *
      * @return self
@@ -135,8 +145,6 @@ class CreateSubscriptionRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Connection ID (references msg_connections, optional)
-     *
      * @return string|null
      */
     public function getConnectionId(): ?string
@@ -144,8 +152,6 @@ class CreateSubscriptionRequest extends \ArrayObject
         return $this->connectionId;
     }
     /**
-     * Connection ID (references msg_connections, optional)
-     *
      * @param string|null $connectionId
      *
      * @return self
@@ -157,8 +163,24 @@ class CreateSubscriptionRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Send raw event data only
+     * @return list<ConfigEntryDTO>|null
+     */
+    public function getCustomConfig(): ?array
+    {
+        return $this->customConfig;
+    }
+    /**
+     * @param list<ConfigEntryDTO>|null $customConfig
      *
+     * @return self
+     */
+    public function setCustomConfig(?array $customConfig): self
+    {
+        $this->initialized['customConfig'] = true;
+        $this->customConfig = $customConfig;
+        return $this;
+    }
+    /**
      * @return bool|null
      */
     public function getDataOnly(): ?bool
@@ -166,8 +188,6 @@ class CreateSubscriptionRequest extends \ArrayObject
         return $this->dataOnly;
     }
     /**
-     * Send raw event data only
-     *
      * @param bool|null $dataOnly
      *
      * @return self
@@ -179,8 +199,24 @@ class CreateSubscriptionRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Description
+     * @return int|null
+     */
+    public function getDelaySeconds(): ?int
+    {
+        return $this->delaySeconds;
+    }
+    /**
+     * @param int|null $delaySeconds
      *
+     * @return self
+     */
+    public function setDelaySeconds(?int $delaySeconds): self
+    {
+        $this->initialized['delaySeconds'] = true;
+        $this->delaySeconds = $delaySeconds;
+        return $this;
+    }
+    /**
      * @return string|null
      */
     public function getDescription(): ?string
@@ -188,8 +224,6 @@ class CreateSubscriptionRequest extends \ArrayObject
         return $this->description;
     }
     /**
-     * Description
-     *
      * @param string|null $description
      *
      * @return self
@@ -201,8 +235,6 @@ class CreateSubscriptionRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Dispatch pool ID for rate limiting
-     *
      * @return string|null
      */
     public function getDispatchPoolId(): ?string
@@ -210,8 +242,6 @@ class CreateSubscriptionRequest extends \ArrayObject
         return $this->dispatchPoolId;
     }
     /**
-     * Dispatch pool ID for rate limiting
-     *
      * @param string|null $dispatchPoolId
      *
      * @return self
@@ -223,7 +253,7 @@ class CreateSubscriptionRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Webhook endpoint URL
+     * http(s) URL delivery target
      *
      * @return string|null
      */
@@ -232,7 +262,7 @@ class CreateSubscriptionRequest extends \ArrayObject
         return $this->endpoint;
     }
     /**
-     * Webhook endpoint URL
+     * http(s) URL delivery target
      *
      * @param string|null $endpoint
      *
@@ -245,18 +275,14 @@ class CreateSubscriptionRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Event types to listen to
-     *
-     * @return list<EventTypeBindingRequest>|null
+     * @return list<EventTypeBindingDTO>|null
      */
     public function getEventTypes(): ?array
     {
         return $this->eventTypes;
     }
     /**
-     * Event types to listen to
-     *
-     * @param list<EventTypeBindingRequest>|null $eventTypes
+     * @param list<EventTypeBindingDTO>|null $eventTypes
      *
      * @return self
      */
@@ -267,8 +293,24 @@ class CreateSubscriptionRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Maximum retry attempts
+     * @return int|null
+     */
+    public function getMaxAgeSeconds(): ?int
+    {
+        return $this->maxAgeSeconds;
+    }
+    /**
+     * @param int|null $maxAgeSeconds
      *
+     * @return self
+     */
+    public function setMaxAgeSeconds(?int $maxAgeSeconds): self
+    {
+        $this->initialized['maxAgeSeconds'] = true;
+        $this->maxAgeSeconds = $maxAgeSeconds;
+        return $this;
+    }
+    /**
      * @return int|null
      */
     public function getMaxRetries(): ?int
@@ -276,8 +318,6 @@ class CreateSubscriptionRequest extends \ArrayObject
         return $this->maxRetries;
     }
     /**
-     * Maximum retry attempts
-     *
      * @param int|null $maxRetries
      *
      * @return self
@@ -289,7 +329,7 @@ class CreateSubscriptionRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Dispatch mode
+     * Dispatch mode (IMMEDIATE, NEXT_ON_ERROR, BLOCK_ON_ERROR)
      *
      * @return string|null
      */
@@ -298,7 +338,7 @@ class CreateSubscriptionRequest extends \ArrayObject
         return $this->mode;
     }
     /**
-     * Dispatch mode
+     * Dispatch mode (IMMEDIATE, NEXT_ON_ERROR, BLOCK_ON_ERROR)
      *
      * @param string|null $mode
      *
@@ -311,8 +351,6 @@ class CreateSubscriptionRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Human-readable name
-     *
      * @return string|null
      */
     public function getName(): ?string
@@ -320,8 +358,6 @@ class CreateSubscriptionRequest extends \ArrayObject
         return $this->name;
     }
     /**
-     * Human-readable name
-     *
      * @param string|null $name
      *
      * @return self
@@ -333,8 +369,6 @@ class CreateSubscriptionRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Service account ID for authentication
-     *
      * @return string|null
      */
     public function getServiceAccountId(): ?string
@@ -342,8 +376,6 @@ class CreateSubscriptionRequest extends \ArrayObject
         return $this->serviceAccountId;
     }
     /**
-     * Service account ID for authentication
-     *
      * @param string|null $serviceAccountId
      *
      * @return self
@@ -355,8 +387,6 @@ class CreateSubscriptionRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Timeout in seconds
-     *
      * @return int|null
      */
     public function getTimeoutSeconds(): ?int
@@ -364,8 +394,6 @@ class CreateSubscriptionRequest extends \ArrayObject
         return $this->timeoutSeconds;
     }
     /**
-     * Timeout in seconds
-     *
      * @param int|null $timeoutSeconds
      *
      * @return self

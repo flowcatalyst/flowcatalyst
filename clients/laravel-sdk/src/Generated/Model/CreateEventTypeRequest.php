@@ -13,38 +13,63 @@ class CreateEventTypeRequest extends \ArrayObject
         return array_key_exists($property, $this->initialized);
     }
     /**
-     * Client ID (optional, null = anchor-level)
+     * A URL to the JSON Schema for this object.
+     *
+     * @var string|null
+     */
+    protected $dollarSchema;
+    /**
+     * Optional client scope; absent means anchor-level
      *
      * @var string|null
      */
     protected $clientId;
     /**
-     * Event type code (e.g., "orders:fulfillment:shipment:shipped")
-     * Format: {application}:{subdomain}:{aggregate}:{event}
+     * Event type code in application:subdomain:aggregate:event format
      *
      * @var string|null
      */
     protected $code;
     /**
-     * Description
-     *
      * @var string|null
      */
     protected $description;
     /**
-     * Human-readable name
+     * Human-readable event type name
      *
      * @var string|null
      */
     protected $name;
     /**
-     * Initial JSON schema
+     * Optional JSON Schema for the initial spec version
      *
      * @var mixed|null
      */
     protected $schema;
     /**
-     * Client ID (optional, null = anchor-level)
+     * A URL to the JSON Schema for this object.
+     *
+     * @return string|null
+     */
+    public function getDollarSchema(): ?string
+    {
+        return $this->dollarSchema;
+    }
+    /**
+     * A URL to the JSON Schema for this object.
+     *
+     * @param string|null $dollarSchema
+     *
+     * @return self
+     */
+    public function setDollarSchema(?string $dollarSchema): self
+    {
+        $this->initialized['dollarSchema'] = true;
+        $this->dollarSchema = $dollarSchema;
+        return $this;
+    }
+    /**
+     * Optional client scope; absent means anchor-level
      *
      * @return string|null
      */
@@ -53,7 +78,7 @@ class CreateEventTypeRequest extends \ArrayObject
         return $this->clientId;
     }
     /**
-     * Client ID (optional, null = anchor-level)
+     * Optional client scope; absent means anchor-level
      *
      * @param string|null $clientId
      *
@@ -66,8 +91,7 @@ class CreateEventTypeRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Event type code (e.g., "orders:fulfillment:shipment:shipped")
-     * Format: {application}:{subdomain}:{aggregate}:{event}
+     * Event type code in application:subdomain:aggregate:event format
      *
      * @return string|null
      */
@@ -76,13 +100,12 @@ class CreateEventTypeRequest extends \ArrayObject
         return $this->code;
     }
     /**
-    * Event type code (e.g., "orders:fulfillment:shipment:shipped")
-    Format: {application}:{subdomain}:{aggregate}:{event}
-    *
-    * @param string|null $code
-    *
-    * @return self
-    */
+     * Event type code in application:subdomain:aggregate:event format
+     *
+     * @param string|null $code
+     *
+     * @return self
+     */
     public function setCode(?string $code): self
     {
         $this->initialized['code'] = true;
@@ -90,8 +113,6 @@ class CreateEventTypeRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Description
-     *
      * @return string|null
      */
     public function getDescription(): ?string
@@ -99,8 +120,6 @@ class CreateEventTypeRequest extends \ArrayObject
         return $this->description;
     }
     /**
-     * Description
-     *
      * @param string|null $description
      *
      * @return self
@@ -112,7 +131,7 @@ class CreateEventTypeRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Human-readable name
+     * Human-readable event type name
      *
      * @return string|null
      */
@@ -121,7 +140,7 @@ class CreateEventTypeRequest extends \ArrayObject
         return $this->name;
     }
     /**
-     * Human-readable name
+     * Human-readable event type name
      *
      * @param string|null $name
      *
@@ -134,7 +153,7 @@ class CreateEventTypeRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Initial JSON schema
+     * Optional JSON Schema for the initial spec version
      *
      * @return mixed
      */
@@ -143,7 +162,7 @@ class CreateEventTypeRequest extends \ArrayObject
         return $this->schema;
     }
     /**
-     * Initial JSON schema
+     * Optional JSON Schema for the initial spec version
      *
      * @param mixed $schema
      *

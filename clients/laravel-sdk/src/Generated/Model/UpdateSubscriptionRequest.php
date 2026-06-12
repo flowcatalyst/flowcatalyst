@@ -13,44 +13,90 @@ class UpdateSubscriptionRequest extends \ArrayObject
         return array_key_exists($property, $this->initialized);
     }
     /**
-     * Connection ID
+     * A URL to the JSON Schema for this object.
      *
+     * @var string|null
+     */
+    protected $dollarSchema;
+    /**
      * @var string|null
      */
     protected $connectionId;
     /**
-     * Description
-     *
+     * @var list<ConfigEntryDTO>|null
+     */
+    protected $customConfig;
+    /**
+     * @var bool|null
+     */
+    protected $dataOnly;
+    /**
+     * @var int|null
+     */
+    protected $delaySeconds;
+    /**
      * @var string|null
      */
     protected $description;
     /**
-     * Webhook endpoint URL
-     *
+     * @var string|null
+     */
+    protected $dispatchPoolId;
+    /**
      * @var string|null
      */
     protected $endpoint;
     /**
-     * Maximum retry attempts
-     *
+     * @var list<EventTypeBindingDTO>|null
+     */
+    protected $eventTypes;
+    /**
+     * @var int|null
+     */
+    protected $maxAgeSeconds;
+    /**
      * @var int|null
      */
     protected $maxRetries;
     /**
-     * Human-readable name
-     *
+     * @var string|null
+     */
+    protected $mode;
+    /**
      * @var string|null
      */
     protected $name;
     /**
-     * Timeout in seconds
-     *
+     * @var string|null
+     */
+    protected $serviceAccountId;
+    /**
      * @var int|null
      */
     protected $timeoutSeconds;
     /**
-     * Connection ID
+     * A URL to the JSON Schema for this object.
      *
+     * @return string|null
+     */
+    public function getDollarSchema(): ?string
+    {
+        return $this->dollarSchema;
+    }
+    /**
+     * A URL to the JSON Schema for this object.
+     *
+     * @param string|null $dollarSchema
+     *
+     * @return self
+     */
+    public function setDollarSchema(?string $dollarSchema): self
+    {
+        $this->initialized['dollarSchema'] = true;
+        $this->dollarSchema = $dollarSchema;
+        return $this;
+    }
+    /**
      * @return string|null
      */
     public function getConnectionId(): ?string
@@ -58,8 +104,6 @@ class UpdateSubscriptionRequest extends \ArrayObject
         return $this->connectionId;
     }
     /**
-     * Connection ID
-     *
      * @param string|null $connectionId
      *
      * @return self
@@ -71,8 +115,60 @@ class UpdateSubscriptionRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Description
+     * @return list<ConfigEntryDTO>|null
+     */
+    public function getCustomConfig(): ?array
+    {
+        return $this->customConfig;
+    }
+    /**
+     * @param list<ConfigEntryDTO>|null $customConfig
      *
+     * @return self
+     */
+    public function setCustomConfig(?array $customConfig): self
+    {
+        $this->initialized['customConfig'] = true;
+        $this->customConfig = $customConfig;
+        return $this;
+    }
+    /**
+     * @return bool|null
+     */
+    public function getDataOnly(): ?bool
+    {
+        return $this->dataOnly;
+    }
+    /**
+     * @param bool|null $dataOnly
+     *
+     * @return self
+     */
+    public function setDataOnly(?bool $dataOnly): self
+    {
+        $this->initialized['dataOnly'] = true;
+        $this->dataOnly = $dataOnly;
+        return $this;
+    }
+    /**
+     * @return int|null
+     */
+    public function getDelaySeconds(): ?int
+    {
+        return $this->delaySeconds;
+    }
+    /**
+     * @param int|null $delaySeconds
+     *
+     * @return self
+     */
+    public function setDelaySeconds(?int $delaySeconds): self
+    {
+        $this->initialized['delaySeconds'] = true;
+        $this->delaySeconds = $delaySeconds;
+        return $this;
+    }
+    /**
      * @return string|null
      */
     public function getDescription(): ?string
@@ -80,8 +176,6 @@ class UpdateSubscriptionRequest extends \ArrayObject
         return $this->description;
     }
     /**
-     * Description
-     *
      * @param string|null $description
      *
      * @return self
@@ -93,8 +187,24 @@ class UpdateSubscriptionRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Webhook endpoint URL
+     * @return string|null
+     */
+    public function getDispatchPoolId(): ?string
+    {
+        return $this->dispatchPoolId;
+    }
+    /**
+     * @param string|null $dispatchPoolId
      *
+     * @return self
+     */
+    public function setDispatchPoolId(?string $dispatchPoolId): self
+    {
+        $this->initialized['dispatchPoolId'] = true;
+        $this->dispatchPoolId = $dispatchPoolId;
+        return $this;
+    }
+    /**
      * @return string|null
      */
     public function getEndpoint(): ?string
@@ -102,8 +212,6 @@ class UpdateSubscriptionRequest extends \ArrayObject
         return $this->endpoint;
     }
     /**
-     * Webhook endpoint URL
-     *
      * @param string|null $endpoint
      *
      * @return self
@@ -115,8 +223,42 @@ class UpdateSubscriptionRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Maximum retry attempts
+     * @return list<EventTypeBindingDTO>|null
+     */
+    public function getEventTypes(): ?array
+    {
+        return $this->eventTypes;
+    }
+    /**
+     * @param list<EventTypeBindingDTO>|null $eventTypes
      *
+     * @return self
+     */
+    public function setEventTypes(?array $eventTypes): self
+    {
+        $this->initialized['eventTypes'] = true;
+        $this->eventTypes = $eventTypes;
+        return $this;
+    }
+    /**
+     * @return int|null
+     */
+    public function getMaxAgeSeconds(): ?int
+    {
+        return $this->maxAgeSeconds;
+    }
+    /**
+     * @param int|null $maxAgeSeconds
+     *
+     * @return self
+     */
+    public function setMaxAgeSeconds(?int $maxAgeSeconds): self
+    {
+        $this->initialized['maxAgeSeconds'] = true;
+        $this->maxAgeSeconds = $maxAgeSeconds;
+        return $this;
+    }
+    /**
      * @return int|null
      */
     public function getMaxRetries(): ?int
@@ -124,8 +266,6 @@ class UpdateSubscriptionRequest extends \ArrayObject
         return $this->maxRetries;
     }
     /**
-     * Maximum retry attempts
-     *
      * @param int|null $maxRetries
      *
      * @return self
@@ -137,8 +277,24 @@ class UpdateSubscriptionRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Human-readable name
+     * @return string|null
+     */
+    public function getMode(): ?string
+    {
+        return $this->mode;
+    }
+    /**
+     * @param string|null $mode
      *
+     * @return self
+     */
+    public function setMode(?string $mode): self
+    {
+        $this->initialized['mode'] = true;
+        $this->mode = $mode;
+        return $this;
+    }
+    /**
      * @return string|null
      */
     public function getName(): ?string
@@ -146,8 +302,6 @@ class UpdateSubscriptionRequest extends \ArrayObject
         return $this->name;
     }
     /**
-     * Human-readable name
-     *
      * @param string|null $name
      *
      * @return self
@@ -159,8 +313,24 @@ class UpdateSubscriptionRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Timeout in seconds
+     * @return string|null
+     */
+    public function getServiceAccountId(): ?string
+    {
+        return $this->serviceAccountId;
+    }
+    /**
+     * @param string|null $serviceAccountId
      *
+     * @return self
+     */
+    public function setServiceAccountId(?string $serviceAccountId): self
+    {
+        $this->initialized['serviceAccountId'] = true;
+        $this->serviceAccountId = $serviceAccountId;
+        return $this;
+    }
+    /**
      * @return int|null
      */
     public function getTimeoutSeconds(): ?int
@@ -168,8 +338,6 @@ class UpdateSubscriptionRequest extends \ArrayObject
         return $this->timeoutSeconds;
     }
     /**
-     * Timeout in seconds
-     *
      * @param int|null $timeoutSeconds
      *
      * @return self

@@ -13,41 +13,54 @@ class CreateUserRequest extends \ArrayObject
         return array_key_exists($property, $this->initialized);
     }
     /**
-     * Client ID (for client-bound users)
+     * A URL to the JSON Schema for this object.
      *
+     * @var string|null
+     */
+    protected $dollarSchema;
+    /**
      * @var string|null
      */
     protected $clientId;
     /**
-     * Email address
-     *
      * @var string|null
      */
     protected $email;
     /**
-     * When false, the platform skips its password complexity rules
-     * (uppercase/lowercase/digit/special) and only enforces a 2-character
-     * minimum. Intended for SDK callers that apply their own policy.
-     * Defaults to true.
-     *
      * @var bool|null
      */
     protected $enforcePasswordComplexity;
     /**
-     * Display name
-     *
      * @var string|null
      */
     protected $name;
     /**
-     * Password (optional - only for internal auth users)
-     *
      * @var string|null
      */
     protected $password;
     /**
-     * Client ID (for client-bound users)
+     * A URL to the JSON Schema for this object.
      *
+     * @return string|null
+     */
+    public function getDollarSchema(): ?string
+    {
+        return $this->dollarSchema;
+    }
+    /**
+     * A URL to the JSON Schema for this object.
+     *
+     * @param string|null $dollarSchema
+     *
+     * @return self
+     */
+    public function setDollarSchema(?string $dollarSchema): self
+    {
+        $this->initialized['dollarSchema'] = true;
+        $this->dollarSchema = $dollarSchema;
+        return $this;
+    }
+    /**
      * @return string|null
      */
     public function getClientId(): ?string
@@ -55,8 +68,6 @@ class CreateUserRequest extends \ArrayObject
         return $this->clientId;
     }
     /**
-     * Client ID (for client-bound users)
-     *
      * @param string|null $clientId
      *
      * @return self
@@ -68,8 +79,6 @@ class CreateUserRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Email address
-     *
      * @return string|null
      */
     public function getEmail(): ?string
@@ -77,8 +86,6 @@ class CreateUserRequest extends \ArrayObject
         return $this->email;
     }
     /**
-     * Email address
-     *
      * @param string|null $email
      *
      * @return self
@@ -90,11 +97,6 @@ class CreateUserRequest extends \ArrayObject
         return $this;
     }
     /**
-     * When false, the platform skips its password complexity rules
-     * (uppercase/lowercase/digit/special) and only enforces a 2-character
-     * minimum. Intended for SDK callers that apply their own policy.
-     * Defaults to true.
-     *
      * @return bool|null
      */
     public function getEnforcePasswordComplexity(): ?bool
@@ -102,15 +104,10 @@ class CreateUserRequest extends \ArrayObject
         return $this->enforcePasswordComplexity;
     }
     /**
-    * When false, the platform skips its password complexity rules
-    (uppercase/lowercase/digit/special) and only enforces a 2-character
-    minimum. Intended for SDK callers that apply their own policy.
-    Defaults to true.
-    *
-    * @param bool|null $enforcePasswordComplexity
-    *
-    * @return self
-    */
+     * @param bool|null $enforcePasswordComplexity
+     *
+     * @return self
+     */
     public function setEnforcePasswordComplexity(?bool $enforcePasswordComplexity): self
     {
         $this->initialized['enforcePasswordComplexity'] = true;
@@ -118,8 +115,6 @@ class CreateUserRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Display name
-     *
      * @return string|null
      */
     public function getName(): ?string
@@ -127,8 +122,6 @@ class CreateUserRequest extends \ArrayObject
         return $this->name;
     }
     /**
-     * Display name
-     *
      * @param string|null $name
      *
      * @return self
@@ -140,8 +133,6 @@ class CreateUserRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Password (optional - only for internal auth users)
-     *
      * @return string|null
      */
     public function getPassword(): ?string
@@ -149,8 +140,6 @@ class CreateUserRequest extends \ArrayObject
         return $this->password;
     }
     /**
-     * Password (optional - only for internal auth users)
-     *
      * @param string|null $password
      *
      * @return self

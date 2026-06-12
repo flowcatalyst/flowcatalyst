@@ -13,56 +13,98 @@ class CreateOAuthClientRequest extends \ArrayObject
         return array_key_exists($property, $this->initialized);
     }
     /**
-     * Application IDs this client can access
+     * A URL to the JSON Schema for this object.
      *
+     * @var string|null
+     */
+    protected $dollarSchema;
+    /**
+     * @var list<string>|null
+     */
+    protected $allowedOrigins;
+    /**
      * @var list<string>|null
      */
     protected $applicationIds;
     /**
-     * OAuth client_id (public identifier). Auto-generated if not provided.
-     *
-     * @var string|null
-     */
-    protected $clientId;
-    /**
-     * Human-readable name
-     *
      * @var string|null
      */
     protected $clientName;
     /**
-     * Client type (PUBLIC or CONFIDENTIAL)
+     * PUBLIC or CONFIDENTIAL
      *
      * @var string|null
      */
     protected $clientType;
     /**
-     * Allowed grant types
-     *
+     * @var string|null
+     */
+    protected $defaultScopes;
+    /**
      * @var list<string>|null
      */
     protected $grantTypes;
     /**
-     * Whether PKCE is required
-     *
      * @var bool|null
      */
     protected $pkceRequired;
     /**
-     * Allowed post-logout redirect URIs (OIDC RP-Initiated Logout)
-     *
      * @var list<string>|null
      */
     protected $postLogoutRedirectUris;
     /**
-     * Allowed redirect URIs
-     *
+     * @var string|null
+     */
+    protected $principalId;
+    /**
      * @var list<string>|null
      */
     protected $redirectUris;
     /**
-     * Application IDs this client can access
+     * @var list<string>|null
+     */
+    protected $scopes;
+    /**
+     * A URL to the JSON Schema for this object.
      *
+     * @return string|null
+     */
+    public function getDollarSchema(): ?string
+    {
+        return $this->dollarSchema;
+    }
+    /**
+     * A URL to the JSON Schema for this object.
+     *
+     * @param string|null $dollarSchema
+     *
+     * @return self
+     */
+    public function setDollarSchema(?string $dollarSchema): self
+    {
+        $this->initialized['dollarSchema'] = true;
+        $this->dollarSchema = $dollarSchema;
+        return $this;
+    }
+    /**
+     * @return list<string>|null
+     */
+    public function getAllowedOrigins(): ?array
+    {
+        return $this->allowedOrigins;
+    }
+    /**
+     * @param list<string>|null $allowedOrigins
+     *
+     * @return self
+     */
+    public function setAllowedOrigins(?array $allowedOrigins): self
+    {
+        $this->initialized['allowedOrigins'] = true;
+        $this->allowedOrigins = $allowedOrigins;
+        return $this;
+    }
+    /**
      * @return list<string>|null
      */
     public function getApplicationIds(): ?array
@@ -70,8 +112,6 @@ class CreateOAuthClientRequest extends \ArrayObject
         return $this->applicationIds;
     }
     /**
-     * Application IDs this client can access
-     *
      * @param list<string>|null $applicationIds
      *
      * @return self
@@ -83,30 +123,6 @@ class CreateOAuthClientRequest extends \ArrayObject
         return $this;
     }
     /**
-     * OAuth client_id (public identifier). Auto-generated if not provided.
-     *
-     * @return string|null
-     */
-    public function getClientId(): ?string
-    {
-        return $this->clientId;
-    }
-    /**
-     * OAuth client_id (public identifier). Auto-generated if not provided.
-     *
-     * @param string|null $clientId
-     *
-     * @return self
-     */
-    public function setClientId(?string $clientId): self
-    {
-        $this->initialized['clientId'] = true;
-        $this->clientId = $clientId;
-        return $this;
-    }
-    /**
-     * Human-readable name
-     *
      * @return string|null
      */
     public function getClientName(): ?string
@@ -114,8 +130,6 @@ class CreateOAuthClientRequest extends \ArrayObject
         return $this->clientName;
     }
     /**
-     * Human-readable name
-     *
      * @param string|null $clientName
      *
      * @return self
@@ -127,7 +141,7 @@ class CreateOAuthClientRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Client type (PUBLIC or CONFIDENTIAL)
+     * PUBLIC or CONFIDENTIAL
      *
      * @return string|null
      */
@@ -136,7 +150,7 @@ class CreateOAuthClientRequest extends \ArrayObject
         return $this->clientType;
     }
     /**
-     * Client type (PUBLIC or CONFIDENTIAL)
+     * PUBLIC or CONFIDENTIAL
      *
      * @param string|null $clientType
      *
@@ -149,8 +163,24 @@ class CreateOAuthClientRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Allowed grant types
+     * @return string|null
+     */
+    public function getDefaultScopes(): ?string
+    {
+        return $this->defaultScopes;
+    }
+    /**
+     * @param string|null $defaultScopes
      *
+     * @return self
+     */
+    public function setDefaultScopes(?string $defaultScopes): self
+    {
+        $this->initialized['defaultScopes'] = true;
+        $this->defaultScopes = $defaultScopes;
+        return $this;
+    }
+    /**
      * @return list<string>|null
      */
     public function getGrantTypes(): ?array
@@ -158,8 +188,6 @@ class CreateOAuthClientRequest extends \ArrayObject
         return $this->grantTypes;
     }
     /**
-     * Allowed grant types
-     *
      * @param list<string>|null $grantTypes
      *
      * @return self
@@ -171,8 +199,6 @@ class CreateOAuthClientRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Whether PKCE is required
-     *
      * @return bool|null
      */
     public function getPkceRequired(): ?bool
@@ -180,8 +206,6 @@ class CreateOAuthClientRequest extends \ArrayObject
         return $this->pkceRequired;
     }
     /**
-     * Whether PKCE is required
-     *
      * @param bool|null $pkceRequired
      *
      * @return self
@@ -193,8 +217,6 @@ class CreateOAuthClientRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Allowed post-logout redirect URIs (OIDC RP-Initiated Logout)
-     *
      * @return list<string>|null
      */
     public function getPostLogoutRedirectUris(): ?array
@@ -202,8 +224,6 @@ class CreateOAuthClientRequest extends \ArrayObject
         return $this->postLogoutRedirectUris;
     }
     /**
-     * Allowed post-logout redirect URIs (OIDC RP-Initiated Logout)
-     *
      * @param list<string>|null $postLogoutRedirectUris
      *
      * @return self
@@ -215,8 +235,24 @@ class CreateOAuthClientRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Allowed redirect URIs
+     * @return string|null
+     */
+    public function getPrincipalId(): ?string
+    {
+        return $this->principalId;
+    }
+    /**
+     * @param string|null $principalId
      *
+     * @return self
+     */
+    public function setPrincipalId(?string $principalId): self
+    {
+        $this->initialized['principalId'] = true;
+        $this->principalId = $principalId;
+        return $this;
+    }
+    /**
      * @return list<string>|null
      */
     public function getRedirectUris(): ?array
@@ -224,8 +260,6 @@ class CreateOAuthClientRequest extends \ArrayObject
         return $this->redirectUris;
     }
     /**
-     * Allowed redirect URIs
-     *
      * @param list<string>|null $redirectUris
      *
      * @return self
@@ -234,6 +268,24 @@ class CreateOAuthClientRequest extends \ArrayObject
     {
         $this->initialized['redirectUris'] = true;
         $this->redirectUris = $redirectUris;
+        return $this;
+    }
+    /**
+     * @return list<string>|null
+     */
+    public function getScopes(): ?array
+    {
+        return $this->scopes;
+    }
+    /**
+     * @param list<string>|null $scopes
+     *
+     * @return self
+     */
+    public function setScopes(?array $scopes): self
+    {
+        $this->initialized['scopes'] = true;
+        $this->scopes = $scopes;
         return $this;
     }
 }

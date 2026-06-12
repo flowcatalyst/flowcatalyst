@@ -2,7 +2,7 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class ScheduledJobResponse extends \ArrayObject
+class ScheduledJobResponse
 {
     /**
      * @var array
@@ -12,6 +12,12 @@ class ScheduledJobResponse extends \ArrayObject
     {
         return array_key_exists($property, $this->initialized);
     }
+    /**
+     * A URL to the JSON Schema for this object.
+     *
+     * @var string|null
+     */
+    protected $dollarSchema;
     /**
      * @var string|null
      */
@@ -45,8 +51,6 @@ class ScheduledJobResponse extends \ArrayObject
      */
     protected $description;
     /**
-     * Computed: true if any non-terminal instance currently exists.
-     *
      * @var bool|null
      */
     protected $hasActiveInstance;
@@ -98,6 +102,28 @@ class ScheduledJobResponse extends \ArrayObject
      * @var int|null
      */
     protected $version;
+    /**
+     * A URL to the JSON Schema for this object.
+     *
+     * @return string|null
+     */
+    public function getDollarSchema(): ?string
+    {
+        return $this->dollarSchema;
+    }
+    /**
+     * A URL to the JSON Schema for this object.
+     *
+     * @param string|null $dollarSchema
+     *
+     * @return self
+     */
+    public function setDollarSchema(?string $dollarSchema): self
+    {
+        $this->initialized['dollarSchema'] = true;
+        $this->dollarSchema = $dollarSchema;
+        return $this;
+    }
     /**
      * @return string|null
      */
@@ -243,8 +269,6 @@ class ScheduledJobResponse extends \ArrayObject
         return $this;
     }
     /**
-     * Computed: true if any non-terminal instance currently exists.
-     *
      * @return bool|null
      */
     public function getHasActiveInstance(): ?bool
@@ -252,8 +276,6 @@ class ScheduledJobResponse extends \ArrayObject
         return $this->hasActiveInstance;
     }
     /**
-     * Computed: true if any non-terminal instance currently exists.
-     *
      * @param bool|null $hasActiveInstance
      *
      * @return self

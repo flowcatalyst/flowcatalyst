@@ -42,21 +42,18 @@ class SyncPrincipalInputRequestNormalizer implements DenormalizerInterface, Norm
         }
         if (\array_key_exists('active', $data) && $data['active'] !== null) {
             $object->setActive($data['active']);
-            unset($data['active']);
         }
         elseif (\array_key_exists('active', $data) && $data['active'] === null) {
             $object->setActive(null);
         }
         if (\array_key_exists('email', $data) && $data['email'] !== null) {
             $object->setEmail($data['email']);
-            unset($data['email']);
         }
         elseif (\array_key_exists('email', $data) && $data['email'] === null) {
             $object->setEmail(null);
         }
         if (\array_key_exists('name', $data) && $data['name'] !== null) {
             $object->setName($data['name']);
-            unset($data['name']);
         }
         elseif (\array_key_exists('name', $data) && $data['name'] === null) {
             $object->setName(null);
@@ -67,15 +64,9 @@ class SyncPrincipalInputRequestNormalizer implements DenormalizerInterface, Norm
                 $values[] = $value;
             }
             $object->setRoles($values);
-            unset($data['roles']);
         }
         elseif (\array_key_exists('roles', $data) && $data['roles'] === null) {
             $object->setRoles(null);
-        }
-        foreach ($data as $key => $value_1) {
-            if (preg_match('/.*/', (string) $key)) {
-                $object[$key] = $value_1;
-            }
         }
         return $object;
     }
@@ -93,11 +84,6 @@ class SyncPrincipalInputRequestNormalizer implements DenormalizerInterface, Norm
                 $values[] = $value;
             }
             $dataArray['roles'] = $values;
-        }
-        foreach ($data as $key => $value_1) {
-            if (preg_match('/.*/', (string) $key)) {
-                $dataArray[$key] = $value_1;
-            }
         }
         return $dataArray;
     }

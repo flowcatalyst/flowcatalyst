@@ -37,6 +37,13 @@ class UpdateEventTypeRequestNormalizer implements DenormalizerInterface, Normali
         if (isset($data['$recursiveRef'])) {
             return new Reference($data['$recursiveRef'], $context['document-origin']);
         }
+        if (\array_key_exists('$schema', $data) && $data['$schema'] !== null) {
+            $object->setDollarSchema($data['$schema']);
+            unset($data['$schema']);
+        }
+        elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
+            $object->setDollarSchema(null);
+        }
         if (\array_key_exists('description', $data) && $data['description'] !== null) {
             $object->setDescription($data['description']);
             unset($data['description']);
@@ -61,12 +68,10 @@ class UpdateEventTypeRequestNormalizer implements DenormalizerInterface, Normali
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
     {
         $dataArray = [];
-        if ($data->isInitialized('description')) {
+        if ($data->isInitialized('description') && null !== $data->getDescription()) {
             $dataArray['description'] = $data->getDescription();
         }
-        if ($data->isInitialized('name')) {
-            $dataArray['name'] = $data->getName();
-        }
+        $dataArray['name'] = $data->getName();
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value;

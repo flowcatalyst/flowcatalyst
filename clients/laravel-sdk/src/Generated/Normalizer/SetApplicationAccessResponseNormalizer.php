@@ -37,9 +37,14 @@ class SetApplicationAccessResponseNormalizer implements DenormalizerInterface, N
         if (isset($data['$recursiveRef'])) {
             return new Reference($data['$recursiveRef'], $context['document-origin']);
         }
+        if (\array_key_exists('$schema', $data) && $data['$schema'] !== null) {
+            $object->setDollarSchema($data['$schema']);
+        }
+        elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
+            $object->setDollarSchema(null);
+        }
         if (\array_key_exists('added', $data) && $data['added'] !== null) {
             $object->setAdded($data['added']);
-            unset($data['added']);
         }
         elseif (\array_key_exists('added', $data) && $data['added'] === null) {
             $object->setAdded(null);
@@ -50,22 +55,15 @@ class SetApplicationAccessResponseNormalizer implements DenormalizerInterface, N
                 $values[] = $this->denormalizer->denormalize($value, \FlowCatalyst\Generated\Model\ApplicationAccessResponse::class, 'json', $context);
             }
             $object->setApplications($values);
-            unset($data['applications']);
         }
         elseif (\array_key_exists('applications', $data) && $data['applications'] === null) {
             $object->setApplications(null);
         }
         if (\array_key_exists('removed', $data) && $data['removed'] !== null) {
             $object->setRemoved($data['removed']);
-            unset($data['removed']);
         }
         elseif (\array_key_exists('removed', $data) && $data['removed'] === null) {
             $object->setRemoved(null);
-        }
-        foreach ($data as $key => $value_1) {
-            if (preg_match('/.*/', (string) $key)) {
-                $object[$key] = $value_1;
-            }
         }
         return $object;
     }
@@ -79,11 +77,6 @@ class SetApplicationAccessResponseNormalizer implements DenormalizerInterface, N
         }
         $dataArray['applications'] = $values;
         $dataArray['removed'] = $data->getRemoved();
-        foreach ($data as $key => $value_1) {
-            if (preg_match('/.*/', (string) $key)) {
-                $dataArray[$key] = $value_1;
-            }
-        }
         return $dataArray;
     }
     public function getSupportedTypes(?string $format = null): array

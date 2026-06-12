@@ -40,23 +40,34 @@ class CreateOAuthClientRequestNormalizer implements DenormalizerInterface, Norma
         if (\array_key_exists('pkceRequired', $data) && \is_int($data['pkceRequired'])) {
             $data['pkceRequired'] = (bool) $data['pkceRequired'];
         }
-        if (\array_key_exists('applicationIds', $data) && $data['applicationIds'] !== null) {
+        if (\array_key_exists('$schema', $data) && $data['$schema'] !== null) {
+            $object->setDollarSchema($data['$schema']);
+            unset($data['$schema']);
+        }
+        elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
+            $object->setDollarSchema(null);
+        }
+        if (\array_key_exists('allowedOrigins', $data) && $data['allowedOrigins'] !== null) {
             $values = [];
-            foreach ($data['applicationIds'] as $value) {
+            foreach ($data['allowedOrigins'] as $value) {
                 $values[] = $value;
             }
-            $object->setApplicationIds($values);
+            $object->setAllowedOrigins($values);
+            unset($data['allowedOrigins']);
+        }
+        elseif (\array_key_exists('allowedOrigins', $data) && $data['allowedOrigins'] === null) {
+            $object->setAllowedOrigins(null);
+        }
+        if (\array_key_exists('applicationIds', $data) && $data['applicationIds'] !== null) {
+            $values_1 = [];
+            foreach ($data['applicationIds'] as $value_1) {
+                $values_1[] = $value_1;
+            }
+            $object->setApplicationIds($values_1);
             unset($data['applicationIds']);
         }
         elseif (\array_key_exists('applicationIds', $data) && $data['applicationIds'] === null) {
             $object->setApplicationIds(null);
-        }
-        if (\array_key_exists('clientId', $data) && $data['clientId'] !== null) {
-            $object->setClientId($data['clientId']);
-            unset($data['clientId']);
-        }
-        elseif (\array_key_exists('clientId', $data) && $data['clientId'] === null) {
-            $object->setClientId(null);
         }
         if (\array_key_exists('clientName', $data) && $data['clientName'] !== null) {
             $object->setClientName($data['clientName']);
@@ -72,12 +83,19 @@ class CreateOAuthClientRequestNormalizer implements DenormalizerInterface, Norma
         elseif (\array_key_exists('clientType', $data) && $data['clientType'] === null) {
             $object->setClientType(null);
         }
+        if (\array_key_exists('defaultScopes', $data) && $data['defaultScopes'] !== null) {
+            $object->setDefaultScopes($data['defaultScopes']);
+            unset($data['defaultScopes']);
+        }
+        elseif (\array_key_exists('defaultScopes', $data) && $data['defaultScopes'] === null) {
+            $object->setDefaultScopes(null);
+        }
         if (\array_key_exists('grantTypes', $data) && $data['grantTypes'] !== null) {
-            $values_1 = [];
-            foreach ($data['grantTypes'] as $value_1) {
-                $values_1[] = $value_1;
+            $values_2 = [];
+            foreach ($data['grantTypes'] as $value_2) {
+                $values_2[] = $value_2;
             }
-            $object->setGrantTypes($values_1);
+            $object->setGrantTypes($values_2);
             unset($data['grantTypes']);
         }
         elseif (\array_key_exists('grantTypes', $data) && $data['grantTypes'] === null) {
@@ -91,30 +109,48 @@ class CreateOAuthClientRequestNormalizer implements DenormalizerInterface, Norma
             $object->setPkceRequired(null);
         }
         if (\array_key_exists('postLogoutRedirectUris', $data) && $data['postLogoutRedirectUris'] !== null) {
-            $values_2 = [];
-            foreach ($data['postLogoutRedirectUris'] as $value_2) {
-                $values_2[] = $value_2;
+            $values_3 = [];
+            foreach ($data['postLogoutRedirectUris'] as $value_3) {
+                $values_3[] = $value_3;
             }
-            $object->setPostLogoutRedirectUris($values_2);
+            $object->setPostLogoutRedirectUris($values_3);
             unset($data['postLogoutRedirectUris']);
         }
         elseif (\array_key_exists('postLogoutRedirectUris', $data) && $data['postLogoutRedirectUris'] === null) {
             $object->setPostLogoutRedirectUris(null);
         }
+        if (\array_key_exists('principalId', $data) && $data['principalId'] !== null) {
+            $object->setPrincipalId($data['principalId']);
+            unset($data['principalId']);
+        }
+        elseif (\array_key_exists('principalId', $data) && $data['principalId'] === null) {
+            $object->setPrincipalId(null);
+        }
         if (\array_key_exists('redirectUris', $data) && $data['redirectUris'] !== null) {
-            $values_3 = [];
-            foreach ($data['redirectUris'] as $value_3) {
-                $values_3[] = $value_3;
+            $values_4 = [];
+            foreach ($data['redirectUris'] as $value_4) {
+                $values_4[] = $value_4;
             }
-            $object->setRedirectUris($values_3);
+            $object->setRedirectUris($values_4);
             unset($data['redirectUris']);
         }
         elseif (\array_key_exists('redirectUris', $data) && $data['redirectUris'] === null) {
             $object->setRedirectUris(null);
         }
-        foreach ($data as $key => $value_4) {
+        if (\array_key_exists('scopes', $data) && $data['scopes'] !== null) {
+            $values_5 = [];
+            foreach ($data['scopes'] as $value_5) {
+                $values_5[] = $value_5;
+            }
+            $object->setScopes($values_5);
+            unset($data['scopes']);
+        }
+        elseif (\array_key_exists('scopes', $data) && $data['scopes'] === null) {
+            $object->setScopes(null);
+        }
+        foreach ($data as $key => $value_6) {
             if (preg_match('/.*/', (string) $key)) {
-                $object[$key] = $value_4;
+                $object[$key] = $value_6;
             }
         }
         return $object;
@@ -122,47 +158,62 @@ class CreateOAuthClientRequestNormalizer implements DenormalizerInterface, Norma
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
     {
         $dataArray = [];
-        if ($data->isInitialized('applicationIds') && null !== $data->getApplicationIds()) {
+        if ($data->isInitialized('allowedOrigins') && null !== $data->getAllowedOrigins()) {
             $values = [];
-            foreach ($data->getApplicationIds() as $value) {
+            foreach ($data->getAllowedOrigins() as $value) {
                 $values[] = $value;
             }
-            $dataArray['applicationIds'] = $values;
+            $dataArray['allowedOrigins'] = $values;
         }
-        if ($data->isInitialized('clientId')) {
-            $dataArray['clientId'] = $data->getClientId();
-        }
-        $dataArray['clientName'] = $data->getClientName();
-        if ($data->isInitialized('clientType')) {
-            $dataArray['clientType'] = $data->getClientType();
-        }
-        if ($data->isInitialized('grantTypes') && null !== $data->getGrantTypes()) {
+        if ($data->isInitialized('applicationIds') && null !== $data->getApplicationIds()) {
             $values_1 = [];
-            foreach ($data->getGrantTypes() as $value_1) {
+            foreach ($data->getApplicationIds() as $value_1) {
                 $values_1[] = $value_1;
             }
-            $dataArray['grantTypes'] = $values_1;
+            $dataArray['applicationIds'] = $values_1;
         }
-        if ($data->isInitialized('pkceRequired')) {
+        $dataArray['clientName'] = $data->getClientName();
+        $dataArray['clientType'] = $data->getClientType();
+        if ($data->isInitialized('defaultScopes') && null !== $data->getDefaultScopes()) {
+            $dataArray['defaultScopes'] = $data->getDefaultScopes();
+        }
+        if ($data->isInitialized('grantTypes') && null !== $data->getGrantTypes()) {
+            $values_2 = [];
+            foreach ($data->getGrantTypes() as $value_2) {
+                $values_2[] = $value_2;
+            }
+            $dataArray['grantTypes'] = $values_2;
+        }
+        if ($data->isInitialized('pkceRequired') && null !== $data->getPkceRequired()) {
             $dataArray['pkceRequired'] = $data->getPkceRequired();
         }
         if ($data->isInitialized('postLogoutRedirectUris') && null !== $data->getPostLogoutRedirectUris()) {
-            $values_2 = [];
-            foreach ($data->getPostLogoutRedirectUris() as $value_2) {
-                $values_2[] = $value_2;
-            }
-            $dataArray['postLogoutRedirectUris'] = $values_2;
-        }
-        if ($data->isInitialized('redirectUris') && null !== $data->getRedirectUris()) {
             $values_3 = [];
-            foreach ($data->getRedirectUris() as $value_3) {
+            foreach ($data->getPostLogoutRedirectUris() as $value_3) {
                 $values_3[] = $value_3;
             }
-            $dataArray['redirectUris'] = $values_3;
+            $dataArray['postLogoutRedirectUris'] = $values_3;
         }
-        foreach ($data as $key => $value_4) {
+        if ($data->isInitialized('principalId') && null !== $data->getPrincipalId()) {
+            $dataArray['principalId'] = $data->getPrincipalId();
+        }
+        if ($data->isInitialized('redirectUris') && null !== $data->getRedirectUris()) {
+            $values_4 = [];
+            foreach ($data->getRedirectUris() as $value_4) {
+                $values_4[] = $value_4;
+            }
+            $dataArray['redirectUris'] = $values_4;
+        }
+        if ($data->isInitialized('scopes') && null !== $data->getScopes()) {
+            $values_5 = [];
+            foreach ($data->getScopes() as $value_5) {
+                $values_5[] = $value_5;
+            }
+            $dataArray['scopes'] = $values_5;
+        }
+        foreach ($data as $key => $value_6) {
             if (preg_match('/.*/', (string) $key)) {
-                $dataArray[$key] = $value_4;
+                $dataArray[$key] = $value_6;
             }
         }
         return $dataArray;

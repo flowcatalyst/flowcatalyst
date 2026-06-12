@@ -13,20 +13,42 @@ class UpdateEventTypeRequest extends \ArrayObject
         return array_key_exists($property, $this->initialized);
     }
     /**
-     * Description
+     * A URL to the JSON Schema for this object.
      *
+     * @var string|null
+     */
+    protected $dollarSchema;
+    /**
      * @var string|null
      */
     protected $description;
     /**
-     * Human-readable name
-     *
      * @var string|null
      */
     protected $name;
     /**
-     * Description
+     * A URL to the JSON Schema for this object.
      *
+     * @return string|null
+     */
+    public function getDollarSchema(): ?string
+    {
+        return $this->dollarSchema;
+    }
+    /**
+     * A URL to the JSON Schema for this object.
+     *
+     * @param string|null $dollarSchema
+     *
+     * @return self
+     */
+    public function setDollarSchema(?string $dollarSchema): self
+    {
+        $this->initialized['dollarSchema'] = true;
+        $this->dollarSchema = $dollarSchema;
+        return $this;
+    }
+    /**
      * @return string|null
      */
     public function getDescription(): ?string
@@ -34,8 +56,6 @@ class UpdateEventTypeRequest extends \ArrayObject
         return $this->description;
     }
     /**
-     * Description
-     *
      * @param string|null $description
      *
      * @return self
@@ -47,8 +67,6 @@ class UpdateEventTypeRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Human-readable name
-     *
      * @return string|null
      */
     public function getName(): ?string
@@ -56,8 +74,6 @@ class UpdateEventTypeRequest extends \ArrayObject
         return $this->name;
     }
     /**
-     * Human-readable name
-     *
      * @param string|null $name
      *
      * @return self

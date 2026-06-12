@@ -2,7 +2,7 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class SyncPrincipalInputRequest extends \ArrayObject
+class SyncPrincipalInputRequest
 {
     /**
      * @var array
@@ -13,7 +13,7 @@ class SyncPrincipalInputRequest extends \ArrayObject
         return array_key_exists($property, $this->initialized);
     }
     /**
-     * Whether the user is active (default: true)
+     * Whether the user is active (default true)
      *
      * @var bool|null
      */
@@ -25,19 +25,17 @@ class SyncPrincipalInputRequest extends \ArrayObject
      */
     protected $email;
     /**
-     * Display name
-     *
      * @var string|null
      */
     protected $name;
     /**
-     * Role short names to assign (prefixed with applicationCode)
+     * Role short names (prefixed with applicationCode)
      *
      * @var list<string>|null
      */
     protected $roles;
     /**
-     * Whether the user is active (default: true)
+     * Whether the user is active (default true)
      *
      * @return bool|null
      */
@@ -46,7 +44,7 @@ class SyncPrincipalInputRequest extends \ArrayObject
         return $this->active;
     }
     /**
-     * Whether the user is active (default: true)
+     * Whether the user is active (default true)
      *
      * @param bool|null $active
      *
@@ -81,8 +79,6 @@ class SyncPrincipalInputRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Display name
-     *
      * @return string|null
      */
     public function getName(): ?string
@@ -90,8 +86,6 @@ class SyncPrincipalInputRequest extends \ArrayObject
         return $this->name;
     }
     /**
-     * Display name
-     *
      * @param string|null $name
      *
      * @return self
@@ -103,7 +97,7 @@ class SyncPrincipalInputRequest extends \ArrayObject
         return $this;
     }
     /**
-     * Role short names to assign (prefixed with applicationCode)
+     * Role short names (prefixed with applicationCode)
      *
      * @return list<string>|null
      */
@@ -112,7 +106,7 @@ class SyncPrincipalInputRequest extends \ArrayObject
         return $this->roles;
     }
     /**
-     * Role short names to assign (prefixed with applicationCode)
+     * Role short names (prefixed with applicationCode)
      *
      * @param list<string>|null $roles
      *
