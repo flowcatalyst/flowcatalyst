@@ -80,5 +80,16 @@ SELECT id, code, subdomain, context, aggregate, action, description, created_at,
 FROM iam_permissions
 WHERE code = $1;
 
+-- name: PermissionUpsert :exec
+INSERT INTO iam_permissions (id, code, subdomain, context, aggregate, action, description)
+VALUES (@id, @code, @subdomain, @context, @aggregate, @action, @description)
+ON CONFLICT (code) DO UPDATE SET
+    subdomain   = EXCLUDED.subdomain,
+    context     = EXCLUDED.context,
+    aggregate   = EXCLUDED.aggregate,
+    action      = EXCLUDED.action,
+    description = EXCLUDED.description,
+    updated_at  = NOW();
+
 -- name: PermissionDeleteByCode :exec
 DELETE FROM iam_permissions WHERE code = $1;

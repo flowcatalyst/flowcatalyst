@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -28,7 +29,11 @@ import (
 type RolesState struct {
 	Roles        *role.Repository
 	Applications *application.Repository
-	UoW          *usecasepgx.UnitOfWork
+	// Permissions is the writable permission catalogue (iam_permissions). When
+	// nil, the catalogue endpoints fall back to builtins + role-derived
+	// permissions only and POST /permissions is unavailable.
+	Permissions *role.PermissionRepo
+	UoW         *usecasepgx.UnitOfWork
 }
 
 // RegisterRoles mounts the dashboard's `/bff/roles/*` endpoints.
@@ -45,6 +50,7 @@ func RegisterRoles(r chi.Router, s *RolesState) {
 		r.Post("/sync-platform", s.syncPlatform)
 		r.Get("/filters/applications", s.filterApplications)
 		r.Get("/permissions", s.listPermissions)
+		r.Post("/permissions", s.createPermission)
 		r.Get("/permissions/{permission}", s.getPermission)
 		r.Get("/{roleName}", s.get)
 		r.Put("/{roleName}", s.update)
@@ -223,18 +229,145 @@ func (s *RolesState) getPermission(w http.ResponseWriter, r *http.Request) {
 //   - other code → the distinct permissions declared across that application's
 //     roles (the app has no catalogue of its own).
 func (s *RolesState) permissionCatalog(ctx context.Context, app string) ([]bffPermissionResponse, error) {
+	var base []bffPermissionResponse
 	switch app {
 	case "platform":
-		return builtinPermissions(), nil
+		base = builtinPermissions()
 	case "":
 		derived, err := s.rolePermissions(ctx, "")
 		if err != nil {
 			return nil, err
 		}
-		return append(builtinPermissions(), derived...), nil
+		base = append(builtinPermissions(), derived...)
 	default:
-		return s.rolePermissions(ctx, app)
+		derived, err := s.rolePermissions(ctx, app)
+		if err != nil {
+			return nil, err
+		}
+		base = derived
 	}
+	// Merge in the persistent catalogue (iam_permissions), scoped to the same
+	// application filter and deduped by code. Catalogue rows survive SDK role
+	// re-syncs, so a permission created via POST /permissions stays available
+	// even when no role references it yet.
+	catalog, err := s.catalogPermissions(ctx, app)
+	if err != nil {
+		return nil, err
+	}
+	return mergePermissions(base, catalog), nil
+}
+
+// catalogPermissions reads the persistent permission catalogue
+// (iam_permissions), mapping each row to the BFF shape via its four-segment
+// code and optionally scoping to one application. Returns nil when no
+// catalogue repo is wired.
+func (s *RolesState) catalogPermissions(ctx context.Context, app string) ([]bffPermissionResponse, error) {
+	if s.Permissions == nil {
+		return nil, nil
+	}
+	rows, err := s.Permissions.FindAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := []bffPermissionResponse{}
+	for _, p := range rows {
+		entry, ok := parsePermission(p.Permission)
+		if !ok {
+			continue
+		}
+		if app != "" && entry.Application != app {
+			continue
+		}
+		if p.Description != nil {
+			entry.Description = *p.Description
+		}
+		out = append(out, entry)
+	}
+	return out, nil
+}
+
+// mergePermissions concatenates two permission lists, dropping later entries
+// whose code already appeared (first occurrence wins, so builtins/role-derived
+// descriptions take precedence over catalogue duplicates).
+func mergePermissions(base, extra []bffPermissionResponse) []bffPermissionResponse {
+	seen := make(map[string]struct{}, len(base)+len(extra))
+	out := make([]bffPermissionResponse, 0, len(base)+len(extra))
+	for _, p := range base {
+		if _, ok := seen[p.Permission]; ok {
+			continue
+		}
+		seen[p.Permission] = struct{}{}
+		out = append(out, p)
+	}
+	for _, p := range extra {
+		if _, ok := seen[p.Permission]; ok {
+			continue
+		}
+		seen[p.Permission] = struct{}{}
+		out = append(out, p)
+	}
+	return out
+}
+
+// permSegment bounds each part of a permission code to a lowercase token so the
+// assembled "application:context:aggregate:action" string is well-formed. Kept
+// in sync with the frontend's add-permission validation.
+var permSegment = regexp.MustCompile(`^[a-z0-9-]+$`)
+
+type bffCreatePermissionRequest struct {
+	Application string `json:"application"`
+	Context     string `json:"context"`
+	Aggregate   string `json:"aggregate"`
+	Action      string `json:"action"`
+	Description string `json:"description,omitempty"`
+}
+
+// POST /bff/roles/permissions
+//
+// Creates (or idempotently updates) a permission in the persistent catalogue.
+// Anchor-gated, matching role creation: anyone who can manage roles can define
+// permissions. The four segments form the canonical code
+// "application:context:aggregate:action".
+func (s *RolesState) createPermission(w http.ResponseWriter, r *http.Request) {
+	ac := auth.FromContext(r.Context())
+	if err := auth.RequireAnchor(ac); err != nil {
+		httperror.Write(w, err)
+		return
+	}
+	if s.Permissions == nil {
+		httperror.Write(w, usecase.Internal("CONFIG", "permission catalogue not configured", nil))
+		return
+	}
+	var body bffCreatePermissionRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
+		return
+	}
+	app := strings.TrimSpace(body.Application)
+	cx := strings.TrimSpace(body.Context)
+	agg := strings.TrimSpace(body.Aggregate)
+	act := strings.TrimSpace(body.Action)
+	for _, seg := range []string{app, cx, agg, act} {
+		if !permSegment.MatchString(seg) {
+			httperror.Write(w, httperror.BadRequest("INVALID_PERMISSION",
+				"application, context, aggregate and action must each be lowercase letters, numbers or hyphens"))
+			return
+		}
+	}
+	code := app + ":" + cx + ":" + agg + ":" + act
+	var desc *string
+	if d := strings.TrimSpace(body.Description); d != "" {
+		desc = &d
+	}
+	if err := s.Permissions.Upsert(r.Context(), role.Permission{Permission: code, Description: desc}); err != nil {
+		httperror.Write(w, usecase.Internal("REPO", "create permission failed", err))
+		return
+	}
+	entry, _ := parsePermission(code)
+	if desc != nil {
+		entry.Description = *desc
+	}
+	writeJSON(w, http.StatusCreated, entry)
 }
 
 // rolePermissions collects the distinct, well-formed (4-segment) permissions

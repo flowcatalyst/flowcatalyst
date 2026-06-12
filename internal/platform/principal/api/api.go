@@ -998,10 +998,17 @@ func (s *State) assignApplicationAccess(ctx context.Context, in *assignAppAccess
 	if err != nil {
 		return nil, err
 	}
+	// Echo the effective all-applications state: the requested value when the
+	// caller set it, otherwise the principal's unchanged value.
+	effectiveAllApps := p.AllApplications
+	if in.Body.AllApplications != nil {
+		effectiveAllApps = *in.Body.AllApplications
+	}
 	return &apicommon.Out[SetApplicationAccessResponse]{Body: SetApplicationAccessResponse{
-		Applications: apps,
-		Added:        added,
-		Removed:      removed,
+		Applications:    apps,
+		Added:           added,
+		Removed:         removed,
+		AllApplications: effectiveAllApps,
 	}}, nil
 }
 
@@ -1506,8 +1513,9 @@ func (s *State) listApplicationAccess(ctx context.Context, in *apicommon.IDInput
 		return nil, err
 	}
 	return &apicommon.Out[ApplicationAccessListResponse]{Body: ApplicationAccessListResponse{
-		Applications: apps,
-		Total:        len(apps),
+		Applications:    apps,
+		Total:           len(apps),
+		AllApplications: p.AllApplications,
 	}}, nil
 }
 

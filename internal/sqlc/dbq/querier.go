@@ -191,6 +191,7 @@ type Querier interface {
 	PermissionDeleteByCode(ctx context.Context, code string) error
 	PermissionFindAll(ctx context.Context) ([]IamPermission, error)
 	PermissionFindByCode(ctx context.Context, code string) (IamPermission, error)
+	PermissionUpsert(ctx context.Context, arg PermissionUpsertParams) error
 	PlatformConfigAccessDelete(ctx context.Context, id string) error
 	PlatformConfigAccessFindByApplication(ctx context.Context, applicationCode string) ([]AppPlatformConfigAccess, error)
 	PlatformConfigAccessFindByID(ctx context.Context, id string) (AppPlatformConfigAccess, error)

@@ -336,6 +336,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		bff.RegisterRoles(r, &bff.RolesState{
 			Roles:        repos.roleRepo,
 			Applications: repos.applicationRepo,
+			Permissions:  role.NewPermissionRepo(pool),
 			UoW:          uow,
 		})
 		bff.RegisterScheduledJobs(r, &bff.ScheduledJobsState{

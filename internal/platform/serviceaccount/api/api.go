@@ -102,7 +102,14 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	if sa == nil {
 		return nil, httperror.NotFound("ServiceAccount", in.ID)
 	}
-	return &apicommon.Out[ServiceAccountResponse]{Body: fromEntity(sa)}, nil
+	resp := fromEntity(sa)
+	// Surface the linked SERVICE principal's id so the UI can manage this
+	// account's application access via /api/principals/{id}/application-access
+	// (roles + app-access live on the principal, not the service-account row).
+	if p, err := s.Principals.FindByServiceAccount(ctx, in.ID); err == nil && p != nil {
+		resp.PrincipalID = &p.ID
+	}
+	return &apicommon.Out[ServiceAccountResponse]{Body: resp}, nil
 }
 
 func (s *State) create(ctx context.Context, in *apicommon.In[CreateServiceAccountRequest]) (*apicommon.Out[CreateServiceAccountResponse], error) {

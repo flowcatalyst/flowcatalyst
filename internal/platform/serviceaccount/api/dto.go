@@ -151,9 +151,15 @@ type ServiceAccountResponse struct {
 	ApplicationID *string          `json:"applicationId,omitempty"`
 	AuthType      string           `json:"authType"`
 	Roles         []string         `json:"roles"`
-	LastUsedAt    *httpcompat.Time `json:"lastUsedAt,omitempty"`
-	CreatedAt     httpcompat.Time  `json:"createdAt"`
-	UpdatedAt     httpcompat.Time  `json:"updatedAt"`
+	// PrincipalID is the id of the linked SERVICE principal that actually owns
+	// this account's roles and application access (a service account is not its
+	// own principal row). Populated on the single-account read so the UI can
+	// drive the shared /api/principals/{id}/application-access endpoints; omitted
+	// from list responses to avoid a per-row lookup.
+	PrincipalID *string          `json:"principalId,omitempty"`
+	LastUsedAt  *httpcompat.Time `json:"lastUsedAt,omitempty"`
+	CreatedAt   httpcompat.Time  `json:"createdAt"`
+	UpdatedAt   httpcompat.Time  `json:"updatedAt"`
 }
 
 func fromEntity(sa *serviceaccount.ServiceAccount) ServiceAccountResponse {

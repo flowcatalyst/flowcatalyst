@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
 // PermissionRepo is the Postgres-backed catalog of permission
@@ -53,6 +55,28 @@ func (r *PermissionRepo) FindByCode(ctx context.Context, code string) (*Permissi
 // the code wasn't present.
 func (r *PermissionRepo) DeleteByCode(ctx context.Context, code string) error {
 	return r.q.PermissionDeleteByCode(ctx, code)
+}
+
+// Upsert writes a permission definition into the catalogue (idempotent by
+// code). The code is the canonical four-segment string
+// "application:context:aggregate:action"; subdomain carries the application
+// segment so the row round-trips through permissionFromRow's Category. Unlike
+// permissions that exist only as strings attached to roles, catalogue rows
+// persist independently of any role and survive SDK role re-syncs.
+func (r *PermissionRepo) Upsert(ctx context.Context, p Permission) error {
+	parts := strings.Split(p.Permission, ":")
+	if len(parts) != 4 {
+		return fmt.Errorf("permission upsert: malformed code %q (want application:context:aggregate:action)", p.Permission)
+	}
+	return r.q.PermissionUpsert(ctx, dbq.PermissionUpsertParams{
+		ID:          tsid.Generate(tsid.Permission),
+		Code:        p.Permission,
+		Subdomain:   parts[0],
+		Context:     parts[1],
+		Aggregate:   parts[2],
+		Action:      parts[3],
+		Description: p.Description,
+	})
 }
 
 func permissionFromRow(row dbq.IamPermission) Permission {

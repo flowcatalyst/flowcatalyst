@@ -78,6 +78,41 @@ func (q *Queries) PermissionFindByCode(ctx context.Context, code string) (IamPer
 	return i, err
 }
 
+const permissionUpsert = `-- name: PermissionUpsert :exec
+INSERT INTO iam_permissions (id, code, subdomain, context, aggregate, action, description)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (code) DO UPDATE SET
+    subdomain   = EXCLUDED.subdomain,
+    context     = EXCLUDED.context,
+    aggregate   = EXCLUDED.aggregate,
+    action      = EXCLUDED.action,
+    description = EXCLUDED.description,
+    updated_at  = NOW()
+`
+
+type PermissionUpsertParams struct {
+	ID          string  `db:"id"`
+	Code        string  `db:"code"`
+	Subdomain   string  `db:"subdomain"`
+	Context     string  `db:"context"`
+	Aggregate   string  `db:"aggregate"`
+	Action      string  `db:"action"`
+	Description *string `db:"description"`
+}
+
+func (q *Queries) PermissionUpsert(ctx context.Context, arg PermissionUpsertParams) error {
+	_, err := q.db.Exec(ctx, permissionUpsert,
+		arg.ID,
+		arg.Code,
+		arg.Subdomain,
+		arg.Context,
+		arg.Aggregate,
+		arg.Action,
+		arg.Description,
+	)
+	return err
+}
+
 const roleApplicationCodes = `-- name: RoleApplicationCodes :many
 SELECT DISTINCT application_code FROM iam_roles ORDER BY application_code
 `

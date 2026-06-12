@@ -47,11 +47,10 @@ import (
 // SKIP-LOCKED claims across replicas would let two nodes dispatch the same
 // group's jobs out of order. Mirrors Rust's active_rx gate on spawn_scheduler.
 //
-// The publisher is supplied by env-configured queue backend in
-// production; in development the noop publisher below keeps the loops
-// alive without external dependencies. TODO(scheduler-runtime): wire
-// the real queue.Publisher via internal/queue.NewPublisher once the
-// QueueConfig env knobs are exposed in envcfg.go.
+// The dispatcher publishes claimed jobs to the queue the router consumes
+// from — see schedulerPublisher. In dev / single-tenant mode that is the
+// built-in Postgres broker; only when no broker can be resolved does it
+// fall back to the noop publisher (with a loud warning).
 //
 // Fail-closed: the dispatch-auth HMAC secret is derived from
 // FLOWCATALYST_APP_KEY; without it the scheduler refuses to start rather
@@ -62,16 +61,53 @@ func StartScheduler(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg) {
 		slog.Error("scheduler disabled: cannot derive dispatch-auth secret; set FLOWCATALYST_APP_KEY", "err", err)
 		return
 	}
-	// Until the real publisher is wired (TODO above), claimed jobs are
-	// published into the void and recovered by stale recovery — make that
-	// impossible to miss in the logs.
-	slog.Warn("scheduler running with NOOP publisher: dispatch jobs will be claimed but NOT delivered; " +
-		"do not enable FC_SCHEDULER_ENABLED in production until a real queue.Publisher is wired")
+	pub, err := schedulerPublisher(ctx, cfg)
+	if err != nil {
+		slog.Error("scheduler disabled: cannot build dispatch publisher", "err", err)
+		return
+	}
+	if c, ok := pub.(interface{ Stop() }); ok {
+		defer c.Stop()
+	}
 	scfg := scheduler.DefaultConfig()
-	s := scheduler.New(scfg, pool, NoopPublisher{}, secret)
+	s := scheduler.New(scfg, pool, pub, secret)
 	s.IsLeader = newLeaderGate(ctx, cfg, "scheduler")
 	s.Run(ctx)
 	slog.Info("scheduler stopped")
+}
+
+// schedulerPublisher builds the queue.Publisher the dispatcher uses to hand
+// claimed dispatch jobs to the router. In dev / single-tenant mode
+// (DefaultBroker=postgres) it targets the SAME built-in Postgres broker queue
+// the router consumes from — reusing defaultPostgresRouterConfig so the
+// publish queue and the router's consume queue can never drift — so dispatch
+// jobs flow end-to-end without external infrastructure.
+//
+// The queue table is created up front (idempotent): the router bootstraps it
+// too, but the scheduler goroutine may publish before that completes.
+//
+// Falls back to the noop publisher (with a loud warning) only when no broker
+// can be resolved — e.g. a production deployment whose real queue.Publisher
+// env knobs are not yet wired. Claimed jobs then drain into the void and are
+// recovered by stale recovery, so make that impossible to miss in the logs.
+func schedulerPublisher(ctx context.Context, cfg EnvCfg) (queue.Publisher, error) {
+	if cfg.DefaultBroker == "postgres" && cfg.DatabaseURL != "" {
+		// Single source of truth for the dev queue: whatever the router
+		// consumes is what the scheduler publishes to.
+		qc := defaultPostgresRouterConfig(cfg.DatabaseURL).Queues[0]
+		if err := initQueueSchema(ctx, qc); err != nil {
+			return nil, fmt.Errorf("init dispatch queue schema for %q: %w", qc.Name, err)
+		}
+		pub, err := queue.NewPublisher(ctx, qc)
+		if err != nil {
+			return nil, fmt.Errorf("postgres dispatch publisher: %w", err)
+		}
+		slog.Info("scheduler: dispatch jobs published to built-in postgres broker", "queue", qc.Name)
+		return pub, nil
+	}
+	slog.Warn("scheduler running with NOOP publisher: dispatch jobs will be claimed but NOT delivered; " +
+		"do not enable FC_SCHEDULER_ENABLED in production until a real queue.Publisher is wired")
+	return NoopPublisher{}, nil
 }
 
 // dispatchAuthSecret derives the HMAC key for dispatch-job auth tokens from

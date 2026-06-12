@@ -261,6 +261,9 @@
             "readOnly": true,
             "type": "string"
           },
+          "allApplications": {
+            "type": "boolean"
+          },
           "applications": {
             "items": {
               "$ref": "#/components/schemas/ApplicationAccessResponse"
@@ -274,7 +277,8 @@
         },
         "required": [
           "applications",
-          "total"
+          "total",
+          "allApplications"
         ],
         "type": "object"
       },
@@ -5858,6 +5862,9 @@
           "name": {
             "type": "string"
           },
+          "principalId": {
+            "type": "string"
+          },
           "roles": {
             "items": {
               "type": "string"
@@ -5979,6 +5986,9 @@
             "format": "int64",
             "type": "integer"
           },
+          "allApplications": {
+            "type": "boolean"
+          },
           "applications": {
             "items": {
               "$ref": "#/components/schemas/ApplicationAccessResponse"
@@ -5993,7 +6003,8 @@
         "required": [
           "applications",
           "added",
-          "removed"
+          "removed",
+          "allApplications"
         ],
         "type": "object"
       },

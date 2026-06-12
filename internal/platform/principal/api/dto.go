@@ -296,6 +296,11 @@ type ApplicationAccessResponse struct {
 type ApplicationAccessListResponse struct {
 	Applications []ApplicationAccessResponse `json:"applications"`
 	Total        int                         `json:"total"`
+	// AllApplications reports whether the principal has access to every
+	// application (present and future) — the application-axis analogue of the
+	// anchor tier. When true the explicit Applications list is moot; the UI
+	// surfaces this as the "all applications" toggle.
+	AllApplications bool `json:"allApplications"`
 }
 
 // SetApplicationAccessResponse is the wire shape for
@@ -304,6 +309,9 @@ type SetApplicationAccessResponse struct {
 	Applications []ApplicationAccessResponse `json:"applications"`
 	Added        int                         `json:"added"`
 	Removed      int                         `json:"removed"`
+	// AllApplications echoes the principal's all-applications state after the
+	// assignment so the caller can reflect it without a follow-up read.
+	AllApplications bool `json:"allApplications"`
 }
 
 // PrincipalAvailableApplication is a row in the available-apps list.
