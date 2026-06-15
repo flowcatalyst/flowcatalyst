@@ -99,25 +99,33 @@ $ExtDir = (Get-ChildItem "$Embed\share" -Recurse -Filter plpgsql.control).Direct
 
 ## macOS (Apple Silicon)
 
+Homebrew's `postgis` ships builds for **several** PG majors at once (e.g. both
+`postgresql@17` and `postgresql@18`), so you must point at the one matching the
+**embedded** major — picking the wrong keg gives an `undefined symbol` on
+`CREATE EXTENSION`.
+
 ```bash
-# 1. Install PostGIS for PG18 + keep its deps (Homebrew installs GEOS/PROJ/GDAL).
-brew install postgresql@18 postgis
-#    Ensure the postgis you got is the PG18 build:
-brew info postgis | grep -i postgresql
+# 1. Install PostGIS (pulls in GEOS/PROJ/GDAL).
+brew install postgis
 
-# 2. Find the source files in the Homebrew keg.
-SRC_MOD=$(dirname "$(find "$(brew --prefix)" -name 'postgis-3.*' -path '*postgresql*' | head -1)")
-SRC_EXT=$(dirname "$(find "$(brew --prefix)" -name 'postgis.control' | head -1)")
+# 2. Point at the build matching the EMBEDDED major from Step 0 (here PG18).
+PGMAJ=18
+SRC_MOD="$(brew --prefix)/lib/postgresql@${PGMAJ}"
+SRC_EXT="$(brew --prefix)/share/postgresql@${PGMAJ}/extension"
 
-# 3. Copy modules + extension files into the embedded tree (EMBED/MODDIR/EXTDIR from Step 0).
-cp "$SRC_MOD"/postgis*-3.* "$SRC_MOD"/rtpostgis*-3.* "$SRC_MOD"/address_standardizer*-3.* "$MODDIR"/ 2>/dev/null
-cp "$SRC_EXT"/postgis* "$SRC_EXT"/address_standardizer* "$EXTDIR"/ 2>/dev/null
+# 3. Copy modules + extension files into the embedded tree (MODDIR/EXTDIR from Step 0).
+#    Use `find -exec`, NOT bare globs: macOS defaults to zsh, which ABORTS a
+#    command when a glob matches nothing (e.g. a module name your version lacks).
+find "$SRC_MOD" \( -name 'postgis*-3.dylib' -o -name 'address_standardizer*-3.dylib' \) -exec cp {} "$MODDIR/" \;
+find "$SRC_EXT" \( -name 'postgis*' -o -name 'address_standardizer*' \) -exec cp {} "$EXTDIR/" \;
 ```
 
 **macOS dylib note:** Homebrew's `postgis-3.dylib` references its deps by their
 absolute keg paths (`/opt/homebrew/opt/geos/lib/…`), so as long as the Homebrew
 `geos`/`proj`/`gdal` formulae stay installed, it loads. If you later
 `brew uninstall` them you'll get *"Library not loaded"* on `CREATE EXTENSION`.
+The embedded distro ships no `psql`; `brew install libpq` (or a `postgresql@NN`)
+gives you one for the enable step below.
 
 ---
 
@@ -141,12 +149,10 @@ sudo apt-get update
 # 2. PostGIS for PG18:
 sudo apt-get install -y postgresql-18-postgis-3
 
-# 3. Copy into the embedded tree (MODDIR/EXTDIR from Step 0):
-sudo cp /usr/lib/postgresql/18/lib/postgis*-3.so \
-        /usr/lib/postgresql/18/lib/rtpostgis*-3.so \
-        /usr/lib/postgresql/18/lib/address_standardizer*-3.so "$MODDIR"/ 2>/dev/null
-cp /usr/share/postgresql/18/extension/postgis* \
-   /usr/share/postgresql/18/extension/address_standardizer* "$EXTDIR"/ 2>/dev/null
+# 3. Copy into the embedded tree (MODDIR/EXTDIR from Step 0). find -exec is
+#    robust across shells and the rtpostgis/postgis_raster naming variants.
+sudo find /usr/lib/postgresql/18/lib \( -name 'postgis*-3.so' -o -name 'rtpostgis*-3.so' -o -name 'address_standardizer*-3.so' \) -exec cp {} "$MODDIR/" \;
+find /usr/share/postgresql/18/extension \( -name 'postgis*' -o -name 'address_standardizer*' \) -exec cp {} "$EXTDIR/" \;
 ```
 
 `arm64`: identical commands — apt pulls the arm64 build automatically.
@@ -173,11 +179,8 @@ sudo dnf -qy module disable postgresql   # let PGDG provide PG, not the distro m
 sudo dnf install -y postgis34_18          # name is postgis<MAJOR>_18; adjust to the available version
 
 # 3. Copy into the embedded tree (MODDIR/EXTDIR from Step 0):
-sudo cp /usr/pgsql-18/lib/postgis*-3.so \
-        /usr/pgsql-18/lib/rtpostgis*-3.so \
-        /usr/pgsql-18/lib/address_standardizer*-3.so "$MODDIR"/ 2>/dev/null
-cp /usr/pgsql-18/share/extension/postgis* \
-   /usr/pgsql-18/share/extension/address_standardizer* "$EXTDIR"/ 2>/dev/null
+sudo find /usr/pgsql-18/lib \( -name 'postgis*-3.so' -o -name 'rtpostgis*-3.so' -o -name 'address_standardizer*-3.so' \) -exec cp {} "$MODDIR/" \;
+find /usr/pgsql-18/share/extension \( -name 'postgis*' -o -name 'address_standardizer*' \) -exec cp {} "$EXTDIR/" \;
 ```
 
 `arm64`: same, with the `aarch64` reporpm. Dependencies (geos/proj/gdal) are
