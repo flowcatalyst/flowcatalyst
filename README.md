@@ -36,7 +36,9 @@ webhook subscribers keep working unchanged.
 ```
 
 In local development everything above collapses into a single `fc-dev` process
-backed by an **embedded Postgres** — no Docker, no SQS, no Redis.
+backed by an **embedded Postgres** — no Docker, no SQS, no Redis. (The embedded
+Postgres is vanilla; to add PostGIS see
+[`docs/embedded-postgres-postgis.md`](docs/embedded-postgres-postgis.md).)
 
 ---
 
