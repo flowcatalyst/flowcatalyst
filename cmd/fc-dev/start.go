@@ -9,7 +9,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
-	"time"
 
 	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
 	"github.com/go-chi/chi/v5"
@@ -102,22 +101,16 @@ func runStart(cmd *cobra.Command, _ []string) error {
 			slog.Warn("wiping embedded Postgres data directory", "path", opts.EmbeddedDBPath)
 			_ = os.RemoveAll(opts.EmbeddedDBPath)
 		}
-		if err := os.MkdirAll(opts.EmbeddedDBPath, 0o755); err != nil {
-			return fmt.Errorf("create data dir: %w", err)
+		// Surface a major-version mismatch as an actionable message rather than
+		// a cryptic Postgres "database files are incompatible" failure.
+		if err := assertEmbeddedVersionCompatible(opts.EmbeddedDBPath); err != nil {
+			return err
 		}
-		cacheDir := embeddedPGCacheDir()
-		if err := os.MkdirAll(cacheDir, 0o755); err != nil {
-			return fmt.Errorf("create cache dir: %w", err)
+		var err error
+		pg, err = newEmbeddedPG(opts.EmbeddedDBPath, opts.EmbeddedDBPort)
+		if err != nil {
+			return err
 		}
-		pg = embeddedpostgres.NewDatabase(embeddedpostgres.DefaultConfig().
-			Port(uint32(opts.EmbeddedDBPort)).
-			DataPath(filepath.Join(opts.EmbeddedDBPath, "data")).
-			RuntimePath(filepath.Join(cacheDir, "runtime")).
-			BinariesPath(filepath.Join(cacheDir, "bin")).
-			Username("postgres").
-			Password("postgres").
-			Database("flowcatalyst").
-			StartTimeout(60 * time.Second))
 		if err := pg.Start(); err != nil {
 			return fmt.Errorf("embedded postgres start: %w", err)
 		}

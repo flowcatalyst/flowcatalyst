@@ -53,6 +53,7 @@ Invoking ` + "`fc-dev`" + ` with no subcommand is identical to ` + "`fc-dev star
 	root.AddCommand(newFreshCmd())
 	root.AddCommand(newMCPCmd())
 	root.AddCommand(newOutboxCmd())
+	root.AddCommand(newDBCmd())
 	root.AddCommand(newUpgradeCmd())
 	root.AddCommand(newVersionCmd())
 

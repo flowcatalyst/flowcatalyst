@@ -5,9 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
-	"time"
 
 	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
 	"github.com/spf13/cobra"
@@ -122,22 +119,14 @@ func runFresh(cmd *cobra.Command, _ []string) error {
 	if url == "" {
 		port := getInt("embedded-db-port")
 		dataPath := getStr("embedded-db-path")
-		if err := os.MkdirAll(dataPath, 0o755); err != nil {
-			return fmt.Errorf("create data dir: %w", err)
+		if err := assertEmbeddedVersionCompatible(dataPath); err != nil {
+			return err
 		}
-		cacheDir := embeddedPGCacheDir()
-		if err := os.MkdirAll(cacheDir, 0o755); err != nil {
-			return fmt.Errorf("create cache dir: %w", err)
+		var err error
+		pg, err = newEmbeddedPG(dataPath, port)
+		if err != nil {
+			return err
 		}
-		pg = embeddedpostgres.NewDatabase(embeddedpostgres.DefaultConfig().
-			Port(uint32(port)).
-			DataPath(filepath.Join(dataPath, "data")).
-			RuntimePath(filepath.Join(cacheDir, "runtime")).
-			BinariesPath(filepath.Join(cacheDir, "bin")).
-			Username("postgres").
-			Password("postgres").
-			Database("flowcatalyst").
-			StartTimeout(60 * time.Second))
 		if err := pg.Start(); err != nil {
 			return fmt.Errorf("embedded postgres start: %w", err)
 		}
