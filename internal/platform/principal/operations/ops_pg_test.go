@@ -538,7 +538,6 @@ func TestAssignApplicationAccess_Errors(t *testing.T) {
 	uow := testpg.NewUoW(t)
 
 	user := mustCreateUser(t, repo, uow, "prn-appaccess-err@example.com", "ANCHOR", nil)
-	svc := seedServicePrincipal(t, "sa_prnappaerr01", "prn-appaccess-svc")
 
 	inactiveApp := mustCreateApplication(t, uow, "prnappinact", "Prn App Inactive")
 	_, err := appops.DeactivateApplication(ctx, apps, uow,
@@ -553,7 +552,6 @@ func TestAssignApplicationAccess_Errors(t *testing.T) {
 	}{
 		{"missing user id", operations.AssignApplicationAccessCommand{}, usecase.KindValidation, "USER_ID_REQUIRED"},
 		{"unknown user", operations.AssignApplicationAccessCommand{UserID: "prn_doesnotexist1"}, usecase.KindNotFound, "User_NOT_FOUND"},
-		{"service principal", operations.AssignApplicationAccessCommand{UserID: svc.ID}, usecase.KindBusinessRule, "NOT_A_USER"},
 		{"unknown application", operations.AssignApplicationAccessCommand{UserID: user.UserID, ApplicationIDs: []string{"app_doesnotexist"}}, usecase.KindValidation, "APPLICATION_NOT_FOUND"},
 		{"inactive application", operations.AssignApplicationAccessCommand{UserID: user.UserID, ApplicationIDs: []string{inactiveApp}}, usecase.KindBusinessRule, "APPLICATION_INACTIVE"},
 	}
@@ -564,6 +562,38 @@ func TestAssignApplicationAccess_Errors(t *testing.T) {
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
+}
+
+// Service-account principals carry the same per-application scope as users, so
+// AssignApplicationAccess must confine them too (the admin-UI path that lets an
+// anchor restrict a standalone, all-applications service account to specific
+// apps). Previously this returned NOT_A_USER, which surfaced in the UI as "only
+// all applications is allowed".
+func TestAssignApplicationAccess_ServiceAccount(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := principal.NewRepository(testpg.Pool(t))
+	apps := application.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+	ec := testpg.TestEC()
+
+	app1 := mustCreateApplication(t, uow, "prnsvcappa1", "Prn Svc App A1")
+	svc := seedServicePrincipal(t, "sa_prnsvcappa01", "prn-svc-appaccess")
+
+	// Confine the (anchor, all-applications) service account to one app.
+	_, err := operations.AssignApplicationAccess(ctx, repo, apps, uow,
+		operations.AssignApplicationAccessCommand{
+			UserID:          svc.ID,
+			ApplicationIDs:  []string{app1},
+			AllApplications: ptr(false),
+		}, ec)
+	require.NoError(t, err)
+
+	got, err := repo.FindByID(ctx, svc.ID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, []string{app1}, got.AccessibleApplicationIDs, "service account confined to the id list")
+	assert.False(t, got.AllApplications, "all-applications flag cleared on the service principal")
 }
 
 // ── GrantClientAccess / RevokeClientAccess ────────────────────────────────

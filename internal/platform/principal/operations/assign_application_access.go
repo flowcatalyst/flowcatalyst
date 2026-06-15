@@ -40,8 +40,13 @@ func AssignApplicationAccess(
 	if p == nil {
 		return zero, httperror.NotFound("User", cmd.UserID)
 	}
-	if p.Type != principal.TypeUser {
-		return zero, usecase.BusinessRule("NOT_A_USER", "Principal is not a user")
+	// Both users and service accounts carry per-application scope (the
+	// all_applications flag + accessible application list live on the unified
+	// principal). Service accounts in particular are the main case for confining
+	// a principal to specific applications, so they must be assignable here —
+	// only USER/SERVICE principals are.
+	if p.Type != principal.TypeUser && p.Type != principal.TypeService {
+		return zero, usecase.BusinessRule("NOT_ASSIGNABLE", "Application access can only be assigned to users or service accounts")
 	}
 
 	for _, appID := range cmd.ApplicationIDs {
