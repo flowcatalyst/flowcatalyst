@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -282,8 +283,9 @@ func (s *State) verifyClientSecret(secretRef, provided string) bool {
 // absent or not Basic.
 func basicAuthCreds(r *http.Request) (id, secret string, ok bool) {
 	h := r.Header.Get("Authorization")
-	enc, found := strings.CutPrefix(h, "Basic ")
-	if !found {
+	// RFC 7617: the auth-scheme token ("Basic") is case-insensitive.
+	scheme, enc, found := strings.Cut(h, " ")
+	if !found || !strings.EqualFold(scheme, "Basic") {
 		return "", "", false
 	}
 	decoded, err := base64.StdEncoding.DecodeString(enc)
@@ -293,6 +295,17 @@ func basicAuthCreds(r *http.Request) (id, secret string, ok bool) {
 	id, secret, found = strings.Cut(string(decoded), ":")
 	if !found {
 		return "", "", false
+	}
+	// RFC 6749 §2.3.1: the client_id and client_secret are
+	// application/x-www-form-urlencoded before being joined and base64-encoded,
+	// so each part must be URL-decoded. Compliant clients (openid-client, etc.)
+	// encode reserved chars; without decoding, such secrets/ids never match.
+	// Decode defensively: a malformed escape leaves the original untouched.
+	if dec, derr := url.QueryUnescape(id); derr == nil {
+		id = dec
+	}
+	if dec, derr := url.QueryUnescape(secret); derr == nil {
+		secret = dec
 	}
 	return id, secret, true
 }
