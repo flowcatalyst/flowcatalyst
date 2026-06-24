@@ -261,6 +261,9 @@
             "readOnly": true,
             "type": "string"
           },
+          "allApplications": {
+            "type": "boolean"
+          },
           "applications": {
             "items": {
               "$ref": "#/components/schemas/ApplicationAccessResponse"
@@ -274,7 +277,8 @@
         },
         "required": [
           "applications",
-          "total"
+          "total",
+          "allApplications"
         ],
         "type": "object"
       },
@@ -5858,6 +5862,9 @@
           "name": {
             "type": "string"
           },
+          "principalId": {
+            "type": "string"
+          },
           "roles": {
             "items": {
               "type": "string"
@@ -5979,6 +5986,9 @@
             "format": "int64",
             "type": "integer"
           },
+          "allApplications": {
+            "type": "boolean"
+          },
           "applications": {
             "items": {
               "$ref": "#/components/schemas/ApplicationAccessResponse"
@@ -5993,7 +6003,8 @@
         "required": [
           "applications",
           "added",
-          "removed"
+          "removed",
+          "allApplications"
         ],
         "type": "object"
       },
@@ -6474,6 +6485,10 @@
           "name": {
             "type": "string"
           },
+          "passwordHash": {
+            "description": "Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim; migrated on first login",
+            "type": "string"
+          },
           "roles": {
             "description": "Role short names (prefixed with applicationCode)",
             "items": {
@@ -6902,6 +6917,105 @@
         },
         "required": [
           "subscriptions"
+        ],
+        "type": "object"
+      },
+      "SyncUserInput": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "description": "Whether the user is active (default true)",
+            "type": "boolean"
+          },
+          "email": {
+            "description": "User's email address (unique identifier for matching)",
+            "type": "string"
+          },
+          "name": {
+            "description": "Display name",
+            "type": "string"
+          },
+          "passwordHash": {
+            "description": "Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim; migrated on first login. Omit to leave any existing password untouched.",
+            "type": "string"
+          },
+          "roles": {
+            "description": "Role names to assign (SDK_SYNC source; replaces this source's prior set)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "email",
+          "name"
+        ],
+        "type": "object"
+      },
+      "SyncUsersRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SyncUsersRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "principals": {
+            "items": {
+              "$ref": "#/components/schemas/SyncUserInput"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "principals"
+        ],
+        "type": "object"
+      },
+      "SyncUsersResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SyncUsersResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "created": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "deleted": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "syncedEmails": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "updated": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "created",
+          "updated",
+          "deleted",
+          "syncedEmails"
         ],
         "type": "object"
       },
@@ -14588,6 +14702,47 @@
           }
         },
         "summary": "Resolve auth-method for an email's domain",
+        "tags": [
+          "principals"
+        ]
+      }
+    },
+    "/api/principals/sync": {
+      "post": {
+        "operationId": "syncUsers",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncUsersRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncUsersResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Sync users (declarative upsert by email; no application scope)",
         "tags": [
           "principals"
         ]

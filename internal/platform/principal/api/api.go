@@ -79,6 +79,7 @@ func Register(api huma.API, s *State) {
 	apiroute.Post(g, "createPrincipal", "/api/principals", "Create a principal", http.StatusCreated, s.create)
 	apiroute.Post(g, "createUser", "/api/principals/users", "Create a user principal (scope derived from email domain)", http.StatusOK, s.createUser)
 	apiroute.Post(g, "bulkImportUsers", "/api/principals/bulk-import", "Bulk-import CLIENT users for a client (CSV onboarding)", http.StatusOK, s.bulkImport)
+	apiroute.Post(g, "syncUsers", "/api/principals/sync", "Sync users (declarative upsert by email; no application scope)", http.StatusOK, s.syncUsers)
 	apiroute.Get(g, "getPrincipal", "/api/principals/{id}", "Get a principal by id", s.getByID)
 	apiroute.Put(g, "updatePrincipal", "/api/principals/{id}", "Update a principal", http.StatusOK, s.update)
 	apiroute.Post(g, "activatePrincipal", "/api/principals/{id}/activate", "Activate a principal", http.StatusOK, s.activate)

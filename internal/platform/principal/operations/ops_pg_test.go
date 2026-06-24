@@ -1138,12 +1138,15 @@ func TestSyncPrincipals_Validation(t *testing.T) {
 	repo := principal.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
+	// Empty ApplicationCode is now allowed — the platform-level
+	// POST /api/principals/sync calls the op with no app code.
 	_, err := operations.SyncPrincipals(context.Background(), repo, uow,
 		operations.SyncPrincipalsCommand{
-			Principals: []operations.SyncPrincipalInput{{Email: "x@example.com", Active: true}},
+			Principals: []operations.SyncPrincipalInput{{Email: "prn-sync-noappcode@example.com", Name: "No App", Active: true}},
 		}, testpg.TestEC())
-	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "APPLICATION_CODE_REQUIRED")
+	require.NoError(t, err)
 
+	// An empty principal list is still rejected.
 	_, err = operations.SyncPrincipals(context.Background(), repo, uow,
 		operations.SyncPrincipalsCommand{ApplicationCode: "prnsyncval"}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "PRINCIPALS_REQUIRED")

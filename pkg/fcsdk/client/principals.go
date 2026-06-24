@@ -118,6 +118,12 @@ type SyncPrincipalItem struct {
 	Name   string   `json:"name"`
 	Roles  []string `json:"roles,omitempty"`
 	Active bool     `json:"active"`
+	// PasswordHash carries an already-hashed credential (e.g. an upstream
+	// Laravel bcrypt/argon2i hash) so a migrated user keeps their existing
+	// password. Stored verbatim by the platform — NOT re-hashed; the login
+	// flow verifies it and re-encodes it to the native scheme on first login.
+	// Omit (nil) for OIDC users or to leave an existing password untouched.
+	PasswordHash *string `json:"passwordHash,omitempty"`
 }
 
 // SyncPrincipalsRequest — body for the per-app sync endpoint.
@@ -258,6 +264,19 @@ func (r *PrincipalsResource) Sync(ctx context.Context, appCode string, req *Sync
 	}
 	var out SyncResult
 	if err := r.c.Post(ctx, fmt.Sprintf("/api/applications/%s/principals/sync%s", appCode, q), req, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// SyncUsers — POST /api/principals/sync. The application-less twin of Sync:
+// a declarative user upsert keyed on email with NO application scope. Use it to
+// "just sync users" — migrating accounts and (via SyncPrincipalItem.PasswordHash)
+// their existing password hashes — without wrapping the call in an application.
+// Pure upsert: it never strips roles from unlisted users.
+func (r *PrincipalsResource) SyncUsers(ctx context.Context, req *SyncPrincipalsRequest) (*SyncResult, error) {
+	var out SyncResult
+	if err := r.c.Post(ctx, "/api/principals/sync", req, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

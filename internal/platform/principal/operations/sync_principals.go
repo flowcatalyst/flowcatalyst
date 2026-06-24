@@ -62,9 +62,9 @@ func SyncPrincipals(
 ) (commit.Committed[PrincipalsSynced], error) {
 	var zero commit.Committed[PrincipalsSynced]
 
-	if strings.TrimSpace(cmd.ApplicationCode) == "" {
-		return zero, usecase.Validation("APPLICATION_CODE_REQUIRED", "Application code is required")
-	}
+	// ApplicationCode is optional: the app-scoped SDK sync supplies it (purely
+	// as event provenance — it is NOT used to scope or prefix anything), while
+	// the platform-level POST /api/principals/sync leaves it empty.
 	if len(cmd.Principals) == 0 {
 		return zero, usecase.Validation("PRINCIPALS_REQUIRED", "At least one principal must be provided")
 	}
@@ -196,8 +196,12 @@ func SyncPrincipals(
 		}
 	}
 
+	subject := "platform.principals"
+	if cmd.ApplicationCode != "" {
+		subject += "." + cmd.ApplicationCode
+	}
 	rollup := PrincipalsSynced{
-		Metadata:        usecase.NewEventMetadata(ec, PrincipalsSyncedType, Source, "platform.principals."+cmd.ApplicationCode),
+		Metadata:        usecase.NewEventMetadata(ec, PrincipalsSyncedType, Source, subject),
 		ApplicationCode: cmd.ApplicationCode,
 		Created:         created,
 		Updated:         updated,

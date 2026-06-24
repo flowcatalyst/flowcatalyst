@@ -102,6 +102,7 @@ export type ApplicationAccessListResponse = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    allApplications: boolean;
     applications: Array<ApplicationAccessResponse>;
     total: number;
 };
@@ -1994,6 +1995,7 @@ export type ServiceAccountResponse = {
     id: string;
     lastUsedAt?: string;
     name: string;
+    principalId?: string;
     roles: Array<string>;
     scope?: string;
     updatedAt: string;
@@ -2028,6 +2030,7 @@ export type SetApplicationAccessResponse = {
      */
     readonly $schema?: string;
     added: number;
+    allApplications: boolean;
     applications: Array<ApplicationAccessResponse>;
     removed: number;
 };
@@ -2208,6 +2211,10 @@ export type SyncPrincipalInputRequest = {
     email: string;
     name: string;
     /**
+     * Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim; migrated on first login
+     */
+    passwordHash?: string;
+    /**
      * Role short names (prefixed with applicationCode)
      */
     roles?: Array<string>;
@@ -2356,6 +2363,49 @@ export type SyncSubscriptionsRequest = {
     readonly $schema?: string;
     subscriptions: Array<SyncSubscriptionInputRequest>;
     [key: string]: unknown | string | Array<SyncSubscriptionInputRequest> | undefined;
+};
+
+export type SyncUserInput = {
+    /**
+     * Whether the user is active (default true)
+     */
+    active?: boolean;
+    /**
+     * User's email address (unique identifier for matching)
+     */
+    email: string;
+    /**
+     * Display name
+     */
+    name: string;
+    /**
+     * Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim; migrated on first login. Omit to leave any existing password untouched.
+     */
+    passwordHash?: string;
+    /**
+     * Role names to assign (SDK_SYNC source; replaces this source's prior set)
+     */
+    roles?: Array<string>;
+};
+
+export type SyncUsersRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    principals: Array<SyncUserInput>;
+    [key: string]: unknown | string | Array<SyncUserInput> | undefined;
+};
+
+export type SyncUsersResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    created: number;
+    deleted: number;
+    syncedEmails: Array<string>;
+    updated: number;
 };
 
 export type UpdateAnchorDomainRequest = {
@@ -2687,6 +2737,7 @@ export type AnchorDomainListResponseWritable = {
 };
 
 export type ApplicationAccessListResponseWritable = {
+    allApplications: boolean;
     applications: Array<ApplicationAccessResponse>;
     total: number;
 };
@@ -3801,6 +3852,7 @@ export type ServiceAccountResponseWritable = {
     id: string;
     lastUsedAt?: string;
     name: string;
+    principalId?: string;
     roles: Array<string>;
     scope?: string;
     updatedAt: string;
@@ -3818,6 +3870,7 @@ export type ServiceAccountRolesAssignedResponseWritable = {
 
 export type SetApplicationAccessResponseWritable = {
     added: number;
+    allApplications: boolean;
     applications: Array<ApplicationAccessResponse>;
     removed: number;
 };
@@ -3965,6 +4018,18 @@ export type SyncScheduledJobsResultResponseWritable = {
 export type SyncSubscriptionsRequestWritable = {
     subscriptions: Array<SyncSubscriptionInputRequest>;
     [key: string]: unknown | Array<SyncSubscriptionInputRequest>;
+};
+
+export type SyncUsersRequestWritable = {
+    principals: Array<SyncUserInput>;
+    [key: string]: unknown | Array<SyncUserInput>;
+};
+
+export type SyncUsersResponseWritable = {
+    created: number;
+    deleted: number;
+    syncedEmails: Array<string>;
+    updated: number;
 };
 
 export type UpdateAnchorDomainRequestWritable = {
@@ -8258,6 +8323,31 @@ export type CheckPrincipalEmailDomainResponses = {
 };
 
 export type CheckPrincipalEmailDomainResponse = CheckPrincipalEmailDomainResponses[keyof CheckPrincipalEmailDomainResponses];
+
+export type SyncUsersData = {
+    body: SyncUsersRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/principals/sync';
+};
+
+export type SyncUsersErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type SyncUsersError = SyncUsersErrors[keyof SyncUsersErrors];
+
+export type SyncUsersResponses = {
+    /**
+     * OK
+     */
+    200: SyncUsersResponse;
+};
+
+export type SyncUsersResponse2 = SyncUsersResponses[keyof SyncUsersResponses];
 
 export type CreateUserData = {
     body: CreateUserRequestWritable;

@@ -141,6 +141,11 @@ type PrincipalDefinition struct {
 	Name   string
 	Roles  []string
 	Active bool
+	// PasswordHash, when set, carries an already-hashed credential (e.g. an
+	// upstream Laravel bcrypt/argon2i hash) so a migrated user keeps their
+	// password. Sent verbatim; the platform verifies it and re-encodes it to
+	// its native scheme on first login. Use WithPasswordHash to set it.
+	PasswordHash *string
 }
 
 // MakePrincipal starts a PrincipalDefinition for the given email. The
@@ -151,6 +156,14 @@ func MakePrincipal(email string) PrincipalDefinition {
 func (p PrincipalDefinition) WithName(n string) PrincipalDefinition { p.Name = n; return p }
 func (p PrincipalDefinition) WithRoles(roles ...string) PrincipalDefinition {
 	p.Roles = append(p.Roles, roles...)
+	return p
+}
+
+// WithPasswordHash attaches an already-hashed credential (e.g. the value of a
+// Laravel user's password column). Pass the HASH, not a plaintext password —
+// it is stored verbatim and verified as-is at login.
+func (p PrincipalDefinition) WithPasswordHash(hash string) PrincipalDefinition {
+	p.PasswordHash = &hash
 	return p
 }
 

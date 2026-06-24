@@ -128,17 +128,32 @@ func (s *Synchronizer) runDispatchPools(ctx context.Context, app string, defs []
 	return toCategoryResult(res, err)
 }
 
-func (s *Synchronizer) runPrincipals(ctx context.Context, app string, defs []PrincipalDefinition, removeUnlisted bool) *CategoryResult {
+func principalItems(defs []PrincipalDefinition) []client.SyncPrincipalItem {
 	items := make([]client.SyncPrincipalItem, 0, len(defs))
 	for _, d := range defs {
 		items = append(items, client.SyncPrincipalItem{
-			Email:  d.Email,
-			Name:   d.Name,
-			Roles:  d.Roles,
-			Active: d.Active,
+			Email:        d.Email,
+			Name:         d.Name,
+			Roles:        d.Roles,
+			Active:       d.Active,
+			PasswordHash: d.PasswordHash,
 		})
 	}
-	res, err := s.client.Principals().Sync(ctx, app, &client.SyncPrincipalsRequest{Principals: items}, removeUnlisted)
+	return items
+}
+
+func (s *Synchronizer) runPrincipals(ctx context.Context, app string, defs []PrincipalDefinition, removeUnlisted bool) *CategoryResult {
+	res, err := s.client.Principals().Sync(ctx, app, &client.SyncPrincipalsRequest{Principals: principalItems(defs)}, removeUnlisted)
+	return toCategoryResult(res, err)
+}
+
+// SyncUsers performs an application-less user sync (POST /api/principals/sync):
+// a declarative upsert keyed on email that needs no application. Use it to
+// migrate users — including their existing password hashes via
+// PrincipalDefinition.WithPasswordHash — without wrapping the call in an
+// application. Pure upsert: it never strips roles from unlisted users.
+func (s *Synchronizer) SyncUsers(ctx context.Context, defs []PrincipalDefinition) *CategoryResult {
+	res, err := s.client.Principals().SyncUsers(ctx, &client.SyncPrincipalsRequest{Principals: principalItems(defs)})
 	return toCategoryResult(res, err)
 }
 

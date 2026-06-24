@@ -249,6 +249,36 @@ func TestApplicationsEnableForClient(t *testing.T) {
 	assert.True(t, r.Enabled)
 }
 
+func TestPrincipalsSyncUsersPostsAppLessWithPasswordHash(t *testing.T) {
+	srv, seen := newMockSrv(t, `{"created":1,"updated":0,"deleted":0,"syncedEmails":["a@example.com"]}`)
+	c := client.New(srv.URL)
+
+	hash := "$2y$10$abcdefghijklmnopqrstuv"
+	res, err := c.Principals().SyncUsers(context.Background(), &client.SyncPrincipalsRequest{
+		Principals: []client.SyncPrincipalItem{
+			{Email: "a@example.com", Name: "A", Active: true, PasswordHash: &hash},
+			{Email: "b@example.com", Name: "B", Active: true}, // no hash
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, res)
+
+	// App-less: posts to /api/principals/sync with no appCode anywhere.
+	assert.Equal(t, http.MethodPost, seen.method)
+	assert.Equal(t, "/api/principals/sync", seen.path)
+	assert.Contains(t, seen.body, `"passwordHash":"$2y$10$abcdefghijklmnopqrstuv"`)
+
+	// The hash-less entry must omit passwordHash (omitempty) so a roles-only
+	// user never carries a null password over the wire.
+	var parsed struct {
+		Principals []map[string]any `json:"principals"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(seen.body), &parsed))
+	require.Len(t, parsed.Principals, 2)
+	_, hasField := parsed.Principals[1]["passwordHash"]
+	assert.False(t, hasField, "entry without a hash omits passwordHash")
+}
+
 func TestPrincipalsAddRoleSendsRoleField(t *testing.T) {
 	srv, seen := newMockSrv(t, ``)
 	c := client.New(srv.URL)

@@ -19,6 +19,8 @@ import type {
 	ListPrincipalClientAccessResponse,
 	SyncPrincipalsData,
 	SyncPrincipalsResponse as SyncPrincipalsResponseType,
+	SyncUsersData,
+	SyncUsersResponse as SyncUsersResponseType,
 } from "../generated/types.gen.js";
 
 export type PrincipalListResponse = ListPrincipalsResponse;
@@ -29,6 +31,7 @@ export type ResetPasswordRequest = ResetPrincipalPasswordData["body"];
 export type RoleListResponse = ListPrincipalRolesResponse;
 export type ClientAccessListResponse = ListPrincipalClientAccessResponse;
 export type SyncPrincipalsResponse = SyncPrincipalsResponseType;
+export type SyncUsersResponse = SyncUsersResponseType;
 
 // Derived from the generated query type so it stays in sync with the platform
 // spec automatically — adding a query param upstream surfaces here on regen.
@@ -297,6 +300,30 @@ export class PrincipalsResource {
 					path: { appCode: applicationCode },
 					body: { principals },
 					query: { removeUnlisted },
+				}),
+		);
+	}
+
+	/**
+	 * Sync users platform-wide — declarative upsert keyed on email, with NO
+	 * application scope (`POST /api/principals/sync`).
+	 *
+	 * The application-less twin of {@link sync}: use it to "just sync users" —
+	 * migrating accounts and (via each entry's `passwordHash`) their existing
+	 * password hashes — without nesting the call under an application. Users are
+	 * global, matched by email, so an application code adds nothing here.
+	 *
+	 * Pure upsert: roles are never stripped from unlisted users.
+	 */
+	syncUsers(
+		principals: SyncUsersData["body"]["principals"],
+	): ResultAsync<SyncUsersResponse, SdkError> {
+		return this.client.request<SyncUsersResponse>(
+			(httpClient, headers) =>
+				sdk.syncUsers({
+					client: httpClient,
+					headers,
+					body: { principals },
 				}),
 		);
 	}

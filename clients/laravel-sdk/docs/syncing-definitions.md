@@ -488,6 +488,35 @@ Notes:
   hash overwrites the stored one.
 - Leave it out entirely for users who authenticate via OIDC.
 
+#### Just syncing users? Skip the application.
+
+Users are **global** (matched by email) — they are not owned by an application —
+so if you are *only* migrating users (and their passwords), you don't need an
+application code at all. Use the resource-level `syncUsers()`, which posts to the
+application-less `POST /api/principals/sync`:
+
+```php
+use FlowCatalyst\DTOs\Requests\SyncPrincipalEntry;
+
+$entries = User::query()->get()->map(
+    fn (User $u) => new SyncPrincipalEntry(
+        email: $u->email,
+        name: $u->name,
+        roles: [],                          // optional
+        passwordHash: $u->getAuthPassword() // the HASH, not plaintext
+    )
+)->all();
+
+$result = $client->principals()->syncUsers($entries);
+// $result->created / ->updated / ->syncedCodes (the synced emails)
+```
+
+This is a pure upsert keyed on email — it never strips roles from unlisted
+users — and needs none of the application ceremony of the per-app
+`sync($appCode, ...)`. The same `syncUsers` exists in the TypeScript SDK
+(`client.principals().syncUsers([...])`) and the Go SDK
+(`client.Principals().SyncUsers(...)` / `synchronizer.SyncUsers(...)`).
+
 ### Error Handling
 
 ```php

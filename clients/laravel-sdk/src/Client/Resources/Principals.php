@@ -280,4 +280,32 @@ class Principals
 
         return SyncResult::fromArray($response);
     }
+
+    /**
+     * Sync users platform-wide — declarative upsert keyed on email, with NO
+     * application scope (`POST /api/principals/sync`).
+     *
+     * This is the application-less twin of {@see sync()}: use it when you are
+     * "just syncing users" — migrating accounts and (via
+     * {@see SyncPrincipalEntry::$passwordHash}) their existing password hashes —
+     * without nesting the call under an application. Users are global (matched
+     * by email), so an application code adds nothing here.
+     *
+     * Pure upsert: it never strips roles from unlisted users.
+     *
+     * @param SyncPrincipalEntry[] $users
+     */
+    public function syncUsers(array $users): SyncResult
+    {
+        $response = $this->client->request('POST', '/api/principals/sync', [
+            'json' => [
+                'principals' => array_map(
+                    fn(SyncPrincipalEntry $entry) => $entry->toArray(),
+                    $users,
+                ),
+            ],
+        ]);
+
+        return SyncResult::fromArray($response);
+    }
 }
