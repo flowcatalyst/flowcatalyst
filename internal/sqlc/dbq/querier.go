@@ -65,8 +65,6 @@ type Querier interface {
 	// derived `success` bool to match the Rust wire shape.
 	DispatchJobAttemptInsert(ctx context.Context, arg DispatchJobAttemptInsertParams) error
 	DispatchJobAttemptsByJob(ctx context.Context, dispatchJobID string) ([]DispatchJobAttemptsByJobRow, error)
-	DispatchJobFindByEventID(ctx context.Context, eventID *string) ([]DispatchJobFindByEventIDRow, error)
-	DispatchJobFindByExternalID(ctx context.Context, externalID *string) (DispatchJobFindByExternalIDRow, error)
 	// Queries for msg_dispatch_jobs + msg_dispatch_job_attempts. The
 	// column set matches the post-019 (partitioned) schema. Composite PK
 	// is (id, created_at); claim queries use FOR UPDATE SKIP LOCKED so
@@ -80,10 +78,6 @@ type Querier interface {
 	// InsertBatch also stays in repository.go via pgx.Batch — sqlc has no
 	// batch wrapper for partial-failure-tolerant UNNEST inserts.
 	DispatchJobFindByID(ctx context.Context, id string) (DispatchJobFindByIDRow, error)
-	// Used by the scheduler's PendingJobPoller. FOR UPDATE SKIP LOCKED so
-	// the claim works concurrently across scheduler nodes. Filter on
-	// scheduled_for skips retries not yet due.
-	DispatchJobFindPendingForPool(ctx context.Context, arg DispatchJobFindPendingForPoolParams) ([]DispatchJobFindPendingForPoolRow, error)
 	DispatchJobInsert(ctx context.Context, arg DispatchJobInsertParams) error
 	// Status → COMPLETED. Stamps completed_at + duration_millis.
 	DispatchJobMarkCompleted(ctx context.Context, arg DispatchJobMarkCompletedParams) error

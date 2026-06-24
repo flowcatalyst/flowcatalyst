@@ -29,11 +29,17 @@ func TestFindWithFilters_TenantScoping(t *testing.T) {
 		clientA = "clt_scopejob0001"
 		clientB = "clt_scopejob0002"
 	)
+	// FindWithFilters reads the msg_dispatch_jobs_read projection, so seed
+	// there directly (the projector isn't running in this unit test). The
+	// projection has fewer column defaults than the write table, so the
+	// NOT NULL columns are supplied explicitly.
 	seed := func(id string, clientID *string) {
 		t.Helper()
 		_, err := pool.Exec(ctx,
-			`INSERT INTO msg_dispatch_jobs (id, code, target_url, client_id)
-			 VALUES ($1, $2, 'http://example.invalid/hook', $3)`,
+			`INSERT INTO msg_dispatch_jobs_read
+			     (id, code, target_url, client_id, kind, protocol, mode, status, max_retries, updated_at)
+			 VALUES ($1, $2, 'http://example.invalid/hook', $3,
+			         'EVENT', 'HTTP_WEBHOOK', 'IMMEDIATE', 'PENDING', 3, NOW())`,
 			id, code, clientID)
 		require.NoError(t, err)
 	}

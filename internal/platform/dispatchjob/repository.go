@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -16,13 +15,18 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
-// Repository owns msg_dispatch_jobs (write table) and the
-// msg_dispatch_job_attempts attempt history. The denormalized read table
-// msg_dispatch_jobs_read is owned by internal/stream's projector;
-// callers wanting fast filtered reads use the api routes below.
+// Repository owns msg_dispatch_jobs (the lean write table) plus the
+// msg_dispatch_job_attempts history, and serves filtered reads from the
+// denormalized msg_dispatch_jobs_read projection (owned by internal/stream's
+// projector). The write table keeps only transactional indexes (migration
+// 015), so the user-facing list / by-event / filter-options reads go to the
+// projection — mirroring the events repo and Rust's DispatchJobReadResponse.
+// The detail view (FindByID) and the debug raw view (FindRecentRaw) stay on
+// the write table because they need the un-projected payload/metadata.
 //
-// FindWithFilters + DistinctValues + InsertBatch stay hand-rolled
-// (dynamic SQL / pgx.Batch); everything else goes through *dbq.Queries.
+// FindWithFilters + DistinctValues + FindByEventID + FindRecentRaw +
+// InsertBatch stay hand-rolled (dynamic SQL / pgx.Batch); everything else
+// goes through *dbq.Queries.
 type Repository struct {
 	pool *pgxpool.Pool // retained for FindWithFilters + DistinctValues + InsertBatch
 	q    *dbq.Queries
@@ -37,9 +41,9 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 //
 // The plural slice fields back the SPA's CSV multi-filters
 // (clientIds/statuses/codes). `Source` is a free-text source filter.
-// applications/subdomains/aggregates have no dedicated columns on the
-// write-side msg_dispatch_jobs table, so they're matched as colon-
-// delimited prefixes of the `code` column (code = "app:subdomain:agg:..").
+// applications/subdomains/aggregates match the projection's real
+// application/subdomain/aggregate columns (split_part of `code`), so the
+// facets filter by indexed equality rather than code-prefix LIKEs.
 type FilterParams struct {
 	Status         *string
 	ClientID       *string
@@ -79,84 +83,44 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*DispatchJob, err
 	return findByIDRowToJob(*row), nil
 }
 
-// FindByExternalID loads by external_id (used by idempotent ingest).
-func (r *Repository) FindByExternalID(ctx context.Context, externalID string) (*DispatchJob, error) {
-	res, err := r.q.DispatchJobFindByExternalID(ctx, &externalID)
-	row, err := repocommon.One(res, err, "dispatch_job repo")
-	if row == nil || err != nil {
-		return nil, err
-	}
-	return findByExternalIDRowToJob(*row), nil
-}
-
 // FindByEventID lists jobs spawned by a single event. Used for the
 // frontend's "event detail → which dispatch jobs did this event create?"
-// drill-down (GET /api/dispatch-jobs/event/{eventId}).
+// drill-down (GET /api/dispatch-jobs/event/{eventId}). Reads the projection
+// (slim DispatchJobRead shape) — backed by idx_msg_dispatch_jobs_read_event_id.
 func (r *Repository) FindByEventID(ctx context.Context, eventID string) ([]DispatchJob, error) {
-	rows, err := r.q.DispatchJobFindByEventID(ctx, &eventID)
+	rows, err := r.pool.Query(ctx, readSelect+` WHERE event_id = $1 ORDER BY created_at DESC`, eventID)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]DispatchJob, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, *findByEventIDRowToJob(row))
+	collected, err := pgx.CollectRows(rows, pgx.RowToStructByName[readRow])
+	if err != nil {
+		return nil, err
+	}
+	out := make([]DispatchJob, 0, len(collected))
+	for _, rr := range collected {
+		out = append(out, *readRowToJob(rr))
 	}
 	return out, nil
 }
 
-// FindPendingForPool returns up to limit PENDING jobs for the given pool,
-// ordered by created_at. Claimed via FOR UPDATE SKIP LOCKED in tx.
-func (r *Repository) FindPendingForPool(ctx context.Context, poolID string, limit int) ([]DispatchJob, error) {
-	rows, err := r.q.DispatchJobFindPendingForPool(ctx, dbq.DispatchJobFindPendingForPoolParams{
-		DispatchPoolID: &poolID,
-		Limit:          int32(limit),
-	})
-	if err != nil {
-		return nil, err
-	}
-	out := make([]DispatchJob, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, *findPendingRowToJob(row))
-	}
-	return out, nil
-}
+// readSelect is the slim projection column set shared by the filtered list
+// and by-event reads. msg_dispatch_jobs_read omits payload / metadata /
+// schema_id / payload_content_type / data_only — the DispatchJobRead wire
+// shape doesn't surface them. Columns map to readRow by db tag (order cosmetic).
+const readSelect = `SELECT id, external_id, source, kind, code, subject,
+	event_id, correlation_id, target_url, protocol, service_account_id,
+	client_id, subscription_id, mode, dispatch_pool_id, message_group,
+	sequence, timeout_seconds, status, max_retries, retry_strategy,
+	scheduled_for, expires_at, attempt_count, last_attempt_at, completed_at,
+	duration_millis, last_error, idempotency_key, created_at, updated_at
+	FROM msg_dispatch_jobs_read`
 
 // FindWithFilters returns dispatch jobs matching non-nil filters, ordered
-// most-recent first. Powers the frontend's job list view. Hand-rolled
-// dynamic query (mirrors the application repo pattern).
+// most-recent first. Powers the frontend's job list view (GET
+// /api/dispatch-jobs). Reads the msg_dispatch_jobs_read projection — the write
+// table carries no query indexes (migration 015). Hand-rolled dynamic query.
 func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]DispatchJob, error) {
-	const baseSelect = `SELECT id, external_id, source, kind, code, subject,
-		event_id, correlation_id, metadata, target_url, protocol, payload,
-		payload_content_type, data_only, service_account_id, client_id,
-		subscription_id, mode, dispatch_pool_id, message_group, sequence,
-		timeout_seconds, schema_id, status, max_retries, retry_strategy,
-		scheduled_for, expires_at, attempt_count, last_attempt_at, completed_at,
-		duration_millis, last_error, idempotency_key, created_at, updated_at
-		FROM msg_dispatch_jobs`
 	var f repocommon.Filter
-	// codePrefix matches code segments (app:subdomain:aggregate:...) for
-	// the facet filters that have no dedicated column.
-	codePrefix := func(vs []string, depth int) {
-		if len(vs) == 0 {
-			return
-		}
-		ors := make([]string, 0, len(vs))
-		for i, v := range vs {
-			prefix := v
-			for d := 0; d < depth; d++ {
-				prefix = "%:" + prefix
-			}
-			// depth 0 → "v:%", depth 1 → "%:v:%", etc.
-			if i < len(vs)-1 {
-				ors = append(ors, fmt.Sprintf("code LIKE $%d", f.Arg(prefix+":%")))
-			} else {
-				// The last value rides Clause so the whole OR group lands
-				// as one condition; $%d is its positional placeholder.
-				ors = append(ors, "code LIKE $%d")
-				f.Clause("("+strings.Join(ors, " OR ")+")", prefix+":%")
-			}
-		}
-	}
 	f.EqPtr("status", p.Status)
 	f.Any("status", p.Statuses)
 	f.EqPtr("client_id", p.ClientID)
@@ -172,16 +136,18 @@ func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Dis
 	f.EqPtr("code", p.Code)
 	f.Any("code", p.Codes)
 	f.EqPtr("source", p.Source)
-	codePrefix(p.Applications, 0)
-	codePrefix(p.Subdomains, 1)
-	codePrefix(p.Aggregates, 2)
+	// Facets filter the projection's real columns (split_part of code), backed
+	// by their own indexes — replacing the old leading-wildcard code LIKEs.
+	f.Any("application", p.Applications)
+	f.Any("subdomain", p.Subdomains)
+	f.Any("aggregate", p.Aggregates)
 	if p.Since != nil {
 		f.Clause("created_at >= $%d", *p.Since)
 	}
 	if p.Until != nil {
 		f.Clause("created_at <= $%d", *p.Until)
 	}
-	q := baseSelect + f.Where() + " ORDER BY created_at DESC"
+	q := readSelect + f.Where() + " ORDER BY created_at DESC"
 	limit := p.Limit
 	if limit <= 0 || limit > 1000 {
 		limit = 100
@@ -194,8 +160,41 @@ func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Dis
 	if err != nil {
 		return nil, err
 	}
-	// The SELECT column list is exactly DispatchJobFindByIDRow's field set,
-	// so the sqlc row type doubles as the collect target.
+	collected, err := pgx.CollectRows(rows, pgx.RowToStructByName[readRow])
+	if err != nil {
+		return nil, err
+	}
+	out := make([]DispatchJob, 0, len(collected))
+	for _, rr := range collected {
+		out = append(out, *readRowToJob(rr))
+	}
+	return out, nil
+}
+
+// FindRecentRaw returns the most-recent `limit` jobs straight from the
+// write-side msg_dispatch_jobs table, including payload + metadata. Powers the
+// debug raw-job view (GET /bff/debug/dispatch-jobs), which needs the
+// un-projected envelope the read projection drops. Mirrors the events repo's
+// FindRecentRaw. Ordered most-recent first.
+func (r *Repository) FindRecentRaw(ctx context.Context, limit int) ([]DispatchJob, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 100
+	}
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, external_id, source, kind, code, subject, event_id,
+		        correlation_id, metadata, target_url, protocol, payload,
+		        payload_content_type, data_only, service_account_id, client_id,
+		        subscription_id, mode, dispatch_pool_id, message_group, sequence,
+		        timeout_seconds, schema_id, status, max_retries, retry_strategy,
+		        scheduled_for, expires_at, attempt_count, last_attempt_at,
+		        completed_at, duration_millis, last_error, idempotency_key,
+		        created_at, updated_at
+		   FROM msg_dispatch_jobs
+		  ORDER BY created_at DESC
+		  LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
 	collected, err := pgx.CollectRows(rows, pgx.RowToStructByName[dbq.DispatchJobFindByIDRow])
 	if err != nil {
 		return nil, err
@@ -222,7 +221,7 @@ func (r *Repository) DistinctValues(ctx context.Context, column string, limit in
 		limit = 200
 	}
 	rows, err := r.pool.Query(ctx,
-		fmt.Sprintf(`SELECT DISTINCT %s FROM msg_dispatch_jobs
+		fmt.Sprintf(`SELECT DISTINCT %s FROM msg_dispatch_jobs_read
 		              WHERE %s IS NOT NULL ORDER BY 1 LIMIT $1`, column, column),
 		limit)
 	if err != nil {
@@ -471,71 +470,69 @@ func findByIDRowToJob(r dbq.DispatchJobFindByIDRow) *DispatchJob {
 	})
 }
 
-func findByExternalIDRowToJob(r dbq.DispatchJobFindByExternalIDRow) *DispatchJob {
-	return rowToJob(rawRow{
-		ID: r.ID, ExternalID: r.ExternalID, Source: r.Source, Kind: r.Kind,
-		Code: r.Code, Subject: r.Subject, EventID: r.EventID,
-		CorrelationID: r.CorrelationID, Metadata: r.Metadata,
-		TargetUrl: r.TargetUrl, Protocol: r.Protocol, Payload: r.Payload,
-		PayloadContentType: r.PayloadContentType, DataOnly: r.DataOnly,
-		ServiceAccountID: r.ServiceAccountID, ClientID: r.ClientID,
-		SubscriptionID: r.SubscriptionID, Mode: r.Mode,
-		DispatchPoolID: r.DispatchPoolID, MessageGroup: r.MessageGroup,
-		Sequence: r.Sequence, TimeoutSeconds: r.TimeoutSeconds,
-		SchemaID: r.SchemaID, Status: r.Status, MaxRetries: r.MaxRetries,
-		RetryStrategy: r.RetryStrategy, ScheduledFor: r.ScheduledFor,
-		ExpiresAt: r.ExpiresAt, AttemptCount: r.AttemptCount,
-		LastAttemptAt: r.LastAttemptAt, CompletedAt: r.CompletedAt,
-		DurationMillis: r.DurationMillis, LastError: r.LastError,
-		IdempotencyKey: r.IdempotencyKey, CreatedAt: r.CreatedAt,
-		UpdatedAt: r.UpdatedAt,
-	})
+// readRow is the slim msg_dispatch_jobs_read column set scanned by the
+// filtered list + by-event reads (see readSelect). db tags match the
+// projection's columns so pgx.RowToStructByName can map them. Payload /
+// metadata / schema_id / content-type / data_only are intentionally absent —
+// the projection drops them and the DispatchJobRead wire shape doesn't carry
+// them.
+type readRow struct {
+	ID               string     `db:"id"`
+	ExternalID       *string    `db:"external_id"`
+	Source           *string    `db:"source"`
+	Kind             string     `db:"kind"`
+	Code             string     `db:"code"`
+	Subject          *string    `db:"subject"`
+	EventID          *string    `db:"event_id"`
+	CorrelationID    *string    `db:"correlation_id"`
+	TargetUrl        string     `db:"target_url"`
+	Protocol         string     `db:"protocol"`
+	ServiceAccountID *string    `db:"service_account_id"`
+	ClientID         *string    `db:"client_id"`
+	SubscriptionID   *string    `db:"subscription_id"`
+	Mode             string     `db:"mode"`
+	DispatchPoolID   *string    `db:"dispatch_pool_id"`
+	MessageGroup     *string    `db:"message_group"`
+	Sequence         int32      `db:"sequence"`
+	TimeoutSeconds   int32      `db:"timeout_seconds"`
+	Status           string     `db:"status"`
+	MaxRetries       int32      `db:"max_retries"`
+	RetryStrategy    *string    `db:"retry_strategy"`
+	ScheduledFor     *time.Time `db:"scheduled_for"`
+	ExpiresAt        *time.Time `db:"expires_at"`
+	AttemptCount     int32      `db:"attempt_count"`
+	LastAttemptAt    *time.Time `db:"last_attempt_at"`
+	CompletedAt      *time.Time `db:"completed_at"`
+	DurationMillis   *int64     `db:"duration_millis"`
+	LastError        *string    `db:"last_error"`
+	IdempotencyKey   *string    `db:"idempotency_key"`
+	CreatedAt        time.Time  `db:"created_at"`
+	UpdatedAt        time.Time  `db:"updated_at"`
 }
 
-func findByEventIDRowToJob(r dbq.DispatchJobFindByEventIDRow) *DispatchJob {
+func readRowToJob(r readRow) *DispatchJob {
 	return rowToJob(rawRow{
 		ID: r.ID, ExternalID: r.ExternalID, Source: r.Source, Kind: r.Kind,
 		Code: r.Code, Subject: r.Subject, EventID: r.EventID,
-		CorrelationID: r.CorrelationID, Metadata: r.Metadata,
-		TargetUrl: r.TargetUrl, Protocol: r.Protocol, Payload: r.Payload,
-		PayloadContentType: r.PayloadContentType, DataOnly: r.DataOnly,
+		CorrelationID: r.CorrelationID,
+		TargetUrl:     r.TargetUrl, Protocol: r.Protocol,
 		ServiceAccountID: r.ServiceAccountID, ClientID: r.ClientID,
 		SubscriptionID: r.SubscriptionID, Mode: r.Mode,
 		DispatchPoolID: r.DispatchPoolID, MessageGroup: r.MessageGroup,
 		Sequence: r.Sequence, TimeoutSeconds: r.TimeoutSeconds,
-		SchemaID: r.SchemaID, Status: r.Status, MaxRetries: r.MaxRetries,
+		Status: r.Status, MaxRetries: r.MaxRetries,
 		RetryStrategy: r.RetryStrategy, ScheduledFor: r.ScheduledFor,
 		ExpiresAt: r.ExpiresAt, AttemptCount: r.AttemptCount,
 		LastAttemptAt: r.LastAttemptAt, CompletedAt: r.CompletedAt,
 		DurationMillis: r.DurationMillis, LastError: r.LastError,
 		IdempotencyKey: r.IdempotencyKey, CreatedAt: r.CreatedAt,
 		UpdatedAt: r.UpdatedAt,
-	})
-}
-
-func findPendingRowToJob(r dbq.DispatchJobFindPendingForPoolRow) *DispatchJob {
-	return rowToJob(rawRow{
-		ID: r.ID, ExternalID: r.ExternalID, Source: r.Source, Kind: r.Kind,
-		Code: r.Code, Subject: r.Subject, EventID: r.EventID,
-		CorrelationID: r.CorrelationID, Metadata: r.Metadata,
-		TargetUrl: r.TargetUrl, Protocol: r.Protocol, Payload: r.Payload,
-		PayloadContentType: r.PayloadContentType, DataOnly: r.DataOnly,
-		ServiceAccountID: r.ServiceAccountID, ClientID: r.ClientID,
-		SubscriptionID: r.SubscriptionID, Mode: r.Mode,
-		DispatchPoolID: r.DispatchPoolID, MessageGroup: r.MessageGroup,
-		Sequence: r.Sequence, TimeoutSeconds: r.TimeoutSeconds,
-		SchemaID: r.SchemaID, Status: r.Status, MaxRetries: r.MaxRetries,
-		RetryStrategy: r.RetryStrategy, ScheduledFor: r.ScheduledFor,
-		ExpiresAt: r.ExpiresAt, AttemptCount: r.AttemptCount,
-		LastAttemptAt: r.LastAttemptAt, CompletedAt: r.CompletedAt,
-		DurationMillis: r.DurationMillis, LastError: r.LastError,
-		IdempotencyKey: r.IdempotencyKey, CreatedAt: r.CreatedAt,
-		UpdatedAt: r.UpdatedAt,
+		// Payload / Metadata / SchemaID / PayloadContentType / DataOnly absent.
 	})
 }
 
 // rawRow is the union of every sqlc-generated row's field set — lets the
-// four small adapters above forward to a single canonical mapper.
+// small adapters above forward to a single canonical mapper.
 type rawRow struct {
 	ID                 string
 	ExternalID         *string

@@ -205,10 +205,11 @@ func (s *State) listDebugRaw(ctx context.Context, in *rawListInput) (*apicommon.
 	if limit <= 0 {
 		limit = 50
 	}
-	// FindWithFilters already reads the write-side msg_dispatch_jobs table
-	// (which carries the un-projected envelope the debug view needs); with
-	// no filters set it returns the most-recent N jobs.
-	rows, err := s.Repo.FindWithFilters(ctx, dispatchjob.FilterParams{Limit: limit})
+	// FindRecentRaw reads the write-side msg_dispatch_jobs table, which carries
+	// the un-projected envelope (payload/metadata) the debug view needs — the
+	// read projection used by the regular list drops it. Returns the most-recent
+	// N jobs.
+	rows, err := s.Repo.FindRecentRaw(ctx, limit)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_recent_raw failed", err)
 	}

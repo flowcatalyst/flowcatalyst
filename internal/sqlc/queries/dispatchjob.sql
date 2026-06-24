@@ -23,51 +23,6 @@ SELECT id, external_id, source, kind, code, subject, event_id,
 FROM msg_dispatch_jobs
 WHERE id = $1;
 
--- name: DispatchJobFindByExternalID :one
-SELECT id, external_id, source, kind, code, subject, event_id,
-       correlation_id, metadata, target_url, protocol, payload,
-       payload_content_type, data_only, service_account_id, client_id,
-       subscription_id, mode, dispatch_pool_id, message_group, sequence,
-       timeout_seconds, schema_id, status, max_retries, retry_strategy,
-       scheduled_for, expires_at, attempt_count, last_attempt_at,
-       completed_at, duration_millis, last_error, idempotency_key,
-       created_at, updated_at
-FROM msg_dispatch_jobs
-WHERE external_id = $1;
-
--- name: DispatchJobFindByEventID :many
-SELECT id, external_id, source, kind, code, subject, event_id,
-       correlation_id, metadata, target_url, protocol, payload,
-       payload_content_type, data_only, service_account_id, client_id,
-       subscription_id, mode, dispatch_pool_id, message_group, sequence,
-       timeout_seconds, schema_id, status, max_retries, retry_strategy,
-       scheduled_for, expires_at, attempt_count, last_attempt_at,
-       completed_at, duration_millis, last_error, idempotency_key,
-       created_at, updated_at
-FROM msg_dispatch_jobs
-WHERE event_id = $1
-ORDER BY created_at;
-
--- name: DispatchJobFindPendingForPool :many
--- Used by the scheduler's PendingJobPoller. FOR UPDATE SKIP LOCKED so
--- the claim works concurrently across scheduler nodes. Filter on
--- scheduled_for skips retries not yet due.
-SELECT id, external_id, source, kind, code, subject, event_id,
-       correlation_id, metadata, target_url, protocol, payload,
-       payload_content_type, data_only, service_account_id, client_id,
-       subscription_id, mode, dispatch_pool_id, message_group, sequence,
-       timeout_seconds, schema_id, status, max_retries, retry_strategy,
-       scheduled_for, expires_at, attempt_count, last_attempt_at,
-       completed_at, duration_millis, last_error, idempotency_key,
-       created_at, updated_at
-FROM msg_dispatch_jobs
-WHERE status = 'PENDING'
-  AND dispatch_pool_id = $1
-  AND (scheduled_for IS NULL OR scheduled_for <= NOW())
-ORDER BY created_at
-LIMIT $2
-FOR UPDATE SKIP LOCKED;
-
 -- name: DispatchJobInsert :exec
 INSERT INTO msg_dispatch_jobs
     (id, external_id, source, kind, code, subject, event_id, correlation_id,
