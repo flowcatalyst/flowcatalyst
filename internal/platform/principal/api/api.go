@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -346,7 +347,9 @@ func (s *State) bulkImport(ctx context.Context, in *apicommon.In[BulkImportReque
 		switch status {
 		case "created":
 			out.Created++
-		case "exists":
+		case "exists", "dropped":
+			// Both are intentional skips (already-present, or a domain owned by
+			// another client) — surfaced per-row so the caller can report them.
 			out.Skipped++
 		default:
 			out.Failed++
@@ -388,6 +391,21 @@ func (s *State) importRow(ctx context.Context, ac *auth.AuthContext, ec usecase.
 	if existing != nil {
 		return "exists", "already exists — skipped"
 	}
+	// Drop a row whose email domain is registered to a DIFFERENT client. An
+	// admin importing into client A must never pull in a user from a domain
+	// owned by client B (matters most for platform admins importing across
+	// clients, but the guard is unconditional). A domain with no client owner
+	// (unmapped, or an anchor-scope mapping) is allowed.
+	if s.Mappings != nil {
+		domain := email[strings.IndexByte(email, '@')+1:]
+		mapping, derr := s.Mappings.FindByEmailDomain(ctx, domain)
+		if derr != nil {
+			return "error", "domain lookup failed"
+		}
+		if owners := domainOwnerClientIDs(mapping); len(owners) > 0 && !slices.Contains(owners, clientID) {
+			return "dropped", "email domain is registered to another client — skipped"
+		}
+	}
 	// Create the CLIENT user with no password → notifyNewUser sends the invite
 	// ("set your password") so they can onboard.
 	cid := clientID
@@ -409,6 +427,22 @@ func (s *State) importRow(ctx context.Context, ac *auth.AuthContext, ec usecase.
 		s.notifyNewUser(ctx, created, nil)
 	}
 	return "created", ""
+}
+
+// domainOwnerClientIDs returns the clients an email-domain mapping is owned by
+// (its primary plus any additional clients). An anchor-scope or unmapped domain
+// has no owners, so it never blocks an import. GrantedClientIDs are deliberately
+// excluded — a grant is access, not ownership.
+func domainOwnerClientIDs(m *emaildomainmapping.EmailDomainMapping) []string {
+	if m == nil {
+		return nil
+	}
+	owners := make([]string, 0, 1+len(m.AdditionalClientIDs))
+	if m.PrimaryClientID != nil && *m.PrimaryClientID != "" {
+		owners = append(owners, *m.PrimaryClientID)
+	}
+	owners = append(owners, m.AdditionalClientIDs...)
+	return owners
 }
 
 // cleanRoles trims, drops blanks, and dedupes the role names from a CSV cell.

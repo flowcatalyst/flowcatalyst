@@ -1230,7 +1230,7 @@
             "type": "integer"
           },
           "status": {
-            "description": "created | exists | error",
+            "description": "created | exists | dropped | error",
             "type": "string"
           }
         },

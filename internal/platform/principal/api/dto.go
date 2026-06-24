@@ -347,7 +347,7 @@ type BulkImportUser struct {
 type BulkImportResult struct {
 	Row     int    `json:"row"`
 	Email   string `json:"email"`
-	Status  string `json:"status" doc:"created | exists | error"`
+	Status  string `json:"status" doc:"created | exists | dropped | error"`
 	Message string `json:"message,omitempty"`
 }
 
