@@ -61,6 +61,7 @@ func addStartFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool("outbox", envBoolDefault("FC_OUTBOX_ENABLED", false), "run the outbox processor")
 	cmd.Flags().Bool("router", envBoolDefault("FC_ROUTER_ENABLED", true), "run the message router (uses the embedded Postgres broker by default)")
 	cmd.Flags().Bool("mcp", envBoolDefault("FC_MCP_ENABLED", false), "run the MCP HTTP server")
+	cmd.Flags().String("pid-file", envStrDefault("FC_DEV_PID_FILE", pidFilePath()), "PID file written while running; used by `fc-dev stop`")
 }
 
 func optsFromFlags(cmd *cobra.Command) startOpts {
@@ -86,6 +87,16 @@ func optsFromFlags(cmd *cobra.Command) startOpts {
 func runStart(cmd *cobra.Command, _ []string) error {
 	opts := optsFromFlags(cmd)
 	banner(opts)
+
+	// Record our PID so `fc-dev stop` can find and gracefully signal us.
+	// Ownership-checked removal on exit avoids clobbering a newer instance's
+	// file (e.g. two instances on different ports).
+	pidFile, _ := cmd.Flags().GetString("pid-file")
+	if err := writePIDFile(pidFile); err != nil {
+		slog.Warn("could not write pid file — `fc-dev stop` won't find this instance", "path", pidFile, "err", err)
+	} else {
+		defer removePIDFileIfOwned(pidFile, os.Getpid())
+	}
 
 	rootCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()

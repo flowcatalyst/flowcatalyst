@@ -6485,6 +6485,10 @@
           "name": {
             "type": "string"
           },
+          "passwordHash": {
+            "description": "Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim; migrated on first login",
+            "type": "string"
+          },
           "roles": {
             "description": "Role short names (prefixed with applicationCode)",
             "items": {

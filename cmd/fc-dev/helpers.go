@@ -13,6 +13,18 @@ func envStrDefault(key, def string) string {
 	return def
 }
 
+// envFirst returns the value of the first set (non-empty) env var in keys,
+// falling back to def. Used where a setting has several accepted env names
+// (e.g. the Rust/SDK aliases for the outbox DB type and URL).
+func envFirst(def string, keys ...string) string {
+	for _, k := range keys {
+		if v := os.Getenv(k); v != "" {
+			return v
+		}
+	}
+	return def
+}
+
 func envIntDefault(key string, def int) int {
 	if v := os.Getenv(key); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {

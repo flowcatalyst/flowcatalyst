@@ -448,6 +448,46 @@ foreach ($apps as $appConfig) {
 }
 ```
 
+### Syncing users (principals) and migrating their passwords
+
+`PrincipalDefinition` syncs a user (matched by email) and their roles. By
+default a synced user has **no password** — it is created as an OIDC-style
+identity, and a password login returns "Invalid credentials". That is correct
+when users authenticate through the platform's OIDC.
+
+To let your existing Laravel users keep signing in with the **same password**,
+pass their already-hashed credential via `withPasswordHash()`. The hash is sent
+verbatim (never re-hashed); the platform accepts Laravel's `bcrypt` and
+`argon2i` formats, verifies the password as-is at login, and transparently
+re-encodes it to its native scheme on the first successful sign-in.
+
+```php
+use FlowCatalyst\Sync\PrincipalDefinition;
+use FlowCatalyst\Sync\SyncDefinitionSet;
+
+$principals = User::query()->get()->map(
+    fn (User $u) => PrincipalDefinition::make($u->email, $u->name)
+        ->withRoles(['admin'])
+        // $u->getAuthPassword() is the stored hash (the `password` column),
+        // NOT a plaintext password. Pass the HASH.
+        ->withPasswordHash($u->getAuthPassword())
+)->all();
+
+$definitions = SyncDefinitionSet::forApplication('orders')
+    ->withPrincipals($principals);
+
+$synchronizer->sync($definitions);
+```
+
+Notes:
+- **Pass the hash, not the plaintext.** `withPasswordHash()` expects a bcrypt/
+  argon2i hash (e.g. `$2y$...` or `$argon2i$...`). A plaintext value would be
+  stored as-is and never match at login.
+- **Omitting the hash leaves any existing password untouched** — a later
+  roles-only sync will not wipe a password the user already has. Supplying a
+  hash overwrites the stored one.
+- Leave it out entirely for users who authenticate via OIDC.
+
 ### Error Handling
 
 ```php

@@ -4,6 +4,7 @@
 // subcommand surface:
 //
 //	fc-dev start  — run the dev monolith (default; matches `fc-dev` no-arg).
+//	fc-dev stop   — stop a running dev monolith (graceful; via its PID file).
 //	fc-dev init   — bootstrap admin user + default tenant + .env file.
 //	fc-dev fresh  — truncate every FlowCatalyst table (preserves schema).
 //	fc-dev mcp     — run the FlowCatalyst MCP server.
@@ -49,6 +50,7 @@ Invoking ` + "`fc-dev`" + ` with no subcommand is identical to ` + "`fc-dev star
 	addStartFlags(root)
 
 	root.AddCommand(newStartCmd())
+	root.AddCommand(newStopCmd())
 	root.AddCommand(newInitCmd())
 	root.AddCommand(newFreshCmd())
 	root.AddCommand(newMCPCmd())

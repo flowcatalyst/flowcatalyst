@@ -25,6 +25,12 @@ type SyncPrincipalInput struct {
 	Name   string
 	Roles  []string
 	Active bool
+	// PasswordHash, when non-empty, is an already-hashed credential stored
+	// verbatim on the principal (no re-hashing) so a migrated user keeps their
+	// existing password — the login flow verifies it (bcrypt/argon2i/argon2id)
+	// and re-encodes it to the native scheme on first success. Nil/empty leaves
+	// any existing hash untouched, so a hash-less sync never locks users out.
+	PasswordHash *string
 }
 
 // SyncPrincipalsCommand syncs user principals from an application SDK.
@@ -107,6 +113,12 @@ func SyncPrincipals(
 			existing.Name = in.Name
 			existing.Active = in.Active
 			existing.UpdatedAt = now
+			// Overwrite the credential only when the sync carries one; an
+			// omitted hash preserves the existing one (FindByEmail hydrated it),
+			// so a roles-only sync never wipes a user's password.
+			if in.PasswordHash != nil && *in.PasswordHash != "" {
+				existing.SetPasswordHash(*in.PasswordHash)
+			}
 			saves = append(saves, commit.SyncSave[principal.Principal]{
 				Aggregate: existing,
 				Event: UserUpdated{
@@ -123,6 +135,12 @@ func SyncPrincipals(
 		p.Name = in.Name
 		p.Active = in.Active
 		p.Roles = roleAssignments
+		// Carry a migrated credential verbatim (e.g. an upstream Laravel
+		// bcrypt hash) so the user keeps their password; login verifies and
+		// re-encodes it to the native scheme on first success.
+		if in.PasswordHash != nil && *in.PasswordHash != "" {
+			p.SetPasswordHash(*in.PasswordHash)
+		}
 		saves = append(saves, commit.SyncSave[principal.Principal]{
 			Aggregate: p,
 			Event: UserCreated{

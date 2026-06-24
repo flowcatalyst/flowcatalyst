@@ -350,6 +350,12 @@ type syncPrincipalInputRequest struct {
 	Name   string   `json:"name"`
 	Roles  []string `json:"roles,omitempty" doc:"Role short names (prefixed with applicationCode)"`
 	Active *bool    `json:"active,omitempty" doc:"Whether the user is active (default true)"`
+	// PasswordHash carries an already-hashed credential (e.g. an upstream
+	// Laravel bcrypt/argon2i hash) so migrated users keep their existing
+	// password. Stored verbatim — NOT re-hashed; the login flow verifies it
+	// and transparently re-encodes it to the native scheme on first login.
+	// Omit for OIDC users or to leave an existing hash untouched.
+	PasswordHash *string `json:"passwordHash,omitempty" doc:"Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim; migrated on first login"`
 }
 
 type syncPrincipalsRequest struct {
@@ -382,10 +388,11 @@ func (s *State) syncPrincipals(ctx context.Context, in *syncPrincipalsInput) (*s
 			active = *p.Active
 		}
 		inputs = append(inputs, principalops.SyncPrincipalInput{
-			Email:  p.Email,
-			Name:   p.Name,
-			Roles:  p.Roles,
-			Active: active,
+			Email:        p.Email,
+			Name:         p.Name,
+			Roles:        p.Roles,
+			Active:       active,
+			PasswordHash: p.PasswordHash,
 		})
 	}
 

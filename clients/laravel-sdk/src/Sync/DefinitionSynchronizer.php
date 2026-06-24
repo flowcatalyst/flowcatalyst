@@ -480,6 +480,7 @@ class DefinitionSynchronizer
                     name: (string) ($row['name'] ?? ''),
                     roles: $row['roles'] ?? [],
                     active: isset($row['active']) ? (bool) $row['active'] : null,
+                    passwordHash: isset($row['passwordHash']) ? (string) $row['passwordHash'] : null,
                 ),
                 $principals,
             );
