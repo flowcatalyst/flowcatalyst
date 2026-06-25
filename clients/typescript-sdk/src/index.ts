@@ -180,13 +180,17 @@ export type {
 	PgPoolClientLike,
 } from "./outbox/index.js";
 
-// UseCase / UnitOfWork — domain-driven write pattern with outbox dispatch.
+// Use-case envelope — domain-driven write pattern with outbox dispatch.
 // Exported as a namespace to avoid clashing with neverthrow's `Result` and the
 // HTTP `ValidationError`/`NotFoundError` types. Typical usage:
 //
 //   import { usecase } from "@flowcatalyst/sdk";
-//   class ShipOrderUseCase implements usecase.UseCase<ShipOrderCommand, OrderShipped> { ... }
+//   const shipOrder: usecase.Operation<ShipOrderCommand, OrderShipped> = {
+//     authorize: usecase.publicAuthorize,
+//     async execute(cmd, ctx) { ...; return usecase.Plan.save(order, orderRepo, event); },
+//   };
 //   const uow = new usecase.OutboxUnitOfWork({ outboxManager });
+//   const result = await usecase.run(uow, shipOrder, cmd, ctx);
 //
 export * as usecase from "./usecase/index.js";
 

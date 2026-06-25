@@ -5,6 +5,25 @@ the Go SDK/platform now use (`Operation` / `Plan` / `Run`). This is the last rem
 of the use-case envelope migration — the Go side is complete (see
 `docs/usecase-envelope-migration-handover.md`).
 
+> **STATUS (2026-06-25): both ports IMPLEMENTED.**
+> - **TypeScript — DONE + verified.** Added `src/usecase/{repo,plan,operation}.ts` + `TxSession`/`TxRunner`
+>   in `unit-of-work.ts`; the Plan seal lifts the airtight `unique symbol` brand; `run` drives the phases
+>   and applies the Plan through `OutboxUnitOfWork.run` (which owns the tx). Stopped re-exporting the leaky
+>   `RESULT_SUCCESS_TOKEN`; deprecated `UseCase`/`SecuredUseCase`. `tsc --noEmit` clean; **37/37 tests green**
+>   including a wire-parity guard (envelope output == legacy `commit()` output) and a rollback/atomicity test.
+> - **PHP — IMPLEMENTED, lints clean, not yet run here.** Added `src/UseCase/{Repo,Plan,Operation,Runner,RollbackSignal}.php`;
+>   added `transaction()` to the `UnitOfWork` interface (owned `DB::transaction` on the outbox connection);
+>   `Runner::run` owns the throw-to-rollback logic; deprecated `UseCase`/`SecuredUseCase`; wired `connection`
+>   in the service provider; added `phpunit.xml.dist` + `tests/Unit/UseCase/EnvelopeTest.php` (6 cases mirroring
+>   the TS suite). All files pass `php -l`. **The tests could not be executed in this dev sandbox** — a bare
+>   `require vendor/autoload.php` hangs here (environment issue, not the code), so run the PHP suite in a normal
+>   environment: `vendor/bin/phpunit tests/Unit/UseCase/EnvelopeTest.php`.
+>
+> Decisions taken on the §6 open questions: (1) kept the `commit*` family as lower-level/back-compat, authoring
+> goes through Plan+run; (2) PHP seal stays convention-level (structure carries the invariant); (3) Effect TS
+> variant deprecated-in-place, not ported; (4) `Sync`/`SaveAll` omitted from the SDK Plan. Remaining: run the
+> PHP suite + cut the (breaking, major-version) SDK releases via the split workflows (Phase D).
+
 **Scope reality check (good news):** neither SDK's use-case machinery has any in-repo
 consumer or any test. Grep confirms: the `UseCase` / `UnitOfWork` / `Result` layer is a
 *provided framework* with zero callers and zero tests in either SDK. So this is a

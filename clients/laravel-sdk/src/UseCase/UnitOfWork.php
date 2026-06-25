@@ -65,4 +65,17 @@ interface UnitOfWork
      * @return Result<T>
      */
     public function emitEvent(DomainEvent $event, mixed $command): Result;
+
+    /**
+     * Run the callback inside a single owned transaction on the unit of work's
+     * connection: commit when the callback returns normally, roll back (and
+     * rethrow) when it throws — the same `DB::transaction(...)` contract, so the
+     * outbox write and any aggregate writes on the connection commit or roll
+     * back together. {@link Runner} uses this to apply a {@link Plan} atomically.
+     *
+     * @template R
+     * @param callable():R $callback
+     * @return R
+     */
+    public function transaction(callable $callback): mixed;
 }

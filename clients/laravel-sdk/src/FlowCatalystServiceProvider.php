@@ -189,6 +189,9 @@ class FlowCatalystServiceProvider extends ServiceProvider
                 outboxManager: $app->make(OutboxManager::class),
                 auditEnabled:  (bool) ($config['audit_enabled'] ?? false),
                 fallbackPrincipalId: $config['fallback_principal_id'] ?? 'system',
+                // Same connection the outbox DatabaseDriver uses, so the owned
+                // transaction (Runner -> transaction()) covers the event insert.
+                connection: $config['connection'] ?? null,
             );
         });
 

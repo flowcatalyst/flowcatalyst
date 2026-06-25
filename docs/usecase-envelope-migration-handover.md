@@ -141,7 +141,10 @@ the connection ref. The shared status-flip body is `statusFlip[E]` (load → pos
 `CheckScopeAccess` → mutate → `Save`). FireNow keeps the two-phase shape (direct instance insert
 then `usecaseop.Emit`). The `requireScopeByID` api helper was deleted.
 
-### 5.3 TS / PHP SDK ports — PLANNED (next up). **Full plan: `docs/sdk-envelope-port-plan.md`.**
+### 5.3 TS / PHP SDK ports — IMPLEMENTED 2026-06-25. **Full plan + status: `docs/sdk-envelope-port-plan.md`.**
+TS done + verified (37/37 tests, incl. wire-parity + rollback). PHP implemented + `php -l` clean; its
+phpunit suite couldn't run in the dev sandbox (`require vendor/autoload.php` hangs there) — run it in a
+normal env. Remaining: run the PHP suite + cut the breaking major-version SDK releases (split workflows).
 Port `clients/typescript-sdk` and `clients/laravel-sdk` to the same `Operation`/`Plan`/`Run`
 contract. Survey done 2026-06-25: both SDKs have a bare `execute()` (no Validate/Authorize/Execute
 split), a *soft* Result seal (TS exports the token; PHP `internal()` is public), a caller-owned-tx

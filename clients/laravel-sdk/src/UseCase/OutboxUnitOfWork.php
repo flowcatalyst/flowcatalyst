@@ -7,6 +7,7 @@ namespace FlowCatalyst\UseCase;
 use FlowCatalyst\Outbox\DTOs\CreateAuditLogDto;
 use FlowCatalyst\Outbox\DTOs\CreateEventDto;
 use FlowCatalyst\Outbox\OutboxManager;
+use Illuminate\Support\Facades\DB;
 
 /**
  * UnitOfWork that dispatches events through the existing `OutboxManager`.
@@ -17,9 +18,12 @@ use FlowCatalyst\Outbox\OutboxManager;
  * into the outbox table. The fc-outbox-processor forwards it to the
  * platform.
  *
- * For atomic persistence of your entity + the outbox write, wrap the
- * whole `commit()` call in `DB::transaction(fn () => ...)` using a
- * `DatabaseDriver` on the same connection — both inserts end up in one tx.
+ * Authoring goes through the use-case envelope ({@link Operation} +
+ * {@link Runner::run()}): `run` calls {@link transaction()} to open one
+ * transaction on `$connection`, then applies the {@link Plan} (aggregate write
+ * via its Repo + the outbox event) inside it — so the unit of work owns
+ * atomicity. The raw `commit()` family below remains for the lower-level path
+ * and for back-compat.
  */
 final class OutboxUnitOfWork implements UnitOfWork
 {
@@ -27,7 +31,24 @@ final class OutboxUnitOfWork implements UnitOfWork
         private readonly OutboxManager $outboxManager,
         private readonly bool $auditEnabled = false,
         private readonly string $fallbackPrincipalId = 'system',
+        /**
+         * The connection the owned transaction runs on. Must match the outbox
+         * driver's connection so the event row joins the transaction; null uses
+         * the default connection (the common case).
+         */
+        private readonly ?string $connection = null,
     ) {}
+
+    /**
+     * Open one transaction on the configured connection, commit on normal
+     * return, roll back (and rethrow) on throw — Laravel's `DB::transaction`
+     * contract. The outbox driver writes via `DB::connection($connection)`, so
+     * its insert joins this transaction.
+     */
+    public function transaction(callable $callback): mixed
+    {
+        return DB::connection($this->connection)->transaction($callback);
+    }
 
     public function commit(
         DomainEvent $event,
