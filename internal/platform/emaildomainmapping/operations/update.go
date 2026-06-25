@@ -6,9 +6,8 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 )
 
 // UpdateCommand mirrors CreateCommand but with the mapping ID + optional
@@ -31,69 +30,71 @@ type UpdateCommand struct {
 }
 
 // UpdateMapping mutates an existing mapping and emits
-// EmailDomainMappingUpdated.
-func UpdateMapping(
-	ctx context.Context,
-	repo *emaildomainmapping.Repository,
-	uow *usecasepgx.UnitOfWork,
-	cmd UpdateCommand,
-	ec usecase.ExecutionContext,
-) (commit.Committed[EmailDomainMappingUpdated], error) {
-	var zero commit.Committed[EmailDomainMappingUpdated]
+// EmailDomainMappingUpdated. The coarse anchor check lives on the controller;
+// email-domain mappings have no per-client resource dimension, so the use case
+// carries no resource-level authz (Authorize = usecaseop.Public).
+func UpdateMapping(repo *emaildomainmapping.Repository) usecaseop.Operation[UpdateCommand, EmailDomainMappingUpdated] {
+	return usecaseop.Operation[UpdateCommand, EmailDomainMappingUpdated]{
+		Name: "UpdateMapping",
+		Validate: func(_ context.Context, cmd UpdateCommand) error {
+			if strings.TrimSpace(cmd.ID) == "" {
+				return usecase.Validation("ID_REQUIRED", "id is required")
+			}
+			if cmd.IdentityProviderID != nil && strings.TrimSpace(*cmd.IdentityProviderID) == "" {
+				return usecase.Validation("INVALID_IDP", "identityProviderId cannot be empty when supplied")
+			}
+			return nil
+		},
+		Authorize: usecaseop.Public[UpdateCommand],
+		Execute: func(ctx context.Context, cmd UpdateCommand, ec usecase.ExecutionContext) (usecaseop.Plan[EmailDomainMappingUpdated], error) {
+			e, err := repo.FindByID(ctx, cmd.ID)
+			if err != nil {
+				return nil, usecase.Internal("REPO", "find_by_id failed", err)
+			}
+			if e == nil {
+				return nil, httperror.NotFound("EmailDomainMapping", cmd.ID)
+			}
 
-	if strings.TrimSpace(cmd.ID) == "" {
-		return zero, usecase.Validation("ID_REQUIRED", "id is required")
-	}
-	if cmd.IdentityProviderID != nil && strings.TrimSpace(*cmd.IdentityProviderID) == "" {
-		return zero, usecase.Validation("INVALID_IDP", "identityProviderId cannot be empty when supplied")
-	}
+			if cmd.IdentityProviderID != nil {
+				e.IdentityProviderID = *cmd.IdentityProviderID
+			}
+			e.PrimaryClientID = cmd.PrimaryClientID
+			e.RequiredOIDCTenantID = cmd.RequiredOIDCTenantID
+			if cmd.AdditionalClientIDs != nil {
+				e.AdditionalClientIDs = cmd.AdditionalClientIDs
+			}
+			if cmd.GrantedClientIDs != nil {
+				e.GrantedClientIDs = cmd.GrantedClientIDs
+			}
+			if cmd.AllowedRoleIDs != nil {
+				e.AllowedRoleIDs = cmd.AllowedRoleIDs
+			}
+			if cmd.SyncRolesFromIDP != nil {
+				e.SyncRolesFromIDP = *cmd.SyncRolesFromIDP
+			}
+			if cmd.Require2FA != nil {
+				e.Require2FA = *cmd.Require2FA
+			}
+			if cmd.Allowed2FAMethods != nil {
+				e.Allowed2FAMethods = cmd.Allowed2FAMethods
+			}
+			if cmd.RememberDeviceEnabled != nil {
+				e.RememberDeviceEnabled = *cmd.RememberDeviceEnabled
+			}
+			if cmd.RememberDeviceDays != nil {
+				e.RememberDeviceDays = *cmd.RememberDeviceDays
+			}
+			// Validate the resulting 2FA state (require2fa ⇒ ≥1 valid method).
+			if err := validate2FA(e.Require2FA, e.Allowed2FAMethods); err != nil {
+				return nil, err
+			}
 
-	e, err := repo.FindByID(ctx, cmd.ID)
-	if err != nil {
-		return zero, usecase.Internal("REPO", "find_by_id failed", err)
+			event := EmailDomainMappingUpdated{
+				Metadata:    usecase.NewEventMetadata(ec, EmailDomainMappingUpdatedType, Source, subjectFor(e.ID)),
+				MappingID:   e.ID,
+				EmailDomain: e.EmailDomain,
+			}
+			return usecaseop.Save(e, repo, event), nil
+		},
 	}
-	if e == nil {
-		return zero, httperror.NotFound("EmailDomainMapping", cmd.ID)
-	}
-
-	if cmd.IdentityProviderID != nil {
-		e.IdentityProviderID = *cmd.IdentityProviderID
-	}
-	e.PrimaryClientID = cmd.PrimaryClientID
-	e.RequiredOIDCTenantID = cmd.RequiredOIDCTenantID
-	if cmd.AdditionalClientIDs != nil {
-		e.AdditionalClientIDs = cmd.AdditionalClientIDs
-	}
-	if cmd.GrantedClientIDs != nil {
-		e.GrantedClientIDs = cmd.GrantedClientIDs
-	}
-	if cmd.AllowedRoleIDs != nil {
-		e.AllowedRoleIDs = cmd.AllowedRoleIDs
-	}
-	if cmd.SyncRolesFromIDP != nil {
-		e.SyncRolesFromIDP = *cmd.SyncRolesFromIDP
-	}
-	if cmd.Require2FA != nil {
-		e.Require2FA = *cmd.Require2FA
-	}
-	if cmd.Allowed2FAMethods != nil {
-		e.Allowed2FAMethods = cmd.Allowed2FAMethods
-	}
-	if cmd.RememberDeviceEnabled != nil {
-		e.RememberDeviceEnabled = *cmd.RememberDeviceEnabled
-	}
-	if cmd.RememberDeviceDays != nil {
-		e.RememberDeviceDays = *cmd.RememberDeviceDays
-	}
-	// Validate the resulting 2FA state (require2fa ⇒ ≥1 valid method).
-	if err := validate2FA(e.Require2FA, e.Allowed2FAMethods); err != nil {
-		return zero, err
-	}
-
-	event := EmailDomainMappingUpdated{
-		Metadata:    usecase.NewEventMetadata(ec, EmailDomainMappingUpdatedType, Source, subjectFor(e.ID)),
-		MappingID:   e.ID,
-		EmailDomain: e.EmailDomain,
-	}
-	return commit.Save(ctx, uow, e, repo, event, cmd)
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -90,8 +91,9 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 // create toast reads the response `name`, and a bare id renders as
 // "undefined".
 func (s *State) create(ctx context.Context, in *apicommon.In[CreateIdentityProviderRequest]) (*apicommon.Out[IdentityProviderResponse], error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteIdentityProviders(ac); err != nil {
+	// Coarse anchor-only permission at the controller; the use case enforces
+	// validation and uniqueness. The handler also encrypts the secret.
+	if err := auth.CanWriteIdentityProviders(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	secretRef, err := encryptSecretRef(s.Enc, in.Body.OIDCClientSecretRef)
@@ -99,12 +101,12 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreateIdentityProvi
 		return nil, err
 	}
 	in.Body.OIDCClientSecretRef = secretRef
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.CreateIdentityProvider(ctx, s.Repo, s.UoW, in.Body.toCommand(), ec)
+	ec := auth.NewExecutionContext(ctx)
+	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateIdentityProvider(s.Repo), in.Body.toCommand(), ec)
 	if err != nil {
 		return nil, err
 	}
-	id := committed.Event().IdentityProviderID
+	id := event.IdentityProviderID
 	ip, err := s.Repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "post-create reload failed", err)
@@ -124,8 +126,7 @@ type updateInput struct {
 // detail page sets `provider.value = updated` after PUT, and its card is
 // gated on a truthy provider — a 204/undefined collapses the view.
 func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Out[IdentityProviderResponse], error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteIdentityProviders(ac); err != nil {
+	if err := auth.CanWriteIdentityProviders(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	secretRef, err := encryptSecretRef(s.Enc, in.Body.OIDCClientSecretRef)
@@ -133,8 +134,8 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Out[Ide
 		return nil, err
 	}
 	in.Body.OIDCClientSecretRef = secretRef
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.UpdateIdentityProvider(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateIdentityProvider(s.Repo), in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
 	ip, err := s.Repo.FindByID(ctx, in.ID)
@@ -148,12 +149,11 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Out[Ide
 }
 
 func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteIdentityProviders(ac); err != nil {
+	if err := auth.CanWriteIdentityProviders(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.DeleteIdentityProvider(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeleteIdentityProvider(s.Repo), operations.DeleteCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil

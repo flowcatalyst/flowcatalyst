@@ -16,6 +16,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -46,7 +47,7 @@ func TestBulkImport_DropsForeignDomainAndExisting(t *testing.T) {
 
 	// Seed an already-existing user so that row reports "exists".
 	name := "Dupe"
-	_, err := operations.CreateUser(ctx, repo, uow,
+	_, err := usecaseop.Run(ctx, uow, operations.CreateUser(repo),
 		operations.CreateCommand{Email: "dupe@free.test", Name: &name, Scope: "ANCHOR"}, testpg.TestEC())
 	require.NoError(t, err)
 
@@ -89,7 +90,7 @@ func TestBulkImport_DropsForeignDomainAndExisting(t *testing.T) {
 func mustMapping(t *testing.T, ctx context.Context, edm *emaildomainmapping.Repository, uow *usecasepgx.UnitOfWork, domain, primaryClient string) {
 	t.Helper()
 	pc := primaryClient
-	_, err := edmops.CreateMapping(ctx, edm, uow, edmops.CreateCommand{
+	_, err := usecaseop.Run(ctx, uow, edmops.CreateMapping(edm), edmops.CreateCommand{
 		EmailDomain:        domain,
 		IdentityProviderID: "idp_bulkimpseed01",
 		ScopeType:          "CLIENT",

@@ -8,9 +8,8 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 )
 
 // GrantPermissionCommand grants `Permission` on the role identified by
@@ -23,35 +22,40 @@ type GrantPermissionCommand struct {
 
 // GrantPermission adds Permission to the role's permission set and
 // emits [RolePermissionGranted].
-func GrantPermission(
-	ctx context.Context,
-	repo *role.Repository,
-	uow *usecasepgx.UnitOfWork,
-	cmd GrantPermissionCommand,
-	ec usecase.ExecutionContext,
-) (commit.Committed[RolePermissionGranted], error) {
-	var zero commit.Committed[RolePermissionGranted]
-	if strings.TrimSpace(cmd.RoleName) == "" {
-		return zero, usecase.Validation("ROLE_NAME_REQUIRED", "Role name is required")
+func GrantPermission(repo *role.Repository) usecaseop.Operation[GrantPermissionCommand, RolePermissionGranted] {
+	return usecaseop.Operation[GrantPermissionCommand, RolePermissionGranted]{
+		Name: "GrantPermission",
+		Validate: func(_ context.Context, cmd GrantPermissionCommand) error {
+			if strings.TrimSpace(cmd.RoleName) == "" {
+				return usecase.Validation("ROLE_NAME_REQUIRED", "Role name is required")
+			}
+			if strings.TrimSpace(cmd.Permission) == "" {
+				return usecase.Validation("PERMISSION_REQUIRED", "Permission is required")
+			}
+			return nil
+		},
+		// Roles are global (no per-client resource dimension), so there is no
+		// use-case-level authz; the coarse CanWriteRoles permission is enforced
+		// at the controller.
+		Authorize: usecaseop.Public[GrantPermissionCommand],
+		Execute: func(ctx context.Context, cmd GrantPermissionCommand, ec usecase.ExecutionContext) (usecaseop.Plan[RolePermissionGranted], error) {
+			r, err := repo.FindByName(ctx, cmd.RoleName)
+			if err != nil {
+				return nil, usecase.Internal("REPO", "find_by_name failed", err)
+			}
+			if r == nil {
+				return nil, httperror.NotFound("Role", cmd.RoleName)
+			}
+			r.GrantPermission(cmd.Permission)
+			event := RolePermissionGranted{
+				Metadata:   usecase.NewEventMetadata(ec, RolePermissionGrantedType, Source, subjectFor(r.ID)),
+				RoleID:     r.ID,
+				RoleName:   r.Name,
+				Permission: cmd.Permission,
+			}
+			return usecaseop.Save(r, repo, event), nil
+		},
 	}
-	if strings.TrimSpace(cmd.Permission) == "" {
-		return zero, usecase.Validation("PERMISSION_REQUIRED", "Permission is required")
-	}
-	r, err := repo.FindByName(ctx, cmd.RoleName)
-	if err != nil {
-		return zero, usecase.Internal("REPO", "find_by_name failed", err)
-	}
-	if r == nil {
-		return zero, httperror.NotFound("Role", cmd.RoleName)
-	}
-	r.GrantPermission(cmd.Permission)
-	event := RolePermissionGranted{
-		Metadata:   usecase.NewEventMetadata(ec, RolePermissionGrantedType, Source, subjectFor(r.ID)),
-		RoleID:     r.ID,
-		RoleName:   r.Name,
-		Permission: cmd.Permission,
-	}
-	return commit.Save(ctx, uow, r, repo, event, cmd)
 }
 
 // RevokePermissionCommand removes a permission from the role.
@@ -61,35 +65,40 @@ type RevokePermissionCommand struct {
 }
 
 // RevokePermission removes the permission and emits [RolePermissionRevoked].
-func RevokePermission(
-	ctx context.Context,
-	repo *role.Repository,
-	uow *usecasepgx.UnitOfWork,
-	cmd RevokePermissionCommand,
-	ec usecase.ExecutionContext,
-) (commit.Committed[RolePermissionRevoked], error) {
-	var zero commit.Committed[RolePermissionRevoked]
-	if strings.TrimSpace(cmd.RoleName) == "" {
-		return zero, usecase.Validation("ROLE_NAME_REQUIRED", "Role name is required")
+func RevokePermission(repo *role.Repository) usecaseop.Operation[RevokePermissionCommand, RolePermissionRevoked] {
+	return usecaseop.Operation[RevokePermissionCommand, RolePermissionRevoked]{
+		Name: "RevokePermission",
+		Validate: func(_ context.Context, cmd RevokePermissionCommand) error {
+			if strings.TrimSpace(cmd.RoleName) == "" {
+				return usecase.Validation("ROLE_NAME_REQUIRED", "Role name is required")
+			}
+			if strings.TrimSpace(cmd.Permission) == "" {
+				return usecase.Validation("PERMISSION_REQUIRED", "Permission is required")
+			}
+			return nil
+		},
+		// Roles are global (no per-client resource dimension), so there is no
+		// use-case-level authz; the coarse CanWriteRoles permission is enforced
+		// at the controller.
+		Authorize: usecaseop.Public[RevokePermissionCommand],
+		Execute: func(ctx context.Context, cmd RevokePermissionCommand, ec usecase.ExecutionContext) (usecaseop.Plan[RolePermissionRevoked], error) {
+			r, err := repo.FindByName(ctx, cmd.RoleName)
+			if err != nil {
+				return nil, usecase.Internal("REPO", "find_by_name failed", err)
+			}
+			if r == nil {
+				return nil, httperror.NotFound("Role", cmd.RoleName)
+			}
+			r.RevokePermission(cmd.Permission)
+			event := RolePermissionRevoked{
+				Metadata:   usecase.NewEventMetadata(ec, RolePermissionRevokedType, Source, subjectFor(r.ID)),
+				RoleID:     r.ID,
+				RoleName:   r.Name,
+				Permission: cmd.Permission,
+			}
+			return usecaseop.Save(r, repo, event), nil
+		},
 	}
-	if strings.TrimSpace(cmd.Permission) == "" {
-		return zero, usecase.Validation("PERMISSION_REQUIRED", "Permission is required")
-	}
-	r, err := repo.FindByName(ctx, cmd.RoleName)
-	if err != nil {
-		return zero, usecase.Internal("REPO", "find_by_name failed", err)
-	}
-	if r == nil {
-		return zero, httperror.NotFound("Role", cmd.RoleName)
-	}
-	r.RevokePermission(cmd.Permission)
-	event := RolePermissionRevoked{
-		Metadata:   usecase.NewEventMetadata(ec, RolePermissionRevokedType, Source, subjectFor(r.ID)),
-		RoleID:     r.ID,
-		RoleName:   r.Name,
-		Permission: cmd.Permission,
-	}
-	return commit.Save(ctx, uow, r, repo, event, cmd)
 }
 
 // RolePermissionGranted — emitted on grant.

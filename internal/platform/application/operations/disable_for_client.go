@@ -5,10 +5,10 @@ import (
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 )
 
 // DisableForClientCommand disables an application for a specific client.
@@ -21,37 +21,44 @@ type DisableForClientCommand struct {
 
 // DisableApplicationForClient marks the client config disabled and emits
 // [ApplicationDisabledForClient].
-func DisableApplicationForClient(
-	ctx context.Context,
-	configs *application.ClientConfigRepo,
-	uow *usecasepgx.UnitOfWork,
-	cmd DisableForClientCommand,
-	ec usecase.ExecutionContext,
-) (commit.Committed[ApplicationDisabledForClient], error) {
-	var zero commit.Committed[ApplicationDisabledForClient]
+//
+// This op binds an application TO A CLIENT, so the resource is the client:
+// the use case enforces per-client access (auth.CheckScopeAccess on the
+// target client). The coarse anchor requirement (auth.RequireAnchor) is
+// enforced at the controller.
+func DisableApplicationForClient(configs *application.ClientConfigRepo) usecaseop.Operation[DisableForClientCommand, ApplicationDisabledForClient] {
+	return usecaseop.Operation[DisableForClientCommand, ApplicationDisabledForClient]{
+		Name: "DisableApplicationForClient",
+		Validate: func(_ context.Context, cmd DisableForClientCommand) error {
+			if strings.TrimSpace(cmd.ApplicationID) == "" {
+				return usecase.Validation("APPLICATION_ID_REQUIRED", "Application ID is required")
+			}
+			if strings.TrimSpace(cmd.ClientID) == "" {
+				return usecase.Validation("CLIENT_ID_REQUIRED", "Client ID is required")
+			}
+			return nil
+		},
+		Authorize: func(ctx context.Context, cmd DisableForClientCommand) error {
+			return auth.CheckScopeAccess(auth.FromContext(ctx), &cmd.ClientID)
+		},
+		Execute: func(ctx context.Context, cmd DisableForClientCommand, ec usecase.ExecutionContext) (usecaseop.Plan[ApplicationDisabledForClient], error) {
+			cfg, err := configs.FindByApplicationAndClient(ctx, cmd.ApplicationID, cmd.ClientID)
+			if err != nil {
+				return nil, usecase.Internal("REPO", "find_config failed", err)
+			}
+			if cfg == nil {
+				return nil, httperror.NotFound("ClientConfig",
+					cmd.ApplicationID+":"+cmd.ClientID)
+			}
+			cfg.Disable()
 
-	if strings.TrimSpace(cmd.ApplicationID) == "" {
-		return zero, usecase.Validation("APPLICATION_ID_REQUIRED", "Application ID is required")
+			event := ApplicationDisabledForClient{
+				Metadata:      usecase.NewEventMetadata(ec, ApplicationDisabledForClientType, Source, subjectFor(cmd.ApplicationID)),
+				ApplicationID: cmd.ApplicationID,
+				ClientID:      cmd.ClientID,
+				ConfigID:      cfg.ID,
+			}
+			return usecaseop.Save(cfg, configs, event), nil
+		},
 	}
-	if strings.TrimSpace(cmd.ClientID) == "" {
-		return zero, usecase.Validation("CLIENT_ID_REQUIRED", "Client ID is required")
-	}
-
-	cfg, err := configs.FindByApplicationAndClient(ctx, cmd.ApplicationID, cmd.ClientID)
-	if err != nil {
-		return zero, usecase.Internal("REPO", "find_config failed", err)
-	}
-	if cfg == nil {
-		return zero, httperror.NotFound("ClientConfig",
-			cmd.ApplicationID+":"+cmd.ClientID)
-	}
-	cfg.Disable()
-
-	event := ApplicationDisabledForClient{
-		Metadata:      usecase.NewEventMetadata(ec, ApplicationDisabledForClientType, Source, subjectFor(cmd.ApplicationID)),
-		ApplicationID: cmd.ApplicationID,
-		ClientID:      cmd.ClientID,
-		ConfigID:      cfg.ID,
-	}
-	return commit.Save(ctx, uow, cfg, configs, event, cmd)
 }

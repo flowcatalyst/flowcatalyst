@@ -14,6 +14,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -77,36 +78,18 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 }
 
 func (s *State) create(ctx context.Context, in *apicommon.In[CreateSubscriptionRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteSubscriptions(ac); err != nil {
+	// Coarse write permission at the controller; the use case enforces per-client
+	// resource access on the requested clientId (you may only bind a subscription
+	// to a client you can access; platform-wide requires anchor).
+	if err := auth.CanWriteSubscriptions(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	if in.Body.ClientID != nil && !ac.CanAccessClient(*in.Body.ClientID) {
-		return nil, httperror.Forbidden("No access to client: " + *in.Body.ClientID)
-	}
-	if in.Body.ClientID == nil && !ac.IsAnchor() {
-		return nil, httperror.Forbidden("Only anchor users can create anchor-level subscriptions")
-	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.CreateSubscription(ctx, s.Repo, s.UoW, in.Body.toCommand(), ec)
+	ec := auth.NewExecutionContext(ctx)
+	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateSubscription(s.Repo), in.Body.toCommand(), ec)
 	if err != nil {
 		return nil, err
 	}
-	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: committed.Event().SubscriptionID}}, nil
-}
-
-// requireScopeByID loads the subscription and enforces per-resource scope
-// (A2) on top of the coarse permission the caller already checked: a non-anchor
-// principal must not mutate another tenant's subscription by guessing its id.
-func (s *State) requireScopeByID(ctx context.Context, ac *auth.AuthContext, id string) error {
-	sub, err := s.Repo.FindByID(ctx, id)
-	if err != nil {
-		return usecase.Internal("REPO", "find_by_id failed", err)
-	}
-	if sub == nil {
-		return httperror.NotFound("Subscription", id)
-	}
-	return auth.CheckScopeAccess(ac, sub.ClientID)
+	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: event.SubscriptionID}}, nil
 }
 
 type updateInput struct {
@@ -115,60 +98,44 @@ type updateInput struct {
 }
 
 func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteSubscriptions(ac); err != nil {
+	if err := auth.CanWriteSubscriptions(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	if err := s.requireScopeByID(ctx, ac, in.ID); err != nil {
-		return nil, err
-	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.UpdateSubscription(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateSubscription(s.Repo), in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
 }
 
 func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanDeleteSubscriptions(ac); err != nil {
+	if err := auth.CanDeleteSubscriptions(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	if err := s.requireScopeByID(ctx, ac, in.ID); err != nil {
-		return nil, err
-	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.DeleteSubscription(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeleteSubscription(s.Repo), operations.DeleteCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
 }
 
 func (s *State) pause(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteSubscriptions(ac); err != nil {
+	if err := auth.CanWriteSubscriptions(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	if err := s.requireScopeByID(ctx, ac, in.ID); err != nil {
-		return nil, err
-	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.PauseSubscription(ctx, s.Repo, s.UoW, operations.PauseCommand{ID: in.ID}, ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.PauseSubscription(s.Repo), operations.PauseCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
 }
 
 func (s *State) resume(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteSubscriptions(ac); err != nil {
+	if err := auth.CanWriteSubscriptions(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	if err := s.requireScopeByID(ctx, ac, in.ID); err != nil {
-		return nil, err
-	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.ResumeSubscription(ctx, s.Repo, s.UoW, operations.ResumeCommand{ID: in.ID}, ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.ResumeSubscription(s.Repo), operations.ResumeCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil

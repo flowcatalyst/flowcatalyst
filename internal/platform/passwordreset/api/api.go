@@ -30,6 +30,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/email"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -455,7 +456,7 @@ func (s *State) confirmReset(w http.ResponseWriter, r *http.Request) {
 	// The password write + UserPasswordReset event + audit log commit
 	// atomically via ResetPassword. The unauthenticated reset is "system".
 	ec := usecase.NewExecutionContext("system")
-	if _, err := principalops.ResetPassword(r.Context(), s.Principals, s.UoW,
+	if _, err := usecaseop.Run(r.Context(), s.UoW, principalops.ResetPassword(s.Principals),
 		principalops.ResetPasswordCommand{ID: t.PrincipalID, NewPassword: body.Password}, ec); err != nil {
 		httperror.Write(w, err)
 		return

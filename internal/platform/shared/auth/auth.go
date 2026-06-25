@@ -276,6 +276,20 @@ func FromContext(ctx context.Context) *AuthContext {
 	return v
 }
 
+// NewExecutionContext builds a usecase.ExecutionContext seeded from the
+// principal on ctx. When the request is unauthenticated the principal id is
+// empty — the use case's Authorize phase rejects that before anything is
+// committed, so handlers can build the context without a nil check. This is
+// the single seam through which write handlers derive the execution context
+// for usecaseop.Run.
+func NewExecutionContext(ctx context.Context) usecase.ExecutionContext {
+	principalID := ""
+	if a := FromContext(ctx); a != nil {
+		principalID = a.PrincipalID
+	}
+	return usecase.NewExecutionContext(principalID)
+}
+
 // ── Check helpers ──────────────────────────────────────────────────────────
 
 // RequireAnchor errors if the principal is not anchor-scoped.

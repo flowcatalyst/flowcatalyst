@@ -18,13 +18,13 @@
 //
 //	HTTP request → command DTO
 //	             → usecase.ExecutionContext (principal + correlation)
-//	             → usecase.Run(useCase, cmd, ec)
-//	                  ↓ Validate / Authorize / Execute
-//	             → usecasepgx.Commit (single transaction)
+//	             → usecaseop.Run(uow, op, cmd, ec)
+//	                  ↓ Validate / Authorize / Execute → Plan
+//	             → the Plan is applied in a single transaction
 //	                  ↳ <Repo>.Persist
 //	                  ↳ Sink.WriteEvent → outbox_messages
 //	                  ↳ Sink.WriteAudit → outbox_messages (optional)
-//	             → usecase.Into(result) → (T, error)
+//	             → committed event → (T, error)
 //	             → HTTP 201 / 4xx / 500
 //
 // The Sink slot is what makes the SDK reusable. Consumer apps wire
@@ -35,26 +35,30 @@
 //
 // Domain primitives (no I/O):
 //
-//   - usecase    — UseCase + Result + DomainEvent + ExecutionContext.
+//   - usecase    — Result + DomainEvent + ExecutionContext + typed Error.
 //     Result[E] is a sealed sum: Success requires a
-//     sealed.Token only SDK packages can mint, so the only
-//     path to Success outside the SDK is through
-//     usecasepgx / usecasesql Commit*. Compile-time
-//     enforced.
+//     sealed.Token only pkg/fcsdk packages can mint, so the
+//     only path to Success outside the SDK is through the
+//     usecasepgx Commit* functions. Compile-time enforced.
+//   - usecaseop  — the enforced use-case envelope: Operation[C,E]
+//     {Validate, Authorize, Execute→Plan} + Run, plus
+//     TxOperation / RunTx for multi-aggregate ops. The
+//     handler-facing entry point; an Execute can reach the DB
+//     only by returning a Plan that Run applies atomically.
 //   - tsid       — Time-Sorted IDs (Crockford Base32). 35 typed
 //     EntityType prefixes plus GenerateWithPrefix for
 //     app-specific IDs.
 //
-// UnitOfWork drivers:
+// UnitOfWork driver:
 //
 //   - usecasepgx — pgx-backed UoW. Entry points: Commit / CommitDelete /
-//     CommitAll / EmitEvent / Run.
-//   - usecasesql — same shape, backed by database/sql.
+//     CommitAll / EmitEvent / CommitSync / Run / RunErr. The usecaseop
+//     envelope (Operation/Plan/Run) is built on top of it.
 //
 // Sinks:
 //
 //   - outboxpgx  — writes to outbox_messages via pgx.
-//   - outboxsql  — same, via database/sql.
+//   - outboxsql  — outbox-table DDL (InitSchema) for database/sql consumer apps.
 //
 // HTTP I/O:
 //
@@ -94,8 +98,8 @@
 //
 // Internal:
 //
-//   - internal/sealed (at the repo root, not under pkg/fcsdk) — Token
-//     type that gates usecase.Success. Constructable only by packages
-//     under github.com/flowcatalyst/flowcatalyst-go/ (Go's internal
-//     rule).
+//   - internal/sealed (under pkg/fcsdk/internal/) — Token type that
+//     gates usecase.Success. Constructable only by packages under
+//     github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/ (Go's internal
+//     rule), which scopes the seal to the SDK.
 package fcsdk

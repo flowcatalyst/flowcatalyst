@@ -23,6 +23,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -556,11 +557,11 @@ func (e *LoginEndpoint) autoProvision(ctx context.Context, email, mappingID stri
 	// not by an authenticated actor. Audit rows will record an empty
 	// principal, matching the Rust convention for self-provisioning.
 	ec := usecase.NewExecutionContext("")
-	committed, err := principalops.CreateUser(ctx, e.principals, e.uow, cmd, ec)
+	event, err := usecaseop.Run(ctx, e.uow, principalops.CreateUser(e.principals), cmd, ec)
 	if err != nil {
 		return nil, err
 	}
-	created, err := e.principals.FindByID(ctx, committed.Event().UserID)
+	created, err := e.principals.FindByID(ctx, event.UserID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "post-create principal lookup failed", err)
 	}
@@ -646,7 +647,7 @@ func (e *LoginEndpoint) applySyncIdpRoles(ctx context.Context, p *principal.Prin
 	// The actor here is the system, not an authenticated user — match
 	// the auto-provision pattern of an empty principal id.
 	ec := usecase.NewExecutionContext("")
-	if _, err := principalops.SyncIdpRoles(ctx, e.principals, e.roles, e.uow, cmd, ec); err != nil {
+	if _, err := usecaseop.Run(ctx, e.uow, principalops.SyncIdpRoles(e.principals, e.roles), cmd, ec); err != nil {
 		return err
 	}
 	return nil

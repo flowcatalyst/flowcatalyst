@@ -14,6 +14,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -186,14 +187,14 @@ func (s *EventTypesState) create(w http.ResponseWriter, r *http.Request) {
 		Schema:      body.Schema,
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.CreateEventType(r.Context(), s.Repo, s.UoW, cmd, ec)
+	event, err := usecaseop.Run(r.Context(), s.UoW, operations.CreateEventType(s.Repo), cmd, ec)
 	if err != nil {
 		httperror.Write(w, err)
 		return
 	}
 	// Re-fetch the row so the response carries the persisted
 	// spec_versions ordering (the emitted event doesn't carry them).
-	et, err := s.Repo.FindByID(r.Context(), committed.Event().EventTypeID)
+	et, err := s.Repo.FindByID(r.Context(), event.EventTypeID)
 	if err != nil || et == nil {
 		httperror.Write(w, usecase.Internal("REPO", "post-create reload failed", err))
 		return
@@ -222,7 +223,7 @@ func (s *EventTypesState) update(w http.ResponseWriter, r *http.Request) {
 	}
 	cmd.Description = body.Description
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.UpdateEventType(r.Context(), s.Repo, s.UoW, cmd, ec); err != nil {
+	if _, err := usecaseop.Run(r.Context(), s.UoW, operations.UpdateEventType(s.Repo), cmd, ec); err != nil {
 		httperror.Write(w, err)
 		return
 	}
@@ -242,7 +243,7 @@ func (s *EventTypesState) delete(w http.ResponseWriter, r *http.Request) {
 	}
 	cmd := operations.DeleteCommand{ID: chi.URLParam(r, "id")}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.DeleteEventType(r.Context(), s.Repo, s.UoW, cmd, ec); err != nil {
+	if _, err := usecaseop.Run(r.Context(), s.UoW, operations.DeleteEventType(s.Repo), cmd, ec); err != nil {
 		httperror.Write(w, err)
 		return
 	}
@@ -274,7 +275,7 @@ func (s *EventTypesState) addSchema(w http.ResponseWriter, r *http.Request) {
 		Schema:      body.Schema,
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.AddSchema(r.Context(), s.Repo, s.UoW, cmd, ec); err != nil {
+	if _, err := usecaseop.Run(r.Context(), s.UoW, operations.AddSchema(s.Repo), cmd, ec); err != nil {
 		httperror.Write(w, err)
 		return
 	}
@@ -396,7 +397,7 @@ func (s *EventTypesState) archive(w http.ResponseWriter, r *http.Request) {
 	}
 	cmd := operations.ArchiveCommand{ID: chi.URLParam(r, "id")}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.ArchiveEventType(r.Context(), s.Repo, s.UoW, cmd, ec); err != nil {
+	if _, err := usecaseop.Run(r.Context(), s.UoW, operations.ArchiveEventType(s.Repo), cmd, ec); err != nil {
 		httperror.Write(w, err)
 		return
 	}
@@ -424,7 +425,7 @@ func (s *EventTypesState) finaliseSchema(w http.ResponseWriter, r *http.Request)
 		Version:     chi.URLParam(r, "version"),
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.FinaliseEventTypeSchema(r.Context(), s.Repo, s.UoW, cmd, ec); err != nil {
+	if _, err := usecaseop.Run(r.Context(), s.UoW, operations.FinaliseEventTypeSchema(s.Repo), cmd, ec); err != nil {
 		httperror.Write(w, err)
 		return
 	}
@@ -451,7 +452,7 @@ func (s *EventTypesState) deprecateSchema(w http.ResponseWriter, r *http.Request
 		Version:     chi.URLParam(r, "version"),
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.DeprecateEventTypeSchema(r.Context(), s.Repo, s.UoW, cmd, ec); err != nil {
+	if _, err := usecaseop.Run(r.Context(), s.UoW, operations.DeprecateEventTypeSchema(s.Repo), cmd, ec); err != nil {
 		httperror.Write(w, err)
 		return
 	}
@@ -496,9 +497,9 @@ type bffSyncPlatformSchemas struct {
 //
 // Schemas-tally fields in the response are currently zero;
 // instrumenting them needs a tighter sync use case that tracks per-
-// schema outcomes (the underlying commit.Sync helper has the data;
-// it's the eventtype sync use case that doesn't extract it). Filed
-// as a follow-up in HANDOFF §0.
+// schema outcomes (the underlying Sync helper has the data; it's the
+// eventtype sync use case that doesn't extract it). Filed as a
+// follow-up in HANDOFF §0.
 func (s *EventTypesState) syncPlatform(w http.ResponseWriter, r *http.Request) {
 	ac := auth.FromContext(r.Context())
 	if err := auth.RequireAnchor(ac); err != nil {
@@ -528,12 +529,11 @@ func (s *EventTypesState) syncPlatform(w http.ResponseWriter, r *http.Request) {
 		RemoveUnlisted:  true,
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.SyncEventTypes(r.Context(), s.Repo, s.UoW, cmd, ec)
+	ev, err := usecaseop.Run(r.Context(), s.UoW, operations.SyncEventTypes(s.Repo), cmd, ec)
 	if err != nil {
 		httperror.Write(w, err)
 		return
 	}
-	ev := committed.Event()
 	writeJSON(w, http.StatusOK, bffSyncPlatformResponse{
 		Created: ev.Created,
 		Updated: ev.Updated,

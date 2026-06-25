@@ -3,7 +3,7 @@ package usecasepgx
 import (
 	"context"
 
-	"github.com/flowcatalyst/flowcatalyst-go/internal/sealed"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/internal/sealed"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/jackc/pgx/v5"
 )
@@ -74,6 +74,40 @@ func Run[R any](
 	}
 	_ = tx.Rollback(ctx)
 	return result
+}
+
+// RunErr opens one transaction on the pool, builds a TxScopedUnitOfWork
+// bound to it, invokes fn, and commits on a nil error / rolls back on a
+// non-nil error or panic. It is the error-returning sibling of Run, for
+// multi-aggregate orchestrations whose outcome is a custom value rather than
+// a single sealed event (the caller captures that value in a closure). Every
+// aggregate write inside fn must still go through the scoped Commit* helpers,
+// so each change is accompanied by its event + audit in this same tx.
+func RunErr(
+	ctx context.Context,
+	uow *UnitOfWork,
+	fn func(*TxScopedUnitOfWork) error,
+) error {
+	tx, err := uow.pool.Begin(ctx)
+	if err != nil {
+		return usecase.Internal("TX_BEGIN", "could not open orchestration transaction", err)
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			_ = tx.Rollback(ctx)
+			panic(r)
+		}
+	}()
+
+	scoped := &TxScopedUnitOfWork{tx: tx, sink: uow.sink}
+	if err := fn(scoped); err != nil {
+		_ = tx.Rollback(ctx)
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return usecase.Internal("TX_COMMIT", "could not commit orchestration tx", err)
+	}
+	return nil
 }
 
 // CommitScoped is the Commit equivalent for a TxScopedUnitOfWork. It

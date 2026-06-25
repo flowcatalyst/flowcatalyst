@@ -14,6 +14,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -120,24 +121,16 @@ type setPropertyInput struct {
 }
 
 func (s *State) setProperty(ctx context.Context, in *setPropertyInput) (*apicommon.Out[ConfigResponse], error) {
-	ac := auth.FromContext(ctx)
-	if !ac.IsAnchor() {
-		ok, err := s.Repo.HasAccess(ctx, in.App, ac.Roles, true)
-		if err != nil {
-			return nil, usecase.Internal("REPO", "has_access failed", err)
-		}
-		if !ok {
-			return nil, httperror.Forbidden("No write access to platform config for " + in.App)
-		}
-	}
 	// The SPA passes clientId as a query param; the body carries only
 	// value/valueType/description. Fold the query value into the command.
 	if in.ClientID != "" {
 		cid := in.ClientID
 		in.Body.ClientID = &cid
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.SetProperty(ctx, s.Repo, s.UoW, in.Body.toCommand(in.App, in.Section, in.Property), ec); err != nil {
+	// Authorization (anchor, or non-anchor with write access to the app) runs
+	// inside the use case's Authorize phase.
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.SetProperty(s.Repo), in.Body.toCommand(in.App, in.Section, in.Property), ec); err != nil {
 		return nil, err
 	}
 	scope, clientID := scopeFor(in.ClientID)
@@ -207,25 +200,25 @@ type grantAccessInput struct {
 }
 
 func (s *State) grantAccess(ctx context.Context, in *grantAccessInput) (*apicommon.Out[apicommon.CreatedResponse], error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	// Coarse anchor-only authorization at the controller.
+	if err := auth.RequireAnchor(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.GrantAccess(ctx, s.Repo, s.UoW, in.Body.toCommand(in.App), ec)
+	ec := auth.NewExecutionContext(ctx)
+	event, err := usecaseop.Run(ctx, s.UoW, operations.GrantAccess(s.Repo), in.Body.toCommand(in.App), ec)
 	if err != nil {
 		return nil, err
 	}
-	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: committed.Event().AccessID}}, nil
+	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: event.AccessID}}, nil
 }
 
 func (s *State) revokeAccess(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	// Coarse anchor-only authorization at the controller.
+	if err := auth.RequireAnchor(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.RevokeAccess(ctx, s.Repo, s.UoW, operations.RevokeAccessCommand{ID: in.ID}, ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.RevokeAccess(s.Repo), operations.RevokeAccessCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil

@@ -10,9 +10,8 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 )
 
 // RegenerateAuthTokenCommand rotates the service account's bearer token.
@@ -23,40 +22,43 @@ type RegenerateAuthTokenCommand struct {
 // RegenerateAuthToken rotates the service account's bearer token. After
 // the commit, the plaintext token lands in a process-local stash so the
 // HTTP handler can return it once and only once.
-func RegenerateAuthToken(
-	ctx context.Context,
-	repo *serviceaccount.Repository,
-	uow *usecasepgx.UnitOfWork,
-	cmd RegenerateAuthTokenCommand,
-	ec usecase.ExecutionContext,
-) (commit.Committed[ServiceAccountTokenRegenerated], error) {
-	var zero commit.Committed[ServiceAccountTokenRegenerated]
+func RegenerateAuthToken(repo *serviceaccount.Repository) usecaseop.Operation[RegenerateAuthTokenCommand, ServiceAccountTokenRegenerated] {
+	return usecaseop.Operation[RegenerateAuthTokenCommand, ServiceAccountTokenRegenerated]{
+		Name: "RegenerateAuthToken",
+		Validate: func(_ context.Context, cmd RegenerateAuthTokenCommand) error {
+			if strings.TrimSpace(cmd.ServiceAccountID) == "" {
+				return usecase.Validation("SERVICE_ACCOUNT_ID_REQUIRED", "Service account ID is required")
+			}
+			return nil
+		},
+		// The coarse anchor-only permission is enforced at the controller; this
+		// admin-managed rotation has no per-client resource check, so the
+		// operation is intentionally open.
+		Authorize: usecaseop.Public[RegenerateAuthTokenCommand],
+		Execute: func(ctx context.Context, cmd RegenerateAuthTokenCommand, ec usecase.ExecutionContext) (usecaseop.Plan[ServiceAccountTokenRegenerated], error) {
+			sa, err := repo.FindByID(ctx, cmd.ServiceAccountID)
+			if err != nil {
+				return nil, usecase.Internal("REPO", "find_by_id failed", err)
+			}
+			if sa == nil {
+				return nil, httperror.NotFound("ServiceAccount", cmd.ServiceAccountID)
+			}
 
-	if strings.TrimSpace(cmd.ServiceAccountID) == "" {
-		return zero, usecase.Validation("SERVICE_ACCOUNT_ID_REQUIRED", "Service account ID is required")
+			token := generateAuthToken()
+			sa.WebhookCredentials.Token = &token
+			sa.WebhookCredentials.AuthType = serviceaccount.AuthBearer
+			sa.UpdatedAt = time.Now().UTC()
+
+			stashSecret(sa.ID, "token", token)
+
+			event := ServiceAccountTokenRegenerated{
+				Metadata:         usecase.NewEventMetadata(ec, ServiceAccountTokenRegeneratedType, Source, subjectFor(sa.ID)),
+				ServiceAccountID: sa.ID,
+				Code:             sa.Code,
+			}
+			return usecaseop.Save(sa, repo, event), nil
+		},
 	}
-
-	sa, err := repo.FindByID(ctx, cmd.ServiceAccountID)
-	if err != nil {
-		return zero, usecase.Internal("REPO", "find_by_id failed", err)
-	}
-	if sa == nil {
-		return zero, httperror.NotFound("ServiceAccount", cmd.ServiceAccountID)
-	}
-
-	token := generateAuthToken()
-	sa.WebhookCredentials.Token = &token
-	sa.WebhookCredentials.AuthType = serviceaccount.AuthBearer
-	sa.UpdatedAt = time.Now().UTC()
-
-	stashSecret(sa.ID, "token", token)
-
-	event := ServiceAccountTokenRegenerated{
-		Metadata:         usecase.NewEventMetadata(ec, ServiceAccountTokenRegeneratedType, Source, subjectFor(sa.ID)),
-		ServiceAccountID: sa.ID,
-		Code:             sa.Code,
-	}
-	return commit.Save(ctx, uow, sa, repo, event, cmd)
 }
 
 // generateAuthToken returns "fc_" + 32 lowercase-alphanumeric chars.

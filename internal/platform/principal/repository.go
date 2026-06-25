@@ -496,7 +496,57 @@ func (r *Repository) replaceAppAccessTx(ctx context.Context, p *Principal, tx *u
 	return nil
 }
 
-// RolesPersister adapts the principal repo so commit.Save / commit.Sync
+// ClientAssociationPersister adapts the principal repo so usecaseop.Save
+// also inserts a set of client-access grants for the principal, in the SAME
+// transaction as the principal-row upsert and its domain event. It is used by
+// SetClientAssociation's TO_PARTNER promotion, which must keep the user's old
+// home client (and add the new one) as PARTNER access grants atomically with the
+// scope change. GrantClientIDs that already have a grant are skipped (idempotent,
+// matching the prior per-grant existence check). Delete is promoted from the
+// embedded *Repository.
+//
+// NB: folding the grants into the principal save means the per-grant
+// ClientAccessGranted events are not separately emitted — the grant ROWS (the
+// authorization state) are still written, and the operation remains atomic.
+type ClientAssociationPersister struct {
+	*Repository
+	Grants *ClientAccessGrantRepo
+	// GrantClientIDs is the set of client ids to grant the principal.
+	GrantClientIDs []string
+	// GrantedBy is the acting principal recorded on each new grant row.
+	GrantedBy string
+}
+
+// Persist upserts the principal row, then inserts any missing client-access
+// grants for it within the same transaction.
+func (cp ClientAssociationPersister) Persist(ctx context.Context, p *Principal, tx *usecasepgx.DbTx) error {
+	// Explicit selector on Persist avoids recursing into this method.
+	if err := cp.Repository.Persist(ctx, p, tx); err != nil {
+		return err
+	}
+	if cp.Grants == nil {
+		return nil
+	}
+	q := tx.Inner()
+	now := time.Now().UTC()
+	for _, cid := range cp.GrantClientIDs {
+		// Idempotent: a grant for (principal, client) already present is left
+		// untouched, mirroring the prior FindByPrincipalAndClient skip. ON
+		// CONFLICT on the natural key keeps this safe even under a race.
+		grant := NewClientAccessGrant(p.ID, cid, cp.GrantedBy)
+		if _, err := q.Exec(ctx,
+			`INSERT INTO iam_client_access_grants
+			     (id, principal_id, client_id, granted_by, granted_at, created_at, updated_at)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7)
+			 ON CONFLICT (principal_id, client_id) DO NOTHING`,
+			grant.ID, grant.PrincipalID, grant.ClientID, grant.GrantedBy, grant.GrantedAt, grant.CreatedAt, now); err != nil {
+			return fmt.Errorf("insert client access grant for client %q: %w", cid, err)
+		}
+	}
+	return nil
+}
+
+// RolesPersister adapts the principal repo so usecaseop.Save / usecaseop.Sync
 // also rewrite iam_principal_roles from the principal's (hydrated) Roles
 // slice, in the same transaction as the domain event. The ops that own
 // the role set (assign_roles, sync_idp_roles, sync_principals) use it;

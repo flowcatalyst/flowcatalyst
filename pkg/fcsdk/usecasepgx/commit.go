@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/flowcatalyst/flowcatalyst-go/internal/sealed"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/internal/sealed"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 )
 

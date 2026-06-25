@@ -141,16 +141,16 @@ type CreateServiceAccountResponse struct {
 // plain name list. Webhook secrets (token/signingSecret/password) are NEVER
 // exposed here — they are only returned once at create/regenerate time.
 type ServiceAccountResponse struct {
-	ID            string           `json:"id"`
-	Code          string           `json:"code"`
-	Name          string           `json:"name"`
-	Description   *string          `json:"description,omitempty"`
-	Active        bool             `json:"active"`
-	ClientIDs     []string         `json:"clientIds"`
-	Scope         *string          `json:"scope,omitempty"`
-	ApplicationID *string          `json:"applicationId,omitempty"`
-	AuthType      string           `json:"authType"`
-	Roles         []string         `json:"roles"`
+	ID            string   `json:"id"`
+	Code          string   `json:"code"`
+	Name          string   `json:"name"`
+	Description   *string  `json:"description,omitempty"`
+	Active        bool     `json:"active"`
+	ClientIDs     []string `json:"clientIds"`
+	Scope         *string  `json:"scope,omitempty"`
+	ApplicationID *string  `json:"applicationId,omitempty"`
+	AuthType      string   `json:"authType"`
+	Roles         []string `json:"roles"`
 	// PrincipalID is the id of the linked SERVICE principal that actually owns
 	// this account's roles and application access (a service account is not its
 	// own principal row). Populated on the single-account read so the UI can

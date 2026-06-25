@@ -14,6 +14,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 )
 
 // bcryptHash mints a Laravel-style bcrypt ($2a$) hash — the format a migrated
@@ -40,7 +41,7 @@ func TestSyncPrincipals_PasswordHashCarry(t *testing.T) {
 	origHash := bcryptHash(t, "laravel-original-pw")
 
 	// 1. New user created via sync with a pre-hashed credential.
-	_, err := operations.SyncPrincipals(ctx, repo, uow, operations.SyncPrincipalsCommand{
+	_, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo), operations.SyncPrincipalsCommand{
 		ApplicationCode: "syncpw",
 		Principals: []operations.SyncPrincipalInput{{
 			Email: email, Name: "Synced User", Active: true, PasswordHash: ptr(origHash),
@@ -57,7 +58,7 @@ func TestSyncPrincipals_PasswordHashCarry(t *testing.T) {
 		"the migrated password verifies at login")
 
 	// 2. Re-sync the SAME user with NO hash (a roles-only sync) — must preserve.
-	_, err = operations.SyncPrincipals(ctx, repo, uow, operations.SyncPrincipalsCommand{
+	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo), operations.SyncPrincipalsCommand{
 		ApplicationCode: "syncpw",
 		Principals: []operations.SyncPrincipalInput{{
 			Email: email, Name: "Synced User Renamed", Active: true,
@@ -73,7 +74,7 @@ func TestSyncPrincipals_PasswordHashCarry(t *testing.T) {
 
 	// 3. Re-sync with a NEW hash — overwrite semantics.
 	newHash := bcryptHash(t, "laravel-changed-pw")
-	_, err = operations.SyncPrincipals(ctx, repo, uow, operations.SyncPrincipalsCommand{
+	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo), operations.SyncPrincipalsCommand{
 		ApplicationCode: "syncpw",
 		Principals: []operations.SyncPrincipalInput{{
 			Email: email, Name: "Synced User Renamed", Active: true, PasswordHash: ptr(newHash),
@@ -98,7 +99,7 @@ func TestSyncPrincipals_NoHash_StaysPasswordless(t *testing.T) {
 	uow := testpg.NewUoW(t)
 
 	email := "prn-sync-nopw@example.com"
-	_, err := operations.SyncPrincipals(ctx, repo, uow, operations.SyncPrincipalsCommand{
+	_, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo), operations.SyncPrincipalsCommand{
 		ApplicationCode: "syncpw",
 		Principals: []operations.SyncPrincipalInput{{
 			Email: email, Name: "No Password", Active: true,

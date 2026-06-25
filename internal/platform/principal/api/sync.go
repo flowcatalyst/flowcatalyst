@@ -7,6 +7,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 )
 
 // SyncUserInput is one entry in the platform-level user-sync body. It mirrors
@@ -61,12 +62,11 @@ func (s *State) syncUsers(ctx context.Context, in *apicommon.In[SyncUsersRequest
 	}
 
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.SyncPrincipals(ctx, s.Repo, s.UoW,
+	ev, err := usecaseop.Run(ctx, s.UoW, operations.SyncPrincipals(s.Repo),
 		operations.SyncPrincipalsCommand{Principals: inputs}, ec)
 	if err != nil {
 		return nil, err
 	}
-	ev := committed.Event()
 	return &apicommon.Out[SyncUsersResponse]{Body: SyncUsersResponse{
 		Created:      ev.Created,
 		Updated:      ev.Updated,

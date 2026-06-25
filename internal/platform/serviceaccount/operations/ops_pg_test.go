@@ -17,6 +17,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -33,23 +34,33 @@ func TestMain(m *testing.M) {
 	testpg.RunMain(m)
 }
 
+// runOp drives op through the full use-case envelope (Validate → Authorize →
+// Execute → atomic commit) as an anchor principal — these operations are all
+// usecaseop.Public, so the coarse permission lives at the controller; the
+// anchor ctx mirrors how the HTTP handler runs them.
+func runOp[C any, E usecase.DomainEvent](
+	uow *usecasepgx.UnitOfWork, op usecaseop.Operation[C, E], cmd C,
+) (E, error) {
+	return usecaseop.Run(testpg.AnchorCtx(), uow, op, cmd, testpg.TestEC())
+}
+
 // mustCreate seeds a service account through the public operation. Codes
 // are hand-unique per test: the fixture never truncates, so tests own
 // their rows and never assert table-wide.
 func mustCreate(t *testing.T, repo *serviceaccount.Repository, uow *usecasepgx.UnitOfWork, code, name string) operations.ServiceAccountCreated {
 	t.Helper()
-	committed, err := operations.CreateServiceAccount(context.Background(), repo, uow,
-		operations.CreateCommand{Code: code, Name: name}, testpg.TestEC())
+	ev, err := runOp(uow, operations.CreateServiceAccount(repo),
+		operations.CreateCommand{Code: code, Name: name})
 	require.NoError(t, err)
-	return committed.Event()
+	return ev
 }
 
 // mustProvision seeds via create-with-credentials — the only operation
 // that also mints the linked SERVICE principal, which assign-roles needs.
 func mustProvision(t *testing.T, saRepo *serviceaccount.Repository, principals *principal.Repository, oauthRepo *platformauth.OAuthClientRepo, uow *usecasepgx.UnitOfWork, code, name string) operations.CreateWithCredentialsResult {
 	t.Helper()
-	res, err := operations.CreateServiceAccountWithCredentials(context.Background(),
-		saRepo, principals, oauthRepo, uow,
+	res, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
+		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo),
 		operations.CreateCommand{Code: code, Name: name}, testpg.TestEC())
 	require.NoError(t, err)
 	return res
@@ -66,17 +77,16 @@ func TestCreateServiceAccount_HappyPath(t *testing.T) {
 	desc := "machine account"
 	scope := "anchor"
 	appID := "app_sacreatehappy"
-	committed, err := operations.CreateServiceAccount(ctx, repo, uow, operations.CreateCommand{
+	ev, err := runOp(uow, operations.CreateServiceAccount(repo), operations.CreateCommand{
 		Code:          "SACreate-Happy", // lower-cased by the op
 		Name:          "  Create Happy  ",
 		Description:   &desc,
 		Scope:         &scope,
 		ApplicationID: &appID,
 		ClientIDs:     []string{"clt_sacreatehappy"},
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
 
-	ev := committed.Event()
 	assert.NotEmpty(t, ev.ServiceAccountID)
 	assert.Equal(t, "sacreate-happy", ev.Code, "code is lower-cased")
 	assert.Equal(t, "Create Happy", ev.Name, "name is trimmed")
@@ -111,8 +121,9 @@ func TestCreateServiceAccountWithCredentials_NoApplicationID_Unconfined(t *testi
 	oauthRepo := platformauth.NewRepository(pool).OAuthClients
 	uow := testpg.NewUoW(t)
 
-	res, err := operations.CreateServiceAccountWithCredentials(ctx,
-		saRepo, principals, oauthRepo, uow, operations.CreateCommand{
+	res, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
+		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo),
+		operations.CreateCommand{
 			Code: "sawithcreds-unconfined",
 			Name: "Unconfined",
 		}, testpg.TestEC())
@@ -143,7 +154,7 @@ func TestCreateServiceAccount_Validation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.CreateServiceAccount(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runOp(uow, operations.CreateServiceAccount(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, usecase.KindValidation, tc.code)
 		})
 	}
@@ -155,8 +166,8 @@ func TestCreateServiceAccount_DuplicateCode_Conflict(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	mustCreate(t, repo, uow, "sadup-conflict", "First")
 
-	_, err := operations.CreateServiceAccount(context.Background(), repo, uow,
-		operations.CreateCommand{Code: "sadup-conflict", Name: "Second"}, testpg.TestEC())
+	_, err := runOp(uow, operations.CreateServiceAccount(repo),
+		operations.CreateCommand{Code: "sadup-conflict", Name: "Second"})
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "CODE_EXISTS")
 }
 
@@ -176,8 +187,9 @@ func TestCreateServiceAccountWithCredentials_HappyPath(t *testing.T) {
 
 	scope := "anchor"
 	appID := "app_sawithcreds01"
-	res, err := operations.CreateServiceAccountWithCredentials(ctx,
-		saRepo, principals, oauthRepo, uow, operations.CreateCommand{
+	res, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
+		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo),
+		operations.CreateCommand{
 			Code:          "sawithcreds-happy",
 			Name:          "With Creds",
 			Scope:         &scope,
@@ -274,8 +286,9 @@ func TestCreateServiceAccountWithCredentials_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.CreateServiceAccountWithCredentials(context.Background(),
-				saRepo, principals, oauthRepo, uow, tc.cmd, testpg.TestEC())
+			_, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
+				operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo),
+				tc.cmd, testpg.TestEC())
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -283,8 +296,8 @@ func TestCreateServiceAccountWithCredentials_Errors(t *testing.T) {
 	t.Run("duplicate code", func(t *testing.T) {
 		t.Parallel()
 		mustCreate(t, saRepo, uow, "sawcdup-conflict", "First")
-		_, err := operations.CreateServiceAccountWithCredentials(context.Background(),
-			saRepo, principals, oauthRepo, uow,
+		_, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
+			operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo),
 			operations.CreateCommand{Code: "sawcdup-conflict", Name: "Second"}, testpg.TestEC())
 		testpg.RequireUsecaseError(t, err, usecase.KindConflict, "CODE_EXISTS")
 	})
@@ -301,12 +314,12 @@ func TestUpdateServiceAccount_HappyPath(t *testing.T) {
 
 	newName := "  After  "
 	newDesc := "after"
-	committed, err := operations.UpdateServiceAccount(ctx, repo, uow, operations.UpdateCommand{
+	ev, err := runOp(uow, operations.UpdateServiceAccount(repo), operations.UpdateCommand{
 		ID: seeded.ServiceAccountID, Name: &newName, Description: &newDesc,
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.ServiceAccountID, committed.Event().ServiceAccountID)
-	assert.Equal(t, "After", committed.Event().Name, "name is trimmed")
+	assert.Equal(t, seeded.ServiceAccountID, ev.ServiceAccountID)
+	assert.Equal(t, "After", ev.Name, "name is trimmed")
 
 	got, err := repo.FindByID(ctx, seeded.ServiceAccountID)
 	require.NoError(t, err)
@@ -337,7 +350,7 @@ func TestUpdateServiceAccount_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.UpdateServiceAccount(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runOp(uow, operations.UpdateServiceAccount(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -352,11 +365,11 @@ func TestDeleteServiceAccount_HappyPath(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreate(t, repo, uow, "sadel-happy", "Doomed")
 
-	committed, err := operations.DeleteServiceAccount(ctx, repo, uow,
-		operations.DeleteCommand{ID: seeded.ServiceAccountID}, testpg.TestEC())
+	ev, err := runOp(uow, operations.DeleteServiceAccount(repo),
+		operations.DeleteCommand{ID: seeded.ServiceAccountID})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.ServiceAccountID, committed.Event().ServiceAccountID)
-	assert.Equal(t, "sadel-happy", committed.Event().Code)
+	assert.Equal(t, seeded.ServiceAccountID, ev.ServiceAccountID)
+	assert.Equal(t, "sadel-happy", ev.Code)
 
 	got, err := repo.FindByID(ctx, seeded.ServiceAccountID)
 	require.NoError(t, err)
@@ -368,12 +381,12 @@ func TestDeleteServiceAccount_Errors(t *testing.T) {
 	repo := serviceaccount.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.DeleteServiceAccount(context.Background(), repo, uow,
-		operations.DeleteCommand{}, testpg.TestEC())
+	_, err := runOp(uow, operations.DeleteServiceAccount(repo),
+		operations.DeleteCommand{})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = operations.DeleteServiceAccount(context.Background(), repo, uow,
-		operations.DeleteCommand{ID: "sa_doesnotexist1"}, testpg.TestEC())
+	_, err = runOp(uow, operations.DeleteServiceAccount(repo),
+		operations.DeleteCommand{ID: "sa_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "ServiceAccount_NOT_FOUND")
 }
 
@@ -386,10 +399,10 @@ func TestDeactivateServiceAccount_HappyPath(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreate(t, repo, uow, "sadeact-happy", "Sleepy")
 
-	committed, err := operations.DeactivateServiceAccount(ctx, repo, uow,
-		operations.DeactivateCommand{ID: seeded.ServiceAccountID}, testpg.TestEC())
+	ev, err := runOp(uow, operations.DeactivateServiceAccount(repo),
+		operations.DeactivateCommand{ID: seeded.ServiceAccountID})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.ServiceAccountID, committed.Event().ServiceAccountID)
+	assert.Equal(t, seeded.ServiceAccountID, ev.ServiceAccountID)
 
 	got, err := repo.FindByID(ctx, seeded.ServiceAccountID)
 	require.NoError(t, err)
@@ -402,12 +415,12 @@ func TestDeactivateServiceAccount_Errors(t *testing.T) {
 	repo := serviceaccount.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.DeactivateServiceAccount(context.Background(), repo, uow,
-		operations.DeactivateCommand{}, testpg.TestEC())
+	_, err := runOp(uow, operations.DeactivateServiceAccount(repo),
+		operations.DeactivateCommand{})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = operations.DeactivateServiceAccount(context.Background(), repo, uow,
-		operations.DeactivateCommand{ID: "sa_doesnotexist1"}, testpg.TestEC())
+	_, err = runOp(uow, operations.DeactivateServiceAccount(repo),
+		operations.DeactivateCommand{ID: "sa_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "ServiceAccount_NOT_FOUND")
 }
 
@@ -427,13 +440,12 @@ func TestAssignRolesToServiceAccount_HappyPathAndReplace(t *testing.T) {
 	res := mustProvision(t, saRepo, principals, oauthRepo, uow, "saroles-happy", "Roles Happy")
 	saID := res.ServiceAccount.ID
 
-	first, err := operations.AssignRolesToServiceAccount(ctx, saRepo, principals, uow,
-		operations.AssignRolesCommand{ServiceAccountID: saID, Roles: []string{"saroles:admin", "saroles:viewer"}},
-		testpg.TestEC())
+	first, err := runOp(uow, operations.AssignRolesToServiceAccount(saRepo, principals),
+		operations.AssignRolesCommand{ServiceAccountID: saID, Roles: []string{"saroles:admin", "saroles:viewer"}})
 	require.NoError(t, err)
-	assert.Equal(t, saID, first.Event().ServiceAccountID)
-	assert.ElementsMatch(t, []string{"saroles:admin", "saroles:viewer"}, first.Event().RolesAdded)
-	assert.Empty(t, first.Event().RolesRemoved)
+	assert.Equal(t, saID, first.ServiceAccountID)
+	assert.ElementsMatch(t, []string{"saroles:admin", "saroles:viewer"}, first.RolesAdded)
+	assert.Empty(t, first.RolesRemoved)
 
 	p, err := principals.FindByServiceAccount(ctx, saID)
 	require.NoError(t, err)
@@ -447,12 +459,11 @@ func TestAssignRolesToServiceAccount_HappyPathAndReplace(t *testing.T) {
 	assert.ElementsMatch(t, []string{"saroles:admin", "saroles:viewer"}, gotRoles)
 
 	// Declarative replace: the event carries the set-difference.
-	second, err := operations.AssignRolesToServiceAccount(ctx, saRepo, principals, uow,
-		operations.AssignRolesCommand{ServiceAccountID: saID, Roles: []string{"saroles:viewer", "saroles:auditor"}},
-		testpg.TestEC())
+	second, err := runOp(uow, operations.AssignRolesToServiceAccount(saRepo, principals),
+		operations.AssignRolesCommand{ServiceAccountID: saID, Roles: []string{"saroles:viewer", "saroles:auditor"}})
 	require.NoError(t, err)
-	assert.ElementsMatch(t, []string{"saroles:auditor"}, second.Event().RolesAdded)
-	assert.ElementsMatch(t, []string{"saroles:admin"}, second.Event().RolesRemoved)
+	assert.ElementsMatch(t, []string{"saroles:auditor"}, second.RolesAdded)
+	assert.ElementsMatch(t, []string{"saroles:admin"}, second.RolesRemoved)
 
 	p, err = principals.FindByServiceAccount(ctx, saID)
 	require.NoError(t, err)
@@ -472,12 +483,12 @@ func TestAssignRolesToServiceAccount_Errors(t *testing.T) {
 	principals := principal.NewRepository(pool)
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.AssignRolesToServiceAccount(context.Background(), saRepo, principals, uow,
-		operations.AssignRolesCommand{Roles: []string{"x"}}, testpg.TestEC())
+	_, err := runOp(uow, operations.AssignRolesToServiceAccount(saRepo, principals),
+		operations.AssignRolesCommand{Roles: []string{"x"}})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "SERVICE_ACCOUNT_ID_REQUIRED")
 
-	_, err = operations.AssignRolesToServiceAccount(context.Background(), saRepo, principals, uow,
-		operations.AssignRolesCommand{ServiceAccountID: "sa_doesnotexist1", Roles: []string{"x"}}, testpg.TestEC())
+	_, err = runOp(uow, operations.AssignRolesToServiceAccount(saRepo, principals),
+		operations.AssignRolesCommand{ServiceAccountID: "sa_doesnotexist1", Roles: []string{"x"}})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "ServiceAccount_NOT_FOUND")
 }
 
@@ -490,11 +501,11 @@ func TestRegenerateAuthToken_HappyPathAndStash(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreate(t, repo, uow, "saregen-token", "Token Regen")
 
-	committed, err := operations.RegenerateAuthToken(ctx, repo, uow,
-		operations.RegenerateAuthTokenCommand{ServiceAccountID: seeded.ServiceAccountID}, testpg.TestEC())
+	ev, err := runOp(uow, operations.RegenerateAuthToken(repo),
+		operations.RegenerateAuthTokenCommand{ServiceAccountID: seeded.ServiceAccountID})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.ServiceAccountID, committed.Event().ServiceAccountID)
-	assert.Equal(t, "saregen-token", committed.Event().Code)
+	assert.Equal(t, seeded.ServiceAccountID, ev.ServiceAccountID)
+	assert.Equal(t, "saregen-token", ev.Code)
 
 	// One-shot stash: first pop yields the plaintext, second pop is empty —
 	// the HTTP handler's "show it exactly once" contract.
@@ -520,12 +531,12 @@ func TestRegenerateAuthToken_Errors(t *testing.T) {
 	repo := serviceaccount.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.RegenerateAuthToken(context.Background(), repo, uow,
-		operations.RegenerateAuthTokenCommand{}, testpg.TestEC())
+	_, err := runOp(uow, operations.RegenerateAuthToken(repo),
+		operations.RegenerateAuthTokenCommand{})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "SERVICE_ACCOUNT_ID_REQUIRED")
 
-	_, err = operations.RegenerateAuthToken(context.Background(), repo, uow,
-		operations.RegenerateAuthTokenCommand{ServiceAccountID: "sa_doesnotexist1"}, testpg.TestEC())
+	_, err = runOp(uow, operations.RegenerateAuthToken(repo),
+		operations.RegenerateAuthTokenCommand{ServiceAccountID: "sa_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "ServiceAccount_NOT_FOUND")
 }
 
@@ -538,11 +549,11 @@ func TestRegenerateSigningSecret_HappyPathAndStash(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreate(t, repo, uow, "saregen-secret", "Secret Regen")
 
-	committed, err := operations.RegenerateSigningSecret(ctx, repo, uow,
-		operations.RegenerateSigningSecretCommand{ServiceAccountID: seeded.ServiceAccountID}, testpg.TestEC())
+	ev, err := runOp(uow, operations.RegenerateSigningSecret(repo),
+		operations.RegenerateSigningSecretCommand{ServiceAccountID: seeded.ServiceAccountID})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.ServiceAccountID, committed.Event().ServiceAccountID)
-	assert.Equal(t, "saregen-secret", committed.Event().Code)
+	assert.Equal(t, seeded.ServiceAccountID, ev.ServiceAccountID)
+	assert.Equal(t, "saregen-secret", ev.Code)
 
 	secret, ok := operations.PopStashedSecret(seeded.ServiceAccountID, "signing_secret")
 	require.True(t, ok, "first pop must return the stashed secret")
@@ -565,11 +576,11 @@ func TestRegenerateSigningSecret_Errors(t *testing.T) {
 	repo := serviceaccount.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.RegenerateSigningSecret(context.Background(), repo, uow,
-		operations.RegenerateSigningSecretCommand{}, testpg.TestEC())
+	_, err := runOp(uow, operations.RegenerateSigningSecret(repo),
+		operations.RegenerateSigningSecretCommand{})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "SERVICE_ACCOUNT_ID_REQUIRED")
 
-	_, err = operations.RegenerateSigningSecret(context.Background(), repo, uow,
-		operations.RegenerateSigningSecretCommand{ServiceAccountID: "sa_doesnotexist1"}, testpg.TestEC())
+	_, err = runOp(uow, operations.RegenerateSigningSecret(repo),
+		operations.RegenerateSigningSecretCommand{ServiceAccountID: "sa_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "ServiceAccount_NOT_FOUND")
 }

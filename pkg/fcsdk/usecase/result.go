@@ -1,19 +1,19 @@
-// Package usecase implements the sealed UseCase + Result pattern used by
-// every FlowCatalyst SDK and by the platform itself.
+// Package usecase implements the sealed Result pattern used by the
+// FlowCatalyst SDK and the platform itself, plus the DomainEvent /
+// ExecutionContext / typed Error primitives the use-case envelope builds on.
 //
 // The Result[E] type is a sealed sum: only success[E] and failure[E]
 // implement it, both unexported. Failure can be constructed by anyone;
-// Success requires a sealed.Token, which only packages under
-// clients/go-sdk/ can mint. Therefore the only path to a Success-valued
-// Result outside the SDK is through one of the Commit* free functions
-// in usecasepgx / usecasesql.
+// Success requires a sealed.Token, which only packages under pkg/fcsdk/
+// can mint. Therefore the only path to a Success-valued Result outside the
+// SDK is through one of the Commit* free functions in usecasepgx.
 //
 // This is what guarantees, at compile time, that every domain event is
 // committed atomically with its aggregate state — no code path produces
 // a Success without going through a UnitOfWork.
 package usecase
 
-import "github.com/flowcatalyst/flowcatalyst-go/internal/sealed"
+import "github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/internal/sealed"
 
 // Result is the outcome of a use case execution. It's a sealed sum with
 // exactly two implementors: success[E] (constructible only via Success)

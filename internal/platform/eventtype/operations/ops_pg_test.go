@@ -12,12 +12,26 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
 func TestMain(m *testing.M) { testpg.RunMain(m) }
+
+// runAuthorized drives op through the full use-case envelope (Validate →
+// Authorize → Execute → atomic commit) as an anchor principal — the common
+// case for these tests, which exercise validation, invariants, and
+// persistence rather than authorization itself (see
+// TestCreateEventType_ResourceScope for that). It mirrors how the HTTP
+// handler runs the operation.
+func runAuthorized[C any, E usecase.DomainEvent](
+	uow *usecasepgx.UnitOfWork, op usecaseop.Operation[C, E], cmd C,
+) (E, error) {
+	return usecaseop.Run(testpg.AnchorCtx(), uow, op, cmd, testpg.TestEC())
+}
 
 // mustCreate seeds an event type through the public operation — the same
 // path production uses. Codes are hand-unique per test: the fixture never
@@ -25,10 +39,10 @@ func TestMain(m *testing.M) { testpg.RunMain(m) }
 // table-wide.
 func mustCreate(t *testing.T, repo *eventtype.Repository, uow *usecasepgx.UnitOfWork, code, name string) operations.EventTypeCreated {
 	t.Helper()
-	committed, err := operations.CreateEventType(context.Background(), repo, uow,
-		operations.CreateCommand{Code: code, Name: name}, testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.CreateEventType(repo),
+		operations.CreateCommand{Code: code, Name: name})
 	require.NoError(t, err)
-	return committed.Event()
+	return ev
 }
 
 // ── Create ────────────────────────────────────────────────────────────────
@@ -41,15 +55,14 @@ func TestCreateEventType_HappyPath(t *testing.T) {
 	ec := testpg.TestEC()
 
 	desc := "Order was created"
-	committed, err := operations.CreateEventType(ctx, repo, uow, operations.CreateCommand{
+	ev, err := runAuthorized(uow, operations.CreateEventType(repo), operations.CreateCommand{
 		Code:        "etcreate:orders:order:created",
 		Name:        "Order Created",
 		Description: &desc,
 		Schema:      json.RawMessage(`{"type":"object"}`),
-	}, ec)
+	})
 	require.NoError(t, err)
 
-	ev := committed.Event()
 	assert.NotEmpty(t, ev.EventTypeID)
 	assert.Equal(t, "etcreate:orders:order:created", ev.Code)
 	assert.Equal(t, "Order Created", ev.Name)
@@ -92,7 +105,7 @@ func TestCreateEventType_Validation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.CreateEventType(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.CreateEventType(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, usecase.KindValidation, tc.code)
 		})
 	}
@@ -106,9 +119,46 @@ func TestCreateEventType_DuplicateCode_Conflict(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	mustCreate(t, repo, uow, "etdup:orders:order:created", "First")
 
-	_, err := operations.CreateEventType(context.Background(), repo, uow,
-		operations.CreateCommand{Code: "etdup:orders:order:created", Name: "Second"}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.CreateEventType(repo),
+		operations.CreateCommand{Code: "etdup:orders:order:created", Name: "Second"})
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "CODE_EXISTS")
+}
+
+// TestCreateEventType_ResourceScope proves the use case's per-resource
+// authorization: the coarse "may create event types" permission is the
+// controller's job, but the use case enforces that you can only bind an
+// event type to a client you can access (and that platform-wide event types
+// require anchor). A client-scoped principal is denied a platform-wide and an
+// other-client event type, but allowed one for its own client.
+func TestCreateEventType_ResourceScope(t *testing.T) {
+	t.Parallel()
+	repo := eventtype.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+
+	ownClient := "cli_etscope_own"
+	clientCtx := testpg.WithAuth(context.Background(), &auth.AuthContext{
+		PrincipalID: "prn_etscope1",
+		Scope:       auth.ScopeClient,
+		Clients:     []string{ownClient},
+		Permissions: []string{"platform:messaging:event-type:create"},
+	})
+
+	// Platform-wide (nil ClientID) → cross-client → anchor required → denied.
+	_, err := usecaseop.Run(clientCtx, uow, operations.CreateEventType(repo),
+		operations.CreateCommand{Code: "etscope:orders:order:platform", Name: "X"}, testpg.TestEC())
+	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "SCOPE_FORBIDDEN")
+
+	// Bound to a client the principal cannot access → denied.
+	other := "cli_etscope_other"
+	_, err = usecaseop.Run(clientCtx, uow, operations.CreateEventType(repo),
+		operations.CreateCommand{Code: "etscope:orders:order:other", Name: "X", ClientID: &other}, testpg.TestEC())
+	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "SCOPE_FORBIDDEN")
+
+	// Bound to the principal's own client → allowed.
+	ev, err := usecaseop.Run(clientCtx, uow, operations.CreateEventType(repo),
+		operations.CreateCommand{Code: "etscope:orders:order:own", Name: "Mine", ClientID: &ownClient}, testpg.TestEC())
+	require.NoError(t, err)
+	assert.Equal(t, "etscope:orders:order:own", ev.Code)
 }
 
 // ── Update ────────────────────────────────────────────────────────────────
@@ -121,12 +171,12 @@ func TestUpdateEventType_HappyPath(t *testing.T) {
 	seeded := mustCreate(t, repo, uow, "etupd:orders:order:created", "Before")
 
 	newDesc := "after"
-	committed, err := operations.UpdateEventType(ctx, repo, uow, operations.UpdateCommand{
+	ev, err := runAuthorized(uow, operations.UpdateEventType(repo), operations.UpdateCommand{
 		ID: seeded.EventTypeID, Name: "After", Description: &newDesc,
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.EventTypeID, committed.Event().EventTypeID)
-	assert.Equal(t, "After", committed.Event().Name)
+	assert.Equal(t, seeded.EventTypeID, ev.EventTypeID)
+	assert.Equal(t, "After", ev.Name)
 
 	got, err := repo.FindByID(ctx, seeded.EventTypeID)
 	require.NoError(t, err)
@@ -155,7 +205,7 @@ func TestUpdateEventType_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.UpdateEventType(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.UpdateEventType(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -170,11 +220,11 @@ func TestDeleteEventType_HappyPath(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreate(t, repo, uow, "etdel:orders:order:created", "Doomed")
 
-	committed, err := operations.DeleteEventType(ctx, repo, uow,
-		operations.DeleteCommand{ID: seeded.EventTypeID}, testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.DeleteEventType(repo),
+		operations.DeleteCommand{ID: seeded.EventTypeID})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.EventTypeID, committed.Event().EventTypeID)
-	assert.Equal(t, "etdel:orders:order:created", committed.Event().Code)
+	assert.Equal(t, seeded.EventTypeID, ev.EventTypeID)
+	assert.Equal(t, "etdel:orders:order:created", ev.Code)
 
 	got, err := repo.FindByID(ctx, seeded.EventTypeID)
 	require.NoError(t, err)
@@ -186,12 +236,11 @@ func TestDeleteEventType_Errors(t *testing.T) {
 	repo := eventtype.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.DeleteEventType(context.Background(), repo, uow,
-		operations.DeleteCommand{}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.DeleteEventType(repo), operations.DeleteCommand{})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = operations.DeleteEventType(context.Background(), repo, uow,
-		operations.DeleteCommand{ID: "evt_doesnotexist1"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.DeleteEventType(repo),
+		operations.DeleteCommand{ID: "evt_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "EventType_NOT_FOUND")
 }
 
@@ -204,8 +253,8 @@ func TestArchiveEventType_HappyPathAndAlreadyArchived(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreate(t, repo, uow, "etarc:orders:order:created", "Archive Me")
 
-	_, err := operations.ArchiveEventType(ctx, repo, uow,
-		operations.ArchiveCommand{ID: seeded.EventTypeID}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.ArchiveEventType(repo),
+		operations.ArchiveCommand{ID: seeded.EventTypeID})
 	require.NoError(t, err)
 
 	got, err := repo.FindByID(ctx, seeded.EventTypeID)
@@ -213,8 +262,8 @@ func TestArchiveEventType_HappyPathAndAlreadyArchived(t *testing.T) {
 	require.NotNil(t, got)
 	assert.Equal(t, eventtype.StatusArchived, got.Status)
 
-	_, err = operations.ArchiveEventType(ctx, repo, uow,
-		operations.ArchiveCommand{ID: seeded.EventTypeID}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.ArchiveEventType(repo),
+		operations.ArchiveCommand{ID: seeded.EventTypeID})
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "ALREADY_ARCHIVED")
 }
 
@@ -225,33 +274,32 @@ func TestSyncEventTypes_UpsertAndRemoveUnlisted(t *testing.T) {
 	ctx := context.Background()
 	repo := eventtype.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
-	ec := testpg.TestEC()
 
 	// UI-sourced row in the same application scope: sync must NEVER touch it.
 	uiRow := mustCreate(t, repo, uow, "etsync:ui:thing:kept", "UI Kept")
 
-	first, err := operations.SyncEventTypes(ctx, repo, uow, operations.SyncEventTypesCommand{
+	first, err := runAuthorized(uow, operations.SyncEventTypes(repo), operations.SyncEventTypesCommand{
 		ApplicationCode: "etsync",
 		EventTypes: []operations.SyncEventTypeInput{
 			{Code: "etsync:orders:order:created", Name: "A"},
 			{Code: "etsync:orders:order:updated", Name: "B"},
 		},
-	}, ec)
+	})
 	require.NoError(t, err)
-	assert.Equal(t, uint32(2), first.Event().Created)
-	assert.Equal(t, uint32(0), first.Event().Deleted)
+	assert.Equal(t, uint32(2), first.Created)
+	assert.Equal(t, uint32(0), first.Deleted)
 
-	second, err := operations.SyncEventTypes(ctx, repo, uow, operations.SyncEventTypesCommand{
+	second, err := runAuthorized(uow, operations.SyncEventTypes(repo), operations.SyncEventTypesCommand{
 		ApplicationCode: "etsync",
 		EventTypes: []operations.SyncEventTypeInput{
 			{Code: "etsync:orders:order:created", Name: "A renamed"},
 		},
 		RemoveUnlisted: true,
-	}, ec)
+	})
 	require.NoError(t, err)
-	assert.Equal(t, uint32(0), second.Event().Created)
-	assert.Equal(t, uint32(1), second.Event().Updated)
-	assert.Equal(t, uint32(1), second.Event().Deleted)
+	assert.Equal(t, uint32(0), second.Created)
+	assert.Equal(t, uint32(1), second.Updated)
+	assert.Equal(t, uint32(1), second.Deleted)
 
 	kept, err := repo.FindByCode(ctx, "etsync:orders:order:created")
 	require.NoError(t, err)
@@ -273,14 +321,14 @@ func TestSyncEventTypes_Validation(t *testing.T) {
 	repo := eventtype.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.SyncEventTypes(context.Background(), repo, uow,
-		operations.SyncEventTypesCommand{}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.SyncEventTypes(repo),
+		operations.SyncEventTypesCommand{})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "APPLICATION_CODE_REQUIRED")
 
-	_, err = operations.SyncEventTypes(context.Background(), repo, uow, operations.SyncEventTypesCommand{
+	_, err = runAuthorized(uow, operations.SyncEventTypes(repo), operations.SyncEventTypesCommand{
 		ApplicationCode: "etsyncbad",
 		EventTypes:      []operations.SyncEventTypeInput{{Code: "not-four-parts", Name: "X"}},
-	}, testpg.TestEC())
+	})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "INVALID_CODE")
 }
 
@@ -290,11 +338,10 @@ func TestSyncEventTypes_Validation(t *testing.T) {
 // spec version 1.0 in FINALISING state (pinned by TestCreateEventType_HappyPath).
 func mustCreateWithSchema(t *testing.T, repo *eventtype.Repository, uow *usecasepgx.UnitOfWork, code, name string) operations.EventTypeCreated {
 	t.Helper()
-	committed, err := operations.CreateEventType(context.Background(), repo, uow,
-		operations.CreateCommand{Code: code, Name: name, Schema: json.RawMessage(`{"type":"object"}`)},
-		testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.CreateEventType(repo),
+		operations.CreateCommand{Code: code, Name: name, Schema: json.RawMessage(`{"type":"object"}`)})
 	require.NoError(t, err)
-	return committed.Event()
+	return ev
 }
 
 // specByVersion finds a spec version on a reloaded aggregate by version
@@ -317,14 +364,14 @@ func TestAddSchema_HappyPath(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreateWithSchema(t, repo, uow, "etaddsch:orders:order:created", "Add Schema")
 
-	committed, err := operations.AddSchema(ctx, repo, uow, operations.AddSchemaCommand{
+	ev, err := runAuthorized(uow, operations.AddSchema(repo), operations.AddSchemaCommand{
 		EventTypeID: seeded.EventTypeID,
 		Version:     "2.0",
 		Schema:      json.RawMessage(`{"type":"object","title":"v2"}`),
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.EventTypeID, committed.Event().EventTypeID)
-	assert.Equal(t, "2.0", committed.Event().Version)
+	assert.Equal(t, seeded.EventTypeID, ev.EventTypeID)
+	assert.Equal(t, "2.0", ev.Version)
 
 	got, err := repo.FindByID(ctx, seeded.EventTypeID)
 	require.NoError(t, err)
@@ -356,7 +403,7 @@ func TestAddSchema_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.AddSchema(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.AddSchema(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -369,11 +416,11 @@ func TestAddSchema_DuplicateVersion_Conflict(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreateWithSchema(t, repo, uow, "etadddup:orders:order:created", "Dup Version")
 
-	_, err := operations.AddSchema(context.Background(), repo, uow, operations.AddSchemaCommand{
+	_, err := runAuthorized(uow, operations.AddSchema(repo), operations.AddSchemaCommand{
 		EventTypeID: seeded.EventTypeID,
 		Version:     "1.0",
 		Schema:      json.RawMessage(`{"type":"object"}`),
-	}, testpg.TestEC())
+	})
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "VERSION_EXISTS")
 }
 
@@ -384,12 +431,12 @@ func TestFinaliseEventTypeSchema_HappyPathAndNotFinalising(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreateWithSchema(t, repo, uow, "etfin:orders:order:created", "Finalise Me")
 
-	committed, err := operations.FinaliseEventTypeSchema(ctx, repo, uow,
-		operations.FinaliseSchemaCommand{EventTypeID: seeded.EventTypeID, Version: "1.0"}, testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.FinaliseEventTypeSchema(repo),
+		operations.FinaliseSchemaCommand{EventTypeID: seeded.EventTypeID, Version: "1.0"})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.EventTypeID, committed.Event().EventTypeID)
-	assert.Equal(t, "1.0", committed.Event().Version)
-	assert.Nil(t, committed.Event().DeprecatedVersion, "no same-major CURRENT sibling to auto-deprecate")
+	assert.Equal(t, seeded.EventTypeID, ev.EventTypeID)
+	assert.Equal(t, "1.0", ev.Version)
+	assert.Nil(t, ev.DeprecatedVersion, "no same-major CURRENT sibling to auto-deprecate")
 
 	got, err := repo.FindByID(ctx, seeded.EventTypeID)
 	require.NoError(t, err)
@@ -398,8 +445,8 @@ func TestFinaliseEventTypeSchema_HappyPathAndNotFinalising(t *testing.T) {
 		"finalise must flip FINALISING → CURRENT")
 
 	// Finalising twice conflicts: the version is now CURRENT, not FINALISING.
-	_, err = operations.FinaliseEventTypeSchema(ctx, repo, uow,
-		operations.FinaliseSchemaCommand{EventTypeID: seeded.EventTypeID, Version: "1.0"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.FinaliseEventTypeSchema(repo),
+		operations.FinaliseSchemaCommand{EventTypeID: seeded.EventTypeID, Version: "1.0"})
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "NOT_FINALISING")
 }
 
@@ -408,21 +455,21 @@ func TestFinaliseEventTypeSchema_Errors(t *testing.T) {
 	repo := eventtype.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.FinaliseEventTypeSchema(context.Background(), repo, uow,
-		operations.FinaliseSchemaCommand{Version: "1.0"}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.FinaliseEventTypeSchema(repo),
+		operations.FinaliseSchemaCommand{Version: "1.0"})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = operations.FinaliseEventTypeSchema(context.Background(), repo, uow,
-		operations.FinaliseSchemaCommand{EventTypeID: "evt_doesnotexist1"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.FinaliseEventTypeSchema(repo),
+		operations.FinaliseSchemaCommand{EventTypeID: "evt_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "VERSION_REQUIRED")
 
-	_, err = operations.FinaliseEventTypeSchema(context.Background(), repo, uow,
-		operations.FinaliseSchemaCommand{EventTypeID: "evt_doesnotexist1", Version: "1.0"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.FinaliseEventTypeSchema(repo),
+		operations.FinaliseSchemaCommand{EventTypeID: "evt_doesnotexist1", Version: "1.0"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "EventType_NOT_FOUND")
 
 	seeded := mustCreateWithSchema(t, repo, uow, "etfinerr:orders:order:created", "Finalise Errors")
-	_, err = operations.FinaliseEventTypeSchema(context.Background(), repo, uow,
-		operations.FinaliseSchemaCommand{EventTypeID: seeded.EventTypeID, Version: "9.9"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.FinaliseEventTypeSchema(repo),
+		operations.FinaliseSchemaCommand{EventTypeID: seeded.EventTypeID, Version: "9.9"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "SpecVersion_NOT_FOUND")
 }
 
@@ -436,19 +483,19 @@ func TestDeprecateEventTypeSchema_HappyPathAndConflicts(t *testing.T) {
 	seeded := mustCreateWithSchema(t, repo, uow, "etdep:orders:order:created", "Deprecate Me")
 
 	// Still FINALISING → direct deprecation is refused.
-	_, err := operations.DeprecateEventTypeSchema(ctx, repo, uow,
-		operations.DeprecateSchemaCommand{EventTypeID: seeded.EventTypeID, Version: "1.0"}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.DeprecateEventTypeSchema(repo),
+		operations.DeprecateSchemaCommand{EventTypeID: seeded.EventTypeID, Version: "1.0"})
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "STILL_FINALISING")
 
-	_, err = operations.FinaliseEventTypeSchema(ctx, repo, uow,
-		operations.FinaliseSchemaCommand{EventTypeID: seeded.EventTypeID, Version: "1.0"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.FinaliseEventTypeSchema(repo),
+		operations.FinaliseSchemaCommand{EventTypeID: seeded.EventTypeID, Version: "1.0"})
 	require.NoError(t, err)
 
-	committed, err := operations.DeprecateEventTypeSchema(ctx, repo, uow,
-		operations.DeprecateSchemaCommand{EventTypeID: seeded.EventTypeID, Version: "1.0"}, testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.DeprecateEventTypeSchema(repo),
+		operations.DeprecateSchemaCommand{EventTypeID: seeded.EventTypeID, Version: "1.0"})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.EventTypeID, committed.Event().EventTypeID)
-	assert.Equal(t, "1.0", committed.Event().Version)
+	assert.Equal(t, seeded.EventTypeID, ev.EventTypeID)
+	assert.Equal(t, "1.0", ev.Version)
 
 	got, err := repo.FindByID(ctx, seeded.EventTypeID)
 	require.NoError(t, err)
@@ -456,8 +503,8 @@ func TestDeprecateEventTypeSchema_HappyPathAndConflicts(t *testing.T) {
 	assert.Equal(t, eventtype.SpecDeprecated, specByVersion(t, got, "1.0").Status,
 		"deprecate must flip CURRENT → DEPRECATED")
 
-	_, err = operations.DeprecateEventTypeSchema(ctx, repo, uow,
-		operations.DeprecateSchemaCommand{EventTypeID: seeded.EventTypeID, Version: "1.0"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.DeprecateEventTypeSchema(repo),
+		operations.DeprecateSchemaCommand{EventTypeID: seeded.EventTypeID, Version: "1.0"})
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "ALREADY_DEPRECATED")
 }
 
@@ -466,20 +513,20 @@ func TestDeprecateEventTypeSchema_Errors(t *testing.T) {
 	repo := eventtype.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.DeprecateEventTypeSchema(context.Background(), repo, uow,
-		operations.DeprecateSchemaCommand{Version: "1.0"}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.DeprecateEventTypeSchema(repo),
+		operations.DeprecateSchemaCommand{Version: "1.0"})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = operations.DeprecateEventTypeSchema(context.Background(), repo, uow,
-		operations.DeprecateSchemaCommand{EventTypeID: "evt_doesnotexist1"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.DeprecateEventTypeSchema(repo),
+		operations.DeprecateSchemaCommand{EventTypeID: "evt_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "VERSION_REQUIRED")
 
-	_, err = operations.DeprecateEventTypeSchema(context.Background(), repo, uow,
-		operations.DeprecateSchemaCommand{EventTypeID: "evt_doesnotexist1", Version: "1.0"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.DeprecateEventTypeSchema(repo),
+		operations.DeprecateSchemaCommand{EventTypeID: "evt_doesnotexist1", Version: "1.0"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "EventType_NOT_FOUND")
 
 	seeded := mustCreateWithSchema(t, repo, uow, "etdeperr:orders:order:created", "Deprecate Errors")
-	_, err = operations.DeprecateEventTypeSchema(context.Background(), repo, uow,
-		operations.DeprecateSchemaCommand{EventTypeID: seeded.EventTypeID, Version: "9.9"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.DeprecateEventTypeSchema(repo),
+		operations.DeprecateSchemaCommand{EventTypeID: seeded.EventTypeID, Version: "9.9"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "SpecVersion_NOT_FOUND")
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/openapispecs/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 )
 
 func TestMain(m *testing.M) { testpg.RunMain(m) }
@@ -27,10 +28,10 @@ func TestMain(m *testing.M) { testpg.RunMain(m) }
 func mustCreateApp(t *testing.T, code, name string) appops.ApplicationCreated {
 	t.Helper()
 	repo := application.NewRepository(testpg.Pool(t))
-	committed, err := appops.CreateApplication(context.Background(), repo, testpg.NewUoW(t),
+	event, err := usecaseop.Run(context.Background(), testpg.NewUoW(t), appops.CreateApplication(repo),
 		appops.CreateCommand{Code: code, Name: name}, testpg.TestEC())
 	require.NoError(t, err)
-	return committed.Event()
+	return event
 }
 
 func TestSyncOpenApiSpec_Validation(t *testing.T) {
@@ -67,7 +68,7 @@ func TestSyncOpenApiSpec_Validation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.SyncOpenApiSpec(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncOpenApiSpec(repo), tc.cmd, testpg.TestEC())
 			testpg.RequireUsecaseError(t, err, usecase.KindValidation, tc.code)
 		})
 	}
@@ -89,14 +90,14 @@ func TestSyncOpenApiSpec_Lifecycle(t *testing.T) {
 	spec1 := json.RawMessage(`{"openapi":"3.0.0","info":{"title":"T","version":"1.0.0"},"paths":{"/a":{"get":{}}}}`)
 
 	// 1. First sync → new CURRENT row.
-	first, err := operations.SyncOpenApiSpec(ctx, repo, uow, operations.SyncOpenApiSpecCommand{
+	first, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncOpenApiSpec(repo), operations.SyncOpenApiSpecCommand{
 		ApplicationID:   app.ApplicationID,
 		ApplicationCode: "oassynchappy1",
 		Spec:            spec1,
 	}, ec)
 	require.NoError(t, err)
 
-	ev1 := first.Event()
+	ev1 := first
 	assert.NotEmpty(t, ev1.SpecID)
 	assert.Equal(t, app.ApplicationID, ev1.ApplicationID)
 	assert.Equal(t, "oassynchappy1", ev1.ApplicationCode)
@@ -117,14 +118,14 @@ func TestSyncOpenApiSpec_Lifecycle(t *testing.T) {
 	assert.JSONEq(t, string(spec1), string(cur.Spec))
 
 	// 2. Byte-identical re-sync → Unchanged short-circuit, no new row.
-	second, err := operations.SyncOpenApiSpec(ctx, repo, uow, operations.SyncOpenApiSpecCommand{
+	second, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncOpenApiSpec(repo), operations.SyncOpenApiSpecCommand{
 		ApplicationID:   app.ApplicationID,
 		ApplicationCode: "oassynchappy1",
 		Spec:            spec1,
 	}, ec)
 	require.NoError(t, err)
-	assert.True(t, second.Event().Unchanged)
-	assert.Equal(t, ev1.SpecID, second.Event().SpecID, "unchanged sync reports the existing row")
+	assert.True(t, second.Unchanged)
+	assert.Equal(t, ev1.SpecID, second.SpecID, "unchanged sync reports the existing row")
 
 	all, err := repo.FindAllByApplication(ctx, app.ApplicationID)
 	require.NoError(t, err)
@@ -132,14 +133,14 @@ func TestSyncOpenApiSpec_Lifecycle(t *testing.T) {
 
 	// 3. Changed document → prior CURRENT archived, new CURRENT inserted.
 	spec2 := json.RawMessage(`{"openapi":"3.0.0","info":{"title":"T","version":"2.0.0"},"paths":{"/a":{"get":{}},"/b":{"post":{}}}}`)
-	third, err := operations.SyncOpenApiSpec(ctx, repo, uow, operations.SyncOpenApiSpecCommand{
+	third, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncOpenApiSpec(repo), operations.SyncOpenApiSpecCommand{
 		ApplicationID:   app.ApplicationID,
 		ApplicationCode: "oassynchappy1",
 		Spec:            spec2,
 	}, ec)
 	require.NoError(t, err)
 
-	ev3 := third.Event()
+	ev3 := third
 	assert.False(t, ev3.Unchanged)
 	assert.Equal(t, "2.0.0", ev3.Version, "re-sync picks up the bumped info.version")
 	assert.NotEqual(t, ev1.SpecID, ev3.SpecID)
@@ -168,15 +169,15 @@ func TestSyncOpenApiSpec_Lifecycle(t *testing.T) {
 	// 4. New content reusing an already-stored info.version: the UNIQUE
 	//    (application_id, version) guard appends a "+timestamp" suffix.
 	spec3 := json.RawMessage(`{"openapi":"3.0.0","info":{"title":"T renamed","version":"2.0.0"},"paths":{"/b":{"post":{}}}}`)
-	fourth, err := operations.SyncOpenApiSpec(ctx, repo, uow, operations.SyncOpenApiSpecCommand{
+	fourth, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncOpenApiSpec(repo), operations.SyncOpenApiSpecCommand{
 		ApplicationID:   app.ApplicationID,
 		ApplicationCode: "oassynchappy1",
 		Spec:            spec3,
 	}, ec)
 	require.NoError(t, err)
-	assert.True(t, strings.HasPrefix(fourth.Event().Version, "2.0.0+"),
+	assert.True(t, strings.HasPrefix(fourth.Version, "2.0.0+"),
 		"colliding info.version must be disambiguated with a +timestamp suffix, got %q",
-		fourth.Event().Version)
+		fourth.Version)
 
 	all, err = repo.FindAllByApplication(ctx, app.ApplicationID)
 	require.NoError(t, err)
@@ -192,16 +193,16 @@ func TestSyncOpenApiSpec_SwaggerFieldAccepted(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	app := mustCreateApp(t, "oasswagger1", "Swagger App")
 
-	committed, err := operations.SyncOpenApiSpec(ctx, repo, uow, operations.SyncOpenApiSpecCommand{
+	committed, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncOpenApiSpec(repo), operations.SyncOpenApiSpecCommand{
 		ApplicationID:   app.ApplicationID,
 		ApplicationCode: "oasswagger1",
 		Spec:            json.RawMessage(`{"swagger":"2.0","info":{"version":"0.1.0"},"paths":{}}`),
 	}, testpg.TestEC())
 	require.NoError(t, err)
-	assert.Equal(t, "0.1.0", committed.Event().Version)
+	assert.Equal(t, "0.1.0", committed.Version)
 
 	cur, err := repo.FindCurrentByApplication(ctx, app.ApplicationID)
 	require.NoError(t, err)
 	require.NotNil(t, cur)
-	assert.Equal(t, committed.Event().SpecID, cur.ID)
+	assert.Equal(t, committed.SpecID, cur.ID)
 }

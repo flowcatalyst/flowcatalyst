@@ -20,10 +20,23 @@ import (
 	roleops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
 func TestMain(m *testing.M) { testpg.RunMain(m) }
+
+// runAuthorized drives op through the full use-case envelope (Validate →
+// Authorize → Execute → atomic commit) as an anchor principal — the common case
+// for these tests, which exercise validation, invariants, and persistence
+// rather than authorization itself (the resource-scope denial tests use a
+// narrower principal directly). It mirrors how the HTTP handler runs the
+// operation.
+func runAuthorized[C any, E usecase.DomainEvent](
+	uow *usecasepgx.UnitOfWork, op usecaseop.Operation[C, E], cmd C,
+) (E, error) {
+	return usecaseop.Run(testpg.AnchorCtx(), uow, op, cmd, testpg.TestEC())
+}
 
 // NOTE: the API layer's email-domain scope derivation (deriveUserScope) is not
 // exercised here — the CreateUser OPERATION takes the scope verbatim; the
@@ -37,41 +50,40 @@ func ptr[T any](v T) *T { return &v }
 // and the fixture never truncates), so tests own their rows.
 func mustCreateUser(t *testing.T, repo *principal.Repository, uow *usecasepgx.UnitOfWork, email, scope string, clientID *string) operations.UserCreated {
 	t.Helper()
-	committed, err := operations.CreateUser(context.Background(), repo, uow,
-		operations.CreateCommand{Email: email, Scope: scope, ClientID: clientID}, testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.CreateUser(repo),
+		operations.CreateCommand{Email: email, Scope: scope, ClientID: clientID})
 	require.NoError(t, err)
-	return committed.Event()
+	return ev
 }
 
 // mustCreateRole seeds a role (name = "appCode:roleName") for the ops that
 // validate role existence (assign_roles, sync_idp_roles).
 func mustCreateRole(t *testing.T, uow *usecasepgx.UnitOfWork, appCode, roleName string) string {
 	t.Helper()
-	committed, err := roleops.CreateRole(context.Background(), role.NewRepository(testpg.Pool(t)), uow,
-		roleops.CreateCommand{ApplicationCode: appCode, RoleName: roleName, DisplayName: appCode + " " + roleName},
-		testpg.TestEC())
+	ev, err := runAuthorized(uow, roleops.CreateRole(role.NewRepository(testpg.Pool(t))),
+		roleops.CreateCommand{ApplicationCode: appCode, RoleName: roleName, DisplayName: appCode + " " + roleName})
 	require.NoError(t, err)
-	return committed.Event().Name
+	return ev.Name
 }
 
 // mustCreateClient seeds a tnt_clients row for the client-existence checks in
 // grant_client_access / set_client_association.
 func mustCreateClient(t *testing.T, uow *usecasepgx.UnitOfWork, name, identifier string) string {
 	t.Helper()
-	committed, err := clientops.CreateClient(context.Background(), client.NewRepository(testpg.Pool(t)), uow,
-		clientops.CreateCommand{Name: name, Identifier: identifier}, testpg.TestEC())
+	ev, err := runAuthorized(uow, clientops.CreateClient(client.NewRepository(testpg.Pool(t))),
+		clientops.CreateCommand{Name: name, Identifier: identifier})
 	require.NoError(t, err)
-	return committed.Event().ClientID
+	return ev.ClientID
 }
 
 // mustCreateApplication seeds an (active-by-default) application for
 // assign_application_access.
 func mustCreateApplication(t *testing.T, uow *usecasepgx.UnitOfWork, code, name string) string {
 	t.Helper()
-	committed, err := appops.CreateApplication(context.Background(), application.NewRepository(testpg.Pool(t)), uow,
-		appops.CreateCommand{Code: code, Name: name}, testpg.TestEC())
+	ev, err := runAuthorized(uow, appops.CreateApplication(application.NewRepository(testpg.Pool(t))),
+		appops.CreateCommand{Code: code, Name: name})
 	require.NoError(t, err)
-	return committed.Event().ApplicationID
+	return ev.ApplicationID
 }
 
 // seedPrincipalDirect persists a hand-built principal row through the repo's
@@ -124,18 +136,16 @@ func TestCreateUser_HappyPath(t *testing.T) {
 	ctx := context.Background()
 	repo := principal.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
-	ec := testpg.TestEC()
 
 	// Full shape: mixed-case + padded email must normalise, name must trim,
 	// password must land as a verifiable hash (never plaintext).
-	committed, err := operations.CreateUser(ctx, repo, uow, operations.CreateCommand{
+	ev, err := runAuthorized(uow, operations.CreateUser(repo), operations.CreateCommand{
 		Email:    "  PRN-Create-Happy@Example.COM  ",
 		Name:     ptr("  Jane Doe  "),
 		Scope:    "ANCHOR",
 		Password: ptr("s3cret-pass!"),
-	}, ec)
+	})
 	require.NoError(t, err)
-	ev := committed.Event()
 	assert.NotEmpty(t, ev.UserID)
 	assert.Equal(t, "prn-create-happy@example.com", ev.Email, "email is lower-cased + trimmed")
 
@@ -172,14 +182,14 @@ func TestCreateUser_OIDCAndClientScope(t *testing.T) {
 
 	// IDPType OIDC: password hash is discarded (IDP owns credentials) and the
 	// provider is recorded.
-	committed, err := operations.CreateUser(ctx, repo, uow, operations.CreateCommand{
+	ev0, err := runAuthorized(uow, operations.CreateUser(repo), operations.CreateCommand{
 		Email:    "prn-create-oidc@example.com",
 		Scope:    "ANCHOR",
 		Password: ptr("ignored-password1"),
 		IDPType:  ptr("OIDC"),
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
-	got, err := repo.FindByID(ctx, committed.Event().UserID)
+	got, err := repo.FindByID(ctx, ev0.UserID)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	require.NotNil(t, got.UserIdentity)
@@ -221,7 +231,7 @@ func TestCreateUser_Validation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.CreateUser(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.CreateUser(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, usecase.KindValidation, tc.code)
 		})
 	}
@@ -236,8 +246,8 @@ func TestCreateUser_DuplicateEmail_Conflict(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	mustCreateUser(t, repo, uow, "prn-create-dup@example.com", "ANCHOR", nil)
 
-	_, err := operations.CreateUser(context.Background(), repo, uow,
-		operations.CreateCommand{Email: " PRN-CREATE-DUP@EXAMPLE.COM ", Scope: "ANCHOR"}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.CreateUser(repo),
+		operations.CreateCommand{Email: " PRN-CREATE-DUP@EXAMPLE.COM ", Scope: "ANCHOR"})
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "EMAIL_EXISTS")
 }
 
@@ -252,15 +262,15 @@ func TestUpdateUser_HappyPath(t *testing.T) {
 
 	// Same email in a different case is accepted as a stable identity
 	// assertion (PUT-a-full-object support), not a change.
-	committed, err := operations.UpdateUser(ctx, repo, uow, operations.UpdateCommand{
+	ev, err := runAuthorized(uow, operations.UpdateUser(repo), operations.UpdateCommand{
 		ID:     seeded.UserID,
 		Name:   ptr("  Renamed User  "),
 		Active: ptr(false),
 		Email:  ptr("PRN-UPDATE-HAPPY@example.com"),
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.UserID, committed.Event().UserID)
-	assert.Equal(t, "Renamed User", committed.Event().Name)
+	assert.Equal(t, seeded.UserID, ev.UserID)
+	assert.Equal(t, "Renamed User", ev.Name)
 
 	got, err := repo.FindByID(ctx, seeded.UserID)
 	require.NoError(t, err)
@@ -272,7 +282,6 @@ func TestUpdateUser_HappyPath(t *testing.T) {
 
 func TestUpdateUser_Errors(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
 	repo := principal.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 	seeded := mustCreateUser(t, repo, uow, "prn-update-err@example.com", "ANCHOR", nil)
@@ -291,7 +300,7 @@ func TestUpdateUser_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.UpdateUser(ctx, repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.UpdateUser(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -306,19 +315,19 @@ func TestActivateDeactivateUser_RoundTrip(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreateUser(t, repo, uow, "prn-actdeact@example.com", "ANCHOR", nil)
 
-	deact, err := operations.DeactivateUser(ctx, repo, uow,
-		operations.DeactivateCommand{ID: seeded.UserID}, testpg.TestEC())
+	deact, err := runAuthorized(uow, operations.DeactivateUser(repo),
+		operations.DeactivateCommand{ID: seeded.UserID})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.UserID, deact.Event().UserID)
+	assert.Equal(t, seeded.UserID, deact.UserID)
 	got, err := repo.FindByID(ctx, seeded.UserID)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.False(t, got.Active)
 
-	act, err := operations.ActivateUser(ctx, repo, uow,
-		operations.ActivateCommand{ID: seeded.UserID}, testpg.TestEC())
+	act, err := runAuthorized(uow, operations.ActivateUser(repo),
+		operations.ActivateCommand{ID: seeded.UserID})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.UserID, act.Event().UserID)
+	assert.Equal(t, seeded.UserID, act.UserID)
 	got, err = repo.FindByID(ctx, seeded.UserID)
 	require.NoError(t, err)
 	require.NotNil(t, got)
@@ -330,12 +339,12 @@ func TestActivateUser_Errors(t *testing.T) {
 	repo := principal.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.ActivateUser(context.Background(), repo, uow,
-		operations.ActivateCommand{}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.ActivateUser(repo),
+		operations.ActivateCommand{})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = operations.ActivateUser(context.Background(), repo, uow,
-		operations.ActivateCommand{ID: "prn_doesnotexist1"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.ActivateUser(repo),
+		operations.ActivateCommand{ID: "prn_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "Principal_NOT_FOUND")
 }
 
@@ -344,12 +353,12 @@ func TestDeactivateUser_Errors(t *testing.T) {
 	repo := principal.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.DeactivateUser(context.Background(), repo, uow,
-		operations.DeactivateCommand{}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.DeactivateUser(repo),
+		operations.DeactivateCommand{})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = operations.DeactivateUser(context.Background(), repo, uow,
-		operations.DeactivateCommand{ID: "prn_doesnotexist1"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.DeactivateUser(repo),
+		operations.DeactivateCommand{ID: "prn_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "Principal_NOT_FOUND")
 }
 
@@ -362,11 +371,11 @@ func TestDeleteUser_HappyPath(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreateUser(t, repo, uow, "prn-delete@example.com", "ANCHOR", nil)
 
-	committed, err := operations.DeleteUser(ctx, repo, uow,
-		operations.DeleteCommand{ID: seeded.UserID}, testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.DeleteUser(repo),
+		operations.DeleteCommand{ID: seeded.UserID})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.UserID, committed.Event().UserID)
-	assert.Equal(t, "prn-delete@example.com", committed.Event().Email)
+	assert.Equal(t, seeded.UserID, ev.UserID)
+	assert.Equal(t, "prn-delete@example.com", ev.Email)
 
 	got, err := repo.FindByID(ctx, seeded.UserID)
 	require.NoError(t, err)
@@ -378,12 +387,12 @@ func TestDeleteUser_Errors(t *testing.T) {
 	repo := principal.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.DeleteUser(context.Background(), repo, uow,
-		operations.DeleteCommand{}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.DeleteUser(repo),
+		operations.DeleteCommand{})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = operations.DeleteUser(context.Background(), repo, uow,
-		operations.DeleteCommand{ID: "prn_doesnotexist1"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.DeleteUser(repo),
+		operations.DeleteCommand{ID: "prn_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "Principal_NOT_FOUND")
 }
 
@@ -395,16 +404,14 @@ func TestAssignRoles_HappyPathAndReplace(t *testing.T) {
 	repo := principal.NewRepository(testpg.Pool(t))
 	roles := role.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
-	ec := testpg.TestEC()
 
 	viewer := mustCreateRole(t, uow, "prnasgn", "viewer")
 	editor := mustCreateRole(t, uow, "prnasgn", "editor")
 	seeded := mustCreateUser(t, repo, uow, "prn-asgnroles@example.com", "ANCHOR", nil)
 
-	first, err := operations.AssignRoles(ctx, repo, roles, uow,
-		operations.AssignRolesCommand{UserID: seeded.UserID, Roles: []string{viewer, editor}}, ec)
+	ev, err := runAuthorized(uow, operations.AssignRoles(repo, roles),
+		operations.AssignRolesCommand{UserID: seeded.UserID, Roles: []string{viewer, editor}})
 	require.NoError(t, err)
-	ev := first.Event()
 	assert.Equal(t, seeded.UserID, ev.UserID)
 	assert.Equal(t, []string{viewer, editor}, ev.Roles)
 	assert.ElementsMatch(t, []string{viewer, editor}, ev.Added)
@@ -420,11 +427,11 @@ func TestAssignRoles_HappyPathAndReplace(t *testing.T) {
 
 	// Reassign replaces the whole set: dropping viewer must show in Removed
 	// and on reload.
-	second, err := operations.AssignRoles(ctx, repo, roles, uow,
-		operations.AssignRolesCommand{UserID: seeded.UserID, Roles: []string{editor}}, ec)
+	second, err := runAuthorized(uow, operations.AssignRoles(repo, roles),
+		operations.AssignRolesCommand{UserID: seeded.UserID, Roles: []string{editor}})
 	require.NoError(t, err)
-	assert.Empty(t, second.Event().Added)
-	assert.Equal(t, []string{viewer}, second.Event().Removed)
+	assert.Empty(t, second.Added)
+	assert.Equal(t, []string{viewer}, second.Removed)
 
 	got, err = repo.FindByID(ctx, seeded.UserID)
 	require.NoError(t, err)
@@ -434,7 +441,6 @@ func TestAssignRoles_HappyPathAndReplace(t *testing.T) {
 
 func TestAssignRoles_Errors(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
 	repo := principal.NewRepository(testpg.Pool(t))
 	roles := role.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
@@ -456,7 +462,7 @@ func TestAssignRoles_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.AssignRoles(ctx, repo, roles, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.AssignRoles(repo, roles), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -470,7 +476,6 @@ func TestAssignApplicationAccess_HappyPath_AllApplicationsFlag(t *testing.T) {
 	repo := principal.NewRepository(testpg.Pool(t))
 	apps := application.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
-	ec := testpg.TestEC()
 
 	app1 := mustCreateApplication(t, uow, "prnappa1", "Prn App A1")
 	app2 := mustCreateApplication(t, uow, "prnappa2", "Prn App A2")
@@ -478,14 +483,13 @@ func TestAssignApplicationAccess_HappyPath_AllApplicationsFlag(t *testing.T) {
 
 	// 1. Restrict: ids + AllApplications=false. New users default to
 	// AllApplications=true (pinned in the create test), so this flips it.
-	first, err := operations.AssignApplicationAccess(ctx, repo, apps, uow,
+	ev, err := runAuthorized(uow, operations.AssignApplicationAccess(repo, apps),
 		operations.AssignApplicationAccessCommand{
 			UserID:          seeded.UserID,
 			ApplicationIDs:  []string{app1, app2},
 			AllApplications: ptr(false),
-		}, ec)
+		})
 	require.NoError(t, err)
-	ev := first.Event()
 	assert.Equal(t, seeded.UserID, ev.UserID)
 	assert.Equal(t, []string{app1, app2}, ev.ApplicationIDs)
 	assert.ElementsMatch(t, []string{app1, app2}, ev.Added)
@@ -500,13 +504,13 @@ func TestAssignApplicationAccess_HappyPath_AllApplicationsFlag(t *testing.T) {
 
 	// 2. Nil AllApplications leaves the stored flag unchanged; the id list is
 	// still replaced wholesale.
-	second, err := operations.AssignApplicationAccess(ctx, repo, apps, uow,
+	second, err := runAuthorized(uow, operations.AssignApplicationAccess(repo, apps),
 		operations.AssignApplicationAccessCommand{
 			UserID:         seeded.UserID,
 			ApplicationIDs: []string{app1},
-		}, ec)
+		})
 	require.NoError(t, err)
-	assert.Equal(t, []string{app2}, second.Event().Removed)
+	assert.Equal(t, []string{app2}, second.Removed)
 
 	got, err = repo.FindByID(ctx, seeded.UserID)
 	require.NoError(t, err)
@@ -515,12 +519,12 @@ func TestAssignApplicationAccess_HappyPath_AllApplicationsFlag(t *testing.T) {
 	assert.False(t, got.AllApplications, "nil flag must not touch the stored value (326772d)")
 
 	// 3. Back to unrestricted: empty list + AllApplications=true.
-	_, err = operations.AssignApplicationAccess(ctx, repo, apps, uow,
+	_, err = runAuthorized(uow, operations.AssignApplicationAccess(repo, apps),
 		operations.AssignApplicationAccessCommand{
 			UserID:          seeded.UserID,
 			ApplicationIDs:  []string{},
 			AllApplications: ptr(true),
-		}, ec)
+		})
 	require.NoError(t, err)
 
 	got, err = repo.FindByID(ctx, seeded.UserID)
@@ -532,7 +536,6 @@ func TestAssignApplicationAccess_HappyPath_AllApplicationsFlag(t *testing.T) {
 
 func TestAssignApplicationAccess_Errors(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
 	repo := principal.NewRepository(testpg.Pool(t))
 	apps := application.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
@@ -540,8 +543,8 @@ func TestAssignApplicationAccess_Errors(t *testing.T) {
 	user := mustCreateUser(t, repo, uow, "prn-appaccess-err@example.com", "ANCHOR", nil)
 
 	inactiveApp := mustCreateApplication(t, uow, "prnappinact", "Prn App Inactive")
-	_, err := appops.DeactivateApplication(ctx, apps, uow,
-		appops.DeactivateCommand{ID: inactiveApp}, testpg.TestEC())
+	_, err := runAuthorized(uow, appops.DeactivateApplication(apps),
+		appops.DeactivateCommand{ID: inactiveApp})
 	require.NoError(t, err)
 
 	cases := []struct {
@@ -558,7 +561,7 @@ func TestAssignApplicationAccess_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.AssignApplicationAccess(ctx, repo, apps, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.AssignApplicationAccess(repo, apps), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -575,18 +578,17 @@ func TestAssignApplicationAccess_ServiceAccount(t *testing.T) {
 	repo := principal.NewRepository(testpg.Pool(t))
 	apps := application.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
-	ec := testpg.TestEC()
 
 	app1 := mustCreateApplication(t, uow, "prnsvcappa1", "Prn Svc App A1")
 	svc := seedServicePrincipal(t, "sa_prnsvcappa01", "prn-svc-appaccess")
 
 	// Confine the (anchor, all-applications) service account to one app.
-	_, err := operations.AssignApplicationAccess(ctx, repo, apps, uow,
+	_, err := runAuthorized(uow, operations.AssignApplicationAccess(repo, apps),
 		operations.AssignApplicationAccessCommand{
 			UserID:          svc.ID,
 			ApplicationIDs:  []string{app1},
 			AllApplications: ptr(false),
-		}, ec)
+		})
 	require.NoError(t, err)
 
 	got, err := repo.FindByID(ctx, svc.ID)
@@ -605,21 +607,20 @@ func TestGrantRevokeClientAccess_RoundTrip(t *testing.T) {
 	clients := client.NewRepository(testpg.Pool(t))
 	grants := principal.NewClientAccessGrantRepo(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
-	ec := testpg.TestEC()
 
 	clientID := mustCreateClient(t, uow, "Prn Grant RT", "prn-grant-rt")
 	partner := mustCreateUser(t, repo, uow, "prn-grantrt@example.com", "PARTNER", &clientID)
 
-	granted, err := operations.GrantClientAccess(ctx, repo, clients, grants, uow,
-		operations.GrantClientAccessCommand{UserID: partner.UserID, ClientID: clientID}, ec)
+	granted, err := runAuthorized(uow, operations.GrantClientAccess(repo, clients, grants),
+		operations.GrantClientAccessCommand{UserID: partner.UserID, ClientID: clientID})
 	require.NoError(t, err)
-	assert.Equal(t, partner.UserID, granted.Event().UserID)
-	assert.Equal(t, clientID, granted.Event().ClientID)
+	assert.Equal(t, partner.UserID, granted.UserID)
+	assert.Equal(t, clientID, granted.ClientID)
 
 	grant, err := grants.FindByPrincipalAndClient(ctx, partner.UserID, clientID)
 	require.NoError(t, err)
 	require.NotNil(t, grant)
-	assert.Equal(t, ec.PrincipalID, grant.GrantedBy)
+	assert.Equal(t, testpg.TestEC().PrincipalID, grant.GrantedBy)
 
 	reloaded, err := repo.FindByID(ctx, partner.UserID)
 	require.NoError(t, err)
@@ -627,15 +628,15 @@ func TestGrantRevokeClientAccess_RoundTrip(t *testing.T) {
 	assert.Equal(t, []string{clientID}, reloaded.AssignedClients, "grant hydrates onto the principal")
 
 	// Granting twice is refused.
-	_, err = operations.GrantClientAccess(ctx, repo, clients, grants, uow,
-		operations.GrantClientAccessCommand{UserID: partner.UserID, ClientID: clientID}, ec)
+	_, err = runAuthorized(uow, operations.GrantClientAccess(repo, clients, grants),
+		operations.GrantClientAccessCommand{UserID: partner.UserID, ClientID: clientID})
 	testpg.RequireUsecaseError(t, err, usecase.KindBusinessRule, "GRANT_EXISTS")
 
 	// Revoke → gone on reload, and a second revoke is a NotFound.
-	revoked, err := operations.RevokeClientAccess(ctx, repo, grants, uow,
-		operations.RevokeClientAccessCommand{UserID: partner.UserID, ClientID: clientID}, ec)
+	revoked, err := runAuthorized(uow, operations.RevokeClientAccess(repo, grants),
+		operations.RevokeClientAccessCommand{UserID: partner.UserID, ClientID: clientID})
 	require.NoError(t, err)
-	assert.Equal(t, clientID, revoked.Event().ClientID)
+	assert.Equal(t, clientID, revoked.ClientID)
 
 	grant, err = grants.FindByPrincipalAndClient(ctx, partner.UserID, clientID)
 	require.NoError(t, err)
@@ -646,14 +647,13 @@ func TestGrantRevokeClientAccess_RoundTrip(t *testing.T) {
 	require.NotNil(t, reloaded)
 	assert.Empty(t, reloaded.AssignedClients)
 
-	_, err = operations.RevokeClientAccess(ctx, repo, grants, uow,
-		operations.RevokeClientAccessCommand{UserID: partner.UserID, ClientID: clientID}, ec)
+	_, err = runAuthorized(uow, operations.RevokeClientAccess(repo, grants),
+		operations.RevokeClientAccessCommand{UserID: partner.UserID, ClientID: clientID})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "Grant_NOT_FOUND")
 }
 
 func TestGrantClientAccess_Errors(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
 	repo := principal.NewRepository(testpg.Pool(t))
 	clients := client.NewRepository(testpg.Pool(t))
 	grants := principal.NewClientAccessGrantRepo(testpg.Pool(t))
@@ -680,7 +680,7 @@ func TestGrantClientAccess_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.GrantClientAccess(ctx, repo, clients, grants, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.GrantClientAccess(repo, clients, grants), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -688,7 +688,6 @@ func TestGrantClientAccess_Errors(t *testing.T) {
 
 func TestRevokeClientAccess_Errors(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
 	repo := principal.NewRepository(testpg.Pool(t))
 	grants := principal.NewClientAccessGrantRepo(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
@@ -709,7 +708,7 @@ func TestRevokeClientAccess_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.RevokeClientAccess(ctx, repo, grants, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.RevokeClientAccess(repo, grants), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -730,10 +729,10 @@ func TestSetClientAssociation_AnchorWildcard(t *testing.T) {
 	homeID := "clt_homedummy04"
 	seeded := mustCreateUser(t, repo, uow, "prn-assoc-anchor@example.com", "CLIENT", &homeID)
 
-	committed, err := operations.SetClientAssociation(ctx, repo, clients, grants, uow,
-		operations.SetClientAssociationCommand{UserID: seeded.UserID, ClientID: "*"}, testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.SetClientAssociation(repo, clients, grants),
+		operations.SetClientAssociationCommand{UserID: seeded.UserID, ClientID: "*"})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.UserID, committed.Event().UserID)
+	assert.Equal(t, seeded.UserID, ev.UserID)
 
 	got, err := repo.FindByID(ctx, seeded.UserID)
 	require.NoError(t, err)
@@ -754,12 +753,12 @@ func TestSetClientAssociation_ChangeClient(t *testing.T) {
 	newClient := mustCreateClient(t, uow, "Prn Assoc Change", "prn-assoc-change")
 	seeded := mustCreateUser(t, repo, uow, "prn-assoc-change@example.com", "CLIENT", &homeID)
 
-	_, err := operations.SetClientAssociation(ctx, repo, clients, grants, uow,
+	_, err := runAuthorized(uow, operations.SetClientAssociation(repo, clients, grants),
 		operations.SetClientAssociationCommand{
 			UserID:   seeded.UserID,
 			ClientID: newClient,
 			Mode:     operations.ModeChangeClient,
-		}, testpg.TestEC())
+		})
 	require.NoError(t, err)
 
 	got, err := repo.FindByID(ctx, seeded.UserID)
@@ -778,18 +777,17 @@ func TestSetClientAssociation_ToPartner_PreservesOldHomeAsGrant(t *testing.T) {
 	clients := client.NewRepository(testpg.Pool(t))
 	grants := principal.NewClientAccessGrantRepo(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
-	ec := testpg.TestEC()
 
 	oldHome := mustCreateClient(t, uow, "Prn Assoc Partner A", "prn-assoc-partner-a")
 	newClient := mustCreateClient(t, uow, "Prn Assoc Partner B", "prn-assoc-partner-b")
 	seeded := mustCreateUser(t, repo, uow, "prn-assoc-partner@example.com", "CLIENT", &oldHome)
 
-	_, err := operations.SetClientAssociation(ctx, repo, clients, grants, uow,
+	_, err := runAuthorized(uow, operations.SetClientAssociation(repo, clients, grants),
 		operations.SetClientAssociationCommand{
 			UserID:   seeded.UserID,
 			ClientID: newClient,
 			Mode:     operations.ModeToPartner,
-		}, ec)
+		})
 	require.NoError(t, err)
 
 	got, err := repo.FindByID(ctx, seeded.UserID)
@@ -803,12 +801,11 @@ func TestSetClientAssociation_ToPartner_PreservesOldHomeAsGrant(t *testing.T) {
 	oldGrant, err := grants.FindByPrincipalAndClient(ctx, seeded.UserID, oldHome)
 	require.NoError(t, err)
 	require.NotNil(t, oldGrant)
-	assert.Equal(t, ec.PrincipalID, oldGrant.GrantedBy)
+	assert.Equal(t, testpg.TestEC().PrincipalID, oldGrant.GrantedBy)
 }
 
 func TestSetClientAssociation_Errors(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
 	repo := principal.NewRepository(testpg.Pool(t))
 	clients := client.NewRepository(testpg.Pool(t))
 	grants := principal.NewClientAccessGrantRepo(testpg.Pool(t))
@@ -834,7 +831,7 @@ func TestSetClientAssociation_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.SetClientAssociation(ctx, repo, clients, grants, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.SetClientAssociation(repo, clients, grants), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -848,23 +845,23 @@ func TestResetPassword_HappyPath(t *testing.T) {
 	repo := principal.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	committed, err := operations.CreateUser(ctx, repo, uow, operations.CreateCommand{
+	created, err := runAuthorized(uow, operations.CreateUser(repo), operations.CreateCommand{
 		Email:    "prn-resetpw@example.com",
 		Scope:    "ANCHOR",
 		Password: ptr("original-pass-99"),
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
-	userID := committed.Event().UserID
+	userID := created.UserID
 
 	before, err := repo.FindByID(ctx, userID)
 	require.NoError(t, err)
 	require.NotNil(t, before.UserIdentity.PasswordHash)
 	oldHash := *before.UserIdentity.PasswordHash
 
-	reset, err := operations.ResetPassword(ctx, repo, uow,
-		operations.ResetPasswordCommand{ID: userID, NewPassword: "brand-new-pw-1234"}, testpg.TestEC())
+	reset, err := runAuthorized(uow, operations.ResetPassword(repo),
+		operations.ResetPasswordCommand{ID: userID, NewPassword: "brand-new-pw-1234"})
 	require.NoError(t, err)
-	assert.Equal(t, userID, reset.Event().UserID)
+	assert.Equal(t, userID, reset.UserID)
 
 	after, err := repo.FindByID(ctx, userID)
 	require.NoError(t, err)
@@ -884,11 +881,11 @@ func TestResetPassword_RelaxedComplexity(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreateUser(t, repo, uow, "prn-resetpw-relaxed@example.com", "ANCHOR", nil)
 
-	_, err := operations.ResetPassword(ctx, repo, uow, operations.ResetPasswordCommand{
+	_, err := runAuthorized(uow, operations.ResetPassword(repo), operations.ResetPasswordCommand{
 		ID:                        seeded.UserID,
 		NewPassword:               "ab",
 		EnforcePasswordComplexity: ptr(false),
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
 
 	got, err := repo.FindByID(ctx, seeded.UserID)
@@ -899,7 +896,6 @@ func TestResetPassword_RelaxedComplexity(t *testing.T) {
 
 func TestResetPassword_Errors(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
 	repo := principal.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 	svc := seedServicePrincipal(t, "sa_prnresetperr", "prn-resetpw-svc")
@@ -921,7 +917,7 @@ func TestResetPassword_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.ResetPassword(ctx, repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.ResetPassword(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -1064,13 +1060,13 @@ func TestSyncPrincipals_UpsertMergeAndRemoveUnlisted(t *testing.T) {
 	// writes, and iam_principal_roles has no FK on role_name.
 	admin := mustCreateRole(t, uow, "prnsync", "admin")
 	existing := mustCreateUser(t, repo, uow, "prn-sync-existing@example.com", "ANCHOR", nil)
-	_, err := operations.AssignRoles(ctx, repo, roles, uow,
-		operations.AssignRolesCommand{UserID: existing.UserID, Roles: []string{admin}}, ec)
+	_, err := runAuthorized(uow, operations.AssignRoles(repo, roles),
+		operations.AssignRolesCommand{UserID: existing.UserID, Roles: []string{admin}})
 	require.NoError(t, err)
 
 	// First sync: one update (merge) + one create. Role names and the new
 	// email arrive mixed-case to pin the lower-casing.
-	first, err := operations.SyncPrincipals(ctx, repo, uow, operations.SyncPrincipalsCommand{
+	first, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo), operations.SyncPrincipalsCommand{
 		ApplicationCode: "prnsync",
 		Principals: []operations.SyncPrincipalInput{
 			{Email: "prn-sync-existing@example.com", Name: "Existing Renamed", Roles: []string{"PRNSYNC:VIEWER"}, Active: true},
@@ -1078,7 +1074,7 @@ func TestSyncPrincipals_UpsertMergeAndRemoveUnlisted(t *testing.T) {
 		},
 	}, ec)
 	require.NoError(t, err)
-	ev := first.Event()
+	ev := first
 	assert.Equal(t, "prnsync", ev.ApplicationCode)
 	assert.Equal(t, uint32(1), ev.Created)
 	assert.Equal(t, uint32(1), ev.Updated)
@@ -1106,7 +1102,7 @@ func TestSyncPrincipals_UpsertMergeAndRemoveUnlisted(t *testing.T) {
 	// Second sync with RemoveUnlisted: the new user is absent from the
 	// payload, so its SDK_SYNC roles are stripped — the principal itself is
 	// NOT deleted or deactivated.
-	second, err := operations.SyncPrincipals(ctx, repo, uow, operations.SyncPrincipalsCommand{
+	second, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo), operations.SyncPrincipalsCommand{
 		ApplicationCode: "prnsync",
 		Principals: []operations.SyncPrincipalInput{
 			{Email: "prn-sync-existing@example.com", Name: "Existing Renamed", Roles: []string{"prnsync:viewer"}, Active: true},
@@ -1114,9 +1110,9 @@ func TestSyncPrincipals_UpsertMergeAndRemoveUnlisted(t *testing.T) {
 		RemoveUnlisted: true,
 	}, ec)
 	require.NoError(t, err)
-	assert.Equal(t, uint32(0), second.Event().Created)
-	assert.Equal(t, uint32(1), second.Event().Updated)
-	assert.Equal(t, uint32(1), second.Event().Deactivated)
+	assert.Equal(t, uint32(0), second.Created)
+	assert.Equal(t, uint32(1), second.Updated)
+	assert.Equal(t, uint32(1), second.Deactivated)
 
 	gotNew, err = repo.FindByEmail(ctx, "prn-sync-new@example.com")
 	require.NoError(t, err)
@@ -1140,14 +1136,14 @@ func TestSyncPrincipals_Validation(t *testing.T) {
 
 	// Empty ApplicationCode is now allowed — the platform-level
 	// POST /api/principals/sync calls the op with no app code.
-	_, err := operations.SyncPrincipals(context.Background(), repo, uow,
+	_, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo),
 		operations.SyncPrincipalsCommand{
 			Principals: []operations.SyncPrincipalInput{{Email: "prn-sync-noappcode@example.com", Name: "No App", Active: true}},
 		}, testpg.TestEC())
 	require.NoError(t, err)
 
 	// An empty principal list is still rejected.
-	_, err = operations.SyncPrincipals(context.Background(), repo, uow,
+	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo),
 		operations.SyncPrincipalsCommand{ApplicationCode: "prnsyncval"}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "PRINCIPALS_REQUIRED")
 }
@@ -1160,22 +1156,21 @@ func TestSyncIdpRoles_HappyPathReplaceAndDedup(t *testing.T) {
 	repo := principal.NewRepository(testpg.Pool(t))
 	roles := role.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
-	ec := testpg.TestEC()
 
 	base := mustCreateRole(t, uow, "prnidp", "base")
 	viewer := mustCreateRole(t, uow, "prnidp", "viewer")
 	seeded := mustCreateUser(t, repo, uow, "prn-idpsync@example.com", "ANCHOR", nil)
-	_, err := operations.AssignRoles(ctx, repo, roles, uow,
-		operations.AssignRolesCommand{UserID: seeded.UserID, Roles: []string{base}}, ec)
+	_, err := runAuthorized(uow, operations.AssignRoles(repo, roles),
+		operations.AssignRolesCommand{UserID: seeded.UserID, Roles: []string{base}})
 	require.NoError(t, err)
 
 	// 1. Add an IDP role: the ADMIN_ASSIGNED one is preserved untouched.
-	first, err := operations.SyncIdpRoles(ctx, repo, roles, uow,
-		operations.SyncIdpRolesCommand{UserID: seeded.UserID, PlatformRoles: []string{viewer}}, ec)
+	first, err := runAuthorized(uow, operations.SyncIdpRoles(repo, roles),
+		operations.SyncIdpRolesCommand{UserID: seeded.UserID, PlatformRoles: []string{viewer}})
 	require.NoError(t, err)
-	assert.Equal(t, []string{base, viewer}, first.Event().Roles, "preserved-then-appended order")
-	assert.Equal(t, []string{viewer}, first.Event().Added)
-	assert.Empty(t, first.Event().Removed)
+	assert.Equal(t, []string{base, viewer}, first.Roles, "preserved-then-appended order")
+	assert.Equal(t, []string{viewer}, first.Added)
+	assert.Empty(t, first.Removed)
 
 	got, err := repo.FindByID(ctx, seeded.UserID)
 	require.NoError(t, err)
@@ -1187,11 +1182,11 @@ func TestSyncIdpRoles_HappyPathReplaceAndDedup(t *testing.T) {
 
 	// 2. Empty set = the user lost every group upstream → only the IDP_SYNC
 	// assignment is removed.
-	second, err := operations.SyncIdpRoles(ctx, repo, roles, uow,
-		operations.SyncIdpRolesCommand{UserID: seeded.UserID, PlatformRoles: []string{}}, ec)
+	second, err := runAuthorized(uow, operations.SyncIdpRoles(repo, roles),
+		operations.SyncIdpRolesCommand{UserID: seeded.UserID, PlatformRoles: []string{}})
 	require.NoError(t, err)
-	assert.Empty(t, second.Event().Added)
-	assert.Equal(t, []string{viewer}, second.Event().Removed)
+	assert.Empty(t, second.Added)
+	assert.Equal(t, []string{viewer}, second.Removed)
 
 	got, err = repo.FindByID(ctx, seeded.UserID)
 	require.NoError(t, err)
@@ -1200,11 +1195,11 @@ func TestSyncIdpRoles_HappyPathReplaceAndDedup(t *testing.T) {
 
 	// 3. Dedup: an incoming IDP role that already exists as a non-IDP
 	// assignment is skipped — the ADMIN_ASSIGNED source survives.
-	third, err := operations.SyncIdpRoles(ctx, repo, roles, uow,
-		operations.SyncIdpRolesCommand{UserID: seeded.UserID, PlatformRoles: []string{base}}, ec)
+	third, err := runAuthorized(uow, operations.SyncIdpRoles(repo, roles),
+		operations.SyncIdpRolesCommand{UserID: seeded.UserID, PlatformRoles: []string{base}})
 	require.NoError(t, err)
-	assert.Empty(t, third.Event().Added)
-	assert.Empty(t, third.Event().Removed)
+	assert.Empty(t, third.Added)
+	assert.Empty(t, third.Removed)
 
 	got, err = repo.FindByID(ctx, seeded.UserID)
 	require.NoError(t, err)
@@ -1215,7 +1210,6 @@ func TestSyncIdpRoles_HappyPathReplaceAndDedup(t *testing.T) {
 
 func TestSyncIdpRoles_Errors(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
 	repo := principal.NewRepository(testpg.Pool(t))
 	roles := role.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
@@ -1237,7 +1231,7 @@ func TestSyncIdpRoles_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.SyncIdpRoles(ctx, repo, roles, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.SyncIdpRoles(repo, roles), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}

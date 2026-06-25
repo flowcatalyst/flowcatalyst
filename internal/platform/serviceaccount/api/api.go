@@ -16,6 +16,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -113,13 +114,15 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 }
 
 func (s *State) create(ctx context.Context, in *apicommon.In[CreateServiceAccountRequest]) (*apicommon.Out[CreateServiceAccountResponse], error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteServiceAccounts(ac); err != nil {
+	// Coarse permission at the controller; the orchestration runs inside one
+	// transaction and has no per-client resource check (admin-managed create).
+	if err := auth.CanWriteServiceAccounts(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	res, err := operations.CreateServiceAccountWithCredentials(
-		ctx, s.Repo, s.Principals, s.OAuthClients, s.UoW, in.Body.toCommand(), ec)
+	ec := auth.NewExecutionContext(ctx)
+	res, err := usecaseop.RunTx(ctx, s.UoW,
+		operations.CreateServiceAccountWithCredentials(s.Repo, s.Principals, s.OAuthClients),
+		in.Body.toCommand(), ec)
 	if err != nil {
 		return nil, err
 	}
@@ -137,36 +140,33 @@ type updateInput struct {
 }
 
 func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteServiceAccounts(ac); err != nil {
+	if err := auth.CanWriteServiceAccounts(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.UpdateServiceAccount(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateServiceAccount(s.Repo), in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
 }
 
 func (s *State) deactivate(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteServiceAccounts(ac); err != nil {
+	if err := auth.CanWriteServiceAccounts(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.DeactivateServiceAccount(ctx, s.Repo, s.UoW, operations.DeactivateCommand{ID: in.ID}, ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeactivateServiceAccount(s.Repo), operations.DeactivateCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
 }
 
 func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanDeleteServiceAccounts(ac); err != nil {
+	if err := auth.CanDeleteServiceAccounts(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.DeleteServiceAccount(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeleteServiceAccount(s.Repo), operations.DeleteCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
@@ -213,15 +213,14 @@ type assignRolesInput struct {
 }
 
 func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*apicommon.Out[ServiceAccountRolesAssignedResponse], error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.RequireAnchor(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	ec := auth.NewExecutionContext(ctx)
 	// The operation resolves the linked SERVICE principal, computes the
 	// added/removed diff, and writes iam_principal_roles in one transaction;
 	// the 404 for an unknown id is raised there too.
-	committed, err := operations.AssignRolesToServiceAccount(ctx, s.Repo, s.Principals, s.UoW,
+	ev, err := usecaseop.Run(ctx, s.UoW, operations.AssignRolesToServiceAccount(s.Repo, s.Principals),
 		operations.AssignRolesCommand{ServiceAccountID: in.ID, Roles: in.Body.Roles}, ec)
 	if err != nil {
 		return nil, err
@@ -230,7 +229,6 @@ func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*apicomm
 	if err != nil {
 		return nil, err
 	}
-	ev := committed.Event()
 	return &apicommon.Out[ServiceAccountRolesAssignedResponse]{Body: ServiceAccountRolesAssignedResponse{
 		Roles:        roleDTOs(roles),
 		AddedRoles:   ev.RolesAdded,
@@ -239,12 +237,11 @@ func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*apicomm
 }
 
 func (s *State) regenerateAuthToken(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[RegenerateAuthTokenResponse], error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.RequireAnchor(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.RegenerateAuthToken(ctx, s.Repo, s.UoW,
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.RegenerateAuthToken(s.Repo),
 		operations.RegenerateAuthTokenCommand{ServiceAccountID: in.ID}, ec); err != nil {
 		return nil, err
 	}
@@ -256,12 +253,11 @@ func (s *State) regenerateAuthToken(ctx context.Context, in *apicommon.IDInput) 
 }
 
 func (s *State) regenerateSigningSecret(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[RegenerateSigningSecretResponse], error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.RequireAnchor(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.RegenerateSigningSecret(ctx, s.Repo, s.UoW,
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.RegenerateSigningSecret(s.Repo),
 		operations.RegenerateSigningSecretCommand{ServiceAccountID: in.ID}, ec); err != nil {
 		return nil, err
 	}

@@ -13,10 +13,22 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
 func TestMain(m *testing.M) { testpg.RunMain(m) }
+
+// runAuthorized drives op through the full use-case envelope (Validate →
+// Authorize → Execute → atomic commit) as an anchor principal. These tests
+// exercise validation, invariants, and persistence; the coarse anchor check is
+// controller-gated (the use case's Authorize is Public). It mirrors how the
+// HTTP handler runs the operation.
+func runAuthorized[C any, E usecase.DomainEvent](
+	uow *usecasepgx.UnitOfWork, op usecaseop.Operation[C, E], cmd C,
+) (E, error) {
+	return usecaseop.Run(testpg.AnchorCtx(), uow, op, cmd, testpg.TestEC())
+}
 
 // mustCreate seeds an ANCHOR mapping through the public operation — the
 // same path production uses. Domains are hand-unique per test: the fixture
@@ -25,14 +37,14 @@ func TestMain(m *testing.M) { testpg.RunMain(m) }
 // table on create, so an arbitrary id string suffices.
 func mustCreate(t *testing.T, repo *emaildomainmapping.Repository, uow *usecasepgx.UnitOfWork, domain string) operations.EmailDomainMappingCreated {
 	t.Helper()
-	committed, err := operations.CreateMapping(context.Background(), repo, uow,
+	ev, err := runAuthorized(uow, operations.CreateMapping(repo),
 		operations.CreateCommand{
 			EmailDomain:        domain,
 			IdentityProviderID: "idp_edmtestseed1",
 			ScopeType:          "ANCHOR",
-		}, testpg.TestEC())
+		})
 	require.NoError(t, err)
-	return committed.Event()
+	return ev
 }
 
 // ── CreateMapping ─────────────────────────────────────────────────────────
@@ -45,7 +57,7 @@ func TestCreateMapping_HappyPath(t *testing.T) {
 
 	primary := "cli_edmcrtprimary"
 	tenant := "tenant-edmcrt"
-	committed, err := operations.CreateMapping(ctx, repo, uow, operations.CreateCommand{
+	ev, err := runAuthorized(uow, operations.CreateMapping(repo), operations.CreateCommand{
 		EmailDomain:           "EDMCRT-Happy.Example.com", // mixed case: op must lowercase
 		IdentityProviderID:    "idp_edmcrthappy1",
 		ScopeType:             "CLIENT",
@@ -59,10 +71,9 @@ func TestCreateMapping_HappyPath(t *testing.T) {
 		Allowed2FAMethods:     []string{"TOTP", "EMAIL_PIN"},
 		RememberDeviceEnabled: true,
 		RememberDeviceDays:    14,
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
 
-	ev := committed.Event()
 	assert.NotEmpty(t, ev.MappingID)
 	assert.Equal(t, "edmcrt-happy.example.com", ev.EmailDomain, "domain must be lowercased")
 
@@ -127,7 +138,7 @@ func TestCreateMapping_Validation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.CreateMapping(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.CreateMapping(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, usecase.KindValidation, tc.code)
 		})
 	}
@@ -141,11 +152,11 @@ func TestCreateMapping_DuplicateDomain_Conflict(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	mustCreate(t, repo, uow, "edmdup.example.com")
 
-	_, err := operations.CreateMapping(context.Background(), repo, uow, operations.CreateCommand{
+	_, err := runAuthorized(uow, operations.CreateMapping(repo), operations.CreateCommand{
 		EmailDomain:        "EDMDUP.Example.COM",
 		IdentityProviderID: "idp_edmduptest1",
 		ScopeType:          "ANCHOR",
-	}, testpg.TestEC())
+	})
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "DOMAIN_ALREADY_MAPPED")
 }
 
@@ -164,7 +175,7 @@ func TestUpdateMapping_HappyPath(t *testing.T) {
 	require2FA := true
 	rememberOn := true
 	days := 7
-	committed, err := operations.UpdateMapping(ctx, repo, uow, operations.UpdateCommand{
+	ev, err := runAuthorized(uow, operations.UpdateMapping(repo), operations.UpdateCommand{
 		ID:                    seeded.MappingID,
 		IdentityProviderID:    &newIDP,
 		PrimaryClientID:       &primary,
@@ -174,10 +185,10 @@ func TestUpdateMapping_HappyPath(t *testing.T) {
 		Allowed2FAMethods:     []string{"TOTP"},
 		RememberDeviceEnabled: &rememberOn,
 		RememberDeviceDays:    &days,
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.MappingID, committed.Event().MappingID)
-	assert.Equal(t, "edmupd-happy.example.com", committed.Event().EmailDomain)
+	assert.Equal(t, seeded.MappingID, ev.MappingID)
+	assert.Equal(t, "edmupd-happy.example.com", ev.EmailDomain)
 
 	got, err := repo.FindByID(ctx, seeded.MappingID)
 	require.NoError(t, err)
@@ -215,7 +226,7 @@ func TestUpdateMapping_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.UpdateMapping(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.UpdateMapping(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -226,22 +237,21 @@ func TestUpdateMapping_Errors(t *testing.T) {
 // these need a persisted row to get past FindByID.
 func TestUpdateMapping_2FAValidation(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
 	repo := emaildomainmapping.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 	seeded := mustCreate(t, repo, uow, "edmupd-2fa.example.com")
 
-	_, err := operations.UpdateMapping(ctx, repo, uow, operations.UpdateCommand{
+	_, err := runAuthorized(uow, operations.UpdateMapping(repo), operations.UpdateCommand{
 		ID:                seeded.MappingID,
 		Allowed2FAMethods: []string{"SMS"},
-	}, testpg.TestEC())
+	})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "INVALID_2FA_METHOD")
 
 	require2FA := true
-	_, err = operations.UpdateMapping(ctx, repo, uow, operations.UpdateCommand{
+	_, err = runAuthorized(uow, operations.UpdateMapping(repo), operations.UpdateCommand{
 		ID:         seeded.MappingID,
 		Require2FA: &require2FA,
-	}, testpg.TestEC())
+	})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "2FA_METHOD_REQUIRED")
 }
 
@@ -254,11 +264,11 @@ func TestDeleteMapping_HappyPath(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreate(t, repo, uow, "edmdel-happy.example.com")
 
-	committed, err := operations.DeleteMapping(ctx, repo, uow,
-		operations.DeleteCommand{ID: seeded.MappingID}, testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.DeleteMapping(repo),
+		operations.DeleteCommand{ID: seeded.MappingID})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.MappingID, committed.Event().MappingID)
-	assert.Equal(t, "edmdel-happy.example.com", committed.Event().EmailDomain)
+	assert.Equal(t, seeded.MappingID, ev.MappingID)
+	assert.Equal(t, "edmdel-happy.example.com", ev.EmailDomain)
 
 	got, err := repo.FindByID(ctx, seeded.MappingID)
 	require.NoError(t, err)
@@ -270,11 +280,10 @@ func TestDeleteMapping_Errors(t *testing.T) {
 	repo := emaildomainmapping.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.DeleteMapping(context.Background(), repo, uow,
-		operations.DeleteCommand{}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.DeleteMapping(repo), operations.DeleteCommand{})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = operations.DeleteMapping(context.Background(), repo, uow,
-		operations.DeleteCommand{ID: "edm_doesnotexist1"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.DeleteMapping(repo),
+		operations.DeleteCommand{ID: "edm_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "EmailDomainMapping_NOT_FOUND")
 }

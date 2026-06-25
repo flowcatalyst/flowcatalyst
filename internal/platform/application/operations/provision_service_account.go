@@ -20,6 +20,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -53,119 +54,124 @@ type ProvisionServiceAccountResult struct {
 // SERVICE principal (required by the app→principal FK), attaches it to
 // the application, and creates a confidential OAuth client — all in a
 // single transaction. On any failure every write rolls back.
+//
+// This is a multi-aggregate orchestration: it writes several aggregates and
+// returns a custom result, so it uses the [usecaseop.TxOperation] envelope
+// run by [usecaseop.RunTx]. An application is platform-level, so the use case
+// has no resource-level access check — the coarse anchor requirement
+// (auth.RequireAnchor) is enforced at the controller.
 func ProvisionServiceAccount(
-	ctx context.Context,
 	appRepo *application.Repository,
 	saRepo *serviceaccount.Repository,
 	principals *principal.Repository,
 	oauthRepo *platformauth.OAuthClientRepo,
-	uow *usecasepgx.UnitOfWork,
-	cmd ProvisionServiceAccountCommand,
-	ec usecase.ExecutionContext,
-) (ProvisionServiceAccountResult, error) {
-	var zero ProvisionServiceAccountResult
+) usecaseop.TxOperation[ProvisionServiceAccountCommand, ProvisionServiceAccountResult] {
+	return usecaseop.TxOperation[ProvisionServiceAccountCommand, ProvisionServiceAccountResult]{
+		Name: "ProvisionServiceAccount",
+		Validate: func(_ context.Context, cmd ProvisionServiceAccountCommand) error {
+			if strings.TrimSpace(cmd.ApplicationID) == "" {
+				return usecase.Validation("APPLICATION_ID_REQUIRED", "Application ID is required")
+			}
+			return nil
+		},
+		Authorize: usecaseop.Public[ProvisionServiceAccountCommand],
+		Execute: func(ctx context.Context, s *usecasepgx.TxScopedUnitOfWork, cmd ProvisionServiceAccountCommand, ec usecase.ExecutionContext) (ProvisionServiceAccountResult, error) {
+			var zero ProvisionServiceAccountResult
 
-	if strings.TrimSpace(cmd.ApplicationID) == "" {
-		return zero, usecase.Validation("APPLICATION_ID_REQUIRED", "Application ID is required")
+			app, err := appRepo.FindByID(ctx, cmd.ApplicationID)
+			if err != nil {
+				return zero, usecase.Internal("REPO", "find_by_id failed", err)
+			}
+			if app == nil {
+				return zero, httperror.NotFound("Application", cmd.ApplicationID)
+			}
+			if app.ServiceAccountID != nil && *app.ServiceAccountID != "" {
+				return zero, usecase.Conflict("ALREADY_PROVISIONED",
+					"Application already has a service account provisioned")
+			}
+
+			// Build every aggregate up-front so the IDs + plaintext secret live
+			// in locals we can return after the tx commits.
+			saCode := "app:" + app.Code
+			saName := app.Name + " Service Account"
+			desc := "Service account for application: " + app.Name
+			appID := app.ID
+
+			sa := serviceaccount.New(saCode, saName)
+			sa.Description = &desc
+			sa.ApplicationID = &appID
+
+			saPrincipal := principal.NewService(sa.ID, saName)
+
+			plaintext, ref, err := generateClientSecret()
+			if err != nil {
+				return zero, usecase.Internal("SECRET", "generate client secret failed", err)
+			}
+			oauthClientID := tsid.Generate(tsid.OAuthClient)
+			oc := platformauth.NewOAuthClient(oauthClientID, app.Name+" Service Account Client", platformauth.OAuthClientConfidential)
+			oc.SetSecretRef(ref)
+			oc.PrincipalID = &saPrincipal.ID
+			oc.GrantTypes = []string{"client_credentials", "refresh_token"}
+			oc.Scopes = []string{"openid"}
+
+			// 1. Service account.
+			if r := usecasepgx.CommitScoped(ctx, s, sa, saRepo,
+				saops.NewServiceAccountCreatedEvent(ec, sa.ID, sa.Code, sa.Name), cmd); !usecase.IsSuccess(r) {
+				_, e := usecase.Into(r)
+				return zero, e
+			}
+
+			// 2. Linked SERVICE principal — raw persist (no separate event;
+			//    the principal row is a persistence detail of SA creation,
+			//    matching Rust where the principal is created "behind" the SA).
+			//    Scope the SA to its own application: AllApplications=false plus a
+			//    single application-access grant. The token's `applications` claim
+			//    then carries exactly this app, and resource-level authorization
+			//    (sdksync.requireAppAccess) confines the SA's writes to it — even at
+			//    anchor tier. AppAccessPersister writes the base row AND the
+			//    iam_principal_application_access junction in this transaction.
+			saPrincipal.AllApplications = false
+			saPrincipal.AccessibleApplicationIDs = []string{app.ID}
+			if err := s.WithTx(ctx, func(tx pgx.Tx) error {
+				return principal.AppAccessPersister{Repository: principals}.Persist(
+					ctx, saPrincipal, usecasepgx.WrapTxForBootstrap(tx))
+			}); err != nil {
+				return zero, usecase.Internal("PERSIST", "service principal persist failed", err)
+			}
+
+			// 3. Attach the SA's principal to the application.
+			app.ServiceAccountID = &saPrincipal.ID
+			app.UpdatedAt = time.Now().UTC()
+			attached := ApplicationServiceAccountProvisionedEvent{
+				Metadata:           usecase.NewEventMetadata(ec, ApplicationServiceAccountProvisioned, Source, subjectFor(app.ID)),
+				ApplicationID:      app.ID,
+				ApplicationCode:    app.Code,
+				ServiceAccountID:   sa.ID,
+				ServiceAccountCode: saCode,
+			}
+			if r := usecasepgx.CommitScoped(ctx, s, app, appRepo, attached, cmd); !usecase.IsSuccess(r) {
+				_, e := usecase.Into(r)
+				return zero, e
+			}
+
+			// 4. Confidential OAuth client.
+			if r := usecasepgx.CommitScoped(ctx, s, oc, oauthRepo,
+				authops.NewOAuthClientCreatedEvent(ec, oc.ID, oc.ClientID, oc.ClientName), cmd); !usecase.IsSuccess(r) {
+				_, e := usecase.Into(r)
+				return zero, e
+			}
+
+			return ProvisionServiceAccountResult{
+				ServiceAccountID:   sa.ID,
+				ServiceAccountCode: saCode,
+				ServiceAccountName: saName,
+				ServicePrincipalID: saPrincipal.ID,
+				OAuthClientRowID:   oc.ID,
+				OAuthClientID:      oc.ClientID,
+				OAuthClientSecret:  plaintext,
+			}, nil
+		},
 	}
-	app, err := appRepo.FindByID(ctx, cmd.ApplicationID)
-	if err != nil {
-		return zero, usecase.Internal("REPO", "find_by_id failed", err)
-	}
-	if app == nil {
-		return zero, httperror.NotFound("Application", cmd.ApplicationID)
-	}
-	if app.ServiceAccountID != nil && *app.ServiceAccountID != "" {
-		return zero, usecase.Conflict("ALREADY_PROVISIONED",
-			"Application already has a service account provisioned")
-	}
-
-	// Build every aggregate up-front so the IDs + plaintext secret live
-	// in locals we can return after the tx commits. (usecase.Success can
-	// only be minted by a Commit* call, so Run must return one of the
-	// committed event types — never a custom struct.)
-	saCode := "app:" + app.Code
-	saName := app.Name + " Service Account"
-	desc := "Service account for application: " + app.Name
-	appID := app.ID
-
-	sa := serviceaccount.New(saCode, saName)
-	sa.Description = &desc
-	sa.ApplicationID = &appID
-
-	saPrincipal := principal.NewService(sa.ID, saName)
-
-	plaintext, ref, err := generateClientSecret()
-	if err != nil {
-		return zero, usecase.Internal("SECRET", "generate client secret failed", err)
-	}
-	oauthClientID := tsid.Generate(tsid.OAuthClient)
-	oc := platformauth.NewOAuthClient(oauthClientID, app.Name+" Service Account Client", platformauth.OAuthClientConfidential)
-	oc.SetSecretRef(ref)
-	oc.PrincipalID = &saPrincipal.ID
-	oc.GrantTypes = []string{"client_credentials", "refresh_token"}
-	oc.Scopes = []string{"openid"}
-
-	res := usecasepgx.Run(ctx, uow, func(s *usecasepgx.TxScopedUnitOfWork) usecase.Result[authops.OAuthClientCreated] {
-		// 1. Service account.
-		if r := usecasepgx.CommitScoped(ctx, s, sa, saRepo,
-			saops.NewServiceAccountCreatedEvent(ec, sa.ID, sa.Code, sa.Name), cmd); !usecase.IsSuccess(r) {
-			_, e := usecase.Into(r)
-			return usecase.Failure[authops.OAuthClientCreated](e)
-		}
-
-		// 2. Linked SERVICE principal — raw persist (no separate event;
-		//    the principal row is a persistence detail of SA creation,
-		//    matching Rust where the principal is created "behind" the SA).
-		//    Scope the SA to its own application: AllApplications=false plus a
-		//    single application-access grant. The token's `applications` claim
-		//    then carries exactly this app, and resource-level authorization
-		//    (sdksync.requireAppAccess) confines the SA's writes to it — even at
-		//    anchor tier. AppAccessPersister writes the base row AND the
-		//    iam_principal_application_access junction in this transaction.
-		saPrincipal.AllApplications = false
-		saPrincipal.AccessibleApplicationIDs = []string{app.ID}
-		if err := s.WithTx(ctx, func(tx pgx.Tx) error {
-			return principal.AppAccessPersister{Repository: principals}.Persist(
-				ctx, saPrincipal, usecasepgx.WrapTxForBootstrap(tx))
-		}); err != nil {
-			return usecase.Failure[authops.OAuthClientCreated](
-				usecase.Internal("PERSIST", "service principal persist failed", err))
-		}
-
-		// 3. Attach the SA's principal to the application.
-		app.ServiceAccountID = &saPrincipal.ID
-		app.UpdatedAt = time.Now().UTC()
-		attached := ApplicationServiceAccountProvisionedEvent{
-			Metadata:           usecase.NewEventMetadata(ec, ApplicationServiceAccountProvisioned, Source, subjectFor(app.ID)),
-			ApplicationID:      app.ID,
-			ApplicationCode:    app.Code,
-			ServiceAccountID:   sa.ID,
-			ServiceAccountCode: saCode,
-		}
-		if r := usecasepgx.CommitScoped(ctx, s, app, appRepo, attached, cmd); !usecase.IsSuccess(r) {
-			_, e := usecase.Into(r)
-			return usecase.Failure[authops.OAuthClientCreated](e)
-		}
-
-		// 4. Confidential OAuth client (last write → its result is the
-		//    Run result).
-		return usecasepgx.CommitScoped(ctx, s, oc, oauthRepo,
-			authops.NewOAuthClientCreatedEvent(ec, oc.ID, oc.ClientID, oc.ClientName), cmd)
-	})
-
-	if _, err := usecase.Into(res); err != nil {
-		return zero, err
-	}
-	return ProvisionServiceAccountResult{
-		ServiceAccountID:   sa.ID,
-		ServiceAccountCode: saCode,
-		ServiceAccountName: saName,
-		ServicePrincipalID: saPrincipal.ID,
-		OAuthClientRowID:   oc.ID,
-		OAuthClientID:      oc.ClientID,
-		OAuthClientSecret:  plaintext,
-	}, nil
 }
 
 // generateClientSecret returns a fresh URL-safe secret + its encrypted

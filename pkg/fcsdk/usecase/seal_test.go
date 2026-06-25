@@ -1,7 +1,6 @@
 package usecase_test
 
 import (
-	"context"
 	"errors"
 	"testing"
 	"time"
@@ -41,9 +40,9 @@ func TestSealedSuccessCannotBeConstructedExternally(t *testing.T) {
 	//   func (myResult) isResult()  {}                    // no usable interface element
 	//   var _ usecase.Result[fakeEvent] = myResult{}      // myResult does not implement Result[fakeEvent]
 	//
-	// Application code outside clients/go-sdk/ cannot import
-	// internal/sealed, so even usecase.Success("legal" signature) is
-	// unreachable. The fact that none of those compile is the seal.
+	// Application code outside pkg/fcsdk/ cannot import the seal package
+	// (pkg/fcsdk/internal/sealed), so even usecase.Success("legal" signature)
+	// is unreachable. The fact that none of those compile is the seal.
 	//
 	// Below we only exercise the public API to verify Failure works:
 	r := usecase.Failure[fakeEvent](errors.New("boom"))
@@ -53,37 +52,6 @@ func TestSealedSuccessCannotBeConstructedExternally(t *testing.T) {
 	_, err := usecase.Into(r)
 	require.Error(t, err)
 	assert.EqualError(t, err, "boom")
-}
-
-// TestRunOrdersValidateAuthorizeExecute exercises the pipeline order.
-// Execute returns Failure (the only thing it can return outside the
-// usecase package), which is enough to verify the call order.
-func TestRunOrdersValidateAuthorizeExecute(t *testing.T) {
-	uc := &recordingUseCase{
-		executeResult: usecase.Failure[fakeEvent](errors.New("ok")),
-	}
-	r := usecase.Run(context.Background(), uc, "cmd", usecase.NewExecutionContext("p"))
-
-	require.True(t, usecase.IsFailure(r))
-	assert.Equal(t, []string{"validate", "authorize", "execute"}, uc.calls)
-}
-
-// TestRunShortCircuitsOnValidationFailure proves authorize/execute don't run.
-func TestRunShortCircuitsOnValidationFailure(t *testing.T) {
-	uc := &recordingUseCase{validateErr: usecase.Validation("BAD", "bad input")}
-	r := usecase.Run(context.Background(), uc, "cmd", usecase.NewExecutionContext("p"))
-
-	require.True(t, usecase.IsFailure(r))
-	assert.Equal(t, []string{"validate"}, uc.calls)
-}
-
-// TestRunShortCircuitsOnAuthorizationFailure proves execute doesn't run.
-func TestRunShortCircuitsOnAuthorizationFailure(t *testing.T) {
-	uc := &recordingUseCase{authorizeErr: usecase.Authorization("DENY", "no")}
-	r := usecase.Run(context.Background(), uc, "cmd", usecase.NewExecutionContext("p"))
-
-	require.True(t, usecase.IsFailure(r))
-	assert.Equal(t, []string{"validate", "authorize"}, uc.calls)
 }
 
 // TestErrorTypeInspection verifies usecase.AsError extracts the typed error.
@@ -104,30 +72,4 @@ func TestExtractHelpers(t *testing.T) {
 	assert.Equal(t, "Unknown", usecase.ExtractAggregateType(""))
 	assert.Equal(t, "ord_123", usecase.ExtractEntityID("orders.order.ord_123"))
 	assert.Equal(t, "", usecase.ExtractEntityID("orders.order"))
-}
-
-// recordingUseCase implements UseCase and records call order.
-type recordingUseCase struct {
-	calls         []string
-	validateErr   error
-	authorizeErr  error
-	executeResult usecase.Result[fakeEvent]
-}
-
-func (u *recordingUseCase) Validate(_ context.Context, _ string) error {
-	u.calls = append(u.calls, "validate")
-	return u.validateErr
-}
-
-func (u *recordingUseCase) Authorize(_ context.Context, _ string, _ usecase.ExecutionContext) error {
-	u.calls = append(u.calls, "authorize")
-	return u.authorizeErr
-}
-
-func (u *recordingUseCase) Execute(_ context.Context, _ string, _ usecase.ExecutionContext) usecase.Result[fakeEvent] {
-	u.calls = append(u.calls, "execute")
-	if u.executeResult != nil {
-		return u.executeResult
-	}
-	return usecase.Failure[fakeEvent](errors.New("no result configured"))
 }

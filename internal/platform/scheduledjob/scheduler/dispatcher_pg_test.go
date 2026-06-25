@@ -14,6 +14,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 )
 
 func TestMain(m *testing.M) { testpg.RunMain(m) }
@@ -34,25 +35,25 @@ func TestDispatcherTick_OrphanInstance_MarkedDeliveryFailed(t *testing.T) {
 
 	// Create job → FireNow (MANUAL instance, QUEUED) → delete the job, all
 	// through the public operations — the same path production uses.
-	created, err := operations.CreateScheduledJob(ctx, jobs, uow, operations.CreateCommand{
+	created, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.CreateScheduledJob(jobs), operations.CreateCommand{
 		Code:  "sjdsp-orphan",
 		Name:  "SJ Dispatcher Orphan",
 		Crons: []string{"0 0 * * * *"},
 	}, ec)
 	require.NoError(t, err)
-	jobID := created.Event().ScheduledJobID
+	jobID := created.ScheduledJobID
 
-	fired, err := operations.FireNow(ctx, jobs, instances, uow,
+	fired, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.FireNow(jobs, instances),
 		operations.FireNowCommand{ID: jobID}, ec)
 	require.NoError(t, err)
-	instanceID := fired.Event().InstanceID
+	instanceID := fired.InstanceID
 
 	inst, err := instances.FindByID(ctx, instanceID)
 	require.NoError(t, err)
 	require.NotNil(t, inst)
 	require.Equal(t, scheduledjob.InstanceStatusQueued, inst.Status, "FireNow must enqueue the instance")
 
-	_, err = operations.DeleteScheduledJob(ctx, jobs, uow,
+	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, operations.DeleteScheduledJob(jobs),
 		operations.DeleteCommand{ID: jobID}, ec)
 	require.NoError(t, err)
 	gone, err := jobs.FindByID(ctx, jobID)

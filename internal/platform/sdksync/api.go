@@ -48,6 +48,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
 	subscriptionops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -176,11 +177,10 @@ func (s *State) syncEventTypes(ctx context.Context, in *syncEventTypesInput) (*s
 		RemoveUnlisted:  in.RemoveUnlisted,
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := eventtypeops.SyncEventTypes(ctx, s.EventTypes, s.UoW, cmd, ec)
+	ev, err := usecaseop.Run(ctx, s.UoW, eventtypeops.SyncEventTypes(s.EventTypes), cmd, ec)
 	if err != nil {
 		return nil, err
 	}
-	ev := committed.Event()
 	return &syncResultOutput{Body: SyncResultResponse{
 		ApplicationCode: ev.ApplicationCode,
 		Created:         ev.Created,
@@ -219,9 +219,6 @@ func (s *State) syncRoles(ctx context.Context, in *syncRolesInput) (*syncResultO
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireAppAccess(ac, app); err != nil {
-		return nil, err
-	}
 
 	inputs := make([]roleops.SyncRoleInput, 0, len(in.Body.Roles))
 	for _, r := range in.Body.Roles {
@@ -241,11 +238,10 @@ func (s *State) syncRoles(ctx context.Context, in *syncRolesInput) (*syncResultO
 		RemoveUnlisted:  in.RemoveUnlisted,
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := roleops.SyncRoles(ctx, s.Roles, s.UoW, cmd, ec)
+	ev, err := usecaseop.Run(ctx, s.UoW, roleops.SyncRoles(s.Roles), cmd, ec)
 	if err != nil {
 		return nil, err
 	}
-	ev := committed.Event()
 	return &syncResultOutput{Body: SyncResultResponse{
 		ApplicationCode: ev.ApplicationCode,
 		Created:         ev.Created,
@@ -295,9 +291,6 @@ func (s *State) syncSubscriptions(ctx context.Context, in *syncSubscriptionsInpu
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireAppAccess(ac, app); err != nil {
-		return nil, err
-	}
 
 	inputs := make([]subscriptionops.SyncSubscriptionInput, 0, len(in.Body.Subscriptions))
 	for _, sub := range in.Body.Subscriptions {
@@ -324,16 +317,16 @@ func (s *State) syncSubscriptions(ctx context.Context, in *syncSubscriptionsInpu
 	}
 
 	cmd := subscriptionops.SyncSubscriptionsCommand{
+		ApplicationID:   app.ID,
 		ApplicationCode: app.Code,
 		Subscriptions:   inputs,
 		RemoveUnlisted:  in.RemoveUnlisted,
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := subscriptionops.SyncSubscriptions(ctx, s.Subscriptions, s.Connections, s.DispatchPools, s.UoW, cmd, ec)
+	ev, err := usecaseop.Run(ctx, s.UoW, subscriptionops.SyncSubscriptions(s.Subscriptions, s.Connections, s.DispatchPools), cmd, ec)
 	if err != nil {
 		return nil, err
 	}
-	ev := committed.Event()
 	return &syncResultOutput{Body: SyncResultResponse{
 		ApplicationCode: ev.ApplicationCode,
 		Created:         ev.Created,
@@ -402,11 +395,10 @@ func (s *State) syncPrincipals(ctx context.Context, in *syncPrincipalsInput) (*s
 		RemoveUnlisted:  in.RemoveUnlisted,
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := principalops.SyncPrincipals(ctx, s.Principals, s.UoW, cmd, ec)
+	ev, err := usecaseop.Run(ctx, s.UoW, principalops.SyncPrincipals(s.Principals), cmd, ec)
 	if err != nil {
 		return nil, err
 	}
-	ev := committed.Event()
 	return &syncResultOutput{Body: SyncResultResponse{
 		ApplicationCode: ev.ApplicationCode,
 		Created:         ev.Created,
@@ -446,9 +438,6 @@ func (s *State) syncDispatchPools(ctx context.Context, in *syncDispatchPoolsInpu
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireAppAccess(ac, app); err != nil {
-		return nil, err
-	}
 
 	inputs := make([]dispatchpoolops.SyncDispatchPoolInput, 0, len(in.Body.Pools))
 	for _, p := range in.Body.Pools {
@@ -466,16 +455,16 @@ func (s *State) syncDispatchPools(ctx context.Context, in *syncDispatchPoolsInpu
 	}
 
 	cmd := dispatchpoolops.SyncDispatchPoolsCommand{
+		ApplicationID:   app.ID,
 		ApplicationCode: app.Code,
 		Pools:           inputs,
 		RemoveUnlisted:  in.RemoveUnlisted,
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := dispatchpoolops.SyncDispatchPools(ctx, s.DispatchPools, s.UoW, cmd, ec)
+	ev, err := usecaseop.Run(ctx, s.UoW, dispatchpoolops.SyncDispatchPools(s.DispatchPools), cmd, ec)
 	if err != nil {
 		return nil, err
 	}
-	ev := committed.Event()
 	return &syncResultOutput{Body: SyncResultResponse{
 		ApplicationCode: ev.ApplicationCode,
 		Created:         ev.Created,
@@ -535,14 +524,14 @@ func (s *State) syncProcessesByBody(ctx context.Context, in *syncProcessesByBody
 // process-sync endpoints.
 func (s *State) runProcessSync(ctx context.Context, appCode string, processes []syncProcessInputRequest, removeUnlisted bool) (*syncResultOutput, error) {
 	ac := auth.FromContext(ctx)
+	// Coarse permission + application resolution are the controller's job; the
+	// per-application access check moved into the SyncProcesses use case
+	// (Authorize against the resolved ApplicationID).
 	if err := auth.CanSyncProcesses(ac); err != nil {
 		return nil, err
 	}
 	app, err := s.resolveApp(ctx, appCode)
 	if err != nil {
-		return nil, err
-	}
-	if err := s.requireAppAccess(ac, app); err != nil {
 		return nil, err
 	}
 
@@ -559,16 +548,16 @@ func (s *State) runProcessSync(ctx context.Context, appCode string, processes []
 	}
 
 	cmd := processops.SyncProcessesCommand{
+		ApplicationID:   app.ID,
 		ApplicationCode: app.Code,
 		Processes:       inputs,
 		RemoveUnlisted:  removeUnlisted,
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := processops.SyncProcesses(ctx, s.Processes, s.UoW, cmd, ec)
+	ev, err := usecaseop.Run(ctx, s.UoW, processops.SyncProcesses(s.Processes), cmd, ec)
 	if err != nil {
 		return nil, err
 	}
-	ev := committed.Event()
 	return &syncResultOutput{Body: SyncResultResponse{
 		ApplicationCode: ev.ApplicationCode,
 		Created:         ev.Created,
@@ -625,18 +614,9 @@ func (s *State) syncScheduledJobs(ctx context.Context, in *syncScheduledJobsInpu
 	if err := auth.CanSyncScheduledJobs(ac); err != nil {
 		return nil, err
 	}
-
-	// Resource-level scope check: caller must have access to the target client
-	// (or be anchor/super-admin when targeting platform-scoped jobs). Mirrors
-	// the Rust handler.
-	if cid := in.Body.ClientID; cid != nil {
-		if !ac.CanAccessClient(*cid) {
-			return nil, httperror.Forbidden("No access to client: " + *cid)
-		}
-	} else if !ac.IsAnchor() && !ac.IsSuperAdmin() {
-		return nil, httperror.Forbidden("Only anchor users can sync platform-scoped scheduled jobs")
-	}
-
+	// The per-resource scope check (caller must access the target client, or be
+	// anchor/super-admin for platform-scoped jobs) lives in the SyncScheduledJobs
+	// use case's Authorize phase, against cmd.ClientID.
 	app, err := s.resolveApp(ctx, in.AppCode)
 	if err != nil {
 		return nil, err
@@ -674,11 +654,10 @@ func (s *State) syncScheduledJobs(ctx context.Context, in *syncScheduledJobsInpu
 		ArchiveUnlisted: in.Body.ArchiveUnlisted,
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := scheduledjobops.SyncScheduledJobs(ctx, s.ScheduledJobs, s.UoW, cmd, ec)
+	ev, err := usecaseop.Run(ctx, s.UoW, scheduledjobops.SyncScheduledJobs(s.ScheduledJobs), cmd, ec)
 	if err != nil {
 		return nil, err
 	}
-	ev := committed.Event()
 	return &syncScheduledJobsOutput{Body: SyncScheduledJobsResultResponse{
 		ApplicationCode: app.Code,
 		Created:         defaultEmptySlice(ev.Created),
@@ -743,11 +722,10 @@ func (s *State) syncOpenapi(ctx context.Context, in *syncOpenapiInput) (*syncOpe
 		Spec:            in.Body.Spec,
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := openapiops.SyncOpenApiSpec(ctx, s.Specs, s.UoW, cmd, ec)
+	ev, err := usecaseop.Run(ctx, s.UoW, openapiops.SyncOpenApiSpec(s.Specs), cmd, ec)
 	if err != nil {
 		return nil, err
 	}
-	ev := committed.Event()
 	status := "CURRENT"
 	if ev.Unchanged {
 		status = "UNCHANGED"

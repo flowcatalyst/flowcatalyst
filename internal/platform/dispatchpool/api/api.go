@@ -14,6 +14,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -78,36 +79,18 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 }
 
 func (s *State) create(ctx context.Context, in *apicommon.In[CreateDispatchPoolRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteDispatchPools(ac); err != nil {
+	// Coarse permission at the controller; the use case enforces per-client
+	// resource access (you may only bind a pool to a client you can access;
+	// platform-wide requires anchor).
+	if err := auth.CanWriteDispatchPools(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	if in.Body.ClientID != nil && !ac.CanAccessClient(*in.Body.ClientID) {
-		return nil, httperror.Forbidden("No access to client: " + *in.Body.ClientID)
-	}
-	if in.Body.ClientID == nil && !ac.IsAnchor() {
-		return nil, httperror.Forbidden("Only anchor users can create anchor-level dispatch pools")
-	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.CreateDispatchPool(ctx, s.Repo, s.UoW, in.Body.toCommand(), ec)
+	ec := auth.NewExecutionContext(ctx)
+	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateDispatchPool(s.Repo), in.Body.toCommand(), ec)
 	if err != nil {
 		return nil, err
 	}
-	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: committed.Event().PoolID}}, nil
-}
-
-// requireScopeByID loads the pool and enforces per-resource scope (A2) on top
-// of the coarse permission already checked: a non-anchor principal must not
-// mutate another tenant's dispatch pool by id.
-func (s *State) requireScopeByID(ctx context.Context, ac *auth.AuthContext, id string) error {
-	p, err := s.Repo.FindByID(ctx, id)
-	if err != nil {
-		return usecase.Internal("REPO", "find_by_id failed", err)
-	}
-	if p == nil {
-		return httperror.NotFound("DispatchPool", id)
-	}
-	return auth.CheckScopeAccess(ac, p.ClientID)
+	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: event.PoolID}}, nil
 }
 
 type updateInput struct {
@@ -116,75 +99,55 @@ type updateInput struct {
 }
 
 func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteDispatchPools(ac); err != nil {
+	if err := auth.CanWriteDispatchPools(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	if err := s.requireScopeByID(ctx, ac, in.ID); err != nil {
-		return nil, err
-	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.UpdateDispatchPool(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateDispatchPool(s.Repo), in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
 }
 
 func (s *State) archive(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteDispatchPools(ac); err != nil {
+	if err := auth.CanWriteDispatchPools(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	if err := s.requireScopeByID(ctx, ac, in.ID); err != nil {
-		return nil, err
-	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.ArchiveDispatchPool(ctx, s.Repo, s.UoW, operations.ArchiveCommand{ID: in.ID}, ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.ArchiveDispatchPool(s.Repo), operations.ArchiveCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
 }
 
 func (s *State) suspend(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteDispatchPools(ac); err != nil {
+	if err := auth.CanWriteDispatchPools(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	if err := s.requireScopeByID(ctx, ac, in.ID); err != nil {
-		return nil, err
-	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.SuspendDispatchPool(ctx, s.Repo, s.UoW, operations.SuspendCommand{ID: in.ID}, ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.SuspendDispatchPool(s.Repo), operations.SuspendCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
 }
 
 func (s *State) activate(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteDispatchPools(ac); err != nil {
+	if err := auth.CanWriteDispatchPools(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	if err := s.requireScopeByID(ctx, ac, in.ID); err != nil {
-		return nil, err
-	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.ActivateDispatchPool(ctx, s.Repo, s.UoW, operations.ActivateCommand{ID: in.ID}, ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.ActivateDispatchPool(s.Repo), operations.ActivateCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
 }
 
 func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanDeleteDispatchPools(ac); err != nil {
+	if err := auth.CanDeleteDispatchPools(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	if err := s.requireScopeByID(ctx, ac, in.ID); err != nil {
-		return nil, err
-	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.DeleteDispatchPool(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeleteDispatchPool(s.Repo), operations.DeleteCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil

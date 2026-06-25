@@ -19,6 +19,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -213,16 +214,14 @@ func (s *State) getOAuthClientByClientID(ctx context.Context, in *clientIDPathIn
 }
 
 func (s *State) createOAuthClient(ctx context.Context, in *apicommon.In[CreateOAuthClientRequest]) (*apicommon.Out[CreateOAuthClientResponse], error) {
-	ac, err := authedAnchor(ctx)
+	if _, err := authedAnchor(ctx); err != nil {
+		return nil, err
+	}
+	ec := platformauth.NewExecutionContext(ctx)
+	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateOAuthClient(s.Repo.OAuthClients), in.Body.toCommand(), ec)
 	if err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.CreateOAuthClient(ctx, s.Repo.OAuthClients, s.UoW, in.Body.toCommand(), ec)
-	if err != nil {
-		return nil, err
-	}
-	event := committed.Event()
 	// Re-fetch the persisted client so the SPA receives the full
 	// OAuthClientResponse under `client` (oauth-clients.ts:56). Matches
 	// Rust oauth_clients_api.rs:294-305.
@@ -249,12 +248,11 @@ type updateOAuthClientInput struct {
 }
 
 func (s *State) updateOAuthClient(ctx context.Context, in *updateOAuthClientInput) (*apicommon.Empty, error) {
-	ac, err := authedAnchor(ctx)
-	if err != nil {
+	if _, err := authedAnchor(ctx); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.UpdateOAuthClient(ctx, s.Repo.OAuthClients, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
+	ec := platformauth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateOAuthClient(s.Repo.OAuthClients), in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
@@ -265,12 +263,11 @@ func (s *State) updateOAuthClient(ctx context.Context, in *updateOAuthClientInpu
 // is preserved. Returns 200 + body rather than 204 so apiFetch does not
 // resolve to undefined.
 func (s *State) activateOAuthClient(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[apicommon.SuccessResponse], error) {
-	ac, err := authedAnchor(ctx)
-	if err != nil {
+	if _, err := authedAnchor(ctx); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.ActivateOAuthClient(ctx, s.Repo.OAuthClients, s.UoW,
+	ec := platformauth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.ActivateOAuthClient(s.Repo.OAuthClients),
 		operations.ActivateOAuthClientCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
@@ -278,12 +275,11 @@ func (s *State) activateOAuthClient(ctx context.Context, in *apicommon.IDInput) 
 }
 
 func (s *State) deactivateOAuthClient(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[apicommon.SuccessResponse], error) {
-	ac, err := authedAnchor(ctx)
-	if err != nil {
+	if _, err := authedAnchor(ctx); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.DeactivateOAuthClient(ctx, s.Repo.OAuthClients, s.UoW,
+	ec := platformauth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeactivateOAuthClient(s.Repo.OAuthClients),
 		operations.DeactivateOAuthClientCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
@@ -291,17 +287,15 @@ func (s *State) deactivateOAuthClient(ctx context.Context, in *apicommon.IDInput
 }
 
 func (s *State) rotateOAuthClientSecret(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[RotateOAuthClientSecretResponse], error) {
-	ac, err := authedAnchor(ctx)
-	if err != nil {
+	if _, err := authedAnchor(ctx); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.RotateOAuthClientSecret(ctx, s.Repo.OAuthClients, s.UoW,
+	ec := platformauth.NewExecutionContext(ctx)
+	event, err := usecaseop.Run(ctx, s.UoW, operations.RotateOAuthClientSecret(s.Repo.OAuthClients),
 		operations.RotateOAuthClientSecretCommand{ID: in.ID}, ec)
 	if err != nil {
 		return nil, err
 	}
-	event := committed.Event()
 	// The SPA expects the public client_id string, not the internal id
 	// (oauth-clients.ts:62-65). Re-fetch to obtain it.
 	c, err := s.Repo.OAuthClients.FindByID(ctx, event.OAuthClientID)
@@ -319,12 +313,11 @@ func (s *State) rotateOAuthClientSecret(ctx context.Context, in *apicommon.IDInp
 }
 
 func (s *State) deleteOAuthClient(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	ac, err := authedAnchor(ctx)
-	if err != nil {
+	if _, err := authedAnchor(ctx); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.DeleteOAuthClient(ctx, s.Repo.OAuthClients, s.UoW,
+	ec := platformauth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeleteOAuthClient(s.Repo.OAuthClients),
 		operations.DeleteOAuthClientCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
@@ -346,16 +339,15 @@ func (s *State) listAnchorDomains(ctx context.Context, _ *apicommon.Empty) (*api
 }
 
 func (s *State) createAnchorDomain(ctx context.Context, in *apicommon.In[CreateAnchorDomainRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
-	ac, err := authedAnchor(ctx)
+	if _, err := authedAnchor(ctx); err != nil {
+		return nil, err
+	}
+	ec := platformauth.NewExecutionContext(ctx)
+	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateAnchorDomain(s.Repo.AnchorDomains), in.Body.toCommand(), ec)
 	if err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.CreateAnchorDomain(ctx, s.Repo.AnchorDomains, s.UoW, in.Body.toCommand(), ec)
-	if err != nil {
-		return nil, err
-	}
-	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: committed.Event().AnchorDomainID}}, nil
+	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: event.AnchorDomainID}}, nil
 }
 
 type updateAnchorDomainInput struct {
@@ -364,24 +356,22 @@ type updateAnchorDomainInput struct {
 }
 
 func (s *State) updateAnchorDomain(ctx context.Context, in *updateAnchorDomainInput) (*apicommon.Empty, error) {
-	ac, err := authedAnchor(ctx)
-	if err != nil {
+	if _, err := authedAnchor(ctx); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.UpdateAnchorDomain(ctx, s.Repo.AnchorDomains, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
+	ec := platformauth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateAnchorDomain(s.Repo.AnchorDomains), in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
 }
 
 func (s *State) deleteAnchorDomain(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	ac, err := authedAnchor(ctx)
-	if err != nil {
+	if _, err := authedAnchor(ctx); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.DeleteAnchorDomain(ctx, s.Repo.AnchorDomains, s.UoW,
+	ec := platformauth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeleteAnchorDomain(s.Repo.AnchorDomains),
 		operations.DeleteAnchorDomainCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
@@ -403,8 +393,7 @@ func (s *State) listAuthConfigs(ctx context.Context, _ *apicommon.Empty) (*apico
 }
 
 func (s *State) createAuthConfig(ctx context.Context, in *apicommon.In[CreateAuthConfigRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
-	ac, err := authedAnchor(ctx)
-	if err != nil {
+	if _, err := authedAnchor(ctx); err != nil {
 		return nil, err
 	}
 	secretRef, err := encryptOIDCSecretRef(s.Enc, in.Body.OIDCClientSecretRef)
@@ -412,12 +401,12 @@ func (s *State) createAuthConfig(ctx context.Context, in *apicommon.In[CreateAut
 		return nil, err
 	}
 	in.Body.OIDCClientSecretRef = secretRef
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.CreateAuthConfig(ctx, s.Repo.ClientAuthConfigs, s.UoW, in.Body.toCommand(), ec)
+	ec := platformauth.NewExecutionContext(ctx)
+	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateAuthConfig(s.Repo.ClientAuthConfigs), in.Body.toCommand(), ec)
 	if err != nil {
 		return nil, err
 	}
-	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: committed.Event().AuthConfigID}}, nil
+	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: event.AuthConfigID}}, nil
 }
 
 type updateAuthConfigInput struct {
@@ -426,8 +415,7 @@ type updateAuthConfigInput struct {
 }
 
 func (s *State) updateAuthConfig(ctx context.Context, in *updateAuthConfigInput) (*apicommon.Empty, error) {
-	ac, err := authedAnchor(ctx)
-	if err != nil {
+	if _, err := authedAnchor(ctx); err != nil {
 		return nil, err
 	}
 	secretRef, err := encryptOIDCSecretRef(s.Enc, in.Body.OIDCClientSecretRef)
@@ -435,20 +423,19 @@ func (s *State) updateAuthConfig(ctx context.Context, in *updateAuthConfigInput)
 		return nil, err
 	}
 	in.Body.OIDCClientSecretRef = secretRef
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.UpdateAuthConfig(ctx, s.Repo.ClientAuthConfigs, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
+	ec := platformauth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateAuthConfig(s.Repo.ClientAuthConfigs), in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
 }
 
 func (s *State) deleteAuthConfig(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	ac, err := authedAnchor(ctx)
-	if err != nil {
+	if _, err := authedAnchor(ctx); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.DeleteAuthConfig(ctx, s.Repo.ClientAuthConfigs, s.UoW,
+	ec := platformauth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeleteAuthConfig(s.Repo.ClientAuthConfigs),
 		operations.DeleteAuthConfigCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
@@ -470,25 +457,23 @@ func (s *State) listIdpRoleMappings(ctx context.Context, _ *apicommon.Empty) (*a
 }
 
 func (s *State) createIdpRoleMapping(ctx context.Context, in *apicommon.In[CreateIdpRoleMappingRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
-	ac, err := authedAnchor(ctx)
+	if _, err := authedAnchor(ctx); err != nil {
+		return nil, err
+	}
+	ec := platformauth.NewExecutionContext(ctx)
+	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateIdpRoleMapping(s.Repo.IdpRoleMappings), in.Body.toCommand(), ec)
 	if err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.CreateIdpRoleMapping(ctx, s.Repo.IdpRoleMappings, s.UoW, in.Body.toCommand(), ec)
-	if err != nil {
-		return nil, err
-	}
-	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: committed.Event().MappingID}}, nil
+	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: event.MappingID}}, nil
 }
 
 func (s *State) deleteIdpRoleMapping(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	ac, err := authedAnchor(ctx)
-	if err != nil {
+	if _, err := authedAnchor(ctx); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.DeleteIdpRoleMapping(ctx, s.Repo.IdpRoleMappings, s.UoW,
+	ec := platformauth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeleteIdpRoleMapping(s.Repo.IdpRoleMappings),
 		operations.DeleteIdpRoleMappingCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}

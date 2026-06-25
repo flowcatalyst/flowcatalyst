@@ -12,8 +12,10 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/seed"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -21,20 +23,43 @@ func TestMain(m *testing.M) { testpg.RunMain(m) }
 
 func ptr(s string) *string { return &s }
 
+// runAuthorized drives op through the full use-case envelope (Validate →
+// Authorize → Execute → atomic commit) as an anchor principal — the common
+// case for these tests, which exercise validation, invariants, and
+// persistence. Roles are global, so the operations carry no use-case-level
+// authorization (the coarse CanWriteRoles/CanDeleteRoles permission lives on
+// the controller); the Authorize phase here is Public. This mirrors how the
+// HTTP handler runs the operation.
+func runAuthorized[C any, E usecase.DomainEvent](
+	uow *usecasepgx.UnitOfWork, op usecaseop.Operation[C, E], cmd C,
+) (E, error) {
+	return usecaseop.Run(testpg.AnchorCtx(), uow, op, cmd, testpg.TestEC())
+}
+
+// appAccessCtx is an all-applications anchor principal. SyncRoles authorizes
+// against the target application (CanAccessApplication) — a bare AnchorCtx sets
+// Scope=Anchor but NOT AllApplications, so it would be denied. App-scoped sync
+// tests run under this principal so they can reach any application.
+func appAccessCtx() context.Context {
+	return testpg.WithAuth(context.Background(), &auth.AuthContext{
+		PrincipalID: "prn_optestrunner1", Scope: auth.ScopeAnchor, AllApplications: true,
+	})
+}
+
 // mustCreate seeds a DATABASE-sourced role through the public operation —
 // the same path production uses. App codes are hand-unique per test: the
 // fixture never truncates between tests, so tests own their rows and never
 // assert table-wide.
 func mustCreate(t *testing.T, repo *role.Repository, uow *usecasepgx.UnitOfWork, appCode, roleName, displayName string, perms ...string) operations.RoleCreated {
 	t.Helper()
-	committed, err := operations.CreateRole(context.Background(), repo, uow, operations.CreateCommand{
+	ev, err := runAuthorized(uow, operations.CreateRole(repo), operations.CreateCommand{
 		ApplicationCode: appCode,
 		RoleName:        roleName,
 		DisplayName:     displayName,
 		Permissions:     perms,
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
-	return committed.Event()
+	return ev
 }
 
 // seedRawRole inserts an iam_roles row directly, mirroring the column set
@@ -77,17 +102,16 @@ func TestCreateRole_HappyPath(t *testing.T) {
 	repo := role.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	committed, err := operations.CreateRole(ctx, repo, uow, operations.CreateCommand{
+	ev, err := runAuthorized(uow, operations.CreateRole(repo), operations.CreateCommand{
 		ApplicationCode: "rolecrt",
 		RoleName:        "editor",
 		DisplayName:     "Document Editor",
 		Description:     ptr("Edits documents"),
 		Permissions:     []string{"rolecrt:doc:edit:*", "rolecrt:doc:read:*"},
 		ClientManaged:   true,
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
 
-	ev := committed.Event()
 	assert.NotEmpty(t, ev.RoleID)
 	assert.Equal(t, "rolecrt:editor", ev.Name, "full name = appCode:roleName")
 
@@ -122,7 +146,7 @@ func TestCreateRole_Validation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.CreateRole(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.CreateRole(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, usecase.KindValidation, tc.code)
 		})
 	}
@@ -136,9 +160,9 @@ func TestCreateRole_Duplicate_Conflict(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	mustCreate(t, repo, uow, "roledup", "editor", "First")
 
-	_, err := operations.CreateRole(context.Background(), repo, uow, operations.CreateCommand{
+	_, err := runAuthorized(uow, operations.CreateRole(repo), operations.CreateCommand{
 		ApplicationCode: "roledup", RoleName: "editor", DisplayName: "Second",
-	}, testpg.TestEC())
+	})
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "ROLE_EXISTS")
 }
 
@@ -152,16 +176,16 @@ func TestUpdateRole_HappyPath(t *testing.T) {
 	seeded := mustCreate(t, repo, uow, "roleupd", "viewer", "Before", "roleupd:doc:read:*")
 
 	cm := true
-	committed, err := operations.UpdateRole(ctx, repo, uow, operations.UpdateCommand{
+	ev, err := runAuthorized(uow, operations.UpdateRole(repo), operations.UpdateCommand{
 		ID:            seeded.RoleID,
 		DisplayName:   ptr("  After  "),
 		Description:   ptr("after"),
 		Permissions:   []string{"roleupd:doc:read:*", "roleupd:doc:list:*"},
 		ClientManaged: &cm,
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.RoleID, committed.Event().RoleID)
-	assert.Equal(t, "roleupd:viewer", committed.Event().Name)
+	assert.Equal(t, seeded.RoleID, ev.RoleID)
+	assert.Equal(t, "roleupd:viewer", ev.Name)
 
 	got, err := repo.FindByID(ctx, seeded.RoleID)
 	require.NoError(t, err)
@@ -192,7 +216,7 @@ func TestUpdateRole_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.UpdateRole(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.UpdateRole(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -204,9 +228,9 @@ func TestUpdateRole_CodeRole_Immutable(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seedRawRole(t, "rol_immupdate0001", "roleimm:update-target", "Immutable Upd", "CODE", nil)
 
-	_, err := operations.UpdateRole(context.Background(), repo, uow, operations.UpdateCommand{
+	_, err := runAuthorized(uow, operations.UpdateRole(repo), operations.UpdateCommand{
 		ID: "rol_immupdate0001", DisplayName: ptr("Hacked"),
-	}, testpg.TestEC())
+	})
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "CODE_ROLE_IMMUTABLE")
 
 	got, err := repo.FindByID(context.Background(), "rol_immupdate0001")
@@ -224,11 +248,11 @@ func TestDeleteRole_HappyPath(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreate(t, repo, uow, "roledel", "doomed", "Doomed")
 
-	committed, err := operations.DeleteRole(ctx, repo, uow,
-		operations.DeleteCommand{ID: seeded.RoleID}, testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.DeleteRole(repo),
+		operations.DeleteCommand{ID: seeded.RoleID})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.RoleID, committed.Event().RoleID)
-	assert.Equal(t, "roledel:doomed", committed.Event().Name)
+	assert.Equal(t, seeded.RoleID, ev.RoleID)
+	assert.Equal(t, "roledel:doomed", ev.Name)
 
 	got, err := repo.FindByID(ctx, seeded.RoleID)
 	require.NoError(t, err)
@@ -240,12 +264,11 @@ func TestDeleteRole_Errors(t *testing.T) {
 	repo := role.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.DeleteRole(context.Background(), repo, uow,
-		operations.DeleteCommand{}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.DeleteRole(repo), operations.DeleteCommand{})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = operations.DeleteRole(context.Background(), repo, uow,
-		operations.DeleteCommand{ID: "rol_doesnotexist1"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.DeleteRole(repo),
+		operations.DeleteCommand{ID: "rol_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "Role_NOT_FOUND")
 }
 
@@ -255,8 +278,8 @@ func TestDeleteRole_CodeRole_Immutable(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seedRawRole(t, "rol_immdelete0001", "roleimm:delete-target", "Immutable Del", "CODE", nil)
 
-	_, err := operations.DeleteRole(context.Background(), repo, uow,
-		operations.DeleteCommand{ID: "rol_immdelete0001"}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.DeleteRole(repo),
+		operations.DeleteCommand{ID: "rol_immdelete0001"})
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "CODE_ROLE_IMMUTABLE")
 
 	got, err := repo.FindByID(context.Background(), "rol_immdelete0001")
@@ -273,12 +296,12 @@ func TestGrantAndRevokePermission_HappyPath(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	mustCreate(t, repo, uow, "roleperm", "operator", "Operator", "roleperm:base:read:*")
 
-	committed, err := operations.GrantPermission(ctx, repo, uow, operations.GrantPermissionCommand{
+	granted, err := runAuthorized(uow, operations.GrantPermission(repo), operations.GrantPermissionCommand{
 		RoleName: "roleperm:operator", Permission: "roleperm:job:run:*",
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
-	assert.Equal(t, "roleperm:operator", committed.Event().RoleName)
-	assert.Equal(t, "roleperm:job:run:*", committed.Event().Permission)
+	assert.Equal(t, "roleperm:operator", granted.RoleName)
+	assert.Equal(t, "roleperm:job:run:*", granted.Permission)
 
 	got, err := repo.FindByName(ctx, "roleperm:operator")
 	require.NoError(t, err)
@@ -287,19 +310,19 @@ func TestGrantAndRevokePermission_HappyPath(t *testing.T) {
 		"granted permission must appear on reload by name")
 
 	// Re-grant is idempotent at the data level (no duplicate row).
-	_, err = operations.GrantPermission(ctx, repo, uow, operations.GrantPermissionCommand{
+	_, err = runAuthorized(uow, operations.GrantPermission(repo), operations.GrantPermissionCommand{
 		RoleName: "roleperm:operator", Permission: "roleperm:job:run:*",
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
 	got, err = repo.FindByName(ctx, "roleperm:operator")
 	require.NoError(t, err)
 	assert.Len(t, got.Permissions, 2, "re-grant must not duplicate the permission")
 
-	revoked, err := operations.RevokePermission(ctx, repo, uow, operations.RevokePermissionCommand{
+	revoked, err := runAuthorized(uow, operations.RevokePermission(repo), operations.RevokePermissionCommand{
 		RoleName: "roleperm:operator", Permission: "roleperm:job:run:*",
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
-	assert.Equal(t, "roleperm:job:run:*", revoked.Event().Permission)
+	assert.Equal(t, "roleperm:job:run:*", revoked.Permission)
 
 	got, err = repo.FindByName(ctx, "roleperm:operator")
 	require.NoError(t, err)
@@ -326,7 +349,7 @@ func TestGrantPermission_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.GrantPermission(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.GrantPermission(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -350,7 +373,7 @@ func TestRevokePermission_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.RevokePermission(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.RevokePermission(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -363,13 +386,32 @@ func TestSyncRoles_Validation(t *testing.T) {
 	repo := role.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.SyncRoles(context.Background(), repo, uow,
+	_, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncRoles(repo),
 		operations.SyncRolesCommand{}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "APPLICATION_CODE_REQUIRED")
 
-	_, err = operations.SyncRoles(context.Background(), repo, uow,
+	_, err = usecaseop.Run(appAccessCtx(), uow, operations.SyncRoles(repo),
 		operations.SyncRolesCommand{ApplicationCode: "rolesyncval"}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ROLES_REQUIRED")
+}
+
+// TestSyncRoles_RequiresAppAccess proves the use case's resource-level
+// authorization: a principal without access to the target application is
+// denied before any write (the coarse "may sync roles" permission is the
+// controller's separate gate).
+func TestSyncRoles_RequiresAppAccess(t *testing.T) {
+	t.Parallel()
+	repo := role.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+	noAccessCtx := testpg.WithAuth(context.Background(), &auth.AuthContext{
+		PrincipalID: "prn_noappaccess", Scope: auth.ScopeClient, Applications: []string{"app_other"},
+	})
+	_, err := usecaseop.Run(noAccessCtx, uow, operations.SyncRoles(repo), operations.SyncRolesCommand{
+		ApplicationCode: "rolesyncnoaccess",
+		ApplicationID:   "app_rolesyncnoaccess",
+		Roles:           []operations.SyncRoleInput{{Name: "Editor"}},
+	}, testpg.TestEC())
+	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "FORBIDDEN")
 }
 
 // TestSyncRoles_UpsertPreserveAndRemoveUnlisted is the SDK-sync behavior
@@ -389,7 +431,7 @@ func TestSyncRoles_UpsertPreserveAndRemoveUnlisted(t *testing.T) {
 	// even when its name appears in the payload.
 	seedRawRole(t, "rol_syncmanual001", appCode+":manual", "Manual Row", "DATABASE", ptr(appID))
 
-	first, err := operations.SyncRoles(ctx, repo, uow, operations.SyncRolesCommand{
+	first, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncRoles(repo), operations.SyncRolesCommand{
 		ApplicationCode: appCode,
 		ApplicationID:   appID,
 		Roles: []operations.SyncRoleInput{
@@ -398,12 +440,12 @@ func TestSyncRoles_UpsertPreserveAndRemoveUnlisted(t *testing.T) {
 		},
 	}, ec)
 	require.NoError(t, err)
-	assert.Equal(t, uint32(2), first.Event().Created)
-	assert.Equal(t, uint32(0), first.Event().Updated)
-	assert.Equal(t, uint32(0), first.Event().Removed)
-	assert.Equal(t, uint32(2), first.Event().Total)
-	assert.Equal(t, appCode, first.Event().ApplicationCode)
-	assert.ElementsMatch(t, []string{appCode + ":editor", appCode + ":viewer"}, first.Event().SyncedCodes,
+	assert.Equal(t, uint32(2), first.Created)
+	assert.Equal(t, uint32(0), first.Updated)
+	assert.Equal(t, uint32(0), first.Removed)
+	assert.Equal(t, uint32(2), first.Total)
+	assert.Equal(t, appCode, first.ApplicationCode)
+	assert.ElementsMatch(t, []string{appCode + ":editor", appCode + ":viewer"}, first.SyncedCodes,
 		"canonical names are {appCode}:{name lowercased}")
 
 	editor, err := repo.FindByName(ctx, appCode+":editor")
@@ -419,15 +461,15 @@ func TestSyncRoles_UpsertPreserveAndRemoveUnlisted(t *testing.T) {
 	// must be preserved (apps declare role names; permissions are curated
 	// in the UI — an empty list must not wipe them). DisplayName omitted
 	// falls back to the raw payload name.
-	second, err := operations.SyncRoles(ctx, repo, uow, operations.SyncRolesCommand{
+	second, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncRoles(repo), operations.SyncRolesCommand{
 		ApplicationCode: appCode,
 		ApplicationID:   appID,
 		Roles:           []operations.SyncRoleInput{{Name: "Editor"}},
 	}, ec)
 	require.NoError(t, err)
-	assert.Equal(t, uint32(0), second.Event().Created)
-	assert.Equal(t, uint32(1), second.Event().Updated)
-	assert.Equal(t, uint32(0), second.Event().Removed)
+	assert.Equal(t, uint32(0), second.Created)
+	assert.Equal(t, uint32(1), second.Updated)
+	assert.Equal(t, uint32(0), second.Removed)
 
 	editor, err = repo.FindByName(ctx, appCode+":editor")
 	require.NoError(t, err)
@@ -438,16 +480,16 @@ func TestSyncRoles_UpsertPreserveAndRemoveUnlisted(t *testing.T) {
 
 	// RemoveUnlisted prunes the unlisted SDK row (viewer) but skips the
 	// DATABASE row even though its name is in the payload.
-	third, err := operations.SyncRoles(ctx, repo, uow, operations.SyncRolesCommand{
+	third, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncRoles(repo), operations.SyncRolesCommand{
 		ApplicationCode: appCode,
 		ApplicationID:   appID,
 		Roles:           []operations.SyncRoleInput{{Name: "Editor"}, {Name: "Manual"}},
 		RemoveUnlisted:  true,
 	}, ec)
 	require.NoError(t, err)
-	assert.Equal(t, uint32(0), third.Event().Created, "existing non-SDK row must not be re-created")
-	assert.Equal(t, uint32(1), third.Event().Updated, "only the SDK row counts as updated")
-	assert.Equal(t, uint32(1), third.Event().Removed)
+	assert.Equal(t, uint32(0), third.Created, "existing non-SDK row must not be re-created")
+	assert.Equal(t, uint32(1), third.Updated, "only the SDK row counts as updated")
+	assert.Equal(t, uint32(1), third.Removed)
 
 	gone, err := repo.FindByName(ctx, appCode+":viewer")
 	require.NoError(t, err)
@@ -472,7 +514,7 @@ func TestSyncRoles_RemoveUnlisted_RoleHasAssignments(t *testing.T) {
 	ec := testpg.TestEC()
 	const appCode, appID = "rolesyncasgn1", "app_rolesyncasgn1"
 
-	_, err := operations.SyncRoles(ctx, repo, uow, operations.SyncRolesCommand{
+	_, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncRoles(repo), operations.SyncRolesCommand{
 		ApplicationCode: appCode,
 		ApplicationID:   appID,
 		Roles:           []operations.SyncRoleInput{{Name: "Held"}},
@@ -481,7 +523,7 @@ func TestSyncRoles_RemoveUnlisted_RoleHasAssignments(t *testing.T) {
 
 	seedPrincipalWithRole(t, "prn_rolesyncheld1", "rolesync-held@example.com", appCode+":held")
 
-	_, err = operations.SyncRoles(ctx, repo, uow, operations.SyncRolesCommand{
+	_, err = usecaseop.Run(appAccessCtx(), uow, operations.SyncRoles(repo), operations.SyncRolesCommand{
 		ApplicationCode: appCode,
 		ApplicationID:   appID,
 		Roles:           []operations.SyncRoleInput{{Name: "Other"}},
@@ -531,13 +573,13 @@ func TestSyncPlatformRoles_CatalogueLifecycle(t *testing.T) {
 
 	// 1. Fresh database (migrations seed no iam_roles): every catalogue
 	//    role plus the two test roles is a CREATE.
-	first, err := operations.SyncPlatformRoles(ctx, repo, uow,
-		withTest(mkTest("sync-a", "Sync A"), mkTest("sync-b", "Sync B")), ec)
+	first, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPlatformRoles(repo,
+		withTest(mkTest("sync-a", "Sync A"), mkTest("sync-b", "Sync B"))), operations.SyncPlatformRolesCommand{}, ec)
 	require.NoError(t, err)
-	assert.Equal(t, uint32(n+2), first.Event().Created)
-	assert.Equal(t, uint32(0), first.Event().Updated)
-	assert.Equal(t, uint32(0), first.Event().Removed)
-	assert.Equal(t, uint32(n+2), first.Event().Total)
+	assert.Equal(t, uint32(n+2), first.Created)
+	assert.Equal(t, uint32(0), first.Updated)
+	assert.Equal(t, uint32(0), first.Removed)
+	assert.Equal(t, uint32(n+2), first.Total)
 
 	a, err := repo.FindByName(ctx, "roleplat:sync-a")
 	require.NoError(t, err)
@@ -552,12 +594,12 @@ func TestSyncPlatformRoles_CatalogueLifecycle(t *testing.T) {
 	//    not an error) — removed stays 0.
 	seedPrincipalWithRole(t, "prn_roleplatsync1", "roleplat-sync@example.com", "roleplat:sync-b")
 
-	second, err := operations.SyncPlatformRoles(ctx, repo, uow,
-		withTest(mkTest("sync-a", "Sync A v2")), ec)
+	second, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPlatformRoles(repo,
+		withTest(mkTest("sync-a", "Sync A v2"))), operations.SyncPlatformRolesCommand{}, ec)
 	require.NoError(t, err)
-	assert.Equal(t, uint32(0), second.Event().Created)
-	assert.Equal(t, uint32(n+1), second.Event().Updated, "every existing catalogue role is re-upserted")
-	assert.Equal(t, uint32(0), second.Event().Removed, "assigned stale CODE role is skipped, not deleted")
+	assert.Equal(t, uint32(0), second.Created)
+	assert.Equal(t, uint32(n+1), second.Updated, "every existing catalogue role is re-upserted")
+	assert.Equal(t, uint32(0), second.Removed, "assigned stale CODE role is skipped, not deleted")
 
 	a, err = repo.FindByName(ctx, "roleplat:sync-a")
 	require.NoError(t, err)
@@ -573,10 +615,10 @@ func TestSyncPlatformRoles_CatalogueLifecycle(t *testing.T) {
 		`DELETE FROM iam_principal_roles WHERE principal_id = $1`, "prn_roleplatsync1")
 	require.NoError(t, err)
 
-	third, err := operations.SyncPlatformRoles(ctx, repo, uow,
-		withTest(mkTest("sync-a", "Sync A v2")), ec)
+	third, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPlatformRoles(repo,
+		withTest(mkTest("sync-a", "Sync A v2"))), operations.SyncPlatformRolesCommand{}, ec)
 	require.NoError(t, err)
-	assert.Equal(t, uint32(1), third.Event().Removed, "unassigned stale CODE role is swept")
+	assert.Equal(t, uint32(1), third.Removed, "unassigned stale CODE role is swept")
 
 	b, err = repo.FindByName(ctx, "roleplat:sync-b")
 	require.NoError(t, err)

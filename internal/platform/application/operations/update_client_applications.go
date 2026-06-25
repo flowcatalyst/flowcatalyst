@@ -6,10 +6,10 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 )
 
 // UpdateClientApplicationsCommand replaces a client's full enabled-app
@@ -27,106 +27,114 @@ type UpdateClientApplicationsCommand struct {
 // for currently-enabled apps not in the desired set it flips to disabled.
 // All persistence + the rollup [ClientApplicationsUpdated] event happen
 // in one transaction.
+//
+// This op binds applications TO A CLIENT, so the resource is the client:
+// the use case enforces per-client access (auth.CheckScopeAccess on the
+// target client). The coarse permission is enforced at the controller.
 func UpdateClientApplications(
-	ctx context.Context,
 	apps *application.Repository,
 	clients *client.Repository,
 	configs *application.ClientConfigRepo,
-	uow *usecasepgx.UnitOfWork,
-	cmd UpdateClientApplicationsCommand,
-	ec usecase.ExecutionContext,
-) (commit.Committed[ClientApplicationsUpdated], error) {
-	var zero commit.Committed[ClientApplicationsUpdated]
+) usecaseop.Operation[UpdateClientApplicationsCommand, ClientApplicationsUpdated] {
+	return usecaseop.Operation[UpdateClientApplicationsCommand, ClientApplicationsUpdated]{
+		Name: "UpdateClientApplications",
+		Validate: func(_ context.Context, cmd UpdateClientApplicationsCommand) error {
+			if strings.TrimSpace(cmd.ClientID) == "" {
+				return usecase.Validation("CLIENT_ID_REQUIRED", "Client ID is required")
+			}
+			return nil
+		},
+		Authorize: func(ctx context.Context, cmd UpdateClientApplicationsCommand) error {
+			return auth.CheckScopeAccess(auth.FromContext(ctx), &cmd.ClientID)
+		},
+		Execute: func(ctx context.Context, cmd UpdateClientApplicationsCommand, ec usecase.ExecutionContext) (usecaseop.Plan[ClientApplicationsUpdated], error) {
+			c, err := clients.FindByID(ctx, cmd.ClientID)
+			if err != nil {
+				return nil, usecase.Internal("REPO", "find_client failed", err)
+			}
+			if c == nil {
+				return nil, httperror.NotFound("Client", cmd.ClientID)
+			}
 
-	if strings.TrimSpace(cmd.ClientID) == "" {
-		return zero, usecase.Validation("CLIENT_ID_REQUIRED", "Client ID is required")
-	}
+			// Every requested app must exist before we touch any rows.
+			for _, appID := range cmd.EnabledApplicationIDs {
+				if strings.TrimSpace(appID) == "" {
+					return nil, usecase.Validation("APPLICATION_ID_REQUIRED", "Application ID must be non-empty")
+				}
+				app, err := apps.FindByID(ctx, appID)
+				if err != nil {
+					return nil, usecase.Internal("REPO", "find_application failed", err)
+				}
+				if app == nil {
+					return nil, httperror.NotFound("Application", appID)
+				}
+			}
 
-	c, err := clients.FindByID(ctx, cmd.ClientID)
-	if err != nil {
-		return zero, usecase.Internal("REPO", "find_client failed", err)
-	}
-	if c == nil {
-		return zero, httperror.NotFound("Client", cmd.ClientID)
-	}
+			current, err := configs.FindByClient(ctx, cmd.ClientID)
+			if err != nil {
+				return nil, usecase.Internal("REPO", "find_configs failed", err)
+			}
 
-	// Every requested app must exist before we touch any rows.
-	for _, appID := range cmd.EnabledApplicationIDs {
-		if strings.TrimSpace(appID) == "" {
-			return zero, usecase.Validation("APPLICATION_ID_REQUIRED", "Application ID must be non-empty")
-		}
-		app, err := apps.FindByID(ctx, appID)
-		if err != nil {
-			return zero, usecase.Internal("REPO", "find_application failed", err)
-		}
-		if app == nil {
-			return zero, httperror.NotFound("Application", appID)
-		}
-	}
+			currentByApp := make(map[string]*application.ClientConfig, len(current))
+			currentlyEnabled := make(map[string]struct{}, len(current))
+			for i := range current {
+				row := current[i]
+				currentByApp[row.ApplicationID] = &row
+				if row.Enabled {
+					currentlyEnabled[row.ApplicationID] = struct{}{}
+				}
+			}
 
-	current, err := configs.FindByClient(ctx, cmd.ClientID)
-	if err != nil {
-		return zero, usecase.Internal("REPO", "find_configs failed", err)
-	}
+			desired := make(map[string]struct{}, len(cmd.EnabledApplicationIDs))
+			for _, id := range cmd.EnabledApplicationIDs {
+				desired[id] = struct{}{}
+			}
 
-	currentByApp := make(map[string]*application.ClientConfig, len(current))
-	currentlyEnabled := make(map[string]struct{}, len(current))
-	for i := range current {
-		row := current[i]
-		currentByApp[row.ApplicationID] = &row
-		if row.Enabled {
-			currentlyEnabled[row.ApplicationID] = struct{}{}
-		}
-	}
+			var toPersist []application.ClientConfig
+			var enabledAdded []string
+			var disabledRemoved []string
 
-	desired := make(map[string]struct{}, len(cmd.EnabledApplicationIDs))
-	for _, id := range cmd.EnabledApplicationIDs {
-		desired[id] = struct{}{}
-	}
+			// Enable: requested but not currently enabled. Flip an existing
+			// disabled row, or create a fresh one.
+			for _, appID := range cmd.EnabledApplicationIDs {
+				if _, on := currentlyEnabled[appID]; on {
+					continue
+				}
+				if existing, ok := currentByApp[appID]; ok {
+					existing.Enable()
+					toPersist = append(toPersist, *existing)
+				} else {
+					fresh := application.NewClientConfig(appID, cmd.ClientID)
+					toPersist = append(toPersist, *fresh)
+				}
+				enabledAdded = append(enabledAdded, appID)
+			}
 
-	var toPersist []application.ClientConfig
-	var enabledAdded []string
-	var disabledRemoved []string
+			// Disable: currently enabled but not in desired set.
+			for appID := range currentlyEnabled {
+				if _, want := desired[appID]; want {
+					continue
+				}
+				existing := currentByApp[appID]
+				existing.Disable()
+				toPersist = append(toPersist, *existing)
+				disabledRemoved = append(disabledRemoved, appID)
+			}
 
-	// Enable: requested but not currently enabled. Flip an existing
-	// disabled row, or create a fresh one.
-	for _, appID := range cmd.EnabledApplicationIDs {
-		if _, on := currentlyEnabled[appID]; on {
-			continue
-		}
-		if existing, ok := currentByApp[appID]; ok {
-			existing.Enable()
-			toPersist = append(toPersist, *existing)
-		} else {
-			fresh := application.NewClientConfig(appID, cmd.ClientID)
-			toPersist = append(toPersist, *fresh)
-		}
-		enabledAdded = append(enabledAdded, appID)
-	}
+			event := ClientApplicationsUpdated{
+				Metadata:        usecase.NewEventMetadata(ec, ClientApplicationsUpdatedType, Source, "platform.client."+cmd.ClientID),
+				ClientID:        cmd.ClientID,
+				EnabledIDs:      append([]string(nil), cmd.EnabledApplicationIDs...),
+				EnabledAdded:    enabledAdded,
+				DisabledRemoved: disabledRemoved,
+			}
 
-	// Disable: currently enabled but not in desired set.
-	for appID := range currentlyEnabled {
-		if _, want := desired[appID]; want {
-			continue
-		}
-		existing := currentByApp[appID]
-		existing.Disable()
-		toPersist = append(toPersist, *existing)
-		disabledRemoved = append(disabledRemoved, appID)
+			if len(toPersist) == 0 {
+				// Empty diff still emits the rollup so the audit trail records
+				// the request. Matches Rust's behaviour.
+				return usecaseop.Emit(event), nil
+			}
+			return usecaseop.SaveAll(toPersist, configs, event), nil
+		},
 	}
-
-	event := ClientApplicationsUpdated{
-		Metadata:        usecase.NewEventMetadata(ec, ClientApplicationsUpdatedType, Source, "platform.client."+cmd.ClientID),
-		ClientID:        cmd.ClientID,
-		EnabledIDs:      append([]string(nil), cmd.EnabledApplicationIDs...),
-		EnabledAdded:    enabledAdded,
-		DisabledRemoved: disabledRemoved,
-	}
-
-	if len(toPersist) == 0 {
-		// Empty diff still emits the rollup so the audit trail records
-		// the request. Matches Rust's behaviour.
-		return commit.Emit(ctx, uow, event, cmd)
-	}
-	return commit.SaveAll(ctx, uow, toPersist, configs, event, cmd)
 }

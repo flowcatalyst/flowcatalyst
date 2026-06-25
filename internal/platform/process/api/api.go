@@ -14,6 +14,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -101,16 +102,18 @@ func (s *State) getByCode(ctx context.Context, in *getByCodeInput) (*apicommon.O
 }
 
 func (s *State) create(ctx context.Context, in *apicommon.In[CreateProcessRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteProcesses(ac); err != nil {
+	// Coarse write permission at the controller. Process is global (no
+	// per-client resource dimension), so the use case carries no
+	// resource-level authz.
+	if err := auth.CanWriteProcesses(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.CreateProcess(ctx, s.Repo, s.UoW, in.Body.toCommand(), ec)
+	ec := auth.NewExecutionContext(ctx)
+	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateProcess(s.Repo), in.Body.toCommand(), ec)
 	if err != nil {
 		return nil, err
 	}
-	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: committed.Event().ProcessID}}, nil
+	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: event.ProcessID}}, nil
 }
 
 type updateInput struct {
@@ -119,36 +122,33 @@ type updateInput struct {
 }
 
 func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteProcesses(ac); err != nil {
+	if err := auth.CanWriteProcesses(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.UpdateProcess(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateProcess(s.Repo), in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
 }
 
 func (s *State) archive(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteProcesses(ac); err != nil {
+	if err := auth.CanWriteProcesses(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.ArchiveProcess(ctx, s.Repo, s.UoW, operations.ArchiveCommand{ID: in.ID}, ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.ArchiveProcess(s.Repo), operations.ArchiveCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
 }
 
 func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanDeleteProcesses(ac); err != nil {
+	if err := auth.CanDeleteProcesses(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.DeleteProcess(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeleteProcess(s.Repo), operations.DeleteCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil

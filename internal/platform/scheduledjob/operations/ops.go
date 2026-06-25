@@ -1,9 +1,8 @@
 // Package operations holds all 7 scheduled_job admin use cases plus
-// fire_now. Sync (bulk SDK upsert) is deferred to a focused follow-up
-// alongside the other subdomain sync ops.
+// fire_now, and the bulk SDK sync (sync.go).
 //
-// All ops follow the same pattern; they're kept in one file to keep the
-// pattern visible.
+// All CRUD ops follow the same use-case envelope pattern; they're kept in one
+// file to keep the pattern visible.
 package operations
 
 import (
@@ -13,12 +12,12 @@ import (
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/validate"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 )
 
 // ── Create ────────────────────────────────────────────────────────────────
@@ -38,67 +37,87 @@ type CreateCommand struct {
 	TargetURL           *string         `json:"targetUrl,omitempty"`
 }
 
-func CreateScheduledJob(
-	ctx context.Context,
-	repo *scheduledjob.Repository,
-	uow *usecasepgx.UnitOfWork,
-	cmd CreateCommand,
-	ec usecase.ExecutionContext,
-) (commit.Committed[ScheduledJobCreated], error) {
-	var zero commit.Committed[ScheduledJobCreated]
+// CreateScheduledJob validates the command, persists a new job, and emits
+// [ScheduledJobCreated].
+//
+// Authorization (the coarse "may write scheduled jobs" permission is the
+// controller's): a client-scoped job (ClientID set) requires the caller can
+// access that client; a platform-scoped job (ClientID nil) requires anchor.
+func CreateScheduledJob(repo *scheduledjob.Repository) usecaseop.Operation[CreateCommand, ScheduledJobCreated] {
+	return usecaseop.Operation[CreateCommand, ScheduledJobCreated]{
+		Name: "CreateScheduledJob",
+		Validate: func(_ context.Context, cmd CreateCommand) error {
+			code := strings.ToLower(strings.TrimSpace(cmd.Code))
+			if code == "" {
+				return usecase.Validation("CODE_REQUIRED", "code is required")
+			}
+			if !validate.CodePattern.MatchString(code) {
+				return usecase.Validation("INVALID_CODE_FORMAT",
+					"code must start with a lowercase letter and contain only lowercase alphanumeric and hyphens")
+			}
+			if strings.TrimSpace(cmd.Name) == "" {
+				return usecase.Validation("NAME_REQUIRED", "name is required")
+			}
+			if len(cmd.Crons) == 0 {
+				return usecase.Validation("CRONS_REQUIRED", "at least one cron expression is required")
+			}
+			for _, c := range cmd.Crons {
+				if strings.TrimSpace(c) == "" {
+					return usecase.Validation("INVALID_CRON", "cron expressions cannot be empty")
+				}
+				if err := scheduledjob.ValidateCronShape(c); err != nil {
+					return usecase.Validation("CRON_INVALID_SHAPE", err.Error())
+				}
+			}
+			return nil
+		},
+		Authorize: func(ctx context.Context, cmd CreateCommand) error {
+			ac := auth.FromContext(ctx)
+			if cmd.ClientID != nil {
+				if !ac.CanAccessClient(*cmd.ClientID) {
+					return httperror.Forbidden("No access to client: " + *cmd.ClientID)
+				}
+				return nil
+			}
+			if !ac.IsAnchor() {
+				return httperror.Forbidden("Only anchor users can create platform-scoped jobs")
+			}
+			return nil
+		},
+		Execute: func(ctx context.Context, cmd CreateCommand, ec usecase.ExecutionContext) (usecaseop.Plan[ScheduledJobCreated], error) {
+			code := strings.ToLower(strings.TrimSpace(cmd.Code))
 
-	code := strings.ToLower(strings.TrimSpace(cmd.Code))
-	if code == "" {
-		return zero, usecase.Validation("CODE_REQUIRED", "code is required")
-	}
-	if !validate.CodePattern.MatchString(code) {
-		return zero, usecase.Validation("INVALID_CODE_FORMAT",
-			"code must start with a lowercase letter and contain only lowercase alphanumeric and hyphens")
-	}
-	if strings.TrimSpace(cmd.Name) == "" {
-		return zero, usecase.Validation("NAME_REQUIRED", "name is required")
-	}
-	if len(cmd.Crons) == 0 {
-		return zero, usecase.Validation("CRONS_REQUIRED", "at least one cron expression is required")
-	}
-	for _, c := range cmd.Crons {
-		if strings.TrimSpace(c) == "" {
-			return zero, usecase.Validation("INVALID_CRON", "cron expressions cannot be empty")
-		}
-		if err := scheduledjob.ValidateCronShape(c); err != nil {
-			return zero, usecase.Validation("CRON_INVALID_SHAPE", err.Error())
-		}
-	}
+			existing, err := repo.FindByCode(ctx, code, cmd.ClientID)
+			if err != nil {
+				return nil, usecase.Internal("REPO", "find_by_code failed", err)
+			}
+			if existing != nil {
+				return nil, usecase.Conflict("CODE_EXISTS", "Scheduled job with code '"+code+"' already exists")
+			}
+			j := scheduledjob.New(code, strings.TrimSpace(cmd.Name), cmd.Crons)
+			j.ClientID = cmd.ClientID
+			j.Description = cmd.Description
+			if cmd.Timezone != "" {
+				j.Timezone = cmd.Timezone
+			}
+			j.Payload = cmd.Payload
+			j.Concurrent = cmd.Concurrent
+			j.TracksCompletion = cmd.TracksCompletion
+			j.TimeoutSeconds = cmd.TimeoutSeconds
+			if cmd.DeliveryMaxAttempts != nil {
+				j.DeliveryMaxAttempts = *cmd.DeliveryMaxAttempts
+			}
+			j.TargetURL = cmd.TargetURL
+			j.CreatedBy = &ec.PrincipalID
 
-	existing, err := repo.FindByCode(ctx, code, cmd.ClientID)
-	if err != nil {
-		return zero, usecase.Internal("REPO", "find_by_code failed", err)
+			event := ScheduledJobCreated{commonEvent: commonEvent{
+				Metadata:       usecase.NewEventMetadata(ec, ScheduledJobCreatedType, Source, subjectFor(j.ID)),
+				ScheduledJobID: j.ID,
+				Code:           j.Code,
+			}}
+			return usecaseop.Save(j, repo, event), nil
+		},
 	}
-	if existing != nil {
-		return zero, usecase.Conflict("CODE_EXISTS", "Scheduled job with code '"+code+"' already exists")
-	}
-	j := scheduledjob.New(code, strings.TrimSpace(cmd.Name), cmd.Crons)
-	j.ClientID = cmd.ClientID
-	j.Description = cmd.Description
-	if cmd.Timezone != "" {
-		j.Timezone = cmd.Timezone
-	}
-	j.Payload = cmd.Payload
-	j.Concurrent = cmd.Concurrent
-	j.TracksCompletion = cmd.TracksCompletion
-	j.TimeoutSeconds = cmd.TimeoutSeconds
-	if cmd.DeliveryMaxAttempts != nil {
-		j.DeliveryMaxAttempts = *cmd.DeliveryMaxAttempts
-	}
-	j.TargetURL = cmd.TargetURL
-	j.CreatedBy = &ec.PrincipalID
-
-	event := ScheduledJobCreated{commonEvent: commonEvent{
-		Metadata:       usecase.NewEventMetadata(ec, ScheduledJobCreatedType, Source, subjectFor(j.ID)),
-		ScheduledJobID: j.ID,
-		Code:           j.Code,
-	}}
-	return commit.Save(ctx, uow, j, repo, event, cmd)
 }
 
 // ── Update ────────────────────────────────────────────────────────────────
@@ -117,174 +136,172 @@ type UpdateCommand struct {
 	TargetURL           *string         `json:"targetUrl,omitempty"`
 }
 
-func UpdateScheduledJob(
-	ctx context.Context,
-	repo *scheduledjob.Repository,
-	uow *usecasepgx.UnitOfWork,
-	cmd UpdateCommand,
-	ec usecase.ExecutionContext,
-) (commit.Committed[ScheduledJobUpdated], error) {
-	var zero commit.Committed[ScheduledJobUpdated]
-
-	if strings.TrimSpace(cmd.ID) == "" {
-		return zero, usecase.Validation("ID_REQUIRED", "id is required")
-	}
-	if cmd.Name != nil && strings.TrimSpace(*cmd.Name) == "" {
-		return zero, usecase.Validation("NAME_REQUIRED", "name cannot be empty")
-	}
-
-	j, err := repo.FindByID(ctx, cmd.ID)
-	if err != nil {
-		return zero, usecase.Internal("REPO", "find_by_id failed", err)
-	}
-	if j == nil {
-		return zero, httperror.NotFound("ScheduledJob", cmd.ID)
-	}
-	if cmd.Name != nil {
-		j.Name = strings.TrimSpace(*cmd.Name)
-	}
-	if cmd.Description != nil {
-		j.Description = cmd.Description
-	}
-	if cmd.Crons != nil {
-		if len(cmd.Crons) == 0 {
-			return zero, usecase.Validation("CRONS_REQUIRED", "at least one cron expression is required")
-		}
-		for _, c := range cmd.Crons {
-			if strings.TrimSpace(c) == "" {
-				return zero, usecase.Validation("INVALID_CRON", "cron expressions cannot be empty")
+// UpdateScheduledJob mutates mutable fields and emits [ScheduledJobUpdated].
+// Per-resource scope is enforced post-load in Execute; the coarse "may write
+// scheduled jobs" permission is on the controller.
+func UpdateScheduledJob(repo *scheduledjob.Repository) usecaseop.Operation[UpdateCommand, ScheduledJobUpdated] {
+	return usecaseop.Operation[UpdateCommand, ScheduledJobUpdated]{
+		Name: "UpdateScheduledJob",
+		Validate: func(_ context.Context, cmd UpdateCommand) error {
+			if strings.TrimSpace(cmd.ID) == "" {
+				return usecase.Validation("ID_REQUIRED", "id is required")
 			}
-			if err := scheduledjob.ValidateCronShape(c); err != nil {
-				return zero, usecase.Validation("CRON_INVALID_SHAPE", err.Error())
+			if cmd.Name != nil && strings.TrimSpace(*cmd.Name) == "" {
+				return usecase.Validation("NAME_REQUIRED", "name cannot be empty")
 			}
-		}
-		j.Crons = cmd.Crons
-	}
-	if cmd.Timezone != nil {
-		j.Timezone = *cmd.Timezone
-	}
-	if cmd.Payload != nil {
-		j.Payload = cmd.Payload
-	}
-	if cmd.Concurrent != nil {
-		j.Concurrent = *cmd.Concurrent
-	}
-	if cmd.TracksCompletion != nil {
-		j.TracksCompletion = *cmd.TracksCompletion
-	}
-	if cmd.TimeoutSeconds != nil {
-		j.TimeoutSeconds = cmd.TimeoutSeconds
-	}
-	if cmd.DeliveryMaxAttempts != nil {
-		j.DeliveryMaxAttempts = *cmd.DeliveryMaxAttempts
-	}
-	if cmd.TargetURL != nil {
-		j.TargetURL = cmd.TargetURL
-	}
-	j.UpdatedBy = &ec.PrincipalID
-	j.Version++
+			if cmd.Crons != nil {
+				if len(cmd.Crons) == 0 {
+					return usecase.Validation("CRONS_REQUIRED", "at least one cron expression is required")
+				}
+				for _, c := range cmd.Crons {
+					if strings.TrimSpace(c) == "" {
+						return usecase.Validation("INVALID_CRON", "cron expressions cannot be empty")
+					}
+					if err := scheduledjob.ValidateCronShape(c); err != nil {
+						return usecase.Validation("CRON_INVALID_SHAPE", err.Error())
+					}
+				}
+			}
+			return nil
+		},
+		Authorize: usecaseop.Public[UpdateCommand],
+		Execute: func(ctx context.Context, cmd UpdateCommand, ec usecase.ExecutionContext) (usecaseop.Plan[ScheduledJobUpdated], error) {
+			j, err := repo.FindByID(ctx, cmd.ID)
+			if err != nil {
+				return nil, usecase.Internal("REPO", "find_by_id failed", err)
+			}
+			if j == nil {
+				return nil, httperror.NotFound("ScheduledJob", cmd.ID)
+			}
+			if err := auth.CheckScopeAccess(auth.FromContext(ctx), j.ClientID); err != nil {
+				return nil, err
+			}
+			if cmd.Name != nil {
+				j.Name = strings.TrimSpace(*cmd.Name)
+			}
+			if cmd.Description != nil {
+				j.Description = cmd.Description
+			}
+			if cmd.Crons != nil {
+				j.Crons = cmd.Crons
+			}
+			if cmd.Timezone != nil {
+				j.Timezone = *cmd.Timezone
+			}
+			if cmd.Payload != nil {
+				j.Payload = cmd.Payload
+			}
+			if cmd.Concurrent != nil {
+				j.Concurrent = *cmd.Concurrent
+			}
+			if cmd.TracksCompletion != nil {
+				j.TracksCompletion = *cmd.TracksCompletion
+			}
+			if cmd.TimeoutSeconds != nil {
+				j.TimeoutSeconds = cmd.TimeoutSeconds
+			}
+			if cmd.DeliveryMaxAttempts != nil {
+				j.DeliveryMaxAttempts = *cmd.DeliveryMaxAttempts
+			}
+			if cmd.TargetURL != nil {
+				j.TargetURL = cmd.TargetURL
+			}
+			j.UpdatedBy = &ec.PrincipalID
+			j.Version++
 
-	event := ScheduledJobUpdated{commonEvent: commonEvent{
-		Metadata:       usecase.NewEventMetadata(ec, ScheduledJobUpdatedType, Source, subjectFor(j.ID)),
-		ScheduledJobID: j.ID,
-		Code:           j.Code,
-	}}
-	return commit.Save(ctx, uow, j, repo, event, cmd)
+			event := ScheduledJobUpdated{commonEvent: commonEvent{
+				Metadata:       usecase.NewEventMetadata(ec, ScheduledJobUpdatedType, Source, subjectFor(j.ID)),
+				ScheduledJobID: j.ID,
+				Code:           j.Code,
+			}}
+			return usecaseop.Save(j, repo, event), nil
+		},
+	}
 }
 
 // ── Pause / Resume / Archive ──────────────────────────────────────────────
 
-// transition is the shared body for the three status-flip ops. Returns
-// the updated job (caller wraps the typed event).
-func transition(ctx context.Context, repo *scheduledjob.Repository, id string, ec usecase.ExecutionContext, apply func(*scheduledjob.ScheduledJob)) (*scheduledjob.ScheduledJob, error) {
-	j, err := repo.FindByID(ctx, id)
-	if err != nil {
-		return nil, usecase.Internal("REPO", "find_by_id failed", err)
+// statusFlip builds a status-flip Operation: load the job, enforce per-resource
+// scope, apply the supplied mutator, emit the typed event. Shared body for
+// PauseScheduledJob / ResumeScheduledJob / ArchiveScheduledJob.
+func statusFlip[E usecase.DomainEvent](
+	name string,
+	repo *scheduledjob.Repository,
+	apply func(*scheduledjob.ScheduledJob),
+	event func(*scheduledjob.ScheduledJob, usecase.ExecutionContext) E,
+) usecaseop.Operation[transitionCommand, E] {
+	return usecaseop.Operation[transitionCommand, E]{
+		Name: name,
+		Validate: func(_ context.Context, cmd transitionCommand) error {
+			if strings.TrimSpace(cmd.ID) == "" {
+				return usecase.Validation("ID_REQUIRED", "id is required")
+			}
+			return nil
+		},
+		Authorize: usecaseop.Public[transitionCommand],
+		Execute: func(ctx context.Context, cmd transitionCommand, ec usecase.ExecutionContext) (usecaseop.Plan[E], error) {
+			j, err := repo.FindByID(ctx, cmd.ID)
+			if err != nil {
+				return nil, usecase.Internal("REPO", "find_by_id failed", err)
+			}
+			if j == nil {
+				return nil, httperror.NotFound("ScheduledJob", cmd.ID)
+			}
+			if err := auth.CheckScopeAccess(auth.FromContext(ctx), j.ClientID); err != nil {
+				return nil, err
+			}
+			apply(j)
+			j.UpdatedBy = &ec.PrincipalID
+			return usecaseop.Save(j, repo, event(j, ec)), nil
+		},
 	}
-	if j == nil {
-		return nil, httperror.NotFound("ScheduledJob", id)
-	}
-	apply(j)
-	j.UpdatedBy = &ec.PrincipalID
-	return j, nil
 }
 
-type PauseCommand struct {
+// transitionCommand is the shared id-only command for the status-flip ops.
+type transitionCommand struct {
 	ID string `json:"id"`
 }
 
-func PauseScheduledJob(
-	ctx context.Context,
-	repo *scheduledjob.Repository,
-	uow *usecasepgx.UnitOfWork,
-	cmd PauseCommand,
-	ec usecase.ExecutionContext,
-) (commit.Committed[ScheduledJobPaused], error) {
-	var zero commit.Committed[ScheduledJobPaused]
-	if strings.TrimSpace(cmd.ID) == "" {
-		return zero, usecase.Validation("ID_REQUIRED", "id is required")
-	}
-	j, err := transition(ctx, repo, cmd.ID, ec, func(j *scheduledjob.ScheduledJob) { j.Pause() })
-	if err != nil {
-		return zero, err
-	}
-	event := ScheduledJobPaused{commonEvent: commonEvent{
-		Metadata:       usecase.NewEventMetadata(ec, ScheduledJobPausedType, Source, subjectFor(j.ID)),
-		ScheduledJobID: j.ID, Code: j.Code,
-	}}
-	return commit.Save(ctx, uow, j, repo, event, cmd)
+type (
+	PauseCommand   = transitionCommand
+	ResumeCommand  = transitionCommand
+	ArchiveCommand = transitionCommand
+)
+
+// PauseScheduledJob flips a job to PAUSED.
+func PauseScheduledJob(repo *scheduledjob.Repository) usecaseop.Operation[PauseCommand, ScheduledJobPaused] {
+	return statusFlip("PauseScheduledJob", repo,
+		func(j *scheduledjob.ScheduledJob) { j.Pause() },
+		func(j *scheduledjob.ScheduledJob, ec usecase.ExecutionContext) ScheduledJobPaused {
+			return ScheduledJobPaused{commonEvent: commonEvent{
+				Metadata:       usecase.NewEventMetadata(ec, ScheduledJobPausedType, Source, subjectFor(j.ID)),
+				ScheduledJobID: j.ID, Code: j.Code,
+			}}
+		})
 }
 
-type ResumeCommand struct {
-	ID string `json:"id"`
+// ResumeScheduledJob flips a job back to ACTIVE.
+func ResumeScheduledJob(repo *scheduledjob.Repository) usecaseop.Operation[ResumeCommand, ScheduledJobResumed] {
+	return statusFlip("ResumeScheduledJob", repo,
+		func(j *scheduledjob.ScheduledJob) { j.Resume() },
+		func(j *scheduledjob.ScheduledJob, ec usecase.ExecutionContext) ScheduledJobResumed {
+			return ScheduledJobResumed{commonEvent: commonEvent{
+				Metadata:       usecase.NewEventMetadata(ec, ScheduledJobResumedType, Source, subjectFor(j.ID)),
+				ScheduledJobID: j.ID, Code: j.Code,
+			}}
+		})
 }
 
-func ResumeScheduledJob(
-	ctx context.Context,
-	repo *scheduledjob.Repository,
-	uow *usecasepgx.UnitOfWork,
-	cmd ResumeCommand,
-	ec usecase.ExecutionContext,
-) (commit.Committed[ScheduledJobResumed], error) {
-	var zero commit.Committed[ScheduledJobResumed]
-	if strings.TrimSpace(cmd.ID) == "" {
-		return zero, usecase.Validation("ID_REQUIRED", "id is required")
-	}
-	j, err := transition(ctx, repo, cmd.ID, ec, func(j *scheduledjob.ScheduledJob) { j.Resume() })
-	if err != nil {
-		return zero, err
-	}
-	event := ScheduledJobResumed{commonEvent: commonEvent{
-		Metadata:       usecase.NewEventMetadata(ec, ScheduledJobResumedType, Source, subjectFor(j.ID)),
-		ScheduledJobID: j.ID, Code: j.Code,
-	}}
-	return commit.Save(ctx, uow, j, repo, event, cmd)
-}
-
-type ArchiveCommand struct {
-	ID string `json:"id"`
-}
-
-func ArchiveScheduledJob(
-	ctx context.Context,
-	repo *scheduledjob.Repository,
-	uow *usecasepgx.UnitOfWork,
-	cmd ArchiveCommand,
-	ec usecase.ExecutionContext,
-) (commit.Committed[ScheduledJobArchived], error) {
-	var zero commit.Committed[ScheduledJobArchived]
-	if strings.TrimSpace(cmd.ID) == "" {
-		return zero, usecase.Validation("ID_REQUIRED", "id is required")
-	}
-	j, err := transition(ctx, repo, cmd.ID, ec, func(j *scheduledjob.ScheduledJob) { j.Archive() })
-	if err != nil {
-		return zero, err
-	}
-	event := ScheduledJobArchived{commonEvent: commonEvent{
-		Metadata:       usecase.NewEventMetadata(ec, ScheduledJobArchivedType, Source, subjectFor(j.ID)),
-		ScheduledJobID: j.ID, Code: j.Code,
-	}}
-	return commit.Save(ctx, uow, j, repo, event, cmd)
+// ArchiveScheduledJob soft-archives a job.
+func ArchiveScheduledJob(repo *scheduledjob.Repository) usecaseop.Operation[ArchiveCommand, ScheduledJobArchived] {
+	return statusFlip("ArchiveScheduledJob", repo,
+		func(j *scheduledjob.ScheduledJob) { j.Archive() },
+		func(j *scheduledjob.ScheduledJob, ec usecase.ExecutionContext) ScheduledJobArchived {
+			return ScheduledJobArchived{commonEvent: commonEvent{
+				Metadata:       usecase.NewEventMetadata(ec, ScheduledJobArchivedType, Source, subjectFor(j.ID)),
+				ScheduledJobID: j.ID, Code: j.Code,
+			}}
+		})
 }
 
 // ── Delete ────────────────────────────────────────────────────────────────
@@ -293,29 +310,36 @@ type DeleteCommand struct {
 	ID string `json:"id"`
 }
 
-func DeleteScheduledJob(
-	ctx context.Context,
-	repo *scheduledjob.Repository,
-	uow *usecasepgx.UnitOfWork,
-	cmd DeleteCommand,
-	ec usecase.ExecutionContext,
-) (commit.Committed[ScheduledJobDeleted], error) {
-	var zero commit.Committed[ScheduledJobDeleted]
-	if strings.TrimSpace(cmd.ID) == "" {
-		return zero, usecase.Validation("ID_REQUIRED", "id is required")
+// DeleteScheduledJob hard-deletes a job and emits [ScheduledJobDeleted].
+// Per-resource scope is enforced post-load in Execute.
+func DeleteScheduledJob(repo *scheduledjob.Repository) usecaseop.Operation[DeleteCommand, ScheduledJobDeleted] {
+	return usecaseop.Operation[DeleteCommand, ScheduledJobDeleted]{
+		Name: "DeleteScheduledJob",
+		Validate: func(_ context.Context, cmd DeleteCommand) error {
+			if strings.TrimSpace(cmd.ID) == "" {
+				return usecase.Validation("ID_REQUIRED", "id is required")
+			}
+			return nil
+		},
+		Authorize: usecaseop.Public[DeleteCommand],
+		Execute: func(ctx context.Context, cmd DeleteCommand, ec usecase.ExecutionContext) (usecaseop.Plan[ScheduledJobDeleted], error) {
+			j, err := repo.FindByID(ctx, cmd.ID)
+			if err != nil {
+				return nil, usecase.Internal("REPO", "find_by_id failed", err)
+			}
+			if j == nil {
+				return nil, httperror.NotFound("ScheduledJob", cmd.ID)
+			}
+			if err := auth.CheckScopeAccess(auth.FromContext(ctx), j.ClientID); err != nil {
+				return nil, err
+			}
+			event := ScheduledJobDeleted{commonEvent: commonEvent{
+				Metadata:       usecase.NewEventMetadata(ec, ScheduledJobDeletedType, Source, subjectFor(j.ID)),
+				ScheduledJobID: j.ID, Code: j.Code,
+			}}
+			return usecaseop.Delete(j, repo, event), nil
+		},
 	}
-	j, err := repo.FindByID(ctx, cmd.ID)
-	if err != nil {
-		return zero, usecase.Internal("REPO", "find_by_id failed", err)
-	}
-	if j == nil {
-		return zero, httperror.NotFound("ScheduledJob", cmd.ID)
-	}
-	event := ScheduledJobDeleted{commonEvent: commonEvent{
-		Metadata:       usecase.NewEventMetadata(ec, ScheduledJobDeletedType, Source, subjectFor(j.ID)),
-		ScheduledJobID: j.ID, Code: j.Code,
-	}}
-	return commit.Delete(ctx, uow, j, repo, event, cmd)
 }
 
 // ── FireNow ───────────────────────────────────────────────────────────────
@@ -331,58 +355,65 @@ type FireNowCommand struct {
 // FireNow inserts a MANUAL instance row (QUEUED, picked up by the dispatcher
 // on its next tick) and emits the ScheduledJobFiredManually audit event.
 // Two-phase, mirroring Rust fire_now: the infrastructure insert happens first
-// (no UoW — instances are a projection), then the event is emitted; a failed
-// insert yields no event.
+// (instances are a projection, written directly), then the event is emitted via
+// the envelope's [usecaseop.Emit]; a failed insert yields no event.
+//
+// Per-resource scope is enforced post-load in Execute; the coarse "may fire
+// scheduled jobs" permission is on the controller.
 //
 // PAUSED jobs ARE firable manually — that's the point of a manual trigger
 // (the poller skips PAUSED; a human can override). Only ARCHIVED is rejected.
-func FireNow(
-	ctx context.Context,
-	repo *scheduledjob.Repository,
-	instances *scheduledjob.InstanceRepository,
-	uow *usecasepgx.UnitOfWork,
-	cmd FireNowCommand,
-	ec usecase.ExecutionContext,
-) (commit.Committed[ScheduledJobFiredManually], error) {
-	var zero commit.Committed[ScheduledJobFiredManually]
-	if strings.TrimSpace(cmd.ID) == "" {
-		return zero, usecase.Validation("ID_REQUIRED", "id is required")
-	}
-	j, err := repo.FindByID(ctx, cmd.ID)
-	if err != nil {
-		return zero, usecase.Internal("REPO", "find_by_id failed", err)
-	}
-	if j == nil {
-		return zero, httperror.NotFound("ScheduledJob", cmd.ID)
-	}
-	if j.Status == scheduledjob.StatusArchived {
-		return zero, usecase.Conflict("ARCHIVED", "Archived jobs cannot be fired")
-	}
-
-	now := time.Now().UTC()
-	instanceID := tsid.Generate(tsid.ScheduledJobInstance)
-	inst := &scheduledjob.ScheduledJobInstance{
-		ID:               instanceID,
-		ScheduledJobID:   j.ID,
-		ClientID:         j.ClientID,
-		JobCode:          j.Code,
-		TriggerKind:      scheduledjob.TriggerManual,
-		FiredAt:          now,
-		Status:           scheduledjob.InstanceStatusQueued,
-		DeliveryAttempts: 0,
-		CorrelationID:    cmd.CorrelationID,
-		CreatedAt:        now,
-	}
-	if err := instances.Insert(ctx, inst); err != nil {
-		return zero, usecase.Internal("REPO", "insert instance failed", err)
-	}
-
-	event := ScheduledJobFiredManually{
-		commonEvent: commonEvent{
-			Metadata:       usecase.NewEventMetadata(ec, ScheduledJobFiredManuallyType, Source, subjectFor(j.ID)),
-			ScheduledJobID: j.ID, Code: j.Code,
+func FireNow(repo *scheduledjob.Repository, instances *scheduledjob.InstanceRepository) usecaseop.Operation[FireNowCommand, ScheduledJobFiredManually] {
+	return usecaseop.Operation[FireNowCommand, ScheduledJobFiredManually]{
+		Name: "FireNow",
+		Validate: func(_ context.Context, cmd FireNowCommand) error {
+			if strings.TrimSpace(cmd.ID) == "" {
+				return usecase.Validation("ID_REQUIRED", "id is required")
+			}
+			return nil
 		},
-		InstanceID: instanceID,
+		Authorize: usecaseop.Public[FireNowCommand],
+		Execute: func(ctx context.Context, cmd FireNowCommand, ec usecase.ExecutionContext) (usecaseop.Plan[ScheduledJobFiredManually], error) {
+			j, err := repo.FindByID(ctx, cmd.ID)
+			if err != nil {
+				return nil, usecase.Internal("REPO", "find_by_id failed", err)
+			}
+			if j == nil {
+				return nil, httperror.NotFound("ScheduledJob", cmd.ID)
+			}
+			if err := auth.CheckScopeAccess(auth.FromContext(ctx), j.ClientID); err != nil {
+				return nil, err
+			}
+			if j.Status == scheduledjob.StatusArchived {
+				return nil, usecase.Conflict("ARCHIVED", "Archived jobs cannot be fired")
+			}
+
+			now := time.Now().UTC()
+			instanceID := tsid.Generate(tsid.ScheduledJobInstance)
+			inst := &scheduledjob.ScheduledJobInstance{
+				ID:               instanceID,
+				ScheduledJobID:   j.ID,
+				ClientID:         j.ClientID,
+				JobCode:          j.Code,
+				TriggerKind:      scheduledjob.TriggerManual,
+				FiredAt:          now,
+				Status:           scheduledjob.InstanceStatusQueued,
+				DeliveryAttempts: 0,
+				CorrelationID:    cmd.CorrelationID,
+				CreatedAt:        now,
+			}
+			if err := instances.Insert(ctx, inst); err != nil {
+				return nil, usecase.Internal("REPO", "insert instance failed", err)
+			}
+
+			event := ScheduledJobFiredManually{
+				commonEvent: commonEvent{
+					Metadata:       usecase.NewEventMetadata(ec, ScheduledJobFiredManuallyType, Source, subjectFor(j.ID)),
+					ScheduledJobID: j.ID, Code: j.Code,
+				},
+				InstanceID: instanceID,
+			}
+			return usecaseop.Emit(event), nil
+		},
 	}
-	return commit.Emit(ctx, uow, event, cmd)
 }

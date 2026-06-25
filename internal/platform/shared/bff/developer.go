@@ -15,6 +15,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -303,12 +304,11 @@ func (s *DeveloperState) syncPlatformOpenAPI(w http.ResponseWriter, r *http.Requ
 		Spec:            spec,
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := openapiops.SyncOpenApiSpec(r.Context(), s.Specs, s.UoW, cmd, ec)
+	ev, err := usecaseop.Run(r.Context(), s.UoW, openapiops.SyncOpenApiSpec(s.Specs), cmd, ec)
 	if err != nil {
 		httperror.Write(w, err)
 		return
 	}
-	ev := committed.Event()
 	status := "CURRENT"
 	if ev.Unchanged {
 		status = "UNCHANGED"

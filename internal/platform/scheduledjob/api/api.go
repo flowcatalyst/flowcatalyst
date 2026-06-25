@@ -16,6 +16,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -130,34 +131,22 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreateScheduledJobR
 	if err := auth.CanWriteScheduledJobs(ac); err != nil {
 		return nil, err
 	}
-	if in.Body.ClientID != nil && !ac.CanAccessClient(*in.Body.ClientID) {
-		return nil, httperror.Forbidden("No access to client: " + *in.Body.ClientID)
-	}
-	if in.Body.ClientID == nil && !ac.IsAnchor() {
-		return nil, httperror.Forbidden("Only anchor users can create platform-scoped jobs")
-	}
+	// The client-scope check (client-scoped job → access that client; platform-
+	// scoped → anchor) lives in CreateScheduledJob's Authorize phase, against
+	// cmd.ClientID.
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.CreateScheduledJob(ctx, s.Repo, s.UoW, in.Body.toCommand(), ec)
+	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateScheduledJob(s.Repo), in.Body.toCommand(), ec)
 	if err != nil {
 		return nil, err
 	}
-	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: committed.Event().ScheduledJobID}}, nil
+	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: event.ScheduledJobID}}, nil
 }
 
-// requireScopeByID loads the scheduled job and enforces per-resource scope
-// (A2) on top of the coarse permission already checked: a non-anchor principal
-// must not mutate another tenant's scheduled job by id. Mirrors Rust
-// check_scope_access(auth, job.client_id).
-func (s *State) requireScopeByID(ctx context.Context, ac *auth.AuthContext, id string) error {
-	j, err := s.Repo.FindByID(ctx, id)
-	if err != nil {
-		return usecase.Internal("REPO", "find_by_id failed", err)
-	}
-	if j == nil {
-		return httperror.NotFound("ScheduledJob", id)
-	}
-	return auth.CheckScopeAccess(ac, j.ClientID)
-}
+// Per-resource scope (A2) — a non-anchor principal must not mutate another
+// tenant's scheduled job by id — is enforced post-load inside each by-id use
+// case's Execute phase (auth.CheckScopeAccess on the loaded job's client),
+// mirroring Rust check_scope_access(auth, job.client_id). The handlers keep
+// only the coarse permission check.
 
 type updateInput struct {
 	ID   string `path:"id"`
@@ -169,11 +158,8 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, 
 	if err := auth.CanWriteScheduledJobs(ac); err != nil {
 		return nil, err
 	}
-	if err := s.requireScopeByID(ctx, ac, in.ID); err != nil {
-		return nil, err
-	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.UpdateScheduledJob(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateScheduledJob(s.Repo), in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
@@ -184,11 +170,8 @@ func (s *State) pause(ctx context.Context, in *apicommon.IDInput) (*apicommon.Em
 	if err := auth.CanWriteScheduledJobs(ac); err != nil {
 		return nil, err
 	}
-	if err := s.requireScopeByID(ctx, ac, in.ID); err != nil {
-		return nil, err
-	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.PauseScheduledJob(ctx, s.Repo, s.UoW, operations.PauseCommand{ID: in.ID}, ec); err != nil {
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.PauseScheduledJob(s.Repo), operations.PauseCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
@@ -199,11 +182,8 @@ func (s *State) resume(ctx context.Context, in *apicommon.IDInput) (*apicommon.E
 	if err := auth.CanWriteScheduledJobs(ac); err != nil {
 		return nil, err
 	}
-	if err := s.requireScopeByID(ctx, ac, in.ID); err != nil {
-		return nil, err
-	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.ResumeScheduledJob(ctx, s.Repo, s.UoW, operations.ResumeCommand{ID: in.ID}, ec); err != nil {
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.ResumeScheduledJob(s.Repo), operations.ResumeCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
@@ -214,11 +194,8 @@ func (s *State) archive(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	if err := auth.CanWriteScheduledJobs(ac); err != nil {
 		return nil, err
 	}
-	if err := s.requireScopeByID(ctx, ac, in.ID); err != nil {
-		return nil, err
-	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.ArchiveScheduledJob(ctx, s.Repo, s.UoW, operations.ArchiveCommand{ID: in.ID}, ec); err != nil {
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.ArchiveScheduledJob(s.Repo), operations.ArchiveCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
@@ -234,23 +211,20 @@ func (s *State) fireNow(ctx context.Context, in *fireNowInput) (*apicommon.Out[F
 	if err := auth.CanFireScheduledJobs(ac); err != nil {
 		return nil, err
 	}
-	if err := s.requireScopeByID(ctx, ac, in.ID); err != nil {
-		return nil, err
-	}
 	var correlationID *string
 	if in.Body != nil {
 		correlationID = in.Body.CorrelationID
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.FireNow(ctx, s.Repo, s.Instances, s.UoW,
+	event, err := usecaseop.Run(ctx, s.UoW, operations.FireNow(s.Repo, s.Instances),
 		operations.FireNowCommand{ID: in.ID, CorrelationID: correlationID}, ec)
 	if err != nil {
 		return nil, err
 	}
 	return &apicommon.Out[FireNowResponse]{Body: FireNowResponse{
-		ID:             committed.Event().InstanceID,
-		ScheduledJobID: committed.Event().ScheduledJobID,
-		InstanceID:     committed.Event().InstanceID,
+		ID:             event.InstanceID,
+		ScheduledJobID: event.ScheduledJobID,
+		InstanceID:     event.InstanceID,
 	}}, nil
 }
 
@@ -259,11 +233,8 @@ func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.E
 	if err := auth.CanDeleteScheduledJobs(ac); err != nil {
 		return nil, err
 	}
-	if err := s.requireScopeByID(ctx, ac, in.ID); err != nil {
-		return nil, err
-	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.DeleteScheduledJob(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeleteScheduledJob(s.Repo), operations.DeleteCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil

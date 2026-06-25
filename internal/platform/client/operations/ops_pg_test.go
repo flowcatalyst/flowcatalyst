@@ -13,10 +13,23 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
 func TestMain(m *testing.M) { testpg.RunMain(m) }
+
+// runAuthorized drives op through the full use-case envelope (Validate →
+// Authorize → Execute → atomic commit) as an anchor principal — the common
+// case for these tests, which exercise validation, invariants, and
+// persistence. The coarse anchor-only authorization for client writes lives at
+// the controller, not in these use cases, so it is not exercised here. This
+// mirrors how the HTTP handler runs the operation.
+func runAuthorized[C any, E usecase.DomainEvent](
+	uow *usecasepgx.UnitOfWork, op usecaseop.Operation[C, E], cmd C,
+) (E, error) {
+	return usecaseop.Run(testpg.AnchorCtx(), uow, op, cmd, testpg.TestEC())
+}
 
 // mustCreate seeds a client through the public operation — the same path
 // production uses. Identifiers are hand-unique per test: the fixture never
@@ -24,10 +37,10 @@ func TestMain(m *testing.M) { testpg.RunMain(m) }
 // table-wide.
 func mustCreate(t *testing.T, repo *client.Repository, uow *usecasepgx.UnitOfWork, name, identifier string) operations.ClientCreated {
 	t.Helper()
-	committed, err := operations.CreateClient(context.Background(), repo, uow,
-		operations.CreateCommand{Name: name, Identifier: identifier}, testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.CreateClient(repo),
+		operations.CreateCommand{Name: name, Identifier: identifier})
 	require.NoError(t, err)
-	return committed.Event()
+	return ev
 }
 
 // ── Create ────────────────────────────────────────────────────────────────
@@ -38,13 +51,12 @@ func TestCreateClient_HappyPath(t *testing.T) {
 	repo := client.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	committed, err := operations.CreateClient(ctx, repo, uow, operations.CreateCommand{
+	ev, err := runAuthorized(uow, operations.CreateClient(repo), operations.CreateCommand{
 		Name:       "  Acme Corp  ",
 		Identifier: "  CL-Create-Happy  ",
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
 
-	ev := committed.Event()
 	assert.NotEmpty(t, ev.ClientID)
 	assert.Equal(t, "Acme Corp", ev.Name, "name is trimmed")
 	assert.Equal(t, "cl-create-happy", ev.Identifier, "identifier is lowercased + trimmed")
@@ -77,7 +89,7 @@ func TestCreateClient_Validation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.CreateClient(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.CreateClient(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, usecase.KindValidation, tc.code)
 		})
 	}
@@ -92,8 +104,8 @@ func TestCreateClient_DuplicateIdentifier_Conflict(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	mustCreate(t, repo, uow, "First", "cl-dup")
 
-	_, err := operations.CreateClient(context.Background(), repo, uow,
-		operations.CreateCommand{Name: "Second", Identifier: "CL-DUP"}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.CreateClient(repo),
+		operations.CreateCommand{Name: "Second", Identifier: "CL-DUP"})
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "IDENTIFIER_EXISTS")
 }
 
@@ -107,12 +119,12 @@ func TestUpdateClient_HappyPath(t *testing.T) {
 	seeded := mustCreate(t, repo, uow, "Before", "cl-upd-happy")
 
 	newName := "  After  "
-	committed, err := operations.UpdateClient(ctx, repo, uow, operations.UpdateCommand{
+	ev, err := runAuthorized(uow, operations.UpdateClient(repo), operations.UpdateCommand{
 		ID: seeded.ClientID, Name: &newName,
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.ClientID, committed.Event().ClientID)
-	assert.Equal(t, "After", committed.Event().Name, "name is trimmed")
+	assert.Equal(t, seeded.ClientID, ev.ClientID)
+	assert.Equal(t, "After", ev.Name, "name is trimmed")
 
 	got, err := repo.FindByID(ctx, seeded.ClientID)
 	require.NoError(t, err)
@@ -141,7 +153,7 @@ func TestUpdateClient_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.UpdateClient(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.UpdateClient(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -156,11 +168,11 @@ func TestDeleteClient_HappyPath(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreate(t, repo, uow, "Doomed", "cl-del-happy")
 
-	committed, err := operations.DeleteClient(ctx, repo, uow,
-		operations.DeleteCommand{ID: seeded.ClientID}, testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.DeleteClient(repo),
+		operations.DeleteCommand{ID: seeded.ClientID})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.ClientID, committed.Event().ClientID)
-	assert.Equal(t, "cl-del-happy", committed.Event().Identifier)
+	assert.Equal(t, seeded.ClientID, ev.ClientID)
+	assert.Equal(t, "cl-del-happy", ev.Identifier)
 
 	got, err := repo.FindByID(ctx, seeded.ClientID)
 	require.NoError(t, err)
@@ -172,12 +184,11 @@ func TestDeleteClient_Errors(t *testing.T) {
 	repo := client.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.DeleteClient(context.Background(), repo, uow,
-		operations.DeleteCommand{}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.DeleteClient(repo), operations.DeleteCommand{})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = operations.DeleteClient(context.Background(), repo, uow,
-		operations.DeleteCommand{ID: "cli_doesnotexist1"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.DeleteClient(repo),
+		operations.DeleteCommand{ID: "cli_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "Client_NOT_FOUND")
 }
 
@@ -190,12 +201,12 @@ func TestSuspendThenActivateClient_HappyPath(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreate(t, repo, uow, "Suspend Me", "cl-susp-happy")
 
-	suspended, err := operations.SuspendClient(ctx, repo, uow, operations.SuspendCommand{
+	suspended, err := runAuthorized(uow, operations.SuspendClient(repo), operations.SuspendCommand{
 		ID: seeded.ClientID, Reason: "billing overdue",
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.ClientID, suspended.Event().ClientID)
-	assert.Equal(t, "billing overdue", suspended.Event().Reason)
+	assert.Equal(t, seeded.ClientID, suspended.ClientID)
+	assert.Equal(t, "billing overdue", suspended.Reason)
 
 	got, err := repo.FindByID(ctx, seeded.ClientID)
 	require.NoError(t, err)
@@ -205,10 +216,10 @@ func TestSuspendThenActivateClient_HappyPath(t *testing.T) {
 	assert.Equal(t, "billing overdue", *got.StatusReason)
 	assert.NotNil(t, got.StatusChangedAt)
 
-	activated, err := operations.ActivateClient(ctx, repo, uow,
-		operations.ActivateCommand{ID: seeded.ClientID}, testpg.TestEC())
+	activated, err := runAuthorized(uow, operations.ActivateClient(repo),
+		operations.ActivateCommand{ID: seeded.ClientID})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.ClientID, activated.Event().ClientID)
+	assert.Equal(t, seeded.ClientID, activated.ClientID)
 
 	got, err = repo.FindByID(ctx, seeded.ClientID)
 	require.NoError(t, err)
@@ -235,7 +246,7 @@ func TestSuspendClient_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.SuspendClient(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.SuspendClient(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -246,12 +257,11 @@ func TestActivateClient_Errors(t *testing.T) {
 	repo := client.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.ActivateClient(context.Background(), repo, uow,
-		operations.ActivateCommand{}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.ActivateClient(repo), operations.ActivateCommand{})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = operations.ActivateClient(context.Background(), repo, uow,
-		operations.ActivateCommand{ID: "cli_doesnotexist1"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.ActivateClient(repo),
+		operations.ActivateCommand{ID: "cli_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "Client_NOT_FOUND")
 }
 
@@ -265,13 +275,13 @@ func TestAddNote_HappyPath(t *testing.T) {
 	ec := testpg.TestEC()
 	seeded := mustCreate(t, repo, uow, "Note Me", "cl-note-happy")
 
-	committed, err := operations.AddNote(ctx, repo, uow, operations.AddNoteCommand{
+	ev, err := runAuthorized(uow, operations.AddNote(repo), operations.AddNoteCommand{
 		ClientID: seeded.ClientID, Category: "billing", Text: "switched to annual plan",
-	}, ec)
+	})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.ClientID, committed.Event().ClientID)
-	assert.Equal(t, "billing", committed.Event().Category)
-	assert.Equal(t, "switched to annual plan", committed.Event().Text)
+	assert.Equal(t, seeded.ClientID, ev.ClientID)
+	assert.Equal(t, "billing", ev.Category)
+	assert.Equal(t, "switched to annual plan", ev.Text)
 
 	got, err := repo.FindByID(ctx, seeded.ClientID)
 	require.NoError(t, err)
@@ -303,7 +313,7 @@ func TestAddNote_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.AddNote(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.AddNote(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}

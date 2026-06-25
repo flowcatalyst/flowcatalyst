@@ -16,6 +16,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -32,14 +33,27 @@ func TestMain(m *testing.M) {
 	testpg.RunMain(m)
 }
 
+// runAuthorized drives op through the full use-case envelope (Validate →
+// Authorize → Execute → atomic commit) as an anchor principal. These auth
+// resources (OAuth clients, anchor domains, auth configs, IDP role mappings)
+// are platform-level config: the operations are intentionally open
+// (Authorize: Public) and the anchor gate lives on the controller, so there
+// is no use-case authorization-denial test here. It mirrors how the HTTP
+// handler runs the operation.
+func runAuthorized[C any, E usecase.DomainEvent](
+	uow *usecasepgx.UnitOfWork, op usecaseop.Operation[C, E], cmd C,
+) (E, error) {
+	return usecaseop.Run(testpg.AnchorCtx(), uow, op, cmd, testpg.TestEC())
+}
+
 // ══ AnchorDomain ══════════════════════════════════════════════════════════
 
 func mustCreateAnchor(t *testing.T, repo *auth.AnchorDomainRepo, uow *usecasepgx.UnitOfWork, domain string) operations.AnchorDomainCreated {
 	t.Helper()
-	committed, err := operations.CreateAnchorDomain(context.Background(), repo, uow,
-		operations.CreateAnchorDomainCommand{Domain: domain}, testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.CreateAnchorDomain(repo),
+		operations.CreateAnchorDomainCommand{Domain: domain})
 	require.NoError(t, err)
-	return committed.Event()
+	return ev
 }
 
 func TestCreateAnchorDomain_HappyPath(t *testing.T) {
@@ -48,10 +62,9 @@ func TestCreateAnchorDomain_HappyPath(t *testing.T) {
 	repo := auth.NewRepository(testpg.Pool(t)).AnchorDomains
 	uow := testpg.NewUoW(t)
 
-	committed, err := operations.CreateAnchorDomain(ctx, repo, uow,
-		operations.CreateAnchorDomainCommand{Domain: "  ADCreate-Happy.Example.COM  "}, testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.CreateAnchorDomain(repo),
+		operations.CreateAnchorDomainCommand{Domain: "  ADCreate-Happy.Example.COM  "})
 	require.NoError(t, err)
-	ev := committed.Event()
 	assert.NotEmpty(t, ev.AnchorDomainID)
 	assert.Equal(t, "adcreate-happy.example.com", ev.Domain, "domain is trimmed + lower-cased")
 
@@ -77,8 +90,8 @@ func TestCreateAnchorDomain_Validation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.CreateAnchorDomain(context.Background(), repo, uow,
-				operations.CreateAnchorDomainCommand{Domain: tc.domain}, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.CreateAnchorDomain(repo),
+				operations.CreateAnchorDomainCommand{Domain: tc.domain})
 			testpg.RequireUsecaseError(t, err, usecase.KindValidation, tc.code)
 		})
 	}
@@ -91,8 +104,8 @@ func TestCreateAnchorDomain_Duplicate_Conflict(t *testing.T) {
 	mustCreateAnchor(t, repo, uow, "addup-conflict.example.com")
 
 	// Case-insensitive: the lookup lower-cases, so a re-cased dup still conflicts.
-	_, err := operations.CreateAnchorDomain(context.Background(), repo, uow,
-		operations.CreateAnchorDomainCommand{Domain: "ADDup-Conflict.Example.com"}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.CreateAnchorDomain(repo),
+		operations.CreateAnchorDomainCommand{Domain: "ADDup-Conflict.Example.com"})
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "DOMAIN_EXISTS")
 }
 
@@ -103,12 +116,12 @@ func TestUpdateAnchorDomain_HappyPath(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreateAnchor(t, repo, uow, "adupd-before.example.com")
 
-	committed, err := operations.UpdateAnchorDomain(ctx, repo, uow, operations.UpdateAnchorDomainCommand{
+	ev, err := runAuthorized(uow, operations.UpdateAnchorDomain(repo), operations.UpdateAnchorDomainCommand{
 		ID: seeded.AnchorDomainID, Domain: "ADUpd-After.Example.com",
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.AnchorDomainID, committed.Event().AnchorDomainID)
-	assert.Equal(t, "adupd-after.example.com", committed.Event().Domain)
+	assert.Equal(t, seeded.AnchorDomainID, ev.AnchorDomainID)
+	assert.Equal(t, "adupd-after.example.com", ev.Domain)
 
 	got, err := repo.FindByID(ctx, seeded.AnchorDomainID)
 	require.NoError(t, err)
@@ -136,7 +149,7 @@ func TestUpdateAnchorDomain_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.UpdateAnchorDomain(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.UpdateAnchorDomain(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -149,21 +162,21 @@ func TestDeleteAnchorDomain_HappyPathAndErrors(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreateAnchor(t, repo, uow, "addel-happy.example.com")
 
-	committed, err := operations.DeleteAnchorDomain(ctx, repo, uow,
-		operations.DeleteAnchorDomainCommand{ID: seeded.AnchorDomainID}, testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.DeleteAnchorDomain(repo),
+		operations.DeleteAnchorDomainCommand{ID: seeded.AnchorDomainID})
 	require.NoError(t, err)
-	assert.Equal(t, "addel-happy.example.com", committed.Event().Domain)
+	assert.Equal(t, "addel-happy.example.com", ev.Domain)
 
 	got, err := repo.FindByID(ctx, seeded.AnchorDomainID)
 	require.NoError(t, err)
 	assert.Nil(t, got, "deleted row must be gone")
 
-	_, err = operations.DeleteAnchorDomain(ctx, repo, uow,
-		operations.DeleteAnchorDomainCommand{}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.DeleteAnchorDomain(repo),
+		operations.DeleteAnchorDomainCommand{})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = operations.DeleteAnchorDomain(ctx, repo, uow,
-		operations.DeleteAnchorDomainCommand{ID: "and_doesnotexist1"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.DeleteAnchorDomain(repo),
+		operations.DeleteAnchorDomainCommand{ID: "and_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "AnchorDomain_NOT_FOUND")
 }
 
@@ -171,12 +184,12 @@ func TestDeleteAnchorDomain_HappyPathAndErrors(t *testing.T) {
 
 func mustCreateConfig(t *testing.T, repo *auth.ClientAuthConfigRepo, uow *usecasepgx.UnitOfWork, emailDomain string) operations.AuthConfigCreated {
 	t.Helper()
-	committed, err := operations.CreateAuthConfig(context.Background(), repo, uow,
+	ev, err := runAuthorized(uow, operations.CreateAuthConfig(repo),
 		operations.CreateAuthConfigCommand{
 			EmailDomain: emailDomain, ConfigType: "CLIENT", AuthProvider: "INTERNAL",
-		}, testpg.TestEC())
+		})
 	require.NoError(t, err)
-	return committed.Event()
+	return ev
 }
 
 func TestCreateAuthConfig_HappyPath_OIDC(t *testing.T) {
@@ -188,7 +201,7 @@ func TestCreateAuthConfig_HappyPath_OIDC(t *testing.T) {
 	issuer := "https://idp.accreate-happy.example.com"
 	clientID := "accreate-happy-oidc"
 	primary := "clt_accreatehappy"
-	committed, err := operations.CreateAuthConfig(ctx, repo, uow, operations.CreateAuthConfigCommand{
+	ev, err := runAuthorized(uow, operations.CreateAuthConfig(repo), operations.CreateAuthConfigCommand{
 		EmailDomain:         "ACCreate-Happy.Example.com", // lower-cased by the op
 		ConfigType:          "PARTNER",
 		AuthProvider:        "OIDC",
@@ -198,9 +211,8 @@ func TestCreateAuthConfig_HappyPath_OIDC(t *testing.T) {
 		OIDCIssuerURL:       &issuer,
 		OIDCClientID:        &clientID,
 		OIDCMultiTenant:     true,
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
-	ev := committed.Event()
 	assert.NotEmpty(t, ev.AuthConfigID)
 	assert.Equal(t, "accreate-happy.example.com", ev.EmailDomain)
 
@@ -245,7 +257,7 @@ func TestCreateAuthConfig_Validation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.CreateAuthConfig(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.CreateAuthConfig(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, usecase.KindValidation, tc.code)
 		})
 	}
@@ -257,9 +269,9 @@ func TestCreateAuthConfig_Duplicate_Conflict(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	mustCreateConfig(t, repo, uow, "acdup-conflict.example.com")
 
-	_, err := operations.CreateAuthConfig(context.Background(), repo, uow, operations.CreateAuthConfigCommand{
+	_, err := runAuthorized(uow, operations.CreateAuthConfig(repo), operations.CreateAuthConfigCommand{
 		EmailDomain: "ACDup-Conflict.Example.com", ConfigType: "CLIENT", AuthProvider: "INTERNAL",
-	}, testpg.TestEC())
+	})
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "DOMAIN_ALREADY_CONFIGURED")
 }
 
@@ -272,15 +284,15 @@ func TestUpdateAuthConfig_HappyPath(t *testing.T) {
 
 	primary := "clt_acupdprimary"
 	multi := true
-	committed, err := operations.UpdateAuthConfig(ctx, repo, uow, operations.UpdateAuthConfigCommand{
+	ev, err := runAuthorized(uow, operations.UpdateAuthConfig(repo), operations.UpdateAuthConfigCommand{
 		ID:               seeded.AuthConfigID,
 		PrimaryClientID:  &primary,
 		GrantedClientIDs: []string{"clt_acupdgrant"},
 		OIDCMultiTenant:  &multi,
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.AuthConfigID, committed.Event().AuthConfigID)
-	assert.Equal(t, "acupd-happy.example.com", committed.Event().EmailDomain,
+	assert.Equal(t, seeded.AuthConfigID, ev.AuthConfigID)
+	assert.Equal(t, "acupd-happy.example.com", ev.EmailDomain,
 		"email domain is immutable on update")
 
 	got, err := repo.FindByID(ctx, seeded.AuthConfigID)
@@ -298,12 +310,12 @@ func TestUpdateAuthConfig_Errors(t *testing.T) {
 	repo := auth.NewRepository(testpg.Pool(t)).ClientAuthConfigs
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.UpdateAuthConfig(context.Background(), repo, uow,
-		operations.UpdateAuthConfigCommand{}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.UpdateAuthConfig(repo),
+		operations.UpdateAuthConfigCommand{})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = operations.UpdateAuthConfig(context.Background(), repo, uow,
-		operations.UpdateAuthConfigCommand{ID: "cac_doesnotexist1"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.UpdateAuthConfig(repo),
+		operations.UpdateAuthConfigCommand{ID: "cac_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "AuthConfig_NOT_FOUND")
 }
 
@@ -314,21 +326,21 @@ func TestDeleteAuthConfig_HappyPathAndErrors(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreateConfig(t, repo, uow, "acdel-happy.example.com")
 
-	committed, err := operations.DeleteAuthConfig(ctx, repo, uow,
-		operations.DeleteAuthConfigCommand{ID: seeded.AuthConfigID}, testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.DeleteAuthConfig(repo),
+		operations.DeleteAuthConfigCommand{ID: seeded.AuthConfigID})
 	require.NoError(t, err)
-	assert.Equal(t, "acdel-happy.example.com", committed.Event().EmailDomain)
+	assert.Equal(t, "acdel-happy.example.com", ev.EmailDomain)
 
 	got, err := repo.FindByID(ctx, seeded.AuthConfigID)
 	require.NoError(t, err)
 	assert.Nil(t, got, "deleted row must be gone")
 
-	_, err = operations.DeleteAuthConfig(ctx, repo, uow,
-		operations.DeleteAuthConfigCommand{}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.DeleteAuthConfig(repo),
+		operations.DeleteAuthConfigCommand{})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = operations.DeleteAuthConfig(ctx, repo, uow,
-		operations.DeleteAuthConfigCommand{ID: "cac_doesnotexist1"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.DeleteAuthConfig(repo),
+		operations.DeleteAuthConfigCommand{ID: "cac_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "AuthConfig_NOT_FOUND")
 }
 
@@ -340,11 +352,10 @@ func TestCreateIdpRoleMapping_HappyPath(t *testing.T) {
 	repo := auth.NewRepository(testpg.Pool(t)).IdpRoleMappings
 	uow := testpg.NewUoW(t)
 
-	committed, err := operations.CreateIdpRoleMapping(ctx, repo, uow, operations.CreateIdpRoleMappingCommand{
+	ev, err := runAuthorized(uow, operations.CreateIdpRoleMapping(repo), operations.CreateIdpRoleMappingCommand{
 		IdpType: "keycloak", IdpRoleName: "irm-create-upstream", PlatformRoleName: "irmcreate:admin",
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
-	ev := committed.Event()
 	assert.NotEmpty(t, ev.MappingID)
 	assert.Equal(t, "keycloak", ev.IdpType)
 	assert.Equal(t, "irm-create-upstream", ev.IdpRoleName)
@@ -377,7 +388,7 @@ func TestCreateIdpRoleMapping_Validation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.CreateIdpRoleMapping(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.CreateIdpRoleMapping(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, usecase.KindValidation, "FIELD_REQUIRED")
 		})
 	}
@@ -389,26 +400,26 @@ func TestDeleteIdpRoleMapping_HappyPathAndErrors(t *testing.T) {
 	repo := auth.NewRepository(testpg.Pool(t)).IdpRoleMappings
 	uow := testpg.NewUoW(t)
 
-	seeded, err := operations.CreateIdpRoleMapping(ctx, repo, uow, operations.CreateIdpRoleMappingCommand{
+	seeded, err := runAuthorized(uow, operations.CreateIdpRoleMapping(repo), operations.CreateIdpRoleMappingCommand{
 		IdpType: "entra", IdpRoleName: "irm-delete-upstream", PlatformRoleName: "irmdelete:viewer",
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
 
-	committed, err := operations.DeleteIdpRoleMapping(ctx, repo, uow,
-		operations.DeleteIdpRoleMappingCommand{ID: seeded.Event().MappingID}, testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.DeleteIdpRoleMapping(repo),
+		operations.DeleteIdpRoleMappingCommand{ID: seeded.MappingID})
 	require.NoError(t, err)
-	assert.Equal(t, "irm-delete-upstream", committed.Event().IdpRoleName)
+	assert.Equal(t, "irm-delete-upstream", ev.IdpRoleName)
 
-	got, err := repo.FindByID(ctx, seeded.Event().MappingID)
+	got, err := repo.FindByID(ctx, seeded.MappingID)
 	require.NoError(t, err)
 	assert.Nil(t, got, "deleted row must be gone")
 
-	_, err = operations.DeleteIdpRoleMapping(ctx, repo, uow,
-		operations.DeleteIdpRoleMappingCommand{}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.DeleteIdpRoleMapping(repo),
+		operations.DeleteIdpRoleMappingCommand{})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = operations.DeleteIdpRoleMapping(ctx, repo, uow,
-		operations.DeleteIdpRoleMappingCommand{ID: "irm_doesnotexist1"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.DeleteIdpRoleMapping(repo),
+		operations.DeleteIdpRoleMappingCommand{ID: "irm_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "IdpRoleMapping_NOT_FOUND")
 }
 
@@ -416,11 +427,10 @@ func TestDeleteIdpRoleMapping_HappyPathAndErrors(t *testing.T) {
 
 func mustCreateClient(t *testing.T, repo *auth.OAuthClientRepo, uow *usecasepgx.UnitOfWork, clientID, name, clientType string) operations.OAuthClientCreated {
 	t.Helper()
-	committed, err := operations.CreateOAuthClient(context.Background(), repo, uow,
-		operations.CreateOAuthClientCommand{ClientID: clientID, ClientName: name, ClientType: clientType},
-		testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.CreateOAuthClient(repo),
+		operations.CreateOAuthClientCommand{ClientID: clientID, ClientName: name, ClientType: clientType})
 	require.NoError(t, err)
-	return committed.Event()
+	return ev
 }
 
 func TestCreateOAuthClient_PublicHappyPath(t *testing.T) {
@@ -429,7 +439,7 @@ func TestCreateOAuthClient_PublicHappyPath(t *testing.T) {
 	repo := auth.NewRepository(testpg.Pool(t)).OAuthClients
 	uow := testpg.NewUoW(t)
 
-	committed, err := operations.CreateOAuthClient(ctx, repo, uow, operations.CreateOAuthClientCommand{
+	ev, err := runAuthorized(uow, operations.CreateOAuthClient(repo), operations.CreateOAuthClientCommand{
 		ClientID:               "oc-create-public",
 		ClientName:             "Public SPA",
 		ClientType:             "PUBLIC",
@@ -439,9 +449,8 @@ func TestCreateOAuthClient_PublicHappyPath(t *testing.T) {
 		Scopes:                 []string{"openid", "profile"},
 		AllowedOrigins:         []string{"https://spa.example.com"},
 		ApplicationIDs:         []string{"app_occreatepub01"},
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
-	ev := committed.Event()
 	assert.NotEmpty(t, ev.OAuthClientID)
 	assert.Equal(t, "oc-create-public", ev.ClientID)
 	assert.Equal(t, "Public SPA", ev.ClientName)
@@ -506,13 +515,13 @@ func TestCreateOAuthClient_Validation(t *testing.T) {
 
 	// Omitted clientId is NOT an error: the backend generates a branded
 	// TSID, exactly like the service-account provision flows.
-	committed, err := operations.CreateOAuthClient(context.Background(), repo, uow,
-		operations.CreateOAuthClientCommand{ClientName: "Generated ID", ClientType: "PUBLIC"}, testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.CreateOAuthClient(repo),
+		operations.CreateOAuthClientCommand{ClientName: "Generated ID", ClientType: "PUBLIC"})
 	require.NoError(t, err)
-	assert.Regexp(t, `^oac_`, committed.Event().ClientID, "omitted clientId → backend-generated branded TSID")
+	assert.Regexp(t, `^oac_`, ev.ClientID, "omitted clientId → backend-generated branded TSID")
 
-	_, err = operations.CreateOAuthClient(context.Background(), repo, uow,
-		operations.CreateOAuthClientCommand{ClientID: "oc-val-noname"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.CreateOAuthClient(repo),
+		operations.CreateOAuthClientCommand{ClientID: "oc-val-noname"})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "CLIENT_NAME_REQUIRED")
 }
 
@@ -522,8 +531,8 @@ func TestCreateOAuthClient_DuplicateClientID_Conflict(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	mustCreateClient(t, repo, uow, "oc-dup-conflict", "First", "PUBLIC")
 
-	_, err := operations.CreateOAuthClient(context.Background(), repo, uow,
-		operations.CreateOAuthClientCommand{ClientID: "oc-dup-conflict", ClientName: "Second"}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.CreateOAuthClient(repo),
+		operations.CreateOAuthClientCommand{ClientID: "oc-dup-conflict", ClientName: "Second"})
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "CLIENT_ID_EXISTS")
 }
 
@@ -536,15 +545,15 @@ func TestUpdateOAuthClient_HappyPath(t *testing.T) {
 
 	newName := "  After  "
 	pkce := false
-	committed, err := operations.UpdateOAuthClient(ctx, repo, uow, operations.UpdateOAuthClientCommand{
+	ev, err := runAuthorized(uow, operations.UpdateOAuthClient(repo), operations.UpdateOAuthClientCommand{
 		ID:           seeded.OAuthClientID,
 		ClientName:   &newName,
 		RedirectURIs: []string{"https://after.example.com/cb"},
 		PKCERequired: &pkce,
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.OAuthClientID, committed.Event().OAuthClientID)
-	assert.Equal(t, "After", committed.Event().ClientName, "name is trimmed")
+	assert.Equal(t, seeded.OAuthClientID, ev.OAuthClientID)
+	assert.Equal(t, "After", ev.ClientName, "name is trimmed")
 
 	got, err := repo.FindByID(ctx, seeded.OAuthClientID)
 	require.NoError(t, err)
@@ -575,7 +584,7 @@ func TestUpdateOAuthClient_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.UpdateOAuthClient(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.UpdateOAuthClient(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -588,20 +597,20 @@ func TestDeactivateActivateOAuthClient_RoundTrip(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreateClient(t, repo, uow, "oc-actcycle", "Cycle", "PUBLIC")
 
-	deactivated, err := operations.DeactivateOAuthClient(ctx, repo, uow,
-		operations.DeactivateOAuthClientCommand{ID: seeded.OAuthClientID}, testpg.TestEC())
+	deactivated, err := runAuthorized(uow, operations.DeactivateOAuthClient(repo),
+		operations.DeactivateOAuthClientCommand{ID: seeded.OAuthClientID})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.OAuthClientID, deactivated.Event().OAuthClientID)
+	assert.Equal(t, seeded.OAuthClientID, deactivated.OAuthClientID)
 
 	got, err := repo.FindByID(ctx, seeded.OAuthClientID)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.False(t, got.Active, "deactivate must flip Active → false")
 
-	activated, err := operations.ActivateOAuthClient(ctx, repo, uow,
-		operations.ActivateOAuthClientCommand{ID: seeded.OAuthClientID}, testpg.TestEC())
+	activated, err := runAuthorized(uow, operations.ActivateOAuthClient(repo),
+		operations.ActivateOAuthClientCommand{ID: seeded.OAuthClientID})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.OAuthClientID, activated.Event().OAuthClientID)
+	assert.Equal(t, seeded.OAuthClientID, activated.OAuthClientID)
 
 	got, err = repo.FindByID(ctx, seeded.OAuthClientID)
 	require.NoError(t, err)
@@ -613,20 +622,19 @@ func TestActivateDeactivateOAuthClient_Errors(t *testing.T) {
 	t.Parallel()
 	repo := auth.NewRepository(testpg.Pool(t)).OAuthClients
 	uow := testpg.NewUoW(t)
-	ctx := context.Background()
 
-	_, err := operations.ActivateOAuthClient(ctx, repo, uow,
-		operations.ActivateOAuthClientCommand{}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.ActivateOAuthClient(repo),
+		operations.ActivateOAuthClientCommand{})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
-	_, err = operations.ActivateOAuthClient(ctx, repo, uow,
-		operations.ActivateOAuthClientCommand{ID: "oac_doesnotexist1"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.ActivateOAuthClient(repo),
+		operations.ActivateOAuthClientCommand{ID: "oac_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "OAuthClient_NOT_FOUND")
 
-	_, err = operations.DeactivateOAuthClient(ctx, repo, uow,
-		operations.DeactivateOAuthClientCommand{}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.DeactivateOAuthClient(repo),
+		operations.DeactivateOAuthClientCommand{})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
-	_, err = operations.DeactivateOAuthClient(ctx, repo, uow,
-		operations.DeactivateOAuthClientCommand{ID: "oac_doesnotexist1"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.DeactivateOAuthClient(repo),
+		operations.DeactivateOAuthClientCommand{ID: "oac_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "OAuthClient_NOT_FOUND")
 }
 
@@ -637,21 +645,21 @@ func TestDeleteOAuthClient_HappyPathAndErrors(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreateClient(t, repo, uow, "oc-del-happy", "Doomed", "PUBLIC")
 
-	committed, err := operations.DeleteOAuthClient(ctx, repo, uow,
-		operations.DeleteOAuthClientCommand{ID: seeded.OAuthClientID}, testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.DeleteOAuthClient(repo),
+		operations.DeleteOAuthClientCommand{ID: seeded.OAuthClientID})
 	require.NoError(t, err)
-	assert.Equal(t, "oc-del-happy", committed.Event().ClientID)
+	assert.Equal(t, "oc-del-happy", ev.ClientID)
 
 	got, err := repo.FindByID(ctx, seeded.OAuthClientID)
 	require.NoError(t, err)
 	assert.Nil(t, got, "deleted row must be gone")
 
-	_, err = operations.DeleteOAuthClient(ctx, repo, uow,
-		operations.DeleteOAuthClientCommand{}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.DeleteOAuthClient(repo),
+		operations.DeleteOAuthClientCommand{})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = operations.DeleteOAuthClient(ctx, repo, uow,
-		operations.DeleteOAuthClientCommand{ID: "oac_doesnotexist1"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.DeleteOAuthClient(repo),
+		operations.DeleteOAuthClientCommand{ID: "oac_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "OAuthClient_NOT_FOUND")
 }
 
@@ -670,10 +678,10 @@ func TestRotateOAuthClientSecret_HappyPathAndStash(t *testing.T) {
 	require.NotNil(t, before.SecretRef)
 	oldRef := *before.SecretRef
 
-	committed, err := operations.RotateOAuthClientSecret(ctx, repo, uow,
-		operations.RotateOAuthClientSecretCommand{ID: seeded.OAuthClientID}, testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.RotateOAuthClientSecret(repo),
+		operations.RotateOAuthClientSecretCommand{ID: seeded.OAuthClientID})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.OAuthClientID, committed.Event().OAuthClientID)
+	assert.Equal(t, seeded.OAuthClientID, ev.OAuthClientID)
 
 	rotated, ok := operations.PopStashedSecret(seeded.OAuthClientID)
 	require.True(t, ok, "first pop must return the rotated secret")
@@ -702,8 +710,8 @@ func TestRotateOAuthClientSecret_PublicClient_Conflict(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreateClient(t, repo, uow, "oc-rotate-public", "No Secret", "PUBLIC")
 
-	_, err := operations.RotateOAuthClientSecret(context.Background(), repo, uow,
-		operations.RotateOAuthClientSecretCommand{ID: seeded.OAuthClientID}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.RotateOAuthClientSecret(repo),
+		operations.RotateOAuthClientSecretCommand{ID: seeded.OAuthClientID})
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "NOT_CONFIDENTIAL")
 }
 
@@ -712,11 +720,11 @@ func TestRotateOAuthClientSecret_Errors(t *testing.T) {
 	repo := auth.NewRepository(testpg.Pool(t)).OAuthClients
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.RotateOAuthClientSecret(context.Background(), repo, uow,
-		operations.RotateOAuthClientSecretCommand{}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.RotateOAuthClientSecret(repo),
+		operations.RotateOAuthClientSecretCommand{})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = operations.RotateOAuthClientSecret(context.Background(), repo, uow,
-		operations.RotateOAuthClientSecretCommand{ID: "oac_doesnotexist1"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.RotateOAuthClientSecret(repo),
+		operations.RotateOAuthClientSecretCommand{ID: "oac_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "OAuthClient_NOT_FOUND")
 }

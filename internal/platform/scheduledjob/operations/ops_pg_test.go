@@ -14,6 +14,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -31,10 +32,10 @@ var validCrons = []string{"0 0 * * * *"}
 // table-wide.
 func mustCreate(t *testing.T, repo *scheduledjob.Repository, uow *usecasepgx.UnitOfWork, code, name string) operations.ScheduledJobCreated {
 	t.Helper()
-	committed, err := operations.CreateScheduledJob(context.Background(), repo, uow,
+	committed, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.CreateScheduledJob(repo),
 		operations.CreateCommand{Code: code, Name: name, Crons: validCrons}, testpg.TestEC())
 	require.NoError(t, err)
-	return committed.Event()
+	return committed
 }
 
 // ── Create ────────────────────────────────────────────────────────────────
@@ -47,7 +48,7 @@ func TestCreateScheduledJob_HappyPath(t *testing.T) {
 	ec := testpg.TestEC()
 
 	desc := "nightly refresh"
-	committed, err := operations.CreateScheduledJob(ctx, repo, uow, operations.CreateCommand{
+	committed, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.CreateScheduledJob(repo), operations.CreateCommand{
 		Code:                "  SJCRT-Happy  ", // op must trim + lowercase
 		Name:                "  SJ Create Happy  ",
 		Crons:               []string{"0 0 3 * * *", "0 30 9 * * 1-5"},
@@ -62,7 +63,7 @@ func TestCreateScheduledJob_HappyPath(t *testing.T) {
 	}, ec)
 	require.NoError(t, err)
 
-	ev := committed.Event()
+	ev := committed
 	assert.NotEmpty(t, ev.ScheduledJobID)
 	assert.Equal(t, "sjcrt-happy", ev.Code, "code must be trimmed + lowercased")
 
@@ -124,7 +125,7 @@ func TestCreateScheduledJob_Validation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.CreateScheduledJob(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.CreateScheduledJob(repo), tc.cmd, testpg.TestEC())
 			testpg.RequireUsecaseError(t, err, usecase.KindValidation, tc.code)
 		})
 	}
@@ -138,7 +139,7 @@ func TestCreateScheduledJob_DuplicateCode_Conflict(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	mustCreate(t, repo, uow, "sjdup-code", "First")
 
-	_, err := operations.CreateScheduledJob(context.Background(), repo, uow,
+	_, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.CreateScheduledJob(repo),
 		operations.CreateCommand{Code: "sjdup-code", Name: "Second", Crons: validCrons}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "CODE_EXISTS")
 }
@@ -153,7 +154,7 @@ func TestUpdateScheduledJob_HappyPath(t *testing.T) {
 	ec := testpg.TestEC()
 	seeded := mustCreate(t, repo, uow, "sjupd-happy", "Before")
 
-	committed, err := operations.UpdateScheduledJob(ctx, repo, uow, operations.UpdateCommand{
+	committed, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.UpdateScheduledJob(repo), operations.UpdateCommand{
 		ID:                  seeded.ScheduledJobID,
 		Name:                ptr("  After  "), // op must trim
 		Description:         ptr("after"),
@@ -167,8 +168,8 @@ func TestUpdateScheduledJob_HappyPath(t *testing.T) {
 		TargetURL:           ptr("https://after.example.test/job"),
 	}, ec)
 	require.NoError(t, err)
-	assert.Equal(t, seeded.ScheduledJobID, committed.Event().ScheduledJobID)
-	assert.Equal(t, "sjupd-happy", committed.Event().Code)
+	assert.Equal(t, seeded.ScheduledJobID, committed.ScheduledJobID)
+	assert.Equal(t, "sjupd-happy", committed.Code)
 
 	got, err := repo.FindByID(ctx, seeded.ScheduledJobID)
 	require.NoError(t, err)
@@ -196,8 +197,10 @@ func TestUpdateScheduledJob_Errors(t *testing.T) {
 	t.Parallel()
 	repo := scheduledjob.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
-	// Cron validation runs AFTER the load, so those cases need a real job.
-	// All error paths return before any save — the seed stays untouched.
+	// All error paths return before any save — the seed stays untouched. The
+	// cron cases pair a real seeded id with a bad cron; cron validation is shape-
+	// only and now runs in the Validate phase (the failing kind/code is the same
+	// either way).
 	seeded := mustCreate(t, repo, uow, "sjupd-errors", "Cron Error Target")
 
 	cases := []struct {
@@ -216,7 +219,7 @@ func TestUpdateScheduledJob_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.UpdateScheduledJob(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.UpdateScheduledJob(repo), tc.cmd, testpg.TestEC())
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -231,21 +234,21 @@ func TestPauseResumeScheduledJob_RoundTrip(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreate(t, repo, uow, "sjpse-roundtrip", "Pause Me")
 
-	paused, err := operations.PauseScheduledJob(ctx, repo, uow,
+	paused, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.PauseScheduledJob(repo),
 		operations.PauseCommand{ID: seeded.ScheduledJobID}, testpg.TestEC())
 	require.NoError(t, err)
-	assert.Equal(t, seeded.ScheduledJobID, paused.Event().ScheduledJobID)
-	assert.Equal(t, "sjpse-roundtrip", paused.Event().Code)
+	assert.Equal(t, seeded.ScheduledJobID, paused.ScheduledJobID)
+	assert.Equal(t, "sjpse-roundtrip", paused.Code)
 
 	got, err := repo.FindByID(ctx, seeded.ScheduledJobID)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, scheduledjob.StatusPaused, got.Status)
 
-	resumed, err := operations.ResumeScheduledJob(ctx, repo, uow,
+	resumed, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.ResumeScheduledJob(repo),
 		operations.ResumeCommand{ID: seeded.ScheduledJobID}, testpg.TestEC())
 	require.NoError(t, err)
-	assert.Equal(t, seeded.ScheduledJobID, resumed.Event().ScheduledJobID)
+	assert.Equal(t, seeded.ScheduledJobID, resumed.ScheduledJobID)
 
 	got, err = repo.FindByID(ctx, seeded.ScheduledJobID)
 	require.NoError(t, err)
@@ -258,11 +261,11 @@ func TestPauseScheduledJob_Errors(t *testing.T) {
 	repo := scheduledjob.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.PauseScheduledJob(context.Background(), repo, uow,
+	_, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.PauseScheduledJob(repo),
 		operations.PauseCommand{}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = operations.PauseScheduledJob(context.Background(), repo, uow,
+	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, operations.PauseScheduledJob(repo),
 		operations.PauseCommand{ID: "sjb_doesnotexist1"}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "ScheduledJob_NOT_FOUND")
 }
@@ -272,11 +275,11 @@ func TestResumeScheduledJob_Errors(t *testing.T) {
 	repo := scheduledjob.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.ResumeScheduledJob(context.Background(), repo, uow,
+	_, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.ResumeScheduledJob(repo),
 		operations.ResumeCommand{}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = operations.ResumeScheduledJob(context.Background(), repo, uow,
+	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, operations.ResumeScheduledJob(repo),
 		operations.ResumeCommand{ID: "sjb_doesnotexist1"}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "ScheduledJob_NOT_FOUND")
 }
@@ -290,11 +293,11 @@ func TestArchiveScheduledJob_HappyPath(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreate(t, repo, uow, "sjarc-happy", "Archive Me")
 
-	committed, err := operations.ArchiveScheduledJob(ctx, repo, uow,
+	committed, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.ArchiveScheduledJob(repo),
 		operations.ArchiveCommand{ID: seeded.ScheduledJobID}, testpg.TestEC())
 	require.NoError(t, err)
-	assert.Equal(t, seeded.ScheduledJobID, committed.Event().ScheduledJobID)
-	assert.Equal(t, "sjarc-happy", committed.Event().Code)
+	assert.Equal(t, seeded.ScheduledJobID, committed.ScheduledJobID)
+	assert.Equal(t, "sjarc-happy", committed.Code)
 
 	got, err := repo.FindByID(ctx, seeded.ScheduledJobID)
 	require.NoError(t, err)
@@ -307,11 +310,11 @@ func TestArchiveScheduledJob_Errors(t *testing.T) {
 	repo := scheduledjob.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.ArchiveScheduledJob(context.Background(), repo, uow,
+	_, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.ArchiveScheduledJob(repo),
 		operations.ArchiveCommand{}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = operations.ArchiveScheduledJob(context.Background(), repo, uow,
+	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, operations.ArchiveScheduledJob(repo),
 		operations.ArchiveCommand{ID: "sjb_doesnotexist1"}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "ScheduledJob_NOT_FOUND")
 }
@@ -325,11 +328,11 @@ func TestDeleteScheduledJob_HappyPath(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreate(t, repo, uow, "sjdel-happy", "Doomed")
 
-	committed, err := operations.DeleteScheduledJob(ctx, repo, uow,
+	committed, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.DeleteScheduledJob(repo),
 		operations.DeleteCommand{ID: seeded.ScheduledJobID}, testpg.TestEC())
 	require.NoError(t, err)
-	assert.Equal(t, seeded.ScheduledJobID, committed.Event().ScheduledJobID)
-	assert.Equal(t, "sjdel-happy", committed.Event().Code)
+	assert.Equal(t, seeded.ScheduledJobID, committed.ScheduledJobID)
+	assert.Equal(t, "sjdel-happy", committed.Code)
 
 	got, err := repo.FindByID(ctx, seeded.ScheduledJobID)
 	require.NoError(t, err)
@@ -341,11 +344,11 @@ func TestDeleteScheduledJob_Errors(t *testing.T) {
 	repo := scheduledjob.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.DeleteScheduledJob(context.Background(), repo, uow,
+	_, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.DeleteScheduledJob(repo),
 		operations.DeleteCommand{}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = operations.DeleteScheduledJob(context.Background(), repo, uow,
+	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, operations.DeleteScheduledJob(repo),
 		operations.DeleteCommand{ID: "sjb_doesnotexist1"}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "ScheduledJob_NOT_FOUND")
 }
@@ -361,11 +364,11 @@ func TestFireNow_HappyPath(t *testing.T) {
 	seeded := mustCreate(t, repo, uow, "sjfire-happy", "Fire Me")
 
 	corr := "corr-sjfire-happy-1"
-	committed, err := operations.FireNow(ctx, repo, instances, uow,
+	committed, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.FireNow(repo, instances),
 		operations.FireNowCommand{ID: seeded.ScheduledJobID, CorrelationID: &corr}, testpg.TestEC())
 	require.NoError(t, err)
 
-	ev := committed.Event()
+	ev := committed
 	assert.Equal(t, seeded.ScheduledJobID, ev.ScheduledJobID)
 	assert.Equal(t, "sjfire-happy", ev.Code)
 	require.NotEmpty(t, ev.InstanceID, "committed event must carry the new instance id")
@@ -392,15 +395,15 @@ func TestFireNow_PausedJobIsFirable(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreate(t, repo, uow, "sjfire-paused", "Paused But Firable")
 
-	_, err := operations.PauseScheduledJob(ctx, repo, uow,
+	_, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.PauseScheduledJob(repo),
 		operations.PauseCommand{ID: seeded.ScheduledJobID}, testpg.TestEC())
 	require.NoError(t, err)
 
-	committed, err := operations.FireNow(ctx, repo, instances, uow,
+	committed, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.FireNow(repo, instances),
 		operations.FireNowCommand{ID: seeded.ScheduledJobID}, testpg.TestEC())
 	require.NoError(t, err, "firing a PAUSED job must succeed")
 
-	inst, err := instances.FindByID(ctx, committed.Event().InstanceID)
+	inst, err := instances.FindByID(ctx, committed.InstanceID)
 	require.NoError(t, err)
 	require.NotNil(t, inst)
 	assert.Equal(t, scheduledjob.InstanceStatusQueued, inst.Status)
@@ -409,26 +412,25 @@ func TestFireNow_PausedJobIsFirable(t *testing.T) {
 
 func TestFireNow_Errors(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
 	repo := scheduledjob.NewRepository(testpg.Pool(t))
 	instances := scheduledjob.NewInstanceRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.FireNow(ctx, repo, instances, uow,
+	_, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.FireNow(repo, instances),
 		operations.FireNowCommand{}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = operations.FireNow(ctx, repo, instances, uow,
+	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, operations.FireNow(repo, instances),
 		operations.FireNowCommand{ID: "sjb_doesnotexist1"}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "ScheduledJob_NOT_FOUND")
 
 	// ARCHIVED jobs cannot be fired (conflict, not validation).
 	seeded := mustCreate(t, repo, uow, "sjfire-archived", "Archived Target")
-	_, err = operations.ArchiveScheduledJob(ctx, repo, uow,
+	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, operations.ArchiveScheduledJob(repo),
 		operations.ArchiveCommand{ID: seeded.ScheduledJobID}, testpg.TestEC())
 	require.NoError(t, err)
 
-	_, err = operations.FireNow(ctx, repo, instances, uow,
+	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, operations.FireNow(repo, instances),
 		operations.FireNowCommand{ID: seeded.ScheduledJobID}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "ARCHIVED")
 }
@@ -453,7 +455,7 @@ func TestSyncScheduledJobs_CreateNoopArchiveAndReactivate(t *testing.T) {
 		}
 	}
 
-	first, err := operations.SyncScheduledJobs(ctx, repo, uow, operations.SyncScheduledJobsCommand{
+	first, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
 		ApplicationCode: "sjsyncapp1",
 		ClientID:        &clientID,
 		Jobs: []operations.ScheduledJobSyncEntry{
@@ -461,10 +463,10 @@ func TestSyncScheduledJobs_CreateNoopArchiveAndReactivate(t *testing.T) {
 		},
 	}, ec)
 	require.NoError(t, err)
-	assert.Len(t, first.Event().Created, 3)
-	assert.Empty(t, first.Event().Updated)
-	assert.Empty(t, first.Event().Archived)
-	assert.Equal(t, "sjsyncapp1", first.Event().ApplicationCode)
+	assert.Len(t, first.Created, 3)
+	assert.Empty(t, first.Updated)
+	assert.Empty(t, first.Archived)
+	assert.Equal(t, "sjsyncapp1", first.ApplicationCode)
 
 	jobA, err := repo.FindByCode(ctx, "sjsync-a", &clientID)
 	require.NoError(t, err)
@@ -482,7 +484,7 @@ func TestSyncScheduledJobs_CreateNoopArchiveAndReactivate(t *testing.T) {
 
 	// PIN: an identical re-sync is a pure no-op — unchanged rows are
 	// neither persisted nor counted.
-	second, err := operations.SyncScheduledJobs(ctx, repo, uow, operations.SyncScheduledJobsCommand{
+	second, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
 		ApplicationCode: "sjsyncapp1",
 		ClientID:        &clientID,
 		Jobs: []operations.ScheduledJobSyncEntry{
@@ -490,32 +492,32 @@ func TestSyncScheduledJobs_CreateNoopArchiveAndReactivate(t *testing.T) {
 		},
 	}, ec)
 	require.NoError(t, err)
-	assert.Empty(t, second.Event().Created)
-	assert.Empty(t, second.Event().Updated, "no-op rows must not be counted")
-	assert.Empty(t, second.Event().Archived)
+	assert.Empty(t, second.Created)
+	assert.Empty(t, second.Updated, "no-op rows must not be counted")
+	assert.Empty(t, second.Archived)
 	jobA2, err := repo.FindByCode(ctx, "sjsync-a", &clientID)
 	require.NoError(t, err)
 	require.NotNil(t, jobA2)
 	assert.Equal(t, int32(1), jobA2.Version, "no-op rows must not be persisted (version unchanged)")
 
 	// Pause C: ArchiveUnlisted only sweeps ACTIVE jobs.
-	_, err = operations.PauseScheduledJob(ctx, repo, uow,
+	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, operations.PauseScheduledJob(repo),
 		operations.PauseCommand{ID: jobC.ID}, testpg.TestEC())
 	require.NoError(t, err)
 
 	// PIN: ArchiveUnlisted archives ACTIVE unlisted jobs in scope (B) but
 	// leaves non-ACTIVE unlisted jobs alone (C stays PAUSED). The listed,
 	// unchanged A is again neither persisted nor counted.
-	third, err := operations.SyncScheduledJobs(ctx, repo, uow, operations.SyncScheduledJobsCommand{
+	third, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
 		ApplicationCode: "sjsyncapp1",
 		ClientID:        &clientID,
 		Jobs:            []operations.ScheduledJobSyncEntry{entry("sjsync-a", "A")},
 		ArchiveUnlisted: true,
 	}, ec)
 	require.NoError(t, err)
-	assert.Empty(t, third.Event().Created)
-	assert.Empty(t, third.Event().Updated)
-	assert.Equal(t, []string{jobB.ID}, third.Event().Archived)
+	assert.Empty(t, third.Created)
+	assert.Empty(t, third.Updated)
+	assert.Equal(t, []string{jobB.ID}, third.Archived)
 
 	jobB3, err := repo.FindByCode(ctx, "sjsync-b", &clientID)
 	require.NoError(t, err)
@@ -527,15 +529,15 @@ func TestSyncScheduledJobs_CreateNoopArchiveAndReactivate(t *testing.T) {
 	assert.Equal(t, scheduledjob.StatusPaused, jobC3.Status, "ArchiveUnlisted must only sweep ACTIVE jobs")
 
 	// A reappearing archived job is re-activated and counted as updated.
-	fourth, err := operations.SyncScheduledJobs(ctx, repo, uow, operations.SyncScheduledJobsCommand{
+	fourth, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
 		ApplicationCode: "sjsyncapp1",
 		ClientID:        &clientID,
 		Jobs:            []operations.ScheduledJobSyncEntry{entry("sjsync-a", "A"), entry("sjsync-b", "B")},
 	}, ec)
 	require.NoError(t, err)
-	assert.Empty(t, fourth.Event().Created)
-	assert.Equal(t, []string{jobB.ID}, fourth.Event().Updated)
-	assert.Empty(t, fourth.Event().Archived)
+	assert.Empty(t, fourth.Created)
+	assert.Equal(t, []string{jobB.ID}, fourth.Updated)
+	assert.Empty(t, fourth.Archived)
 
 	jobB4, err := repo.FindByCode(ctx, "sjsync-b", &clientID)
 	require.NoError(t, err)
@@ -561,7 +563,7 @@ func TestSyncScheduledJobs_Validation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.SyncScheduledJobs(context.Background(), repo, uow,
+			_, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncScheduledJobs(repo),
 				operations.SyncScheduledJobsCommand{
 					ApplicationCode: "sjsyncbad",
 					ClientID:        &clientID,

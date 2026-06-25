@@ -13,10 +13,23 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
 func TestMain(m *testing.M) { testpg.RunMain(m) }
+
+// runAuthorized drives op through the full use-case envelope (Validate →
+// Authorize → Execute → atomic commit) as an anchor principal — the common
+// case for these tests, which exercise validation, invariants, and
+// persistence. The coarse anchor-only write permission is enforced at the
+// controller, not in the use case. It mirrors how the HTTP handler runs the
+// operation.
+func runAuthorized[C any, E usecase.DomainEvent](
+	uow *usecasepgx.UnitOfWork, op usecaseop.Operation[C, E], cmd C,
+) (E, error) {
+	return usecaseop.Run(testpg.AnchorCtx(), uow, op, cmd, testpg.TestEC())
+}
 
 // mustCreate seeds an INTERNAL-type IdP through the public operation —
 // the same path production uses (INTERNAL needs no OIDC fields). Codes
@@ -24,10 +37,10 @@ func TestMain(m *testing.M) { testpg.RunMain(m) }
 // so tests own their rows and never assert table-wide.
 func mustCreate(t *testing.T, repo *identityprovider.Repository, uow *usecasepgx.UnitOfWork, code, name string) operations.IdentityProviderCreated {
 	t.Helper()
-	committed, err := operations.CreateIdentityProvider(context.Background(), repo, uow,
-		operations.CreateCommand{Code: code, Name: name, Type: "INTERNAL"}, testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.CreateIdentityProvider(repo),
+		operations.CreateCommand{Code: code, Name: name, Type: "INTERNAL"})
 	require.NoError(t, err)
-	return committed.Event()
+	return ev
 }
 
 // ── Create ────────────────────────────────────────────────────────────────
@@ -42,7 +55,7 @@ func TestCreateIdentityProvider_HappyPath(t *testing.T) {
 	clientID := "idpcrt-client-id"
 	secretRef := "secret-ref-idpcrt"
 	pattern := "https://login\\.idpcrt\\.example\\.com/.*"
-	committed, err := operations.CreateIdentityProvider(ctx, repo, uow, operations.CreateCommand{
+	ev, err := runAuthorized(uow, operations.CreateIdentityProvider(repo), operations.CreateCommand{
 		Code:                "idpcrt-happy",
 		Name:                "IdP Create Happy",
 		Type:                "OIDC",
@@ -52,10 +65,9 @@ func TestCreateIdentityProvider_HappyPath(t *testing.T) {
 		OIDCMultiTenant:     true,
 		OIDCIssuerPattern:   &pattern,
 		AllowedEmailDomains: []string{"idpcrt-a.example.com", "idpcrt-b.example.com"},
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
 
-	ev := committed.Event()
 	assert.NotEmpty(t, ev.IdentityProviderID)
 	assert.Equal(t, "idpcrt-happy", ev.Code)
 
@@ -100,7 +112,7 @@ func TestCreateIdentityProvider_Validation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.CreateIdentityProvider(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.CreateIdentityProvider(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, usecase.KindValidation, tc.code)
 		})
 	}
@@ -114,8 +126,8 @@ func TestCreateIdentityProvider_DuplicateCode_Conflict(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	mustCreate(t, repo, uow, "idpdup", "First")
 
-	_, err := operations.CreateIdentityProvider(context.Background(), repo, uow,
-		operations.CreateCommand{Code: "idpdup", Name: "Second", Type: "INTERNAL"}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.CreateIdentityProvider(repo),
+		operations.CreateCommand{Code: "idpdup", Name: "Second", Type: "INTERNAL"})
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "CODE_EXISTS")
 }
 
@@ -131,16 +143,16 @@ func TestUpdateIdentityProvider_HappyPath(t *testing.T) {
 	newName := "  After  " // op must trim
 	issuer := "https://login.idpupd.example.com"
 	multiTenant := true
-	committed, err := operations.UpdateIdentityProvider(ctx, repo, uow, operations.UpdateCommand{
+	ev, err := runAuthorized(uow, operations.UpdateIdentityProvider(repo), operations.UpdateCommand{
 		ID:                  seeded.IdentityProviderID,
 		Name:                &newName,
 		OIDCIssuerURL:       &issuer,
 		OIDCMultiTenant:     &multiTenant,
 		AllowedEmailDomains: []string{"idpupd.example.com"},
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.IdentityProviderID, committed.Event().IdentityProviderID)
-	assert.Equal(t, "idpupd-happy", committed.Event().Code)
+	assert.Equal(t, seeded.IdentityProviderID, ev.IdentityProviderID)
+	assert.Equal(t, "idpupd-happy", ev.Code)
 
 	got, err := repo.FindByID(ctx, seeded.IdentityProviderID)
 	require.NoError(t, err)
@@ -175,7 +187,7 @@ func TestUpdateIdentityProvider_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.UpdateIdentityProvider(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.UpdateIdentityProvider(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -190,11 +202,11 @@ func TestDeleteIdentityProvider_HappyPath(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreate(t, repo, uow, "idpdel-happy", "Doomed")
 
-	committed, err := operations.DeleteIdentityProvider(ctx, repo, uow,
-		operations.DeleteCommand{ID: seeded.IdentityProviderID}, testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.DeleteIdentityProvider(repo),
+		operations.DeleteCommand{ID: seeded.IdentityProviderID})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.IdentityProviderID, committed.Event().IdentityProviderID)
-	assert.Equal(t, "idpdel-happy", committed.Event().Code)
+	assert.Equal(t, seeded.IdentityProviderID, ev.IdentityProviderID)
+	assert.Equal(t, "idpdel-happy", ev.Code)
 
 	got, err := repo.FindByID(ctx, seeded.IdentityProviderID)
 	require.NoError(t, err)
@@ -206,11 +218,10 @@ func TestDeleteIdentityProvider_Errors(t *testing.T) {
 	repo := identityprovider.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.DeleteIdentityProvider(context.Background(), repo, uow,
-		operations.DeleteCommand{}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.DeleteIdentityProvider(repo), operations.DeleteCommand{})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = operations.DeleteIdentityProvider(context.Background(), repo, uow,
-		operations.DeleteCommand{ID: "idp_doesnotexist1"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.DeleteIdentityProvider(repo),
+		operations.DeleteCommand{ID: "idp_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "IdentityProvider_NOT_FOUND")
 }

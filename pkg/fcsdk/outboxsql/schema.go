@@ -1,10 +1,9 @@
-// Package outboxsql implements the consumer-facing Sink for use cases
-// running against database/sql. Works against Postgres (any driver:
-// lib/pq, pgx/stdlib, etc.) and MySQL (go-sql-driver/mysql).
-//
-// The Sink satisfies usecasesql.Sink, so any use case that uses
-// usecasesql.Commit / CommitDelete / CommitAll / EmitEvent will emit
-// events through the outbox transparently.
+// Package outboxsql provides the outbox-table DDL for consumer apps
+// running against database/sql, for both Postgres (any driver: lib/pq,
+// pgx/stdlib, etc.) and MySQL (go-sql-driver/mysql). [InitSchema] (and
+// the [CreateOutboxTableSQLPostgres] / [CreateOutboxTableSQLMySQL]
+// constants it dispatches on) create the outbox_messages table an
+// outbox processor then drains.
 package outboxsql
 
 import (

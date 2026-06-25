@@ -15,6 +15,7 @@ import (
 	clientops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -22,16 +23,27 @@ func TestMain(m *testing.M) { testpg.RunMain(m) }
 
 func ptr(s string) *string { return &s }
 
+// runAuthorized drives op through the full use-case envelope (Validate →
+// Authorize → Execute → atomic commit) as an anchor principal — the common
+// case for these tests, which exercise validation, invariants, and
+// persistence rather than authorization itself. It mirrors how the HTTP
+// handler runs the operation.
+func runAuthorized[C any, E usecase.DomainEvent](
+	uow *usecasepgx.UnitOfWork, op usecaseop.Operation[C, E], cmd C,
+) (E, error) {
+	return usecaseop.Run(testpg.AnchorCtx(), uow, op, cmd, testpg.TestEC())
+}
+
 // mustCreateApp seeds an application through the public operation — the
 // same path production uses. Codes are hand-unique per test: the fixture
 // never truncates between tests, so tests own their rows and never assert
 // table-wide.
 func mustCreateApp(t *testing.T, repo *application.Repository, uow *usecasepgx.UnitOfWork, code, name string) operations.ApplicationCreated {
 	t.Helper()
-	committed, err := operations.CreateApplication(context.Background(), repo, uow,
-		operations.CreateCommand{Code: code, Name: name}, testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.CreateApplication(repo),
+		operations.CreateCommand{Code: code, Name: name})
 	require.NoError(t, err)
-	return committed.Event()
+	return ev
 }
 
 // mustCreateClient seeds a real client via client/operations — the
@@ -40,10 +52,10 @@ func mustCreateApp(t *testing.T, repo *application.Repository, uow *usecasepgx.U
 func mustCreateClient(t *testing.T, uow *usecasepgx.UnitOfWork, name, identifier string) clientops.ClientCreated {
 	t.Helper()
 	repo := client.NewRepository(testpg.Pool(t))
-	committed, err := clientops.CreateClient(context.Background(), repo, uow,
+	ev, err := usecaseop.Run(testpg.AnchorCtx(), uow, clientops.CreateClient(repo),
 		clientops.CreateCommand{Name: name, Identifier: identifier}, testpg.TestEC())
 	require.NoError(t, err)
-	return committed.Event()
+	return ev
 }
 
 // ── Create ────────────────────────────────────────────────────────────────
@@ -54,15 +66,14 @@ func TestCreateApplication_HappyPath(t *testing.T) {
 	repo := application.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	committed, err := operations.CreateApplication(ctx, repo, uow, operations.CreateCommand{
+	ev, err := runAuthorized(uow, operations.CreateApplication(repo), operations.CreateCommand{
 		Code:        "  AppCreate-Happy1  ",
 		Name:        "  First App  ",
 		Description: ptr("the first"),
 		Website:     ptr("https://example.com"),
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
 
-	ev := committed.Event()
 	assert.NotEmpty(t, ev.ApplicationID)
 	assert.Equal(t, "appcreate-happy1", ev.Code, "code is lowercased + trimmed")
 	assert.Equal(t, "First App", ev.Name, "name is trimmed")
@@ -113,7 +124,7 @@ func TestCreateApplication_Validation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.CreateApplication(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.CreateApplication(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, usecase.KindValidation, tc.code)
 		})
 	}
@@ -127,8 +138,8 @@ func TestCreateApplication_DuplicateCode_Conflict(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	mustCreateApp(t, repo, uow, "appdup1", "First")
 
-	_, err := operations.CreateApplication(context.Background(), repo, uow,
-		operations.CreateCommand{Code: "appdup1", Name: "Second"}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.CreateApplication(repo),
+		operations.CreateCommand{Code: "appdup1", Name: "Second"})
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "CODE_EXISTS")
 }
 
@@ -141,14 +152,14 @@ func TestUpdateApplication_HappyPath(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreateApp(t, repo, uow, "appupd1", "Before")
 
-	committed, err := operations.UpdateApplication(ctx, repo, uow, operations.UpdateCommand{
+	ev, err := runAuthorized(uow, operations.UpdateApplication(repo), operations.UpdateCommand{
 		ID:          seeded.ApplicationID,
 		Name:        ptr("  After  "),
 		Description: ptr("after"),
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.ApplicationID, committed.Event().ApplicationID)
-	assert.Equal(t, "After", committed.Event().Name)
+	assert.Equal(t, seeded.ApplicationID, ev.ApplicationID)
+	assert.Equal(t, "After", ev.Name)
 
 	got, err := repo.FindByID(ctx, seeded.ApplicationID)
 	require.NoError(t, err)
@@ -177,7 +188,7 @@ func TestUpdateApplication_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.UpdateApplication(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.UpdateApplication(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -192,11 +203,11 @@ func TestDeleteApplication_HappyPath(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreateApp(t, repo, uow, "appdel1", "Doomed")
 
-	committed, err := operations.DeleteApplication(ctx, repo, uow,
-		operations.DeleteCommand{ID: seeded.ApplicationID}, testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.DeleteApplication(repo),
+		operations.DeleteCommand{ID: seeded.ApplicationID})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.ApplicationID, committed.Event().ApplicationID)
-	assert.Equal(t, "appdel1", committed.Event().Code)
+	assert.Equal(t, seeded.ApplicationID, ev.ApplicationID)
+	assert.Equal(t, "appdel1", ev.Code)
 
 	got, err := repo.FindByID(ctx, seeded.ApplicationID)
 	require.NoError(t, err)
@@ -208,12 +219,12 @@ func TestDeleteApplication_Errors(t *testing.T) {
 	repo := application.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.DeleteApplication(context.Background(), repo, uow,
-		operations.DeleteCommand{}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.DeleteApplication(repo),
+		operations.DeleteCommand{})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = operations.DeleteApplication(context.Background(), repo, uow,
-		operations.DeleteCommand{ID: "app_doesnotexist1"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.DeleteApplication(repo),
+		operations.DeleteCommand{ID: "app_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "Application_NOT_FOUND")
 }
 
@@ -226,20 +237,20 @@ func TestDeactivateAndActivateApplication_HappyPath(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreateApp(t, repo, uow, "appact1", "Toggle Me")
 
-	committed, err := operations.DeactivateApplication(ctx, repo, uow,
-		operations.DeactivateCommand{ID: seeded.ApplicationID}, testpg.TestEC())
+	deactivated, err := runAuthorized(uow, operations.DeactivateApplication(repo),
+		operations.DeactivateCommand{ID: seeded.ApplicationID})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.ApplicationID, committed.Event().ApplicationID)
+	assert.Equal(t, seeded.ApplicationID, deactivated.ApplicationID)
 
 	got, err := repo.FindByID(ctx, seeded.ApplicationID)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.False(t, got.Active, "deactivate must flip Active → false")
 
-	reactivated, err := operations.ActivateApplication(ctx, repo, uow,
-		operations.ActivateCommand{ID: seeded.ApplicationID}, testpg.TestEC())
+	reactivated, err := runAuthorized(uow, operations.ActivateApplication(repo),
+		operations.ActivateCommand{ID: seeded.ApplicationID})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.ApplicationID, reactivated.Event().ApplicationID)
+	assert.Equal(t, seeded.ApplicationID, reactivated.ApplicationID)
 
 	got, err = repo.FindByID(ctx, seeded.ApplicationID)
 	require.NoError(t, err)
@@ -252,12 +263,12 @@ func TestActivateApplication_Errors(t *testing.T) {
 	repo := application.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.ActivateApplication(context.Background(), repo, uow,
-		operations.ActivateCommand{}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.ActivateApplication(repo),
+		operations.ActivateCommand{})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = operations.ActivateApplication(context.Background(), repo, uow,
-		operations.ActivateCommand{ID: "app_doesnotexist1"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.ActivateApplication(repo),
+		operations.ActivateCommand{ID: "app_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "Application_NOT_FOUND")
 }
 
@@ -266,12 +277,12 @@ func TestDeactivateApplication_Errors(t *testing.T) {
 	repo := application.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.DeactivateApplication(context.Background(), repo, uow,
-		operations.DeactivateCommand{}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.DeactivateApplication(repo),
+		operations.DeactivateCommand{})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = operations.DeactivateApplication(context.Background(), repo, uow,
-		operations.DeactivateCommand{ID: "app_doesnotexist1"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.DeactivateApplication(repo),
+		operations.DeactivateCommand{ID: "app_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "Application_NOT_FOUND")
 }
 
@@ -289,12 +300,10 @@ func TestEnableApplicationForClient_HappyPath(t *testing.T) {
 	app := mustCreateApp(t, apps, uow, "appencl1", "Enable Me")
 	cl := mustCreateClient(t, uow, "Enable Client", "appencl-client1")
 
-	committed, err := operations.EnableApplicationForClient(ctx, apps, clients, configs, uow,
-		operations.EnableForClientCommand{ApplicationID: app.ApplicationID, ClientID: cl.ClientID},
-		testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.EnableApplicationForClient(apps, clients, configs),
+		operations.EnableForClientCommand{ApplicationID: app.ApplicationID, ClientID: cl.ClientID})
 	require.NoError(t, err)
 
-	ev := committed.Event()
 	assert.Equal(t, app.ApplicationID, ev.ApplicationID)
 	assert.Equal(t, cl.ClientID, ev.ClientID)
 	assert.NotEmpty(t, ev.ConfigID)
@@ -332,8 +341,7 @@ func TestEnableApplicationForClient_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.EnableApplicationForClient(context.Background(),
-				apps, clients, configs, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.EnableApplicationForClient(apps, clients, configs), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -351,16 +359,14 @@ func TestDisableApplicationForClient_HappyPath(t *testing.T) {
 	app := mustCreateApp(t, apps, uow, "appdiscl1", "Disable Me")
 	cl := mustCreateClient(t, uow, "Disable Client", "appdiscl-client1")
 
-	enabled, err := operations.EnableApplicationForClient(ctx, apps, clients, configs, uow,
-		operations.EnableForClientCommand{ApplicationID: app.ApplicationID, ClientID: cl.ClientID},
-		testpg.TestEC())
+	enabled, err := runAuthorized(uow, operations.EnableApplicationForClient(apps, clients, configs),
+		operations.EnableForClientCommand{ApplicationID: app.ApplicationID, ClientID: cl.ClientID})
 	require.NoError(t, err)
 
-	disabled, err := operations.DisableApplicationForClient(ctx, configs, uow,
-		operations.DisableForClientCommand{ApplicationID: app.ApplicationID, ClientID: cl.ClientID},
-		testpg.TestEC())
+	disabled, err := runAuthorized(uow, operations.DisableApplicationForClient(configs),
+		operations.DisableForClientCommand{ApplicationID: app.ApplicationID, ClientID: cl.ClientID})
 	require.NoError(t, err)
-	assert.Equal(t, enabled.Event().ConfigID, disabled.Event().ConfigID,
+	assert.Equal(t, enabled.ConfigID, disabled.ConfigID,
 		"disable flips the SAME config row, not a new one")
 
 	cfg, err := configs.FindByApplicationAndClient(ctx, app.ApplicationID, cl.ClientID)
@@ -369,11 +375,10 @@ func TestDisableApplicationForClient_HappyPath(t *testing.T) {
 	assert.False(t, cfg.Enabled)
 
 	// Round-trip: re-enabling flips the existing disabled row back.
-	reenabled, err := operations.EnableApplicationForClient(ctx, apps, clients, configs, uow,
-		operations.EnableForClientCommand{ApplicationID: app.ApplicationID, ClientID: cl.ClientID},
-		testpg.TestEC())
+	reenabled, err := runAuthorized(uow, operations.EnableApplicationForClient(apps, clients, configs),
+		operations.EnableForClientCommand{ApplicationID: app.ApplicationID, ClientID: cl.ClientID})
 	require.NoError(t, err)
-	assert.Equal(t, cfg.ID, reenabled.Event().ConfigID, "re-enable reuses the existing row")
+	assert.Equal(t, cfg.ID, reenabled.ConfigID, "re-enable reuses the existing row")
 
 	cfg, err = configs.FindByApplicationAndClient(ctx, app.ApplicationID, cl.ClientID)
 	require.NoError(t, err)
@@ -399,8 +404,7 @@ func TestDisableApplicationForClient_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.DisableApplicationForClient(context.Background(),
-				configs, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.DisableApplicationForClient(configs), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -436,26 +440,26 @@ func TestUpdateClientApplications_HappyPath(t *testing.T) {
 	}
 
 	// 1. Initial set: [A, B] — both freshly created enabled.
-	first, err := operations.UpdateClientApplications(ctx, apps, clients, configs, uow,
+	first, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.UpdateClientApplications(apps, clients, configs),
 		operations.UpdateClientApplicationsCommand{
 			ClientID:              cl.ClientID,
 			EnabledApplicationIDs: []string{appA.ApplicationID, appB.ApplicationID},
 		}, ec)
 	require.NoError(t, err)
-	assert.ElementsMatch(t, []string{appA.ApplicationID, appB.ApplicationID}, first.Event().EnabledAdded)
-	assert.Empty(t, first.Event().DisabledRemoved)
+	assert.ElementsMatch(t, []string{appA.ApplicationID, appB.ApplicationID}, first.EnabledAdded)
+	assert.Empty(t, first.DisabledRemoved)
 	assert.Equal(t, map[string]bool{appA.ApplicationID: true, appB.ApplicationID: true}, enabledByApp())
 
 	// 2. Replace with [B, C]: A flips to disabled (row kept), B untouched,
 	//    C freshly enabled.
-	second, err := operations.UpdateClientApplications(ctx, apps, clients, configs, uow,
+	second, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.UpdateClientApplications(apps, clients, configs),
 		operations.UpdateClientApplicationsCommand{
 			ClientID:              cl.ClientID,
 			EnabledApplicationIDs: []string{appB.ApplicationID, appC.ApplicationID},
 		}, ec)
 	require.NoError(t, err)
-	assert.ElementsMatch(t, []string{appC.ApplicationID}, second.Event().EnabledAdded)
-	assert.ElementsMatch(t, []string{appA.ApplicationID}, second.Event().DisabledRemoved)
+	assert.ElementsMatch(t, []string{appC.ApplicationID}, second.EnabledAdded)
+	assert.ElementsMatch(t, []string{appA.ApplicationID}, second.DisabledRemoved)
 	assert.Equal(t, map[string]bool{
 		appA.ApplicationID: false,
 		appB.ApplicationID: true,
@@ -463,14 +467,14 @@ func TestUpdateClientApplications_HappyPath(t *testing.T) {
 	}, enabledByApp(), "disable keeps the row; the desired set is enabled")
 
 	// 3. Idempotent re-apply: empty diff still emits the rollup event.
-	third, err := operations.UpdateClientApplications(ctx, apps, clients, configs, uow,
+	third, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.UpdateClientApplications(apps, clients, configs),
 		operations.UpdateClientApplicationsCommand{
 			ClientID:              cl.ClientID,
 			EnabledApplicationIDs: []string{appB.ApplicationID, appC.ApplicationID},
 		}, ec)
 	require.NoError(t, err)
-	assert.Empty(t, third.Event().EnabledAdded)
-	assert.Empty(t, third.Event().DisabledRemoved)
+	assert.Empty(t, third.EnabledAdded)
+	assert.Empty(t, third.DisabledRemoved)
 }
 
 func TestUpdateClientApplications_Errors(t *testing.T) {
@@ -499,8 +503,7 @@ func TestUpdateClientApplications_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.UpdateClientApplications(context.Background(),
-				apps, clients, configs, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.UpdateClientApplications(apps, clients, configs), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}

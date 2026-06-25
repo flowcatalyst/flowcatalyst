@@ -14,6 +14,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -71,25 +72,28 @@ func (s *State) list(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[Co
 }
 
 func (s *State) add(ctx context.Context, in *apicommon.In[AddOriginRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	// Coarse anchor check at the controller: CORS origins are platform-owned
+	// config with no per-client resource dimension, so the use case carries no
+	// resource-level authz (Authorize = usecaseop.Public).
+	if err := auth.RequireAnchor(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.AddOrigin(ctx, s.Repo, s.UoW, in.Body.toCommand(), ec)
+	ec := auth.NewExecutionContext(ctx)
+	event, err := usecaseop.Run(ctx, s.UoW, operations.AddOrigin(s.Repo), in.Body.toCommand(), ec)
 	if err != nil {
 		return nil, err
 	}
-	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: committed.Event().OriginID}}, nil
+	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: event.OriginID}}, nil
 }
 
 func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	// Coarse anchor check at the controller (see add): no resource-level authz
+	// in the use case.
+	if err := auth.RequireAnchor(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.DeleteOrigin(ctx, s.Repo, s.UoW, operations.DeleteCommand{OriginID: in.ID}, ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeleteOrigin(s.Repo), operations.DeleteCommand{OriginID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil

@@ -17,6 +17,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 )
 
 func TestMain(m *testing.M) { testpg.RunMain(m) }
@@ -34,7 +35,7 @@ func TestSyncPrincipals_Endpoint_SetsPasswordHash(t *testing.T) {
 
 	// Seed the application the endpoint scopes to (resolveApp → FindByCode).
 	appCode := "syncpwhttp"
-	_, err := appops.CreateApplication(ctx, application.NewRepository(pool), uow,
+	_, err := usecaseop.Run(ctx, uow, appops.CreateApplication(application.NewRepository(pool)),
 		appops.CreateCommand{Code: appCode, Name: "Sync PW HTTP"}, testpg.TestEC())
 	require.NoError(t, err)
 

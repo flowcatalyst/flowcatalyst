@@ -18,6 +18,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -460,12 +461,12 @@ func (s *RolesState) create(w http.ResponseWriter, r *http.Request) {
 		ClientManaged:   body.ClientManaged,
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.CreateRole(r.Context(), s.Roles, s.UoW, cmd, ec)
+	event, err := usecaseop.Run(r.Context(), s.UoW, operations.CreateRole(s.Roles), cmd, ec)
 	if err != nil {
 		httperror.Write(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, createdResponse{ID: committed.Event().RoleID})
+	writeJSON(w, http.StatusCreated, createdResponse{ID: event.RoleID})
 }
 
 // PUT /bff/roles/{roleName}
@@ -495,7 +496,7 @@ func (s *RolesState) update(w http.ResponseWriter, r *http.Request) {
 		cmd.Permissions = *body.Permissions
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.UpdateRole(r.Context(), s.Roles, s.UoW, cmd, ec); err != nil {
+	if _, err := usecaseop.Run(r.Context(), s.UoW, operations.UpdateRole(s.Roles), cmd, ec); err != nil {
 		httperror.Write(w, err)
 		return
 	}
@@ -515,12 +516,11 @@ func (s *RolesState) syncPlatform(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.SyncPlatformRoles(r.Context(), s.Roles, s.UoW, seed.PlatformRoles(), ec)
+	ev, err := usecaseop.Run(r.Context(), s.UoW, operations.SyncPlatformRoles(s.Roles, seed.PlatformRoles()), operations.SyncPlatformRolesCommand{}, ec)
 	if err != nil {
 		httperror.Write(w, err)
 		return
 	}
-	ev := committed.Event()
 	writeJSON(w, http.StatusOK, syncPlatformRolesResponse{
 		Created: ev.Created,
 		Updated: ev.Updated,
@@ -543,7 +543,7 @@ func (s *RolesState) delete(w http.ResponseWriter, r *http.Request) {
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
 	cmd := operations.DeleteCommand{ID: role.ID}
-	if _, err := operations.DeleteRole(r.Context(), s.Roles, s.UoW, cmd, ec); err != nil {
+	if _, err := usecaseop.Run(r.Context(), s.UoW, operations.DeleteRole(s.Roles), cmd, ec); err != nil {
 		httperror.Write(w, err)
 		return
 	}

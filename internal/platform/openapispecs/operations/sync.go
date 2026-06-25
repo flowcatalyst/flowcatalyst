@@ -7,9 +7,8 @@ import (
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/openapispecs"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 )
 
 // SyncOpenApiSpecCommand is the input DTO. The version is read from
@@ -27,103 +26,108 @@ type SyncOpenApiSpecCommand struct {
 // synced event with Unchanged=true) or flips the prior CURRENT to
 // ARCHIVED and inserts a new CURRENT.
 //
-// Mirrors Rust's SyncOpenApiSpecUseCase. Writes go through the repo
-// DIRECTLY — the UoW envelope is reserved for the tail event emission.
+// Mirrors Rust's SyncOpenApiSpecUseCase. The spec rows are written through the
+// repo DIRECTLY in Execute (archive prior + insert new) — the envelope's
+// committed [Plan] is reserved for the tail event emission ([usecaseop.Emit]).
 // Concurrent dual syncs are caught by the partial unique index on
-// (application_id) WHERE status='CURRENT'; the loser sees a
-// unique-violation error.
-func SyncOpenApiSpec(
-	ctx context.Context,
-	repo *openapispecs.Repository,
-	uow *usecasepgx.UnitOfWork,
-	cmd SyncOpenApiSpecCommand,
-	ec usecase.ExecutionContext,
-) (commit.Committed[ApplicationOpenApiSpecSynced], error) {
-	var zero commit.Committed[ApplicationOpenApiSpecSynced]
+// (application_id) WHERE status='CURRENT'; the loser sees a unique-violation error.
+//
+// Authorization is [usecaseop.Public]: this op is reached by two entry points
+// with different gating — the anchor-only BFF platform-spec sync and the
+// app-scoped SDK sync (CanSyncApplicationOpenAPI + per-application access).
+// Each entry point keeps its own gate.
+func SyncOpenApiSpec(repo *openapispecs.Repository) usecaseop.Operation[SyncOpenApiSpecCommand, ApplicationOpenApiSpecSynced] {
+	return usecaseop.Operation[SyncOpenApiSpecCommand, ApplicationOpenApiSpecSynced]{
+		Name: "SyncOpenApiSpec",
+		Validate: func(_ context.Context, cmd SyncOpenApiSpecCommand) error {
+			if strings.TrimSpace(cmd.ApplicationID) == "" {
+				return usecase.Validation("APPLICATION_ID_REQUIRED", "applicationId is required")
+			}
+			if strings.TrimSpace(cmd.ApplicationCode) == "" {
+				return usecase.Validation("APPLICATION_CODE_REQUIRED", "applicationCode is required")
+			}
+			if !isJSONObject(cmd.Spec) {
+				return usecase.Validation("INVALID_OPENAPI_SPEC", "OpenAPI spec must be a JSON object")
+			}
+			if !hasOpenAPIField(cmd.Spec) {
+				return usecase.Validation("INVALID_OPENAPI_SPEC",
+					"Spec is missing the top-level `openapi` (or `swagger`) field")
+			}
+			return nil
+		},
+		Authorize: usecaseop.Public[SyncOpenApiSpecCommand],
+		Execute: func(ctx context.Context, cmd SyncOpenApiSpecCommand, ec usecase.ExecutionContext) (usecaseop.Plan[ApplicationOpenApiSpecSynced], error) {
+			prior, err := repo.FindCurrentByApplication(ctx, cmd.ApplicationID)
+			if err != nil {
+				return nil, usecase.Internal("REPO", "find_current_by_application failed", err)
+			}
 
-	if strings.TrimSpace(cmd.ApplicationID) == "" {
-		return zero, usecase.Validation("APPLICATION_ID_REQUIRED", "applicationId is required")
-	}
-	if strings.TrimSpace(cmd.ApplicationCode) == "" {
-		return zero, usecase.Validation("APPLICATION_CODE_REQUIRED", "applicationCode is required")
-	}
-	if !isJSONObject(cmd.Spec) {
-		return zero, usecase.Validation("INVALID_OPENAPI_SPEC", "OpenAPI spec must be a JSON object")
-	}
-	if !hasOpenAPIField(cmd.Spec) {
-		return zero, usecase.Validation("INVALID_OPENAPI_SPEC",
-			"Spec is missing the top-level `openapi` (or `swagger`) field")
-	}
+			now := time.Now().UTC()
+			newHash := openapispecs.SpecHash(cmd.Spec)
 
-	prior, err := repo.FindCurrentByApplication(ctx, cmd.ApplicationID)
-	if err != nil {
-		return zero, usecase.Internal("REPO", "find_current_by_application failed", err)
-	}
+			// No-op short-circuit on byte-identical content.
+			if prior != nil && prior.SpecHash == newHash {
+				event := ApplicationOpenApiSpecSynced{
+					Metadata:        usecase.NewEventMetadata(ec, SpecSyncedType, Source, subjectFor(prior.ID)),
+					ApplicationID:   cmd.ApplicationID,
+					ApplicationCode: cmd.ApplicationCode,
+					SpecID:          prior.ID,
+					Version:         prior.Version,
+					SpecHash:        prior.SpecHash,
+					HasBreaking:     false,
+					Unchanged:       true,
+				}
+				return usecaseop.Emit(event), nil
+			}
 
-	now := time.Now().UTC()
-	newHash := openapispecs.SpecHash(cmd.Spec)
+			var (
+				notes           openapispecs.ChangeNotes
+				summary         string
+				archivedVersion *string
+			)
+			if prior != nil {
+				notes, summary = openapispecs.ComputeChangeNotes(prior.Spec, cmd.Spec)
+				v := prior.Version
+				archivedVersion = &v
+				if _, err := repo.ArchiveCurrent(ctx, cmd.ApplicationID, notes, summary); err != nil {
+					return nil, usecase.Internal("REPO", "archive_current failed", err)
+				}
+			}
 
-	// No-op short-circuit on byte-identical content.
-	if prior != nil && prior.SpecHash == newHash {
-		event := ApplicationOpenApiSpecSynced{
-			Metadata:        usecase.NewEventMetadata(ec, SpecSyncedType, Source, subjectFor(prior.ID)),
-			ApplicationID:   cmd.ApplicationID,
-			ApplicationCode: cmd.ApplicationCode,
-			SpecID:          prior.ID,
-			Version:         prior.Version,
-			SpecHash:        prior.SpecHash,
-			HasBreaking:     false,
-			Unchanged:       true,
-		}
-		return commit.Emit(ctx, uow, event, cmd)
-	}
+			versionCandidate := extractVersion(cmd.Spec, now)
+			finalVersion := versionCandidate
+			exists, err := repo.ExistsByApplicationAndVersion(ctx, cmd.ApplicationID, versionCandidate)
+			if err != nil {
+				return nil, usecase.Internal("REPO", "exists_by_application_and_version failed", err)
+			}
+			if exists {
+				finalVersion = versionCandidate + "+" + now.Format("20060102150405")
+			}
 
-	var (
-		notes           openapispecs.ChangeNotes
-		summary         string
-		archivedVersion *string
-	)
-	if prior != nil {
-		notes, summary = openapispecs.ComputeChangeNotes(prior.Spec, cmd.Spec)
-		v := prior.Version
-		archivedVersion = &v
-		if _, err := repo.ArchiveCurrent(ctx, cmd.ApplicationID, notes, summary); err != nil {
-			return zero, usecase.Internal("REPO", "archive_current failed", err)
-		}
-	}
+			newSpec := openapispecs.New(cmd.ApplicationID, finalVersion, cmd.Spec, newHash)
+			newSpec.SyncedAt = now
+			if ec.PrincipalID != "" {
+				pid := ec.PrincipalID
+				newSpec.SyncedBy = &pid
+			}
+			if err := repo.Insert(ctx, newSpec); err != nil {
+				return nil, usecase.Internal("REPO", "insert failed", err)
+			}
 
-	versionCandidate := extractVersion(cmd.Spec, now)
-	finalVersion := versionCandidate
-	exists, err := repo.ExistsByApplicationAndVersion(ctx, cmd.ApplicationID, versionCandidate)
-	if err != nil {
-		return zero, usecase.Internal("REPO", "exists_by_application_and_version failed", err)
+			event := ApplicationOpenApiSpecSynced{
+				Metadata:             usecase.NewEventMetadata(ec, SpecSyncedType, Source, subjectFor(newSpec.ID)),
+				ApplicationID:        cmd.ApplicationID,
+				ApplicationCode:      cmd.ApplicationCode,
+				SpecID:               newSpec.ID,
+				Version:              newSpec.Version,
+				SpecHash:             newSpec.SpecHash,
+				ArchivedPriorVersion: archivedVersion,
+				HasBreaking:          notes.HasBreaking,
+				Unchanged:            false,
+			}
+			return usecaseop.Emit(event), nil
+		},
 	}
-	if exists {
-		finalVersion = versionCandidate + "+" + now.Format("20060102150405")
-	}
-
-	newSpec := openapispecs.New(cmd.ApplicationID, finalVersion, cmd.Spec, newHash)
-	newSpec.SyncedAt = now
-	if ec.PrincipalID != "" {
-		pid := ec.PrincipalID
-		newSpec.SyncedBy = &pid
-	}
-	if err := repo.Insert(ctx, newSpec); err != nil {
-		return zero, usecase.Internal("REPO", "insert failed", err)
-	}
-
-	event := ApplicationOpenApiSpecSynced{
-		Metadata:             usecase.NewEventMetadata(ec, SpecSyncedType, Source, subjectFor(newSpec.ID)),
-		ApplicationID:        cmd.ApplicationID,
-		ApplicationCode:      cmd.ApplicationCode,
-		SpecID:               newSpec.ID,
-		Version:              newSpec.Version,
-		SpecHash:             newSpec.SpecHash,
-		ArchivedPriorVersion: archivedVersion,
-		HasBreaking:          notes.HasBreaking,
-		Unchanged:            false,
-	}
-	return commit.Emit(ctx, uow, event, cmd)
 }
 
 // extractVersion reads `info.version` from the spec; falls back to

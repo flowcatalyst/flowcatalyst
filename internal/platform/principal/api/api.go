@@ -32,6 +32,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -303,15 +304,15 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreatePrincipalRequ
 	if err := auth.RequireUserAdmin(ac, in.Body.ClientID); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.CreateUser(ctx, s.Repo, s.UoW, in.Body.toCommand(), ec)
+	ec := auth.NewExecutionContext(ctx)
+	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateUser(s.Repo), in.Body.toCommand(), ec)
 	if err != nil {
 		return nil, err
 	}
-	if created, ferr := s.Repo.FindByID(ctx, committed.Event().UserID); ferr == nil && created != nil {
+	if created, ferr := s.Repo.FindByID(ctx, event.UserID); ferr == nil && created != nil {
 		s.notifyNewUser(ctx, created, in.Body.Password)
 	}
-	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: committed.Event().UserID}}, nil
+	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: event.UserID}}, nil
 }
 
 // bulkImport onboards a list of CLIENT users under one client (CSV import).
@@ -410,15 +411,15 @@ func (s *State) importRow(ctx context.Context, ac *auth.AuthContext, ec usecase.
 	// ("set your password") so they can onboard.
 	cid := clientID
 	uname := name
-	committed, err := operations.CreateUser(ctx, s.Repo, s.UoW, operations.CreateCommand{
+	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateUser(s.Repo), operations.CreateCommand{
 		Email: email, Name: &uname, Scope: "CLIENT", ClientID: &cid,
 	}, ec)
 	if err != nil {
 		return "error", errMessage(err)
 	}
-	userID := committed.Event().UserID
+	userID := event.UserID
 	if len(roles) > 0 {
-		if _, err := operations.AssignRoles(ctx, s.Repo, s.Roles, s.UoW,
+		if _, err := usecaseop.Run(ctx, s.UoW, operations.AssignRoles(s.Repo, s.Roles),
 			operations.AssignRolesCommand{UserID: userID, Roles: roles}, ec); err != nil {
 			return "created", "created, but roles not applied: " + errMessage(err)
 		}
@@ -528,7 +529,7 @@ func (s *State) createUser(ctx context.Context, in *apicommon.In[CreateUserReque
 		return nil, err
 	}
 
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	ec := auth.NewExecutionContext(ctx)
 
 	// Partner-merge: when a PARTNER user already exists for this email, grant
 	// access to the requested client rather than recreating (keeps events +
@@ -542,7 +543,7 @@ func (s *State) createUser(ctx context.Context, in *apicommon.In[CreateUserReque
 			if existing.ClientID != nil && clientID != nil && *existing.ClientID == *clientID {
 				return nil, usecase.Conflict("EMAIL_EXISTS", "User with email '"+email+"' already exists")
 			}
-			if _, gerr := operations.GrantClientAccess(ctx, s.Repo, s.Clients, s.GrantRepo, s.UoW,
+			if _, gerr := usecaseop.Run(ctx, s.UoW, operations.GrantClientAccess(s.Repo, s.Clients, s.GrantRepo),
 				operations.GrantClientAccessCommand{UserID: existing.ID, ClientID: derefStr(clientID)}, ec); gerr != nil {
 				return nil, gerr
 			}
@@ -555,7 +556,7 @@ func (s *State) createUser(ctx context.Context, in *apicommon.In[CreateUserReque
 	}
 
 	name := in.Body.Name
-	committed, err := operations.CreateUser(ctx, s.Repo, s.UoW, operations.CreateCommand{
+	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateUser(s.Repo), operations.CreateCommand{
 		Email:    email,
 		Name:     &name,
 		Scope:    scope,
@@ -570,15 +571,15 @@ func (s *State) createUser(ctx context.Context, in *apicommon.In[CreateUserReque
 	// New PARTNER user: grant the requested client (parity with Rust's
 	// granted_client_ids = [clientId]).
 	if scope == "PARTNER" && clientID != nil {
-		if _, gerr := operations.GrantClientAccess(ctx, s.Repo, s.Clients, s.GrantRepo, s.UoW,
-			operations.GrantClientAccessCommand{UserID: committed.Event().UserID, ClientID: *clientID}, ec); gerr != nil {
+		if _, gerr := usecaseop.Run(ctx, s.UoW, operations.GrantClientAccess(s.Repo, s.Clients, s.GrantRepo),
+			operations.GrantClientAccessCommand{UserID: event.UserID, ClientID: *clientID}, ec); gerr != nil {
 			return nil, gerr
 		}
 	}
 
-	created, err := s.Repo.FindByID(ctx, committed.Event().UserID)
+	created, err := s.Repo.FindByID(ctx, event.UserID)
 	if err != nil || created == nil {
-		return nil, httperror.NotFound("Principal", committed.Event().UserID)
+		return nil, httperror.NotFound("Principal", event.UserID)
 	}
 	s.notifyNewUser(ctx, created, in.Body.Password)
 	return &apicommon.Out[PrincipalResponse]{Body: fromEntity(created)}, nil
@@ -819,14 +820,13 @@ type updateInput struct {
 
 func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Out[PrincipalResponse], error) {
 	ac := auth.FromContext(ctx)
+	// Coarse permission at the controller; the use case enforces the per-resource
+	// scope check (blockNonClientTarget + CheckScopeAccess) post-load.
 	if err := auth.CanWritePrincipals(ac); err != nil {
 		return nil, err
 	}
-	if err := s.requireScopeByID(ctx, ac, in.ID); err != nil {
-		return nil, err
-	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.UpdateUser(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateUser(s.Repo), in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
 	p, err := s.Repo.FindByID(ctx, in.ID)
@@ -840,30 +840,26 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Out[Pri
 }
 
 func (s *State) activate(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[apicommon.StatusChangeResponse], error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWritePrincipals(ac); err != nil {
+	// Coarse permission at the controller; the use case enforces the per-resource
+	// scope check post-load.
+	if err := auth.CanWritePrincipals(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	if err := s.requireScopeByID(ctx, ac, in.ID); err != nil {
-		return nil, err
-	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.ActivateUser(ctx, s.Repo, s.UoW, operations.ActivateCommand{ID: in.ID}, ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.ActivateUser(s.Repo), operations.ActivateCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Out[apicommon.StatusChangeResponse]{Body: apicommon.StatusChangeResponse{Message: "Principal activated"}}, nil
 }
 
 func (s *State) deactivate(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[apicommon.StatusChangeResponse], error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWritePrincipals(ac); err != nil {
+	// Coarse permission at the controller; the use case enforces the per-resource
+	// scope check post-load.
+	if err := auth.CanWritePrincipals(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	if err := s.requireScopeByID(ctx, ac, in.ID); err != nil {
-		return nil, err
-	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.DeactivateUser(ctx, s.Repo, s.UoW, operations.DeactivateCommand{ID: in.ID}, ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeactivateUser(s.Repo), operations.DeactivateCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Out[apicommon.StatusChangeResponse]{Body: apicommon.StatusChangeResponse{Message: "Principal deactivated"}}, nil
@@ -882,8 +878,8 @@ func (s *State) resetPassword(ctx context.Context, in *resetPasswordInput) (*api
 	if err := s.requireScopeByID(ctx, ac, in.ID); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.ResetPassword(ctx, s.Repo, s.UoW,
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.ResetPassword(s.Repo),
 		operations.ResetPasswordCommand{
 			ID:                        in.ID,
 			NewPassword:               in.Body.NewPassword,
@@ -895,15 +891,13 @@ func (s *State) resetPassword(ctx context.Context, in *resetPasswordInput) (*api
 }
 
 func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanDeletePrincipals(ac); err != nil {
+	// Coarse permission at the controller; the use case enforces the per-resource
+	// scope check post-load.
+	if err := auth.CanDeletePrincipals(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	if err := s.requireScopeByID(ctx, ac, in.ID); err != nil {
-		return nil, err
-	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.DeleteUser(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeleteUser(s.Repo), operations.DeleteCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
@@ -916,18 +910,15 @@ type assignRolesInput struct {
 
 func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*apicommon.Out[RolesAssignedResponse], error) {
 	ac := auth.FromContext(ctx)
+	// Load the target to shape the desired role set for non-anchor admins; the
+	// per-resource authorization (RequireUserAdmin + blockNonClientTarget) is
+	// enforced inside the AssignRoles use case post-load.
 	p, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if p == nil {
 		return nil, httperror.NotFound("Principal", in.ID)
-	}
-	if err := auth.RequireUserAdmin(ac, p.ClientID); err != nil {
-		return nil, err
-	}
-	if err := blockNonClientTarget(ac, p); err != nil {
-		return nil, err
 	}
 	// A non-anchor administrator (client-admin) may only assign
 	// application-scoped roles for applications their client can access —
@@ -954,8 +945,8 @@ func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*apicomm
 	added := setDifference(desired, old)
 	removed := setDifference(old, desired)
 
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.AssignRoles(ctx, s.Repo, s.Roles, s.UoW,
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.AssignRoles(s.Repo, s.Roles),
 		operations.AssignRolesCommand{UserID: in.ID, Roles: effectiveRoles}, ec); err != nil {
 		return nil, err
 	}
@@ -980,22 +971,15 @@ type assignAppAccessInput struct {
 
 func (s *State) assignApplicationAccess(ctx context.Context, in *assignAppAccessInput) (*apicommon.Out[SetApplicationAccessResponse], error) {
 	ac := auth.FromContext(ctx)
+	// Load the target to bound the desired application set for non-anchor admins;
+	// the per-resource authorization (RequireUserAdmin + blockNonClientTarget) is
+	// enforced inside the AssignApplicationAccess use case post-load.
 	p, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if p == nil {
 		return nil, httperror.NotFound("Principal", in.ID)
-	}
-	// Anchors manage any user's application access. A non-anchor administrator
-	// (client-admin) may manage their own CLIENT users, bounded to applications
-	// the client can access — they can't grant an app outside the client's reach
-	// and can't strip an existing grant for an app outside it.
-	if err := auth.RequireUserAdmin(ac, p.ClientID); err != nil {
-		return nil, err
-	}
-	if err := blockNonClientTarget(ac, p); err != nil {
-		return nil, err
 	}
 	// Granting all-applications access exceeds any client-bounded reach, so only
 	// an assigner that itself holds all-applications access (e.g. an anchor admin)
@@ -1020,8 +1004,8 @@ func (s *State) assignApplicationAccess(ctx context.Context, in *assignAppAccess
 	added := len(setDifference(desired, old))
 	removed := len(setDifference(old, desired))
 
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.AssignApplicationAccess(ctx, s.Repo, s.Applications, s.UoW,
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.AssignApplicationAccess(s.Repo, s.Applications),
 		operations.AssignApplicationAccessCommand{
 			UserID:          in.ID,
 			ApplicationIDs:  desiredIDs,
@@ -1066,12 +1050,13 @@ type grantClientAccessInput struct {
 }
 
 func (s *State) grantClientAccess(ctx context.Context, in *grantClientAccessInput) (*apicommon.Out[ClientAccessGrantResponse], error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	// Coarse anchor gate at the controller; the use case enforces the domain
+	// invariants (USER/PARTNER, client exists, no duplicate grant).
+	if err := auth.RequireAnchor(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.GrantClientAccess(ctx, s.Repo, s.Clients, s.GrantRepo, s.UoW,
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.GrantClientAccess(s.Repo, s.Clients, s.GrantRepo),
 		operations.GrantClientAccessCommand{UserID: in.ID, ClientID: in.Body.ClientID}, ec); err != nil {
 		return nil, err
 	}
@@ -1095,16 +1080,17 @@ type setClientAssociationInput struct {
 // new home client; mode TO_PARTNER → promote to PARTNER (old + new client).
 // Returns the updated principal.
 func (s *State) setClientAssociation(ctx context.Context, in *setClientAssociationInput) (*apicommon.Out[PrincipalResponse], error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	// Coarse anchor gate at the controller (scope/client changes are anchor-only);
+	// the use case applies the scope change + partner grants atomically.
+	if err := auth.RequireAnchor(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	ec := auth.NewExecutionContext(ctx)
 	mode := ""
 	if in.Body.Mode != nil {
 		mode = strings.ToUpper(strings.TrimSpace(*in.Body.Mode))
 	}
-	if _, err := operations.SetClientAssociation(ctx, s.Repo, s.Clients, s.GrantRepo, s.UoW,
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.SetClientAssociation(s.Repo, s.Clients, s.GrantRepo),
 		operations.SetClientAssociationCommand{
 			UserID:   in.ID,
 			ClientID: in.Body.ClientID,
@@ -1128,12 +1114,13 @@ type revokeClientAccessInput struct {
 }
 
 func (s *State) revokeClientAccess(ctx context.Context, in *revokeClientAccessInput) (*apicommon.Empty, error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	// Coarse anchor gate at the controller; the use case enforces the domain
+	// invariants (USER type, grant exists).
+	if err := auth.RequireAnchor(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.RevokeClientAccess(ctx, s.Repo, s.GrantRepo, s.UoW,
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.RevokeClientAccess(s.Repo, s.GrantRepo),
 		operations.RevokeClientAccessCommand{UserID: in.ID, ClientID: in.ClientID}, ec); err != nil {
 		return nil, err
 	}
@@ -1401,18 +1388,15 @@ type addRoleInput struct {
 
 func (s *State) addRole(ctx context.Context, in *addRoleInput) (*apicommon.Out[PrincipalResponse], error) {
 	ac := auth.FromContext(ctx)
+	// Load the target to bound the role for non-anchor admins and to apply the
+	// idempotent skip; the per-resource authorization (RequireUserAdmin +
+	// blockNonClientTarget) is enforced inside the AssignRoles use case post-load.
 	p, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if p == nil {
 		return nil, httperror.NotFound("Principal", in.ID)
-	}
-	if err := auth.RequireUserAdmin(ac, p.ClientID); err != nil {
-		return nil, err
-	}
-	if err := blockNonClientTarget(ac, p); err != nil {
-		return nil, err
 	}
 	if !ac.IsAnchor() {
 		allowed, aerr := s.clientAppIDs(ctx, clientIDOf(p))
@@ -1426,8 +1410,8 @@ func (s *State) addRole(ctx context.Context, in *addRoleInput) (*apicommon.Out[P
 	roles := uniqueRoleNames(p.Roles)
 	if _, ok := roles[in.Body.Role]; !ok { // skip mutation when already present (idempotent)
 		desired := append(roleNamesFrom(p.Roles), in.Body.Role)
-		ec := usecase.NewExecutionContext(ac.PrincipalID)
-		if _, err := operations.AssignRoles(ctx, s.Repo, s.Roles, s.UoW,
+		ec := auth.NewExecutionContext(ctx)
+		if _, err := usecaseop.Run(ctx, s.UoW, operations.AssignRoles(s.Repo, s.Roles),
 			operations.AssignRolesCommand{UserID: in.ID, Roles: desired}, ec); err != nil {
 			return nil, err
 		}
@@ -1448,18 +1432,15 @@ type removeRoleInput struct {
 
 func (s *State) removeRole(ctx context.Context, in *removeRoleInput) (*apicommon.Out[PrincipalResponse], error) {
 	ac := auth.FromContext(ctx)
+	// Load the target to bound the role for non-anchor admins and to apply the
+	// idempotent skip; the per-resource authorization (RequireUserAdmin +
+	// blockNonClientTarget) is enforced inside the AssignRoles use case post-load.
 	p, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if p == nil {
 		return nil, httperror.NotFound("Principal", in.ID)
-	}
-	if err := auth.RequireUserAdmin(ac, p.ClientID); err != nil {
-		return nil, err
-	}
-	if err := blockNonClientTarget(ac, p); err != nil {
-		return nil, err
 	}
 	// A non-anchor admin may only remove roles they could also assign — so they
 	// can't strip a user's platform / other-application roles.
@@ -1483,8 +1464,8 @@ func (s *State) removeRole(ctx context.Context, in *removeRoleInput) (*apicommon
 		desired = append(desired, r)
 	}
 	if found { // skip mutation when absent (idempotent)
-		ec := usecase.NewExecutionContext(ac.PrincipalID)
-		if _, err := operations.AssignRoles(ctx, s.Repo, s.Roles, s.UoW,
+		ec := auth.NewExecutionContext(ctx)
+		if _, err := usecaseop.Run(ctx, s.UoW, operations.AssignRoles(s.Repo, s.Roles),
 			operations.AssignRolesCommand{UserID: in.ID, Roles: desired}, ec); err != nil {
 			return nil, err
 		}

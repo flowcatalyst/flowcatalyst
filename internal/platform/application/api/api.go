@@ -21,6 +21,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -118,12 +119,12 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreateApplicationRe
 	if err := auth.CanWriteApplications(ac); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.CreateApplication(ctx, s.Repo, s.UoW, in.Body.toCommand(), ec)
+	ec := auth.NewExecutionContext(ctx)
+	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateApplication(s.Repo), in.Body.toCommand(), ec)
 	if err != nil {
 		return nil, err
 	}
-	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: committed.Event().ApplicationID}}, nil
+	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: event.ApplicationID}}, nil
 }
 
 type updateInput struct {
@@ -136,8 +137,8 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, 
 	if err := auth.CanWriteApplications(ac); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.UpdateApplication(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateApplication(s.Repo), in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
@@ -148,8 +149,8 @@ func (s *State) activate(ctx context.Context, in *apicommon.IDInput) (*apicommon
 	if err := auth.CanWriteApplications(ac); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.ActivateApplication(ctx, s.Repo, s.UoW, operations.ActivateCommand{ID: in.ID}, ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.ActivateApplication(s.Repo), operations.ActivateCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return s.refreshedApp(ctx, in.ID)
@@ -160,8 +161,8 @@ func (s *State) deactivate(ctx context.Context, in *apicommon.IDInput) (*apicomm
 	if err := auth.CanWriteApplications(ac); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.DeactivateApplication(ctx, s.Repo, s.UoW, operations.DeactivateCommand{ID: in.ID}, ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeactivateApplication(s.Repo), operations.DeactivateCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return s.refreshedApp(ctx, in.ID)
@@ -185,8 +186,8 @@ func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.E
 	if err := auth.CanDeleteApplications(ac); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.DeleteApplication(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeleteApplication(s.Repo), operations.DeleteCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
@@ -202,8 +203,8 @@ func (s *State) attachServiceAccount(ctx context.Context, in *attachSAInput) (*a
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.AttachServiceAccount(ctx, s.Repo, s.Principals, s.UoW,
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.AttachServiceAccount(s.Repo, s.Principals),
 		operations.AttachServiceAccountCommand{
 			ApplicationID:      in.ID,
 			ServiceAccountID:   in.Body.ServiceAccountID,
@@ -237,8 +238,8 @@ func (s *State) enableForClient(ctx context.Context, in *clientToggleInput) (*ap
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.EnableApplicationForClient(ctx, s.Repo, s.ClientRepo, s.ClientConfigRepo, s.UoW,
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.EnableApplicationForClient(s.Repo, s.ClientRepo, s.ClientConfigRepo),
 		operations.EnableForClientCommand{ApplicationID: in.ID, ClientID: in.ClientID}, ec); err != nil {
 		return nil, err
 	}
@@ -250,8 +251,8 @@ func (s *State) disableForClient(ctx context.Context, in *clientToggleInput) (*a
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.DisableApplicationForClient(ctx, s.ClientConfigRepo, s.UoW,
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.DisableApplicationForClient(s.ClientConfigRepo),
 		operations.DisableForClientCommand{ApplicationID: in.ID, ClientID: in.ClientID}, ec); err != nil {
 		return nil, err
 	}
@@ -270,8 +271,9 @@ func (s *State) provisionServiceAccount(ctx context.Context, in *apicommon.IDInp
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	result, err := operations.ProvisionServiceAccount(ctx, s.Repo, s.ServiceAccounts, s.Principals, s.OAuthClients, s.UoW,
+	ec := auth.NewExecutionContext(ctx)
+	result, err := usecaseop.RunTx(ctx, s.UoW,
+		operations.ProvisionServiceAccount(s.Repo, s.ServiceAccounts, s.Principals, s.OAuthClients),
 		operations.ProvisionServiceAccountCommand{ApplicationID: in.ID}, ec)
 	if err != nil {
 		return nil, err
@@ -320,7 +322,7 @@ func (s *State) provisionLoginClient(ctx context.Context, in *provisionLoginClie
 		clientType = "CONFIDENTIAL"
 	}
 
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	ec := auth.NewExecutionContext(ctx)
 	publicClientID := tsid.Generate(tsid.OAuthClient)
 	cmd := authops.CreateOAuthClientCommand{
 		ClientID:     publicClientID,
@@ -330,7 +332,7 @@ func (s *State) provisionLoginClient(ctx context.Context, in *provisionLoginClie
 		GrantTypes:   []string{"authorization_code", "refresh_token"},
 		Scopes:       []string{"openid", "profile", "email"},
 	}
-	committed, err := authops.CreateOAuthClient(ctx, s.OAuthClients, s.UoW, cmd, ec)
+	event, err := usecaseop.Run(ctx, s.UoW, authops.CreateOAuthClient(s.OAuthClients), cmd, ec)
 	if err != nil {
 		return nil, err
 	}
@@ -338,7 +340,7 @@ func (s *State) provisionLoginClient(ctx context.Context, in *provisionLoginClie
 	// CreateOAuthClient generates the internal row id (`oac_…`) on the
 	// entity; the created event carries it. CONFIDENTIAL clients stash a
 	// once-readable plaintext secret.
-	rowID := committed.Event().OAuthClientID
+	rowID := event.OAuthClientID
 	var secret string
 	if clientType == "CONFIDENTIAL" {
 		if s, ok := authops.PopStashedSecret(rowID); ok {

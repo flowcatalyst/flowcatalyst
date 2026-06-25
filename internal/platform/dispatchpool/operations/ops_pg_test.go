@@ -11,8 +11,10 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -20,16 +22,39 @@ func TestMain(m *testing.M) { testpg.RunMain(m) }
 
 func ptr[T any](v T) *T { return &v }
 
+// runAuthorized drives op through the full use-case envelope (Validate →
+// Authorize → Execute → atomic commit) as an anchor principal — the common
+// case for these tests, which exercise validation, invariants, and
+// persistence rather than authorization itself (see
+// TestDispatchPoolWrites_RequirePermission for that). It mirrors how the HTTP
+// handler runs the operation.
+func runAuthorized[C any, E usecase.DomainEvent](
+	uow *usecasepgx.UnitOfWork, op usecaseop.Operation[C, E], cmd C,
+) (E, error) {
+	return usecaseop.Run(testpg.AnchorCtx(), uow, op, cmd, testpg.TestEC())
+}
+
+// appAccessCtx is an all-applications anchor principal. SyncDispatchPools
+// authorizes against the target application (CanAccessApplication) — a bare
+// AnchorCtx sets Scope=Anchor but NOT AllApplications, so it would be denied.
+// App-scoped sync tests run under this principal so they can reach any
+// application.
+func appAccessCtx() context.Context {
+	return testpg.WithAuth(context.Background(), &auth.AuthContext{
+		PrincipalID: "prn_optestrunner1", Scope: auth.ScopeAnchor, AllApplications: true,
+	})
+}
+
 // mustCreate seeds a dispatch pool through the public operation — the same
 // path production uses. Codes are hand-unique per test: the fixture never
 // truncates between tests, so tests own their rows and never assert
 // table-wide.
 func mustCreate(t *testing.T, repo *dispatchpool.Repository, uow *usecasepgx.UnitOfWork, code, name string) operations.DispatchPoolCreated {
 	t.Helper()
-	committed, err := operations.CreateDispatchPool(context.Background(), repo, uow,
-		operations.CreateCommand{Code: code, Name: name}, testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.CreateDispatchPool(repo),
+		operations.CreateCommand{Code: code, Name: name})
 	require.NoError(t, err)
-	return committed.Event()
+	return ev
 }
 
 // ── Create ────────────────────────────────────────────────────────────────
@@ -42,14 +67,13 @@ func TestCreateDispatchPool_HappyPath(t *testing.T) {
 
 	// Defaults: nil concurrency → 10, nil rateLimit stays nil (no limiter).
 	desc := "router pool"
-	committed, err := operations.CreateDispatchPool(ctx, repo, uow, operations.CreateCommand{
+	ev, err := runAuthorized(uow, operations.CreateDispatchPool(repo), operations.CreateCommand{
 		Code:        "  DPCreate-Happy  ", // op must trim + lowercase
 		Name:        "DP Create Happy",
 		Description: &desc,
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
 
-	ev := committed.Event()
 	assert.NotEmpty(t, ev.PoolID)
 	assert.Equal(t, "dpcreate-happy", ev.Code, "code must be trimmed + lowercased")
 	assert.Equal(t, "DP Create Happy", ev.Name)
@@ -69,15 +93,15 @@ func TestCreateDispatchPool_HappyPath(t *testing.T) {
 	// Explicit values: rateLimit 0 is VALID at create (bound is ≥ 0 — sync's
 	// is ≥ 1, pinned in TestSyncDispatchPools_Validation), concurrency 1 is
 	// the lower bound.
-	committed, err = operations.CreateDispatchPool(ctx, repo, uow, operations.CreateCommand{
+	ev, err = runAuthorized(uow, operations.CreateDispatchPool(repo), operations.CreateCommand{
 		Code:        "dpcreate-explicit",
 		Name:        "DP Create Explicit",
 		RateLimit:   ptr(int32(0)),
 		Concurrency: ptr(int32(1)),
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
 
-	got, err = repo.FindByID(ctx, committed.Event().PoolID)
+	got, err = repo.FindByID(ctx, ev.PoolID)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	require.NotNil(t, got.RateLimit)
@@ -94,14 +118,14 @@ func TestCreateDispatchPool_UnderscoreCode_Succeeds(t *testing.T) {
 	repo := dispatchpool.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	committed, err := operations.CreateDispatchPool(ctx, repo, uow, operations.CreateCommand{
+	ev, err := runAuthorized(uow, operations.CreateDispatchPool(repo), operations.CreateCommand{
 		Code: "dp_underscore_ok",
 		Name: "Underscore Pool",
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err, "underscores in pool codes must be accepted")
-	assert.Equal(t, "dp_underscore_ok", committed.Event().Code)
+	assert.Equal(t, "dp_underscore_ok", ev.Code)
 
-	got, err := repo.FindByID(ctx, committed.Event().PoolID)
+	got, err := repo.FindByID(ctx, ev.PoolID)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, "dp_underscore_ok", got.Code)
@@ -134,7 +158,7 @@ func TestCreateDispatchPool_Validation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.CreateDispatchPool(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.CreateDispatchPool(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, usecase.KindValidation, tc.code)
 		})
 	}
@@ -148,9 +172,46 @@ func TestCreateDispatchPool_DuplicateCode_Conflict(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	mustCreate(t, repo, uow, "dpdup-pool", "First")
 
-	_, err := operations.CreateDispatchPool(context.Background(), repo, uow,
-		operations.CreateCommand{Code: "dpdup-pool", Name: "Second"}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.CreateDispatchPool(repo),
+		operations.CreateCommand{Code: "dpdup-pool", Name: "Second"})
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "CODE_EXISTS")
+}
+
+// TestCreateDispatchPool_ResourceScope proves the use case's per-resource
+// authorization: the coarse "may write dispatch pools" permission is the
+// controller's job, but the use case enforces that you can only bind a pool to
+// a client you can access (and that platform-wide pools require anchor). A
+// client-scoped principal is denied a platform-wide and an other-client pool,
+// but allowed one for its own client.
+func TestCreateDispatchPool_ResourceScope(t *testing.T) {
+	t.Parallel()
+	repo := dispatchpool.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+
+	ownClient := "cli_dpscope_own"
+	clientCtx := testpg.WithAuth(context.Background(), &auth.AuthContext{
+		PrincipalID: "prn_dpscope1",
+		Scope:       auth.ScopeClient,
+		Clients:     []string{ownClient},
+		Permissions: []string{"platform:messaging:dispatch-pool:create"},
+	})
+
+	// Platform-wide (nil ClientID) → cross-client → anchor required → denied.
+	_, err := usecaseop.Run(clientCtx, uow, operations.CreateDispatchPool(repo),
+		operations.CreateCommand{Code: "dpscope-platform", Name: "X"}, testpg.TestEC())
+	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "SCOPE_FORBIDDEN")
+
+	// Bound to a client the principal cannot access → denied.
+	other := "cli_dpscope_other"
+	_, err = usecaseop.Run(clientCtx, uow, operations.CreateDispatchPool(repo),
+		operations.CreateCommand{Code: "dpscope-other", Name: "X", ClientID: &other}, testpg.TestEC())
+	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "SCOPE_FORBIDDEN")
+
+	// Bound to the principal's own client → allowed.
+	ev, err := usecaseop.Run(clientCtx, uow, operations.CreateDispatchPool(repo),
+		operations.CreateCommand{Code: "dpscope-own", Name: "Mine", ClientID: &ownClient}, testpg.TestEC())
+	require.NoError(t, err)
+	assert.Equal(t, "dpscope-own", ev.Code)
 }
 
 // ── Update ────────────────────────────────────────────────────────────────
@@ -163,16 +224,16 @@ func TestUpdateDispatchPool_HappyPath(t *testing.T) {
 	seeded := mustCreate(t, repo, uow, "dpupd-happy", "Before")
 
 	desc := "after"
-	committed, err := operations.UpdateDispatchPool(ctx, repo, uow, operations.UpdateCommand{
+	ev, err := runAuthorized(uow, operations.UpdateDispatchPool(repo), operations.UpdateCommand{
 		ID:          seeded.PoolID,
 		Name:        ptr("  After  "), // op must trim
 		Description: &desc,
 		RateLimit:   ptr(int32(60)),
 		Concurrency: ptr(int32(4)),
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.PoolID, committed.Event().PoolID)
-	assert.Equal(t, "After", committed.Event().Name)
+	assert.Equal(t, seeded.PoolID, ev.PoolID)
+	assert.Equal(t, "After", ev.Name)
 
 	got, err := repo.FindByID(ctx, seeded.PoolID)
 	require.NoError(t, err)
@@ -210,7 +271,7 @@ func TestUpdateDispatchPool_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.UpdateDispatchPool(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.UpdateDispatchPool(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -225,11 +286,11 @@ func TestDeleteDispatchPool_HappyPath(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreate(t, repo, uow, "dpdel-happy", "Doomed")
 
-	committed, err := operations.DeleteDispatchPool(ctx, repo, uow,
-		operations.DeleteCommand{ID: seeded.PoolID}, testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.DeleteDispatchPool(repo),
+		operations.DeleteCommand{ID: seeded.PoolID})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.PoolID, committed.Event().PoolID)
-	assert.Equal(t, "dpdel-happy", committed.Event().Code)
+	assert.Equal(t, seeded.PoolID, ev.PoolID)
+	assert.Equal(t, "dpdel-happy", ev.Code)
 
 	got, err := repo.FindByID(ctx, seeded.PoolID)
 	require.NoError(t, err)
@@ -245,11 +306,11 @@ func TestArchiveDispatchPool_HappyPath(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreate(t, repo, uow, "dparc-happy", "Archive Me")
 
-	committed, err := operations.ArchiveDispatchPool(ctx, repo, uow,
-		operations.ArchiveCommand{ID: seeded.PoolID}, testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.ArchiveDispatchPool(repo),
+		operations.ArchiveCommand{ID: seeded.PoolID})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.PoolID, committed.Event().PoolID)
-	assert.Equal(t, "dparc-happy", committed.Event().Code)
+	assert.Equal(t, seeded.PoolID, ev.PoolID)
+	assert.Equal(t, "dparc-happy", ev.Code)
 
 	got, err := repo.FindByID(ctx, seeded.PoolID)
 	require.NoError(t, err)
@@ -266,21 +327,21 @@ func TestSuspendAndActivateDispatchPool_HappyPath(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreate(t, repo, uow, "dpsts-happy", "Flip Me")
 
-	suspended, err := operations.SuspendDispatchPool(ctx, repo, uow,
-		operations.SuspendCommand{ID: seeded.PoolID}, testpg.TestEC())
+	suspended, err := runAuthorized(uow, operations.SuspendDispatchPool(repo),
+		operations.SuspendCommand{ID: seeded.PoolID})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.PoolID, suspended.Event().PoolID)
-	assert.Equal(t, "dpsts-happy", suspended.Event().Code)
+	assert.Equal(t, seeded.PoolID, suspended.PoolID)
+	assert.Equal(t, "dpsts-happy", suspended.Code)
 
 	got, err := repo.FindByID(ctx, seeded.PoolID)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, dispatchpool.StatusSuspended, got.Status, "suspend must flip ACTIVE → SUSPENDED")
 
-	activated, err := operations.ActivateDispatchPool(ctx, repo, uow,
-		operations.ActivateCommand{ID: seeded.PoolID}, testpg.TestEC())
+	activated, err := runAuthorized(uow, operations.ActivateDispatchPool(repo),
+		operations.ActivateCommand{ID: seeded.PoolID})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.PoolID, activated.Event().PoolID)
+	assert.Equal(t, seeded.PoolID, activated.PoolID)
 
 	got, err = repo.FindByID(ctx, seeded.PoolID)
 	require.NoError(t, err)
@@ -294,26 +355,25 @@ func TestDispatchPoolIDOps_Errors(t *testing.T) {
 	t.Parallel()
 	repo := dispatchpool.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
-	ec := testpg.TestEC()
 
 	ops := []struct {
 		name string
 		call func(id string) error
 	}{
 		{"delete", func(id string) error {
-			_, err := operations.DeleteDispatchPool(context.Background(), repo, uow, operations.DeleteCommand{ID: id}, ec)
+			_, err := runAuthorized(uow, operations.DeleteDispatchPool(repo), operations.DeleteCommand{ID: id})
 			return err
 		}},
 		{"archive", func(id string) error {
-			_, err := operations.ArchiveDispatchPool(context.Background(), repo, uow, operations.ArchiveCommand{ID: id}, ec)
+			_, err := runAuthorized(uow, operations.ArchiveDispatchPool(repo), operations.ArchiveCommand{ID: id})
 			return err
 		}},
 		{"suspend", func(id string) error {
-			_, err := operations.SuspendDispatchPool(context.Background(), repo, uow, operations.SuspendCommand{ID: id}, ec)
+			_, err := runAuthorized(uow, operations.SuspendDispatchPool(repo), operations.SuspendCommand{ID: id})
 			return err
 		}},
 		{"activate", func(id string) error {
-			_, err := operations.ActivateDispatchPool(context.Background(), repo, uow, operations.ActivateCommand{ID: id}, ec)
+			_, err := runAuthorized(uow, operations.ActivateDispatchPool(repo), operations.ActivateCommand{ID: id})
 			return err
 		}},
 	}
@@ -339,7 +399,7 @@ func TestSyncDispatchPools_Upsert(t *testing.T) {
 	ec := testpg.TestEC()
 
 	// rateLimit 1 pins sync's lower bound: ≥ 1 when set (create's is ≥ 0).
-	first, err := operations.SyncDispatchPools(ctx, repo, uow, operations.SyncDispatchPoolsCommand{
+	first, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncDispatchPools(repo), operations.SyncDispatchPoolsCommand{
 		ApplicationCode: "dpsyncapp",
 		Pools: []operations.SyncDispatchPoolInput{
 			{Code: "dpsynup-one", Name: "A", Concurrency: 5},
@@ -347,21 +407,21 @@ func TestSyncDispatchPools_Upsert(t *testing.T) {
 		},
 	}, ec)
 	require.NoError(t, err)
-	assert.Equal(t, uint32(2), first.Event().Created)
-	assert.Equal(t, uint32(0), first.Event().Updated)
-	assert.Equal(t, uint32(0), first.Event().Deleted)
-	assert.Equal(t, []string{"dpsynup-one", "dpsynup-two"}, first.Event().SyncedCodes)
+	assert.Equal(t, uint32(2), first.Created)
+	assert.Equal(t, uint32(0), first.Updated)
+	assert.Equal(t, uint32(0), first.Deleted)
+	assert.Equal(t, []string{"dpsynup-one", "dpsynup-two"}, first.SyncedCodes)
 
-	second, err := operations.SyncDispatchPools(ctx, repo, uow, operations.SyncDispatchPoolsCommand{
+	second, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncDispatchPools(repo), operations.SyncDispatchPoolsCommand{
 		ApplicationCode: "dpsyncapp",
 		Pools: []operations.SyncDispatchPoolInput{
 			{Code: "dpsynup-one", Name: "A renamed", Concurrency: 7, RateLimit: ptr(int32(60))},
 		},
 	}, ec)
 	require.NoError(t, err)
-	assert.Equal(t, uint32(0), second.Event().Created)
-	assert.Equal(t, uint32(1), second.Event().Updated)
-	assert.Equal(t, uint32(0), second.Event().Deleted, "no RemoveUnlisted → nothing archived")
+	assert.Equal(t, uint32(0), second.Created)
+	assert.Equal(t, uint32(1), second.Updated)
+	assert.Equal(t, uint32(0), second.Deleted, "no RemoveUnlisted → nothing archived")
 
 	one, err := repo.FindByCode(ctx, "dpsynup-one", nil)
 	require.NoError(t, err)
@@ -388,7 +448,7 @@ func TestSyncDispatchPools_RemoveUnlisted_Archives(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	ec := testpg.TestEC()
 
-	_, err := operations.SyncDispatchPools(ctx, repo, uow, operations.SyncDispatchPoolsCommand{
+	_, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncDispatchPools(repo), operations.SyncDispatchPoolsCommand{
 		ApplicationCode: "dpsyncrm",
 		Pools: []operations.SyncDispatchPoolInput{
 			{Code: "dpsyncrm-keep", Name: "Keep", Concurrency: 2},
@@ -397,7 +457,7 @@ func TestSyncDispatchPools_RemoveUnlisted_Archives(t *testing.T) {
 	}, ec)
 	require.NoError(t, err)
 
-	second, err := operations.SyncDispatchPools(ctx, repo, uow, operations.SyncDispatchPoolsCommand{
+	second, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncDispatchPools(repo), operations.SyncDispatchPoolsCommand{
 		ApplicationCode: "dpsyncrm",
 		Pools: []operations.SyncDispatchPoolInput{
 			{Code: "dpsyncrm-keep", Name: "Keep renamed", Concurrency: 3},
@@ -405,11 +465,11 @@ func TestSyncDispatchPools_RemoveUnlisted_Archives(t *testing.T) {
 		RemoveUnlisted: true,
 	}, ec)
 	require.NoError(t, err)
-	assert.Equal(t, uint32(0), second.Event().Created)
-	assert.Equal(t, uint32(1), second.Event().Updated)
+	assert.Equal(t, uint32(0), second.Created)
+	assert.Equal(t, uint32(1), second.Updated)
 	// Removal is global, so other tests' rows could inflate the count —
 	// assert only the lower bound our own dropped pool guarantees.
-	assert.GreaterOrEqual(t, second.Event().Deleted, uint32(1))
+	assert.GreaterOrEqual(t, second.Deleted, uint32(1))
 
 	kept, err := repo.FindByCode(ctx, "dpsyncrm-keep", nil)
 	require.NoError(t, err)
@@ -465,7 +525,7 @@ func TestSyncDispatchPools_Validation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.SyncDispatchPools(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncDispatchPools(repo), tc.cmd, testpg.TestEC())
 			testpg.RequireUsecaseError(t, err, usecase.KindValidation, tc.code)
 		})
 	}

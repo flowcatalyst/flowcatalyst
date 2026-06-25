@@ -36,6 +36,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -190,7 +191,7 @@ func (s *State) registerComplete(ctx context.Context, in *registerCompleteInput)
 	}
 
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.Register(ctx, s.Creds, s.UoW,
+	event, err := usecaseop.Run(ctx, s.UoW, operations.Register(s.Creds),
 		operations.RegisterCommand{StateID: in.Body.StateID, Response: *cred, Name: &name}, ec)
 	if err != nil {
 		return nil, err
@@ -198,7 +199,7 @@ func (s *State) registerComplete(ctx context.Context, in *registerCompleteInput)
 	if p.UserIdentity != nil {
 		s.Notifier.NewPasskey(ctx, p.UserIdentity.Email)
 	}
-	return &registerCompleteOutput{Body: RegisterCompleteResponse{CredentialID: committed.Event().CredentialID}}, nil
+	return &registerCompleteOutput{Body: RegisterCompleteResponse{CredentialID: event.CredentialID}}, nil
 }
 
 // ── authenticate ─────────────────────────────────────────────────────────
@@ -337,7 +338,7 @@ func (s *State) authenticateComplete(ctx context.Context, in *authenticateComple
 
 	ec := usecase.NewExecutionContext(p.ID)
 	// Counter persistence failure is non-fatal; session still issued.
-	_, _ = operations.Authenticate(ctx, s.Creds, s.UoW,
+	_, _ = usecaseop.Run(ctx, s.UoW, operations.Authenticate(s.Creds),
 		operations.AuthenticateCommand{StateID: in.Body.StateID, UpdatedCredential: *cred}, ec)
 
 	var email *string
@@ -442,7 +443,7 @@ func (s *State) deleteCredential(ctx context.Context, in *deleteCredInput) (*emp
 		return nil, httperror.NotFound("Credential", in.ID)
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.Revoke(ctx, s.Creds, s.UoW,
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.Revoke(s.Creds),
 		operations.RevokeCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}

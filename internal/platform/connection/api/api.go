@@ -14,6 +14,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -80,18 +81,18 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 // SubscriptionCreatePage pushes the returned connection straight into a
 // Select, where a bare id renders with a blank label until reload.
 func (s *State) create(ctx context.Context, in *apicommon.In[CreateConnectionRequest]) (*apicommon.Out[ConnectionResponse], error) {
-	ac := auth.FromContext(ctx)
-	// Connections are anchor-only across all mutations (1:1 with Rust
-	// connection/api.rs, which require_anchor on every write).
-	if err := auth.RequireAnchor(ac); err != nil {
+	// Coarse permission at the controller; the use case enforces per-client
+	// resource access (you may only bind a connection to a client you can
+	// access; platform-wide requires anchor).
+	if err := auth.CanCreateConnections(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.CreateConnection(ctx, s.Repo, s.UoW, in.Body.toCommand(), ec)
+	ec := auth.NewExecutionContext(ctx)
+	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateConnection(s.Repo), in.Body.toCommand(), ec)
 	if err != nil {
 		return nil, err
 	}
-	id := committed.Event().ConnectionID
+	id := event.ConnectionID
 	c, err := s.Repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "post-create reload failed", err)
@@ -108,48 +109,44 @@ type updateInput struct {
 }
 
 func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanUpdateConnections(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.UpdateConnection(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateConnection(s.Repo), in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
 }
 
 func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanDeleteConnections(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.DeleteConnection(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeleteConnection(s.Repo), operations.DeleteCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
 }
 
 func (s *State) pause(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ConnectionResponse], error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanUpdateConnections(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.PauseConnection(ctx, s.Repo, s.UoW, operations.PauseCommand{ID: in.ID}, ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.PauseConnection(s.Repo), operations.PauseCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return s.reload(ctx, in.ID)
 }
 
 func (s *State) activate(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ConnectionResponse], error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanUpdateConnections(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.ActivateConnection(ctx, s.Repo, s.UoW, operations.ActivateCommand{ID: in.ID}, ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.ActivateConnection(s.Repo), operations.ActivateCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return s.reload(ctx, in.ID)

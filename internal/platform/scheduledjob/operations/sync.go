@@ -7,8 +7,10 @@ import (
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/commit"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -49,163 +51,183 @@ type SyncScheduledJobsCommand struct {
 //     job is created.
 //   - ArchiveUnlisted archives (soft) ACTIVE jobs absent from the payload.
 //
+// Authorization: the coarse "may sync scheduled jobs" permission and the app
+// resolution are the controller's job; the use case enforces the per-resource
+// rule — the caller must have access to the target client (or be anchor/
+// super-admin when targeting platform-scoped jobs, ClientID nil).
+//
 // Returns the affected job IDs split into created/updated/archived, carried
 // on the [ScheduledJobsSynced] rollup. Per-row Created/Updated/Archived events
-// are emitted alongside, atomic via [commit.Sync].
-func SyncScheduledJobs(
-	ctx context.Context,
-	repo *scheduledjob.Repository,
-	uow *usecasepgx.UnitOfWork,
-	cmd SyncScheduledJobsCommand,
-	ec usecase.ExecutionContext,
-) (commit.Committed[ScheduledJobsSynced], error) {
-	var zero commit.Committed[ScheduledJobsSynced]
+// are emitted alongside, atomic via [usecaseop.Sync].
+func SyncScheduledJobs(repo *scheduledjob.Repository) usecaseop.Operation[SyncScheduledJobsCommand, ScheduledJobsSynced] {
+	return usecaseop.Operation[SyncScheduledJobsCommand, ScheduledJobsSynced]{
+		Name: "SyncScheduledJobs",
+		Validate: func(_ context.Context, cmd SyncScheduledJobsCommand) error {
+			for _, j := range cmd.Jobs {
+				if strings.TrimSpace(j.Code) == "" || strings.TrimSpace(j.Name) == "" || len(j.Crons) == 0 {
+					return usecase.Validation("INVALID_SYNC_ENTRY",
+						"Sync entry '"+j.Code+"' must have code, name, and at least one cron")
+				}
+			}
+			return nil
+		},
+		Authorize: func(ctx context.Context, cmd SyncScheduledJobsCommand) error {
+			ac := auth.FromContext(ctx)
+			// Resource-level scope check: the caller must have access to the
+			// target client (or be anchor/super-admin when targeting platform-
+			// scoped jobs). Mirrors the Rust handler.
+			if cid := cmd.ClientID; cid != nil {
+				if !ac.CanAccessClient(*cid) {
+					return httperror.Forbidden("No access to client: " + *cid)
+				}
+				return nil
+			}
+			if !ac.IsAnchor() && !ac.IsSuperAdmin() {
+				return httperror.Forbidden("Only anchor users can sync platform-scoped scheduled jobs")
+			}
+			return nil
+		},
+		Execute: func(ctx context.Context, cmd SyncScheduledJobsCommand, ec usecase.ExecutionContext) (usecaseop.Plan[ScheduledJobsSynced], error) {
+			filter := scheduledjob.ListFilters{}
+			if cmd.ClientID != nil {
+				filter.ClientID = cmd.ClientID
+			} else {
+				platform := "" // pointer-to-"" selects platform-scoped (client_id IS NULL)
+				filter.ClientID = &platform
+			}
+			existing, err := repo.FindWithFilters(ctx, filter)
+			if err != nil {
+				return nil, usecase.Internal("REPO", "find existing scheduled jobs failed", err)
+			}
+			existingByCode := make(map[string]*scheduledjob.ScheduledJob, len(existing))
+			for i := range existing {
+				existingByCode[existing[i].Code] = &existing[i]
+			}
 
-	for _, j := range cmd.Jobs {
-		if strings.TrimSpace(j.Code) == "" || strings.TrimSpace(j.Name) == "" || len(j.Crons) == 0 {
-			return zero, usecase.Validation("INVALID_SYNC_ENTRY",
-				"Sync entry '"+j.Code+"' must have code, name, and at least one cron")
-		}
-	}
+			var (
+				saves    []usecasepgx.SyncSaveItem[scheduledjob.ScheduledJob]
+				created  []string
+				updated  []string
+				archived []string
+				pid      = ec.PrincipalID
+			)
 
-	filter := scheduledjob.ListFilters{}
-	if cmd.ClientID != nil {
-		filter.ClientID = cmd.ClientID
-	} else {
-		platform := "" // pointer-to-"" selects platform-scoped (client_id IS NULL)
-		filter.ClientID = &platform
-	}
-	existing, err := repo.FindWithFilters(ctx, filter)
-	if err != nil {
-		return zero, usecase.Internal("REPO", "find existing scheduled jobs failed", err)
-	}
-	existingByCode := make(map[string]*scheduledjob.ScheduledJob, len(existing))
-	for i := range existing {
-		existingByCode[existing[i].Code] = &existing[i]
-	}
+			for _, entry := range cmd.Jobs {
+				if cur, ok := existingByCode[entry.Code]; ok {
+					delete(existingByCode, entry.Code)
+					changed := false
+					if cur.Name != entry.Name {
+						cur.Name = entry.Name
+						changed = true
+					}
+					if !strPtrEqual(cur.Description, entry.Description) {
+						cur.Description = entry.Description
+						changed = true
+					}
+					if !slices.Equal(cur.Crons, entry.Crons) {
+						cur.Crons = entry.Crons
+						changed = true
+					}
+					if cur.Timezone != entry.Timezone {
+						cur.Timezone = entry.Timezone
+						changed = true
+					}
+					if !bytes.Equal(cur.Payload, entry.Payload) {
+						cur.Payload = entry.Payload
+						changed = true
+					}
+					if cur.Concurrent != entry.Concurrent {
+						cur.Concurrent = entry.Concurrent
+						changed = true
+					}
+					if cur.TracksCompletion != entry.TracksCompletion {
+						cur.TracksCompletion = entry.TracksCompletion
+						changed = true
+					}
+					if !int32PtrEqual(cur.TimeoutSeconds, entry.TimeoutSeconds) {
+						cur.TimeoutSeconds = entry.TimeoutSeconds
+						changed = true
+					}
+					if cur.DeliveryMaxAttempts != entry.DeliveryMaxAttempts {
+						cur.DeliveryMaxAttempts = entry.DeliveryMaxAttempts
+						changed = true
+					}
+					if !strPtrEqual(cur.TargetURL, entry.TargetURL) {
+						cur.TargetURL = entry.TargetURL
+						changed = true
+					}
+					// A sync re-activates archived/paused jobs that reappear.
+					if cur.Status != scheduledjob.StatusActive {
+						cur.Status = scheduledjob.StatusActive
+						changed = true
+					}
+					if changed {
+						cur.UpdatedBy = &pid
+						cur.Version++
+						saves = append(saves, usecasepgx.SyncSaveItem[scheduledjob.ScheduledJob]{
+							Aggregate: cur,
+							Event: ScheduledJobUpdated{commonEvent{
+								Metadata:       usecase.NewEventMetadata(ec, ScheduledJobUpdatedType, Source, subjectFor(cur.ID)),
+								ScheduledJobID: cur.ID,
+								Code:           cur.Code,
+							}},
+						})
+						updated = append(updated, cur.ID)
+					}
+					continue
+				}
 
-	var (
-		saves    []commit.SyncSave[scheduledjob.ScheduledJob]
-		created  []string
-		updated  []string
-		archived []string
-		pid      = ec.PrincipalID
-	)
-
-	for _, entry := range cmd.Jobs {
-		if cur, ok := existingByCode[entry.Code]; ok {
-			delete(existingByCode, entry.Code)
-			changed := false
-			if cur.Name != entry.Name {
-				cur.Name = entry.Name
-				changed = true
-			}
-			if !strPtrEqual(cur.Description, entry.Description) {
-				cur.Description = entry.Description
-				changed = true
-			}
-			if !slices.Equal(cur.Crons, entry.Crons) {
-				cur.Crons = entry.Crons
-				changed = true
-			}
-			if cur.Timezone != entry.Timezone {
-				cur.Timezone = entry.Timezone
-				changed = true
-			}
-			if !bytes.Equal(cur.Payload, entry.Payload) {
-				cur.Payload = entry.Payload
-				changed = true
-			}
-			if cur.Concurrent != entry.Concurrent {
-				cur.Concurrent = entry.Concurrent
-				changed = true
-			}
-			if cur.TracksCompletion != entry.TracksCompletion {
-				cur.TracksCompletion = entry.TracksCompletion
-				changed = true
-			}
-			if !int32PtrEqual(cur.TimeoutSeconds, entry.TimeoutSeconds) {
-				cur.TimeoutSeconds = entry.TimeoutSeconds
-				changed = true
-			}
-			if cur.DeliveryMaxAttempts != entry.DeliveryMaxAttempts {
-				cur.DeliveryMaxAttempts = entry.DeliveryMaxAttempts
-				changed = true
-			}
-			if !strPtrEqual(cur.TargetURL, entry.TargetURL) {
-				cur.TargetURL = entry.TargetURL
-				changed = true
-			}
-			// A sync re-activates archived/paused jobs that reappear.
-			if cur.Status != scheduledjob.StatusActive {
-				cur.Status = scheduledjob.StatusActive
-				changed = true
-			}
-			if changed {
-				cur.UpdatedBy = &pid
-				cur.Version++
-				saves = append(saves, commit.SyncSave[scheduledjob.ScheduledJob]{
-					Aggregate: cur,
-					Event: ScheduledJobUpdated{commonEvent{
-						Metadata:       usecase.NewEventMetadata(ec, ScheduledJobUpdatedType, Source, subjectFor(cur.ID)),
-						ScheduledJobID: cur.ID,
-						Code:           cur.Code,
+				j := scheduledjob.New(entry.Code, entry.Name, entry.Crons)
+				j.Timezone = entry.Timezone
+				j.Concurrent = entry.Concurrent
+				j.TracksCompletion = entry.TracksCompletion
+				j.DeliveryMaxAttempts = entry.DeliveryMaxAttempts
+				j.Description = entry.Description
+				j.Payload = entry.Payload
+				j.TimeoutSeconds = entry.TimeoutSeconds
+				j.TargetURL = entry.TargetURL
+				j.ClientID = cmd.ClientID
+				j.CreatedBy = &pid
+				saves = append(saves, usecasepgx.SyncSaveItem[scheduledjob.ScheduledJob]{
+					Aggregate: j,
+					Event: ScheduledJobCreated{commonEvent{
+						Metadata:       usecase.NewEventMetadata(ec, ScheduledJobCreatedType, Source, subjectFor(j.ID)),
+						ScheduledJobID: j.ID,
+						Code:           j.Code,
 					}},
 				})
-				updated = append(updated, cur.ID)
+				created = append(created, j.ID)
 			}
-			continue
-		}
 
-		j := scheduledjob.New(entry.Code, entry.Name, entry.Crons)
-		j.Timezone = entry.Timezone
-		j.Concurrent = entry.Concurrent
-		j.TracksCompletion = entry.TracksCompletion
-		j.DeliveryMaxAttempts = entry.DeliveryMaxAttempts
-		j.Description = entry.Description
-		j.Payload = entry.Payload
-		j.TimeoutSeconds = entry.TimeoutSeconds
-		j.TargetURL = entry.TargetURL
-		j.ClientID = cmd.ClientID
-		j.CreatedBy = &pid
-		saves = append(saves, commit.SyncSave[scheduledjob.ScheduledJob]{
-			Aggregate: j,
-			Event: ScheduledJobCreated{commonEvent{
-				Metadata:       usecase.NewEventMetadata(ec, ScheduledJobCreatedType, Source, subjectFor(j.ID)),
-				ScheduledJobID: j.ID,
-				Code:           j.Code,
-			}},
-		})
-		created = append(created, j.ID)
-	}
-
-	if cmd.ArchiveUnlisted {
-		for _, cur := range existingByCode {
-			if cur.Status != scheduledjob.StatusActive {
-				continue
+			if cmd.ArchiveUnlisted {
+				for _, cur := range existingByCode {
+					if cur.Status != scheduledjob.StatusActive {
+						continue
+					}
+					cur.Archive()
+					saves = append(saves, usecasepgx.SyncSaveItem[scheduledjob.ScheduledJob]{
+						Aggregate: cur,
+						Event: ScheduledJobArchived{commonEvent{
+							Metadata:       usecase.NewEventMetadata(ec, ScheduledJobArchivedType, Source, subjectFor(cur.ID)),
+							ScheduledJobID: cur.ID,
+							Code:           cur.Code,
+						}},
+					})
+					archived = append(archived, cur.ID)
+				}
 			}
-			cur.Archive()
-			saves = append(saves, commit.SyncSave[scheduledjob.ScheduledJob]{
-				Aggregate: cur,
-				Event: ScheduledJobArchived{commonEvent{
-					Metadata:       usecase.NewEventMetadata(ec, ScheduledJobArchivedType, Source, subjectFor(cur.ID)),
-					ScheduledJobID: cur.ID,
-					Code:           cur.Code,
-				}},
-			})
-			archived = append(archived, cur.ID)
-		}
-	}
 
-	rollup := ScheduledJobsSynced{
-		Metadata:        usecase.NewEventMetadata(ec, ScheduledJobsSyncedType, Source, "platform.scheduledjobs.synced."+cmd.ApplicationCode),
-		ApplicationCode: cmd.ApplicationCode,
-		ClientID:        cmd.ClientID,
-		Created:         created,
-		Updated:         updated,
-		Archived:        archived,
+			rollup := ScheduledJobsSynced{
+				Metadata:        usecase.NewEventMetadata(ec, ScheduledJobsSyncedType, Source, "platform.scheduledjobs.synced."+cmd.ApplicationCode),
+				ApplicationCode: cmd.ApplicationCode,
+				ClientID:        cmd.ClientID,
+				Created:         created,
+				Updated:         updated,
+				Archived:        archived,
+			}
+			return usecaseop.Sync(repo, saves, nil, rollup), nil
+		},
 	}
-	return commit.Sync(ctx, uow, repo, saves, nil, rollup, cmd)
 }
 
 func strPtrEqual(a, b *string) bool {

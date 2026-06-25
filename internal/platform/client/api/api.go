@@ -16,6 +16,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -136,16 +137,17 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 }
 
 func (s *State) create(ctx context.Context, in *apicommon.In[CreateClientRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanCreateClients(ac); err != nil {
+	// Coarse anchor-only permission at the controller; tenant management has no
+	// finer per-resource dimension, so the use case stays Public.
+	if err := auth.CanCreateClients(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.CreateClient(ctx, s.Repo, s.UoW, in.Body.toCommand(), ec)
+	ec := auth.NewExecutionContext(ctx)
+	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateClient(s.Repo), in.Body.toCommand(), ec)
 	if err != nil {
 		return nil, err
 	}
-	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: committed.Event().ClientID}}, nil
+	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: event.ClientID}}, nil
 }
 
 type updateInput struct {
@@ -154,24 +156,22 @@ type updateInput struct {
 }
 
 func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanUpdateClients(ac); err != nil {
+	if err := auth.CanUpdateClients(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.UpdateClient(ctx, s.Repo, s.UoW, in.Body.toCommand(in.ID), ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateClient(s.Repo), in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
 }
 
 func (s *State) activate(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[apicommon.StatusChangeResponse], error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanUpdateClients(ac); err != nil {
+	if err := auth.CanUpdateClients(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.ActivateClient(ctx, s.Repo, s.UoW, operations.ActivateCommand{ID: in.ID}, ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.ActivateClient(s.Repo), operations.ActivateCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Out[apicommon.StatusChangeResponse]{Body: apicommon.StatusChangeResponse{Message: "Client activated"}}, nil
@@ -183,12 +183,11 @@ type suspendInput struct {
 }
 
 func (s *State) suspend(ctx context.Context, in *suspendInput) (*apicommon.Out[apicommon.StatusChangeResponse], error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanUpdateClients(ac); err != nil {
+	if err := auth.CanUpdateClients(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.SuspendClient(ctx, s.Repo, s.UoW, operations.SuspendCommand{ID: in.ID, Reason: in.Body.Reason}, ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.SuspendClient(s.Repo), operations.SuspendCommand{ID: in.ID, Reason: in.Body.Reason}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Out[apicommon.StatusChangeResponse]{Body: apicommon.StatusChangeResponse{Message: "Client suspended"}}, nil
@@ -200,12 +199,11 @@ type addNoteInput struct {
 }
 
 func (s *State) addNote(ctx context.Context, in *addNoteInput) (*apicommon.Out[apicommon.StatusChangeResponse], error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanUpdateClients(ac); err != nil {
+	if err := auth.CanUpdateClients(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.AddNote(ctx, s.Repo, s.UoW, operations.AddNoteCommand{
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.AddNote(s.Repo), operations.AddNoteCommand{
 		ClientID: in.ID,
 		Category: in.Body.Category,
 		Text:     in.Body.Text,
@@ -217,12 +215,11 @@ func (s *State) addNote(ctx context.Context, in *addNoteInput) (*apicommon.Out[a
 }
 
 func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanDeleteClients(ac); err != nil {
+	if err := auth.CanDeleteClients(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.DeleteClient(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeleteClient(s.Repo), operations.DeleteCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
@@ -236,13 +233,12 @@ type deactivateInput struct {
 }
 
 func (s *State) deactivate(ctx context.Context, in *deactivateInput) (*apicommon.Out[apicommon.StatusChangeResponse], error) {
-	ac := auth.FromContext(ctx)
-	// Deactivate is a soft-delete — same permission as delete.
-	if err := auth.CanDeleteClients(ac); err != nil {
+	// Deactivate is a soft-delete — same coarse permission as delete.
+	if err := auth.CanDeleteClients(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.DeleteClient(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: in.ID}, ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeleteClient(s.Repo), operations.DeleteCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Out[apicommon.StatusChangeResponse]{Body: apicommon.StatusChangeResponse{Message: "Client deactivated"}}, nil
@@ -318,7 +314,7 @@ func (s *State) updateApplications(ctx context.Context, in *updateApplicationsIn
 		ClientID:              in.ID,
 		EnabledApplicationIDs: in.Body.EnabledApplicationIDs,
 	}
-	if _, err := appops.UpdateClientApplications(ctx, s.Applications, s.Repo, s.ClientConfigs, s.UoW, cmd, ec); err != nil {
+	if _, err := usecaseop.Run(ctx, s.UoW, appops.UpdateClientApplications(s.Applications, s.Repo, s.ClientConfigs), cmd, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
@@ -342,7 +338,7 @@ func (s *State) enableApplication(ctx context.Context, in *appLinkInput) (*apico
 		ApplicationID: in.ApplicationID,
 		ClientID:      in.ID,
 	}
-	if _, err := appops.EnableApplicationForClient(ctx, s.Applications, s.Repo, s.ClientConfigs, s.UoW, cmd, ec); err != nil {
+	if _, err := usecaseop.Run(ctx, s.UoW, appops.EnableApplicationForClient(s.Applications, s.Repo, s.ClientConfigs), cmd, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
@@ -361,7 +357,7 @@ func (s *State) disableApplication(ctx context.Context, in *appLinkInput) (*apic
 		ApplicationID: in.ApplicationID,
 		ClientID:      in.ID,
 	}
-	if _, err := appops.DisableApplicationForClient(ctx, s.ClientConfigs, s.UoW, cmd, ec); err != nil {
+	if _, err := usecaseop.Run(ctx, s.UoW, appops.DisableApplicationForClient(s.ClientConfigs), cmd, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil

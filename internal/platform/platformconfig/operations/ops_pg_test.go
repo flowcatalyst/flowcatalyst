@@ -11,12 +11,26 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
 func TestMain(m *testing.M) { testpg.RunMain(m) }
+
+// runAuthorized drives op through the full use-case envelope (Validate →
+// Authorize → Execute → atomic commit) as an anchor principal — the common
+// case for these tests, which exercise validation, invariants, and
+// persistence rather than authorization itself (see
+// TestPlatformConfigWrites_RequireAnchor for that). It mirrors how the HTTP
+// handler runs the operation.
+func runAuthorized[C any, E usecase.DomainEvent](
+	uow *usecasepgx.UnitOfWork, op usecaseop.Operation[C, E], cmd C,
+) (E, error) {
+	return usecaseop.Run(testpg.AnchorCtx(), uow, op, cmd, testpg.TestEC())
+}
 
 // mustGrant seeds an access grant through the public operation — the same
 // path production uses. (App, role) pairs are hand-unique per test: the
@@ -24,10 +38,10 @@ func TestMain(m *testing.M) { testpg.RunMain(m) }
 // assert table-wide.
 func mustGrant(t *testing.T, repo *platformconfig.Repository, uow *usecasepgx.UnitOfWork, app, role string, canWrite bool) operations.AccessGranted {
 	t.Helper()
-	committed, err := operations.GrantAccess(context.Background(), repo, uow,
-		operations.GrantAccessCommand{ApplicationCode: app, RoleCode: role, CanWrite: canWrite}, testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.GrantAccess(repo),
+		operations.GrantAccessCommand{ApplicationCode: app, RoleCode: role, CanWrite: canWrite})
 	require.NoError(t, err)
-	return committed.Event()
+	return ev
 }
 
 // ── SetProperty ───────────────────────────────────────────────────────────
@@ -39,16 +53,15 @@ func TestSetProperty_HappyPath_CreateNew(t *testing.T) {
 	uow := testpg.NewUoW(t)
 
 	desc := "SMTP relay host"
-	committed, err := operations.SetProperty(ctx, repo, uow, operations.SetPropertyCommand{
+	ev, err := runAuthorized(uow, operations.SetProperty(repo), operations.SetPropertyCommand{
 		ApplicationCode: "pcset-new",
 		Section:         "smtp",
 		Property:        "host",
 		Value:           "mail.example.com",
 		Description:     &desc,
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
 
-	ev := committed.Event()
 	assert.NotEmpty(t, ev.ConfigID)
 	assert.Equal(t, "pcset-new", ev.ApplicationCode)
 	assert.Equal(t, "smtp", ev.Section)
@@ -72,23 +85,22 @@ func TestSetProperty_Upsert_OverwriteExisting(t *testing.T) {
 	ctx := context.Background()
 	repo := platformconfig.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
-	ec := testpg.TestEC()
 
-	first, err := operations.SetProperty(ctx, repo, uow, operations.SetPropertyCommand{
+	first, err := runAuthorized(uow, operations.SetProperty(repo), operations.SetPropertyCommand{
 		ApplicationCode: "pcset-upsert", Section: "smtp", Property: "password", Value: "hunter2",
-	}, ec)
+	})
 	require.NoError(t, err)
 
 	secret := "SECRET"
-	second, err := operations.SetProperty(ctx, repo, uow, operations.SetPropertyCommand{
+	second, err := runAuthorized(uow, operations.SetProperty(repo), operations.SetPropertyCommand{
 		ApplicationCode: "pcset-upsert", Section: "smtp", Property: "password", Value: "correct-horse",
 		ValueType: &secret,
-	}, ec)
+	})
 	require.NoError(t, err)
-	assert.Equal(t, first.Event().ConfigID, second.Event().ConfigID,
+	assert.Equal(t, first.ConfigID, second.ConfigID,
 		"upsert must reuse the existing row's id")
 
-	got, err := repo.FindByID(ctx, first.Event().ConfigID)
+	got, err := repo.FindByID(ctx, first.ConfigID)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, "correct-horse", got.Value, "stored value must change on overwrite")
@@ -113,7 +125,7 @@ func TestSetProperty_Validation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := operations.SetProperty(context.Background(), repo, uow, tc.cmd, testpg.TestEC())
+			_, err := runAuthorized(uow, operations.SetProperty(repo), tc.cmd)
 			testpg.RequireUsecaseError(t, err, usecase.KindValidation, tc.code)
 		})
 	}
@@ -127,12 +139,11 @@ func TestGrantAccess_HappyPath(t *testing.T) {
 	repo := platformconfig.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	committed, err := operations.GrantAccess(ctx, repo, uow, operations.GrantAccessCommand{
+	ev, err := runAuthorized(uow, operations.GrantAccess(repo), operations.GrantAccessCommand{
 		ApplicationCode: "pcgrant-happy", RoleCode: "auditor", CanWrite: false,
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
 
-	ev := committed.Event()
 	assert.NotEmpty(t, ev.AccessID)
 	assert.Equal(t, "pcgrant-happy", ev.ApplicationCode)
 	assert.Equal(t, "auditor", ev.RoleCode)
@@ -154,13 +165,13 @@ func TestGrantAccess_Upsert_DoubleGrant(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	first := mustGrant(t, repo, uow, "pcgrant-upsert", "operator", false)
 
-	second, err := operations.GrantAccess(ctx, repo, uow, operations.GrantAccessCommand{
+	second, err := runAuthorized(uow, operations.GrantAccess(repo), operations.GrantAccessCommand{
 		ApplicationCode: "pcgrant-upsert", RoleCode: "operator", CanWrite: true,
-	}, testpg.TestEC())
+	})
 	require.NoError(t, err)
-	assert.Equal(t, first.AccessID, second.Event().AccessID,
+	assert.Equal(t, first.AccessID, second.AccessID,
 		"double grant must reuse the existing row's id")
-	assert.True(t, second.Event().CanWrite)
+	assert.True(t, second.CanWrite)
 
 	got, err := repo.FindAccessByID(ctx, first.AccessID)
 	require.NoError(t, err)
@@ -174,12 +185,12 @@ func TestGrantAccess_Validation(t *testing.T) {
 	repo := platformconfig.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.GrantAccess(context.Background(), repo, uow,
-		operations.GrantAccessCommand{RoleCode: "r"}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.GrantAccess(repo),
+		operations.GrantAccessCommand{RoleCode: "r"})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "APPLICATION_REQUIRED")
 
-	_, err = operations.GrantAccess(context.Background(), repo, uow,
-		operations.GrantAccessCommand{ApplicationCode: "a"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.GrantAccess(repo),
+		operations.GrantAccessCommand{ApplicationCode: "a"})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ROLE_REQUIRED")
 }
 
@@ -192,12 +203,12 @@ func TestRevokeAccess_HappyPath(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustGrant(t, repo, uow, "pcrevoke-happy", "ops", true)
 
-	committed, err := operations.RevokeAccess(ctx, repo, uow,
-		operations.RevokeAccessCommand{ID: seeded.AccessID}, testpg.TestEC())
+	ev, err := runAuthorized(uow, operations.RevokeAccess(repo),
+		operations.RevokeAccessCommand{ID: seeded.AccessID})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.AccessID, committed.Event().AccessID)
-	assert.Equal(t, "pcrevoke-happy", committed.Event().ApplicationCode)
-	assert.Equal(t, "ops", committed.Event().RoleCode)
+	assert.Equal(t, seeded.AccessID, ev.AccessID)
+	assert.Equal(t, "pcrevoke-happy", ev.ApplicationCode)
+	assert.Equal(t, "ops", ev.RoleCode)
 
 	got, err := repo.FindAccessByID(ctx, seeded.AccessID)
 	require.NoError(t, err)
@@ -209,11 +220,40 @@ func TestRevokeAccess_Errors(t *testing.T) {
 	repo := platformconfig.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	_, err := operations.RevokeAccess(context.Background(), repo, uow,
-		operations.RevokeAccessCommand{}, testpg.TestEC())
+	_, err := runAuthorized(uow, operations.RevokeAccess(repo),
+		operations.RevokeAccessCommand{})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = operations.RevokeAccess(context.Background(), repo, uow,
-		operations.RevokeAccessCommand{ID: "pca_doesnotexist1"}, testpg.TestEC())
+	_, err = runAuthorized(uow, operations.RevokeAccess(repo),
+		operations.RevokeAccessCommand{ID: "pca_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "PlatformConfigAccess_NOT_FOUND")
+}
+
+// ── Authorization ─────────────────────────────────────────────────────────
+
+// TestPlatformConfigWrites_RequireAnchor proves SetProperty's use-case Authorize
+// phase enforces the delegated, resource-level rule: a non-anchor principal is
+// admitted only with write access to the target application (a DB-backed
+// check), so a non-anchor with no grants is rejected BEFORE any persistence
+// runs.
+//
+// GrantAccess and RevokeAccess are coarse anchor-only and are now gated at the
+// controller, so their use-case Authorize is Public — they are not exercised
+// here.
+func TestPlatformConfigWrites_RequireAnchor(t *testing.T) {
+	t.Parallel()
+	repo := platformconfig.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+
+	clientCtx := testpg.WithAuth(context.Background(), &auth.AuthContext{
+		PrincipalID: "prn_clientuser1",
+		Scope:       auth.ScopeClient,
+	})
+
+	// SetProperty: non-anchor with no write grant on the app is forbidden.
+	_, err := usecaseop.Run(clientCtx, uow, operations.SetProperty(repo),
+		operations.SetPropertyCommand{
+			ApplicationCode: "pcauthz-denied", Section: "smtp", Property: "host", Value: "x",
+		}, testpg.TestEC())
+	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "FORBIDDEN")
 }

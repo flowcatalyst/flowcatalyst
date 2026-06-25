@@ -15,6 +15,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -108,16 +109,17 @@ func (s *State) resolveRole(ctx context.Context, idOrName string) (*role.Role, e
 }
 
 func (s *State) create(ctx context.Context, in *apicommon.In[CreateRoleRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteRoles(ac); err != nil {
+	// Coarse permission at the controller; roles are global, so the use case
+	// has no per-resource authz.
+	if err := auth.CanWriteRoles(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	committed, err := operations.CreateRole(ctx, s.Repo, s.UoW, in.Body.toCommand(), ec)
+	ec := auth.NewExecutionContext(ctx)
+	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateRole(s.Repo), in.Body.toCommand(), ec)
 	if err != nil {
 		return nil, err
 	}
-	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: committed.Event().RoleID}}, nil
+	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: event.RoleID}}, nil
 }
 
 type updateInput struct {
@@ -126,32 +128,34 @@ type updateInput struct {
 }
 
 func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteRoles(ac); err != nil {
+	// Coarse permission at the controller; roles are global, so the use case
+	// has no per-resource authz.
+	if err := auth.CanWriteRoles(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	r, err := s.resolveRole(ctx, in.ID)
 	if err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.UpdateRole(ctx, s.Repo, s.UoW, in.Body.toCommand(r.ID), ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateRole(s.Repo), in.Body.toCommand(r.ID), ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
 }
 
 func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanDeleteRoles(ac); err != nil {
+	// Coarse permission at the controller; roles are global, so the use case
+	// has no per-resource authz.
+	if err := auth.CanDeleteRoles(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	r, err := s.resolveRole(ctx, in.ID)
 	if err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.DeleteRole(ctx, s.Repo, s.UoW, operations.DeleteCommand{ID: r.ID}, ec); err != nil {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeleteRole(s.Repo), operations.DeleteCommand{ID: r.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
@@ -254,12 +258,13 @@ type rolePermissionGrantInput struct {
 }
 
 func (s *State) grantPermission(ctx context.Context, in *rolePermissionGrantInput) (*apicommon.Out[RoleResponse], error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteRoles(ac); err != nil {
+	// Coarse permission at the controller; roles are global, so the use case
+	// has no per-resource authz.
+	if err := auth.CanWriteRoles(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.GrantPermission(ctx, s.Repo, s.UoW, operations.GrantPermissionCommand{
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.GrantPermission(s.Repo), operations.GrantPermissionCommand{
 		RoleName: in.RoleName, Permission: in.Permission,
 	}, ec); err != nil {
 		return nil, err
@@ -281,12 +286,13 @@ type rolePermissionGrantBodyInput struct {
 // permission in the body (SDK shape). Delegates to the same grant operation as
 // the path-param variant.
 func (s *State) grantPermissionByBody(ctx context.Context, in *rolePermissionGrantBodyInput) (*apicommon.Out[RoleResponse], error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteRoles(ac); err != nil {
+	// Coarse permission at the controller; roles are global, so the use case
+	// has no per-resource authz.
+	if err := auth.CanWriteRoles(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.GrantPermission(ctx, s.Repo, s.UoW, operations.GrantPermissionCommand{
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.GrantPermission(s.Repo), operations.GrantPermissionCommand{
 		RoleName: in.RoleName, Permission: in.Body.Permission,
 	}, ec); err != nil {
 		return nil, err
@@ -299,12 +305,13 @@ func (s *State) grantPermissionByBody(ctx context.Context, in *rolePermissionGra
 }
 
 func (s *State) revokePermission(ctx context.Context, in *rolePermissionGrantInput) (*apicommon.Out[RoleResponse], error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteRoles(ac); err != nil {
+	// Coarse permission at the controller; roles are global, so the use case
+	// has no per-resource authz.
+	if err := auth.CanWriteRoles(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	ec := usecase.NewExecutionContext(ac.PrincipalID)
-	if _, err := operations.RevokePermission(ctx, s.Repo, s.UoW, operations.RevokePermissionCommand{
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.RevokePermission(s.Repo), operations.RevokePermissionCommand{
 		RoleName: in.RoleName, Permission: in.Permission,
 	}, ec); err != nil {
 		return nil, err

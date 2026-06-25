@@ -16,7 +16,7 @@ import (
 //
 // The sync use case does *direct* writes through this repo (Insert,
 // ArchiveCurrent) — domain-event emission happens in a tail transaction
-// via commit.Emit. The partial UNIQUE index on
+// via usecaseop.Emit. The partial UNIQUE index on
 // (application_id) WHERE status='CURRENT' serialises concurrent syncs;
 // the loser observes a unique-violation error and the caller retries.
 type Repository struct {
