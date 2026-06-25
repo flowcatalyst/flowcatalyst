@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -369,9 +370,17 @@ func (m *Manager) runConsumer(ctx context.Context, rc *runningConsumer) {
 		wasFull = false
 
 		msgs, err := rc.consumer.Poll(ctx, maxPoll)
-		rc.lastPoll.Store(time.Now().UnixNano()) // progress heartbeat for the restart watchdog
 		if err != nil {
 			if ctx.Err() != nil {
+				return
+			}
+			// A stopped consumer never resumes: Stop() was called but this poll
+			// loop wasn't torn down (e.g. a stop path that didn't also cancel our
+			// context). Exit so the restart watchdog (RestartStalledConsumers)
+			// respawns a fresh consumer, instead of spinning on the dead one
+			// ~once a second forever — the "Error polling: Queue is stopped" flood.
+			if errors.Is(err, queue.ErrStopped) {
+				slog.Warn("consumer stopped; exiting poll loop for respawn", "queue", rc.consumer.Identifier())
 				return
 			}
 			slog.Warn("consumer poll error", "queue", rc.consumer.Identifier(), "err", err)
@@ -382,6 +391,10 @@ func (m *Manager) runConsumer(ctx context.Context, rc *runningConsumer) {
 			}
 			continue
 		}
+		// Heartbeat only on a SUCCESSFUL poll (empty or not). Stamping it on an
+		// errored poll keeps a wedged, error-spinning consumer looking alive to
+		// the restart watchdog, so it is never rebuilt.
+		rc.lastPoll.Store(time.Now().UnixNano())
 
 		if len(msgs) == 0 {
 			select {

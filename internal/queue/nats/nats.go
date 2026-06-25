@@ -246,7 +246,7 @@ func (q *Queue) Identifier() string { return q.identifier }
 // Poll fetches up to max messages with the configured poll timeout.
 func (q *Queue) Poll(ctx context.Context, max uint32) ([]common.QueuedMessage, error) {
 	if !q.running.Load() {
-		return nil, errors.New("nats: consumer stopped")
+		return nil, queue.ErrStopped
 	}
 	batch := int(max)
 	if batch <= 0 || batch > q.cfg.MaxMessagesPerPoll {

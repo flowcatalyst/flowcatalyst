@@ -25,6 +25,13 @@ import (
 // ErrNotImplemented is returned when a backend doesn't support an optional method.
 var ErrNotImplemented = errors.New("queue: not implemented for this backend")
 
+// ErrStopped is returned by a Consumer's Poll once the consumer has been
+// stopped (Stop called). It is terminal for that consumer object — a stopped
+// consumer never resumes — so a poll loop that receives it should exit and let
+// the router's stall watchdog respawn a fresh consumer rather than spin on the
+// dead one. Backends may return it wrapped; callers match with errors.Is.
+var ErrStopped = errors.New("queue: consumer stopped")
+
 // Metrics captures queue health snapshot.
 type Metrics struct {
 	QueueIdentifier  string

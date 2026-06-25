@@ -149,7 +149,7 @@ func (q *Queue) Identifier() string { return q.queueName }
 // Poll fetches up to maxMessages via ReceiveMessage with long-polling.
 func (q *Queue) Poll(ctx context.Context, maxMessages uint32) ([]common.QueuedMessage, error) {
 	if !q.running.Load() {
-		return nil, errors.New("sqs: stopped")
+		return nil, queue.ErrStopped
 	}
 	max := int32(maxMessages)
 	if max > 10 {

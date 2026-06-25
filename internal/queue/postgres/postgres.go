@@ -74,6 +74,11 @@ type Queue struct {
 	acked    atomic.Uint64
 	nacked   atomic.Uint64
 	deferred atomic.Uint64
+
+	// stopped is set by Stop before the pool is closed, so a Poll racing the
+	// shutdown returns queue.ErrStopped (terminal) rather than an opaque
+	// closed-pool error the router's poll loop would treat as transient.
+	stopped atomic.Bool
 }
 
 // Identifier returns the queue name.
@@ -112,6 +117,9 @@ CREATE INDEX IF NOT EXISTS idx_queue_visible
 // applied over a ROW_NUMBER() result under Postgres CTE inlining; the
 // resulting claim set is equivalent.
 func (q *Queue) Poll(ctx context.Context, maxMessages uint32) ([]common.QueuedMessage, error) {
+	if q.stopped.Load() {
+		return nil, queue.ErrStopped
+	}
 	visibility := time.Duration(q.cfg.VisibilityTimeout) * time.Second
 	if visibility <= 0 {
 		visibility = 30 * time.Second
@@ -255,7 +263,10 @@ func (q *Queue) Healthy() bool {
 }
 
 // Stop closes the connection pool.
-func (q *Queue) Stop() { q.pool.Close() }
+func (q *Queue) Stop() {
+	q.stopped.Store(true)
+	q.pool.Close()
+}
 
 // Metrics returns broker-side metrics. Reads counts from the table.
 func (q *Queue) Metrics(ctx context.Context) (*queue.Metrics, error) {
