@@ -142,9 +142,10 @@ the connection ref. The shared status-flip body is `statusFlip[E]` (load → pos
 then `usecaseop.Emit`). The `requireScopeByID` api helper was deleted.
 
 ### 5.3 TS / PHP SDK ports — IMPLEMENTED 2026-06-25. **Full plan + status: `docs/sdk-envelope-port-plan.md`.**
-TS done + verified (37/37 tests, incl. wire-parity + rollback). PHP implemented + `php -l` clean; its
-phpunit suite couldn't run in the dev sandbox (`require vendor/autoload.php` hangs there) — run it in a
-normal env. Remaining: run the PHP suite + cut the breaking major-version SDK releases (split workflows).
+TS done + verified (37/37 tests, incl. wire-parity + rollback). PHP done + verified (6/6) — run with
+`XDEBUG_MODE=off vendor/bin/phpunit` (Homebrew Xdebug hangs CLI PHP otherwise; cf. Makefile `sdk-generate`).
+Remaining: cut the breaking major-version SDK releases (`make release-ts-sdk BUMP=minor` →
+typescript-sdk/v0.8.0, `make release-laravel-sdk BUMP=minor` → laravel-sdk/v0.7.0; needs a clean tree + push).
 Port `clients/typescript-sdk` and `clients/laravel-sdk` to the same `Operation`/`Plan`/`Run`
 contract. Survey done 2026-06-25: both SDKs have a bare `execute()` (no Validate/Authorize/Execute
 split), a *soft* Result seal (TS exports the token; PHP `internal()` is public), a caller-owned-tx

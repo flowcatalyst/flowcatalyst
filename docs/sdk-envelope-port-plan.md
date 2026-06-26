@@ -11,13 +11,13 @@ of the use-case envelope migration — the Go side is complete (see
 >   and applies the Plan through `OutboxUnitOfWork.run` (which owns the tx). Stopped re-exporting the leaky
 >   `RESULT_SUCCESS_TOKEN`; deprecated `UseCase`/`SecuredUseCase`. `tsc --noEmit` clean; **37/37 tests green**
 >   including a wire-parity guard (envelope output == legacy `commit()` output) and a rollback/atomicity test.
-> - **PHP — IMPLEMENTED, lints clean, not yet run here.** Added `src/UseCase/{Repo,Plan,Operation,Runner,RollbackSignal}.php`;
+> - **PHP — DONE + verified.** Added `src/UseCase/{Repo,Plan,Operation,Runner,RollbackSignal}.php`;
 >   added `transaction()` to the `UnitOfWork` interface (owned `DB::transaction` on the outbox connection);
 >   `Runner::run` owns the throw-to-rollback logic; deprecated `UseCase`/`SecuredUseCase`; wired `connection`
 >   in the service provider; added `phpunit.xml.dist` + `tests/Unit/UseCase/EnvelopeTest.php` (6 cases mirroring
->   the TS suite). All files pass `php -l`. **The tests could not be executed in this dev sandbox** — a bare
->   `require vendor/autoload.php` hangs here (environment issue, not the code), so run the PHP suite in a normal
->   environment: `vendor/bin/phpunit tests/Unit/UseCase/EnvelopeTest.php`.
+>   the TS suite). **6/6 pass in ~0.04s.** Run it with Xdebug OFF or phpunit/CLI PHP hangs (Homebrew Xdebug blocks
+>   CLI PHP — see the Makefile's `sdk-generate`): `XDEBUG_MODE=off vendor/bin/phpunit`. (One non-failing
+>   deprecation surfaces from the vendored `odan/tsid` on PHP 8.4 — pre-existing, unrelated to this work.)
 >
 > Decisions taken on the §6 open questions: (1) kept the `commit*` family as lower-level/back-compat, authoring
 > goes through Plan+run; (2) PHP seal stays convention-level (structure carries the invariant); (3) Effect TS
