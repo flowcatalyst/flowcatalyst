@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace FlowCatalyst;
 
 use FlowCatalyst\Auth\Contracts\OidcUserHandler;
+use FlowCatalyst\Auth\DatabaseOidcUserHandler;
 use FlowCatalyst\Auth\DefaultOidcUserHandler;
 use FlowCatalyst\Auth\Http\Middleware\AuthenticateFc;
 use FlowCatalyst\Auth\Http\Middleware\RequireAuth;
@@ -60,6 +61,7 @@ class FlowCatalystServiceProvider extends ServiceProvider
         $this->registerMiddleware();
         $this->registerTokenGuard();
         $this->registerOidcRoutes();
+        $this->registerGuestRedirect();
         $this->registerCommands();
     }
 
@@ -310,15 +312,71 @@ class FlowCatalystServiceProvider extends ServiceProvider
     /**
      * Register the OIDC user authentication handler.
      *
-     * Applications can override this by binding their own OidcUserHandler
-     * implementation in their AppServiceProvider.
+     * The default is selected by `flowcatalyst.oidc.handler`:
+     *   - 'database' (default) — {@see DatabaseOidcUserHandler}: upserts a local
+     *     user and logs them into the native Laravel guard so stock `auth`
+     *     middleware works out of the box;
+     *   - 'session' — {@see DefaultOidcUserHandler}: session principal only.
+     *
+     * Bound with `if (!bound)` so an app that binds its own OidcUserHandler in
+     * its service provider (e.g. for tenant checks) always wins.
      */
     protected function registerOidcUserAuth(): void
     {
         // Only bind if not already bound (allows app to override)
         if (!$this->app->bound(OidcUserHandler::class)) {
-            $this->app->singleton(OidcUserHandler::class, DefaultOidcUserHandler::class);
+            $handler = config('flowcatalyst.oidc.handler', 'database') === 'session'
+                ? DefaultOidcUserHandler::class
+                : DatabaseOidcUserHandler::class;
+
+            $this->app->singleton(OidcUserHandler::class, $handler);
         }
+    }
+
+    /**
+     * Make the stock `auth` middleware redirect guests into the FlowCatalyst
+     * OIDC flow, so a fresh app needs no `login` route or custom redirect.
+     *
+     * Safe by construction — it cannot disturb an app that has its own auth:
+     *  - opt out entirely via `oidc.auto_guest_redirect = false`;
+     *  - never overrides a redirect callback another provider already set;
+     *  - defers to the app's own `login` route when one exists (won't hijack a
+     *    local login page — evaluated lazily, after routes are loaded);
+     *  - an app whose custom Authenticate middleware overrides redirectTo()
+     *    bypasses this callback completely.
+     */
+    protected function registerGuestRedirect(): void
+    {
+        if (!config('flowcatalyst.oidc.enabled', false)) {
+            return;
+        }
+        if (!config('flowcatalyst.oidc.auto_guest_redirect', true)) {
+            return;
+        }
+
+        // NB: on Laravel 11+ the framework installs its own default guest
+        // redirect (`fn () => route('login')`) when the HTTP kernel resolves —
+        // which happens BEFORE service providers boot (Application::handleRequest
+        // resolves the kernel, then Kernel::handle() boots providers). So this
+        // boot-time call runs AFTER the framework default and overrides it. We
+        // deliberately do NOT guard on "is a callback already set" — that would
+        // always see the framework default and bail, leaving a `route('login')`
+        // that 500s on an app with no `login` route.
+        //
+        // App-safety instead lives in the callback: if the app has its own
+        // `login` route we return that (identical to the framework default, so
+        // a local login page is never hijacked); only a login-less app is sent
+        // to FlowCatalyst. Apps wanting different behaviour set their own
+        // redirect in bootstrap/app.php and disable `oidc.auto_guest_redirect`.
+        \Illuminate\Auth\Middleware\Authenticate::redirectUsing(function ($request) {
+            if (\Illuminate\Support\Facades\Route::has('login')) {
+                return route('login');
+            }
+            if (\Illuminate\Support\Facades\Route::has('flowcatalyst.login')) {
+                return route('flowcatalyst.login');
+            }
+            return null;
+        });
     }
 
     /**

@@ -179,6 +179,78 @@ return [
 
         /*
         |----------------------------------------------------------------------
+        | Native Login Bridge (use FlowCatalyst as your app's login)
+        |----------------------------------------------------------------------
+        |
+        | These make a fresh Laravel app authenticate against FlowCatalyst with
+        | (almost) zero code: stock `->middleware('auth')`, `Auth::user()`,
+        | `@auth`, and policies all "just work".
+        |
+        | handler:
+        |   'database' (default) — on OIDC callback, upsert a local user row and
+        |     log them into the native Laravel guard, so the standard `auth`
+        |     middleware recognises them. Still stores the SDK session principal,
+        |     so the `fc.*` middleware keep working too.
+        |   'session' — legacy behaviour: only store the principal in the session
+        |     (no native Auth::login). Use this to preserve pre-bridge behaviour.
+        |
+        | Apps that need custom mapping (tenant checks, extra columns, …) bind
+        | their own OidcUserHandler — that binding always wins over this default.
+        |
+        */
+        'handler' => env('FLOWCATALYST_OIDC_HANDLER', 'database'),
+
+        /*
+        | The Eloquent user model upserted + logged in by the 'database' handler.
+        | Matched by email. Defaults to a standard Laravel app's user model.
+        */
+        'user_model' => env('FLOWCATALYST_OIDC_USER_MODEL', \App\Models\User::class),
+
+        /*
+        | Remember the native login (sets the long-lived "remember me" cookie).
+        */
+        'remember_login' => env('FLOWCATALYST_OIDC_REMEMBER_LOGIN', false),
+
+        /*
+        |----------------------------------------------------------------------
+        | Role Syncing (Spatie laravel-permission)
+        |----------------------------------------------------------------------
+        |
+        | When the user model uses Spatie's HasRoles trait, the 'database'
+        | handler maps the token's `roles` claim onto the local user on every
+        | login. No-op if spatie/laravel-permission isn't installed.
+        |
+        |   sync_roles          — master switch for role syncing on login.
+        |   sync_roles_mode     — 'additive' grants new roles and never removes
+        |                         existing ones; 'replace' makes the token's
+        |                         roles the user's authoritative full set.
+        |   create_missing_roles— create local roles that don't exist yet
+        |                         (off by default: only assign roles you manage).
+        |   roles_guard         — Spatie guard_name to match/create roles under.
+        |
+        */
+        'sync_roles' => env('FLOWCATALYST_OIDC_SYNC_ROLES', true),
+        'sync_roles_mode' => env('FLOWCATALYST_OIDC_SYNC_ROLES_MODE', 'additive'),
+        'create_missing_roles' => env('FLOWCATALYST_OIDC_CREATE_MISSING_ROLES', false),
+        'roles_guard' => env('FLOWCATALYST_OIDC_ROLES_GUARD', 'web'),
+
+        /*
+        |----------------------------------------------------------------------
+        | Auto Guest Redirect
+        |----------------------------------------------------------------------
+        |
+        | When enabled (and OIDC is enabled), unauthenticated requests to routes
+        | guarded by the stock `auth` middleware are redirected straight into the
+        | FlowCatalyst login flow — so you never have to define a `login` route
+        | or a custom redirect. If your app already has its own `login` route,
+        | that route is preferred and this does nothing (it won't hijack a local
+        | login page). Set to false to opt out entirely.
+        |
+        */
+        'auto_guest_redirect' => env('FLOWCATALYST_OIDC_AUTO_GUEST_REDIRECT', true),
+
+        /*
+        |----------------------------------------------------------------------
         | Single Logout (RP-Initiated Logout)
         |----------------------------------------------------------------------
         |

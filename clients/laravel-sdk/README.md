@@ -78,6 +78,77 @@ FLOWCATALYST_POSTBOX_DRIVER=database
 FLOWCATALYST_SIGNING_SECRET=your_signing_secret
 ```
 
+## User Login via FlowCatalyst OIDC
+
+Use FlowCatalyst as your app's identity provider with (almost) no code. A fresh
+Laravel app needs only env — then stock `->middleware('auth')`, `Auth::user()`,
+`@auth`, and policies all recognise the signed-in FlowCatalyst user.
+
+```env
+FLOWCATALYST_BASE_URL=https://your-instance.flowcatalyst.io
+FLOWCATALYST_OIDC_ENABLED=true
+FLOWCATALYST_OIDC_CLIENT_ID=your_oauth_client_id
+FLOWCATALYST_OIDC_CLIENT_SECRET=your_oauth_client_secret   # omit for PKCE-only public clients
+```
+
+That's it. Protect routes the normal Laravel way:
+
+```php
+// routes/web.php
+Route::middleware('auth')->group(function () {
+    Route::get('/dashboard', DashboardController::class);
+});
+```
+
+What happens:
+
+1. A guest hitting an `auth` route is redirected into the FlowCatalyst login
+   flow automatically — **no `login` route or custom redirect needed**. (If your
+   app already defines its own `login` route, that one is used instead; the SDK
+   won't hijack a local login page.)
+2. On the OIDC callback the SDK upserts a local user (matched by email, model
+   `flowcatalyst.oidc.user_model`, default `App\Models\User`) and calls
+   `Auth::login()`, so the native guard recognises them.
+3. The FlowCatalyst principal is also kept in the session, so the SDK's own
+   `fc.auth` / `fc.session` / `fc.bearer` middleware keep working for APIs.
+
+The OIDC routes (`/flowcatalyst/login`, `/flowcatalyst/callback`,
+`/flowcatalyst/logout`) are registered for you. Register the callback URL as a
+redirect URI on your FlowCatalyst OAuth client:
+`https://your-app.com/flowcatalyst/callback`.
+
+### Role syncing (Spatie laravel-permission)
+
+If your user model uses Spatie's `HasRoles` trait, the token's `roles` claim is
+synced to the local user on every login. Install
+`spatie/laravel-permission`, add `HasRoles` to your `User`, and it just works.
+Defaults are additive (grants new roles, never removes existing ones); tune via
+config:
+
+```env
+FLOWCATALYST_OIDC_SYNC_ROLES=true
+FLOWCATALYST_OIDC_SYNC_ROLES_MODE=additive        # or "replace" for authoritative
+FLOWCATALYST_OIDC_CREATE_MISSING_ROLES=false      # create local roles on the fly
+FLOWCATALYST_OIDC_ROLES_GUARD=web
+```
+
+### Customising or opting out
+
+- **Custom mapping** (tenant checks, extra columns, your own role logic): bind
+  your own handler — it always wins over the SDK default.
+
+  ```php
+  // AppServiceProvider::register()
+  $this->app->bind(\FlowCatalyst\Auth\Contracts\OidcUserHandler::class, MyHandler::class);
+  ```
+
+  Extend `DatabaseOidcUserHandler` to keep the upsert + login and override just
+  the bits you need, or implement `OidcUserHandler` from scratch.
+
+- **Session-only (legacy) behaviour**, no native `Auth::login()`:
+  `FLOWCATALYST_OIDC_HANDLER=session`.
+- **Don't auto-redirect guests** to OIDC: `FLOWCATALYST_OIDC_AUTO_GUEST_REDIRECT=false`.
+
 ## Control Plane API
 
 The SDK provides access to FlowCatalyst control plane APIs using OIDC client credentials authentication.
