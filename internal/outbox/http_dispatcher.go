@@ -51,11 +51,26 @@ func truncate(s string, n int) string {
 	return s[:n]
 }
 
+// TokenSource supplies the bearer token for the platform Authorization header.
+// Implementations should cache and refresh internally; Token is called once per
+// request. A nil TokenSource makes the dispatcher fall back to the static
+// AuthToken. A TokenSource may additionally implement tokenInvalidator, whose
+// Invalidate() the dispatcher calls on a 401 so the next request re-mints.
+type TokenSource interface {
+	Token(ctx context.Context) (string, error)
+}
+
+// tokenInvalidator is an optional capability of a TokenSource: drop any cached
+// token so the next Token() re-fetches. Used to recover from an early 401
+// (e.g. a revoked-before-expiry token) without waiting for the cached TTL.
+type tokenInvalidator interface{ Invalidate() }
+
 // HTTPDispatcher sends outbox items to the FlowCatalyst platform API.
 // Mirrors fc-outbox/src/http_dispatcher.rs.
 type HTTPDispatcher struct {
 	platformURL string
 	authToken   string
+	tokenSource TokenSource
 	client      *http.Client
 }
 
@@ -65,6 +80,35 @@ func NewHTTPDispatcher(platformURL, authToken string, timeout time.Duration) *HT
 		platformURL: platformURL,
 		authToken:   authToken,
 		client:      &http.Client{Timeout: timeout},
+	}
+}
+
+// setAuthHeader sets the bearer Authorization header. When a TokenSource is
+// configured it supplies the token (self-refreshing); otherwise the static
+// authToken is used. A TokenSource error is returned so the caller can fail the
+// dispatch retryably — the platform is reachable, only our token mint failed.
+func (d *HTTPDispatcher) setAuthHeader(ctx context.Context, req *http.Request) error {
+	if d.tokenSource != nil {
+		tok, err := d.tokenSource.Token(ctx)
+		if err != nil {
+			return err
+		}
+		if tok != "" {
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
+		return nil
+	}
+	if d.authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+d.authToken)
+	}
+	return nil
+}
+
+// onUnauthorized drops a cached token (best-effort) after a 401 so the next
+// request re-mints. No-op for a static token or a non-invalidatable source.
+func (d *HTTPDispatcher) onUnauthorized() {
+	if inv, ok := d.tokenSource.(tokenInvalidator); ok {
+		inv.Invalidate()
 	}
 }
 
@@ -103,8 +147,10 @@ func (d *HTTPDispatcher) SendBatch(ctx context.Context, items []Item) map[string
 		return failAll(items, common.OutboxInternalError, "build: "+err.Error())
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if d.authToken != "" {
-		req.Header.Set("Authorization", "Bearer "+d.authToken)
+	if err := d.setAuthHeader(ctx, req); err != nil {
+		// Couldn't mint a token → treat like an upstream gateway issue (retryable),
+		// so the batch is re-tried once the token endpoint recovers.
+		return failAll(items, common.OutboxGatewayError, "auth: "+err.Error())
 	}
 
 	resp, err := d.client.Do(req)
@@ -142,6 +188,8 @@ func (d *HTTPDispatcher) SendBatch(ctx context.Context, items []Item) map[string
 		}
 		return out
 	case resp.StatusCode == http.StatusUnauthorized:
+		// 401 is retryable; drop any cached token so the next attempt re-mints.
+		d.onUnauthorized()
 		return failAll(items, common.OutboxUnauthorized, "401")
 	case resp.StatusCode == http.StatusForbidden:
 		return failAll(items, common.OutboxForbidden, "403")
@@ -184,8 +232,9 @@ func (d *HTTPDispatcher) Send(ctx context.Context, item Item) DispatchOutcome {
 		return DispatchOutcome{Status: common.OutboxInternalError, Message: "build: " + err.Error()}
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if d.authToken != "" {
-		req.Header.Set("Authorization", "Bearer "+d.authToken)
+	if err := d.setAuthHeader(ctx, req); err != nil {
+		// Token mint failed → GATEWAY_ERROR (retryable).
+		return DispatchOutcome{Status: common.OutboxGatewayError, Message: "auth: " + err.Error()}
 	}
 
 	resp, err := d.client.Do(req)
@@ -214,6 +263,7 @@ func (d *HTTPDispatcher) Send(ctx context.Context, item Item) DispatchOutcome {
 		}
 		return DispatchOutcome{Status: st, Message: r.Error}
 	case resp.StatusCode == http.StatusUnauthorized:
+		d.onUnauthorized()
 		return DispatchOutcome{Status: common.OutboxUnauthorized, Message: "401"}
 	case resp.StatusCode == http.StatusForbidden:
 		return DispatchOutcome{Status: common.OutboxForbidden, Message: "403"}

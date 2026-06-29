@@ -17,6 +17,10 @@ type Config struct {
 	HTTPTimeout  time.Duration
 	PlatformURL  string
 	AuthToken    string
+	// TokenSource, when non-nil, supplies the platform bearer token per request
+	// (self-refreshing) and takes precedence over the static AuthToken. Used by
+	// the standalone poller to mint its own client_credentials token.
+	TokenSource TokenSource
 	// MaxRetries caps re-queues of a retryable failure (OB6): once an item
 	// has been attempted MaxRetries times it keeps its failure status instead
 	// of returning to PENDING, so it stops hot-looping. Mirrors the Rust
@@ -76,6 +80,7 @@ type Processor struct {
 // NewProcessor wires a processor.
 func NewProcessor(cfg Config, repo Repository) *Processor {
 	d := NewHTTPDispatcher(cfg.PlatformURL, cfg.AuthToken, cfg.HTTPTimeout)
+	d.tokenSource = cfg.TokenSource
 	return &Processor{
 		cfg:         cfg,
 		repo:        repo,

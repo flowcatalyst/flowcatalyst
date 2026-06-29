@@ -121,6 +121,23 @@ func resolveEnvFlag(cmd *cobra.Command, flag, env string) string {
 	return v
 }
 
+// resolveEnvFlagMulti is resolveEnvFlag with several accepted env names tried
+// in order (e.g. a poller-specific name falling back to the app's shared
+// FLOWCATALYST_* var). An explicitly-passed flag still wins.
+func resolveEnvFlagMulti(cmd *cobra.Command, flag string, envs ...string) string {
+	if cmd.Flags().Changed(flag) {
+		v, _ := cmd.Flags().GetString(flag)
+		return v
+	}
+	for _, env := range envs {
+		if v := os.Getenv(env); v != "" {
+			return v
+		}
+	}
+	v, _ := cmd.Flags().GetString(flag)
+	return v
+}
+
 // resolveEnvFlagInt is the int counterpart of resolveEnvFlag.
 func resolveEnvFlagInt(cmd *cobra.Command, flag, env string) int {
 	if cmd.Flags().Changed(flag) {
