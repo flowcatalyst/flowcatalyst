@@ -30,6 +30,12 @@ func parseItemStatus(s string) (common.OutboxStatus, bool) {
 	switch s {
 	case "SUCCESS":
 		return common.OutboxSuccess, true
+	case "SKIPPED":
+		// The platform deliberately did not store the item (e.g. audit-log with
+		// an unresolvable applicationCode/clientCode, or no client access). This
+		// is a terminal, acknowledged outcome — retrying is futile and must not
+		// block the group, so treat it as success (the row is cleared).
+		return common.OutboxSuccess, true
 	case "BAD_REQUEST":
 		return common.OutboxBadRequest, true
 	case "INTERNAL_ERROR":
@@ -118,18 +124,20 @@ type DispatchOutcome struct {
 	Message string
 }
 
-// SendBatch POSTs multiple items of the SAME ItemType in one request and
-// returns a per-item outcome keyed by item id (OB4 multi-item batching, 1:1
-// with Rust dispatch_batch). All items must share items[0].ItemType (the
-// caller groups by type). A transport/parse error or a non-2xx status fails the
-// whole batch with the mapped status; on a 2xx the per-item {results:[]} body
-// is honoured, and any item missing from results is INTERNAL_ERROR (retryable).
+// SendBatch POSTs one or more items of the SAME ItemType in a single request
+// and returns a per-item outcome keyed by outbox item id. This is the ONE
+// dispatch path — Send (single item) delegates here too, so grouped and
+// ungrouped items are classified identically.
+//
+// Result matching is POSITIONAL: the platform returns exactly one result per
+// submitted item, in submission order (the events, dispatch-jobs, and
+// audit-logs batch endpoints all do this). The result `id` is the platform
+// RESOURCE id (event/job/audit id), NOT the outbox row id, so matching by id is
+// wrong — results[i] is the outcome for items[i]. A transport/parse error or a
+// non-2xx status fails the whole batch with the mapped status.
 func (d *HTTPDispatcher) SendBatch(ctx context.Context, items []Item) map[string]DispatchOutcome {
 	if len(items) == 0 {
 		return map[string]DispatchOutcome{}
-	}
-	if len(items) == 1 {
-		return map[string]DispatchOutcome{items[0].ID: d.Send(ctx, items[0])}
 	}
 
 	endpoint := d.platformURL + items[0].ItemType.APIPath()
@@ -163,22 +171,24 @@ func (d *HTTPDispatcher) SendBatch(ctx context.Context, items []Item) map[string
 
 	switch {
 	case resp.StatusCode >= 200 && resp.StatusCode < 300:
+		// OB5: a 2xx is NOT blanket success — the platform reports a PER-ITEM
+		// outcome in {results:[{id,status,error?}]} and a batch can return 2xx
+		// while individual items are BAD_REQUEST/SKIPPED/etc.
 		var br batchResponse
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
-		if err := json.Unmarshal(raw, &br); err != nil || len(br.Results) == 0 {
+		if err := json.Unmarshal(raw, &br); err != nil {
 			return failAll(items, common.OutboxInternalError, "parse results: "+truncate(string(raw), 200))
 		}
-		byID := make(map[string]itemResult, len(br.Results))
-		for _, r := range br.Results {
-			byID[r.ID] = r
+		// Positional matching: results[i] is the outcome for items[i]. A count
+		// mismatch means the contract was violated — fail the whole batch
+		// retryably rather than risk mis-assigning outcomes to the wrong rows.
+		if len(br.Results) != len(items) {
+			return failAll(items, common.OutboxInternalError,
+				fmt.Sprintf("result count mismatch: got %d for %d items", len(br.Results), len(items)))
 		}
 		out := make(map[string]DispatchOutcome, len(items))
-		for _, it := range items {
-			r, ok := byID[it.ID]
-			if !ok {
-				out[it.ID] = DispatchOutcome{Status: common.OutboxInternalError, Message: "no per-item result returned"}
-				continue
-			}
+		for i, it := range items {
+			r := br.Results[i]
 			st, ok := parseItemStatus(r.Status)
 			if !ok {
 				out[it.ID] = DispatchOutcome{Status: common.OutboxInternalError, Message: "unknown item status: " + r.Status}
@@ -218,64 +228,16 @@ func failAll(items []Item, st common.OutboxStatus, msg string) map[string]Dispat
 	return m
 }
 
-// Send POSTs the item's payload to the appropriate batch endpoint and
-// classifies the response into an OutboxStatus.
+// Send POSTs a single item and classifies the response into an OutboxStatus.
+// It delegates to SendBatch (a 1-item batch) so single and multi-item dispatch
+// share exactly one request/response path — there is no separate single-item
+// classifier that can drift from the batch one.
 func (d *HTTPDispatcher) Send(ctx context.Context, item Item) DispatchOutcome {
-	endpoint := d.platformURL + item.ItemType.APIPath()
-	body, err := json.Marshal(map[string]any{"items": []json.RawMessage{item.Payload}})
-	if err != nil {
-		return DispatchOutcome{Status: common.OutboxBadRequest, Message: "marshal: " + err.Error()}
+	out := d.SendBatch(ctx, []Item{item})
+	if o, ok := out[item.ID]; ok {
+		return o
 	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
-	if err != nil {
-		return DispatchOutcome{Status: common.OutboxInternalError, Message: "build: " + err.Error()}
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if err := d.setAuthHeader(ctx, req); err != nil {
-		// Token mint failed → GATEWAY_ERROR (retryable).
-		return DispatchOutcome{Status: common.OutboxGatewayError, Message: "auth: " + err.Error()}
-	}
-
-	resp, err := d.client.Do(req)
-	if err != nil {
-		// Transport failure → GATEWAY_ERROR (retryable), matching Rust.
-		return DispatchOutcome{Status: common.OutboxGatewayError, Message: "request: " + err.Error()}
-	}
-	defer resp.Body.Close()
-
-	switch {
-	case resp.StatusCode >= 200 && resp.StatusCode < 300:
-		// OB5: a 2xx is NOT blanket success — the platform reports a PER-ITEM
-		// outcome in {results:[{id,status,error}]}. A batch can return 2xx
-		// while individual items are BAD_REQUEST/etc. Honour the per-item
-		// status (single-item batch → results[0]); a parse failure or empty
-		// results falls back to INTERNAL_ERROR (retryable), matching Rust.
-		var br batchResponse
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		if err := json.Unmarshal(body, &br); err != nil || len(br.Results) == 0 {
-			return DispatchOutcome{Status: common.OutboxInternalError, Message: "parse results: " + truncate(string(body), 200)}
-		}
-		r := br.Results[0]
-		st, ok := parseItemStatus(r.Status)
-		if !ok {
-			return DispatchOutcome{Status: common.OutboxInternalError, Message: "unknown item status: " + r.Status}
-		}
-		return DispatchOutcome{Status: st, Message: r.Error}
-	case resp.StatusCode == http.StatusUnauthorized:
-		d.onUnauthorized()
-		return DispatchOutcome{Status: common.OutboxUnauthorized, Message: "401"}
-	case resp.StatusCode == http.StatusForbidden:
-		return DispatchOutcome{Status: common.OutboxForbidden, Message: "403"}
-	case resp.StatusCode == http.StatusBadGateway,
-		resp.StatusCode == http.StatusServiceUnavailable,
-		resp.StatusCode == http.StatusGatewayTimeout:
-		return DispatchOutcome{Status: common.OutboxGatewayError, Message: fmt.Sprintf("%d", resp.StatusCode)}
-	case resp.StatusCode == http.StatusBadRequest:
-		// Only an exact 400 is terminal; all other unmatched 4xx/5xx →
-		// INTERNAL_ERROR (retryable), matching Rust http_dispatcher.rs. See SendBatch.
-		return DispatchOutcome{Status: common.OutboxBadRequest, Message: fmt.Sprintf("%d", resp.StatusCode)}
-	default:
-		return DispatchOutcome{Status: common.OutboxInternalError, Message: fmt.Sprintf("%d", resp.StatusCode)}
-	}
+	// Unreachable in practice (SendBatch always keys every item), but never
+	// return a zero-value SUCCESS by accident — treat as retryable.
+	return DispatchOutcome{Status: common.OutboxInternalError, Message: "no outcome for item"}
 }

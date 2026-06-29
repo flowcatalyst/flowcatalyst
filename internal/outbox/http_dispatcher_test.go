@@ -136,10 +136,14 @@ func TestSendBatch_PerItemResults(t *testing.T) {
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		gotItems = len(body.Items)
 		w.WriteHeader(http.StatusOK)
+		// One result per item, IN ORDER. The result ids are platform RESOURCE
+		// ids (evt_*) — deliberately different from the outbox row ids (a/b/c)
+		// to prove matching is positional, not by id. The audit endpoint even
+		// returns server-minted ids, so id-matching would mis-assign every row.
 		_ = json.NewEncoder(w).Encode(map[string]any{"results": []map[string]any{
-			{"id": "a", "status": "SUCCESS"},
-			{"id": "b", "status": "BAD_REQUEST", "error": "bad"},
-			// "c" intentionally omitted from results.
+			{"id": "evt_1", "status": "SUCCESS"},
+			{"id": "evt_2", "status": "BAD_REQUEST", "error": "bad"},
+			{"id": "", "status": "SKIPPED"},
 		}})
 	}))
 	defer srv.Close()
@@ -155,8 +159,36 @@ func TestSendBatch_PerItemResults(t *testing.T) {
 	if out["b"].Status != common.OutboxBadRequest || out["b"].Message != "bad" {
 		t.Errorf("b = %v/%q, want BAD_REQUEST/bad", out["b"].Status, out["b"].Message)
 	}
-	if out["c"].Status != common.OutboxInternalError {
-		t.Errorf("c (missing from results) = %v, want INTERNAL_ERROR", out["c"].Status)
+	// SKIPPED is a terminal, acknowledged outcome → treated as success so the
+	// row clears instead of hot-looping (the audit-batch-stuck bug).
+	if out["c"].Status != common.OutboxSuccess {
+		t.Errorf("c (SKIPPED) = %v, want SUCCESS", out["c"].Status)
+	}
+}
+
+// TestSendBatch_CountMismatchFailsAllRetryable guards the positional contract:
+// if the platform returns the wrong number of results, every item fails
+// retryably rather than risk mis-assigning outcomes to the wrong rows.
+func TestSendBatch_CountMismatchFailsAllRetryable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": []map[string]any{
+			{"id": "evt_1", "status": "SUCCESS"},
+			{"id": "evt_2", "status": "SUCCESS"},
+			// third result missing for a 3-item batch.
+		}})
+	}))
+	defer srv.Close()
+
+	d := NewHTTPDispatcher(srv.URL, "", 5*time.Second)
+	out := d.SendBatch(context.Background(), []Item{batchItem("a"), batchItem("b"), batchItem("c")})
+	for _, id := range []string{"a", "b", "c"} {
+		if out[id].Status != common.OutboxInternalError {
+			t.Errorf("%s = %v, want INTERNAL_ERROR (retryable)", id, out[id].Status)
+		}
+		if !out[id].Status.IsRetryable() {
+			t.Errorf("%s status %v should be retryable", id, out[id].Status)
+		}
 	}
 }
 
