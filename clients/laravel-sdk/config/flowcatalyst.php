@@ -163,6 +163,7 @@ return [
         'login_route' => env('FLOWCATALYST_OIDC_LOGIN_ROUTE', '/flowcatalyst/login'),
         'callback_route' => env('FLOWCATALYST_OIDC_CALLBACK_ROUTE', '/flowcatalyst/callback'),
         'logout_route' => env('FLOWCATALYST_OIDC_LOGOUT_ROUTE', '/flowcatalyst/logout'),
+        'refresh_route' => env('FLOWCATALYST_OIDC_REFRESH_ROUTE', '/flowcatalyst/refresh'),
 
         /*
         |----------------------------------------------------------------------
@@ -233,6 +234,34 @@ return [
         'sync_roles_mode' => env('FLOWCATALYST_OIDC_SYNC_ROLES_MODE', 'additive'),
         'create_missing_roles' => env('FLOWCATALYST_OIDC_CREATE_MISSING_ROLES', false),
         'roles_guard' => env('FLOWCATALYST_OIDC_ROLES_GUARD', 'web'),
+
+        /*
+        | On login, also mirror each role's PERMISSIONS from FlowCatalyst into the
+        | local Spatie role (so $user->can('app:ctx:agg:act') works), not just the
+        | role name. Fetched via GET /api/roles/{role} using the service account
+        | and cached per role for `role_permissions_cache_ttl` seconds. Best-effort:
+        | skipped silently if no service account is configured / the API is down.
+        */
+        'sync_role_permissions' => env('FLOWCATALYST_OIDC_SYNC_ROLE_PERMISSIONS', true),
+        'role_permissions_cache_ttl' => (int) env('FLOWCATALYST_OIDC_ROLE_PERMISSIONS_CACHE_TTL', 300),
+
+        /*
+        |----------------------------------------------------------------------
+        | Permission Resolver (fc-token / fc-session guards)
+        |----------------------------------------------------------------------
+        |
+        | How a token/session principal's permissions are resolved for
+        | hasPermissionTo()/can(). Independent of the Spatie/users-table sync.
+        |
+        |   'token'  (default) — read straight off the token's `scope` claim.
+        |                        Fully stateless: no HTTP, no DB, no Spatie.
+        |   'api_me'            — server-resolved via GET /api/me (one cached
+        |                        HTTP call; fresher when permissions change).
+        |
+        | A locally-bound RbacCatalogue (offline, from roles) overrides either.
+        |
+        */
+        'permission_resolver' => env('FLOWCATALYST_OIDC_PERMISSION_RESOLVER', 'token'),
 
         /*
         |----------------------------------------------------------------------
@@ -388,6 +417,20 @@ return [
         |
         */
         'cache_path' => storage_path('flowcatalyst'),
+
+        /*
+        |----------------------------------------------------------------------
+        | Seed Spatie on Sync
+        |----------------------------------------------------------------------
+        |
+        | When true, `php artisan flowcatalyst:sync` also mirrors the scanned
+        | roles + permissions into the local spatie/laravel-permission tables
+        | (under flowcatalyst.oidc.roles_guard), so the app's local authorization
+        | model matches what it pushes to the platform. No-op if Spatie isn't
+        | installed. Pass --no-spatie to skip for a single run.
+        |
+        */
+        'seed_spatie' => env('FLOWCATALYST_SEED_SPATIE', true),
     ],
 
     /*

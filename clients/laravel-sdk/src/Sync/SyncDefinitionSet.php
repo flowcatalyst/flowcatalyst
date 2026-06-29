@@ -40,6 +40,15 @@ final class SyncDefinitionSet
     /** @var array<RoleDefinition|array<string, mixed>> */
     private array $roles = [];
 
+    /**
+     * Standalone permission definitions ({permission, description?}). Not pushed
+     * to FlowCatalyst directly (permissions ride up via the roles that grant
+     * them); used for local Spatie seeding and scan/dry-run output.
+     *
+     * @var array<array<string, mixed>>
+     */
+    private array $permissions = [];
+
     /** @var array<EventTypeDefinition|array<string, mixed>> */
     private array $eventTypes = [];
 
@@ -180,6 +189,36 @@ final class SyncDefinitionSet
             fn($role) => $role instanceof RoleDefinition ? $role->toArray() : $role,
             $this->roles
         );
+    }
+
+    /**
+     * Add standalone permission definitions.
+     *
+     * @param array<array<string, mixed>> $permissions Each {permission, description?}
+     */
+    public function withPermissions(array $permissions): self
+    {
+        $clone = clone $this;
+        $clone->permissions = $permissions;
+        return $clone;
+    }
+
+    /**
+     * Get the standalone permission definitions.
+     *
+     * @return array<array<string, mixed>>
+     */
+    public function getPermissions(): array
+    {
+        return $this->permissions;
+    }
+
+    /**
+     * Check if there are any standalone permission definitions.
+     */
+    public function hasPermissions(): bool
+    {
+        return !empty($this->permissions);
     }
 
     /**
@@ -411,6 +450,7 @@ final class SyncDefinitionSet
     public function isEmpty(): bool
     {
         return !$this->hasRoles()
+            && !$this->hasPermissions()
             && !$this->hasEventTypes()
             && !$this->hasSubscriptions()
             && !$this->hasDispatchPools()
@@ -435,6 +475,11 @@ final class SyncDefinitionSet
             unset($role['_class']);
             return $role;
         }, $data['roles'] ?? []);
+
+        $set->permissions = array_map(function ($permission) {
+            unset($permission['_class']);
+            return $permission;
+        }, $data['permissions'] ?? []);
 
         $set->eventTypes = array_map(function ($et) {
             unset($et['_class']);

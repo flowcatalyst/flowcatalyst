@@ -6,6 +6,7 @@ namespace FlowCatalyst\Definition;
 
 use FlowCatalyst\Attributes\AsDispatchPool;
 use FlowCatalyst\Attributes\AsEventType;
+use FlowCatalyst\Attributes\AsPermission;
 use FlowCatalyst\Attributes\AsProcess;
 use FlowCatalyst\Attributes\AsRole;
 use FlowCatalyst\Attributes\AsScheduledJob;
@@ -25,9 +26,17 @@ class DefinitionScanner
      * @param string[] $paths Directories to scan
      * @return ScannedDefinitions
      */
-    public function scan(array $paths): ScannedDefinitions
+    public function scan(array $paths, ?string $applicationCode = null): ScannedDefinitions
     {
+        // App code used to resolve #[AsPermission] segments + role permission
+        // class-refs. Falls back to the configured application code.
+        $applicationCode ??= (function () {
+            $code = function_exists('config') ? config('flowcatalyst.application_code') : null;
+            return is_string($code) && $code !== '' ? $code : null;
+        })();
+
         $roles = [];
+        $permissions = [];
         $eventTypes = [];
         $subscriptions = [];
         $dispatchPools = [];
@@ -46,13 +55,14 @@ class DefinitionScanner
                 $classes = $this->getClassesFromFile($file->getRealPath());
 
                 foreach ($classes as $className) {
-                    $this->processClass($className, $roles, $eventTypes, $subscriptions, $dispatchPools, $processes, $scheduledJobs);
+                    $this->processClass($className, $applicationCode, $roles, $permissions, $eventTypes, $subscriptions, $dispatchPools, $processes, $scheduledJobs);
                 }
             }
         }
 
         return new ScannedDefinitions(
             roles: $roles,
+            permissions: $permissions,
             eventTypes: $eventTypes,
             subscriptions: $subscriptions,
             dispatchPools: $dispatchPools,
@@ -106,7 +116,9 @@ class DefinitionScanner
      */
     private function processClass(
         string $className,
+        ?string $applicationCode,
         array &$roles,
+        array &$permissions,
         array &$eventTypes,
         array &$subscriptions,
         array &$dispatchPools,
@@ -119,12 +131,22 @@ class DefinitionScanner
             return;
         }
 
+        // Check for AsPermission attribute (standalone permission definitions).
+        $permissionAttributes = $reflection->getAttributes(AsPermission::class);
+        foreach ($permissionAttributes as $attribute) {
+            /** @var AsPermission $instance */
+            $instance = $attribute->newInstance();
+            $permissions[] = array_merge($instance->toArray($applicationCode), [
+                '_class' => $className,
+            ]);
+        }
+
         // Check for AsRole attribute
         $roleAttributes = $reflection->getAttributes(AsRole::class);
         foreach ($roleAttributes as $attribute) {
             /** @var AsRole $instance */
             $instance = $attribute->newInstance();
-            $roles[] = array_merge($instance->toArray(), [
+            $roles[] = array_merge($instance->toArray($applicationCode), [
                 '_class' => $className,
             ]);
         }

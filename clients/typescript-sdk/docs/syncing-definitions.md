@@ -128,6 +128,31 @@ Examples:
 
 Keep permissions fine-grained when you define them; collapse with wildcards only when you truly mean "all of this scope".
 
+#### Reusable permission factories
+
+Since a permission is usually shared across roles, define it **once** with the
+`permission()` factory and link roles to it. The `application` segment defaults
+to the set's `applicationCode`, so you don't repeat it:
+
+```ts
+import { defineApplication, permission } from "@flowcatalyst/sdk/sync";
+
+const ViewPosts = permission({ context: "posts", aggregate: "post", action: "view" });
+const EditPosts = permission({ context: "posts", aggregate: "post", action: "edit" });
+
+const set = defineApplication("blog")
+  .withPermissions([ViewPosts, EditPosts]) // optional standalone catalogue
+  .withRoles([{ name: "editor", permissions: [ViewPosts, EditPosts] }])
+  .build();
+// role "blog:editor" → ["blog:posts:post:view", "blog:posts:post:edit"]
+```
+
+`build()` resolves factories to wire strings. A role's `permissions` accepts a
+mix of `permission()` factories and plain 4-part strings. FlowCatalyst has no
+standalone "create permission" endpoint — permissions reach the platform via
+the roles that grant them, so the standalone catalogue is for reuse and
+documentation on the client side.
+
 ### `clientManaged`
 
 - `clientManaged: false` — only platform admins can assign this role to users. Use for roles that grant elevated access or span clients.

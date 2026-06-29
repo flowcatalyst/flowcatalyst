@@ -158,20 +158,23 @@ class DatabaseOidcUserHandler extends DefaultOidcUserHandler
             /** @var class-string $roleClass */
             $roleClass = config('permission.models.role', \Spatie\Permission\Models\Role::class);
 
-            $roles = [];
+            /** @var array<string, object> $resolved roleName => Spatie role model */
+            $resolved = [];
             foreach (array_unique($fcRoles) as $name) {
                 $role = $roleClass::query()->where('name', $name)->where('guard_name', $guard)->first();
                 if ($role === null && $createMissing) {
                     $role = $roleClass::create(['name' => $name, 'guard_name' => $guard]);
                 }
                 if ($role !== null) {
-                    $roles[] = $role;
+                    $resolved[$name] = $role;
                 }
             }
 
-            if ($roles === []) {
+            if ($resolved === []) {
                 return;
             }
+
+            $roles = array_values($resolved);
 
             if ($mode === 'replace') {
                 // Authoritative: the token's roles become the user's full set.
@@ -185,6 +188,16 @@ class DatabaseOidcUserHandler extends DefaultOidcUserHandler
                 }
             }
 
+            // Mirror each role's permissions from FlowCatalyst into the local
+            // Spatie role, so $user->can('app:context:aggregate:action') resolves
+            // locally — not just the role name. Best-effort (needs a service
+            // account); skips silently if unavailable.
+            if (config('flowcatalyst.oidc.sync_role_permissions', true)) {
+                foreach ($resolved as $name => $role) {
+                    $this->mirrorRolePermissions($name, $role, $guard);
+                }
+            }
+
             if (method_exists($user, 'forgetCachedPermissions')) {
                 $user->forgetCachedPermissions();
             }
@@ -195,6 +208,73 @@ class DatabaseOidcUserHandler extends DefaultOidcUserHandler
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Mirror a FlowCatalyst role's permissions onto the local Spatie role, so
+     * `$user->can(...)` works against FlowCatalyst-sourced permissions.
+     * Authoritative for the role; best-effort and never blocks login.
+     */
+    protected function mirrorRolePermissions(string $roleName, object $role, string $guard): void
+    {
+        $permissions = $this->fetchRolePermissions($roleName);
+        if ($permissions === null) {
+            return; // platform unreachable / no service account — leave as-is.
+        }
+
+        try {
+            /** @var class-string $permissionModel */
+            $permissionModel = config('permission.models.permission', \Spatie\Permission\Models\Permission::class);
+
+            $objects = [];
+            foreach ($permissions as $permission) {
+                if (is_string($permission) && $permission !== '') {
+                    $objects[] = $permissionModel::findOrCreate($permission, $guard);
+                }
+            }
+
+            if (method_exists($role, 'syncPermissions')) {
+                $role->syncPermissions($objects);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('FlowCatalyst OIDC: failed to mirror role permissions; continuing', [
+                'role' => $roleName,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Fetch a role's permission codes from FlowCatalyst (GET /api/roles/{name}),
+     * cached by role name. Returns null when unreachable / no service account.
+     *
+     * @return array<int, string>|null
+     */
+    protected function fetchRolePermissions(string $roleName): ?array
+    {
+        $ttl = (int) config('flowcatalyst.oidc.role_permissions_cache_ttl', 300);
+        $key = 'fc.role.perms.' . md5($roleName);
+
+        $cached = \Illuminate\Support\Facades\Cache::get($key);
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        try {
+            $role = app(\FlowCatalyst\Client\FlowCatalystClient::class)->roles()->get($roleName);
+            $permissions = array_values(array_filter($role->permissions, 'is_string'));
+        } catch (\Throwable $e) {
+            Log::warning('FlowCatalyst OIDC: could not fetch role permissions', [
+                'role' => $roleName,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+
+        \Illuminate\Support\Facades\Cache::put($key, $permissions, $ttl);
+
+        return $permissions;
     }
 
     /**

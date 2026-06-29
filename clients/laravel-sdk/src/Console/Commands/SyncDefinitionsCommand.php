@@ -32,6 +32,7 @@ class SyncDefinitionsCommand extends Command
                             {--openapi : Publish only the attached OpenAPI document}
                             {--openapi-file= : Path to a JSON/YAML OpenAPI file to attach before sync}
                             {--remove-unlisted : Remove definitions not in local cache}
+                            {--no-spatie : Skip seeding roles/permissions into the local Spatie tables}
                             {--dry-run : Show what would be synced without actually syncing}';
 
     protected $description = 'Sync FlowCatalyst definitions to the platform';
@@ -124,7 +125,44 @@ class SyncDefinitionsCommand extends Command
         // Display results
         $this->displayResults($result);
 
+        // Mirror roles + permissions into the local Spatie tables (so the app's
+        // authorization model matches what it just pushed). FlowCatalyst has no
+        // standalone permission entity, so permissions reach the platform via
+        // the roles above; this step keeps the LOCAL side in step.
+        $this->seedSpatie($definitions);
+
         return $result->hasErrors() ? Command::FAILURE : Command::SUCCESS;
+    }
+
+    /**
+     * Seed roles + permissions into the local Spatie tables.
+     */
+    private function seedSpatie(SyncDefinitionSet $definitions): void
+    {
+        if ($this->option('no-spatie') || !config('flowcatalyst.definitions.seed_spatie', true)) {
+            return;
+        }
+
+        $guard = (string) config('flowcatalyst.oidc.roles_guard', 'web');
+        $seeder = new \FlowCatalyst\Sync\SpatieSeeder($guard);
+
+        if (!$seeder->isAvailable()) {
+            return; // spatie/laravel-permission not installed — nothing to seed.
+        }
+
+        try {
+            $counts = $seeder->seed($definitions);
+            $this->newLine();
+            $this->info(sprintf(
+                'Seeded into Spatie [%s]: %d role(s), %d permission(s).',
+                $guard,
+                $counts['roles'],
+                $counts['permissions'],
+            ));
+        } catch (\Throwable $e) {
+            $this->newLine();
+            $this->warn('Spatie seeding skipped: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -135,7 +173,18 @@ class SyncDefinitionsCommand extends Command
         if ($options->syncRoles && $definitions->hasRoles()) {
             $this->info('Roles to sync:');
             foreach ($definitions->getRoles() as $role) {
-                $this->line("  - {$role['name']}");
+                $perms = $role['permissions'] ?? [];
+                $suffix = $perms === [] ? '' : '  (' . implode(', ', $perms) . ')';
+                $this->line("  - {$role['name']}{$suffix}");
+            }
+            $this->newLine();
+        }
+
+        if ($definitions->hasPermissions()) {
+            $this->info('Permissions (seeded locally; reach FlowCatalyst via the roles that grant them):');
+            foreach ($definitions->getPermissions() as $perm) {
+                $name = is_array($perm) ? ($perm['permission'] ?? '') : (string) $perm;
+                $this->line("  - {$name}");
             }
             $this->newLine();
         }

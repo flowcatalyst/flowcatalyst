@@ -206,6 +206,115 @@ class OidcAuthController extends Controller
     }
 
     /**
+     * Refresh the current session principal using the stored refresh token.
+     *
+     * With stateless auth, permissions live in the access token's `scope` claim,
+     * so they go stale when roles/permissions change on the platform. This swaps
+     * the stored access token for a fresh one (without a full re-login) and
+     * re-stores the principal — picking up the new permissions on the next
+     * request. Re-runs the bound OidcUserHandler, so a DB/Spatie-syncing handler
+     * also re-syncs.
+     */
+    public function refresh(Request $request): RedirectResponse
+    {
+        $current = \FlowCatalyst\Auth\DefaultOidcUserHandler::getCurrentUser();
+        $refreshToken = $current?->refreshToken;
+
+        if ($current === null || empty($refreshToken)) {
+            return $this->errorRedirect('Your session can\'t be refreshed — please sign in again.');
+        }
+
+        try {
+            $config = $this->getOidcConfig();
+            $tokens = $this->exchangeRefreshToken($config, $refreshToken);
+
+            // The access token is the source of truth for roles + permissions
+            // (scope). Preserve identity fields it may not carry from the
+            // current principal.
+            $claims = $this->decodeJwtPayload($tokens['access_token'] ?? '') ?? [];
+            $claims['sub'] ??= $current->sub;
+            $claims['email'] ??= $current->email;
+            $claims['name'] ??= $current->name;
+
+            $fcUser = FlowCatalystUser::fromAccessTokenClaims(
+                claims: $claims,
+                accessToken: $tokens['access_token'] ?? null,
+                refreshToken: $tokens['refresh_token'] ?? $refreshToken, // reuse if not rotated
+                mechanism: 'session',
+            );
+
+            if (!empty($tokens['id_token'])) {
+                session()->put(self::ID_TOKEN_SESSION_KEY, $tokens['id_token']);
+            }
+
+            $this->userHandler->handleAuthenticatedUser($fcUser);
+
+            $returnUrl = $request->input('return_url')
+                ?: (url()->previous() ?: $this->userHandler->getPostLoginRedirect());
+            return redirect()->to($returnUrl)->with('status', 'Session refreshed.');
+        } catch (\Throwable $e) {
+            Log::error('OIDC refresh failed', ['error' => $e->getMessage()]);
+            return $this->errorRedirect('Could not refresh your session. Please sign in again.');
+        }
+    }
+
+    /**
+     * Exchange a refresh token for a new token set.
+     *
+     * @return array{access_token: string, refresh_token?: string, id_token?: string}
+     * @throws AuthenticationException
+     */
+    private function exchangeRefreshToken(array $config, string $refreshToken): array
+    {
+        $tokenUrl = rtrim($config['base_url'], '/') . '/oauth/token';
+
+        $params = [
+            'grant_type' => 'refresh_token',
+            'refresh_token' => $refreshToken,
+            'client_id' => $config['client_id'],
+        ];
+        if (!empty($config['client_secret'])) {
+            $params['client_secret'] = $config['client_secret'];
+        }
+
+        try {
+            $response = $this->httpClient->post($tokenUrl, [
+                'form_params' => $params,
+                'headers' => ['Accept' => 'application/json'],
+            ]);
+
+            $statusCode = $response->getStatusCode();
+            $body = json_decode((string) $response->getBody(), true);
+
+            if ($statusCode !== 200 || empty($body['access_token'])) {
+                $error = $body['error_description'] ?? $body['error'] ?? 'Token refresh failed';
+                throw AuthenticationException::tokenFetchFailed($error);
+            }
+
+            return $body;
+        } catch (GuzzleException $e) {
+            throw AuthenticationException::tokenFetchFailed($e->getMessage());
+        }
+    }
+
+    /**
+     * Decode a JWT's payload (no signature verification — used only on tokens
+     * the platform just issued to us over TLS).
+     *
+     * @return array<string, mixed>|null
+     */
+    private function decodeJwtPayload(string $jwt): ?array
+    {
+        $parts = explode('.', $jwt);
+        if (count($parts) !== 3) {
+            return null;
+        }
+        $payload = json_decode(base64_decode(strtr($parts[1], '-_', '+/'), true) ?: '', true);
+
+        return is_array($payload) ? $payload : null;
+    }
+
+    /**
      * Build the authorization URL for the OIDC server.
      */
     private function buildAuthorizationUrl(array $config, string $state, string $nonce, string $codeChallenge): string

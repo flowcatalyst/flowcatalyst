@@ -49,6 +49,16 @@ class DefinitionRepository
     }
 
     /**
+     * Get all standalone permission definitions.
+     *
+     * @return array<array<string, mixed>>
+     */
+    public function permissions(): array
+    {
+        return $this->all()->permissions;
+    }
+
+    /**
      * Get all event type definitions.
      *
      * @return array<array<string, mixed>>

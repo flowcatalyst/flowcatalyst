@@ -43,7 +43,9 @@ final class AsRole
      * @param string $name Role name (will be prefixed with app code)
      * @param string|null $displayName Human-friendly display name
      * @param string|null $description Role description
-     * @param PermissionInput[] $permissions Array of structured permissions
+     * @param array<PermissionInput|class-string|string> $permissions Structured
+     *        permissions, #[AsPermission] class-strings (e.g. ViewPosts::class),
+     *        or literal "app:context:aggregate:action" strings.
      * @param bool $clientManaged Whether clients can assign this role
      */
     public function __construct(
@@ -86,8 +88,11 @@ final class AsRole
 
     /**
      * Convert to array format for API sync.
+     *
+     * @param string|null $defaultApplication App code used to resolve
+     *        #[AsPermission] class-strings (defaults to the configured app code).
      */
-    public function toArray(): array
+    public function toArray(?string $defaultApplication = null): array
     {
         $data = [
             'name' => $this->name,
@@ -101,13 +106,9 @@ final class AsRole
             $data['description'] = $this->description;
         }
 
-        if (!empty($this->permissions)) {
-            // The roles-sync API expects a flat list of
-            // "app:context:aggregate:action" strings (not objects).
-            $data['permissions'] = array_map(
-                fn(PermissionInput $p) => $p->toPermissionString(),
-                $this->permissions
-            );
+        $permissions = $this->permissionStrings($defaultApplication);
+        if (!empty($permissions)) {
+            $data['permissions'] = $permissions;
         }
 
         if ($this->clientManaged) {
@@ -115,5 +116,51 @@ final class AsRole
         }
 
         return $data;
+    }
+
+    /**
+     * Resolve this role's permissions to a flat list of
+     * "app:context:aggregate:action" strings (the shape the roles-sync API
+     * expects). Each entry may be a {@see PermissionInput}, an #[AsPermission]
+     * class-string, or a literal permission string.
+     *
+     * @return array<int, string>
+     */
+    public function permissionStrings(?string $defaultApplication = null): array
+    {
+        $out = [];
+
+        foreach ($this->permissions as $permission) {
+            if ($permission instanceof PermissionInput) {
+                $out[] = $permission->toPermissionString();
+                continue;
+            }
+
+            if (is_string($permission)) {
+                $out[] = class_exists($permission)
+                    ? self::resolvePermissionClass($permission, $defaultApplication)
+                    : strtolower($permission);
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /**
+     * Resolve an #[AsPermission] class-string to its permission string.
+     */
+    private static function resolvePermissionClass(string $class, ?string $defaultApplication): string
+    {
+        $attributes = (new \ReflectionClass($class))->getAttributes(AsPermission::class);
+        if ($attributes === []) {
+            throw new \InvalidArgumentException(
+                "Role '{$class}' is referenced as a permission but is missing the #[AsPermission] attribute."
+            );
+        }
+
+        /** @var AsPermission $permission */
+        $permission = $attributes[0]->newInstance();
+
+        return $permission->toPermissionString($defaultApplication);
     }
 }

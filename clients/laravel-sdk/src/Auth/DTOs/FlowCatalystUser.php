@@ -268,22 +268,51 @@ final readonly class FlowCatalystUser
     }
 
     /**
-     * User scope (`'anchor' | 'partner' | 'client'`) — lower-cased from
-     * the `scope` claim. Returns `null` if the claim is missing.
+     * Tenancy tier (`'anchor' | 'partner' | 'client'`) — lower-cased from the
+     * `tier` claim. Returns `null` if the claim is missing.
+     *
+     * The platform moved this off the `scope` claim; `scope` now carries the
+     * granted permissions (see {@see getGrantedPermissions()}).
      */
-    public function getScope(): ?string
+    public function getTier(): ?string
     {
-        $scope = $this->claims['scope'] ?? null;
-        return is_string($scope) ? strtolower($scope) : null;
+        $tier = $this->claims['tier'] ?? null;
+        return is_string($tier) ? strtolower($tier) : null;
     }
 
     /**
-     * Whether this user has anchor (full platform) access. Anchor users
-     * have `scope == 'anchor'` and/or `clients` containing `'*'`.
+     * @deprecated Use {@see getTier()}. The `scope` claim now holds granted
+     * permissions, not the tenancy tier; this returns the tier for back-compat.
+     */
+    public function getScope(): ?string
+    {
+        return $this->getTier();
+    }
+
+    /**
+     * The principal's granted permissions, read straight off the `scope` claim
+     * (space-delimited string, or array). Stateless — no resolver required.
+     *
+     * @return array<int, string>
+     */
+    public function getGrantedPermissions(): array
+    {
+        $scope = $this->claims['scope'] ?? null;
+        if (is_string($scope)) {
+            $parts = preg_split('/\s+/', trim($scope));
+            return $parts === false ? [] : array_values(array_filter($parts, static fn ($p) => $p !== ''));
+        }
+
+        return is_array($scope) ? array_values(array_filter($scope, 'is_string')) : [];
+    }
+
+    /**
+     * Whether this principal has anchor (full platform) access — `tier == 'anchor'`
+     * and/or `clients` containing `'*'`.
      */
     public function isAnchor(): bool
     {
-        return $this->getScope() === 'anchor' || $this->hasFullAccess();
+        return $this->getTier() === 'anchor' || $this->hasFullAccess();
     }
 
     /**

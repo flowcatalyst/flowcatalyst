@@ -19,6 +19,7 @@ import type {
 	ScheduledJobDefinition,
 	SubscriptionDefinition,
 } from "./definitions.js";
+import { permissionToString } from "./definitions.js";
 import type {
 	CategorySyncResult,
 	MaybeCategoryResult,
@@ -193,7 +194,19 @@ export class DefinitionSynchronizer {
 		roles: RoleDefinition[],
 		removeUnlisted: boolean,
 	): ResultAsync<CategorySyncResult, SdkError> {
-		return this.post(applicationCode, "roles", { roles }, removeUnlisted);
+		// Resolve any PermissionInput factories to strings (idempotent on
+		// strings), so a set posted without build() still sends the wire shape.
+		const resolved = roles.map((role) =>
+			role.permissions
+				? {
+						...role,
+						permissions: role.permissions.map((p) =>
+							permissionToString(p, applicationCode),
+						),
+					}
+				: role,
+		);
+		return this.post(applicationCode, "roles", { roles: resolved }, removeUnlisted);
 	}
 
 	private syncEventTypes(

@@ -82,6 +82,61 @@ use FlowCatalyst\Attributes\AsRole;
 class EditorRole {}
 ```
 
+#### Permissions
+
+Permissions can be inlined on a role (as `PermissionInput` objects or
+`app:context:aggregate:action` strings), but since a permission is usually
+shared across roles you can define it **once** with `#[AsPermission]` and link
+roles to it by class:
+
+```php
+<?php
+// app/FlowCatalyst/Permissions/ViewPosts.php
+namespace App\FlowCatalyst\Permissions;
+
+use FlowCatalyst\Attributes\AsPermission;
+
+// The `application` segment defaults to your app code, so it becomes
+// "<app>:posts:post:view".
+#[AsPermission(context: 'posts', aggregate: 'post', action: 'view', description: 'View posts')]
+class ViewPosts {}
+```
+
+```php
+<?php
+// app/FlowCatalyst/Roles/EditorRole.php
+namespace App\FlowCatalyst\Roles;
+
+use App\FlowCatalyst\Permissions\EditPosts;
+use App\FlowCatalyst\Permissions\ViewPosts;
+use FlowCatalyst\Attributes\AsRole;
+
+#[AsRole(
+    name: 'editor',
+    displayName: 'Editor',
+    permissions: [ViewPosts::class, EditPosts::class], // linked, not duplicated
+)]
+class EditorRole {}
+```
+
+How permissions sync:
+
+- **To the platform** — FlowCatalyst has no standalone "create permission"
+  endpoint; permissions exist by being granted to a role. So they ride up via
+  the roles that reference them. A permission not used by any role won't reach
+  the platform (but is still seeded locally, below).
+- **To Spatie (local)** — when `spatie/laravel-permission` is installed,
+  `flowcatalyst:sync` also mirrors the scanned roles + permissions into the
+  local tables (under `flowcatalyst.oidc.roles_guard`), so your app's
+  authorization model matches what it pushed. Roles are stored under their
+  platform name (e.g. `example:editor`). Toggle with
+  `flowcatalyst.definitions.seed_spatie` or `--no-spatie`.
+- **On login** — the OIDC handler additionally pulls each of the signed-in
+  user's roles' permissions from the platform and mirrors them onto the local
+  Spatie role, so `$user->can('app:context:aggregate:action')` works for roles
+  granted on the platform (not just locally defined ones). Toggle with
+  `flowcatalyst.oidc.sync_role_permissions`.
+
 #### Event Types
 
 ```php

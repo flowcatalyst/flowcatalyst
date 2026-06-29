@@ -149,6 +149,32 @@ FLOWCATALYST_OIDC_ROLES_GUARD=web
   `FLOWCATALYST_OIDC_HANDLER=session`.
 - **Don't auto-redirect guests** to OIDC: `FLOWCATALYST_OIDC_AUTO_GUEST_REDIRECT=false`.
 
+### Stateless mode — no users table, no Spatie
+
+You don't need a local `users` table or `spatie/laravel-permission` at all. The
+SDK ships a **stateless principal** (`FlowCatalystAuthenticatable`) that
+implements the full Spatie surface (`hasPermissionTo`, `hasRole`, `can`) with
+permissions read straight off the token's `scope` claim — no DB, no sync.
+
+- **API / Bearer** (incl. client_credentials): `->middleware('auth:fc-token')`.
+- **Browser / OIDC login**: `->middleware('auth:fc-session')` (or set
+  `fc-session` as your default guard). Set `FLOWCATALYST_OIDC_HANDLER=session`
+  so no local user is created.
+- Permissions come from `FLOWCATALYST_OIDC_PERMISSION_RESOLVER=token` (default;
+  reads the `scope` claim). Use `=api_me` for server-resolved `/api/me`, or bind
+  an offline `RbacCatalogue`.
+
+Because permissions live in the (short-lived) access token, they go stale when
+roles change on the platform. The SDK exposes **`route('flowcatalyst.refresh')`**
+(`POST /flowcatalyst/refresh`) which uses the stored refresh token to mint a
+fresh access token and re-store the principal — wire it to a "Refresh" button.
+Request `offline_access` (`FLOWCATALYST_OIDC_SCOPE="openid profile email offline_access"`)
+so the platform issues a refresh token.
+
+The `DatabaseOidcUserHandler` + Spatie seeding/sync (`flowcatalyst:sync`,
+`oidc.sync_role_permissions`) remain available for apps that *do* want a local
+users table — when enabled, refresh re-runs the sync too.
+
 ## Control Plane API
 
 The SDK provides access to FlowCatalyst control plane APIs using OIDC client credentials authentication.

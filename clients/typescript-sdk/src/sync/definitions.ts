@@ -12,6 +12,67 @@
  */
 
 // ────────────────────────────────────────────────────────────────────────────
+// Permission
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * A structured permission — the 4-part `<application>:<context>:<aggregate>:<action>`
+ * identity, defined once and linkable from any number of roles.
+ *
+ * `application` defaults to the application code of the `DefinitionSet` it's
+ * resolved against, so you don't repeat it on every permission:
+ *
+ * ```ts
+ * const ViewPosts = permission({ context: "posts", aggregate: "post", action: "view" });
+ * const EditPosts = permission({ context: "posts", aggregate: "post", action: "edit" });
+ *
+ * defineApplication("blog")
+ *   .withPermissions([ViewPosts, EditPosts])
+ *   .withRoles([{ name: "editor", permissions: [ViewPosts, EditPosts] }]);
+ * // → role "blog:editor" granting "blog:posts:post:view", "blog:posts:post:edit"
+ * ```
+ *
+ * FlowCatalyst has no standalone "create permission" — permissions reach the
+ * platform via the roles that grant them. The standalone catalogue is for
+ * documentation/reuse on the client side.
+ */
+export interface PermissionInput {
+	/** Application segment; defaults to the set's applicationCode when omitted */
+	application?: string;
+	context: string;
+	aggregate: string;
+	action: string;
+	description?: string;
+}
+
+/** Factory: build a reusable {@link PermissionInput}. */
+export function permission(input: PermissionInput): PermissionInput {
+	return input;
+}
+
+/**
+ * Resolve a {@link PermissionInput} (or an already-formatted string) to its
+ * full `application:context:aggregate:action` form, lower-cased.
+ *
+ * @throws when no application can be determined.
+ */
+export function permissionToString(
+	input: PermissionInput | string,
+	defaultApplication?: string,
+): string {
+	if (typeof input === "string") {
+		return input.toLowerCase();
+	}
+	const application = input.application ?? defaultApplication;
+	if (!application) {
+		throw new Error(
+			"permission requires an application: set `application` on the permission or build it against a DefinitionSet/application code.",
+		);
+	}
+	return `${application}:${input.context}:${input.aggregate}:${input.action}`.toLowerCase();
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Role
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -22,9 +83,10 @@
  * under application `orders`, the role is persisted as `orders:admin`. Do
  * not include the prefix in `name` yourself — the platform adds it.
  *
- * Permissions follow the 4-part format `<domain>:<area>:<resource>:<action>`
- * (e.g. `orders:admin:shipment:cancel`). Wildcards are supported in any
- * position. See `docs/syncing-definitions.md` for the permission conventions.
+ * Permissions may be 4-part strings `<domain>:<area>:<resource>:<action>`
+ * (e.g. `orders:admin:shipment:cancel`) or {@link PermissionInput} factories
+ * (whose `application` defaults to the set's applicationCode). Wildcards are
+ * supported in any position. See `docs/syncing-definitions.md`.
  */
 export interface RoleDefinition {
 	/** Short name (no `<app>:` prefix — the platform adds it) */
@@ -32,8 +94,8 @@ export interface RoleDefinition {
 	/** Human-readable label */
 	displayName?: string;
 	description?: string;
-	/** Permission strings (4-part format) */
-	permissions?: string[];
+	/** Permission strings (4-part) and/or {@link PermissionInput} factories */
+	permissions?: Array<string | PermissionInput>;
 	/**
 	 * When true, client admins can assign this role to their own users.
 	 * When false, only platform admins can assign it.
@@ -217,6 +279,12 @@ export interface ScheduledJobDefinition {
 export interface DefinitionSet {
 	applicationCode: string;
 	roles?: RoleDefinition[];
+	/**
+	 * Standalone permission catalogue. Not pushed to the platform directly
+	 * (permissions ride up via the roles that grant them); declared for reuse
+	 * and documentation. `application` defaults to `applicationCode`.
+	 */
+	permissions?: PermissionInput[];
 	eventTypes?: EventTypeDefinition[];
 	subscriptions?: SubscriptionDefinition[];
 	dispatchPools?: DispatchPoolDefinition[];
@@ -256,6 +324,15 @@ export class DefinitionSetBuilder {
 
 	withRoles(roles: RoleDefinition[]): this {
 		this.set.roles = [...(this.set.roles ?? []), ...roles];
+		return this;
+	}
+
+	/**
+	 * Declare standalone permissions (reusable across roles). Their
+	 * `application` defaults to this set's applicationCode at build time.
+	 */
+	withPermissions(permissions: PermissionInput[]): this {
+		this.set.permissions = [...(this.set.permissions ?? []), ...permissions];
 		return this;
 	}
 
@@ -302,7 +379,32 @@ export class DefinitionSetBuilder {
 	}
 
 	build(): DefinitionSet {
-		return { ...this.set };
+		const app = this.set.applicationCode;
+		const resolved: DefinitionSet = { ...this.set };
+
+		// Resolve role permissions (PermissionInput | string) to full strings.
+		if (this.set.roles) {
+			resolved.roles = this.set.roles.map((role) =>
+				role.permissions
+					? {
+							...role,
+							permissions: role.permissions.map((p) =>
+								permissionToString(p, app),
+							),
+						}
+					: { ...role },
+			);
+		}
+
+		// Default the standalone catalogue's application segment.
+		if (this.set.permissions) {
+			resolved.permissions = this.set.permissions.map((p) => ({
+				...p,
+				application: p.application ?? app,
+			}));
+		}
+
+		return resolved;
 	}
 }
 

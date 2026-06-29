@@ -27,8 +27,11 @@
 export {
 	defineApplication,
 	DefinitionSetBuilder,
+	permission,
+	permissionToString,
 	type DefinitionSet,
 	type RoleDefinition,
+	type PermissionInput,
 	type EventTypeDefinition,
 	type SubscriptionDefinition,
 	type SubscriptionEventTypeBinding,

@@ -77,11 +77,19 @@ class FlowCatalystServiceProvider extends ServiceProvider
      */
     protected function registerTokenGuard(): void
     {
-        // Expose the guard by name without the app having to edit config/auth.php.
+        // Expose the guards by name without the app having to edit config/auth.php.
         config(['auth.guards.fc-token' => ['driver' => 'fc-token']]);
+        config(['auth.guards.fc-session' => ['driver' => 'fc-session']]);
 
+        // Bearer/API identities (user + client_credentials tokens).
         \Illuminate\Support\Facades\Auth::viaRequest('fc-token', function ($request) {
             return $this->app->make(\FlowCatalyst\Auth\FlowCatalystTokenGuard::class)->resolve($request);
+        });
+
+        // Browser/session identities (OIDC login) — stateless: no users row,
+        // no Spatie. Use `auth:fc-session` or set it as the default guard.
+        \Illuminate\Support\Facades\Auth::viaRequest('fc-session', function ($request) {
+            return $this->app->make(\FlowCatalyst\Auth\FlowCatalystSessionGuard::class)->resolve($request);
         });
 
         // $user->can(...) / @can / policies → checkPermissionTo (FlowCatalyst
@@ -295,15 +303,31 @@ class FlowCatalystServiceProvider extends ServiceProvider
         // local RbacCatalogue bound we use it (offline); otherwise the
         // server-backed /api/me resolver.
         $this->app->bindIf(\FlowCatalyst\Auth\Contracts\PermissionResolver::class, function ($app) {
+            // A locally-bound RBAC catalogue (offline) always wins.
             if ($app->bound(RbacCatalogue::class)) {
                 return new \FlowCatalyst\Auth\Rbac\CataloguePermissionResolver($app->make(RbacCatalogue::class));
             }
-            return $app->make(\FlowCatalyst\Auth\Support\ApiMePermissionResolver::class);
+
+            // Default: read permissions straight off the token's `scope` claim
+            // (stateless, no HTTP/DB). 'api_me' opts into server-side /api/me
+            // resolution (one cached HTTP call, fresher on permission changes).
+            return match (config('flowcatalyst.oidc.permission_resolver', 'token')) {
+                'api_me' => $app->make(\FlowCatalyst\Auth\Support\ApiMePermissionResolver::class),
+                default => $app->make(\FlowCatalyst\Auth\Support\TokenScopePermissionResolver::class),
+            };
         });
 
         $this->app->singleton(\FlowCatalyst\Auth\FlowCatalystTokenGuard::class, function ($app) {
             return new \FlowCatalyst\Auth\FlowCatalystTokenGuard(
                 validator: $app->make(AccessTokenValidator::class),
+                permissions: $app->make(\FlowCatalyst\Auth\Contracts\PermissionResolver::class),
+            );
+        });
+
+        // Session counterpart of the token guard — rebuilds the stateless
+        // FlowCatalystAuthenticatable from the OIDC session principal.
+        $this->app->singleton(\FlowCatalyst\Auth\FlowCatalystSessionGuard::class, function ($app) {
+            return new \FlowCatalyst\Auth\FlowCatalystSessionGuard(
                 permissions: $app->make(\FlowCatalyst\Auth\Contracts\PermissionResolver::class),
             );
         });
@@ -452,6 +476,13 @@ class FlowCatalystServiceProvider extends ServiceProvider
 
             $router->match(['get', 'post'], $logoutRoute, [\FlowCatalyst\Auth\Http\Controllers\OidcAuthController::class, 'logout'])
                 ->name('flowcatalyst.logout')
+                ->withoutMiddleware($excludeMiddleware);
+
+            // Refresh the session principal from the stored refresh token (picks
+            // up new permissions without a full re-login).
+            $refreshRoute = config('flowcatalyst.oidc.refresh_route', '/flowcatalyst/refresh');
+            $router->match(['get', 'post'], $refreshRoute, [\FlowCatalyst\Auth\Http\Controllers\OidcAuthController::class, 'refresh'])
+                ->name('flowcatalyst.refresh')
                 ->withoutMiddleware($excludeMiddleware);
         });
     }

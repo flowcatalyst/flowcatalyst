@@ -19,6 +19,7 @@ final class ScannedDefinitions
      */
     public function __construct(
         public readonly array $roles = [],
+        public readonly array $permissions = [],
         public readonly array $eventTypes = [],
         public readonly array $subscriptions = [],
         public readonly array $dispatchPools = [],
@@ -32,6 +33,7 @@ final class ScannedDefinitions
     public function isEmpty(): bool
     {
         return empty($this->roles)
+            && empty($this->permissions)
             && empty($this->eventTypes)
             && empty($this->subscriptions)
             && empty($this->dispatchPools)
@@ -45,6 +47,7 @@ final class ScannedDefinitions
     public function count(): int
     {
         return count($this->roles)
+            + count($this->permissions)
             + count($this->eventTypes)
             + count($this->subscriptions)
             + count($this->dispatchPools)
@@ -61,6 +64,7 @@ final class ScannedDefinitions
     {
         return [
             'roles' => $this->roles,
+            'permissions' => $this->permissions,
             'eventTypes' => $this->eventTypes,
             'subscriptions' => $this->subscriptions,
             'dispatchPools' => $this->dispatchPools,
@@ -78,6 +82,7 @@ final class ScannedDefinitions
     {
         return new self(
             roles: $data['roles'] ?? [],
+            permissions: $data['permissions'] ?? [],
             eventTypes: $data['eventTypes'] ?? [],
             subscriptions: $data['subscriptions'] ?? [],
             dispatchPools: $data['dispatchPools'] ?? [],
