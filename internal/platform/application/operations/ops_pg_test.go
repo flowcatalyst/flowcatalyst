@@ -4,6 +4,7 @@ package operations_test
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,15 +12,30 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/operations"
+	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	clientops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
-func TestMain(m *testing.M) { testpg.RunMain(m) }
+// TestMain seeds FLOWCATALYST_APP_KEY before the embedded-PG boot: provisioning
+// a service account creates a CONFIDENTIAL OAuth client whose secret is
+// encrypted via encryption.FromEnv, which reads the env at call time. os.Setenv
+// (not t.Setenv) because the tests here run t.Parallel().
+func TestMain(m *testing.M) {
+	key, err := encryption.GenerateKey()
+	if err != nil {
+		panic(err)
+	}
+	_ = os.Setenv("FLOWCATALYST_APP_KEY", key)
+	testpg.RunMain(m)
+}
 
 func ptr(s string) *string { return &s }
 
@@ -507,4 +523,52 @@ func TestUpdateClientApplications_Errors(t *testing.T) {
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
+}
+
+// ── Provision service account ───────────────────────────────────────────────
+
+// TestProvisionServiceAccount_AssignsRoleAndScopesClient locks in the three
+// guarantees of application SA provisioning: the SERVICE principal is granted
+// the application-service role, it is pinned to its own application (not
+// all-applications), and its OAuth client is limited to that application.
+func TestProvisionServiceAccount_AssignsRoleAndScopesClient(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	appRepo := application.NewRepository(pool)
+	saRepo := serviceaccount.NewRepository(pool)
+	principals := principal.NewRepository(pool)
+	oauthRepo := platformauth.NewRepository(pool).OAuthClients
+	uow := testpg.NewUoW(t)
+
+	app := mustCreateApp(t, appRepo, uow, "appprov-sa1", "Prov SA App")
+
+	result, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
+		operations.ProvisionServiceAccount(appRepo, saRepo, principals, oauthRepo),
+		operations.ProvisionServiceAccountCommand{ApplicationID: app.ApplicationID},
+		testpg.TestEC())
+	require.NoError(t, err)
+	require.NotEmpty(t, result.ServicePrincipalID)
+	require.NotEmpty(t, result.OAuthClientRowID)
+
+	// 1 + app scope. The SERVICE principal carries the application-service role
+	// and is confined to its own application.
+	p, err := principals.FindByID(ctx, result.ServicePrincipalID)
+	require.NoError(t, err)
+	require.NotNil(t, p)
+	assert.False(t, p.AllApplications, "provisioned SA is app-scoped, not all-applications")
+	assert.Equal(t, []string{app.ApplicationID}, p.AccessibleApplicationIDs)
+	roleNames := make([]string, 0, len(p.Roles))
+	for _, ra := range p.Roles {
+		roleNames = append(roleNames, ra.Role)
+	}
+	assert.Contains(t, roleNames, "platform:application-service",
+		"SA principal is granted the application-service role at provision")
+
+	// 2. The OAuth client is limited to the application it was provisioned under.
+	oc, err := oauthRepo.FindByID(ctx, result.OAuthClientRowID)
+	require.NoError(t, err)
+	require.NotNil(t, oc)
+	assert.Equal(t, []string{app.ApplicationID}, oc.ApplicationIDs,
+		"SA OAuth client is scoped to its application")
 }

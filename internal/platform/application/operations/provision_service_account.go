@@ -24,6 +24,17 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
+// applicationServiceRoleName is the seeded role granted to every
+// application service account at provision time. It carries the
+// least-privilege platform:application-service:* permission set (event-type,
+// subscription, role, and process sync), all scoped to the SA's own
+// application. See internal/platform/seed/roles.go ("application-service").
+const applicationServiceRoleName = "platform:application-service"
+
+// ptrStr returns a pointer to s. Used for the optional AssignmentSource on a
+// role assignment.
+func ptrStr(s string) *string { return &s }
+
 // ProvisionServiceAccountCommand provisions a dedicated service account
 // (+ its SERVICE principal + a confidential OAuth client) for an
 // application, atomically. Mirrors Rust fc-platform's
@@ -113,6 +124,11 @@ func ProvisionServiceAccount(
 			oc.PrincipalID = &saPrincipal.ID
 			oc.GrantTypes = []string{"client_credentials", "refresh_token"}
 			oc.Scopes = []string{"openid"}
+			// Limit the OAuth client to the application it was provisioned under
+			// (oauth_client_application_ids). This formally links the client to its
+			// application — it surfaces "under" the app in the OAuth-client UI and
+			// makes the scoping explicit alongside the principal's app confinement.
+			oc.ApplicationIDs = []string{app.ID}
 
 			// 1. Service account.
 			if r := usecasepgx.CommitScoped(ctx, s, sa, saRepo,
@@ -128,12 +144,28 @@ func ProvisionServiceAccount(
 			//    single application-access grant. The token's `applications` claim
 			//    then carries exactly this app, and resource-level authorization
 			//    (sdksync.requireAppAccess) confines the SA's writes to it — even at
-			//    anchor tier. AppAccessPersister writes the base row AND the
-			//    iam_principal_application_access junction in this transaction.
+			//    anchor tier.
+			//
+			//    The SA's principal is also granted the seeded
+			//    platform:application-service role: without a role its token carries
+			//    an empty permissions claim and leans entirely on the anchor-tier
+			//    bypass for every sync endpoint. That role grants exactly the
+			//    least-privilege permission set an application SA needs (event-type /
+			//    subscription / role / process sync), so the token reflects real
+			//    granted scope and the role surfaces in the UI.
+			//
+			//    RolesAndAppAccessPersister writes the base row AND both the
+			//    iam_principal_roles and iam_principal_application_access junctions
+			//    in this transaction.
 			saPrincipal.AllApplications = false
 			saPrincipal.AccessibleApplicationIDs = []string{app.ID}
+			saPrincipal.Roles = []serviceaccount.RoleAssignment{{
+				Role:             applicationServiceRoleName,
+				AssignmentSource: ptrStr("PROVISIONED"),
+				AssignedAt:       time.Now().UTC(),
+			}}
 			if err := s.WithTx(ctx, func(tx pgx.Tx) error {
-				return principal.AppAccessPersister{Repository: principals}.Persist(
+				return principal.RolesAndAppAccessPersister{Repository: principals}.Persist(
 					ctx, saPrincipal, usecasepgx.WrapTxForBootstrap(tx))
 			}); err != nil {
 				return zero, usecase.Internal("PERSIST", "service principal persist failed", err)

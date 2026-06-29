@@ -579,6 +579,28 @@ func (ap AppAccessPersister) Persist(ctx context.Context, p *Principal, tx *usec
 	return ap.replaceAppAccessTx(ctx, p, tx)
 }
 
+// RolesAndAppAccessPersister writes BOTH the role (iam_principal_roles) and
+// application-access (iam_principal_application_access) junctions alongside
+// the principal row, in one transaction. Used by application service-account
+// provisioning, which must atomically assign the application-service role AND
+// pin the SA's principal to its own application — neither RolesPersister nor
+// AppAccessPersister alone covers both junctions.
+type RolesAndAppAccessPersister struct{ *Repository }
+
+// Persist upserts the principal row, then replaces its role and app-access
+// junctions.
+func (rap RolesAndAppAccessPersister) Persist(ctx context.Context, p *Principal, tx *usecasepgx.DbTx) error {
+	// Explicit selector avoids recursing into this method; the junction
+	// helpers aren't shadowed and promote directly.
+	if err := rap.Repository.Persist(ctx, p, tx); err != nil {
+		return err
+	}
+	if err := rap.replaceRolesTx(ctx, p, tx); err != nil {
+		return err
+	}
+	return rap.replaceAppAccessTx(ctx, p, tx)
+}
+
 // UpdatePasswordHash overwrites only the password_hash for a principal. Used by
 // the login flow to transparently re-encode a legacy hash (e.g. an upstream
 // Laravel argon2i hash) to the native scheme after a successful verify. A

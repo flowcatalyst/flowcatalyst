@@ -331,6 +331,10 @@ func (s *State) provisionLoginClient(ctx context.Context, in *provisionLoginClie
 		RedirectURIs: in.Body.RedirectURIs,
 		GrantTypes:   []string{"authorization_code", "refresh_token"},
 		Scopes:       []string{"openid", "profile", "email"},
+		// Link the login client to the application it was provisioned under
+		// (oauth_client_application_ids), so it surfaces "under" the app in the
+		// OAuth-client UI — mirroring the service-account client's app scoping.
+		ApplicationIDs: []string{app.ID},
 	}
 	event, err := usecaseop.Run(ctx, s.UoW, authops.CreateOAuthClient(s.OAuthClients), cmd, ec)
 	if err != nil {
