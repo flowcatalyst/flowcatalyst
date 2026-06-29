@@ -176,8 +176,12 @@ class FlowCatalystServiceProvider extends ServiceProvider
 
             return new OutboxManager(
                 driver: $app->make(OutboxDriver::class),
-                tenantId: (int) ($config['tenant_id'] ?? 0),
-                defaultPartition: $config['default_partition'] ?? 'default'
+                // The FlowCatalyst client that owns these outbox rows. Defaults
+                // to the configured service-account client id; override with
+                // FLOWCATALYST_OUTBOX_CLIENT_ID.
+                clientId: (string) ($config['client_id']
+                    ?? $app['config']['flowcatalyst']['client_id']
+                    ?? ''),
             );
         });
     }

@@ -1,12 +1,39 @@
 # FlowCatalyst Laravel SDK
 
-Official Laravel SDK for the FlowCatalyst Platform - Event-driven architecture made simple.
+Official Laravel SDK for the [FlowCatalyst](https://flowcatalyst.io) platform.
+
+Use FlowCatalyst as your app's **identity provider and authorization layer**, and
+talk to the **event-driven control plane** — all from idiomatic Laravel.
+
+**What's in the box**
+
+- **Sign in with FlowCatalyst (OIDC)** — stock `->middleware('auth')` drives the
+  login flow; guests are redirected, users come back authenticated. No scaffolding.
+- **Authorization that feels like Spatie** — `$user->can(...)`, `@can`, `hasRole()`,
+  policies — backed by FlowCatalyst roles/permissions. Run it **stateless** (no
+  users table, no Spatie) or sync into a local `users` table + `spatie/laravel-permission`.
+- **API auth** — validate `client_credentials` / user Bearer tokens with the same
+  permission surface (`auth:fc-token`).
+- **Declare & sync your RBAC** — define roles and permissions as PHP classes
+  (`#[AsRole]`, `#[AsPermission]`) and push them to the platform.
+- **Postbox** — create events/dispatch jobs via the transactional outbox.
+- **Control plane client** — typed access to event types, subscriptions, dispatch
+  pools, applications, roles, and more.
+- **Webhook validation** — verify inbound HMAC-signed deliveries.
 
 ## Requirements
 
 - PHP 8.1+
-- Laravel 10.0+
-- MySQL 8.0+ / PostgreSQL 12+ / MongoDB 4.4+ (for postbox)
+- Laravel 10, 11, 12, or 13
+- For the Postbox: MySQL 8.0+ / PostgreSQL 12+ / MongoDB 4.4+
+- For local authorization mirroring (optional): `spatie/laravel-permission`
+
+## Contents
+
+- [Installation](#installation) · [Local dev with `fc-dev`](#local-development-with-fc-dev)
+- [Authentication & authorization](#authentication--authorization) — login, guards, permissions, modes, refresh
+- [Declaring & syncing roles and permissions](#declaring--syncing-roles-and-permissions)
+- [Control plane API](#control-plane-api) · [Postbox](#postbox-event-creation) · [Webhooks](#webhook-validation)
 
 ## Installation
 
@@ -78,20 +105,26 @@ FLOWCATALYST_POSTBOX_DRIVER=database
 FLOWCATALYST_SIGNING_SECRET=your_signing_secret
 ```
 
-## User Login via FlowCatalyst OIDC
+## Authentication & authorization
 
-Use FlowCatalyst as your app's identity provider with (almost) no code. A fresh
-Laravel app needs only env — then stock `->middleware('auth')`, `Auth::user()`,
-`@auth`, and policies all recognise the signed-in FlowCatalyst user.
+The SDK does two things: **signs users in** against FlowCatalyst's OIDC server,
+and lets you **authorize** them with a Spatie-style surface (`can`, `@can`,
+`hasRole`, policies) backed by FlowCatalyst roles/permissions.
+
+### Quick start — sign in with FlowCatalyst
+
+A fresh Laravel app needs only env. Stock `->middleware('auth')`, `Auth::user()`,
+`@auth`, and policies all recognise the signed-in user.
 
 ```env
 FLOWCATALYST_BASE_URL=https://your-instance.flowcatalyst.io
 FLOWCATALYST_OIDC_ENABLED=true
 FLOWCATALYST_OIDC_CLIENT_ID=your_oauth_client_id
-FLOWCATALYST_OIDC_CLIENT_SECRET=your_oauth_client_secret   # omit for PKCE-only public clients
+FLOWCATALYST_OIDC_CLIENT_SECRET=your_oauth_client_secret   # omit for a PKCE-only public client
+FLOWCATALYST_OIDC_SCOPE="openid profile email offline_access"   # offline_access → refresh tokens
 ```
 
-That's it. Protect routes the normal Laravel way:
+Protect routes the normal Laravel way:
 
 ```php
 // routes/web.php
@@ -100,84 +133,194 @@ Route::middleware('auth')->group(function () {
 });
 ```
 
-What happens:
+That's it. A guest hitting an `auth` route is **automatically redirected into the
+FlowCatalyst login flow** — no `login` route or custom redirect needed. (If your
+app defines its own `login` route, that one wins; the SDK won't hijack a local
+login page. Opt out entirely with `FLOWCATALYST_OIDC_AUTO_GUEST_REDIRECT=false`.)
 
-1. A guest hitting an `auth` route is redirected into the FlowCatalyst login
-   flow automatically — **no `login` route or custom redirect needed**. (If your
-   app already defines its own `login` route, that one is used instead; the SDK
-   won't hijack a local login page.)
-2. On the OIDC callback the SDK upserts a local user (matched by email, model
-   `flowcatalyst.oidc.user_model`, default `App\Models\User`) and calls
-   `Auth::login()`, so the native guard recognises them.
-3. The FlowCatalyst principal is also kept in the session, so the SDK's own
-   `fc.auth` / `fc.session` / `fc.bearer` middleware keep working for APIs.
+The routes `/flowcatalyst/{login,callback,logout,refresh}` are registered for
+you. On your FlowCatalyst OAuth client, set the grant to `authorization_code`
+and the redirect URI to **`https://your-app.com/flowcatalyst/callback`** (it must
+match exactly — host, port, and scheme — including `localhost` vs `127.0.0.1`).
 
-The OIDC routes (`/flowcatalyst/login`, `/flowcatalyst/callback`,
-`/flowcatalyst/logout`) are registered for you. Register the callback URL as a
-redirect URI on your FlowCatalyst OAuth client:
-`https://your-app.com/flowcatalyst/callback`.
+### Checking permissions
 
-### Role syncing (Spatie laravel-permission)
+Once authenticated, the user (whether resolved from a browser session or a
+Bearer token) speaks the Spatie vocabulary — FlowCatalyst wildcards honoured:
 
-If your user model uses Spatie's `HasRoles` trait, the token's `roles` claim is
-synced to the local user on every login. Install
-`spatie/laravel-permission`, add `HasRoles` to your `User`, and it just works.
-Defaults are additive (grants new roles, never removes existing ones); tune via
-config:
+```php
+$user->hasPermissionTo('orders:admin:order:cancel');
+$user->hasRole('orders:admin');
+$user->can('orders:admin:order:cancel');           // Gate, @can, policies route here
+
+// Blade
+@can('orders:admin:order:cancel')
+    <button>Cancel order</button>
+@endcan
+```
+
+Permission strings are 4-part `application:context:aggregate:action`; role names
+are platform-prefixed (`orders:admin`).
+
+### Two modes
+
+| | **Stateless** (default) | **Local sync** |
+|---|---|---|
+| Local `users` row | none | upserted on login |
+| `spatie/laravel-permission` | not needed | used (roles/permissions mirrored) |
+| Permissions come from | the token's `scope` claim | local Spatie tables |
+| `Auth::user()` guard | `fc-session` / `fc-token` | native `web` |
+| Enable | `FLOWCATALYST_OIDC_HANDLER=session` | `FLOWCATALYST_OIDC_HANDLER=database` |
+
+**Stateless** is the leanest: no migrations, no Spatie, nothing to keep in sync —
+the access token already carries the granted permissions. **Local sync** is for
+apps that want a real `users` row (to foreign-key against) and to manage
+authorization through Spatie locally.
+
+#### Stateless (no users table, no Spatie)
+
+```env
+FLOWCATALYST_OIDC_HANDLER=session
+FLOWCATALYST_OIDC_PERMISSION_RESOLVER=token   # read permissions off the token scope (default)
+```
+
+Authorize via the FlowCatalyst guards:
+
+- **Browser / OIDC login:** `->middleware('auth:fc-session')` (or set `fc-session`
+  as your app's default guard so bare `auth` uses it).
+- **API / Bearer** (user *and* `client_credentials` tokens): `->middleware('auth:fc-token')`.
+
+Both resolve a `FlowCatalystAuthenticatable` — read-only, no DB. Set
+`FLOWCATALYST_OIDC_PERMISSION_RESOLVER=api_me` to resolve via `/api/me` instead
+(one cached HTTP call, fresher on changes), or bind an offline `RbacCatalogue`.
+
+#### Local sync (users table + Spatie)
+
+```env
+FLOWCATALYST_OIDC_HANDLER=database
+FLOWCATALYST_OIDC_USER_MODEL="App\Models\User"   # upserted by email on login
+```
+
+On login the SDK upserts the user, `Auth::login()`s them, and — if the model
+uses Spatie's `HasRoles` trait — mirrors the token's roles **and each role's
+permissions** into the local Spatie tables, so stock `auth` + `$user->can(...)`
+work against a real record:
 
 ```env
 FLOWCATALYST_OIDC_SYNC_ROLES=true
-FLOWCATALYST_OIDC_SYNC_ROLES_MODE=additive        # or "replace" for authoritative
-FLOWCATALYST_OIDC_CREATE_MISSING_ROLES=false      # create local roles on the fly
+FLOWCATALYST_OIDC_SYNC_ROLES_MODE=additive          # or "replace" for authoritative
+FLOWCATALYST_OIDC_SYNC_ROLE_PERMISSIONS=true        # pull each role's permissions too
+FLOWCATALYST_OIDC_CREATE_MISSING_ROLES=false        # create local roles on the fly
 FLOWCATALYST_OIDC_ROLES_GUARD=web
 ```
 
-### Customising or opting out
+### Keeping permissions fresh
 
-- **Custom mapping** (tenant checks, extra columns, your own role logic): bind
-  your own handler — it always wins over the SDK default.
+In stateless mode permissions live in the (short-lived) access token, so they go
+stale when roles change on the platform. `POST /flowcatalyst/refresh`
+(`route('flowcatalyst.refresh')`) uses the stored refresh token to mint a fresh
+access token and re-store the principal — wire it to a "Refresh" button:
 
-  ```php
-  // AppServiceProvider::register()
-  $this->app->bind(\FlowCatalyst\Auth\Contracts\OidcUserHandler::class, MyHandler::class);
-  ```
+```blade
+<form method="POST" action="{{ route('flowcatalyst.refresh') }}">
+    @csrf
+    <button type="submit">Refresh permissions</button>
+</form>
+```
 
-  Extend `DatabaseOidcUserHandler` to keep the upsert + login and override just
-  the bits you need, or implement `OidcUserHandler` from scratch.
+Requires a refresh token, so request `offline_access` in `FLOWCATALYST_OIDC_SCOPE`.
+In local-sync mode, refresh also re-runs the role/permission sync.
 
-- **Session-only (legacy) behaviour**, no native `Auth::login()`:
-  `FLOWCATALYST_OIDC_HANDLER=session`.
-- **Don't auto-redirect guests** to OIDC: `FLOWCATALYST_OIDC_AUTO_GUEST_REDIRECT=false`.
+### Configuration reference
 
-### Stateless mode — no users table, no Spatie
+| Env var | Default | Purpose |
+|---|---|---|
+| `FLOWCATALYST_OIDC_ENABLED` | `false` | turn the OIDC login + routes on |
+| `FLOWCATALYST_OIDC_CLIENT_ID` / `_SECRET` | – | your OAuth login client (secret optional for PKCE) |
+| `FLOWCATALYST_OIDC_SCOPE` | `openid profile email` | add `offline_access` for refresh tokens |
+| `FLOWCATALYST_OIDC_HANDLER` | `database` | `database` (users table) or `session` (stateless) |
+| `FLOWCATALYST_OIDC_PERMISSION_RESOLVER` | `token` | `token` (scope claim) or `api_me` (`/api/me`) |
+| `FLOWCATALYST_OIDC_AUTO_GUEST_REDIRECT` | `true` | redirect stock-`auth` guests into OIDC |
+| `FLOWCATALYST_OIDC_USER_MODEL` | `App\Models\User` | model upserted in `database` mode |
+| `FLOWCATALYST_OIDC_SYNC_ROLES` / `_SYNC_ROLE_PERMISSIONS` | `true` | mirror roles / their permissions to Spatie |
+| `FLOWCATALYST_OIDC_ROLES_GUARD` | `web` | Spatie guard for synced roles |
+| `FLOWCATALYST_REDIRECT_AFTER_LOGIN` | `/dashboard` | post-login landing |
 
-You don't need a local `users` table or `spatie/laravel-permission` at all. The
-SDK ships a **stateless principal** (`FlowCatalystAuthenticatable`) that
-implements the full Spatie surface (`hasPermissionTo`, `hasRole`, `can`) with
-permissions read straight off the token's `scope` claim — no DB, no sync.
+### Custom mapping
 
-- **API / Bearer** (incl. client_credentials): `->middleware('auth:fc-token')`.
-- **Browser / OIDC login**: `->middleware('auth:fc-session')` (or set
-  `fc-session` as your default guard). Set `FLOWCATALYST_OIDC_HANDLER=session`
-  so no local user is created.
-- Permissions come from `FLOWCATALYST_OIDC_PERMISSION_RESOLVER=token` (default;
-  reads the `scope` claim). Use `=api_me` for server-resolved `/api/me`, or bind
-  an offline `RbacCatalogue`.
+Need tenant checks, extra columns, or your own logic? Bind your own handler — it
+always wins over the SDK default:
 
-Because permissions live in the (short-lived) access token, they go stale when
-roles change on the platform. The SDK exposes **`route('flowcatalyst.refresh')`**
-(`POST /flowcatalyst/refresh`) which uses the stored refresh token to mint a
-fresh access token and re-store the principal — wire it to a "Refresh" button.
-Request `offline_access` (`FLOWCATALYST_OIDC_SCOPE="openid profile email offline_access"`)
-so the platform issues a refresh token.
+```php
+// AppServiceProvider::register()
+$this->app->bind(\FlowCatalyst\Auth\Contracts\OidcUserHandler::class, MyHandler::class);
+```
+
+Extend `DatabaseOidcUserHandler` to keep the upsert + login and override only
+what you need, or implement `OidcUserHandler` from scratch.
 
 The `DatabaseOidcUserHandler` + Spatie seeding/sync (`flowcatalyst:sync`,
 `oidc.sync_role_permissions`) remain available for apps that *do* want a local
 users table — when enabled, refresh re-runs the sync too.
 
+## Declaring & syncing roles and permissions
+
+Define your app's RBAC as PHP classes and push it to the platform — your repo is
+the source of truth. FlowCatalyst has no standalone "create permission" endpoint,
+so permissions reach the platform via the roles that grant them.
+
+**Define** roles and reusable permissions in `app/FlowCatalyst`:
+
+```php
+// app/FlowCatalyst/Permissions/ViewPosts.php
+use FlowCatalyst\Attributes\AsPermission;
+
+// the application segment defaults to FLOWCATALYST_APP_CODE → "<app>:posts:post:view"
+#[AsPermission(context: 'posts', aggregate: 'post', action: 'view', description: 'View posts')]
+class ViewPosts {}
+```
+
+```php
+// app/FlowCatalyst/Roles/EditorRole.php
+use App\FlowCatalyst\Permissions\{EditPosts, ViewPosts};
+use FlowCatalyst\Attributes\AsRole;
+
+#[AsRole(name: 'editor', displayName: 'Editor', permissions: [ViewPosts::class, EditPosts::class])]
+class EditorRole {}
+```
+
+A permission is declared once and **linked from many roles** by class. You can
+also inline `new PermissionInput(...)` objects or plain `app:context:aggregate:action`
+strings.
+
+**Sync** with a service account (separate from your login client) that has
+roles-write on the application:
+
+```env
+FLOWCATALYST_CLIENT_ID=svc_...        # client_credentials creds
+FLOWCATALYST_CLIENT_SECRET=...
+FLOWCATALYST_APP_CODE=blog            # the application that owns these roles
+```
+
+```bash
+php artisan flowcatalyst:scan            # find #[AsRole]/#[AsPermission] classes, cache them
+php artisan flowcatalyst:sync --dry-run  # preview
+php artisan flowcatalyst:sync            # push roles (with their permissions) to the platform
+```
+
+If `spatie/laravel-permission` is installed, `flowcatalyst:sync` **also seeds the
+local Spatie tables** so your app's authorization matches what it pushed (toggle
+with `FLOWCATALYST_SEED_SPATIE` / `--no-spatie`). The same attribute mechanism
+covers `#[AsEventType]`, `#[AsSubscription]`, `#[AsDispatchPool]`, `#[AsProcess]`,
+and `#[AsScheduledJob]`. See [`docs/syncing-definitions.md`](docs/syncing-definitions.md)
+for the full reference, including the programmatic `DefinitionSynchronizer` for
+multi-application setups.
+
 ## Control Plane API
 
-The SDK provides access to FlowCatalyst control plane APIs using OIDC client credentials authentication.
+The SDK provides typed, lower-level access to the control plane using
+`client_credentials` (service account) authentication — for reads, ad-hoc
+management, and anything not covered by the attribute sync above.
 
 ### Event Types
 
@@ -256,28 +399,15 @@ FlowCatalyst::dispatchPools()->activate($pool->id);
 
 ### Roles & Permissions
 
+To **declare** roles/permissions, prefer the attribute sync in
+[Declaring & syncing roles and permissions](#declaring--syncing-roles-and-permissions).
+For reads and ad-hoc lookups:
+
 ```php
 use FlowCatalyst\Facades\FlowCatalyst;
 
-// List roles
-$result = FlowCatalyst::roles()->list();
-
-// Sync roles for your application (SDK-managed roles)
-$result = FlowCatalyst::roles()->sync('myapp', [
-    [
-        'name' => 'admin',
-        'displayName' => 'Administrator',
-        'description' => 'Full access to all features',
-        'permissions' => ['myapp:users:read', 'myapp:users:write', 'myapp:settings:manage'],
-    ],
-    [
-        'name' => 'viewer',
-        'displayName' => 'Viewer',
-        'permissions' => ['myapp:users:read'],
-    ],
-], removeUnlisted: true);
-
-// List permissions
+$roles = FlowCatalyst::roles()->list();
+$role = FlowCatalyst::roles()->get('myapp:admin');   // includes its permissions
 $permissions = FlowCatalyst::permissions()->list();
 ```
 

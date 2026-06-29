@@ -500,6 +500,30 @@ return [
 
         /*
         |----------------------------------------------------------------------
+        | Audit Logging
+        |----------------------------------------------------------------------
+        |
+        | When enabled, the use-case envelope (Operation + Runner / UnitOfWork)
+        | writes an audit-log row to the outbox alongside each domain event it
+        | commits — forwarded to the platform's audit log.
+        |
+        */
+        'audit_enabled' => env('FLOWCATALYST_OUTBOX_AUDIT_ENABLED', false),
+
+        /*
+        |----------------------------------------------------------------------
+        | Outbox Client
+        |----------------------------------------------------------------------
+        |
+        | The FlowCatalyst client that owns outbox rows (the `client_id` column).
+        | Defaults to the top-level `client_id` (FLOWCATALYST_CLIENT_ID) when
+        | unset. The legacy `tenant_id` above is no longer used by the outbox.
+        |
+        */
+        'client_id' => env('FLOWCATALYST_OUTBOX_CLIENT_ID'),
+
+        /*
+        |----------------------------------------------------------------------
         | Default Partition
         |----------------------------------------------------------------------
         |
