@@ -115,6 +115,7 @@ class SyncDefinitionsCommand extends Command
         // Show what would be synced in dry-run mode
         if ($dryRun) {
             $this->showDryRunOutput($definitions, $options);
+            $this->displayPermissionSummary($definitions);
             return Command::SUCCESS;
         }
 
@@ -124,6 +125,7 @@ class SyncDefinitionsCommand extends Command
 
         // Display results
         $this->displayResults($result);
+        $this->displayPermissionSummary($definitions);
 
         // Mirror roles + permissions into the local Spatie tables (so the app's
         // authorization model matches what it just pushed). FlowCatalyst has no
@@ -132,6 +134,40 @@ class SyncDefinitionsCommand extends Command
         $this->seedSpatie($definitions);
 
         return $result->hasErrors() ? Command::FAILURE : Command::SUCCESS;
+    }
+
+    /**
+     * Report how many distinct permissions were synced (they reach the platform
+     * via the roles that grant them — FlowCatalyst has no standalone permission).
+     */
+    private function displayPermissionSummary(SyncDefinitionSet $definitions): void
+    {
+        $permissions = [];
+
+        foreach ($definitions->getRoles() as $role) {
+            foreach (($role['permissions'] ?? []) as $permission) {
+                if (is_string($permission) && $permission !== '') {
+                    $permissions[$permission] = true;
+                }
+            }
+        }
+
+        foreach ($definitions->getPermissions() as $permission) {
+            $name = is_array($permission) ? ($permission['permission'] ?? null) : (string) $permission;
+            if (is_string($name) && $name !== '') {
+                $permissions[$name] = true;
+            }
+        }
+
+        if ($permissions === []) {
+            return;
+        }
+
+        $this->info(sprintf(
+            'Permissions: %d distinct, granted to the platform via %d role(s).',
+            count($permissions),
+            count($definitions->getRoles()),
+        ));
     }
 
     /**
