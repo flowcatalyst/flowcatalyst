@@ -268,6 +268,10 @@ type BatchEventItem struct {
 	MessageGroup    *string         `json:"messageGroup,omitempty"`
 	CorrelationID   *string         `json:"correlationId,omitempty"`
 	CausationID     *string         `json:"causationId,omitempty"`
+	// Context (principalId / executionId / aggregateType, …) — the SDK outbox
+	// sends these as `contextData`; mirrors the single-event create + the event
+	// entity's context array (stored in context_data).
+	Context []ContextEntryDTO `json:"contextData,omitempty"`
 }
 
 // UnmarshalJSON accepts both the camelCase API keys and the snake_case SDK
@@ -276,24 +280,26 @@ type BatchEventItem struct {
 // Rust BatchEventItem so the platform ingests whatever a deployed outbox sends.
 func (b *BatchEventItem) UnmarshalJSON(data []byte) error {
 	var r struct {
-		ID                 string          `json:"id"`
-		SpecVersion        string          `json:"specVersion"`
-		SpecVersionAlt     string          `json:"spec_version"`
-		Type               string          `json:"type"`
-		TypeAlt            string          `json:"event_type"`
-		Source             string          `json:"source"`
-		Subject            string          `json:"subject"`
-		Data               json.RawMessage `json:"data"`
-		DeduplicationID    string          `json:"deduplicationId"`
-		DeduplicationIDAlt string          `json:"deduplication_id"`
-		ClientID           *string         `json:"clientId"`
-		ClientIDAlt        *string         `json:"client_id"`
-		MessageGroup       *string         `json:"messageGroup"`
-		MessageGroupAlt    *string         `json:"message_group"`
-		CorrelationID      *string         `json:"correlationId"`
-		CorrelationIDAlt   *string         `json:"correlation_id"`
-		CausationID        *string         `json:"causationId"`
-		CausationIDAlt     *string         `json:"causation_id"`
+		ID                 string            `json:"id"`
+		SpecVersion        string            `json:"specVersion"`
+		SpecVersionAlt     string            `json:"spec_version"`
+		Type               string            `json:"type"`
+		TypeAlt            string            `json:"event_type"`
+		Source             string            `json:"source"`
+		Subject            string            `json:"subject"`
+		Data               json.RawMessage   `json:"data"`
+		DeduplicationID    string            `json:"deduplicationId"`
+		DeduplicationIDAlt string            `json:"deduplication_id"`
+		ClientID           *string           `json:"clientId"`
+		ClientIDAlt        *string           `json:"client_id"`
+		MessageGroup       *string           `json:"messageGroup"`
+		MessageGroupAlt    *string           `json:"message_group"`
+		CorrelationID      *string           `json:"correlationId"`
+		CorrelationIDAlt   *string           `json:"correlation_id"`
+		CausationID        *string           `json:"causationId"`
+		CausationIDAlt     *string           `json:"causation_id"`
+		ContextData        []ContextEntryDTO `json:"contextData"`
+		ContextDataAlt     []ContextEntryDTO `json:"context_data"`
 	}
 	if err := json.Unmarshal(data, &r); err != nil {
 		return err
@@ -309,6 +315,10 @@ func (b *BatchEventItem) UnmarshalJSON(data []byte) error {
 	b.MessageGroup = coalescePtr(r.MessageGroup, r.MessageGroupAlt)
 	b.CorrelationID = coalescePtr(r.CorrelationID, r.CorrelationIDAlt)
 	b.CausationID = coalescePtr(r.CausationID, r.CausationIDAlt)
+	b.Context = r.ContextData
+	if b.Context == nil {
+		b.Context = r.ContextDataAlt
+	}
 	return nil
 }
 

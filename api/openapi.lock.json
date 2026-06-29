@@ -1053,6 +1053,12 @@
           "clientId": {
             "type": "string"
           },
+          "contextData": {
+            "items": {
+              "$ref": "#/components/schemas/ContextEntryDTO"
+            },
+            "type": "array"
+          },
           "correlationId": {
             "type": "string"
           },

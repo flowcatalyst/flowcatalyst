@@ -149,6 +149,9 @@ func (s *State) batchIngest(ctx context.Context, in *apicommon.In[BatchRequest])
 		ev.MessageGroup = it.MessageGroup
 		ev.CorrelationID = it.CorrelationID
 		ev.CausationID = it.CausationID
+		for _, c := range it.Context {
+			ev.Context = append(ev.Context, event.ContextEntry{Key: c.Key, Value: c.Value})
+		}
 		events = append(events, *ev)
 	}
 	if _, err := s.Repo.InsertBatch(ctx, events); err != nil {
