@@ -25,8 +25,17 @@ func newOutboxCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "outbox",
 		Short: "Standalone outbox poller against an external app DB → external platform",
-		RunE:  runOutbox,
+		// Load a dotenv file (default ./.env) before resolving flags, so the
+		// FC_OUTBOX_* vars can live in the app's .env instead of being exported.
+		// Existing env vars always win; this also runs for `create-table`.
+		PersistentPreRunE: func(c *cobra.Command, _ []string) error {
+			envFile, _ := c.Flags().GetString("env-file")
+			loadDotEnv(envFile)
+			return nil
+		},
+		RunE: runOutbox,
 	}
+	cmd.PersistentFlags().String("env-file", ".env", "load environment from this dotenv file (does not override existing env)")
 	cmd.Flags().String("source-db-url", envStrDefault("FC_OUTBOX_SOURCE_DB_URL", ""), "external app's Postgres URL (required)")
 	cmd.Flags().String("target-url", envStrDefault("FC_OUTBOX_PLATFORM_URL", "http://localhost:8080"), "FlowCatalyst platform URL")
 	cmd.Flags().String("auth-token", envStrDefault("FC_OUTBOX_PLATFORM_AUTH_TOKEN", ""), "bearer token / OAuth client_secret used to authenticate to the platform")
@@ -38,12 +47,15 @@ func newOutboxCmd() *cobra.Command {
 }
 
 func runOutbox(cmd *cobra.Command, _ []string) error {
-	sourceURL, _ := cmd.Flags().GetString("source-db-url")
-	targetURL, _ := cmd.Flags().GetString("target-url")
-	authToken, _ := cmd.Flags().GetString("auth-token")
-	batchSize, _ := cmd.Flags().GetInt("batch-size")
-	maxInFlight, _ := cmd.Flags().GetInt("max-in-flight")
-	pollInterval, _ := cmd.Flags().GetInt("poll-interval-ms")
+	// Re-resolve from env (the dotenv file is loaded in PersistentPreRunE,
+	// after the flag defaults were baked at command-build time). Precedence:
+	// explicit flag > env (incl. .env) > default.
+	sourceURL := resolveEnvFlag(cmd, "source-db-url", "FC_OUTBOX_SOURCE_DB_URL")
+	targetURL := resolveEnvFlag(cmd, "target-url", "FC_OUTBOX_PLATFORM_URL")
+	authToken := resolveEnvFlag(cmd, "auth-token", "FC_OUTBOX_PLATFORM_AUTH_TOKEN")
+	batchSize := resolveEnvFlagInt(cmd, "batch-size", "FC_OUTBOX_BATCH_SIZE")
+	maxInFlight := resolveEnvFlagInt(cmd, "max-in-flight", "FC_OUTBOX_MAX_IN_FLIGHT")
+	pollInterval := resolveEnvFlagInt(cmd, "poll-interval-ms", "FC_OUTBOX_POLL_INTERVAL_MS")
 
 	if sourceURL == "" {
 		return errors.New("--source-db-url (or FC_OUTBOX_SOURCE_DB_URL) is required")

@@ -61,9 +61,20 @@ Examples:
 }
 
 func runOutboxCreateTable(cmd *cobra.Command, _ []string) error {
+	// Re-resolve from env after the parent's PersistentPreRunE loaded ./.env
+	// (flag defaults were baked at command-build time). Explicit flags win.
 	dbType, _ := cmd.Flags().GetString("db-type")
+	if !cmd.Flags().Changed("db-type") {
+		dbType = envFirst(dbType, "FC_OUTBOX_BACKEND", "FC_OUTBOX_DB_TYPE")
+	}
 	dbURL, _ := cmd.Flags().GetString("db-url")
+	if !cmd.Flags().Changed("db-url") {
+		dbURL = envFirst(dbURL, "FC_OUTBOX_SOURCE_DB_URL", "FC_OUTBOX_DB_URL", "FC_OUTBOX_MONGO_URI")
+	}
 	dbName, _ := cmd.Flags().GetString("db-name")
+	if !cmd.Flags().Changed("db-name") {
+		dbName = envStrDefault("FC_OUTBOX_MONGO_DB", dbName)
+	}
 
 	if dbURL == "" {
 		return errors.New("--db-url (or FC_OUTBOX_SOURCE_DB_URL / FC_OUTBOX_DB_URL / FC_OUTBOX_MONGO_URI) is required")
