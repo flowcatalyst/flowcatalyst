@@ -18,6 +18,7 @@ use FlowCatalyst\Client\Auth\OidcTokenManager;
 use FlowCatalyst\Client\Auth\TokenProviderInterface;
 use FlowCatalyst\Client\FlowCatalystClient;
 use FlowCatalyst\Console\Commands\ScanDefinitionsCommand;
+use FlowCatalyst\Console\Commands\SessionTableCommand;
 use FlowCatalyst\Console\Commands\SyncDefinitionsCommand;
 use FlowCatalyst\Definition\DefinitionRepository;
 use FlowCatalyst\Definition\DefinitionScanner;
@@ -227,7 +228,12 @@ class FlowCatalystServiceProvider extends ServiceProvider
     }
 
     /**
-     * Publish the database migrations.
+     * Publish the OPT-IN database migrations — currently just the outbox table
+     * (apps using the database outbox driver). Publish-only; the SDK never
+     * auto-runs it.
+     *
+     * NB: the `sessions.user_id` widening is NOT a publishable migration — it's
+     * the `flowcatalyst:session-table` command (idempotent, with --rollback).
      */
     protected function publishMigrations(): void
     {
@@ -354,13 +360,21 @@ class FlowCatalystServiceProvider extends ServiceProvider
      */
     protected function registerOidcUserAuth(): void
     {
-        // Only bind if not already bound (allows app to override)
+        // Only bind if not already bound (allows app to override). Resolve the
+        // handler class LAZILY (at make() time) so it reads the final config,
+        // not whatever was set at registration time.
         if (!$this->app->bound(OidcUserHandler::class)) {
-            $handler = config('flowcatalyst.oidc.handler', 'database') === 'session'
-                ? DefaultOidcUserHandler::class
-                : DatabaseOidcUserHandler::class;
+            $this->app->singleton(OidcUserHandler::class, function ($app) {
+                // Default follows the native-login bridge: 'database' (upsert +
+                // native login) when the bridge is on, else 'session'
+                // (principal-only). An explicit `oidc.handler` pins it.
+                $default = config('flowcatalyst.oidc.native_login', false) ? 'database' : 'session';
+                $mode = config('flowcatalyst.oidc.handler') ?: $default;
 
-            $this->app->singleton(OidcUserHandler::class, $handler);
+                return $app->make($mode === 'session'
+                    ? DefaultOidcUserHandler::class
+                    : DatabaseOidcUserHandler::class);
+            });
         }
     }
 
@@ -379,6 +393,12 @@ class FlowCatalystServiceProvider extends ServiceProvider
     protected function registerGuestRedirect(): void
     {
         if (!config('flowcatalyst.oidc.enabled', false)) {
+            return;
+        }
+        // Bridge-only: never touch a host app's guest redirect unless it opted
+        // into the native-login bridge. Existing apps with their own auth keep
+        // their own redirect behaviour.
+        if (!config('flowcatalyst.oidc.native_login', false)) {
             return;
         }
         if (!config('flowcatalyst.oidc.auto_guest_redirect', true)) {
@@ -443,6 +463,7 @@ class FlowCatalystServiceProvider extends ServiceProvider
             $this->commands([
                 ScanDefinitionsCommand::class,
                 SyncDefinitionsCommand::class,
+                SessionTableCommand::class,
             ]);
         }
     }

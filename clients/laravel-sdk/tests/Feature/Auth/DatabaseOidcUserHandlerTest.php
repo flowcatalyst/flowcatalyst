@@ -39,6 +39,9 @@ final class DatabaseOidcUserHandlerTest extends TestCase
 
         $app['config']->set('flowcatalyst.base_url', 'https://fc.test');
         $app['config']->set('flowcatalyst.oidc.enabled', true);
+        // Native-login bridge is opt-in; this suite exercises its behaviour
+        // (database handler + guest redirect), so turn it on.
+        $app['config']->set('flowcatalyst.oidc.native_login', true);
         $app['config']->set('flowcatalyst.oidc.handler', 'database');
         $app['config']->set('flowcatalyst.oidc.user_model', TestUser::class);
 

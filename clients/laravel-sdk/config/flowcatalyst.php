@@ -117,6 +117,26 @@ return [
 
         /*
         |----------------------------------------------------------------------
+        | Native Login Bridge (opt-in)
+        |----------------------------------------------------------------------
+        |
+        | The bridge makes a FRESH app authenticate against FlowCatalyst with
+        | (almost) zero code. It is OPT-IN — leave it off and `enabled` above
+        | only registers the OIDC routes/guards; the SDK won't upsert users or
+        | auto-redirect guests. Existing apps that wire their own login hook
+        | (their own OidcUserHandler / auth middleware) should leave this OFF.
+        |
+        | When ON it changes two defaults (each still individually overridable):
+        |   - the default `handler` becomes 'database' (upsert a local user +
+        |     native Auth::login) instead of 'session';
+        |   - `auto_guest_redirect` sends guests on `auth` routes into the
+        |     FlowCatalyst login flow.
+        |
+        */
+        'native_login' => env('FLOWCATALYST_NATIVE_LOGIN', false),
+
+        /*
+        |----------------------------------------------------------------------
         | OIDC Client ID (for user authentication)
         |----------------------------------------------------------------------
         |
@@ -180,26 +200,25 @@ return [
 
         /*
         |----------------------------------------------------------------------
-        | Native Login Bridge (use FlowCatalyst as your app's login)
+        | OIDC Callback Handler
         |----------------------------------------------------------------------
         |
-        | These make a fresh Laravel app authenticate against FlowCatalyst with
-        | (almost) zero code: stock `->middleware('auth')`, `Auth::user()`,
-        | `@auth`, and policies all "just work".
+        | What happens on a successful OIDC callback:
+        |   'database' — upsert a local user row and Auth::login() them into the
+        |     native Laravel guard, so stock `->middleware('auth')` recognises
+        |     them. Still stores the SDK session principal too.
+        |   'session'  — store only the SDK session principal (no native
+        |     Auth::login / no users row). Pair with `AUTH_GUARD=fc-session` to
+        |     authenticate stock `auth` routes off the token principal.
         |
-        | handler:
-        |   'database' (default) — on OIDC callback, upsert a local user row and
-        |     log them into the native Laravel guard, so the standard `auth`
-        |     middleware recognises them. Still stores the SDK session principal,
-        |     so the `fc.*` middleware keep working too.
-        |   'session' — legacy behaviour: only store the principal in the session
-        |     (no native Auth::login). Use this to preserve pre-bridge behaviour.
+        | DEFAULT: unset → resolved from `native_login` above ('database' when
+        | the bridge is on, otherwise 'session'). Set it explicitly to pin one.
         |
         | Apps that need custom mapping (tenant checks, extra columns, …) bind
         | their own OidcUserHandler — that binding always wins over this default.
         |
         */
-        'handler' => env('FLOWCATALYST_OIDC_HANDLER', 'database'),
+        'handler' => env('FLOWCATALYST_OIDC_HANDLER'),
 
         /*
         | The Eloquent user model upserted + logged in by the 'database' handler.
