@@ -274,7 +274,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			UoW:           uow,
 		})
 
-		eventapi.Register(humaAPI, &eventapi.State{Repo: repos.eventRepo})
+		eventapi.Register(humaAPI, &eventapi.State{Repo: repos.eventRepo, Clients: repos.clientRepo})
 		auditapi.Register(humaAPI, &auditapi.State{Repo: repos.auditRepo})
 		dispatchjobapi.Register(humaAPI, &dispatchjobapi.State{Repo: repos.dispatchJobRepo})
 

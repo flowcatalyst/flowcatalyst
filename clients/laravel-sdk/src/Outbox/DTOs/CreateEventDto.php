@@ -23,6 +23,7 @@ class CreateEventDto
         public readonly ?string $causationId = null,
         public readonly ?string $deduplicationId = null,
         public readonly ?string $messageGroup = null,
+        public readonly ?string $clientCode = null,
         public readonly array $contextData = [],
         public readonly array $headers = [],
     ) {}
@@ -52,6 +53,7 @@ class CreateEventDto
             causationId: $this->causationId,
             deduplicationId: $this->deduplicationId,
             messageGroup: $this->messageGroup,
+            clientCode: $this->clientCode,
             contextData: $this->contextData,
             headers: $this->headers,
         );
@@ -71,6 +73,7 @@ class CreateEventDto
             causationId: $causationId,
             deduplicationId: $this->deduplicationId,
             messageGroup: $this->messageGroup,
+            clientCode: $this->clientCode,
             contextData: $this->contextData,
             headers: $this->headers,
         );
@@ -90,6 +93,7 @@ class CreateEventDto
             causationId: $this->causationId,
             deduplicationId: $deduplicationId,
             messageGroup: $this->messageGroup,
+            clientCode: $this->clientCode,
             contextData: $this->contextData,
             headers: $this->headers,
         );
@@ -109,6 +113,7 @@ class CreateEventDto
             causationId: $this->causationId,
             deduplicationId: $this->deduplicationId,
             messageGroup: $this->messageGroup,
+            clientCode: $this->clientCode,
             contextData: $this->contextData,
             headers: $this->headers,
         );
@@ -128,6 +133,7 @@ class CreateEventDto
             causationId: $this->causationId,
             deduplicationId: $this->deduplicationId,
             messageGroup: $this->messageGroup,
+            clientCode: $this->clientCode,
             contextData: $this->contextData,
             headers: $this->headers,
         );
@@ -147,6 +153,28 @@ class CreateEventDto
             causationId: $this->causationId,
             deduplicationId: $this->deduplicationId,
             messageGroup: $messageGroup,
+            clientCode: $this->clientCode,
+            contextData: $this->contextData,
+            headers: $this->headers,
+        );
+    }
+
+    /**
+     * Set the FlowCatalyst client (by code) this event belongs to. The platform
+     * resolves the code to a client id at ingest.
+     */
+    public function withClientCode(string $clientCode): self
+    {
+        return new self(
+            type: $this->type,
+            data: $this->data,
+            source: $this->source,
+            subject: $this->subject,
+            correlationId: $this->correlationId,
+            causationId: $this->causationId,
+            deduplicationId: $this->deduplicationId,
+            messageGroup: $this->messageGroup,
+            clientCode: $clientCode,
             contextData: $this->contextData,
             headers: $this->headers,
         );
@@ -166,6 +194,7 @@ class CreateEventDto
             causationId: $this->causationId,
             deduplicationId: $this->deduplicationId,
             messageGroup: $this->messageGroup,
+            clientCode: $this->clientCode,
             contextData: $this->contextData,
             headers: array_merge($this->headers, $headers),
         );
@@ -185,6 +214,7 @@ class CreateEventDto
             causationId: $this->causationId,
             deduplicationId: $this->deduplicationId,
             messageGroup: $this->messageGroup,
+            clientCode: $this->clientCode,
             contextData: array_merge($this->contextData, $contextData),
             headers: $this->headers,
         );
@@ -205,6 +235,7 @@ class CreateEventDto
             'causationId' => $this->causationId,
             'deduplicationId' => $this->deduplicationId,
             'messageGroup' => $this->messageGroup,
+            'clientCode' => $this->clientCode,
             'contextData' => !empty($this->contextData) ? $this->contextData : null,
         ], fn($v) => $v !== null);
     }

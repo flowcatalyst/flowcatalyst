@@ -1050,6 +1050,9 @@
           "causationId": {
             "type": "string"
           },
+          "clientCode": {
+            "type": "string"
+          },
           "clientId": {
             "type": "string"
           },

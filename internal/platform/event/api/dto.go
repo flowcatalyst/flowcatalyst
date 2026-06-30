@@ -265,9 +265,12 @@ type BatchEventItem struct {
 	Data            json.RawMessage `json:"data,omitempty"`
 	DeduplicationID string          `json:"deduplicationId,omitempty"`
 	ClientID        *string         `json:"clientId,omitempty"`
-	MessageGroup    *string         `json:"messageGroup,omitempty"`
-	CorrelationID   *string         `json:"correlationId,omitempty"`
-	CausationID     *string         `json:"causationId,omitempty"`
+	// ClientCode resolves to a client_id at ingest (client-centric linkage). The
+	// SDK outbox sends this; an explicit ClientID still takes precedence.
+	ClientCode    *string `json:"clientCode,omitempty"`
+	MessageGroup  *string `json:"messageGroup,omitempty"`
+	CorrelationID *string `json:"correlationId,omitempty"`
+	CausationID   *string `json:"causationId,omitempty"`
 	// Context (principalId / executionId / aggregateType, …) — the SDK outbox
 	// sends these as `contextData`; mirrors the single-event create + the event
 	// entity's context array (stored in context_data).
@@ -292,6 +295,8 @@ func (b *BatchEventItem) UnmarshalJSON(data []byte) error {
 		DeduplicationIDAlt string            `json:"deduplication_id"`
 		ClientID           *string           `json:"clientId"`
 		ClientIDAlt        *string           `json:"client_id"`
+		ClientCode         *string           `json:"clientCode"`
+		ClientCodeAlt      *string           `json:"client_code"`
 		MessageGroup       *string           `json:"messageGroup"`
 		MessageGroupAlt    *string           `json:"message_group"`
 		CorrelationID      *string           `json:"correlationId"`
@@ -312,6 +317,7 @@ func (b *BatchEventItem) UnmarshalJSON(data []byte) error {
 	b.Data = r.Data
 	b.DeduplicationID = coalesceStr(r.DeduplicationID, r.DeduplicationIDAlt)
 	b.ClientID = coalescePtr(r.ClientID, r.ClientIDAlt)
+	b.ClientCode = coalescePtr(r.ClientCode, r.ClientCodeAlt)
 	b.MessageGroup = coalescePtr(r.MessageGroup, r.MessageGroupAlt)
 	b.CorrelationID = coalescePtr(r.CorrelationID, r.CorrelationIDAlt)
 	b.CausationID = coalescePtr(r.CausationID, r.CausationIDAlt)

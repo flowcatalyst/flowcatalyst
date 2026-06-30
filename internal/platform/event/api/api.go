@@ -9,6 +9,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/event"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
@@ -20,6 +21,9 @@ import (
 // State bundles deps.
 type State struct {
 	Repo *event.Repository
+	// Clients resolves a clientCode → client_id on ingest (client-centric
+	// linkage). Optional: when nil, clientCode is ignored.
+	Clients *client.Repository
 }
 
 const tag = "events"
@@ -134,6 +138,9 @@ func (s *State) batchIngest(ctx context.Context, in *apicommon.In[BatchRequest])
 		return nil, httperror.BadRequest("BATCH_TOO_LARGE", "max 1000 items per batch")
 	}
 	events := make([]event.Event, 0, len(in.Body.Items))
+	// Per-batch cache of clientCode → client_id (a batch usually shares one
+	// client). A nil entry means "looked up, not found" so we don't re-query.
+	clientByCode := map[string]*string{}
 	for _, it := range in.Body.Items {
 		ev := event.New(it.Type, it.Source, it.Subject, it.Data)
 		if it.ID != "" {
@@ -146,6 +153,25 @@ func (s *State) batchIngest(ctx context.Context, in *apicommon.In[BatchRequest])
 			ev.DeduplicationID = it.DeduplicationID
 		}
 		ev.ClientID = it.ClientID
+		// Resolve clientCode → client_id when no explicit clientId was given.
+		// An unknown code leaves the event unlinked rather than failing the
+		// batch (the event is a fact; keep it).
+		if ev.ClientID == nil && it.ClientCode != nil && *it.ClientCode != "" && s.Clients != nil {
+			code := *it.ClientCode
+			id, seen := clientByCode[code]
+			if !seen {
+				c, err := s.Clients.FindByIdentifier(ctx, code)
+				if err != nil {
+					return nil, usecase.Internal("REPO", "client find_by_identifier failed", err)
+				}
+				if c != nil {
+					cid := c.ID
+					id = &cid
+				}
+				clientByCode[code] = id
+			}
+			ev.ClientID = id
+		}
 		ev.MessageGroup = it.MessageGroup
 		ev.CorrelationID = it.CorrelationID
 		ev.CausationID = it.CausationID

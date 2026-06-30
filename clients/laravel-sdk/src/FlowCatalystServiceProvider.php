@@ -206,6 +206,9 @@ class FlowCatalystServiceProvider extends ServiceProvider
                 // Same connection the outbox DatabaseDriver uses, so the owned
                 // transaction (Runner -> transaction()) covers the event insert.
                 connection: $config['connection'] ?? null,
+                // Application + client linkage for emitted events / audit logs.
+                applicationCode: $app['config']['flowcatalyst']['application_code'] ?? null,
+                clientCode: $config['client_code'] ?? null,
             );
         });
 

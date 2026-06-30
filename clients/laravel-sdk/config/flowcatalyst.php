@@ -531,6 +531,22 @@ return [
 
         /*
         |----------------------------------------------------------------------
+        | Client Code (Client-Centric Linkage)
+        |----------------------------------------------------------------------
+        |
+        | The FlowCatalyst client (by CODE) that events + audit logs emitted by
+        | the use-case envelope belong to. The platform is client-centric and
+        | resolves this code → client_id at ingest (events) / and the audit log
+        | carries it alongside the application code. Leave empty to omit.
+        |
+        | This is distinct from `outbox.client_id` above, which is the owner of
+        | the local outbox ROWS, not the business client the data belongs to.
+        |
+        */
+        'client_code' => env('FLOWCATALYST_CLIENT_CODE'),
+
+        /*
+        |----------------------------------------------------------------------
         | Outbox Client
         |----------------------------------------------------------------------
         |

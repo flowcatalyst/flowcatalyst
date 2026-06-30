@@ -37,6 +37,14 @@ final class OutboxUnitOfWork implements UnitOfWork
          * the default connection (the common case).
          */
         private readonly ?string $connection = null,
+        /**
+         * The FlowCatalyst application + client codes these operations belong to.
+         * The platform is client-centric: audit logs carry both (resolved to
+         * application_id / client_id at ingest); events carry the client code
+         * (the application is derived from the event-type prefix). Null = omit.
+         */
+        private readonly ?string $applicationCode = null,
+        private readonly ?string $clientCode = null,
     ) {}
 
     /**
@@ -132,6 +140,12 @@ final class OutboxUnitOfWork implements UnitOfWork
             $dto = $dto->withCausationId($event->causationId());
         }
 
+        // Client linkage (platform resolves the code → client_id at ingest).
+        // The application is derived from the event-type prefix on the platform.
+        if ($this->clientCode !== null && $this->clientCode !== '') {
+            $dto = $dto->withClientCode($this->clientCode);
+        }
+
         return $dto;
     }
 
@@ -148,7 +162,7 @@ final class OutboxUnitOfWork implements UnitOfWork
             default             => ['command' => $command],
         };
 
-        return CreateAuditLogDto::create(
+        $dto = CreateAuditLogDto::create(
             entityType: $entityType,
             entityId:   $entityId,
             operation:  $operation,
@@ -158,6 +172,17 @@ final class OutboxUnitOfWork implements UnitOfWork
             ->withCorrelationId($event->correlationId())
             ->withSource($event->source())
             ->withPerformedAt($event->time());
+
+        // Application + client linkage (the platform is client-centric and
+        // resolves these codes → application_id / client_id at ingest).
+        if ($this->applicationCode !== null && $this->applicationCode !== '') {
+            $dto = $dto->withApplicationCode($this->applicationCode);
+        }
+        if ($this->clientCode !== null && $this->clientCode !== '') {
+            $dto = $dto->withClientCode($this->clientCode);
+        }
+
+        return $dto;
     }
 
     /**
