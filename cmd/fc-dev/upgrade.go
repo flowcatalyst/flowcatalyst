@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -265,6 +266,8 @@ func extractFromTarGz(archive []byte, innerPath string) ([]byte, error) {
 	}
 	defer func() { _ = gz.Close() }()
 	want := filepath.ToSlash(filepath.Clean(innerPath))
+	base := path.Base(want)
+	var fallback []byte
 	tr := tar.NewReader(gz)
 	for {
 		hdr, err := tr.Next()
@@ -274,9 +277,20 @@ func extractFromTarGz(archive []byte, innerPath string) ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("read tar: %w", err)
 		}
-		if filepath.ToSlash(filepath.Clean(hdr.Name)) == want {
+		name := filepath.ToSlash(filepath.Clean(hdr.Name))
+		if name == want {
 			return io.ReadAll(tr)
 		}
+		// Fallback: match by basename so a flat archive (binary at the root,
+		// no <stem>/ prefix) still works regardless of how it was packaged.
+		if fallback == nil && hdr.Typeflag == tar.TypeReg && path.Base(name) == base {
+			if fallback, err = io.ReadAll(tr); err != nil {
+				return nil, fmt.Errorf("read tar: %w", err)
+			}
+		}
+	}
+	if fallback != nil {
+		return fallback, nil
 	}
 	return nil, fmt.Errorf("binary %q not found in archive", innerPath)
 }
@@ -287,17 +301,32 @@ func extractFromZip(archive []byte, innerPath string) ([]byte, error) {
 		return nil, fmt.Errorf("open zip: %w", err)
 	}
 	want := filepath.ToSlash(filepath.Clean(innerPath))
+	base := path.Base(want)
+	var fallback *zip.File
 	for _, f := range zr.File {
-		if filepath.ToSlash(filepath.Clean(f.Name)) == want {
-			rc, err := f.Open()
-			if err != nil {
-				return nil, err
-			}
-			defer rc.Close()
-			return io.ReadAll(rc)
+		name := filepath.ToSlash(filepath.Clean(f.Name))
+		if name == want {
+			return readZipEntry(f)
+		}
+		// Fallback: match by basename (flat archive — see extractFromTarGz).
+		if fallback == nil && !f.FileInfo().IsDir() && path.Base(name) == base {
+			fallback = f
 		}
 	}
+	if fallback != nil {
+		return readZipEntry(fallback)
+	}
 	return nil, fmt.Errorf("binary %q not found in archive", innerPath)
+}
+
+// readZipEntry reads one zip file entry fully.
+func readZipEntry(f *zip.File) ([]byte, error) {
+	rc, err := f.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rc.Close() }()
+	return io.ReadAll(rc)
 }
 
 // selfPath resolves the on-disk path of the running binary, following symlinks

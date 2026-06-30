@@ -227,7 +227,7 @@ class DefinitionSynchronizer
         try {
             $entries = array_map(
                 fn(array $row) => new SyncEventTypeEntry(
-                    code: $this->eventTypeCode($row),
+                    code: $this->eventTypeCode($row, $appCode),
                     name: (string) ($row['name'] ?? ''),
                     description: isset($row['description']) ? (string) $row['description'] : null,
                 ),
@@ -255,21 +255,24 @@ class DefinitionSynchronizer
      *
      * Prefers an explicit `code`; otherwise assembles it from the individual
      * {application,subdomain,aggregate,event} segments. This covers both
-     * EventTypeDefinition::toArray() rows and raw scanned-attribute rows, and
-     * prevents a missing key from silently becoming an empty code (which the
-     * API rejects with "must follow format application:subdomain:aggregate:event").
+     * EventTypeDefinition::toArray() rows (which carry their own `application`)
+     * and raw scanned `#[AsEventType]` rows (which DON'T — the application is
+     * the set's $appCode, applied here). Prevents a missing segment from
+     * silently becoming an empty code (which the API rejects with "must follow
+     * format application:subdomain:aggregate:event").
      *
      * @param array<string, mixed> $row
      */
-    private function eventTypeCode(array $row): string
+    private function eventTypeCode(array $row, string $appCode): string
     {
         $code = (string) ($row['code'] ?? '');
         if ($code !== '') {
             return $code;
         }
 
+        $application = $row['application'] ?? ($appCode !== '' ? $appCode : null);
         $segments = [
-            $row['application'] ?? null,
+            $application,
             $row['subdomain'] ?? null,
             $row['aggregate'] ?? null,
             $row['event'] ?? null,

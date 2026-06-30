@@ -100,7 +100,12 @@ jobs:
 
             archive="${stage}.${ext}"
             case "$ext" in
-              zip)    (cd "$stage" && zip -qr "../dist/$archive" .) ;;
+              # Archive the staging DIRECTORY (not its contents) so the binary
+              # lives at "<stem>/fc-dev[.exe]" — consistent with tar.gz, and the
+              # layout `fc-dev upgrade` expects. (Previously the zip cd'd in and
+              # archived `.`, flattening fc-dev.exe to the root → upgrade failed
+              # with "binary not found in archive".)
+              zip)    zip -qr "dist/$archive" "$stage" ;;
               tar.gz) tar -czf "dist/$archive" "$stage" ;;
             esac
 

@@ -293,6 +293,22 @@ A permission is declared once and **linked from many roles** by class. You can
 also inline `new PermissionInput(...)` objects or plain `app:context:aggregate:action`
 strings.
 
+**Declare event types** by attributing your domain events, so the platform knows
+about them (and they can be bound to subscribers and replayed):
+
+```php
+// app/UseCases/Comments/CommentCreated.php
+use FlowCatalyst\Attributes\AsEventType;
+
+// Synced code = "<app>:comments:comment:created" (the app prefix is added at sync).
+// clientScoped: events of this type belong to a client.
+#[AsEventType(subdomain: 'comments', aggregate: 'comment', event: 'created', name: 'Comment Created', clientScoped: true)]
+final class CommentCreated extends BaseDomainEvent { /* … */ }
+```
+
+Make sure the directory holding them is listed in `flowcatalyst.definitions.paths`
+(e.g. add `app_path('UseCases')` alongside the default `app_path('FlowCatalyst')`).
+
 **Sync** with a service account (separate from your login client) that has
 roles-write on the application:
 
@@ -313,8 +329,32 @@ local Spatie tables** so your app's authorization matches what it pushed (toggle
 with `FLOWCATALYST_SEED_SPATIE` / `--no-spatie`). The same attribute mechanism
 covers `#[AsEventType]`, `#[AsSubscription]`, `#[AsDispatchPool]`, `#[AsProcess]`,
 and `#[AsScheduledJob]`. See [`docs/syncing-definitions.md`](docs/syncing-definitions.md)
-for the full reference, including the programmatic `DefinitionSynchronizer` for
-multi-application setups.
+for the full reference, including the programmatic `DefinitionSynchronizer`.
+
+### Multiple applications in one codebase
+
+`flowcatalyst:sync` resolves each definition's application and syncs each app
+separately — you don't have to drop to the programmatic API. The application is
+resolved in this order:
+
+1. an explicit `application:` on the attribute — `#[AsEventType(application: 'orders', …)]`;
+2. a longest-prefix match in the `definitions.application_map` config;
+3. the default `FLOWCATALYST_APP_CODE`.
+
+The **map** is ideal when one codebase owns several apps, or when a package ships
+its own definitions and is its own application — the *consumer* maps the package's
+namespace to whatever app code they registered (a package author can't hardcode it):
+
+```php
+// config/flowcatalyst.php → definitions
+'application_map' => [
+    'App\\Orders\\'       => 'orders',
+    'Vendor\\Logistics\\' => 'logistics',   // a package = its own application
+],
+```
+
+`scan` records the resolved app per definition; `sync` groups by it and pushes
+each application's catalog to its own `…/applications/{appCode}/…/sync` endpoint.
 
 ## Control Plane API
 
@@ -465,6 +505,32 @@ $eventIds = Postbox::createEvents([
     CreateEventDto::create('order.created', ['orderId' => 'ORD-002'], 'orders'),
     CreateEventDto::create('order.created', ['orderId' => 'ORD-003'], 'orders'),
 ]);
+```
+
+### Client-centric linkage
+
+FlowCatalyst is client-centric. Name the application and client your emitted
+events / audit logs belong to once, and the platform resolves them at ingest:
+
+```env
+FLOWCATALYST_APP_CODE=blog              # application (also the event-type prefix)
+FLOWCATALYST_CLIENT_CODE=acme           # client (by code → client_id at ingest)
+```
+
+Events emitted through the use-case envelope carry the **client** code (the
+application is derived from the event-type prefix); **audit logs** carry both.
+An unknown / unset client code simply leaves the link empty — the event still
+ingests (an event is a fact; the platform keeps it).
+
+### Branded IDs
+
+Mint platform-style typed ids for your own entities (matching `aud_…`, `prn_…`):
+
+```php
+use FlowCatalyst\UseCase\DomainEventHelpers;
+
+DomainEventHelpers::generateId();        // raw 13-char TSID
+DomainEventHelpers::generateId('cmt');   // branded → "cmt_6F7JC2A6JFR7N"
 ```
 
 ### Creating Dispatch Jobs
