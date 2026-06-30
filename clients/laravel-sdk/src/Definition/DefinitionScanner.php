@@ -91,8 +91,12 @@ class DefinitionScanner
             $namespace = $matches[1];
         }
 
-        // Extract class names
-        if (preg_match_all('/^class\s+(\w+)/m', $content, $matches)) {
+        // Extract class names. Allow leading class modifiers — `final`,
+        // `abstract`, `readonly` (in any combination) — so a definition
+        // declared `final class CommentCreated` is discovered, not just a bare
+        // `class Foo`. Without this, final/abstract definition classes are
+        // silently skipped.
+        if (preg_match_all('/^\s*(?:(?:final|abstract|readonly)\s+)*class\s+(\w+)/mi', $content, $matches)) {
             foreach ($matches[1] as $className) {
                 $fullClassName = $namespace ? "{$namespace}\\{$className}" : $className;
                 if (class_exists($fullClassName)) {
@@ -136,8 +140,13 @@ class DefinitionScanner
         foreach ($permissionAttributes as $attribute) {
             /** @var AsPermission $instance */
             $instance = $attribute->newInstance();
-            $permissions[] = array_merge($instance->toArray($applicationCode), [
+            $app = $this->resolveApplication($className, $instance);
+            // Permissions/roles bake the app code into their array (it forms part
+            // of the code), so feed the resolved app — falling back to the scan
+            // default — instead of always the default.
+            $permissions[] = array_merge($instance->toArray($app ?? $applicationCode), [
                 '_class' => $className,
+                '_application' => $app,
             ]);
         }
 
@@ -146,8 +155,10 @@ class DefinitionScanner
         foreach ($roleAttributes as $attribute) {
             /** @var AsRole $instance */
             $instance = $attribute->newInstance();
-            $roles[] = array_merge($instance->toArray($applicationCode), [
+            $app = $this->resolveApplication($className, $instance);
+            $roles[] = array_merge($instance->toArray($app ?? $applicationCode), [
                 '_class' => $className,
+                '_application' => $app,
             ]);
         }
 
@@ -158,6 +169,7 @@ class DefinitionScanner
             $instance = $attribute->newInstance();
             $eventTypes[] = array_merge($instance->toArray(), [
                 '_class' => $className,
+                '_application' => $this->resolveApplication($className, $instance),
             ]);
         }
 
@@ -168,6 +180,7 @@ class DefinitionScanner
             $instance = $attribute->newInstance();
             $subscriptions[] = array_merge($instance->toArray(), [
                 '_class' => $className,
+                '_application' => $this->resolveApplication($className, $instance),
             ]);
         }
 
@@ -178,6 +191,7 @@ class DefinitionScanner
             $instance = $attribute->newInstance();
             $dispatchPools[] = array_merge($instance->toArray(), [
                 '_class' => $className,
+                '_application' => $this->resolveApplication($className, $instance),
             ]);
         }
 
@@ -188,6 +202,7 @@ class DefinitionScanner
             $instance = $attribute->newInstance();
             $processes[] = array_merge($instance->toArray(), [
                 '_class' => $className,
+                '_application' => $this->resolveApplication($className, $instance),
             ]);
         }
 
@@ -198,7 +213,51 @@ class DefinitionScanner
             $instance = $attribute->newInstance();
             $scheduledJobs[] = array_merge($instance->toArray(), [
                 '_class' => $className,
+                '_application' => $this->resolveApplication($className, $instance),
             ]);
         }
+    }
+
+    /**
+     * Resolve which application code a definition belongs to, for codebases
+     * that define definitions for more than one application. Order:
+     *   1. explicit `application:` on the attribute (where supported),
+     *   2. longest-prefix match in `flowcatalyst.definitions.application_map`,
+     *   3. null — the sync command falls back to the global default / --app.
+     */
+    private function resolveApplication(string $className, object $instance): ?string
+    {
+        $explicit = (property_exists($instance, 'application') && is_string($instance->application) && $instance->application !== '')
+            ? $instance->application
+            : null;
+
+        return $explicit ?? $this->matchApplicationMap($className);
+    }
+
+    /**
+     * Longest-prefix match of a class's fully-qualified name against the
+     * configured namespace → application-code map. Lets a whole package/module
+     * inherit one application code (the consumer owns the mapping).
+     */
+    private function matchApplicationMap(string $className): ?string
+    {
+        $map = function_exists('config') ? config('flowcatalyst.definitions.application_map', []) : [];
+        if (!is_array($map)) {
+            return null;
+        }
+
+        $needle = ltrim($className, '\\');
+        $bestApp = null;
+        $bestLen = -1;
+        foreach ($map as $prefix => $app) {
+            $prefix = ltrim((string) $prefix, '\\');
+            if ($prefix !== '' && is_string($app) && $app !== ''
+                && str_starts_with($needle, $prefix) && strlen($prefix) > $bestLen) {
+                $bestApp = $app;
+                $bestLen = strlen($prefix);
+            }
+        }
+
+        return $bestApp;
     }
 }

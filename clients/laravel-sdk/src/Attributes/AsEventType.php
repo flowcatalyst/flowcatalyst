@@ -37,6 +37,10 @@ final class AsEventType
      * @param string $name Human-friendly name
      * @param string|null $description Event type description
      * @param bool $clientScoped Whether events of this type are scoped to clients
+     * @param string|null $application Application code this event type belongs to.
+     *        Overrides the global `application_code` / `application_map` during
+     *        sync — set it when one codebase defines event types for more than
+     *        one application. Null = resolve from the namespace map / default.
      */
     public function __construct(
         public readonly string $subdomain,
@@ -45,6 +49,7 @@ final class AsEventType
         public readonly string $name,
         public readonly ?string $description = null,
         public readonly bool $clientScoped = false,
+        public readonly ?string $application = null,
     ) {}
 
     /**

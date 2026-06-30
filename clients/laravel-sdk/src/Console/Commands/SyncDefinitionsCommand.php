@@ -46,13 +46,12 @@ class SyncDefinitionsCommand extends Command
             return Command::FAILURE;
         }
 
+        // The DEFAULT application code, used for definitions that don't resolve
+        // their own (via the attribute `application:` or the
+        // `definitions.application_map`). May be empty when every definition
+        // carries its own app — groupByApplication then flags any that can't be
+        // placed.
         $appCode = $this->option('app') ?: config('flowcatalyst.application_code');
-        if (!$appCode) {
-            $this->error('Application code not configured. Either:');
-            $this->error('  - Set FLOWCATALYST_APP_CODE in your .env file');
-            $this->error('  - Use the --app option: php artisan flowcatalyst:sync --app=my-app');
-            return Command::FAILURE;
-        }
 
         $dryRun = $this->option('dry-run');
         $removeUnlisted = $this->option('remove-unlisted');
@@ -83,57 +82,135 @@ class SyncDefinitionsCommand extends Command
             syncOpenapi: $syncAll || $this->option('openapi'),
         );
 
-        // Build definition set from cached definitions
-        $scannedData = $repository->all();
-        $definitions = SyncDefinitionSet::fromScannedDefinitions($appCode, $scannedData->toArray());
+        // Partition cached definitions into per-application buckets, so one
+        // codebase can target multiple applications (each synced to its own
+        // app via the application-scoped endpoints).
+        $scannedData = $repository->all()->toArray();
+        $groups = $this->groupByApplication($scannedData, $appCode);
 
-        // Attach an OpenAPI document when an explicit file is given
-        $openapiFile = $this->option('openapi-file');
-        if (is_string($openapiFile) && $openapiFile !== '') {
-            if (!is_file($openapiFile)) {
-                $this->error("OpenAPI file not found: {$openapiFile}");
-                return Command::FAILURE;
-            }
-            $raw = file_get_contents($openapiFile);
-            if ($raw === false) {
-                $this->error("Failed to read OpenAPI file: {$openapiFile}");
-                return Command::FAILURE;
-            }
-            $decoded = json_decode($raw, true);
-            if (!is_array($decoded)) {
-                $this->error("OpenAPI file is not valid JSON: {$openapiFile}");
-                return Command::FAILURE;
-            }
-            $definitions = $definitions->withOpenapiSpec($decoded);
-        }
-
-        if ($definitions->isEmpty()) {
+        if ($groups === []) {
             $this->info('No definitions to sync.');
             return Command::SUCCESS;
         }
 
-        // Show what would be synced in dry-run mode
-        if ($dryRun) {
-            $this->showDryRunOutput($definitions, $options);
-            $this->displayPermissionSummary($definitions);
-            return Command::SUCCESS;
+        // Definitions that resolve no application AND have no default can't be
+        // placed — fail with actionable guidance rather than silently dropping.
+        if (isset($groups[''])) {
+            $this->error('Application code not configured for some definitions. Either:');
+            $this->error('  - Set FLOWCATALYST_APP_CODE (or use --app) for the default, or');
+            $this->error('  - Map their namespace in flowcatalyst.definitions.application_map, or');
+            $this->error('  - Set application: on the attribute.');
+            return Command::FAILURE;
         }
 
-        // Perform the sync
-        $this->info("Syncing definitions to application: {$appCode}");
-        $result = $synchronizer->sync($definitions, $options);
+        // OpenAPI document (when an explicit file is given) is application-level;
+        // it attaches to the default app's group only.
+        $openapiSpec = $this->loadOpenapiSpec();
+        if ($openapiSpec === false) {
+            return Command::FAILURE;
+        }
 
-        // Display results
-        $this->displayResults($result);
-        $this->displayPermissionSummary($definitions);
+        if (count($groups) > 1) {
+            $this->info(sprintf('Syncing %d applications: %s', count($groups), implode(', ', array_keys($groups))));
+            $this->newLine();
+        }
 
-        // Mirror roles + permissions into the local Spatie tables (so the app's
-        // authorization model matches what it just pushed). FlowCatalyst has no
-        // standalone permission entity, so permissions reach the platform via
-        // the roles above; this step keeps the LOCAL side in step.
-        $this->seedSpatie($definitions);
+        $hadErrors = false;
+        foreach ($groups as $groupApp => $data) {
+            $definitions = SyncDefinitionSet::fromScannedDefinitions($groupApp, $data);
+            if ($openapiSpec !== null && $groupApp === $appCode) {
+                $definitions = $definitions->withOpenapiSpec($openapiSpec);
+            }
 
-        return $result->hasErrors() ? Command::FAILURE : Command::SUCCESS;
+            if ($definitions->isEmpty()) {
+                continue;
+            }
+
+            if ($dryRun) {
+                $this->info("Would sync to application: {$groupApp}");
+                $this->showDryRunOutput($definitions, $options);
+                $this->displayPermissionSummary($definitions);
+                continue;
+            }
+
+            $this->info("Syncing definitions to application: {$groupApp}");
+            $result = $synchronizer->sync($definitions, $options);
+
+            $this->displayResults($result);
+            $this->displayPermissionSummary($definitions);
+
+            // Mirror roles + permissions into the local Spatie tables (so the
+            // app's authorization model matches what it just pushed). FlowCatalyst
+            // has no standalone permission entity, so permissions reach the
+            // platform via the roles above; this keeps the LOCAL side in step.
+            $this->seedSpatie($definitions);
+
+            if ($result->hasErrors()) {
+                $hadErrors = true;
+            }
+        }
+
+        return $hadErrors ? Command::FAILURE : Command::SUCCESS;
+    }
+
+    /**
+     * Partition scanned definitions into per-application buckets keyed by the
+     * resolved application code (each definition's `_application`, else the
+     * default). Definitions with neither land in the '' bucket (an error).
+     *
+     * @param array<string, mixed> $scannedData
+     * @param string|null $defaultAppCode
+     * @return array<string, array<string, array<int, array<string, mixed>>>>
+     */
+    private function groupByApplication(array $scannedData, ?string $defaultAppCode): array
+    {
+        $categories = ['roles', 'permissions', 'eventTypes', 'subscriptions', 'dispatchPools', 'principals', 'processes', 'scheduledJobs'];
+        $default = is_string($defaultAppCode) ? $defaultAppCode : '';
+
+        $groups = [];
+        foreach ($categories as $category) {
+            $defs = $scannedData[$category] ?? [];
+            if (!is_array($defs)) {
+                continue;
+            }
+            foreach ($defs as $def) {
+                $app = (is_array($def) && isset($def['_application']) && is_string($def['_application']) && $def['_application'] !== '')
+                    ? $def['_application']
+                    : $default;
+                $groups[$app][$category][] = $def;
+            }
+        }
+
+        return $groups;
+    }
+
+    /**
+     * Read + decode the --openapi-file option. Returns the decoded spec array,
+     * null when no file was given, or false on a (reported) error.
+     *
+     * @return array<string, mixed>|null|false
+     */
+    private function loadOpenapiSpec(): array|null|false
+    {
+        $openapiFile = $this->option('openapi-file');
+        if (!is_string($openapiFile) || $openapiFile === '') {
+            return null;
+        }
+        if (!is_file($openapiFile)) {
+            $this->error("OpenAPI file not found: {$openapiFile}");
+            return false;
+        }
+        $raw = file_get_contents($openapiFile);
+        if ($raw === false) {
+            $this->error("Failed to read OpenAPI file: {$openapiFile}");
+            return false;
+        }
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded)) {
+            $this->error("OpenAPI file is not valid JSON: {$openapiFile}");
+            return false;
+        }
+        return $decoded;
     }
 
     /**

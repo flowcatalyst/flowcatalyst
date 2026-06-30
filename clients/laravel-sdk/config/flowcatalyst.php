@@ -363,17 +363,14 @@ return [
     | The unique code for your application in FlowCatalyst. Used by the
     | `flowcatalyst:sync` artisan command when syncing definitions.
     |
-    | For multi-application deployments, leave this empty and use the
-    | DefinitionSynchronizer service programmatically instead:
+    | This is the DEFAULT application code. For a codebase that defines
+    | definitions for MORE THAN ONE application, you don't have to drop to the
+    | programmatic API — `flowcatalyst:sync` resolves each definition's app per
+    | this order and syncs each application separately:
     |
-    |   use FlowCatalyst\Sync\{DefinitionSynchronizer, SyncDefinitionSet};
-    |
-    |   $synchronizer = app(DefinitionSynchronizer::class);
-    |   $synchronizer->sync(
-    |       SyncDefinitionSet::forApplication('my-app')
-    |           ->withEventTypes([...])
-    |           ->withRoles([...])
-    |   );
+    |   1. an explicit `application:` on the attribute (e.g. #[AsEventType]),
+    |   2. a namespace match in `definitions.application_map` below,
+    |   3. this default.
     |
     */
     'application_code' => env('FLOWCATALYST_APP_CODE'),
@@ -389,6 +386,28 @@ return [
     |
     */
     'definitions' => [
+        /*
+        |----------------------------------------------------------------------
+        | Application Map (Multi-Application Codebases)
+        |----------------------------------------------------------------------
+        |
+        | Maps a class-namespace PREFIX to a FlowCatalyst application code. When
+        | a scanned definition's class falls under a prefix, it syncs to that
+        | application instead of the default `application_code`. Longest prefix
+        | wins; an explicit `application:` on the attribute beats the map.
+        |
+        | Use this when one codebase owns multiple apps, or when a package ships
+        | its own definitions and is its own application — the CONSUMER maps the
+        | package's namespace to whatever app code they registered:
+        |
+        |   'application_map' => [
+        |       'App\\Orders\\'           => 'orders',
+        |       'Vendor\\Logistics\\'     => 'logistics',
+        |   ],
+        |
+        */
+        'application_map' => [],
+
         /*
         |----------------------------------------------------------------------
         | Scan Paths

@@ -470,46 +470,21 @@ final class SyncDefinitionSet
     {
         $set = new self($applicationCode);
 
-        // Remove internal _class field from scanned definitions
-        $set->roles = array_map(function ($role) {
-            unset($role['_class']);
-            return $role;
-        }, $data['roles'] ?? []);
+        // Remove internal scanner-only fields (_class, _application) so they
+        // never leak into the synced payload.
+        $strip = static function (array $def): array {
+            unset($def['_class'], $def['_application']);
+            return $def;
+        };
 
-        $set->permissions = array_map(function ($permission) {
-            unset($permission['_class']);
-            return $permission;
-        }, $data['permissions'] ?? []);
-
-        $set->eventTypes = array_map(function ($et) {
-            unset($et['_class']);
-            return $et;
-        }, $data['eventTypes'] ?? []);
-
-        $set->subscriptions = array_map(function ($sub) {
-            unset($sub['_class']);
-            return $sub;
-        }, $data['subscriptions'] ?? []);
-
-        $set->dispatchPools = array_map(function ($pool) {
-            unset($pool['_class']);
-            return $pool;
-        }, $data['dispatchPools'] ?? []);
-
-        $set->principals = array_map(function ($principal) {
-            unset($principal['_class']);
-            return $principal;
-        }, $data['principals'] ?? []);
-
-        $set->processes = array_map(function ($process) {
-            unset($process['_class']);
-            return $process;
-        }, $data['processes'] ?? []);
-
-        $set->scheduledJobs = array_map(function ($job) {
-            unset($job['_class']);
-            return $job;
-        }, $data['scheduledJobs'] ?? []);
+        $set->roles = array_map($strip, $data['roles'] ?? []);
+        $set->permissions = array_map($strip, $data['permissions'] ?? []);
+        $set->eventTypes = array_map($strip, $data['eventTypes'] ?? []);
+        $set->subscriptions = array_map($strip, $data['subscriptions'] ?? []);
+        $set->dispatchPools = array_map($strip, $data['dispatchPools'] ?? []);
+        $set->principals = array_map($strip, $data['principals'] ?? []);
+        $set->processes = array_map($strip, $data['processes'] ?? []);
+        $set->scheduledJobs = array_map($strip, $data['scheduledJobs'] ?? []);
 
         if (isset($data['openapiSpec'])) {
             $set->openapiSpec = $data['openapiSpec'];
