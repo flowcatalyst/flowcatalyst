@@ -28,6 +28,14 @@ export interface OutboxUnitOfWorkOptions {
 	auditEnabled?: boolean;
 	/** Principal ID used in audit logs when the event doesn't carry one. */
 	fallbackPrincipalId?: string;
+	/**
+	 * FlowCatalyst application + client codes the emitted events / audit logs
+	 * belong to (the platform is client-centric and resolves them at ingest).
+	 * Audit logs carry both; events carry the client code (their application is
+	 * derived from the event-type prefix). Omitted when unset.
+	 */
+	applicationCode?: string;
+	clientCode?: string;
 }
 
 export interface OutboxUnitOfWorkConfig {
@@ -39,12 +47,16 @@ export class OutboxUnitOfWork implements UnitOfWork {
 	private readonly outboxManager: OutboxManager;
 	private readonly auditEnabled: boolean;
 	private readonly fallbackPrincipalId: string;
+	private readonly applicationCode?: string;
+	private readonly clientCode?: string;
 
 	constructor(config: OutboxUnitOfWorkConfig) {
 		this.outboxManager = config.outboxManager;
 		this.auditEnabled = config.options?.auditEnabled ?? false;
 		this.fallbackPrincipalId =
 			config.options?.fallbackPrincipalId ?? "system";
+		this.applicationCode = config.options?.applicationCode;
+		this.clientCode = config.options?.clientCode;
 	}
 
 	/**
@@ -141,6 +153,8 @@ export class OutboxUnitOfWork implements UnitOfWork {
 					tx,
 					auditEnabled: this.auditEnabled,
 					fallbackPrincipalId: this.fallbackPrincipalId,
+					applicationCode: this.applicationCode,
+					clientCode: this.clientCode,
 				});
 				const result = await callback(session);
 				if (!isSuccess(result)) {
@@ -196,58 +210,20 @@ export class OutboxUnitOfWork implements UnitOfWork {
 	}
 
 	private toEventDto<T extends DomainEventType>(event: T): CreateEventDto {
-		let dto = CreateEventDto.create(
-			event.eventType,
-			this.parseData(event.toDataJson()),
-		)
-			.withSource(event.source)
-			.withSubject(event.subject)
-			.withCorrelationId(event.correlationId)
-			.withMessageGroup(event.messageGroup)
-			.withDeduplicationId(`${event.eventType}-${event.eventId}`)
-			.withContextData([
-				{ key: "principalId", value: event.principalId },
-				{ key: "executionId", value: event.executionId },
-				{
-					key: "aggregateType",
-					value: DomainEvent.extractAggregateType(event.subject),
-				},
-			]);
-
-		if (event.causationId) {
-			dto = dto.withCausationId(event.causationId);
-		}
-		return dto;
+		return toEventDtoFor(event, this.clientCode);
 	}
 
 	private toAuditDto<T extends DomainEventType>(
 		event: T,
 		command: unknown,
 	): CreateAuditLogDto {
-		const entityId = DomainEvent.extractEntityId(event.subject) ?? "";
-		const entityType = DomainEvent.extractAggregateType(event.subject);
-		const operation = event.eventType.split(":").pop() ?? "unknown";
-
-		const operationData: Record<string, unknown> =
-			command && typeof command === "object"
-				? (command as Record<string, unknown>)
-				: { command };
-
-		return CreateAuditLogDto.create(entityType, entityId, operation)
-			.withOperationData(operationData)
-			.withPrincipalId(event.principalId || this.fallbackPrincipalId)
-			.withCorrelationId(event.correlationId)
-			.withSource(event.source)
-			.withPerformedAt(event.time);
-	}
-
-	private parseData(json: string): Record<string, unknown> {
-		try {
-			const parsed = JSON.parse(json);
-			return typeof parsed === "object" && parsed !== null ? parsed : {};
-		} catch {
-			return {};
-		}
+		return toAuditDtoFor(
+			event,
+			command,
+			this.fallbackPrincipalId,
+			this.applicationCode,
+			this.clientCode,
+		);
 	}
 }
 
@@ -258,6 +234,8 @@ interface TxScopedConfig {
 	tx: unknown;
 	auditEnabled: boolean;
 	fallbackPrincipalId: string;
+	applicationCode?: string;
+	clientCode?: string;
 }
 
 /**
@@ -276,12 +254,16 @@ export class TxScopedOutboxUnitOfWork implements UnitOfWork {
 	private readonly tx: unknown;
 	private readonly auditEnabled: boolean;
 	private readonly fallbackPrincipalId: string;
+	private readonly applicationCode?: string;
+	private readonly clientCode?: string;
 
 	constructor(config: TxScopedConfig) {
 		this.outboxManager = config.outboxManager;
 		this.tx = config.tx;
 		this.auditEnabled = config.auditEnabled;
 		this.fallbackPrincipalId = config.fallbackPrincipalId;
+		this.applicationCode = config.applicationCode;
+		this.clientCode = config.clientCode;
 	}
 
 	async commit<T extends DomainEventType>(
@@ -337,7 +319,7 @@ export class TxScopedOutboxUnitOfWork implements UnitOfWork {
 				await persist();
 			}
 
-			const eventDto = toEventDtoFor(event);
+			const eventDto = toEventDtoFor(event, this.clientCode);
 			await this.outboxManager.createEvent(eventDto, this.tx);
 
 			if (this.auditEnabled) {
@@ -345,6 +327,8 @@ export class TxScopedOutboxUnitOfWork implements UnitOfWork {
 					event,
 					command,
 					this.fallbackPrincipalId,
+					this.applicationCode,
+					this.clientCode,
 				);
 				await this.outboxManager.createAuditLog(auditDto, this.tx);
 			}
@@ -389,7 +373,10 @@ const parseDataLocal = (json: string): Record<string, unknown> => {
 	}
 };
 
-const toEventDtoFor = <T extends DomainEventType>(event: T): CreateEventDto => {
+const toEventDtoFor = <T extends DomainEventType>(
+	event: T,
+	clientCode?: string,
+): CreateEventDto => {
 	let dto = CreateEventDto.create(event.eventType, parseDataLocal(event.toDataJson()))
 		.withSource(event.source)
 		.withSubject(event.subject)
@@ -408,6 +395,10 @@ const toEventDtoFor = <T extends DomainEventType>(event: T): CreateEventDto => {
 	if (event.causationId) {
 		dto = dto.withCausationId(event.causationId);
 	}
+	// Client linkage (the platform resolves the code → client_id at ingest).
+	if (clientCode) {
+		dto = dto.withClientCode(clientCode);
+	}
 	return dto;
 };
 
@@ -415,6 +406,8 @@ const toAuditDtoFor = <T extends DomainEventType>(
 	event: T,
 	command: unknown,
 	fallbackPrincipalId: string,
+	applicationCode?: string,
+	clientCode?: string,
 ): CreateAuditLogDto => {
 	const entityId = DomainEvent.extractEntityId(event.subject) ?? "";
 	const entityType = DomainEvent.extractAggregateType(event.subject);
@@ -425,10 +418,18 @@ const toAuditDtoFor = <T extends DomainEventType>(
 			? (command as Record<string, unknown>)
 			: { command };
 
-	return CreateAuditLogDto.create(entityType, entityId, operation)
+	let dto = CreateAuditLogDto.create(entityType, entityId, operation)
 		.withOperationData(operationData)
 		.withPrincipalId(event.principalId || fallbackPrincipalId)
 		.withCorrelationId(event.correlationId)
 		.withSource(event.source)
 		.withPerformedAt(event.time);
+	// Application + client linkage (client-centric platform).
+	if (applicationCode) {
+		dto = dto.withApplicationCode(applicationCode);
+	}
+	if (clientCode) {
+		dto = dto.withClientCode(clientCode);
+	}
+	return dto;
 };

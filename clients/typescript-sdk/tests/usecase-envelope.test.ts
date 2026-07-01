@@ -250,3 +250,39 @@ test("run: a failed event write rolls back the aggregate persist (atomicity)", a
 	assert.equal(driver.committed.length, 0, "no event row committed");
 	assert.equal(repo.saved.length, 0, "the aggregate persist must roll back with the event");
 });
+
+test("run: outbox carries clientCode (event) + applicationCode/clientCode (audit) when configured", async () => {
+	const driver = new MemoryDriver();
+	const repo = new MemoryOrderRepo();
+	const uow = usecase.OutboxUnitOfWork.fromDriver(driver, "cli_test", {
+		auditEnabled: true,
+		applicationCode: "shop",
+		clientCode: "acme",
+	});
+
+	const result = await usecase.run(uow, placeOrder(repo, []), { totalCents: 100 }, ctx());
+	assert.ok(usecase.Result.isSuccess(result), "expected success");
+
+	const event = driver.committed.find((m) => m.type === "EVENT");
+	const audit = driver.committed.find((m) => m.type === "AUDIT_LOG");
+	assert.ok(event && audit, "wrote one event + one audit row");
+	const ep = JSON.parse(event!.payload);
+	const ap = JSON.parse(audit!.payload);
+	assert.equal(ep.clientCode, "acme", "event carries clientCode");
+	assert.equal(ap.applicationCode, "shop", "audit carries applicationCode");
+	assert.equal(ap.clientCode, "acme", "audit carries clientCode");
+});
+
+test("run: linkage codes are omitted from the payload when not configured", async () => {
+	const driver = new MemoryDriver();
+	const repo = new MemoryOrderRepo();
+	const uow = usecase.OutboxUnitOfWork.fromDriver(driver, "cli_test", { auditEnabled: true });
+
+	await usecase.run(uow, placeOrder(repo, []), { totalCents: 100 }, ctx());
+
+	const ep = JSON.parse(driver.committed.find((m) => m.type === "EVENT")!.payload);
+	const ap = JSON.parse(driver.committed.find((m) => m.type === "AUDIT_LOG")!.payload);
+	assert.equal(ep.clientCode, undefined);
+	assert.equal(ap.applicationCode, undefined);
+	assert.equal(ap.clientCode, undefined);
+});
