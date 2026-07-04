@@ -65,6 +65,13 @@ type State struct {
 	// disabled: tokens carry no scope claim and the requested scope parameter
 	// is ignored (permissions are then derived downstream from roles).
 	FlattenPermissions func(ctx context.Context, roleNames []string) ([]string, error)
+	// FilterRolesForApplications resolves role names and keeps only those
+	// belonging to one of the supplied application ids. Used to narrow the
+	// "roles" claim on a minted ID token to the requesting OAuth client's
+	// own application(s) — see mintIDToken. Injected from
+	// provider.FilterRolesForApplications; when nil, ID tokens always carry
+	// the principal's full (unfiltered) role list.
+	FilterRolesForApplications func(ctx context.Context, roleNames []string, appIDs []string) ([]string, error)
 	// Encryption verifies confidential-client secrets (decrypt + compare).
 	// May be nil when no app key is configured — confidential auth then
 	// fails closed.
@@ -476,7 +483,7 @@ func (s *State) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Requ
 
 	var idToken *string
 	if scopeHas(scope, "openid") {
-		t, err := s.Auth.GenerateIDToken(p, code.ClientID, code.Nonce)
+		t, err := s.mintIDToken(r.Context(), p, code.ClientID, client, code.Nonce)
 		if err != nil {
 			writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 			return
@@ -589,7 +596,7 @@ func (s *State) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request, 
 	// client_id for the audience. Non-fatal on failure.
 	var idToken *string
 	if scopesContain(stored.Scopes, "openid") && stored.OAuthClientID != nil {
-		if t, err := s.Auth.GenerateIDToken(p, *stored.OAuthClientID, nil); err == nil {
+		if t, err := s.mintIDToken(r.Context(), p, *stored.OAuthClientID, authenticatedClient, nil); err == nil {
 			idToken = &t
 		}
 	}
@@ -737,6 +744,26 @@ func (s *State) grantedScope(ctx context.Context, p *principal.Principal, reques
 		}
 	}
 	return granted, true, nil
+}
+
+// mintIDToken issues an OIDC ID token addressed to clientIDForAud. When
+// client is app-scoped (ApplicationIDs configured) and role→application
+// resolution is wired, the token's "roles" claim is narrowed to just the
+// roles belonging to that client's application(s) — a third-party relying
+// party then only learns about the principal's roles/permissions in its own
+// app, not roles from unrelated applications the principal also holds. A
+// client with no ApplicationIDs configured (the default, unrestricted case)
+// gets the principal's full, unfiltered role list — preserving today's
+// behaviour for existing clients.
+func (s *State) mintIDToken(ctx context.Context, p *principal.Principal, clientIDForAud string, client *auth.OAuthClient, nonce *string) (string, error) {
+	if client == nil || len(client.ApplicationIDs) == 0 || s.FilterRolesForApplications == nil {
+		return s.Auth.GenerateIDToken(p, clientIDForAud, nonce)
+	}
+	roles, err := s.FilterRolesForApplications(ctx, roleNamesOf(p), client.ApplicationIDs)
+	if err != nil {
+		return "", err
+	}
+	return s.Auth.GenerateIDTokenWithRoles(p, clientIDForAud, nonce, roles)
 }
 
 // roleNamesOf extracts a principal's assigned role names.

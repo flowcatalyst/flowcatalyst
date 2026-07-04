@@ -286,7 +286,66 @@ func TestIDTokenShape(t *testing.T) {
 	}
 }
 
+func TestGenerateIDTokenWithRolesOverridesRolesClaim(t *testing.T) {
+	svc := newRS256(t)
+	tok, err := svc.GenerateIDTokenWithRoles(anchorUser(), "clt_rp", nil, []string{"za-logistics:orders-admin"})
+	if err != nil {
+		t.Fatalf("generate id token: %v", err)
+	}
+	payload := decodeJWTPayload(t, tok)
+	roles, ok := payload["roles"].([]any)
+	if !ok || len(roles) != 1 || roles[0] != "za-logistics:orders-admin" {
+		t.Errorf("roles = %v, want [za-logistics:orders-admin]", payload["roles"])
+	}
+}
+
+func TestGenerateIDTokenWithRolesEmptyStaysEmptyArray(t *testing.T) {
+	svc := newRS256(t)
+	tok, err := svc.GenerateIDTokenWithRoles(anchorUser(), "clt_rp", nil, nil)
+	if err != nil {
+		t.Fatalf("generate id token: %v", err)
+	}
+	payload := decodeJWTPayload(t, tok)
+	roles, ok := payload["roles"].([]any)
+	if !ok || len(roles) != 0 {
+		t.Errorf("roles = %v, want [] (present, empty — not null)", payload["roles"])
+	}
+}
+
+func TestIDTokenExpiryIsFiveMinutesIndependentOfAccessToken(t *testing.T) {
+	svc := newRS256(t)
+
+	idTok, err := svc.GenerateIDToken(anchorUser(), "clt_rp", nil)
+	if err != nil {
+		t.Fatalf("generate id token: %v", err)
+	}
+	idPayload := decodeJWTPayload(t, idTok)
+	idExp, idIat := numericClaim(t, idPayload, "exp"), numericClaim(t, idPayload, "iat")
+	if got := idExp - idIat; got != 300 {
+		t.Errorf("id_token exp-iat = %v, want 300 (5 minutes)", got)
+	}
+
+	accessTok, err := svc.GenerateAccessToken(anchorUser())
+	if err != nil {
+		t.Fatalf("generate access token: %v", err)
+	}
+	accessPayload := decodeJWTPayload(t, accessTok)
+	accessExp, accessIat := numericClaim(t, accessPayload, "exp"), numericClaim(t, accessPayload, "iat")
+	if got := accessExp - accessIat; got != 3600 {
+		t.Errorf("access_token exp-iat = %v, want 3600 (unchanged by the id_token TTL split)", got)
+	}
+}
+
 // ─── helpers ────────────────────────────────────────────────────────────
+
+func numericClaim(t *testing.T, payload map[string]any, key string) int64 {
+	t.Helper()
+	v, ok := payload[key].(float64)
+	if !ok {
+		t.Fatalf("claim %q missing or not numeric: %v", key, payload[key])
+	}
+	return int64(v)
+}
 
 func decodeJWTPayload(t *testing.T, token string) map[string]any {
 	t.Helper()

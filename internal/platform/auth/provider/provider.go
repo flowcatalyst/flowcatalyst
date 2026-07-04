@@ -161,6 +161,39 @@ func flattenPermissions(ctx context.Context, roles *role.Repository, roleNames [
 	return out, nil
 }
 
+// FilterRolesForApplications resolves role names and keeps only those bound
+// to one of appIDs. Platform roles (ApplicationID == nil) are dropped — they
+// aren't scoped to any single application, so they never belong on a
+// third-party relying party's narrowed ID token. Skips roles the repo can't
+// find, matching flattenPermissions.
+func (p *Provider) FilterRolesForApplications(ctx context.Context, roleNames []string, appIDs []string) ([]string, error) {
+	return filterRolesForApplications(ctx, p.roles, roleNames, appIDs)
+}
+
+func filterRolesForApplications(ctx context.Context, roles *role.Repository, roleNames []string, appIDs []string) ([]string, error) {
+	if roles == nil || len(roleNames) == 0 || len(appIDs) == 0 {
+		return nil, nil
+	}
+	allowed := make(map[string]struct{}, len(appIDs))
+	for _, id := range appIDs {
+		allowed[id] = struct{}{}
+	}
+	out := make([]string, 0, len(roleNames))
+	for _, name := range roleNames {
+		r, err := roles.FindByName(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		if r == nil || r.ApplicationID == nil {
+			continue
+		}
+		if _, ok := allowed[*r.ApplicationID]; ok {
+			out = append(out, name)
+		}
+	}
+	return out, nil
+}
+
 // Provider bundles the session/claims helpers plus the deps the HTTP
 // layer needs (principal + role repos for BuildClaims, config for TTLs).
 type Provider struct {

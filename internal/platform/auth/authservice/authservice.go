@@ -161,6 +161,13 @@ type Config struct {
 	SessionTokenExpirySecs int64
 	// RefreshTokenExpirySecs is the refresh-token lifetime (default 30d).
 	RefreshTokenExpirySecs int64
+	// IDTokenExpirySecs is the OIDC ID token lifetime (default 300). Kept
+	// short and independent of AccessTokenExpirySecs: the ID token is only
+	// ever used once, at login, to prove authentication to the relying
+	// party — never as a bearer credential for later API calls (that's the
+	// access token's job) — so there's no reason to keep it valid for an
+	// hour.
+	IDTokenExpirySecs int64
 }
 
 // DefaultConfig returns the canonical defaults, matching Rust's
@@ -172,6 +179,7 @@ func DefaultConfig() Config {
 		AccessTokenExpirySecs:  3600,
 		SessionTokenExpirySecs: 86400,
 		RefreshTokenExpirySecs: 86400 * 30,
+		IDTokenExpirySecs:      300,
 	}
 }
 
@@ -190,6 +198,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.RefreshTokenExpirySecs == 0 {
 		c.RefreshTokenExpirySecs = 86400 * 30
+	}
+	if c.IDTokenExpirySecs == 0 {
+		c.IDTokenExpirySecs = 300
 	}
 }
 
@@ -393,10 +404,27 @@ func (s *AuthService) generateTokenWithExpiry(p *principal.Principal, expirySecs
 }
 
 // GenerateIDToken mints an OIDC ID token addressed to clientID, echoing
-// the supplied nonce when present.
+// the supplied nonce when present, with the principal's full role list.
 func (s *AuthService) GenerateIDToken(p *principal.Principal, clientID string, nonce *string) (string, error) {
+	return s.generateIDToken(p, clientID, nonce, roleNames(p))
+}
+
+// GenerateIDTokenWithRoles mints an OIDC ID token like GenerateIDToken but
+// with the Roles claim overridden. Callers narrow the principal's roles to
+// the requesting OAuth client's application(s) so a third-party relying
+// party only sees roles (and the permissions they imply) relevant to its
+// own application, not roles from unrelated applications the principal
+// also holds.
+func (s *AuthService) GenerateIDTokenWithRoles(p *principal.Principal, clientID string, nonce *string, roles []string) (string, error) {
+	return s.generateIDToken(p, clientID, nonce, roles)
+}
+
+func (s *AuthService) generateIDToken(p *principal.Principal, clientID string, nonce *string, roles []string) (string, error) {
+	if roles == nil {
+		roles = []string{}
+	}
 	now := time.Now().UTC()
-	exp := now.Add(time.Duration(s.config.AccessTokenExpirySecs) * time.Second)
+	exp := now.Add(time.Duration(s.config.IDTokenExpirySecs) * time.Second)
 	nowUnix := now.Unix()
 
 	email := principalEmail(p)
@@ -426,7 +454,7 @@ func (s *AuthService) GenerateIDToken(p *principal.Principal, clientID string, n
 		PrincipalType:   string(p.Type),
 		Tier:            string(p.Scope),
 		ClientID:        p.ClientID,
-		Roles:           roleNames(p),
+		Roles:           roles,
 		Applications:    appAccessOf(p),
 		AllApplications: p.AllApplications,
 		Clients:         buildClients(p),

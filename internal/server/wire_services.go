@@ -81,6 +81,7 @@ func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet,
 		RSAPrivateKeyPEM:        string(signingKey),
 		RSAPublicKeyPreviousPEM: cfg.JWTPreviousPublicKey,
 		AccessTokenExpirySecs:   3600,
+		IDTokenExpirySecs:       300,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("authservice init: %w", err)
@@ -126,6 +127,9 @@ func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet,
 		// Flatten roles → permission ceiling for the granted "scope" claim and
 		// requested-scope narrowing on /oauth/token.
 		FlattenPermissions: authProvider.FlattenPermissions,
+		// Narrows a minted ID token's "roles" claim to an app-scoped OAuth
+		// client's own application(s).
+		FilterRolesForApplications: authProvider.FilterRolesForApplications,
 	}
 
 	// ── Webauthn service ───────────────────────────────────────────────
