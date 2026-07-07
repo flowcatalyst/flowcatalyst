@@ -15,12 +15,14 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/oauthapi"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/provider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/twofa"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/envutil"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/branding"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/mfa"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/notify"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/email"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/versioncache"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn"
 )
 
@@ -44,6 +46,7 @@ type serviceSet struct {
 	notifier            *notify.Notifier
 	twofaPolicy         twofa.Policy
 	loginEP             *login.Endpoint
+	principalVersions   *versioncache.Reader
 }
 
 func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet, error) {
@@ -101,6 +104,20 @@ func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet,
 	// round-trip; the distributed store remains the cluster-wide ceiling.
 	svcs.oauthTokenIPGov = ratelimit.NewGovernor(ratelimit.OAuthTokenIPGovernorFromEnv())
 	svcs.oauthTokenClientGov = ratelimit.NewGovernor(ratelimit.OAuthTokenClientGovernorFromEnv())
+
+	// Principal version cache: backs GET /api/principals/{id}/version, which
+	// SDKs (e.g. the Laravel SDK's opt-in revocation check) poll to catch a
+	// role/permission change before the caller's access token naturally
+	// expires. Same Redis instance/env var as the rate-limit store above;
+	// degrades to DB-only (still correct, just uncached) when unset/down.
+	versionStore := versioncache.Build(context.Background())
+	repos.principalRepo.VersionCache = versionStore
+	svcs.principalVersions = versioncache.NewReader(
+		versionStore,
+		envutil.Int("FC_PRINCIPAL_VERSION_CACHE_SIZE", 10_000),
+		time.Duration(envutil.Int("FC_PRINCIPAL_VERSION_CACHE_TTL_SECS", 30))*time.Second,
+		repos.principalRepo.LookupVersion,
+	)
 	svcs.oauthTokenEP = &oauthapi.State{
 		OAuthClients:      repos.authRepo.OAuthClients,
 		Principals:        repos.principalRepo,

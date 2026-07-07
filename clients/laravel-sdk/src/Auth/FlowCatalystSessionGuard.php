@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace FlowCatalyst\Auth;
 
 use FlowCatalyst\Auth\Contracts\PermissionResolver;
+use FlowCatalyst\Auth\Support\SessionFreshnessGuard;
 use Illuminate\Http\Request;
 
 /**
@@ -25,6 +26,7 @@ final class FlowCatalystSessionGuard
 {
     public function __construct(
         private readonly ?PermissionResolver $permissions = null,
+        private readonly ?SessionFreshnessGuard $freshness = null,
     ) {
     }
 
@@ -35,6 +37,16 @@ final class FlowCatalystSessionGuard
         }
 
         $user = DefaultOidcUserHandler::getCurrentUser();
+        if ($user === null) {
+            return null;
+        }
+
+        // Cap this principal's validity to its OWN access token's real expiry
+        // (refreshing via the refresh_token when it lapses) — the SAME check
+        // AuthenticateFc applies, so a session's validity doesn't depend on
+        // which guard an app happens to check it through. No freshness guard
+        // wired (e.g. a unit test) → trust the stored principal as-is.
+        $user = $this->freshness === null ? $user : $this->freshness->ensureFresh($user);
         if ($user === null) {
             return null;
         }

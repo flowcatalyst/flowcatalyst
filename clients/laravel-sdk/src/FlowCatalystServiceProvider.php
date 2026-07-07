@@ -294,10 +294,34 @@ class FlowCatalystServiceProvider extends ServiceProvider
             );
         });
 
+        $this->app->singleton(\FlowCatalyst\Auth\Support\TokenRefresher::class, function ($app) {
+            return new \FlowCatalyst\Auth\Support\TokenRefresher(
+                userHandler: $app->make(\FlowCatalyst\Auth\Contracts\OidcUserHandler::class),
+            );
+        });
+
+        $this->app->singleton(\FlowCatalyst\Auth\Support\RevocationChecker::class, function ($app) {
+            $config = $app['config']['flowcatalyst'];
+            return new \FlowCatalyst\Auth\Support\RevocationChecker(
+                http: new \GuzzleHttp\Client(['timeout' => 10]),
+                cache: $app['cache']->driver($config['oidc']['revocation_cache_driver'] ?? null),
+                baseUrl: $config['base_url'],
+                ttlSeconds: (int) ($config['oidc']['revocation_cache_ttl_seconds'] ?? 60),
+            );
+        });
+
+        $this->app->singleton(\FlowCatalyst\Auth\Support\SessionFreshnessGuard::class, function ($app) {
+            return new \FlowCatalyst\Auth\Support\SessionFreshnessGuard(
+                refresher: $app->make(\FlowCatalyst\Auth\Support\TokenRefresher::class),
+                revocationChecker: $app->make(\FlowCatalyst\Auth\Support\RevocationChecker::class),
+            );
+        });
+
         $this->app->singleton(AuthenticateFc::class, function ($app) {
             return new AuthenticateFc(
                 validator: $app->make(AccessTokenValidator::class),
                 rbac: $app->bound(RbacCatalogue::class) ? $app->make(RbacCatalogue::class) : null,
+                freshness: $app->make(\FlowCatalyst\Auth\Support\SessionFreshnessGuard::class),
             );
         });
 
@@ -342,6 +366,7 @@ class FlowCatalystServiceProvider extends ServiceProvider
         $this->app->singleton(\FlowCatalyst\Auth\FlowCatalystSessionGuard::class, function ($app) {
             return new \FlowCatalyst\Auth\FlowCatalystSessionGuard(
                 permissions: $app->make(\FlowCatalyst\Auth\Contracts\PermissionResolver::class),
+                freshness: $app->make(\FlowCatalyst\Auth\Support\SessionFreshnessGuard::class),
             );
         });
     }

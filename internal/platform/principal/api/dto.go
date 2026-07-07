@@ -136,6 +136,15 @@ type PrincipalResponse struct {
 	UpdatedAt        httpcompat.Time `json:"updatedAt"`
 }
 
+// PrincipalVersionResponse is the wire body for
+// GET /api/principals/{id}/version — the latest of the principal's own
+// updated_at and that of any role it holds. A caller (an SDK's opt-in
+// revocation check) treats an UpdatedAt after its token's issued-at as
+// "something changed since this token was minted."
+type PrincipalVersionResponse struct {
+	UpdatedAt httpcompat.Time `json:"updatedAt"`
+}
+
 func fromEntity(p *principal.Principal) PrincipalResponse {
 	var email, idpType *string
 	if p.UserIdentity != nil {

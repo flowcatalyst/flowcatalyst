@@ -5,6 +5,7 @@ package principal_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -116,4 +117,131 @@ func TestAllApplications_RoundTrip(t *testing.T) {
 	require.NotNil(t, admin)
 	assert.True(t, admin.AllApplications, "admin must read all_applications=true")
 	assert.Empty(t, admin.AccessibleApplicationIDs)
+}
+
+// TestLookupVersion_UsesPrincipalUpdatedAtWhenNoRoles pins the base case: a
+// principal with no role assignments reports its own updated_at.
+func TestLookupVersion_UsesPrincipalUpdatedAtWhenNoRoles(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := principal.NewRepository(pool)
+
+	const pid = "prn_versiontest1"
+	principalUpdatedAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	_, err := pool.Exec(ctx,
+		`INSERT INTO iam_principals (id, type, scope, name, active, email, updated_at)
+		 VALUES ($1, 'USER', 'CLIENT', 'Version Test', TRUE, 'version-test1@example.com', $2)`,
+		pid, principalUpdatedAt)
+	require.NoError(t, err)
+
+	got, err := repo.LookupVersion(ctx, pid)
+	require.NoError(t, err)
+	assert.True(t, got.Equal(principalUpdatedAt), "got %v, want %v", got, principalUpdatedAt)
+}
+
+// TestLookupVersion_PrefersLaterRoleUpdatedAt pins the GREATEST logic: when an
+// assigned role changed more recently than the principal row itself (e.g. a
+// role's permissions were edited), LookupVersion reports the role's
+// updated_at — this is what lets a revocation-check catch a role-permission
+// change without the principal row being touched at all.
+func TestLookupVersion_PrefersLaterRoleUpdatedAt(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := principal.NewRepository(pool)
+
+	const (
+		pid    = "prn_versiontest2"
+		roleID = "rol_versiontest2"
+	)
+	principalUpdatedAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	roleUpdatedAt := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC) // later
+	_, err := pool.Exec(ctx,
+		`INSERT INTO iam_principals (id, type, scope, name, active, email, updated_at)
+		 VALUES ($1, 'USER', 'CLIENT', 'Version Test 2', TRUE, 'version-test2@example.com', $2)`,
+		pid, principalUpdatedAt)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx,
+		`INSERT INTO iam_roles (id, name, display_name, updated_at)
+		 VALUES ($1, 'version-test:role', 'Version Test Role', $2)`,
+		roleID, roleUpdatedAt)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx,
+		`INSERT INTO iam_principal_roles (principal_id, role_name, assignment_source)
+		 VALUES ($1, 'version-test:role', 'MANUAL')`, pid)
+	require.NoError(t, err)
+
+	got, err := repo.LookupVersion(ctx, pid)
+	require.NoError(t, err)
+	assert.True(t, got.Equal(roleUpdatedAt), "got %v, want the later role updated_at %v", got, roleUpdatedAt)
+}
+
+// TestLookupVersion_PrefersLaterPrincipalUpdatedAt is the mirror case: the
+// principal row changed more recently than any role it holds, so the
+// principal's own updated_at wins.
+func TestLookupVersion_PrefersLaterPrincipalUpdatedAt(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := principal.NewRepository(pool)
+
+	const (
+		pid    = "prn_versiontest3"
+		roleID = "rol_versiontest3"
+	)
+	roleUpdatedAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	principalUpdatedAt := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC) // later
+	_, err := pool.Exec(ctx,
+		`INSERT INTO iam_roles (id, name, display_name, updated_at)
+		 VALUES ($1, 'version-test:role3', 'Version Test Role 3', $2)`,
+		roleID, roleUpdatedAt)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx,
+		`INSERT INTO iam_principals (id, type, scope, name, active, email, updated_at)
+		 VALUES ($1, 'USER', 'CLIENT', 'Version Test 3', TRUE, 'version-test3@example.com', $2)`,
+		pid, principalUpdatedAt)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx,
+		`INSERT INTO iam_principal_roles (principal_id, role_name, assignment_source)
+		 VALUES ($1, 'version-test:role3', 'MANUAL')`, pid)
+	require.NoError(t, err)
+
+	got, err := repo.LookupVersion(ctx, pid)
+	require.NoError(t, err)
+	assert.True(t, got.Equal(principalUpdatedAt), "got %v, want the later principal updated_at %v", got, principalUpdatedAt)
+}
+
+// TestPersist_BumpsVersionCache pins the write-path hook: any Persist call
+// (the base case every principal write goes through) bumps the configured
+// VersionCache with the new updated_at.
+func TestPersist_BumpsVersionCache(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := principal.NewRepository(pool)
+	cache := &recordingStore{}
+	repo.VersionCache = cache
+
+	const pid = "prn_versiontest4"
+	_, err := pool.Exec(ctx,
+		`INSERT INTO iam_principals (id, type, scope, name, active, email)
+		 VALUES ($1, 'USER', 'CLIENT', 'Version Test 4', TRUE, 'version-test4@example.com')`, pid)
+	require.NoError(t, err)
+
+	err = repo.UpdatePasswordHash(ctx, pid, "some-hash")
+	require.NoError(t, err)
+
+	require.Len(t, cache.bumps, 1)
+	assert.Equal(t, pid, cache.bumps[0])
+}
+
+// recordingStore is a minimal versioncache.Store test double that just
+// records which principal IDs were bumped.
+type recordingStore struct {
+	bumps []string
+}
+
+func (s *recordingStore) Bump(_ context.Context, principalID string, _ time.Time) {
+	s.bumps = append(s.bumps, principalID)
+}
+
+func (s *recordingStore) Get(context.Context, string) (time.Time, bool, error) {
+	return time.Time{}, false, nil
 }

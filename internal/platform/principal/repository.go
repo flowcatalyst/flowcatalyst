@@ -10,6 +10,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/versioncache"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -41,11 +42,51 @@ import (
 type Repository struct {
 	q    *dbq.Queries
 	pool *pgxpool.Pool
+
+	// VersionCache, when set, is bumped on every write below so a principal's
+	// cached "last changed at" (see GET /api/principals/{id}/version) reflects
+	// the change without waiting for that cache's own fallback query to run.
+	// Nil-safe: an unset VersionCache means the endpoint always falls back to
+	// LookupVersion directly.
+	VersionCache versioncache.Store
 }
 
 // NewRepository wires a repo.
 func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{q: dbq.New(pool), pool: pool}
+}
+
+// bumpVersion publishes now as principalID's new version, if a VersionCache
+// is configured. No-op otherwise.
+func (r *Repository) bumpVersion(ctx context.Context, principalID string, now time.Time) {
+	if r.VersionCache != nil {
+		r.VersionCache.Bump(ctx, principalID, now)
+	}
+}
+
+// LookupVersion computes a principal's current version straight from
+// Postgres: the later of the principal row's own updated_at and the
+// updated_at of any role it holds (a role's permissions can change without
+// the principal row itself changing). Used as versioncache.Reader's
+// FallbackFunc.
+func (r *Repository) LookupVersion(ctx context.Context, principalID string) (time.Time, error) {
+	var at time.Time
+	err := r.pool.QueryRow(ctx, `
+		SELECT GREATEST(
+			p.updated_at,
+			COALESCE((
+				SELECT MAX(r.updated_at)
+				FROM iam_principal_roles pr
+				JOIN iam_roles r ON r.name = pr.role_name
+				WHERE pr.principal_id = p.id
+			), p.updated_at)
+		)
+		FROM iam_principals p
+		WHERE p.id = $1`, principalID).Scan(&at)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("principal repo: lookup version: %w", err)
+	}
+	return at, nil
 }
 
 // FindClientAdminEmails returns the emails of active client-administrators whose
@@ -427,7 +468,7 @@ func (r *Repository) Persist(ctx context.Context, p *Principal, tx *usecasepgx.D
 	}
 
 	scope := string(p.Scope)
-	return r.q.WithTx(tx.Inner()).PrincipalUpsert(ctx, dbq.PrincipalUpsertParams{
+	if err := r.q.WithTx(tx.Inner()).PrincipalUpsert(ctx, dbq.PrincipalUpsertParams{
 		ID:               p.ID,
 		Type:             string(p.Type),
 		Scope:            &scope,
@@ -445,7 +486,11 @@ func (r *Repository) Persist(ctx context.Context, p *Principal, tx *usecasepgx.D
 		AllApplications:  p.AllApplications,
 		CreatedAt:        p.CreatedAt,
 		UpdatedAt:        now,
-	})
+	}); err != nil {
+		return err
+	}
+	r.bumpVersion(ctx, p.ID, now)
+	return nil
 }
 
 // replaceRolesTx rewrites iam_principal_roles for p from p.Roles within
@@ -607,10 +652,14 @@ func (rap RolesAndAppAccessPersister) Persist(ctx context.Context, p *Principal,
 // direct UPDATE — not a domain event — because it's an internal migration, not
 // a user-initiated password change.
 func (r *Repository) UpdatePasswordHash(ctx context.Context, principalID, hash string) error {
-	_, err := r.pool.Exec(ctx,
-		`UPDATE iam_principals SET password_hash = $1, updated_at = NOW() WHERE id = $2`,
-		hash, principalID)
-	return err
+	now := time.Now().UTC()
+	if _, err := r.pool.Exec(ctx,
+		`UPDATE iam_principals SET password_hash = $1, updated_at = $2 WHERE id = $3`,
+		hash, now, principalID); err != nil {
+		return err
+	}
+	r.bumpVersion(ctx, principalID, now)
+	return nil
 }
 
 // LowercaseEmail normalises a principal's stored email (and the derived
@@ -634,12 +683,14 @@ func (r *Repository) LowercaseEmail(ctx context.Context, p *Principal) error {
 	if d := domainOf(lowered); d != "" {
 		domainPtr = &d
 	}
+	now := time.Now().UTC()
 	if _, err := r.pool.Exec(ctx,
-		`UPDATE iam_principals SET email = $1, email_domain = $2, updated_at = NOW() WHERE id = $3`,
-		lowered, domainPtr, p.ID); err != nil {
+		`UPDATE iam_principals SET email = $1, email_domain = $2, updated_at = $3 WHERE id = $4`,
+		lowered, domainPtr, now, p.ID); err != nil {
 		return fmt.Errorf("principal repo: lowercase email: %w", err)
 	}
 	p.UserIdentity.Email = lowered
+	r.bumpVersion(ctx, p.ID, now)
 	return nil
 }
 
@@ -653,7 +704,14 @@ func (r *Repository) Delete(ctx context.Context, p *Principal, tx *usecasepgx.Db
 	if err := q.PrincipalClientAccessGrantsClear(ctx, p.ID); err != nil {
 		return err
 	}
-	return q.PrincipalDelete(ctx, p.ID)
+	if err := q.PrincipalDelete(ctx, p.ID); err != nil {
+		return err
+	}
+	// A deleted principal's tokens should stop resolving on their own (the
+	// version endpoint 404s once the row is gone), but bump anyway so any
+	// already-cached "still valid" entry doesn't survive the local TTL.
+	r.bumpVersion(ctx, p.ID, time.Now().UTC())
+	return nil
 }
 
 // rowToPrincipal projects the flat schema row onto the Principal aggregate.

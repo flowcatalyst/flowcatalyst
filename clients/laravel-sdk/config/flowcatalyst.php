@@ -345,6 +345,47 @@ return [
 
         /*
         |----------------------------------------------------------------------
+        | Session refresh leeway
+        |----------------------------------------------------------------------
+        |
+        | A session principal is capped to its OWN access token's real expiry
+        | (not the short-lived ID token, not Laravel's session lifetime) —
+        | AuthenticateFc silently refreshes it via the refresh_token this many
+        | seconds BEFORE that expiry, so a request landing right at the
+        | boundary doesn't get caught with an already-expired token.
+        |
+        */
+        'session_refresh_leeway_seconds' => (int) env('FLOWCATALYST_OIDC_SESSION_REFRESH_LEEWAY', 30),
+
+        /*
+        |----------------------------------------------------------------------
+        | Revocation check (opt-in)
+        |----------------------------------------------------------------------
+        |
+        | When enabled, AuthenticateFc additionally asks
+        | GET /api/principals/{id}/version whether the principal (or a role it
+        | holds) changed since the stored access token was minted, and forces
+        | an early refresh if so — catching a revoked role/deactivated user
+        | faster than waiting for the access token's natural (up to ~1 hour)
+        | expiry. Off by default: it's an extra HTTP call per request (bounded
+        | by the cache below) for apps that need tighter revocation than the
+        | mandatory expiry-based cap already provides.
+        |
+        | revocation_cache_ttl_seconds bounds how often that HTTP call
+        | actually happens — a request only re-asks the platform once this
+        | many seconds have passed since the last check for that principal;
+        | in between, the previous answer is reused. Clamped to [5, 600]
+        | regardless of what's configured here, so a stray 0 can't hammer
+        | the platform on every request and a stray huge value can't quietly
+        | make this opt-in feature pointless.
+        |
+        */
+        'check_revocation' => env('FLOWCATALYST_OIDC_CHECK_REVOCATION', false),
+        'revocation_cache_ttl_seconds' => (int) env('FLOWCATALYST_OIDC_REVOCATION_CACHE_TTL', 60),
+        'revocation_cache_driver' => env('FLOWCATALYST_OIDC_REVOCATION_CACHE_DRIVER'),
+
+        /*
+        |----------------------------------------------------------------------
         | Route Middleware
         |----------------------------------------------------------------------
         |

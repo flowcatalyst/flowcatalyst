@@ -60,14 +60,21 @@ final class StatelessSessionGuardTest extends TestCase
         ]);
 
         $this->withSession([
+            // The flat array shape handleAuthenticatedUser actually stores
+            // (never the DTO itself — Laravel's session 'serialization' can
+            // be 'json', under which a stored object always reads back as a
+            // plain array, never a reconstructed instance).
             DefaultOidcUserHandler::SESSION_KEY => [
                 'sub' => 'usr_1',
                 'email' => 'jane@example.com',
                 'name' => 'Jane',
-                'clients' => [],
-                'roles' => ['blog:editor'],
+                'claims' => ['clients' => [], 'roles' => ['blog:editor']],
                 'access_token' => $accessToken,
                 'refresh_token' => 'refresh-xyz',
+                // Not expired — SessionFreshnessGuard treats a missing/past
+                // exp as "needs refresh", which would otherwise mask what
+                // this test is actually about (token-scope permissions).
+                'access_token_claims' => ['exp' => time() + 3600, 'iat' => time()],
             ],
         ])->get('/whoami')->assertOk()->assertExactJson([
             'id' => 'usr_1',

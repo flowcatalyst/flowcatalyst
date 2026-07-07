@@ -6,7 +6,10 @@ namespace FlowCatalyst\Auth\Http\Controllers;
 
 use FlowCatalyst\Auth\Contracts\OidcUserHandler;
 use FlowCatalyst\Auth\DTOs\FlowCatalystUser;
+use FlowCatalyst\Auth\Support\JwtDecoder;
+use FlowCatalyst\Auth\Support\OidcConfig;
 use FlowCatalyst\Auth\Support\PkceGenerator;
+use FlowCatalyst\Auth\Support\TokenRefresher;
 use FlowCatalyst\Exceptions\AuthenticationException;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
@@ -36,13 +39,15 @@ class OidcAuthController extends Controller
     /**
      * Session key holding the raw OIDC ID token, kept so logout can pass it as
      * id_token_hint for RP-Initiated Logout (single sign-out at the IdP).
+     * Public: also written by {@see TokenRefresher} after a token refresh.
      */
-    private const ID_TOKEN_SESSION_KEY = 'flowcatalyst_oidc_id_token';
+    public const ID_TOKEN_SESSION_KEY = 'flowcatalyst_oidc_id_token';
 
     private Client $httpClient;
 
     public function __construct(
-        private readonly OidcUserHandler $userHandler
+        private readonly OidcUserHandler $userHandler,
+        private readonly TokenRefresher $tokenRefresher,
     ) {
         $this->httpClient = new Client([
             'timeout' => 30,
@@ -57,7 +62,7 @@ class OidcAuthController extends Controller
      */
     public function login(Request $request): RedirectResponse
     {
-        $config = $this->getOidcConfig();
+        $config = OidcConfig::resolve();
 
         // Generate PKCE values
         $codeVerifier = PkceGenerator::generateCodeVerifier();
@@ -124,7 +129,7 @@ class OidcAuthController extends Controller
         }
 
         try {
-            $config = $this->getOidcConfig();
+            $config = OidcConfig::resolve();
 
             // Exchange code for tokens
             $tokens = $this->exchangeCodeForTokens($config, $code, $codeVerifier);
@@ -137,11 +142,19 @@ class OidcAuthController extends Controller
                 throw new AuthenticationException('Invalid nonce in ID token');
             }
 
+            // The ID token's own `exp` is deliberately short-lived (~5 minutes) —
+            // it's a login-moment identity proof, not a session-length signal.
+            // Decode the access token too so session capping / the opt-in
+            // revocation check have the access token's own exp/iat to anchor on
+            // from the very first login, not just after the first refresh.
+            $accessTokenClaims = JwtDecoder::decodePayload($tokens['access_token'] ?? '') ?? [];
+
             // Create FlowCatalystUser from claims
             $fcUser = FlowCatalystUser::fromClaims(
                 $claims,
                 $tokens['access_token'] ?? null,
-                $tokens['refresh_token'] ?? null
+                $tokens['refresh_token'] ?? null,
+                $accessTokenClaims,
             );
 
             // Keep the raw ID token so logout() can send it as id_token_hint
@@ -218,36 +231,12 @@ class OidcAuthController extends Controller
     public function refresh(Request $request): RedirectResponse
     {
         $current = \FlowCatalyst\Auth\DefaultOidcUserHandler::getCurrentUser();
-        $refreshToken = $current?->refreshToken;
-
-        if ($current === null || empty($refreshToken)) {
+        if ($current === null) {
             return $this->errorRedirect('Your session can\'t be refreshed — please sign in again.');
         }
 
         try {
-            $config = $this->getOidcConfig();
-            $tokens = $this->exchangeRefreshToken($config, $refreshToken);
-
-            // The access token is the source of truth for roles + permissions
-            // (scope). Preserve identity fields it may not carry from the
-            // current principal.
-            $claims = $this->decodeJwtPayload($tokens['access_token'] ?? '') ?? [];
-            $claims['sub'] ??= $current->sub;
-            $claims['email'] ??= $current->email;
-            $claims['name'] ??= $current->name;
-
-            $fcUser = FlowCatalystUser::fromAccessTokenClaims(
-                claims: $claims,
-                accessToken: $tokens['access_token'] ?? null,
-                refreshToken: $tokens['refresh_token'] ?? $refreshToken, // reuse if not rotated
-                mechanism: 'session',
-            );
-
-            if (!empty($tokens['id_token'])) {
-                session()->put(self::ID_TOKEN_SESSION_KEY, $tokens['id_token']);
-            }
-
-            $this->userHandler->handleAuthenticatedUser($fcUser);
+            $this->tokenRefresher->refresh($current);
 
             $returnUrl = $request->input('return_url')
                 ?: (url()->previous() ?: $this->userHandler->getPostLoginRedirect());
@@ -256,62 +245,6 @@ class OidcAuthController extends Controller
             Log::error('OIDC refresh failed', ['error' => $e->getMessage()]);
             return $this->errorRedirect('Could not refresh your session. Please sign in again.');
         }
-    }
-
-    /**
-     * Exchange a refresh token for a new token set.
-     *
-     * @return array{access_token: string, refresh_token?: string, id_token?: string}
-     * @throws AuthenticationException
-     */
-    private function exchangeRefreshToken(array $config, string $refreshToken): array
-    {
-        $tokenUrl = rtrim($config['base_url'], '/') . '/oauth/token';
-
-        $params = [
-            'grant_type' => 'refresh_token',
-            'refresh_token' => $refreshToken,
-            'client_id' => $config['client_id'],
-        ];
-        if (!empty($config['client_secret'])) {
-            $params['client_secret'] = $config['client_secret'];
-        }
-
-        try {
-            $response = $this->httpClient->post($tokenUrl, [
-                'form_params' => $params,
-                'headers' => ['Accept' => 'application/json'],
-            ]);
-
-            $statusCode = $response->getStatusCode();
-            $body = json_decode((string) $response->getBody(), true);
-
-            if ($statusCode !== 200 || empty($body['access_token'])) {
-                $error = $body['error_description'] ?? $body['error'] ?? 'Token refresh failed';
-                throw AuthenticationException::tokenFetchFailed($error);
-            }
-
-            return $body;
-        } catch (GuzzleException $e) {
-            throw AuthenticationException::tokenFetchFailed($e->getMessage());
-        }
-    }
-
-    /**
-     * Decode a JWT's payload (no signature verification — used only on tokens
-     * the platform just issued to us over TLS).
-     *
-     * @return array<string, mixed>|null
-     */
-    private function decodeJwtPayload(string $jwt): ?array
-    {
-        $parts = explode('.', $jwt);
-        if (count($parts) !== 3) {
-            return null;
-        }
-        $payload = json_decode(base64_decode(strtr($parts[1], '-_', '+/'), true) ?: '', true);
-
-        return is_array($payload) ? $payload : null;
     }
 
     /**
@@ -431,32 +364,6 @@ class OidcAuthController extends Controller
     private function getCallbackUrl(): string
     {
         return url(config('flowcatalyst.oidc.callback_route', '/flowcatalyst/callback'));
-    }
-
-    /**
-     * Get OIDC configuration from config file.
-     *
-     * @return array{base_url: string, client_id: string, client_secret?: string, scope?: string}
-     * @throws AuthenticationException
-     */
-    private function getOidcConfig(): array
-    {
-        $config = [
-            'base_url' => config('flowcatalyst.base_url'),
-            'client_id' => config('flowcatalyst.oidc.client_id'),
-            'client_secret' => config('flowcatalyst.oidc.client_secret'),
-            'scope' => config('flowcatalyst.oidc.scope', 'openid profile email'),
-        ];
-
-        if (empty($config['base_url'])) {
-            throw AuthenticationException::missingConfiguration('FLOWCATALYST_BASE_URL');
-        }
-
-        if (empty($config['client_id'])) {
-            throw AuthenticationException::missingConfiguration('FLOWCATALYST_OIDC_CLIENT_ID');
-        }
-
-        return $config;
     }
 
     /**

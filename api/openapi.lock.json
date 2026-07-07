@@ -4779,6 +4779,28 @@
         ],
         "type": "object"
       },
+      "PrincipalVersionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PrincipalVersionResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "updatedAt"
+        ],
+        "type": "object"
+      },
       "ProcessListResponse": {
         "additionalProperties": false,
         "properties": {
@@ -15641,6 +15663,47 @@
           }
         },
         "summary": "Send a password-reset email to a user",
+        "tags": [
+          "principals"
+        ]
+      }
+    },
+    "/api/principals/{id}/version": {
+      "get": {
+        "operationId": "getPrincipalVersion",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrincipalVersionResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get when a principal (or a role it holds) last changed — used by SDKs to detect a revoked/changed session",
         "tags": [
           "principals"
         ]

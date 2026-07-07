@@ -30,6 +30,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/jsontime"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/versioncache"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
@@ -39,7 +41,11 @@ import (
 // State bundles deps. Principal ops need cross-aggregate validation
 // against roles, applications, and clients.
 type State struct {
-	Repo         *principal.Repository
+	Repo *principal.Repository
+	// Versions backs GET /api/principals/{id}/version. Optional: nil falls
+	// back to Repo.LookupVersion directly (uncached, still correct) —
+	// convenient for tests that don't wire a Reader.
+	Versions     *versioncache.Reader
 	GrantRepo    *principal.ClientAccessGrantRepo
 	Roles        *role.Repository
 	Applications *application.Repository
@@ -83,6 +89,7 @@ func Register(api huma.API, s *State) {
 	apiroute.Post(g, "bulkImportUsers", "/api/principals/bulk-import", "Bulk-import CLIENT users for a client (CSV onboarding)", http.StatusOK, s.bulkImport)
 	apiroute.Post(g, "syncUsers", "/api/principals/sync", "Sync users (declarative upsert by email; no application scope)", http.StatusOK, s.syncUsers)
 	apiroute.Get(g, "getPrincipal", "/api/principals/{id}", "Get a principal by id", s.getByID)
+	apiroute.Get(g, "getPrincipalVersion", "/api/principals/{id}/version", "Get when a principal (or a role it holds) last changed — used by SDKs to detect a revoked/changed session", s.getVersion)
 	apiroute.Put(g, "updatePrincipal", "/api/principals/{id}", "Update a principal", http.StatusOK, s.update)
 	apiroute.Post(g, "activatePrincipal", "/api/principals/{id}/activate", "Activate a principal", http.StatusOK, s.activate)
 	apiroute.Post(g, "deactivatePrincipal", "/api/principals/{id}/deactivate", "Deactivate a principal", http.StatusOK, s.deactivate)
@@ -291,6 +298,32 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 		return nil, httperror.Forbidden("No access to this principal")
 	}
 	return &apicommon.Out[PrincipalResponse]{Body: fromEntity(p)}, nil
+}
+
+// getVersion reports when the principal (or a role it holds) last changed.
+// Any authenticated principal may check its own version — this is what an
+// SDK's per-request opt-in revocation check calls — an admin (CanReadPrincipals)
+// may check any principal's.
+func (s *State) getVersion(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[PrincipalVersionResponse], error) {
+	ac := auth.FromContext(ctx)
+	if ac == nil || ac.PrincipalID != in.ID {
+		if err := auth.CanReadPrincipals(ac); err != nil {
+			return nil, err
+		}
+	}
+	var (
+		at  time.Time
+		err error
+	)
+	if s.Versions != nil {
+		at, err = s.Versions.Version(ctx, in.ID)
+	} else {
+		at, err = s.Repo.LookupVersion(ctx, in.ID)
+	}
+	if err != nil {
+		return nil, usecase.Internal("REPO", "lookup_version failed", err)
+	}
+	return &apicommon.Out[PrincipalVersionResponse]{Body: PrincipalVersionResponse{UpdatedAt: jsontime.New(at)}}, nil
 }
 
 func (s *State) create(ctx context.Context, in *apicommon.In[CreatePrincipalRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {

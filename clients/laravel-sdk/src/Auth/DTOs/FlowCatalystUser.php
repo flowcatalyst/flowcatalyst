@@ -81,7 +81,37 @@ final readonly class FlowCatalystUser
          * `'session'` for browser flow, `'bearer'` for API callers.
          */
         public ?string $mechanism = null,
+
+        /**
+         * Decoded claims of the *access* token specifically — distinct from
+         * {@see $claims}, which holds the ID token's claims at login but the
+         * access token's claims after a {@see refresh()}. `accessTokenClaims`
+         * is always access-token-shaped, so `exp`/`iat` checks (session
+         * capping, the opt-in revocation check) have one consistent source
+         * regardless of whether the principal just logged in or was refreshed.
+         *
+         * @var array<string, mixed>
+         */
+        public array $accessTokenClaims = [],
     ) {}
+
+    /**
+     * The access token's own expiry (`exp` claim), or null if unavailable.
+     */
+    public function getAccessTokenExpiresAt(): ?int
+    {
+        $exp = $this->accessTokenClaims['exp'] ?? null;
+        return is_int($exp) ? $exp : null;
+    }
+
+    /**
+     * The access token's own issued-at (`iat` claim), or null if unavailable.
+     */
+    public function getAccessTokenIssuedAt(): ?int
+    {
+        $iat = $this->accessTokenClaims['iat'] ?? null;
+        return is_int($iat) ? $iat : null;
+    }
 
     /**
      * Get the raw clients claim entries.
@@ -357,6 +387,7 @@ final readonly class FlowCatalystUser
             refreshToken: $this->refreshToken,
             permissions: $catalogue->resolve($this->getRoles()),
             mechanism: $this->mechanism,
+            accessTokenClaims: $this->accessTokenClaims,
         );
     }
 
@@ -378,6 +409,7 @@ final readonly class FlowCatalystUser
             refreshToken: $this->refreshToken,
             permissions: $permissions,
             mechanism: $this->mechanism,
+            accessTokenClaims: $this->accessTokenClaims,
         );
     }
 
@@ -396,18 +428,25 @@ final readonly class FlowCatalystUser
             refreshToken: $this->refreshToken,
             permissions: $this->permissions,
             mechanism: $mechanism,
+            accessTokenClaims: $this->accessTokenClaims,
         );
     }
 
     /**
-     * Create from decoded JWT claims.
+     * Create from decoded JWT claims (the ID token, at login).
      *
      * @param array<string, mixed> $claims
+     * @param array<string, mixed> $accessTokenClaims decoded claims of the
+     *   access token issued alongside this ID token — the source of
+     *   `exp`/`iat` for session-capping and the opt-in revocation check,
+     *   since the ID token's own `exp` is deliberately short-lived (see
+     *   {@see getAccessTokenExpiresAt()}).
      */
     public static function fromClaims(
         array $claims,
         ?string $accessToken = null,
-        ?string $refreshToken = null
+        ?string $refreshToken = null,
+        array $accessTokenClaims = [],
     ): self {
         return new self(
             sub: $claims['sub'] ?? throw new \InvalidArgumentException('Missing sub claim'),
@@ -416,6 +455,7 @@ final readonly class FlowCatalystUser
             claims: $claims,
             accessToken: $accessToken,
             refreshToken: $refreshToken,
+            accessTokenClaims: $accessTokenClaims,
         );
     }
 
@@ -441,6 +481,9 @@ final readonly class FlowCatalystUser
             refreshToken: $refreshToken,
             permissions: [],
             mechanism: $mechanism,
+            // $claims IS the access token's own claims here (unlike fromClaims,
+            // called with the ID token's claims at login).
+            accessTokenClaims: $claims,
         );
     }
 }

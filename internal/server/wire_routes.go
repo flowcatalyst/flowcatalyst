@@ -130,6 +130,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 
 		principalapi.Register(humaAPI, &principalapi.State{
 			Repo:              repos.principalRepo,
+			Versions:          svcs.principalVersions,
 			GrantRepo:         repos.principalGrantRepo,
 			Roles:             repos.roleRepo,
 			Applications:      repos.applicationRepo,
