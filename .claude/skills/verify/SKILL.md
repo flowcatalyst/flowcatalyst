@@ -29,9 +29,12 @@ action buttons are the row's `button` elements).
 
 Flows worth driving for list/detail changes: filter popup (badge + Clear All + URL params;
 selecting inside the popup must NOT close it — nested dropdowns use appendTo="self"); drawer
-open over list (instant, no slide animation by design); Escape/backdrop close; dirty guard
-(`?edit=true` then Escape); deep-link `/module/:id` in a fresh navigation; browser Back closes
-drawer preserving query.
+is a NON-MODAL peek panel (instant, no mask): row click opens it, clicking another row
+switches it in place, the list scrolls underneath; close = Escape / X / browser Back only
+(no backdrop dismiss); dirty guard fires on close AND on row switch while editing
+(`?edit=true` then click another row). Deep-link `/module/:id` in a fresh navigation.
+Playwright gotcha: with the drawer open, click a row's FIRST CELL (`td:first`) — the row
+center is covered by the panel and actionability checks refuse it.
 
 ## Gotchas
 
