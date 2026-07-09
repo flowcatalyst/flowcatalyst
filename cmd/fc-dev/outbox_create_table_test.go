@@ -7,7 +7,7 @@ func TestNormalizeOutboxDBType(t *testing.T) {
 		"pg":         "postgres",
 		"Postgres":   "postgres",
 		"POSTGRESQL": "postgres",
-		" mysql ":    "mysql",
+		" mysql ":    "mysql", //nolint:gocritic // intentional: asserts the input is trimmed
 		"mariadb":    "mysql",
 		"mongo":      "mongodb",
 		"MongoDB":    "mongodb",

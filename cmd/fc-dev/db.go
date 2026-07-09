@@ -66,11 +66,11 @@ func runDBUpgrade(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("read embedded PG_VERSION: %w", err)
 	}
 	target := pinnedPGMajor()
-	switch {
-	case have == "":
+	switch have {
+	case "":
 		slog.Info("no embedded cluster yet — nothing to upgrade; 'fc-dev start' will initialise it", "target", "PG"+target)
 		return nil
-	case have == target:
+	case target:
 		slog.Info("embedded Postgres already on the target major — nothing to do", "version", "PG"+target)
 		return nil
 	}
