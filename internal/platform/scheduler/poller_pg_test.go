@@ -45,7 +45,7 @@ func (p *capturePublisher) PublishBatch(ctx context.Context, msgs []common.Messa
 // newTestPoller wires a poller against the shared pool with a fresh
 // paused cache (first PausedSubscriptionIDs call always refreshes).
 func newTestPoller(pool *pgxpool.Pool) *PendingJobPoller {
-	dispatcher := NewMessageGroupDispatcher(pool, &capturePublisher{}, NewDispatchAuthService("test-secret"), 10)
+	dispatcher := NewMessageGroupDispatcher(pool, &capturePublisher{}, NewDispatchAuthService("test-secret"), 10, "http://localhost:8080/api/dispatch/process")
 	cache := NewPausedConnectionCache(pool, time.Minute)
 	return NewPendingJobPoller(DefaultConfig(), pool, dispatcher, cache)
 }

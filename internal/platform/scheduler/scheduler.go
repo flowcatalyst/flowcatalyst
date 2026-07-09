@@ -44,6 +44,13 @@ type Config struct {
 
 	// StaleScanInterval is how often the stale-recovery loop runs.
 	StaleScanInterval time.Duration
+
+	// ProcessingEndpoint is the URL stamped into every dispatch message's
+	// mediation_target. The router POSTs {messageId} there; that platform
+	// endpoint (POST /api/dispatch/process) performs the real webhook
+	// delivery + status transitions. Empty is a misconfiguration — the
+	// dispatcher would publish messages the router can't route.
+	ProcessingEndpoint string
 }
 
 // DefaultConfig holds the Go dispatch-job scheduler defaults. These are
@@ -90,7 +97,7 @@ type Scheduler struct {
 func New(cfg Config, pool *pgxpool.Pool, publisher queue.Publisher, hmacSecret string) *Scheduler {
 	authSvc := NewDispatchAuthService(hmacSecret)
 	pausedCache := NewPausedConnectionCache(pool, cfg.PausedCacheTTL)
-	dispatcher := NewMessageGroupDispatcher(pool, publisher, authSvc, cfg.MaxInFlight)
+	dispatcher := NewMessageGroupDispatcher(pool, publisher, authSvc, cfg.MaxInFlight, cfg.ProcessingEndpoint)
 	poller := NewPendingJobPoller(cfg, pool, dispatcher, pausedCache)
 	stale := NewStaleQueuedJobPoller(pool, cfg.StaleAfter, cfg.StaleScanInterval)
 	return &Scheduler{

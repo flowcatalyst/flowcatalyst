@@ -152,10 +152,16 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 	// has neither `next_retry_at` (only added in migration 011's
 	// no-op-on-embedded CREATE TABLE IF NOT EXISTS) nor a scheduled-
 	// filtered claim path.
+	// scheduled_for gates retry backoff: /api/dispatch/process reschedules a
+	// failed job to NOW()+backoff (status back to PENDING) and ACKs the queue
+	// message, so the poller is the single re-dispatch driver — no queue-NACK
+	// racing the poll. A NULL scheduled_for (every freshly-created job) is
+	// always eligible.
 	rows, err := tx.Query(ctx,
 		`SELECT id, subscription_id, message_group, mode, attempt_count, target_url
 		   FROM msg_dispatch_jobs
 		  WHERE status = 'PENDING'
+		    AND (scheduled_for IS NULL OR scheduled_for <= NOW())
 		  ORDER BY message_group ASC NULLS LAST, sequence ASC, created_at ASC
 		  LIMIT $1
 		  FOR UPDATE SKIP LOCKED`,

@@ -20,6 +20,10 @@ type MessageGroupDispatcher struct {
 	authSvc   *DispatchAuthService
 	sem       chan struct{}
 
+	// processingEndpoint is the mediation_target every message carries: the
+	// router POSTs {messageId} there and the platform delivers the webhook.
+	processingEndpoint string
+
 	mu     sync.Mutex
 	groups map[string]*groupQueue
 }
@@ -30,16 +34,17 @@ type groupQueue struct {
 }
 
 // NewMessageGroupDispatcher wires the dispatcher.
-func NewMessageGroupDispatcher(pool *pgxpool.Pool, publisher queue.Publisher, authSvc *DispatchAuthService, maxInFlight int) *MessageGroupDispatcher {
+func NewMessageGroupDispatcher(pool *pgxpool.Pool, publisher queue.Publisher, authSvc *DispatchAuthService, maxInFlight int, processingEndpoint string) *MessageGroupDispatcher {
 	if maxInFlight <= 0 {
 		maxInFlight = 1000
 	}
 	return &MessageGroupDispatcher{
-		pool:      pool,
-		publisher: publisher,
-		authSvc:   authSvc,
-		sem:       make(chan struct{}, maxInFlight),
-		groups:    make(map[string]*groupQueue),
+		pool:               pool,
+		publisher:          publisher,
+		authSvc:            authSvc,
+		sem:                make(chan struct{}, maxInFlight),
+		processingEndpoint: processingEndpoint,
+		groups:             make(map[string]*groupQueue),
 	}
 }
 
@@ -101,10 +106,15 @@ func (d *MessageGroupDispatcher) dispatch(ctx context.Context, tok DispatchJobTo
 	defer func() { <-d.sem }()
 
 	authToken := d.authSvc.Sign(tok.JobID)
+	// mediation_target is the platform's processing endpoint, NOT the
+	// subscriber URL: the router POSTs {messageId} here and the endpoint
+	// loads the job, delivers to job.target_url, records the attempt and
+	// advances the status. The signed token lets the endpoint verify the
+	// callback really came from a job this scheduler queued.
 	msg := common.Message{
 		ID:              tok.JobID,
 		MediationType:   common.MediationTypeHTTP,
-		MediationTarget: tok.TargetURL,
+		MediationTarget: d.processingEndpoint,
 		AuthToken:       &authToken,
 	}
 	if tok.MessageGroup != "" {

@@ -70,6 +70,7 @@ func StartScheduler(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg) {
 		defer c.Stop()
 	}
 	scfg := scheduler.DefaultConfig()
+	scfg.ProcessingEndpoint = cfg.DispatchProcessingEndpoint
 	s := scheduler.New(scfg, pool, pub, secret)
 	s.IsLeader = newLeaderGate(ctx, cfg, "scheduler")
 	s.Run(ctx)

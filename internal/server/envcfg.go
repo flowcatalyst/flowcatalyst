@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"net/url"
 	"os"
 	"strconv"
@@ -37,6 +38,13 @@ type EnvCfg struct {
 	// means "no pools start" — the historical behaviour. fc-dev sets
 	// this to "postgres"; fc-server leaves it empty in prod.
 	DefaultBroker string
+
+	// DispatchProcessingEndpoint is the callback URL the scheduler stamps
+	// into each dispatch message's mediation_target. The router POSTs
+	// {messageId} here and THIS platform endpoint performs the actual
+	// webhook delivery + status transitions (POST /api/dispatch/process).
+	// Empty → derived from the local API listener at load time.
+	DispatchProcessingEndpoint string
 
 	// MCPPort is the listener for the MCP subsystem. Default 8090.
 	MCPPort int
@@ -203,6 +211,13 @@ func LoadEnv() EnvCfg {
 		MCPPlatformURL:  envFirst("FLOWCATALYST_URL", "FC_MCP_PLATFORM_URL", "", ""),
 		MCPClientID:     os.Getenv("FLOWCATALYST_CLIENT_ID"),
 		MCPClientSecret: os.Getenv("FLOWCATALYST_CLIENT_SECRET"),
+
+		DispatchProcessingEndpoint: envOr("FC_DISPATCH_PROCESSING_ENDPOINT", ""),
+	}
+	// Default the dispatch callback to the local API listener: the router
+	// consumes a queued job and POSTs {messageId} here for delivery.
+	if c.DispatchProcessingEndpoint == "" {
+		c.DispatchProcessingEndpoint = fmt.Sprintf("http://localhost:%d/api/dispatch/process", c.APIPort)
 	}
 	return c
 }

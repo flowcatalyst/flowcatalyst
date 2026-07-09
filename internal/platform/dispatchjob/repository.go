@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
@@ -372,6 +373,54 @@ func (r *Repository) ScheduleRetry(ctx context.Context, id string, scheduledFor 
 	return r.q.DispatchJobScheduleRetry(ctx, dbq.DispatchJobScheduleRetryParams{
 		ID: id, ScheduledFor: &scheduledFor, LastError: lastError,
 	})
+}
+
+// Reschedule sets a job back to PENDING with a future scheduled_for WITHOUT
+// bumping attempt_count. For cooperative back-pressure — a subscriber that
+// returned ack=false, or an HTTP 429 — which are "try again later" signals,
+// not delivery failures, so they must not consume the retry budget. The
+// poller re-dispatches once scheduled_for falls due.
+func (r *Repository) Reschedule(ctx context.Context, id string, scheduledFor time.Time) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE msg_dispatch_jobs
+		    SET status = 'PENDING', scheduled_for = $2, updated_at = NOW()
+		  WHERE id = $1`, id, scheduledFor.UTC())
+	return err
+}
+
+// Requeue resets the given jobs to PENDING for a fresh delivery cycle:
+// clears scheduled_for (immediate eligibility), zeroes attempt_count so a
+// job that had exhausted its retries gets a full budget again, and clears
+// the terminal stamps. Operator action behind POST /bff/dispatch-jobs/requeue.
+//
+// accessibleClientIDs scopes the reset for non-anchor callers: when non-nil,
+// only rows whose client_id is in the set are touched (which also excludes
+// platform-scoped NULL-client jobs — correct, since a non-anchor can't reach
+// them). Pass nil for anchors (no scoping). Returns the rows actually reset.
+func (r *Repository) Requeue(ctx context.Context, ids []string, accessibleClientIDs *[]string) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	const base = `UPDATE msg_dispatch_jobs
+		    SET status = 'PENDING',
+		        scheduled_for = NULL,
+		        attempt_count = 0,
+		        completed_at = NULL,
+		        duration_millis = NULL,
+		        last_error = NULL,
+		        updated_at = NOW()
+		  WHERE id = ANY($1)`
+	var tag pgconn.CommandTag
+	var err error
+	if accessibleClientIDs == nil {
+		tag, err = r.pool.Exec(ctx, base, ids)
+	} else {
+		tag, err = r.pool.Exec(ctx, base+` AND client_id = ANY($2)`, ids, *accessibleClientIDs)
+	}
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
 }
 
 // RecordAttempt inserts a row into msg_dispatch_job_attempts. Mirrors

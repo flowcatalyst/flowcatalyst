@@ -3,6 +3,7 @@ package api
 
 import (
 	"context"
+	"net/http"
 	"strings"
 	"time"
 
@@ -37,6 +38,7 @@ func Register(api huma.API, s *State) {
 	apiroute.Get(g, "getDispatchJob", "/api/dispatch-jobs/{id}", "Get a dispatch job by id", s.getByID)
 	apiroute.Get(g, "getDispatchJobRaw", "/api/dispatch-jobs/{id}/raw", "Get a dispatch job (raw)", s.getRaw)
 	apiroute.Get(g, "listDispatchJobAttempts", "/api/dispatch-jobs/{id}/attempts", "List a dispatch job's attempt history", s.attempts)
+	apiroute.Post(g, "requeueDispatchJobs", "/api/dispatch-jobs/requeue", "Reset dispatch jobs to PENDING for re-dispatch", http.StatusOK, s.requeue)
 
 	// SDK-compatibility aliases. The Laravel/Rust client addresses these as
 	// /api/dispatch-jobs/by-event/{eventId} and the collection-level
@@ -68,6 +70,7 @@ func registerBFF(api huma.API, s *State, base, opPrefix, tag string) {
 	apiroute.Get(g, "getDispatchJob"+opPrefix, base+"/{id}", "Get a dispatch job by id", s.getByID)
 	apiroute.Get(g, "getDispatchJobRaw"+opPrefix, base+"/{id}/raw", "Get a dispatch job with raw row", s.getRaw)
 	apiroute.Get(g, "listDispatchJobAttempts"+opPrefix, base+"/{id}/attempts", "List a dispatch job's attempt history", s.attempts)
+	apiroute.Post(g, "requeueDispatchJobs"+opPrefix, base+"/requeue", "Reset dispatch jobs to PENDING for re-dispatch", http.StatusOK, s.requeue)
 }
 
 type listInput struct {
@@ -304,6 +307,45 @@ func (s *State) byEvent(ctx context.Context, in *byEventInput) (*apicommon.Out[[
 		out = append(out, readFromEntity(&rows[i]))
 	}
 	return &apicommon.Out[[]DispatchJobRead]{Body: out}, nil
+}
+
+// RequeueRequest is the body of POST /dispatch-jobs/requeue.
+type RequeueRequest struct {
+	IDs []string `json:"ids" doc:"Dispatch job ids to reset to PENDING for re-dispatch"`
+}
+
+// RequeueResponse reports how many jobs were reset.
+type RequeueResponse struct {
+	Requeued int64 `json:"requeued"`
+}
+
+// requeue resets the given jobs to PENDING so the scheduler re-dispatches
+// them (clears scheduled_for + attempt_count + terminal stamps). Go-native
+// operator recovery action — Rust's dispatch-job API is read-only.
+//
+// Gated on the same dispatch-job:view permission as the list: a caller who
+// can see a job may re-drive it. The reset is SQL-scoped to the caller's own
+// tenants for non-anchors (Repo.Requeue drops ids outside AccessibleClientIDs,
+// including platform-scoped NULL-client jobs), so a view grant can't be used
+// to requeue another tenant's jobs.
+func (s *State) requeue(ctx context.Context, in *apicommon.In[RequeueRequest]) (*apicommon.Out[RequeueResponse], error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
+		return nil, err
+	}
+	if len(in.Body.IDs) == 0 {
+		return &apicommon.Out[RequeueResponse]{Body: RequeueResponse{Requeued: 0}}, nil
+	}
+	var scope *[]string
+	if !ac.IsAnchor() {
+		clients := ac.Clients
+		scope = &clients
+	}
+	n, err := s.Repo.Requeue(ctx, in.Body.IDs, scope)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "requeue failed", err)
+	}
+	return &apicommon.Out[RequeueResponse]{Body: RequeueResponse{Requeued: n}}, nil
 }
 
 func (s *State) filterOptions(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[DispatchJobFilterOptionsResponse], error) {
