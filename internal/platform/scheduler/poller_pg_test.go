@@ -4,6 +4,7 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -42,10 +43,45 @@ func (p *capturePublisher) PublishBatch(ctx context.Context, msgs []common.Messa
 	return out, nil
 }
 
+// failPublisher fails every publish — exercises the batch revert path.
+type failPublisher struct{}
+
+func (failPublisher) Identifier() string { return "fail" }
+func (failPublisher) Publish(context.Context, common.Message) (string, error) {
+	return "", errors.New("publish boom")
+}
+func (failPublisher) PublishBatch(context.Context, []common.Message) ([]string, error) {
+	return nil, errors.New("batch publish boom")
+}
+
+// TestPollOnce_BatchPublishFailureRevertsToPending pins the batched-dispatch
+// revert: when the single PublishBatch fails, the whole claimed batch must be
+// rolled back QUEUED→PENDING so the next poll re-dispatches it (rather than
+// stranding rows in QUEUED for stale recovery).
+func TestPollOnce_BatchPublishFailureRevertsToPending(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+
+	const (
+		id1 = "djbatchfail01"
+		id2 = "djbatchfail02"
+	)
+	seedJob(t, pool, id1, "PENDING", "grp_batchfail_it", "")
+	seedJob(t, pool, id2, "PENDING", "grp_batchfail_it", "")
+
+	dispatcher := NewMessageGroupDispatcher(pool, failPublisher{}, NewDispatchAuthService("s"), "http://localhost/api/dispatch/process")
+	poller := NewPendingJobPoller(DefaultConfig(), pool, dispatcher, NewPausedConnectionCache(pool, time.Minute))
+
+	require.NoError(t, poller.pollOnce(ctx))
+
+	require.Equal(t, "PENDING", jobStatus(t, pool, id1), "failed batch publish must revert to PENDING")
+	require.Equal(t, "PENDING", jobStatus(t, pool, id2), "failed batch publish must revert to PENDING")
+}
+
 // newTestPoller wires a poller against the shared pool with a fresh
 // paused cache (first PausedSubscriptionIDs call always refreshes).
 func newTestPoller(pool *pgxpool.Pool) *PendingJobPoller {
-	dispatcher := NewMessageGroupDispatcher(pool, &capturePublisher{}, NewDispatchAuthService("test-secret"), 10, "http://localhost:8080/api/dispatch/process")
+	dispatcher := NewMessageGroupDispatcher(pool, &capturePublisher{}, NewDispatchAuthService("test-secret"), "http://localhost:8080/api/dispatch/process")
 	cache := NewPausedConnectionCache(pool, time.Minute)
 	return NewPendingJobPoller(DefaultConfig(), pool, dispatcher, cache)
 }

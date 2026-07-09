@@ -3,7 +3,6 @@ package scheduler
 import (
 	"context"
 	"log/slog"
-	"sync"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -11,106 +10,76 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/queue"
 )
 
-// MessageGroupDispatcher publishes claimed dispatch jobs to the message
-// queue, enforcing per-message-group FIFO ordering and a global concurrency
-// cap. Mirrors fc-platform/src/scheduler/dispatcher.rs.
+// MessageGroupDispatcher publishes claimed dispatch jobs to the message queue
+// in batches (PublishBatch → one SQS SendMessageBatch per 10), so the scheduler
+// makes ceil(N/10) round trips instead of N — it never waits on a per-message
+// SQS round trip.
+//
+// Ordering is preserved by the caller + the queue, not by in-process
+// serialization: the poller claims tokens in (message_group, sequence,
+// created_at) order, this dispatcher keeps that order into the batch, and a
+// FIFO queue maintains per-MessageGroupId delivery order across the batch
+// chunks. A single active scheduler (leader-gated) keeps one publisher per
+// group. Publishing a whole ordered batch is inherently in-order, so this is a
+// strictly cheaper way to get the same guarantee the old per-group serial
+// dispatcher provided.
 type MessageGroupDispatcher struct {
-	pool      *pgxpool.Pool
-	publisher queue.Publisher
-	authSvc   *DispatchAuthService
-	sem       chan struct{}
-
-	// processingEndpoint is the mediation_target every message carries: the
-	// router POSTs {messageId} there and the platform delivers the webhook.
+	pool               *pgxpool.Pool
+	publisher          queue.Publisher
+	authSvc            *DispatchAuthService
 	processingEndpoint string
-
-	mu     sync.Mutex
-	groups map[string]*groupQueue
-}
-
-type groupQueue struct {
-	pending []DispatchJobToken
-	running bool
 }
 
 // NewMessageGroupDispatcher wires the dispatcher.
-func NewMessageGroupDispatcher(pool *pgxpool.Pool, publisher queue.Publisher, authSvc *DispatchAuthService, maxInFlight int, processingEndpoint string) *MessageGroupDispatcher {
-	if maxInFlight <= 0 {
-		maxInFlight = 1000
-	}
+func NewMessageGroupDispatcher(pool *pgxpool.Pool, publisher queue.Publisher, authSvc *DispatchAuthService, processingEndpoint string) *MessageGroupDispatcher {
 	return &MessageGroupDispatcher{
 		pool:               pool,
 		publisher:          publisher,
 		authSvc:            authSvc,
-		sem:                make(chan struct{}, maxInFlight),
 		processingEndpoint: processingEndpoint,
-		groups:             make(map[string]*groupQueue),
 	}
 }
 
-// Submit enqueues a job for dispatch. Same-group jobs run serially;
-// different-group jobs run concurrently under the global semaphore cap.
-func (d *MessageGroupDispatcher) Submit(ctx context.Context, tok DispatchJobToken) {
-	group := tok.MessageGroup
-	if group == "" {
-		// No group → fire immediately under the global semaphore.
-		go d.dispatch(ctx, tok)
+// SubmitBatch publishes a batch of claimed jobs in one PublishBatch call. `toks`
+// MUST already be in dispatch order (the poller claims them ordered by
+// message_group, sequence, created_at); that order is preserved into the batch,
+// and the SQS backend chunks it to SendMessageBatch's limit of 10.
+//
+// On a publish error the batch is reverted QUEUED→PENDING so the next poll
+// re-dispatches it. The `status = 'QUEUED'` guard leaves alone any job that
+// /api/dispatch/process has already advanced, and a re-published duplicate is
+// harmless (FIFO content-dedup + the endpoint's terminal-status check). A crash
+// between the caller's commit and this publish leaves rows QUEUED for stale
+// recovery — the same failure mode the recovery loop already covers.
+func (d *MessageGroupDispatcher) SubmitBatch(ctx context.Context, toks []DispatchJobToken) {
+	if len(toks) == 0 {
 		return
 	}
-	d.mu.Lock()
-	g, ok := d.groups[group]
-	if !ok {
-		g = &groupQueue{}
-		d.groups[group] = g
+	msgs := make([]common.Message, len(toks))
+	for i, tok := range toks {
+		msgs[i] = d.buildMessage(tok)
 	}
-	g.pending = append(g.pending, tok)
-	shouldDrain := !g.running
-	if shouldDrain {
-		g.running = true
-	}
-	d.mu.Unlock()
-
-	if shouldDrain {
-		go d.drainGroup(ctx, group)
-	}
-}
-
-func (d *MessageGroupDispatcher) drainGroup(ctx context.Context, group string) {
-	for {
-		d.mu.Lock()
-		g := d.groups[group]
-		if g == nil || len(g.pending) == 0 {
-			// Fully drained — drop the entry so `groups` doesn't accumulate
-			// one empty groupQueue per message-group ID ever seen (unbounded
-			// growth with high-cardinality groups). A later Submit re-creates
-			// it.
-			delete(d.groups, group)
-			d.mu.Unlock()
-			return
+	if _, err := d.publisher.PublishBatch(ctx, msgs); err != nil {
+		ids := make([]string, len(toks))
+		for i, tok := range toks {
+			ids[i] = tok.JobID
 		}
-		tok := g.pending[0]
-		g.pending = g.pending[1:]
-		d.mu.Unlock()
-
-		d.dispatch(ctx, tok)
+		slog.Warn("batch publish failed; reverting QUEUED→PENDING", "count", len(ids), "err", err)
+		if _, err := d.pool.Exec(ctx,
+			`UPDATE msg_dispatch_jobs SET status = 'PENDING', updated_at = NOW()
+			  WHERE id = ANY($1) AND status = 'QUEUED'`, ids); err != nil {
+			slog.Warn("batch revert failed", "err", err)
+		}
 	}
 }
 
-func (d *MessageGroupDispatcher) dispatch(ctx context.Context, tok DispatchJobToken) {
-	// Acquire the global semaphore so we never exceed MaxInFlight.
-	select {
-	case <-ctx.Done():
-		return
-	case d.sem <- struct{}{}:
-	}
-	defer func() { <-d.sem }()
-
+// buildMessage renders the queue message for a claimed job. mediation_target is
+// the platform processing endpoint (NOT the subscriber URL): the router POSTs
+// {messageId} there and that endpoint loads the job, delivers to
+// job.target_url, records the attempt, and advances status. The signed token
+// lets the endpoint verify the callback came from a job this scheduler queued.
+func (d *MessageGroupDispatcher) buildMessage(tok DispatchJobToken) common.Message {
 	authToken := d.authSvc.Sign(tok.JobID)
-	// mediation_target is the platform's processing endpoint, NOT the
-	// subscriber URL: the router POSTs {messageId} here and the endpoint
-	// loads the job, delivers to job.target_url, records the attempt and
-	// advances the status. The signed token lets the endpoint verify the
-	// callback really came from a job this scheduler queued.
 	msg := common.Message{
 		ID:              tok.JobID,
 		MediationType:   common.MediationTypeHTTP,
@@ -118,15 +87,8 @@ func (d *MessageGroupDispatcher) dispatch(ctx context.Context, tok DispatchJobTo
 		AuthToken:       &authToken,
 	}
 	if tok.MessageGroup != "" {
-		msg.MessageGroupID = &tok.MessageGroup
+		group := tok.MessageGroup // copy: don't alias the loop/param variable
+		msg.MessageGroupID = &group
 	}
-	if _, err := d.publisher.Publish(ctx, msg); err != nil {
-		slog.Warn("publish failed; reverting status to PENDING", "job_id", tok.JobID, "err", err)
-		// Revert the status so the next poll cycle picks the job up again.
-		if _, err := d.pool.Exec(ctx,
-			`UPDATE msg_dispatch_jobs SET status = 'PENDING', updated_at = NOW()
-			  WHERE id = $1 AND status = 'QUEUED'`, tok.JobID); err != nil {
-			slog.Warn("revert status failed", "job_id", tok.JobID, "err", err)
-		}
-	}
+	return msg
 }

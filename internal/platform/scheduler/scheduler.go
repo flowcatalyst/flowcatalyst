@@ -29,11 +29,11 @@ type Config struct {
 	// PollInterval is how often the pending-job poller queries the DB.
 	PollInterval time.Duration
 
-	// BatchSize is the maximum number of jobs claimed per poll.
+	// BatchSize is the maximum number of jobs claimed per poll — and, since
+	// the dispatcher publishes the whole claim in one PublishBatch, also the
+	// upper bound on messages sent per tick (the SQS backend chunks these to
+	// SendMessageBatch's 10-per-call limit).
 	BatchSize int
-
-	// MaxInFlight caps concurrent in-flight dispatches across all groups.
-	MaxInFlight int
 
 	// PausedCacheTTL is how often to refresh the paused-connections set.
 	PausedCacheTTL time.Duration
@@ -62,7 +62,6 @@ func DefaultConfig() Config {
 	return Config{
 		PollInterval:      1 * time.Second,
 		BatchSize:         100,
-		MaxInFlight:       1000,
 		PausedCacheTTL:    60 * time.Second,
 		StaleAfter:        5 * time.Minute,
 		StaleScanInterval: 60 * time.Second,
@@ -97,7 +96,7 @@ type Scheduler struct {
 func New(cfg Config, pool *pgxpool.Pool, publisher queue.Publisher, hmacSecret string) *Scheduler {
 	authSvc := NewDispatchAuthService(hmacSecret)
 	pausedCache := NewPausedConnectionCache(pool, cfg.PausedCacheTTL)
-	dispatcher := NewMessageGroupDispatcher(pool, publisher, authSvc, cfg.MaxInFlight, cfg.ProcessingEndpoint)
+	dispatcher := NewMessageGroupDispatcher(pool, publisher, authSvc, cfg.ProcessingEndpoint)
 	poller := NewPendingJobPoller(cfg, pool, dispatcher, pausedCache)
 	stale := NewStaleQueuedJobPoller(pool, cfg.StaleAfter, cfg.StaleScanInterval)
 	return &Scheduler{

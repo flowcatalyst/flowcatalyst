@@ -250,14 +250,12 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 		return err
 	}
 
-	// QUEUED is durable — now hand the jobs to the dispatcher. A publish
-	// failure reverts QUEUED→PENDING (dispatcher.dispatch), which is
-	// guaranteed to see the committed status; a crash between commit and
-	// Submit leaves rows QUEUED for stale recovery — the same failure mode
-	// as a crash mid-publish, handled by the existing recovery loop.
-	for _, t := range tokens {
-		p.dispatcher.Submit(ctx, t)
-	}
+	// QUEUED is durable — now hand the whole batch to the dispatcher in ONE
+	// PublishBatch (SQS SendMessageBatch, 10 per call), preserving the claim
+	// order. A publish failure reverts QUEUED→PENDING for the next poll; a
+	// crash between commit and publish leaves rows QUEUED for stale recovery —
+	// the same failure mode the recovery loop already covers.
+	p.dispatcher.SubmitBatch(ctx, tokens)
 
 	if len(queued) > 0 || skippedPaused > 0 || skippedBlocked > 0 {
 		slog.Debug("poll tick",
