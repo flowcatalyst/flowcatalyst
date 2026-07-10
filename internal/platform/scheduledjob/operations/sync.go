@@ -32,9 +32,13 @@ type ScheduledJobSyncEntry struct {
 // SyncScheduledJobsCommand syncs scheduled-job definitions for one scope.
 // ClientID nil = platform-scoped jobs (client_id IS NULL); otherwise the
 // jobs belong to that client. ApplicationCode is the {appCode} from the URL,
-// carried for audit/event provenance.
+// carried for audit/event provenance. ApplicationID is that same {appCode}
+// resolved to the Application's id — persisted onto newly-created jobs (see
+// Execute) so the list UI can filter/display by application; immutable
+// thereafter, same as ClientID.
 type SyncScheduledJobsCommand struct {
 	ApplicationCode string
+	ApplicationID   string
 	ClientID        *string
 	Jobs            []ScheduledJobSyncEntry
 	ArchiveUnlisted bool
@@ -187,6 +191,9 @@ func SyncScheduledJobs(repo *scheduledjob.Repository) usecaseop.Operation[SyncSc
 				j.TimeoutSeconds = entry.TimeoutSeconds
 				j.TargetURL = entry.TargetURL
 				j.ClientID = cmd.ClientID
+				if cmd.ApplicationID != "" {
+					j.ApplicationID = &cmd.ApplicationID
+				}
 				j.CreatedBy = &pid
 				saves = append(saves, usecasepgx.SyncSaveItem[scheduledjob.ScheduledJob]{
 					Aggregate: j,

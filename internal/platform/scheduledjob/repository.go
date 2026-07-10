@@ -62,7 +62,14 @@ func (r *Repository) FindByCode(ctx context.Context, code string, clientID *stri
 //   - ClientID: a non-nil pointer with non-empty *string matches that
 //     client; a non-nil pointer to "" matches platform-scoped jobs
 //     (client_id IS NULL). A nil pointer means "don't filter on
-//     client_id".
+//     client_id". Callers use either this or ClientIDs, not both.
+//   - ClientIDs / ApplicationIDs: the list page's multi-select filters — a
+//     non-empty slice matches any of the given ids (`= ANY(...)`). A literal
+//     "platform" entry in ClientIDs additionally matches platform-scoped
+//     jobs (client_id IS NULL), same semantics as ClientID's "" sentinel.
+//     An empty/nil slice means "don't filter on that dimension".
+//   - Status / Statuses: same single-vs-multi relationship as ClientID /
+//     ClientIDs. Callers use either, not both.
 //   - Search: case-insensitive prefix match against code OR name.
 //   - AccessibleClientIDs: a non-nil pointer scopes results to
 //     platform-scoped jobs (client_id IS NULL) plus jobs whose client_id is
@@ -70,7 +77,10 @@ func (r *Repository) FindByCode(ctx context.Context, code string, clientID *stri
 //   - Limit / Offset: applied only by List; Count ignores them.
 type ListFilters struct {
 	ClientID            *string
+	ClientIDs           []string
+	ApplicationIDs      []string
 	Status              *string
+	Statuses            []string
 	Search              *string
 	AccessibleClientIDs *[]string
 	Limit               *int64
@@ -84,7 +94,7 @@ func (r *Repository) FindWithFilters(ctx context.Context, f ListFilters) ([]Sche
 	q, args := buildJobQuery(`SELECT id, client_id, code, name, description, status, crons, timezone,
 		payload, concurrent, tracks_completion, timeout_seconds,
 		delivery_max_attempts, target_url, last_fired_at, created_at, updated_at,
-		created_by, updated_by, version FROM msg_scheduled_jobs`, f, true)
+		created_by, updated_by, version, application_id FROM msg_scheduled_jobs`, f, true)
 	rows, err := r.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
@@ -123,9 +133,38 @@ func buildJobQuery(base string, f ListFilters, withPagination bool) (string, []a
 			conds = append(conds, fmt.Sprintf("client_id = $%d", len(args)))
 		}
 	}
+	if len(f.ClientIDs) > 0 {
+		var realIDs []string
+		includePlatform := false
+		for _, id := range f.ClientIDs {
+			if id == "platform" {
+				includePlatform = true
+			} else if id != "" {
+				realIDs = append(realIDs, id)
+			}
+		}
+		switch {
+		case includePlatform && len(realIDs) > 0:
+			args = append(args, realIDs)
+			conds = append(conds, fmt.Sprintf("(client_id IS NULL OR client_id = ANY($%d))", len(args)))
+		case includePlatform:
+			conds = append(conds, "client_id IS NULL")
+		case len(realIDs) > 0:
+			args = append(args, realIDs)
+			conds = append(conds, fmt.Sprintf("client_id = ANY($%d)", len(args)))
+		}
+	}
+	if len(f.ApplicationIDs) > 0 {
+		args = append(args, f.ApplicationIDs)
+		conds = append(conds, fmt.Sprintf("application_id = ANY($%d)", len(args)))
+	}
 	if f.Status != nil {
 		args = append(args, *f.Status)
 		conds = append(conds, fmt.Sprintf("status = $%d", len(args)))
+	}
+	if len(f.Statuses) > 0 {
+		args = append(args, f.Statuses)
+		conds = append(conds, fmt.Sprintf("status = ANY($%d)", len(args)))
 	}
 	if f.Search != nil && *f.Search != "" {
 		args = append(args, "%"+*f.Search+"%")
@@ -189,6 +228,7 @@ func (r *Repository) Persist(ctx context.Context, j *ScheduledJob, tx *usecasepg
 	return r.q.WithTx(tx.Inner()).ScheduledJobUpsert(ctx, dbq.ScheduledJobUpsertParams{
 		ID:                  j.ID,
 		ClientID:            j.ClientID,
+		ApplicationID:       j.ApplicationID,
 		Code:                j.Code,
 		Name:                j.Name,
 		Description:         j.Description,
@@ -219,6 +259,7 @@ func rowToScheduledJob(row dbq.MsgScheduledJob) *ScheduledJob {
 	j := ScheduledJob{
 		ID:                  row.ID,
 		ClientID:            row.ClientID,
+		ApplicationID:       row.ApplicationID,
 		Code:                row.Code,
 		Name:                row.Name,
 		Description:         row.Description,

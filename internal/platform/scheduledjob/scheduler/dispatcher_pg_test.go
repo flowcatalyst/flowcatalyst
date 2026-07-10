@@ -5,6 +5,7 @@ package scheduler
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -85,4 +86,55 @@ func TestDispatcherTick_OrphanInstance_MarkedDeliveryFailed(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, again)
 	assert.Equal(t, scheduledjob.InstanceStatusDeliveryFailed, again.Status)
+}
+
+// TestDispatcherTick_Accepts2xxNotJust202 covers the fix for a real reported
+// bug: a consumer endpoint that returns a plain 200 OK (not 202) was having
+// every firing marked DELIVERY_FAILED, even though the delivery itself
+// succeeded. The dispatcher must accept any 2xx, not hard-require 202.
+func TestDispatcherTick_Accepts2xxNotJust202(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	jobs := scheduledjob.NewRepository(pool)
+	instances := scheduledjob.NewInstanceRepository(pool)
+	uow := testpg.NewUoW(t)
+	ec := testpg.TestEC()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK) // 200, not 202 — this is the case under test
+		_, _ = w.Write([]byte(`{"attempted":0,"released":0,"skipped":0,"failed":0,"failures":[]}`))
+	}))
+	defer server.Close()
+	targetURL := server.URL
+
+	created, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.CreateScheduledJob(jobs), operations.CreateCommand{
+		Code:      "sjdsp-200ok",
+		Name:      "SJ Dispatcher 200 OK",
+		Crons:     []string{"0 0 * * * *"},
+		TargetURL: &targetURL,
+	}, ec)
+	require.NoError(t, err)
+	jobID := created.ScheduledJobID
+
+	fired, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.FireNow(jobs, instances),
+		operations.FireNowCommand{ID: jobID}, ec)
+	require.NoError(t, err)
+	instanceID := fired.InstanceID
+
+	d := &dispatcher{
+		cfg:       Config{DispatchInterval: time.Second, DispatchBatchSize: 32, HTTPTimeout: time.Second},
+		jobs:      jobs,
+		instances: instances,
+		http:      &http.Client{Timeout: time.Second},
+		isLeader:  func() bool { return true },
+	}
+	require.NoError(t, d.tick(ctx))
+
+	got, err := instances.FindByID(ctx, instanceID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, scheduledjob.InstanceStatusDelivered, got.Status,
+		"a plain 200 OK from the target must be accepted as delivered, not treated as a failure")
+	assert.Nil(t, got.DeliveryError)
 }

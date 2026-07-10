@@ -174,7 +174,7 @@ func (r *InstanceRepository) MarkInFlight(ctx context.Context, instanceID string
 }
 
 // MarkDelivered flips an instance to DELIVERED and stamps delivered_at, on a
-// 202 ACK from the target. DELIVERED is terminal unless the job tracks
+// 2xx ACK from the target. DELIVERED is terminal unless the job tracks
 // completion (then the SDK calls MarkComplete later). Mirrors mark_delivered.
 func (r *InstanceRepository) MarkDelivered(ctx context.Context, instanceID string) error {
 	_, err := r.pool.Exec(ctx, `

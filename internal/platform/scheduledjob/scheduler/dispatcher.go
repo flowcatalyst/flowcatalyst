@@ -13,8 +13,11 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 )
 
-// dispatcher claims QUEUED instances and POSTs the firing webhook, applying
-// the 202 contract. Mirrors the Rust dispatcher.
+// dispatcher claims QUEUED instances and POSTs the firing webhook, treating
+// any 2xx response as delivered. Mirrors the Rust dispatcher's structure but
+// deliberately widened from Rust's 202-only contract — many consumer
+// endpoints return a plain 200, and there is no meaningful difference between
+// 2xx codes for this purpose.
 type dispatcher struct {
 	cfg       Config
 	jobs      *scheduledjob.Repository
@@ -101,8 +104,9 @@ func (d *dispatcher) tick(ctx context.Context) error {
 	return nil
 }
 
-// dispatchOne marks the instance IN_FLIGHT, POSTs the webhook, and applies the
-// 202 contract. Mirrors the Rust dispatch_one.
+// dispatchOne marks the instance IN_FLIGHT, POSTs the webhook, and accepts
+// any 2xx response as delivered. Mirrors the Rust dispatch_one's structure
+// (see the widened-from-202 note on the dispatcher type above).
 func (d *dispatcher) dispatchOne(ctx context.Context, job *scheduledjob.ScheduledJob, inst *scheduledjob.ScheduledJobInstance) {
 	if err := d.instances.MarkInFlight(ctx, inst.ID); err != nil {
 		slog.Warn("scheduled-job dispatcher: mark_in_flight failed", "instance_id", inst.ID, "err", err)
@@ -152,17 +156,17 @@ func (d *dispatcher) dispatchOne(ctx context.Context, job *scheduledjob.Schedule
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusAccepted { // 202 = accepted/ack
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 { // any 2xx = accepted/ack
 		if err := d.instances.MarkDelivered(ctx, inst.ID); err != nil {
 			slog.Warn("scheduled-job dispatcher: mark_delivered failed", "instance_id", inst.ID, "err", err)
 		}
 		return
 	}
 
-	// Non-202: read up to 500 chars of the body for the error message.
+	// Non-2xx: read up to 500 chars of the body for the error message.
 	snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 500))
 	d.handleFailure(ctx, job, inst, attemptsAfter,
-		fmt.Sprintf("HTTP %d (expected 202): %s", resp.StatusCode, string(snippet)))
+		fmt.Sprintf("HTTP %d (expected 2xx): %s", resp.StatusCode, string(snippet)))
 }
 
 // handleFailure records a failed attempt: terminal (DELIVERY_FAILED) when max

@@ -28,6 +28,7 @@ type CreateCommand struct {
 	Crons               []string        `json:"crons"`
 	Timezone            string          `json:"timezone,omitempty"`
 	ClientID            *string         `json:"clientId,omitempty"`
+	ApplicationID       *string         `json:"applicationId,omitempty"`
 	Description         *string         `json:"description,omitempty"`
 	Payload             json.RawMessage `json:"payload,omitempty"`
 	Concurrent          bool            `json:"concurrent"`
@@ -96,6 +97,7 @@ func CreateScheduledJob(repo *scheduledjob.Repository) usecaseop.Operation[Creat
 			}
 			j := scheduledjob.New(code, strings.TrimSpace(cmd.Name), cmd.Crons)
 			j.ClientID = cmd.ClientID
+			j.ApplicationID = cmd.ApplicationID
 			j.Description = cmd.Description
 			if cmd.Timezone != "" {
 				j.Timezone = cmd.Timezone

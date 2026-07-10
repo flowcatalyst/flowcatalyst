@@ -17,6 +17,7 @@ type CreateScheduledJobRequest struct {
 	Crons               []string        `json:"crons"`
 	Timezone            string          `json:"timezone,omitempty"`
 	ClientID            *string         `json:"clientId,omitempty"`
+	ApplicationID       *string         `json:"applicationId,omitempty"`
 	Description         *string         `json:"description,omitempty"`
 	Payload             json.RawMessage `json:"payload,omitempty"`
 	Concurrent          bool            `json:"concurrent"`
@@ -33,6 +34,7 @@ func (r CreateScheduledJobRequest) toCommand() operations.CreateCommand {
 		Crons:               r.Crons,
 		Timezone:            r.Timezone,
 		ClientID:            r.ClientID,
+		ApplicationID:       r.ApplicationID,
 		Description:         r.Description,
 		Payload:             r.Payload,
 		Concurrent:          r.Concurrent,
@@ -77,6 +79,7 @@ func (r UpdateScheduledJobRequest) toCommand(id string) operations.UpdateCommand
 type ScheduledJobResponse struct {
 	ID                  string           `json:"id"`
 	ClientID            *string          `json:"clientId,omitempty"`
+	ApplicationID       *string          `json:"applicationId,omitempty"`
 	Code                string           `json:"code"`
 	Name                string           `json:"name"`
 	Description         *string          `json:"description,omitempty"`
@@ -114,6 +117,7 @@ func fromEntity(j *scheduledjob.ScheduledJob) ScheduledJobResponse {
 	return ScheduledJobResponse{
 		ID:                  j.ID,
 		ClientID:            j.ClientID,
+		ApplicationID:       j.ApplicationID,
 		Code:                j.Code,
 		Name:                j.Name,
 		Description:         j.Description,

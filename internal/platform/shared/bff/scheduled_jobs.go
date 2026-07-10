@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -21,9 +22,10 @@ import (
 // ScheduledJobsState holds the deps the /bff/scheduled-jobs/* endpoints
 // reach into. Read-only — mutations go through /api/scheduled-jobs.
 type ScheduledJobsState struct {
-	Jobs      *scheduledjob.Repository
-	Instances *scheduledjob.InstanceRepository
-	Clients   *client.Repository
+	Jobs         *scheduledjob.Repository
+	Instances    *scheduledjob.InstanceRepository
+	Clients      *client.Repository
+	Applications *application.Repository
 }
 
 // RegisterScheduledJobs mounts the dashboard's `/bff/scheduled-jobs/*`
@@ -58,6 +60,8 @@ type bffScheduledJobResponse struct {
 	ID                  string     `json:"id"`
 	ClientID            *string    `json:"clientId,omitempty"`
 	ClientName          *string    `json:"clientName,omitempty"`
+	ApplicationID       *string    `json:"applicationId,omitempty"`
+	ApplicationName     *string    `json:"applicationName,omitempty"`
 	Code                string     `json:"code"`
 	Name                string     `json:"name"`
 	Description         *string    `json:"description,omitempty"`
@@ -115,8 +119,9 @@ type bffPaginatedResponse struct {
 }
 
 type bffScheduledJobsFilterOptions struct {
-	Clients  []bffFilterOption `json:"clients"`
-	Statuses []bffFilterOption `json:"statuses"`
+	Clients      []bffFilterOption `json:"clients"`
+	Applications []bffFilterOption `json:"applications"`
+	Statuses     []bffFilterOption `json:"statuses"`
 }
 
 type bffFilterOption struct {
@@ -126,10 +131,11 @@ type bffFilterOption struct {
 
 // ── Handlers ─────────────────────────────────────────────────────────────
 
-// GET /bff/scheduled-jobs?clientId=&status=&search=&page=&size=
+// GET /bff/scheduled-jobs?clientIds=&applicationIds=&statuses=&search=&page=&size=
 //
-// `clientId=platform` is a special token that filters for
-// platform-scoped jobs (client_id IS NULL).
+// clientIds/applicationIds/statuses are CSV multi-selects (mirrors the
+// dispatch-jobs list page's filters). A "platform" entry in clientIds
+// additionally matches platform-scoped jobs (client_id IS NULL).
 func (s *ScheduledJobsState) listJobs(w http.ResponseWriter, r *http.Request) {
 	ac := auth.FromContext(r.Context())
 	if err := auth.CanReadScheduledJobs(ac); err != nil {
@@ -140,16 +146,14 @@ func (s *ScheduledJobsState) listJobs(w http.ResponseWriter, r *http.Request) {
 	page, size := parsePagination(q)
 
 	filters := scheduledjob.ListFilters{}
-	if cid := q.Get("clientId"); cid != "" {
-		if cid == "platform" {
-			empty := ""
-			filters.ClientID = &empty
-		} else {
-			filters.ClientID = &cid
-		}
+	if clientIDs := splitCSV(q.Get("clientIds")); len(clientIDs) > 0 {
+		filters.ClientIDs = clientIDs
 	}
-	if status := q.Get("status"); status != "" {
-		filters.Status = &status
+	if applicationIDs := splitCSV(q.Get("applicationIds")); len(applicationIDs) > 0 {
+		filters.ApplicationIDs = applicationIDs
+	}
+	if statuses := splitCSV(q.Get("statuses")); len(statuses) > 0 {
+		filters.Statuses = statuses
 	}
 	if search := strings.TrimSpace(q.Get("search")); search != "" {
 		filters.Search = &search
@@ -170,10 +174,15 @@ func (s *ScheduledJobsState) listJobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Client-access filter + denormalised client name lookup.
+	// Client-access filter + denormalised client/application name lookup.
 	clients, err := s.allClientsByID(r.Context())
 	if err != nil {
 		httperror.Write(w, usecase.Internal("REPO", "client lookup failed", err))
+		return
+	}
+	applications, err := s.allApplicationsByID(r.Context())
+	if err != nil {
+		httperror.Write(w, usecase.Internal("REPO", "application lookup failed", err))
 		return
 	}
 	out := make([]bffScheduledJobResponse, 0, len(rows))
@@ -187,7 +196,7 @@ func (s *ScheduledJobsState) listJobs(w http.ResponseWriter, r *http.Request) {
 			httperror.Write(w, usecase.Internal("REPO", "has_active_instance failed", err))
 			return
 		}
-		out = append(out, toBffJob(j, clients, active))
+		out = append(out, toBffJob(j, clients, applications, active))
 	}
 
 	writeJSON(w, http.StatusOK, bffPaginatedResponse{
@@ -221,12 +230,17 @@ func (s *ScheduledJobsState) getJob(w http.ResponseWriter, r *http.Request) {
 		httperror.Write(w, usecase.Internal("REPO", "client lookup failed", err))
 		return
 	}
+	applications, err := s.allApplicationsByID(r.Context())
+	if err != nil {
+		httperror.Write(w, usecase.Internal("REPO", "application lookup failed", err))
+		return
+	}
 	active, err := s.Instances.HasActiveInstance(r.Context(), j.ID)
 	if err != nil {
 		httperror.Write(w, usecase.Internal("REPO", "has_active_instance failed", err))
 		return
 	}
-	writeJSON(w, http.StatusOK, toBffJob(j, clients, active))
+	writeJSON(w, http.StatusOK, toBffJob(j, clients, applications, active))
 }
 
 // GET /bff/scheduled-jobs/{id}/instances?status=&triggerKind=&from=&to=&page=&size=
@@ -382,8 +396,23 @@ func (s *ScheduledJobsState) filterOptions(w http.ResponseWriter, r *http.Reques
 	sort.Slice(visible, func(i, j int) bool { return visible[i].Label < visible[j].Label })
 	options = append(options, visible...)
 
+	apps, err := s.Applications.FindWithFilters(r.Context(), nil, nil)
+	if err != nil {
+		httperror.Write(w, usecase.Internal("REPO", "list applications failed", err))
+		return
+	}
+	appOptions := []bffFilterOption{}
+	for _, a := range apps {
+		if !a.Active {
+			continue
+		}
+		appOptions = append(appOptions, bffFilterOption{Value: a.ID, Label: a.Name})
+	}
+	sort.Slice(appOptions, func(i, j int) bool { return appOptions[i].Label < appOptions[j].Label })
+
 	writeJSON(w, http.StatusOK, bffScheduledJobsFilterOptions{
-		Clients: options,
+		Clients:      options,
+		Applications: appOptions,
 		Statuses: []bffFilterOption{
 			{Value: "ACTIVE", Label: "Active"},
 			{Value: "PAUSED", Label: "Paused"},
@@ -393,6 +422,21 @@ func (s *ScheduledJobsState) filterOptions(w http.ResponseWriter, r *http.Reques
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
+
+// splitCSV mirrors dispatchjob/api.splitCSV: trim, drop empties.
+func splitCSV(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if v := strings.TrimSpace(p); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
 
 func canViewJob(ac *auth.AuthContext, j *scheduledjob.ScheduledJob) bool {
 	if j.ClientID == nil {
@@ -420,11 +464,29 @@ func (s *ScheduledJobsState) allClientsByID(ctx context.Context) (map[string]str
 	return out, nil
 }
 
-func toBffJob(j *scheduledjob.ScheduledJob, clientsByID map[string]string, hasActive bool) bffScheduledJobResponse {
+func (s *ScheduledJobsState) allApplicationsByID(ctx context.Context) (map[string]string, error) {
+	rows, err := s.Applications.FindWithFilters(ctx, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(rows))
+	for _, a := range rows {
+		out[a.ID] = a.Name
+	}
+	return out, nil
+}
+
+func toBffJob(j *scheduledjob.ScheduledJob, clientsByID, applicationsByID map[string]string, hasActive bool) bffScheduledJobResponse {
 	var clientName *string
 	if j.ClientID != nil {
 		if n, ok := clientsByID[*j.ClientID]; ok {
 			clientName = &n
+		}
+	}
+	var applicationName *string
+	if j.ApplicationID != nil {
+		if n, ok := applicationsByID[*j.ApplicationID]; ok {
+			applicationName = &n
 		}
 	}
 	crons := j.Crons
@@ -435,6 +497,8 @@ func toBffJob(j *scheduledjob.ScheduledJob, clientsByID map[string]string, hasAc
 		ID:                  j.ID,
 		ClientID:            j.ClientID,
 		ClientName:          clientName,
+		ApplicationID:       j.ApplicationID,
+		ApplicationName:     applicationName,
 		Code:                j.Code,
 		Name:                j.Name,
 		Description:         j.Description,

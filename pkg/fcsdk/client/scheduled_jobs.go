@@ -14,7 +14,10 @@ type CreateScheduledJobRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 	// ClientID empty = platform-scoped (anchor only); set = client-scoped.
-	ClientID            string          `json:"clientId,omitempty"`
+	ClientID string `json:"clientId,omitempty"`
+	// ApplicationID is the registered Application that owns this job — a
+	// separate axis from ClientID (tenant vs. registered app). Optional.
+	ApplicationID       string          `json:"applicationId,omitempty"`
 	Crons               []string        `json:"crons"`
 	Timezone            string          `json:"timezone,omitempty"`
 	Payload             json.RawMessage `json:"payload,omitempty"`

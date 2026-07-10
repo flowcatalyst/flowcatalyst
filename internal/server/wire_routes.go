@@ -341,9 +341,10 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			UoW:          uow,
 		})
 		bff.RegisterScheduledJobs(r, &bff.ScheduledJobsState{
-			Jobs:      repos.scheduledJobRepo,
-			Instances: scheduledjob.NewInstanceRepository(pool),
-			Clients:   repos.clientRepo,
+			Jobs:         repos.scheduledJobRepo,
+			Instances:    scheduledjob.NewInstanceRepository(pool),
+			Clients:      repos.clientRepo,
+			Applications: repos.applicationRepo,
 		})
 		bff.RegisterDeveloper(r, &bff.DeveloperState{
 			Applications: repos.applicationRepo,

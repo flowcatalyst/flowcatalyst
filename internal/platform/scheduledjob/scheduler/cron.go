@@ -8,10 +8,10 @@
 //     cron slot in (last_fired, now] per job (skip-missed semantics), inserts
 //     a QUEUED instance row, and advances last_fired_at monotonically.
 //   - dispatcher — every DispatchInterval, claims QUEUED instances, marks them
-//     IN_FLIGHT, POSTs the firing webhook, and applies the 202 contract:
-//     202 → DELIVERED (terminal unless the job tracks completion); any other
-//     response or a transport error → retry (back to QUEUED) until
-//     delivery_max_attempts, then DELIVERY_FAILED.
+//     IN_FLIGHT, POSTs the firing webhook: any 2xx → DELIVERED (terminal
+//     unless the job tracks completion); any other response or a transport
+//     error → retry (back to QUEUED) until delivery_max_attempts, then
+//     DELIVERY_FAILED. Deliberately widened from Rust's 202-only contract.
 //
 // Both loops are leader-gated (a single replica fires each slot; the loops
 // have no SELECT … FOR UPDATE SKIP LOCKED claim, matching the Rust

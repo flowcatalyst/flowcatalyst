@@ -1,11 +1,15 @@
--- Queries for msg_scheduled_jobs. Schema (migration 021) matches the
--- Go entity 1:1 — straightforward port.
+-- Queries for msg_scheduled_jobs. Schema (migration 021, application_id
+-- added in migration 038) matches the Go entity 1:1 — straightforward port.
+-- Column order in every SELECT/INSERT list must match the table's physical
+-- column order (application_id last — appended by migration 038's ALTER
+-- TABLE) so sqlc maps rows onto the shared MsgScheduledJob model instead of
+-- generating a bespoke per-query Row type.
 
 -- name: ScheduledJobFindByID :one
 SELECT id, client_id, code, name, description, status, crons, timezone,
        payload, concurrent, tracks_completion, timeout_seconds,
        delivery_max_attempts, target_url, last_fired_at,
-       created_at, updated_at, created_by, updated_by, version
+       created_at, updated_at, created_by, updated_by, version, application_id
 FROM msg_scheduled_jobs
 WHERE id = $1;
 
@@ -13,7 +17,7 @@ WHERE id = $1;
 SELECT id, client_id, code, name, description, status, crons, timezone,
        payload, concurrent, tracks_completion, timeout_seconds,
        delivery_max_attempts, target_url, last_fired_at,
-       created_at, updated_at, created_by, updated_by, version
+       created_at, updated_at, created_by, updated_by, version, application_id
 FROM msg_scheduled_jobs
 WHERE code = $1 AND client_id = $2;
 
@@ -21,7 +25,7 @@ WHERE code = $1 AND client_id = $2;
 SELECT id, client_id, code, name, description, status, crons, timezone,
        payload, concurrent, tracks_completion, timeout_seconds,
        delivery_max_attempts, target_url, last_fired_at,
-       created_at, updated_at, created_by, updated_by, version
+       created_at, updated_at, created_by, updated_by, version, application_id
 FROM msg_scheduled_jobs
 WHERE code = $1 AND client_id IS NULL;
 
@@ -29,7 +33,7 @@ WHERE code = $1 AND client_id IS NULL;
 SELECT id, client_id, code, name, description, status, crons, timezone,
        payload, concurrent, tracks_completion, timeout_seconds,
        delivery_max_attempts, target_url, last_fired_at,
-       created_at, updated_at, created_by, updated_by, version
+       created_at, updated_at, created_by, updated_by, version, application_id
 FROM msg_scheduled_jobs
 ORDER BY code;
 
@@ -37,7 +41,7 @@ ORDER BY code;
 SELECT id, client_id, code, name, description, status, crons, timezone,
        payload, concurrent, tracks_completion, timeout_seconds,
        delivery_max_attempts, target_url, last_fired_at,
-       created_at, updated_at, created_by, updated_by, version
+       created_at, updated_at, created_by, updated_by, version, application_id
 FROM msg_scheduled_jobs
 WHERE status = 'ACTIVE';
 
@@ -46,9 +50,9 @@ INSERT INTO msg_scheduled_jobs
     (id, client_id, code, name, description, status, crons, timezone,
      payload, concurrent, tracks_completion, timeout_seconds,
      delivery_max_attempts, target_url, last_fired_at,
-     created_at, updated_at, created_by, updated_by, version)
+     created_at, updated_at, created_by, updated_by, version, application_id)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-        $13, $14, $15, $16, $17, $18, $19, $20)
+        $13, $14, $15, $16, $17, $18, $19, $20, $21)
 ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,
     description = EXCLUDED.description,

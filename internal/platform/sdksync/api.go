@@ -649,6 +649,7 @@ func (s *State) syncScheduledJobs(ctx context.Context, in *syncScheduledJobsInpu
 
 	cmd := scheduledjobops.SyncScheduledJobsCommand{
 		ApplicationCode: app.Code,
+		ApplicationID:   app.ID,
 		ClientID:        in.Body.ClientID,
 		Jobs:            jobs,
 		ArchiveUnlisted: in.Body.ArchiveUnlisted,

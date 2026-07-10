@@ -24,7 +24,7 @@ const scheduledJobFindActive = `-- name: ScheduledJobFindActive :many
 SELECT id, client_id, code, name, description, status, crons, timezone,
        payload, concurrent, tracks_completion, timeout_seconds,
        delivery_max_attempts, target_url, last_fired_at,
-       created_at, updated_at, created_by, updated_by, version
+       created_at, updated_at, created_by, updated_by, version, application_id
 FROM msg_scheduled_jobs
 WHERE status = 'ACTIVE'
 `
@@ -59,6 +59,7 @@ func (q *Queries) ScheduledJobFindActive(ctx context.Context) ([]MsgScheduledJob
 			&i.CreatedBy,
 			&i.UpdatedBy,
 			&i.Version,
+			&i.ApplicationID,
 		); err != nil {
 			return nil, err
 		}
@@ -74,7 +75,7 @@ const scheduledJobFindAll = `-- name: ScheduledJobFindAll :many
 SELECT id, client_id, code, name, description, status, crons, timezone,
        payload, concurrent, tracks_completion, timeout_seconds,
        delivery_max_attempts, target_url, last_fired_at,
-       created_at, updated_at, created_by, updated_by, version
+       created_at, updated_at, created_by, updated_by, version, application_id
 FROM msg_scheduled_jobs
 ORDER BY code
 `
@@ -109,6 +110,7 @@ func (q *Queries) ScheduledJobFindAll(ctx context.Context) ([]MsgScheduledJob, e
 			&i.CreatedBy,
 			&i.UpdatedBy,
 			&i.Version,
+			&i.ApplicationID,
 		); err != nil {
 			return nil, err
 		}
@@ -124,7 +126,7 @@ const scheduledJobFindByCodeClient = `-- name: ScheduledJobFindByCodeClient :one
 SELECT id, client_id, code, name, description, status, crons, timezone,
        payload, concurrent, tracks_completion, timeout_seconds,
        delivery_max_attempts, target_url, last_fired_at,
-       created_at, updated_at, created_by, updated_by, version
+       created_at, updated_at, created_by, updated_by, version, application_id
 FROM msg_scheduled_jobs
 WHERE code = $1 AND client_id = $2
 `
@@ -158,6 +160,7 @@ func (q *Queries) ScheduledJobFindByCodeClient(ctx context.Context, arg Schedule
 		&i.CreatedBy,
 		&i.UpdatedBy,
 		&i.Version,
+		&i.ApplicationID,
 	)
 	return i, err
 }
@@ -166,7 +169,7 @@ const scheduledJobFindByCodePlatform = `-- name: ScheduledJobFindByCodePlatform 
 SELECT id, client_id, code, name, description, status, crons, timezone,
        payload, concurrent, tracks_completion, timeout_seconds,
        delivery_max_attempts, target_url, last_fired_at,
-       created_at, updated_at, created_by, updated_by, version
+       created_at, updated_at, created_by, updated_by, version, application_id
 FROM msg_scheduled_jobs
 WHERE code = $1 AND client_id IS NULL
 `
@@ -195,6 +198,7 @@ func (q *Queries) ScheduledJobFindByCodePlatform(ctx context.Context, code strin
 		&i.CreatedBy,
 		&i.UpdatedBy,
 		&i.Version,
+		&i.ApplicationID,
 	)
 	return i, err
 }
@@ -204,13 +208,17 @@ const scheduledJobFindByID = `-- name: ScheduledJobFindByID :one
 SELECT id, client_id, code, name, description, status, crons, timezone,
        payload, concurrent, tracks_completion, timeout_seconds,
        delivery_max_attempts, target_url, last_fired_at,
-       created_at, updated_at, created_by, updated_by, version
+       created_at, updated_at, created_by, updated_by, version, application_id
 FROM msg_scheduled_jobs
 WHERE id = $1
 `
 
-// Queries for msg_scheduled_jobs. Schema (migration 021) matches the
-// Go entity 1:1 — straightforward port.
+// Queries for msg_scheduled_jobs. Schema (migration 021, application_id
+// added in migration 038) matches the Go entity 1:1 — straightforward port.
+// Column order in every SELECT/INSERT list must match the table's physical
+// column order (application_id last — appended by migration 038's ALTER
+// TABLE) so sqlc maps rows onto the shared MsgScheduledJob model instead of
+// generating a bespoke per-query Row type.
 func (q *Queries) ScheduledJobFindByID(ctx context.Context, id string) (MsgScheduledJob, error) {
 	row := q.db.QueryRow(ctx, scheduledJobFindByID, id)
 	var i MsgScheduledJob
@@ -235,6 +243,7 @@ func (q *Queries) ScheduledJobFindByID(ctx context.Context, id string) (MsgSched
 		&i.CreatedBy,
 		&i.UpdatedBy,
 		&i.Version,
+		&i.ApplicationID,
 	)
 	return i, err
 }
@@ -244,9 +253,9 @@ INSERT INTO msg_scheduled_jobs
     (id, client_id, code, name, description, status, crons, timezone,
      payload, concurrent, tracks_completion, timeout_seconds,
      delivery_max_attempts, target_url, last_fired_at,
-     created_at, updated_at, created_by, updated_by, version)
+     created_at, updated_at, created_by, updated_by, version, application_id)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-        $13, $14, $15, $16, $17, $18, $19, $20)
+        $13, $14, $15, $16, $17, $18, $19, $20, $21)
 ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,
     description = EXCLUDED.description,
@@ -286,6 +295,7 @@ type ScheduledJobUpsertParams struct {
 	CreatedBy           *string         `db:"created_by"`
 	UpdatedBy           *string         `db:"updated_by"`
 	Version             int32           `db:"version"`
+	ApplicationID       *string         `db:"application_id"`
 }
 
 func (q *Queries) ScheduledJobUpsert(ctx context.Context, arg ScheduledJobUpsertParams) error {
@@ -310,6 +320,7 @@ func (q *Queries) ScheduledJobUpsert(ctx context.Context, arg ScheduledJobUpsert
 		arg.CreatedBy,
 		arg.UpdatedBy,
 		arg.Version,
+		arg.ApplicationID,
 	)
 	return err
 }

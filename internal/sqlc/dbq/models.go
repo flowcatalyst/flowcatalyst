@@ -563,6 +563,7 @@ type MsgScheduledJob struct {
 	CreatedBy           *string         `db:"created_by"`
 	UpdatedBy           *string         `db:"updated_by"`
 	Version             int32           `db:"version"`
+	ApplicationID       *string         `db:"application_id"`
 }
 
 type MsgScheduledJobInstance struct {

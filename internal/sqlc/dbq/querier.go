@@ -246,8 +246,12 @@ type Querier interface {
 	ScheduledJobFindAll(ctx context.Context) ([]MsgScheduledJob, error)
 	ScheduledJobFindByCodeClient(ctx context.Context, arg ScheduledJobFindByCodeClientParams) (MsgScheduledJob, error)
 	ScheduledJobFindByCodePlatform(ctx context.Context, code string) (MsgScheduledJob, error)
-	// Queries for msg_scheduled_jobs. Schema (migration 021) matches the
-	// Go entity 1:1 — straightforward port.
+	// Queries for msg_scheduled_jobs. Schema (migration 021, application_id
+	// added in migration 038) matches the Go entity 1:1 — straightforward port.
+	// Column order in every SELECT/INSERT list must match the table's physical
+	// column order (application_id last — appended by migration 038's ALTER
+	// TABLE) so sqlc maps rows onto the shared MsgScheduledJob model instead of
+	// generating a bespoke per-query Row type.
 	ScheduledJobFindByID(ctx context.Context, id string) (MsgScheduledJob, error)
 	ScheduledJobUpsert(ctx context.Context, arg ScheduledJobUpsertParams) error
 	ServiceAccountDelete(ctx context.Context, id string) error

@@ -2677,6 +2677,9 @@
             "readOnly": true,
             "type": "string"
           },
+          "applicationId": {
+            "type": "string"
+          },
           "clientId": {
             "type": "string"
           },
@@ -5719,6 +5722,9 @@
             ],
             "format": "uri",
             "readOnly": true,
+            "type": "string"
+          },
+          "applicationId": {
             "type": "string"
           },
           "clientId": {

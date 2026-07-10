@@ -40,6 +40,7 @@ func ParseStatus(s string) Status {
 type ScheduledJob struct {
 	ID                  string          `json:"id"`
 	ClientID            *string         `json:"clientId,omitempty"`
+	ApplicationID       *string         `json:"applicationId,omitempty"`
 	Code                string          `json:"code"`
 	Name                string          `json:"name"`
 	Description         *string         `json:"description,omitempty"`
