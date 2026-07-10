@@ -48,13 +48,14 @@ func metricsRouter(cfg EnvCfg) http.Handler {
 	r.Get("/ready", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"status":    "ready",
-			"platform":  cfg.PlatformEnabled,
-			"router":    cfg.RouterEnabled,
-			"scheduler": cfg.SchedulerEnabled,
-			"stream":    cfg.StreamEnabled,
-			"outbox":    cfg.OutboxEnabled,
-			"mcp":       cfg.MCPEnabled,
+			"status":        "ready",
+			"platform":      cfg.PlatformEnabled,
+			"router":        cfg.RouterEnabled,
+			"scheduler":     cfg.SchedulerEnabled,
+			"scheduled_job": cfg.ScheduledJobEnabled,
+			"stream":        cfg.StreamEnabled,
+			"outbox":        cfg.OutboxEnabled,
+			"mcp":           cfg.MCPEnabled,
 		})
 	})
 	r.Get("/metrics", func(w http.ResponseWriter, _ *http.Request) {

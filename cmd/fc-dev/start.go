@@ -30,12 +30,13 @@ type startOpts struct {
 	EmbeddedDBPort   int
 	EmbeddedDBPath   string
 	EmbeddedDBReset  bool
-	DatabaseURL      string
-	SchedulerEnabled bool
-	StreamEnabled    bool
-	OutboxEnabled    bool
-	RouterEnabled    bool
-	MCPEnabled       bool
+	DatabaseURL         string
+	SchedulerEnabled    bool
+	ScheduledJobEnabled bool
+	StreamEnabled       bool
+	OutboxEnabled       bool
+	RouterEnabled       bool
+	MCPEnabled          bool
 }
 
 func newStartCmd() *cobra.Command {
@@ -57,6 +58,7 @@ func addStartFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool("embedded-db-reset", false, "wipe the embedded Postgres data directory before starting")
 	cmd.Flags().String("database-url", envStrDefault("FC_DATABASE_URL", ""), "Postgres URL (overrides --embedded-db)")
 	cmd.Flags().Bool("scheduler", envBoolDefault("FC_SCHEDULER_ENABLED", true), "run the dispatch scheduler")
+	cmd.Flags().Bool("scheduled-job", envBoolDefault("FC_SCHEDULED_JOB_ENABLED", true), "run the scheduled-job cron scheduler")
 	cmd.Flags().Bool("stream", envBoolDefault("FC_STREAM_PROCESSOR_ENABLED", true), "run the stream processor")
 	cmd.Flags().Bool("outbox", envBoolDefault("FC_OUTBOX_ENABLED", false), "run the outbox processor")
 	cmd.Flags().Bool("router", envBoolDefault("FC_ROUTER_ENABLED", true), "run the message router (uses the embedded Postgres broker by default)")
@@ -75,12 +77,13 @@ func optsFromFlags(cmd *cobra.Command) startOpts {
 		EmbeddedDBPort:   getInt("embedded-db-port"),
 		EmbeddedDBPath:   getStr("embedded-db-path"),
 		EmbeddedDBReset:  getBool("embedded-db-reset"),
-		DatabaseURL:      getStr("database-url"),
-		SchedulerEnabled: getBool("scheduler"),
-		StreamEnabled:    getBool("stream"),
-		OutboxEnabled:    getBool("outbox"),
-		RouterEnabled:    getBool("router"),
-		MCPEnabled:       getBool("mcp"),
+		DatabaseURL:         getStr("database-url"),
+		SchedulerEnabled:    getBool("scheduler"),
+		ScheduledJobEnabled: getBool("scheduled-job"),
+		StreamEnabled:       getBool("stream"),
+		OutboxEnabled:       getBool("outbox"),
+		RouterEnabled:       getBool("router"),
+		MCPEnabled:          getBool("mcp"),
 	}
 }
 
@@ -216,6 +219,7 @@ func banner(opts startOpts) {
 		"embedded_db", opts.EmbeddedDB,
 		"embedded_db_port", opts.EmbeddedDBPort,
 		"scheduler", opts.SchedulerEnabled,
+		"scheduled_job", opts.ScheduledJobEnabled,
 		"stream", opts.StreamEnabled,
 		"outbox", opts.OutboxEnabled,
 		"router", opts.RouterEnabled,

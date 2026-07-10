@@ -25,6 +25,7 @@ func devEnvCfg(opts startOpts, databaseURL string) server.EnvCfg {
 	// Subsystem toggles follow the CLI flags. Defaults (in flag config)
 	// match the historical fc-dev: scheduler+stream on, outbox+router off.
 	cfg.SchedulerEnabled = opts.SchedulerEnabled
+	cfg.ScheduledJobEnabled = opts.ScheduledJobEnabled
 	cfg.StreamEnabled = opts.StreamEnabled
 	cfg.OutboxEnabled = opts.OutboxEnabled
 	cfg.RouterEnabled = opts.RouterEnabled
