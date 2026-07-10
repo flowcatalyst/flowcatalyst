@@ -243,8 +243,10 @@ export interface ProcessDefinition {
 /**
  * A scheduled-job declaration.
  *
- * `crons` accepts standard 5-field cron expressions; the platform's
- * scheduler evaluates them in `timezone` (defaults to UTC server-side).
+ * `crons` requires 6-field, seconds-first cron expressions (`sec min hour
+ * dom month dow`) — a standard 5-field cron passes validation but never
+ * fires. The platform's scheduler evaluates them in `timezone` (defaults
+ * to UTC server-side).
  *
  * `concurrent: true` lets the platform fire a new tick while a previous
  * invocation is still running — most apps want false. Use the SDK's
@@ -255,6 +257,9 @@ export interface ProcessDefinition {
  * the success signal" to "consumer POSTs back to
  * /api/scheduled-jobs/instances/{id}/complete when done", enabling
  * per-instance status tracking.
+ *
+ * `clientId` scopes the job to a client/tenant rather than the platform —
+ * omit it only for platform-wide jobs (anchor-only).
  */
 export interface ScheduledJobDefinition {
 	code: string;
@@ -269,6 +274,8 @@ export interface ScheduledJobDefinition {
 	deliveryMaxAttempts?: number;
 	/** Override the application's default callback URL for this job. */
 	targetUrl?: string;
+	/** Client/tenant that owns this job. Omit/null = platform-scoped (anchor only). */
+	clientId?: string | null;
 }
 
 // ────────────────────────────────────────────────────────────────────────────

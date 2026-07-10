@@ -6,7 +6,7 @@
  * to the client's shared request pipeline.
  */
 
-import { okAsync, type ResultAsync } from "neverthrow";
+import { okAsync, ResultAsync } from "neverthrow";
 import type { FlowCatalystClient } from "../client.js";
 import type { SdkError } from "../errors.js";
 import type {
@@ -280,19 +280,58 @@ export class DefinitionSynchronizer {
 		removeUnlisted: boolean,
 	): ResultAsync<CategorySyncResult, SdkError> {
 		// Scheduled-jobs sync is the one endpoint that uses `archiveUnlisted`
-		// in the body rather than `removeUnlisted` as a query param. Keep
-		// the SDK API consistent — caller passes `removeUnlisted`, we
-		// translate at the wire.
-		return this.client.request<CategorySyncResult>((httpClient, headers) =>
-			httpClient.post({
-				url: `/api/applications/${applicationCode}/scheduled-jobs/sync`,
-				headers: { ...headers, "Content-Type": "application/json" },
-				body: {
-					jobs,
-					archiveUnlisted: removeUnlisted,
-				},
-			}),
-		);
+		// in the body rather than `removeUnlisted` as a query param, and takes
+		// one `clientId` per call rather than per job. Group jobs by their
+		// resolved clientId and issue one request per distinct group (almost
+		// always just one) — `clientId` must NOT ride along inside each job
+		// object, since the API rejects unknown per-job fields.
+		const groups = new Map<string, ScheduledJobDefinition[]>();
+		for (const job of jobs) {
+			const key = job.clientId ?? "";
+			const list = groups.get(key);
+			if (list) {
+				list.push(job);
+			} else {
+				groups.set(key, [job]);
+			}
+		}
+
+		const requests = [...groups.entries()].map(([clientId, groupJobs]) => {
+			const wireJobs = groupJobs.map(({ clientId: _clientId, ...rest }) => rest);
+			return this.client.request<{
+				applicationCode: string;
+				created: string[];
+				updated: string[];
+				archived: string[];
+			}>((httpClient, headers) =>
+				httpClient.post({
+					url: `/api/applications/${applicationCode}/scheduled-jobs/sync`,
+					headers: { ...headers, "Content-Type": "application/json" },
+					body: {
+						...(clientId !== "" ? { clientId } : {}),
+						jobs: wireJobs,
+						archiveUnlisted: removeUnlisted,
+					},
+				}),
+			);
+		});
+
+		return ResultAsync.combine(requests).map((results) => {
+			const merged: CategorySyncResult = {
+				applicationCode,
+				created: 0,
+				updated: 0,
+				deleted: 0,
+				syncedCodes: [],
+			};
+			for (const r of results) {
+				merged.created += r.created.length;
+				merged.updated += r.updated.length;
+				merged.deleted += r.archived.length;
+				merged.syncedCodes.push(...r.created, ...r.updated);
+			}
+			return merged;
+		});
 	}
 
 	private syncOpenapi(

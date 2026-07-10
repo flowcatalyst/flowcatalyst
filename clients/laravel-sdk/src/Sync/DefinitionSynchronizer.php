@@ -510,6 +510,12 @@ class DefinitionSynchronizer
      * The platform's scheduled-jobs sync endpoint uses `archiveUnlisted` in
      * the body rather than `removeUnlisted` as a query string; we translate.
      *
+     * Jobs are grouped by their resolved `clientId` (batch key, not per-job
+     * on the wire) since the sync endpoint accepts one `clientId` for the
+     * whole call — one `sync()` request is issued per distinct group. In
+     * the common case (all jobs share one client, or none set one at all)
+     * this is a single request, same as before.
+     *
      * @param string $appCode Application code
      * @param array<array<string, mixed>> $jobs Scheduled-job definitions
      * @param bool $removeUnlisted Archive jobs present on the platform but missing locally
@@ -517,42 +523,57 @@ class DefinitionSynchronizer
      */
     private function syncScheduledJobs(string $appCode, array $jobs, bool $removeUnlisted): array
     {
-        try {
-            $entries = array_map(
-                fn(array $row) => new SyncScheduledJobEntry(
-                    code: (string) ($row['code'] ?? ''),
-                    name: (string) ($row['name'] ?? ''),
-                    crons: array_map(static fn($c) => (string) $c, (array) ($row['crons'] ?? [])),
-                    description: isset($row['description']) ? (string) $row['description'] : null,
-                    timezone: isset($row['timezone']) ? (string) $row['timezone'] : 'UTC',
-                    payload: $row['payload'] ?? null,
-                    concurrent: (bool) ($row['concurrent'] ?? false),
-                    tracksCompletion: (bool) ($row['tracksCompletion'] ?? false),
-                    timeoutSeconds: isset($row['timeoutSeconds']) ? (int) $row['timeoutSeconds'] : null,
-                    deliveryMaxAttempts: isset($row['deliveryMaxAttempts']) ? (int) $row['deliveryMaxAttempts'] : 3,
-                    targetUrl: isset($row['targetUrl']) ? (string) $row['targetUrl'] : null,
-                ),
-                $jobs,
-            );
-            $result = $this->client->scheduledJobs()->sync(
-                applicationCode: $appCode,
-                jobs: $entries,
-                archiveUnlisted: $removeUnlisted,
-            );
-
-            return [
-                'created' => count($result['created'] ?? []),
-                'updated' => count($result['updated'] ?? []),
-                'deleted' => count($result['archived'] ?? []),
-            ];
-        } catch (\Exception $e) {
-            return [
-                'created' => 0,
-                'updated' => 0,
-                'deleted' => 0,
-                'error' => $e->getMessage(),
-            ];
+        $groups = [];
+        foreach ($jobs as $row) {
+            $clientId = (is_array($row) && isset($row['clientId']) && is_string($row['clientId']) && $row['clientId'] !== '')
+                ? $row['clientId']
+                : '';
+            $groups[$clientId][] = $row;
         }
+
+        $created = 0;
+        $updated = 0;
+        $deleted = 0;
+        $errors = [];
+
+        foreach ($groups as $clientId => $groupJobs) {
+            try {
+                $entries = array_map(
+                    fn(array $row) => new SyncScheduledJobEntry(
+                        code: (string) ($row['code'] ?? ''),
+                        name: (string) ($row['name'] ?? ''),
+                        crons: array_map(static fn($c) => (string) $c, (array) ($row['crons'] ?? [])),
+                        description: isset($row['description']) ? (string) $row['description'] : null,
+                        timezone: isset($row['timezone']) ? (string) $row['timezone'] : 'UTC',
+                        payload: $row['payload'] ?? null,
+                        concurrent: (bool) ($row['concurrent'] ?? false),
+                        tracksCompletion: (bool) ($row['tracksCompletion'] ?? false),
+                        timeoutSeconds: isset($row['timeoutSeconds']) ? (int) $row['timeoutSeconds'] : null,
+                        deliveryMaxAttempts: isset($row['deliveryMaxAttempts']) ? (int) $row['deliveryMaxAttempts'] : 3,
+                        targetUrl: isset($row['targetUrl']) ? (string) $row['targetUrl'] : null,
+                    ),
+                    $groupJobs,
+                );
+                $result = $this->client->scheduledJobs()->sync(
+                    applicationCode: $appCode,
+                    jobs: $entries,
+                    clientId: $clientId !== '' ? $clientId : null,
+                    archiveUnlisted: $removeUnlisted,
+                );
+
+                $created += count($result['created'] ?? []);
+                $updated += count($result['updated'] ?? []);
+                $deleted += count($result['archived'] ?? []);
+            } catch (\Exception $e) {
+                $errors[] = $e->getMessage();
+            }
+        }
+
+        $out = ['created' => $created, 'updated' => $updated, 'deleted' => $deleted];
+        if ($errors !== []) {
+            $out['error'] = implode('; ', $errors);
+        }
+        return $out;
     }
 
     /**

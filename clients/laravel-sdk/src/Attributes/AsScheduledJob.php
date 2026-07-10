@@ -14,7 +14,7 @@ use Attribute;
  * #[AsScheduledJob(
  *     code: 'nightly-report',
  *     name: 'Nightly Report',
- *     crons: ['0 2 * * *'],
+ *     crons: ['0 0 2 * * *'],
  *     timezone: 'Europe/London',
  *     description: 'Aggregate prior-day metrics and email to ops',
  *     concurrent: false,
@@ -27,11 +27,18 @@ use Attribute;
  * The application code is added from your config when synced — e.g. with
  * app code "orders" the platform stores this job as "orders:nightly-report".
  *
- * `crons` accepts standard 5-field expressions; `timezone` defaults to UTC
- * server-side when omitted. `concurrent` controls whether the platform
- * fires a new tick while a previous invocation is still running (default
- * false). `tracksCompletion` flips the platform from "webhook delivery is
- * the success signal" to "consumer POSTs to /complete when done".
+ * `crons` requires 6-field, seconds-first expressions (`sec min hour dom
+ * month dow`) — a standard 5-field cron passes validation but never fires.
+ * `timezone` defaults to UTC server-side when omitted. `concurrent` controls
+ * whether the platform fires a new tick while a previous invocation is
+ * still running (default false). `tracksCompletion` flips the platform
+ * from "webhook delivery is the success signal" to "consumer POSTs to
+ * /complete when done".
+ *
+ * `clientId` scopes the job to a client/tenant rather than the platform —
+ * omit it only for platform-wide jobs (anchor-only). This is a different
+ * axis from the application code: the application groups the job's code
+ * namespace, `clientId` controls who owns and can manage the job.
  */
 #[Attribute(Attribute::TARGET_CLASS)]
 final class AsScheduledJob
@@ -39,7 +46,7 @@ final class AsScheduledJob
     /**
      * @param string $code Short code (no `<app>:` prefix — added at sync time)
      * @param string $name Human-friendly label
-     * @param string[] $crons Standard 5-field cron expressions
+     * @param string[] $crons 6-field, seconds-first cron expressions
      * @param string|null $description Short summary
      * @param string|null $timezone IANA tz name (default UTC server-side)
      * @param array<string, mixed>|null $payload JSON payload sent to the consumer
@@ -48,6 +55,7 @@ final class AsScheduledJob
      * @param int|null $timeoutSeconds Per-invocation timeout
      * @param int|null $deliveryMaxAttempts Webhook delivery retries (default 3)
      * @param string|null $targetUrl Override the application's default callback URL
+     * @param string|null $clientId Client/tenant that owns this job. Null = platform-scoped (anchor only).
      */
     public function __construct(
         public readonly string $code,
@@ -61,6 +69,7 @@ final class AsScheduledJob
         public readonly ?int $timeoutSeconds = null,
         public readonly ?int $deliveryMaxAttempts = null,
         public readonly ?string $targetUrl = null,
+        public readonly ?string $clientId = null,
     ) {}
 
     /**
@@ -92,6 +101,9 @@ final class AsScheduledJob
         }
         if ($this->targetUrl !== null) {
             $data['targetUrl'] = $this->targetUrl;
+        }
+        if ($this->clientId !== null) {
+            $data['clientId'] = $this->clientId;
         }
         return $data;
     }
