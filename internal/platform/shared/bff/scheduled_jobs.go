@@ -191,7 +191,7 @@ func (s *ScheduledJobsState) listJobs(w http.ResponseWriter, r *http.Request) {
 		if !canViewJob(ac, j) {
 			continue
 		}
-		active, err := s.Instances.HasActiveInstance(r.Context(), j.ID)
+		active, err := s.Instances.HasActiveInstance(r.Context(), j.ID, j.TracksCompletion)
 		if err != nil {
 			httperror.Write(w, usecase.Internal("REPO", "has_active_instance failed", err))
 			return
@@ -235,7 +235,7 @@ func (s *ScheduledJobsState) getJob(w http.ResponseWriter, r *http.Request) {
 		httperror.Write(w, usecase.Internal("REPO", "application lookup failed", err))
 		return
 	}
-	active, err := s.Instances.HasActiveInstance(r.Context(), j.ID)
+	active, err := s.Instances.HasActiveInstance(r.Context(), j.ID, j.TracksCompletion)
 	if err != nil {
 		httperror.Write(w, usecase.Internal("REPO", "has_active_instance failed", err))
 		return

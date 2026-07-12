@@ -102,6 +102,8 @@ const (
 	// Developer (application OpenAPI documents)
 	permAppOpenApiSync   = "platform:developer:application-openapi:sync"
 	permAppOpenApiManage = "platform:developer:application-openapi:manage"
+	// Developer (self-service client_credentials API credential)
+	permDeveloperAPICredentialManage = "platform:developer:api-credential:manage"
 	// ServiceAccount (iam)
 	permServiceAccountView   = "platform:iam:service-account:view"
 	permServiceAccountCreate = "platform:iam:service-account:create"
@@ -581,6 +583,15 @@ func CanSyncDispatchPools(a *AuthContext) error {
 // or the application's own bound service account).
 func CanSyncApplicationOpenAPI(a *AuthContext) error {
 	return requireAny(a, permAppOpenApiSync, permAppOpenApiManage)
+}
+
+// CanManageOwnDeveloperCredential guards the self-service developer
+// client_credentials endpoints (set/rotate/revoke). Coarse permission at the
+// controller; the use case's Authorize phase enforces the resource-level
+// rule (caller may only target themselves, unless they're a user-admin
+// acting on someone else's credential via the Developer Users admin page).
+func CanManageOwnDeveloperCredential(a *AuthContext) error {
+	return requirePermission(a, permDeveloperAPICredentialManage)
 }
 
 // ── Service account permissions ──────────────────────────────────────────

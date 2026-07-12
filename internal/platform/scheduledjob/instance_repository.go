@@ -77,17 +77,24 @@ func (r *InstanceRepository) FindByID(ctx context.Context, id string) (*Schedule
 }
 
 // HasActiveInstance reports whether any instance of the supplied job is
-// in a non-terminal state (QUEUED / IN_FLIGHT / DELIVERED). Used by the
-// BFF "currently running" badge on the job list. Backed by a partial
+// in a non-terminal state: QUEUED / IN_FLIGHT always count; DELIVERED only
+// counts when the job tracks completion and that instance hasn't completed
+// yet (tracksCompletion is the caller's job.TracksCompletion — for jobs that
+// don't track completion, DELIVERED is itself terminal, so an old delivered
+// instance must not keep the "currently running" badge lit forever). Used
+// by the BFF "currently running" badge on the job list. Backed by a partial
 // index — see migration 021.
-func (r *InstanceRepository) HasActiveInstance(ctx context.Context, jobID string) (bool, error) {
+func (r *InstanceRepository) HasActiveInstance(ctx context.Context, jobID string, tracksCompletion bool) (bool, error) {
 	var exists bool
 	err := r.pool.QueryRow(ctx, `
 		SELECT EXISTS (
 			SELECT 1 FROM msg_scheduled_job_instances
 			WHERE scheduled_job_id = $1
-			  AND status IN ('QUEUED', 'IN_FLIGHT', 'DELIVERED')
-		)`, jobID).Scan(&exists)
+			  AND (
+			    status IN ('QUEUED', 'IN_FLIGHT')
+			    OR (status = 'DELIVERED' AND $2 AND completed_at IS NULL)
+			  )
+		)`, jobID, tracksCompletion).Scan(&exists)
 	if err != nil {
 		return false, fmt.Errorf("scheduled_job_instance has_active: %w", err)
 	}

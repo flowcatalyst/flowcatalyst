@@ -183,6 +183,11 @@ const (
 	permDeveloperApplicationOpenAPIView   = "platform:developer:application-openapi:view"
 	permDeveloperApplicationOpenAPISync   = "platform:developer:application-openapi:sync"
 	permDeveloperApplicationOpenAPIManage = "platform:developer:application-openapi:manage"
+	// permDeveloperAPICredentialManage gates self-service developer
+	// client_credentials tokens: create/rotate/revoke your OWN credential.
+	// Resource-level enforcement (self vs admin-on-behalf-of) lives in the
+	// use case's Authorize phase, not here.
+	permDeveloperAPICredentialManage = "platform:developer:api-credential:manage"
 )
 
 // Application-service permissions — scoped to a single application via SDK.

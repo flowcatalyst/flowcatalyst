@@ -33,6 +33,7 @@ import (
 	sharedauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
 // OAuthClientFinder resolves OAuth clients by their public client_id. It is
@@ -334,7 +335,21 @@ func (s *State) handleClientCredentialsGrant(w http.ResponseWriter, r *http.Requ
 		writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 		return
 	}
-	if client == nil || !client.Active {
+	if client == nil {
+		// No matching OAuth client. If client_id looks like a User principal's
+		// own id, try the self-service developer credential path — client_id =
+		// the principal's own id (tsid prefix prn_), client_secret = a
+		// dedicated, rotatable secret set via the Developer Users page /
+		// Profile (never the user's login password). Distinct prefixes
+		// (oac_ vs prn_) mean the two client_id spaces never collide.
+		if strings.HasPrefix(req.ClientID, tsid.Principal.Prefix()+"_") {
+			s.handleDeveloperCredentialGrant(w, r, req)
+			return
+		}
+		writeOAuthError(w, http.StatusUnauthorized, "invalid_client", "Invalid client credentials")
+		return
+	}
+	if !client.Active {
 		writeOAuthError(w, http.StatusUnauthorized, "invalid_client", "Invalid client credentials")
 		return
 	}
@@ -379,18 +394,80 @@ func (s *State) handleClientCredentialsGrant(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	s.mintClientCredentialsToken(w, r, p, req, loginattempt.AttemptServiceAccountToken,
+		"the service account's granted permissions")
+}
+
+// developerRoleName is the seeded role (internal/platform/seed/roles.go)
+// that gates the self-service developer client_credentials flow.
+const developerRoleName = "platform:developer"
+
+// handleDeveloperCredentialGrant is the principal-as-client_id branch of
+// client_credentials: client_id is a USER principal's own id, client_secret
+// is their dedicated developer secret (internal/platform/principal — set via
+// SetDeveloperCredential). The developer role is re-verified live here (not
+// just "does a secret exist") so revoking the role cuts off new tokens
+// immediately, independent of whether the secret row still exists.
+func (s *State) handleDeveloperCredentialGrant(w http.ResponseWriter, r *http.Request, req tokenRequest) {
+	p, err := s.Principals.FindByID(r.Context(), req.ClientID)
+	if err != nil {
+		writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
+		return
+	}
+	if p == nil || !p.Active || p.Type != principal.TypeUser {
+		writeOAuthError(w, http.StatusUnauthorized, "invalid_client", "Invalid client credentials")
+		return
+	}
+	hasDeveloperRole := false
+	for _, ra := range p.Roles {
+		if ra.Role == developerRoleName {
+			hasDeveloperRole = true
+			break
+		}
+	}
+	if !hasDeveloperRole {
+		writeOAuthError(w, http.StatusUnauthorized, "invalid_client", "Invalid client credentials")
+		return
+	}
+	if p.UserIdentity == nil || p.UserIdentity.DevClientSecretRef == nil {
+		writeOAuthError(w, http.StatusUnauthorized, "invalid_client", "Invalid client credentials")
+		return
+	}
+	if !s.verifyClientSecret(*p.UserIdentity.DevClientSecretRef, req.ClientSecret) {
+		reason := "Invalid developer client secret"
+		s.recordAttempt(r.Context(), loginattempt.AttemptDeveloperToken, loginattempt.OutcomeFailure, req.ClientID, &p.ID, &reason)
+		writeOAuthError(w, http.StatusUnauthorized, "invalid_client", "Invalid client credentials")
+		return
+	}
+
+	s.mintClientCredentialsToken(w, r, p, req, loginattempt.AttemptDeveloperToken,
+		"your granted permissions")
+}
+
+// mintClientCredentialsToken is the scope-computation + JWT-mint + response
+// tail shared by both client_credentials identity paths (OAuth client →
+// SERVICE principal, and the developer-credential → USER principal) — the
+// resulting AccessTokenClaims are structurally identical either way; only
+// the principal loaded (and hence its type/roles/permissions) differs.
+// deniedScopeSubject customises the invalid_scope message's tail
+// ("the service account's granted permissions" vs "your granted permissions").
+func (s *State) mintClientCredentialsToken(
+	w http.ResponseWriter, r *http.Request,
+	p *principal.Principal, req tokenRequest,
+	attemptType loginattempt.AttemptType, deniedScopeSubject string,
+) {
 	granted, explicit, err := s.grantedScope(r.Context(), p, req.Scope)
 	if err != nil {
 		writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 		return
 	}
 	if explicit && len(granted) == 0 {
-		// The client explicitly requested permission scopes but holds none of
+		// The caller explicitly requested permission scopes but holds none of
 		// them — a scope request can't escalate, so this is a client error.
 		reason := "requested scope exceeds granted permissions"
-		s.recordAttempt(r.Context(), loginattempt.AttemptServiceAccountToken, loginattempt.OutcomeFailure, req.ClientID, &p.ID, &reason)
+		s.recordAttempt(r.Context(), attemptType, loginattempt.OutcomeFailure, req.ClientID, &p.ID, &reason)
 		writeOAuthError(w, http.StatusBadRequest, "invalid_scope",
-			"Requested scope exceeds the service account's granted permissions")
+			"Requested scope exceeds "+deniedScopeSubject)
 		return
 	}
 	accessToken, err := s.Auth.GenerateAccessTokenWithScope(p, granted)
@@ -398,7 +475,7 @@ func (s *State) handleClientCredentialsGrant(w http.ResponseWriter, r *http.Requ
 		writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 		return
 	}
-	s.recordAttempt(r.Context(), loginattempt.AttemptServiceAccountToken, loginattempt.OutcomeSuccess, req.ClientID, &p.ID, nil)
+	s.recordAttempt(r.Context(), attemptType, loginattempt.OutcomeSuccess, req.ClientID, &p.ID, nil)
 	writeToken(w, tokenResponse{
 		AccessToken: accessToken,
 		TokenType:   "Bearer",

@@ -8,18 +8,20 @@ import (
 )
 
 const (
-	UserCreatedType         = "platform:iam:user:created"
-	UserUpdatedType         = "platform:iam:user:updated"
-	UserActivatedType       = "platform:iam:user:activated"
-	UserDeactivatedType     = "platform:iam:user:deactivated"
-	UserDeletedType         = "platform:iam:user:deleted"
-	UserPasswordResetType   = "platform:iam:user:password-reset-completed"
-	RolesAssignedType       = "platform:iam:user:roles-assigned"
-	ApplicationAccessType   = "platform:iam:user:application-access-assigned"
-	ClientAccessGrantedType = "platform:iam:user:client-access-granted"
-	ClientAccessRevokedType = "platform:iam:user:client-access-revoked"
-	PrincipalsSyncedType    = "platform:iam:principals:synced"
-	Source                  = "platform:iam"
+	UserCreatedType                = "platform:iam:user:created"
+	UserUpdatedType                = "platform:iam:user:updated"
+	UserActivatedType              = "platform:iam:user:activated"
+	UserDeactivatedType            = "platform:iam:user:deactivated"
+	UserDeletedType                = "platform:iam:user:deleted"
+	UserPasswordResetType          = "platform:iam:user:password-reset-completed"
+	RolesAssignedType              = "platform:iam:user:roles-assigned"
+	ApplicationAccessType          = "platform:iam:user:application-access-assigned"
+	ClientAccessGrantedType        = "platform:iam:user:client-access-granted"
+	ClientAccessRevokedType        = "platform:iam:user:client-access-revoked"
+	PrincipalsSyncedType           = "platform:iam:principals:synced"
+	DeveloperCredentialSetType     = "platform:iam:user:developer-credential-set"
+	DeveloperCredentialRevokedType = "platform:iam:user:developer-credential-revoked"
+	Source                         = "platform:iam"
 )
 
 func subjectFor(id string) string { return "platform.principal." + id }
@@ -195,6 +197,55 @@ func (e RolesAssigned) ToDataJSON() ([]byte, error) {
 		Added       []string `json:"added"`
 		Removed     []string `json:"removed"`
 	}{e.UserID, defaultEmpty(e.Roles), defaultEmpty(e.Added), defaultEmpty(e.Removed)})
+}
+
+// DeveloperCredentialSet — emitted when a user's self-service developer
+// client_credentials secret is created or rotated. Never carries the secret
+// itself (only ever returned once, out-of-band, via the process-local stash).
+type DeveloperCredentialSet struct {
+	Metadata usecase.EventMetadata
+	UserID   string
+}
+
+func (e DeveloperCredentialSet) EventID() string       { return e.Metadata.EventID }
+func (e DeveloperCredentialSet) EventType() string     { return DeveloperCredentialSetType }
+func (e DeveloperCredentialSet) SpecVersion() string   { return "1.0" }
+func (e DeveloperCredentialSet) Source() string        { return Source }
+func (e DeveloperCredentialSet) Subject() string       { return subjectFor(e.UserID) }
+func (e DeveloperCredentialSet) Time() time.Time       { return e.Metadata.OccurredAt }
+func (e DeveloperCredentialSet) PrincipalID() string   { return e.Metadata.PrincipalID }
+func (e DeveloperCredentialSet) CorrelationID() string { return e.Metadata.CorrelationID }
+func (e DeveloperCredentialSet) CausationID() string   { return e.Metadata.CausationID }
+func (e DeveloperCredentialSet) ExecutionID() string   { return e.Metadata.ExecutionID }
+func (e DeveloperCredentialSet) MessageGroup() string  { return groupFor(e.UserID) }
+func (e DeveloperCredentialSet) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		UserID string `json:"userId"`
+	}{e.UserID})
+}
+
+// DeveloperCredentialRevoked — emitted when a user's developer
+// client_credentials secret is cleared (role untouched).
+type DeveloperCredentialRevoked struct {
+	Metadata usecase.EventMetadata
+	UserID   string
+}
+
+func (e DeveloperCredentialRevoked) EventID() string       { return e.Metadata.EventID }
+func (e DeveloperCredentialRevoked) EventType() string     { return DeveloperCredentialRevokedType }
+func (e DeveloperCredentialRevoked) SpecVersion() string   { return "1.0" }
+func (e DeveloperCredentialRevoked) Source() string        { return Source }
+func (e DeveloperCredentialRevoked) Subject() string       { return subjectFor(e.UserID) }
+func (e DeveloperCredentialRevoked) Time() time.Time       { return e.Metadata.OccurredAt }
+func (e DeveloperCredentialRevoked) PrincipalID() string   { return e.Metadata.PrincipalID }
+func (e DeveloperCredentialRevoked) CorrelationID() string { return e.Metadata.CorrelationID }
+func (e DeveloperCredentialRevoked) CausationID() string   { return e.Metadata.CausationID }
+func (e DeveloperCredentialRevoked) ExecutionID() string   { return e.Metadata.ExecutionID }
+func (e DeveloperCredentialRevoked) MessageGroup() string  { return groupFor(e.UserID) }
+func (e DeveloperCredentialRevoked) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		UserID string `json:"userId"`
+	}{e.UserID})
 }
 
 // ApplicationAccessAssigned — emitted when the user's application-access

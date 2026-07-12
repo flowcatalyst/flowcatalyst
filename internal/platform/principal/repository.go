@@ -322,6 +322,25 @@ func (r *Repository) FindByServiceAccount(ctx context.Context, serviceAccountID 
 	return p, nil
 }
 
+// FindByRole lists every USER principal currently holding the given role
+// name (e.g. "developer"), with role assignments hydrated in bulk. Backs the
+// Developer Users admin page; generalises the previous hardcoded
+// FindClientAdminEmails query into a reusable role-membership lookup.
+func (r *Repository) FindByRole(ctx context.Context, roleName string) ([]Principal, error) {
+	rows, err := r.q.PrincipalFindByRole(ctx, roleName)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Principal, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, *rowToPrincipal(row))
+	}
+	if err := r.hydrateRolesAll(ctx, out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // FindAll lists every principal, with role assignments and granted-client
 // access hydrated in bulk (two `= ANY` queries total, not 2N). Without the
 // hydration every row in the list endpoint serialized `roles: []` /
@@ -427,6 +446,8 @@ func (r *Repository) Persist(ctx context.Context, p *Principal, tx *usecasepgx.D
 
 	var email, emailDomain, idpType, externalIdpID, passwordHash *string
 	var lastLoginAt *time.Time
+	var devClientSecretRef *string
+	var devClientSecretUpdatedAt *time.Time
 
 	if p.UserIdentity != nil {
 		// Normalise on the way to the DB: every write to the email column goes
@@ -451,6 +472,8 @@ func (r *Repository) Persist(ctx context.Context, p *Principal, tx *usecasepgx.D
 		if p.UserIdentity.LastLoginAt != nil {
 			lastLoginAt = p.UserIdentity.LastLoginAt
 		}
+		devClientSecretRef = p.UserIdentity.DevClientSecretRef
+		devClientSecretUpdatedAt = p.UserIdentity.DevClientSecretUpdatedAt
 	}
 	// USER without an explicit provider defaults to INTERNAL (matches Rust).
 	if idpType == nil && p.Type == TypeUser {
@@ -469,23 +492,25 @@ func (r *Repository) Persist(ctx context.Context, p *Principal, tx *usecasepgx.D
 
 	scope := string(p.Scope)
 	if err := r.q.WithTx(tx.Inner()).PrincipalUpsert(ctx, dbq.PrincipalUpsertParams{
-		ID:               p.ID,
-		Type:             string(p.Type),
-		Scope:            &scope,
-		ClientID:         p.ClientID,
-		ApplicationID:    p.ApplicationID,
-		Name:             p.Name,
-		Active:           p.Active,
-		Email:            email,
-		EmailDomain:      emailDomain,
-		IdpType:          idpType,
-		ExternalIdpID:    externalIdpID,
-		PasswordHash:     passwordHash,
-		LastLoginAt:      lastLoginAt,
-		ServiceAccountID: p.ServiceAccountID,
-		AllApplications:  p.AllApplications,
-		CreatedAt:        p.CreatedAt,
-		UpdatedAt:        now,
+		ID:                       p.ID,
+		Type:                     string(p.Type),
+		Scope:                    &scope,
+		ClientID:                 p.ClientID,
+		ApplicationID:            p.ApplicationID,
+		Name:                     p.Name,
+		Active:                   p.Active,
+		Email:                    email,
+		EmailDomain:              emailDomain,
+		IdpType:                  idpType,
+		ExternalIdpID:            externalIdpID,
+		PasswordHash:             passwordHash,
+		LastLoginAt:              lastLoginAt,
+		ServiceAccountID:         p.ServiceAccountID,
+		AllApplications:          p.AllApplications,
+		CreatedAt:                p.CreatedAt,
+		UpdatedAt:                now,
+		DevClientSecretRef:       devClientSecretRef,
+		DevClientSecretUpdatedAt: devClientSecretUpdatedAt,
 	}); err != nil {
 		return err
 	}
@@ -739,11 +764,13 @@ func rowToPrincipal(row dbq.IamPrincipal) *Principal {
 	}
 	if p.Type == TypeUser && row.Email != nil {
 		p.UserIdentity = &UserIdentity{
-			Email:        *row.Email,
-			ExternalID:   row.ExternalIdpID,
-			Provider:     row.IdpType,
-			PasswordHash: row.PasswordHash,
-			LastLoginAt:  row.LastLoginAt,
+			Email:                    *row.Email,
+			ExternalID:               row.ExternalIdpID,
+			Provider:                 row.IdpType,
+			PasswordHash:             row.PasswordHash,
+			LastLoginAt:              row.LastLoginAt,
+			DevClientSecretRef:       row.DevClientSecretRef,
+			DevClientSecretUpdatedAt: row.DevClientSecretUpdatedAt,
 		}
 	}
 	if row.ExternalIdpID != nil {

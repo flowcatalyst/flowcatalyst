@@ -160,9 +160,10 @@ func PlatformRoles() []role.Role {
 
 		// platform:developer
 		mk("developer", "Developer",
-			"Developer portal: API documentation + accessible event types",
+			"Developer portal: API documentation, accessible event types, and a self-service API credential for local testing",
 			[]string{
 				permDeveloperApplicationOpenAPIView,
+				permDeveloperAPICredentialManage,
 				permAdminEventTypeRead,
 				permAdminProcessRead, permAdminProcessCreate,
 				permAdminProcessUpdate, permAdminProcessDelete, permAdminProcessArchive,

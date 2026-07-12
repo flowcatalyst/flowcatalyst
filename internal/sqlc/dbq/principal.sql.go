@@ -44,7 +44,8 @@ func (q *Queries) PrincipalDelete(ctx context.Context, id string) error {
 const principalFindAll = `-- name: PrincipalFindAll :many
 SELECT id, type, scope, client_id, application_id, name, active,
        email, email_domain, idp_type, external_idp_id, password_hash,
-       last_login_at, service_account_id, created_at, updated_at, all_applications
+       last_login_at, service_account_id, created_at, updated_at, all_applications,
+       dev_client_secret_ref, dev_client_secret_updated_at
 FROM iam_principals
 ORDER BY created_at DESC
 `
@@ -76,6 +77,8 @@ func (q *Queries) PrincipalFindAll(ctx context.Context) ([]IamPrincipal, error) 
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.AllApplications,
+			&i.DevClientSecretRef,
+			&i.DevClientSecretUpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -90,7 +93,8 @@ func (q *Queries) PrincipalFindAll(ctx context.Context) ([]IamPrincipal, error) 
 const principalFindByEmail = `-- name: PrincipalFindByEmail :one
 SELECT id, type, scope, client_id, application_id, name, active,
        email, email_domain, idp_type, external_idp_id, password_hash,
-       last_login_at, service_account_id, created_at, updated_at, all_applications
+       last_login_at, service_account_id, created_at, updated_at, all_applications,
+       dev_client_secret_ref, dev_client_secret_updated_at
 FROM iam_principals
 WHERE type = 'USER' AND LOWER(email) = $1
 `
@@ -120,6 +124,8 @@ func (q *Queries) PrincipalFindByEmail(ctx context.Context, email *string) (IamP
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AllApplications,
+		&i.DevClientSecretRef,
+		&i.DevClientSecretUpdatedAt,
 	)
 	return i, err
 }
@@ -128,7 +134,8 @@ const principalFindByID = `-- name: PrincipalFindByID :one
 
 SELECT id, type, scope, client_id, application_id, name, active,
        email, email_domain, idp_type, external_idp_id, password_hash,
-       last_login_at, service_account_id, created_at, updated_at, all_applications
+       last_login_at, service_account_id, created_at, updated_at, all_applications,
+       dev_client_secret_ref, dev_client_secret_updated_at
 FROM iam_principals
 WHERE id = $1
 `
@@ -136,8 +143,13 @@ WHERE id = $1
 // Queries for iam_principals + junction tables.
 //
 // The schema stores user-identity fields as flat columns (email, email_domain,
-// idp_type, external_idp_id, password_hash, last_login_at) rather than the
-// JSONB blobs the Go entity carries. Mapping happens in repository.go.
+// idp_type, external_idp_id, password_hash, last_login_at, dev_client_secret_ref,
+// dev_client_secret_updated_at) rather than the JSONB blobs the Go entity
+// carries. Mapping happens in repository.go. Column order in every
+// SELECT/INSERT list must match the table's physical column order
+// (dev_client_secret_ref/dev_client_secret_updated_at last — appended by
+// migration 039's ALTER TABLE) so sqlc maps rows onto the shared
+// IamPrincipal model instead of generating a bespoke per-query Row type.
 func (q *Queries) PrincipalFindByID(ctx context.Context, id string) (IamPrincipal, error) {
 	row := q.db.QueryRow(ctx, principalFindByID, id)
 	var i IamPrincipal
@@ -159,14 +171,70 @@ func (q *Queries) PrincipalFindByID(ctx context.Context, id string) (IamPrincipa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AllApplications,
+		&i.DevClientSecretRef,
+		&i.DevClientSecretUpdatedAt,
 	)
 	return i, err
+}
+
+const principalFindByRole = `-- name: PrincipalFindByRole :many
+SELECT p.id, p.type, p.scope, p.client_id, p.application_id, p.name, p.active,
+       p.email, p.email_domain, p.idp_type, p.external_idp_id, p.password_hash,
+       p.last_login_at, p.service_account_id, p.created_at, p.updated_at, p.all_applications,
+       p.dev_client_secret_ref, p.dev_client_secret_updated_at
+FROM iam_principals p
+JOIN iam_principal_roles pr ON pr.principal_id = p.id
+WHERE pr.role_name = $1
+ORDER BY p.name
+`
+
+// Backs the Developer Users admin page (generalises the previous
+// hardcoded-to-platform:client-admin FindClientAdminEmails query).
+func (q *Queries) PrincipalFindByRole(ctx context.Context, roleName string) ([]IamPrincipal, error) {
+	rows, err := q.db.Query(ctx, principalFindByRole, roleName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []IamPrincipal{}
+	for rows.Next() {
+		var i IamPrincipal
+		if err := rows.Scan(
+			&i.ID,
+			&i.Type,
+			&i.Scope,
+			&i.ClientID,
+			&i.ApplicationID,
+			&i.Name,
+			&i.Active,
+			&i.Email,
+			&i.EmailDomain,
+			&i.IdpType,
+			&i.ExternalIdpID,
+			&i.PasswordHash,
+			&i.LastLoginAt,
+			&i.ServiceAccountID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.AllApplications,
+			&i.DevClientSecretRef,
+			&i.DevClientSecretUpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const principalFindByServiceAccount = `-- name: PrincipalFindByServiceAccount :one
 SELECT id, type, scope, client_id, application_id, name, active,
        email, email_domain, idp_type, external_idp_id, password_hash,
-       last_login_at, service_account_id, created_at, updated_at, all_applications
+       last_login_at, service_account_id, created_at, updated_at, all_applications,
+       dev_client_secret_ref, dev_client_secret_updated_at
 FROM iam_principals
 WHERE type = 'SERVICE' AND service_account_id = $1
 `
@@ -192,6 +260,8 @@ func (q *Queries) PrincipalFindByServiceAccount(ctx context.Context, serviceAcco
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AllApplications,
+		&i.DevClientSecretRef,
+		&i.DevClientSecretUpdatedAt,
 	)
 	return i, err
 }
@@ -200,8 +270,9 @@ const principalUpsert = `-- name: PrincipalUpsert :exec
 INSERT INTO iam_principals
     (id, type, scope, client_id, application_id, name, active,
      email, email_domain, idp_type, external_idp_id, password_hash,
-     last_login_at, service_account_id, all_applications, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+     last_login_at, service_account_id, all_applications, created_at, updated_at,
+     dev_client_secret_ref, dev_client_secret_updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
 ON CONFLICT (id) DO UPDATE SET
     type = EXCLUDED.type,
     scope = EXCLUDED.scope,
@@ -217,27 +288,31 @@ ON CONFLICT (id) DO UPDATE SET
     last_login_at = EXCLUDED.last_login_at,
     service_account_id = EXCLUDED.service_account_id,
     all_applications = EXCLUDED.all_applications,
-    updated_at = EXCLUDED.updated_at
+    updated_at = EXCLUDED.updated_at,
+    dev_client_secret_ref = EXCLUDED.dev_client_secret_ref,
+    dev_client_secret_updated_at = EXCLUDED.dev_client_secret_updated_at
 `
 
 type PrincipalUpsertParams struct {
-	ID               string     `db:"id"`
-	Type             string     `db:"type"`
-	Scope            *string    `db:"scope"`
-	ClientID         *string    `db:"client_id"`
-	ApplicationID    *string    `db:"application_id"`
-	Name             string     `db:"name"`
-	Active           bool       `db:"active"`
-	Email            *string    `db:"email"`
-	EmailDomain      *string    `db:"email_domain"`
-	IdpType          *string    `db:"idp_type"`
-	ExternalIdpID    *string    `db:"external_idp_id"`
-	PasswordHash     *string    `db:"password_hash"`
-	LastLoginAt      *time.Time `db:"last_login_at"`
-	ServiceAccountID *string    `db:"service_account_id"`
-	AllApplications  bool       `db:"all_applications"`
-	CreatedAt        time.Time  `db:"created_at"`
-	UpdatedAt        time.Time  `db:"updated_at"`
+	ID                       string     `db:"id"`
+	Type                     string     `db:"type"`
+	Scope                    *string    `db:"scope"`
+	ClientID                 *string    `db:"client_id"`
+	ApplicationID            *string    `db:"application_id"`
+	Name                     string     `db:"name"`
+	Active                   bool       `db:"active"`
+	Email                    *string    `db:"email"`
+	EmailDomain              *string    `db:"email_domain"`
+	IdpType                  *string    `db:"idp_type"`
+	ExternalIdpID            *string    `db:"external_idp_id"`
+	PasswordHash             *string    `db:"password_hash"`
+	LastLoginAt              *time.Time `db:"last_login_at"`
+	ServiceAccountID         *string    `db:"service_account_id"`
+	AllApplications          bool       `db:"all_applications"`
+	CreatedAt                time.Time  `db:"created_at"`
+	UpdatedAt                time.Time  `db:"updated_at"`
+	DevClientSecretRef       *string    `db:"dev_client_secret_ref"`
+	DevClientSecretUpdatedAt *time.Time `db:"dev_client_secret_updated_at"`
 }
 
 func (q *Queries) PrincipalUpsert(ctx context.Context, arg PrincipalUpsertParams) error {
@@ -259,6 +334,8 @@ func (q *Queries) PrincipalUpsert(ctx context.Context, arg PrincipalUpsertParams
 		arg.AllApplications,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.DevClientSecretRef,
+		arg.DevClientSecretUpdatedAt,
 	)
 	return err
 }

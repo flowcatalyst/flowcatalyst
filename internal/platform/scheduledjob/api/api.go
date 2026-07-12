@@ -95,7 +95,7 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[apicomm
 	out := make([]ScheduledJobResponse, 0, len(rows))
 	for i := range rows {
 		resp := fromEntity(&rows[i])
-		if active, err := s.Instances.HasActiveInstance(ctx, rows[i].ID); err == nil {
+		if active, err := s.Instances.HasActiveInstance(ctx, rows[i].ID, rows[i].TracksCompletion); err == nil {
 			resp.HasActiveInstance = active
 		}
 		out = append(out, resp)
@@ -120,7 +120,7 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 		return nil, httperror.Forbidden("No access to this scheduled job")
 	}
 	resp := fromEntity(j)
-	if active, err := s.Instances.HasActiveInstance(ctx, j.ID); err == nil {
+	if active, err := s.Instances.HasActiveInstance(ctx, j.ID, j.TracksCompletion); err == nil {
 		resp.HasActiveInstance = active
 	}
 	return &apicommon.Out[ScheduledJobResponse]{Body: resp}, nil
@@ -264,7 +264,7 @@ func (s *State) getByCode(ctx context.Context, in *byCodeInput) (*apicommon.Out[
 		return nil, httperror.Forbidden("No access to this scheduled job")
 	}
 	resp := fromEntity(j)
-	if active, err := s.Instances.HasActiveInstance(ctx, j.ID); err == nil {
+	if active, err := s.Instances.HasActiveInstance(ctx, j.ID, j.TracksCompletion); err == nil {
 		resp.HasActiveInstance = active
 	}
 	return &apicommon.Out[ScheduledJobResponse]{Body: resp}, nil

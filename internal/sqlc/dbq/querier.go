@@ -216,9 +216,17 @@ type Querier interface {
 	// Queries for iam_principals + junction tables.
 	//
 	// The schema stores user-identity fields as flat columns (email, email_domain,
-	// idp_type, external_idp_id, password_hash, last_login_at) rather than the
-	// JSONB blobs the Go entity carries. Mapping happens in repository.go.
+	// idp_type, external_idp_id, password_hash, last_login_at, dev_client_secret_ref,
+	// dev_client_secret_updated_at) rather than the JSONB blobs the Go entity
+	// carries. Mapping happens in repository.go. Column order in every
+	// SELECT/INSERT list must match the table's physical column order
+	// (dev_client_secret_ref/dev_client_secret_updated_at last — appended by
+	// migration 039's ALTER TABLE) so sqlc maps rows onto the shared
+	// IamPrincipal model instead of generating a bespoke per-query Row type.
 	PrincipalFindByID(ctx context.Context, id string) (IamPrincipal, error)
+	// Backs the Developer Users admin page (generalises the previous
+	// hardcoded-to-platform:client-admin FindClientAdminEmails query).
+	PrincipalFindByRole(ctx context.Context, roleName string) ([]IamPrincipal, error)
 	PrincipalFindByServiceAccount(ctx context.Context, serviceAccountID *string) (IamPrincipal, error)
 	PrincipalUpsert(ctx context.Context, arg PrincipalUpsertParams) error
 	ProcessDelete(ctx context.Context, id string) error

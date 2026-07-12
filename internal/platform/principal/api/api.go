@@ -109,7 +109,15 @@ func Register(api huma.API, s *State) {
 	apiroute.Post(g, "grantPrincipalClientAccess", "/api/principals/{id}/client-access", "Grant a client-access for a principal", http.StatusOK, s.grantClientAccess)
 	apiroute.Delete(g, "revokePrincipalClientAccess", "/api/principals/{id}/client-access/{clientId}", "Revoke a client-access grant", http.StatusNoContent, s.revokeClientAccess)
 	apiroute.Put(g, "setPrincipalClientAssociation", "/api/principals/{id}/client-association", "Change a principal's scope/client association (anchor-gated)", http.StatusOK, s.setClientAssociation)
+	apiroute.Get(g, "listDeveloperUsers", "/api/principals/developer-users", "List USER principals holding the developer role", s.listDeveloperUsers)
+	apiroute.Post(g, "setPrincipalDeveloperCredential", "/api/principals/{id}/developer-credential", "Create or rotate a principal's self-service developer API credential", http.StatusOK, s.setDeveloperCredential)
+	apiroute.Delete(g, "revokePrincipalDeveloperCredential", "/api/principals/{id}/developer-credential", "Revoke a principal's self-service developer API credential", http.StatusNoContent, s.revokeDeveloperCredential)
 }
+
+// developerRoleName is the seeded role (internal/platform/seed/roles.go)
+// that gates the self-service developer client_credentials flow — matches
+// the literal duplicated in principal/operations and oauthapi.
+const developerRoleName = "platform:developer"
 
 // listInput carries the filter / sort / pagination query params for
 // GET /api/principals. Every field is optional; an absent param means
@@ -282,10 +290,17 @@ func paginate(ps []*principal.Principal, page, pageSize int) []*principal.Princi
 	return ps[start:end]
 }
 
+// getByID returns a single principal. Any authenticated principal may read
+// its OWN record (mirrors getVersion's self-bypass below — e.g. the Profile
+// page's developer-credential status needs this without granting a plain
+// developer CanReadPrincipals); reading anyone else's requires that permission.
 func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[PrincipalResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanReadPrincipals(ac); err != nil {
-		return nil, err
+	isSelf := ac != nil && ac.PrincipalID == in.ID
+	if !isSelf {
+		if err := auth.CanReadPrincipals(ac); err != nil {
+			return nil, err
+		}
 	}
 	p, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
@@ -294,7 +309,7 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	if p == nil {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
-	if p.ClientID != nil && !ac.CanAccessClient(*p.ClientID) {
+	if !isSelf && p.ClientID != nil && !ac.CanAccessClient(*p.ClientID) {
 		return nil, httperror.Forbidden("No access to this principal")
 	}
 	return &apicommon.Out[PrincipalResponse]{Body: fromEntity(p)}, nil
@@ -1155,6 +1170,61 @@ func (s *State) revokeClientAccess(ctx context.Context, in *revokeClientAccessIn
 	ec := auth.NewExecutionContext(ctx)
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.RevokeClientAccess(s.Repo, s.GrantRepo),
 		operations.RevokeClientAccessCommand{UserID: in.ID, ClientID: in.ClientID}, ec); err != nil {
+		return nil, err
+	}
+	return &apicommon.Empty{}, nil
+}
+
+// ── developer API credentials (self-service client_credentials) ─────────
+
+// listDeveloperUsers backs the Developer Users admin page: every USER
+// principal currently holding the developer role, so an admin can grant the
+// role to more users and manage existing developers' credentials. Gated the
+// same as the general principal list (CanReadPrincipals) — set/revoke on a
+// specific user go through the self-or-admin use cases below, not this read.
+func (s *State) listDeveloperUsers(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[DeveloperUserListResponse], error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanReadPrincipals(ac); err != nil {
+		return nil, err
+	}
+	rows, err := s.Repo.FindByRole(ctx, developerRoleName)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_role failed", err)
+	}
+	out := make([]PrincipalResponse, 0, len(rows))
+	for i := range rows {
+		out = append(out, fromEntity(&rows[i]))
+	}
+	return &apicommon.Out[DeveloperUserListResponse]{Body: DeveloperUserListResponse{Principals: out, Total: len(out)}}, nil
+}
+
+// setDeveloperCredential creates or rotates the target principal's
+// self-service developer client_credentials secret. No coarse permission
+// check here — mirrors assignRoles: the SetDeveloperCredential use case's
+// requireSelfOrUserAdmin enforces self-or-admin post-load (a caller acting on
+// their own id needs only the developer role; a caller acting on someone
+// else's id needs user-admin rights over that principal's client).
+func (s *State) setDeveloperCredential(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[SetDeveloperCredentialResponse], error) {
+	ec := auth.NewExecutionContext(ctx)
+	ev, err := usecaseop.Run(ctx, s.UoW, operations.SetDeveloperCredential(s.Repo),
+		operations.SetDeveloperCredentialCommand{PrincipalID: in.ID}, ec)
+	if err != nil {
+		return nil, err
+	}
+	resp := SetDeveloperCredentialResponse{ID: ev.UserID}
+	if secret, ok := operations.PopDevClientSecret(ev.UserID); ok {
+		resp.ClientSecret = secret
+	}
+	return &apicommon.Out[SetDeveloperCredentialResponse]{Body: resp}, nil
+}
+
+// revokeDeveloperCredential clears the target principal's developer
+// client_credentials secret without touching their role assignment. Same
+// self-or-admin shape as setDeveloperCredential.
+func (s *State) revokeDeveloperCredential(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.RevokeDeveloperCredential(s.Repo),
+		operations.RevokeDeveloperCredentialCommand{PrincipalID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil

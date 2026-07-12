@@ -186,23 +186,25 @@ type IamPermission struct {
 }
 
 type IamPrincipal struct {
-	ID               string     `db:"id"`
-	Type             string     `db:"type"`
-	Scope            *string    `db:"scope"`
-	ClientID         *string    `db:"client_id"`
-	ApplicationID    *string    `db:"application_id"`
-	Name             string     `db:"name"`
-	Active           bool       `db:"active"`
-	Email            *string    `db:"email"`
-	EmailDomain      *string    `db:"email_domain"`
-	IdpType          *string    `db:"idp_type"`
-	ExternalIdpID    *string    `db:"external_idp_id"`
-	PasswordHash     *string    `db:"password_hash"`
-	LastLoginAt      *time.Time `db:"last_login_at"`
-	ServiceAccountID *string    `db:"service_account_id"`
-	CreatedAt        time.Time  `db:"created_at"`
-	UpdatedAt        time.Time  `db:"updated_at"`
-	AllApplications  bool       `db:"all_applications"`
+	ID                       string     `db:"id"`
+	Type                     string     `db:"type"`
+	Scope                    *string    `db:"scope"`
+	ClientID                 *string    `db:"client_id"`
+	ApplicationID            *string    `db:"application_id"`
+	Name                     string     `db:"name"`
+	Active                   bool       `db:"active"`
+	Email                    *string    `db:"email"`
+	EmailDomain              *string    `db:"email_domain"`
+	IdpType                  *string    `db:"idp_type"`
+	ExternalIdpID            *string    `db:"external_idp_id"`
+	PasswordHash             *string    `db:"password_hash"`
+	LastLoginAt              *time.Time `db:"last_login_at"`
+	ServiceAccountID         *string    `db:"service_account_id"`
+	CreatedAt                time.Time  `db:"created_at"`
+	UpdatedAt                time.Time  `db:"updated_at"`
+	AllApplications          bool       `db:"all_applications"`
+	DevClientSecretRef       *string    `db:"dev_client_secret_ref"`
+	DevClientSecretUpdatedAt *time.Time `db:"dev_client_secret_updated_at"`
 }
 
 type IamPrincipalApplicationAccess struct {

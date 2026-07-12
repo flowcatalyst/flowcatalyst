@@ -134,6 +134,11 @@ type PrincipalResponse struct {
 	GrantedClientIDs []string        `json:"grantedClientIds"`
 	CreatedAt        httpcompat.Time `json:"createdAt"`
 	UpdatedAt        httpcompat.Time `json:"updatedAt"`
+	// HasDeveloperCredential/DeveloperCredentialUpdatedAt describe the
+	// self-service client_credentials secret — never the secret itself,
+	// which is only ever returned once at set/rotate time.
+	HasDeveloperCredential       bool             `json:"hasDeveloperCredential"`
+	DeveloperCredentialUpdatedAt *httpcompat.Time `json:"developerCredentialUpdatedAt,omitempty"`
 }
 
 // PrincipalVersionResponse is the wire body for
@@ -169,20 +174,31 @@ func fromEntity(p *principal.Principal) PrincipalResponse {
 	if granted == nil {
 		granted = []string{}
 	}
+	var hasDevCred bool
+	var devCredUpdatedAt *httpcompat.Time
+	if p.UserIdentity != nil && p.UserIdentity.DevClientSecretRef != nil {
+		hasDevCred = true
+		if p.UserIdentity.DevClientSecretUpdatedAt != nil {
+			v := jsontime.New(*p.UserIdentity.DevClientSecretUpdatedAt)
+			devCredUpdatedAt = &v
+		}
+	}
 	return PrincipalResponse{
-		ID:               p.ID,
-		Type:             string(p.Type),
-		Scope:            string(p.Scope),
-		ClientID:         p.ClientID,
-		Name:             p.Name,
-		Active:           p.Active,
-		Email:            email,
-		IdpType:          idpType,
-		Roles:            roles,
-		IsAnchorUser:     p.Scope.IsAnchor(),
-		GrantedClientIDs: granted,
-		CreatedAt:        jsontime.New(p.CreatedAt),
-		UpdatedAt:        jsontime.New(p.UpdatedAt),
+		ID:                           p.ID,
+		Type:                         string(p.Type),
+		Scope:                        string(p.Scope),
+		ClientID:                     p.ClientID,
+		Name:                         p.Name,
+		Active:                       p.Active,
+		Email:                        email,
+		IdpType:                      idpType,
+		Roles:                        roles,
+		IsAnchorUser:                 p.Scope.IsAnchor(),
+		GrantedClientIDs:             granted,
+		CreatedAt:                    jsontime.New(p.CreatedAt),
+		UpdatedAt:                    jsontime.New(p.UpdatedAt),
+		HasDeveloperCredential:       hasDevCred,
+		DeveloperCredentialUpdatedAt: devCredUpdatedAt,
 	}
 }
 
@@ -193,6 +209,22 @@ func fromEntity(p *principal.Principal) PrincipalResponse {
 type PrincipalListResponse struct {
 	Principals []PrincipalResponse `json:"principals"`
 	Total      int                 `json:"total"`
+}
+
+// DeveloperUserListResponse is the wire shape for
+// GET /api/principals/developer-users — every USER principal currently
+// holding the developer role, for the Developer Users admin page.
+type DeveloperUserListResponse struct {
+	Principals []PrincipalResponse `json:"principals"`
+	Total      int                 `json:"total"`
+}
+
+// SetDeveloperCredentialResponse is the wire shape for
+// POST /api/principals/{id}/developer-credential. The plaintext client
+// secret is only ever returned once, at set/rotate time — never again.
+type SetDeveloperCredentialResponse struct {
+	ID           string `json:"id"`
+	ClientSecret string `json:"clientSecret,omitempty"`
 }
 
 // ClientAccessGrantResponse is the wire shape for a single client-access

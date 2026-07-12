@@ -25,14 +25,24 @@ type AttemptType string
 const (
 	AttemptUserLogin           AttemptType = "USER_LOGIN"
 	AttemptServiceAccountToken AttemptType = "SERVICE_ACCOUNT_TOKEN"
+	// AttemptDeveloperToken is a client_credentials grant using a USER
+	// principal's self-service developer credential (client_id = the
+	// principal's own id) — kept distinct from AttemptServiceAccountToken so
+	// the audit trail doesn't blur a human's own token minting with actual
+	// service-account activity.
+	AttemptDeveloperToken AttemptType = "DEVELOPER_TOKEN"
 )
 
 // ParseAttemptType is the lenient parser. Unknown → USER_LOGIN.
 func ParseAttemptType(s string) AttemptType {
-	if s == string(AttemptServiceAccountToken) {
+	switch s {
+	case string(AttemptServiceAccountToken):
 		return AttemptServiceAccountToken
+	case string(AttemptDeveloperToken):
+		return AttemptDeveloperToken
+	default:
+		return AttemptUserLogin
 	}
-	return AttemptUserLogin
 }
 
 // Outcome is success/failure.

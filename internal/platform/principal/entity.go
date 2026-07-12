@@ -91,6 +91,11 @@ type UserIdentity struct {
 	Provider      *string    `json:"provider,omitempty"`
 	PasswordHash  *string    `json:"passwordHash,omitempty"`
 	LastLoginAt   *time.Time `json:"lastLoginAt,omitempty"`
+	// DevClientSecretRef is the encrypted client_credentials secret for the
+	// self-service developer-token flow — distinct from PasswordHash, never
+	// used for interactive login. Nil = no developer credential set.
+	DevClientSecretRef       *string    `json:"-"`
+	DevClientSecretUpdatedAt *time.Time `json:"devClientSecretUpdatedAt,omitempty"`
 }
 
 // NewUserIdentity builds an empty identity with the supplied email.
@@ -211,4 +216,32 @@ func (p *Principal) SetPasswordHash(hash string) {
 	}
 	p.UserIdentity.PasswordHash = &hash
 	p.UpdatedAt = time.Now().UTC()
+}
+
+// SetDevClientSecretRef sets (or rotates) the encrypted developer
+// client_credentials secret ref.
+func (p *Principal) SetDevClientSecretRef(ref string) {
+	if p.UserIdentity == nil {
+		p.UserIdentity = NewUserIdentity("")
+	}
+	now := time.Now().UTC()
+	p.UserIdentity.DevClientSecretRef = &ref
+	p.UserIdentity.DevClientSecretUpdatedAt = &now
+	p.UpdatedAt = now
+}
+
+// ClearDevClientSecretRef revokes the developer client_credentials secret.
+func (p *Principal) ClearDevClientSecretRef() {
+	if p.UserIdentity == nil {
+		return
+	}
+	p.UserIdentity.DevClientSecretRef = nil
+	p.UserIdentity.DevClientSecretUpdatedAt = nil
+	p.UpdatedAt = time.Now().UTC()
+}
+
+// HasDevClientSecret reports whether a developer client_credentials secret
+// is currently set.
+func (p *Principal) HasDevClientSecret() bool {
+	return p.UserIdentity != nil && p.UserIdentity.DevClientSecretRef != nil
 }

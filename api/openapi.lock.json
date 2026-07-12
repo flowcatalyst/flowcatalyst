@@ -3000,6 +3000,35 @@
         ],
         "type": "object"
       },
+      "DeveloperUserListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/DeveloperUserListResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "principals": {
+            "items": {
+              "$ref": "#/components/schemas/PrincipalResponse"
+            },
+            "type": "array"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "principals",
+          "total"
+        ],
+        "type": "object"
+      },
       "DispatchJobFilterOptionsResponse": {
         "additionalProperties": false,
         "properties": {
@@ -4681,6 +4710,10 @@
             "format": "date-time",
             "type": "string"
           },
+          "developerCredentialUpdatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
           "email": {
             "type": "string"
           },
@@ -4689,6 +4722,9 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "hasDeveloperCredential": {
+            "type": "boolean"
           },
           "id": {
             "type": "string"
@@ -4729,7 +4765,8 @@
           "isAnchorUser",
           "grantedClientIds",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "hasDeveloperCredential"
         ],
         "type": "object"
       },
@@ -6089,6 +6126,30 @@
           "added",
           "removed",
           "allApplications"
+        ],
+        "type": "object"
+      },
+      "SetDeveloperCredentialResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SetDeveloperCredentialResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "clientSecret": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
         ],
         "type": "object"
       },
@@ -14832,6 +14893,37 @@
         ]
       }
     },
+    "/api/principals/developer-users": {
+      "get": {
+        "operationId": "listDeveloperUsers",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeveloperUserListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List USER principals holding the developer role",
+        "tags": [
+          "principals"
+        ]
+      }
+    },
     "/api/principals/sync": {
       "post": {
         "operationId": "syncUsers",
@@ -15427,6 +15519,79 @@
           }
         },
         "summary": "Deactivate a principal",
+        "tags": [
+          "principals"
+        ]
+      }
+    },
+    "/api/principals/{id}/developer-credential": {
+      "delete": {
+        "operationId": "revokePrincipalDeveloperCredential",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Revoke a principal's self-service developer API credential",
+        "tags": [
+          "principals"
+        ]
+      },
+      "post": {
+        "operationId": "setPrincipalDeveloperCredential",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetDeveloperCredentialResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Create or rotate a principal's self-service developer API credential",
         "tags": [
           "principals"
         ]
