@@ -256,15 +256,13 @@ func (m *Manager) UpdatePool(code string, concurrency uint32, rateLimitPerMinute
 }
 
 // route handles one poll batch from a consumer (1:1 with Rust route_batch).
-// It assigns the batch id, ACK-drops external-requeue duplicates, then routes
-// each message to the pool named by its pool_code (DEFAULT-POOL fallback) and
-// submits it. ack/nack of the eventual outcome is the pool's job, against the
-// message's source consumer.
-//
-// Note: Rust's Phase-0 "pending-delete" (re-ACK of a message that was
-// processed but whose ACK failed) is handled at the consumer level here, not
-// in route(). Broker-redelivery dedup is handled at process time in
-// pool.processOne (functionally equivalent to Rust's route-time check).
+// It assigns the batch id, registers each message with the in-flight tracker
+// (claiming pipeline ownership BEFORE buffering/dispatch, so ordered-group
+// buffering windows dedupe too), drops broker redeliveries and ACK-drops
+// external-requeue duplicates, then routes each surviving message to the pool
+// named by its pool_code (DEFAULT-POOL fallback) and submits it. ack/nack of
+// the eventual outcome is the pool's job, against the message's source
+// consumer.
 func (m *Manager) route(ctx context.Context, msgs []common.QueuedMessage, source queue.Consumer) {
 	if len(msgs) == 0 {
 		return
@@ -275,35 +273,59 @@ func (m *Manager) route(ctx context.Context, msgs []common.QueuedMessage, source
 		msg := msgs[i]
 		msg.BatchID = batchID
 
-		// R3: broker redelivery of an in-flight message — the SAME broker
-		// MessageId is already being processed or retried in-pipeline (e.g. an
-		// SQS visibility-timeout redelivery of a message the pool is backing
-		// off on). Swap the freshest receipt handle onto the in-flight entry
-		// (so the eventual ACK/DeleteMessage uses a valid handle) and DROP this
-		// copy. There is nothing to release — SQS Nack is a no-op — so dropping
-		// it is correct; the original copy still owns the work.
-		if m.tracker != nil && m.tracker.SwapReceiptIfInFlight(msg.BrokerMessageID, msg.ReceiptHandle) {
-			slog.Debug("broker redelivery of in-flight message; swapped receipt handle, dropped copy",
-				"msg", msg.Message.ID, "queue", source.Identifier())
-			continue
-		}
+		if m.tracker != nil {
+			im := common.NewInFlightMessage(&msg.Message, msg.BrokerMessageID, msg.QueueIdentifier, msg.BatchID, msg.ReceiptHandle)
+			switch m.tracker.Register(im) {
+			case RegisterRedelivery:
+				// A copy of a message already in the pipeline (processing,
+				// retrying, or buffered in an ordered group). The owner adopted
+				// this fresher receipt handle; drop this copy — nothing to
+				// release, SQS Nack is a no-op. If the owner sits in an ordered
+				// group whose drainer died with its consumer (restart /
+				// reconfigure), this redelivery is the resume signal: kick the
+				// group so a fresh drainer picks the buffer back up.
+				slog.Debug("broker redelivery of in-flight message; swapped receipt handle, dropped copy",
+					"msg", msg.Message.ID, "queue", source.Identifier())
+				if msg.Message.DispatchMode.RequiresOrdering() {
+					if pool := m.poolByCode(msg.Message.PoolCode); pool != nil {
+						group := ""
+						if msg.Message.MessageGroupID != nil {
+							group = *msg.Message.MessageGroupID
+						}
+						pool.tryDrainGroup(ctx, group)
+					}
+				}
+				continue
 
-		// R4: external-requeue dedup — the same application message ID is
-		// already in flight under a DIFFERENT broker id (an external process
-		// requeued a message stuck in QUEUED). ACK this copy to remove it.
-		if m.tracker != nil && m.tracker.IsExternalRequeue(msg.Message.ID, msg.BrokerMessageID) {
-			slog.Info("external requeue detected; ACKing duplicate", "msg", msg.Message.ID, "queue", source.Identifier())
-			if err := source.Ack(ctx, msg.ReceiptHandle); err != nil {
-				slog.Warn("ack (external requeue) failed", "msg", msg.Message.ID, "err", err)
+			case RegisterExternalRequeue:
+				// The same application message ID is in flight under a
+				// DIFFERENT broker id: an external process requeued a message
+				// it thought was lost while the original still owns the work.
+				// ACK this copy so the duplicate is DELETED from the broker —
+				// otherwise it redelivers forever. The owner's entry (and
+				// receipt handle) was deliberately left untouched.
+				slog.Info("external requeue detected; ACKing duplicate", "msg", msg.Message.ID, "queue", source.Identifier())
+				if err := source.Ack(ctx, msg.ReceiptHandle); err != nil {
+					slog.Warn("ack (external requeue) failed", "msg", msg.Message.ID, "err", err)
+				}
+				continue
+
+			case RegisterNew:
+				// This copy owns the pipeline; fall through to submit.
 			}
-			continue
 		}
 
 		pool := m.poolForMessage(msg)
 		if pool == nil {
 			// No pool at all (not even DEFAULT-POOL configured) — NACK so the
-			// message is redelivered once a pool exists.
+			// message is redelivered once a pool exists. It is leaving the
+			// pipeline, so release its just-claimed tracker entry; a lingering
+			// entry would classify every future redelivery as a duplicate and
+			// the message would never be processed.
 			slog.Warn("no pool available for message; nacking", "msg", msg.Message.ID, "pool_code", msg.Message.PoolCode)
+			if m.tracker != nil {
+				m.tracker.Remove(msg.Message.ID, msg.BrokerMessageID)
+			}
 			if err := source.Nack(ctx, msg.ReceiptHandle, ptrU32(5)); err != nil {
 				slog.Warn("nack (no pool) failed", "msg", msg.Message.ID, "err", err)
 			}
@@ -311,6 +333,20 @@ func (m *Manager) route(ctx context.Context, msgs []common.QueuedMessage, source
 		}
 		pool.submit(ctx, msg)
 	}
+}
+
+// poolByCode resolves a pool by code with the DEFAULT-POOL fallback, without
+// the routing warning poolForMessage emits — used on the redelivery-resume
+// path, which fires repeatedly for the same message.
+func (m *Manager) poolByCode(code string) *Pool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if code != "" {
+		if p, ok := m.pools[code]; ok {
+			return p
+		}
+	}
+	return m.pools[defaultPoolCode]
 }
 
 // poolForMessage resolves the destination pool for a message: the pool named

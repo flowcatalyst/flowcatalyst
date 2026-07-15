@@ -83,9 +83,16 @@ type InFlightMessage struct {
 	PoolCode        string
 	QueueIdentifier string
 	StartedAt       time.Time
-	MessageGroupID  string
-	BatchID         string
-	ReceiptHandle   string
+	// LastSeenAt is refreshed every time the broker redelivers this message
+	// (receipt-handle swap). The reaper ages entries on LastSeenAt, not
+	// StartedAt: while the broker still holds the message it keeps
+	// redelivering (refreshing this), so a long-buffered entry is never
+	// reaped out from under the dedup; once the broker no longer has the
+	// message, refreshes stop and the entry ages out.
+	LastSeenAt     time.Time
+	MessageGroupID string
+	BatchID        string
+	ReceiptHandle  string
 	// Attempts is >0 once the message has failed at least once and is being
 	// retried in-pipeline. The stall detector and the in-flight reaper skip
 	// entries with Attempts>0 — they are legitimately retrying, not stuck.
@@ -98,12 +105,14 @@ func NewInFlightMessage(m *Message, brokerID, queueID, batchID, receipt string) 
 	if m.MessageGroupID != nil {
 		groupID = *m.MessageGroupID
 	}
+	now := time.Now()
 	return &InFlightMessage{
 		MessageID:       m.ID,
 		BrokerMessageID: brokerID,
 		PoolCode:        m.PoolCode,
 		QueueIdentifier: queueID,
-		StartedAt:       time.Now(),
+		StartedAt:       now,
+		LastSeenAt:      now,
 		MessageGroupID:  groupID,
 		BatchID:         batchID,
 		ReceiptHandle:   receipt,
@@ -115,5 +124,9 @@ func (m *InFlightMessage) ElapsedSeconds() int64 {
 	return int64(time.Since(m.StartedAt).Seconds())
 }
 
-// UpdateReceiptHandle replaces the receipt handle on broker redelivery.
-func (m *InFlightMessage) UpdateReceiptHandle(h string) { m.ReceiptHandle = h }
+// UpdateReceiptHandle replaces the receipt handle on broker redelivery and
+// refreshes LastSeenAt (the broker evidently still holds the message).
+func (m *InFlightMessage) UpdateReceiptHandle(h string) {
+	m.ReceiptHandle = h
+	m.LastSeenAt = time.Now()
+}

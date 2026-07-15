@@ -161,7 +161,14 @@ func (p *Pool) ackTracked(ctx context.Context, qm common.QueuedMessage) {
 // dispatch). NB: on SQS, Nack is a deliberate no-op — the message simply stays
 // invisible until its visibility timeout lapses and is then redelivered fresh.
 // Retryable mediation failures do NOT go here; they are retried in-pipeline.
+//
+// The message is leaving the pipeline, so its in-flight entry (claimed at
+// route time) is released first: a lingering entry would classify the coming
+// redelivery as a duplicate and drop it — the message would never re-enter.
 func (p *Pool) nackMsg(ctx context.Context, qm common.QueuedMessage, delay *uint32, reason string) {
+	if p.tracker != nil {
+		p.tracker.Remove(qm.Message.ID, qm.BrokerMessageID)
+	}
 	c := p.consumerFor(qm)
 	if c == nil {
 		slog.Warn("nack: no consumer for queue", "queue", qm.QueueIdentifier, "msg", qm.Message.ID, "reason", reason)
@@ -249,7 +256,11 @@ func (p *Pool) submit(ctx context.Context, m common.QueuedMessage) {
 	if m.Message.MessageGroupID != nil {
 		group = *m.Message.MessageGroupID
 	}
-	p.enqueue(group, m)
+	if !p.enqueue(group, m) {
+		// Raced with Stop: the buffer is flushed and nothing will drain it.
+		p.nackMsg(ctx, m, ptrU32(10), "pool stopped")
+		return
+	}
 	p.tryDrainGroup(ctx, group)
 }
 
@@ -262,9 +273,10 @@ func (p *Pool) runImmediate(ctx context.Context, m common.QueuedMessage) {
 	sem := p.loadSem()
 	select {
 	case <-ctx.Done():
-		// Shutdown before we could start. The message was never tracked/attempted
-		// (or its entry persists across the retry) — NACK is a no-op on SQS, so
-		// the broker redelivers it after the visibility timeout.
+		// Shutdown before we could start. nackMsg releases the route-time
+		// tracker entry so the broker's redelivery (NACK is a no-op on SQS;
+		// the message reappears after the visibility timeout) re-enters the
+		// pipeline as a fresh copy instead of being dropped as a duplicate.
 		p.queueSize.Add(^uint32(0))
 		p.nackMsg(ctx, m, ptrU32(10), "shutdown before dispatch")
 		return
@@ -286,7 +298,15 @@ func (p *Pool) runImmediate(ctx context.Context, m common.QueuedMessage) {
 	go func() {
 		select {
 		case <-ctx.Done():
+			// Shutdown/consumer-restart mid-backoff: the message leaves the
+			// pipeline (IMMEDIATE mode has no buffer to park in), so release
+			// its tracker entry — otherwise every future redelivery would be
+			// dropped as a duplicate of a copy that no longer exists, and the
+			// message would cycle on the broker untouchable until retention.
 			p.queueSize.Add(^uint32(0))
+			if p.tracker != nil {
+				p.tracker.Remove(m.Message.ID, m.BrokerMessageID)
+			}
 			return
 		case <-time.After(retryAfter):
 		}
@@ -294,8 +314,34 @@ func (p *Pool) runImmediate(ctx context.Context, m common.QueuedMessage) {
 	}()
 }
 
-// Stop signals the pool to exit. Run will return on its next loop.
-func (p *Pool) Stop() { p.stopped.Store(true) }
+// Stop signals the pool to exit and flushes every buffered (not yet
+// dispatched) message, releasing their in-flight tracker entries. The buffer
+// is abandoned on stop — nothing will ever drain it — so a retained entry
+// would classify the broker's redeliveries as duplicates forever and the
+// messages would never be processed anywhere. With the entries released, the
+// redeliveries re-enter the pipeline fresh (routed per the new config).
+// In-flight workers drain out on their own and ack/remove per outcome.
+func (p *Pool) Stop() {
+	p.stopped.Store(true)
+	p.mu.Lock()
+	var flushed []common.QueuedMessage
+	for _, gq := range p.groupQs {
+		flushed = append(flushed, gq.msgs...)
+		gq.msgs = nil
+	}
+	p.groupQs = make(map[string]*groupQueue)
+	p.mu.Unlock()
+	for i := range flushed {
+		p.queueSize.Add(^uint32(0))
+		if p.tracker != nil {
+			p.tracker.Remove(flushed[i].Message.ID, flushed[i].BrokerMessageID)
+		}
+	}
+	if len(flushed) > 0 {
+		slog.Info("pool stopped; flushed buffered messages for broker redelivery",
+			"pool", p.cfg.Code, "count", len(flushed))
+	}
+}
 
 // InFlight returns the count of messages currently in worker goroutines.
 // Backward-compat shim for callers that still read inFlight as int64.
@@ -363,8 +409,15 @@ const (
 )
 
 // enqueue appends a newly-arrived message to the BACK of its group's FIFO.
-func (p *Pool) enqueue(group string, m common.QueuedMessage) {
+// Returns false without buffering when the pool has stopped — checked under
+// p.mu so it can't race Stop's buffer flush and strand a message (with a live
+// tracker entry) in an abandoned buffer.
+func (p *Pool) enqueue(group string, m common.QueuedMessage) bool {
 	p.mu.Lock()
+	if p.stopped.Load() {
+		p.mu.Unlock()
+		return false
+	}
 	gq, ok := p.groupQs[group]
 	if !ok {
 		gq = &groupQueue{}
@@ -373,13 +426,19 @@ func (p *Pool) enqueue(group string, m common.QueuedMessage) {
 	gq.msgs = append(gq.msgs, m)
 	p.mu.Unlock()
 	p.queueSize.Add(1)
+	return true
 }
 
 // enqueueFront puts a message back at the HEAD of its group's FIFO so that a
 // retry is the NEXT message attempted — never overtaken by a later message in
-// the same group. Used only by the ordered drainer on a retryable failure.
-func (p *Pool) enqueueFront(group string, m common.QueuedMessage) {
+// the same group. Used only by the ordered drainer on a retryable failure or
+// a cancellation park. Same stopped-pool contract as enqueue.
+func (p *Pool) enqueueFront(group string, m common.QueuedMessage) bool {
 	p.mu.Lock()
+	if p.stopped.Load() {
+		p.mu.Unlock()
+		return false
+	}
 	gq, ok := p.groupQs[group]
 	if !ok {
 		gq = &groupQueue{}
@@ -388,6 +447,7 @@ func (p *Pool) enqueueFront(group string, m common.QueuedMessage) {
 	gq.msgs = append([]common.QueuedMessage{m}, gq.msgs...)
 	p.mu.Unlock()
 	p.queueSize.Add(1)
+	return true
 }
 
 // tryDrainGroup starts a serial drainer for an ordered message group if
@@ -416,7 +476,10 @@ func (p *Pool) tryDrainGroup(ctx context.Context, group string) {
 //   - the group buffer is empty (the groupQs entry is removed).
 //   - ctx is cancelled while waiting for a semaphore slot or sitting out a
 //     retry backoff (the in-hand message is re-fronted and the working flag
-//     cleared so a later submit can spawn a replacement drainer).
+//     cleared so a replacement drainer resumes the group — spawned by the
+//     next submit or by Manager.route's redelivery-dedup kick).
+//   - the pool stopped (buffer flushed): the in-hand message is released to
+//     the broker via nackMsg instead of parked.
 //
 // Note: ctx cancellation between processOne calls does NOT stop the loop
 // — only the semaphore-acquire and backoff selects are ctx-aware. This is
@@ -457,8 +520,15 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 		case <-ctx.Done():
 			// Re-front the popped message (preserving FIFO — dropping just the
 			// head while later messages stay buffered would reorder the group)
-			// and clear working so the group resumes under a fresh drainer.
-			p.enqueueFront(group, msg)
+			// and clear working so the group resumes under a fresh drainer —
+			// respawned by the next submit OR by a broker redelivery of a
+			// buffered message (Manager.route kicks tryDrainGroup on the
+			// redelivery-dedup path). If the pool stopped meanwhile the buffer
+			// is gone; release the in-hand message to the broker instead.
+			if !p.enqueueFront(group, msg) {
+				p.nackMsg(ctx, msg, ptrU32(10), "pool stopped during drain")
+				return
+			}
 			p.clearWorking(group)
 			return
 		case sem <- struct{}{}:
@@ -480,7 +550,12 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 			// until it succeeds — the intended ordered-delivery (head-of-line)
 			// semantic. The in-flight tracker entry is kept across the retry.
 			msg.Attempts++
-			p.enqueueFront(group, msg)
+			if !p.enqueueFront(group, msg) {
+				// Pool stopped while retrying: buffer gone, nothing will drain
+				// it. Release the message to the broker for fresh redelivery.
+				p.nackMsg(ctx, msg, ptrU32(10), "pool stopped during retry")
+				return
+			}
 			select {
 			case <-ctx.Done():
 				// Cancelled mid-backoff. The message is already re-fronted;
@@ -519,9 +594,10 @@ const (
 	// caller should re-dispatch after the returned backoff (front of the group
 	// for ordered, delayed re-spawn for IMMEDIATE). Never released to the broker.
 	processRetry
-	// processDuplicate — this copy was a broker redelivery of a message already
-	// in-flight (process-time backstop for the route-time swap); the receipt
-	// handle was swapped onto the original entry and this copy is dropped.
+	// processDuplicate — a different copy of this app message owns the
+	// pipeline (an external requeue that slipped past route-time dedup, e.g.
+	// across a tracker reap); this copy was ACK-deleted from the broker with
+	// its own receipt handle and dropped. The owner's entry is untouched.
 	processDuplicate
 )
 
@@ -578,16 +654,26 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 		}
 	}()
 
-	// First dispatch records the message in-flight (and short-circuits a
-	// concurrent broker redelivery that slipped past the route-time swap). A
-	// retry re-dispatch (Attempts>0) is already tracked — keep the existing
-	// entry (which may have had its receipt handle swapped by a redelivery)
-	// and skip the insert.
+	// The message was registered in-flight at ROUTE time; first dispatch
+	// re-asserts the entry as a backstop (restores it if the reaper pruned it
+	// during a very long buffer wait). A retry re-dispatch (Attempts>0) is
+	// already tracked — keep the existing entry (which may have had its
+	// receipt handle swapped by a redelivery) and skip. EnsureTracked never
+	// swaps handles: the entry's handle may be fresher than this copy's.
 	if p.tracker != nil && qm.Attempts == 0 {
 		im := common.NewInFlightMessage(&qm.Message, qm.BrokerMessageID, qm.QueueIdentifier, qm.BatchID, qm.ReceiptHandle)
-		if _, isDuplicate := p.tracker.Insert(im); isDuplicate {
-			slog.Debug("duplicate redelivery (process-time backstop); dropped copy",
+		if !p.tracker.EnsureTracked(im) {
+			// A different copy of this app message owns the pipeline (external
+			// requeue that slipped past route-time dedup). ACK-delete THIS
+			// copy with its own receipt handle — leaving it un-acked would let
+			// it redeliver forever — and leave the owner's entry alone.
+			slog.Info("external requeue duplicate (process-time backstop); ACKing copy",
 				"msg", qm.Message.ID, "queue", qm.QueueIdentifier)
+			if c := p.consumerFor(qm); c != nil {
+				if err := c.Ack(ctx, qm.ReceiptHandle); err != nil {
+					slog.Warn("ack (requeue duplicate) failed", "msg", qm.Message.ID, "err", err)
+				}
+			}
 			return processDuplicate, 0
 		}
 	}
