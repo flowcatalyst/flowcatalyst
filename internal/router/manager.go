@@ -285,7 +285,7 @@ func (m *Manager) route(ctx context.Context, msgs []common.QueuedMessage, source
 				// reconfigure), this redelivery is the resume signal: kick the
 				// group so a fresh drainer picks the buffer back up.
 				slog.Debug("broker redelivery of in-flight message; swapped receipt handle, dropped copy",
-					"msg", msg.Message.ID, "queue", source.Identifier())
+					"message_id", msg.Message.ID, "queue", source.Identifier())
 				if msg.Message.DispatchMode.RequiresOrdering() {
 					if pool := m.poolByCode(msg.Message.PoolCode); pool != nil {
 						group := ""
@@ -304,9 +304,9 @@ func (m *Manager) route(ctx context.Context, msgs []common.QueuedMessage, source
 				// ACK this copy so the duplicate is DELETED from the broker —
 				// otherwise it redelivers forever. The owner's entry (and
 				// receipt handle) was deliberately left untouched.
-				slog.Info("external requeue detected; ACKing duplicate", "msg", msg.Message.ID, "queue", source.Identifier())
+				slog.Info("external requeue detected; ACKing duplicate", "message_id", msg.Message.ID, "queue", source.Identifier())
 				if err := source.Ack(ctx, msg.ReceiptHandle); err != nil {
-					slog.Warn("ack (external requeue) failed", "msg", msg.Message.ID, "err", err)
+					slog.Warn("ack (external requeue) failed", "message_id", msg.Message.ID, "err", err)
 				}
 				continue
 
@@ -322,12 +322,12 @@ func (m *Manager) route(ctx context.Context, msgs []common.QueuedMessage, source
 			// pipeline, so release its just-claimed tracker entry; a lingering
 			// entry would classify every future redelivery as a duplicate and
 			// the message would never be processed.
-			slog.Warn("no pool available for message; nacking", "msg", msg.Message.ID, "pool_code", msg.Message.PoolCode)
+			slog.Warn("no pool available for message; nacking", "message_id", msg.Message.ID, "pool_code", msg.Message.PoolCode)
 			if m.tracker != nil {
 				m.tracker.Remove(msg.Message.ID, msg.BrokerMessageID)
 			}
 			if err := source.Nack(ctx, msg.ReceiptHandle, ptrU32(5)); err != nil {
-				slog.Warn("nack (no pool) failed", "msg", msg.Message.ID, "err", err)
+				slog.Warn("nack (no pool) failed", "message_id", msg.Message.ID, "err", err)
 			}
 			continue
 		}
@@ -364,7 +364,7 @@ func (m *Manager) poolForMessage(msg common.QueuedMessage) *Pool {
 		// Unknown pool code → DEFAULT-POOL, surfaced as a Routing warning
 		// (1:1 with the Rust router's unknown-pool_code warning).
 		slog.Warn("no pool found for pool_code; routing to DEFAULT-POOL",
-			"msg", msg.Message.ID, "pool_code", code, "default_pool", defaultPoolCode)
+			"message_id", msg.Message.ID, "pool_code", code, "default_pool", defaultPoolCode)
 		if w := m.warnings.Load(); w != nil {
 			w.Add(WarningCategoryRouting, WarningWarning,
 				fmt.Sprintf("no pool for pool_code %q; routed to %s", code, defaultPoolCode), "router")

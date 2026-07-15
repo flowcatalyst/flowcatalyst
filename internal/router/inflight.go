@@ -304,12 +304,12 @@ func (d *StallDetector) tick(ctx context.Context) {
 			im.ElapsedSeconds() >= int64(d.cfg.ForceNackAfterSeconds) {
 			if err := d.nackFn(ctx, im.QueueIdentifier, im.ReceiptHandle, d.cfg.NackDelaySeconds); err != nil {
 				slog.Warn("force-nack stalled message failed",
-					"msg", im.MessageID, "queue", im.QueueIdentifier, "err", err)
+					"message_id", im.MessageID, "queue", im.QueueIdentifier, "err", err)
 				continue
 			}
 			d.tracker.Remove(im.MessageID, im.BrokerMessageID)
 			slog.Warn("force-nacked stalled message",
-				"msg", im.MessageID, "elapsed_s", im.ElapsedSeconds(), "queue", im.QueueIdentifier)
+				"message_id", im.MessageID, "elapsed_s", im.ElapsedSeconds(), "queue", im.QueueIdentifier)
 		}
 	}
 }

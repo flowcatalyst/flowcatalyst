@@ -146,10 +146,10 @@ func (p *Pool) ackTracked(ctx context.Context, qm common.QueuedMessage) {
 	}
 	if c := p.consumerFor(qm); c != nil {
 		if err := c.Ack(ctx, receipt); err != nil {
-			slog.Warn("ack failed", "msg", qm.Message.ID, "err", err)
+			slog.Warn("ack failed", "message_id", qm.Message.ID, "err", err)
 		}
 	} else {
-		slog.Warn("ack: no consumer for queue", "queue", qm.QueueIdentifier, "msg", qm.Message.ID)
+		slog.Warn("ack: no consumer for queue", "queue", qm.QueueIdentifier, "message_id", qm.Message.ID)
 	}
 	if p.tracker != nil {
 		p.tracker.Remove(qm.Message.ID, qm.BrokerMessageID)
@@ -171,11 +171,11 @@ func (p *Pool) nackMsg(ctx context.Context, qm common.QueuedMessage, delay *uint
 	}
 	c := p.consumerFor(qm)
 	if c == nil {
-		slog.Warn("nack: no consumer for queue", "queue", qm.QueueIdentifier, "msg", qm.Message.ID, "reason", reason)
+		slog.Warn("nack: no consumer for queue", "queue", qm.QueueIdentifier, "message_id", qm.Message.ID, "reason", reason)
 		return
 	}
 	if err := c.Nack(ctx, qm.ReceiptHandle, delay); err != nil {
-		slog.Warn("nack failed", "reason", reason, "msg", qm.Message.ID, "err", err)
+		slog.Warn("nack failed", "reason", reason, "message_id", qm.Message.ID, "err", err)
 	}
 }
 
@@ -645,7 +645,7 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 	defer func() {
 		if r := recover(); r != nil {
 			slog.Error("panic in processOne; retrying in-pipeline",
-				"msg", qm.Message.ID, "panic", r)
+				"message_id", qm.Message.ID, "panic", r)
 			result = processRetry
 			retryAfter = panicRetryDelay
 			if p.tracker != nil {
@@ -668,10 +668,10 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 			// copy with its own receipt handle — leaving it un-acked would let
 			// it redeliver forever — and leave the owner's entry alone.
 			slog.Info("external requeue duplicate (process-time backstop); ACKing copy",
-				"msg", qm.Message.ID, "queue", qm.QueueIdentifier)
+				"message_id", qm.Message.ID, "queue", qm.QueueIdentifier)
 			if c := p.consumerFor(qm); c != nil {
 				if err := c.Ack(ctx, qm.ReceiptHandle); err != nil {
-					slog.Warn("ack (requeue duplicate) failed", "msg", qm.Message.ID, "err", err)
+					slog.Warn("ack (requeue duplicate) failed", "message_id", qm.Message.ID, "err", err)
 				}
 			}
 			return processDuplicate, 0

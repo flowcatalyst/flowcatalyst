@@ -313,6 +313,11 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 
 	resp, err := guard.Client().Do(req)
 	if err != nil {
+		// Connection-level failures (DNS, refused, timeout) MUST log: unlike
+		// HTTP-status failures below they produce no response, and a silently
+		// unreachable target otherwise leaves no log evidence at all while
+		// every message retries in-pipeline.
+		slog.Warn("delivery request failed", "message_id", msg.ID, "target", msg.MediationTarget, "err", err)
 		// Map common error types.
 		var netErr interface{ Timeout() bool }
 		if errors.As(err, &netErr) && netErr.Timeout() {
@@ -372,7 +377,7 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 		return common.ErrorConfig(status, fmt.Sprintf("HTTP %d: Client error", status))
 
 	case status >= 500:
-		slog.Warn("server error from target", "message_id", msg.ID, "status", status)
+		slog.Warn("server error from target", "message_id", msg.ID, "status", status, "target", msg.MediationTarget)
 		out := common.ErrorProcess(30, fmt.Sprintf("HTTP %d: Server error", status))
 		out.StatusCode = status
 		return out
