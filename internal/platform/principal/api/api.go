@@ -312,7 +312,20 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	if !isSelf && p.ClientID != nil && !ac.CanAccessClient(*p.ClientID) {
 		return nil, httperror.Forbidden("No access to this principal")
 	}
-	return &apicommon.Out[PrincipalResponse]{Body: fromEntity(p)}, nil
+	resp := fromEntity(p)
+	// Enrich with the user's confirmed second factors so the admin detail view
+	// can show whether 2FA is enrolled (and which kind). Best-effort: an MFA
+	// lookup failure just leaves the list empty rather than failing the read.
+	if s.MFA != nil {
+		if methods, err := s.MFA.ConfirmedMethods(ctx, p.ID); err == nil {
+			out := make([]string, 0, len(methods))
+			for _, m := range methods {
+				out = append(out, string(m))
+			}
+			resp.TwoFactorMethods = out
+		}
+	}
+	return &apicommon.Out[PrincipalResponse]{Body: resp}, nil
 }
 
 // getVersion reports when the principal (or a role it holds) last changed.

@@ -196,9 +196,20 @@ type State struct {
 	// self-service reset for a user with no strong factor files a request here
 	// and notifies the user's client-administrators (found via ClientAdmins)
 	// instead of issuing a token. All optional.
+	//
+	// Only consulted when RequireStrongFactorForReset is true — by default a
+	// user without an authenticator gets a normal emailed reset link instead.
 	Approvals    *resetapproval.Repository
 	ClientAdmins ClientAdminFinder
 	ApprovalTTL  time.Duration // default 72h
+
+	// RequireStrongFactorForReset restores the stricter Phase-8 behaviour: a
+	// self-service reset for a user with no authenticator (TOTP) is routed to
+	// the client-admin approval queue instead of emailing a link. Default
+	// false — a user without 2FA gets the conventional emailed reset link
+	// (the link alone authorises the reset; users who DO have TOTP must still
+	// prove it at confirm time regardless of this flag).
+	RequireStrongFactorForReset bool
 }
 
 // ClientAdminFinder returns the email addresses of the client-administrators of
@@ -289,11 +300,15 @@ func (s *State) tryIssueToken(ctx context.Context, email string) error {
 		return nil
 	}
 
-	// Strong-factor gate (Phase 8): a self-service reset must be authorized by an
-	// authenticator (TOTP) at confirm time — email alone (incl. email PIN) can't.
-	// Passkey users sign in with their passkey rather than resetting. No strong
-	// factor → route to the client-admin approval queue (queueApproval).
-	if !s.hasStrongFactor(ctx, p.ID) {
+	// A user WITH an authenticator (TOTP) must additionally prove it at confirm
+	// time — defence in depth so a compromised inbox alone can't reset the
+	// password. A user WITHOUT one is authorised by the emailed link alone: the
+	// conventional "forgot password" flow. The stricter Phase-8 behaviour (no
+	// authenticator → client-admin approval queue instead of a link) is opt-in
+	// via RequireStrongFactorForReset. Either way, a Require2FA-domain user who
+	// isn't enrolled is forced into 2FA setup at confirm time (postResetTwoFactor).
+	strong := s.hasStrongFactor(ctx, p.ID)
+	if !strong && s.RequireStrongFactorForReset {
 		return s.queueApproval(ctx, p)
 	}
 
@@ -305,7 +320,7 @@ func (s *State) tryIssueToken(ctx context.Context, email string) error {
 		return err
 	}
 	tok := passwordreset.New(p.ID, hashToken(raw), time.Now().UTC().Add(resetTokenTTL))
-	tok.RequiresFactor = true
+	tok.RequiresFactor = strong
 	if err := s.Tokens.Insert(ctx, tok); err != nil {
 		return err
 	}

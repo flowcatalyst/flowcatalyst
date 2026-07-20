@@ -4747,6 +4747,12 @@
           "scope": {
             "type": "string"
           },
+          "twoFactorMethods": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "type": {
             "type": "string"
           },

@@ -139,6 +139,11 @@ type PrincipalResponse struct {
 	// which is only ever returned once at set/rotate time.
 	HasDeveloperCredential       bool             `json:"hasDeveloperCredential"`
 	DeveloperCredentialUpdatedAt *httpcompat.Time `json:"developerCredentialUpdatedAt,omitempty"`
+	// TwoFactorMethods lists the user's CONFIRMED second factors ("TOTP",
+	// "EMAIL_PIN"). Populated only on the single-principal detail read
+	// (getByID) — it's empty/absent on list responses to avoid an MFA lookup
+	// per row. Empty means the user has no 2FA enrolled.
+	TwoFactorMethods []string `json:"twoFactorMethods,omitempty"`
 }
 
 // PrincipalVersionResponse is the wire body for
