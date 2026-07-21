@@ -43,6 +43,27 @@ func (r *Repository) FindByName(ctx context.Context, name string) (*Role, error)
 	return r.hydrateOne(ctx, rowToRole(*row))
 }
 
+// FindByShortNameInApps resolves a role by its UNPREFIXED short name within a
+// set of applications. SDK-synced principal role assignments carry the bare
+// role name (e.g. "hr-manager") rather than the canonical prefixed
+// iam_roles.name ("hr:hr-manager"), so an exact FindByName misses; this finds
+// the app-scoped role whose canonical name is "<appCode>:<shortName>". Returns
+// (nil, nil) when no role in those applications has that short name.
+func (r *Repository) FindByShortNameInApps(ctx context.Context, shortName string, appIDs []string) (*Role, error) {
+	if shortName == "" || len(appIDs) == 0 {
+		return nil, nil
+	}
+	res, err := r.q.RoleFindByShortNameInApps(ctx, dbq.RoleFindByShortNameInAppsParams{
+		AppIds:    appIDs,
+		ShortName: shortName,
+	})
+	row, err := repocommon.One(res, err, "role repo")
+	if row == nil || err != nil {
+		return nil, err
+	}
+	return r.hydrateOne(ctx, rowToRole(*row))
+}
+
 // FindAll returns every role with permissions hydrated.
 func (r *Repository) FindAll(ctx context.Context) ([]Role, error) {
 	rows, err := r.q.RoleFindAll(ctx)

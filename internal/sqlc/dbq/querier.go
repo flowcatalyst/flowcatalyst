@@ -244,6 +244,13 @@ type Querier interface {
 	// many-to-many; Persist replaces them wholesale.
 	RoleFindByID(ctx context.Context, id string) (IamRole, error)
 	RoleFindByName(ctx context.Context, name string) (IamRole, error)
+	// Resolve a role by its UNPREFIXED short name within a set of applications.
+	// SDK-synced principal role assignments store the bare role name (e.g.
+	// "hr-manager") rather than the canonical iam_roles.name ("hr:hr-manager"), so
+	// an exact name match misses. name = application_code || ':' || <roleName> is
+	// the canonical form built by role.New, so this match is exact (no fuzzy
+	// suffix matching) and scoped to the given applications.
+	RoleFindByShortNameInApps(ctx context.Context, arg RoleFindByShortNameInAppsParams) (IamRole, error)
 	RoleFindBySource(ctx context.Context, source string) ([]IamRole, error)
 	RolePermissionInsert(ctx context.Context, arg RolePermissionInsertParams) error
 	RolePermissionsClear(ctx context.Context, roleID string) error

@@ -287,6 +287,44 @@ func (q *Queries) RoleFindByName(ctx context.Context, name string) (IamRole, err
 	return i, err
 }
 
+const roleFindByShortNameInApps = `-- name: RoleFindByShortNameInApps :one
+SELECT id, application_id, application_code, name, display_name, description,
+       source, client_managed, created_at, updated_at
+FROM iam_roles
+WHERE application_id = ANY($1::text[])
+  AND name = application_code || ':' || $2::text
+LIMIT 1
+`
+
+type RoleFindByShortNameInAppsParams struct {
+	AppIds    []string `db:"app_ids"`
+	ShortName string   `db:"short_name"`
+}
+
+// Resolve a role by its UNPREFIXED short name within a set of applications.
+// SDK-synced principal role assignments store the bare role name (e.g.
+// "hr-manager") rather than the canonical iam_roles.name ("hr:hr-manager"), so
+// an exact name match misses. name = application_code || ':' || <roleName> is
+// the canonical form built by role.New, so this match is exact (no fuzzy
+// suffix matching) and scoped to the given applications.
+func (q *Queries) RoleFindByShortNameInApps(ctx context.Context, arg RoleFindByShortNameInAppsParams) (IamRole, error) {
+	row := q.db.QueryRow(ctx, roleFindByShortNameInApps, arg.AppIds, arg.ShortName)
+	var i IamRole
+	err := row.Scan(
+		&i.ID,
+		&i.ApplicationID,
+		&i.ApplicationCode,
+		&i.Name,
+		&i.DisplayName,
+		&i.Description,
+		&i.Source,
+		&i.ClientManaged,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const roleFindBySource = `-- name: RoleFindBySource :many
 SELECT id, application_id, application_code, name, display_name, description,
        source, client_managed, created_at, updated_at

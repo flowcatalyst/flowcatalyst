@@ -170,7 +170,15 @@ func (p *Provider) FilterRolesForApplications(ctx context.Context, roleNames []s
 	return filterRolesForApplications(ctx, p.roles, roleNames, appIDs)
 }
 
-func filterRolesForApplications(ctx context.Context, roles *role.Repository, roleNames []string, appIDs []string) ([]string, error) {
+// roleLookup is the narrow slice of the role repository that
+// filterRolesForApplications needs — declared here so the filter logic is
+// unit-testable without a database. *role.Repository satisfies it.
+type roleLookup interface {
+	FindByName(ctx context.Context, name string) (*role.Role, error)
+	FindByShortNameInApps(ctx context.Context, shortName string, appIDs []string) (*role.Role, error)
+}
+
+func filterRolesForApplications(ctx context.Context, roles roleLookup, roleNames []string, appIDs []string) ([]string, error) {
 	if roles == nil || len(roleNames) == 0 || len(appIDs) == 0 {
 		return nil, nil
 	}
@@ -184,11 +192,27 @@ func filterRolesForApplications(ctx context.Context, roles *role.Repository, rol
 		if err != nil {
 			return nil, err
 		}
+		// SDK-synced principal assignments store the bare short name (e.g.
+		// "hr-manager") rather than the canonical prefixed name
+		// ("hr:hr-manager"), so an exact FindByName misses. Fall back to
+		// resolving the short name within the requesting client's applications.
+		if r == nil {
+			r, err = roles.FindByShortNameInApps(ctx, name, appIDs)
+			if err != nil {
+				return nil, err
+			}
+		}
 		if r == nil || r.ApplicationID == nil {
 			continue
 		}
 		if _, ok := allowed[*r.ApplicationID]; ok {
-			out = append(out, name)
+			// Emit the app-local SHORT name (prefix stripped on the first ":"
+			// after the app code). App-scoped relying parties key their RBAC
+			// catalogues by the short name, so the token must carry it that way
+			// — and this makes both SDK-synced (bare) and console-assigned
+			// (prefixed) assignments resolve to the same value. ShortName also
+			// round-trips malformed multi-colon roles correctly.
+			out = append(out, r.ShortName())
 		}
 	}
 	return out, nil

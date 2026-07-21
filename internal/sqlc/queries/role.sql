@@ -13,6 +13,20 @@ SELECT id, application_id, application_code, name, display_name, description,
 FROM iam_roles
 WHERE name = $1;
 
+-- name: RoleFindByShortNameInApps :one
+-- Resolve a role by its UNPREFIXED short name within a set of applications.
+-- SDK-synced principal role assignments store the bare role name (e.g.
+-- "hr-manager") rather than the canonical iam_roles.name ("hr:hr-manager"), so
+-- an exact name match misses. name = application_code || ':' || <roleName> is
+-- the canonical form built by role.New, so this match is exact (no fuzzy
+-- suffix matching) and scoped to the given applications.
+SELECT id, application_id, application_code, name, display_name, description,
+       source, client_managed, created_at, updated_at
+FROM iam_roles
+WHERE application_id = ANY(@app_ids::text[])
+  AND name = application_code || ':' || @short_name::text
+LIMIT 1;
+
 -- name: RoleFindAll :many
 SELECT id, application_id, application_code, name, display_name, description,
        source, client_managed, created_at, updated_at

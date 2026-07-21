@@ -220,7 +220,11 @@ func SyncRoles(repo *role.Repository) usecaseop.Operation[SyncRolesCommand, Role
 			)
 
 			for _, in := range cmd.Roles {
-				short := strings.ToLower(in.Name)
+				// Accept both a bare name ("hr-manager") and an already-qualified
+				// one ("hr:hr-manager", or a malformed multi-colon
+				// "hr:dashboard:user"): strip a leading "{appCode}:" so we never
+				// double-prefix, matching the definition-sync path above.
+				short := splitRoleName(strings.ToLower(in.Name), cmd.ApplicationCode)
 				fullName := cmd.ApplicationCode + ":" + short
 				syncedNames = append(syncedNames, fullName)
 				syncedSet[fullName] = struct{}{}

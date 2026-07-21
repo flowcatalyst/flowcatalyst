@@ -71,6 +71,17 @@ func New(applicationCode, roleName, displayName string) *Role {
 	}
 }
 
+// ShortName is the app-local role name with the "{applicationCode}:" prefix
+// removed — the inverse of New. It strips EXACTLY the application-code prefix
+// (i.e. only the first ":" that follows the app code is the delimiter), so a
+// role whose short name itself contains colons — e.g. a malformed
+// "logistics_portal:dashboard:user" (app "logistics_portal", role
+// "dashboard:user") — round-trips correctly. Falls back to the full name when
+// the prefix doesn't match (defensive; New always makes it match).
+func (r Role) ShortName() string {
+	return strings.TrimPrefix(r.Name, r.ApplicationCode+":")
+}
+
 // HasPermission reports whether the role grants the supplied permission,
 // honoring 4-segment wildcard patterns (`a:b:c:d` where any segment may be `*`).
 func (r *Role) HasPermission(p string) bool {

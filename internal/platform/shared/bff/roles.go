@@ -582,10 +582,10 @@ func (s *RolesState) resolveRole(r *http.Request, key string) (*role.Role, error
 }
 
 func toBffRole(r role.Role) bffRoleResponse {
-	shortName := r.Name
-	if idx := strings.LastIndex(r.Name, ":"); idx >= 0 && idx+1 < len(r.Name) {
-		shortName = r.Name[idx+1:]
-	}
+	// Strip exactly the "{applicationCode}:" prefix (first ":" after the app
+	// code). LastIndex would mangle a malformed multi-colon role like
+	// "logistics_portal:dashboard:user" into just "user".
+	shortName := r.ShortName()
 	perms := r.Permissions
 	if perms == nil {
 		perms = []string{}
