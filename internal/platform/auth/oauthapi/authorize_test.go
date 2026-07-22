@@ -120,6 +120,40 @@ func TestAuthorizeUnsupportedResponseType(t *testing.T) {
 	}
 }
 
+// A ?provider= authorize request with no session chains into the OIDC bridge
+// (provider-direct login) carrying the full oauth_* param set, so the
+// downstream app's code can be issued after the IdP callback. It must NOT
+// touch the pending-auth stash (State.PendingAuth is nil here — a DB write
+// would panic) and must NOT bounce to the SPA login page.
+func TestAuthorizeProviderChainsIntoBridge(t *testing.T) {
+	s := &State{OAuthClients: fakeClientFinder{client: activeClient("https://app/cb")}}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/oauth/authorize?response_type=code&client_id=c&redirect_uri=https://app/cb&state=xyz"+
+		"&provider=idp_123&scope=openid&code_challenge=abc&code_challenge_method=S256&nonce=n1", nil)
+	s.Authorize(rec, req)
+
+	if rec.Code != 307 {
+		t.Fatalf("status = %d, want 307", rec.Code)
+	}
+	loc := rec.Header().Get("Location")
+	if !strings.HasPrefix(loc, "/auth/oidc/login?provider_id=idp_123") {
+		t.Fatalf("Location = %q, want bridge provider-direct URL", loc)
+	}
+	for _, want := range []string{
+		"oauth_client_id=c",
+		"oauth_redirect_uri=https%3A%2F%2Fapp%2Fcb",
+		"oauth_state=xyz",
+		"oauth_scope=openid",
+		"oauth_code_challenge=abc",
+		"oauth_code_challenge_method=S256",
+		"oauth_nonce=n1",
+	} {
+		if !strings.Contains(loc, want) {
+			t.Errorf("Location missing %q: %q", want, loc)
+		}
+	}
+}
+
 // H1 regression: an UNKNOWN client must never trigger a redirect to the
 // caller-supplied redirect_uri — that would be an open redirect (RFC 6749
 // §4.1.2.1). The error must be a direct 4xx, not a 3xx bounce to evil.com.

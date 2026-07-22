@@ -33,8 +33,13 @@ const (
 	authCodePayloadType     = "AuthorizationCode"
 	refreshTokenPayloadType = "RefreshToken"
 
-	authCodeDefaultExpiry     = 10 * time.Minute
-	refreshTokenDefaultExpiry = 30 * 24 * time.Hour
+	authCodeDefaultExpiry = 10 * time.Minute
+	// refreshTokenDefaultExpiry is the lifetime stamped on a freshly issued
+	// refresh token. It is also the family's ABSOLUTE cap: Rotate carries this
+	// original deadline forward on every rotation instead of extending it, so a
+	// refresh-token family dies one week after first issuance no matter how
+	// often it is rotated, forcing a re-login.
+	refreshTokenDefaultExpiry = 7 * 24 * time.Hour
 )
 
 // ─── Authorization Code ─────────────────────────────────────────────────

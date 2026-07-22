@@ -66,6 +66,13 @@ func Rotate(ctx context.Context, repo *RefreshTokenRepository, rawToken string, 
 	entity.Scopes = stored.Scopes
 	entity.AccessibleClients = stored.AccessibleClients
 	entity.OAuthClientID = stored.OAuthClientID
+	// Inherit the presented token's expiry rather than the fresh
+	// now+default GenerateTokenPair stamped on. The original deadline is the
+	// family's absolute one-week cap (see refreshTokenDefaultExpiry); carrying
+	// it forward unchanged means rotation renews the access token without ever
+	// extending the refresh window, so a stolen-then-rotated chain still can't
+	// outlive the cap.
+	entity.ExpiresAt = stored.ExpiresAt
 	if stored.TokenFamily != nil {
 		entity.TokenFamily = stored.TokenFamily
 	} else {

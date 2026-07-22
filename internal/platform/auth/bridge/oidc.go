@@ -92,15 +92,57 @@ func (b *Bridge) ResolveForEmail(ctx context.Context, email string) (*resolved, 
 	if idp.Type != identityprovider.TypeOIDC {
 		return nil, idp, mapping, nil // internal provider; no OIDC bridge needed
 	}
+	r, err := b.resolveIdP(ctx, idp)
+	if err != nil {
+		return nil, idp, mapping, err
+	}
+	return r, idp, mapping, nil
+}
+
+// ResolveByProviderID resolves the OIDC client for an identity provider by its
+// id — the provider-direct login path (docs/portal-identity-plan.md): the
+// caller (a portal app via /oauth/authorize?provider= or /auth/oidc/login?
+// provider_id=) names the IdP explicitly, so no email-domain mapping is
+// involved. Guards, all fail-closed:
+//
+//   - the IdP must exist and be TypeOIDC (INTERNAL providers have no bridge);
+//   - a MULTI-TENANT IdP must have a non-empty allowed_email_domains list —
+//     the callback binds the token's email domain to that list, and without
+//     it any tenant of the shared IdP could mint identities here.
+func (b *Bridge) ResolveByProviderID(ctx context.Context, providerID string) (*resolved, *identityprovider.IdentityProvider, error) {
+	idp, err := b.idps.FindByID(ctx, providerID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("identity_provider lookup: %w", err)
+	}
+	if idp == nil {
+		return nil, nil, errors.New("identity provider not found: " + providerID)
+	}
+	if idp.Type != identityprovider.TypeOIDC {
+		return nil, idp, errors.New("identity provider is not OIDC: " + providerID)
+	}
+	if idp.OIDCMultiTenant && len(idp.AllowedEmailDomains) == 0 {
+		return nil, idp, errors.New("multi-tenant IdP requires allowed_email_domains for provider-direct login")
+	}
+	r, err := b.resolveIdP(ctx, idp)
+	if err != nil {
+		return nil, idp, err
+	}
+	return r, idp, nil
+}
+
+// resolveIdP returns the cached OIDC client for an OIDC-type IdP, constructing
+// (and caching) it on first use. Shared by the email-domain and provider-direct
+// resolution paths so both hit the same per-(issuer, client id) cache.
+func (b *Bridge) resolveIdP(ctx context.Context, idp *identityprovider.IdentityProvider) (*resolved, error) {
 	if idp.OIDCIssuerURL == nil || idp.OIDCClientID == nil {
-		return nil, idp, mapping, errors.New("OIDC config missing issuer or client ID")
+		return nil, errors.New("OIDC config missing issuer or client ID")
 	}
 
 	key := *idp.OIDCIssuerURL + "|" + *idp.OIDCClientID
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if r, ok := b.cache[key]; ok {
-		return r, idp, mapping, nil
+		return r, nil
 	}
 
 	// Multi-tenant IdPs (Entra "common"/"organizations", …) report a
@@ -118,11 +160,11 @@ func (b *Bridge) ResolveForEmail(ctx context.Context, email string) (*resolved, 
 	}
 	provider, err := oidc.NewProvider(discoveryCtx, *idp.OIDCIssuerURL)
 	if err != nil {
-		return nil, idp, mapping, fmt.Errorf("oidc.NewProvider: %w", err)
+		return nil, fmt.Errorf("oidc.NewProvider: %w", err)
 	}
 	clientSecret, err := b.resolveClientSecret(idp.OIDCClientSecretRef)
 	if err != nil {
-		return nil, idp, mapping, err
+		return nil, err
 	}
 	r := &resolved{
 		provider:      provider,
@@ -139,7 +181,7 @@ func (b *Bridge) ResolveForEmail(ctx context.Context, email string) (*resolved, 
 		},
 	}
 	b.cache[key] = r
-	return r, idp, mapping, nil
+	return r, nil
 }
 
 // resolveClientSecret decrypts the IdP's OIDCClientSecretRef using the

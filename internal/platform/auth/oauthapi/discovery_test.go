@@ -67,9 +67,14 @@ func TestOpenIDConfiguration(t *testing.T) {
 	assertContains(t, doc, "grant_types_supported", "client_credentials")
 	assertContains(t, doc, "scopes_supported", "offline_access")
 	assertContains(t, doc, "code_challenge_methods_supported", "S256")
-	assertContains(t, doc, "code_challenge_methods_supported", "plain")
-	assertContains(t, doc, "response_types_supported", "code id_token")
+	assertContains(t, doc, "response_types_supported", "code")
 	assertContains(t, doc, "claims_supported", "type")
+	// The document must advertise ONLY what the endpoints implement: S256 (no
+	// "plain") and the authorization-code response type (no implicit/hybrid).
+	assertNotContains(t, doc, "code_challenge_methods_supported", "plain")
+	assertNotContains(t, doc, "response_types_supported", "code id_token")
+	assertNotContains(t, doc, "response_types_supported", "token")
+	assertNotContains(t, doc, "response_types_supported", "id_token")
 }
 
 func TestJWKS(t *testing.T) {
@@ -108,4 +113,18 @@ func assertContains(t *testing.T, doc map[string]any, key, want string) {
 		}
 	}
 	t.Errorf("%s missing %q (got %v)", key, want, arr)
+}
+
+func assertNotContains(t *testing.T, doc map[string]any, key, unwanted string) {
+	t.Helper()
+	arr, ok := doc[key].([]any)
+	if !ok {
+		t.Fatalf("%s is not an array: %T", key, doc[key])
+	}
+	for _, v := range arr {
+		if v == unwanted {
+			t.Errorf("%s must not advertise %q (got %v)", key, unwanted, arr)
+			return
+		}
+	}
 }

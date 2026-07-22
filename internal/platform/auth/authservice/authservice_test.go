@@ -368,3 +368,78 @@ func independentKeyID(pubPEM string) string {
 	h := sha256.Sum256([]byte(pubPEM))
 	return base64.RawURLEncoding.EncodeToString(h[:16])
 }
+
+// TestAPITokenUseMarker asserts authority-bearing tokens are tagged
+// token_use="api" (the class the platform API middleware accepts).
+func TestAPITokenUseMarker(t *testing.T) {
+	svc := newRS256(t)
+	for _, tc := range []struct {
+		name string
+		tok  func() (string, error)
+	}{
+		{"GenerateAccessToken", func() (string, error) { return svc.GenerateAccessToken(anchorUser()) }},
+		{"GenerateAccessTokenWithScope", func() (string, error) {
+			return svc.GenerateAccessTokenWithScope(anchorUser(), []string{"platform:iam:role:view"})
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tok, err := tc.tok()
+			if err != nil {
+				t.Fatalf("mint: %v", err)
+			}
+			if got := decodeJWTPayload(t, tok)["token_use"]; got != TokenUseAPI {
+				t.Errorf("token_use = %v, want %q", got, TokenUseAPI)
+			}
+		})
+	}
+}
+
+// TestIdentityAccessTokenCarriesNoAuthority is the core of the "interactive
+// logins can't call the API" guarantee: an identity token is tagged
+// token_use="identity", carries the principal's identity (sub/tier/type/name/
+// email) but NONE of its authority — empty roles/clients/applications, no
+// scope, all_applications=false — regardless of how privileged the principal
+// is.
+func TestIdentityAccessTokenCarriesNoAuthority(t *testing.T) {
+	svc := newRS256(t)
+	p := anchorUser() // maximally privileged: anchor tier, roles, apps
+	tok, err := svc.GenerateIdentityAccessToken(p)
+	if err != nil {
+		t.Fatalf("mint: %v", err)
+	}
+
+	// Parsed-claim view: authority fields empty, identity fields intact.
+	claims, err := svc.ValidateToken(tok)
+	if err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	if claims.TokenUse != TokenUseIdentity {
+		t.Errorf("token_use = %q, want %q", claims.TokenUse, TokenUseIdentity)
+	}
+	if len(claims.Roles) != 0 {
+		t.Errorf("roles = %v, want empty", claims.Roles)
+	}
+	if len(claims.Clients) != 0 {
+		t.Errorf("clients = %v, want empty", claims.Clients)
+	}
+	if len(claims.Applications) != 0 {
+		t.Errorf("applications = %v, want empty", claims.Applications)
+	}
+	if claims.Scope != "" {
+		t.Errorf("scope = %q, want empty", claims.Scope)
+	}
+	if claims.AllApplications {
+		t.Error("all_applications = true, want false on an identity token")
+	}
+	if claims.Subject != p.ID {
+		t.Errorf("sub = %q, want %q (identity must survive)", claims.Subject, p.ID)
+	}
+	if claims.Tier != "ANCHOR" {
+		t.Errorf("tier = %q, want ANCHOR", claims.Tier)
+	}
+
+	// Raw-payload view: the scope claim must be absent entirely (not "").
+	if _, ok := decodeJWTPayload(t, tok)["scope"]; ok {
+		t.Error("scope claim must be omitted on an identity token")
+	}
+}

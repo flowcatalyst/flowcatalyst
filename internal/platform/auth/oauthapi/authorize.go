@@ -91,8 +91,11 @@ func (s *State) Authorize(w http.ResponseWriter, r *http.Request) {
 		errorRedirect(w, r, redirectURI, "invalid_request", "PKCE code_challenge is required", stateParam)
 		return
 	}
-	if codeChallengeMethod != "" && codeChallengeMethod != "S256" && codeChallengeMethod != "plain" {
-		errorRedirect(w, r, redirectURI, "invalid_request", "Invalid code_challenge_method", stateParam)
+	// Only S256 is offered (discovery advertises S256 only). "plain" is refused
+	// per the OAuth 2.0 Security BCP — it offers no protection against a code
+	// interceptor who also sees the challenge.
+	if codeChallengeMethod != "" && codeChallengeMethod != "S256" {
+		errorRedirect(w, r, redirectURI, "invalid_request", "Only the S256 code_challenge_method is supported", stateParam)
 		return
 	}
 	if scope != "" {
@@ -133,15 +136,16 @@ func (s *State) Authorize(w http.ResponseWriter, r *http.Request) {
 		code.Nonce = strPtrOrNil(nonce)
 		code.State = strPtrOrNil(stateParam)
 		if codeChallenge != "" {
-			// RFC 7636 §4.3: a present code_challenge with an absent
-			// code_challenge_method defaults to "plain". Persist the binding
-			// unconditionally so PKCE can never be silently stripped by omitting
-			// the method — which would otherwise pass the PKCERequired gate
-			// above yet store nothing, letting an intercepted code be redeemed
-			// without a verifier.
+			// Persist the challenge binding unconditionally so PKCE can never be
+			// silently stripped by omitting the method — which would otherwise
+			// pass the PKCERequired gate above yet store nothing, letting an
+			// intercepted code be redeemed without a verifier. An absent method
+			// defaults to S256 (not RFC 7636's "plain", which we no longer
+			// offer), so a challenge without an explicit method is treated as the
+			// secure variant every modern client already uses.
 			method := codeChallengeMethod
 			if method == "" {
-				method = "plain"
+				method = "S256"
 			}
 			code.CodeChallenge = &codeChallenge
 			code.CodeChallengeMethod = &method
@@ -150,12 +154,44 @@ func (s *State) Authorize(w http.ResponseWriter, r *http.Request) {
 			errorRedirect(w, r, redirectURI, "server_error", "Failed to create authorization code", stateParam)
 			return
 		}
-		redirectURL := redirectURI + "?code=" + pctEncode(code.Code) + "&state=" + pctEncode(stateParam)
+		redirectURL := redirectURI + querySep(redirectURI) + "code=" + pctEncode(code.Code) + "&state=" + pctEncode(stateParam)
 		http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect) //nolint:gosec // G710: redirectURL is built from a redirect_uri already validated against the client's registered URIs
 		return
 	}
 
-	// Not authenticated → stash the request and bounce to login.
+	if providerID != "" {
+		// Direct-IdP entry (docs/portal-identity-plan.md): the downstream app
+		// pre-selected an upstream IdP (e.g. a portal's "Login with Acme SSO"
+		// button), so skip the SPA login page and chain straight into the OIDC
+		// bridge. The bridge stashes these oauth_* params in its login state
+		// and, after the IdP callback establishes the session, resumes this
+		// /oauth/authorize request so the app receives its code — the same
+		// chaining contract the SPA uses. An unknown/misconfigured provider is
+		// rejected by the bridge at login start (fail closed, no IdP redirect).
+		bridgeURL := "/auth/oidc/login?provider_id=" + pctEncode(providerID) +
+			"&oauth_client_id=" + pctEncode(clientID) +
+			"&oauth_redirect_uri=" + pctEncode(redirectURI) +
+			"&oauth_state=" + pctEncode(stateParam)
+		if scope != "" {
+			bridgeURL += "&oauth_scope=" + pctEncode(scope)
+		}
+		if codeChallenge != "" {
+			bridgeURL += "&oauth_code_challenge=" + pctEncode(codeChallenge)
+		}
+		if codeChallengeMethod != "" {
+			bridgeURL += "&oauth_code_challenge_method=" + pctEncode(codeChallengeMethod)
+		}
+		if nonce != "" {
+			bridgeURL += "&oauth_nonce=" + pctEncode(nonce)
+		}
+		http.Redirect(w, r, bridgeURL, http.StatusTemporaryRedirect)
+		return
+	}
+
+	// Not authenticated → stash the request and bounce to the SPA login page.
+	// (The provider-direct branch above skips the stash: the bridge's login
+	// state carries the whole OAuth chain, and nothing consumes pending-auth
+	// rows — the stash exists for wire parity with Rust.)
 	pending := &grantstore.PendingAuth{
 		ClientID:            clientID,
 		RedirectURI:         redirectURI,
@@ -167,21 +203,6 @@ func (s *State) Authorize(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.PendingAuth.Insert(r.Context(), stateParam, pending); err != nil {
 		errorRedirect(w, r, redirectURI, "server_error", "Internal error", stateParam)
-		return
-	}
-
-	if providerID != "" {
-		// TODO(oidc-by-provider): the ?provider= direct-IDP entry point is
-		// not wired. It deep-links a downstream OAuth client's user straight
-		// into a named upstream IdP (e.g. a "Login with Acme SSO" button),
-		// skipping the email-domain lookup the SPA uses via /auth/oidc/login.
-		// Normal logins don't need it; only matters when a third-party app
-		// uses FlowCatalyst as its OAuth provider AND wants to pre-select an
-		// upstream IdP. To close it, port Rust's
-		// oidc_service.get_authorization_url (resolve IDP by id + build the
-		// authorization URL) and complete the code flow on callback. Tracked
-		// as a known parity gap in docs/api-parity.md (§Authentication).
-		errorRedirect(w, r, redirectURI, "server_error", "Direct provider authorization is not supported", stateParam)
 		return
 	}
 
@@ -236,11 +257,22 @@ func maxAgeExceeded(maxAge string, issuedAt time.Time) bool {
 // errorRedirect bounces the user-agent back to redirect_uri with the OAuth
 // error params (302-equivalent temporary redirect, matching Rust).
 func errorRedirect(w http.ResponseWriter, r *http.Request, redirectURI, errCode, desc, state string) {
-	url := redirectURI + "?error=" + pctEncode(errCode) + "&error_description=" + pctEncode(desc)
+	url := redirectURI + querySep(redirectURI) + "error=" + pctEncode(errCode) + "&error_description=" + pctEncode(desc)
 	if state != "" {
 		url += "&state=" + pctEncode(state)
 	}
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect) //nolint:gosec // G710: error redirect to the client's validated redirect_uri
+}
+
+// querySep returns the separator to append query params to redirectURI: "&"
+// when the URI already carries a query component (RFC 6749 §3.1.2 permits a
+// registered redirect endpoint to include its own query, which the AS must
+// preserve rather than clobber with a second "?"), otherwise "?".
+func querySep(redirectURI string) string {
+	if strings.Contains(redirectURI, "?") {
+		return "&"
+	}
+	return "?"
 }
 
 func invalidScopes(scope string, clientScopes []string) []string {

@@ -410,11 +410,12 @@ func (e *Endpoint) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	p, err := e.cfg.Principals.FindByEmail(r.Context(), email)
-	if err != nil || p == nil || !p.Active {
-		rejectInvalid()
-		return
-	}
-	if p.UserIdentity == nil || p.UserIdentity.PasswordHash == nil {
+	if err != nil || p == nil || !p.Active || p.UserIdentity == nil || p.UserIdentity.PasswordHash == nil {
+		// Spend the same Argon2id cost as a real verify so response time
+		// doesn't reveal whether this email is registered (user-enumeration
+		// timing oracle). Covers not-found, deactivated, and SSO-only (no
+		// password hash) accounts alike.
+		passwordhash.EqualizeTiming(req.Password)
 		rejectInvalid()
 		return
 	}

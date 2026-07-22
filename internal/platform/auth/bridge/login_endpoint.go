@@ -17,6 +17,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/oauthapi"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	principalops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
@@ -248,13 +249,22 @@ func extractAudFromIDTokenHint(token string) string {
 	return ""
 }
 
-// handleLogin starts an OIDC login. Takes ?domain=X (required) and
-// optional ?return_url=Y. Generates state/nonce/PKCE verifier, persists
-// the state row, then 302-redirects to the IDP's authorize URL. Matches
-// Rust's /auth/oidc/login signature (snake_case `return_url`,
-// `domain` over `email` so users don't leak the local part).
+// handleLogin starts an OIDC login. Two entry modes:
+//
+//   - ?domain=X — home-realm discovery via email-domain mapping (the SPA
+//     login path for client-employee SSO). Matches Rust's signature
+//     (snake_case `return_url`, `domain` over `email` so users don't leak
+//     the local part).
+//   - ?provider_id=idp_… — provider-direct (docs/portal-identity-plan.md): a
+//     portal app names the upstream IdP explicitly; no email-domain mapping
+//     is consulted. The login state carries an EMPTY mapping id, which is
+//     what routes the callback down the portal (null-client JIT) path.
+//
+// Both modes generate state/nonce/PKCE verifier, persist the state row, then
+// 302-redirect to the IDP's authorize URL.
 func (e *LoginEndpoint) handleLogin(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	providerID := q.Get("provider_id")
 	domain := q.Get("domain")
 	if domain == "" {
 		// Back-compat: also accept ?email= and derive the domain.
@@ -266,33 +276,50 @@ func (e *LoginEndpoint) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if returnURL == "" {
 		returnURL = q.Get("returnUrl") // tolerate camelCase legacy callers
 	}
-	if domain == "" {
-		httperror.Write(w, httperror.BadRequest("DOMAIN_REQUIRED", "domain query param is required"))
+	if domain == "" && providerID == "" {
+		httperror.Write(w, httperror.BadRequest("DOMAIN_REQUIRED", "domain or provider_id query param is required"))
 		return
 	}
 
-	// Resolve uses email; synthesise one with a throwaway local-part.
-	resolved, idp, mapping, err := e.bridge.ResolveForEmail(r.Context(), "x@"+domain)
-	if err != nil {
-		// A real failure (client-secret decrypt, issuer discovery, lookup) —
-		// surface it as an init error with the cause logged, not a misleading
-		// "not configured". A domain genuinely lacking an OIDC provider is the
-		// resolved==nil case below.
-		httperror.Write(w, usecase.Internal("OIDC_RESOLVE_FAILED",
-			"OIDC could not be initialised for this domain", err))
-		return
-	}
-	if resolved == nil {
-		httperror.Write(w, httperror.BadRequest("OIDC_NOT_CONFIGURED",
-			"OIDC is not configured for this domain"))
-		return
+	var (
+		oidcClient *resolved
+		idpID      string
+		mappingID  string
+	)
+	if providerID != "" {
+		res, idp, err := e.bridge.ResolveByProviderID(r.Context(), providerID)
+		if err != nil {
+			httperror.Write(w, usecase.Internal("OIDC_RESOLVE_FAILED",
+				"OIDC could not be initialised for this provider", err))
+			return
+		}
+		oidcClient, idpID = res, idp.ID
+		// mappingID stays "" — the provider-direct marker the callback keys on.
+	} else {
+		// Resolve uses email; synthesise one with a throwaway local-part.
+		res, idp, mapping, err := e.bridge.ResolveForEmail(r.Context(), "x@"+domain)
+		if err != nil {
+			// A real failure (client-secret decrypt, issuer discovery, lookup) —
+			// surface it as an init error with the cause logged, not a misleading
+			// "not configured". A domain genuinely lacking an OIDC provider is the
+			// resolved==nil case below.
+			httperror.Write(w, usecase.Internal("OIDC_RESOLVE_FAILED",
+				"OIDC could not be initialised for this domain", err))
+			return
+		}
+		if res == nil {
+			httperror.Write(w, httperror.BadRequest("OIDC_NOT_CONFIGURED",
+				"OIDC is not configured for this domain"))
+			return
+		}
+		oidcClient, idpID, mappingID = res, idp.ID, mapping.ID
 	}
 
 	state := randString(32)
 	nonce := randString(32)
 	verifier := randString(64)
 	challenge := pkceChallenge(verifier)
-	loginState := NewLoginState(state, domain, idp.ID, mapping.ID, nonce, verifier)
+	loginState := NewLoginState(state, domain, idpID, mappingID, nonce, verifier)
 	if returnURL != "" {
 		loginState.ReturnURL = &returnURL
 	}
@@ -313,7 +340,7 @@ func (e *LoginEndpoint) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	redirectURI := e.absoluteCallbackURL(r)
-	authURL := resolved.AuthCodeURL(state, redirectURI) +
+	authURL := oidcClient.AuthCodeURL(state, redirectURI) +
 		"&nonce=" + url.QueryEscape(nonce) +
 		"&code_challenge=" + url.QueryEscape(challenge) +
 		"&code_challenge_method=S256"
@@ -347,21 +374,42 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resolved, _, mapping, err := e.bridge.ResolveForEmail(r.Context(),
-		"x@"+loginState.EmailDomain)
-	if err != nil {
-		httperror.Write(w, usecase.Internal("OIDC_RESOLVE_FAILED",
-			"OIDC could not be initialised for this domain", err))
-		return
-	}
-	if resolved == nil || mapping == nil {
-		httperror.Write(w, httperror.BadRequest("OIDC_NOT_CONFIGURED",
-			"OIDC is not configured for this domain"))
-		return
+	// Re-resolve the OIDC client the same way the login started: an empty
+	// mapping id marks a provider-direct (portal) login, which never consults
+	// the email-domain mapping table. providerDirect drives the trust-binding
+	// and provisioning branches below.
+	providerDirect := loginState.EmailDomainMappingID == ""
+	var (
+		oidcClient *resolved
+		idp        *identityprovider.IdentityProvider
+		mapping    *emaildomainmapping.EmailDomainMapping
+	)
+	if providerDirect {
+		res, resolvedIdp, err := e.bridge.ResolveByProviderID(r.Context(), loginState.IdentityProviderID)
+		if err != nil {
+			httperror.Write(w, usecase.Internal("OIDC_RESOLVE_FAILED",
+				"OIDC could not be initialised for this provider", err))
+			return
+		}
+		oidcClient, idp = res, resolvedIdp
+	} else {
+		res, _, resolvedMapping, err := e.bridge.ResolveForEmail(r.Context(),
+			"x@"+loginState.EmailDomain)
+		if err != nil {
+			httperror.Write(w, usecase.Internal("OIDC_RESOLVE_FAILED",
+				"OIDC could not be initialised for this domain", err))
+			return
+		}
+		if res == nil || resolvedMapping == nil {
+			httperror.Write(w, httperror.BadRequest("OIDC_NOT_CONFIGURED",
+				"OIDC is not configured for this domain"))
+			return
+		}
+		oidcClient, mapping = res, resolvedMapping
 	}
 
 	redirectURI := e.absoluteCallbackURL(r)
-	tok, err := resolved.Exchange(r.Context(), code, redirectURI, loginState.CodeVerifier)
+	tok, err := oidcClient.Exchange(r.Context(), code, redirectURI, loginState.CodeVerifier)
 	if err != nil {
 		httperror.Write(w, usecase.Internal("OIDC_EXCHANGE", "code exchange failed", err))
 		return
@@ -371,7 +419,7 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 		httperror.Write(w, httperror.BadRequest("NO_ID_TOKEN", "IDP did not return id_token"))
 		return
 	}
-	idToken, err := resolved.VerifyIDToken(r.Context(), rawIDToken)
+	idToken, err := oidcClient.VerifyIDToken(r.Context(), rawIDToken)
 	if err != nil {
 		httperror.Write(w, usecase.Authorization("OIDC_VERIFY", "id_token verification failed: "+err.Error()))
 		return
@@ -410,25 +458,41 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Tenant binding. A multi-tenant IdP's shared keys sign tokens from ANY
-	// tenant, so we pin the token to the right one two ways (1:1 with Rust):
+	// Tenant binding — which check applies depends on how the login started:
+	//
+	// Mapping-based (SPA home-realm) logins, 1:1 with Rust: a multi-tenant
+	// IdP's shared keys sign tokens from ANY tenant, so pin the token two ways:
 	//   1. The token's email domain MUST equal the login domain — an email
 	//      domain is verified inside its owning tenant.
 	//   2. If the mapping pins an explicit tenant (required_oidc_tenant_id), the
 	//      token's `tid` claim MUST match it exactly.
-	if !strings.EqualFold(emailDomain(email), loginState.EmailDomain) {
-		httperror.Write(w, usecase.Authorization("EMAIL_DOMAIN_MISMATCH",
-			"the token's email domain does not match the login domain"))
-		return
-	}
-	if mapping.RequiredOIDCTenantID != nil && *mapping.RequiredOIDCTenantID != "" {
-		if claims.Tid == "" {
-			httperror.Write(w, usecase.Authorization("TENANT_MISMATCH", "id_token has no tenant id (tid) claim"))
+	//
+	// Provider-direct (portal) logins have no login domain and no mapping; the
+	// binding is the IdP's own allowed_email_domains list. ResolveByProviderID
+	// already guarantees the list is non-empty for multi-tenant IdPs; for a
+	// single-tenant IdP an empty list means "any account at this IdP", which
+	// the IdP itself bounds.
+	if providerDirect {
+		if len(idp.AllowedEmailDomains) > 0 && !domainAllowed(emailDomain(email), idp.AllowedEmailDomains) {
+			httperror.Write(w, usecase.Authorization("EMAIL_DOMAIN_MISMATCH",
+				"the token's email domain is not allowed for this identity provider"))
 			return
 		}
-		if claims.Tid != *mapping.RequiredOIDCTenantID {
-			httperror.Write(w, usecase.Authorization("TENANT_MISMATCH", "id_token tenant does not match the configured tenant"))
+	} else {
+		if !strings.EqualFold(emailDomain(email), loginState.EmailDomain) {
+			httperror.Write(w, usecase.Authorization("EMAIL_DOMAIN_MISMATCH",
+				"the token's email domain does not match the login domain"))
 			return
+		}
+		if mapping.RequiredOIDCTenantID != nil && *mapping.RequiredOIDCTenantID != "" {
+			if claims.Tid == "" {
+				httperror.Write(w, usecase.Authorization("TENANT_MISMATCH", "id_token has no tenant id (tid) claim"))
+				return
+			}
+			if claims.Tid != *mapping.RequiredOIDCTenantID {
+				httperror.Write(w, usecase.Authorization("TENANT_MISMATCH", "id_token tenant does not match the configured tenant"))
+				return
+			}
 		}
 	}
 
@@ -446,7 +510,15 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if p == nil {
-		p, err = e.autoProvision(r.Context(), email, loginState.EmailDomainMappingID)
+		if providerDirect {
+			// Portal JIT provisioning: an INERT identity (null-client, no
+			// roles, no app access — see CreatePortalUser). What this user may
+			// do is entirely the consuming portal app's membership data; the
+			// platform only records that the person authenticated.
+			p, err = e.autoProvisionPortal(r.Context(), email)
+		} else {
+			p, err = e.autoProvision(r.Context(), email, loginState.EmailDomainMappingID)
+		}
 		if err != nil {
 			httperror.Write(w, err)
 			return
@@ -457,13 +529,18 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("OIDC login: email lowercase self-heal failed; continuing",
 			"principalId", p.ID, "err", herr)
 	}
-	if err := e.syncIdpRoles(r.Context(), p, claims.Roles, loginState.EmailDomainMappingID); err != nil {
-		// Role sync failure shouldn't block login — the principal is
-		// already valid. Log and continue with whatever role set is in
-		// place. Mirrors Rust's behaviour where the role sync is a
-		// best-effort step after auth.
-		slog.Warn("OIDC role sync failed; continuing without role update",
-			"principalId", p.ID, "err", err)
+	// IDP→platform role sync is a mapping-flow feature: provider-direct logins
+	// have no mapping (and portal roles are portal-side data), so skipping it
+	// also guarantees a portal IdP can never grant platform roles.
+	if !providerDirect {
+		if err := e.syncIdpRoles(r.Context(), p, claims.Roles, loginState.EmailDomainMappingID); err != nil {
+			// Role sync failure shouldn't block login — the principal is
+			// already valid. Log and continue with whatever role set is in
+			// place. Mirrors Rust's behaviour where the role sync is a
+			// best-effort step after auth.
+			slog.Warn("OIDC role sync failed; continuing without role update",
+				"principalId", p.ID, "err", err)
+		}
 	}
 
 	// The state row was already consumed atomically up-front, so no cleanup here.
@@ -570,6 +647,42 @@ func (e *LoginEndpoint) autoProvision(ctx context.Context, email, mappingID stri
 		return nil, usecase.Internal("REPO", "post-create principal missing", errors.New("not found"))
 	}
 	return created, nil
+}
+
+// autoProvisionPortal creates the inert portal identity for a
+// provider-direct login (CreatePortalUser: scope CLIENT, client_id NULL, no
+// roles, AllApplications=false). Same system-actor convention as
+// autoProvision: an empty ExecutionContext principal id.
+func (e *LoginEndpoint) autoProvisionPortal(ctx context.Context, email string) (*principal.Principal, error) {
+	provider := "OIDC"
+	cmd := principalops.CreatePortalUserCommand{
+		Email:    email,
+		Provider: &provider,
+	}
+	ec := usecase.NewExecutionContext("")
+	event, err := usecaseop.Run(ctx, e.uow, principalops.CreatePortalUser(e.principals), cmd, ec)
+	if err != nil {
+		return nil, err
+	}
+	created, err := e.principals.FindByID(ctx, event.UserID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "post-create principal lookup failed", err)
+	}
+	if created == nil {
+		return nil, usecase.Internal("REPO", "post-create principal missing", errors.New("not found"))
+	}
+	return created, nil
+}
+
+// domainAllowed reports whether the email domain is in the IdP's
+// allowed_email_domains list (case-insensitive).
+func domainAllowed(domain string, allowed []string) bool {
+	for _, a := range allowed {
+		if strings.EqualFold(domain, a) {
+			return true
+		}
+	}
+	return false
 }
 
 // syncIdpRoles translates the IDP `roles` claim through
