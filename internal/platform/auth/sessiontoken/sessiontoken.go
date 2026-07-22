@@ -54,10 +54,20 @@ type Claims struct {
 	// "all_applications" claim.
 	AllApplications bool
 	Permissions     []string
+	// TokenUse is the "token_use" claim. On Bearer access tokens it is
+	// authservice.TokenUseAPI or TokenUseIdentity; the auth middleware rejects
+	// an "identity" bearer as an API credential. Empty for session cookies and
+	// legacy tokens minted before the marker existed.
+	TokenUse string
 	// IssuedAt is the token's `iat` (when it was minted ≈ login time).
 	// Zero if the token carried no iat. Used for OIDC max_age enforcement.
 	IssuedAt time.Time
 }
+
+// TokenUseIdentity is the "token_use" value marking an access token that
+// carries no authority and must not be accepted as a platform API bearer.
+// Kept in sync with authservice.TokenUseIdentity (the mint side).
+const TokenUseIdentity = "identity"
 
 // Mint signs a JWT with the supplied claims using key. ttl == 0 mints a
 // token with no expiry (use only in tests). Negative ttl mints an
@@ -180,6 +190,7 @@ func Validate(token string, key *rsa.PublicKey, expect Expect) (*Claims, error) 
 		AllApplications: boolClaim(mc, "all_applications"),
 		// Granted permissions arrive on the space-delimited "scope" claim.
 		Permissions: strings.Fields(stringClaim(mc, "scope")),
+		TokenUse:    stringClaim(mc, "token_use"),
 		IssuedAt:    unixClaim(mc, "iat"),
 	}
 	if out.Subject == "" {

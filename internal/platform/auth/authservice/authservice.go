@@ -32,6 +32,27 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
+// Token-use markers carried on the "token_use" claim of a minted access
+// token. They partition access tokens into two disjoint classes:
+//
+//   - TokenUseAPI  — carries the principal's authority (roles/scope/
+//     permissions/applications/clients) and MAY be presented as a platform
+//     API bearer. Minted only for client_credentials (service accounts +
+//     self-service developer users) and the first-party dashboard
+//     client-switch / refresh paths.
+//   - TokenUseIdentity — minted for an interactive login (authorization_code
+//     and its refresh). Carries NO authority; the platform API middleware
+//     rejects it. It exists only to satisfy the OAuth2 required access_token
+//     response field and the OIDC UserInfo endpoint. Relying-party apps
+//     authenticate the user from the id_token and run their own session.
+//
+// The string values are a wire contract; sessiontoken.TokenUseIdentity must
+// stay in sync (the middleware reads it there).
+const (
+	TokenUseAPI      = "api"
+	TokenUseIdentity = "identity"
+)
+
 // Sentinel errors mirroring the relevant PlatformError variants the Rust
 // auth_service returns. Callers translate these to HTTP status codes
 // (TokenExpired/InvalidToken → 401).
@@ -99,6 +120,12 @@ type AccessTokenClaims struct {
 	// the application-axis analogue of the anchor tier. When true the
 	// Applications list is not a restriction.
 	AllApplications bool `json:"all_applications"`
+
+	// TokenUse is the access-token class marker (TokenUseAPI / TokenUseIdentity).
+	// Omitted on legacy tokens minted before the marker existed; the middleware
+	// treats an absent marker permissively and rejects only an explicit
+	// "identity". See the TokenUse* constants.
+	TokenUse string `json:"token_use,omitempty"`
 }
 
 // IDTokenClaims is the JWT payload for OIDC ID tokens. As in Rust, it
@@ -159,7 +186,8 @@ type Config struct {
 	AccessTokenExpirySecs int64
 	// SessionTokenExpirySecs is the session-cookie lifetime (default 86400).
 	SessionTokenExpirySecs int64
-	// RefreshTokenExpirySecs is the refresh-token lifetime (default 30d).
+	// RefreshTokenExpirySecs is the refresh-token lifetime (default 7d — the
+	// absolute family cap enforced by grantstore, see refreshTokenDefaultExpiry).
 	RefreshTokenExpirySecs int64
 	// IDTokenExpirySecs is the OIDC ID token lifetime (default 300). Kept
 	// short and independent of AccessTokenExpirySecs: the ID token is only
@@ -178,7 +206,7 @@ func DefaultConfig() Config {
 		Audience:               "flowcatalyst",
 		AccessTokenExpirySecs:  3600,
 		SessionTokenExpirySecs: 86400,
-		RefreshTokenExpirySecs: 86400 * 30,
+		RefreshTokenExpirySecs: 86400 * 7,
 		IDTokenExpirySecs:      300,
 	}
 }
@@ -357,26 +385,45 @@ func (s *AuthService) AllJWKSKeys() []JWKSKey {
 	return keys
 }
 
-// GenerateAccessToken mints a short-lived access token for API calls.
+// GenerateAccessToken mints a short-lived, authority-bearing access token for
+// API calls (TokenUseAPI).
 func (s *AuthService) GenerateAccessToken(p *principal.Principal) (string, error) {
-	return s.generateTokenWithExpiry(p, s.config.AccessTokenExpirySecs, nil)
+	return s.generateTokenWithExpiry(p, s.config.AccessTokenExpirySecs, nil, true)
 }
 
-// GenerateAccessTokenWithScope mints a short-lived access token whose "scope"
-// claim carries the supplied granted permissions (space-delimited). Callers
-// compute the granted set as the principal's permission ceiling intersected
-// with any requested scope; passing nil/empty is equivalent to
-// GenerateAccessToken (no scope claim).
+// GenerateAccessTokenWithScope mints a short-lived, authority-bearing access
+// token (TokenUseAPI) whose "scope" claim carries the supplied granted
+// permissions (space-delimited). Callers compute the granted set as the
+// principal's permission ceiling intersected with any requested scope; passing
+// nil/empty is equivalent to GenerateAccessToken (no scope claim). Used by the
+// client_credentials grant.
 func (s *AuthService) GenerateAccessTokenWithScope(p *principal.Principal, scope []string) (string, error) {
-	return s.generateTokenWithExpiry(p, s.config.AccessTokenExpirySecs, scope)
+	return s.generateTokenWithExpiry(p, s.config.AccessTokenExpirySecs, scope, true)
 }
 
-// GenerateSessionToken mints a longer-lived token for cookie sessions.
+// GenerateIdentityAccessToken mints the access token an interactive login
+// (authorization_code / its refresh) must return per OAuth2 §5.1, marked
+// TokenUseIdentity and stripped of ALL authority — no scope, roles,
+// permissions, applications, or client-access claims. The platform API
+// middleware rejects it, so it cannot be replayed as an API credential; its
+// only uses are proving authentication at /oauth/userinfo and letting the
+// relying-party app read the principal's identity. Apps obtain the user's
+// roles from the (per-application-narrowed) id_token, not from this token.
+func (s *AuthService) GenerateIdentityAccessToken(p *principal.Principal) (string, error) {
+	return s.generateTokenWithExpiry(p, s.config.AccessTokenExpirySecs, nil, false)
+}
+
+// GenerateSessionToken mints a longer-lived, authority-bearing token for cookie
+// sessions.
 func (s *AuthService) GenerateSessionToken(p *principal.Principal) (string, error) {
-	return s.generateTokenWithExpiry(p, s.config.SessionTokenExpirySecs, nil)
+	return s.generateTokenWithExpiry(p, s.config.SessionTokenExpirySecs, nil, true)
 }
 
-func (s *AuthService) generateTokenWithExpiry(p *principal.Principal, expirySecs int64, scope []string) (string, error) {
+// generateTokenWithExpiry builds and signs an access token. When authoritative
+// is true the token carries the principal's full authority and is marked
+// TokenUseAPI; when false it carries only identity (sub/tier/type/name/email),
+// emits empty authority arrays, and is marked TokenUseIdentity.
+func (s *AuthService) generateTokenWithExpiry(p *principal.Principal, expirySecs int64, scope []string, authoritative bool) (string, error) {
 	now := time.Now().UTC()
 	exp := now.Add(time.Duration(expirySecs) * time.Second)
 
@@ -389,16 +436,26 @@ func (s *AuthService) generateTokenWithExpiry(p *principal.Principal, expirySecs
 			NotBefore: jwt.NewNumericDate(now),
 			ID:        tsid.GenerateUntyped(),
 		},
-		Aud:             s.config.Audience,
-		PrincipalType:   string(p.Type),
-		Tier:            string(p.Scope),
-		Scope:           strings.Join(scope, " "),
-		Email:           principalEmail(p),
-		Name:            p.Name,
-		Clients:         buildClients(p),
-		Roles:           roleNames(p),
-		Applications:    appAccessOf(p),
-		AllApplications: p.AllApplications,
+		Aud:           s.config.Audience,
+		PrincipalType: string(p.Type),
+		Tier:          string(p.Scope),
+		Email:         principalEmail(p),
+		Name:          p.Name,
+		// Emit empty (non-nil) authority arrays by default so the wire shape is
+		// stable; the authoritative branch overwrites them.
+		Clients:      []string{},
+		Roles:        []string{},
+		Applications: []string{},
+	}
+	if authoritative {
+		claims.TokenUse = TokenUseAPI
+		claims.Scope = strings.Join(scope, " ")
+		claims.Clients = buildClients(p)
+		claims.Roles = roleNames(p)
+		claims.Applications = appAccessOf(p)
+		claims.AllApplications = p.AllApplications
+	} else {
+		claims.TokenUse = TokenUseIdentity
 	}
 	return s.sign(claims)
 }

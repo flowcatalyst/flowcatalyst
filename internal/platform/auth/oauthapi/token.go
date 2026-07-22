@@ -543,16 +543,13 @@ func (s *State) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Requ
 		scope = *code.Scope
 	}
 
-	// Narrow the token's permission scope to the ceiling ∩ the scope captured
-	// at authorize time. Interactive logins commonly request only OIDC scopes
-	// (openid/profile/…), which leaves the permission request empty → the
-	// principal's full permissions, so we never reject here.
-	granted, _, err := s.grantedScope(r.Context(), p, scope)
-	if err != nil {
-		writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
-		return
-	}
-	accessToken, err := s.Auth.GenerateAccessTokenWithScope(p, granted)
+	// Interactive logins receive an IDENTITY access token: no roles, scope, or
+	// permissions, and rejected by the platform API middleware. The relying
+	// party authenticates the user from the id_token (roles narrowed to its own
+	// application) and runs its own session; API authority is only ever granted
+	// through the client_credentials grant. The access_token is returned solely
+	// because OAuth2 §5.1 requires it and OIDC UserInfo consumes it.
+	accessToken, err := s.Auth.GenerateIdentityAccessToken(p)
 	if err != nil {
 		writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 		return
@@ -655,15 +652,10 @@ func (s *State) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	// Re-narrow against the CURRENT ceiling intersected with the originally
-	// granted scope: roles may have shrunk since the grant (the refreshed
-	// token must reflect that) but a refresh can never widen scope.
-	granted, _, err := s.grantedScope(r.Context(), p, strings.Join(stored.Scopes, " "))
-	if err != nil {
-		writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
-		return
-	}
-	accessToken, err := s.Auth.GenerateAccessTokenWithScope(p, granted)
+	// A refresh token is only ever issued to an interactive login (the
+	// client_credentials grant mints none), so the refreshed access token is an
+	// IDENTITY token too: no authority, rejected by the platform API middleware.
+	accessToken, err := s.Auth.GenerateIdentityAccessToken(p)
 	if err != nil {
 		writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 		return

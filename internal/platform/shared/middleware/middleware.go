@@ -4,6 +4,7 @@ package middleware
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -11,8 +12,16 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/logging"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/provider"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/sessiontoken"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 )
+
+// errIdentityTokenNotAPICredential rejects an interactive-login (identity)
+// access token presented as an API bearer. Such tokens carry no authority and
+// exist only to satisfy OAuth2/OIDC (the id_token is the app's authentication
+// artifact); accepting one here — even as an empty-authority context — would
+// let an authentication-only handler treat a login token as an API credential.
+var errIdentityTokenNotAPICredential = errors.New("this access token was issued for interactive login and cannot authorize API requests; obtain an API token via the client_credentials grant")
 
 // CorrelationID extracts X-Correlation-ID from the inbound request or
 // generates a fresh one, attaches it to the context for log enrichment,
@@ -166,6 +175,17 @@ func introspect(ctx context.Context, p *provider.Provider, token string, fromCoo
 			AllApplications: rc.AllApplications,
 			Permissions:     rc.Permissions,
 		}, nil
+	}
+
+	// Interactive-login (identity) access tokens carry no authority and must
+	// never authorize an API call. Reject them outright rather than building an
+	// empty-authority context, which an authentication-only handler would still
+	// accept. Only client_credentials (service accounts + developer users) and
+	// the first-party dashboard paths mint API-usable bearers; those are marked
+	// TokenUseAPI. A missing marker (legacy token predating the field) is
+	// treated permissively — those expire within the access-token TTL.
+	if c.TokenUse == sessiontoken.TokenUseIdentity {
+		return nil, errIdentityTokenNotAPICredential
 	}
 
 	// Bearer transport (OAuth access tokens minted by authservice) is

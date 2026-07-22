@@ -12,11 +12,12 @@ func (s *State) RegisterDiscoveryRoutes(r chi.Router) {
 	r.Get("/.well-known/jwks.json", s.JWKS)
 }
 
-// openIDConfiguration is the OIDC discovery document, transcribed
-// field-for-field from well_known_api.rs::OpenIdConfiguration. The
-// endpoint URLs + advertised capabilities mirror Rust exactly (including
-// end_session_endpoint and the hybrid response_types, which the token
-// endpoint itself does not implement — the advertised list matches Rust).
+// openIDConfiguration is the OIDC discovery document. Endpoint URLs mirror the
+// Rust well_known_api.rs::OpenIdConfiguration, but the advertised capabilities
+// are trimmed to what /oauth/authorize actually implements: response_types is
+// ["code"] only (no implicit/hybrid) and code_challenge_methods is ["S256"]
+// only (no "plain") — a deliberate divergence from the Rust document, which
+// over-advertised both.
 type openIDConfiguration struct {
 	Issuer                            string   `json:"issuer"`
 	AuthorizationEndpoint             string   `json:"authorization_endpoint"`
@@ -50,11 +51,7 @@ func (s *State) OpenIDConfiguration(w http.ResponseWriter, _ *http.Request) {
 		IntrospectionEndpoint: base + "/oauth/introspect",
 		RevocationEndpoint:    base + "/oauth/revoke",
 		JwksURI:               base + "/.well-known/jwks.json",
-		ResponseTypesSupported: []string{
-			"code", "token", "id_token",
-			"code token", "code id_token", "token id_token",
-			"code token id_token",
-		},
+		ResponseTypesSupported:           []string{"code"},
 		SubjectTypesSupported:            []string{"public"},
 		IDTokenSigningAlgValuesSupported: []string{"RS256"},
 		ScopesSupported:                  []string{"openid", "profile", "email", "offline_access"},
@@ -69,7 +66,7 @@ func (s *State) OpenIDConfiguration(w http.ResponseWriter, _ *http.Request) {
 			"name", "email", "email_verified", "acr", "amr", "azp",
 			"type", "scope", "client_id", "roles", "applications", "clients",
 		},
-		CodeChallengeMethodsSupported: []string{"S256", "plain"},
+		CodeChallengeMethodsSupported: []string{"S256"},
 		RequestParameterSupported:     false,
 		RequestURIParameterSupported:  false,
 	})
