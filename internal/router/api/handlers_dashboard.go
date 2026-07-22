@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -271,7 +272,13 @@ func (s *State) dashboardInFlight(_ context.Context, in *dashboardInFlightInput)
 	idFilter := strings.ToLower(in.MessageID)
 	poolFilter := strings.ToLower(in.PoolCode)
 	now := time.Now()
-	out := make([]InFlightMessageInfo, 0, limit)
+
+	// Build the FULL filtered set first, then sort by elapsed DESC, THEN
+	// truncate. Truncating during the (map-order) scan — as this handler used
+	// to — could drop the longest-running entries entirely when more than
+	// `limit` are in flight, which is exactly the opposite of what an operator
+	// hunting orphaned / stuck messages needs to see.
+	all := make([]InFlightMessageInfo, 0)
 	for _, im := range s.InFlight.Snapshot() {
 		if idFilter != "" && !strings.Contains(strings.ToLower(im.MessageID), idFilter) {
 			continue
@@ -284,19 +291,23 @@ func (s *State) dashboardInFlight(_ context.Context, in *dashboardInFlightInput)
 			b := im.BrokerMessageID
 			brokerID = &b
 		}
-		out = append(out, InFlightMessageInfo{
+		all = append(all, InFlightMessageInfo{
 			MessageID:           im.MessageID,
 			BrokerMessageID:     brokerID,
 			QueueID:             im.QueueIdentifier,
 			PoolCode:            im.PoolCode,
 			ElapsedTimeMs:       uint64(now.Sub(im.StartedAt).Milliseconds()),
 			AddedToInPipelineAt: im.StartedAt.UTC(),
+			MessageGroup:        im.MessageGroupID,
+			Attempts:            im.Attempts,
 		})
-		if len(out) >= limit {
-			break
-		}
 	}
-	return &dashboardInFlightOutput{Body: out}, nil
+	// Longest in flight first — orphans and 60s+ stragglers surface at the top.
+	sort.Slice(all, func(i, j int) bool { return all[i].ElapsedTimeMs > all[j].ElapsedTimeMs })
+	if len(all) > limit {
+		all = all[:limit]
+	}
+	return &dashboardInFlightOutput{Body: all}, nil
 }
 
 type inFlightCheckInput struct {

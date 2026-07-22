@@ -179,8 +179,11 @@ type CircuitBreakerStateResponse struct {
 	RecentFailures uint32 `json:"recentFailures"`
 }
 
-// InFlightMessageInfo mirrors Rust InFlightMessageInfo. Every field has
-// an explicit camelCase rename in Rust; the JSON tags here match.
+// InFlightMessageInfo mirrors Rust InFlightMessageInfo (the first six fields,
+// same camelCase tags). MessageGroup + Attempts are Go-only additive fields:
+// together with ElapsedTimeMs they let an operator tell an orphaned/stuck
+// delivery (high elapsed, Attempts==0 — pinned on its first attempt) apart
+// from one legitimately retrying (Attempts>0) or one just genuinely slow.
 type InFlightMessageInfo struct {
 	MessageID           string    `json:"messageId"`
 	BrokerMessageID     *string   `json:"brokerMessageId"`
@@ -188,6 +191,11 @@ type InFlightMessageInfo struct {
 	PoolCode            string    `json:"poolCode"`
 	ElapsedTimeMs       uint64    `json:"elapsedTimeMs"`
 	AddedToInPipelineAt time.Time `json:"addedToInPipelineAt"`
+	// MessageGroup is the FIFO message-group id ("" for ungrouped). Additive.
+	MessageGroup string `json:"messageGroup"`
+	// Attempts is the in-pipeline retry count (0 = still on its first attempt).
+	// Additive.
+	Attempts uint `json:"attempts"`
 }
 
 // InFlightCheckResponse is the response for the single-message check
