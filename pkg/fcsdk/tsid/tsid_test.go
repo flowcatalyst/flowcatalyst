@@ -2,6 +2,7 @@ package tsid_test
 
 import (
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -34,6 +35,51 @@ func TestUniqueness(t *testing.T) {
 		_, dup := seen[id]
 		require.False(t, dup, "duplicate TSID at iteration %d: %s", i, id)
 		seen[id] = struct{}{}
+	}
+}
+
+// TestUniquenessUnderCounterOverflow hammers the generator far past 4096 ids
+// per millisecond (the 12-bit sequence capacity). The old free-running counter
+// wrapped here and collided at p≈1/1024 per wrapped pair — the historical
+// TestUniqueness flake. The monotonic (ms, seq) state must instead borrow
+// future milliseconds, so duplicates are structurally impossible: this test
+// must NEVER flake.
+func TestUniquenessUnderCounterOverflow(t *testing.T) {
+	const n = 100_000
+	seen := make(map[string]struct{}, n)
+	for i := 0; i < n; i++ {
+		id := tsid.GenerateUntyped()
+		_, dup := seen[id]
+		require.False(t, dup, "duplicate TSID at iteration %d: %s", i, id)
+		seen[id] = struct{}{}
+	}
+}
+
+// TestUniquenessConcurrent asserts global uniqueness across goroutines — the
+// CAS on the shared (ms, seq) state must serialize issuance correctly.
+func TestUniquenessConcurrent(t *testing.T) {
+	const workers, per = 8, 20_000
+	results := make([][]string, workers)
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			ids := make([]string, per)
+			for i := range ids {
+				ids[i] = tsid.GenerateUntyped()
+			}
+			results[w] = ids
+		}(w)
+	}
+	wg.Wait()
+	seen := make(map[string]struct{}, workers*per)
+	for _, ids := range results {
+		for _, id := range ids {
+			_, dup := seen[id]
+			require.False(t, dup, "duplicate TSID across goroutines: %s", id)
+			seen[id] = struct{}{}
+		}
 	}
 }
 
