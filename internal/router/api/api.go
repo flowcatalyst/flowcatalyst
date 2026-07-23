@@ -60,6 +60,14 @@ type InFlightSnapshotProvider interface {
 	Snapshot() []common.InFlightMessage
 }
 
+// MediatingProvider exposes the live set of messages currently inside pool
+// workers (activeWorkers). Distinct from InFlightSnapshotProvider, which is the
+// reaped dedup tracker — this set is never reaped, so long-running deliveries
+// stay visible for their whole duration.
+type MediatingProvider interface {
+	MediatingSnapshot() []router.MediatingEntry
+}
+
 // BrokerStatsProvider serves cached + windowed queue metrics.
 type BrokerStatsProvider interface {
 	GetWindowed(window time.Duration) []queue.Metrics
@@ -143,6 +151,7 @@ type State struct {
 	OpenCount    CircuitBreakerOpenCounter
 	Breakers     BreakerSnapshotProvider
 	InFlight     InFlightSnapshotProvider
+	Mediating    MediatingProvider
 	BrokerStats  BrokerStatsProvider
 	PoolUpdater  PoolUpdater
 	Publisher    PublisherProvider
@@ -165,6 +174,7 @@ func FromServer(s *router.Server) *State {
 		OpenCount:   breakersAdapter{breakers: s.Breakers},
 		Breakers:    breakerSnapshotAdapter{breakers: s.Breakers},
 		InFlight:    inFlightAdapter{tracker: s.Tracker},
+		Mediating:   managerMediatingAdapter{m: s.Manager},
 		BrokerStats: brokerStatsAdapter{cache: s.BrokerStats},
 		PoolUpdater: poolUpdaterAdapter{m: s.Manager},
 		Publisher:   publisherAdapter{m: s.Manager},
@@ -220,6 +230,15 @@ func (a managerPoolStatsAdapter) PoolStats() []router.PoolStats {
 		return nil
 	}
 	return a.m.PoolStats()
+}
+
+type managerMediatingAdapter struct{ m *router.Manager }
+
+func (a managerMediatingAdapter) MediatingSnapshot() []router.MediatingEntry {
+	if a.m == nil {
+		return nil
+	}
+	return a.m.MediatingSnapshot()
 }
 
 type breakersAdapter struct{ breakers *router.BreakerRegistry }

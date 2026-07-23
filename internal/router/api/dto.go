@@ -198,6 +198,19 @@ type InFlightMessageInfo struct {
 	Attempts uint `json:"attempts"`
 }
 
+// MediatingInfo is one message currently inside a pool worker — the live,
+// never-reaped "mediating right now" view (its count matches the pool's active
+// workers). elapsedTimeMs is how long it has been in the worker this attempt.
+type MediatingInfo struct {
+	MessageID     string `json:"messageId"`
+	PoolCode      string `json:"poolCode"`
+	Group         string `json:"group"`
+	Queue         string `json:"queue"`
+	Target        string `json:"target"`
+	Attempts      uint   `json:"attempts"`
+	ElapsedTimeMs uint64 `json:"elapsedTimeMs"`
+}
+
 // InFlightCheckResponse is the response for the single-message check
 // endpoint. inPipeline=false → safe to resend.
 type InFlightCheckResponse struct {

@@ -139,6 +139,23 @@ func (m *Manager) PoolStats() []PoolStats {
 	return out
 }
 
+// MediatingSnapshot returns every message currently inside a pool worker,
+// across all pools — the live, never-reaped "what is mediating right now" set.
+func (m *Manager) MediatingSnapshot() []MediatingEntry {
+	m.mu.Lock()
+	pools := make([]*Pool, 0, len(m.pools))
+	for _, p := range m.pools {
+		pools = append(pools, p)
+	}
+	m.mu.Unlock()
+	// Snapshot each pool OUTSIDE the manager lock (each pool takes its own).
+	var out []MediatingEntry
+	for _, p := range pools {
+		out = append(out, p.MediatingSnapshot()...)
+	}
+	return out
+}
+
 // PoolCodes returns the codes of all currently registered pools.
 func (m *Manager) PoolCodes() []string {
 	m.mu.Lock()

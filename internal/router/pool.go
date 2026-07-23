@@ -51,7 +51,30 @@ type Pool struct {
 	queueSize     atomic.Uint32 // pending in groupQs (pre-dispatch)
 	activeWorkers atomic.Uint32 // currently inside processOne
 
+	// mediating is the live set of messages currently inside processOne — the
+	// authoritative "what is being mediated right now" view. It is maintained
+	// at the SAME boundary as activeWorkers (enter/exit of processOne), so its
+	// size always equals activeWorkers, and — unlike the InFlightTracker — it
+	// is never reaped, so a long-running delivery stays visible for its whole
+	// duration. Keyed by message id (a message is in at most one worker at a
+	// time: FIFO within a group, one worker per message in IMMEDIATE mode).
+	mediatingMu sync.Mutex
+	mediating   map[string]MediatingEntry
+
 	stopped atomic.Bool
+}
+
+// MediatingEntry is one message currently inside a pool worker (in processOne:
+// awaiting a rate-limit token or actively being delivered). Snapshotted for the
+// dashboard's Mediating view.
+type MediatingEntry struct {
+	MessageID  string
+	PoolCode   string
+	Group      string
+	Queue      string
+	Target     string
+	Attempts   uint
+	MediatedAt time.Time // when it entered the worker (this attempt)
 }
 
 // groupQueue is the per-message-group buffer: a single strict FIFO. A message
@@ -105,6 +128,7 @@ func NewPool(cfg common.PoolConfig, mediator Mediator, tracker *InFlightTracker,
 		metrics:         NewPoolMetricsCollector(),
 		resolveConsumer: resolveConsumer,
 		groupQs:         make(map[string]*groupQueue),
+		mediating:       make(map[string]MediatingEntry),
 	}
 	p.sem.Store(make(chan struct{}, concurrency))
 	p.concurrency.Store(concurrency)
@@ -341,6 +365,46 @@ func (p *Pool) Stop() {
 		slog.Info("pool stopped; flushed buffered messages for broker redelivery",
 			"pool", p.cfg.Code, "count", len(flushed))
 	}
+}
+
+// trackMediating records a message as actively inside a worker. Called at the
+// top of processOne, paired with untrackMediating on exit.
+func (p *Pool) trackMediating(qm common.QueuedMessage) {
+	group := ""
+	if qm.Message.MessageGroupID != nil {
+		group = *qm.Message.MessageGroupID
+	}
+	p.mediatingMu.Lock()
+	p.mediating[qm.Message.ID] = MediatingEntry{
+		MessageID:  qm.Message.ID,
+		PoolCode:   p.cfg.Code,
+		Group:      group,
+		Queue:      qm.QueueIdentifier,
+		Target:     qm.Message.MediationTarget,
+		Attempts:   qm.Attempts,
+		MediatedAt: time.Now(),
+	}
+	p.mediatingMu.Unlock()
+}
+
+func (p *Pool) untrackMediating(messageID string) {
+	p.mediatingMu.Lock()
+	delete(p.mediating, messageID)
+	p.mediatingMu.Unlock()
+}
+
+// MediatingSnapshot returns the messages currently inside this pool's workers.
+// Never reaped, so a long-running delivery stays listed for its full duration —
+// the reliable answer to "which records are mediating right now" (its length
+// equals ActiveWorkers).
+func (p *Pool) MediatingSnapshot() []MediatingEntry {
+	p.mediatingMu.Lock()
+	defer p.mediatingMu.Unlock()
+	out := make([]MediatingEntry, 0, len(p.mediating))
+	for _, e := range p.mediating {
+		out = append(out, e)
+	}
+	return out
 }
 
 // InFlight returns the count of messages currently in worker goroutines.
@@ -636,6 +700,8 @@ func retryDelay(attempts uint, outcomeDelaySec int) time.Duration {
 func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result processResult, retryAfter time.Duration) {
 	p.activeWorkers.Add(1)
 	defer p.activeWorkers.Add(^uint32(0)) // atomic decrement
+	p.trackMediating(qm)
+	defer p.untrackMediating(qm.Message.ID)
 
 	// Panic isolation: a panic mid-mediation must not crash the process (an
 	// unrecovered panic in a goroutine takes down the program) or strand the

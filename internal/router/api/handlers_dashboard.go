@@ -45,6 +45,10 @@ func registerDashboardReads(api huma.API, s *State) {
 		OperationID: "inFlightCheckBatch", Method: http.MethodPost, Path: "/monitoring/in-flight-messages/check-batch",
 		Summary: "Check multiple message IDs at once", Tags: []string{tagMonitoring}, DefaultStatus: http.StatusOK,
 	}, s.inFlightCheckBatch)
+	huma.Register(api, huma.Operation{
+		OperationID: "dashboardMediating", Method: http.MethodGet, Path: "/monitoring/mediating",
+		Summary: "List messages currently being mediated (live, never reaped)", Tags: []string{tagMonitoring}, DefaultStatus: http.StatusOK,
+	}, s.dashboardMediating)
 }
 
 // parseTimeWindow maps the dashboard time_window query value to a Duration.
@@ -308,6 +312,50 @@ func (s *State) dashboardInFlight(_ context.Context, in *dashboardInFlightInput)
 		all = all[:limit]
 	}
 	return &dashboardInFlightOutput{Body: all}, nil
+}
+
+type dashboardMediatingInput struct {
+	Limit    int    `query:"limit"`
+	PoolCode string `query:"poolCode"`
+}
+
+type dashboardMediatingOutput struct {
+	Body []MediatingInfo
+}
+
+// dashboardMediating lists messages currently inside pool workers — the live,
+// never-reaped set (its count equals the pools' active workers). Sorted by
+// elapsed DESC so the longest-running / stuck deliveries are at the top.
+func (s *State) dashboardMediating(_ context.Context, in *dashboardMediatingInput) (*dashboardMediatingOutput, error) {
+	if s.Mediating == nil {
+		return &dashboardMediatingOutput{Body: []MediatingInfo{}}, nil
+	}
+	limit := in.Limit
+	if limit <= 0 {
+		limit = 200
+	}
+	poolFilter := strings.ToLower(in.PoolCode)
+	now := time.Now()
+	out := make([]MediatingInfo, 0)
+	for _, e := range s.Mediating.MediatingSnapshot() {
+		if poolFilter != "" && !strings.EqualFold(e.PoolCode, poolFilter) {
+			continue
+		}
+		out = append(out, MediatingInfo{
+			MessageID:     e.MessageID,
+			PoolCode:      e.PoolCode,
+			Group:         e.Group,
+			Queue:         e.Queue,
+			Target:        e.Target,
+			Attempts:      e.Attempts,
+			ElapsedTimeMs: uint64(now.Sub(e.MediatedAt).Milliseconds()),
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ElapsedTimeMs > out[j].ElapsedTimeMs })
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return &dashboardMediatingOutput{Body: out}, nil
 }
 
 type inFlightCheckInput struct {

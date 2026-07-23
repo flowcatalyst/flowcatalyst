@@ -166,6 +166,9 @@
                     <button id="tabInFlight" class="tab-button px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">
                         In-Flight Messages
                     </button>
+                    <button id="tabMediating" class="tab-button px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                        Mediating
+                    </button>
                 </nav>
             </div>
 
@@ -346,6 +349,41 @@
                     </div>
                     <div id="noInFlight" class="hidden px-6 py-8 text-center text-gray-500">
                         No messages in flight
+                    </div>
+                </div>
+
+                <!-- Mediating Tab: live set of messages inside pool workers (never reaped) -->
+                <div id="contentMediating" class="tab-content hidden">
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <div class="flex justify-between items-center">
+                            <h3 class="text-lg font-semibold text-gray-900">Currently Mediating <span id="mediatingCount" class="ml-2 text-sm font-normal text-gray-500"></span></h3>
+                            <div class="flex space-x-4">
+                                <input type="text" id="mediatingPoolFilter" placeholder="Filter by pool..."
+                                       class="border border-gray-300 rounded px-3 py-2 text-sm w-64">
+                                <button id="refreshMediatingBtn" class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
+                                    Refresh
+                                </button>
+                            </div>
+                        </div>
+                        <p class="mt-1 text-xs text-gray-500">Live set of messages inside a pool worker right now — count matches the pool's active workers, and entries are never reaped, so long-running deliveries stay listed. Sorted longest-mediating first.</p>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Message ID</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pool</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Group</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Target</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Attempts</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mediating For</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mediatingTable" class="bg-white divide-y divide-gray-200"></tbody>
+                        </table>
+                    </div>
+                    <div id="noMediating" class="hidden px-6 py-8 text-center text-gray-500">
+                        Nothing is being mediated right now
                     </div>
                 </div>
             </div>
@@ -536,19 +574,23 @@
             }
 
             setupTabListeners() {
-                const tabs = ['Queues', 'Pools', 'Warnings', 'InFlight'];
+                const tabs = ['Queues', 'Pools', 'Warnings', 'InFlight', 'Mediating'];
                 tabs.forEach(tab => {
                     document.getElementById(`tab${tab}`).addEventListener('click', () => {
                         this.switchTab(tab);
                         if (tab === 'InFlight') this.loadInFlightMessages();
+                        if (tab === 'Mediating') this.loadMediating();
                     });
                 });
 
                 document.getElementById('refreshInFlightBtn').addEventListener('click', () => this.loadInFlightMessages());
                 document.getElementById('messageIdFilter').addEventListener('input', (e) => this.filterInFlightMessages(e.target.value));
+                document.getElementById('refreshMediatingBtn').addEventListener('click', () => this.loadMediating());
+                document.getElementById('mediatingPoolFilter').addEventListener('input', () => this.loadMediating());
             }
 
             switchTab(tabName) {
+                this.currentTab = tabName;
                 document.querySelectorAll('.tab-button').forEach(btn => {
                     btn.classList.remove('border-blue-500', 'text-blue-600');
                     btn.classList.add('border-transparent', 'text-gray-500');
@@ -1317,8 +1359,60 @@
                 this.renderPoolDetailMessages(filtered);
             }
 
+            async loadMediating() {
+                const pool = document.getElementById('mediatingPoolFilter').value.trim();
+                const qs = pool ? `?poolCode=${encodeURIComponent(pool)}` : '';
+                try {
+                    const response = await this.fetchWithAuth('/monitoring/mediating' + qs);
+                    if (!response.ok) throw new Error('Failed to load mediating messages');
+                    this.renderMediating(await response.json());
+                } catch (error) {
+                    console.error('Failed to load mediating messages:', error);
+                    document.getElementById('mediatingTable').innerHTML = '';
+                    document.getElementById('noMediating').classList.remove('hidden');
+                }
+            }
+
+            renderMediating(rows) {
+                const table = document.getElementById('mediatingTable');
+                const none = document.getElementById('noMediating');
+                const countEl = document.getElementById('mediatingCount');
+                if (countEl) {
+                    const n = rows ? rows.length : 0;
+                    const over60 = (rows || []).filter(r => (r.elapsedTimeMs || 0) >= 60000).length;
+                    countEl.textContent = over60 > 0 ? `(${n} in workers, ${over60} ≥60s)` : `(${n} in workers)`;
+                }
+                if (!rows || rows.length === 0) {
+                    table.innerHTML = '';
+                    none.classList.remove('hidden');
+                    return;
+                }
+                none.classList.add('hidden');
+                table.innerHTML = rows.map(r => {
+                    const sec = Math.floor((r.elapsedTimeMs || 0) / 1000);
+                    const min = Math.floor(sec / 60);
+                    const elapsed = min > 0 ? `${min}m ${sec % 60}s` : `${sec}s`;
+                    const cls = sec >= 300 ? 'text-red-600 font-semibold' : sec >= 60 ? 'text-amber-600 font-medium' : 'text-gray-900';
+                    const attempts = r.attempts || 0;
+                    return `
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4 text-sm text-blue-600 font-mono max-w-xs truncate" title="${r.messageId}">${r.messageId}</td>
+                            <td class="px-6 py-4 text-sm text-gray-900">${r.poolCode || 'N/A'}</td>
+                            <td class="px-6 py-4 text-sm text-gray-900 font-mono max-w-xs truncate" title="${r.group || ''}">${r.group || '—'}</td>
+                            <td class="px-6 py-4 text-sm text-gray-500 font-mono max-w-md truncate" title="${r.target || ''}">${r.target || '—'}</td>
+                            <td class="px-6 py-4 text-sm ${attempts > 0 ? 'text-amber-600 font-medium' : 'text-gray-400'}">${attempts}</td>
+                            <td class="px-6 py-4 text-sm ${cls}">${elapsed}</td>
+                        </tr>`;
+                }).join('');
+            }
+
             startPeriodicRefresh() {
-                setInterval(() => this.loadData(), 5000);
+                setInterval(() => {
+                    this.loadData();
+                    // Keep the live-view tabs fresh while they're open.
+                    if (this.currentTab === 'Mediating') this.loadMediating();
+                    if (this.currentTab === 'InFlight') this.loadInFlightMessages();
+                }, 5000);
             }
         }
 
