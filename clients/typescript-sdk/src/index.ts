@@ -206,3 +206,11 @@ export * as sync from "./sync/index.js";
 
 // Re-export neverthrow utilities for convenience
 export { ok, err, Result, ResultAsync } from "neverthrow";
+
+// Delivery-signature verification (scheduled-job firings + dispatch webhooks).
+export {
+	verifyDeliverySignature,
+	WebhookSignatureError,
+	type WebhookSignatureErrorCode,
+	type VerifyDeliverySignatureParams,
+} from "./webhook/signature.js";
