@@ -61,19 +61,25 @@ func (v *Violation) Error() string { return v.Code + ": " + v.Message }
 // not be derived from them. Returns nil when the password is acceptable.
 func Validate(pw, email, name string) *Violation {
 	if len(pw) < MinLength {
-		return &Violation{"PASSWORD_TOO_SHORT",
-			fmt.Sprintf("Password must be at least %d characters", MinLength)}
+		return &Violation{
+			"PASSWORD_TOO_SHORT",
+			fmt.Sprintf("Password must be at least %d characters", MinLength),
+		}
 	}
 	if len(pw) > MaxLength {
-		return &Violation{"PASSWORD_TOO_LONG",
-			fmt.Sprintf("Password must be at most %d characters", MaxLength)}
+		return &Violation{
+			"PASSWORD_TOO_LONG",
+			fmt.Sprintf("Password must be at most %d characters", MaxLength),
+		}
 	}
 
 	norm := strings.ToLower(strings.TrimSpace(pw))
 
 	if allSameRune(norm) {
-		return &Violation{"PASSWORD_TOO_WEAK",
-			"Password cannot be a single repeated character"}
+		return &Violation{
+			"PASSWORD_TOO_WEAK",
+			"Password cannot be a single repeated character",
+		}
 	}
 
 	// Identity material: the full email, its local part, and each word of the
@@ -86,13 +92,17 @@ func Validate(pw, email, name string) *Violation {
 	}
 
 	if _, common := commonPasswords()[norm]; common {
-		return &Violation{"PASSWORD_TOO_COMMON",
-			"That password is on the list of most commonly used passwords — choose something less guessable"}
+		return &Violation{
+			"PASSWORD_TOO_COMMON",
+			"That password is on the list of most commonly used passwords — choose something less guessable",
+		}
 	}
 	// The product name is a house blocklist entry the public list can't know.
 	if strings.Contains(norm, "flowcatalyst") {
-		return &Violation{"PASSWORD_TOO_COMMON",
-			"Password cannot be based on the product name"}
+		return &Violation{
+			"PASSWORD_TOO_COMMON",
+			"Password cannot be based on the product name",
+		}
 	}
 	return nil
 }
@@ -108,9 +118,7 @@ func identityViolation(normPw, email, name string) *Violation {
 			candidates = append(candidates, e[:at])
 		}
 	}
-	for _, tok := range strings.Fields(strings.ToLower(name)) {
-		candidates = append(candidates, tok)
-	}
+	candidates = append(candidates, strings.Fields(strings.ToLower(name))...)
 	for _, c := range candidates {
 		if c == "" {
 			continue
@@ -122,8 +130,10 @@ func identityViolation(normPw, email, name string) *Violation {
 			hit = normPw == c || reversed == c
 		}
 		if hit {
-			return &Violation{"PASSWORD_CONTAINS_IDENTITY",
-				"Password cannot contain your email address or name"}
+			return &Violation{
+				"PASSWORD_CONTAINS_IDENTITY",
+				"Password cannot contain your email address or name",
+			}
 		}
 	}
 	return nil

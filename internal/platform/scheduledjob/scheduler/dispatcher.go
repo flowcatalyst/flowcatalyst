@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 )
 
 // Signature headers on delivered firings. Byte-format matches the router's
@@ -25,11 +26,12 @@ const (
 	timestampHeader = "X-FlowCatalyst-Timestamp"
 )
 
-// SigningSecretResolver returns the plaintext HMAC signing secret for an
-// application's service account ("" when the application has none). The
-// server wires this to the service-account repository with a short TTL cache,
-// so secret rotation takes effect without a restart or job re-sync.
-type SigningSecretResolver func(ctx context.Context, applicationID string) (string, error)
+// DeliveryCredsResolver returns the delivery credentials (bearer token +
+// HMAC signing secret) for an application's service account (zero-value when
+// the application has none). The server wires this to the service-account
+// repository with a short TTL cache, so credential rotation takes effect
+// without a restart or job re-sync.
+type DeliveryCredsResolver func(ctx context.Context, applicationID string) (serviceaccount.OutboundCreds, error)
 
 // signFiring computes the delivery signature. Must byte-match the SDK
 // verifier (WebhookValidator: hash_hmac over timestamp . rawBody).
@@ -52,11 +54,11 @@ type dispatcher struct {
 	instances *scheduledjob.InstanceRepository
 	http      *http.Client
 	isLeader  func() bool
-	// signingSecret resolves the application's SA signing secret; nil (or an
-	// empty resolved secret) delivers unsigned — the SDK's fail-closed
+	// creds resolves the application's SA delivery credentials; nil (or
+	// zero-value resolved creds) delivers bare — the SDK's fail-closed
 	// fc-signature middleware then rejects with a descriptive 401 that lands
 	// in delivery_error, making the missing pairing diagnosable.
-	signingSecret SigningSecretResolver
+	creds DeliveryCredsResolver
 }
 
 // webhookEnvelope is the POST body delivered to a job's target URL. Field
@@ -187,19 +189,26 @@ func (d *dispatcher) dispatchOne(ctx context.Context, job *scheduledjob.Schedule
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if d.signingSecret != nil && job.ApplicationID != nil && *job.ApplicationID != "" {
-		secret, serr := d.signingSecret(ctx, *job.ApplicationID)
+	if d.creds != nil && job.ApplicationID != nil && *job.ApplicationID != "" {
+		creds, serr := d.creds(ctx, *job.ApplicationID)
 		switch {
 		case serr != nil:
-			slog.Warn("scheduled-job dispatcher: signing-secret lookup failed; delivering unsigned",
+			slog.Warn("scheduled-job dispatcher: delivery-creds lookup failed; delivering unsigned",
 				"job_code", job.Code, "application_id", *job.ApplicationID, "err", serr)
-		case secret == "":
-			slog.Warn("scheduled-job dispatcher: application SA has no signing secret; delivering unsigned",
+		case creds.SigningSecret == "" && creds.BearerToken == "":
+			slog.Warn("scheduled-job dispatcher: application SA has no webhook credentials; delivering unsigned",
 				"job_code", job.Code, "application_id", *job.ApplicationID)
 		default:
-			sig, ts := signFiring(body, secret)
-			req.Header.Set(signatureHeader, sig)
-			req.Header.Set(timestampHeader, ts)
+			// Same header set as router-mediated webhooks: bearer (static
+			// convenience credential) + HMAC signature (the real boundary).
+			if creds.BearerToken != "" {
+				req.Header.Set("Authorization", "Bearer "+creds.BearerToken)
+			}
+			if creds.SigningSecret != "" {
+				sig, ts := signFiring(body, creds.SigningSecret)
+				req.Header.Set(signatureHeader, sig)
+				req.Header.Set(timestampHeader, ts)
+			}
 		}
 	}
 

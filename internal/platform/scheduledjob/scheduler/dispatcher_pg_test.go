@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
@@ -160,16 +161,17 @@ func TestDispatcherTick_SignsFiringWithApplicationSecret(t *testing.T) {
 	const secret = "sjdsp-signing-secret-1"
 
 	type capture struct {
-		sig, ts string
-		body    []byte
+		sig, ts, bearer string
+		body            []byte
 	}
 	got := make(chan capture, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		got <- capture{
-			sig:  r.Header.Get("X-FlowCatalyst-Signature"),
-			ts:   r.Header.Get("X-FlowCatalyst-Timestamp"),
-			body: body,
+			sig:    r.Header.Get("X-FlowCatalyst-Signature"),
+			ts:     r.Header.Get("X-FlowCatalyst-Timestamp"),
+			bearer: r.Header.Get("Authorization"),
+			body:   body,
 		}
 		w.WriteHeader(http.StatusAccepted)
 	}))
@@ -196,14 +198,16 @@ func TestDispatcherTick_SignsFiringWithApplicationSecret(t *testing.T) {
 		instances: instances,
 		http:      &http.Client{Timeout: time.Second},
 		isLeader:  func() bool { return true },
-		signingSecret: func(_ context.Context, gotAppID string) (string, error) {
+		creds: func(_ context.Context, gotAppID string) (serviceaccount.OutboundCreds, error) {
 			require.Equal(t, appID, gotAppID, "resolver must receive the job's application id")
-			return secret, nil
+			return serviceaccount.OutboundCreds{BearerToken: "fc_testbearer", SigningSecret: secret}, nil
 		},
 	}
 	require.NoError(t, d.tick(ctx))
 
 	c := <-got
+	assert.Equal(t, "Bearer fc_testbearer", c.bearer,
+		"delivery must carry the SA bearer token, same as router webhooks")
 	require.NotEmpty(t, c.sig, "delivery must carry X-FlowCatalyst-Signature")
 	require.NotEmpty(t, c.ts, "delivery must carry X-FlowCatalyst-Timestamp")
 	_, terr := time.Parse("2006-01-02T15:04:05.000Z", c.ts)

@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/processing"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduler"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
@@ -227,22 +228,23 @@ func TestProcess_SignsSubscriberDelivery(t *testing.T) {
 
 	auth := scheduler.NewDispatchAuthService(testSecret)
 	h := processing.New(dispatchjob.NewRepository(pool), auth).
-		WithSigningSecretResolver(func(_ context.Context, job *dispatchjob.DispatchJob) (string, error) {
+		WithDeliveryCredsResolver(func(_ context.Context, job *dispatchjob.DispatchJob) (serviceaccount.OutboundCreds, error) {
 			require.Equal(t, "djproc_sign1", job.ID, "resolver receives the job under delivery")
-			return secret, nil
+			return serviceaccount.OutboundCreds{BearerToken: "fc_testbearer", SigningSecret: secret}, nil
 		})
 	r := chi.NewRouter()
 	h.Mount(r)
 	ts := httptest.NewServer(r)
 	t.Cleanup(ts.Close)
 
-	type capture struct{ sig, tstamp, body string }
+	type capture struct{ sig, tstamp, bearer, body string }
 	var got atomic.Value
 	sub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		got.Store(capture{
 			sig:    r.Header.Get("X-FlowCatalyst-Signature"),
 			tstamp: r.Header.Get("X-FlowCatalyst-Timestamp"),
+			bearer: r.Header.Get("Authorization"),
 			body:   string(b),
 		})
 		w.WriteHeader(http.StatusOK)
@@ -254,6 +256,8 @@ func TestProcess_SignsSubscriberDelivery(t *testing.T) {
 	require.Equal(t, http.StatusOK, code)
 
 	c := got.Load().(capture)
+	assert.Equal(t, "Bearer fc_testbearer", c.bearer,
+		"delivery must carry the SA bearer token, same as router webhooks")
 	require.NotEmpty(t, c.sig, "delivery must carry X-FlowCatalyst-Signature")
 	_, terr := time.Parse("2006-01-02T15:04:05.000Z", c.tstamp)
 	require.NoError(t, terr, "timestamp must be millisecond-precision ISO8601 UTC")

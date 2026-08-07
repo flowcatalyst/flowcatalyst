@@ -150,3 +150,68 @@ describe("verifyDeliverySignature", () => {
 		);
 	});
 });
+
+describe("verifyDeliverySignature bearer gate", () => {
+	it("is AND-ed with the signature when configured", () => {
+		const ts = goTimestamp();
+		const sig = goSign(ts, BODY);
+		// Both valid → passes.
+		verifyDeliverySignature({
+			rawBody: BODY,
+			signature: sig,
+			timestamp: ts,
+			secret: SECRET,
+			expectedBearerToken: "fc_tok",
+			authorization: "Bearer fc_tok",
+		});
+		// Valid signature, wrong bearer → rejected (bearer is not optional once configured).
+		expectCode(
+			() =>
+				verifyDeliverySignature({
+					rawBody: BODY,
+					signature: sig,
+					timestamp: ts,
+					secret: SECRET,
+					expectedBearerToken: "fc_tok",
+					authorization: "Bearer wrong",
+				}),
+			"invalid_bearer",
+		);
+		expectCode(
+			() =>
+				verifyDeliverySignature({
+					rawBody: BODY,
+					signature: sig,
+					timestamp: ts,
+					secret: SECRET,
+					expectedBearerToken: "fc_tok",
+					authorization: undefined,
+				}),
+			"missing_bearer",
+		);
+		// Valid bearer, broken signature → still rejected (bearer never substitutes).
+		expectCode(
+			() =>
+				verifyDeliverySignature({
+					rawBody: '{"tampered":true}',
+					signature: sig,
+					timestamp: ts,
+					secret: SECRET,
+					expectedBearerToken: "fc_tok",
+					authorization: "Bearer fc_tok",
+				}),
+			"invalid_signature",
+		);
+	});
+
+	it("stays signature-only when not configured", () => {
+		const ts = goTimestamp();
+		verifyDeliverySignature({
+			rawBody: BODY,
+			signature: goSign(ts, BODY),
+			timestamp: ts,
+			secret: SECRET,
+			authorization: "Bearer anything",
+		});
+	});
+});

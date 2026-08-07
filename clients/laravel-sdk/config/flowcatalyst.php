@@ -59,6 +59,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Webhook Bearer Token (optional second gate)
+    |--------------------------------------------------------------------------
+    |
+    | Platform deliveries also carry `Authorization: Bearer <token>` — your
+    | service account's webhook auth token, shown next to the signing secret.
+    | When set, the fc-signature middleware requires BOTH the signature and
+    | this bearer to match (layered, never instead of the signature). Leave
+    | unset to validate the signature only.
+    |
+    */
+    'webhook_auth_token' => env('FLOWCATALYST_WEBHOOK_AUTH_TOKEN'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Token Caching
     |--------------------------------------------------------------------------
     |

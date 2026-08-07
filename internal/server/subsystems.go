@@ -141,7 +141,7 @@ func StartScheduledJobScheduler(ctx context.Context, pool *pgxpool.Pool, cfg Env
 	jobs := scheduledjob.NewRepository(pool)
 	instances := scheduledjob.NewInstanceRepository(pool)
 	svc := sjscheduler.NewService(sjscheduler.ConfigFromEnv(), jobs, instances, isLeader,
-		serviceaccount.NewCachedSigningSecretResolver(serviceaccount.NewRepository(pool), time.Minute))
+		serviceaccount.NewCachedOutboundCredsResolver(serviceaccount.NewRepository(pool), time.Minute))
 	svc.Run(ctx)
 }
 

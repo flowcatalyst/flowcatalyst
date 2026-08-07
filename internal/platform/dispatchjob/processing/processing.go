@@ -36,6 +36,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 )
 
 // Signature headers on delivered webhooks. Byte-format matches the router's
@@ -46,10 +47,11 @@ const (
 	timestampHeader = "X-FlowCatalyst-Timestamp"
 )
 
-// SigningSecretResolver returns the plaintext HMAC secret for a dispatch
-// job's delivery ("" = deliver unsigned). Wired by the server to resolve
-// job → subscription → application → service-account signing secret.
-type SigningSecretResolver func(ctx context.Context, job *dispatchjob.DispatchJob) (string, error)
+// DeliveryCredsResolver returns the delivery credentials (bearer token +
+// HMAC signing secret) for a dispatch job (zero-value = deliver bare). Wired
+// by the server to resolve job → subscription → application →
+// service-account webhook credentials.
+type DeliveryCredsResolver func(ctx context.Context, job *dispatchjob.DispatchJob) (serviceaccount.OutboundCreds, error)
 
 // maxResponseBody caps how much of a subscriber response we read into the
 // recorded attempt — a hostile or chatty endpoint must not balloon a row.
@@ -80,9 +82,9 @@ type Handler struct {
 	repo     *dispatchjob.Repository
 	verifier Verifier
 	client   *http.Client
-	// signingSecret (nil = unsigned) signs subscriber deliveries; see
-	// WithSigningSecretResolver.
-	signingSecret SigningSecretResolver
+	// creds (nil = bare delivery) stamps bearer + signature on subscriber
+	// deliveries; see WithDeliveryCredsResolver.
+	creds DeliveryCredsResolver
 }
 
 // New wires the handler. verifier may be nil (dev/no-auth), in which case the
@@ -103,13 +105,14 @@ func New(repo *dispatchjob.Repository, verifier Verifier) *Handler {
 	}
 }
 
-// WithSigningSecretResolver makes every subscriber delivery carry the
-// X-FlowCatalyst-Signature/-Timestamp pair, signed with the secret the
-// resolver returns for the job. Resolution failures and empty secrets fall
-// back to unsigned delivery with a warning — the subscriber's fail-closed
-// validator then rejects with a descriptive 401 recorded on the attempt.
-func (h *Handler) WithSigningSecretResolver(fn SigningSecretResolver) *Handler {
-	h.signingSecret = fn
+// WithDeliveryCredsResolver makes every subscriber delivery carry the same
+// header set as router-mediated webhooks: Authorization Bearer (when the SA
+// has a token) + the X-FlowCatalyst-Signature/-Timestamp pair (when it has a
+// signing secret). Resolution failures and empty creds fall back to bare
+// delivery with a warning — the subscriber's fail-closed validator then
+// rejects with a descriptive 401 recorded on the attempt.
+func (h *Handler) WithDeliveryCredsResolver(fn DeliveryCredsResolver) *Handler {
+	h.creds = fn
 	return h
 }
 
@@ -294,21 +297,25 @@ func (h *Handler) deliver(ctx context.Context, job *dispatchjob.DispatchJob) del
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Dispatch-Job-Id", job.ID)
 	req.Header.Set("X-Event-Type", job.Code)
-	if h.signingSecret != nil {
-		secret, serr := h.signingSecret(ctx, job)
-		switch {
-		case serr != nil:
-			slog.Warn("dispatch process: signing-secret lookup failed; delivering unsigned",
+	if h.creds != nil {
+		creds, serr := h.creds(ctx, job)
+		if serr != nil {
+			slog.Warn("dispatch process: delivery-creds lookup failed; delivering unsigned",
 				"job_id", job.ID, "err", serr)
-		case secret == "":
-			// No subscription/application/SA secret resolved — unsigned.
-		default:
-			ts := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
-			mac := hmac.New(sha256.New, []byte(secret))
-			mac.Write([]byte(ts))
-			mac.Write(body)
-			req.Header.Set(signatureHeader, hex.EncodeToString(mac.Sum(nil)))
-			req.Header.Set(timestampHeader, ts)
+		} else {
+			// Same header set as router-mediated webhooks: bearer (static
+			// convenience credential) + HMAC signature (the real boundary).
+			if creds.BearerToken != "" {
+				req.Header.Set("Authorization", "Bearer "+creds.BearerToken)
+			}
+			if creds.SigningSecret != "" {
+				ts := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+				mac := hmac.New(sha256.New, []byte(creds.SigningSecret))
+				mac.Write([]byte(ts))
+				mac.Write(body)
+				req.Header.Set(signatureHeader, hex.EncodeToString(mac.Sum(nil)))
+				req.Header.Set(timestampHeader, ts)
+			}
 		}
 	}
 

@@ -73,32 +73,33 @@ func registerPublicRoutes(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *use
 	// FLOWCATALYST_APP_KEY) — same fail-closed condition as StartScheduler.
 	if secret, err := dispatchAuthSecret(); err == nil {
 		dispatchprocessing.New(repos.dispatchJobRepo, scheduler.NewDispatchAuthService(secret)).
-			WithSigningSecretResolver(dispatchSigningResolver(repos)).
+			WithDeliveryCredsResolver(dispatchDeliveryCredsResolver(repos)).
 			Mount(r)
 	} else {
 		slog.Warn("dispatch-processing callback not mounted: cannot derive dispatch-auth secret", "err", err)
 	}
 }
 
-// dispatchSigningResolver resolves a dispatch job's delivery signing secret:
-// job → subscription → application (by code) → the application service
-// account's webhook signing secret. Each hop's result is cached inside the
-// shared SA resolver (60s TTL); subscription/application lookups are cheap
-// indexed reads. Jobs without a subscription (or whose chain resolves no
-// secret) deliver unsigned.
-func dispatchSigningResolver(repos *repoSet) dispatchprocessing.SigningSecretResolver {
-	byAppID := serviceaccount.NewCachedSigningSecretResolver(repos.serviceAccountRepo, time.Minute)
-	return func(ctx context.Context, job *dispatchjob.DispatchJob) (string, error) {
+// dispatchDeliveryCredsResolver resolves a dispatch job's delivery
+// credentials (bearer token + signing secret): job → subscription →
+// application (by code) → the application service account's webhook
+// credentials. Each hop's result is cached inside the shared SA resolver
+// (60s TTL); subscription/application lookups are cheap indexed reads. Jobs
+// without a subscription (or whose chain resolves no credentials) deliver
+// bare.
+func dispatchDeliveryCredsResolver(repos *repoSet) dispatchprocessing.DeliveryCredsResolver {
+	byAppID := serviceaccount.NewCachedOutboundCredsResolver(repos.serviceAccountRepo, time.Minute)
+	return func(ctx context.Context, job *dispatchjob.DispatchJob) (serviceaccount.OutboundCreds, error) {
 		if job.SubscriptionID == nil || *job.SubscriptionID == "" {
-			return "", nil
+			return serviceaccount.OutboundCreds{}, nil
 		}
 		sub, err := repos.subscriptionRepo.FindByID(ctx, *job.SubscriptionID)
 		if err != nil || sub == nil || sub.ApplicationCode == nil || *sub.ApplicationCode == "" {
-			return "", err
+			return serviceaccount.OutboundCreds{}, err
 		}
 		app, err := repos.applicationRepo.FindByCode(ctx, *sub.ApplicationCode)
 		if err != nil || app == nil {
-			return "", err
+			return serviceaccount.OutboundCreds{}, err
 		}
 		return byAppID(ctx, app.ID)
 	}

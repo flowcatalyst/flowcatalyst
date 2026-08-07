@@ -34,7 +34,9 @@ export type WebhookSignatureErrorCode =
 	| "invalid_timestamp"
 	| "timestamp_expired"
 	| "timestamp_in_future"
-	| "invalid_signature";
+	| "invalid_signature"
+	| "missing_bearer"
+	| "invalid_bearer";
 
 /** Verification failure; `code` says exactly what to fix. */
 export class WebhookSignatureError extends Error {
@@ -58,6 +60,15 @@ export interface VerifyDeliverySignatureParams {
 	secret: string;
 	/** Max age in seconds before a delivery is considered a replay. Default 300. */
 	toleranceSeconds?: number;
+	/**
+	 * Optional second gate, AND-ed with the signature (never a substitute for
+	 * it): when set, the delivery's Authorization header must be exactly
+	 * `Bearer <expectedBearerToken>` — your service account's webhook auth
+	 * token, sent by the platform alongside the signature.
+	 */
+	expectedBearerToken?: string;
+	/** Value of the Authorization header (required when expectedBearerToken is set). */
+	authorization?: string | string[] | null | undefined;
 }
 
 /**
@@ -120,6 +131,24 @@ export function verifyDeliverySignature(params: VerifyDeliverySignatureParams): 
 	const b = Buffer.from(signature.toLowerCase(), "utf8");
 	if (a.length !== b.length || !timingSafeEqual(a, b)) {
 		throw new WebhookSignatureError("invalid_signature", "Signature mismatch.");
+	}
+
+	// Layered bearer gate (opt-in). Runs AFTER the signature so the strong
+	// check is always exercised; both must pass when configured.
+	if (params.expectedBearerToken) {
+		const auth = single(params.authorization);
+		const prefix = "Bearer ";
+		if (!auth || !auth.startsWith(prefix)) {
+			throw new WebhookSignatureError(
+				"missing_bearer",
+				"Missing Authorization bearer token.",
+			);
+		}
+		const presented = Buffer.from(auth.slice(prefix.length), "utf8");
+		const want = Buffer.from(params.expectedBearerToken, "utf8");
+		if (presented.length !== want.length || !timingSafeEqual(presented, want)) {
+			throw new WebhookSignatureError("invalid_bearer", "Invalid bearer token.");
+		}
 	}
 }
 
