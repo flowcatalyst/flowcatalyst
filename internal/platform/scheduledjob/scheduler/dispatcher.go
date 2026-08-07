@@ -43,6 +43,11 @@ type webhookEnvelope struct {
 	Payload          *json.RawMessage `json:"payload,omitempty"`
 	TracksCompletion bool             `json:"tracksCompletion"`
 	TimeoutSeconds   *int32           `json:"timeoutSeconds,omitempty"`
+	// Concurrent echoes the job definition's `concurrent` attribute so SDK
+	// runners can enforce their overlap lock exactly when the definition asks
+	// for it (concurrent=false ⇒ lock), instead of needing a separate runner
+	// option. Additive — older runners ignore it.
+	Concurrent bool `json:"concurrent"`
 }
 
 func (d *dispatcher) run(ctx context.Context) {
@@ -135,6 +140,7 @@ func (d *dispatcher) dispatchOne(ctx context.Context, job *scheduledjob.Schedule
 		Payload:          payload,
 		TracksCompletion: job.TracksCompletion,
 		TimeoutSeconds:   job.TimeoutSeconds,
+		Concurrent:       job.Concurrent,
 	}
 	body, err := json.Marshal(envelope)
 	if err != nil {

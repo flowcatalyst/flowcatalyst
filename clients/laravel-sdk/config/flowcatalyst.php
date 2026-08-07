@@ -514,6 +514,29 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Scheduled Jobs
+    |--------------------------------------------------------------------------
+    |
+    | The SDK mounts the scheduled-job process endpoint (POST
+    | /api/_fc/scheduled-jobs/process) automatically and, on sync, defaults
+    | each job's targetUrl to APP_URL + that path when the #[AsScheduledJob]
+    | attribute doesn't set one — so firings work with zero route wiring.
+    |
+    */
+    'scheduled_jobs' => [
+        // Set false to mount your own route to ScheduledJobRunner
+        // ::processWithResponse() (e.g. under extra middleware). If you do,
+        // set process_url (or per-job targetUrl) to match.
+        'register_route' => env('FLOWCATALYST_SCHEDULED_JOBS_ROUTE', true),
+
+        // Full URL the platform POSTs firings to. Overrides the APP_URL-based
+        // default — useful when the externally reachable URL differs from
+        // APP_URL (tunnels, internal gateways).
+        'process_url' => env('FLOWCATALYST_SCHEDULED_JOBS_PROCESS_URL'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Outbox Configuration
     |--------------------------------------------------------------------------
     |

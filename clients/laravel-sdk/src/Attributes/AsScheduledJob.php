@@ -54,7 +54,7 @@ final class AsScheduledJob
      * @param bool $tracksCompletion Consumer reports via /complete (default false)
      * @param int|null $timeoutSeconds Per-invocation timeout
      * @param int|null $deliveryMaxAttempts Webhook delivery retries (default 3)
-     * @param string|null $targetUrl Override the application's default callback URL
+     * @param string|null $targetUrl Override the callback URL (default: APP_URL + the SDK's /api/_fc/scheduled-jobs/process route)
      * @param string|null $clientId Client/tenant that owns this job. Null = platform-scoped (anchor only).
      */
     public function __construct(

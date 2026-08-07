@@ -56,3 +56,31 @@ func TestParsePartitionEndDriveRetention(t *testing.T) {
 		t.Errorf("expected 2026-05 partition (end %s) to be > cutoff %s", end2, cutoff)
 	}
 }
+
+// The scheduled-job history tables get their own (shorter) retention window;
+// every other partitioned parent keeps the global one. Zero-config: the
+// 30-day default applies when the field is unset.
+func TestRetentionFor_ScheduledJobTables(t *testing.T) {
+	m := &PartitionManager{}
+	cfg := m.cfg() // all defaults
+
+	if got := cfg.retentionFor("msg_events"); got != 90 {
+		t.Errorf("msg_events retention = %d, want global default 90", got)
+	}
+	if got := cfg.retentionFor("msg_scheduled_job_instances"); got != 30 {
+		t.Errorf("msg_scheduled_job_instances retention = %d, want scheduled-job default 30", got)
+	}
+	if got := cfg.retentionFor("msg_scheduled_job_instance_logs"); got != 30 {
+		t.Errorf("msg_scheduled_job_instance_logs retention = %d, want scheduled-job default 30", got)
+	}
+
+	// Explicit overrides win, independently.
+	m.Config = PartitionManagerConfig{RetentionDays: 120, ScheduledJobRetentionDays: 7}
+	cfg = m.cfg()
+	if got := cfg.retentionFor("msg_dispatch_jobs"); got != 120 {
+		t.Errorf("msg_dispatch_jobs retention = %d, want 120", got)
+	}
+	if got := cfg.retentionFor("msg_scheduled_job_instances"); got != 7 {
+		t.Errorf("msg_scheduled_job_instances retention = %d, want 7", got)
+	}
+}

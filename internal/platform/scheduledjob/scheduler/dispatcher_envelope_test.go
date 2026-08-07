@@ -26,6 +26,7 @@ func TestWebhookEnvelope_CamelCaseKeys(t *testing.T) {
 		Payload:          &payload,
 		TracksCompletion: true,
 		TimeoutSeconds:   &timeout,
+		Concurrent:       false,
 	}
 	b, err := json.Marshal(env)
 	if err != nil {
@@ -39,6 +40,7 @@ func TestWebhookEnvelope_CamelCaseKeys(t *testing.T) {
 	want := []string{
 		"jobId", "jobCode", "instanceId", "scheduledFor", "firedAt",
 		"triggerKind", "correlationId", "payload", "tracksCompletion", "timeoutSeconds",
+		"concurrent",
 	}
 	for _, k := range want {
 		if _, ok := got[k]; !ok {

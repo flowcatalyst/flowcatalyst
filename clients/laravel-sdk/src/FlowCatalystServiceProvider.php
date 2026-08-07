@@ -27,6 +27,8 @@ use FlowCatalyst\Outbox\Contracts\OutboxDriver;
 use FlowCatalyst\Outbox\Drivers\DatabaseDriver;
 use FlowCatalyst\Outbox\Drivers\MongoDriver;
 use FlowCatalyst\Outbox\OutboxManager;
+use FlowCatalyst\ScheduledJobs\CacheLockProvider;
+use FlowCatalyst\ScheduledJobs\ScheduledJobRunner;
 use FlowCatalyst\UseCase\OutboxUnitOfWork;
 use FlowCatalyst\UseCase\UnitOfWork;
 use Illuminate\Support\ServiceProvider;
@@ -45,6 +47,7 @@ class FlowCatalystServiceProvider extends ServiceProvider
 
         $this->registerTokenManager();
         $this->registerClient();
+        $this->registerScheduledJobRunner();
         $this->registerOutbox();
         $this->registerUnitOfWork();
         $this->registerOidcUserAuth();
@@ -62,6 +65,7 @@ class FlowCatalystServiceProvider extends ServiceProvider
         $this->registerMiddleware();
         $this->registerTokenGuard();
         $this->registerOidcRoutes();
+        $this->registerScheduledJobRoute();
         $this->registerGuestRedirect();
         $this->registerCommands();
     }
@@ -147,6 +151,66 @@ class FlowCatalystServiceProvider extends ServiceProvider
                 retryDelay: $config['http']['retry_delay'] ?? 100
             );
         });
+    }
+
+    /**
+     * Register a pre-configured ScheduledJobRunner. Zero-config overlap
+     * protection: the lock provider is the app's default cache store (atomic
+     * cache locks — safe across replicas that share the backend), and lock
+     * enforcement follows each job definition's `concurrent` attribute as
+     * echoed in the firing envelope. singletonIf so an app that constructs
+     * its own runner (custom lock backend, TTLs, error hook) wins.
+     */
+    protected function registerScheduledJobRunner(): void
+    {
+        $this->app->singletonIf(ScheduledJobRunner::class, function ($app) {
+            return new ScheduledJobRunner(
+                $app->make(FlowCatalystClient::class)->scheduledJobs(),
+                ['lockProvider' => new CacheLockProvider($app->make('cache.store'))],
+            );
+        });
+    }
+
+    /**
+     * The absolute URL the platform POSTs scheduled-job firings to. Explicit
+     * config wins; otherwise APP_URL + the runner's conventional path. Null
+     * only when neither is configured (the sync then omits targetUrl, as
+     * before).
+     */
+    protected function scheduledJobProcessUrl($app): ?string
+    {
+        $explicit = $app['config']['flowcatalyst']['scheduled_jobs']['process_url'] ?? null;
+        if (is_string($explicit) && $explicit !== '') {
+            return $explicit;
+        }
+        $base = $app['config']['app.url'] ?? null;
+        if (!is_string($base) || $base === '') {
+            return null;
+        }
+        return rtrim($base, '/') . ScheduledJobRunner::DEFAULT_PROCESS_PATH;
+    }
+
+    /**
+     * Mount the conventional scheduled-job process endpoint, wired to the
+     * container's ScheduledJobRunner — apps only register handlers. Disable
+     * via `flowcatalyst.scheduled_jobs.register_route` to mount your own
+     * route (e.g. under extra middleware), in which case set `process_url`
+     * (or per-job targetUrl) to match.
+     */
+    protected function registerScheduledJobRoute(): void
+    {
+        $enabled = $this->app['config']['flowcatalyst']['scheduled_jobs']['register_route'] ?? true;
+        if (!$enabled) {
+            return;
+        }
+        \Illuminate\Support\Facades\Route::post(
+            ScheduledJobRunner::DEFAULT_PROCESS_PATH,
+            function (\Illuminate\Http\Request $request) {
+                $runner = $this->app->make(ScheduledJobRunner::class);
+                [$status, $body] = $runner->processWithResponse((array) $request->json()->all());
+                return response()->json($body, $status);
+            }
+        )->name('flowcatalyst.scheduled-jobs.process');
     }
 
     /**
@@ -474,7 +538,8 @@ class FlowCatalystServiceProvider extends ServiceProvider
 
         $this->app->singleton(DefinitionSynchronizer::class, function ($app) {
             return new DefinitionSynchronizer(
-                client: $app->make(FlowCatalystClient::class)
+                client: $app->make(FlowCatalystClient::class),
+                defaultScheduledJobTargetUrl: $this->scheduledJobProcessUrl($app),
             );
         });
     }

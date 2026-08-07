@@ -192,7 +192,8 @@ Per-projection batch-size precedence: per-projection env var >
 | `FC_STREAM_FAN_OUT_BATCH_SIZE` | `0` (default `200`) | — | `internal/server/subsystems.go` | Fan-out batch size. |
 | `FC_STREAM_FAN_OUT_SUBS_REFRESH_SECS` | `0` (default 5s) | — | `internal/server/envcfg.go` | Fan-out subscription-cache TTL. |
 | `FC_STREAM_PARTITION_MONTHS_FORWARD` | `0` (default `3`) | — | `internal/server/envcfg.go` | Months of partitions to pre-create. |
-| `FC_STREAM_PARTITION_RETENTION_DAYS` | `0` (default `90`) | — | `internal/server/envcfg.go` | Partition retention before drop. |
+| `FC_STREAM_PARTITION_RETENTION_DAYS` | `0` (default `90`) | — | `internal/server/envcfg.go` | Partition retention before drop (all partitioned tables except the scheduled-job history pair). |
+| `FC_STREAM_PARTITION_RETENTION_DAYS_SCHEDULED_JOBS` | `0` (default `30`) | — | `internal/server/envcfg.go` | Retention for `msg_scheduled_job_instances` + `msg_scheduled_job_instance_logs`. Monthly partitions ⇒ on-disk window floats between retention and retention+1 month. |
 | `FC_STREAM_PARTITION_TICK_HOURS` | `0` (default `24`) | — | `internal/server/envcfg.go` | Partition-manager tick cadence. |
 
 ### Scheduled-job scheduler

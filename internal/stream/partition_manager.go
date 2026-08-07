@@ -45,16 +45,31 @@ type PartitionManager struct {
 }
 
 // PartitionManagerConfig tunes the manager. Mirrors the Rust
-// PartitionManagerConfig (months_forward / retention_days / tick_interval).
+// PartitionManagerConfig (months_forward / retention_days / tick_interval),
+// plus a Go-only shorter retention for the scheduled-job history tables.
 type PartitionManagerConfig struct {
 	MonthsForward int           // forward monthly partitions to keep ahead (default 3)
 	RetentionDays int           // drop partitions whose range ends before now-this (default 90)
 	TickInterval  time.Duration // re-check cadence after the startup pass (default 24h)
+	// ScheduledJobRetentionDays applies to the scheduled-job history tables
+	// (msg_scheduled_job_instances + msg_scheduled_job_instance_logs) instead
+	// of RetentionDays: firing history is operational noise, not the
+	// event/dispatch audit trail, so it defaults to a shorter 30 days
+	// (owner decision). With monthly partitions the on-disk window floats
+	// between retention and retention+1 month, since a partition only drops
+	// once its entire range passes the cutoff.
+	ScheduledJobRetentionDays int
 }
 
-// DefaultPartitionManagerConfig returns the Rust defaults.
+// DefaultPartitionManagerConfig returns the Rust defaults (plus the Go-only
+// scheduled-job history retention).
 func DefaultPartitionManagerConfig() PartitionManagerConfig {
-	return PartitionManagerConfig{MonthsForward: 3, RetentionDays: 90, TickInterval: 24 * time.Hour}
+	return PartitionManagerConfig{
+		MonthsForward:             3,
+		RetentionDays:             90,
+		TickInterval:              24 * time.Hour,
+		ScheduledJobRetentionDays: 30,
+	}
 }
 
 // PartitionedTables is the canonical list. Mirrors the Rust
@@ -67,6 +82,21 @@ var PartitionedTables = []string{
 	"msg_dispatch_job_attempts",
 	"msg_scheduled_job_instances",
 	"msg_scheduled_job_instance_logs",
+}
+
+// scheduledJobHistoryTables get ScheduledJobRetentionDays instead of the
+// global RetentionDays (see PartitionManagerConfig).
+var scheduledJobHistoryTables = map[string]bool{
+	"msg_scheduled_job_instances":     true,
+	"msg_scheduled_job_instance_logs": true,
+}
+
+// retentionFor picks the retention window for parent.
+func (c PartitionManagerConfig) retentionFor(parent string) int {
+	if scheduledJobHistoryTables[parent] {
+		return c.ScheduledJobRetentionDays
+	}
+	return c.RetentionDays
 }
 
 // NewPartitionManager wires a manager with default config + always-leader.
@@ -85,6 +115,9 @@ func (m *PartitionManager) cfg() PartitionManagerConfig {
 	}
 	if c.TickInterval <= 0 {
 		c.TickInterval = d.TickInterval
+	}
+	if c.ScheduledJobRetentionDays <= 0 {
+		c.ScheduledJobRetentionDays = d.ScheduledJobRetentionDays
 	}
 	return c
 }
@@ -161,7 +194,7 @@ func (m *PartitionManager) pass(ctx context.Context) (created, dropped int, err 
 			slog.Warn("partition manager: ensure forward failed", "parent", parent, "err", cerr)
 		}
 		created += c
-		d, derr := m.dropOld(ctx, parent, now, cfg.RetentionDays)
+		d, derr := m.dropOld(ctx, parent, now, cfg.retentionFor(parent))
 		if derr != nil {
 			slog.Warn("partition manager: drop old failed", "parent", parent, "err", derr)
 		}

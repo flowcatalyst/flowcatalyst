@@ -50,6 +50,13 @@ class DefinitionSynchronizer
 {
     public function __construct(
         private readonly FlowCatalystClient $client,
+        // Fallback callback URL for scheduled jobs whose #[AsScheduledJob]
+        // doesn't set targetUrl. The platform stores targetUrl verbatim (no
+        // server-side default) and a job without one fails EVERY firing with
+        // "No target URL configured" — so the sync must always send one. The
+        // service provider passes APP_URL + ScheduledJobRunner's conventional
+        // process path.
+        private readonly ?string $defaultScheduledJobTargetUrl = null,
     ) {}
 
     /**
@@ -550,7 +557,9 @@ class DefinitionSynchronizer
                         tracksCompletion: (bool) ($row['tracksCompletion'] ?? false),
                         timeoutSeconds: isset($row['timeoutSeconds']) ? (int) $row['timeoutSeconds'] : null,
                         deliveryMaxAttempts: isset($row['deliveryMaxAttempts']) ? (int) $row['deliveryMaxAttempts'] : 3,
-                        targetUrl: isset($row['targetUrl']) ? (string) $row['targetUrl'] : null,
+                        targetUrl: isset($row['targetUrl'])
+                            ? (string) $row['targetUrl']
+                            : $this->defaultScheduledJobTargetUrl,
                     ),
                     $groupJobs,
                 );

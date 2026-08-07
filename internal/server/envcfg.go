@@ -68,7 +68,10 @@ type EnvCfg struct {
 	// 0 = use the package default (3 / 90 / 24h).
 	StreamPartitionMonthsForward int
 	StreamPartitionRetentionDays int
-	StreamPartitionTickHours     int
+	// StreamPartitionScheduledJobRetentionDays is the shorter retention for
+	// the scheduled-job history tables (0 → the manager's 30-day default).
+	StreamPartitionScheduledJobRetentionDays int
+	StreamPartitionTickHours                 int
 
 	// Outbox processor — only Postgres is supported in the unified
 	// binary; the standalone cmd/fc-outbox-processor remains the home
@@ -162,12 +165,13 @@ func LoadEnv() EnvCfg {
 		StreamFanOutEnabled:       envBool("FC_STREAM_FAN_OUT_ENABLED", true),
 		// Toggle renamed to FC_STREAM_PARTITION_MANAGER_ENABLED; the old
 		// FC_STREAM_PARTITIONS_ENABLED stays as a back-compat alias.
-		StreamPartitionsEnabled:      envBoolAlias("FC_STREAM_PARTITION_MANAGER_ENABLED", "FC_STREAM_PARTITIONS_ENABLED", true),
-		StreamBatchSize:              envInt("FC_STREAM_BATCH_SIZE", 0),
-		StreamFanOutSubsRefreshSecs:  envInt("FC_STREAM_FAN_OUT_SUBS_REFRESH_SECS", 0),
-		StreamPartitionMonthsForward: envInt("FC_STREAM_PARTITION_MONTHS_FORWARD", 0),
-		StreamPartitionRetentionDays: envInt("FC_STREAM_PARTITION_RETENTION_DAYS", 0),
-		StreamPartitionTickHours:     envInt("FC_STREAM_PARTITION_TICK_HOURS", 0),
+		StreamPartitionsEnabled:                  envBoolAlias("FC_STREAM_PARTITION_MANAGER_ENABLED", "FC_STREAM_PARTITIONS_ENABLED", true),
+		StreamBatchSize:                          envInt("FC_STREAM_BATCH_SIZE", 0),
+		StreamFanOutSubsRefreshSecs:              envInt("FC_STREAM_FAN_OUT_SUBS_REFRESH_SECS", 0),
+		StreamPartitionMonthsForward:             envInt("FC_STREAM_PARTITION_MONTHS_FORWARD", 0),
+		StreamPartitionRetentionDays:             envInt("FC_STREAM_PARTITION_RETENTION_DAYS", 0),
+		StreamPartitionScheduledJobRetentionDays: envInt("FC_STREAM_PARTITION_RETENTION_DAYS_SCHEDULED_JOBS", 0),
+		StreamPartitionTickHours:                 envInt("FC_STREAM_PARTITION_TICK_HOURS", 0),
 
 		// FC_OUTBOX_API_URL / FC_OUTBOX_TOKEN align with the standalone Rust
 		// outbox CLI; FC_API_BASE_URL / FC_API_TOKEN align with the Rust

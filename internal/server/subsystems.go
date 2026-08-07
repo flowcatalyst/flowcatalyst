@@ -268,9 +268,10 @@ func StartStreamProcessorWithHealth(ctx context.Context, pool *pgxpool.Pool, cfg
 		// manager does DDL (CREATE/DROP) that only the leader should run.
 		pm := stream.NewPartitionManager(pool)
 		pm.Config = stream.PartitionManagerConfig{
-			MonthsForward: cfg.StreamPartitionMonthsForward,
-			RetentionDays: cfg.StreamPartitionRetentionDays,
-			TickInterval:  time.Duration(cfg.StreamPartitionTickHours) * time.Hour,
+			MonthsForward:             cfg.StreamPartitionMonthsForward,
+			RetentionDays:             cfg.StreamPartitionRetentionDays,
+			ScheduledJobRetentionDays: cfg.StreamPartitionScheduledJobRetentionDays,
+			TickInterval:              time.Duration(cfg.StreamPartitionTickHours) * time.Hour,
 		}
 		pm.IsLeader = streamLeader
 		if healths != nil {
