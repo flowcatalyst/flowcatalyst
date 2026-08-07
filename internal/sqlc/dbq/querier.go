@@ -104,17 +104,19 @@ type Querier interface {
 	EmailDomainMappingAdditionalClientsClear(ctx context.Context, emailDomainMappingID string) error
 	// ── junctions: batch hydrate via ANY($1) ─────────────────────────────
 	EmailDomainMappingAdditionalClientsForMappings(ctx context.Context, dollar_1 []string) ([]EmailDomainMappingAdditionalClientsForMappingsRow, error)
-	EmailDomainMappingAllowedRoleInsert(ctx context.Context, arg EmailDomainMappingAllowedRoleInsertParams) error
 	EmailDomainMappingAllowedRolesClear(ctx context.Context, emailDomainMappingID string) error
-	EmailDomainMappingAllowedRolesForMappings(ctx context.Context, dollar_1 []string) ([]EmailDomainMappingAllowedRolesForMappingsRow, error)
 	EmailDomainMappingDelete(ctx context.Context, id string) error
 	EmailDomainMappingFindAll(ctx context.Context) ([]TntEmailDomainMapping, error)
 	EmailDomainMappingFindByDomain(ctx context.Context, emailDomain string) (TntEmailDomainMapping, error)
 	// Queries for tnt_email_domain_mappings + its junction tables
-	// (additional_clients, granted_clients, allowed_roles, 2fa_methods).
-	// None of the junctions declare FK ON DELETE CASCADE, so Delete must
-	// clean them explicitly. Mirrors the Rust impl (2fa_methods is Go-only).
+	// (additional_clients, granted_clients, 2fa_methods). None of the junctions
+	// declare FK ON DELETE CASCADE, so Delete must clean them explicitly.
+	//
+	// Role-sync config (sync_roles_from_idp + the allowed_roles junction) moved to
+	// the identity provider in migration 040; the old column/junction are dead and
+	// only touched here for delete-time cleanup.
 	EmailDomainMappingFindByID(ctx context.Context, id string) (TntEmailDomainMapping, error)
+	EmailDomainMappingFindByIdentityProvider(ctx context.Context, identityProviderID string) ([]TntEmailDomainMapping, error)
 	EmailDomainMappingGrantedClientInsert(ctx context.Context, arg EmailDomainMappingGrantedClientInsertParams) error
 	EmailDomainMappingGrantedClientsClear(ctx context.Context, emailDomainMappingID string) error
 	EmailDomainMappingGrantedClientsForMappings(ctx context.Context, dollar_1 []string) ([]EmailDomainMappingGrantedClientsForMappingsRow, error)
@@ -128,17 +130,22 @@ type Querier interface {
 	EventTypeFindByID(ctx context.Context, id string) (MsgEventType, error)
 	EventTypeUpsertByCode(ctx context.Context, arg EventTypeUpsertByCodeParams) error
 	EventTypeUpsertByID(ctx context.Context, arg EventTypeUpsertByIDParams) error
+	IdentityProviderAllowedRoleInsert(ctx context.Context, arg IdentityProviderAllowedRoleInsertParams) error
+	IdentityProviderAllowedRolesClear(ctx context.Context, identityProviderID string) error
+	IdentityProviderAllowedRolesForIDPs(ctx context.Context, idpIds []string) ([]IdentityProviderAllowedRolesForIDPsRow, error)
 	IdentityProviderDelete(ctx context.Context, id string) error
-	IdentityProviderDomainInsert(ctx context.Context, arg IdentityProviderDomainInsertParams) error
 	IdentityProviderDomainsClear(ctx context.Context, identityProviderID string) error
-	IdentityProviderDomainsForIDPs(ctx context.Context, idpIds []string) ([]IdentityProviderDomainsForIDPsRow, error)
 	IdentityProviderFindAll(ctx context.Context) ([]OauthIdentityProvider, error)
 	IdentityProviderFindByCode(ctx context.Context, code string) (OauthIdentityProvider, error)
-	// Queries for oauth_identity_providers + oauth_identity_provider_allowed_domains.
-	// Email domains are stored in the junction table (one row per allowed domain),
-	// not as a column on the parent — the previous Go port incorrectly treated
-	// this as a single JSONB-style column.
+	// Queries for oauth_identity_providers + oauth_identity_provider_allowed_roles.
+	// The allowed-roles junction (one row per platform role the IDP may confer via
+	// role sync) lives here since migration 040. Allowed email domains are NOT
+	// stored on the provider — they are derived from tnt_email_domain_mappings
+	// (see IdentityProviderMappedDomainsForIDPs), which is the single source of
+	// truth for domain → IDP routing. The legacy
+	// oauth_identity_provider_allowed_domains junction is dead.
 	IdentityProviderFindByID(ctx context.Context, id string) (OauthIdentityProvider, error)
+	IdentityProviderMappedDomainsForIDPs(ctx context.Context, idpIds []string) ([]IdentityProviderMappedDomainsForIDPsRow, error)
 	IdentityProviderUpsert(ctx context.Context, arg IdentityProviderUpsertParams) error
 	IdpRoleMappingDelete(ctx context.Context, id string) error
 	IdpRoleMappingFindAll(ctx context.Context) ([]OauthIdpRoleMapping, error)
@@ -228,6 +235,10 @@ type Querier interface {
 	// hardcoded-to-platform:client-admin FindClientAdminEmails query).
 	PrincipalFindByRole(ctx context.Context, roleName string) ([]IamPrincipal, error)
 	PrincipalFindByServiceAccount(ctx context.Context, serviceAccountID *string) (IamPrincipal, error)
+	// Backs the email-domain-mapping provider-move flow: every USER on the domain
+	// is affected when the domain's auth method changes. email_domain is stored
+	// lower-cased (derived in repository.Persist); the repo lower-cases $1.
+	PrincipalFindUsersByEmailDomain(ctx context.Context, emailDomain *string) ([]IamPrincipal, error)
 	PrincipalUpsert(ctx context.Context, arg PrincipalUpsertParams) error
 	ProcessDelete(ctx context.Context, id string) error
 	ProcessFindByCode(ctx context.Context, code string) (MsgProcess, error)

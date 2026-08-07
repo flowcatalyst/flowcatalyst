@@ -18,7 +18,10 @@ type CreateIdentityProviderRequest struct {
 	OIDCClientSecretRef *string  `json:"oidcClientSecretRef,omitempty"`
 	OIDCMultiTenant     bool     `json:"oidcMultiTenant"`
 	OIDCIssuerPattern   *string  `json:"oidcIssuerPattern,omitempty"`
-	AllowedEmailDomains []string `json:"allowedEmailDomains,omitempty"`
+	AllowedEmailDomains []string `json:"allowedEmailDomains,omitempty" doc:"Email domains to route to this provider; mappings are created (or claimed from their current provider) in Email Domain management"`
+	PrimaryClientID     *string  `json:"primaryClientId,omitempty" doc:"Client to link on mappings that are new or not yet linked to a primary client"`
+	SyncRolesFromIDP    bool     `json:"syncRolesFromIdp,omitempty" doc:"Reconcile users' IDP_SYNC roles from the token's roles claim at login"`
+	AllowedRoleIDs      []string `json:"allowedRoleIds,omitempty" doc:"Platform roles (by id) this provider may confer via role sync; empty = no restriction"`
 }
 
 func (r CreateIdentityProviderRequest) toCommand() operations.CreateCommand {
@@ -32,6 +35,9 @@ func (r CreateIdentityProviderRequest) toCommand() operations.CreateCommand {
 		OIDCMultiTenant:     r.OIDCMultiTenant,
 		OIDCIssuerPattern:   r.OIDCIssuerPattern,
 		AllowedEmailDomains: r.AllowedEmailDomains,
+		PrimaryClientID:     r.PrimaryClientID,
+		SyncRolesFromIDP:    r.SyncRolesFromIDP,
+		AllowedRoleIDs:      r.AllowedRoleIDs,
 	}
 }
 
@@ -43,7 +49,10 @@ type UpdateIdentityProviderRequest struct {
 	OIDCClientSecretRef *string  `json:"oidcClientSecretRef,omitempty"`
 	OIDCMultiTenant     *bool    `json:"oidcMultiTenant,omitempty"`
 	OIDCIssuerPattern   *string  `json:"oidcIssuerPattern,omitempty"`
-	AllowedEmailDomains []string `json:"allowedEmailDomains,omitempty"`
+	AllowedEmailDomains []string `json:"allowedEmailDomains,omitempty" doc:"Desired set of domains routed to this provider; additions are mapped/claimed, removals fall back to internal auth"`
+	PrimaryClientID     *string  `json:"primaryClientId,omitempty" doc:"Client to link on mappings that are new or not yet linked to a primary client"`
+	SyncRolesFromIDP    *bool    `json:"syncRolesFromIdp,omitempty"`
+	AllowedRoleIDs      []string `json:"allowedRoleIds,omitempty"`
 }
 
 func (r UpdateIdentityProviderRequest) toCommand(id string) operations.UpdateCommand {
@@ -56,6 +65,9 @@ func (r UpdateIdentityProviderRequest) toCommand(id string) operations.UpdateCom
 		OIDCMultiTenant:     r.OIDCMultiTenant,
 		OIDCIssuerPattern:   r.OIDCIssuerPattern,
 		AllowedEmailDomains: r.AllowedEmailDomains,
+		PrimaryClientID:     r.PrimaryClientID,
+		SyncRolesFromIDP:    r.SyncRolesFromIDP,
+		AllowedRoleIDs:      r.AllowedRoleIDs,
 	}
 }
 
@@ -72,7 +84,9 @@ type IdentityProviderResponse struct {
 	HasClientSecret     bool            `json:"hasClientSecret"`
 	OIDCMultiTenant     bool            `json:"oidcMultiTenant"`
 	OIDCIssuerPattern   *string         `json:"oidcIssuerPattern,omitempty"`
-	AllowedEmailDomains []string        `json:"allowedEmailDomains"`
+	AllowedEmailDomains []string        `json:"allowedEmailDomains" doc:"Domains currently routed to this provider (derived from email-domain mappings)"`
+	SyncRolesFromIDP    bool            `json:"syncRolesFromIdp"`
+	AllowedRoleIDs      []string        `json:"allowedRoleIds"`
 	CreatedAt           httpcompat.Time `json:"createdAt"`
 	UpdatedAt           httpcompat.Time `json:"updatedAt"`
 }
@@ -81,6 +95,10 @@ func fromEntity(ip *identityprovider.IdentityProvider) IdentityProviderResponse 
 	domains := ip.AllowedEmailDomains
 	if domains == nil {
 		domains = []string{}
+	}
+	roles := ip.AllowedRoleIDs
+	if roles == nil {
+		roles = []string{}
 	}
 	return IdentityProviderResponse{
 		ID:                  ip.ID,
@@ -93,6 +111,8 @@ func fromEntity(ip *identityprovider.IdentityProvider) IdentityProviderResponse 
 		OIDCMultiTenant:     ip.OIDCMultiTenant,
 		OIDCIssuerPattern:   ip.OIDCIssuerPattern,
 		AllowedEmailDomains: domains,
+		SyncRolesFromIDP:    ip.SyncRolesFromIDP,
+		AllowedRoleIDs:      roles,
 		CreatedAt:           jsontime.New(ip.CreatedAt),
 		UpdatedAt:           jsontime.New(ip.UpdatedAt),
 	}

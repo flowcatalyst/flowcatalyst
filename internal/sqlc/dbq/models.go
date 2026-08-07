@@ -693,12 +693,19 @@ type OauthIdentityProvider struct {
 	OidcIssuerPattern   *string   `db:"oidc_issuer_pattern"`
 	CreatedAt           time.Time `db:"created_at"`
 	UpdatedAt           time.Time `db:"updated_at"`
+	SyncRolesFromIdp    bool      `db:"sync_roles_from_idp"`
 }
 
 type OauthIdentityProviderAllowedDomain struct {
 	ID                 int32  `db:"id"`
 	IdentityProviderID string `db:"identity_provider_id"`
 	EmailDomain        string `db:"email_domain"`
+}
+
+type OauthIdentityProviderAllowedRole struct {
+	ID                 int32  `db:"id"`
+	IdentityProviderID string `db:"identity_provider_id"`
+	RoleID             string `db:"role_id"`
 }
 
 type OauthIdpRoleMapping struct {

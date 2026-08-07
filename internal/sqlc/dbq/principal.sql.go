@@ -266,6 +266,59 @@ func (q *Queries) PrincipalFindByServiceAccount(ctx context.Context, serviceAcco
 	return i, err
 }
 
+const principalFindUsersByEmailDomain = `-- name: PrincipalFindUsersByEmailDomain :many
+SELECT id, type, scope, client_id, application_id, name, active,
+       email, email_domain, idp_type, external_idp_id, password_hash,
+       last_login_at, service_account_id, created_at, updated_at, all_applications,
+       dev_client_secret_ref, dev_client_secret_updated_at
+FROM iam_principals
+WHERE type = 'USER' AND email_domain = $1
+ORDER BY email
+`
+
+// Backs the email-domain-mapping provider-move flow: every USER on the domain
+// is affected when the domain's auth method changes. email_domain is stored
+// lower-cased (derived in repository.Persist); the repo lower-cases $1.
+func (q *Queries) PrincipalFindUsersByEmailDomain(ctx context.Context, emailDomain *string) ([]IamPrincipal, error) {
+	rows, err := q.db.Query(ctx, principalFindUsersByEmailDomain, emailDomain)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []IamPrincipal{}
+	for rows.Next() {
+		var i IamPrincipal
+		if err := rows.Scan(
+			&i.ID,
+			&i.Type,
+			&i.Scope,
+			&i.ClientID,
+			&i.ApplicationID,
+			&i.Name,
+			&i.Active,
+			&i.Email,
+			&i.EmailDomain,
+			&i.IdpType,
+			&i.ExternalIdpID,
+			&i.PasswordHash,
+			&i.LastLoginAt,
+			&i.ServiceAccountID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.AllApplications,
+			&i.DevClientSecretRef,
+			&i.DevClientSecretUpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const principalUpsert = `-- name: PrincipalUpsert :exec
 INSERT INTO iam_principals
     (id, type, scope, client_id, application_id, name, active,

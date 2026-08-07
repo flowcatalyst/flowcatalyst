@@ -12,10 +12,11 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
-// Repository is the Postgres-backed EDM repo. Three junction tables
-// hang off the main aggregate (additional_clients, granted_clients,
-// allowed_roles); none have FK ON DELETE CASCADE so Delete clears
-// them explicitly. Mirrors the Rust impl.
+// Repository is the Postgres-backed EDM repo. Junction tables hang off the
+// main aggregate (additional_clients, granted_clients, 2fa_methods); none
+// have FK ON DELETE CASCADE so Delete clears them explicitly. The legacy
+// allowed_roles junction (role-sync config moved to the identity provider in
+// migration 040) is only cleared on delete.
 type Repository struct{ q *dbq.Queries }
 
 // NewRepository wires a repo.
@@ -43,6 +44,21 @@ func (r *Repository) FindByEmailDomain(ctx context.Context, domain string) (*Ema
 	return r.hydrateOne(ctx, rowToEDM(*row))
 }
 
+// FindByIdentityProvider loads every mapping routed to the given IDP,
+// hydrated. Backs the IDP orchestration (derived domain list, delete guard,
+// domain removal).
+func (r *Repository) FindByIdentityProvider(ctx context.Context, idpID string) ([]EmailDomainMapping, error) {
+	rows, err := r.q.EmailDomainMappingFindByIdentityProvider(ctx, idpID)
+	if err != nil {
+		return nil, err
+	}
+	bare := make([]EmailDomainMapping, 0, len(rows))
+	for _, row := range rows {
+		bare = append(bare, *rowToEDM(row))
+	}
+	return r.hydrateAll(ctx, bare)
+}
+
 // FindAll loads every mapping, hydrated.
 func (r *Repository) FindAll(ctx context.Context) ([]EmailDomainMapping, error) {
 	rows, err := r.q.EmailDomainMappingFindAll(ctx)
@@ -67,7 +83,6 @@ func (r *Repository) Persist(ctx context.Context, e *EmailDomainMapping, tx *use
 		ScopeType:             string(e.ScopeType),
 		PrimaryClientID:       e.PrimaryClientID,
 		RequiredOidcTenantID:  e.RequiredOIDCTenantID,
-		SyncRolesFromIdp:      e.SyncRolesFromIDP,
 		Require2fa:            e.Require2FA,
 		RememberDeviceEnabled: e.RememberDeviceEnabled,
 		RememberDeviceDays:    int32(e.RememberDeviceDays),
@@ -80,9 +95,6 @@ func (r *Repository) Persist(ctx context.Context, e *EmailDomainMapping, tx *use
 		return err
 	}
 	if err := q.EmailDomainMappingGrantedClientsClear(ctx, e.ID); err != nil {
-		return err
-	}
-	if err := q.EmailDomainMappingAllowedRolesClear(ctx, e.ID); err != nil {
 		return err
 	}
 	if err := q.EmailDomainMapping2FAMethodsClear(ctx, e.ID); err != nil {
@@ -102,13 +114,6 @@ func (r *Repository) Persist(ctx context.Context, e *EmailDomainMapping, tx *use
 			return err
 		}
 	}
-	for _, ro := range e.AllowedRoleIDs {
-		if err := q.EmailDomainMappingAllowedRoleInsert(ctx, dbq.EmailDomainMappingAllowedRoleInsertParams{
-			EmailDomainMappingID: e.ID, RoleID: ro,
-		}); err != nil {
-			return err
-		}
-	}
 	for _, m := range e.Allowed2FAMethods {
 		if err := q.EmailDomainMapping2FAMethodInsert(ctx, dbq.EmailDomainMapping2FAMethodInsertParams{
 			EmailDomainMappingID: e.ID, Method: m,
@@ -119,8 +124,9 @@ func (r *Repository) Persist(ctx context.Context, e *EmailDomainMapping, tx *use
 	return nil
 }
 
-// Delete removes the mapping and explicitly clears the three junctions
-// (no FK ON DELETE CASCADE in the schema).
+// Delete removes the mapping and explicitly clears the junctions (no FK ON
+// DELETE CASCADE in the schema). The legacy allowed_roles junction is cleared
+// too so migrated installs don't accumulate orphans.
 func (r *Repository) Delete(ctx context.Context, e *EmailDomainMapping, tx *usecasepgx.DbTx) error {
 	q := r.q.WithTx(tx.Inner())
 	if err := q.EmailDomainMappingAdditionalClientsClear(ctx, e.ID); err != nil {
@@ -165,10 +171,6 @@ func (r *Repository) hydrateAll(ctx context.Context, edms []EmailDomainMapping) 
 	if err != nil {
 		return nil, err
 	}
-	roleRows, err := r.q.EmailDomainMappingAllowedRolesForMappings(ctx, ids)
-	if err != nil {
-		return nil, err
-	}
 	methodRows, err := r.q.EmailDomainMapping2FAMethodsForMappings(ctx, ids)
 	if err != nil {
 		return nil, err
@@ -182,10 +184,6 @@ func (r *Repository) hydrateAll(ctx context.Context, edms []EmailDomainMapping) 
 	for _, g := range grantRows {
 		grantedByID[g.EmailDomainMappingID] = append(grantedByID[g.EmailDomainMappingID], g.ClientID)
 	}
-	rolesByID := map[string][]string{}
-	for _, ro := range roleRows {
-		rolesByID[ro.EmailDomainMappingID] = append(rolesByID[ro.EmailDomainMappingID], ro.RoleID)
-	}
 	methodsByID := map[string][]string{}
 	for _, m := range methodRows {
 		methodsByID[m.EmailDomainMappingID] = append(methodsByID[m.EmailDomainMappingID], m.Method)
@@ -193,16 +191,12 @@ func (r *Repository) hydrateAll(ctx context.Context, edms []EmailDomainMapping) 
 	for i := range edms {
 		edms[i].AdditionalClientIDs = additionalByID[edms[i].ID]
 		edms[i].GrantedClientIDs = grantedByID[edms[i].ID]
-		edms[i].AllowedRoleIDs = rolesByID[edms[i].ID]
 		edms[i].Allowed2FAMethods = methodsByID[edms[i].ID]
 		if edms[i].AdditionalClientIDs == nil {
 			edms[i].AdditionalClientIDs = []string{}
 		}
 		if edms[i].GrantedClientIDs == nil {
 			edms[i].GrantedClientIDs = []string{}
-		}
-		if edms[i].AllowedRoleIDs == nil {
-			edms[i].AllowedRoleIDs = []string{}
 		}
 		if edms[i].Allowed2FAMethods == nil {
 			edms[i].Allowed2FAMethods = []string{}
@@ -219,7 +213,6 @@ func rowToEDM(row dbq.TntEmailDomainMapping) *EmailDomainMapping {
 		ScopeType:             ParseScopeType(row.ScopeType),
 		PrimaryClientID:       row.PrimaryClientID,
 		RequiredOIDCTenantID:  row.RequiredOidcTenantID,
-		SyncRolesFromIDP:      row.SyncRolesFromIdp,
 		Require2FA:            row.Require2fa,
 		RememberDeviceEnabled: row.RememberDeviceEnabled,
 		RememberDeviceDays:    int(row.RememberDeviceDays),
@@ -227,7 +220,6 @@ func rowToEDM(row dbq.TntEmailDomainMapping) *EmailDomainMapping {
 		UpdatedAt:             row.UpdatedAt,
 		AdditionalClientIDs:   []string{},
 		GrantedClientIDs:      []string{},
-		AllowedRoleIDs:        []string{},
 		Allowed2FAMethods:     []string{},
 	}
 }

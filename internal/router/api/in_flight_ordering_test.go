@@ -20,6 +20,7 @@ import (
 //   - the longest-running entries survive a small limit — the old handler
 //     truncated in map order BEFORE sorting, so orphaned/stuck messages could
 //     be dropped from the view entirely when the backlog exceeded the limit.
+//
 // It also asserts the additive messageGroup + attempts fields are populated.
 func TestInFlightMessages_OrderedByElapsedDesc(t *testing.T) {
 	now := time.Now()

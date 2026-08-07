@@ -40,6 +40,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 )
 
 // SessionTTL is the cookie lifetime fc-server uses. Matches the Rust
@@ -407,6 +408,25 @@ func (e *Endpoint) handleLogin(w http.ResponseWriter, r *http.Request) {
 	rejectInvalid := func() {
 		e.recordAttempt(r.Context(), loginattempt.OutcomeFailure, email, nil, ip, "Invalid credentials")
 		writeUnauthorized(w, "Invalid credentials")
+	}
+
+	// SSO enforcement: a domain mapped to an OIDC identity provider
+	// authenticates there — the password path is closed even for users who
+	// still carry a hash from before the domain moved. Without this,
+	// check-domain only *steers* the SPA and "moved to SSO" is not a security
+	// statement. The error is explicit (not the generic 401): the domain's
+	// auth method is public knowledge via check-domain, so there is nothing
+	// to hide, and the SPA can point the user at SSO.
+	if at := strings.IndexByte(email, '@'); at >= 0 && at < len(email)-1 {
+		domain := email[at+1:]
+		if edm, derr := e.cfg.Mappings.FindByEmailDomain(r.Context(), domain); derr == nil && edm != nil {
+			if idp, ierr := e.cfg.IdentityProviders.FindByID(r.Context(), edm.IdentityProviderID); ierr == nil && idp != nil && idp.Type == identityprovider.TypeOIDC {
+				e.recordAttempt(r.Context(), loginattempt.OutcomeFailure, email, nil, ip, "SSO required")
+				httperror.Write(w, usecase.Authorization("SSO_REQUIRED",
+					"This email domain signs in through its identity provider; password login is disabled"))
+				return
+			}
+		}
 	}
 
 	p, err := e.cfg.Principals.FindByEmail(r.Context(), email)

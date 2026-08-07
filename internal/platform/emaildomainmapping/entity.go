@@ -1,6 +1,7 @@
 // Package emaildomainmapping is the port of fc-platform/src/email_domain_mapping.
-// Maps email domains to IDPs at signup; carries optional client + role
-// grants applied to users who sign up via that domain.
+// Maps email domains to IDPs at signup; carries optional client grants and 2FA
+// policy applied to users who sign up via that domain. Role-sync config lives
+// on the identity provider (identityprovider package), not here.
 package emaildomainmapping
 
 import (
@@ -60,8 +61,6 @@ type EmailDomainMapping struct {
 	AdditionalClientIDs  []string  `json:"additionalClientIds"`
 	GrantedClientIDs     []string  `json:"grantedClientIds"`
 	RequiredOIDCTenantID *string   `json:"requiredOidcTenantId,omitempty"`
-	AllowedRoleIDs       []string  `json:"allowedRoleIds"`
-	SyncRolesFromIDP     bool      `json:"syncRolesFromIdp"`
 	// 2FA enforcement (internal-auth domains only; inert for OIDC domains).
 	Require2FA bool `json:"require2fa"`
 	// Allowed2FAMethods is the set of permitted mechanisms ("TOTP",
@@ -88,7 +87,6 @@ func New(emailDomain, identityProviderID string, scope ScopeType) *EmailDomainMa
 		ScopeType:           scope,
 		AdditionalClientIDs: []string{},
 		GrantedClientIDs:    []string{},
-		AllowedRoleIDs:      []string{},
 		Allowed2FAMethods:   []string{},
 		RememberDeviceDays:  30,
 		CreatedAt:           now,

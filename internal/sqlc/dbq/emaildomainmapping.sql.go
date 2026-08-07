@@ -128,22 +128,6 @@ func (q *Queries) EmailDomainMappingAdditionalClientsForMappings(ctx context.Con
 	return items, nil
 }
 
-const emailDomainMappingAllowedRoleInsert = `-- name: EmailDomainMappingAllowedRoleInsert :exec
-INSERT INTO tnt_email_domain_mapping_allowed_roles
-    (email_domain_mapping_id, role_id)
-VALUES ($1, $2)
-`
-
-type EmailDomainMappingAllowedRoleInsertParams struct {
-	EmailDomainMappingID string `db:"email_domain_mapping_id"`
-	RoleID               string `db:"role_id"`
-}
-
-func (q *Queries) EmailDomainMappingAllowedRoleInsert(ctx context.Context, arg EmailDomainMappingAllowedRoleInsertParams) error {
-	_, err := q.db.Exec(ctx, emailDomainMappingAllowedRoleInsert, arg.EmailDomainMappingID, arg.RoleID)
-	return err
-}
-
 const emailDomainMappingAllowedRolesClear = `-- name: EmailDomainMappingAllowedRolesClear :exec
 DELETE FROM tnt_email_domain_mapping_allowed_roles
 WHERE email_domain_mapping_id = $1
@@ -152,37 +136,6 @@ WHERE email_domain_mapping_id = $1
 func (q *Queries) EmailDomainMappingAllowedRolesClear(ctx context.Context, emailDomainMappingID string) error {
 	_, err := q.db.Exec(ctx, emailDomainMappingAllowedRolesClear, emailDomainMappingID)
 	return err
-}
-
-const emailDomainMappingAllowedRolesForMappings = `-- name: EmailDomainMappingAllowedRolesForMappings :many
-SELECT email_domain_mapping_id, role_id
-FROM tnt_email_domain_mapping_allowed_roles
-WHERE email_domain_mapping_id = ANY($1::varchar[])
-`
-
-type EmailDomainMappingAllowedRolesForMappingsRow struct {
-	EmailDomainMappingID string `db:"email_domain_mapping_id"`
-	RoleID               string `db:"role_id"`
-}
-
-func (q *Queries) EmailDomainMappingAllowedRolesForMappings(ctx context.Context, dollar_1 []string) ([]EmailDomainMappingAllowedRolesForMappingsRow, error) {
-	rows, err := q.db.Query(ctx, emailDomainMappingAllowedRolesForMappings, dollar_1)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []EmailDomainMappingAllowedRolesForMappingsRow{}
-	for rows.Next() {
-		var i EmailDomainMappingAllowedRolesForMappingsRow
-		if err := rows.Scan(&i.EmailDomainMappingID, &i.RoleID); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const emailDomainMappingDelete = `-- name: EmailDomainMappingDelete :exec
@@ -273,9 +226,12 @@ WHERE id = $1
 `
 
 // Queries for tnt_email_domain_mappings + its junction tables
-// (additional_clients, granted_clients, allowed_roles, 2fa_methods).
-// None of the junctions declare FK ON DELETE CASCADE, so Delete must
-// clean them explicitly. Mirrors the Rust impl (2fa_methods is Go-only).
+// (additional_clients, granted_clients, 2fa_methods). None of the junctions
+// declare FK ON DELETE CASCADE, so Delete must clean them explicitly.
+//
+// Role-sync config (sync_roles_from_idp + the allowed_roles junction) moved to
+// the identity provider in migration 040; the old column/junction are dead and
+// only touched here for delete-time cleanup.
 func (q *Queries) EmailDomainMappingFindByID(ctx context.Context, id string) (TntEmailDomainMapping, error) {
 	row := q.db.QueryRow(ctx, emailDomainMappingFindByID, id)
 	var i TntEmailDomainMapping
@@ -294,6 +250,48 @@ func (q *Queries) EmailDomainMappingFindByID(ctx context.Context, id string) (Tn
 		&i.RememberDeviceDays,
 	)
 	return i, err
+}
+
+const emailDomainMappingFindByIdentityProvider = `-- name: EmailDomainMappingFindByIdentityProvider :many
+SELECT id, email_domain, identity_provider_id, scope_type, primary_client_id,
+       required_oidc_tenant_id, sync_roles_from_idp, created_at, updated_at,
+       require_2fa, remember_device_enabled, remember_device_days
+FROM tnt_email_domain_mappings
+WHERE identity_provider_id = $1
+ORDER BY email_domain
+`
+
+func (q *Queries) EmailDomainMappingFindByIdentityProvider(ctx context.Context, identityProviderID string) ([]TntEmailDomainMapping, error) {
+	rows, err := q.db.Query(ctx, emailDomainMappingFindByIdentityProvider, identityProviderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TntEmailDomainMapping{}
+	for rows.Next() {
+		var i TntEmailDomainMapping
+		if err := rows.Scan(
+			&i.ID,
+			&i.EmailDomain,
+			&i.IdentityProviderID,
+			&i.ScopeType,
+			&i.PrimaryClientID,
+			&i.RequiredOidcTenantID,
+			&i.SyncRolesFromIdp,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Require2fa,
+			&i.RememberDeviceEnabled,
+			&i.RememberDeviceDays,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const emailDomainMappingGrantedClientInsert = `-- name: EmailDomainMappingGrantedClientInsert :exec
@@ -356,16 +354,15 @@ func (q *Queries) EmailDomainMappingGrantedClientsForMappings(ctx context.Contex
 const emailDomainMappingUpsert = `-- name: EmailDomainMappingUpsert :exec
 INSERT INTO tnt_email_domain_mappings
     (id, email_domain, identity_provider_id, scope_type, primary_client_id,
-     required_oidc_tenant_id, sync_roles_from_idp, require_2fa,
+     required_oidc_tenant_id, require_2fa,
      remember_device_enabled, remember_device_days, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 ON CONFLICT (id) DO UPDATE SET
     email_domain = EXCLUDED.email_domain,
     identity_provider_id = EXCLUDED.identity_provider_id,
     scope_type = EXCLUDED.scope_type,
     primary_client_id = EXCLUDED.primary_client_id,
     required_oidc_tenant_id = EXCLUDED.required_oidc_tenant_id,
-    sync_roles_from_idp = EXCLUDED.sync_roles_from_idp,
     require_2fa = EXCLUDED.require_2fa,
     remember_device_enabled = EXCLUDED.remember_device_enabled,
     remember_device_days = EXCLUDED.remember_device_days,
@@ -379,7 +376,6 @@ type EmailDomainMappingUpsertParams struct {
 	ScopeType             string    `db:"scope_type"`
 	PrimaryClientID       *string   `db:"primary_client_id"`
 	RequiredOidcTenantID  *string   `db:"required_oidc_tenant_id"`
-	SyncRolesFromIdp      bool      `db:"sync_roles_from_idp"`
 	Require2fa            bool      `db:"require_2fa"`
 	RememberDeviceEnabled bool      `db:"remember_device_enabled"`
 	RememberDeviceDays    int32     `db:"remember_device_days"`
@@ -395,7 +391,6 @@ func (q *Queries) EmailDomainMappingUpsert(ctx context.Context, arg EmailDomainM
 		arg.ScopeType,
 		arg.PrimaryClientID,
 		arg.RequiredOidcTenantID,
-		arg.SyncRolesFromIdp,
 		arg.Require2fa,
 		arg.RememberDeviceEnabled,
 		arg.RememberDeviceDays,

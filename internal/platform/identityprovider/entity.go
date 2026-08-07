@@ -27,18 +27,30 @@ func ParseType(s string) Type {
 
 // IdentityProvider is the aggregate root.
 type IdentityProvider struct {
-	ID                  string    `json:"id"`
-	Code                string    `json:"code"`
-	Name                string    `json:"name"`
-	Type                Type      `json:"type"`
-	OIDCIssuerURL       *string   `json:"oidcIssuerUrl,omitempty"`
-	OIDCClientID        *string   `json:"oidcClientId,omitempty"`
-	OIDCClientSecretRef *string   `json:"oidcClientSecretRef,omitempty"`
-	OIDCMultiTenant     bool      `json:"oidcMultiTenant"`
-	OIDCIssuerPattern   *string   `json:"oidcIssuerPattern,omitempty"`
-	AllowedEmailDomains []string  `json:"allowedEmailDomains"`
-	CreatedAt           time.Time `json:"createdAt"`
-	UpdatedAt           time.Time `json:"updatedAt"`
+	ID                  string  `json:"id"`
+	Code                string  `json:"code"`
+	Name                string  `json:"name"`
+	Type                Type    `json:"type"`
+	OIDCIssuerURL       *string `json:"oidcIssuerUrl,omitempty"`
+	OIDCClientID        *string `json:"oidcClientId,omitempty"`
+	OIDCClientSecretRef *string `json:"oidcClientSecretRef,omitempty"`
+	OIDCMultiTenant     bool    `json:"oidcMultiTenant"`
+	OIDCIssuerPattern   *string `json:"oidcIssuerPattern,omitempty"`
+	// AllowedEmailDomains is DERIVED from tnt_email_domain_mappings (the
+	// domains currently routed to this IdP) — the mapping table is the single
+	// source of truth for domain → IdP routing. The repo hydrates it on read;
+	// Persist ignores it. Authoring goes through the IdP orchestration ops,
+	// which create / re-point mappings.
+	AllowedEmailDomains []string `json:"allowedEmailDomains"`
+	// SyncRolesFromIDP gates whether OIDC logins through this IdP reconcile
+	// the user's IDP_SYNC-sourced platform roles from the token's `roles`
+	// claim.
+	SyncRolesFromIDP bool `json:"syncRolesFromIdp"`
+	// AllowedRoleIDs restricts which platform roles (by role TSID) this IdP
+	// may confer via role sync. Empty = no restriction.
+	AllowedRoleIDs []string  `json:"allowedRoleIds"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
 // IDStr satisfies usecase.HasID.
@@ -53,6 +65,7 @@ func New(code, name string, t Type) *IdentityProvider {
 		Name:                name,
 		Type:                t,
 		AllowedEmailDomains: []string{},
+		AllowedRoleIDs:      []string{},
 		CreatedAt:           now,
 		UpdatedAt:           now,
 	}

@@ -24,12 +24,12 @@ import (
 // startOpts captures the flag set for `fc-dev start`. Defaults match
 // the Rust fc-dev so existing dev workflows transfer 1:1.
 type startOpts struct {
-	APIPort          int
-	MetricsPort      int
-	EmbeddedDB       bool
-	EmbeddedDBPort   int
-	EmbeddedDBPath   string
-	EmbeddedDBReset  bool
+	APIPort             int
+	MetricsPort         int
+	EmbeddedDB          bool
+	EmbeddedDBPort      int
+	EmbeddedDBPath      string
+	EmbeddedDBReset     bool
 	DatabaseURL         string
 	SchedulerEnabled    bool
 	ScheduledJobEnabled bool
@@ -71,12 +71,12 @@ func optsFromFlags(cmd *cobra.Command) startOpts {
 	getStr := func(k string) string { v, _ := cmd.Flags().GetString(k); return v }
 	getBool := func(k string) bool { v, _ := cmd.Flags().GetBool(k); return v }
 	return startOpts{
-		APIPort:          getInt("api-port"),
-		MetricsPort:      getInt("metrics-port"),
-		EmbeddedDB:       getBool("embedded-db"),
-		EmbeddedDBPort:   getInt("embedded-db-port"),
-		EmbeddedDBPath:   getStr("embedded-db-path"),
-		EmbeddedDBReset:  getBool("embedded-db-reset"),
+		APIPort:             getInt("api-port"),
+		MetricsPort:         getInt("metrics-port"),
+		EmbeddedDB:          getBool("embedded-db"),
+		EmbeddedDBPort:      getInt("embedded-db-port"),
+		EmbeddedDBPath:      getStr("embedded-db-path"),
+		EmbeddedDBReset:     getBool("embedded-db-reset"),
 		DatabaseURL:         getStr("database-url"),
 		SchedulerEnabled:    getBool("scheduler"),
 		ScheduledJobEnabled: getBool("scheduled-job"),

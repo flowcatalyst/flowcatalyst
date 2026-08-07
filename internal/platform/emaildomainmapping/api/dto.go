@@ -17,10 +17,6 @@ type CreateMappingRequest struct {
 	AdditionalClientIDs  []string `json:"additionalClientIds,omitempty"`
 	GrantedClientIDs     []string `json:"grantedClientIds,omitempty"`
 	RequiredOIDCTenantID *string  `json:"requiredOidcTenantId,omitempty"`
-	AllowedRoleIDs       []string `json:"allowedRoleIds,omitempty"`
-	// syncRolesFromIdp is only meaningful for OIDC domains; omitempty keeps it
-	// optional (default false) so internal-domain creates needn't send it.
-	SyncRolesFromIDP bool `json:"syncRolesFromIdp,omitempty"`
 	// 2FA enforcement for internal-auth users of this domain. All optional
 	// (default false / empty) — OIDC-domain creates omit them entirely.
 	Require2FA            bool     `json:"require2fa,omitempty"`
@@ -38,8 +34,6 @@ func (r CreateMappingRequest) toCommand() operations.CreateCommand {
 		AdditionalClientIDs:   r.AdditionalClientIDs,
 		GrantedClientIDs:      r.GrantedClientIDs,
 		RequiredOIDCTenantID:  r.RequiredOIDCTenantID,
-		AllowedRoleIDs:        r.AllowedRoleIDs,
-		SyncRolesFromIDP:      r.SyncRolesFromIDP,
 		Require2FA:            r.Require2FA,
 		Allowed2FAMethods:     r.Allowed2FAMethods,
 		RememberDeviceEnabled: r.RememberDeviceEnabled,
@@ -48,14 +42,14 @@ func (r CreateMappingRequest) toCommand() operations.CreateCommand {
 }
 
 // UpdateMappingRequest is the wire body for PUT /api/email-domain-mappings/{id}.
+// The identity provider is not updatable here — re-pointing a domain goes
+// through POST /api/email-domain-mappings/{id}/move-provider, which applies
+// the direction-specific side effects.
 type UpdateMappingRequest struct {
-	IdentityProviderID    *string  `json:"identityProviderId,omitempty"`
 	PrimaryClientID       *string  `json:"primaryClientId,omitempty"`
 	AdditionalClientIDs   []string `json:"additionalClientIds,omitempty"`
 	GrantedClientIDs      []string `json:"grantedClientIds,omitempty"`
 	RequiredOIDCTenantID  *string  `json:"requiredOidcTenantId,omitempty"`
-	AllowedRoleIDs        []string `json:"allowedRoleIds,omitempty"`
-	SyncRolesFromIDP      *bool    `json:"syncRolesFromIdp,omitempty"`
 	Require2FA            *bool    `json:"require2fa,omitempty"`
 	Allowed2FAMethods     []string `json:"allowed2faMethods,omitempty"`
 	RememberDeviceEnabled *bool    `json:"rememberDeviceEnabled,omitempty"`
@@ -65,13 +59,10 @@ type UpdateMappingRequest struct {
 func (r UpdateMappingRequest) toCommand(id string) operations.UpdateCommand {
 	return operations.UpdateCommand{
 		ID:                    id,
-		IdentityProviderID:    r.IdentityProviderID,
 		PrimaryClientID:       r.PrimaryClientID,
 		AdditionalClientIDs:   r.AdditionalClientIDs,
 		GrantedClientIDs:      r.GrantedClientIDs,
 		RequiredOIDCTenantID:  r.RequiredOIDCTenantID,
-		AllowedRoleIDs:        r.AllowedRoleIDs,
-		SyncRolesFromIDP:      r.SyncRolesFromIDP,
 		Require2FA:            r.Require2FA,
 		Allowed2FAMethods:     r.Allowed2FAMethods,
 		RememberDeviceEnabled: r.RememberDeviceEnabled,
@@ -90,8 +81,6 @@ type MappingResponse struct {
 	AdditionalClientIDs   []string        `json:"additionalClientIds"`
 	GrantedClientIDs      []string        `json:"grantedClientIds"`
 	RequiredOIDCTenantID  *string         `json:"requiredOidcTenantId,omitempty"`
-	AllowedRoleIDs        []string        `json:"allowedRoleIds"`
-	SyncRolesFromIDP      bool            `json:"syncRolesFromIdp"`
 	Require2FA            bool            `json:"require2fa"`
 	Allowed2FAMethods     []string        `json:"allowed2faMethods"`
 	RememberDeviceEnabled bool            `json:"rememberDeviceEnabled"`
@@ -111,10 +100,6 @@ func fromEntity(e *emaildomainmapping.EmailDomainMapping, idpName *string) Mappi
 	if granted == nil {
 		granted = []string{}
 	}
-	roles := e.AllowedRoleIDs
-	if roles == nil {
-		roles = []string{}
-	}
 	methods := e.Allowed2FAMethods
 	if methods == nil {
 		methods = []string{}
@@ -129,8 +114,6 @@ func fromEntity(e *emaildomainmapping.EmailDomainMapping, idpName *string) Mappi
 		AdditionalClientIDs:   addl,
 		GrantedClientIDs:      granted,
 		RequiredOIDCTenantID:  e.RequiredOIDCTenantID,
-		AllowedRoleIDs:        roles,
-		SyncRolesFromIDP:      e.SyncRolesFromIDP,
 		Require2FA:            e.Require2FA,
 		Allowed2FAMethods:     methods,
 		RememberDeviceEnabled: e.RememberDeviceEnabled,
@@ -151,4 +134,19 @@ type MappingListResponse struct {
 // mapping exists for the supplied domain (200 with {found:false}).
 type LookupNotFoundResponse struct {
 	Found bool `json:"found"`
+}
+
+// MoveProviderRequest is the wire body for
+// POST /api/email-domain-mappings/{id}/move-provider.
+type MoveProviderRequest struct {
+	IdentityProviderID string `json:"identityProviderId" doc:"Target identity provider id"`
+}
+
+// MoveProviderResponse mirrors operations.MoveProviderResult.
+type MoveProviderResponse struct {
+	MappingID              string `json:"mappingId"`
+	EmailDomain            string `json:"emailDomain"`
+	FromIdentityProviderID string `json:"fromIdentityProviderId"`
+	ToIdentityProviderID   string `json:"toIdentityProviderId"`
+	UsersReset             int    `json:"usersReset" doc:"OIDC-provisioned users converted back to internal auth (0 when moving to an OIDC provider)"`
 }

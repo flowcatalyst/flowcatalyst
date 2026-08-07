@@ -9,8 +9,11 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
+	edmops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -24,7 +27,13 @@ import (
 // State bundles deps for the identity_provider handlers.
 type State struct {
 	Repo *identityprovider.Repository
-	UoW  *usecasepgx.UnitOfWork
+	// Mappings + Principals feed the domain orchestration: create/update
+	// reconcile email-domain mappings (and, on domain release, convert
+	// OIDC-provisioned users back to internal auth); delete guards against
+	// still-mapped domains.
+	Mappings   *emaildomainmapping.Repository
+	Principals *principal.Repository
+	UoW        *usecasepgx.UnitOfWork
 	// Enc encrypts the OIDC client secret before it is persisted. Without
 	// it, a plaintext secret would be stored verbatim (and then fail to
 	// decrypt at login). May be nil when FLOWCATALYST_APP_KEY is unset, in
@@ -48,6 +57,18 @@ func encryptSecretRef(enc *encryption.Service, ref *string) (*string, error) {
 }
 
 const tag = "identity-providers"
+
+// deps assembles the orchestration dependency bundle.
+func (s *State) deps() operations.Deps {
+	return operations.Deps{
+		Repo: s.Repo,
+		MoveDeps: edmops.MoveDeps{
+			Mappings:   s.Mappings,
+			IDPs:       s.Repo,
+			Principals: s.Principals,
+		},
+	}
+}
 
 // Register mounts the IDP endpoints on the supplied huma API.
 func Register(api huma.API, s *State) {
@@ -102,11 +123,11 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreateIdentityProvi
 	}
 	in.Body.OIDCClientSecretRef = secretRef
 	ec := auth.NewExecutionContext(ctx)
-	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateIdentityProvider(s.Repo), in.Body.toCommand(), ec)
+	res, err := usecaseop.RunTx(ctx, s.UoW, operations.CreateIdentityProvider(s.deps()), in.Body.toCommand(), ec)
 	if err != nil {
 		return nil, err
 	}
-	id := event.IdentityProviderID
+	id := res.IdentityProviderID
 	ip, err := s.Repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "post-create reload failed", err)
@@ -135,7 +156,7 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Out[Ide
 	}
 	in.Body.OIDCClientSecretRef = secretRef
 	ec := auth.NewExecutionContext(ctx)
-	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateIdentityProvider(s.Repo), in.Body.toCommand(in.ID), ec); err != nil {
+	if _, err := usecaseop.RunTx(ctx, s.UoW, operations.UpdateIdentityProvider(s.deps()), in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
 	ip, err := s.Repo.FindByID(ctx, in.ID)
@@ -153,7 +174,7 @@ func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.E
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
-	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeleteIdentityProvider(s.Repo), operations.DeleteCommand{ID: in.ID}, ec); err != nil {
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeleteIdentityProvider(s.deps()), operations.DeleteCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil

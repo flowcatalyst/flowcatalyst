@@ -81,11 +81,11 @@ type LoginEndpoint struct {
 // FlowCatalyst principal, the bridge creates one using the scope and
 // primary-client-id carried by the matching email-domain mapping. The
 // idpMappings repo + roles repo power the IDP role-sync that runs on
-// every callback (both new and existing users): the roles claim is
-// translated through oauth_idp_role_mappings, filtered through the
-// mapping's allowed_role_ids, and applied with source=IDP_SYNC so
-// admin-assigned roles aren't trampled. Drop-in parity with Rust's
-// sync_oidc_login_with_allowed_roles.
+// every callback (both new and existing users) when the identity provider
+// has sync_roles_from_idp enabled: the roles claim is translated through
+// oauth_idp_role_mappings, filtered through the provider's allowed_role_ids
+// (role TSIDs, resolved to names), and applied with source=IDP_SYNC so
+// admin-assigned roles aren't trampled.
 func NewLoginEndpoint(
 	b *Bridge,
 	states *LoginStateRepo,
@@ -436,8 +436,8 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 	// Rust's sync_oidc_login_with_allowed_roles: lookup by email; if
 	// missing, auto-provision using the scope + primary-client-id from
 	// the email-domain mapping. Then translate IDP roles → platform
-	// roles (filtered by the mapping's allowed_role_ids) and apply via
-	// SyncIdpRoles. Existing users get the same role sync — if HR
+	// roles (filtered by the identity provider's allowed_role_ids) and
+	// apply via SyncIdpRoles. Existing users get the same role sync — if HR
 	// removed someone from a group upstream, their next login drops the
 	// corresponding platform role.
 	p, err := e.principals.FindByEmail(r.Context(), email)
@@ -457,7 +457,7 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("OIDC login: email lowercase self-heal failed; continuing",
 			"principalId", p.ID, "err", herr)
 	}
-	if err := e.syncIdpRoles(r.Context(), p, claims.Roles, loginState.EmailDomainMappingID); err != nil {
+	if err := e.syncIdpRoles(r.Context(), p, claims.Roles, loginState.IdentityProviderID); err != nil {
 		// Role sync failure shouldn't block login — the principal is
 		// already valid. Log and continue with whatever role set is in
 		// place. Mirrors Rust's behaviour where the role sync is a
@@ -573,25 +573,29 @@ func (e *LoginEndpoint) autoProvision(ctx context.Context, email, mappingID stri
 }
 
 // syncIdpRoles translates the IDP `roles` claim through
-// oauth_idp_role_mappings, filters by the EmailDomainMapping's
-// allowed_role_ids (when non-empty), and applies the resulting
-// platform-role set with source=IDP_SYNC. Preserves admin-assigned
-// roles untouched.
+// oauth_idp_role_mappings, filters by the identity provider's allowed-roles
+// list (when non-empty), and applies the resulting platform-role set with
+// source=IDP_SYNC. Preserves admin-assigned roles untouched. Skipped entirely
+// when the provider has role sync disabled (sync_roles_from_idp = false) —
+// the user's existing roles, however sourced, are left alone.
 //
 // An empty claim is a valid input: the user lost every group
 // upstream, so all their IDP-sourced platform roles should drop. The
 // caller treats any error here as non-fatal — the principal is
 // already authenticated; we just log and continue.
-func (e *LoginEndpoint) syncIdpRoles(ctx context.Context, p *principal.Principal, idpRoles []string, mappingID string) error {
-	mapping, err := e.mappings.FindByID(ctx, mappingID)
+func (e *LoginEndpoint) syncIdpRoles(ctx context.Context, p *principal.Principal, idpRoles []string, idpID string) error {
+	idp, err := e.bridge.idps.FindByID(ctx, idpID)
 	if err != nil {
-		return usecase.Internal("REPO", "email_domain_mapping lookup failed", err)
+		return usecase.Internal("REPO", "identity_provider lookup failed", err)
 	}
-	if mapping == nil {
-		// Mapping vanished between login and callback. Drop all
+	if idp == nil {
+		// Provider vanished between login and callback. Drop all
 		// IDP-sourced roles defensively — we can't validate the claim
-		// without a mapping.
+		// without its config.
 		return e.applySyncIdpRoles(ctx, p, nil)
+	}
+	if !idp.SyncRolesFromIDP {
+		return nil
 	}
 
 	// Load every IDP role mapping; in-memory filter. Mirrors Rust's
@@ -605,12 +609,24 @@ func (e *LoginEndpoint) syncIdpRoles(ctx context.Context, p *principal.Principal
 		byIdpRoleName[m.IdpRoleName] = m.PlatformRoleName
 	}
 
-	allowed := mapping.AllowedRoleIDs
-	allowedSet := make(map[string]struct{}, len(allowed))
-	for _, n := range allowed {
-		allowedSet[n] = struct{}{}
+	// The allow-list stores role TSIDs (stable across renames); the claim
+	// translation yields role NAMES. Resolve ids → names once so the filter
+	// compares like with like. (The pre-040 per-domain filter compared ids
+	// against names directly and silently rejected everything.)
+	allowedSet := make(map[string]struct{}, len(idp.AllowedRoleIDs))
+	for _, roleID := range idp.AllowedRoleIDs {
+		ro, err := e.roles.FindByID(ctx, roleID)
+		if err != nil {
+			return usecase.Internal("REPO", "allowed role lookup failed", err)
+		}
+		if ro == nil {
+			slog.Warn("identity provider allow-list references a missing role; skipping entry",
+				"identityProviderId", idp.ID, "roleId", roleID)
+			continue
+		}
+		allowedSet[ro.Name] = struct{}{}
 	}
-	hasAllowList := len(allowed) > 0
+	hasAllowList := len(idp.AllowedRoleIDs) > 0
 
 	authorized := make(map[string]struct{}, len(idpRoles))
 	for _, idpRole := range idpRoles {
@@ -625,7 +641,7 @@ func (e *LoginEndpoint) syncIdpRoles(ctx context.Context, p *principal.Principal
 		}
 		if hasAllowList {
 			if _, ok := allowedSet[platformRole]; !ok {
-				slog.Debug("skipped IDP role: not in email_domain_mapping allowed_role_ids",
+				slog.Debug("skipped IDP role: not in identity provider allowed_role_ids",
 					"principalId", p.ID, "idpRole", idpRole, "platformRole", platformRole)
 				continue
 			}

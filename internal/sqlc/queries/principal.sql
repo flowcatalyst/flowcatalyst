@@ -45,6 +45,18 @@ SELECT id, type, scope, client_id, application_id, name, active,
 FROM iam_principals
 WHERE type = 'SERVICE' AND service_account_id = $1;
 
+-- name: PrincipalFindUsersByEmailDomain :many
+-- Backs the email-domain-mapping provider-move flow: every USER on the domain
+-- is affected when the domain's auth method changes. email_domain is stored
+-- lower-cased (derived in repository.Persist); the repo lower-cases $1.
+SELECT id, type, scope, client_id, application_id, name, active,
+       email, email_domain, idp_type, external_idp_id, password_hash,
+       last_login_at, service_account_id, created_at, updated_at, all_applications,
+       dev_client_secret_ref, dev_client_secret_updated_at
+FROM iam_principals
+WHERE type = 'USER' AND email_domain = $1
+ORDER BY email;
+
 -- name: PrincipalFindByRole :many
 -- Backs the Developer Users admin page (generalises the previous
 -- hardcoded-to-platform:client-admin FindClientAdminEmails query).

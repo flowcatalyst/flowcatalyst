@@ -341,6 +341,25 @@ func (r *Repository) FindByRole(ctx context.Context, roleName string) ([]Princip
 	return out, nil
 }
 
+// FindUsersByEmailDomain lists every USER principal whose email is on the
+// given domain, roles hydrated. Backs the email-domain provider-move flow
+// (converting a domain's OIDC-provisioned users back to internal auth).
+func (r *Repository) FindUsersByEmailDomain(ctx context.Context, domain string) ([]Principal, error) {
+	d := strings.ToLower(strings.TrimSpace(domain))
+	rows, err := r.q.PrincipalFindUsersByEmailDomain(ctx, &d)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Principal, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, *rowToPrincipal(row))
+	}
+	if err := r.hydrateRolesAll(ctx, out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // FindAll lists every principal, with role assignments and granted-client
 // access hydrated in bulk (two `= ANY` queries total, not 2N). Without the
 // hydration every row in the list endpoint serialized `roles: []` /

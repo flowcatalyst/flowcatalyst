@@ -10,28 +10,69 @@ import (
 	"time"
 )
 
+const identityProviderAllowedRoleInsert = `-- name: IdentityProviderAllowedRoleInsert :exec
+INSERT INTO oauth_identity_provider_allowed_roles
+    (identity_provider_id, role_id)
+VALUES ($1, $2)
+`
+
+type IdentityProviderAllowedRoleInsertParams struct {
+	IdentityProviderID string `db:"identity_provider_id"`
+	RoleID             string `db:"role_id"`
+}
+
+func (q *Queries) IdentityProviderAllowedRoleInsert(ctx context.Context, arg IdentityProviderAllowedRoleInsertParams) error {
+	_, err := q.db.Exec(ctx, identityProviderAllowedRoleInsert, arg.IdentityProviderID, arg.RoleID)
+	return err
+}
+
+const identityProviderAllowedRolesClear = `-- name: IdentityProviderAllowedRolesClear :exec
+DELETE FROM oauth_identity_provider_allowed_roles WHERE identity_provider_id = $1
+`
+
+func (q *Queries) IdentityProviderAllowedRolesClear(ctx context.Context, identityProviderID string) error {
+	_, err := q.db.Exec(ctx, identityProviderAllowedRolesClear, identityProviderID)
+	return err
+}
+
+const identityProviderAllowedRolesForIDPs = `-- name: IdentityProviderAllowedRolesForIDPs :many
+SELECT identity_provider_id, role_id
+FROM oauth_identity_provider_allowed_roles
+WHERE identity_provider_id = ANY($1::text[])
+ORDER BY identity_provider_id, role_id
+`
+
+type IdentityProviderAllowedRolesForIDPsRow struct {
+	IdentityProviderID string `db:"identity_provider_id"`
+	RoleID             string `db:"role_id"`
+}
+
+func (q *Queries) IdentityProviderAllowedRolesForIDPs(ctx context.Context, idpIds []string) ([]IdentityProviderAllowedRolesForIDPsRow, error) {
+	rows, err := q.db.Query(ctx, identityProviderAllowedRolesForIDPs, idpIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []IdentityProviderAllowedRolesForIDPsRow{}
+	for rows.Next() {
+		var i IdentityProviderAllowedRolesForIDPsRow
+		if err := rows.Scan(&i.IdentityProviderID, &i.RoleID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const identityProviderDelete = `-- name: IdentityProviderDelete :exec
 DELETE FROM oauth_identity_providers WHERE id = $1
 `
 
 func (q *Queries) IdentityProviderDelete(ctx context.Context, id string) error {
 	_, err := q.db.Exec(ctx, identityProviderDelete, id)
-	return err
-}
-
-const identityProviderDomainInsert = `-- name: IdentityProviderDomainInsert :exec
-INSERT INTO oauth_identity_provider_allowed_domains
-    (identity_provider_id, email_domain)
-VALUES ($1, $2)
-`
-
-type IdentityProviderDomainInsertParams struct {
-	IdentityProviderID string `db:"identity_provider_id"`
-	EmailDomain        string `db:"email_domain"`
-}
-
-func (q *Queries) IdentityProviderDomainInsert(ctx context.Context, arg IdentityProviderDomainInsertParams) error {
-	_, err := q.db.Exec(ctx, identityProviderDomainInsert, arg.IdentityProviderID, arg.EmailDomain)
 	return err
 }
 
@@ -44,42 +85,10 @@ func (q *Queries) IdentityProviderDomainsClear(ctx context.Context, identityProv
 	return err
 }
 
-const identityProviderDomainsForIDPs = `-- name: IdentityProviderDomainsForIDPs :many
-SELECT identity_provider_id, email_domain
-FROM oauth_identity_provider_allowed_domains
-WHERE identity_provider_id = ANY($1::text[])
-ORDER BY identity_provider_id, email_domain
-`
-
-type IdentityProviderDomainsForIDPsRow struct {
-	IdentityProviderID string `db:"identity_provider_id"`
-	EmailDomain        string `db:"email_domain"`
-}
-
-func (q *Queries) IdentityProviderDomainsForIDPs(ctx context.Context, idpIds []string) ([]IdentityProviderDomainsForIDPsRow, error) {
-	rows, err := q.db.Query(ctx, identityProviderDomainsForIDPs, idpIds)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []IdentityProviderDomainsForIDPsRow{}
-	for rows.Next() {
-		var i IdentityProviderDomainsForIDPsRow
-		if err := rows.Scan(&i.IdentityProviderID, &i.EmailDomain); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const identityProviderFindAll = `-- name: IdentityProviderFindAll :many
 SELECT id, code, name, type, oidc_issuer_url, oidc_client_id,
        oidc_client_secret_ref, oidc_multi_tenant, oidc_issuer_pattern,
-       created_at, updated_at
+       created_at, updated_at, sync_roles_from_idp
 FROM oauth_identity_providers
 ORDER BY code
 `
@@ -105,6 +114,7 @@ func (q *Queries) IdentityProviderFindAll(ctx context.Context) ([]OauthIdentityP
 			&i.OidcIssuerPattern,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SyncRolesFromIdp,
 		); err != nil {
 			return nil, err
 		}
@@ -119,7 +129,7 @@ func (q *Queries) IdentityProviderFindAll(ctx context.Context) ([]OauthIdentityP
 const identityProviderFindByCode = `-- name: IdentityProviderFindByCode :one
 SELECT id, code, name, type, oidc_issuer_url, oidc_client_id,
        oidc_client_secret_ref, oidc_multi_tenant, oidc_issuer_pattern,
-       created_at, updated_at
+       created_at, updated_at, sync_roles_from_idp
 FROM oauth_identity_providers
 WHERE code = $1
 `
@@ -139,6 +149,7 @@ func (q *Queries) IdentityProviderFindByCode(ctx context.Context, code string) (
 		&i.OidcIssuerPattern,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SyncRolesFromIdp,
 	)
 	return i, err
 }
@@ -147,15 +158,18 @@ const identityProviderFindByID = `-- name: IdentityProviderFindByID :one
 
 SELECT id, code, name, type, oidc_issuer_url, oidc_client_id,
        oidc_client_secret_ref, oidc_multi_tenant, oidc_issuer_pattern,
-       created_at, updated_at
+       created_at, updated_at, sync_roles_from_idp
 FROM oauth_identity_providers
 WHERE id = $1
 `
 
-// Queries for oauth_identity_providers + oauth_identity_provider_allowed_domains.
-// Email domains are stored in the junction table (one row per allowed domain),
-// not as a column on the parent — the previous Go port incorrectly treated
-// this as a single JSONB-style column.
+// Queries for oauth_identity_providers + oauth_identity_provider_allowed_roles.
+// The allowed-roles junction (one row per platform role the IDP may confer via
+// role sync) lives here since migration 040. Allowed email domains are NOT
+// stored on the provider — they are derived from tnt_email_domain_mappings
+// (see IdentityProviderMappedDomainsForIDPs), which is the single source of
+// truth for domain → IDP routing. The legacy
+// oauth_identity_provider_allowed_domains junction is dead.
 func (q *Queries) IdentityProviderFindByID(ctx context.Context, id string) (OauthIdentityProvider, error) {
 	row := q.db.QueryRow(ctx, identityProviderFindByID, id)
 	var i OauthIdentityProvider
@@ -171,16 +185,49 @@ func (q *Queries) IdentityProviderFindByID(ctx context.Context, id string) (Oaut
 		&i.OidcIssuerPattern,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SyncRolesFromIdp,
 	)
 	return i, err
+}
+
+const identityProviderMappedDomainsForIDPs = `-- name: IdentityProviderMappedDomainsForIDPs :many
+SELECT identity_provider_id, email_domain
+FROM tnt_email_domain_mappings
+WHERE identity_provider_id = ANY($1::text[])
+ORDER BY identity_provider_id, email_domain
+`
+
+type IdentityProviderMappedDomainsForIDPsRow struct {
+	IdentityProviderID string `db:"identity_provider_id"`
+	EmailDomain        string `db:"email_domain"`
+}
+
+func (q *Queries) IdentityProviderMappedDomainsForIDPs(ctx context.Context, idpIds []string) ([]IdentityProviderMappedDomainsForIDPsRow, error) {
+	rows, err := q.db.Query(ctx, identityProviderMappedDomainsForIDPs, idpIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []IdentityProviderMappedDomainsForIDPsRow{}
+	for rows.Next() {
+		var i IdentityProviderMappedDomainsForIDPsRow
+		if err := rows.Scan(&i.IdentityProviderID, &i.EmailDomain); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const identityProviderUpsert = `-- name: IdentityProviderUpsert :exec
 INSERT INTO oauth_identity_providers
     (id, code, name, type, oidc_issuer_url, oidc_client_id,
      oidc_client_secret_ref, oidc_multi_tenant, oidc_issuer_pattern,
-     created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+     sync_roles_from_idp, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 ON CONFLICT (id) DO UPDATE SET
     code = EXCLUDED.code,
     name = EXCLUDED.name,
@@ -189,6 +236,7 @@ ON CONFLICT (id) DO UPDATE SET
     oidc_client_secret_ref = EXCLUDED.oidc_client_secret_ref,
     oidc_multi_tenant = EXCLUDED.oidc_multi_tenant,
     oidc_issuer_pattern = EXCLUDED.oidc_issuer_pattern,
+    sync_roles_from_idp = EXCLUDED.sync_roles_from_idp,
     updated_at = EXCLUDED.updated_at
 `
 
@@ -202,6 +250,7 @@ type IdentityProviderUpsertParams struct {
 	OidcClientSecretRef *string   `db:"oidc_client_secret_ref"`
 	OidcMultiTenant     bool      `db:"oidc_multi_tenant"`
 	OidcIssuerPattern   *string   `db:"oidc_issuer_pattern"`
+	SyncRolesFromIdp    bool      `db:"sync_roles_from_idp"`
 	CreatedAt           time.Time `db:"created_at"`
 	UpdatedAt           time.Time `db:"updated_at"`
 }
@@ -217,6 +266,7 @@ func (q *Queries) IdentityProviderUpsert(ctx context.Context, arg IdentityProvid
 		arg.OidcClientSecretRef,
 		arg.OidcMultiTenant,
 		arg.OidcIssuerPattern,
+		arg.SyncRolesFromIdp,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)

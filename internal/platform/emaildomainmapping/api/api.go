@@ -11,6 +11,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -28,7 +29,10 @@ import (
 type State struct {
 	Repo    *emaildomainmapping.Repository
 	IDPRepo *identityprovider.Repository
-	UoW     *usecasepgx.UnitOfWork
+	// Principals backs the provider-move endpoint (converting a domain's
+	// OIDC-provisioned users back to internal auth).
+	Principals *principal.Repository
+	UoW        *usecasepgx.UnitOfWork
 }
 
 const tag = "email-domain-mappings"
@@ -42,6 +46,7 @@ func Register(api huma.API, s *State) {
 	apiroute.Get(g, "getEmailDomainMappingByDomain", "/api/email-domain-mappings/by-domain/{domain}", "Resolve an email domain to its mapping (path param)", s.byDomain)
 	apiroute.Get(g, "getEmailDomainMapping", "/api/email-domain-mappings/{id}", "Get an email-domain mapping by id", s.getByID)
 	apiroute.Put(g, "updateEmailDomainMapping", "/api/email-domain-mappings/{id}", "Update an email-domain mapping", http.StatusNoContent, s.update)
+	apiroute.Post(g, "moveEmailDomainMappingProvider", "/api/email-domain-mappings/{id}/move-provider", "Re-point an email domain to a different identity provider", http.StatusOK, s.moveProvider)
 	apiroute.Delete(g, "deleteEmailDomainMapping", "/api/email-domain-mappings/{id}", "Delete an email-domain mapping", http.StatusNoContent, s.delete)
 }
 
@@ -144,6 +149,37 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, 
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
+}
+
+type moveProviderInput struct {
+	ID   string `path:"id"`
+	Body MoveProviderRequest
+}
+
+// moveProvider re-points a domain to a different identity provider via the
+// MoveMappingToProvider use case (direction-aware side effects included).
+func (s *State) moveProvider(ctx context.Context, in *moveProviderInput) (*apicommon.Out[MoveProviderResponse], error) {
+	// Coarse anchor check at the controller (see create): no resource-level
+	// authz in the use case.
+	if err := auth.RequireAnchor(auth.FromContext(ctx)); err != nil {
+		return nil, err
+	}
+	ec := auth.NewExecutionContext(ctx)
+	res, err := usecaseop.RunTx(ctx, s.UoW, operations.MoveMappingToProvider(operations.MoveDeps{
+		Mappings:   s.Repo,
+		IDPs:       s.IDPRepo,
+		Principals: s.Principals,
+	}), operations.MoveProviderCommand{ID: in.ID, IdentityProviderID: in.Body.IdentityProviderID}, ec)
+	if err != nil {
+		return nil, err
+	}
+	return &apicommon.Out[MoveProviderResponse]{Body: MoveProviderResponse{
+		MappingID:              res.MappingID,
+		EmailDomain:            res.EmailDomain,
+		FromIdentityProviderID: res.FromIdentityProviderID,
+		ToIdentityProviderID:   res.ToIdentityProviderID,
+		UsersReset:             res.UsersReset,
+	}}, nil
 }
 
 func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {

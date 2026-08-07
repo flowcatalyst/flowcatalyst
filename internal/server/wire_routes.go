@@ -280,15 +280,18 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		dispatchjobapi.Register(humaAPI, &dispatchjobapi.State{Repo: repos.dispatchJobRepo})
 
 		identityproviderapi.Register(humaAPI, &identityproviderapi.State{
-			Repo: repos.idpRepo,
-			UoW:  uow,
-			Enc:  svcs.encSvc,
+			Repo:       repos.idpRepo,
+			Mappings:   repos.edmRepo,
+			Principals: repos.principalRepo,
+			UoW:        uow,
+			Enc:        svcs.encSvc,
 		})
 
 		emaildomainapi.Register(humaAPI, &emaildomainapi.State{
-			Repo:    repos.edmRepo,
-			IDPRepo: repos.idpRepo,
-			UoW:     uow,
+			Repo:       repos.edmRepo,
+			IDPRepo:    repos.idpRepo,
+			Principals: repos.principalRepo,
+			UoW:        uow,
 		})
 
 		loginattemptapi.Register(humaAPI, &loginattemptapi.State{Repo: repos.loginAttemptRepo})

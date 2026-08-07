@@ -11,6 +11,8 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
@@ -65,8 +67,6 @@ func TestCreateMapping_HappyPath(t *testing.T) {
 		AdditionalClientIDs:   []string{"cli_edmcrtadd1", "cli_edmcrtadd2"},
 		GrantedClientIDs:      []string{"cli_edmcrtgrant1"},
 		RequiredOIDCTenantID:  &tenant,
-		AllowedRoleIDs:        []string{"rol_edmcrtrole1"},
-		SyncRolesFromIDP:      true,
 		Require2FA:            true,
 		Allowed2FAMethods:     []string{"TOTP", "EMAIL_PIN"},
 		RememberDeviceEnabled: true,
@@ -89,8 +89,6 @@ func TestCreateMapping_HappyPath(t *testing.T) {
 	assert.Equal(t, tenant, *got.RequiredOIDCTenantID)
 	assert.ElementsMatch(t, []string{"cli_edmcrtadd1", "cli_edmcrtadd2"}, got.AdditionalClientIDs)
 	assert.ElementsMatch(t, []string{"cli_edmcrtgrant1"}, got.GrantedClientIDs)
-	assert.ElementsMatch(t, []string{"rol_edmcrtrole1"}, got.AllowedRoleIDs)
-	assert.True(t, got.SyncRolesFromIDP)
 	assert.True(t, got.Require2FA)
 	assert.ElementsMatch(t, []string{"TOTP", "EMAIL_PIN"}, got.Allowed2FAMethods)
 	assert.True(t, got.RememberDeviceEnabled)
@@ -169,18 +167,13 @@ func TestUpdateMapping_HappyPath(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreate(t, repo, uow, "edmupd-happy.example.com")
 
-	newIDP := "idp_edmupdafter1"
 	primary := "cli_edmupdprimary"
-	sync := true
 	require2FA := true
 	rememberOn := true
 	days := 7
 	ev, err := runAuthorized(uow, operations.UpdateMapping(repo), operations.UpdateCommand{
 		ID:                    seeded.MappingID,
-		IdentityProviderID:    &newIDP,
 		PrimaryClientID:       &primary,
-		AllowedRoleIDs:        []string{"rol_edmupdrole1", "rol_edmupdrole2"},
-		SyncRolesFromIDP:      &sync,
 		Require2FA:            &require2FA,
 		Allowed2FAMethods:     []string{"TOTP"},
 		RememberDeviceEnabled: &rememberOn,
@@ -194,11 +187,9 @@ func TestUpdateMapping_HappyPath(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, "edmupd-happy.example.com", got.EmailDomain, "domain is immutable on update")
-	assert.Equal(t, newIDP, got.IdentityProviderID)
+	assert.Equal(t, "idp_edmtestseed1", got.IdentityProviderID, "provider is immutable on update (moves go through MoveMappingToProvider)")
 	require.NotNil(t, got.PrimaryClientID)
 	assert.Equal(t, primary, *got.PrimaryClientID)
-	assert.ElementsMatch(t, []string{"rol_edmupdrole1", "rol_edmupdrole2"}, got.AllowedRoleIDs)
-	assert.True(t, got.SyncRolesFromIDP)
 	assert.True(t, got.Require2FA)
 	assert.ElementsMatch(t, []string{"TOTP"}, got.Allowed2FAMethods)
 	assert.True(t, got.RememberDeviceEnabled)
@@ -210,7 +201,6 @@ func TestUpdateMapping_Errors(t *testing.T) {
 	repo := emaildomainmapping.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	emptyIDP := "  "
 	cases := []struct {
 		name string
 		cmd  operations.UpdateCommand
@@ -218,9 +208,6 @@ func TestUpdateMapping_Errors(t *testing.T) {
 		code string
 	}{
 		{"missing id", operations.UpdateCommand{}, usecase.KindValidation, "ID_REQUIRED"},
-		{"blank idp when supplied", operations.UpdateCommand{
-			ID: "edm_doesnotexist1", IdentityProviderID: &emptyIDP,
-		}, usecase.KindValidation, "INVALID_IDP"},
 		{"unknown id", operations.UpdateCommand{ID: "edm_doesnotexist1"}, usecase.KindNotFound, "EmailDomainMapping_NOT_FOUND"},
 	}
 	for _, tc := range cases {
@@ -285,5 +272,76 @@ func TestDeleteMapping_Errors(t *testing.T) {
 
 	_, err = runAuthorized(uow, operations.DeleteMapping(repo),
 		operations.DeleteCommand{ID: "edm_doesnotexist1"})
+	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "EmailDomainMapping_NOT_FOUND")
+}
+
+// ── MoveMappingToProvider ─────────────────────────────────────────────────
+
+// moveDeps assembles the move dependency bundle over the shared pool.
+func moveDeps(t *testing.T) operations.MoveDeps {
+	t.Helper()
+	pool := testpg.Pool(t)
+	return operations.MoveDeps{
+		Mappings:   emaildomainmapping.NewRepository(pool),
+		IDPs:       identityprovider.NewRepository(pool),
+		Principals: principal.NewRepository(pool),
+	}
+}
+
+// seedIdP persists an IdP directly (unique code per test); the move op only
+// needs the row to exist and carry the right type.
+func seedIdP(t *testing.T, d operations.MoveDeps, code string, typ identityprovider.Type) *identityprovider.IdentityProvider {
+	t.Helper()
+	ctx := context.Background()
+	ip := identityprovider.New(code, code, typ)
+	tx, err := testpg.Pool(t).Begin(ctx)
+	require.NoError(t, err)
+	require.NoError(t, d.IDPs.Persist(ctx, ip, usecasepgx.WrapTxForBootstrap(tx)))
+	require.NoError(t, tx.Commit(ctx))
+	return ip
+}
+
+func TestMoveMappingToProvider_InternalToOidc(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	d := moveDeps(t)
+	uow := testpg.NewUoW(t)
+	seeded := mustCreate(t, d.Mappings, uow, "edmmove-fwd.example.com")
+	target := seedIdP(t, d, "edmmove-fwd-oidc", identityprovider.TypeOIDC)
+
+	res, err := usecaseop.RunTx(testpg.AnchorCtx(), uow, operations.MoveMappingToProvider(d),
+		operations.MoveProviderCommand{ID: seeded.MappingID, IdentityProviderID: target.ID}, testpg.TestEC())
+	require.NoError(t, err)
+	assert.Equal(t, seeded.MappingID, res.MappingID)
+	assert.Equal(t, "edmmove-fwd.example.com", res.EmailDomain)
+	assert.Equal(t, "idp_edmtestseed1", res.FromIdentityProviderID)
+	assert.Equal(t, target.ID, res.ToIdentityProviderID)
+	assert.Zero(t, res.UsersReset, "moving toward OIDC never touches principals")
+
+	got, err := d.Mappings.FindByID(ctx, seeded.MappingID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, target.ID, got.IdentityProviderID)
+}
+
+func TestMoveMappingToProvider_Errors(t *testing.T) {
+	t.Parallel()
+	d := moveDeps(t)
+	uow := testpg.NewUoW(t)
+	seeded := mustCreate(t, d.Mappings, uow, "edmmove-err.example.com")
+
+	// Same provider → conflict.
+	_, err := usecaseop.RunTx(testpg.AnchorCtx(), uow, operations.MoveMappingToProvider(d),
+		operations.MoveProviderCommand{ID: seeded.MappingID, IdentityProviderID: "idp_edmtestseed1"}, testpg.TestEC())
+	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "ALREADY_ON_PROVIDER")
+
+	// Unknown target provider → not found.
+	_, err = usecaseop.RunTx(testpg.AnchorCtx(), uow, operations.MoveMappingToProvider(d),
+		operations.MoveProviderCommand{ID: seeded.MappingID, IdentityProviderID: "idp_doesnotexist1"}, testpg.TestEC())
+	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "IdentityProvider_NOT_FOUND")
+
+	// Unknown mapping → not found.
+	_, err = usecaseop.RunTx(testpg.AnchorCtx(), uow, operations.MoveMappingToProvider(d),
+		operations.MoveProviderCommand{ID: "edm_doesnotexist1", IdentityProviderID: "idp_edmtestseed1"}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "EmailDomainMapping_NOT_FOUND")
 }

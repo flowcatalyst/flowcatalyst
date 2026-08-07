@@ -2297,6 +2297,14 @@
             "type": "string"
           },
           "allowedEmailDomains": {
+            "description": "Email domains to route to this provider; mappings are created (or claimed from their current provider) in Email Domain management",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "allowedRoleIds": {
+            "description": "Platform roles (by id) this provider may confer via role sync; empty = no restriction",
             "items": {
               "type": "string"
             },
@@ -2323,6 +2331,14 @@
             "type": "string"
           },
           "oidcMultiTenant": {
+            "type": "boolean"
+          },
+          "primaryClientId": {
+            "description": "Client to link on mappings that are new or not yet linked to a primary client",
+            "type": "string"
+          },
+          "syncRolesFromIdp": {
+            "description": "Reconcile users' IDP_SYNC roles from the token's roles claim at login",
             "type": "boolean"
           },
           "type": {
@@ -2392,12 +2408,6 @@
             },
             "type": "array"
           },
-          "allowedRoleIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
           "emailDomain": {
             "description": "DNS-like email domain (e.g. example.com)",
             "type": "string"
@@ -2430,9 +2440,6 @@
           "scopeType": {
             "description": "Scope of mapping (ANCHOR, PARTNER, CLIENT)",
             "type": "string"
-          },
-          "syncRolesFromIdp": {
-            "type": "boolean"
           }
         },
         "required": [
@@ -3934,6 +3941,13 @@
             "type": "string"
           },
           "allowedEmailDomains": {
+            "description": "Domains currently routed to this provider (derived from email-domain mappings)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "allowedRoleIds": {
             "items": {
               "type": "string"
             },
@@ -3967,6 +3981,9 @@
           "oidcMultiTenant": {
             "type": "boolean"
           },
+          "syncRolesFromIdp": {
+            "type": "boolean"
+          },
           "type": {
             "type": "string"
           },
@@ -3983,6 +4000,8 @@
           "hasClientSecret",
           "oidcMultiTenant",
           "allowedEmailDomains",
+          "syncRolesFromIdp",
+          "allowedRoleIds",
           "createdAt",
           "updatedAt"
         ],
@@ -4211,12 +4230,6 @@
             },
             "type": "array"
           },
-          "allowedRoleIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
@@ -4258,9 +4271,6 @@
           "scopeType": {
             "type": "string"
           },
-          "syncRolesFromIdp": {
-            "type": "boolean"
-          },
           "updatedAt": {
             "format": "date-time",
             "type": "string"
@@ -4273,8 +4283,6 @@
           "scopeType",
           "additionalClientIds",
           "grantedClientIds",
-          "allowedRoleIds",
-          "syncRolesFromIdp",
           "require2fa",
           "allowed2faMethods",
           "rememberDeviceEnabled",
@@ -4297,6 +4305,67 @@
         "required": [
           "key",
           "value"
+        ],
+        "type": "object"
+      },
+      "MoveProviderRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/MoveProviderRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "identityProviderId": {
+            "description": "Target identity provider id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "identityProviderId"
+        ],
+        "type": "object"
+      },
+      "MoveProviderResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/MoveProviderResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "emailDomain": {
+            "type": "string"
+          },
+          "fromIdentityProviderId": {
+            "type": "string"
+          },
+          "mappingId": {
+            "type": "string"
+          },
+          "toIdentityProviderId": {
+            "type": "string"
+          },
+          "usersReset": {
+            "description": "OIDC-provisioned users converted back to internal auth (0 when moving to an OIDC provider)",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mappingId",
+          "emailDomain",
+          "fromIdentityProviderId",
+          "toIdentityProviderId",
+          "usersReset"
         ],
         "type": "object"
       },
@@ -7413,6 +7482,13 @@
             "type": "string"
           },
           "allowedEmailDomains": {
+            "description": "Desired set of domains routed to this provider; additions are mapped/claimed, removals fall back to internal auth",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "allowedRoleIds": {
             "items": {
               "type": "string"
             },
@@ -7434,6 +7510,13 @@
             "type": "string"
           },
           "oidcMultiTenant": {
+            "type": "boolean"
+          },
+          "primaryClientId": {
+            "description": "Client to link on mappings that are new or not yet linked to a primary client",
+            "type": "string"
+          },
+          "syncRolesFromIdp": {
             "type": "boolean"
           }
         },
@@ -7463,20 +7546,11 @@
             },
             "type": "array"
           },
-          "allowedRoleIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
           "grantedClientIds": {
             "items": {
               "type": "string"
             },
             "type": "array"
-          },
-          "identityProviderId": {
-            "type": "string"
           },
           "primaryClientId": {
             "type": "string"
@@ -7493,9 +7567,6 @@
           },
           "requiredOidcTenantId": {
             "type": "string"
-          },
-          "syncRolesFromIdp": {
-            "type": "boolean"
           }
         },
         "type": "object"
@@ -12440,6 +12511,57 @@
           }
         },
         "summary": "Update an email-domain mapping",
+        "tags": [
+          "email-domain-mappings"
+        ]
+      }
+    },
+    "/api/email-domain-mappings/{id}/move-provider": {
+      "post": {
+        "operationId": "moveEmailDomainMappingProvider",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveProviderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoveProviderResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Re-point an email domain to a different identity provider",
         "tags": [
           "email-domain-mappings"
         ]

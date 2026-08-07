@@ -18,8 +18,6 @@ type CreateCommand struct {
 	AdditionalClientIDs  []string `json:"additionalClientIds,omitempty"`
 	GrantedClientIDs     []string `json:"grantedClientIds,omitempty"`
 	RequiredOIDCTenantID *string  `json:"requiredOidcTenantId,omitempty"`
-	AllowedRoleIDs       []string `json:"allowedRoleIds,omitempty"`
-	SyncRolesFromIDP     bool     `json:"syncRolesFromIdp"`
 	// 2FA enforcement (internal-auth domains only).
 	Require2FA            bool     `json:"require2fa"`
 	Allowed2FAMethods     []string `json:"allowed2faMethods,omitempty"`
@@ -88,7 +86,6 @@ func CreateMapping(repo *emaildomainmapping.Repository) usecaseop.Operation[Crea
 			e := emaildomainmapping.New(domain, cmd.IdentityProviderID, emaildomainmapping.ParseScopeType(cmd.ScopeType))
 			e.PrimaryClientID = cmd.PrimaryClientID
 			e.RequiredOIDCTenantID = cmd.RequiredOIDCTenantID
-			e.SyncRolesFromIDP = cmd.SyncRolesFromIDP
 			e.Require2FA = cmd.Require2FA
 			e.RememberDeviceEnabled = cmd.RememberDeviceEnabled
 			if cmd.RememberDeviceDays > 0 {
@@ -102,9 +99,6 @@ func CreateMapping(repo *emaildomainmapping.Repository) usecaseop.Operation[Crea
 			}
 			if cmd.GrantedClientIDs != nil {
 				e.GrantedClientIDs = cmd.GrantedClientIDs
-			}
-			if cmd.AllowedRoleIDs != nil {
-				e.AllowedRoleIDs = cmd.AllowedRoleIDs
 			}
 
 			event := EmailDomainMappingCreated{

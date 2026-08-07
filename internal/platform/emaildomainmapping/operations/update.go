@@ -12,15 +12,15 @@ import (
 
 // UpdateCommand mirrors CreateCommand but with the mapping ID + optional
 // fields. A nil pointer means "do not change"; an empty slice means "clear".
+// The identity provider is deliberately NOT updatable here — re-pointing a
+// domain changes its users' auth method and has direction-specific side
+// effects, so it goes through [MoveMappingToProvider].
 type UpdateCommand struct {
 	ID                   string   `json:"id"`
-	IdentityProviderID   *string  `json:"identityProviderId,omitempty"`
 	PrimaryClientID      *string  `json:"primaryClientId,omitempty"`
 	AdditionalClientIDs  []string `json:"additionalClientIds,omitempty"`
 	GrantedClientIDs     []string `json:"grantedClientIds,omitempty"`
 	RequiredOIDCTenantID *string  `json:"requiredOidcTenantId,omitempty"`
-	AllowedRoleIDs       []string `json:"allowedRoleIds,omitempty"`
-	SyncRolesFromIDP     *bool    `json:"syncRolesFromIdp,omitempty"`
 	// 2FA fields: nil pointer = unchanged; a non-nil Allowed2FAMethods slice
 	// (incl. empty) replaces the set.
 	Require2FA            *bool    `json:"require2fa,omitempty"`
@@ -40,9 +40,6 @@ func UpdateMapping(repo *emaildomainmapping.Repository) usecaseop.Operation[Upda
 			if strings.TrimSpace(cmd.ID) == "" {
 				return usecase.Validation("ID_REQUIRED", "id is required")
 			}
-			if cmd.IdentityProviderID != nil && strings.TrimSpace(*cmd.IdentityProviderID) == "" {
-				return usecase.Validation("INVALID_IDP", "identityProviderId cannot be empty when supplied")
-			}
 			return nil
 		},
 		Authorize: usecaseop.Public[UpdateCommand],
@@ -55,9 +52,6 @@ func UpdateMapping(repo *emaildomainmapping.Repository) usecaseop.Operation[Upda
 				return nil, httperror.NotFound("EmailDomainMapping", cmd.ID)
 			}
 
-			if cmd.IdentityProviderID != nil {
-				e.IdentityProviderID = *cmd.IdentityProviderID
-			}
 			e.PrimaryClientID = cmd.PrimaryClientID
 			e.RequiredOIDCTenantID = cmd.RequiredOIDCTenantID
 			if cmd.AdditionalClientIDs != nil {
@@ -65,12 +59,6 @@ func UpdateMapping(repo *emaildomainmapping.Repository) usecaseop.Operation[Upda
 			}
 			if cmd.GrantedClientIDs != nil {
 				e.GrantedClientIDs = cmd.GrantedClientIDs
-			}
-			if cmd.AllowedRoleIDs != nil {
-				e.AllowedRoleIDs = cmd.AllowedRoleIDs
-			}
-			if cmd.SyncRolesFromIDP != nil {
-				e.SyncRolesFromIDP = *cmd.SyncRolesFromIDP
 			}
 			if cmd.Require2FA != nil {
 				e.Require2FA = *cmd.Require2FA
