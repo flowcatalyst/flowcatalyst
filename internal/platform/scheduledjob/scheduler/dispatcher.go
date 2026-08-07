@@ -203,11 +203,18 @@ func (d *dispatcher) dispatchOne(ctx context.Context, job *scheduledjob.Schedule
 			// convenience credential) + HMAC signature (the real boundary).
 			if creds.BearerToken != "" {
 				req.Header.Set("Authorization", "Bearer "+creds.BearerToken)
+			} else {
+				slog.Warn("scheduled-job dispatcher: SA has a signing secret but NO auth token; delivery carries signature only "+
+					"(an app enforcing the bearer gate will 401 with 'Missing Authorization bearer token')",
+					"job_code", job.Code, "application_id", *job.ApplicationID)
 			}
 			if creds.SigningSecret != "" {
 				sig, ts := signFiring(body, creds.SigningSecret)
 				req.Header.Set(signatureHeader, sig)
 				req.Header.Set(timestampHeader, ts)
+			} else {
+				slog.Warn("scheduled-job dispatcher: SA has an auth token but NO signing secret; delivery carries bearer only",
+					"job_code", job.Code, "application_id", *job.ApplicationID)
 			}
 		}
 	}

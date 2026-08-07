@@ -143,19 +143,31 @@ func (q *Queries) ServiceAccountFindByID(ctx context.Context, id string) (IamSer
 }
 
 const serviceAccountFindFirstByApplicationID = `-- name: ServiceAccountFindFirstByApplicationID :one
-SELECT id, code, name, description, application_id, active,
-       wh_auth_type, wh_auth_token_ref, wh_signing_secret_ref,
-       wh_signing_algorithm, wh_credentials_created_at,
-       wh_credentials_regenerated_at, last_used_at, created_at, updated_at,
-       scope, client_ids
-FROM iam_service_accounts
-WHERE application_id = $1 AND active = TRUE
-ORDER BY created_at ASC
+SELECT sa.id, sa.code, sa.name, sa.description, sa.application_id, sa.active,
+       sa.wh_auth_type, sa.wh_auth_token_ref, sa.wh_signing_secret_ref,
+       sa.wh_signing_algorithm, sa.wh_credentials_created_at,
+       sa.wh_credentials_regenerated_at, sa.last_used_at, sa.created_at, sa.updated_at,
+       sa.scope, sa.client_ids
+FROM iam_service_accounts sa
+WHERE sa.application_id = $1 AND sa.active = TRUE
+ORDER BY
+    (CASE WHEN EXISTS (
+        SELECT 1
+        FROM app_applications a
+        JOIN iam_principals p ON p.id = a.service_account_id
+        WHERE a.id = sa.application_id AND p.service_account_id = sa.id
+    ) THEN 0 ELSE 1 END),
+    sa.created_at ASC
 LIMIT 1
 `
 
-// Oldest active SA linked to the application — the app's provisioned sync
-// account by convention. Backs scheduled-job firing signatures.
+// The SA whose credentials sign the application's outbound deliveries.
+// Deterministic preference: the application's own provisioned service
+// account (app_applications.service_account_id → SERVICE principal →
+// iam_service_accounts) wins over any other SA that merely carries the
+// application_id; among the rest, oldest active first. Without this an app
+// with several linked SAs could sign with one SA while the operator rotates
+// credentials on another.
 func (q *Queries) ServiceAccountFindFirstByApplicationID(ctx context.Context, applicationID *string) (IamServiceAccount, error) {
 	row := q.db.QueryRow(ctx, serviceAccountFindFirstByApplicationID, applicationID)
 	var i IamServiceAccount
