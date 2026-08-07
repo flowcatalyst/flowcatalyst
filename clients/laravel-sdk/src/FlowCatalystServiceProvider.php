@@ -232,13 +232,12 @@ class FlowCatalystServiceProvider extends ServiceProvider
         if (!$enabled) {
             return;
         }
+        // Controller class, not a closure: `php artisan route:cache` cannot
+        // serialize closure routes (a provider-registered closure fatals the
+        // cache with infinite recursion on its captured scope).
         \Illuminate\Support\Facades\Route::post(
             ScheduledJobRunner::DEFAULT_PROCESS_PATH,
-            function (\Illuminate\Http\Request $request) {
-                $runner = $this->app->make(ScheduledJobRunner::class);
-                [$status, $body] = $runner->processWithResponse((array) $request->json()->all());
-                return response()->json($body, $status);
-            }
+            \FlowCatalyst\Http\Controllers\ScheduledJobProcessController::class,
         )->middleware(\FlowCatalyst\Http\Middleware\ValidateWebhookSignature::class)
             ->name('flowcatalyst.scheduled-jobs.process');
     }

@@ -24,8 +24,10 @@ use Attribute;
  * class NightlyReportJob {}
  * ```
  *
- * The application code is added from your config when synced — e.g. with
- * app code "orders" the platform stores this job as "orders:nightly-report".
+ * The code is stored on the platform EXACTLY as declared here — no
+ * application prefix is added at sync. Declare the full code you want (e.g.
+ * "orders:nightly-report"); the firing envelope's `jobCode` carries the same
+ * string, and auto-handler wiring keys on it verbatim.
  *
  * `crons` requires 6-field, seconds-first expressions (`sec min hour dom
  * month dow`) — a standard 5-field cron passes validation but never fires.
