@@ -872,6 +872,47 @@ func TestResetPassword_HappyPath(t *testing.T) {
 	assert.Error(t, passwordhash.Verify("original-pass-99", newHash), "old password no longer verifies")
 }
 
+// The strict password policy rejects identity-derived passwords everywhere
+// the platform sets one: create with password == email, and reset likewise.
+// The relaxed SDK path stays fully permissive by owner decision — external
+// applications own their own password rules.
+func TestPasswordPolicy_IdentityRejectedStrict_AllowedRelaxed(t *testing.T) {
+	t.Parallel()
+	repo := principal.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+
+	// Create with password == email: rejected up front.
+	_, err := runAuthorized(uow, operations.CreateUser(repo), operations.CreateCommand{
+		Email:    "prn-pwpolicy@example.com",
+		Scope:    "ANCHOR",
+		Password: ptr("prn-pwpolicy@example.com"),
+	})
+	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "PASSWORD_CONTAINS_IDENTITY")
+
+	// Same user without a password, then strict reset to their email: rejected.
+	seeded := mustCreateUser(t, repo, uow, "prn-pwpolicy@example.com", "ANCHOR", nil)
+	_, err = runAuthorized(uow, operations.ResetPassword(repo), operations.ResetPasswordCommand{
+		ID:          seeded.UserID,
+		NewPassword: "prn-pwpolicy@example.com",
+	})
+	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "PASSWORD_CONTAINS_IDENTITY")
+
+	// A common password is rejected on the strict path too.
+	_, err = runAuthorized(uow, operations.ResetPassword(repo), operations.ResetPasswordCommand{
+		ID:          seeded.UserID,
+		NewPassword: "sunshine",
+	})
+	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "PASSWORD_TOO_COMMON")
+
+	// Relaxed (SDK) path: the very same identity password is accepted.
+	_, err = runAuthorized(uow, operations.ResetPassword(repo), operations.ResetPasswordCommand{
+		ID:                        seeded.UserID,
+		NewPassword:               "prn-pwpolicy@example.com",
+		EnforcePasswordComplexity: ptr(false),
+	})
+	require.NoError(t, err)
+}
+
 // EnforcePasswordComplexity=false relaxes the minimum length to 2 (Rust
 // relaxed() policy) — the caller owns its own password rules.
 func TestResetPassword_RelaxedComplexity(t *testing.T) {

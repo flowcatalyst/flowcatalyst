@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordhash"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordpolicy"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -15,10 +16,12 @@ import (
 type ResetPasswordCommand struct {
 	ID          string `json:"id"`
 	NewPassword string `json:"newPassword"`
-	// EnforcePasswordComplexity defaults to true when nil. When false the caller
-	// owns its own password policy, so we relax the minimum length (1:1 with
-	// Rust's relaxed() policy). Go has no upper/lower/digit/special complexity
-	// checks, so the only effect today is the minimum-length floor.
+	// EnforcePasswordComplexity defaults to true when nil: the full
+	// passwordpolicy runs (length bounds, common-password blocklist, not
+	// derived from the user's email/name). When false the caller owns its own
+	// password policy — SDK applications may set any password ≥ 2 chars (1:1
+	// with Rust's relaxed() policy; owner decision to keep the API fully
+	// permissive for external apps).
 	EnforcePasswordComplexity *bool `json:"enforcePasswordComplexity,omitempty"`
 }
 
@@ -38,16 +41,19 @@ func ResetPassword(repo *principal.Repository) usecaseop.Operation[ResetPassword
 			if strings.TrimSpace(cmd.ID) == "" {
 				return usecase.Validation("ID_REQUIRED", "id is required")
 			}
-			// Minimum length follows the complexity flag: the strict default requires 8
-			// (Rust PasswordPolicy::default min_length), an opt-out relaxes to 2 (Rust
-			// PasswordPolicy::relaxed). enforce defaults to true when the flag is absent.
-			minLen := 8
+			// The relaxed (SDK) path checks only its minimal floor here; the strict
+			// path's cheap length bounds run here too, with the identity-aware
+			// checks in Execute once the principal's email/name are loaded.
 			if cmd.EnforcePasswordComplexity != nil && !*cmd.EnforcePasswordComplexity {
-				minLen = 2
+				if len(cmd.NewPassword) < 2 {
+					return usecase.Validation("PASSWORD_TOO_SHORT",
+						"newPassword must be at least 2 characters")
+				}
+				return nil
 			}
-			if len(cmd.NewPassword) < minLen {
+			if len(cmd.NewPassword) < passwordpolicy.MinLength {
 				return usecase.Validation("PASSWORD_TOO_SHORT",
-					fmt.Sprintf("newPassword must be at least %d characters", minLen))
+					fmt.Sprintf("newPassword must be at least %d characters", passwordpolicy.MinLength))
 			}
 			return nil
 		},
@@ -62,6 +68,17 @@ func ResetPassword(repo *principal.Repository) usecaseop.Operation[ResetPassword
 			}
 			if p.Type != principal.TypeUser {
 				return nil, usecase.Conflict("NOT_A_USER", "Password reset only applies to USER principals")
+			}
+			// Strict path: full policy, now that the principal's identity is
+			// known. The relaxed SDK path skips it (the caller owns its policy).
+			if cmd.EnforcePasswordComplexity == nil || *cmd.EnforcePasswordComplexity {
+				email := ""
+				if p.UserIdentity != nil {
+					email = p.UserIdentity.Email
+				}
+				if v := passwordpolicy.Validate(cmd.NewPassword, email, p.Name); v != nil {
+					return nil, usecase.Validation(v.Code, v.Message)
+				}
 			}
 			hash, err := passwordhash.Hash(cmd.NewPassword)
 			if err != nil {

@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordhash"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordpolicy"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/mfa"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 )
@@ -36,8 +37,8 @@ func (e *Endpoint) handleChangePassword(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, http.StatusUnauthorized, errBody("INVALID_CURRENT_PASSWORD", "Your current password is incorrect."))
 		return
 	}
-	if len(req.NewPassword) < 8 {
-		writeJSON(w, http.StatusBadRequest, errBody("WEAK_PASSWORD", "New password must be at least 8 characters."))
+	if v := passwordpolicy.Validate(req.NewPassword, p.UserIdentity.Email, p.Name); v != nil {
+		writeJSON(w, http.StatusBadRequest, errBody(v.Code, v.Message))
 		return
 	}
 

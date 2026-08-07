@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordhash"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordpolicy"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
@@ -50,6 +51,15 @@ func CreateUser(repo *principal.Repository) usecaseop.Operation[CreateCommand, U
 			}
 			if (cmd.Scope == "CLIENT" || cmd.Scope == "PARTNER") && cmd.ClientID == nil {
 				return usecase.Validation("CLIENT_REQUIRED", "clientId is required for PARTNER or CLIENT scope")
+			}
+			if cmd.Password != nil && *cmd.Password != "" {
+				name := ""
+				if cmd.Name != nil {
+					name = *cmd.Name
+				}
+				if v := passwordpolicy.Validate(*cmd.Password, email, name); v != nil {
+					return usecase.Validation(v.Code, v.Message)
+				}
 			}
 			return nil
 		},
