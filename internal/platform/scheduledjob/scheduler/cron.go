@@ -81,21 +81,27 @@ type Service struct {
 }
 
 // NewService wires the cron + dispatch loops. isLeader gates both loops; pass
-// nil for always-leader (single-instance / standby disabled).
+// nil for always-leader (single-instance / standby disabled). signingSecret
+// (nil = deliver unsigned) lets the dispatcher sign firings with the owning
+// application's service-account secret.
 func NewService(
 	cfg Config,
 	jobs *scheduledjob.Repository,
 	instances *scheduledjob.InstanceRepository,
 	isLeader func() bool,
+	signingSecret SigningSecretResolver,
 ) *Service {
 	if isLeader == nil {
 		isLeader = func() bool { return true }
 	}
 	httpClient := &http.Client{Timeout: cfg.HTTPTimeout}
 	return &Service{
-		cfg:        cfg,
-		poller:     &poller{cfg: cfg, jobs: jobs, instances: instances, isLeader: isLeader},
-		dispatcher: &dispatcher{cfg: cfg, jobs: jobs, instances: instances, http: httpClient, isLeader: isLeader},
+		cfg:    cfg,
+		poller: &poller{cfg: cfg, jobs: jobs, instances: instances, isLeader: isLeader},
+		dispatcher: &dispatcher{
+			cfg: cfg, jobs: jobs, instances: instances, http: httpClient,
+			isLeader: isLeader, signingSecret: signingSecret,
+		},
 	}
 }
 

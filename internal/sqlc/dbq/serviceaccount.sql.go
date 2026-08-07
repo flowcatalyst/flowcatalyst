@@ -142,6 +142,45 @@ func (q *Queries) ServiceAccountFindByID(ctx context.Context, id string) (IamSer
 	return i, err
 }
 
+const serviceAccountFindFirstByApplicationID = `-- name: ServiceAccountFindFirstByApplicationID :one
+SELECT id, code, name, description, application_id, active,
+       wh_auth_type, wh_auth_token_ref, wh_signing_secret_ref,
+       wh_signing_algorithm, wh_credentials_created_at,
+       wh_credentials_regenerated_at, last_used_at, created_at, updated_at,
+       scope, client_ids
+FROM iam_service_accounts
+WHERE application_id = $1 AND active = TRUE
+ORDER BY created_at ASC
+LIMIT 1
+`
+
+// Oldest active SA linked to the application — the app's provisioned sync
+// account by convention. Backs scheduled-job firing signatures.
+func (q *Queries) ServiceAccountFindFirstByApplicationID(ctx context.Context, applicationID *string) (IamServiceAccount, error) {
+	row := q.db.QueryRow(ctx, serviceAccountFindFirstByApplicationID, applicationID)
+	var i IamServiceAccount
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.Description,
+		&i.ApplicationID,
+		&i.Active,
+		&i.WhAuthType,
+		&i.WhAuthTokenRef,
+		&i.WhSigningSecretRef,
+		&i.WhSigningAlgorithm,
+		&i.WhCredentialsCreatedAt,
+		&i.WhCredentialsRegeneratedAt,
+		&i.LastUsedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Scope,
+		&i.ClientIds,
+	)
+	return i, err
+}
+
 const serviceAccountUpsert = `-- name: ServiceAccountUpsert :exec
 INSERT INTO iam_service_accounts
     (id, code, name, description, application_id, scope, client_ids, active,

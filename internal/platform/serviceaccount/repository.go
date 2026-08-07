@@ -37,6 +37,18 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*ServiceAccount, 
 	return rowToServiceAccount(*row), nil
 }
 
+// FindFirstByApplicationID loads the oldest active service account linked to
+// an application — by convention the app's provisioned sync account. Nil when
+// the application has no active SA.
+func (r *Repository) FindFirstByApplicationID(ctx context.Context, applicationID string) (*ServiceAccount, error) {
+	res, err := r.q.ServiceAccountFindFirstByApplicationID(ctx, &applicationID)
+	row, err := repocommon.One(res, err, "service_account repo")
+	if row == nil || err != nil {
+		return nil, err
+	}
+	return rowToServiceAccount(*row), nil
+}
+
 // FindByCode loads by unique code.
 func (r *Repository) FindByCode(ctx context.Context, code string) (*ServiceAccount, error) {
 	res, err := r.q.ServiceAccountFindByCode(ctx, code)

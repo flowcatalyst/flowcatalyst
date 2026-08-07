@@ -3,6 +3,9 @@ package scheduler
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +15,31 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 )
+
+// Signature headers on delivered firings. Byte-format matches the router's
+// webhook signing (internal/router/mediator.go signWebhook) and the SDK's
+// WebhookValidator: HMAC-SHA256 over `timestamp + body`, millisecond-precision
+// ISO8601 UTC timestamp.
+const (
+	signatureHeader = "X-FlowCatalyst-Signature"
+	timestampHeader = "X-FlowCatalyst-Timestamp"
+)
+
+// SigningSecretResolver returns the plaintext HMAC signing secret for an
+// application's service account ("" when the application has none). The
+// server wires this to the service-account repository with a short TTL cache,
+// so secret rotation takes effect without a restart or job re-sync.
+type SigningSecretResolver func(ctx context.Context, applicationID string) (string, error)
+
+// signFiring computes the delivery signature. Must byte-match the SDK
+// verifier (WebhookValidator: hash_hmac over timestamp . rawBody).
+func signFiring(payload []byte, secret string) (sigHex, ts string) {
+	ts = time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(ts))
+	mac.Write(payload)
+	return hex.EncodeToString(mac.Sum(nil)), ts
+}
 
 // dispatcher claims QUEUED instances and POSTs the firing webhook, treating
 // any 2xx response as delivered. Mirrors the Rust dispatcher's structure but
@@ -24,6 +52,11 @@ type dispatcher struct {
 	instances *scheduledjob.InstanceRepository
 	http      *http.Client
 	isLeader  func() bool
+	// signingSecret resolves the application's SA signing secret; nil (or an
+	// empty resolved secret) delivers unsigned — the SDK's fail-closed
+	// fc-signature middleware then rejects with a descriptive 401 that lands
+	// in delivery_error, making the missing pairing diagnosable.
+	signingSecret SigningSecretResolver
 }
 
 // webhookEnvelope is the POST body delivered to a job's target URL. Field
@@ -154,6 +187,21 @@ func (d *dispatcher) dispatchOne(ctx context.Context, job *scheduledjob.Schedule
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if d.signingSecret != nil && job.ApplicationID != nil && *job.ApplicationID != "" {
+		secret, serr := d.signingSecret(ctx, *job.ApplicationID)
+		switch {
+		case serr != nil:
+			slog.Warn("scheduled-job dispatcher: signing-secret lookup failed; delivering unsigned",
+				"job_code", job.Code, "application_id", *job.ApplicationID, "err", serr)
+		case secret == "":
+			slog.Warn("scheduled-job dispatcher: application SA has no signing secret; delivering unsigned",
+				"job_code", job.Code, "application_id", *job.ApplicationID)
+		default:
+			sig, ts := signFiring(body, secret)
+			req.Header.Set(signatureHeader, sig)
+			req.Header.Set(timestampHeader, ts)
+		}
+	}
 
 	resp, err := d.http.Do(req)
 	if err != nil {

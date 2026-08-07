@@ -5,6 +5,9 @@ package processing_test
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -212,4 +215,52 @@ func TestProcess_AlreadyTerminalAcksWithoutRedelivery(t *testing.T) {
 	assert.Equal(t, http.StatusOK, code)
 	assert.Equal(t, true, out["ack"])
 	assert.EqualValues(t, 0, atomic.LoadInt32(&hits), "terminal job is not re-delivered")
+}
+
+// TestProcess_SignsSubscriberDelivery pins the subscriber-webhook signature:
+// same byte format as the router's webhook signing and the scheduled-job
+// firing signature (HMAC-SHA256 over timestamp+rawBody, hex, ms-ISO8601
+// timestamp), verified with the secret the resolver returns for the job.
+func TestProcess_SignsSubscriberDelivery(t *testing.T) {
+	pool := testpg.Pool(t)
+	const secret = "djproc-signing-secret"
+
+	auth := scheduler.NewDispatchAuthService(testSecret)
+	h := processing.New(dispatchjob.NewRepository(pool), auth).
+		WithSigningSecretResolver(func(_ context.Context, job *dispatchjob.DispatchJob) (string, error) {
+			require.Equal(t, "djproc_sign1", job.ID, "resolver receives the job under delivery")
+			return secret, nil
+		})
+	r := chi.NewRouter()
+	h.Mount(r)
+	ts := httptest.NewServer(r)
+	t.Cleanup(ts.Close)
+
+	type capture struct{ sig, tstamp, body string }
+	var got atomic.Value
+	sub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		got.Store(capture{
+			sig:    r.Header.Get("X-FlowCatalyst-Signature"),
+			tstamp: r.Header.Get("X-FlowCatalyst-Timestamp"),
+			body:   string(b),
+		})
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(sub.Close)
+
+	seedJob(t, pool, "djproc_sign1", sub.URL, 3, 0)
+	code, _ := callProcess(t, ts.URL, "djproc_sign1", auth.Sign("djproc_sign1"))
+	require.Equal(t, http.StatusOK, code)
+
+	c := got.Load().(capture)
+	require.NotEmpty(t, c.sig, "delivery must carry X-FlowCatalyst-Signature")
+	_, terr := time.Parse("2006-01-02T15:04:05.000Z", c.tstamp)
+	require.NoError(t, terr, "timestamp must be millisecond-precision ISO8601 UTC")
+
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(c.tstamp))
+	mac.Write([]byte(c.body))
+	assert.Equal(t, hex.EncodeToString(mac.Sum(nil)), c.sig,
+		"signature must verify against timestamp+body with the resolved secret")
 }

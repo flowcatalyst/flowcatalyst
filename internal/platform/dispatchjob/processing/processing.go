@@ -22,6 +22,9 @@ package processing
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -34,6 +37,19 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 )
+
+// Signature headers on delivered webhooks. Byte-format matches the router's
+// webhook signing and the SDK's WebhookValidator: HMAC-SHA256 over
+// `timestamp + body`, millisecond-precision ISO8601 UTC timestamp.
+const (
+	signatureHeader = "X-FlowCatalyst-Signature"
+	timestampHeader = "X-FlowCatalyst-Timestamp"
+)
+
+// SigningSecretResolver returns the plaintext HMAC secret for a dispatch
+// job's delivery ("" = deliver unsigned). Wired by the server to resolve
+// job → subscription → application → service-account signing secret.
+type SigningSecretResolver func(ctx context.Context, job *dispatchjob.DispatchJob) (string, error)
 
 // maxResponseBody caps how much of a subscriber response we read into the
 // recorded attempt — a hostile or chatty endpoint must not balloon a row.
@@ -64,6 +80,9 @@ type Handler struct {
 	repo     *dispatchjob.Repository
 	verifier Verifier
 	client   *http.Client
+	// signingSecret (nil = unsigned) signs subscriber deliveries; see
+	// WithSigningSecretResolver.
+	signingSecret SigningSecretResolver
 }
 
 // New wires the handler. verifier may be nil (dev/no-auth), in which case the
@@ -82,6 +101,16 @@ func New(repo *dispatchjob.Repository, verifier Verifier) *Handler {
 			},
 		},
 	}
+}
+
+// WithSigningSecretResolver makes every subscriber delivery carry the
+// X-FlowCatalyst-Signature/-Timestamp pair, signed with the secret the
+// resolver returns for the job. Resolution failures and empty secrets fall
+// back to unsigned delivery with a warning — the subscriber's fail-closed
+// validator then rejects with a descriptive 401 recorded on the attempt.
+func (h *Handler) WithSigningSecretResolver(fn SigningSecretResolver) *Handler {
+	h.signingSecret = fn
+	return h
 }
 
 // Mount attaches POST /api/dispatch/process to the given (unauthenticated)
@@ -265,6 +294,23 @@ func (h *Handler) deliver(ctx context.Context, job *dispatchjob.DispatchJob) del
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Dispatch-Job-Id", job.ID)
 	req.Header.Set("X-Event-Type", job.Code)
+	if h.signingSecret != nil {
+		secret, serr := h.signingSecret(ctx, job)
+		switch {
+		case serr != nil:
+			slog.Warn("dispatch process: signing-secret lookup failed; delivering unsigned",
+				"job_id", job.ID, "err", serr)
+		case secret == "":
+			// No subscription/application/SA secret resolved — unsigned.
+		default:
+			ts := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+			mac := hmac.New(sha256.New, []byte(secret))
+			mac.Write([]byte(ts))
+			mac.Write(body)
+			req.Header.Set(signatureHeader, hex.EncodeToString(mac.Sum(nil)))
+			req.Header.Set(timestampHeader, ts)
+		}
+	}
 
 	resp, err := h.client.Do(req)
 	if err != nil {

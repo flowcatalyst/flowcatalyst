@@ -288,6 +288,9 @@ type Querier interface {
 	// wh_signing_algorithm) matching Rust. The repository maps the flat
 	// columns into a single WebhookCredentials struct in the aggregate.
 	ServiceAccountFindByID(ctx context.Context, id string) (IamServiceAccount, error)
+	// Oldest active SA linked to the application — the app's provisioned sync
+	// account by convention. Backs scheduled-job firing signatures.
+	ServiceAccountFindFirstByApplicationID(ctx context.Context, applicationID *string) (IamServiceAccount, error)
 	ServiceAccountUpsert(ctx context.Context, arg ServiceAccountUpsertParams) error
 	SpecVersionUpsert(ctx context.Context, arg SpecVersionUpsertParams) error
 	SpecVersionsClear(ctx context.Context, eventTypeID string) error

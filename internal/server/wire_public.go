@@ -1,16 +1,20 @@
 package server
 
 import (
+	"context"
 	"log/slog"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	dispatchprocessing "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/processing"
 	passwordresetapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/passwordreset/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/publicapi"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduler"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -68,8 +72,34 @@ func registerPublicRoutes(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *use
 	// JWT. Skipped only when the dispatch-auth secret can't be derived (no
 	// FLOWCATALYST_APP_KEY) — same fail-closed condition as StartScheduler.
 	if secret, err := dispatchAuthSecret(); err == nil {
-		dispatchprocessing.New(repos.dispatchJobRepo, scheduler.NewDispatchAuthService(secret)).Mount(r)
+		dispatchprocessing.New(repos.dispatchJobRepo, scheduler.NewDispatchAuthService(secret)).
+			WithSigningSecretResolver(dispatchSigningResolver(repos)).
+			Mount(r)
 	} else {
 		slog.Warn("dispatch-processing callback not mounted: cannot derive dispatch-auth secret", "err", err)
+	}
+}
+
+// dispatchSigningResolver resolves a dispatch job's delivery signing secret:
+// job → subscription → application (by code) → the application service
+// account's webhook signing secret. Each hop's result is cached inside the
+// shared SA resolver (60s TTL); subscription/application lookups are cheap
+// indexed reads. Jobs without a subscription (or whose chain resolves no
+// secret) deliver unsigned.
+func dispatchSigningResolver(repos *repoSet) dispatchprocessing.SigningSecretResolver {
+	byAppID := serviceaccount.NewCachedSigningSecretResolver(repos.serviceAccountRepo, time.Minute)
+	return func(ctx context.Context, job *dispatchjob.DispatchJob) (string, error) {
+		if job.SubscriptionID == nil || *job.SubscriptionID == "" {
+			return "", nil
+		}
+		sub, err := repos.subscriptionRepo.FindByID(ctx, *job.SubscriptionID)
+		if err != nil || sub == nil || sub.ApplicationCode == nil || *sub.ApplicationCode == "" {
+			return "", err
+		}
+		app, err := repos.applicationRepo.FindByCode(ctx, *sub.ApplicationCode)
+		if err != nil || app == nil {
+			return "", err
+		}
+		return byAppID(ctx, app.ID)
 	}
 }

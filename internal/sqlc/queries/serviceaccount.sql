@@ -21,6 +21,19 @@ SELECT id, code, name, description, application_id, active,
 FROM iam_service_accounts
 WHERE code = $1;
 
+-- name: ServiceAccountFindFirstByApplicationID :one
+-- Oldest active SA linked to the application — the app's provisioned sync
+-- account by convention. Backs scheduled-job firing signatures.
+SELECT id, code, name, description, application_id, active,
+       wh_auth_type, wh_auth_token_ref, wh_signing_secret_ref,
+       wh_signing_algorithm, wh_credentials_created_at,
+       wh_credentials_regenerated_at, last_used_at, created_at, updated_at,
+       scope, client_ids
+FROM iam_service_accounts
+WHERE application_id = $1 AND active = TRUE
+ORDER BY created_at ASC
+LIMIT 1;
+
 -- name: ServiceAccountFindAll :many
 SELECT id, code, name, description, application_id, active,
        wh_auth_type, wh_auth_token_ref, wh_signing_secret_ref,

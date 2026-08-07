@@ -59,6 +59,20 @@ func RegenerateSigningSecret(repo *serviceaccount.Repository) usecaseop.Operatio
 
 // generateSigningSecret returns 32 random bytes URL-safe-base64 encoded
 // without padding (matches the Rust port).
+// NewGeneratedWebhookCredentials returns bearer credentials with a fresh
+// auth token + HMAC signing secret. Used at SA create AND at application
+// service-account provisioning, so every sync account can sign the scheduled
+// job firings (and future webhooks) of its application.
+func NewGeneratedWebhookCredentials() serviceaccount.WebhookCredentials {
+	token := generateAuthToken()
+	secret := generateSigningSecret()
+	return serviceaccount.WebhookCredentials{
+		AuthType:      serviceaccount.AuthBearer,
+		Token:         &token,
+		SigningSecret: &secret,
+	}
+}
+
 func generateSigningSecret() string {
 	b := make([]byte, 32)
 	_, _ = rand.Read(b)

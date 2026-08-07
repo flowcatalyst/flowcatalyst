@@ -164,10 +164,31 @@ class FlowCatalystServiceProvider extends ServiceProvider
     protected function registerScheduledJobRunner(): void
     {
         $this->app->singletonIf(ScheduledJobRunner::class, function ($app) {
-            return new ScheduledJobRunner(
+            $runner = new ScheduledJobRunner(
                 $app->make(FlowCatalystClient::class)->scheduledJobs(),
                 ['lockProvider' => new CacheLockProvider($app->make('cache.store'))],
             );
+
+            // Zero-HTTP handler wiring: scanned #[AsScheduledJob] classes with
+            // a handle() method (HandlesScheduledJob) are registered
+            // automatically, keyed by their declared code — the same code the
+            // firing envelope carries. Apps that call $runner->handler()
+            // themselves keep full control (manual registrations win; disable
+            // wholesale via flowcatalyst.scheduled_jobs.auto_handlers). A scan
+            // failure must not break firings for manually-registered codes.
+            $auto = $app['config']['flowcatalyst']['scheduled_jobs']['auto_handlers'] ?? true;
+            if ($auto) {
+                try {
+                    ScheduledJobRunner::registerScannedHandlers(
+                        $runner,
+                        $app->make(DefinitionRepository::class)->scheduledJobs(),
+                        static fn (string $class): object => $app->make($class),
+                    );
+                } catch (\Throwable $e) {
+                    report($e);
+                }
+            }
+            return $runner;
         });
     }
 
@@ -196,6 +217,14 @@ class FlowCatalystServiceProvider extends ServiceProvider
      * via `flowcatalyst.scheduled_jobs.register_route` to mount your own
      * route (e.g. under extra middleware), in which case set `process_url`
      * (or per-job targetUrl) to match.
+     *
+     * Guarded by the fc-signature validator, FAIL-CLOSED: the platform signs
+     * every firing with the application service account's signing secret, and
+     * an app without `flowcatalyst.signing_secret` (FLOWCATALYST_SIGNING_SECRET)
+     * rejects all deliveries with a descriptive 401 that lands in the
+     * platform's delivery_error — the missing pairing is diagnosable, never
+     * silent. The signature is computed over the RAW request body, so this
+     * route must stay out of any body-mutating middleware groups.
      */
     protected function registerScheduledJobRoute(): void
     {
@@ -210,7 +239,8 @@ class FlowCatalystServiceProvider extends ServiceProvider
                 [$status, $body] = $runner->processWithResponse((array) $request->json()->all());
                 return response()->json($body, $status);
             }
-        )->name('flowcatalyst.scheduled-jobs.process');
+        )->middleware(\FlowCatalyst\Http\Middleware\ValidateWebhookSignature::class)
+            ->name('flowcatalyst.scheduled-jobs.process');
     }
 
     /**
@@ -314,6 +344,12 @@ class FlowCatalystServiceProvider extends ServiceProvider
         $router = $this->app['router'];
         $router->aliasMiddleware(
             'flowcatalyst.webhook',
+            \FlowCatalyst\Http\Middleware\ValidateWebhookSignature::class,
+        );
+        // Same validator under the name the scheduled-job handover doc
+        // standardises on; guards any route receiving platform-signed POSTs.
+        $router->aliasMiddleware(
+            'fc-signature',
             \FlowCatalyst\Http\Middleware\ValidateWebhookSignature::class,
         );
         // Auth middleware aliases — match the TS plugin's guard names.

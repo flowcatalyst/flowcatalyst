@@ -526,13 +526,24 @@ return [
     'scheduled_jobs' => [
         // Set false to mount your own route to ScheduledJobRunner
         // ::processWithResponse() (e.g. under extra middleware). If you do,
-        // set process_url (or per-job targetUrl) to match.
+        // set process_url (or per-job targetUrl) to match, and guard your
+        // route with the `fc-signature` middleware — the platform signs every
+        // firing with your application service account's signing secret, and
+        // validation FAILS CLOSED when FLOWCATALYST_SIGNING_SECRET is unset.
+        // The signature covers the raw request body: keep the route out of
+        // body-mutating middleware groups.
         'register_route' => env('FLOWCATALYST_SCHEDULED_JOBS_ROUTE', true),
 
         // Full URL the platform POSTs firings to. Overrides the APP_URL-based
         // default — useful when the externally reachable URL differs from
         // APP_URL (tunnels, internal gateways).
         'process_url' => env('FLOWCATALYST_SCHEDULED_JOBS_PROCESS_URL'),
+
+        // Auto-wire handlers from scanned #[AsScheduledJob] classes that have
+        // a handle(array $envelope, callable $log) method (the
+        // HandlesScheduledJob contract) — apps then ship zero HTTP code for
+        // scheduled jobs. Manual $runner->handler() registrations always win.
+        'auto_handlers' => env('FLOWCATALYST_SCHEDULED_JOBS_AUTO_HANDLERS', true),
     ],
 
     /*

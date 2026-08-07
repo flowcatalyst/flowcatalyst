@@ -4,6 +4,10 @@ package scheduler
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -137,4 +141,79 @@ func TestDispatcherTick_Accepts2xxNotJust202(t *testing.T) {
 	assert.Equal(t, scheduledjob.InstanceStatusDelivered, got.Status,
 		"a plain 200 OK from the target must be accepted as delivered, not treated as a failure")
 	assert.Nil(t, got.DeliveryError)
+}
+
+// TestDispatcherTick_SignsFiringWithApplicationSecret pins the delivery
+// signature contract: HMAC-SHA256 over `timestamp + rawBody`, hex-encoded, in
+// X-FlowCatalyst-Signature with the millisecond-ISO8601 timestamp in
+// X-FlowCatalyst-Timestamp — byte-compatible with the SDK's WebhookValidator
+// and the router's webhook signing. Jobs without an application (or whose
+// application resolves no secret) deliver unsigned.
+func TestDispatcherTick_SignsFiringWithApplicationSecret(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	jobs := scheduledjob.NewRepository(pool)
+	instances := scheduledjob.NewInstanceRepository(pool)
+	uow := testpg.NewUoW(t)
+	ec := testpg.TestEC()
+
+	const secret = "sjdsp-signing-secret-1"
+
+	type capture struct {
+		sig, ts string
+		body    []byte
+	}
+	got := make(chan capture, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		got <- capture{
+			sig:  r.Header.Get("X-FlowCatalyst-Signature"),
+			ts:   r.Header.Get("X-FlowCatalyst-Timestamp"),
+			body: body,
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+	targetURL := server.URL
+
+	appID := "app_sjdspsign0001"
+	created, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.CreateScheduledJob(jobs), operations.CreateCommand{
+		Code:          "sjdsp-signed",
+		Name:          "SJ Dispatcher Signed",
+		Crons:         []string{"0 0 * * * *"},
+		TargetURL:     &targetURL,
+		ApplicationID: &appID,
+	}, ec)
+	require.NoError(t, err)
+
+	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, operations.FireNow(jobs, instances),
+		operations.FireNowCommand{ID: created.ScheduledJobID}, ec)
+	require.NoError(t, err)
+
+	d := &dispatcher{
+		cfg:       Config{DispatchInterval: time.Second, DispatchBatchSize: 32, HTTPTimeout: time.Second},
+		jobs:      jobs,
+		instances: instances,
+		http:      &http.Client{Timeout: time.Second},
+		isLeader:  func() bool { return true },
+		signingSecret: func(_ context.Context, gotAppID string) (string, error) {
+			require.Equal(t, appID, gotAppID, "resolver must receive the job's application id")
+			return secret, nil
+		},
+	}
+	require.NoError(t, d.tick(ctx))
+
+	c := <-got
+	require.NotEmpty(t, c.sig, "delivery must carry X-FlowCatalyst-Signature")
+	require.NotEmpty(t, c.ts, "delivery must carry X-FlowCatalyst-Timestamp")
+	_, terr := time.Parse("2006-01-02T15:04:05.000Z", c.ts)
+	require.NoError(t, terr, "timestamp must be millisecond-precision ISO8601 UTC")
+
+	// Recompute exactly as the SDK's WebhookValidator does:
+	// hash_hmac('sha256', timestamp . rawBody, secret), hex.
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(c.ts))
+	mac.Write(c.body)
+	assert.Equal(t, hex.EncodeToString(mac.Sum(nil)), c.sig,
+		"signature must verify against timestamp+body with the application secret")
 }

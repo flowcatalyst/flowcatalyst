@@ -27,6 +27,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 	sjscheduler "github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob/scheduler"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduler"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/queue"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/router"
@@ -139,7 +140,8 @@ func StartScheduledJobScheduler(ctx context.Context, pool *pgxpool.Pool, cfg Env
 	isLeader := newLeaderGate(ctx, cfg, "scheduled-job")
 	jobs := scheduledjob.NewRepository(pool)
 	instances := scheduledjob.NewInstanceRepository(pool)
-	svc := sjscheduler.NewService(sjscheduler.ConfigFromEnv(), jobs, instances, isLeader)
+	svc := sjscheduler.NewService(sjscheduler.ConfigFromEnv(), jobs, instances, isLeader,
+		serviceaccount.NewCachedSigningSecretResolver(serviceaccount.NewRepository(pool), time.Minute))
 	svc.Run(ctx)
 }
 

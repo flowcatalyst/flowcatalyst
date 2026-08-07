@@ -138,6 +138,43 @@ final class ScheduledJobRunner
         return array_keys($this->handlers);
     }
 
+    public function hasHandler(string $code): bool
+    {
+        return isset($this->handlers[$code]);
+    }
+
+    /**
+     * Wire handlers from scanned #[AsScheduledJob] definition rows: every row
+     * whose `_class` has a public `handle(array $envelope, callable $log)`
+     * method (see {@see HandlesScheduledJob}) gets a handler that lazily
+     * resolves the class through $make and invokes it. Codes that already
+     * have a handler are left alone — manual registration always wins.
+     *
+     * @param array<array<string, mixed>> $rows Scanned definition rows
+     * @param callable(string): object $make Class-string → instance factory
+     * @return int Number of handlers registered
+     */
+    public static function registerScannedHandlers(self $runner, array $rows, callable $make): int
+    {
+        $registered = 0;
+        foreach ($rows as $row) {
+            $code = (string) ($row['code'] ?? '');
+            $class = (string) ($row['_class'] ?? '');
+            if ($code === '' || $class === '' || $runner->hasHandler($code)) {
+                continue;
+            }
+            if (!class_exists($class) || !method_exists($class, 'handle')) {
+                continue;
+            }
+            $runner->handler(
+                $code,
+                static fn (array $envelope, callable $log): mixed => $make($class)->handle($envelope, $log),
+            );
+            $registered++;
+        }
+        return $registered;
+    }
+
     /**
      * Process an inbound platform → SDK firing.
      *
