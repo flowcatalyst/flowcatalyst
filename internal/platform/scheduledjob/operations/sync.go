@@ -160,6 +160,16 @@ func SyncScheduledJobs(repo *scheduledjob.Repository) usecaseop.Operation[SyncSc
 						cur.TargetURL = entry.TargetURL
 						changed = true
 					}
+					// Backfill/correct the application linkage: jobs synced
+					// before application stamping existed carry NULL forever
+					// otherwise — and a NULL application means the dispatcher
+					// cannot resolve signing credentials, so every firing
+					// goes out unsigned.
+					if cmd.ApplicationID != "" && (cur.ApplicationID == nil || *cur.ApplicationID != cmd.ApplicationID) {
+						appID := cmd.ApplicationID
+						cur.ApplicationID = &appID
+						changed = true
+					}
 					// A sync re-activates archived/paused jobs that reappear.
 					if cur.Status != scheduledjob.StatusActive {
 						cur.Status = scheduledjob.StatusActive

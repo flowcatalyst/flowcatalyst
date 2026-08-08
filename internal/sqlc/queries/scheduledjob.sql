@@ -68,7 +68,8 @@ ON CONFLICT (id) DO UPDATE SET
     last_fired_at = EXCLUDED.last_fired_at,
     updated_at = EXCLUDED.updated_at,
     updated_by = EXCLUDED.updated_by,
-    version = EXCLUDED.version;
+    version = EXCLUDED.version,
+    application_id = EXCLUDED.application_id;
 
 -- name: ScheduledJobDelete :exec
 DELETE FROM msg_scheduled_jobs WHERE id = $1;

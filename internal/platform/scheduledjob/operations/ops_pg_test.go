@@ -573,3 +573,53 @@ func TestSyncScheduledJobs_Validation(t *testing.T) {
 		})
 	}
 }
+
+// TestSyncScheduledJobs_BackfillsApplicationID pins the fix for a real
+// production symptom: jobs synced before application stamping existed carry
+// application_id = NULL forever (the update path never touched it), and a
+// NULL application means the dispatcher cannot resolve signing credentials —
+// every firing goes out unsigned and the receiving app's signature gate
+// rejects it. A re-sync must backfill the linkage on the existing row.
+func TestSyncScheduledJobs_BackfillsApplicationID(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := scheduledjob.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+	ec := testpg.TestEC()
+	clientID := "cli_sjsyncbackfil"
+
+	// Seed a job WITHOUT an application id (the pre-038 shape).
+	seeded, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
+		ApplicationCode: "sjbackfillapp",
+		ClientID:        &clientID,
+		Jobs: []operations.ScheduledJobSyncEntry{{
+			Code: "sjsync-backfill", Name: "Backfill", Crons: validCrons,
+			Timezone: "UTC", DeliveryMaxAttempts: 3,
+		}},
+	}, ec)
+	require.NoError(t, err)
+	require.Len(t, seeded.Created, 1)
+	_, err = testpg.Pool(t).Exec(ctx,
+		`UPDATE msg_scheduled_jobs SET application_id = NULL WHERE id = $1`, seeded.Created[0])
+	require.NoError(t, err)
+
+	// Identical re-sync, now carrying the application id: the otherwise
+	// unchanged job must be updated with the backfilled linkage.
+	resync, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
+		ApplicationCode: "sjbackfillapp",
+		ApplicationID:   "app_sjbackfill001",
+		ClientID:        &clientID,
+		Jobs: []operations.ScheduledJobSyncEntry{{
+			Code: "sjsync-backfill", Name: "Backfill", Crons: validCrons,
+			Timezone: "UTC", DeliveryMaxAttempts: 3,
+		}},
+	}, ec)
+	require.NoError(t, err)
+	assert.Len(t, resync.Updated, 1, "NULL→set application linkage counts as a change")
+
+	job, err := repo.FindByCode(ctx, "sjsync-backfill", &clientID)
+	require.NoError(t, err)
+	require.NotNil(t, job)
+	require.NotNil(t, job.ApplicationID, "application_id must be backfilled by re-sync")
+	assert.Equal(t, "app_sjbackfill001", *job.ApplicationID)
+}

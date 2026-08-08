@@ -189,6 +189,11 @@ func (d *dispatcher) dispatchOne(ctx context.Context, job *scheduledjob.Schedule
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if d.creds != nil && (job.ApplicationID == nil || *job.ApplicationID == "") {
+		slog.Warn("scheduled-job dispatcher: job has no application linkage; cannot resolve signing credentials — delivering unsigned "+
+			"(re-sync the job from its application to backfill application_id)",
+			"job_code", job.Code)
+	}
 	if d.creds != nil && job.ApplicationID != nil && *job.ApplicationID != "" {
 		creds, serr := d.creds(ctx, *job.ApplicationID)
 		switch {

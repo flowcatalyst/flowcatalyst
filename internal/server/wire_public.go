@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -90,14 +91,31 @@ func registerPublicRoutes(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *use
 func dispatchDeliveryCredsResolver(repos *repoSet) dispatchprocessing.DeliveryCredsResolver {
 	byAppID := serviceaccount.NewCachedOutboundCredsResolver(repos.serviceAccountRepo, time.Minute)
 	return func(ctx context.Context, job *dispatchjob.DispatchJob) (serviceaccount.OutboundCreds, error) {
-		if job.SubscriptionID == nil || *job.SubscriptionID == "" {
+		appCode := ""
+		if job.SubscriptionID != nil && *job.SubscriptionID != "" {
+			sub, err := repos.subscriptionRepo.FindByID(ctx, *job.SubscriptionID)
+			if err != nil {
+				return serviceaccount.OutboundCreds{}, err
+			}
+			if sub != nil && sub.ApplicationCode != nil {
+				appCode = *sub.ApplicationCode
+			}
+		}
+		if appCode == "" {
+			// Direct dispatch jobs (explicit targetUrl, no subscription) have
+			// no subscription to walk — but a fully qualified code's first
+			// segment IS the application code, so they still resolve signing
+			// credentials. Bare legacy codes fall through to an unknown-app
+			// lookup and deliver unsigned, which the SDKs now prevent at
+			// emission (QualifiedCode / assertQualifiedCode).
+			if seg, _, ok := strings.Cut(job.Code, ":"); ok && seg != "" {
+				appCode = seg
+			}
+		}
+		if appCode == "" {
 			return serviceaccount.OutboundCreds{}, nil
 		}
-		sub, err := repos.subscriptionRepo.FindByID(ctx, *job.SubscriptionID)
-		if err != nil || sub == nil || sub.ApplicationCode == nil || *sub.ApplicationCode == "" {
-			return serviceaccount.OutboundCreds{}, err
-		}
-		app, err := repos.applicationRepo.FindByCode(ctx, *sub.ApplicationCode)
+		app, err := repos.applicationRepo.FindByCode(ctx, appCode)
 		if err != nil || app == nil {
 			return serviceaccount.OutboundCreds{}, err
 		}
