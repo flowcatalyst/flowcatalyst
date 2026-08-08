@@ -94,6 +94,7 @@ type listInput struct {
 	Aggregates   string `query:"aggregates" doc:"CSV of aggregates"`
 	Codes        string `query:"codes" doc:"CSV of codes"`
 	Source       string `query:"source" doc:"Free-text source filter"`
+	Sort         string `query:"sort" doc:"createdAt.asc | createdAt.desc (default)"`
 }
 
 // splitCSV mirrors Rust's split_csv (dispatch_job/api.rs): trim, drop empties.
@@ -145,6 +146,7 @@ func (in *listInput) toFilters() dispatchjob.FilterParams {
 		Subdomains:     splitCSV(in.Subdomains),
 		Aggregates:     splitCSV(in.Aggregates),
 		Codes:          splitCSV(in.Codes),
+		SortAscending:  in.Sort == "createdAt.asc",
 	}
 }
 

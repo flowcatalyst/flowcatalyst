@@ -11229,6 +11229,16 @@
               "description": "Free-text source filter",
               "type": "string"
             }
+          },
+          {
+            "description": "createdAt.asc | createdAt.desc (default)",
+            "explode": false,
+            "in": "query",
+            "name": "sort",
+            "schema": {
+              "description": "createdAt.asc | createdAt.desc (default)",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -11543,6 +11553,16 @@
               "description": "Free-text source filter",
               "type": "string"
             }
+          },
+          {
+            "description": "createdAt.asc | createdAt.desc (default)",
+            "explode": false,
+            "in": "query",
+            "name": "sort",
+            "schema": {
+              "description": "createdAt.asc | createdAt.desc (default)",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -11736,6 +11756,16 @@
             "name": "source",
             "schema": {
               "description": "Free-text source filter",
+              "type": "string"
+            }
+          },
+          {
+            "description": "createdAt.asc | createdAt.desc (default)",
+            "explode": false,
+            "in": "query",
+            "name": "sort",
+            "schema": {
+              "description": "createdAt.asc | createdAt.desc (default)",
               "type": "string"
             }
           }

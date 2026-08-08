@@ -54,8 +54,10 @@ type FilterParams struct {
 	Source         *string
 	Since          *time.Time
 	Until          *time.Time
-	Limit          int
-	Offset         int
+	// SortAscending flips the created_at ordering (default: newest first).
+	SortAscending bool
+	Limit         int
+	Offset        int
 
 	// CSV multi-filters from the SPA.
 	ClientIDs    []string
@@ -148,7 +150,11 @@ func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Dis
 	if p.Until != nil {
 		f.Clause("created_at <= $%d", *p.Until)
 	}
-	q := readSelect + f.Where() + " ORDER BY created_at DESC"
+	order := " ORDER BY created_at DESC"
+	if p.SortAscending {
+		order = " ORDER BY created_at ASC"
+	}
+	q := readSelect + f.Where() + order
 	limit := p.Limit
 	if limit <= 0 || limit > 1000 {
 		limit = 100
