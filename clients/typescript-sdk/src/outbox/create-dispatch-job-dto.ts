@@ -13,6 +13,14 @@
  */
 import { assertQualifiedCode } from "./qualified-code.js";
 
+/**
+ * Ordering behavior within a message group.
+ * - IMMEDIATE: no ordering, jobs dispatch concurrently (platform default)
+ * - NEXT_ON_ERROR: FIFO per message group; a failed job is retried later but the group moves on
+ * - BLOCK_ON_ERROR: strict FIFO per message group; a failed job blocks the group until resolved
+ */
+export type DispatchMode = "IMMEDIATE" | "NEXT_ON_ERROR" | "BLOCK_ON_ERROR";
+
 export class CreateDispatchJobDto {
 	readonly source: string;
 	readonly code: string;
@@ -27,6 +35,7 @@ export class CreateDispatchJobDto {
 	readonly payloadContentType: string;
 	readonly dataOnly: boolean;
 	readonly messageGroup: string | null;
+	readonly mode: DispatchMode | null;
 	readonly sequence: number | null;
 	readonly timeoutSeconds: number;
 	readonly maxRetries: number;
@@ -51,6 +60,7 @@ export class CreateDispatchJobDto {
 		payloadContentType?: string;
 		dataOnly?: boolean;
 		messageGroup?: string | null;
+		mode?: DispatchMode | null;
 		sequence?: number | null;
 		timeoutSeconds?: number;
 		maxRetries?: number;
@@ -74,6 +84,7 @@ export class CreateDispatchJobDto {
 		this.payloadContentType = params.payloadContentType ?? "application/json";
 		this.dataOnly = params.dataOnly ?? true;
 		this.messageGroup = params.messageGroup ?? null;
+		this.mode = params.mode ?? null;
 		this.sequence = params.sequence ?? null;
 		this.timeoutSeconds = params.timeoutSeconds ?? 30;
 		this.maxRetries = params.maxRetries ?? 5;
@@ -149,6 +160,11 @@ export class CreateDispatchJobDto {
 		return new CreateDispatchJobDto({ ...this.toParams(), messageGroup });
 	}
 
+	/** Ordering behavior within the message group; unset defaults to IMMEDIATE on the platform. */
+	withMode(mode: DispatchMode): CreateDispatchJobDto {
+		return new CreateDispatchJobDto({ ...this.toParams(), mode });
+	}
+
 	withSequence(sequence: number): CreateDispatchJobDto {
 		return new CreateDispatchJobDto({ ...this.toParams(), sequence });
 	}
@@ -201,6 +217,7 @@ export class CreateDispatchJobDto {
 			headers: Object.keys(this.headers).length > 0 ? this.headers : null,
 			dataOnly: this.dataOnly,
 			messageGroup: this.messageGroup,
+			mode: this.mode,
 			sequence: this.sequence,
 			timeoutSeconds: this.timeoutSeconds,
 			maxRetries: this.maxRetries,
@@ -228,6 +245,7 @@ export class CreateDispatchJobDto {
 			payloadContentType: this.payloadContentType,
 			dataOnly: this.dataOnly,
 			messageGroup: this.messageGroup,
+			mode: this.mode,
 			sequence: this.sequence,
 			timeoutSeconds: this.timeoutSeconds,
 			maxRetries: this.maxRetries,

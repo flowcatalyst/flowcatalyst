@@ -170,7 +170,7 @@ export type {
 	MessageType,
 } from "./outbox/index.js";
 export { CreateEventDto } from "./outbox/index.js";
-export { CreateDispatchJobDto } from "./outbox/index.js";
+export { CreateDispatchJobDto, type DispatchMode } from "./outbox/index.js";
 export { CreateAuditLogDto } from "./outbox/index.js";
 export { generateTsid, isValidTsid } from "./outbox/index.js";
 export { PgOutboxDriver } from "./outbox/index.js";
