@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace FlowCatalyst\Outbox\DTOs;
 
+use FlowCatalyst\Outbox\QualifiedCode;
+
 /**
  * DTO for creating a dispatch job in the outbox.
  */
@@ -36,7 +38,9 @@ class CreateDispatchJobDto
         public readonly ?string $idempotencyKey = null,
         public readonly ?string $externalId = null,
         public readonly ?string $connectionId = null,
-    ) {}
+    ) {
+        QualifiedCode::assert($this->code, 'Dispatch job code');
+    }
 
     /**
      * Create a new dispatch job DTO.

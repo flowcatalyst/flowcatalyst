@@ -11,6 +11,8 @@
  *   .withTimeoutSeconds(60);
  * ```
  */
+import { assertQualifiedCode } from "./qualified-code.js";
+
 export class CreateDispatchJobDto {
 	readonly source: string;
 	readonly code: string;
@@ -86,6 +88,10 @@ export class CreateDispatchJobDto {
 	/**
 	 * Create a new dispatch job DTO.
 	 *
+	 * @param code - Fully qualified `application:subdomain:aggregate:action`
+	 *   code — the platform facets on its segments and resolves delivery
+	 *   signing credentials from the application segment; bare codes are
+	 *   rejected.
 	 * @param payload - The payload string. If you have an object, JSON.stringify it first.
 	 */
 	static create(
@@ -95,6 +101,7 @@ export class CreateDispatchJobDto {
 		payload: string | Record<string, unknown>,
 		dispatchPoolId: string,
 	): CreateDispatchJobDto {
+		assertQualifiedCode(code, "Dispatch job code");
 		return new CreateDispatchJobDto({
 			source,
 			code,

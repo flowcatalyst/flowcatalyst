@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace FlowCatalyst\Outbox\DTOs;
 
+use FlowCatalyst\Outbox\QualifiedCode;
+
 /**
  * DTO for creating an event in the outbox.
  */
@@ -26,7 +28,9 @@ class CreateEventDto
         public readonly ?string $clientCode = null,
         public readonly array $contextData = [],
         public readonly array $headers = [],
-    ) {}
+    ) {
+        QualifiedCode::assert($this->type, 'Event type');
+    }
 
     /**
      * Create a new event DTO.

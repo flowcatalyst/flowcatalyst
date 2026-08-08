@@ -1,3 +1,5 @@
+import { assertQualifiedCode } from "./qualified-code.js";
+
 /**
  * DTO for creating an event in the outbox.
  *
@@ -52,6 +54,7 @@ export class CreateEventDto {
 	}
 
 	static create(type: string, data: Record<string, unknown>): CreateEventDto {
+		assertQualifiedCode(type, "Event type");
 		return new CreateEventDto({ type, data });
 	}
 
