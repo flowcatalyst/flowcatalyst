@@ -43,14 +43,14 @@ type openIDConfiguration struct {
 func (s *State) OpenIDConfiguration(w http.ResponseWriter, _ *http.Request) {
 	base := s.BaseURL
 	writeJSON(w, http.StatusOK, openIDConfiguration{
-		Issuer:                base,
-		AuthorizationEndpoint: base + "/oauth/authorize",
-		TokenEndpoint:         base + "/oauth/token",
-		UserinfoEndpoint:      base + "/oauth/userinfo",
-		EndSessionEndpoint:    base + "/auth/oidc/session/end",
-		IntrospectionEndpoint: base + "/oauth/introspect",
-		RevocationEndpoint:    base + "/oauth/revoke",
-		JwksURI:               base + "/.well-known/jwks.json",
+		Issuer:                           base,
+		AuthorizationEndpoint:            base + "/oauth/authorize",
+		TokenEndpoint:                    base + "/oauth/token",
+		UserinfoEndpoint:                 base + "/oauth/userinfo",
+		EndSessionEndpoint:               base + "/auth/oidc/session/end",
+		IntrospectionEndpoint:            base + "/oauth/introspect",
+		RevocationEndpoint:               base + "/oauth/revoke",
+		JwksURI:                          base + "/.well-known/jwks.json",
 		ResponseTypesSupported:           []string{"code"},
 		SubjectTypesSupported:            []string{"public"},
 		IDTokenSigningAlgValuesSupported: []string{"RS256"},

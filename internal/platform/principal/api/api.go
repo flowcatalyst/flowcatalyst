@@ -86,6 +86,7 @@ func Register(api huma.API, s *State) {
 	apiroute.Get(g, "listPrincipals", "/api/principals", "List principals", s.list)
 	apiroute.Post(g, "createPrincipal", "/api/principals", "Create a principal", http.StatusCreated, s.create)
 	apiroute.Post(g, "createUser", "/api/principals/users", "Create a user principal (scope derived from email domain)", http.StatusOK, s.createUser)
+	apiroute.Post(g, "ensurePortalUser", "/api/principals/portal", "Ensure a portal identity exists for an email (inert null-client user) and send a set-password invite", http.StatusOK, s.ensurePortalUser)
 	apiroute.Post(g, "bulkImportUsers", "/api/principals/bulk-import", "Bulk-import CLIENT users for a client (CSV onboarding)", http.StatusOK, s.bulkImport)
 	apiroute.Post(g, "syncUsers", "/api/principals/sync", "Sync users (declarative upsert by email; no application scope)", http.StatusOK, s.syncUsers)
 	apiroute.Get(g, "getPrincipal", "/api/principals/{id}", "Get a principal by id", s.getByID)
@@ -1282,6 +1283,82 @@ func (s *State) sendPasswordReset(ctx context.Context, in *sendPasswordResetInpu
 		return nil, err
 	}
 	return &apicommon.Out[apicommon.StatusChangeResponse]{Body: apicommon.StatusChangeResponse{Message: "Password reset email sent"}}, nil
+}
+
+// ── portal identity ensure/invite (docs/portal-identity-plan.md, Phase 2) ─
+
+// ensurePortalUser idempotently ensures a portal identity exists for an email
+// and invites the person to set a password. The portal backend's service
+// account calls this before granting a membership, so invite-based (non-SSO)
+// portal users can sign in; SSO-only orgs never need it (the provider-direct
+// callback JIT-provisions on first login).
+func (s *State) ensurePortalUser(ctx context.Context, in *apicommon.In[PortalUserRequest]) (*apicommon.Out[PortalUserResponse], error) {
+	ac := auth.FromContext(ctx)
+	// The target is always null-client, so RequireUserAdmin applies its anchor
+	// rule: only anchor-tier callers (the portal backend's service account, a
+	// platform admin) pass. Client-admins have no say here — a portal identity
+	// belongs to no tenant.
+	if err := auth.RequireUserAdmin(ac, nil); err != nil {
+		return nil, err
+	}
+	email := strings.ToLower(strings.TrimSpace(in.Body.Email))
+	if email == "" {
+		return nil, usecase.Validation("EMAIL_REQUIRED", "email is required")
+	}
+
+	p, err := s.Repo.FindByEmail(ctx, email)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_email failed", err)
+	}
+	created := false
+	if p == nil {
+		ec := auth.NewExecutionContext(ctx)
+		_, cerr := usecaseop.Run(ctx, s.UoW, operations.CreatePortalUser(s.Repo),
+			operations.CreatePortalUserCommand{Email: email, Name: in.Body.Name}, ec)
+		var uerr *usecase.Error
+		switch {
+		case cerr == nil:
+			created = true
+		case errors.As(cerr, &uerr) && uerr.Code == "EMAIL_EXISTS":
+			// Lost a concurrent ensure race — fall through to the winner's row.
+		default:
+			return nil, cerr
+		}
+		p, err = s.Repo.FindByEmail(ctx, email)
+		if err != nil {
+			return nil, usecase.Internal("REPO", "find_by_email failed", err)
+		}
+		if p == nil {
+			return nil, usecase.Internal("REPO", "principal missing after ensure", nil)
+		}
+	}
+	// One human = one principal: an email may resolve to an existing platform
+	// user, and the portal binds its membership to that same principal. Only a
+	// non-user principal (a service account) is a genuine conflict.
+	if !p.IsUser() {
+		return nil, usecase.Conflict("NOT_A_USER", "email belongs to a non-user principal")
+	}
+
+	// Invite anyone who cannot yet sign in (no password, no federated
+	// identity) — on first create AND on later ensures, so a lost or expired
+	// invite is re-sent by calling ensure again. Accounts that can already
+	// authenticate are left alone. No mailer wired (fc-dev, SSO-only
+	// deployments) → skip silently.
+	invited := false
+	if s.InviteEmailer != nil && p.ExternalIdentity == nil &&
+		p.UserIdentity != nil && p.UserIdentity.PasswordHash == nil {
+		if ierr := s.InviteEmailer.SendInvite(ctx, p); ierr != nil {
+			// The principal exists either way; failing keeps the call honest —
+			// a retry lands back here and re-sends.
+			return nil, usecase.Internal("INVITE_EMAIL", "could not send the invite email", ierr)
+		}
+		invited = true
+	}
+	return &apicommon.Out[PortalUserResponse]{Body: PortalUserResponse{
+		PrincipalID: p.ID,
+		Created:     created,
+		Invited:     invited,
+	}}, nil
 }
 
 // resetTwoFactor clears a user's enrolled 2FA (factors, recovery codes, pending
