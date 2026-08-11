@@ -29,6 +29,13 @@ func (e *Endpoint) handleChangePassword(w http.ResponseWriter, r *http.Request) 
 	if !decodeJSON(w, r, &req) {
 		return
 	}
+	// Federated accounts manage their password at the identity provider —
+	// same rule that closes the password login path, so a leftover hash from
+	// before a domain moved to SSO can't be kept alive from the Profile page.
+	if e.ssoManaged(r.Context(), p) {
+		writeJSON(w, http.StatusBadRequest, errBody("SSO_MANAGED", "Your password is managed by your identity provider and cannot be changed here."))
+		return
+	}
 	if p.UserIdentity == nil || p.UserIdentity.PasswordHash == nil {
 		writeJSON(w, http.StatusBadRequest, errBody("NO_PASSWORD", "This account signs in without a password."))
 		return

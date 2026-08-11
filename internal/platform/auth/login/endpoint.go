@@ -356,6 +356,11 @@ type loginResponse struct {
 	// RecoveryCodes is populated only by the enroll-and-complete path, the one
 	// time a freshly-generated backup-code set is returned to the user.
 	RecoveryCodes []string `json:"recoveryCodes,omitempty"`
+	// SsoManaged is true when the account authenticates through a federated
+	// identity provider (linked external identity, or email domain mapped to
+	// an OIDC provider). The SPA hides password self-service for such users;
+	// /auth/change-password enforces the same rule server-side.
+	SsoManaged bool `json:"ssoManaged"`
 }
 
 // buildPermissionList flattens the principal's roles into the permission
@@ -528,7 +533,33 @@ func (e *Endpoint) completeLogin(w http.ResponseWriter, r *http.Request, p *prin
 		Permissions:   buildPermissionList(claims),
 		ClientID:      p.ClientID,
 		RecoveryCodes: recoveryCodes,
+		SsoManaged:    e.ssoManaged(r.Context(), p),
 	})
+}
+
+// ssoManaged reports whether the account's credentials live with a federated
+// identity provider rather than the platform: the principal carries a linked
+// external identity, or its email domain is mapped to an OIDC provider — the
+// same rule that closes the password login path in handleLogin. Such users
+// manage any password at the provider, so password self-service is closed.
+func (e *Endpoint) ssoManaged(ctx context.Context, p *principal.Principal) bool {
+	if p.ExternalIdentity != nil {
+		return true
+	}
+	if p.UserIdentity == nil || e.cfg.Mappings == nil || e.cfg.IdentityProviders == nil {
+		return false
+	}
+	email := p.UserIdentity.Email
+	at := strings.IndexByte(email, '@')
+	if at < 0 || at >= len(email)-1 {
+		return false
+	}
+	edm, err := e.cfg.Mappings.FindByEmailDomain(ctx, email[at+1:])
+	if err != nil || edm == nil {
+		return false
+	}
+	idp, err := e.cfg.IdentityProviders.FindByID(ctx, edm.IdentityProviderID)
+	return err == nil && idp != nil && idp.Type == identityprovider.TypeOIDC
 }
 
 // ── /auth/logout ─────────────────────────────────────────────────────────
@@ -587,6 +618,7 @@ func (e *Endpoint) handleMe(w http.ResponseWriter, r *http.Request) {
 		Roles:       roles,
 		Permissions: buildPermissionList(claims),
 		ClientID:    p.ClientID,
+		SsoManaged:  e.ssoManaged(r.Context(), p),
 	})
 }
 
