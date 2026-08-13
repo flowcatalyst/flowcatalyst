@@ -4,11 +4,14 @@
 // Usage:
 //
 //	FLOWCATALYST_APP_KEY='<key>' go run ./cmd/decrypt-check '<ciphertext>'
+//	FLOWCATALYST_APP_KEY='<key>' go run ./cmd/decrypt-check -show '<ciphertext>'
 //
-// Prints the plaintext length (never the plaintext) on success.
+// By default prints only the plaintext length. Pass -show to print the
+// decrypted plaintext itself (it will land in your shell scrollback/history).
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 
@@ -16,10 +19,14 @@ import (
 )
 
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: FLOWCATALYST_APP_KEY=... go run ./cmd/decrypt-check '<ciphertext>'")
+	show := flag.Bool("show", false, "print the decrypted plaintext (not just its length)")
+	flag.Parse()
+
+	if flag.NArg() != 1 {
+		fmt.Fprintln(os.Stderr, "usage: FLOWCATALYST_APP_KEY=... go run ./cmd/decrypt-check [-show] '<ciphertext>'")
 		os.Exit(2)
 	}
+	ciphertext := flag.Arg(0)
 
 	raw := os.Getenv("FLOWCATALYST_APP_KEY")
 	fmt.Printf("key: %d chars (raw), %d chars (trimmed)\n", len(raw), len(trimmed(raw)))
@@ -37,12 +44,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	pt, err := svc.Decrypt(os.Args[1])
+	pt, err := svc.Decrypt(ciphertext)
 	if err != nil {
 		fmt.Printf("DECRYPT FAILED: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Printf("DECRYPT OK: plaintext is %d chars\n", len(pt))
+	if *show {
+		fmt.Printf("plaintext: %s\n", pt)
+	}
 }
 
 func trimmed(s string) string {
