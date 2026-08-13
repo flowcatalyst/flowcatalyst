@@ -183,10 +183,17 @@ func (r *InstanceRepository) MarkInFlight(ctx context.Context, instanceID string
 // MarkDelivered flips an instance to DELIVERED and stamps delivered_at, on a
 // 2xx ACK from the target. DELIVERED is terminal unless the job tracks
 // completion (then the SDK calls MarkComplete later). Mirrors mark_delivered.
+//
+// Synchronous SDK runners (Laravel) run the handler AND post the completion
+// callback before returning their 2xx, so MarkComplete routinely lands while
+// the delivery request is still open. The status flip therefore guards on
+// completed_at: a completion that raced ahead keeps its COMPLETED/FAILED
+// status, and only delivered_at is stamped.
 func (r *InstanceRepository) MarkDelivered(ctx context.Context, instanceID string) error {
 	_, err := r.pool.Exec(ctx, `
 		UPDATE msg_scheduled_job_instances
-		   SET status = 'DELIVERED', delivered_at = NOW()
+		   SET status = CASE WHEN completed_at IS NULL THEN 'DELIVERED' ELSE status END,
+		       delivered_at = NOW()
 		 WHERE id = $1`, instanceID)
 	if err != nil {
 		return fmt.Errorf("scheduled_job_instance mark_delivered: %w", err)

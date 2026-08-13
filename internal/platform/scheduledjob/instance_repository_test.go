@@ -91,3 +91,55 @@ func TestHasActiveInstance_DeliveredIsActiveUntilCompletedWhenTrackingCompletion
 	require.NoError(t, err)
 	assert.False(t, active, "a completed instance must no longer count as active")
 }
+
+// TestMarkDelivered_DoesNotRegressCompletedStatus covers the synchronous-runner
+// race (real reported bug: every successful Laravel firing showed DELIVERED):
+// the SDK posts the completion callback before returning its 2xx to the still-
+// open delivery request, so MarkComplete lands first and the dispatcher's
+// MarkDelivered must not overwrite COMPLETED — only stamp delivered_at.
+func TestMarkDelivered_DoesNotRegressCompletedStatus(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	jobs := scheduledjob.NewRepository(pool)
+	instances := scheduledjob.NewInstanceRepository(pool)
+	uow := testpg.NewUoW(t)
+	ec := testpg.TestEC()
+
+	created, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.CreateScheduledJob(jobs), operations.CreateCommand{
+		Code:             "sjinst-complete-race",
+		Name:             "SJ Instance Complete Race",
+		Crons:            []string{"0 0 * * * *"},
+		TracksCompletion: true,
+	}, ec)
+	require.NoError(t, err)
+
+	fired, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.FireNow(jobs, instances),
+		operations.FireNowCommand{ID: created.ScheduledJobID}, ec)
+	require.NoError(t, err)
+	instanceID := fired.InstanceID
+
+	require.NoError(t, instances.MarkInFlight(ctx, instanceID))
+	success := "SUCCESS"
+	require.NoError(t, instances.MarkComplete(ctx, instanceID, scheduledjob.InstanceStatusCompleted, &success, nil))
+	require.NoError(t, instances.MarkDelivered(ctx, instanceID))
+
+	inst, err := instances.FindByID(ctx, instanceID)
+	require.NoError(t, err)
+	require.NotNil(t, inst)
+	assert.Equal(t, scheduledjob.InstanceStatusCompleted, inst.Status,
+		"a completion that raced ahead of the delivery ACK must keep its status")
+	assert.NotNil(t, inst.DeliveredAt, "delivered_at must still be stamped")
+	assert.NotNil(t, inst.CompletedAt)
+
+	// The pre-completion ordering keeps working: a not-yet-completed instance
+	// still flips to DELIVERED.
+	fired2, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.FireNow(jobs, instances),
+		operations.FireNowCommand{ID: created.ScheduledJobID}, ec)
+	require.NoError(t, err)
+	require.NoError(t, instances.MarkInFlight(ctx, fired2.InstanceID))
+	require.NoError(t, instances.MarkDelivered(ctx, fired2.InstanceID))
+	inst2, err := instances.FindByID(ctx, fired2.InstanceID)
+	require.NoError(t, err)
+	require.NotNil(t, inst2)
+	assert.Equal(t, scheduledjob.InstanceStatusDelivered, inst2.Status)
+}
