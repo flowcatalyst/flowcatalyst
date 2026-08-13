@@ -19,9 +19,17 @@ class CreateIdentityProviderRequest extends \ArrayObject
      */
     protected $dollarSchema;
     /**
+     * Email domains to route to this provider; mappings are created (or claimed from their current provider) in Email Domain management
+     *
      * @var list<string>|null
      */
     protected $allowedEmailDomains;
+    /**
+     * Platform roles (by id) this provider may confer via role sync; empty = no restriction
+     *
+     * @var list<string>|null
+     */
+    protected $allowedRoleIds;
     /**
      * IDP code (e.g. internal, entra)
      *
@@ -55,6 +63,18 @@ class CreateIdentityProviderRequest extends \ArrayObject
      */
     protected $oidcMultiTenant;
     /**
+     * Client to link on mappings that are new or not yet linked to a primary client
+     *
+     * @var string|null
+     */
+    protected $primaryClientId;
+    /**
+     * Reconcile users' IDP_SYNC roles from the token's roles claim at login
+     *
+     * @var bool|null
+     */
+    protected $syncRolesFromIdp;
+    /**
      * IDP type (INTERNAL or OIDC)
      *
      * @var string|null
@@ -83,6 +103,8 @@ class CreateIdentityProviderRequest extends \ArrayObject
         return $this;
     }
     /**
+     * Email domains to route to this provider; mappings are created (or claimed from their current provider) in Email Domain management
+     *
      * @return list<string>|null
      */
     public function getAllowedEmailDomains(): ?array
@@ -90,6 +112,8 @@ class CreateIdentityProviderRequest extends \ArrayObject
         return $this->allowedEmailDomains;
     }
     /**
+     * Email domains to route to this provider; mappings are created (or claimed from their current provider) in Email Domain management
+     *
      * @param list<string>|null $allowedEmailDomains
      *
      * @return self
@@ -98,6 +122,28 @@ class CreateIdentityProviderRequest extends \ArrayObject
     {
         $this->initialized['allowedEmailDomains'] = true;
         $this->allowedEmailDomains = $allowedEmailDomains;
+        return $this;
+    }
+    /**
+     * Platform roles (by id) this provider may confer via role sync; empty = no restriction
+     *
+     * @return list<string>|null
+     */
+    public function getAllowedRoleIds(): ?array
+    {
+        return $this->allowedRoleIds;
+    }
+    /**
+     * Platform roles (by id) this provider may confer via role sync; empty = no restriction
+     *
+     * @param list<string>|null $allowedRoleIds
+     *
+     * @return self
+     */
+    public function setAllowedRoleIds(?array $allowedRoleIds): self
+    {
+        $this->initialized['allowedRoleIds'] = true;
+        $this->allowedRoleIds = $allowedRoleIds;
         return $this;
     }
     /**
@@ -232,6 +278,50 @@ class CreateIdentityProviderRequest extends \ArrayObject
     {
         $this->initialized['oidcMultiTenant'] = true;
         $this->oidcMultiTenant = $oidcMultiTenant;
+        return $this;
+    }
+    /**
+     * Client to link on mappings that are new or not yet linked to a primary client
+     *
+     * @return string|null
+     */
+    public function getPrimaryClientId(): ?string
+    {
+        return $this->primaryClientId;
+    }
+    /**
+     * Client to link on mappings that are new or not yet linked to a primary client
+     *
+     * @param string|null $primaryClientId
+     *
+     * @return self
+     */
+    public function setPrimaryClientId(?string $primaryClientId): self
+    {
+        $this->initialized['primaryClientId'] = true;
+        $this->primaryClientId = $primaryClientId;
+        return $this;
+    }
+    /**
+     * Reconcile users' IDP_SYNC roles from the token's roles claim at login
+     *
+     * @return bool|null
+     */
+    public function getSyncRolesFromIdp(): ?bool
+    {
+        return $this->syncRolesFromIdp;
+    }
+    /**
+     * Reconcile users' IDP_SYNC roles from the token's roles claim at login
+     *
+     * @param bool|null $syncRolesFromIdp
+     *
+     * @return self
+     */
+    public function setSyncRolesFromIdp(?bool $syncRolesFromIdp): self
+    {
+        $this->initialized['syncRolesFromIdp'] = true;
+        $this->syncRolesFromIdp = $syncRolesFromIdp;
         return $this;
     }
     /**

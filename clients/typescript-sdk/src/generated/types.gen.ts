@@ -360,7 +360,9 @@ export type AuthenticateCompleteRequest = {
 
 export type BatchEventItem = {
     causationId?: string;
+    clientCode?: string;
     clientId?: string;
+    contextData?: Array<ContextEntryDto>;
     correlationId?: string;
     data?: unknown;
     deduplicationId?: string;
@@ -424,7 +426,7 @@ export type BulkImportResult = {
     message?: string;
     row: number;
     /**
-     * created | exists | error
+     * created | exists | dropped | error
      */
     status: string;
 };
@@ -851,7 +853,14 @@ export type CreateIdentityProviderRequest = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    /**
+     * Email domains to route to this provider; mappings are created (or claimed from their current provider) in Email Domain management
+     */
     allowedEmailDomains?: Array<string>;
+    /**
+     * Platform roles (by id) this provider may confer via role sync; empty = no restriction
+     */
+    allowedRoleIds?: Array<string>;
     /**
      * IDP code (e.g. internal, entra)
      */
@@ -866,10 +875,18 @@ export type CreateIdentityProviderRequest = {
     oidcIssuerUrl?: string;
     oidcMultiTenant: boolean;
     /**
+     * Client to link on mappings that are new or not yet linked to a primary client
+     */
+    primaryClientId?: string;
+    /**
+     * Reconcile users' IDP_SYNC roles from the token's roles claim at login
+     */
+    syncRolesFromIdp?: boolean;
+    /**
      * IDP type (INTERNAL or OIDC)
      */
     type: string;
-    [key: string]: unknown | string | Array<string> | boolean | undefined;
+    [key: string]: unknown | string | Array<string> | Array<string> | boolean | undefined;
 };
 
 export type CreateIdpRoleMappingRequest = {
@@ -893,7 +910,6 @@ export type CreateMappingRequest = {
      * Permitted 2FA methods (TOTP, EMAIL_PIN). ≥1 required when require2fa is set.
      */
     allowed2faMethods?: Array<string>;
-    allowedRoleIds?: Array<string>;
     /**
      * DNS-like email domain (e.g. example.com)
      */
@@ -909,8 +925,7 @@ export type CreateMappingRequest = {
      * Scope of mapping (ANCHOR, PARTNER, CLIENT)
      */
     scopeType: string;
-    syncRolesFromIdp?: boolean;
-    [key: string]: unknown | string | Array<string> | Array<string> | Array<string> | Array<string> | number | boolean | undefined;
+    [key: string]: unknown | string | Array<string> | Array<string> | Array<string> | number | boolean | undefined;
 };
 
 export type CreateOAuthClientRequest = {
@@ -1018,6 +1033,7 @@ export type CreateScheduledJobRequest = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    applicationId?: string;
     clientId?: string;
     code: string;
     concurrent: boolean;
@@ -1125,6 +1141,15 @@ export type CreatedResponse = {
      */
     readonly $schema?: string;
     id: string;
+};
+
+export type DeveloperUserListResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    principals: Array<PrincipalResponse>;
+    total: number;
 };
 
 export type DispatchJobFilterOptionsResponse = {
@@ -1403,7 +1428,11 @@ export type IdentityProviderResponse = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    /**
+     * Domains currently routed to this provider (derived from email-domain mappings)
+     */
     allowedEmailDomains: Array<string>;
+    allowedRoleIds: Array<string>;
     code: string;
     createdAt: string;
     hasClientSecret: boolean;
@@ -1413,6 +1442,7 @@ export type IdentityProviderResponse = {
     oidcIssuerPattern?: string;
     oidcIssuerUrl?: string;
     oidcMultiTenant: boolean;
+    syncRolesFromIdp: boolean;
     type: string;
     updatedAt: string;
 };
@@ -1480,7 +1510,6 @@ export type MappingResponse = {
     readonly $schema?: string;
     additionalClientIds: Array<string>;
     allowed2faMethods: Array<string>;
-    allowedRoleIds: Array<string>;
     createdAt: string;
     emailDomain: string;
     grantedClientIds: Array<string>;
@@ -1493,13 +1522,39 @@ export type MappingResponse = {
     require2fa: boolean;
     requiredOidcTenantId?: string;
     scopeType: string;
-    syncRolesFromIdp: boolean;
     updatedAt: string;
 };
 
 export type MetadataDto = {
     key: string;
     value: string;
+};
+
+export type MoveProviderRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Target identity provider id
+     */
+    identityProviderId: string;
+    [key: string]: unknown | string | undefined;
+};
+
+export type MoveProviderResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    emailDomain: string;
+    fromIdentityProviderId: string;
+    mappingId: string;
+    toIdentityProviderId: string;
+    /**
+     * OIDC-provisioned users converted back to internal auth (0 when moving to an OIDC provider)
+     */
+    usersReset: number;
 };
 
 export type NoteResponse = {
@@ -1589,6 +1644,26 @@ export type PermissionResponse = {
     permission: string;
 };
 
+export type PortalUserRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    email: string;
+    name?: string;
+    [key: string]: unknown | string | undefined;
+};
+
+export type PortalUserResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    created: boolean;
+    invited: boolean;
+    principalId: string;
+};
+
 export type PrincipalAvailableApplication = {
     code: string;
     id: string;
@@ -1620,14 +1695,17 @@ export type PrincipalResponse = {
     active: boolean;
     clientId?: string;
     createdAt: string;
+    developerCredentialUpdatedAt?: string;
     email?: string;
     grantedClientIds: Array<string>;
+    hasDeveloperCredential: boolean;
     id: string;
     idpType?: string;
     isAnchorUser: boolean;
     name: string;
     roles: Array<string>;
     scope: string;
+    twoFactorMethods?: Array<string>;
     type: string;
     updatedAt: string;
 };
@@ -1645,6 +1723,14 @@ export type PrincipalRoleListResponse = {
      */
     readonly $schema?: string;
     roles: Array<PrincipalRoleAssignmentDto>;
+};
+
+export type PrincipalVersionResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    updatedAt: string;
 };
 
 export type ProcessListResponse = {
@@ -1814,6 +1900,26 @@ export type RequestDto = {
     principalId: string;
 };
 
+export type RequeueRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Dispatch job ids to reset to PENDING for re-dispatch
+     */
+    ids: Array<string>;
+    [key: string]: unknown | string | Array<string> | undefined;
+};
+
+export type RequeueResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    requeued: number;
+};
+
 export type ResetPasswordRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1925,6 +2031,7 @@ export type ScheduledJobResponse = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    applicationId?: string;
     clientId?: string;
     code: string;
     concurrent: boolean;
@@ -2033,6 +2140,15 @@ export type SetApplicationAccessResponse = {
     allApplications: boolean;
     applications: Array<ApplicationAccessResponse>;
     removed: number;
+};
+
+export type SetDeveloperCredentialResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    clientSecret?: string;
+    id: string;
 };
 
 export type SetPropertyRequest = {
@@ -2506,14 +2622,23 @@ export type UpdateIdentityProviderRequest = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    /**
+     * Desired set of domains routed to this provider; additions are mapped/claimed, removals fall back to internal auth
+     */
     allowedEmailDomains?: Array<string>;
+    allowedRoleIds?: Array<string>;
     name?: string;
     oidcClientId?: string;
     oidcClientSecretRef?: string;
     oidcIssuerPattern?: string;
     oidcIssuerUrl?: string;
     oidcMultiTenant?: boolean;
-    [key: string]: unknown | string | Array<string> | boolean | undefined;
+    /**
+     * Client to link on mappings that are new or not yet linked to a primary client
+     */
+    primaryClientId?: string;
+    syncRolesFromIdp?: boolean;
+    [key: string]: unknown | string | Array<string> | Array<string> | boolean | undefined;
 };
 
 export type UpdateMappingRequest = {
@@ -2523,16 +2648,13 @@ export type UpdateMappingRequest = {
     readonly $schema?: string;
     additionalClientIds?: Array<string>;
     allowed2faMethods?: Array<string>;
-    allowedRoleIds?: Array<string>;
     grantedClientIds?: Array<string>;
-    identityProviderId?: string;
     primaryClientId?: string;
     rememberDeviceDays?: number;
     rememberDeviceEnabled?: boolean;
     require2fa?: boolean;
     requiredOidcTenantId?: string;
-    syncRolesFromIdp?: boolean;
-    [key: string]: unknown | string | Array<string> | Array<string> | Array<string> | Array<string> | number | boolean | undefined;
+    [key: string]: unknown | string | Array<string> | Array<string> | Array<string> | number | boolean | undefined;
 };
 
 export type UpdateOAuthClientRequest = {
@@ -3178,7 +3300,14 @@ export type CreateEventTypeRequestWritable = {
 };
 
 export type CreateIdentityProviderRequestWritable = {
+    /**
+     * Email domains to route to this provider; mappings are created (or claimed from their current provider) in Email Domain management
+     */
     allowedEmailDomains?: Array<string>;
+    /**
+     * Platform roles (by id) this provider may confer via role sync; empty = no restriction
+     */
+    allowedRoleIds?: Array<string>;
     /**
      * IDP code (e.g. internal, entra)
      */
@@ -3193,10 +3322,18 @@ export type CreateIdentityProviderRequestWritable = {
     oidcIssuerUrl?: string;
     oidcMultiTenant: boolean;
     /**
+     * Client to link on mappings that are new or not yet linked to a primary client
+     */
+    primaryClientId?: string;
+    /**
+     * Reconcile users' IDP_SYNC roles from the token's roles claim at login
+     */
+    syncRolesFromIdp?: boolean;
+    /**
      * IDP type (INTERNAL or OIDC)
      */
     type: string;
-    [key: string]: unknown | Array<string> | string | boolean | undefined;
+    [key: string]: unknown | Array<string> | Array<string> | string | boolean | undefined;
 };
 
 export type CreateIdpRoleMappingRequestWritable = {
@@ -3212,7 +3349,6 @@ export type CreateMappingRequestWritable = {
      * Permitted 2FA methods (TOTP, EMAIL_PIN). ≥1 required when require2fa is set.
      */
     allowed2faMethods?: Array<string>;
-    allowedRoleIds?: Array<string>;
     /**
      * DNS-like email domain (e.g. example.com)
      */
@@ -3228,8 +3364,7 @@ export type CreateMappingRequestWritable = {
      * Scope of mapping (ANCHOR, PARTNER, CLIENT)
      */
     scopeType: string;
-    syncRolesFromIdp?: boolean;
-    [key: string]: unknown | Array<string> | Array<string> | Array<string> | string | Array<string> | number | boolean | undefined;
+    [key: string]: unknown | Array<string> | Array<string> | string | Array<string> | number | boolean | undefined;
 };
 
 export type CreateOAuthClientRequestWritable = {
@@ -3313,6 +3448,7 @@ export type CreateRoleRequestWritable = {
 };
 
 export type CreateScheduledJobRequestWritable = {
+    applicationId?: string;
     clientId?: string;
     code: string;
     concurrent: boolean;
@@ -3383,6 +3519,11 @@ export type CreateUserRequestWritable = {
 
 export type CreatedResponseWritable = {
     id: string;
+};
+
+export type DeveloperUserListResponseWritable = {
+    principals: Array<PrincipalResponseWritable>;
+    total: number;
 };
 
 export type DispatchJobFilterOptionsResponseWritable = {
@@ -3543,7 +3684,11 @@ export type IdentityProviderListResponseWritable = {
 };
 
 export type IdentityProviderResponseWritable = {
+    /**
+     * Domains currently routed to this provider (derived from email-domain mappings)
+     */
     allowedEmailDomains: Array<string>;
+    allowedRoleIds: Array<string>;
     code: string;
     createdAt: string;
     hasClientSecret: boolean;
@@ -3553,6 +3698,7 @@ export type IdentityProviderResponseWritable = {
     oidcIssuerPattern?: string;
     oidcIssuerUrl?: string;
     oidcMultiTenant: boolean;
+    syncRolesFromIdp: boolean;
     type: string;
     updatedAt: string;
 };
@@ -3579,7 +3725,6 @@ export type MappingListResponseWritable = {
 export type MappingResponseWritable = {
     additionalClientIds: Array<string>;
     allowed2faMethods: Array<string>;
-    allowedRoleIds: Array<string>;
     createdAt: string;
     emailDomain: string;
     grantedClientIds: Array<string>;
@@ -3592,8 +3737,26 @@ export type MappingResponseWritable = {
     require2fa: boolean;
     requiredOidcTenantId?: string;
     scopeType: string;
-    syncRolesFromIdp: boolean;
     updatedAt: string;
+};
+
+export type MoveProviderRequestWritable = {
+    /**
+     * Target identity provider id
+     */
+    identityProviderId: string;
+    [key: string]: unknown | string;
+};
+
+export type MoveProviderResponseWritable = {
+    emailDomain: string;
+    fromIdentityProviderId: string;
+    mappingId: string;
+    toIdentityProviderId: string;
+    /**
+     * OIDC-provisioned users converted back to internal auth (0 when moving to an OIDC provider)
+     */
+    usersReset: number;
 };
 
 export type OAuthClientListResponseWritable = {
@@ -3647,6 +3810,18 @@ export type PermissionResponseWritable = {
     permission: string;
 };
 
+export type PortalUserRequestWritable = {
+    email: string;
+    name?: string;
+    [key: string]: unknown | string | undefined;
+};
+
+export type PortalUserResponseWritable = {
+    created: boolean;
+    invited: boolean;
+    principalId: string;
+};
+
 export type PrincipalAvailableApplicationsResponseWritable = {
     applications: Array<PrincipalAvailableApplication>;
 };
@@ -3660,20 +3835,27 @@ export type PrincipalResponseWritable = {
     active: boolean;
     clientId?: string;
     createdAt: string;
+    developerCredentialUpdatedAt?: string;
     email?: string;
     grantedClientIds: Array<string>;
+    hasDeveloperCredential: boolean;
     id: string;
     idpType?: string;
     isAnchorUser: boolean;
     name: string;
     roles: Array<string>;
     scope: string;
+    twoFactorMethods?: Array<string>;
     type: string;
     updatedAt: string;
 };
 
 export type PrincipalRoleListResponseWritable = {
     roles: Array<PrincipalRoleAssignmentDto>;
+};
+
+export type PrincipalVersionResponseWritable = {
+    updatedAt: string;
 };
 
 export type ProcessListResponseWritable = {
@@ -3743,6 +3925,18 @@ export type RegisterCompleteResponseWritable = {
     credentialId: string;
 };
 
+export type RequeueRequestWritable = {
+    /**
+     * Dispatch job ids to reset to PENDING for re-dispatch
+     */
+    ids: Array<string>;
+    [key: string]: unknown | Array<string>;
+};
+
+export type RequeueResponseWritable = {
+    requeued: number;
+};
+
 export type ResetPasswordRequestWritable = {
     enforcePasswordComplexity?: boolean;
     newPassword: string;
@@ -3803,6 +3997,7 @@ export type ScheduledJobInstanceResponseWritable = {
 };
 
 export type ScheduledJobResponseWritable = {
+    applicationId?: string;
     clientId?: string;
     code: string;
     concurrent: boolean;
@@ -3873,6 +4068,11 @@ export type SetApplicationAccessResponseWritable = {
     allApplications: boolean;
     applications: Array<ApplicationAccessResponse>;
     removed: number;
+};
+
+export type SetDeveloperCredentialResponseWritable = {
+    clientSecret?: string;
+    id: string;
 };
 
 export type SetPropertyRequestWritable = {
@@ -4094,29 +4294,35 @@ export type UpdateEventTypeRequestWritable = {
 };
 
 export type UpdateIdentityProviderRequestWritable = {
+    /**
+     * Desired set of domains routed to this provider; additions are mapped/claimed, removals fall back to internal auth
+     */
     allowedEmailDomains?: Array<string>;
+    allowedRoleIds?: Array<string>;
     name?: string;
     oidcClientId?: string;
     oidcClientSecretRef?: string;
     oidcIssuerPattern?: string;
     oidcIssuerUrl?: string;
     oidcMultiTenant?: boolean;
-    [key: string]: unknown | Array<string> | string | boolean | undefined;
+    /**
+     * Client to link on mappings that are new or not yet linked to a primary client
+     */
+    primaryClientId?: string;
+    syncRolesFromIdp?: boolean;
+    [key: string]: unknown | Array<string> | Array<string> | string | boolean | undefined;
 };
 
 export type UpdateMappingRequestWritable = {
     additionalClientIds?: Array<string>;
     allowed2faMethods?: Array<string>;
-    allowedRoleIds?: Array<string>;
     grantedClientIds?: Array<string>;
-    identityProviderId?: string;
     primaryClientId?: string;
     rememberDeviceDays?: number;
     rememberDeviceEnabled?: boolean;
     require2fa?: boolean;
     requiredOidcTenantId?: string;
-    syncRolesFromIdp?: boolean;
-    [key: string]: unknown | Array<string> | Array<string> | Array<string> | Array<string> | string | number | boolean | undefined;
+    [key: string]: unknown | Array<string> | Array<string> | Array<string> | string | number | boolean | undefined;
 };
 
 export type UpdateOAuthClientRequestWritable = {
@@ -6163,6 +6369,10 @@ export type ListDispatchJobsData = {
          * Free-text source filter
          */
         source?: string;
+        /**
+         * createdAt.asc | createdAt.desc (default)
+         */
+        sort?: string;
     };
     url: '/api/dispatch-jobs';
 };
@@ -6315,6 +6525,10 @@ export type ListDispatchJobsRawData = {
          * Free-text source filter
          */
         source?: string;
+        /**
+         * createdAt.asc | createdAt.desc (default)
+         */
+        sort?: string;
     };
     url: '/api/dispatch-jobs/list-raw';
 };
@@ -6388,6 +6602,10 @@ export type ListDispatchJobsRawAliasData = {
          * Free-text source filter
          */
         source?: string;
+        /**
+         * createdAt.asc | createdAt.desc (default)
+         */
+        sort?: string;
     };
     url: '/api/dispatch-jobs/raw';
 };
@@ -6409,6 +6627,31 @@ export type ListDispatchJobsRawAliasResponses = {
 };
 
 export type ListDispatchJobsRawAliasResponse = ListDispatchJobsRawAliasResponses[keyof ListDispatchJobsRawAliasResponses];
+
+export type RequeueDispatchJobsData = {
+    body: RequeueRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/dispatch-jobs/requeue';
+};
+
+export type RequeueDispatchJobsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type RequeueDispatchJobsError = RequeueDispatchJobsErrors[keyof RequeueDispatchJobsErrors];
+
+export type RequeueDispatchJobsResponses = {
+    /**
+     * OK
+     */
+    200: RequeueResponse;
+};
+
+export type RequeueDispatchJobsResponse = RequeueDispatchJobsResponses[keyof RequeueDispatchJobsResponses];
 
 export type GetDispatchJobData = {
     body?: never;
@@ -6900,6 +7143,33 @@ export type UpdateEmailDomainMappingResponses = {
 };
 
 export type UpdateEmailDomainMappingResponse = UpdateEmailDomainMappingResponses[keyof UpdateEmailDomainMappingResponses];
+
+export type MoveEmailDomainMappingProviderData = {
+    body: MoveProviderRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/email-domain-mappings/{id}/move-provider';
+};
+
+export type MoveEmailDomainMappingProviderErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type MoveEmailDomainMappingProviderError = MoveEmailDomainMappingProviderErrors[keyof MoveEmailDomainMappingProviderErrors];
+
+export type MoveEmailDomainMappingProviderResponses = {
+    /**
+     * OK
+     */
+    200: MoveProviderResponse;
+};
+
+export type MoveEmailDomainMappingProviderResponse = MoveEmailDomainMappingProviderResponses[keyof MoveEmailDomainMappingProviderResponses];
 
 export type ListEventTypesData = {
     body?: never;
@@ -8324,6 +8594,56 @@ export type CheckPrincipalEmailDomainResponses = {
 
 export type CheckPrincipalEmailDomainResponse = CheckPrincipalEmailDomainResponses[keyof CheckPrincipalEmailDomainResponses];
 
+export type ListDeveloperUsersData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/principals/developer-users';
+};
+
+export type ListDeveloperUsersErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListDeveloperUsersError = ListDeveloperUsersErrors[keyof ListDeveloperUsersErrors];
+
+export type ListDeveloperUsersResponses = {
+    /**
+     * OK
+     */
+    200: DeveloperUserListResponse;
+};
+
+export type ListDeveloperUsersResponse = ListDeveloperUsersResponses[keyof ListDeveloperUsersResponses];
+
+export type EnsurePortalUserData = {
+    body: PortalUserRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/principals/portal';
+};
+
+export type EnsurePortalUserErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type EnsurePortalUserError = EnsurePortalUserErrors[keyof EnsurePortalUserErrors];
+
+export type EnsurePortalUserResponses = {
+    /**
+     * OK
+     */
+    200: PortalUserResponse;
+};
+
+export type EnsurePortalUserResponse = EnsurePortalUserResponses[keyof EnsurePortalUserResponses];
+
 export type SyncUsersData = {
     body: SyncUsersRequestWritable;
     path?: never;
@@ -8699,6 +9019,60 @@ export type DeactivatePrincipalResponses = {
 
 export type DeactivatePrincipalResponse = DeactivatePrincipalResponses[keyof DeactivatePrincipalResponses];
 
+export type RevokePrincipalDeveloperCredentialData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/principals/{id}/developer-credential';
+};
+
+export type RevokePrincipalDeveloperCredentialErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type RevokePrincipalDeveloperCredentialError = RevokePrincipalDeveloperCredentialErrors[keyof RevokePrincipalDeveloperCredentialErrors];
+
+export type RevokePrincipalDeveloperCredentialResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type RevokePrincipalDeveloperCredentialResponse = RevokePrincipalDeveloperCredentialResponses[keyof RevokePrincipalDeveloperCredentialResponses];
+
+export type SetPrincipalDeveloperCredentialData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/principals/{id}/developer-credential';
+};
+
+export type SetPrincipalDeveloperCredentialErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type SetPrincipalDeveloperCredentialError = SetPrincipalDeveloperCredentialErrors[keyof SetPrincipalDeveloperCredentialErrors];
+
+export type SetPrincipalDeveloperCredentialResponses = {
+    /**
+     * OK
+     */
+    200: SetDeveloperCredentialResponse;
+};
+
+export type SetPrincipalDeveloperCredentialResponse = SetPrincipalDeveloperCredentialResponses[keyof SetPrincipalDeveloperCredentialResponses];
+
 export type ResetPrincipalTwoFactorData = {
     body?: never;
     path: {
@@ -8888,6 +9262,33 @@ export type SendPrincipalPasswordResetResponses = {
 };
 
 export type SendPrincipalPasswordResetResponse = SendPrincipalPasswordResetResponses[keyof SendPrincipalPasswordResetResponses];
+
+export type GetPrincipalVersionData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/principals/{id}/version';
+};
+
+export type GetPrincipalVersionErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetPrincipalVersionError = GetPrincipalVersionErrors[keyof GetPrincipalVersionErrors];
+
+export type GetPrincipalVersionResponses = {
+    /**
+     * OK
+     */
+    200: PrincipalVersionResponse;
+};
+
+export type GetPrincipalVersionResponse = GetPrincipalVersionResponses[keyof GetPrincipalVersionResponses];
 
 export type ListProcessesData = {
     body?: never;

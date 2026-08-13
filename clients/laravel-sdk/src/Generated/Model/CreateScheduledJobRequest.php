@@ -21,6 +21,10 @@ class CreateScheduledJobRequest extends \ArrayObject
     /**
      * @var string|null
      */
+    protected $applicationId;
+    /**
+     * @var string|null
+     */
     protected $clientId;
     /**
      * @var string|null
@@ -86,6 +90,24 @@ class CreateScheduledJobRequest extends \ArrayObject
     {
         $this->initialized['dollarSchema'] = true;
         $this->dollarSchema = $dollarSchema;
+        return $this;
+    }
+    /**
+     * @return string|null
+     */
+    public function getApplicationId(): ?string
+    {
+        return $this->applicationId;
+    }
+    /**
+     * @param string|null $applicationId
+     *
+     * @return self
+     */
+    public function setApplicationId(?string $applicationId): self
+    {
+        $this->initialized['applicationId'] = true;
+        $this->applicationId = $applicationId;
         return $this;
     }
     /**

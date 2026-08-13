@@ -43,9 +43,6 @@ class CreateMappingRequestNormalizer implements DenormalizerInterface, Normalize
         if (\array_key_exists('require2fa', $data) && \is_int($data['require2fa'])) {
             $data['require2fa'] = (bool) $data['require2fa'];
         }
-        if (\array_key_exists('syncRolesFromIdp', $data) && \is_int($data['syncRolesFromIdp'])) {
-            $data['syncRolesFromIdp'] = (bool) $data['syncRolesFromIdp'];
-        }
         if (\array_key_exists('$schema', $data) && $data['$schema'] !== null) {
             $object->setDollarSchema($data['$schema']);
             unset($data['$schema']);
@@ -75,17 +72,6 @@ class CreateMappingRequestNormalizer implements DenormalizerInterface, Normalize
         elseif (\array_key_exists('allowed2faMethods', $data) && $data['allowed2faMethods'] === null) {
             $object->setAllowed2faMethods(null);
         }
-        if (\array_key_exists('allowedRoleIds', $data) && $data['allowedRoleIds'] !== null) {
-            $values_2 = [];
-            foreach ($data['allowedRoleIds'] as $value_2) {
-                $values_2[] = $value_2;
-            }
-            $object->setAllowedRoleIds($values_2);
-            unset($data['allowedRoleIds']);
-        }
-        elseif (\array_key_exists('allowedRoleIds', $data) && $data['allowedRoleIds'] === null) {
-            $object->setAllowedRoleIds(null);
-        }
         if (\array_key_exists('emailDomain', $data) && $data['emailDomain'] !== null) {
             $object->setEmailDomain($data['emailDomain']);
             unset($data['emailDomain']);
@@ -94,11 +80,11 @@ class CreateMappingRequestNormalizer implements DenormalizerInterface, Normalize
             $object->setEmailDomain(null);
         }
         if (\array_key_exists('grantedClientIds', $data) && $data['grantedClientIds'] !== null) {
-            $values_3 = [];
-            foreach ($data['grantedClientIds'] as $value_3) {
-                $values_3[] = $value_3;
+            $values_2 = [];
+            foreach ($data['grantedClientIds'] as $value_2) {
+                $values_2[] = $value_2;
             }
-            $object->setGrantedClientIds($values_3);
+            $object->setGrantedClientIds($values_2);
             unset($data['grantedClientIds']);
         }
         elseif (\array_key_exists('grantedClientIds', $data) && $data['grantedClientIds'] === null) {
@@ -153,16 +139,9 @@ class CreateMappingRequestNormalizer implements DenormalizerInterface, Normalize
         elseif (\array_key_exists('scopeType', $data) && $data['scopeType'] === null) {
             $object->setScopeType(null);
         }
-        if (\array_key_exists('syncRolesFromIdp', $data) && $data['syncRolesFromIdp'] !== null) {
-            $object->setSyncRolesFromIdp($data['syncRolesFromIdp']);
-            unset($data['syncRolesFromIdp']);
-        }
-        elseif (\array_key_exists('syncRolesFromIdp', $data) && $data['syncRolesFromIdp'] === null) {
-            $object->setSyncRolesFromIdp(null);
-        }
-        foreach ($data as $key => $value_4) {
+        foreach ($data as $key => $value_3) {
             if (preg_match('/.*/', (string) $key)) {
-                $object[$key] = $value_4;
+                $object[$key] = $value_3;
             }
         }
         return $object;
@@ -184,20 +163,13 @@ class CreateMappingRequestNormalizer implements DenormalizerInterface, Normalize
             }
             $dataArray['allowed2faMethods'] = $values_1;
         }
-        if ($data->isInitialized('allowedRoleIds') && null !== $data->getAllowedRoleIds()) {
-            $values_2 = [];
-            foreach ($data->getAllowedRoleIds() as $value_2) {
-                $values_2[] = $value_2;
-            }
-            $dataArray['allowedRoleIds'] = $values_2;
-        }
         $dataArray['emailDomain'] = $data->getEmailDomain();
         if ($data->isInitialized('grantedClientIds') && null !== $data->getGrantedClientIds()) {
-            $values_3 = [];
-            foreach ($data->getGrantedClientIds() as $value_3) {
-                $values_3[] = $value_3;
+            $values_2 = [];
+            foreach ($data->getGrantedClientIds() as $value_2) {
+                $values_2[] = $value_2;
             }
-            $dataArray['grantedClientIds'] = $values_3;
+            $dataArray['grantedClientIds'] = $values_2;
         }
         $dataArray['identityProviderId'] = $data->getIdentityProviderId();
         if ($data->isInitialized('primaryClientId') && null !== $data->getPrimaryClientId()) {
@@ -216,12 +188,9 @@ class CreateMappingRequestNormalizer implements DenormalizerInterface, Normalize
             $dataArray['requiredOidcTenantId'] = $data->getRequiredOidcTenantId();
         }
         $dataArray['scopeType'] = $data->getScopeType();
-        if ($data->isInitialized('syncRolesFromIdp') && null !== $data->getSyncRolesFromIdp()) {
-            $dataArray['syncRolesFromIdp'] = $data->getSyncRolesFromIdp();
-        }
-        foreach ($data as $key => $value_4) {
+        foreach ($data as $key => $value_3) {
             if (preg_match('/.*/', (string) $key)) {
-                $dataArray[$key] = $value_4;
+                $dataArray[$key] = $value_3;
             }
         }
         return $dataArray;

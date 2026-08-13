@@ -40,6 +40,9 @@ class UpdateIdentityProviderRequestNormalizer implements DenormalizerInterface, 
         if (\array_key_exists('oidcMultiTenant', $data) && \is_int($data['oidcMultiTenant'])) {
             $data['oidcMultiTenant'] = (bool) $data['oidcMultiTenant'];
         }
+        if (\array_key_exists('syncRolesFromIdp', $data) && \is_int($data['syncRolesFromIdp'])) {
+            $data['syncRolesFromIdp'] = (bool) $data['syncRolesFromIdp'];
+        }
         if (\array_key_exists('$schema', $data) && $data['$schema'] !== null) {
             $object->setDollarSchema($data['$schema']);
             unset($data['$schema']);
@@ -57,6 +60,17 @@ class UpdateIdentityProviderRequestNormalizer implements DenormalizerInterface, 
         }
         elseif (\array_key_exists('allowedEmailDomains', $data) && $data['allowedEmailDomains'] === null) {
             $object->setAllowedEmailDomains(null);
+        }
+        if (\array_key_exists('allowedRoleIds', $data) && $data['allowedRoleIds'] !== null) {
+            $values_1 = [];
+            foreach ($data['allowedRoleIds'] as $value_1) {
+                $values_1[] = $value_1;
+            }
+            $object->setAllowedRoleIds($values_1);
+            unset($data['allowedRoleIds']);
+        }
+        elseif (\array_key_exists('allowedRoleIds', $data) && $data['allowedRoleIds'] === null) {
+            $object->setAllowedRoleIds(null);
         }
         if (\array_key_exists('name', $data) && $data['name'] !== null) {
             $object->setName($data['name']);
@@ -100,9 +114,23 @@ class UpdateIdentityProviderRequestNormalizer implements DenormalizerInterface, 
         elseif (\array_key_exists('oidcMultiTenant', $data) && $data['oidcMultiTenant'] === null) {
             $object->setOidcMultiTenant(null);
         }
-        foreach ($data as $key => $value_1) {
+        if (\array_key_exists('primaryClientId', $data) && $data['primaryClientId'] !== null) {
+            $object->setPrimaryClientId($data['primaryClientId']);
+            unset($data['primaryClientId']);
+        }
+        elseif (\array_key_exists('primaryClientId', $data) && $data['primaryClientId'] === null) {
+            $object->setPrimaryClientId(null);
+        }
+        if (\array_key_exists('syncRolesFromIdp', $data) && $data['syncRolesFromIdp'] !== null) {
+            $object->setSyncRolesFromIdp($data['syncRolesFromIdp']);
+            unset($data['syncRolesFromIdp']);
+        }
+        elseif (\array_key_exists('syncRolesFromIdp', $data) && $data['syncRolesFromIdp'] === null) {
+            $object->setSyncRolesFromIdp(null);
+        }
+        foreach ($data as $key => $value_2) {
             if (preg_match('/.*/', (string) $key)) {
-                $object[$key] = $value_1;
+                $object[$key] = $value_2;
             }
         }
         return $object;
@@ -116,6 +144,13 @@ class UpdateIdentityProviderRequestNormalizer implements DenormalizerInterface, 
                 $values[] = $value;
             }
             $dataArray['allowedEmailDomains'] = $values;
+        }
+        if ($data->isInitialized('allowedRoleIds') && null !== $data->getAllowedRoleIds()) {
+            $values_1 = [];
+            foreach ($data->getAllowedRoleIds() as $value_1) {
+                $values_1[] = $value_1;
+            }
+            $dataArray['allowedRoleIds'] = $values_1;
         }
         if ($data->isInitialized('name') && null !== $data->getName()) {
             $dataArray['name'] = $data->getName();
@@ -135,9 +170,15 @@ class UpdateIdentityProviderRequestNormalizer implements DenormalizerInterface, 
         if ($data->isInitialized('oidcMultiTenant') && null !== $data->getOidcMultiTenant()) {
             $dataArray['oidcMultiTenant'] = $data->getOidcMultiTenant();
         }
-        foreach ($data as $key => $value_1) {
+        if ($data->isInitialized('primaryClientId') && null !== $data->getPrimaryClientId()) {
+            $dataArray['primaryClientId'] = $data->getPrimaryClientId();
+        }
+        if ($data->isInitialized('syncRolesFromIdp') && null !== $data->getSyncRolesFromIdp()) {
+            $dataArray['syncRolesFromIdp'] = $data->getSyncRolesFromIdp();
+        }
+        foreach ($data as $key => $value_2) {
             if (preg_match('/.*/', (string) $key)) {
-                $dataArray[$key] = $value_1;
+                $dataArray[$key] = $value_2;
             }
         }
         return $dataArray;

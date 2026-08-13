@@ -23,6 +23,7 @@ class ListDispatchJobsRaw extends \FlowCatalyst\Generated\Runtime\Client\BaseEnd
      *    "aggregates"?: string, //CSV of aggregates
      *    "codes"?: string, //CSV of codes
      *    "source"?: string, //Free-text source filter
+     *    "sort"?: string, //createdAt.asc | createdAt.desc (default)
      * } $queryParameters
      */
     public function __construct(array $queryParameters = [])
@@ -49,7 +50,7 @@ class ListDispatchJobsRaw extends \FlowCatalyst\Generated\Runtime\Client\BaseEnd
     protected function getQueryOptionsResolver(): \Symfony\Component\OptionsResolver\OptionsResolver
     {
         $optionsResolver = parent::getQueryOptionsResolver();
-        $optionsResolver->setDefined(['status', 'clientId', 'dispatchPoolId', 'subscriptionId', 'code', 'since', 'until', 'limit', 'offset', 'size', 'clientIds', 'statuses', 'applications', 'subdomains', 'aggregates', 'codes', 'source']);
+        $optionsResolver->setDefined(['status', 'clientId', 'dispatchPoolId', 'subscriptionId', 'code', 'since', 'until', 'limit', 'offset', 'size', 'clientIds', 'statuses', 'applications', 'subdomains', 'aggregates', 'codes', 'source', 'sort']);
         $optionsResolver->setRequired([]);
         $optionsResolver->setDefaults([]);
         $optionsResolver->addAllowedTypes('status', ['string']);
@@ -69,6 +70,7 @@ class ListDispatchJobsRaw extends \FlowCatalyst\Generated\Runtime\Client\BaseEnd
         $optionsResolver->addAllowedTypes('aggregates', ['string']);
         $optionsResolver->addAllowedTypes('codes', ['string']);
         $optionsResolver->addAllowedTypes('source', ['string']);
+        $optionsResolver->addAllowedTypes('sort', ['string']);
         return $optionsResolver;
     }
     /**

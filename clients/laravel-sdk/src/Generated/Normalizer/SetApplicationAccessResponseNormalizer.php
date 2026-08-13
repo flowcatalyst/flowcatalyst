@@ -37,6 +37,9 @@ class SetApplicationAccessResponseNormalizer implements DenormalizerInterface, N
         if (isset($data['$recursiveRef'])) {
             return new Reference($data['$recursiveRef'], $context['document-origin']);
         }
+        if (\array_key_exists('allApplications', $data) && \is_int($data['allApplications'])) {
+            $data['allApplications'] = (bool) $data['allApplications'];
+        }
         if (\array_key_exists('$schema', $data) && $data['$schema'] !== null) {
             $object->setDollarSchema($data['$schema']);
         }
@@ -48,6 +51,12 @@ class SetApplicationAccessResponseNormalizer implements DenormalizerInterface, N
         }
         elseif (\array_key_exists('added', $data) && $data['added'] === null) {
             $object->setAdded(null);
+        }
+        if (\array_key_exists('allApplications', $data) && $data['allApplications'] !== null) {
+            $object->setAllApplications($data['allApplications']);
+        }
+        elseif (\array_key_exists('allApplications', $data) && $data['allApplications'] === null) {
+            $object->setAllApplications(null);
         }
         if (\array_key_exists('applications', $data) && $data['applications'] !== null) {
             $values = [];
@@ -71,6 +80,7 @@ class SetApplicationAccessResponseNormalizer implements DenormalizerInterface, N
     {
         $dataArray = [];
         $dataArray['added'] = $data->getAdded();
+        $dataArray['allApplications'] = $data->getAllApplications();
         $values = [];
         foreach ($data->getApplications() as $value) {
             $values[] = $this->normalizer->normalize($value, 'json', $context);

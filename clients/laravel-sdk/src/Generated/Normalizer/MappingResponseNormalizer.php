@@ -43,9 +43,6 @@ class MappingResponseNormalizer implements DenormalizerInterface, NormalizerInte
         if (\array_key_exists('require2fa', $data) && \is_int($data['require2fa'])) {
             $data['require2fa'] = (bool) $data['require2fa'];
         }
-        if (\array_key_exists('syncRolesFromIdp', $data) && \is_int($data['syncRolesFromIdp'])) {
-            $data['syncRolesFromIdp'] = (bool) $data['syncRolesFromIdp'];
-        }
         if (\array_key_exists('$schema', $data) && $data['$schema'] !== null) {
             $object->setDollarSchema($data['$schema']);
         }
@@ -72,16 +69,6 @@ class MappingResponseNormalizer implements DenormalizerInterface, NormalizerInte
         elseif (\array_key_exists('allowed2faMethods', $data) && $data['allowed2faMethods'] === null) {
             $object->setAllowed2faMethods(null);
         }
-        if (\array_key_exists('allowedRoleIds', $data) && $data['allowedRoleIds'] !== null) {
-            $values_2 = [];
-            foreach ($data['allowedRoleIds'] as $value_2) {
-                $values_2[] = $value_2;
-            }
-            $object->setAllowedRoleIds($values_2);
-        }
-        elseif (\array_key_exists('allowedRoleIds', $data) && $data['allowedRoleIds'] === null) {
-            $object->setAllowedRoleIds(null);
-        }
         if (\array_key_exists('createdAt', $data) && $data['createdAt'] !== null) {
             $object->setCreatedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['createdAt']));
         }
@@ -95,11 +82,11 @@ class MappingResponseNormalizer implements DenormalizerInterface, NormalizerInte
             $object->setEmailDomain(null);
         }
         if (\array_key_exists('grantedClientIds', $data) && $data['grantedClientIds'] !== null) {
-            $values_3 = [];
-            foreach ($data['grantedClientIds'] as $value_3) {
-                $values_3[] = $value_3;
+            $values_2 = [];
+            foreach ($data['grantedClientIds'] as $value_2) {
+                $values_2[] = $value_2;
             }
-            $object->setGrantedClientIds($values_3);
+            $object->setGrantedClientIds($values_2);
         }
         elseif (\array_key_exists('grantedClientIds', $data) && $data['grantedClientIds'] === null) {
             $object->setGrantedClientIds(null);
@@ -158,12 +145,6 @@ class MappingResponseNormalizer implements DenormalizerInterface, NormalizerInte
         elseif (\array_key_exists('scopeType', $data) && $data['scopeType'] === null) {
             $object->setScopeType(null);
         }
-        if (\array_key_exists('syncRolesFromIdp', $data) && $data['syncRolesFromIdp'] !== null) {
-            $object->setSyncRolesFromIdp($data['syncRolesFromIdp']);
-        }
-        elseif (\array_key_exists('syncRolesFromIdp', $data) && $data['syncRolesFromIdp'] === null) {
-            $object->setSyncRolesFromIdp(null);
-        }
         if (\array_key_exists('updatedAt', $data) && $data['updatedAt'] !== null) {
             $object->setUpdatedAt(\DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['updatedAt']));
         }
@@ -185,18 +166,13 @@ class MappingResponseNormalizer implements DenormalizerInterface, NormalizerInte
             $values_1[] = $value_1;
         }
         $dataArray['allowed2faMethods'] = $values_1;
-        $values_2 = [];
-        foreach ($data->getAllowedRoleIds() as $value_2) {
-            $values_2[] = $value_2;
-        }
-        $dataArray['allowedRoleIds'] = $values_2;
         $dataArray['createdAt'] = $data->getCreatedAt()->format('Y-m-d\TH:i:sP');
         $dataArray['emailDomain'] = $data->getEmailDomain();
-        $values_3 = [];
-        foreach ($data->getGrantedClientIds() as $value_3) {
-            $values_3[] = $value_3;
+        $values_2 = [];
+        foreach ($data->getGrantedClientIds() as $value_2) {
+            $values_2[] = $value_2;
         }
-        $dataArray['grantedClientIds'] = $values_3;
+        $dataArray['grantedClientIds'] = $values_2;
         $dataArray['id'] = $data->getId();
         $dataArray['identityProviderId'] = $data->getIdentityProviderId();
         if ($data->isInitialized('identityProviderName') && null !== $data->getIdentityProviderName()) {
@@ -212,7 +188,6 @@ class MappingResponseNormalizer implements DenormalizerInterface, NormalizerInte
             $dataArray['requiredOidcTenantId'] = $data->getRequiredOidcTenantId();
         }
         $dataArray['scopeType'] = $data->getScopeType();
-        $dataArray['syncRolesFromIdp'] = $data->getSyncRolesFromIdp();
         $dataArray['updatedAt'] = $data->getUpdatedAt()->format('Y-m-d\TH:i:sP');
         return $dataArray;
     }

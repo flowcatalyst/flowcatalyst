@@ -58,6 +58,12 @@ class SyncPrincipalInputRequestNormalizer implements DenormalizerInterface, Norm
         elseif (\array_key_exists('name', $data) && $data['name'] === null) {
             $object->setName(null);
         }
+        if (\array_key_exists('passwordHash', $data) && $data['passwordHash'] !== null) {
+            $object->setPasswordHash($data['passwordHash']);
+        }
+        elseif (\array_key_exists('passwordHash', $data) && $data['passwordHash'] === null) {
+            $object->setPasswordHash(null);
+        }
         if (\array_key_exists('roles', $data) && $data['roles'] !== null) {
             $values = [];
             foreach ($data['roles'] as $value) {
@@ -78,6 +84,9 @@ class SyncPrincipalInputRequestNormalizer implements DenormalizerInterface, Norm
         }
         $dataArray['email'] = $data->getEmail();
         $dataArray['name'] = $data->getName();
+        if ($data->isInitialized('passwordHash') && null !== $data->getPasswordHash()) {
+            $dataArray['passwordHash'] = $data->getPasswordHash();
+        }
         if ($data->isInitialized('roles') && null !== $data->getRoles()) {
             $values = [];
             foreach ($data->getRoles() as $value) {

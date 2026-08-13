@@ -43,6 +43,9 @@ class IdentityProviderResponseNormalizer implements DenormalizerInterface, Norma
         if (\array_key_exists('oidcMultiTenant', $data) && \is_int($data['oidcMultiTenant'])) {
             $data['oidcMultiTenant'] = (bool) $data['oidcMultiTenant'];
         }
+        if (\array_key_exists('syncRolesFromIdp', $data) && \is_int($data['syncRolesFromIdp'])) {
+            $data['syncRolesFromIdp'] = (bool) $data['syncRolesFromIdp'];
+        }
         if (\array_key_exists('$schema', $data) && $data['$schema'] !== null) {
             $object->setDollarSchema($data['$schema']);
         }
@@ -58,6 +61,16 @@ class IdentityProviderResponseNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('allowedEmailDomains', $data) && $data['allowedEmailDomains'] === null) {
             $object->setAllowedEmailDomains(null);
+        }
+        if (\array_key_exists('allowedRoleIds', $data) && $data['allowedRoleIds'] !== null) {
+            $values_1 = [];
+            foreach ($data['allowedRoleIds'] as $value_1) {
+                $values_1[] = $value_1;
+            }
+            $object->setAllowedRoleIds($values_1);
+        }
+        elseif (\array_key_exists('allowedRoleIds', $data) && $data['allowedRoleIds'] === null) {
+            $object->setAllowedRoleIds(null);
         }
         if (\array_key_exists('code', $data) && $data['code'] !== null) {
             $object->setCode($data['code']);
@@ -113,6 +126,12 @@ class IdentityProviderResponseNormalizer implements DenormalizerInterface, Norma
         elseif (\array_key_exists('oidcMultiTenant', $data) && $data['oidcMultiTenant'] === null) {
             $object->setOidcMultiTenant(null);
         }
+        if (\array_key_exists('syncRolesFromIdp', $data) && $data['syncRolesFromIdp'] !== null) {
+            $object->setSyncRolesFromIdp($data['syncRolesFromIdp']);
+        }
+        elseif (\array_key_exists('syncRolesFromIdp', $data) && $data['syncRolesFromIdp'] === null) {
+            $object->setSyncRolesFromIdp(null);
+        }
         if (\array_key_exists('type', $data) && $data['type'] !== null) {
             $object->setType($data['type']);
         }
@@ -135,6 +154,11 @@ class IdentityProviderResponseNormalizer implements DenormalizerInterface, Norma
             $values[] = $value;
         }
         $dataArray['allowedEmailDomains'] = $values;
+        $values_1 = [];
+        foreach ($data->getAllowedRoleIds() as $value_1) {
+            $values_1[] = $value_1;
+        }
+        $dataArray['allowedRoleIds'] = $values_1;
         $dataArray['code'] = $data->getCode();
         $dataArray['createdAt'] = $data->getCreatedAt()->format('Y-m-d\TH:i:sP');
         $dataArray['hasClientSecret'] = $data->getHasClientSecret();
@@ -150,6 +174,7 @@ class IdentityProviderResponseNormalizer implements DenormalizerInterface, Norma
             $dataArray['oidcIssuerUrl'] = $data->getOidcIssuerUrl();
         }
         $dataArray['oidcMultiTenant'] = $data->getOidcMultiTenant();
+        $dataArray['syncRolesFromIdp'] = $data->getSyncRolesFromIdp();
         $dataArray['type'] = $data->getType();
         $dataArray['updatedAt'] = $data->getUpdatedAt()->format('Y-m-d\TH:i:sP');
         return $dataArray;

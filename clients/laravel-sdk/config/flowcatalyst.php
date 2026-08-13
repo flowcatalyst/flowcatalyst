@@ -166,6 +166,20 @@ return [
 
         /*
         |----------------------------------------------------------------------
+        | Provider-Direct Login (optional)
+        |----------------------------------------------------------------------
+        |
+        | Identity provider id (idp_...) to send every login straight to a
+        | named upstream IdP, bypassing the FlowCatalyst login page — the
+        | portal pattern ("Login with Acme SSO"). A per-request ?provider=
+        | query param on the login route overrides this default. Leave empty
+        | for the standard FlowCatalyst login page.
+        |
+        */
+        'provider' => env('FLOWCATALYST_OIDC_PROVIDER'),
+
+        /*
+        |----------------------------------------------------------------------
         | OIDC Client Secret (optional for public clients)
         |----------------------------------------------------------------------
         |

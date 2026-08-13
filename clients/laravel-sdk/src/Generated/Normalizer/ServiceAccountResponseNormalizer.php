@@ -110,6 +110,12 @@ class ServiceAccountResponseNormalizer implements DenormalizerInterface, Normali
         elseif (\array_key_exists('name', $data) && $data['name'] === null) {
             $object->setName(null);
         }
+        if (\array_key_exists('principalId', $data) && $data['principalId'] !== null) {
+            $object->setPrincipalId($data['principalId']);
+        }
+        elseif (\array_key_exists('principalId', $data) && $data['principalId'] === null) {
+            $object->setPrincipalId(null);
+        }
         if (\array_key_exists('roles', $data) && $data['roles'] !== null) {
             $values_1 = [];
             foreach ($data['roles'] as $value_1) {
@@ -157,6 +163,9 @@ class ServiceAccountResponseNormalizer implements DenormalizerInterface, Normali
             $dataArray['lastUsedAt'] = $data->getLastUsedAt()->format('Y-m-d\TH:i:sP');
         }
         $dataArray['name'] = $data->getName();
+        if ($data->isInitialized('principalId') && null !== $data->getPrincipalId()) {
+            $dataArray['principalId'] = $data->getPrincipalId();
+        }
         $values_1 = [];
         foreach ($data->getRoles() as $value_1) {
             $values_1[] = $value_1;

@@ -19,6 +19,10 @@ class ApplicationAccessListResponse
      */
     protected $dollarSchema;
     /**
+     * @var bool|null
+     */
+    protected $allApplications;
+    /**
      * @var list<ApplicationAccessResponse>|null
      */
     protected $applications;
@@ -46,6 +50,24 @@ class ApplicationAccessListResponse
     {
         $this->initialized['dollarSchema'] = true;
         $this->dollarSchema = $dollarSchema;
+        return $this;
+    }
+    /**
+     * @return bool|null
+     */
+    public function getAllApplications(): ?bool
+    {
+        return $this->allApplications;
+    }
+    /**
+     * @param bool|null $allApplications
+     *
+     * @return self
+     */
+    public function setAllApplications(?bool $allApplications): self
+    {
+        $this->initialized['allApplications'] = true;
+        $this->allApplications = $allApplications;
         return $this;
     }
     /**

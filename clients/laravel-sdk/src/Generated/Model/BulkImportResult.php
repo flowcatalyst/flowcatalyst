@@ -25,7 +25,7 @@ class BulkImportResult
      */
     protected $row;
     /**
-     * created | exists | error
+     * created | exists | dropped | error
      *
      * @var string|null
      */
@@ -85,7 +85,7 @@ class BulkImportResult
         return $this;
     }
     /**
-     * created | exists | error
+     * created | exists | dropped | error
      *
      * @return string|null
      */
@@ -94,7 +94,7 @@ class BulkImportResult
         return $this->status;
     }
     /**
-     * created | exists | error
+     * created | exists | dropped | error
      *
      * @param string|null $status
      *

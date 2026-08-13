@@ -19,9 +19,15 @@ class UpdateIdentityProviderRequest extends \ArrayObject
      */
     protected $dollarSchema;
     /**
+     * Desired set of domains routed to this provider; additions are mapped/claimed, removals fall back to internal auth
+     *
      * @var list<string>|null
      */
     protected $allowedEmailDomains;
+    /**
+     * @var list<string>|null
+     */
+    protected $allowedRoleIds;
     /**
      * @var string|null
      */
@@ -47,6 +53,16 @@ class UpdateIdentityProviderRequest extends \ArrayObject
      */
     protected $oidcMultiTenant;
     /**
+     * Client to link on mappings that are new or not yet linked to a primary client
+     *
+     * @var string|null
+     */
+    protected $primaryClientId;
+    /**
+     * @var bool|null
+     */
+    protected $syncRolesFromIdp;
+    /**
      * A URL to the JSON Schema for this object.
      *
      * @return string|null
@@ -69,6 +85,8 @@ class UpdateIdentityProviderRequest extends \ArrayObject
         return $this;
     }
     /**
+     * Desired set of domains routed to this provider; additions are mapped/claimed, removals fall back to internal auth
+     *
      * @return list<string>|null
      */
     public function getAllowedEmailDomains(): ?array
@@ -76,6 +94,8 @@ class UpdateIdentityProviderRequest extends \ArrayObject
         return $this->allowedEmailDomains;
     }
     /**
+     * Desired set of domains routed to this provider; additions are mapped/claimed, removals fall back to internal auth
+     *
      * @param list<string>|null $allowedEmailDomains
      *
      * @return self
@@ -84,6 +104,24 @@ class UpdateIdentityProviderRequest extends \ArrayObject
     {
         $this->initialized['allowedEmailDomains'] = true;
         $this->allowedEmailDomains = $allowedEmailDomains;
+        return $this;
+    }
+    /**
+     * @return list<string>|null
+     */
+    public function getAllowedRoleIds(): ?array
+    {
+        return $this->allowedRoleIds;
+    }
+    /**
+     * @param list<string>|null $allowedRoleIds
+     *
+     * @return self
+     */
+    public function setAllowedRoleIds(?array $allowedRoleIds): self
+    {
+        $this->initialized['allowedRoleIds'] = true;
+        $this->allowedRoleIds = $allowedRoleIds;
         return $this;
     }
     /**
@@ -192,6 +230,46 @@ class UpdateIdentityProviderRequest extends \ArrayObject
     {
         $this->initialized['oidcMultiTenant'] = true;
         $this->oidcMultiTenant = $oidcMultiTenant;
+        return $this;
+    }
+    /**
+     * Client to link on mappings that are new or not yet linked to a primary client
+     *
+     * @return string|null
+     */
+    public function getPrimaryClientId(): ?string
+    {
+        return $this->primaryClientId;
+    }
+    /**
+     * Client to link on mappings that are new or not yet linked to a primary client
+     *
+     * @param string|null $primaryClientId
+     *
+     * @return self
+     */
+    public function setPrimaryClientId(?string $primaryClientId): self
+    {
+        $this->initialized['primaryClientId'] = true;
+        $this->primaryClientId = $primaryClientId;
+        return $this;
+    }
+    /**
+     * @return bool|null
+     */
+    public function getSyncRolesFromIdp(): ?bool
+    {
+        return $this->syncRolesFromIdp;
+    }
+    /**
+     * @param bool|null $syncRolesFromIdp
+     *
+     * @return self
+     */
+    public function setSyncRolesFromIdp(?bool $syncRolesFromIdp): self
+    {
+        $this->initialized['syncRolesFromIdp'] = true;
+        $this->syncRolesFromIdp = $syncRolesFromIdp;
         return $this;
     }
 }

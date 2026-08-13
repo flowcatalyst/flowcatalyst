@@ -80,8 +80,16 @@ class OidcAuthController extends Controller
             session()->put(self::RETURN_URL_SESSION_KEY, $request->input('return_url'));
         }
 
+        // Provider-direct login (portals): route the user straight to a named
+        // upstream IdP instead of the FlowCatalyst login page. Per-request
+        // ?provider= wins over the configured default. Note the platform
+        // reuses a fresh fc_session BEFORE honouring provider=, so pair with
+        // prompt=login when a fresh handshake against the IdP is required.
+        $provider = $request->input('provider') ?? config('flowcatalyst.oidc.provider');
+        $prompt = $request->input('prompt');
+
         // Build authorization URL
-        $authUrl = $this->buildAuthorizationUrl($config, $state, $nonce, $codeChallenge);
+        $authUrl = $this->buildAuthorizationUrl($config, $state, $nonce, $codeChallenge, $provider, $prompt);
 
         return redirect()->away($authUrl);
     }
@@ -250,8 +258,14 @@ class OidcAuthController extends Controller
     /**
      * Build the authorization URL for the OIDC server.
      */
-    private function buildAuthorizationUrl(array $config, string $state, string $nonce, string $codeChallenge): string
-    {
+    private function buildAuthorizationUrl(
+        array $config,
+        string $state,
+        string $nonce,
+        string $codeChallenge,
+        ?string $provider = null,
+        ?string $prompt = null,
+    ): string {
         $baseUrl = rtrim($config['base_url'], '/');
         $authorizeUrl = $baseUrl . '/oauth/authorize';
 
@@ -265,6 +279,12 @@ class OidcAuthController extends Controller
             'code_challenge' => $codeChallenge,
             'code_challenge_method' => 'S256',
         ];
+        if (!empty($provider)) {
+            $params['provider'] = $provider;
+        }
+        if (!empty($prompt)) {
+            $params['prompt'] = $prompt;
+        }
 
         return $authorizeUrl . '?' . http_build_query($params);
     }

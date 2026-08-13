@@ -52,6 +52,12 @@ class ScheduledJobResponseNormalizer implements DenormalizerInterface, Normalize
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
         }
+        if (\array_key_exists('applicationId', $data) && $data['applicationId'] !== null) {
+            $object->setApplicationId($data['applicationId']);
+        }
+        elseif (\array_key_exists('applicationId', $data) && $data['applicationId'] === null) {
+            $object->setApplicationId(null);
+        }
         if (\array_key_exists('clientId', $data) && $data['clientId'] !== null) {
             $object->setClientId($data['clientId']);
         }
@@ -187,6 +193,9 @@ class ScheduledJobResponseNormalizer implements DenormalizerInterface, Normalize
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
     {
         $dataArray = [];
+        if ($data->isInitialized('applicationId') && null !== $data->getApplicationId()) {
+            $dataArray['applicationId'] = $data->getApplicationId();
+        }
         if ($data->isInitialized('clientId') && null !== $data->getClientId()) {
             $dataArray['clientId'] = $data->getClientId();
         }

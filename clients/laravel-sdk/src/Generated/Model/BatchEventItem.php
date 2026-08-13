@@ -19,7 +19,15 @@ class BatchEventItem
     /**
      * @var string|null
      */
+    protected $clientCode;
+    /**
+     * @var string|null
+     */
     protected $clientId;
+    /**
+     * @var list<ContextEntryDTO>|null
+     */
+    protected $contextData;
     /**
      * @var string|null
      */
@@ -77,6 +85,24 @@ class BatchEventItem
     /**
      * @return string|null
      */
+    public function getClientCode(): ?string
+    {
+        return $this->clientCode;
+    }
+    /**
+     * @param string|null $clientCode
+     *
+     * @return self
+     */
+    public function setClientCode(?string $clientCode): self
+    {
+        $this->initialized['clientCode'] = true;
+        $this->clientCode = $clientCode;
+        return $this;
+    }
+    /**
+     * @return string|null
+     */
     public function getClientId(): ?string
     {
         return $this->clientId;
@@ -90,6 +116,24 @@ class BatchEventItem
     {
         $this->initialized['clientId'] = true;
         $this->clientId = $clientId;
+        return $this;
+    }
+    /**
+     * @return list<ContextEntryDTO>|null
+     */
+    public function getContextData(): ?array
+    {
+        return $this->contextData;
+    }
+    /**
+     * @param list<ContextEntryDTO>|null $contextData
+     *
+     * @return self
+     */
+    public function setContextData(?array $contextData): self
+    {
+        $this->initialized['contextData'] = true;
+        $this->contextData = $contextData;
         return $this;
     }
     /**

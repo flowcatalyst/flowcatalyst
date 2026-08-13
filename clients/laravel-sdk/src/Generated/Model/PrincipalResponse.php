@@ -31,6 +31,10 @@ class PrincipalResponse
      */
     protected $createdAt;
     /**
+     * @var \DateTime|null
+     */
+    protected $developerCredentialUpdatedAt;
+    /**
      * @var string|null
      */
     protected $email;
@@ -38,6 +42,10 @@ class PrincipalResponse
      * @var list<string>|null
      */
     protected $grantedClientIds;
+    /**
+     * @var bool|null
+     */
+    protected $hasDeveloperCredential;
     /**
      * @var string|null
      */
@@ -62,6 +70,10 @@ class PrincipalResponse
      * @var string|null
      */
     protected $scope;
+    /**
+     * @var list<string>|null
+     */
+    protected $twoFactorMethods;
     /**
      * @var string|null
      */
@@ -147,6 +159,24 @@ class PrincipalResponse
         return $this;
     }
     /**
+     * @return \DateTime|null
+     */
+    public function getDeveloperCredentialUpdatedAt(): ?\DateTime
+    {
+        return $this->developerCredentialUpdatedAt;
+    }
+    /**
+     * @param \DateTime|null $developerCredentialUpdatedAt
+     *
+     * @return self
+     */
+    public function setDeveloperCredentialUpdatedAt(?\DateTime $developerCredentialUpdatedAt): self
+    {
+        $this->initialized['developerCredentialUpdatedAt'] = true;
+        $this->developerCredentialUpdatedAt = $developerCredentialUpdatedAt;
+        return $this;
+    }
+    /**
      * @return string|null
      */
     public function getEmail(): ?string
@@ -180,6 +210,24 @@ class PrincipalResponse
     {
         $this->initialized['grantedClientIds'] = true;
         $this->grantedClientIds = $grantedClientIds;
+        return $this;
+    }
+    /**
+     * @return bool|null
+     */
+    public function getHasDeveloperCredential(): ?bool
+    {
+        return $this->hasDeveloperCredential;
+    }
+    /**
+     * @param bool|null $hasDeveloperCredential
+     *
+     * @return self
+     */
+    public function setHasDeveloperCredential(?bool $hasDeveloperCredential): self
+    {
+        $this->initialized['hasDeveloperCredential'] = true;
+        $this->hasDeveloperCredential = $hasDeveloperCredential;
         return $this;
     }
     /**
@@ -288,6 +336,24 @@ class PrincipalResponse
     {
         $this->initialized['scope'] = true;
         $this->scope = $scope;
+        return $this;
+    }
+    /**
+     * @return list<string>|null
+     */
+    public function getTwoFactorMethods(): ?array
+    {
+        return $this->twoFactorMethods;
+    }
+    /**
+     * @param list<string>|null $twoFactorMethods
+     *
+     * @return self
+     */
+    public function setTwoFactorMethods(?array $twoFactorMethods): self
+    {
+        $this->initialized['twoFactorMethods'] = true;
+        $this->twoFactorMethods = $twoFactorMethods;
         return $this;
     }
     /**

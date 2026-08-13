@@ -29,15 +29,7 @@ class UpdateMappingRequest extends \ArrayObject
     /**
      * @var list<string>|null
      */
-    protected $allowedRoleIds;
-    /**
-     * @var list<string>|null
-     */
     protected $grantedClientIds;
-    /**
-     * @var string|null
-     */
-    protected $identityProviderId;
     /**
      * @var string|null
      */
@@ -58,10 +50,6 @@ class UpdateMappingRequest extends \ArrayObject
      * @var string|null
      */
     protected $requiredOidcTenantId;
-    /**
-     * @var bool|null
-     */
-    protected $syncRolesFromIdp;
     /**
      * A URL to the JSON Schema for this object.
      *
@@ -123,24 +111,6 @@ class UpdateMappingRequest extends \ArrayObject
     /**
      * @return list<string>|null
      */
-    public function getAllowedRoleIds(): ?array
-    {
-        return $this->allowedRoleIds;
-    }
-    /**
-     * @param list<string>|null $allowedRoleIds
-     *
-     * @return self
-     */
-    public function setAllowedRoleIds(?array $allowedRoleIds): self
-    {
-        $this->initialized['allowedRoleIds'] = true;
-        $this->allowedRoleIds = $allowedRoleIds;
-        return $this;
-    }
-    /**
-     * @return list<string>|null
-     */
     public function getGrantedClientIds(): ?array
     {
         return $this->grantedClientIds;
@@ -154,24 +124,6 @@ class UpdateMappingRequest extends \ArrayObject
     {
         $this->initialized['grantedClientIds'] = true;
         $this->grantedClientIds = $grantedClientIds;
-        return $this;
-    }
-    /**
-     * @return string|null
-     */
-    public function getIdentityProviderId(): ?string
-    {
-        return $this->identityProviderId;
-    }
-    /**
-     * @param string|null $identityProviderId
-     *
-     * @return self
-     */
-    public function setIdentityProviderId(?string $identityProviderId): self
-    {
-        $this->initialized['identityProviderId'] = true;
-        $this->identityProviderId = $identityProviderId;
         return $this;
     }
     /**
@@ -262,24 +214,6 @@ class UpdateMappingRequest extends \ArrayObject
     {
         $this->initialized['requiredOidcTenantId'] = true;
         $this->requiredOidcTenantId = $requiredOidcTenantId;
-        return $this;
-    }
-    /**
-     * @return bool|null
-     */
-    public function getSyncRolesFromIdp(): ?bool
-    {
-        return $this->syncRolesFromIdp;
-    }
-    /**
-     * @param bool|null $syncRolesFromIdp
-     *
-     * @return self
-     */
-    public function setSyncRolesFromIdp(?bool $syncRolesFromIdp): self
-    {
-        $this->initialized['syncRolesFromIdp'] = true;
-        $this->syncRolesFromIdp = $syncRolesFromIdp;
         return $this;
     }
 }

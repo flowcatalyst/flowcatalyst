@@ -23,6 +23,10 @@ class SetApplicationAccessResponse
      */
     protected $added;
     /**
+     * @var bool|null
+     */
+    protected $allApplications;
+    /**
      * @var list<ApplicationAccessResponse>|null
      */
     protected $applications;
@@ -68,6 +72,24 @@ class SetApplicationAccessResponse
     {
         $this->initialized['added'] = true;
         $this->added = $added;
+        return $this;
+    }
+    /**
+     * @return bool|null
+     */
+    public function getAllApplications(): ?bool
+    {
+        return $this->allApplications;
+    }
+    /**
+     * @param bool|null $allApplications
+     *
+     * @return self
+     */
+    public function setAllApplications(?bool $allApplications): self
+    {
+        $this->initialized['allApplications'] = true;
+        $this->allApplications = $allApplications;
         return $this;
     }
     /**

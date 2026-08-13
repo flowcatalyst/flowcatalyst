@@ -261,6 +261,9 @@
             "readOnly": true,
             "type": "string"
           },
+          "allApplications": {
+            "type": "boolean"
+          },
           "applications": {
             "items": {
               "$ref": "#/components/schemas/ApplicationAccessResponse"
@@ -274,7 +277,8 @@
         },
         "required": [
           "applications",
-          "total"
+          "total",
+          "allApplications"
         ],
         "type": "object"
       },
@@ -1046,8 +1050,17 @@
           "causationId": {
             "type": "string"
           },
+          "clientCode": {
+            "type": "string"
+          },
           "clientId": {
             "type": "string"
+          },
+          "contextData": {
+            "items": {
+              "$ref": "#/components/schemas/ContextEntryDTO"
+            },
+            "type": "array"
           },
           "correlationId": {
             "type": "string"
@@ -1226,7 +1239,7 @@
             "type": "integer"
           },
           "status": {
-            "description": "created | exists | error",
+            "description": "created | exists | dropped | error",
             "type": "string"
           }
         },
@@ -2284,6 +2297,14 @@
             "type": "string"
           },
           "allowedEmailDomains": {
+            "description": "Email domains to route to this provider; mappings are created (or claimed from their current provider) in Email Domain management",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "allowedRoleIds": {
+            "description": "Platform roles (by id) this provider may confer via role sync; empty = no restriction",
             "items": {
               "type": "string"
             },
@@ -2310,6 +2331,14 @@
             "type": "string"
           },
           "oidcMultiTenant": {
+            "type": "boolean"
+          },
+          "primaryClientId": {
+            "description": "Client to link on mappings that are new or not yet linked to a primary client",
+            "type": "string"
+          },
+          "syncRolesFromIdp": {
+            "description": "Reconcile users' IDP_SYNC roles from the token's roles claim at login",
             "type": "boolean"
           },
           "type": {
@@ -2379,12 +2408,6 @@
             },
             "type": "array"
           },
-          "allowedRoleIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
           "emailDomain": {
             "description": "DNS-like email domain (e.g. example.com)",
             "type": "string"
@@ -2417,9 +2440,6 @@
           "scopeType": {
             "description": "Scope of mapping (ANCHOR, PARTNER, CLIENT)",
             "type": "string"
-          },
-          "syncRolesFromIdp": {
-            "type": "boolean"
           }
         },
         "required": [
@@ -2662,6 +2682,9 @@
             ],
             "format": "uri",
             "readOnly": true,
+            "type": "string"
+          },
+          "applicationId": {
             "type": "string"
           },
           "clientId": {
@@ -2981,6 +3004,35 @@
         },
         "required": [
           "id"
+        ],
+        "type": "object"
+      },
+      "DeveloperUserListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/DeveloperUserListResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "principals": {
+            "items": {
+              "$ref": "#/components/schemas/PrincipalResponse"
+            },
+            "type": "array"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "principals",
+          "total"
         ],
         "type": "object"
       },
@@ -3889,6 +3941,13 @@
             "type": "string"
           },
           "allowedEmailDomains": {
+            "description": "Domains currently routed to this provider (derived from email-domain mappings)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "allowedRoleIds": {
             "items": {
               "type": "string"
             },
@@ -3922,6 +3981,9 @@
           "oidcMultiTenant": {
             "type": "boolean"
           },
+          "syncRolesFromIdp": {
+            "type": "boolean"
+          },
           "type": {
             "type": "string"
           },
@@ -3938,6 +4000,8 @@
           "hasClientSecret",
           "oidcMultiTenant",
           "allowedEmailDomains",
+          "syncRolesFromIdp",
+          "allowedRoleIds",
           "createdAt",
           "updatedAt"
         ],
@@ -4166,12 +4230,6 @@
             },
             "type": "array"
           },
-          "allowedRoleIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
@@ -4213,9 +4271,6 @@
           "scopeType": {
             "type": "string"
           },
-          "syncRolesFromIdp": {
-            "type": "boolean"
-          },
           "updatedAt": {
             "format": "date-time",
             "type": "string"
@@ -4228,8 +4283,6 @@
           "scopeType",
           "additionalClientIds",
           "grantedClientIds",
-          "allowedRoleIds",
-          "syncRolesFromIdp",
           "require2fa",
           "allowed2faMethods",
           "rememberDeviceEnabled",
@@ -4252,6 +4305,67 @@
         "required": [
           "key",
           "value"
+        ],
+        "type": "object"
+      },
+      "MoveProviderRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/MoveProviderRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "identityProviderId": {
+            "description": "Target identity provider id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "identityProviderId"
+        ],
+        "type": "object"
+      },
+      "MoveProviderResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/MoveProviderResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "emailDomain": {
+            "type": "string"
+          },
+          "fromIdentityProviderId": {
+            "type": "string"
+          },
+          "mappingId": {
+            "type": "string"
+          },
+          "toIdentityProviderId": {
+            "type": "string"
+          },
+          "usersReset": {
+            "description": "OIDC-provisioned users converted back to internal auth (0 when moving to an OIDC provider)",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mappingId",
+          "emailDomain",
+          "fromIdentityProviderId",
+          "toIdentityProviderId",
+          "usersReset"
         ],
         "type": "object"
       },
@@ -4570,6 +4684,59 @@
         ],
         "type": "object"
       },
+      "PortalUserRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PortalUserRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "type": "object"
+      },
+      "PortalUserResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PortalUserResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "created": {
+            "type": "boolean"
+          },
+          "invited": {
+            "type": "boolean"
+          },
+          "principalId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "principalId",
+          "created",
+          "invited"
+        ],
+        "type": "object"
+      },
       "PrincipalAvailableApplication": {
         "additionalProperties": false,
         "properties": {
@@ -4665,6 +4832,10 @@
             "format": "date-time",
             "type": "string"
           },
+          "developerCredentialUpdatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
           "email": {
             "type": "string"
           },
@@ -4673,6 +4844,9 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "hasDeveloperCredential": {
+            "type": "boolean"
           },
           "id": {
             "type": "string"
@@ -4695,6 +4869,12 @@
           "scope": {
             "type": "string"
           },
+          "twoFactorMethods": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "type": {
             "type": "string"
           },
@@ -4713,7 +4893,8 @@
           "isAnchorUser",
           "grantedClientIds",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "hasDeveloperCredential"
         ],
         "type": "object"
       },
@@ -4763,6 +4944,28 @@
         },
         "required": [
           "roles"
+        ],
+        "type": "object"
+      },
+      "PrincipalVersionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PrincipalVersionResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "updatedAt"
         ],
         "type": "object"
       },
@@ -5285,6 +5488,53 @@
         ],
         "type": "object"
       },
+      "RequeueRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RequeueRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "ids": {
+            "description": "Dispatch job ids to reset to PENDING for re-dispatch",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "type": "object"
+      },
+      "RequeueResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RequeueResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "requeued": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "requeued"
+        ],
+        "type": "object"
+      },
       "ResetPasswordRequest": {
         "additionalProperties": true,
         "properties": {
@@ -5639,6 +5889,9 @@
             "readOnly": true,
             "type": "string"
           },
+          "applicationId": {
+            "type": "string"
+          },
           "clientId": {
             "type": "string"
           },
@@ -5858,6 +6111,9 @@
           "name": {
             "type": "string"
           },
+          "principalId": {
+            "type": "string"
+          },
           "roles": {
             "items": {
               "type": "string"
@@ -5979,6 +6235,9 @@
             "format": "int64",
             "type": "integer"
           },
+          "allApplications": {
+            "type": "boolean"
+          },
           "applications": {
             "items": {
               "$ref": "#/components/schemas/ApplicationAccessResponse"
@@ -5993,7 +6252,32 @@
         "required": [
           "applications",
           "added",
-          "removed"
+          "removed",
+          "allApplications"
+        ],
+        "type": "object"
+      },
+      "SetDeveloperCredentialResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SetDeveloperCredentialResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "clientSecret": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
         ],
         "type": "object"
       },
@@ -6474,6 +6758,10 @@
           "name": {
             "type": "string"
           },
+          "passwordHash": {
+            "description": "Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim; migrated on first login",
+            "type": "string"
+          },
           "roles": {
             "description": "Role short names (prefixed with applicationCode)",
             "items": {
@@ -6905,6 +7193,105 @@
         ],
         "type": "object"
       },
+      "SyncUserInput": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "description": "Whether the user is active (default true)",
+            "type": "boolean"
+          },
+          "email": {
+            "description": "User's email address (unique identifier for matching)",
+            "type": "string"
+          },
+          "name": {
+            "description": "Display name",
+            "type": "string"
+          },
+          "passwordHash": {
+            "description": "Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim; migrated on first login. Omit to leave any existing password untouched.",
+            "type": "string"
+          },
+          "roles": {
+            "description": "Role names to assign (SDK_SYNC source; replaces this source's prior set)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "email",
+          "name"
+        ],
+        "type": "object"
+      },
+      "SyncUsersRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SyncUsersRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "principals": {
+            "items": {
+              "$ref": "#/components/schemas/SyncUserInput"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "principals"
+        ],
+        "type": "object"
+      },
+      "SyncUsersResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SyncUsersResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "created": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "deleted": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "syncedEmails": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "updated": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "created",
+          "updated",
+          "deleted",
+          "syncedEmails"
+        ],
+        "type": "object"
+      },
       "UpdateAnchorDomainRequest": {
         "additionalProperties": true,
         "properties": {
@@ -7148,6 +7535,13 @@
             "type": "string"
           },
           "allowedEmailDomains": {
+            "description": "Desired set of domains routed to this provider; additions are mapped/claimed, removals fall back to internal auth",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "allowedRoleIds": {
             "items": {
               "type": "string"
             },
@@ -7169,6 +7563,13 @@
             "type": "string"
           },
           "oidcMultiTenant": {
+            "type": "boolean"
+          },
+          "primaryClientId": {
+            "description": "Client to link on mappings that are new or not yet linked to a primary client",
+            "type": "string"
+          },
+          "syncRolesFromIdp": {
             "type": "boolean"
           }
         },
@@ -7198,20 +7599,11 @@
             },
             "type": "array"
           },
-          "allowedRoleIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
           "grantedClientIds": {
             "items": {
               "type": "string"
             },
             "type": "array"
-          },
-          "identityProviderId": {
-            "type": "string"
           },
           "primaryClientId": {
             "type": "string"
@@ -7228,9 +7620,6 @@
           },
           "requiredOidcTenantId": {
             "type": "string"
-          },
-          "syncRolesFromIdp": {
-            "type": "boolean"
           }
         },
         "type": "object"
@@ -10893,6 +11282,16 @@
               "description": "Free-text source filter",
               "type": "string"
             }
+          },
+          {
+            "description": "createdAt.asc | createdAt.desc (default)",
+            "explode": false,
+            "in": "query",
+            "name": "sort",
+            "schema": {
+              "description": "createdAt.asc | createdAt.desc (default)",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -11207,6 +11606,16 @@
               "description": "Free-text source filter",
               "type": "string"
             }
+          },
+          {
+            "description": "createdAt.asc | createdAt.desc (default)",
+            "explode": false,
+            "in": "query",
+            "name": "sort",
+            "schema": {
+              "description": "createdAt.asc | createdAt.desc (default)",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -11402,6 +11811,16 @@
               "description": "Free-text source filter",
               "type": "string"
             }
+          },
+          {
+            "description": "createdAt.asc | createdAt.desc (default)",
+            "explode": false,
+            "in": "query",
+            "name": "sort",
+            "schema": {
+              "description": "createdAt.asc | createdAt.desc (default)",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -11430,6 +11849,47 @@
           }
         },
         "summary": "List dispatch jobs raw (SDK alias of /list-raw)",
+        "tags": [
+          "dispatch-jobs"
+        ]
+      }
+    },
+    "/api/dispatch-jobs/requeue": {
+      "post": {
+        "operationId": "requeueDispatchJobs",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequeueRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequeueResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Reset dispatch jobs to PENDING for re-dispatch",
         "tags": [
           "dispatch-jobs"
         ]
@@ -12134,6 +12594,57 @@
           }
         },
         "summary": "Update an email-domain mapping",
+        "tags": [
+          "email-domain-mappings"
+        ]
+      }
+    },
+    "/api/email-domain-mappings/{id}/move-provider": {
+      "post": {
+        "operationId": "moveEmailDomainMappingProvider",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveProviderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoveProviderResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Re-point an email domain to a different identity provider",
         "tags": [
           "email-domain-mappings"
         ]
@@ -14593,6 +15104,119 @@
         ]
       }
     },
+    "/api/principals/developer-users": {
+      "get": {
+        "operationId": "listDeveloperUsers",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeveloperUserListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List USER principals holding the developer role",
+        "tags": [
+          "principals"
+        ]
+      }
+    },
+    "/api/principals/portal": {
+      "post": {
+        "operationId": "ensurePortalUser",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortalUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalUserResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Ensure a portal identity exists for an email (inert null-client user) and send a set-password invite",
+        "tags": [
+          "principals"
+        ]
+      }
+    },
+    "/api/principals/sync": {
+      "post": {
+        "operationId": "syncUsers",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncUsersRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncUsersResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Sync users (declarative upsert by email; no application scope)",
+        "tags": [
+          "principals"
+        ]
+      }
+    },
     "/api/principals/users": {
       "post": {
         "operationId": "createUser",
@@ -15152,6 +15776,79 @@
         ]
       }
     },
+    "/api/principals/{id}/developer-credential": {
+      "delete": {
+        "operationId": "revokePrincipalDeveloperCredential",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Revoke a principal's self-service developer API credential",
+        "tags": [
+          "principals"
+        ]
+      },
+      "post": {
+        "operationId": "setPrincipalDeveloperCredential",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetDeveloperCredentialResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Create or rotate a principal's self-service developer API credential",
+        "tags": [
+          "principals"
+        ]
+      }
+    },
     "/api/principals/{id}/reset-2fa": {
       "post": {
         "operationId": "resetPrincipalTwoFactor",
@@ -15477,6 +16174,47 @@
           }
         },
         "summary": "Send a password-reset email to a user",
+        "tags": [
+          "principals"
+        ]
+      }
+    },
+    "/api/principals/{id}/version": {
+      "get": {
+        "operationId": "getPrincipalVersion",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrincipalVersionResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get when a principal (or a role it holds) last changed — used by SDKs to detect a revoked/changed session",
         "tags": [
           "principals"
         ]

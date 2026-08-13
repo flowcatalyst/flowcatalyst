@@ -59,6 +59,10 @@ class ServiceAccountResponse
      */
     protected $name;
     /**
+     * @var string|null
+     */
+    protected $principalId;
+    /**
      * @var list<string>|null
      */
     protected $roles;
@@ -270,6 +274,24 @@ class ServiceAccountResponse
     {
         $this->initialized['name'] = true;
         $this->name = $name;
+        return $this;
+    }
+    /**
+     * @return string|null
+     */
+    public function getPrincipalId(): ?string
+    {
+        return $this->principalId;
+    }
+    /**
+     * @param string|null $principalId
+     *
+     * @return self
+     */
+    public function setPrincipalId(?string $principalId): self
+    {
+        $this->initialized['principalId'] = true;
+        $this->principalId = $principalId;
         return $this;
     }
     /**

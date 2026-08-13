@@ -43,11 +43,27 @@ class BatchEventItemNormalizer implements DenormalizerInterface, NormalizerInter
         elseif (\array_key_exists('causationId', $data) && $data['causationId'] === null) {
             $object->setCausationId(null);
         }
+        if (\array_key_exists('clientCode', $data) && $data['clientCode'] !== null) {
+            $object->setClientCode($data['clientCode']);
+        }
+        elseif (\array_key_exists('clientCode', $data) && $data['clientCode'] === null) {
+            $object->setClientCode(null);
+        }
         if (\array_key_exists('clientId', $data) && $data['clientId'] !== null) {
             $object->setClientId($data['clientId']);
         }
         elseif (\array_key_exists('clientId', $data) && $data['clientId'] === null) {
             $object->setClientId(null);
+        }
+        if (\array_key_exists('contextData', $data) && $data['contextData'] !== null) {
+            $values = [];
+            foreach ($data['contextData'] as $value) {
+                $values[] = $this->denormalizer->denormalize($value, \FlowCatalyst\Generated\Model\ContextEntryDTO::class, 'json', $context);
+            }
+            $object->setContextData($values);
+        }
+        elseif (\array_key_exists('contextData', $data) && $data['contextData'] === null) {
+            $object->setContextData(null);
         }
         if (\array_key_exists('correlationId', $data) && $data['correlationId'] !== null) {
             $object->setCorrelationId($data['correlationId']);
@@ -111,8 +127,18 @@ class BatchEventItemNormalizer implements DenormalizerInterface, NormalizerInter
         if ($data->isInitialized('causationId') && null !== $data->getCausationId()) {
             $dataArray['causationId'] = $data->getCausationId();
         }
+        if ($data->isInitialized('clientCode') && null !== $data->getClientCode()) {
+            $dataArray['clientCode'] = $data->getClientCode();
+        }
         if ($data->isInitialized('clientId') && null !== $data->getClientId()) {
             $dataArray['clientId'] = $data->getClientId();
+        }
+        if ($data->isInitialized('contextData') && null !== $data->getContextData()) {
+            $values = [];
+            foreach ($data->getContextData() as $value) {
+                $values[] = $this->normalizer->normalize($value, 'json', $context);
+            }
+            $dataArray['contextData'] = $values;
         }
         if ($data->isInitialized('correlationId') && null !== $data->getCorrelationId()) {
             $dataArray['correlationId'] = $data->getCorrelationId();

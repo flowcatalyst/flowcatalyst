@@ -29,10 +29,6 @@ class CreateMappingRequest extends \ArrayObject
      */
     protected $allowed2faMethods;
     /**
-     * @var list<string>|null
-     */
-    protected $allowedRoleIds;
-    /**
      * DNS-like email domain (e.g. example.com)
      *
      * @var string|null
@@ -72,10 +68,6 @@ class CreateMappingRequest extends \ArrayObject
      * @var string|null
      */
     protected $scopeType;
-    /**
-     * @var bool|null
-     */
-    protected $syncRolesFromIdp;
     /**
      * A URL to the JSON Schema for this object.
      *
@@ -136,24 +128,6 @@ class CreateMappingRequest extends \ArrayObject
     {
         $this->initialized['allowed2faMethods'] = true;
         $this->allowed2faMethods = $allowed2faMethods;
-        return $this;
-    }
-    /**
-     * @return list<string>|null
-     */
-    public function getAllowedRoleIds(): ?array
-    {
-        return $this->allowedRoleIds;
-    }
-    /**
-     * @param list<string>|null $allowedRoleIds
-     *
-     * @return self
-     */
-    public function setAllowedRoleIds(?array $allowedRoleIds): self
-    {
-        $this->initialized['allowedRoleIds'] = true;
-        $this->allowedRoleIds = $allowedRoleIds;
         return $this;
     }
     /**
@@ -324,24 +298,6 @@ class CreateMappingRequest extends \ArrayObject
     {
         $this->initialized['scopeType'] = true;
         $this->scopeType = $scopeType;
-        return $this;
-    }
-    /**
-     * @return bool|null
-     */
-    public function getSyncRolesFromIdp(): ?bool
-    {
-        return $this->syncRolesFromIdp;
-    }
-    /**
-     * @param bool|null $syncRolesFromIdp
-     *
-     * @return self
-     */
-    public function setSyncRolesFromIdp(?bool $syncRolesFromIdp): self
-    {
-        $this->initialized['syncRolesFromIdp'] = true;
-        $this->syncRolesFromIdp = $syncRolesFromIdp;
         return $this;
     }
 }

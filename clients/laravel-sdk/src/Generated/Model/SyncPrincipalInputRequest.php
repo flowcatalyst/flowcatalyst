@@ -29,6 +29,12 @@ class SyncPrincipalInputRequest
      */
     protected $name;
     /**
+     * Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim; migrated on first login
+     *
+     * @var string|null
+     */
+    protected $passwordHash;
+    /**
      * Role short names (prefixed with applicationCode)
      *
      * @var list<string>|null
@@ -94,6 +100,28 @@ class SyncPrincipalInputRequest
     {
         $this->initialized['name'] = true;
         $this->name = $name;
+        return $this;
+    }
+    /**
+     * Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim; migrated on first login
+     *
+     * @return string|null
+     */
+    public function getPasswordHash(): ?string
+    {
+        return $this->passwordHash;
+    }
+    /**
+     * Pre-hashed password (bcrypt/argon2i/argon2id), stored verbatim; migrated on first login
+     *
+     * @param string|null $passwordHash
+     *
+     * @return self
+     */
+    public function setPasswordHash(?string $passwordHash): self
+    {
+        $this->initialized['passwordHash'] = true;
+        $this->passwordHash = $passwordHash;
         return $this;
     }
     /**

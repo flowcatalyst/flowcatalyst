@@ -19,9 +19,15 @@ class IdentityProviderResponse
      */
     protected $dollarSchema;
     /**
+     * Domains currently routed to this provider (derived from email-domain mappings)
+     *
      * @var list<string>|null
      */
     protected $allowedEmailDomains;
+    /**
+     * @var list<string>|null
+     */
+    protected $allowedRoleIds;
     /**
      * @var string|null
      */
@@ -59,6 +65,10 @@ class IdentityProviderResponse
      */
     protected $oidcMultiTenant;
     /**
+     * @var bool|null
+     */
+    protected $syncRolesFromIdp;
+    /**
      * @var string|null
      */
     protected $type;
@@ -89,6 +99,8 @@ class IdentityProviderResponse
         return $this;
     }
     /**
+     * Domains currently routed to this provider (derived from email-domain mappings)
+     *
      * @return list<string>|null
      */
     public function getAllowedEmailDomains(): ?array
@@ -96,6 +108,8 @@ class IdentityProviderResponse
         return $this->allowedEmailDomains;
     }
     /**
+     * Domains currently routed to this provider (derived from email-domain mappings)
+     *
      * @param list<string>|null $allowedEmailDomains
      *
      * @return self
@@ -104,6 +118,24 @@ class IdentityProviderResponse
     {
         $this->initialized['allowedEmailDomains'] = true;
         $this->allowedEmailDomains = $allowedEmailDomains;
+        return $this;
+    }
+    /**
+     * @return list<string>|null
+     */
+    public function getAllowedRoleIds(): ?array
+    {
+        return $this->allowedRoleIds;
+    }
+    /**
+     * @param list<string>|null $allowedRoleIds
+     *
+     * @return self
+     */
+    public function setAllowedRoleIds(?array $allowedRoleIds): self
+    {
+        $this->initialized['allowedRoleIds'] = true;
+        $this->allowedRoleIds = $allowedRoleIds;
         return $this;
     }
     /**
@@ -266,6 +298,24 @@ class IdentityProviderResponse
     {
         $this->initialized['oidcMultiTenant'] = true;
         $this->oidcMultiTenant = $oidcMultiTenant;
+        return $this;
+    }
+    /**
+     * @return bool|null
+     */
+    public function getSyncRolesFromIdp(): ?bool
+    {
+        return $this->syncRolesFromIdp;
+    }
+    /**
+     * @param bool|null $syncRolesFromIdp
+     *
+     * @return self
+     */
+    public function setSyncRolesFromIdp(?bool $syncRolesFromIdp): self
+    {
+        $this->initialized['syncRolesFromIdp'] = true;
+        $this->syncRolesFromIdp = $syncRolesFromIdp;
         return $this;
     }
     /**

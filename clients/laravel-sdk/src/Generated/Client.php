@@ -771,6 +771,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      *    "aggregates"?: string, //CSV of aggregates
      *    "codes"?: string, //CSV of codes
      *    "source"?: string, //Free-text source filter
+     *    "sort"?: string, //createdAt.asc | createdAt.desc (default)
      * } $queryParameters
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      *
@@ -828,6 +829,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      *    "aggregates"?: string, //CSV of aggregates
      *    "codes"?: string, //CSV of codes
      *    "source"?: string, //Free-text source filter
+     *    "sort"?: string, //createdAt.asc | createdAt.desc (default)
      * } $queryParameters
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      *
@@ -856,6 +858,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      *    "aggregates"?: string, //CSV of aggregates
      *    "codes"?: string, //CSV of codes
      *    "source"?: string, //Free-text source filter
+     *    "sort"?: string, //createdAt.asc | createdAt.desc (default)
      * } $queryParameters
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      *
@@ -864,6 +867,16 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     public function listDispatchJobsRawAlias(array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListDispatchJobsRawAlias($queryParameters), $fetch);
+    }
+    /**
+     * @param null|\FlowCatalyst\Generated\Model\RequeueRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\RequeueResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function requeueDispatchJobs(?\FlowCatalyst\Generated\Model\RequeueRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\RequeueDispatchJobs($requestBody), $fetch);
     }
     /**
      * @param string $id
@@ -1050,6 +1063,17 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     public function updateEmailDomainMapping(string $id, ?\FlowCatalyst\Generated\Model\UpdateMappingRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\UpdateEmailDomainMapping($id, $requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param null|\FlowCatalyst\Generated\Model\MoveProviderRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\MoveProviderResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function moveEmailDomainMappingProvider(string $id, ?\FlowCatalyst\Generated\Model\MoveProviderRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\MoveEmailDomainMappingProvider($id, $requestBody), $fetch);
     }
     /**
      * @param array{
@@ -1600,6 +1624,35 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\CheckPrincipalEmailDomain($queryParameters), $fetch);
     }
     /**
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\DeveloperUserListResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function listDeveloperUsers(string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListDeveloperUsers(), $fetch);
+    }
+    /**
+     * @param null|\FlowCatalyst\Generated\Model\PortalUserRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\PortalUserResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function ensurePortalUser(?\FlowCatalyst\Generated\Model\PortalUserRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\EnsurePortalUser($requestBody), $fetch);
+    }
+    /**
+     * @param null|\FlowCatalyst\Generated\Model\SyncUsersRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\SyncUsersResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function syncUsers(?\FlowCatalyst\Generated\Model\SyncUsersRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\SyncUsers($requestBody), $fetch);
+    }
+    /**
      * @param null|\FlowCatalyst\Generated\Model\CreateUserRequest $requestBody
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      *
@@ -1738,6 +1791,26 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @param string $id
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function revokePrincipalDeveloperCredential(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\RevokePrincipalDeveloperCredential($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\SetDeveloperCredentialResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function setPrincipalDeveloperCredential(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\SetPrincipalDeveloperCredential($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
      * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\StatusChangeResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
      */
     public function resetPrincipalTwoFactor(string $id, string $fetch = self::FETCH_OBJECT)
@@ -1808,6 +1881,16 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     public function sendPrincipalPasswordReset(string $id, ?\FlowCatalyst\Generated\Model\SendPasswordResetInputBody $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\SendPrincipalPasswordReset($id, $requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\PrincipalVersionResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getPrincipalVersion(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetPrincipalVersion($id), $fetch);
     }
     /**
      * @param array{

@@ -27,10 +27,6 @@ class MappingResponse
      */
     protected $allowed2faMethods;
     /**
-     * @var list<string>|null
-     */
-    protected $allowedRoleIds;
-    /**
      * @var \DateTime|null
      */
     protected $createdAt;
@@ -78,10 +74,6 @@ class MappingResponse
      * @var string|null
      */
     protected $scopeType;
-    /**
-     * @var bool|null
-     */
-    protected $syncRolesFromIdp;
     /**
      * @var \DateTime|null
      */
@@ -142,24 +134,6 @@ class MappingResponse
     {
         $this->initialized['allowed2faMethods'] = true;
         $this->allowed2faMethods = $allowed2faMethods;
-        return $this;
-    }
-    /**
-     * @return list<string>|null
-     */
-    public function getAllowedRoleIds(): ?array
-    {
-        return $this->allowedRoleIds;
-    }
-    /**
-     * @param list<string>|null $allowedRoleIds
-     *
-     * @return self
-     */
-    public function setAllowedRoleIds(?array $allowedRoleIds): self
-    {
-        $this->initialized['allowedRoleIds'] = true;
-        $this->allowedRoleIds = $allowedRoleIds;
         return $this;
     }
     /**
@@ -376,24 +350,6 @@ class MappingResponse
     {
         $this->initialized['scopeType'] = true;
         $this->scopeType = $scopeType;
-        return $this;
-    }
-    /**
-     * @return bool|null
-     */
-    public function getSyncRolesFromIdp(): ?bool
-    {
-        return $this->syncRolesFromIdp;
-    }
-    /**
-     * @param bool|null $syncRolesFromIdp
-     *
-     * @return self
-     */
-    public function setSyncRolesFromIdp(?bool $syncRolesFromIdp): self
-    {
-        $this->initialized['syncRolesFromIdp'] = true;
-        $this->syncRolesFromIdp = $syncRolesFromIdp;
         return $this;
     }
     /**
