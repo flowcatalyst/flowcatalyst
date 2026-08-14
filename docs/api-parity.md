@@ -331,10 +331,14 @@ the direct-IdP entry point is now implemented: `?provider=` chains into the
 OIDC bridge (`/auth/oidc/login?provider_id=` + the `oauth_*` param set), which
 resolves the IdP by id (`bridge.ResolveByProviderID`), completes the code flow
 on the callback, and resumes `/oauth/authorize` so the downstream app receives
-its code. The Go implementation additionally supports portal-identity JIT
-provisioning on this path (null-client principals, no role sync, trust bound
-to the IdP's `allowed_email_domains`) — a deliberate Go-only extension; see
-docs/portal-identity-plan.md.
+its code. The Go implementation additionally JIT-provisions null-client
+principals on this path (no role sync, trust bound to the IdP's
+`allowed_email_domains`) — a deliberate Go-only extension. NOTE: portals no
+longer use this path — the portal identity plane (docs/portal-identity-plan.md
+Phase 2.5 v2) has its own `/portal/*` entry points and identity population;
+provider-direct JIT of principals remains as Phase-1 behaviour for
+non-portal apps. Portal-flagged OAuth clients are refused at
+`/oauth/authorize` outright.
 
 ### HMAC signing sites (audit result)
 

@@ -1,7 +1,10 @@
 # Portal reference implementation: what's needed
 
-Status: portal identity plane (Phase 2.5 v2) BUILT 2026-08-13 · reference app NOT STARTED
+Status: portal identity plane (Phase 2.5 v2) BUILT + SDKs RELEASED
+(laravel-sdk v0.10.0, typescript-sdk v0.11.0) · reference app NOT STARTED
 Parent: docs/portal-identity-plan.md (the decision + platform surface)
+Builder-facing guide: docs/portal-implementation-guide.md (concepts, flows,
+worked Laravel/TS examples — read it first; this doc is the punch-list)
 
 Portal end-users are a SEPARATE identity population from platform users: one
 `portal_identities` row per (client, email), platform-implemented, with
@@ -54,10 +57,11 @@ Platform:
   gate — deferred for portal users) and then follow the invite's
   `redirectUri`.
 
-SDKs (regenerated, pending release): `ensurePortalUser`, `listPortalUsers`,
-`activate/deactivatePortalUser`, `deletePortalUser` in both generated
-clients; the Laravel login flow's `?provider=`/`?prompt=` passthrough remains
-for non-portal OIDC apps (portals point at `/portal/authorize` instead).
+SDKs (RELEASED: laravel-sdk v0.10.0, typescript-sdk v0.11.0):
+`ensurePortalUser`, `listPortalUsers`, `activate/deactivatePortalUser`,
+`deletePortalUser` in both generated clients; Laravel portal mode
+(`FLOWCATALYST_OIDC_PORTAL=true` routes login through `/portal/authorize`);
+the `?provider=`/`?prompt=` passthrough remains for non-portal OIDC apps.
 
 ## Platform setup (per portal deployment, no code)
 
@@ -128,8 +132,8 @@ for non-portal OIDC apps (portals point at `/portal/authorize` instead).
   tokens are authority-free). All platform calls use the portal's service
   account.
 
-## Prerequisite before starting
+## Prerequisites — DONE
 
-Cut SDK releases so the reference app consumes the new surface: Laravel
-(> 0.8.20) and TS (> 0.9.11). The regen also carries the previously-pending
-clientId removal and Time-schema (`{}` → string) changes.
+SDK releases are cut: laravel-sdk v0.10.0 and typescript-sdk v0.11.0 carry
+the portal surface (plus the previously-pending clientId removal and
+Time-schema `{}` → string changes). The reference app can start.
