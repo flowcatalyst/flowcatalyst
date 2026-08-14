@@ -161,6 +161,20 @@ export type {
 // Re-export generated types for convenience
 export type * from "./generated/types.gen.js";
 
+// Generated operation functions. The portal-user surface is re-exported by
+// name (pass them to FlowCatalystClient.request(...)); the full generated
+// surface is available under the `api` namespace — a namespace export
+// rather than `export *` so generated names can never collide with (or be
+// silently dropped by) the package root's own exports.
+export {
+	ensurePortalUser,
+	listPortalUsers,
+	activatePortalUser,
+	deactivatePortalUser,
+	deletePortalUser,
+} from "./generated/sdk.gen.js";
+export * as api from "./generated/sdk.gen.js";
+
 // Outbox - transactional outbox pattern
 export { OutboxManager, OutboxStatus } from "./outbox/index.js";
 export type {
