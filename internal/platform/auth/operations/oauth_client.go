@@ -30,6 +30,7 @@ type CreateOAuthClientCommand struct {
 	PrincipalID            *string  `json:"principalId,omitempty"`
 	PKCERequired           *bool    `json:"pkceRequired,omitempty"`
 	PortalClientID         *string  `json:"portalClientId,omitempty"`
+	APIAccess              *bool    `json:"apiAccess,omitempty"`
 }
 
 // CreateOAuthClient validates the command, persists the OAuth client, and
@@ -76,6 +77,12 @@ func CreateOAuthClient(repo *auth.OAuthClientRepo) usecaseop.Operation[CreateOAu
 				trimmed := strings.TrimSpace(*cmd.PortalClientID)
 				c.PortalClientID = &trimmed
 			}
+			if cmd.APIAccess != nil {
+				c.APIAccess = *cmd.APIAccess
+			}
+			if err := validatePlaneFlags(c); err != nil {
+				return nil, err
+			}
 			if cmd.PKCERequired != nil {
 				c.PKCERequired = *cmd.PKCERequired
 			}
@@ -112,6 +119,7 @@ type UpdateOAuthClientCommand struct {
 	ApplicationIDs         []string `json:"applicationIds,omitempty"`
 	PKCERequired           *bool    `json:"pkceRequired,omitempty"`
 	PortalClientID         *string  `json:"portalClientId,omitempty"`
+	APIAccess              *bool    `json:"apiAccess,omitempty"`
 }
 
 // UpdateOAuthClient mutates the supplied fields and emits [OAuthClientUpdated].
@@ -169,6 +177,12 @@ func UpdateOAuthClient(repo *auth.OAuthClientRepo) usecaseop.Operation[UpdateOAu
 					c.PortalClientID = &trimmed
 				}
 			}
+			if cmd.APIAccess != nil {
+				c.APIAccess = *cmd.APIAccess
+			}
+			if err := validatePlaneFlags(c); err != nil {
+				return nil, err
+			}
 
 			event := OAuthClientUpdated{
 				Metadata:      usecase.NewEventMetadata(ec, OAuthClientUpdatedType, Source, oauthSubject(c.ID)),
@@ -178,6 +192,17 @@ func UpdateOAuthClient(repo *auth.OAuthClientRepo) usecaseop.Operation[UpdateOAu
 			return usecaseop.Save(c, repo, event), nil
 		},
 	}
+}
+
+// validatePlaneFlags rejects the nonsensical portal+apiAccess combination:
+// portal identities carry no platform authority, so a portal client must
+// never mint authority-bearing tokens.
+func validatePlaneFlags(c *auth.OAuthClient) error {
+	if c.APIAccess && c.PortalClientID != nil && *c.PortalClientID != "" {
+		return usecase.Validation("PORTAL_API_ACCESS_CONFLICT",
+			"a portal client cannot have apiAccess — portal identities never carry platform authority")
+	}
+	return nil
 }
 
 // ── Activate ──────────────────────────────────────────────────────────────

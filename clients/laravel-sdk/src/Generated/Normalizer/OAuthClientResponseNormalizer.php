@@ -40,6 +40,9 @@ class OAuthClientResponseNormalizer implements DenormalizerInterface, Normalizer
         if (\array_key_exists('active', $data) && \is_int($data['active'])) {
             $data['active'] = (bool) $data['active'];
         }
+        if (\array_key_exists('apiAccess', $data) && \is_int($data['apiAccess'])) {
+            $data['apiAccess'] = (bool) $data['apiAccess'];
+        }
         if (\array_key_exists('pkceRequired', $data) && \is_int($data['pkceRequired'])) {
             $data['pkceRequired'] = (bool) $data['pkceRequired'];
         }
@@ -64,6 +67,12 @@ class OAuthClientResponseNormalizer implements DenormalizerInterface, Normalizer
         }
         elseif (\array_key_exists('allowedOrigins', $data) && $data['allowedOrigins'] === null) {
             $object->setAllowedOrigins(null);
+        }
+        if (\array_key_exists('apiAccess', $data) && $data['apiAccess'] !== null) {
+            $object->setApiAccess($data['apiAccess']);
+        }
+        elseif (\array_key_exists('apiAccess', $data) && $data['apiAccess'] === null) {
+            $object->setApiAccess(null);
         }
         if (\array_key_exists('applicationIds', $data) && $data['applicationIds'] !== null) {
             $values_1 = [];
@@ -190,6 +199,7 @@ class OAuthClientResponseNormalizer implements DenormalizerInterface, Normalizer
             $values[] = $value;
         }
         $dataArray['allowedOrigins'] = $values;
+        $dataArray['apiAccess'] = $data->getApiAccess();
         $values_1 = [];
         foreach ($data->getApplicationIds() as $value_1) {
             $values_1[] = $value_1;

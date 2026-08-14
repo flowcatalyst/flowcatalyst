@@ -23,6 +23,10 @@ class CreateOAuthClientRequest extends \ArrayObject
      */
     protected $allowedOrigins;
     /**
+     * @var bool|null
+     */
+    protected $apiAccess;
+    /**
      * @var list<string>|null
      */
     protected $applicationIds;
@@ -106,6 +110,24 @@ class CreateOAuthClientRequest extends \ArrayObject
     {
         $this->initialized['allowedOrigins'] = true;
         $this->allowedOrigins = $allowedOrigins;
+        return $this;
+    }
+    /**
+     * @return bool|null
+     */
+    public function getApiAccess(): ?bool
+    {
+        return $this->apiAccess;
+    }
+    /**
+     * @param bool|null $apiAccess
+     *
+     * @return self
+     */
+    public function setApiAccess(?bool $apiAccess): self
+    {
+        $this->initialized['apiAccess'] = true;
+        $this->apiAccess = $apiAccess;
         return $this;
     }
     /**

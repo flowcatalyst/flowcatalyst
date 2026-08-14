@@ -558,13 +558,14 @@ func (s *State) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Requ
 		scope = *code.Scope
 	}
 
-	// Interactive logins receive an IDENTITY access token: no roles, scope, or
-	// permissions, and rejected by the platform API middleware. The relying
-	// party authenticates the user from the id_token (roles narrowed to its own
-	// application) and runs its own session; API authority is only ever granted
-	// through the client_credentials grant. The access_token is returned solely
-	// because OAuth2 §5.1 requires it and OIDC UserInfo consumes it.
-	accessToken, err := s.Auth.GenerateIdentityAccessToken(p)
+	// Interactive logins receive an IDENTITY access token by default: no
+	// roles, scope, or permissions, and rejected by the platform API
+	// middleware — the relying party authenticates the user from the
+	// id_token and runs its own session. A trusted first-party client
+	// flagged apiAccess instead receives an authority-bearing token whose
+	// roles/scope/applications are narrowed to the client's own
+	// application(s) — see mintInteractiveAccessToken.
+	accessToken, err := s.mintInteractiveAccessToken(r.Context(), p, client, scope)
 	if err != nil {
 		writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 		return
@@ -668,9 +669,17 @@ func (s *State) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request, 
 	}
 
 	// A refresh token is only ever issued to an interactive login (the
-	// client_credentials grant mints none), so the refreshed access token is an
-	// IDENTITY token too: no authority, rejected by the platform API middleware.
-	accessToken, err := s.Auth.GenerateIdentityAccessToken(p)
+	// client_credentials grant mints none), so the refreshed access token
+	// follows the same rule as the original: identity-only by default,
+	// authority-bearing (narrowed) for an apiAccess client — re-derived
+	// from the CURRENT principal, so role changes take effect on refresh.
+	refreshClient := authenticatedClient
+	if refreshClient == nil && stored.OAuthClientID != nil {
+		if c, cerr := s.OAuthClients.FindByClientID(r.Context(), *stored.OAuthClientID); cerr == nil {
+			refreshClient = c
+		}
+	}
+	accessToken, err := s.mintInteractiveAccessToken(r.Context(), p, refreshClient, strings.Join(stored.Scopes, " "))
 	if err != nil {
 		writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 		return

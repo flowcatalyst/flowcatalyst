@@ -123,6 +123,7 @@ func (r *OAuthClientRepo) Persist(ctx context.Context, c *OAuthClient, tx *useca
 		CreatedAt:                 c.CreatedAt,
 		UpdatedAt:                 now,
 		PortalClientID:            c.PortalClientID,
+		ApiAccess:                 c.APIAccess,
 	}); err != nil {
 		return fmt.Errorf("oauth_client persist: %w", err)
 	}
@@ -333,6 +334,7 @@ func rowToOAuthClient(row dbq.OauthClient) *OAuthClient {
 		Active:                 row.Active,
 		PrincipalID:            row.ServiceAccountPrincipalID,
 		PortalClientID:         row.PortalClientID,
+		APIAccess:              row.ApiAccess,
 		CreatedAt:              row.CreatedAt,
 		UpdatedAt:              row.UpdatedAt,
 		RedirectURIs:           []string{},

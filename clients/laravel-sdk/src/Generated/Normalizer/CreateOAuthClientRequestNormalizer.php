@@ -37,6 +37,9 @@ class CreateOAuthClientRequestNormalizer implements DenormalizerInterface, Norma
         if (isset($data['$recursiveRef'])) {
             return new Reference($data['$recursiveRef'], $context['document-origin']);
         }
+        if (\array_key_exists('apiAccess', $data) && \is_int($data['apiAccess'])) {
+            $data['apiAccess'] = (bool) $data['apiAccess'];
+        }
         if (\array_key_exists('pkceRequired', $data) && \is_int($data['pkceRequired'])) {
             $data['pkceRequired'] = (bool) $data['pkceRequired'];
         }
@@ -57,6 +60,13 @@ class CreateOAuthClientRequestNormalizer implements DenormalizerInterface, Norma
         }
         elseif (\array_key_exists('allowedOrigins', $data) && $data['allowedOrigins'] === null) {
             $object->setAllowedOrigins(null);
+        }
+        if (\array_key_exists('apiAccess', $data) && $data['apiAccess'] !== null) {
+            $object->setApiAccess($data['apiAccess']);
+            unset($data['apiAccess']);
+        }
+        elseif (\array_key_exists('apiAccess', $data) && $data['apiAccess'] === null) {
+            $object->setApiAccess(null);
         }
         if (\array_key_exists('applicationIds', $data) && $data['applicationIds'] !== null) {
             $values_1 = [];
@@ -171,6 +181,9 @@ class CreateOAuthClientRequestNormalizer implements DenormalizerInterface, Norma
                 $values[] = $value;
             }
             $dataArray['allowedOrigins'] = $values;
+        }
+        if ($data->isInitialized('apiAccess') && null !== $data->getApiAccess()) {
+            $dataArray['apiAccess'] = $data->getApiAccess();
         }
         if ($data->isInitialized('applicationIds') && null !== $data->getApplicationIds()) {
             $values_1 = [];

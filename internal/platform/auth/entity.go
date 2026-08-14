@@ -71,13 +71,18 @@ type OAuthClient struct {
 	PKCERequired bool    `json:"pkceRequired"`
 	Active       bool    `json:"active"`
 	PrincipalID  *string `json:"principalId,omitempty"` // owning principal (for token-issued-on-behalf claims)
-	// PortalClientID, when set, marks this OAuth client as a portal entry
-	// point owned by that tenant client: /oauth/authorize then requires an
-	// ACTIVE iam_portal_users linkage (principal, PortalClientID) before
-	// issuing a code. NULL = ordinary first-party client, no gate.
-	PortalClientID *string   `json:"portalClientId,omitempty"`
-	CreatedAt      time.Time `json:"createdAt"`
-	UpdatedAt      time.Time `json:"updatedAt"`
+	// PortalClientID, when set, marks this OAuth client as a PORTAL entry
+	// point owned by that tenant client: it is admitted to /portal/authorize
+	// and refused at /oauth/authorize. NULL = ordinary first-party client.
+	PortalClientID *string `json:"portalClientId,omitempty"`
+	// APIAccess restores authority-bearing access tokens for this client's
+	// interactive logins: authorization_code/refresh mint token_use=api
+	// tokens (roles/scope/applications narrowed to the client's
+	// ApplicationIDs) instead of identity-only tokens. Trusted first-party
+	// clients only; mutually exclusive with PortalClientID.
+	APIAccess bool      `json:"apiAccess"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // IDStr satisfies usecase.HasID.

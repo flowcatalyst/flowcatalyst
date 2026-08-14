@@ -938,6 +938,7 @@ export type CreateOAuthClientRequest = {
      */
     readonly $schema?: string;
     allowedOrigins?: Array<string>;
+    apiAccess?: boolean;
     applicationIds?: Array<string>;
     clientName: string;
     /**
@@ -952,7 +953,7 @@ export type CreateOAuthClientRequest = {
     principalId?: string;
     redirectUris?: Array<string>;
     scopes?: Array<string>;
-    [key: string]: unknown | string | Array<string> | Array<string> | Array<string> | boolean | Array<string> | Array<string> | Array<string> | undefined;
+    [key: string]: unknown | string | Array<string> | boolean | Array<string> | Array<string> | Array<string> | Array<string> | Array<string> | undefined;
 };
 
 export type CreateOAuthClientResponse = {
@@ -1590,6 +1591,7 @@ export type OAuthClientResponse = {
     readonly $schema?: string;
     active: boolean;
     allowedOrigins: Array<string>;
+    apiAccess: boolean;
     applicationIds: Array<string>;
     applications: Array<OAuthClientApplicationRef>;
     clientId: string;
@@ -2707,6 +2709,7 @@ export type UpdateOAuthClientRequest = {
      */
     readonly $schema?: string;
     allowedOrigins?: Array<string>;
+    apiAccess?: boolean;
     applicationIds?: Array<string>;
     clientName?: string;
     defaultScopes?: Array<string>;
@@ -2716,7 +2719,7 @@ export type UpdateOAuthClientRequest = {
     postLogoutRedirectUris?: Array<string>;
     redirectUris?: Array<string>;
     scopes?: Array<string>;
-    [key: string]: unknown | string | Array<string> | Array<string> | Array<string> | Array<string> | boolean | Array<string> | Array<string> | Array<string> | undefined;
+    [key: string]: unknown | string | Array<string> | boolean | Array<string> | Array<string> | Array<string> | Array<string> | Array<string> | Array<string> | undefined;
 };
 
 export type UpdatePrincipalRequest = {
@@ -3418,6 +3421,7 @@ export type CreateMappingRequestWritable = {
 
 export type CreateOAuthClientRequestWritable = {
     allowedOrigins?: Array<string>;
+    apiAccess?: boolean;
     applicationIds?: Array<string>;
     clientName: string;
     /**
@@ -3432,7 +3436,7 @@ export type CreateOAuthClientRequestWritable = {
     principalId?: string;
     redirectUris?: Array<string>;
     scopes?: Array<string>;
-    [key: string]: unknown | Array<string> | Array<string> | string | Array<string> | boolean | Array<string> | Array<string> | Array<string> | undefined;
+    [key: string]: unknown | Array<string> | boolean | Array<string> | string | Array<string> | Array<string> | Array<string> | Array<string> | undefined;
 };
 
 export type CreateOAuthClientResponseWritable = {
@@ -3817,6 +3821,7 @@ export type OAuthClientListResponseWritable = {
 export type OAuthClientResponseWritable = {
     active: boolean;
     allowedOrigins: Array<string>;
+    apiAccess: boolean;
     applicationIds: Array<string>;
     applications: Array<OAuthClientApplicationRef>;
     clientId: string;
@@ -4396,6 +4401,7 @@ export type UpdateMappingRequestWritable = {
 
 export type UpdateOAuthClientRequestWritable = {
     allowedOrigins?: Array<string>;
+    apiAccess?: boolean;
     applicationIds?: Array<string>;
     clientName?: string;
     defaultScopes?: Array<string>;
@@ -4405,7 +4411,7 @@ export type UpdateOAuthClientRequestWritable = {
     postLogoutRedirectUris?: Array<string>;
     redirectUris?: Array<string>;
     scopes?: Array<string>;
-    [key: string]: unknown | Array<string> | Array<string> | string | Array<string> | Array<string> | boolean | Array<string> | Array<string> | Array<string> | undefined;
+    [key: string]: unknown | Array<string> | boolean | Array<string> | string | Array<string> | Array<string> | Array<string> | Array<string> | Array<string> | undefined;
 };
 
 export type UpdatePrincipalRequestWritable = {

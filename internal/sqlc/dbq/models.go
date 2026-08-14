@@ -656,6 +656,7 @@ type OauthClient struct {
 	CreatedAt                 time.Time `db:"created_at"`
 	UpdatedAt                 time.Time `db:"updated_at"`
 	PortalClientID            *string   `db:"portal_client_id"`
+	ApiAccess                 bool      `db:"api_access"`
 }
 
 type OauthClientAllowedOrigin struct {

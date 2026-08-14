@@ -2471,6 +2471,9 @@
             },
             "type": "array"
           },
+          "apiAccess": {
+            "type": "boolean"
+          },
           "applicationIds": {
             "items": {
               "type": "string"
@@ -4464,6 +4467,9 @@
             },
             "type": "array"
           },
+          "apiAccess": {
+            "type": "boolean"
+          },
           "applicationIds": {
             "items": {
               "type": "string"
@@ -4544,6 +4550,7 @@
           "applicationIds",
           "applications",
           "active",
+          "apiAccess",
           "createdAt",
           "updatedAt"
         ],
@@ -7762,6 +7769,9 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "apiAccess": {
+            "type": "boolean"
           },
           "applicationIds": {
             "items": {
