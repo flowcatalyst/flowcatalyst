@@ -74,6 +74,16 @@ func (s *State) Authorize(w http.ResponseWriter, r *http.Request) {
 		writeOAuthError(w, http.StatusBadRequest, "invalid_request", "Invalid redirect_uri")
 		return
 	}
+	// Plane separation (docs/portal-identity-plan.md Phase 2.5 v2): a
+	// portal-flagged client belongs to the portal identity plane and must
+	// enter through /portal/authorize — otherwise a misconfigured portal
+	// would silently authenticate PLATFORM users (with platform id_tokens)
+	// instead of portal identities. Mirrors /portal/authorize refusing
+	// ordinary clients.
+	if client.PortalClientID != nil && *client.PortalClientID != "" {
+		writeOAuthError(w, http.StatusBadRequest, "unauthorized_client", "Portal clients must use /portal/authorize")
+		return
+	}
 
 	// redirect_uri is now validated against the client — from here on, errors
 	// may safely bounce the user-agent back to it with OAuth error params.

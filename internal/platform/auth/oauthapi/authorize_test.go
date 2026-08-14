@@ -204,3 +204,23 @@ func TestAuthorizeMissingState(t *testing.T) {
 		t.Errorf("error = %v, want invalid_request", body["error"])
 	}
 }
+
+// Plane separation: a portal-flagged OAuth client is refused at
+// /oauth/authorize (it belongs on /portal/authorize) — otherwise a
+// misconfigured portal would silently authenticate PLATFORM users.
+func TestAuthorizeRefusesPortalClient(t *testing.T) {
+	owner := "clt_owner"
+	c := activeClient("https://portal/cb")
+	c.PortalClientID = &owner
+	s := &State{OAuthClients: fakeClientFinder{client: c}}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/oauth/authorize?response_type=code&client_id=c&redirect_uri=https://portal/cb&state=xyz&code_challenge=abc", nil)
+	s.Authorize(rec, req)
+
+	if rec.Code != 400 {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "portal/authorize") {
+		t.Errorf("body should point at /portal/authorize: %s", rec.Body.String())
+	}
+}
