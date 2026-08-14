@@ -19,18 +19,18 @@ import (
 )
 
 // mcpLocalClientID is the fixed client_id for the local-dev MCP OAuth client.
-// Matches the Rust bin/fc-dev mcp_bootstrap so a shared MCP client config works.
+// Matches the Rust bin/fcdev mcp_bootstrap so a shared MCP client config works.
 const mcpLocalClientID = "flowcatalyst-mcp-local"
 
 // bootstrapMCPCredentials idempotently provisions a local MCP OAuth client so
-// `fc-dev mcp` (and `fc-dev start --mcp`) authenticate with zero config. It
-// mirrors the Rust fc-dev mcp_bootstrap: if the client already exists it is a
+// `fcdev mcp` (and `fcdev start --mcp`) authenticate with zero config. It
+// mirrors the Rust fcdev mcp_bootstrap: if the client already exists it is a
 // no-op; otherwise it creates a SERVICE principal (super-admin, anchor scope) +
 // service account + a CONFIDENTIAL client_credentials OAuth client, then writes
 // the plaintext secret to mcp-credentials.json in the OS cache dir (macOS
 // ~/Library/Caches, Linux ~/.cache; see mcp.CredentialsPath), mode 0600.
 //
-// Dev-only: it is called only from `fc-dev start`, which is the dev monolith.
+// Dev-only: it is called only from `fcdev start`, which is the dev monolith.
 // Requires a stable FLOWCATALYST_APP_KEY (ensured by start.go) so the stored
 // encrypted secret stays decryptable at /oauth/token across restarts.
 func bootstrapMCPCredentials(ctx context.Context, pool *pgxpool.Pool, baseURL string) error {
@@ -64,7 +64,7 @@ func bootstrapMCPCredentials(ctx context.Context, pool *pgxpool.Pool, baseURL st
 	}
 
 	sa := serviceaccount.New("mcp:local", "fc-mcp local")
-	saDesc := "Local MCP service account (provisioned by fc-dev)"
+	saDesc := "Local MCP service account (provisioned by fcdev)"
 	sa.Description = &saDesc
 
 	saPrincipal := principal.NewService(sa.ID, "fc-mcp local")

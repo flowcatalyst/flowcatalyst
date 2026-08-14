@@ -5,7 +5,7 @@
 #   docker compose up --build
 #
 # NOTE: this is a deployment scaffold, not the zero-config dev loop — use
-# `fc-dev start` (embedded Postgres) for local development. For a real
+# `fcdev start` (embedded Postgres) for local development. For a real
 # deployment, supply persistent FLOWCATALYST_APP_KEY + JWT signing key (see the
 # fc-server service env) and bootstrap-admin credentials.
 

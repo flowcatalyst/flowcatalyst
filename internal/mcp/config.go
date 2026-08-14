@@ -28,7 +28,7 @@ type Config struct {
 	ClientSecret string
 }
 
-// credentialsFile is the on-disk shape fc-dev's MCP bootstrap writes and the
+// credentialsFile is the on-disk shape fcdev's MCP bootstrap writes and the
 // standalone server reads as a fallback. Matches the Rust mcp-credentials.json.
 type credentialsFile struct {
 	ClientID     string `json:"client_id"`
@@ -36,7 +36,7 @@ type credentialsFile struct {
 	BaseURL      string `json:"base_url"`
 }
 
-// CredentialsPath is where fc-dev writes, and the MCP server reads, the
+// CredentialsPath is where fcdev writes, and the MCP server reads, the
 // bootstrapped local credentials: <user-cache>/flowcatalyst-dev/mcp-credentials.json.
 // Mirrors the Rust dirs::cache_dir() location.
 func CredentialsPath() (string, error) {
@@ -100,7 +100,7 @@ func readCredentialsFileAt(path string) (credentialsFile, bool) {
 }
 
 // WriteCredentialsFile persists local MCP credentials to CredentialsPath with
-// 0600 permissions, creating the parent directory. Used by fc-dev's bootstrap.
+// 0600 permissions, creating the parent directory. Used by fcdev's bootstrap.
 func WriteCredentialsFile(clientID, clientSecret, baseURL string) error {
 	path, err := CredentialsPath()
 	if err != nil {
@@ -140,10 +140,10 @@ func newPlatformClient(cfg Config) *client.FlowCatalystClient {
 
 // errNoCredentials is returned by RequireCredentials when neither env nor the
 // credentials file supplied a client_id/secret — surfaced to the user as a
-// "start fc-dev first" hint, matching Rust.
+// "start fcdev first" hint, matching Rust.
 var errNoCredentials = errors.New(
 	"no MCP credentials: set FLOWCATALYST_CLIENT_ID/FLOWCATALYST_CLIENT_SECRET, " +
-		"or run `fc-dev start` to bootstrap the mcp-credentials.json in the OS cache dir " +
+		"or run `fcdev start` to bootstrap the mcp-credentials.json in the OS cache dir " +
 		"(macOS ~/Library/Caches, Linux ~/.cache; see CredentialsPath)")
 
 // RequireCredentials returns errNoCredentials when the config has neither a

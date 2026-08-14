@@ -5,7 +5,7 @@ central loader is `EnvCfg` in `internal/server/envcfg.go` (`LoadEnv()`), which
 reads every knob the unified `fc-server` binary uses. A handful of services
 additionally read env via package-local `FromEnv`-style constructors at startup
 (`encryption`, `email`, `ratelimit`, `loginbackoff`, the scheduled-job
-scheduler, `mcp`), and `cmd/fc-dev` seeds its CLI flag defaults from the same
+scheduler, `mcp`), and `cmd/fcdev` seeds its CLI flag defaults from the same
 variable names.
 
 Conventions used in the tables below:
@@ -41,7 +41,7 @@ All read in `internal/server/envcfg.go`.
 | `FC_STREAM_PROCESSOR_ENABLED` | `false` | `STREAM_PROCESSOR_ENABLED` | `internal/server/envcfg.go` | Run the stream processor (CQRS projections + fan-out + partition manager). |
 | `FC_OUTBOX_ENABLED` | `false` | `OUTBOX_PROCESSOR_ENABLED` | `internal/server/envcfg.go` | Run the outbox processor. |
 | `FC_MCP_ENABLED` | `false` | — | `internal/server/envcfg.go` | Run the MCP HTTP server. |
-| `FC_DEFAULT_BROKER` | `""` (no pools start) | — | `internal/server/envcfg.go` | Fallback queue backend when no `FLOWCATALYST_CONFIG_URL` is set; `postgres` synthesises a single `default` pool on the shared pool (fc-dev sets this). |
+| `FC_DEFAULT_BROKER` | `""` (no pools start) | — | `internal/server/envcfg.go` | Fallback queue backend when no `FLOWCATALYST_CONFIG_URL` is set; `postgres` synthesises a single `default` pool on the shared pool (fcdev sets this). |
 
 ## 2. Database & AWS Secrets Manager
 
@@ -67,20 +67,20 @@ Resolution precedence (mirrors Rust fc-server): full URL
 | Variable | Default | Aliases | Read in | Purpose |
 |---|---|---|---|---|
 | `FC_JWT_ISSUER` | `http://localhost:8080` | `FC_EXTERNAL_BASE_URL`, `EXTERNAL_BASE_URL` | `internal/server/envcfg.go` | JWT issuer + audience and the platform's external base URL. |
-| `FC_JWT_SIGNING_KEY_PATH` | — | — | `internal/server/envcfg.go` | Path to the PEM RSA private signing key (preferred source; fc-dev auto-creates one). |
+| `FC_JWT_SIGNING_KEY_PATH` | — | — | `internal/server/envcfg.go` | Path to the PEM RSA private signing key (preferred source; fcdev auto-creates one). |
 | `FLOWCATALYST_JWT_PRIVATE_KEY` | — | — | `internal/server/signing_key.go` | Inline PEM RSA private key (the Rust/IaC name; checked before the Go alias). Mangled SSM values (`\n`, quotes, base64) are normalized. |
 | `FC_JWT_SIGNING_KEY_PEM` | — | — | `internal/server/signing_key.go` | Go-native inline-PEM alias, checked after `FLOWCATALYST_JWT_PRIVATE_KEY`. If no key source is set, an **ephemeral** key is generated (tokens don't survive restarts and replicas reject each other's tokens — production must set one). |
 | `FLOWCATALYST_JWT_PREVIOUS_PUBLIC_KEY` | — | — | `internal/server/envcfg.go` | Validation-only previous RSA public key for zero-downtime signing-key rotation; optional — skipped unless it parses as a PEM. |
 | `AUTH_MODE` | — | — | `internal/server/run.go` | `NONE` (case-insensitive) forces router HTTP BasicAuth off regardless of creds; any other value (incl. `BASIC` or unset) uses the resolved creds. |
 | `FC_ROUTER_AUTH_USER` | `""` (auth disabled) | `AUTH_BASIC_USERNAME` | `internal/server/run.go` | Router HTTP BasicAuth username; empty disables auth on the router surface. |
 | `FC_ROUTER_AUTH_PASS` | `""` | `AUTH_BASIC_PASSWORD` | `internal/server/run.go` | Router HTTP BasicAuth password. |
-| `FC_AUTH_ALLOW_TEST_HEADERS` | `false` | — | `internal/server/envcfg.go` | Enables the `X-FC-Test-Principal` dev fallback in the platform Authenticator (fc-dev turns it on; never in production). |
+| `FC_AUTH_ALLOW_TEST_HEADERS` | `false` | — | `internal/server/envcfg.go` | Enables the `X-FC-Test-Principal` dev fallback in the platform Authenticator (fcdev turns it on; never in production). |
 
 ## 4. Encryption & secrets
 
 | Variable | Default | Aliases | Read in | Purpose |
 |---|---|---|---|---|
-| `FLOWCATALYST_APP_KEY` | — | — | `internal/platform/shared/encryption`, `internal/server/subsystems.go`, `cmd/fc-dev`, `cmd/decrypt-check` | Field-encryption key (base64, AES-GCM). Unset → encryption disabled: confidential OAuth client-secret minting fails and TOTP enrollment degrades; the dispatch scheduler **refuses to start** (its HMAC dispatch-auth secret is HKDF-derived from this key). fc-dev generates + persists one. |
+| `FLOWCATALYST_APP_KEY` | — | — | `internal/platform/shared/encryption`, `internal/server/subsystems.go`, `cmd/fcdev`, `cmd/decrypt-check` | Field-encryption key (base64, AES-GCM). Unset → encryption disabled: confidential OAuth client-secret minting fails and TOTP enrollment degrades; the dispatch scheduler **refuses to start** (its HMAC dispatch-auth secret is HKDF-derived from this key). fcdev generates + persists one. |
 | `FLOWCATALYST_APP_KEY_PREVIOUS` | — | — | `internal/platform/shared/encryption` | Previous encryption key; decryption falls back to it during key rotation (new writes always use the current key). |
 | `FLOWCATALYST_SIGNING_SECRET` | — | — | `pkg/fcsdk/webhook` | Webhook HMAC-SHA256 signing secret for consumer apps using the Go SDK's `ValidatorFromEnv` (required for SDK webhook validation — errors when unset). |
 
@@ -163,16 +163,16 @@ ALB self-registration are in families 11 and 1.
 |---|---|---|---|---|
 | `FC_OUTBOX_PLATFORM_URL` | — (**required**: processor logs an error and skips startup without it) | `FC_OUTBOX_API_URL`, `FC_API_BASE_URL`, `FLOWCATALYST_URL` | `internal/server/envcfg.go` | Platform API base URL the outbox delivers batches to. |
 | `FC_OUTBOX_PLATFORM_AUTH_TOKEN` | `""` | `FC_OUTBOX_TOKEN`, `FC_API_TOKEN` | `internal/server/envcfg.go` | Bearer token / OAuth client_secret used against the platform. |
-| `FC_OUTBOX_BATCH_SIZE` | `0` (library default `100`) | — | `internal/server/envcfg.go`, `cmd/fc-dev` | Rows per poll. |
-| `FC_OUTBOX_MAX_IN_FLIGHT` | `0` (library default `1000`) | — | `internal/server/envcfg.go`, `cmd/fc-dev` | Cap on outstanding HTTP requests. |
-| `FC_OUTBOX_POLL_INTERVAL_MS` | `0` (library default `1000`) | — | `internal/server/envcfg.go`, `cmd/fc-dev` | Sleep between empty polls. |
+| `FC_OUTBOX_BATCH_SIZE` | `0` (library default `100`) | — | `internal/server/envcfg.go`, `cmd/fcdev` | Rows per poll. |
+| `FC_OUTBOX_MAX_IN_FLIGHT` | `0` (library default `1000`) | — | `internal/server/envcfg.go`, `cmd/fcdev` | Cap on outstanding HTTP requests. |
+| `FC_OUTBOX_POLL_INTERVAL_MS` | `0` (library default `1000`) | — | `internal/server/envcfg.go`, `cmd/fcdev` | Sleep between empty polls. |
 | `FC_OUTBOX_MAX_CONCURRENT_GROUPS` | `0` (library default `10`) | `FC_MAX_CONCURRENT_GROUPS` | `internal/server/envcfg.go` | Max message groups processed concurrently. |
 | `FC_OUTBOX_BLOCK_ON_ERROR` | `true` | — | `internal/server/envcfg.go` | Stop a group on a failing item so the rest re-run in order behind it. |
 | `FC_OUTBOX_ADMIN_PORT` | `0` (off) | — | `internal/server/envcfg.go` | Serves the operational admin API (pause/resume/unblock/skip groups) on `127.0.0.1:<port>`. |
 | `FC_OUTBOX_BACKEND` | `postgres` | `FC_OUTBOX_DB_TYPE` (Rust name) | `internal/server/envcfg.go` | Storage backend: `postgres` (shared pool) or `mongo`; anything else errors clearly. |
 | `FC_OUTBOX_MONGO_URI` | — | `FC_OUTBOX_DB_URL` | `internal/server/envcfg.go` | Mongo connection string (required when backend is `mongo`). |
 | `FC_OUTBOX_MONGO_DB` | `flowcatalyst` | — | `internal/server/envcfg.go` | Mongo database name. |
-| `FC_OUTBOX_SOURCE_DB_URL` | — | — | `cmd/fc-dev` | `fc-dev outbox` only: the external app's Postgres URL to poll (flag default). |
+| `FC_OUTBOX_SOURCE_DB_URL` | — | — | `cmd/fcdev` | `fcdev outbox` only: the external app's Postgres URL to poll (flag default). |
 
 ### Stream processor
 
@@ -219,7 +219,7 @@ unset or unparseable → the Rust default.
 ### MCP server
 
 Resolution: env vars → `mcp-credentials.json` in the OS cache dir
-(`<user-cache>/flowcatalyst-dev/mcp-credentials.json`, written by fc-dev's
+(`<user-cache>/flowcatalyst-dev/mcp-credentials.json`, written by fcdev's
 bootstrap) → defaults. With client_id+secret it mints OAuth tokens; with only
 a secret it uses it as a static bearer token; with neither it calls the
 platform unauthenticated (local dev only — the standalone server fails fast).
@@ -236,7 +236,7 @@ platform unauthenticated (local dev only — the standalone server fails fast).
 
 The seeder creates the initial super-admin only when **both** email and
 password are set and no anchor user exists yet; otherwise it logs a warning
-and skips (production must opt in explicitly). fc-dev pre-sets
+and skips (production must opt in explicitly). fcdev pre-sets
 `admin@flowcatalyst.local` / `DevPassword123!` / `Local Admin` so the local
 flow just works (existing env values win).
 
@@ -245,8 +245,8 @@ flow just works (existing env values win).
 | `FLOWCATALYST_BOOTSTRAP_ADMIN_EMAIL` | — | — | `internal/platform/seed` | Initial ANCHOR super-admin email (required together with the password to seed). |
 | `FLOWCATALYST_BOOTSTRAP_ADMIN_PASSWORD` | — | — | `internal/platform/seed` | Initial super-admin password. |
 | `FLOWCATALYST_BOOTSTRAP_ADMIN_NAME` | `Bootstrap Admin` | — | `internal/platform/seed` | Initial super-admin display name. |
-| `FC_BOOTSTRAP_ADMIN_EMAIL` | — | — | `cmd/fc-dev` | `fc-dev init` only: flag default for `--admin-email`. |
-| `FC_BOOTSTRAP_ADMIN_PASSWORD` | — | — | `cmd/fc-dev` | `fc-dev init` only: flag default for `--admin-password` (required with `--yes`). |
+| `FC_BOOTSTRAP_ADMIN_EMAIL` | — | — | `cmd/fcdev` | `fcdev init` only: flag default for `--admin-email`. |
+| `FC_BOOTSTRAP_ADMIN_PASSWORD` | — | — | `cmd/fcdev` | `fcdev init` only: flag default for `--admin-password` (required with `--yes`). |
 
 ## 11. Logging, router config & misc
 
@@ -261,23 +261,23 @@ flow just works (existing env values win).
 | `FC_ALB_TARGET_PORT` | `8080` | — | `internal/server/envcfg.go` | Target port registered with the ALB. |
 | `FC_ALB_REGION` | — (AWS SDK default region chain) | — | `internal/server/envcfg.go` | AWS region for the ELBv2 client. |
 | `FC_ALB_DEREGISTRATION_DELAY_SECONDS` | `0` | — | `internal/server/envcfg.go` | Wait after deregistration before shutdown proceeds. |
-| `XDG_DATA_HOME` | OS app-data dir | — | `cmd/fc-dev` | Overrides the per-user data directory that hosts fc-dev's embedded-Postgres cluster, JWT key and app key. |
+| `XDG_DATA_HOME` | OS app-data dir | — | `cmd/fcdev` | Overrides the per-user data directory that hosts fcdev's embedded-Postgres cluster, JWT key and app key. |
 
-## 12. fc-dev (local dev CLI)
+## 12. fcdev (local dev CLI)
 
-`fc-dev` seeds its flag defaults from env, reusing the server names —
+`fcdev` seeds its flag defaults from env, reusing the server names —
 `FC_API_PORT`, `FC_METRICS_PORT`, `FC_DATABASE_URL`, `FC_SCHEDULER_ENABLED`,
 `FC_STREAM_PROCESSOR_ENABLED`, `FC_OUTBOX_ENABLED`, `FC_ROUTER_ENABLED`,
 `FC_MCP_ENABLED` — but with dev-friendly defaults (scheduler/stream/router ON,
 `FC_OUTBOX_PLATFORM_URL` defaulting to `http://localhost:8080` for
-`fc-dev outbox`). Flags always win over env. Variables unique to fc-dev:
+`fcdev outbox`). Flags always win over env. Variables unique to fcdev:
 
 | Variable | Default | Aliases | Read in | Purpose |
 |---|---|---|---|---|
-| `FC_EMBEDDED_DB` | `true` | — | `cmd/fc-dev` | Start an embedded Postgres when no `--database-url` is given. |
-| `FC_EMBEDDED_DB_PORT` | `15432` | — | `cmd/fc-dev` | Embedded Postgres port. |
-| `FC_EMBEDDED_DB_PATH` | `<user-data-dir>/flowcatalyst/embedded-pg` | — | `cmd/fc-dev` | Embedded Postgres data directory (never /tmp). |
-| `FC_DEV_UPGRADE_REPO` | `flowcatalyst/flowcatalyst` | — | `cmd/fc-dev` | GitHub repo `fc-dev upgrade` pulls releases from (point at a fork). |
+| `FC_EMBEDDED_DB` | `true` | — | `cmd/fcdev` | Start an embedded Postgres when no `--database-url` is given. |
+| `FC_EMBEDDED_DB_PORT` | `15432` | — | `cmd/fcdev` | Embedded Postgres port. |
+| `FC_EMBEDDED_DB_PATH` | `<user-data-dir>/flowcatalyst/embedded-pg` | — | `cmd/fcdev` | Embedded Postgres data directory (never /tmp). |
+| `FC_DEV_UPGRADE_REPO` | `flowcatalyst/flowcatalyst` | — | `cmd/fcdev` | GitHub repo `fcdev upgrade` pulls releases from (point at a fork). |
 
 The installer scripts (`install.sh` / `install.ps1`) additionally honour
 `FC_DEV_VERSION`, `FC_DEV_INSTALL_DIR` and `FC_DEV_FORCE` — shell-side only,

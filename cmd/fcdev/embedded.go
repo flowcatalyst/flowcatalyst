@@ -16,7 +16,7 @@ import (
 // We pin it explicitly rather than inheriting embedded-postgres' DefaultConfig
 // default so that bumping the library can never silently change the major and
 // break existing data directories. The major changes only when this constant
-// does — and `fc-dev db upgrade` handles the on-disk transition, because a
+// does — and `fcdev db upgrade` handles the on-disk transition, because a
 // Postgres major upgrade is NOT in-place: a cluster initialised by an older
 // major refuses to start under a newer server binary.
 const embeddedPGVersion = embeddedpostgres.V18
@@ -83,9 +83,9 @@ func assertEmbeddedVersionCompatible(dataPath string) error {
 		return nil
 	}
 	return fmt.Errorf(
-		"embedded Postgres data dir is PG%s but this fc-dev embeds PG%s; a major "+
-			"upgrade is not in-place. Run 'fc-dev db upgrade' (backs up the old cluster, "+
+		"embedded Postgres data dir is PG%s but this fcdev embeds PG%s; a major "+
+			"upgrade is not in-place. Run 'fcdev db upgrade' (backs up the old cluster, "+
 			"re-initialises PG%s, re-runs migrations + seed) or "+
-			"'fc-dev start --embedded-db-reset' to wipe it",
+			"'fcdev start --embedded-db-reset' to wipe it",
 		have, pinnedPGMajor(), pinnedPGMajor())
 }

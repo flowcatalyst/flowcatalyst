@@ -30,7 +30,7 @@ talk to the **event-driven control plane** — all from idiomatic Laravel.
 
 ## Contents
 
-- [Installation](#installation) · [Local dev with `fc-dev`](#local-development-with-fc-dev)
+- [Installation](#installation) · [Local dev with `fcdev`](#local-development-with-fcdev)
 - [Authentication & authorization](#authentication--authorization) — login, guards, permissions, modes, refresh
 - [Declaring & syncing roles and permissions](#declaring--syncing-roles-and-permissions)
 - [Control plane API](#control-plane-api) · [Postbox](#postbox-event-creation) · [Webhooks](#webhook-validation)
@@ -47,10 +47,10 @@ Publish the configuration file:
 php artisan vendor:publish --tag=flowcatalyst-config
 ```
 
-## Local development with `fc-dev`
+## Local development with `fcdev`
 
 For local work you need a FlowCatalyst control plane to talk to.
-`fc-dev` is the official one-binary dev environment — bundled
+`fcdev` is the official one-binary dev environment — bundled
 PostgreSQL, platform API, message router, scheduler, and frontend
 in a single process.
 
@@ -61,11 +61,11 @@ curl -fsSL https://raw.githubusercontent.com/flowcatalyst/flowcatalyst/main/inst
 # Windows (PowerShell)
 irm https://raw.githubusercontent.com/flowcatalyst/flowcatalyst/main/install.ps1 | iex
 
-fc-dev          # starts API on http://localhost:8080
+fcdev          # starts API on http://localhost:8080
 ```
 
 If you use the **Postbox** (outbox pattern), you also need
-`fc-dev outbox` running as a sidecar — it polls your app's
+`fcdev outbox` running as a sidecar — it polls your app's
 `outbox_messages` table and forwards events to the platform.
 This sits alongside the `php artisan flowcatalyst:postbox:dispatch`
 queue worker (or replaces it for setups where you'd rather not run
@@ -76,16 +76,16 @@ Laravel's queue runner for outbox forwarding).
 
 # Once: write FC_OUTBOX_DB_URL / FC_OUTBOX_API_URL / FC_OUTBOX_TOKEN
 # into ./.env (0600 perms; no secrets on argv or shell history).
-# fc-dev outbox init appends to your existing .env — your other
+# fcdev outbox init appends to your existing .env — your other
 # FLOWCATALYST_* keys are not touched.
-fc-dev outbox init
+fcdev outbox init
 
 # Daily: reads .env, auto-creates the `outbox_messages` table on
 # first run if your Postbox migration hasn't been run yet, then polls.
-fc-dev outbox poll
+fcdev outbox poll
 ```
 
-Complete reference: [fc-dev CLI docs](https://github.com/flowcatalyst/flowcatalyst-rust/blob/main/docs/developers/fc-dev.md).
+Complete reference: [fcdev CLI docs](https://github.com/flowcatalyst/flowcatalyst-rust/blob/main/docs/developers/fcdev.md).
 
 ## Configuration
 

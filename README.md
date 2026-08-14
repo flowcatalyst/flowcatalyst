@@ -35,7 +35,7 @@ webhook subscribers keep working unchanged.
                                               (HA leader)  (OIDC bridge)
 ```
 
-In local development everything above collapses into a single `fc-dev` process
+In local development everything above collapses into a single `fcdev` process
 backed by an **embedded Postgres** — no Docker, no SQS, no Redis. (The embedded
 Postgres is vanilla; to add PostGIS see
 [`docs/embedded-postgres-postgis.md`](docs/embedded-postgres-postgis.md).)
@@ -47,11 +47,11 @@ Postgres is vanilla; to add PostGIS see
 ### As a developer publishing events
 
 ```sh
-# 1. Install fc-dev (the local development binary)
+# 1. Install fcdev (the local development binary)
 curl -fsSL https://raw.githubusercontent.com/flowcatalyst/flowcatalyst/main/install.sh | sh
 
 # 2. Run it
-fc-dev
+fcdev
 
 # 3. Open http://localhost:8080
 ```
@@ -62,7 +62,7 @@ Windows (PowerShell 5.1+):
 irm https://raw.githubusercontent.com/flowcatalyst/flowcatalyst/main/install.ps1 | iex
 ```
 
-See [Installing fc-dev](#installing-fc-dev) for pinning versions, manual
+See [Installing fcdev](#installing-fcdev) for pinning versions, manual
 installs, checksum/signature verification, and self-update.
 
 ### As an operator deploying production
@@ -81,9 +81,9 @@ compile-time-sealed UseCase + UnitOfWork pattern with a worked example.
 
 ---
 
-## Installing fc-dev
+## Installing fcdev
 
-`fc-dev` is the all-in-one local-development binary. It ships pre-built for
+`fcdev` is the all-in-one local-development binary. It ships pre-built for
 macOS (Apple Silicon + Intel), Linux (x86_64 + arm64), and Windows (x86_64).
 The install commands below fetch the latest release from GitHub, verify it, and
 put it on your `PATH`.
@@ -99,8 +99,8 @@ curl -fsSL https://raw.githubusercontent.com/flowcatalyst/flowcatalyst/main/inst
 ```
 
 The script detects your OS/arch from `uname`, downloads the matching archive,
-verifies its SHA256 sidecar, installs to `/usr/local/bin/fc-dev` if writable
-(else `~/.local/bin/fc-dev` — no `sudo` prompt), and on macOS strips the
+verifies its SHA256 sidecar, installs to `/usr/local/bin/fcdev` if writable
+(else `~/.local/bin/fcdev` — no `sudo` prompt), and on macOS strips the
 Gatekeeper quarantine attribute.
 
 ### Windows
@@ -110,19 +110,19 @@ irm https://raw.githubusercontent.com/flowcatalyst/flowcatalyst/main/install.ps1
 ```
 
 Downloads the `windows-amd64` zip, verifies its SHA256, extracts to
-`%LOCALAPPDATA%\Programs\fc-dev`, and adds that directory to your **user** PATH
+`%LOCALAPPDATA%\Programs\fcdev`, and adds that directory to your **user** PATH
 (re-open your terminal afterwards). Windows-on-ARM runs the x64 binary under
 emulation.
 
 ### Upgrading
 
-Once `fc-dev` is on your `PATH`, it self-updates — no need to re-run the
+Once `fcdev` is on your `PATH`, it self-updates — no need to re-run the
 installer:
 
 ```sh
-fc-dev upgrade           # download & replace if a newer release exists
-fc-dev upgrade --check   # just check, don't install
-fc-dev upgrade --force   # re-install even if already current
+fcdev upgrade           # download & replace if a newer release exists
+fcdev upgrade --check   # just check, don't install
+fcdev upgrade --force   # re-install even if already current
 ```
 
 `upgrade` uses the same release artifacts the installer scripts do, verifies the
@@ -135,7 +135,7 @@ Both installer scripts honour the same three variables:
 | Variable | Default | Purpose |
 |---|---|---|
 | `FC_DEV_VERSION` | latest stable | Pin a specific version (e.g. `0.5.0`). The leading `v` is optional. |
-| `FC_DEV_INSTALL_DIR` | platform default (see above) | Where to write `fc-dev`. |
+| `FC_DEV_INSTALL_DIR` | platform default (see above) | Where to write `fcdev`. |
 | `FC_DEV_FORCE` | `0` | When `1`, reinstall even if the requested version is already present. |
 
 Example — pin a version into `~/bin` on Linux:
@@ -162,29 +162,29 @@ TARGET=darwin-arm64        # macOS Apple Silicon
 VERSION=0.5.0
 
 # 2. Download archive + checksum
-base="https://github.com/flowcatalyst/flowcatalyst/releases/download/fc-dev/v${VERSION}"
-curl -LO "${base}/fc-dev-v${VERSION}-${TARGET}.tar.gz"
-curl -LO "${base}/fc-dev-v${VERSION}-${TARGET}.tar.gz.sha256"
+base="https://github.com/flowcatalyst/flowcatalyst/releases/download/fcdev/v${VERSION}"
+curl -LO "${base}/fcdev-v${VERSION}-${TARGET}.tar.gz"
+curl -LO "${base}/fcdev-v${VERSION}-${TARGET}.tar.gz.sha256"
 
 # 3. Verify
-shasum -a 256 -c "fc-dev-v${VERSION}-${TARGET}.tar.gz.sha256"
+shasum -a 256 -c "fcdev-v${VERSION}-${TARGET}.tar.gz.sha256"
 
 # 4. Extract + install
-tar -xzf "fc-dev-v${VERSION}-${TARGET}.tar.gz"
-sudo install -m 0755 "fc-dev-v${VERSION}-${TARGET}/fc-dev" /usr/local/bin/
+tar -xzf "fcdev-v${VERSION}-${TARGET}.tar.gz"
+sudo install -m 0755 "fcdev-v${VERSION}-${TARGET}/fcdev" /usr/local/bin/
 
 # 5. (macOS only) strip Gatekeeper quarantine
-xattr -d com.apple.quarantine /usr/local/bin/fc-dev 2>/dev/null || true
+xattr -d com.apple.quarantine /usr/local/bin/fcdev 2>/dev/null || true
 
-fc-dev version
+fcdev version
 ```
 
 On a **private** checkout or rate-limited network you can use the GitHub CLI
 instead, which reuses your `gh` auth:
 
 ```sh
-gh release download fc-dev/v0.5.0 --repo flowcatalyst/flowcatalyst \
-  --pattern 'fc-dev-v0.5.0-darwin-arm64.tar.gz*'
+gh release download fcdev/v0.5.0 --repo flowcatalyst/flowcatalyst \
+  --pattern 'fcdev-v0.5.0-darwin-arm64.tar.gz*'
 ```
 
 ### Verifying Linux archives (optional)
@@ -195,11 +195,11 @@ the public Rekor transparency log:
 
 ```sh
 cosign verify-blob \
-  --signature  "fc-dev-v${VERSION}-${TARGET}.tar.gz.sig" \
-  --certificate "fc-dev-v${VERSION}-${TARGET}.tar.gz.pem" \
-  --certificate-identity-regexp '^https://github.com/flowcatalyst/flowcatalyst(-go)?/\.github/workflows/release-fc-dev\.yml@refs/tags/fc-dev/v' \
+  --signature  "fcdev-v${VERSION}-${TARGET}.tar.gz.sig" \
+  --certificate "fcdev-v${VERSION}-${TARGET}.tar.gz.pem" \
+  --certificate-identity-regexp '^https://github.com/flowcatalyst/flowcatalyst(-go)?/\.github/workflows/release-fcdev\.yml@refs/tags/fcdev/v' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
-  "fc-dev-v${VERSION}-${TARGET}.tar.gz"
+  "fcdev-v${VERSION}-${TARGET}.tar.gz"
 ```
 
 Each release's notes include the exact `--certificate-identity-regexp` for that
@@ -207,13 +207,13 @@ build. macOS and Windows archives are not yet codesigned.
 
 ### Troubleshooting
 
-- **`fc-dev: command not found` after install** — the install dir isn't on your
+- **`fcdev: command not found` after install** — the install dir isn't on your
   `PATH` yet. Open a new terminal, or `source ~/.zshrc` (the script prints the
   exact line to add).
 - **macOS "cannot be opened because it is from an unidentified developer"** —
   the installer strips the quarantine xattr automatically; for a manual download
-  run `xattr -d com.apple.quarantine /usr/local/bin/fc-dev`.
-- **First run downloads Postgres** — `fc-dev` fetches a platform-specific
+  run `xattr -d com.apple.quarantine /usr/local/bin/fcdev`.
+- **First run downloads Postgres** — `fcdev` fetches a platform-specific
   embedded-Postgres bundle on first launch, so the initial start needs network
   access and is slower than subsequent runs.
 
@@ -224,7 +224,7 @@ build. macOS and Windows archives are not yet codesigned.
 | Binary | Purpose |
 |---|---|
 | `fc-server` | Unified production server — every subsystem (platform API, router, scheduler, stream, outbox, MCP) toggleable via env vars. Run one instance with everything on, or several each running a subset for split topologies. |
-| `fc-dev` | Local development monolith: all subsystems in one process against an embedded Postgres. |
+| `fcdev` | Local development monolith: all subsystems in one process against an embedded Postgres. |
 
 Unlike the Rust build, the Go repo ships these **two** binaries rather than a
 separate executable per subsystem — split topologies are achieved by running
@@ -245,9 +245,9 @@ make go-build         # Go binaries only (assumes frontend/dist already built)
 Local dev loop (embedded Postgres — no Docker, no separate migrate step):
 
 ```sh
-make run              # run fc-dev once
-make dev              # run fc-dev with live reload (requires air; see `make install-tools`)
-make dev-full         # fc-dev + the Vite frontend dev server together
+make run              # run fcdev once
+make dev              # run fcdev with live reload (requires air; see `make install-tools`)
+make dev-full         # fcdev + the Vite frontend dev server together
 make run-server       # run the unified fc-server (subsystems via env)
 ```
 
@@ -323,11 +323,11 @@ env var (or its legacy alias `PORT`) overrides the binary default.
 | Service       | Go default          | Rust default        | Override env             |
 |---------------|---------------------|---------------------|--------------------------|
 | Platform HTTP | `FC_API_PORT=8080`  | `PORT=3000`         | `FC_API_PORT` / `PORT`   |
-| fc-dev        | `--api-port 8080`   | `--api-port 8080`   | `FC_API_PORT` / `--api-port` |
+| fcdev        | `--api-port 8080`   | `--api-port 8080`   | `FC_API_PORT` / `--api-port` |
 | Metrics       | `FC_METRICS_PORT=9090` | `9090`           | `FC_METRICS_PORT`        |
 | MCP           | `127.0.0.1:8090`    | `127.0.0.1:3100`    | `FC_MCP_PORT` / `FC_MCP_BIND` |
 
-The complete environment-variable reference (every variable the server, subsystems, and `fc-dev` read, with defaults and aliases) is in [`docs/environment-variables.md`](docs/environment-variables.md).
+The complete environment-variable reference (every variable the server, subsystems, and `fcdev` read, with defaults and aliases) is in [`docs/environment-variables.md`](docs/environment-variables.md).
 
 ---
 

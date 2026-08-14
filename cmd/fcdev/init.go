@@ -33,9 +33,9 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
-// newInitCmd bootstraps a fresh fc-dev environment.
+// newInitCmd bootstraps a fresh fcdev environment.
 //
-// What it does — mirrors the Rust bin/fc-dev/src/init.rs:
+// What it does — mirrors the Rust bin/fcdev/src/init.rs:
 //
 //  1. Run migrations + the built-in seeds (idempotent).
 //  2. Create the anchor admin if no anchor user exists yet (internal IDP +
@@ -108,7 +108,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("seed: %w", err)
 	}
 
-	fmt.Println("fc-dev init")
+	fmt.Println("fcdev init")
 
 	// Reader for interactive prompts (one buffer keeps stdin state clean).
 	stdin := bufio.NewReader(os.Stdin)
@@ -180,7 +180,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	if existing, err := appRepo.FindByCode(ctx, appCode); err != nil {
 		return fmt.Errorf("lookup application: %w", err)
 	} else if existing != nil {
-		return fmt.Errorf("application with code %q already exists (id=%s). Pick a different code or run `fc-dev fresh`", appCode, existing.ID)
+		return fmt.Errorf("application with code %q already exists (id=%s). Pick a different code or run `fcdev fresh`", appCode, existing.ID)
 	}
 
 	app := application.New(appCode, appName)
@@ -425,7 +425,7 @@ func hashSecret(plaintext string) string {
 		// crypto/rand failure: extremely rare; the upstream errors are
 		// only "read from /dev/urandom" style. Surface as panic — the
 		// bootstrap can't recover from a broken RNG.
-		panic("fc-dev init: passwordhash.Hash: " + err.Error())
+		panic("fcdev init: passwordhash.Hash: " + err.Error())
 	}
 	return h
 }
@@ -536,7 +536,7 @@ func writeEnvUpdates(path string, updates [][2]string) error {
 		if len(lines) > 0 && lines[len(lines)-1] != "" {
 			lines = append(lines, "")
 		}
-		lines = append(lines, "# FlowCatalyst (added by `fc-dev init`)")
+		lines = append(lines, "# FlowCatalyst (added by `fcdev init`)")
 		for _, kv := range toAppend {
 			lines = append(lines, fmt.Sprintf("%s=%s", kv[0], quoteEnvValue(kv[1])))
 		}
@@ -551,7 +551,7 @@ func writeEnvUpdates(path string, updates [][2]string) error {
 			return err
 		}
 	}
-	if err := os.WriteFile(path, []byte(next), 0o600); err != nil { //nolint:gosec // G703: path is the fc-dev-resolved config file path, not external input
+	if err := os.WriteFile(path, []byte(next), 0o600); err != nil { //nolint:gosec // G703: path is the fcdev-resolved config file path, not external input
 		return err
 	}
 	action := "updated"

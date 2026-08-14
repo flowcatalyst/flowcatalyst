@@ -54,7 +54,7 @@ type State struct {
 	// cookie, so it has no permissions and bounces to /login on reload.
 	Provider *provider.Provider
 	// CookieSecure flips the session cookie's Secure flag (false on
-	// fc-dev's HTTP localhost, true on fc-server's HTTPS). Mirrors
+	// fcdev's HTTP localhost, true on fc-server's HTTPS). Mirrors
 	// login.Config.CookieSecure.
 	CookieSecure bool
 	// SessionTTL is the session cookie lifetime. Defaults to 24h when zero

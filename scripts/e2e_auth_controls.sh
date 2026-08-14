@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
 # End-to-end check of the auth/2FA/client-admin control surface against a
-# running fc-dev (default admin admin@flowcatalyst.local / DevPassword123!).
+# running fcdev (default admin admin@flowcatalyst.local / DevPassword123!).
 #
-#   ./bin/fc-dev start &        # in one terminal
+#   ./bin/fcdev start &        # in one terminal
 #   scripts/e2e_auth_controls.sh
 #
 # Asserts the security controls are wired: reset-approval queue gating, the

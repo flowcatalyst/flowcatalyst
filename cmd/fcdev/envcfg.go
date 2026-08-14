@@ -4,7 +4,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/server"
 )
 
-// devEnvCfg builds the server.EnvCfg fc-dev hands to server.Run. Starts
+// devEnvCfg builds the server.EnvCfg fcdev hands to server.Run. Starts
 // from the env-driven LoadEnv() so explicit FC_* overrides win, then
 // applies dev-friendly defaults: every subsystem on, embedded broker
 // (Postgres-backed queue on the shared pool), and the X-FC-Test-Principal
@@ -23,7 +23,7 @@ func devEnvCfg(opts startOpts, databaseURL string) server.EnvCfg {
 	cfg.AuthAllowTestHeaders = true
 
 	// Subsystem toggles follow the CLI flags. Defaults (in flag config)
-	// match the historical fc-dev: scheduler+stream on, outbox+router off.
+	// match the historical fcdev: scheduler+stream on, outbox+router off.
 	cfg.SchedulerEnabled = opts.SchedulerEnabled
 	cfg.ScheduledJobEnabled = opts.ScheduledJobEnabled
 	cfg.StreamEnabled = opts.StreamEnabled

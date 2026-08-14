@@ -11,11 +11,11 @@ import (
 )
 
 // pidFilePath is the deterministic, flag-independent location of the running
-// `fc-dev start` instance's PID file, so `fc-dev stop` can find it without
+// `fcdev start` instance's PID file, so `fcdev stop` can find it without
 // being told the same flags. Lives alongside the embedded-pg data dir under the
 // per-user data directory. Override with --pid-file (or FC_DEV_PID_FILE).
 func pidFilePath() string {
-	return filepath.Join(userDataDir(), "flowcatalyst", "fc-dev.pid")
+	return filepath.Join(userDataDir(), "flowcatalyst", "fcdev.pid")
 }
 
 // writePIDFile records the current process's PID at path, creating parent

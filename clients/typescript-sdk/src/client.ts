@@ -48,7 +48,7 @@ export interface ClientCredentialsConfig extends TokenManagerConfig {
 	 * (`/monitoring/in-flight-messages/...`). The router runs at a
 	 * different host than the platform; if not set, router calls fall
 	 * back to `baseUrl` (correct only when router and platform share a
-	 * host, e.g. `fc-dev`).
+	 * host, e.g. `fcdev`).
 	 */
 	routerBaseUrl?: string;
 }

@@ -20,8 +20,8 @@ import (
 // newMCPCmd runs the FlowCatalyst MCP server. It defaults to stdio (the usual
 // way an MCP client launches a server as a subprocess); pass --http <bind> to
 // listen for the streamable-HTTP transport instead. Config is resolved from
-// the environment / the fc-dev-bootstrapped credentials file, with flag
-// overrides. For the normal dev workflow `fc-dev start --mcp` boots the
+// the environment / the fcdev-bootstrapped credentials file, with flag
+// overrides. For the normal dev workflow `fcdev start --mcp` boots the
 // HTTP server alongside everything else.
 func newMCPCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -63,7 +63,7 @@ func runMCP(cmd *cobra.Command, _ []string) error {
 	bind, _ := cmd.Flags().GetString("http")
 	if bind == "" {
 		// stdio transport: JSON-RPC over stdin/stdout, logs to stderr.
-		slog.Info("fc-dev mcp serving over stdio", "platform_url", cfg.BaseURL)
+		slog.Info("fcdev mcp serving over stdio", "platform_url", cfg.BaseURL)
 		return srv.RunStdio(ctx)
 	}
 	return serveMCPHTTP(ctx, srv, bind, cfg.BaseURL)
@@ -77,7 +77,7 @@ func serveMCPHTTP(ctx context.Context, srv *mcp.Server, bind, platformURL string
 	httpSrv := &http.Server{Addr: bind, Handler: r, ReadHeaderTimeout: 5 * time.Second}
 	errCh := make(chan error, 1)
 	go func() {
-		slog.Info("fc-dev mcp listening", "addr", bind, "platform_url", platformURL)
+		slog.Info("fcdev mcp listening", "addr", bind, "platform_url", platformURL)
 		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 		}

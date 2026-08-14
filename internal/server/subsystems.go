@@ -384,7 +384,7 @@ func buildOutboxRepo(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg) (outbo
 
 // StartMCP runs the read-only MCP HTTP server on its own port.
 // Defaults to localhost dial when MCPPlatformURL is empty so that
-// fc-dev's --mcp just-works against the in-process platform listener.
+// fcdev's --mcp just-works against the in-process platform listener.
 //
 // Blocks until ctx is cancelled.
 func StartMCP(ctx context.Context, cfg EnvCfg) {
@@ -400,10 +400,10 @@ func StartMCP(ctx context.Context, cfg EnvCfg) {
 		ClientID:     cfg.MCPClientID,
 		ClientSecret: cfg.MCPClientSecret,
 	}
-	// When no creds came from the env, fall back to the fc-dev-bootstrapped
+	// When no creds came from the env, fall back to the fcdev-bootstrapped
 	// credentials file (~/.cache/flowcatalyst-dev/mcp-credentials.json) so
-	// `fc-dev start --mcp` authenticates via client_credentials like the
-	// standalone `fc-dev mcp` — otherwise the in-process tools 403 against the
+	// `fcdev start --mcp` authenticates via client_credentials like the
+	// standalone `fcdev mcp` — otherwise the in-process tools 403 against the
 	// auth-gated platform. The bootstrap runs before StartMCP, so the file
 	// exists by now. BaseURL stays the local listener.
 	if mcfg.ClientID == "" && mcfg.ClientSecret == "" {

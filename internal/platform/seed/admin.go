@@ -37,7 +37,7 @@ const (
 // Reads credentials from the env vars above. When email/password are
 // unset on a fresh install the function logs a warning and returns
 // nil — production deployments must opt in explicitly so we don't bake
-// a known password into prod. fc-dev pre-sets the env to
+// a known password into prod. fcdev pre-sets the env to
 // admin@flowcatalyst.local / DevPassword123! so the local workflow
 // "just works".
 //

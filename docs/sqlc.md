@@ -131,7 +131,7 @@ The mechanical steps that worked for the client repo (recorded so the rest of th
 3. **Run `make sqlc`.** Confirm the generated file appears in `internal/sqlc/dbq/`.
 4. **Rewrite `repository.go`.** Replace the hand-rolled pgx calls with `r.q.<Method>(ctx, ...)`, project the row type onto the aggregate entity in a small `rowToEntity` helper.
 5. **`go build ./...`** — the sqlc Querier interface is strict; if you missed a method or got a param type wrong, you'll know.
-6. **Boot fc-dev + smoke the relevant endpoints.** This is where sink-side bugs (event ID size, column-name mismatches, ON CONFLICT against composite unique indexes) tend to surface for the first time.
+6. **Boot fcdev + smoke the relevant endpoints.** This is where sink-side bugs (event ID size, column-name mismatches, ON CONFLICT against composite unique indexes) tend to surface for the first time.
 
 ## What sqlc does NOT solve
 

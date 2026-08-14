@@ -31,8 +31,8 @@ func newDBCmd() *cobra.Command {
 func newDBUpgradeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "upgrade",
-		Short: "Re-initialise the embedded Postgres onto the major version this fc-dev embeds",
-		Long: `Bring the embedded Postgres data directory onto the major version this fc-dev
+		Short: "Re-initialise the embedded Postgres onto the major version this fcdev embeds",
+		Long: `Bring the embedded Postgres data directory onto the major version this fcdev
 embeds (PG` + pinnedPGMajor() + `).
 
 A Postgres major upgrade is NOT in-place, and the bundled distribution ships no
@@ -44,7 +44,7 @@ pg_dump/pg_upgrade tools, so this re-initialises the cluster from scratch:
 
 A dev database is reproducible from migrations + seed, so this is the intended
 path. The backup lets you recover anything bespoke by pointing your own Postgres
-of the old major at it. Stop 'fc-dev start' before running this.`,
+of the old major at it. Stop 'fcdev start' before running this.`,
 		Args: cobra.NoArgs,
 		RunE: runDBUpgrade,
 	}
@@ -68,7 +68,7 @@ func runDBUpgrade(cmd *cobra.Command, _ []string) error {
 	target := pinnedPGMajor()
 	switch have {
 	case "":
-		slog.Info("no embedded cluster yet — nothing to upgrade; 'fc-dev start' will initialise it", "target", "PG"+target)
+		slog.Info("no embedded cluster yet — nothing to upgrade; 'fcdev start' will initialise it", "target", "PG"+target)
 		return nil
 	case target:
 		slog.Info("embedded Postgres already on the target major — nothing to do", "version", "PG"+target)
@@ -113,7 +113,7 @@ func runDBUpgrade(cmd *cobra.Command, _ []string) error {
 }
 
 // initEmbeddedAndSeed boots a fresh embedded cluster, runs migrations, and seeds
-// the bootstrap admin — the same first-run sequence `fc-dev start` performs.
+// the bootstrap admin — the same first-run sequence `fcdev start` performs.
 func initEmbeddedAndSeed(ctx context.Context, dataPath string, port int) error {
 	pg, err := newEmbeddedPG(dataPath, port)
 	if err != nil {

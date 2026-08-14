@@ -26,7 +26,7 @@ import (
 // provision the outbox with one command instead of hand-running DDL.
 //
 // The schema is identical across all SDKs and matches what the outbox
-// processor (fc-server / fc-dev outbox / the Rust + Java processors) reads, so
+// processor (fc-server / fcdev outbox / the Rust + Java processors) reads, so
 // it doesn't matter which SDK or runtime writes the rows.
 func newOutboxCreateTableCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -45,9 +45,9 @@ reads, so it doesn't matter whether the SDK or this command provisions it
 first. All three are idempotent — safe to re-run.
 
 Examples:
-  fc-dev outbox create-table --db-type pg     --db-url postgres://user:pass@localhost:5432/app
-  fc-dev outbox create-table --db-type mysql  --db-url 'user:pass@tcp(localhost:3306)/app'
-  fc-dev outbox create-table --db-type mongodb --db-url mongodb://localhost:27017 --db-name app`,
+  fcdev outbox create-table --db-type pg     --db-url postgres://user:pass@localhost:5432/app
+  fcdev outbox create-table --db-type mysql  --db-url 'user:pass@tcp(localhost:3306)/app'
+  fcdev outbox create-table --db-type mongodb --db-url mongodb://localhost:27017 --db-name app`,
 		Args: cobra.NoArgs,
 		RunE: runOutboxCreateTable,
 	}

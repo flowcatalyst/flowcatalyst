@@ -5,7 +5,7 @@
 // modernc.org/sqlite driver is a focused follow-up — see the TODO
 // inside ClaimPending.
 //
-// The team's pattern: when fc-dev needs an embedded SQLite outbox for
+// The team's pattern: when fcdev needs an embedded SQLite outbox for
 // local-dev consumer apps, swap the registry factory to this package's
 // New(). For prod, stick with the Postgres backend.
 package sqlite

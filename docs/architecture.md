@@ -20,14 +20,14 @@ flowcatalyst-go/
 │   ├── fc-router/main.go
 │   ├── fc-stream-processor/main.go
 │   ├── fc-outbox-processor/main.go
-│   └── fc-dev/                          # dev monolith; `mcp` subcommand runs the MCP server
+│   └── fcdev/                          # dev monolith; `mcp` subcommand runs the MCP server
 │       ├── main.go
 │       └── subcommands/                # start, init, fresh, mcp, outbox, upgrade
 │
 │   NOTE: today only `cmd/fc-server` (unified, FC_*_ENABLED toggles) and
-│   `cmd/fc-dev` are built. The standalone service binaries above are an
+│   `cmd/fcdev` are built. The standalone service binaries above are an
 │   aspirational layout — by project decision the MCP server ships inside
-│   fc-server / `fc-dev mcp`, not as a separate fc-mcp-server binary.
+│   fc-server / `fcdev mcp`, not as a separate fc-mcp-server binary.
 ├── internal/                           # non-importable internals
 │   ├── common/                         # = crates/fc-common
 │   ├── config/                         # = crates/fc-config
@@ -161,7 +161,7 @@ flowcatalyst-go/
 | `fc-outbox` | `internal/outbox` (+ backend subdirs) | 5k | Medium — buffer/distributor |
 | `fc-platform` | `internal/platform/*` | **75k** | **High** — long pole |
 | `fc-sdk` | `pkg/fcsdk` | 14k | Medium — public API |
-| `fc-mcp` | `internal/mcp` (+ `cmd/fc-dev mcp`) | 2k | Low — MCP server on the official go-sdk |
+| `fc-mcp` | `internal/mcp` (+ `cmd/fcdev mcp`) | 2k | Low — MCP server on the official go-sdk |
 | Binaries | `cmd/*` | 5.7k | Low — wiring |
 
 ---
@@ -263,7 +263,7 @@ type Publisher interface {
 Backend impls:
 - `internal/queue/sqs` — `aws-sdk-go-v2/service/sqs`
 - `internal/queue/postgres` — uses the `internal/queue/postgres` `pg_queue_messages` table (same schema as Rust)
-- `internal/queue/sqlite` — same schema as Rust, for `fc-dev`
+- `internal/queue/sqlite` — same schema as Rust, for `fcdev`
 - `internal/queue/nats` — `nats-io/nats.go` JetStream
 - `internal/queue/amqp` — `rabbitmq/amqp091-go` (the Rust crate uses `lapin` which is AMQP-not-OpenWire-despite-the-fc-queue-name; the Rust feature is misnamed "activemq" but speaks AMQP)
 
@@ -348,7 +348,7 @@ All claim queries use `FOR UPDATE SKIP LOCKED` — pgx handles this identically 
 `internal/mcp`, built on the official `github.com/modelcontextprotocol/go-sdk`
 (the Go analog of Rust's `rmcp`). The SDK handles the `initialize` handshake,
 capability negotiation, and both transports:
-- stdio (default for `fc-dev mcp`) — JSON-RPC over stdin/stdout, logs to stderr.
+- stdio (default for `fcdev mcp`) — JSON-RPC over stdin/stdout, logs to stderr.
 - streamable-HTTP — mounted at `/mcp` (default `127.0.0.1:8090`, `FC_MCP_BIND`/`FC_MCP_PORT`).
 
 Read-only tool surface (1:1 with Rust): `list_event_types`, `get_event_type`,
@@ -358,7 +358,7 @@ Read-only tool surface (1:1 with Rust): `list_event_types`, `get_event_type`,
 (`flowcatalyst://{openapi/platform,applications,roles,event-types,subscriptions}`)
 and hierarchical single-entity templates (`…/event-types/{id}`, etc.). Auth is
 OAuth2 client_credentials with an in-memory token cache (refresh 60s before
-expiry); `fc-dev start` bootstraps a local MCP client + credentials file.
+expiry); `fcdev start` bootstraps a local MCP client + credentials file.
 
 ---
 

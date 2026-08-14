@@ -77,9 +77,9 @@ var freshTables = []string{
 //
 // When --database-url / FC_DATABASE_URL is set, fresh connects to that
 // URL and skips the embedded Postgres. Otherwise it starts the
-// embedded Postgres (using the same data dir as `fc-dev start`), runs
-// the truncate + reseed, then stops it. That way `bin/fc-dev fresh` is
-// self-contained — no need to leave `fc-dev start` running in another
+// embedded Postgres (using the same data dir as `fcdev start`), runs
+// the truncate + reseed, then stops it. That way `bin/fcdev fresh` is
+// self-contained — no need to leave `fcdev start` running in another
 // terminal just to wipe state.
 func newFreshCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -113,7 +113,7 @@ func runFresh(cmd *cobra.Command, _ []string) error {
 
 	// Resolve the target URL: explicit --database-url wins; otherwise
 	// boot the embedded Postgres ourselves so the command is self-
-	// contained when fc-dev start isn't running.
+	// contained when fcdev start isn't running.
 	url := getStr("database-url")
 	var pg *embeddedpostgres.EmbeddedPostgres
 	if url == "" {
@@ -169,8 +169,8 @@ func runFresh(cmd *cobra.Command, _ []string) error {
 	slog.Info("FlowCatalyst tables truncated", "table_count", len(freshTables))
 
 	// Re-seed so the next sign-in works without restarting. Match
-	// fc-dev start's bootstrap defaults so the post-truncate admin
-	// matches what a fresh `fc-dev start` would create.
+	// fcdev start's bootstrap defaults so the post-truncate admin
+	// matches what a fresh `fcdev start` would create.
 	setEnvDefault(seed.EnvBootstrapEmail, "admin@flowcatalyst.local")
 	setEnvDefault(seed.EnvBootstrapPassword, "DevPassword123!")
 	setEnvDefault(seed.EnvBootstrapName, "Local Admin")

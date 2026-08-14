@@ -1,12 +1,12 @@
 <#
 .SYNOPSIS
-fc-dev installer for Windows. PowerShell 5.1+ (built into Windows 10/11).
+fcdev installer for Windows. PowerShell 5.1+ (built into Windows 10/11).
 
 .DESCRIPTION
-Downloads the latest fc-dev release from GitHub, verifies its SHA256,
-extracts it into %LOCALAPPDATA%\Programs\fc-dev, and prepends that path
+Downloads the latest fcdev release from GitHub, verifies its SHA256,
+extracts it into %LOCALAPPDATA%\Programs\fcdev, and prepends that path
 to your user PATH. Re-runs are safe: if the requested version is already
-installed it exits without changes. Once on PATH, `fc-dev upgrade`
+installed it exits without changes. Once on PATH, `fcdev upgrade`
 self-updates without re-running this script.
 
 .EXAMPLE
@@ -20,8 +20,8 @@ irm https://raw.githubusercontent.com/flowcatalyst/flowcatalyst/main/install.ps1
 
 .NOTES
 Environment variables:
-  FC_DEV_VERSION       Pin a specific version (default: latest fc-dev/v*)
-  FC_DEV_INSTALL_DIR   Install destination (default: %LOCALAPPDATA%\Programs\fc-dev)
+  FC_DEV_VERSION       Pin a specific version (default: latest fcdev/v*)
+  FC_DEV_INSTALL_DIR   Install destination (default: %LOCALAPPDATA%\Programs\fcdev)
   FC_DEV_FORCE         "1" to reinstall even if the same version is present
 #>
 
@@ -31,9 +31,9 @@ $ErrorActionPreference = 'Stop'
     [Net.ServicePointManager]::SecurityProtocol
 
 $Repo      = 'flowcatalyst/flowcatalyst'
-$TagPrefix = 'fc-dev/v'
-$Bin       = 'fc-dev.exe'
-# fc-dev assets follow Go's GOOS-GOARCH naming. We publish windows-amd64 only;
+$TagPrefix = 'fcdev/v'
+$Bin       = 'fcdev.exe'
+# fcdev assets follow Go's GOOS-GOARCH naming. We publish windows-amd64 only;
 # Windows on ARM runs the x64 binary under Microsoft's emulator.
 $Target    = 'windows-amd64'
 
@@ -46,11 +46,11 @@ function Exit-Err  { param([string]$Msg) Write-Host "error: $Msg" -ForegroundCol
 # ─── latest-version lookup ─────────────────────────────────────────────────
 
 function Get-LatestFcDevVersion {
-    # Filtering by `fc-dev/v*` is mandatory: the same repo also tags
+    # Filtering by `fcdev/v*` is mandatory: the same repo also tags
     # `laravel-sdk/v…` / `typescript-sdk/v…`, so /releases/latest would
-    # return whichever tag was last published — not necessarily fc-dev.
+    # return whichever tag was last published — not necessarily fcdev.
     $api = "https://api.github.com/repos/$Repo/releases?per_page=100"
-    $headers = @{ 'User-Agent' = 'fc-dev-install.ps1' }
+    $headers = @{ 'User-Agent' = 'fcdev-install.ps1' }
     try {
         $releases = Invoke-RestMethod -Uri $api -Headers $headers
     } catch {
@@ -70,7 +70,7 @@ function Get-LatestFcDevVersion {
         Select-Object -First 1
 
     if (-not $latest) {
-        Exit-Err "no fc-dev releases found in $Repo"
+        Exit-Err "no fcdev releases found in $Repo"
     }
     return $latest.Raw
 }
@@ -86,7 +86,7 @@ function Add-ToUserPath {
     if ($entries -contains $Dir) { return $false }
     $newPath = ($entries + $Dir) -join ';'
     [Environment]::SetEnvironmentVariable('PATH', $newPath, 'User')
-    # Update the current session too so the user can invoke `fc-dev` without
+    # Update the current session too so the user can invoke `fcdev` without
     # opening a new shell.
     $env:PATH = "$env:PATH;$Dir"
     return $true
@@ -99,7 +99,7 @@ Write-Info "Target: $Target"
 
 $version = $env:FC_DEV_VERSION
 if (-not $version) {
-    Write-Info 'Looking up the latest fc-dev release'
+    Write-Info 'Looking up the latest fcdev release'
     $version = Get-LatestFcDevVersion
     Write-Info "Latest: $version"
 } else {
@@ -108,30 +108,30 @@ if (-not $version) {
 
 $installDir = $env:FC_DEV_INSTALL_DIR
 if (-not $installDir) {
-    $installDir = Join-Path $env:LOCALAPPDATA 'Programs\fc-dev'
+    $installDir = Join-Path $env:LOCALAPPDATA 'Programs\fcdev'
 }
 Write-Info "Installing into $installDir"
 
 $installedBin = Join-Path $installDir $Bin
 
-# Idempotency check — same version already installed? `fc-dev version` prints
-# "fc-dev X.Y.Z (rev)"; the second token is the semver.
+# Idempotency check — same version already installed? `fcdev version` prints
+# "fcdev X.Y.Z (rev)"; the second token is the semver.
 if ((Test-Path $installedBin) -and ($env:FC_DEV_FORCE -ne '1')) {
     $existing = ''
     try { $existing = ((& $installedBin version 2>$null) -split '\s+')[1] } catch {}
     if ($existing -eq $version) {
-        Write-Info "fc-dev v$version is already installed at $installedBin -- nothing to do."
+        Write-Info "fcdev v$version is already installed at $installedBin -- nothing to do."
         Write-Info 'Set $env:FC_DEV_FORCE = "1" to reinstall.'
         return
     }
 }
 
-$stem     = "fc-dev-v$version-$Target"
+$stem     = "fcdev-v$version-$Target"
 $asset    = "$stem.zip"
 $assetUrl = "https://github.com/$Repo/releases/download/$TagPrefix$version/$asset"
 $shaUrl   = "$assetUrl.sha256"
 
-$tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "fc-dev-install-$([guid]::NewGuid())") -Force
+$tmp = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "fcdev-install-$([guid]::NewGuid())") -Force
 try {
     $archive = Join-Path $tmp $asset
     Write-Info "Downloading $asset"
@@ -162,7 +162,7 @@ try {
     $extractRoot = Join-Path $tmp 'extracted'
     Expand-Archive -Path $archive -DestinationPath $extractRoot -Force
 
-    # Archive layout: fc-dev-vX.Y.Z-windows-amd64/fc-dev.exe
+    # Archive layout: fcdev-vX.Y.Z-windows-amd64/fcdev.exe
     $stagedBin = Join-Path $extractRoot (Join-Path $stem $Bin)
     if (-not (Test-Path $stagedBin)) {
         Exit-Err "extracted archive missing $Bin at $stagedBin"
@@ -184,7 +184,7 @@ try {
     Write-Info "Installed: $installedBin"
     try { & $installedBin version } catch {}
 
-    Write-Info 'Done. Run: fc-dev'
+    Write-Info 'Done. Run: fcdev'
     if (-not $verified) {
         Write-Warn 'This install was not SHA256-verified. Re-run later when the sidecar is available, or pin a version known to publish it.'
     }

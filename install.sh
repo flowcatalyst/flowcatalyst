@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# fc-dev installer for macOS and Linux.
+# fcdev installer for macOS and Linux.
 #
 # Quick install (latest release):
 #   curl -fsSL https://raw.githubusercontent.com/flowcatalyst/flowcatalyst/main/install.sh | sh
@@ -8,21 +8,21 @@
 #   curl -fsSL https://raw.githubusercontent.com/flowcatalyst/flowcatalyst/main/install.sh | FC_DEV_VERSION=0.5.0 sh
 #
 # Environment variables:
-#   FC_DEV_VERSION       Pin a specific version (default: latest fc-dev/v* release)
+#   FC_DEV_VERSION       Pin a specific version (default: latest fcdev/v* release)
 #   FC_DEV_INSTALL_DIR   Where to write the binary (default: /usr/local/bin if
 #                        writable without sudo, else $HOME/.local/bin)
 #   FC_DEV_FORCE         "1" to reinstall even if the same version is already
 #                        present
 #
 # Re-runs are safe: if the binary is already installed at the same version,
-# the script exits without touching anything. Once fc-dev is on your PATH,
-# `fc-dev upgrade` self-updates without re-running this script.
+# the script exits without touching anything. Once fcdev is on your PATH,
+# `fcdev upgrade` self-updates without re-running this script.
 
 set -eu
 
 REPO="flowcatalyst/flowcatalyst"
-TAG_PREFIX="fc-dev/v"
-BIN="fc-dev"
+TAG_PREFIX="fcdev/v"
+BIN="fcdev"
 
 # ─── output helpers ────────────────────────────────────────────────────────
 
@@ -32,7 +32,7 @@ err()   { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
 # ─── platform detection ────────────────────────────────────────────────────
 
-# fc-dev release assets are named with Go's GOOS-GOARCH convention
+# fcdev release assets are named with Go's GOOS-GOARCH convention
 # (darwin-arm64, linux-amd64, …), not Rust target triples.
 detect_target() {
     os=$(uname -s)
@@ -60,7 +60,7 @@ need_cmd() {
 
 # ─── latest-version lookup ─────────────────────────────────────────────────
 
-# Fetch the highest semver tag matching fc-dev/vX.Y.Z. Anonymous GitHub API
+# Fetch the highest semver tag matching fcdev/vX.Y.Z. Anonymous GitHub API
 # requests are limited to 60/hour per source IP — fine for a manual install
 # but documented here in case someone tries to script bulk installs.
 fetch_latest_version() {
@@ -71,7 +71,7 @@ fetch_latest_version() {
     body=$(curl -fsSL "$api") || err "could not query GitHub API at $api"
 
     # POSIX-pure parsing of the JSON. Each tag_name lands on its own line, we
-    # keep only `fc-dev/v*` ones, strip the prefix, keep clean X.Y.Z, and pick
+    # keep only `fcdev/v*` ones, strip the prefix, keep clean X.Y.Z, and pick
     # the max semver via a zero-padded sort key.
     version=$(
         printf '%s' "$body" \
@@ -89,7 +89,7 @@ fetch_latest_version() {
     )
 
     if [ -z "$version" ]; then
-        err "no fc-dev releases found at $api (looking for tags matching ${TAG_PREFIX}X.Y.Z)"
+        err "no fcdev releases found at $api (looking for tags matching ${TAG_PREFIX}X.Y.Z)"
     fi
     printf '%s' "$version"
 }
@@ -141,7 +141,7 @@ main() {
         version=$FC_DEV_VERSION
         info "Using pinned version $version (FC_DEV_VERSION)"
     else
-        info "Looking up the latest fc-dev release"
+        info "Looking up the latest fcdev release"
         version=$(fetch_latest_version)
         info "Latest: $version"
     fi
@@ -155,17 +155,17 @@ main() {
     if [ -x "$install_dir/$BIN" ] && [ "${FC_DEV_FORCE:-0}" != "1" ]; then
         existing=$("$install_dir/$BIN" version 2>/dev/null | awk '{print $2}' || true)
         if [ "$existing" = "$version" ]; then
-            info "fc-dev v$version is already installed at $install_dir/$BIN — nothing to do."
+            info "fcdev v$version is already installed at $install_dir/$BIN — nothing to do."
             info "Set FC_DEV_FORCE=1 to reinstall."
             return 0
         fi
     fi
 
-    asset="fc-dev-v${version}-${target}.tar.gz"
+    asset="fcdev-v${version}-${target}.tar.gz"
     url="https://github.com/${REPO}/releases/download/${TAG_PREFIX}${version}/${asset}"
     sha_url="${url}.sha256"
 
-    tmp=$(mktemp -d 2>/dev/null || mktemp -d -t fc-dev-install)
+    tmp=$(mktemp -d 2>/dev/null || mktemp -d -t fcdev-install)
     # Defensive cleanup in case the trap doesn't fire under a piped sh.
     trap 'rm -rf "$tmp"' EXIT INT HUP TERM
 
@@ -182,7 +182,7 @@ main() {
 
     info "Extracting"
     tar -xzf "$tmp/$asset" -C "$tmp"
-    extracted_bin="$tmp/fc-dev-v${version}-${target}/$BIN"
+    extracted_bin="$tmp/fcdev-v${version}-${target}/$BIN"
     if [ ! -x "$extracted_bin" ]; then
         err "extracted archive missing $BIN at $extracted_bin"
     fi
@@ -201,7 +201,7 @@ main() {
     fi
 
     # macOS quarantines anything downloaded by curl. Strip the attribute so the
-    # first launch doesn't hit "fc-dev cannot be opened because it is from an
+    # first launch doesn't hit "fcdev cannot be opened because it is from an
     # unidentified developer".
     if [ "$(uname -s)" = "Darwin" ]; then
         xattr -d com.apple.quarantine "$install_dir/$BIN" 2>/dev/null || true
@@ -211,7 +211,7 @@ main() {
     "$install_dir/$BIN" version 2>/dev/null || true
 
     # PATH hint — if the install dir isn't on PATH the user will scratch their
-    # head trying to invoke `fc-dev`. Tell them explicitly with the right
+    # head trying to invoke `fcdev`. Tell them explicitly with the right
     # rc-file line for their shell.
     case ":$PATH:" in
         *":$install_dir:"*) ;;
@@ -231,7 +231,7 @@ main() {
             ;;
     esac
 
-    info "Done. Run: fc-dev"
+    info "Done. Run: fcdev"
 }
 
 main "$@"

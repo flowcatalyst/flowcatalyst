@@ -228,7 +228,7 @@ index-only pass. Flagging, not scheduling.
   PARTITION <child_idx>` for each, so the parent index is marked valid without a global
   rebuild. The partition manager will create the index on future partitions automatically
   once it exists on the parent.
-- For fc-dev's embedded Postgres (assumed near-empty), a plain `CREATE INDEX IF NOT EXISTS`
+- For fcdev's embedded Postgres (assumed near-empty), a plain `CREATE INDEX IF NOT EXISTS`
   in a new goose migration is fine.
 - **Validate before committing.** Drive the monitoring UI / `/api/dispatch-jobs` +
   `/api/events` lists, then read `pg_stat_statements` for the actual offending plans and

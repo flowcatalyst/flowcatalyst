@@ -29,7 +29,7 @@ const swaggerUIHTML = `<!DOCTYPE html>
 var Version = "dev"
 
 // healthHandler is the package-level /health stub used by Run when no
-// platform-mounted handler beats it. fc-server / fc-dev get the same
+// platform-mounted handler beats it. fc-server / fcdev get the same
 // shape so monitoring tooling can scrape both equivalently. Matches the
 // Rust health_handler shape: {"status":"UP","version":...}.
 func healthHandler(w http.ResponseWriter, _ *http.Request) {

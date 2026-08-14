@@ -5,7 +5,7 @@
 // Phase 1 ships:
 //   - Postgres backend (used by the embedded-queue dev path and as the
 //     prod fallback when SQS is unavailable)
-//   - SQLite backend (fc-dev embedded mode)
+//   - SQLite backend (fcdev embedded mode)
 //   - SQS backend (production)
 //
 // Future backends (NATS, AMQP) plug in via the same Register pattern.

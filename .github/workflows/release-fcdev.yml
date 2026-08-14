@@ -1,13 +1,13 @@
-name: Release fc-dev
+name: Release fcdev
 
-# Triggered by pushing a tag like `fc-dev/v0.4.17` (cut via `make release-dev
-# BUMP=patch`). Cross-compiles the fc-dev developer binary for macOS
+# Triggered by pushing a tag like `fcdev/v0.4.17` (cut via `make release-dev
+# BUMP=patch`). Cross-compiles the fcdev developer binary for macOS
 # (arm64/amd64), Linux (amd64/arm64) and Windows (amd64), then publishes a
 # GitHub Release with each archive + a SHA256 sidecar. Linux archives are
 # additionally cosign-signed (keyless: GitHub OIDC → Fulcio cert → Rekor log,
 # no managed keys), matching the Rust release pipeline.
 #
-# Why one runner (no native build matrix like the Rust fc-dev): Go cross-
+# Why one runner (no native build matrix like the Rust fcdev): Go cross-
 # compiles cleanly. The embedded Postgres (fergusstrange/embedded-postgres)
 # downloads platform binaries at *runtime*, so there is nothing platform-
 # specific to embed at build time — unlike Rust's postgresql_embedded, which
@@ -17,11 +17,11 @@ name: Release fc-dev
 on:
   push:
     tags:
-      - "fc-dev/v*"
+      - "fcdev/v*"
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to (re)build, e.g. fc-dev/v0.4.17"
+        description: "Existing tag to (re)build, e.g. fcdev/v0.4.17"
         required: true
 
 permissions:
@@ -30,19 +30,19 @@ permissions:
 
 jobs:
   release:
-    name: Build + publish fc-dev
+    name: Build + publish fcdev
     runs-on: ubuntu-latest
     steps:
       - name: Resolve tag + version
         id: meta
         run: |
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
-          if [[ ! "$TAG" =~ ^fc-dev/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "Tag '$TAG' does not match fc-dev/vX.Y.Z[-suffix]" >&2
+          if [[ ! "$TAG" =~ ^fcdev/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Tag '$TAG' does not match fcdev/vX.Y.Z[-suffix]" >&2
             exit 1
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=${TAG#fc-dev/v}" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#fcdev/v}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v4
         with:
@@ -90,20 +90,20 @@ jobs:
 
           echo "$targets" | while read -r goos goarch ext; do
             [ -z "$goos" ] && continue
-            bin="fc-dev"; [ "$goos" = "windows" ] && bin="fc-dev.exe"
-            stage="fc-dev-v${VERSION}-${goos}-${goarch}"
+            bin="fcdev"; [ "$goos" = "windows" ] && bin="fcdev.exe"
+            stage="fcdev-v${VERSION}-${goos}-${goarch}"
             mkdir -p "$stage"
             echo ">> building ${goos}/${goarch}"
             CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
-              go build -trimpath -ldflags='-s -w' -o "$stage/$bin" ./cmd/fc-dev
+              go build -trimpath -ldflags='-s -w' -o "$stage/$bin" ./cmd/fcdev
             cp README.md LICENSE "$stage/" 2>/dev/null || true
 
             archive="${stage}.${ext}"
             case "$ext" in
               # Archive the staging DIRECTORY (not its contents) so the binary
-              # lives at "<stem>/fc-dev[.exe]" — consistent with tar.gz, and the
-              # layout `fc-dev upgrade` expects. (Previously the zip cd'd in and
-              # archived `.`, flattening fc-dev.exe to the root → upgrade failed
+              # lives at "<stem>/fcdev[.exe]" — consistent with tar.gz, and the
+              # layout `fcdev upgrade` expects. (Previously the zip cd'd in and
+              # archived `.`, flattening fcdev.exe to the root → upgrade failed
               # with "binary not found in archive".)
               zip)    zip -qr "dist/$archive" "$stage" ;;
               tar.gz) tar -czf "dist/$archive" "$stage" ;;
@@ -129,24 +129,24 @@ jobs:
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
           set -euo pipefail
-          NOTES="fc-dev v${VERSION}
+          NOTES="fcdev v${VERSION}
 
           ### Install
-          Download the archive for your platform, extract, and put \`fc-dev\` on your PATH.
+          Download the archive for your platform, extract, and put \`fcdev\` on your PATH.
 
           ### Verify
           Each archive ships a \`.sha256\` sidecar:
           \`\`\`
-          shasum -a 256 -c fc-dev-v${VERSION}-<os>-<arch>.tar.gz.sha256
+          shasum -a 256 -c fcdev-v${VERSION}-<os>-<arch>.tar.gz.sha256
           \`\`\`
           Linux archives are additionally cosign-signed (keyless):
           \`\`\`
           cosign verify-blob \\
-            --signature fc-dev-v${VERSION}-linux-amd64.tar.gz.sig \\
-            --certificate fc-dev-v${VERSION}-linux-amd64.tar.gz.pem \\
-            --certificate-identity-regexp '^https://github.com/flowcatalyst/flowcatalyst-go/.github/workflows/release-fc-dev.yml@refs/tags/fc-dev/v' \\
+            --signature fcdev-v${VERSION}-linux-amd64.tar.gz.sig \\
+            --certificate fcdev-v${VERSION}-linux-amd64.tar.gz.pem \\
+            --certificate-identity-regexp '^https://github.com/flowcatalyst/flowcatalyst-go/.github/workflows/release-fcdev.yml@refs/tags/fcdev/v' \\
             --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \\
-            fc-dev-v${VERSION}-linux-amd64.tar.gz
+            fcdev-v${VERSION}-linux-amd64.tar.gz
           \`\`\`"
 
           # Upload to an existing (e.g. draft) release for this tag, else create one.
@@ -154,7 +154,7 @@ jobs:
             gh release upload "$TAG" dist/* --clobber
           else
             gh release create "$TAG" dist/* \
-              --title "fc-dev v${VERSION}" \
+              --title "fcdev v${VERSION}" \
               --notes "$NOTES" \
               --verify-tag
           fi

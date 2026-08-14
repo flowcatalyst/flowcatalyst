@@ -7,7 +7,7 @@
 
 GO ?= go
 PNPM ?= pnpm
-BINARIES := fc-server fc-dev
+BINARIES := fc-server fcdev
 FC_API_PORT ?= 8080
 
 build: frontend go-build ## Build the frontend then every Go binary
@@ -34,30 +34,30 @@ frontend: frontend-install ## Build the Vue SPA into frontend/dist (required for
 frontend-install: ## Install frontend deps (idempotent; pnpm skips when up-to-date)
 	@cd frontend && $(PNPM) install --frozen-lockfile
 
-frontend-dev: ## Run the Vite dev server (proxies API to fc-dev)
+frontend-dev: ## Run the Vite dev server (proxies API to fcdev)
 	@cd frontend && VITE_BACKEND_PORT=$(FC_API_PORT) $(PNPM) dev
 
 # ── Run / dev loop ───────────────────────────────────────────────────
-# fc-dev runs every subsystem against an embedded Postgres — no Docker,
+# fcdev runs every subsystem against an embedded Postgres — no Docker,
 # no compose, no separate migrate step (unlike the Rust repo's justfile).
 
-run: ## Run fc-dev once against embedded Postgres (no reload)
-	$(GO) run ./cmd/fc-dev start
+run: ## Run fcdev once against embedded Postgres (no reload)
+	$(GO) run ./cmd/fcdev start
 
 run-server: ## Run the unified fc-server (subsystems toggled via env)
 	$(GO) run ./cmd/fc-server
 
-dev: ## Run fc-dev with live reload (requires air; see install-tools)
+dev: ## Run fcdev with live reload (requires air; see install-tools)
 	@which air >/dev/null 2>&1 || { echo "air not found — run 'make install-tools'"; exit 1; }
 	air
 
-dev-debug: ## Run fc-dev with live reload + debug logging
+dev-debug: ## Run fcdev with live reload + debug logging
 	@which air >/dev/null 2>&1 || { echo "air not found — run 'make install-tools'"; exit 1; }
 	FC_LOG_LEVEL=debug air
 
-dev-full: ## Run fc-dev + Vite together (Ctrl-C stops both)
+dev-full: ## Run fcdev + Vite together (Ctrl-C stops both)
 	@trap 'kill 0' EXIT; \
-	FC_API_PORT=$(FC_API_PORT) $(GO) run ./cmd/fc-dev start & \
+	FC_API_PORT=$(FC_API_PORT) $(GO) run ./cmd/fcdev start & \
 	( cd frontend && VITE_BACKEND_PORT=$(FC_API_PORT) $(PNPM) dev ) & \
 	wait
 
@@ -70,13 +70,13 @@ setup: init ## First-time setup: bootstrap, then print next steps
 	@echo "  Metrics: http://localhost:9090/metrics"
 
 init: ## Bootstrap admin user + default tenant + .env
-	$(GO) run ./cmd/fc-dev init
+	$(GO) run ./cmd/fcdev init
 
 fresh: ## Truncate every FlowCatalyst table (preserves schema)
-	$(GO) run ./cmd/fc-dev fresh
+	$(GO) run ./cmd/fcdev fresh
 
 db-reset: ## Wipe the embedded Postgres data dir, then start fresh
-	$(GO) run ./cmd/fc-dev start --embedded-db-reset
+	$(GO) run ./cmd/fcdev start --embedded-db-reset
 
 test: test-unit test-integration ## Run all tests
 
@@ -148,11 +148,11 @@ frontend-types-verify: ## Verify the SPA's generated API types match the lockfil
 ci: lint sqlc-verify test analyze api-diff frontend-types-verify ## Run everything CI runs
 
 # ── Release ──────────────────────────────────────────────────────────
-# Version source of truth is cmd/fc-dev/VERSION (seeded from the Rust
-# monorepo's last fc-dev release so numbering continues). The release
-# workflow (.github/workflows/release-fc-dev.yml) fires on the pushed tag.
+# Version source of truth is cmd/fcdev/VERSION (seeded from the Rust
+# monorepo's last fcdev release so numbering continues). The release
+# workflow (.github/workflows/release-fcdev.yml) fires on the pushed tag.
 
-release-dev: ## Cut an fc-dev release: BUMP=patch|minor|major|X.Y.Z (tags fc-dev/vX.Y.Z, pushes)
+release-dev: ## Cut an fcdev release: BUMP=patch|minor|major|X.Y.Z (tags fcdev/vX.Y.Z, pushes)
 	@scripts/release.sh dev "$(BUMP)"
 
 # ── SDKs ─────────────────────────────────────────────────────────────

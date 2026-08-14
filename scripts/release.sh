@@ -2,7 +2,7 @@
 # Cut a FlowCatalyst release from the flowcatalyst-go repo.
 #
 # Usage: scripts/release.sh <kind> <bump>
-#   <kind>  release line — currently: dev (the fc-dev developer binary)
+#   <kind>  release line — currently: dev (the fcdev developer binary)
 #   <bump>  patch | minor | major | X.Y.Z[-suffix]
 #
 # The version source of truth is a per-line VERSION file, seeded from the Rust
@@ -23,11 +23,11 @@ usage() {
 [ -n "$kind" ] && [ -n "$bump" ] || usage
 
 # manifest (optional) is a package file whose "version" must track the tag:
-# TS package.json only. Laravel/composer.json and fc-dev have no such field
-# (Packagist reads the tag; fc-dev embeds cmd/fc-dev/VERSION).
+# TS package.json only. Laravel/composer.json and fcdev have no such field
+# (Packagist reads the tag; fcdev embeds cmd/fcdev/VERSION).
 manifest=""
 case "$kind" in
-	dev)     prefix="fc-dev";         version_file="cmd/fc-dev/VERSION";             label="fc-dev" ;;
+	dev)     prefix="fcdev";         version_file="cmd/fcdev/VERSION";             label="fcdev" ;;
 	ts)      prefix="typescript-sdk"; version_file="clients/typescript-sdk/VERSION"; label="typescript-sdk"; manifest="clients/typescript-sdk/package.json" ;;
 	laravel) prefix="laravel-sdk";    version_file="clients/laravel-sdk/VERSION";    label="laravel-sdk" ;;
 	*)       echo "✗ unknown release kind: $kind" >&2; usage ;;

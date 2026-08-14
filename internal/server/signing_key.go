@@ -73,7 +73,7 @@ func NormalizePEM(s string) string {
 
 // EnsureSigningKeyFile guarantees a PEM-encoded RSA private key exists
 // at path. If the file is absent (or empty), generate one and write it
-// with 0600. Used by fc-dev so tokens survive restarts without forcing
+// with 0600. Used by fcdev so tokens survive restarts without forcing
 // engineers to manage a keyring locally. Returns the path that the
 // caller should set FC_JWT_SIGNING_KEY_PATH to.
 func EnsureSigningKeyFile(path string) (string, error) {

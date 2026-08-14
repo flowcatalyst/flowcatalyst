@@ -21,7 +21,7 @@ These are the constraints that shape every decision below. If a future change co
 ## 2. Scope
 
 ### In scope
-- All seven Rust binaries: `fc-server`, `fc-platform-server`, `fc-router`, `fc-stream-processor`, `fc-outbox-processor`, `fc-mcp-server`, `fc-dev`.
+- All seven Rust binaries: `fc-server`, `fc-platform-server`, `fc-router`, `fc-stream-processor`, `fc-outbox-processor`, `fc-mcp-server`, `fcdev`.
 - All twelve Rust crates: `fc-common`, `fc-config`, `fc-queue`, `fc-router`, `fc-standby`, `fc-outbox`, `fc-stream`, `fc-platform`, `fc-secrets`, `fc-sdk`, `fc-mcp`, and (renamed) `fc-test-helpers`.
 - All 103 use cases, all 348 HTTP handlers, all queue/outbox/secret backends.
 - The Rust SDK becomes a Go SDK (`pkg/fcsdk`) with the same feature surface.
@@ -45,7 +45,7 @@ Cutover order (lowest risk first):
 4. `fc-outbox-processor` — at-most-once with idempotency keys; cutover by stopping Rust, starting Go.
 5. `fc-router` — last; most stateful (in-flight SQS messages, circuit breaker state). Drain to zero in-flight before swapping.
 6. `fc-server` — once all the above are green, the monolithic binary is just composition.
-7. `fc-dev` — developer experience; built last but launched alongside the team for dogfooding from week 2.
+7. `fcdev` — developer experience; built last but launched alongside the team for dogfooding from week 2.
 
 ---
 
@@ -133,14 +133,14 @@ For each subdomain, the port produces (in order):
 
 **Done when:** the SDK's outbox unit-of-work writes byte-identical `outbox_messages` rows to the Rust SDK. MCP server returns the same tool listings and tool call results.
 
-### Phase 6 — fc-dev + fc-server (weeks 19–20)
+### Phase 6 — fcdev + fc-server (weeks 19–20)
 
 - [ ] `cmd/fc-server/main.go` — composes all subsystems behind toggle env vars (`FC_PLATFORM_ENABLED`, `FC_ROUTER_ENABLED`, …). Leader-aware via the standby package.
-- [ ] `cmd/fc-dev/main.go` — embedded Postgres via `fergusstrange/embedded-postgres`. Bundles the same subcommands: `start`, `init`, `fresh`, `mcp`, `outbox`, `upgrade`.
+- [ ] `cmd/fcdev/main.go` — embedded Postgres via `fergusstrange/embedded-postgres`. Bundles the same subcommands: `start`, `init`, `fresh`, `mcp`, `outbox`, `upgrade`.
 - [ ] Frontend asset embedding via `embed.FS`. SPA fallback + cache headers (`Cache-Control: public, max-age=31536000, immutable` for hashed `/assets/*`, default for non-hashed).
 - [ ] Single-binary release builds for darwin/arm64, darwin/amd64, linux/amd64, linux/arm64, windows/amd64.
 
-**Done when:** `fc-dev start` brings up the full system (embedded PG + all subsystems) and the existing frontend works against it with no code change.
+**Done when:** `fcdev start` brings up the full system (embedded PG + all subsystems) and the existing frontend works against it with no code change.
 
 ### Phase 7 — Cutover (weeks 21–22)
 
@@ -207,7 +207,7 @@ Full rationale and alternatives in [`docs/architecture.md`](./docs/architecture.
 | Logging | stdlib `log/slog` |
 | Test containers | `github.com/testcontainers/testcontainers-go` |
 | MCP | `github.com/mark3labs/mcp-go` |
-| Embedded Postgres (fc-dev) | `github.com/fergusstrange/embedded-postgres` |
+| Embedded Postgres (fcdev) | `github.com/fergusstrange/embedded-postgres` |
 | Hot reload (dev) | `github.com/air-verse/air` |
 
 ---
@@ -222,7 +222,7 @@ Full rationale and alternatives in [`docs/architecture.md`](./docs/architecture.
 | Phase 3 (platform, 27 subdomains) | 14 wk | 8 wk | 5 wk |
 | Phase 4 (stream + outbox) | 3 wk | 2 wk | 1.5 wk |
 | Phase 5 (sdk + mcp) | 2 wk | 1.5 wk | 1 wk |
-| Phase 6 (fc-dev + fc-server) | 2 wk | 1.5 wk | 1 wk |
+| Phase 6 (fcdev + fc-server) | 2 wk | 1.5 wk | 1 wk |
 | Phase 7 (cutover, including bake time) | 3 wk | 3 wk | 3 wk |
 | **Total** | **30 wk** (~7 months) | **20 wk** (~5 months) | **15 wk** (~3.5 months) |
 

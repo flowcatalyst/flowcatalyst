@@ -24,7 +24,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// defaultUpgradeRepo is the GitHub repo that publishes fc-dev releases.
+// defaultUpgradeRepo is the GitHub repo that publishes fcdev releases.
 // Overridable via FC_DEV_UPGRADE_REPO so the command can be exercised against a
 // fork. (`flowcatalyst-go` redirects here — this is the canonical name.)
 const defaultUpgradeRepo = "flowcatalyst/flowcatalyst"
@@ -32,18 +32,18 @@ const defaultUpgradeRepo = "flowcatalyst/flowcatalyst"
 // upgradeTagPrefix is the release-tag namespace for the developer binary. The
 // repo also tags typescript-sdk/v* and laravel-sdk/v*, so filtering by this
 // prefix is mandatory — /releases/latest would return whichever line published
-// last, not necessarily fc-dev.
-const upgradeTagPrefix = "fc-dev/v"
+// last, not necessarily fcdev.
+const upgradeTagPrefix = "fcdev/v"
 
-// newUpgradeCmd builds the `fc-dev upgrade` self-update command. It downloads
+// newUpgradeCmd builds the `fcdev upgrade` self-update command. It downloads
 // the latest release for the running platform, verifies its SHA256, and
 // atomically replaces the live binary. Same artifacts the install.sh /
 // install.ps1 scripts use.
 func newUpgradeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "upgrade",
-		Short: "Update fc-dev to the latest release",
-		Long: `Download the latest fc-dev release for this platform from GitHub,
+		Short: "Update fcdev to the latest release",
+		Long: `Download the latest fcdev release for this platform from GitHub,
 verify its SHA256, and atomically replace the running binary.
 
 These are the same release artifacts that back the install.sh / install.ps1
@@ -78,26 +78,26 @@ func runUpgrade(cmd *cobra.Command, _ []string) error {
 
 	if check {
 		if updateAvailable {
-			fmt.Fprintf(out, "update available: %s → %s (run `fc-dev upgrade`)\n", current, rel.version)
+			fmt.Fprintf(out, "update available: %s → %s (run `fcdev upgrade`)\n", current, rel.version)
 		} else {
-			fmt.Fprintln(out, "fc-dev is up to date.")
+			fmt.Fprintln(out, "fcdev is up to date.")
 		}
 		return nil
 	}
 
 	if !updateAvailable && !force {
-		fmt.Fprintln(out, "fc-dev is already up to date. Use --force to reinstall.")
+		fmt.Fprintln(out, "fcdev is already up to date. Use --force to reinstall.")
 		return nil
 	}
 
 	goos, goarch := runtime.GOOS, runtime.GOARCH
 	ext := "tar.gz"
-	binName := "fc-dev"
+	binName := "fcdev"
 	if goos == "windows" {
 		ext = "zip"
-		binName = "fc-dev.exe"
+		binName = "fcdev.exe"
 	}
-	stem := fmt.Sprintf("fc-dev-v%s-%s-%s", rel.version, goos, goarch)
+	stem := fmt.Sprintf("fcdev-v%s-%s-%s", rel.version, goos, goarch)
 	assetName := stem + "." + ext
 
 	assetURL, ok := rel.assets[assetName]
@@ -139,17 +139,17 @@ func runUpgrade(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	fmt.Fprintf(out, "✓ upgraded fc-dev %s → %s (%s)\n", current, rel.version, dest)
+	fmt.Fprintf(out, "✓ upgraded fcdev %s → %s (%s)\n", current, rel.version, dest)
 	return nil
 }
 
-// release is a single fc-dev GitHub release, reduced to what upgrade needs.
+// release is a single fcdev GitHub release, reduced to what upgrade needs.
 type release struct {
 	version string            // clean X.Y.Z (prefix stripped)
 	assets  map[string]string // asset filename → browser_download_url
 }
 
-// latestRelease returns the highest fc-dev/vX.Y.Z release published for repo.
+// latestRelease returns the highest fcdev/vX.Y.Z release published for repo.
 // Anonymous GitHub API requests are rate-limited to 60/hour per IP, which is
 // ample for a manual upgrade.
 func latestRelease(ctx context.Context, repo string) (*release, error) {
@@ -158,7 +158,7 @@ func latestRelease(ctx context.Context, repo string) (*release, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "fc-dev-upgrade")
+	req.Header.Set("User-Agent", "fcdev-upgrade")
 	req.Header.Set("Accept", "application/vnd.github+json")
 
 	resp, err := upgradeHTTPClient().Do(req)
@@ -219,7 +219,7 @@ func httpGet(ctx context.Context, url string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "fc-dev-upgrade")
+	req.Header.Set("User-Agent", "fcdev-upgrade")
 	resp, err := upgradeHTTPClient().Do(req)
 	if err != nil {
 		return nil, err
@@ -346,7 +346,7 @@ func selfPath() (string, error) {
 // is created in dest's directory so the rename stays on one filesystem (atomic).
 func replaceBinary(dest string, newBin []byte) error {
 	dir := filepath.Dir(dest)
-	tmp, err := os.CreateTemp(dir, ".fc-dev-upgrade-*")
+	tmp, err := os.CreateTemp(dir, ".fcdev-upgrade-*")
 	if err != nil {
 		return fmt.Errorf("cannot write to %s — re-run with elevated permissions or use the install script: %w", dir, err)
 	}

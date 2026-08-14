@@ -28,7 +28,7 @@ removal). Only the deferred follow-ups below remain, and none block.
 - **OAuth client secrets switched Argon2→encryption** (`client_secret_ref`,
   via `internal/platform/shared/encryption`) — Rust parity. Touches
   oauth_client create/rotate, serviceaccount/application provisioning, and
-  `fc-dev init` (now provisions+persists `FLOWCATALYST_APP_KEY`).
+  `fcdev init` (now provisions+persists `FLOWCATALYST_APP_KEY`).
 - Auth middleware now derives permissions from roles when a token lacks a
   `permissions` claim (`provider.FlattenPermissions`).
 - `internal/platform/auth/loginbackoff` — failed-login backoff +
@@ -93,9 +93,9 @@ file is unaffected).
   `make test-integration` runs the testcontainers Postgres suite.
 - `make api-diff` checks the committed `api/openapi.lock.json` against the
   live huma-generated spec; part of `make ci`.
-- `go run ./cmd/fc-dev start --embedded-db-reset` boots an embedded PG +
+- `go run ./cmd/fcdev start --embedded-db-reset` boots an embedded PG +
   applies migrations + runs seeds + serves the platform API on :3000.
-- `go run ./cmd/fc-dev init` (after start, with PG running) bootstraps
+- `go run ./cmd/fcdev init` (after start, with PG running) bootstraps
   admin user + internal IDP + default Client + Application + Service
   Account + OAuth client + writes `.env`.
 
@@ -190,7 +190,7 @@ last gate before cutover.
    goroutine and calls `PurgeExpired` on three ephemeral-auth repos:
    `oauth_oidc_payloads`, `oauth_oidc_login_states`, and
    `webauthn_ceremonies`. Wired into `fc-server` (when
-   `FC_PLATFORM_ENABLED=true`) and `fc-dev start` unconditionally.
+   `FC_PLATFORM_ENABLED=true`) and `fcdev start` unconditionally.
 10. **OIDC bridge auto-provisioning + IDP role-mapping** — ~~Go fails
     with `USER_NOT_PROVISIONED` for unknown emails.~~ **Done.**
     `LoginEndpoint.autoProvision` looks up the `EmailDomainMapping`
@@ -449,7 +449,7 @@ The Go port is a **drop-in replacement** for the Rust binaries. That means:
 ```
 cmd/
   fc-server/          — unified production binary (FC_*_ENABLED toggles)
-  fc-dev/             — developer monolith with embedded Postgres (cobra subcommands)
+  fcdev/             — developer monolith with embedded Postgres (cobra subcommands)
   fc-router/          — standalone router binary (264 lines)
   fc-platform-server/ — placeholder; superseded by fc-server
   fc-stream-processor/
@@ -496,7 +496,7 @@ migrations/           — 29 SQL files (verbatim from Rust)
   authorize_explicit factories registered. **The token endpoint is
   ~80 lines of glue** — fosite does the rest.
 
-- **Embedded Postgres for dev.** `cmd/fc-dev` uses
+- **Embedded Postgres for dev.** `cmd/fcdev` uses
   `github.com/fergusstrange/embedded-postgres` (pure-Go, downloads PG
   binaries on first run). Same UX as Rust's `pg_embed` feature.
 
@@ -511,9 +511,9 @@ migrations/           — 29 SQL files (verbatim from Rust)
 go build ./...                # everything
 go test ./...                 # everything (no DB required for current tests)
 
-go run ./cmd/fc-dev --help    # see subcommands
-go run ./cmd/fc-dev           # default: start embedded PG + platform API
-go run ./cmd/fc-dev fresh --yes
+go run ./cmd/fcdev --help    # see subcommands
+go run ./cmd/fcdev           # default: start embedded PG + platform API
+go run ./cmd/fcdev fresh --yes
 go run ./cmd/fc-server        # production-shape binary (needs external PG)
 ```
 
@@ -541,7 +541,7 @@ Env toggles for `fc-server` (TS-aliased names also supported):
 - Seed data: 12 platform roles + 1 platform application + 41 event types + 41 JSON schemas.
 - Migration runner + 29 embedded SQL files.
 - `cmd/fc-server` — unified binary.
-- `cmd/fc-dev` — developer monolith with embedded PG + subcommands.
+- `cmd/fcdev` — developer monolith with embedded PG + subcommands.
 
 ### What's stubbed (Production-blocking)
 
@@ -570,11 +570,11 @@ the source. Search for the marker to find the exact file:line.
    at mint time (so `NewProvider` takes a `*role.Repository`). The
    middleware is mounted globally in `WirePlatform` via `r.Use(...)`.
 
-3. **Init bootstrap depth.** `fc-dev init` writes a placeholder `.env`.
+3. **Init bootstrap depth.** `fcdev init` writes a placeholder `.env`.
    The Rust impl creates: admin user + default Client + default
    Application + Service Account + OAuth client + anchor domain row.
    Port from `crates/fc-platform/src/shared/bootstrap_admin.rs` +
-   `bin/fc-dev/src/init.rs`.
+   `bin/fcdev/src/init.rs`.
 
 4. ~~**Argon2id PHC salt.**~~ **Done.** Shared
    `internal/platform/auth/passwordhash` package now owns Argon2id
@@ -582,7 +582,7 @@ the source. Search for the marker to find the exact file:line.
    with per-row random salt. Used by:
    - `principal/operations/create.go::Execute` (user passwords)
    - `principal/operations/reset_password.go` (password reset)
-   - `cmd/fc-dev/init.go::hashSecret` (init admin password)
+   - `cmd/fcdev/init.go::hashSecret` (init admin password)
    - `auth/operations/oauth_client.go::generateSecret` (OAuth client
      secret)
    - `auth/provider/hasher.go` (fosite's `ClientSecretsHasher`)
@@ -659,7 +659,7 @@ the source. Search for the marker to find the exact file:line.
 13. **ALB target-group registration** on leader transition (Rust feature-gated; not yet ported).
 
 13a. **Embedded NATS as dev broker** — deferred. Considered as a
-    replacement for the Postgres-table queue in fc-dev. Held off
+    replacement for the Postgres-table queue in fcdev. Held off
     because (a) prod uses SQS, so introducing NATS only in dev breaks
     dev/prod parity; (b) "single-node simple NATS" loses messages on
     restart, JetStream adds a stateful component undoing the
@@ -675,10 +675,10 @@ the source. Search for the marker to find the exact file:line.
     `frontend/`; `dist/` + `node_modules/` gitignored.
     `frontend/embed.go` + `frontend/handler.go` provide
     `frontend.Handler() http.Handler` that mirrors Rust's
-    `bin/fc-dev/src/main.rs::embedded_asset_handler`: exact-path
+    `bin/fcdev/src/main.rs::embedded_asset_handler`: exact-path
     asset → MIME-typed response with `Cache-Control: immutable` for
     `/assets/*`, otherwise SPA fallback to `index.html`. Mounted on
-    fc-dev as the chi NotFound handler so every API route takes
+    fcdev as the chi NotFound handler so every API route takes
     precedence. `frontend.IsAvailable()` lets the caller skip the
     mount cleanly when the binary was built without
     `make frontend`. **Build pipeline:** `make build` now depends on
@@ -835,7 +835,7 @@ the source. Search for the marker to find the exact file:line.
       of the client expansion and the client expansion never happened.
     Either flesh out `pkg/fcsdk/client` to match what the consumers
     expect, or delete the consuming code if it's not on the immediate
-    roadmap. `go build ./cmd/fc-dev ./cmd/fc-server ./internal/...`
+    roadmap. `go build ./cmd/fcdev ./cmd/fc-server ./internal/...`
     is clean — only these two paths fail.
 
 23. **Flaky TSID test.** `internal/tsid.TestUniquenessSerial` /
@@ -993,11 +993,11 @@ This is the last gate before cutover.
 
 2. **Bring up Go** against a SECOND fresh PG (or the same one — both
    migration sets are idempotent, but a fresh PG eliminates one
-   variable). Run `go run ./cmd/fc-dev start --embedded-db-reset`.
+   variable). Run `go run ./cmd/fcdev start --embedded-db-reset`.
    Note the URL — call it `GO_URL=http://localhost:3001`.
 
 3. **Authenticate.** Both binaries need an admin to be useful past
-   the unauthenticated endpoints. Run `fc-dev init` (Go) and the
+   the unauthenticated endpoints. Run `fcdev init` (Go) and the
    Rust equivalent against their respective DBs. Mint an admin token
    on each via `POST /oauth/token` with the seeded credentials.
    Export the token: `export ANCHOR_TOKEN=...` — the parity harness
@@ -1069,7 +1069,7 @@ If picking this up cold, I'd tackle in this order:
    `WirePlatform`. `FC_AUTH_ALLOW_TEST_HEADERS` gates the dev
    `X-FC-Test-Principal` path.
 
-3. ~~**Run `fc-dev start` end-to-end.**~~ **Done.** Embedded PG boots,
+3. ~~**Run `fcdev start` end-to-end.**~~ **Done.** Embedded PG boots,
    migrations apply, seed runs (1 application + 12 roles + 72 event
    types), `/health` returns 200, `/api/event-types` returns 403 with
    no token and 200 with `X-FC-Test-*` headers (dev mode). The boot
@@ -1103,7 +1103,7 @@ If picking this up cold, I'd tackle in this order:
    `sqlc.yaml` at repo root, queries live in `internal/sqlc/queries/`,
    generated code in `internal/sqlc/dbq/`. Schema source is the
    embedded migration set (`internal/migrate/sql/`) so sqlc's view of
-   the DB matches what fc-dev/fc-server apply at boot. `make sqlc`
+   the DB matches what fcdev/fc-server apply at boot. `make sqlc`
    regenerates; `make sqlc-verify` is wired into `make ci`.
 
    The **client** repository (`internal/platform/client/repository.go`)
@@ -1240,7 +1240,7 @@ If picking this up cold, I'd tackle in this order:
    and `go run ./tools/analyzer/uowseal ./internal/platform/...` all
    pass after the sweep.
 
-   **Boot smoke (run).** `fc-dev start --embedded-db-reset` boots cleanly
+   **Boot smoke (run).** `fcdev start --embedded-db-reset` boots cleanly
    on a fresh PG. The following round-tripped end-to-end through the
    new sqlc-backed repos:
    - `POST /api/principals` → 201 + `GET /api/principals/{id}` → 200
@@ -1340,8 +1340,8 @@ If picking this up cold, I'd tackle in this order:
    dispatchjob/scheduledjob/event schema reconciliation is the next
    bottleneck.
 
-5. ~~**Init bootstrap depth**~~ **Done.** `fc-dev init` now mirrors the
-   Rust `bin/fc-dev/src/init.rs` flow:
+5. ~~**Init bootstrap depth**~~ **Done.** `fcdev init` now mirrors the
+   Rust `bin/fcdev/src/init.rs` flow:
    - Runs migrations + the built-in seeds (idempotent).
    - Creates the anchor admin if no anchor USER exists — wires the
      internal IDP row, an anchor EDM for the admin's domain, the
@@ -1355,7 +1355,7 @@ If picking this up cold, I'd tackle in this order:
      with `client_credentials` grant pointing at the SA principal.
    - Writes `.env` with `FLOWCATALYST_BASE_URL/APP_CODE/CLIENT_ID/
      CLIENT_SECRET` — in-place update for existing keys, appended
-     under a `# FlowCatalyst (added by fc-dev init)` header
+     under a `# FlowCatalyst (added by fcdev init)` header
      otherwise. Idempotent: re-running with the same flags overwrites
      only the changed keys.
    - Flag set: `--admin-email`, `--admin-password`, `--code`,
@@ -1439,7 +1439,7 @@ If picking this up cold, I'd tackle in this order:
 8. ~~**Contract harness**~~ **Done (framework).** See §6 #3 for
    detail. To use it for the actual drop-in proof: bring up the Rust
    `fc-platform-server` (or whichever binary serves the API) on one
-   port, bring up Go `fc-dev` on another, point the harness at both.
+   port, bring up Go `fcdev` on another, point the harness at both.
    Cases turn from SKIP → PASS as you supply auth (`ANCHOR_TOKEN` env)
    and as the YAML library grows. Wire into CI once both binaries can
    be brought up in the GitHub Actions runner (currently only Postgres

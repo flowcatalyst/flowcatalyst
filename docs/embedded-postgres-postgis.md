@@ -1,6 +1,6 @@
-# Adding PostGIS to the fc-dev embedded Postgres
+# Adding PostGIS to the fcdev embedded Postgres
 
-`fc-dev` runs a **bundled, self-contained PostgreSQL** via
+`fcdev` runs a **bundled, self-contained PostgreSQL** via
 [`fergusstrange/embedded-postgres`], which downloads the **Zonky**
 `embedded-postgres-binaries`. Those are *vanilla* PostgreSQL builds — they ship
 the standard contrib extensions (`hstore`, `pg_trgm`, `bloom`, …) but **not
@@ -13,13 +13,13 @@ embedded tree after first run, then `CREATE EXTENSION postgis;`.
 
 > If your app's database genuinely needs PostGIS in anger, prefer running your
 > own Postgres (e.g. the `postgis/postgis` Docker image) and pointing the
-> outbox poller at it (`fc-dev outbox --source-db-url=…`). The transplant below
+> outbox poller at it (`fcdev outbox --source-db-url=…`). The transplant below
 > is for keeping the all-in-one embedded dev loop while gaining PostGIS.
 
 ## The version that must match
 
 The embedded server is **PostgreSQL 18** (`embedded-postgres` `DefaultConfig`
-→ `V18`; fc-dev does not override it). **Everything you install must be PostGIS
+→ `V18`; fcdev does not override it). **Everything you install must be PostGIS
 built for PostgreSQL 18** on your OS + CPU. Mixing majors (e.g. a PG16 PostGIS)
 fails to load with `undefined symbol` / `incompatible library`.
 
@@ -30,8 +30,8 @@ fails to load with `undefined symbol` / `incompatible library`.
 2. **Match OS + arch + libc** (the exact build the loader will `dlopen`).
 3. **Keep PostGIS's runtime deps installed** (GEOS, PROJ, GDAL, libxml2,
    protobuf-c, …) — the module links against them at load time.
-4. **Do it after the first `fc-dev start`** (so the tree exists), then restart
-   fc-dev and run `CREATE EXTENSION postgis;`.
+4. **Do it after the first `fcdev start`** (so the tree exists), then restart
+   fcdev and run `CREATE EXTENSION postgis;`.
 
 ### Which CPU arch the embedded build uses
 
@@ -46,10 +46,10 @@ build that matches the **right column**:
 | Linux x86_64 (musl/Alpine)| `linux-amd64-alpine`            | Alpine **amd64**    |
 | Linux arm64 (glibc)      | `linux-arm64v8`                  | Linux **arm64**     |
 | Windows x64              | `windows-amd64`                  | Windows **x64**     |
-| Windows on ARM           | ⚠️ no Zonky build — see note      | run the x64 fc-dev (emulated) → Windows **x64** |
+| Windows on ARM           | ⚠️ no Zonky build — see note      | run the x64 fcdev (emulated) → Windows **x64** |
 
 > **Windows ARM:** Zonky publishes no `windows-arm64` binary, so a *native*
-> arm64 `fc-dev` cannot start the embedded DB at all. Run the **x64** `fc-dev`
+> arm64 `fcdev` cannot start the embedded DB at all. Run the **x64** `fcdev`
 > under emulation; it pulls `windows-amd64` Postgres, and you install **x64**
 > PostGIS.
 
@@ -157,7 +157,7 @@ find /usr/share/postgresql/18/extension \( -name 'postgis*' -o -name 'address_st
 
 `arm64`: identical commands — apt pulls the arm64 build automatically.
 
-> If you run `fc-dev` on **Alpine/musl**, the embedded build is
+> If you run `fcdev` on **Alpine/musl**, the embedded build is
 > `linux-amd64-alpine`; install PostGIS from Alpine's repo
 > (`apk add postgis`) built against PG18 and copy the same way. Do **not** mix
 > glibc PostGIS into a musl build.
@@ -211,7 +211,7 @@ On Windows the loader finds DLLs in the directory of `postgres.exe`, which is
 why the dependency DLLs go in `…\embedded-pg\bin\bin\`. If `CREATE EXTENSION`
 reports a missing DLL, copy the named DLL there too.
 
-**Windows on ARM:** run the **x64** `fc-dev` (emulated) and follow the x64 steps
+**Windows on ARM:** run the **x64** `fcdev` (emulated) and follow the x64 steps
 above — there is no native arm64 embedded build.
 
 ---
@@ -235,17 +235,17 @@ psql "postgresql://postgres:postgres@localhost:15432/flowcatalyst" \
   -c "CREATE EXTENSION IF NOT EXISTS postgis;" -c "SELECT postgis_full_version();"
 ```
 
-Restart `fc-dev` first if it was running while you copied files.
+Restart `fcdev` first if it was running while you copied files.
 
 ## Lifecycle / gotchas
 
-- **Restart required.** Copy files, then restart `fc-dev` so the server sees the
+- **Restart required.** Copy files, then restart `fcdev` so the server sees the
   new module.
 - **`--embedded-db-reset` (or `FC_EMBEDDED_DB_RESET`)** wipes the *data*
   directory — your databases, and therefore the registered extension — but
   **not** the binary tree, so the PostGIS files survive; just re-run
   `CREATE EXTENSION postgis;` on the fresh DB.
-- **Deleting the cache** (`…/flowcatalyst/embedded-pg/bin`) makes fc-dev
+- **Deleting the cache** (`…/flowcatalyst/embedded-pg/bin`) makes fcdev
   re-download the *vanilla* binaries, removing your transplant. Re-do the copy.
 - **PG minor bumps:** if the embedded PG18 minor changes and the binaries are
   re-extracted, redo the transplant with a matching PostGIS minor.

@@ -3,7 +3,7 @@
 // Single binary; every subsystem is independently togglable via
 // FC_*_ENABLED env vars so the same image can be deployed as the API
 // tier, a worker tier, or both. Mirrors the Rust fc-server's env
-// contract. fc-dev wraps the same `server.Run` orchestrator with
+// contract. fcdev wraps the same `server.Run` orchestrator with
 // embedded-Postgres + dev defaults for local work.
 //
 // See internal/server/envcfg.go for the full env-var list.

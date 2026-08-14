@@ -9,14 +9,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// versionRaw is the released fc-dev version, embedded from the committed
-// cmd/fc-dev/VERSION file at build time. `make release-dev BUMP=…` bumps that
-// file and tags fc-dev/vX.Y.Z; the release workflow checks out the tag, so a
+// versionRaw is the released fcdev version, embedded from the committed
+// cmd/fcdev/VERSION file at build time. `make release-dev BUMP=…` bumps that
+// file and tags fcdev/vX.Y.Z; the release workflow checks out the tag, so a
 // release binary self-reports exactly the tagged version. A local `make build`
 // reports whatever VERSION currently holds (the last released number until the
 // next release bumps it).
 //
-// VERSION is seeded from the Rust monorepo's last fc-dev release (0.4.16) so
+// VERSION is seeded from the Rust monorepo's last fcdev release (0.4.16) so
 // this repo's numbering continues the sequence rather than restarting.
 //
 //go:embed VERSION
@@ -31,10 +31,10 @@ func version() string { return strings.TrimSpace(versionRaw) }
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
-		Short: "Print the fc-dev version",
+		Short: "Print the fcdev version",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			fmt.Fprintf(cmd.OutOrStdout(), "fc-dev %s%s\n", version(), vcsSuffix())
+			fmt.Fprintf(cmd.OutOrStdout(), "fcdev %s%s\n", version(), vcsSuffix())
 			return nil
 		},
 	}

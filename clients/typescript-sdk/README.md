@@ -12,10 +12,10 @@ yarn add @flowcatalyst/sdk
 bun add @flowcatalyst/sdk
 ```
 
-## Local development with `fc-dev`
+## Local development with `fcdev`
 
 For local work you need a FlowCatalyst control plane to talk to.
-`fc-dev` is the official one-binary dev environment — bundled
+`fcdev` is the official one-binary dev environment — bundled
 PostgreSQL, platform API, message router, scheduler, and frontend
 in a single process.
 
@@ -26,11 +26,11 @@ curl -fsSL https://raw.githubusercontent.com/flowcatalyst/flowcatalyst/main/inst
 # Windows (PowerShell)
 irm https://raw.githubusercontent.com/flowcatalyst/flowcatalyst/main/install.ps1 | iex
 
-fc-dev          # starts API on http://localhost:8080
+fcdev          # starts API on http://localhost:8080
 ```
 
 If you publish events via the **outbox pattern**, you also need
-`fc-dev outbox` running as a sidecar — it polls your app's
+`fcdev outbox` running as a sidecar — it polls your app's
 `outbox_messages` table and forwards events to the platform:
 
 ```bash
@@ -38,19 +38,19 @@ If you publish events via the **outbox pattern**, you also need
 
 # Once: write FC_OUTBOX_DB_URL / FC_OUTBOX_API_URL / FC_OUTBOX_TOKEN
 # into ./.env (0600 perms; no secrets on argv or shell history).
-fc-dev outbox init
+fcdev outbox init
 
 # Daily: reads .env, auto-creates the `outbox_messages` table on
 # first run, then polls.
-fc-dev outbox poll
+fcdev outbox poll
 ```
 
 The SDK's own migration at
 [`migrations/postgresql/001_create_outbox_messages.sql`](migrations/postgresql/001_create_outbox_messages.sql)
-and `fc-dev outbox poll`'s built-in `CREATE TABLE IF NOT EXISTS`
+and `fcdev outbox poll`'s built-in `CREATE TABLE IF NOT EXISTS`
 produce the same schema, so it doesn't matter which one runs first.
 
-Complete reference: [fc-dev CLI docs](https://github.com/flowcatalyst/flowcatalyst-rust/blob/main/docs/developers/fc-dev.md).
+Complete reference: [fcdev CLI docs](https://github.com/flowcatalyst/flowcatalyst-rust/blob/main/docs/developers/fcdev.md).
 
 ## Usage
 

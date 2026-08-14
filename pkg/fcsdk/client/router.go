@@ -5,7 +5,7 @@ import "context"
 // Router monitoring endpoints. These call the message-router (a
 // separate process from the platform) at routerBaseURL configured on
 // the client. When unset, calls fall back to baseURL — correct only
-// when router and platform are co-located (e.g. fc-dev).
+// when router and platform are co-located (e.g. fcdev).
 //
 // Designed for external recovery / replay processes that maintain their
 // own list of "messages that look stuck" and want to confirm whether

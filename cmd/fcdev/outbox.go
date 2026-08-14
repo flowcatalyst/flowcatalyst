@@ -121,8 +121,8 @@ func runOutbox(cmd *cobra.Command, _ []string) error {
 		cancel()
 	}()
 
-	slog.Info("fc-dev outbox started", "source", sourceURL, "target", targetURL, "auth", authMode)
+	slog.Info("fcdev outbox started", "source", sourceURL, "target", targetURL, "auth", authMode)
 	outbox.NewProcessor(pcfg, repo).Run(rootCtx)
-	slog.Info("fc-dev outbox stopped")
+	slog.Info("fcdev outbox stopped")
 	return nil
 }

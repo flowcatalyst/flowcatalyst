@@ -35,7 +35,7 @@ type EnvCfg struct {
 	// DefaultBroker picks the fallback queue backend when no
 	// FLOWCATALYST_CONFIG_URL is configured. "postgres" synthesises a
 	// single 'default' pool against the shared Postgres pool. Empty
-	// means "no pools start" — the historical behaviour. fc-dev sets
+	// means "no pools start" — the historical behaviour. fcdev sets
 	// this to "postgres"; fc-server leaves it empty in prod.
 	DefaultBroker string
 
@@ -125,7 +125,7 @@ type EnvCfg struct {
 	JWTPreviousPublicKey string
 
 	// MCP — the read-only MCP server proxies into the platform. URL is
-	// where it dials the platform itself; for fc-dev it's the local
+	// where it dials the platform itself; for fcdev it's the local
 	// listener (http://localhost:<APIPort>).
 	MCPPlatformURL  string
 	MCPClientID     string
@@ -133,7 +133,7 @@ type EnvCfg struct {
 
 	// AuthAllowTestHeaders enables the X-FC-Test-Principal dev fallback
 	// in the platform Authenticator middleware. Defaults to false in
-	// production. fc-dev flips it on for the local embedded-PG flow.
+	// production. fcdev flips it on for the local embedded-PG flow.
 	AuthAllowTestHeaders bool
 }
 

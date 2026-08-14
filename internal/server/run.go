@@ -24,16 +24,16 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/stream"
 )
 
-// RunOptions lets the caller (fc-server / fc-dev) extend the unified
+// RunOptions lets the caller (fc-server / fcdev) extend the unified
 // HTTP server without forking it. ExtraAPIRoutes runs after platform +
 // router are mounted; Fallback runs as the NotFound handler (used by
-// fc-dev to mount the embedded Vue SPA).
+// fcdev to mount the embedded Vue SPA).
 type RunOptions struct {
 	ExtraAPIRoutes func(r chi.Router)
 	Fallback       http.Handler
 }
 
-// Run is the single orchestrator that fc-server and fc-dev both call.
+// Run is the single orchestrator that fc-server and fcdev both call.
 // Responsibilities:
 //   - build the API chi mux + huma API
 //   - wire the platform aggregates (when cfg.PlatformEnabled)
@@ -275,7 +275,7 @@ func (b streamHealthBridge) IsReady() bool { return b.svc.IsReady() }
 
 // newRouterServer wraps router.NewServer with the env-driven router
 // config. When cfg.RouterConfigURL is empty we honour cfg.DefaultBroker
-// to synthesize an in-process Postgres pool config so fc-dev "just works".
+// to synthesize an in-process Postgres pool config so fcdev "just works".
 func newRouterServer(cfg EnvCfg, pool *pgxpool.Pool) (*router.Server, error) {
 	rcfg := router.ServerConfig{
 		DevMode:          cfg.RouterDevMode,
@@ -355,7 +355,7 @@ func initQueueSchema(ctx context.Context, qc common.QueueConfig) error {
 }
 
 // defaultPostgresRouterConfig synthesizes a single-pool config pointing
-// at the shared Postgres pool. Used by fc-dev (and any single-tenant
+// at the shared Postgres pool. Used by fcdev (and any single-tenant
 // deployment) so the router has somewhere to poll without an external
 // config service.
 func defaultPostgresRouterConfig(databaseURL string) common.RouterConfig {

@@ -21,8 +21,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/server"
 )
 
-// startOpts captures the flag set for `fc-dev start`. Defaults match
-// the Rust fc-dev so existing dev workflows transfer 1:1.
+// startOpts captures the flag set for `fcdev start`. Defaults match
+// the Rust fcdev so existing dev workflows transfer 1:1.
 type startOpts struct {
 	APIPort             int
 	MetricsPort         int
@@ -42,7 +42,7 @@ type startOpts struct {
 func newStartCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "start",
-		Short: "Run the dev monolith (identical to invoking fc-dev with no subcommand)",
+		Short: "Run the dev monolith (identical to invoking fcdev with no subcommand)",
 		RunE:  runStart,
 	}
 	addStartFlags(cmd)
@@ -63,7 +63,7 @@ func addStartFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool("outbox", envBoolDefault("FC_OUTBOX_ENABLED", false), "run the outbox processor")
 	cmd.Flags().Bool("router", envBoolDefault("FC_ROUTER_ENABLED", true), "run the message router (uses the embedded Postgres broker by default)")
 	cmd.Flags().Bool("mcp", envBoolDefault("FC_MCP_ENABLED", false), "run the MCP HTTP server")
-	cmd.Flags().String("pid-file", envStrDefault("FC_DEV_PID_FILE", pidFilePath()), "PID file written while running; used by `fc-dev stop`")
+	cmd.Flags().String("pid-file", envStrDefault("FC_DEV_PID_FILE", pidFilePath()), "PID file written while running; used by `fcdev stop`")
 }
 
 func optsFromFlags(cmd *cobra.Command) startOpts {
@@ -91,12 +91,12 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	opts := optsFromFlags(cmd)
 	banner(opts)
 
-	// Record our PID so `fc-dev stop` can find and gracefully signal us.
+	// Record our PID so `fcdev stop` can find and gracefully signal us.
 	// Ownership-checked removal on exit avoids clobbering a newer instance's
 	// file (e.g. two instances on different ports).
 	pidFile, _ := cmd.Flags().GetString("pid-file")
 	if err := writePIDFile(pidFile); err != nil {
-		slog.Warn("could not write pid file — `fc-dev stop` won't find this instance", "path", pidFile, "err", err)
+		slog.Warn("could not write pid file — `fcdev stop` won't find this instance", "path", pidFile, "err", err)
 	} else {
 		defer removePIDFileIfOwned(pidFile, os.Getpid())
 	}
@@ -155,7 +155,7 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	setEnvDefault(seed.EnvBootstrapName, "Local Admin")
 
 	// Ensure a persistent JWT signing key exists so tokens survive a
-	// restart. fc-dev stores it under ~/.flowcatalyst/jwt-signing-key.pem
+	// restart. fcdev stores it under ~/.flowcatalyst/jwt-signing-key.pem
 	// (0600). fc-server requires operators to supply one via env.
 	if os.Getenv("FC_JWT_SIGNING_KEY_PATH") == "" {
 		defaultKey := filepath.Join(filepath.Dir(opts.EmbeddedDBPath), "jwt-signing-key.pem")
@@ -182,7 +182,7 @@ func runStart(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("seed: %w", err)
 	}
 
-	// Bootstrap local MCP credentials (idempotent, dev-only) so `fc-dev mcp`
+	// Bootstrap local MCP credentials (idempotent, dev-only) so `fcdev mcp`
 	// and `--mcp` just work. Non-fatal — a failure must not block the dev boot.
 	mcpBaseURL := fmt.Sprintf("http://localhost:%d", opts.APIPort)
 	if err := bootstrapMCPCredentials(rootCtx, pool, mcpBaseURL); err != nil {
@@ -211,7 +211,7 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	return server.Run(rootCtx, pool, cfg, runOpts)
 }
 
-// banner prints the startup summary the way Rust fc-dev does.
+// banner prints the startup summary the way Rust fcdev does.
 func banner(opts startOpts) {
 	slog.Info("=== FlowCatalyst Dev Monolith ===")
 	slog.Info("subsystem configuration",

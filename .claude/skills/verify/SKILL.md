@@ -2,18 +2,18 @@
 
 ## Launch
 
-- An fc-dev instance is often already running on :8080 (embedded PG on :15432) — check with
+- An fcdev instance is often already running on :8080 (embedded PG on :15432) — check with
   `lsof -nP -iTCP:8080 -sTCP:LISTEN` and **do not kill it** (it may be the owner's).
 - Frontend changes: serve the working tree via Vite proxying to the running API —
   `cd frontend && VITE_BACKEND_PORT=8080 pnpm exec vite --port 4200` (background it).
   After adding a dependency, start with `--force`; expect the dep optimizer to reload pages
   mid-flow on first visit of each lazy route — warm every route once before asserting.
-- No API running: `bin/fc-dev start` (built by `make go-build`; needs `make frontend` first
+- No API running: `bin/fcdev start` (built by `make go-build`; needs `make frontend` first
   because the SPA is embedded at compile time).
 
 ## Login
 
-Seeded dev admin: `admin@flowcatalyst.local` / `DevPassword123!` (from `fc-dev start` defaults).
+Seeded dev admin: `admin@flowcatalyst.local` / `DevPassword123!` (from `fcdev start` defaults).
 The login is two-step: fill the email input → click "Continue" → wait for
 `input[type="password"]` → fill → submit → lands on `/dashboard`.
 

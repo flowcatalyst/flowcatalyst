@@ -61,7 +61,7 @@ type Config struct {
 	RefreshTokens *grantstore.RefreshTokenRepository
 	Auth          *authservice.AuthService
 
-	// CookieSecure flips the cookie Secure flag. False in fc-dev (HTTP
+	// CookieSecure flips the cookie Secure flag. False in fcdev (HTTP
 	// localhost). True in fc-server (HTTPS).
 	CookieSecure bool
 
@@ -100,7 +100,7 @@ func New(cfg Config) *Endpoint { return &Endpoint{cfg: cfg} }
 // RegisterRoutes mounts the four endpoints on r. Convenience that calls
 // both RegisterPublicRoutes and RegisterAuthenticatedRoutes on the same
 // router — callers that DON'T put the router behind an auth middleware
-// can use this. fc-server/fc-dev split the two to keep check-domain +
+// can use this. fc-server/fcdev split the two to keep check-domain +
 // login outside the auth gate.
 func (e *Endpoint) RegisterRoutes(r chi.Router) {
 	e.RegisterPublicRoutes(r)
