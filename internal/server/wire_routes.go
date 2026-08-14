@@ -250,6 +250,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			IdPs:              repos.idpRepo,
 			Flows:             portalFlowRepo,
 			AuthCodes:         grantstore.NewAuthorizationCodeRepository(pool),
+			PasswordReset:     principalResetEmailer,
 			RateLimit:         svcs.rlStore,
 			RateLimitPolicies: svcs.rlPolicies,
 		}

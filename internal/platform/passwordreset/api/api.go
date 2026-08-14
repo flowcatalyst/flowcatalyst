@@ -63,6 +63,9 @@ type Emailer interface {
 	// framing (no platform brand/logo, no 2FA copy — portal identities have
 	// none). Portals that want real branding use returnInviteLink instead.
 	SendPortalInviteLink(ctx context.Context, to, inviteLink string) error
+	// SendPortalResetLink is the PORTAL-identity forgot-password email —
+	// same neutral framing as the portal invite.
+	SendPortalResetLink(ctx context.Context, to, resetLink string) error
 }
 
 // linkEmailer wraps an email.Service and renders the reset/invite emails using
@@ -142,6 +145,32 @@ func (e linkEmailer) SendPortalInviteLink(ctx context.Context, to, inviteLink st
 	})
 }
 
+// SendPortalResetLink renders the portal forgot-password email with the same
+// neutral framing as the portal invite.
+func (e linkEmailer) SendPortalResetLink(ctx context.Context, to, resetLink string) error {
+	platform := branding.LoadTheme(ctx, e.brand)
+	theme := branding.Theme{
+		BrandName:    "Portal",
+		PrimaryColor: platform.PrimaryColor,
+		AccentColor:  platform.AccentColor,
+		FooterText:   "This is an automated message. Please do not reply to this email.",
+	}
+	return e.svc.Send(ctx, email.Message{
+		To:      to,
+		Subject: "Reset your password",
+		HTMLBody: theme.RenderEmail(branding.EmailContent{
+			Heading:     "Reset your password",
+			Intro:       "We received a request to reset your portal password. Click the button below to choose a new one.",
+			ButtonLabel: "Reset password",
+			ButtonURL:   resetLink,
+			AfterButton: []string{
+				"This link expires in 15 minutes.",
+				"If you didn't request this, you can safely ignore this email.",
+			},
+		}),
+	})
+}
+
 // principalEmailer mints a reset token for a principal and emails the link. It
 // implements principal/operations.PasswordResetEmailer, powering the admin
 // trigger POST /api/principals/{id}/send-password-reset. Lives here so it can
@@ -202,6 +231,27 @@ func (e *principalEmailer) mintInviteLink(ctx context.Context, subjectID string,
 	// Invites land on the SPA's set-password framing of the shared page —
 	// same machinery, first-time copy ("set" not "reset").
 	return strings.TrimRight(e.base, "/") + "/auth/set-password?token=" + raw, nil
+}
+
+// SendPortalReset mints a 15-minute reset token for a PORTAL identity
+// (keyed by its ptu_ id — the confirm flow branches on the prefix) and
+// emails the neutral portal reset link. redirectURI is followed after the
+// reset completes, landing the user back at their portal.
+func (e *principalEmailer) SendPortalReset(ctx context.Context, identityID, emailAddr string, redirectURI *string) error {
+	if err := e.tokens.DeleteByPrincipalID(ctx, identityID); err != nil {
+		return err
+	}
+	raw, err := generateRawToken()
+	if err != nil {
+		return err
+	}
+	tok := passwordreset.New(identityID, hashToken(raw), time.Now().UTC().Add(resetTokenTTL))
+	tok.RedirectURI = redirectURI
+	if err := e.tokens.Insert(ctx, tok); err != nil {
+		return err
+	}
+	link := strings.TrimRight(e.base, "/") + "/auth/reset-password?token=" + raw
+	return e.mail.SendPortalResetLink(ctx, emailAddr, link)
 }
 
 // PortalInviteLink mints a set-password invite for a PORTAL identity (the

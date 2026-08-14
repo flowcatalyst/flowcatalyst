@@ -1,6 +1,7 @@
 package portalauth
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -18,6 +19,12 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 )
 
+// PasswordResetSender mints and emails a portal forgot-password link.
+// Implemented by the password-reset principalEmailer.
+type PasswordResetSender interface {
+	SendPortalReset(ctx context.Context, identityID, email string, redirectURI *string) error
+}
+
 // State bundles the portal auth surface's dependencies.
 type State struct {
 	OAuthClients oauthapi.OAuthClientFinder
@@ -25,6 +32,10 @@ type State struct {
 	IdPs         *identityprovider.Repository
 	Flows        *FlowRepo
 	AuthCodes    *grantstore.AuthorizationCodeRepository
+	// PasswordReset backs POST /portal/auth/password-reset (optional — nil
+	// silently accepts requests without sending, like an unconfigured
+	// mailer).
+	PasswordReset PasswordResetSender
 	// LoginPagePath is the SPA route /portal/authorize bounces to
 	// (default "/portal/login").
 	LoginPagePath string
@@ -42,6 +53,7 @@ func (s *State) RegisterRoutes(r chi.Router) {
 	r.Get("/portal/authorize", s.Authorize)
 	r.Post("/portal/auth/check-domain", s.CheckDomain)
 	r.Post("/portal/auth/login", s.PasswordLogin)
+	r.Post("/portal/auth/password-reset", s.RequestPasswordReset)
 }
 
 // Authorize is GET /portal/authorize — the portal plane's authorization
@@ -256,6 +268,72 @@ func (s *State) PasswordLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.Identities.TouchLastLogin(r.Context(), ident.ID)
 	writeJSON(w, map[string]string{"redirectUrl": redirectURL})
+}
+
+// RequestPasswordReset is POST /portal/auth/password-reset {flowId, email}:
+// the portal forgot-password flow. Silent-success anti-enumeration — the
+// response never reveals whether the identity exists; only an existing
+// ACTIVE identity in the flow's client context is actually mailed. The
+// reset link's post-completion redirect defaults to the portal's origin
+// (derived from the flow's validated redirect URI) so the user lands back
+// at the portal to sign in.
+func (s *State) RequestPasswordReset(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		FlowID string `json:"flowId"`
+		Email  string `json:"email"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		httperror.Write(w, httperror.BadRequest("INVALID_BODY", "malformed request body"))
+		return
+	}
+	flow, err := s.Flows.Find(r.Context(), body.FlowID)
+	if err != nil {
+		httperror.Write(w, usecase.Internal("FLOW", "flow lookup failed", err))
+		return
+	}
+	if flow == nil {
+		httperror.Write(w, httperror.BadRequest("FLOW_EXPIRED", "The login flow has expired — return to the portal and try again"))
+		return
+	}
+	emailAddr := strings.ToLower(strings.TrimSpace(body.Email))
+	if emailDomainOf(emailAddr) == "" {
+		httperror.Write(w, httperror.BadRequest("EMAIL_INVALID", "email is not valid"))
+		return
+	}
+
+	// Same brute-force ceiling as the login endpoint, keyed per
+	// (client, email) with a distinct sub-key so resets and logins don't
+	// share a budget.
+	limitKey := "reset:" + flow.PortalClientID + ":" + emailAddr
+	if rej := ratelimit.Enforce(r.Context(), s.RateLimit, ratelimit.BucketPortalLogin, limitKey, s.RateLimitPolicies.PortalLogin); rej != nil {
+		ratelimit.WriteTooManyRequests(w, rej.RetryAfterSecs, "too many attempts")
+		return
+	}
+
+	if s.PasswordReset != nil {
+		ident, ierr := s.Identities.FindByClientAndEmail(r.Context(), flow.PortalClientID, emailAddr)
+		if ierr == nil && ident != nil && ident.Status == portalidentity.StatusActive {
+			redirect := portalOriginOf(flow.RedirectURI)
+			if serr := s.PasswordReset.SendPortalReset(r.Context(), ident.ID, ident.Email, redirect); serr != nil {
+				// Suppressed (anti-enumeration): log-worthy but never surfaced.
+				_ = serr
+			}
+		}
+	}
+	writeJSON(w, map[string]string{
+		"message": "If an account exists, a reset email has been sent.",
+	})
+}
+
+// portalOriginOf derives "scheme://host/" from the flow's validated
+// redirect URI — admin-registered OAuth config, never caller input.
+func portalOriginOf(redirectURI string) *string {
+	u, err := url.Parse(redirectURI)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return nil
+	}
+	origin := u.Scheme + "://" + u.Host + "/"
+	return &origin
 }
 
 // IssueCode mints the authorization code for a consumed flow and returns the

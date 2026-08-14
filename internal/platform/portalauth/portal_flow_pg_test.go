@@ -208,3 +208,73 @@ func postJSON(t *testing.T, h http.HandlerFunc, path string, body any) *httptest
 	h(rec, req)
 	return rec
 }
+
+// fakeResetSender records portal reset sends.
+type fakeResetSender struct {
+	sent []string
+	uris []*string
+}
+
+func (f *fakeResetSender) SendPortalReset(_ context.Context, identityID, _ string, redirectURI *string) error {
+	f.sent = append(f.sent, identityID)
+	f.uris = append(f.uris, redirectURI)
+	return nil
+}
+
+// TestPortalForgotPassword pins the portal reset-request flow: an existing
+// ACTIVE identity is mailed a reset whose redirect defaults to the portal's
+// origin; unknown emails get the identical silent-success response with no
+// send (anti-enumeration).
+func TestPortalForgotPassword(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	authRepo := platformauth.NewRepository(pool)
+	clients := client.NewRepository(pool)
+	identities := portalidentity.NewRepository(pool)
+	uow := testpg.NewUoW(t)
+
+	clientEv, err := usecaseop.Run(ctx, uow, clientops.CreateClient(clients),
+		clientops.CreateCommand{Name: "Portal Reset Co", Identifier: "portal-reset-co"}, testpg.TestEC())
+	require.NoError(t, err)
+	tenantID := clientEv.ClientID
+	oauthEv, err := usecaseop.Run(ctx, uow, authops.CreateOAuthClient(authRepo.OAuthClients),
+		authops.CreateOAuthClientCommand{
+			ClientName: "Portal Reset App", ClientType: "PUBLIC",
+			RedirectURIs: []string{"https://reset.flow.test/auth/callback"},
+			GrantTypes:   []string{"authorization_code"}, PortalClientID: &tenantID,
+		}, testpg.TestEC())
+	require.NoError(t, err)
+	identEv, err := usecaseop.Run(ctx, uow, portalidentity.Ensure(identities, clients),
+		portalidentity.EnsureCommand{ClientID: tenantID, Email: "resetme@portal-reset.test", Source: "INVITE"}, testpg.TestEC())
+	require.NoError(t, err)
+
+	sender := &fakeResetSender{}
+	s := &State{
+		OAuthClients: authRepo.OAuthClients, Identities: identities,
+		IdPs: identityprovider.NewRepository(pool), Flows: NewFlowRepo(pool),
+		AuthCodes:     grantstore.NewAuthorizationCodeRepository(pool),
+		PasswordReset: sender,
+	}
+	rec := httptest.NewRecorder()
+	s.Authorize(rec, httptest.NewRequest(http.MethodGet,
+		"/portal/authorize?response_type=code&client_id="+url.QueryEscape(oauthEv.ClientID)+
+			"&redirect_uri="+url.QueryEscape("https://reset.flow.test/auth/callback")+"&state=s&code_challenge=c", nil))
+	require.Equal(t, http.StatusTemporaryRedirect, rec.Code)
+	flowID, _ := url.QueryUnescape(strings.TrimPrefix(rec.Header().Get("Location"), "/portal/login?flow="))
+
+	// Existing identity → mailed, redirect = portal origin.
+	rec = postJSON(t, s.RequestPasswordReset, "/portal/auth/password-reset",
+		map[string]string{"flowId": flowID, "email": "resetme@portal-reset.test"})
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Len(t, sender.sent, 1)
+	assert.Equal(t, identEv.IdentityID, sender.sent[0])
+	require.NotNil(t, sender.uris[0])
+	assert.Equal(t, "https://reset.flow.test/", *sender.uris[0])
+
+	// Unknown email → identical response, nothing sent.
+	rec = postJSON(t, s.RequestPasswordReset, "/portal/auth/password-reset",
+		map[string]string{"flowId": flowID, "email": "nobody@portal-reset.test"})
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), "If an account exists")
+	assert.Len(t, sender.sent, 1, "unknown email must not send")
+}
