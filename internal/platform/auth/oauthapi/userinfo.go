@@ -56,7 +56,7 @@ func (s *State) Userinfo(w http.ResponseWriter, r *http.Request) {
 }
 
 // validateBearer extracts and validates the Authorization: Bearer access
-// token, mirroring Rust's extract_and_validate_token.
+// token.
 func (s *State) validateBearer(r *http.Request) (*authservice.AccessTokenClaims, *oauthError) {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
@@ -75,7 +75,7 @@ func (s *State) validateBearer(r *http.Request) (*authservice.AccessTokenClaims,
 
 // userinfoClientID derives the client_id from the first client entry,
 // stripping the ":identifier" suffix. Returns nil for the anchor "*"
-// wildcard. Mirrors Rust's userinfo client_id logic.
+// wildcard.
 func userinfoClientID(clients []string) *string {
 	if len(clients) == 0 {
 		return nil

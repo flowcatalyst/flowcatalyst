@@ -4,10 +4,10 @@
 // roles, subscriptions, dispatch pools, principals, processes, scheduled
 // jobs, openapi spec) in one idempotent batch.
 //
-// Mirrors crates/fc-platform/src/shared/sdk_sync_api.rs (the Rust
-// sdk_sync_router nested under /api/applications) exactly: path, method,
+// Path, method,
 // request body shape, and the shared SyncResultResponse
-// {applicationCode, created, updated, deleted, syncedCodes} wire shape.
+// {applicationCode, created, updated, deleted, syncedCodes} wire shape
+// are pinned by the SDK contract.
 //
 // Each handler resolves {appCode} to an Application (404 when unknown),
 // checks the resource's sync permission, then delegates to that resource's
@@ -70,7 +70,7 @@ type State struct {
 }
 
 // SyncResultResponse is the shared result for the list-based sync
-// endpoints. Mirrors the Rust SyncResultResponse (camelCase wire shape).
+// endpoints (camelCase wire shape).
 type SyncResultResponse struct {
 	ApplicationCode string   `json:"applicationCode"`
 	Created         uint32   `json:"created"`
@@ -79,8 +79,8 @@ type SyncResultResponse struct {
 	SyncedCodes     []string `json:"syncedCodes"`
 }
 
-// Register mounts the SDK sync endpoints on the supplied huma API. Paths
-// match the Rust sdk_sync_router nested under /api/applications.
+// Register mounts the SDK sync endpoints on the supplied huma API,
+// nested under /api/applications.
 func Register(api huma.API, s *State) {
 	g := apiroute.New(api, tag)
 	apiroute.Post(g, "syncRoles", "/api/applications/{appCode}/roles/sync", "Sync an application's roles (SDK self-registration)", http.StatusOK, s.syncRoles)
@@ -98,7 +98,7 @@ func Register(api huma.API, s *State) {
 }
 
 // resolveApp loads the application by code, returning a 404 when unknown —
-// matching the Rust handlers' 404-on-unknown-application contract.
+// the 404-on-unknown-application contract.
 func (s *State) resolveApp(ctx context.Context, code string) (*application.Application, error) {
 	app, err := s.Apps.FindByCode(ctx, code)
 	if err != nil {
@@ -415,7 +415,7 @@ type syncDispatchPoolInputRequest struct {
 	Name        string  `json:"name"`
 	Description *string `json:"description,omitempty"`
 	RateLimit   *int32  `json:"rateLimit,omitempty" doc:"Messages per minute; omit for concurrency-only"`
-	// Concurrency defaults to 10 when omitted (matches the Rust default).
+	// Concurrency defaults to 10 when omitted.
 	Concurrency *int32 `json:"concurrency,omitempty"`
 }
 
@@ -571,7 +571,7 @@ func (s *State) runProcessSync(ctx context.Context, appCode string, processes []
 
 // SyncScheduledJobsResultResponse is the scheduled-job sync result. Unlike
 // the list-based resources it returns the affected job IDs (not counts) and
-// uses archive (not delete) semantics — mirrors the Rust shape.
+// uses archive (not delete) semantics.
 type SyncScheduledJobsResultResponse struct {
 	ApplicationCode string   `json:"applicationCode"`
 	Created         []string `json:"created"`
@@ -680,7 +680,7 @@ func defaultEmptySlice(xs []string) []string {
 
 // SyncOpenApiSpecResponse is the openapi sync result. Unlike the list-based
 // resources this is a single-document, versioned sync, so it has its own
-// shape (mirrors the Rust SyncOpenApiSpecResponse).
+// shape.
 type SyncOpenApiSpecResponse struct {
 	ApplicationCode      string  `json:"applicationCode"`
 	SpecID               string  `json:"specId"`

@@ -1,11 +1,10 @@
-// Package grantstore is a 1:1 port of the Rust authorization-code and
-// refresh-token repositories (auth/authorization_code*.rs,
-// auth/refresh_token*.rs). Both artifact kinds are persisted in the
+// Package grantstore persists OAuth2 authorization codes and refresh
+// tokens. Both artifact kinds are persisted in the
 // shared oauth_oidc_payloads table — keyed by a composite id
 // ("AuthorizationCode:{code}" / "RefreshToken:{id}"), discriminated by
 // the `type` column, with a camelCase JSONB payload — for byte-level
-// storage compatibility with the TypeScript/Rust providers during
-// cutover.
+// storage compatibility with other provider implementations sharing the
+// same database.
 //
 // These are infrastructure rows, not domain aggregates: they bypass the
 // UoW and are accessed via raw pgx (per docs/conventions.md §3 and the
@@ -46,7 +45,7 @@ const (
 
 // AuthorizationCode is an OAuth2 authorization code for the
 // authorization-code flow. Codes are short-lived, single-use, and bound
-// to PKCE. Mirrors the Rust AuthorizationCode struct.
+// to PKCE.
 type AuthorizationCode struct {
 	Code                string
 	ClientID            string
@@ -83,7 +82,7 @@ func (c *AuthorizationCode) IsExpired() bool { return time.Now().UTC().After(c.E
 func (c *AuthorizationCode) IsValid() bool { return !c.Used && !c.IsExpired() }
 
 // authCodePayload is the camelCase JSONB stored under the row's payload
-// column, matching Rust's AuthorizationCodeRepository::to_payload.
+// column (the shared storage contract for oauth_oidc_payloads rows).
 type authCodePayload struct {
 	AccountID           string  `json:"accountId"`
 	ClientID            string  `json:"clientId"`
@@ -220,7 +219,6 @@ func scanAuthCode(row pgx.Row) (*AuthorizationCode, error) {
 
 // RefreshToken is a long-lived token used to renew access tokens. Only
 // the hash is stored; the raw token is returned to the client once.
-// Mirrors the Rust RefreshToken struct.
 type RefreshToken struct {
 	ID                string
 	TokenHash         string
@@ -260,8 +258,7 @@ func GenerateRawToken() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b[:]), nil
 }
 
-// HashToken returns base64url (no-pad) SHA-256 of the raw token, matching
-// Rust's RefreshToken::hash_token.
+// HashToken returns base64url (no-pad) SHA-256 of the raw token.
 func HashToken(rawToken string) string {
 	h := sha256.Sum256([]byte(rawToken))
 	return base64.RawURLEncoding.EncodeToString(h[:])
@@ -284,8 +281,8 @@ func (t *RefreshToken) IsValid() bool {
 // WasReplaced reports whether the token was rotated out (replaced_by set).
 func (t *RefreshToken) WasReplaced() bool { return t.ReplacedBy != nil }
 
-// refreshTokenPayload is the camelCase JSONB stored under payload,
-// matching Rust's RefreshTokenRepository::to_payload.
+// refreshTokenPayload is the camelCase JSONB stored under payload
+// (the shared storage contract for oauth_oidc_payloads rows).
 type refreshTokenPayload struct {
 	AccountID         string   `json:"accountId"`
 	ClientID          *string  `json:"clientId"`
@@ -339,7 +336,7 @@ func (r *RefreshTokenRepository) Insert(ctx context.Context, t *RefreshToken) er
 		return fmt.Errorf("marshal refresh-token payload: %w", err)
 	}
 	if t.AccessibleClients == nil {
-		// Match Rust: accessibleClients always an array, never null.
+		// Storage contract: accessibleClients always an array, never null.
 		payload, _ = injectEmptyArray(payload, "accessibleClients")
 	}
 	_, err = r.pool.Exec(ctx,
@@ -551,7 +548,7 @@ func parseRFC3339Ptr(s *string) *time.Time {
 }
 
 // injectEmptyArray ensures key holds [] rather than null in the payload
-// blob (matches Rust serializing an empty Vec as []).
+// blob (the storage contract serializes an empty list as []).
 func injectEmptyArray(payload []byte, key string) ([]byte, error) {
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(payload, &m); err != nil {

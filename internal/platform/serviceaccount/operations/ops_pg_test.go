@@ -103,7 +103,7 @@ func TestCreateServiceAccount_HappyPath(t *testing.T) {
 	assert.Equal(t, appID, *got.ApplicationID)
 	assert.Equal(t, serviceaccount.AuthNone, got.WebhookCredentials.AuthType,
 		"no credentials in cmd → NONE")
-	// scope + client_ids persist since migration 035 (pre-035 / Rust rows
+	// scope + client_ids persist since migration 035 (pre-035 rows
 	// read back NULL).
 	require.NotNil(t, got.Scope)
 	assert.Equal(t, scope, *got.Scope)
@@ -204,7 +204,7 @@ func TestCreateServiceAccountWithCredentials_HappyPath(t *testing.T) {
 	assert.NotEmpty(t, res.OAuthClientID)
 	assert.NotEmpty(t, res.OAuthClientSecret)
 	assert.NotEmpty(t, res.SigningSecret)
-	assert.Regexp(t, `^fc_[0-9a-z]{32}$`, res.AuthToken, "bearer token format (Rust parity)")
+	assert.Regexp(t, `^fc_[0-9a-z]{32}$`, res.AuthToken, "bearer token format (wire contract)")
 
 	// Service-account row: webhook credentials minted as BEARER + both secrets.
 	sa, err := saRepo.FindByID(ctx, res.ServiceAccount.ID)

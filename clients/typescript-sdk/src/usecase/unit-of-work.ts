@@ -3,7 +3,7 @@
  *
  * Concrete implementations route events to their destination. For this SDK the
  * default is `OutboxUnitOfWork`, which writes events to the local outbox table
- * so the fc-outbox-processor forwards them to the FlowCatalyst platform.
+ * so the outbox poller forwards them to the FlowCatalyst platform.
  */
 
 import type { DomainEvent } from "./domain-event.js";

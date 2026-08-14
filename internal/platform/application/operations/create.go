@@ -37,7 +37,7 @@ func CreateApplication(repo *application.Repository) usecaseop.Operation[CreateC
 			if code == "" {
 				return usecase.Validation("CODE_REQUIRED", "code is required")
 			}
-			// Underscores are allowed: the Rust reference enforced no pattern at
+			// Underscores are allowed: the original implementation enforced no pattern at
 			// all (only non-empty + unique), and real application codes use them
 			// (logistics_portal, transport_order, master_data). Matches the
 			// dispatch-pool sync pattern.

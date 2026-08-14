@@ -35,7 +35,7 @@ func Register(api huma.API, s *State) {
 	apiroute.Post(g, "batchIngestEvents", "/api/events/batch", "Ingest a batch of events (SDK)", http.StatusCreated, s.batchIngest)
 	apiroute.Get(g, "eventFilterOptions", "/api/events/filter-options", "Distinct event types/sources/clients for filter UI", s.filterOptions)
 	apiroute.Get(g, "listEventsRaw", "/api/events/list-raw", "List events with raw JSONB rows", s.listRaw)
-	// SDK-compatibility alias: the Laravel/Rust client addresses the raw
+	// SDK-compatibility alias: the SDK clients address the raw
 	// collection as /api/events/raw; Go's canonical path is /list-raw. Same
 	// handler.
 	apiroute.Get(g, "listEventsRawAlias", "/api/events/raw", "List events raw (SDK alias of /list-raw)", s.listRaw)
@@ -43,14 +43,14 @@ func Register(api huma.API, s *State) {
 	apiroute.Get(g, "getEvent", "/api/events/{id}", "Get an event by id", s.getByID)
 
 	// BFF tier — cookie-auth, SPA-facing. /bff/events mirrors the regular
-	// list/detail handlers under cookie-auth. Mirrors Rust's events_router.
+	// list/detail handlers under cookie-auth.
 	registerBFF(api, s, "/bff/events", "Bff", "bff-events")
 
 	// /bff/debug/events is a SEPARATE raw-event view (write-side
 	// msg_events incl. context_data). The SPA's RawEventListPage binds
 	// field="eventType"/field="deduplicationId" — a different item shape
 	// from the regular list — so it gets its own handler returning a bare
-	// array of RawEventResponse. Mirrors Rust's shared/debug_api.rs.
+	// array of RawEventResponse.
 	gd := apiroute.New(api, "bff-debug-events")
 	apiroute.Get(gd, "listDebugEvents", "/bff/debug/events", "List raw events (debug view of msg_events)", s.listDebugRaw)
 }
@@ -69,19 +69,19 @@ func registerBFF(api huma.API, s *State, base, opPrefix, tag string) {
 
 // ── singular create ──────────────────────────────────────────────────────
 
-// create is POST /api/events — the singular SDK ingest, mirroring Rust's
-// create_event (event/api.rs). Validation/normalization happens here; the
+// create is POST /api/events — the singular SDK ingest.
+// Validation/normalization happens here; the
 // row goes through the SAME repository insert path as the batch endpoint
 // (InsertBatch with one item — event ingest bypasses the UoW per
 // docs/conventions.md §3).
 //
-// Known divergence from Rust: the Go event repository deliberately has no
-// find_by_deduplication_id, so the idempotent dedup-hit path (200 +
+// Known divergence from the historical contract: the event repository
+// deliberately has no find_by_deduplication_id, so the idempotent dedup-hit path (200 +
 // isDuplicate=true returning the existing event) is not implemented —
 // every accepted request inserts and responds 201 with isDuplicate=false.
 // The Laravel SDK decodes CreateEventResponse on both 200 and 201, so the
-// contract holds either way. dispatchJobCount is always 0, exactly like
-// Rust (jobs are fanned out by the stream processor, not inline).
+// contract holds either way. dispatchJobCount is always 0
+// (jobs are fanned out by the stream processor, not inline).
 func (s *State) create(ctx context.Context, in *apicommon.In[CreateEventRequest]) (*apicommon.Out[CreateEventResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePermission(ac, "platform:messaging:batch:events-write"); err != nil {
@@ -96,7 +96,7 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreateEventRequest]
 	}
 
 	// Client ID: explicit value wins; otherwise non-anchor callers default
-	// to their first accessible client (1:1 with Rust create_event).
+	// to their first accessible client.
 	clientID := req.ClientID
 	if clientID == nil && !ac.IsAnchor() && len(ac.Clients) > 0 {
 		clientID = &ac.Clients[0]
@@ -215,7 +215,7 @@ type listInput struct {
 	Types        string `query:"types" doc:"CSV of event types"`
 }
 
-// splitCSV mirrors Rust's split_csv (event/api.rs): trim, drop empties.
+// splitCSV splits a comma-separated value: trim, drop empties.
 func splitCSV(s string) []string {
 	if s == "" {
 		return nil
@@ -266,7 +266,7 @@ func (in *listInput) toFilters() event.FilterParams {
 
 // The list endpoints' Body is a bare JSON array — the SPA's EventListPage
 // binds the returned array directly to its DataTable, so {items:[...]} would
-// render zero rows. Mirrors Rust's list_events returning Vec<EventRead>.
+// render zero rows.
 
 // scopeFilters applies SQL-side tenant scoping (anchor sees all → no
 // scoping). Without it a non-anchor holding event:view could read any

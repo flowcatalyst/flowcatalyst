@@ -23,8 +23,7 @@ type Config struct {
 	TokenSource TokenSource
 	// MaxRetries caps re-queues of a retryable failure (OB6): once an item
 	// has been attempted MaxRetries times it keeps its failure status instead
-	// of returning to PENDING, so it stops hot-looping. Mirrors the Rust
-	// MessageGroupProcessorConfig.max_retries (default 3).
+	// of returning to PENDING, so it stops hot-looping. Default 3.
 	MaxRetries int
 	// RecoveryInterval / RecoveryThreshold drive crash recovery (OB2): every
 	// RecoveryInterval, rows stuck IN_PROGRESS longer than RecoveryThreshold
@@ -32,15 +31,15 @@ type Config struct {
 	RecoveryInterval  time.Duration
 	RecoveryThreshold time.Duration
 	// MaxConcurrentGroups caps how many distinct message groups dispatch
-	// concurrently (OB7). <= 0 = unbounded. Mirrors Rust max_concurrent_groups.
+	// concurrently (OB7). <= 0 = unbounded.
 	MaxConcurrentGroups int
 	// BlockOnError stops a message group as soon as one of its items fails,
 	// releasing the rest to re-run in order behind it (OB4 ordering guarantee).
-	// Default true, matching Rust block_on_error. Ungrouped items are unaffected.
+	// Default true. Ungrouped items are unaffected.
 	BlockOnError bool
 }
 
-// DefaultConfig matches the Rust outbox defaults.
+// DefaultConfig returns the standard outbox defaults.
 func DefaultConfig() Config {
 	return Config{
 		PollInterval:        1 * time.Second,
@@ -58,8 +57,6 @@ func DefaultConfig() Config {
 // Processor wires the outbox pipeline:
 //
 //	repo.ClaimPending → groupDistributor → httpDispatcher → repo.MarkSuccess/Failed
-//
-// Mirrors fc-outbox/src/enhanced_processor.rs.
 type Processor struct {
 	cfg          Config
 	repo         Repository
@@ -73,7 +70,7 @@ type Processor struct {
 	// IsLeader gates polling; nil means always-leader (single instance /
 	// standby disabled). When standby is enabled only the leader polls — the
 	// Mongo backend has no atomic claim, so a single active poller avoids
-	// double-claims. Mirrors the Rust outbox leadership gate.
+	// double-claims.
 	IsLeader func() bool
 }
 
@@ -255,7 +252,7 @@ func (p *Processor) dispatch(ctx context.Context, item Item) bool {
 	return false
 }
 
-// ── Operational state machine controls (Rust message_group_processor parity) ──
+// ── Operational state machine controls ──
 
 // PauseGroup stops dispatching a message group; its items are released to
 // PENDING each cycle until ResumeGroup. No-op when the group is Blocked.

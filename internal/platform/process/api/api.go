@@ -27,8 +27,7 @@ type State struct {
 // Register mounts the process endpoints under both /api/processes and
 // /bff/processes. The two prefixes serve the same handlers — the BFF
 // alias exists so the cookie-session frontend can hit the same surface
-// without the bearer-token expectations of /api consumers. Mirrors
-// Rust's router.rs which nests processes_router under both paths.
+// without the bearer-token expectations of /api consumers.
 func Register(api huma.API, s *State) {
 	registerAt(api, s, "/api/processes", "", "processes")
 	registerAt(api, s, "/bff/processes", "Bff", "bff-processes")

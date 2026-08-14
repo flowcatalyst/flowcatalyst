@@ -74,10 +74,10 @@ func (r CreateOAuthClientRequest) toCommand() operations.CreateOAuthClientComman
 }
 
 // UpdateOAuthClientRequest is the wire body for PUT /api/oauth-clients/{id}.
-// The SPA was built against the Rust API and sends `defaultScopes` (the same
+// The SPA sends `defaultScopes` (the same
 // wire name as OAuthClientResponse) and `pkceRequired`; both are accepted here
-// so the body validates (Go's schema is additionalProperties:false, unlike
-// Rust's lenient one, so unknown fields would otherwise 400).
+// so the body validates (the schema is additionalProperties:false,
+// so unknown fields would otherwise 400).
 type UpdateOAuthClientRequest struct {
 	ClientName             *string  `json:"clientName,omitempty"`
 	RedirectURIs           []string `json:"redirectUris,omitempty"`
@@ -207,8 +207,8 @@ func oauthClientFromEntity(c *auth.OAuthClient) OAuthClientResponse {
 	}
 }
 
-// OAuthClientListResponse is the wire shape for GET /api/oauth-clients.
-// Matches the Rust fc-platform shape `{clients}` (no total). SPA's
+// OAuthClientListResponse is the wire shape for GET /api/oauth-clients:
+// `{clients}` (no total). SPA's
 // OAuthClientListPage reads `response.clients`.
 type OAuthClientListResponse struct {
 	Clients []OAuthClientResponse `json:"clients"`

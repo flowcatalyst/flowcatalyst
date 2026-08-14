@@ -64,7 +64,7 @@ func TestSend_Non2xxFallsBackToHTTPStatus(t *testing.T) {
 	}
 }
 
-// Rust parity (http_dispatcher.rs match arms): only an EXACT 400 is terminal
+// Only an EXACT 400 is terminal
 // BAD_REQUEST. Every other 4xx — notably a transient 429 — must map to
 // INTERNAL_ERROR (retryable), so the item retries instead of permanently
 // failing and blocking its message group.
@@ -97,7 +97,7 @@ func TestSend_Transient4xxIsRetryable(t *testing.T) {
 		out := d.Send(context.Background(), newItem())
 		srv.Close()
 		if out.Status != common.OutboxInternalError {
-			t.Errorf("%d → %v, want INTERNAL_ERROR (retryable, Rust parity)", code, out.Status)
+			t.Errorf("%d → %v, want INTERNAL_ERROR (retryable, wire contract)", code, out.Status)
 		}
 		if !out.Status.IsRetryable() {
 			t.Errorf("%d must be retryable", code)
@@ -105,8 +105,8 @@ func TestSend_Transient4xxIsRetryable(t *testing.T) {
 	}
 }
 
-// A transport failure (connection refused) maps to GATEWAY_ERROR (retryable),
-// matching Rust's send() Err arm — not INTERNAL_ERROR.
+// A transport failure (connection refused) maps to GATEWAY_ERROR (retryable) —
+// not INTERNAL_ERROR.
 func TestSend_TransportErrorIsGatewayError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	url := srv.URL

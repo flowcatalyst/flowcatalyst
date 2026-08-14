@@ -1,6 +1,5 @@
-// Package ratelimit is a 1:1 port of fc-platform/shared/rate_limit_store/
-// (the distributed Store) and rate_limit_middleware.rs (the in-memory
-// Governor). The cluster-wide Store caps a coordinated attacker spreading
+// Package ratelimit provides the distributed Store and the in-memory
+// Governor. The cluster-wide Store caps a coordinated attacker spreading
 // load across replicas; the per-instance Governor sheds a local flood in
 // front of it, before the network round-trip (defence in depth). They
 // compose — see Governor in governor.go.
@@ -63,7 +62,7 @@ type Policies struct {
 	PortalLogin Policy
 }
 
-// PoliciesFromEnv reads the FC_RL_* knobs, matching the Rust defaults.
+// PoliciesFromEnv reads the FC_RL_* knobs.
 func PoliciesFromEnv() Policies {
 	return Policies{
 		OAuthTokenIP:         Policy{time.Minute, envutil.Uint32("FC_RL_OAUTH_TOKEN_IP_PER_MIN", 600)},
@@ -176,7 +175,7 @@ func Enforce(ctx context.Context, store Store, bucket Bucket, key string, policy
 }
 
 // WriteTooManyRequests emits a 429 with a Retry-After header and the
-// platform {error, message} envelope (matching Rust's enforce_distributed).
+// platform {error, message} envelope.
 func WriteTooManyRequests(w http.ResponseWriter, retryAfterSecs uint32, message string) {
 	if retryAfterSecs < 1 {
 		retryAfterSecs = 1

@@ -93,7 +93,7 @@ func (e RoleDeleted) ToDataJSON() ([]byte, error) {
 }
 
 // RolesSynced is the rollup event emitted by SyncPlatformRoles. The
-// counts mirror Rust's RoleSyncCounts: created/updated/removed are
+// counts: created/updated/removed are
 // per-row outcomes; total is the size of the code-defined catalogue
 // (NOT the number of CODE rows in the database after sync).
 type RolesSynced struct {

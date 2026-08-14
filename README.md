@@ -1,7 +1,6 @@
 # FlowCatalyst
 
-A multi-tenant event router and webhook delivery platform — the Go
-implementation of FlowCatalyst.
+A multi-tenant event router and webhook delivery platform, written in Go.
 
 Applications publish domain events. Other applications (or yours, or external
 services) consume them via webhook subscriptions. FlowCatalyst handles routing,
@@ -9,10 +8,9 @@ FIFO ordering, retry, rate-limiting, circuit breaking, and audit — across
 multiple tenants — so you don't have to reimplement that machinery in every
 consumer.
 
-This codebase is a **drop-in replacement** for the original
-[`flowcatalyst-rust`](../flowcatalyst-rust/): same Postgres schema, same HTTP API
-contracts, same OpenAPI spec, same Vue frontend. Existing SDK consumers and
-webhook subscribers keep working unchanged.
+The Postgres schema, HTTP API contracts, OpenAPI spec, and Vue frontend are
+stable: existing SDK consumers and webhook subscribers keep working unchanged
+across releases.
 
 ---
 
@@ -90,7 +88,7 @@ put it on your `PATH`.
 
 Release assets are named with Go's **GOOS-GOARCH** convention
 (`darwin-arm64`, `darwin-amd64`, `linux-amd64`, `linux-arm64`,
-`windows-amd64`) — not Rust target triples.
+`windows-amd64`).
 
 ### macOS / Linux
 
@@ -226,9 +224,9 @@ build. macOS and Windows archives are not yet codesigned.
 | `fc-server` | Unified production server — every subsystem (platform API, router, scheduler, stream, outbox, MCP) toggleable via env vars. Run one instance with everything on, or several each running a subset for split topologies. |
 | `fcdev` | Local development monolith: all subsystems in one process against an embedded Postgres. |
 
-Unlike the Rust build, the Go repo ships these **two** binaries rather than a
-separate executable per subsystem — split topologies are achieved by running
-multiple `fc-server` instances with different subsystems enabled.
+The repo ships these **two** binaries rather than a separate executable per
+subsystem — split topologies are achieved by running multiple `fc-server`
+instances with different subsystems enabled.
 
 ---
 
@@ -315,17 +313,17 @@ the same code in dev and prod — no `pg_partman` or `pg_cron`.
 
 ### Default HTTP port
 
-`fc-server` defaults to `FC_API_PORT=8080`. The Rust `fc-server` defaulted to
-`3000`. Operators running both side-by-side, or behind load-balancer rules that
-hard-code `3000`, should set `FC_API_PORT=3000` explicitly. The `FC_API_PORT`
-env var (or its legacy alias `PORT`) overrides the binary default.
+`fc-server` defaults to `FC_API_PORT=8080`. Older deployments defaulted to
+`3000` — operators behind load-balancer rules that hard-code `3000` should set
+`FC_API_PORT=3000` explicitly. The `FC_API_PORT` env var (or its legacy alias
+`PORT`) overrides the binary default.
 
-| Service       | Go default          | Rust default        | Override env             |
-|---------------|---------------------|---------------------|--------------------------|
-| Platform HTTP | `FC_API_PORT=8080`  | `PORT=3000`         | `FC_API_PORT` / `PORT`   |
-| fcdev        | `--api-port 8080`   | `--api-port 8080`   | `FC_API_PORT` / `--api-port` |
-| Metrics       | `FC_METRICS_PORT=9090` | `9090`           | `FC_METRICS_PORT`        |
-| MCP           | `127.0.0.1:8090`    | `127.0.0.1:3100`    | `FC_MCP_PORT` / `FC_MCP_BIND` |
+| Service       | Default             | Override env             |
+|---------------|---------------------|--------------------------|
+| Platform HTTP | `FC_API_PORT=8080`  | `FC_API_PORT` / `PORT`   |
+| fcdev        | `--api-port 8080`   | `FC_API_PORT` / `--api-port` |
+| Metrics       | `FC_METRICS_PORT=9090` | `FC_METRICS_PORT`        |
+| MCP           | `127.0.0.1:8090`    | `FC_MCP_PORT` / `FC_MCP_BIND` |
 
 The complete environment-variable reference (every variable the server, subsystems, and `fcdev` read, with defaults and aliases) is in [`docs/environment-variables.md`](docs/environment-variables.md).
 
@@ -333,23 +331,13 @@ The complete environment-variable reference (every variable the server, subsyste
 
 ## Documentation
 
-- [`docs/architecture.md`](docs/architecture.md) — package layout, crate-to-package mapping, library choices
+- [`docs/architecture.md`](docs/architecture.md) — package layout and library choices
 - [`CONVENTIONS.md`](CONVENTIONS.md) — engineering conventions (read before writing code)
 - [`docs/usecase-pattern.md`](docs/usecase-pattern.md) — the sealed UseCase + UnitOfWork pattern, worked example
-- [`docs/api-parity.md`](docs/api-parity.md) — how byte-compatibility with the Rust HTTP API is guaranteed
+- [`docs/wire-contract.md`](docs/wire-contract.md) — the HTTP wire contract and how it's enforced
 - [`docs/sqlc.md`](docs/sqlc.md) — sqlc workflow and conventions
 - [`docs/oidc-security-audit.md`](docs/oidc-security-audit.md) — OIDC implementation security review
 - [`docs/adr/`](docs/adr/) — architecture decision records
-- [`PLAN.md`](PLAN.md) · [`HANDOFF.md`](HANDOFF.md) — porting plan and status
-
----
-
-## Relationship to the Rust codebase
-
-Until cutover, both codebases coexist. The Rust repo remains the reference for
-the production OpenAPI spec and migrations; the Go repo grows feature parity
-domain by domain. After cutover the Go repo owns production traffic, migrations,
-and the spec, and the Rust repo is archived as a reference implementation.
 
 ---
 

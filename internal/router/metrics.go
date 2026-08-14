@@ -11,14 +11,13 @@ import (
 )
 
 // MetricsConfig configures the windowed sample buffer.
-// Mirrors crates/fc-router/src/metrics.rs::MetricsConfig.
 type MetricsConfig struct {
 	MaxSamples  int
 	ShortWindow time.Duration
 	LongWindow  time.Duration
 }
 
-// DefaultMetricsConfig returns the Rust-default tuning (10k samples,
+// DefaultMetricsConfig returns the default tuning (10k samples,
 // 5 min short, 30 min long).
 func DefaultMetricsConfig() MetricsConfig {
 	return MetricsConfig{
@@ -37,8 +36,8 @@ type metricSample struct {
 }
 
 // PoolMetricsCollector aggregates per-pool throughput + latency for the
-// dashboard. Mirrors the Rust PoolMetricsCollector, but uses a sorted
-// snapshot for percentiles instead of HdrHistogram to avoid pulling in
+// dashboard. Uses a sorted snapshot for percentiles instead of a
+// histogram library to avoid pulling in
 // a new dep — at MaxSamples=10000 a sort.Slice on a snapshot copy runs
 // in well under a millisecond, and the snapshot only happens when
 // /monitoring/pool-stats is requested.
@@ -111,7 +110,7 @@ func (c *PoolMetricsCollector) RecordFailure(durationMs uint64) {
 }
 
 // RecordTransient records a transient error (ERROR_PROCESS — message will
-// be retried). Matches Rust: do NOT bump total_failure, but do add a
+// be retried). Does NOT bump total_failure, but does add a
 // non-success sample so windowed success-rate reflects current state.
 func (c *PoolMetricsCollector) RecordTransient(durationMs uint64) {
 	c.addSample(durationMs, false)
@@ -299,8 +298,7 @@ func windowedFromSamples(samples []metricSample, window time.Duration) common.Wi
 }
 
 // processingTimeFromSamples computes latency aggregates incl. p50/p95/p99.
-// Empty input returns the zero value (matches Rust's default
-// ProcessingTimeMetrics).
+// Empty input returns the zero value.
 func processingTimeFromSamples(samples []metricSample) common.ProcessingTimeMetrics {
 	if len(samples) == 0 {
 		return common.ProcessingTimeMetrics{}

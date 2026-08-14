@@ -2,7 +2,7 @@
 // ScheduledJob aggregates. Separate from internal/platform/scheduler, which
 // schedules dispatch jobs.
 //
-// Mirrors fc-platform/src/scheduled_job/scheduler/. Two cooperating loops:
+// Two cooperating loops:
 //
 //   - poller — every PollInterval, scans ACTIVE jobs, computes the LATEST
 //     cron slot in (last_fired, now] per job (skip-missed semantics), inserts
@@ -11,10 +11,10 @@
 //     IN_FLIGHT, POSTs the firing webhook: any 2xx → DELIVERED (terminal
 //     unless the job tracks completion); any other response or a transport
 //     error → retry (back to QUEUED) until delivery_max_attempts, then
-//     DELIVERY_FAILED. Deliberately widened from Rust's 202-only contract.
+//     DELIVERY_FAILED. Deliberately widened from the original 202-only contract.
 //
 // Both loops are leader-gated (a single replica fires each slot; the loops
-// have no SELECT … FOR UPDATE SKIP LOCKED claim, matching the Rust
+// have no SELECT … FOR UPDATE SKIP LOCKED claim — a
 // single-active-replica design). All writes are direct infrastructure work
 // (no UoW — instances are the firing-history projection, not an aggregate).
 package scheduler
@@ -30,8 +30,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 )
 
-// Config controls the cron + dispatch loops. Mirrors the Rust
-// ScheduledJobSchedulerConfig.
+// Config controls the cron + dispatch loops.
 type Config struct {
 	PollInterval      time.Duration // poller wake-up (default 30s)
 	DispatchInterval  time.Duration // dispatcher wake-up (default 5s)
@@ -39,7 +38,7 @@ type Config struct {
 	HTTPTimeout       time.Duration // per-webhook HTTP timeout (default 10s)
 }
 
-// DefaultConfig returns the Rust defaults.
+// DefaultConfig returns the standard defaults.
 func DefaultConfig() Config {
 	return Config{
 		PollInterval:      30 * time.Second,
@@ -50,7 +49,7 @@ func DefaultConfig() Config {
 }
 
 // ConfigFromEnv builds a Config from the FC_SCHEDULED_JOB_* env vars,
-// falling back to DefaultConfig. Matches the Rust env keys exactly:
+// falling back to DefaultConfig:
 //
 //	FC_SCHEDULED_JOB_POLL_SECONDS
 //	FC_SCHEDULED_JOB_DISPATCH_SECONDS

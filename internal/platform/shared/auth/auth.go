@@ -1,6 +1,5 @@
 // Package auth provides the authenticated-request context and the
-// permission-check helpers used by every write handler. Mirrors the
-// Rust shared::authorization_service::checks namespace.
+// permission-check helpers used by every write handler.
 //
 // Conventions (see docs/conventions.md §1):
 //   - CanRead<Resource>(ctx)   for GET
@@ -14,7 +13,7 @@
 //
 // Permission strings are the 4-segment `platform:<context>:<resource>:<action>`
 // identifiers that are actually stored in iam_role_permissions and pinned by
-// the SDK — byte-identical to seed/permissions.go and Rust role/entity.rs.
+// the SDK — byte-identical to seed/permissions.go.
 // HasPermission matches them with `*` segment wildcards, so a role holding
 // `platform:messaging:*:*` (or the super-admin `platform:*:*:*`) satisfies a
 // concrete check. (The earlier short logical names like "READ_EVENT_TYPES"
@@ -28,7 +27,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 )
 
-// Scope is the principal's top-level scope. Matches Rust UserScope.
+// Scope is the principal's top-level scope.
 type Scope string
 
 const (
@@ -38,8 +37,8 @@ const (
 )
 
 // Permission identifiers used by the typed checks below. These MUST match
-// seed/permissions.go (which mirrors Rust role/entity.rs::permissions) — the
-// stored iam_role_permissions rows reference exactly these strings.
+// seed/permissions.go — the stored iam_role_permissions rows reference
+// exactly these strings.
 const (
 	// EventType (messaging context)
 	permEventTypeView   = "platform:messaging:event-type:view"
@@ -166,7 +165,7 @@ type AuthContext struct {
 func (a *AuthContext) IsAnchor() bool { return a != nil && a.Scope == ScopeAnchor }
 
 // IsSuperAdmin reports whether the principal holds the super-admin wildcard
-// permission (platform:*:*:*). Mirrors Rust has_permission(ADMIN_ALL) — used
+// permission (platform:*:*:*) — used
 // by handlers (e.g. SDK openapi sync) that gate on the admin-all grant.
 func (a *AuthContext) IsSuperAdmin() bool { return a.HasPermission(permSuperAdmin) }
 
@@ -249,7 +248,7 @@ func Grants(held []string, required string) bool {
 
 // permissionMatches reports whether a held permission pattern satisfies the
 // required permission. Segment counts must match; each held segment must be
-// "*" or equal the required segment. 1:1 with Rust matches_pattern.
+// "*" or equal the required segment.
 func permissionMatches(held, required string) bool {
 	if held == required {
 		return true
@@ -378,7 +377,7 @@ func FilterClientScoped[T any](a *AuthContext, items []T, clientID func(*T) *str
 // non-nil) requires the caller can access that client; a platform-level
 // resource (clientID nil) requires anchor or super-admin. Without this a
 // non-anchor principal holding e.g. "update subscriptions" could mutate another
-// tenant's resource by guessing its id. 1:1 with Rust check_scope_access.
+// tenant's resource by guessing its id.
 func CheckScopeAccess(a *AuthContext, clientID *string) error {
 	if a == nil {
 		return usecase.Authorization("UNAUTHENTICATED", "authentication required")
@@ -442,7 +441,7 @@ func CanUpdateEventTypes(a *AuthContext) error { return requirePermission(a, per
 func CanDeleteEventTypes(a *AuthContext) error { return requirePermission(a, permEventTypeDelete) }
 
 // CanSyncEventTypes guards POST /api/applications/{appCode}/event-types/sync.
-// Mirrors Rust can_sync_event_types: admits admin sync/manage plus the
+// Admits admin sync/manage plus the
 // application-service create/update/delete permissions an SDK service
 // account holds. Per-application scope is enforced inside the use case.
 func CanSyncEventTypes(a *AuthContext) error {
@@ -456,10 +455,14 @@ func CanWriteEventTypes(a *AuthContext) error {
 }
 
 // ── Connection permissions ───────────────────────────────────────────────
-func CanReadConnections(a *AuthContext) error   { return requirePermission(a, permConnectionView) }
+func CanReadConnections(a *AuthContext) error { return requirePermission(a, permConnectionView) }
+
 func CanCreateConnections(a *AuthContext) error { return requirePermission(a, permConnectionCreate) }
+
 func CanUpdateConnections(a *AuthContext) error { return requirePermission(a, permConnectionUpdate) }
+
 func CanDeleteConnections(a *AuthContext) error { return requirePermission(a, permConnectionDelete) }
+
 func CanWriteConnections(a *AuthContext) error {
 	return requireAny(a, permConnectionCreate, permConnectionUpdate, permConnectionDelete)
 }
@@ -512,10 +515,14 @@ func CanWriteProcesses(a *AuthContext) error {
 }
 
 // ── Application permissions ──────────────────────────────────────────────
-func CanReadApplications(a *AuthContext) error   { return requirePermission(a, permApplicationView) }
+func CanReadApplications(a *AuthContext) error { return requirePermission(a, permApplicationView) }
+
 func CanCreateApplications(a *AuthContext) error { return requirePermission(a, permApplicationCreate) }
+
 func CanUpdateApplications(a *AuthContext) error { return requirePermission(a, permApplicationUpdate) }
+
 func CanDeleteApplications(a *AuthContext) error { return requirePermission(a, permApplicationDelete) }
+
 func CanWriteApplications(a *AuthContext) error {
 	return requireAny(a, permApplicationCreate, permApplicationUpdate, permApplicationDelete)
 }
@@ -529,8 +536,8 @@ func CanWriteRoles(a *AuthContext) error {
 	return requireAny(a, permRoleCreate, permRoleUpdate, permRoleDelete)
 }
 
-// CanSyncRoles guards POST /api/applications/{appCode}/roles/sync. Mirrors
-// Rust can_sync_roles: admits the iam manage/create/update/delete tier plus
+// CanSyncRoles guards POST /api/applications/{appCode}/roles/sync.
+// Admits the iam manage/create/update/delete tier plus
 // the application-service create/update/delete permissions an SDK service
 // account holds. Per-application scope is enforced inside the use case.
 func CanSyncRoles(a *AuthContext) error {
@@ -540,7 +547,7 @@ func CanSyncRoles(a *AuthContext) error {
 }
 
 // CanSyncSubscriptions guards POST /api/applications/{appCode}/subscriptions/sync.
-// Mirrors Rust can_sync_subscriptions: admin sync/manage plus the
+// Admits admin sync/manage plus the
 // application-service create/update/delete permissions an SDK service account
 // holds. Per-application scope is enforced inside the use case.
 func CanSyncSubscriptions(a *AuthContext) error {
@@ -550,7 +557,7 @@ func CanSyncSubscriptions(a *AuthContext) error {
 }
 
 // CanSyncPrincipals guards POST /api/applications/{appCode}/principals/sync.
-// Mirrors Rust can_sync_principals: admin-tier IAM user manage/create/update/
+// Admits admin-tier IAM user manage/create/update/
 // delete or assign-roles (no application-service grant — users are global).
 func CanSyncPrincipals(a *AuthContext) error {
 	return requireAny(a,
@@ -558,7 +565,7 @@ func CanSyncPrincipals(a *AuthContext) error {
 }
 
 // CanSyncScheduledJobs guards POST /api/applications/{appCode}/scheduled-jobs/sync.
-// Mirrors Rust can_sync_scheduled_jobs_app: the application-service
+// Admits the application-service
 // scheduled-job sync permission plus admin sync/manage. The handler
 // additionally enforces target-client access (or anchor for platform-scoped).
 func CanSyncScheduledJobs(a *AuthContext) error {
@@ -567,21 +574,21 @@ func CanSyncScheduledJobs(a *AuthContext) error {
 }
 
 // CanSyncProcesses guards POST /api/applications/{appCode}/processes/sync.
-// Mirrors Rust can_sync_processes: admin process:sync or the
+// Admits admin process:sync or the
 // application-service process:sync permission an SDK service account holds.
 func CanSyncProcesses(a *AuthContext) error {
 	return requireAny(a, permProcessSync, permAppSvcProcessSync)
 }
 
 // CanSyncDispatchPools guards POST /api/applications/{appCode}/dispatch-pools/sync.
-// Mirrors Rust can_sync_dispatch_pools: admin-tier only (dispatch-pool
+// Admin-tier only (dispatch-pool
 // sync/manage) — pools are global, so there is no application-service grant.
 func CanSyncDispatchPools(a *AuthContext) error {
 	return requireAny(a, permDispatchPoolSync, permDispatchPoolManage)
 }
 
-// CanSyncApplicationOpenAPI guards POST /api/applications/{appCode}/openapi/sync.
-// Mirrors Rust can_sync_application_openapi (developer sync/manage). The
+// CanSyncApplicationOpenAPI guards POST /api/applications/{appCode}/openapi/sync
+// (developer sync/manage). The
 // handler additionally enforces a resource-level guard (anchor, super-admin,
 // or the application's own bound service account).
 func CanSyncApplicationOpenAPI(a *AuthContext) error {
@@ -694,4 +701,5 @@ func CanDeleteScheduledJobs(a *AuthContext) error {
 func CanWriteScheduledJobs(a *AuthContext) error {
 	return requireAny(a, permScheduledJobCreate, permScheduledJobUpdate, permScheduledJobDelete)
 }
+
 func CanFireScheduledJobs(a *AuthContext) error { return requirePermission(a, permScheduledJobFire) }

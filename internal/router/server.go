@@ -40,8 +40,7 @@ type ServerConfig struct {
 
 	// BreakerIdleMaxAge bounds the per-endpoint circuit breaker
 	// registry against unbounded growth from short-lived target URLs.
-	// Zero falls back to 1h, matching Rust
-	// circuit_breaker_registry.rs::evict_idle. The same reaper goroutine
+	// Zero falls back to 1h. The same reaper goroutine
 	// that handles InFlightReapMaxAge calls BreakerRegistry.Evict on
 	// each 5m tick.
 	BreakerIdleMaxAge time.Duration
@@ -89,7 +88,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		cfg.DrainTimeout = 60 * time.Second
 	}
 	if cfg.ConfigPollInterval == 0 {
-		cfg.ConfigPollInterval = 300 * time.Second // 5m, matching the Rust/Java default
+		cfg.ConfigPollInterval = 300 * time.Second // 5m default
 	}
 	if cfg.InFlightReapMaxAge == 0 {
 		cfg.InFlightReapMaxAge = 15 * time.Minute
@@ -262,9 +261,8 @@ func (s *Server) Run(ctx context.Context) error {
 
 // reapInFlight is the periodic janitor: it prunes the in-flight tracker
 // (entries older than InFlightReapMaxAge) and the circuit-breaker
-// registry (idle entries older than BreakerIdleMaxAge). Mirrors the
-// Rust stale-entry reaper in lifecycle.rs (5 min cadence).
-// inFlightMemoryWarnThreshold mirrors the Rust memory-health monitor: warn when
+// registry (idle entries older than BreakerIdleMaxAge), on a 5 min cadence.
+// inFlightMemoryWarnThreshold is the memory-health limit: warn when
 // the in-flight tracker grows past this, signalling a possible callback leak.
 const inFlightMemoryWarnThreshold = 10000
 
@@ -283,8 +281,8 @@ func (s *Server) reapInFlight(ctx context.Context) {
 				slog.Info("router evicted idle circuit breakers", "count", n)
 			}
 			// Memory-health: warn when the in-flight tracker grows past the
-			// threshold — a possible callback leak. Mirrors the Rust memory
-			// monitor (lifecycle.rs); piggybacks on this reaper's tick.
+			// threshold — a possible callback leak. Piggybacks on this
+			// reaper's tick.
 			if n := s.Tracker.Count(); n > inFlightMemoryWarnThreshold {
 				s.Warnings.Add(WarningCategoryResource, WarningError,
 					fmt.Sprintf("in-flight tracker is large (%d entries) - possible leak", n), "router")

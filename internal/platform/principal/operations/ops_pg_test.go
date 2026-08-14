@@ -913,8 +913,8 @@ func TestPasswordPolicy_IdentityRejectedStrict_AllowedRelaxed(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// EnforcePasswordComplexity=false relaxes the minimum length to 2 (Rust
-// relaxed() policy) — the caller owns its own password rules.
+// EnforcePasswordComplexity=false relaxes the minimum length to 2 — the
+// caller owns its own password rules.
 func TestResetPassword_RelaxedComplexity(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -1097,7 +1097,7 @@ func TestSyncPrincipals_UpsertMergeAndRemoveUnlisted(t *testing.T) {
 	ec := testpg.TestEC()
 
 	// Only the ADMIN_ASSIGNED merge seed must exist as a role row —
-	// SyncPrincipals (like Rust) does NOT validate the SDK role names it
+	// SyncPrincipals does NOT validate the SDK role names it
 	// writes, and iam_principal_roles has no FK on role_name.
 	admin := mustCreateRole(t, uow, "prnsync", "admin")
 	existing := mustCreateUser(t, repo, uow, "prn-sync-existing@example.com", "ANCHOR", nil)

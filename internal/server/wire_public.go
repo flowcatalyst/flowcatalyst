@@ -39,7 +39,7 @@ func registerPublicRoutes(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *use
 	// Unauthenticated password-reset flow (request/validate/confirm). Public
 	// like /auth/login. Email is delivered via the SMTP_* env (SendGrid in
 	// prod); when SMTP isn't configured the message is logged instead. Delivery
-	// is best-effort — a send failure never fails the request (matching Rust).
+	// is best-effort — a send failure never fails the request.
 	// emailSvc is the shared mailer constructed with the 2FA services.
 	passwordresetapi.RegisterRoutes(r, &passwordresetapi.State{
 		Principals:       repos.principalRepo,

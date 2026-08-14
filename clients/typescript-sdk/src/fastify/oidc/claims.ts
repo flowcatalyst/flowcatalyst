@@ -8,8 +8,9 @@
  * tenancy tier lives in `tier` ("ANCHOR" | "PARTNER" | "CLIENT"); `scope`
  * is the OPTIONAL granted OAuth scope — a space-delimited permission list —
  * and is absent on tokens that carry no scope claim (e.g. identity tokens
- * from permission-less interactive logins). Legacy Rust-era tokens carried
- * the tier IN `scope`; the mapper below accepts both layouts.
+ * from permission-less interactive logins). Legacy tokens from older
+ * platform versions carried the tier IN `scope`; the mapper below accepts
+ * both layouts.
  */
 
 import type { JWTPayload } from "jose";
@@ -22,7 +23,7 @@ export interface FcAccessTokenClaims extends JWTPayload {
 	exp: number;
 	iat: number;
 	type: PrincipalType;
-	/** Tenancy tier (Go platform). Legacy Rust tokens carried this in `scope`. */
+	/** Tenancy tier. Legacy tokens carried this in `scope`. */
 	tier?: "ANCHOR" | "PARTNER" | "CLIENT";
 	/** Granted OAuth scope: space-delimited permission codes. Often absent. */
 	scope?: string;
@@ -39,7 +40,7 @@ export function claimsToSnapshot(
 	claims: FcAccessTokenClaims,
 	mechanism: "session" | "bearer",
 ): Omit<PrincipalSnapshot, "sessionData"> {
-	// Tier: the Go platform's `tier` claim; fall back to a legacy Rust-era
+	// Tier: the platform's `tier` claim; fall back to a legacy
 	// `scope`-as-tier value; a "*" clients entry also marks anchor. Default
 	// CLIENT (the least authority) when nothing identifies the tier —
 	// `scope` on modern tokens holds permission scopes, not the tier, and

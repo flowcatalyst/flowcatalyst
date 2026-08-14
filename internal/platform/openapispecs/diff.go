@@ -89,7 +89,7 @@ func writeCanonical(b *strings.Builder, v any) error {
 
 // ComputeChangeNotes diffs two OpenAPI documents and returns the
 // structured diff plus a human-readable summary suitable for listings.
-// Mirrors the Rust shallow-diff: set-diff `paths` keys + `components.schemas`
+// A shallow diff: set-diff `paths` keys + `components.schemas`
 // keys + verbs of surviving paths. Anything removed → has_breaking.
 func ComputeChangeNotes(prior, current json.RawMessage) (ChangeNotes, string) {
 	var priorDoc, currentDoc map[string]any

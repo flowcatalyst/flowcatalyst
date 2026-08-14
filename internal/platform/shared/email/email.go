@@ -1,11 +1,11 @@
 // Package email sends transactional emails (password reset, …) over SMTP.
 //
-// Port of the Rust shared/email_service.rs: configured from SMTP_* env vars
+// Configured from SMTP_* env vars
 // (FC_-prefixed names take precedence over the bare TS-style names). With
 // SMTP_SECURE=false (the default, and the SendGrid :587 setup) it uses
 // STARTTLS; SMTP_SECURE=true uses implicit TLS (:465). When SMTP_HOST isn't
 // set it returns a LogService that logs the message instead of sending, so the
-// platform still boots without a mailer (1:1 with Rust create_email_service).
+// platform still boots without a mailer.
 package email
 
 import (
@@ -32,7 +32,7 @@ type Service interface {
 }
 
 // LogService logs the email instead of sending it — used when SMTP isn't
-// configured. Diverges from Rust's LogEmailService by also logging the body:
+// configured. Deliberately logs the body too:
 // with no mailer, set-password links and 2FA email PINs live in the body, so
 // dumping it to the console is what makes those flows testable locally.
 type LogService struct{}
@@ -53,7 +53,7 @@ type SMTPService struct {
 }
 
 // FromEnv builds the email service from the environment. Returns a LogService
-// (never nil) when SMTP_HOST isn't set — mirroring Rust create_email_service.
+// (never nil) when SMTP_HOST isn't set.
 func FromEnv() Service {
 	host := envFirst("FC_SMTP_HOST", "SMTP_HOST")
 	if host == "" {

@@ -8,8 +8,8 @@
 // category do NOT abort the rest — they're captured on the returned
 // SyncResult so the caller sees a complete picture in one round-trip.
 //
-// Mirrors crates/fc-sdk/src/sync/ in shape so the four SDKs converge
-// on one orchestration vocabulary.
+// The SDKs converge
+// on one orchestration vocabulary for this package's shape.
 package sync
 
 import "encoding/json"

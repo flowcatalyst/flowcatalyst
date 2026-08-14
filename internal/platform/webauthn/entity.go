@@ -1,5 +1,5 @@
-// Package webauthn is the port of fc-platform/src/webauthn. Passkey
-// (WebAuthn) credentials and the registration/authentication ceremonies.
+// Package webauthn implements passkey (WebAuthn) credentials and the
+// registration/authentication ceremonies.
 //
 // Library: github.com/go-webauthn/webauthn. The library handles all the
 // RFC mechanics (attestation, assertion, signature verification, counter

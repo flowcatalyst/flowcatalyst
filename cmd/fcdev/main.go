@@ -1,7 +1,6 @@
 // Command fcdev is the FlowCatalyst developer monolith — a single
 // binary that runs every subsystem against an embedded Postgres so
-// engineers can iterate without Docker. Mirrors the Rust fcdev's
-// subcommand surface:
+// engineers can iterate without Docker. Subcommand surface:
 //
 //	fcdev start  — run the dev monolith (default; matches `fcdev` no-arg).
 //	fcdev stop   — stop a running dev monolith (graceful; via its PID file).
@@ -32,7 +31,7 @@ embedded Postgres database. Designed for local development: no Docker,
 no docker-compose, no separate migration step.
 
 Invoking ` + "`fcdev`" + ` with no subcommand is identical to ` + "`fcdev start`" + `.`,
-		// No-arg invocation runs start. Matches the Rust fcdev UX.
+		// No-arg invocation runs start.
 		RunE: runStart,
 		// Runtime failures (port in use, DB unreachable) shouldn't trigger
 		// cobra's "did you mean…" help dump — that noise hides the real
@@ -41,7 +40,7 @@ Invoking ` + "`fcdev`" + ` with no subcommand is identical to ` + "`fcdev start`
 		SilenceErrors: true,
 		// `fcdev --version` prints the same string as `fcdev version` (users
 		// reach for the flag reflexively). The subcommand stays for parity with
-		// the Rust CLI's surface.
+		// earlier fcdev releases.
 		Version: version() + vcsSuffix(),
 	}
 	root.SetVersionTemplate("fcdev {{.Version}}\n")

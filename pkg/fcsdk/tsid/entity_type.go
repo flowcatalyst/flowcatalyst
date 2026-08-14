@@ -1,8 +1,8 @@
 package tsid
 
 // EntityType enumerates the well-known prefixes used across the
-// FlowCatalyst platform. Mirrors the Rust crate fc_common::tsid and the
-// TypeScript / Laravel SDKs — all four SDKs share the same wire format.
+// FlowCatalyst platform. Mirrors the
+// TypeScript / Laravel SDKs — all SDKs share the same wire format.
 //
 // New variants MUST be added to every SDK so the format stays consistent.
 type EntityType int
@@ -48,7 +48,6 @@ const (
 )
 
 // Prefix returns the 3-character platform prefix for the entity type.
-// Mirrors crates/fc-common/src/tsid.rs::EntityType::prefix.
 func (e EntityType) Prefix() string {
 	switch e {
 	case Client:

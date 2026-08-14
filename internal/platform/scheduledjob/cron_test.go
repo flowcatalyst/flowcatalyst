@@ -81,7 +81,7 @@ func TestLatestSlotInWindow_MultipleCronsTakesLatest(t *testing.T) {
 
 func TestLatestSlotInWindow_FiveFieldNeverFires(t *testing.T) {
 	// A 5-field POSIX expression passes ValidateCronShape but the firing
-	// parser requires seconds, so it yields no slot — matching Rust.
+	// parser requires seconds, so it yields no slot.
 	if err := ValidateCronShape("* * * * *"); err != nil {
 		t.Fatalf("5-field should pass shape validation: %v", err)
 	}

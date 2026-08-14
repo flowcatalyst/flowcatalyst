@@ -7,7 +7,7 @@ import (
 )
 
 // ExecutionContext threads trace identifiers and the acting principal
-// through the use case pipeline. Mirrors the Rust ExecutionContext.
+// through the use case pipeline.
 type ExecutionContext struct {
 	// PrincipalID is the acting user or service account.
 	PrincipalID string

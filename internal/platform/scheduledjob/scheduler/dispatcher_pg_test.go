@@ -17,8 +17,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 )
@@ -28,7 +28,7 @@ func TestMain(m *testing.M) { testpg.RunMain(m) }
 // TestDispatcherTick_OrphanInstance_MarkedDeliveryFailed covers the orphan
 // path: a QUEUED instance whose job was deleted while it sat in the queue
 // must be marked terminally DELIVERY_FAILED by the next dispatcher tick
-// (mirrors the Rust tick — "ScheduledJob no longer exists"), not left
+// ("ScheduledJob no longer exists"), not left
 // QUEUED forever. No FK/CASCADE exists by design: instances are firing
 // history and outlive their job.
 func TestDispatcherTick_OrphanInstance_MarkedDeliveryFailed(t *testing.T) {

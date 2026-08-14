@@ -1,7 +1,7 @@
 package common
 
-// OutboxStatus stores the integer-coded status used by Java's outbox
-// implementation. Wire string is SCREAMING_SNAKE_CASE.
+// OutboxStatus stores the integer-coded status used by the historical
+// outbox schema. Wire string is SCREAMING_SNAKE_CASE.
 type OutboxStatus int
 
 const (

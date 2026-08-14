@@ -132,7 +132,7 @@ export class EventTypesResource {
 	 * Archive (soft-delete) an event type. The server's DELETE on this
 	 * resource is a soft archive — the row is retained with status flipped
 	 * to ARCHIVED. Named `archive` rather than `delete` to make the
-	 * semantics visible (Rust and Laravel SDKs match).
+	 * semantics visible (the Laravel SDK matches).
 	 */
 	archive(id: string): ResultAsync<unknown, SdkError> {
 		return this.client.request<unknown>((httpClient, headers) =>

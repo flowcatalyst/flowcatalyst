@@ -14,7 +14,7 @@ import (
 )
 
 // Repository is the Postgres-backed repo. Table: tnt_clients.
-// Notes are stored as JSONB on the row (matches Rust schema).
+// Notes are stored as JSONB on the row.
 //
 // All SQL lives in internal/sqlc/queries/client.sql and goes through
 // the sqlc-generated *dbq.Queries. Compile-time schema checks live

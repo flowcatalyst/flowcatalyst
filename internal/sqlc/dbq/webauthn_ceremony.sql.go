@@ -63,7 +63,7 @@ type WebauthnCeremonyUpsertParams struct {
 // Queries for WebAuthn ceremony state in oauth_oidc_payloads.
 // The id column carries a type prefix ("WebauthnRegistration:{stateID}")
 // to keep ids unique across the shared store; the type column carries
-// the same discriminant. Mirrors the Rust impl.
+// the same discriminant. Mirrors the legacy implementation.
 func (q *Queries) WebauthnCeremonyUpsert(ctx context.Context, arg WebauthnCeremonyUpsertParams) error {
 	_, err := q.db.Exec(ctx, webauthnCeremonyUpsert,
 		arg.ID,

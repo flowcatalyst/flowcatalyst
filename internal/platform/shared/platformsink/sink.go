@@ -34,8 +34,7 @@ func New() *Sink { return &Sink{} }
 // Compile-time check that *Sink satisfies usecasepgx.Sink.
 var _ usecasepgx.Sink = (*Sink)(nil)
 
-// WriteEvent inserts the domain event into msg_events. The shape of
-// the row matches the Rust fc-platform PgUnitOfWork::persist_event.
+// WriteEvent inserts the domain event into msg_events.
 func (*Sink) WriteEvent(ctx context.Context, tx *usecasepgx.DbTx, event usecase.DomainEvent) error {
 	data, err := event.ToDataJSON()
 	if err != nil {
@@ -58,8 +57,7 @@ func (*Sink) WriteEvent(ctx context.Context, tx *usecasepgx.DbTx, event usecase.
 	now := time.Now().UTC()
 	// No ON CONFLICT here — msg_events is partitioned by created_at and
 	// the dedup unique index is composite (deduplication_id, created_at),
-	// which Postgres can't infer from a column list. Matches Rust source
-	// (crates/fc-platform/src/usecase/unit_of_work.rs): plain INSERT,
+	// which Postgres can't infer from a column list. Plain INSERT:
 	// dedup duplicate errors bubble up as TX failures.
 	_, err = tx.Inner().Exec(ctx,
 		`INSERT INTO msg_events
@@ -82,8 +80,7 @@ func (*Sink) WriteEvent(ctx context.Context, tx *usecasepgx.DbTx, event usecase.
 }
 
 // nullIfEmpty returns nil for empty strings so optional VARCHAR columns
-// store SQL NULL instead of empty-string sentinels (matches Rust's None
-// binding pattern).
+// store SQL NULL instead of empty-string sentinels.
 func nullIfEmpty(s string) any {
 	if s == "" {
 		return nil
@@ -94,8 +91,7 @@ func nullIfEmpty(s string) any {
 // WriteAudit inserts an audit log row into aud_logs. Column set
 // matches the schema (migrations 006 + 009): id, entity_type, entity_id,
 // operation, operation_json, principal_id, application_id, client_id,
-// performed_at. Mirrors the Rust source's column ordering exactly so a
-// side-by-side parity diff stays clean.
+// performed_at.
 func (*Sink) WriteAudit(ctx context.Context, tx *usecasepgx.DbTx, event usecase.DomainEvent, command any) error {
 	cmdJSON, err := json.Marshal(command)
 	if err != nil {

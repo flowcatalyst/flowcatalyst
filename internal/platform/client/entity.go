@@ -1,4 +1,4 @@
-// Package client is the port of fc-platform/src/client. Tenant /
+// Package client is the tenant /
 // organization root in the multi-tenant model. Subscriptions, dispatch
 // pools, applications, principals, etc. all hang off a Client via
 // client_id.

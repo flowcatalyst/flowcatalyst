@@ -16,13 +16,12 @@ import (
 )
 
 // FanOut matches each new event against the active subscriptions and
-// inserts a dispatch job per match. Mirrors
-// crates/fc-stream/src/event_fan_out.rs.
+// inserts a dispatch job per match.
 //
 // Subscription set is loaded with a small projection query and cached
 // locally; the cache TTL controls how stale subscription edits can be
-// before fanout picks them up. Cache stays in this package — Rust does
-// the same to keep this loop independent of fc-platform.
+// before fanout picks them up. Cache stays in this package to keep this
+// loop independent of the platform layer.
 //
 // At-least-once semantics: dispatch-job inserts and `fanned_out_at`
 // stamps land in one transaction. FOR UPDATE SKIP LOCKED on the claim
@@ -39,11 +38,11 @@ type FanOut struct {
 // FanOutConfig tunes the subscription cache.
 type FanOutConfig struct {
 	// SubscriptionTTL controls how long the cached subscription set is
-	// reused before being refetched. Default 5s, matches Rust.
+	// reused before being refetched. Default 5s.
 	SubscriptionTTL time.Duration
 }
 
-// DefaultFanOutConfig returns the Rust defaults.
+// DefaultFanOutConfig returns the standard defaults.
 func DefaultFanOutConfig() FanOutConfig {
 	return FanOutConfig{SubscriptionTTL: 5 * time.Second}
 }
@@ -78,8 +77,7 @@ func (f *FanOut) step(ctx context.Context, batchSize int) (int, error) {
 	}
 
 	// Fast path: no active subscriptions. Stamp events as fanned-out
-	// without opening a long transaction (mirrors Rust's
-	// `claim_events_no_subs`).
+	// without opening a long transaction.
 	if len(subs) == 0 {
 		tag, err := f.pool.Exec(ctx,
 			`WITH batch AS (
@@ -142,7 +140,7 @@ type claimedEvent struct {
 }
 
 // claimUnfannedEvents stamps `fanned_out_at` and returns the claimed
-// rows in one shot — mirrors Rust's CTE in `claim_events`.
+// rows in one shot via a single CTE.
 func claimUnfannedEvents(ctx context.Context, tx pgx.Tx, batchSize int) ([]claimedEvent, error) {
 	rows, err := tx.Query(ctx,
 		`WITH batch AS (
@@ -217,7 +215,7 @@ func (s *cachedSubscription) matchesClient(eventClient *string) bool {
 	return *s.ClientID == *eventClient
 }
 
-// patternMatches is the Rust-side `:`-separated wildcard match. Segment
+// patternMatches is the `:`-separated wildcard match. Segment
 // count must agree; `*` matches a single segment.
 func patternMatches(pattern, code string) bool {
 	pp := strings.Split(pattern, ":")
@@ -315,7 +313,7 @@ func loadActiveSubscriptions(ctx context.Context, pool *pgxpool.Pool) ([]cachedS
 
 // newJob is the subset of msg_dispatch_jobs columns fanout sets. Other
 // columns take the table default (kind='EVENT', retry_strategy='exponential',
-// etc.). Mirrors Rust's `NewJobRow`.
+// etc.).
 type newJob struct {
 	ID             string
 	Code           string
@@ -358,7 +356,7 @@ func buildJobs(events []claimedEvent, subs []cachedSubscription) []newJob {
 			jobs = append(jobs, newJob{
 				// 13-char untyped TSID — `msg_dispatch_jobs.id` is
 				// VARCHAR(13). Using a typed prefix (`djb_...`) overflows
-				// the column; the Rust source has the same latent bug.
+				// the column.
 				ID:             tsid.GenerateUntyped(),
 				Code:           e.EventType,
 				Source:         e.Source,

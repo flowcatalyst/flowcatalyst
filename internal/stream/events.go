@@ -12,7 +12,7 @@ import (
 // Unprojected events have `projected_at IS NULL`; on success we INSERT
 // into the read model and stamp `projected_at = NOW()` atomically.
 // Multiple replicas can run safely because the claim uses FOR UPDATE
-// SKIP LOCKED. Mirrors crates/fc-stream/src/event_projection.rs.
+// SKIP LOCKED.
 type EventProjection struct {
 	pool *pgxpool.Pool
 }
@@ -82,7 +82,7 @@ func (p *EventProjection) step(ctx context.Context, batchSize int) (int, error) 
 		        -- Preserve the SOURCE created_at (the (id, created_at) partition
 		        -- key) so read rows land in the same time partition as their
 		        -- source events and age out with them. Was defaulting to the
-		        -- projection time (NOW()). Mirrors the Rust event projection.
+		        -- projection time (NOW()). Matches the legacy event projection.
 		        e.created_at,
 		        NOW()
 		   FROM msg_events e

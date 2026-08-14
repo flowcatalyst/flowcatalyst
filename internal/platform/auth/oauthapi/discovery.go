@@ -12,11 +12,10 @@ func (s *State) RegisterDiscoveryRoutes(r chi.Router) {
 	r.Get("/.well-known/jwks.json", s.JWKS)
 }
 
-// openIDConfiguration is the OIDC discovery document. Endpoint URLs mirror the
-// Rust well_known_api.rs::OpenIdConfiguration, but the advertised capabilities
-// are trimmed to what /oauth/authorize actually implements: response_types is
-// ["code"] only (no implicit/hybrid) and code_challenge_methods is ["S256"]
-// only (no "plain") — a deliberate divergence from the Rust document, which
+// openIDConfiguration is the OIDC discovery document. The advertised
+// capabilities are trimmed to what /oauth/authorize actually implements:
+// response_types is ["code"] only (no implicit/hybrid) and
+// code_challenge_methods is ["S256"] only (no "plain") — earlier documents
 // over-advertised both.
 type openIDConfiguration struct {
 	Issuer                            string   `json:"issuer"`
@@ -72,7 +71,7 @@ func (s *State) OpenIDConfiguration(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
-// jwkKey is one JSON Web Key (well_known_api.rs::JwkKey).
+// jwkKey is one JSON Web Key.
 type jwkKey struct {
 	Kty string `json:"kty"`
 	Use string `json:"use"`

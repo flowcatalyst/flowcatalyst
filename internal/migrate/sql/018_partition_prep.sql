@@ -2,7 +2,7 @@
 -- Reshape the messaging tables to the partitioning-ready schema.
 --
 -- Runs on every profile, including the embedded fc-dev DB. It puts the
--- tables into the shape the Rust code now expects (composite primary key
+-- tables into the shape the current schema expects (composite primary key
 -- on (id, created_at), composite UNIQUE on deduplication_id, fanned_out_at
 -- on events, created_at on the read tables). The actual `PARTITION BY
 -- RANGE (created_at)` only happens in migration 019, which is production-

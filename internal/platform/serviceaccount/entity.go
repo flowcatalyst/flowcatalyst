@@ -1,5 +1,5 @@
-// Package serviceaccount is the port of fc-platform/src/service_account.
-// Machine-to-machine principals with webhook credentials and roles.
+// Package serviceaccount implements machine-to-machine principals with
+// webhook credentials and roles.
 //
 // TODO(wave-3c-follow-up): assign_roles, regenerate_secret, regenerate_token
 // ops — they have tight coupling with principal/role and are best ported

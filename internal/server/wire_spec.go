@@ -32,8 +32,8 @@ func registerSpecRoutes(r chi.Router, humaAPI huma.API) {
 		_, _ = w.Write(spec)
 	})
 
-	// Rust serves the spec at /q/openapi and Swagger UI at /swagger-ui;
-	// alias both for drop-in tooling parity. /api/openapi.json is kept for
+	// The spec is also served at /q/openapi and Swagger UI at /swagger-ui —
+	// legacy paths aliased for drop-in tooling parity. /api/openapi.json is kept for
 	// the existing make/Hey-API codegen tooling.
 	r.Get("/q/openapi", func(w http.ResponseWriter, _ *http.Request) {
 		spec, err := humaAPI.OpenAPI().MarshalJSON()

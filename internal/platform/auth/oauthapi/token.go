@@ -1,9 +1,8 @@
-// Package oauthapi is the hand-rolled OAuth2 endpoint surface, a 1:1 port
-// of crates/fc-platform/src/auth/oauth_api.rs. It owns
+// Package oauthapi is the hand-rolled OAuth2 endpoint surface. It owns
 // /oauth/{token,authorize,introspect,revoke,userinfo} end-to-end (the
 // former fosite-backed provider was removed — see ADR-0001).
 //
-// Wire contract notes carried over from Rust:
+// Wire contract notes:
 //   - Error bodies are RFC-6749 {error, error_description?} — NOT the
 //     platform {error, message} envelope.
 //   - Successful token responses carry Cache-Control: no-store and
@@ -118,7 +117,7 @@ func (s *State) RegisterTokenRoutes(r chi.Router) {
 	r.Post("/oauth/token", s.Token)
 }
 
-// tokenRequest mirrors the Rust TokenRequest (form-urlencoded).
+// tokenRequest is the parsed /oauth/token request (form-urlencoded).
 type tokenRequest struct {
 	GrantType    string
 	Code         string
@@ -146,7 +145,7 @@ func parseTokenRequest(r *http.Request) (tokenRequest, error) {
 	}, nil
 }
 
-// tokenResponse mirrors the Rust TokenResponse.
+// tokenResponse is the RFC-6749 token success body.
 type tokenResponse struct {
 	AccessToken  string  `json:"access_token"`
 	TokenType    string  `json:"token_type"`
@@ -232,8 +231,7 @@ func (s *State) Token(w http.ResponseWriter, r *http.Request) {
 // ─── client authentication ──────────────────────────────────────────────
 
 // authenticateClient resolves the client from Basic auth or body params
-// and verifies the secret for confidential clients. Mirrors Rust's
-// authenticate_client.
+// and verifies the secret for confidential clients.
 func (s *State) authenticateClient(r *http.Request, clientIDBody, clientSecretBody string) (*auth.OAuthClient, *oauthError) {
 	clientID, clientSecret, ok := basicAuthCreds(r)
 	if !ok {
@@ -715,7 +713,7 @@ func (s *State) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request, 
 // ─── PKCE ────────────────────────────────────────────────────────────────
 
 // verifyPKCE validates code_verifier against the stored challenge.
-// Supports S256 (default) and plain. Mirrors RFC 7636 + Rust's checks.
+// Supports S256 (default) and plain, per RFC 7636.
 func verifyPKCE(challenge string, method *string, verifier string) *oauthError {
 	if verifier == "" {
 		return newOAuthError(http.StatusBadRequest, "invalid_grant", "Missing code_verifier")
@@ -910,8 +908,7 @@ func (e *oauthError) write(w http.ResponseWriter) {
 
 // writeOAuthRateLimited emits a 429 in the RFC-6749 error shape the token
 // endpoint uses ({"error":"rate_limit_exceeded", "error_description":...})
-// with a Retry-After header — matching Rust's rate-limit rejection on
-// /oauth/token, distinct from the platform {"error":"TOO_MANY_REQUESTS"}
+// with a Retry-After header — distinct from the platform {"error":"TOO_MANY_REQUESTS"}
 // envelope used by non-OAuth endpoints.
 func writeOAuthRateLimited(w http.ResponseWriter, retryAfterSecs uint32, description string) {
 	if retryAfterSecs < 1 {

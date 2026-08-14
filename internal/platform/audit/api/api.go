@@ -44,7 +44,7 @@ const viewPerm = "platform:admin:audit-log:view"
 // listInput is the cursor-paginated query for GET /api/audit-logs. Matches
 // the params the SPA sends (audit-logs.ts:50-60): after (opaque cursor),
 // pageSize, entityType, operation, principalId, applicationIds/clientIds
-// (CSV). Rust ref: audit/api.rs:148-171.
+// (CSV).
 type listInput struct {
 	After          string `query:"after" doc:"Opaque cursor from a previous page's nextCursor"`
 	PageSize       int    `query:"pageSize" doc:"Page size (default 50, capped at 200)"`

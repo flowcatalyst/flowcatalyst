@@ -8,9 +8,9 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// RateLimiter is a per-pool token bucket. The Rust version uses the
-// `governor` crate; in Go we use golang.org/x/time/rate's Limiter,
-// wrapped so we can hot-swap the underlying limiter on config reload.
+// RateLimiter is a per-pool token bucket built on golang.org/x/time/rate's
+// Limiter, wrapped so we can hot-swap the underlying limiter on config
+// reload.
 type RateLimiter struct {
 	limiter atomic.Pointer[rate.Limiter]
 	rpm     atomic.Uint32 // 0 means unlimited

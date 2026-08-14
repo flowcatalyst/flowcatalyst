@@ -1,5 +1,5 @@
-// Package application is the port of fc-platform/src/application.
-// Represents a registered application (or integration) in the platform.
+// Package application represents a registered application (or
+// integration) in the platform.
 //
 // TODO(wave-3b-follow-up): port client_config sub-aggregate and
 // tenant-relation ops (attach_service_account, enable_for_client,

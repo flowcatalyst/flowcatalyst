@@ -5,9 +5,8 @@
 // importing this package at all.
 //
 // The combined effect: only packages under pkg/fcsdk/ can mint a Token,
-// and only with a Token can a caller invoke usecase.Success. This is the
-// Go analogue of the Rust SDK's `pub(in crate::usecase) fn success(...)`
-// — compile-time enforced. Living under pkg/fcsdk/internal/ (rather than
+// and only with a Token can a caller invoke usecase.Success. This is
+// compile-time enforced. Living under pkg/fcsdk/internal/ (rather than
 // the repo-root internal/) is what scopes the seal to the SDK: platform
 // code (internal/platform/...) cannot import it and so cannot mint a
 // Success outside a UnitOfWork Commit*.

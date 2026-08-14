@@ -23,7 +23,7 @@ func (s *State) RegisterAuthorizeRoutes(r chi.Router) {
 }
 
 // Authorize is GET /oauth/authorize (OAuth2 authorization-code flow with
-// PKCE), a 1:1 port of oauth_api.rs::authorize. When the caller already
+// PKCE). When the caller already
 // has a valid session it issues a code and redirects to redirect_uri;
 // otherwise it stashes the request and redirects to the SPA login page.
 func (s *State) Authorize(w http.ResponseWriter, r *http.Request) {
@@ -201,7 +201,7 @@ func (s *State) Authorize(w http.ResponseWriter, r *http.Request) {
 	// Not authenticated → stash the request and bounce to the SPA login page.
 	// (The provider-direct branch above skips the stash: the bridge's login
 	// state carries the whole OAuth chain, and nothing consumes pending-auth
-	// rows — the stash exists for wire parity with Rust.)
+	// rows — the stash exists for wire compatibility.)
 	pending := &grantstore.PendingAuth{
 		ClientID:            clientID,
 		RedirectURI:         redirectURI,
@@ -238,8 +238,7 @@ func (s *State) Authorize(w http.ResponseWriter, r *http.Request) {
 }
 
 // sessionToken pulls the session JWT from the fc_session cookie, falling
-// back to the Authorization: Bearer header (cookie takes precedence, as
-// in Rust).
+// back to the Authorization: Bearer header (cookie takes precedence).
 func (s *State) sessionToken(r *http.Request) string {
 	if c, err := r.Cookie("fc_session"); err == nil && c.Value != "" {
 		return c.Value
@@ -265,7 +264,7 @@ func maxAgeExceeded(maxAge string, issuedAt time.Time) bool {
 // ─── helpers ─────────────────────────────────────────────────────────────
 
 // errorRedirect bounces the user-agent back to redirect_uri with the OAuth
-// error params (302-equivalent temporary redirect, matching Rust).
+// error params (302-equivalent temporary redirect).
 func errorRedirect(w http.ResponseWriter, r *http.Request, redirectURI, errCode, desc, state string) {
 	url := redirectURI + querySep(redirectURI) + "error=" + pctEncode(errCode) + "&error_description=" + pctEncode(desc)
 	if state != "" {
@@ -328,8 +327,8 @@ func randomString(n int) string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-// pctEncode percent-encodes per RFC 3986 (unreserved set preserved),
-// matching Rust's urlencoding::encode (space → %20, not '+').
+// pctEncode percent-encodes per RFC 3986 (unreserved set preserved;
+// space → %20, not '+').
 func pctEncode(s string) string {
 	const hex = "0123456789ABCDEF"
 	var b strings.Builder

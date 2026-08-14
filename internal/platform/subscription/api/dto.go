@@ -102,9 +102,9 @@ func (r CreateSubscriptionRequest) toCommand() operations.CreateCommand {
 
 // UpdateSubscriptionRequest is the wire body for PUT /api/subscriptions/{id}.
 //
-// queue/sequence are intentionally absent: like Rust they are server-derived
+// queue/sequence are intentionally absent: they are server-derived
 // and dropped on input (the leniency net accepts them without persisting).
-// connectionId IS accepted + persisted, mirroring Rust's update use case.
+// connectionId IS accepted + persisted.
 type UpdateSubscriptionRequest struct {
 	Name             *string               `json:"name,omitempty"`
 	Description      *string               `json:"description,omitempty"`

@@ -9,8 +9,7 @@ import (
 
 // DispatchAuthService signs dispatch-job IDs with HMAC-SHA256 so the
 // router's callback to /api/dispatch/process can prove it really
-// originated from a job the scheduler queued. Same construction as
-// fc-platform/src/scheduler/auth.rs.
+// originated from a job the scheduler queued.
 type DispatchAuthService struct{ secret []byte }
 
 // NewDispatchAuthService wires the service with the supplied secret.

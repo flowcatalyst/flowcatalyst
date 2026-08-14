@@ -13,7 +13,7 @@ var dashboardHTML string
 // prefix injected so the page works both standalone and when nested
 // under a parent router (e.g. fcdev nesting fc-router under /q/router).
 //
-// Mirrors crates/fc-router/src/api/mod.rs::dashboard_html_handler. The
+// The
 // injected `window.__API_BASE__` is consumed by `fetchWithAuth` in
 // dashboard.html to prepend onto every `/monitoring/...` request.
 //

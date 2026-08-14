@@ -8,8 +8,7 @@ import (
 	"time"
 )
 
-// HealthServiceConfig tunes thresholds. Mirrors
-// `HealthServiceConfig::default()` from the Rust source.
+// HealthServiceConfig tunes thresholds.
 type HealthServiceConfig struct {
 	// HealthyThreshold is the minimum pool success rate (0..1) that
 	// counts as healthy. Default 0.90.
@@ -29,14 +28,14 @@ type HealthServiceConfig struct {
 	// polled in this duration. Default 60s.
 	ConsumerStallThreshold time.Duration
 	// MaxWarningsHealthy — degrade from Healthy → Warning above this.
-	// Default 5 (matches Java).
+	// Default 5.
 	MaxWarningsHealthy uint32
 	// MaxWarningsWarning — degrade from Warning → Degraded above this.
-	// Default 20 (matches Java).
+	// Default 20.
 	MaxWarningsWarning uint32
 }
 
-// DefaultHealthServiceConfig returns the Rust defaults.
+// DefaultHealthServiceConfig returns the standard defaults.
 func DefaultHealthServiceConfig() HealthServiceConfig {
 	return HealthServiceConfig{
 		HealthyThreshold:       0.90,

@@ -169,8 +169,7 @@ func (e DispatchPoolActivated) ToDataJSON() ([]byte, error) {
 
 // DispatchPoolsSynced is the rollup emitted by the SDK dispatch-pool sync
 // (SyncDispatchPools). Dispatch pools are global (matched by code), so the
-// ApplicationCode is carried for audit/event provenance only. Mirrors the
-// Rust DispatchPoolsSynced event.
+// ApplicationCode is carried for audit/event provenance only.
 type DispatchPoolsSynced struct {
 	Metadata        usecase.EventMetadata
 	ApplicationCode string

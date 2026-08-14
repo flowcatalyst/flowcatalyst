@@ -19,12 +19,12 @@ import (
 )
 
 // mcpLocalClientID is the fixed client_id for the local-dev MCP OAuth client.
-// Matches the Rust bin/fcdev mcp_bootstrap so a shared MCP client config works.
+// Stable across environments so a shared MCP client config works.
 const mcpLocalClientID = "flowcatalyst-mcp-local"
 
 // bootstrapMCPCredentials idempotently provisions a local MCP OAuth client so
-// `fcdev mcp` (and `fcdev start --mcp`) authenticate with zero config. It
-// mirrors the Rust fcdev mcp_bootstrap: if the client already exists it is a
+// `fcdev mcp` (and `fcdev start --mcp`) authenticate with zero config.
+// If the client already exists it is a
 // no-op; otherwise it creates a SERVICE principal (super-admin, anchor scope) +
 // service account + a CONFIDENTIAL client_credentials OAuth client, then writes
 // the plaintext secret to mcp-credentials.json in the OS cache dir (macOS
@@ -42,7 +42,7 @@ func bootstrapMCPCredentials(ctx context.Context, pool *pgxpool.Pool, baseURL st
 	}
 	if existing != nil {
 		// Already provisioned on a prior boot; the credentials file persists
-		// from first run. Idempotent (1:1 with Rust).
+		// from first run. Idempotent.
 		return nil
 	}
 
@@ -88,8 +88,7 @@ func bootstrapMCPCredentials(ctx context.Context, pool *pgxpool.Pool, baseURL st
 			return fmt.Errorf("mcp oauth client: %w", err)
 		}
 		// principal.Persist doesn't sync iam_principal_roles; grant
-		// super-admin directly so the minted token has full read access
-		// (1:1 with Rust, which assigns platform:super-admin to the SA).
+		// super-admin directly so the minted token has full read access.
 		_, err := tx.Inner().Exec(ctx,
 			`INSERT INTO iam_principal_roles
 			     (principal_id, role_name, assignment_source, assigned_at)

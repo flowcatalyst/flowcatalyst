@@ -133,8 +133,8 @@ func TestCreateEvent_ContextDataPersisted(t *testing.T) {
 	assert.JSONEq(t, `[{"key":"principalId","value":"p_ctx"}]`, row.ContextData)
 }
 
-// TestCreateEvent_ClientDefaultingAndTenantGuard pins the Rust
-// create_event client rules: a non-anchor caller without an explicit
+// TestCreateEvent_ClientDefaultingAndTenantGuard pins the
+// create-event client rules: a non-anchor caller without an explicit
 // clientId defaults to its first accessible client; an explicit clientId
 // outside the caller's tenants is rejected with the FORBIDDEN envelope.
 func TestCreateEvent_ClientDefaultingAndTenantGuard(t *testing.T) {

@@ -119,7 +119,7 @@ func (e ProcessDeleted) ToDataJSON() ([]byte, error) {
 
 // ProcessesSynced is the rollup emitted by the SDK app-scoped process sync
 // (SyncProcesses). Carries the create/update/delete counts plus the synced
-// codes. Mirrors the Rust ProcessesSynced event.
+// codes.
 type ProcessesSynced struct {
 	Metadata        usecase.EventMetadata
 	ApplicationCode string

@@ -4,8 +4,7 @@ import (
 	"sync/atomic"
 )
 
-// MockState aggregates atomic counters consumed by /api/test/stats.
-// Mirrors crates/fc-router/src/api/mod.rs test endpoint counters. Used
+// MockState aggregates atomic counters consumed by /api/test/stats. Used
 // only by dev / load-test flows.
 type MockState struct {
 	Fast        atomic.Uint64

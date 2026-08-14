@@ -32,8 +32,8 @@ func CreateDispatchPool(repo *dispatchpool.Repository) usecaseop.Operation[Creat
 			if code == "" {
 				return usecase.Validation("CODE_REQUIRED", "code is required")
 			}
-			// Deliberately the underscore-tolerant pattern: matches sync and the
-			// Rust pool_code_pattern (owner-approved widening from hyphen-only).
+			// Deliberately the underscore-tolerant pattern: matches sync
+			// (owner-approved widening from hyphen-only).
 			if !validate.CodeUnderscorePattern.MatchString(code) {
 				return usecase.Validation("INVALID_CODE_FORMAT",
 					"code must start with a lowercase letter and contain only lowercase alphanumeric, hyphens, underscores")

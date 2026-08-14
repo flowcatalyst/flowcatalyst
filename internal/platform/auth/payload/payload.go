@@ -26,8 +26,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 )
 
-// Type discriminates payload kinds. The string values match the
-// TypeScript reference + Rust port so existing rows are readable as-is.
+// Type discriminates payload kinds. The string values are a storage
+// contract — existing rows must stay readable as-is.
 type Type string
 
 const (

@@ -1,15 +1,15 @@
 -- Baseline the goose migration ledger for a drop-in deployment.
 --
--- NOTE (2026-05): this manual step is NO LONGER REQUIRED for a normal Rust
+-- NOTE (2026-05): this manual step is NO LONGER REQUIRED for a normal the legacy platform
 -- drop-in. internal/migrate.bootstrap() now auto-seeds the goose ledger when
--- it detects the Rust platform's `_schema_migrations` tracker, and — as a
+-- it detects the legacy-platform platform's `_schema_migrations` tracker, and — as a
 -- final safety net — when it finds a populated-but-untracked schema (the
 -- `tnt_clients` table). This script remains as a manual override / belt-and-
 -- suspenders for unusual states (e.g. a populated DB whose tracker was wiped).
 --
 -- WHEN TO RUN
 --   On demand, against an EXISTING FlowCatalyst database whose schema was
---   already applied by another implementation (e.g. the Rust platform, which
+--   already applied by another implementation (e.g. the legacy-platform platform, which
 --   tracks its own history in `_schema_migrations`), if you want to seed the
 --   goose ledger explicitly rather than rely on the auto-bootstrap.
 --

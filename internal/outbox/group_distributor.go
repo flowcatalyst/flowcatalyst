@@ -10,9 +10,9 @@ import "sync"
 // without a message_group dispatch in parallel (no ordering). The number of
 // groups draining concurrently is capped by maxConcurrentGroups (OB7).
 //
-// This is the Go-architecture realisation of Rust's message_group_processor:
-// the in-memory per-group queue + block-on-error semantics, driven by the
-// DB-claim poll loop rather than a long-lived per-group actor.
+// Architecturally this is an in-memory per-group queue + block-on-error
+// semantics, driven by the DB-claim poll loop rather than a long-lived
+// per-group actor.
 type GroupDistributor struct {
 	mu     sync.Mutex
 	groups map[string]*groupQueue

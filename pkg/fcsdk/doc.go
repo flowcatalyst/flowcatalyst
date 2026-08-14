@@ -3,7 +3,7 @@
 // `go doc github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk` returns a
 // useful map of what's where.
 //
-// The SDK has byte-for-byte wire parity with the Rust, TypeScript, and
+// The SDK has byte-for-byte wire parity with the TypeScript and
 // Laravel SDKs: a token, event payload, or TSID minted by any one of
 // them is identical to the same value minted by another.
 //
@@ -78,7 +78,7 @@
 //     client.TokenProvider).
 //   - webhook    — Two HMAC-SHA256 validators. Verifier matches this Go
 //     platform's router (uppercase headers, ISO8601
-//     timestamps); Validator matches the Rust SDK shape
+//     timestamps); Validator matches the legacy webhook shape
 //     (mixed-case headers, Unix-second timestamps).
 //   - sync       — DefinitionSet + Synchronizer for declarative
 //     reconciliation. One call per category.

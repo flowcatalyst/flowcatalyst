@@ -242,8 +242,8 @@ class FlowCatalystClient
     /**
      * Bulk synchronizer — push a `SyncDefinitionSet` (roles, event types,
      * subscriptions, dispatch pools, principals, processes) for a single
-     * application in one orchestrated call. Mirrors the Rust SDK's
-     * `DefinitionSynchronizer` and the TS SDK's `client.definitions()`.
+     * application in one orchestrated call. Mirrors the TypeScript SDK's
+     * `client.definitions()`.
      */
     public function definitions(): DefinitionSynchronizer
     {

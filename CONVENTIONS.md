@@ -10,9 +10,9 @@ endpoint, read this file first. Everything here is enforced by code review,
 not by the compiler — please don't invent a new shape because it feels nicer
 in the moment.
 
-The Rust platform (`../flowcatalyst-rust/`) is the canonical wire spec for HTTP
-shapes, signing, and TSID format. When in doubt about a request/response field
-name, the Rust side wins.
+The committed OpenAPI lockfile (`api/openapi.lock.json`) is the canonical wire
+spec for HTTP shapes, signing, and TSID format — see docs/wire-contract.md.
+When in doubt about a request/response field name, the lockfile wins.
 
 ---
 
@@ -464,8 +464,8 @@ These come up often enough to call out explicitly:
 - **Don't introduce `panic` as flow control.** Even in dev code. `panic`
   is for invariants the type system can't express, used at most once or
   twice in this codebase.
-- **Don't rename DTO fields without coordinating across all four SDKs**
-  (Rust, TS, Laravel, Go). Wire compatibility matters.
+- **Don't rename DTO fields without coordinating across the SDKs**
+  (TypeScript, Laravel). Wire compatibility matters.
 - **Don't skip pre-commit hooks** (`--no-verify`). If a hook fails, fix
   the cause.
 
@@ -475,7 +475,7 @@ These come up often enough to call out explicitly:
 
 **Just do it:**
 - Add a new use case to an existing aggregate following the create.go shape.
-- Add a new field to a DTO that the Rust spec already has.
+- Add a new field to a DTO that the wire spec already has.
 - Refactor within a single file.
 - Add tests.
 

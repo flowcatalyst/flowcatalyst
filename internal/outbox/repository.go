@@ -40,7 +40,7 @@ type Repository interface {
 	// claim semantic (FOR UPDATE SKIP LOCKED for SQL, findAndUpdate for Mongo).
 	ClaimPending(ctx context.Context, batchSize int) ([]Item, error)
 	// MarkSuccess removes the items: the upstream model DELETEs successfully
-	// dispatched rows (matches Rust/Java) to keep the customer table bounded.
+	// dispatched rows to keep the customer table bounded.
 	MarkSuccess(ctx context.Context, ids []string) error
 	// MarkFailed records the failure: it bumps retry_count, stores the
 	// error_message, and sets the status. When requeue is true the row is
@@ -65,7 +65,7 @@ type Repository interface {
 	// RecoverStuck resets rows stuck in IN_PROGRESS (claimed but never
 	// resolved — e.g. the processor crashed mid-dispatch) whose updated_at is
 	// older than olderThan, returning them to PENDING for re-claim. Returns
-	// the number recovered. Mirrors the Rust recovery loop.
+	// the number recovered.
 	RecoverStuck(ctx context.Context, olderThan time.Duration) (int, error)
 	// Healthy reports whether the backend can be reached.
 	Healthy(ctx context.Context) bool

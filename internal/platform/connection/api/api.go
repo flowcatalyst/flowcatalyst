@@ -153,7 +153,7 @@ func (s *State) activate(ctx context.Context, in *apicommon.IDInput) (*apicommon
 }
 
 // reload re-fetches the connection so the status-flip handlers can return the
-// updated ConnectionResponse (matching the Rust reference shape).
+// updated ConnectionResponse.
 func (s *State) reload(ctx context.Context, id string) (*apicommon.Out[ConnectionResponse], error) {
 	c, err := s.Repo.FindByID(ctx, id)
 	if err != nil {

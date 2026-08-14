@@ -1,10 +1,10 @@
-// Package nats is the NATS JetStream queue backend. Mirrors the Rust
-// crates/fc-queue/src/nats.rs behaviour:
+// Package nats is the NATS JetStream queue backend.
 //
 //   - Pull-based JetStream consumer with configurable batch + timeout.
 //   - WorkQueue retention (messages removed after ack).
 //   - Durable consumer auto-provisioned at startup.
-//   - Receipt handles are `streamName:streamSequence` (Java-format).
+//   - Receipt handles are `streamName:streamSequence` (the historical
+//     receipt format).
 //   - Defer maps to NAK-with-delay (same as Nack with delay >0).
 //
 // URI scheme: `nats://host:port` (optionally with comma-separated hosts).
@@ -12,7 +12,7 @@
 //
 //	nats://localhost:4222?stream=FLOWCATALYST&consumer=fc-router&subject=flowcatalyst.>
 //
-// Defaults match Rust: stream=FLOWCATALYST, consumer=fc-router,
+// Defaults: stream=FLOWCATALYST, consumer=fc-router,
 // subject=flowcatalyst.>, max-messages=10, poll-timeout=20s, ack-wait=120s,
 // max-deliver=10, max-ack-pending=1000, storage=file, replicas=1,
 // max-age-days=7.
@@ -58,7 +58,7 @@ type Config struct {
 	MaxAge             time.Duration // 0 = unlimited
 }
 
-// DefaultConfig matches Rust's NatsConfig::default().
+// DefaultConfig returns the standard NATS defaults.
 func DefaultConfig() Config {
 	return Config{
 		Servers:            "nats://localhost:4222",
@@ -240,7 +240,7 @@ func parseURI(uri string) (Config, error) {
 	return cfg, nil
 }
 
-// Identifier returns "stream/consumer" — matches Rust + Java format.
+// Identifier returns "stream/consumer" — the historical identifier format.
 func (q *Queue) Identifier() string { return q.identifier }
 
 // Poll fetches up to max messages with the configured poll timeout.
@@ -252,9 +252,9 @@ func (q *Queue) Poll(ctx context.Context, max uint32) ([]common.QueuedMessage, e
 	if batch <= 0 || batch > q.cfg.MaxMessagesPerPoll {
 		batch = q.cfg.MaxMessagesPerPoll
 	}
-	// Expiring fetch: block up to the poll timeout for a full batch,
-	// matching Rust's consumer.fetch().expires(timeout). FetchNoWait would
-	// return immediately and hot-spin the router's poll loop.
+	// Expiring fetch: block up to the poll timeout for a full batch.
+	// FetchNoWait would return immediately and hot-spin the router's
+	// poll loop.
 	msgs, err := q.consumer.Fetch(batch, jetstream.FetchMaxWait(q.cfg.PollTimeout))
 	if err != nil {
 		return nil, fmt.Errorf("nats: fetch: %w", err)

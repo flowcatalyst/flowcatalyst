@@ -347,8 +347,7 @@ func DeleteScheduledJob(repo *scheduledjob.Repository) usecaseop.Operation[Delet
 // ── FireNow ───────────────────────────────────────────────────────────────
 
 // FireNowCommand triggers a manual fire. An optional CorrelationID is
-// stamped on the instance + carried in the firing webhook (mirrors the Rust
-// FireRequest.correlation_id).
+// stamped on the instance + carried in the firing webhook.
 type FireNowCommand struct {
 	ID            string  `json:"id"`
 	CorrelationID *string `json:"correlationId,omitempty"`
@@ -356,7 +355,7 @@ type FireNowCommand struct {
 
 // FireNow inserts a MANUAL instance row (QUEUED, picked up by the dispatcher
 // on its next tick) and emits the ScheduledJobFiredManually audit event.
-// Two-phase, mirroring Rust fire_now: the infrastructure insert happens first
+// Two-phase: the infrastructure insert happens first
 // (instances are a projection, written directly), then the event is emitted via
 // the envelope's [usecaseop.Emit]; a failed insert yields no event.
 //

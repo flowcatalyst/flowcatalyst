@@ -17,7 +17,7 @@ import (
 //
 // Wire an implementation onto principal/api.State.Emailer when the
 // platform's mailer config is ready; until then the endpoint surfaces
-// the same "not configured" error Rust does.
+// a "not configured" error.
 type PasswordResetEmailer interface {
 	// SendResetEmail mints a reset token and emails the link. reset2FA, when
 	// true, flags the token to also clear the user's enrolled 2FA on confirm.
@@ -34,8 +34,7 @@ type SendPasswordResetCommand struct {
 
 // SendPasswordReset validates that `id` is a user principal eligible
 // for an internal password reset (not OIDC-federated, has an email) and
-// asks the configured emailer to dispatch the reset link. Mirrors
-// Rust crates/fc-platform/src/principal/api.rs::send_password_reset.
+// asks the configured emailer to dispatch the reset link.
 func SendPasswordReset(
 	ctx context.Context,
 	repo *principal.Repository,

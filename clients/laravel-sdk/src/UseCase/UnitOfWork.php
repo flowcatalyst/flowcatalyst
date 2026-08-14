@@ -7,7 +7,7 @@ namespace FlowCatalyst\UseCase;
 /**
  * Commits a domain event (+ optional entity persistence and audit log)
  * atomically with respect to the outbox. The default implementation
- * `OutboxUnitOfWork` writes to the outbox table; the fc-outbox-processor
+ * `OutboxUnitOfWork` writes to the outbox table; the outbox poller
  * then forwards it to the FlowCatalyst platform.
  */
 interface UnitOfWork

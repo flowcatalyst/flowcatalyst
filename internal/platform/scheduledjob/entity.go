@@ -1,5 +1,5 @@
-// Package scheduledjob is the port of fc-platform/src/scheduled_job.
-// Cron-driven job definitions. The actual cron firing loop (poller +
+// Package scheduledjob holds the
+// cron-driven job definitions. The actual cron firing loop (poller +
 // dispatcher + stale-recovery) lives in internal/platform/scheduler in
 // Wave 3g — this subdomain owns the aggregate + admin CRUD only.
 //

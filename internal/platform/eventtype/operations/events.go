@@ -1,6 +1,6 @@
 // Package operations holds the EventType use cases. Each file is one
-// write operation; the file shape (Command, UseCase, Validate/Authorize/
-// Execute) mirrors fc-platform/src/event_type/operations/*.rs.
+// domain operation with the shape (Command, UseCase, Validate/Authorize/
+// Execute).
 package operations
 
 import (
@@ -52,7 +52,7 @@ type EventTypeSchemaAdded struct {
 }
 
 // Event type strings, source, subject builders. Matches the
-// platform_event_types.rs catalog byte-for-byte (drop-in parity).
+// established platform event-type catalog byte-for-byte (drop-in parity).
 const (
 	EventTypeCreatedType          = "platform:admin:eventtype:created"
 	EventTypeUpdatedType          = "platform:admin:eventtype:updated"
@@ -86,6 +86,7 @@ func (e EventTypesSynced) CorrelationID() string { return e.Metadata.Correlation
 func (e EventTypesSynced) CausationID() string   { return e.Metadata.CausationID }
 func (e EventTypesSynced) ExecutionID() string   { return e.Metadata.ExecutionID }
 func (e EventTypesSynced) MessageGroup() string  { return "platform:eventtypes:" + e.ApplicationCode }
+
 func (e EventTypesSynced) ToDataJSON() ([]byte, error) {
 	syncedCodes := e.SyncedCodes
 	if syncedCodes == nil {

@@ -66,8 +66,7 @@ func NewBridge(mappings *emaildomainmapping.Repository, idps *identityprovider.R
 }
 
 // ResolveForEmail resolves the OIDC client for the user's email domain via the
-// email-domain mapping → identity provider chain, exactly as Rust's oidc_login
-// does (find_by_email_domain → identity_provider.find_by_id). Returns the OIDC
+// email-domain mapping → identity provider chain. Returns the OIDC
 // client + the IdP + the mapping; the caller drives the redirect / callback and
 // persists the IdP + mapping ids in the login state.
 func (b *Bridge) ResolveForEmail(ctx context.Context, email string) (*resolved, *identityprovider.IdentityProvider, *emaildomainmapping.EmailDomainMapping, error) {
@@ -148,7 +147,7 @@ func (b *Bridge) resolveIdP(ctx context.Context, idp *identityprovider.IdentityP
 	// Multi-tenant IdPs (Entra "common"/"organizations", …) report a
 	// {tenantid}-templated issuer in discovery and mint tokens with a
 	// tenant-specific iss/aud, so the standard issuer/audience checks reject
-	// them. Mirror Rust: accept the discovery-doc issuer (don't fail on the
+	// them. So: accept the discovery-doc issuer (don't fail on the
 	// mismatch), skip the built-in iss/aud checks, and validate the token's
 	// issuer against oidc_issuer_pattern after verification (see VerifyIDToken).
 	discoveryCtx := ctx
@@ -207,8 +206,8 @@ func (b *Bridge) resolveClientSecret(secretRef *string) (string, error) {
 // expiration, and not-before; for a single-tenant IdP it also checks issuer +
 // audience. For a multi-tenant IdP those built-in checks are skipped (the iss
 // is tenant-specific), so both are re-applied manually after verification:
-// the issuer against the configured pattern (1:1 with Rust
-// is_valid_issuer_for_idp), and the audience against our registered client
+// the issuer against the configured pattern (see isValidIssuer),
+// and the audience against our registered client
 // ID — only the issuer varies per tenant; the aud is OUR client_id at every
 // tenant, so skipping it permanently would accept an ID token minted for a
 // completely different relying party at the same IdP.
@@ -239,7 +238,7 @@ func audienceContains(auds []string, clientID string) bool {
 	return false
 }
 
-// isValidIssuer mirrors Rust is_valid_issuer_for_idp: an exact match against the
+// isValidIssuer accepts an exact match against the
 // configured issuer URL, else (multi-tenant only) a regex match against the
 // configured pattern.
 func isValidIssuer(iss, issuerURL string, multiTenant bool, pattern *string) bool {

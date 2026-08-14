@@ -16,25 +16,24 @@ import (
 )
 
 // defaultPoolCode is the fallback pool for messages whose pool_code is empty
-// or names a pool that isn't configured. Mirrors Java/Rust DEFAULT_POOL_CODE.
+// or names a pool that isn't configured.
 const defaultPoolCode = "DEFAULT-POOL"
 
-// defaultPoolConcurrency matches Java/Rust DEFAULT_POOL_CONCURRENCY (20),
+// defaultPoolConcurrency is the default pool concurrency (20),
 // used when the config doesn't define an explicit DEFAULT-POOL.
 const defaultPoolConcurrency uint32 = 20
 
 // consumerRestartDelay is the pause before re-spawning a stalled consumer —
-// avoids a thundering-herd of reconnects when several stall at once. 1:1 with
-// the Rust LifecycleConfig.consumer_restart_delay (5s).
+// avoids a thundering-herd of reconnects when several stall at once (5s).
 const consumerRestartDelay = 5 * time.Second
 
 // consumerRestartCriticalAfter escalates a repeatedly-stalling consumer's
-// warning to CRITICAL after this many restart attempts. 1:1 with Rust.
+// warning to CRITICAL after this many restart attempts.
 const consumerRestartCriticalAfter = 10
 
 // Manager owns the running consumers and pools and the routing between them.
 //
-// Topology (1:1 with the Rust QueueManager): N consumers (one per queue)
+// Topology: N consumers (one per queue)
 // each run a poll loop that hands batches to route(); route() assigns a
 // batch id, drops external-requeue duplicates, then groups each message to
 // the pool named by its pool_code (DEFAULT-POOL fallback) and submits it.
@@ -107,7 +106,7 @@ func (m *Manager) resolveConsumer(queueID string) queue.Consumer {
 // NackInFlight returns a stuck in-flight message to its source queue for
 // redelivery, resolving the source consumer by queue identifier. Backs the
 // StallDetector's force-NACK path (see StallConfig.ForceNackStalled). Errors if
-// the source queue was deregistered. Mirrors the Rust force-nack-stalled path.
+// the source queue was deregistered.
 func (m *Manager) NackInFlight(ctx context.Context, queueID, receiptHandle string, delaySeconds uint32) error {
 	c := m.resolveConsumer(queueID)
 	if c == nil {
@@ -272,7 +271,7 @@ func (m *Manager) UpdatePool(code string, concurrency uint32, rateLimitPerMinute
 	return true
 }
 
-// route handles one poll batch from a consumer (1:1 with Rust route_batch).
+// route handles one poll batch from a consumer.
 // It assigns the batch id, registers each message with the in-flight tracker
 // (claiming pipeline ownership BEFORE buffering/dispatch, so ordered-group
 // buffering windows dedupe too), drops broker redeliveries and ACK-drops
@@ -378,8 +377,7 @@ func (m *Manager) poolForMessage(msg common.QueuedMessage) *Pool {
 		if p, ok := m.pools[code]; ok {
 			return p
 		}
-		// Unknown pool code → DEFAULT-POOL, surfaced as a Routing warning
-		// (1:1 with the Rust router's unknown-pool_code warning).
+		// Unknown pool code → DEFAULT-POOL, surfaced as a Routing warning.
 		slog.Warn("no pool found for pool_code; routing to DEFAULT-POOL",
 			"message_id", msg.Message.ID, "pool_code", code, "default_pool", defaultPoolCode)
 		if w := m.warnings.Load(); w != nil {
@@ -390,8 +388,8 @@ func (m *Manager) poolForMessage(msg common.QueuedMessage) *Pool {
 	return m.pools[defaultPoolCode]
 }
 
-// runConsumer is the per-consumer poll loop (1:1 with Rust
-// spawn_consumer_poll_task). It pauses when all pools are at capacity to
+// runConsumer is the per-consumer poll loop.
+// It pauses when all pools are at capacity to
 // avoid a hot poll-defer loop, polls up to 10, routes the batch, and paces
 // itself by batch fullness.
 func (m *Manager) runConsumer(ctx context.Context, rc *runningConsumer) {
@@ -461,7 +459,7 @@ func (m *Manager) runConsumer(ctx context.Context, rc *runningConsumer) {
 		m.route(ctx, msgs, rc.consumer)
 
 		// Full batch → re-poll immediately (more likely waiting). Partial →
-		// brief pause (queue draining). Mirrors Rust's pacing.
+		// brief pause (queue draining).
 		if len(msgs) < maxPoll {
 			select {
 			case <-ctx.Done():
@@ -601,7 +599,7 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 // completed a poll within threshold — a wedged loop (stuck inside
 // consumer.Poll) leaves its lastPoll stale. The stalled consumer is
 // cancelled and its connection rebuilt with a fresh poll loop. Returns the
-// number restarted. Mirrors the Rust LifecycleManager consumer auto-restart.
+// number restarted.
 func (m *Manager) RestartStalledConsumers(ctx context.Context, threshold time.Duration) int {
 	if threshold <= 0 {
 		return 0
@@ -624,7 +622,7 @@ func (m *Manager) RestartStalledConsumers(ctx context.Context, threshold time.Du
 
 	// Clear restart-attempt counters for consumers that have recovered (are no
 	// longer stalled), so a transient stall doesn't escalate a later, unrelated
-	// one. 1:1 with the Rust lifecycle's healthy-consumer cleanup.
+	// one.
 	stalledSet := make(map[string]struct{}, len(stalled))
 	for _, c := range stalled {
 		stalledSet[c.name] = struct{}{}
@@ -643,7 +641,7 @@ func (m *Manager) RestartStalledConsumers(ctx context.Context, threshold time.Du
 	for _, c := range stalled {
 		attempts := m.restartAttempts[c.name]
 		// Escalate to CRITICAL once a consumer keeps stalling across many
-		// restarts (1:1 with Rust: Critical after 10 attempts).
+		// restarts (Critical after 10 attempts).
 		severity := WarningWarning
 		if attempts >= consumerRestartCriticalAfter {
 			severity = WarningCritical
@@ -657,7 +655,7 @@ func (m *Manager) RestartStalledConsumers(ctx context.Context, threshold time.Du
 			"queue", c.name, "attempt", attempts+1, "stalled_threshold", threshold)
 
 		// Brief pause before reconnecting — avoids a thundering herd when
-		// several consumers stall together (1:1 with Rust consumer_restart_delay).
+		// several consumers stall together.
 		// Abort cleanly on shutdown.
 		select {
 		case <-ctx.Done():

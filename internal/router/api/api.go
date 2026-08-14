@@ -1,8 +1,8 @@
 // Package api wires the router's HTTP surface using huma — the same
 // OpenAPI library the platform uses, so the swagger surface is shared.
 //
-// Sibling of crates/fc-router/src/api/mod.rs. Endpoint paths and JSON
-// shapes mirror the Rust router where it makes sense; the few deferred
+// Endpoint paths and JSON
+// shapes follow the established wire contract; the few deferred
 // endpoints are documented inline.
 //
 // Mount pattern (cmd/fc-router):
@@ -143,7 +143,7 @@ type StreamHealthProvider interface {
 
 // State is the dependency bundle passed to Register. Every field except
 // Warnings/Health is optional; handlers gracefully degrade when a
-// provider is nil (return 503 or an empty payload, matching Rust).
+// provider is nil (return 503 or an empty payload).
 type State struct {
 	Warnings     *router.WarningService
 	Health       *router.HealthService

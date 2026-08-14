@@ -13,7 +13,7 @@ import (
 )
 
 // defaultMessageGroup is the grouping key for jobs without a
-// message_group — mirrors Rust's DEFAULT_MESSAGE_GROUP (poller.rs).
+// message_group.
 const defaultMessageGroup = "default"
 
 // PausedConnectionCache caches the set of subscription IDs whose target
@@ -147,8 +147,7 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 	// Claim PENDING jobs ready for dispatch. SKIP LOCKED so multiple
 	// scheduler instances don't contend.
 	// Retry timing is owned by the dispatcher's backoff loop, not by a
-	// scheduled-for column on the row — matches the Rust poller in
-	// crates/fc-platform/src/scheduler/poller.rs. The embedded schema
+	// scheduled-for column on the row. The embedded schema
 	// has neither `next_retry_at` (only added in migration 011's
 	// no-op-on-embedded CREATE TABLE IF NOT EXISTS) nor a scheduled-
 	// filtered claim path.
@@ -199,7 +198,7 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 	// status it guards on hadn't committed yet (row stuck until stale
 	// recovery).
 	//
-	// Filter order mirrors the Rust poll (poller.rs): paused-subscription
+	// Filter order: paused-subscription
 	// filter, then group, then the blocked-group hold-back, then the
 	// per-mode filter. Skipped claims are simply left PENDING — their row
 	// locks release at commit and the next poll retries them.
@@ -222,8 +221,8 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 		// A FAILED/ERROR sibling holds back the whole group this tick —
 		// ordered jobs must not jump past the failure, and the operator
 		// resolving it (retry/cancel) unblocks the group for the next
-		// poll. Rust skips the group before its mode filter, so even
-		// IMMEDIATE jobs in a blocked group wait; preserved 1:1.
+		// poll. The group is skipped before the mode filter, so even
+		// IMMEDIATE jobs in a blocked group wait; deliberate.
 		if _, isBlocked := blocked[group]; isBlocked {
 			slog.Debug("message group blocked, skipping", "group", group, "count", len(jobs))
 			skippedBlocked += len(jobs)
@@ -274,8 +273,7 @@ type dispatchClaim struct {
 }
 
 // messageGroupKey maps a claim's message_group to its grouping key: jobs
-// without a group bucket under "default", mirroring Rust's
-// group_by_message_group (poller.rs).
+// without a group bucket under "default".
 func messageGroupKey(group string) string {
 	if group == "" {
 		return defaultMessageGroup
@@ -317,11 +315,10 @@ func filterPausedSubscriptions(claims []dispatchClaim, paused map[string]struct{
 
 // filterByDispatchMode keeps the claims whose mode allows dispatch given
 // the blocked groups: IMMEDIATE always dispatches; NEXT_ON_ERROR and
-// BLOCK_ON_ERROR hold back while their group is blocked. 1:1 port of
-// Rust's filter_by_dispatch_mode (poller.rs) — including the lenient
+// BLOCK_ON_ERROR hold back while their group is blocked — with a lenient
 // parse where unknown modes count as IMMEDIATE. The group-level skip in
 // pollOnce makes this currently redundant (a blocked group never reaches
-// it), but it's kept for fidelity and so a future relaxation of the
+// it), but it's kept so a future relaxation of the
 // group skip doesn't silently lose the per-mode semantics.
 func filterByDispatchMode(claims []dispatchClaim, blocked map[string]struct{}) []dispatchClaim {
 	kept := make([]dispatchClaim, 0, len(claims))
@@ -338,8 +335,8 @@ func filterByDispatchMode(claims []dispatchClaim, blocked map[string]struct{}) [
 }
 
 // blockedGroups returns the subset of candidate groups that currently
-// hold a FAILED or ERROR job — one batch query per poll, the port of
-// Rust's BlockOnErrorChecker (mod.rs). A NULL message_group can never
+// hold a FAILED or ERROR job — one batch query per
+// poll. A NULL message_group can never
 // block: `= ANY` never matches NULL, so a failed ungrouped job does not
 // hold back the "default" bucket. Preserve that exactly — only a row
 // whose message_group is literally 'default' blocks ungrouped jobs.

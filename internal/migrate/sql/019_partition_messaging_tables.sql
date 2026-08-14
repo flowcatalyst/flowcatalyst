@@ -5,7 +5,7 @@
 -- production's table shape (queries that don't include the partition key, or
 -- UNIQUE constraints missing it, fail in dev instead of getting discovered in
 -- prod). Forward-rolling and retention are managed in production by
--- pg_partman_bgw (registered in migration 023) and in fc-dev by the in-Rust
+-- pg_partman_bgw (registered in migration 023) and in fc-dev by the in-process
 -- `PartitionManagerService`, which auto-defers when partman is detected.
 --
 -- Why: cleanup at this throughput is not viable via DELETE — every batched
@@ -28,7 +28,7 @@
 --
 -- All partitioned by RANGE (created_at), monthly granularity.
 -- Initial partitions cover (current month - 1) through (current month + 3),
--- matching the runtime cadence — whichever manager is in charge (Rust or
+-- matching the runtime cadence — whichever manager is in charge (the legacy manager or
 -- partman) extends from there.
 --
 -- Constraints introduced by partitioning:

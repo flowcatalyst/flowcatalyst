@@ -16,10 +16,10 @@ type PoolConfig struct {
 // QueueConfig is the per-queue connection configuration.
 //
 // The wire contract is the camelCase shape emitted by the central config
-// service (and the Rust/Java router): {queueName, queueUri, connections,
-// visibilityTimeout}. This MUST stay interoperable — a Go router dropped
-// into an existing deployment polls the same config service, and a Go
-// platform serving config must be readable by an existing Rust router.
+// service: {queueName, queueUri, connections, visibilityTimeout}. This MUST
+// stay interoperable — a Go router dropped into an existing deployment
+// polls the same config service, and a Go platform serving config must be
+// readable by existing routers.
 // UnmarshalJSON below additionally accepts the legacy {name, uri} keys so
 // configs produced by older Go builds still load.
 type QueueConfig struct {
@@ -30,10 +30,9 @@ type QueueConfig struct {
 }
 
 // UnmarshalJSON accepts both the canonical camelCase keys (queueName,
-// queueUri) and the legacy aliases (name, uri), and applies the same
-// defaults as the Rust QueueConfigResponse -> QueueConfig conversion:
-// name falls back to uri, connections defaults to 1, visibilityTimeout
-// defaults to 120.
+// queueUri) and the legacy aliases (name, uri), and applies the standard
+// defaults: name falls back to uri, connections defaults to 1,
+// visibilityTimeout defaults to 120.
 func (q *QueueConfig) UnmarshalJSON(data []byte) error {
 	var raw struct {
 		QueueName         *string `json:"queueName"`
@@ -84,7 +83,7 @@ type RouterConfig struct {
 }
 
 // LeaderElectionConfig is the unified leader-election configuration
-// shared by fc-outbox and fc-standby in Rust.
+// shared by the outbox and standby subsystems.
 type LeaderElectionConfig struct {
 	Enabled                  bool
 	RedisURL                 string
@@ -115,7 +114,7 @@ type StallConfig struct {
 	NackDelaySeconds      uint32 `json:"nackDelaySeconds"`
 }
 
-// DefaultStallConfig matches the Rust defaults.
+// DefaultStallConfig returns the standard defaults.
 func DefaultStallConfig() StallConfig {
 	return StallConfig{
 		Enabled:               true,

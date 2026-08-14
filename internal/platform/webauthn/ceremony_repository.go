@@ -17,9 +17,8 @@ import (
 // CeremonyRepository persists short-lived WebAuthn ceremony state
 // (the challenge + session data) between the begin and finish HTTP calls.
 //
-// Mirrors fc-platform/src/webauthn/ceremony_repository.rs which uses the
-// `oauth_oidc_payloads` table for cross-protocol short-lived state.
-// Same table here. `Consume*` uses DELETE ... RETURNING so a successful
+// Uses the `oauth_oidc_payloads` table for cross-protocol short-lived
+// state. `Consume*` uses DELETE ... RETURNING so a successful
 // read also marks the state as used in a single round-trip — race-free
 // and replay-safe.
 type CeremonyRepository struct{ q *dbq.Queries }
@@ -137,7 +136,7 @@ func (r *CeremonyRepository) ConsumeAuthentication(ctx context.Context, stateID 
 	return &ConsumedAuthentication{PrincipalID: data.PrincipalID, Session: *data.Session}, nil
 }
 
-// PurgeExpired removes expired ceremony rows. Mirrors Rust's purge_expired.
+// PurgeExpired removes expired ceremony rows.
 func (r *CeremonyRepository) PurgeExpired(ctx context.Context) (int64, error) {
 	return r.q.WebauthnCeremonyPurgeExpired(ctx, dbq.WebauthnCeremonyPurgeExpiredParams{
 		Type:   registrationType,

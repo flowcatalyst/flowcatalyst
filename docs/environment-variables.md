@@ -12,7 +12,7 @@ Conventions used in the tables below:
 
 - **Aliases** are listed in priority order — the first set (non-empty) value
   wins. Where two names exist, the `FC_*` name is canonical and the alias is
-  kept for drop-in compatibility with existing Rust/TS deployment configs.
+  kept for drop-in compatibility with existing deployment configs.
 - Boolean variables accept `1/true/yes/on` and `0/false/no/off`
   (case-insensitive); anything else falls back to the default.
 - Unparseable numeric values silently fall back to the default.
@@ -32,7 +32,7 @@ All read in `internal/server/envcfg.go`.
 
 | Variable | Default | Aliases | Read in | Purpose |
 |---|---|---|---|---|
-| `FC_API_PORT` | `8080` | `PORT` | `internal/server/envcfg.go` | Unified API listener port (Rust default was 3000 — see README operator notes). |
+| `FC_API_PORT` | `8080` | `PORT` | `internal/server/envcfg.go` | Unified API listener port (older deployments defaulted to 3000 — see README operator notes). |
 | `FC_METRICS_PORT` | `9090` | — | `internal/server/envcfg.go` | Prometheus metrics listener port. |
 | `FC_PLATFORM_ENABLED` | `true` | `PLATFORM_ENABLED` | `internal/server/envcfg.go` | Run the platform API (IAM, events, dispatch, BFF). |
 | `FC_ROUTER_ENABLED` | `false` | `MESSAGE_ROUTER_ENABLED` | `internal/server/envcfg.go` | Run the message router subsystem. |
@@ -45,7 +45,7 @@ All read in `internal/server/envcfg.go`.
 
 ## 2. Database & AWS Secrets Manager
 
-Resolution precedence (mirrors Rust fc-server): full URL
+Resolution precedence: full URL
 (`FC_DATABASE_URL`/`DATABASE_URL`) > Secrets Manager (`DB_SECRET_ARN` +
 `DB_HOST`) > explicit `DB_*` credentials > local-dev default
 `postgresql://postgres@localhost:5432/flowcatalyst`.
@@ -68,7 +68,7 @@ Resolution precedence (mirrors Rust fc-server): full URL
 |---|---|---|---|---|
 | `FC_JWT_ISSUER` | `http://localhost:8080` | `FC_EXTERNAL_BASE_URL`, `EXTERNAL_BASE_URL` | `internal/server/envcfg.go` | JWT issuer + audience and the platform's external base URL. |
 | `FC_JWT_SIGNING_KEY_PATH` | — | — | `internal/server/envcfg.go` | Path to the PEM RSA private signing key (preferred source; fcdev auto-creates one). |
-| `FLOWCATALYST_JWT_PRIVATE_KEY` | — | — | `internal/server/signing_key.go` | Inline PEM RSA private key (the Rust/IaC name; checked before the Go alias). Mangled SSM values (`\n`, quotes, base64) are normalized. |
+| `FLOWCATALYST_JWT_PRIVATE_KEY` | — | — | `internal/server/signing_key.go` | Inline PEM RSA private key (the name existing IaC uses; checked before `FC_JWT_SIGNING_KEY_PEM`). Mangled SSM values (`\n`, quotes, base64) are normalized. |
 | `FC_JWT_SIGNING_KEY_PEM` | — | — | `internal/server/signing_key.go` | Go-native inline-PEM alias, checked after `FLOWCATALYST_JWT_PRIVATE_KEY`. If no key source is set, an **ephemeral** key is generated (tokens don't survive restarts and replicas reject each other's tokens — production must set one). |
 | `FLOWCATALYST_JWT_PREVIOUS_PUBLIC_KEY` | — | — | `internal/server/envcfg.go` | Validation-only previous RSA public key for zero-downtime signing-key rotation; optional — skipped unless it parses as a PEM. |
 | `AUTH_MODE` | — | — | `internal/server/run.go` | `NONE` (case-insensitive) forces router HTTP BasicAuth off regardless of creds; any other value (incl. `BASIC` or unset) uses the resolved creds. |
@@ -169,7 +169,7 @@ ALB self-registration are in families 11 and 1.
 | `FC_OUTBOX_MAX_CONCURRENT_GROUPS` | `0` (library default `10`) | `FC_MAX_CONCURRENT_GROUPS` | `internal/server/envcfg.go` | Max message groups processed concurrently. |
 | `FC_OUTBOX_BLOCK_ON_ERROR` | `true` | — | `internal/server/envcfg.go` | Stop a group on a failing item so the rest re-run in order behind it. |
 | `FC_OUTBOX_ADMIN_PORT` | `0` (off) | — | `internal/server/envcfg.go` | Serves the operational admin API (pause/resume/unblock/skip groups) on `127.0.0.1:<port>`. |
-| `FC_OUTBOX_BACKEND` | `postgres` | `FC_OUTBOX_DB_TYPE` (Rust name) | `internal/server/envcfg.go` | Storage backend: `postgres` (shared pool) or `mongo`; anything else errors clearly. |
+| `FC_OUTBOX_BACKEND` | `postgres` | `FC_OUTBOX_DB_TYPE` (legacy name) | `internal/server/envcfg.go` | Storage backend: `postgres` (shared pool) or `mongo`; anything else errors clearly. |
 | `FC_OUTBOX_MONGO_URI` | — | `FC_OUTBOX_DB_URL` | `internal/server/envcfg.go` | Mongo connection string (required when backend is `mongo`). |
 | `FC_OUTBOX_MONGO_DB` | `flowcatalyst` | — | `internal/server/envcfg.go` | Mongo database name. |
 | `FC_OUTBOX_SOURCE_DB_URL` | — | — | `cmd/fcdev` | `fcdev outbox` only: the external app's Postgres URL to poll (flag default). |
@@ -177,7 +177,7 @@ ALB self-registration are in families 11 and 1.
 ### Stream processor
 
 Per-projection batch-size precedence: per-projection env var >
-`FC_STREAM_BATCH_SIZE` > the Rust default (events/dispatch `100`, fan-out
+`FC_STREAM_BATCH_SIZE` > the built-in default (events/dispatch `100`, fan-out
 `200`).
 
 | Variable | Default | Aliases | Read in | Purpose |
@@ -199,7 +199,7 @@ Per-projection batch-size precedence: per-projection env var >
 ### Scheduled-job scheduler
 
 All read in `internal/platform/scheduledjob/scheduler` (`ConfigFromEnv`);
-unset or unparseable → the Rust default.
+unset or unparseable → the built-in default.
 
 | Variable | Default | Aliases | Read in | Purpose |
 |---|---|---|---|---|

@@ -40,7 +40,7 @@ func Register(api huma.API, s *State) {
 	apiroute.Get(g, "listDispatchJobAttempts", "/api/dispatch-jobs/{id}/attempts", "List a dispatch job's attempt history", s.attempts)
 	apiroute.Post(g, "requeueDispatchJobs", "/api/dispatch-jobs/requeue", "Reset dispatch jobs to PENDING for re-dispatch", http.StatusOK, s.requeue)
 
-	// SDK-compatibility aliases. The Laravel/Rust client addresses these as
+	// SDK-compatibility aliases. The Laravel SDK client addresses these as
 	// /api/dispatch-jobs/by-event/{eventId} and the collection-level
 	// /api/dispatch-jobs/raw; Go's canonical paths are /event/{eventId} and
 	// /list-raw. Same handlers — keeps the existing SDK working unmodified.
@@ -48,13 +48,12 @@ func Register(api huma.API, s *State) {
 	apiroute.Get(g, "listDispatchJobsRawAlias", "/api/dispatch-jobs/raw", "List dispatch jobs raw (SDK alias of /list-raw)", s.listRaw)
 
 	// BFF tier — /bff/dispatch-jobs mirrors the regular handlers under
-	// cookie-auth. Mirrors Rust.
+	// cookie-auth.
 	registerBFF(api, s, "/bff/dispatch-jobs", "Bff", "bff-dispatch-jobs")
 
 	// /bff/debug/dispatch-jobs is a SEPARATE raw-job view (write-side
 	// msg_dispatch_jobs). The SPA's RawDispatchJobListPage binds a bare
 	// array of the raw envelope shape, so it gets its own handler.
-	// Mirrors Rust's shared/debug_api.rs.
 	gd := apiroute.New(api, "bff-debug-dispatch-jobs")
 	apiroute.Get(gd, "listDebugDispatchJobs", "/bff/debug/dispatch-jobs", "List raw dispatch jobs (debug view of msg_dispatch_jobs)", s.listDebugRaw)
 }
@@ -97,7 +96,7 @@ type listInput struct {
 	Sort         string `query:"sort" doc:"createdAt.asc | createdAt.desc (default)"`
 }
 
-// splitCSV mirrors Rust's split_csv (dispatch_job/api.rs): trim, drop empties.
+// splitCSV splits a comma-separated query value: trim, drop empties.
 func splitCSV(s string) []string {
 	if s == "" {
 		return nil
@@ -165,8 +164,7 @@ func scopeFilters(ac *auth.AuthContext, f dispatchjob.FilterParams) dispatchjob.
 
 // list's Body is a bare JSON array — the SPA's DispatchJobListPage binds
 // the returned array directly to its DataTable, so {items:[...]} would
-// render zero rows. Mirrors Rust's list_dispatch_jobs returning
-// Vec<DispatchJobReadResponse>. (Shared by listRaw + byEvent.)
+// render zero rows. (Shared by listRaw + byEvent.)
 func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[[]DispatchJobRead], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
@@ -258,7 +256,7 @@ func (s *State) getRaw(ctx context.Context, in *apicommon.IDInput) (*apicommon.O
 	return &apicommon.Out[DispatchJobResponse]{Body: fromEntity(j)}, nil
 }
 
-// attempts' Body is a bare JSON array — the Rust shape for
+// attempts' Body is a bare JSON array — the wire shape for
 // GET /api/dispatch-jobs/{id}/attempts.
 func (s *State) attempts(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[[]AttemptDTO], error) {
 	ac := auth.FromContext(ctx)
@@ -322,8 +320,8 @@ type RequeueResponse struct {
 }
 
 // requeue resets the given jobs to PENDING so the scheduler re-dispatches
-// them (clears scheduled_for + attempt_count + terminal stamps). Go-native
-// operator recovery action — Rust's dispatch-job API is read-only.
+// them (clears scheduled_for + attempt_count + terminal stamps). An
+// operator recovery action.
 //
 // Gated on the same dispatch-job:view permission as the list: a caller who
 // can see a job may re-drive it. The reset is SQL-scoped to the caller's own

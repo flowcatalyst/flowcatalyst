@@ -86,7 +86,7 @@ Naming stays **"2FA"** (not "Additional security").
 - `iam_mfa_trusted_devices` — `id, principal_id, token_hash, label, expires_at,
   created_at, last_used_at`. Hashed token, revocable.
 
-TSID prefixes (Go-only, not in Rust): MfaMethod `mfm`, MfaRecoveryCode `mrc`,
+New TSID prefixes: MfaMethod `mfm`, MfaRecoveryCode `mrc`,
 MfaEmailPin `mep`, MfaTrustedDevice `mtd`.
 
 ## Backend (new `internal/platform/mfa` package + endpoint changes)

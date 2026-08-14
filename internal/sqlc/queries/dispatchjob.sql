@@ -78,7 +78,7 @@ UPDATE msg_dispatch_jobs
 -- name: DispatchJobAttemptInsert :exec
 -- One row per delivery attempt. The schema column `status` stores the
 -- attempt outcome (`SUCCESS` / `FAILURE`); the entity exposes a
--- derived `success` bool to match the Rust wire shape.
+-- derived `success` bool to match the legacy-platform wire shape.
 INSERT INTO msg_dispatch_job_attempts
     (id, dispatch_job_id, attempt_number, status, response_code,
      response_body, error_message, error_type, duration_millis,

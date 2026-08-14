@@ -6,8 +6,7 @@
 //
 //	$argon2id$v=19$m=65536,t=3,p=4$<salt-b64>$<hash-b64>
 //
-// `m`/`t`/`p` mirror the Rust impl
-// (crates/fc-platform/src/auth/password_service.rs):
+// The `m`/`t`/`p` parameters are:
 //
 //	memory      64 MiB (65536 KiB)
 //	iterations  3
@@ -21,7 +20,7 @@
 // Callers are principal/user passwords (create, reset, seed, login
 // verify) — they go through `Hash` + `Verify`, there is no other path.
 // OAuth client secrets do NOT use this; they're reversibly encrypted via
-// shared/encryption (decrypt + compare), matching Rust.
+// shared/encryption (decrypt + compare).
 package passwordhash
 
 import (
@@ -37,8 +36,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// Params is the Argon2id parameter set. The defaults match the Rust
-// password_service.rs configuration.
+// Params is the Argon2id parameter set. The defaults are the
+// configuration existing hashes were minted with.
 type Params struct {
 	Memory      uint32 // KiB
 	Iterations  uint32
@@ -110,8 +109,8 @@ func EqualizeTiming(plaintext string) {
 //
 // Both argon2id (the native scheme) and argon2i are accepted — the argon2i
 // variant is what an upstream Laravel app produces, and existing users carry
-// those hashes. The algorithm is read from the PHC envelope, matching the
-// Rust/TS implementations (which verify the whole argon2 family). Migrate an
+// those hashes. The algorithm is read from the PHC envelope (the whole
+// argon2 family verifies). Migrate an
 // argon2i row to argon2id on next login by pairing Verify with NeedsRehash.
 func Verify(plaintext, encoded string) error {
 	// bcrypt ($2a$/$2b$/$2y$) — the Laravel default. bcrypt only considers the
@@ -168,7 +167,7 @@ func deriveKey(variant, plaintext string, p Params, salt []byte) []byte {
 // NeedsRehash reports whether a stored hash should be re-encoded to the native
 // scheme after a successful verify. True for any non-native variant (e.g.
 // Laravel's argon2i), for argon2id rows whose params differ from DefaultParams,
-// and for anything that doesn't parse. Mirrors the Rust/TS needs_rehash so a
+// and for anything that doesn't parse — so a
 // login transparently upgrades a legacy hash without disrupting the user.
 func NeedsRehash(encoded string) bool {
 	variant, p, _, _, err := decode(encoded)

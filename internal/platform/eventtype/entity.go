@@ -1,4 +1,4 @@
-// Package eventtype is the worked-example port of fc-platform/src/event_type.
+// Package eventtype is the worked-example subdomain.
 // Every other subdomain follows this exact shape (entity.go, repository.go,
 // operations/, api.go).
 package eventtype
@@ -12,7 +12,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
-// EventTypeStatus mirrors the Rust enum (CURRENT | ARCHIVED).
+// Status is the event-type lifecycle state (CURRENT | ARCHIVED).
 type Status string
 
 const (
@@ -120,7 +120,7 @@ func NewSpecVersion(eventTypeID, version string, schemaContent json.RawMessage) 
 	}
 }
 
-// IsCurrent / IsDeprecated mirror the Rust helpers.
+// IsCurrent / IsDeprecated report the spec version's status.
 func (s *SpecVersion) IsCurrent() bool    { return s.Status == SpecCurrent }
 func (s *SpecVersion) IsDeprecated() bool { return s.Status == SpecDeprecated }
 

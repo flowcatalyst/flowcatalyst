@@ -3,8 +3,7 @@ package common
 import "time"
 
 // ProcessingTimeMetrics summarises latency in milliseconds with the
-// percentiles the dashboard renders. Mirrors `fc_common::ProcessingTimeMetrics`
-// (crates/fc-common/src/lib.rs:850).
+// percentiles the dashboard renders.
 type ProcessingTimeMetrics struct {
 	AvgMs       float64 `json:"avgMs"`
 	MinMs       uint64  `json:"minMs"`
@@ -15,8 +14,7 @@ type ProcessingTimeMetrics struct {
 	SampleCount uint64  `json:"sampleCount"`
 }
 
-// WindowedMetrics is the per-window slice of pool throughput. Mirrors
-// `fc_common::WindowedMetrics` (crates/fc-common/src/lib.rs:884).
+// WindowedMetrics is the per-window slice of pool throughput.
 type WindowedMetrics struct {
 	SuccessCount       uint64                `json:"successCount"`
 	FailureCount       uint64                `json:"failureCount"`
@@ -29,8 +27,7 @@ type WindowedMetrics struct {
 }
 
 // EnhancedPoolMetrics is the rolling-window snapshot embedded in
-// PoolStats.Metrics. Mirrors `fc_common::EnhancedPoolMetrics`
-// (crates/fc-common/src/lib.rs:832).
+// PoolStats.Metrics.
 type EnhancedPoolMetrics struct {
 	TotalSuccess     uint64                `json:"totalSuccess"`
 	TotalFailure     uint64                `json:"totalFailure"`

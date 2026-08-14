@@ -1,4 +1,4 @@
-// Package router is the Go port of fc-router. It consumes messages
+// Package router is the FlowCatalyst message router (fc-router). It consumes messages
 // from per-pool queue consumers, applies rate limits and circuit
 // breakers, and delivers via HTTP webhook (with HMAC-SHA256 signing).
 package router
@@ -25,10 +25,10 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 )
 
-// SignatureHeader matches the Rust SIGNATURE_HEADER constant.
+// SignatureHeader carries the webhook HMAC signature.
 const SignatureHeader = "X-FLOWCATALYST-SIGNATURE"
 
-// TimestampHeader matches the Rust TIMESTAMP_HEADER constant.
+// TimestampHeader carries the webhook signing timestamp.
 const TimestampHeader = "X-FLOWCATALYST-TIMESTAMP"
 
 // Mediator delivers a message to its target. The HTTP implementation
@@ -54,14 +54,14 @@ type MediatorConfig struct {
 	MaxRetries          int
 	RetryDelays         []time.Duration
 	// HostPoolSizing tunes the per-host HTTP/2 connection pool (slot
-	// grow/shrink). Mirrors crates/fc-router/src/http_pool.rs sizing.
+	// grow/shrink).
 	// Zero-value Sizing means "use the default for the negotiated HTTP
 	// version" — DefaultHostPoolSizing for HTTP/2, HTTP1HostPoolSizing
 	// for HTTP/1.1.
 	HostPoolSizing HostPoolSizing
 }
 
-// DefaultMediatorConfig matches the Rust production defaults (15min timeout, HTTP/2).
+// DefaultMediatorConfig returns the production defaults (15min timeout, HTTP/2).
 func DefaultMediatorConfig() MediatorConfig {
 	return MediatorConfig{
 		Timeout:             15 * time.Minute,
@@ -87,7 +87,7 @@ func DevMediatorConfig() MediatorConfig {
 // HTTPMediator delivers via net/http with a per-host HTTP/2 connection
 // pool (HostPoolRegistry). Each origin gets one or more *http.Client
 // slots, each backed by its own *http.Transport so the slots' h2
-// connection pools are independent. Mirrors crates/fc-router/src/http_pool.rs.
+// connection pools are independent.
 type HTTPMediator struct {
 	pools    *HostPoolRegistry
 	cfg      MediatorConfig
@@ -96,13 +96,12 @@ type HTTPMediator struct {
 }
 
 // NewHTTPMediator wires an HTTP mediator with the supplied config.
-// Each per-slot *http.Client has its own Transport tuned to match
-// crates/fc-router/src/mediator.rs (reqwest::Client builder):
+// Each per-slot *http.Client has its own Transport, tuned as:
 //
-//   - MaxIdleConnsPerHost = 10           ↔ pool_max_idle_per_host(10)
-//   - IdleConnTimeout = 90s              ↔ reqwest default
-//   - DialContext.Timeout = ConnectTimeout ↔ connect_timeout(...)
-//   - Client.Timeout = Timeout           ↔ timeout(...)
+//   - MaxIdleConnsPerHost = 10
+//   - IdleConnTimeout = 90s
+//   - DialContext.Timeout = ConnectTimeout
+//   - Client.Timeout = Timeout
 //
 // HTTP/2 specifics:
 //   - http2.Transport.StrictMaxConcurrentStreams=true: honour ALB's
@@ -151,7 +150,7 @@ func (m *HTTPMediator) SetWarnings(ws *WarningService) { m.warnings = ws }
 
 // warnConfig logs a configuration-class warning and, when a WarningService is
 // wired, records it so it shows on /warnings and (for Critical, e.g. 501)
-// degrades health. Mirrors the Rust mediator's config-error warnings.
+// degrades health.
 func (m *HTTPMediator) warnConfig(severity WarningSeverity, message string, msg *common.Message) {
 	slog.Warn("mediation config error", "message_id", msg.ID, "target", msg.MediationTarget,
 		"detail", message, "severity", severity)
@@ -189,8 +188,7 @@ func newClientBuilder(cfg MediatorConfig) ClientBuilder {
 	}
 }
 
-// mediationPayload is the JSON body sent to the target. Byte-identical
-// to the Rust `MediationPayload { message_id: &str }` struct.
+// mediationPayload is the JSON body sent to the target.
 type mediationPayload struct {
 	MessageID string `json:"messageId"`
 }
@@ -202,12 +200,11 @@ type mediationResponse struct {
 }
 
 // signWebhook computes the HMAC-SHA256 over `timestamp + payload` and
-// returns (signatureHex, timestampStr). MUST byte-match the Rust
-// fc-router sign_webhook for the test vector in
+// returns (signatureHex, timestampStr). MUST byte-match the established
+// webhook signing contract, pinned by the test vector in
 // tests/golden/webhook/mediation-payload.json.
 func signWebhook(payload []byte, signingSecret string) (sigHex, ts string) {
 	// Millisecond-precision ISO8601 UTC, exactly 3 fractional digits.
-	// Matches Rust format "%Y-%m-%dT%H:%M:%S%.3fZ".
 	ts = time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
 	mac := hmac.New(sha256.New, []byte(signingSecret))
 	mac.Write([]byte(ts))
@@ -244,7 +241,7 @@ func (m *HTTPMediator) Mediate(ctx context.Context, msg *common.Message) common.
 // deliverWithRetry delivers the message with retry. Returns the outcome.
 func (m *HTTPMediator) deliverWithRetry(ctx context.Context, msg *common.Message) common.MediationOutcome {
 	var last common.MediationOutcome
-	// Mirrors crates/fc-router/src/mediator/retry.rs exactly: MaxRetries is
+	// MaxRetries is
 	// the max TOTAL attempts (default 3), and a delay is taken only between
 	// attempts (after attempt 1 and 2 for the default), never after the last.
 	attempts := 0

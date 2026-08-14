@@ -17,8 +17,8 @@ import (
 // JWT signing. Resolution order:
 //
 //  1. cfg.JWTSigningKeyPath — read from disk if set.
-//  2. Inline PEM from env: FLOWCATALYST_JWT_PRIVATE_KEY (the name the Rust
-//     platform + the deploy IaC use — load-bearing for drop-in token parity)
+//  2. Inline PEM from env: FLOWCATALYST_JWT_PRIVATE_KEY (the name the
+//     deploy IaC uses — load-bearing for drop-in token parity)
 //     or FC_JWT_SIGNING_KEY_PEM (the Go-native alias).
 //  3. Otherwise, generate an ephemeral 2048-bit RSA key and log a warning.
 //     Ephemeral keys are fine for dev / first-boot smoke tests but lose every
@@ -32,10 +32,10 @@ func LoadSigningKeyOrEphemeral(path string) []byte {
 		}
 		slog.Warn("FC_JWT_SIGNING_KEY_PATH unreadable, falling back", "err", err)
 	}
-	// FLOWCATALYST_JWT_PRIVATE_KEY first: it's the key the Rust system signs
-	// with, so reading it keeps Go RS256 tokens validating against the same
+	// FLOWCATALYST_JWT_PRIVATE_KEY first: it's the deployed signing key,
+	// so reading it keeps RS256 tokens validating against the same
 	// keypair (and stops the silent ephemeral-key fallback that mints tokens
-	// no other replica — or the Rust side — can verify).
+	// no other replica can verify).
 	for _, env := range []string{"FLOWCATALYST_JWT_PRIVATE_KEY", "FC_JWT_SIGNING_KEY_PEM"} {
 		if pemStr := os.Getenv(env); pemStr != "" {
 			return []byte(NormalizePEM(pemStr))

@@ -1,8 +1,7 @@
 // Package postgres is the Postgres-backed outbox repository. It is
 // schema-compatible with the SDK customer outbox migration
-// (clients/*/migrations/postgresql/001_create_outbox_messages.sql) and the
-// Rust/Java outbox-processor, so the Go processor can be pointed at a real
-// customer database created by the SDK.
+// (clients/*/migrations/postgresql/001_create_outbox_messages.sql), so the Go
+// processor can be pointed at a real customer database created by the SDK.
 //
 // Schema (created by InitSchema; matches the SDK migration exactly):
 //
@@ -132,7 +131,7 @@ UPDATE outbox_messages m
 	return out, nil
 }
 
-// MarkSuccess deletes successfully dispatched rows (the upstream Java/Rust
+// MarkSuccess deletes successfully dispatched rows (the upstream
 // model DELETEs on success to keep the customer outbox table bounded).
 func (r *Repository) MarkSuccess(ctx context.Context, ids []string) error {
 	_, err := r.pool.Exec(ctx,
@@ -143,7 +142,7 @@ func (r *Repository) MarkSuccess(ctx context.Context, ids []string) error {
 
 // MarkFailed bumps retry_count, records error_message, and sets the status.
 // Retryable statuses are returned to PENDING (0) so the next poll re-claims
-// them (matching Rust increment_retry_count); terminal statuses keep their
+// them; terminal statuses keep their
 // code so they are not re-claimed. There is no next_retry_at column upstream.
 func (r *Repository) MarkFailed(ctx context.Context, ids []string, status common.OutboxStatus, msg string, requeue bool) error {
 	newStatus := status.Code()

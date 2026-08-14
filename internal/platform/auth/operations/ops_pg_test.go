@@ -366,7 +366,7 @@ func TestCreateIdpRoleMapping_HappyPath(t *testing.T) {
 	require.NotNil(t, got)
 	assert.Equal(t, "irm-create-upstream", got.IdpRoleName)
 	assert.Equal(t, "irmcreate:admin", got.PlatformRoleName)
-	// idp_type persists since migration 035 (pre-035 / Rust rows read back
+	// idp_type persists since migration 035 (pre-035 rows read back
 	// ""). FindByIdpRole deliberately still doesn't filter on it.
 	assert.Equal(t, "keycloak", got.IdpType)
 }
@@ -492,7 +492,7 @@ func TestCreateOAuthClient_ConfidentialSecretStash(t *testing.T) {
 	assert.False(t, ok, "second pop must miss — stash is one-shot")
 	assert.Empty(t, again)
 
-	// At rest: "encrypted:"-prefixed envelope (Rust wire parity) that
+	// At rest: "encrypted:"-prefixed envelope (the storage convention) that
 	// decrypts back to the popped plaintext (decrypt-and-compare contract).
 	got, err := repo.FindByID(ctx, ev.OAuthClientID)
 	require.NoError(t, err)

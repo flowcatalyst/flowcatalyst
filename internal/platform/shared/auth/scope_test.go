@@ -24,7 +24,7 @@ func TestCheckScopeAccessAndCanAccessScope(t *testing.T) {
 		{"tenant denied another client", tenant, clientB, true},
 		{"tenant denied platform-level", tenant, nil, true},
 		{"super-admin allowed platform-level (None bypass)", superAdmin, nil, false},
-		{"client-scoped super-admin denied arbitrary client (matches Rust Some branch)", superAdmin, clientA, true},
+		{"client-scoped super-admin denied arbitrary client (matches populated-clients branch)", superAdmin, clientA, true},
 		{"nil context denied", nil, clientA, true},
 	}
 	for _, tc := range cases {

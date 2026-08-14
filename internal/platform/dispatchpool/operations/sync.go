@@ -37,10 +37,10 @@ type SyncDispatchPoolsCommand struct {
 }
 
 // SyncDispatchPools bulk-upserts dispatch pools within a single transaction.
-// Mirrors the Rust SyncDispatchPoolsUseCase exactly:
+// Semantics:
 //
-//   - Validates each pool code against validate.CodeUnderscorePattern
-//     (the Rust pool_code_pattern); name required;
+//   - Validates each pool code against validate.CodeUnderscorePattern;
+//     name required;
 //     rateLimit (when set) ≥ 1; concurrency ≥ 1.
 //   - Matches existing pools by code over ALL pools (pools are global).
 //   - RemoveUnlisted ARCHIVES (soft, not hard-delete) pools absent from the

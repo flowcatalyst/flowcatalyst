@@ -111,7 +111,7 @@ func TestCreateDispatchPool_HappyPath(t *testing.T) {
 
 // Pins the underscore union fix: create deliberately validates against
 // validate.CodeUnderscorePattern (owner-approved widening from hyphen-only),
-// matching sync and the Rust pool_code_pattern.
+// matching sync.
 func TestCreateDispatchPool_UnderscoreCode_Succeeds(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -494,7 +494,7 @@ func TestSyncDispatchPools_Validation(t *testing.T) {
 		code string
 	}{
 		{"missing application code", operations.SyncDispatchPoolsCommand{}, "APPLICATION_CODE_REQUIRED"},
-		// Sync does NOT lowercase codes (deliberate Rust parity — create
+		// Sync does NOT lowercase codes (deliberate — create
 		// DOES): the uppercase letters fail the pattern outright, proving
 		// no normalization happens before validation.
 		{"uppercase code rejected", operations.SyncDispatchPoolsCommand{

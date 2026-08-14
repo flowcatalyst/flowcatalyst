@@ -2,8 +2,6 @@
 
 FlowCatalyst's data layer goes through [sqlc](https://github.com/sqlc-dev/sqlc) — query-first, compile-time-checked SQL. SQL strings live in `.sql` files; sqlc reads the schema (our embedded migrations) and generates strongly-typed Go functions. Schema or column-name typos fail at codegen time instead of at runtime against the wrong table.
 
-This is the equivalent of what Rust's sqlx gives the upstream crate. The "queries match Rust word-for-word" parity property is preserved: each `.sql` file's text is the same SQL the Rust source emits.
-
 ## Layout
 
 ```

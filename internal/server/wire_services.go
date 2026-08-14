@@ -99,8 +99,8 @@ func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet,
 	svcs.rlStore = ratelimit.Build(context.Background(), pool)
 	svcs.rlPolicies = ratelimit.PoliciesFromEnv()
 	// In-memory per-instance governors layered in front of the distributed
-	// store on /oauth/token (defence-in-depth; 1:1 with Rust's
-	// rate_limit_middleware.rs). They shed a local flood before the network
+	// store on /oauth/token (defence-in-depth). They shed a local flood
+	// before the network
 	// round-trip; the distributed store remains the cluster-wide ceiling.
 	svcs.oauthTokenIPGov = ratelimit.NewGovernor(ratelimit.OAuthTokenIPGovernorFromEnv())
 	svcs.oauthTokenClientGov = ratelimit.NewGovernor(ratelimit.OAuthTokenClientGovernorFromEnv())

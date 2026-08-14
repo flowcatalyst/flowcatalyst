@@ -17,7 +17,7 @@ import (
 // Enabled is false, the rest of the fields are ignored and the
 // resulting TrafficStrategy is a no-op.
 //
-// Mirrors the Rust `traffic` module: on leader-gain, register this
+// On leader-gain, register this
 // instance; on leader-loss, deregister so the ALB stops routing traffic
 // to a standing-by node.
 type TrafficConfig struct {
@@ -30,8 +30,8 @@ type TrafficConfig struct {
 	Port       int32
 	Region     string
 	// DeregistrationDelaySeconds bounds how long Deregister waits for the ALB
-	// to finish draining in-flight connections before returning. Mirrors
-	// Rust's deregistration_delay_seconds. Defaults to 300s (the ALB default)
+	// to finish draining in-flight connections before returning.
+	// Defaults to 300s (the ALB default)
 	// when <= 0.
 	DeregistrationDelaySeconds int64
 }
@@ -145,7 +145,7 @@ func (s *TrafficStrategy) Deregister(ctx context.Context) error {
 	slog.Info("traffic: deregistered from target group, waiting for drain",
 		"target_group", s.cfg.TargetGroupARN, "ip", s.cfg.InstanceIP)
 
-	// Mirror Rust wait_for_deregistration: block until the ALB finishes
+	// Block until the ALB finishes
 	// draining in-flight connections (or the delay/ctx elapses) so a
 	// leader-loss / shutdown doesn't kill the process mid-drain. Best-effort
 	// — a timeout or ctx cancellation just logs and proceeds.
@@ -157,7 +157,6 @@ func (s *TrafficStrategy) Deregister(ctx context.Context) error {
 
 // waitForDeregistration polls DescribeTargetHealth every 5s until this target
 // is no longer in the "draining" state or DeregistrationDelaySeconds elapses.
-// Mirrors crates/fc-router/src/traffic.rs wait_for_deregistration.
 func (s *TrafficStrategy) waitForDeregistration(ctx context.Context) error {
 	delay := s.cfg.DeregistrationDelaySeconds
 	if delay <= 0 {

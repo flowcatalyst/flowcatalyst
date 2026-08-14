@@ -15,8 +15,7 @@ import (
 // OperationJSON is emitted as a JSON STRING (the serialized operation
 // payload), not a nested object, because the SPA reads it as
 // `operationJson: string | null` and calls JSON.parse on it
-// (AuditLogListPage.vue:144 / audit-logs.ts:20). Matches the Rust
-// AuditLogDetailResponse.operation_json shape (audit/api.rs:44,80-82).
+// (AuditLogListPage.vue:144 / audit-logs.ts:20).
 type AuditLogResponse struct {
 	ID            string          `json:"id"`
 	EntityType    string          `json:"entityType"`
@@ -60,7 +59,7 @@ func fromEntity(l *audit.Log) AuditLogResponse {
 
 // AuditLogListResponse is the wire shape for GET /api/audit-logs.
 // Matches the SPA (audit-logs.ts:23-28) which consumes `auditLogs` and
-// `hasMore`, and the Rust AuditLogListResponse (audit/api.rs:100-107).
+// `hasMore`.
 type AuditLogListResponse struct {
 	AuditLogs  []AuditLogResponse `json:"auditLogs"`
 	HasMore    bool               `json:"hasMore"`

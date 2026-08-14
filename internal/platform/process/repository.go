@@ -13,7 +13,7 @@ import (
 )
 
 // Repository is the Postgres-backed repo. Table: msg_processes. The
-// schema has no created_by column (matches Rust's None default); the
+// schema has no created_by column; the
 // entity's CreatedBy field stays for API-shape compat but never
 // round-trips through the DB.
 type Repository struct {
@@ -74,7 +74,7 @@ func (r *Repository) FindWithFilters(ctx context.Context, application, subdomain
 }
 
 // Persist implements usecasepgx.Persist[Process]. CreatedBy is dropped
-// — the schema has no column for it (matches Rust).
+// — the schema has no column for it.
 func (r *Repository) Persist(ctx context.Context, p *Process, tx *usecasepgx.DbTx) error {
 	return r.q.WithTx(tx.Inner()).ProcessUpsert(ctx, dbq.ProcessUpsertParams{
 		ID:          p.ID,

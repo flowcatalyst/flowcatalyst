@@ -36,9 +36,8 @@ import (
 //	GET  /auth/oidc/login
 //	GET  /auth/oidc/callback
 //
-// The paths match Rust fc-platform (`/auth/oidc/*`) so the frontend and
-// Rust clients work against either backend without per-implementation
-// hacks.
+// The `/auth/oidc/*` paths are the wire contract the frontend and
+// SDK clients are built against.
 //
 // /auth/check-domain is owned by the login package, not the bridge —
 // it does the email-domain-mapping lookup and only needs the bridge for
@@ -241,8 +240,7 @@ func (e *LoginEndpoint) handleSessionEnd(w http.ResponseWriter, r *http.Request)
 // extractAudFromIDTokenHint pulls the `aud` (client_id) claim from an
 // id_token_hint WITHOUT verifying its signature — the registered
 // post_logout_redirect_uris whitelist is the security boundary, not the
-// hint. Returns "" on any structural malformation. 1:1 with Rust
-// extract_aud_from_id_token_hint. `aud` may be a string or an array of
+// hint. Returns "" on any structural malformation. `aud` may be a string or an array of
 // strings (OIDC Core §2); for an array the first entry is used.
 func extractAudFromIDTokenHint(token string) string {
 	parts := strings.Split(token, ".")
@@ -273,9 +271,9 @@ func extractAudFromIDTokenHint(token string) string {
 // handleLogin starts an OIDC login. Two entry modes:
 //
 //   - ?domain=X — home-realm discovery via email-domain mapping (the SPA
-//     login path for client-employee SSO). Matches Rust's signature
-//     (snake_case `return_url`, `domain` over `email` so users don't leak
-//     the local part).
+//     login path for client-employee SSO). Uses snake_case `return_url`,
+//     and `domain` over `email` so users don't leak
+//     the local part.
 //   - ?provider_id=idp_… — provider-direct (docs/portal-identity-plan.md): a
 //     portal app names the upstream IdP explicitly; no email-domain mapping
 //     is consulted. The login state carries an EMPTY mapping id, which is
@@ -347,7 +345,7 @@ func (e *LoginEndpoint) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// OAuth chaining: when this SSO login was started inside an /oauth/authorize
 	// flow (a downstream app using FlowCatalyst as its IdP), the SPA forwards the
 	// OAuth request params here so the callback can resume /oauth/authorize and
-	// issue the code back to the app. 1:1 with Rust's OidcLoginParams.
+	// issue the code back to the app.
 	loginState.OAuthClientID = optParam(q, "oauth_client_id")
 	loginState.OAuthRedirectURI = optParam(q, "oauth_redirect_uri")
 	loginState.OAuthScope = optParam(q, "oauth_scope")
@@ -382,7 +380,7 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 	// Atomically consume the state: single-use, replay-proof, and rejects an
 	// expired row — all in one DELETE … RETURNING. Consuming up-front (rather
 	// than deleting at the end) means a failed callback can't be retried with
-	// the same state, matching Rust.
+	// the same state.
 	loginState, err := e.states.Consume(r.Context(), state)
 	if err != nil {
 		httperror.Write(w, usecase.Internal("OIDC_STATE", "lookup state failed", err))
@@ -474,7 +472,6 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 
 	// Reject Entra external/guest accounts (#EXT# UPNs): their identity is owned
 	// by another organisation and falls outside this domain's trust boundary.
-	// 1:1 with Rust.
 	if strings.Contains(strings.ToLower(email), "#ext#") {
 		httperror.Write(w, usecase.Authorization("EXTERNAL_GUEST", "external guest accounts are not supported"))
 		return
@@ -482,7 +479,7 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 
 	// Tenant binding — which check applies depends on how the login started:
 	//
-	// Mapping-based (SPA home-realm) logins, 1:1 with Rust: a multi-tenant
+	// Mapping-based (SPA home-realm) logins: a multi-tenant
 	// IdP's shared keys sign tokens from ANY tenant, so pin the token two ways:
 	//   1. The token's email domain MUST equal the login domain — an email
 	//      domain is verified inside its owning tenant.
@@ -525,8 +522,7 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resolve or create the FlowCatalyst principal. Drop-in parity with
-	// Rust's sync_oidc_login_with_allowed_roles: lookup by email; if
+	// Resolve or create the FlowCatalyst principal: lookup by email; if
 	// missing, auto-provision using the scope + primary-client-id from
 	// the email-domain mapping. Then translate IDP roles → platform
 	// roles (filtered by the identity provider's allowed_role_ids) and
@@ -567,8 +563,7 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 		if err := e.syncIdpRoles(r.Context(), p, claims.Roles, loginState.IdentityProviderID); err != nil {
 			// Role sync failure shouldn't block login — the principal is
 			// already valid. Log and continue with whatever role set is in
-			// place. Mirrors Rust's behaviour where the role sync is a
-			// best-effort step after auth.
+			// place. The role sync is a best-effort step after auth.
 			slog.Warn("OIDC role sync failed; continuing without role update",
 				"principalId", p.ID, "err", err)
 		}
@@ -597,7 +592,7 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 
 // buildAuthorizeRedirect resumes a chained OAuth flow: a relative /oauth/authorize
 // URL carrying the stored OAuth request params, so the downstream app's code is
-// issued once the session cookie is in place. 1:1 with Rust determine_redirect_url.
+// issued once the session cookie is in place.
 func buildAuthorizeRedirect(s *OIDCLoginState) string {
 	u := "/oauth/authorize?response_type=code&client_id=" + url.QueryEscape(*s.OAuthClientID)
 	add := func(key string, val *string) {
@@ -638,9 +633,8 @@ func safeRelativeReturnURL(u string) string {
 // surfacing to the user. The mapping ID is the same one the bridge
 // resolved at login-time and persisted in the login_state row.
 //
-// Roles are intentionally NOT assigned here. Rust calls
-// sync_oidc_login_with_allowed_roles to apply IDP-claim-derived role
-// mappings; that step is a follow-up. The provisioned user has no
+// Roles are intentionally NOT assigned here. The IDP-claim-derived role
+// sync is a separate follow-up step. The provisioned user has no
 // roles and will only be useful for flows that don't depend on
 // platform-permission gating (typical first-login UX).
 func (e *LoginEndpoint) autoProvision(ctx context.Context, email, mappingID string) (*principal.Principal, error) {
@@ -663,7 +657,7 @@ func (e *LoginEndpoint) autoProvision(ctx context.Context, email, mappingID stri
 	// The execution context's PrincipalID is empty — the new user is
 	// being created by the system in response to a self-service login,
 	// not by an authenticated actor. Audit rows will record an empty
-	// principal, matching the Rust convention for self-provisioning.
+	// principal — the convention for self-provisioning.
 	ec := usecase.NewExecutionContext("")
 	event, err := usecaseop.Run(ctx, e.uow, principalops.CreateUser(e.principals), cmd, ec)
 	if err != nil {
@@ -742,8 +736,8 @@ func (e *LoginEndpoint) syncIdpRoles(ctx context.Context, p *principal.Principal
 		return nil
 	}
 
-	// Load every IDP role mapping; in-memory filter. Mirrors Rust's
-	// find_idp_role_mapping which doesn't filter by IDP type either.
+	// Load every IDP role mapping; in-memory filter (deliberately not
+	// filtered by IDP type — see IdpRoleMappingRepo).
 	allMappings, err := e.idpMappings.FindAll(ctx)
 	if err != nil {
 		return usecase.Internal("REPO", "idp_role_mappings list failed", err)
@@ -776,8 +770,8 @@ func (e *LoginEndpoint) syncIdpRoles(ctx context.Context, p *principal.Principal
 	for _, idpRole := range idpRoles {
 		platformRole, ok := byIdpRoleName[idpRole]
 		if !ok {
-			// Unknown role — Rust logs this at warn as a security
-			// rejection. Match that (minus the email: the principal ID
+			// Unknown role — logged at warn as a security
+			// rejection (without the email: the principal ID
 			// already identifies the user without putting PII in the logs).
 			slog.Warn("REJECTED unauthorized IDP role: not found in idp_role_mappings",
 				"principalId", p.ID, "idpRole", idpRole)

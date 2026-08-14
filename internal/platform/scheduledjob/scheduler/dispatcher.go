@@ -44,8 +44,8 @@ func signFiring(payload []byte, secret string) (sigHex, ts string) {
 }
 
 // dispatcher claims QUEUED instances and POSTs the firing webhook, treating
-// any 2xx response as delivered. Mirrors the Rust dispatcher's structure but
-// deliberately widened from Rust's 202-only contract — many consumer
+// any 2xx response as delivered —
+// deliberately widened from the original 202-only contract: many consumer
 // endpoints return a plain 200, and there is no meaningful difference between
 // 2xx codes for this purpose.
 type dispatcher struct {
@@ -62,8 +62,8 @@ type dispatcher struct {
 }
 
 // webhookEnvelope is the POST body delivered to a job's target URL. Field
-// names are camelCase to match the Rust dispatcher's WebhookEnvelope and the
-// SDK runner's ScheduledJobEnvelope (both #[serde(rename_all="camelCase")]) —
+// names are camelCase to match the
+// SDK runner's ScheduledJobEnvelope —
 // this is an external SDK contract: the receiver deserializes these exact keys
 // and rejects (HTTP 400) on a missing required field, so snake_case would fail
 // every firing.
@@ -130,7 +130,7 @@ func (d *dispatcher) tick(ctx context.Context) error {
 		if job == nil {
 			// Job was deleted while the instance sat QUEUED. Mark the
 			// instance terminally DELIVERY_FAILED so it doesn't stay QUEUED
-			// forever (mirrors the Rust tick's orphan handling; no FK/CASCADE
+			// forever (no FK/CASCADE
 			// — instances are firing history).
 			slog.Warn("scheduled-job dispatcher: orphan instance (job gone); marking DELIVERY_FAILED",
 				"instance_id", inst.ID, "job_id", inst.ScheduledJobID)
@@ -145,7 +145,7 @@ func (d *dispatcher) tick(ctx context.Context) error {
 }
 
 // dispatchOne marks the instance IN_FLIGHT, POSTs the webhook, and accepts
-// any 2xx response as delivered. Mirrors the Rust dispatch_one's structure
+// any 2xx response as delivered
 // (see the widened-from-202 note on the dispatcher type above).
 func (d *dispatcher) dispatchOne(ctx context.Context, job *scheduledjob.ScheduledJob, inst *scheduledjob.ScheduledJobInstance) {
 	if err := d.instances.MarkInFlight(ctx, inst.ID); err != nil {
@@ -245,8 +245,7 @@ func (d *dispatcher) dispatchOne(ctx context.Context, job *scheduledjob.Schedule
 }
 
 // handleFailure records a failed attempt: terminal (DELIVERY_FAILED) when max
-// attempts reached, else back to QUEUED for the next dispatch tick. Mirrors
-// the Rust handle_failure.
+// attempts reached, else back to QUEUED for the next dispatch tick.
 func (d *dispatcher) handleFailure(ctx context.Context, job *scheduledjob.ScheduledJob, inst *scheduledjob.ScheduledJobInstance, attemptsAfter int32, errMsg string) {
 	terminal := attemptsAfter >= job.DeliveryMaxAttempts
 	if err := d.instances.MarkDeliveryFailed(ctx, inst.ID, errMsg, terminal); err != nil {

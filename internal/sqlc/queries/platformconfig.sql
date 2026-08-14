@@ -1,5 +1,5 @@
 -- Queries for app_platform_configs + app_platform_config_access. Two
--- entity types, one repo (mirroring the Rust shape).
+-- entity types, one repo (mirroring the legacy-platform shape).
 
 -- name: PlatformConfigFindByID :one
 SELECT id, application_code, section, property, scope, client_id,

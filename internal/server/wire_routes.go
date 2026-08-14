@@ -98,7 +98,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		humaCfg := huma.DefaultConfig("FlowCatalyst Platform API", "dev")
 		humaCfg.OpenAPIPath = ""
 		humaCfg.DocsPath = ""
-		// Drop huma's $schema link injection. The Rust API never emits it
+		// Drop huma's $schema link injection. The wire contract never emits it
 		// and the field clutters response bodies that SPAs / SDKs parse
 		// strictly. The OpenAPI document still describes every response
 		// (served from the parent router via /openapi.json) — clients
@@ -293,7 +293,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		})
 
 		// SDK self-registration ("sync") endpoints, scoped under
-		// /api/applications/{appCode}. Mirrors the Rust sdk_sync_router.
+		// /api/applications/{appCode}.
 		sdksync.Register(humaAPI, &sdksync.State{
 			Apps:          repos.applicationRepo,
 			EventTypes:    repos.eventTypeRepo,
@@ -410,7 +410,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 	// registered; keep in sync with the dump-spec tool so the lockfile matches.
 	httpcompat.RelaxRequestBodies(humaAPI)
 
-	// Match Rust: exclude /bff/* from the published OpenAPI spec (the BFF
+	// Exclude /bff/* from the published OpenAPI spec (the BFF
 	// handlers stay mounted and keep serving). Must run after every route
 	// has registered.
 	httpcompat.StripBFFPaths(humaAPI)

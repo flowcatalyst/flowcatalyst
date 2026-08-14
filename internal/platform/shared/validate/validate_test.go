@@ -50,7 +50,7 @@ func TestCodePatterns(t *testing.T) {
 		{"a", true, true},
 		{"my-pool", true, true},
 		{"pool2", true, true},
-		{"my_pool", false, true}, // the union case: sync/Rust accept, strict create used to reject
+		{"my_pool", false, true}, // the union case: sync accepts, strict create used to reject
 		{"logistics_portal", false, true},
 		{"2pool", false, false},
 		{"My-Pool", false, false},

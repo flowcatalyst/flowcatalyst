@@ -66,8 +66,7 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[apicomm
 	filters.Status = apicommon.OptStr(in.Status)
 	if in.ClientID != "" {
 		// The literal "platform" selects platform-scoped jobs (client_id IS
-		// NULL), which the repo expresses as a pointer-to-"". Mirrors the
-		// Rust list handler's Some("platform") => Some(None) mapping.
+		// NULL), which the repo expresses as a pointer-to-"".
 		if in.ClientID == "platform" {
 			empty := ""
 			filters.ClientID = &empty
@@ -144,8 +143,8 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreateScheduledJobR
 
 // Per-resource scope (A2) — a non-anchor principal must not mutate another
 // tenant's scheduled job by id — is enforced post-load inside each by-id use
-// case's Execute phase (auth.CheckScopeAccess on the loaded job's client),
-// mirroring Rust check_scope_access(auth, job.client_id). The handlers keep
+// case's Execute phase (auth.CheckScopeAccess on the loaded job's client).
+// The handlers keep
 // only the coarse permission check.
 
 type updateInput struct {
@@ -331,7 +330,7 @@ func (s *State) getInstance(ctx context.Context, in *instanceInput) (*apicommon.
 	return &apicommon.Out[ScheduledJobInstanceResponse]{Body: instanceToResponse(inst)}, nil
 }
 
-// listInstanceLogs's Out[[]…] Body is a bare JSON array — the Rust shape
+// listInstanceLogs's Out[[]…] Body is a bare JSON array — the wire shape
 // for GET /api/scheduled-jobs/instances/{instanceId}/logs.
 func (s *State) listInstanceLogs(ctx context.Context, in *instanceInput) (*apicommon.Out[[]ScheduledJobInstanceLogResponse], error) {
 	ac := auth.FromContext(ctx)
@@ -431,7 +430,7 @@ func (s *State) completeInstance(ctx context.Context, in *completeInstanceInput)
 // dialects (see CompleteInstanceRequest) into an instance lifecycle status and
 // a completion outcome ("" when none):
 //
-//   - SDK (Laravel/Rust): {status:"SUCCESS"|"FAILURE"} — `status` carries the
+//   - SDK: {status:"SUCCESS"|"FAILURE"} — `status` carries the
 //     completion OUTCOME and the instance becomes COMPLETED.
 //   - SPA/internal: {status:"<instance-status>", completionStatus} — `status`
 //     is the instance lifecycle status.

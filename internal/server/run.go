@@ -215,7 +215,7 @@ func MountRouterHTTP(r chi.Router, prefix string, srv *router.Server, streamHeal
 		humaCfg := huma.DefaultConfig("FlowCatalyst Router API", routerapi.Version)
 		// Nest the spec under the prefix so external tooling can grab
 		// the OpenAPI doc at <prefix>/openapi.json.
-		// Drop huma's $schema link injection (Rust never emits it), matching
+		// Drop huma's $schema link injection (the wire contract never emits it), matching
 		// the platform API config in wire.go.
 		humaCfg.SchemasPath = ""
 		api := humachi.New(sub, humaCfg)
@@ -225,12 +225,12 @@ func MountRouterHTTP(r chi.Router, prefix string, srv *router.Server, streamHeal
 	})
 }
 
-// resolveRouterAuth reads the router HTTP BasicAuth config, accepting the Rust
+// resolveRouterAuth reads the router HTTP BasicAuth config, accepting the legacy
 // AUTH_BASIC_USERNAME / AUTH_BASIC_PASSWORD names as aliases for
 // FC_ROUTER_AUTH_USER / FC_ROUTER_AUTH_PASS. AUTH_MODE=NONE (case-insensitive)
 // forces auth off regardless of creds; any other value (incl. BASIC or unset)
-// uses the resolved creds — an empty username disables auth, mirroring the
-// Rust router's AuthMode::None. (The router HTTP surface supports basic/none
+// uses the resolved creds — an empty username disables auth.
+// (The router HTTP surface supports basic/none
 // only; OIDC modes are not honoured here.)
 func resolveRouterAuth() routerapi.BasicAuthConfig {
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("AUTH_MODE")), "NONE") {

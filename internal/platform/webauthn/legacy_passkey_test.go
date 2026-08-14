@@ -9,7 +9,7 @@ func TestIsLegacyRustPasskey(t *testing.T) {
 		want bool
 	}{
 		{
-			name: "webauthn-rs Passkey shape (top-level cred)",
+			name: "the legacy webauthn library Passkey shape (top-level cred)",
 			raw:  `{"cred":{"cred_id":"AAAA","cred":{"type_":-7,"key":{"EC_EC2":{"curve":"SECP256R1","x":"AA","y":"BB"}}},"counter":5,"user_verified":true}}`,
 			want: true,
 		},
@@ -36,8 +36,8 @@ func TestIsLegacyRustPasskey(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := isLegacyRustPasskey([]byte(tc.raw)); got != tc.want {
-				t.Fatalf("isLegacyRustPasskey(%s) = %v, want %v", tc.raw, got, tc.want)
+			if got := isLegacyPasskey([]byte(tc.raw)); got != tc.want {
+				t.Fatalf("isLegacyPasskey(%s) = %v, want %v", tc.raw, got, tc.want)
 			}
 		})
 	}

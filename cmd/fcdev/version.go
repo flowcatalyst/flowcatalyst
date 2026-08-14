@@ -16,7 +16,7 @@ import (
 // reports whatever VERSION currently holds (the last released number until the
 // next release bumps it).
 //
-// VERSION is seeded from the Rust monorepo's last fcdev release (0.4.16) so
+// VERSION is seeded from the last pre-Go fcdev release (0.4.16) so
 // this repo's numbering continues the sequence rather than restarting.
 //
 //go:embed VERSION

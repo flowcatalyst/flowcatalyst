@@ -36,7 +36,7 @@ type DispatchJobAttemptInsertParams struct {
 
 // One row per delivery attempt. The schema column `status` stores the
 // attempt outcome (`SUCCESS` / `FAILURE`); the entity exposes a
-// derived `success` bool to match the Rust wire shape.
+// derived `success` bool to match the legacy-platform wire shape.
 func (q *Queries) DispatchJobAttemptInsert(ctx context.Context, arg DispatchJobAttemptInsertParams) error {
 	_, err := q.db.Exec(ctx, dispatchJobAttemptInsert,
 		arg.ID,

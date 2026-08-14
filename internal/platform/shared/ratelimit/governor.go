@@ -16,8 +16,7 @@ import (
 // to Redis/Postgres. Unlike the Store it is NOT cluster-wide — each replica
 // keeps its own buckets — so it complements, never replaces, the Store.
 //
-// 1:1 with Rust's rate_limit_middleware.rs. Rust uses the GCRA-based
-// `governor` crate; golang.org/x/time/rate is the token-bucket equivalent
+// golang.org/x/time/rate provides the token-bucket mechanics
 // (allow a Burst instantly, then sustain PerMinute).
 type Governor struct {
 	limit rate.Limit // tokens per second (PerMinute / 60)
@@ -38,7 +37,7 @@ type govEntry struct {
 }
 
 // GovernorConfig is one in-memory quota: PerMinute sustained rate with an
-// instantaneous Burst allowance. Mirrors Rust's RateLimitConfig.
+// instantaneous Burst allowance.
 type GovernorConfig struct {
 	PerMinute uint32
 	Burst     uint32
@@ -75,7 +74,7 @@ func OIDCBridgeGovernorFromEnv() GovernorConfig {
 }
 
 // NewGovernor builds a Governor for the supplied quota. PerMinute or Burst
-// below 1 are clamped to 1 (matching Rust's max(1)).
+// below 1 are clamped to 1.
 func NewGovernor(cfg GovernorConfig) *Governor {
 	perMin := cfg.PerMinute
 	if perMin < 1 {
@@ -96,8 +95,7 @@ func NewGovernor(cfg GovernorConfig) *Governor {
 }
 
 // Check consumes one token for key. Returns ok=true when admitted now, else
-// ok=false with whole seconds (≥1) to wait before retrying. Mirrors Rust's
-// IpRateLimiterState::check.
+// ok=false with whole seconds (≥1) to wait before retrying.
 func (g *Governor) Check(key string) (ok bool, retryAfterSecs uint32) {
 	now := g.now()
 

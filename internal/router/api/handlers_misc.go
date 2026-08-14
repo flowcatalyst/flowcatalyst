@@ -134,7 +134,7 @@ type localConfigOutput struct {
 }
 
 func (s *State) getLocalConfig(_ context.Context, _ *emptyInput) (*localConfigOutput, error) {
-	// Match Rust's get_local_config: never expose secrets. Report
+	// Never expose secrets: report
 	// version + warning counts only.
 	return &localConfigOutput{Body: LocalConfigResponse{
 		Version:          Version,

@@ -17,16 +17,15 @@ import (
 )
 
 // AuditBatchState bundles the deps for POST /api/audit-logs/batch — the
-// SDK/outbox-facing audit-ingest endpoint. 1:1 with Rust
-// shared/sdk_audit_batch_api.rs.
+// SDK/outbox-facing audit-ingest endpoint.
 type AuditBatchState struct {
 	Repo    *audit.Repository
 	Apps    *application.Repository
 	Clients *client.Repository
 }
 
-// AuditBatchItem is one inbound audit row. camelCase only (matches the Rust
-// BatchAuditLogItem — no snake_case aliases, unlike the events batch).
+// AuditBatchItem is one inbound audit row. camelCase only
+// (no snake_case aliases, unlike the events batch).
 type AuditBatchItem struct {
 	EntityType      string          `json:"entityType"`
 	EntityID        string          `json:"entityId"`
@@ -48,11 +47,11 @@ func RegisterAuditRoutes(r chi.Router, s *AuditBatchState) {
 	r.Post("/api/audit-logs/batch", s.batchIngest)
 }
 
-// batchIngest ports Rust batch_audit_logs: per-item resolve applicationCode →
+// batchIngest handles the batch: per-item resolve applicationCode →
 // application_id and clientCode → client_id (unknown code → SKIPPED), enforce
 // per-item client access (no access → SKIPPED), parse performedAt (RFC3339,
 // default now), then insert. Returns {results:[{id,status}]} with status
-// SUCCESS or SKIPPED (id is empty for SKIPPED), 1:1 with Rust.
+// SUCCESS or SKIPPED (id is empty for SKIPPED).
 func (s *AuditBatchState) batchIngest(w http.ResponseWriter, r *http.Request) {
 	ac := auth.FromContext(r.Context())
 	if ac == nil {

@@ -3,7 +3,7 @@
 // Backends register themselves via Register. The SecretService routes
 // references (e.g. "aws-sm://my-secret") to the right backend.
 //
-// Mirrors the Rust fc-secrets crate. Phase 1 ships the in-process
+// Phase 1 ships the in-process
 // backends (env, encrypted file). AWS Secrets Manager, AWS SSM, and
 // Vault land in Phase 1.5+ when the team picks the AWS SDK version.
 package secrets
@@ -33,7 +33,7 @@ var ErrNotFound = errors.New("secret not found")
 //   - "aws-sm://name"           → AWS Secrets Manager
 //   - "aws-ps://parameter"      → AWS Parameter Store / SSM
 //   - "vault://path#field"      → HashiCorp Vault
-//   - "encrypted:key"           → encrypted local file (matches Rust)
+//   - "encrypted:key"           → encrypted local file
 //   - "literal:value"           → bypass; return value as-is (for dev)
 //   - bare "value"              → also bypass (assume literal)
 type Service struct {
@@ -97,8 +97,8 @@ func (s *Service) Validate(ctx context.Context, ref string) error {
 // parseRef extracts the scheme + key from a reference. Returns
 // isRef=false for bare literals.
 //
-// "encrypted:" uses a single colon (no "://") to match Rust's syntax
-// (crates/fc-secrets/src/service.rs strip_prefix("encrypted:")).
+// "encrypted:" uses a single colon (no "://") — the historical reference
+// syntax, preserved so existing references keep resolving.
 func parseRef(ref string) (scheme, key string, isRef bool) {
 	if strings.HasPrefix(ref, "literal:") {
 		return "", strings.TrimPrefix(ref, "literal:"), false

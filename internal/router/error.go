@@ -2,10 +2,9 @@ package router
 
 import "fmt"
 
-// ErrorKind classifies a RouterError. Mirrors the Rust enum
-// `crates/fc-router/src/error.rs::RouterError` exactly so HealthService
-// can attribute failures to the right bucket and the warning service
-// can match on kind.
+// ErrorKind classifies a RouterError so HealthService can attribute
+// failures to the right bucket and the warning service can match on
+// kind.
 type ErrorKind string
 
 const (

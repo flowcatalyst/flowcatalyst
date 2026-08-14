@@ -22,7 +22,7 @@ import (
 
 // State bundles deps. Principals + OAuthClients are needed because creating
 // a service account also provisions its linked SERVICE principal and a
-// confidential OAuth client (matching the Rust platform).
+// confidential OAuth client.
 type State struct {
 	Repo         *serviceaccount.Repository
 	Principals   *principal.Repository
@@ -46,8 +46,8 @@ func Register(api huma.API, s *State) {
 	apiroute.Put(g, "assignServiceAccountRoles", "/api/service-accounts/{id}/roles", "Assign roles to a service account", http.StatusOK, s.assignRoles)
 
 	// The SPA calls /regenerate-token + /regenerate-secret; the longer
-	// /regenerate-auth-token + /regenerate-signing-secret paths match the
-	// Rust platform + fcsdk. Both are registered against the same handlers.
+	// /regenerate-auth-token + /regenerate-signing-secret paths match
+	// fcsdk. Both are registered against the same handlers.
 	for _, p := range []string{"regenerate-token", "regenerate-auth-token"} {
 		apiroute.Post(g, "regenerateServiceAccountAuthToken_"+p, "/api/service-accounts/{id}/"+p,
 			"Regenerate a service account's auth token", http.StatusOK, s.regenerateAuthToken)

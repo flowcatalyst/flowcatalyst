@@ -1,8 +1,7 @@
 package usecase
 
 // HasID is implemented by every aggregate so the UnitOfWork can identify
-// the row being committed without reflection. Mirrors the Rust HasId
-// trait.
+// the row being committed without reflection.
 //
 // The method is named IDStr (not ID) so it doesn't collide with the
 // typical exported `ID string` field on entity structs. Every entity

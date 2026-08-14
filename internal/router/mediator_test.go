@@ -21,7 +21,7 @@ import (
 func TestMediatorPayloadAndSignatureFormat(t *testing.T) {
 	// Capture what the mediator sends and verify the HMAC matches the
 	// canonical formula. This is the parity test for the at-risk
-	// HMAC site flagged in docs/api-parity.md.
+	// HMAC site flagged in docs/wire-contract.md.
 	var (
 		gotBody []byte
 		gotSig  string
@@ -112,7 +112,7 @@ func TestMediatorServerErrorRetries(t *testing.T) {
 	defer srv.Close()
 
 	cfg := router.DevMediatorConfig()
-	// MaxRetries is the max TOTAL attempts (Rust parity): 3 → 1 initial + 2 retries.
+	// MaxRetries is the max TOTAL attempts: 3 → 1 initial + 2 retries.
 	cfg.MaxRetries = 3
 	cfg.RetryDelays = []time.Duration{1 * time.Millisecond, 1 * time.Millisecond}
 
@@ -175,8 +175,8 @@ func TestMediatorHTTP2_DispatchSucceeds(t *testing.T) {
 // where MediatorConfig.ConnectTimeout was stored but never applied to
 // the transport's DialContext. Before the fix, the only timeout that
 // fired was Client.Timeout (15min in prod), so a slow target could
-// pin a worker for the full 15 minutes vs Rust's reqwest stopping at
-// 30s. The test points at a non-routable RFC-5737 address so the TCP
+// pin a worker for the full 15 minutes instead of failing fast at the
+// 30s connect budget. The test points at a non-routable RFC-5737 address so the TCP
 // connect stalls until our ConnectTimeout fires.
 func TestMediatorConnectTimeoutHonoured(t *testing.T) {
 	cfg := router.MediatorConfig{

@@ -1,6 +1,6 @@
 // Package clientselection serves /auth/client/* — the multi-tenant client
-// context switcher used by the SPA in embedded auth mode. 1:1 with Rust
-// shared/client_selection_api.rs (list accessible clients, switch, current).
+// context switcher used by the SPA in embedded auth mode
+// (list accessible clients, switch, current).
 package clientselection
 
 import (
@@ -35,7 +35,7 @@ func RegisterRoutes(r chi.Router, s *State) {
 	r.Get("/auth/client/current", s.currentClient)
 }
 
-// clientInfo mirrors Rust ClientInfo.
+// clientInfo is one entry in the accessible-clients list.
 type clientInfo struct {
 	ID         string `json:"id"`
 	Name       string `json:"name"`
@@ -75,8 +75,8 @@ func (s *State) loadPrincipal(r *http.Request, ac *auth.AuthContext) (*principal
 	return p, nil
 }
 
-// accessibleClientIDs resolves the client IDs a principal may act inside,
-// 1:1 with Rust get_accessible_client_ids: anchors → all active clients;
+// accessibleClientIDs resolves the client IDs a principal may act inside:
+// anchors → all active clients;
 // client-scope → home client + active grants; partner → assigned clients +
 // active grants.
 func (s *State) accessibleClientIDs(r *http.Request, p *principal.Principal) ([]string, error) {
@@ -251,8 +251,7 @@ func (s *State) currentClient(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(currentClientResponse{Client: info, NoClientContext: info == nil})
 }
 
-// resolvePermissions flattens the permission set of the named roles (deduped),
-// 1:1 with Rust resolve_permissions.
+// resolvePermissions flattens the permission set of the named roles (deduped).
 func (s *State) resolvePermissions(r *http.Request, roleCodes []string) ([]string, error) {
 	seen := map[string]bool{}
 	out := []string{}

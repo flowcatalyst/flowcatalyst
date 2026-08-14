@@ -8,8 +8,8 @@ import (
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// registerResources mounts the read-only resource catalogue (1:1 with Rust
-// fc-mcp): 5 fixed collection resources plus 5 hierarchical templates for
+// registerResources mounts the read-only resource catalogue: 5 fixed
+// collection resources plus 5 hierarchical templates for
 // single-entity reads. Each resolves to the same platform endpoints the tools
 // use, returning pretty-printed JSON.
 func (s *Server) registerResources(m *mcpsdk.Server) {

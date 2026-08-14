@@ -22,15 +22,14 @@ type SyncPlatformRolesCommand struct{}
 // SyncPlatformRoles upserts the static `code_roles` catalogue (passed in by the
 // caller, e.g. seed.PlatformRoles()) into the database and emits the per-row
 // Created / Updated / Deleted events plus the [RolesSynced] rollup atomically
-// via [usecaseop.Sync]. Drop-in parity with Rust's
-// RoleSyncService::sync_code_defined_roles.
+// via [usecaseop.Sync].
 //
 // Authorization is [usecaseop.Public]: the catalogue is static code with no
 // client or application dimension, so there is no per-resource check. The sole
 // entry point (the anchor-only BFF /bff/roles/sync-platform) does the coarse
 // gate (RequireAnchor).
 //
-// Rules (matching Rust):
+// Rules:
 //   - For each role in the catalogue:
 //   - If a row with the same name and source=CODE exists, update it.
 //   - If a row with the same name and a non-CODE source exists, skip
@@ -142,8 +141,8 @@ func SyncPlatformRoles(repo *role.Repository, codeRoles []role.Role) usecaseop.O
 
 // ── Application-scoped SDK role sync ──────────────────────────────────────
 
-// SyncRoleInput is one role definition in an SDK sync payload. Mirrors the
-// Rust SyncRoleInput (camelCase wire shape lives in the sdksync API layer).
+// SyncRoleInput is one role definition in an SDK sync payload (the
+// camelCase wire shape lives in the sdksync API layer).
 type SyncRoleInput struct {
 	Name          string
 	DisplayName   *string
@@ -164,7 +163,7 @@ type SyncRolesCommand struct {
 }
 
 // SyncRoles bulk-upserts an application's SDK role catalogue within a single
-// transaction. Mirrors Rust SyncRolesUseCase exactly:
+// transaction:
 //
 //   - Each role's canonical name is "{applicationCode}:{name.toLower()}".
 //   - Only SDK-sourced rows are created/updated/removed; CODE and DATABASE
@@ -319,8 +318,7 @@ func SyncRoles(repo *role.Repository) usecaseop.Operation[SyncRolesCommand, Role
 	}
 }
 
-// displayNameOr returns *dn when non-nil, else the fallback. Mirrors Rust
-// `display_name.unwrap_or_else(|| name.clone())`.
+// displayNameOr returns *dn when non-nil, else the fallback.
 func displayNameOr(dn *string, fallback string) string {
 	if dn != nil {
 		return *dn

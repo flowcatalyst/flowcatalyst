@@ -13,7 +13,7 @@ func TestHashTokenIsLowercaseHexSHA256(t *testing.T) {
 	if !regexp.MustCompile(`^[0-9a-f]{64}$`).MatchString(h) {
 		t.Fatalf("hash must be lowercase hex; got %q", h)
 	}
-	// Known SHA-256 of the empty string (matches the Rust test vector).
+	// Known SHA-256 of the empty string.
 	if got := hashToken(""); got != "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" {
 		t.Fatalf("empty-string hash mismatch; got %q", got)
 	}
@@ -31,7 +31,7 @@ func TestGenerateRawToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generateRawToken: %v", err)
 	}
-	// 32 bytes → URL-safe base64 no-pad → 43 chars (1:1 with Rust).
+	// 32 bytes → URL-safe base64 no-pad → 43 chars.
 	if len(tok) != 43 {
 		t.Fatalf("expected 43 chars for 32 bytes base64 no-pad; got %d (%q)", len(tok), tok)
 	}

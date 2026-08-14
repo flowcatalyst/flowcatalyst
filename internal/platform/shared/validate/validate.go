@@ -11,14 +11,14 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 )
 
-// CodePattern is the strict resource-code rule (Rust code_pattern):
+// CodePattern is the strict resource-code rule:
 // a lowercase letter followed by lowercase alphanumerics and hyphens.
 // Used by connection, service-account, subscription and scheduled-job
 // codes.
 var CodePattern = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
-// CodeUnderscorePattern additionally allows underscores. It is the Rust
-// pool_code_pattern and the application-code rule — real codes use
+// CodeUnderscorePattern additionally allows underscores. It is the
+// pool-code and application-code rule — real codes use
 // underscores (logistics_portal, transport_order, master_data).
 var CodeUnderscorePattern = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
 

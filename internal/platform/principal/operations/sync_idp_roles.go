@@ -29,9 +29,8 @@ type SyncIdpRolesCommand struct {
 
 // SyncIdpRoles replaces the principal's IDP_SYNC-sourced role
 // assignments with the supplied set. Non-IDP role assignments
-// (ADMIN_ASSIGNED, SYSTEM, etc.) are preserved untouched. Mirrors
-// Rust's OidcSyncService::sync_idp_roles_filtered minus the IDP-
-// mapping lookup, which the caller does upstream.
+// (ADMIN_ASSIGNED, SYSTEM, etc.) are preserved untouched. The IDP-
+// mapping lookup happens upstream in the caller.
 //
 // Validates every supplied role name exists. Refuses to run on
 // non-USER principals (service accounts get their roles via a

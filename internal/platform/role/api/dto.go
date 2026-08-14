@@ -66,7 +66,7 @@ type RoleResponse struct {
 }
 
 // GrantPermissionRequest is the body for POST /api/roles/{roleName}/permissions
-// (the SDK grant-by-body variant). Mirrors Rust GrantPermissionRequest.
+// (the SDK grant-by-body variant).
 type GrantPermissionRequest struct {
 	Permission string `json:"permission"`
 }
@@ -91,8 +91,8 @@ func fromEntity(r *role.Role) RoleResponse {
 	}
 }
 
-// RoleListResponse is the wire shape for GET /api/roles. Matches the
-// Rust fc-platform shape `{roles, total}`.
+// RoleListResponse is the wire shape for GET /api/roles:
+// `{roles, total}`.
 type RoleListResponse struct {
 	Roles []RoleResponse `json:"roles"`
 	Total int            `json:"total"`
@@ -121,8 +121,8 @@ func permissionToResponse(p *role.Permission) PermissionResponse {
 	}
 }
 
-// PermissionListResponse is the wire shape for GET /api/roles/permissions.
-// Matches the Rust fc-platform shape `{permissions, total}`.
+// PermissionListResponse is the wire shape for GET /api/roles/permissions:
+// `{permissions, total}`.
 type PermissionListResponse struct {
 	Permissions []PermissionResponse `json:"permissions"`
 	Total       int                  `json:"total"`

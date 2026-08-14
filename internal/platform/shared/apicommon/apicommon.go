@@ -1,31 +1,29 @@
-// Package apicommon holds reusable HTTP response shapes that match the
-// Rust platform's wire format. The JSON shape of these types is part
-// of the public API contract.
+// Package apicommon holds reusable HTTP response shapes. The JSON shape
+// of these types is part of the public API contract.
 package apicommon
 
 // CreatedResponse is the standard envelope returned on POST endpoints
-// that create a single entity. Matches Rust CreatedResponse.
+// that create a single entity.
 type CreatedResponse struct {
 	ID string `json:"id"`
 }
 
 // StatusChangeResponse is the standard envelope for lifecycle endpoints
 // (deactivate, send-password-reset, …) that return a human-readable
-// message. Matches Rust's {"message": "..."} shape.
+// message: {"message": "..."}.
 type StatusChangeResponse struct {
 	Message string `json:"message"`
 }
 
-// SuccessResponse matches Rust's shared SuccessResponse {success, message?}
+// SuccessResponse is the {success, message?} envelope
 // returned by oauth-client activate/deactivate. `message` is omitted when empty.
 type SuccessResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message,omitempty"`
 }
 
-// OffsetPage is the offset-paginated envelope matching Rust fc-platform's
-// PaginatedResponse<T>: `{data, page, size, total, total_pages}` with a
-// 0-based page index.
+// OffsetPage is the offset-paginated envelope:
+// `{data, page, size, total, total_pages}` with a 0-based page index.
 type OffsetPage[T any] struct {
 	Data       []T   `json:"data"`
 	Page       int   `json:"page"`
@@ -60,8 +58,8 @@ type SizeOnlyResponse[T any] struct {
 	Items []T `json:"items"`
 }
 
-// PageQuery is the embeddable offset-pagination query, matching Rust's
-// PaginationParams: `page` (0-based, default 0) and `size` (default 20),
+// PageQuery is the embeddable offset-pagination query:
+// `page` (0-based, default 0) and `size` (default 20),
 // accepting the historical aliases `limit`/`pageSize`/`page_size` for size.
 type PageQuery struct {
 	Page          int `query:"page"`

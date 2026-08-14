@@ -1,15 +1,15 @@
 # Laravel SDK Compatibility — Go-side Remediation Punch-list
 
-**Goal:** the existing FlowCatalyst Laravel SDK (`flowcatalyst-rust/clients/laravel-sdk`)
-must keep working when its traffic is pointed at the **Go** server, with **no SDK
-release required**. Strategy chosen: **add Go-side compatibility aliases** (register
-the Rust-named routes/fields alongside the Go ones). The SDK's public method
-signatures and its wrapper stay untouched.
+**Goal:** the existing FlowCatalyst Laravel SDK must keep working against the
+**Go** server with **no SDK release required**. Strategy chosen: **add Go-side
+compatibility aliases** (register the SDK-contract routes/fields alongside the
+Go-native ones). The SDK's public method signatures and its wrapper stay
+untouched.
 
-The SDK's `Generated/Client.php` was generated from the Rust OpenAPI spec
-(`clients/laravel-sdk/openapi/openapi.json`), so that spec **is** the wire contract
-the SDK speaks. Each item below is a place where the Go server does not currently
-serve what that contract expects.
+The SDK's `Generated/Client.php` was generated from the SDK's committed OpenAPI
+spec (`clients/laravel-sdk/openapi/openapi.json`), so that spec **is** the wire
+contract the SDK speaks. Each item below is a place where the Go server does not
+currently serve what that contract expects.
 
 > **Note on `api/openapi.lock.json`:** it is incomplete (e.g. it omits the wired
 > `sdksync` routes), so it was **not** used to judge parity. All "Go current"
@@ -36,7 +36,7 @@ All wrapper-reachable items below are **DONE** (Go-side, build + tests green):
   password reset already worked; user-create now works.
 - **P1 #10 `/api/roles/{roleName}`** (GET/PUT/DELETE) — `{id}` handlers now resolve
   id-or-name (`resolveRole`). **#11 `POST /api/roles/{roleName}/permissions`** (body).
-- **Laravel `WebhookValidator`** + the Rust/Go SDK validators — parse ISO8601-ms.
+- **Laravel `WebhookValidator`** + the other SDK validators — parse ISO8601-ms.
 - **Lock fix** — `tools/dump-spec` now includes `sdksync` + `loginattempt`, with a
   drift-guard test; `api/openapi.lock.json` regenerated (now the source of truth again).
 
@@ -62,7 +62,7 @@ existing users):**
 **SDK call** (`Resources/ScheduledJobs.php:220`, `ScheduledJobRunner`):
 `POST /api/scheduled-jobs/instances/{instanceId}/complete`
 body `{ "status": "SUCCESS"|"FAILURE", "result"?: <mixed> }`
-(Rust `InstanceCompleteRequest`: `required:[status]`, `status` = `CompletionStatusDto`, `result` nullable.)
+(SDK-contract `InstanceCompleteRequest`: `required:[status]`, `status` = `CompletionStatusDto`, `result` nullable.)
 
 **Go current** (`internal/platform/scheduledjob/api/api.go:594`, `dto.go:241`):
 `CompleteInstanceRequest{ Status (instance-lifecycle, default COMPLETED), CompletionStatus (SUCCESS/FAILURE), CompletionResult }`.
@@ -84,7 +84,7 @@ drops the outcome and the result.**
 
 ## P1 — path / method aliases (these currently 404 / 405)
 
-| # | SDK call (Rust contract) | Go current | Go-side fix | Files | Eff |
+| # | SDK call (per its contract) | Go current | Go-side fix | Files | Eff |
 |---|---|---|---|---|---|
 | 1 | `GET /api/clients/search?q=` | `POST /api/clients/search` (body) | register `GET /api/clients/search` reading `?q=`, delegate to existing search | `client/api/api.go:53` | M |
 | 2 | `GET /api/dispatch-jobs/by-event/{eventId}` | `…/event/{eventId}` | alias route `by-event/{eventId}` → same handler | `dispatchjob/api/api.go:59` | T |
@@ -118,14 +118,14 @@ via `FlowCatalystClient->principals()`). Exact SDK calls and Go status:
 1. Path: Go has no `/api/principals/users`; it has `POST /api/principals`.
 2. Body + scope: the SDK sends `{email,name,password,clientId,enforcePasswordComplexity}`
    with **no `scope`**, but Go's `CreatePrincipalRequest` (dto.go:15) **requires** `scope`
-   (ANCHOR/PARTNER/CLIENT) and has no `enforcePasswordComplexity`. Rust's `create_user`
-   (`fc-platform/src/principal/api.rs:477`) **derives** scope from the email domain
-   (anchor-domain check + email-domain-mapping `scope_type`), not from the request.
+   (ANCHOR/PARTNER/CLIENT) and has no `enforcePasswordComplexity`. Per the SDK's
+   contract, `create_user` **derives** scope from the email domain (anchor-domain
+   check + email-domain-mapping `scope_type`), not from the request.
 
-   So closing this means porting Rust `create_user`'s scope-derivation into a new Go
+   So closing this means implementing that scope-derivation in a new Go
    `POST /api/principals/users` handler (resolve anchor-domain + email-domain-mapping →
    scope + client association; accept `enforcePasswordComplexity`), delegating to the
-   existing principal create operation. This is a feature port, bigger than a route alias —
+   existing principal create operation. This is a feature build, bigger than a route alias —
    call it out separately on the punch-list.
 
 ## P2 — low-risk (SDKs rarely call these)
@@ -139,14 +139,13 @@ via `FlowCatalystClient->principals()`). Exact SDK calls and Go status:
 ## Pre-existing SDK bug — informational, NOT a switch regression
 
 `Webhook/WebhookValidator.php:84` does `(int)$timestamp` expecting **Unix seconds**,
-but both Rust (`fc-router/src/mediator/signing.rs:33`) **and** Go
-(`internal/router/mediator.go:211`) send `X-FLOWCATALYST-TIMESTAMP` as
-**ISO8601-millisecond** (`%Y-%m-%dT%H:%M:%S%.3fZ`). `(int)"2026-…"` → `2026` → always
-"expired." The HMAC itself matches (it concatenates the received timestamp string
-verbatim) — only the replay-window check fails. **Go ≡ Rust here, so switching changes
-nothing.** Fix belongs in the SDK (parse ISO8601). Optional Go accommodation: also emit
-a Unix-seconds header — but not required for parity and not recommended (would diverge
-from Rust).
+but the router (`internal/router/mediator.go:211`) sends `X-FLOWCATALYST-TIMESTAMP`
+as **ISO8601-millisecond** (`%Y-%m-%dT%H:%M:%S%.3fZ`) — and always has. `(int)"2026-…"`
+→ `2026` → always "expired." The HMAC itself matches (it concatenates the received
+timestamp string verbatim) — only the replay-window check fails. **This bug predates
+the Go server and is unaffected by it.** Fix belongs in the SDK (parse ISO8601).
+Optional Go accommodation: also emit a Unix-seconds header — not recommended (would
+diverge from the documented signature scheme).
 
 ---
 
@@ -156,7 +155,7 @@ from Rust).
   request field names, and `SyncResultResponse {applicationCode,created,updated,deleted,syncedCodes}` match.
 - `POST /oauth/token` (client_credentials) — params + response `{access_token,token_type,expires_in,…}`, `Cache-Control: no-store`.
 - `/.well-known/jwks.json`.
-- Webhook HMAC **signing** — byte-identical to Rust.
+- Webhook HMAC **signing** — matches the SDK validators (pinned test vector).
 - Scheduled-job CRUD + `POST …/instances/{id}/log` (`{message,level,metadata}`) — exact match.
 - Batch ingest `/api/events/batch`, `/api/dispatch-jobs/batch` (the outbox processor path).
 - TSID format; error envelope `{error,message}`.

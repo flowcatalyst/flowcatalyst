@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-// DomainEvent is the contract every emitted event must satisfy. Mirrors
-// the Rust DomainEvent trait — methods rather than fields so events can
+// DomainEvent is the contract every emitted event must satisfy —
+// methods rather than fields so events can
 // embed metadata however suits their JSON shape.
 type DomainEvent interface {
 	EventID() string
@@ -29,7 +29,7 @@ type DomainEvent interface {
 // EventMetadata is the CloudEvents-shaped envelope embedded into every
 // domain event. Implementations typically embed this struct and provide
 // a custom MarshalJSON that flattens it alongside the event-specific
-// data fields, matching the Rust #[serde(flatten)] pattern.
+// data fields.
 //
 // Concrete events still implement the DomainEvent interface explicitly
 // (Go's field/method namespace overlap means you can't have both

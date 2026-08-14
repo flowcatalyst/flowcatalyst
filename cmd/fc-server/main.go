@@ -2,8 +2,8 @@
 //
 // Single binary; every subsystem is independently togglable via
 // FC_*_ENABLED env vars so the same image can be deployed as the API
-// tier, a worker tier, or both. Mirrors the Rust fc-server's env
-// contract. fcdev wraps the same `server.Run` orchestrator with
+// tier, a worker tier, or both.
+// fcdev wraps the same `server.Run` orchestrator with
 // embedded-Postgres + dev defaults for local work.
 //
 // See internal/server/envcfg.go for the full env-var list.
@@ -47,8 +47,8 @@ func main() {
 	defer cancel()
 
 	// The platform database is only needed by subsystems that read/write
-	// Postgres. A router-only deployment (the drop-in for the Rust standalone
-	// fc-router) needs no database — it reads its config from the platform API
+	// Postgres. A standalone router-only deployment
+	// needs no database — it reads its config from the platform API
 	// and processes the queue — so skip the connect/migrate/seed entirely. The
 	// router path in server.Run never dereferences the pool, so a nil pool is
 	// safe. MCP also dials the platform over HTTP rather than the pool.
@@ -59,7 +59,7 @@ func main() {
 	if needsDB {
 		// AWS Secrets Manager DB mode: when DB_SECRET_ARN + DB_HOST are set (and no
 		// explicit FC_DATABASE_URL/DATABASE_URL), resolve the connection from the
-		// secret. Mirrors the Rust fc-server DB-secret resolution.
+		// secret.
 		if dbURL, ok, err := server.ResolveDBSecretURL(rootCtx); err != nil {
 			slog.Error("resolve DB secret failed", "err", err)
 			os.Exit(1) //nolint:gocritic // fatal startup error before the run loop; the deferred cancel is moot as the process is exiting

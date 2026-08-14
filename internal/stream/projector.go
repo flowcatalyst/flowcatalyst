@@ -2,9 +2,6 @@
 // rows from write tables (msg_events, msg_dispatch_jobs) into their
 // denormalized read counterparts, plus the event fan-out that matches
 // subscriptions and emits dispatch jobs.
-//
-// Ports fc-stream/src/* faithfully. SQL queries match Rust word-for-word
-// for parity; only the language plumbing changes.
 package stream
 
 import (
@@ -30,10 +27,10 @@ type ProjectorConfig struct {
 }
 
 // DefaultProjectorConfig holds the per-projection defaults. BatchSize 100
-// matches the Rust events/dispatch defaults (the fan-out projection overrides
-// it to 200 — Rust's fan-out default — at wiring time). The sleep tiers mirror
-// Rust's adaptive_sleep: a full batch loops with no sleep, a partial batch
-// pauses 100ms, an empty poll idles 1s, and a Step error backs off 5s.
+// is the events/dispatch default (the fan-out projection overrides it to
+// 200 at wiring time). The sleep tiers are adaptive: a full batch loops
+// with no sleep, a partial batch pauses 100ms, an empty poll idles 1s, and
+// a Step error backs off 5s.
 func DefaultProjectorConfig() ProjectorConfig {
 	return ProjectorConfig{
 		Enabled:      true,
@@ -64,8 +61,7 @@ type Projector struct {
 	// dispatch job must never become deliverable before an earlier
 	// same-group event's) requires a single active processor — concurrent
 	// SKIP-LOCKED claims across replicas would reorder a message group.
-	// Mirrors Rust's whole-stream-processor leadership gate (active_rx). nil
-	// = always run (single-node / standby disabled).
+	// nil = always run (single-node / standby disabled).
 	IsLeader func() bool
 }
 
@@ -106,10 +102,10 @@ func (p *Projector) Run(ctx context.Context) {
 	}
 }
 
-// nextSleep picks the back-off after a Step, mirroring Rust's adaptive_sleep
-// (event_projection.rs / event_fan_out.rs): a full batch (rows == BatchSize)
-// loops immediately so a backlog drains at full speed; a partial batch pauses
-// PollInterval; an empty poll idles; a Step error backs off hardest.
+// nextSleep picks the adaptive back-off after a Step: a full batch
+// (rows == BatchSize) loops immediately so a backlog drains at full speed;
+// a partial batch pauses PollInterval; an empty poll idles; a Step error
+// backs off hardest.
 func nextSleep(cfg ProjectorConfig, n int, err error) time.Duration {
 	switch {
 	case err != nil:

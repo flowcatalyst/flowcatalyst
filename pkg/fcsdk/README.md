@@ -1,6 +1,6 @@
 # FlowCatalyst Go SDK
 
-Go SDK for the FlowCatalyst platform. Sibling of `crates/fc-sdk` (Rust),
+Go SDK for the FlowCatalyst platform. Sibling of `crates/fc-sdk` (legacy platform),
 `clients/typescript-sdk`, and `clients/laravel-sdk`. Module path:
 
 ```
@@ -117,7 +117,7 @@ path to a Success-valued Result outside the SDK is through one of
 the `Commit*` / `EmitEvent` free functions in `usecasepgx` /
 `usecasesql`.
 
-This is the Go analogue of the Rust SDK's
+This is the Go analogue of the legacy-platform SDK's
 `pub(in crate::usecase) fn success(...)` — compile-time enforced.
 
 ## Picking a backend

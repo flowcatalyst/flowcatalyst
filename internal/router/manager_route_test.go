@@ -34,7 +34,7 @@ func TestManagerPoolForMessage(t *testing.T) {
 }
 
 // TestManagerUnknownPoolRecordsRoutingWarning verifies the manager surfaces an
-// unknown pool_code as a Routing warning (matching the Rust router), while the
+// unknown pool_code as a Routing warning, while the
 // normal empty-pool_code default does not warn.
 func TestManagerUnknownPoolRecordsRoutingWarning(t *testing.T) {
 	med := &cascadeMediator{}

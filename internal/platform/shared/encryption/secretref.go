@@ -18,7 +18,7 @@ var externalSecretSchemes = []string{"aws-sm://", "aws-ps://", "gcp-sm://", "vau
 //
 // A plaintext value — optionally carrying the SecretRefInput "encrypt:"
 // directive — is encrypted inline as "encrypted:<blob>", the format Decrypt
-// reads (and the one the Rust/TS producers emit). Values that are already an
+// reads (and the one other producers emit, e.g. the TS SDK). Values that are already an
 // inline ciphertext ("encrypted:…") or an external provider reference
 // ("aws-sm://", "vault://", …) pass through unchanged. A nil pointer (the
 // field was omitted) is preserved so an update leaves the stored secret

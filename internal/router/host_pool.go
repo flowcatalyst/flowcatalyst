@@ -1,6 +1,6 @@
 // Per-host HTTP/2 connection pool with dynamic grow/shrink.
 //
-// Port of crates/fc-router/src/http_pool.rs. Go's net/http reuses one
+// Go's net/http reuses one
 // HTTP/2 connection per origin per *http.Transport, so high-concurrency
 // mediation against a single host saturates a single connection and
 // excess requests queue invisibly inside h2 (visible only as latency).
@@ -16,8 +16,8 @@
 // Saturation is inferred from our own in-flight counters because h2
 // does not surface backpressure when it queues on
 // SETTINGS_MAX_CONCURRENT_STREAMS. A target advertising a tighter cap
-// than our high watermark can still saturate before we grow — same
-// correctness compromise the Rust impl documents.
+// than our high watermark can still saturate before we grow — a known
+// correctness compromise.
 
 package router
 
@@ -104,7 +104,7 @@ type HostPoolSizing struct {
 	MaxSlotsWarningInterval time.Duration
 }
 
-// DefaultHostPoolSizing matches the Rust HostPoolSizing::default().
+// DefaultHostPoolSizing returns the standard defaults.
 func DefaultHostPoolSizing() HostPoolSizing {
 	return HostPoolSizing{
 		StreamsHighWatermark:    100,
@@ -118,8 +118,7 @@ func DefaultHostPoolSizing() HostPoolSizing {
 
 // HTTP1HostPoolSizing is the HTTP/1.1 preset: HTTP/1.1 doesn't
 // multiplex, so growing past one slot per host duplicates the
-// Transport's own connection-pool behaviour. Equivalent to Rust
-// HostPoolSizing::http1.
+// Transport's own connection-pool behaviour.
 func HTTP1HostPoolSizing() HostPoolSizing {
 	s := DefaultHostPoolSizing()
 	s.MaxSlotsPerHost = 1

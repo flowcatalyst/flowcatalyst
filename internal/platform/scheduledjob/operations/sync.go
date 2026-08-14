@@ -45,7 +45,7 @@ type SyncScheduledJobsCommand struct {
 }
 
 // SyncScheduledJobs upserts scheduled-job definitions within a single
-// transaction. Mirrors the Rust SyncScheduledJobsUseCase exactly:
+// transaction. Semantics:
 //
 //   - Existing jobs are loaded for the target scope (the client when ClientID
 //     is set, else the platform-scoped set).
@@ -79,7 +79,7 @@ func SyncScheduledJobs(repo *scheduledjob.Repository) usecaseop.Operation[SyncSc
 			ac := auth.FromContext(ctx)
 			// Resource-level scope check: the caller must have access to the
 			// target client (or be anchor/super-admin when targeting platform-
-			// scoped jobs). Mirrors the Rust handler.
+			// scoped jobs).
 			if cid := cmd.ClientID; cid != nil {
 				if !ac.CanAccessClient(*cid) {
 					return httperror.Forbidden("No access to client: " + *cid)

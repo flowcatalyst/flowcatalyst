@@ -8,8 +8,8 @@ import (
 
 func strptr(s string) *string { return &s }
 
-// TestDeriveUserScope covers the create-user scope-derivation ported from Rust
-// create_user: anchor-domain, ANCHOR/PARTNER/CLIENT mappings, and unmapped.
+// TestDeriveUserScope covers the create-user scope-derivation:
+// anchor-domain, ANCHOR/PARTNER/CLIENT mappings, and unmapped.
 func TestDeriveUserScope(t *testing.T) {
 	cases := []struct {
 		name        string

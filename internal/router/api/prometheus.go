@@ -14,8 +14,8 @@ import (
 // in Prometheus text exposition format. Every call collects a fresh snapshot
 // — no background goroutine, no global mutable state.
 //
-// The metric NAMES + label schema match the Rust router (router_metrics.rs)
-// so Rust-targeted dashboards/alerts work against the Go router:
+// The metric NAMES + label schema follow the established metrics contract
+// so existing dashboards/alerts keep working:
 //
 // Per pool (label: pool):
 //   - fc_pool_queue_size, fc_pool_active_workers, fc_pool_message_groups (gauges)
@@ -35,13 +35,13 @@ import (
 //   - fc_circuit_breaker_open                                          (gauge)
 //   - fc_circuit_breaker_calls_total{outcome=success|failure}          (counter)
 //
-// Note (Rust parity gap, dashboards only): Rust additionally emits
-// fc_messages_submitted_total, fc_messages_rejected_total{reason},
+// Note (contract gap, dashboards only): the established contract additionally
+// defines fc_messages_submitted_total, fc_messages_rejected_total{reason},
 // fc_consumer_polls_total / fc_consumer_errors_total{type}, the `result`
 // label on fc_messages_processed_total, and flowcatalyst_broker_*. Those are
-// event-time labeled counters the Go pull-based collector does not currently
-// track; emitting them faithfully needs the metrics collector reworked to the
-// Rust push model. The primary panels above are covered.
+// event-time labeled counters the pull-based collector does not currently
+// track; emitting them faithfully needs the metrics collector reworked to a
+// push model. The primary panels above are covered.
 func PrometheusHandler(s *State) http.Handler {
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(&routerCollector{state: s})

@@ -1,8 +1,6 @@
 // Package openapispecs is the per-application OpenAPI document store.
 // Each application has at most one CURRENT row at a time; previous
 // syncs are flipped to ARCHIVED so the lineage is auditable.
-//
-// Port of fc-platform/src/application_openapi_spec.
 package openapispecs
 
 import (

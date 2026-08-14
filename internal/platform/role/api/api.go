@@ -45,7 +45,7 @@ func Register(api huma.API, s *State) {
 	// Permission grants on a role.
 	apiroute.Get(g, "listRolePermissions", "/api/roles/{roleName}/permissions", "List permissions granted to a role", s.listRolePermissions)
 	apiroute.Post(g, "grantRolePermission", "/api/roles/{roleName}/permissions/{permission}", "Grant a permission to a role", http.StatusOK, s.grantPermission)
-	// SDK-compatibility alias: the Laravel/Rust client grants a permission by
+	// SDK-compatibility alias: the SDK clients grant a permission by
 	// POSTing {permission} in the body to /permissions (rather than naming it
 	// in the path). Same grant operation.
 	apiroute.Post(g, "grantRolePermissionByBody", "/api/roles/{roleName}/permissions", "Grant a permission to a role (SDK; permission in body)", http.StatusOK, s.grantPermissionByBody)
@@ -88,7 +88,7 @@ func (s *State) getByID(ctx context.Context, in *getInput) (*apicommon.Out[RoleR
 }
 
 // resolveRole loads a role by TSID id, falling back to its name. The SPA
-// addresses roles by id; the Laravel/Rust SDK addresses them by name on the
+// addresses roles by id; the SDK clients address them by name on the
 // same /api/roles/{…} routes — so the {id} handlers accept either. TSIDs and
 // role names don't overlap, so the fallback is unambiguous.
 func (s *State) resolveRole(ctx context.Context, idOrName string) (*role.Role, error) {
@@ -186,7 +186,7 @@ type bySourceInput struct {
 	Source string `path:"source"`
 }
 
-// Out[[]RoleResponse] renders a bare JSON array `[...]`, the Rust shape
+// Out[[]RoleResponse] renders a bare JSON array `[...]`, the wire shape
 // for /api/roles/by-application/{id} and /api/roles/by-source/{source}.
 func (s *State) bySource(ctx context.Context, in *bySourceInput) (*apicommon.Out[[]RoleResponse], error) {
 	ac := auth.FromContext(ctx)
@@ -273,7 +273,7 @@ func (s *State) grantPermission(ctx context.Context, in *rolePermissionGrantInpu
 	if err != nil {
 		return nil, err
 	}
-	// Return the updated role (1:1 with Rust grant_permission → RoleResponse).
+	// Return the updated role (full RoleResponse).
 	return &apicommon.Out[RoleResponse]{Body: fromEntity(r)}, nil
 }
 
@@ -320,7 +320,7 @@ func (s *State) revokePermission(ctx context.Context, in *rolePermissionGrantInp
 	if err != nil {
 		return nil, err
 	}
-	// Return the updated role (1:1 with Rust revoke_permission → RoleResponse).
+	// Return the updated role (full RoleResponse).
 	return &apicommon.Out[RoleResponse]{Body: fromEntity(r)}, nil
 }
 

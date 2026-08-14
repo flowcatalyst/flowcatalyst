@@ -6,7 +6,7 @@
 // (github.com/modelcontextprotocol/go-sdk), so the initialize handshake,
 // capability negotiation, and both transports (stdio + streamable-HTTP) are
 // handled by the SDK. This package supplies the tool + resource catalogue and
-// the platform API plumbing. 1:1 in surface with the Rust fc-mcp crate.
+// the platform API plumbing.
 package mcp
 
 import (
@@ -24,7 +24,7 @@ const serverName = "flowcatalyst"
 // build time via -ldflags "-X .../internal/mcp.serverVersion=...".
 var serverVersion = "dev"
 
-// instructions guide the connected agent. Mirrors the Rust server's guidance:
+// instructions guide the connected agent:
 // start with whoami, then explore the read-only catalogue.
 const instructions = `FlowCatalyst MCP server — read-only access to the platform's metadata.
 

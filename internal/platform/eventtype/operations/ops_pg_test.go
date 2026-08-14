@@ -78,8 +78,8 @@ func TestCreateEventType_HappyPath(t *testing.T) {
 	require.NotNil(t, got)
 	assert.Equal(t, eventtype.StatusCurrent, got.Status)
 	assert.Equal(t, eventtype.SourceUI, got.Source)
-	// created_by persists since migration 035 (Rust never wrote it; its
-	// rows read back NULL).
+	// created_by persists since migration 035 (pre-035 rows read back
+	// NULL — it was never written before).
 	require.NotNil(t, got.CreatedBy)
 	assert.Equal(t, ec.PrincipalID, *got.CreatedBy)
 	require.Len(t, got.SpecVersions, 1, "schema in create cmd must mint version 1.0")

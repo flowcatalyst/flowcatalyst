@@ -24,28 +24,27 @@ const (
 // ErrCircuitOpen is returned by Allow when the breaker is open.
 var ErrCircuitOpen = errors.New("circuit breaker open")
 
-// BreakerConfig tunes the failure-RATE thresholds. 1:1 with the Rust
-// CircuitBreakerConfig (Java MicroProfile defaults): trip when the failure
+// BreakerConfig tunes the failure-RATE thresholds: trip when the failure
 // rate over a sliding window reaches a threshold, given a minimum number of
 // buffered calls — NOT a raw failure count.
 type BreakerConfig struct {
 	// FailureRateThreshold trips the breaker when the windowed failure rate
-	// reaches it (0.0–1.0). Java failureRatio = 0.5.
+	// reaches it (0.0–1.0). Default 0.5.
 	FailureRateThreshold float64
 	// MinCalls is the minimum buffered calls before the rate is evaluated.
-	// Java requestVolumeThreshold = 10.
+	// Default 10.
 	MinCalls int
 	// SuccessThreshold is the consecutive half-open successes needed to close.
-	// Java successThreshold = 3.
+	// Default 3.
 	SuccessThreshold int
 	// ResetTimeout is how long after the last failure an Open breaker waits
-	// before allowing a half-open trial. Java delay = 5s.
+	// before allowing a half-open trial. Default 5s.
 	ResetTimeout time.Duration
-	// BufferSize is the sliding-window length in samples. Java = 100.
+	// BufferSize is the sliding-window length in samples. Default 100.
 	BufferSize int
 }
 
-// DefaultBreakerConfig matches the Rust/Java defaults.
+// DefaultBreakerConfig returns the standard defaults.
 func DefaultBreakerConfig() BreakerConfig {
 	return BreakerConfig{
 		FailureRateThreshold: 0.5,
@@ -58,7 +57,7 @@ func DefaultBreakerConfig() BreakerConfig {
 
 // CircuitBreaker is a per-endpoint failure-rate state machine. A single mutex
 // guards the state, sliding window, half-open success count, and last-failure
-// time (mirrors the Rust BreakerInner); the cumulative counters and
+// time; the cumulative counters and
 // lastActivity are independent atomics.
 type CircuitBreaker struct {
 	cfg BreakerConfig
@@ -88,7 +87,7 @@ func NewCircuitBreaker(cfg BreakerConfig) *CircuitBreaker {
 }
 
 // State returns the current stored state (no transition — Open→HalfOpen
-// happens in Allow, matching Rust get_stats).
+// happens only in Allow).
 func (cb *CircuitBreaker) State() CircuitState {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
@@ -100,8 +99,7 @@ func (cb *CircuitBreaker) State() CircuitState {
 func (cb *CircuitBreaker) ResetTimeout() time.Duration { return cb.cfg.ResetTimeout }
 
 // Allow reports whether a request is permitted. Open transitions to HalfOpen
-// once ResetTimeout has elapsed since the last failure (1:1 with Rust
-// allow_request).
+// once ResetTimeout has elapsed since the last failure.
 func (cb *CircuitBreaker) Allow() error {
 	now := time.Now()
 	cb.lastActivity.Store(now.UnixNano())
@@ -269,8 +267,7 @@ func (r *BreakerRegistry) Snapshot() map[string]BreakerStats {
 }
 
 // Evict drops breakers whose last Allow/RecordSuccess/RecordFailure happened
-// more than maxIdle ago. Returns the eviction count. Mirrors
-// crates/fc-router/src/circuit_breaker_registry.rs::evict_idle — prevents
+// more than maxIdle ago. Returns the eviction count. Prevents
 // unbounded growth when many short-lived endpoint URLs flow through the
 // router. Safe to call concurrently with normal traffic.
 func (r *BreakerRegistry) Evict(maxIdle time.Duration) int {

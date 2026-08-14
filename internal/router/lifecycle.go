@@ -7,8 +7,7 @@ import (
 	"time"
 )
 
-// LifecycleConfig tunes the cadence of background tasks. Mirrors
-// `crates/fc-router/src/lifecycle.rs::LifecycleConfig::default()`.
+// LifecycleConfig tunes the cadence of background tasks.
 type LifecycleConfig struct {
 	// WarningCleanupInterval drives WarningService.Cleanup.
 	WarningCleanupInterval time.Duration
@@ -23,7 +22,7 @@ type LifecycleConfig struct {
 	// ConsumerStallThreshold is how long a consumer poll loop may go without
 	// completing a poll before the restart watchdog re-spawns it. Set to 60s
 	// to match the HealthService stall threshold (DefaultHealthServiceConfig)
-	// and the Rust consumer_stall_threshold — a single, consistent notion of
+	// — a single, consistent notion of
 	// "stalled" across restart + health reporting.
 	ConsumerStallThreshold time.Duration
 }
@@ -35,7 +34,7 @@ type ConsumerRestarter interface {
 	RestartStalledConsumers(ctx context.Context, threshold time.Duration) int
 }
 
-// DefaultLifecycleConfig returns the Rust defaults.
+// DefaultLifecycleConfig returns the standard defaults.
 func DefaultLifecycleConfig() LifecycleConfig {
 	return LifecycleConfig{
 		WarningCleanupInterval: 5 * time.Minute,
@@ -55,10 +54,9 @@ type PoolStatsProvider interface {
 // LifecycleManager owns the background tasks that maintain
 // WarningService + HealthService. Wraps both services so callers have
 // a single shutdown handle and a single place to register optional
-// hooks. Mirrors `crates/fc-router/src/lifecycle.rs::LifecycleManager`
-// — the manager-coupled tasks (memory health monitor, consumer
-// auto-restart, stale-entry reaper) land as the Go Manager grows the
-// matching surface area.
+// hooks. The manager-coupled tasks (memory health monitor, consumer
+// auto-restart, stale-entry reaper) are wired through the Manager and
+// Server.
 type LifecycleManager struct {
 	cfg            LifecycleConfig
 	warningService *WarningService

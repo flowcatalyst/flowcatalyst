@@ -18,12 +18,12 @@ import (
 // ConfigSource fetches the live RouterConfig from one or more remote
 // endpoints. When FLOWCATALYST_CONFIG_URL is comma-separated, all URLs are
 // fetched in parallel (each with its own retry) and the results are merged
-// (union, first-wins) — 1:1 with the Rust ConfigSyncService. Per-URL
+// (union, first-wins). Per-URL
 // failures are tolerated as long as at least one source succeeds.
 type ConfigSource struct {
 	URLs   []string
 	Client *http.Client
-	// MaxAttempts/RetryDelay govern per-URL retry (Java/Rust defaults: 12 / 5s).
+	// MaxAttempts/RetryDelay govern per-URL retry (defaults: 12 / 5s).
 	MaxAttempts int
 	RetryDelay  time.Duration
 
@@ -108,7 +108,7 @@ func (cs *ConfigSource) Fetch(ctx context.Context) (*common.RouterConfig, error)
 }
 
 // fetchWithRetry fetches a single URL, retrying up to MaxAttempts with
-// RetryDelay between attempts (ctx-aware). Mirrors Rust fetch_config_from_url.
+// RetryDelay between attempts (ctx-aware).
 func (cs *ConfigSource) fetchWithRetry(ctx context.Context, url string) (*common.RouterConfig, error) {
 	var lastErr error
 	for attempt := 1; attempt <= cs.MaxAttempts; attempt++ {
@@ -154,8 +154,8 @@ func (cs *ConfigSource) fetchOnce(ctx context.Context, url string) (*common.Rout
 
 // mergeConfigs unions multiple source configs, first-wins: a pool is keyed by
 // code, a queue by URI; the first source to define a key wins, later
-// duplicates are dropped (with a warning on a value conflict). 1:1 with Rust
-// merge_configs. A single source passes through unchanged.
+// duplicates are dropped (with a warning on a value conflict). A single
+// source passes through unchanged.
 func mergeConfigs(sources []sourceConfig) common.RouterConfig {
 	if len(sources) == 1 {
 		return sources[0].cfg

@@ -72,7 +72,6 @@ type TokenSource interface {
 type tokenInvalidator interface{ Invalidate() }
 
 // HTTPDispatcher sends outbox items to the FlowCatalyst platform API.
-// Mirrors fc-outbox/src/http_dispatcher.rs.
 type HTTPDispatcher struct {
 	platformURL string
 	authToken   string
@@ -163,8 +162,7 @@ func (d *HTTPDispatcher) SendBatch(ctx context.Context, items []Item) map[string
 
 	resp, err := d.client.Do(req)
 	if err != nil {
-		// Transport failure (connect/DNS/timeout) → GATEWAY_ERROR, matching Rust
-		// http_dispatcher.rs send() Err arm. Retryable.
+		// Transport failure (connect/DNS/timeout) → GATEWAY_ERROR. Retryable.
 		return failAll(items, common.OutboxGatewayError, "request: "+err.Error())
 	}
 	defer resp.Body.Close()
@@ -210,9 +208,9 @@ func (d *HTTPDispatcher) SendBatch(ctx context.Context, items []Item) map[string
 	case resp.StatusCode == http.StatusBadRequest:
 		// Only an exact 400 is terminal BAD_REQUEST. Every other unmatched
 		// status (other 4xx — 404/409/422/429 — and other 5xx) falls through to
-		// INTERNAL_ERROR (retryable), byte-matching Rust http_dispatcher.rs's
-		// match arms (400/401/403/500/502..=504, _ => INTERNAL_ERROR). This keeps
-		// a transient 429/404 retryable instead of permanently blocking a group.
+		// INTERNAL_ERROR (retryable): the mapped statuses are 400/401/403/500/
+		// 502-504, everything else → INTERNAL_ERROR. This keeps a transient
+		// 429/404 retryable instead of permanently blocking a group.
 		return failAll(items, common.OutboxBadRequest, fmt.Sprintf("%d", resp.StatusCode))
 	default:
 		return failAll(items, common.OutboxInternalError, fmt.Sprintf("%d", resp.StatusCode))

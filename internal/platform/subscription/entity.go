@@ -1,5 +1,5 @@
-// Package subscription is the port of fc-platform/src/subscription.
-// Binds event types to delivery targets (connections / endpoints).
+// Package subscription binds event types to delivery targets
+// (connections / endpoints).
 package subscription
 
 import (

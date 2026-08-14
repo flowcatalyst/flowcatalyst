@@ -2,9 +2,9 @@
 // them up in the generated OpenAPI document; field-level JSON tags
 // dictate the wire shape.
 //
-// Casing posture matches the Rust API:
-//   - `/monitoring` (overview) + `/monitoring/pools` + `/warnings`     → snake_case (Rust serde default)
-//   - `/monitoring/health` + dashboard endpoints (pool-stats/queue-stats/circuit-breakers/in-flight) → camelCase (explicit Rust renames)
+// Casing posture (established wire contract):
+//   - `/monitoring` (overview) + `/monitoring/pools` + `/warnings`     → snake_case
+//   - `/monitoring/health` + dashboard endpoints (pool-stats/queue-stats/circuit-breakers/in-flight) → camelCase
 //   - `/api/config` + reload / publish responses                        → snake_case
 package api
 
@@ -17,7 +17,7 @@ import (
 
 // ── Probe + simple health ────────────────────────────────────────────────
 
-// ProbeResponse matches Rust ProbeResponse: `{"status": "LIVE"|"READY"|"NOT_READY"}`.
+// ProbeResponse is `{"status": "LIVE"|"READY"|"NOT_READY"}`.
 type ProbeResponse struct {
 	Status string `json:"status"`
 }
@@ -32,7 +32,7 @@ type SimpleHealthResponse struct {
 
 // ── Monitoring overview ──────────────────────────────────────────────────
 
-// MonitoringResponse mirrors Rust MonitoringResponse — snake_case.
+// MonitoringResponse is the monitoring overview — snake_case.
 type MonitoringResponse struct {
 	Status           string           `json:"status"`
 	Version          string           `json:"version"`
@@ -42,7 +42,7 @@ type MonitoringResponse struct {
 	CriticalWarnings uint32           `json:"critical_warnings"`
 }
 
-// WireHealthReport mirrors Rust HealthReport — snake_case.
+// WireHealthReport is the wire shape of HealthReport — snake_case.
 type WireHealthReport struct {
 	Status             router.HealthStatus `json:"status"`
 	PoolsHealthy       uint32              `json:"pools_healthy"`
@@ -70,8 +70,8 @@ func fromHealthReport(r router.HealthReport) WireHealthReport {
 	}
 }
 
-// WirePoolStats mirrors Rust PoolStats — outer snake_case, inner
-// EnhancedPoolMetrics camelCase (its serde rename).
+// WirePoolStats is the wire shape of PoolStats — outer snake_case, inner
+// EnhancedPoolMetrics camelCase.
 type WirePoolStats struct {
 	PoolCode           string                      `json:"pool_code"`
 	Concurrency        uint32                      `json:"concurrency"`
@@ -104,9 +104,9 @@ func fromPoolStats(s []router.PoolStats) []WirePoolStats {
 
 // ── Dashboard health (/monitoring/health) ────────────────────────────────
 
-// DashboardHealthResponse mirrors Rust DashboardHealthResponse. Top
+// DashboardHealthResponse is the dashboard health payload. Top
 // level snake_case (status / timestamp) with the details object using
-// explicit camelCase renames.
+// camelCase.
 type DashboardHealthResponse struct {
 	Status       string                  `json:"status"`
 	Timestamp    string                  `json:"timestamp"`
@@ -114,7 +114,7 @@ type DashboardHealthResponse struct {
 	Details      *DashboardHealthDetails `json:"details,omitempty"`
 }
 
-// DashboardHealthDetails has explicit camelCase per-field renames in Rust.
+// DashboardHealthDetails uses camelCase field tags.
 type DashboardHealthDetails struct {
 	TotalQueues         uint32  `json:"totalQueues"`
 	HealthyQueues       uint32  `json:"healthyQueues"`
@@ -128,7 +128,7 @@ type DashboardHealthDetails struct {
 
 // ── Dashboard pool / queue / circuit-breaker / in-flight stats ───────────
 
-// DashboardPoolStats mirrors Rust DashboardPoolStats.
+// DashboardPoolStats is the dashboard per-pool stats row.
 type DashboardPoolStats struct {
 	PoolCode                string  `json:"poolCode"`
 	TotalProcessed          uint64  `json:"totalProcessed"`
@@ -144,7 +144,7 @@ type DashboardPoolStats struct {
 	AverageProcessingTimeMs float64 `json:"averageProcessingTimeMs"`
 }
 
-// DashboardQueueStats mirrors Rust DashboardQueueStats.
+// DashboardQueueStats is the dashboard per-queue stats row.
 type DashboardQueueStats struct {
 	Name               string  `json:"name"`
 	TotalMessages      uint64  `json:"totalMessages"`
@@ -158,7 +158,7 @@ type DashboardQueueStats struct {
 	MessagesNotVisible uint64  `json:"messagesNotVisible"`
 }
 
-// DashboardCircuitBreaker mirrors Rust DashboardCircuitBreakerStats.
+// DashboardCircuitBreaker is the dashboard circuit-breaker row.
 type DashboardCircuitBreaker struct {
 	Name            string  `json:"name"`
 	State           string  `json:"state"`
@@ -170,7 +170,7 @@ type DashboardCircuitBreaker struct {
 	BufferSize      uint32  `json:"bufferSize"`
 }
 
-// CircuitBreakerStateResponse mirrors Rust CircuitBreakerStateResponse.
+// CircuitBreakerStateResponse is the per-breaker state payload.
 type CircuitBreakerStateResponse struct {
 	Name           string `json:"name"`
 	State          string `json:"state"`
@@ -179,8 +179,8 @@ type CircuitBreakerStateResponse struct {
 	RecentFailures uint32 `json:"recentFailures"`
 }
 
-// InFlightMessageInfo mirrors Rust InFlightMessageInfo (the first six fields,
-// same camelCase tags). MessageGroup + Attempts are Go-only additive fields:
+// InFlightMessageInfo describes one in-flight message. The first six fields
+// are the established wire contract; MessageGroup + Attempts are additive:
 // together with ElapsedTimeMs they let an operator tell an orphaned/stuck
 // delivery (high elapsed, Attempts==0 — pinned on its first attempt) apart
 // from one legitimately retrying (Attempts>0) or one just genuinely slow.
@@ -225,7 +225,7 @@ type InFlightCheckBatchRequest struct {
 	MessageIDs []string `json:"messageIds"`
 }
 
-// QueueMetricsView mirrors Rust QueueMetricsResponse.
+// QueueMetricsView is the per-queue metrics payload — snake_case.
 type QueueMetricsView struct {
 	QueueIdentifier  string `json:"queue_identifier"`
 	PendingMessages  uint64 `json:"pending_messages"`
@@ -242,7 +242,7 @@ type ConsumerHealthResponse struct {
 	Consumers     map[string]ConsumerHealthDetail `json:"consumers"`
 }
 
-// ConsumerHealthDetail mirrors the Java per-consumer entry.
+// ConsumerHealthDetail is the per-consumer entry.
 type ConsumerHealthDetail struct {
 	MapKey                   string `json:"mapKey"`
 	QueueIdentifier          string `json:"queueIdentifier"`
@@ -257,7 +257,7 @@ type ConsumerHealthDetail struct {
 
 // ── Warnings (/warnings, /monitoring/warnings, /warnings/{id}/...) ───────
 
-// WireWarning mirrors Rust Warning — snake_case JSON tags.
+// WireWarning is the wire shape of Warning — snake_case JSON tags.
 type WireWarning struct {
 	ID             string     `json:"id"`
 	Category       string     `json:"category"`
@@ -411,7 +411,7 @@ type ResetResponse struct {
 
 // ── Config / standby / traffic ───────────────────────────────────────────
 
-// LocalConfigResponse mirrors Rust's get_local_config: never expose secrets.
+// LocalConfigResponse never exposes secrets: version + warning counts only.
 type LocalConfigResponse struct {
 	Version          string `json:"version"`
 	WarningsTotal    uint64 `json:"warnings_total"`
@@ -424,14 +424,14 @@ type ConfigReloadResponse struct {
 	Note    string `json:"note,omitempty"`
 }
 
-// StandbyStatusResponse mirrors Rust StandbyStatusResponse.
+// StandbyStatusResponse is the standby/leader-election status payload.
 type StandbyStatusResponse struct {
 	Enabled    bool   `json:"enabled"`
 	IsLeader   bool   `json:"is_leader"`
 	InstanceID string `json:"instance_id"`
 }
 
-// TrafficStatusResponse mirrors Rust TrafficStatusResponse.
+// TrafficStatusResponse is the traffic-management status payload.
 type TrafficStatusResponse struct {
 	Enabled       bool   `json:"enabled"`
 	Mode          string `json:"mode"`

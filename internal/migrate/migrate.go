@@ -9,9 +9,9 @@
 // Run is idempotent. An already-migrated database is detected and its goose
 // ledger is seeded so nothing re-runs (which matters because migrations
 // 019/022 DROP and recreate the messaging tables). Go's own legacy
-// `_fc_migrations` tracker, the Rust platform's `_schema_migrations` tracker,
-// and — as a final safety net — a populated-but-untracked schema are all
-// recognised. See bootstrap for the precedence.
+// `_fc_migrations` tracker, the previous platform's `_schema_migrations`
+// tracker, and — as a final safety net — a populated-but-untracked schema are
+// all recognised. See bootstrap for the precedence.
 package migrate
 
 import (
@@ -55,9 +55,10 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 //
 //  1. `_fc_migrations` — Go's own pre-goose tracker (a `name` column). Seed
 //     goose from it, then drop it: it's ours and goose supersedes it.
-//  2. `_schema_migrations` — the Rust platform's tracker (a `migration_id`
-//     column). Seed goose from it but leave it in place; the Rust system may
-//     still own it during a side-by-side cutover or a rollback.
+//  2. `_schema_migrations` — the previous platform's tracker (a
+//     `migration_id` column). Seed goose from it but leave it in place; the
+//     previous system may still own it during a side-by-side cutover or a
+//     rollback.
 //  3. No recognised tracker and goose has never run here, but the schema is
 //     already populated (the canonical `tnt_clients` table exists). Baseline
 //     goose to the full shipped migration set so none re-run against live
@@ -79,7 +80,7 @@ func bootstrap(ctx context.Context, db *sql.DB) error {
 		return seedGoose(ctx, db, versions, "_fc_migrations")
 	}
 
-	// (2) The Rust platform's tracker — seed but never drop it.
+	// (2) The previous platform's tracker — seed but never drop it.
 	if ok, err := tableExists(ctx, db, "_schema_migrations"); err != nil {
 		return err
 	} else if ok {
@@ -88,7 +89,7 @@ func bootstrap(ctx context.Context, db *sql.DB) error {
 			return err
 		}
 		if len(versions) > 0 {
-			slog.Info("migrate: seeding goose ledger from Rust _schema_migrations",
+			slog.Info("migrate: seeding goose ledger from legacy platform _schema_migrations",
 				"migrations", len(versions))
 			return seedGoose(ctx, db, versions, "")
 		}

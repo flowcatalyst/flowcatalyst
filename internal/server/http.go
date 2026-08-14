@@ -8,7 +8,7 @@ import (
 )
 
 // swaggerUIHTML is a minimal Swagger UI page (served at /swagger-ui) that
-// loads the spec from /q/openapi, mirroring the Rust docs surface.
+// loads the spec from /q/openapi (the legacy docs path).
 const swaggerUIHTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -24,14 +24,13 @@ const swaggerUIHTML = `<!DOCTYPE html>
 </html>`
 
 // Version is the build version reported by /health. Overridable at build
-// time via -ldflags "-X .../internal/server.Version=<v>". Mirrors Rust's
-// env!("CARGO_PKG_VERSION").
+// time via -ldflags "-X .../internal/server.Version=<v>".
 var Version = "dev"
 
 // healthHandler is the package-level /health stub used by Run when no
 // platform-mounted handler beats it. fc-server / fcdev get the same
-// shape so monitoring tooling can scrape both equivalently. Matches the
-// Rust health_handler shape: {"status":"UP","version":...}.
+// shape so monitoring tooling can scrape both equivalently. The wire
+// shape is {"status":"UP","version":...}.
 func healthHandler(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "UP", "version": Version})

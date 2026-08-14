@@ -5,8 +5,7 @@ import (
 	"time"
 )
 
-// InstanceStatus is the lifecycle state of a single firing. Mirrors
-// fc-platform/src/scheduled_job/entity.rs::InstanceStatus.
+// InstanceStatus is the lifecycle state of a single firing.
 //
 // Terminal states: COMPLETED, FAILED, DELIVERY_FAILED. When the parent
 // job has TracksCompletion=false, DELIVERED is also terminal (the
@@ -99,8 +98,8 @@ type ScheduledJobInstanceLog struct {
 	CreatedAt      time.Time       `json:"createdAt"`
 }
 
-// InstanceListFilters drives the paginated instance list query. Mirrors
-// Rust's InstanceListFilters — AND semantics across non-nil fields,
+// InstanceListFilters drives the paginated instance list query —
+// AND semantics across non-nil fields,
 // timestamp window is half-open [From, To).
 type InstanceListFilters struct {
 	ScheduledJobID *string

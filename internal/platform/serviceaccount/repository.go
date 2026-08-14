@@ -12,8 +12,8 @@ import (
 )
 
 // Repository is the Postgres-backed repo. Table: iam_service_accounts.
-// Webhook credentials live as flat wh_* columns on the row (matches
-// Rust schema); the entity's WebhookCredentials struct is reconstituted
+// Webhook credentials live as flat wh_* columns on the row; the
+// entity's WebhookCredentials struct is reconstituted
 // from those columns on read.
 //
 // Role assignments (RoleAssignment) live in iam_principal_roles and are

@@ -13,8 +13,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/client"
 )
 
-// registerTools mounts the full read-only tool catalogue (1:1 with the Rust
-// fc-mcp server). Optional args use `omitempty` (→ not required in the input
+// registerTools mounts the full read-only tool catalogue.
+// Optional args use `omitempty` (→ not required in the input
 // schema); required args (id, applicationCode) are plain strings.
 func (s *Server) registerTools(m *mcpsdk.Server) {
 	mcpsdk.AddTool(m, &mcpsdk.Tool{
@@ -142,7 +142,7 @@ func (s *Server) getSchema(ctx context.Context, _ *mcpsdk.CallToolRequest, a get
 		want = "CURRENT"
 	}
 	schema := findSchema(et.SpecVersions, want)
-	// CURRENT falls back to FINALISING, matching Rust.
+	// CURRENT falls back to FINALISING.
 	if schema == nil && want == "CURRENT" {
 		schema = findSchema(et.SpecVersions, "FINALISING")
 	}
@@ -170,7 +170,7 @@ func (s *Server) getSubscription(ctx context.Context, _ *mcpsdk.CallToolRequest,
 }
 
 func (s *Server) listApplications(ctx context.Context, _ *mcpsdk.CallToolRequest, a listApplicationsArgs) (*mcpsdk.CallToolResult, any, error) {
-	active := true // Rust default: active only.
+	active := true // Default: active only.
 	if a.Active != nil {
 		active = *a.Active
 	}
@@ -215,7 +215,7 @@ func (s *Server) getApplicationCapabilities(ctx context.Context, _ *mcpsdk.CallT
 	}
 	_ = json.Unmarshal(appRaw, &app)
 
-	// Sub-resources tolerate a 404 (return null), matching Rust.
+	// Sub-resources tolerate a 404 (return null).
 	bundle := map[string]any{
 		"application":     appRaw,
 		"openapi":         rawOrNil(tolerate404(s.fetchOpenAPIByID(ctx, app.ID))),
@@ -230,7 +230,7 @@ func (s *Server) getApplicationCapabilities(ctx context.Context, _ *mcpsdk.CallT
 // ─── platform helpers ────────────────────────────────────────────────────
 
 // fetchOpenAPI resolves an application by code, then fetches its CURRENT
-// OpenAPI spec via the developer BFF (two-hop, 1:1 with Rust).
+// OpenAPI spec via the developer BFF (two-hop).
 func (s *Server) fetchOpenAPI(ctx context.Context, code string) (json.RawMessage, error) {
 	var app struct {
 		ID string `json:"id"`

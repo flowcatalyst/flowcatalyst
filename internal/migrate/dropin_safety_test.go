@@ -71,8 +71,8 @@ func TestDropInSafety(t *testing.T) {
 		t.Fatal("sentinel not inserted")
 	}
 
-	// ── Scenario A: a Rust-migrated DB — populated schema + the Rust
-	//    _schema_migrations tracker, but no goose ledger. ───────────────────
+	// ── Scenario A: a DB migrated by the previous platform — populated schema
+	//    + its _schema_migrations tracker, but no goose ledger. ─────────────
 	mustExec(`DROP TABLE goose_db_version`)
 	mustExec(`CREATE TABLE _schema_migrations (
 		migration_id VARCHAR(100) PRIMARY KEY,
@@ -92,20 +92,20 @@ func TestDropInSafety(t *testing.T) {
 	if got := sentinelCount(); got != 1 {
 		t.Fatalf("scenario A: msg_events was recreated — DATA LOSS (sentinel count=%d)", got)
 	}
-	var v19, hasRust int
+	var v19, hasLegacyTracker int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM goose_db_version WHERE version_id = 19 AND is_applied`).Scan(&v19); err != nil {
 		t.Fatalf("check goose v19: %v", err)
 	}
 	if v19 != 1 {
 		t.Fatalf("scenario A: goose version 19 not seeded as applied (got %d)", v19)
 	}
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.tables WHERE table_name='_schema_migrations'`).Scan(&hasRust); err != nil {
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.tables WHERE table_name='_schema_migrations'`).Scan(&hasLegacyTracker); err != nil {
 		t.Fatalf("check _schema_migrations: %v", err)
 	}
-	if hasRust != 1 {
-		t.Fatal("scenario A: _schema_migrations was dropped (must be preserved for Rust rollback)")
+	if hasLegacyTracker != 1 {
+		t.Fatal("scenario A: _schema_migrations was dropped (must be preserved for legacy rollback)")
 	}
-	t.Log("scenario A (Rust _schema_migrations): sentinel survived, goose seeded, Rust tracker preserved")
+	t.Log("scenario A (legacy _schema_migrations): sentinel survived, goose seeded, legacy tracker preserved")
 
 	// ── Scenario B: populated schema, NO tracker, NO goose ledger. The
 	//    tnt_clients fallback must baseline so nothing re-runs. ─────────────

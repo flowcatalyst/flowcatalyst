@@ -1,7 +1,7 @@
 -- +goose Up
 -- Persist-boundary columns for fields the entities and API DTOs already
 -- carry but the schema silently dropped (found by the operation-test
--- campaign). All additive + nullable: the Rust twin's explicit column
+-- campaign). All additive + nullable: the legacy-platform twin's explicit column
 -- lists ignore them, and its rows simply read back NULL.
 
 ALTER TABLE msg_event_types ADD COLUMN created_by VARCHAR(17);

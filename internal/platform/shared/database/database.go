@@ -1,5 +1,4 @@
-// Package database provides the pgxpool factory matching the Rust
-// shared/database.rs setup.
+// Package database provides the pgxpool factory.
 package database
 
 import (

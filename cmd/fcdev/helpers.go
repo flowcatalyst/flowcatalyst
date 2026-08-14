@@ -18,7 +18,7 @@ func envStrDefault(key, def string) string {
 
 // envFirst returns the value of the first set (non-empty) env var in keys,
 // falling back to def. Used where a setting has several accepted env names
-// (e.g. the Rust/SDK aliases for the outbox DB type and URL).
+// (e.g. the legacy/SDK aliases for the outbox DB type and URL).
 func envFirst(def string, keys ...string) string {
 	for _, k := range keys {
 		if v := os.Getenv(k); v != "" {

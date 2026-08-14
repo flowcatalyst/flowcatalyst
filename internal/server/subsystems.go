@@ -46,7 +46,7 @@ import (
 // Leader-gated: the per-message-group FIFO dispatcher is in-process only, so
 // within-group ordering requires a single active scheduler. Concurrent
 // SKIP-LOCKED claims across replicas would let two nodes dispatch the same
-// group's jobs out of order. Mirrors Rust's active_rx gate on spawn_scheduler.
+// group's jobs out of order.
 //
 // The dispatcher publishes claimed jobs to the queue the router consumes
 // from — see schedulerPublisher. In dev / single-tenant mode that is the
@@ -134,7 +134,7 @@ func dispatchAuthSecret() (string, error) {
 // StartScheduledJobScheduler runs the scheduled-job cron + dispatch engine
 // (poller + dispatcher). Leader-gated: when standby is enabled only the lock
 // holder fires, because the loops intentionally have no SELECT … FOR UPDATE
-// SKIP LOCKED claim (mirrors the Rust single-active-replica design). Blocks
+// SKIP LOCKED claim (single-active-replica by design). Blocks
 // until ctx is cancelled.
 func StartScheduledJobScheduler(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg) {
 	isLeader := newLeaderGate(ctx, cfg, "scheduled-job")
@@ -198,7 +198,7 @@ func StartStreamProcessorWithHealth(ctx context.Context, pool *pgxpool.Pool, cfg
 	pcfg := stream.DefaultProjectorConfig()
 
 	// One leader gate for the whole stream processor (projections + fan-out +
-	// partition manager), mirroring Rust's single active_rx hand-off. The
+	// partition manager). The
 	// fan-out and the downstream dispatch scheduler must be single-active to
 	// preserve within-message-group ordering: concurrent SKIP-LOCKED claims
 	// across replicas, combined with an in-process-only per-group FIFO, would
@@ -227,8 +227,8 @@ func StartStreamProcessorWithHealth(ctx context.Context, pool *pgxpool.Pool, cfg
 	}
 
 	// projCfg derives a per-projection config from the base config. BatchSize
-	// precedence (matches Rust): per-projection env var > global
-	// FC_STREAM_BATCH_SIZE > the Rust per-projection default (events/dispatch
+	// precedence: per-projection env var > global
+	// FC_STREAM_BATCH_SIZE > the per-projection default (events/dispatch
 	// 100, fan-out 200).
 	projCfg := func(batchEnv string, defaultBatch int) stream.ProjectorConfig {
 		c := pcfg
@@ -254,7 +254,7 @@ func StartStreamProcessorWithHealth(ctx context.Context, pool *pgxpool.Pool, cfg
 	}
 	if cfg.StreamFanOutEnabled {
 		// FC_STREAM_FAN_OUT_SUBS_REFRESH_SECS tunes the subscription cache TTL
-		// (Rust EventFanOutConfig.subscription_refresh; default 5s).
+		// (default 5s).
 		foCfg := stream.DefaultFanOutConfig()
 		if cfg.StreamFanOutSubsRefreshSecs > 0 {
 			foCfg.SubscriptionTTL = time.Duration(cfg.StreamFanOutSubsRefreshSecs) * time.Second
@@ -265,7 +265,7 @@ func StartStreamProcessorWithHealth(ctx context.Context, pool *pgxpool.Pool, cfg
 	}
 	if cfg.StreamPartitionsEnabled {
 		// The whole stream processor is leader-gated on one election
-		// (streamLeader), matching Rust's spawn_stream_processor: the fan-out
+		// (streamLeader): the fan-out
 		// must be single-active for message-group ordering, and the partition
 		// manager does DDL (CREATE/DROP) that only the leader should run.
 		pm := stream.NewPartitionManager(pool)
@@ -294,7 +294,7 @@ func StartStreamProcessorWithHealth(ctx context.Context, pool *pgxpool.Pool, cfg
 //
 // The processor is leader-gated (newLeaderGate): when standby is enabled only
 // the leader polls — the Mongo backend has no atomic claim, so a single
-// active poller avoids double-claims. Mirrors the Rust outbox leadership gate.
+// active poller avoids double-claims.
 func StartOutboxProcessor(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg) {
 	if cfg.OutboxPlatformURL == "" {
 		slog.Error("outbox processor enabled but FC_OUTBOX_PLATFORM_URL / FC_OUTBOX_API_URL not set; skipping")
@@ -475,8 +475,7 @@ func StartRouter(ctx context.Context, _ *pgxpool.Pool, cfg EnvCfg) {
 // rows from the three ephemeral auth tables: oauth_oidc_payloads
 // (access/refresh tokens), oauth_oidc_login_states (the in-flight OIDC
 // bridge state), and webauthn_ceremonies (in-flight registration /
-// authentication challenges). Mirrors Rust's background
-// payload_purge_loop. Always-on; no env toggle.
+// authentication challenges). Always-on; no env toggle.
 //
 // Cadence: every minute. Idempotent — each purge is a DELETE WHERE
 // expires_at < NOW(). Failures are logged and the loop keeps going.

@@ -1,5 +1,5 @@
-// Package emaildomainmapping is the port of fc-platform/src/email_domain_mapping.
-// Maps email domains to IDPs at signup; carries optional client grants and 2FA
+// Package emaildomainmapping maps email domains to IDPs at signup; it
+// carries optional client grants and 2FA
 // policy applied to users who sign up via that domain. Role-sync config lives
 // on the identity provider (identityprovider package), not here.
 package emaildomainmapping

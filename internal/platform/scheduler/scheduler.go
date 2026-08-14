@@ -1,10 +1,10 @@
-// Package scheduler is the port of fc-platform/src/scheduler. It is the
+// Package scheduler is the
 // dispatch-job scheduler: polls PENDING dispatch jobs, groups by
 // message_group, applies pause/block filters, and publishes to the
 // message queue (SQS in prod, in-process queue in dev) for the router
 // to consume.
 //
-// Mirrors the Rust scheduler subdomain layout:
+// Layout:
 //
 //	poller.go          — PendingJobPoller + PausedConnectionCache
 //	dispatcher.go      — MessageGroupDispatcher with per-group FIFO + semaphore
@@ -53,11 +53,10 @@ type Config struct {
 	ProcessingEndpoint string
 }
 
-// DefaultConfig holds the Go dispatch-job scheduler defaults. These are
-// intentionally Go's own (more standard) values, NOT a 1:1 copy of the Rust
-// scheduler: Rust uses poll 5s / batch 200 / max_concurrent_groups 10 /
-// stale 15m. The owner chose to keep Go's faster, more conventional defaults
-// (poll 1s / batch 100 / in-flight 1000 / stale 5m). All are env-overridable.
+// DefaultConfig holds the dispatch-job scheduler defaults. The owner
+// chose fast, conventional defaults
+// (poll 1s / batch 100 / in-flight 1000 / stale 5m) over the slower
+// legacy values. All are env-overridable.
 func DefaultConfig() Config {
 	return Config{
 		PollInterval:      1 * time.Second,
@@ -85,8 +84,7 @@ type Scheduler struct {
 	// IsLeader, when set, gates the poller + stale-recovery loops so only the
 	// single active scheduler claims/reclaims jobs. Required for within-
 	// message-group ordering in HA (the per-group FIFO dispatcher is in-process
-	// only). nil = always run (standby disabled). Mirrors Rust's active_rx gate
-	// on spawn_scheduler.
+	// only). nil = always run (standby disabled).
 	IsLeader func() bool
 }
 

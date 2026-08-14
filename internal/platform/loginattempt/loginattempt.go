@@ -1,5 +1,5 @@
-// Package loginattempt is the port of fc-platform/src/login_attempt.
-// Tracks user-login and service-account-token outcomes for backoff /
+// Package loginattempt tracks user-login and service-account-token
+// outcomes for backoff /
 // rate-limiting and audit. Writes are infrastructure-processing (the
 // auth subdomain inserts rows directly; no UoW commit per the
 // conventions in docs/conventions.md §3).

@@ -160,7 +160,7 @@ func CreateServiceAccountWithCredentials(
 
 // generateOAuthClientSecret returns a fresh URL-safe secret + its
 // encrypted reference (stored in client_secret_ref; verified at
-// /oauth/token by decrypt-and-compare — Rust parity).
+// /oauth/token by decrypt-and-compare).
 func generateOAuthClientSecret() (plaintext, ref string, err error) {
 	b := make([]byte, 32)
 	if _, err = rand.Read(b); err != nil {

@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\DB;
  * On `commit()`, the `DomainEvent` is mapped into a `CreateEventDto`
  * (source / subject / correlationId / messageGroup / deduplicationId plus
  * principalId / executionId / aggregateType as contextData) and inserted
- * into the outbox table. The fc-outbox-processor forwards it to the
+ * into the outbox table. The outbox poller forwards it to the
  * platform.
  *
  * Authoring goes through the use-case envelope ({@link Operation} +

@@ -19,7 +19,7 @@ import (
 //
 // If this fails, the SDK and the router are out of sync — and existing
 // webhook subscribers will stop verifying signatures correctly after
-// cutover. See docs/api-parity.md §HMAC for the test vector.
+// cutover. See docs/wire-contract.md §HMAC for the test vector.
 func TestVerifyMatchesRouterSigner(t *testing.T) {
 	secret := "test-secret-do-not-use-in-prod"
 	body := []byte(`{"messageId":"msg_TEST123456"}`)

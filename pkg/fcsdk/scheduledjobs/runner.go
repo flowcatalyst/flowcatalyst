@@ -65,7 +65,7 @@ const (
 )
 
 // Envelope is the JSON body POSTed by the platform's scheduler
-// dispatcher. Mirrors ScheduledJobEnvelope in the TS / Rust SDKs.
+// dispatcher. Mirrors ScheduledJobEnvelope in the TS SDK.
 type Envelope struct {
 	JobID            string          `json:"jobId"`
 	JobCode          string          `json:"jobCode"`

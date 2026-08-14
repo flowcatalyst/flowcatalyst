@@ -17,7 +17,7 @@ type PauseCommand struct {
 }
 
 // PauseSubscription pauses a subscription and emits [SubscriptionPaused].
-// Idempotent — pausing a paused subscription still emits the event (matches Rust).
+// Idempotent — pausing a paused subscription still emits the event.
 func PauseSubscription(repo *subscription.Repository) usecaseop.Operation[PauseCommand, SubscriptionPaused] {
 	return usecaseop.Operation[PauseCommand, SubscriptionPaused]{
 		Name: "PauseSubscription",

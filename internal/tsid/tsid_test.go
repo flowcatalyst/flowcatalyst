@@ -85,11 +85,11 @@ func TestSortability(t *testing.T) {
 	assert.Less(t, id1, id2, "TSIDs should be lexicographically sortable")
 }
 
-// TestPrefixesMatchRust enumerates every EntityType and asserts the
-// prefix matches the Rust EntityType::prefix() string. This is the
-// load-bearing cross-language parity test: if any prefix drifts, the
+// TestPrefixCatalogStable enumerates every EntityType and asserts the
+// prefix matches the canonical prefix table. This is the
+// load-bearing compatibility test: if any prefix drifts, the
 // TSIDs the Go code produces don't match what consumers expect.
-func TestPrefixesMatchRust(t *testing.T) {
+func TestPrefixCatalogStable(t *testing.T) {
 	cases := map[tsid.EntityType]string{
 		tsid.Client:                  "clt",
 		tsid.Principal:               "prn",

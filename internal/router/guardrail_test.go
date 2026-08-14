@@ -2,9 +2,8 @@ package router
 
 // Guardrail suite for the message router. Run with: go test -race ./internal/router/ -run Guardrail
 //
-// These encode the operational contract the Go router must preserve (the rules
-// the Rust implementation defines) and the concurrency invariants Go cannot
-// enforce at compile time. The breaker now lives in the mediator, so the
+// These encode the operational contract the router must preserve and the
+// concurrency invariants Go cannot enforce at compile time. The breaker now lives in the mediator, so the
 // breaker-accounting guardrails target that layer; the pool guardrails assert
 // resolution always fires (incl. panic) and that concurrent submit is race-free
 // (`-race` turns a dropped lock into a hard failure here).

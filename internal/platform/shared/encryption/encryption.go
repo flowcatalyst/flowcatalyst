@@ -2,7 +2,7 @@
 // FLOWCATALYST_APP_KEY rotation support. Used for OAuth client secrets,
 // webhook signing keys, and other sensitive column values.
 //
-// Wire format (mirrors Rust crates/fc-platform/src/shared/encryption_service.rs):
+// Wire format:
 //
 //	base64(version_byte(1) || nonce(12) || ciphertext+tag)
 //
@@ -172,7 +172,7 @@ func (s *Service) NeedsReEncryption(encrypted string) bool {
 }
 
 // GenerateKey returns a freshly-generated 32-byte AES-256 key,
-// base64-encoded. Matches Rust generate_key().
+// base64-encoded.
 func GenerateKey() (string, error) {
 	key := make([]byte, 32)
 	if _, err := cryptorand.Read(key); err != nil {

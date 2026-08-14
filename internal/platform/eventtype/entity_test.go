@@ -10,7 +10,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 )
 
-// Parity tests against the Rust entity tests in event_type/entity.rs.
+// Entity-level tests for event-type code validation and schema versioning.
 
 func TestNewAcceptsValidFourPartCode(t *testing.T) {
 	et, err := eventtype.New("orders:fulfillment:shipment:shipped", "Shipment Shipped")

@@ -23,7 +23,7 @@ type SyncEventTypeBindingInput struct {
 // SyncSubscriptionInput is one subscription definition in an SDK sync payload.
 //
 // Mode is accepted for wire compatibility but intentionally NOT applied:
-// the Rust SyncSubscriptionsUseCase never sets the subscription's dispatch
+// the sync has never set the subscription's dispatch
 // mode (synced subscriptions take the entity default), so applying it here
 // would diverge the router's per-subscription dispatch behaviour. See the
 // create/update branches below.
@@ -52,8 +52,7 @@ type SyncSubscriptionsCommand struct {
 }
 
 // SyncSubscriptions bulk-upserts an application's subscription catalogue
-// within a single transaction. Mirrors the Rust SyncSubscriptionsUseCase
-// exactly:
+// within a single transaction:
 //
 //   - Validates app code; each subscription needs code, name, target, and at
 //     least one event-type binding.
@@ -62,7 +61,7 @@ type SyncSubscriptionsCommand struct {
 //     CODE-sourced rows are updated/removed; UI-authored rows are untouched.
 //     New rows are created with source=API.
 //   - dispatchPoolCode is resolved to (id, code) via the global pool lookup;
-//     an unresolvable code is silently left unset (matches Rust).
+//     an unresolvable code is silently left unset.
 //   - maxRetries / timeoutSeconds are only overwritten when present.
 //   - RemoveUnlisted hard-deletes API/CODE rows absent from the payload.
 //
@@ -244,8 +243,8 @@ func SyncSubscriptions(
 
 // resolveDispatchPool resolves a pool code to (id, code) via the global pool
 // lookup and writes them through the supplied pointers. An empty/nil code or
-// an unresolvable code leaves the targets untouched (matches Rust, which
-// silently ignores a missing pool).
+// an unresolvable code leaves the targets untouched (a missing pool is
+// silently ignored).
 func resolveDispatchPool(ctx context.Context, poolRepo *dispatchpool.Repository, code *string, idOut, codeOut **string) {
 	if code == nil || strings.TrimSpace(*code) == "" {
 		return

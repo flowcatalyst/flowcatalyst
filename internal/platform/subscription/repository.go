@@ -100,7 +100,6 @@ func (r *Repository) FindWithFilters(ctx context.Context, status, clientID *stri
 // FindByApplicationCode returns the subscriptions whose application_code
 // matches, hydrated with their event-type bindings and custom config. Used by
 // the SDK sync to scope an application's API/CODE-sourced subscriptions.
-// Mirrors the Rust SubscriptionRepository::find_by_application_code.
 func (r *Repository) FindByApplicationCode(ctx context.Context, appCode string) ([]Subscription, error) {
 	const baseSelect = `SELECT id, code, application_code, name, description, client_id,
 		client_identifier, client_scoped, target, queue, source, status,

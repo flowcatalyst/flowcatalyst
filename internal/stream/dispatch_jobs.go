@@ -8,8 +8,7 @@ import (
 )
 
 // DispatchJobProjection denormalizes msg_dispatch_jobs into
-// msg_dispatch_jobs_read. Mirrors
-// crates/fc-stream/src/dispatch_job_projection.rs.
+// msg_dispatch_jobs_read.
 //
 // Picks up jobs that are new (`projected_at IS NULL`) or updated since
 // the last projection (`updated_at > projected_at`), upserts into the
@@ -85,7 +84,7 @@ func (p *DispatchJobProjection) step(ctx context.Context, batchSize int) (int, e
 		        j.attempt_count, j.last_attempt_at, j.completed_at,
 		        j.duration_millis, j.last_error, j.idempotency_key,
 		        -- is_completed: the single success terminal (status == COMPLETED).
-		        -- is_terminal: any non-retryable end state. Mirrors the Rust
+		        -- is_terminal: any non-retryable end state. Mirrors the legacy
 		        -- DispatchStatus is_completed / is_terminal() split — the prior
 		        -- code conflated them and used SUCCESS/IGNORED names that Go
 		        -- never writes (Go uses COMPLETED; there is no IGNORED).

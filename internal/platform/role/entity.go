@@ -1,4 +1,4 @@
-// Package role is the port of fc-platform/src/role. Defines RBAC role
+// Package role defines RBAC role
 // shapes with permission sets (incl. wildcard pattern matching).
 package role
 
@@ -38,7 +38,7 @@ type Permission struct {
 	Category    *string `json:"category,omitempty"`
 }
 
-// Role is the aggregate root. Mirrors AuthRole in Rust.
+// Role is the aggregate root.
 type Role struct {
 	ID              string    `json:"id"`
 	ApplicationID   *string   `json:"applicationId,omitempty"`

@@ -37,7 +37,7 @@ func RegisterRoutes(r chi.Router, s *State) {
 	r.Get("/api/me/clients/{clientId}/applications", s.listMyClientApplications)
 }
 
-// whoamiResponse mirrors Rust's WhoamiResponse exactly.
+// whoamiResponse is the wire shape for GET /api/me.
 type whoamiResponse struct {
 	PrincipalID              string   `json:"principalId"`
 	PrincipalType            string   `json:"principalType"`
@@ -51,7 +51,7 @@ type whoamiResponse struct {
 	AccessibleApplicationIDs []string `json:"accessibleApplicationIds"`
 	// AllApplications reports whether the principal has access to every
 	// application (present and future); when true AccessibleApplicationIDs is
-	// not a restriction. Additive Go field (not in the Rust contract).
+	// not a restriction. Additive field (not in the original wire contract).
 	AllApplications bool `json:"allApplications"`
 }
 
@@ -80,8 +80,7 @@ func (s *State) whoami(w http.ResponseWriter, r *http.Request) {
 
 	// accessible_application_ids isn't in the JWT claims, so resolve
 	// it from the principal row. Anchors see every application
-	// implicitly; we still surface their granted list for symmetry
-	// with the Rust behaviour.
+	// implicitly; we still surface their granted list.
 	p, err := s.Principals.FindByID(r.Context(), ac.PrincipalID)
 	if err != nil {
 		httperror.Write(w, usecase.Internal("REPO", "principal lookup failed", err))
@@ -110,7 +109,7 @@ func (s *State) whoami(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(out)
 }
 
-// myApplicationResponse mirrors Rust's MyApplicationResponse (camelCase).
+// myApplicationResponse is one application row (camelCase).
 type myApplicationResponse struct {
 	ID           string  `json:"id"`
 	Code         string  `json:"code"`
@@ -122,19 +121,19 @@ type myApplicationResponse struct {
 	LogoMimeType *string `json:"logoMimeType,omitempty"`
 }
 
-// myApplicationsListResponse mirrors Rust's MyApplicationsListResponse.
+// myApplicationsListResponse is the list envelope for /api/me/applications.
 type myApplicationsListResponse struct {
 	Applications []myApplicationResponse `json:"applications"`
 	Total        int                     `json:"total"`
 	// ClientID is empty for this principal-scoped variant (kept for
-	// response-shape compatibility with the per-client endpoint). 1:1 with Rust.
+	// response-shape compatibility with the per-client endpoint).
 	ClientID string `json:"clientId"`
 }
 
 // listMyApplications serves GET /api/me/applications: the applications the
 // calling principal can access. Principals with all-applications access see
 // every application; others see the apps granted on their principal row
-// (accessible_application_ids). Mirrors Rust me_api.rs list_my_applications.
+// (accessible_application_ids).
 // Note: the predicate is the application-axis flag (AllApplications), not the
 // client tier — an anchor-tier service account scoped to one application sees
 // only that application here.
@@ -145,7 +144,7 @@ func (s *State) listMyApplications(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	all, err := s.Applications.FindWithFilters(r.Context(), nil, nil) // all apps (active + inactive), 1:1 with Rust find_all
+	all, err := s.Applications.FindWithFilters(r.Context(), nil, nil) // all apps (active + inactive)
 	if err != nil {
 		httperror.Write(w, usecase.Internal("REPO", "application lookup failed", err))
 		return
@@ -183,7 +182,7 @@ func (s *State) listMyApplications(w http.ResponseWriter, r *http.Request) {
 // filterMyApplications keeps the apps the caller can see (all-applications
 // principals see all, others only those in accessible) and maps each to the wire
 // shape (DefaultBaseURL → baseUrl). Pure, so the access filter + field mapping
-// are unit-testable without a DB. 1:1 with Rust's mapping.
+// are unit-testable without a DB.
 func filterMyApplications(all []application.Application, allApplications bool, accessible map[string]bool) []myApplicationResponse {
 	apps := make([]myApplicationResponse, 0, len(all))
 	for i := range all {
@@ -211,7 +210,7 @@ func stringSliceOrEmpty(s []string) []string {
 	return s
 }
 
-// myClientResponse mirrors Rust's MyClientResponse (camelCase).
+// myClientResponse is one client row (camelCase).
 type myClientResponse struct {
 	ID         string  `json:"id"`
 	Name       string  `json:"name"`
@@ -221,7 +220,7 @@ type myClientResponse struct {
 	UpdatedAt  string  `json:"updatedAt"`
 }
 
-// myClientsListResponse mirrors Rust's MyClientsListResponse.
+// myClientsListResponse is the list envelope for /api/me/clients.
 type myClientsListResponse struct {
 	Clients []myClientResponse `json:"clients"`
 	Total   int                `json:"total"`
@@ -240,7 +239,7 @@ func clientToMyResponse(c *client.Client) myClientResponse {
 }
 
 // listMyClients serves GET /api/me/clients: the clients the caller can access
-// (anchors see all). Mirrors Rust me_api.rs list_my_clients.
+// (anchors see all).
 func (s *State) listMyClients(w http.ResponseWriter, r *http.Request) {
 	ac := auth.FromContext(r.Context())
 	if ac == nil {
@@ -263,7 +262,7 @@ func (s *State) listMyClients(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(myClientsListResponse{Clients: out, Total: len(out)})
 }
 
-// getMyClient serves GET /api/me/clients/{clientId}. Mirrors Rust get_my_client.
+// getMyClient serves GET /api/me/clients/{clientId}.
 func (s *State) getMyClient(w http.ResponseWriter, r *http.Request) {
 	ac := auth.FromContext(r.Context())
 	if ac == nil {
@@ -289,8 +288,7 @@ func (s *State) getMyClient(w http.ResponseWriter, r *http.Request) {
 }
 
 // listMyClientApplications serves GET /api/me/clients/{clientId}/applications:
-// the applications enabled for a client the caller can access. Mirrors Rust
-// list_my_client_applications.
+// the applications enabled for a client the caller can access.
 func (s *State) listMyClientApplications(w http.ResponseWriter, r *http.Request) {
 	ac := auth.FromContext(r.Context())
 	if ac == nil {

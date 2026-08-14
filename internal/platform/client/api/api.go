@@ -37,7 +37,7 @@ func Register(api huma.API, s *State) {
 	apiroute.Get(g, "listClients", "/api/clients", "List clients", s.list)
 	apiroute.Post(g, "createClient", "/api/clients", "Create a client", http.StatusCreated, s.create)
 	apiroute.Post(g, "searchClients", "/api/clients/search", "Search clients", http.StatusOK, s.search)
-	// SDK-compatibility alias: the Laravel/Rust client issues
+	// SDK-compatibility alias: the SDK clients issue
 	// GET /api/clients/search?q=<term>. Same search, query-param input.
 	apiroute.Get(g, "searchClientsByQuery", "/api/clients/search", "Search clients (SDK alias; ?q=<term>)", s.searchByQuery)
 	apiroute.Get(g, "getClientByIdentifier", "/api/clients/by-identifier/{identifier}", "Get a client by identifier", s.byIdentifier)
@@ -48,8 +48,7 @@ func Register(api huma.API, s *State) {
 	apiroute.Post(g, "addClientNote", "/api/clients/{id}/notes", "Add a note to a client", http.StatusOK, s.addNote)
 	apiroute.Delete(g, "deleteClient", "/api/clients/{id}", "Delete a client", http.StatusNoContent, s.delete)
 	// Deactivate is an alias for delete (soft-delete with a reason for
-	// the audit log). Mirrors Rust's POST /{id}/deactivate handler in
-	// crates/fc-platform/src/client/api.rs.
+	// the audit log).
 	apiroute.Post(g, "deactivateClient", "/api/clients/{id}/deactivate", "Deactivate a client (soft delete)", http.StatusOK, s.deactivate)
 	apiroute.Get(g, "getClientApplications", "/api/clients/{id}/applications", "List applications and their enabled state for the client", s.getApplications)
 	apiroute.Put(g, "updateClientApplications", "/api/clients/{id}/applications", "Replace the client's enabled applications (bulk)", http.StatusNoContent, s.updateApplications)
@@ -210,7 +209,7 @@ func (s *State) addNote(ctx context.Context, in *addNoteInput) (*apicommon.Out[a
 	}, ec); err != nil {
 		return nil, err
 	}
-	// Rust returns AddNoteResponse {message}; same wire shape as StatusChangeResponse.
+	// The response is {message}; same wire shape as StatusChangeResponse.
 	return &apicommon.Out[apicommon.StatusChangeResponse]{Body: apicommon.StatusChangeResponse{Message: "Note added"}}, nil
 }
 

@@ -35,15 +35,15 @@ type FilterOptionsState struct {
 //	GET /bff/filter-options/clients          — every page with a client filter
 //	GET /bff/event-types/filters/applications — event-types page filter
 //
-// Both pull all rows from the underlying repo (matches Rust's
-// `find_active` + in-memory filter pattern — cheap given low row
-// counts; revisit if these endpoints ever become hot). Output is
+// Both pull all rows from the underlying repo and filter in memory —
+// cheap given low row
+// counts; revisit if these endpoints ever become hot. Output is
 // alphabetically sorted on label so the dropdown is stable across
 // reloads.
 //
 // Other BFF filter endpoints (subdomains, aggregates, dispatch-jobs,
 // events) are not yet ported — they follow the same shape. See
-// HANDOFF.md for the prioritised list.
+// docs/wire-contract.md for the prioritised list.
 func RegisterFilterOptions(r chi.Router, s *FilterOptionsState) {
 	r.Get("/bff/filter-options/clients", s.clientOptions)
 	r.Get("/bff/event-types/filters/applications", s.eventTypeApplications)
@@ -51,7 +51,7 @@ func RegisterFilterOptions(r chi.Router, s *FilterOptionsState) {
 
 // GET /bff/filter-options/clients
 //
-// Rust shape: `{"clients": [{"value": "<id>", "label": "<name>"}, ...]}`
+// Shape: `{"clients": [{"value": "<id>", "label": "<name>"}, ...]}`
 // Filtered by the caller's auth context — anchor sees all, non-anchor
 // sees only clients in their access set.
 func (s *FilterOptionsState) clientOptions(w http.ResponseWriter, r *http.Request) {
@@ -85,9 +85,8 @@ func (s *FilterOptionsState) clientOptions(w http.ResponseWriter, r *http.Reques
 // codes by splitting on `:` and taking the first segment.
 func (s *FilterOptionsState) eventTypeApplications(w http.ResponseWriter, r *http.Request) {
 	// Empty filters → all event types. Status is intentionally
-	// unconstrained: the Rust handler uses `find_active_shallow` but
-	// the goal is "give me every application that has at least one
-	// event type," for which CURRENT+ARCHIVED is fine.
+	// unconstrained: the goal is "give me every application that has
+	// at least one event type," for which CURRENT+ARCHIVED is fine.
 	rows, err := s.EventTypes.FindWithFilters(r.Context(), nil, nil, nil, nil, nil)
 	if err != nil {
 		httperror.Write(w, usecase.Internal("REPO", "list event types failed", err))

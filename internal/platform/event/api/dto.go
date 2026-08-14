@@ -77,7 +77,7 @@ func fromEntity(e *event.Event) EventResponse {
 // EventRead is the slim read-projection wire shape for the list endpoints
 // (GET /api/events, /bff/events). Matches the SPA's `EventRead` interface
 // in frontend/src/api/events.ts: top-level `type` (not eventType) and a
-// non-optional `projectedAt`. Mirrors Rust's `event::entity::EventRead`.
+// non-optional `projectedAt`.
 type EventRead struct {
 	ID            string          `json:"id"`
 	Type          string          `json:"type"`
@@ -122,8 +122,7 @@ func readFromEntity(e *event.Event) EventRead {
 // RawEventResponse is the debug raw-event wire shape for GET
 // /bff/debug/events. Distinct from EventRead: the Type column is named
 // `eventType` here (the SPA RawEventListPage binds field="eventType" and
-// field="deduplicationId"). Mirrors Rust's shared/debug_api.rs
-// RawEventResponse.
+// field="deduplicationId").
 type RawEventResponse struct {
 	ID              string            `json:"id"`
 	SpecVersion     string            `json:"specVersion"`
@@ -177,7 +176,7 @@ func rawFromEntity(e *event.Event) RawEventResponse {
 // ── singular create (POST /api/events) ──────────────────────────────────
 
 // CreateEventRequest is the wire body for POST /api/events, the singular
-// SDK ingest. 1:1 with Rust event/api.rs CreateEventRequest and the
+// SDK ingest. 1:1 with the
 // Laravel SDK's Model\CreateEventRequest: required eventType/source/data,
 // the rest optional.
 type CreateEventRequest struct {
@@ -193,8 +192,8 @@ type CreateEventRequest struct {
 	ContextData     []ContextEntryDTO `json:"contextData,omitempty" doc:"Context data for filtering/searching"`
 }
 
-// CreatedEvent is the event envelope inside CreateEventResponse. It
-// mirrors Rust's EventResponse (event/api.rs) — note `eventType`, NOT the
+// CreatedEvent is the event envelope inside CreateEventResponse —
+// note `eventType`, NOT the
 // `type` key used by this package's read-side EventResponse — because the
 // Laravel SDK's Model\EventResponse decodes `eventType`. A distinct Go
 // type so the OpenAPI schema name can't collide with the existing
@@ -216,8 +215,8 @@ type CreatedEvent struct {
 	CreatedAt       httpcompat.Time   `json:"createdAt"`
 }
 
-// CreateEventResponse is the wire body for POST /api/events. 1:1 with
-// Rust CreateEventResponse {event, dispatchJobCount, isDuplicate} and the
+// CreateEventResponse is the wire body for POST /api/events:
+// {event, dispatchJobCount, isDuplicate}, 1:1 with the
 // SDK's Model\CreateEventResponse.
 type CreateEventResponse struct {
 	Event            CreatedEvent `json:"event"`
@@ -254,8 +253,7 @@ func createdFromEntity(e *event.Event) CreatedEvent {
 // BatchEventItem is one item in the batch ingest body. Fields are optional in
 // the generated schema so the endpoint accepts both the camelCase API form (the
 // SPA fan-out) and the snake_case SDK-outbox payload form (event_type,
-// correlation_id, …); the alias coalescing in UnmarshalJSON is 1:1 with Rust
-// shared/batch_api.rs BatchEventItem's serde aliases.
+// correlation_id, …); the alias coalescing happens in UnmarshalJSON.
 type BatchEventItem struct {
 	ID              string          `json:"id,omitempty"`
 	SpecVersion     string          `json:"specVersion,omitempty"`
@@ -279,8 +277,8 @@ type BatchEventItem struct {
 
 // UnmarshalJSON accepts both the camelCase API keys and the snake_case SDK
 // outbox-payload keys (event_type, spec_version, correlation_id, causation_id,
-// deduplication_id, message_group, client_id). Mirrors the serde aliases on the
-// Rust BatchEventItem so the platform ingests whatever a deployed outbox sends.
+// deduplication_id, message_group, client_id) so the platform ingests whatever
+// a deployed outbox sends.
 func (b *BatchEventItem) UnmarshalJSON(data []byte) error {
 	var r struct {
 		ID                 string            `json:"id"`
@@ -357,8 +355,8 @@ type BatchResultItem struct {
 }
 
 // BatchResponse is the wire body for POST /api/events/batch: a per-item result
-// list, 1:1 with Rust BatchResponse {results:[…]} and the contract the outbox
-// dispatcher (fc-outbox/http_dispatcher.rs) requires on a 2xx.
+// list, {results:[…]} — the contract the outbox
+// dispatcher requires on a 2xx.
 type BatchResponse struct {
 	Results []BatchResultItem `json:"results"`
 }

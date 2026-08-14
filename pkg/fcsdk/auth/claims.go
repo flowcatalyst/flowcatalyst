@@ -7,15 +7,13 @@ import (
 
 // Audience is a JWT aud claim. RFC 7519 allows aud to be either a
 // string or an array of strings. FlowCatalyst-minted tokens emit a
-// single string (matching the Rust SDK), but tokens minted with other
+// single string, but tokens minted with other
 // tooling (e.g. jwx itself) emit an array. We accept both forms on
-// unmarshal and always marshal as a single string for wire parity
-// with Rust.
+// unmarshal and always marshal as a single string for wire parity.
 type Audience string
 
 // UnmarshalJSON accepts either a string or a one-element string array.
-// Multi-element arrays take the first entry, matching how the Rust SDK
-// would behave if aud were typed as String.
+// Multi-element arrays take the first entry.
 func (a *Audience) UnmarshalJSON(b []byte) error {
 	var s string
 	if err := json.Unmarshal(b, &s); err == nil {
@@ -37,8 +35,8 @@ func (a *Audience) UnmarshalJSON(b []byte) error {
 func (a Audience) String() string { return string(a) }
 
 // AccessTokenClaims is the JWT payload shape issued by FlowCatalyst's
-// /oauth/token endpoint. JSON tags match the Rust SDK byte-for-byte so
-// the same token deserialises identically across SDKs.
+// /oauth/token endpoint. JSON tags match the wire contract byte-for-byte
+// so the same token deserialises identically across SDKs.
 type AccessTokenClaims struct {
 	// Sub is the principal id, e.g. "prn_0HZXEQ5Y8JY5Z".
 	Sub string `json:"sub"`
@@ -55,7 +53,7 @@ type AccessTokenClaims struct {
 	// Jti is the JWT id.
 	Jti string `json:"jti"`
 	// PrincipalType is "USER" or "SERVICE". The wire field name is
-	// "type" to match the Rust SDK's serde rename.
+	// "type".
 	PrincipalType string `json:"type"`
 	// Scope is "ANCHOR", "PARTNER", or "CLIENT".
 	Scope string `json:"scope"`

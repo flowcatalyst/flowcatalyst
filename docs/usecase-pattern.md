@@ -1,6 +1,6 @@
 # The UseCase Pattern: Seal + Type-State
 
-This is the compile-time enforced replacement for the Rust `UseCase` + sealed `UseCaseResult` + `UnitOfWork` pattern. It's stronger than the Rust version in one respect (it also enforces validate → authorize → execute *order*) and equivalent in every other respect.
+The compile-time enforced `UseCase` + sealed `Result` + `UnitOfWork` pattern. Beyond sealing the success type, it also enforces validate → authorize → execute *order*.
 
 If you only read one document before writing your first use case, read this one.
 
@@ -248,17 +248,17 @@ func Run[C any, E DomainEvent](ctx context.Context, uc UseCase[C, E], cmd C, ec 
 }
 ```
 
-This is **what the Rust code actually does**. The Rust `UseCase` trait has separate `validate`/`authorize`/`execute` methods, and `run` orchestrates them. The ordering is enforced by `run` being the only thing handlers call.
+The `UseCase` interface has separate `Validate`/`Authorize`/`Execute` methods, and `Run` orchestrates them. The ordering is enforced by `Run` being the only thing handlers call.
 
-This is simpler. **It matches Rust exactly. The seal on `Result` is the load-bearing invariant; the ordering is enforced by handlers calling `Run` and not the individual methods.**
+This is simpler. **The seal on `Result` is the load-bearing invariant; the ordering is enforced by handlers calling `Run` and not the individual methods.**
 
 ---
 
 ## Recommendation: use the simpler form
 
-You picked "Seal + type-state for order" in the question above. After working through the design, I recommend **the simpler shape: seal on `Result`, ordering enforced by `Run`** — which is *equivalent* to what Rust has. The type-state approach is theoretically stronger but introduces awkward APIs for negligible additional safety (since the seal already prevents the event from being emitted without UoW).
+After working through the design, the recommendation is **the simpler shape: seal on `Result`, ordering enforced by `Run`**. The type-state approach is theoretically stronger but introduces awkward APIs for negligible additional safety (since the seal already prevents the event from being emitted without UoW).
 
-If you want stronger-than-Rust enforcement of ordering, take stronger option A above (witness type). I'll wire that in if you confirm. The rest of this doc uses the simpler form.
+If you want stronger enforcement of ordering, take stronger option A above (witness type). The rest of this doc uses the simpler form.
 
 ---
 
@@ -360,7 +360,7 @@ The signatures are generic over A, E, C — see `uow_postgres.go` for the full t
 
 ## Worked example: `event_type/create`
 
-Below is the Rust use case at [`flowcatalyst-rust/crates/fc-platform/src/event_type/operations/create.rs`](../../flowcatalyst-rust/crates/fc-platform/src/event_type/operations/create.rs) ported to Go. I keep the structure identical so a future reader can diff them side by side.
+A complete use case, shown end to end.
 
 ### `internal/platform/eventtype/operations/create.go`
 
@@ -377,8 +377,8 @@ import (
 )
 
 // CreateCommand is the input DTO for the CreateEventType use case.
-// JSON tags match the Rust #[serde(rename_all = "camelCase")] posture.
-// Pointer fields with `,omitempty` match Rust Option<T> + #[serde(skip_serializing_if = "Option::is_none")].
+// JSON tags are camelCase per the wire contract.
+// Pointer fields with `,omitempty` are omitted when unset.
 type CreateCommand struct {
     Code        string          `json:"code"`
     Name        string          `json:"name"`
@@ -672,7 +672,7 @@ What the compiler will accept:
 
 ## The analyzer (optional belt-and-suspenders)
 
-A custom `go vet` analyzer that asserts every `*UseCase.Execute` method body ends in a `usecase.UnitOfWork.Commit*` call or a `usecase.Failure(...)` call. This is the Go equivalent of [`tests/uow_convention_test.rs`](../../flowcatalyst-rust/) from the Rust side.
+A custom `go vet` analyzer that asserts every `*UseCase.Execute` method body ends in a `usecase.UnitOfWork.Commit*` call or a `usecase.Failure(...)` call.
 
 It lives in `tools/analyzer/uowseal/`. Run via:
 
@@ -688,7 +688,7 @@ CI runs it on every PR. **Not load-bearing — the type system already prevents 
 ## FAQ
 
 **Q: Can reflection construct a `success[E]`?**
-A: Yes. Reflection escapes type safety. The Rust seal has the same gap via `unsafe`. Acceptable.
+A: Yes. Reflection escapes type safety. Acceptable.
 
 **Q: Can I implement `UnitOfWork` outside `internal/usecase`?**
 A: Yes (the interface is exported), but your implementation cannot call `newSuccess`. So you can implement the interface but cannot construct a successful `Result`. This is by design — only the in-package implementations are valid. If someone implements UoW externally and just returns `Failure` for everything, that's fine: the world hasn't been corrupted; their handler is just broken.
@@ -699,8 +699,8 @@ A: Aliases let external code reference the type name without giving it construct
 **Q: What about the `commit_all` (batch) variant?**
 A: `UnitOfWork.CommitAll[A, E, C](ctx, aggs []A, repo Persist[A], event E, cmd C) Result[E]` — same pattern. Internally calls `newSuccess` after writing the aggregates + emitting one summary event.
 
-**Q: Domain events sometimes flatten metadata via `#[serde(flatten)]` in Rust. How in Go?**
+**Q: Some domain events flatten their metadata into the top-level payload on the wire. How?**
 A: Embed `usecase.EventMetadata` as an unnamed field; use `json:",inline"` tag (this requires `mailru/easyjson` or a thin custom MarshalJSON since stdlib `encoding/json` doesn't natively support flatten). Acceptable alternative: spell out the metadata fields. Recommended: write a small `MarshalJSON` on the `EventMetadata` host struct that merges the maps. See `internal/usecase/domain_event.go` for the impl pattern.
 
-**Q: What replaces Rust's `impl_domain_event!` macro?**
-A: Each event type implements the `DomainEvent` interface manually (8 small accessor methods). The Rust macro saves ~20 LOC per event; in Go, the equivalent is a code-gen'd file via `go generate` if it becomes onerous. For now, write them by hand. Total cost: ~40 events × 8 methods × 1 line = 320 LOC of mechanical accessor code. Trivial.
+**Q: Isn't implementing `DomainEvent` per event type a lot of boilerplate?**
+A: Each event type implements the `DomainEvent` interface manually (8 small accessor methods). A code-gen'd file via `go generate` is the fallback if it becomes onerous. For now, write them by hand. Total cost: ~40 events × 8 methods × 1 line = 320 LOC of mechanical accessor code. Trivial.

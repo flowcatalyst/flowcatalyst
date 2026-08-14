@@ -11,7 +11,7 @@ import (
 
 // WirePlatform instantiates every subdomain's repository + operations +
 // HTTP routes against the supplied pool and registers them on r. The
-// resulting router is the same surface the Rust fc-platform exposes.
+// resulting router is the platform's complete public API surface.
 //
 // The wiring is phase-aligned across sibling files:
 //

@@ -1,5 +1,4 @@
-// Package authservice is a hand-rolled, 1:1 port of the Rust
-// crates/fc-platform/src/auth/auth_service.rs. It owns JWT token
+// Package authservice owns JWT token
 // generation and validation for the OAuth/OIDC surface (the former
 // fosite-backed JWT strategy was removed — see ADR-0001).
 //
@@ -9,9 +8,9 @@
 // endpoint exposes all active public keys so clients can verify tokens
 // signed by either key during rotation.
 //
-// The claim shapes (AccessTokenClaims, IDTokenClaims) are transcribed
-// field-for-field from the Rust structs so the wire contract — what
-// introspection echoes and what consumers decode — matches exactly.
+// The claim shapes (AccessTokenClaims, IDTokenClaims) are a wire
+// contract — what introspection echoes and what consumers decode —
+// and must not drift.
 package authservice
 
 import (
@@ -53,8 +52,8 @@ const (
 	TokenUseIdentity = "identity"
 )
 
-// Sentinel errors mirroring the relevant PlatformError variants the Rust
-// auth_service returns. Callers translate these to HTTP status codes
+// Sentinel errors for token validation failures. Callers translate
+// these to HTTP status codes
 // (TokenExpired/InvalidToken → 401).
 var (
 	// ErrTokenExpired indicates the JWT's exp has passed.
@@ -75,21 +74,21 @@ type RsaPublicKeyComponents struct {
 // AccessTokenClaims is the JWT payload for access tokens. The embedded
 // RegisteredClaims supplies iss/sub/exp/iat/nbf/jti; the custom Aud
 // field shadows RegisteredClaims.Audience (same "aud" json tag at a
-// shallower depth) so audiences serialize as a bare string — matching
-// Rust's `aud: String` rather than golang-jwt's default array form.
+// shallower depth) so audiences serialize as a bare string (the wire
+// contract) rather than golang-jwt's default array form.
 type AccessTokenClaims struct {
 	jwt.RegisteredClaims
 
 	// Aud is the single-valued audience (bare string on the wire).
 	Aud string `json:"aud"`
 
-	// PrincipalType is "USER" or "SERVICE" (Rust serde rename: "type").
+	// PrincipalType is "USER" or "SERVICE" (serialized as "type").
 	PrincipalType string `json:"type"`
 
 	// Tier is the tenancy tier: "ANCHOR" | "PARTNER" | "CLIENT". (Formerly
 	// carried on the "scope" claim; renamed so "scope" can hold real OAuth
-	// scopes — see the Scope field below. This diverges from the Rust wire
-	// contract by design.)
+	// scopes — see the Scope field below. This diverges from the historical
+	// wire contract by design.)
 	Tier string `json:"tier"`
 
 	// Scope is the granted OAuth scope: a space-delimited list of permission
@@ -128,7 +127,7 @@ type AccessTokenClaims struct {
 	TokenUse string `json:"token_use,omitempty"`
 }
 
-// IDTokenClaims is the JWT payload for OIDC ID tokens. As in Rust, it
+// IDTokenClaims is the JWT payload for OIDC ID tokens. It
 // omits nbf/jti (the embedded RegisteredClaims fields stay unset and are
 // dropped by omitempty) and carries the OIDC standard claims plus the
 // FlowCatalyst custom claims.
@@ -148,7 +147,7 @@ type IDTokenClaims struct {
 	AMR           []string `json:"amr,omitempty"`
 	AZP           *string  `json:"azp,omitempty"`
 
-	// PrincipalType is "USER" or "SERVICE" (serde rename: "type").
+	// PrincipalType is "USER" or "SERVICE" (serialized as "type").
 	PrincipalType string `json:"type"`
 	// Tier is the tenancy tier (ANCHOR|PARTNER|CLIENT). Renamed from the
 	// former "scope" claim — see AccessTokenClaims.Tier.
@@ -163,8 +162,7 @@ type IDTokenClaims struct {
 	Clients         []string `json:"clients"`
 }
 
-// Config bundles the construction-time settings, mirroring Rust's
-// AuthConfig. TTLs are in seconds.
+// Config bundles the construction-time settings. TTLs are in seconds.
 type Config struct {
 	// RSAPrivateKeyPEM / RSAPublicKeyPEM enable RS256 when both are set.
 	RSAPrivateKeyPEM string
@@ -198,8 +196,7 @@ type Config struct {
 	IDTokenExpirySecs int64
 }
 
-// DefaultConfig returns the canonical defaults, matching Rust's
-// AuthConfig::default.
+// DefaultConfig returns the canonical defaults.
 func DefaultConfig() Config {
 	return Config{
 		Issuer:                 "flowcatalyst",
@@ -307,8 +304,8 @@ func New(config Config) (*AuthService, error) {
 	// RSA configured: it MUST succeed, or we fail closed. Silently downgrading
 	// to HS256 on a bad key — and, when no SecretKey is set, to an EMPTY-secret
 	// HS256 — would turn a key misconfiguration into trivially forgeable
-	// tokens. Refuse to start instead. (This is a deliberate divergence from
-	// the Rust port's warn-and-fall-back behaviour.)
+	// tokens. Refuse to start instead. (A deliberate hardening over the
+	// original warn-and-fall-back behaviour.)
 	if config.RSAPrivateKeyPEM != "" {
 		if config.RSAPublicKeyPEM == "" {
 			pub, err := publicPEMFromPrivatePEM(config.RSAPrivateKeyPEM)
@@ -591,7 +588,7 @@ func (s *AuthService) HasRole(claims *AccessTokenClaims, role string) bool {
 // IsAnchor reports whether the claims are for an anchor-tier principal.
 func (s *AuthService) IsAnchor(claims *AccessTokenClaims) bool { return claims.Tier == "ANCHOR" }
 
-// ─── principal → claim helpers (1:1 with Rust) ──────────────────────────
+// ─── principal → claim helpers ──────────────────────────────────────────
 
 func principalEmail(p *principal.Principal) *string {
 	if p.UserIdentity != nil && p.UserIdentity.Email != "" {
@@ -609,7 +606,7 @@ func roleNames(p *principal.Principal) []string {
 	return out
 }
 
-// buildClients mirrors the Rust client-access list construction:
+// buildClients builds the client-access list:
 // anchor → ["*"]; partner → assigned clients mapped to "id:identifier";
 // client → the home client id mapped likewise.
 func buildClients(p *principal.Principal) []string {

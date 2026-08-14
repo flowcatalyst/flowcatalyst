@@ -1,13 +1,11 @@
 package seed
 
-// Permission identifiers — exact 1:1 port of
-// fc-platform/src/role/entity.rs::permissions::*. Keep the string values
-// byte-identical to what the Rust impl emits: existing rows in
+// Permission identifiers. Keep the string values
+// byte-identical across releases: existing rows in
 // iam_role_permissions reference these strings, and the SDK pins its
 // permission checks against them.
 //
-// Naming follows the Rust module path (admin/iam/auth/applicationService/developer)
-// so the cross-reference stays obvious.
+// Naming follows the permission contexts (admin/iam/auth/applicationService/developer).
 
 // Admin context — clients, applications, config.
 const (

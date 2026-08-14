@@ -1,5 +1,5 @@
-// Package platformconfig is the port of fc-platform/src/platform_config.
-// Stores system-wide settings (one row per application:section:property)
+// Package platformconfig
+// stores system-wide settings (one row per application:section:property)
 // and a per-role access grant table.
 package platformconfig
 

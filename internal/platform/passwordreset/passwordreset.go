@@ -1,5 +1,5 @@
-// Package passwordreset is the port of fc-platform/src/password_reset.
-// Stores short-lived single-use reset tokens. Writes are infrastructure
+// Package passwordreset stores short-lived single-use reset tokens.
+// Writes are infrastructure
 // processing (auth/password-reset-request directly inserts; the consume
 // step uses DELETE ... RETURNING).
 package passwordreset

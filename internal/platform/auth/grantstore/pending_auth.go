@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// 1:1 port of pending_auth_repository.rs. Pending authorization states
+// Pending authorization states
 // (between /oauth/authorize and the post-login callback) live in
 // oauth_oidc_payloads (type = "PendingAuth", id "PendingAuth:{state}"),
 // keyed by the OAuth `state` parameter, and expire after 10 minutes.

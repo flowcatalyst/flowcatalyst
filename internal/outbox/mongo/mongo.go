@@ -1,10 +1,9 @@
 // Package mongo is the MongoDB-backed outbox repository. It is
 // schema-compatible with the SDK customer outbox (a single shared
-// `outbox_messages` collection discriminated by a `type` field) and with the
-// Rust fc-outbox MongoOutboxRepository, so the Go processor can be pointed at
-// a real customer MongoDB created by the SDK.
+// `outbox_messages` collection discriminated by a `type` field), so the Go
+// processor can be pointed at a real customer MongoDB created by the SDK.
 //
-// Document shape (matches the SDK / Java / Rust representation EXACTLY — these
+// Document shape (matches the SDK representation EXACTLY — these
 // are the wire types a drop-in must read/write):
 //
 //	{ id, type, message_group, payload (STRING json), status (INT code),
@@ -17,7 +16,7 @@
 // retry_count + records error_message (retryable -> back to PENDING).
 //
 // Unlike the SQL backends there is no FOR UPDATE SKIP LOCKED; the claim is a
-// find-then-update (mirroring Rust). Run a single active instance (the
+// find-then-update. Run a single active instance (the
 // fc-server outbox subsystem is leader-gated) to avoid double-claims.
 package mongo
 
@@ -65,7 +64,7 @@ func Connect(ctx context.Context, uri, dbName string) (*Repository, error) {
 func (r *Repository) Close(ctx context.Context) error { return r.client.Disconnect(ctx) }
 
 // doc is the stored representation. Timestamps + payload + headers are
-// STRINGS and status is an INT code — matching the SDK/Rust schema.
+// STRINGS and status is an INT code — matching the SDK schema.
 type doc struct {
 	ID           string  `bson:"id"`
 	Type         string  `bson:"type"`
@@ -97,7 +96,7 @@ func (d doc) toItem() outbox.Item {
 	return item
 }
 
-// InitSchema creates the indexes (idempotent). Mirrors the Rust init_schema.
+// InitSchema creates the indexes (idempotent).
 func (r *Repository) InitSchema(ctx context.Context) error {
 	_, err := r.coll.Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{
@@ -121,7 +120,7 @@ func (r *Repository) InitSchema(ctx context.Context) error {
 
 // ClaimPending finds up to batchSize PENDING docs (ordered by message_group +
 // created_at, like the SQL backends) and flips them to IN_PROGRESS. Mongo has
-// no atomic batch claim, so this is a find-then-update (mirrors Rust); the
+// no atomic batch claim, so this is a find-then-update; the
 // fc-server outbox subsystem is leader-gated to keep it single-active.
 func (r *Repository) ClaimPending(ctx context.Context, batchSize int) ([]outbox.Item, error) {
 	cur, err := r.coll.Find(ctx,
@@ -235,7 +234,7 @@ func (r *Repository) Healthy(ctx context.Context) bool {
 	return r.client.Ping(c, nil) == nil
 }
 
-// nowISO is the RFC3339 string form the SDK/Rust write for created_at /
+// nowISO is the RFC3339 string form the SDKs write for created_at /
 // updated_at, kept consistent so cross-runtime reads parse cleanly.
 func nowISO() string { return time.Now().UTC().Format(time.RFC3339) }
 

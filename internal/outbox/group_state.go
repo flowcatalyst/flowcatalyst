@@ -3,7 +3,7 @@ package outbox
 import "sync"
 
 // GroupStatus is a message group's processing state in the operational state
-// machine. Mirrors Rust message_group_processor's ProcessorState.
+// machine.
 type GroupStatus string
 
 const (
@@ -28,9 +28,9 @@ type groupState struct {
 
 // GroupStateManager holds per-message-group processing state — the operational
 // state machine (Running / Paused / Blocked). It lives in memory on the
-// leader-gated processor (single active poller), mirroring Rust's per-group
-// MessageGroupProcessor state + pause/resume/unblock/skip controls. Absent
-// groups default to Running. Safe for concurrent use.
+// leader-gated processor (single active poller), with per-group
+// pause/resume/unblock/skip controls. Absent groups default to Running.
+// Safe for concurrent use.
 type GroupStateManager struct {
 	mu     sync.RWMutex
 	groups map[string]*groupState

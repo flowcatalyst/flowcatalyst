@@ -13,7 +13,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// WarningCategory mirrors the Rust enum.
+// WarningCategory classifies a warning by subsystem.
 type WarningCategory string
 
 const (
@@ -29,7 +29,7 @@ const (
 	WarningCategoryConsumerHealth WarningCategory = "CONSUMER_HEALTH"
 )
 
-// WarningSeverity mirrors the Rust enum.
+// WarningSeverity ranks a warning's importance.
 type WarningSeverity string
 
 const (
@@ -39,9 +39,9 @@ const (
 	WarningCritical WarningSeverity = "CRITICAL"
 )
 
-// Warning is a structured operational notice. Mirrors the Rust
-// `fc_common::Warning` shape so it can be persisted by WarningService
-// and forwarded to NotificationService consumers without translation.
+// Warning is a structured operational notice. The same shape is
+// persisted by WarningService and forwarded to NotificationService
+// consumers without translation.
 type Warning struct {
 	ID             string          `json:"id"`
 	Category       WarningCategory `json:"category"`
@@ -54,7 +54,7 @@ type Warning struct {
 }
 
 // NewWarning constructs a Warning with a freshly-minted UUID and the
-// current time. Matches Rust's `Warning::new`.
+// current time.
 func NewWarning(category WarningCategory, severity WarningSeverity, message, source string) Warning {
 	return Warning{
 		ID:        uuid.NewString(),
@@ -136,7 +136,6 @@ func (n *Notifier) Run(ctx context.Context) {
 
 // SetMinSeverity sets the minimum severity that will be delivered; warnings
 // below it are dropped before enqueue. Zero value ("") delivers everything.
-// Mirrors the Rust BatchingNotificationService min_severity filter.
 func (n *Notifier) SetMinSeverity(s WarningSeverity) {
 	n.mu.Lock()
 	n.minSeverity = s
@@ -145,7 +144,7 @@ func (n *Notifier) SetMinSeverity(s WarningSeverity) {
 
 // Add enqueues a warning. Flushed by the next tick, when the batch is full, or
 // immediately for a CRITICAL warning (fast-track, so incidents aren't delayed
-// by the batch interval — 1:1 with the Rust notify_critical_error path).
+// by the batch interval).
 // Warnings below MinSeverity are dropped. Fills in ID + CreatedAt if the caller
 // passed a bare-literal Warning.
 func (n *Notifier) Add(w Warning) {

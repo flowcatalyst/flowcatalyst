@@ -115,8 +115,8 @@ func TestCreateSubscription_HappyPath(t *testing.T) {
 	assert.Equal(t, desc, *got.Description)
 	require.NotNil(t, got.ServiceAccountID)
 	assert.Equal(t, "sva_subcrthappy1", *got.ServiceAccountID)
-	// created_by persists since migration 035 (Rust never wrote it; its
-	// rows read back NULL).
+	// created_by persists since migration 035 (pre-035 rows read back
+	// NULL — it was never written before).
 	require.NotNil(t, got.CreatedBy)
 	assert.Equal(t, testpg.TestEC().PrincipalID, *got.CreatedBy)
 	assert.Equal(t, common.DispatchBlockOnError, got.Mode)

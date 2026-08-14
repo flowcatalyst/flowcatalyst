@@ -1,4 +1,4 @@
-// Package process is the port of fc-platform/src/process. Stores
+// Package process stores
 // free-form workflow documentation (typically Mermaid diagrams)
 // scoped to {application, subdomain, process-name}.
 package process

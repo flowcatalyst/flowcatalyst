@@ -64,7 +64,7 @@ func (r *Repository) FindByPrincipal(ctx context.Context, principalID string) ([
 	for _, row := range rows {
 		c, err := rowToCredential(row)
 		if err != nil {
-			// Skip (don't fail the whole list on) a legacy webauthn-rs passkey
+			// Skip (don't fail the whole list on) a legacy the legacy webauthn library passkey
 			// so it can't block listing / fresh registration / authentication.
 			// It stays invisible + harmless until the owner re-registers.
 			if errors.Is(err, ErrLegacyPasskey) {
@@ -125,32 +125,32 @@ func rowToCredential(row dbq.WebauthnCredential) (*Credential, error) {
 	if err := json.Unmarshal(row.PasskeyData, &c.Credential); err != nil {
 		return nil, fmt.Errorf("unmarshal credential: %w", err)
 	}
-	// A4b safety: a legacy webauthn-rs Passkey blob ({"cred":{...}}, written by
-	// the Rust system) unmarshals into a go-webauthn Credential WITHOUT error but
+	// A4b safety: a legacy-format Passkey blob ({"cred":{...}}, written by
+	// the original implementation) unmarshals into a go-webauthn Credential WITHOUT error but
 	// yields an empty id/publicKey (incompatible schema) — a silently-broken
 	// credential that would fail assertion opaquely. Detect it and fail loudly
 	// with an actionable message instead. Full convert-on-read of legacy
 	// passkeys (COSE-key re-encoding) is a tracked follow-up that needs a real
-	// webauthn-rs sample to implement + validate safely; until then a user with
+	// legacy-format sample to implement + validate safely; until then a user with
 	// a legacy passkey must re-register it.
-	if len(c.Credential.ID) == 0 && isLegacyRustPasskey(row.PasskeyData) {
-		return nil, fmt.Errorf("credential %s is a legacy webauthn-rs passkey (re-register): %w", row.ID, ErrLegacyPasskey)
+	if len(c.Credential.ID) == 0 && isLegacyPasskey(row.PasskeyData) {
+		return nil, fmt.Errorf("credential %s is a legacy the legacy webauthn library passkey (re-register): %w", row.ID, ErrLegacyPasskey)
 	}
 	return &c, nil
 }
 
-// ErrLegacyPasskey marks a credential stored in the legacy webauthn-rs format
-// (incompatible with go-webauthn — see isLegacyRustPasskey). Per the owner,
+// ErrLegacyPasskey marks a credential stored in the legacy passkey format
+// (incompatible with go-webauthn — see isLegacyPasskey). Per the owner,
 // legacy passkeys need not be converted; callers skip them in list/auth
 // contexts so they never block fresh passkey registration/use, and the owner
 // re-registers. Full convert-on-read is a tracked, deliberately-deferred item.
-var ErrLegacyPasskey = errors.New("legacy webauthn-rs passkey; re-registration required")
+var ErrLegacyPasskey = errors.New("legacy the legacy webauthn library passkey; re-registration required")
 
-// isLegacyRustPasskey reports whether a passkey_data blob is the webauthn-rs
+// isLegacyPasskey reports whether a passkey_data blob is the legacy
 // Passkey shape (a top-level "cred" object) rather than the go-webauthn
 // Credential shape (top-level "id" + "publicKey"). Used to turn a silent schema
 // mismatch into a clear error.
-func isLegacyRustPasskey(raw []byte) bool {
+func isLegacyPasskey(raw []byte) bool {
 	var probe map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &probe); err != nil {
 		return false

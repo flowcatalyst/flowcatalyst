@@ -1,6 +1,6 @@
 // Package api wires the WebAuthn HTTP routes under /auth/webauthn/* via huma.
 //
-// Six endpoints mirror fc-platform/src/webauthn/api.rs:
+// Six endpoints:
 //
 //	POST /auth/webauthn/register/begin          — issue registration challenge
 //	POST /auth/webauthn/register/complete       — verify attestation, persist
@@ -301,7 +301,7 @@ type authenticateCompleteOutput struct {
 func (s *State) authenticateComplete(ctx context.Context, in *authenticateCompleteInput) (*authenticateCompleteOutput, error) {
 	// On success we mint an fc_session JWT and return it as a Set-Cookie,
 	// so a passkey login establishes a session exactly like POST
-	// /auth/login (and like the Rust webauthn authenticate_complete). The
+	// /auth/login. The
 	// SPA seeds permissions:[] from this response and then loads the real
 	// set from /auth/me using the cookie — so the cookie, not the body, is
 	// what unblocks the user. Without it the browser appears logged in but

@@ -154,11 +154,11 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[Princip
 	filtered := make([]*principal.Principal, 0, len(rows))
 	for i := range rows {
 		p := &rows[i]
-		// Access control (1:1 with Rust list_principals): anchors see all;
+		// Access control: anchors see all;
 		// non-anchors see only client-scoped principals they can access.
 		// Platform-level principals (client_id == nil) are hidden from
-		// non-anchors. (get-by-id stays lenient on the nil case, matching
-		// Rust get_principal, which only checks access when client_id is set.)
+		// non-anchors. (get-by-id stays lenient on the nil case — it
+		// only checks access when client_id is set.)
 		if !ac.IsAnchor() && (p.ClientID == nil || !ac.CanAccessClient(*p.ClientID)) {
 			continue
 		}
@@ -531,14 +531,14 @@ func errMessage(err error) string {
 	return ""
 }
 
-// createUser ports Rust create_user (fc-platform principal/api.rs): anchor-only,
+// createUser is the SDK create-user endpoint: anchor-only,
 // derives scope + client association from the email domain (anchor-domain check
 // + email-domain-mapping), then delegates to the shared CreateUser operation.
 // Returns the full principal (the SDK reads it back). The SDK's
 // enforcePasswordComplexity is accepted but not enforced (Go's create doesn't
 // apply a complexity policy). Magic-link-on-passwordless-create is intentionally
-// not ported — the SDK always supplies a password and the reset emailer isn't
-// wired (matching Rust's unconfigured-emailer fallback).
+// not implemented — the SDK always supplies a password and the reset emailer
+// isn't wired.
 func (s *State) createUser(ctx context.Context, in *apicommon.In[CreateUserRequest]) (*apicommon.Out[PrincipalResponse], error) {
 	ac := auth.FromContext(ctx)
 	// Authorization is enforced after scope derivation below (a client-admin may
@@ -594,7 +594,7 @@ func (s *State) createUser(ctx context.Context, in *apicommon.In[CreateUserReque
 
 	// Partner-merge: when a PARTNER user already exists for this email, grant
 	// access to the requested client rather than recreating (keeps events +
-	// audit accurate). Mirrors Rust's GrantClientAccess branch.
+	// audit accurate).
 	if scope == "PARTNER" {
 		existing, ferr := s.Repo.FindByEmail(ctx, email)
 		if ferr != nil {
@@ -629,8 +629,7 @@ func (s *State) createUser(ctx context.Context, in *apicommon.In[CreateUserReque
 		return nil, err
 	}
 
-	// New PARTNER user: grant the requested client (parity with Rust's
-	// granted_client_ids = [clientId]).
+	// New PARTNER user: grant the requested client.
 	if scope == "PARTNER" && clientID != nil {
 		if _, gerr := usecaseop.Run(ctx, s.UoW, operations.GrantClientAccess(s.Repo, s.Clients, s.GrantRepo),
 			operations.GrantClientAccessCommand{UserID: event.UserID, ClientID: *clientID}, ec); gerr != nil {
@@ -677,8 +676,8 @@ func (s *State) notifyNewUser(ctx context.Context, p *principal.Principal, passw
 	s.Notifier.AccountCreated(ctx, emailAddr)
 }
 
-// deriveUserScope resolves (scope, home-client) from the email domain, mirroring
-// Rust create_user. An anchor domain (or an ANCHOR mapping) → ANCHOR with no
+// deriveUserScope resolves (scope, home-client) from the email domain.
+// An anchor domain (or an ANCHOR mapping) → ANCHOR with no
 // client. A PARTNER mapping requires a clientId allowed by the mapping. A CLIENT
 // mapping uses the request's clientId or the mapping's primary. An unmapped
 // domain → CLIENT with the request's clientId verbatim. Pure + unit-tested.
@@ -728,10 +727,9 @@ func derefStr(s *string) string {
 
 // requireScopeByID loads the principal and enforces per-resource scope (A2) on
 // top of the coarse permission already checked: a non-anchor principal must not
-// mutate another tenant's principal by id. (Rust additionally gates scope/
-// client_id *changes* to anchors; the Go UpdatePrincipalRequest deliberately
-// doesn't expose scope/client_id at all, so that escalation vector can't exist
-// here — no extra gate needed.)
+// mutate another tenant's principal by id. (UpdatePrincipalRequest deliberately
+// doesn't expose scope/client_id at all, so the scope/client-escalation vector
+// can't exist here — no extra gate needed.)
 func (s *State) requireScopeByID(ctx context.Context, ac *auth.AuthContext, id string) error {
 	p, err := s.Repo.FindByID(ctx, id)
 	if err != nil {
@@ -1537,7 +1535,7 @@ func (s *State) addRole(ctx context.Context, in *addRoleInput) (*apicommon.Out[P
 			return nil, httperror.NotFound("Principal", in.ID)
 		}
 	}
-	// Return the updated principal (1:1 with Rust assign_role → PrincipalResponse).
+	// Return the updated principal (full PrincipalResponse).
 	return &apicommon.Out[PrincipalResponse]{Body: fromEntity(p)}, nil
 }
 
@@ -1591,7 +1589,7 @@ func (s *State) removeRole(ctx context.Context, in *removeRoleInput) (*apicommon
 			return nil, httperror.NotFound("Principal", in.ID)
 		}
 	}
-	// Return the updated principal (1:1 with Rust remove_role → PrincipalResponse).
+	// Return the updated principal (full PrincipalResponse).
 	return &apicommon.Out[PrincipalResponse]{Body: fromEntity(p)}, nil
 }
 
@@ -1652,7 +1650,7 @@ func (s *State) listApplicationAccess(ctx context.Context, in *apicommon.IDInput
 }
 
 // resolveApplications hydrates application IDs into {id, code, name} rows,
-// skipping IDs that no longer resolve (matching Rust's lenient behaviour).
+// skipping IDs that no longer resolve (lenient by design).
 func (s *State) resolveApplications(ctx context.Context, ids []string) ([]ApplicationAccessResponse, error) {
 	out := make([]ApplicationAccessResponse, 0, len(ids))
 	for _, id := range ids {
@@ -1684,9 +1682,9 @@ func (s *State) listAvailableApplications(ctx context.Context, in *apicommon.IDI
 	if p == nil {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
-	// Available = all active applications the system knows about. Rust
-	// filters by what's already enabled in the principal's clients;
-	// Go matches the simpler "all active" pending product confirmation.
+	// Available = all active applications the system knows about — the
+	// simpler choice over filtering by what's already enabled in the
+	// principal's clients, pending product confirmation.
 	// For a non-anchor administrator (client-admin) we bound the menu to the
 	// applications the caller's client can access, so they can only grant what
 	// the client is entitled to (mirrors the role-assignment bounding).

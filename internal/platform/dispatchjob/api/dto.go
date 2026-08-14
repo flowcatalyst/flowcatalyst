@@ -166,8 +166,7 @@ func fromEntity(j *dispatchjob.DispatchJob) DispatchJobResponse {
 // endpoints (GET /api/dispatch-jobs, /bff/dispatch-jobs). Matches the
 // SPA's `DispatchJobRead` interface (frontend/src/api/dispatch-jobs.ts):
 // the list grid binds id/code/source/status/mode/targetUrl/createdAt, and
-// the interface also carries the projection facets. Mirrors Rust's
-// DispatchJobReadResponse (dispatch_job/api.rs:104).
+// the interface also carries the projection facets.
 type DispatchJobRead struct {
 	ID               string           `json:"id"`
 	EventID          *string          `json:"eventId,omitempty"`
@@ -232,8 +231,8 @@ func readFromEntity(j *dispatchjob.DispatchJob) DispatchJobRead {
 }
 
 // splitCode derives application/subdomain/aggregate from the colon-
-// delimited dispatch code (e.g. "orders:fulfillment:shipment:shipped"),
-// mirroring the Rust EventRead accessors. The write-side msg_dispatch_jobs
+// delimited dispatch code (e.g. "orders:fulfillment:shipment:shipped").
+// The write-side msg_dispatch_jobs
 // table has no separate facet columns, so we project them from the code.
 func splitCode(code string) (app, sub, agg *string) {
 	parts := strings.Split(code, ":")
@@ -251,8 +250,8 @@ func splitCode(code string) (app, sub, agg *string) {
 
 // RawDispatchJobResponse is the debug raw-job wire shape for GET
 // /bff/debug/dispatch-jobs. The SPA's RawDispatchJobListPage binds a bare
-// array with fields kind/code/status/payloadLength/idempotencyKey/etc.
-// Mirrors Rust's shared/debug_api.rs RawDispatchJobResponse, including the
+// array with fields kind/code/status/payloadLength/idempotencyKey/etc.,
+// including the
 // derived payloadLength + attemptHistoryCount.
 type RawDispatchJobResponse struct {
 	ID                  string           `json:"id"`

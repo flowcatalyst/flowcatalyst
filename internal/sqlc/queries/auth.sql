@@ -6,8 +6,8 @@
 -- allowed_origins, application_ids) that the Go entity doesn't carry
 -- yet — they're a follow-up alongside the entity extension.
 -- The Go entity stores Argon2-hashed secrets in client_secret_ref
--- (Rust uses it as a secrets-manager reference; Go uses it as the
--- hash). See HANDOFF.md §4 for the planned PHC-salt fix.
+-- (legacy-platform uses it as a secrets-manager reference; Go uses it as the
+-- hash). See docs/wire-contract.md.
 
 -- name: OAuthClientFindByID :one
 SELECT id, client_id, client_name, client_type, client_secret_ref,
@@ -172,7 +172,7 @@ ON CONFLICT (id) DO UPDATE SET
 DELETE FROM tnt_client_auth_configs WHERE id = $1;
 
 -- ── IdpRoleMapping (oauth_idp_role_mappings) ─────────────────────────
--- idp_type was added Go-side in migration 035 (Rust had dropped the
+-- idp_type was added Go-side in migration 035 (legacy-platform had dropped the
 -- column, so its rows read back NULL). It is persisted and echoed, but
 -- FindByIdpRole deliberately does NOT filter on it — pre-035 rows have
 -- NULL idp_type and live mappings must keep matching.

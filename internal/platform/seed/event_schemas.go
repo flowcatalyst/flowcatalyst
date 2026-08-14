@@ -4,11 +4,10 @@ import (
 	"encoding/json"
 )
 
-// platformEventSchemas returns the JSON-Schema map. Direct 1:1 port of
-// fc-platform/src/seed/platform_event_schemas.rs::schemas(). Keys match
+// platformEventSchemas returns the JSON-Schema map. Keys match
 // event-type codes exactly. The DSL helpers (obj/reqStr/optStr/etc.)
-// mirror the Rust helpers — when modifying schemas, change BOTH files in
-// lockstep so cross-language consumers stay in sync.
+// build the schemas consumed cross-language — keep the emitted shapes
+// stable for existing consumers.
 func platformEventSchemas() map[string]json.RawMessage {
 	m := map[string]json.RawMessage{}
 
@@ -276,7 +275,7 @@ func platformEventSchemas() map[string]json.RawMessage {
 	return m
 }
 
-// ── DSL — mirrors platform_event_schemas.rs helpers ──────────────────────
+// ── DSL — JSON-Schema builder helpers ────────────────────────────────────
 
 type prop struct {
 	name     string

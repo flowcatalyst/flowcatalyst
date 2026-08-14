@@ -32,8 +32,6 @@ type EventTypesState struct {
 // application/subdomain/aggregate/event fields, ISO-8601 strings,
 // embedded spec_versions with stringified schema) and accepts
 // camelCase request bodies.
-//
-// Mirrors `crates/fc-platform/src/shared/bff_event_types_api.rs`.
 func RegisterEventTypes(r chi.Router, s *EventTypesState) {
 	r.Route("/bff/event-types", func(r chi.Router) {
 		r.Get("/", s.list)
@@ -57,7 +55,7 @@ func RegisterEventTypes(r chi.Router, s *EventTypesState) {
 
 // ── Wire DTOs ────────────────────────────────────────────────────────────
 
-// bffSpecVersionResponse matches Rust's BffSpecVersionResponse —
+// bffSpecVersionResponse is the wire shape for one spec version —
 // `schema` is the stringified JSON content (frontend re-parses lazily
 // per the editor's needs).
 type bffSpecVersionResponse struct {
@@ -71,7 +69,7 @@ type bffSpecVersionResponse struct {
 	UpdatedAt  string  `json:"updatedAt"`
 }
 
-// bffEventTypeResponse matches Rust's BffEventTypeResponse exactly.
+// bffEventTypeResponse is the wire shape for one event type.
 // Fields are camelCase per the frontend's expectation.
 type bffEventTypeResponse struct {
 	ID           string                   `json:"id"`
@@ -94,7 +92,7 @@ type bffEventTypeListResponse struct {
 	Total int                    `json:"total"`
 }
 
-// bffCreateEventTypeRequest matches Rust's BffCreateEventTypeRequest.
+// bffCreateEventTypeRequest is the create request body.
 // Schema is optional; when present, gets used to mint the initial
 // spec version inside the same use case.
 type bffCreateEventTypeRequest struct {
@@ -116,7 +114,7 @@ type bffAddSchemaRequest struct {
 	SchemaType *string         `json:"schemaType,omitempty"`
 	// The frontend supplies a version string ("1.0.0" etc.) — the API
 	// layer requires it; this DTO accepts it inline rather than at the
-	// path so the request shape matches Rust's BFF.
+	// path to preserve the established BFF request shape.
 	Version string `json:"version"`
 }
 
@@ -290,7 +288,7 @@ func (s *EventTypesState) addSchema(w http.ResponseWriter, r *http.Request) {
 // GET /bff/event-types/filters/subdomains[?application=...]
 //
 // Cascading filter — subdomains scoped to the supplied application.
-// Returns the Rust BffFilterOptionsResponse: `{"options": [...]}` of
+// Returns the filter-options envelope: `{"options": [...]}` of
 // distinct subdomain strings.
 func (s *EventTypesState) filterSubdomains(w http.ResponseWriter, r *http.Request) {
 	app := strPtr(r.URL.Query().Get("application"))
@@ -464,12 +462,12 @@ func (s *EventTypesState) deprecateSchema(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, toBffEventType(*et))
 }
 
-// bffSyncPlatformRequest matches Rust's BffSyncPlatformRequest.
+// bffSyncPlatformRequest is the sync-platform request body.
 type bffSyncPlatformRequest struct {
 	ApplicationCode string `json:"applicationCode"`
 }
 
-// bffSyncPlatformResponse matches Rust's BffSyncPlatformResponse —
+// bffSyncPlatformResponse is the sync-platform result envelope —
 // schemas tally is wire-compatible but currently not instrumented
 // (created=updated=unchanged=0). The event-type-level counts ARE
 // correct.
@@ -490,16 +488,16 @@ type bffSyncPlatformSchemas struct {
 // POST /bff/event-types/sync-platform
 //
 // Re-runs the code-defined event-type catalogue sync against the
-// supplied applicationCode (defaults to "platform"). Mirrors Rust's
-// sync-platform handler. RemoveUnlisted is hard-coded true to keep
+// supplied applicationCode (defaults to "platform").
+// RemoveUnlisted is hard-coded true to keep
 // the catalogue authoritative — stale API-sourced rows in the same
-// application get dropped, matching Rust.
+// application get dropped.
 //
 // Schemas-tally fields in the response are currently zero;
 // instrumenting them needs a tighter sync use case that tracks per-
 // schema outcomes (the underlying Sync helper has the data; it's the
 // eventtype sync use case that doesn't extract it). Filed as a
-// follow-up in HANDOFF §0.
+// follow-up.
 func (s *EventTypesState) syncPlatform(w http.ResponseWriter, r *http.Request) {
 	ac := auth.FromContext(r.Context())
 	if err := auth.RequireAnchor(ac); err != nil {

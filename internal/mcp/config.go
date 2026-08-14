@@ -11,7 +11,7 @@ import (
 )
 
 // defaultBaseURL is the platform URL assumed when none is configured — the
-// canonical local dev listener. 1:1 with Rust config.rs.
+// canonical local dev listener.
 const defaultBaseURL = "http://localhost:8080"
 
 // Config is the resolved MCP server configuration: where the platform lives
@@ -29,7 +29,7 @@ type Config struct {
 }
 
 // credentialsFile is the on-disk shape fcdev's MCP bootstrap writes and the
-// standalone server reads as a fallback. Matches the Rust mcp-credentials.json.
+// standalone server reads as a fallback.
 type credentialsFile struct {
 	ClientID     string `json:"client_id"`
 	ClientSecret string `json:"client_secret"`
@@ -38,7 +38,6 @@ type credentialsFile struct {
 
 // CredentialsPath is where fcdev writes, and the MCP server reads, the
 // bootstrapped local credentials: <user-cache>/flowcatalyst-dev/mcp-credentials.json.
-// Mirrors the Rust dirs::cache_dir() location.
 func CredentialsPath() (string, error) {
 	cache, err := os.UserCacheDir()
 	if err != nil {
@@ -48,8 +47,8 @@ func CredentialsPath() (string, error) {
 }
 
 // LoadConfig resolves the MCP config with env vars taking precedence over the
-// credentials file, falling back to defaults. Resolution order (1:1 with Rust
-// config.rs): FLOWCATALYST_URL / FLOWCATALYST_CLIENT_ID /
+// credentials file, falling back to defaults. Resolution order:
+// FLOWCATALYST_URL / FLOWCATALYST_CLIENT_ID /
 // FLOWCATALYST_CLIENT_SECRET → mcp-credentials.json → defaultBaseURL. Any field
 // left unset by the env is filled from the credentials file when present.
 func LoadConfig() Config {
@@ -140,7 +139,7 @@ func newPlatformClient(cfg Config) *client.FlowCatalystClient {
 
 // errNoCredentials is returned by RequireCredentials when neither env nor the
 // credentials file supplied a client_id/secret — surfaced to the user as a
-// "start fcdev first" hint, matching Rust.
+// "start fcdev first" hint.
 var errNoCredentials = errors.New(
 	"no MCP credentials: set FLOWCATALYST_CLIENT_ID/FLOWCATALYST_CLIENT_SECRET, " +
 		"or run `fcdev start` to bootstrap the mcp-credentials.json in the OS cache dir " +

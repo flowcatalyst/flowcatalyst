@@ -26,7 +26,7 @@ type SyncOpenApiSpecCommand struct {
 // synced event with Unchanged=true) or flips the prior CURRENT to
 // ARCHIVED and inserts a new CURRENT.
 //
-// Mirrors Rust's SyncOpenApiSpecUseCase. The spec rows are written through the
+// The spec rows are written through the
 // repo DIRECTLY in Execute (archive prior + insert new) — the envelope's
 // committed [Plan] is reserved for the tail event emission ([usecaseop.Emit]).
 // Concurrent dual syncs are caught by the partial unique index on

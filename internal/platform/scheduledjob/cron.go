@@ -8,21 +8,20 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-// cronParser matches the Rust `cron` crate's accepted shape as closely as
-// robfig/cron permits: seconds are REQUIRED, so the canonical firing form is
+// cronParser: seconds are REQUIRED, so the canonical firing form is
 // the 6-field "sec min hour dom mon dow".
 //
-// The Rust crate additionally accepts an optional 7th *year* field, which
-// robfig/cron does not model — a 7-field expression therefore fails to parse
+// robfig/cron does not model an optional 7th *year* field — a 7-field
+// expression therefore fails to parse
 // here and the slot is simply skipped. A bare 5-field POSIX expression also
-// fails to parse (seconds required), which matches the Rust crate: such an
+// fails to parse (seconds required): such an
 // expression is accepted at create time by ValidateCronShape but never fires.
 var cronParser = cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
-// ValidateCronShape mirrors the Rust validate_cron_shape: a cron expression
-// must have 5–7 whitespace-separated fields. This is a *shape* gate at
+// ValidateCronShape checks that a cron expression
+// has 5–7 whitespace-separated fields. This is a *shape* gate at
 // create/update time; the firing parser (cronParser) is stricter (it needs
-// the 6-field seconds-first form), exactly as in Rust where a 5-field
+// the 6-field seconds-first form), so a 5-field
 // expression passes validation but never produces a fire slot.
 func ValidateCronShape(expr string) error {
 	n := len(strings.Fields(strings.TrimSpace(expr)))
@@ -36,7 +35,7 @@ func ValidateCronShape(expr string) error {
 // LatestSlotInWindow returns the latest cron slot in the half-open window
 // (after, upTo] across all of a job's cron expressions, evaluated in tzName.
 //
-// Mirrors the Rust latest_slot_in_window — "skip-missed" (AWS-style)
+// "Skip-missed" (AWS-style)
 // semantics: when a long downtime means several slots elapsed, only the
 // LATEST fires; older missed slots are dropped. Returns ok=false when no slot
 // falls in the window (including after >= upTo). Unparseable expressions are

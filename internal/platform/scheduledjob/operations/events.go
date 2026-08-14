@@ -97,7 +97,7 @@ func (e ScheduledJobFiredManually) ToDataJSON() ([]byte, error) {
 // ScheduledJobsSynced is the rollup emitted by the SDK scheduled-job sync
 // (SyncScheduledJobs). Unlike the other sync rollups it carries the affected
 // job IDs (not just counts), since the SDK contract returns the created /
-// updated / archived ID arrays. Mirrors the Rust ScheduledJobsSynced event.
+// updated / archived ID arrays.
 type ScheduledJobsSynced struct {
 	Metadata        usecase.EventMetadata
 	ApplicationCode string

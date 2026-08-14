@@ -14,14 +14,14 @@ import (
 
 // tokenRefreshBuffer is how far ahead of expiry the manager refreshes the
 // cached token. The buffer covers clock skew and in-flight request latency so
-// the platform never sees an already-expired token. 1:1 with Rust auth.rs.
+// the platform never sees an already-expired token.
 const tokenRefreshBuffer = 60 * time.Second
 
 // TokenManager mints and caches an OAuth2 client_credentials access token for
 // the MCP server's calls to the platform API. It POSTs the standard
 // form-encoded grant to {baseURL}/oauth/token, caches the access token in
 // memory, and refreshes it tokenRefreshBuffer before expiry. Safe for
-// concurrent use. Mirrors the Rust fc-mcp auth.rs token manager.
+// concurrent use.
 type TokenManager struct {
 	tokenURL     string
 	clientID     string

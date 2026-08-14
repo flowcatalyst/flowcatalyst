@@ -37,8 +37,7 @@ func ptrStr(s string) *string { return &s }
 
 // ProvisionServiceAccountCommand provisions a dedicated service account
 // (+ its SERVICE principal + a confidential OAuth client) for an
-// application, atomically. Mirrors Rust fc-platform's
-// provision_service_account, which runs all three writes in one
+// application, atomically — all three writes run in one
 // transaction.
 type ProvisionServiceAccountCommand struct {
 	ApplicationID string `json:"applicationId"`
@@ -142,8 +141,8 @@ func ProvisionServiceAccount(
 			}
 
 			// 2. Linked SERVICE principal — raw persist (no separate event;
-			//    the principal row is a persistence detail of SA creation,
-			//    matching Rust where the principal is created "behind" the SA).
+			//    the principal row is a persistence detail of SA creation —
+			//    the principal is created "behind" the SA).
 			//    Scope the SA to its own application: AllApplications=false plus a
 			//    single application-access grant. The token's `applications` claim
 			//    then carries exactly this app, and resource-level authorization
@@ -212,7 +211,7 @@ func ProvisionServiceAccount(
 
 // generateClientSecret returns a fresh URL-safe secret + its encrypted
 // reference (client_secret_ref). Same scheme as
-// auth/operations.generateSecret — Rust parity: secrets are reversibly
+// auth/operations.generateSecret: secrets are reversibly
 // encrypted, not hashed.
 func generateClientSecret() (plaintext, ref string, err error) {
 	b := make([]byte, 32)

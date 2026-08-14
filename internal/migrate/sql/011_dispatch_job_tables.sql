@@ -3,10 +3,10 @@
 -- NOTE: These tables are superseded by 004_messaging_tables.sql which creates
 -- msg_dispatch_jobs, msg_dispatch_jobs_read, and msg_dispatch_job_attempts
 -- (matching the TypeScript reference exactly).
--- The tables below were from an earlier Rust-only migration with a different schema
+-- The tables below were from an earlier legacy migration with a different schema
 -- (JSONB attempts, VARCHAR(17) IDs) and are NOT used because CREATE TABLE IF NOT EXISTS
 -- is silently skipped when the tables already exist from 004.
--- The Rust code now targets the 004 schema (VARCHAR(13) IDs, normalized attempts table).
+-- The platform now targets the 004 schema (VARCHAR(13) IDs, normalized attempts table).
 
 -- SUPERSEDED: Already created by 004_messaging_tables.sql
 CREATE TABLE IF NOT EXISTS msg_dispatch_jobs (

@@ -249,10 +249,9 @@ func (e DeveloperCredentialRevoked) ToDataJSON() ([]byte, error) {
 }
 
 // ApplicationAccessAssigned — emitted when the user's application-access
-// set is updated. UserID populates "userId" in the payload (matches the
-// Rust schema, where this event uses userId not principalId — the Rust
-// authors deliberately diverged to keep the API close to the frontend's
-// vocabulary).
+// set is updated. UserID populates "userId" in the payload (this event
+// deliberately uses userId, not principalId, to keep the API close to
+// the frontend's vocabulary).
 type ApplicationAccessAssigned struct {
 	Metadata       usecase.EventMetadata
 	UserID         string
@@ -343,7 +342,7 @@ func defaultEmpty(xs []string) []string {
 // PrincipalsSynced is the rollup emitted by the SDK app-scoped principal sync
 // (SyncPrincipals). "Deactivated" counts principals from which SDK_SYNC role
 // assignments were stripped during removeUnlisted (the principals themselves
-// are not deleted) — matching the Rust PrincipalsSynced semantics.
+// are not deleted).
 type PrincipalsSynced struct {
 	Metadata        usecase.EventMetadata
 	ApplicationCode string

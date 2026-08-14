@@ -1,4 +1,4 @@
-// Package event is the port of fc-platform/src/event. CloudEvents 1.0
+// Package event is the CloudEvents 1.0
 // envelope stored in msg_events.
 //
 // Per docs/conventions.md §3, this is an infrastructure path: rows are

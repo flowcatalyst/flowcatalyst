@@ -9,9 +9,9 @@
 // zeros, producing variable-length strings).
 //
 // Does NOT cover the HMAC signing path in internal/router/mediator.go,
-// which deliberately uses millisecond precision to match the Rust
-// signer + consumer SDKs. That format is wire-protocol crypto and lives
-// outside this helper.
+// which deliberately uses millisecond precision to match the
+// consumer SDKs' signature verification. That format is wire-protocol
+// crypto and lives outside this helper.
 package jsontime
 
 import (

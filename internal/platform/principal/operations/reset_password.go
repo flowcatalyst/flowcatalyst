@@ -19,9 +19,8 @@ type ResetPasswordCommand struct {
 	// EnforcePasswordComplexity defaults to true when nil: the full
 	// passwordpolicy runs (length bounds, common-password blocklist, not
 	// derived from the user's email/name). When false the caller owns its own
-	// password policy — SDK applications may set any password ≥ 2 chars (1:1
-	// with Rust's relaxed() policy; owner decision to keep the API fully
-	// permissive for external apps).
+	// password policy — SDK applications may set any password ≥ 2 chars
+	// (owner decision to keep the API fully permissive for external apps).
 	EnforcePasswordComplexity *bool `json:"enforcePasswordComplexity,omitempty"`
 }
 

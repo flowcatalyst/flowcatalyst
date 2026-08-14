@@ -1,5 +1,4 @@
-// Package standby implements Redis-backed leader election. Mirrors the
-// Rust fc-standby crate.
+// Package standby implements Redis-backed leader election.
 //
 // One process acquires the lock via SET NX EX; while it holds the
 // lock, it periodically refreshes the TTL. If the leader crashes or

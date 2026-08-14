@@ -30,7 +30,7 @@ type State struct {
 const tag = "event-types"
 
 // Register mounts the event-type endpoints on the supplied huma API.
-// Routes match the existing Rust eventtype/api.rs exactly (path,
+// Routes preserve the established wire contract exactly (path,
 // method, status code).
 func Register(api huma.API, s *State) {
 	g := apiroute.New(api, tag)
@@ -41,7 +41,7 @@ func Register(api huma.API, s *State) {
 	apiroute.Put(g, "updateEventType", "/api/event-types/{id}", "Update an event type", http.StatusNoContent, s.update)
 	apiroute.Delete(g, "deleteEventType", "/api/event-types/{id}", "Archive an event type", http.StatusNoContent, s.delete)
 	apiroute.Post(g, "addEventTypeSchema", "/api/event-types/{id}/schemas", "Add a schema version to an event type (Go-historical alias)", http.StatusOK, s.addSchema)
-	// /versions is the Rust-canonical path. Same handler; both paths
+	// /versions is the canonical path. Same handler; both paths
 	// remain registered so existing SPA clients on /schemas keep working.
 	apiroute.Post(g, "addEventTypeVersion", "/api/event-types/{id}/versions", "Add a schema version to an event type", http.StatusOK, s.addSchema)
 }
@@ -187,6 +187,6 @@ func (s *State) addSchema(ctx context.Context, in *addSchemaInput) (*apicommon.O
 	if et == nil {
 		return nil, httperror.NotFound("EventType", in.ID)
 	}
-	// Return the updated event type (1:1 with Rust add_schema_version → EventTypeResponse).
+	// Return the updated event type (full EventTypeResponse).
 	return &apicommon.Out[EventTypeResponse]{Body: fromEntity(et)}, nil
 }

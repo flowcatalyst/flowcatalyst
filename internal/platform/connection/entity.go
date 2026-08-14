@@ -1,4 +1,4 @@
-// Package connection is the port of fc-platform/src/connection. Stores
+// Package connection stores
 // outbound webhook delivery targets (subscriber endpoints).
 package connection
 

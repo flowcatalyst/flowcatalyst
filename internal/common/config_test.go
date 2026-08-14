@@ -7,7 +7,7 @@ import (
 
 // TestQueueConfigUnmarshal_CamelCaseWire verifies the canonical config-service
 // wire shape ({queueName, queueUri}) decodes correctly. This is the shape the
-// central config service / Rust router emit and MUST stay interoperable.
+// central config service emits and MUST stay interoperable.
 func TestQueueConfigUnmarshal_CamelCaseWire(t *testing.T) {
 	const body = `{"queueName":"orders","queueUri":"sqs://orders","connections":4,"visibilityTimeout":60}`
 	var q QueueConfig
@@ -32,8 +32,8 @@ func TestQueueConfigUnmarshal_LegacyAliases(t *testing.T) {
 	}
 }
 
-// TestQueueConfigUnmarshal_Defaults mirrors the Rust QueueConfigResponse ->
-// QueueConfig conversion: name falls back to uri, connections -> 1,
+// TestQueueConfigUnmarshal_Defaults verifies the standard defaults:
+// name falls back to uri, connections -> 1,
 // visibilityTimeout -> 120 when absent.
 func TestQueueConfigUnmarshal_Defaults(t *testing.T) {
 	const body = `{"queueUri":"sqs://orders"}`
@@ -53,7 +53,7 @@ func TestQueueConfigUnmarshal_Defaults(t *testing.T) {
 }
 
 // TestQueueConfigMarshal_EmitsCamelCase verifies a Go-served config is readable
-// by an existing Rust router (which expects queueName/queueUri).
+// by existing routers (which expect queueName/queueUri).
 func TestQueueConfigMarshal_EmitsCamelCase(t *testing.T) {
 	q := QueueConfig{Name: "orders", URI: "sqs://orders", Connections: 1, VisibilityTimeout: 120}
 	b, err := json.Marshal(q)

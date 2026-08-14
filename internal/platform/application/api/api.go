@@ -263,7 +263,7 @@ func (s *State) disableForClient(ctx context.Context, in *clientToggleInput) (*a
 
 // provisionServiceAccount creates a dedicated service account, its
 // SERVICE principal, attaches it to the application, and creates a
-// confidential OAuth client — atomically. Mirrors Rust's three-step
+// confidential OAuth client — atomically, in a three-step
 // transactional flow. The OAuth client secret is returned once
 // (plaintext); it's stored hashed.
 func (s *State) provisionServiceAccount(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ApplicationProvisionServiceAccountResponse], error) {

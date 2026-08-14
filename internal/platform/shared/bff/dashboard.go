@@ -1,5 +1,5 @@
 // Package bff hosts the /bff/* endpoints — frontend-only, session-auth,
-// response shapes tuned to screens. Mirrors fc-platform/src/shared/bff_*.rs.
+// response shapes tuned to screens.
 //
 // Phase 3g ships dashboard.go as the worked example. Other BFF endpoints
 // (event_types, roles, scheduled_jobs, developer, ...) follow the same

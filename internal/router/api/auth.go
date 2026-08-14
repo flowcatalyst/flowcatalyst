@@ -7,7 +7,7 @@ import (
 )
 
 // BasicAuthConfig configures the optional HTTP BasicAuth middleware.
-// Empty Username disables auth entirely (matches Rust AuthMode::None).
+// Empty Username disables auth entirely.
 type BasicAuthConfig struct {
 	Username string
 	Password string
@@ -16,8 +16,8 @@ type BasicAuthConfig struct {
 	Realm string
 }
 
-// publicPaths are the URLs that bypass authentication. Mirrors Rust's
-// is_public_path: probes + Prometheus + the OpenAPI surface must be
+// publicPaths are the URLs that bypass authentication:
+// probes + Prometheus + the OpenAPI surface must be
 // reachable by orchestration tooling without credentials.
 var publicPaths = map[string]struct{}{
 	"/health":           {},

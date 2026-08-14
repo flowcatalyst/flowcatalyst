@@ -1,7 +1,8 @@
 // Package logging configures structured logging via slog.
 //
-// Field names match the Rust tracing JSON output so logs from both
-// codebases can be aggregated in the same pipeline during cutover:
+// Field names match the historical structured-log JSON output so logs
+// from both codebases can be aggregated in the same pipeline during
+// cutover:
 //   - correlation_id, causation_id, principal_id, execution_id
 //   - aggregate_type, aggregate_id, event_type
 package logging

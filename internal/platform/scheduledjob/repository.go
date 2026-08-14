@@ -206,7 +206,7 @@ func (r *Repository) FindActive(ctx context.Context) ([]ScheduledJob, error) {
 
 // MarkFired advances last_fired_at to slot, monotonically — it never moves
 // the timestamp backwards (GREATEST), so a slow/duplicate poll can't cause a
-// re-fire of an already-fired window. Mirrors the Rust mark_fired
+// re-fire of an already-fired window
 // (GREATEST(last_fired_at, $2)); last_fired_at is bookkeeping, so version is
 // intentionally not bumped.
 func (r *Repository) MarkFired(ctx context.Context, id string, slot time.Time) error {

@@ -1,10 +1,9 @@
-// Package common is the Go port of the Rust fc-common crate. It holds
-// types shared across the router, queue, stream, outbox, and platform
-// packages: messages, dispatch modes, mediation results, outbox status,
-// configuration shapes, and warnings.
+// Package common holds types shared across the router, queue, stream,
+// outbox, and platform packages: messages, dispatch modes, mediation
+// results, outbox status, configuration shapes, and warnings.
 //
-// JSON tags match the Rust serde posture exactly (camelCase, omitempty
-// for Option<T>, SCREAMING_SNAKE_CASE for enums) so wire format is
+// JSON tags match the wire contract exactly (camelCase, omitempty for
+// optionals, SCREAMING_SNAKE_CASE for enums) so wire format is
 // byte-compatible.
 package common
 
@@ -27,7 +26,7 @@ const (
 	DispatchBlockOnError DispatchMode = "BLOCK_ON_ERROR"
 )
 
-// ParseDispatchMode is the lenient parser matching Rust's from_str:
+// ParseDispatchMode is the lenient parser:
 // unknown input maps to Immediate.
 func ParseDispatchMode(s string) DispatchMode {
 	switch s {
@@ -46,7 +45,7 @@ func (d DispatchMode) RequiresOrdering() bool {
 }
 
 // Message is the core message structure that flows through the system.
-// Compatible with Java's MessagePointer.
+// Compatible with the historical MessagePointer wire shape.
 type Message struct {
 	ID              string        `json:"id"`
 	PoolCode        string        `json:"poolCode,omitempty"`
@@ -66,7 +65,7 @@ type QueuedMessage struct {
 	BrokerMessageID string // empty if not provided
 	QueueIdentifier string
 	// BatchID is a router-assigned grouping over messages received in the
-	// same poll batch (Rust BatchMessage.batch_id). It is set by the pool's
+	// same poll batch. It is set by the pool's
 	// poll loop, not the broker, and is informational only.
 	BatchID string
 	// Attempts counts how many in-pipeline mediation attempts this delivery

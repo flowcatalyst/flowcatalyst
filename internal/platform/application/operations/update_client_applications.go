@@ -14,8 +14,6 @@ import (
 
 // UpdateClientApplicationsCommand replaces a client's full enabled-app
 // set in one call. enabled_application_ids is the desired final state.
-//
-// Mirrors Rust crates/fc-platform/src/application/operations/update_client_applications.rs.
 type UpdateClientApplicationsCommand struct {
 	ClientID              string   `json:"clientId"`
 	EnabledApplicationIDs []string `json:"enabledApplicationIds"`
@@ -131,7 +129,7 @@ func UpdateClientApplications(
 
 			if len(toPersist) == 0 {
 				// Empty diff still emits the rollup so the audit trail records
-				// the request. Matches Rust's behaviour.
+				// the request.
 				return usecaseop.Emit(event), nil
 			}
 			return usecaseop.SaveAll(toPersist, configs, event), nil

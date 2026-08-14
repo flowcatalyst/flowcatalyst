@@ -12,8 +12,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
-// SyncProcessInput is one process definition in an SDK sync payload. Mirrors
-// the Rust SyncProcessInput (camelCase wire shape lives in the sdksync API).
+// SyncProcessInput is one process definition in an SDK sync payload
+// (the camelCase wire shape lives in the sdksync API).
 type SyncProcessInput struct {
 	Code        string
 	Name        string
@@ -35,7 +35,7 @@ type SyncProcessesCommand struct {
 }
 
 // SyncProcesses bulk-upserts an application's process catalogue within a
-// single transaction. Mirrors the Rust SyncProcessesUseCase exactly:
+// single transaction. Semantics:
 //
 //   - Matches existing rows by full code (application:subdomain:process-name).
 //   - Only API- and CODE-sourced rows are created/updated/removed; UI-authored

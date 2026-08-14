@@ -10,7 +10,7 @@
 -- Idempotent: skips if msg_scheduled_job_instances is already partitioned.
 --
 -- Forward and retention managed by pg_partman_bgw in production (registered
--- in migration 023) and by `PartitionManagerService` in fc-dev. The Rust
+-- in migration 023) and by `PartitionManagerService` in fc-dev. The legacy
 -- manager auto-defers when partman is detected.
 
 -- +goose StatementBegin

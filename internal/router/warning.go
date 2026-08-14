@@ -9,10 +9,9 @@ import (
 )
 
 // WarningServiceConfig tunes retention + acknowledgement behaviour.
-// Defaults mirror the Rust `WarningServiceConfig::default()`.
 type WarningServiceConfig struct {
-	// MaxWarningAge auto-clears any warning older than this. Java + Rust
-	// default: 8 hours.
+	// MaxWarningAge auto-clears any warning older than this. Default:
+	// 8 hours.
 	MaxWarningAge time.Duration
 	// MaxWarnings caps the in-memory set; when full, the oldest 10% are
 	// evicted by created_at order.
@@ -23,7 +22,7 @@ type WarningServiceConfig struct {
 	AutoAcknowledgeAge time.Duration
 }
 
-// DefaultWarningServiceConfig returns the Rust defaults.
+// DefaultWarningServiceConfig returns the standard defaults.
 func DefaultWarningServiceConfig() WarningServiceConfig {
 	return WarningServiceConfig{
 		MaxWarningAge:      8 * time.Hour,
@@ -32,8 +31,7 @@ func DefaultWarningServiceConfig() WarningServiceConfig {
 	}
 }
 
-// WarningService is the in-memory warning store. Mirrors
-// `crates/fc-router/src/warning.rs::WarningService`.
+// WarningService is the in-memory warning store.
 //
 // The store is bounded (MaxWarnings) and self-cleaning (cleanup()
 // auto-acks aged warnings + drops very old ones). If a Notifier is

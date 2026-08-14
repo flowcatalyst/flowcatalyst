@@ -36,7 +36,7 @@ type DeveloperState struct {
 }
 
 // RegisterDeveloper mounts the dashboard's `/bff/developer/*`
-// endpoints. Mirrors crates/fc-platform/src/shared/bff_developer_api.rs.
+// endpoints.
 //
 // Routes:
 //
@@ -273,7 +273,6 @@ func (s *DeveloperState) listAppEventTypes(w http.ResponseWriter, r *http.Reques
 //
 // Captures the live huma-generated platform OpenAPI document and runs
 // the sync use case against the seeded `platform` application row.
-// Returns a wire-shape mirroring Rust's BffSyncPlatformOpenAPIResponse.
 func (s *DeveloperState) syncPlatformOpenAPI(w http.ResponseWriter, r *http.Request) {
 	ac := auth.FromContext(r.Context())
 	if err := auth.RequireAnchor(ac); err != nil {

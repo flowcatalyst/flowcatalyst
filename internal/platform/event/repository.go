@@ -41,7 +41,7 @@ func (r *Repository) InsertBatch(ctx context.Context, events []Event) (int, erro
 		}
 		// Column set matches the corrected platformsink.Sink shape.
 		// No ON CONFLICT — dedup duplicates bubble as tx failures
-		// (matches Rust; the unique index is composite on
+		// (the unique index is composite on
 		// (deduplication_id, created_at), which we can't always infer
 		// across migration profiles).
 		batch.Queue(

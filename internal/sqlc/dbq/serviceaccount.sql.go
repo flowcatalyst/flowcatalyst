@@ -115,7 +115,7 @@ WHERE id = $1
 
 // Queries for iam_service_accounts. Webhook credentials are stored as
 // separate columns (wh_auth_type, wh_auth_token_ref, wh_signing_secret_ref,
-// wh_signing_algorithm) matching Rust. The repository maps the flat
+// wh_signing_algorithm) matching the wire contract. The repository maps the flat
 // columns into a single WebhookCredentials struct in the aggregate.
 func (q *Queries) ServiceAccountFindByID(ctx context.Context, id string) (IamServiceAccount, error) {
 	row := q.db.QueryRow(ctx, serviceAccountFindByID, id)

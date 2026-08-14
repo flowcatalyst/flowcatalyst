@@ -115,7 +115,7 @@ func Register(api huma.API, s *State) {
 	apiroute.Post(gClients, "activateOAuthClient", "/api/oauth-clients/{id}/activate", "Activate an OAuth client", http.StatusOK, s.activateOAuthClient)
 	apiroute.Post(gClients, "deactivateOAuthClient", "/api/oauth-clients/{id}/deactivate", "Deactivate an OAuth client", http.StatusOK, s.deactivateOAuthClient)
 	apiroute.Post(gClients, "rotateOAuthClientSecret", "/api/oauth-clients/{id}/rotate-secret", "Rotate an OAuth client's secret", http.StatusOK, s.rotateOAuthClientSecret)
-	// SDK-compatibility aliases. The Laravel/Rust client calls
+	// SDK-compatibility aliases. The Laravel SDK client calls
 	// /api/oauth-clients/{id}/regenerate-secret (same as rotate-secret) and
 	// looks clients up by their client_id via /by-client-id/{clientId}.
 	apiroute.Post(gClients, "regenerateOAuthClientSecret", "/api/oauth-clients/{id}/regenerate-secret", "Regenerate an OAuth client's secret (SDK alias of rotate-secret)", http.StatusOK, s.rotateOAuthClientSecret)
@@ -223,8 +223,7 @@ func (s *State) createOAuthClient(ctx context.Context, in *apicommon.In[CreateOA
 		return nil, err
 	}
 	// Re-fetch the persisted client so the SPA receives the full
-	// OAuthClientResponse under `client` (oauth-clients.ts:56). Matches
-	// Rust oauth_clients_api.rs:294-305.
+	// OAuthClientResponse under `client` (oauth-clients.ts:56).
 	c, err := s.Repo.OAuthClients.FindByID(ctx, event.OAuthClientID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
@@ -258,8 +257,8 @@ func (s *State) updateOAuthClient(ctx context.Context, in *updateOAuthClientInpu
 	return &apicommon.Empty{}, nil
 }
 
-// activate/deactivate carry the {success, message?} body, matching Rust's
-// SuccessResponse. The SPA reads `.message` (oauth-clients.ts:109-117), which
+// activate/deactivate carry the {success, message?} body
+// (SuccessResponse). The SPA reads `.message` (oauth-clients.ts:109-117), which
 // is preserved. Returns 200 + body rather than 204 so apiFetch does not
 // resolve to undefined.
 func (s *State) activateOAuthClient(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[apicommon.SuccessResponse], error) {

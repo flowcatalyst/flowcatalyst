@@ -61,8 +61,8 @@ func RegenerateAuthToken(repo *serviceaccount.Repository) usecaseop.Operation[Re
 	}
 }
 
-// generateAuthToken returns "fc_" + 32 lowercase-alphanumeric chars.
-// Matches the Rust port byte-for-byte (length 35, prefix fc_).
+// generateAuthToken returns "fc_" + 32 lowercase-alphanumeric chars
+// (length 35, prefix fc_).
 func generateAuthToken() string {
 	const alphabet = "0123456789abcdefghijklmnopqrstuvwxyz"
 	max := big.NewInt(int64(len(alphabet)))
@@ -71,8 +71,7 @@ func generateAuthToken() string {
 	for i := 0; i < 32; i++ {
 		n, err := rand.Int(rand.Reader, max)
 		if err != nil {
-			// crypto/rand failures are catastrophic; the Rust source panics
-			// in this codepath too via Result<…>. Fall through to a
+			// crypto/rand failures are catastrophic. Fall through to a
 			// deterministic char so the build path stays infallible.
 			sb.WriteByte(alphabet[0])
 			continue

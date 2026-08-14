@@ -167,8 +167,7 @@ func (r *InstanceRepository) Insert(ctx context.Context, inst *ScheduledJobInsta
 }
 
 // MarkInFlight flips a QUEUED instance to IN_FLIGHT and bumps
-// delivery_attempts, just before the dispatcher POSTs. Mirrors the Rust
-// mark_in_flight.
+// delivery_attempts, just before the dispatcher POSTs.
 func (r *InstanceRepository) MarkInFlight(ctx context.Context, instanceID string) error {
 	_, err := r.pool.Exec(ctx, `
 		UPDATE msg_scheduled_job_instances
@@ -221,7 +220,7 @@ func (r *InstanceRepository) MarkDeliveryFailed(ctx context.Context, instanceID,
 }
 
 // ListLogs returns up to `limit` log rows for the supplied instance,
-// oldest first. A limit of <= 0 falls back to 500 (matches Rust).
+// oldest first. A limit of <= 0 falls back to 500.
 func (r *InstanceRepository) ListLogs(ctx context.Context, instanceID string, limit int64) ([]ScheduledJobInstanceLog, error) {
 	if limit <= 0 {
 		limit = 500

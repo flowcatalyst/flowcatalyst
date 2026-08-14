@@ -1,4 +1,4 @@
-// Package cors is the port of fc-platform/src/cors. Stores allowed
+// Package cors stores allowed
 // CORS origins for the platform's HTTP layer.
 package cors
 

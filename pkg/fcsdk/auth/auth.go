@@ -3,9 +3,9 @@
 // secret), the OAuth2 authorization-code flow with PKCE, and a
 // client_credentials TokenProvider that plugs into client.WithTokenProvider.
 //
-// Mirrors crates/fc-sdk/src/auth/ in shape and wire format. A token
-// minted by FlowCatalyst validates identically from any of the four
-// SDKs (Rust, TypeScript, Laravel, Go).
+// A token
+// minted by FlowCatalyst validates identically from any of the
+// SDKs (TypeScript, Laravel, Go).
 //
 // # Resource server (token validation)
 //
@@ -47,8 +47,7 @@ type Error struct {
 	Message string
 }
 
-// ErrorKind enumerates auth error categories. Mirrors the Rust SDK's
-// AuthError enum variants.
+// ErrorKind enumerates auth error categories.
 type ErrorKind int
 
 const (

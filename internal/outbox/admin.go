@@ -9,9 +9,8 @@ import (
 
 // AdminHandler returns an HTTP handler exposing the operational state machine so
 // an operator can inspect message-group states and pause / resume / unblock /
-// skip a group. StartOutboxProcessor serves it on FC_OUTBOX_ADMIN_PORT when set
-// (the Rust equivalent is the GroupDistributor's programmatic controls — no
-// HTTP — so this is a Go convenience that makes them operable):
+// skip a group. StartOutboxProcessor serves it on FC_OUTBOX_ADMIN_PORT when set,
+// making the GroupDistributor's programmatic controls operable over HTTP:
 //
 //	GET  /outbox/groups               — non-default (Paused/Blocked) group states
 //	GET  /outbox/groups/blocked       — Blocked groups only

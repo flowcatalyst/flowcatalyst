@@ -1,5 +1,4 @@
-// Package principal is the port of fc-platform/src/principal.
-// Unified user/service-account aggregate.
+// Package principal is the unified user/service-account aggregate.
 //
 // Phase 3c scope: core ops (create, update, delete, activate, deactivate,
 // reset_password). The following ops are explicitly deferred to a focused

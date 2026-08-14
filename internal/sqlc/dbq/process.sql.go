@@ -57,7 +57,7 @@ WHERE id = $1
 `
 
 // Queries for msg_processes. The schema has no created_by column —
-// matches the Rust source which hard-codes CreatedBy: None on read.
+// matches the legacy-platform source which hard-codes CreatedBy: None on read.
 func (q *Queries) ProcessFindByID(ctx context.Context, id string) (MsgProcess, error) {
 	row := q.db.QueryRow(ctx, processFindByID, id)
 	var i MsgProcess

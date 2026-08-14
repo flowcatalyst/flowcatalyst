@@ -38,7 +38,7 @@ import (
 // not as JSONB. The entity exposes UserIdentity{} as a struct for API
 // shape; fields with no backing column (email_verified, first_name,
 // last_name, picture_url, phone) are zero-valued on read and dropped
-// on write. Mirrors the Rust impl.
+// on write.
 type Repository struct {
 	q    *dbq.Queries
 	pool *pgxpool.Pool
@@ -171,7 +171,7 @@ func (r *Repository) FindByEmail(ctx context.Context, email string) (*Principal,
 
 // hydrateClientAccess populates p.AssignedClients from iam_client_access_grants
 // and p.ClientIdentifierMap (client id → identifier) from tnt_clients for the
-// home + granted clients. 1:1 with Rust repository.rs::find_by_id.
+// home + granted clients.
 //
 // The identifier map is what makes the JWT `clients` claim carry "id:identifier"
 // pairs (e.g. "clt_abc:spar"). SDK consumers (the Laravel FlowCatalystUser) split
@@ -494,7 +494,7 @@ func (r *Repository) Persist(ctx context.Context, p *Principal, tx *usecasepgx.D
 		devClientSecretRef = p.UserIdentity.DevClientSecretRef
 		devClientSecretUpdatedAt = p.UserIdentity.DevClientSecretUpdatedAt
 	}
-	// USER without an explicit provider defaults to INTERNAL (matches Rust).
+	// USER without an explicit provider defaults to INTERNAL.
 	if idpType == nil && p.Type == TypeUser {
 		internal := "INTERNAL"
 		idpType = &internal
@@ -759,7 +759,6 @@ func (r *Repository) Delete(ctx context.Context, p *Principal, tx *usecasepgx.Db
 }
 
 // rowToPrincipal projects the flat schema row onto the Principal aggregate.
-// Mirrors the Rust From<PrincipalRow> for Principal mapping.
 func rowToPrincipal(row dbq.IamPrincipal) *Principal {
 	p := Principal{
 		ID:                       row.ID,

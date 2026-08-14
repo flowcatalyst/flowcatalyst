@@ -1,5 +1,5 @@
-// Package identityprovider is the port of fc-platform/src/identity_provider.
-// Stores OIDC IDP configuration (Entra, Keycloak, Google, ...) and the
+// Package identityprovider stores OIDC IDP configuration
+// (Entra, Keycloak, Google, ...) and the
 // platform-internal "INTERNAL" identity provider for password auth.
 package identityprovider
 

@@ -22,7 +22,7 @@ import (
 )
 
 // MinLength / MaxLength bound accepted passwords. The floor matches the
-// pre-existing rule (Rust PasswordPolicy::default min_length = 8); the cap
+// pre-existing rule (min length 8); the cap
 // bounds the argon2 hashing cost.
 const (
 	MinLength = 8

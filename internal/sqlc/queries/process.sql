@@ -1,5 +1,5 @@
 -- Queries for msg_processes. The schema has no created_by column —
--- matches the Rust source which hard-codes CreatedBy: None on read.
+-- matches the legacy-platform source which hard-codes CreatedBy: None on read.
 
 -- name: ProcessFindByID :one
 SELECT id, code, name, description, status, source, application, subdomain,

@@ -14,8 +14,7 @@ import (
 
 // SdkSyncSource is the AssignmentSource value tagging role assignments that
 // came from an SDK principal sync. Distinguishes them from ADMIN_ASSIGNED /
-// IDP_SYNC rows so a sync only ever replaces its own set. Mirrors the Rust
-// "SDK_SYNC" source string.
+// IDP_SYNC rows so a sync only ever replaces its own set.
 const SdkSyncSource = "SDK_SYNC"
 
 // SyncPrincipalInput is one principal definition in an SDK sync payload.
@@ -41,7 +40,7 @@ type SyncPrincipalsCommand struct {
 }
 
 // SyncPrincipals upserts user principals from an application SDK within a
-// single transaction. Mirrors the Rust SyncPrincipalsUseCase exactly:
+// single transaction:
 //
 //   - Matches by lowercased email. An existing principal keeps its non-SDK_SYNC
 //     role assignments and has its SDK_SYNC assignments replaced with the
@@ -49,7 +48,7 @@ type SyncPrincipalsCommand struct {
 //     a CLIENT-scoped USER with the incoming SDK_SYNC roles.
 //   - RemoveUnlisted does NOT delete principals: it strips SDK_SYNC role
 //     assignments from any USER principal whose email is absent from the
-//     payload (counted as "deactivated" in the rollup, matching Rust).
+//     payload (counted as "deactivated" in the rollup).
 //
 // Authorization is [usecaseop.Public]: this op is reached by two entry points
 // with different gating — the app-scoped SDK sync (CanSyncPrincipals + per-

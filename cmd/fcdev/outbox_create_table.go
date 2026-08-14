@@ -26,7 +26,7 @@ import (
 // provision the outbox with one command instead of hand-running DDL.
 //
 // The schema is identical across all SDKs and matches what the outbox
-// processor (fc-server / fcdev outbox / the Rust + Java processors) reads, so
+// processor (fc-server / fcdev outbox) reads, so
 // it doesn't matter which SDK or runtime writes the rows.
 func newOutboxCreateTableCmd() *cobra.Command {
 	cmd := &cobra.Command{

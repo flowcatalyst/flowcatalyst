@@ -11,11 +11,11 @@ import (
 
 const tagTest = "test"
 
-// registerMocks wires the dev mock endpoints. They mirror Rust's
-// /api/test/* and exist for two purposes: (1) load-testing the router
+// registerMocks wires the dev mock endpoints under /api/test/*. They
+// exist for two purposes: (1) load-testing the router
 // against a controllable target, (2) verifying the dashboard renders
-// outcomes correctly. Always-on; not gated by DevMode because the Rust
-// router keeps them on too — the URL prefix makes their purpose clear.
+// outcomes correctly. Always-on; not gated by DevMode
+// — the URL prefix makes their purpose clear.
 func registerMocks(api huma.API, s *State) {
 	huma.Register(api, huma.Operation{
 		OperationID: "testFast", Method: http.MethodPost, Path: "/api/test/fast",
@@ -58,7 +58,7 @@ func registerMocks(api huma.API, s *State) {
 		Summary: "Reset every counter to zero", Tags: []string{tagTest}, DefaultStatus: http.StatusOK,
 	}, s.testStatsReset)
 
-	// Java-compatible benchmark aliases.
+	// Legacy benchmark aliases, kept for existing benchmark tooling.
 	huma.Register(api, huma.Operation{
 		OperationID: "benchmarkProcess", Method: http.MethodPost, Path: "/api/benchmark/process",
 		Summary: "Alias for /api/test/fast", Tags: []string{tagTest}, DefaultStatus: http.StatusOK,

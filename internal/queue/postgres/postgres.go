@@ -1,10 +1,9 @@
 // Package postgres is the Postgres-backed queue backend. It is wire- and
-// schema-compatible with the Rust fc-queue Postgres backend so a Go router
-// can be dropped into an existing deployment and drain the SAME
-// queue_messages table that the existing producers write to (and vice
-// versa).
+// schema-compatible with existing deployments, so a Go router can be
+// dropped in and drain the SAME queue_messages table that the existing
+// producers write to (and vice versa).
 //
-// Schema (created by InitSchema; matches crates/fc-queue/src/postgres.rs):
+// Schema (created by InitSchema; matches the pre-existing layout):
 //
 //	CREATE TABLE queue_messages (
 //	    id               TEXT NOT NULL,
@@ -20,7 +19,7 @@
 //	CREATE INDEX idx_queue_visible
 //	    ON queue_messages (queue_name, visible_at, message_group_id);
 //
-// Semantics (mirrors Rust):
+// Semantics:
 //   - Claim is keyed on visible_at, NOT on receipt_handle being NULL. A
 //     claimed message becomes eligible again once its visibility window
 //     lapses, so a crashed consumer's messages are redelivered (at-least-once)
@@ -85,8 +84,8 @@ type Queue struct {
 func (q *Queue) Identifier() string { return q.cfg.Name }
 
 // InitSchema creates the queue table and index (idempotent). The DDL
-// matches the Rust backend exactly so it is a no-op when the table was
-// already provisioned by the existing system.
+// matches the pre-existing layout exactly so it is a no-op when the table
+// was already provisioned by the existing system.
 func (q *Queue) InitSchema(ctx context.Context) error {
 	const ddl = `
 CREATE TABLE IF NOT EXISTS queue_messages (
@@ -226,7 +225,7 @@ func (q *Queue) ExtendVisibility(ctx context.Context, receipt string, seconds ui
 }
 
 // Publish writes a single message. Uses ON CONFLICT DO NOTHING so a
-// duplicate id is a no-op (matches Rust at-least-once publish semantics).
+// duplicate id is a no-op (at-least-once publish semantics).
 func (q *Queue) Publish(ctx context.Context, m common.Message) (string, error) {
 	payload, err := json.Marshal(m)
 	if err != nil {
@@ -242,7 +241,7 @@ func (q *Queue) Publish(ctx context.Context, m common.Message) (string, error) {
 	return m.ID, err
 }
 
-// PublishBatch writes a batch of messages (loops Publish, matching Rust).
+// PublishBatch writes a batch of messages (loops Publish).
 func (q *Queue) PublishBatch(ctx context.Context, msgs []common.Message) ([]string, error) {
 	ids := make([]string, 0, len(msgs))
 	for _, m := range msgs {

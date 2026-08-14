@@ -25,8 +25,7 @@ import (
 // RolesState holds the deps the BFF role endpoints reach into.
 //
 // Applications is optional — when nil, /filters/applications returns
-// an empty options array (matches Rust's behaviour when the
-// application_repo is not wired).
+// an empty options array.
 type RolesState struct {
 	Roles        *role.Repository
 	Applications *application.Repository
@@ -39,9 +38,7 @@ type RolesState struct {
 
 // RegisterRoles mounts the dashboard's `/bff/roles/*` endpoints.
 //
-// Mirrors `crates/fc-platform/src/shared/bff_roles_api.rs`. Response
-// shapes match Rust's BffRoleResponse / BffRoleListResponse /
-// BffApplicationOptionsResponse / BffPermissionListResponse exactly:
+// Response shapes are part of the frontend contract:
 // camelCase fields, ISO-8601 timestamps as strings, items wrapped in
 // `{items, total}`.
 func RegisterRoles(r chi.Router, s *RolesState) {
@@ -61,7 +58,7 @@ func RegisterRoles(r chi.Router, s *RolesState) {
 
 // ── Wire DTOs ────────────────────────────────────────────────────────────
 
-// bffRoleResponse matches Rust's BffRoleResponse exactly. Fields are
+// bffRoleResponse is the wire shape for one role. Fields are
 // camelCase per the frontend's expectation.
 type bffRoleResponse struct {
 	ID              string   `json:"id"`
@@ -126,7 +123,7 @@ type createdResponse struct {
 	ID string `json:"id"`
 }
 
-// syncPlatformRolesResponse matches Rust's SyncPlatformRolesResponse.
+// syncPlatformRolesResponse is the wire shape for the sync-platform result.
 type syncPlatformRolesResponse struct {
 	Created uint32 `json:"created"`
 	Updated uint32 `json:"updated"`
@@ -166,7 +163,7 @@ func (s *RolesState) list(w http.ResponseWriter, r *http.Request) {
 
 // GET /bff/roles/filters/applications
 //
-// Active applications only — mirrors Rust's application_repo.find_active().
+// Active applications only.
 func (s *RolesState) filterApplications(w http.ResponseWriter, r *http.Request) {
 	options := []bffApplicationOption{}
 	if s.Applications != nil {
@@ -505,8 +502,7 @@ func (s *RolesState) update(w http.ResponseWriter, r *http.Request) {
 
 // POST /bff/roles/sync-platform
 //
-// Re-runs the code-defined role sync. Mirrors Rust's
-// RoleSyncService::sync_code_defined_roles via the new SyncPlatformRoles
+// Re-runs the code-defined role sync via the SyncPlatformRoles
 // use case: per-row Created / Updated / Deleted events fire alongside
 // the RolesSynced rollup, all in one transaction. Anchor-only.
 func (s *RolesState) syncPlatform(w http.ResponseWriter, r *http.Request) {
@@ -607,8 +603,8 @@ func toBffRole(r role.Role) bffRoleResponse {
 
 // ── Permissions registry ─────────────────────────────────────────────────
 
-// builtinPermissions ports `get_builtin_permissions` from
-// bff_roles_api.rs. The catalog is static — the dashboard renders it
+// builtinPermissions is the built-in permission catalog.
+// The catalog is static — the dashboard renders it
 // directly. Must stay in lockstep with `internal/platform/seed/permissions.go`
 // (the actual permission strings the platform recognises) until the
 // two are merged.

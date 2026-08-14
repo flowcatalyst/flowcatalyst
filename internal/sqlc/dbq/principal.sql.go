@@ -17,7 +17,7 @@ DELETE FROM iam_principal_application_access WHERE principal_id = $1
 
 // iam_principal_application_access + iam_client_access_grants do NOT have
 // FK ON DELETE CASCADE on principal_id (only iam_principal_roles does), so
-// Delete has to clean them explicitly. Mirrors Rust's delete() + Persist::delete.
+// Delete has to clean them explicitly. Mirrors the wire contract's delete() + Persist::delete.
 func (q *Queries) PrincipalApplicationAccessClear(ctx context.Context, principalID string) error {
 	_, err := q.db.Exec(ctx, principalApplicationAccessClear, principalID)
 	return err

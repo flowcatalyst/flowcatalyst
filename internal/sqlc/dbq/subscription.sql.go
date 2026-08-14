@@ -317,7 +317,7 @@ WHERE id = $1
 //   - msg_subscription_custom_configs uses config_key/config_value (not key/value)
 //
 // All of these were silent runtime bugs in the pre-sqlc repo.
-// created_by was added Go-side in migration 035 (Rust never had it; its
+// created_by was added Go-side in migration 035 (legacy-platform never had it; its
 // rows read back NULL).
 func (q *Queries) SubscriptionFindByID(ctx context.Context, id string) (MsgSubscription, error) {
 	row := q.db.QueryRow(ctx, subscriptionFindByID, id)

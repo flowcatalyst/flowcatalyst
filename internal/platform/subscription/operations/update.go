@@ -74,7 +74,7 @@ func UpdateSubscription(repo *subscription.Repository) usecaseop.Operation[Updat
 			if cmd.Endpoint != nil {
 				s.Endpoint = *cmd.Endpoint
 			}
-			// Set-if-provided, matching Rust's update use case: a nil/omitted value
+			// Set-if-provided: a nil/omitted value
 			// leaves the existing binding, so connectionId can be re-pointed but not
 			// cleared via this endpoint.
 			if cmd.ConnectionID != nil {

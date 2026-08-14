@@ -4,7 +4,7 @@
 //	GET /api/public/platform     — feature flags shown on the login page
 //	GET /api/public/login-theme  — branded login-page theme (logo, colours, …)
 //
-// Mirrors crates/fc-platform/src/shared/public_api.rs. Both endpoints
+// Both endpoints
 // are read-only and intentionally low-privilege — the SPA hits them
 // before the user signs in.
 package publicapi
@@ -38,11 +38,10 @@ func (e *Endpoint) RegisterRoutes(r chi.Router) {
 	r.Get("/api/public/login-theme", e.handleLoginTheme)
 	// SPA bootstrap path — same payload as /api/public/platform but at
 	// the path the embedded frontend's platformConfig store fetches.
-	// Mirrors Rust's `/api/config/platform` (platform_config_router).
 	r.Get("/api/config/platform", e.handlePlatform)
 }
 
-// platformResponse mirrors Rust's PlatformInfoResponse. Static today —
+// platformResponse is the platform-info payload. Static today —
 // future expansion adds env-driven flags.
 type platformResponse struct {
 	Features featuresResponse `json:"features"`
@@ -62,7 +61,7 @@ func (e *Endpoint) handlePlatform(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// loginThemeResponse mirrors Rust's LoginThemeResponse. All fields
+// loginThemeResponse is the login-theme payload. All fields
 // optional; the SPA falls back to its own defaults when absent.
 type loginThemeResponse struct {
 	BrandName          *string `json:"brandName,omitempty"`
@@ -86,7 +85,7 @@ func (e *Endpoint) handleLoginTheme(w http.ResponseWriter, r *http.Request) {
 // loadLoginTheme reads app_platform_configs at
 // (app_code="platform", section="login", property="theme", scope="GLOBAL").
 // Returns an empty theme on miss or parse error so the SPA always gets
-// a 200 + JSON object (matching the Rust behaviour).
+// a 200 + JSON object.
 func loadLoginTheme(ctx context.Context, configs *platformconfig.Repository) loginThemeResponse {
 	if configs == nil {
 		return loginThemeResponse{}

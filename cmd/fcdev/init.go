@@ -35,7 +35,7 @@ import (
 
 // newInitCmd bootstraps a fresh fcdev environment.
 //
-// What it does — mirrors the Rust bin/fcdev/src/init.rs:
+// What it does:
 //
 //  1. Run migrations + the built-in seeds (idempotent).
 //  2. Create the anchor admin if no anchor user exists yet (internal IDP +
@@ -215,7 +215,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	// NOTE: app_applications.service_account_id has a FK to iam_principals.id
 	// (migration 028) — so we store the SA *principal* id, not the SA row id.
 	// This diverges from internal/platform/application/operations/attach_service_account.go
-	// which incorrectly stores sa.ID; that's a separate bug to fix (HANDOFF.md).
+	// which incorrectly stores sa.ID; that's a separate bug to fix (docs/wire-contract.md).
 	app.ServiceAccountID = &saPrincipal.ID
 	app.UpdatedAt = time.Now().UTC()
 
@@ -243,8 +243,8 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	// Client secrets are stored reversibly-encrypted (Rust parity:
-	// client_secret_ref), so an app key must exist. Generate + persist one
+	// Client secrets are stored reversibly-encrypted
+	// (client_secret_ref), so an app key must exist. Generate + persist one
 	// when absent so a fresh dev box works without manual setup.
 	appKey := os.Getenv("FLOWCATALYST_APP_KEY")
 	if appKey == "" {
@@ -273,7 +273,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 			return fmt.Errorf("oauth client: %w", err)
 		}
 		// oauth_client.Persist doesn't sync the application_ids junction
-		// (see HANDOFF.md §7 step 5 OAuthClient follow-up). Write it
+		// (see docs/wire-contract.md). Write it
 		// directly here so the SA's OAuth client is linked to the app.
 		_, err := tx.Inner().Exec(ctx,
 			`INSERT INTO oauth_client_application_ids (oauth_client_id, application_id)
@@ -371,7 +371,7 @@ func createAdmin(ctx context.Context, pool *pgxpool.Pool, email, password string
 	}
 
 	// principal.Persist doesn't sync iam_principal_roles (Phase 3c
-	// deferral — see HANDOFF.md §4 #19). Write the super-admin grant
+	// deferral — see docs/wire-contract.md §4 #19). Write the super-admin grant
 	// directly here so the admin can log in with full perms.
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO iam_principal_roles

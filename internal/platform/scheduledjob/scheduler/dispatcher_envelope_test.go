@@ -6,9 +6,9 @@ import (
 	"time"
 )
 
-// The delivered envelope MUST be camelCase: the Rust dispatcher's
-// WebhookEnvelope and the SDK runner's ScheduledJobEnvelope are both
-// #[serde(rename_all="camelCase")] and reject a missing required field with
+// The delivered envelope MUST be camelCase: the
+// SDK runner's ScheduledJobEnvelope
+// deserializes camelCase keys and rejects a missing required field with
 // HTTP 400. snake_case keys would fail every Go→SDK firing.
 func TestWebhookEnvelope_CamelCaseKeys(t *testing.T) {
 	ts := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)

@@ -110,8 +110,8 @@ func fromEntity(a *application.Application) ApplicationResponse {
 	}
 }
 
-// ApplicationListResponse is the wire shape for GET /api/applications.
-// Matches the Rust shape (`applications` + `total`); SPA's
+// ApplicationListResponse is the wire shape for GET /api/applications
+// (`applications` + `total`); SPA's
 // ApplicationListPage reads `response.applications` directly.
 type ApplicationListResponse struct {
 	Applications []ApplicationResponse `json:"applications"`

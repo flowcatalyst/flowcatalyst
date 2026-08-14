@@ -2,12 +2,12 @@
 -- FlowCatalyst Auth State Tables
 -- NOTE: These tables are superseded by 007_oauth_tables.sql which creates
 -- oauth_oidc_login_states and oauth_oidc_payloads (matching the TypeScript reference).
--- The iam_* tables below were from an earlier Rust-only migration and are NOT used.
+-- The iam_* tables below were from an earlier legacy migration and are NOT used.
 -- They are kept here only to avoid migration ordering issues on existing databases.
--- The Rust code uses oauth_oidc_login_states (from 007) for OIDC login state.
+-- The legacy code uses oauth_oidc_login_states (from 007) for OIDC login state.
 -- Refresh tokens and authorization codes are stored in oauth_oidc_payloads (from 007).
 
--- SUPERSEDED: Rust code now uses oauth_oidc_login_states from 007_oauth_tables.sql
+-- SUPERSEDED: legacy-platform code now uses oauth_oidc_login_states from 007_oauth_tables.sql
 CREATE TABLE IF NOT EXISTS iam_oidc_login_states (
     state VARCHAR(255) PRIMARY KEY,
     email_domain VARCHAR(255) NOT NULL,
@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS iam_oidc_login_states (
 
 CREATE INDEX IF NOT EXISTS idx_iam_oidc_login_states_expires ON iam_oidc_login_states (expires_at);
 
--- SUPERSEDED: Rust code now uses oauth_oidc_payloads from 007_oauth_tables.sql
+-- SUPERSEDED: legacy-platform code now uses oauth_oidc_payloads from 007_oauth_tables.sql
 CREATE TABLE IF NOT EXISTS iam_refresh_tokens (
     id VARCHAR(17) PRIMARY KEY,
     token_hash VARCHAR(255) NOT NULL,
@@ -53,7 +53,7 @@ CREATE INDEX IF NOT EXISTS idx_iam_refresh_tokens_family ON iam_refresh_tokens (
 CREATE INDEX IF NOT EXISTS idx_iam_refresh_tokens_expires ON iam_refresh_tokens (expires_at);
 CREATE INDEX IF NOT EXISTS idx_iam_refresh_tokens_revoked ON iam_refresh_tokens (revoked);
 
--- SUPERSEDED: Rust code now uses oauth_oidc_payloads from 007_oauth_tables.sql
+-- SUPERSEDED: legacy-platform code now uses oauth_oidc_payloads from 007_oauth_tables.sql
 CREATE TABLE IF NOT EXISTS iam_authorization_codes (
     code VARCHAR(255) PRIMARY KEY,
     client_id VARCHAR(255) NOT NULL,

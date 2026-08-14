@@ -45,8 +45,8 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 // post-logout, allowed-origins, and application-ids junctions are
 // loaded/persisted via raw pgx (they aren't wired through sqlc).
 // client_secret_ref holds the reversibly-encrypted client secret
-// (AES-256-GCM under FLOWCATALYST_APP_KEY, "encrypted:"-prefixed),
-// matching Rust; it is verified at /oauth/token by decrypt-and-compare,
+// (AES-256-GCM under FLOWCATALYST_APP_KEY, "encrypted:"-prefixed);
+// it is verified at /oauth/token by decrypt-and-compare,
 // NOT by hashing. See internal/platform/shared/encryption.
 
 type OAuthClientRepo struct {
@@ -190,7 +190,7 @@ func (r *OAuthClientRepo) Persist(ctx context.Context, c *OAuthClient, tx *useca
 func (r *OAuthClientRepo) Delete(ctx context.Context, c *OAuthClient, tx *usecasepgx.DbTx) error {
 	q := r.q.WithTx(tx.Inner())
 	// FK ON DELETE CASCADE clears the junctions, but clear explicitly
-	// to be tx-consistent and to match Rust's behaviour.
+	// to be tx-consistent.
 	if err := q.OAuthClientRedirectURIsClear(ctx, c.ID); err != nil {
 		return err
 	}
@@ -417,8 +417,8 @@ func rowToAnchorDomain(row dbq.TntAnchorDomain) *AnchorDomain {
 // ── ClientAuthConfig repo ─────────────────────────────────────────────────
 //
 // additional_client_ids and granted_client_ids are JSONB arrays on the
-// tnt_client_auth_configs row itself — matches the Rust schema. The Go
-// port previously used fictitious junction tables; that was a bug.
+// tnt_client_auth_configs row itself — that is the actual schema. This
+// repo previously used fictitious junction tables; that was a bug.
 
 type ClientAuthConfigRepo struct{ q *dbq.Queries }
 
@@ -532,7 +532,7 @@ func stringSliceOrEmpty(s []string) []string {
 
 // ── IdpRoleMapping repo ───────────────────────────────────────────────────
 //
-// idp_type was added Go-side in migration 035 (Rust had dropped the
+// idp_type was added in migration 035 (earlier schemas had dropped the
 // column); it round-trips on persist/read, but FindByIdpRole deliberately
 // does not filter on it — pre-035 rows have NULL idp_type and live
 // mappings must keep matching.

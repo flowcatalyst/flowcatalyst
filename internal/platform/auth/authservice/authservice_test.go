@@ -276,10 +276,10 @@ func TestIDTokenShape(t *testing.T) {
 		t.Errorf("nonce = %v, want %v", payload["nonce"], nonce)
 	}
 	if _, ok := payload["nbf"]; ok {
-		t.Error("ID token must not carry nbf (Rust parity)")
+		t.Error("ID token must not carry nbf (wire contract)")
 	}
 	if _, ok := payload["jti"]; ok {
-		t.Error("ID token must not carry jti (Rust parity)")
+		t.Error("ID token must not carry jti (wire contract)")
 	}
 	if payload["email_verified"] != true {
 		t.Errorf("email_verified = %v, want true", payload["email_verified"])

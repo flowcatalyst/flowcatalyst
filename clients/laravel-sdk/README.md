@@ -16,7 +16,7 @@ talk to the **event-driven control plane** — all from idiomatic Laravel.
   permission surface (`auth:fc-token`).
 - **Declare & sync your RBAC** — define roles and permissions as PHP classes
   (`#[AsRole]`, `#[AsPermission]`) and push them to the platform.
-- **Postbox** — create events/dispatch jobs via the transactional outbox.
+- **Outbox** — create events/dispatch jobs via the transactional outbox.
 - **Control plane client** — typed access to event types, subscriptions, dispatch
   pools, applications, roles, and more.
 - **Webhook validation** — verify inbound HMAC-signed deliveries.
@@ -25,7 +25,7 @@ talk to the **event-driven control plane** — all from idiomatic Laravel.
 
 - PHP 8.1+
 - Laravel 10, 11, 12, or 13
-- For the Postbox: MySQL 8.0+ / PostgreSQL 12+ / MongoDB 4.4+
+- For the Outbox: MySQL 8.0+ / PostgreSQL 12+ / MongoDB 4.4+
 - For local authorization mirroring (optional): `spatie/laravel-permission`
 
 ## Contents
@@ -33,7 +33,7 @@ talk to the **event-driven control plane** — all from idiomatic Laravel.
 - [Installation](#installation) · [Local dev with `fcdev`](#local-development-with-fcdev)
 - [Authentication & authorization](#authentication--authorization) — login, guards, permissions, modes, refresh
 - [Declaring & syncing roles and permissions](#declaring--syncing-roles-and-permissions)
-- [Control plane API](#control-plane-api) · [Postbox](#postbox-event-creation) · [Webhooks](#webhook-validation)
+- [Control plane API](#control-plane-api) · [Portal identities](#portal-identities) · [Outbox](#outbox-event-creation) · [Webhooks](#webhook-validation)
 
 ## Installation
 
@@ -64,12 +64,10 @@ irm https://raw.githubusercontent.com/flowcatalyst/flowcatalyst/main/install.ps1
 fcdev          # starts API on http://localhost:8080
 ```
 
-If you use the **Postbox** (outbox pattern), you also need
-`fcdev outbox` running as a sidecar — it polls your app's
-`outbox_messages` table and forwards events to the platform.
-This sits alongside the `php artisan flowcatalyst:postbox:dispatch`
-queue worker (or replaces it for setups where you'd rather not run
-Laravel's queue runner for outbox forwarding).
+If you use the **Outbox** (outbox pattern), you also need
+`fcdev outbox` running as a sidecar — the SDK only writes rows to
+your app's `outbox_messages` table; `fcdev outbox poll` is what
+forwards them to the platform.
 
 ```bash
 # In your Laravel project directory:
@@ -81,11 +79,12 @@ Laravel's queue runner for outbox forwarding).
 fcdev outbox init
 
 # Daily: reads .env, auto-creates the `outbox_messages` table on
-# first run if your Postbox migration hasn't been run yet, then polls.
+# first run if your outbox migration hasn't been run yet, then polls.
 fcdev outbox poll
 ```
 
-Complete reference: [fcdev CLI docs](https://github.com/flowcatalyst/flowcatalyst-rust/blob/main/docs/developers/fcdev.md).
+Complete reference: run `fcdev --help`, or see the
+[FlowCatalyst repository](https://github.com/flowcatalyst/flowcatalyst).
 
 ## Configuration
 
@@ -97,9 +96,8 @@ FLOWCATALYST_BASE_URL=https://your-instance.flowcatalyst.io
 FLOWCATALYST_CLIENT_ID=your_client_id
 FLOWCATALYST_CLIENT_SECRET=your_client_secret
 
-# Postbox (for event creation)
-FLOWCATALYST_TENANT_ID=your_tenant_id
-FLOWCATALYST_POSTBOX_DRIVER=database
+# Outbox (for event creation)
+FLOWCATALYST_OUTBOX_DRIVER=database
 
 # Webhook validation (optional)
 FLOWCATALYST_SIGNING_SECRET=your_signing_secret
@@ -119,6 +117,7 @@ A fresh Laravel app needs only env. Stock `->middleware('auth')`, `Auth::user()`
 ```env
 FLOWCATALYST_BASE_URL=https://your-instance.flowcatalyst.io
 FLOWCATALYST_OIDC_ENABLED=true
+FLOWCATALYST_NATIVE_LOGIN=true   # the zero-code bridge: local-user upsert + guest redirect
 FLOWCATALYST_OIDC_CLIENT_ID=your_oauth_client_id
 FLOWCATALYST_OIDC_CLIENT_SECRET=your_oauth_client_secret   # omit for a PKCE-only public client
 FLOWCATALYST_OIDC_SCOPE="openid profile email offline_access"   # offline_access → refresh tokens
@@ -133,10 +132,12 @@ Route::middleware('auth')->group(function () {
 });
 ```
 
-That's it. A guest hitting an `auth` route is **automatically redirected into the
-FlowCatalyst login flow** — no `login` route or custom redirect needed. (If your
-app defines its own `login` route, that one wins; the SDK won't hijack a local
-login page. Opt out entirely with `FLOWCATALYST_OIDC_AUTO_GUEST_REDIRECT=false`.)
+That's it. With the native-login bridge on (`FLOWCATALYST_NATIVE_LOGIN=true` —
+it's opt-in so the SDK never changes an existing app's auth behaviour), a guest
+hitting an `auth` route is **automatically redirected into the FlowCatalyst
+login flow** — no `login` route or custom redirect needed. (If your app defines
+its own `login` route, that one wins; the SDK won't hijack a local login page.
+Opt out of just the redirect with `FLOWCATALYST_OIDC_AUTO_GUEST_REDIRECT=false`.)
 
 The routes `/flowcatalyst/{login,callback,logout,refresh}` are registered for
 you. On your FlowCatalyst OAuth client, set the grant to `authorization_code`
@@ -236,11 +237,14 @@ In local-sync mode, refresh also re-runs the role/permission sync.
 | Env var | Default | Purpose |
 |---|---|---|
 | `FLOWCATALYST_OIDC_ENABLED` | `false` | turn the OIDC login + routes on |
+| `FLOWCATALYST_NATIVE_LOGIN` | `false` | opt-in zero-code bridge: defaults the handler to `database` and enables the guest redirect |
 | `FLOWCATALYST_OIDC_CLIENT_ID` / `_SECRET` | – | your OAuth login client (secret optional for PKCE) |
 | `FLOWCATALYST_OIDC_SCOPE` | `openid profile email` | add `offline_access` for refresh tokens |
-| `FLOWCATALYST_OIDC_HANDLER` | `database` | `database` (users table) or `session` (stateless) |
+| `FLOWCATALYST_OIDC_HANDLER` | from bridge | `database` (users table) or `session` (stateless); unset → `database` when the bridge is on, else `session` |
 | `FLOWCATALYST_OIDC_PERMISSION_RESOLVER` | `token` | `token` (scope claim) or `api_me` (`/api/me`) |
-| `FLOWCATALYST_OIDC_AUTO_GUEST_REDIRECT` | `true` | redirect stock-`auth` guests into OIDC |
+| `FLOWCATALYST_OIDC_AUTO_GUEST_REDIRECT` | `true` | redirect stock-`auth` guests into OIDC (only active with the bridge on) |
+| `FLOWCATALYST_OIDC_PROVIDER` | – | `idp_...` id: send logins straight to a named upstream IdP (`?provider=` overrides per request) |
+| `FLOWCATALYST_OIDC_PORTAL` | `false` | portal mode: log in through `/portal/authorize` (see [Portal identities](#portal-identities)) |
 | `FLOWCATALYST_OIDC_USER_MODEL` | `App\Models\User` | model upserted in `database` mode |
 | `FLOWCATALYST_OIDC_SYNC_ROLES` / `_SYNC_ROLE_PERMISSIONS` | `true` | mirror roles / their permissions to Spatie |
 | `FLOWCATALYST_OIDC_ROLES_GUARD` | `web` | Spatie guard for synced roles |
@@ -366,30 +370,27 @@ management, and anything not covered by the attribute sync above.
 
 ```php
 use FlowCatalyst\Facades\FlowCatalyst;
+use FlowCatalyst\DTOs\Requests\AddSchemaVersionRequest;
+use FlowCatalyst\DTOs\Requests\CreateEventTypeRequest;
 
 // List event types
 $result = FlowCatalyst::eventTypes()->list();
-foreach ($result['items'] as $eventType) {
+foreach ($result->items as $eventType) {
     echo $eventType->code . ': ' . $eventType->name;
 }
 
-// Create an event type
-$eventType = FlowCatalyst::eventTypes()->create([
-    'code' => 'order:fulfillment:order:created',
-    'name' => 'Order Created',
-    'description' => 'Fired when a new order is placed',
-]);
+// Create an event type (returns the new id)
+$eventTypeId = FlowCatalyst::eventTypes()->create(new CreateEventTypeRequest(
+    code: 'order:fulfillment:order:created',
+    name: 'Order Created',
+    description: 'Fired when a new order is placed',
+));
 
 // Add a schema version
-FlowCatalyst::eventTypes()->addSchema($eventType->id, [
-    'version' => '1.0',
-    'mimeType' => 'application/json',
-    'schema' => json_encode(['type' => 'object', 'properties' => [...]]),
-    'schemaType' => 'JSON_SCHEMA',
-]);
-
-// Finalise the schema
-FlowCatalyst::eventTypes()->finaliseSchema($eventType->id, '1.0');
+FlowCatalyst::eventTypes()->addSchemaVersion($eventTypeId, new AddSchemaVersionRequest(
+    schema: ['type' => 'object', 'properties' => ['orderId' => ['type' => 'string']]],
+    version: '1.0',
+));
 ```
 
 ### Subscriptions
@@ -397,44 +398,43 @@ FlowCatalyst::eventTypes()->finaliseSchema($eventType->id, '1.0');
 ```php
 use FlowCatalyst\Facades\FlowCatalyst;
 use FlowCatalyst\DTOs\EventTypeBinding;
+use FlowCatalyst\DTOs\Requests\CreateSubscriptionRequest;
 use FlowCatalyst\Enums\DispatchMode;
 
-// Create a subscription
-$subscription = FlowCatalyst::subscriptions()->create([
-    'code' => 'notify-warehouse',
-    'name' => 'Notify Warehouse',
-    'eventTypes' => [
-        ['eventTypeCode' => 'order:fulfillment:order:created'],
-    ],
-    'target' => 'https://warehouse.example.com/webhook',
-    'queue' => 'default',
-    'dispatchPoolId' => $poolId,
-    'mode' => DispatchMode::IMMEDIATE,
-    'timeoutSeconds' => 30,
-    'maxRetries' => 5,
-]);
+// Create a subscription (returns the new id)
+$subscriptionId = FlowCatalyst::subscriptions()->create(new CreateSubscriptionRequest(
+    code: 'notify-warehouse',
+    name: 'Notify Warehouse',
+    endpoint: 'https://warehouse.example.com/webhook',
+    eventTypes: [new EventTypeBinding('order:fulfillment:order:created')],
+    dispatchPoolId: $poolId,
+    mode: DispatchMode::IMMEDIATE,
+    timeoutSeconds: 30,
+    maxRetries: 5,
+));
 
 // Pause/resume a subscription
-FlowCatalyst::subscriptions()->pause($subscription->id);
-FlowCatalyst::subscriptions()->resume($subscription->id);
+FlowCatalyst::subscriptions()->pause($subscriptionId);
+FlowCatalyst::subscriptions()->resume($subscriptionId);
 ```
 
 ### Dispatch Pools
 
 ```php
 use FlowCatalyst\Facades\FlowCatalyst;
+use FlowCatalyst\DTOs\Requests\CreateDispatchPoolRequest;
 
-// Create a dispatch pool for rate limiting
-$pool = FlowCatalyst::dispatchPools()->create([
-    'code' => 'warehouse-webhooks',
-    'name' => 'Warehouse Webhooks',
-    'rateLimit' => 100,      // Max 100 requests per minute
-    'concurrency' => 10,     // Max 10 concurrent requests
-]);
+// Create a dispatch pool for rate limiting (returns the new id)
+$poolId = FlowCatalyst::dispatchPools()->create(new CreateDispatchPoolRequest(
+    code: 'warehouse-webhooks',
+    name: 'Warehouse Webhooks',
+    rateLimit: 100,      // Max 100 requests per minute
+    concurrency: 10,     // Max 10 concurrent requests
+));
 
 // Suspend/activate a pool
-FlowCatalyst::dispatchPools()->suspend($pool->id);
-FlowCatalyst::dispatchPools()->activate($pool->id);
+FlowCatalyst::dispatchPools()->suspend($poolId);
+FlowCatalyst::dispatchPools()->activate($poolId);
 ```
 
 ### Roles & Permissions
@@ -455,6 +455,7 @@ $permissions = FlowCatalyst::permissions()->list();
 
 ```php
 use FlowCatalyst\Facades\FlowCatalyst;
+use FlowCatalyst\DTOs\Requests\CreateApplicationRequest;
 
 // List applications
 $result = FlowCatalyst::applications()->list();
@@ -463,16 +464,43 @@ $result = FlowCatalyst::applications()->list();
 $app = FlowCatalyst::applications()->getByCode('myapp');
 
 // Create an application
-$app = FlowCatalyst::applications()->create([
-    'code' => 'myapp',
-    'name' => 'My Application',
-    'description' => 'My awesome application',
-]);
+$app = FlowCatalyst::applications()->create(new CreateApplicationRequest(
+    code: 'myapp',
+    name: 'My Application',
+    description: 'My awesome application',
+));
 ```
 
-## Postbox (Event Creation)
+## Portal identities
 
-The postbox allows your application to create events and dispatch jobs using the outbox pattern. Events are written to a local database table and then processed by FlowCatalyst.
+Portal users (`ptu_…`) are a separate end-user population from platform
+users — a client's customers, invited per client, with no platform SSO
+reuse. For the login side, set `FLOWCATALYST_OIDC_PORTAL=true` so the OIDC
+flow enters through `/portal/authorize`. For managing portal users, the
+full admin surface lives on the generated client:
+
+```php
+use FlowCatalyst\Facades\FlowCatalyst;
+use FlowCatalyst\Generated\Model\PortalUserRequest;
+
+$api = FlowCatalyst::generated();
+
+// Invite (idempotent): returns identityId, created/invited flags, inviteUrl
+$result = $api->ensurePortalUser((new PortalUserRequest())
+    ->setClientId($clientId)
+    ->setEmail('pat@customer.example')
+    ->setReturnInviteLink(true));
+
+$users = $api->listPortalUsers(['clientId' => $clientId]);
+```
+
+`activatePortalUser` / `deactivatePortalUser` / `deletePortalUser` cover the
+rest of the lifecycle. Full walkthrough:
+[docs/portal-implementation-guide.md](../../docs/portal-implementation-guide.md).
+
+## Outbox (Event Creation)
+
+The outbox allows your application to create events and dispatch jobs using the outbox pattern. Events are written to a local database table and then forwarded to FlowCatalyst by a poller (`fcdev outbox poll` locally, or the standalone outbox poller in production).
 
 ### Setup
 
@@ -486,24 +514,24 @@ php artisan migrate
 ### Creating Events
 
 ```php
-use FlowCatalyst\Facades\Postbox;
-use FlowCatalyst\Postbox\DTOs\CreateEventDto;
+use FlowCatalyst\Facades\Outbox;
+use FlowCatalyst\Outbox\DTOs\CreateEventDto;
 
 // Create a single event
-$eventId = Postbox::createEvent(
+$eventId = Outbox::createEvent(
     CreateEventDto::create(
         type: 'order.created',
         data: ['orderId' => 'ORD-123', 'total' => 99.99, 'currency' => 'USD'],
-        partitionId: 'orders'
     )->withCorrelationId('corr-abc-123')
       ->withSource('order-service')
+      ->withMessageGroup('orders')   // per-group FIFO ordering
 );
 
 // Batch create events
-$eventIds = Postbox::createEvents([
-    CreateEventDto::create('order.created', ['orderId' => 'ORD-001'], 'orders'),
-    CreateEventDto::create('order.created', ['orderId' => 'ORD-002'], 'orders'),
-    CreateEventDto::create('order.created', ['orderId' => 'ORD-003'], 'orders'),
+$eventIds = Outbox::createEvents([
+    CreateEventDto::create('order.created', ['orderId' => 'ORD-001']),
+    CreateEventDto::create('order.created', ['orderId' => 'ORD-002']),
+    CreateEventDto::create('order.created', ['orderId' => 'ORD-003']),
 ]);
 ```
 
@@ -536,18 +564,17 @@ DomainEventHelpers::generateId('cmt');   // branded → "cmt_6F7JC2A6JFR7N"
 ### Creating Dispatch Jobs
 
 ```php
-use FlowCatalyst\Facades\Postbox;
-use FlowCatalyst\Postbox\DTOs\CreateDispatchJobDto;
+use FlowCatalyst\Facades\Outbox;
+use FlowCatalyst\Outbox\DTOs\CreateDispatchJobDto;
 
 // Create a dispatch job (direct webhook without subscription matching)
-$jobId = Postbox::createDispatchJob(
+$jobId = Outbox::createDispatchJob(
     CreateDispatchJobDto::create(
         source: 'order-service',
         code: 'notify-warehouse',
         targetUrl: 'https://warehouse.example.com/webhook',
         payload: ['orderId' => 'ORD-123', 'action' => 'prepare'],
         dispatchPoolId: $warehousePoolId,
-        partitionId: 'warehouse-notifications'
     )->withCorrelationId('corr-abc-123')
       ->withHeaders(['X-Priority' => 'high'])
 );
@@ -633,19 +660,19 @@ Add to `config/database.php`:
 Configure in `.env`:
 
 ```env
-FLOWCATALYST_POSTBOX_DRIVER=mongodb
-FLOWCATALYST_POSTBOX_CONNECTION=mongodb
+FLOWCATALYST_OUTBOX_DRIVER=mongodb
+FLOWCATALYST_OUTBOX_CONNECTION=mongodb
 ```
 
 Create the collection with indexes:
 
 ```javascript
-db.createCollection('postbox_messages');
-db.postbox_messages.createIndex(
-  { tenant_id: 1, partition_id: 1, status: 1, created_at: 1 },
-  { name: 'idx_postbox_pending' },
+db.createCollection('outbox_messages');
+db.outbox_messages.createIndex(
+  { clientId: 1, status: 1, createdAt: 1 },
+  { name: 'idx_outbox_pending' },
 );
-db.postbox_messages.createIndex({ status: 1, created_at: 1 }, { name: 'idx_postbox_status' });
+db.outbox_messages.createIndex({ status: 1, createdAt: 1 }, { name: 'idx_outbox_status' });
 ```
 
 ## Error Handling
@@ -656,10 +683,10 @@ The SDK throws specific exceptions for different error types:
 use FlowCatalyst\Exceptions\FlowCatalystException;
 use FlowCatalyst\Exceptions\AuthenticationException;
 use FlowCatalyst\Exceptions\ValidationException;
-use FlowCatalyst\Exceptions\PostboxException;
+use FlowCatalyst\Exceptions\OutboxException;
 
 try {
-    FlowCatalyst::eventTypes()->create([...]);
+    FlowCatalyst::eventTypes()->create(new CreateEventTypeRequest(...));
 } catch (AuthenticationException $e) {
     // Invalid credentials or token expired
 } catch (ValidationException $e) {
@@ -709,12 +736,12 @@ For testing, you can mock the facades:
 
 ```php
 use FlowCatalyst\Facades\FlowCatalyst;
-use FlowCatalyst\Facades\Postbox;
+use FlowCatalyst\Facades\Outbox;
 
 FlowCatalyst::shouldReceive('eventTypes->list')
-    ->andReturn(['items' => [], 'total' => 0]);
+    ->andReturn(new EventTypeList(items: [], total: 0));
 
-Postbox::shouldReceive('createEvent')
+Outbox::shouldReceive('createEvent')
     ->andReturn('0HZXEQ5Y8JY5Z');
 ```
 

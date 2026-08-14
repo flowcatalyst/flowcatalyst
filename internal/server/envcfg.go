@@ -8,8 +8,8 @@ import (
 	"strings"
 )
 
-// EnvCfg captures every env-driven knob fc-server reads. Mirrors the
-// Rust fc-server's FC_*_ENABLED + DB resolution surface, plus the
+// EnvCfg captures every env-driven knob fc-server reads: the
+// FC_*_ENABLED + DB resolution surface, plus the
 // aliased TS variable names for compatibility with existing ECS task
 // definitions.
 type EnvCfg struct {
@@ -61,8 +61,8 @@ type EnvCfg struct {
 	StreamFanOutEnabled       bool
 	StreamPartitionsEnabled   bool
 	StreamBatchSize           int
-	// Fan-out subscription cache TTL in seconds (Rust
-	// FC_STREAM_FAN_OUT_SUBS_REFRESH_SECS; 0 = use the 5s default).
+	// Fan-out subscription cache TTL in seconds
+	// (FC_STREAM_FAN_OUT_SUBS_REFRESH_SECS; 0 = use the 5s default).
 	StreamFanOutSubsRefreshSecs int
 	// Partition manager tuning (months forward, retention, tick cadence).
 	// 0 = use the package default (3 / 90 / 24h).
@@ -103,7 +103,7 @@ type EnvCfg struct {
 
 	// ALB self-registration (router). When ALBEnabled, the router registers
 	// this instance's IP with the target group on leader-gain (or non-standby
-	// start) and deregisters on leader-loss / shutdown. Mirrors Rust FC_ALB_*.
+	// start) and deregisters on leader-loss / shutdown. Configured via FC_ALB_*.
 	ALBEnabled        bool
 	ALBTargetGroupARN string
 	ALBInstanceIP     string // FC_ALB_TARGET_ID / FC_ALB_INSTANCE_IP — the target id (IP) for RegisterTargets
@@ -173,9 +173,9 @@ func LoadEnv() EnvCfg {
 		StreamPartitionScheduledJobRetentionDays: envInt("FC_STREAM_PARTITION_RETENTION_DAYS_SCHEDULED_JOBS", 0),
 		StreamPartitionTickHours:                 envInt("FC_STREAM_PARTITION_TICK_HOURS", 0),
 
-		// FC_OUTBOX_API_URL / FC_OUTBOX_TOKEN align with the standalone Rust
-		// outbox CLI; FC_API_BASE_URL / FC_API_TOKEN align with the Rust
-		// fc-outbox-processor binary; FC_OUTBOX_PLATFORM_* + FLOWCATALYST_URL
+		// FC_OUTBOX_API_URL / FC_OUTBOX_TOKEN and FC_API_BASE_URL /
+		// FC_API_TOKEN are legacy outbox-processor names honoured so existing
+		// deployments drop in; FC_OUTBOX_PLATFORM_* + FLOWCATALYST_URL
 		// kept as aliases.
 		OutboxPlatformURL:         envFirst("FC_OUTBOX_PLATFORM_URL", "FC_OUTBOX_API_URL", "FC_API_BASE_URL", "FLOWCATALYST_URL", "", ""),
 		OutboxPlatformAuthToken:   envFirst("FC_OUTBOX_PLATFORM_AUTH_TOKEN", "FC_OUTBOX_TOKEN", "FC_API_TOKEN", "", ""),
@@ -185,8 +185,8 @@ func LoadEnv() EnvCfg {
 		OutboxMaxConcurrentGroups: envIntAlias("FC_OUTBOX_MAX_CONCURRENT_GROUPS", "FC_MAX_CONCURRENT_GROUPS", 0),
 		OutboxBlockOnError:        envBool("FC_OUTBOX_BLOCK_ON_ERROR", true),
 		OutboxAdminPort:           envInt("FC_OUTBOX_ADMIN_PORT", 0),
-		// FC_OUTBOX_DB_TYPE is the Rust fc-outbox-processor / fc-server var name,
-		// honoured as an alias so an existing Rust outbox env drops in unchanged
+		// FC_OUTBOX_DB_TYPE is a legacy outbox-processor var name,
+		// honoured as an alias so an existing outbox env drops in unchanged
 		// (values: postgres|mongo; sqlite is out of scope and errors clearly).
 		OutboxBackend:  envFirst("FC_OUTBOX_BACKEND", "FC_OUTBOX_DB_TYPE", "postgres"),
 		OutboxMongoURI: envFirst("FC_OUTBOX_MONGO_URI", "FC_OUTBOX_DB_URL", "", ""),
@@ -226,7 +226,7 @@ func LoadEnv() EnvCfg {
 	return c
 }
 
-// ResolveDatabaseURL mirrors the Rust fc-server's three-mode resolution.
+// ResolveDatabaseURL implements the three-mode database resolution.
 // 1. FC_DATABASE_URL / DATABASE_URL — full connection string (preferred).
 // 2. DB_HOST + DB_NAME + DB_USERNAME + DB_PASSWORD — explicit credentials.
 // 3. (TODO) AWS Secrets Manager via DB_SECRET_ARN — deferred.
@@ -256,8 +256,7 @@ func ResolveDatabaseURL() string {
 
 // normalizedPreviousPublicKey reads FLOWCATALYST_JWT_PREVIOUS_PUBLIC_KEY,
 // normalizes the SSM/env PEM (same \n mangling as the private key), and
-// drops it unless it's a real PEM. Matches Rust's
-// FLOWCATALYST_JWT_PREVIOUS_PUBLIC_KEY. (The current key's public half is
+// drops it unless it's a real PEM. (The current key's public half is
 // derived from the signing key.)
 func normalizedPreviousPublicKey() string {
 	v := NormalizePEM(os.Getenv("FLOWCATALYST_JWT_PREVIOUS_PUBLIC_KEY"))

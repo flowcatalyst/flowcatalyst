@@ -1,10 +1,10 @@
 // Package tsid generates Time-Sorted IDs as Crockford Base32 strings.
 //
-// Compatible with the Rust fc-common::tsid generator and the Java
-// TsidGenerator. A raw TSID is 13 characters; a typed TSID is
+// Compatible with the other FlowCatalyst SDKs'
+// generators. A raw TSID is 13 characters; a typed TSID is
 // {prefix}_{13-char-raw} (e.g. "clt_0HZXEQ5Y8JY5Z").
 //
-// Layout of the 64-bit value (matches Rust):
+// Layout of the 64-bit value:
 //
 //	bits 63..22  timestamp (42 bits, millis since epoch)
 //	bits 21..12  random  (10 bits)

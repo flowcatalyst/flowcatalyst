@@ -12,15 +12,14 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
-// PlatformEventTypeDef mirrors fc-platform/src/event_type/operations::SyncEventTypeInput.
+// PlatformEventTypeDef mirrors the event-type sync input shape.
 type PlatformEventTypeDef struct {
 	Code   string
 	Name   string
 	Schema json.RawMessage // nil-OK; empty means "no schema attached yet"
 }
 
-// PlatformEventTypes returns the full catalog in the same order as
-// fc-platform/src/seed/platform_event_types.rs::definitions(). Codes are
+// PlatformEventTypes returns the full catalog. Codes are
 // {application}:{subdomain}:{aggregate}:{event}.
 func PlatformEventTypes() []PlatformEventTypeDef {
 	schemas := platformEventSchemas()
@@ -95,8 +94,8 @@ func PlatformEventTypes() []PlatformEventTypeDef {
 	return out
 }
 
-// seedPlatformEventTypes upserts the full event-type catalog. Mirrors
-// the Rust SyncEventTypesInputUseCase behaviour: insert if not present
+// seedPlatformEventTypes upserts the full event-type catalog:
+// insert if not present
 // (by code), update name on existing rows, and attach a SpecVersion if
 // the catalog supplies one and no version with that name exists yet.
 func (s *Seeder) seedPlatformEventTypes(ctx context.Context) error {

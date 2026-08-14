@@ -1,20 +1,20 @@
 # Conventions
 
-These are the conventions ported from [`flowcatalyst-rust/CLAUDE.md`](../../flowcatalyst-rust/CLAUDE.md). Read the Rust version too — the *why* behind each rule is documented there. This file is the Go-flavored summary.
+Engineering conventions for this codebase.
 
-Rules numbered here are non-negotiable for the rewrite. Breaking one is a code review block, not a style preference.
+Rules numbered here are non-negotiable. Breaking one is a code review block, not a style preference.
 
 ---
 
 ## 1. HTTP tier convention
 
-Exactly three programmable tiers. **Same as Rust. Same URL prefixes. Same auth posture.**
+Exactly three programmable tiers.
 
 - **`/bff/*`** — frontend-only. Cookie/session auth. Response shapes tuned to screens; not for external SDKs.
 - **`/api/*`** — public, programmable. Bearer token auth. Authorization enforced by **permission checks inside handlers**, not by URL prefix.
 - **`/auth/*`, `/oauth/*`, `/.well-known/*`, `/api/dispatch/*`, `/api/monitoring/*`, `/api/me/*`, `/api/public/*`** — platform-owned. Do not move.
 
-**Every write handler under `/api/*` MUST call exactly one authorization check.** The URL prefix is no longer a second line of defense (no `/api/admin/*`). A missing permission call on a write handler is a privilege-escalation bug.
+**Every write handler under `/api/*` MUST call exactly one authorization check.** The URL prefix is not a second line of defense (no `/api/admin/*`). A missing permission call on a write handler is a privilege-escalation bug.
 
 Permission check naming, in `internal/platform/shared/auth/checks.go`:
 
@@ -40,7 +40,7 @@ Conventions:
 - `RequireAnchor` — anchor-only endpoints
 - `IsAdmin` — full admin access
 
-Don't invent new names. Match the [Rust convention table](../../flowcatalyst-rust/CLAUDE.md#existing-functions-do-not-rename).
+Don't invent new names — follow the existing checks in `checks.go`.
 
 ---
 
@@ -62,7 +62,7 @@ What this means for every `*UseCase.Execute`:
 | Domain | `internal/platform/<name>/entity.go`, `operations/events.go` | Plain data, invariants, factory/behavior methods | `pgx`, transaction types, any driver |
 | Repository | `internal/platform/<name>/repository.go` | SQL, pgx types, row structs, transaction handles | HTTP, permission checks, domain events |
 
-**Aggregates do not persist themselves.** `Persist[Principal]` is implemented on `PrincipalRepository`, not on `Principal`. Same rule as Rust.
+**Aggregates do not persist themselves.** `Persist[Principal]` is implemented on `PrincipalRepository`, not on `Principal`.
 
 **One write path per aggregate.** Every aggregate has exactly one place its rows are written: its repository's `Persist` and `Delete` methods. No handler, use case, or service writes to that aggregate's tables directly.
 
@@ -133,11 +133,9 @@ g.Go(func() error { var err error; pools, err = repo.FindPools(ctx); return err 
 if err := g.Wait(); err != nil { return err }
 ```
 
-Equivalent of Rust's `tokio::try_join!`.
-
 ### 4.3 Prefer `pgx.RowToStructByName` + `errors.Is(err, pgx.ErrNoRows)`
 
-`QueryRow().Scan()` panics-as-a-feature when no row exists. Treat it like Rust's `fetch_one` — banned unless mathematically guaranteed to return a row (`SELECT COUNT(*)`, `SELECT EXISTS(...)`).
+`QueryRow().Scan()` silently zeroes when no row exists. Banned unless the query is mathematically guaranteed to return a row (`SELECT COUNT(*)`, `SELECT EXISTS(...)`).
 
 ```go
 // Bad: returns ErrNoRows but it's easy to ignore
@@ -163,8 +161,6 @@ If a handler only needs id + name (e.g., a dropdown), don't load junction tables
 
 ## 5. Caching
 
-Same as Rust:
-
 - **Token validation**: `AuthService` caches validated JWT claims, 30s TTL.
 - **Permission resolution**: `AuthorizationService` caches role → permissions, 60s TTL.
 
@@ -182,36 +178,27 @@ Implementation: embed the frontend `dist/` via `//go:embed`, serve through a han
 
 ## 7. Frontend API response handling
 
-**Not the Go server's concern, but flagging because the contract matters.** Most PUT/PATCH return `204 No Content` — no body. The Rust server's pattern (the FE wrapper is typed `Promise<void>`, then refetches) must continue to work. Don't change response shapes for PUT/PATCH; if Rust returns 204, Go returns 204.
+**Not the server's concern, but flagging because the contract matters.** Most PUT/PATCH return `204 No Content` — no body. The frontend wrapper is typed `Promise<void>` and refetches after a mutation. Don't change response shapes for PUT/PATCH; where the contract is 204, keep returning 204.
 
 ---
 
 ## 8. Error handling
 
 - Use stdlib `errors` with `errors.Is` / `errors.As`. No `pkg/errors`.
-- Domain errors are typed structs implementing `error` (replaces Rust `thiserror` enums).
-- HTTP error envelope shape **must match Rust**:
-
-```json
-{
-  "code": "VALIDATION_ERROR",
-  "message": "Event type code is required",
-  "details": { "field": "code" }
-}
-```
-
-- `UseCaseError` distinguishes `Validation`, `BusinessRule`, `Authorization`, `NotFound`, `Conflict` (matches Rust's `UseCaseError` enum). Each maps to a specific HTTP status code via a single function in `internal/platform/shared/httperror/`.
+- Domain errors are typed structs implementing `error`.
+- The HTTP error envelope shape is part of the wire contract — see [`wire-contract.md`](./wire-contract.md#error-envelope).
+- `UseCaseError` distinguishes `Validation`, `BusinessRule`, `Authorization`, `NotFound`, `Conflict`. Each maps to a specific HTTP status code via a single function in `internal/platform/shared/httperror/`.
 
 ---
 
 ## 9. Naming
 
-- Go packages: lowercase, no underscores. `eventtype` not `event_type` (matches Go convention; the Rust `event_type` directory becomes `internal/platform/eventtype/`).
-- Files: `entity.go`, `repository.go`, `api.go`, `operations/create.go` — match Rust structure exactly within each subdomain.
-- JSON field names: `camelCase` to match Rust's `#[serde(rename_all = "camelCase")]`. Use `json:"foo,omitempty"` to match Rust's `#[serde(skip_serializing_if = "Option::is_none")]`.
+- Go packages: lowercase, no underscores. `eventtype` not `event_type`.
+- Files: `entity.go`, `repository.go`, `api.go`, `operations/create.go` — the same structure within each subdomain.
+- JSON field names: `camelCase`. Use `json:"foo,omitempty"` where the contract omits the field when unset.
 - Enum values: `SCREAMING_SNAKE_CASE` strings (e.g., `"CURRENT"`, `"ARCHIVED"`). Represented as Go `type EventTypeStatus string` with constants.
 - Database column names: `snake_case` (unchanged from existing schema).
-- Domain event types: format `platform:<domain>:<aggregate>:<verb>` (e.g., `platform:admin:eventtype:created`). Same as Rust.
+- Domain event types: format `platform:<domain>:<aggregate>:<verb>` (e.g., `platform:admin:eventtype:created`).
 
 ---
 
@@ -221,15 +208,14 @@ Implementation: embed the frontend `dist/` via `//go:embed`, serve through a han
 - Add one only when *why* is non-obvious (hidden constraint, subtle invariant, workaround for a specific bug).
 - Don't explain *what* the code does — well-named identifiers do that.
 - Never reference the current task/fix/PR ("added for X", "fixes #123") — that belongs in the commit message.
-- Where a Go pattern materially differs from the Rust source it's ported from, add a single-line `// rust: see crates/fc-platform/src/<path>` pointer. This is the one exception. It will fade as the Rust code is decommissioned.
 
 ---
 
 ## 11. Testing
 
-- **No database mocks.** Use `testcontainers-go` for real Postgres. Same reason as Rust: prior incidents where mocks passed but migrations failed.
+- **No database mocks.** Use `testcontainers-go` for real Postgres. Reason: prior incidents where mocks passed but migrations failed.
 - **One integration test per use case happy path + each documented error case.**
-- **Contract tests** (Go vs. Rust on identical inputs) live in `tests/parity/` and run in CI for every PR until cutover.
+- **Contract tests** live in `tests/parity/` and run in CI for every PR — they ensure no change accidentally breaks the public API.
 - **Golden tests** for JSON marshaling of every public DTO. Captures field ordering, omission posture, enum casing. Stored in `tests/golden/*.json`.
 - Unit tests for pure functions (validators, parsers, signature canonicalization) — use plain stdlib `testing`. No need for fixtures.
 - `t.Parallel()` everywhere unless the test mutates global state.
@@ -248,14 +234,12 @@ Implementation: embed the frontend `dist/` via `//go:embed`, serve through a han
 
 ## 13. Migrations
 
-Migrations live in `flowcatalyst-rust/migrations/*.sql` until cutover. The Go binary points at that directory via env var `FC_MIGRATIONS_DIR`. `golang-migrate/migrate` understands the Postgres `_schema_migrations` table the Rust binary maintains; both can co-exist if migrations don't run concurrently (and they shouldn't — only one binary applies migrations).
-
-**Rule during transition:** only the Rust binary applies migrations. The Go binary checks that the schema version matches what it expects and refuses to start if it doesn't. After cutover, ownership moves to Go.
+Migrations are plain SQL files embedded into every binary (`internal/migrate/sql/`), applied at boot by the migration runner. Only one binary should apply migrations against a given database at a time.
 
 ---
 
-## 14. The "drop-in" rule trumps everything
+## 14. The wire contract trumps everything
 
-If a Go-idiomatic change would alter an HTTP response shape, an OpenAPI definition, a JSON field name, or a database row layout — **don't make it**. The point of the rewrite is operational/contributor experience, not API redesign. API redesign happens after cutover, in a separate effort, with versioning.
+If a Go-idiomatic change would alter an HTTP response shape, an OpenAPI definition, a JSON field name, or a database row layout — **don't make it**. API redesign is a separate, versioned effort.
 
 Exceptions get a written sign-off from whoever owns the affected consumer (the frontend lead for `/bff/*`, the SDK maintainer for `/api/*`).

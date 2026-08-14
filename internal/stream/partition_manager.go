@@ -12,7 +12,7 @@ import (
 )
 
 // PartitionManager maintains the monthly RANGE partitions on the partitioned
-// messaging tables. Ports fc-stream/src/partition_manager.rs. Each pass:
+// messaging tables. Each pass:
 //
 //   - ensures monthly partitions exist for the current month + the next
 //     MonthsForward months on every partitioned parent;
@@ -44,9 +44,9 @@ type PartitionManager struct {
 	IsLeader func() bool
 }
 
-// PartitionManagerConfig tunes the manager. Mirrors the Rust
-// PartitionManagerConfig (months_forward / retention_days / tick_interval),
-// plus a Go-only shorter retention for the scheduled-job history tables.
+// PartitionManagerConfig tunes the manager (months forward / retention days /
+// tick interval), plus a shorter retention for the scheduled-job history
+// tables.
 type PartitionManagerConfig struct {
 	MonthsForward int           // forward monthly partitions to keep ahead (default 3)
 	RetentionDays int           // drop partitions whose range ends before now-this (default 90)
@@ -61,7 +61,7 @@ type PartitionManagerConfig struct {
 	ScheduledJobRetentionDays int
 }
 
-// DefaultPartitionManagerConfig returns the Rust defaults (plus the Go-only
+// DefaultPartitionManagerConfig returns the standard defaults (including the
 // scheduled-job history retention).
 func DefaultPartitionManagerConfig() PartitionManagerConfig {
 	return PartitionManagerConfig{
@@ -72,8 +72,8 @@ func DefaultPartitionManagerConfig() PartitionManagerConfig {
 	}
 }
 
-// PartitionedTables is the canonical list. Mirrors the Rust
-// PARTITIONED_PARENTS + migrations 019/020/022.
+// PartitionedTables is the canonical list of partitioned parents
+// (migrations 019/020/022).
 var PartitionedTables = []string{
 	"msg_events",
 	"msg_events_read",
@@ -165,8 +165,7 @@ func (m *PartitionManager) runPass(ctx context.Context) {
 		return
 	}
 	if m.Health != nil {
-		// Count partitions created+dropped this pass (Rust
-		// partition_manager.rs add_processed(created+dropped)); 0 still
+		// Count partitions created+dropped this pass; 0 still
 		// stamps last-poll on a quiet tick.
 		m.Health.AddProcessed(uint64(created + dropped))
 	}
@@ -240,7 +239,7 @@ func (m *PartitionManager) ensureForward(ctx context.Context, parent string, now
 }
 
 // dropOld drops partitions of parent whose entire range ends on or before the
-// retention cutoff (now - retentionDays). Mirrors the Rust drop_old_partitions.
+// retention cutoff (now - retentionDays).
 func (m *PartitionManager) dropOld(ctx context.Context, parent string, now time.Time, retentionDays int) (int, error) {
 	cutoff := now.AddDate(0, 0, -retentionDays)
 	rows, err := m.pool.Query(ctx, `

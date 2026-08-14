@@ -1,4 +1,4 @@
-// Package audit is the port of fc-platform/src/audit. Audit log entity
+// Package audit holds the audit log entity
 // and repository (read API + a direct batch-ingest Insert).
 //
 // During platform mutations, rows are written by the UoW Sink
@@ -49,8 +49,8 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 // Insert writes a single audit-log row to aud_logs. The subdomain is otherwise
 // read-only — platform mutations write audit rows through the UoW Sink
 // (platformsink.WriteAudit). This direct insert backs the SDK/outbox batch
-// audit-ingest endpoint (POST /api/audit-logs/batch), mirroring Rust
-// audit_log_repo.insert (a plain insert outside the UoW). The column set
+// audit-ingest endpoint (POST /api/audit-logs/batch) —
+// a plain insert outside the UoW. The column set
 // matches WriteAudit + migrations 006/009.
 func (r *Repository) Insert(ctx context.Context, l *Log) error {
 	var opJSON any
@@ -83,8 +83,8 @@ type FilterParams struct {
 	Offset      int
 }
 
-// Cursor is the keyset position for cursor pagination, mirroring the Rust
-// platform's keyset on (performed_at, id) DESC.
+// Cursor is the keyset position for cursor pagination —
+// keyset on (performed_at, id) DESC.
 type Cursor struct {
 	PerformedAt time.Time
 	ID          string

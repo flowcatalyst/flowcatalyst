@@ -35,8 +35,8 @@ import (
 // don't need a separate import.
 type Time = jsontime.Time
 
-// ErrorModel is the wire shape for every error response. Matches Rust's
-// PlatformError → ErrorResponse { error, message } and what [httperror.Write]
+// ErrorModel is the wire shape for every error response: { error, message },
+// matching what [httperror.Write]
 // emits, which is what the consumer SDKs parse. Code is serialized as the
 // wire field "error".
 //
@@ -71,15 +71,16 @@ func (e *ErrorModel) GetStatus() int {
 // code/message/details; other errors fall back to a generic 500.
 func Init() {
 	huma.NewError = newError
-	// Rust serializes arrays as non-nullable (`{"type":"array"}`). huma
-	// defaults arrays to nullable (`{"type":["array","null"]}`), which would
+	// The wire contract serializes arrays as non-nullable (`{"type":"array"}`).
+	// huma defaults arrays to nullable (`{"type":["array","null"]}`), which would
 	// diverge both the OpenAPI spec and the generated frontend client. All
-	// our list handlers return non-nil slices (`make(...)`), so match Rust.
+	// our list handlers return non-nil slices (`make(...)`), so keep them
+	// non-nullable.
 	huma.DefaultArrayNullable = false
 }
 
-// StripBFFPaths removes /bff/* paths from the API's OpenAPI document so the
-// published spec matches Rust (which excludes BFF endpoints from its spec).
+// StripBFFPaths removes /bff/* paths from the API's OpenAPI document —
+// the published spec deliberately excludes BFF endpoints.
 // The handlers stay mounted and keep serving; only the spec omits them. Call
 // once after all routes are registered, before the spec is served/dumped.
 func StripBFFPaths(api huma.API) {
@@ -95,12 +96,12 @@ func StripBFFPaths(api huma.API) {
 }
 
 // RelaxRequestBodies makes every operation's JSON request body accept and
-// silently ignore unknown fields, matching Rust/serde's default leniency.
+// silently ignore unknown fields — the leniency the API has always had.
 //
 // huma generates request-body schemas with `additionalProperties: false`, so
 // ANY field a client sends that the Go DTO doesn't declare makes huma reject
 // the whole request with a 400 before the handler runs. The SPA — generated
-// against the lenient Rust API — routinely sends supersets of what the Go DTO
+// against the lenient historical API — routinely sends supersets of what the Go DTO
 // models, which silently breaks flows. This is the #1 recurring parity bug
 // class (see the spa-go-compat audit). Flipping the top-level request-body
 // schema to `additionalProperties: true` accepts those extra fields and drops
@@ -242,7 +243,7 @@ func statusFor(code string) int {
 	}
 	// Default: derive from suffix conventions used in the codebase.
 	// `*_NOT_FOUND` → 404; `*_EXISTS` → 409; unknown codes fall back to
-	// 500, matching Rust's PlatformError catch-all (the Rust platform
+	// 500 (the wire contract's catch-all — its status
 	// mapping has no 422). The live path always carries a Kind via
 	// *usecase.Error, so this fallback only fires for bare code strings.
 	if len(code) > 10 && code[len(code)-10:] == "_NOT_FOUND" {

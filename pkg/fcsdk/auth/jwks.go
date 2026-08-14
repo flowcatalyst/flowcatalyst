@@ -33,7 +33,7 @@ type TokenValidatorConfig struct {
 }
 
 // TokenValidator verifies RS256 JWTs against a JWKS fetched via OIDC
-// discovery. Mirrors crates/fc-sdk/src/auth/jwks.rs::TokenValidator.
+// discovery.
 type TokenValidator struct {
 	cfg     TokenValidatorConfig
 	cache   *JwksCache

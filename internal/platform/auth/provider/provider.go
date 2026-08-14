@@ -67,10 +67,9 @@ type Claims struct {
 	Name            string // user display name (OIDC "name" claim)
 
 	// OIDC ID-token-specific claims. These are populated only when the
-	// caller is minting an ID token, not a plain access token. Rust's
-	// auth_service.rs ships them on the ID token; we match the same set
-	// (nonce, azp, auth_time, email_verified). acr/amr are not populated
-	// by Rust either, so we leave them off.
+	// caller is minting an ID token, not a plain access token. The ID token
+	// carries this set (nonce, azp, auth_time, email_verified);
+	// acr/amr are deliberately left off.
 	Nonce           string // OIDC nonce echoed from the authorize request
 	AuthorizedParty string // OIDC "azp" — typically the client_id
 	AuthTime        int64  // OIDC "auth_time" — Unix seconds
@@ -126,8 +125,8 @@ func BuildClaims(ctx context.Context, cfg Config, principals *principal.Reposito
 // FlattenPermissions resolves a principal's role names into their
 // de-duplicated permission set. The auth middleware calls this to derive
 // permissions for tokens that carry roles but no permissions claim
-// (e.g. OAuth access tokens minted by authservice, matching Rust which
-// never bakes permissions into the JWT).
+// (e.g. OAuth access tokens minted by authservice — permissions are
+// never baked into the JWT).
 func (p *Provider) FlattenPermissions(ctx context.Context, roleNames []string) ([]string, error) {
 	return flattenPermissions(ctx, p.roles, roleNames)
 }

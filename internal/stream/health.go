@@ -15,8 +15,7 @@ const (
 )
 
 // Health tracks one projection's runtime state. Thread-safe via atomics
-// — every field except Name is updated lock-free. Mirrors
-// crates/fc-stream/src/health.rs::StreamHealth.
+// — every field except Name is updated lock-free.
 type Health struct {
 	name string
 
@@ -53,7 +52,7 @@ func (h *Health) AddProcessed(n uint64) {
 func (h *Health) RecordError() { h.errorCount.Add(1) }
 
 // IsHealthy is currently equivalent to IsRunning — a projection that's
-// up is healthy. Matches Rust's `is_healthy = is_running`.
+// up is healthy.
 func (h *Health) IsHealthy() bool { return h.IsRunning() }
 
 // Snapshot is the API-facing point-in-time view of one projection.
@@ -88,8 +87,6 @@ func (h *Health) Status() Snapshot {
 // HealthService aggregates per-projection Health trackers. Used by the
 // stream processor's HTTP surface and (when co-tenanted with the
 // router) by the router's stream-health endpoints.
-//
-// Mirrors crates/fc-stream/src/health.rs::StreamHealthService.
 type HealthService struct {
 	mu      sync.RWMutex
 	healths []*Health
@@ -107,8 +104,8 @@ func (s *HealthService) Register(h *Health) {
 }
 
 // IsLive reports liveness — true when at least one projection is
-// running. Returns false when no projections have been registered to
-// match Rust semantics ("not configured" → not live).
+// running. Returns false when no projections have been registered
+// ("not configured" → not live).
 func (s *HealthService) IsLive() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

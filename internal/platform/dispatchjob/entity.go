@@ -1,4 +1,4 @@
-// Package dispatchjob is the port of fc-platform/src/dispatch_job.
+// Package dispatchjob holds the dispatch-job entity and repository.
 //
 // Per docs/conventions.md §3, this subdomain is an infrastructure-
 // processing path: dispatch jobs are written directly (via ingest +
@@ -7,8 +7,7 @@
 // methods, but no UoW commits and no DomainEvent emissions.
 //
 // Human-initiated dispatch-job actions (resend, ignore, cancel) DO go
-// through use cases — those land in a follow-up alongside the
-// dispatch_job/api.rs read endpoints; not part of Wave 3f.
+// through use cases.
 package dispatchjob
 
 import (
@@ -82,7 +81,7 @@ func ParseErrorType(s string) ErrorType {
 }
 
 // Metadata is one key/value tag attached to a DispatchJob. The schema
-// stores the slice as JSONB; Rust uses `Vec<DispatchMetadata>` and the
+// stores the slice as JSONB; the
 // SDK wire format is an array — `map[string]string` would serialize as
 // a JSON object and break drop-in parity.
 type Metadata struct {
@@ -93,7 +92,7 @@ type Metadata struct {
 // Attempt records one delivery attempt against a job. Stored in
 // msg_dispatch_job_attempts (separate table, partitioned monthly).
 //
-// `Success` is exposed on the wire (matches Rust's entity shape) but
+// `Success` is exposed on the wire but
 // persisted as the schema's `status` column (`SUCCESS` / `FAILURE`).
 type Attempt struct {
 	AttemptNumber  int32      `json:"attemptNumber"`
@@ -137,9 +136,8 @@ func (a *Attempt) CompleteFailure(msg string, errType ErrorType, status *int) {
 
 // DispatchJob is the aggregate. Lives in msg_dispatch_jobs (write side)
 // and msg_dispatch_jobs_read (denormalized read side maintained by
-// the stream processor). Field set + JSON shape matches Rust's
-// `crates/fc-platform/src/dispatch_job/entity.rs` for SDK drop-in
-// parity.
+// the stream processor). Field set + JSON shape are pinned by the SDK
+// drop-in wire contract.
 type DispatchJob struct {
 	ID                 string                `json:"id"`
 	ExternalID         *string               `json:"externalId,omitempty"`

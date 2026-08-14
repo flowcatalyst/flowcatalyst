@@ -33,9 +33,9 @@ func (r CreatePrincipalRequest) toCommand() operations.CreateCommand {
 }
 
 // CreateUserRequest is the wire body for POST /api/principals/users — the
-// SDK/Rust create-user shape. Unlike CreatePrincipalRequest it carries NO
+// SDK create-user shape. Unlike CreatePrincipalRequest it carries NO
 // scope: scope + client association are derived from the email domain
-// (anchor-domain check + email-domain-mapping). Mirrors Rust CreateUserRequest.
+// (anchor-domain check + email-domain-mapping).
 type CreateUserRequest struct {
 	Email                     string  `json:"email"`
 	Name                      string  `json:"name"`
@@ -69,10 +69,10 @@ func (r UpdatePrincipalRequest) toCommand(id string) operations.UpdateCommand {
 // ResetPasswordRequest is the wire body for POST /api/principals/{id}/reset-password.
 type ResetPasswordRequest struct {
 	NewPassword string `json:"newPassword"`
-	// EnforcePasswordComplexity mirrors the Rust field of the same name (default
-	// true). When false, the caller (e.g. an SDK consumer that applies its own
-	// policy) opts out of the platform's password rules; Go relaxes the minimum
-	// length to match Rust's relaxed() policy. This field MUST exist on the DTO:
+	// EnforcePasswordComplexity defaults to true. When false, the caller (e.g.
+	// an SDK consumer that applies its own policy) opts out of the platform's
+	// password rules; Go relaxes the minimum length. This field MUST exist on
+	// the DTO:
 	// huma generates schemas with additionalProperties:false, so without it the
 	// SDK's body ({newPassword, enforcePasswordComplexity}) is rejected with a
 	// "validation failed" 400. Go does not implement the upper/lower/digit/special
@@ -116,7 +116,7 @@ type ClientAssociationRequest struct {
 }
 
 // PrincipalResponse is the wire shape for a principal. It is intentionally
-// flat (matching the Rust platform + fcsdk client + SPA): email/idpType are
+// flat (matching the fcsdk client + SPA): email/idpType are
 // hoisted out of the identity, roles is a plain name list, and the password
 // hash is never exposed. Richer per-assignment data is served by the
 // dedicated /roles and /client-access sub-resources.
@@ -160,10 +160,10 @@ func fromEntity(p *principal.Principal) PrincipalResponse {
 	if p.UserIdentity != nil {
 		e := p.UserIdentity.Email
 		email = &e
-		// Report the actual stored provider (INTERNAL / OIDC). The Rust source
-		// hardcoded "INTERNAL" here, which mislabels OIDC-linked users in the
-		// admin UI; we surface the real value from the principal's identity
-		// (idp_type column → UserIdentity.Provider).
+		// Report the actual stored provider (INTERNAL / OIDC). The original
+		// implementation hardcoded "INTERNAL" here, which mislabels OIDC-linked
+		// users in the admin UI; we surface the real value from the principal's
+		// identity (idp_type column → UserIdentity.Provider).
 		if p.UserIdentity.Provider != nil && *p.UserIdentity.Provider != "" {
 			idpType = p.UserIdentity.Provider
 		} else {
@@ -207,8 +207,8 @@ func fromEntity(p *principal.Principal) PrincipalResponse {
 	}
 }
 
-// PrincipalListResponse is the wire shape for GET /api/principals.
-// Matches the Rust shape: `{principals, total}` rather than the
+// PrincipalListResponse is the wire shape for GET /api/principals:
+// `{principals, total}` rather than the
 // platform's generic `{items}` envelope. The SPA's UserListPage reads
 // `response.principals` + `response.total` directly.
 type PrincipalListResponse struct {
@@ -233,7 +233,7 @@ type SetDeveloperCredentialResponse struct {
 }
 
 // ClientAccessGrantResponse is the wire shape for a single client-access
-// grant. Matches the Rust platform + fcsdk client + SPA.
+// grant. Matches the fcsdk client + SPA.
 type ClientAccessGrantResponse struct {
 	ID        string           `json:"id"`
 	ClientID  string           `json:"clientId"`
@@ -283,8 +283,8 @@ type CheckEmailDomainResponse struct {
 	AllowedClientIDs []string `json:"allowedClientIds"`
 }
 
-// PrincipalRoleAssignmentDTO is a single role assignment row. Matches the Rust
-// RoleAssignmentDto + fcsdk PrincipalRoleResponse + SPA RoleAssignment.
+// PrincipalRoleAssignmentDTO is a single role assignment row. Matches the
+// fcsdk PrincipalRoleResponse + SPA RoleAssignment.
 type PrincipalRoleAssignmentDTO struct {
 	ID               string          `json:"id"`
 	RoleName         string          `json:"roleName"`
@@ -293,7 +293,7 @@ type PrincipalRoleAssignmentDTO struct {
 }
 
 // roleAssignmentDTOs builds the wire rows for a principal's roles. The id is
-// synthetic (principals don't store a per-assignment id), matching Rust's
+// synthetic (principals don't store a per-assignment id), using the
 // "{principalID}-role-{i}" scheme so the SPA has a stable :key.
 func roleAssignmentDTOs(principalID string, roles []serviceaccount.RoleAssignment) []PrincipalRoleAssignmentDTO {
 	out := make([]PrincipalRoleAssignmentDTO, 0, len(roles))

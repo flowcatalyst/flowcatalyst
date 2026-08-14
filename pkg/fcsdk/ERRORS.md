@@ -100,7 +100,7 @@ Two parallel APIs exist:
   headers, ISO8601 millisecond timestamps). Sentinels:
   `ErrMissingSignature`, `ErrMissingTimestamp`, `ErrBadTimestamp`,
   `ErrStaleTimestamp`, `ErrBadSignature`.
-- `Validator` (Rust-SDK shape) — mixed-case headers, Unix-second
+- `Validator` (the legacy platform-SDK shape) — mixed-case headers, Unix-second
   timestamps. Use when receiving webhooks from a peer FlowCatalyst SDK.
 
 `Validator` sentinels — `errors.Is` branching maps to HTTP status codes:

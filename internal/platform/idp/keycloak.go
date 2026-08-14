@@ -8,11 +8,11 @@ import (
 )
 
 // KeycloakProvider integrates with the Keycloak admin REST API for
-// per-realm role sync. Mirrors fc-platform/src/idp/keycloak.rs.
+// per-realm role sync.
 //
 // TODO(wave-3d-follow-up): wire against the Keycloak admin REST API.
-// The Rust impl uses reqwest + admin token; the Go port uses net/http
-// + go-oidc client_credentials grant against {realm}/protocol/openid-connect/token.
+// Uses net/http + a go-oidc client_credentials grant
+// against {realm}/protocol/openid-connect/token.
 type KeycloakProvider struct {
 	cfg *identityprovider.IdentityProvider
 }

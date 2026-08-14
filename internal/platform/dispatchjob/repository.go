@@ -21,7 +21,7 @@ import (
 // denormalized msg_dispatch_jobs_read projection (owned by internal/stream's
 // projector). The write table keeps only transactional indexes (migration
 // 015), so the user-facing list / by-event / filter-options reads go to the
-// projection — mirroring the events repo and Rust's DispatchJobReadResponse.
+// projection — mirroring the events repo.
 // The detail view (FindByID) and the debug raw view (FindRecentRaw) stay on
 // the write table because they need the un-projected payload/metadata.
 //
@@ -247,8 +247,7 @@ func (r *Repository) DistinctValues(ctx context.Context, column string, limit in
 }
 
 // Insert writes a brand-new dispatch job (called by ingest + stream fan-out).
-// No UoW commit — this is the infrastructure path. Column order matches
-// the Rust insert in `dispatch_job/repository.rs::insert`.
+// No UoW commit — this is the infrastructure path.
 func (r *Repository) Insert(ctx context.Context, j *DispatchJob) error {
 	now := time.Now().UTC()
 	if j.CreatedAt.IsZero() {
@@ -429,8 +428,8 @@ func (r *Repository) Requeue(ctx context.Context, ids []string, accessibleClient
 	return tag.RowsAffected(), nil
 }
 
-// RecordAttempt inserts a row into msg_dispatch_job_attempts. Mirrors
-// Rust's insert_attempt — generates an untyped TSID for the row id and
+// RecordAttempt inserts a row into msg_dispatch_job_attempts —
+// generates an untyped TSID for the row id and
 // derives the `status` column from the entity's Success bool
 // (SUCCESS / FAILURE).
 func (r *Repository) RecordAttempt(ctx context.Context, jobID string, a *Attempt) error {
@@ -466,7 +465,7 @@ func (r *Repository) RecordAttempt(ctx context.Context, jobID string, a *Attempt
 
 // AttemptsByJob returns all attempts for a job, oldest first. The DB
 // stores `status` (SUCCESS / FAILURE); entity exposes the derived
-// Success bool to match the Rust wire shape.
+// Success bool to match the wire shape.
 func (r *Repository) AttemptsByJob(ctx context.Context, jobID string) ([]Attempt, error) {
 	rows, err := r.q.DispatchJobAttemptsByJob(ctx, jobID)
 	if err != nil {
@@ -676,12 +675,12 @@ func rowToJob(r rawRow) *DispatchJob {
 	if len(r.Metadata) > 0 {
 		_ = json.Unmarshal(r.Metadata, &j.Metadata)
 	}
-	_ = r.Protocol // single protocol today — see Rust DispatchProtocol::from_str
+	_ = r.Protocol // single protocol today
 	return j
 }
 
 // metadataOrEmpty returns an empty slice for nil so the JSONB column
-// stores `[]` (matches Rust's `Vec::new()` default and the column
+// stores `[]` (matches the column
 // `DEFAULT '[]'::jsonb`).
 func metadataOrEmpty(m []Metadata) []Metadata {
 	if m == nil {

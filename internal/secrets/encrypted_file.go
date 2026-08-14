@@ -16,8 +16,8 @@ import (
 )
 
 // EncryptedFileProvider stores AES-256-GCM-encrypted secrets in a single
-// binary file. The wire format mirrors Rust's fc-secrets EncryptedProvider
-// (crates/fc-secrets/src/encrypted.rs):
+// binary file. The on-disk format (kept compatible with existing secrets
+// files):
 //
 //	file bytes = nonce(12) || ciphertext+tag
 //	plaintext  = JSON-serialised map[string]string of all entries
@@ -52,7 +52,7 @@ func NewEncryptedFileProvider(path string, key []byte) (*EncryptedFileProvider, 
 	return p, nil
 }
 
-// NewEncryptedFileProviderFromBase64Key is the Rust-style constructor:
+// NewEncryptedFileProviderFromBase64Key is the convenience constructor:
 // caller supplies a base64-encoded 32-byte key and a data directory; the
 // file is data_dir/secrets.enc.
 func NewEncryptedFileProviderFromBase64Key(dataDir, b64Key string) (*EncryptedFileProvider, error) {
@@ -66,7 +66,7 @@ func NewEncryptedFileProviderFromBase64Key(dataDir, b64Key string) (*EncryptedFi
 	return NewEncryptedFileProvider(filepath.Join(dataDir, "secrets.enc"), key)
 }
 
-// Name returns the scheme. Matches Rust EncryptedProvider::name.
+// Name returns the scheme.
 func (*EncryptedFileProvider) Name() string { return "encrypted" }
 
 func (p *EncryptedFileProvider) load() error {
@@ -78,7 +78,7 @@ func (p *EncryptedFileProvider) load() error {
 		return fmt.Errorf("read %s: %w", p.path, err)
 	}
 	if len(data) < p.gcm.NonceSize() {
-		// Treat undersized file as empty (matches Rust: silently returns Ok).
+		// Treat undersized file as empty (silently succeed).
 		return nil
 	}
 	nonce := data[:p.gcm.NonceSize()]
@@ -155,7 +155,7 @@ func (p *EncryptedFileProvider) Delete(_ context.Context, key string) error {
 }
 
 // GenerateKey returns a freshly-generated 32-byte AES-256 key,
-// base64-encoded. Matches Rust fc_secrets::generate_key.
+// base64-encoded.
 func GenerateKey() (string, error) {
 	key := make([]byte, 32)
 	if _, err := cryptorand.Read(key); err != nil {

@@ -62,7 +62,7 @@ type Querier interface {
 	CorsOriginUpsert(ctx context.Context, arg CorsOriginUpsertParams) error
 	// One row per delivery attempt. The schema column `status` stores the
 	// attempt outcome (`SUCCESS` / `FAILURE`); the entity exposes a
-	// derived `success` bool to match the Rust wire shape.
+	// derived `success` bool to match the legacy-platform wire shape.
 	DispatchJobAttemptInsert(ctx context.Context, arg DispatchJobAttemptInsertParams) error
 	DispatchJobAttemptsByJob(ctx context.Context, dispatchJobID string) ([]DispatchJobAttemptsByJobRow, error)
 	// Queries for msg_dispatch_jobs + msg_dispatch_job_attempts. The
@@ -150,7 +150,7 @@ type Querier interface {
 	IdpRoleMappingDelete(ctx context.Context, id string) error
 	IdpRoleMappingFindAll(ctx context.Context) ([]OauthIdpRoleMapping, error)
 	// ── IdpRoleMapping (oauth_idp_role_mappings) ─────────────────────────
-	// idp_type was added Go-side in migration 035 (Rust had dropped the
+	// idp_type was added Go-side in migration 035 (legacy-platform had dropped the
 	// column, so its rows read back NULL). It is persisted and echoed, but
 	// FindByIdpRole deliberately does NOT filter on it — pre-035 rows have
 	// NULL idp_type and live mappings must keep matching.
@@ -167,8 +167,8 @@ type Querier interface {
 	// allowed_origins, application_ids) that the Go entity doesn't carry
 	// yet — they're a follow-up alongside the entity extension.
 	// The Go entity stores Argon2-hashed secrets in client_secret_ref
-	// (Rust uses it as a secrets-manager reference; Go uses it as the
-	// hash). See HANDOFF.md §4 for the planned PHC-salt fix.
+	// (legacy-platform uses it as a secrets-manager reference; Go uses it as the
+	// hash). See docs/wire-contract.md.
 	OAuthClientFindByID(ctx context.Context, id string) (OauthClient, error)
 	// Portal-flagged OAuth clients owned by a tenant client — consulted when
 	// validating a portal invite's post-set-password redirectUri.
@@ -208,12 +208,12 @@ type Querier interface {
 	PlatformConfigFindByCoordinateAnchor(ctx context.Context, arg PlatformConfigFindByCoordinateAnchorParams) (AppPlatformConfig, error)
 	PlatformConfigFindByCoordinateClient(ctx context.Context, arg PlatformConfigFindByCoordinateClientParams) (AppPlatformConfig, error)
 	// Queries for app_platform_configs + app_platform_config_access. Two
-	// entity types, one repo (mirroring the Rust shape).
+	// entity types, one repo (mirroring the legacy-platform shape).
 	PlatformConfigFindByID(ctx context.Context, id string) (AppPlatformConfig, error)
 	PlatformConfigUpsert(ctx context.Context, arg PlatformConfigUpsertParams) error
 	// iam_principal_application_access + iam_client_access_grants do NOT have
 	// FK ON DELETE CASCADE on principal_id (only iam_principal_roles does), so
-	// Delete has to clean them explicitly. Mirrors Rust's delete() + Persist::delete.
+	// Delete has to clean them explicitly. Mirrors the wire contract's delete() + Persist::delete.
 	PrincipalApplicationAccessClear(ctx context.Context, principalID string) error
 	PrincipalClientAccessGrantsClear(ctx context.Context, principalID string) error
 	PrincipalDelete(ctx context.Context, id string) error
@@ -246,7 +246,7 @@ type Querier interface {
 	ProcessDelete(ctx context.Context, id string) error
 	ProcessFindByCode(ctx context.Context, code string) (MsgProcess, error)
 	// Queries for msg_processes. The schema has no created_by column —
-	// matches the Rust source which hard-codes CreatedBy: None on read.
+	// matches the legacy-platform source which hard-codes CreatedBy: None on read.
 	ProcessFindByID(ctx context.Context, id string) (MsgProcess, error)
 	ProcessUpsert(ctx context.Context, arg ProcessUpsertParams) error
 	RoleApplicationCodes(ctx context.Context) ([]*string, error)
@@ -288,7 +288,7 @@ type Querier interface {
 	ServiceAccountFindByCode(ctx context.Context, code string) (IamServiceAccount, error)
 	// Queries for iam_service_accounts. Webhook credentials are stored as
 	// separate columns (wh_auth_type, wh_auth_token_ref, wh_signing_secret_ref,
-	// wh_signing_algorithm) matching Rust. The repository maps the flat
+	// wh_signing_algorithm) matching the wire contract. The repository maps the flat
 	// columns into a single WebhookCredentials struct in the aggregate.
 	ServiceAccountFindByID(ctx context.Context, id string) (IamServiceAccount, error)
 	// The SA whose credentials sign the application's outbound deliveries.
@@ -321,7 +321,7 @@ type Querier interface {
 	//   - msg_subscription_event_types has no filter column
 	//   - msg_subscription_custom_configs uses config_key/config_value (not key/value)
 	// All of these were silent runtime bugs in the pre-sqlc repo.
-	// created_by was added Go-side in migration 035 (Rust never had it; its
+	// created_by was added Go-side in migration 035 (legacy-platform never had it; its
 	// rows read back NULL).
 	SubscriptionFindByID(ctx context.Context, id string) (MsgSubscription, error)
 	SubscriptionUpsert(ctx context.Context, arg SubscriptionUpsertParams) error
@@ -330,7 +330,7 @@ type Querier interface {
 	// Queries for WebAuthn ceremony state in oauth_oidc_payloads.
 	// The id column carries a type prefix ("WebauthnRegistration:{stateID}")
 	// to keep ids unique across the shared store; the type column carries
-	// the same discriminant. Mirrors the Rust impl.
+	// the same discriminant. Mirrors the legacy implementation.
 	WebauthnCeremonyUpsert(ctx context.Context, arg WebauthnCeremonyUpsertParams) error
 	WebauthnCredentialDelete(ctx context.Context, id string) error
 	WebauthnCredentialFindByCredentialID(ctx context.Context, credentialID []byte) (WebauthnCredential, error)

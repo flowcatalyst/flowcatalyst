@@ -22,8 +22,7 @@ func (s *State) RegisterRevokeRoutes(r chi.Router) {
 
 // authenticateClientOrBearer authorizes a call to a protected OAuth
 // endpoint (introspect/revoke) via either a valid Bearer access token or
-// client credentials (Basic header / body). Mirrors Rust's
-// authenticate_client_or_bearer; the resolved identity is unused by the
+// client credentials (Basic header / body). The resolved identity is unused by the
 // callers, so only the error (nil = authorized) is returned.
 func (s *State) authenticateClientOrBearer(r *http.Request, clientIDBody, clientSecretBody string) *oauthError {
 	if authHeader := r.Header.Get("Authorization"); authHeader != "" {
@@ -42,7 +41,7 @@ func (s *State) authenticateClientOrBearer(r *http.Request, clientIDBody, client
 }
 
 // introspectResponse is the RFC 7662 result. Every field except `active`
-// is omitted when absent (Rust: skip_serializing_if = Option::is_none).
+// is omitted when absent.
 type introspectResponse struct {
 	Active        bool    `json:"active"`
 	Sub           *string `json:"sub,omitempty"`

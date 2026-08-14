@@ -1,4 +1,4 @@
-// Package auth is the port of fc-platform/src/auth. Houses:
+// Package auth houses:
 //
 //   - OAuthClient (entries for SDK consumers issued tokens via OAuth)
 //   - AnchorDomain (email domains that grant anchor scope on signup)
@@ -49,8 +49,8 @@ type OAuthClient struct {
 	ClientName string          `json:"clientName"`
 	ClientType OAuthClientType `json:"clientType"`
 	// SecretRef stores the client_secret for CONFIDENTIAL clients as a
-	// reversibly-encrypted blob (AES-GCM via the encryption package),
-	// matching Rust's oauth_clients.client_secret_ref. Verification
+	// reversibly-encrypted blob (AES-GCM via the encryption package)
+	// in oauth_clients.client_secret_ref. Verification
 	// decrypts and compares; nil for PUBLIC. Set via rotate-secret.
 	SecretRef    *string  `json:"-"`
 	RedirectURIs []string `json:"redirectUris"`

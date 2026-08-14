@@ -1,5 +1,5 @@
 // Package idp holds provider-specific OIDC integration glue (Keycloak,
-// Entra, Google, generic). Mirrors fc-platform/src/idp/.
+// Entra, Google, generic).
 //
 // Phase 3d scope: the abstract Provider interface + a generic OIDC
 // implementation that delegates to go-oidc/v3. Provider-specific

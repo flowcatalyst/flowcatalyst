@@ -16,7 +16,7 @@ import (
 // primary key, used both as the CSRF token and the lookup key on the
 // callback.
 //
-// 10-minute TTL (matches the Rust constant); a periodic purge poller
+// 10-minute TTL; a periodic purge poller
 // drops expired rows.
 type OIDCLoginState struct {
 	State                    string
@@ -118,8 +118,8 @@ func (r *LoginStateRepo) FindByState(ctx context.Context, state string) (*OIDCLo
 // Consume atomically deletes and returns the state row, but only if it exists
 // and has not expired. This is single-use / replay-proof: a second concurrent
 // (or later) callback for the same state gets (nil, nil) because the row is
-// gone. Mirrors Rust's find_and_consume_state (DELETE … WHERE expires_at > NOW()
-// RETURNING …) and replaces the non-atomic FindByState + IsExpired + Delete
+// gone. The single DELETE … WHERE expires_at > NOW()
+// RETURNING … replaces the non-atomic FindByState + IsExpired + Delete
 // dance, which left the row replayable on every error path.
 func (r *LoginStateRepo) Consume(ctx context.Context, state string) (*OIDCLoginState, error) {
 	row := r.pool.QueryRow(ctx,

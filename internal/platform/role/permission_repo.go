@@ -14,8 +14,7 @@ import (
 )
 
 // PermissionRepo is the Postgres-backed catalog of permission
-// definitions. Mirrors Rust crates/fc-platform/src/role/repository.rs'
-// permission catalog half. The Permission rows live in iam_permissions;
+// definitions. The Permission rows live in iam_permissions;
 // individual roles still grant permissions via iam_role_permissions
 // (handled by Repository).
 type PermissionRepo struct{ q *dbq.Queries }
@@ -82,13 +81,13 @@ func (r *PermissionRepo) Upsert(ctx context.Context, p Permission) error {
 func permissionFromRow(row dbq.IamPermission) Permission {
 	out := Permission{
 		Permission: row.Code,
-		Name:       row.Code, // catalog has no display name; Rust falls back to code
+		Name:       row.Code, // catalog has no display name; fall back to code
 	}
 	if row.Description != nil {
 		out.Description = row.Description
 	}
-	// Construct a Category from the subdomain/context/aggregate triple,
-	// mirroring how Rust groups permissions in the filter UI.
+	// Construct a Category from the subdomain/context/aggregate triple —
+	// how the filter UI groups permissions.
 	cat := row.Subdomain + ":" + row.Context + ":" + row.Aggregate
 	out.Category = &cat
 	return out

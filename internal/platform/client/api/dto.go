@@ -95,8 +95,8 @@ func fromEntity(c *client.Client) ClientResponse {
 	}
 }
 
-// ClientListResponse is the wire shape for GET /api/clients. Matches
-// the Rust shape (`clients` + `total`); SPA's ClientListPage reads
+// ClientListResponse is the wire shape for GET /api/clients
+// (`clients` + `total`); SPA's ClientListPage reads
 // `response.clients` directly.
 type ClientListResponse struct {
 	Clients []ClientResponse `json:"clients"`
@@ -109,7 +109,7 @@ type StatusChangeRequest struct {
 	Reason string `json:"reason"`
 }
 
-// ClientApplicationResponse mirrors Rust's ClientApplicationResponse —
+// ClientApplicationResponse is
 // the per-application row in the /clients/{id}/applications list.
 type ClientApplicationResponse struct {
 	ID               string  `json:"id"`

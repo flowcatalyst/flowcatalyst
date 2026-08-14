@@ -365,7 +365,7 @@ func RotateOAuthClientSecret(repo *auth.OAuthClientRepo) usecaseop.Operation[Rot
 
 // generateSecret mints a random client secret and returns it alongside
 // its encrypted reference (the value stored in client_secret_ref).
-// Mirrors Rust: the secret is reversibly encrypted with FLOWCATALYST_APP_KEY
+// The secret is reversibly encrypted with FLOWCATALYST_APP_KEY
 // and verified at /oauth/token by decrypt-and-compare. Fails if no app
 // key is configured rather than storing a plaintext or unverifiable secret.
 func generateSecret() (plaintext, ref string, err error) {
@@ -385,11 +385,10 @@ func generateSecret() (plaintext, ref string, err error) {
 	if err != nil {
 		return "", "", err
 	}
-	// Store with the "encrypted:" prefix so the persisted string is
-	// byte-identical to what Rust writes (oauth_clients_api.rs:
-	// format!("encrypted:{}", encrypted)). Decrypt strips the prefix on
+	// Store with the "encrypted:" prefix — the storage convention for
+	// client_secret_ref values. Decrypt strips the prefix on
 	// read, so verification is unaffected; this keeps client_secret_ref
-	// values uniform across a mixed Go/Rust deployment.
+	// values uniform across all rows.
 	ref = "encrypted:" + encrypted
 	return plaintext, ref, nil
 }

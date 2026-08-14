@@ -18,7 +18,7 @@ import (
 )
 
 // dbSecret is the subset of an RDS-style AWS Secrets Manager secret we read.
-// Mirrors the Rust AwsSecretProvider: only username/password/port come from the
+// Only username/password/port come from the
 // secret JSON — host + database name come from DB_HOST / DB_NAME env vars.
 type dbSecret struct {
 	Username string `json:"username"`
@@ -33,13 +33,13 @@ type dbSecret struct {
 // failure.
 //
 // SM mode applies only when DB_HOST and DB_SECRET_ARN are both set and no
-// explicit FC_DATABASE_URL/DATABASE_URL is present — matching the Rust
-// fc-server precedence (full URL > Secrets Manager > explicit DB_* creds).
+// explicit FC_DATABASE_URL/DATABASE_URL is present — the precedence is
+// full URL > Secrets Manager > explicit DB_* creds.
 // DB_SECRET_PROVIDER must be "aws" (the default). Credentials are resolved via
 // the standard AWS chain (env, instance profile, ECS task role, …).
 //
-// Note: this reads the secret once at startup; the Rust DB_SECRET_REFRESH_*
-// rotation poller is a tracked follow-up, not yet ported.
+// Note: this reads the secret once at startup; the DB_SECRET_REFRESH_*
+// rotation poller is a tracked follow-up, not yet implemented here.
 func ResolveDBSecretURL(ctx context.Context) (string, bool, error) {
 	// An explicit connection string always wins — SM is never consulted.
 	if envFirst("FC_DATABASE_URL", "DATABASE_URL", "", "") != "" {
@@ -117,8 +117,7 @@ func fetchDBSecret(ctx context.Context, sm *secretsmanager.Client, arn string) (
 // buildDBSecretDSN assembles the Postgres DSN from the secret + env-supplied
 // host/name/port. Pure (no env/network reads) so the parity-critical bits —
 // port precedence (secret JSON > DB_PORT > 5432), password URL-escaping, and
-// host-already-has-port — are unit-testable. 1:1 with Rust's connection-string
-// builder.
+// host-already-has-port — are unit-testable.
 func buildDBSecretDSN(host, name, envPort string, sec dbSecret) string {
 	port := envPort
 	if port == "" {
@@ -135,13 +134,13 @@ func buildDBSecretDSN(host, name, envPort string, sec dbSecret) string {
 }
 
 // defaultSecretRefreshIntervalMS is the rotation poll cadence when SM mode is
-// active and DB_SECRET_REFRESH_INTERVAL_MS is unset. 5 min, matching Rust.
+// active and DB_SECRET_REFRESH_INTERVAL_MS is unset. 5 min.
 const defaultSecretRefreshIntervalMS = 300000
 
 // DBSecretRefresher polls AWS Secrets Manager and injects the current DB
 // credentials into every new pool connection via BeforeConnect, so a rotated
 // RDS password is picked up without a restart (existing connections roll over
-// as the pool recycles them by MaxConnLifetime). Mirrors Rust start_secret_refresh.
+// as the pool recycles them by MaxConnLifetime).
 type DBSecretRefresher struct {
 	sm       *secretsmanager.Client
 	arn      string

@@ -249,8 +249,7 @@ func (e ApplicationDisabledForClient) ToDataJSON() ([]byte, error) {
 
 // ClientApplicationsUpdated — emitted by the bulk update endpoint
 // (`PUT /api/clients/{id}/applications`). Replaces the per-row enable/
-// disable events with a single rollup describing the diff. Mirrors Rust
-// crates/fc-platform/src/application/operations/update_client_applications.rs.
+// disable events with a single rollup describing the diff.
 type ClientApplicationsUpdated struct {
 	Metadata        usecase.EventMetadata
 	ClientID        string

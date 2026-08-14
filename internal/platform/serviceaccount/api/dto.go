@@ -193,8 +193,8 @@ func fromEntity(sa *serviceaccount.ServiceAccount) ServiceAccountResponse {
 	}
 }
 
-// ServiceAccountListResponse is the wire shape for GET /api/service-accounts.
-// Matches the Rust shape: `{serviceAccounts, total}`. The SPA's
+// ServiceAccountListResponse is the wire shape for GET /api/service-accounts:
+// `{serviceAccounts, total}`. The SPA's
 // ServiceAccountListPage reads `response.serviceAccounts` directly.
 type ServiceAccountListResponse struct {
 	ServiceAccounts []ServiceAccountResponse `json:"serviceAccounts"`

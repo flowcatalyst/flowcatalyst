@@ -2,11 +2,10 @@ package seed
 
 import "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 
-// PlatformRoles returns the built-in roles in the same order as
-// fc-platform/src/role/entity.rs::roles::all(). Each role uses
+// PlatformRoles returns the built-in roles. Each role uses
 // Source=CODE so the role-sync logic can identify them. Names match
 // {applicationCode}:{roleName} (e.g. "platform:admin") to match the
-// existing rows installed by the Rust impl.
+// existing rows installed by earlier deployments.
 //
 // Exported so the role/operations/sync use case can diff against the
 // catalogue without an inter-package indirection.

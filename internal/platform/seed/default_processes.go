@@ -9,7 +9,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/process"
 )
 
-// Port of fc-platform/src/shared/default_processes.rs. Seeds the
+// Seeds the
 // platform's built-in example Process: an on-demand fulfilment workflow
 // rendered as a single Mermaid flowchart. Operators land on the Processes
 // page with one well-formed example showing the conventions (three-segment

@@ -144,8 +144,7 @@ func (e SubscriptionResumed) ToDataJSON() ([]byte, error) {
 }
 
 // SubscriptionsSynced is the rollup emitted by the SDK app-scoped
-// subscription sync (SyncSubscriptions). Mirrors the Rust SubscriptionsSynced
-// event.
+// subscription sync (SyncSubscriptions).
 type SubscriptionsSynced struct {
 	Metadata        usecase.EventMetadata
 	ApplicationCode string

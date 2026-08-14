@@ -1,7 +1,7 @@
 -- Queries for WebAuthn ceremony state in oauth_oidc_payloads.
 -- The id column carries a type prefix ("WebauthnRegistration:{stateID}")
 -- to keep ids unique across the shared store; the type column carries
--- the same discriminant. Mirrors the Rust impl.
+-- the same discriminant. Mirrors the legacy implementation.
 
 -- name: WebauthnCeremonyUpsert :exec
 INSERT INTO oauth_oidc_payloads (id, type, payload, expires_at, created_at)

@@ -285,8 +285,8 @@ index-only pass. Flagging, not scheduling.
 - **`dispatchjob/repository.go`**: `FindWithFilters` + `DistinctValues` + `FindByEventID`
   now read `msg_dispatch_jobs_read` via a shared slim `readSelect`/`readRow`. Facet
   filters use the projection's real `application`/`subdomain`/`aggregate` columns
-  (indexed equality) instead of leading-wildcard `code LIKE`. This is also a **parity
-  fix** — these mirror Rust's `DispatchJobReadResponse`, which reads the projection.
+  (indexed equality) instead of leading-wildcard `code LIKE`. This is also a
+  **contract fix** — `DispatchJobReadResponse` is defined against the projection.
 - **Behavioral note (eventual consistency):** the dispatch-job list / by-event / facets
   now reflect the projection, which lags the write table by the projector's cycle — same
   as the events list already did. A just-created job appears once projected. The detail

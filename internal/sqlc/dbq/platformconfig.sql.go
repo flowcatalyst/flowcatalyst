@@ -308,7 +308,7 @@ WHERE id = $1
 `
 
 // Queries for app_platform_configs + app_platform_config_access. Two
-// entity types, one repo (mirroring the Rust shape).
+// entity types, one repo (mirroring the legacy-platform shape).
 func (q *Queries) PlatformConfigFindByID(ctx context.Context, id string) (AppPlatformConfig, error) {
 	row := q.db.QueryRow(ctx, platformConfigFindByID, id)
 	var i AppPlatformConfig

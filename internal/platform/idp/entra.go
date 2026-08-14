@@ -8,11 +8,11 @@ import (
 )
 
 // EntraProvider integrates with Microsoft Entra ID (formerly Azure AD)
-// for app-role sync via Microsoft Graph. Mirrors fc-platform/src/idp/entra.rs.
+// for app-role sync via Microsoft Graph.
 //
 // TODO(wave-3d-follow-up): wire against Microsoft Graph.
-// The Rust impl uses an MSAL-style client_credentials grant + GET
-// /users/{id}/appRoleAssignments. The Go port uses
+// The sync flow is an MSAL-style client_credentials grant + GET
+// /users/{id}/appRoleAssignments, using
 // github.com/coreos/go-oidc/v3 for the OIDC client and net/http for Graph.
 type EntraProvider struct {
 	cfg *identityprovider.IdentityProvider

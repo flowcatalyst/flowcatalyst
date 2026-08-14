@@ -10,12 +10,10 @@ import (
 )
 
 // counterHistoryWindow bounds the rolling baseline used for windowed
-// queue stats. Mirrors COUNTER_HISTORY_WINDOW (30 min) in the Rust
-// `api::CachedBrokerStats`.
+// queue stats (30 min).
 const counterHistoryWindow = 30 * time.Minute
 
 // brokerRefreshInterval is the cadence for fresh SQS attribute fetches.
-// Mirrors the 60s ticker in `api::spawn_broker_stats_refresh`.
 const brokerRefreshInterval = 60 * time.Second
 
 // queueAttr is the pair of expensive broker attributes that the cache
@@ -27,8 +25,7 @@ type queueAttr struct {
 }
 
 // counterSnapshot is the per-queue cumulative-counter baseline stored
-// for windowed deltas. Identical shape to QueueCounterSnapshot in
-// `api::mod.rs`.
+// for windowed deltas.
 type counterSnapshot struct {
 	totalPolled   uint64
 	totalAcked    uint64
@@ -57,8 +54,6 @@ type MetricsSource interface {
 //   - cheap counters (polled/acked/nacked/deferred) read live on every
 //     call,
 //   - windowed deltas computed against a 30-min counter history.
-//
-// Mirrors crates/fc-router/src/api/mod.rs::CachedBrokerStats.
 type CachedBrokerStats struct {
 	source MetricsSource
 

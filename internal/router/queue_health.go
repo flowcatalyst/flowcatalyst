@@ -18,7 +18,7 @@ type QueueHealthConfig struct {
 	GrowthPeriodsThreshold uint32
 }
 
-// DefaultQueueHealthConfig matches the Rust defaults.
+// DefaultQueueHealthConfig returns the standard defaults.
 func DefaultQueueHealthConfig() QueueHealthConfig {
 	return QueueHealthConfig{
 		Enabled:                true,

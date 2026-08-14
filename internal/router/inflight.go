@@ -219,7 +219,7 @@ type StallConfig struct {
 	CheckInterval         time.Duration
 }
 
-// DefaultStallConfig matches the Rust defaults (5 min threshold, force-nack off).
+// DefaultStallConfig returns the defaults (5 min threshold, force-nack off).
 func DefaultStallConfig() StallConfig {
 	return StallConfig{
 		Enabled:               true,
@@ -297,9 +297,8 @@ func (d *StallDetector) tick(ctx context.Context) {
 			})
 		}
 		// Force-NACK messages stuck well past the threshold back to their
-		// source queue for redelivery, if enabled (default off). Mirrors the
-		// Rust force-nack-stalled path. On success, drop the tracker entry so
-		// it isn't re-NACKed every tick.
+		// source queue for redelivery, if enabled (default off). On
+		// success, drop the tracker entry so it isn't re-NACKed every tick.
 		if d.cfg.ForceNackStalled && d.nackFn != nil &&
 			im.ElapsedSeconds() >= int64(d.cfg.ForceNackAfterSeconds) {
 			if err := d.nackFn(ctx, im.QueueIdentifier, im.ReceiptHandle, d.cfg.NackDelaySeconds); err != nil {

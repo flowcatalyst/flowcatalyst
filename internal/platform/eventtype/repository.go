@@ -15,8 +15,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
-// Repository is the Postgres-backed event type repo. SQL ported
-// verbatim from fc-platform/src/event_type/repository.rs.
+// Repository is the Postgres-backed event type repo.
 type Repository struct {
 	pool *pgxpool.Pool // retained for FindWithFilters
 	q    *dbq.Queries

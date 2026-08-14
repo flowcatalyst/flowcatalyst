@@ -1,6 +1,6 @@
-// Package queue provides a multi-backend message queue abstraction.
-// Mirrors the Rust fc-queue crate: a Consumer interface, a Publisher
-// interface, and per-backend implementations registered at runtime.
+// Package queue provides a multi-backend message queue abstraction:
+// a Consumer interface, a Publisher interface, and per-backend
+// implementations registered at runtime.
 //
 // Phase 1 ships:
 //   - Postgres backend (used by the embedded-queue dev path and as the

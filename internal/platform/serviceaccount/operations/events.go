@@ -9,7 +9,7 @@ import (
 
 const (
 	// Aggregate is "serviceaccount" (no hyphen) — matches the
-	// platform_event_types.rs catalog. HTTP routes still use /service-accounts.
+	// established platform event-type catalog. HTTP routes still use /service-accounts.
 	ServiceAccountCreatedType           = "platform:iam:serviceaccount:created"
 	ServiceAccountUpdatedType           = "platform:iam:serviceaccount:updated"
 	ServiceAccountDeactivatedType       = "platform:iam:serviceaccount:deactivated"
@@ -180,6 +180,7 @@ func (e ServiceAccountTokenRegenerated) CorrelationID() string { return e.Metada
 func (e ServiceAccountTokenRegenerated) CausationID() string   { return e.Metadata.CausationID }
 func (e ServiceAccountTokenRegenerated) ExecutionID() string   { return e.Metadata.ExecutionID }
 func (e ServiceAccountTokenRegenerated) MessageGroup() string  { return groupFor(e.ServiceAccountID) }
+
 func (e ServiceAccountTokenRegenerated) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		ServiceAccountID string `json:"serviceAccountId"`
@@ -208,6 +209,7 @@ func (e ServiceAccountSecretRegenerated) CorrelationID() string { return e.Metad
 func (e ServiceAccountSecretRegenerated) CausationID() string   { return e.Metadata.CausationID }
 func (e ServiceAccountSecretRegenerated) ExecutionID() string   { return e.Metadata.ExecutionID }
 func (e ServiceAccountSecretRegenerated) MessageGroup() string  { return groupFor(e.ServiceAccountID) }
+
 func (e ServiceAccountSecretRegenerated) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		ServiceAccountID string `json:"serviceAccountId"`

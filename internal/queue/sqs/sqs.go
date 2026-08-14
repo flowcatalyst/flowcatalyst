@@ -1,6 +1,5 @@
 // Package sqs is the AWS SQS-backed queue backend.
 //
-// Mirrors fc-queue/src/sqs.rs:
 //   - 20s long-poll (AWS max) for low API-call rate.
 //   - Visibility timeout configurable per queue.
 //   - Pending-delete guard for at-least-once redeliveries: once we
@@ -32,7 +31,7 @@ import (
 
 // PendingDeleteTTL is how long we remember an acked MessageId so
 // redeliveries (SQS standard queues are at-least-once) are
-// short-circuited to DeleteMessage. Matches Rust 15 minutes.
+// short-circuited to DeleteMessage. 15 minutes.
 const PendingDeleteTTL = 15 * time.Minute
 
 // DefaultWaitSeconds is the long-poll wait time. AWS max is 20s.

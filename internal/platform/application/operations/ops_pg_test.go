@@ -108,7 +108,7 @@ func TestCreateApplication_HappyPath(t *testing.T) {
 }
 
 // Underscores are explicitly allowed (real codes like logistics_portal use
-// them — the Rust reference enforced no pattern at all).
+// them — the original implementation enforced no pattern at all).
 func TestCreateApplication_UnderscoreCodeAllowed(t *testing.T) {
 	t.Parallel()
 	repo := application.NewRepository(testpg.Pool(t))

@@ -3,9 +3,8 @@ package router
 import "github.com/flowcatalyst/flowcatalyst-go/internal/common"
 
 // Shared types referenced by HealthService + the /monitoring/* HTTP
-// surface. Mirrors `fc_common::{HealthStatus, HealthReport,
-// ConsumerHealth, PoolStats}`. Field names use Rust-camelCase JSON tags
-// so the API surface lands without translation.
+// surface. Field names use camelCase JSON tags matching the
+// established wire contract.
 
 // HealthStatus is the coarse system-health verdict.
 type HealthStatus string

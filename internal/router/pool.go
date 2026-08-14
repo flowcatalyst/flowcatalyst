@@ -113,7 +113,7 @@ func NewPool(cfg common.PoolConfig, mediator Mediator, tracker *InFlightTracker,
 	}
 	concurrency := cfg.Concurrency
 	if concurrency == 0 {
-		// Rust parity (pool.rs): when concurrency is unset, derive it from
+		// When concurrency is unset, derive it from
 		// the rate limit — max(rate_per_minute/60, 1) — rather than always 1.
 		concurrency = rate / 60
 		if concurrency < 1 {
@@ -210,7 +210,7 @@ func (p *Pool) Identifier() string { return p.cfg.Code }
 func (p *Pool) SetRateLimit(perMinute uint32) { p.limiter.SetRate(perMinute) }
 
 // UpdateRateLimit is the API-facing alias for SetRateLimit. A nil value
-// disables rate limiting (the Rust equivalent of `Option::None`).
+// disables rate limiting.
 func (p *Pool) UpdateRateLimit(perMinute *uint32) {
 	var v uint32
 	if perMinute != nil {
@@ -421,8 +421,8 @@ func (p *Pool) QueueSize() uint32 { return p.queueSize.Load() }
 // Concurrency returns the current concurrency cap.
 func (p *Pool) Concurrency() uint32 { return p.concurrency.Load() }
 
-// RateLimitPerMinute returns the current rate-limit (or nil if disabled).
-// Mirrors the way Rust's PoolStats reports the field.
+// RateLimitPerMinute returns the current rate-limit (or nil if disabled)
+// — the shape PoolStats reports on the wire.
 func (p *Pool) RateLimitPerMinute() *uint32 {
 	rate := p.limiter.Rate()
 	if rate == 0 {
@@ -464,9 +464,9 @@ func (p *Pool) Stats() PoolStats {
 	}
 }
 
-// queueCapacityMultiplier and minQueueCapacity mirror the Java/Rust
-// derivation: capacity = max(concurrency * 20, 50). Used by Stats() so
-// the dashboard's "queue capacity" matches the reference implementations.
+// queueCapacityMultiplier and minQueueCapacity define the capacity
+// derivation: capacity = max(concurrency * 20, 50). Used by Stats() for
+// the dashboard's "queue capacity" figure.
 const (
 	queueCapacityMultiplier uint32 = 20
 	minQueueCapacity        uint32 = 50

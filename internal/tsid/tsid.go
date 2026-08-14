@@ -20,7 +20,6 @@ import (
 )
 
 // EntityType is a strongly-typed enum of platform-known entity prefixes.
-// Matches the Rust EntityType exactly.
 type EntityType int
 
 const (
@@ -62,21 +61,21 @@ const (
 	Process
 	OAuthAccessToken
 	OAuthRefreshToken
-	// 2FA / MFA entities. Go-only (not present in the Rust EntityType) —
-	// they back a net-new feature. Appended at the end so existing prefixes
-	// keep their iota positions. See docs/2fa-implementation-plan.md.
+	// 2FA / MFA entities back a net-new feature. Appended at the end so
+	// existing prefixes keep their iota positions.
+	// See docs/2fa-implementation-plan.md.
 	MfaMethod
 	MfaRecoveryCode
 	MfaEmailPin
 	MfaTrustedDevice
 	ResetApprovalRequest
-	// PortalUser backs the portal-user linkage (iam_portal_users) — see
-	// docs/portal-identity-plan.md Phase 2.5.
+	// PortalUser backs portal identities (portal_identities) — see
+	// docs/portal-identity-plan.md Phase 2.5 v2.
 	PortalUser
 )
 
-// Prefix returns the 3-character prefix for this entity type. Mirrors
-// the Rust EntityType::prefix() exactly.
+// Prefix returns the 3-character prefix for this entity type. These are
+// the canonical platform-wide prefixes — they must never drift.
 func (e EntityType) Prefix() string {
 	switch e {
 	case Client:

@@ -17,7 +17,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
-// Bootstrap admin env vars — match the Rust contract so existing
+// Bootstrap admin env vars — keep these names stable so existing
 // deployment configs keep working.
 const (
 	EnvBootstrapEmail    = "FLOWCATALYST_BOOTSTRAP_ADMIN_EMAIL"
@@ -40,8 +40,6 @@ const (
 // a known password into prod. fcdev pre-sets the env to
 // admin@flowcatalyst.local / DevPassword123! so the local workflow
 // "just works".
-//
-// Mirrors crates/fc-platform/src/shared/bootstrap_admin.rs.
 func (s *Seeder) seedBootstrapAdmin(ctx context.Context) error {
 	var anchorCount int
 	if err := s.pool.QueryRow(ctx,

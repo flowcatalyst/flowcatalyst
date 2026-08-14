@@ -10,7 +10,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 )
 
-// originPattern matches the Rust regex: ^https?://[a-zA-Z0-9*]([a-zA-Z0-9*.-]*[a-zA-Z0-9*])?(:\d+)?$
+// originPattern: ^https?://[a-zA-Z0-9*]([a-zA-Z0-9*.-]*[a-zA-Z0-9*])?(:\d+)?$
 var originPattern = regexp.MustCompile(`^https?://[a-zA-Z0-9*]([a-zA-Z0-9*.-]*[a-zA-Z0-9*])?(:\d+)?$`)
 
 // AddCommand is the input DTO.

@@ -29,7 +29,7 @@ type ScheduledJobsState struct {
 }
 
 // RegisterScheduledJobs mounts the dashboard's `/bff/scheduled-jobs/*`
-// endpoints. Mirrors crates/fc-platform/src/shared/bff_scheduled_jobs_api.rs.
+// endpoints.
 //
 // Routes:
 //
@@ -55,7 +55,7 @@ func RegisterScheduledJobs(r chi.Router, s *ScheduledJobsState) {
 
 // ── Wire DTOs ────────────────────────────────────────────────────────────
 
-// bffScheduledJobResponse matches Rust's BffScheduledJobResponse.
+// bffScheduledJobResponse is the wire shape for one scheduled job.
 type bffScheduledJobResponse struct {
 	ID                  string     `json:"id"`
 	ClientID            *string    `json:"clientId,omitempty"`
@@ -81,7 +81,7 @@ type bffScheduledJobResponse struct {
 	HasActiveInstance   bool       `json:"hasActiveInstance"`
 }
 
-// bffScheduledJobInstanceResponse matches Rust's BffScheduledJobInstanceResponse.
+// bffScheduledJobInstanceResponse is the wire shape for one job instance.
 type bffScheduledJobInstanceResponse struct {
 	ID               string     `json:"id"`
 	ScheduledJobID   string     `json:"scheduledJobId"`

@@ -22,7 +22,7 @@ import (
 )
 
 // startOpts captures the flag set for `fcdev start`. Defaults match
-// the Rust fcdev so existing dev workflows transfer 1:1.
+// earlier fcdev releases so existing dev workflows transfer 1:1.
 type startOpts struct {
 	APIPort             int
 	MetricsPort         int
@@ -211,7 +211,7 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	return server.Run(rootCtx, pool, cfg, runOpts)
 }
 
-// banner prints the startup summary the way Rust fcdev does.
+// banner prints the startup summary.
 func banner(opts startOpts) {
 	slog.Info("=== FlowCatalyst Dev Monolith ===")
 	slog.Info("subsystem configuration",

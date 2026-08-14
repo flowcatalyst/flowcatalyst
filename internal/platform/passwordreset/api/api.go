@@ -1,7 +1,6 @@
 // Package api serves the unauthenticated /auth/password-reset/* flow:
-// request → (email link) → validate → confirm. Port of the Rust
-// auth/password_reset_api.rs. Tokens are stored as lowercase-hex SHA-256
-// hashes; the raw token is only ever in the reset link.
+// request → (email link) → validate → confirm. Tokens are stored as
+// lowercase-hex SHA-256 hashes; the raw token is only ever in the reset link.
 package api
 
 import (
@@ -39,7 +38,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
-// resetTokenTTL is the single-use token lifetime. 1:1 with Rust (15 min).
+// resetTokenTTL is the single-use token lifetime (15 min).
 const resetTokenTTL = 15 * time.Minute
 
 // inviteTokenTTL is the first-time "set your password" lifetime — longer than a
@@ -54,8 +53,8 @@ const inviteTokenTTL = 72 * time.Hour
 const maxFactorAttempts = 5
 
 // Emailer delivers the reset link to the user. Optional: when nil the token is
-// still created and stored (best-effort delivery, mirroring Rust's "email
-// failure is logged not propagated"). Use NewEmailer to build one from an
+// still created and stored (best-effort delivery: email failure is logged,
+// not propagated). Use NewEmailer to build one from an
 // email.Service (wired in WirePlatform from the SMTP_* env).
 type Emailer interface {
 	SendResetLink(ctx context.Context, to, resetLink string) error
@@ -304,7 +303,7 @@ type messageResponse struct {
 
 type validateTokenResponse struct {
 	Valid bool `json:"valid"`
-	// Reason is null when valid (Rust emits null, not absent) → no omitempty.
+	// Reason is null when valid (the wire contract emits null, not absent) → no omitempty.
 	Reason *string `json:"reason"`
 	// RequiresFactor tells the SPA to ask for an authenticator code on confirm.
 	RequiresFactor bool `json:"requiresFactor"`
@@ -653,14 +652,14 @@ func emailDomain(email string) string {
 }
 
 // hashToken returns the lowercase-hex SHA-256 of the raw token (the stored
-// token_hash). 1:1 with Rust hash_token.
+// token_hash).
 func hashToken(raw string) string {
 	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])
 }
 
 // generateRawToken returns 32 cryptographically-random bytes as URL-safe
-// base64 (no padding) — 43 chars. 1:1 with Rust generate_raw_token.
+// base64 (no padding) — 43 chars.
 func generateRawToken() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {

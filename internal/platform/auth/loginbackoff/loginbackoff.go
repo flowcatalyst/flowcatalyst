@@ -1,4 +1,4 @@
-// Package loginbackoff is a 1:1 port of auth/login_backoff.rs — layered
+// Package loginbackoff provides layered
 // brute-force protection for the password login endpoint.
 //
 // Two checks run before credentials are evaluated:
@@ -36,7 +36,7 @@ type Policy struct {
 }
 
 // PolicyFromEnv builds a Policy from FC_LOGIN_* env vars, falling back to
-// the Rust defaults.
+// the defaults below.
 func PolicyFromEnv() Policy {
 	return Policy{
 		FreeAttempts:     uint32(envutil.Int("FC_LOGIN_BACKOFF_FREE_ATTEMPTS", 3)),

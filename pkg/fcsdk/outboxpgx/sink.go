@@ -90,7 +90,8 @@ VALUES ($1, 'AUDIT_LOG', $2, $3, 0, 0, NOW(), NOW(), $4, $5)`
 }
 
 // buildEventPayload serializes a domain event into the snake_case JSON
-// shape the fc-outbox-processor parses. Matches the Rust SDK byte-for-byte.
+// shape the outbox processor parses. The shape is byte-for-byte
+// identical across SDKs.
 func buildEventPayload(event usecase.DomainEvent) ([]byte, error) {
 	data, err := event.ToDataJSON()
 	if err != nil {
@@ -151,9 +152,8 @@ func buildAuditPayload(event usecase.DomainEvent, command any) ([]byte, error) {
 	return json.Marshal(payload)
 }
 
-// newOutboxID returns a 13-char Crockford Base32 TSID. Matches the Rust
-// SDK's TsidGenerator::generate_untyped() so all four SDKs produce
-// identical wire IDs for outbox rows.
+// newOutboxID returns a 13-char Crockford Base32 TSID, so all
+// SDKs produce identical wire IDs for outbox rows.
 func newOutboxID() string { return tsid.GenerateUntyped() }
 
 func nullableString(s string) any {

@@ -192,7 +192,7 @@ func TestCreateDispatchJob_BadPayloadEnvelopeMatchesBatch(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(body), &benv))
 	assert.Equal(t, senv.Error, benv.Error, "singular and batch must share the error envelope code")
 
-	// Missing required field (Rust serde-required) → 400 VALIDATION.
+	// Missing required field → 400 VALIDATION.
 	resp, body = postJSON(t, srv.URL+"/api/dispatch-jobs", `{
 		"code": "it:singular:dispatch:bad",
 		"payload": "{}",

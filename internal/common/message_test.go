@@ -11,7 +11,7 @@ import (
 )
 
 // TestMessageJSONRoundtrip verifies camelCase tags and omitempty match
-// the Rust serde posture. If this test diverges, webhook delivery
+// the wire contract. If this test diverges, webhook delivery
 // payloads diverge.
 func TestMessageJSONRoundtrip(t *testing.T) {
 	authToken := "bearer-token"
@@ -34,7 +34,7 @@ func TestMessageJSONRoundtrip(t *testing.T) {
 	require.NoError(t, err)
 	got := string(b)
 
-	// Field names are camelCase (matching Rust's #[serde(rename_all = "camelCase")]).
+	// Field names are camelCase (the wire contract).
 	assert.Contains(t, got, `"id":"msg_01"`)
 	assert.Contains(t, got, `"poolCode":"pool-a"`)
 	assert.Contains(t, got, `"authToken":"bearer-token"`)
@@ -51,8 +51,8 @@ func TestMessageJSONRoundtrip(t *testing.T) {
 	assert.Equal(t, m, back)
 }
 
-// TestMessageOmitsEmptyOptionals matches Rust's
-// #[serde(skip_serializing_if = "Option::is_none")] behavior.
+// TestMessageOmitsEmptyOptionals verifies unset optionals are omitted
+// from the JSON entirely (absent, not null).
 func TestMessageOmitsEmptyOptionals(t *testing.T) {
 	m := common.Message{
 		ID:              "msg_02",

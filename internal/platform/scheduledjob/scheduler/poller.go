@@ -10,7 +10,7 @@ import (
 )
 
 // poller scans ACTIVE jobs and inserts a QUEUED instance for the latest due
-// cron slot per job. Mirrors the Rust poller.
+// cron slot per job.
 type poller struct {
 	cfg       Config
 	jobs      *scheduledjob.Repository
@@ -38,7 +38,7 @@ func (p *poller) run(ctx context.Context) {
 }
 
 // tick scans ACTIVE jobs, computes the latest due slot per job, and inserts a
-// QUEUED instance for it. Mirrors the Rust process_job: window is
+// QUEUED instance for it. Window is
 // (last_fired ?? created_at, now]; only the latest slot fires (skip-missed).
 func (p *poller) tick(ctx context.Context) error {
 	jobs, err := p.jobs.FindActive(ctx)
@@ -57,8 +57,8 @@ func (p *poller) tick(ctx context.Context) error {
 			continue
 		}
 		// NOTE: the job's Concurrent flag is not yet gated at fire time (the
-		// poller inserts unconditionally, matching the Rust poller body we
-		// mirrored); enforcing non-concurrent runs via HasActiveInstance is a
+		// poller inserts unconditionally);
+		// enforcing non-concurrent runs via HasActiveInstance is a
 		// tracked follow-up.
 		inst := &scheduledjob.ScheduledJobInstance{
 			ID:               tsid.Generate(tsid.ScheduledJobInstance),
@@ -77,7 +77,7 @@ func (p *poller) tick(ctx context.Context) error {
 			continue
 		}
 		// Advance last_fired_at monotonically so the next tick's window opens
-		// strictly after this slot. Done after the insert, matching Rust.
+		// strictly after this slot. Done after the insert.
 		if err := p.jobs.MarkFired(ctx, j.ID, slot); err != nil {
 			slog.Warn("scheduled-job poller: mark_fired failed", "job_id", j.ID, "err", err)
 		}

@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// nextSleep mirrors Rust's adaptive_sleep tiers: a full batch loops with no
+// nextSleep implements adaptive sleep tiers: a full batch loops with no
 // sleep so a backlog drains at full speed, a partial batch pauses briefly, an
 // empty poll idles, and a Step error backs off hardest.
 func TestNextSleep_AdaptiveTiers(t *testing.T) {

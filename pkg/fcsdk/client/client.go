@@ -1,5 +1,5 @@
 // Package client is the FlowCatalyst platform HTTP API client. Resource
-// access mirrors the Rust SDK shape: each aggregate has its own type
+// access is aggregate-scoped: each aggregate has its own type
 // returned by an accessor method on *FlowCatalystClient
 // (c.EventTypes(), c.Subscriptions(), …) that holds a reference back
 // to the client and exposes List/Get/Create/Update/Delete/Sync methods.

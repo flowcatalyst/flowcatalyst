@@ -1,5 +1,5 @@
-// Package dispatchpool is the port of fc-platform/src/dispatch_pool.
-// Encapsulates rate-limit + concurrency settings used by the message router.
+// Package dispatchpool encapsulates rate-limit + concurrency settings
+// used by the message router.
 package dispatchpool
 
 import (

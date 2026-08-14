@@ -1,12 +1,10 @@
 // Package httperror maps internal errors to HTTP responses with the
-// JSON envelope shape used by the Rust platform:
+// platform's canonical JSON envelope shape:
 //
 //	{ "error": "ERR_CODE", "message": "human readable" }
 //
-// The `error` field carries the error CODE string, matching Rust's
-// PlatformError → ErrorResponse { error, message } (shared/error.rs).
-// Status code mapping must match the Rust PlatformError → response
-// mapping byte-for-byte during the cutover. See docs/api-parity.md.
+// The `error` field carries the error CODE string. The status-code
+// mapping is part of the public API contract. See docs/wire-contract.md.
 package httperror
 
 import (
@@ -18,7 +16,6 @@ import (
 )
 
 // Envelope is the JSON response shape for all error responses.
-// Matches Rust's PlatformError → ErrorResponse { error, message }.
 // Code is serialized as the wire field "error"; Details is emitted only
 // by the middleware ApiError path and omitted otherwise.
 type Envelope struct {
@@ -43,7 +40,7 @@ func Status(err error) int {
 	case usecase.KindConflict:
 		return http.StatusConflict
 	case usecase.KindBusinessRule:
-		// Rust maps business-rule violations to 409 (typical: uniqueness)
+		// Business-rule violations map to 409 (typical: uniqueness)
 		// or 422 (state transitions). Default to 409 since uniqueness
 		// is by far the dominant case; callers can override with a
 		// specific Kind for state errors.
@@ -81,7 +78,7 @@ func BadRequest(code, msg string) error {
 	return usecase.Validation(code, msg)
 }
 
-// NotFound builds a not-found error matching the Rust OrNotFound helper.
+// NotFound builds the canonical not-found error for a resource + id.
 func NotFound(resource, id string) error {
 	return usecase.NotFound(
 		resource+"_NOT_FOUND",

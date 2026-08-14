@@ -6,8 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// These tests mirror the Rust poller's unit tests
-// (fc-platform/src/scheduler/poller.rs) on the pure filter helpers.
+// These tests cover the pure filter helpers.
 
 func mkClaim(id, group, mode string) dispatchClaim {
 	return dispatchClaim{id: id, group: group, mode: mode, target: "http://target.example.com/webhook"}
@@ -39,8 +38,7 @@ func TestGroupByMessageGroup_SeparatesGroups(t *testing.T) {
 }
 
 func TestGroupByMessageGroup_UngroupedUsesDefault(t *testing.T) {
-	// NULL message_group scans as "" — it buckets under "default",
-	// matching Rust's None → DEFAULT_MESSAGE_GROUP.
+	// NULL message_group scans as "" — it buckets under "default".
 	grouped := groupByMessageGroup([]dispatchClaim{
 		mkClaim("j1", "", "IMMEDIATE"),
 		mkClaim("j2", "", "IMMEDIATE"),
@@ -112,8 +110,7 @@ func TestFilterByDispatchMode_MixedModesInSameGroup(t *testing.T) {
 }
 
 func TestFilterByDispatchMode_UngroupedUsesDefaultKey(t *testing.T) {
-	// Ungrouped ordered-mode jobs check the "default" bucket — same as
-	// Rust's unwrap_or(DEFAULT_MESSAGE_GROUP) inside filter_by_dispatch_mode.
+	// Ungrouped ordered-mode jobs check the "default" bucket.
 	blocked := map[string]struct{}{defaultMessageGroup: {}}
 	result := filterByDispatchMode([]dispatchClaim{
 		mkClaim("j1", "", "NEXT_ON_ERROR"),
@@ -123,8 +120,7 @@ func TestFilterByDispatchMode_UngroupedUsesDefaultKey(t *testing.T) {
 }
 
 func TestFilterByDispatchMode_UnknownModeCountsAsImmediate(t *testing.T) {
-	// Rust's DispatchMode::from_str maps unknown strings to Immediate;
-	// common.ParseDispatchMode does the same.
+	// common.ParseDispatchMode maps unknown strings to Immediate.
 	blocked := map[string]struct{}{"grp": {}}
 	result := filterByDispatchMode([]dispatchClaim{
 		mkClaim("j1", "grp", "SOMETHING_ELSE"),

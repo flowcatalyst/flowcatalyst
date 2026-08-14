@@ -15,8 +15,7 @@
 // Retries are driven by the scheduler poller via scheduled_for, NOT by the
 // queue: this endpoint always ACKs and reschedules failed jobs to
 // NOW()+backoff, so exactly one component re-dispatches a job (no queue-NACK
-// racing the poller into a double dispatch). This deliberately diverges from
-// the Rust callback, which NACKs and leaves both paths live.
+// racing the poller into a double dispatch).
 package processing
 
 import (

@@ -1,5 +1,5 @@
 // dispatch_job_create.go hosts POST /api/dispatch-jobs — the singular
-// SDK create, mirroring Rust's create_dispatch_job (dispatch_job/api.rs).
+// SDK create.
 // Registered chi-style alongside the batch endpoint (RegisterRoutes in
 // dispatch_jobs_batch.go); the item is mapped through the SAME
 // jobFromItem defaults and the SAME repository insert path as the batch.
@@ -17,7 +17,7 @@ import (
 )
 
 // CreateDispatchJobRequest is the wire body for POST /api/dispatch-jobs.
-// 1:1 with Rust's CreateDispatchJobRequest and the Laravel SDK's
+// 1:1 with the Laravel SDK's
 // Model\CreateDispatchJobRequest: required code/targetUrl/payload/
 // serviceAccountId; metadata is a string map (the batch items carry the
 // entity's [{key,value}] array instead).
@@ -48,15 +48,14 @@ type CreateDispatchJobRequest struct {
 }
 
 // CreatedResponse is the wire body for POST /api/dispatch-jobs: {id},
-// matching Rust's shared::api_common::CreatedResponse and the SDK's
-// Model\CreatedResponse decode on 201.
+// matching the SDK's Model\CreatedResponse decode on 201.
 type CreatedResponse struct {
 	ID string `json:"id"`
 }
 
 // createOne handles POST /api/dispatch-jobs. Same permission + tenant
-// guards as the batch; required-field validation mirrors Rust's
-// serde-required fields (code, targetUrl, payload, serviceAccountId).
+// guards as the batch; the wire contract makes
+// code, targetUrl, payload and serviceAccountId required fields.
 func (s *DispatchJobsBatchState) createOne(w http.ResponseWriter, r *http.Request) {
 	ac := auth.FromContext(r.Context())
 	if err := auth.CanWritePermission(ac, "WRITE_DISPATCH_JOBS"); err != nil {
@@ -69,8 +68,8 @@ func (s *DispatchJobsBatchState) createOne(w http.ResponseWriter, r *http.Reques
 		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
 		return
 	}
-	// Rust deserializes these as non-Option fields — a missing one is a
-	// 400 before the handler body runs. Mirror that here.
+	// The wire contract treats these as required — a missing one is a
+	// 400 before any work happens.
 	switch {
 	case req.Code == "":
 		httperror.Write(w, httperror.BadRequest("VALIDATION", "code is required"))
@@ -137,7 +136,7 @@ func (s *DispatchJobsBatchState) createOne(w http.ResponseWriter, r *http.Reques
 
 // metadataFromMap converts the singular contract's string map into the
 // entity's [{key,value}] slice, key-sorted for a deterministic stored
-// order (Rust iterates a HashMap, so its order is unspecified anyway).
+// order (the contract leaves map order unspecified).
 func metadataFromMap(m map[string]string) []dispatchjob.Metadata {
 	if len(m) == 0 {
 		return nil

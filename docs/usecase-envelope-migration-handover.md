@@ -13,7 +13,7 @@ Related memory: `usecase-envelope-refactor.md`, `feedback-usecase-is-domain-oper
 
 ## 1. What this is
 
-We replaced the original Rust-mirrored `usecase.UseCase`/`Run` + `usecase.Result` machinery
+We replaced the original `usecase.UseCase`/`Run` + `usecase.Result` machinery
 (and the bare `commit.Save` plain-function style) with a single **enforced use-case envelope**
 so that **every command (write) operation** goes through one uniform pipeline:
 

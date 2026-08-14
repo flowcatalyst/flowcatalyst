@@ -1,6 +1,6 @@
-// Package seed is the port of fc-platform/src/shared/database.rs's
-// seed_builtin_roles / seed_platform_application and the platform
-// event-types catalog under fc-platform/src/seed. Startup-time
+// Package seed installs the built-in roles, the platform application,
+// and the platform
+// event-types catalog. Startup-time
 // hydration: bootstrap-only, runs before HTTP serving begins.
 //
 // Per docs/conventions.md §3, this is infrastructure-processing (no
@@ -54,7 +54,7 @@ func (s *Seeder) Run(ctx context.Context) error {
 
 // seedPlatformApplication inserts the single "platform" application row
 // if it doesn't already exist. Idempotent; leaves any existing row
-// alone (matching Rust's seed_platform_application).
+// alone.
 func (s *Seeder) seedPlatformApplication(ctx context.Context) error {
 	var existingID string
 	err := s.pool.QueryRow(ctx,
@@ -81,9 +81,9 @@ func (s *Seeder) seedPlatformApplication(ctx context.Context) error {
 	return nil
 }
 
-// seedRoles upserts the 12 built-in roles. Mirrors Rust's
-// seed_builtin_roles: skip-if-name-exists (preserves any local edits to
-// permissions, matching Rust's behaviour exactly).
+// seedRoles upserts the 12 built-in roles:
+// skip-if-name-exists (preserves any local edits to
+// permissions).
 func (s *Seeder) seedRoles(ctx context.Context) error {
 	roles := PlatformRoles()
 	var inserted int

@@ -1,7 +1,7 @@
 package common
 
 // DispatchStatus is the lifecycle state of a dispatch job. Wire format
-// is SCREAMING_SNAKE_CASE; matches TS and Rust.
+// is SCREAMING_SNAKE_CASE; matches the TypeScript SDK.
 type DispatchStatus string
 
 const (

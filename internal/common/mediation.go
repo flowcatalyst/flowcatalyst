@@ -49,8 +49,7 @@ func ErrorProcess(delaySec int, msg string) MediationOutcome {
 	}
 }
 
-// ErrorConnection builds a connection-error outcome. Default delay 30s
-// matches the Java implementation.
+// ErrorConnection builds a connection-error outcome. Default delay 30s.
 func ErrorConnection(msg string) MediationOutcome {
 	return MediationOutcome{
 		Result: MediationErrorConnection, DelaySeconds: 30, ErrorMessage: msg,

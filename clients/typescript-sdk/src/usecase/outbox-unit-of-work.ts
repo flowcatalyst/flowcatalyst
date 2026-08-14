@@ -2,7 +2,7 @@
  * OutboxUnitOfWork — UnitOfWork that dispatches events via the outbox table.
  *
  * `commit()` builds a `CreateEventDto` from the DomainEvent and routes it
- * through `OutboxManager`. The fc-outbox-processor then forwards it to the
+ * through `OutboxManager`. The outbox poller then forwards it to the
  * FlowCatalyst platform. For true atomicity with your entity writes, wrap
  * both the `persist` callback and this commit in a single DB transaction
  * using a tx-aware `OutboxDriver`.
@@ -130,8 +130,8 @@ export class OutboxUnitOfWork implements UnitOfWork {
 	 * });
 	 * ```
 	 *
-	 * Mirrors the Rust SDK's `OutboxUnitOfWork::run` and the platform crate's
-	 * `PgUnitOfWork::run` so apps and platform follow one orchestration shape.
+	 * Mirrors the platform's own unit-of-work orchestration so apps and
+	 * platform follow one orchestration shape.
 	 */
 	async run<T extends DomainEventType>(
 		callback: (session: TxScopedOutboxUnitOfWork) => Promise<Result<T>>,

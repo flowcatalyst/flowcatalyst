@@ -5,7 +5,7 @@
 //	POST /auth/logout           — clear the session cookie
 //	GET  /auth/me               — read the current cookie, return principal
 //
-// Mirrors crates/fc-platform/src/auth/auth_api.rs. The session cookie
+// The session cookie
 // is a JWT minted via provider.MintSessionToken so the existing
 // platformmw.Authenticator can verify it identically to a Bearer
 // Authorization header.
@@ -43,8 +43,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 )
 
-// SessionTTL is the cookie lifetime fc-server uses. Matches the Rust
-// session_token_expiry_secs default — except the user picked 24h flat
+// SessionTTL is the cookie lifetime fc-server uses. 24h flat
 // for both dev and regular use, so we hardcode it here rather than
 // thread it through env. Override at link time if you need to.
 var SessionTTL = 24 * time.Hour
@@ -119,7 +118,7 @@ func (e *Endpoint) RegisterRoutes(r chi.Router) {
 // before the SPA can re-authenticate.
 func (e *Endpoint) RegisterPublicRoutes(r chi.Router) {
 	r.Post("/auth/check-domain", e.handleCheckDomain)
-	// GET variant mirrors Rust's auth_api.rs check_domain — a distinct
+	// GET variant is a distinct
 	// (legacy) query-param shape. See handleCheckDomainQuery.
 	r.Get("/auth/check-domain", e.handleCheckDomainQuery)
 	r.Post("/auth/login", e.handleLogin)
@@ -195,7 +194,7 @@ func (e *Endpoint) handleCheckDomain(w http.ResponseWriter, r *http.Request) {
 	resp := checkDomainResponse{AuthMethod: "internal"}
 	if idp.Type == identityprovider.TypeOIDC {
 		resp.AuthMethod = "external"
-		// LoginURL points to the OIDC bridge, which Rust mounts at
+		// LoginURL points to the OIDC bridge at
 		// /auth/oidc/login. Pass the domain (not email) so we don't
 		// leak the local-part through the redirect chain.
 		resp.LoginURL = "/auth/oidc/login?domain=" + encodeURI(domain)
@@ -208,7 +207,7 @@ func (e *Endpoint) handleCheckDomain(w http.ResponseWriter, r *http.Request) {
 
 // ── GET /auth/check-domain (legacy query variant) ─────────────────────────
 
-// domainCheckResponse mirrors Rust's DomainCheckResponse (auth_api.rs):
+// domainCheckResponse is the legacy GET wire shape:
 // {domain, authMethod, providerId?, authorizationUrl?} with authMethod in
 // SCREAMING_SNAKE_CASE (INTERNAL|OIDC). Distinct from checkDomainResponse
 // (the POST variant the SPA uses, which returns authMethod internal|external
@@ -251,7 +250,7 @@ type refreshRequest struct {
 	RefreshToken string `json:"refreshToken"`
 }
 
-// tokenRefreshResponse mirrors Rust's TokenRefreshResponse (camelCase).
+// tokenRefreshResponse is the /auth/refresh wire shape (camelCase).
 type tokenRefreshResponse struct {
 	AccessToken  string `json:"accessToken"`
 	TokenType    string `json:"tokenType"`
@@ -269,8 +268,7 @@ var errOAuthBoundToken = errors.New("token is bound to an OAuth client")
 // handleRefresh exchanges a refresh token for a new access+refresh pair,
 // rotating the presented token via the shared grantstore.Rotate (reuse
 // detection + family tracking + scope/client lineage — same contract as the
-// /oauth/token refresh grant). Wire shape 1:1 with Rust
-// auth_api.rs::refresh_token.
+// /oauth/token refresh grant).
 func (e *Endpoint) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	var req refreshRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -338,11 +336,10 @@ type loginRequest struct {
 	RememberMe bool   `json:"rememberMe"`
 }
 
-// loginResponse matches the Java/Rust LoginResponse the SPA expects,
+// loginResponse is the login body the SPA expects,
 // extended with `permissions` so route guards can run without a
-// follow-up round-trip. Mirrors what was deferred-then-decided in the
-// auth port: include the flattened permission set so the SPA's
-// permission store + router guards have what they need at sign-in.
+// follow-up round-trip: the flattened permission set gives the SPA's
+// permission store + router guards what they need at sign-in.
 type loginResponse struct {
 	// Status is "ok" for a completed login. The 2FA-pending responses use
 	// twoFactorResponse with status "mfa_required" / "enrollment_required".
@@ -660,8 +657,8 @@ func (e *Endpoint) recordAttempt(ctx context.Context, outcome loginattempt.Outco
 // always agree on what "the client's IP" means.
 func clientIP(r *http.Request) string { return ratelimit.ClientIP(r) }
 
-// writeTooManyRequests emits a 429 with a Retry-After header, mirroring
-// Rust's backoff rejection.
+// writeTooManyRequests emits a 429 with a Retry-After header (the
+// backoff rejection).
 func writeTooManyRequests(w http.ResponseWriter, retryAfterSecs uint32) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Retry-After", strconv.FormatUint(uint64(retryAfterSecs), 10))
