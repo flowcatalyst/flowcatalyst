@@ -59,6 +59,16 @@ export interface FlowcatalystAuthOptions {
 	scope?: string;
 	/** Expected `aud` claim. Defaults to `flowcatalyst` (FC's default audience). */
 	expectedAudience?: string;
+	/**
+	 * Portal mode: this app is a PORTAL for a client's customers, so logins
+	 * enter through FlowCatalyst's portal identity plane
+	 * (`{baseUrl}/portal/authorize`) — a separate end-user population from
+	 * platform users, no platform SSO reuse, and no refresh tokens. Requires
+	 * the OAuth client's portal owner client to be set. The callback and
+	 * token exchange are unchanged; the id_token `sub` is the portal
+	 * identity id (`ptu_…`).
+	 */
+	portal?: boolean;
 	/** Local RBAC catalogue (role → permissions). Omit to skip permission checks. */
 	rbac?: RbacCatalogue;
 
@@ -148,6 +158,11 @@ const flowcatalystAuthImpl: FastifyPluginAsync<FlowcatalystAuthOptions> =
 			baseUrl: opts.baseUrl,
 			...(opts.expectedAudience !== undefined
 				? { expectedAudience: opts.expectedAudience }
+				: {}),
+			...(opts.portal
+				? {
+						authorizationEndpoint: `${opts.baseUrl.replace(/\/$/, "")}/portal/authorize`,
+					}
 				: {}),
 		});
 

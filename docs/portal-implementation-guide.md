@@ -264,11 +264,29 @@ $api->deletePortalUser($identityId, ['clientId' => $clientId]);
 
 ## 6. TypeScript SDK
 
-The TS SDK is the backend half: the typed admin client (plus webhook/outbox
-tooling). The browser login flow is the standard OAuth dance from §3 — wire
-it with your framework's OIDC tooling (or plain fetch), pointing the
-authorize step at `/portal/authorize` and verifying the id_token against
-`{platform}/.well-known/jwks.json`.
+The TS SDK provides the typed admin client AND, for Fastify apps, the full
+browser login flow: the `@flowcatalyst/sdk/fastify` auth plugin gains
+**portal mode** — set `portal: true` and its login route enters through
+`/portal/authorize` (callback, token exchange, session cookie, and id_token
+verification unchanged; the session principal's id is the `ptu_…` identity):
+
+```ts
+import { flowcatalystAuth } from '@flowcatalyst/sdk/fastify';
+
+await app.register(flowcatalystAuth, {
+  baseUrl: process.env.FC_BASE_URL!,
+  clientId: process.env.FC_OIDC_CLIENT_ID!,      // portal OAuth client
+  clientSecret: process.env.FC_OIDC_CLIENT_SECRET!,
+  portal: true,                                   // <— portal identity plane
+  expectedAudience: process.env.FC_OIDC_CLIENT_ID!,
+  cookie: { secret: process.env.SESSION_SECRET! },
+});
+```
+
+Non-Fastify stacks wire the standard OAuth dance from §3 with any OIDC
+tooling (or plain fetch), pointing the authorize step at
+`/portal/authorize` and verifying the id_token against
+`{platform}/.well-known/jwks.json`:
 
 ### Managing portal users
 
