@@ -114,6 +114,13 @@ class UpdateIdentityProviderRequestNormalizer implements DenormalizerInterface, 
         elseif (\array_key_exists('oidcMultiTenant', $data) && $data['oidcMultiTenant'] === null) {
             $object->setOidcMultiTenant(null);
         }
+        if (\array_key_exists('portalClientId', $data) && $data['portalClientId'] !== null) {
+            $object->setPortalClientId($data['portalClientId']);
+            unset($data['portalClientId']);
+        }
+        elseif (\array_key_exists('portalClientId', $data) && $data['portalClientId'] === null) {
+            $object->setPortalClientId(null);
+        }
         if (\array_key_exists('primaryClientId', $data) && $data['primaryClientId'] !== null) {
             $object->setPrimaryClientId($data['primaryClientId']);
             unset($data['primaryClientId']);
@@ -169,6 +176,9 @@ class UpdateIdentityProviderRequestNormalizer implements DenormalizerInterface, 
         }
         if ($data->isInitialized('oidcMultiTenant') && null !== $data->getOidcMultiTenant()) {
             $dataArray['oidcMultiTenant'] = $data->getOidcMultiTenant();
+        }
+        if ($data->isInitialized('portalClientId') && null !== $data->getPortalClientId()) {
+            $dataArray['portalClientId'] = $data->getPortalClientId();
         }
         if ($data->isInitialized('primaryClientId') && null !== $data->getPrimaryClientId()) {
             $dataArray['primaryClientId'] = $data->getPrimaryClientId();

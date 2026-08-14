@@ -40,6 +40,10 @@ type CreateOAuthClientRequest struct {
 	// ApplicationIDs scopes the client to specific applications (persisted).
 	ApplicationIDs []string `json:"applicationIds,omitempty"`
 	PrincipalID    *string  `json:"principalId,omitempty"`
+	// PortalClientID marks this OAuth client as a portal entry point owned
+	// by that tenant client: /oauth/authorize then requires an ACTIVE
+	// portal-user linkage before issuing a code (portal-identity Phase 2.5).
+	PortalClientID *string `json:"portalClientId,omitempty"`
 }
 
 func (r CreateOAuthClientRequest) toCommand() operations.CreateOAuthClientCommand {
@@ -60,6 +64,7 @@ func (r CreateOAuthClientRequest) toCommand() operations.CreateOAuthClientComman
 		ApplicationIDs:         r.ApplicationIDs,
 		PrincipalID:            r.PrincipalID,
 		PKCERequired:           r.PKCERequired,
+		PortalClientID:         r.PortalClientID,
 	}
 }
 
@@ -81,6 +86,9 @@ type UpdateOAuthClientRequest struct {
 	ApplicationIDs []string `json:"applicationIds,omitempty"`
 	// PKCERequired toggles whether /oauth/authorize demands a code_challenge.
 	PKCERequired *bool `json:"pkceRequired,omitempty"`
+	// PortalClientID marks this OAuth client as a portal entry point owned by
+	// that tenant client (empty string clears the flag; omitted keeps it).
+	PortalClientID *string `json:"portalClientId,omitempty"`
 }
 
 func (r UpdateOAuthClientRequest) toCommand(id string) operations.UpdateOAuthClientCommand {
@@ -98,6 +106,7 @@ func (r UpdateOAuthClientRequest) toCommand(id string) operations.UpdateOAuthCli
 		AllowedOrigins:         r.AllowedOrigins,
 		ApplicationIDs:         r.ApplicationIDs,
 		PKCERequired:           r.PKCERequired,
+		PortalClientID:         r.PortalClientID,
 	}
 }
 
@@ -134,9 +143,11 @@ type OAuthClientResponse struct {
 	Applications []OAuthClientApplicationRef `json:"applications"`
 	Active       bool                        `json:"active"`
 	// ServiceAccountPrincipalID maps from the entity's PrincipalID.
-	ServiceAccountPrincipalID *string         `json:"serviceAccountPrincipalId,omitempty"`
-	CreatedAt                 httpcompat.Time `json:"createdAt"`
-	UpdatedAt                 httpcompat.Time `json:"updatedAt"`
+	ServiceAccountPrincipalID *string `json:"serviceAccountPrincipalId,omitempty"`
+	// PortalClientID marks a portal entry point (see the create request).
+	PortalClientID *string         `json:"portalClientId,omitempty"`
+	CreatedAt      httpcompat.Time `json:"createdAt"`
+	UpdatedAt      httpcompat.Time `json:"updatedAt"`
 }
 
 func oauthClientFromEntity(c *auth.OAuthClient) OAuthClientResponse {
@@ -179,6 +190,7 @@ func oauthClientFromEntity(c *auth.OAuthClient) OAuthClientResponse {
 		Applications:              []OAuthClientApplicationRef{},
 		Active:                    c.Active,
 		ServiceAccountPrincipalID: c.PrincipalID,
+		PortalClientID:            c.PortalClientID,
 		CreatedAt:                 jsontime.New(c.CreatedAt),
 		UpdatedAt:                 jsontime.New(c.UpdatedAt),
 	}

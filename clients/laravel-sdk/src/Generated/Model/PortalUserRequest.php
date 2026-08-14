@@ -21,11 +21,23 @@ class PortalUserRequest extends \ArrayObject
     /**
      * @var string|null
      */
+    protected $clientId;
+    /**
+     * @var string|null
+     */
     protected $email;
     /**
      * @var string|null
      */
     protected $name;
+    /**
+     * @var string|null
+     */
+    protected $redirectUri;
+    /**
+     * @var bool|null
+     */
+    protected $returnInviteLink;
     /**
      * A URL to the JSON Schema for this object.
      *
@@ -46,6 +58,24 @@ class PortalUserRequest extends \ArrayObject
     {
         $this->initialized['dollarSchema'] = true;
         $this->dollarSchema = $dollarSchema;
+        return $this;
+    }
+    /**
+     * @return string|null
+     */
+    public function getClientId(): ?string
+    {
+        return $this->clientId;
+    }
+    /**
+     * @param string|null $clientId
+     *
+     * @return self
+     */
+    public function setClientId(?string $clientId): self
+    {
+        $this->initialized['clientId'] = true;
+        $this->clientId = $clientId;
         return $this;
     }
     /**
@@ -82,6 +112,42 @@ class PortalUserRequest extends \ArrayObject
     {
         $this->initialized['name'] = true;
         $this->name = $name;
+        return $this;
+    }
+    /**
+     * @return string|null
+     */
+    public function getRedirectUri(): ?string
+    {
+        return $this->redirectUri;
+    }
+    /**
+     * @param string|null $redirectUri
+     *
+     * @return self
+     */
+    public function setRedirectUri(?string $redirectUri): self
+    {
+        $this->initialized['redirectUri'] = true;
+        $this->redirectUri = $redirectUri;
+        return $this;
+    }
+    /**
+     * @return bool|null
+     */
+    public function getReturnInviteLink(): ?bool
+    {
+        return $this->returnInviteLink;
+    }
+    /**
+     * @param bool|null $returnInviteLink
+     *
+     * @return self
+     */
+    public function setReturnInviteLink(?bool $returnInviteLink): self
+    {
+        $this->initialized['returnInviteLink'] = true;
+        $this->returnInviteLink = $returnInviteLink;
         return $this;
     }
 }

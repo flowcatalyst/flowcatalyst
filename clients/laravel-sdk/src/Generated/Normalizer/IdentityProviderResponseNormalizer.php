@@ -126,6 +126,12 @@ class IdentityProviderResponseNormalizer implements DenormalizerInterface, Norma
         elseif (\array_key_exists('oidcMultiTenant', $data) && $data['oidcMultiTenant'] === null) {
             $object->setOidcMultiTenant(null);
         }
+        if (\array_key_exists('portalClientId', $data) && $data['portalClientId'] !== null) {
+            $object->setPortalClientId($data['portalClientId']);
+        }
+        elseif (\array_key_exists('portalClientId', $data) && $data['portalClientId'] === null) {
+            $object->setPortalClientId(null);
+        }
         if (\array_key_exists('syncRolesFromIdp', $data) && $data['syncRolesFromIdp'] !== null) {
             $object->setSyncRolesFromIdp($data['syncRolesFromIdp']);
         }
@@ -174,6 +180,9 @@ class IdentityProviderResponseNormalizer implements DenormalizerInterface, Norma
             $dataArray['oidcIssuerUrl'] = $data->getOidcIssuerUrl();
         }
         $dataArray['oidcMultiTenant'] = $data->getOidcMultiTenant();
+        if ($data->isInitialized('portalClientId') && null !== $data->getPortalClientId()) {
+            $dataArray['portalClientId'] = $data->getPortalClientId();
+        }
         $dataArray['syncRolesFromIdp'] = $data->getSyncRolesFromIdp();
         $dataArray['type'] = $data->getType();
         $dataArray['updatedAt'] = $data->getUpdatedAt()->format('Y-m-d\TH:i:sP');

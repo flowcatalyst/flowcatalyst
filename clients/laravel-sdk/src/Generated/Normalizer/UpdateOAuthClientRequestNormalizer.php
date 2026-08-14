@@ -105,6 +105,13 @@ class UpdateOAuthClientRequestNormalizer implements DenormalizerInterface, Norma
         elseif (\array_key_exists('pkceRequired', $data) && $data['pkceRequired'] === null) {
             $object->setPkceRequired(null);
         }
+        if (\array_key_exists('portalClientId', $data) && $data['portalClientId'] !== null) {
+            $object->setPortalClientId($data['portalClientId']);
+            unset($data['portalClientId']);
+        }
+        elseif (\array_key_exists('portalClientId', $data) && $data['portalClientId'] === null) {
+            $object->setPortalClientId(null);
+        }
         if (\array_key_exists('postLogoutRedirectUris', $data) && $data['postLogoutRedirectUris'] !== null) {
             $values_4 = [];
             foreach ($data['postLogoutRedirectUris'] as $value_4) {
@@ -181,6 +188,9 @@ class UpdateOAuthClientRequestNormalizer implements DenormalizerInterface, Norma
         }
         if ($data->isInitialized('pkceRequired') && null !== $data->getPkceRequired()) {
             $dataArray['pkceRequired'] = $data->getPkceRequired();
+        }
+        if ($data->isInitialized('portalClientId') && null !== $data->getPortalClientId()) {
+            $dataArray['portalClientId'] = $data->getPortalClientId();
         }
         if ($data->isInitialized('postLogoutRedirectUris') && null !== $data->getPostLogoutRedirectUris()) {
             $values_4 = [];

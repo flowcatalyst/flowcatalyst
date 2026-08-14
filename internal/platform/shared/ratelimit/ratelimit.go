@@ -40,6 +40,7 @@ const (
 	BucketPasswordResetIP      Bucket = "password_reset_ip"
 	BucketPasswordResetEmail   Bucket = "password_reset_email"
 	BucketCheckDomainIP        Bucket = "check_domain_ip"
+	BucketPortalLogin          Bucket = "portal_login"
 )
 
 // Policy is "at most Limit events in any Window" for one (bucket, key).
@@ -57,6 +58,9 @@ type Policies struct {
 	OAuthAuthorizeClient Policy
 	PasswordResetIP      Policy
 	PasswordResetEmail   Policy
+	// PortalLogin throttles POST /portal/auth/login per (client, email) —
+	// the portal plane's brute-force ceiling (it has no lockout table).
+	PortalLogin Policy
 }
 
 // PoliciesFromEnv reads the FC_RL_* knobs, matching the Rust defaults.
@@ -68,6 +72,7 @@ func PoliciesFromEnv() Policies {
 		OAuthAuthorizeClient: Policy{time.Minute, envutil.Uint32("FC_RL_OAUTH_AUTHORIZE_CLIENT_PER_MIN", 300)},
 		PasswordResetIP:      Policy{time.Hour, envutil.Uint32("FC_RL_PASSWORD_RESET_IP_PER_HOUR", 20)},
 		PasswordResetEmail:   Policy{time.Hour, envutil.Uint32("FC_RL_PASSWORD_RESET_EMAIL_PER_HOUR", 5)},
+		PortalLogin:          Policy{15 * time.Minute, envutil.Uint32("FC_RL_PORTAL_LOGIN_PER_15MIN", 10)},
 	}
 }
 

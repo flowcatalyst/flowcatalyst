@@ -14,6 +14,7 @@ import (
 	authapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/bridge"
 	clientselectionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/clientselection"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/login"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/loginbackoff"
 	clientapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/api"
@@ -29,6 +30,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/openapispecs"
 	passwordresetapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/passwordreset/api"
 	platformconfigapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig/api"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalauth"
+	portalusersapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalidentity/api"
 	principalapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/api"
 	processapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/process/api"
 	resetapprovalapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/resetapproval/api"
@@ -59,7 +62,7 @@ import (
 //
 // Wrap the platform routes in a chi Group so the middleware applies
 // only to platform routes, not to whatever surrounding routes the
-// caller (fc-dev, fc-server) registered around us (e.g. /health).
+// caller (fcdev, fc-server) registered around us (e.g. /health).
 // chi requires middleware to be defined before any routes on a given
 // mux; the Group creates its own scope so that ordering rule is
 // satisfied locally regardless of caller ordering.
@@ -147,6 +150,14 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			UoW:               uow,
 		})
 
+		portalusersapi.Register(humaAPI, &portalusersapi.State{
+			Identities:   repos.portalIdentityRepo,
+			Clients:      repos.clientRepo,
+			OAuthClients: repos.authRepo.OAuthClients,
+			UoW:          uow,
+			Invites:      principalResetEmailer,
+		})
+
 		// Phase 8: lost-device reset approval queue (client-admin gated).
 		resetapprovalapi.Register(humaAPI, &resetapprovalapi.State{
 			Approvals:  repos.resetApprovalRepo,
@@ -228,10 +239,32 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		// Per-IP rate limit on the public OIDC bridge routes (login start +
 		// callback + session/end) — blunts authorization-code probing / DoS
 		// without impeding a real interactive login.
+		// Portal identity plane (docs/portal-identity-plan.md Phase 2.5 v2):
+		// /portal/authorize + check-domain + password login live in
+		// portalauth; the bridge serves the portal SSO start and callback
+		// sink through the shared machinery.
+		portalFlowRepo := portalauth.NewFlowRepo(pool)
+		portalAuthState := &portalauth.State{
+			OAuthClients:      repos.authRepo.OAuthClients,
+			Identities:        repos.portalIdentityRepo,
+			IdPs:              repos.idpRepo,
+			Flows:             portalFlowRepo,
+			AuthCodes:         grantstore.NewAuthorizationCodeRepository(pool),
+			RateLimit:         svcs.rlStore,
+			RateLimitPolicies: svcs.rlPolicies,
+		}
+		bridgeLoginEP.Portal = &bridge.PortalBridge{
+			Flows:      portalFlowRepo,
+			Identities: repos.portalIdentityRepo,
+			Clients:    repos.clientRepo,
+			IssueCode:  portalAuthState.IssueCode,
+		}
 		oidcGov := ratelimit.NewGovernor(ratelimit.OIDCBridgeGovernorFromEnv())
 		r.Group(func(g chi.Router) {
 			g.Use(ratelimit.GovernorMiddleware(oidcGov, "Too many authentication requests"))
 			bridgeLoginEP.RegisterRoutes(g)
+			bridgeLoginEP.RegisterPortalRoutes(g)
+			portalAuthState.RegisterRoutes(g)
 		})
 
 		corsapi.Register(humaAPI, &corsapi.State{

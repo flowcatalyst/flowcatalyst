@@ -63,6 +63,12 @@ class CreateIdentityProviderRequest extends \ArrayObject
      */
     protected $oidcMultiTenant;
     /**
+     * Bind this IdP to a tenant client's portal plane (portal login flows may only use bound IdPs)
+     *
+     * @var string|null
+     */
+    protected $portalClientId;
+    /**
      * Client to link on mappings that are new or not yet linked to a primary client
      *
      * @var string|null
@@ -278,6 +284,28 @@ class CreateIdentityProviderRequest extends \ArrayObject
     {
         $this->initialized['oidcMultiTenant'] = true;
         $this->oidcMultiTenant = $oidcMultiTenant;
+        return $this;
+    }
+    /**
+     * Bind this IdP to a tenant client's portal plane (portal login flows may only use bound IdPs)
+     *
+     * @return string|null
+     */
+    public function getPortalClientId(): ?string
+    {
+        return $this->portalClientId;
+    }
+    /**
+     * Bind this IdP to a tenant client's portal plane (portal login flows may only use bound IdPs)
+     *
+     * @param string|null $portalClientId
+     *
+     * @return self
+     */
+    public function setPortalClientId(?string $portalClientId): self
+    {
+        $this->initialized['portalClientId'] = true;
+        $this->portalClientId = $portalClientId;
         return $this;
     }
     /**

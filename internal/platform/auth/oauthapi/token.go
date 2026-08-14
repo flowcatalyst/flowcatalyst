@@ -29,6 +29,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalidentity"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	sharedauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
@@ -46,12 +47,16 @@ type OAuthClientFinder interface {
 
 // State bundles the dependencies the OAuth endpoints need.
 type State struct {
-	OAuthClients  OAuthClientFinder
-	Principals    *principal.Repository
-	Auth          *authservice.AuthService
-	AuthCodes     *grantstore.AuthorizationCodeRepository
-	RefreshTokens *grantstore.RefreshTokenRepository
-	PendingAuth   *grantstore.PendingAuthRepository
+	OAuthClients OAuthClientFinder
+	Principals   *principal.Repository
+	// PortalIdentities resolves PORTAL-plane subjects (ptu_… ids minted by
+	// /portal/authorize flows) on the authorization_code grant. Optional —
+	// nil rejects portal codes (fail closed).
+	PortalIdentities *portalidentity.Repository
+	Auth             *authservice.AuthService
+	AuthCodes        *grantstore.AuthorizationCodeRepository
+	RefreshTokens    *grantstore.RefreshTokenRepository
+	PendingAuth      *grantstore.PendingAuthRepository
 	// ValidateSession resolves the principal id + token issue time from a
 	// session-cookie / bearer token on /oauth/authorize, returning ok=false
 	// when the token is absent, invalid, or expired (authorize then
@@ -526,6 +531,16 @@ func (s *State) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Requ
 			errResp.write(w)
 			return
 		}
+	}
+
+	// Portal-plane subject (docs/portal-identity-plan.md Phase 2.5 v2): the
+	// code was minted by a /portal/authorize flow for a portal identity, not
+	// a principal. Same machinery, separate population: identity-only access
+	// token, id_token from the portal identity (empty roles), and NO refresh
+	// token — the portal app's own session is the session.
+	if strings.HasPrefix(code.PrincipalID, portalSubjectPrefix) {
+		s.redeemPortalCode(w, r, code, client)
+		return
 	}
 
 	p, err := s.Principals.FindByID(r.Context(), code.PrincipalID)

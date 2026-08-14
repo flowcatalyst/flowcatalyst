@@ -18,7 +18,7 @@ class EnsurePortalUser extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoi
     }
     public function getUri(): string
     {
-        return '/api/principals/portal';
+        return '/api/portal-users';
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {

@@ -2,7 +2,7 @@ package seed
 
 import "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 
-// PlatformRoles returns the 12 built-in roles in the same order as
+// PlatformRoles returns the built-in roles in the same order as
 // fc-platform/src/role/entity.rs::roles::all(). Each role uses
 // Source=CODE so the role-sync logic can identify them. Names match
 // {applicationCode}:{roleName} (e.g. "platform:admin") to match the
@@ -156,6 +156,17 @@ func PlatformRoles() []role.Role {
 				permAdminProcessRead,
 				permAdminAuditLogRead,
 				permAdminLoginAttemptRead,
+			}),
+
+		// platform:portal-administrator — CLIENT-delegable: assign to a
+		// client administrator (manage their client's portal users in the
+		// platform UI) or to the portal application's service account (the
+		// /api/portal-users surface). Client confinement comes from the
+		// holder's own client scope, not from the role.
+		mk("portal-administrator", "Portal Administrator",
+			"Manage the client's portal users: invite, suspend, and remove portal identities",
+			[]string{
+				permPortalUserView, permPortalUserManage,
 			}),
 
 		// platform:developer

@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -19,16 +20,20 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/mfatoken"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordhash"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordpolicy"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/twofa"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/branding"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/mfa"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/notify"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/passwordreset"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalidentity"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	principalops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/resetapproval"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/email"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
@@ -147,27 +152,74 @@ func (e *principalEmailer) SendResetEmail(ctx context.Context, p *principal.Prin
 	return e.mail.SendResetLink(ctx, p.UserIdentity.Email, link)
 }
 
+// mintInviteLink invalidates any outstanding tokens, mints a fresh
+// longer-lived invite token (optionally carrying a post-set-password
+// redirect), and returns the set-password link. Shared by every invite
+// delivery mode.
+func (e *principalEmailer) mintInviteLink(ctx context.Context, subjectID string, redirectURI *string) (string, error) {
+	if err := e.tokens.DeleteByPrincipalID(ctx, subjectID); err != nil {
+		return "", err
+	}
+	raw, err := generateRawToken()
+	if err != nil {
+		return "", err
+	}
+	tok := passwordreset.New(subjectID, hashToken(raw), time.Now().UTC().Add(inviteTokenTTL))
+	tok.Purpose = passwordreset.PurposeInvite
+	tok.RedirectURI = redirectURI
+	if err := e.tokens.Insert(ctx, tok); err != nil {
+		return "", err
+	}
+	return strings.TrimRight(e.base, "/") + "/auth/reset-password?token=" + raw, nil
+}
+
+// PortalInviteLink mints a set-password invite for a PORTAL identity (the
+// token keys the ptu_ id; the confirm flow branches on the prefix) and
+// returns the link WITHOUT emailing it — the portal-managed invite path.
+func (e *principalEmailer) PortalInviteLink(ctx context.Context, identityID string, redirectURI *string) (string, error) {
+	return e.mintInviteLink(ctx, identityID, redirectURI)
+}
+
+// SendPortalInvite mints the portal invite and emails it via the platform
+// mailer (the default delivery when the portal doesn't send its own).
+func (e *principalEmailer) SendPortalInvite(ctx context.Context, identityID, email string, redirectURI *string) error {
+	link, err := e.mintInviteLink(ctx, identityID, redirectURI)
+	if err != nil {
+		return err
+	}
+	return e.mail.SendInviteLink(ctx, email, link)
+}
+
 // SendInvite mints a longer-lived invite token and emails a "set your password"
 // link to a newly-created internal user. Same set-password page as reset, so
 // the confirm flow (and its 2FA enrollment gate) is shared.
 func (e *principalEmailer) SendInvite(ctx context.Context, p *principal.Principal) error {
+	return e.SendInviteRedirect(ctx, p, nil)
+}
+
+// SendInviteRedirect is SendInvite with an optional post-set-password
+// redirect stored on the token (portal invites that chain back into the
+// portal's OAuth login). The caller has already validated redirectURI.
+func (e *principalEmailer) SendInviteRedirect(ctx context.Context, p *principal.Principal, redirectURI *string) error {
 	if p == nil || p.UserIdentity == nil || strings.TrimSpace(p.UserIdentity.Email) == "" {
 		return nil
 	}
-	if err := e.tokens.DeleteByPrincipalID(ctx, p.ID); err != nil {
-		return err
-	}
-	raw, err := generateRawToken()
+	link, err := e.mintInviteLink(ctx, p.ID, redirectURI)
 	if err != nil {
 		return err
 	}
-	tok := passwordreset.New(p.ID, hashToken(raw), time.Now().UTC().Add(inviteTokenTTL))
-	tok.Purpose = passwordreset.PurposeInvite
-	if err := e.tokens.Insert(ctx, tok); err != nil {
-		return err
-	}
-	link := strings.TrimRight(e.base, "/") + "/auth/reset-password?token=" + raw
 	return e.mail.SendInviteLink(ctx, p.UserIdentity.Email, link)
+}
+
+// InviteLink mints the invite token and returns the set-password link
+// WITHOUT emailing it — the portal-managed invite path (the portal composes
+// its own branded email around the link). The link is a live 72h bearer
+// credential: hand it only to the anchor-gated API caller, never log it.
+func (e *principalEmailer) InviteLink(ctx context.Context, p *principal.Principal, redirectURI *string) (string, error) {
+	if p == nil || p.UserIdentity == nil || strings.TrimSpace(p.UserIdentity.Email) == "" {
+		return "", nil
+	}
+	return e.mintInviteLink(ctx, p.ID, redirectURI)
 }
 
 // State holds the deps the password-reset handlers reach into.
@@ -177,6 +229,10 @@ type State struct {
 	UoW             *usecasepgx.UnitOfWork
 	ExternalBaseURL string  // base for the reset link (e.g. cfg.JWTIssuer)
 	Emailer         Emailer // optional; nil = no delivery
+	// PortalIdentities resolves PORTAL-plane subjects (ptu_… reset tokens
+	// minted by /api/portal-users invites). Optional — nil rejects portal
+	// tokens at confirm (fail closed).
+	PortalIdentities *portalidentity.Repository
 
 	// 2FA integration (all optional). When MFA + MFATokens are wired, the
 	// confirm step clears 2FA on a reset_2fa token, revokes remembered devices,
@@ -429,6 +485,13 @@ func (s *State) confirmReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// PORTAL-plane token (ptu_… subject): set the portal identity's password
+	// and finish — no 2FA gate (deferred for portal users), same policy.
+	if strings.HasPrefix(t.PrincipalID, portalSubjectPrefix) {
+		s.confirmPortalReset(w, r, t, body.Password)
+		return
+	}
+
 	// Strong-factor gate (Phase 8): a factor-flagged token additionally requires
 	// a valid authenticator (TOTP) code. We do NOT consume the token on a failed
 	// factor, so the user can retry — up to maxFactorAttempts wrong guesses,
@@ -486,6 +549,12 @@ func (s *State) confirmReset(w http.ResponseWriter, r *http.Request) {
 
 	// Post-reset side effects (best-effort) + the 2FA enrollment gate.
 	resp := s.postResetTwoFactor(r.Context(), t)
+	// Portal invites carry a post-set-password redirect (validated against
+	// the owning client's portal OAuth clients at mint time — see
+	// docs/portal-identity-plan.md Phase 2.5). The SPA follows it once the
+	// flow fully completes (immediately on "ok"; after enrollment when the
+	// 2FA gate fires), landing the user back in the portal's login.
+	resp.RedirectURI = t.RedirectURI
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -496,6 +565,10 @@ type confirmResponse struct {
 	Message        string   `json:"message"`
 	EnrollToken    string   `json:"enrollToken,omitempty"`
 	AllowedMethods []string `json:"allowedMethods,omitempty"`
+	// RedirectURI, when present, is where the SPA sends the user after the
+	// reset (and any required 2FA enrollment) completes — the portal-invite
+	// chain back into the portal's OAuth login.
+	RedirectURI *string `json:"redirectUri,omitempty"`
 }
 
 // postResetTwoFactor runs the after-reset security side effects — optional 2FA
@@ -602,4 +675,55 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// portalSubjectPrefix identifies portal-identity subjects on reset tokens
+// (the ptu_ TSID prefix).
+var portalSubjectPrefix = tsid.PortalUser.Prefix() + "_"
+
+// confirmPortalReset completes a portal invite/reset: password policy, hash,
+// write, burn the token set. Portal identities have no 2FA (deferred) and no
+// factor gate; the response carries the invite's validated redirect so the
+// SPA chains the user straight back into the portal's login.
+func (s *State) confirmPortalReset(w http.ResponseWriter, r *http.Request, t *passwordreset.Token, password string) {
+	if s.PortalIdentities == nil {
+		httperror.Write(w, usecase.Validation("INVALID_TOKEN", "Invalid or expired reset token."))
+		return
+	}
+	ident, err := s.PortalIdentities.FindByID(r.Context(), t.PrincipalID)
+	if err != nil {
+		httperror.Write(w, usecase.Internal("REPO", "identity lookup failed", err))
+		return
+	}
+	if ident == nil || ident.Status != portalidentity.StatusActive {
+		httperror.Write(w, usecase.Validation("INVALID_TOKEN", "Invalid or expired reset token."))
+		return
+	}
+	if len(password) < passwordpolicy.MinLength {
+		httperror.Write(w, usecase.Validation("PASSWORD_TOO_SHORT",
+			fmt.Sprintf("password must be at least %d characters", passwordpolicy.MinLength)))
+		return
+	}
+	if v := passwordpolicy.Validate(password, ident.Email, ident.Name); v != nil {
+		httperror.Write(w, v)
+		return
+	}
+	hash, err := passwordhash.Hash(password)
+	if err != nil {
+		httperror.Write(w, usecase.Internal("HASH", "could not hash the password", err))
+		return
+	}
+	if err := s.PortalIdentities.SetPasswordHash(r.Context(), ident.ID, hash); err != nil {
+		httperror.Write(w, usecase.Internal("REPO", "could not store the password", err))
+		return
+	}
+	if err := s.Tokens.DeleteByPrincipalID(r.Context(), ident.ID); err != nil {
+		slog.Warn("failed to clear consumed portal reset tokens", "identity", ident.ID, "err", err)
+	}
+	slog.Info("portal password set", "identity", ident.ID)
+	writeJSON(w, http.StatusOK, confirmResponse{
+		Status:      "ok",
+		Message:     "Password set successfully.",
+		RedirectURI: t.RedirectURI,
+	})
 }

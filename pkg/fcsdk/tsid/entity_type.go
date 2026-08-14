@@ -44,6 +44,7 @@ const (
 	ScheduledJobInstanceLog
 	ApplicationOpenApiSpec
 	Process
+	PortalUser
 )
 
 // Prefix returns the 3-character platform prefix for the entity type.
@@ -122,6 +123,8 @@ func (e EntityType) Prefix() string {
 		return "oas"
 	case Process:
 		return "prc"
+	case PortalUser:
+		return "ptu"
 	}
 	return "unk"
 }

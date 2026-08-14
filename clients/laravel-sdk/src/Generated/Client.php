@@ -1573,6 +1573,63 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     }
     /**
      * @param array{
+     *    "clientId"?: string, //Tenant client whose portal identities to list
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\PortalUserListResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function listPortalUsers(array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListPortalUsers($queryParameters), $fetch);
+    }
+    /**
+     * @param null|\FlowCatalyst\Generated\Model\PortalUserRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\PortalUserResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function ensurePortalUser(?\FlowCatalyst\Generated\Model\PortalUserRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\EnsurePortalUser($requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param array{
+     *    "clientId"?: string, //Tenant client whose portal identity to delete
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\StatusChangeResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function deletePortalUser(string $id, array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\DeletePortalUser($id, $queryParameters), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param null|\FlowCatalyst\Generated\Model\PortalUserClientBody $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\StatusChangeResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function activatePortalUser(string $id, ?\FlowCatalyst\Generated\Model\PortalUserClientBody $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ActivatePortalUser($id, $requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param null|\FlowCatalyst\Generated\Model\PortalUserClientBody $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\StatusChangeResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function deactivatePortalUser(string $id, ?\FlowCatalyst\Generated\Model\PortalUserClientBody $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\DeactivatePortalUser($id, $requestBody), $fetch);
+    }
+    /**
+     * @param array{
      *    "type"?: string, //Filter by principal type (USER or SERVICE)
      *    "clientId"?: string, //Filter to principals homed at, or granted access to, this client
      *    "active"?: string, //Filter by active status (true/false); absent = both
@@ -1631,16 +1688,6 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     public function listDeveloperUsers(string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListDeveloperUsers(), $fetch);
-    }
-    /**
-     * @param null|\FlowCatalyst\Generated\Model\PortalUserRequest $requestBody
-     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
-     *
-     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\PortalUserResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
-     */
-    public function ensurePortalUser(?\FlowCatalyst\Generated\Model\PortalUserRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
-    {
-        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\EnsurePortalUser($requestBody), $fetch);
     }
     /**
      * @param null|\FlowCatalyst\Generated\Model\SyncUsersRequest $requestBody

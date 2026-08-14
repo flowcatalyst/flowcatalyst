@@ -52,9 +52,15 @@ type Token struct {
 	// confirm handler burns the principal's token set once it crosses the
 	// wrong-guess ceiling (the token is deliberately not consumed on a wrong
 	// code, so without this the retry allowance is a TOTP brute-force window).
-	FactorAttempts int       `json:"factorAttempts"`
-	ExpiresAt      time.Time `json:"expiresAt"`
-	CreatedAt      time.Time `json:"createdAt"`
+	FactorAttempts int `json:"factorAttempts"`
+	// RedirectURI, when set on an invite token, is followed by the SPA after
+	// a successful confirm (portal invites chain back into the portal's OAuth
+	// login). Validated against the owning client's portal OAuth clients'
+	// registered redirect URIs at mint time — never caller-controlled at
+	// confirm time.
+	RedirectURI *string   `json:"redirectUri,omitempty"`
+	ExpiresAt   time.Time `json:"expiresAt"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
 // New constructs a standard reset Token.
@@ -90,9 +96,9 @@ func (r *Repository) Insert(ctx context.Context, t *Token) error {
 	}
 	_, err := r.pool.Exec(ctx,
 		`INSERT INTO iam_password_reset_tokens
-		     (id, principal_id, token_hash, purpose, reset_2fa, requires_factor, expires_at, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		t.ID, t.PrincipalID, t.TokenHash, string(purpose), t.Reset2FA, t.RequiresFactor, t.ExpiresAt, t.CreatedAt)
+		     (id, principal_id, token_hash, purpose, reset_2fa, requires_factor, redirect_uri, expires_at, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		t.ID, t.PrincipalID, t.TokenHash, string(purpose), t.Reset2FA, t.RequiresFactor, t.RedirectURI, t.ExpiresAt, t.CreatedAt)
 	return err
 }
 
@@ -102,7 +108,7 @@ func (r *Repository) Consume(ctx context.Context, tokenHash string) (*Token, err
 	row := r.pool.QueryRow(ctx,
 		`DELETE FROM iam_password_reset_tokens
 		   WHERE token_hash = $1 AND expires_at > NOW()
-		 RETURNING id, principal_id, token_hash, purpose, reset_2fa, requires_factor, factor_attempts, expires_at, created_at`,
+		 RETURNING id, principal_id, token_hash, purpose, reset_2fa, requires_factor, factor_attempts, redirect_uri, expires_at, created_at`,
 		tokenHash)
 	return scanToken(row)
 }
@@ -112,7 +118,7 @@ func (r *Repository) Consume(ctx context.Context, tokenHash string) (*Token, err
 // when absent. Expiry is reported by the caller via Token.IsExpired.
 func (r *Repository) FindByTokenHash(ctx context.Context, tokenHash string) (*Token, error) {
 	row := r.pool.QueryRow(ctx,
-		`SELECT id, principal_id, token_hash, purpose, reset_2fa, requires_factor, factor_attempts, expires_at, created_at
+		`SELECT id, principal_id, token_hash, purpose, reset_2fa, requires_factor, factor_attempts, redirect_uri, expires_at, created_at
 		   FROM iam_password_reset_tokens WHERE token_hash = $1`,
 		tokenHash)
 	return scanToken(row)
@@ -138,7 +144,7 @@ func (r *Repository) IncrementFactorAttempts(ctx context.Context, id string) (in
 func scanToken(row pgx.Row) (*Token, error) {
 	var t Token
 	var purpose string
-	if err := row.Scan(&t.ID, &t.PrincipalID, &t.TokenHash, &purpose, &t.Reset2FA, &t.RequiresFactor, &t.FactorAttempts, &t.ExpiresAt, &t.CreatedAt); err != nil {
+	if err := row.Scan(&t.ID, &t.PrincipalID, &t.TokenHash, &purpose, &t.Reset2FA, &t.RequiresFactor, &t.FactorAttempts, &t.RedirectURI, &t.ExpiresAt, &t.CreatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}

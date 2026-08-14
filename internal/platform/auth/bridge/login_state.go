@@ -34,8 +34,13 @@ type OIDCLoginState struct {
 	OAuthCodeChallengeMethod *string
 	OAuthNonce               *string
 	InteractionUID           *string
-	CreatedAt                time.Time
-	ExpiresAt                time.Time
+	// PortalClientID marks this handshake as PORTAL-plane for the given
+	// owner client (docs/portal-identity-plan.md Phase 2.5 v2): the callback
+	// then JIT-upserts a portal identity and issues the chained code with a
+	// portal subject — and never writes fc_session.
+	PortalClientID *string
+	CreatedAt      time.Time
+	ExpiresAt      time.Time
 }
 
 // IsExpired reports whether ExpiresAt is in the past.
@@ -72,13 +77,13 @@ func (r *LoginStateRepo) Insert(ctx context.Context, s *OIDCLoginState) error {
 		      nonce, code_verifier, return_url,
 		      oauth_client_id, oauth_redirect_uri, oauth_scope, oauth_state,
 		      oauth_code_challenge, oauth_code_challenge_method, oauth_nonce,
-		      interaction_uid, created_at, expires_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+		      interaction_uid, created_at, expires_at, portal_client_id)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
 		s.State, s.EmailDomain, s.IdentityProviderID, s.EmailDomainMappingID,
 		s.Nonce, s.CodeVerifier, s.ReturnURL,
 		s.OAuthClientID, s.OAuthRedirectURI, s.OAuthScope, s.OAuthState,
 		s.OAuthCodeChallenge, s.OAuthCodeChallengeMethod, s.OAuthNonce,
-		s.InteractionUID, s.CreatedAt, s.ExpiresAt)
+		s.InteractionUID, s.CreatedAt, s.ExpiresAt, s.PortalClientID)
 	if err != nil {
 		return fmt.Errorf("oauth_oidc_login_states insert: %w", err)
 	}
@@ -101,7 +106,7 @@ func (r *LoginStateRepo) FindByState(ctx context.Context, state string) (*OIDCLo
 		&s.Nonce, &s.CodeVerifier, &s.ReturnURL,
 		&s.OAuthClientID, &s.OAuthRedirectURI, &s.OAuthScope, &s.OAuthState,
 		&s.OAuthCodeChallenge, &s.OAuthCodeChallengeMethod, &s.OAuthNonce,
-		&s.InteractionUID, &s.CreatedAt, &s.ExpiresAt); err != nil {
+		&s.InteractionUID, &s.CreatedAt, &s.ExpiresAt, &s.PortalClientID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
@@ -124,13 +129,13 @@ func (r *LoginStateRepo) Consume(ctx context.Context, state string) (*OIDCLoginS
 		           nonce, code_verifier, return_url,
 		           oauth_client_id, oauth_redirect_uri, oauth_scope, oauth_state,
 		           oauth_code_challenge, oauth_code_challenge_method, oauth_nonce,
-		           interaction_uid, created_at, expires_at`, state)
+		           interaction_uid, created_at, expires_at, portal_client_id`, state)
 	var s OIDCLoginState
 	if err := row.Scan(&s.State, &s.EmailDomain, &s.IdentityProviderID, &s.EmailDomainMappingID,
 		&s.Nonce, &s.CodeVerifier, &s.ReturnURL,
 		&s.OAuthClientID, &s.OAuthRedirectURI, &s.OAuthScope, &s.OAuthState,
 		&s.OAuthCodeChallenge, &s.OAuthCodeChallengeMethod, &s.OAuthNonce,
-		&s.InteractionUID, &s.CreatedAt, &s.ExpiresAt); err != nil {
+		&s.InteractionUID, &s.CreatedAt, &s.ExpiresAt, &s.PortalClientID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}

@@ -170,6 +170,9 @@ type Querier interface {
 	// (Rust uses it as a secrets-manager reference; Go uses it as the
 	// hash). See HANDOFF.md §4 for the planned PHC-salt fix.
 	OAuthClientFindByID(ctx context.Context, id string) (OauthClient, error)
+	// Portal-flagged OAuth clients owned by a tenant client — consulted when
+	// validating a portal invite's post-set-password redirectUri.
+	OAuthClientFindByPortalClient(ctx context.Context, portalClientID *string) ([]OauthClient, error)
 	OAuthClientGrantTypeInsert(ctx context.Context, arg OAuthClientGrantTypeInsertParams) error
 	OAuthClientGrantTypesClear(ctx context.Context, oauthClientID string) error
 	OAuthClientGrantTypesForClient(ctx context.Context, oauthClientID string) ([]string, error)

@@ -80,11 +80,13 @@ class OidcAuthController extends Controller
             session()->put(self::RETURN_URL_SESSION_KEY, $request->input('return_url'));
         }
 
-        // Provider-direct login (portals): route the user straight to a named
-        // upstream IdP instead of the FlowCatalyst login page. Per-request
-        // ?provider= wins over the configured default. Note the platform
-        // reuses a fresh fc_session BEFORE honouring provider=, so pair with
-        // prompt=login when a fresh handshake against the IdP is required.
+        // Provider-direct login: route the user straight to a named upstream
+        // IdP instead of the FlowCatalyst login page. Per-request ?provider=
+        // wins over the configured default. Note the platform reuses a fresh
+        // fc_session BEFORE honouring provider=, so pair with prompt=login
+        // when a fresh handshake against the IdP is required. (Ignored in
+        // portal mode — the portal plane routes IdPs server-side from the
+        // user's email domain.)
         $provider = $request->input('provider') ?? config('flowcatalyst.oidc.provider');
         $prompt = $request->input('prompt');
 
@@ -267,7 +269,18 @@ class OidcAuthController extends Controller
         ?string $prompt = null,
     ): string {
         $baseUrl = rtrim($config['base_url'], '/');
-        $authorizeUrl = $baseUrl . '/oauth/authorize';
+        // Portal mode (flowcatalyst.oidc.portal): this app is a PORTAL for a
+        // client's customers, so the flow enters through the portal identity
+        // plane — a separate end-user population, no platform SSO reuse. The
+        // token exchange and callback are identical; only the entry differs.
+        // provider/prompt are meaningless there (the portal login page
+        // routes IdPs from the email domain) and are omitted.
+        $portal = (bool) config('flowcatalyst.oidc.portal', false);
+        $authorizeUrl = $baseUrl . ($portal ? '/portal/authorize' : '/oauth/authorize');
+        if ($portal) {
+            $provider = null;
+            $prompt = null;
+        }
 
         $params = [
             'response_type' => 'code',

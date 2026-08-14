@@ -49,6 +49,10 @@ class CreateOAuthClientRequest extends \ArrayObject
      */
     protected $pkceRequired;
     /**
+     * @var string|null
+     */
+    protected $portalClientId;
+    /**
      * @var list<string>|null
      */
     protected $postLogoutRedirectUris;
@@ -214,6 +218,24 @@ class CreateOAuthClientRequest extends \ArrayObject
     {
         $this->initialized['pkceRequired'] = true;
         $this->pkceRequired = $pkceRequired;
+        return $this;
+    }
+    /**
+     * @return string|null
+     */
+    public function getPortalClientId(): ?string
+    {
+        return $this->portalClientId;
+    }
+    /**
+     * @param string|null $portalClientId
+     *
+     * @return self
+     */
+    public function setPortalClientId(?string $portalClientId): self
+    {
+        $this->initialized['portalClientId'] = true;
+        $this->portalClientId = $portalClientId;
         return $this;
     }
     /**

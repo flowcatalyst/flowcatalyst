@@ -55,7 +55,7 @@ func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet,
 	// ── Auth provider (claims projection + session JWTs) ───────────────
 	// SigningKey is supplied via cfg.JWTSigningKeyPath in production. In
 	// dev we fall back to a generated ephemeral key so the binary can
-	// boot without filesystem deps. See fc-dev for the persistent-key
+	// boot without filesystem deps. See fcdev for the persistent-key
 	// path used by local development.
 	signingKey := LoadSigningKeyOrEphemeral(cfg.JWTSigningKeyPath)
 	authProvider, err := provider.NewProvider(provider.Config{
@@ -121,6 +121,7 @@ func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet,
 	svcs.oauthTokenEP = &oauthapi.State{
 		OAuthClients:      repos.authRepo.OAuthClients,
 		Principals:        repos.principalRepo,
+		PortalIdentities:  repos.portalIdentityRepo,
 		Auth:              svcs.authSvc,
 		AuthCodes:         grantstore.NewAuthorizationCodeRepository(pool),
 		RefreshTokens:     grantstore.NewRefreshTokenRepository(pool),

@@ -31,6 +31,7 @@ import (
 	identityproviderapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider/api"
 	loginattemptapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt/api"
 	platformconfigapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig/api"
+	portalusersapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalidentity/api"
 	principalapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/api"
 	processapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/process/api"
 	resetapprovalapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/resetapproval/api"
@@ -66,6 +67,7 @@ func main() {
 	eventtypeapi.Register(api, &eventtypeapi.State{})
 	identityproviderapi.Register(api, &identityproviderapi.State{})
 	platformconfigapi.Register(api, &platformconfigapi.State{})
+	portalusersapi.Register(api, &portalusersapi.State{})
 	principalapi.Register(api, &principalapi.State{})
 	processapi.Register(api, &processapi.State{})
 	resetapprovalapi.Register(api, &resetapprovalapi.State{})

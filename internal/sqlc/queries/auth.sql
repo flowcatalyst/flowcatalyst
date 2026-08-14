@@ -12,21 +12,21 @@
 -- name: OAuthClientFindByID :one
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
-       active, created_at, updated_at
+       active, created_at, updated_at, portal_client_id
 FROM oauth_clients
 WHERE id = $1;
 
 -- name: OAuthClientFindByClientID :one
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
-       active, created_at, updated_at
+       active, created_at, updated_at, portal_client_id
 FROM oauth_clients
 WHERE client_id = $1;
 
 -- name: OAuthClientFindAll :many
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
-       active, created_at, updated_at
+       active, created_at, updated_at, portal_client_id
 FROM oauth_clients
 ORDER BY client_name;
 
@@ -34,8 +34,8 @@ ORDER BY client_name;
 INSERT INTO oauth_clients
     (id, client_id, client_name, client_type, client_secret_ref,
      default_scopes, pkce_required, service_account_principal_id,
-     active, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+     active, created_at, updated_at, portal_client_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 ON CONFLICT (id) DO UPDATE SET
     client_id = EXCLUDED.client_id,
     client_name = EXCLUDED.client_name,
@@ -45,7 +45,18 @@ ON CONFLICT (id) DO UPDATE SET
     pkce_required = EXCLUDED.pkce_required,
     service_account_principal_id = EXCLUDED.service_account_principal_id,
     active = EXCLUDED.active,
-    updated_at = EXCLUDED.updated_at;
+    updated_at = EXCLUDED.updated_at,
+    portal_client_id = EXCLUDED.portal_client_id;
+
+-- name: OAuthClientFindByPortalClient :many
+-- Portal-flagged OAuth clients owned by a tenant client — consulted when
+-- validating a portal invite's post-set-password redirectUri.
+SELECT id, client_id, client_name, client_type, client_secret_ref,
+       default_scopes, pkce_required, service_account_principal_id,
+       active, created_at, updated_at, portal_client_id
+FROM oauth_clients
+WHERE portal_client_id = $1
+ORDER BY client_name;
 
 -- name: OAuthClientDelete :exec
 DELETE FROM oauth_clients WHERE id = $1;

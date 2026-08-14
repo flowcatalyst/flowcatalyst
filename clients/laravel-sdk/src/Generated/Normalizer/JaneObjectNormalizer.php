@@ -268,6 +268,12 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\PermissionResponse::class => \FlowCatalyst\Generated\Normalizer\PermissionResponseNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\PortalUserClientBody::class => \FlowCatalyst\Generated\Normalizer\PortalUserClientBodyNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\PortalUserListItem::class => \FlowCatalyst\Generated\Normalizer\PortalUserListItemNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\PortalUserListResponse::class => \FlowCatalyst\Generated\Normalizer\PortalUserListResponseNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\PortalUserRequest::class => \FlowCatalyst\Generated\Normalizer\PortalUserRequestNormalizer::class,
         
         \FlowCatalyst\Generated\Model\PortalUserResponse::class => \FlowCatalyst\Generated\Normalizer\PortalUserResponseNormalizer::class,
@@ -623,6 +629,9 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\OffsetPageScheduledJobResponse::class => false,
             \FlowCatalyst\Generated\Model\PermissionListResponse::class => false,
             \FlowCatalyst\Generated\Model\PermissionResponse::class => false,
+            \FlowCatalyst\Generated\Model\PortalUserClientBody::class => false,
+            \FlowCatalyst\Generated\Model\PortalUserListItem::class => false,
+            \FlowCatalyst\Generated\Model\PortalUserListResponse::class => false,
             \FlowCatalyst\Generated\Model\PortalUserRequest::class => false,
             \FlowCatalyst\Generated\Model\PortalUserResponse::class => false,
             \FlowCatalyst\Generated\Model\PrincipalAvailableApplication::class => false,

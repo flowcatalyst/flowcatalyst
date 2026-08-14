@@ -2333,6 +2333,10 @@
           "oidcMultiTenant": {
             "type": "boolean"
           },
+          "portalClientId": {
+            "description": "Bind this IdP to a tenant client's portal plane (portal login flows may only use bound IdPs)",
+            "type": "string"
+          },
           "primaryClientId": {
             "description": "Client to link on mappings that are new or not yet linked to a primary client",
             "type": "string"
@@ -2491,6 +2495,9 @@
           },
           "pkceRequired": {
             "type": "boolean"
+          },
+          "portalClientId": {
+            "type": "string"
           },
           "postLogoutRedirectUris": {
             "items": {
@@ -3981,6 +3988,9 @@
           "oidcMultiTenant": {
             "type": "boolean"
           },
+          "portalClientId": {
+            "type": "string"
+          },
           "syncRolesFromIdp": {
             "type": "boolean"
           },
@@ -4497,6 +4507,9 @@
           "pkceRequired": {
             "type": "boolean"
           },
+          "portalClientId": {
+            "type": "string"
+          },
           "postLogoutRedirectUris": {
             "items": {
               "type": "string"
@@ -4684,6 +4697,97 @@
         ],
         "type": "object"
       },
+      "PortalUserClientBody": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PortalUserClientBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "clientId"
+        ],
+        "type": "object"
+      },
+      "PortalUserListItem": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "hasPassword": {
+            "type": "boolean"
+          },
+          "identityId": {
+            "type": "string"
+          },
+          "lastLoginAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "identityId",
+          "email",
+          "name",
+          "status",
+          "source",
+          "hasPassword",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "PortalUserListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PortalUserListResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "portalUsers": {
+            "items": {
+              "$ref": "#/components/schemas/PortalUserListItem"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "portalUsers"
+        ],
+        "type": "object"
+      },
       "PortalUserRequest": {
         "additionalProperties": true,
         "properties": {
@@ -4696,14 +4800,24 @@
             "readOnly": true,
             "type": "string"
           },
+          "clientId": {
+            "type": "string"
+          },
           "email": {
             "type": "string"
           },
           "name": {
             "type": "string"
+          },
+          "redirectUri": {
+            "type": "string"
+          },
+          "returnInviteLink": {
+            "type": "boolean"
           }
         },
         "required": [
+          "clientId",
           "email"
         ],
         "type": "object"
@@ -4723,15 +4837,18 @@
           "created": {
             "type": "boolean"
           },
+          "identityId": {
+            "type": "string"
+          },
+          "inviteUrl": {
+            "type": "string"
+          },
           "invited": {
             "type": "boolean"
-          },
-          "principalId": {
-            "type": "string"
           }
         },
         "required": [
-          "principalId",
+          "identityId",
           "created",
           "invited"
         ],
@@ -7565,6 +7682,10 @@
           "oidcMultiTenant": {
             "type": "boolean"
           },
+          "portalClientId": {
+            "description": "Empty string clears the portal binding",
+            "type": "string"
+          },
           "primaryClientId": {
             "description": "Client to link on mappings that are new or not yet linked to a primary client",
             "type": "string"
@@ -7665,6 +7786,9 @@
           },
           "pkceRequired": {
             "type": "boolean"
+          },
+          "portalClientId": {
+            "type": "string"
           },
           "postLogoutRedirectUris": {
             "items": {
@@ -14858,6 +14982,241 @@
         ]
       }
     },
+    "/api/portal-users": {
+      "get": {
+        "operationId": "listPortalUsers",
+        "parameters": [
+          {
+            "description": "Tenant client whose portal identities to list",
+            "explode": false,
+            "in": "query",
+            "name": "clientId",
+            "schema": {
+              "description": "Tenant client whose portal identities to list",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalUserListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List a client's portal identities",
+        "tags": [
+          "portal-users"
+        ]
+      },
+      "post": {
+        "operationId": "ensurePortalUser",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortalUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalUserResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Ensure a portal identity exists for (client, email) and deliver a set-password invite",
+        "tags": [
+          "portal-users"
+        ]
+      }
+    },
+    "/api/portal-users/{id}": {
+      "delete": {
+        "operationId": "deletePortalUser",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Tenant client whose portal identity to delete",
+            "explode": false,
+            "in": "query",
+            "name": "clientId",
+            "schema": {
+              "description": "Tenant client whose portal identity to delete",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusChangeResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete a portal identity (offboarding)",
+        "tags": [
+          "portal-users"
+        ]
+      }
+    },
+    "/api/portal-users/{id}/activate": {
+      "post": {
+        "operationId": "activatePortalUser",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortalUserClientBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusChangeResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Reactivate a suspended portal identity",
+        "tags": [
+          "portal-users"
+        ]
+      }
+    },
+    "/api/portal-users/{id}/deactivate": {
+      "post": {
+        "operationId": "deactivatePortalUser",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortalUserClientBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusChangeResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Suspend a portal identity (blocks portal login, keeps the row)",
+        "tags": [
+          "portal-users"
+        ]
+      }
+    },
     "/api/principals": {
       "get": {
         "operationId": "listPrincipals",
@@ -15130,47 +15489,6 @@
           }
         },
         "summary": "List USER principals holding the developer role",
-        "tags": [
-          "principals"
-        ]
-      }
-    },
-    "/api/principals/portal": {
-      "post": {
-        "operationId": "ensurePortalUser",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PortalUserRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PortalUserResponse"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorModel"
-                }
-              }
-            },
-            "description": "Error"
-          }
-        },
-        "summary": "Ensure a portal identity exists for an email (inert null-client user) and send a set-password invite",
         "tags": [
           "principals"
         ]

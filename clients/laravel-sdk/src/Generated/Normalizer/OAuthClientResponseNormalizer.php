@@ -141,6 +141,12 @@ class OAuthClientResponseNormalizer implements DenormalizerInterface, Normalizer
         elseif (\array_key_exists('pkceRequired', $data) && $data['pkceRequired'] === null) {
             $object->setPkceRequired(null);
         }
+        if (\array_key_exists('portalClientId', $data) && $data['portalClientId'] !== null) {
+            $object->setPortalClientId($data['portalClientId']);
+        }
+        elseif (\array_key_exists('portalClientId', $data) && $data['portalClientId'] === null) {
+            $object->setPortalClientId(null);
+        }
         if (\array_key_exists('postLogoutRedirectUris', $data) && $data['postLogoutRedirectUris'] !== null) {
             $values_5 = [];
             foreach ($data['postLogoutRedirectUris'] as $value_5) {
@@ -210,6 +216,9 @@ class OAuthClientResponseNormalizer implements DenormalizerInterface, Normalizer
         $dataArray['grantTypes'] = $values_4;
         $dataArray['id'] = $data->getId();
         $dataArray['pkceRequired'] = $data->getPkceRequired();
+        if ($data->isInitialized('portalClientId') && null !== $data->getPortalClientId()) {
+            $dataArray['portalClientId'] = $data->getPortalClientId();
+        }
         $values_5 = [];
         foreach ($data->getPostLogoutRedirectUris() as $value_5) {
             $values_5[] = $value_5;

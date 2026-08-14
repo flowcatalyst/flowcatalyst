@@ -55,17 +55,23 @@ class PortalUserResponseNormalizer implements DenormalizerInterface, NormalizerI
         elseif (\array_key_exists('created', $data) && $data['created'] === null) {
             $object->setCreated(null);
         }
+        if (\array_key_exists('identityId', $data) && $data['identityId'] !== null) {
+            $object->setIdentityId($data['identityId']);
+        }
+        elseif (\array_key_exists('identityId', $data) && $data['identityId'] === null) {
+            $object->setIdentityId(null);
+        }
+        if (\array_key_exists('inviteUrl', $data) && $data['inviteUrl'] !== null) {
+            $object->setInviteUrl($data['inviteUrl']);
+        }
+        elseif (\array_key_exists('inviteUrl', $data) && $data['inviteUrl'] === null) {
+            $object->setInviteUrl(null);
+        }
         if (\array_key_exists('invited', $data) && $data['invited'] !== null) {
             $object->setInvited($data['invited']);
         }
         elseif (\array_key_exists('invited', $data) && $data['invited'] === null) {
             $object->setInvited(null);
-        }
-        if (\array_key_exists('principalId', $data) && $data['principalId'] !== null) {
-            $object->setPrincipalId($data['principalId']);
-        }
-        elseif (\array_key_exists('principalId', $data) && $data['principalId'] === null) {
-            $object->setPrincipalId(null);
         }
         return $object;
     }
@@ -73,8 +79,11 @@ class PortalUserResponseNormalizer implements DenormalizerInterface, NormalizerI
     {
         $dataArray = [];
         $dataArray['created'] = $data->getCreated();
+        $dataArray['identityId'] = $data->getIdentityId();
+        if ($data->isInitialized('inviteUrl') && null !== $data->getInviteUrl()) {
+            $dataArray['inviteUrl'] = $data->getInviteUrl();
+        }
         $dataArray['invited'] = $data->getInvited();
-        $dataArray['principalId'] = $data->getPrincipalId();
         return $dataArray;
     }
     public function getSupportedTypes(?string $format = null): array

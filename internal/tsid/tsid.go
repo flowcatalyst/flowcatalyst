@@ -70,6 +70,9 @@ const (
 	MfaEmailPin
 	MfaTrustedDevice
 	ResetApprovalRequest
+	// PortalUser backs the portal-user linkage (iam_portal_users) — see
+	// docs/portal-identity-plan.md Phase 2.5.
+	PortalUser
 )
 
 // Prefix returns the 3-character prefix for this entity type. Mirrors
@@ -162,6 +165,8 @@ func (e EntityType) Prefix() string {
 		return "mtd"
 	case ResetApprovalRequest:
 		return "rar"
+	case PortalUser:
+		return "ptu"
 	default:
 		return "unk"
 	}

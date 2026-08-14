@@ -30,6 +30,7 @@ type CreateCommand struct {
 	AllowedEmailDomains []string `json:"allowedEmailDomains,omitempty"`
 	PrimaryClientID     *string  `json:"primaryClientId,omitempty"`
 	SyncRolesFromIDP    bool     `json:"syncRolesFromIdp"`
+	PortalClientID      *string  `json:"portalClientId,omitempty"`
 	AllowedRoleIDs      []string `json:"allowedRoleIds,omitempty"`
 }
 
@@ -167,6 +168,7 @@ func CreateIdentityProvider(deps Deps) usecaseop.TxOperation[CreateCommand, Crea
 			ip.OIDCMultiTenant = cmd.OIDCMultiTenant
 			ip.OIDCIssuerPattern = cmd.OIDCIssuerPattern
 			ip.SyncRolesFromIDP = cmd.SyncRolesFromIDP
+			ip.PortalClientID = cmd.PortalClientID
 			if cmd.AllowedRoleIDs != nil {
 				ip.AllowedRoleIDs = cmd.AllowedRoleIDs
 			}

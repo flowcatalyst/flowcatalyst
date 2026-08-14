@@ -65,6 +65,10 @@ class IdentityProviderResponse
      */
     protected $oidcMultiTenant;
     /**
+     * @var string|null
+     */
+    protected $portalClientId;
+    /**
      * @var bool|null
      */
     protected $syncRolesFromIdp;
@@ -298,6 +302,24 @@ class IdentityProviderResponse
     {
         $this->initialized['oidcMultiTenant'] = true;
         $this->oidcMultiTenant = $oidcMultiTenant;
+        return $this;
+    }
+    /**
+     * @return string|null
+     */
+    public function getPortalClientId(): ?string
+    {
+        return $this->portalClientId;
+    }
+    /**
+     * @param string|null $portalClientId
+     *
+     * @return self
+     */
+    public function setPortalClientId(?string $portalClientId): self
+    {
+        $this->initialized['portalClientId'] = true;
+        $this->portalClientId = $portalClientId;
         return $this;
     }
     /**

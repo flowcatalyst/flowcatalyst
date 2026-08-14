@@ -171,6 +171,7 @@ type IamPasswordResetToken struct {
 	Reset2fa       bool      `db:"reset_2fa"`
 	RequiresFactor bool      `db:"requires_factor"`
 	FactorAttempts int32     `db:"factor_attempts"`
+	RedirectUri    *string   `db:"redirect_uri"`
 }
 
 type IamPermission struct {
@@ -654,6 +655,7 @@ type OauthClient struct {
 	Active                    bool      `db:"active"`
 	CreatedAt                 time.Time `db:"created_at"`
 	UpdatedAt                 time.Time `db:"updated_at"`
+	PortalClientID            *string   `db:"portal_client_id"`
 }
 
 type OauthClientAllowedOrigin struct {
@@ -694,6 +696,7 @@ type OauthIdentityProvider struct {
 	CreatedAt           time.Time `db:"created_at"`
 	UpdatedAt           time.Time `db:"updated_at"`
 	SyncRolesFromIdp    bool      `db:"sync_roles_from_idp"`
+	PortalClientID      *string   `db:"portal_client_id"`
 }
 
 type OauthIdentityProviderAllowedDomain struct {
@@ -735,6 +738,7 @@ type OauthOidcLoginState struct {
 	InteractionUid           *string   `db:"interaction_uid"`
 	CreatedAt                time.Time `db:"created_at"`
 	ExpiresAt                time.Time `db:"expires_at"`
+	PortalClientID           *string   `db:"portal_client_id"`
 }
 
 type OauthOidcPayload struct {
@@ -747,6 +751,33 @@ type OauthOidcPayload struct {
 	ExpiresAt  *time.Time      `db:"expires_at"`
 	ConsumedAt *time.Time      `db:"consumed_at"`
 	CreatedAt  time.Time       `db:"created_at"`
+}
+
+type PortalIdentity struct {
+	ID           string     `db:"id"`
+	ClientID     string     `db:"client_id"`
+	Email        string     `db:"email"`
+	Name         *string    `db:"name"`
+	PasswordHash *string    `db:"password_hash"`
+	Status       string     `db:"status"`
+	Source       string     `db:"source"`
+	LastLoginAt  *time.Time `db:"last_login_at"`
+	CreatedAt    time.Time  `db:"created_at"`
+	UpdatedAt    time.Time  `db:"updated_at"`
+}
+
+type PortalLoginFlow struct {
+	ID                  string    `db:"id"`
+	OauthClientID       string    `db:"oauth_client_id"`
+	PortalClientID      string    `db:"portal_client_id"`
+	RedirectUri         string    `db:"redirect_uri"`
+	Scope               *string   `db:"scope"`
+	State               string    `db:"state"`
+	Nonce               *string   `db:"nonce"`
+	CodeChallenge       *string   `db:"code_challenge"`
+	CodeChallengeMethod *string   `db:"code_challenge_method"`
+	CreatedAt           time.Time `db:"created_at"`
+	ExpiresAt           time.Time `db:"expires_at"`
 }
 
 type TntAnchorDomain struct {

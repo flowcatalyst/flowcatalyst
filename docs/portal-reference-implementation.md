@@ -1,102 +1,135 @@
 # Portal reference implementation: what's needed
 
-Status: SDK groundwork DONE 2026-08-13 · reference app NOT STARTED
+Status: portal identity plane (Phase 2.5 v2) BUILT 2026-08-13 · reference app NOT STARTED
 Parent: docs/portal-identity-plan.md (the decision + platform surface)
 
-The platform side (Phases 1+2) and the SDK groundwork are done. This is the
+Portal end-users are a SEPARATE identity population from platform users: one
+`portal_identities` row per (client, email), platform-implemented, with
+initiation endpoints independent of the employee auth surface. This is the
 punch-list for building the first portal on the Laravel SDK.
 
 ## Already available (nothing to build)
 
-Platform (merged to main):
+Platform:
 
-- Provider-direct login: `GET /oauth/authorize?...&provider=idp_…` chains into
-  the OIDC bridge for the named IdP — no email-domain mapping involved.
-- Null-client JIT provisioning: first successful provider-direct login creates
-  the inert principal (`scope=CLIENT, client_id=NULL`, no roles, no access).
-- Ensure/invite: `POST /api/principals/portal` `{email, name?}` →
-  `{principalId, created}` — idempotent; sends the invite (password-reset)
-  email while the user has no way to sign in yet. Caller: the portal backend's
-  service account (client_credentials); gated on user-admin permission.
-- Trust binding: `identity_providers.allowed_email_domains` (REQUIRED for
-  multi-tenant IdPs — fail closed).
+- **`GET /portal/authorize`** — the portal plane's OAuth entry (standard
+  authorization-code + PKCE params). Serves ONLY portal-flagged OAuth
+  clients; never consults `fc_session` (every login is a fresh
+  authentication); parks the request and sends the user to the platform's
+  portal login page.
+- **Portal login page** (platform SPA, `/portal/login`): email-first —
+  `POST /portal/auth/check-domain` routes a domain owned by an IdP *bound to
+  this client's portal* to SSO, everything else to password;
+  `POST /portal/auth/login` verifies the portal identity's password and
+  returns the code redirect. Uniform 401s (no account enumeration),
+  per-(client, email) rate limiting, no cookies.
+- **Portal SSO** — `GET /portal/auth/oidc/login` starts the org-IdP
+  handshake through the shared OIDC bridge; the callback enforces the IdP's
+  allowed email domains, JIT-creates the portal identity on first login
+  (source JIT; suspended identities are refused, never reactivated), issues
+  the code, and never writes `fc_session`.
+- **Shared `POST /oauth/token`** — the portal app redeems its code as usual.
+  Portal subjects (`ptu_…`) get an id_token minted from the portal identity
+  (sub = identity id, email, name, EMPTY roles claim), an authority-free
+  access token, and **never a refresh token** — the portal app's own session
+  is the session.
+- **Admin API `/api/portal-users`** (client-delegable: anchor, or the
+  `platform:portal-administrator` role + access to the client — see
+  Platform setup below):
+  - `POST` `{clientId, email, name?, returnInviteLink?, redirectUri?}` →
+    `{identityId, created, invited, inviteUrl?}` — idempotent ensure +
+    set-password invite (re-mints while the identity has no password).
+    `returnInviteLink` hands back the 72h link so the portal sends its own
+    branded email (the URL is a live credential — never log it);
+    `redirectUri` (exact-match against the client's portal OAuth clients'
+    registered URIs) is followed after set-password, landing the user back
+    in the portal's login.
+  - `GET ?clientId=` — list (email, name, status, source, hasPassword,
+    lastLoginAt).
+  - `POST {id}/deactivate` / `{id}/activate` `{clientId}` — suspension.
+  - `DELETE {id}?clientId=` — offboarding: the identity row is simply
+    deleted. Nothing else references it.
+- **Set-password page** — the shared platform reset page; portal invite
+  tokens branch to the portal identity (password policy enforced, no 2FA
+  gate — deferred for portal users) and then follow the invite's
+  `redirectUri`.
 
-SDKs (regenerated 2026-08-13, pending release):
-
-- Generated clients now expose the ensure/invite endpoint:
-  `ensurePortalUser(PortalUserRequest)` (Laravel `Generated/Client.php`,
-  TS `sdk.gen.ts`).
-- Laravel login flow passes provider-direct params: `?provider=idp_…` on the
-  login route (or `FLOWCATALYST_OIDC_PROVIDER` /
-  `flowcatalyst.oidc.provider` as the app-wide default), plus `?prompt=`
-  passthrough.
-- Native-login bridge (`native_login` opt-in): DatabaseOidcUserHandler upserts
-  a local user from the id_token and starts a native Laravel session.
+SDKs (regenerated, pending release): `ensurePortalUser`, `listPortalUsers`,
+`activate/deactivatePortalUser`, `deletePortalUser` in both generated
+clients; the Laravel login flow's `?provider=`/`?prompt=` passthrough remains
+for non-portal OIDC apps (portals point at `/portal/authorize` instead).
 
 ## Platform setup (per portal deployment, no code)
 
-1. An OAuth client for the portal: grant `authorization_code`, redirect URI
-   `https://portal.example.com/flowcatalyst/callback`, bound to the owner
-   client.
-2. A service account for the portal backend with the user-admin permission
-   (for ensure/invite) — scoped, not anchor-wide, where possible.
-3. One `identity_providers` row per federated customer org, with
-   `allowed_email_domains` set (mandatory for multi-tenant IdPs like Entra
-   common).
+1. An OAuth client for the portal: type PUBLIC (PKCE), grant
+   `authorization_code`, redirect URI
+   `https://portal.example.com/flowcatalyst/callback`, and **Portal owner
+   client** set to the operating client (this is what admits it to
+   `/portal/authorize`). Configurable in the dashboard's OAuth client editor.
+2. A service account for the portal backend holding the seeded
+   **`platform:portal-administrator`** role (permissions
+   `platform:iam:portal-user:view` + `:manage`) — that role is the entire
+   authority `/api/portal-users` needs. The same role given to a client
+   administrator lets them manage their client's portal users in the
+   platform UI (Client Administration → Portal Users); their client scope
+   confines them to their own client. Platform admins (anchor) pass
+   everywhere without the role.
+3. One `identity_providers` row per federated customer org with its **portal
+   binding** (`portalClientId`) set to the operating client and its email
+   domains claimed (mappings). A portal-bound IdP serves ONLY that client's
+   portal flows.
 
 ## What the portal app builds
 
-1. **Org tables** — `organizations` (carry an external identifier for future
-   promotion) and `org_memberships` (principal id as the join key ­— NOT
-   email — plus portal role and source MANUAL|INVITE|IDP_SYNC).
-2. **Membership gate** — a custom `OidcUserHandler` wrapping the database
-   handler: on callback, resolve membership by the id_token `sub`; NO
-   membership → refuse the login (do not create a session). This gate is the
-   portal's entire authorization boundary; the platform will happily
-   authenticate humans who mean nothing to this portal (e.g. a dashboard user
-   who wandered in — see gotchas).
-3. **Login UX** — per-org entry points that hit the SDK login route with
-   `?provider=idp_…` for federated orgs; plain login (no provider) for
-   password/invite users.
-4. **Invite flow** — org-admin enters an email → portal calls
-   `ensurePortalUser` → stores `{principalId, org, role}` membership. Safe to
-   repeat (idempotent; re-invites while the user can't sign in).
-5. **Delegated admin** — org-admin membership edge scopes all management to
-   that org. One level, no graph walks.
-6. **Later phase** — multi-org switcher; org-IdP self-service (portal admin
-   manages the `identity_providers` row via the platform API).
+1. **Org tables** — `organizations` (carry an external identifier) and
+   `org_memberships` (portal identity id — the id_token `sub` — as the join
+   key, plus portal role and source MANUAL|INVITE|IDP_SYNC).
+2. **Login** — point the OAuth flow at `GET /portal/authorize` (not
+   /oauth/authorize). On callback, exchange the code, authenticate the user
+   from the id_token (`sub` = portal identity id), resolve membership in
+   your own tables; no membership → refuse (SSO JIT users may arrive before
+   any membership exists — decide between "request access" UX or
+   pre-created memberships via the invite flow).
+3. **Invite flow** — org-admin enters an email → call `ensurePortalUser`
+   with `returnInviteLink: true` and a `redirectUri` pointing at your OAuth
+   entry → send your own branded email around the returned `inviteUrl` →
+   store `{identityId, org, role}` membership. Idempotent; safe to repeat.
+4. **Offboarding** — remove the membership + kill your session (immediate),
+   then `DELETE /api/portal-users/{identityId}?clientId=…` so the identity
+   is gone (an outstanding authorization code dies at redemption; there are
+   no refresh tokens). Suspension: the deactivate endpoint.
+5. **Delegated admin** — org-admin membership edge scopes management to that
+   org. One level, no graph walks.
 
 ## Deployment rules
 
-- **Sibling subdomain, never the platform's hostname.** Same origin would let
-  portal XSS drive the platform BFF with a co-resident `fc_session`, and the
-  platform SPA owns `/`, `/oauth/*`, `/auth/*`, `/api/*`, `/bff/*`. Same
-  registrable domain is fine — `fc_session` is host-only (no Domain
-  attribute).
-- Portal session is the portal's own Laravel cookie — name it distinctly
-  (`SESSION_COOKIE=portal_session`); it never interacts with `fc_session`.
+- **Sibling subdomain, never the platform's hostname** (origin isolation;
+  the platform SPA owns `/`). Same registrable domain is fine.
+- Portal session is the portal's own cookie; the portal plane sets no
+  cookies at all on the platform side.
 
 ## Gotchas (verified in code)
 
-- **SSO precedence:** `/oauth/authorize` reuses a fresh `fc_session` BEFORE
-  honouring `provider=` (authorize.go:133 vs :162). A browser with a live
-  platform session skips the org IdP entirely. Send `prompt=login` with
-  `provider=` when a fresh IdP handshake is required.
-- **Dashboard users pass authentication.** A platform employee visiting the
-  portal authenticates fine and reaches the callback; only the membership
-  gate turns them away. Design the "no membership" page accordingly.
-- **No role sync on provider-direct logins** — deliberate. Portal roles live
-  in `org_memberships`; upstream group relay is deferred (Phase 3).
-- **Interactive tokens are authority-free** (`token_use=identity`): the portal
-  cannot call platform APIs with the user's access token. All platform calls
-  go through the portal's service account.
-- **One human = one principal** (global email uniqueness): the same email may
-  already exist as a direct platform user; ensure/invite returns that
-  principal (`created: false`) rather than a new one. Membership rows attach
-  portal meaning to it; its platform authority is untouched.
+- **No SSO reuse, by design**: a platform employee's `fc_session` is
+  invisible to `/portal/authorize` — there is no silent SSO into portals and
+  no `prompt=login` dance. Every portal login authenticates fresh.
+- **Two planes, two identities**: the same email as a platform employee and
+  as a portal user are unrelated records with independent credentials.
+  Deleting one never touches the other.
+- **Suspension bites at the next code issuance/redemption** (portal logins
+  are short chains; there are no refresh tokens). Killing the portal's own
+  session immediately is the portal's job.
+- **JIT never reactivates**: a suspended identity attempting SSO gets
+  access_denied; only the admin API (ensure/activate) reactivates.
+- **Portal-bound IdPs are invisible to the employee plane's flows** only by
+  configuration — don't ALSO create employee email-domain-mappings routing
+  general logins to a portal IdP.
+- **The portal cannot call platform APIs with the user's tokens** (identity
+  tokens are authority-free). All platform calls use the portal's service
+  account.
 
 ## Prerequisite before starting
 
 Cut SDK releases so the reference app consumes the new surface: Laravel
-(> 0.8.20) and TS (> 0.9.11). This regen also carries the previously-pending
+(> 0.8.20) and TS (> 0.9.11). The regen also carries the previously-pending
 clientId removal and Time-schema (`{}` → string) changes.

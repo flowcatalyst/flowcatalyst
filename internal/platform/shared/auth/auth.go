@@ -110,6 +110,9 @@ const (
 	permServiceAccountUpdate = "platform:iam:service-account:update"
 	permServiceAccountDelete = "platform:iam:service-account:delete"
 	// User / Principal (iam)
+	permPortalUserView   = "platform:iam:portal-user:view"
+	permPortalUserManage = "platform:iam:portal-user:manage"
+
 	permUserView        = "platform:iam:user:view"
 	permUserCreate      = "platform:iam:user:create"
 	permUserUpdate      = "platform:iam:user:update"
@@ -630,6 +633,42 @@ func CanUpdatePrincipals(a *AuthContext) error { return requirePermission(a, per
 func CanDeletePrincipals(a *AuthContext) error { return requirePermission(a, permUserDelete) }
 func CanWritePrincipals(a *AuthContext) error {
 	return requireAny(a, permUserCreate, permUserUpdate, permUserDelete)
+}
+
+// ── Portal-user permissions (docs/portal-identity-plan.md Phase 2.5 v2) ──
+// The portal identity plane is CLIENT-delegable: anchors pass everywhere;
+// a client-scoped caller (a client administrator signed into the platform,
+// or the portal application's confined service account) needs access to the
+// target client AND the portal-user permission — so a client manages its
+// own portal population and nobody else's.
+
+// CanReadPortalUsers authorizes listing a client's portal identities.
+func CanReadPortalUsers(a *AuthContext, clientID string) error {
+	if a == nil {
+		return usecase.Authorization("UNAUTHENTICATED", "authentication required")
+	}
+	if a.IsAnchor() {
+		return nil
+	}
+	if !a.CanAccessClient(clientID) {
+		return usecase.Authorization("SCOPE_FORBIDDEN", "no access to this client")
+	}
+	return requireAny(a, permPortalUserView, permPortalUserManage)
+}
+
+// CanManagePortalUsers authorizes ensure/invite, suspension, and deletion of
+// a client's portal identities.
+func CanManagePortalUsers(a *AuthContext, clientID string) error {
+	if a == nil {
+		return usecase.Authorization("UNAUTHENTICATED", "authentication required")
+	}
+	if a.IsAnchor() {
+		return nil
+	}
+	if !a.CanAccessClient(clientID) {
+		return usecase.Authorization("SCOPE_FORBIDDEN", "no access to this client")
+	}
+	return requirePermission(a, permPortalUserManage)
 }
 
 // ── Identity provider permissions ────────────────────────────────────────

@@ -42,11 +42,12 @@ func registerPublicRoutes(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *use
 	// is best-effort — a send failure never fails the request (matching Rust).
 	// emailSvc is the shared mailer constructed with the 2FA services.
 	passwordresetapi.RegisterRoutes(r, &passwordresetapi.State{
-		Principals:      repos.principalRepo,
-		Tokens:          repos.resetTokenRepo,
-		UoW:             uow,
-		ExternalBaseURL: cfg.JWTIssuer,
-		Emailer:         passwordresetapi.NewEmailer(svcs.emailSvc, repos.platformConfigRepo),
+		Principals:       repos.principalRepo,
+		PortalIdentities: repos.portalIdentityRepo,
+		Tokens:           repos.resetTokenRepo,
+		UoW:              uow,
+		ExternalBaseURL:  cfg.JWTIssuer,
+		Emailer:          passwordresetapi.NewEmailer(svcs.emailSvc, repos.platformConfigRepo),
 		// Post-reset hygiene: refresh tokens minted under the old
 		// credential are revoked (matches change-password).
 		RefreshTokens: grantstore.NewRefreshTokenRepository(pool),

@@ -188,6 +188,10 @@ const (
 	// Resource-level enforcement (self vs admin-on-behalf-of) lives in the
 	// use case's Authorize phase, not here.
 	permDeveloperAPICredentialManage = "platform:developer:api-credential:manage"
+
+	// Portal identity plane (docs/portal-identity-plan.md Phase 2.5 v2).
+	permPortalUserView   = "platform:iam:portal-user:view"
+	permPortalUserManage = "platform:iam:portal-user:manage"
 )
 
 // Application-service permissions — scoped to a single application via SDK.

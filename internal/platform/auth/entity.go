@@ -68,11 +68,16 @@ type OAuthClient struct {
 	ApplicationIDs []string `json:"applicationIds"`
 	// PKCERequired gates whether /oauth/authorize demands a code_challenge.
 	// Maps to oauth_clients.pkce_required (DEFAULT TRUE).
-	PKCERequired bool      `json:"pkceRequired"`
-	Active       bool      `json:"active"`
-	PrincipalID  *string   `json:"principalId,omitempty"` // owning principal (for token-issued-on-behalf claims)
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	PKCERequired bool    `json:"pkceRequired"`
+	Active       bool    `json:"active"`
+	PrincipalID  *string `json:"principalId,omitempty"` // owning principal (for token-issued-on-behalf claims)
+	// PortalClientID, when set, marks this OAuth client as a portal entry
+	// point owned by that tenant client: /oauth/authorize then requires an
+	// ACTIVE iam_portal_users linkage (principal, PortalClientID) before
+	// issuing a code. NULL = ordinary first-party client, no gate.
+	PortalClientID *string   `json:"portalClientId,omitempty"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
 // IDStr satisfies usecase.HasID.

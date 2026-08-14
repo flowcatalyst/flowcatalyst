@@ -88,7 +88,7 @@ func (q *Queries) IdentityProviderDomainsClear(ctx context.Context, identityProv
 const identityProviderFindAll = `-- name: IdentityProviderFindAll :many
 SELECT id, code, name, type, oidc_issuer_url, oidc_client_id,
        oidc_client_secret_ref, oidc_multi_tenant, oidc_issuer_pattern,
-       created_at, updated_at, sync_roles_from_idp
+       created_at, updated_at, sync_roles_from_idp, portal_client_id
 FROM oauth_identity_providers
 ORDER BY code
 `
@@ -115,6 +115,7 @@ func (q *Queries) IdentityProviderFindAll(ctx context.Context) ([]OauthIdentityP
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.SyncRolesFromIdp,
+			&i.PortalClientID,
 		); err != nil {
 			return nil, err
 		}
@@ -129,7 +130,7 @@ func (q *Queries) IdentityProviderFindAll(ctx context.Context) ([]OauthIdentityP
 const identityProviderFindByCode = `-- name: IdentityProviderFindByCode :one
 SELECT id, code, name, type, oidc_issuer_url, oidc_client_id,
        oidc_client_secret_ref, oidc_multi_tenant, oidc_issuer_pattern,
-       created_at, updated_at, sync_roles_from_idp
+       created_at, updated_at, sync_roles_from_idp, portal_client_id
 FROM oauth_identity_providers
 WHERE code = $1
 `
@@ -150,6 +151,7 @@ func (q *Queries) IdentityProviderFindByCode(ctx context.Context, code string) (
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.SyncRolesFromIdp,
+		&i.PortalClientID,
 	)
 	return i, err
 }
@@ -158,7 +160,7 @@ const identityProviderFindByID = `-- name: IdentityProviderFindByID :one
 
 SELECT id, code, name, type, oidc_issuer_url, oidc_client_id,
        oidc_client_secret_ref, oidc_multi_tenant, oidc_issuer_pattern,
-       created_at, updated_at, sync_roles_from_idp
+       created_at, updated_at, sync_roles_from_idp, portal_client_id
 FROM oauth_identity_providers
 WHERE id = $1
 `
@@ -186,6 +188,7 @@ func (q *Queries) IdentityProviderFindByID(ctx context.Context, id string) (Oaut
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.SyncRolesFromIdp,
+		&i.PortalClientID,
 	)
 	return i, err
 }
@@ -226,8 +229,8 @@ const identityProviderUpsert = `-- name: IdentityProviderUpsert :exec
 INSERT INTO oauth_identity_providers
     (id, code, name, type, oidc_issuer_url, oidc_client_id,
      oidc_client_secret_ref, oidc_multi_tenant, oidc_issuer_pattern,
-     sync_roles_from_idp, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     sync_roles_from_idp, created_at, updated_at, portal_client_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 ON CONFLICT (id) DO UPDATE SET
     code = EXCLUDED.code,
     name = EXCLUDED.name,
@@ -237,7 +240,8 @@ ON CONFLICT (id) DO UPDATE SET
     oidc_multi_tenant = EXCLUDED.oidc_multi_tenant,
     oidc_issuer_pattern = EXCLUDED.oidc_issuer_pattern,
     sync_roles_from_idp = EXCLUDED.sync_roles_from_idp,
-    updated_at = EXCLUDED.updated_at
+    updated_at = EXCLUDED.updated_at,
+    portal_client_id = EXCLUDED.portal_client_id
 `
 
 type IdentityProviderUpsertParams struct {
@@ -253,6 +257,7 @@ type IdentityProviderUpsertParams struct {
 	SyncRolesFromIdp    bool      `db:"sync_roles_from_idp"`
 	CreatedAt           time.Time `db:"created_at"`
 	UpdatedAt           time.Time `db:"updated_at"`
+	PortalClientID      *string   `db:"portal_client_id"`
 }
 
 func (q *Queries) IdentityProviderUpsert(ctx context.Context, arg IdentityProviderUpsertParams) error {
@@ -269,6 +274,7 @@ func (q *Queries) IdentityProviderUpsert(ctx context.Context, arg IdentityProvid
 		arg.SyncRolesFromIdp,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.PortalClientID,
 	)
 	return err
 }

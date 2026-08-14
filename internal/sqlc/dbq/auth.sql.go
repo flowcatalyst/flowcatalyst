@@ -435,7 +435,7 @@ func (q *Queries) OAuthClientDelete(ctx context.Context, id string) error {
 const oAuthClientFindAll = `-- name: OAuthClientFindAll :many
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
-       active, created_at, updated_at
+       active, created_at, updated_at, portal_client_id
 FROM oauth_clients
 ORDER BY client_name
 `
@@ -461,6 +461,7 @@ func (q *Queries) OAuthClientFindAll(ctx context.Context) ([]OauthClient, error)
 			&i.Active,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.PortalClientID,
 		); err != nil {
 			return nil, err
 		}
@@ -475,7 +476,7 @@ func (q *Queries) OAuthClientFindAll(ctx context.Context) ([]OauthClient, error)
 const oAuthClientFindByClientID = `-- name: OAuthClientFindByClientID :one
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
-       active, created_at, updated_at
+       active, created_at, updated_at, portal_client_id
 FROM oauth_clients
 WHERE client_id = $1
 `
@@ -495,6 +496,7 @@ func (q *Queries) OAuthClientFindByClientID(ctx context.Context, clientID string
 		&i.Active,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PortalClientID,
 	)
 	return i, err
 }
@@ -504,7 +506,7 @@ const oAuthClientFindByID = `-- name: OAuthClientFindByID :one
 
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
-       active, created_at, updated_at
+       active, created_at, updated_at, portal_client_id
 FROM oauth_clients
 WHERE id = $1
 `
@@ -533,8 +535,53 @@ func (q *Queries) OAuthClientFindByID(ctx context.Context, id string) (OauthClie
 		&i.Active,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PortalClientID,
 	)
 	return i, err
+}
+
+const oAuthClientFindByPortalClient = `-- name: OAuthClientFindByPortalClient :many
+SELECT id, client_id, client_name, client_type, client_secret_ref,
+       default_scopes, pkce_required, service_account_principal_id,
+       active, created_at, updated_at, portal_client_id
+FROM oauth_clients
+WHERE portal_client_id = $1
+ORDER BY client_name
+`
+
+// Portal-flagged OAuth clients owned by a tenant client — consulted when
+// validating a portal invite's post-set-password redirectUri.
+func (q *Queries) OAuthClientFindByPortalClient(ctx context.Context, portalClientID *string) ([]OauthClient, error) {
+	rows, err := q.db.Query(ctx, oAuthClientFindByPortalClient, portalClientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []OauthClient{}
+	for rows.Next() {
+		var i OauthClient
+		if err := rows.Scan(
+			&i.ID,
+			&i.ClientID,
+			&i.ClientName,
+			&i.ClientType,
+			&i.ClientSecretRef,
+			&i.DefaultScopes,
+			&i.PkceRequired,
+			&i.ServiceAccountPrincipalID,
+			&i.Active,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.PortalClientID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const oAuthClientGrantTypeInsert = `-- name: OAuthClientGrantTypeInsert :exec
@@ -691,8 +738,8 @@ const oAuthClientUpsert = `-- name: OAuthClientUpsert :exec
 INSERT INTO oauth_clients
     (id, client_id, client_name, client_type, client_secret_ref,
      default_scopes, pkce_required, service_account_principal_id,
-     active, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+     active, created_at, updated_at, portal_client_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 ON CONFLICT (id) DO UPDATE SET
     client_id = EXCLUDED.client_id,
     client_name = EXCLUDED.client_name,
@@ -702,7 +749,8 @@ ON CONFLICT (id) DO UPDATE SET
     pkce_required = EXCLUDED.pkce_required,
     service_account_principal_id = EXCLUDED.service_account_principal_id,
     active = EXCLUDED.active,
-    updated_at = EXCLUDED.updated_at
+    updated_at = EXCLUDED.updated_at,
+    portal_client_id = EXCLUDED.portal_client_id
 `
 
 type OAuthClientUpsertParams struct {
@@ -717,6 +765,7 @@ type OAuthClientUpsertParams struct {
 	Active                    bool      `db:"active"`
 	CreatedAt                 time.Time `db:"created_at"`
 	UpdatedAt                 time.Time `db:"updated_at"`
+	PortalClientID            *string   `db:"portal_client_id"`
 }
 
 func (q *Queries) OAuthClientUpsert(ctx context.Context, arg OAuthClientUpsertParams) error {
@@ -732,6 +781,7 @@ func (q *Queries) OAuthClientUpsert(ctx context.Context, arg OAuthClientUpsertPa
 		arg.Active,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.PortalClientID,
 	)
 	return err
 }

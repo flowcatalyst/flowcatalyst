@@ -77,6 +77,7 @@ func (r *Repository) Persist(ctx context.Context, ip *IdentityProvider, tx *usec
 		OidcMultiTenant:     ip.OIDCMultiTenant,
 		OidcIssuerPattern:   ip.OIDCIssuerPattern,
 		SyncRolesFromIdp:    ip.SyncRolesFromIDP,
+		PortalClientID:      ip.PortalClientID,
 		CreatedAt:           ip.CreatedAt,
 		UpdatedAt:           time.Now().UTC(),
 	}); err != nil {
@@ -173,6 +174,7 @@ func rowToIDP(row dbq.OauthIdentityProvider) *IdentityProvider {
 		OIDCMultiTenant:     row.OidcMultiTenant,
 		OIDCIssuerPattern:   row.OidcIssuerPattern,
 		SyncRolesFromIDP:    row.SyncRolesFromIdp,
+		PortalClientID:      row.PortalClientID,
 		CreatedAt:           row.CreatedAt,
 		UpdatedAt:           row.UpdatedAt,
 		AllowedEmailDomains: []string{},

@@ -16,8 +16,11 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/oauthapi"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalauth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalidentity"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	principalops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
@@ -74,6 +77,24 @@ type LoginEndpoint struct {
 	// some browsers treat a Secure and a non-Secure cookie of the same name
 	// as distinct, leaving the real session cookie standing after "logout".
 	CookieSecure bool
+
+	// Portal wires the PORTAL-plane SSO reuse of this bridge
+	// (docs/portal-identity-plan.md Phase 2.5 v2): /portal/auth/oidc/login
+	// starts a handshake whose state carries PortalClientID; the shared
+	// callback then routes into the portal sink (JIT portal identity + code
+	// issuance, no fc_session). Optional — nil disables the portal routes
+	// and the callback refuses portal-flagged states (fail closed).
+	Portal *PortalBridge
+}
+
+// PortalBridge bundles the portal plane's deps for the bridge's SSO reuse.
+type PortalBridge struct {
+	Flows      *portalauth.FlowRepo
+	Identities *portalidentity.Repository
+	Clients    *client.Repository
+	// IssueCode is portalauth.State.IssueCode — mints the chained
+	// authorization code with a portal-identity subject.
+	IssueCode func(r *http.Request, flow *portalauth.LoginFlow, subjectID string) (string, error)
 }
 
 // NewLoginEndpoint wires the bridge HTTP handlers. The mappings repo
@@ -426,6 +447,7 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	var claims struct {
 		Email             string   `json:"email"`
+		Name              string   `json:"name"`
 		PreferredUsername string   `json:"preferred_username"`
 		Tid               string   `json:"tid"`
 		Nonce             string   `json:"nonce"`
@@ -494,6 +516,13 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+	}
+
+	// Portal-plane handshake → the portal sink: JIT portal identity + code
+	// issuance for the flow's client, no principal, no fc_session.
+	if loginState.PortalClientID != nil && *loginState.PortalClientID != "" {
+		e.handlePortalCallback(w, r, loginState, email, claims.Name)
+		return
 	}
 
 	// Resolve or create the FlowCatalyst principal. Drop-in parity with
@@ -824,4 +853,162 @@ func randString(n int) string {
 func pkceChallenge(verifier string) string {
 	sum := sha256.Sum256([]byte(verifier))
 	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+// ── portal plane SSO (docs/portal-identity-plan.md Phase 2.5 v2) ─────────
+
+// RegisterPortalRoutes mounts the portal plane's SSO start. The callback is
+// the shared /auth/oidc/callback (it is the redirect URI registered at every
+// IdP); portal states are routed by their PortalClientID marker.
+func (e *LoginEndpoint) RegisterPortalRoutes(r chi.Router) {
+	r.Get("/portal/auth/oidc/login", e.handlePortalOIDCLogin)
+}
+
+// handlePortalOIDCLogin starts a PORTAL-plane IdP handshake: it consumes the
+// portal login flow (single-use), requires the IdP to be bound to the flow's
+// client (fail closed — an employee-plane IdP can never serve a portal), and
+// parks the flow's OAuth chain on a portal-flagged OIDC state.
+func (e *LoginEndpoint) handlePortalOIDCLogin(w http.ResponseWriter, r *http.Request) {
+	if e.Portal == nil {
+		httperror.Write(w, usecase.Internal("PORTAL_DISABLED", "portal login is not configured", nil))
+		return
+	}
+	q := r.URL.Query()
+	flowID := q.Get("flow")
+	providerID := q.Get("provider_id")
+	if flowID == "" || providerID == "" {
+		httperror.Write(w, httperror.BadRequest("MISSING_PARAM", "flow and provider_id are required"))
+		return
+	}
+	flow, err := e.Portal.Flows.Consume(r.Context(), flowID)
+	if err != nil {
+		httperror.Write(w, usecase.Internal("FLOW", "flow lookup failed", err))
+		return
+	}
+	if flow == nil {
+		httperror.Write(w, httperror.BadRequest("FLOW_EXPIRED", "The login flow has expired — return to the portal and try again"))
+		return
+	}
+
+	oidcClient, idp, err := e.bridge.ResolveByProviderID(r.Context(), providerID)
+	if err != nil {
+		httperror.Write(w, usecase.Internal("OIDC_RESOLVE_FAILED",
+			"OIDC could not be initialised for this provider", err))
+		return
+	}
+	if idp.PortalClientID == nil || *idp.PortalClientID != flow.PortalClientID {
+		httperror.Write(w, usecase.Authorization("IDP_NOT_PORTAL_BOUND",
+			"this identity provider is not available to this portal"))
+		return
+	}
+
+	state := randString(32)
+	nonce := randString(32)
+	verifier := randString(64)
+	challenge := pkceChallenge(verifier)
+	loginState := NewLoginState(state, "", idp.ID, "", nonce, verifier)
+	loginState.PortalClientID = &flow.PortalClientID
+	loginState.OAuthClientID = &flow.OAuthClientID
+	loginState.OAuthRedirectURI = &flow.RedirectURI
+	loginState.OAuthScope = flow.Scope
+	loginState.OAuthState = &flow.State
+	loginState.OAuthCodeChallenge = flow.CodeChallenge
+	loginState.OAuthCodeChallengeMethod = flow.CodeChallengeMethod
+	loginState.OAuthNonce = flow.Nonce
+	if err := e.states.Insert(r.Context(), loginState); err != nil {
+		httperror.Write(w, usecase.Internal("OIDC_STATE", "persist state failed", err))
+		return
+	}
+
+	redirectURI := e.absoluteCallbackURL(r)
+	authURL := oidcClient.AuthCodeURL(state, redirectURI) +
+		"&nonce=" + url.QueryEscape(nonce) +
+		"&code_challenge=" + url.QueryEscape(challenge) +
+		"&code_challenge_method=S256"
+	http.Redirect(w, r, authURL, http.StatusFound) //nolint:gosec // G710: authURL is the upstream IdP authorize URL resolved from server config, not user input
+}
+
+// handlePortalCallback is the portal sink for a verified IdP callback: the
+// domain trust binding has already been enforced (portal states are
+// provider-direct, so the IdP's allowed_email_domains check ran). It
+// JIT-creates the portal identity for the flow's client on first login,
+// refuses suspended identities, mints the chained code with the
+// portal-identity subject, and redirects — never writing fc_session.
+func (e *LoginEndpoint) handlePortalCallback(w http.ResponseWriter, r *http.Request, loginState *OIDCLoginState, email, name string) {
+	if e.Portal == nil {
+		httperror.Write(w, usecase.Internal("PORTAL_DISABLED", "portal login is not configured", nil))
+		return
+	}
+	if loginState.OAuthClientID == nil || loginState.OAuthRedirectURI == nil || loginState.OAuthState == nil {
+		httperror.Write(w, httperror.BadRequest("PORTAL_STATE_INVALID", "portal login state is missing its OAuth chain"))
+		return
+	}
+	portalClientID := *loginState.PortalClientID
+
+	ident, err := e.Portal.Identities.FindByClientAndEmail(r.Context(), portalClientID, email)
+	if err != nil {
+		httperror.Write(w, usecase.Internal("IDENTITY", "identity lookup failed", err))
+		return
+	}
+	switch {
+	case ident == nil:
+		// First login: JIT-create via the Ensure operation (event + audit).
+		// System actor — the human just authenticated at their org's IdP.
+		var namePtr *string
+		if strings.TrimSpace(name) != "" {
+			trimmed := strings.TrimSpace(name)
+			namePtr = &trimmed
+		}
+		ev, eerr := usecaseop.Run(r.Context(), e.uow,
+			portalidentity.Ensure(e.Portal.Identities, e.Portal.Clients),
+			portalidentity.EnsureCommand{
+				ClientID: portalClientID, Email: email, Name: namePtr,
+				Source: string(portalidentity.SourceJIT),
+			}, usecase.NewExecutionContext(""))
+		if eerr != nil {
+			httperror.Write(w, eerr)
+			return
+		}
+		ident, err = e.Portal.Identities.FindByID(r.Context(), ev.IdentityID)
+		if err != nil || ident == nil {
+			httperror.Write(w, usecase.Internal("IDENTITY", "post-create identity lookup failed", err))
+			return
+		}
+	case ident.Status != portalidentity.StatusActive:
+		// Suspended stays suspended — an SSO login must never self-reactivate.
+		e.portalErrorRedirect(w, r, loginState, "access_denied", "This account is suspended for this portal")
+		return
+	}
+
+	flow := &portalauth.LoginFlow{
+		OAuthClientID:       *loginState.OAuthClientID,
+		PortalClientID:      portalClientID,
+		RedirectURI:         *loginState.OAuthRedirectURI,
+		Scope:               loginState.OAuthScope,
+		State:               *loginState.OAuthState,
+		Nonce:               loginState.OAuthNonce,
+		CodeChallenge:       loginState.OAuthCodeChallenge,
+		CodeChallengeMethod: loginState.OAuthCodeChallengeMethod,
+	}
+	redirectURL, err := e.Portal.IssueCode(r, flow, ident.ID)
+	if err != nil {
+		httperror.Write(w, usecase.Internal("CODE", "could not issue the authorization code", err))
+		return
+	}
+	_ = e.Portal.Identities.TouchLastLogin(r.Context(), ident.ID)
+	http.Redirect(w, r, redirectURL, http.StatusFound) //nolint:gosec // G710: redirect target is built from the OAuth redirect_uri validated at /portal/authorize
+}
+
+// portalErrorRedirect bounces the user-agent back to the portal app with
+// OAuth error params (the redirect_uri was validated at /portal/authorize).
+func (e *LoginEndpoint) portalErrorRedirect(w http.ResponseWriter, r *http.Request, loginState *OIDCLoginState, code, desc string) {
+	uri := *loginState.OAuthRedirectURI
+	sep := "?"
+	if strings.Contains(uri, "?") {
+		sep = "&"
+	}
+	u := uri + sep + "error=" + url.QueryEscape(code) +
+		"&error_description=" + url.QueryEscape(desc) +
+		"&state=" + url.QueryEscape(*loginState.OAuthState)
+	http.Redirect(w, r, u, http.StatusFound) //nolint:gosec // G710: redirect target validated at /portal/authorize
 }

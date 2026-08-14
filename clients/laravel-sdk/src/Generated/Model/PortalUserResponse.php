@@ -23,13 +23,17 @@ class PortalUserResponse
      */
     protected $created;
     /**
-     * @var bool|null
+     * @var string|null
      */
-    protected $invited;
+    protected $identityId;
     /**
      * @var string|null
      */
-    protected $principalId;
+    protected $inviteUrl;
+    /**
+     * @var bool|null
+     */
+    protected $invited;
     /**
      * A URL to the JSON Schema for this object.
      *
@@ -71,6 +75,42 @@ class PortalUserResponse
         return $this;
     }
     /**
+     * @return string|null
+     */
+    public function getIdentityId(): ?string
+    {
+        return $this->identityId;
+    }
+    /**
+     * @param string|null $identityId
+     *
+     * @return self
+     */
+    public function setIdentityId(?string $identityId): self
+    {
+        $this->initialized['identityId'] = true;
+        $this->identityId = $identityId;
+        return $this;
+    }
+    /**
+     * @return string|null
+     */
+    public function getInviteUrl(): ?string
+    {
+        return $this->inviteUrl;
+    }
+    /**
+     * @param string|null $inviteUrl
+     *
+     * @return self
+     */
+    public function setInviteUrl(?string $inviteUrl): self
+    {
+        $this->initialized['inviteUrl'] = true;
+        $this->inviteUrl = $inviteUrl;
+        return $this;
+    }
+    /**
      * @return bool|null
      */
     public function getInvited(): ?bool
@@ -86,24 +126,6 @@ class PortalUserResponse
     {
         $this->initialized['invited'] = true;
         $this->invited = $invited;
-        return $this;
-    }
-    /**
-     * @return string|null
-     */
-    public function getPrincipalId(): ?string
-    {
-        return $this->principalId;
-    }
-    /**
-     * @param string|null $principalId
-     *
-     * @return self
-     */
-    public function setPrincipalId(?string $principalId): self
-    {
-        $this->initialized['principalId'] = true;
-        $this->principalId = $principalId;
         return $this;
     }
 }

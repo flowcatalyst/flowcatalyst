@@ -129,6 +129,81 @@ Consequences:
   the platform `identity_providers` row via the platform API (scoped service
   account).
 
+## Phase 2.5 — separate portal-identity plane (DECIDED 2026-08-13, v2)
+
+SUPERSEDES the first 2.5 draft (inert-principal + `iam_portal_users` linkage
++ authorize-time gate), which was built and then REJECTED by the owner before
+commit: sharing the identity plane made portal safety depend on every
+authorization surface forever honouring "null-client = inert", and policing
+the shared `/oauth/authorize` path added a gate, purge calculus, silent-SSO
+gotchas, and `prompt=login` workarounds. The failure mode of sharing is
+authority leakage (catastrophic); the failure mode of separation is
+credential duplication (benign, and normal in B2B2B). We choose separation.
+
+**The model: a second identity plane inside the platform.** Not the
+"auth built into the portal app" this plan rejected — same operator, same
+audited machinery (password hashing/policy, reset/invite tokens, the OIDC
+bridge), separate storage and separate entry points.
+
+- `portal_identities`: one row per **(client, email)** — a human has one
+  portal identity PER portal context, wholly unrelated to `iam_principals`.
+  No global email uniqueness across planes; the same email may be a platform
+  employee and hold portal identities at several clients, each with its own
+  credentials. Columns: id (`ptu_…`), client_id, email (lowercased), name,
+  password_hash (nullable until invite completes), status ACTIVE|DISABLED,
+  timestamps; UNIQUE (client_id, email).
+- **Independent initiation endpoints, no session cookie.** The portal plane
+  never touches `/oauth/authorize`, the SPA login page, or `fc_session`:
+  - `GET /portal/authorize` — validates the (portal-flagged) OAuth client,
+    redirect_uri, PKCE; stashes the OAuth chain in a short-TTL single-use
+    `portal_login_flows` row; redirects to the SPA's portal login page.
+    Every login is a fresh authentication (no SSO reuse — stateless by
+    design; portals run their own sessions from the id_token anyway).
+  - `POST /portal/auth/check-domain` — routes an email within the flow's
+    client context: a domain owned by an IdP **bound to that client**
+    (`oauth_identity_providers.portal_client_id`) → SSO; else password.
+  - `POST /portal/auth/login` — verifies the portal identity's password and
+    answers with the code redirect (no cookie set).
+  - `GET /portal/auth/oidc/login` — starts the IdP handshake with a
+    portal-flagged login state; the shared bridge callback (the IdP's
+    registered redirect URI) branches on that flag into the portal sink:
+    allowed_email_domains enforced, portal identity JIT-upserted for the
+    flow's client, code issued, NO fc_session written.
+- **Shared `/oauth/token`** (owner decision): the code-for-token exchange is
+  machinery. Codes carry the portal identity id as subject; the token
+  endpoint branches on the `ptu_` prefix — id_token minted from the portal
+  identity (email/name, empty roles), access token authority-free as ever,
+  NO refresh token (the portal's own session is the session).
+- **Invite/reset reuse**: `POST /api/portal-users` (anchor-gated, replaces
+  /api/principals/portal) idempotently ensures the (client, email) identity
+  and mints the 72h set-password invite through the existing reset-token
+  machinery (tokens key the `ptu_` id; confirm branches on the prefix, runs
+  the password policy, sets the portal hash, skips the 2FA-enrollment gate).
+  `returnInviteLink` (portal sends its own branded email — the URL is a live
+  credential, never log it) and `redirectUri` (exact-match against the
+  client's portal OAuth clients' registered URIs; followed after
+  set-password) carry over from the v1 draft unchanged.
+- **Lifecycle**: GET /api/portal-users?clientId=, activate/deactivate
+  (suspension), DELETE — deleting a portal identity is just deleting the row
+  (offboarding = gone; no orphan/purge calculus).
+- **Client-delegable authorization**: permissions
+  `platform:iam:portal-user:view`/`:manage`, carried by the seeded
+  `platform:portal-administrator` role. Anchors pass everywhere; a
+  client-scoped holder (a client administrator in the platform UI, or the
+  portal's confined service account via the API) is boxed to their own
+  client by CanAccessClient. Platform UI: Client Administration → Portal
+  Users (client picker for anchors; own client for client admins).
+- **2FA for portal password users: deferred** (owner decision). SSO orgs get
+  MFA from their own IdP; a later phase can generalize the MFA tables' key.
+- Passwords are still only ever typed into platform-hosted pages (the SPA's
+  portal login + set-password pages). A portal-side password form remains
+  REJECTED (credential intake in product code).
+
+What this deletes from the v1 draft: `iam_portal_users`, the authorize-time
+gate, JIT-linkage, delink/purge. What it keeps: the OAuth client's
+`portal_client_id` (now the routing switch into the portal plane), the
+invite-link/redirect machinery, and the deployment/gotcha guidance.
+
 ## Phase 3 (on demand)
 
 - Upstream group relay claim; multi-org switcher; SAML org IdPs via

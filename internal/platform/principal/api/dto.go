@@ -44,24 +44,6 @@ type CreateUserRequest struct {
 	EnforcePasswordComplexity *bool   `json:"enforcePasswordComplexity,omitempty"`
 }
 
-// PortalUserRequest is the wire body for POST /api/principals/portal — the
-// portal ensure/invite flow (docs/portal-identity-plan.md, Phase 2). Email is
-// the identity key; name is display-only and applied on first create.
-type PortalUserRequest struct {
-	Email string  `json:"email"`
-	Name  *string `json:"name,omitempty"`
-}
-
-// PortalUserResponse reports the idempotent outcome: the principal that now
-// exists for the email, whether this call created it, and whether a
-// set-password invite was sent (false for accounts that can already sign in,
-// or when no invite mailer is configured).
-type PortalUserResponse struct {
-	PrincipalID string `json:"principalId"`
-	Created     bool   `json:"created"`
-	Invited     bool   `json:"invited"`
-}
-
 // UpdatePrincipalRequest is the wire body for PUT /api/principals/{id}. It
 // carries only a principal's display + status: the full name (`name`), active
 // status (`active`), and `email` as a stable identity assertion. Scope and

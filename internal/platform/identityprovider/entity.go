@@ -48,7 +48,12 @@ type IdentityProvider struct {
 	SyncRolesFromIDP bool `json:"syncRolesFromIdp"`
 	// AllowedRoleIDs restricts which platform roles (by role TSID) this IdP
 	// may confer via role sync. Empty = no restriction.
-	AllowedRoleIDs []string  `json:"allowedRoleIds"`
+	AllowedRoleIDs []string `json:"allowedRoleIds"`
+	// PortalClientID binds this IdP to a tenant client's PORTAL plane
+	// (docs/portal-identity-plan.md Phase 2.5 v2): portal login flows may
+	// only route to IdPs whose binding matches the flow's client. NULL = an
+	// employee-plane IdP, unavailable to portals.
+	PortalClientID *string   `json:"portalClientId,omitempty"`
 	CreatedAt      time.Time `json:"createdAt"`
 	UpdatedAt      time.Time `json:"updatedAt"`
 }

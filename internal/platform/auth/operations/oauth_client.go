@@ -29,6 +29,7 @@ type CreateOAuthClientCommand struct {
 	ApplicationIDs         []string `json:"applicationIds,omitempty"`
 	PrincipalID            *string  `json:"principalId,omitempty"`
 	PKCERequired           *bool    `json:"pkceRequired,omitempty"`
+	PortalClientID         *string  `json:"portalClientId,omitempty"`
 }
 
 // CreateOAuthClient validates the command, persists the OAuth client, and
@@ -71,6 +72,10 @@ func CreateOAuthClient(repo *auth.OAuthClientRepo) usecaseop.Operation[CreateOAu
 			c.AllowedOrigins = cmd.AllowedOrigins
 			c.ApplicationIDs = cmd.ApplicationIDs
 			c.PrincipalID = cmd.PrincipalID
+			if cmd.PortalClientID != nil && strings.TrimSpace(*cmd.PortalClientID) != "" {
+				trimmed := strings.TrimSpace(*cmd.PortalClientID)
+				c.PortalClientID = &trimmed
+			}
 			if cmd.PKCERequired != nil {
 				c.PKCERequired = *cmd.PKCERequired
 			}
@@ -106,6 +111,7 @@ type UpdateOAuthClientCommand struct {
 	AllowedOrigins         []string `json:"allowedOrigins,omitempty"`
 	ApplicationIDs         []string `json:"applicationIds,omitempty"`
 	PKCERequired           *bool    `json:"pkceRequired,omitempty"`
+	PortalClientID         *string  `json:"portalClientId,omitempty"`
 }
 
 // UpdateOAuthClient mutates the supplied fields and emits [OAuthClientUpdated].
@@ -154,6 +160,14 @@ func UpdateOAuthClient(repo *auth.OAuthClientRepo) usecaseop.Operation[UpdateOAu
 			}
 			if cmd.PKCERequired != nil {
 				c.PKCERequired = *cmd.PKCERequired
+			}
+			if cmd.PortalClientID != nil {
+				// Empty string clears the portal flag; a value sets it.
+				if trimmed := strings.TrimSpace(*cmd.PortalClientID); trimmed == "" {
+					c.PortalClientID = nil
+				} else {
+					c.PortalClientID = &trimmed
+				}
 			}
 
 			event := OAuthClientUpdated{

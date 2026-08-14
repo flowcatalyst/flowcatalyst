@@ -88,6 +88,21 @@ func (r *OAuthClientRepo) FindAll(ctx context.Context) ([]OAuthClient, error) {
 	return r.hydrateAll(ctx, bare)
 }
 
+// FindByPortalClient lists the portal-flagged OAuth clients owned by a
+// tenant client (portal_client_id = clientID), hydrated — consulted when
+// validating a portal invite's post-set-password redirectUri.
+func (r *OAuthClientRepo) FindByPortalClient(ctx context.Context, clientID string) ([]OAuthClient, error) {
+	rows, err := r.q.OAuthClientFindByPortalClient(ctx, &clientID)
+	if err != nil {
+		return nil, err
+	}
+	bare := make([]OAuthClient, 0, len(rows))
+	for _, row := range rows {
+		bare = append(bare, *rowToOAuthClient(row))
+	}
+	return r.hydrateAll(ctx, bare)
+}
+
 func (r *OAuthClientRepo) Persist(ctx context.Context, c *OAuthClient, tx *usecasepgx.DbTx) error {
 	q := r.q.WithTx(tx.Inner())
 	now := time.Now().UTC()
@@ -107,6 +122,7 @@ func (r *OAuthClientRepo) Persist(ctx context.Context, c *OAuthClient, tx *useca
 		Active:                    c.Active,
 		CreatedAt:                 c.CreatedAt,
 		UpdatedAt:                 now,
+		PortalClientID:            c.PortalClientID,
 	}); err != nil {
 		return fmt.Errorf("oauth_client persist: %w", err)
 	}
@@ -316,6 +332,7 @@ func rowToOAuthClient(row dbq.OauthClient) *OAuthClient {
 		PKCERequired:           row.PkceRequired,
 		Active:                 row.Active,
 		PrincipalID:            row.ServiceAccountPrincipalID,
+		PortalClientID:         row.PortalClientID,
 		CreatedAt:              row.CreatedAt,
 		UpdatedAt:              row.UpdatedAt,
 		RedirectURIs:           []string{},

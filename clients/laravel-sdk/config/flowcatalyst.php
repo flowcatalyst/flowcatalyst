@@ -180,6 +180,21 @@ return [
 
         /*
         |----------------------------------------------------------------------
+        | Portal Mode (optional)
+        |----------------------------------------------------------------------
+        |
+        | Set to true when this app is a PORTAL for a client's customers: the
+        | login flow enters through FlowCatalyst's portal identity plane
+        | (/portal/authorize) — a separate end-user population from platform
+        | users, with per-client invites/SSO and no platform session reuse.
+        | Requires the OAuth client to have its portal owner client set.
+        | The callback and token exchange are unchanged.
+        |
+        */
+        'portal' => env('FLOWCATALYST_OIDC_PORTAL', false),
+
+        /*
+        |----------------------------------------------------------------------
         | OIDC Client Secret (optional for public clients)
         |----------------------------------------------------------------------
         |

@@ -18,6 +18,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/passwordreset"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalidentity"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/process"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/resetapproval"
@@ -38,6 +39,7 @@ type repoSet struct {
 	applicationClientConfigRepo *application.ClientConfigRepo
 	principalRepo               *principal.Repository
 	principalGrantRepo          *principal.ClientAccessGrantRepo
+	portalIdentityRepo          *portalidentity.Repository
 	serviceAccountRepo          *serviceaccount.Repository
 	authRepo                    *auth.Repository
 	corsRepo                    *cors.Repository
@@ -68,6 +70,7 @@ func buildRepos(pool *pgxpool.Pool) *repoSet {
 		applicationClientConfigRepo: application.NewClientConfigRepo(pool),
 		principalRepo:               principal.NewRepository(pool),
 		principalGrantRepo:          principal.NewClientAccessGrantRepo(pool),
+		portalIdentityRepo:          portalidentity.NewRepository(pool),
 		serviceAccountRepo:          serviceaccount.NewRepository(pool),
 		authRepo:                    auth.NewRepository(pool),
 		corsRepo:                    cors.NewRepository(pool),
