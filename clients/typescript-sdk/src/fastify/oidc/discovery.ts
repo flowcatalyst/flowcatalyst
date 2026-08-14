@@ -40,7 +40,17 @@ export function createOidcClient(opts: {
 	return {
 		endpoints() {
 			if (!pending) {
-				pending = { endpoints: load(opts.baseUrl, opts.expectedAudience) };
+				const endpoints = load(opts.baseUrl, opts.expectedAudience);
+				// A rejected discovery must NOT stay memoized: with the platform
+				// briefly unreachable, a poisoned memo would 500 every login in
+				// this process until restart. Clear the memo on rejection (the
+				// caller still sees the rejection) so the next call retries.
+				endpoints.catch(() => {
+					if (pending?.endpoints === endpoints) {
+						pending = undefined;
+					}
+				});
+				pending = { endpoints };
 			}
 			return pending.endpoints;
 		},
