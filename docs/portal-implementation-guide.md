@@ -318,10 +318,16 @@ url.search = new URLSearchParams({
 }).toString();
 reply.redirect(url.toString());
 
-// 2. Callback: exchange + verify (e.g. with jose)
+// 2. Callback: exchange + verify (e.g. with jose). A CONFIDENTIAL client
+// authenticates the exchange (Basic auth shown; client_secret in the form
+// body also works). A PUBLIC client omits the secret entirely.
 const tokens = await fetch(`${platform}/oauth/token`, {
   method: 'POST',
-  headers: { 'content-type': 'application/x-www-form-urlencoded' },
+  headers: {
+    'content-type': 'application/x-www-form-urlencoded',
+    authorization: 'Basic ' +
+      Buffer.from(`${portalClientId}:${portalClientSecret}`).toString('base64'),
+  },
   body: new URLSearchParams({
     grant_type: 'authorization_code', code, redirect_uri: callbackUrl,
     client_id: portalClientId, code_verifier: verifier,
