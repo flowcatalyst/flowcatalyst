@@ -149,7 +149,10 @@ POST /api/portal-users
 - **`redirectUri`** is followed after the user sets their password, so they
   land straight back in your login flow. It must exactly match a registered
   redirect URI of one of the client's portal OAuth clients (open-redirect
-  defence). Point it at wherever you start `/portal/authorize`.
+  defence). Point it at wherever you start `/portal/authorize`. **When
+  omitted** (e.g. invites sent from the platform UI), the platform defaults
+  it to the portal's origin, derived from the portal OAuth client's
+  registered redirect URI — the invitee still lands back at the portal.
 - SSO-only orgs don't need invites at all — the first IdP login JIT-creates
   the identity. Call ensure anyway when you want the identity id up front
   (e.g. to create a membership before first login).

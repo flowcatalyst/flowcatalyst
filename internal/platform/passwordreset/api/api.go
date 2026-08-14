@@ -169,7 +169,9 @@ func (e *principalEmailer) mintInviteLink(ctx context.Context, subjectID string,
 	if err := e.tokens.Insert(ctx, tok); err != nil {
 		return "", err
 	}
-	return strings.TrimRight(e.base, "/") + "/auth/reset-password?token=" + raw, nil
+	// Invites land on the SPA's set-password framing of the shared page —
+	// same machinery, first-time copy ("set" not "reset").
+	return strings.TrimRight(e.base, "/") + "/auth/set-password?token=" + raw, nil
 }
 
 // PortalInviteLink mints a set-password invite for a PORTAL identity (the
@@ -564,6 +566,10 @@ type confirmResponse struct {
 	Message        string   `json:"message"`
 	EnrollToken    string   `json:"enrollToken,omitempty"`
 	AllowedMethods []string `json:"allowedMethods,omitempty"`
+	// Portal marks a PORTAL-identity confirm: with no RedirectURI the SPA
+	// must NOT bounce to the platform login (which cannot sign portal
+	// users in) — it shows "return to your portal" instead.
+	Portal bool `json:"portal,omitempty"`
 	// RedirectURI, when present, is where the SPA sends the user after the
 	// reset (and any required 2FA enrollment) completes — the portal-invite
 	// chain back into the portal's OAuth login.
@@ -724,5 +730,6 @@ func (s *State) confirmPortalReset(w http.ResponseWriter, r *http.Request, t *pa
 		Status:      "ok",
 		Message:     "Password set successfully.",
 		RedirectURI: t.RedirectURI,
+		Portal:      true,
 	})
 }

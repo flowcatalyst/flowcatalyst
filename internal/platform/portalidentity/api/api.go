@@ -7,6 +7,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -108,6 +109,15 @@ func (s *State) ensure(ctx context.Context, in *apicommon.In[PortalUserRequest])
 			return nil, err
 		}
 		redirectURI = &trimmed
+	} else {
+		// No explicit redirect (e.g. the platform UI's invite button):
+		// default to the portal's own origin, derived from the client's
+		// portal OAuth client's registered redirect URI — so the invitee
+		// lands back at the portal after setting their password instead of
+		// dead-ending on the platform login. Best-effort: no portal OAuth
+		// client → no redirect (the set-password page then shows a
+		// return-to-your-portal message).
+		redirectURI = s.defaultPortalRedirect(ctx, clientID)
 	}
 
 	ec := auth.NewExecutionContext(ctx)
@@ -154,6 +164,31 @@ func (s *State) ensure(ctx context.Context, in *apicommon.In[PortalUserRequest])
 		Invited:    invited,
 		InviteURL:  inviteURL,
 	}}, nil
+}
+
+// defaultPortalRedirect derives the portal's origin ("https://portal.example.com/")
+// from the first registered redirect URI of the client's portal OAuth
+// clients. Safe by construction — the origin comes from admin-registered
+// OAuth config, never caller input.
+func (s *State) defaultPortalRedirect(ctx context.Context, clientID string) *string {
+	if s.OAuthClients == nil {
+		return nil
+	}
+	oclients, err := s.OAuthClients.FindByPortalClient(ctx, clientID)
+	if err != nil {
+		return nil
+	}
+	for _, oc := range oclients {
+		for _, raw := range oc.RedirectURIs {
+			u, perr := url.Parse(raw)
+			if perr != nil || u.Scheme == "" || u.Host == "" {
+				continue
+			}
+			origin := u.Scheme + "://" + u.Host + "/"
+			return &origin
+		}
+	}
+	return nil
 }
 
 // validateRedirectURI checks the post-set-password redirect against the
