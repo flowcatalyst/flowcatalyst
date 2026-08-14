@@ -41,7 +41,10 @@ All three are configurable in the platform dashboard; the third can also be
 managed via API.
 
 1. **A portal OAuth client** (*Identity & Access → OAuth Clients*):
-   - Type **PUBLIC** (PKCE enforced), grant `authorization_code`.
+   - Type: **CONFIDENTIAL** for a server-side portal app (the backend
+     exchanges the code and keeps the secret — client authentication plus
+     PKCE, keep *Require PKCE* on); **PUBLIC** only for a portal whose
+     browser performs the token exchange itself. Grant `authorization_code`.
    - Redirect URI: your portal's OAuth callback (e.g.
      `https://portal.example.com/flowcatalyst/callback`).
    - **Portal owner client** set to the operating client. This flag is what
@@ -184,6 +187,7 @@ FLOWCATALYST_BASE_URL=https://your-platform.example.com
 # Portal login (browser flow)
 FLOWCATALYST_OIDC_ENABLED=true
 FLOWCATALYST_OIDC_CLIENT_ID=<portal OAuth client_id>
+FLOWCATALYST_OIDC_CLIENT_SECRET=<secret>   # confidential client (recommended server-side)
 FLOWCATALYST_OIDC_PORTAL=true          # <— routes login through /portal/authorize
 
 # Backend API access (portal-user management)

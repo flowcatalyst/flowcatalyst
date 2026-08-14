@@ -65,7 +65,8 @@ the `?provider=`/`?prompt=` passthrough remains for non-portal OIDC apps.
 
 ## Platform setup (per portal deployment, no code)
 
-1. An OAuth client for the portal: type PUBLIC (PKCE), grant
+1. An OAuth client for the portal: type CONFIDENTIAL for the server-side
+   Laravel app (client authentication + PKCE — keep Require PKCE on), grant
    `authorization_code`, redirect URI
    `https://portal.example.com/flowcatalyst/callback`, and **Portal owner
    client** set to the operating client (this is what admits it to
