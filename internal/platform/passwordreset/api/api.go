@@ -59,6 +59,10 @@ const maxFactorAttempts = 5
 type Emailer interface {
 	SendResetLink(ctx context.Context, to, resetLink string) error
 	SendInviteLink(ctx context.Context, to, inviteLink string) error
+	// SendPortalInviteLink is the PORTAL-identity invite: neutral "Portal"
+	// framing (no platform brand/logo, no 2FA copy — portal identities have
+	// none). Portals that want real branding use returnInviteLink instead.
+	SendPortalInviteLink(ctx context.Context, to, inviteLink string) error
 }
 
 // linkEmailer wraps an email.Service and renders the reset/invite emails using
@@ -106,6 +110,32 @@ func (e linkEmailer) SendInviteLink(ctx context.Context, to, inviteLink string) 
 			ButtonURL:   inviteLink,
 			AfterButton: []string{
 				"If two-factor authentication is required for your organisation, you'll be guided through setting it up.",
+				"This link expires in 72 hours.",
+			},
+		}),
+	})
+}
+
+// SendPortalInviteLink renders the portal invite with neutral framing: the
+// platform's colours (they read fine anywhere) but brand text "Portal", no
+// logo, and no 2FA guidance.
+func (e linkEmailer) SendPortalInviteLink(ctx context.Context, to, inviteLink string) error {
+	platform := branding.LoadTheme(ctx, e.brand)
+	theme := branding.Theme{
+		BrandName:    "Portal",
+		PrimaryColor: platform.PrimaryColor,
+		AccentColor:  platform.AccentColor,
+		FooterText:   "This is an automated message. Please do not reply to this email.",
+	}
+	return e.svc.Send(ctx, email.Message{
+		To:      to,
+		Subject: "Set your password",
+		HTMLBody: theme.RenderEmail(branding.EmailContent{
+			Heading:     "You've been invited",
+			Intro:       "An account has been created for you. Click the button below to set your password and sign in.",
+			ButtonLabel: "Set your password",
+			ButtonURL:   inviteLink,
+			AfterButton: []string{
 				"This link expires in 72 hours.",
 			},
 		}),
@@ -188,7 +218,7 @@ func (e *principalEmailer) SendPortalInvite(ctx context.Context, identityID, ema
 	if err != nil {
 		return err
 	}
-	return e.mail.SendInviteLink(ctx, email, link)
+	return e.mail.SendPortalInviteLink(ctx, email, link)
 }
 
 // SendInvite mints a longer-lived invite token and emails a "set your password"
@@ -309,6 +339,9 @@ type validateTokenResponse struct {
 	Reason *string `json:"reason"`
 	// RequiresFactor tells the SPA to ask for an authenticator code on confirm.
 	RequiresFactor bool `json:"requiresFactor"`
+	// Portal marks a PORTAL-identity token: the set-password page then shows
+	// portal framing (no platform branding).
+	Portal bool `json:"portal,omitempty"`
 }
 
 // ── POST /auth/password-reset/request ───────────────────────────────────────
@@ -454,7 +487,10 @@ func (s *State) validateToken(w http.ResponseWriter, r *http.Request) {
 	case t.IsExpired():
 		writeJSON(w, http.StatusOK, validateTokenResponse{Valid: false, Reason: reason("expired")})
 	default:
-		writeJSON(w, http.StatusOK, validateTokenResponse{Valid: true, Reason: nil, RequiresFactor: t.RequiresFactor})
+		writeJSON(w, http.StatusOK, validateTokenResponse{
+			Valid: true, Reason: nil, RequiresFactor: t.RequiresFactor,
+			Portal: strings.HasPrefix(t.PrincipalID, portalSubjectPrefix),
+		})
 	}
 }
 
