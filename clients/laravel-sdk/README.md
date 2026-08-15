@@ -195,6 +195,23 @@ Both resolve a `FlowCatalystAuthenticatable` — read-only, no DB. Set
 `FLOWCATALYST_OIDC_PERMISSION_RESOLVER=api_me` to resolve via `/api/me` instead
 (one cached HTTP call, fresher on changes), or bind an offline `RbacCatalogue`.
 
+> **Policies: don't type-hint your Eloquent user.** `FlowCatalystAuthenticatable`
+> is not `App\Models\User`, so a policy method signed
+> `view(User $user, Order $order)` never matches a token/session principal —
+> Laravel skips the method and the check **silently denies**. Type-hint the
+> contract (or nothing) in policies that must run for FlowCatalyst identities:
+>
+> ```php
+> public function view(Authenticatable $user, Order $order): bool
+> {
+>     return $user->hasPermissionTo('orders:admin:order:view');
+> }
+> ```
+>
+> (In **local-sync** mode this doesn't apply — there `Auth::user()` IS your
+> Eloquent model.) Spatie's own `role:`/`permission:` route middleware work
+> unchanged with either mode.
+
 #### Local sync (users table + Spatie)
 
 ```env
@@ -214,6 +231,40 @@ FLOWCATALYST_OIDC_SYNC_ROLE_PERMISSIONS=true        # pull each role's permissio
 FLOWCATALYST_OIDC_CREATE_MISSING_ROLES=false        # create local roles on the fly
 FLOWCATALYST_OIDC_ROLES_GUARD=web
 ```
+
+### Middleware reference
+
+The service provider registers these aliases (no app wiring needed):
+
+| Middleware | Behaviour |
+|---|---|
+| `auth:fc-token` | Authenticate a FlowCatalyst Bearer token (user or `client_credentials`); 401 otherwise. Stack guards to fall through: `auth:fc-token,api`. |
+| `auth:fc-session` | Authenticate the OIDC session principal; 401/redirect otherwise. |
+| `fc.auth` | Resolve the principal (bearer wins over session) into `$request->attributes['fc.principal']` — never rejects. The three guards below only read that attribute, so they go **after** it: `['fc.auth', 'fc.bearer']`. |
+| `fc.bearer` | 401 JSON when nothing resolved. For API routes. |
+| `fc.session` | Redirect to `/flowcatalyst/login?returnTo=…` when nothing resolved. For web routes. |
+| `fc.any` | Either mechanism; on miss, browser navigations redirect to login, everything else gets 401 JSON. |
+| `fc.or-passport` | FlowCatalyst token **or** a legacy fallback chain (below). |
+
+#### Migrating from Passport client-credentials
+
+`fc.or-passport` lets one route accept FlowCatalyst service-account tokens
+while still honouring your existing Passport machine tokens. A valid
+FlowCatalyst token wins (the fallback never runs); anything else flows through
+the configured chain exactly as if the middleware weren't there:
+
+```php
+// config/flowcatalyst.php
+'oidc' => [
+    'token_fallback_middleware' => ['client', 'passport.app.identity'],
+],
+
+Route::post('/api/stock-sync', $handler)->middleware('fc.or-passport');
+```
+
+An empty list means "FlowCatalyst-only": unauthenticated requests pass through
+untouched, so a downstream guard decides. Once the last Passport caller is
+migrated, swap the route to `auth:fc-token` and drop the fallback config.
 
 ### Keeping permissions fresh
 

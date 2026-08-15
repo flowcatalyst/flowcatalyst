@@ -66,6 +66,11 @@ type Emailer interface {
 	// SendPortalResetLink is the PORTAL-identity forgot-password email —
 	// same neutral framing as the portal invite.
 	SendPortalResetLink(ctx context.Context, to, resetLink string) error
+	// SendPortalSSOInvite is the invite for a portal user whose email domain
+	// is owned by their organisation's IdP: no password to set — the button
+	// goes straight to the portal, where SSO signs them in (JIT-creating the
+	// identity on first login).
+	SendPortalSSOInvite(ctx context.Context, to, portalURL string) error
 }
 
 // linkEmailer wraps an email.Service and renders the reset/invite emails using
@@ -171,6 +176,29 @@ func (e linkEmailer) SendPortalResetLink(ctx context.Context, to, resetLink stri
 	})
 }
 
+// SendPortalSSOInvite renders the SSO-org portal invite: neutral framing,
+// no set-password step — the button opens the portal, whose login routes
+// the user to their organisation's sign-in.
+func (e linkEmailer) SendPortalSSOInvite(ctx context.Context, to, portalURL string) error {
+	platform := branding.LoadTheme(ctx, e.brand)
+	theme := branding.Theme{
+		BrandName:    "Portal",
+		PrimaryColor: platform.PrimaryColor,
+		AccentColor:  platform.AccentColor,
+		FooterText:   "This is an automated message. Please do not reply to this email.",
+	}
+	return e.svc.Send(ctx, email.Message{
+		To:      to,
+		Subject: "You've been invited",
+		HTMLBody: theme.RenderEmail(branding.EmailContent{
+			Heading:     "You've been invited",
+			Intro:       "You've been given access to a customer portal. Open it and sign in with your organisation account — no password setup needed.",
+			ButtonLabel: "Open the portal",
+			ButtonURL:   portalURL,
+		}),
+	})
+}
+
 // principalEmailer mints a reset token for a principal and emails the link. It
 // implements principal/operations.PasswordResetEmailer, powering the admin
 // trigger POST /api/principals/{id}/send-password-reset. Lives here so it can
@@ -252,6 +280,12 @@ func (e *principalEmailer) SendPortalReset(ctx context.Context, identityID, emai
 	}
 	link := strings.TrimRight(e.base, "/") + "/auth/reset-password?token=" + raw
 	return e.mail.SendPortalResetLink(ctx, emailAddr, link)
+}
+
+// SendPortalSSOInvite emails the SSO-org invite (no token minted — there is
+// no password to set).
+func (e *principalEmailer) SendPortalSSOInvite(ctx context.Context, emailAddr, portalURL string) error {
+	return e.mail.SendPortalSSOInvite(ctx, emailAddr, portalURL)
 }
 
 // PortalInviteLink mints a set-password invite for a PORTAL identity (the

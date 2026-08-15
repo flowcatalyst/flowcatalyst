@@ -20,7 +20,11 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordhash"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	clientops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
+	edmops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
+	idpops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalidentity"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
@@ -277,4 +281,92 @@ func TestPortalForgotPassword(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Body.String(), "If an account exists")
 	assert.Len(t, sender.sent, 1, "unknown email must not send")
+}
+
+// TestPortalSSODomainEnforcement pins the SSO-owned-domain rules: a domain
+// owned by a portal-bound IdP routes to SSO at check-domain, REFUSES
+// password login (SSO_REQUIRED — a stray password must not bypass the org's
+// IdP), and silently skips forgot-password sends.
+func TestPortalSSODomainEnforcement(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	authRepo := platformauth.NewRepository(pool)
+	clients := client.NewRepository(pool)
+	identities := portalidentity.NewRepository(pool)
+	idps := identityprovider.NewRepository(pool)
+	uow := testpg.NewUoW(t)
+
+	clientEv, err := usecaseop.Run(ctx, uow, clientops.CreateClient(clients),
+		clientops.CreateCommand{Name: "Portal SSO Co", Identifier: "portal-sso-co"}, testpg.TestEC())
+	require.NoError(t, err)
+	tenantID := clientEv.ClientID
+	oauthEv, err := usecaseop.Run(ctx, uow, authops.CreateOAuthClient(authRepo.OAuthClients),
+		authops.CreateOAuthClientCommand{
+			ClientName: "Portal SSO App", ClientType: "PUBLIC",
+			RedirectURIs: []string{"https://sso.flow.test/cb"},
+			GrantTypes:   []string{"authorization_code"}, PortalClientID: &tenantID,
+		}, testpg.TestEC())
+	require.NoError(t, err)
+
+	// A portal-bound IdP owning tigerbrands.test.
+	issuer := "https://login.tigerbrands.test"
+	oidcClient := "tb-client"
+	_, err = usecaseop.RunTx(testpg.AnchorCtx(), uow,
+		idpops.CreateIdentityProvider(idpops.Deps{
+			Repo: idps,
+			MoveDeps: edmops.MoveDeps{
+				Mappings:   emaildomainmapping.NewRepository(pool),
+				IDPs:       idps,
+				Principals: principal.NewRepository(pool),
+			},
+		}),
+		idpops.CreateCommand{
+			Code: "tb-portal-idp", Name: "Tiger Brands", Type: "OIDC",
+			OIDCIssuerURL: &issuer, OIDCClientID: &oidcClient,
+			AllowedEmailDomains: []string{"tigerbrands.test"},
+			PortalClientID:      &tenantID,
+		}, testpg.TestEC())
+	require.NoError(t, err)
+
+	// An identity that somehow holds a password (e.g. invited before the
+	// domain was claimed by the IdP).
+	identEv, err := usecaseop.Run(ctx, uow, portalidentity.Ensure(identities, clients),
+		portalidentity.EnsureCommand{ClientID: tenantID, Email: "pat@tigerbrands.test", Source: "INVITE"}, testpg.TestEC())
+	require.NoError(t, err)
+	hash, err := passwordhash.Hash("Portal-pass-123456")
+	require.NoError(t, err)
+	require.NoError(t, identities.SetPasswordHash(ctx, identEv.IdentityID, hash))
+
+	sender := &fakeResetSender{}
+	s := &State{
+		OAuthClients: authRepo.OAuthClients, Identities: identities,
+		IdPs: idps, Flows: NewFlowRepo(pool),
+		AuthCodes:     grantstore.NewAuthorizationCodeRepository(pool),
+		PasswordReset: sender,
+	}
+	rec := httptest.NewRecorder()
+	s.Authorize(rec, httptest.NewRequest(http.MethodGet,
+		"/portal/authorize?response_type=code&client_id="+url.QueryEscape(oauthEv.ClientID)+
+			"&redirect_uri="+url.QueryEscape("https://sso.flow.test/cb")+"&state=s&code_challenge=c", nil))
+	require.Equal(t, http.StatusTemporaryRedirect, rec.Code)
+	flowID, _ := url.QueryUnescape(strings.TrimPrefix(rec.Header().Get("Location"), "/portal/login?flow="))
+
+	// check-domain routes to SSO.
+	rec = postJSON(t, s.CheckDomain, "/portal/auth/check-domain",
+		map[string]string{"flowId": flowID, "email": "pat@tigerbrands.test"})
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	assert.Contains(t, rec.Body.String(), `"SSO"`)
+
+	// Password login is refused even with the correct password.
+	rec = postJSON(t, s.PasswordLogin, "/portal/auth/login",
+		map[string]string{"flowId": flowID, "email": "pat@tigerbrands.test", "password": "Portal-pass-123456"})
+	require.Equal(t, http.StatusUnauthorized, rec.Code, rec.Body.String())
+	assert.Contains(t, rec.Body.String(), "SSO_REQUIRED")
+
+	// Forgot-password: silent success, nothing sent.
+	rec = postJSON(t, s.RequestPasswordReset, "/portal/auth/password-reset",
+		map[string]string{"flowId": flowID, "email": "pat@tigerbrands.test"})
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), "If an account exists")
+	assert.Empty(t, sender.sent, "SSO-owned domains never get reset mail")
 }

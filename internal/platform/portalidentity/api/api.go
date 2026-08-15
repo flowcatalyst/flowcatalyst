@@ -14,6 +14,7 @@ import (
 
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalidentity"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
@@ -32,6 +33,8 @@ type InviteMinter interface {
 	PortalInviteLink(ctx context.Context, identityID string, redirectURI *string) (string, error)
 	// SendPortalInvite mints and emails via the platform mailer.
 	SendPortalInvite(ctx context.Context, identityID, email string, redirectURI *string) error
+	// SendPortalSSOInvite emails the SSO-org invite (no set-password step).
+	SendPortalSSOInvite(ctx context.Context, email, portalURL string) error
 }
 
 // State bundles deps.
@@ -45,6 +48,11 @@ type State struct {
 	// Invites is optional: nil disables invite delivery/minting (ensure
 	// still creates the identity; SSO-only deployments don't need invites).
 	Invites InviteMinter
+	// IdPs routes SSO-owned domains: an invitee whose email domain belongs
+	// to a portal-bound IdP gets an "open the portal" invite instead of a
+	// set-password link (their org signs them in; a password would be an
+	// SSO bypass). Optional — nil skips the check.
+	IdPs *identityprovider.Repository
 }
 
 const tag = "portal-users"
@@ -85,12 +93,20 @@ type PortalUserRequest struct {
 	RedirectURI *string `json:"redirectUri,omitempty"`
 }
 
-// PortalUserResponse reports the idempotent outcome.
+// PortalUserResponse reports the idempotent outcome. SSOManaged means the
+// email domain belongs to a portal-bound IdP: there is no set-password
+// step — the user signs in through their organisation, JIT-completing the
+// identity on first login. With returnInviteLink, inviteUrl is then the
+// PORTAL LOGIN destination (the caller's redirectUri, else the portal's
+// derived origin) so the portal's own invite email can embed one link
+// uniformly: password invitees get the set-password link, SSO invitees get
+// the portal entry.
 type PortalUserResponse struct {
 	IdentityID string  `json:"identityId"`
 	Created    bool    `json:"created"`
 	Invited    bool    `json:"invited"`
 	InviteURL  *string `json:"inviteUrl,omitempty"`
+	SSOManaged bool    `json:"ssoManaged,omitempty"`
 }
 
 func (s *State) ensure(ctx context.Context, in *apicommon.In[PortalUserRequest]) (*apicommon.Out[PortalUserResponse], error) {
@@ -132,6 +148,39 @@ func (s *State) ensure(ctx context.Context, in *apicommon.In[PortalUserRequest])
 	ident, err := s.Identities.FindByID(ctx, ev.IdentityID)
 	if err != nil || ident == nil {
 		return nil, usecase.Internal("REPO", "post-ensure identity lookup failed", err)
+	}
+
+	// SSO-owned domain: never a set-password invite. Platform-mailed mode
+	// sends "open the portal" (their org signs them in); returnInviteLink
+	// callers get ssoManaged and send their own version of that email.
+	if s.IdPs != nil {
+		domain := ident.Email[strings.LastIndexByte(ident.Email, '@')+1:]
+		if idp, derr := identityprovider.PortalIdPForDomain(ctx, s.IdPs, clientID, domain); derr == nil && idp != nil {
+			// The SSO invitee's destination is simply the portal login:
+			// the caller's (validated) redirectUri when given, else the
+			// portal's derived origin.
+			target := redirectURI
+			if target == nil {
+				target = s.defaultPortalRedirect(ctx, clientID)
+			}
+			invited := false
+			var inviteURL *string
+			switch {
+			case in.Body.ReturnInviteLink:
+				inviteURL = target
+			case s.Invites != nil && target != nil:
+				if serr := s.Invites.SendPortalSSOInvite(ctx, ident.Email, *target); serr == nil {
+					invited = true
+				}
+			}
+			return &apicommon.Out[PortalUserResponse]{Body: PortalUserResponse{
+				IdentityID: ident.ID,
+				Created:    ev.Created,
+				Invited:    invited,
+				InviteURL:  inviteURL,
+				SSOManaged: true,
+			}}, nil
+		}
 	}
 
 	// Invite while the identity cannot yet sign in with a password — on

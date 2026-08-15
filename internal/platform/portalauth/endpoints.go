@@ -183,25 +183,9 @@ func (s *State) CheckDomain(w http.ResponseWriter, r *http.Request) {
 }
 
 // portalIdPForDomain finds an IdP bound to the client's portal plane that
-// owns the email domain. Only portal-bound IdPs participate — an
-// employee-plane IdP can never serve a portal flow.
+// owns the email domain (see identityprovider.PortalIdPForDomain).
 func (s *State) portalIdPForDomain(r *http.Request, portalClientID, domain string) (*identityprovider.IdentityProvider, error) {
-	idps, err := s.IdPs.FindAll(r.Context())
-	if err != nil {
-		return nil, err
-	}
-	for i := range idps {
-		idp := &idps[i]
-		if idp.PortalClientID == nil || *idp.PortalClientID != portalClientID {
-			continue
-		}
-		for _, d := range idp.AllowedEmailDomains {
-			if strings.EqualFold(d, domain) {
-				return idp, nil
-			}
-		}
-	}
-	return nil, nil
+	return identityprovider.PortalIdPForDomain(r.Context(), s.IdPs, portalClientID, domain)
 }
 
 // PasswordLogin is POST /portal/auth/login {flowId, email, password}. On
@@ -235,6 +219,20 @@ func (s *State) PasswordLogin(w http.ResponseWriter, r *http.Request) {
 	limitKey := flow.PortalClientID + ":" + strings.ToLower(strings.TrimSpace(body.Email))
 	if rej := ratelimit.Enforce(r.Context(), s.RateLimit, ratelimit.BucketPortalLogin, limitKey, s.RateLimitPolicies.PortalLogin); rej != nil {
 		ratelimit.WriteTooManyRequests(w, rej.RetryAfterSecs, "too many attempts")
+		return
+	}
+
+	// SSO enforcement: a domain owned by this portal's IdP never
+	// authenticates by password — even one set via a stray invite. The org's
+	// IdP is the authority (suspend there = suspended here); allowing the
+	// password would be an SSO bypass.
+	if idp, ierr := s.portalIdPForDomain(r, flow.PortalClientID, emailDomainOf(body.Email)); ierr == nil && idp != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"code":    "SSO_REQUIRED",
+			"message": "Sign in with your organisation account",
+		})
 		return
 	}
 
@@ -307,6 +305,15 @@ func (s *State) RequestPasswordReset(w http.ResponseWriter, r *http.Request) {
 	limitKey := "reset:" + flow.PortalClientID + ":" + emailAddr
 	if rej := ratelimit.Enforce(r.Context(), s.RateLimit, ratelimit.BucketPortalLogin, limitKey, s.RateLimitPolicies.PortalLogin); rej != nil {
 		ratelimit.WriteTooManyRequests(w, rej.RetryAfterSecs, "too many attempts")
+		return
+	}
+
+	// SSO-owned domains never get password resets (nothing to reset that
+	// should be usable). Silent success — same anti-enumeration shape.
+	if idp, ierr := s.portalIdPForDomain(r, flow.PortalClientID, emailDomainOf(emailAddr)); ierr == nil && idp != nil {
+		writeJSON(w, map[string]string{
+			"message": "If an account exists, a reset email has been sent.",
+		})
 		return
 	}
 

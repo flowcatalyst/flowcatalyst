@@ -156,6 +156,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			OAuthClients: repos.authRepo.OAuthClients,
 			UoW:          uow,
 			Invites:      principalResetEmailer,
+			IdPs:         repos.idpRepo,
 		})
 
 		// Phase 8: lost-device reset approval queue (client-admin gated).

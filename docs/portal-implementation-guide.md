@@ -162,9 +162,18 @@ POST /api/portal-users
   omitted** (e.g. invites sent from the platform UI), the platform defaults
   it to the portal's origin, derived from the portal OAuth client's
   registered redirect URI — the invitee still lands back at the portal.
-- SSO-only orgs don't need invites at all — the first IdP login JIT-creates
-  the identity. Call ensure anyway when you want the identity id up front
-  (e.g. to create a membership before first login).
+- **SSO-owned domains are handled automatically.** When the invitee's email
+  domain belongs to an IdP bound to this client's portal, there is no
+  set-password step: the response carries `ssoManaged: true`, and
+  `inviteUrl` (in returnInviteLink mode) is the PORTAL LOGIN destination —
+  your redirectUri, else the portal's derived origin — so your email
+  template embeds one link either way. Platform-mailed mode sends an "open
+  the portal, sign in with your organisation account" email instead of a
+  set-password one. Password login and forgot-password are refused/skipped
+  for such domains (an orphaned password can never bypass the org's IdP).
+- SSO-only orgs don't strictly need invites at all — the first IdP login
+  JIT-creates the identity. Call ensure anyway when you want the identity
+  id up front (e.g. to create a membership before first login).
 
 ### List, suspend, reactivate, delete
 
