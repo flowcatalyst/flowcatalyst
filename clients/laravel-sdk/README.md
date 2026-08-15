@@ -495,7 +495,9 @@ $users = $api->listPortalUsers(['clientId' => $clientId]);
 ```
 
 `activatePortalUser` / `deactivatePortalUser` / `deletePortalUser` cover the
-rest of the lifecycle. Full walkthrough:
+rest of the lifecycle. All credential UX (login page, invites, self-service
+forgot-password) is platform-hosted — the portal app never implements any
+of it. Full walkthrough:
 [docs/portal-implementation-guide.md](../../docs/portal-implementation-guide.md).
 
 ## Outbox (Event Creation)

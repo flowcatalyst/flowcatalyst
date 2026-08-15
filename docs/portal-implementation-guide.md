@@ -88,6 +88,8 @@ Portal app                        FlowCatalyst platform
                                                 IdP (JIT-creates the identity
                                                 on first login)
                                               - otherwise → password form
+                                                (with self-service
+                                                "Forgot password?")
 3. Browser lands on
    {redirect_uri}?code=…&state=…           (or ?error=access_denied&… )
 
@@ -112,6 +114,13 @@ Key properties:
   send the user through `/portal/authorize` again.
 - **Errors** come back on your redirect URI as standard OAuth params
   (`error=access_denied` for a suspended identity, etc.).
+- **Credential UX is entirely platform-hosted — the portal app builds
+  none of it.** The portal login page includes "Forgot password?"
+  (silent-success anti-enumeration, rate-limited per client + email); the
+  portal-neutral reset email carries a 15-minute link, and completing the
+  reset redirects back to the portal's origin. Invites work the same way:
+  the set-password completion follows the invite's `redirectUri`, which
+  defaults to the portal's origin when the caller omits it.
 - Suspension/deletion of an identity bites at the next code issuance or
   redemption. Ending your own app session on offboarding is your job.
 

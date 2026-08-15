@@ -363,7 +363,9 @@ const users = await client.request((c, headers) =>
 
 `activatePortalUser`, `deactivatePortalUser`, and `deletePortalUser` cover
 the rest of the lifecycle, and the Fastify plugin's `portal: true` option
-handles the browser login flow. Full walkthrough:
+handles the browser login flow. All credential UX (login page, invites,
+self-service forgot-password) is platform-hosted — the portal app never
+implements any of it. Full walkthrough:
 [docs/portal-implementation-guide.md](../../docs/portal-implementation-guide.md).
 
 ## TypeScript Support
