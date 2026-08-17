@@ -320,3 +320,50 @@ func TestPoolStopFlushesBufferedTrackerEntries(t *testing.T) {
 	im := common.NewInFlightMessage(&common.Message{ID: "m2"}, "b2", "q", "", "rh-m2-again")
 	assert.Equal(t, RegisterNew, tr.Register(im), "flushed m2 must be re-registrable on redelivery")
 }
+
+// TestInFlightTrackerLookup: exact-match lookup returns a copy of the entry;
+// unknown ids miss.
+func TestInFlightTrackerLookup(t *testing.T) {
+	tr := NewInFlightTracker()
+	tr.Register(common.NewInFlightMessage(&common.Message{ID: "app1", PoolCode: "P"}, "b1", "q", "batch", "rh"))
+
+	got, ok := tr.Lookup("app1")
+	require.True(t, ok)
+	assert.Equal(t, "b1", got.BrokerMessageID)
+	assert.Equal(t, "P", got.PoolCode)
+
+	_, ok = tr.Lookup("nope")
+	assert.False(t, ok)
+}
+
+// TestManagerForceAckInFlight covers the operator override: the tracked
+// entry's FRESHEST receipt handle (post-redelivery-swap) is ACKed on the
+// source consumer and the tracker entry is released; a second call finds
+// nothing; a deregistered queue still clears the entry and surfaces the ack
+// error (clearing is the part that unblocks a phantom).
+func TestManagerForceAckInFlight(t *testing.T) {
+	cons := &cascadeConsumer{wantTotal: 99, done: make(chan struct{})}
+	med := &cascadeMediator{}
+	m, tr, _ := newRouteHarness(med, cons)
+
+	tr.Register(common.NewInFlightMessage(&common.Message{ID: "app1"}, "broker1", "q", "b", "rh-stale"))
+	// A broker redelivery swapped in a fresher handle; force-ack must use it.
+	tr.Register(common.NewInFlightMessage(&common.Message{ID: "app1"}, "broker1", "q", "b", "rh-fresh"))
+
+	res, found := m.ForceAckInFlight(context.Background(), "app1")
+	require.True(t, found)
+	assert.NoError(t, res.AckErr)
+	assert.Equal(t, []string{"rh-fresh"}, cons.acked)
+	_, still := tr.Lookup("app1")
+	assert.False(t, still, "tracker entry must be released")
+
+	_, found = m.ForceAckInFlight(context.Background(), "app1")
+	assert.False(t, found, "second force-ack must find nothing")
+
+	tr.Register(common.NewInFlightMessage(&common.Message{ID: "app2"}, "broker2", "gone-q", "b", "rh2"))
+	res, found = m.ForceAckInFlight(context.Background(), "app2")
+	require.True(t, found)
+	assert.Error(t, res.AckErr, "deregistered queue → ack error surfaced")
+	_, still = tr.Lookup("app2")
+	assert.False(t, still, "entry cleared even when the broker ack failed")
+}

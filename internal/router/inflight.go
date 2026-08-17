@@ -145,6 +145,16 @@ func (t *InFlightTracker) MarkRetrying(messageID, brokerID string) {
 	}
 }
 
+// Lookup returns a copy of the tracked entry for messageID (exact match).
+func (t *InFlightTracker) Lookup(messageID string) (common.InFlightMessage, bool) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	if im, ok := t.byMessage[messageID]; ok {
+		return *im, true
+	}
+	return common.InFlightMessage{}, false
+}
+
 // Remove clears the message from the tracker. Idempotent.
 func (t *InFlightTracker) Remove(messageID, brokerID string) {
 	t.mu.Lock()

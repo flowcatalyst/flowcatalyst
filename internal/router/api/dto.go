@@ -211,6 +211,53 @@ type MediatingInfo struct {
 	ElapsedTimeMs uint64 `json:"elapsedTimeMs"`
 }
 
+// InFlightMessageDetail is the full operator view of one tracked message —
+// the /monitoring/in-flight-messages/detail payload. Status semantics:
+//   - MEDIATING: inside a pool worker right now (see mediationTarget /
+//     mediatingElapsedMs).
+//   - RETRY_BACKOFF: failed at least once and waiting out an in-pipeline
+//     retry backoff (attempts > 0, not currently in a worker).
+//   - TRACKED_IDLE: tracked but not in a worker and not marked retrying —
+//     buffered behind its ordered group, waiting for a semaphore slot, or
+//     (if elapsed is large and the broker has stopped redelivering, i.e.
+//     lastSeenElapsedMs keeps growing) an orphaned phantom entry that will
+//     ACK-swallow every requeued copy until cleared.
+type InFlightMessageDetail struct {
+	MessageID           string     `json:"messageId"`
+	InPipeline          bool       `json:"inPipeline"`
+	Status              string     `json:"status,omitempty"`
+	BrokerMessageID     *string    `json:"brokerMessageId,omitempty"`
+	QueueID             string     `json:"queueId,omitempty"`
+	PoolCode            string     `json:"poolCode,omitempty"`
+	MessageGroup        string     `json:"messageGroup,omitempty"`
+	Attempts            uint       `json:"attempts,omitempty"`
+	ElapsedTimeMs       uint64     `json:"elapsedTimeMs,omitempty"`
+	AddedToInPipelineAt *time.Time `json:"addedToInPipelineAt,omitempty"`
+	// LastSeenAt is refreshed on every broker redelivery of the owner copy.
+	// A TRACKED_IDLE entry whose lastSeenElapsedMs keeps growing is one the
+	// broker no longer holds — the phantom signature.
+	LastSeenAt        *time.Time `json:"lastSeenAt,omitempty"`
+	LastSeenElapsedMs uint64     `json:"lastSeenElapsedMs,omitempty"`
+	MediationTarget   string     `json:"mediationTarget,omitempty"`
+	MediatingElapsedMs uint64    `json:"mediatingElapsedMs,omitempty"`
+}
+
+// ForceAckResponse reports what the force-ACK mutation did. removed=true
+// means the tracker entry is gone (requeues will now be processed);
+// brokerAcked reports the best-effort broker delete separately.
+type ForceAckResponse struct {
+	MessageID      string `json:"messageId"`
+	Removed        bool   `json:"removed"`
+	BrokerAcked    bool   `json:"brokerAcked"`
+	BrokerAckError string `json:"brokerAckError,omitempty"`
+	QueueID        string `json:"queueId,omitempty"`
+	PoolCode       string `json:"poolCode,omitempty"`
+	ElapsedTimeMs  uint64 `json:"elapsedTimeMs,omitempty"`
+	// WasMediating warns that a delivery attempt was still running inside a
+	// worker when the entry was cleared; that attempt finishes on its own.
+	WasMediating bool `json:"wasMediating"`
+}
+
 // InFlightCheckResponse is the response for the single-message check
 // endpoint. inPipeline=false → safe to resend.
 type InFlightCheckResponse struct {

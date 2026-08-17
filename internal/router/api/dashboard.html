@@ -321,13 +321,31 @@
                         <div class="flex justify-between items-center">
                             <h3 class="text-lg font-semibold text-gray-900">Messages Currently In-Flight <span id="inFlightCount" class="ml-2 text-sm font-normal text-gray-500"></span></h3>
                             <div class="flex space-x-4">
-                                <input type="text" id="messageIdFilter" placeholder="Search by message ID..."
+                                <input type="text" id="messageIdFilter" placeholder="Search / enter message ID..."
                                        class="border border-gray-300 rounded px-3 py-2 text-sm w-64">
+                                <button id="messageLookupBtn" class="bg-gray-700 text-white px-4 py-2 rounded text-sm hover:bg-gray-800">
+                                    Lookup
+                                </button>
                                 <button id="refreshInFlightBtn" class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
                                     Refresh
                                 </button>
                             </div>
                         </div>
+                    </div>
+                    <!-- Message detail panel (Lookup / row click) -->
+                    <div id="messageDetailPanel" class="hidden px-6 py-4 border-b border-gray-200 bg-gray-50">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h4 class="text-sm font-semibold text-gray-900 font-mono" id="messageDetailId"></h4>
+                                <div id="messageDetailBody" class="mt-2 grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-1 text-sm text-gray-700"></div>
+                                <p id="messageDetailHint" class="mt-2 text-xs text-gray-500"></p>
+                            </div>
+                            <div class="flex space-x-2 ml-4 shrink-0">
+                                <button id="messageDetailAckBtn" class="bg-red-600 text-white px-3 py-2 rounded text-sm hover:bg-red-700">Force ACK</button>
+                                <button id="messageDetailCloseBtn" class="bg-gray-200 text-gray-700 px-3 py-2 rounded text-sm hover:bg-gray-300">Close</button>
+                            </div>
+                        </div>
+                        <div id="messageDetailResult" class="hidden mt-3 text-sm rounded px-3 py-2"></div>
                     </div>
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
@@ -341,6 +359,7 @@
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Elapsed Time</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Attempts</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Added At</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="inFlightTable" class="bg-white divide-y divide-gray-200">
@@ -556,8 +575,8 @@
                 this.startPeriodicRefresh();
             }
 
-            async fetchWithAuth(url) {
-                const headers = {};
+            async fetchWithAuth(url, options = {}) {
+                const headers = Object.assign({}, options.headers);
                 if (this.basicAuth) {
                     headers['Authorization'] = 'Basic ' + this.basicAuth;
                 }
@@ -566,7 +585,7 @@
                 // unchanged.
                 const base = window.__API_BASE__ || '';
                 const resolved = url.startsWith('/') ? base + url : url;
-                return fetch(resolved, { headers, credentials: 'include' });
+                return fetch(resolved, Object.assign({}, options, { headers, credentials: 'include' }));
             }
 
             async init() {
@@ -584,7 +603,22 @@
                 });
 
                 document.getElementById('refreshInFlightBtn').addEventListener('click', () => this.loadInFlightMessages());
-                document.getElementById('messageIdFilter').addEventListener('input', (e) => this.filterInFlightMessages(e.target.value));
+                // Server-side search (debounced) so a message beyond the
+                // top-100-by-elapsed page is still findable by ID.
+                document.getElementById('messageIdFilter').addEventListener('input', () => {
+                    clearTimeout(this._inFlightSearchTimer);
+                    this._inFlightSearchTimer = setTimeout(() => this.loadInFlightMessages(), 300);
+                });
+                document.getElementById('messageIdFilter').addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') this.showMessageDetail(e.target.value.trim());
+                });
+                document.getElementById('messageLookupBtn').addEventListener('click', () => {
+                    this.showMessageDetail(document.getElementById('messageIdFilter').value.trim());
+                });
+                document.getElementById('messageDetailAckBtn').addEventListener('click', () => this.forceAckMessage(this._detailMessageId));
+                document.getElementById('messageDetailCloseBtn').addEventListener('click', () => {
+                    document.getElementById('messageDetailPanel').classList.add('hidden');
+                });
                 document.getElementById('refreshMediatingBtn').addEventListener('click', () => this.loadMediating());
                 document.getElementById('mediatingPoolFilter').addEventListener('input', () => this.loadMediating());
             }
@@ -1092,7 +1126,10 @@
 
             async loadInFlightMessages() {
                 try {
-                    const response = await this.fetchWithAuth('/monitoring/in-flight-messages?limit=100');
+                    const filter = (document.getElementById('messageIdFilter').value || '').trim();
+                    const url = '/monitoring/in-flight-messages?limit=100'
+                        + (filter ? '&messageId=' + encodeURIComponent(filter) : '');
+                    const response = await this.fetchWithAuth(url);
                     if (!response.ok) throw new Error('Failed to load in-flight messages');
                     const inFlightMessages = await response.json();
                     this.data.inFlightMessages = inFlightMessages;
@@ -1162,24 +1199,105 @@
                             <td class="px-6 py-4 text-sm text-gray-500">
                                 ${addedAt.toLocaleString()}
                             </td>
+                            <td class="px-6 py-4 text-sm whitespace-nowrap">
+                                <button onclick="window.dashboard.showMessageDetail('${msg.messageId}')" class="text-blue-600 hover:text-blue-800 text-xs font-medium hover:underline mr-3">Details</button>
+                                <button onclick="window.dashboard.forceAckMessage('${msg.messageId}')" class="text-red-600 hover:text-red-800 text-xs font-medium hover:underline">Ack</button>
+                            </td>
                         </tr>
                     `;
                 }).join('');
             }
 
-            filterInFlightMessages(filter) {
-                if (!this.data.inFlightMessages) return;
+            // ── Message detail panel + force-ACK ──────────────────────────
+            fmtElapsed(ms) {
+                const s = Math.floor((ms || 0) / 1000);
+                const m = Math.floor(s / 60), h = Math.floor(m / 60);
+                if (h > 0) return `${h}h ${m % 60}m ${s % 60}s`;
+                return m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
+            }
 
-                let filtered = this.data.inFlightMessages;
-                if (filter && filter.trim()) {
-                    const lowerFilter = filter.toLowerCase();
-                    filtered = filtered.filter(msg =>
-                        msg.messageId.toLowerCase().includes(lowerFilter) ||
-                        msg.queueId.toLowerCase().includes(lowerFilter)
-                    );
+            async showMessageDetail(messageId) {
+                if (!messageId) return;
+                const panel = document.getElementById('messageDetailPanel');
+                const body = document.getElementById('messageDetailBody');
+                const hint = document.getElementById('messageDetailHint');
+                const result = document.getElementById('messageDetailResult');
+                result.classList.add('hidden');
+                document.getElementById('messageDetailId').textContent = messageId;
+                panel.classList.remove('hidden');
+                body.innerHTML = '<span class="text-gray-400">Loading…</span>';
+                hint.textContent = '';
+                this._detailMessageId = messageId;
+                try {
+                    const r = await this.fetchWithAuth('/monitoring/in-flight-messages/detail?messageId=' + encodeURIComponent(messageId));
+                    if (!r.ok) throw new Error('lookup failed (' + r.status + ')');
+                    const d = await r.json();
+                    if (!d.inPipeline) {
+                        body.innerHTML = '<span class="text-green-700 font-medium">Not in the pipeline</span>';
+                        hint.textContent = 'No tracker entry: the message is not being processed, buffered, or deduped. A requeued copy would be accepted and processed fresh.';
+                        document.getElementById('messageDetailAckBtn').classList.add('hidden');
+                        return;
+                    }
+                    document.getElementById('messageDetailAckBtn').classList.remove('hidden');
+                    const statusColors = { MEDIATING: 'text-blue-700', RETRY_BACKOFF: 'text-amber-700', TRACKED_IDLE: 'text-red-700' };
+                    const rows = [
+                        ['Status', `<span class="font-semibold ${statusColors[d.status] || ''}">${d.status}</span>`],
+                        ['In pipeline for', this.fmtElapsed(d.elapsedTimeMs)],
+                        ['Added at', d.addedToInPipelineAt ? new Date(d.addedToInPipelineAt).toLocaleString() : '—'],
+                        ['Attempts', String(d.attempts || 0)],
+                        ['Pool', d.poolCode || '—'],
+                        ['Queue', d.queueId || '—'],
+                        ['Group', d.messageGroup || '—'],
+                        ['Broker ID', d.brokerMessageId || '—'],
+                        ['Last seen by broker', d.lastSeenAt ? `${this.fmtElapsed(d.lastSeenElapsedMs)} ago` : '—'],
+                    ];
+                    if (d.status === 'MEDIATING') {
+                        rows.push(['Mediating for', this.fmtElapsed(d.mediatingElapsedMs)]);
+                        rows.push(['Target', d.mediationTarget || '—']);
+                    }
+                    body.innerHTML = rows.map(([k, v]) =>
+                        `<div><span class="text-gray-500">${k}:</span> <span class="font-mono">${v}</span></div>`).join('');
+                    hint.textContent = {
+                        MEDIATING: 'A worker is delivering this message right now. Force ACK removes it from the broker + dedup tracker but does not abort the running delivery attempt.',
+                        RETRY_BACKOFF: 'The message failed at least once and is retrying in-pipeline (waiting out a backoff between attempts). Requeued copies are ACK-dropped while it retries.',
+                        TRACKED_IDLE: 'Tracked but not inside a worker and not retrying: it is buffered behind its ordered group or waiting for a pool slot. If elapsed keeps growing and "last seen" is old, this is an orphaned entry silently swallowing every requeued copy — Force ACK clears it.',
+                    }[d.status] || '';
+                } catch (e) {
+                    body.innerHTML = `<span class="text-red-600">${e.message}</span>`;
                 }
+            }
 
-                this.renderInFlightMessages(filtered);
+            async forceAckMessage(messageId) {
+                if (!messageId) return;
+                if (!confirm(`Force-ACK message ${messageId}?\n\nThis deletes the broker copy and clears the in-flight tracker entry. A delivery attempt already running is NOT aborted.`)) return;
+                const result = document.getElementById('messageDetailResult');
+                try {
+                    const r = await this.fetchWithAuth('/monitoring/in-flight-messages/' + encodeURIComponent(messageId) + '/ack', { method: 'POST' });
+                    const d = await r.json().catch(() => ({}));
+                    let text, ok;
+                    if (r.status === 404) {
+                        ok = true; text = 'Message was not in the pipeline (nothing to ack).';
+                    } else if (!r.ok) {
+                        ok = false; text = `Force ACK failed (${r.status}): ${d.detail || d.title || 'unknown error'}`;
+                    } else {
+                        ok = d.brokerAcked;
+                        text = `Tracker entry cleared after ${this.fmtElapsed(d.elapsedTimeMs)} in pipeline. `
+                            + (d.brokerAcked ? 'Broker copy deleted.' : `Broker ack failed (${d.brokerAckError}) — entry cleared anyway; the broker copy will redeliver and be processed fresh.`)
+                            + (d.wasMediating ? ' Note: a delivery attempt was still running and will finish on its own.' : '');
+                    }
+                    if (this._detailMessageId === messageId || !document.getElementById('messageDetailPanel').classList.contains('hidden')) {
+                        result.className = 'mt-3 text-sm rounded px-3 py-2 ' + (ok ? 'bg-green-50 text-green-800' : 'bg-amber-50 text-amber-800');
+                        result.textContent = text;
+                        result.classList.remove('hidden');
+                    } else {
+                        alert(text);
+                    }
+                    this.loadInFlightMessages();
+                } catch (e) {
+                    result.className = 'mt-3 text-sm rounded px-3 py-2 bg-red-50 text-red-800';
+                    result.textContent = 'Force ACK failed: ' + e.message;
+                    result.classList.remove('hidden');
+                }
             }
 
             showHealthModal() {

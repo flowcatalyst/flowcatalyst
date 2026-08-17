@@ -46,6 +46,10 @@ func registerDashboardReads(api huma.API, s *State) {
 		Summary: "Check multiple message IDs at once", Tags: []string{tagMonitoring}, DefaultStatus: http.StatusOK,
 	}, s.inFlightCheckBatch)
 	huma.Register(api, huma.Operation{
+		OperationID: "inFlightDetail", Method: http.MethodGet, Path: "/monitoring/in-flight-messages/detail",
+		Summary: "Full detail for one in-flight message (tracker entry + live worker state)", Tags: []string{tagMonitoring}, DefaultStatus: http.StatusOK,
+	}, s.inFlightDetail)
+	huma.Register(api, huma.Operation{
 		OperationID: "dashboardMediating", Method: http.MethodGet, Path: "/monitoring/mediating",
 		Summary: "List messages currently being mediated (live, never reaped)", Tags: []string{tagMonitoring}, DefaultStatus: http.StatusOK,
 	}, s.dashboardMediating)
@@ -381,6 +385,66 @@ func (s *State) inFlightCheck(_ context.Context, in *inFlightCheckInput) (*inFli
 		}
 	}
 	return &inFlightCheckOutput{Body: InFlightCheckResponse{MessageID: in.MessageID, InPipeline: false}}, nil
+}
+
+type inFlightDetailInput struct {
+	MessageID string `query:"messageId" required:"true"`
+}
+
+type inFlightDetailOutput struct {
+	Body InFlightMessageDetail
+}
+
+// inFlightDetail joins the tracker entry (exact message-ID match) with the
+// live mediating set to answer the operator questions "how long has this
+// been in the pipeline, what is it doing right now, and is it a phantom?".
+// A miss returns inPipeline=false rather than 404 — "not in the pipeline"
+// is the answer, not an error.
+func (s *State) inFlightDetail(_ context.Context, in *inFlightDetailInput) (*inFlightDetailOutput, error) {
+	out := InFlightMessageDetail{MessageID: in.MessageID}
+	if s.InFlight == nil {
+		return &inFlightDetailOutput{Body: out}, nil
+	}
+	now := time.Now()
+	for _, im := range s.InFlight.Snapshot() {
+		if im.MessageID != in.MessageID {
+			continue
+		}
+		out.InPipeline = true
+		if im.BrokerMessageID != "" {
+			b := im.BrokerMessageID
+			out.BrokerMessageID = &b
+		}
+		out.QueueID = im.QueueIdentifier
+		out.PoolCode = im.PoolCode
+		out.MessageGroup = im.MessageGroupID
+		out.Attempts = im.Attempts
+		out.ElapsedTimeMs = uint64(now.Sub(im.StartedAt).Milliseconds())
+		started := im.StartedAt.UTC()
+		out.AddedToInPipelineAt = &started
+		lastSeen := im.LastSeenAt.UTC()
+		out.LastSeenAt = &lastSeen
+		out.LastSeenElapsedMs = uint64(now.Sub(im.LastSeenAt).Milliseconds())
+		break
+	}
+	if !out.InPipeline {
+		return &inFlightDetailOutput{Body: out}, nil
+	}
+	out.Status = "TRACKED_IDLE"
+	if out.Attempts > 0 {
+		out.Status = "RETRY_BACKOFF"
+	}
+	if s.Mediating != nil {
+		for _, e := range s.Mediating.MediatingSnapshot() {
+			if e.MessageID == in.MessageID {
+				out.Status = "MEDIATING"
+				out.MediationTarget = e.Target
+				out.MediatingElapsedMs = uint64(now.Sub(e.MediatedAt).Milliseconds())
+				break
+			}
+		}
+	}
+	return &inFlightDetailOutput{Body: out}, nil
 }
 
 type inFlightCheckBatchInput struct {

@@ -29,6 +29,55 @@ func registerMutations(api huma.API, s *State) {
 		OperationID: "monitoringAcknowledgeWarning", Method: http.MethodPost, Path: "/monitoring/warnings/{id}/acknowledge",
 		Summary: "Acknowledge a warning (dashboard alias)", Tags: []string{tagMonitoring}, DefaultStatus: http.StatusOK,
 	}, s.acknowledgeWarning)
+	huma.Register(api, huma.Operation{
+		OperationID: "inFlightForceAck", Method: http.MethodPost, Path: "/monitoring/in-flight-messages/{messageId}/ack",
+		Summary:       "Force-ACK an in-flight message (operator override)",
+		Description:   "Deletes the broker copy (freshest receipt handle) and releases the tracker entry so future redeliveries/requeues are processed instead of being ACK-dropped as duplicates. Does not abort a delivery attempt already running in a worker.",
+		Tags:          []string{tagMonitoring},
+		DefaultStatus: http.StatusOK,
+	}, s.inFlightForceAck)
+}
+
+type inFlightForceAckInput struct {
+	MessageID string `path:"messageId"`
+}
+
+type inFlightForceAckOutput struct {
+	Body ForceAckResponse
+}
+
+func (s *State) inFlightForceAck(ctx context.Context, in *inFlightForceAckInput) (*inFlightForceAckOutput, error) {
+	if s.InFlightAck == nil {
+		return nil, notConfigured("in-flight ack")
+	}
+	// Capture the mediating state BEFORE clearing the entry, so the response
+	// can warn that a live delivery attempt will still run to completion.
+	wasMediating := false
+	if s.Mediating != nil {
+		for _, e := range s.Mediating.MediatingSnapshot() {
+			if e.MessageID == in.MessageID {
+				wasMediating = true
+				break
+			}
+		}
+	}
+	res, found := s.InFlightAck.ForceAckInFlight(ctx, in.MessageID)
+	if !found {
+		return nil, huma.Error404NotFound("message not in pipeline: " + in.MessageID)
+	}
+	out := ForceAckResponse{
+		MessageID:     in.MessageID,
+		Removed:       true,
+		BrokerAcked:   res.AckErr == nil,
+		QueueID:       res.Entry.QueueIdentifier,
+		PoolCode:      res.Entry.PoolCode,
+		ElapsedTimeMs: uint64(res.Entry.ElapsedSeconds()) * 1000,
+		WasMediating:  wasMediating,
+	}
+	if res.AckErr != nil {
+		out.BrokerAckError = res.AckErr.Error()
+	}
+	return &inFlightForceAckOutput{Body: out}, nil
 }
 
 type updatePoolConfigInput struct {

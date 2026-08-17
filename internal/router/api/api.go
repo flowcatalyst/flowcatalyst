@@ -60,6 +60,12 @@ type InFlightSnapshotProvider interface {
 	Snapshot() []common.InFlightMessage
 }
 
+// InFlightAcker force-ACKs a tracked message: broker delete (best-effort) +
+// tracker-entry release. Optional — when nil the force-ack endpoint 503s.
+type InFlightAcker interface {
+	ForceAckInFlight(ctx context.Context, messageID string) (router.ForceAckResult, bool)
+}
+
 // MediatingProvider exposes the live set of messages currently inside pool
 // workers (activeWorkers). Distinct from InFlightSnapshotProvider, which is the
 // reaped dedup tracker — this set is never reaped, so long-running deliveries
@@ -151,6 +157,7 @@ type State struct {
 	OpenCount    CircuitBreakerOpenCounter
 	Breakers     BreakerSnapshotProvider
 	InFlight     InFlightSnapshotProvider
+	InFlightAck  InFlightAcker
 	Mediating    MediatingProvider
 	BrokerStats  BrokerStatsProvider
 	PoolUpdater  PoolUpdater
@@ -174,6 +181,7 @@ func FromServer(s *router.Server) *State {
 		OpenCount:   breakersAdapter{breakers: s.Breakers},
 		Breakers:    breakerSnapshotAdapter{breakers: s.Breakers},
 		InFlight:    inFlightAdapter{tracker: s.Tracker},
+		InFlightAck: managerAckAdapter{m: s.Manager},
 		Mediating:   managerMediatingAdapter{m: s.Manager},
 		BrokerStats: brokerStatsAdapter{cache: s.BrokerStats},
 		PoolUpdater: poolUpdaterAdapter{m: s.Manager},
@@ -286,6 +294,15 @@ func (a inFlightAdapter) Snapshot() []common.InFlightMessage {
 		return nil
 	}
 	return a.tracker.Snapshot()
+}
+
+type managerAckAdapter struct{ m *router.Manager }
+
+func (a managerAckAdapter) ForceAckInFlight(ctx context.Context, messageID string) (router.ForceAckResult, bool) {
+	if a.m == nil {
+		return router.ForceAckResult{}, false
+	}
+	return a.m.ForceAckInFlight(ctx, messageID)
 }
 
 type brokerStatsAdapter struct{ cache *router.CachedBrokerStats }

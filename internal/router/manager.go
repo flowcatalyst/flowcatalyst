@@ -115,6 +115,43 @@ func (m *Manager) NackInFlight(ctx context.Context, queueID, receiptHandle strin
 	return c.Nack(ctx, receiptHandle, &delaySeconds)
 }
 
+// ForceAckResult reports what ForceAckInFlight did: the entry as it stood
+// when acked, and the outcome of the best-effort broker delete.
+type ForceAckResult struct {
+	Entry  common.InFlightMessage
+	AckErr error
+}
+
+// ForceAckInFlight is the operator override behind the dashboard's force-ACK:
+// it deletes the broker copy of a tracked message (using the freshest receipt
+// handle from the tracker) and releases the tracker entry so future
+// redeliveries or external requeues re-enter the pipeline fresh instead of
+// being ACK-dropped as duplicates of a stuck/phantom owner. The broker ack is
+// best-effort — an expired receipt handle still clears the tracker entry,
+// which is the part that unblocks a phantom. It does NOT abort a worker that
+// is currently mediating the message; that attempt runs to its own terminal
+// state (its eventual ack/nack logs a warn against the now-stale handle).
+func (m *Manager) ForceAckInFlight(ctx context.Context, messageID string) (ForceAckResult, bool) {
+	if m.tracker == nil {
+		return ForceAckResult{}, false
+	}
+	entry, ok := m.tracker.Lookup(messageID)
+	if !ok {
+		return ForceAckResult{}, false
+	}
+	res := ForceAckResult{Entry: entry}
+	if c := m.resolveConsumer(entry.QueueIdentifier); c != nil {
+		res.AckErr = c.Ack(ctx, entry.ReceiptHandle)
+	} else {
+		res.AckErr = fmt.Errorf("no consumer for queue %q", entry.QueueIdentifier)
+	}
+	m.tracker.Remove(entry.MessageID, entry.BrokerMessageID)
+	slog.Warn("force-acked in-flight message (operator request)",
+		"message_id", entry.MessageID, "queue", entry.QueueIdentifier,
+		"elapsed_s", entry.ElapsedSeconds(), "attempts", entry.Attempts, "ack_err", res.AckErr)
+	return res, true
+}
+
 // Consumers returns every running consumer (for the QueueHealthMonitor /
 // metrics to call Metrics/Counters on).
 func (m *Manager) Consumers() []queue.Consumer {
