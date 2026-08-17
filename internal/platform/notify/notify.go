@@ -71,6 +71,14 @@ func (n *Notifier) PasswordChanged(ctx context.Context, to string) {
 		"<p>Your "+n.platformName(ctx)+" password was just changed.</p>"+footer)
 }
 
+// PortalPasswordChanged confirms a PORTAL identity's password set/reset.
+// Neutral framing (no platform brand) — portal identities never see the
+// platform's name, matching the portal invite/reset emails.
+func (n *Notifier) PortalPasswordChanged(ctx context.Context, to string) {
+	n.send(ctx, to, "Your portal password was changed",
+		"<p>Your portal password was just changed.</p>"+footer)
+}
+
 // TwoFactorEnrolled confirms a new second factor was added.
 func (n *Notifier) TwoFactorEnrolled(ctx context.Context, to, method string) {
 	n.send(ctx, to, "Two-factor authentication enabled",

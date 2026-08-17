@@ -846,6 +846,9 @@ func (s *State) confirmPortalReset(w http.ResponseWriter, r *http.Request, t *pa
 		slog.Warn("failed to clear consumed portal reset tokens", "identity", ident.ID, "err", err)
 	}
 	slog.Info("portal password set", "identity", ident.ID)
+	// Same hygiene as the employee confirm path: the account holder learns
+	// their credential changed. Best-effort, neutral portal framing.
+	s.Notifier.PortalPasswordChanged(r.Context(), ident.Email)
 	writeJSON(w, http.StatusOK, confirmResponse{
 		Status:      "ok",
 		Message:     "Password set successfully.",
