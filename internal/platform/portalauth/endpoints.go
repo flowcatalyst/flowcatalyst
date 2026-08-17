@@ -333,10 +333,12 @@ func (s *State) RequestPasswordReset(w http.ResponseWriter, r *http.Request) {
 }
 
 // portalOriginOf derives "scheme://host/" from the flow's validated
-// redirect URI — admin-registered OAuth config, never caller input.
+// redirect URI — admin-registered OAuth config, never caller input. A host
+// containing a wildcard (a registered *-pattern echoed back verbatim) is
+// not a real origin and yields nil.
 func portalOriginOf(redirectURI string) *string {
 	u, err := url.Parse(redirectURI)
-	if err != nil || u.Scheme == "" || u.Host == "" {
+	if err != nil || u.Scheme == "" || u.Host == "" || strings.Contains(u.Host, "*") {
 		return nil
 	}
 	origin := u.Scheme + "://" + u.Host + "/"

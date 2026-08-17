@@ -230,7 +230,9 @@ func (s *State) defaultPortalRedirect(ctx context.Context, clientID string) *str
 	for _, oc := range oclients {
 		for _, raw := range oc.RedirectURIs {
 			u, perr := url.Parse(raw)
-			if perr != nil || u.Scheme == "" || u.Host == "" {
+			// A wildcard *-pattern is a matching rule, not a real origin —
+			// skip it rather than mailing out an unusable link.
+			if perr != nil || u.Scheme == "" || u.Host == "" || strings.Contains(u.Host, "*") {
 				continue
 			}
 			origin := u.Scheme + "://" + u.Host + "/"
