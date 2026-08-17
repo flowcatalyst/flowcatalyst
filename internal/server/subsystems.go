@@ -24,6 +24,7 @@ import (
 	outboxpg "github.com/flowcatalyst/flowcatalyst-go/internal/outbox/postgres"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/bridge"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/payload"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalauth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 	sjscheduler "github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob/scheduler"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduler"
@@ -472,10 +473,12 @@ func StartRouter(ctx context.Context, _ *pgxpool.Pool, cfg EnvCfg) {
 }
 
 // StartPurger runs the periodic housekeeping loop that drops expired
-// rows from the three ephemeral auth tables: oauth_oidc_payloads
+// rows from the four ephemeral auth tables: oauth_oidc_payloads
 // (access/refresh tokens), oauth_oidc_login_states (the in-flight OIDC
-// bridge state), and webauthn_ceremonies (in-flight registration /
-// authentication challenges). Always-on; no env toggle.
+// bridge state), webauthn_ceremonies (in-flight registration /
+// authentication challenges), and portal_login_flows (parked
+// /portal/authorize chains — only consumed rows are deleted inline, so
+// abandoned logins rely on this sweep). Always-on; no env toggle.
 //
 // Cadence: every minute. Idempotent — each purge is a DELETE WHERE
 // expires_at < NOW(). Failures are logged and the loop keeps going.
@@ -483,6 +486,7 @@ func StartPurger(ctx context.Context, pool *pgxpool.Pool) {
 	payloadRepo := payload.NewRepository(pool)
 	loginStateRepo := bridge.NewLoginStateRepo(pool)
 	ceremonyRepo := webauthn.NewCeremonyRepository(pool)
+	portalFlowRepo := portalauth.NewFlowRepo(pool)
 
 	tick := time.NewTicker(time.Minute)
 	defer tick.Stop()
@@ -507,6 +511,11 @@ func StartPurger(ctx context.Context, pool *pgxpool.Pool) {
 				slog.Warn("webauthn ceremony purge failed", "err", err)
 			} else if n > 0 {
 				slog.Debug("webauthn ceremony purge", "removed", n)
+			}
+			if n, err := portalFlowRepo.PurgeExpired(ctx); err != nil {
+				slog.Warn("portal login flow purge failed", "err", err)
+			} else if n > 0 {
+				slog.Debug("portal login flow purge", "removed", n)
 			}
 		}
 	}
