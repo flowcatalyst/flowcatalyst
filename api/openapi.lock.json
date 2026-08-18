@@ -2928,6 +2928,14 @@
           },
           "password": {
             "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "ANCHOR",
+              "PARTNER",
+              "CLIENT"
+            ],
+            "type": "string"
           }
         },
         "required": [
@@ -4851,6 +4859,9 @@
             "type": "string"
           },
           "invited": {
+            "type": "boolean"
+          },
+          "ssoManaged": {
             "type": "boolean"
           }
         },
@@ -15580,7 +15591,7 @@
             "description": "Error"
           }
         },
-        "summary": "Create a user principal (scope derived from email domain)",
+        "summary": "Create a user principal (scope optional, default CLIENT; ANCHOR/PARTNER must be backed by the email domain's setup)",
         "tags": [
           "principals"
         ]

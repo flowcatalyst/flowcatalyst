@@ -39,6 +39,10 @@ class CreateUserRequest extends \ArrayObject
      */
     protected $password;
     /**
+     * @var string|null
+     */
+    protected $scope;
+    /**
      * A URL to the JSON Schema for this object.
      *
      * @return string|null
@@ -148,6 +152,24 @@ class CreateUserRequest extends \ArrayObject
     {
         $this->initialized['password'] = true;
         $this->password = $password;
+        return $this;
+    }
+    /**
+     * @return string|null
+     */
+    public function getScope(): ?string
+    {
+        return $this->scope;
+    }
+    /**
+     * @param string|null $scope
+     *
+     * @return self
+     */
+    public function setScope(?string $scope): self
+    {
+        $this->initialized['scope'] = true;
+        $this->scope = $scope;
         return $this;
     }
 }

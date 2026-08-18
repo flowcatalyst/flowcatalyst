@@ -33,13 +33,21 @@ func (r CreatePrincipalRequest) toCommand() operations.CreateCommand {
 }
 
 // CreateUserRequest is the wire body for POST /api/principals/users — the
-// SDK create-user shape. Unlike CreatePrincipalRequest it carries NO
-// scope: scope + client association are derived from the email domain
-// (anchor-domain check + email-domain-mapping).
+// SDK create-user shape. `scope` is optional and defaults to CLIENT; the
+// email domain never upgrades it (a caller must ASK for ANCHOR/PARTNER, and
+// those are only honoured when the domain setup backs them — anchor domain
+// / PARTNER mapping). `clientId` accepts either the client's `clt_` id or
+// its identifier slug.
 type CreateUserRequest struct {
-	Email                     string  `json:"email"`
-	Name                      string  `json:"name"`
-	Password                  *string `json:"password,omitempty"`
+	Email    string  `json:"email"`
+	Name     string  `json:"name"`
+	Password *string `json:"password,omitempty"`
+	// Scope defaults to CLIENT when omitted. ANCHOR requires the email's
+	// domain to be a registered anchor domain (or ANCHOR mapping); PARTNER
+	// requires a PARTNER email-domain mapping that allows the clientId.
+	Scope *string `json:"scope,omitempty" enum:"ANCHOR,PARTNER,CLIENT"`
+	// ClientID is the home client: a `clt_` id or the client's identifier
+	// (looked up either way; unknown references are rejected).
 	ClientID                  *string `json:"clientId,omitempty"`
 	EnforcePasswordComplexity *bool   `json:"enforcePasswordComplexity,omitempty"`
 }

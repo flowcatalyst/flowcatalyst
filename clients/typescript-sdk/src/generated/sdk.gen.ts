@@ -1111,7 +1111,7 @@ export const syncUsers = <ThrowOnError extends boolean = false>(options: Options
 });
 
 /**
- * Create a user principal (scope derived from email domain)
+ * Create a user principal (scope optional, default CLIENT; ANCHOR/PARTNER must be backed by the email domain's setup)
  */
 export const createUser = <ThrowOnError extends boolean = false>(options: Options<CreateUserData, ThrowOnError>) => (options.client ?? client).post<CreateUserResponses, CreateUserErrors, ThrowOnError>({
     url: '/api/principals/users',

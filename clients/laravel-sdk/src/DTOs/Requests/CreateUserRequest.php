@@ -11,6 +11,15 @@ namespace FlowCatalyst\DTOs\Requests;
  * `enforcePasswordComplexity` is false the platform skips its complexity
  * rules and only enforces a 2-character minimum — intended for apps that
  * enforce their own password policy.
+ *
+ * `scope` is optional and defaults to CLIENT. The platform never upgrades
+ * it from the email domain: pass 'ANCHOR' or 'PARTNER' explicitly, and the
+ * domain setup must back it (registered anchor domain / PARTNER
+ * email-domain mapping) or the create is rejected.
+ *
+ * `clientId` accepts either the FlowCatalyst client id (`clt_…`) or the
+ * client's identifier slug — the platform resolves both, so you can pass
+ * your tenant code directly instead of listing clients to find the id.
  */
 final class CreateUserRequest
 {
@@ -20,6 +29,7 @@ final class CreateUserRequest
         public readonly ?string $password = null,
         public readonly ?string $clientId = null,
         public readonly ?bool $enforcePasswordComplexity = null,
+        public readonly ?string $scope = null,
     ) {}
 
     /**
@@ -39,6 +49,9 @@ final class CreateUserRequest
         }
         if ($this->enforcePasswordComplexity !== null) {
             $payload['enforcePasswordComplexity'] = $this->enforcePasswordComplexity;
+        }
+        if ($this->scope !== null) {
+            $payload['scope'] = $this->scope;
         }
         return $payload;
     }

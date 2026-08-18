@@ -82,6 +82,13 @@ class CreateUserRequestNormalizer implements DenormalizerInterface, NormalizerIn
         elseif (\array_key_exists('password', $data) && $data['password'] === null) {
             $object->setPassword(null);
         }
+        if (\array_key_exists('scope', $data) && $data['scope'] !== null) {
+            $object->setScope($data['scope']);
+            unset($data['scope']);
+        }
+        elseif (\array_key_exists('scope', $data) && $data['scope'] === null) {
+            $object->setScope(null);
+        }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $object[$key] = $value;
@@ -102,6 +109,9 @@ class CreateUserRequestNormalizer implements DenormalizerInterface, NormalizerIn
         $dataArray['name'] = $data->getName();
         if ($data->isInitialized('password') && null !== $data->getPassword()) {
             $dataArray['password'] = $data->getPassword();
+        }
+        if ($data->isInitialized('scope') && null !== $data->getScope()) {
+            $dataArray['scope'] = $data->getScope();
         }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {

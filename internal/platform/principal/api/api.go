@@ -85,7 +85,7 @@ func Register(api huma.API, s *State) {
 	g := apiroute.New(api, tag)
 	apiroute.Get(g, "listPrincipals", "/api/principals", "List principals", s.list)
 	apiroute.Post(g, "createPrincipal", "/api/principals", "Create a principal", http.StatusCreated, s.create)
-	apiroute.Post(g, "createUser", "/api/principals/users", "Create a user principal (scope derived from email domain)", http.StatusOK, s.createUser)
+	apiroute.Post(g, "createUser", "/api/principals/users", "Create a user principal (scope optional, default CLIENT; ANCHOR/PARTNER must be backed by the email domain's setup)", http.StatusOK, s.createUser)
 	apiroute.Post(g, "bulkImportUsers", "/api/principals/bulk-import", "Bulk-import CLIENT users for a client (CSV onboarding)", http.StatusOK, s.bulkImport)
 	apiroute.Post(g, "syncUsers", "/api/principals/sync", "Sync users (declarative upsert by email; no application scope)", http.StatusOK, s.syncUsers)
 	apiroute.Get(g, "getPrincipal", "/api/principals/{id}", "Get a principal by id", s.getByID)
@@ -576,7 +576,18 @@ func (s *State) createUser(ctx context.Context, in *apicommon.In[CreateUserReque
 		}
 	}
 
-	scope, clientID, err := deriveUserScope(isAnchorDomain, mapping, in.Body.ClientID)
+	// Resolve the client reference (clt_ id or identifier slug) before scope
+	// resolution so mapping allow-lists compare canonical ids.
+	var reqClientID *string
+	if in.Body.ClientID != nil && strings.TrimSpace(*in.Body.ClientID) != "" {
+		resolved, rerr := s.resolveClientRef(ctx, strings.TrimSpace(*in.Body.ClientID))
+		if rerr != nil {
+			return nil, rerr
+		}
+		reqClientID = resolved
+	}
+
+	scope, clientID, err := deriveUserScope(in.Body.Scope, isAnchorDomain, mapping, reqClientID)
 	if err != nil {
 		return nil, err
 	}
@@ -676,22 +687,35 @@ func (s *State) notifyNewUser(ctx context.Context, p *principal.Principal, passw
 	s.Notifier.AccountCreated(ctx, emailAddr)
 }
 
-// deriveUserScope resolves (scope, home-client) from the email domain.
-// An anchor domain (or an ANCHOR mapping) → ANCHOR with no
-// client. A PARTNER mapping requires a clientId allowed by the mapping. A CLIENT
-// mapping uses the request's clientId or the mapping's primary. An unmapped
-// domain → CLIENT with the request's clientId verbatim. Pure + unit-tested.
-func deriveUserScope(isAnchorDomain bool, mapping *emaildomainmapping.EmailDomainMapping, reqClientID *string) (string, *string, error) {
-	if isAnchorDomain {
-		return "ANCHOR", nil, nil
+// deriveUserScope resolves (scope, home-client) for create-user. The
+// caller's requested scope wins — the email domain can only CONFIRM a
+// privileged scope, never grant one unasked:
+//   - requested ANCHOR requires the domain to be a registered anchor domain
+//     (or an ANCHOR mapping); anchors carry no client.
+//   - requested PARTNER requires a PARTNER mapping for the domain and a
+//     clientId that mapping allows.
+//   - requested CLIENT — or nothing, CLIENT is the default — uses the
+//     request's clientId, falling back to a CLIENT mapping's primary.
+//
+// Pure + unit-tested.
+func deriveUserScope(reqScope *string, isAnchorDomain bool, mapping *emaildomainmapping.EmailDomainMapping, reqClientID *string) (string, *string, error) {
+	scope := "CLIENT"
+	if reqScope != nil && strings.TrimSpace(*reqScope) != "" {
+		scope = strings.ToUpper(strings.TrimSpace(*reqScope))
 	}
-	if mapping == nil {
-		return "CLIENT", reqClientID, nil
-	}
-	switch mapping.ScopeType {
-	case emaildomainmapping.ScopeAnchor:
+	switch scope {
+	case "ANCHOR":
+		anchorMapped := mapping != nil && mapping.ScopeType == emaildomainmapping.ScopeAnchor
+		if !isAnchorDomain && !anchorMapped {
+			return "", nil, usecase.Validation("ANCHOR_DOMAIN_REQUIRED",
+				"ANCHOR scope requires the email's domain to be a registered anchor domain")
+		}
 		return "ANCHOR", nil, nil
-	case emaildomainmapping.ScopePartner:
+	case "PARTNER":
+		if mapping == nil || mapping.ScopeType != emaildomainmapping.ScopePartner {
+			return "", nil, usecase.Validation("PARTNER_DOMAIN_REQUIRED",
+				"PARTNER scope requires a PARTNER email-domain mapping for the email's domain")
+		}
 		if reqClientID == nil || *reqClientID == "" {
 			return "", nil, usecase.Validation("CLIENT_REQUIRED", "clientId is required for partner users")
 		}
@@ -707,15 +731,41 @@ func deriveUserScope(isAnchorDomain bool, mapping *emaildomainmapping.EmailDomai
 				"clientId "+*reqClientID+" is not allowed for partner domain "+mapping.EmailDomain)
 		}
 		return "PARTNER", reqClientID, nil
-	case emaildomainmapping.ScopeClient:
-		primary := reqClientID
-		if primary == nil {
-			primary = mapping.PrimaryClientID
+	case "CLIENT":
+		clientID := reqClientID
+		if clientID == nil && mapping != nil && mapping.ScopeType == emaildomainmapping.ScopeClient {
+			clientID = mapping.PrimaryClientID
 		}
-		return "CLIENT", primary, nil
+		return "CLIENT", clientID, nil
 	default:
-		return "ANCHOR", nil, nil
+		return "", nil, usecase.Validation("INVALID_SCOPE", "scope must be ANCHOR, PARTNER, or CLIENT")
 	}
+}
+
+// resolveClientRef canonicalises a request's client reference — either the
+// clt_ id or the client's identifier slug — to the client id. Unknown
+// references fail closed (a typo'd identifier must not silently create a
+// mis-scoped user).
+func (s *State) resolveClientRef(ctx context.Context, ref string) (*string, error) {
+	if s.Clients == nil {
+		return &ref, nil // handler tests without a client repo: pass through
+	}
+	c, err := s.Clients.FindByID(ctx, ref)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "client lookup failed", err)
+	}
+	if c == nil {
+		// Identifiers are lowercase-normalised at create time (CreateClient),
+		// so match case-insensitively here.
+		c, err = s.Clients.FindByIdentifier(ctx, strings.ToLower(ref))
+		if err != nil {
+			return nil, usecase.Internal("REPO", "client lookup failed", err)
+		}
+	}
+	if c == nil {
+		return nil, httperror.NotFound("Client", ref)
+	}
+	return &c.ID, nil
 }
 
 func derefStr(s *string) string {
@@ -1358,9 +1408,10 @@ func (s *State) checkEmailDomain(ctx context.Context, in *checkEmailDomainInput)
 		emailExists = existing != nil
 	}
 
-	// Resolve the domain → scope exactly the way createUser does, so the
-	// preview matches what submit will actually do: an anchor domain → ANCHOR;
-	// otherwise the email-domain-mapping's scope (or CLIENT when unmapped).
+	// Resolve the domain → scope the domain setup suggests: an anchor domain
+	// → ANCHOR; otherwise the email-domain-mapping's scope (or CLIENT when
+	// unmapped). createUser no longer derives scope itself — the SPA echoes
+	// this DerivedScope back as the request's explicit `scope`.
 	isAnchorDomain := false
 	if s.AnchorDomains != nil {
 		ad, err := s.AnchorDomains.FindByDomain(ctx, domain)

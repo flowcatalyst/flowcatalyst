@@ -43,6 +43,9 @@ class PortalUserResponseNormalizer implements DenormalizerInterface, NormalizerI
         if (\array_key_exists('invited', $data) && \is_int($data['invited'])) {
             $data['invited'] = (bool) $data['invited'];
         }
+        if (\array_key_exists('ssoManaged', $data) && \is_int($data['ssoManaged'])) {
+            $data['ssoManaged'] = (bool) $data['ssoManaged'];
+        }
         if (\array_key_exists('$schema', $data) && $data['$schema'] !== null) {
             $object->setDollarSchema($data['$schema']);
         }
@@ -73,6 +76,12 @@ class PortalUserResponseNormalizer implements DenormalizerInterface, NormalizerI
         elseif (\array_key_exists('invited', $data) && $data['invited'] === null) {
             $object->setInvited(null);
         }
+        if (\array_key_exists('ssoManaged', $data) && $data['ssoManaged'] !== null) {
+            $object->setSsoManaged($data['ssoManaged']);
+        }
+        elseif (\array_key_exists('ssoManaged', $data) && $data['ssoManaged'] === null) {
+            $object->setSsoManaged(null);
+        }
         return $object;
     }
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
@@ -84,6 +93,9 @@ class PortalUserResponseNormalizer implements DenormalizerInterface, NormalizerI
             $dataArray['inviteUrl'] = $data->getInviteUrl();
         }
         $dataArray['invited'] = $data->getInvited();
+        if ($data->isInitialized('ssoManaged') && null !== $data->getSsoManaged()) {
+            $dataArray['ssoManaged'] = $data->getSsoManaged();
+        }
         return $dataArray;
     }
     public function getSupportedTypes(?string $format = null): array

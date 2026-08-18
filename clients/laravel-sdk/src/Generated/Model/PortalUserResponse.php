@@ -35,6 +35,10 @@ class PortalUserResponse
      */
     protected $invited;
     /**
+     * @var bool|null
+     */
+    protected $ssoManaged;
+    /**
      * A URL to the JSON Schema for this object.
      *
      * @return string|null
@@ -126,6 +130,24 @@ class PortalUserResponse
     {
         $this->initialized['invited'] = true;
         $this->invited = $invited;
+        return $this;
+    }
+    /**
+     * @return bool|null
+     */
+    public function getSsoManaged(): ?bool
+    {
+        return $this->ssoManaged;
+    }
+    /**
+     * @param bool|null $ssoManaged
+     *
+     * @return self
+     */
+    public function setSsoManaged(?bool $ssoManaged): self
+    {
+        $this->initialized['ssoManaged'] = true;
+        $this->ssoManaged = $ssoManaged;
         return $this;
     }
 }
