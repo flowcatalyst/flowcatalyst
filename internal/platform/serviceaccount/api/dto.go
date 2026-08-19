@@ -230,3 +230,14 @@ type RegenerateSigningSecretResponse struct {
 	ID            string `json:"id"`
 	SigningSecret string `json:"signingSecret,omitempty"`
 }
+
+// ServiceAccountTokenResponse is the wire shape for
+// POST /api/service-accounts/{id}/token — an admin-minted bearer with the
+// same claims a client_credentials exchange would yield for this account.
+// The token is a live credential: shown once, never logged.
+type ServiceAccountTokenResponse struct {
+	AccessToken string  `json:"accessToken"`
+	TokenType   string  `json:"tokenType"`
+	ExpiresIn   int64   `json:"expiresIn"`
+	Scope       *string `json:"scope,omitempty"`
+}

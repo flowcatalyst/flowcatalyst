@@ -2523,6 +2523,16 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\AssignServiceAccountRoles($id, $requestBody), $fetch);
     }
     /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ServiceAccountTokenResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function mintServiceAccountToken(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\MintServiceAccountToken($id), $fetch);
+    }
+    /**
      * @param array{
      *    "status"?: string,
      *    "clientId"?: string,

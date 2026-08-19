@@ -171,6 +171,11 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			Principals:   repos.principalRepo,
 			OAuthClients: repos.authRepo.OAuthClients,
 			UoW:          uow,
+			// Admin token mint (POST /{id}/token) reuses the exact
+			// client_credentials mint machinery.
+			Auth:               svcs.authSvc,
+			FlattenPermissions: svcs.oauthTokenEP.FlattenPermissions,
+			Audit:              repos.auditRepo,
 		})
 
 		authapi.Register(humaAPI, &authapi.State{

@@ -4,10 +4,14 @@ package api
 import (
 	"context"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/operations"
@@ -15,6 +19,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
@@ -28,6 +33,18 @@ type State struct {
 	Principals   *principal.Repository
 	OAuthClients *platformauth.OAuthClientRepo
 	UoW          *usecasepgx.UnitOfWork
+	// Auth mints the admin-requested bearer on POST /{id}/token. Optional —
+	// nil disables that endpoint (fail closed).
+	Auth *authservice.AuthService
+	// FlattenPermissions resolves the linked principal's roles into the
+	// permission ceiling carried as the minted token's "scope" claim — the
+	// same computation the client_credentials grant runs. Optional; when nil
+	// the token carries no scope claim (permissions derived from roles
+	// downstream, the legacy behaviour).
+	FlattenPermissions func(ctx context.Context, roleNames []string) ([]string, error)
+	// Audit records admin token mints (an admin obtaining a live credential
+	// for another identity must leave a trail). Optional.
+	Audit *audit.Repository
 }
 
 const tag = "service-accounts"
@@ -57,6 +74,9 @@ func Register(api huma.API, s *State) {
 		apiroute.Post(g, "regenerateServiceAccountSigningSecret_"+p, "/api/service-accounts/{id}/"+p,
 			"Regenerate a service account's signing secret", http.StatusOK, s.regenerateSigningSecret)
 	}
+
+	apiroute.Post(g, "mintServiceAccountToken", "/api/service-accounts/{id}/token",
+		"Mint a short-lived bearer token for the service account (anchor-only, audited)", http.StatusOK, s.mintToken)
 }
 
 func (s *State) list(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[ServiceAccountListResponse], error) {
@@ -250,6 +270,87 @@ func (s *State) regenerateAuthToken(ctx context.Context, in *apicommon.IDInput) 
 		resp.AuthToken = token
 	}
 	return &apicommon.Out[RegenerateAuthTokenResponse]{Body: resp}, nil
+}
+
+// mintToken is POST /api/service-accounts/{id}/token: mints the same
+// short-lived, authority-bearing bearer the account would obtain from the
+// client_credentials grant — scope = the linked principal's full permission
+// ceiling — WITHOUT exposing the client secret. Anchor-only (this hands out
+// the service account's live authority) and recorded in the audit trail.
+// Nothing is persisted; the token simply expires.
+func (s *State) mintToken(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ServiceAccountTokenResponse], error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.RequireAnchor(ac); err != nil {
+		return nil, err
+	}
+	if s.Auth == nil {
+		return nil, usecase.Internal("TOKEN", "token minting is not wired", nil)
+	}
+	sa, err := s.Repo.FindByID(ctx, in.ID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
+	}
+	if sa == nil {
+		return nil, httperror.NotFound("ServiceAccount", in.ID)
+	}
+	if !sa.Active {
+		return nil, usecase.Validation("SERVICE_ACCOUNT_INACTIVE",
+			"the service account is deactivated — reactivate it before minting a token")
+	}
+	p, err := s.Principals.FindByServiceAccount(ctx, in.ID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_service_account failed", err)
+	}
+	if p == nil {
+		return nil, usecase.Internal("PRINCIPAL", "service account has no linked principal", nil)
+	}
+	if !p.Active {
+		return nil, usecase.Validation("SERVICE_ACCOUNT_INACTIVE",
+			"the service account's principal is deactivated")
+	}
+
+	// Same grant computation as the client_credentials path: the principal's
+	// full permission ceiling, flattened from its roles.
+	var granted []string
+	if s.FlattenPermissions != nil {
+		names := make([]string, 0, len(p.Roles))
+		for _, ra := range p.Roles {
+			names = append(names, ra.Role)
+		}
+		if granted, err = s.FlattenPermissions(ctx, names); err != nil {
+			return nil, usecase.Internal("SCOPE", "permission flattening failed", err)
+		}
+	}
+	token, err := s.Auth.GenerateAccessTokenWithScope(p, granted)
+	if err != nil {
+		return nil, usecase.Internal("TOKEN", "token mint failed", err)
+	}
+
+	// Best-effort audit: who obtained a credential for which account. Never
+	// the token itself.
+	if s.Audit != nil {
+		actor := ac.PrincipalID
+		_ = s.Audit.Insert(ctx, &audit.Log{
+			ID:          tsid.Generate(tsid.AuditLog),
+			EntityType:  "SERVICE_ACCOUNT",
+			EntityID:    sa.ID,
+			Operation:   "TOKEN_MINTED_BY_ADMIN",
+			PrincipalID: &actor,
+			PerformedAt: time.Now().UTC(),
+		})
+	}
+
+	resp := ServiceAccountTokenResponse{
+		AccessToken: token,
+		TokenType:   "Bearer",
+		// Mirrors the /oauth/token response contract (expires_in 3600).
+		ExpiresIn: 3600,
+	}
+	if len(granted) > 0 {
+		j := strings.Join(granted, " ")
+		resp.Scope = &j
+	}
+	return &apicommon.Out[ServiceAccountTokenResponse]{Body: resp}, nil
 }
 
 func (s *State) regenerateSigningSecret(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[RegenerateSigningSecretResponse], error) {

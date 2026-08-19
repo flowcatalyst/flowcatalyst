@@ -356,6 +356,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\ServiceAccountRolesAssignedResponse::class => \FlowCatalyst\Generated\Normalizer\ServiceAccountRolesAssignedResponseNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\ServiceAccountTokenResponse::class => \FlowCatalyst\Generated\Normalizer\ServiceAccountTokenResponseNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\ServiceAccountWebhookSecrets::class => \FlowCatalyst\Generated\Normalizer\ServiceAccountWebhookSecretsNormalizer::class,
         
         \FlowCatalyst\Generated\Model\SetApplicationAccessResponse::class => \FlowCatalyst\Generated\Normalizer\SetApplicationAccessResponseNormalizer::class,
@@ -673,6 +675,7 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\ServiceAccountResponse::class => false,
             \FlowCatalyst\Generated\Model\ServiceAccountRoleListResponse::class => false,
             \FlowCatalyst\Generated\Model\ServiceAccountRolesAssignedResponse::class => false,
+            \FlowCatalyst\Generated\Model\ServiceAccountTokenResponse::class => false,
             \FlowCatalyst\Generated\Model\ServiceAccountWebhookSecrets::class => false,
             \FlowCatalyst\Generated\Model\SetApplicationAccessResponse::class => false,
             \FlowCatalyst\Generated\Model\SetDeveloperCredentialResponse::class => false,
