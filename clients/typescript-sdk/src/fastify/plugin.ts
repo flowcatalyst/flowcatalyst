@@ -182,6 +182,16 @@ const flowcatalystAuthImpl: FastifyPluginAsync<FlowcatalystAuthOptions> =
 		fastify.decorateRequest("principal", undefined);
 
 		fastify.addHook("onRequest", async (req, reply) => {
+			// First plane to authenticate the request wins. One app may register
+			// flowcatalystAuth twice (a root-context management plane plus an
+			// encapsulated portal plane); root-context hooks run on EVERY route,
+			// so without this guard the later-running instance clobbers a
+			// principal the route's own plane already resolved — e.g. an admin's
+			// management session overwriting the ptu_ portal principal on portal
+			// routes, which the app's membership gate then rejects as
+			// no_portal_access even though the portal login just succeeded.
+			if (req.principal) return;
+
 			// Bearer wins if present — APIs explicitly identifying themselves should
 			// never be silently downgraded to whatever session cookie the browser sent.
 			const bearer = readBearer(req);
