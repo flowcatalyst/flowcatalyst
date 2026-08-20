@@ -10,7 +10,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -824,13 +823,12 @@ func (s *State) confirmPortalReset(w http.ResponseWriter, r *http.Request, t *pa
 		httperror.Write(w, usecase.Validation("INVALID_TOKEN", "Invalid or expired reset token."))
 		return
 	}
-	if len(password) < passwordpolicy.MinLength {
-		httperror.Write(w, usecase.Validation("PASSWORD_TOO_SHORT",
-			fmt.Sprintf("password must be at least %d characters", passwordpolicy.MinLength)))
-		return
-	}
+	// Wrap the policy violation as a usecase Validation error — a bare
+	// *passwordpolicy.Violation satisfies `error` but httperror.Write can't
+	// classify it and would emit a generic 500 (the bug this comment pins:
+	// name-in-password on the portal set-password page returned INTERNAL).
 	if v := passwordpolicy.Validate(password, ident.Email, ident.Name); v != nil {
-		httperror.Write(w, v)
+		httperror.Write(w, usecase.Validation(v.Code, v.Message))
 		return
 	}
 	hash, err := passwordhash.Hash(password)

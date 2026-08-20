@@ -10,6 +10,7 @@ package httperror
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -62,6 +63,14 @@ func Write(w http.ResponseWriter, err error) {
 		env.Code = uc.Code
 		env.Message = uc.Message
 		env.Details = uc.Details
+	}
+	// A 500 must never leave silently: the envelope hides the cause from the
+	// wire (correct), so the log is the only place it survives. This also
+	// catches non-usecase error values handed to Write — those classify as
+	// INTERNAL even when they are really validation-shaped (wrap them in
+	// usecase.Validation at the call site).
+	if status >= http.StatusInternalServerError {
+		slog.Error("internal error response", "code", env.Code, "err", err)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
