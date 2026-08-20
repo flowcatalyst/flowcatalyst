@@ -40,6 +40,9 @@ class PortalUserResponseNormalizer implements DenormalizerInterface, NormalizerI
         if (\array_key_exists('created', $data) && \is_int($data['created'])) {
             $data['created'] = (bool) $data['created'];
         }
+        if (\array_key_exists('hasPassword', $data) && \is_int($data['hasPassword'])) {
+            $data['hasPassword'] = (bool) $data['hasPassword'];
+        }
         if (\array_key_exists('invited', $data) && \is_int($data['invited'])) {
             $data['invited'] = (bool) $data['invited'];
         }
@@ -57,6 +60,12 @@ class PortalUserResponseNormalizer implements DenormalizerInterface, NormalizerI
         }
         elseif (\array_key_exists('created', $data) && $data['created'] === null) {
             $object->setCreated(null);
+        }
+        if (\array_key_exists('hasPassword', $data) && $data['hasPassword'] !== null) {
+            $object->setHasPassword($data['hasPassword']);
+        }
+        elseif (\array_key_exists('hasPassword', $data) && $data['hasPassword'] === null) {
+            $object->setHasPassword(null);
         }
         if (\array_key_exists('identityId', $data) && $data['identityId'] !== null) {
             $object->setIdentityId($data['identityId']);
@@ -88,6 +97,7 @@ class PortalUserResponseNormalizer implements DenormalizerInterface, NormalizerI
     {
         $dataArray = [];
         $dataArray['created'] = $data->getCreated();
+        $dataArray['hasPassword'] = $data->getHasPassword();
         $dataArray['identityId'] = $data->getIdentityId();
         if ($data->isInitialized('inviteUrl') && null !== $data->getInviteUrl()) {
             $dataArray['inviteUrl'] = $data->getInviteUrl();

@@ -23,6 +23,10 @@ class PortalUserResponse
      */
     protected $created;
     /**
+     * @var bool|null
+     */
+    protected $hasPassword;
+    /**
      * @var string|null
      */
     protected $identityId;
@@ -76,6 +80,24 @@ class PortalUserResponse
     {
         $this->initialized['created'] = true;
         $this->created = $created;
+        return $this;
+    }
+    /**
+     * @return bool|null
+     */
+    public function getHasPassword(): ?bool
+    {
+        return $this->hasPassword;
+    }
+    /**
+     * @param bool|null $hasPassword
+     *
+     * @return self
+     */
+    public function setHasPassword(?bool $hasPassword): self
+    {
+        $this->initialized['hasPassword'] = true;
+        $this->hasPassword = $hasPassword;
         return $this;
     }
     /**

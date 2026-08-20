@@ -107,6 +107,12 @@ type PortalUserResponse struct {
 	Invited    bool    `json:"invited"`
 	InviteURL  *string `json:"inviteUrl,omitempty"`
 	SSOManaged bool    `json:"ssoManaged,omitempty"`
+	// HasPassword distinguishes the deliberate no-op: re-ensuring an identity
+	// that already holds a working password sends NOTHING (the account is
+	// live; a "resend" would be a password reset, which the user can do
+	// themselves from the portal login). Callers surface that instead of
+	// reporting a phantom "invite sent".
+	HasPassword bool `json:"hasPassword"`
 }
 
 func (s *State) ensure(ctx context.Context, in *apicommon.In[PortalUserRequest]) (*apicommon.Out[PortalUserResponse], error) {
@@ -174,11 +180,12 @@ func (s *State) ensure(ctx context.Context, in *apicommon.In[PortalUserRequest])
 				}
 			}
 			return &apicommon.Out[PortalUserResponse]{Body: PortalUserResponse{
-				IdentityID: ident.ID,
-				Created:    ev.Created,
-				Invited:    invited,
-				InviteURL:  inviteURL,
-				SSOManaged: true,
+				IdentityID:  ident.ID,
+				Created:     ev.Created,
+				Invited:     invited,
+				InviteURL:   inviteURL,
+				SSOManaged:  true,
+				HasPassword: ident.PasswordHash != nil && *ident.PasswordHash != "",
 			}}, nil
 		}
 	}
@@ -208,10 +215,11 @@ func (s *State) ensure(ctx context.Context, in *apicommon.In[PortalUserRequest])
 		}
 	}
 	return &apicommon.Out[PortalUserResponse]{Body: PortalUserResponse{
-		IdentityID: ident.ID,
-		Created:    ev.Created,
-		Invited:    invited,
-		InviteURL:  inviteURL,
+		IdentityID:  ident.ID,
+		Created:     ev.Created,
+		Invited:     invited,
+		InviteURL:   inviteURL,
+		HasPassword: ident.PasswordHash != nil && *ident.PasswordHash != "",
 	}}, nil
 }
 

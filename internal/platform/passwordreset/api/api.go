@@ -136,11 +136,11 @@ func (e linkEmailer) SendPortalInviteLink(ctx context.Context, to, inviteLink st
 	}
 	return e.svc.Send(ctx, email.Message{
 		To:      to,
-		Subject: "Set your password",
+		Subject: "Join the portal",
 		HTMLBody: theme.RenderEmail(branding.EmailContent{
-			Heading:     "You've been invited",
-			Intro:       "An account has been created for you. Click the button below to set your password and sign in.",
-			ButtonLabel: "Set your password",
+			Heading:     "You've been invited to the portal",
+			Intro:       "A portal account has been created for you. Click the button below to choose a password and sign in.",
+			ButtonLabel: "Join the portal",
 			ButtonURL:   inviteLink,
 			AfterButton: []string{
 				"This link expires in 72 hours.",

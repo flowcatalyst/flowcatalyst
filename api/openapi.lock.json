@@ -4852,6 +4852,9 @@
           "created": {
             "type": "boolean"
           },
+          "hasPassword": {
+            "type": "boolean"
+          },
           "identityId": {
             "type": "string"
           },
@@ -4868,7 +4871,8 @@
         "required": [
           "identityId",
           "created",
-          "invited"
+          "invited",
+          "hasPassword"
         ],
         "type": "object"
       },
