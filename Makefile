@@ -3,7 +3,7 @@
 	test test-unit test-integration test-platform test-verbose watch-test \
 	lint lint-fix analyze fmt fmt-check sqlc sqlc-verify ci clean \
 	dump-spec api-bump api-diff release-dev sdk-spec sdk-generate \
-	release-ts-sdk release-laravel-sdk install-tools help
+	release-ts-sdk release-laravel-sdk build-java-sdk release-java-sdk install-tools help
 
 GO ?= go
 PNPM ?= pnpm
@@ -165,7 +165,8 @@ release-dev: ## Cut an fcdev release: BUMP=patch|minor|major|X.Y.Z (tags fcdev/v
 sdk-spec: ## Refresh each SDK's OpenAPI input from the current huma spec
 	@$(GO) run ./tools/dump-spec > clients/typescript-sdk/openapi/openapi.json
 	@$(GO) run ./tools/dump-spec > clients/laravel-sdk/openapi/openapi.json
-	@echo ">> refreshed clients/{typescript,laravel}-sdk/openapi/openapi.json"
+	@$(GO) run ./tools/dump-spec > clients/java-sdk/openapi/openapi.json
+	@echo ">> refreshed clients/{typescript,laravel,java}-sdk/openapi/openapi.json"
 
 sdk-generate: sdk-spec ## Regenerate the TS + Laravel SDK clients from the spec
 	@echo ">> TypeScript SDK"
@@ -176,11 +177,17 @@ sdk-generate: sdk-spec ## Regenerate the TS + Laravel SDK clients from the spec
 		&& XDEBUG_MODE=off vendor/bin/jane-openapi generate --config-file=jane-openapi.php
 	@echo ">> SDKs regenerated — review the diff and commit before releasing"
 
+build-java-sdk: ## Build + test the Java SDK (regenerates models from the vendored spec)
+	cd clients/java-sdk && mvn -q clean verify
+
 release-ts-sdk: ## Cut a TypeScript SDK release: BUMP=… (bumps package.json, tags typescript-sdk/vX.Y.Z)
 	@scripts/release.sh ts "$(BUMP)"
 
 release-laravel-sdk: ## Cut a Laravel SDK release: BUMP=… (tags laravel-sdk/vX.Y.Z)
 	@scripts/release.sh laravel "$(BUMP)"
+
+release-java-sdk: ## Cut a Java SDK release: BUMP=… (bumps pom.xml, tags java-sdk/vX.Y.Z)
+	@scripts/release.sh java "$(BUMP)"
 
 install-tools: ## Install dev tools (air, gotestsum, golangci-lint, sqlc)
 	$(GO) install github.com/air-verse/air@latest

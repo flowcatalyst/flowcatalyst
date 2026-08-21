@@ -17,19 +17,22 @@ kind="${1:-}"
 bump="${2:-}"
 
 usage() {
-	echo "usage: scripts/release.sh <dev|ts|laravel> <patch|minor|major|X.Y.Z[-suffix]>" >&2
+	echo "usage: scripts/release.sh <dev|ts|laravel|java> <patch|minor|major|X.Y.Z[-suffix]>" >&2
 	exit 2
 }
 [ -n "$kind" ] && [ -n "$bump" ] || usage
 
 # manifest (optional) is a package file whose "version" must track the tag:
 # TS package.json only. Laravel/composer.json and fcdev have no such field
-# (Packagist reads the tag; fcdev embeds cmd/fcdev/VERSION).
+# (Packagist reads the tag; fcdev embeds cmd/fcdev/VERSION). manifest_pom is
+# the Java SDK's pom.xml, whose <version> element must track the tag.
 manifest=""
+manifest_pom=""
 case "$kind" in
 	dev)     prefix="fcdev";         version_file="cmd/fcdev/VERSION";             label="fcdev" ;;
 	ts)      prefix="typescript-sdk"; version_file="clients/typescript-sdk/VERSION"; label="typescript-sdk"; manifest="clients/typescript-sdk/package.json" ;;
 	laravel) prefix="laravel-sdk";    version_file="clients/laravel-sdk/VERSION";    label="laravel-sdk" ;;
+	java)    prefix="java-sdk";       version_file="clients/java-sdk/VERSION";       label="java-sdk"; manifest_pom="clients/java-sdk/pom.xml" ;;
 	*)       echo "✗ unknown release kind: $kind" >&2; usage ;;
 esac
 
@@ -123,15 +126,32 @@ if [ -n "$manifest" ]; then
 	fi
 fi
 
-git --no-pager diff --stat -- "$version_file" $manifest
+# Keep the Maven pom's <version> in lockstep (Java only). Only the first
+# <version> element — the project's own — is rewritten.
+if [ -n "$manifest_pom" ]; then
+	awk -v new="$new" '
+		/<version>[^<]+<\/version>/ && !done {
+			sub(/<version>[^<]+<\/version>/, "<version>" new "</version>")
+			done=1
+		}
+		{print}
+	' "$manifest_pom" > "$manifest_pom.tmp" && mv "$manifest_pom.tmp" "$manifest_pom"
+	if ! grep -q "<version>$new</version>" "$manifest_pom"; then
+		echo "✗ Failed to update version in $manifest_pom. Reverting." >&2
+		git checkout -- "$version_file" "$manifest_pom"
+		exit 1
+	fi
+fi
+
+git --no-pager diff --stat -- "$version_file" $manifest $manifest_pom
 echo ""
 read -r -p "Commit '$label v$new', tag $prefix/v$new, and push? [y/N] " confirm || confirm="n"
 case "$confirm" in
 	y|Y|yes|YES) ;;
-	*) echo "Aborted. Reverting."; git checkout -- "$version_file" $manifest; exit 1 ;;
+	*) echo "Aborted. Reverting."; git checkout -- "$version_file" $manifest $manifest_pom; exit 1 ;;
 esac
 
-git add -- "$version_file" $manifest
+git add -- "$version_file" $manifest $manifest_pom
 git commit -m "$label v$new"
 git tag "$prefix/v$new"
 git push origin HEAD "$prefix/v$new"
