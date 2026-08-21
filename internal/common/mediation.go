@@ -20,6 +20,11 @@ const (
 	// MediationCircuitOpen means the per-endpoint breaker is open; no HTTP
 	// call was attempted. DEFER (not a failure) until the breaker may probe.
 	MediationCircuitOpen
+	// MediationDeferred is a 2xx whose body carried {"ack": false}: the
+	// target is healthy but asked us to come back later (e.g. the record is
+	// blocked behind an earlier failure). NACK with the requested delay —
+	// no in-pipeline retry, no circuit-breaker impact.
+	MediationDeferred
 )
 
 // MediationOutcome carries the result plus optional retry-after delay.
@@ -53,6 +58,14 @@ func ErrorProcess(delaySec int, msg string) MediationOutcome {
 func ErrorConnection(msg string) MediationOutcome {
 	return MediationOutcome{
 		Result: MediationErrorConnection, DelaySeconds: 30, ErrorMessage: msg,
+	}
+}
+
+// Deferred builds an ack=false outcome: the target answered 2xx but told
+// us to retry later ({"ack": false, "delaySeconds": N}).
+func Deferred(delaySec int, msg string) MediationOutcome {
+	return MediationOutcome{
+		Result: MediationDeferred, DelaySeconds: delaySec, ErrorMessage: msg,
 	}
 }
 

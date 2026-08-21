@@ -230,10 +230,10 @@ func (m *HTTPMediator) Mediate(ctx context.Context, msg *common.Message) common.
 		cb.RecordSuccess()
 	case common.MediationErrorProcess, common.MediationErrorConnection:
 		cb.RecordFailure()
-	case common.MediationRateLimited, common.MediationCircuitOpen:
-		// 429: destination healthy, just throttling — neither success nor failure.
-		// CircuitOpen is returned before delivery, so it never reaches here; listed
-		// for switch exhaustiveness.
+	case common.MediationRateLimited, common.MediationCircuitOpen, common.MediationDeferred:
+		// 429 / ack=false: destination healthy, just throttling or deferring —
+		// neither success nor failure. CircuitOpen is returned before delivery,
+		// so it never reaches here; listed for switch exhaustiveness.
 	}
 	return outcome
 }
@@ -248,10 +248,13 @@ func (m *HTTPMediator) deliverWithRetry(ctx context.Context, msg *common.Message
 	for {
 		last = m.mediateOnce(ctx, msg)
 
-		// Don't retry on success, config errors, or rate-limit responses.
-		// For 429 the queue applies Retry-After delay rather than busy-waiting here.
+		// Don't retry on success, config errors, rate-limit or ack=false
+		// responses. For 429 and deferred the queue applies the requested
+		// delay rather than busy-waiting here — the target answered; hitting
+		// it again a second later can't change its mind.
 		switch last.Result {
-		case common.MediationSuccess, common.MediationErrorConfig, common.MediationRateLimited:
+		case common.MediationSuccess, common.MediationErrorConfig,
+			common.MediationRateLimited, common.MediationDeferred:
 			return last
 		default:
 			// ErrorProcess / ErrorConnection are retryable; fall through to backoff.
@@ -327,7 +330,9 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 	status := resp.StatusCode
 	switch {
 	case status >= 200 && status < 300:
-		// Parse {"ack": false, "delaySeconds": N}; if ack=false treat as transient.
+		// Parse {"ack": false, "delaySeconds": N}: the target is healthy but
+		// wants this message later (e.g. blocked record) — defer it for the
+		// requested delay (default 30s) with no in-pipeline retry.
 		body, err := io.ReadAll(resp.Body)
 		if err == nil && len(body) > 0 {
 			var r mediationResponse
@@ -336,7 +341,7 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 				if r.DelaySeconds != nil {
 					delay = *r.DelaySeconds
 				}
-				out := common.ErrorProcess(int(delay), "Target returned ack=false")
+				out := common.Deferred(int(delay), "Target returned ack=false")
 				out.StatusCode = status
 				return out
 			}

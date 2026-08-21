@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -207,20 +208,24 @@ func TestMediatorConnectTimeoutHonoured(t *testing.T) {
 		"connect timeout not honoured: elapsed %v with 250ms ConnectTimeout", elapsed)
 }
 
-func TestMediatorAckFalseIsTransient(t *testing.T) {
+func TestMediatorAckFalseIsDeferredWithoutInPipelineRetry(t *testing.T) {
+	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"ack": false, "delaySeconds": 45}`))
 	}))
 	defer srv.Close()
 
+	// MaxRetries left at the default: a deferred outcome must return after
+	// ONE attempt regardless — the target answered, retrying can't help.
 	cfg := router.DevMediatorConfig()
-	cfg.MaxRetries = 0
 
 	out := router.NewHTTPMediator(cfg, router.NewBreakerRegistry(router.DefaultBreakerConfig())).Mediate(
 		context.Background(),
 		&common.Message{ID: "m", MediationType: common.MediationTypeHTTP, MediationTarget: srv.URL},
 	)
-	assert.Equal(t, common.MediationErrorProcess, out.Result)
+	assert.Equal(t, common.MediationDeferred, out.Result)
 	assert.Equal(t, 45, out.DelaySeconds)
+	assert.Equal(t, int32(1), calls.Load(), "ack=false must not retry in-pipeline")
 }

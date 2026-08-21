@@ -790,6 +790,13 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 		p.metrics.RecordRateLimited()
 		return p.retry(qm, outcome.DelaySeconds)
 
+	case common.MediationDeferred:
+		// 2xx + ack=false — the target explicitly deferred this message
+		// (e.g. a blocked record). Honour its requested delay (default 30s);
+		// not a failure, and the mediator skipped its in-pipeline retries.
+		p.metrics.RecordTransient(durationMs)
+		return p.retry(qm, outcome.DelaySeconds)
+
 	case common.MediationCircuitOpen:
 		// Breaker open (decided by the mediator): no delivery was attempted.
 		// Retry in-pipeline once the breaker reset timeout (carried in the
