@@ -108,6 +108,8 @@ const (
 	permServiceAccountCreate = "platform:iam:service-account:create"
 	permServiceAccountUpdate = "platform:iam:service-account:update"
 	permServiceAccountDelete = "platform:iam:service-account:delete"
+	// Platform documentation (embedded docs/*.md served at /api/docs)
+	permDocsView = "platform:admin:docs:view"
 	// User / Principal (iam)
 	permPortalUserView   = "platform:iam:portal-user:view"
 	permPortalUserManage = "platform:iam:portal-user:manage"
@@ -677,6 +679,13 @@ func CanManagePortalUsers(a *AuthContext, clientID string) error {
 	}
 	return requirePermission(a, permPortalUserManage)
 }
+
+// ── Platform documentation ───────────────────────────────────────────────
+// CanReadPlatformDocs gates the embedded docs surface (/api/docs). Anchors
+// pass (requirePermission convention — platform staff); the grant exists so
+// the surface stays administrators-only for client-scoped users and
+// confined tokens, and can be widened later by seeding more roles.
+func CanReadPlatformDocs(a *AuthContext) error { return requirePermission(a, permDocsView) }
 
 // ── Identity provider permissions ────────────────────────────────────────
 // Anchor-only — IDPs are platform-level config.

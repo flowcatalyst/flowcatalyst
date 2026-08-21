@@ -127,8 +127,11 @@ const (
 
 	// Login + audit
 	permAdminLoginAttemptRead = "platform:admin:login-attempt:view"
-	permAdminAuditLogRead     = "platform:admin:audit-log:view"
-	permAdminAuditLogExport   = "platform:admin:audit-log:export"
+
+	// Platform documentation (embedded docs served at /api/docs)
+	permAdminDocsRead       = "platform:admin:docs:view"
+	permAdminAuditLogRead   = "platform:admin:audit-log:view"
+	permAdminAuditLogExport = "platform:admin:audit-log:export"
 
 	// Config
 	permAdminConfigRead   = "platform:admin:config:view"

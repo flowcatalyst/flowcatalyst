@@ -19,6 +19,7 @@ import (
 
 	applicationapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/api"
 	auditapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit/api"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/docsapi"
 	authapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/api"
 	clientapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/api"
 	connectionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection/api"
@@ -56,6 +57,7 @@ func main() {
 	// committed openapi.lock.json.
 	applicationapi.Register(api, &applicationapi.State{})
 	auditapi.Register(api, &auditapi.State{})
+	docsapi.Register(api, &docsapi.State{})
 	authapi.Register(api, &authapi.State{})
 	clientapi.Register(api, &clientapi.State{})
 	connectionapi.Register(api, &connectionapi.State{})

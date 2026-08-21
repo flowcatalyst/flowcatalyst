@@ -37,6 +37,7 @@ func PlatformRoles() []role.Role {
 				permAdminApplicationEnableClient, permAdminApplicationDisableClient,
 				permAdminAuditLogRead, permAdminAuditLogExport,
 				permAdminLoginAttemptRead,
+				permAdminDocsRead,
 				permDeveloperApplicationOpenAPIManage,
 			}),
 
@@ -49,6 +50,7 @@ func PlatformRoles() []role.Role {
 				permAdminApplicationRead,
 				permAdminAuditLogRead,
 				permAdminLoginAttemptRead,
+				permAdminDocsRead,
 				permDeveloperApplicationOpenAPIView,
 			}),
 

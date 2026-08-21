@@ -202,6 +202,12 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\DispatchPoolResponse::class => \FlowCatalyst\Generated\Normalizer\DispatchPoolResponseNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\DocListResponse::class => \FlowCatalyst\Generated\Normalizer\DocListResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\DocResponse::class => \FlowCatalyst\Generated\Normalizer\DocResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\DocSummary::class => \FlowCatalyst\Generated\Normalizer\DocSummaryNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\ErrorModel::class => \FlowCatalyst\Generated\Normalizer\ErrorModelNormalizer::class,
         
         \FlowCatalyst\Generated\Model\EventFilterOption::class => \FlowCatalyst\Generated\Normalizer\EventFilterOptionNormalizer::class,
@@ -598,6 +604,9 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\DispatchJobResponse::class => false,
             \FlowCatalyst\Generated\Model\DispatchPoolListResponse::class => false,
             \FlowCatalyst\Generated\Model\DispatchPoolResponse::class => false,
+            \FlowCatalyst\Generated\Model\DocListResponse::class => false,
+            \FlowCatalyst\Generated\Model\DocResponse::class => false,
+            \FlowCatalyst\Generated\Model\DocSummary::class => false,
             \FlowCatalyst\Generated\Model\ErrorModel::class => false,
             \FlowCatalyst\Generated\Model\EventFilterOption::class => false,
             \FlowCatalyst\Generated\Model\EventFilterOptionsResponse::class => false,

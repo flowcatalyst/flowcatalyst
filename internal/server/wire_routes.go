@@ -22,6 +22,7 @@ import (
 	corsapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/cors/api"
 	dispatchjobapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/api"
 	dispatchpoolapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool/api"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/docsapi"
 	emaildomainapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping/api"
 	eventapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/event/api"
 	eventtypeapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/api"
@@ -317,6 +318,9 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 
 		eventapi.Register(humaAPI, &eventapi.State{Repo: repos.eventRepo, Clients: repos.clientRepo})
 		auditapi.Register(humaAPI, &auditapi.State{Repo: repos.auditRepo})
+
+		// Embedded platform documentation (docs/*.md, admin-gated).
+		docsapi.Register(humaAPI, &docsapi.State{})
 		dispatchjobapi.Register(humaAPI, &dispatchjobapi.State{Repo: repos.dispatchJobRepo})
 
 		identityproviderapi.Register(humaAPI, &identityproviderapi.State{
