@@ -21,7 +21,6 @@ type CreateIdentityProviderRequest struct {
 	AllowedEmailDomains []string `json:"allowedEmailDomains,omitempty" doc:"Email domains to route to this provider; mappings are created (or claimed from their current provider) in Email Domain management"`
 	PrimaryClientID     *string  `json:"primaryClientId,omitempty" doc:"Client to link on mappings that are new or not yet linked to a primary client"`
 	SyncRolesFromIDP    bool     `json:"syncRolesFromIdp,omitempty" doc:"Reconcile users' IDP_SYNC roles from the token's roles claim at login"`
-	PortalClientID      *string  `json:"portalClientId,omitempty" doc:"Bind this IdP to a tenant client's portal plane (portal login flows may only use bound IdPs)"`
 	AllowedRoleIDs      []string `json:"allowedRoleIds,omitempty" doc:"Platform roles (by id) this provider may confer via role sync; empty = no restriction"`
 }
 
@@ -38,7 +37,6 @@ func (r CreateIdentityProviderRequest) toCommand() operations.CreateCommand {
 		AllowedEmailDomains: r.AllowedEmailDomains,
 		PrimaryClientID:     r.PrimaryClientID,
 		SyncRolesFromIDP:    r.SyncRolesFromIDP,
-		PortalClientID:      r.PortalClientID,
 		AllowedRoleIDs:      r.AllowedRoleIDs,
 	}
 }
@@ -54,7 +52,6 @@ type UpdateIdentityProviderRequest struct {
 	AllowedEmailDomains []string `json:"allowedEmailDomains,omitempty" doc:"Desired set of domains routed to this provider; additions are mapped/claimed, removals fall back to internal auth"`
 	PrimaryClientID     *string  `json:"primaryClientId,omitempty" doc:"Client to link on mappings that are new or not yet linked to a primary client"`
 	SyncRolesFromIDP    *bool    `json:"syncRolesFromIdp,omitempty"`
-	PortalClientID      *string  `json:"portalClientId,omitempty" doc:"Empty string clears the portal binding"`
 	AllowedRoleIDs      []string `json:"allowedRoleIds,omitempty"`
 }
 
@@ -71,7 +68,6 @@ func (r UpdateIdentityProviderRequest) toCommand(id string) operations.UpdateCom
 		PrimaryClientID:     r.PrimaryClientID,
 		SyncRolesFromIDP:    r.SyncRolesFromIDP,
 		AllowedRoleIDs:      r.AllowedRoleIDs,
-		PortalClientID:      r.PortalClientID,
 	}
 }
 
@@ -90,7 +86,6 @@ type IdentityProviderResponse struct {
 	OIDCIssuerPattern   *string         `json:"oidcIssuerPattern,omitempty"`
 	AllowedEmailDomains []string        `json:"allowedEmailDomains" doc:"Domains currently routed to this provider (derived from email-domain mappings)"`
 	SyncRolesFromIDP    bool            `json:"syncRolesFromIdp"`
-	PortalClientID      *string         `json:"portalClientId,omitempty"`
 	AllowedRoleIDs      []string        `json:"allowedRoleIds"`
 	CreatedAt           httpcompat.Time `json:"createdAt"`
 	UpdatedAt           httpcompat.Time `json:"updatedAt"`
@@ -117,7 +112,6 @@ func fromEntity(ip *identityprovider.IdentityProvider) IdentityProviderResponse 
 		OIDCIssuerPattern:   ip.OIDCIssuerPattern,
 		AllowedEmailDomains: domains,
 		SyncRolesFromIDP:    ip.SyncRolesFromIDP,
-		PortalClientID:      ip.PortalClientID,
 		AllowedRoleIDs:      roles,
 		CreatedAt:           jsontime.New(ip.CreatedAt),
 		UpdatedAt:           jsontime.New(ip.UpdatedAt),

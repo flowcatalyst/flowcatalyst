@@ -48,8 +48,8 @@ type State struct {
 	// Invites is optional: nil disables invite delivery/minting (ensure
 	// still creates the identity; SSO-only deployments don't need invites).
 	Invites InviteMinter
-	// IdPs routes SSO-owned domains: an invitee whose email domain belongs
-	// to a portal-bound IdP gets an "open the portal" invite instead of a
+	// IdPs routes SSO-owned domains: an invitee whose email domain is owned
+	// by an OIDC IdP gets an "open the portal" invite instead of a
 	// set-password link (their org signs them in; a password would be an
 	// SSO bypass). Optional — nil skips the check.
 	IdPs *identityprovider.Repository
@@ -94,7 +94,7 @@ type PortalUserRequest struct {
 }
 
 // PortalUserResponse reports the idempotent outcome. SSOManaged means the
-// email domain belongs to a portal-bound IdP: there is no set-password
+// email domain is owned by an OIDC IdP: there is no set-password
 // step — the user signs in through their organisation, JIT-completing the
 // identity on first login. With returnInviteLink, inviteUrl is then the
 // PORTAL LOGIN destination (the caller's redirectUri, else the portal's
@@ -161,7 +161,7 @@ func (s *State) ensure(ctx context.Context, in *apicommon.In[PortalUserRequest])
 	// callers get ssoManaged and send their own version of that email.
 	if s.IdPs != nil {
 		domain := ident.Email[strings.LastIndexByte(ident.Email, '@')+1:]
-		if idp, derr := identityprovider.PortalIdPForDomain(ctx, s.IdPs, clientID, domain); derr == nil && idp != nil {
+		if idp, derr := identityprovider.OIDCProviderForDomain(ctx, s.IdPs, domain); derr == nil && idp != nil {
 			// The SSO invitee's destination is simply the portal login:
 			// the caller's (validated) redirectUri when given, else the
 			// portal's derived origin.

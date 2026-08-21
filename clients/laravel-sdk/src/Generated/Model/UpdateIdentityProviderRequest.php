@@ -53,12 +53,6 @@ class UpdateIdentityProviderRequest extends \ArrayObject
      */
     protected $oidcMultiTenant;
     /**
-     * Empty string clears the portal binding
-     *
-     * @var string|null
-     */
-    protected $portalClientId;
-    /**
      * Client to link on mappings that are new or not yet linked to a primary client
      *
      * @var string|null
@@ -236,28 +230,6 @@ class UpdateIdentityProviderRequest extends \ArrayObject
     {
         $this->initialized['oidcMultiTenant'] = true;
         $this->oidcMultiTenant = $oidcMultiTenant;
-        return $this;
-    }
-    /**
-     * Empty string clears the portal binding
-     *
-     * @return string|null
-     */
-    public function getPortalClientId(): ?string
-    {
-        return $this->portalClientId;
-    }
-    /**
-     * Empty string clears the portal binding
-     *
-     * @param string|null $portalClientId
-     *
-     * @return self
-     */
-    public function setPortalClientId(?string $portalClientId): self
-    {
-        $this->initialized['portalClientId'] = true;
-        $this->portalClientId = $portalClientId;
         return $this;
     }
     /**

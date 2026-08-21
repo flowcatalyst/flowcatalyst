@@ -48,10 +48,10 @@ func (f *fakeInviteMinter) SendPortalSSOInvite(_ context.Context, email, _ strin
 }
 
 // TestEnsurePortalUser_SSODomainGetsNoPassword pins the invite routing: an
-// email whose domain belongs to an IdP BOUND to the client's portal gets the
-// SSO "open the portal" invite (never set-password), while an unbound domain
-// gets the set-password invite. This only engages when the IdP carries the
-// portal binding (portalClientId) — an employee-plane IdP is ignored.
+// email whose domain is owned by an OIDC IdP gets the SSO "open the portal"
+// invite (never set-password) — domain ownership alone decides; the IdP
+// carries no per-client binding. An unowned domain gets the set-password
+// invite.
 func TestEnsurePortalUser_SSODomainGetsNoPassword(t *testing.T) {
 	ctx := context.Background()
 	pool := testpg.Pool(t)
@@ -75,7 +75,7 @@ func TestEnsurePortalUser_SSODomainGetsNoPassword(t *testing.T) {
 		}, testpg.TestEC())
 	require.NoError(t, err)
 
-	// A portal-bound IdP owning ssoorg.test.
+	// An OIDC IdP owning ssoorg.test — domain ownership alone routes it.
 	issuer := "https://login.ssoorg.test"
 	oidcClient := "sso-org"
 	_, err = usecaseop.RunTx(testpg.AnchorCtx(), uow,
@@ -91,7 +91,6 @@ func TestEnsurePortalUser_SSODomainGetsNoPassword(t *testing.T) {
 			Code: "ensure-sso-idp", Name: "Ensure SSO Org", Type: "OIDC",
 			OIDCIssuerURL: &issuer, OIDCClientID: &oidcClient,
 			AllowedEmailDomains: []string{"ssoorg.test"},
-			PortalClientID:      &tenantID,
 		}, testpg.TestEC())
 	require.NoError(t, err)
 
@@ -113,7 +112,7 @@ func TestEnsurePortalUser_SSODomainGetsNoPassword(t *testing.T) {
 		ClientID: tenantID, Email: "pat@ssoorg.test",
 	}})
 	require.NoError(t, err)
-	assert.True(t, out.Body.SSOManaged, "bound-IdP domain must be SSO-managed")
+	assert.True(t, out.Body.SSOManaged, "OIDC-owned domain must be SSO-managed")
 	assert.True(t, out.Body.Invited)
 	assert.Equal(t, []string{"pat@ssoorg.test"}, minter.ssoInvites)
 	assert.Empty(t, minter.setPasswordInvites, "SSO-owned domain must never get a set-password invite")
@@ -128,7 +127,7 @@ func TestEnsurePortalUser_SSODomainGetsNoPassword(t *testing.T) {
 	require.NotNil(t, out.Body.InviteURL)
 	assert.Equal(t, "https://portal.ensure-sso.test/", *out.Body.InviteURL)
 
-	// Unbound domain → ordinary set-password invite.
+	// Unowned domain → ordinary set-password invite.
 	out, err = s.ensure(anchorCtx, &apicommon.In[PortalUserRequest]{Body: PortalUserRequest{
 		ClientID: tenantID, Email: "lee@passwordorg.test",
 	}})

@@ -32,7 +32,6 @@ type UpdateCommand struct {
 	AllowedEmailDomains []string `json:"allowedEmailDomains,omitempty"`
 	PrimaryClientID     *string  `json:"primaryClientId,omitempty"`
 	SyncRolesFromIDP    *bool    `json:"syncRolesFromIdp,omitempty"`
-	PortalClientID      *string  `json:"portalClientId,omitempty"`
 	AllowedRoleIDs      []string `json:"allowedRoleIds,omitempty"`
 }
 
@@ -95,14 +94,6 @@ func UpdateIdentityProvider(deps Deps) usecaseop.TxOperation[UpdateCommand, Upda
 			}
 			if cmd.SyncRolesFromIDP != nil {
 				ip.SyncRolesFromIDP = *cmd.SyncRolesFromIDP
-			}
-			if cmd.PortalClientID != nil {
-				// Empty string clears the portal binding; a value sets it.
-				if trimmed := strings.TrimSpace(*cmd.PortalClientID); trimmed == "" {
-					ip.PortalClientID = nil
-				} else {
-					ip.PortalClientID = &trimmed
-				}
 			}
 			if cmd.AllowedRoleIDs != nil {
 				ip.AllowedRoleIDs = cmd.AllowedRoleIDs

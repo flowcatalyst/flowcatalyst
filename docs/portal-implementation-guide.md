@@ -59,10 +59,12 @@ managed via API.
    the platform UI (*Client Administration → Portal Users*); client scope
    confines each holder to their own client.
 3. **Identity providers for federated customer orgs** (optional, per org):
-   an IdP row with its **portal binding** (`portalClientId`) set to the
-   operating client, and the org's email domains claimed. A portal-bound
-   IdP serves *only* that client's portal flows; don't also route employee
-   logins to it via email-domain mappings.
+   an OIDC IdP row with the org's email domains claimed — that is all.
+   Domain ownership alone routes portal logins (and invites) for those
+   domains to the IdP; there is no per-portal binding on the IdP, and one
+   IdP may serve any number of portals plus employee logins. An IdP
+   authenticates; the flow's portal OAuth client decides whose portal
+   identity the login yields.
 
 ## 3. The login flow (any stack)
 

@@ -697,7 +697,6 @@ type OauthIdentityProvider struct {
 	CreatedAt           time.Time `db:"created_at"`
 	UpdatedAt           time.Time `db:"updated_at"`
 	SyncRolesFromIdp    bool      `db:"sync_roles_from_idp"`
-	PortalClientID      *string   `db:"portal_client_id"`
 }
 
 type OauthIdentityProviderAllowedDomain struct {

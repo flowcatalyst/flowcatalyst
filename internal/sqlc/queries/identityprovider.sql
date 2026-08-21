@@ -9,21 +9,21 @@
 -- name: IdentityProviderFindByID :one
 SELECT id, code, name, type, oidc_issuer_url, oidc_client_id,
        oidc_client_secret_ref, oidc_multi_tenant, oidc_issuer_pattern,
-       created_at, updated_at, sync_roles_from_idp, portal_client_id
+       created_at, updated_at, sync_roles_from_idp
 FROM oauth_identity_providers
 WHERE id = $1;
 
 -- name: IdentityProviderFindByCode :one
 SELECT id, code, name, type, oidc_issuer_url, oidc_client_id,
        oidc_client_secret_ref, oidc_multi_tenant, oidc_issuer_pattern,
-       created_at, updated_at, sync_roles_from_idp, portal_client_id
+       created_at, updated_at, sync_roles_from_idp
 FROM oauth_identity_providers
 WHERE code = $1;
 
 -- name: IdentityProviderFindAll :many
 SELECT id, code, name, type, oidc_issuer_url, oidc_client_id,
        oidc_client_secret_ref, oidc_multi_tenant, oidc_issuer_pattern,
-       created_at, updated_at, sync_roles_from_idp, portal_client_id
+       created_at, updated_at, sync_roles_from_idp
 FROM oauth_identity_providers
 ORDER BY code;
 
@@ -31,8 +31,8 @@ ORDER BY code;
 INSERT INTO oauth_identity_providers
     (id, code, name, type, oidc_issuer_url, oidc_client_id,
      oidc_client_secret_ref, oidc_multi_tenant, oidc_issuer_pattern,
-     sync_roles_from_idp, created_at, updated_at, portal_client_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+     sync_roles_from_idp, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 ON CONFLICT (id) DO UPDATE SET
     code = EXCLUDED.code,
     name = EXCLUDED.name,
@@ -42,8 +42,7 @@ ON CONFLICT (id) DO UPDATE SET
     oidc_multi_tenant = EXCLUDED.oidc_multi_tenant,
     oidc_issuer_pattern = EXCLUDED.oidc_issuer_pattern,
     sync_roles_from_idp = EXCLUDED.sync_roles_from_idp,
-    updated_at = EXCLUDED.updated_at,
-    portal_client_id = EXCLUDED.portal_client_id;
+    updated_at = EXCLUDED.updated_at;
 
 -- name: IdentityProviderDelete :exec
 DELETE FROM oauth_identity_providers WHERE id = $1;

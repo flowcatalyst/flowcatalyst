@@ -49,13 +49,15 @@ type IdentityProvider struct {
 	// AllowedRoleIDs restricts which platform roles (by role TSID) this IdP
 	// may confer via role sync. Empty = no restriction.
 	AllowedRoleIDs []string `json:"allowedRoleIds"`
-	// PortalClientID binds this IdP to a tenant client's PORTAL plane
-	// (docs/portal-identity-plan.md Phase 2.5 v2): portal login flows may
-	// only route to IdPs whose binding matches the flow's client. NULL = an
-	// employee-plane IdP, unavailable to portals.
-	PortalClientID *string   `json:"portalClientId,omitempty"`
-	CreatedAt      time.Time `json:"createdAt"`
-	UpdatedAt      time.Time `json:"updatedAt"`
+	// NOTE: an IdP is deliberately NOT bound to any client or plane. Its job
+	// is authentication only — any login attempt (employee or any client's
+	// portal) for a domain it owns routes to it. Which client's portal
+	// identity a portal login yields is the OAuth client's portal linkage
+	// (oauth_clients.portal_client_id), never an IdP property. A per-IdP
+	// portal binding existed briefly and was removed (owner decision
+	// 2026-08-20): it wrongly limited an IdP to a single portal.
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // IDStr satisfies usecase.HasID.

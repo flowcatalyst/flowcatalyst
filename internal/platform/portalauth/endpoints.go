@@ -138,9 +138,8 @@ func (s *State) Authorize(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, page+"?flow="+url.QueryEscape(flow.ID), http.StatusTemporaryRedirect)
 }
 
-// CheckDomain is POST /portal/auth/check-domain {flowId, email}: routes the
-// email within the flow's client context. A domain owned by an IdP BOUND to
-// that client's portal → SSO (with the redirect to start it); anything else
+// CheckDomain is POST /portal/auth/check-domain {flowId, email}: a domain
+// owned by an OIDC IdP → SSO (with the redirect to start it); anything else
 // → password. Deliberately does not reveal whether the identity exists.
 func (s *State) CheckDomain(w http.ResponseWriter, r *http.Request) {
 	var body struct {
@@ -166,7 +165,7 @@ func (s *State) CheckDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	idp, err := s.portalIdPForDomain(r, flow.PortalClientID, domain)
+	idp, err := s.portalIdPForDomain(r, domain)
 	if err != nil {
 		httperror.Write(w, usecase.Internal("IDP", "identity provider lookup failed", err))
 		return
@@ -182,10 +181,12 @@ func (s *State) CheckDomain(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"method": "PASSWORD"})
 }
 
-// portalIdPForDomain finds an IdP bound to the client's portal plane that
-// owns the email domain (see identityprovider.PortalIdPForDomain).
-func (s *State) portalIdPForDomain(r *http.Request, portalClientID, domain string) (*identityprovider.IdentityProvider, error) {
-	return identityprovider.PortalIdPForDomain(r.Context(), s.IdPs, portalClientID, domain)
+// portalIdPForDomain finds the OIDC IdP that owns the email domain. Domain
+// ownership alone decides SSO-vs-password — the IdP authenticates its
+// domains for every surface; the flow's client only scopes which portal
+// identity a successful login yields.
+func (s *State) portalIdPForDomain(r *http.Request, domain string) (*identityprovider.IdentityProvider, error) {
+	return identityprovider.OIDCProviderForDomain(r.Context(), s.IdPs, domain)
 }
 
 // PasswordLogin is POST /portal/auth/login {flowId, email, password}. On
@@ -226,7 +227,7 @@ func (s *State) PasswordLogin(w http.ResponseWriter, r *http.Request) {
 	// authenticates by password — even one set via a stray invite. The org's
 	// IdP is the authority (suspend there = suspended here); allowing the
 	// password would be an SSO bypass.
-	if idp, ierr := s.portalIdPForDomain(r, flow.PortalClientID, emailDomainOf(body.Email)); ierr == nil && idp != nil {
+	if idp, ierr := s.portalIdPForDomain(r, emailDomainOf(body.Email)); ierr == nil && idp != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -310,7 +311,7 @@ func (s *State) RequestPasswordReset(w http.ResponseWriter, r *http.Request) {
 
 	// SSO-owned domains never get password resets (nothing to reset that
 	// should be usable). Silent success — same anti-enumeration shape.
-	if idp, ierr := s.portalIdPForDomain(r, flow.PortalClientID, emailDomainOf(emailAddr)); ierr == nil && idp != nil {
+	if idp, ierr := s.portalIdPForDomain(r, emailDomainOf(emailAddr)); ierr == nil && idp != nil {
 		writeJSON(w, map[string]string{
 			"message": "If an account exists, a reset email has been sent.",
 		})

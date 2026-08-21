@@ -136,8 +136,9 @@ Consequences:
 - Portal reference implementation on the Laravel SDK (still pending — now
   against the portal plane; see docs/portal-implementation-guide.md and
   docs/portal-reference-implementation.md).
-- Org-IdP self-service: still pending; the binding now runs through
-  `identity_providers.portalClientId` (see Phase 2.5 v2).
+- Org-IdP self-service: still pending. (A per-IdP portal binding —
+  `identity_providers.portalClientId` — existed 2026-08 and was REMOVED:
+  see the 2026-08-20 revision in Phase 2.5 v2.)
 
 ## Phase 2.5 — separate portal-identity plane (DECIDED 2026-08-13, v2)
 
@@ -169,9 +170,13 @@ bridge), separate storage and separate entry points.
     `portal_login_flows` row; redirects to the SPA's portal login page.
     Every login is a fresh authentication (no SSO reuse — stateless by
     design; portals run their own sessions from the id_token anyway).
-  - `POST /portal/auth/check-domain` — routes an email within the flow's
-    client context: a domain owned by an IdP **bound to that client**
-    (`oauth_identity_providers.portal_client_id`) → SSO; else password.
+  - `POST /portal/auth/check-domain` — routes an email: a domain owned by
+    an **OIDC IdP** → SSO; else password. (REVISED 2026-08-20: an IdP is an
+    authenticator for its domains, full stop — it carries NO per-client
+    portal binding. Any OIDC IdP owning the domain serves any portal; which
+    client's portal identity the login yields comes from the FLOW's OAuth
+    client. The brief `oauth_identity_providers.portal_client_id` binding
+    was removed — it wrongly limited one IdP to one portal.)
   - `POST /portal/auth/login` — verifies the portal identity's password and
     answers with the code redirect (no cookie set).
   - `GET /portal/auth/oidc/login` — starts the IdP handshake with a
@@ -211,7 +216,8 @@ bridge), separate storage and separate entry points.
 
 What this deletes from the v1 draft: `iam_portal_users`, the authorize-time
 gate, JIT-linkage, delink/purge. What it keeps: the OAuth client's
-`portal_client_id` (now the routing switch into the portal plane), the
+`portal_client_id` (the routing switch into the portal plane — on the
+OAUTH CLIENT, the only place portal-ness lives), the
 invite-link/redirect machinery, and the deployment/gotcha guidance.
 
 ## Phase 3 (on demand)

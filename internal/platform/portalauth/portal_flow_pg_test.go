@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
-	authops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
+	authops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordhash"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	clientops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
@@ -24,8 +24,8 @@ import (
 	edmops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
 	idpops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider/operations"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalidentity"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 )
@@ -88,7 +88,7 @@ func TestPortalPasswordJourney(t *testing.T) {
 	require.True(t, strings.HasPrefix(loc, "/portal/login?flow="), loc)
 	flowID, _ := url.QueryUnescape(strings.TrimPrefix(loc, "/portal/login?flow="))
 
-	// 2. check-domain: no portal-bound IdP owns the domain → password.
+	// 2. check-domain: no OIDC IdP owns the domain → password.
 	rec = postJSON(t, s.CheckDomain, "/portal/auth/check-domain",
 		map[string]string{"flowId": flowID, "email": "pat@portal-flow.test"})
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
@@ -284,7 +284,7 @@ func TestPortalForgotPassword(t *testing.T) {
 }
 
 // TestPortalSSODomainEnforcement pins the SSO-owned-domain rules: a domain
-// owned by a portal-bound IdP routes to SSO at check-domain, REFUSES
+// owned by an OIDC IdP routes to SSO at check-domain, REFUSES
 // password login (SSO_REQUIRED — a stray password must not bypass the org's
 // IdP), and silently skips forgot-password sends.
 func TestPortalSSODomainEnforcement(t *testing.T) {
@@ -308,7 +308,7 @@ func TestPortalSSODomainEnforcement(t *testing.T) {
 		}, testpg.TestEC())
 	require.NoError(t, err)
 
-	// A portal-bound IdP owning tigerbrands.test.
+	// An OIDC IdP owning tigerbrands.test — ownership alone routes it.
 	issuer := "https://login.tigerbrands.test"
 	oidcClient := "tb-client"
 	_, err = usecaseop.RunTx(testpg.AnchorCtx(), uow,
@@ -324,7 +324,6 @@ func TestPortalSSODomainEnforcement(t *testing.T) {
 			Code: "tb-portal-idp", Name: "Tiger Brands", Type: "OIDC",
 			OIDCIssuerURL: &issuer, OIDCClientID: &oidcClient,
 			AllowedEmailDomains: []string{"tigerbrands.test"},
-			PortalClientID:      &tenantID,
 		}, testpg.TestEC())
 	require.NoError(t, err)
 

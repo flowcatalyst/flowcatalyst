@@ -2333,10 +2333,6 @@
           "oidcMultiTenant": {
             "type": "boolean"
           },
-          "portalClientId": {
-            "description": "Bind this IdP to a tenant client's portal plane (portal login flows may only use bound IdPs)",
-            "type": "string"
-          },
           "primaryClientId": {
             "description": "Client to link on mappings that are new or not yet linked to a primary client",
             "type": "string"
@@ -3998,9 +3994,6 @@
           },
           "oidcMultiTenant": {
             "type": "boolean"
-          },
-          "portalClientId": {
-            "type": "string"
           },
           "syncRolesFromIdp": {
             "type": "boolean"
@@ -7736,10 +7729,6 @@
           },
           "oidcMultiTenant": {
             "type": "boolean"
-          },
-          "portalClientId": {
-            "description": "Empty string clears the portal binding",
-            "type": "string"
           },
           "primaryClientId": {
             "description": "Client to link on mappings that are new or not yet linked to a primary client",

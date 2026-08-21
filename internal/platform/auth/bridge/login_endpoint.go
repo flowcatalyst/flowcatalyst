@@ -859,9 +859,10 @@ func (e *LoginEndpoint) RegisterPortalRoutes(r chi.Router) {
 }
 
 // handlePortalOIDCLogin starts a PORTAL-plane IdP handshake: it consumes the
-// portal login flow (single-use), requires the IdP to be bound to the flow's
-// client (fail closed — an employee-plane IdP can never serve a portal), and
-// parks the flow's OAuth chain on a portal-flagged OIDC state.
+// portal login flow (single-use), requires an external (OIDC) provider —
+// any OIDC IdP may serve any portal, an IdP is an authenticator, not a
+// per-client resource — and parks the flow's OAuth chain on a
+// portal-flagged OIDC state.
 func (e *LoginEndpoint) handlePortalOIDCLogin(w http.ResponseWriter, r *http.Request) {
 	if e.Portal == nil {
 		httperror.Write(w, usecase.Internal("PORTAL_DISABLED", "portal login is not configured", nil))
@@ -890,9 +891,14 @@ func (e *LoginEndpoint) handlePortalOIDCLogin(w http.ResponseWriter, r *http.Req
 			"OIDC could not be initialised for this provider", err))
 		return
 	}
-	if idp.PortalClientID == nil || *idp.PortalClientID != flow.PortalClientID {
-		httperror.Write(w, usecase.Authorization("IDP_NOT_PORTAL_BOUND",
-			"this identity provider is not available to this portal"))
+	// Any OIDC IdP may serve any portal flow — an IdP authenticates its own
+	// domains, nothing more; which client's portal identity the login yields
+	// comes from the flow. The trust boundary is the callback's
+	// allowed-email-domains check, which stops an IdP asserting emails
+	// outside the domains it owns.
+	if idp.Type != identityprovider.TypeOIDC {
+		httperror.Write(w, usecase.Authorization("IDP_NOT_EXTERNAL",
+			"this identity provider does not support SSO"))
 		return
 	}
 
