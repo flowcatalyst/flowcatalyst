@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/appdocs"
 	applicationapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/api"
 	auditapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit/api"
 	authapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/api"
@@ -302,6 +303,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 
 		// SDK self-registration ("sync") endpoints, scoped under
 		// /api/applications/{appCode}.
+		appDocsRepo := appdocs.NewRepository(pool)
 		sdksync.Register(humaAPI, &sdksync.State{
 			Apps:          repos.applicationRepo,
 			EventTypes:    repos.eventTypeRepo,
@@ -313,14 +315,19 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			Principals:    repos.principalRepo,
 			ScheduledJobs: repos.scheduledJobRepo,
 			Specs:         openapispecs.NewRepository(pool),
+			AppDocs:       appDocsRepo,
 			UoW:           uow,
 		})
 
 		eventapi.Register(humaAPI, &eventapi.State{Repo: repos.eventRepo, Clients: repos.clientRepo})
 		auditapi.Register(humaAPI, &auditapi.State{Repo: repos.auditRepo})
 
-		// Embedded platform documentation (docs/*.md, admin-gated).
-		docsapi.Register(humaAPI, &docsapi.State{})
+		// Documentation (admin-gated): the platform's published pages
+		// (embedded docs/published/*.md) + application-synced pages.
+		docsapi.Register(humaAPI, &docsapi.State{
+			AppDocs: appDocsRepo,
+			Apps:    repos.applicationRepo,
+		})
 		dispatchjobapi.Register(humaAPI, &dispatchjobapi.State{Repo: repos.dispatchJobRepo})
 
 		identityproviderapi.Register(humaAPI, &identityproviderapi.State{

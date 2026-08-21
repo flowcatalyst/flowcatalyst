@@ -103,6 +103,17 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     }
     /**
      * @param string $appCode Application code
+     * @param null|\FlowCatalyst\Generated\Model\SyncDocsRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\SyncResultResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function syncAppDocs(string $appCode, ?\FlowCatalyst\Generated\Model\SyncDocsRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\SyncAppDocs($appCode, $requestBody), $fetch);
+    }
+    /**
+     * @param string $appCode Application code
      * @param null|\FlowCatalyst\Generated\Model\SyncEventTypesRequest $requestBody
      * @param array{
      *    "removeUnlisted"?: bool, //Remove API-sourced event types not in the list
@@ -1002,14 +1013,25 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListDocs(), $fetch);
     }
     /**
+     * @param string $appCode
      * @param string $slug
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      *
      * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\DocResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
      */
-    public function getDoc(string $slug, string $fetch = self::FETCH_OBJECT)
+    public function getApplicationDoc(string $appCode, string $slug, string $fetch = self::FETCH_OBJECT)
     {
-        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetDoc($slug), $fetch);
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetApplicationDoc($appCode, $slug), $fetch);
+    }
+    /**
+     * @param string $slug
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\DocResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getPlatformDoc(string $slug, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetPlatformDoc($slug), $fetch);
     }
     /**
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)

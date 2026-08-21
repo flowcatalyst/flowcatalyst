@@ -2,7 +2,7 @@
 
 namespace FlowCatalyst\Generated\Model;
 
-class DocListResponse
+class SyncDocsRequest extends \ArrayObject
 {
     /**
      * @var array
@@ -19,13 +19,9 @@ class DocListResponse
      */
     protected $dollarSchema;
     /**
-     * @var list<AppDocsGroup>|null
+     * @var list<SyncDocInputRequest>|null
      */
-    protected $applications;
-    /**
-     * @var list<DocSummary>|null
-     */
-    protected $platform;
+    protected $docs;
     /**
      * A URL to the JSON Schema for this object.
      *
@@ -49,39 +45,21 @@ class DocListResponse
         return $this;
     }
     /**
-     * @return list<AppDocsGroup>|null
+     * @return list<SyncDocInputRequest>|null
      */
-    public function getApplications(): ?array
+    public function getDocs(): ?array
     {
-        return $this->applications;
+        return $this->docs;
     }
     /**
-     * @param list<AppDocsGroup>|null $applications
+     * @param list<SyncDocInputRequest>|null $docs
      *
      * @return self
      */
-    public function setApplications(?array $applications): self
+    public function setDocs(?array $docs): self
     {
-        $this->initialized['applications'] = true;
-        $this->applications = $applications;
-        return $this;
-    }
-    /**
-     * @return list<DocSummary>|null
-     */
-    public function getPlatform(): ?array
-    {
-        return $this->platform;
-    }
-    /**
-     * @param list<DocSummary>|null $platform
-     *
-     * @return self
-     */
-    public function setPlatform(?array $platform): self
-    {
-        $this->initialized['platform'] = true;
-        $this->platform = $platform;
+        $this->initialized['docs'] = true;
+        $this->docs = $docs;
         return $this;
     }
 }

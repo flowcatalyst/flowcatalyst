@@ -98,6 +98,7 @@ const (
 	permAppSvcSubscriptionUpdate = "platform:application-service:subscription:update"
 	permAppSvcSubscriptionDelete = "platform:application-service:subscription:delete"
 	permAppSvcScheduledJobSync   = "platform:application-service:scheduled-job:sync"
+	permAppSvcDocsSync           = "platform:application-service:docs:sync"
 	// Developer (application OpenAPI documents)
 	permAppOpenApiSync   = "platform:developer:application-openapi:sync"
 	permAppOpenApiManage = "platform:developer:application-openapi:manage"
@@ -686,6 +687,12 @@ func CanManagePortalUsers(a *AuthContext, clientID string) error {
 // the surface stays administrators-only for client-scoped users and
 // confined tokens, and can be widened later by seeding more roles.
 func CanReadPlatformDocs(a *AuthContext) error { return requirePermission(a, permDocsView) }
+
+// CanSyncAppDocs guards POST /api/applications/{appCode}/docs/sync — the
+// SDK surface where an application pushes its documentation pages. Anchors
+// pass; SDK service accounts hold the application-service grant (and are
+// confined to their own app by requireAppAccess at the handler).
+func CanSyncAppDocs(a *AuthContext) error { return requireAny(a, permAppSvcDocsSync) }
 
 // ── Identity provider permissions ────────────────────────────────────────
 // Anchor-only — IDPs are platform-level config.

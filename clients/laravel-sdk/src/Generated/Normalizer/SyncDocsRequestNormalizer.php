@@ -11,7 +11,7 @@ use Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
 use Symfony\Component\Serializer\Normalizer\NormalizerAwareInterface;
 use Symfony\Component\Serializer\Normalizer\NormalizerAwareTrait;
 use Symfony\Component\Serializer\Normalizer\NormalizerInterface;
-class DocListResponseNormalizer implements DenormalizerInterface, NormalizerInterface, DenormalizerAwareInterface, NormalizerAwareInterface
+class SyncDocsRequestNormalizer implements DenormalizerInterface, NormalizerInterface, DenormalizerAwareInterface, NormalizerAwareInterface
 {
     use DenormalizerAwareTrait;
     use NormalizerAwareTrait;
@@ -19,15 +19,15 @@ class DocListResponseNormalizer implements DenormalizerInterface, NormalizerInte
     use ValidatorTrait;
     public function supportsDenormalization(mixed $data, string $type, ?string $format = null, array $context = []): bool
     {
-        return $type === \FlowCatalyst\Generated\Model\DocListResponse::class;
+        return $type === \FlowCatalyst\Generated\Model\SyncDocsRequest::class;
     }
     public function supportsNormalization(mixed $data, ?string $format = null, array $context = []): bool
     {
-        return is_object($data) && get_class($data) === \FlowCatalyst\Generated\Model\DocListResponse::class;
+        return is_object($data) && get_class($data) === \FlowCatalyst\Generated\Model\SyncDocsRequest::class;
     }
     public function denormalize(mixed $data, string $type, ?string $format = null, array $context = []): mixed
     {
-        $object = new \FlowCatalyst\Generated\Model\DocListResponse();
+        $object = new \FlowCatalyst\Generated\Model\SyncDocsRequest();
         if (null === $data || false === \is_array($data)) {
             return $object;
         }
@@ -39,29 +39,26 @@ class DocListResponseNormalizer implements DenormalizerInterface, NormalizerInte
         }
         if (\array_key_exists('$schema', $data) && $data['$schema'] !== null) {
             $object->setDollarSchema($data['$schema']);
+            unset($data['$schema']);
         }
         elseif (\array_key_exists('$schema', $data) && $data['$schema'] === null) {
             $object->setDollarSchema(null);
         }
-        if (\array_key_exists('applications', $data) && $data['applications'] !== null) {
+        if (\array_key_exists('docs', $data) && $data['docs'] !== null) {
             $values = [];
-            foreach ($data['applications'] as $value) {
-                $values[] = $this->denormalizer->denormalize($value, \FlowCatalyst\Generated\Model\AppDocsGroup::class, 'json', $context);
+            foreach ($data['docs'] as $value) {
+                $values[] = $this->denormalizer->denormalize($value, \FlowCatalyst\Generated\Model\SyncDocInputRequest::class, 'json', $context);
             }
-            $object->setApplications($values);
+            $object->setDocs($values);
+            unset($data['docs']);
         }
-        elseif (\array_key_exists('applications', $data) && $data['applications'] === null) {
-            $object->setApplications(null);
+        elseif (\array_key_exists('docs', $data) && $data['docs'] === null) {
+            $object->setDocs(null);
         }
-        if (\array_key_exists('platform', $data) && $data['platform'] !== null) {
-            $values_1 = [];
-            foreach ($data['platform'] as $value_1) {
-                $values_1[] = $this->denormalizer->denormalize($value_1, \FlowCatalyst\Generated\Model\DocSummary::class, 'json', $context);
+        foreach ($data as $key => $value_1) {
+            if (preg_match('/.*/', (string) $key)) {
+                $object[$key] = $value_1;
             }
-            $object->setPlatform($values_1);
-        }
-        elseif (\array_key_exists('platform', $data) && $data['platform'] === null) {
-            $object->setPlatform(null);
         }
         return $object;
     }
@@ -69,19 +66,19 @@ class DocListResponseNormalizer implements DenormalizerInterface, NormalizerInte
     {
         $dataArray = [];
         $values = [];
-        foreach ($data->getApplications() as $value) {
+        foreach ($data->getDocs() as $value) {
             $values[] = $this->normalizer->normalize($value, 'json', $context);
         }
-        $dataArray['applications'] = $values;
-        $values_1 = [];
-        foreach ($data->getPlatform() as $value_1) {
-            $values_1[] = $this->normalizer->normalize($value_1, 'json', $context);
+        $dataArray['docs'] = $values;
+        foreach ($data as $key => $value_1) {
+            if (preg_match('/.*/', (string) $key)) {
+                $dataArray[$key] = $value_1;
+            }
         }
-        $dataArray['platform'] = $values_1;
         return $dataArray;
     }
     public function getSupportedTypes(?string $format = null): array
     {
-        return [\FlowCatalyst\Generated\Model\DocListResponse::class => false];
+        return [\FlowCatalyst\Generated\Model\SyncDocsRequest::class => false];
     }
 }

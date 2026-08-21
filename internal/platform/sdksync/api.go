@@ -26,6 +26,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/appdocs"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
@@ -66,7 +67,10 @@ type State struct {
 	Principals    *principal.Repository
 	ScheduledJobs *scheduledjob.Repository
 	Specs         *openapispecs.Repository
-	UoW           *usecasepgx.UnitOfWork
+	// AppDocs backs docs/sync (application-pushed documentation). Optional —
+	// nil disables the endpoint (fail closed).
+	AppDocs *appdocs.Repository
+	UoW     *usecasepgx.UnitOfWork
 }
 
 // SyncResultResponse is the shared result for the list-based sync
@@ -88,6 +92,7 @@ func Register(api huma.API, s *State) {
 	apiroute.Post(g, "syncSubscriptions", "/api/applications/{appCode}/subscriptions/sync", "Sync an application's subscriptions (SDK self-registration)", http.StatusOK, s.syncSubscriptions)
 	apiroute.Post(g, "syncDispatchPools", "/api/applications/{appCode}/dispatch-pools/sync", "Sync dispatch pools (SDK self-registration)", http.StatusOK, s.syncDispatchPools)
 	apiroute.Post(g, "syncPrincipals", "/api/applications/{appCode}/principals/sync", "Sync an application's principals (SDK self-registration)", http.StatusOK, s.syncPrincipals)
+	apiroute.Post(g, "syncAppDocs", "/api/applications/{appCode}/docs/sync", "Sync an application's documentation pages (SDK self-registration; declarative full replace)", http.StatusOK, s.syncAppDocs)
 	apiroute.Post(g, "syncProcesses", "/api/applications/{appCode}/processes/sync", "Sync an application's processes (SDK self-registration)", http.StatusOK, s.syncProcesses)
 	// SDK compatibility alias: the Laravel SDK's processes()->sync() posts to
 	// /api/processes/sync with applicationCode in the body (unlike every other

@@ -213,6 +213,7 @@ var permsApplicationService = []string{
 	"platform:application-service:permission:view",
 	"platform:application-service:permission:sync",
 	"platform:application-service:scheduled-job-instance:write",
+	"platform:application-service:docs:sync",
 	"platform:application-service:scheduled-job:sync",
 	"platform:application-service:process:view",
 	"platform:application-service:process:sync",

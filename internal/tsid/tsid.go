@@ -72,6 +72,8 @@ const (
 	// PortalUser backs portal identities (portal_identities) — see
 	// docs/portal-identity-plan.md Phase 2.5 v2.
 	PortalUser
+	// AppDoc backs application-synced documentation pages (app_docs).
+	AppDoc
 )
 
 // Prefix returns the 3-character prefix for this entity type. These are
@@ -166,6 +168,8 @@ func (e EntityType) Prefix() string {
 		return "rar"
 	case PortalUser:
 		return "ptu"
+	case AppDoc:
+		return "doc"
 	default:
 		return "unk"
 	}

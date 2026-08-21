@@ -2,27 +2,32 @@
 
 namespace FlowCatalyst\Generated\Endpoint;
 
-class GetDoc extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint implements \FlowCatalyst\Generated\Runtime\Client\Endpoint
+class SyncAppDocs extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint implements \FlowCatalyst\Generated\Runtime\Client\Endpoint
 {
-    protected $slug;
+    protected $appCode;
     /**
-     * @param string $slug
+     * @param string $appCode Application code
+     * @param null|\FlowCatalyst\Generated\Model\SyncDocsRequest $requestBody
      */
-    public function __construct(string $slug)
+    public function __construct(string $appCode, ?\FlowCatalyst\Generated\Model\SyncDocsRequest $requestBody = null)
     {
-        $this->slug = $slug;
+        $this->appCode = $appCode;
+        $this->body = $requestBody;
     }
     use \FlowCatalyst\Generated\Runtime\Client\EndpointTrait;
     public function getMethod(): string
     {
-        return 'GET';
+        return 'POST';
     }
     public function getUri(): string
     {
-        return str_replace(['{slug}'], [$this->slug], '/api/docs/{slug}');
+        return str_replace(['{appCode}'], [$this->appCode], '/api/applications/{appCode}/docs/sync');
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
+        if ($this->body instanceof \FlowCatalyst\Generated\Model\SyncDocsRequest) {
+            return [['Content-Type' => ['application/json']], $serializer->serialize($this->body, 'json')];
+        }
         return [[], null];
     }
     public function getExtraHeaders(): array
@@ -33,14 +38,14 @@ class GetDoc extends \FlowCatalyst\Generated\Runtime\Client\BaseEndpoint impleme
      * {@inheritdoc}
      *
      *
-     * @return null|\FlowCatalyst\Generated\Model\DocResponse|\FlowCatalyst\Generated\Model\ErrorModel
+     * @return null|\FlowCatalyst\Generated\Model\SyncResultResponse|\FlowCatalyst\Generated\Model\ErrorModel
      */
     protected function transformResponseBody(\Psr\Http\Message\ResponseInterface $response, \Symfony\Component\Serializer\SerializerInterface $serializer, ?string $contentType = null)
     {
         $status = $response->getStatusCode();
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && mb_strpos(strtolower($contentType), 'application/json') !== false)) {
-            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\DocResponse', 'json');
+            return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\SyncResultResponse', 'json');
         }
         if (mb_strpos(strtolower($contentType), 'application/json') !== false) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json');

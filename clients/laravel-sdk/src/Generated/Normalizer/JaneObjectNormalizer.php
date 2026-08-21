@@ -36,6 +36,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\AnchorDomainResponse::class => \FlowCatalyst\Generated\Normalizer\AnchorDomainResponseNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\AppDocsGroup::class => \FlowCatalyst\Generated\Normalizer\AppDocsGroupNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\ApplicationAccessListResponse::class => \FlowCatalyst\Generated\Normalizer\ApplicationAccessListResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\ApplicationAccessResponse::class => \FlowCatalyst\Generated\Normalizer\ApplicationAccessResponseNormalizer::class,
@@ -390,6 +392,10 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\SyncDispatchPoolsRequest::class => \FlowCatalyst\Generated\Normalizer\SyncDispatchPoolsRequestNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\SyncDocInputRequest::class => \FlowCatalyst\Generated\Normalizer\SyncDocInputRequestNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\SyncDocsRequest::class => \FlowCatalyst\Generated\Normalizer\SyncDocsRequestNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\SyncEventTypeInputRequest::class => \FlowCatalyst\Generated\Normalizer\SyncEventTypeInputRequestNormalizer::class,
         
         \FlowCatalyst\Generated\Model\SyncEventTypesRequest::class => \FlowCatalyst\Generated\Normalizer\SyncEventTypesRequestNormalizer::class,
@@ -521,6 +527,7 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\AllowedOriginResponse::class => false,
             \FlowCatalyst\Generated\Model\AnchorDomainListResponse::class => false,
             \FlowCatalyst\Generated\Model\AnchorDomainResponse::class => false,
+            \FlowCatalyst\Generated\Model\AppDocsGroup::class => false,
             \FlowCatalyst\Generated\Model\ApplicationAccessListResponse::class => false,
             \FlowCatalyst\Generated\Model\ApplicationAccessResponse::class => false,
             \FlowCatalyst\Generated\Model\ApplicationFilterListResponse::class => false,
@@ -698,6 +705,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
             \FlowCatalyst\Generated\Model\SuspendClientRequest::class => false,
             \FlowCatalyst\Generated\Model\SyncDispatchPoolInputRequest::class => false,
             \FlowCatalyst\Generated\Model\SyncDispatchPoolsRequest::class => false,
+            \FlowCatalyst\Generated\Model\SyncDocInputRequest::class => false,
+            \FlowCatalyst\Generated\Model\SyncDocsRequest::class => false,
             \FlowCatalyst\Generated\Model\SyncEventTypeInputRequest::class => false,
             \FlowCatalyst\Generated\Model\SyncEventTypesRequest::class => false,
             \FlowCatalyst\Generated\Model\SyncOpenApiSpecResponse::class => false,

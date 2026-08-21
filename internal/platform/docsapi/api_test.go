@@ -14,52 +14,56 @@ func anchorCtx() context.Context {
 	})
 }
 
-// The embedded corpus always contains the architecture doc; list and get
-// must agree on it, and get must return real Markdown.
-func TestDocsListAndGet(t *testing.T) {
+// The published corpus is curated and ordered by filename prefix; slugs
+// drop the prefix, titles come from the first heading, and the reading
+// order starts at the overview.
+func TestPublishedListAndGet(t *testing.T) {
 	s := &State{}
 	out, err := s.list(anchorCtx(), &apicommon.Empty{})
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
-	if len(out.Body.Docs) == 0 {
-		t.Fatal("expected embedded docs, got none")
+	if len(out.Body.Platform) == 0 {
+		t.Fatal("expected published platform docs, got none")
+	}
+	if out.Body.Platform[0].Slug != "platform-overview" {
+		t.Errorf("first doc should be the overview, got %q", out.Body.Platform[0].Slug)
 	}
 	found := false
-	for _, d := range out.Body.Docs {
-		if d.Slug == "portal-users-architecture" {
+	for _, d := range out.Body.Platform {
+		if d.Slug == "portal-users" && d.Title == "Portal Users Architecture" {
 			found = true
-			if d.Title != "Portal Users Architecture" {
-				t.Errorf("title from first heading: got %q", d.Title)
-			}
 		}
 	}
 	if !found {
-		t.Fatal("portal-users-architecture missing from list")
+		t.Fatal("portal-users missing from the published set")
+	}
+	if out.Body.Applications == nil {
+		t.Error("applications must be [] (not null) when unwired")
 	}
 
-	doc, err := s.get(anchorCtx(), &getDocInput{Slug: "portal-users-architecture"})
+	doc, err := s.getPlatform(anchorCtx(), &getPlatformDocInput{Slug: "platform-overview"})
 	if err != nil {
-		t.Fatalf("get: %v", err)
+		t.Fatalf("getPlatform: %v", err)
 	}
-	if doc.Body.Content == "" || doc.Body.Title != "Portal Users Architecture" {
-		t.Fatalf("unexpected doc body: title=%q len=%d", doc.Body.Title, len(doc.Body.Content))
+	if doc.Body.Title != "Platform Overview" || doc.Body.Content == "" {
+		t.Fatalf("unexpected doc: title=%q len=%d", doc.Body.Title, len(doc.Body.Content))
 	}
 }
 
-// Unknown slugs and traversal-shaped slugs are NotFound; embed.go itself
-// (a .go file, not .md) must never be served.
-func TestDocsGetRejectsBadSlugs(t *testing.T) {
+// Order-prefixed filenames must not leak into slugs, and unknown or
+// traversal-shaped slugs are NotFound.
+func TestPublishedGetRejectsBadSlugs(t *testing.T) {
 	s := &State{}
-	for _, slug := range []string{"nope", "../go.mod", "adr/0001", "embed.go", "a.b"} {
-		if _, err := s.get(anchorCtx(), &getDocInput{Slug: slug}); err == nil {
+	for _, slug := range []string{"10-platform-overview", "nope", "../embed.go", "published/10-platform-overview"} {
+		if _, err := s.getPlatform(anchorCtx(), &getPlatformDocInput{Slug: slug}); err == nil {
 			t.Errorf("slug %q: expected error, got doc", slug)
 		}
 	}
 }
 
-// Unauthenticated and non-anchor-without-permission callers are refused;
-// a client-scoped caller holding the permission passes.
+// Unauthenticated and permission-less client-scoped callers are refused;
+// a client-scoped caller holding the docs permission passes.
 func TestDocsAuthorization(t *testing.T) {
 	s := &State{}
 	if _, err := s.list(context.Background(), &apicommon.Empty{}); err == nil {
