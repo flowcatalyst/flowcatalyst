@@ -671,6 +671,12 @@ const (
 	retryMinDelay   = 100 * time.Millisecond
 	retryMaxDelay   = 5 * time.Minute
 	panicRetryDelay = 10 * time.Second
+
+	// Deferred (2xx + ack=false) gets its own backoff curve: the target is
+	// healthy and answering cheap 200s, so recovery latency matters more
+	// than politeness — shorter start, 1-minute ceiling.
+	deferredMinDelay = 5 * time.Second
+	deferredMaxDelay = time.Minute
 )
 
 // retryDelay computes the in-pipeline backoff before the next attempt:
@@ -678,16 +684,27 @@ const (
 // server-requested delay (Retry-After on 429, the breaker reset on circuit-open,
 // the 5xx retry hint) applied as a floor, capped at retryMaxDelay.
 func retryDelay(attempts uint, outcomeDelaySec int) time.Duration {
+	return backoffDelay(attempts, outcomeDelaySec, retryMinDelay, retryMaxDelay)
+}
+
+// deferredDelay is the backoff for 200+ack=false deferrals — same shape as
+// retryDelay but on the deferred curve (5s start, 60s cap), still flooring at
+// whatever delaySeconds the target requested.
+func deferredDelay(attempts uint, outcomeDelaySec int) time.Duration {
+	return backoffDelay(attempts, outcomeDelaySec, deferredMinDelay, deferredMaxDelay)
+}
+
+func backoffDelay(attempts uint, floorSec int, minDelay, maxDelay time.Duration) time.Duration {
 	shift := attempts
 	if shift > 12 { // cap the shift so the bit-shift can't overflow
 		shift = 12
 	}
-	d := retryMinDelay << shift
-	if floor := time.Duration(outcomeDelaySec) * time.Second; d < floor {
+	d := minDelay << shift
+	if floor := time.Duration(floorSec) * time.Second; d < floor {
 		d = floor
 	}
-	if d > retryMaxDelay {
-		d = retryMaxDelay
+	if d > maxDelay {
+		d = maxDelay
 	}
 	return d
 }
@@ -792,10 +809,11 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 
 	case common.MediationDeferred:
 		// 2xx + ack=false — the target explicitly deferred this message
-		// (e.g. a blocked record). Honour its requested delay (default 30s);
-		// not a failure, and the mediator skipped its in-pipeline retries.
+		// (e.g. a blocked record). Not a failure, and the mediator skipped
+		// its in-pipeline retries; requeue on the deferred curve (5s start,
+		// 60s cap) flooring at any delay the target requested.
 		p.metrics.RecordTransient(durationMs)
-		return p.retry(qm, outcome.DelaySeconds)
+		return p.retryAfter(qm, deferredDelay(qm.Attempts, outcome.DelaySeconds))
 
 	case common.MediationCircuitOpen:
 		// Breaker open (decided by the mediator): no delivery was attempted.
@@ -809,10 +827,16 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 // retry marks the in-flight entry as retrying (so the stall detector / reaper
 // skip it) and returns the processRetry verdict with the computed backoff.
 func (p *Pool) retry(qm common.QueuedMessage, outcomeDelaySec int) (processResult, time.Duration) {
+	return p.retryAfter(qm, retryDelay(qm.Attempts, outcomeDelaySec))
+}
+
+// retryAfter is retry with a pre-computed backoff (used by the deferred path,
+// which runs on its own delay curve).
+func (p *Pool) retryAfter(qm common.QueuedMessage, delay time.Duration) (processResult, time.Duration) {
 	if p.tracker != nil {
 		p.tracker.MarkRetrying(qm.Message.ID, qm.BrokerMessageID)
 	}
-	return processRetry, retryDelay(qm.Attempts, outcomeDelaySec)
+	return processRetry, delay
 }
 
 func ptrU32(v uint32) *uint32 { return &v }

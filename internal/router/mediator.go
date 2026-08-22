@@ -331,13 +331,14 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 	switch {
 	case status >= 200 && status < 300:
 		// Parse {"ack": false, "delaySeconds": N}: the target is healthy but
-		// wants this message later (e.g. blocked record) — defer it for the
-		// requested delay (default 30s) with no in-pipeline retry.
+		// wants this message later (e.g. blocked record) — defer it with no
+		// in-pipeline retry. delaySeconds is a floor on the pool's deferred
+		// backoff curve; absent, the curve alone (5s ramping to 60s) governs.
 		body, err := io.ReadAll(resp.Body)
 		if err == nil && len(body) > 0 {
 			var r mediationResponse
 			if err := json.Unmarshal(body, &r); err == nil && r.Ack != nil && !*r.Ack {
-				delay := uint32(30)
+				var delay uint32
 				if r.DelaySeconds != nil {
 					delay = *r.DelaySeconds
 				}

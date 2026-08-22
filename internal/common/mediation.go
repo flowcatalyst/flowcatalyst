@@ -22,8 +22,9 @@ const (
 	MediationCircuitOpen
 	// MediationDeferred is a 2xx whose body carried {"ack": false}: the
 	// target is healthy but asked us to come back later (e.g. the record is
-	// blocked behind an earlier failure). NACK with the requested delay —
-	// no in-pipeline retry, no circuit-breaker impact.
+	// blocked behind an earlier failure). Requeued on the pool's deferred
+	// backoff curve, flooring at any requested delaySeconds — no in-pipeline
+	// retry, no circuit-breaker impact.
 	MediationDeferred
 )
 
