@@ -38,11 +38,15 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
 -- name: DispatchJobMarkInProgress :exec
 -- Status → PROCESSING. Stamps last_attempt_at. Called by the router
 -- immediately before the first delivery attempt.
+-- These status flips all carry `created_at = $N` alongside the id: the
+-- table is partitioned by created_at, and without it every statement
+-- probes every partition instead of pruning to the row's own.
 UPDATE msg_dispatch_jobs
    SET status = 'PROCESSING',
        last_attempt_at = $2,
        updated_at = $2
- WHERE id = $1;
+ WHERE id = $1
+   AND created_at = $3;
 
 -- name: DispatchJobMarkCompleted :exec
 -- Status → COMPLETED. Stamps completed_at + duration_millis.
@@ -51,7 +55,8 @@ UPDATE msg_dispatch_jobs
        completed_at = $2,
        duration_millis = $3,
        updated_at = $2
- WHERE id = $1;
+ WHERE id = $1
+   AND created_at = $4;
 
 -- name: DispatchJobMarkFailed :exec
 -- Terminal failure. Stamps last_error + completed_at + duration_millis.
@@ -61,7 +66,8 @@ UPDATE msg_dispatch_jobs
        duration_millis = $3,
        last_error = $4,
        updated_at = $2
- WHERE id = $1;
+ WHERE id = $1
+   AND created_at = $5;
 
 -- name: DispatchJobScheduleRetry :exec
 -- Bumps attempt_count + stamps scheduled_for so the next poll picks
@@ -73,7 +79,8 @@ UPDATE msg_dispatch_jobs
        last_attempt_at = NOW(),
        status = 'PENDING',
        updated_at = NOW()
- WHERE id = $1;
+ WHERE id = $1
+   AND created_at = $4;
 
 -- name: DispatchJobAttemptInsert :exec
 -- One row per delivery attempt. The schema column `status` stores the

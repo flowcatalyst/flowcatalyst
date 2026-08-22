@@ -85,6 +85,9 @@ type Querier interface {
 	DispatchJobMarkFailed(ctx context.Context, arg DispatchJobMarkFailedParams) error
 	// Status → PROCESSING. Stamps last_attempt_at. Called by the router
 	// immediately before the first delivery attempt.
+	// These status flips all carry `created_at = $N` alongside the id: the
+	// table is partitioned by created_at, and without it every statement
+	// probes every partition instead of pruning to the row's own.
 	DispatchJobMarkInProgress(ctx context.Context, arg DispatchJobMarkInProgressParams) error
 	// Bumps attempt_count + stamps scheduled_for so the next poll picks
 	// it up once due. Status stays PENDING.

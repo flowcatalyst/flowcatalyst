@@ -71,6 +71,13 @@ func (s *AuditBatchState) batchIngest(w http.ResponseWriter, r *http.Request) {
 
 	skipped := BatchResultItem{ID: "", Status: "SKIPPED"}
 	results := make([]BatchResultItem, 0, len(body.Items))
+	logs := make([]*audit.Log, 0, len(body.Items))
+
+	// Per-request memo maps for code → id resolution (nil value = known
+	// missing), so a 100-item batch does one SELECT per DISTINCT code
+	// instead of one per item.
+	appByCode := map[string]*string{}
+	clientByCode := map[string]*string{}
 
 	for i := range body.Items {
 		it := &body.Items[i]
@@ -78,33 +85,49 @@ func (s *AuditBatchState) batchIngest(w http.ResponseWriter, r *http.Request) {
 		// Resolve application_code → application_id.
 		var applicationID *string
 		if it.ApplicationCode != nil && *it.ApplicationCode != "" {
-			app, err := s.Apps.FindByCode(r.Context(), *it.ApplicationCode)
-			if err != nil {
-				httperror.Write(w, usecase.Internal("REPO", "application find_by_code failed", err))
-				return
+			code := *it.ApplicationCode
+			id, seen := appByCode[code]
+			if !seen {
+				app, err := s.Apps.FindByCode(r.Context(), code)
+				if err != nil {
+					httperror.Write(w, usecase.Internal("REPO", "application find_by_code failed", err))
+					return
+				}
+				if app != nil {
+					v := app.ID
+					id = &v
+				}
+				appByCode[code] = id
 			}
-			if app == nil {
+			if id == nil {
 				results = append(results, skipped)
 				continue
 			}
-			id := app.ID
-			applicationID = &id
+			applicationID = id
 		}
 
 		// Resolve client_code → client_id.
 		var clientID *string
 		if it.ClientCode != nil && *it.ClientCode != "" {
-			c, err := s.Clients.FindByIdentifier(r.Context(), *it.ClientCode)
-			if err != nil {
-				httperror.Write(w, usecase.Internal("REPO", "client find_by_identifier failed", err))
-				return
+			code := *it.ClientCode
+			id, seen := clientByCode[code]
+			if !seen {
+				c, err := s.Clients.FindByIdentifier(r.Context(), code)
+				if err != nil {
+					httperror.Write(w, usecase.Internal("REPO", "client find_by_identifier failed", err))
+					return
+				}
+				if c != nil {
+					v := c.ID
+					id = &v
+				}
+				clientByCode[code] = id
 			}
-			if c == nil {
+			if id == nil {
 				results = append(results, skipped)
 				continue
 			}
-			id := c.ID
-			clientID = &id
+			clientID = id
 		}
 
 		// Per-item client-access check.
@@ -132,11 +155,16 @@ func (s *AuditBatchState) batchIngest(w http.ResponseWriter, r *http.Request) {
 			ClientID:      clientID,
 			PerformedAt:   performedAt,
 		}
-		if err := s.Repo.Insert(r.Context(), log); err != nil {
-			httperror.Write(w, usecase.Internal("REPO", "insert audit log failed", err))
-			return
-		}
+		logs = append(logs, log)
 		results = append(results, BatchResultItem{ID: log.ID, Status: "SUCCESS"})
+	}
+
+	// One pipelined batch insert (single round trip, all-or-nothing) —
+	// previously each row was its own auto-committed Exec, so a mid-batch
+	// failure left earlier rows committed while the caller saw a 500.
+	if err := s.Repo.InsertBatch(r.Context(), logs); err != nil {
+		httperror.Write(w, usecase.Internal("REPO", "insert audit logs failed", err))
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")

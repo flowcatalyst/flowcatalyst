@@ -157,7 +157,7 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 	// racing the poll. A NULL scheduled_for (every freshly-created job) is
 	// always eligible.
 	rows, err := tx.Query(ctx,
-		`SELECT id, subscription_id, message_group, mode, attempt_count, target_url
+		`SELECT id, subscription_id, message_group, mode, attempt_count, target_url, created_at
 		   FROM msg_dispatch_jobs
 		  WHERE status = 'PENDING'
 		    AND (scheduled_for IS NULL OR scheduled_for <= NOW())
@@ -173,7 +173,7 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 		var c dispatchClaim
 		var msgGroup *string
 		var subID *string
-		if err := rows.Scan(&c.id, &subID, &msgGroup, &c.mode, &c.attempt, &c.target); err != nil {
+		if err := rows.Scan(&c.id, &subID, &msgGroup, &c.mode, &c.attempt, &c.target, &c.createdAt); err != nil {
 			rows.Close()
 			return err
 		}
@@ -216,6 +216,7 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 
 	var queued []string
 	var tokens []DispatchJobToken
+	var minCreated, maxCreated time.Time
 	skippedBlocked := 0
 	for group, jobs := range byGroup {
 		// A FAILED/ERROR sibling holds back the whole group this tick —
@@ -229,6 +230,12 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 			continue
 		}
 		for _, c := range filterByDispatchMode(jobs, blocked) {
+			if len(queued) == 0 || c.createdAt.Before(minCreated) {
+				minCreated = c.createdAt
+			}
+			if len(queued) == 0 || c.createdAt.After(maxCreated) {
+				maxCreated = c.createdAt
+			}
 			queued = append(queued, c.id)
 			tokens = append(tokens, DispatchJobToken{
 				JobID:        c.id,
@@ -239,9 +246,13 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 	}
 
 	if len(queued) > 0 {
+		// created_at bounds let the created_at-partitioned table prune to
+		// the partitions the claimed rows actually span.
 		if _, err := tx.Exec(ctx,
 			`UPDATE msg_dispatch_jobs SET status = 'QUEUED', updated_at = NOW()
-			  WHERE id = ANY($1)`, queued); err != nil {
+			  WHERE id = ANY($1)
+			    AND created_at >= $2 AND created_at <= $3`,
+			queued, minCreated, maxCreated); err != nil {
 			return err
 		}
 	}
@@ -270,6 +281,7 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 type dispatchClaim struct {
 	id, subID, group, mode, target string
 	attempt                        int32
+	createdAt                      time.Time
 }
 
 // messageGroupKey maps a claim's message_group to its grouping key: jobs

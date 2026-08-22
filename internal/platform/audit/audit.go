@@ -53,20 +53,37 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 // a plain insert outside the UoW. The column set
 // matches WriteAudit + migrations 006/009.
 func (r *Repository) Insert(ctx context.Context, l *Log) error {
-	var opJSON any
-	if len(l.OperationJSON) > 0 {
-		opJSON = []byte(l.OperationJSON)
+	return r.InsertBatch(ctx, []*Log{l})
+}
+
+// InsertBatch writes audit rows as one pipelined pgx batch — a single round
+// trip and implicit transaction, so a 100-item ingest batch is all-or-nothing
+// instead of 100 sequential auto-committed inserts.
+func (r *Repository) InsertBatch(ctx context.Context, logs []*Log) error {
+	if len(logs) == 0 {
+		return nil
 	}
-	_, err := r.pool.Exec(ctx,
-		`INSERT INTO aud_logs
-		     (id, entity_type, entity_id, operation,
-		      operation_json, principal_id, application_id,
-		      client_id, performed_at)
-		 VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9)`,
-		l.ID, l.EntityType, l.EntityID, l.Operation,
-		opJSON, l.PrincipalID, l.ApplicationID, l.ClientID, l.PerformedAt)
-	if err != nil {
-		return fmt.Errorf("insert aud_logs: %w", err)
+	batch := &pgx.Batch{}
+	for _, l := range logs {
+		var opJSON any
+		if len(l.OperationJSON) > 0 {
+			opJSON = []byte(l.OperationJSON)
+		}
+		batch.Queue(
+			`INSERT INTO aud_logs
+			     (id, entity_type, entity_id, operation,
+			      operation_json, principal_id, application_id,
+			      client_id, performed_at)
+			 VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9)`,
+			l.ID, l.EntityType, l.EntityID, l.Operation,
+			opJSON, l.PrincipalID, l.ApplicationID, l.ClientID, l.PerformedAt)
+	}
+	br := r.pool.SendBatch(ctx, batch)
+	defer br.Close()
+	for range logs {
+		if _, err := br.Exec(); err != nil {
+			return fmt.Errorf("insert aud_logs: %w", err)
+		}
 	}
 	return nil
 }

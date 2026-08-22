@@ -315,17 +315,24 @@ UPDATE msg_dispatch_jobs
        duration_millis = $3,
        updated_at = $2
  WHERE id = $1
+   AND created_at = $4
 `
 
 type DispatchJobMarkCompletedParams struct {
 	ID             string     `db:"id"`
 	CompletedAt    *time.Time `db:"completed_at"`
 	DurationMillis *int64     `db:"duration_millis"`
+	CreatedAt      time.Time  `db:"created_at"`
 }
 
 // Status → COMPLETED. Stamps completed_at + duration_millis.
 func (q *Queries) DispatchJobMarkCompleted(ctx context.Context, arg DispatchJobMarkCompletedParams) error {
-	_, err := q.db.Exec(ctx, dispatchJobMarkCompleted, arg.ID, arg.CompletedAt, arg.DurationMillis)
+	_, err := q.db.Exec(ctx, dispatchJobMarkCompleted,
+		arg.ID,
+		arg.CompletedAt,
+		arg.DurationMillis,
+		arg.CreatedAt,
+	)
 	return err
 }
 
@@ -337,6 +344,7 @@ UPDATE msg_dispatch_jobs
        last_error = $4,
        updated_at = $2
  WHERE id = $1
+   AND created_at = $5
 `
 
 type DispatchJobMarkFailedParams struct {
@@ -344,6 +352,7 @@ type DispatchJobMarkFailedParams struct {
 	CompletedAt    *time.Time `db:"completed_at"`
 	DurationMillis *int64     `db:"duration_millis"`
 	LastError      *string    `db:"last_error"`
+	CreatedAt      time.Time  `db:"created_at"`
 }
 
 // Terminal failure. Stamps last_error + completed_at + duration_millis.
@@ -353,6 +362,7 @@ func (q *Queries) DispatchJobMarkFailed(ctx context.Context, arg DispatchJobMark
 		arg.CompletedAt,
 		arg.DurationMillis,
 		arg.LastError,
+		arg.CreatedAt,
 	)
 	return err
 }
@@ -363,17 +373,22 @@ UPDATE msg_dispatch_jobs
        last_attempt_at = $2,
        updated_at = $2
  WHERE id = $1
+   AND created_at = $3
 `
 
 type DispatchJobMarkInProgressParams struct {
 	ID            string     `db:"id"`
 	LastAttemptAt *time.Time `db:"last_attempt_at"`
+	CreatedAt     time.Time  `db:"created_at"`
 }
 
 // Status → PROCESSING. Stamps last_attempt_at. Called by the router
 // immediately before the first delivery attempt.
+// These status flips all carry `created_at = $N` alongside the id: the
+// table is partitioned by created_at, and without it every statement
+// probes every partition instead of pruning to the row's own.
 func (q *Queries) DispatchJobMarkInProgress(ctx context.Context, arg DispatchJobMarkInProgressParams) error {
-	_, err := q.db.Exec(ctx, dispatchJobMarkInProgress, arg.ID, arg.LastAttemptAt)
+	_, err := q.db.Exec(ctx, dispatchJobMarkInProgress, arg.ID, arg.LastAttemptAt, arg.CreatedAt)
 	return err
 }
 
@@ -386,17 +401,24 @@ UPDATE msg_dispatch_jobs
        status = 'PENDING',
        updated_at = NOW()
  WHERE id = $1
+   AND created_at = $4
 `
 
 type DispatchJobScheduleRetryParams struct {
 	ID           string     `db:"id"`
 	ScheduledFor *time.Time `db:"scheduled_for"`
 	LastError    *string    `db:"last_error"`
+	CreatedAt    time.Time  `db:"created_at"`
 }
 
 // Bumps attempt_count + stamps scheduled_for so the next poll picks
 // it up once due. Status stays PENDING.
 func (q *Queries) DispatchJobScheduleRetry(ctx context.Context, arg DispatchJobScheduleRetryParams) error {
-	_, err := q.db.Exec(ctx, dispatchJobScheduleRetry, arg.ID, arg.ScheduledFor, arg.LastError)
+	_, err := q.db.Exec(ctx, dispatchJobScheduleRetry,
+		arg.ID,
+		arg.ScheduledFor,
+		arg.LastError,
+		arg.CreatedAt,
+	)
 	return err
 }

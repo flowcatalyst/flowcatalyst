@@ -344,39 +344,45 @@ func (r *Repository) InsertBatch(ctx context.Context, jobs []DispatchJob) error 
 	return nil
 }
 
+// The status-flip methods all take the job's createdAt alongside its id:
+// msg_dispatch_jobs is partitioned by created_at, and the extra equality
+// lets the planner prune to the row's own partition instead of probing all
+// of them. Callers have the loaded job in hand, so it's free.
+
 // MarkInProgress flips status to PROCESSING and stamps last_attempt_at.
 // Called by the router immediately before the first attempt.
-func (r *Repository) MarkInProgress(ctx context.Context, id string) error {
+func (r *Repository) MarkInProgress(ctx context.Context, id string, createdAt time.Time) error {
 	now := time.Now().UTC()
 	return r.q.DispatchJobMarkInProgress(ctx, dbq.DispatchJobMarkInProgressParams{
-		ID: id, LastAttemptAt: &now,
+		ID: id, LastAttemptAt: &now, CreatedAt: createdAt,
 	})
 }
 
 // MarkCompleted flips status to COMPLETED and stamps completed_at +
 // duration_millis (end-to-end). Called after a successful delivery.
-func (r *Repository) MarkCompleted(ctx context.Context, id string, durationMillis int64) error {
+func (r *Repository) MarkCompleted(ctx context.Context, id string, createdAt time.Time, durationMillis int64) error {
 	now := time.Now().UTC()
 	return r.q.DispatchJobMarkCompleted(ctx, dbq.DispatchJobMarkCompletedParams{
-		ID: id, CompletedAt: &now, DurationMillis: &durationMillis,
+		ID: id, CompletedAt: &now, DurationMillis: &durationMillis, CreatedAt: createdAt,
 	})
 }
 
 // MarkFailed flips status to FAILED and stops retries. Terminal.
 // Stamps last_error + completed_at + duration_millis.
-func (r *Repository) MarkFailed(ctx context.Context, id string, lastError *string, durationMillis int64) error {
+func (r *Repository) MarkFailed(ctx context.Context, id string, createdAt time.Time, lastError *string, durationMillis int64) error {
 	now := time.Now().UTC()
 	return r.q.DispatchJobMarkFailed(ctx, dbq.DispatchJobMarkFailedParams{
 		ID: id, CompletedAt: &now, DurationMillis: &durationMillis, LastError: lastError,
+		CreatedAt: createdAt,
 	})
 }
 
 // ScheduleRetry bumps attempt_count, stamps last_error, and sets
 // scheduled_for. Status stays PENDING so the poller picks it up once
 // scheduled_for falls due.
-func (r *Repository) ScheduleRetry(ctx context.Context, id string, scheduledFor time.Time, lastError *string) error {
+func (r *Repository) ScheduleRetry(ctx context.Context, id string, createdAt time.Time, scheduledFor time.Time, lastError *string) error {
 	return r.q.DispatchJobScheduleRetry(ctx, dbq.DispatchJobScheduleRetryParams{
-		ID: id, ScheduledFor: &scheduledFor, LastError: lastError,
+		ID: id, ScheduledFor: &scheduledFor, LastError: lastError, CreatedAt: createdAt,
 	})
 }
 
@@ -385,11 +391,11 @@ func (r *Repository) ScheduleRetry(ctx context.Context, id string, scheduledFor 
 // returned ack=false, or an HTTP 429 — which are "try again later" signals,
 // not delivery failures, so they must not consume the retry budget. The
 // poller re-dispatches once scheduled_for falls due.
-func (r *Repository) Reschedule(ctx context.Context, id string, scheduledFor time.Time) error {
+func (r *Repository) Reschedule(ctx context.Context, id string, createdAt time.Time, scheduledFor time.Time) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE msg_dispatch_jobs
 		    SET status = 'PENDING', scheduled_for = $2, updated_at = NOW()
-		  WHERE id = $1`, id, scheduledFor.UTC())
+		  WHERE id = $1 AND created_at = $3`, id, scheduledFor.UTC(), createdAt)
 	return err
 }
 

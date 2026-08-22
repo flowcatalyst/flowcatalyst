@@ -182,7 +182,7 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.repo.MarkInProgress(ctx, jobID); err != nil {
+	if err := h.repo.MarkInProgress(ctx, jobID, job.CreatedAt); err != nil {
 		slog.Warn("dispatch process: mark in-progress failed", "job_id", jobID, "err", err)
 	}
 
@@ -216,7 +216,7 @@ func (h *Handler) advance(ctx context.Context, job *dispatchjob.DispatchJob, att
 
 	switch {
 	case res.success:
-		if err := h.repo.MarkCompleted(ctx, jobID, dur); err != nil {
+		if err := h.repo.MarkCompleted(ctx, jobID, job.CreatedAt, dur); err != nil {
 			slog.Warn("dispatch process: mark completed failed", "job_id", jobID, "err", err)
 		}
 		slog.Debug("dispatch delivered", "job_id", jobID, "status", res.statusCode, "attempt", attemptNumber)
@@ -224,7 +224,7 @@ func (h *Handler) advance(ctx context.Context, job *dispatchjob.DispatchJob, att
 	case res.deferral:
 		// Cooperative back-pressure (ack=false or HTTP 429): retry later
 		// WITHOUT consuming the retry budget.
-		if err := h.repo.Reschedule(ctx, jobID, time.Now().Add(res.retryAfter)); err != nil {
+		if err := h.repo.Reschedule(ctx, jobID, job.CreatedAt, time.Now().Add(res.retryAfter)); err != nil {
 			slog.Warn("dispatch process: reschedule failed", "job_id", jobID, "err", err)
 		}
 		slog.Info("dispatch deferred", "job_id", jobID, "retry_after", res.retryAfter, "reason", res.errMessage)
@@ -232,7 +232,7 @@ func (h *Handler) advance(ctx context.Context, job *dispatchjob.DispatchJob, att
 	case int(attemptNumber) >= int(job.MaxRetries):
 		// Out of retries → terminal failure.
 		errMsg := res.errMessage
-		if err := h.repo.MarkFailed(ctx, jobID, &errMsg, dur); err != nil {
+		if err := h.repo.MarkFailed(ctx, jobID, job.CreatedAt, &errMsg, dur); err != nil {
 			slog.Warn("dispatch process: mark failed failed", "job_id", jobID, "err", err)
 		}
 		slog.Warn("dispatch failed (retries exhausted)", "job_id", jobID, "attempts", attemptNumber, "max", job.MaxRetries, "err", errMsg)
@@ -240,7 +240,7 @@ func (h *Handler) advance(ctx context.Context, job *dispatchjob.DispatchJob, att
 	default:
 		// Retryable failure → schedule a backoff and let the poller pick it up.
 		errMsg := res.errMessage
-		if err := h.repo.ScheduleRetry(ctx, jobID, time.Now().Add(backoffFor(attemptNumber)), &errMsg); err != nil {
+		if err := h.repo.ScheduleRetry(ctx, jobID, job.CreatedAt, time.Now().Add(backoffFor(attemptNumber)), &errMsg); err != nil {
 			slog.Warn("dispatch process: schedule retry failed", "job_id", jobID, "err", err)
 		}
 		slog.Info("dispatch retry scheduled", "job_id", jobID, "attempt", attemptNumber, "backoff", backoffFor(attemptNumber), "err", errMsg)

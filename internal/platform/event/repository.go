@@ -40,16 +40,17 @@ func (r *Repository) InsertBatch(ctx context.Context, events []Event) (int, erro
 			t = e.CreatedAt
 		}
 		// Column set matches the corrected platformsink.Sink shape.
-		// No ON CONFLICT — dedup duplicates bubble as tx failures
-		// (the unique index is composite on
-		// (deduplication_id, created_at), which we can't always infer
-		// across migration profiles).
+		// Bare ON CONFLICT DO NOTHING (no conflict target, so no index
+		// inference needed across migration profiles): a dedup collision
+		// drops just that row instead of aborting the whole pipelined
+		// batch, and retried batches are cheap no-ops.
 		batch.Queue(
 			`INSERT INTO msg_events
 			     (id, spec_version, type, source, subject, time, data,
 			      correlation_id, causation_id, deduplication_id, message_group,
 			      client_id, context_data, created_at)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13::jsonb, $14)`,
+			 VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13::jsonb, $14)
+			 ON CONFLICT DO NOTHING`,
 			e.ID, e.SpecVersion, e.Type, e.Source, e.Subject,
 			t, rawJSON(e.Data),
 			e.CorrelationID, e.CausationID, e.DeduplicationID, e.MessageGroup,

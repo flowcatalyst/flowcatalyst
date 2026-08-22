@@ -50,6 +50,17 @@ type AppClientConfig struct {
 	UpdatedAt     time.Time `db:"updated_at"`
 }
 
+type AppDoc struct {
+	ID            string    `db:"id"`
+	ApplicationID string    `db:"application_id"`
+	Slug          string    `db:"slug"`
+	Title         string    `db:"title"`
+	Content       string    `db:"content"`
+	Position      int32     `db:"position"`
+	CreatedAt     time.Time `db:"created_at"`
+	UpdatedAt     time.Time `db:"updated_at"`
+}
+
 type AppPlatformConfig struct {
 	ID              string    `db:"id"`
 	ApplicationCode string    `db:"application_code"`

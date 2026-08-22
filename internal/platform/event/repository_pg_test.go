@@ -79,3 +79,41 @@ func TestFindWithFilters_TenantScoping(t *testing.T) {
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{"evtscopetest1"}, ids(rows))
 }
+
+// TestInsertBatch_DedupCollisionDropsOnlyThatRow pins the ON CONFLICT DO
+// NOTHING behavior: a duplicate deduplication_id drops just the colliding
+// row — the rest of the batch still lands and no error surfaces (previously
+// one collision aborted the entire pipelined batch).
+func TestInsertBatch_DedupCollisionDropsOnlyThatRow(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := event.NewRepository(pool)
+
+	// The unique index is (deduplication_id, created_at), so colliding rows
+	// must share the timestamp — as a same-payload retry does.
+	now := time.Now().UTC()
+	mk := func(id, dedupID string) event.Event {
+		return event.Event{
+			ID: id, SpecVersion: "1.0", Type: "dedup.test.event",
+			Source: "test://dedup", Time: now, CreatedAt: now,
+			Data: []byte(`{"k":1}`), DeduplicationID: dedupID,
+		}
+	}
+
+	inserted, err := repo.InsertBatch(ctx, []event.Event{mk("evtdeduptest1", "dedup-collision-1")})
+	require.NoError(t, err)
+	require.Equal(t, 1, inserted)
+
+	// Second batch: one collision + one fresh row.
+	inserted, err = repo.InsertBatch(ctx, []event.Event{
+		mk("evtdeduptest2", "dedup-collision-1"), // same dedup id → dropped
+		mk("evtdeduptest3", "dedup-collision-2"), // fresh → lands
+	})
+	require.NoError(t, err, "a dedup collision must not fail the batch")
+	assert.Equal(t, 1, inserted, "only the non-colliding row counts")
+
+	var count int
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM msg_events WHERE type = 'dedup.test.event'`).Scan(&count))
+	assert.Equal(t, 2, count, "original + fresh row; collision dropped")
+}

@@ -3,6 +3,7 @@ package stream
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -42,7 +43,7 @@ func (p *DispatchJobProjection) step(ctx context.Context, batchSize int) (int, e
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	rows, err := tx.Query(ctx,
-		`SELECT id FROM msg_dispatch_jobs
+		`SELECT id, created_at FROM msg_dispatch_jobs
 		 WHERE projected_at IS NULL OR updated_at > projected_at
 		 ORDER BY created_at
 		 LIMIT $1
@@ -50,12 +51,24 @@ func (p *DispatchJobProjection) step(ctx context.Context, batchSize int) (int, e
 	if err != nil {
 		return 0, fmt.Errorf("claim: %w", err)
 	}
+	// Track the claimed rows' created_at range: the follow-up statements
+	// filter on it so the created_at-partitioned table prunes to the
+	// partitions actually spanned instead of touching all of them on
+	// `id = ANY(...)`.
 	var ids []string
+	var minCreated, maxCreated time.Time
 	for rows.Next() {
 		var id string
-		if err := rows.Scan(&id); err != nil {
+		var createdAt time.Time
+		if err := rows.Scan(&id, &createdAt); err != nil {
 			rows.Close()
 			return 0, err
+		}
+		if len(ids) == 0 || createdAt.Before(minCreated) {
+			minCreated = createdAt
+		}
+		if len(ids) == 0 || createdAt.After(maxCreated) {
+			maxCreated = createdAt
 		}
 		ids = append(ids, id)
 	}
@@ -96,6 +109,7 @@ func (p *DispatchJobProjection) step(ctx context.Context, batchSize int) (int, e
 		        j.created_at, j.updated_at, NOW()
 		   FROM msg_dispatch_jobs j
 		  WHERE j.id = ANY($1)
+		    AND j.created_at >= $2 AND j.created_at <= $3
 		 ON CONFLICT (id, created_at) DO UPDATE SET
 		     status = EXCLUDED.status,
 		     attempt_count = EXCLUDED.attempt_count,
@@ -106,12 +120,15 @@ func (p *DispatchJobProjection) step(ctx context.Context, batchSize int) (int, e
 		     is_completed = EXCLUDED.is_completed,
 		     is_terminal = EXCLUDED.is_terminal,
 		     updated_at = EXCLUDED.updated_at,
-		     projected_at = NOW()`, ids); err != nil {
+		     projected_at = NOW()`, ids, minCreated, maxCreated); err != nil {
 		return 0, fmt.Errorf("insert read: %w", err)
 	}
 
 	if _, err := tx.Exec(ctx,
-		`UPDATE msg_dispatch_jobs SET projected_at = NOW() WHERE id = ANY($1)`, ids); err != nil {
+		`UPDATE msg_dispatch_jobs SET projected_at = NOW()
+		  WHERE id = ANY($1)
+		    AND created_at >= $2 AND created_at <= $3`,
+		ids, minCreated, maxCreated); err != nil {
 		return 0, fmt.Errorf("update projected_at: %w", err)
 	}
 
