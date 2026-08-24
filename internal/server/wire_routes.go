@@ -187,17 +187,10 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			Enc:          svcs.encSvc,
 		})
 
-		// OAuth provider routes — all hand-rolled (authservice +
-		// encryption). /oauth/authorize is registered in
-		// registerPublicRoutes, outside this auth group.
-		svcs.oauthTokenEP.RegisterTokenRoutes(r.With(
-			ratelimit.GovernorMiddleware(svcs.oauthTokenIPGov, "rate limit exceeded for this IP"),
-			ratelimit.IPLimitMiddleware(svcs.rlStore, ratelimit.BucketOAuthTokenIP, svcs.rlPolicies.OAuthTokenIP),
-		))
-		svcs.oauthTokenEP.RegisterIntrospectRoutes(r)
-		svcs.oauthTokenEP.RegisterRevokeRoutes(r)
-		svcs.oauthTokenEP.RegisterUserinfoRoutes(r)
-		svcs.oauthTokenEP.RegisterDiscoveryRoutes(r)
+		// OAuth provider routes (all hand-rolled: authservice + encryption)
+		// are NOT registered here — the whole /oauth + /.well-known surface
+		// lives outside this auth group, in registerPublicRoutes. See the
+		// rationale there.
 
 		// OIDC bridge — POST /auth/check-domain, GET /auth/oidc/login,
 		// GET /auth/oidc/callback. The bridge resolves the external IDP

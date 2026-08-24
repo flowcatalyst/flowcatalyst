@@ -16,14 +16,15 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/publicapi"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduler"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
+	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
 // registerPublicRoutes mounts everything that must live OUTSIDE the
 // bearer-token middleware: the SPA login surface, pre-sign-in read-only
-// endpoints, the password-reset flow, and /oauth/authorize (which
-// redirects to login instead of 401-ing).
+// endpoints, the password-reset flow, and the whole OAuth/OIDC provider
+// surface (/oauth/* plus the /.well-known documents).
 func registerPublicRoutes(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usecasepgx.UnitOfWork, repos *repoSet, svcs *serviceSet) {
 	// Public auth surface: SPA login + cookie acquisition. MUST live
 	// outside the bearer-token middleware below — a stale fc_session
@@ -63,10 +64,42 @@ func registerPublicRoutes(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *use
 		ClientAdmins: repos.principalRepo,
 	})
 
-	// /oauth/authorize is mounted OUTSIDE the auth middleware: an absent or
-	// expired session must redirect to login (not 401), and the handler
-	// validates the session cookie itself. Wrapped in the per-IP throttle.
-	svcs.oauthTokenEP.RegisterAuthorizeRoutes(r.With(ratelimit.IPLimitMiddleware(svcs.rlStore, ratelimit.BucketOAuthAuthorizeIP, svcs.rlPolicies.OAuthAuthorizeIP)))
+	// The OAuth/OIDC provider surface is mounted OUTSIDE the bearer-token
+	// middleware in its entirety. These endpoints ARE the authentication
+	// system; putting them behind the platform's API-credential middleware
+	// gains nothing and actively breaks callers:
+	//
+	//   - Every one of them authenticates its own caller — client_secret
+	//     basic/post on token/introspect/revoke, the access token itself on
+	//     userinfo — or is unauthenticated by design (discovery, JWKS). None
+	//     reads the AuthContext, so the middleware contributes no protection.
+	//   - Authenticator hard-fails an explicit Authorization: Bearer it won't
+	//     accept, before the handler runs. That 401s the RFC-mandated call
+	//     shape: /oauth/userinfo is invoked WITH the access token as a bearer,
+	//     and an ordinary (non-APIAccess) OIDC client holds a token_use=identity
+	//     token, which the middleware rejects outright. Same foot-gun for a
+	//     refresh_token call that leaves a stale bearer attached, or a JWKS
+	//     fetch from a client that blanket-attaches credentials.
+	//
+	// /oauth/authorize additionally needs this placement because an absent or
+	// expired session must redirect to login rather than 401; it validates the
+	// session cookie itself.
+	//
+	// CorrelationID is applied here so these routes keep the X-Correlation-ID
+	// echo they had inside the auth group; only Authenticator is dropped.
+	r.Group(func(r chi.Router) {
+		r.Use(platformmw.CorrelationID)
+
+		svcs.oauthTokenEP.RegisterAuthorizeRoutes(r.With(ratelimit.IPLimitMiddleware(svcs.rlStore, ratelimit.BucketOAuthAuthorizeIP, svcs.rlPolicies.OAuthAuthorizeIP)))
+		svcs.oauthTokenEP.RegisterTokenRoutes(r.With(
+			ratelimit.GovernorMiddleware(svcs.oauthTokenIPGov, "rate limit exceeded for this IP"),
+			ratelimit.IPLimitMiddleware(svcs.rlStore, ratelimit.BucketOAuthTokenIP, svcs.rlPolicies.OAuthTokenIP),
+		))
+		svcs.oauthTokenEP.RegisterIntrospectRoutes(r)
+		svcs.oauthTokenEP.RegisterRevokeRoutes(r)
+		svcs.oauthTokenEP.RegisterUserinfoRoutes(r)
+		svcs.oauthTokenEP.RegisterDiscoveryRoutes(r)
+	})
 
 	// POST /api/dispatch/process — the message router's delivery callback.
 	// MUST be outside the bearer middleware: the router authenticates with the

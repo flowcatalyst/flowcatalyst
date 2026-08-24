@@ -42,17 +42,21 @@ type openIDConfiguration struct {
 func (s *State) OpenIDConfiguration(w http.ResponseWriter, _ *http.Request) {
 	base := s.BaseURL
 	writeJSON(w, http.StatusOK, openIDConfiguration{
-		Issuer:                           base,
-		AuthorizationEndpoint:            base + "/oauth/authorize",
-		TokenEndpoint:                    base + "/oauth/token",
-		UserinfoEndpoint:                 base + "/oauth/userinfo",
-		EndSessionEndpoint:               base + "/auth/oidc/session/end",
-		IntrospectionEndpoint:            base + "/oauth/introspect",
-		RevocationEndpoint:               base + "/oauth/revoke",
-		JwksURI:                          base + "/.well-known/jwks.json",
-		ResponseTypesSupported:           []string{"code"},
-		SubjectTypesSupported:            []string{"public"},
-		IDTokenSigningAlgValuesSupported: []string{"RS256"},
+		Issuer:                 base,
+		AuthorizationEndpoint:  base + "/oauth/authorize",
+		TokenEndpoint:          base + "/oauth/token",
+		UserinfoEndpoint:       base + "/oauth/userinfo",
+		EndSessionEndpoint:     base + "/auth/oidc/session/end",
+		IntrospectionEndpoint:  base + "/oauth/introspect",
+		RevocationEndpoint:     base + "/oauth/revoke",
+		JwksURI:                base + "/.well-known/jwks.json",
+		ResponseTypesSupported: []string{"code"},
+		SubjectTypesSupported:  []string{"public"},
+		// Report the algorithm actually in use, not a hardcoded RS256. The
+		// service runs HS256 when no RSA key material is configured (the dev
+		// default), and a relying party that trusts this document would then
+		// try to verify RS256 signatures against an empty JWKS.
+		IDTokenSigningAlgValuesSupported: []string{s.Auth.Algorithm()},
 		ScopesSupported:                  []string{"openid", "profile", "email", "offline_access"},
 		TokenEndpointAuthMethodsSupported: []string{
 			"client_secret_basic", "client_secret_post",

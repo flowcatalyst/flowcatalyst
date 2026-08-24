@@ -155,14 +155,35 @@ type tokenResponse struct {
 	Scope        *string `json:"scope,omitempty"`
 }
 
-// Token is POST /oauth/token. It authenticates the client (except for
-// client_credentials, which authenticates inside its handler) then
-// dispatches on grant_type.
+// Token is POST /oauth/token. It normalises client_secret_basic credentials
+// into the request, authenticates the client (except for client_credentials,
+// which authenticates inside its handler) then dispatches on grant_type.
 func (s *State) Token(w http.ResponseWriter, r *http.Request) {
 	req, err := parseTokenRequest(r)
 	if err != nil {
 		writeOAuthError(w, http.StatusBadRequest, "invalid_request", "Malformed form body")
 		return
+	}
+
+	// Resolve client_secret_basic into the request up front. The discovery
+	// document advertises it alongside client_secret_post, so every
+	// client-authenticated grant must honour it — including
+	// client_credentials, which authenticates inside its own handler off
+	// req.ClientID/ClientSecret and would otherwise reject a Basic-only
+	// caller with "Missing client_id". Doing it here (rather than in each
+	// grant) also means the per-client_id throttle below sees the caller's
+	// real identity instead of skipping an empty client_id.
+	//
+	// RFC 6749 §3.2.1: a request must not use two client identities, so a
+	// body client_id naming a different client than the Basic header is
+	// rejected rather than silently overridden.
+	if basicID, basicSecret, ok := basicAuthCreds(r); ok {
+		if req.ClientID != "" && req.ClientID != basicID {
+			writeOAuthError(w, http.StatusBadRequest, "invalid_request",
+				"client_id does not match the authenticated client")
+			return
+		}
+		req.ClientID, req.ClientSecret = basicID, basicSecret
 	}
 
 	// Per-client_id throttle. Runs before the DB lookup so a client
@@ -204,16 +225,10 @@ func (s *State) Token(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// A body client_id supplied alongside Basic auth must match the
-	// authenticated identity (RFC 6749 §3.2.1 — a request must not use two
-	// client identities). Basic auth wins inside authenticateClient, so
-	// without this check a divergent body client_id would silently ride
-	// along into the grant handlers.
-	if authenticatedClient != nil && req.ClientID != "" && req.ClientID != authenticatedClient.ClientID {
-		writeOAuthError(w, http.StatusBadRequest, "invalid_request",
-			"client_id does not match the authenticated client")
-		return
-	}
+	// NB: the RFC 6749 §3.2.1 two-identities check lives above, before the
+	// throttle — req.ClientID is already normalised to whatever
+	// authenticateClient would resolve, so re-comparing it here would be
+	// unreachable.
 
 	switch req.GrantType {
 	case "authorization_code":
@@ -638,8 +653,11 @@ func (s *State) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request, 
 			}
 			return nil
 		})
+	// RFC 6749 §5.2: every token-endpoint error is 400 except invalid_client
+	// (which MAY be 401). invalid_grant is therefore a 400 — matching what the
+	// authorization_code grant already returns for the same error code.
 	if errors.Is(err, errClientBinding) {
-		writeOAuthError(w, http.StatusUnauthorized, "invalid_grant", "Token was not issued to this client")
+		writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "Token was not issued to this client")
 		return
 	}
 	if err != nil {
@@ -647,7 +665,7 @@ func (s *State) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	if res.Stored == nil {
-		writeOAuthError(w, http.StatusUnauthorized, "invalid_grant", "Invalid or expired refresh token")
+		writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "Invalid or expired refresh token")
 		return
 	}
 	stored := res.Stored
@@ -658,11 +676,11 @@ func (s *State) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	if p == nil {
-		writeOAuthError(w, http.StatusUnauthorized, "invalid_grant", "Principal not found")
+		writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "Principal not found")
 		return
 	}
 	if !p.Active {
-		writeOAuthError(w, http.StatusUnauthorized, "invalid_grant", "Account is not active")
+		writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "Account is not active")
 		return
 	}
 

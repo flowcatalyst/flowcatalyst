@@ -19,8 +19,8 @@ import (
 //	wire_services.go — buildServices: auth provider, OAuth token service,
 //	                   webauthn, email/2FA, login endpoint
 //	wire_public.go   — registerPublicRoutes: everything OUTSIDE the auth
-//	                   middleware (login, publicapi, password reset,
-//	                   /oauth/authorize)
+//	                   middleware (login, publicapi, password reset, and the
+//	                   OAuth/OIDC provider surface: /oauth/* + /.well-known)
 //	wire_routes.go   — registerPlatformAPI: the auth Group, the huma API,
 //	                   and every <pkg>api.Register call. Adding a new
 //	                   subdomain is a four-line ritual there: build the

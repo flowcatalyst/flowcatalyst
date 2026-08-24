@@ -497,7 +497,14 @@ func (e *Endpoint) completeLogin(w http.ResponseWriter, r *http.Request, p *prin
 	}
 	token, err := e.cfg.Provider.MintSessionToken(r.Context(), p.ID, SessionTTL)
 	if err != nil {
-		httperror.Write(w, httperror.BadRequest("MINT_FAILED", err.Error()))
+		// The credentials already verified — a mint failure here is a
+		// server-side fault (signing key missing/unreadable), not something the
+		// caller can correct, so it must not be reported as a 400. Internal also
+		// keeps the underlying error off the wire while still logging it;
+		// err.Error() previously leaked key-handling detail to an
+		// unauthenticated-until-now caller. Matches the webauthn login path,
+		// which already classifies this as Internal.
+		httperror.Write(w, usecase.Internal("MINT_FAILED", "failed to mint session token", err))
 		return
 	}
 	http.SetCookie(w, &http.Cookie{

@@ -62,6 +62,11 @@ func TestOpenIDConfiguration(t *testing.T) {
 		t.Errorf("end_session_endpoint = %v", doc["end_session_endpoint"])
 	}
 
+	// The advertised signing alg must be the one the service actually signs
+	// with, not a hardcoded RS256 — an HS256 service has no JWKS to verify
+	// against, so a relying party trusting a stale RS256 claim cannot validate.
+	assertContains(t, doc, "id_token_signing_alg_values_supported", s.Auth.Algorithm())
+
 	assertContains(t, doc, "grant_types_supported", "authorization_code")
 	assertContains(t, doc, "grant_types_supported", "refresh_token")
 	assertContains(t, doc, "grant_types_supported", "client_credentials")
@@ -75,6 +80,33 @@ func TestOpenIDConfiguration(t *testing.T) {
 	assertNotContains(t, doc, "response_types_supported", "code id_token")
 	assertNotContains(t, doc, "response_types_supported", "token")
 	assertNotContains(t, doc, "response_types_supported", "id_token")
+}
+
+// TestOpenIDConfigurationHS256 is the regression guard for the advertised
+// signing algorithm: the document used to hardcode RS256, so a service running
+// the HS256 dev fallback advertised a signature type it never produces and
+// pointed at a JWKS that is necessarily empty (AllJWKSKeys only yields RSA
+// keys).
+func TestOpenIDConfigurationHS256(t *testing.T) {
+	svc := authservice.NewWithSecret(authservice.Config{
+		Issuer:    "https://fc.example",
+		Audience:  "https://fc.example",
+		SecretKey: "dev-secret-not-for-production",
+	})
+	if svc.Algorithm() != "HS256" {
+		t.Fatalf("want HS256 service, got %s", svc.Algorithm())
+	}
+	s := &State{Auth: svc, BaseURL: "https://fc.example"}
+
+	rec := httptest.NewRecorder()
+	s.OpenIDConfiguration(rec, httptest.NewRequest("GET", "/.well-known/openid-configuration", nil))
+
+	var doc map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	assertContains(t, doc, "id_token_signing_alg_values_supported", "HS256")
+	assertNotContains(t, doc, "id_token_signing_alg_values_supported", "RS256")
 }
 
 func TestJWKS(t *testing.T) {
