@@ -268,3 +268,62 @@ func TestProcess_SignsSubscriberDelivery(t *testing.T) {
 	assert.Equal(t, hex.EncodeToString(mac.Sum(nil)), c.sig,
 		"signature must verify against timestamp+body with the resolved secret")
 }
+
+// seedGroupJob inserts a job with a message_group in the given status.
+func seedGroupJob(t *testing.T, pool *pgxpool.Pool, id, group, status, targetURL string) {
+	t.Helper()
+	_, err := pool.Exec(context.Background(),
+		`INSERT INTO msg_dispatch_jobs
+		     (id, code, target_url, status, data_only, payload, max_retries, message_group, mode)
+		 VALUES ($1, 'proc:test:evt', $2, $3, FALSE, '{"hello":"world"}', 3, $4, 'BLOCK_ON_ERROR')`,
+		id, targetURL, status, group)
+	require.NoError(t, err)
+}
+
+// TestProcess_BlockedGroupAcksAndRevertsToPending pins the delivery-time
+// blocked-group hold-back: a queue message for a job whose group holds a
+// FAILED sibling is ACKed (dropped from the router) WITHOUT delivering, and
+// the job reverts QUEUED → PENDING with no retry budget spent. Once the
+// failed sibling is resolved, the same job delivers normally.
+func TestProcess_BlockedGroupAcksAndRevertsToPending(t *testing.T) {
+	pool := testpg.Pool(t)
+	base, auth := harness(t, pool)
+
+	var delivered atomic.Bool
+	sub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		delivered.Store(true)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(sub.Close)
+
+	const group = "grp-blocked-test-1"
+	seedGroupJob(t, pool, "djblkfail0001", group, "FAILED", sub.URL)
+	seedGroupJob(t, pool, "djblknext0001", group, "QUEUED", sub.URL)
+
+	// Blocked: ack, no delivery, back to PENDING, no attempt recorded.
+	code, out := callProcess(t, base, "djblknext0001", auth.Sign("djblknext0001"))
+	assert.Equal(t, http.StatusOK, code)
+	assert.Equal(t, true, out["ack"])
+	assert.False(t, delivered.Load(), "blocked-group job must not deliver")
+
+	status, attempts, scheduledFor := jobRow(t, pool, "djblknext0001")
+	assert.Equal(t, "PENDING", status)
+	assert.Equal(t, int32(0), attempts, "hold-back must not spend retry budget")
+	require.NotNil(t, scheduledFor)
+	assert.Equal(t, 0, attemptCount(t, pool, "djblknext0001"))
+
+	// Operator resolves the failed sibling → group unblocks → job delivers.
+	_, err := pool.Exec(context.Background(),
+		`UPDATE msg_dispatch_jobs SET status = 'CANCELLED' WHERE id = 'djblkfail0001'`)
+	require.NoError(t, err)
+	_, err = pool.Exec(context.Background(),
+		`UPDATE msg_dispatch_jobs SET status = 'QUEUED' WHERE id = 'djblknext0001'`)
+	require.NoError(t, err)
+
+	code, out = callProcess(t, base, "djblknext0001", auth.Sign("djblknext0001"))
+	assert.Equal(t, http.StatusOK, code)
+	assert.Equal(t, true, out["ack"])
+	assert.True(t, delivered.Load(), "unblocked job must deliver")
+	status, _, _ = jobRow(t, pool, "djblknext0001")
+	assert.Equal(t, "COMPLETED", status)
+}

@@ -399,6 +399,21 @@ func (r *Repository) Reschedule(ctx context.Context, id string, createdAt time.T
 	return err
 }
 
+// GroupBlocked reports whether the message group currently holds a FAILED or
+// ERROR job — the same predicate as the scheduler poller's blocked-group
+// hold-back (served by idx_dispatch_jobs_blocked_groups). Used by the
+// processing endpoint to stop already-queued siblings from delivering past
+// a failure.
+func (r *Repository) GroupBlocked(ctx context.Context, group string) (bool, error) {
+	var blocked bool
+	err := r.pool.QueryRow(ctx,
+		`SELECT EXISTS (
+		     SELECT 1 FROM msg_dispatch_jobs
+		      WHERE message_group = $1 AND status IN ('FAILED', 'ERROR'))`,
+		group).Scan(&blocked)
+	return blocked, err
+}
+
 // Requeue resets the given jobs to PENDING for a fresh delivery cycle:
 // clears scheduled_for (immediate eligibility), zeroes attempt_count so a
 // job that had exhausted its retries gets a full budget again, and clears

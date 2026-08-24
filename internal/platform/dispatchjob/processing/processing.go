@@ -182,6 +182,37 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Blocked-group hold-back at delivery time. The poller stops QUEUEING
+	// jobs whose group holds a FAILED/ERROR sibling, but messages already
+	// in the queue when the sibling failed would still arrive here and
+	// deliver past the failure. Mirror the poller instead: ack the queue
+	// message (dropping it from the router) and put the job back to
+	// PENDING without consuming retry budget — once the operator resolves
+	// the failed sibling (retry/cancel/complete), the group unblocks and
+	// the poller re-queues these jobs in order.
+	if job.MessageGroup != nil && *job.MessageGroup != "" {
+		blocked, err := h.repo.GroupBlocked(ctx, *job.MessageGroup)
+		if err != nil {
+			// Transient DB error — NACK so the queue redelivers.
+			slog.Error("dispatch process: blocked-group check failed", "job_id", jobID, "err", err)
+			writeJSON(w, http.StatusInternalServerError, processResponse{Ack: false, Message: "blocked check failed"})
+			return
+		}
+		if blocked {
+			if err := h.repo.Reschedule(ctx, jobID, job.CreatedAt, time.Now()); err != nil {
+				// Revert failed: NACK rather than ack, or the job would sit
+				// QUEUED with no queue message until stale recovery.
+				slog.Error("dispatch process: blocked-group revert failed", "job_id", jobID, "err", err)
+				writeJSON(w, http.StatusInternalServerError, processResponse{Ack: false, Message: "revert failed"})
+				return
+			}
+			slog.Info("dispatch held: group blocked, returned to PENDING",
+				"job_id", jobID, "group", *job.MessageGroup)
+			writeJSON(w, http.StatusOK, processResponse{Ack: true, Message: "group blocked"})
+			return
+		}
+	}
+
 	if err := h.repo.MarkInProgress(ctx, jobID, job.CreatedAt); err != nil {
 		slog.Warn("dispatch process: mark in-progress failed", "job_id", jobID, "err", err)
 	}
