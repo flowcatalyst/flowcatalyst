@@ -1,7 +1,7 @@
 -- +goose Up
 -- FlowCatalyst — distributed rate-limit events
 --
--- Postgres-backed implementation of the `RateLimitStore` trait. Used when
+-- Postgres-backed implementation of the rate-limit Store. Used when
 -- FC_REDIS_URL is unset or unreachable; the Redis backend handles the same
 -- counting via INCR + EXPIRE on namespaced keys, so this table is just the
 -- fallback path.
@@ -16,9 +16,10 @@
 -- key collisions. `key` is the limiter input (IP, client_id, email hash, …).
 -- Both kept TEXT so callers can pass whatever shape suits the bucket.
 --
--- Rows are reaped by the background prune job (`prune_rate_limit_events`)
--- — see PostgresRateLimitStore::prune. Without the prune, the table grows
--- unboundedly under sustained traffic; with it, max size ≈ peak QPS × window.
+-- Rows are reaped by the periodic auth purger (server.StartPurger, which calls
+-- PostgresStore.Prune every minute with the longest configured window plus a
+-- margin). Without that prune the table grows unboundedly under sustained
+-- traffic; with it, max size ≈ peak QPS × window.
 
 CREATE TABLE IF NOT EXISTS iam_rate_limit_events (
     id           BIGSERIAL PRIMARY KEY,

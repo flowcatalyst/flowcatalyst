@@ -83,8 +83,10 @@ func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet,
 		Audience:                cfg.JWTIssuer,
 		RSAPrivateKeyPEM:        string(signingKey),
 		RSAPublicKeyPreviousPEM: cfg.JWTPreviousPublicKey,
-		AccessTokenExpirySecs:   3600,
-		IDTokenExpirySecs:       300,
+		// Token responses derive expires_in from this, so raising it moves
+		// both the minted exp and the advertised lifetime together.
+		AccessTokenExpirySecs: int64(envutil.Int("FC_JWT_ACCESS_TOKEN_TTL_SECS", 3600)),
+		IDTokenExpirySecs:     300,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("authservice init: %w", err)

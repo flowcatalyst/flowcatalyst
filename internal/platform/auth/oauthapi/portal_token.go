@@ -69,7 +69,7 @@ func (s *State) redeemPortalCode(w http.ResponseWriter, r *http.Request, code *g
 	writeToken(w, tokenResponse{
 		AccessToken: accessToken,
 		TokenType:   "Bearer",
-		ExpiresIn:   3600,
+		ExpiresIn:   s.Auth.AccessTokenTTLSecs(),
 		IDToken:     idToken,
 		Scope:       code.Scope,
 	})

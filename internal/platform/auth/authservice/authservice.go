@@ -358,6 +358,11 @@ func (s *AuthService) KeyID() string { return s.keyID }
 // Algorithm returns "RS256" or "HS256".
 func (s *AuthService) Algorithm() string { return s.algorithm }
 
+// AccessTokenTTLSecs is the configured access-token lifetime. Token responses
+// derive their `expires_in` from this rather than repeating a literal, so the
+// advertised lifetime can never disagree with the `exp` actually minted.
+func (s *AuthService) AccessTokenTTLSecs() int64 { return s.config.AccessTokenExpirySecs }
+
 // RSAComponents returns the current key's JWKS components, or nil for HS256.
 func (s *AuthService) RSAComponents() *RsaPublicKeyComponents { return s.rsaComponents }
 

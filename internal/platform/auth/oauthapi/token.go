@@ -6,7 +6,8 @@
 //   - Error bodies are RFC-6749 {error, error_description?} — NOT the
 //     platform {error, message} envelope.
 //   - Successful token responses carry Cache-Control: no-store and
-//     Pragma: no-cache, token_type "Bearer", expires_in 3600.
+//     Pragma: no-cache, token_type "Bearer", and expires_in taken from the
+//     configured access-token TTL (FC_JWT_ACCESS_TOKEN_TTL_SECS, default 3600).
 package oauthapi
 
 import (
@@ -497,7 +498,7 @@ func (s *State) mintClientCredentialsToken(
 	writeToken(w, tokenResponse{
 		AccessToken: accessToken,
 		TokenType:   "Bearer",
-		ExpiresIn:   3600,
+		ExpiresIn:   s.Auth.AccessTokenTTLSecs(),
 		Scope:       scopeResponse(granted),
 	})
 }
@@ -619,7 +620,7 @@ func (s *State) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Requ
 	writeToken(w, tokenResponse{
 		AccessToken:  accessToken,
 		TokenType:    "Bearer",
-		ExpiresIn:    3600,
+		ExpiresIn:    s.Auth.AccessTokenTTLSecs(),
 		RefreshToken: refreshToken,
 		IDToken:      idToken,
 		Scope:        code.Scope,
@@ -721,7 +722,7 @@ func (s *State) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request, 
 	writeToken(w, tokenResponse{
 		AccessToken:  accessToken,
 		TokenType:    "Bearer",
-		ExpiresIn:    3600,
+		ExpiresIn:    s.Auth.AccessTokenTTLSecs(),
 		RefreshToken: &res.NewRaw,
 		IDToken:      idToken,
 		Scope:        scope,

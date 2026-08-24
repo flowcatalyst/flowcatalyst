@@ -76,13 +76,16 @@ func PoliciesFromEnv() Policies {
 }
 
 // MaxWindow is the longest window across all policies — used by the prune
-// task to know how far back to keep history.
+// task to know how far back to keep history. Every policy must be listed: a
+// window missing here is one the prune could delete rows still inside,
+// silently weakening that limiter.
 func (p Policies) MaxWindow() time.Duration {
 	max := time.Hour
 	for _, w := range []time.Duration{
 		p.OAuthTokenIP.Window, p.OAuthTokenClient.Window,
 		p.OAuthAuthorizeIP.Window, p.OAuthAuthorizeClient.Window,
 		p.PasswordResetIP.Window, p.PasswordResetEmail.Window,
+		p.PortalLogin.Window,
 	} {
 		if w > max {
 			max = w

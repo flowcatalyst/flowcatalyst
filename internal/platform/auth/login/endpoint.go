@@ -323,7 +323,7 @@ func (e *Endpoint) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, tokenRefreshResponse{
 		AccessToken:  accessToken,
 		TokenType:    "Bearer",
-		ExpiresIn:    3600,
+		ExpiresIn:    e.cfg.Auth.AccessTokenTTLSecs(),
 		RefreshToken: res.NewRaw,
 	})
 }

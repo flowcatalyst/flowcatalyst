@@ -29,6 +29,7 @@ import (
 	sjscheduler "github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob/scheduler"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduler"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/queue"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/router"
@@ -472,13 +473,19 @@ func StartRouter(ctx context.Context, _ *pgxpool.Pool, cfg EnvCfg) {
 	}
 }
 
+// rateLimitPruneMargin is extra retention on top of the longest rate-limit
+// window, so a replica whose clock trails the one that wrote a row can still
+// count it. Cheap insurance: the excess is a few minutes of events.
+const rateLimitPruneMargin = 10 * time.Minute
+
 // StartPurger runs the periodic housekeeping loop that drops expired
 // rows from the four ephemeral auth tables: oauth_oidc_payloads
 // (access/refresh tokens), oauth_oidc_login_states (the in-flight OIDC
 // bridge state), webauthn_ceremonies (in-flight registration /
 // authentication challenges), and portal_login_flows (parked
 // /portal/authorize chains — only consumed rows are deleted inline, so
-// abandoned logins rely on this sweep). Always-on; no env toggle.
+// abandoned logins rely on this sweep). It also reaps iam_rate_limit_events,
+// which is append-only and has no other reaper. Always-on; no env toggle.
 //
 // Cadence: every minute. Idempotent — each purge is a DELETE WHERE
 // expires_at < NOW(). Failures are logged and the loop keeps going.
@@ -487,6 +494,17 @@ func StartPurger(ctx context.Context, pool *pgxpool.Pool) {
 	loginStateRepo := bridge.NewLoginStateRepo(pool)
 	ceremonyRepo := webauthn.NewCeremonyRepository(pool)
 	portalFlowRepo := portalauth.NewFlowRepo(pool)
+
+	// The rate-limit reaper targets the Postgres events table specifically,
+	// rather than whatever store ratelimit.Build selected: Redis expires its
+	// own keys via TTL, so its Prune is a no-op, and constructing the store
+	// here would open a second Redis connection to call it. Pruning
+	// unconditionally also clears rows left behind by a deployment that
+	// previously ran without FC_REDIS_URL. Retention is the longest configured
+	// window plus a margin — any row older than that provably cannot affect a
+	// count, since every check reads occurred_at > now() - window.
+	rlEvents := ratelimit.NewPostgresStore(pool)
+	rlRetention := ratelimit.PoliciesFromEnv().MaxWindow() + rateLimitPruneMargin
 
 	tick := time.NewTicker(time.Minute)
 	defer tick.Stop()
@@ -516,6 +534,11 @@ func StartPurger(ctx context.Context, pool *pgxpool.Pool) {
 				slog.Warn("portal login flow purge failed", "err", err)
 			} else if n > 0 {
 				slog.Debug("portal login flow purge", "removed", n)
+			}
+			if n, err := rlEvents.Prune(ctx, rlRetention); err != nil {
+				slog.Warn("rate-limit event prune failed", "err", err)
+			} else if n > 0 {
+				slog.Debug("rate-limit event prune", "removed", n, "retention", rlRetention)
 			}
 		}
 	}
