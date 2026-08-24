@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -39,6 +40,13 @@ func (s *State) Authorize(w http.ResponseWriter, r *http.Request) {
 	providerID := q.Get("provider")
 	prompt := q.Get("prompt")
 	maxAge := q.Get("max_age")
+	// Optional tenant-client hint used ONLY to brand the login page
+	// (/api/public/login-theme?client=…). Relying-party supplied and
+	// deliberately unvalidated against the OAuth client — it selects
+	// colours, nothing more, and an unknown value falls back to the
+	// platform theme. Malformed values are dropped rather than rejected
+	// so a bad hint can never break sign-in.
+	clientHint := sanitizeClientHint(q.Get("client"))
 
 	// `state` is mandatory for CSRF protection on the callback. Reject with
 	// 400 (not a redirect) — we can't safely bounce the UA without it.
@@ -234,7 +242,26 @@ func (s *State) Authorize(w http.ResponseWriter, r *http.Request) {
 	if nonce != "" {
 		loginURL += "&nonce=" + pctEncode(nonce)
 	}
+	if clientHint != "" {
+		loginURL += "&client=" + pctEncode(clientHint)
+	}
 	http.Redirect(w, r, loginURL, http.StatusTemporaryRedirect)
+}
+
+// clientHintPattern mirrors the client identifier slug rule enforced at
+// creation (lowercase alphanumeric with interior hyphens).
+var clientHintPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
+
+// sanitizeClientHint returns the login-page branding hint when it looks
+// like a client identifier, or "" when it does not. Anything unexpected is
+// discarded silently: the hint is cosmetic, so a malformed value must
+// degrade to the platform theme rather than fail the authorize request.
+func sanitizeClientHint(v string) string {
+	v = strings.TrimSpace(v)
+	if len(v) == 0 || len(v) > 64 || !clientHintPattern.MatchString(v) {
+		return ""
+	}
+	return v
 }
 
 // sessionToken pulls the session JWT from the fc_session cookie, falling

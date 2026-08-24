@@ -48,6 +48,34 @@ func TestPctEncode(t *testing.T) {
 	}
 }
 
+// The `client` branding hint is relying-party supplied and reaches the
+// login URL, so anything that isn't a plain client identifier is dropped
+// rather than forwarded.
+func TestSanitizeClientHint(t *testing.T) {
+	cases := map[string]string{
+		"acme":                   "acme",
+		"acme-corp":              "acme-corp",
+		"a":                      "a",
+		"client9":                "client9",
+		"  acme  ":               "acme", // trimmed
+		"":                       "",
+		"Acme":                   "", // uppercase is not an identifier
+		"acme corp":              "", // whitespace
+		"-acme":                  "", // leading hyphen
+		"acme-":                  "", // trailing hyphen
+		"acme/../x":              "", // path traversal
+		"acme&redirect_uri=evil": "", // query injection
+		"acme%26foo":             "",
+		strings.Repeat("a", 65):  "", // over the length cap
+		strings.Repeat("a", 64):  strings.Repeat("a", 64),
+	}
+	for in, want := range cases {
+		if got := sanitizeClientHint(in); got != want {
+			t.Errorf("sanitizeClientHint(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestInvalidScopes(t *testing.T) {
 	if got := invalidScopes("openid profile email offline_access", nil); len(got) != 0 {
 		t.Errorf("standard scopes should be valid, got %v", got)

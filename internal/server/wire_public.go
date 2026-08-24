@@ -35,7 +35,18 @@ func registerPublicRoutes(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *use
 	// Public read-only endpoints the SPA hits before sign-in
 	// (login-theme branding, platform feature flags). Mounted outside
 	// the auth middleware for the same reason as the login surface.
-	publicapi.New(repos.platformConfigRepo).RegisterRoutes(r)
+	// The client resolver turns the ?client=<identifier> branding hint
+	// (passed through /oauth/authorize) into the client whose theme
+	// overrides the platform one.
+	publicapi.New(repos.platformConfigRepo).
+		WithClientResolver(func(ctx context.Context, identifier string) (string, error) {
+			c, err := repos.clientRepo.FindByIdentifier(ctx, identifier)
+			if err != nil || c == nil {
+				return "", err
+			}
+			return c.ID, nil
+		}).
+		RegisterRoutes(r)
 
 	// Unauthenticated password-reset flow (request/validate/confirm). Public
 	// like /auth/login. Email is delivered via the SMTP_* env (SendGrid in
