@@ -69,6 +69,18 @@ export interface FlowcatalystAuthOptions {
 	 * identity id (`ptu_…`).
 	 */
 	portal?: boolean;
+	/**
+	 * Branded sign-in: the FlowCatalyst client identifier (URL-safe slug, e.g.
+	 * `"acme"`) whose login branding the sign-in pages should wear — logo,
+	 * colours, brand name and footer, as configured under Clients → Login
+	 * Branding. A per-request `?client=` on the login route overrides this.
+	 *
+	 * Purely cosmetic: it does not affect who may sign in or what they may
+	 * access, and an absent or unrecognised value falls back to the
+	 * platform-wide theme. Ignored in {@link portal} mode, which has its own
+	 * login surface.
+	 */
+	client?: string;
 	/** Local RBAC catalogue (role → permissions). Omit to skip permission checks. */
 	rbac?: RbacCatalogue;
 
@@ -243,17 +255,21 @@ const flowcatalystAuthImpl: FastifyPluginAsync<FlowcatalystAuthOptions> =
 
 		// ─── Routes ─────────────────────────────────────────────────────
 		fastify.get(routes.login, async (req, reply) => {
-			const returnTo = sanitizeReturnTo(
-				(req.query as Record<string, string | undefined>)[returnToParam],
-			);
+			const query = req.query as Record<string, string | undefined>;
+			const returnTo = sanitizeReturnTo(query[returnToParam]);
 			const bag = generateAuthCodeBag(returnTo);
 			const endpoints = await oidc.endpoints();
+			// Per-request ?client= wins over the configured default. Omitted in
+			// portal mode: login branding covers the platform sign-in pages
+			// only, never the portal identity plane.
+			const client = opts.portal ? undefined : (query["client"] ?? opts.client);
 			const url = await buildAuthorizeUrl({
 				endpoints,
 				clientId: opts.clientId,
 				redirectUri: resolveCallbackUrl(req, opts.publicBaseUrl, routes.callback),
 				scope,
 				bag,
+				...(client ? { client } : {}),
 			});
 			await stateCrypto.write(reply, bagToSession(bag));
 			return reply.redirect(url);

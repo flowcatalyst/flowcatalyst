@@ -228,6 +228,14 @@ set `portal: true` when the app is a customer portal, so logins enter
 through the platform's portal identity plane (`/portal/authorize`) instead
 of the standard authorize endpoint (see [Portal identities](#portal-identities)).
 
+`client` names the FlowCatalyst client (its URL-safe slug, e.g. `"acme"`)
+whose login branding the sign-in pages should wear — logo, colours, brand
+name and footer, configured under **Clients → Login Branding**. A
+per-request `?client=` on the login route overrides it. It is purely
+cosmetic: it does not affect who may sign in or what they may access, and
+an unrecognised value falls back to the platform-wide theme. Ignored in
+`portal` mode, which has its own login surface.
+
 ### Principal helpers
 
 `request.principal` is the same shape for cookie and Bearer callers:

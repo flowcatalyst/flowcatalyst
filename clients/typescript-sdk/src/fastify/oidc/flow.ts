@@ -35,6 +35,13 @@ export async function buildAuthorizeUrl(opts: {
 	scope: string;
 	bag: AuthCodeBag;
 	prompt?: string;
+	/**
+	 * FlowCatalyst client identifier (URL-safe slug) whose login branding the
+	 * sign-in pages should wear. Purely cosmetic: the platform falls back to
+	 * its own theme when this is absent or unrecognised, and it never affects
+	 * who may sign in or what they may access.
+	 */
+	client?: string;
 }): Promise<string> {
 	const challenge = await s256(opts.bag.codeVerifier);
 	const params = new URLSearchParams({
@@ -47,6 +54,7 @@ export async function buildAuthorizeUrl(opts: {
 		code_challenge_method: "S256",
 	});
 	if (opts.prompt) params.set("prompt", opts.prompt);
+	if (opts.client) params.set("client", opts.client);
 	return `${opts.endpoints.authorizationEndpoint}?${params.toString()}`;
 }
 
