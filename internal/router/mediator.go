@@ -197,6 +197,12 @@ type mediationPayload struct {
 type mediationResponse struct {
 	Ack          *bool   `json:"ack,omitempty"`
 	DelaySeconds *uint32 `json:"delaySeconds,omitempty"`
+	// FlushGroup asks the router to stop delivering this message's group
+	// and ACK the siblings instead of spending a rate-limit token and a
+	// concurrency slot on each. Only meaningful with ack=true, and only
+	// safe when the target already owns the records being pointed at —
+	// flushed messages are never delivered.
+	FlushGroup *bool `json:"flushGroup,omitempty"`
 }
 
 // signWebhook computes the HMAC-SHA256 over `timestamp + payload` and
@@ -337,14 +343,27 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 		body, err := io.ReadAll(resp.Body)
 		if err == nil && len(body) > 0 {
 			var r mediationResponse
-			if err := json.Unmarshal(body, &r); err == nil && r.Ack != nil && !*r.Ack {
-				var delay uint32
-				if r.DelaySeconds != nil {
-					delay = *r.DelaySeconds
+			if err := json.Unmarshal(body, &r); err == nil {
+				if r.Ack != nil && !*r.Ack {
+					var delay uint32
+					if r.DelaySeconds != nil {
+						delay = *r.DelaySeconds
+					}
+					out := common.Deferred(int(delay), "Target returned ack=false")
+					out.StatusCode = status
+					return out
 				}
-				out := common.Deferred(int(delay), "Target returned ack=false")
-				out.StatusCode = status
-				return out
+				// {"ack": true, "flushGroup": true}: delivered, and the
+				// target wants this message's whole group suppressed.
+				// delaySeconds (when present) sets the suppression window.
+				if r.FlushGroup != nil && *r.FlushGroup {
+					out := common.Success()
+					out.FlushGroup = true
+					if r.DelaySeconds != nil {
+						out.DelaySeconds = int(*r.DelaySeconds)
+					}
+					return out
+				}
 			}
 		}
 		return common.Success()

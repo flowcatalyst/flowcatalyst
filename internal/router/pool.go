@@ -28,6 +28,7 @@ type Pool struct {
 	limiter  *RateLimiter
 	tracker  *InFlightTracker
 	metrics  *PoolMetricsCollector
+	flushes  *GroupFlushRegistry
 
 	// resolveConsumer maps a message's origin queue (QueueIdentifier) to the
 	// consumer that delivered it. nil result → the queue was deregistered
@@ -126,6 +127,7 @@ func NewPool(cfg common.PoolConfig, mediator Mediator, tracker *InFlightTracker,
 		limiter:         NewRateLimiter(rate),
 		tracker:         tracker,
 		metrics:         NewPoolMetricsCollector(),
+		flushes:         NewGroupFlushRegistry(),
 		resolveConsumer: resolveConsumer,
 		groupQs:         make(map[string]*groupQueue),
 		mediating:       make(map[string]MediatingEntry),
@@ -276,10 +278,7 @@ func (p *Pool) submit(ctx context.Context, m common.QueuedMessage) {
 		return
 	}
 
-	group := ""
-	if m.Message.MessageGroupID != nil {
-		group = *m.Message.MessageGroupID
-	}
+	group := m.Message.GroupID()
 	if !p.enqueue(group, m) {
 		// Raced with Stop: the buffer is flushed and nothing will drain it.
 		p.nackMsg(ctx, m, ptrU32(10), "pool stopped")
@@ -370,10 +369,7 @@ func (p *Pool) Stop() {
 // trackMediating records a message as actively inside a worker. Called at the
 // top of processOne, paired with untrackMediating on exit.
 func (p *Pool) trackMediating(qm common.QueuedMessage) {
-	group := ""
-	if qm.Message.MessageGroupID != nil {
-		group = *qm.Message.MessageGroupID
-	}
+	group := qm.Message.GroupID()
 	p.mediatingMu.Lock()
 	p.mediating[qm.Message.ID] = MediatingEntry{
 		MessageID:  qm.Message.ID,
@@ -761,6 +757,20 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 		}
 	}
 
+	// Flushed group: the target already told us it cannot take this group
+	// right now and asked us to ACK the siblings rather than deliver them.
+	// Checked BEFORE the rate limiter so a flushed group spends neither a
+	// token nor a concurrency slot — that saving is the whole point. Safe
+	// only because the target asked: it owns the records and re-drives them
+	// itself. Suppression is TTL-bounded, so once the window lapses the next
+	// message probes the target again.
+	if group := qm.Message.GroupID(); group != "" && p.flushes.Suppressed(group) {
+		slog.Debug("message group flushed; ACKing without delivery",
+			"message_id", qm.Message.ID, "group", group, "pool", p.cfg.Code)
+		p.ackTracked(ctx, qm)
+		return processDone, 0
+	}
+
 	// Rate limit (per-pool token bucket). Record a rate-limited event when the
 	// limiter actually held us back (current tokens exhausted).
 	if p.limiter.IsLimited() {
@@ -780,6 +790,22 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 
 	switch outcome.Result {
 	case common.MediationSuccess:
+		// A 2xx carrying {"flushGroup": true} delivered normally but asks us
+		// to suppress the rest of its group. DelaySeconds (when the target
+		// sent one) sizes the window; the registry clamps it.
+		if outcome.FlushGroup {
+			if group := qm.Message.GroupID(); group != "" {
+				ttl := time.Duration(outcome.DelaySeconds) * time.Second
+				if p.flushes.Flush(group, ttl) {
+					slog.Info("message group flushed by target",
+						"group", group, "pool", p.cfg.Code,
+						"message_id", qm.Message.ID, "delay_seconds", outcome.DelaySeconds)
+				}
+			} else {
+				slog.Warn("flushGroup ignored: message has no message group",
+					"message_id", qm.Message.ID, "pool", p.cfg.Code)
+			}
+		}
 		p.metrics.RecordSuccess(durationMs)
 		p.ackTracked(ctx, qm)
 		return processDone, 0

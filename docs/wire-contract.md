@@ -204,6 +204,28 @@ Other signing sites are HMAC-over-plain-strings (dispatch-job auth token signs
 the raw job id) or not HMAC at all (JWT RS256, Argon2id, AES-GCM) — none sign
 serialized JSON.
 
+### Mediation response
+
+The target answers the mediation POST with 2xx and an optional JSON body.
+An absent/unparseable body on a 2xx means plain success.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `ack` | bool | `false` = don't treat as delivered; requeue with backoff. Default `true`. |
+| `delaySeconds` | uint32 | With `ack:false`, the minimum requeue delay. With `flushGroup`, the suppression window. |
+| `flushGroup` | bool | `true` = delivered, and stop delivering this message's group. Default `false`. |
+
+`flushGroup` semantics: the router ACKs the group's remaining messages
+**without delivering them**, spending no rate-limit token and no concurrency
+slot. It is therefore only safe for targets that already own the records the
+messages point at (the message-pointer pattern) and re-drive them themselves —
+a target whose message body carries the only copy of the payload must never
+set it. Suppression is TTL-bounded (`delaySeconds`, defaulting to 60s and
+capped at 5 minutes), so it self-heals: once the window lapses the next
+message probes the target, which either flushes again or resumes. `ack:false`
+takes precedence — a target that wants the message back cannot also discard
+its group.
+
 ## Non-contractual surface
 
 These may vary freely between builds/deployments:

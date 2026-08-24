@@ -34,6 +34,13 @@ type MediationOutcome struct {
 	DelaySeconds int // 0 if no delay
 	StatusCode   int // 0 if not from HTTP
 	ErrorMessage string
+
+	// FlushGroup is set when a 2xx body carried {"flushGroup": true}: the
+	// target is asking us to stop delivering this message's group and just
+	// ACK its siblings. DelaySeconds carries how long to suppress for.
+	// Honoured only alongside a successful delivery — a target that wants
+	// the message back cannot also discard the group.
+	FlushGroup bool
 }
 
 // Success builds a 200 outcome.

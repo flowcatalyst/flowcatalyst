@@ -98,12 +98,17 @@ type InFlightMessage struct {
 	Attempts uint
 }
 
+// GroupID returns the message group, or "" when the message is ungrouped.
+func (m *Message) GroupID() string {
+	if m == nil || m.MessageGroupID == nil {
+		return ""
+	}
+	return *m.MessageGroupID
+}
+
 // NewInFlightMessage constructs a tracker.
 func NewInFlightMessage(m *Message, brokerID, queueID, batchID, receipt string) *InFlightMessage {
-	groupID := ""
-	if m.MessageGroupID != nil {
-		groupID = *m.MessageGroupID
-	}
+	groupID := m.GroupID()
 	now := time.Now()
 	return &InFlightMessage{
 		MessageID:       m.ID,

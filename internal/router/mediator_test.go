@@ -229,3 +229,51 @@ func TestMediatorAckFalseIsDeferredWithoutInPipelineRetry(t *testing.T) {
 	assert.Equal(t, 45, out.DelaySeconds)
 	assert.Equal(t, int32(1), calls.Load(), "ack=false must not retry in-pipeline")
 }
+
+func TestMediatorFlushGroupParsedFromSuccessBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ack": true, "flushGroup": true, "delaySeconds": 45}`))
+	}))
+	defer srv.Close()
+
+	out := router.NewHTTPMediator(router.DevMediatorConfig(), router.NewBreakerRegistry(router.DefaultBreakerConfig())).Mediate(
+		context.Background(),
+		&common.Message{ID: "m", MediationType: common.MediationTypeHTTP, MediationTarget: srv.URL},
+	)
+	// Delivered successfully AND the group is to be suppressed for 45s.
+	assert.Equal(t, common.MediationSuccess, out.Result)
+	assert.True(t, out.FlushGroup)
+	assert.Equal(t, 45, out.DelaySeconds)
+}
+
+func TestMediatorAckFalseWinsOverFlushGroup(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ack": false, "flushGroup": true, "delaySeconds": 10}`))
+	}))
+	defer srv.Close()
+
+	out := router.NewHTTPMediator(router.DevMediatorConfig(), router.NewBreakerRegistry(router.DefaultBreakerConfig())).Mediate(
+		context.Background(),
+		&common.Message{ID: "m", MediationType: common.MediationTypeHTTP, MediationTarget: srv.URL},
+	)
+	// A target that wants the message back cannot also discard its group.
+	assert.Equal(t, common.MediationDeferred, out.Result)
+	assert.False(t, out.FlushGroup)
+}
+
+func TestMediatorPlainSuccessDoesNotFlush(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ack": true}`))
+	}))
+	defer srv.Close()
+
+	out := router.NewHTTPMediator(router.DevMediatorConfig(), router.NewBreakerRegistry(router.DefaultBreakerConfig())).Mediate(
+		context.Background(),
+		&common.Message{ID: "m", MediationType: common.MediationTypeHTTP, MediationTarget: srv.URL},
+	)
+	assert.Equal(t, common.MediationSuccess, out.Result)
+	assert.False(t, out.FlushGroup)
+}
