@@ -85,6 +85,15 @@ func (d *MessageGroupDispatcher) buildMessage(tok DispatchJobToken) common.Messa
 		MediationType:   common.MediationTypeHTTP,
 		MediationTarget: d.processingEndpoint,
 		AuthToken:       &authToken,
+		// PoolCode selects the router pool. Empty falls back to DEFAULT-POOL,
+		// so a job with no configured pool behaves exactly as before.
+		PoolCode: tok.PoolCode,
+		// DispatchMode decides whether the router honours the message group.
+		// Omitting it made every job parse as IMMEDIATE, which takes the
+		// concurrent path and bypasses the per-group FIFO buffer — the ordering
+		// NEXT_ON_ERROR and BLOCK_ON_ERROR promise was lost at the router even
+		// though MessageGroupID was set.
+		DispatchMode: common.ParseDispatchMode(tok.Mode),
 	}
 	if tok.MessageGroup != "" {
 		group := tok.MessageGroup // copy: don't alias the loop/param variable
