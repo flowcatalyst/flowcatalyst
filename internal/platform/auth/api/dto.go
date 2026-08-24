@@ -2,8 +2,6 @@
 package api
 
 import (
-	"strings"
-
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
@@ -22,11 +20,13 @@ type CreateOAuthClientRequest struct {
 	ClientType   string   `json:"clientType" doc:"PUBLIC or CONFIDENTIAL"`
 	RedirectURIs []string `json:"redirectUris,omitempty"`
 	GrantTypes   []string `json:"grantTypes,omitempty"`
-	// DefaultScopes is sent by the SPA as a space-delimited string (e.g.
-	// "openid profile"); legacy callers may still send Scopes. Either is
-	// accepted and folded into the entity's Scopes slice.
-	DefaultScopes string `json:"defaultScopes,omitempty"`
-	// Scopes is the legacy array form (kept for back-compat with older callers).
+	// DefaultScopes is the client's scope list. Array-shaped, matching
+	// UpdateOAuthClientRequest.defaultScopes and OAuthClientResponse.defaultScopes
+	// so a read-modify-write round trip is lossless — it used to be a
+	// space-delimited string here and an array everywhere else, which silently
+	// corrupted scopes for any caller that GET a client and POSTed it back.
+	DefaultScopes []string `json:"defaultScopes,omitempty"`
+	// Scopes is the legacy array alias (kept for back-compat with older callers).
 	Scopes []string `json:"scopes,omitempty"`
 	// PKCERequired toggles whether /oauth/authorize demands a code_challenge.
 	// Pointer so an omitted value keeps the entity's type-derived default
@@ -51,11 +51,11 @@ type CreateOAuthClientRequest struct {
 }
 
 func (r CreateOAuthClientRequest) toCommand() operations.CreateOAuthClientCommand {
+	// defaultScopes wins over the legacy scopes alias when both are present —
+	// same precedence as UpdateOAuthClientRequest.toCommand.
 	scopes := r.Scopes
-	// SPA sends defaultScopes as a space-delimited string; split it into the
-	// entity's scope slice. Falls back to the legacy Scopes array if empty.
-	if s := strings.TrimSpace(r.DefaultScopes); s != "" {
-		scopes = strings.Fields(s)
+	if len(r.DefaultScopes) > 0 {
+		scopes = r.DefaultScopes
 	}
 	return operations.CreateOAuthClientCommand{
 		ClientName:             r.ClientName,

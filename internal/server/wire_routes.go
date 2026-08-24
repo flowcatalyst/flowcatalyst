@@ -86,6 +86,12 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			Provider:         svcs.authProvider,
 			AllowTestHeaders: cfg.AuthAllowTestHeaders,
 		}))
+		// Temporary compatibility shim: accepts the retired space-delimited
+		// `defaultScopes` string on POST /api/oauth-clients and normalises it to
+		// the documented array before huma validates. Self-guarded on
+		// method+path, so it is a single comparison for every other route.
+		// Remove with the legacy `scopes` alias — see LegacyDefaultScopesCompat.
+		r.Use(authapi.LegacyDefaultScopesCompat)
 		// /auth/me — needs the AuthContext, so mounted INSIDE the auth
 		// group. /auth/check-domain + /auth/login + /auth/logout are
 		// public (see registerPublicRoutes).

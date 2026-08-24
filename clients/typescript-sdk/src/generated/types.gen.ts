@@ -947,7 +947,7 @@ export type CreateOAuthClientRequest = {
      * PUBLIC or CONFIDENTIAL
      */
     clientType: string;
-    defaultScopes?: string;
+    defaultScopes?: Array<string>;
     grantTypes?: Array<string>;
     pkceRequired?: boolean;
     portalClientId?: string;
@@ -955,7 +955,7 @@ export type CreateOAuthClientRequest = {
     principalId?: string;
     redirectUris?: Array<string>;
     scopes?: Array<string>;
-    [key: string]: unknown | string | Array<string> | boolean | Array<string> | Array<string> | Array<string> | Array<string> | Array<string> | undefined;
+    [key: string]: unknown | string | Array<string> | boolean | Array<string> | Array<string> | Array<string> | Array<string> | Array<string> | Array<string> | undefined;
 };
 
 export type CreateOAuthClientResponse = {
@@ -3480,7 +3480,7 @@ export type CreateOAuthClientRequestWritable = {
      * PUBLIC or CONFIDENTIAL
      */
     clientType: string;
-    defaultScopes?: string;
+    defaultScopes?: Array<string>;
     grantTypes?: Array<string>;
     pkceRequired?: boolean;
     portalClientId?: string;
@@ -3488,7 +3488,7 @@ export type CreateOAuthClientRequestWritable = {
     principalId?: string;
     redirectUris?: Array<string>;
     scopes?: Array<string>;
-    [key: string]: unknown | Array<string> | boolean | Array<string> | string | Array<string> | Array<string> | Array<string> | Array<string> | undefined;
+    [key: string]: unknown | Array<string> | boolean | Array<string> | string | Array<string> | Array<string> | Array<string> | Array<string> | Array<string> | undefined;
 };
 
 export type CreateOAuthClientResponseWritable = {
