@@ -81,13 +81,15 @@ func TestFilterByDispatchMode_BlockOnErrorExcludedWhenGroupBlocked(t *testing.T)
 	assert.Equal(t, []string{"j2"}, claimIDs(result))
 }
 
-func TestFilterByDispatchMode_NextOnErrorExcludedWhenGroupBlocked(t *testing.T) {
+// NEXT_ON_ERROR is ordered but explicitly "the group moves on" past a
+// failure — only BLOCK_ON_ERROR stops for a failed sibling.
+func TestFilterByDispatchMode_NextOnErrorPassesWhenGroupBlocked(t *testing.T) {
 	blocked := map[string]struct{}{"grp_x": {}}
 	result := filterByDispatchMode([]dispatchClaim{
 		mkClaim("j1", "grp_x", "NEXT_ON_ERROR"),
 		mkClaim("j2", "grp_y", "NEXT_ON_ERROR"),
 	}, blocked)
-	assert.Equal(t, []string{"j2"}, claimIDs(result))
+	assert.Equal(t, []string{"j1", "j2"}, claimIDs(result))
 }
 
 func TestFilterByDispatchMode_NoBlockedGroupsPassesEverything(t *testing.T) {
@@ -106,14 +108,15 @@ func TestFilterByDispatchMode_MixedModesInSameGroup(t *testing.T) {
 		mkClaim("j_noe", "grp", "NEXT_ON_ERROR"),
 		mkClaim("j_boe", "grp", "BLOCK_ON_ERROR"),
 	}, blocked)
-	assert.Equal(t, []string{"j_imm"}, claimIDs(result))
+	// Only BLOCK_ON_ERROR stops for a failed sibling.
+	assert.Equal(t, []string{"j_imm", "j_noe"}, claimIDs(result))
 }
 
 func TestFilterByDispatchMode_UngroupedUsesDefaultKey(t *testing.T) {
-	// Ungrouped ordered-mode jobs check the "default" bucket.
+	// Ungrouped BLOCK_ON_ERROR jobs check the "default" bucket.
 	blocked := map[string]struct{}{defaultMessageGroup: {}}
 	result := filterByDispatchMode([]dispatchClaim{
-		mkClaim("j1", "", "NEXT_ON_ERROR"),
+		mkClaim("j1", "", "BLOCK_ON_ERROR"),
 		mkClaim("j2", "", "IMMEDIATE"),
 	}, blocked)
 	assert.Equal(t, []string{"j2"}, claimIDs(result))

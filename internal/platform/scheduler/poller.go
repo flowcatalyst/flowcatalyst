@@ -219,17 +219,18 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 	var minCreated, maxCreated time.Time
 	skippedBlocked := 0
 	for group, jobs := range byGroup {
-		// A FAILED/ERROR sibling holds back the whole group this tick —
-		// ordered jobs must not jump past the failure, and the operator
-		// resolving it (retry/cancel) unblocks the group for the next
-		// poll. The group is skipped before the mode filter, so even
-		// IMMEDIATE jobs in a blocked group wait; deliberate.
-		if _, isBlocked := blocked[group]; isBlocked {
-			slog.Debug("message group blocked, skipping", "group", group, "count", len(jobs))
-			skippedBlocked += len(jobs)
-			continue
+		// A FAILED/ERROR sibling holds back this group's BLOCK_ON_ERROR
+		// jobs — they must not jump past the failure, and the operator
+		// resolving it (retry/cancel/complete) releases them on the next
+		// poll. IMMEDIATE and NEXT_ON_ERROR jobs keep flowing: neither
+		// mode promises to stop for a failed sibling.
+		dispatchable := filterByDispatchMode(jobs, blocked)
+		if held := len(jobs) - len(dispatchable); held > 0 {
+			slog.Debug("message group blocked, holding ordered jobs",
+				"group", group, "held", held, "dispatching", len(dispatchable))
+			skippedBlocked += held
 		}
-		for _, c := range filterByDispatchMode(jobs, blocked) {
+		for _, c := range dispatchable {
 			if len(queued) == 0 || c.createdAt.Before(minCreated) {
 				minCreated = c.createdAt
 			}
@@ -326,17 +327,15 @@ func filterPausedSubscriptions(claims []dispatchClaim, paused map[string]struct{
 }
 
 // filterByDispatchMode keeps the claims whose mode allows dispatch given
-// the blocked groups: IMMEDIATE always dispatches; NEXT_ON_ERROR and
-// BLOCK_ON_ERROR hold back while their group is blocked — with a lenient
-// parse where unknown modes count as IMMEDIATE. The group-level skip in
-// pollOnce makes this currently redundant (a blocked group never reaches
-// it), but it's kept so a future relaxation of the
-// group skip doesn't silently lose the per-mode semantics.
+// the blocked groups. Only BLOCK_ON_ERROR — "strict FIFO; a failed job
+// blocks the group until resolved" — is held back by a failed sibling.
+// IMMEDIATE carries no ordering at all, and NEXT_ON_ERROR is ordered but
+// explicitly "the group moves on" past a failure, so neither is blocked.
+// Unknown modes parse leniently to IMMEDIATE and therefore dispatch.
 func filterByDispatchMode(claims []dispatchClaim, blocked map[string]struct{}) []dispatchClaim {
 	kept := make([]dispatchClaim, 0, len(claims))
 	for _, c := range claims {
-		switch common.ParseDispatchMode(c.mode) {
-		case common.DispatchNextOnError, common.DispatchBlockOnError:
+		if common.ParseDispatchMode(c.mode) == common.DispatchBlockOnError {
 			if _, isBlocked := blocked[messageGroupKey(c.group)]; isBlocked {
 				continue
 			}

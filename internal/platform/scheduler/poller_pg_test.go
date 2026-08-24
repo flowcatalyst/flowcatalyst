@@ -103,6 +103,21 @@ func seedJob(t *testing.T, pool *pgxpool.Pool, id, status, group, subID string) 
 	require.NoError(t, err)
 }
 
+// seedModeJob is seedJob with an explicit dispatch mode (seedJob leaves the
+// column at its IMMEDIATE default).
+func seedModeJob(t *testing.T, pool *pgxpool.Pool, id, status, group, mode string) {
+	t.Helper()
+	var groupPtr *string
+	if group != "" {
+		groupPtr = &group
+	}
+	_, err := pool.Exec(context.Background(),
+		`INSERT INTO msg_dispatch_jobs (id, code, target_url, status, message_group, mode)
+		 VALUES ($1, 'scheduler:poller:test', 'http://example.invalid/hook', $2, $3, $4)`,
+		id, status, groupPtr, mode)
+	require.NoError(t, err)
+}
+
 func jobStatus(t *testing.T, pool *pgxpool.Pool, id string) string {
 	t.Helper()
 	var status string
@@ -113,24 +128,29 @@ func jobStatus(t *testing.T, pool *pgxpool.Pool, id string) string {
 }
 
 // TestPollOnce_BlockedGroupHoldback pins the blocked-group filter: a
-// FAILED sibling holds the whole message group in PENDING (no QUEUED
-// flip), and resolving the failure releases the group on the next poll.
+// FAILED sibling holds the group's BLOCK_ON_ERROR jobs in PENDING (no
+// QUEUED flip), and resolving the failure releases them on the next poll.
+// Jobs in other modes are NOT held — only BLOCK_ON_ERROR promises to stop.
 func TestPollOnce_BlockedGroupHoldback(t *testing.T) {
 	ctx := context.Background()
 	pool := testpg.Pool(t)
 	poller := newTestPoller(pool)
 
 	const (
-		group     = "grp_blkhold_it01" // unique to this test
-		failedID  = "djblkhfail001"
-		pendingID = "djblkhpend001"
+		group       = "grp_blkhold_it01" // unique to this test
+		failedID    = "djblkhfail001"
+		pendingID   = "djblkhpend001"
+		immediateID = "djblkhimmed01"
 	)
 	seedJob(t, pool, failedID, "FAILED", group, "")
-	seedJob(t, pool, pendingID, "PENDING", group, "")
+	seedModeJob(t, pool, pendingID, "PENDING", group, "BLOCK_ON_ERROR")
+	seedModeJob(t, pool, immediateID, "PENDING", group, "IMMEDIATE")
 
 	require.NoError(t, poller.pollOnce(ctx))
 	require.Equal(t, "PENDING", jobStatus(t, pool, pendingID),
-		"sibling of a FAILED job must be held back, not claimed")
+		"BLOCK_ON_ERROR sibling of a FAILED job must be held back, not claimed")
+	require.Equal(t, "QUEUED", jobStatus(t, pool, immediateID),
+		"IMMEDIATE sibling must keep flowing past a failed job")
 	require.Equal(t, "FAILED", jobStatus(t, pool, failedID),
 		"the failed job itself must be untouched")
 

@@ -34,6 +34,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 )
@@ -182,15 +183,17 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Blocked-group hold-back at delivery time. The poller stops QUEUEING
-	// jobs whose group holds a FAILED/ERROR sibling, but messages already
-	// in the queue when the sibling failed would still arrive here and
-	// deliver past the failure. Mirror the poller instead: ack the queue
-	// message (dropping it from the router) and put the job back to
-	// PENDING without consuming retry budget — once the operator resolves
-	// the failed sibling (retry/cancel/complete), the group unblocks and
-	// the poller re-queues these jobs in order.
-	if job.MessageGroup != nil && *job.MessageGroup != "" {
+	// Blocked-group hold-back at delivery time, for BLOCK_ON_ERROR only —
+	// the one mode that promises to stop for a failed sibling (IMMEDIATE
+	// and NEXT_ON_ERROR keep flowing, matching the poller's filter, and
+	// skip the query entirely). The poller stops QUEUEING these jobs once
+	// a sibling fails, but messages already in the queue at that moment
+	// would still arrive here and deliver past the failure. Mirror the
+	// poller instead: ack the queue message (dropping it from the router)
+	// and put the job back to PENDING without consuming retry budget —
+	// once the operator resolves the failed sibling, the group unblocks
+	// and the poller re-queues these jobs in order.
+	if job.Mode == common.DispatchBlockOnError && job.MessageGroup != nil && *job.MessageGroup != "" {
 		blocked, err := h.repo.GroupBlocked(ctx, *job.MessageGroup)
 		if err != nil {
 			// Transient DB error — NACK so the queue redelivers.
