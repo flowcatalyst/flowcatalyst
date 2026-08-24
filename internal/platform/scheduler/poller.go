@@ -157,8 +157,7 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 	// racing the poll. A NULL scheduled_for (every freshly-created job) is
 	// always eligible.
 	rows, err := tx.Query(ctx,
-		`SELECT id, subscription_id, message_group, mode, dispatch_pool_code,
-		        attempt_count, target_url, created_at
+		`SELECT id, subscription_id, message_group, mode, attempt_count, target_url, created_at
 		   FROM msg_dispatch_jobs
 		  WHERE status = 'PENDING'
 		    AND (scheduled_for IS NULL OR scheduled_for <= NOW())
@@ -174,8 +173,7 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 		var c dispatchClaim
 		var msgGroup *string
 		var subID *string
-		var poolCode *string
-		if err := rows.Scan(&c.id, &subID, &msgGroup, &c.mode, &poolCode, &c.attempt, &c.target, &c.createdAt); err != nil {
+		if err := rows.Scan(&c.id, &subID, &msgGroup, &c.mode, &c.attempt, &c.target, &c.createdAt); err != nil {
 			rows.Close()
 			return err
 		}
@@ -184,9 +182,6 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 		}
 		if msgGroup != nil {
 			c.group = *msgGroup
-		}
-		if poolCode != nil {
-			c.poolCode = *poolCode
 		}
 		claims = append(claims, c)
 	}
@@ -247,7 +242,6 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 				JobID:        c.id,
 				MessageGroup: c.group,
 				TargetURL:    c.target,
-				PoolCode:     c.poolCode,
 				Mode:         c.mode,
 			})
 		}
@@ -284,12 +278,12 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 	return nil
 }
 
-// dispatchClaim is one PENDING row claimed by the poll query. group, subID
-// and poolCode are "" when the column is NULL.
+// dispatchClaim is one PENDING row claimed by the poll query. group and
+// subID are "" when the column is NULL.
 type dispatchClaim struct {
-	id, subID, group, mode, poolCode, target string
-	attempt                                  int32
-	createdAt                                time.Time
+	id, subID, group, mode, target string
+	attempt                        int32
+	createdAt                      time.Time
 }
 
 // messageGroupKey maps a claim's message_group to its grouping key: jobs
@@ -391,10 +385,14 @@ type DispatchJobToken struct {
 	JobID        string
 	MessageGroup string
 	TargetURL    string
-	// PoolCode is the job's dispatch_pool_code. Empty routes to the router's
-	// DEFAULT-POOL; carrying it is what makes a job's configured pool — and so
-	// its concurrency isolation — actually take effect.
-	PoolCode string
+	// NOTE: the pool is NOT carried yet, so every dispatch job still routes to
+	// the router's DEFAULT-POOL and per-pool concurrency isolation does not
+	// apply. msg_dispatch_jobs stores dispatch_pool_id (VARCHAR(17)), not a
+	// code — the code lives on msg_dispatch_pools — so propagating it needs an
+	// id→code resolution step, and codes need namespacing because
+	// msg_dispatch_pools is unique on (code, client_id) while the router keys
+	// pools by code alone.
+	//
 	// Mode is the job's raw dispatch mode. The router needs it to decide
 	// whether the message group is ordered: an absent mode parses to IMMEDIATE,
 	// which sends the message down the concurrent path and silently discards

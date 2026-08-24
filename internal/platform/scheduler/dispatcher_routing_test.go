@@ -13,24 +13,25 @@ func routingDispatcher() *MessageGroupDispatcher {
 	}
 }
 
-// TestBuildMessageCarriesPoolAndMode is the regression guard: the poller reads
-// a job's dispatch_pool_code and mode, and both must survive onto the queue
-// message. They used to be dropped in buildMessage, so every dispatch job
-// reached the router with no pool (→ DEFAULT-POOL) and no mode (→ IMMEDIATE),
-// discarding both the job's pool isolation and its ordering guarantee.
-func TestBuildMessageCarriesPoolAndMode(t *testing.T) {
+// TestBuildMessageCarriesMode is the regression guard: the poller reads a job's
+// mode and it must survive onto the queue message. It used to be dropped in
+// buildMessage, so every dispatch job reached the router as IMMEDIATE and took
+// the concurrent path, discarding the ordering guarantee.
+//
+// The pool is NOT carried yet — see DispatchJobToken — so PoolCode stays empty
+// and every job still routes to DEFAULT-POOL.
+func TestBuildMessageCarriesMode(t *testing.T) {
 	d := routingDispatcher()
 
 	msg := d.buildMessage(DispatchJobToken{
 		JobID:        "dsp_1",
 		MessageGroup: "order-42",
 		TargetURL:    "https://sub.example/hook",
-		PoolCode:     "HIGH-VOLUME",
 		Mode:         "BLOCK_ON_ERROR",
 	})
 
-	if msg.PoolCode != "HIGH-VOLUME" {
-		t.Errorf("PoolCode = %q, want HIGH-VOLUME", msg.PoolCode)
+	if msg.PoolCode != "" {
+		t.Errorf("PoolCode = %q, want empty until pool propagation lands", msg.PoolCode)
 	}
 	if msg.DispatchMode != common.DispatchBlockOnError {
 		t.Errorf("DispatchMode = %q, want BLOCK_ON_ERROR", msg.DispatchMode)
@@ -68,11 +69,9 @@ func TestBuildMessageOrderedModesReachTheFIFOPath(t *testing.T) {
 	}
 }
 
-// TestBuildMessageEmptyPoolFallsBackToDefault: a job with no configured pool
-// must keep publishing an empty PoolCode, which the router resolves to
-// DEFAULT-POOL. Emitting a literal "DEFAULT-POOL" here would instead make the
-// message name a pool that may not be configured.
-func TestBuildMessageEmptyPoolFallsBackToDefault(t *testing.T) {
+// TestBuildMessageLeavesPoolUnset: until pool propagation lands, PoolCode is
+// always empty and the router applies its own DEFAULT-POOL fallback.
+func TestBuildMessageLeavesPoolUnset(t *testing.T) {
 	d := routingDispatcher()
 
 	msg := d.buildMessage(DispatchJobToken{JobID: "dsp_1"})
