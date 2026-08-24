@@ -12,21 +12,24 @@
 -- name: OAuthClientFindByID :one
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
-       active, created_at, updated_at, portal_client_id, api_access
+       active, created_at, updated_at, portal_client_id, api_access,
+       previous_secret_ref, previous_secret_expires_at
 FROM oauth_clients
 WHERE id = $1;
 
 -- name: OAuthClientFindByClientID :one
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
-       active, created_at, updated_at, portal_client_id, api_access
+       active, created_at, updated_at, portal_client_id, api_access,
+       previous_secret_ref, previous_secret_expires_at
 FROM oauth_clients
 WHERE client_id = $1;
 
 -- name: OAuthClientFindAll :many
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
-       active, created_at, updated_at, portal_client_id, api_access
+       active, created_at, updated_at, portal_client_id, api_access,
+       previous_secret_ref, previous_secret_expires_at
 FROM oauth_clients
 ORDER BY client_name;
 
@@ -34,13 +37,16 @@ ORDER BY client_name;
 INSERT INTO oauth_clients
     (id, client_id, client_name, client_type, client_secret_ref,
      default_scopes, pkce_required, service_account_principal_id,
-     active, created_at, updated_at, portal_client_id, api_access)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+     active, created_at, updated_at, portal_client_id, api_access,
+     previous_secret_ref, previous_secret_expires_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 ON CONFLICT (id) DO UPDATE SET
     client_id = EXCLUDED.client_id,
     client_name = EXCLUDED.client_name,
     client_type = EXCLUDED.client_type,
     client_secret_ref = EXCLUDED.client_secret_ref,
+    previous_secret_ref = EXCLUDED.previous_secret_ref,
+    previous_secret_expires_at = EXCLUDED.previous_secret_expires_at,
     default_scopes = EXCLUDED.default_scopes,
     pkce_required = EXCLUDED.pkce_required,
     service_account_principal_id = EXCLUDED.service_account_principal_id,
@@ -54,7 +60,8 @@ ON CONFLICT (id) DO UPDATE SET
 -- validating a portal invite's post-set-password redirectUri.
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
-       active, created_at, updated_at, portal_client_id, api_access
+       active, created_at, updated_at, portal_client_id, api_access,
+       previous_secret_ref, previous_secret_expires_at
 FROM oauth_clients
 WHERE portal_client_id = $1
 ORDER BY client_name;
@@ -204,3 +211,14 @@ ON CONFLICT (id) DO UPDATE SET
 
 -- name: IdpRoleMappingDelete :exec
 DELETE FROM oauth_idp_role_mappings WHERE id = $1;
+
+-- name: OAuthClientPurgeLapsedPreviousSecrets :execrows
+-- Clears overlap secrets whose window has passed, so a superseded secret is
+-- not retained at rest once it can no longer authenticate. Verification
+-- already refuses an expired previous ref, so this is hygiene, not enforcement.
+UPDATE oauth_clients
+SET previous_secret_ref = NULL,
+    previous_secret_expires_at = NULL
+WHERE previous_secret_ref IS NOT NULL
+  AND previous_secret_expires_at IS NOT NULL
+  AND previous_secret_expires_at < NOW();

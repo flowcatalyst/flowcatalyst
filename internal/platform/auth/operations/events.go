@@ -22,6 +22,8 @@ const (
 	OAuthClientDeactivatedType   = "platform:admin:oauth-client:deactivated"
 	OAuthClientDeletedType       = "platform:admin:oauth-client:deleted"
 	OAuthClientSecretRotatedType = "platform:admin:oauth-client:secret-rotated"
+	// OAuthClientPreviousSecretRevokedType marks a rotation overlap ended early.
+	OAuthClientPreviousSecretRevokedType = "platform:admin:oauth-client:previous-secret-revoked"
 
 	AnchorDomainCreatedType = "platform:admin:anchor-domain:created"
 	AnchorDomainUpdatedType = "platform:admin:anchor-domain:updated"
@@ -179,6 +181,10 @@ func (e OAuthClientDeleted) ToDataJSON() ([]byte, error) {
 type OAuthClientSecretRotated struct {
 	Metadata      usecase.EventMetadata
 	OAuthClientID string
+	// PreviousSecretExpiresAt is when the superseded secret stops being
+	// accepted, or nil when the rotation was an immediate cutover and no
+	// overlap was kept.
+	PreviousSecretExpiresAt *time.Time
 }
 
 func (e OAuthClientSecretRotated) EventID() string       { return e.Metadata.EventID }
@@ -193,6 +199,36 @@ func (e OAuthClientSecretRotated) CausationID() string   { return e.Metadata.Cau
 func (e OAuthClientSecretRotated) ExecutionID() string   { return e.Metadata.ExecutionID }
 func (e OAuthClientSecretRotated) MessageGroup() string  { return oauthGroup(e.OAuthClientID) }
 func (e OAuthClientSecretRotated) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		ID                      string     `json:"oauthClientId"`
+		PreviousSecretExpiresAt *time.Time `json:"previousSecretExpiresAt,omitempty"`
+	}{e.OAuthClientID, e.PreviousSecretExpiresAt})
+}
+
+// OAuthClientPreviousSecretRevoked records an operator ending a rotation
+// overlap early — the superseded secret stops authenticating immediately
+// instead of lapsing on its timer.
+type OAuthClientPreviousSecretRevoked struct {
+	Metadata      usecase.EventMetadata
+	OAuthClientID string
+}
+
+func (e OAuthClientPreviousSecretRevoked) EventID() string { return e.Metadata.EventID }
+func (e OAuthClientPreviousSecretRevoked) EventType() string {
+	return OAuthClientPreviousSecretRevokedType
+}
+func (e OAuthClientPreviousSecretRevoked) SpecVersion() string { return "1.0" }
+func (e OAuthClientPreviousSecretRevoked) Source() string      { return Source }
+func (e OAuthClientPreviousSecretRevoked) Subject() string     { return oauthSubject(e.OAuthClientID) }
+func (e OAuthClientPreviousSecretRevoked) Time() time.Time     { return e.Metadata.OccurredAt }
+func (e OAuthClientPreviousSecretRevoked) PrincipalID() string { return e.Metadata.PrincipalID }
+func (e OAuthClientPreviousSecretRevoked) CorrelationID() string {
+	return e.Metadata.CorrelationID
+}
+func (e OAuthClientPreviousSecretRevoked) CausationID() string  { return e.Metadata.CausationID }
+func (e OAuthClientPreviousSecretRevoked) ExecutionID() string  { return e.Metadata.ExecutionID }
+func (e OAuthClientPreviousSecretRevoked) MessageGroup() string { return oauthGroup(e.OAuthClientID) }
+func (e OAuthClientPreviousSecretRevoked) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		ID string `json:"oauthClientId"`
 	}{e.OAuthClientID})

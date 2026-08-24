@@ -435,7 +435,8 @@ func (q *Queries) OAuthClientDelete(ctx context.Context, id string) error {
 const oAuthClientFindAll = `-- name: OAuthClientFindAll :many
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
-       active, created_at, updated_at, portal_client_id, api_access
+       active, created_at, updated_at, portal_client_id, api_access,
+       previous_secret_ref, previous_secret_expires_at
 FROM oauth_clients
 ORDER BY client_name
 `
@@ -463,6 +464,8 @@ func (q *Queries) OAuthClientFindAll(ctx context.Context) ([]OauthClient, error)
 			&i.UpdatedAt,
 			&i.PortalClientID,
 			&i.ApiAccess,
+			&i.PreviousSecretRef,
+			&i.PreviousSecretExpiresAt,
 		); err != nil {
 			return nil, err
 		}
@@ -477,7 +480,8 @@ func (q *Queries) OAuthClientFindAll(ctx context.Context) ([]OauthClient, error)
 const oAuthClientFindByClientID = `-- name: OAuthClientFindByClientID :one
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
-       active, created_at, updated_at, portal_client_id, api_access
+       active, created_at, updated_at, portal_client_id, api_access,
+       previous_secret_ref, previous_secret_expires_at
 FROM oauth_clients
 WHERE client_id = $1
 `
@@ -499,6 +503,8 @@ func (q *Queries) OAuthClientFindByClientID(ctx context.Context, clientID string
 		&i.UpdatedAt,
 		&i.PortalClientID,
 		&i.ApiAccess,
+		&i.PreviousSecretRef,
+		&i.PreviousSecretExpiresAt,
 	)
 	return i, err
 }
@@ -508,7 +514,8 @@ const oAuthClientFindByID = `-- name: OAuthClientFindByID :one
 
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
-       active, created_at, updated_at, portal_client_id, api_access
+       active, created_at, updated_at, portal_client_id, api_access,
+       previous_secret_ref, previous_secret_expires_at
 FROM oauth_clients
 WHERE id = $1
 `
@@ -539,6 +546,8 @@ func (q *Queries) OAuthClientFindByID(ctx context.Context, id string) (OauthClie
 		&i.UpdatedAt,
 		&i.PortalClientID,
 		&i.ApiAccess,
+		&i.PreviousSecretRef,
+		&i.PreviousSecretExpiresAt,
 	)
 	return i, err
 }
@@ -546,7 +555,8 @@ func (q *Queries) OAuthClientFindByID(ctx context.Context, id string) (OauthClie
 const oAuthClientFindByPortalClient = `-- name: OAuthClientFindByPortalClient :many
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
-       active, created_at, updated_at, portal_client_id, api_access
+       active, created_at, updated_at, portal_client_id, api_access,
+       previous_secret_ref, previous_secret_expires_at
 FROM oauth_clients
 WHERE portal_client_id = $1
 ORDER BY client_name
@@ -577,6 +587,8 @@ func (q *Queries) OAuthClientFindByPortalClient(ctx context.Context, portalClien
 			&i.UpdatedAt,
 			&i.PortalClientID,
 			&i.ApiAccess,
+			&i.PreviousSecretRef,
+			&i.PreviousSecretExpiresAt,
 		); err != nil {
 			return nil, err
 		}
@@ -663,6 +675,26 @@ func (q *Queries) OAuthClientGrantTypesForClients(ctx context.Context, dollar_1 
 	return items, nil
 }
 
+const oAuthClientPurgeLapsedPreviousSecrets = `-- name: OAuthClientPurgeLapsedPreviousSecrets :execrows
+UPDATE oauth_clients
+SET previous_secret_ref = NULL,
+    previous_secret_expires_at = NULL
+WHERE previous_secret_ref IS NOT NULL
+  AND previous_secret_expires_at IS NOT NULL
+  AND previous_secret_expires_at < NOW()
+`
+
+// Clears overlap secrets whose window has passed, so a superseded secret is
+// not retained at rest once it can no longer authenticate. Verification
+// already refuses an expired previous ref, so this is hygiene, not enforcement.
+func (q *Queries) OAuthClientPurgeLapsedPreviousSecrets(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, oAuthClientPurgeLapsedPreviousSecrets)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const oAuthClientRedirectURIInsert = `-- name: OAuthClientRedirectURIInsert :exec
 INSERT INTO oauth_client_redirect_uris (oauth_client_id, redirect_uri)
 VALUES ($1, $2)
@@ -742,13 +774,16 @@ const oAuthClientUpsert = `-- name: OAuthClientUpsert :exec
 INSERT INTO oauth_clients
     (id, client_id, client_name, client_type, client_secret_ref,
      default_scopes, pkce_required, service_account_principal_id,
-     active, created_at, updated_at, portal_client_id, api_access)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+     active, created_at, updated_at, portal_client_id, api_access,
+     previous_secret_ref, previous_secret_expires_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 ON CONFLICT (id) DO UPDATE SET
     client_id = EXCLUDED.client_id,
     client_name = EXCLUDED.client_name,
     client_type = EXCLUDED.client_type,
     client_secret_ref = EXCLUDED.client_secret_ref,
+    previous_secret_ref = EXCLUDED.previous_secret_ref,
+    previous_secret_expires_at = EXCLUDED.previous_secret_expires_at,
     default_scopes = EXCLUDED.default_scopes,
     pkce_required = EXCLUDED.pkce_required,
     service_account_principal_id = EXCLUDED.service_account_principal_id,
@@ -759,19 +794,21 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type OAuthClientUpsertParams struct {
-	ID                        string    `db:"id"`
-	ClientID                  string    `db:"client_id"`
-	ClientName                string    `db:"client_name"`
-	ClientType                string    `db:"client_type"`
-	ClientSecretRef           *string   `db:"client_secret_ref"`
-	DefaultScopes             *string   `db:"default_scopes"`
-	PkceRequired              bool      `db:"pkce_required"`
-	ServiceAccountPrincipalID *string   `db:"service_account_principal_id"`
-	Active                    bool      `db:"active"`
-	CreatedAt                 time.Time `db:"created_at"`
-	UpdatedAt                 time.Time `db:"updated_at"`
-	PortalClientID            *string   `db:"portal_client_id"`
-	ApiAccess                 bool      `db:"api_access"`
+	ID                        string     `db:"id"`
+	ClientID                  string     `db:"client_id"`
+	ClientName                string     `db:"client_name"`
+	ClientType                string     `db:"client_type"`
+	ClientSecretRef           *string    `db:"client_secret_ref"`
+	DefaultScopes             *string    `db:"default_scopes"`
+	PkceRequired              bool       `db:"pkce_required"`
+	ServiceAccountPrincipalID *string    `db:"service_account_principal_id"`
+	Active                    bool       `db:"active"`
+	CreatedAt                 time.Time  `db:"created_at"`
+	UpdatedAt                 time.Time  `db:"updated_at"`
+	PortalClientID            *string    `db:"portal_client_id"`
+	ApiAccess                 bool       `db:"api_access"`
+	PreviousSecretRef         *string    `db:"previous_secret_ref"`
+	PreviousSecretExpiresAt   *time.Time `db:"previous_secret_expires_at"`
 }
 
 func (q *Queries) OAuthClientUpsert(ctx context.Context, arg OAuthClientUpsertParams) error {
@@ -789,6 +826,8 @@ func (q *Queries) OAuthClientUpsert(ctx context.Context, arg OAuthClientUpsertPa
 		arg.UpdatedAt,
 		arg.PortalClientID,
 		arg.ApiAccess,
+		arg.PreviousSecretRef,
+		arg.PreviousSecretExpiresAt,
 	)
 	return err
 }

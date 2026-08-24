@@ -214,6 +214,19 @@ type CreateOAuthClientResponse struct {
 type RotateOAuthClientSecretResponse struct {
 	ClientID     string `json:"clientId"`
 	ClientSecret string `json:"clientSecret,omitempty"`
+	// PreviousSecretExpiresAt is when the superseded secret stops being
+	// accepted. Omitted when the rotation was an immediate cutover, which is
+	// how a caller tells the two apart.
+	PreviousSecretExpiresAt *jsontime.Time `json:"previousSecretExpiresAt,omitempty"`
+}
+
+// RotateOAuthClientSecretRequest is the optional body for rotate-secret. Sent
+// body-less, the outgoing secret keeps working for the default overlap.
+type RotateOAuthClientSecretRequest struct {
+	// GraceSeconds is how long the outgoing secret stays acceptable. Omit for
+	// the default overlap; 0 cuts over immediately, dropping the old secret on
+	// the spot — the right choice when it may be compromised.
+	GraceSeconds *int64 `json:"graceSeconds,omitempty"`
 }
 
 // ── AnchorDomain ──────────────────────────────────────────────────────────

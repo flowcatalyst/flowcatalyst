@@ -18,6 +18,7 @@ import (
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/jsontime"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
@@ -119,6 +120,7 @@ func Register(api huma.API, s *State) {
 	// /api/oauth-clients/{id}/regenerate-secret (same as rotate-secret) and
 	// looks clients up by their client_id via /by-client-id/{clientId}.
 	apiroute.Post(gClients, "regenerateOAuthClientSecret", "/api/oauth-clients/{id}/regenerate-secret", "Regenerate an OAuth client's secret (SDK alias of rotate-secret)", http.StatusOK, s.rotateOAuthClientSecret)
+	apiroute.Post(gClients, "revokeOAuthClientPreviousSecret", "/api/oauth-clients/{id}/revoke-previous-secret", "End a secret-rotation overlap immediately", http.StatusOK, s.revokeOAuthClientPreviousSecret)
 	apiroute.Get(gClients, "getOAuthClientByClientID", "/api/oauth-clients/by-client-id/{clientId}", "Get an OAuth client by its client_id (SDK lookup)", s.getOAuthClientByClientID)
 	apiroute.Delete(gClients, "deleteOAuthClient", "/api/oauth-clients/{id}", "Delete an OAuth client", http.StatusNoContent, s.deleteOAuthClient)
 
@@ -285,13 +287,25 @@ func (s *State) deactivateOAuthClient(ctx context.Context, in *apicommon.IDInput
 	return &apicommon.Out[apicommon.SuccessResponse]{Body: apicommon.SuccessResponse{Success: true, Message: "OAuth client deactivated"}}, nil
 }
 
-func (s *State) rotateOAuthClientSecret(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[RotateOAuthClientSecretResponse], error) {
+// rotateOAuthClientSecretInput carries an optional body: the SPA and the SDK
+// alias both POST body-less, which must keep working, so Body is a pointer
+// (a value body would make huma reject those calls as "request body is
+// required").
+type rotateOAuthClientSecretInput struct {
+	ID   string `path:"id"`
+	Body *RotateOAuthClientSecretRequest
+}
+
+func (s *State) rotateOAuthClientSecret(ctx context.Context, in *rotateOAuthClientSecretInput) (*apicommon.Out[RotateOAuthClientSecretResponse], error) {
 	if _, err := authedAnchor(ctx); err != nil {
 		return nil, err
 	}
+	cmd := operations.RotateOAuthClientSecretCommand{ID: in.ID}
+	if in.Body != nil {
+		cmd.GraceSeconds = in.Body.GraceSeconds
+	}
 	ec := platformauth.NewExecutionContext(ctx)
-	event, err := usecaseop.Run(ctx, s.UoW, operations.RotateOAuthClientSecret(s.Repo.OAuthClients),
-		operations.RotateOAuthClientSecretCommand{ID: in.ID}, ec)
+	event, err := usecaseop.Run(ctx, s.UoW, operations.RotateOAuthClientSecret(s.Repo.OAuthClients), cmd, ec)
 	if err != nil {
 		return nil, err
 	}
@@ -308,7 +322,29 @@ func (s *State) rotateOAuthClientSecret(ctx context.Context, in *apicommon.IDInp
 	if plaintext, ok := operations.PopStashedSecret(event.OAuthClientID); ok {
 		resp.ClientSecret = plaintext
 	}
+	if event.PreviousSecretExpiresAt != nil {
+		t := jsontime.New(*event.PreviousSecretExpiresAt)
+		resp.PreviousSecretExpiresAt = &t
+	}
 	return &apicommon.Out[RotateOAuthClientSecretResponse]{Body: resp}, nil
+}
+
+// revokeOAuthClientPreviousSecret ends a rotation overlap early — the
+// superseded secret stops authenticating immediately rather than lapsing on
+// its timer. Idempotent, so it is safe to call after the window has already
+// closed.
+func (s *State) revokeOAuthClientPreviousSecret(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[apicommon.SuccessResponse], error) {
+	if _, err := authedAnchor(ctx); err != nil {
+		return nil, err
+	}
+	ec := platformauth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.RevokeOAuthClientPreviousSecret(s.Repo.OAuthClients),
+		operations.RevokeOAuthClientPreviousSecretCommand{ID: in.ID}, ec); err != nil {
+		return nil, err
+	}
+	return &apicommon.Out[apicommon.SuccessResponse]{
+		Body: apicommon.SuccessResponse{Success: true, Message: "Previous client secret revoked"},
+	}, nil
 }
 
 func (s *State) deleteOAuthClient(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {

@@ -22,6 +22,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/outbox"
 	outboxmongo "github.com/flowcatalyst/flowcatalyst-go/internal/outbox/mongo"
 	outboxpg "github.com/flowcatalyst/flowcatalyst-go/internal/outbox/postgres"
+	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/bridge"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/payload"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalauth"
@@ -506,6 +507,11 @@ func StartPurger(ctx context.Context, pool *pgxpool.Pool) {
 	rlEvents := ratelimit.NewPostgresStore(pool)
 	rlRetention := ratelimit.PoliciesFromEnv().MaxWindow() + rateLimitPruneMargin
 
+	// Clears OAuth secret-rotation overlaps once their window has closed, so a
+	// superseded secret isn't retained at rest. Verification already refuses an
+	// expired previous ref, so this is hygiene, not enforcement.
+	oauthClients := platformauth.NewRepository(pool).OAuthClients
+
 	tick := time.NewTicker(time.Minute)
 	defer tick.Stop()
 	slog.Info("auth purger started")
@@ -539,6 +545,11 @@ func StartPurger(ctx context.Context, pool *pgxpool.Pool) {
 				slog.Warn("rate-limit event prune failed", "err", err)
 			} else if n > 0 {
 				slog.Debug("rate-limit event prune", "removed", n, "retention", rlRetention)
+			}
+			if n, err := oauthClients.PurgeLapsedPreviousSecrets(ctx); err != nil {
+				slog.Warn("lapsed oauth previous-secret purge failed", "err", err)
+			} else if n > 0 {
+				slog.Debug("lapsed oauth previous-secret purge", "cleared", n)
 			}
 		}
 	}

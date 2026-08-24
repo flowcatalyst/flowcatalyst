@@ -655,19 +655,21 @@ type MsgSubscriptionEventType struct {
 }
 
 type OauthClient struct {
-	ID                        string    `db:"id"`
-	ClientID                  string    `db:"client_id"`
-	ClientName                string    `db:"client_name"`
-	ClientType                string    `db:"client_type"`
-	ClientSecretRef           *string   `db:"client_secret_ref"`
-	DefaultScopes             *string   `db:"default_scopes"`
-	PkceRequired              bool      `db:"pkce_required"`
-	ServiceAccountPrincipalID *string   `db:"service_account_principal_id"`
-	Active                    bool      `db:"active"`
-	CreatedAt                 time.Time `db:"created_at"`
-	UpdatedAt                 time.Time `db:"updated_at"`
-	PortalClientID            *string   `db:"portal_client_id"`
-	ApiAccess                 bool      `db:"api_access"`
+	ID                        string     `db:"id"`
+	ClientID                  string     `db:"client_id"`
+	ClientName                string     `db:"client_name"`
+	ClientType                string     `db:"client_type"`
+	ClientSecretRef           *string    `db:"client_secret_ref"`
+	DefaultScopes             *string    `db:"default_scopes"`
+	PkceRequired              bool       `db:"pkce_required"`
+	ServiceAccountPrincipalID *string    `db:"service_account_principal_id"`
+	Active                    bool       `db:"active"`
+	CreatedAt                 time.Time  `db:"created_at"`
+	UpdatedAt                 time.Time  `db:"updated_at"`
+	PortalClientID            *string    `db:"portal_client_id"`
+	ApiAccess                 bool       `db:"api_access"`
+	PreviousSecretRef         *string    `db:"previous_secret_ref"`
+	PreviousSecretExpiresAt   *time.Time `db:"previous_secret_expires_at"`
 }
 
 type OauthClientAllowedOrigin struct {

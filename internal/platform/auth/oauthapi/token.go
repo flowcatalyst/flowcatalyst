@@ -284,10 +284,26 @@ func (s *State) authenticateClient(r *http.Request, clientIDBody, clientSecretBo
 		return nil, newOAuthError(http.StatusUnauthorized, "invalid_client",
 			"Client secret required for confidential clients")
 	}
-	if !s.verifyClientSecret(*client.SecretRef, clientSecret) {
+	if !s.acceptClientSecret(client, clientSecret) {
 		return nil, newOAuthError(http.StatusUnauthorized, "invalid_client", "Invalid client credentials")
 	}
 	return client, nil
+}
+
+// acceptClientSecret verifies provided against the client's current secret and,
+// failing that, against a previous secret whose rotation overlap is still open.
+// The overlap is what lets a fleet holding the old secret be rolled gradually
+// instead of being cut off the instant rotate returns.
+//
+// Both branches always run a constant-time compare: returning early on a
+// current-secret match would make a still-valid old secret measurably slower
+// than a new one, which leaks where a client sits in its rotation.
+func (s *State) acceptClientSecret(client *auth.OAuthClient, provided string) bool {
+	ok := client.SecretRef != nil && s.verifyClientSecret(*client.SecretRef, provided)
+	if prev := client.UsablePreviousSecretRef(); prev != nil {
+		ok = s.verifyClientSecret(*prev, provided) || ok
+	}
+	return ok
 }
 
 // verifyClientSecret decrypts the stored ref and compares it to the
@@ -388,7 +404,9 @@ func (s *State) handleClientCredentialsGrant(w http.ResponseWriter, r *http.Requ
 		writeOAuthError(w, http.StatusUnauthorized, "invalid_client", "Invalid client credentials")
 		return
 	}
-	if !s.verifyClientSecret(*client.SecretRef, req.ClientSecret) {
+	// Accepts a previous secret inside its rotation overlap — this is the
+	// machine-to-machine grant, so it is the path a fleet mid-rollout uses.
+	if !s.acceptClientSecret(client, req.ClientSecret) {
 		reason := "Invalid client secret"
 		s.recordAttempt(r.Context(), loginattempt.AttemptServiceAccountToken, loginattempt.OutcomeFailure, req.ClientID, nil, &reason)
 		writeOAuthError(w, http.StatusUnauthorized, "invalid_client", "Invalid client credentials")

@@ -180,6 +180,10 @@ type Querier interface {
 	OAuthClientGrantTypesClear(ctx context.Context, oauthClientID string) error
 	OAuthClientGrantTypesForClient(ctx context.Context, oauthClientID string) ([]string, error)
 	OAuthClientGrantTypesForClients(ctx context.Context, dollar_1 []string) ([]OauthClientGrantType, error)
+	// Clears overlap secrets whose window has passed, so a superseded secret is
+	// not retained at rest once it can no longer authenticate. Verification
+	// already refuses an expired previous ref, so this is hygiene, not enforcement.
+	OAuthClientPurgeLapsedPreviousSecrets(ctx context.Context) (int64, error)
 	OAuthClientRedirectURIInsert(ctx context.Context, arg OAuthClientRedirectURIInsertParams) error
 	OAuthClientRedirectURIsClear(ctx context.Context, oauthClientID string) error
 	OAuthClientRedirectURIsForClient(ctx context.Context, oauthClientID string) ([]string, error)

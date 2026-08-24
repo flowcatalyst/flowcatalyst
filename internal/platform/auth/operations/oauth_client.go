@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
@@ -316,20 +317,34 @@ func DeleteOAuthClient(repo *auth.OAuthClientRepo) usecaseop.Operation[DeleteOAu
 
 // ── RotateSecret ──────────────────────────────────────────────────────────
 
+// DefaultSecretGrace is how long the outgoing secret keeps working after a
+// rotation unless the caller says otherwise. Long enough to roll a fleet
+// across a normal deployment window without being an open-ended second
+// credential.
+const DefaultSecretGrace = 24 * time.Hour
+
 type RotateOAuthClientSecretCommand struct {
 	ID string `json:"id"`
+	// GraceSeconds is how long the outgoing secret stays acceptable. nil takes
+	// DefaultSecretGrace; 0 is an immediate cutover, which is what you want for
+	// a secret believed compromised — it drops the old one on the spot rather
+	// than leaving it usable for another day.
+	GraceSeconds *int64 `json:"graceSeconds,omitempty"`
 }
 
 // RotateOAuthClientSecret mints a fresh secret for a CONFIDENTIAL client,
-// stashes the plaintext for one-shot retrieval, and emits
-// [OAuthClientSecretRotated]. Platform-level config (Authorize: Public); the
-// controller gates on anchor.
+// stashes the plaintext for one-shot retrieval, keeps the outgoing secret
+// acceptable for the grace window, and emits [OAuthClientSecretRotated].
+// Platform-level config (Authorize: Public); the controller gates on anchor.
 func RotateOAuthClientSecret(repo *auth.OAuthClientRepo) usecaseop.Operation[RotateOAuthClientSecretCommand, OAuthClientSecretRotated] {
 	return usecaseop.Operation[RotateOAuthClientSecretCommand, OAuthClientSecretRotated]{
 		Name: "RotateOAuthClientSecret",
 		Validate: func(_ context.Context, cmd RotateOAuthClientSecretCommand) error {
 			if strings.TrimSpace(cmd.ID) == "" {
 				return usecase.Validation("ID_REQUIRED", "id is required")
+			}
+			if cmd.GraceSeconds != nil && *cmd.GraceSeconds < 0 {
+				return usecase.Validation("GRACE_INVALID", "graceSeconds must not be negative")
 			}
 			return nil
 		},
@@ -349,11 +364,61 @@ func RotateOAuthClientSecret(repo *auth.OAuthClientRepo) usecaseop.Operation[Rot
 			if err != nil {
 				return nil, usecase.Internal("SECRET", "generate client secret failed", err)
 			}
-			c.SetSecretRef(ref)
+			grace := DefaultSecretGrace
+			if cmd.GraceSeconds != nil {
+				grace = time.Duration(*cmd.GraceSeconds) * time.Second
+			}
+			previousExpiresAt := c.RotateSecretRef(ref, grace)
 			stashSecret(c.ID, plaintext)
 
 			event := OAuthClientSecretRotated{
-				Metadata:      usecase.NewEventMetadata(ec, OAuthClientSecretRotatedType, Source, oauthSubject(c.ID)),
+				Metadata:                usecase.NewEventMetadata(ec, OAuthClientSecretRotatedType, Source, oauthSubject(c.ID)),
+				OAuthClientID:           c.ID,
+				PreviousSecretExpiresAt: previousExpiresAt,
+			}
+			return usecaseop.Save(c, repo, event), nil
+		},
+	}
+}
+
+// ── RevokePreviousSecret ──────────────────────────────────────────────────
+
+type RevokeOAuthClientPreviousSecretCommand struct {
+	ID string `json:"id"`
+}
+
+// RevokeOAuthClientPreviousSecret ends a rotation overlap immediately, so the
+// superseded secret stops authenticating before its window would have lapsed.
+// This is the "I rotated, the fleet is already redeployed, close the second
+// door now" action — and the containment step when an old secret turns out to
+// be compromised after the rotation.
+//
+// Idempotent: revoking when no overlap is in flight succeeds and changes
+// nothing, so an operator hitting it twice (or after the timer already fired)
+// doesn't get an error. Platform-level config (Authorize: Public); the
+// controller gates on anchor.
+func RevokeOAuthClientPreviousSecret(repo *auth.OAuthClientRepo) usecaseop.Operation[RevokeOAuthClientPreviousSecretCommand, OAuthClientPreviousSecretRevoked] {
+	return usecaseop.Operation[RevokeOAuthClientPreviousSecretCommand, OAuthClientPreviousSecretRevoked]{
+		Name: "RevokeOAuthClientPreviousSecret",
+		Validate: func(_ context.Context, cmd RevokeOAuthClientPreviousSecretCommand) error {
+			if strings.TrimSpace(cmd.ID) == "" {
+				return usecase.Validation("ID_REQUIRED", "id is required")
+			}
+			return nil
+		},
+		Authorize: usecaseop.Public[RevokeOAuthClientPreviousSecretCommand],
+		Execute: func(ctx context.Context, cmd RevokeOAuthClientPreviousSecretCommand, ec usecase.ExecutionContext) (usecaseop.Plan[OAuthClientPreviousSecretRevoked], error) {
+			c, err := repo.FindByID(ctx, cmd.ID)
+			if err != nil {
+				return nil, usecase.Internal("REPO", "find_by_id failed", err)
+			}
+			if c == nil {
+				return nil, httperror.NotFound("OAuthClient", cmd.ID)
+			}
+			c.RevokePreviousSecret()
+
+			event := OAuthClientPreviousSecretRevoked{
+				Metadata:      usecase.NewEventMetadata(ec, OAuthClientPreviousSecretRevokedType, Source, oauthSubject(c.ID)),
 				OAuthClientID: c.ID,
 			}
 			return usecaseop.Save(c, repo, event), nil

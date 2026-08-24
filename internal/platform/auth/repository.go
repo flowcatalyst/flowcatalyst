@@ -54,6 +54,15 @@ type OAuthClientRepo struct {
 	pool *pgxpool.Pool
 }
 
+// PurgeLapsedPreviousSecrets clears rotation-overlap secrets whose window has
+// closed, so a superseded secret is not retained at rest once it can no longer
+// authenticate. Verification already refuses an expired previous ref
+// (UsablePreviousSecretRef), so this is hygiene rather than enforcement.
+// Returns how many rows were cleared.
+func (r *OAuthClientRepo) PurgeLapsedPreviousSecrets(ctx context.Context) (int64, error) {
+	return r.q.OAuthClientPurgeLapsedPreviousSecrets(ctx)
+}
+
 func (r *OAuthClientRepo) FindByID(ctx context.Context, id string) (*OAuthClient, error) {
 	row, err := r.q.OAuthClientFindByID(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -116,6 +125,8 @@ func (r *OAuthClientRepo) Persist(ctx context.Context, c *OAuthClient, tx *useca
 		ClientName:                c.ClientName,
 		ClientType:                string(c.ClientType),
 		ClientSecretRef:           c.SecretRef,
+		PreviousSecretRef:         c.PreviousSecretRef,
+		PreviousSecretExpiresAt:   c.PreviousSecretExpiresAt,
 		DefaultScopes:             scopes,
 		PkceRequired:              c.PKCERequired,
 		ServiceAccountPrincipalID: c.PrincipalID,
@@ -325,24 +336,26 @@ func (r *OAuthClientRepo) loadClientStringJunction(ctx context.Context, query st
 
 func rowToOAuthClient(row dbq.OauthClient) *OAuthClient {
 	c := OAuthClient{
-		ID:                     row.ID,
-		ClientID:               row.ClientID,
-		ClientName:             row.ClientName,
-		ClientType:             ParseOAuthClientType(row.ClientType),
-		SecretRef:              row.ClientSecretRef,
-		PKCERequired:           row.PkceRequired,
-		Active:                 row.Active,
-		PrincipalID:            row.ServiceAccountPrincipalID,
-		PortalClientID:         row.PortalClientID,
-		APIAccess:              row.ApiAccess,
-		CreatedAt:              row.CreatedAt,
-		UpdatedAt:              row.UpdatedAt,
-		RedirectURIs:           []string{},
-		PostLogoutRedirectURIs: []string{},
-		GrantTypes:             []string{},
-		Scopes:                 []string{},
-		AllowedOrigins:         []string{},
-		ApplicationIDs:         []string{},
+		ID:                      row.ID,
+		ClientID:                row.ClientID,
+		ClientName:              row.ClientName,
+		ClientType:              ParseOAuthClientType(row.ClientType),
+		SecretRef:               row.ClientSecretRef,
+		PreviousSecretRef:       row.PreviousSecretRef,
+		PreviousSecretExpiresAt: row.PreviousSecretExpiresAt,
+		PKCERequired:            row.PkceRequired,
+		Active:                  row.Active,
+		PrincipalID:             row.ServiceAccountPrincipalID,
+		PortalClientID:          row.PortalClientID,
+		APIAccess:               row.ApiAccess,
+		CreatedAt:               row.CreatedAt,
+		UpdatedAt:               row.UpdatedAt,
+		RedirectURIs:            []string{},
+		PostLogoutRedirectURIs:  []string{},
+		GrantTypes:              []string{},
+		Scopes:                  []string{},
+		AllowedOrigins:          []string{},
+		ApplicationIDs:          []string{},
 	}
 	if row.DefaultScopes != nil && *row.DefaultScopes != "" {
 		for _, s := range strings.Split(*row.DefaultScopes, ",") {

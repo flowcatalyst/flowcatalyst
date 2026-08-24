@@ -52,8 +52,14 @@ type OAuthClient struct {
 	// reversibly-encrypted blob (AES-GCM via the encryption package)
 	// in oauth_clients.client_secret_ref. Verification
 	// decrypts and compares; nil for PUBLIC. Set via rotate-secret.
-	SecretRef    *string  `json:"-"`
-	RedirectURIs []string `json:"redirectUris"`
+	SecretRef *string `json:"-"`
+	// PreviousSecretRef is the immediately-prior secret, kept acceptable until
+	// PreviousSecretExpiresAt so a rotation doesn't cut off every service still
+	// holding the old value. Exactly one is honoured at a time. Read it through
+	// UsablePreviousSecretRef, which enforces the expiry.
+	PreviousSecretRef       *string    `json:"-"`
+	PreviousSecretExpiresAt *time.Time `json:"-"`
+	RedirectURIs            []string   `json:"redirectUris"`
 	// PostLogoutRedirectURIs is the OIDC RP-Initiated Logout whitelist
 	// (oauth_client_post_logout_redirect_uris). /auth/oidc/session/end
 	// validates a supplied post_logout_redirect_uri against this list.
@@ -259,10 +265,67 @@ func (c *OAuthClient) Deactivate() {
 	c.UpdatedAt = time.Now().UTC()
 }
 
-// SetSecretRef records a rotated encrypted secret reference. The
-// plaintext lives only in memory long enough to return it once via the
+// SetSecretRef records an encrypted secret reference with no overlap window,
+// discarding any in-flight previous secret. This is the provisioning path (a
+// brand-new client has no prior secret to honour) and the immediate-cutover
+// path for a secret believed compromised. Rotation that should stay
+// gracefully available uses RotateSecretRef instead.
+//
+// The plaintext lives only in memory long enough to return it once via the
 // rotate API.
 func (c *OAuthClient) SetSecretRef(ref string) {
 	c.SecretRef = &ref
+	c.PreviousSecretRef = nil
+	c.PreviousSecretExpiresAt = nil
 	c.UpdatedAt = time.Now().UTC()
+}
+
+// RotateSecretRef installs ref as the current secret and keeps the outgoing one
+// acceptable for graceFor, so a fleet holding the old secret can be rolled
+// gradually instead of all at once. A non-positive graceFor — or a client with
+// no current secret to demote — degrades to SetSecretRef's hard cutover.
+//
+// Returns the instant the outgoing secret lapses, or nil when none was kept.
+func (c *OAuthClient) RotateSecretRef(ref string, graceFor time.Duration) *time.Time {
+	now := time.Now().UTC()
+	if graceFor <= 0 || c.SecretRef == nil {
+		c.SetSecretRef(ref)
+		return nil
+	}
+	// Demote the outgoing secret rather than appending to a history: exactly
+	// one previous secret is honoured at a time, so rotating twice inside a
+	// window retires the older one immediately.
+	expires := now.Add(graceFor)
+	c.PreviousSecretRef = c.SecretRef
+	c.PreviousSecretExpiresAt = &expires
+	c.SecretRef = &ref
+	c.UpdatedAt = now
+	return &expires
+}
+
+// RevokePreviousSecret ends an in-flight overlap immediately, so the superseded
+// secret stops authenticating before its window would have lapsed. No-op when
+// no previous secret is held; reports whether one was actually dropped.
+func (c *OAuthClient) RevokePreviousSecret() bool {
+	if c.PreviousSecretRef == nil {
+		return false
+	}
+	c.PreviousSecretRef = nil
+	c.PreviousSecretExpiresAt = nil
+	c.UpdatedAt = time.Now().UTC()
+	return true
+}
+
+// UsablePreviousSecretRef returns the previous secret reference while its
+// overlap window is still open, else nil. Verification must go through this
+// rather than reading PreviousSecretRef directly — an expired ref is still
+// present in the row until the purger clears it.
+func (c *OAuthClient) UsablePreviousSecretRef() *string {
+	if c.PreviousSecretRef == nil || c.PreviousSecretExpiresAt == nil {
+		return nil
+	}
+	if !time.Now().UTC().Before(*c.PreviousSecretExpiresAt) {
+		return nil
+	}
+	return c.PreviousSecretRef
 }
