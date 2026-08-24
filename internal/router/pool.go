@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -310,6 +311,13 @@ func (p *Pool) runImmediate(ctx context.Context, m common.QueuedMessage) {
 		defer func() { <-sem }() // release on every exit path (acquired above)
 		return p.processOne(ctx, m)
 	}()
+	if result == processRelease {
+		// Target unreachable. IMMEDIATE mode has no group buffer, so there is
+		// nothing behind this message to release with it — hand just this one
+		// back and let the broker redeliver.
+		p.nackMsg(ctx, m, nil, "target unreachable")
+		return
+	}
 	if result != processRetry {
 		return
 	}
@@ -602,6 +610,14 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 			return p.processOne(ctx, msg)
 		}()
 
+		if result == processRelease {
+			// Target unreachable — hand this message AND everything still
+			// buffered behind it back to the broker, then exit. releaseGroup
+			// clears `working`, so a redelivery spawns a fresh drainer.
+			p.releaseGroup(ctx, group, msg, "target unreachable")
+			return
+		}
+
 		if result == processRetry {
 			// Preserve FIFO: re-insert the failed message at the FRONT of its
 			// group so it is the next one attempted, then wait out the backoff
@@ -626,6 +642,40 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 			}
 		}
 	}
+}
+
+// releaseGroup hands the whole of `group` back to the broker after an
+// unreachable-target outcome: the message in hand plus every message still
+// buffered behind it.
+//
+// It must be the whole group, not just the head. Releasing the head while its
+// successors stayed buffered would put the head behind them on redelivery,
+// reordering a group whose entire purpose is ordering. Both brokers redeliver a
+// group in order — the Postgres queue makes only the earliest visible message of
+// each group claimable, and SQS FIFO orders by MessageGroupId — so a wholly
+// released group comes back intact.
+//
+// nackMsg drops each message's in-flight tracker entry as it goes, which is what
+// lets the redelivery re-enter the pipeline instead of being discarded as a
+// duplicate of a copy that no longer exists.
+func (p *Pool) releaseGroup(ctx context.Context, group string, inHand common.QueuedMessage, reason string) {
+	p.mu.Lock()
+	var buffered []common.QueuedMessage
+	if gq := p.groupQs[group]; gq != nil {
+		buffered = gq.msgs
+		gq.msgs = nil
+		gq.working = false
+	}
+	p.mu.Unlock()
+
+	p.nackMsg(ctx, inHand, nil, reason)
+	for i := range buffered {
+		p.queueSize.Add(^uint32(0)) // atomic decrement
+		p.nackMsg(ctx, buffered[i], nil, reason)
+	}
+	slog.Info("released message group to broker; target unreachable",
+		"group", group, "pool", p.cfg.Code, "message_id", inHand.Message.ID,
+		"buffered_released", len(buffered), "reason", reason)
 }
 
 // clearWorking flips a group's working flag back off so a subsequent submit
@@ -659,6 +709,19 @@ const (
 	// across a tracker reap); this copy was ACK-deleted from the broker with
 	// its own receipt handle and dropped. The owner's entry is untouched.
 	processDuplicate
+	// processRelease — the TARGET is unreachable (transport failure, 502/503/504,
+	// or an open breaker), so nothing about this message is wrong and retrying it
+	// in-process would pin it — and its whole group — in memory for the duration
+	// of an outage. The message goes back to the broker instead, which is what
+	// makes "retry until the broker expires it" true: an in-pipeline retry never
+	// returns the message, so the broker's expiry and DLQ can never act on it.
+	//
+	// The caller releases the whole group, not just the head: leaving successors
+	// buffered while the head returns to the broker would reorder them on
+	// redelivery. The retry cadence is then the broker's (visibility timeout /
+	// ack-wait), NOT our backoff curve, and the circuit breaker is what actually
+	// spares the target from the redelivery rate.
+	processRelease
 )
 
 const (
@@ -819,14 +882,31 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 		return processDone, 0
 
 	case common.MediationErrorProcess:
-		// Transient (5xx/timeout): retry in-pipeline. Don't penalise the
-		// all-time failure counter.
+		// 5xx. The mediator has already exhausted its bounded burst
+		// (deliverWithRetry: MaxRetries total attempts with RetryDelays between),
+		// so this is the verdict AFTER retrying, not a first response.
+		//
+		// A plain 500 means the app ran the request and threw. Most frameworks
+		// emit 500 for any unhandled exception, which is why it gets the burst
+		// first — a database blip or lock timeout succeeds on the second attempt.
+		// Surviving the burst means the fault is more likely the message itself,
+		// so it is discarded rather than retried forever; it can be re-sent once
+		// whatever is wrong is resolved.
+		//
+		// 502/503/504 (and any other 5xx) mean we never reached a working app.
+		// Nothing about the message is wrong, so it goes back to the broker.
+		if outcome.StatusCode == http.StatusInternalServerError {
+			p.metrics.RecordFailure(durationMs)
+			p.ackTracked(ctx, qm)
+			return processDone, 0
+		}
 		p.metrics.RecordTransient(durationMs)
-		return p.retry(qm, outcome.DelaySeconds)
+		return processRelease, 0
 
 	case common.MediationErrorConnection:
+		// Transport failure / unreachable host / timeout — the target is down.
 		p.metrics.RecordFailure(durationMs)
-		return p.retry(qm, outcome.DelaySeconds)
+		return processRelease, 0
 
 	case common.MediationRateLimited:
 		// 429 — retry in-pipeline honouring Retry-After; NOT a breaker failure.
@@ -842,10 +922,17 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 		return p.retryAfter(qm, deferredDelay(qm.Attempts, outcome.DelaySeconds))
 
 	case common.MediationCircuitOpen:
-		// Breaker open (decided by the mediator): no delivery was attempted.
-		// Retry in-pipeline once the breaker reset timeout (carried in the
-		// outcome) elapses.
-		return p.retry(qm, outcome.DelaySeconds)
+		// Breaker open (decided by the mediator): no delivery was attempted, so
+		// the target is by definition unavailable — same class as a transport
+		// failure, and released to the broker for the same reason.
+		//
+		// This MUST match the ErrorConnection path. The breaker opens almost
+		// immediately during a sustained outage, so retrying circuit-open
+		// in-pipeline would mean: first failure releases the group, the broker
+		// redelivers, the redelivery finds an open breaker and is pinned
+		// in-process again — reinstating the memory pinning this release exists
+		// to prevent, in exactly the scenario it exists for.
+		return processRelease, 0
 	}
 	return processDone, 0
 }

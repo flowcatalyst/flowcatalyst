@@ -68,9 +68,16 @@ func (c *cascadeConsumer) Counters() *queue.Metrics { return nil }
 type cascadeMediator struct {
 	failID    string
 	failTimes int
-	mu        sync.Mutex
-	seen      []string
-	failed    int
+	// failWith is the outcome returned for a failing message. It defaults to
+	// MediationRateLimited because these tests exercise the IN-PIPELINE retry
+	// machinery, and 429 (like 2xx+ack=false) is now the outcome class that
+	// still retries in place. 5xx and transport failures RELEASE the message to
+	// the broker instead — see processRelease — so they can no longer drive a
+	// retry test. Set explicitly to exercise the release path.
+	failWith *common.MediationOutcome
+	mu       sync.Mutex
+	seen     []string
+	failed   int
 }
 
 func (m *cascadeMediator) Mediate(_ context.Context, msg *common.Message) common.MediationOutcome {
@@ -83,7 +90,10 @@ func (m *cascadeMediator) Mediate(_ context.Context, msg *common.Message) common
 	}
 	m.mu.Unlock()
 	if fail {
-		return common.MediationOutcome{Result: common.MediationErrorProcess, DelaySeconds: 0}
+		if m.failWith != nil {
+			return *m.failWith
+		}
+		return common.MediationOutcome{Result: common.MediationRateLimited, DelaySeconds: 0}
 	}
 	return common.MediationOutcome{Result: common.MediationSuccess}
 }

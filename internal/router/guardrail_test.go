@@ -119,33 +119,102 @@ func TestGuardrail_ResolutionOnSuccess(t *testing.T) {
 	}
 }
 
-func TestGuardrail_RetryOnProcessError(t *testing.T) {
+// TestGuardrail_DiscardOn500 — a plain 500 that survived the mediator's bounded
+// burst (deliverWithRetry) is the app rejecting this message, not the app being
+// unavailable. Retrying it unchanged would loop forever, so it is ACKed away and
+// can be re-sent once whatever is wrong is resolved.
+func TestGuardrail_DiscardOn500(t *testing.T) {
 	c := &grConsumer{id: "q1"}
-	p := grPool(&grMediator{outcome: common.ErrorProcess(30, "5xx")}, c)
-	res, delay := p.processOne(context.Background(), grMsg("evt_5xx", "http://t/5xx"))
-	if res != processRetry {
-		t.Fatalf("process error must retry in-pipeline; got res=%d", res)
+	out := common.ErrorProcess(30, "HTTP 500: Server error")
+	out.StatusCode = http.StatusInternalServerError
+	p := grPool(&grMediator{outcome: out}, c)
+
+	res, _ := p.processOne(context.Background(), grMsg("evt_500", "http://t/500"))
+
+	if res != processDone {
+		t.Fatalf("a 500 surviving the burst must be terminal; got res=%d", res)
 	}
-	if c.total() != 0 {
-		t.Fatalf("process error must NOT touch the broker (in-pipeline retry); got %d terminal actions", c.total())
-	}
-	if delay < 30*time.Second {
-		t.Fatalf("process-error backoff must honour the 30s retry-after floor; got %v", delay)
+	if c.acks.Load() != 1 || c.nacks.Load() != 0 {
+		t.Fatalf("a 500 must ACK exactly once and never NACK; got acks=%d nacks=%d",
+			c.acks.Load(), c.nacks.Load())
 	}
 }
 
-func TestGuardrail_RetryOnCircuitOpen(t *testing.T) {
-	// The mediator owns the breaker and returns MediationCircuitOpen when open;
-	// the pool must retry in-pipeline (no broker action) after the reset delay.
+// TestGuardrail_ReleaseOnUnreachable — 502/503/504 and any 5xx that isn't a
+// plain 500 mean we never reached a working app. Nothing about the message is
+// wrong, so it goes back to the broker rather than being discarded or pinned
+// in-process for the length of the outage.
+func TestGuardrail_ReleaseOnUnreachable(t *testing.T) {
+	for _, status := range []int{http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout} {
+		c := &grConsumer{id: "q1"}
+		out := common.ErrorProcess(30, "gateway")
+		out.StatusCode = status
+		p := grPool(&grMediator{outcome: out}, c)
+
+		res, _ := p.processOne(context.Background(), grMsg("evt_5xx", "http://t/5xx"))
+
+		if res != processRelease {
+			t.Fatalf("status %d must release to the broker; got res=%d", status, res)
+		}
+		if c.acks.Load() != 0 {
+			t.Fatalf("status %d must never ACK — the message is not resolved; got acks=%d",
+				status, c.acks.Load())
+		}
+	}
+}
+
+// TestGuardrail_ReleaseOnConnectionError — a transport failure is the same class
+// as a gateway error: the target is down and the message is blameless.
+func TestGuardrail_ReleaseOnConnectionError(t *testing.T) {
+	c := &grConsumer{id: "q1"}
+	p := grPool(&grMediator{outcome: common.ErrorConnection("dial tcp: refused")}, c)
+
+	res, _ := p.processOne(context.Background(), grMsg("evt_conn", "http://t/conn"))
+
+	if res != processRelease {
+		t.Fatalf("connection error must release to the broker; got res=%d", res)
+	}
+	if c.acks.Load() != 0 {
+		t.Fatalf("connection error must never ACK; got acks=%d", c.acks.Load())
+	}
+}
+
+// TestGuardrail_ReleaseOnCircuitOpen — circuit-open MUST release, exactly as a
+// transport failure does. The breaker opens almost immediately in a sustained
+// outage, so retrying it in-pipeline would mean: first failure releases the
+// group, the broker redelivers, the redelivery meets an open breaker and is
+// pinned in memory again — reinstating the pinning the release exists to
+// prevent, in the very scenario it exists for.
+func TestGuardrail_ReleaseOnCircuitOpen(t *testing.T) {
 	c := &grConsumer{id: "q1"}
 	p := grPool(&grMediator{outcome: common.CircuitOpen(5)}, c)
-	res, delay := p.processOne(context.Background(), grMsg("evt_cb", "http://t/cb"))
+
+	res, _ := p.processOne(context.Background(), grMsg("evt_cb", "http://t/cb"))
+
+	if res != processRelease {
+		t.Fatalf("circuit-open must release to the broker; got res=%d", res)
+	}
+	if c.acks.Load() != 0 {
+		t.Fatalf("circuit-open must never ACK; got acks=%d", c.acks.Load())
+	}
+}
+
+// TestGuardrail_RateLimitStillRetriesInPipeline — 429 and 2xx+ack=false are the
+// outcomes that still retry in place: the target answered, so it is reachable
+// and healthy, just asking for later. Releasing those would surrender our
+// backoff curve to the broker for no reason.
+func TestGuardrail_RateLimitStillRetriesInPipeline(t *testing.T) {
+	c := &grConsumer{id: "q1"}
+	p := grPool(&grMediator{outcome: common.RateLimited(5)}, c)
+
+	res, delay := p.processOne(context.Background(), grMsg("evt_429", "http://t/429"))
+
 	if res != processRetry || c.total() != 0 {
-		t.Fatalf("circuit-open must retry in-pipeline with no broker action; got res=%d terminal=%d",
+		t.Fatalf("429 must retry in-pipeline with no broker action; got res=%d terminal=%d",
 			res, c.total())
 	}
 	if delay < 5*time.Second {
-		t.Fatalf("circuit-open backoff must honour the 5s reset floor; got %v", delay)
+		t.Fatalf("429 backoff must honour the Retry-After floor; got %v", delay)
 	}
 }
 
