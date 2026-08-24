@@ -954,8 +954,7 @@ export type CreateOAuthClientRequest = {
     postLogoutRedirectUris?: Array<string>;
     principalId?: string;
     redirectUris?: Array<string>;
-    scopes?: Array<string>;
-    [key: string]: unknown | string | Array<string> | boolean | Array<string> | Array<string> | Array<string> | Array<string> | Array<string> | Array<string> | undefined;
+    [key: string]: unknown | string | Array<string> | boolean | Array<string> | Array<string> | Array<string> | Array<string> | Array<string> | undefined;
 };
 
 export type CreateOAuthClientResponse = {
@@ -2774,8 +2773,7 @@ export type UpdateOAuthClientRequest = {
     portalClientId?: string;
     postLogoutRedirectUris?: Array<string>;
     redirectUris?: Array<string>;
-    scopes?: Array<string>;
-    [key: string]: unknown | string | Array<string> | boolean | Array<string> | Array<string> | Array<string> | Array<string> | Array<string> | Array<string> | undefined;
+    [key: string]: unknown | string | Array<string> | boolean | Array<string> | Array<string> | Array<string> | Array<string> | Array<string> | undefined;
 };
 
 export type UpdatePrincipalRequest = {
@@ -3487,8 +3485,7 @@ export type CreateOAuthClientRequestWritable = {
     postLogoutRedirectUris?: Array<string>;
     principalId?: string;
     redirectUris?: Array<string>;
-    scopes?: Array<string>;
-    [key: string]: unknown | Array<string> | boolean | Array<string> | string | Array<string> | Array<string> | Array<string> | Array<string> | Array<string> | undefined;
+    [key: string]: unknown | Array<string> | boolean | Array<string> | string | Array<string> | Array<string> | Array<string> | Array<string> | undefined;
 };
 
 export type CreateOAuthClientResponseWritable = {
@@ -4483,8 +4480,7 @@ export type UpdateOAuthClientRequestWritable = {
     portalClientId?: string;
     postLogoutRedirectUris?: Array<string>;
     redirectUris?: Array<string>;
-    scopes?: Array<string>;
-    [key: string]: unknown | Array<string> | boolean | Array<string> | string | Array<string> | Array<string> | Array<string> | Array<string> | Array<string> | undefined;
+    [key: string]: unknown | Array<string> | boolean | Array<string> | string | Array<string> | Array<string> | Array<string> | Array<string> | undefined;
 };
 
 export type UpdatePrincipalRequestWritable = {

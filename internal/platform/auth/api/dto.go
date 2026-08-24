@@ -20,14 +20,10 @@ type CreateOAuthClientRequest struct {
 	ClientType   string   `json:"clientType" doc:"PUBLIC or CONFIDENTIAL"`
 	RedirectURIs []string `json:"redirectUris,omitempty"`
 	GrantTypes   []string `json:"grantTypes,omitempty"`
-	// DefaultScopes is the client's scope list. Array-shaped, matching
-	// UpdateOAuthClientRequest.defaultScopes and OAuthClientResponse.defaultScopes
-	// so a read-modify-write round trip is lossless — it used to be a
-	// space-delimited string here and an array everywhere else, which silently
-	// corrupted scopes for any caller that GET a client and POSTed it back.
+	// DefaultScopes is the client's scope list — the single wire name, matching
+	// UpdateOAuthClientRequest and OAuthClientResponse so a read-modify-write
+	// round trip is lossless.
 	DefaultScopes []string `json:"defaultScopes,omitempty"`
-	// Scopes is the legacy array alias (kept for back-compat with older callers).
-	Scopes []string `json:"scopes,omitempty"`
 	// PKCERequired toggles whether /oauth/authorize demands a code_challenge.
 	// Pointer so an omitted value keeps the entity's type-derived default
 	// rather than forcing false.
@@ -51,19 +47,13 @@ type CreateOAuthClientRequest struct {
 }
 
 func (r CreateOAuthClientRequest) toCommand() operations.CreateOAuthClientCommand {
-	// defaultScopes wins over the legacy scopes alias when both are present —
-	// same precedence as UpdateOAuthClientRequest.toCommand.
-	scopes := r.Scopes
-	if len(r.DefaultScopes) > 0 {
-		scopes = r.DefaultScopes
-	}
 	return operations.CreateOAuthClientCommand{
 		ClientName:             r.ClientName,
 		ClientType:             r.ClientType,
 		RedirectURIs:           r.RedirectURIs,
 		PostLogoutRedirectURIs: r.PostLogoutRedirectURIs,
 		GrantTypes:             r.GrantTypes,
-		Scopes:                 scopes,
+		Scopes:                 r.DefaultScopes,
 		AllowedOrigins:         r.AllowedOrigins,
 		ApplicationIDs:         r.ApplicationIDs,
 		PrincipalID:            r.PrincipalID,
@@ -74,19 +64,18 @@ func (r CreateOAuthClientRequest) toCommand() operations.CreateOAuthClientComman
 }
 
 // UpdateOAuthClientRequest is the wire body for PUT /api/oauth-clients/{id}.
-// The SPA sends `defaultScopes` (the same
-// wire name as OAuthClientResponse) and `pkceRequired`; both are accepted here
-// so the body validates (the schema is additionalProperties:false,
-// so unknown fields would otherwise 400).
+// The SPA sends `defaultScopes` (the same wire name as OAuthClientResponse and
+// CreateOAuthClientRequest) and `pkceRequired`; both are accepted here so the
+// body validates (the schema is additionalProperties:false, so unknown fields
+// would otherwise 400).
 type UpdateOAuthClientRequest struct {
 	ClientName             *string  `json:"clientName,omitempty"`
 	RedirectURIs           []string `json:"redirectUris,omitempty"`
 	PostLogoutRedirectURIs []string `json:"postLogoutRedirectUris,omitempty"`
 	GrantTypes             []string `json:"grantTypes,omitempty"`
-	// DefaultScopes is the SPA's wire name for the client's scopes (matches
-	// OAuthClientResponse.defaultScopes); `scopes` is the legacy array form.
+	// DefaultScopes is the client's scope list (matches
+	// OAuthClientResponse.defaultScopes and CreateOAuthClientRequest).
 	DefaultScopes  []string `json:"defaultScopes,omitempty"`
-	Scopes         []string `json:"scopes,omitempty"`
 	AllowedOrigins []string `json:"allowedOrigins,omitempty"`
 	ApplicationIDs []string `json:"applicationIds,omitempty"`
 	// PKCERequired toggles whether /oauth/authorize demands a code_challenge.
@@ -99,17 +88,13 @@ type UpdateOAuthClientRequest struct {
 }
 
 func (r UpdateOAuthClientRequest) toCommand(id string) operations.UpdateOAuthClientCommand {
-	scopes := r.Scopes
-	if len(r.DefaultScopes) > 0 {
-		scopes = r.DefaultScopes
-	}
 	return operations.UpdateOAuthClientCommand{
 		ID:                     id,
 		ClientName:             r.ClientName,
 		RedirectURIs:           r.RedirectURIs,
 		PostLogoutRedirectURIs: r.PostLogoutRedirectURIs,
 		GrantTypes:             r.GrantTypes,
-		Scopes:                 scopes,
+		Scopes:                 r.DefaultScopes,
 		AllowedOrigins:         r.AllowedOrigins,
 		ApplicationIDs:         r.ApplicationIDs,
 		PKCERequired:           r.PKCERequired,
