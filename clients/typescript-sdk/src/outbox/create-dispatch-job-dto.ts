@@ -160,7 +160,7 @@ export class CreateDispatchJobDto {
 		return new CreateDispatchJobDto({ ...this.toParams(), messageGroup });
 	}
 
-	/** Ordering behavior within the message group; unset defaults to IMMEDIATE on the platform. */
+	/** Ordering behavior within the message group; unset defaults to NEXT_ON_ERROR on the platform (in-sequence, moving on past a failure). */
 	withMode(mode: DispatchMode): CreateDispatchJobDto {
 		return new CreateDispatchJobDto({ ...this.toParams(), mode });
 	}
