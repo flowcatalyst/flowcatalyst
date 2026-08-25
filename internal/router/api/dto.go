@@ -236,10 +236,10 @@ type InFlightMessageDetail struct {
 	// LastSeenAt is refreshed on every broker redelivery of the owner copy.
 	// A TRACKED_IDLE entry whose lastSeenElapsedMs keeps growing is one the
 	// broker no longer holds — the phantom signature.
-	LastSeenAt        *time.Time `json:"lastSeenAt,omitempty"`
-	LastSeenElapsedMs uint64     `json:"lastSeenElapsedMs,omitempty"`
-	MediationTarget   string     `json:"mediationTarget,omitempty"`
-	MediatingElapsedMs uint64    `json:"mediatingElapsedMs,omitempty"`
+	LastSeenAt         *time.Time `json:"lastSeenAt,omitempty"`
+	LastSeenElapsedMs  uint64     `json:"lastSeenElapsedMs,omitempty"`
+	MediationTarget    string     `json:"mediationTarget,omitempty"`
+	MediatingElapsedMs uint64     `json:"mediatingElapsedMs,omitempty"`
 }
 
 // ForceAckResponse reports what the force-ACK mutation did. removed=true
