@@ -136,8 +136,9 @@ func TestGuardrail_DiscardOn500(t *testing.T) {
 
 	res, _ := p.processOne(context.Background(), grMsg("evt_500", "http://t/500"))
 
-	if res != processDone {
-		t.Fatalf("a 500 surviving the burst must be terminal; got res=%d", res)
+	if res != processDiscarded {
+		t.Fatalf("a 500 surviving the burst must be a terminal FAILURE (processDiscarded), "+
+			"which is what lets an ordered group tell BLOCK_ON_ERROR from NEXT_ON_ERROR; got res=%d", res)
 	}
 	if c.acks.Load() != 1 || c.nacks.Load() != 0 {
 		t.Fatalf("a 500 must ACK exactly once and never NACK; got acks=%d nacks=%d",
@@ -159,8 +160,8 @@ func TestGuardrail_AckOn501(t *testing.T) {
 
 	res, _ := p.processOne(context.Background(), grMsg("evt_501", "http://t/501"))
 
-	if res != processDone {
-		t.Fatalf("501 must be terminal, not released or retried; got res=%d", res)
+	if res != processDiscarded {
+		t.Fatalf("501 must be a terminal failure, not released or retried; got res=%d", res)
 	}
 	if c.acks.Load() != 1 || c.nacks.Load() != 0 {
 		t.Fatalf("501 must ACK exactly once and never NACK; got acks=%d nacks=%d",

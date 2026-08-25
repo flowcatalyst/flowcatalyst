@@ -618,6 +618,21 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 			return
 		}
 
+		if result == processDiscarded && msg.Message.DispatchMode == common.DispatchBlockOnError {
+			// BLOCK_ON_ERROR: "a failed job blocks the group until resolved."
+			// The head has failed terminally and been ACKed away, so advancing
+			// would deliver its successors PAST the failure — exactly what this
+			// mode exists to prevent. Hand the rest of the group back to the
+			// broker; they redeliver once the failure is resolved.
+			//
+			// NEXT_ON_ERROR falls through and the loop continues to the next
+			// message, because that mode explicitly moves on past a failure.
+			// This is the ONLY place the two ordered modes differ — they share
+			// the same FIFO buffer and differ only in what a failure does to it.
+			p.releaseBuffered(ctx, group, "head failed under BLOCK_ON_ERROR")
+			return
+		}
+
 		if result == processRetry {
 			// Preserve FIFO: re-insert the failed message at the FRONT of its
 			// group so it is the next one attempted, then wait out the backoff
@@ -659,6 +674,20 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 // lets the redelivery re-enter the pipeline instead of being discarded as a
 // duplicate of a copy that no longer exists.
 func (p *Pool) releaseGroup(ctx context.Context, group string, inHand common.QueuedMessage, reason string) {
+	p.nackMsg(ctx, inHand, nil, reason)
+	released := p.releaseBuffered(ctx, group, reason)
+	slog.Info("released message group to broker; target unreachable",
+		"group", group, "pool", p.cfg.Code, "message_id", inHand.Message.ID,
+		"buffered_released", released, "reason", reason)
+}
+
+// releaseBuffered hands back everything still queued behind the head WITHOUT
+// touching the head itself, and clears `working` so a redelivery spawns a fresh
+// drainer. Used when the head has already been resolved terminally — ACKed away
+// as a failure — but its successors must not be delivered past it.
+//
+// Returns how many were released.
+func (p *Pool) releaseBuffered(ctx context.Context, group, reason string) int {
 	p.mu.Lock()
 	var buffered []common.QueuedMessage
 	if gq := p.groupQs[group]; gq != nil {
@@ -668,14 +697,15 @@ func (p *Pool) releaseGroup(ctx context.Context, group string, inHand common.Que
 	}
 	p.mu.Unlock()
 
-	p.nackMsg(ctx, inHand, nil, reason)
 	for i := range buffered {
 		p.queueSize.Add(^uint32(0)) // atomic decrement
 		p.nackMsg(ctx, buffered[i], nil, reason)
 	}
-	slog.Info("released message group to broker; target unreachable",
-		"group", group, "pool", p.cfg.Code, "message_id", inHand.Message.ID,
-		"buffered_released", len(buffered), "reason", reason)
+	if len(buffered) > 0 {
+		slog.Info("released buffered group messages to broker",
+			"group", group, "pool", p.cfg.Code, "released", len(buffered), "reason", reason)
+	}
+	return len(buffered)
 }
 
 // clearWorking flips a group's working flag back off so a subsequent submit
@@ -697,9 +727,18 @@ func (p *Pool) clearWorking(group string) {
 type processResult int
 
 const (
-	// processDone — terminally resolved (ACKed on 2xx success or 4xx drop);
-	// the in-flight entry has been cleared and the message leaves the pipeline.
+	// processDone — terminally resolved SUCCESSFULLY (2xx, or a group the
+	// target asked us to flush); the in-flight entry has been cleared and the
+	// message leaves the pipeline.
 	processDone processResult = iota
+	// processDiscarded — terminally resolved as a FAILURE: a 4xx, or a 500 that
+	// survived the mediator's burst. The message is ACKed away exactly as
+	// processDone, but the distinction matters to an ordered group: under
+	// BLOCK_ON_ERROR a failed job blocks its group until the failure is
+	// resolved, so the drainer must stop rather than advance past it. Under
+	// NEXT_ON_ERROR the group explicitly moves on, which is the whole
+	// difference between the two ordered modes.
+	processDiscarded
 	// processRetry — retryable failure; the in-flight entry was KEPT and the
 	// caller should re-dispatch after the returned backoff (front of the group
 	// for ordered, delayed re-spawn for IMMEDIATE). Never released to the broker.
@@ -879,7 +918,7 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 		// the breaker. Counted against total_failure (a non-success terminal).
 		p.metrics.RecordFailure(durationMs)
 		p.ackTracked(ctx, qm)
-		return processDone, 0
+		return processDiscarded, 0
 
 	case common.MediationErrorProcess:
 		// 5xx. The mediator has already exhausted its bounded burst
@@ -898,7 +937,7 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 		if outcome.StatusCode == http.StatusInternalServerError {
 			p.metrics.RecordFailure(durationMs)
 			p.ackTracked(ctx, qm)
-			return processDone, 0
+			return processDiscarded, 0
 		}
 		p.metrics.RecordTransient(durationMs)
 		return processRelease, 0

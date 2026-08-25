@@ -73,18 +73,18 @@ func TestPoolReleasesWholeGroupOnUnreachableTarget(t *testing.T) {
 		"successors must NOT be attempted against a target already known unreachable")
 }
 
-// TestPoolDiscardsOn500WithoutReleasingGroup: a 500 is about the message, not
-// the target, so it is ACKed away and the group carries on. This is the
-// difference the whole rule turns on — the same failure shape, opposite handling.
-func TestPoolDiscardsOn500WithoutReleasingGroup(t *testing.T) {
+// TestPoolDiscardsOn500AndContinuesUnderNextOnError — NEXT_ON_ERROR is ordered
+// but "the group moves on" past a failure. The failed head is ACKed away and its
+// successors still deliver, in order.
+func TestPoolDiscardsOn500AndContinuesUnderNextOnError(t *testing.T) {
 	cons := &cascadeConsumer{wantTotal: 3, done: make(chan struct{})}
 	med := &cascadeMediator{failID: "m1", failWith: unreachable(http.StatusInternalServerError)}
 	pool := newCascadePool(med, func(string) queue.Consumer { return cons })
 
 	submitBatch(context.Background(), pool, []common.QueuedMessage{
-		releaseMsg("m1", "g", common.DispatchBlockOnError),
-		releaseMsg("m2", "g", common.DispatchBlockOnError),
-		releaseMsg("m3", "g", common.DispatchBlockOnError),
+		releaseMsg("m1", "g", common.DispatchNextOnError),
+		releaseMsg("m2", "g", common.DispatchNextOnError),
+		releaseMsg("m3", "g", common.DispatchNextOnError),
 	})
 
 	select {
@@ -100,7 +100,44 @@ func TestPoolDiscardsOn500WithoutReleasingGroup(t *testing.T) {
 
 	assert.Empty(t, nacked, "a 500 is discarded, never released")
 	assert.ElementsMatch(t, []string{"m1", "m2", "m3"}, acked,
-		"the failed head is ACKed away and the rest of the group still delivers")
+		"NEXT_ON_ERROR moves on: the head is ACKed away and the rest still deliver")
+}
+
+// TestPoolDiscardsOn500AndStopsUnderBlockOnError — the other half, and the ONLY
+// place the two ordered modes diverge. BLOCK_ON_ERROR means "a failed job blocks
+// the group until resolved", so the successors must NOT be delivered past the
+// failure: they go back to the broker to redeliver once it is resolved.
+//
+// Both modes share the same FIFO buffer and the same ordering guarantee; they
+// differ only in what a terminal failure does to the rest of the group.
+func TestPoolDiscardsOn500AndStopsUnderBlockOnError(t *testing.T) {
+	cons := &cascadeConsumer{wantTotal: 3, done: make(chan struct{})}
+	med := &cascadeMediator{failID: "m1", failWith: unreachable(http.StatusInternalServerError)}
+	pool := newCascadePool(med, func(string) queue.Consumer { return cons })
+
+	submitBatch(context.Background(), pool, []common.QueuedMessage{
+		releaseMsg("m1", "g", common.DispatchBlockOnError),
+		releaseMsg("m2", "g", common.DispatchBlockOnError),
+		releaseMsg("m3", "g", common.DispatchBlockOnError),
+	})
+
+	assert.Eventually(t, func() bool {
+		cons.mu.Lock()
+		defer cons.mu.Unlock()
+		return len(cons.acked) == 1 && len(cons.nacked) == 2
+	}, 3*time.Second, 10*time.Millisecond, "head ACKed away, successors released")
+
+	cons.mu.Lock()
+	nacked := append([]string(nil), cons.nacked...)
+	acked := append([]string(nil), cons.acked...)
+	seen := append([]string(nil), med.seen...)
+	cons.mu.Unlock()
+
+	assert.Equal(t, []string{"m1"}, acked, "the failed head is still ACKed away")
+	assert.ElementsMatch(t, []string{"m2", "m3"}, nacked,
+		"successors go back to the broker rather than being delivered past the failure")
+	assert.Equal(t, []string{"m1"}, seen,
+		"BLOCK_ON_ERROR must not attempt the successors at all")
 }
 
 // TestPoolImmediateReleasesOnlyItself: IMMEDIATE has no group buffer, so an
