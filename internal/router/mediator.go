@@ -391,6 +391,12 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 		return common.RateLimited(retryAfter)
 
 	case status == 501:
+		// Deliberately ACKed, not released, despite being a 5xx. The other 5xx
+		// codes mean "couldn't reach a working app" and go back to the broker to
+		// be retried until it recovers; 501 means the app was reached and does
+		// not implement this endpoint. Retrying that cannot start working, so it
+		// is terminal like a 4xx. Raised as CRITICAL because it is a deployment
+		// or routing mistake, not a runtime fault.
 		m.warnConfig(WarningCritical, "HTTP 501: Not implemented", msg)
 		return common.ErrorConfig(status, "HTTP 501: Not implemented")
 

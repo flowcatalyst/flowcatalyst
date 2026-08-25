@@ -145,6 +145,29 @@ func TestGuardrail_DiscardOn500(t *testing.T) {
 	}
 }
 
+// TestGuardrail_AckOn501 — 501 is the deliberate exception among 5xx codes. The
+// others mean "couldn't reach a working app" and are released to be retried
+// until it recovers; 501 means the app WAS reached and does not implement this
+// endpoint, which retrying cannot fix. So it is terminal like a 4xx.
+//
+// The mediator classifies it as ErrorConfig, which is what makes it ACK — this
+// pins that, so a future rework of the 5xx branch can't quietly fold 501 into
+// the release path and leave a permanently-failing message cycling forever.
+func TestGuardrail_AckOn501(t *testing.T) {
+	c := &grConsumer{id: "q1"}
+	p := grPool(&grMediator{outcome: common.ErrorConfig(http.StatusNotImplemented, "HTTP 501: Not implemented")}, c)
+
+	res, _ := p.processOne(context.Background(), grMsg("evt_501", "http://t/501"))
+
+	if res != processDone {
+		t.Fatalf("501 must be terminal, not released or retried; got res=%d", res)
+	}
+	if c.acks.Load() != 1 || c.nacks.Load() != 0 {
+		t.Fatalf("501 must ACK exactly once and never NACK; got acks=%d nacks=%d",
+			c.acks.Load(), c.nacks.Load())
+	}
+}
+
 // TestGuardrail_ReleaseOnUnreachable — 502/503/504 and any 5xx that isn't a
 // plain 500 mean we never reached a working app. Nothing about the message is
 // wrong, so it goes back to the broker rather than being discarded or pinned

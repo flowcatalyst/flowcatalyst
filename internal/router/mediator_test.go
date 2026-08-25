@@ -89,6 +89,32 @@ func TestMediatorBadRequestIsConfigError(t *testing.T) {
 	assert.Equal(t, 400, out.StatusCode)
 }
 
+// TestMediatorNotImplementedIsConfigError pins 501 as the deliberate exception
+// among the 5xx codes. The others classify as ErrorProcess, which the pool then
+// either discards (500) or releases to the broker to retry until the target
+// recovers (502/503/504). 501 means the app WAS reached and does not implement
+// this endpoint — retrying cannot start working — so it classifies as
+// ErrorConfig and is ACKed away like a 4xx.
+//
+// This asserts the CLASSIFICATION, which the pool-level guardrail can't: that
+// test supplies the outcome directly, so folding 501 into the generic 5xx branch
+// here would leave a permanently-failing message cycling forever and no test
+// would notice.
+func TestMediatorNotImplementedIsConfigError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotImplemented)
+	}))
+	defer srv.Close()
+
+	out := router.NewHTTPMediator(router.DevMediatorConfig(), router.NewBreakerRegistry(router.DefaultBreakerConfig())).Mediate(
+		context.Background(),
+		&common.Message{ID: "m", MediationType: common.MediationTypeHTTP, MediationTarget: srv.URL},
+	)
+	assert.Equal(t, common.MediationErrorConfig, out.Result,
+		"501 must be terminal (ErrorConfig), not ErrorProcess — retrying it can never succeed")
+	assert.Equal(t, 501, out.StatusCode)
+}
+
 func TestMediatorRateLimitedReadsRetryAfter(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Retry-After", "120")
