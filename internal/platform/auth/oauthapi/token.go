@@ -17,6 +17,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -45,10 +46,21 @@ type OAuthClientFinder interface {
 	FindByClientID(ctx context.Context, clientID string) (*auth.OAuthClient, error)
 }
 
+// OAuthClientToucher stamps a client's previous-secret last-use time. Narrowed
+// to one method so the token endpoint holds no broader write access than the
+// signal needs.
+type OAuthClientToucher interface {
+	TouchPreviousSecretUsed(ctx context.Context, id string, now, staleBefore time.Time) error
+}
+
 // State bundles the dependencies the OAuth endpoints need.
 type State struct {
 	OAuthClients OAuthClientFinder
-	Principals   *principal.Repository
+	// OAuthClientWrites records that a client authenticated with its superseded
+	// secret (rotation overlap). Optional — nil disables the signal, leaving
+	// authentication itself unchanged.
+	OAuthClientWrites OAuthClientToucher
+	Principals        *principal.Repository
 	// PortalIdentities resolves PORTAL-plane subjects (ptu_… ids minted by
 	// /portal/authorize flows) on the authorization_code grant. Optional —
 	// nil rejects portal codes (fail closed).
@@ -284,7 +296,7 @@ func (s *State) authenticateClient(r *http.Request, clientIDBody, clientSecretBo
 		return nil, newOAuthError(http.StatusUnauthorized, "invalid_client",
 			"Client secret required for confidential clients")
 	}
-	if !s.acceptClientSecret(client, clientSecret) {
+	if !s.acceptClientSecret(r.Context(), client, clientSecret) {
 		return nil, newOAuthError(http.StatusUnauthorized, "invalid_client", "Invalid client credentials")
 	}
 	return client, nil
@@ -298,12 +310,47 @@ func (s *State) authenticateClient(r *http.Request, clientIDBody, clientSecretBo
 // Both branches always run a constant-time compare: returning early on a
 // current-secret match would make a still-valid old secret measurably slower
 // than a new one, which leaks where a client sits in its rotation.
-func (s *State) acceptClientSecret(client *auth.OAuthClient, provided string) bool {
-	ok := client.SecretRef != nil && s.verifyClientSecret(*client.SecretRef, provided)
+func (s *State) acceptClientSecret(ctx context.Context, client *auth.OAuthClient, provided string) bool {
+	current := client.SecretRef != nil && s.verifyClientSecret(*client.SecretRef, provided)
+
+	usedPrevious := false
 	if prev := client.UsablePreviousSecretRef(); prev != nil {
-		ok = s.verifyClientSecret(*prev, provided) || ok
+		// Both compares always run — see above. Record the FACT of the match
+		// here but branch on it only after, so accepting an old secret is not
+		// measurably slower than accepting a new one.
+		usedPrevious = s.verifyClientSecret(*prev, provided)
 	}
-	return ok
+
+	if usedPrevious {
+		s.notePreviousSecretUsed(ctx, client.ID)
+	}
+	return current || usedPrevious
+}
+
+// previousSecretTouchInterval coalesces the last-used stamp. A fleet mid-rollout
+// can authenticate thousands of times an hour on the old secret; the UI only
+// needs "recently or not", so one write a minute per client is plenty.
+const previousSecretTouchInterval = time.Minute
+
+// notePreviousSecretUsed records that a client authenticated with its superseded
+// secret, which is what turns "how long is left?" into "is anyone still there?".
+//
+// Deliberately records the client identity and the time and NOTHING else — never
+// the secret, the ref, or any prefix of either. Best-effort: a failure here must
+// never fail an otherwise valid authentication, so it is logged and dropped.
+func (s *State) notePreviousSecretUsed(ctx context.Context, clientID string) {
+	if s.OAuthClientWrites == nil {
+		return
+	}
+	now := time.Now().UTC()
+	if err := s.OAuthClientWrites.TouchPreviousSecretUsed(
+		ctx, clientID, now, now.Add(-previousSecretTouchInterval),
+	); err != nil {
+		slog.Warn("could not record previous-secret use", "oauth_client_id", clientID, "err", err)
+		return
+	}
+	slog.Info("client authenticated with its superseded secret",
+		"oauth_client_id", clientID, "at", now)
 }
 
 // verifyClientSecret decrypts the stored ref and compares it to the
@@ -406,7 +453,7 @@ func (s *State) handleClientCredentialsGrant(w http.ResponseWriter, r *http.Requ
 	}
 	// Accepts a previous secret inside its rotation overlap — this is the
 	// machine-to-machine grant, so it is the path a fleet mid-rollout uses.
-	if !s.acceptClientSecret(client, req.ClientSecret) {
+	if !s.acceptClientSecret(r.Context(), client, req.ClientSecret) {
 		reason := "Invalid client secret"
 		s.recordAttempt(r.Context(), loginattempt.AttemptServiceAccountToken, loginattempt.OutcomeFailure, req.ClientID, nil, &reason)
 		writeOAuthError(w, http.StatusUnauthorized, "invalid_client", "Invalid client credentials")

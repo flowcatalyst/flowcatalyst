@@ -2,6 +2,8 @@
 package api
 
 import (
+	"time"
+
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
@@ -140,9 +142,19 @@ type OAuthClientResponse struct {
 	// PortalClientID marks a portal entry point (see the create request).
 	PortalClientID *string `json:"portalClientId,omitempty"`
 	// APIAccess mirrors the entity flag (see the create request).
-	APIAccess bool            `json:"apiAccess"`
-	CreatedAt httpcompat.Time `json:"createdAt"`
-	UpdatedAt httpcompat.Time `json:"updatedAt"`
+	APIAccess bool `json:"apiAccess"`
+	// PreviousSecretExpiresAt is when a rotation overlap lapses. ABSENT means
+	// there is no overlap in flight — not that one expired — so a client rotated
+	// with graceSeconds:0 must not render a stale countdown.
+	PreviousSecretExpiresAt *jsontime.Time `json:"previousSecretExpiresAt,omitempty"`
+	// PreviousSecretLastUsedAt is when the superseded secret was last accepted.
+	// NULL means nobody has used it since the rotation — the reassuring state,
+	// and the difference between "safe to revoke" and "someone hasn't
+	// redeployed". Paired with the expiry it answers the whole question: how
+	// long is left, and is anyone still there.
+	PreviousSecretLastUsedAt *jsontime.Time  `json:"previousSecretLastUsedAt,omitempty"`
+	CreatedAt                httpcompat.Time `json:"createdAt"`
+	UpdatedAt                httpcompat.Time `json:"updatedAt"`
 }
 
 func oauthClientFromEntity(c *auth.OAuthClient) OAuthClientResponse {
@@ -189,7 +201,21 @@ func oauthClientFromEntity(c *auth.OAuthClient) OAuthClientResponse {
 		APIAccess:                 c.APIAccess,
 		CreatedAt:                 jsontime.New(c.CreatedAt),
 		UpdatedAt:                 jsontime.New(c.UpdatedAt),
+		// Only surfaced while an overlap is actually in flight: absent must mean
+		// "no overlap", never "an overlap that lapsed", or the drawer would show
+		// a countdown for a client rotated with an immediate cutover.
+		PreviousSecretExpiresAt:  optJSONTime(c.UsablePreviousSecretRef() != nil, c.PreviousSecretExpiresAt),
+		PreviousSecretLastUsedAt: optJSONTime(c.UsablePreviousSecretRef() != nil, c.PreviousSecretLastUsedAt),
 	}
+}
+
+// optJSONTime renders t only when the overlap it describes is live.
+func optJSONTime(live bool, t *time.Time) *jsontime.Time {
+	if !live || t == nil {
+		return nil
+	}
+	v := jsontime.New(*t)
+	return &v
 }
 
 // OAuthClientListResponse is the wire shape for GET /api/oauth-clients:

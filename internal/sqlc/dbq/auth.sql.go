@@ -436,7 +436,7 @@ const oAuthClientFindAll = `-- name: OAuthClientFindAll :many
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
        active, created_at, updated_at, portal_client_id, api_access,
-       previous_secret_ref, previous_secret_expires_at
+       previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at
 FROM oauth_clients
 ORDER BY client_name
 `
@@ -466,6 +466,7 @@ func (q *Queries) OAuthClientFindAll(ctx context.Context) ([]OauthClient, error)
 			&i.ApiAccess,
 			&i.PreviousSecretRef,
 			&i.PreviousSecretExpiresAt,
+			&i.PreviousSecretLastUsedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -481,7 +482,7 @@ const oAuthClientFindByClientID = `-- name: OAuthClientFindByClientID :one
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
        active, created_at, updated_at, portal_client_id, api_access,
-       previous_secret_ref, previous_secret_expires_at
+       previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at
 FROM oauth_clients
 WHERE client_id = $1
 `
@@ -505,6 +506,7 @@ func (q *Queries) OAuthClientFindByClientID(ctx context.Context, clientID string
 		&i.ApiAccess,
 		&i.PreviousSecretRef,
 		&i.PreviousSecretExpiresAt,
+		&i.PreviousSecretLastUsedAt,
 	)
 	return i, err
 }
@@ -515,7 +517,7 @@ const oAuthClientFindByID = `-- name: OAuthClientFindByID :one
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
        active, created_at, updated_at, portal_client_id, api_access,
-       previous_secret_ref, previous_secret_expires_at
+       previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at
 FROM oauth_clients
 WHERE id = $1
 `
@@ -548,6 +550,7 @@ func (q *Queries) OAuthClientFindByID(ctx context.Context, id string) (OauthClie
 		&i.ApiAccess,
 		&i.PreviousSecretRef,
 		&i.PreviousSecretExpiresAt,
+		&i.PreviousSecretLastUsedAt,
 	)
 	return i, err
 }
@@ -556,7 +559,7 @@ const oAuthClientFindByPortalClient = `-- name: OAuthClientFindByPortalClient :m
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
        active, created_at, updated_at, portal_client_id, api_access,
-       previous_secret_ref, previous_secret_expires_at
+       previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at
 FROM oauth_clients
 WHERE portal_client_id = $1
 ORDER BY client_name
@@ -589,6 +592,7 @@ func (q *Queries) OAuthClientFindByPortalClient(ctx context.Context, portalClien
 			&i.ApiAccess,
 			&i.PreviousSecretRef,
 			&i.PreviousSecretExpiresAt,
+			&i.PreviousSecretLastUsedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -770,13 +774,39 @@ func (q *Queries) OAuthClientRedirectURIsForClients(ctx context.Context, dollar_
 	return items, nil
 }
 
+const oAuthClientTouchPreviousSecretUsed = `-- name: OAuthClientTouchPreviousSecretUsed :execrows
+UPDATE oauth_clients
+SET previous_secret_last_used_at = $2
+WHERE id = $1
+  AND previous_secret_ref IS NOT NULL
+  AND (previous_secret_last_used_at IS NULL OR previous_secret_last_used_at < $3)
+`
+
+type OAuthClientTouchPreviousSecretUsedParams struct {
+	ID                         string     `db:"id"`
+	PreviousSecretLastUsedAt   *time.Time `db:"previous_secret_last_used_at"`
+	PreviousSecretLastUsedAt_2 *time.Time `db:"previous_secret_last_used_at_2"`
+}
+
+// Stamps the superseded secret's last-use time. Coalesced: the write is skipped
+// unless the stored value is older than the supplied floor, so a fleet
+// authenticating thousands of times an hour on the old secret does not become
+// write load. Only touches a client that still HAS an overlap in flight.
+func (q *Queries) OAuthClientTouchPreviousSecretUsed(ctx context.Context, arg OAuthClientTouchPreviousSecretUsedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, oAuthClientTouchPreviousSecretUsed, arg.ID, arg.PreviousSecretLastUsedAt, arg.PreviousSecretLastUsedAt_2)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const oAuthClientUpsert = `-- name: OAuthClientUpsert :exec
 INSERT INTO oauth_clients
     (id, client_id, client_name, client_type, client_secret_ref,
      default_scopes, pkce_required, service_account_principal_id,
      active, created_at, updated_at, portal_client_id, api_access,
-     previous_secret_ref, previous_secret_expires_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+     previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 ON CONFLICT (id) DO UPDATE SET
     client_id = EXCLUDED.client_id,
     client_name = EXCLUDED.client_name,
@@ -784,6 +814,7 @@ ON CONFLICT (id) DO UPDATE SET
     client_secret_ref = EXCLUDED.client_secret_ref,
     previous_secret_ref = EXCLUDED.previous_secret_ref,
     previous_secret_expires_at = EXCLUDED.previous_secret_expires_at,
+    previous_secret_last_used_at = EXCLUDED.previous_secret_last_used_at,
     default_scopes = EXCLUDED.default_scopes,
     pkce_required = EXCLUDED.pkce_required,
     service_account_principal_id = EXCLUDED.service_account_principal_id,
@@ -809,6 +840,7 @@ type OAuthClientUpsertParams struct {
 	ApiAccess                 bool       `db:"api_access"`
 	PreviousSecretRef         *string    `db:"previous_secret_ref"`
 	PreviousSecretExpiresAt   *time.Time `db:"previous_secret_expires_at"`
+	PreviousSecretLastUsedAt  *time.Time `db:"previous_secret_last_used_at"`
 }
 
 func (q *Queries) OAuthClientUpsert(ctx context.Context, arg OAuthClientUpsertParams) error {
@@ -828,6 +860,7 @@ func (q *Queries) OAuthClientUpsert(ctx context.Context, arg OAuthClientUpsertPa
 		arg.ApiAccess,
 		arg.PreviousSecretRef,
 		arg.PreviousSecretExpiresAt,
+		arg.PreviousSecretLastUsedAt,
 	)
 	return err
 }

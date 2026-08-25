@@ -54,6 +54,23 @@ type OAuthClientRepo struct {
 	pool *pgxpool.Pool
 }
 
+// TouchPreviousSecretUsed stamps when a client last authenticated with its
+// superseded secret, skipping the write unless the stored value is older than
+// staleBefore. The coalescing matters: a fleet mid-rollout may authenticate
+// thousands of times an hour on the old secret, and this runs on the token
+// endpoint's hot path — last-write-wins on one timestamp is all the UI needs.
+//
+// Only stamps a client that still has an overlap in flight, so a late
+// authentication cannot resurrect the field after a revoke.
+func (r *OAuthClientRepo) TouchPreviousSecretUsed(ctx context.Context, id string, now, staleBefore time.Time) error {
+	_, err := r.q.OAuthClientTouchPreviousSecretUsed(ctx, dbq.OAuthClientTouchPreviousSecretUsedParams{
+		ID:                         id,
+		PreviousSecretLastUsedAt:   &now,
+		PreviousSecretLastUsedAt_2: &staleBefore,
+	})
+	return err
+}
+
 // PurgeLapsedPreviousSecrets clears rotation-overlap secrets whose window has
 // closed, so a superseded secret is not retained at rest once it can no longer
 // authenticate. Verification already refuses an expired previous ref
@@ -127,6 +144,7 @@ func (r *OAuthClientRepo) Persist(ctx context.Context, c *OAuthClient, tx *useca
 		ClientSecretRef:           c.SecretRef,
 		PreviousSecretRef:         c.PreviousSecretRef,
 		PreviousSecretExpiresAt:   c.PreviousSecretExpiresAt,
+		PreviousSecretLastUsedAt:  c.PreviousSecretLastUsedAt,
 		DefaultScopes:             scopes,
 		PkceRequired:              c.PKCERequired,
 		ServiceAccountPrincipalID: c.PrincipalID,
@@ -336,26 +354,27 @@ func (r *OAuthClientRepo) loadClientStringJunction(ctx context.Context, query st
 
 func rowToOAuthClient(row dbq.OauthClient) *OAuthClient {
 	c := OAuthClient{
-		ID:                      row.ID,
-		ClientID:                row.ClientID,
-		ClientName:              row.ClientName,
-		ClientType:              ParseOAuthClientType(row.ClientType),
-		SecretRef:               row.ClientSecretRef,
-		PreviousSecretRef:       row.PreviousSecretRef,
-		PreviousSecretExpiresAt: row.PreviousSecretExpiresAt,
-		PKCERequired:            row.PkceRequired,
-		Active:                  row.Active,
-		PrincipalID:             row.ServiceAccountPrincipalID,
-		PortalClientID:          row.PortalClientID,
-		APIAccess:               row.ApiAccess,
-		CreatedAt:               row.CreatedAt,
-		UpdatedAt:               row.UpdatedAt,
-		RedirectURIs:            []string{},
-		PostLogoutRedirectURIs:  []string{},
-		GrantTypes:              []string{},
-		Scopes:                  []string{},
-		AllowedOrigins:          []string{},
-		ApplicationIDs:          []string{},
+		ID:                       row.ID,
+		ClientID:                 row.ClientID,
+		ClientName:               row.ClientName,
+		ClientType:               ParseOAuthClientType(row.ClientType),
+		SecretRef:                row.ClientSecretRef,
+		PreviousSecretRef:        row.PreviousSecretRef,
+		PreviousSecretExpiresAt:  row.PreviousSecretExpiresAt,
+		PreviousSecretLastUsedAt: row.PreviousSecretLastUsedAt,
+		PKCERequired:             row.PkceRequired,
+		Active:                   row.Active,
+		PrincipalID:              row.ServiceAccountPrincipalID,
+		PortalClientID:           row.PortalClientID,
+		APIAccess:                row.ApiAccess,
+		CreatedAt:                row.CreatedAt,
+		UpdatedAt:                row.UpdatedAt,
+		RedirectURIs:             []string{},
+		PostLogoutRedirectURIs:   []string{},
+		GrantTypes:               []string{},
+		Scopes:                   []string{},
+		AllowedOrigins:           []string{},
+		ApplicationIDs:           []string{},
 	}
 	if row.DefaultScopes != nil && *row.DefaultScopes != "" {
 		for _, s := range strings.Split(*row.DefaultScopes, ",") {

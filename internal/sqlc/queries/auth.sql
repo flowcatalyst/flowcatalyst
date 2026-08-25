@@ -13,7 +13,7 @@
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
        active, created_at, updated_at, portal_client_id, api_access,
-       previous_secret_ref, previous_secret_expires_at
+       previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at
 FROM oauth_clients
 WHERE id = $1;
 
@@ -21,7 +21,7 @@ WHERE id = $1;
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
        active, created_at, updated_at, portal_client_id, api_access,
-       previous_secret_ref, previous_secret_expires_at
+       previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at
 FROM oauth_clients
 WHERE client_id = $1;
 
@@ -29,7 +29,7 @@ WHERE client_id = $1;
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
        active, created_at, updated_at, portal_client_id, api_access,
-       previous_secret_ref, previous_secret_expires_at
+       previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at
 FROM oauth_clients
 ORDER BY client_name;
 
@@ -38,8 +38,8 @@ INSERT INTO oauth_clients
     (id, client_id, client_name, client_type, client_secret_ref,
      default_scopes, pkce_required, service_account_principal_id,
      active, created_at, updated_at, portal_client_id, api_access,
-     previous_secret_ref, previous_secret_expires_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+     previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 ON CONFLICT (id) DO UPDATE SET
     client_id = EXCLUDED.client_id,
     client_name = EXCLUDED.client_name,
@@ -47,6 +47,7 @@ ON CONFLICT (id) DO UPDATE SET
     client_secret_ref = EXCLUDED.client_secret_ref,
     previous_secret_ref = EXCLUDED.previous_secret_ref,
     previous_secret_expires_at = EXCLUDED.previous_secret_expires_at,
+    previous_secret_last_used_at = EXCLUDED.previous_secret_last_used_at,
     default_scopes = EXCLUDED.default_scopes,
     pkce_required = EXCLUDED.pkce_required,
     service_account_principal_id = EXCLUDED.service_account_principal_id,
@@ -61,7 +62,7 @@ ON CONFLICT (id) DO UPDATE SET
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
        active, created_at, updated_at, portal_client_id, api_access,
-       previous_secret_ref, previous_secret_expires_at
+       previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at
 FROM oauth_clients
 WHERE portal_client_id = $1
 ORDER BY client_name;
@@ -222,3 +223,15 @@ SET previous_secret_ref = NULL,
 WHERE previous_secret_ref IS NOT NULL
   AND previous_secret_expires_at IS NOT NULL
   AND previous_secret_expires_at < NOW();
+
+
+-- name: OAuthClientTouchPreviousSecretUsed :execrows
+-- Stamps the superseded secret's last-use time. Coalesced: the write is skipped
+-- unless the stored value is older than the supplied floor, so a fleet
+-- authenticating thousands of times an hour on the old secret does not become
+-- write load. Only touches a client that still HAS an overlap in flight.
+UPDATE oauth_clients
+SET previous_secret_last_used_at = $2
+WHERE id = $1
+  AND previous_secret_ref IS NOT NULL
+  AND (previous_secret_last_used_at IS NULL OR previous_secret_last_used_at < $3);

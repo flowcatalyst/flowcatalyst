@@ -59,7 +59,12 @@ type OAuthClient struct {
 	// UsablePreviousSecretRef, which enforces the expiry.
 	PreviousSecretRef       *string    `json:"-"`
 	PreviousSecretExpiresAt *time.Time `json:"-"`
-	RedirectURIs            []string   `json:"redirectUris"`
+	// PreviousSecretLastUsedAt is when the superseded secret was last accepted.
+	// NULL means nobody has used it since the rotation — which, together with
+	// the expiry, is what makes "is it safe to revoke?" answerable before the
+	// window closes rather than after the 401s start.
+	PreviousSecretLastUsedAt *time.Time `json:"-"`
+	RedirectURIs             []string   `json:"redirectUris"`
 	// PostLogoutRedirectURIs is the OIDC RP-Initiated Logout whitelist
 	// (oauth_client_post_logout_redirect_uris). /auth/oidc/session/end
 	// validates a supplied post_logout_redirect_uri against this list.
@@ -277,6 +282,7 @@ func (c *OAuthClient) SetSecretRef(ref string) {
 	c.SecretRef = &ref
 	c.PreviousSecretRef = nil
 	c.PreviousSecretExpiresAt = nil
+	c.PreviousSecretLastUsedAt = nil
 	c.UpdatedAt = time.Now().UTC()
 }
 
@@ -298,6 +304,7 @@ func (c *OAuthClient) RotateSecretRef(ref string, graceFor time.Duration) *time.
 	expires := now.Add(graceFor)
 	c.PreviousSecretRef = c.SecretRef
 	c.PreviousSecretExpiresAt = &expires
+	c.PreviousSecretLastUsedAt = nil // a fresh overlap starts unused
 	c.SecretRef = &ref
 	c.UpdatedAt = now
 	return &expires
@@ -312,6 +319,7 @@ func (c *OAuthClient) RevokePreviousSecret() bool {
 	}
 	c.PreviousSecretRef = nil
 	c.PreviousSecretExpiresAt = nil
+	c.PreviousSecretLastUsedAt = nil
 	c.UpdatedAt = time.Now().UTC()
 	return true
 }

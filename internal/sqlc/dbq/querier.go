@@ -188,6 +188,11 @@ type Querier interface {
 	OAuthClientRedirectURIsClear(ctx context.Context, oauthClientID string) error
 	OAuthClientRedirectURIsForClient(ctx context.Context, oauthClientID string) ([]string, error)
 	OAuthClientRedirectURIsForClients(ctx context.Context, dollar_1 []string) ([]OauthClientRedirectUri, error)
+	// Stamps the superseded secret's last-use time. Coalesced: the write is skipped
+	// unless the stored value is older than the supplied floor, so a fleet
+	// authenticating thousands of times an hour on the old secret does not become
+	// write load. Only touches a client that still HAS an overlap in flight.
+	OAuthClientTouchPreviousSecretUsed(ctx context.Context, arg OAuthClientTouchPreviousSecretUsedParams) (int64, error)
 	OAuthClientUpsert(ctx context.Context, arg OAuthClientUpsertParams) error
 	OAuthPayloadDelete(ctx context.Context, id string) error
 	OAuthPayloadDeleteByGrant(ctx context.Context, grantID *string) error

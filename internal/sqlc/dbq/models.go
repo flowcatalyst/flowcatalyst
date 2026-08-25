@@ -670,6 +670,7 @@ type OauthClient struct {
 	ApiAccess                 bool       `db:"api_access"`
 	PreviousSecretRef         *string    `db:"previous_secret_ref"`
 	PreviousSecretExpiresAt   *time.Time `db:"previous_secret_expires_at"`
+	PreviousSecretLastUsedAt  *time.Time `db:"previous_secret_last_used_at"`
 }
 
 type OauthClientAllowedOrigin struct {

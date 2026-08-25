@@ -1,6 +1,7 @@
 package oauthapi
 
 import (
+	"context"
 	"encoding/base64"
 	"testing"
 	"time"
@@ -43,13 +44,13 @@ func TestAcceptClientSecretHonoursRotationOverlap(t *testing.T) {
 	c.SetSecretRef(encrypted(t, s, "old-secret"))
 	c.RotateSecretRef(encrypted(t, s, "new-secret"), time.Hour)
 
-	if !s.acceptClientSecret(c, "new-secret") {
+	if !s.acceptClientSecret(context.Background(), c, "new-secret") {
 		t.Error("current secret rejected")
 	}
-	if !s.acceptClientSecret(c, "old-secret") {
+	if !s.acceptClientSecret(context.Background(), c, "old-secret") {
 		t.Error("outgoing secret rejected inside its overlap window")
 	}
-	if s.acceptClientSecret(c, "never-a-secret") {
+	if s.acceptClientSecret(context.Background(), c, "never-a-secret") {
 		t.Error("an unrelated secret was accepted")
 	}
 }
@@ -65,10 +66,10 @@ func TestAcceptClientSecretRefusesLapsedSecret(t *testing.T) {
 	past := time.Now().UTC().Add(-time.Second)
 	c.PreviousSecretExpiresAt = &past
 
-	if s.acceptClientSecret(c, "old-secret") {
+	if s.acceptClientSecret(context.Background(), c, "old-secret") {
 		t.Error("lapsed secret still authenticates")
 	}
-	if !s.acceptClientSecret(c, "new-secret") {
+	if !s.acceptClientSecret(context.Background(), c, "new-secret") {
 		t.Error("current secret rejected")
 	}
 }
@@ -82,10 +83,10 @@ func TestAcceptClientSecretAfterRevoke(t *testing.T) {
 	c.RotateSecretRef(encrypted(t, s, "new-secret"), time.Hour)
 	c.RevokePreviousSecret()
 
-	if s.acceptClientSecret(c, "old-secret") {
+	if s.acceptClientSecret(context.Background(), c, "old-secret") {
 		t.Error("revoked secret still authenticates")
 	}
-	if !s.acceptClientSecret(c, "new-secret") {
+	if !s.acceptClientSecret(context.Background(), c, "new-secret") {
 		t.Error("current secret rejected")
 	}
 }
@@ -98,10 +99,10 @@ func TestAcceptClientSecretImmediateCutover(t *testing.T) {
 	c.SetSecretRef(encrypted(t, s, "old-secret"))
 	c.RotateSecretRef(encrypted(t, s, "new-secret"), 0)
 
-	if s.acceptClientSecret(c, "old-secret") {
+	if s.acceptClientSecret(context.Background(), c, "old-secret") {
 		t.Error("old secret survived an immediate cutover")
 	}
-	if !s.acceptClientSecret(c, "new-secret") {
+	if !s.acceptClientSecret(context.Background(), c, "new-secret") {
 		t.Error("current secret rejected")
 	}
 }
@@ -117,7 +118,7 @@ func TestAcceptClientSecretNoEncryptionFailsClosed(t *testing.T) {
 
 	s.Encryption = nil
 
-	if s.acceptClientSecret(c, "new-secret") || s.acceptClientSecret(c, "old-secret") {
+	if s.acceptClientSecret(context.Background(), c, "new-secret") || s.acceptClientSecret(context.Background(), c, "old-secret") {
 		t.Error("verification did not fail closed without an encryption service")
 	}
 }

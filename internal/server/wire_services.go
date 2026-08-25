@@ -121,6 +121,8 @@ func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet,
 		repos.principalRepo.LookupVersion,
 	)
 	svcs.oauthTokenEP = &oauthapi.State{
+		// Records rotation-overlap secret use for the client drawer's status line.
+		OAuthClientWrites: repos.authRepo.OAuthClients,
 		OAuthClients:      repos.authRepo.OAuthClients,
 		Principals:        repos.principalRepo,
 		PortalIdentities:  repos.portalIdentityRepo,
