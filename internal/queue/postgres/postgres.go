@@ -33,6 +33,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"sync/atomic"
 	"time"
 
@@ -101,6 +102,22 @@ CREATE TABLE IF NOT EXISTS queue_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_queue_visible
     ON queue_messages (queue_name, visible_at, message_group_id);
+
+-- Quarantine for rows whose payload cannot be parsed. Without it a single
+-- malformed row stops its queue forever: the claim commits before the payload
+-- is parsed, so the failure leaves the row claimed, it becomes visible again,
+-- is re-claimed, and fails identically on every subsequent poll.
+CREATE TABLE IF NOT EXISTS queue_message_errors (
+    id               TEXT NOT NULL,
+    queue_name       TEXT NOT NULL,
+    message_group_id TEXT,
+    payload          TEXT NOT NULL,
+    error            TEXT NOT NULL,
+    receive_count    INTEGER,
+    created_at       BIGINT NOT NULL,
+    failed_at        BIGINT NOT NULL,
+    PRIMARY KEY (queue_name, id)
+);
 `
 	_, err := q.pool.Exec(ctx, ddl)
 	return err
@@ -152,7 +169,7 @@ UPDATE queue_messages t
   FROM claimed
  WHERE t.queue_name = $1
    AND t.id = claimed.id
- RETURNING t.id, t.payload
+ RETURNING t.id, t.payload, t.message_group_id, t.created_at, t.receive_count
 `
 	rows, err := q.pool.Query(ctx, sql, q.cfg.Name, now, int64(maxMessages), receipt, newVisibleAt)
 	if err != nil {
@@ -161,15 +178,37 @@ UPDATE queue_messages t
 	defer rows.Close()
 
 	var msgs []common.QueuedMessage
+	type poison struct {
+		id, payload, reason string
+		group               *string
+		createdAt           int64
+		receiveCount        *int32
+	}
+	var quarantine []poison
+
 	for rows.Next() {
 		var id string
 		var payload string
-		if err := rows.Scan(&id, &payload); err != nil {
+		var group *string
+		var createdAt int64
+		var receiveCount *int32
+		if err := rows.Scan(&id, &payload, &group, &createdAt, &receiveCount); err != nil {
+			// A scan failure is an infrastructure fault, not a bad row — the
+			// whole poll is suspect, so surface it rather than quarantining.
 			return nil, err
 		}
 		var m common.Message
 		if err := json.Unmarshal([]byte(payload), &m); err != nil {
-			return nil, fmt.Errorf("unmarshal message %s: %w", id, err)
+			// Poison row. The claim above has already committed, so returning
+			// here would leave it claimed, visible again after the timeout,
+			// re-claimed, and failing identically forever — taking the rest of
+			// this batch down with it every time. Quarantine it after the scan
+			// loop (the rows cursor is still open) and carry on.
+			quarantine = append(quarantine, poison{
+				id: id, payload: payload, reason: err.Error(),
+				group: group, createdAt: createdAt, receiveCount: receiveCount,
+			})
+			continue
 		}
 		msgs = append(msgs, common.QueuedMessage{
 			Message:         m,
@@ -178,8 +217,46 @@ UPDATE queue_messages t
 			QueueIdentifier: q.cfg.Name,
 		})
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close() // done with the cursor; the moves below need the connection
+
+	for _, p := range quarantine {
+		if err := q.quarantine(ctx, p.id, p.payload, p.reason, p.group, p.createdAt, p.receiveCount); err != nil {
+			// Couldn't move it — log and leave it claimed. It will come back on
+			// the next poll and we'll try again; the rest of this batch is
+			// already returned, so one unmovable row no longer costs the queue.
+			slog.Warn("postgres queue: could not quarantine malformed message",
+				"queue", q.cfg.Name, "message_id", p.id, "err", err)
+			continue
+		}
+		slog.Warn("postgres queue: malformed message moved to queue_message_errors",
+			"queue", q.cfg.Name, "message_id", p.id, "reason", p.reason)
+	}
+
 	q.polled.Add(uint64(len(msgs)))
-	return msgs, rows.Err()
+	return msgs, nil
+}
+
+// quarantine moves one unparseable row out of the queue and into
+// queue_message_errors in a single statement, so the row can never be both
+// places or neither. ON CONFLICT DO NOTHING covers a row quarantined twice
+// (the DELETE still applies, which is the part that matters).
+func (q *Queue) quarantine(ctx context.Context, id, payload, reason string, group *string, createdAt int64, receiveCount *int32) error {
+	_, err := q.pool.Exec(ctx, `
+WITH moved AS (
+  DELETE FROM queue_messages
+   WHERE queue_name = $1 AND id = $2
+  RETURNING id, queue_name, message_group_id, payload, receive_count, created_at
+)
+INSERT INTO queue_message_errors
+    (id, queue_name, message_group_id, payload, error, receive_count, created_at, failed_at)
+SELECT id, queue_name, message_group_id, payload, $3, receive_count, created_at, $4
+  FROM moved
+ON CONFLICT (queue_name, id) DO NOTHING`,
+		q.cfg.Name, id, reason, time.Now().Unix())
+	return err
 }
 
 // Ack deletes the message permanently.
