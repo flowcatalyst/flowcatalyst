@@ -259,8 +259,10 @@ ON CONFLICT (queue_name, id) DO NOTHING`,
 	return err
 }
 
-// Ack deletes the message permanently.
-func (q *Queue) Ack(ctx context.Context, receipt string) error {
+// Ack deletes the message permanently. brokerMessageID is unused: a Postgres
+// receipt handle embeds the row id and the row is deleted outright, so there is
+// no at-least-once redelivery to guard against.
+func (q *Queue) Ack(ctx context.Context, receipt string, _ string) error {
 	tag, err := q.pool.Exec(ctx,
 		`DELETE FROM queue_messages WHERE receipt_handle = $1 AND queue_name = $2`,
 		receipt, q.cfg.Name)

@@ -172,7 +172,7 @@ func (p *Pool) ackTracked(ctx context.Context, qm common.QueuedMessage) {
 		}
 	}
 	if c := p.consumerFor(qm); c != nil {
-		if err := c.Ack(ctx, receipt); err != nil {
+		if err := c.Ack(ctx, receipt, qm.BrokerMessageID); err != nil {
 			slog.Warn("ack failed", "message_id", qm.Message.ID, "err", err)
 		}
 	} else {
@@ -812,7 +812,7 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 			slog.Info("external requeue duplicate (process-time backstop); ACKing copy",
 				"message_id", qm.Message.ID, "queue", qm.QueueIdentifier)
 			if c := p.consumerFor(qm); c != nil {
-				if err := c.Ack(ctx, qm.ReceiptHandle); err != nil {
+				if err := c.Ack(ctx, qm.ReceiptHandle, qm.BrokerMessageID); err != nil {
 					slog.Warn("ack (requeue duplicate) failed", "message_id", qm.Message.ID, "err", err)
 				}
 			}

@@ -141,7 +141,7 @@ func (m *Manager) ForceAckInFlight(ctx context.Context, messageID string) (Force
 	}
 	res := ForceAckResult{Entry: entry}
 	if c := m.resolveConsumer(entry.QueueIdentifier); c != nil {
-		res.AckErr = c.Ack(ctx, entry.ReceiptHandle)
+		res.AckErr = c.Ack(ctx, entry.ReceiptHandle, entry.BrokerMessageID)
 	} else {
 		res.AckErr = fmt.Errorf("no consumer for queue %q", entry.QueueIdentifier)
 	}
@@ -358,7 +358,7 @@ func (m *Manager) route(ctx context.Context, msgs []common.QueuedMessage, source
 				// otherwise it redelivers forever. The owner's entry (and
 				// receipt handle) was deliberately left untouched.
 				slog.Info("external requeue detected; ACKing duplicate", "message_id", msg.Message.ID, "queue", source.Identifier())
-				if err := source.Ack(ctx, msg.ReceiptHandle); err != nil {
+				if err := source.Ack(ctx, msg.ReceiptHandle, msg.BrokerMessageID); err != nil {
 					slog.Warn("ack (external requeue) failed", "message_id", msg.Message.ID, "err", err)
 				}
 				continue

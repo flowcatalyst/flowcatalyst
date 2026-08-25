@@ -295,7 +295,7 @@ func (q *Queue) Poll(ctx context.Context, max uint32) ([]common.QueuedMessage, e
 }
 
 // Ack consumes the receipt and ACKs the underlying JetStream message.
-func (q *Queue) Ack(_ context.Context, receipt string) error {
+func (q *Queue) Ack(_ context.Context, receipt string, _ string) error {
 	msg := q.popPending(receipt)
 	if msg == nil {
 		return fmt.Errorf("nats: no pending message for receipt %q", receipt)

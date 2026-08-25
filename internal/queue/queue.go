@@ -49,8 +49,13 @@ type Consumer interface {
 	Identifier() string
 	// Poll fetches up to maxMessages messages.
 	Poll(ctx context.Context, maxMessages uint32) ([]common.QueuedMessage, error)
-	// Ack deletes the message from the queue.
-	Ack(ctx context.Context, receipt string) error
+	// Ack deletes the message from the queue. brokerMessageID is the broker's
+	// own id for the message (common.QueuedMessage.BrokerMessageID), passed
+	// explicitly because a receipt handle alone can't identify the message
+	// across a redelivery: SQS needs the broker id to remember that it deleted
+	// this message, and deriving it from the receipt requires state that may
+	// have been evicted by then. Empty when the caller genuinely has no id.
+	Ack(ctx context.Context, receipt string, brokerMessageID string) error
 	// Nack marks the message visible again after delay. Counts as a failure.
 	Nack(ctx context.Context, receipt string, delaySeconds *uint32) error
 	// Defer marks the message visible again without counting as a failure.

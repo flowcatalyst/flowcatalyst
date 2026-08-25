@@ -82,13 +82,12 @@ func build(ctx context.Context, cfg common.QueueConfig) (*Queue, error) {
 		vt = 30
 	}
 	q := &Queue{
-		client:             client,
-		queueURL:           cfg.URI,
-		queueName:          queueName,
-		visibilityTimeout:  int32(vt),
-		waitSeconds:        DefaultWaitSeconds,
-		pendingDelete:      make(map[string]time.Time),
-		receiptToMessageID: make(map[string]receiptMapping),
+		client:            client,
+		queueURL:          cfg.URI,
+		queueName:         queueName,
+		visibilityTimeout: int32(vt),
+		waitSeconds:       DefaultWaitSeconds,
+		pendingDelete:     make(map[string]time.Time),
 	}
 	q.running.Store(true)
 	return q, nil
@@ -117,11 +116,6 @@ func queueNameFromURL(url string) string {
 	return parts[len(parts)-1]
 }
 
-type receiptMapping struct {
-	MessageID string
-	At        time.Time
-}
-
 // Queue is the SQS-backed queue. Implements both Consumer and Publisher.
 type Queue struct {
 	client            *sqs.Client
@@ -130,9 +124,8 @@ type Queue struct {
 	visibilityTimeout int32
 	waitSeconds       int32
 
-	mu                 sync.Mutex
-	pendingDelete      map[string]time.Time
-	receiptToMessageID map[string]receiptMapping
+	mu            sync.Mutex
+	pendingDelete map[string]time.Time
 
 	running atomic.Bool
 
@@ -174,9 +167,7 @@ func (q *Queue) Poll(ctx context.Context, maxMessages uint32) ([]common.QueuedMe
 	results := make([]common.QueuedMessage, 0, len(out.Messages))
 	for _, sm := range out.Messages {
 		if sm.MessageId != nil {
-			q.mu.Lock()
-			_, alreadyAcked := q.pendingDelete[*sm.MessageId]
-			q.mu.Unlock()
+			alreadyAcked := q.alreadyDeleted(*sm.MessageId)
 			if alreadyAcked {
 				// Redelivery of an acked message — delete immediately.
 				if sm.ReceiptHandle != nil {
@@ -193,14 +184,9 @@ func (q *Queue) Poll(ctx context.Context, maxMessages uint32) ([]common.QueuedMe
 		if perr != nil {
 			// Malformed — ACK it so it doesn't keep coming back.
 			if sm.ReceiptHandle != nil {
-				_ = q.Ack(ctx, *sm.ReceiptHandle)
+				_ = q.Ack(ctx, *sm.ReceiptHandle, brokerIDOf(sm))
 			}
 			continue
-		}
-		if brokerID != "" {
-			q.mu.Lock()
-			q.receiptToMessageID[receipt] = receiptMapping{MessageID: brokerID, At: time.Now()}
-			q.mu.Unlock()
 		}
 		results = append(results, common.QueuedMessage{
 			Message:         msg,
@@ -232,15 +218,22 @@ func (q *Queue) parseMessage(sm sqstypes.Message) (common.Message, string, strin
 	return m, *sm.ReceiptHandle, brokerID, nil
 }
 
-// Ack deletes the message and records the MessageId in the pending-delete map.
-func (q *Queue) Ack(ctx context.Context, receipt string) error {
-	q.mu.Lock()
-	mapping, ok := q.receiptToMessageID[receipt]
-	if ok {
-		delete(q.receiptToMessageID, receipt)
-		q.pendingDelete[mapping.MessageID] = time.Now()
-	}
-	q.mu.Unlock()
+// Ack deletes the message and remembers its MessageId so a redelivery already
+// in flight is short-circuited rather than processed twice.
+//
+// The id is supplied by the caller. It used to be recovered from a
+// receipt→MessageId map populated at poll time, which silently failed whenever
+// that entry had been evicted first (the map is pruned by age once it exceeds a
+// size threshold). A message held longer than the eviction age before its ack —
+// routine while a slow target is being retried — would then be deleted with NO
+// pending-delete entry recorded, so the next redelivery of it was not
+// recognised and got delivered to the target a second time. Passing the id in
+// removes the lookup, and with it the failure mode.
+//
+// Retention stays bounded: entries are pruned by PendingDeleteTTL on every poll,
+// so this remembers recent deletes, never all of them.
+func (q *Queue) Ack(ctx context.Context, receipt string, brokerMessageID string) error {
+	q.markDeleted(brokerMessageID)
 
 	_, err := q.client.DeleteMessage(ctx, &sqs.DeleteMessageInput{
 		QueueUrl:      aws.String(q.queueURL),
@@ -409,7 +402,9 @@ func (q *Queue) Counters() *queue.Metrics {
 	}
 }
 
-// evictExpiredPendingDeletesLocked prunes old entries. Holds the lock.
+// evictExpiredPendingDeletesLocked prunes acked-MessageId entries older than
+// PendingDeleteTTL, so the guard remembers recent deletes rather than every
+// delete ever. Called at the top of each poll. Holds the lock.
 func (q *Queue) evictExpiredPendingDeletesLocked() {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -419,11 +414,35 @@ func (q *Queue) evictExpiredPendingDeletesLocked() {
 			delete(q.pendingDelete, id)
 		}
 	}
-	if len(q.receiptToMessageID) > 1000 {
-		for h, m := range q.receiptToMessageID {
-			if now.Sub(m.At) > PendingDeleteTTL {
-				delete(q.receiptToMessageID, h)
-			}
-		}
+}
+
+// markDeleted records that this MessageId has been deleted, so a redelivery
+// already in flight can be short-circuited. An empty id is ignored — there is
+// nothing to key on, and inserting "" would match every id-less message.
+func (q *Queue) markDeleted(brokerMessageID string) {
+	if brokerMessageID == "" {
+		return
 	}
+	q.mu.Lock()
+	q.pendingDelete[brokerMessageID] = time.Now()
+	q.mu.Unlock()
+}
+
+// alreadyDeleted reports whether this MessageId was deleted recently enough to
+// still be remembered (see PendingDeleteTTL).
+func (q *Queue) alreadyDeleted(brokerMessageID string) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	_, ok := q.pendingDelete[brokerMessageID]
+	return ok
+}
+
+// brokerIDOf is the message's SQS MessageId, or "" when absent — used on the
+// malformed-message path, where parseMessage has already failed and so cannot
+// supply it.
+func brokerIDOf(sm sqstypes.Message) string {
+	if sm.MessageId == nil {
+		return ""
+	}
+	return *sm.MessageId
 }

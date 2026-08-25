@@ -41,7 +41,12 @@ func (c *cascadeConsumer) record(list *[]string, rh string) {
 		c.doneOnce.Do(func() { close(c.done) })
 	}
 }
-func (c *cascadeConsumer) Ack(_ context.Context, rh string) error { c.record(&c.acked, rh); return nil }
+
+func (c *cascadeConsumer) Ack(_ context.Context, rh string, _ string) error {
+	c.record(&c.acked, rh)
+	return nil
+}
+
 func (c *cascadeConsumer) Nack(_ context.Context, rh string, _ *uint32) error {
 	c.record(&c.nacked, rh)
 	return nil

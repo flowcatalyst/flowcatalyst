@@ -32,7 +32,7 @@ func (c *pollErrConsumer) Poll(context.Context, uint32) ([]common.QueuedMessage,
 	c.polls.Add(1)
 	return nil, c.err
 }
-func (c *pollErrConsumer) Ack(context.Context, string) error                      { return nil }
+func (c *pollErrConsumer) Ack(context.Context, string, string) error              { return nil }
 func (c *pollErrConsumer) Nack(context.Context, string, *uint32) error            { return nil }
 func (c *pollErrConsumer) Defer(context.Context, string, *uint32) error           { return nil }
 func (c *pollErrConsumer) ExtendVisibility(context.Context, string, uint32) error { return nil }

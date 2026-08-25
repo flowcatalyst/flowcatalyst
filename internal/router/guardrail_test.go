@@ -35,7 +35,12 @@ func (c *grConsumer) Identifier() string { return c.id }
 func (c *grConsumer) Poll(ctx context.Context, max uint32) ([]common.QueuedMessage, error) {
 	return nil, nil
 }
-func (c *grConsumer) Ack(ctx context.Context, receipt string) error { c.acks.Add(1); return nil }
+
+func (c *grConsumer) Ack(ctx context.Context, receipt string, _ string) error {
+	c.acks.Add(1)
+	return nil
+}
+
 func (c *grConsumer) Nack(ctx context.Context, receipt string, delay *uint32) error {
 	c.nacks.Add(1)
 	c.lastNackDelay.Store(delay)
