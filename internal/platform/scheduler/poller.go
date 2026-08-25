@@ -98,6 +98,9 @@ type PendingJobPoller struct {
 	pool        *pgxpool.Pool
 	dispatcher  *MessageGroupDispatcher
 	pausedCache *PausedConnectionCache
+	// poolCodes composes each job's published pool code from its
+	// dispatch_pool_id + client_id. Same refresh cadence as pausedCache.
+	poolCodes *PoolCodeResolver
 	// IsLeader gates claiming: when non-nil and false, the poller idles.
 	// The per-group FIFO dispatcher is in-process only, so within-group
 	// ordering requires a single active scheduler — concurrent SKIP-LOCKED
@@ -106,9 +109,16 @@ type PendingJobPoller struct {
 	IsLeader func() bool
 }
 
-// NewPendingJobPoller wires the poller.
+// NewPendingJobPoller wires the poller. The pool-code resolver shares
+// pausedCache's TTL: both cache slow-moving config read on every claim.
 func NewPendingJobPoller(cfg Config, pool *pgxpool.Pool, dispatcher *MessageGroupDispatcher, pausedCache *PausedConnectionCache) *PendingJobPoller {
-	return &PendingJobPoller{cfg: cfg, pool: pool, dispatcher: dispatcher, pausedCache: pausedCache}
+	return &PendingJobPoller{
+		cfg:         cfg,
+		pool:        pool,
+		dispatcher:  dispatcher,
+		pausedCache: pausedCache,
+		poolCodes:   NewPoolCodeResolver(pool, cfg.PausedCacheTTL),
+	}
 }
 
 // Run drives the poller until ctx is cancelled.
@@ -157,7 +167,8 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 	// racing the poll. A NULL scheduled_for (every freshly-created job) is
 	// always eligible.
 	rows, err := tx.Query(ctx,
-		`SELECT id, subscription_id, message_group, mode, attempt_count, target_url, created_at
+		`SELECT id, subscription_id, message_group, mode, dispatch_pool_id, client_id,
+		        attempt_count, target_url, created_at
 		   FROM msg_dispatch_jobs
 		  WHERE status = 'PENDING'
 		    AND (scheduled_for IS NULL OR scheduled_for <= NOW())
@@ -173,7 +184,10 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 		var c dispatchClaim
 		var msgGroup *string
 		var subID *string
-		if err := rows.Scan(&c.id, &subID, &msgGroup, &c.mode, &c.attempt, &c.target, &c.createdAt); err != nil {
+		var poolID *string
+		var clientID *string
+		if err := rows.Scan(&c.id, &subID, &msgGroup, &c.mode, &poolID, &clientID,
+			&c.attempt, &c.target, &c.createdAt); err != nil {
 			rows.Close()
 			return err
 		}
@@ -182,6 +196,12 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 		}
 		if msgGroup != nil {
 			c.group = *msgGroup
+		}
+		if poolID != nil {
+			c.poolID = *poolID
+		}
+		if clientID != nil {
+			c.clientID = *clientID
 		}
 		claims = append(claims, c)
 	}
@@ -243,6 +263,7 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 				MessageGroup: c.group,
 				TargetURL:    c.target,
 				Mode:         c.mode,
+				PoolCode:     p.poolCodes.Resolve(ctx, c.poolID, c.clientID),
 			})
 		}
 	}
@@ -278,12 +299,18 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 	return nil
 }
 
-// dispatchClaim is one PENDING row claimed by the poll query. group and
-// subID are "" when the column is NULL.
+// dispatchClaim is one PENDING row claimed by the poll query. group, subID,
+// poolID and clientID are "" when the column is NULL.
+//
+// poolID and clientID are the INPUTS to pool-code resolution, not the code
+// itself: msg_dispatch_jobs stores dispatch_pool_id, while the code lives on
+// msg_dispatch_pools and the client identifier on tnt_clients. They are
+// resolved through PoolCodeResolver rather than joined, so the claim's
+// FOR UPDATE SKIP LOCKED keeps locking msg_dispatch_jobs alone.
 type dispatchClaim struct {
-	id, subID, group, mode, target string
-	attempt                        int32
-	createdAt                      time.Time
+	id, subID, group, mode, poolID, clientID, target string
+	attempt                                          int32
+	createdAt                                        time.Time
 }
 
 // messageGroupKey maps a claim's message_group to its grouping key: jobs
@@ -385,14 +412,14 @@ type DispatchJobToken struct {
 	JobID        string
 	MessageGroup string
 	TargetURL    string
-	// NOTE: the pool is NOT carried yet, so every dispatch job still routes to
-	// the router's DEFAULT-POOL and per-pool concurrency isolation does not
-	// apply. msg_dispatch_jobs stores dispatch_pool_id (VARCHAR(17)), not a
-	// code — the code lives on msg_dispatch_pools — so propagating it needs an
-	// id→code resolution step, and codes need namespacing because
-	// msg_dispatch_pools is unique on (code, client_id) while the router keys
-	// pools by code alone.
+	// PoolCode is the RESOLVED, client-namespaced code (see PoolCodeResolver):
+	// {clientIdentifier}-{poolCode} for a client-owned pool, the bare code for a
+	// platform-level one, {clientIdentifier}-DEFAULT-POOL when the job has no
+	// pool, and DEFAULT-POOL when it has neither. Carrying it is what puts a
+	// subscription's configured concurrency and rate limit into force.
 	//
+	// Treat it as opaque — never split it back apart.
+	PoolCode string
 	// Mode is the job's raw dispatch mode. The router needs it to decide
 	// whether the message group is ordered: an absent mode parses to IMMEDIATE,
 	// which sends the message down the concurrent path and silently discards

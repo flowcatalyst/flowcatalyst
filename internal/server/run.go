@@ -361,7 +361,13 @@ func initQueueSchema(ctx context.Context, qc common.QueueConfig) error {
 func defaultPostgresRouterConfig(databaseURL string) common.RouterConfig {
 	return common.RouterConfig{
 		ProcessingPools: []common.PoolConfig{
-			{Code: "default", Concurrency: 4},
+			// Coded DEFAULT-POOL, not "default", so the configured pool IS the
+			// fallback pool. A pool coded "default" received no traffic at all:
+			// messages with no pool code fall back to DEFAULT-POOL, which the
+			// router auto-adds at concurrency 20 — so an operator setting
+			// concurrency 4 here silently got 20, and "default" sat idle with
+			// nothing able to route to it.
+			{Code: "DEFAULT-POOL", Concurrency: 4},
 		},
 		Queues: []common.QueueConfig{
 			{Name: "default", URI: postgresQueueURI(databaseURL), VisibilityTimeout: 30},

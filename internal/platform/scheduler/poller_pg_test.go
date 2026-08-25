@@ -50,6 +50,7 @@ func (failPublisher) Identifier() string { return "fail" }
 func (failPublisher) Publish(context.Context, common.Message) (string, error) {
 	return "", errors.New("publish boom")
 }
+
 func (failPublisher) PublishBatch(context.Context, []common.Message) ([]string, error) {
 	return nil, errors.New("batch publish boom")
 }

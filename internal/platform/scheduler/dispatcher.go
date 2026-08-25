@@ -85,10 +85,11 @@ func (d *MessageGroupDispatcher) buildMessage(tok DispatchJobToken) common.Messa
 		MediationType:   common.MediationTypeHTTP,
 		MediationTarget: d.processingEndpoint,
 		AuthToken:       &authToken,
-		// PoolCode is deliberately left unset — see DispatchJobToken. Every job
-		// therefore routes to the router's DEFAULT-POOL, which is the
-		// pre-existing behaviour, not a regression introduced here.
-		//
+		// PoolCode is the resolved, client-namespaced code. Setting it is what
+		// puts a subscription's configured pool — its concurrency AND its rate
+		// limit — into force; while it was empty every job landed in the
+		// router's global DEFAULT-POOL regardless of configuration.
+		PoolCode: tok.PoolCode,
 		// DispatchMode decides whether the router honours the message group.
 		// Omitting it made every job parse as IMMEDIATE, which takes the
 		// concurrent path and bypasses the per-group FIFO buffer — the ordering

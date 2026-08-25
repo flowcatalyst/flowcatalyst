@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -414,6 +415,27 @@ func (m *Manager) poolForMessage(msg common.QueuedMessage) *Pool {
 		if p, ok := m.pools[code]; ok {
 			return p
 		}
+		// A per-client fallback pool ({identifier}-DEFAULT-POOL) will not be in
+		// the config: nothing emits processingPools — the router polls an
+		// external config service — so these codes only ever arrive from the
+		// scheduler. Synthesise on demand with the same defaults as the global
+		// DEFAULT-POOL, exactly as Reconfigure auto-adds that one. Without this
+		// every such message would take the unknown-code path below: routed to
+		// the shared DEFAULT-POOL with a warning apiece, losing the per-client
+		// isolation the namespacing exists to create.
+		//
+		// Config always wins: this only runs on a miss, and Reconfigure
+		// overwrites synthesised pools with configured ones of the same code.
+		if isDefaultPoolCode(code) {
+			p := NewPool(
+				common.PoolConfig{Code: code, Concurrency: defaultPoolConcurrency},
+				m.mediator, m.tracker, m.resolveConsumer,
+			)
+			m.pools[code] = p
+			slog.Info("synthesised per-client fallback pool",
+				"pool_code", code, "concurrency", defaultPoolConcurrency)
+			return p
+		}
 		// Unknown pool code → DEFAULT-POOL, surfaced as a Routing warning.
 		slog.Warn("no pool found for pool_code; routing to DEFAULT-POOL",
 			"message_id", msg.Message.ID, "pool_code", code, "default_pool", defaultPoolCode)
@@ -423,6 +445,17 @@ func (m *Manager) poolForMessage(msg common.QueuedMessage) *Pool {
 		}
 	}
 	return m.pools[defaultPoolCode]
+}
+
+// isDefaultPoolCode reports whether code names a fallback pool — the global
+// DEFAULT-POOL or a per-client {identifier}-DEFAULT-POOL.
+//
+// A suffix test is the ONLY safe structural read of a composed pool code.
+// The scheduler composes {clientIdentifier}-{poolCode} and both halves may
+// contain hyphens, so the string can never be split back into its parts; the
+// suffix is unambiguous only because the literal is fixed.
+func isDefaultPoolCode(code string) bool {
+	return code == defaultPoolCode || strings.HasSuffix(code, "-"+defaultPoolCode)
 }
 
 // runConsumer is the per-consumer poll loop.
