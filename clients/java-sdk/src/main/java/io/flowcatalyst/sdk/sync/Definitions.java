@@ -395,8 +395,35 @@ public final class Definitions {
             this.applicationCode = applicationCode;
         }
 
+        /** Environment variable read by {@link #defineFromEnv()}. */
+        public static final String APP_CODE_ENV = "FLOWCATALYST_APP_CODE";
+
         /** Start building definitions for {@code applicationCode}. */
         public static DefinitionSet define(String applicationCode) {
+            return new DefinitionSet(applicationCode);
+        }
+
+        /**
+         * Start building definitions for the application named by
+         * {@code FLOWCATALYST_APP_CODE}, for apps that carry their code in the
+         * environment rather than in source.
+         *
+         * <p>A codebase that owns several applications should call
+         * {@link #define(String)} once per application and pass the sets to
+         * {@code definitions().syncAll(…)} — the set a definition belongs to
+         * <em>is</em> its application.
+         *
+         * @throws IllegalStateException if the variable is unset or blank; a
+         *     missing code would otherwise surface later as a request to
+         *     {@code /api/applications/null/…}
+         */
+        public static DefinitionSet defineFromEnv() {
+            String applicationCode = System.getenv(APP_CODE_ENV);
+            if (applicationCode == null || applicationCode.isBlank()) {
+                throw new IllegalStateException(
+                        APP_CODE_ENV + " is not set — pass the application code to define(…)"
+                                + " instead.");
+            }
             return new DefinitionSet(applicationCode);
         }
 

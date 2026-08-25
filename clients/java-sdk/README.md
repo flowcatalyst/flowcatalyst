@@ -102,6 +102,23 @@ var set = DefinitionScanner.scan("orders", List.of(OrderPlaced.class));
 client.definitions().sync(set);
 ```
 
+### The application code
+
+Pass it directly, or inherit it from `FLOWCATALYST_APP_CODE`:
+
+```java
+var set = Definitions.DefinitionSet.define("orders");   // explicit
+var set = Definitions.DefinitionSet.defineFromEnv();    // FLOWCATALYST_APP_CODE
+```
+
+`defineFromEnv()` throws `IllegalStateException` when the variable is unset or
+blank, rather than letting a missing code surface later as a request to
+`/api/applications/null/…`.
+
+There is no per-definition application override: the set a definition is built
+into *is* its application. For several applications, build one set each and
+pass them to `client.definitions().syncAll(sets, options)`.
+
 ## Webhook verification
 
 ```java

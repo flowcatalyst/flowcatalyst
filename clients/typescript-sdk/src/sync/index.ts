@@ -25,7 +25,9 @@
  */
 
 export {
+	APP_CODE_ENV,
 	defineApplication,
+	defineApplicationFromEnv,
 	DefinitionSetBuilder,
 	permission,
 	permissionToString,

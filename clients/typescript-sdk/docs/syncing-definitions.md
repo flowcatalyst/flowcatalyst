@@ -357,6 +357,19 @@ result.match(
 );
 ```
 
+### The application code
+
+Pass it directly, or inherit it from `FLOWCATALYST_APP_CODE`:
+
+```ts
+const set = sync.defineApplication("orders");        // explicit
+const set = sync.defineApplicationFromEnv();         // reads FLOWCATALYST_APP_CODE
+```
+
+`defineApplicationFromEnv` throws when the variable is unset or empty, rather than letting a missing code surface later as a request to `/api/applications/undefined/…`.
+
+There is no per-definition application override: the set a definition is built into *is* its application. For several applications, build one set each.
+
 ### Multiple applications
 
 ```ts

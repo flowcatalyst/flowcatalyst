@@ -162,7 +162,7 @@ export interface SubscriptionDefinition {
 	eventTypes: SubscriptionEventTypeBinding[];
 	/** Dispatch pool code; falls back to the platform default when omitted */
 	dispatchPoolCode?: string;
-	/** Delivery mode; default IMMEDIATE */
+	/** Delivery mode; default NEXT_ON_ERROR */
 	mode?: SubscriptionMode;
 	maxRetries?: number;
 	timeoutSeconds?: number;
@@ -417,5 +417,32 @@ export class DefinitionSetBuilder {
 
 /** Convenience: start building definitions for `applicationCode`. */
 export function defineApplication(applicationCode: string): DefinitionSetBuilder {
+	return new DefinitionSetBuilder(applicationCode);
+}
+
+/** Environment variable read by {@link defineApplicationFromEnv}. */
+export const APP_CODE_ENV = "FLOWCATALYST_APP_CODE";
+
+/**
+ * Start building definitions for the application named by
+ * `FLOWCATALYST_APP_CODE`, for apps that carry their code in the environment
+ * rather than in source.
+ *
+ * Throws when the variable is unset or empty — a missing application code
+ * would otherwise surface much later as a request to
+ * `/api/applications/undefined/…`.
+ *
+ * A codebase that owns several applications should call
+ * {@link defineApplication} once per application and pass the sets to
+ * `syncMany` — the set a definition belongs to *is* its application.
+ */
+export function defineApplicationFromEnv(): DefinitionSetBuilder {
+	const applicationCode =
+		typeof process !== "undefined" ? process.env?.[APP_CODE_ENV] : undefined;
+	if (!applicationCode) {
+		throw new Error(
+			`${APP_CODE_ENV} is not set — pass the application code to defineApplication() instead.`,
+		);
+	}
 	return new DefinitionSetBuilder(applicationCode);
 }
