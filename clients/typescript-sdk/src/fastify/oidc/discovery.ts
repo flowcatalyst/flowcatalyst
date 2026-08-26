@@ -26,6 +26,15 @@ export interface OidcEndpoints {
 	tokenEndpoint: string;
 	endSessionEndpoint?: string;
 	verify: (token: string) => Promise<JWTPayload>;
+	/**
+	 * Verify an ID token. Distinct from {@link verify} because the two have
+	 * different audiences: an access token is addressed to the platform API
+	 * (`expectedAudience`), while an ID token is addressed to the relying
+	 * party — OIDC Core §3.1.3.7 requires `aud` to contain the client_id.
+	 * Passing an ID token to `verify` would fail whenever `expectedAudience`
+	 * is configured, and would skip the client check when it is not.
+	 */
+	verifyIdToken: (token: string, clientId: string) => Promise<JWTPayload>;
 }
 
 interface Pending {
@@ -96,6 +105,13 @@ async function load(
 			const { payload } = await jwtVerify(token, jwks, {
 				issuer: doc.issuer,
 				...(expectedAudience ? { audience: expectedAudience } : {}),
+			});
+			return payload;
+		},
+		async verifyIdToken(token: string, clientId: string) {
+			const { payload } = await jwtVerify(token, jwks, {
+				issuer: doc.issuer,
+				audience: clientId,
 			});
 			return payload;
 		},
