@@ -107,17 +107,42 @@ CREATE INDEX IF NOT EXISTS idx_queue_visible
 -- malformed row stops its queue forever: the claim commits before the payload
 -- is parsed, so the failure leaves the row claimed, it becomes visible again,
 -- is re-claimed, and fails identically on every subsequent poll.
-CREATE TABLE IF NOT EXISTS queue_message_errors (
+--
+-- The name is shared with the other implementation of this queue on purpose.
+-- Two names would mean two places for an operator to look, and switching
+-- implementations either way would silently move where quarantined rows land —
+-- making everything written before the switch invisible to the tooling that
+-- runs after it. That is a migration hazard, not a naming preference.
+CREATE TABLE IF NOT EXISTS queue_messages_failed (
     id               TEXT NOT NULL,
     queue_name       TEXT NOT NULL,
     message_group_id TEXT,
     payload          TEXT NOT NULL,
-    error            TEXT NOT NULL,
+    error_message    TEXT NOT NULL,
     receive_count    INTEGER,
     created_at       BIGINT NOT NULL,
     failed_at        BIGINT NOT NULL,
     PRIMARY KEY (queue_name, id)
 );
+
+-- Carry over anything quarantined under the previous name, so an upgrade does
+-- not strand the rows an operator is most likely to be looking for. Cheap and
+-- self-limiting: the old table exists only where it was already created, and
+-- once drained it is dropped.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_name = 'queue_message_errors') THEN
+        INSERT INTO queue_messages_failed
+            (id, queue_name, message_group_id, payload, error_message,
+             receive_count, created_at, failed_at)
+        SELECT id, queue_name, message_group_id, payload, error,
+               receive_count, created_at, failed_at
+          FROM queue_message_errors
+        ON CONFLICT (queue_name, id) DO NOTHING;
+        DROP TABLE queue_message_errors;
+    END IF;
+END $$;
 `
 	_, err := q.pool.Exec(ctx, ddl)
 	return err
@@ -231,7 +256,7 @@ UPDATE queue_messages t
 				"queue", q.cfg.Name, "message_id", p.id, "err", err)
 			continue
 		}
-		slog.Warn("postgres queue: malformed message moved to queue_message_errors",
+		slog.Warn("postgres queue: malformed message moved to queue_messages_failed",
 			"queue", q.cfg.Name, "message_id", p.id, "reason", p.reason)
 	}
 
@@ -239,22 +264,40 @@ UPDATE queue_messages t
 	return msgs, nil
 }
 
+// maxQuarantineErrorLen bounds the stored failure text. A pathological payload
+// can produce an arbitrarily long parse error, and it would be stored verbatim
+// once per quarantined row.
+const maxQuarantineErrorLen = 1000
+
 // quarantine moves one unparseable row out of the queue and into
-// queue_message_errors in a single statement, so the row can never be both
-// places or neither. ON CONFLICT DO NOTHING covers a row quarantined twice
-// (the DELETE still applies, which is the part that matters).
+// queue_messages_failed in a single statement, so the row can never be both
+// places or neither.
+//
+// A repeat quarantine keeps the LATEST failure. A row that fails, is requeued
+// and fails again is almost always being worked on — someone changed the
+// payload, the schema, or the consumer — so the most recent failure is the one
+// that describes what is wrong now. Keeping the first pins the record to the
+// original attempt and discards every later diagnosis, which is backwards for
+// the case this table exists to serve.
 func (q *Queue) quarantine(ctx context.Context, id, payload, reason string, group *string, createdAt int64, receiveCount *int32) error {
+	if len(reason) > maxQuarantineErrorLen {
+		reason = reason[:maxQuarantineErrorLen]
+	}
 	_, err := q.pool.Exec(ctx, `
 WITH moved AS (
   DELETE FROM queue_messages
    WHERE queue_name = $1 AND id = $2
   RETURNING id, queue_name, message_group_id, payload, receive_count, created_at
 )
-INSERT INTO queue_message_errors
-    (id, queue_name, message_group_id, payload, error, receive_count, created_at, failed_at)
+INSERT INTO queue_messages_failed
+    (id, queue_name, message_group_id, payload, error_message, receive_count, created_at, failed_at)
 SELECT id, queue_name, message_group_id, payload, $3, receive_count, created_at, $4
   FROM moved
-ON CONFLICT (queue_name, id) DO NOTHING`,
+ON CONFLICT (queue_name, id) DO UPDATE SET
+    payload       = EXCLUDED.payload,
+    error_message = EXCLUDED.error_message,
+    receive_count = EXCLUDED.receive_count,
+    failed_at     = EXCLUDED.failed_at`,
 		q.cfg.Name, id, reason, time.Now().Unix())
 	return err
 }
@@ -292,15 +335,6 @@ func (q *Queue) Defer(ctx context.Context, receipt string, delaySeconds *uint32)
 	}
 	q.deferred.Add(1)
 	return nil
-}
-
-// ExtendVisibility prolongs the visibility window without releasing.
-func (q *Queue) ExtendVisibility(ctx context.Context, receipt string, seconds uint32) error {
-	newVisibleAt := time.Now().Unix() + int64(seconds)
-	_, err := q.pool.Exec(ctx,
-		`UPDATE queue_messages SET visible_at = $1 WHERE receipt_handle = $2 AND queue_name = $3`,
-		newVisibleAt, receipt, q.cfg.Name)
-	return err
 }
 
 // Publish writes a single message. Uses ON CONFLICT DO NOTHING so a

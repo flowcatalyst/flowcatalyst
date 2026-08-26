@@ -44,10 +44,27 @@ type Metrics struct {
 }
 
 // Consumer is the trait every queue backend implements for the consume side.
+//
+// There is deliberately no visibility-extension method. The router does not
+// hold a message's visibility open while it works: it lets the window lapse
+// and recognises the redelivery instead (the in-flight tracker adopts the
+// fresher receipt handle), which is the same path a crashed router relies on.
+// One mechanism, exercised constantly, beats two where the rare one rots — an
+// ExtendVisibility existed on all three backends for some time with no caller.
 type Consumer interface {
 	// Identifier returns a stable name for this consumer (typically the queue URL).
 	Identifier() string
 	// Poll fetches up to maxMessages messages.
+	//
+	// Every returned QueuedMessage.BrokerMessageID MUST be STABLE across
+	// redeliveries of the same message: the router's duplicate filter takes a
+	// changed broker id under a known app message id to mean a *different* copy
+	// — an external process requeued work the pipeline still owns — and ACKs
+	// (deletes) the arrival. A per-delivery id therefore makes the broker
+	// destroy its own copy on every redelivery, leaving the in-memory copy as
+	// the only one and turning at-least-once into at-most-once. Use the
+	// broker's per-message identity (SQS MessageId, the queue row id, the
+	// JetStream *stream* sequence), never a per-delivery counter.
 	Poll(ctx context.Context, maxMessages uint32) ([]common.QueuedMessage, error)
 	// Ack deletes the message from the queue. brokerMessageID is the broker's
 	// own id for the message (common.QueuedMessage.BrokerMessageID), passed
@@ -61,8 +78,6 @@ type Consumer interface {
 	// Defer marks the message visible again without counting as a failure.
 	// Use for backpressure / rate-limiting; default falls back to Nack.
 	Defer(ctx context.Context, receipt string, delaySeconds *uint32) error
-	// ExtendVisibility prolongs the visibility timeout for in-flight messages.
-	ExtendVisibility(ctx context.Context, receipt string, seconds uint32) error
 	// Healthy reports liveness.
 	Healthy() bool
 	// Stop signals the consumer to wind down.

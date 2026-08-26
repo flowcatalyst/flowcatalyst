@@ -6,6 +6,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
@@ -41,7 +42,7 @@ func insertRaw(t *testing.T, q *Queue, id, payload string) {
 // and failed identically forever — taking every other message claimed in the
 // same batch down with it on every attempt. One bad row stopped the queue.
 //
-// It must now be moved to queue_message_errors and the poll must succeed.
+// It must now be moved to queue_messages_failed and the poll must succeed.
 func TestPollQuarantinesMalformedRow(t *testing.T) {
 	ctx := context.Background()
 	q := newTestQueue(t, "poison-q")
@@ -62,7 +63,7 @@ func TestPollQuarantinesMalformedRow(t *testing.T) {
 	// …and recorded, with the payload and reason kept for diagnosis.
 	var payload, reason string
 	require.NoError(t, q.pool.QueryRow(ctx,
-		`SELECT payload, error FROM queue_message_errors WHERE queue_name = $1 AND id = $2`,
+		`SELECT payload, error_message FROM queue_messages_failed WHERE queue_name = $1 AND id = $2`,
 		q.cfg.Name, "bad-1").Scan(&payload, &reason))
 	require.Equal(t, "{ this is not json", payload)
 	require.NotEmpty(t, reason)
@@ -71,6 +72,44 @@ func TestPollQuarantinesMalformedRow(t *testing.T) {
 	msgs, err = q.Poll(ctx, 10)
 	require.NoError(t, err)
 	require.Empty(t, msgs)
+}
+
+// A row that fails, is requeued and fails again is almost always being worked
+// on — someone changed the payload, the schema, or the consumer. So the
+// quarantine record keeps the LATEST failure: the one that describes what is
+// wrong now. Keeping the first pinned the record to the original attempt and
+// discarded every later diagnosis.
+func TestRequarantineKeepsTheLatestFailure(t *testing.T) {
+	ctx := context.Background()
+	q := newTestQueue(t, "poison-requeue-q")
+
+	insertRaw(t, q, "bad-repeat", "{ first attempt")
+	_, err := q.Poll(ctx, 10)
+	require.NoError(t, err)
+
+	var payload, reason string
+	require.NoError(t, q.pool.QueryRow(ctx,
+		`SELECT payload, error_message FROM queue_messages_failed WHERE queue_name = $1 AND id = $2`,
+		q.cfg.Name, "bad-repeat").Scan(&payload, &reason))
+	require.Equal(t, "{ first attempt", payload)
+	firstReason := reason
+
+	// Same id requeued with a different bad payload — a second diagnosis.
+	insertRaw(t, q, "bad-repeat", `{"still": broken}`)
+	_, err = q.Poll(ctx, 10)
+	require.NoError(t, err)
+
+	require.NoError(t, q.pool.QueryRow(ctx,
+		`SELECT payload, error_message FROM queue_messages_failed WHERE queue_name = $1 AND id = $2`,
+		q.cfg.Name, "bad-repeat").Scan(&payload, &reason))
+	assert.Equal(t, `{"still": broken}`, payload, "the record must describe the LATEST attempt")
+	assert.NotEqual(t, firstReason, reason, "and carry the latest failure, not the first")
+
+	var rows int
+	require.NoError(t, q.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM queue_messages_failed WHERE queue_name = $1 AND id = $2`,
+		q.cfg.Name, "bad-repeat").Scan(&rows))
+	assert.Equal(t, 1, rows, "one row per quarantined message, updated in place")
 }
 
 // TestPollDeliversGoodMessagesAlongsideAPoisonRow: the batch must survive. The
@@ -103,7 +142,7 @@ func TestPollDeliversGoodMessagesAlongsideAPoisonRow(t *testing.T) {
 
 	var quarantined int
 	require.NoError(t, q.pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM queue_message_errors WHERE queue_name = $1`, q.cfg.Name).Scan(&quarantined))
+		`SELECT COUNT(*) FROM queue_messages_failed WHERE queue_name = $1`, q.cfg.Name).Scan(&quarantined))
 	require.Equal(t, 1, quarantined)
 }
 
@@ -145,6 +184,6 @@ func TestPollLeavesHealthyQueueUntouched(t *testing.T) {
 
 	var quarantined int
 	require.NoError(t, q.pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM queue_message_errors WHERE queue_name = $1`, q.cfg.Name).Scan(&quarantined))
+		`SELECT COUNT(*) FROM queue_messages_failed WHERE queue_name = $1`, q.cfg.Name).Scan(&quarantined))
 	require.Zero(t, quarantined)
 }

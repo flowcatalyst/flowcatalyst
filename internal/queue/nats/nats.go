@@ -267,19 +267,22 @@ func (q *Queue) Poll(ctx context.Context, max uint32) ([]common.QueuedMessage, e
 			_ = msg.Term()
 			continue
 		}
-		receipt := fmt.Sprintf("%s:%d", q.cfg.StreamName, meta.Sequence.Stream)
+		receipt := receiptFor(q.cfg.StreamName, meta.Sequence.Stream)
 		var m common.Message
 		if err := json.Unmarshal(msg.Data(), &m); err != nil {
 			_ = msg.Term() // malformed
 			continue
 		}
+		// A redelivery replaces the pending entry: same stream sequence, but
+		// only the newest jetstream.Msg can be acked (the older delivery's ack
+		// is stale), so the map must hold the newest.
 		q.pendingMu.Lock()
 		q.pending[receipt] = msg
 		q.pendingMu.Unlock()
 		out = append(out, common.QueuedMessage{
 			Message:         m,
 			ReceiptHandle:   receipt,
-			BrokerMessageID: fmt.Sprintf("%d:%d", meta.Sequence.Stream, meta.Sequence.Consumer),
+			BrokerMessageID: brokerIDFor(meta.Sequence.Stream),
 			QueueIdentifier: q.identifier,
 		})
 	}
@@ -339,20 +342,6 @@ func (q *Queue) nakWith(msg jetstream.Msg, delaySeconds *uint32) error {
 		return msg.NakWithDelay(time.Duration(*delaySeconds) * time.Second)
 	}
 	return msg.Nak()
-}
-
-// ExtendVisibility resets the ack-wait timer via InProgress.
-func (q *Queue) ExtendVisibility(_ context.Context, receipt string, _ uint32) error {
-	q.pendingMu.Lock()
-	msg, ok := q.pending[receipt]
-	q.pendingMu.Unlock()
-	if !ok {
-		return fmt.Errorf("nats: no pending message for receipt %q", receipt)
-	}
-	if err := msg.InProgress(); err != nil {
-		return fmt.Errorf("nats: in-progress: %w", err)
-	}
-	return nil
 }
 
 // Healthy reports whether the consumer is running and the underlying
@@ -429,6 +418,24 @@ func (q *Queue) PublishBatch(ctx context.Context, msgs []common.Message) ([]stri
 		out = append(out, id)
 	}
 	return out, nil
+}
+
+// receiptFor and brokerIDFor derive a message's two identities from its
+// STREAM sequence — the message's identity in the stream, which every
+// redelivery of it shares.
+//
+// Neither may involve the CONSUMER sequence, which counts deliveries and so
+// changes on every redelivery. Feeding that to the router's duplicate filter
+// made each redelivery look like a different copy of the message (an external
+// requeue), and the router ACK-deletes those — so JetStream destroyed its own
+// copy every time the ack-wait lapsed, leaving the in-memory copy alone and
+// silently losing the message if it was later released or flushed.
+func receiptFor(stream string, streamSeq uint64) string {
+	return stream + ":" + strconv.FormatUint(streamSeq, 10)
+}
+
+func brokerIDFor(streamSeq uint64) string {
+	return strconv.FormatUint(streamSeq, 10)
 }
 
 func (q *Queue) popPending(receipt string) jetstream.Msg {

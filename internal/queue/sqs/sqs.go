@@ -268,27 +268,6 @@ func (q *Queue) Defer(_ context.Context, _ string, _ *uint32) error {
 	return nil
 }
 
-// ExtendVisibility prolongs the visibility timeout for in-flight processing.
-func (q *Queue) ExtendVisibility(ctx context.Context, receipt string, seconds uint32) error {
-	return q.changeVisibility(ctx, receipt, &seconds)
-}
-
-func (q *Queue) changeVisibility(ctx context.Context, receipt string, delaySeconds *uint32) error {
-	v := int32(0)
-	if delaySeconds != nil {
-		v = int32(*delaySeconds)
-	}
-	_, err := q.client.ChangeMessageVisibility(ctx, &sqs.ChangeMessageVisibilityInput{
-		QueueUrl:          aws.String(q.queueURL),
-		ReceiptHandle:     aws.String(receipt),
-		VisibilityTimeout: v,
-	})
-	if err != nil {
-		return fmt.Errorf("sqs ChangeMessageVisibility: %w", err)
-	}
-	return nil
-}
-
 // Publish sends a single message via SendMessage.
 func (q *Queue) Publish(ctx context.Context, m common.Message) (string, error) {
 	body, err := json.Marshal(m)
