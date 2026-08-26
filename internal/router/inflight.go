@@ -191,7 +191,9 @@ func (t *InFlightTracker) Reap(maxAge time.Duration) (reaped int) {
 	for id, im := range t.byMessage {
 		// Never reap a message that is actively being retried in-pipeline —
 		// it is legitimately long-lived, not stuck, and dropping its entry
-		// would blind the redelivery dedup.
+		// would blind the redelivery dedup. This exemption is finite: the
+		// retry budget (maxInPipelineAttempts) ends in a release, which
+		// removes the entry.
 		if im.Attempts > 0 {
 			continue
 		}
@@ -279,16 +281,46 @@ func (d *StallDetector) Watch(ctx context.Context) {
 }
 
 func (d *StallDetector) tick(ctx context.Context) {
-	stalled := []common.InFlightMessage{}
+	// Two populations, and the distinction is about what may be DONE to them,
+	// not whether they are worth reporting:
+	//
+	//   stalled  — nothing is happening to them. Warn, and force-NACK if that
+	//              is enabled.
+	//   retrying — a worker owns them and is retrying in-pipeline. Warn, but
+	//              never force-NACK: yanking a message out from under a live
+	//              retry hands the broker a copy while this one is still
+	//              running, which is a double delivery.
+	//
+	// Retrying entries used to be skipped outright, which meant the one
+	// failure mode that can genuinely persist — an endpoint deferring every
+	// attempt — was the one nothing ever reported. The retry budget bounds it
+	// now (see maxInPipelineAttempts), but a message burning that budget for
+	// minutes is exactly what an operator wants to hear about.
+	var stalled, retrying []common.InFlightMessage
 	for _, im := range d.tracker.Snapshot() {
-		// Messages being retried in-pipeline (Attempts>0) are not stalled —
-		// they sit in-flight across backoff windows by design. Skip them so
-		// they neither warn nor get force-NACKed out from under the retry.
-		if im.Attempts > 0 {
+		if im.ElapsedSeconds() < int64(d.cfg.StallThresholdSeconds) {
 			continue
 		}
-		if im.ElapsedSeconds() >= int64(d.cfg.StallThresholdSeconds) {
-			stalled = append(stalled, im)
+		if im.Attempts > 0 {
+			retrying = append(retrying, im)
+			continue
+		}
+		stalled = append(stalled, im)
+	}
+	for i := range retrying {
+		im := retrying[i]
+		slog.Warn("message retrying in-pipeline past the stall threshold",
+			"message_id", im.MessageID, "attempts", im.Attempts,
+			"elapsed_s", im.ElapsedSeconds(), "pool", im.PoolCode)
+		if d.notifier != nil {
+			d.notifier.Add(Warning{
+				Category: WarningCategoryStall,
+				Severity: WarningWarning,
+				Message: "Message " + im.MessageID + " has been retrying in-pipeline for " +
+					utoa(uint64(im.ElapsedSeconds())) + "s (" + utoa(uint64(im.Attempts)) +
+					" attempts) in pool " + im.PoolCode,
+				Source: "StallDetector",
+			})
 		}
 	}
 	if len(stalled) == 0 {

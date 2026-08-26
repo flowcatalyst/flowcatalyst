@@ -241,8 +241,7 @@ func TestManagerRouteRedeliveryResumesParkedGroup(t *testing.T) {
 	m, _, pool := newRouteHarness(med, cons)
 
 	// Occupy the only concurrency slot so the drainer parks on the acquire.
-	sem := pool.loadSem()
-	sem <- struct{}{}
+	require.NoError(t, pool.sem.acquire(context.Background()))
 
 	ctx1, cancel1 := context.WithCancel(context.Background())
 	m.route(ctx1, []common.QueuedMessage{mkGrouped("m1", "b1", "rh-m1")}, cons)
@@ -251,7 +250,7 @@ func TestManagerRouteRedeliveryResumesParkedGroup(t *testing.T) {
 	cancel1() // the consumer restart
 	require.Eventually(t, func() bool { return groupIdleWithBuffered(pool, "g", 1) },
 		time.Second, 5*time.Millisecond, "cancelled drainer must park the group resumable")
-	<-sem
+	pool.sem.release()
 
 	// The broker redelivers m1 (same broker id) under the restarted consumer.
 	m.route(context.Background(), []common.QueuedMessage{mkGrouped("m1", "b1", "rh-m1-redelivered")}, cons)

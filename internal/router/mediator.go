@@ -184,7 +184,24 @@ func newClientBuilder(cfg MediatorConfig) ClientBuilder {
 				h2.StrictMaxConcurrentStreams = true
 			}
 		}
-		return &http.Client{Transport: transport, Timeout: cfg.Timeout}
+		return &http.Client{
+			Transport: transport,
+			Timeout:   cfg.Timeout,
+			// Never follow a redirect. Go's default follows up to ten, and for
+			// 301/302/303 it rewrites the POST to a GET and drops the body — so
+			// the redirect target would receive an empty GET, answer 2xx, and
+			// the router would record a delivery that never carried the
+			// message. 307/308 preserve the body but still deliver it to a URL
+			// nobody configured.
+			//
+			// ErrUseLastResponse hands the 3xx back as the final response,
+			// where mediateOnce classifies it as a permanent configuration
+			// error: the target is telling us its address is wrong, and only
+			// someone changing the subscription can fix that.
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
 	}
 }
 
@@ -229,6 +246,12 @@ func (m *HTTPMediator) Mediate(ctx context.Context, msg *common.Message) common.
 		return common.CircuitOpen(int(cb.ResetTimeout().Seconds()))
 	}
 	outcome := m.deliverWithRetry(ctx, msg)
+	if outcome.PreFlight {
+		// Rejected before anything went out. A call that was never made says
+		// nothing about the target either way, and feeding it in as a success
+		// would hold the breaker closed over a host that is down.
+		return outcome
+	}
 	switch outcome.Result {
 	case common.MediationSuccess, common.MediationErrorConfig:
 		// 4xx is reachable → record a SUCCESS: a config error must not trip the
@@ -286,17 +309,27 @@ func (m *HTTPMediator) deliverWithRetry(ctx context.Context, msg *common.Message
 
 func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) common.MediationOutcome {
 	if msg.MediationType != common.MediationTypeHTTP {
-		return common.ErrorConfig(0, fmt.Sprintf("Unsupported mediation type: %s", msg.MediationType))
+		// ACK-drops every message routed through it, and it is a configuration
+		// mistake an operator can fix — so it warns, like the named 4xx codes.
+		// Silence here is worse than for a 404: nothing was even attempted.
+		reason := fmt.Sprintf("Unsupported mediation type: %s", msg.MediationType)
+		m.warnConfig(WarningError, reason, msg)
+		return common.PreFlightError(reason)
 	}
 
 	payload, err := json.Marshal(mediationPayload{MessageID: msg.ID})
 	if err != nil {
-		return common.ErrorConfig(0, fmt.Sprintf("payload marshal: %v", err))
+		return common.PreFlightError(fmt.Sprintf("payload marshal: %v", err))
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, msg.MediationTarget, bytes.NewReader(payload))
 	if err != nil {
-		return common.ErrorConnection(fmt.Sprintf("build request: %v", err))
+		// Nothing was sent, so the breaker learns nothing here either — the
+		// classification stays a connection error, but it must not be counted
+		// as a failure against a target we never contacted.
+		out := common.ErrorConnection(fmt.Sprintf("build request: %v", err))
+		out.PreFlight = true
+		return out
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
@@ -312,7 +345,12 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 
 	host, err := HostKeyFromURL(msg.MediationTarget)
 	if err != nil {
-		return common.ErrorConfig(0, fmt.Sprintf("invalid mediation target URL: %v", err))
+		// Same class as an unsupported mediation type: every message routed
+		// here is ACK-dropped, and the cause is a configuration mistake an
+		// operator can fix. It must not pass silently.
+		reason := fmt.Sprintf("invalid mediation target URL: %v", err)
+		m.warnConfig(WarningError, reason, msg)
+		return common.PreFlightError(reason)
 	}
 	guard := m.pools.Acquire(host)
 	defer guard.Release()
@@ -357,7 +395,7 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 				// target wants this message's whole group suppressed.
 				// delaySeconds (when present) sets the suppression window.
 				if r.FlushGroup != nil && *r.FlushGroup {
-					out := common.Success()
+					out := common.Success(status)
 					out.FlushGroup = true
 					if r.DelaySeconds != nil {
 						out.DelaySeconds = int(*r.DelaySeconds)
@@ -366,7 +404,20 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 				}
 			}
 		}
-		return common.Success()
+		return common.Success(status)
+
+	case status >= 300 && status < 400:
+		// A redirect the client did not follow. Permanent, not retryable: the
+		// target will answer identically every time, so the previous fall-through
+		// to the retryable default arm meant retrying a 301 for ever — and
+		// reporting status 0 while doing it.
+		//
+		// NOT fixed by following redirects instead: 301/302/303 downgrade POST
+		// to GET and drop the body, so the target would receive nothing and the
+		// router would record a success.
+		reason := fmt.Sprintf("HTTP %d: redirect not followed — target misconfigured", status)
+		m.warnConfig(WarningError, reason, msg)
+		return common.ErrorConfig(status, reason)
 
 	case status == 400:
 		m.warnConfig(WarningError, "HTTP 400: Bad request", msg)
@@ -401,8 +452,13 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 		return common.ErrorConfig(status, "HTTP 501: Not implemented")
 
 	case status >= 400 && status < 500:
-		slog.Warn("client error from target", "message_id", msg.ID, "status", status)
-		return common.ErrorConfig(status, fmt.Sprintf("HTTP %d: Client error", status))
+		// Every 4xx is a permanent ACK-drop, so every 4xx must warn — the
+		// warning is the deleted message's only trace. Naming 400/401/403/404
+		// individually and leaving the rest to a log line meant an operator
+		// heard about a 404 and not about a 422, for identical consequences.
+		reason := fmt.Sprintf("HTTP %d: Client error", status)
+		m.warnConfig(WarningError, reason, msg)
+		return common.ErrorConfig(status, reason)
 
 	case status >= 500:
 		slog.Warn("server error from target", "message_id", msg.ID, "status", status, "target", msg.MediationTarget)

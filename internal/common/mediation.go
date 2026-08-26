@@ -41,17 +41,44 @@ type MediationOutcome struct {
 	// Honoured only alongside a successful delivery — a target that wants
 	// the message back cannot also discard the group.
 	FlushGroup bool
+
+	// PreFlight marks an outcome decided BEFORE any request went out — an
+	// unsupported mediation type, an unusable target URL, a payload that would
+	// not marshal. Such an outcome is no evidence about the target's health in
+	// either direction, so the circuit breaker must ignore it. Recording one as
+	// a success actively masks a failing endpoint: a misconfigured URL would
+	// hold the breaker closed on a host that is down.
+	//
+	// Set only by PreFlightError, so it cannot be forgotten at a call site.
+	PreFlight bool
 }
 
-// Success builds a 200 outcome.
-func Success() MediationOutcome {
-	return MediationOutcome{Result: MediationSuccess, StatusCode: 200}
+// Success builds a successful outcome carrying the status the target actually
+// returned.
+//
+// The status is a parameter rather than a hard-coded 200 because it used to be
+// hard-coded, and every success — 201, 202, 204 — was recorded as 200. The
+// error and ack=false paths beside it copied the real status all along, so the
+// logs were confidently wrong about exactly one class of response. Taking it as
+// an argument means the compiler asks the question at each new call site; the
+// flushGroup branch was added later and silently inherited the wrong answer.
+func Success(status int) MediationOutcome {
+	return MediationOutcome{Result: MediationSuccess, StatusCode: status}
 }
 
 // ErrorConfig builds a 4xx outcome.
 func ErrorConfig(status int, msg string) MediationOutcome {
 	return MediationOutcome{
 		Result: MediationErrorConfig, StatusCode: status, ErrorMessage: msg,
+	}
+}
+
+// PreFlightError builds a permanent rejection for a message that never reached
+// the network. It is an ErrorConfig — the message is unusable as it stands and
+// retrying it unchanged cannot help — flagged so the breaker stays out of it.
+func PreFlightError(msg string) MediationOutcome {
+	return MediationOutcome{
+		Result: MediationErrorConfig, ErrorMessage: msg, PreFlight: true,
 	}
 }
 

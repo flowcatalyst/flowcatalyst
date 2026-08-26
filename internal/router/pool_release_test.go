@@ -106,7 +106,14 @@ func TestPoolDiscardsOn500AndContinuesUnderNextOnError(t *testing.T) {
 // TestPoolDiscardsOn500AndStopsUnderBlockOnError — the other half, and the ONLY
 // place the two ordered modes diverge. BLOCK_ON_ERROR means "a failed job blocks
 // the group until resolved", so the successors must NOT be delivered past the
-// failure: they go back to the broker to redeliver once it is resolved.
+// failure. They are ACKED off the queue, never attempted.
+//
+// Releasing them instead — which this test used to require — did the opposite of
+// what it looked like: the broker redelivers on its own timer, unconnected to
+// the failure being resolved, and with the head already ACKed away the first
+// sibling becomes the new head and is delivered. The messages survive as
+// dispatch-job rows in the platform store, which is the system of record; the
+// queue copy is a delivery attempt, not the data.
 //
 // Both modes share the same FIFO buffer and the same ordering guarantee; they
 // differ only in what a terminal failure does to the rest of the group.
@@ -124,8 +131,8 @@ func TestPoolDiscardsOn500AndStopsUnderBlockOnError(t *testing.T) {
 	assert.Eventually(t, func() bool {
 		cons.mu.Lock()
 		defer cons.mu.Unlock()
-		return len(cons.acked) == 1 && len(cons.nacked) == 2
-	}, 3*time.Second, 10*time.Millisecond, "head ACKed away, successors released")
+		return len(cons.acked) == 3
+	}, 3*time.Second, 10*time.Millisecond, "head and its untried successors all settled")
 
 	cons.mu.Lock()
 	nacked := append([]string(nil), cons.nacked...)
@@ -133,9 +140,10 @@ func TestPoolDiscardsOn500AndStopsUnderBlockOnError(t *testing.T) {
 	seen := append([]string(nil), med.seen...)
 	cons.mu.Unlock()
 
-	assert.Equal(t, []string{"m1"}, acked, "the failed head is still ACKed away")
-	assert.ElementsMatch(t, []string{"m2", "m3"}, nacked,
-		"successors go back to the broker rather than being delivered past the failure")
+	assert.ElementsMatch(t, []string{"m1", "m2", "m3"}, acked,
+		"the failed head and its untried successors are ACKed off the queue")
+	assert.Empty(t, nacked,
+		"nothing goes back to the broker: a redelivery would deliver past the failure")
 	assert.Equal(t, []string{"m1"}, seen,
 		"BLOCK_ON_ERROR must not attempt the successors at all")
 }

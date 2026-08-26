@@ -1,6 +1,8 @@
 package router
 
 import (
+	"net/http"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,7 +13,7 @@ import (
 
 func defaultPoolManager(t *testing.T) *Manager {
 	t.Helper()
-	med := &grMediator{outcome: common.Success()}
+	med := &grMediator{outcome: common.Success(http.StatusOK)}
 	m := NewManager(med, NewInFlightTracker())
 	m.pools[defaultPoolCode] = NewPool(
 		common.PoolConfig{Code: defaultPoolCode, Concurrency: defaultPoolConcurrency},
@@ -54,6 +56,32 @@ func TestSynthesisedPoolIsReusedNotRebuilt(t *testing.T) {
 	assert.Same(t, first, second, "the synthesised pool must be registered and reused")
 }
 
+// TestConcurrentSynthesisYieldsOnePool: routing resolves pools under a read
+// lock, so synthesis is the one write on that path and has to be
+// double-checked. Two messages for a new client arriving together must not end
+// up in two pools, each with its own concurrency cap — under -race this also
+// fails outright on a concurrent map write.
+func TestConcurrentSynthesisYieldsOnePool(t *testing.T) {
+	m := defaultPoolManager(t)
+
+	const routers = 16
+	pools := make([]*Pool, routers)
+	var wg sync.WaitGroup
+	for i := 0; i < routers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			pools[i] = m.poolForMessage(msgForPool("acme-DEFAULT-POOL"))
+		}(i)
+	}
+	wg.Wait()
+
+	for i, p := range pools {
+		require.NotNil(t, p)
+		assert.Samef(t, pools[0], p, "router %d got a different pool", i)
+	}
+}
+
 // TestTwoClientsGetSeparateFallbackPools — the isolation this delivers.
 func TestTwoClientsGetSeparateFallbackPools(t *testing.T) {
 	m := defaultPoolManager(t)
@@ -76,7 +104,7 @@ func TestConfigSuppliedFallbackPoolWins(t *testing.T) {
 	p := m.poolForMessage(msgForPool("acme-DEFAULT-POOL"))
 
 	assert.Same(t, configured, p, "a configured pool must not be replaced by a synthesised one")
-	assert.Equal(t, uint32(3), p.concurrency.Load(), "its configured concurrency must survive")
+	assert.Equal(t, uint32(3), p.Concurrency(), "its configured concurrency must survive")
 }
 
 // TestUnknownNonDefaultCodeStillFallsBack: synthesis is limited to fallback

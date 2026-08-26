@@ -213,7 +213,7 @@ func (s *Server) Run(ctx context.Context) error {
 		if err := s.election.Start(ctx); err != nil {
 			return err
 		}
-		go gateOnLeadership(ctx, s.election, s.Manager, s.Traffic, startPools)
+		go gateOnLeadership(ctx, s.election, s.Manager, s.Traffic, s.Tracker, s.Cfg.DrainTimeout, startPools)
 	} else {
 		startPools(ctx)
 		// Non-standby mode: still register with the ALB if traffic
@@ -228,6 +228,27 @@ func (s *Server) Run(ctx context.Context) error {
 	slog.Info("router shutdown initiated",
 		"in_flight", s.Tracker.Count(), "drain_timeout", s.Cfg.DrainTimeout)
 
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
+
+	// Order matters, and each step earns its place:
+	//
+	//  1. Deregister from the load balancer FIRST, so no new HTTP traffic
+	//     arrives while we drain. (This used to run after the drain, despite
+	//     the comment claiming otherwise.)
+	//  2. Stop polling — intake ends, but messages already routed keep their
+	//     context and run to completion. Cancelling the consumers here instead
+	//     would abort the in-flight deliveries the drain is about to wait for.
+	//  3. Drain, bounded by DrainTimeout, on a context of its own so the
+	//     already-cancelled run context can't cut it short.
+	//  4. Only then tear down: the lifecycle loops, the manager (which cancels
+	//     what is left and flushes buffered messages back to the broker), and
+	//     the election.
+	if err := s.Traffic.Deregister(shutdownCtx); err != nil {
+		slog.Warn("traffic deregister on shutdown failed", "err", err)
+	}
+	s.Manager.StopPolling()
+
 	drainCtx, drainCancel := context.WithTimeout(context.Background(), s.Cfg.DrainTimeout)
 	defer drainCancel()
 	if err := drain(drainCtx, s.Tracker); err != nil {
@@ -235,13 +256,6 @@ func (s *Server) Run(ctx context.Context) error {
 			"err", err, "remaining_in_flight", s.Tracker.Count())
 	}
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer shutdownCancel()
-	// Deregister early in shutdown so the ALB stops routing new traffic
-	// before the drain finishes.
-	if err := s.Traffic.Deregister(shutdownCtx); err != nil {
-		slog.Warn("traffic deregister on shutdown failed", "err", err)
-	}
 	if err := s.Lifecycle.Shutdown(shutdownCtx); err != nil {
 		slog.Warn("router lifecycle shutdown error", "err", err)
 	}
@@ -303,7 +317,7 @@ func pickMediator(devMode bool, breakers *BreakerRegistry) Mediator {
 // per-leadership context so pools wind down. Also drives the traffic
 // strategy: register on leader-gain, deregister on leader-loss so an
 // ALB stops routing requests to standing-by replicas.
-func gateOnLeadership(ctx context.Context, election *standby.Election, manager *Manager, traffic *TrafficStrategy, startPools func(context.Context)) {
+func gateOnLeadership(ctx context.Context, election *standby.Election, manager *Manager, traffic *TrafficStrategy, tracker *InFlightTracker, drainTimeout time.Duration, startPools func(context.Context)) {
 	sub := election.Subscribe()
 	var poolCtx context.Context
 	var poolCancel context.CancelFunc
@@ -322,16 +336,24 @@ func gateOnLeadership(ctx context.Context, election *standby.Election, manager *
 			return
 		}
 		if poolCancel != nil {
-			poolCancel()
+			poolCancel() // stops the config watcher; consumers live under the manager
 			poolCtx, poolCancel = nil, nil
-			// Deregister BEFORE draining so the ALB stops routing new
-			// requests; in-flight work then finishes naturally.
-			drainCtx, drainCancel := context.WithTimeout(ctx, 30*time.Second)
-			defer drainCancel()
-			if err := traffic.Deregister(drainCtx); err != nil {
+			// Same sequence as process shutdown, and for the same reasons:
+			// deregister, stop intake, let in-flight work finish, then tear
+			// down. Losing leadership is not a reason to drop deliveries that
+			// are already half-done.
+			shutCtx, shutCancel := context.WithTimeout(ctx, 30*time.Second)
+			defer shutCancel()
+			if err := traffic.Deregister(shutCtx); err != nil {
 				slog.Warn("traffic deregister on leader-loss failed", "err", err)
 			}
-			_ = manager.Shutdown(drainCtx)
+			manager.StopPolling()
+			drainCtx, drainCancel := context.WithTimeout(context.Background(), drainTimeout)
+			if err := drain(drainCtx, tracker); err != nil {
+				slog.Warn("leadership-loss drain incomplete", "err", err)
+			}
+			drainCancel()
+			_ = manager.Shutdown(shutCtx)
 			slog.Info("router lost leadership; pools drained")
 		}
 	}

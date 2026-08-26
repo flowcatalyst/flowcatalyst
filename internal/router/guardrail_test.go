@@ -52,9 +52,6 @@ func (c *grConsumer) Defer(ctx context.Context, receipt string, delay *uint32) e
 	return nil
 }
 
-func (c *grConsumer) ExtendVisibility(ctx context.Context, receipt string, sec uint32) error {
-	return nil
-}
 func (c *grConsumer) Healthy() bool                                       { return true }
 func (c *grConsumer) Stop()                                               {}
 func (c *grConsumer) Metrics(ctx context.Context) (*queue.Metrics, error) { return nil, nil }
@@ -116,7 +113,7 @@ func grWaitFor(t *testing.T, cond func() bool, timeout time.Duration) {
 
 func TestGuardrail_ResolutionOnSuccess(t *testing.T) {
 	c := &grConsumer{id: "q1"}
-	p := grPool(&grMediator{outcome: common.Success()}, c)
+	p := grPool(&grMediator{outcome: common.Success(http.StatusOK)}, c)
 	res, _ := p.processOne(context.Background(), grMsg("evt_ok", "http://t/ok"))
 	if res != processDone || c.acks.Load() != 1 || c.nacks.Load() != 0 || c.defers.Load() != 0 {
 		t.Fatalf("success must ACK exactly once and report processDone; got res=%d acks=%d nacks=%d defers=%d",
@@ -266,14 +263,14 @@ func TestGuardrail_RetryOnPanic(t *testing.T) {
 
 // Hammer submit() from many goroutines across both dispatch paths (IMMEDIATE
 // goroutine-per-message + ordered per-group drainers) and overlapping groups.
-// Exercises groupQs (p.mu), the swappable semaphore and the atomic counters
+// Exercises groupQs (p.mu), the concurrency semaphore and the mediating set
 // concurrently. Under -race, any future edit that drops a lock fails here (or
 // panics on concurrent map write). All messages succeed here, so the invariant
 // is: every submitted message is ACKed exactly once (no loss, no double-ack).
 func TestGuardrail_ConcurrentSubmitNoRaceAndResolvesEach(t *testing.T) {
 	const n = 600
 	c := &grConsumer{id: "q1"}
-	p := grPool(&grMediator{outcome: common.Success()}, c)
+	p := grPool(&grMediator{outcome: common.Success(http.StatusOK)}, c)
 	ctx := context.Background()
 
 	var wg sync.WaitGroup

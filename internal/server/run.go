@@ -326,6 +326,9 @@ func newRouterServer(cfg EnvCfg, pool *pgxpool.Pool) (*router.Server, error) {
 			}
 		}
 
+		// bootCtx bounds the queue connect only — the Manager parents its
+		// consumers on its own root, so they outlive this bootstrap context
+		// rather than dying with it.
 		if err := srv.Manager.Reconfigure(bootCtx, def); err != nil {
 			return nil, fmt.Errorf("default broker reconfigure: %w", err)
 		}

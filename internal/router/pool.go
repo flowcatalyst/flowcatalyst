@@ -36,32 +36,39 @@ type Pool struct {
 	// between routing and processing; the action is skipped (logged).
 	resolveConsumer func(queueID string) queue.Consumer
 
-	// sem is the pool-wide concurrency semaphore. Buffered chan: a send
-	// is an acquire (blocks when full); the matching receive is a
-	// release. UpdateConcurrency swaps the chan atomically; workers
-	// snapshot the chan locally before acquire so the matching release
-	// goes back to the same chan they acquired from. During a resize,
-	// in-flight workers continue against the old chan (effective
-	// concurrency = old_in_flight + new_cap) and the old chan is GC'd
-	// once those workers finish.
-	sem         atomic.Value // chan struct{}
-	concurrency atomic.Uint32
+	// sem caps concurrent deliveries pool-wide, across both dispatch paths.
+	// It also owns the concurrency figure itself (sem.capacity()).
+	sem *semaphore
 
 	mu      sync.Mutex
 	groupQs map[string]*groupQueue // ordered FIFO queues per message-group
 
-	queueSize     atomic.Uint32 // pending in groupQs (pre-dispatch)
-	activeWorkers atomic.Uint32 // currently inside processOne
+	// Two populations describe a pool's own work, and each has exactly one
+	// owner here so nothing has to be kept in step by hand:
+	//
+	//   queueSize — accepted but not yet being delivered: buffered in groupQs,
+	//     or an IMMEDIATE message waiting on a slot, or a retry sitting out its
+	//     backoff. Drives capacity backpressure. A counter rather than a sum
+	//     over groupQs because the IMMEDIATE path never buffers.
+	//   mediating — inside processOne right now. ActiveWorkers is its size, so
+	//     there is no second counter to disagree with it.
+	//
+	// The third view, the InFlightTracker, is deliberately not a pool concern:
+	// it is process-wide (shared by every pool), tracks pipeline OWNERSHIP for
+	// dedup/stall/drain rather than "being worked on", and is reaped. A message
+	// is tracked from route time until it leaves the pipeline, which spans both
+	// populations above and the gaps between them.
+	queueSize atomic.Uint32
 
-	// mediating is the live set of messages currently inside processOne — the
-	// authoritative "what is being mediated right now" view. It is maintained
-	// at the SAME boundary as activeWorkers (enter/exit of processOne), so its
-	// size always equals activeWorkers, and — unlike the InFlightTracker — it
-	// is never reaped, so a long-running delivery stays visible for its whole
-	// duration. Keyed by message id (a message is in at most one worker at a
-	// time: FIFO within a group, one worker per message in IMMEDIATE mode).
+	// mediating is keyed per WORKER, not per message: the process-time dedup
+	// backstop means two copies of one message id can briefly sit in two
+	// workers, and keying by id would then under-report the count and let the
+	// loser's exit delete the owner's entry. Unlike the InFlightTracker it is
+	// never reaped, so a long-running delivery stays visible for its whole
+	// duration.
 	mediatingMu sync.Mutex
-	mediating   map[string]MediatingEntry
+	mediating   map[uint64]MediatingEntry
+	workerSeq   atomic.Uint64
 
 	stopped atomic.Bool
 }
@@ -122,7 +129,7 @@ func NewPool(cfg common.PoolConfig, mediator Mediator, tracker *InFlightTracker,
 			concurrency = 1
 		}
 	}
-	p := &Pool{
+	return &Pool{
 		cfg:             cfg,
 		mediator:        mediator,
 		limiter:         NewRateLimiter(rate),
@@ -130,19 +137,15 @@ func NewPool(cfg common.PoolConfig, mediator Mediator, tracker *InFlightTracker,
 		metrics:         NewPoolMetricsCollector(),
 		flushes:         NewGroupFlushRegistry(),
 		resolveConsumer: resolveConsumer,
+		sem:             newSemaphore(concurrency),
 		groupQs:         make(map[string]*groupQueue),
-		mediating:       make(map[string]MediatingEntry),
+		mediating:       make(map[uint64]MediatingEntry),
 	}
-	p.sem.Store(make(chan struct{}, concurrency))
-	p.concurrency.Store(concurrency)
-	return p
 }
 
-// loadSem returns the current concurrency channel. Callers should
-// snapshot it locally before an acquire so that the matching release
-// receives from the same channel even if UpdateConcurrency swaps it
-// mid-flight.
-func (p *Pool) loadSem() chan struct{} { return p.sem.Load().(chan struct{}) }
+// queueDec drops the pre-dispatch count by one. (atomic.Uint32 has no Sub;
+// adding ^0 is the two's-complement decrement.)
+func (p *Pool) queueDec() { p.queueSize.Add(^uint32(0)) }
 
 // consumerFor resolves the source consumer for a message via its origin
 // queue (QueueIdentifier); nil when that queue was deregistered between
@@ -222,21 +225,18 @@ func (p *Pool) UpdateRateLimit(perMinute *uint32) {
 	p.limiter.SetRate(v)
 }
 
-// UpdateConcurrency swaps the semaphore to a new capacity. Returns false
-// on n==0 (invalid). Existing in-flight workers continue to release into
-// the old channel, which is GC'd once empty; new work uses the new
-// channel. Effective concurrency during the transition is bounded by
-// old_in_flight + new_cap; steady state is new_cap.
+// UpdateConcurrency re-caps the semaphore. Returns false on n==0 (invalid).
+// A shrink applies to admission only — deliveries already running are never
+// interrupted, so the pool converges on the new cap as they finish.
 func (p *Pool) UpdateConcurrency(n uint32) bool {
 	if n == 0 {
 		return false
 	}
-	old := p.concurrency.Load()
+	old := p.sem.capacity()
 	if n == old {
 		return true
 	}
-	p.sem.Store(make(chan struct{}, n))
-	p.concurrency.Store(n)
+	p.sem.setLimit(n)
 	slog.Info("pool concurrency updated", "pool", p.cfg.Code, "from", old, "to", n)
 	return true
 }
@@ -261,25 +261,33 @@ func (p *Pool) submit(ctx context.Context, m common.QueuedMessage) {
 	}
 	// Capacity backpressure: NACK (delay 10) when the pre-dispatch buffer is
 	// already at capacity = max(concurrency*20, 50).
-	capacity := p.concurrency.Load() * queueCapacityMultiplier
-	if capacity < minQueueCapacity {
-		capacity = minQueueCapacity
-	}
-	if p.queueSize.Load() >= capacity {
+	if p.queueSize.Load() >= p.queueCapacity() {
 		p.nackMsg(ctx, m, ptrU32(10), "pool at capacity")
 		return
 	}
 
-	if !m.Message.DispatchMode.RequiresOrdering() {
-		// IMMEDIATE: no ordering — dispatch concurrently. queueSize is
-		// incremented here and decremented once the worker holds a semaphore
-		// slot, so the "queued (pre-dispatch)" gauge mirrors the ordered path.
+	group := m.Message.GroupID()
+	if !m.Message.DispatchMode.RequiresOrdering() || group == "" {
+		// No ordering to keep — either the mode says so, or the message names
+		// no group, which is the same thing: ordering is only ever defined
+		// RELATIVE TO A GROUP. Dispatch concurrently.
+		//
+		// The group check is not a nicety. Ungrouped messages all share the
+		// group key "", so treating them as ordered would file every one of
+		// them into a single buffer behind a single drainer — the whole pool
+		// reduced to one message at a time, however high its concurrency. That
+		// is the shape of the trap that comes with an ordered default mode:
+		// most producers set no message group, and they must not be silently
+		// serialised into one queue for asking for nothing.
+		//
+		// queueSize is incremented here and decremented once the worker holds a
+		// semaphore slot, so the "queued (pre-dispatch)" gauge mirrors the
+		// ordered path.
 		p.queueSize.Add(1)
 		go p.runImmediate(ctx, m)
 		return
 	}
 
-	group := m.Message.GroupID()
 	if !p.enqueue(group, m) {
 		// Raced with Stop: the buffer is flushed and nothing will drain it.
 		p.nackMsg(ctx, m, ptrU32(10), "pool stopped")
@@ -294,28 +302,27 @@ func (p *Pool) submit(ctx context.Context, m common.QueuedMessage) {
 // backoff (one chained goroutine per failing message — sequential, not a leak),
 // keeping it in-pipeline rather than releasing it to the broker.
 func (p *Pool) runImmediate(ctx context.Context, m common.QueuedMessage) {
-	sem := p.loadSem()
-	select {
-	case <-ctx.Done():
+	if err := p.sem.acquire(ctx); err != nil {
 		// Shutdown before we could start. nackMsg releases the route-time
 		// tracker entry so the broker's redelivery (NACK is a no-op on SQS;
 		// the message reappears after the visibility timeout) re-enters the
 		// pipeline as a fresh copy instead of being dropped as a duplicate.
-		p.queueSize.Add(^uint32(0))
+		p.queueDec()
 		p.nackMsg(ctx, m, ptrU32(10), "shutdown before dispatch")
 		return
-	case sem <- struct{}{}:
 	}
-	p.queueSize.Add(^uint32(0)) // now active, not queued
+	p.queueDec() // now active, not queued
 	result, retryAfter := func() (processResult, time.Duration) {
-		defer func() { <-sem }() // release on every exit path (acquired above)
+		defer p.sem.release() // release on every exit path (acquired above)
 		return p.processOne(ctx, m)
 	}()
 	if result == processRelease {
-		// Target unreachable. IMMEDIATE mode has no group buffer, so there is
-		// nothing behind this message to release with it — hand just this one
-		// back and let the broker redeliver.
-		p.nackMsg(ctx, m, nil, "target unreachable")
+		// Target unreachable, or the in-pipeline retry budget is spent.
+		// IMMEDIATE mode has no group buffer, so there is nothing behind this
+		// message to release with it — hand just this one back and let the
+		// broker redeliver. retryAfter is non-zero only in the budget case,
+		// where it becomes the redelivery delay.
+		p.nackMsg(ctx, m, nackDelay(retryAfter), "released to broker")
 		return
 	}
 	if result != processRetry {
@@ -334,7 +341,7 @@ func (p *Pool) runImmediate(ctx context.Context, m common.QueuedMessage) {
 			// its tracker entry — otherwise every future redelivery would be
 			// dropped as a duplicate of a copy that no longer exists, and the
 			// message would cycle on the broker untouchable until retention.
-			p.queueSize.Add(^uint32(0))
+			p.queueDec()
 			if p.tracker != nil {
 				p.tracker.Remove(m.Message.ID, m.BrokerMessageID)
 			}
@@ -363,7 +370,7 @@ func (p *Pool) Stop() {
 	p.groupQs = make(map[string]*groupQueue)
 	p.mu.Unlock()
 	for i := range flushed {
-		p.queueSize.Add(^uint32(0))
+		p.queueDec()
 		if p.tracker != nil {
 			p.tracker.Remove(flushed[i].Message.ID, flushed[i].BrokerMessageID)
 		}
@@ -374,26 +381,29 @@ func (p *Pool) Stop() {
 	}
 }
 
-// trackMediating records a message as actively inside a worker. Called at the
-// top of processOne, paired with untrackMediating on exit.
-func (p *Pool) trackMediating(qm common.QueuedMessage) {
-	group := qm.Message.GroupID()
+// beginMediating records a message as actively inside a worker and returns the
+// key to end it with. Called at the top of processOne, paired with
+// endMediating on exit — the pair is also what makes ActiveWorkers true, so
+// neither half is optional.
+func (p *Pool) beginMediating(qm common.QueuedMessage) uint64 {
+	worker := p.workerSeq.Add(1)
 	p.mediatingMu.Lock()
-	p.mediating[qm.Message.ID] = MediatingEntry{
+	p.mediating[worker] = MediatingEntry{
 		MessageID:  qm.Message.ID,
 		PoolCode:   p.cfg.Code,
-		Group:      group,
+		Group:      qm.Message.GroupID(),
 		Queue:      qm.QueueIdentifier,
 		Target:     qm.Message.MediationTarget,
 		Attempts:   qm.Attempts,
 		MediatedAt: time.Now(),
 	}
 	p.mediatingMu.Unlock()
+	return worker
 }
 
-func (p *Pool) untrackMediating(messageID string) {
+func (p *Pool) endMediating(worker uint64) {
 	p.mediatingMu.Lock()
-	delete(p.mediating, messageID)
+	delete(p.mediating, worker)
 	p.mediatingMu.Unlock()
 }
 
@@ -411,19 +421,21 @@ func (p *Pool) MediatingSnapshot() []MediatingEntry {
 	return out
 }
 
-// InFlight returns the count of messages currently in worker goroutines.
-// Backward-compat shim for callers that still read inFlight as int64.
-func (p *Pool) InFlight() int64 { return int64(p.activeWorkers.Load()) }
+// ActiveWorkers returns the count of goroutines currently inside processOne —
+// the size of the mediating set, not a counter kept alongside it.
+func (p *Pool) ActiveWorkers() uint32 {
+	p.mediatingMu.Lock()
+	defer p.mediatingMu.Unlock()
+	return uint32(len(p.mediating))
+}
 
-// ActiveWorkers returns the count of goroutines currently inside processOne.
-func (p *Pool) ActiveWorkers() uint32 { return p.activeWorkers.Load() }
-
-// QueueSize returns the count of messages buffered in group queues
-// awaiting dispatch (pre-semaphore).
+// QueueSize returns the count of messages accepted but not yet being
+// delivered: buffered in a group queue, waiting on a concurrency slot, or
+// sitting out a retry backoff.
 func (p *Pool) QueueSize() uint32 { return p.queueSize.Load() }
 
 // Concurrency returns the current concurrency cap.
-func (p *Pool) Concurrency() uint32 { return p.concurrency.Load() }
+func (p *Pool) Concurrency() uint32 { return p.sem.capacity() }
 
 // RateLimitPerMinute returns the current rate-limit (or nil if disabled)
 // — the shape PoolStats reports on the wire.
@@ -448,18 +460,13 @@ func (p *Pool) MessageGroupCount() uint32 {
 
 // Stats returns the dashboard-shaped snapshot of this pool.
 func (p *Pool) Stats() PoolStats {
-	concurrency := p.concurrency.Load()
-	capacity := concurrency * queueCapacityMultiplier
-	if capacity < minQueueCapacity {
-		capacity = minQueueCapacity
-	}
 	m := p.metrics.Snapshot()
 	return PoolStats{
 		PoolCode:           p.cfg.Code,
-		Concurrency:        concurrency,
-		ActiveWorkers:      p.activeWorkers.Load(),
+		Concurrency:        p.Concurrency(),
+		ActiveWorkers:      p.ActiveWorkers(),
 		QueueSize:          p.queueSize.Load(),
-		QueueCapacity:      capacity,
+		QueueCapacity:      p.queueCapacity(),
 		MessageGroupCount:  p.MessageGroupCount(),
 		RateLimitPerMinute: p.RateLimitPerMinute(),
 		IsRateLimited:      p.IsRateLimited(),
@@ -469,12 +476,22 @@ func (p *Pool) Stats() PoolStats {
 }
 
 // queueCapacityMultiplier and minQueueCapacity define the capacity
-// derivation: capacity = max(concurrency * 20, 50). Used by Stats() for
-// the dashboard's "queue capacity" figure.
+// derivation: capacity = max(concurrency * 20, 50).
 const (
 	queueCapacityMultiplier uint32 = 20
 	minQueueCapacity        uint32 = 50
 )
+
+// queueCapacity is the ceiling on queueSize: how much pre-dispatch backlog the
+// pool accepts before submit pushes back on the broker. Derived from the
+// concurrency cap, so re-capping a pool re-sizes its buffer with it.
+func (p *Pool) queueCapacity() uint32 {
+	capacity := p.Concurrency() * queueCapacityMultiplier
+	if capacity < minQueueCapacity {
+		capacity = minQueueCapacity
+	}
+	return capacity
+}
 
 // enqueue appends a newly-arrived message to the BACK of its group's FIFO.
 // Returns false without buffering when the pool has stopped — checked under
@@ -576,16 +593,10 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 		p.mu.Unlock()
 		// Pop happens under p.mu before any await, so queueSize stays
 		// consistent with what's actually buffered in groupQs.
-		p.queueSize.Add(^uint32(0)) // atomic decrement
+		p.queueDec()
 
-		// Acquire a concurrency slot. Snapshot the channel locally so a
-		// resize between acquire and release doesn't cross channels.
-		// Wakeup conditions:
-		//   <-ctx.Done()         — consumer stopping; park the message and exit.
-		//   sem <- struct{}{}    — slot acquired; proceed.
-		sem := p.loadSem()
-		select {
-		case <-ctx.Done():
+		// Acquire a concurrency slot, or give the message up on cancellation.
+		if err := p.sem.acquire(ctx); err != nil {
 			// Re-front the popped message (preserving FIFO — dropping just the
 			// head while later messages stay buffered would reorder the group)
 			// and clear working so the group resumes under a fresh drainer —
@@ -599,22 +610,22 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 			}
 			p.clearWorking(group)
 			return
-		case sem <- struct{}{}:
 		}
 
 		// Release the slot per iteration even if processOne panics past its own
-		// recover — a bare deferred <-sem would accumulate across the loop, so
+		// recover — a bare deferred release would accumulate across the loop, so
 		// scope it to a closure.
 		result, retryAfter := func() (processResult, time.Duration) {
-			defer func() { <-sem }()
+			defer p.sem.release()
 			return p.processOne(ctx, msg)
 		}()
 
 		if result == processRelease {
-			// Target unreachable — hand this message AND everything still
-			// buffered behind it back to the broker, then exit. releaseGroup
-			// clears `working`, so a redelivery spawns a fresh drainer.
-			p.releaseGroup(ctx, group, msg, "target unreachable")
+			// Target unreachable, or the in-pipeline retry budget is spent —
+			// hand this message AND everything still buffered behind it back to
+			// the broker, then exit. releaseGroup clears `working`, so a
+			// redelivery spawns a fresh drainer.
+			p.releaseGroup(ctx, group, msg, nackDelay(retryAfter), "released to broker")
 			return
 		}
 
@@ -622,14 +633,20 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 			// BLOCK_ON_ERROR: "a failed job blocks the group until resolved."
 			// The head has failed terminally and been ACKed away, so advancing
 			// would deliver its successors PAST the failure — exactly what this
-			// mode exists to prevent. Hand the rest of the group back to the
-			// broker; they redeliver once the failure is resolved.
+			// mode exists to prevent.
 			//
-			// NEXT_ON_ERROR falls through and the loop continues to the next
-			// message, because that mode explicitly moves on past a failure.
-			// This is the ONLY place the two ordered modes differ — they share
-			// the same FIFO buffer and differ only in what a failure does to it.
-			p.releaseBuffered(ctx, group, "head failed under BLOCK_ON_ERROR")
+			// The siblings are ACKED, not handed back. Releasing them looked
+			// safer and did the opposite: they redeliver on the BROKER'S timer,
+			// which has no connection to the failure being resolved, and by then
+			// the head has been ACKed away — so the first sibling becomes the new
+			// head and is delivered. "Add item" applied to an order that was
+			// never created. The nack silently broke the guarantee the mode is
+			// named after.
+			//
+			// Nothing is lost by acking: these messages exist as dispatch-job
+			// rows in the platform store, which is the system of record. The
+			// queue copy is a delivery attempt, not the data.
+			p.ackBuffered(ctx, group, "head failed under BLOCK_ON_ERROR")
 			return
 		}
 
@@ -673,37 +690,74 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 // nackMsg drops each message's in-flight tracker entry as it goes, which is what
 // lets the redelivery re-enter the pipeline instead of being discarded as a
 // duplicate of a copy that no longer exists.
-func (p *Pool) releaseGroup(ctx context.Context, group string, inHand common.QueuedMessage, reason string) {
-	p.nackMsg(ctx, inHand, nil, reason)
+func (p *Pool) releaseGroup(ctx context.Context, group string, inHand common.QueuedMessage, delay *uint32, reason string) {
+	p.nackMsg(ctx, inHand, delay, reason)
 	released := p.releaseBuffered(ctx, group, reason)
-	slog.Info("released message group to broker; target unreachable",
+	slog.Info("released message group to broker",
 		"group", group, "pool", p.cfg.Code, "message_id", inHand.Message.ID,
 		"buffered_released", released, "reason", reason)
 }
 
+// takeBuffered empties a group's buffer and clears `working`, returning what
+// was in it. Both terminal group outcomes start here and differ only in what
+// they then do with the messages — hand them back, or ack them away.
+func (p *Pool) takeBuffered(group string) []common.QueuedMessage {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	gq := p.groupQs[group]
+	if gq == nil {
+		return nil
+	}
+	buffered := gq.msgs
+	gq.msgs = nil
+	gq.working = false
+	return buffered
+}
+
 // releaseBuffered hands back everything still queued behind the head WITHOUT
 // touching the head itself, and clears `working` so a redelivery spawns a fresh
-// drainer. Used when the head has already been resolved terminally — ACKed away
-// as a failure — but its successors must not be delivered past it.
+// drainer. Used when the TARGET is unreachable: the messages are blameless and
+// the broker should redeliver them once it recovers.
 //
 // Returns how many were released.
 func (p *Pool) releaseBuffered(ctx context.Context, group, reason string) int {
-	p.mu.Lock()
-	var buffered []common.QueuedMessage
-	if gq := p.groupQs[group]; gq != nil {
-		buffered = gq.msgs
-		gq.msgs = nil
-		gq.working = false
-	}
-	p.mu.Unlock()
-
+	buffered := p.takeBuffered(group)
 	for i := range buffered {
-		p.queueSize.Add(^uint32(0)) // atomic decrement
+		p.queueDec()
 		p.nackMsg(ctx, buffered[i], nil, reason)
 	}
 	if len(buffered) > 0 {
 		slog.Info("released buffered group messages to broker",
 			"group", group, "pool", p.cfg.Code, "released", len(buffered), "reason", reason)
+	}
+	return len(buffered)
+}
+
+// ackBuffered deletes everything still queued behind a head that failed
+// terminally under BLOCK_ON_ERROR, and clears `working`.
+//
+// The delete is the point. Handing these back would have the broker redeliver
+// them on its own timer, unconnected to the failure being resolved, and with
+// the head already ACKed away the first sibling would simply become the new
+// head and deliver — the precise reordering the mode exists to prevent. Their
+// dispatch-job rows in the platform store are the system of record and survive
+// this; the queue copies are delivery attempts, not data.
+//
+// Known gap, shared with the Java implementation and tracked separately:
+// nothing marks those job rows for review, so they sit at QUEUED/PROCESSING
+// rather than FAILED. A settled-message hook carrying the reason would make the
+// ids recoverable.
+//
+// Returns how many were ACKed.
+func (p *Pool) ackBuffered(ctx context.Context, group, reason string) int {
+	buffered := p.takeBuffered(group)
+	for i := range buffered {
+		p.queueDec()
+		p.ackTracked(ctx, buffered[i])
+	}
+	if len(buffered) > 0 {
+		slog.Warn("acked untried group messages behind a failed head",
+			"group", group, "pool", p.cfg.Code, "acked", len(buffered), "reason", reason)
 	}
 	return len(buffered)
 }
@@ -763,6 +817,22 @@ const (
 	processRelease
 )
 
+// maxInPipelineAttempts bounds how many times a message may be retried IN
+// PLACE before it is handed back to the broker instead.
+//
+// It has to be bounded. An in-pipeline retry never returns the message, so
+// while it loops the broker's expiry, redelivery count and DLQ can never act on
+// it — and the stall detector deliberately leaves retrying entries alone, so
+// nothing warns either. An endpoint answering 429 or `ack:false` for ever would
+// otherwise pin the message, its whole ordered group, and its tracker entry
+// (exempt from reaping) in memory for the life of the process, invisibly.
+//
+// On exhaustion the message is RELEASED, which is the same treatment an
+// unreachable target gets and the only outcome that restores the broker's
+// authority over it. The attempts spent here are on top of the mediator's own
+// bounded burst inside each attempt.
+const maxInPipelineAttempts uint = 10
+
 const (
 	// retryMinDelay / retryMaxDelay bound the in-pipeline backoff; panicRetryDelay
 	// is the fixed backoff after a recovered panic.
@@ -813,10 +883,8 @@ func backoffDelay(attempts uint, floorSec int, minDelay, maxDelay time.Duration)
 // processRetry so the caller retries in-pipeline (preserving order for grouped
 // messages). Only a terminal 2xx/4xx ACKs and clears the entry.
 func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result processResult, retryAfter time.Duration) {
-	p.activeWorkers.Add(1)
-	defer p.activeWorkers.Add(^uint32(0)) // atomic decrement
-	p.trackMediating(qm)
-	defer p.untrackMediating(qm.Message.ID)
+	worker := p.beginMediating(qm)
+	defer p.endMediating(worker)
 
 	// Panic isolation: a panic mid-mediation must not crash the process (an
 	// unrecovered panic in a goroutine takes down the program) or strand the
@@ -827,11 +895,9 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 		if r := recover(); r != nil {
 			slog.Error("panic in processOne; retrying in-pipeline",
 				"message_id", qm.Message.ID, "panic", r)
-			result = processRetry
-			retryAfter = panicRetryDelay
-			if p.tracker != nil {
-				p.tracker.MarkRetrying(qm.Message.ID, qm.BrokerMessageID)
-			}
+			// Through the same funnel as every other retry: a target that
+			// panics us on every attempt must not be retried for ever either.
+			result, retryAfter = p.retryAfter(qm, panicRetryDelay)
 		}
 	}()
 
@@ -880,10 +946,7 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 	}
 	if err := p.limiter.Wait(ctx); err != nil {
 		// Context cancelled mid-wait — keep the entry and retry in-pipeline.
-		if p.tracker != nil {
-			p.tracker.MarkRetrying(qm.Message.ID, qm.BrokerMessageID)
-		}
-		return processRetry, retryDelay(qm.Attempts, 5)
+		return p.retry(qm, 5)
 	}
 
 	start := time.Now()
@@ -983,12 +1046,36 @@ func (p *Pool) retry(qm common.QueuedMessage, outcomeDelaySec int) (processResul
 }
 
 // retryAfter is retry with a pre-computed backoff (used by the deferred path,
-// which runs on its own delay curve).
+// which runs on its own delay curve). It is the single funnel for every
+// processRetry verdict, which is what lets maxInPipelineAttempts be enforced in
+// one place: past the budget the message is released to the broker instead,
+// carrying the backoff as the redelivery delay so it does not come straight
+// back to the pool that just gave up on it.
 func (p *Pool) retryAfter(qm common.QueuedMessage, delay time.Duration) (processResult, time.Duration) {
+	if attempts := qm.Attempts + 1; attempts >= maxInPipelineAttempts {
+		slog.Warn("in-pipeline retry budget exhausted; releasing to broker",
+			"message_id", qm.Message.ID, "pool", p.cfg.Code,
+			"attempts", attempts, "max_attempts", maxInPipelineAttempts,
+			"redelivery_delay", delay)
+		return processRelease, delay
+	}
 	if p.tracker != nil {
 		p.tracker.MarkRetrying(qm.Message.ID, qm.BrokerMessageID)
 	}
 	return processRetry, delay
+}
+
+// nackDelay turns a computed backoff into a broker redelivery delay: whole
+// seconds, at least one, or nil when there is nothing to wait out.
+func nackDelay(d time.Duration) *uint32 {
+	if d <= 0 {
+		return nil
+	}
+	secs := uint32(d / time.Second)
+	if secs == 0 {
+		secs = 1
+	}
+	return &secs
 }
 
 func ptrU32(v uint32) *uint32 { return &v }

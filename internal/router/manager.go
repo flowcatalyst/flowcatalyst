@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -46,11 +47,36 @@ type Manager struct {
 	tracker  *InFlightTracker
 	warnings atomic.Pointer[WarningService] // optional; set via SetWarnings. nil → no-op.
 
-	mu        sync.Mutex
-	pools     map[string]*Pool              // pool code → passive pool
-	consumers map[string]*runningConsumer   // queue name → consumer + poll loop
-	queues    map[string]common.QueueConfig // queue name → cfg (for publishers)
-	wg        sync.WaitGroup
+	// reconfigureMu serialises whole reconciles (Reconfigure, Shutdown) against
+	// each other. It guards no state; the two data locks below do that, and are
+	// taken in sequence rather than nested, so there is no lock ordering to get
+	// wrong.
+	reconfigureMu sync.Mutex
+
+	// Pools and consumers are reconciled together but read apart, and the
+	// routing hot path only ever needs pools, so they get a lock each.
+	poolMu sync.RWMutex
+	pools  map[string]*Pool // pool code → passive pool
+
+	consumerMu sync.RWMutex
+	consumers  map[string]*runningConsumer   // queue name → consumer + poll loop
+	queues     map[string]common.QueueConfig // queue name → cfg (for publishers)
+
+	// pollingStopped latches once StopPolling has run, so the stalled-consumer
+	// watchdog doesn't helpfully respawn the poll loops a drain just stopped.
+	pollingStopped atomic.Bool
+
+	// consumerRoot parents every consumer's context, and only Shutdown cancels
+	// it. Consumers must NOT inherit from whoever called Reconfigure: that is
+	// a config-sync fetch context or a bootstrap context, and tying a poll
+	// loop's life to a request-scoped deadline kills it the moment that
+	// deadline passes — which is exactly what the embedded default-broker path
+	// did, handing Reconfigure a 10s context and losing every consumer with it.
+	rootMu     sync.Mutex
+	root       context.Context
+	rootCancel context.CancelFunc
+
+	wg sync.WaitGroup
 
 	// restartAttempts tracks consecutive restart attempts per stalled consumer
 	// so a repeatedly-failing consumer escalates to a CRITICAL warning, and a
@@ -60,25 +86,61 @@ type Manager struct {
 
 	batchCounter atomic.Uint64
 
+	// restartDelay is the pause before rebuilding a stalled consumer. A field
+	// rather than the constant so tests don't sit out five seconds per restart.
+	restartDelay time.Duration
+
 	pubMu      sync.Mutex
 	publishers map[string]queue.Publisher // queue name → publisher (lazy)
 }
 
+// runningConsumer is one queue's consumer plus its poll loop, and it carries
+// TWO cancellations because "stop taking new work" and "stop working" are
+// different events:
+//
+//   - stopPoll ends the poll loop only. Messages already routed keep their
+//     context, so deliveries in flight run to their own conclusion. This is
+//     what a graceful drain wants.
+//   - cancel tears the consumer down: it also cancels workCtx, which parks
+//     ordered groups and aborts in-flight deliveries. Used when the consumer
+//     itself is going away (removed by config, restarted after a stall, or the
+//     whole manager shutting down), where finishing the work would be
+//     pointless — nothing could ack it afterwards.
 type runningConsumer struct {
 	consumer queue.Consumer
+	workCtx  context.Context // parent of everything the routed messages do
 	cancel   context.CancelFunc
+	stopPoll context.CancelFunc
 	queueCfg common.QueueConfig
 	// lastPoll is the unix-nano of the most recent completed poll; a poll
 	// loop wedged inside consumer.Poll leaves it stale, which the
 	// consumer-restart watchdog (RestartStalledConsumers) detects.
 	lastPoll atomic.Int64
+
+	// pools records the pool codes the most recent batch routed to, so the
+	// poll loop can push back on the pools this queue actually feeds rather
+	// than on the process as a whole. Guarded by its own mutex: written by the
+	// poll loop, read by nothing else today, but cheap to keep safe.
+	poolsMu sync.Mutex
+	pools   []string
+}
+
+// newRunningConsumer wires a consumer's two contexts under parent.
+func newRunningConsumer(parent context.Context, c queue.Consumer, qc common.QueueConfig) (*runningConsumer, context.Context) {
+	workCtx, cancel := context.WithCancel(parent)
+	pollCtx, stopPoll := context.WithCancel(workCtx)
+	r := &runningConsumer{
+		consumer: c, workCtx: workCtx, cancel: cancel, stopPoll: stopPoll, queueCfg: qc,
+	}
+	r.lastPoll.Store(time.Now().UnixNano())
+	return r, pollCtx
 }
 
 // NewManager builds a manager. The mediator (which now owns the per-endpoint
 // circuit breakers) is shared by all pools. tracker may be nil; if so, pools
 // run without in-flight tracking.
 func NewManager(mediator Mediator, tracker *InFlightTracker) *Manager {
-	return &Manager{
+	m := &Manager{
 		mediator:        mediator,
 		tracker:         tracker,
 		pools:           make(map[string]*Pool),
@@ -86,7 +148,28 @@ func NewManager(mediator Mediator, tracker *InFlightTracker) *Manager {
 		queues:          make(map[string]common.QueueConfig),
 		publishers:      make(map[string]queue.Publisher),
 		restartAttempts: make(map[string]int),
+		restartDelay:    consumerRestartDelay,
 	}
+	m.root, m.rootCancel = context.WithCancel(context.Background())
+	return m
+}
+
+// consumerRoot returns the current parent context for consumer goroutines.
+func (m *Manager) consumerRoot() context.Context {
+	m.rootMu.Lock()
+	defer m.rootMu.Unlock()
+	return m.root
+}
+
+// cancelConsumerRoot stops every consumer goroutine and installs a fresh root,
+// because Shutdown is not necessarily terminal: in standby mode it runs on
+// leadership LOSS and a later regain reconfigures the same Manager, which would
+// otherwise spawn consumers into an already-cancelled context.
+func (m *Manager) cancelConsumerRoot() {
+	m.rootMu.Lock()
+	defer m.rootMu.Unlock()
+	m.rootCancel()
+	m.root, m.rootCancel = context.WithCancel(context.Background())
 }
 
 // SetWarnings wires a WarningService so routing/capacity conditions surface on
@@ -96,8 +179,8 @@ func (m *Manager) SetWarnings(ws *WarningService) { m.warnings.Store(ws) }
 // resolveConsumer maps a message's origin queue to its consumer so a pool can
 // ack/nack on the right queue. Returns nil if the queue was deregistered.
 func (m *Manager) resolveConsumer(queueID string) queue.Consumer {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.consumerMu.RLock()
+	defer m.consumerMu.RUnlock()
 	if rc, ok := m.consumers[queueID]; ok {
 		return rc.consumer
 	}
@@ -156,8 +239,8 @@ func (m *Manager) ForceAckInFlight(ctx context.Context, messageID string) (Force
 // Consumers returns every running consumer (for the QueueHealthMonitor /
 // metrics to call Metrics/Counters on).
 func (m *Manager) Consumers() []queue.Consumer {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.consumerMu.RLock()
+	defer m.consumerMu.RUnlock()
 	out := make([]queue.Consumer, 0, len(m.consumers))
 	for _, rc := range m.consumers {
 		out = append(out, rc.consumer)
@@ -167,8 +250,8 @@ func (m *Manager) Consumers() []queue.Consumer {
 
 // PoolStats returns one snapshot per running pool (map iteration order).
 func (m *Manager) PoolStats() []PoolStats {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.poolMu.RLock()
+	defer m.poolMu.RUnlock()
 	out := make([]PoolStats, 0, len(m.pools))
 	for _, p := range m.pools {
 		out = append(out, p.Stats())
@@ -179,12 +262,12 @@ func (m *Manager) PoolStats() []PoolStats {
 // MediatingSnapshot returns every message currently inside a pool worker,
 // across all pools — the live, never-reaped "what is mediating right now" set.
 func (m *Manager) MediatingSnapshot() []MediatingEntry {
-	m.mu.Lock()
+	m.poolMu.RLock()
 	pools := make([]*Pool, 0, len(m.pools))
 	for _, p := range m.pools {
 		pools = append(pools, p)
 	}
-	m.mu.Unlock()
+	m.poolMu.RUnlock()
 	// Snapshot each pool OUTSIDE the manager lock (each pool takes its own).
 	var out []MediatingEntry
 	for _, p := range pools {
@@ -195,8 +278,8 @@ func (m *Manager) MediatingSnapshot() []MediatingEntry {
 
 // PoolCodes returns the codes of all currently registered pools.
 func (m *Manager) PoolCodes() []string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.poolMu.RLock()
+	defer m.poolMu.RUnlock()
 	out := make([]string, 0, len(m.pools))
 	for code := range m.pools {
 		out = append(out, code)
@@ -206,8 +289,8 @@ func (m *Manager) PoolCodes() []string {
 
 // Pool returns the running pool with the given code, or nil if absent.
 func (m *Manager) Pool(code string) *Pool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.poolMu.RLock()
+	defer m.poolMu.RUnlock()
 	return m.pools[code]
 }
 
@@ -274,8 +357,8 @@ func (m *Manager) Publisher(ctx context.Context, key string) (queue.Publisher, e
 }
 
 func (m *Manager) queueForPublish(key string) (common.QueueConfig, bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.consumerMu.RLock()
+	defer m.consumerMu.RUnlock()
 	if qc, ok := m.queues[key]; ok {
 		return qc, true
 	}
@@ -317,11 +400,14 @@ func (m *Manager) UpdatePool(code string, concurrency uint32, rateLimitPerMinute
 // named by its pool_code (DEFAULT-POOL fallback) and submits it. ack/nack of
 // the eventual outcome is the pool's job, against the message's source
 // consumer.
-func (m *Manager) route(ctx context.Context, msgs []common.QueuedMessage, source queue.Consumer) {
+// Returns the codes of the pools it submitted to, which the poll loop keeps as
+// this queue's destination set for backpressure.
+func (m *Manager) route(ctx context.Context, msgs []common.QueuedMessage, source queue.Consumer) []string {
 	if len(msgs) == 0 {
-		return
+		return nil
 	}
 	batchID := strconv.FormatUint(m.batchCounter.Add(1), 10)
+	var fed []string
 
 	for i := range msgs {
 		msg := msgs[i]
@@ -340,12 +426,8 @@ func (m *Manager) route(ctx context.Context, msgs []common.QueuedMessage, source
 				// group so a fresh drainer picks the buffer back up.
 				slog.Debug("broker redelivery of in-flight message; swapped receipt handle, dropped copy",
 					"message_id", msg.Message.ID, "queue", source.Identifier())
-				if msg.Message.DispatchMode.RequiresOrdering() {
+				if group := msg.Message.GroupID(); group != "" && msg.Message.DispatchMode.RequiresOrdering() {
 					if pool := m.poolByCode(msg.Message.PoolCode); pool != nil {
-						group := ""
-						if msg.Message.MessageGroupID != nil {
-							group = *msg.Message.MessageGroupID
-						}
 						pool.tryDrainGroup(ctx, group)
 					}
 				}
@@ -385,16 +467,20 @@ func (m *Manager) route(ctx context.Context, msgs []common.QueuedMessage, source
 			}
 			continue
 		}
+		if code := pool.Identifier(); !slices.Contains(fed, code) {
+			fed = append(fed, code)
+		}
 		pool.submit(ctx, msg)
 	}
+	return fed
 }
 
 // poolByCode resolves a pool by code with the DEFAULT-POOL fallback, without
 // the routing warning poolForMessage emits — used on the redelivery-resume
 // path, which fires repeatedly for the same message.
 func (m *Manager) poolByCode(code string) *Pool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.poolMu.RLock()
+	defer m.poolMu.RUnlock()
 	if code != "" {
 		if p, ok := m.pools[code]; ok {
 			return p
@@ -407,44 +493,64 @@ func (m *Manager) poolByCode(code string) *Pool {
 // by pool_code, or DEFAULT-POOL when pool_code is empty or unknown (with a
 // routing warning for the unknown case). Returns nil only if even
 // DEFAULT-POOL is absent.
+//
+// This runs for every routed message, so the common case — a configured pool —
+// is a read-locked map lookup and nothing else. Only the miss paths go
+// further, and only one of them writes.
 func (m *Manager) poolForMessage(msg common.QueuedMessage) *Pool {
 	code := msg.Message.PoolCode
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if code != "" {
-		if p, ok := m.pools[code]; ok {
-			return p
-		}
-		// A per-client fallback pool ({identifier}-DEFAULT-POOL) will not be in
-		// the config: nothing emits processingPools — the router polls an
-		// external config service — so these codes only ever arrive from the
-		// scheduler. Synthesise on demand with the same defaults as the global
-		// DEFAULT-POOL, exactly as Reconfigure auto-adds that one. Without this
-		// every such message would take the unknown-code path below: routed to
-		// the shared DEFAULT-POOL with a warning apiece, losing the per-client
-		// isolation the namespacing exists to create.
-		//
-		// Config always wins: this only runs on a miss, and Reconfigure
-		// overwrites synthesised pools with configured ones of the same code.
-		if isDefaultPoolCode(code) {
-			p := NewPool(
-				common.PoolConfig{Code: code, Concurrency: defaultPoolConcurrency},
-				m.mediator, m.tracker, m.resolveConsumer,
-			)
-			m.pools[code] = p
-			slog.Info("synthesised per-client fallback pool",
-				"pool_code", code, "concurrency", defaultPoolConcurrency)
-			return p
-		}
-		// Unknown pool code → DEFAULT-POOL, surfaced as a Routing warning.
-		slog.Warn("no pool found for pool_code; routing to DEFAULT-POOL",
-			"message_id", msg.Message.ID, "pool_code", code, "default_pool", defaultPoolCode)
-		if w := m.warnings.Load(); w != nil {
-			w.Add(WarningCategoryRouting, WarningWarning,
-				fmt.Sprintf("no pool for pool_code %q; routed to %s", code, defaultPoolCode), "router")
-		}
+	if code == "" {
+		return m.poolByCode("")
 	}
-	return m.pools[defaultPoolCode]
+	m.poolMu.RLock()
+	p, ok := m.pools[code]
+	m.poolMu.RUnlock()
+	if ok {
+		return p
+	}
+	// A per-client fallback pool ({identifier}-DEFAULT-POOL) will not be in the
+	// config: nothing emits processingPools — the router polls an external
+	// config service — so these codes only ever arrive from the scheduler.
+	// Synthesise on demand with the same defaults as the global DEFAULT-POOL,
+	// exactly as Reconfigure auto-adds that one. Without this every such
+	// message would take the unknown-code path below: routed to the shared
+	// DEFAULT-POOL with a warning apiece, losing the per-client isolation the
+	// namespacing exists to create.
+	if isDefaultPoolCode(code) {
+		return m.ensureFallbackPool(code)
+	}
+	// Unknown pool code → DEFAULT-POOL, surfaced as a Routing warning.
+	slog.Warn("no pool found for pool_code; routing to DEFAULT-POOL",
+		"message_id", msg.Message.ID, "pool_code", code, "default_pool", defaultPoolCode)
+	if w := m.warnings.Load(); w != nil {
+		w.Add(WarningCategoryRouting, WarningWarning,
+			fmt.Sprintf("no pool for pool_code %q; routed to %s", code, defaultPoolCode), "router")
+	}
+	return m.poolByCode("")
+}
+
+// ensureFallbackPool returns the per-client fallback pool for code, creating it
+// if this is the first message to name it. Creation is the one write the
+// routing path performs, so it is double-checked under the write lock: two
+// messages for a new client arriving together must not end up in two different
+// pools, each with its own concurrency cap.
+//
+// Config always wins: this only runs on a miss, and Reconfigure overwrites a
+// synthesised pool with a configured one of the same code.
+func (m *Manager) ensureFallbackPool(code string) *Pool {
+	m.poolMu.Lock()
+	defer m.poolMu.Unlock()
+	if p, ok := m.pools[code]; ok {
+		return p
+	}
+	p := NewPool(
+		common.PoolConfig{Code: code, Concurrency: defaultPoolConcurrency},
+		m.mediator, m.tracker, m.resolveConsumer,
+	)
+	m.pools[code] = p
+	slog.Info("synthesised per-client fallback pool",
+		"pool_code", code, "concurrency", defaultPoolConcurrency)
+	return p
 }
 
 // isDefaultPoolCode reports whether code names a fallback pool — the global
@@ -458,9 +564,10 @@ func isDefaultPoolCode(code string) bool {
 	return code == defaultPoolCode || strings.HasSuffix(code, "-"+defaultPoolCode)
 }
 
-// runConsumer is the per-consumer poll loop.
-// It pauses when all pools are at capacity to
-// avoid a hot poll-defer loop, polls up to 10, routes the batch, and paces
+// runConsumer is the per-consumer poll loop. ctx is the consumer's POLL
+// context: cancelling it stops intake, while messages already routed continue
+// under rc.workCtx. It pauses when the pools this queue feeds are at capacity
+// to avoid a hot poll-defer loop, polls up to 10, routes the batch, and paces
 // itself by batch fullness.
 func (m *Manager) runConsumer(ctx context.Context, rc *runningConsumer) {
 	defer m.wg.Done()
@@ -470,15 +577,15 @@ func (m *Manager) runConsumer(ctx context.Context, rc *runningConsumer) {
 		if ctx.Err() != nil {
 			return
 		}
-		// Backpressure: if every pool is full, wait rather than poll. Surface the
-		// transition into full as a PoolCapacity warning (once per full period,
-		// not every tick, to avoid flooding /warnings).
-		if !m.hasPoolCapacity() {
+		// Backpressure: if the pools this queue feeds are full, wait rather than
+		// poll. Surface the transition into full as a PoolCapacity warning (once
+		// per full period, not every tick, to avoid flooding /warnings).
+		if !m.hasCapacityFor(rc) {
 			if !wasFull {
 				wasFull = true
 				if w := m.warnings.Load(); w != nil {
 					w.Add(WarningCategoryPoolCapacity, WarningWarning,
-						fmt.Sprintf("all pools at capacity; pausing %s", rc.consumer.Identifier()), "router")
+						fmt.Sprintf("destination pools at capacity; pausing %s", rc.consumer.Identifier()), "router")
 				}
 			}
 			select {
@@ -526,7 +633,10 @@ func (m *Manager) runConsumer(ctx context.Context, rc *runningConsumer) {
 			continue
 		}
 
-		m.route(ctx, msgs, rc.consumer)
+		// Route under the WORK context, not the poll context: stopping intake
+		// must not abort deliveries already under way, which is what makes a
+		// graceful drain graceful.
+		rc.setPools(m.route(rc.workCtx, msgs, rc.consumer))
 
 		// Full batch → re-poll immediately (more likely waiting). Partial →
 		// brief pause (queue draining).
@@ -540,20 +650,68 @@ func (m *Manager) runConsumer(ctx context.Context, rc *runningConsumer) {
 	}
 }
 
-// hasPoolCapacity reports whether at least one pool has room in its
-// pre-dispatch buffer. With no pools, returns false (nothing to route to).
-func (m *Manager) hasPoolCapacity() bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if len(m.pools) == 0 {
-		return false
+// setPools records the destination pools of the batch just routed. An empty
+// batch leaves the previous set in place — a quiet poll says nothing about
+// where this queue's traffic goes.
+func (rc *runningConsumer) setPools(codes []string) {
+	if len(codes) == 0 {
+		return
 	}
-	for _, p := range m.pools {
-		capacity := p.Concurrency() * queueCapacityMultiplier
-		if capacity < minQueueCapacity {
-			capacity = minQueueCapacity
+	rc.poolsMu.Lock()
+	rc.pools = codes
+	rc.poolsMu.Unlock()
+}
+
+func (rc *runningConsumer) destPools() []string {
+	rc.poolsMu.Lock()
+	defer rc.poolsMu.Unlock()
+	return rc.pools
+}
+
+// hasCapacityFor reports whether this consumer should keep polling: whether the
+// pools its own last batch fed still have room in their pre-dispatch buffers.
+//
+// It used to ask whether ANY pool in the process had room, which meant a single
+// idle pool kept every consumer polling — messages for a saturated pool were
+// fetched and immediately bounced (a NACK that SQS ignores outright), burning
+// round-trips and receive counts to no end. Judging a queue by the pools it
+// actually feeds makes the pause mean something.
+//
+// A queue feeding several pools pauses when ANY of them is full: a batch cannot
+// be split, so the alternative is fetching messages we know we would bounce.
+// The pause is 2s and draining does not depend on polling, so this cannot
+// deadlock — the pool empties and the queue resumes.
+func (m *Manager) hasCapacityFor(rc *runningConsumer) bool {
+	m.poolMu.RLock()
+	defer m.poolMu.RUnlock()
+	if len(m.pools) == 0 {
+		return false // nothing to route to
+	}
+	dests := rc.destPools()
+	if len(dests) == 0 {
+		// Nothing routed yet (first poll, or every message was deduped): fall
+		// back to "somewhere has room", which is what admits the first batch.
+		return m.anyPoolHasRoom()
+	}
+	for _, code := range dests {
+		p, ok := m.pools[code]
+		if !ok {
+			// The pool went away under a reconfigure; the next batch re-learns
+			// where this queue's traffic goes.
+			return m.anyPoolHasRoom()
 		}
-		if p.QueueSize() < capacity {
+		if p.QueueSize() >= p.queueCapacity() {
+			return false
+		}
+	}
+	return true
+}
+
+// anyPoolHasRoom reports whether at least one pool has room. Caller holds
+// poolMu.
+func (m *Manager) anyPoolHasRoom() bool {
+	for _, p := range m.pools {
+		if p.QueueSize() < p.queueCapacity() {
 			return true
 		}
 	}
@@ -564,6 +722,14 @@ func (m *Manager) hasPoolCapacity() bool {
 // consumers (by queue name), starting/stopping/updating as needed. A
 // DEFAULT-POOL is always ensured. Hot-reloadable.
 func (m *Manager) Reconfigure(ctx context.Context, cfg common.RouterConfig) error {
+	// One reconcile at a time. The config watcher and POST /config/reload can
+	// both land here, and Shutdown (leadership loss) takes this too, so those
+	// never interleave. This is an admission lock only — poolMu and consumerMu
+	// are what routing and ack/nack contend on, and neither is now held across
+	// a broker connect.
+	m.reconfigureMu.Lock()
+	defer m.reconfigureMu.Unlock()
+
 	wantPools := make(map[string]common.PoolConfig, len(cfg.ProcessingPools)+1)
 	for _, p := range cfg.ProcessingPools {
 		wantPools[p.Code] = p
@@ -576,9 +742,10 @@ func (m *Manager) Reconfigure(ctx context.Context, cfg common.RouterConfig) erro
 		wantQueues[q.Name] = q
 	}
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
+	// Pools and consumers are reconciled under their own locks, one after the
+	// other — never nested — so a consumer being rebuilt cannot hold up a
+	// routing lookup.
+	m.poolMu.Lock()
 	// Pools: stop removed, update existing, start new. (Pools are passive —
 	// stopping just flips the flag so in-flight submits NACK.)
 	for code, p := range m.pools {
@@ -602,35 +769,80 @@ func (m *Manager) Reconfigure(ctx context.Context, cfg common.RouterConfig) erro
 		}
 		m.pools[code] = NewPool(pc, m.mediator, m.tracker, m.resolveConsumer)
 	}
+	m.poolMu.Unlock()
 
-	// Consumers: stop removed/changed, start new. A queue config change
-	// (URI/connections/visibility) restarts that consumer.
+	// Consumers: deregister removed/changed and note the missing ones, then do
+	// the connection work — tearing down and building both talk to the broker —
+	// outside the lock. Every ack and nack in the process resolves its consumer
+	// under consumerMu, so it must not be held across a connect.
+	// A queue config change (URI/connections/visibility) restarts that consumer.
+	m.consumerMu.Lock()
+	var stale []*runningConsumer
 	for name, rc := range m.consumers {
 		if wq, ok := wantQueues[name]; !ok || wq != rc.queueCfg {
 			slog.Info("manager: stopping consumer", "queue", name)
-			rc.cancel()
-			rc.consumer.Stop()
+			stale = append(stale, rc)
 			delete(m.consumers, name)
 			delete(m.queues, name)
 		}
 	}
+	missing := make([]common.QueueConfig, 0, len(wantQueues))
 	for name, qc := range wantQueues {
-		if _, ok := m.consumers[name]; ok {
-			continue
+		if _, ok := m.consumers[name]; !ok {
+			missing = append(missing, qc)
 		}
+	}
+	m.consumerMu.Unlock()
+
+	for _, rc := range stale {
+		rc.cancel()
+		rc.consumer.Stop()
+	}
+	for _, qc := range missing {
+		// ctx bounds the CONNECT only. The consumer itself lives under the
+		// manager's root — see the field comment: a caller's context is not a
+		// lifetime.
 		consumer, err := queue.NewConsumer(ctx, qc)
 		if err != nil {
-			return fmt.Errorf("build consumer for queue %s: %w", name, err)
+			return fmt.Errorf("build consumer for queue %s: %w", qc.Name, err)
 		}
-		cctx, cancel := context.WithCancel(ctx)
-		rc := &runningConsumer{consumer: consumer, cancel: cancel, queueCfg: qc}
-		rc.lastPoll.Store(time.Now().UnixNano())
-		m.consumers[name] = rc
-		m.queues[name] = qc
+		rc, pollCtx := newRunningConsumer(m.consumerRoot(), consumer, qc)
+
+		m.consumerMu.Lock()
+		if _, taken := m.consumers[qc.Name]; taken {
+			// The stalled-consumer watchdog respawned this queue while we were
+			// connecting. It holds the live entry; discard ours.
+			m.consumerMu.Unlock()
+			rc.cancel()
+			consumer.Stop()
+			continue
+		}
+		m.consumers[qc.Name] = rc
+		m.queues[qc.Name] = qc
+		m.consumerMu.Unlock()
+
 		m.wg.Add(1)
-		go m.runConsumer(cctx, rc)
+		go m.runConsumer(pollCtx, rc)
 	}
 	return nil
+}
+
+// StopPolling ends every consumer's poll loop while leaving work already in the
+// pipeline running. It is the first move of a graceful shutdown: intake stops,
+// then the drain has something that can actually reach zero. Cancelling the
+// consumers outright instead would abort the very deliveries the drain waits
+// for, and the drain would then sit out its whole timeout on messages nothing
+// was going to finish.
+//
+// Idempotent, and latched — the stalled-consumer watchdog must not respawn what
+// this stopped.
+func (m *Manager) StopPolling() {
+	m.pollingStopped.Store(true)
+	m.consumerMu.RLock()
+	defer m.consumerMu.RUnlock()
+	for _, rc := range m.consumers {
+		rc.stopPoll()
+	}
 }
 
 // Shutdown cancels all consumer poll loops, stops the pools, and waits for
@@ -642,18 +854,32 @@ func (m *Manager) Reconfigure(ctx context.Context, cfg common.RouterConfig) erro
 // assigns into them, and writing to a nil map panics (in the Watch
 // goroutine, taking the process down on the designed failover path).
 func (m *Manager) Shutdown(ctx context.Context) error {
-	m.mu.Lock()
+	// Held for the same reason Reconfigure holds it: a reconcile arriving
+	// mid-shutdown must not start a consumer into the maps we are clearing.
+	m.reconfigureMu.Lock()
+	defer m.reconfigureMu.Unlock()
+
+	m.consumerMu.Lock()
 	for _, rc := range m.consumers {
 		rc.cancel()
 		rc.consumer.Stop()
 	}
+	m.consumers = make(map[string]*runningConsumer)
+	m.queues = make(map[string]common.QueueConfig)
+	m.consumerMu.Unlock()
+
+	// Cancel anything still running under the root (and install a fresh one, so
+	// a leadership regain can reconfigure this same Manager), then let polling
+	// resume for that regain.
+	m.cancelConsumerRoot()
+	m.pollingStopped.Store(false)
+
+	m.poolMu.Lock()
 	for _, p := range m.pools {
 		p.Stop()
 	}
-	m.consumers = make(map[string]*runningConsumer)
 	m.pools = make(map[string]*Pool)
-	m.queues = make(map[string]common.QueueConfig)
-	m.mu.Unlock()
+	m.poolMu.Unlock()
 
 	done := make(chan struct{})
 	go func() { m.wg.Wait(); close(done) }()
@@ -674,6 +900,11 @@ func (m *Manager) RestartStalledConsumers(ctx context.Context, threshold time.Du
 	if threshold <= 0 {
 		return 0
 	}
+	if m.pollingStopped.Load() {
+		// Draining. Every poll loop is stopped on purpose and every lastPoll is
+		// therefore stale — restarting here would re-open intake mid-shutdown.
+		return 0
+	}
 	cutoff := time.Now().Add(-threshold).UnixNano()
 
 	type candidate struct {
@@ -681,14 +912,14 @@ func (m *Manager) RestartStalledConsumers(ctx context.Context, threshold time.Du
 		qc   common.QueueConfig
 		old  *runningConsumer
 	}
-	m.mu.Lock()
+	m.consumerMu.RLock()
 	var stalled []candidate
 	for name, rc := range m.consumers {
 		if lp := rc.lastPoll.Load(); lp != 0 && lp < cutoff {
 			stalled = append(stalled, candidate{name: name, qc: rc.queueCfg, old: rc})
 		}
 	}
-	m.mu.Unlock()
+	m.consumerMu.RUnlock()
 
 	// Clear restart-attempt counters for consumers that have recovered (are no
 	// longer stalled), so a transient stall doesn't escalate a later, unrelated
@@ -730,7 +961,7 @@ func (m *Manager) RestartStalledConsumers(ctx context.Context, threshold time.Du
 		select {
 		case <-ctx.Done():
 			return restarted
-		case <-time.After(consumerRestartDelay):
+		case <-time.After(m.restartDelay):
 		}
 
 		c.old.cancel()
@@ -741,23 +972,21 @@ func (m *Manager) RestartStalledConsumers(ctx context.Context, threshold time.Du
 			slog.Error("failed to rebuild stalled consumer", "queue", c.name, "err", err)
 			continue
 		}
-		cctx, cancel := context.WithCancel(ctx)
-		rc := &runningConsumer{consumer: consumer, cancel: cancel, queueCfg: c.qc}
-		rc.lastPoll.Store(time.Now().UnixNano())
+		rc, pollCtx := newRunningConsumer(m.consumerRoot(), consumer, c.qc)
 
-		m.mu.Lock()
+		m.consumerMu.Lock()
 		// Only replace if the entry is still the one we found stalled — a
 		// concurrent Reconfigure may have already swapped or removed it.
 		if cur, ok := m.consumers[c.name]; ok && cur == c.old {
 			m.consumers[c.name] = rc
-			m.mu.Unlock()
+			m.consumerMu.Unlock()
 			m.wg.Add(1)
-			go m.runConsumer(cctx, rc)
+			go m.runConsumer(pollCtx, rc)
 			m.restartAttempts[c.name]++
 			restarted++
 		} else {
-			m.mu.Unlock()
-			cancel()
+			m.consumerMu.Unlock()
+			rc.cancel()
 			consumer.Stop()
 		}
 	}
@@ -766,7 +995,7 @@ func (m *Manager) RestartStalledConsumers(ctx context.Context, threshold time.Du
 
 // PoolCount returns the count of running pools (for /health or /metrics).
 func (m *Manager) PoolCount() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.poolMu.RLock()
+	defer m.poolMu.RUnlock()
 	return len(m.pools)
 }

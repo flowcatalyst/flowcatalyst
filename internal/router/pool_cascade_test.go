@@ -56,10 +56,10 @@ func (c *cascadeConsumer) Defer(_ context.Context, rh string, _ *uint32) error {
 	c.record(&c.deferred, rh)
 	return nil
 }
-func (c *cascadeConsumer) ExtendVisibility(context.Context, string, uint32) error { return nil }
-func (c *cascadeConsumer) Identifier() string                                     { return "cascade-test" }
-func (c *cascadeConsumer) Healthy() bool                                          { return true }
-func (c *cascadeConsumer) Stop()                                                  {}
+
+func (c *cascadeConsumer) Identifier() string { return "cascade-test" }
+func (c *cascadeConsumer) Healthy() bool      { return true }
+func (c *cascadeConsumer) Stop()              {}
 func (c *cascadeConsumer) Metrics(context.Context) (*queue.Metrics, error) {
 	return &queue.Metrics{}, nil
 }
@@ -252,8 +252,7 @@ func TestPoolOrderedGroupRecoversAfterCancelDuringSemWait(t *testing.T) {
 	pool := newCascadePool(med, func(string) queue.Consumer { return cons })
 
 	// Occupy the single concurrency slot so the drainer parks on the acquire.
-	sem := pool.loadSem()
-	sem <- struct{}{}
+	require.NoError(t, pool.sem.acquire(context.Background()))
 
 	ctx1, cancel1 := context.WithCancel(context.Background())
 	pool.submit(ctx1, mkOrdered("m1", &group))
@@ -269,7 +268,7 @@ func TestPoolOrderedGroupRecoversAfterCancelDuringSemWait(t *testing.T) {
 		"cancelled drainer must leave the group idle with m1 re-fronted")
 
 	// Free the slot, then submit from the "restarted consumer".
-	<-sem
+	pool.sem.release()
 	pool.submit(context.Background(), mkOrdered("m2", &group))
 
 	select {

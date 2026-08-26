@@ -16,9 +16,15 @@ type WarningServiceConfig struct {
 	// MaxWarnings caps the in-memory set; when full, the oldest 10% are
 	// evicted by created_at order.
 	MaxWarnings int
-	// AutoAcknowledgeAge auto-acks any warning older than this. Defaults
-	// to MaxWarningAge so cleanup() naturally hides stale warnings before
-	// dropping them.
+	// AutoAcknowledgeAge auto-acks any warning older than this: it stops
+	// driving health while staying in history for the rest of MaxWarningAge.
+	// Acknowledging does not hide a warning, it stops it shouting.
+	//
+	// It must be meaningfully SHORTER than MaxWarningAge. It used to default to
+	// the same 8 hours, so the cleanup pass that acknowledged a warning deleted
+	// it in the same sweep for being 8 hours old — nothing could ever observe
+	// the acknowledged state, and one stale CRITICAL held the router Degraded
+	// for a full 8 hours.
 	AutoAcknowledgeAge time.Duration
 }
 
@@ -27,7 +33,7 @@ func DefaultWarningServiceConfig() WarningServiceConfig {
 	return WarningServiceConfig{
 		MaxWarningAge:      8 * time.Hour,
 		MaxWarnings:        1000,
-		AutoAcknowledgeAge: 8 * time.Hour,
+		AutoAcknowledgeAge: time.Hour,
 	}
 }
 
@@ -59,7 +65,9 @@ func NewWarningService(cfg WarningServiceConfig) *WarningService {
 		cfg.MaxWarnings = 1000
 	}
 	if cfg.AutoAcknowledgeAge <= 0 {
-		cfg.AutoAcknowledgeAge = cfg.MaxWarningAge
+		// Not MaxWarningAge: that is the setting that made auto-acknowledge
+		// unobservable in the first place (see the field comment).
+		cfg.AutoAcknowledgeAge = time.Hour
 	}
 	return &WarningService{
 		cfg:      cfg,
