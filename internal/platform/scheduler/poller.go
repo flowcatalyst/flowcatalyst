@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 )
 
 // defaultMessageGroup is the grouping key for jobs without a
@@ -166,13 +167,21 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 	// message, so the poller is the single re-dispatch driver — no queue-NACK
 	// racing the poll. A NULL scheduled_for (every freshly-created job) is
 	// always eligible.
+	// ORDER BY ends in `id` so the claim order is TOTAL. Ties on
+	// (message_group, sequence, created_at) are common — a subscription's
+	// sequence is per-subscription, not per-message, so every job of a group
+	// bound for one subscriber shares it — and an ordering with ties leaves the
+	// rest to the plan, which across a partitioned table can interleave
+	// arbitrarily. The id is a time-ordered TSID, so it both breaks the tie and
+	// breaks it chronologically. The positional hold-back below needs this
+	// total order to compare "earlier" at all.
 	rows, err := tx.Query(ctx,
 		`SELECT id, subscription_id, message_group, mode, dispatch_pool_id, client_id,
-		        attempt_count, target_url, created_at
+		        attempt_count, target_url, created_at, sequence
 		   FROM msg_dispatch_jobs
 		  WHERE status = 'PENDING'
 		    AND (scheduled_for IS NULL OR scheduled_for <= NOW())
-		  ORDER BY message_group ASC NULLS LAST, sequence ASC, created_at ASC
+		  ORDER BY message_group ASC NULLS LAST, sequence ASC, created_at ASC, id ASC
 		  LIMIT $1
 		  FOR UPDATE SKIP LOCKED`,
 		p.cfg.BatchSize)
@@ -187,7 +196,7 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 		var poolID *string
 		var clientID *string
 		if err := rows.Scan(&c.id, &subID, &msgGroup, &c.mode, &poolID, &clientID,
-			&c.attempt, &c.target, &c.createdAt); err != nil {
+			&c.attempt, &c.target, &c.createdAt, &c.sequence); err != nil {
 			rows.Close()
 			return err
 		}
@@ -309,8 +318,35 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 // FOR UPDATE SKIP LOCKED keeps locking msg_dispatch_jobs alone.
 type dispatchClaim struct {
 	id, subID, group, mode, poolID, clientID, target string
-	attempt                                          int32
+	attempt, sequence                                int32
 	createdAt                                        time.Time
+}
+
+// key is the claim's position in its group's delivery order — the same
+// (sequence, created_at, id) the claim query sorts by.
+func (c dispatchClaim) key() jobKey {
+	return jobKey{sequence: c.sequence, createdAt: c.createdAt, id: c.id}
+}
+
+// jobKey totally orders the jobs of one message group. "Earlier" has to be a
+// real comparison rather than mere set membership: a group is held back by a
+// job IN FRONT of the candidate, and a group that held itself back — the
+// backed-off job blocked by its own presence — would never dispatch again.
+type jobKey struct {
+	sequence  int32
+	createdAt time.Time
+	id        string
+}
+
+// before reports whether k comes before other in delivery order.
+func (k jobKey) before(other jobKey) bool {
+	if k.sequence != other.sequence {
+		return k.sequence < other.sequence
+	}
+	if !k.createdAt.Equal(other.createdAt) {
+		return k.createdAt.Before(other.createdAt)
+	}
+	return k.id < other.id
 }
 
 // messageGroupKey maps a claim's message_group to its grouping key: jobs
@@ -360,11 +396,27 @@ func filterPausedSubscriptions(claims []dispatchClaim, paused map[string]struct{
 // IMMEDIATE carries no ordering at all, and NEXT_ON_ERROR is ordered but
 // explicitly "the group moves on" past a failure, so neither is blocked.
 // Unknown modes parse leniently to IMMEDIATE and therefore dispatch.
-func filterByDispatchMode(claims []dispatchClaim, blocked map[string]struct{}) []dispatchClaim {
+// filterByDispatchMode applies the BLOCK_ON_ERROR hold-back: a job waits while
+// an EARLIER job in its group is holding the group up.
+//
+// Holding means the earlier job has not got through and is not going to on its
+// own right now — it failed, or it is sitting out a retry backoff. Both keep
+// their place at the front of the group: a backed-off job is still the next
+// message that must be delivered, so nothing behind it may go past while it
+// waits. Delivering its successors and letting it rejoin afterwards is exactly
+// the reordering BLOCK_ON_ERROR exists to prevent.
+//
+// The comparison is POSITIONAL, not set membership. "This group contains a
+// backed-off job" would include the backed-off job itself once its backoff
+// expired, and the group would never move again.
+//
+// IMMEDIATE and NEXT_ON_ERROR keep flowing — neither promises to stop for a
+// sibling.
+func filterByDispatchMode(claims []dispatchClaim, holders map[string]jobKey) []dispatchClaim {
 	kept := make([]dispatchClaim, 0, len(claims))
 	for _, c := range claims {
 		if common.ParseDispatchMode(c.mode) == common.DispatchBlockOnError {
-			if _, isBlocked := blocked[messageGroupKey(c.group)]; isBlocked {
+			if holder, ok := holders[messageGroupKey(c.group)]; ok && holder.before(c.key()) {
 				continue
 			}
 		}
@@ -379,14 +431,19 @@ func filterByDispatchMode(claims []dispatchClaim, blocked map[string]struct{}) [
 // block: `= ANY` never matches NULL, so a failed ungrouped job does not
 // hold back the "default" bucket. Preserve that exactly — only a row
 // whose message_group is literally 'default' blocks ungrouped jobs.
-func blockedGroups(ctx context.Context, tx pgx.Tx, groups []string) (map[string]struct{}, error) {
-	blocked := make(map[string]struct{})
+func blockedGroups(ctx context.Context, tx pgx.Tx, groups []string) (map[string]jobKey, error) {
+	holders := make(map[string]jobKey)
 	if len(groups) == 0 {
-		return blocked, nil
+		return holders, nil
 	}
+	// DISTINCT ON gives the EARLIEST holder per group, which is the only one
+	// that matters: anything behind it is held by it too.
 	rows, err := tx.Query(ctx,
-		`SELECT DISTINCT message_group FROM msg_dispatch_jobs
-		  WHERE message_group = ANY($1) AND status IN ('FAILED', 'ERROR')`,
+		`SELECT DISTINCT ON (message_group) message_group, sequence, created_at, id
+		   FROM msg_dispatch_jobs
+		  WHERE message_group = ANY($1)
+		    AND (`+dispatchjob.GroupHoldingStatusSQL+`)
+		  ORDER BY message_group, sequence, created_at, id`,
 		groups)
 	if err != nil {
 		return nil, err
@@ -394,15 +451,16 @@ func blockedGroups(ctx context.Context, tx pgx.Tx, groups []string) (map[string]
 	defer rows.Close()
 	for rows.Next() {
 		var g string
-		if err := rows.Scan(&g); err != nil {
+		var k jobKey
+		if err := rows.Scan(&g, &k.sequence, &k.createdAt, &k.id); err != nil {
 			return nil, err
 		}
-		blocked[g] = struct{}{}
+		holders[g] = k
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return blocked, nil
+	return holders, nil
 }
 
 // DispatchJobToken is the value the poller hands the dispatcher. It

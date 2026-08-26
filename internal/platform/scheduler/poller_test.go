@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -63,72 +64,110 @@ func TestGroupByMessageGroup_PreservesJobIDsAndOrder(t *testing.T) {
 	assert.Equal(t, []string{"aaa", "bbb"}, claimIDs(grouped["g1"]))
 }
 
+// heldBy builds the holder map: group → the id of the earliest job holding it.
+// Claims tie on sequence and created_at here, so ordering falls to the id,
+// which makes "j0 holds, j1 and j2 wait behind it" read directly.
+func heldBy(group, holderID string) map[string]jobKey {
+	return map[string]jobKey{group: {id: holderID}}
+}
+
 func TestFilterByDispatchMode_ImmediateAlwaysPasses(t *testing.T) {
-	blocked := map[string]struct{}{"grp_a": {}}
 	result := filterByDispatchMode([]dispatchClaim{
 		mkClaim("j1", "grp_a", "IMMEDIATE"),
 		mkClaim("j2", "grp_b", "IMMEDIATE"),
-	}, blocked)
+	}, heldBy("grp_a", "j0"))
 	assert.Len(t, result, 2)
 }
 
-func TestFilterByDispatchMode_BlockOnErrorExcludedWhenGroupBlocked(t *testing.T) {
-	blocked := map[string]struct{}{"grp_a": {}}
+func TestFilterByDispatchMode_BlockOnErrorWaitsBehindAHeldJob(t *testing.T) {
 	result := filterByDispatchMode([]dispatchClaim{
 		mkClaim("j1", "grp_a", "BLOCK_ON_ERROR"),
 		mkClaim("j2", "grp_b", "BLOCK_ON_ERROR"),
-	}, blocked)
+	}, heldBy("grp_a", "j0"))
 	assert.Equal(t, []string{"j2"}, claimIDs(result))
 }
 
+// The rule is positional. A job that is ITSELF the one holding the group — the
+// backed-off job, now that its backoff has expired — must dispatch, or the
+// group it is at the front of would never move again.
+func TestFilterByDispatchMode_TheHeldJobItselfDispatches(t *testing.T) {
+	result := filterByDispatchMode([]dispatchClaim{
+		mkClaim("j1", "grp", "BLOCK_ON_ERROR"),
+	}, heldBy("grp", "j1"))
+	assert.Equal(t, []string{"j1"}, claimIDs(result),
+		"the head of the group is not blocked by its own hold")
+}
+
+// And a job in front of the holder is unaffected: only what is BEHIND waits.
+func TestFilterByDispatchMode_JobsAheadOfTheHolderPass(t *testing.T) {
+	result := filterByDispatchMode([]dispatchClaim{
+		mkClaim("j1", "grp", "BLOCK_ON_ERROR"),
+		mkClaim("j3", "grp", "BLOCK_ON_ERROR"),
+	}, heldBy("grp", "j2"))
+	assert.Equal(t, []string{"j1"}, claimIDs(result))
+}
+
 // NEXT_ON_ERROR is ordered but explicitly "the group moves on" past a
-// failure — only BLOCK_ON_ERROR stops for a failed sibling.
-func TestFilterByDispatchMode_NextOnErrorPassesWhenGroupBlocked(t *testing.T) {
-	blocked := map[string]struct{}{"grp_x": {}}
+// failure — only BLOCK_ON_ERROR stops for a sibling in front of it.
+func TestFilterByDispatchMode_NextOnErrorPassesWhenGroupHeld(t *testing.T) {
 	result := filterByDispatchMode([]dispatchClaim{
 		mkClaim("j1", "grp_x", "NEXT_ON_ERROR"),
 		mkClaim("j2", "grp_y", "NEXT_ON_ERROR"),
-	}, blocked)
+	}, heldBy("grp_x", "j0"))
 	assert.Equal(t, []string{"j1", "j2"}, claimIDs(result))
 }
 
-func TestFilterByDispatchMode_NoBlockedGroupsPassesEverything(t *testing.T) {
+func TestFilterByDispatchMode_NoHeldGroupsPassesEverything(t *testing.T) {
 	result := filterByDispatchMode([]dispatchClaim{
 		mkClaim("j1", "g1", "BLOCK_ON_ERROR"),
 		mkClaim("j2", "g2", "NEXT_ON_ERROR"),
 		mkClaim("j3", "g3", "IMMEDIATE"),
-	}, map[string]struct{}{})
+	}, map[string]jobKey{})
 	assert.Len(t, result, 3)
 }
 
 func TestFilterByDispatchMode_MixedModesInSameGroup(t *testing.T) {
-	blocked := map[string]struct{}{"grp": {}}
 	result := filterByDispatchMode([]dispatchClaim{
 		mkClaim("j_imm", "grp", "IMMEDIATE"),
 		mkClaim("j_noe", "grp", "NEXT_ON_ERROR"),
 		mkClaim("j_boe", "grp", "BLOCK_ON_ERROR"),
-	}, blocked)
-	// Only BLOCK_ON_ERROR stops for a failed sibling.
+	}, heldBy("grp", "j_aaa"))
+	// Only BLOCK_ON_ERROR stops for a sibling in front of it.
 	assert.Equal(t, []string{"j_imm", "j_noe"}, claimIDs(result))
 }
 
 func TestFilterByDispatchMode_UngroupedUsesDefaultKey(t *testing.T) {
 	// Ungrouped BLOCK_ON_ERROR jobs check the "default" bucket.
-	blocked := map[string]struct{}{defaultMessageGroup: {}}
 	result := filterByDispatchMode([]dispatchClaim{
 		mkClaim("j1", "", "BLOCK_ON_ERROR"),
 		mkClaim("j2", "", "IMMEDIATE"),
-	}, blocked)
+	}, heldBy(defaultMessageGroup, "j0"))
 	assert.Equal(t, []string{"j2"}, claimIDs(result))
 }
 
-func TestFilterByDispatchMode_UnknownModeCountsAsImmediate(t *testing.T) {
-	// common.ParseDispatchMode maps unknown strings to Immediate.
-	blocked := map[string]struct{}{"grp": {}}
+func TestFilterByDispatchMode_UnknownModeIsNotBlockOnError(t *testing.T) {
+	// An unrecognised mode takes the default (NEXT_ON_ERROR), which orders but
+	// does not stop for a sibling — so it flows.
 	result := filterByDispatchMode([]dispatchClaim{
 		mkClaim("j1", "grp", "SOMETHING_ELSE"),
-	}, blocked)
+	}, heldBy("grp", "j0"))
 	assert.Equal(t, []string{"j1"}, claimIDs(result))
+}
+
+// jobKey is the total order the hold-back compares against: sequence first,
+// then created_at, then id.
+func TestJobKeyOrdering(t *testing.T) {
+	early := time.Date(2026, 8, 25, 10, 0, 0, 0, time.UTC)
+	late := early.Add(time.Second)
+
+	assert.True(t, jobKey{sequence: 1, createdAt: late, id: "z"}.
+		before(jobKey{sequence: 2, createdAt: early, id: "a"}), "sequence wins")
+	assert.True(t, jobKey{sequence: 1, createdAt: early, id: "z"}.
+		before(jobKey{sequence: 1, createdAt: late, id: "a"}), "then created_at")
+	assert.True(t, jobKey{sequence: 1, createdAt: early, id: "a"}.
+		before(jobKey{sequence: 1, createdAt: early, id: "b"}), "then id")
+	assert.False(t, jobKey{sequence: 1, createdAt: early, id: "a"}.
+		before(jobKey{sequence: 1, createdAt: early, id: "a"}), "a job is not before itself")
 }
 
 func TestFilterPausedSubscriptions(t *testing.T) {

@@ -399,19 +399,27 @@ func (r *Repository) Reschedule(ctx context.Context, id string, createdAt time.T
 	return err
 }
 
-// GroupBlocked reports whether the message group currently holds a FAILED or
-// ERROR job — the same predicate as the scheduler poller's blocked-group
-// hold-back (served by idx_dispatch_jobs_blocked_groups). Used by the
-// processing endpoint to stop already-queued siblings from delivering past
-// a failure.
-func (r *Repository) GroupBlocked(ctx context.Context, group string) (bool, error) {
-	var blocked bool
+// GroupHeldBefore reports whether an EARLIER job in the message group is
+// holding it up — failed, or sitting out a retry backoff (see
+// GroupHoldingStatusSQL). It is the delivery-time half of the scheduler's
+// claim-time hold-back: the poller stops QUEUEING a group's jobs once one is
+// held, but messages already on the queue at that moment still arrive here and
+// would deliver past it.
+//
+// "Earlier" is positional — the (sequence, created_at, id) the poller claims
+// by. Asking merely whether the group contains a held job would also catch the
+// held job itself the moment it became deliverable again, and the group would
+// never move.
+func (r *Repository) GroupHeldBefore(ctx context.Context, group string, sequence int32, createdAt time.Time, id string) (bool, error) {
+	var held bool
 	err := r.pool.QueryRow(ctx,
 		`SELECT EXISTS (
 		     SELECT 1 FROM msg_dispatch_jobs
-		      WHERE message_group = $1 AND status IN ('FAILED', 'ERROR'))`,
-		group).Scan(&blocked)
-	return blocked, err
+		      WHERE message_group = $1
+		        AND (`+GroupHoldingStatusSQL+`)
+		        AND (sequence, created_at, id) < ($2, $3, $4))`,
+		group, sequence, createdAt, id).Scan(&held)
+	return held, err
 }
 
 // Requeue resets the given jobs to PENDING for a fresh delivery cycle:

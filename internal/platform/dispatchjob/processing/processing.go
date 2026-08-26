@@ -183,18 +183,18 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Blocked-group hold-back at delivery time, for BLOCK_ON_ERROR only —
-	// the one mode that promises to stop for a failed sibling (IMMEDIATE
-	// and NEXT_ON_ERROR keep flowing, matching the poller's filter, and
-	// skip the query entirely). The poller stops QUEUEING these jobs once
-	// a sibling fails, but messages already in the queue at that moment
-	// would still arrive here and deliver past the failure. Mirror the
-	// poller instead: ack the queue message (dropping it from the router)
-	// and put the job back to PENDING without consuming retry budget —
-	// once the operator resolves the failed sibling, the group unblocks
-	// and the poller re-queues these jobs in order.
+	// Held-group hold-back at delivery time, for BLOCK_ON_ERROR only — the one
+	// mode that promises to stop for a sibling in front of it (IMMEDIATE and
+	// NEXT_ON_ERROR keep flowing, matching the poller's filter, and skip the
+	// query entirely). The poller stops QUEUEING these jobs once one ahead of
+	// them is held, but messages already in the queue at that moment would
+	// still arrive here and deliver past it. Mirror the poller instead: ack the
+	// queue message (dropping it from the router) and put the job back to
+	// PENDING without consuming retry budget — once the job in front gets
+	// through (its retry succeeds, or an operator resolves its failure) the
+	// group moves and the poller re-queues these in order.
 	if job.Mode == common.DispatchBlockOnError && job.MessageGroup != nil && *job.MessageGroup != "" {
-		blocked, err := h.repo.GroupBlocked(ctx, *job.MessageGroup)
+		blocked, err := h.repo.GroupHeldBefore(ctx, *job.MessageGroup, job.Sequence, job.CreatedAt, jobID)
 		if err != nil {
 			// Transient DB error — NACK so the queue redelivers.
 			slog.Error("dispatch process: blocked-group check failed", "job_id", jobID, "err", err)
