@@ -7,8 +7,19 @@
 // Layout of the 64-bit value:
 //
 //	bits 63..22  timestamp (42 bits, millis since epoch)
-//	bits 21..12  random  (10 bits)
-//	bits 11..0   counter (12 bits)
+//	bits 21..10  sequence  (12 bits)
+//	bits  9..0   random    (10 bits)
+//
+// The order of the two low fields is the whole of "time-sorted". The sequence
+// is what makes ids minted inside one millisecond comparable, so it has to
+// outrank the random field: with random above it, two ids from the same
+// millisecond sorted by NOISE and the counter contributed nothing to ordering
+// at all. Sorting is by string, and Crockford Base32 is order-preserving, so
+// the bit order IS the sort order.
+//
+// Collision resistance is unchanged by the swap — it still takes the same
+// (millisecond, sequence, random) triple to collide — because only the
+// comparison order moved, not the entropy.
 //
 // This package is the SDK-exported primitive set: generation, encoding,
 // decoding. FlowCatalyst's typed-entity catalog lives in the platform's
@@ -92,11 +103,16 @@ func GenerateUntyped() string {
 }
 
 // GenerateRaw produces the 13-character Crockford Base32 TSID.
+//
+// Within one process the result is strictly increasing: the millisecond only
+// moves forward (nextMsSeq borrows the next one rather than reusing a
+// sequence), and inside a millisecond the sequence increments — and the
+// sequence sits above the random field, so nothing below can reverse the pair.
 func GenerateRaw() string {
 	ms, seq := nextMsSeq()
 	r := uint64(randomU10()) & 0x3FF
 
-	tsid := ((ms & 0x3FFFFFFFFFF) << 22) | (r << 12) | seq
+	tsid := ((ms & 0x3FFFFFFFFFF) << 22) | ((seq & 0xFFF) << 10) | r
 	return encodeCrockford(tsid)
 }
 

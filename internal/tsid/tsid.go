@@ -8,11 +8,11 @@
 // Principal → "prn", etc.) — domain knowledge that does not belong in
 // the generic SDK module.
 //
-// Layout (unchanged, defined in pkg/fcsdk/tsid):
+// Layout (defined in pkg/fcsdk/tsid):
 //
 //	bits 63..22  timestamp (42 bits, millis since epoch)
-//	bits 21..12  random  (10 bits)
-//	bits 11..0   counter (12 bits)
+//	bits 21..10  sequence  (12 bits)
+//	bits  9..0   random    (10 bits)
 package tsid
 
 import (

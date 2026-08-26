@@ -85,6 +85,50 @@ func TestSortability(t *testing.T) {
 	assert.Less(t, id1, id2, "TSIDs should be lexicographically sortable")
 }
 
+// TestSortabilityWithinAMillisecond is the test that had to exist. Its
+// predecessor sleeps 2ms between two ids and so only exercises ordering
+// ACROSS milliseconds — the easy half, decided by the timestamp alone. It
+// failed intermittently anyway, and only by luck: under load the generator
+// borrows milliseconds ahead of the wall clock, which occasionally landed
+// both ids in the same millisecond and exposed what this test attacks head on.
+//
+// Inside one millisecond the ordering came from a random field that outranked
+// the sequence, so it was a coin toss per pair. A tight burst forces thousands
+// of ids into each millisecond, plus several sequence exhaustions (4096 per
+// ms) and the millisecond-borrowing that follows.
+func TestSortabilityWithinAMillisecond(t *testing.T) {
+	const n = 50_000 // >> 4096, so sequence wrap and ms borrowing both happen
+
+	ids := make([]string, n)
+	for i := range ids {
+		ids[i] = tsid.GenerateUntyped()
+	}
+
+	for i := 1; i < n; i++ {
+		require.Lessf(t, ids[i-1], ids[i],
+			"id %d sorts before id %d: %q !< %q — generation order must be sort order",
+			i, i-1, ids[i-1], ids[i])
+	}
+}
+
+// The bit layout IS the sort order, because Crockford Base32 is
+// order-preserving. Pin it so a future reorder — the exact defect this
+// package carried — fails here rather than as an occasional mystery
+// elsewhere.
+func TestLayoutPutsSequenceAboveRandom(t *testing.T) {
+	// Two ids from the same burst: same millisecond, consecutive sequence.
+	a, aok := tsid.ToLong(tsid.GenerateUntyped())
+	b, bok := tsid.ToLong(tsid.GenerateUntyped())
+	require.True(t, aok && bok)
+
+	msA, msB := uint64(a)>>22, uint64(b)>>22
+	require.Equal(t, msA, msB, "a tight pair should share a millisecond; rerun if the clock ticked between them")
+
+	seqA, seqB := (uint64(a)>>10)&0xFFF, (uint64(b)>>10)&0xFFF
+	assert.Equal(t, seqA+1, seqB, "bits 21..10 must be the incrementing sequence")
+	assert.Less(t, a, b, "and the sequence must decide the order")
+}
+
 // TestPrefixCatalogStable enumerates every EntityType and asserts the
 // prefix matches the canonical prefix table. This is the
 // load-bearing compatibility test: if any prefix drifts, the
