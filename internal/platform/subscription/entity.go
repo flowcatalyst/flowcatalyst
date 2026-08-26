@@ -133,7 +133,7 @@ func New(code, name, endpoint string) *Subscription {
 		MaxAgeSeconds:  86400,
 		DelaySeconds:   0,
 		Sequence:       99,
-		Mode:           common.DispatchImmediate,
+		Mode:           common.DefaultDispatchMode,
 		TimeoutSeconds: 30,
 		MaxRetries:     3,
 		DataOnly:       true,

@@ -7,7 +7,10 @@
 // byte-compatible.
 package common
 
-import "time"
+import (
+	"log/slog"
+	"time"
+)
 
 // MediationType is the kind of mediation (currently only HTTP).
 type MediationType string
@@ -26,16 +29,35 @@ const (
 	DispatchBlockOnError DispatchMode = "BLOCK_ON_ERROR"
 )
 
-// ParseDispatchMode is the lenient parser:
-// unknown input maps to Immediate.
+// DefaultDispatchMode is what an unspecified mode means, everywhere: keep a
+// message group in sequence, one at a time, and move on to the next message if
+// one fails.
+//
+// It was IMMEDIATE, which is the only mode with no ordering at all — so any
+// producer that omitted the field silently gave up sequencing, and the loss
+// showed only under load, where concurrent dispatch actually gets to interleave.
+// A default that quietly weakens a guarantee is the wrong way round: ordering is
+// cheap to opt out of (set IMMEDIATE) and expensive to discover you never had.
+const DefaultDispatchMode = DispatchNextOnError
+
+// ParseDispatchMode maps a wire/stored value to a mode. Empty means
+// unspecified, which is DefaultDispatchMode. Anything unrecognised is a
+// producer bug: it also takes the default, but says so, because silently
+// treating a typo as "no ordering" is how the previous default hid.
 func ParseDispatchMode(s string) DispatchMode {
 	switch s {
+	case "IMMEDIATE":
+		return DispatchImmediate
 	case "NEXT_ON_ERROR":
 		return DispatchNextOnError
 	case "BLOCK_ON_ERROR":
 		return DispatchBlockOnError
+	case "":
+		return DefaultDispatchMode
 	default:
-		return DispatchImmediate
+		slog.Warn("unrecognised dispatch mode; using the default",
+			"value", s, "default", string(DefaultDispatchMode))
+		return DefaultDispatchMode
 	}
 }
 

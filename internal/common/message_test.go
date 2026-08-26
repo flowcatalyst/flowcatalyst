@@ -70,9 +70,21 @@ func TestMessageOmitsEmptyOptionals(t *testing.T) {
 	assert.NotContains(t, got, `"dispatchMode"`)
 }
 
-func TestDispatchModeParseLenient(t *testing.T) {
-	assert.Equal(t, common.DispatchImmediate, common.ParseDispatchMode(""))
-	assert.Equal(t, common.DispatchImmediate, common.ParseDispatchMode("UNKNOWN_GIBBERISH"))
+// An unspecified mode means DefaultDispatchMode — ordering kept, moving on past
+// a failure. It used to mean IMMEDIATE, so every producer that omitted the field
+// silently gave up sequencing.
+func TestDispatchModeParseDefaultsToOrdered(t *testing.T) {
+	assert.Equal(t, common.DispatchNextOnError, common.DefaultDispatchMode,
+		"the default must be a mode that actually orders")
+	assert.Equal(t, common.DefaultDispatchMode, common.ParseDispatchMode(""))
+	assert.Equal(t, common.DefaultDispatchMode, common.ParseDispatchMode("UNKNOWN_GIBBERISH"),
+		"a typo is a producer bug, not a request for concurrency")
+}
+
+// An explicit mode is always honoured — including IMMEDIATE, which is now the
+// only way to ask for unordered dispatch.
+func TestDispatchModeParseHonoursExplicitModes(t *testing.T) {
+	assert.Equal(t, common.DispatchImmediate, common.ParseDispatchMode("IMMEDIATE"))
 	assert.Equal(t, common.DispatchNextOnError, common.ParseDispatchMode("NEXT_ON_ERROR"))
 	assert.Equal(t, common.DispatchBlockOnError, common.ParseDispatchMode("BLOCK_ON_ERROR"))
 }

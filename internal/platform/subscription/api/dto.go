@@ -60,7 +60,7 @@ type CreateSubscriptionRequest struct {
 	ServiceAccountID *string               `json:"serviceAccountId,omitempty"`
 	EventTypes       []EventTypeBindingDTO `json:"eventTypes,omitempty"`
 	CustomConfig     []ConfigEntryDTO      `json:"customConfig,omitempty"`
-	Mode             string                `json:"mode,omitempty" doc:"Dispatch mode (IMMEDIATE, NEXT_ON_ERROR, BLOCK_ON_ERROR)"`
+	Mode             string                `json:"mode,omitempty" doc:"Dispatch mode. Omitted means NEXT_ON_ERROR: a message group is delivered in sequence, one at a time, moving on past a failure. BLOCK_ON_ERROR stops the group at a failure instead; IMMEDIATE opts out of ordering entirely. Ordering applies only to messages that carry a message group."`
 	TimeoutSeconds   *int32                `json:"timeoutSeconds,omitempty"`
 	MaxRetries       *int32                `json:"maxRetries,omitempty"`
 	DelaySeconds     *int32                `json:"delaySeconds,omitempty"`

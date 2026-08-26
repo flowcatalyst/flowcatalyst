@@ -134,9 +134,10 @@ func TestPublishedPoolCodeForPlatformPoolHasNoPrefix(t *testing.T) {
 	require.Equal(t, "PLATFORM-POOL", msgs[0].PoolCode)
 }
 
-// TestUnknownModePublishesAsImmediate matches the poller's own lenient parse:
-// an unrecognised mode string must not become an ordered mode by accident.
-func TestUnknownModePublishesAsImmediate(t *testing.T) {
+// TestUnknownModePublishesAsTheDefault matches the poller's own parse: an
+// unrecognised mode string is a producer bug, and it must not silently become
+// the one mode that abandons ordering. It takes the default, which orders.
+func TestUnknownModePublishesAsTheDefault(t *testing.T) {
 	pool := testpg.Pool(t)
 
 	seedRoutableJob(t, pool, "dje2epool005", "NOT_A_REAL_MODE", nil, nil)
@@ -144,6 +145,6 @@ func TestUnknownModePublishesAsImmediate(t *testing.T) {
 	msgs := pollAndCapture(t, pool)
 
 	require.Len(t, msgs, 1)
-	require.Equal(t, common.DispatchImmediate, msgs[0].DispatchMode)
-	require.False(t, msgs[0].DispatchMode.RequiresOrdering())
+	require.Equal(t, common.DefaultDispatchMode, msgs[0].DispatchMode)
+	require.True(t, msgs[0].DispatchMode.RequiresOrdering())
 }

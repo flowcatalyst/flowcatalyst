@@ -56,7 +56,10 @@ func TestBuildMessageOrderedModesReachTheFIFOPath(t *testing.T) {
 		{"BLOCK_ON_ERROR", true},
 		{"NEXT_ON_ERROR", true},
 		{"IMMEDIATE", false},
-		{"", false}, // absent mode is still leniently IMMEDIATE
+		// An absent mode takes DefaultDispatchMode, which orders. It used to
+		// fall through to IMMEDIATE, so a job whose mode never made it onto the
+		// row lost its sequencing without a word.
+		{"", true},
 	} {
 		msg := d.buildMessage(DispatchJobToken{
 			JobID:        "dsp_1",

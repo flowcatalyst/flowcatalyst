@@ -384,14 +384,20 @@ func buildJobs(events []claimedEvent, subs []cachedSubscription) []newJob {
 	return jobs
 }
 
+// dispatchModeStr renders the subscription's mode for the job row. Each mode
+// is spelled out: a default arm that swallowed IMMEDIATE along with anything
+// unrecognised would silently rewrite an explicit choice the day the default
+// changed.
 func dispatchModeStr(m common.DispatchMode) string {
 	switch m {
+	case common.DispatchImmediate:
+		return "IMMEDIATE"
 	case common.DispatchBlockOnError:
 		return "BLOCK_ON_ERROR"
 	case common.DispatchNextOnError:
 		return "NEXT_ON_ERROR"
 	default:
-		return "IMMEDIATE"
+		return string(common.DefaultDispatchMode)
 	}
 }
 
