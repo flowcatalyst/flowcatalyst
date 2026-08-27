@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
@@ -74,7 +75,7 @@ func TestMintIDToken(t *testing.T) {
 			FilterRolesForApplications: fixedFilter("za-logistics:orders-admin"),
 		}
 		client := auth.NewOAuthClient("clt_rp", "RP", auth.OAuthClientConfidential)
-		tok, err := s.mintIDToken(context.Background(), p, client.ClientID, client, nil)
+		tok, err := s.mintIDToken(context.Background(), p, client.ClientID, client, nil, time.Time{})
 		if err != nil {
 			t.Fatalf("mintIDToken: %v", err)
 		}
@@ -91,7 +92,7 @@ func TestMintIDToken(t *testing.T) {
 		}
 		client := auth.NewOAuthClient("clt_rp", "RP", auth.OAuthClientConfidential)
 		client.ApplicationIDs = []string{"app_za_logistics"}
-		tok, err := s.mintIDToken(context.Background(), p, client.ClientID, client, nil)
+		tok, err := s.mintIDToken(context.Background(), p, client.ClientID, client, nil, time.Time{})
 		if err != nil {
 			t.Fatalf("mintIDToken: %v", err)
 		}
@@ -105,7 +106,7 @@ func TestMintIDToken(t *testing.T) {
 		s := &State{Auth: testAuthService(t)} // FilterRolesForApplications nil
 		client := auth.NewOAuthClient("clt_rp", "RP", auth.OAuthClientConfidential)
 		client.ApplicationIDs = []string{"app_za_logistics"}
-		tok, err := s.mintIDToken(context.Background(), p, client.ClientID, client, nil)
+		tok, err := s.mintIDToken(context.Background(), p, client.ClientID, client, nil, time.Time{})
 		if err != nil {
 			t.Fatalf("mintIDToken: %v", err)
 		}
@@ -120,7 +121,7 @@ func TestMintIDToken(t *testing.T) {
 			Auth:                       testAuthService(t),
 			FilterRolesForApplications: fixedFilter("za-logistics:orders-admin"),
 		}
-		tok, err := s.mintIDToken(context.Background(), p, "clt_rp", nil, nil)
+		tok, err := s.mintIDToken(context.Background(), p, "clt_rp", nil, nil, time.Time{})
 		if err != nil {
 			t.Fatalf("mintIDToken: %v", err)
 		}
@@ -153,7 +154,7 @@ func TestMintIDTokenConfinesApplications(t *testing.T) {
 
 	t.Run("app-scoped client sees only its own application", func(t *testing.T) {
 		s := &State{Auth: testAuthService(t)}
-		tok, err := s.mintIDToken(context.Background(), newPrincipal(), "clt_rp", scopedClient(), nil)
+		tok, err := s.mintIDToken(context.Background(), newPrincipal(), "clt_rp", scopedClient(), nil, time.Time{})
 		if err != nil {
 			t.Fatalf("mintIDToken: %v", err)
 		}
@@ -171,7 +172,7 @@ func TestMintIDTokenConfinesApplications(t *testing.T) {
 		p.AllApplications = true
 		p.AccessibleApplicationIDs = nil
 		s := &State{Auth: testAuthService(t)}
-		tok, err := s.mintIDToken(context.Background(), p, "clt_rp", scopedClient(), nil)
+		tok, err := s.mintIDToken(context.Background(), p, "clt_rp", scopedClient(), nil, time.Time{})
 		if err != nil {
 			t.Fatalf("mintIDToken: %v", err)
 		}
@@ -187,7 +188,7 @@ func TestMintIDTokenConfinesApplications(t *testing.T) {
 	t.Run("unscoped client keeps the full list", func(t *testing.T) {
 		c := auth.NewOAuthClient("clt_rp", "RP", auth.OAuthClientConfidential)
 		s := &State{Auth: testAuthService(t)}
-		tok, err := s.mintIDToken(context.Background(), newPrincipal(), "clt_rp", c, nil)
+		tok, err := s.mintIDToken(context.Background(), newPrincipal(), "clt_rp", c, nil, time.Time{})
 		if err != nil {
 			t.Fatalf("mintIDToken: %v", err)
 		}
@@ -202,7 +203,7 @@ func TestMintIDTokenConfinesApplications(t *testing.T) {
 		// Application confinement is set intersection; it does not depend on
 		// role→application resolution being available.
 		s := &State{Auth: testAuthService(t)} // FilterRolesForApplications nil
-		tok, err := s.mintIDToken(context.Background(), newPrincipal(), "clt_rp", scopedClient(), nil)
+		tok, err := s.mintIDToken(context.Background(), newPrincipal(), "clt_rp", scopedClient(), nil, time.Time{})
 		if err != nil {
 			t.Fatalf("mintIDToken: %v", err)
 		}

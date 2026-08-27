@@ -10,6 +10,7 @@ import (
 	"encoding/pem"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
@@ -288,7 +289,7 @@ func TestIDTokenShape(t *testing.T) {
 
 func TestGenerateIDTokenWithRolesOverridesRolesClaim(t *testing.T) {
 	svc := newRS256(t)
-	tok, err := svc.GenerateIDTokenWithRoles(anchorUser(), "clt_rp", nil, []string{"za-logistics:orders-admin"})
+	tok, err := svc.GenerateIDTokenWithRoles(anchorUser(), "clt_rp", nil, []string{"za-logistics:orders-admin"}, time.Time{})
 	if err != nil {
 		t.Fatalf("generate id token: %v", err)
 	}
@@ -301,7 +302,7 @@ func TestGenerateIDTokenWithRolesOverridesRolesClaim(t *testing.T) {
 
 func TestGenerateIDTokenWithRolesEmptyStaysEmptyArray(t *testing.T) {
 	svc := newRS256(t)
-	tok, err := svc.GenerateIDTokenWithRoles(anchorUser(), "clt_rp", nil, nil)
+	tok, err := svc.GenerateIDTokenWithRoles(anchorUser(), "clt_rp", nil, nil, time.Time{})
 	if err != nil {
 		t.Fatalf("generate id token: %v", err)
 	}
@@ -442,4 +443,65 @@ func TestIdentityAccessTokenCarriesNoAuthority(t *testing.T) {
 	if _, ok := decodeJWTPayload(t, tok)["scope"]; ok {
 		t.Error("scope claim must be omitted on an identity token")
 	}
+}
+
+// TestIDTokenAuthTimeAndUpdatedAt pins that the two time claims report real
+// events rather than the moment of minting. auth_time is what an RP evaluates
+// max_age against, so re-stamping it per mint made a long-running session look
+// freshly authenticated on every refresh; updated_at re-stamped likewise made
+// every login look like a profile change.
+func TestIDTokenAuthTimeAndUpdatedAt(t *testing.T) {
+	svc := newRS256(t)
+	signedInAt := time.Now().UTC().Add(-3 * time.Hour).Truncate(time.Second)
+	modifiedAt := time.Now().UTC().Add(-72 * time.Hour).Truncate(time.Second)
+
+	p := anchorUser()
+	p.UpdatedAt = modifiedAt
+
+	tok, err := svc.GenerateIDTokenWithRoles(p, "clt_rp", nil, nil, signedInAt)
+	if err != nil {
+		t.Fatalf("GenerateIDTokenWithRoles: %v", err)
+	}
+	claims := decodeIDTokenTimes(t, tok)
+
+	if claims.AuthTime != signedInAt.Unix() {
+		t.Errorf("auth_time = %d, want the sign-in time %d", claims.AuthTime, signedInAt.Unix())
+	}
+	if claims.UpdatedAt != modifiedAt.Unix() {
+		t.Errorf("updated_at = %d, want the principal's %d", claims.UpdatedAt, modifiedAt.Unix())
+	}
+
+	// A caller that cannot determine the sign-in time passes the zero value
+	// and gets now — a fallback, not a silent lie about a known time.
+	tok, err = svc.GenerateIDTokenWithRoles(p, "clt_rp", nil, nil, time.Time{})
+	if err != nil {
+		t.Fatalf("GenerateIDTokenWithRoles: %v", err)
+	}
+	claims = decodeIDTokenTimes(t, tok)
+	if delta := time.Now().UTC().Unix() - claims.AuthTime; delta < 0 || delta > 5 {
+		t.Errorf("zero auth_time should fall back to now, got %d (delta %ds)", claims.AuthTime, delta)
+	}
+}
+
+func decodeIDTokenTimes(t *testing.T, token string) struct {
+	AuthTime  int64 `json:"auth_time"`
+	UpdatedAt int64 `json:"updated_at"`
+} {
+	t.Helper()
+	var out struct {
+		AuthTime  int64 `json:"auth_time"`
+		UpdatedAt int64 `json:"updated_at"`
+	}
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		t.Fatalf("malformed JWT: %d parts", len(parts))
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	return out
 }

@@ -22,7 +22,7 @@ type RotationResult struct {
 //     already-rotated token cannot keep the chain alive.
 //   - Rotation: the presented token is revoked before the replacement is
 //     inserted.
-//   - Lineage: the replacement preserves Scopes, AccessibleClients and the
+//   - Lineage: the replacement preserves Scopes, AccessibleClients, AuthTime and the
 //     OAuth client binding, stays in the presented token's rotation family
 //     (rooting a fresh family for legacy tokens that predate tracking), and
 //     the rotated-out token is linked to its replacement so a later replay
@@ -66,6 +66,9 @@ func Rotate(ctx context.Context, repo *RefreshTokenRepository, rawToken string, 
 	entity.Scopes = stored.Scopes
 	entity.AccessibleClients = stored.AccessibleClients
 	entity.OAuthClientID = stored.OAuthClientID
+	// The sign-in time belongs to the family, not the individual token: a
+	// rotation is not a re-authentication, so auth_time must not advance.
+	entity.AuthTime = stored.AuthTime
 	// Inherit the presented token's expiry rather than the fresh
 	// now+default GenerateTokenPair stamped on. The original deadline is the
 	// family's absolute one-week cap (see refreshTokenDefaultExpiry); carrying

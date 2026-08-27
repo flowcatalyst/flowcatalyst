@@ -652,7 +652,7 @@ func (s *State) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Requ
 
 	var idToken *string
 	if scopeHas(scope, "openid") {
-		t, err := s.mintIDToken(r.Context(), p, code.ClientID, client, code.Nonce)
+		t, err := s.mintIDToken(r.Context(), p, code.ClientID, client, code.Nonce, code.AuthTime)
 		if err != nil {
 			writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 			return
@@ -675,6 +675,9 @@ func (s *State) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Requ
 		// token is ever replayed (reuse detection in handleRefreshTokenGrant).
 		fam := entity.ID
 		entity.TokenFamily = &fam
+		// Carry the sign-in time onto the family so a refreshed id_token's
+		// auth_time still points at the original authentication.
+		entity.AuthTime = code.AuthTime
 		if err := s.RefreshTokens.Insert(r.Context(), entity); err != nil {
 			writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 			return
@@ -771,7 +774,7 @@ func (s *State) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request, 
 	// client_id for the audience. Non-fatal on failure.
 	var idToken *string
 	if scopesContain(stored.Scopes, "openid") && stored.OAuthClientID != nil {
-		if t, err := s.mintIDToken(r.Context(), p, *stored.OAuthClientID, authenticatedClient, nil); err == nil {
+		if t, err := s.mintIDToken(r.Context(), p, *stored.OAuthClientID, authenticatedClient, nil, stored.AuthTime); err == nil {
 			idToken = &t
 		}
 	}
@@ -945,9 +948,9 @@ func (s *State) grantedScope(ctx context.Context, p *principal.Principal, reques
 //
 // A client with no ApplicationIDs (the default, unrestricted case) gets the
 // principal's full, unfiltered claims.
-func (s *State) mintIDToken(ctx context.Context, p *principal.Principal, clientIDForAud string, client *auth.OAuthClient, nonce *string) (string, error) {
+func (s *State) mintIDToken(ctx context.Context, p *principal.Principal, clientIDForAud string, client *auth.OAuthClient, nonce *string, authTime time.Time) (string, error) {
 	if client == nil || len(client.ApplicationIDs) == 0 {
-		return s.Auth.GenerateIDToken(p, clientIDForAud, nonce)
+		return s.Auth.GenerateIDTokenWithRoles(p, clientIDForAud, nonce, roleNamesOf(p), authTime)
 	}
 
 	// Shallow copy: only the application-scope fields are replaced, and the
@@ -964,7 +967,7 @@ func (s *State) mintIDToken(ctx context.Context, p *principal.Principal, clientI
 		}
 		roles = filtered
 	}
-	return s.Auth.GenerateIDTokenWithRoles(&scoped, clientIDForAud, nonce, roles)
+	return s.Auth.GenerateIDTokenWithRoles(&scoped, clientIDForAud, nonce, roles, authTime)
 }
 
 // roleNamesOf extracts a principal's assigned role names.

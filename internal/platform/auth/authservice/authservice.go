@@ -463,9 +463,10 @@ func (s *AuthService) generateTokenWithExpiry(p *principal.Principal, expirySecs
 }
 
 // GenerateIDToken mints an OIDC ID token addressed to clientID, echoing
-// the supplied nonce when present, with the principal's full role list.
+// the supplied nonce when present, with the principal's full role list and
+// auth_time defaulted to now (see generateIDToken).
 func (s *AuthService) GenerateIDToken(p *principal.Principal, clientID string, nonce *string) (string, error) {
-	return s.generateIDToken(p, clientID, nonce, roleNames(p))
+	return s.generateIDToken(p, clientID, nonce, roleNames(p), time.Time{})
 }
 
 // GenerateIDTokenWithRoles mints an OIDC ID token like GenerateIDToken but
@@ -474,17 +475,37 @@ func (s *AuthService) GenerateIDToken(p *principal.Principal, clientID string, n
 // party only sees roles (and the permissions they imply) relevant to its
 // own application, not roles from unrelated applications the principal
 // also holds.
-func (s *AuthService) GenerateIDTokenWithRoles(p *principal.Principal, clientID string, nonce *string, roles []string) (string, error) {
-	return s.generateIDToken(p, clientID, nonce, roles)
+//
+// authTime is when the user actually authenticated; pass the zero time when
+// that is unknown and it falls back to now.
+func (s *AuthService) GenerateIDTokenWithRoles(p *principal.Principal, clientID string, nonce *string, roles []string, authTime time.Time) (string, error) {
+	return s.generateIDToken(p, clientID, nonce, roles, authTime)
 }
 
-func (s *AuthService) generateIDToken(p *principal.Principal, clientID string, nonce *string, roles []string) (string, error) {
+// generateIDToken builds and signs the ID token.
+//
+// auth_time reports when the user SIGNED IN, not when this token was minted —
+// an RP evaluates max_age against it, so re-stamping it on every mint (which
+// is what happened before authTime was threaded through) made a long-running
+// session look freshly authenticated on every refresh. A zero authTime means
+// the caller could not determine it and falls back to now.
+//
+// updated_at likewise reports the principal's real last modification, so an RP
+// watching it for profile changes doesn't see one on every login.
+func (s *AuthService) generateIDToken(p *principal.Principal, clientID string, nonce *string, roles []string, authTime time.Time) (string, error) {
 	if roles == nil {
 		roles = []string{}
 	}
 	now := time.Now().UTC()
 	exp := now.Add(time.Duration(s.config.IDTokenExpirySecs) * time.Second)
-	nowUnix := now.Unix()
+	if authTime.IsZero() {
+		authTime = now
+	}
+	authTimeUnix := authTime.Unix()
+	updatedAtUnix := p.UpdatedAt.UTC().Unix()
+	if p.UpdatedAt.IsZero() {
+		updatedAtUnix = now.Unix()
+	}
 
 	email := principalEmail(p)
 	var emailVerified *bool
@@ -503,12 +524,12 @@ func (s *AuthService) generateIDToken(p *principal.Principal, clientID string, n
 			IssuedAt:  jwt.NewNumericDate(now),
 		},
 		Aud:             clientID,
-		AuthTime:        &nowUnix,
+		AuthTime:        &authTimeUnix,
 		Nonce:           nonce,
 		Name:            &name,
 		Email:           email,
 		EmailVerified:   emailVerified,
-		UpdatedAt:       &nowUnix,
+		UpdatedAt:       &updatedAtUnix,
 		AZP:             &azp,
 		PrincipalType:   string(p.Type),
 		Tier:            string(p.Scope),

@@ -57,9 +57,15 @@ type AuthorizationCode struct {
 	Nonce               *string
 	State               *string
 	ContextClientID     *string
-	CreatedAt           time.Time
-	ExpiresAt           time.Time
-	Used                bool
+	// AuthTime is when the user actually authenticated (the session token's
+	// issue time), NOT when this code was created. It rides through to the
+	// id_token's `auth_time` claim, which an RP evaluates max_age against —
+	// so it must survive a code exchange and a refresh without re-stamping.
+	// Zero when unknown (a code issued before this field existed).
+	AuthTime  time.Time
+	CreatedAt time.Time
+	ExpiresAt time.Time
+	Used      bool
 }
 
 // NewAuthorizationCode builds a code with the default 10-minute expiry.
@@ -77,6 +83,23 @@ func NewAuthorizationCode(code, clientID, principalID, redirectURI string) *Auth
 
 // IsExpired reports whether the code's expiry has passed.
 func (c *AuthorizationCode) IsExpired() bool { return time.Now().UTC().After(c.ExpiresAt) }
+
+// unixOrZero renders a time as a Unix second, keeping the zero time as 0 so
+// it round-trips as "unknown" rather than as the Unix epoch.
+func unixOrZero(t time.Time) int64 {
+	if t.IsZero() {
+		return 0
+	}
+	return t.Unix()
+}
+
+// timeOrZero is the inverse of unixOrZero.
+func timeOrZero(sec int64) time.Time {
+	if sec == 0 {
+		return time.Time{}
+	}
+	return time.Unix(sec, 0).UTC()
+}
 
 // IsValid reports whether the code is neither used nor expired.
 func (c *AuthorizationCode) IsValid() bool { return !c.Used && !c.IsExpired() }
@@ -96,6 +119,9 @@ type authCodePayload struct {
 	Kind                string  `json:"kind"`
 	IAT                 int64   `json:"iat"`
 	EXP                 int64   `json:"exp"`
+	// AuthTime is the real authentication time; absent on codes written
+	// before the field existed, which decode to a zero AuthTime.
+	AuthTime int64 `json:"authTime,omitempty"`
 }
 
 // AuthorizationCodeRepository persists authorization codes in
@@ -125,6 +151,7 @@ func (r *AuthorizationCodeRepository) Insert(ctx context.Context, c *Authorizati
 		Kind:                authCodePayloadType,
 		IAT:                 c.CreatedAt.Unix(),
 		EXP:                 c.ExpiresAt.Unix(),
+		AuthTime:            unixOrZero(c.AuthTime),
 	})
 	if err != nil {
 		return fmt.Errorf("marshal auth-code payload: %w", err)
@@ -209,6 +236,7 @@ func scanAuthCode(row pgx.Row) (*AuthorizationCode, error) {
 		Nonce:               p.Nonce,
 		State:               p.State,
 		ContextClientID:     p.ContextClientID,
+		AuthTime:            timeOrZero(p.AuthTime),
 		CreatedAt:           createdAt,
 		ExpiresAt:           exp,
 		Used:                consumedAt != nil,
@@ -235,6 +263,10 @@ type RefreshToken struct {
 	LastUsedAt        *time.Time
 	CreatedFromIP     *string
 	UserAgent         *string
+	// AuthTime is when the user authenticated, carried from the authorization
+	// code that minted this family so a refresh re-issues an id_token whose
+	// auth_time still points at the original sign-in. Zero when unknown.
+	AuthTime time.Time
 }
 
 // NewRefreshToken builds a token entity from a precomputed hash.
@@ -299,6 +331,9 @@ type refreshTokenPayload struct {
 	IAT               int64    `json:"iat"`
 	EXP               int64    `json:"exp"`
 	Kind              string   `json:"kind"`
+	// AuthTime is absent on tokens written before the field existed, which
+	// decode to a zero AuthTime.
+	AuthTime int64 `json:"authTime,omitempty"`
 }
 
 // RefreshTokenRepository persists refresh tokens in oauth_oidc_payloads
@@ -331,6 +366,7 @@ func (r *RefreshTokenRepository) Insert(ctx context.Context, t *RefreshToken) er
 		IAT:               t.CreatedAt.Unix(),
 		EXP:               t.ExpiresAt.Unix(),
 		Kind:              refreshTokenPayloadType,
+		AuthTime:          unixOrZero(t.AuthTime),
 	})
 	if err != nil {
 		return fmt.Errorf("marshal refresh-token payload: %w", err)
@@ -522,6 +558,7 @@ func scanRefreshToken(row pgx.Row) (*RefreshToken, error) {
 		LastUsedAt:        parseRFC3339Ptr(p.LastUsedAt),
 		CreatedFromIP:     p.CreatedFromIP,
 		UserAgent:         p.UserAgent,
+		AuthTime:          timeOrZero(p.AuthTime),
 	}, nil
 }
 

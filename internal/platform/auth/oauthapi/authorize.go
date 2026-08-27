@@ -153,6 +153,11 @@ func (s *State) Authorize(w http.ResponseWriter, r *http.Request) {
 		code.Scope = strPtrOrNil(scope)
 		code.Nonce = strPtrOrNil(nonce)
 		code.State = strPtrOrNil(stateParam)
+		// The session's issue time IS the authentication time — the same value
+		// max_age was just checked against. Carrying it on the code means the
+		// id_token's auth_time reports when the user actually signed in rather
+		// than when the token happened to be minted.
+		code.AuthTime = sessIssuedAt
 		if codeChallenge != "" {
 			// Persist the challenge binding unconditionally so PKCE can never be
 			// silently stripped by omitting the method — which would otherwise
