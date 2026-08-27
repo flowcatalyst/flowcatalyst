@@ -64,36 +64,37 @@ func TestFilterRolesForApplications(t *testing.T) {
 		want   []string
 	}{
 		{
-			// The prod bug: bare sync name resolves via the short-name fallback
-			// and is emitted as the app-local short name — the HR app's
-			// bare-keyed catalogue resolves it.
-			name:   "bare sync name resolves to short name",
+			// A bare assignment still resolves via the short-name fallback, but
+			// is emitted CANONICALLY — narrowing normalises the spelling rather
+			// than propagating whichever form happened to be stored.
+			name:   "bare sync name emitted canonically",
 			roles:  []string{"hr-manager"},
 			appIDs: []string{appHR},
-			want:   []string{"hr-manager"},
+			want:   []string{"hr:hr-manager"},
 		},
 		{
 			// Console-assigned prefixed name resolves via FindByName and is
-			// ALSO emitted as the short name — consistent with the sync case.
-			name:   "prefixed console name emitted as short name",
+			// emitted unchanged — both storage forms converge on one spelling.
+			name:   "prefixed console name emitted unchanged",
 			roles:  []string{"hr:hr-manager"},
 			appIDs: []string{appHR},
-			want:   []string{"hr-manager"},
+			want:   []string{"hr:hr-manager"},
 		},
 		{
-			// Malformed multi-colon role, prefixed form: only the first ":"
-			// after the app code is the delimiter → short name keeps its colon.
-			name:   "multi-colon prefixed role keeps its inner colon",
+			// Multi-colon role names (legacy app codes that predate the
+			// convention) pass through whole — nothing is stripped, so there is
+			// no delimiter ambiguity left to get wrong.
+			name:   "multi-colon role passes through whole",
 			roles:  []string{"logistics_portal:dashboard:user"},
 			appIDs: []string{appLog},
-			want:   []string{"dashboard:user"},
+			want:   []string{"logistics_portal:dashboard:user"},
 		},
 		{
-			// Malformed multi-colon role, bare form resolves the same way.
-			name:   "multi-colon bare role resolves to same short name",
+			// Its bare form resolves to the same canonical name.
+			name:   "multi-colon bare role resolves canonically",
 			roles:  []string{"dashboard:user"},
 			appIDs: []string{appLog},
-			want:   []string{"dashboard:user"},
+			want:   []string{"logistics_portal:dashboard:user"},
 		},
 		{
 			// A role belonging to another app is dropped (no privilege bleed).
@@ -116,10 +117,10 @@ func TestFilterRolesForApplications(t *testing.T) {
 			want:   []string{},
 		},
 		{
-			name:   "mixed set keeps only in-app roles as short names",
+			name:   "mixed set keeps only in-app roles, canonically named",
 			roles:  []string{"hr-manager", "viewer", "platform:admin"},
 			appIDs: []string{appHR},
-			want:   []string{"hr-manager"},
+			want:   []string{"hr:hr-manager"},
 		},
 	}
 

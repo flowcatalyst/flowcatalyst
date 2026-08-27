@@ -205,13 +205,17 @@ func filterRolesForApplications(ctx context.Context, roles roleLookup, roleNames
 			continue
 		}
 		if _, ok := allowed[*r.ApplicationID]; ok {
-			// Emit the app-local SHORT name (prefix stripped on the first ":"
-			// after the app code). App-scoped relying parties key their RBAC
-			// catalogues by the short name, so the token must carry it that way
-			// — and this makes both SDK-synced (bare) and console-assigned
-			// (prefixed) assignments resolve to the same value. ShortName also
-			// round-trips malformed multi-colon roles correctly.
-			out = append(out, r.ShortName())
+			// Emit the role's CANONICAL name — the same "{applicationCode}:{role}"
+			// string iam_roles stores and every other mint path already carries.
+			//
+			// This deliberately no longer short-names. Narrowing decides WHICH
+			// roles a client sees; it must not also change what they are called,
+			// or the same principal's role reaches two relying parties under two
+			// different spellings depending on whether their client happens to be
+			// app-scoped. Consumers that key an RBAC catalogue by the app-local
+			// name strip the prefix themselves — they know their own application
+			// code, and the platform cannot know which form a given consumer wants.
+			out = append(out, r.Name)
 		}
 	}
 	return out, nil
