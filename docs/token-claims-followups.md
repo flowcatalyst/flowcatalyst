@@ -45,18 +45,28 @@ Both SDKs parse the sentinel and honour the boolean, and both mark the boolean
 middleware ORs the two (`auth.ParseApplicationsClaim`), so the boolean can be
 dropped from the mint side without a coordinated release.
 
-## 3. Portal id_tokens mint `tier: ""`
+## 3. Portal id_tokens carry `tier: ""` — correct, but not the right shape
 
 `oauthapi.redeemPortalCode` builds a synthetic principal to mint from
 (`portal_token.go`), setting only id/type/name/email. `Scope` is left at its zero
-`UserScope`, and the `tier` claim is `string(p.Scope)` — so a portal user's
-id_token carries `tier: ""` rather than `"CLIENT"`.
+`UserScope`, so the `tier` claim serialises as `""`.
 
-It bites in the SDKs, which resolve tier with `??`: an empty string is not
-nullish, so it passes through instead of falling back, and the principal ends up
-with an empty scope. One line — set `Scope: principal.ScopeClient` on the
-synthetic — but it is a wire change for portal relying parties, so it wants
-doing deliberately rather than in passing.
+**Do not "fix" this by setting a tier.** A portal identity is not a platform
+principal — it lives on its own plane, per (client, email), with no tenancy
+tier at all. Stamping it `CLIENT` would assert it *is* a CLIENT-tier platform
+principal, which is false and is precisely the kind of claim a relying party
+would branch on. The portal token exists to prove identity and nothing else.
+
+The empty string is not the defect; it is the visible edge of a claim that does
+not apply to this token. `Tier` is `json:"tier"` with no `omitempty`, so
+"absent" and "empty" render the same. If this is ever tidied, the change is to
+omit the claim for portal tokens and let consumers default when it is missing —
+not to fill it in.
+
+Worth knowing that both SDKs resolve tier with `??`, so an empty string is not
+nullish and passes through instead of falling back to their default. That is
+the SDKs' half to handle if the claim starts being omitted. Currently working
+as-is, and any change here is a wire change for portal relying parties.
 
 ## 4. Role assignment has no write-path validation
 
