@@ -304,11 +304,17 @@ func (r *Repository) hydrateAppAccess(ctx context.Context, p *Principal) error {
 }
 
 // FindByServiceAccount loads the SERVICE-type principal linked to the
-// given service-account row, with role assignments hydrated from
-// iam_principal_roles. Used both to translate a SA id into the principal
-// id its FKs reference (e.g. `app_applications.service_account_id`, which
-// has a FK to `iam_principals.id` per migration 028) and by the
-// service-account roles endpoints, whose roles live on this principal.
+// given service-account row, fully hydrated (roles, client access,
+// application access) — the same shape FindByID returns. Used both to
+// translate a SA id into the principal id its FKs reference (e.g.
+// `app_applications.service_account_id`, which has a FK to
+// `iam_principals.id` per migration 028) and by the service-account roles
+// endpoints, whose roles live on this principal.
+//
+// Application access matters here because this is also the load path behind
+// the admin token mint (POST /api/service-accounts/{id}/token): hydrating
+// roles alone minted tokens whose `applications` claim was always empty,
+// so an app-scoped SA's token claimed no application reach at all.
 func (r *Repository) FindByServiceAccount(ctx context.Context, serviceAccountID string) (*Principal, error) {
 	res, err := r.q.PrincipalFindByServiceAccount(ctx, &serviceAccountID)
 	row, err := repocommon.One(res, err, "principal repo")
@@ -317,6 +323,12 @@ func (r *Repository) FindByServiceAccount(ctx context.Context, serviceAccountID 
 	}
 	p := rowToPrincipal(*row)
 	if err := r.hydrateRoles(ctx, p); err != nil {
+		return nil, err
+	}
+	if err := r.hydrateClientAccess(ctx, p); err != nil {
+		return nil, err
+	}
+	if err := r.hydrateAppAccess(ctx, p); err != nil {
 		return nil, err
 	}
 	return p, nil
