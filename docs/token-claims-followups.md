@@ -89,11 +89,30 @@ or add a second syncing app, and the invariant is gone.
 Ruled 2026-08-27: **do not add one.** The invariant belongs to the domain, not
 the schema.
 
-The reasoning is not merely stylistic. Role definitions and principal role
-assignments are *different aggregates*, so this is cross-aggregate referential
-integrity — the case that does not survive sharding, and the first thing to
-break on a move to a non-relational store. A constraint here would encode a
-rule outside the boundary that owns it, in the one place that cannot travel.
+The reasoning is not merely stylistic.
+
+**It does not partition.** This platform already range-partitions five
+messaging tables by `created_at` (migration 019, on every profile including
+fc-dev, precisely so constraint shapes that do not survive partitioning fail in
+dev rather than in production). MySQL — a documented future backend
+(`envcfg.go`) — does not support foreign keys on partitioned tables at all.
+Building on a mechanism the schema's own growth path cannot keep is borrowing
+against a bill that comes due at the worst moment.
+
+**It is the wrong boundary.** Role definitions and principal role assignments
+are *different aggregates*, so this is cross-aggregate referential integrity —
+the case that does not survive sharding and is first to break on a move to a
+non-relational store. The constraint would encode a rule outside the boundary
+that owns it, in the one place that cannot travel with it.
+
+**It hides business rules in the schema.** `ON DELETE RESTRICT` is a domain
+decision — "a role in use cannot be deleted" — written where no test covers it,
+no reviewer reads it, and no error message explains it. The caller gets a
+constraint violation instead of a reason.
+
+**It relies on implicit cascading.** A mechanism that silently rewrites rows
+the caller did not ask about is invisible in exactly the situations where you
+most need to see it.
 
 Reaching for the database to enforce a domain rule is a signal the domain code
 is underbuilt. The fix is to build it.
@@ -119,9 +138,15 @@ value.
 **3. Handle rename and delete explicitly.** This is the half the constraint
 would have covered that is not validation at all: integrity under operations in
 the *other* aggregate. Today renaming a role orphans every assignment of it,
-and deleting one strips access silently — no code covers either. Both become
-domain behaviour: refuse to delete a role while principals hold it, and either
-cascade a rename through the assignments or forbid renaming outright.
+and deleting one strips access silently — no code covers either.
+
+Deletion refuses while principals hold the role, with an error naming how many
+do. Renaming is best **forbidden**: the canonical name is derived from the
+application code and the short name, so a rename is really a new role plus a
+migration of its holders, and modelling it as an in-place edit invites exactly
+the silent multi-row rewrite that made the schema-level cascade a bad idea. If
+it must exist, it is an explicit operation that emits an event, not a quiet
+fan-out.
 
 Better as explicit, testable behaviour than as a schema clause nobody reads —
 and, unlike the clause, it ports.
