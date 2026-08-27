@@ -494,28 +494,25 @@ func TestAssignRolesToServiceAccount_Errors(t *testing.T) {
 
 // ── RegenerateAuthToken ───────────────────────────────────────────────────
 
-func TestRegenerateAuthToken_HappyPathAndStash(t *testing.T) {
+func TestRegenerateAuthToken_HappyPathAndDisclosure(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	repo := serviceaccount.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 	seeded := mustCreate(t, repo, uow, "saregen-token", "Token Regen")
 
+	// The sink is a local owned by this caller — the plaintext's lifetime is
+	// the caller's, not a process-wide map's.
+	var token string
 	ev, err := runOp(uow, operations.RegenerateAuthToken(repo),
-		operations.RegenerateAuthTokenCommand{ServiceAccountID: seeded.ServiceAccountID})
+		operations.RegenerateAuthTokenCommand{
+			ServiceAccountID: seeded.ServiceAccountID,
+			Disclose:         func(pt string) { token = pt },
+		})
 	require.NoError(t, err)
 	assert.Equal(t, seeded.ServiceAccountID, ev.ServiceAccountID)
 	assert.Equal(t, "saregen-token", ev.Code)
-
-	// One-shot stash: first pop yields the plaintext, second pop is empty —
-	// the HTTP handler's "show it exactly once" contract.
-	token, ok := operations.PopStashedSecret(seeded.ServiceAccountID, "token")
-	require.True(t, ok, "first pop must return the stashed token")
-	assert.Regexp(t, `^fc_[0-9a-z]{32}$`, token)
-
-	again, ok := operations.PopStashedSecret(seeded.ServiceAccountID, "token")
-	assert.False(t, ok, "second pop must miss — stash is one-shot")
-	assert.Empty(t, again)
+	assert.Regexp(t, `^fc_[0-9a-z]{32}$`, token, "the plaintext reaches the caller")
 
 	got, err := repo.FindByID(ctx, seeded.ServiceAccountID)
 	require.NoError(t, err)
@@ -523,7 +520,7 @@ func TestRegenerateAuthToken_HappyPathAndStash(t *testing.T) {
 	assert.Equal(t, serviceaccount.AuthBearer, got.WebhookCredentials.AuthType,
 		"regenerate forces BEARER_TOKEN")
 	require.NotNil(t, got.WebhookCredentials.Token)
-	assert.Equal(t, token, *got.WebhookCredentials.Token, "persisted token == stashed plaintext")
+	assert.Equal(t, token, *got.WebhookCredentials.Token, "persisted token == disclosed plaintext")
 }
 
 func TestRegenerateAuthToken_Errors(t *testing.T) {
@@ -542,33 +539,58 @@ func TestRegenerateAuthToken_Errors(t *testing.T) {
 
 // ── RegenerateSigningSecret ───────────────────────────────────────────────
 
-func TestRegenerateSigningSecret_HappyPathAndStash(t *testing.T) {
+func TestRegenerateSigningSecret_HappyPathAndDisclosure(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	repo := serviceaccount.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 	seeded := mustCreate(t, repo, uow, "saregen-secret", "Secret Regen")
 
+	var secret string
 	ev, err := runOp(uow, operations.RegenerateSigningSecret(repo),
-		operations.RegenerateSigningSecretCommand{ServiceAccountID: seeded.ServiceAccountID})
+		operations.RegenerateSigningSecretCommand{
+			ServiceAccountID: seeded.ServiceAccountID,
+			Disclose:         func(pt string) { secret = pt },
+		})
 	require.NoError(t, err)
 	assert.Equal(t, seeded.ServiceAccountID, ev.ServiceAccountID)
 	assert.Equal(t, "saregen-secret", ev.Code)
-
-	secret, ok := operations.PopStashedSecret(seeded.ServiceAccountID, "signing_secret")
-	require.True(t, ok, "first pop must return the stashed secret")
-	assert.NotEmpty(t, secret)
-
-	again, ok := operations.PopStashedSecret(seeded.ServiceAccountID, "signing_secret")
-	assert.False(t, ok, "second pop must miss — stash is one-shot")
-	assert.Empty(t, again)
+	assert.NotEmpty(t, secret, "the plaintext reaches the caller")
 
 	got, err := repo.FindByID(ctx, seeded.ServiceAccountID)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	require.NotNil(t, got.WebhookCredentials.SigningSecret)
 	assert.Equal(t, secret, *got.WebhookCredentials.SigningSecret,
-		"persisted signing secret == stashed plaintext")
+		"persisted signing secret == disclosed plaintext")
+}
+
+// TestRegenerateDisclosesNothingWhenRejected is the property the stash could
+// not offer: a request that never reaches the minting path leaves the caller's
+// sink untouched, so there is no plaintext anywhere for a rotation that did
+// not happen.
+func TestRegenerateDisclosesNothingWhenRejected(t *testing.T) {
+	t.Parallel()
+	repo := serviceaccount.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+
+	var token string
+	_, err := runOp(uow, operations.RegenerateAuthToken(repo),
+		operations.RegenerateAuthTokenCommand{
+			ServiceAccountID: "sa_does_not_exist",
+			Disclose:         func(pt string) { token = pt },
+		})
+	require.Error(t, err, "a missing account is rejected")
+	assert.Empty(t, token, "nothing was minted, so nothing was disclosed")
+
+	var secret string
+	_, err = runOp(uow, operations.RegenerateSigningSecret(repo),
+		operations.RegenerateSigningSecretCommand{
+			ServiceAccountID: "",
+			Disclose:         func(pt string) { secret = pt },
+		})
+	require.Error(t, err, "validation rejects before Execute")
+	assert.Empty(t, secret)
 }
 
 func TestRegenerateSigningSecret_Errors(t *testing.T) {

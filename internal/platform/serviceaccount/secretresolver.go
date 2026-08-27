@@ -50,6 +50,15 @@ func NewCachedOutboundCredsResolver(repo *Repository, ttl time.Duration) func(ct
 				creds.SigningSecret = *sa.WebhookCredentials.SigningSecret
 			}
 		}
+		if sa != nil && (creds.BearerToken != "" || creds.SigningSecret != "") {
+			// The account's outbound secrets were handed to a delivery — a use
+			// of its credentials. Stamped on the CACHE MISS only: the field
+			// means "last known use", and a write per delivery on this hot path
+			// would cost more than the precision is worth. Best-effort, and
+			// outside any delivery transaction — a failed stamp must never fail
+			// a delivery.
+			_ = repo.TouchLastUsed(ctx, sa.ID)
+		}
 		mu.Lock()
 		cache[applicationID] = entry{creds: creds, expires: time.Now().Add(ttl)}
 		mu.Unlock()

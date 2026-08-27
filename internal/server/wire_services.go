@@ -152,6 +152,12 @@ func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet,
 		// Narrows a minted ID token's "roles" claim to an app-scoped OAuth
 		// client's own application(s).
 		FilterRolesForApplications: authProvider.FilterRolesForApplications,
+		// A service account authenticating via client_credentials is its
+		// day-to-day use — the liveness signal an operator reads before
+		// revoking. Best-effort; a failed stamp must not fail the token.
+		TouchServiceAccountUsed: func(ctx context.Context, serviceAccountID string) {
+			_ = repos.serviceAccountRepo.TouchLastUsed(ctx, serviceAccountID)
+		},
 	}
 
 	// ── Webauthn service ───────────────────────────────────────────────

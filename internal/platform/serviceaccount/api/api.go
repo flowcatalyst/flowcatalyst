@@ -261,15 +261,21 @@ func (s *State) regenerateAuthToken(ctx context.Context, in *apicommon.IDInput) 
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
+	// The sink is a local: the plaintext cannot outlive this request, and it
+	// is only read below, on the success path — a failed commit discloses
+	// nothing.
+	var token string
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.RegenerateAuthToken(s.Repo),
-		operations.RegenerateAuthTokenCommand{ServiceAccountID: in.ID}, ec); err != nil {
+		operations.RegenerateAuthTokenCommand{
+			ServiceAccountID: in.ID,
+			Disclose:         func(plaintext string) { token = plaintext },
+		}, ec); err != nil {
 		return nil, err
 	}
-	resp := RegenerateAuthTokenResponse{ID: in.ID}
-	if token, ok := operations.PopStashedSecret(in.ID, "token"); ok {
-		resp.AuthToken = token
-	}
-	return &apicommon.Out[RegenerateAuthTokenResponse]{Body: resp}, nil
+	return &apicommon.Out[RegenerateAuthTokenResponse]{Body: RegenerateAuthTokenResponse{
+		ID:        in.ID,
+		AuthToken: token,
+	}}, nil
 }
 
 // mintToken is POST /api/service-accounts/{id}/token: mints the same
@@ -326,6 +332,10 @@ func (s *State) mintToken(ctx context.Context, in *apicommon.IDInput) (*apicommo
 		return nil, usecase.Internal("TOKEN", "token mint failed", err)
 	}
 
+	// A bearer was handed out for this account — a use of its credentials.
+	// Best-effort: a failed stamp must not fail the mint.
+	_ = s.Repo.TouchLastUsed(ctx, sa.ID)
+
 	// Best-effort audit: who obtained a credential for which account. Never
 	// the token itself.
 	if s.Audit != nil {
@@ -358,13 +368,16 @@ func (s *State) regenerateSigningSecret(ctx context.Context, in *apicommon.IDInp
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
+	var secret string
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.RegenerateSigningSecret(s.Repo),
-		operations.RegenerateSigningSecretCommand{ServiceAccountID: in.ID}, ec); err != nil {
+		operations.RegenerateSigningSecretCommand{
+			ServiceAccountID: in.ID,
+			Disclose:         func(plaintext string) { secret = plaintext },
+		}, ec); err != nil {
 		return nil, err
 	}
-	resp := RegenerateSigningSecretResponse{ID: in.ID}
-	if secret, ok := operations.PopStashedSecret(in.ID, "signing_secret"); ok {
-		resp.SigningSecret = secret
-	}
-	return &apicommon.Out[RegenerateSigningSecretResponse]{Body: resp}, nil
+	return &apicommon.Out[RegenerateSigningSecretResponse]{Body: RegenerateSigningSecretResponse{
+		ID:            in.ID,
+		SigningSecret: secret,
+	}}, nil
 }

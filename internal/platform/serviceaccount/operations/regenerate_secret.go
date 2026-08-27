@@ -16,10 +16,14 @@ import (
 // RegenerateSigningSecretCommand rotates the HMAC signing secret.
 type RegenerateSigningSecretCommand struct {
 	ServiceAccountID string `json:"serviceAccountId"`
+	// Disclose receives the freshly minted plaintext, once, during Execute.
+	// See RegenerateAuthTokenCommand.Disclose.
+	Disclose func(plaintext string) `json:"-"`
 }
 
-// RegenerateSigningSecret rotates the signing secret. Plaintext lands in
-// the process-local stash for the HTTP handler to read once.
+// RegenerateSigningSecret rotates the signing secret, disclosing the plaintext
+// through cmd.Disclose — a caller-owned sink. See RegenerateAuthToken for why
+// the process-wide stash it replaced was the wrong shape.
 func RegenerateSigningSecret(repo *serviceaccount.Repository) usecaseop.Operation[RegenerateSigningSecretCommand, ServiceAccountSecretRegenerated] {
 	return usecaseop.Operation[RegenerateSigningSecretCommand, ServiceAccountSecretRegenerated]{
 		Name: "RegenerateSigningSecret",
@@ -45,7 +49,9 @@ func RegenerateSigningSecret(repo *serviceaccount.Repository) usecaseop.Operatio
 			secret := generateSigningSecret()
 			sa.WebhookCredentials.SigningSecret = &secret
 			sa.UpdatedAt = time.Now().UTC()
-			stashSecret(sa.ID, "signing_secret", secret)
+			if cmd.Disclose != nil {
+				cmd.Disclose(secret)
+			}
 
 			event := ServiceAccountSecretRegenerated{
 				Metadata:         usecase.NewEventMetadata(ec, ServiceAccountSecretRegeneratedType, Source, subjectFor(sa.ID)),

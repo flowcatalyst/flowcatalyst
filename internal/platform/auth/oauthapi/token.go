@@ -90,6 +90,17 @@ type State struct {
 	// provider.FilterRolesForApplications; when nil, ID tokens always carry
 	// the principal's full (unfiltered) role list.
 	FilterRolesForApplications func(ctx context.Context, roleNames []string, appIDs []string) ([]string, error)
+
+	// TouchServiceAccountUsed stamps a service account's last_used_at when its
+	// credentials successfully authenticate here. This is the account's
+	// day-to-day use — far more of a liveness signal than an admin minting a
+	// bearer for it — and without it an account that authenticates constantly
+	// but has no webhook credentials would report as never used, which is
+	// exactly the account an operator would then wrongly revoke.
+	//
+	// A func rather than a repo so this package keeps no dependency on the
+	// serviceaccount aggregate. Injected from wire; nil disables stamping.
+	TouchServiceAccountUsed func(ctx context.Context, serviceAccountID string)
 	// Encryption verifies confidential-client secrets (decrypt + compare).
 	// May be nil when no app key is configured — confidential auth then
 	// fails closed.
@@ -560,6 +571,12 @@ func (s *State) mintClientCredentialsToken(
 		return
 	}
 	s.recordAttempt(r.Context(), attemptType, loginattempt.OutcomeSuccess, req.ClientID, &p.ID, nil)
+	// A service account just authenticated. (The developer-credential path
+	// through here is a USER principal with no linked account, so this is a
+	// no-op for it.) Best-effort — never fail a token on a bookkeeping write.
+	if s.TouchServiceAccountUsed != nil && p.ServiceAccountID != nil {
+		s.TouchServiceAccountUsed(r.Context(), *p.ServiceAccountID)
+	}
 	writeToken(w, tokenResponse{
 		AccessToken: accessToken,
 		TokenType:   "Bearer",
