@@ -78,27 +78,29 @@ func (s *State) whoami(w http.ResponseWriter, r *http.Request) {
 	}
 	out.Email = email
 
-	// accessible_application_ids isn't in the JWT claims, so resolve
-	// it from the principal row. Anchors see every application
-	// implicitly; we still surface their granted list.
+	// Application scope comes from the CREDENTIAL, not the principal row.
+	// Roles, permissions and clients above already do — and a token minted
+	// for an application-scoped OAuth client carries an applications claim
+	// narrowed to that client's applications. Re-reading the row here would
+	// hand the caller the principal's full platform-wide list and undo that
+	// confinement, which is the leak this endpoint used to be.
+	//
+	// The row is still read, for the identity fields that aren't claims.
+	out.AccessibleApplicationIDs = stringSliceOrEmpty(ac.Applications)
+	out.AllApplications = ac.AllApplications
+
 	p, err := s.Principals.FindByID(r.Context(), ac.PrincipalID)
 	if err != nil {
 		httperror.Write(w, usecase.Internal("REPO", "principal lookup failed", err))
 		return
 	}
 	if p != nil {
-		out.AccessibleApplicationIDs = stringSliceOrEmpty(p.AccessibleApplicationIDs)
-		out.AllApplications = p.AllApplications
 		out.PrincipalType = string(p.Type)
 		if p.UserIdentity != nil {
 			out.Name = p.UserIdentity.DisplayName()
 		}
 	} else {
 		// Test-header principals (X-FC-Test-*) don't have a DB row.
-		// Fall back to the context fields so the handler still
-		// returns a useful response.
-		out.AccessibleApplicationIDs = stringSliceOrEmpty(ac.Applications)
-		out.AllApplications = ac.AllApplications
 		out.PrincipalType = "USER"
 		if out.Email != nil {
 			out.Name = *out.Email
@@ -132,8 +134,9 @@ type myApplicationsListResponse struct {
 
 // listMyApplications serves GET /api/me/applications: the applications the
 // calling principal can access. Principals with all-applications access see
-// every application; others see the apps granted on their principal row
-// (accessible_application_ids).
+// every application; others see the applications carried on the caller's
+// token, which an application-scoped client has already had narrowed to its
+// own.
 // Note: the predicate is the application-axis flag (AllApplications), not the
 // client tier — an anchor-tier service account scoped to one application sees
 // only that application here.
@@ -151,21 +154,14 @@ func (s *State) listMyApplications(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Resolve the accessible-app set for application-scoped principals
-	// (all-applications principals see all).
+	// (all-applications principals see all). Sourced from the CREDENTIAL, as
+	// in whoami: a token minted for an application-scoped OAuth client carries
+	// an already-narrowed applications claim, and reading the principal row
+	// instead would list applications that client was never granted.
 	accessible := map[string]bool{}
 	if !ac.AllApplications {
-		if p, err := s.Principals.FindByID(r.Context(), ac.PrincipalID); err != nil {
-			httperror.Write(w, usecase.Internal("REPO", "principal lookup failed", err))
-			return
-		} else if p != nil {
-			for _, id := range p.AccessibleApplicationIDs {
-				accessible[id] = true
-			}
-		} else {
-			// Test-header principal (no DB row): fall back to context.
-			for _, id := range ac.Applications {
-				accessible[id] = true
-			}
+		for _, id := range ac.Applications {
+			accessible[id] = true
 		}
 	}
 
