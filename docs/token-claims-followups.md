@@ -68,41 +68,85 @@ nullish and passes through instead of falling back to their default. That is
 the SDKs' half to handle if the claim starts being omitted. Currently working
 as-is, and any change here is a wire change for portal relying parties.
 
-## 4. Role assignment has no write-path validation
+## 4. Role assignment is not validated — the domain must own this
 
 Not a claims issue, but it is what will produce the next surprise here.
 
-`iam_principal_roles.role_name` is an unconstrained `VARCHAR` with no foreign
-key to `iam_roles.name`, and no write path checks that the role exists. Console
-assignment picks from the definitions so it is always canonical; SDK
-`sync_principals` stores whatever it is sent, lower-cased, without a lookup. An
-assignment naming a role that does not exist resolves to no permissions at
-mint time, silently.
+`iam_principal_roles.role_name` is a plain `VARCHAR` and **no write path checks
+that the role exists**. Console assignment picks from the definitions so it is
+always canonical; SDK `sync_principals` stores whatever it is sent, lower-cased,
+with no lookup. An assignment naming a role that does not exist resolves to no
+permissions at token-mint time, silently — the principal simply has less access
+than intended, with nothing logged and nothing to see in the row.
 
-Both environments' data is currently clean — but by accident: the one app doing
-principal sync exact-match-filters against the platform's qualified role list
-before sending, so it cannot send anything else.
+Both environments' data is currently clean, but **by accident**: the one app
+doing principal sync exact-match-filters against the platform's qualified role
+list before sending, so it cannot send anything else. Remove that app's filter,
+or add a second syncing app, and the invariant is gone.
 
-The constraint applies cleanly to that data:
+### Not a foreign key
 
-```sql
-ALTER TABLE iam_principal_roles
-  ADD CONSTRAINT fk_iam_principal_roles_role_name
-  FOREIGN KEY (role_name) REFERENCES iam_roles (name)
-  ON UPDATE CASCADE ON DELETE RESTRICT;
-```
+Ruled 2026-08-27: **do not add one.** The invariant belongs to the domain, not
+the schema.
 
-`ON UPDATE CASCADE` because renaming a role currently orphans every assignment
-of it; `ON DELETE RESTRICT` because deleting one currently strips access
-silently.
+The reasoning is not merely stylistic. Role definitions and principal role
+assignments are *different aggregates*, so this is cross-aggregate referential
+integrity — the case that does not survive sharding, and the first thing to
+break on a move to a non-relational store. A constraint here would encode a
+rule outside the boundary that owns it, in the one place that cannot travel.
 
-It is not free: adopting it fails ~15 test packages, which assign undefined role
-names freely — the codebase depends on the missing constraint. Doing it properly
-means validating in the write paths (so a caller gets a 400, not a constraint
-500), then seeding role definitions in those fixtures. Sequenced separately for
-that reason.
+Reaching for the database to enforce a domain rule is a signal the domain code
+is underbuilt. The fix is to build it.
 
-`iam_principal_application_access` and `iam_client_access_grants` have no
-foreign keys on any column either; check for orphans before adding them.
-`iam_role_permissions.permission` cannot take one while `iam_permissions`
-remains dormant.
+### The fix, in three parts
+
+**1. Reject at the write boundary.** `sync_principals` resolves each incoming
+name against the application being synced and returns a validation error naming
+the unknown role, rather than storing a string nobody checked. A caller learns
+immediately instead of discovering it as missing permissions weeks later.
+
+**2. Make an unvalidated write unrepresentable.** Today an assignment carries
+`Role string`, so any writer can invent one. If it can only be constructed from
+a *resolved* role — a `RoleName` type whose sole constructor is
+`role.Role.CanonicalName()` — then holding one is proof the lookup happened.
+This is stronger than the constraint it replaces: a foreign key rejects a bad
+write at commit; a type stops the bad write being written.
+
+It also collapses the two spellings for free. `hr-manager` and `hr:hr-manager`
+can no longer both exist, because there is exactly one way to produce the
+value.
+
+**3. Handle rename and delete explicitly.** This is the half the constraint
+would have covered that is not validation at all: integrity under operations in
+the *other* aggregate. Today renaming a role orphans every assignment of it,
+and deleting one strips access silently — no code covers either. Both become
+domain behaviour: refuse to delete a role while principals hold it, and either
+cascade a rename through the assignments or forbid renaming outright.
+
+Better as explicit, testable behaviour than as a schema clause nobody reads —
+and, unlike the clause, it ports.
+
+### What this deliberately does not protect against
+
+A type holds against code. It does not hold against `psql`, a migration script,
+or a support query. A foreign key would. That trade is accepted: the domain is
+the place invariants live, and a datastore that cannot express them must not be
+the reason they go unexpressed.
+
+Worth being clear-eyed that today the code is trusted more than it has earned —
+the clean data is an accident of one app's filtering, not a property the
+platform maintains. Parts 1 and 2 are what earn it.
+
+### The same shape elsewhere
+
+`iam_principal_application_access` and `iam_client_access_grants` hold
+unvalidated ids on both columns, and `iam_role_permissions.permission` is a free
+string with no check that the permission is defined (`iam_permissions` is
+largely dormant) — which is why the double-prefixed
+`logistics_portal:logistics_portal:…` survives. Same reasoning, same three-part
+fix, no constraints.
+
+Note the existing FK on `iam_principal_roles.principal_id` is a different case
+and can stay: the junction *belongs to* the principal aggregate, so that one is
+intra-aggregate identity rather than a cross-aggregate reference. The line is
+between "this row's own identity" and "a pointer into another aggregate".
