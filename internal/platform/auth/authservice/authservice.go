@@ -695,18 +695,40 @@ func clientPair(p *principal.Principal, id string) string {
 	return id
 }
 
-// appAccessOf returns the principal's accessible application ids (the
-// iam_principal_application_access bindings) as a non-nil slice. This is the
-// `applications` claim — the principal's real application scope, honoured by
-// resource-level authorization (auth.AuthContext.CanAccessApplication) and the
-// /me application list. (Previously the claim was derived from role-name
-// prefixes, which neither matched the bindings nor scoped service accounts.)
+// appAccessOf builds the `applications` claim — the principal's real
+// application scope, honoured by resource-level authorization
+// (auth.AuthContext.CanAccessApplication) and the /me application list.
+//
+// Shape mirrors `clients`: ["*"] when the principal reaches every application,
+// otherwise "id:code" pairs so a consumer reads the human-meaningful half
+// without a lookup. An application whose code could not be resolved degrades
+// to the bare id rather than being dropped.
+//
+// The all_applications boolean is still emitted alongside for consumers that
+// predate the "*" sentinel; it is deprecated and will be removed once they
+// have moved.
 func appAccessOf(p *principal.Principal) []string {
+	if p.AllApplications {
+		return []string{allApplicationsSentinel}
+	}
 	if len(p.AccessibleApplicationIDs) == 0 {
 		return []string{}
 	}
-	return append([]string(nil), p.AccessibleApplicationIDs...)
+	out := make([]string, 0, len(p.AccessibleApplicationIDs))
+	for _, id := range p.AccessibleApplicationIDs {
+		if code, ok := p.ApplicationCodeMap[id]; ok && code != "" {
+			out = append(out, id+":"+code)
+			continue
+		}
+		out = append(out, id)
+	}
+	return out
 }
+
+// allApplicationsSentinel is the `applications` entry meaning "every
+// application, present and future" — the same wildcard `clients` uses for an
+// anchor principal.
+const allApplicationsSentinel = "*"
 
 // ExtractBearerToken returns the token after a "Bearer " prefix, or ""
 // when the header isn't a bearer credential.

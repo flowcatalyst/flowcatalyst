@@ -87,8 +87,11 @@ func TestGenerateAndValidateAccessToken(t *testing.T) {
 	if len(claims.Clients) != 1 || claims.Clients[0] != "*" {
 		t.Errorf("clients = %v, want [*]", claims.Clients)
 	}
-	if len(claims.Applications) != 2 || claims.Applications[0] != "app_alpha" || claims.Applications[1] != "app_beta" {
-		t.Errorf("applications = %v, want [app_alpha app_beta]", claims.Applications)
+	// anchorUser comes from NewUser, which grants all-applications — so the
+	// claim is the "*" sentinel rather than the explicit binding list, exactly
+	// as `clients` is for an anchor principal.
+	if len(claims.Applications) != 1 || claims.Applications[0] != "*" {
+		t.Errorf("applications = %v, want [*]", claims.Applications)
 	}
 	if !claims.AllApplications {
 		t.Errorf("all_applications = false, want true (anchor user via NewUser)")
@@ -504,4 +507,40 @@ func decodeIDTokenTimes(t *testing.T, token string) struct {
 		t.Fatalf("unmarshal payload: %v", err)
 	}
 	return out
+}
+
+
+// TestApplicationsClaimShape pins the wire form of `applications`: "*" for an
+// all-applications principal, "id:code" pairs for a scoped one — mirroring
+// `clients`, so a consumer reads the human-meaningful half without a lookup.
+// An id whose code is unknown degrades to the bare id rather than vanishing,
+// since dropping it would silently narrow the principal's access.
+func TestApplicationsClaimShape(t *testing.T) {
+	svc := newRS256(t)
+
+	scoped := anchorUser()
+	scoped.AllApplications = false
+	scoped.AccessibleApplicationIDs = []string{"app_alpha", "app_beta", "app_orphan"}
+	scoped.ApplicationCodeMap = map[string]string{"app_alpha": "alpha", "app_beta": "beta"}
+
+	tok, err := svc.GenerateAccessToken(scoped)
+	if err != nil {
+		t.Fatalf("GenerateAccessToken: %v", err)
+	}
+	claims, err := svc.ValidateToken(tok)
+	if err != nil {
+		t.Fatalf("ValidateToken: %v", err)
+	}
+	want := []string{"app_alpha:alpha", "app_beta:beta", "app_orphan"}
+	if len(claims.Applications) != len(want) {
+		t.Fatalf("applications = %v, want %v", claims.Applications, want)
+	}
+	for i := range want {
+		if claims.Applications[i] != want[i] {
+			t.Errorf("applications[%d] = %q, want %q", i, claims.Applications[i], want[i])
+		}
+	}
+	if claims.AllApplications {
+		t.Error("all_applications must stay false for a scoped principal")
+	}
 }

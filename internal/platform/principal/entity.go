@@ -136,6 +136,11 @@ type Principal struct {
 	Roles                    []serviceaccount.RoleAssignment `json:"roles"`
 	AssignedClients          []string                        `json:"assignedClients"`
 	ClientIdentifierMap      map[string]string               `json:"clientIdentifierMap,omitempty"`
+	// ApplicationCodeMap maps accessible application id → application code.
+	// Hydrated alongside AccessibleApplicationIDs so the `applications` claim
+	// can carry "id:code" pairs, the way `clients` carries "id:identifier" —
+	// a consumer then reads the human-meaningful half without a lookup.
+	ApplicationCodeMap map[string]string `json:"applicationCodeMap,omitempty"`
 	AccessibleApplicationIDs []string                        `json:"accessibleApplicationIds"`
 	// AllApplications grants access to every application (present and future),
 	// the application-axis analogue of the anchor client tier. When false, the

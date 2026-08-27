@@ -279,27 +279,37 @@ func (r *Repository) hydrateAppAccess(ctx context.Context, p *Principal) error {
 	if r.pool == nil || p == nil {
 		return nil
 	}
+	// LEFT JOIN so a binding whose application row is missing still yields the
+	// id — the junction has no FK, so that is representable, and dropping the
+	// binding would silently narrow the principal's access.
 	rows, err := r.pool.Query(ctx,
-		`SELECT application_id
-		 FROM iam_principal_application_access
-		 WHERE principal_id = $1
-		 ORDER BY application_id`, p.ID)
+		`SELECT a.application_id, ap.code
+		 FROM iam_principal_application_access a
+		 LEFT JOIN app_applications ap ON ap.id = a.application_id
+		 WHERE a.principal_id = $1
+		 ORDER BY a.application_id`, p.ID)
 	if err != nil {
 		return fmt.Errorf("principal application access: %w", err)
 	}
 	defer rows.Close()
 	ids := make([]string, 0)
+	codes := make(map[string]string)
 	for rows.Next() {
 		var id string
-		if err := rows.Scan(&id); err != nil {
+		var code *string
+		if err := rows.Scan(&id, &code); err != nil {
 			return fmt.Errorf("principal application access scan: %w", err)
 		}
 		ids = append(ids, id)
+		if code != nil && *code != "" {
+			codes[id] = *code
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("principal application access: %w", err)
 	}
 	p.AccessibleApplicationIDs = ids
+	p.ApplicationCodeMap = codes
 	return nil
 }
 

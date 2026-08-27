@@ -37,3 +37,40 @@ func TestIsApplicationScoped(t *testing.T) {
 		t.Error("nil context should not report application-scoped")
 	}
 }
+
+func TestParseApplicationsClaim(t *testing.T) {
+	cases := []struct {
+		name    string
+		entries []string
+		wantIDs []string
+		wantAll bool
+	}{
+		{"empty", nil, nil, false},
+		{"wildcard means all", []string{"*"}, []string{}, true},
+		{"pairs split to ids", []string{"app_1:alpha", "app_2:beta"}, []string{"app_1", "app_2"}, false},
+		// Tokens minted before the pair shape existed must keep working for
+		// their remaining TTL.
+		{"legacy bare ids", []string{"app_1", "app_2"}, []string{"app_1", "app_2"}, false},
+		{"mixed forms", []string{"app_1:alpha", "app_2"}, []string{"app_1", "app_2"}, false},
+		// Only the FIRST colon delimits, so a code containing one is discarded
+		// whole rather than corrupting the id.
+		{"code with a colon", []string{"app_1:a:b"}, []string{"app_1"}, false},
+		{"wildcard alongside ids", []string{"*", "app_1:alpha"}, []string{"app_1"}, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ids, all := ParseApplicationsClaim(c.entries)
+			if all != c.wantAll {
+				t.Errorf("allApplications = %v, want %v", all, c.wantAll)
+			}
+			if len(ids) != len(c.wantIDs) {
+				t.Fatalf("ids = %v, want %v", ids, c.wantIDs)
+			}
+			for i := range c.wantIDs {
+				if ids[i] != c.wantIDs[i] {
+					t.Errorf("ids[%d] = %q, want %q", i, ids[i], c.wantIDs[i])
+				}
+			}
+		})
+	}
+}

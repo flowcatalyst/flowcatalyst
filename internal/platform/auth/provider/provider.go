@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/sessiontoken"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
@@ -99,7 +100,9 @@ func BuildClaims(ctx context.Context, cfg Config, principals *principal.Reposito
 	if p.ClientID != nil && *p.ClientID != "" {
 		clients = append(clients, *p.ClientID)
 	}
-	apps := append([]string(nil), p.AccessibleApplicationIDs...)
+	// Same wire shape as the OAuth tokens ("id:code" pairs, or "*"), so a
+	// session cookie and a bearer are interchangeable to consumers.
+	apps := authservice.ApplicationsClaim(p)
 	email := ""
 	if p.UserIdentity != nil {
 		email = p.UserIdentity.Email

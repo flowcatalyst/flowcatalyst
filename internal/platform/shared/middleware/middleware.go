@@ -165,14 +165,17 @@ func introspect(ctx context.Context, p *provider.Provider, token string, fromCoo
 		if rerr != nil {
 			return nil, rerr
 		}
+		// The claim carries "id:code" pairs (or "*"); the internal model is
+		// bare ids plus a flag. Split once, here at the boundary.
+		apps, allApps := auth.ParseApplicationsClaim(rc.Applications)
 		return &auth.AuthContext{
 			PrincipalID:     rc.Subject,
 			Scope:           auth.Scope(rc.Scope),
 			Email:           rc.Email,
 			Clients:         rc.Clients,
 			Roles:           rc.Roles,
-			Applications:    rc.Applications,
-			AllApplications: rc.AllApplications,
+			Applications:    apps,
+			AllApplications: allApps || rc.AllApplications,
 			Permissions:     rc.Permissions,
 		}, nil
 	}
@@ -200,14 +203,17 @@ func introspect(ctx context.Context, p *provider.Provider, token string, fromCoo
 			perms = derived
 		}
 	}
+	apps, allApps := auth.ParseApplicationsClaim(c.Applications)
 	return &auth.AuthContext{
 		PrincipalID:     c.Subject,
 		Scope:           auth.Scope(c.Scope),
 		Email:           c.Email,
 		Clients:         c.Clients,
 		Roles:           c.Roles,
-		Applications:    c.Applications,
-		AllApplications: c.AllApplications,
+		Applications:    apps,
+		// The deprecated all_applications boolean is still honoured alongside
+		// the "*" sentinel until consumers have moved off it.
+		AllApplications: allApps || c.AllApplications,
 		Permissions:     perms,
 	}, nil
 }
