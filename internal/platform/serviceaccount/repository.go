@@ -53,6 +53,7 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*ServiceAccount, 
 		return nil, err
 	}
 	sa := rowToServiceAccount(*row, r.enc)
+	r.reencryptLegacySecrets(ctx, *row)
 	if err := r.hydrateRoles(ctx, sa); err != nil {
 		return nil, err
 	}
@@ -68,6 +69,9 @@ func (r *Repository) FindFirstByApplicationID(ctx context.Context, applicationID
 	if row == nil || err != nil {
 		return nil, err
 	}
+	// The outbound-delivery path reaches credentials through here, so this is
+	// where a legacy row most often gets upgraded.
+	r.reencryptLegacySecrets(ctx, *row)
 	return rowToServiceAccount(*row, r.enc), nil
 }
 
@@ -79,6 +83,7 @@ func (r *Repository) FindByCode(ctx context.Context, code string) (*ServiceAccou
 		return nil, err
 	}
 	sa := rowToServiceAccount(*row, r.enc)
+	r.reencryptLegacySecrets(ctx, *row)
 	if err := r.hydrateRoles(ctx, sa); err != nil {
 		return nil, err
 	}
@@ -166,6 +171,44 @@ func decryptSecretRef(enc *encryption.Service, ref *string) *string {
 		return ref
 	}
 	return &pt
+}
+
+// reencryptLegacySecrets upgrades a row still holding plaintext webhook
+// credentials, so the fleet converges without a backfill: every account gets
+// rewritten the first time anything reads it.
+//
+// COMPARE-AND-SET, not a blind write. A reader that loaded plaintext P may be
+// racing a rotation that has since stored ciphertext of a NEW secret Q; a
+// blind UPDATE would clobber Q with an encryption of the stale P and quietly
+// break every delivery signed with it. Each column is therefore rewritten only
+// while it still holds exactly the value this read saw.
+//
+// Best-effort and outside any surrounding transaction: this runs on a read
+// path, so a failure (a read-only replica, a lost race) must leave the caller
+// with the plaintext it correctly loaded rather than fail the read. The next
+// read tries again.
+//
+// Not called from FindAll: a list read should not fan out into N writes. Those
+// accounts are upgraded when something reads one of them singly.
+func (r *Repository) reencryptLegacySecrets(ctx context.Context, row dbq.IamServiceAccount) {
+	if r.pool == nil || r.enc == nil {
+		return
+	}
+	upgrade := func(column string, stored *string) {
+		if stored == nil || *stored == "" || strings.HasPrefix(*stored, "encrypted:") {
+			return
+		}
+		blob, err := r.enc.Encrypt(*stored)
+		if err != nil {
+			return
+		}
+		// #nosec G202 -- column is a package-local constant, never user input.
+		_, _ = r.pool.Exec(ctx,
+			`UPDATE iam_service_accounts SET `+column+` = $2 WHERE id = $1 AND `+column+` = $3`,
+			row.ID, "encrypted:"+blob, *stored)
+	}
+	upgrade("wh_auth_token_ref", row.WhAuthTokenRef)
+	upgrade("wh_signing_secret_ref", row.WhSigningSecretRef)
 }
 
 // TouchLastUsed stamps last_used_at, best-effort: the caller is on a hot path

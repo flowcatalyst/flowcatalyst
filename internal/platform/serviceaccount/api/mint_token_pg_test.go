@@ -331,4 +331,21 @@ func TestLegacyPlaintextCredentialsStillResolve(t *testing.T) {
 	assert.Equal(t, "legacy-plaintext-token", *loaded.WebhookCredentials.Token,
 		"a legacy row reads through unchanged rather than failing or blanking")
 	assert.Equal(t, "legacy-plaintext-secret", *loaded.WebhookCredentials.SigningSecret)
+
+	// ...and that read upgrades the row in place, so the fleet converges with
+	// no backfill.
+	var afterToken, afterSecret *string
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT wh_auth_token_ref, wh_signing_secret_ref FROM iam_service_accounts WHERE id = $1`,
+		res.ServiceAccount.ID).Scan(&afterToken, &afterSecret))
+	require.NotNil(t, afterToken)
+	require.NotNil(t, afterSecret)
+	assert.True(t, strings.HasPrefix(*afterToken, "encrypted:"), "read re-encrypted the token")
+	assert.True(t, strings.HasPrefix(*afterSecret, "encrypted:"), "read re-encrypted the secret")
+
+	// The upgraded row still yields the same plaintext.
+	again, err := saRepo.FindByID(ctx, res.ServiceAccount.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "legacy-plaintext-token", *again.WebhookCredentials.Token)
+	assert.Equal(t, "legacy-plaintext-secret", *again.WebhookCredentials.SigningSecret)
 }
