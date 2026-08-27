@@ -128,16 +128,34 @@ func TestGrantedScope(t *testing.T) {
 		}
 	})
 
-	t.Run("anchor passes requests through verbatim", func(t *testing.T) {
-		// Anchor has an unbounded ceiling even with an empty role-derived set.
+	t.Run("anchor is bounded by its ceiling like any other tier", func(t *testing.T) {
+		// Anchor tier is no longer a scope bypass: the claim must describe the
+		// permissions the principal's roles actually grant, so downstream
+		// consumers reading `scope` see real authority. (Anchor still
+		// short-circuits the platform's own gates in auth.requirePermission —
+		// a separate, deliberate bypass.)
 		s := fixedCeiling()
 		anchor := principal.NewUser("a@example.com", principal.ScopeAnchor)
 		granted, explicit, err := s.grantedScope(context.Background(), anchor, "platform:iam:role:delete")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !explicit || !sortedEqual(granted, []string{"platform:iam:role:delete"}) {
-			t.Errorf("anchor granted = %v (explicit=%v), want the requested perm", granted, explicit)
+		if !explicit || len(granted) != 0 {
+			t.Errorf("anchor granted = %v (explicit=%v), want nothing from an empty ceiling", granted, explicit)
+		}
+	})
+
+	t.Run("anchor with a super-admin role keeps the wildcard grant", func(t *testing.T) {
+		// The escape hatch is a real wildcard permission on a role, not the
+		// tier — an anchor holding platform:*:*:* still gets what it asks for.
+		s := fixedCeiling("platform:*:*:*")
+		anchor := principal.NewUser("a@example.com", principal.ScopeAnchor)
+		granted, _, err := s.grantedScope(context.Background(), anchor, "platform:iam:role:delete")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !sortedEqual(granted, []string{"platform:iam:role:delete"}) {
+			t.Errorf("granted = %v, want the requested perm", granted)
 		}
 	})
 }

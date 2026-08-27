@@ -885,10 +885,15 @@ var oidcReservedScopes = map[string]struct{}{
 //     ceiling, the conventional client_credentials / login default.
 //   - permission scopes requested → only those the ceiling authorises;
 //     requests for permissions the principal lacks are silently dropped, so a
-//     scope request can never escalate beyond the principal's roles. Anchor
-//     principals have an unbounded ceiling, so their requests pass through
-//     verbatim. explicit reports whether any permission scopes were requested,
-//     so callers can reject an empty intersection with invalid_scope.
+//     scope request can never escalate beyond the principal's roles. This
+//     holds at every tier: an anchor principal's scope claim is bounded by
+//     the permissions its roles actually grant, so the claim always describes
+//     real authority rather than whatever was asked for. (Anchor tier still
+//     short-circuits the platform's own permission gates in
+//     auth.requirePermission — that bypass is deliberate and separate; this
+//     only governs what the token advertises to downstream consumers.)
+//     explicit reports whether any permission scopes were requested, so
+//     callers can reject an empty intersection with invalid_scope.
 //
 // Returns (nil, false, nil) when scope support is unwired (FlattenPermissions
 // nil): callers then mint with no scope claim (legacy behaviour, permissions
@@ -911,10 +916,9 @@ func (s *State) grantedScope(ctx context.Context, p *principal.Principal, reques
 	if len(reqPerms) == 0 {
 		return ceiling, false, nil
 	}
-	anchor := p.Scope == principal.ScopeAnchor
 	granted = make([]string, 0, len(reqPerms))
 	for _, r := range reqPerms {
-		if anchor || sharedauth.Grants(ceiling, r) {
+		if sharedauth.Grants(ceiling, r) {
 			granted = append(granted, r)
 		}
 	}
