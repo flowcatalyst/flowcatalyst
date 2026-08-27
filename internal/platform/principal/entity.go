@@ -124,24 +124,24 @@ type ExternalIdentity struct {
 
 // Principal is the aggregate root. Unified for users and service accounts.
 type Principal struct {
-	ID                       string                          `json:"id"`
-	Type                     Type                            `json:"type"`
-	Scope                    UserScope                       `json:"scope"`
-	ClientID                 *string                         `json:"clientId,omitempty"`
-	ApplicationID            *string                         `json:"applicationId,omitempty"`
-	Name                     string                          `json:"name"`
-	Active                   bool                            `json:"active"`
-	UserIdentity             *UserIdentity                   `json:"userIdentity,omitempty"`
-	ServiceAccountID         *string                         `json:"serviceAccountId,omitempty"`
-	Roles                    []serviceaccount.RoleAssignment `json:"roles"`
-	AssignedClients          []string                        `json:"assignedClients"`
-	ClientIdentifierMap      map[string]string               `json:"clientIdentifierMap,omitempty"`
+	ID                  string                          `json:"id"`
+	Type                Type                            `json:"type"`
+	Scope               UserScope                       `json:"scope"`
+	ClientID            *string                         `json:"clientId,omitempty"`
+	ApplicationID       *string                         `json:"applicationId,omitempty"`
+	Name                string                          `json:"name"`
+	Active              bool                            `json:"active"`
+	UserIdentity        *UserIdentity                   `json:"userIdentity,omitempty"`
+	ServiceAccountID    *string                         `json:"serviceAccountId,omitempty"`
+	Roles               []serviceaccount.RoleAssignment `json:"roles"`
+	AssignedClients     []string                        `json:"assignedClients"`
+	ClientIdentifierMap map[string]string               `json:"clientIdentifierMap,omitempty"`
 	// ApplicationCodeMap maps accessible application id → application code.
 	// Hydrated alongside AccessibleApplicationIDs so the `applications` claim
 	// can carry "id:code" pairs, the way `clients` carries "id:identifier" —
 	// a consumer then reads the human-meaningful half without a lookup.
-	ApplicationCodeMap map[string]string `json:"applicationCodeMap,omitempty"`
-	AccessibleApplicationIDs []string                        `json:"accessibleApplicationIds"`
+	ApplicationCodeMap       map[string]string `json:"applicationCodeMap,omitempty"`
+	AccessibleApplicationIDs []string          `json:"accessibleApplicationIds"`
 	// AllApplications grants access to every application (present and future),
 	// the application-axis analogue of the anchor client tier. When false, the
 	// principal is restricted to AccessibleApplicationIDs. Stored (not derived

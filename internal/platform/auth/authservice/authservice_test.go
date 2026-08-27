@@ -509,7 +509,6 @@ func decodeIDTokenTimes(t *testing.T, token string) struct {
 	return out
 }
 
-
 // TestApplicationsClaimShape pins the wire form of `applications`: "*" for an
 // all-applications principal, "id:code" pairs for a scoped one — mirroring
 // `clients`, so a consumer reads the human-meaningful half without a lookup.

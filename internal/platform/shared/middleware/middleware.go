@@ -205,12 +205,12 @@ func introspect(ctx context.Context, p *provider.Provider, token string, fromCoo
 	}
 	apps, allApps := auth.ParseApplicationsClaim(c.Applications)
 	return &auth.AuthContext{
-		PrincipalID:     c.Subject,
-		Scope:           auth.Scope(c.Scope),
-		Email:           c.Email,
-		Clients:         c.Clients,
-		Roles:           c.Roles,
-		Applications:    apps,
+		PrincipalID:  c.Subject,
+		Scope:        auth.Scope(c.Scope),
+		Email:        c.Email,
+		Clients:      c.Clients,
+		Roles:        c.Roles,
+		Applications: apps,
 		// The deprecated all_applications boolean is still honoured alongside
 		// the "*" sentinel until consumers have moved off it.
 		AllApplications: allApps || c.AllApplications,
