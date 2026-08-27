@@ -120,6 +120,13 @@ type AccessTokenClaims struct {
 	// Applications list is not a restriction.
 	AllApplications bool `json:"all_applications"`
 
+	// AZP is the OAuth client the token was minted for ("authorized party").
+	// Present on tokens issued through an OAuth client; absent for session
+	// tokens and the client_credentials grant, where the client IS the
+	// principal. /oauth/userinfo reads it to confine its answer to the same
+	// application scope the client's id_token was confined to.
+	AZP *string `json:"azp,omitempty"`
+
 	// TokenUse is the access-token class marker (TokenUseAPI / TokenUseIdentity).
 	// Omitted on legacy tokens minted before the marker existed; the middleware
 	// treats an absent marker permissively and rejects only an explicit
@@ -390,7 +397,7 @@ func (s *AuthService) AllJWKSKeys() []JWKSKey {
 // GenerateAccessToken mints a short-lived, authority-bearing access token for
 // API calls (TokenUseAPI).
 func (s *AuthService) GenerateAccessToken(p *principal.Principal) (string, error) {
-	return s.generateTokenWithExpiry(p, s.config.AccessTokenExpirySecs, nil, true)
+	return s.generateTokenWithExpiry(p, s.config.AccessTokenExpirySecs, nil, true, "")
 }
 
 // GenerateAccessTokenWithScope mints a short-lived, authority-bearing access
@@ -400,7 +407,14 @@ func (s *AuthService) GenerateAccessToken(p *principal.Principal) (string, error
 // nil/empty is equivalent to GenerateAccessToken (no scope claim). Used by the
 // client_credentials grant.
 func (s *AuthService) GenerateAccessTokenWithScope(p *principal.Principal, scope []string) (string, error) {
-	return s.generateTokenWithExpiry(p, s.config.AccessTokenExpirySecs, scope, true)
+	return s.generateTokenWithExpiry(p, s.config.AccessTokenExpirySecs, scope, true, "")
+}
+
+// GenerateAccessTokenWithScopeFor is GenerateAccessTokenWithScope for a token
+// minted through an OAuth client, stamping azp so /oauth/userinfo can confine
+// its answer to that client's applications.
+func (s *AuthService) GenerateAccessTokenWithScopeFor(p *principal.Principal, scope []string, clientID string) (string, error) {
+	return s.generateTokenWithExpiry(p, s.config.AccessTokenExpirySecs, scope, true, clientID)
 }
 
 // GenerateIdentityAccessToken mints the access token an interactive login
@@ -412,20 +426,28 @@ func (s *AuthService) GenerateAccessTokenWithScope(p *principal.Principal, scope
 // relying-party app read the principal's identity. Apps obtain the user's
 // roles from the (per-application-narrowed) id_token, not from this token.
 func (s *AuthService) GenerateIdentityAccessToken(p *principal.Principal) (string, error) {
-	return s.generateTokenWithExpiry(p, s.config.AccessTokenExpirySecs, nil, false)
+	return s.generateTokenWithExpiry(p, s.config.AccessTokenExpirySecs, nil, false, "")
+}
+
+// GenerateIdentityAccessTokenFor is GenerateIdentityAccessToken for a token
+// minted through an OAuth client, stamping azp. Without it /oauth/userinfo
+// cannot tell which relying party is asking, and so cannot confine its answer
+// the way that client's id_token was confined.
+func (s *AuthService) GenerateIdentityAccessTokenFor(p *principal.Principal, clientID string) (string, error) {
+	return s.generateTokenWithExpiry(p, s.config.AccessTokenExpirySecs, nil, false, clientID)
 }
 
 // GenerateSessionToken mints a longer-lived, authority-bearing token for cookie
 // sessions.
 func (s *AuthService) GenerateSessionToken(p *principal.Principal) (string, error) {
-	return s.generateTokenWithExpiry(p, s.config.SessionTokenExpirySecs, nil, true)
+	return s.generateTokenWithExpiry(p, s.config.SessionTokenExpirySecs, nil, true, "")
 }
 
 // generateTokenWithExpiry builds and signs an access token. When authoritative
 // is true the token carries the principal's full authority and is marked
 // TokenUseAPI; when false it carries only identity (sub/tier/type/name/email),
 // emits empty authority arrays, and is marked TokenUseIdentity.
-func (s *AuthService) generateTokenWithExpiry(p *principal.Principal, expirySecs int64, scope []string, authoritative bool) (string, error) {
+func (s *AuthService) generateTokenWithExpiry(p *principal.Principal, expirySecs int64, scope []string, authoritative bool, azp string) (string, error) {
 	now := time.Now().UTC()
 	exp := now.Add(time.Duration(expirySecs) * time.Second)
 
@@ -448,6 +470,9 @@ func (s *AuthService) generateTokenWithExpiry(p *principal.Principal, expirySecs
 		Clients:      []string{},
 		Roles:        []string{},
 		Applications: []string{},
+	}
+	if azp != "" {
+		claims.AZP = &azp
 	}
 	if authoritative {
 		claims.TokenUse = TokenUseAPI
@@ -631,6 +656,15 @@ func roleNames(p *principal.Principal) []string {
 	}
 	return out
 }
+
+// ClientsClaim exposes the `clients` claim shape for callers that assemble the
+// same authority view outside a token mint (/oauth/userinfo). Exported so the
+// wire shape has ONE definition and the two cannot drift.
+func ClientsClaim(p *principal.Principal) []string { return buildClients(p) }
+
+// ApplicationsClaim exposes the `applications` claim shape, for the same
+// reason as ClientsClaim.
+func ApplicationsClaim(p *principal.Principal) []string { return appAccessOf(p) }
 
 // buildClients builds the client-access list:
 // anchor → ["*"]; partner → assigned clients mapped to "id:identifier";

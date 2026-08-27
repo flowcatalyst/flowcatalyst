@@ -6,7 +6,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 )
 
 // RegisterUserinfoRoutes mounts GET+POST /oauth/userinfo. Closes the
@@ -33,26 +35,88 @@ type userInfoResponse struct {
 	Applications  []string `json:"applications"`
 }
 
-// Userinfo is GET/POST /oauth/userinfo (OIDC). It validates the bearer
-// access token and returns the identity claims subset.
+// Userinfo is GET/POST /oauth/userinfo (OIDC). It validates the bearer access
+// token and answers with the caller's identity plus the authority that token's
+// relying party is entitled to know about — recomputed from the principal, not
+// echoed back off the token.
+//
+// Echoing the token was the bug: an interactive login receives an
+// IDENTITY-ONLY access token (no roles, applications or scope by design), so
+// userinfo answered every such call with empty arrays — asserting "this user
+// holds nothing", which is false. It is the one endpoint an identity token
+// exists to be used against, and it said nothing.
+//
+// The principal is now loaded fresh and passed through the same confinement
+// the client's id_token gets (confineToClient), keyed on the token's azp. So
+// userinfo is "the id_token's claims, as of now" — useful for picking up a
+// role change without re-authenticating, and incapable of telling a relying
+// party more than its id_token already did.
+//
+// Falls back to the token's own claims when the principal can't be resolved,
+// or when the token carries no azp (a session token, or client_credentials,
+// where the client is the principal and there is nothing to confine to).
 func (s *State) Userinfo(w http.ResponseWriter, r *http.Request) {
 	claims, errResp := s.validateBearer(r)
 	if errResp != nil {
 		errResp.write(w)
 		return
 	}
+
+	roles, apps, clients := nonNil(claims.Roles), nonNil(claims.Applications), nonNil(claims.Clients)
+	scope := claims.Scope
+
+	if p := s.userinfoPrincipal(r, claims.Subject); p != nil {
+		roles, apps, clients = roleNamesOf(p), authservice.ApplicationsClaim(p), authservice.ClientsClaim(p)
+		if client := s.userinfoClient(r, claims.AZP); client != nil && len(client.ApplicationIDs) > 0 {
+			scoped, narrowed, err := s.confineToClient(r.Context(), p, client)
+			if err == nil {
+				roles, apps = narrowed, authservice.ApplicationsClaim(scoped)
+			}
+		}
+		// The scope claim is the token's granted permission set; it is a
+		// property of the credential, not of the principal, so it is never
+		// recomputed here — an identity token legitimately has none.
+	}
+
 	writeJSON(w, http.StatusOK, userInfoResponse{
 		Sub:           claims.Subject,
 		Email:         claims.Email,
 		Name:          claims.Name,
 		Tier:          claims.Tier,
-		Scope:         claims.Scope,
+		Scope:         scope,
 		PrincipalType: claims.PrincipalType,
-		ClientID:      userinfoClientID(claims.Clients),
-		Clients:       nonNil(claims.Clients),
-		Roles:         nonNil(claims.Roles),
-		Applications:  nonNil(claims.Applications),
+		ClientID:      userinfoClientID(clients),
+		Clients:       clients,
+		Roles:         roles,
+		Applications:  apps,
 	})
+}
+
+// userinfoPrincipal loads the token subject, returning nil (rather than an
+// error) when it cannot — userinfo then answers from the token alone rather
+// than failing a request that has a perfectly valid credential.
+func (s *State) userinfoPrincipal(r *http.Request, subject string) *principal.Principal {
+	if s.Principals == nil || subject == "" {
+		return nil
+	}
+	p, err := s.Principals.FindByID(r.Context(), subject)
+	if err != nil || p == nil || !p.Active {
+		return nil
+	}
+	return p
+}
+
+// userinfoClient resolves the token's azp to its OAuth client, or nil when the
+// token carries no azp or the client has since been removed.
+func (s *State) userinfoClient(r *http.Request, azp *string) *auth.OAuthClient {
+	if azp == nil || *azp == "" || s.OAuthClients == nil {
+		return nil
+	}
+	c, err := s.OAuthClients.FindByClientID(r.Context(), *azp)
+	if err != nil {
+		return nil
+	}
+	return c
 }
 
 // validateBearer extracts and validates the Authorization: Bearer access

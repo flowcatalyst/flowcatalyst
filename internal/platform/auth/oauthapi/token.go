@@ -953,6 +953,24 @@ func (s *State) mintIDToken(ctx context.Context, p *principal.Principal, clientI
 		return s.Auth.GenerateIDTokenWithRoles(p, clientIDForAud, nonce, roleNamesOf(p), authTime)
 	}
 
+	scoped, roles, err := s.confineToClient(ctx, p, client)
+	if err != nil {
+		return "", err
+	}
+	return s.Auth.GenerateIDTokenWithRoles(scoped, clientIDForAud, nonce, roles, authTime)
+}
+
+// confineToClient returns the principal as an app-scoped client is entitled to
+// see it: a copy whose application access is intersected with the client's
+// (all-applications forced off), plus the role list narrowed to the client's
+// applications. The caller must have established that client is app-scoped.
+//
+// The single definition of "what this relying party may know about its user",
+// shared by the id_token mint and /oauth/userinfo so the two cannot drift.
+// Role narrowing needs role→application resolution and keeps the full list
+// when that is unwired; application confinement is set arithmetic and always
+// applies.
+func (s *State) confineToClient(ctx context.Context, p *principal.Principal, client *auth.OAuthClient) (*principal.Principal, []string, error) {
 	// Shallow copy: only the application-scope fields are replaced, and the
 	// synthetic value never reaches the principal store.
 	scoped := *p
@@ -963,11 +981,11 @@ func (s *State) mintIDToken(ctx context.Context, p *principal.Principal, clientI
 	if s.FilterRolesForApplications != nil {
 		filtered, err := s.FilterRolesForApplications(ctx, roles, client.ApplicationIDs)
 		if err != nil {
-			return "", err
+			return nil, nil, err
 		}
 		roles = filtered
 	}
-	return s.Auth.GenerateIDTokenWithRoles(&scoped, clientIDForAud, nonce, roles, authTime)
+	return &scoped, roles, nil
 }
 
 // roleNamesOf extracts a principal's assigned role names.

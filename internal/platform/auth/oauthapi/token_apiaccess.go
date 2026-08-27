@@ -25,8 +25,11 @@ import (
 // So an app-scoped client can never mint authority beyond its own
 // applications, however broad the user's platform access is.
 func (s *State) mintInteractiveAccessToken(ctx context.Context, p *principal.Principal, client *auth.OAuthClient, requestedScope string) (string, error) {
-	if client == nil || !client.APIAccess {
+	if client == nil {
 		return s.Auth.GenerateIdentityAccessToken(p)
+	}
+	if !client.APIAccess {
+		return s.Auth.GenerateIdentityAccessTokenFor(p, client.ClientID)
 	}
 	narrowed := p
 	if len(client.ApplicationIDs) > 0 && s.FilterRolesForApplications != nil {
@@ -53,7 +56,7 @@ func (s *State) mintInteractiveAccessToken(ctx context.Context, p *principal.Pri
 	if err != nil {
 		return "", err
 	}
-	return s.Auth.GenerateAccessTokenWithScope(narrowed, granted)
+	return s.Auth.GenerateAccessTokenWithScopeFor(narrowed, granted, client.ClientID)
 }
 
 // intersectApps returns the client's application ids the user can actually
