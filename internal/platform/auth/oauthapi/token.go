@@ -925,24 +925,46 @@ func (s *State) grantedScope(ctx context.Context, p *principal.Principal, reques
 	return granted, true, nil
 }
 
-// mintIDToken issues an OIDC ID token addressed to clientIDForAud. When
-// client is app-scoped (ApplicationIDs configured) and role→application
-// resolution is wired, the token's "roles" claim is narrowed to just the
-// roles belonging to that client's application(s) — a third-party relying
-// party then only learns about the principal's roles/permissions in its own
-// app, not roles from unrelated applications the principal also holds. A
-// client with no ApplicationIDs configured (the default, unrestricted case)
-// gets the principal's full, unfiltered role list — preserving today's
-// behaviour for existing clients.
+// mintIDToken issues an OIDC ID token addressed to clientIDForAud, confined to
+// what the relying party is entitled to know.
+//
+// The ID token is an assertion TO the application about its own user: it says
+// what that user holds inside the application's walls, and must not describe
+// anything outside them. So for an app-scoped client (ApplicationIDs
+// configured) both authority claims are narrowed to that client's
+// application(s):
+//
+//   - roles: only those bound to the client's applications (needs
+//     FilterRolesForApplications wired; without it the full list is kept,
+//     preserving previous behaviour rather than failing closed).
+//   - applications / all_applications: the user's accessible applications
+//     INTERSECTED with the client's, all-applications forced off — the same
+//     confinement mintInteractiveAccessToken applies, via the same helper.
+//     This needs no role resolution, so it holds whether or not the filter is
+//     wired.
+//
+// A client with no ApplicationIDs (the default, unrestricted case) gets the
+// principal's full, unfiltered claims.
 func (s *State) mintIDToken(ctx context.Context, p *principal.Principal, clientIDForAud string, client *auth.OAuthClient, nonce *string) (string, error) {
-	if client == nil || len(client.ApplicationIDs) == 0 || s.FilterRolesForApplications == nil {
+	if client == nil || len(client.ApplicationIDs) == 0 {
 		return s.Auth.GenerateIDToken(p, clientIDForAud, nonce)
 	}
-	roles, err := s.FilterRolesForApplications(ctx, roleNamesOf(p), client.ApplicationIDs)
-	if err != nil {
-		return "", err
+
+	// Shallow copy: only the application-scope fields are replaced, and the
+	// synthetic value never reaches the principal store.
+	scoped := *p
+	scoped.AllApplications = false
+	scoped.AccessibleApplicationIDs = intersectApps(p, client.ApplicationIDs)
+
+	roles := roleNamesOf(p)
+	if s.FilterRolesForApplications != nil {
+		filtered, err := s.FilterRolesForApplications(ctx, roles, client.ApplicationIDs)
+		if err != nil {
+			return "", err
+		}
+		roles = filtered
 	}
-	return s.Auth.GenerateIDTokenWithRoles(p, clientIDForAud, nonce, roles)
+	return s.Auth.GenerateIDTokenWithRoles(&scoped, clientIDForAud, nonce, roles)
 }
 
 // roleNamesOf extracts a principal's assigned role names.
