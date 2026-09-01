@@ -413,6 +413,30 @@ func (p *Pool) endMediating(worker uint64) {
 	p.mediatingMu.Unlock()
 }
 
+// OldestMediatingAge is how long this pool's longest-running delivery has been
+// inside the mediator, or 0 when no worker is active.
+//
+// It is the number that makes a wedged pool legible. ActiveWorkers alone
+// cannot: a pool at 1/1 is indistinguishable from a healthy busy pool and a
+// pool whose single slot has been held by one delivery for forty minutes. The
+// mediator's production timeout is 15 minutes over 3 attempts, so a worker can
+// legitimately hold its slot — and, at concurrency 1, the whole pool and every
+// message group in it — for the better part of an hour.
+func (p *Pool) OldestMediatingAge() time.Duration {
+	p.mediatingMu.Lock()
+	defer p.mediatingMu.Unlock()
+	var oldest time.Time
+	for _, e := range p.mediating {
+		if oldest.IsZero() || e.MediatedAt.Before(oldest) {
+			oldest = e.MediatedAt
+		}
+	}
+	if oldest.IsZero() {
+		return 0
+	}
+	return time.Since(oldest)
+}
+
 // MediatingSnapshot returns the messages currently inside this pool's workers.
 // Never reaped, so a long-running delivery stays listed for its full duration —
 // the reliable answer to "which records are mediating right now" (its length
@@ -471,6 +495,7 @@ func (p *Pool) Stats() PoolStats {
 		PoolCode:           p.cfg.Code,
 		Concurrency:        p.Concurrency(),
 		ActiveWorkers:      p.ActiveWorkers(),
+		OldestMediatingMs:  uint64(p.OldestMediatingAge().Milliseconds()),
 		QueueSize:          p.queueSize.Load(),
 		QueueCapacity:      p.queueCapacity(),
 		MessageGroupCount:  p.MessageGroupCount(),

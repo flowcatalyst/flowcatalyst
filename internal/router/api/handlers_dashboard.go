@@ -125,6 +125,7 @@ func poolStatsToDashboard(s router.PoolStats, window time.Duration) DashboardPoo
 		SuccessRate:             successRate,
 		ActiveWorkers:           s.ActiveWorkers,
 		AvailablePermits:        avail,
+		OldestMediatingMs:       s.OldestMediatingMs,
 		MaxConcurrency:          s.Concurrency,
 		QueueSize:               s.QueueSize,
 		MaxQueueCapacity:        s.QueueCapacity,

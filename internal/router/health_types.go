@@ -39,9 +39,12 @@ type ConsumerHealth struct {
 
 // PoolStats is the per-pool snapshot returned by /monitoring/pools.
 type PoolStats struct {
-	PoolCode           string                      `json:"poolCode"`
-	Concurrency        uint32                      `json:"concurrency"`
-	ActiveWorkers      uint32                      `json:"activeWorkers"`
+	PoolCode      string `json:"poolCode"`
+	Concurrency   uint32 `json:"concurrency"`
+	ActiveWorkers uint32 `json:"activeWorkers"`
+	// OldestMediatingMs is the age of the longest-running delivery currently
+	// inside a worker. Zero when idle. See Pool.OldestMediatingAge.
+	OldestMediatingMs  uint64                      `json:"oldestMediatingMs"`
 	QueueSize          uint32                      `json:"queueSize"`
 	QueueCapacity      uint32                      `json:"queueCapacity"`
 	MessageGroupCount  uint32                      `json:"messageGroupCount"`

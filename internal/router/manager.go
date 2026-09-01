@@ -29,6 +29,30 @@ const defaultPoolConcurrency uint32 = 20
 // avoids a thundering-herd of reconnects when several stall at once (5s).
 const consumerRestartDelay = 5 * time.Second
 
+// consumerPollTimeout bounds a single consumer.Poll. It has to clear the
+// backends' own long-poll wait — SQS caps at 20s (sqs.DefaultWaitSeconds) — by
+// enough margin that a healthy slow poll never trips it, while staying well
+// under any sane stall threshold so a hung poll surfaces as a retryable error
+// long before the watchdog would tear the consumer down.
+const consumerPollTimeout = 30 * time.Second
+
+// restartRecord is one queue's restart history: how many consecutive attempts,
+// and when the last one was. The timestamp is what makes the count meaningful —
+// see the recovery rule in RestartStalledConsumers.
+type restartRecord struct {
+	attempts int
+	last     time.Time
+}
+
+// consumerRebuildTimeout bounds building a replacement consumer. Building one
+// is real network I/O — for SQS it loads AWS config and resolves credentials —
+// and the SQS backend sets no client-level timeout, so an unbounded build can
+// hang indefinitely. That matters more here than anywhere else: the rebuild
+// runs synchronously inside the watchdog's own tick, so a hang takes down the
+// loop whose job is to fix hangs, and nothing polls that queue again until the
+// process restarts.
+const consumerRebuildTimeout = 20 * time.Second
+
 // capacityStuckWarnInterval is how often a consumer paused on backpressure
 // re-reports that its destination pools are still full. Long enough not to
 // flood /warnings, short enough that a wedged pool is never silent.
@@ -85,15 +109,23 @@ type Manager struct {
 
 	// restartAttempts tracks consecutive restart attempts per stalled consumer
 	// so a repeatedly-failing consumer escalates to a CRITICAL warning, and a
-	// recovered one is cleared. Touched only by RestartStalledConsumers, which
-	// the lifecycle watchdog calls from a single goroutine — no lock needed.
-	restartAttempts map[string]int
+	// genuinely recovered one is cleared. Touched only by
+	// RestartStalledConsumers, which the lifecycle watchdog calls from a single
+	// goroutine — no lock needed.
+	restartAttempts map[string]restartRecord
 
 	batchCounter atomic.Uint64
 
 	// restartDelay is the pause before rebuilding a stalled consumer. A field
 	// rather than the constant so tests don't sit out five seconds per restart.
 	restartDelay time.Duration
+
+	// rebuildTimeout bounds each replacement-consumer build. A field rather
+	// than the constant for the same reason as restartDelay.
+	rebuildTimeout time.Duration
+
+	// pollTimeout bounds each consumer.Poll call. A field for the same reason.
+	pollTimeout time.Duration
 
 	pubMu      sync.Mutex
 	publishers map[string]queue.Publisher // queue name → publisher (lazy)
@@ -121,6 +153,17 @@ type runningConsumer struct {
 	// loop wedged inside consumer.Poll leaves it stale, which the
 	// consumer-restart watchdog (RestartStalledConsumers) detects.
 	lastPoll atomic.Int64
+
+	// pollsStarted / pollsReturned bracket every consumer.Poll call, and exist
+	// to make a stalled consumer say WHY it is stalled. A stale lastPoll has
+	// several silent causes that look identical from outside — the loop never
+	// reached the poll (backpressure pause, dead context), or it entered one
+	// and never came back — and telling them apart from logs alone cost real
+	// production time. started == returned means the loop is between polls;
+	// started > returned means it is INSIDE one right now, so a stall with that
+	// gap is a hung poll and nothing else.
+	pollsStarted  atomic.Uint64
+	pollsReturned atomic.Uint64
 
 	// pools records the pool codes the most recent batch routed to, so the
 	// poll loop can push back on the pools this queue actually feeds rather
@@ -152,8 +195,10 @@ func NewManager(mediator Mediator, tracker *InFlightTracker) *Manager {
 		consumers:       make(map[string]*runningConsumer),
 		queues:          make(map[string]common.QueueConfig),
 		publishers:      make(map[string]queue.Publisher),
-		restartAttempts: make(map[string]int),
+		restartAttempts: make(map[string]restartRecord),
 		restartDelay:    consumerRestartDelay,
+		rebuildTimeout:  consumerRebuildTimeout,
+		pollTimeout:     consumerPollTimeout,
 	}
 	m.root, m.rootCancel = context.WithCancel(context.Background())
 	return m
@@ -632,7 +677,18 @@ func (m *Manager) runConsumer(ctx context.Context, rc *runningConsumer) {
 		}
 		wasFull = false
 
-		msgs, err := rc.consumer.Poll(ctx, maxPoll)
+		// Bound every poll. The backends take the caller's context and add no
+		// deadline of their own — the SQS client is built with no HTTP or
+		// request timeout — so a ReceiveMessage that never returns parks this
+		// loop indefinitely: no heartbeat, no error, no log, until the restart
+		// watchdog notices a minute later and rebuilds a consumer that does the
+		// same thing. A deadline turns that into an ordinary poll error, logged
+		// and retried a second later.
+		rc.pollsStarted.Add(1)
+		pollCtx, cancelPoll := context.WithTimeout(ctx, m.pollTimeout)
+		msgs, err := rc.consumer.Poll(pollCtx, maxPoll)
+		cancelPoll()
+		rc.pollsReturned.Add(1)
 		if err != nil {
 			if ctx.Err() != nil {
 				return
@@ -928,9 +984,14 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 
 // RestartStalledConsumers re-spawns any consumer whose poll loop has not
 // completed a poll within threshold — a wedged loop (stuck inside
-// consumer.Poll) leaves its lastPoll stale. The stalled consumer is
-// cancelled and its connection rebuilt with a fresh poll loop. Returns the
-// number restarted.
+// consumer.Poll) leaves its lastPoll stale. The replacement is built first and
+// swapped in, and only then is the stalled one retired, so a rebuild that
+// fails or hangs can never leave the queue with no consumer at all. Returns
+// the number restarted.
+//
+// Runs synchronously on the watchdog tick and from that single goroutine only
+// (which is what lets restartAttempts go unlocked), so every step inside the
+// loop has to be bounded — see consumerRebuildTimeout.
 func (m *Manager) RestartStalledConsumers(ctx context.Context, threshold time.Duration) int {
 	if threshold <= 0 {
 		return 0
@@ -947,6 +1008,18 @@ func (m *Manager) RestartStalledConsumers(ctx context.Context, threshold time.Du
 		qc   common.QueueConfig
 		old  *runningConsumer
 	}
+	// pollState turns "stalled" into a cause. See runningConsumer.pollsStarted.
+	pollState := func(rc *runningConsumer) string {
+		started, returned := rc.pollsStarted.Load(), rc.pollsReturned.Load()
+		switch {
+		case started == 0:
+			return "never polled (loop never reached consumer.Poll)"
+		case started > returned:
+			return "inside consumer.Poll (poll is hung)"
+		default:
+			return "between polls (loop is not calling consumer.Poll)"
+		}
+	}
 	m.consumerMu.RLock()
 	var stalled []candidate
 	for name, rc := range m.consumers {
@@ -956,17 +1029,36 @@ func (m *Manager) RestartStalledConsumers(ctx context.Context, threshold time.Du
 	}
 	m.consumerMu.RUnlock()
 
-	// Clear restart-attempt counters for consumers that have recovered (are no
-	// longer stalled), so a transient stall doesn't escalate a later, unrelated
-	// one.
+	// Clear restart-attempt counters for consumers that have genuinely
+	// recovered, so a transient stall doesn't escalate a later, unrelated one.
+	//
+	// "Recovered" has to mean QUIET FOR A WHILE, not merely "not stalled at
+	// this instant". Restarting a consumer stamps its lastPoll fresh, so on the
+	// next tick it is never stalled — not because it recovered but because it
+	// was just rebuilt. Clearing on that basis reset the count every single
+	// cycle, which is why a consumer restarted every 90 seconds for hours
+	// reported "attempt 1" every time and could never reach the CRITICAL
+	// escalation this counter exists to drive. A consumer that manages one poll
+	// between restarts is flapping, not healthy, and must still accumulate.
+	//
+	// The window is derived from the caller's threshold so it scales with it:
+	// the restart cadence is at most threshold plus a couple of watchdog ticks,
+	// so 3x threshold is comfortably longer than a loop yet short enough that a
+	// one-off stall is forgotten.
+	recoveryWindow := 3 * threshold
 	stalledSet := make(map[string]struct{}, len(stalled))
 	for _, c := range stalled {
 		stalledSet[c.name] = struct{}{}
 	}
-	for name := range m.restartAttempts {
-		if _, ok := stalledSet[name]; !ok {
-			delete(m.restartAttempts, name)
+	now := time.Now()
+	for name, rec := range m.restartAttempts {
+		if _, stillStalled := stalledSet[name]; stillStalled {
+			continue
 		}
+		if now.Sub(rec.last) <= recoveryWindow {
+			continue
+		}
+		delete(m.restartAttempts, name)
 	}
 
 	if len(stalled) == 0 {
@@ -974,37 +1066,63 @@ func (m *Manager) RestartStalledConsumers(ctx context.Context, threshold time.Du
 	}
 
 	restarted := 0
+	swept := 0
 	for _, c := range stalled {
-		attempts := m.restartAttempts[c.name]
+		attempts := m.restartAttempts[c.name].attempts
 		// Escalate to CRITICAL once a consumer keeps stalling across many
 		// restarts (Critical after 10 attempts).
 		severity := WarningWarning
 		if attempts >= consumerRestartCriticalAfter {
 			severity = WarningCritical
 		}
+		cause := pollState(c.old)
 		if w := m.warnings.Load(); w != nil {
 			w.Add(WarningCategoryConsumerHealth, severity,
-				fmt.Sprintf("Consumer %s is stalled, restart attempt %d", c.name, attempts+1),
+				fmt.Sprintf("Consumer %s is stalled (%s), restart attempt %d", c.name, cause, attempts+1),
 				"router")
 		}
 		slog.Warn("stalled consumer detected, attempting restart",
-			"queue", c.name, "attempt", attempts+1, "stalled_threshold", threshold)
+			"queue", c.name, "attempt", attempts+1, "stalled_threshold", threshold,
+			"cause", cause,
+			"polls_started", c.old.pollsStarted.Load(),
+			"polls_returned", c.old.pollsReturned.Load())
 
 		// Brief pause before reconnecting — avoids a thundering herd when
-		// several consumers stall together.
+		// several consumers stall together. Only BETWEEN consumers: delaying
+		// ahead of the first buys nothing and just makes the sweep (which runs
+		// inside the watchdog tick) longer for the common single-queue case.
 		// Abort cleanly on shutdown.
-		select {
-		case <-ctx.Done():
-			return restarted
-		case <-time.After(m.restartDelay):
+		if swept > 0 {
+			select {
+			case <-ctx.Done():
+				return restarted
+			case <-time.After(m.restartDelay):
+			}
 		}
+		swept++
 
-		c.old.cancel()
-		c.old.consumer.Stop()
-
-		consumer, err := queue.NewConsumer(ctx, c.qc)
+		// Build the replacement BEFORE retiring the old consumer, under a
+		// bounded context.
+		//
+		// The old order tore down first and built second, so a build that
+		// failed or hung left the queue with NO consumer at all — a stalled
+		// consumer silently downgraded into an unconsumed queue. On a failure
+		// that was recoverable only if the cause was transient (the dead entry
+		// stays in the map, stale, and is retried next tick); on a hang it was
+		// not recoverable at all, because this runs synchronously in the
+		// watchdog's tick and took the whole loop with it. Building first makes
+		// a failed rebuild leave things exactly as it found them.
+		buildCtx, cancelBuild := context.WithTimeout(ctx, m.rebuildTimeout)
+		consumer, err := queue.NewConsumer(buildCtx, c.qc)
+		cancelBuild()
 		if err != nil {
-			slog.Error("failed to rebuild stalled consumer", "queue", c.name, "err", err)
+			// Count the failure. A rebuild that keeps failing leaves the
+			// consumer stalled, so it stays in the stalled set and its counter
+			// survives the recovery sweep above — which is what lets a queue
+			// that can never be rebuilt escalate to CRITICAL instead of
+			// re-reporting attempt 1 for ever.
+			slog.Error("failed to rebuild stalled consumer; leaving the existing entry in place",
+				"queue", c.name, "attempt", m.bumpRestart(c.name), "err", err)
 			continue
 		}
 		rc, pollCtx := newRunningConsumer(m.consumerRoot(), consumer, c.qc)
@@ -1012,18 +1130,42 @@ func (m *Manager) RestartStalledConsumers(ctx context.Context, threshold time.Du
 		m.consumerMu.Lock()
 		// Only replace if the entry is still the one we found stalled — a
 		// concurrent Reconfigure may have already swapped or removed it.
-		if cur, ok := m.consumers[c.name]; ok && cur == c.old {
-			m.consumers[c.name] = rc
-			m.consumerMu.Unlock()
-			m.wg.Add(1)
-			go m.runConsumer(pollCtx, rc)
-			m.restartAttempts[c.name]++
-			restarted++
-		} else {
+		cur, ok := m.consumers[c.name]
+		if !ok || cur != c.old {
 			m.consumerMu.Unlock()
 			rc.cancel()
 			consumer.Stop()
+			continue
 		}
+		// Still stalled? Detection ran on a snapshot taken before the herd
+		// pause, before every earlier consumer in this sweep, and before a
+		// build that may have taken seconds. A consumer that completed a poll
+		// in that window has recovered, and replacing it would be pure harm:
+		// the teardown cancels workCtx, which parks its ordered-group drainers.
+		// Checked here, under the same lock as the identity check, so the whole
+		// window is covered rather than just part of it.
+		if lp := c.old.lastPoll.Load(); lp >= time.Now().Add(-threshold).UnixNano() {
+			m.consumerMu.Unlock()
+			rc.cancel()
+			consumer.Stop()
+			slog.Info("stalled consumer recovered before its restart; leaving it alone",
+				"queue", c.name)
+			continue
+		}
+		m.consumers[c.name] = rc
+		m.consumerMu.Unlock()
+
+		// The replacement is built and installed, so retiring the old one can
+		// no longer leave a gap. The brief overlap is harmless: the old
+		// consumer is stalled by definition, and any duplicate delivery it
+		// managed is deduped by broker id at route time.
+		c.old.cancel()
+		c.old.consumer.Stop()
+
+		m.wg.Add(1)
+		go m.runConsumer(pollCtx, rc)
+		m.bumpRestart(c.name)
+		restarted++
 	}
 	return restarted
 }
@@ -1047,6 +1189,16 @@ func (m *Manager) ReleaseParkedGroups(ctx context.Context, minAge time.Duration)
 		released += p.ReleaseParkedGroups(ctx, minAge)
 	}
 	return released
+}
+
+// bumpRestart records one more restart attempt for a queue and returns the new
+// count. Called only from RestartStalledConsumers (single goroutine).
+func (m *Manager) bumpRestart(name string) int {
+	rec := m.restartAttempts[name]
+	rec.attempts++
+	rec.last = time.Now()
+	m.restartAttempts[name] = rec
+	return rec.attempts
 }
 
 // PoolCount returns the count of running pools (for /health or /metrics).

@@ -386,24 +386,36 @@ func TestReleaseParkedGroupUnwedgesPoolCapacity(t *testing.T) {
 // A group with a live drainer, or one parked more recently than minAge, must
 // be left alone — the sweep is a backstop, never a competitor to the normal
 // redelivery resume.
+//
+// The buffer is built directly rather than driven through a failing mediator:
+// the retry path re-fronts the head between attempts, so any assertion on
+// queueSize is a race against the backoff window and was flaky under load.
+// These three branches are pure predicate logic and deserve a deterministic
+// test.
 func TestReleaseParkedGroupsRespectsMinAgeAndLiveDrainers(t *testing.T) {
 	cons := &cascadeConsumer{wantTotal: 99, done: make(chan struct{})}
-	med := &cascadeMediator{failID: "m1"} // head retries forever → m2 stays buffered
-	m, _, pool := newRouteHarness(med, cons)
+	m, _, pool := newRouteHarness(&cascadeMediator{}, cons)
+	ctx := context.Background()
 
-	m.route(context.Background(), []common.QueuedMessage{
-		mkGrouped("m1", "b1", "rh-m1"),
-		mkGrouped("m2", "b2", "rh-m2"),
-	}, cons)
-	require.Eventually(t, func() bool { return pool.QueueSize() == 1 },
-		2*time.Second, 5*time.Millisecond, "m2 never settled behind the retrying head")
-
-	// A live drainer owns the group: never swept, however old.
-	assert.Equal(t, 0, m.ReleaseParkedGroups(context.Background(), 0),
+	// A live drainer owns the group (working, and so never parked).
+	pool.mu.Lock()
+	pool.groupQs["g"] = &groupQueue{
+		msgs:    []common.QueuedMessage{mkGrouped("m1", "b1", "rh-m1")},
+		working: true,
+	}
+	pool.mu.Unlock()
+	assert.Equal(t, 0, m.ReleaseParkedGroups(ctx, 0),
 		"a group with a working drainer must never be released")
 
-	// Park it, then sweep with a grace it has not outlived.
+	// Parked, but only just: leave it for the redelivery resume.
 	pool.clearWorking("g")
-	assert.Equal(t, 0, m.ReleaseParkedGroups(context.Background(), time.Hour),
-		"a freshly parked group must be left for the redelivery resume")
+	assert.Equal(t, 0, m.ReleaseParkedGroups(ctx, time.Hour),
+		"a freshly parked group must be left for the normal resume")
+
+	// Parked past the grace: now it is the sweep's problem.
+	assert.Equal(t, 1, m.ReleaseParkedGroups(ctx, 0),
+		"a group parked beyond the grace must be released")
+	cons.mu.Lock()
+	defer cons.mu.Unlock()
+	assert.Equal(t, []string{"rh-m1"}, cons.nacked)
 }

@@ -76,6 +76,7 @@ type WirePoolStats struct {
 	PoolCode           string                      `json:"pool_code"`
 	Concurrency        uint32                      `json:"concurrency"`
 	ActiveWorkers      uint32                      `json:"active_workers"`
+	OldestMediatingMs  uint64                      `json:"oldest_mediating_ms"`
 	QueueSize          uint32                      `json:"queue_size"`
 	QueueCapacity      uint32                      `json:"queue_capacity"`
 	MessageGroupCount  uint32                      `json:"message_group_count"`
@@ -91,6 +92,7 @@ func fromPoolStats(s []router.PoolStats) []WirePoolStats {
 			PoolCode:           p.PoolCode,
 			Concurrency:        p.Concurrency,
 			ActiveWorkers:      p.ActiveWorkers,
+			OldestMediatingMs:  p.OldestMediatingMs,
 			QueueSize:          p.QueueSize,
 			QueueCapacity:      p.QueueCapacity,
 			MessageGroupCount:  p.MessageGroupCount,
@@ -138,6 +140,7 @@ type DashboardPoolStats struct {
 	SuccessRate             float64 `json:"successRate"`
 	ActiveWorkers           uint32  `json:"activeWorkers"`
 	AvailablePermits        uint32  `json:"availablePermits"`
+	OldestMediatingMs       uint64  `json:"oldestMediatingMs"`
 	MaxConcurrency          uint32  `json:"maxConcurrency"`
 	QueueSize               uint32  `json:"queueSize"`
 	MaxQueueCapacity        uint32  `json:"maxQueueCapacity"`

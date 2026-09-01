@@ -189,11 +189,20 @@ func (t *InFlightTracker) Snapshot() []common.InFlightMessage {
 	return out
 }
 
-// reapRetryGrace bounds the reaper's Attempts>0 exemption. An in-pipeline
-// retry re-dispatches after at most retryMaxDelay, so an entry that has not
-// recorded a NEW attempt in twice that is not a live retry: its owner died
-// between attempts and the entry is an orphan, which must become reapable.
-const reapRetryGrace = 2 * retryMaxDelay
+// reapRetryGrace bounds the reaper's Attempts>0 exemption: past it, an entry
+// that has recorded no new attempt is an orphan rather than a live retry.
+//
+// It is sized against the MEDIATOR'S per-attempt timeout, not the backoff
+// between attempts. A single delivery may legitimately occupy its worker for
+// DefaultMediatorConfig().Timeout — 15 minutes, the platform's processing
+// contract, matching AWS Lambda's ceiling — and records no new attempt for the
+// whole of it. A grace shorter than that (the first version used
+// 2*retryMaxDelay, ten minutes) would let the reaper drop the tracker entry of
+// a delivery still in progress, after which the next broker redelivery is
+// admitted as a fresh copy: a DOUBLE DELIVERY of a message that was being
+// processed successfully. Doubling the attempt timeout leaves room for the
+// dispatch either side of the call.
+var reapRetryGrace = 2 * DefaultMediatorConfig().Timeout
 
 // defaultAbsoluteMaxAgeFactor derives Reap's absolute ceiling from its idle
 // bound when the caller supplies none (15m idle -> 2h ceiling).
@@ -286,13 +295,29 @@ type StallConfig struct {
 	CheckInterval         time.Duration
 }
 
-// DefaultStallConfig returns the defaults (5 min threshold, force-nack off).
+// DefaultStallConfig returns the defaults. The thresholds are derived from the
+// mediation contract, not chosen freely: a single delivery attempt may
+// legitimately run for DefaultMediatorConfig().Timeout (15 minutes, matching
+// Lambda's ceiling), and a message may take three of them.
+//
+// The old values — 300s to warn, 600s to force-NACK — predate that contract and
+// were actively wrong under it. 300s flagged every legitimate long delivery as
+// stalled, and 600s would have force-NACKed one that was still running,
+// handing the broker a second copy of a message being processed successfully.
+// That last one was inert only because ForceNackStalled defaults to false; it
+// must stay false unless ForceNackAfterSeconds clears the full three-attempt
+// budget.
 func DefaultStallConfig() StallConfig {
+	attempt := DefaultMediatorConfig().Timeout
 	return StallConfig{
-		Enabled:               true,
-		StallThresholdSeconds: 300,
+		Enabled: true,
+		// One attempt plus a minute of dispatch slack: below this a message may
+		// simply be inside a long call that is going to succeed.
+		StallThresholdSeconds: uint64(attempt.Seconds()) + 60,
 		ForceNackStalled:      false,
-		ForceNackAfterSeconds: 600,
+		// Clear of the whole budget (3 attempts) with room to spare, so
+		// enabling it can never duplicate a live delivery.
+		ForceNackAfterSeconds: uint64(4 * attempt.Seconds()),
 		NackDelaySeconds:      30,
 		CheckInterval:         60 * time.Second,
 	}
@@ -308,14 +333,77 @@ type StallDetector struct {
 	cfg      StallConfig
 	tracker  *InFlightTracker
 	notifier *Notifier
-	nackFn   NackFunc // optional; required for the force-NACK path
+	warnings *WarningService // optional; nil → webhook-only, as before
+	nackFn   NackFunc        // optional; required for the force-NACK path
+
+	// warned remembers which message ids have already been reported in the
+	// current stall episode, cleared when a message leaves the tracker.
+	//
+	// Without it the detector re-reports every stalled message on every tick.
+	// That was survivable while these warnings went only to the webhook, but
+	// they now also reach the WarningService, which drives the active-warning
+	// count and the DEGRADED threshold (20) — so a handful of long deliveries
+	// re-reported each minute would put the router into DEGRADED purely for
+	// doing its job.
+	warnedMu sync.Mutex
+	warned   map[string]struct{}
 }
 
 // NewStallDetector wires a detector. notifier may be nil. nackFn may be nil,
 // in which case the force-NACK path is skipped even when ForceNackStalled is
 // set (warnings still fire).
 func NewStallDetector(cfg StallConfig, tracker *InFlightTracker, notifier *Notifier, nackFn NackFunc) *StallDetector {
-	return &StallDetector{cfg: cfg, tracker: tracker, notifier: notifier, nackFn: nackFn}
+	return &StallDetector{
+		cfg:      cfg,
+		tracker:  tracker,
+		notifier: notifier,
+		nackFn:   nackFn,
+		warned:   make(map[string]struct{}),
+	}
+}
+
+// SetWarnings routes stall reports to the WarningService as well as the
+// webhook notifier, so they reach /warnings, the dashboard and the health
+// report. Without it a message wedged for the better part of an hour raised
+// nothing any UI could show.
+func (d *StallDetector) SetWarnings(w *WarningService) { d.warnings = w }
+
+// report emits a stall warning once per message per episode. Returns false if
+// this message has already been reported and nothing was emitted.
+func (d *StallDetector) report(id string, severity WarningSeverity, message string) bool {
+	d.warnedMu.Lock()
+	if _, seen := d.warned[id]; seen {
+		d.warnedMu.Unlock()
+		return false
+	}
+	d.warned[id] = struct{}{}
+	d.warnedMu.Unlock()
+
+	w := Warning{Category: WarningCategoryStall, Severity: severity, Message: message, Source: "StallDetector"}
+	// WarningService forwards to the notifier itself, so route through it when
+	// present and fall back to the raw notifier when it is not — never both, or
+	// every stall is webhooked twice.
+	if d.warnings != nil {
+		d.warnings.Add(w.Category, w.Severity, w.Message, w.Source)
+		return true
+	}
+	if d.notifier != nil {
+		d.notifier.Add(w)
+	}
+	return true
+}
+
+// forgetResolved drops warned-entries for messages no longer in the pipeline,
+// so a later stall of the same id reports again rather than being silenced for
+// the life of the process.
+func (d *StallDetector) forgetResolved(live map[string]struct{}) {
+	d.warnedMu.Lock()
+	defer d.warnedMu.Unlock()
+	for id := range d.warned {
+		if _, ok := live[id]; !ok {
+			delete(d.warned, id)
+		}
+	}
 }
 
 // Watch runs the periodic check until ctx is cancelled.
@@ -352,7 +440,9 @@ func (d *StallDetector) tick(ctx context.Context) {
 	// now (see maxInPipelineAttempts), but a message burning that budget for
 	// minutes is exactly what an operator wants to hear about.
 	var stalled, retrying []common.InFlightMessage
+	live := make(map[string]struct{})
 	for _, im := range d.tracker.Snapshot() {
+		live[im.MessageID] = struct{}{}
 		if im.ElapsedSeconds() < int64(d.cfg.StallThresholdSeconds) {
 			continue
 		}
@@ -362,21 +452,21 @@ func (d *StallDetector) tick(ctx context.Context) {
 		}
 		stalled = append(stalled, im)
 	}
+	// Messages that have left the pipeline can report again if they ever stall
+	// afresh.
+	d.forgetResolved(live)
+
 	for i := range retrying {
 		im := retrying[i]
+		if !d.report(im.MessageID, WarningWarning,
+			"Message "+im.MessageID+" has been retrying in-pipeline for "+
+				utoa(uint64(im.ElapsedSeconds()))+"s ("+utoa(uint64(im.Attempts))+
+				" attempts) in pool "+im.PoolCode) {
+			continue
+		}
 		slog.Warn("message retrying in-pipeline past the stall threshold",
 			"message_id", im.MessageID, "attempts", im.Attempts,
 			"elapsed_s", im.ElapsedSeconds(), "pool", im.PoolCode)
-		if d.notifier != nil {
-			d.notifier.Add(Warning{
-				Category: WarningCategoryStall,
-				Severity: WarningWarning,
-				Message: "Message " + im.MessageID + " has been retrying in-pipeline for " +
-					utoa(uint64(im.ElapsedSeconds())) + "s (" + utoa(uint64(im.Attempts)) +
-					" attempts) in pool " + im.PoolCode,
-				Source: "StallDetector",
-			})
-		}
 	}
 	if len(stalled) == 0 {
 		return
@@ -384,14 +474,11 @@ func (d *StallDetector) tick(ctx context.Context) {
 	slog.Warn("stalled messages detected", "count", len(stalled))
 	for i := range stalled {
 		im := stalled[i]
-		if d.notifier != nil {
-			d.notifier.Add(Warning{
-				Category: WarningCategoryStall,
-				Severity: WarningWarning,
-				Message: "Message " + im.MessageID + " stalled for " +
-					utoa(uint64(im.ElapsedSeconds())) + "s in pool " + im.PoolCode,
-				Source: "StallDetector",
-			})
+		if d.report(im.MessageID, WarningWarning,
+			"Message "+im.MessageID+" stalled for "+
+				utoa(uint64(im.ElapsedSeconds()))+"s in pool "+im.PoolCode) {
+			slog.Warn("stalled message",
+				"message_id", im.MessageID, "elapsed_s", im.ElapsedSeconds(), "pool", im.PoolCode)
 		}
 		// Force-NACK messages stuck well past the threshold back to their
 		// source queue for redelivery, if enabled (default off). On

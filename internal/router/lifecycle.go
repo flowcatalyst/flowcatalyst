@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -62,6 +63,11 @@ type LifecycleManager struct {
 	warningService *WarningService
 	healthService  *HealthService
 
+	// saturatedPools remembers which pools have already been reported as
+	// wedged, so the health tick reports each episode once instead of every
+	// minute. Touched only by healthReportLoop (single goroutine).
+	saturatedPools map[string]struct{}
+
 	poolStatsProviderMu sync.RWMutex
 	poolStatsProvider   PoolStatsProvider
 
@@ -100,6 +106,7 @@ func NewLifecycleManager(cfg LifecycleConfig, ws *WarningService, hs *HealthServ
 		cfg:            cfg,
 		warningService: ws,
 		healthService:  hs,
+		saturatedPools: make(map[string]struct{}),
 	}
 }
 
@@ -250,6 +257,57 @@ func (l *LifecycleManager) consumerHealthLoop(ctx context.Context) {
 }
 
 // healthReportLoop logs the HealthReport on a ticker. Reads
+// poolSaturationGrace is how long a pool may sit with NO free slots before it
+// is reported. It is deliberately one full mediation attempt plus slack: a
+// delivery cannot legitimately exceed DefaultMediatorConfig().Timeout, because
+// that is the client timeout, so a pool still blocked past it is blocked by
+// something the timeout was supposed to have ended. Below that, a saturated
+// pool may simply be doing long but contractual work, and warning on it would
+// be noise.
+//
+// The dashboard flags a saturated pool from 60s (amber) — the cheap, glanceable
+// signal. This is the alertable one.
+var poolSaturationGrace = DefaultMediatorConfig().Timeout + time.Minute
+
+// reportSaturatedPools warns once per episode for any pool holding zero free
+// slots with a delivery older than poolSaturationGrace.
+//
+// This is the condition that had no signal at all: a pool at 1/1 whose single
+// slot has been held for half an hour is, at low concurrency, blocking every
+// message group it owns — and nothing in /warnings, the health report or the
+// dashboard said so. ActiveWorkers alone cannot show it, because a healthy busy
+// pool looks identical.
+func (l *LifecycleManager) reportSaturatedPools(stats []PoolStats) {
+	live := make(map[string]struct{}, len(stats))
+	for _, s := range stats {
+		saturated := s.Concurrency > 0 && s.ActiveWorkers >= s.Concurrency &&
+			time.Duration(s.OldestMediatingMs)*time.Millisecond > poolSaturationGrace
+		if !saturated {
+			continue
+		}
+		live[s.PoolCode] = struct{}{}
+		if _, seen := l.saturatedPools[s.PoolCode]; seen {
+			continue
+		}
+		l.saturatedPools[s.PoolCode] = struct{}{}
+		msg := fmt.Sprintf(
+			"Pool %s has had no free slots for %s (oldest delivery); every message group in it is blocked",
+			s.PoolCode, (time.Duration(s.OldestMediatingMs) * time.Millisecond).Round(time.Second))
+		slog.Warn("pool saturated with no free slots",
+			"pool", s.PoolCode, "active_workers", s.ActiveWorkers, "concurrency", s.Concurrency,
+			"oldest_mediating_ms", s.OldestMediatingMs)
+		if l.warningService != nil {
+			l.warningService.Add(WarningCategoryPoolCapacity, WarningError, msg, "router")
+		}
+	}
+	// A pool that recovered can report again next time.
+	for code := range l.saturatedPools {
+		if _, ok := live[code]; !ok {
+			delete(l.saturatedPools, code)
+		}
+	}
+}
+
 // poolStatsProvider under RLock — the field is swapped via
 // SetPoolStatsProvider, so reads must be guarded.
 //
@@ -273,6 +331,7 @@ func (l *LifecycleManager) healthReportLoop(ctx context.Context) {
 			if provider != nil {
 				stats = provider.PoolStats()
 			}
+			l.reportSaturatedPools(stats)
 			report := l.healthService.HealthReport(stats)
 			if len(report.Issues) > 0 {
 				slog.Warn("router health report",

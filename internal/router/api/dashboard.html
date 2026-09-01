@@ -998,7 +998,7 @@
                     return `
                     <tr>
                         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${stats.poolCode}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${stats.activeWorkers}/${stats.maxConcurrency}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">${this.mediatingCell(stats)}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-purple-600">${stats.queueSize}/${stats.maxQueueCapacity}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-orange-600">${(stats.totalRateLimited || 0).toLocaleString()}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${(stats.totalProcessed || 0).toLocaleString()}</td>
@@ -1388,6 +1388,35 @@
 
                 // Ensure Pools tab is active
                 this.switchTab('Pools');
+            }
+
+            // A pool at zero free slots whose oldest delivery is minutes old is
+            // wedged: at low concurrency that one delivery blocks the pool and
+            // every message group in it. activeWorkers alone cannot show this —
+            // 1/1 looks the same whether the slot turns over every 200ms or has
+            // been held by one request for forty minutes.
+            mediatingCell(stats) {
+                const workers = stats.activeWorkers || 0;
+                const limit = stats.maxConcurrency || 0;
+                const base = `${workers}/${limit}`;
+                const ageMs = stats.oldestMediatingMs || 0;
+                if (ageMs < 60000) {
+                    return `<span class="text-sm text-gray-900">${base}</span>`;
+                }
+                const full = limit > 0 && workers >= limit;
+                const cls = full ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800';
+                const title = full
+                    ? 'No free slots. The oldest delivery has held one for this long, so this pool — and every message group in it — is blocked until it finishes or times out.'
+                    : 'A delivery has been inside the mediator for this long.';
+                return `<span class="px-2 py-1 text-xs font-medium rounded-full ${cls}" title="${title}">${base} · ${this.formatAge(ageMs)}</span>`;
+            }
+
+            formatAge(ms) {
+                const s = Math.floor(ms / 1000);
+                if (s < 60) return `${s}s`;
+                const m = Math.floor(s / 60);
+                if (m < 60) return `${m}m ${s % 60}s`;
+                return `${Math.floor(m / 60)}h ${m % 60}m`;
             }
 
             async loadPoolDetailMessages(poolCode) {

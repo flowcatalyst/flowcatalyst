@@ -192,3 +192,31 @@ func TestInFlightEnsureTrackedBackstop(t *testing.T) {
 	assert.True(t, tr.EnsureTracked(same))
 	assert.Equal(t, 1, tr.Count())
 }
+
+// TestReapGraceOutlastsALongDelivery is a guard-rail on a constant that is
+// easy to get wrong. A delivery may legitimately hold its worker for the
+// mediator's full per-attempt timeout (15 minutes: the processing contract,
+// matching Lambda's ceiling), recording no new attempt for the whole call. If
+// the reaper's retry exemption expires inside that window it drops the tracker
+// entry of a live delivery, and the next redelivery is admitted as a fresh
+// copy — double-delivering a message that was succeeding.
+func TestReapGraceOutlastsALongDelivery(t *testing.T) {
+	attempt := router.DefaultMediatorConfig().Timeout
+
+	tr := router.NewInFlightTracker()
+	msg := common.Message{ID: "msg_slow"}
+	im := common.NewInFlightMessage(&msg, "broker-s", "queue-a", "", "receipt-1")
+	require.Equal(t, router.RegisterNew, tr.Register(im))
+	tr.MarkRetrying(msg.ID, "broker-s")
+
+	// Mid-call: one attempt in, and it has been running for the full contract.
+	im.StartedAt = time.Now().Add(-attempt)
+	im.LastRetryAt = time.Now().Add(-attempt)
+	im.LastSeenAt = time.Now().Add(-attempt)
+
+	// The idle bound is deliberately SHORTER than the delivery, and the ceiling
+	// far longer, so the retry grace is the only thing that can save the entry.
+	assert.Equal(t, 0, tr.Reap(5*time.Minute, 24*time.Hour),
+		"a delivery still inside the mediator's own timeout must keep its entry")
+	assert.Equal(t, 1, tr.Count())
+}
