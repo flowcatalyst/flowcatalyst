@@ -59,10 +59,41 @@ type HealthService struct {
 	cfg            HealthServiceConfig
 	warningService *WarningService
 
-	mu               sync.RWMutex
-	poolCounters     map[string]*rollingCounter
-	consumerLastPoll map[string]time.Time
-	consumerRunning  map[string]bool
+	mu           sync.RWMutex
+	poolCounters map[string]*rollingCounter
+
+	// consumers is the SOURCE of consumer liveness, not a copy of it.
+	//
+	// This used to be two maps here, written by SetConsumerRunning and
+	// RecordConsumerPoll — which nothing but the tests ever called. So the
+	// consumer half of every health answer was permanently empty: zero queues
+	// on the dashboard, StalledConsumers always nil, /monitoring/consumer-health
+	// always {}, and a wedged consumer invisible to the health report.
+	//
+	// The fix is not to start writing those maps. The Manager already owns this
+	// data (membership of its consumer set, and the lastPoll its restart
+	// watchdog runs on), so a copy here would be a second heartbeat that can
+	// drift from the one the watchdog uses — and the two disagreeing about the
+	// same consumer is a worse bug than the one being fixed. Read it instead,
+	// exactly as HealthReport already takes pool stats from the pool manager.
+	consumersMu sync.RWMutex
+	consumers   ConsumerStatsProvider
+}
+
+// ConsumerStat is one consumer's liveness as the Manager sees it.
+type ConsumerStat struct {
+	QueueName string
+	// Running reports that the consumer is in the manager's set — i.e. it is
+	// meant to be polling. Whether it actually is, is what LastPoll says.
+	Running bool
+	// LastPoll is when it last completed a poll. Zero if it never has.
+	LastPoll time.Time
+}
+
+// ConsumerStatsProvider yields the current consumer liveness snapshot. The
+// Manager implements it.
+type ConsumerStatsProvider interface {
+	ConsumerStats() []ConsumerStat
 }
 
 // NewHealthService builds a service. Pass nil warningService to use a
@@ -76,12 +107,36 @@ func NewHealthService(cfg HealthServiceConfig, ws *WarningService) *HealthServic
 		ws = NoopWarningService()
 	}
 	return &HealthService{
-		cfg:              cfg,
-		warningService:   ws,
-		poolCounters:     make(map[string]*rollingCounter),
-		consumerLastPoll: make(map[string]time.Time),
-		consumerRunning:  make(map[string]bool),
+		cfg:            cfg,
+		warningService: ws,
+		poolCounters:   make(map[string]*rollingCounter),
 	}
+}
+
+// SetConsumerStats wires the source of consumer liveness. Until it is set the
+// consumer half of the health report reports nothing, which is what the whole
+// surface did before it existed.
+func (s *HealthService) SetConsumerStats(p ConsumerStatsProvider) {
+	s.consumersMu.Lock()
+	s.consumers = p
+	s.consumersMu.Unlock()
+}
+
+// consumerStats returns the current snapshot, or nil when no provider is set.
+func (s *HealthService) consumerStats() []ConsumerStat {
+	s.consumersMu.RLock()
+	p := s.consumers
+	s.consumersMu.RUnlock()
+	if p == nil {
+		return nil
+	}
+	return p.ConsumerStats()
+}
+
+// healthy reports whether a consumer counts as alive: in the manager's set,
+// having polled, and having polled recently enough.
+func (s *HealthService) healthy(c ConsumerStat) bool {
+	return c.Running && !c.LastPoll.IsZero() && time.Since(c.LastPoll) < s.cfg.ConsumerStallThreshold
 }
 
 // RecordPoolResult ticks the rolling counter for the named pool.
@@ -108,74 +163,40 @@ func (s *HealthService) PoolSuccessRate(poolCode string) (float64, bool) {
 	return c.successRate()
 }
 
-// RecordConsumerPoll stamps the last-seen time for a consumer.
-func (s *HealthService) RecordConsumerPoll(consumerID string) {
-	s.mu.Lock()
-	s.consumerLastPoll[consumerID] = time.Now()
-	s.mu.Unlock()
-}
-
-// SetConsumerRunning flags a consumer as running or stopped. A consumer
-// that has never been flagged running is treated as unhealthy.
-func (s *HealthService) SetConsumerRunning(consumerID string, running bool) {
-	s.mu.Lock()
-	s.consumerRunning[consumerID] = running
-	s.mu.Unlock()
-}
-
-// IsConsumerHealthy returns true iff the consumer is running AND has
+// IsConsumerHealthy reports whether the named consumer is running AND has
 // polled within ConsumerStallThreshold.
-func (s *HealthService) IsConsumerHealthy(consumerID string) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if !s.consumerRunning[consumerID] {
-		return false
+func (s *HealthService) IsConsumerHealthy(queueName string) bool {
+	for _, c := range s.consumerStats() {
+		if c.QueueName == queueName {
+			return s.healthy(c)
+		}
 	}
-	last, ok := s.consumerLastPoll[consumerID]
-	if !ok {
-		return false
-	}
-	return time.Since(last) < s.cfg.ConsumerStallThreshold
+	return false
 }
 
 // ConsumerHealth returns the per-consumer snapshot.
-func (s *HealthService) ConsumerHealth(consumerID string) ConsumerHealth {
-	s.mu.RLock()
-	running := s.consumerRunning[consumerID]
-	last, hasLast := s.consumerLastPoll[consumerID]
-	s.mu.RUnlock()
-
-	var lastMs, sinceMs *int64
-	if hasLast {
-		ms := time.Since(last).Milliseconds()
-		lastMs = &ms
-		sinceMs = &ms
-	}
-
-	healthy := running && hasLast && time.Since(last) < s.cfg.ConsumerStallThreshold
-
-	return ConsumerHealth{
-		QueueIdentifier:     consumerID,
-		IsHealthy:           healthy,
-		LastPollTimeMs:      lastMs,
-		TimeSinceLastPollMs: sinceMs,
-		IsRunning:           running,
-	}
-}
-
-// StalledConsumers returns the ids of consumers flagged as running but
-// either haven't polled at all or haven't polled within the stall threshold.
-func (s *HealthService) StalledConsumers() []string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	var out []string
-	for id, running := range s.consumerRunning {
-		if !running {
+func (s *HealthService) ConsumerHealth(queueName string) ConsumerHealth {
+	for _, c := range s.consumerStats() {
+		if c.QueueName != queueName {
 			continue
 		}
-		last, hasLast := s.consumerLastPoll[id]
-		if !hasLast || time.Since(last) >= s.cfg.ConsumerStallThreshold {
-			out = append(out, id)
+		out := ConsumerHealth{QueueIdentifier: c.QueueName, IsRunning: c.Running, IsHealthy: s.healthy(c)}
+		if !c.LastPoll.IsZero() {
+			ms := time.Since(c.LastPoll).Milliseconds()
+			out.LastPollTimeMs, out.TimeSinceLastPollMs = &ms, &ms
+		}
+		return out
+	}
+	return ConsumerHealth{QueueIdentifier: queueName}
+}
+
+// StalledConsumers returns the queue names of consumers that are meant to be
+// polling but either never have or have not within ConsumerStallThreshold.
+func (s *HealthService) StalledConsumers() []string {
+	var out []string
+	for _, c := range s.consumerStats() {
+		if c.Running && !s.healthy(c) {
+			out = append(out, c.QueueName)
 		}
 	}
 	return out
@@ -201,9 +222,7 @@ func (s *HealthService) HealthReport(poolStats []PoolStats) HealthReport {
 		}
 	}
 
-	s.mu.RLock()
-	consumersTotal := uint32(len(s.consumerRunning))
-	s.mu.RUnlock()
+	consumersTotal := uint32(len(s.consumerStats()))
 	stalled := s.StalledConsumers()
 	consumersUnhealthy := uint32(len(stalled))
 	consumersHealthy := consumersTotal
@@ -220,6 +239,14 @@ func (s *HealthService) HealthReport(poolStats []PoolStats) HealthReport {
 	criticalWarnings := uint32(s.warningService.CriticalCount())
 	if criticalWarnings > 0 {
 		issues = append(issues, fmt.Sprintf("%d critical warnings", criticalWarnings))
+	}
+	// The warning COUNT is a degradation cause in its own right (see the switch
+	// below) and used to append no issue at all, so a router degraded purely by
+	// warning volume reported an empty reason and the dashboard showed "No
+	// details available" — the one degradation cause that explained nothing.
+	if activeWarnings > s.cfg.MaxWarningsHealthy {
+		issues = append(issues, fmt.Sprintf("%d active warnings (degrades above %d)",
+			activeWarnings, s.cfg.MaxWarningsWarning))
 	}
 
 	status := HealthHealthy
@@ -304,16 +331,9 @@ func (s *HealthService) RemoveStaleEntries(activePoolCodes, activeConsumerIDs []
 			delete(s.poolCounters, code)
 		}
 	}
-	for id := range s.consumerLastPoll {
-		if _, ok := consumerSet[id]; !ok {
-			delete(s.consumerLastPoll, id)
-		}
-	}
-	for id := range s.consumerRunning {
-		if _, ok := consumerSet[id]; !ok {
-			delete(s.consumerRunning, id)
-		}
-	}
+	// Consumer entries need no pruning: they are read live from the Manager,
+	// so a removed consumer simply stops appearing.
+	_ = consumerSet
 }
 
 func stringSet(xs []string) map[string]struct{} {

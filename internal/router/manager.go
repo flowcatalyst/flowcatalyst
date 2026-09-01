@@ -298,6 +298,26 @@ func (m *Manager) Consumers() []queue.Consumer {
 	return out
 }
 
+// ConsumerStats reports each consumer's liveness for the health service.
+//
+// The Manager is the only honest source: membership of m.consumers is what
+// "running" means, and rc.lastPoll is the same heartbeat the restart watchdog
+// judges a consumer by. Serving health from anywhere else would let the two
+// disagree about whether the same consumer is alive.
+func (m *Manager) ConsumerStats() []ConsumerStat {
+	m.consumerMu.RLock()
+	defer m.consumerMu.RUnlock()
+	out := make([]ConsumerStat, 0, len(m.consumers))
+	for name, rc := range m.consumers {
+		var last time.Time
+		if lp := rc.lastPoll.Load(); lp != 0 {
+			last = time.Unix(0, lp)
+		}
+		out = append(out, ConsumerStat{QueueName: name, Running: true, LastPoll: last})
+	}
+	return out
+}
+
 // PoolStats returns one snapshot per running pool (map iteration order).
 func (m *Manager) PoolStats() []PoolStats {
 	m.poolMu.RLock()

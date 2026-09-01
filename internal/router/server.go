@@ -152,6 +152,10 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	// Surface manager routing/capacity warnings (unknown pool_code, all-pools-full).
 	s.Manager.SetWarnings(s.Warnings)
 	s.Health = NewHealthService(DefaultHealthServiceConfig(), s.Warnings)
+	// Consumer liveness is read from the Manager rather than pushed into the
+	// health service; without this the consumer half of every health answer is
+	// empty (zero queues on the dashboard, a wedged consumer invisible).
+	s.Health.SetConsumerStats(s.Manager)
 	s.Lifecycle = NewLifecycleManager(DefaultLifecycleConfig(), s.Warnings, s.Health)
 	// The Manager owns the consumer poll loops, so it is the consumer-restart
 	// source; the lifecycle consumer-health tick restarts any stalled loop.
