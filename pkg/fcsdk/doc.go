@@ -102,4 +102,12 @@
 //     gates usecase.Success. Constructable only by packages under
 //     github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/ (Go's internal
 //     rule), which scopes the seal to the SDK.
+//
+// # License
+//
+// Copyright 2026 Belac (FlowCatalyst). The SDK packages under pkg/fcsdk are
+// licensed under the Mozilla Public License 2.0 (see the LICENSE file in this
+// directory), NOT the AGPL-3.0-or-later that covers the rest of the
+// repository. MPL-2.0 is file-level copyleft, so importing the SDK does not
+// affect the licence of the importing application.
 package fcsdk

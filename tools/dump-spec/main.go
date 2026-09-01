@@ -13,19 +13,18 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
 
 	applicationapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/api"
 	auditapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit/api"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/docsapi"
 	authapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/api"
 	clientapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/api"
 	connectionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection/api"
 	corsapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/cors/api"
 	dispatchjobapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/api"
 	dispatchpoolapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool/api"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/docsapi"
 	emaildomainapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping/api"
 	eventapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/event/api"
 	eventtypeapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/api"
@@ -40,6 +39,7 @@ import (
 	scheduledjobapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/sdksync"
 	serviceaccountapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/api"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 	subscriptionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription/api"
 	webauthnapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn/api"
@@ -49,7 +49,7 @@ func main() {
 	httpcompat.Init()
 
 	r := chi.NewMux()
-	api := humachi.New(r, huma.DefaultConfig("FlowCatalyst Platform API", "dev"))
+	api := humachi.New(r, apiroute.PlatformAPIConfig("FlowCatalyst Platform API", "dev"))
 
 	// Register every aggregate that's been migrated to huma. Keep this
 	// list in sync with WirePlatform; the parity-spec CI job dumps from

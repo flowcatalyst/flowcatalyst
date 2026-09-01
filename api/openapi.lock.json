@@ -8386,6 +8386,14 @@
     }
   },
   "info": {
+    "contact": {
+      "email": "support@flowcatalyst.io",
+      "name": "FlowCatalyst"
+    },
+    "license": {
+      "identifier": "AGPL-3.0-or-later",
+      "name": "AGPL-3.0-or-later"
+    },
     "title": "FlowCatalyst Platform API",
     "version": "dev"
   },

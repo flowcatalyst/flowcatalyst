@@ -43,6 +43,7 @@ import (
 	scheduledjobapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/sdksync"
 	serviceaccountapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/api"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	bff "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/bff"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
@@ -97,7 +98,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		// remaining chi handlers. OpenAPIPath/DocsPath cleared so huma
 		// doesn't auto-mount inside the auth Group — we serve the spec
 		// from the parent router (registerSpecRoutes).
-		humaCfg := huma.DefaultConfig("FlowCatalyst Platform API", "dev")
+		humaCfg := apiroute.PlatformAPIConfig("FlowCatalyst Platform API", "dev")
 		humaCfg.OpenAPIPath = ""
 		humaCfg.DocsPath = ""
 		// Drop huma's $schema link injection. The wire contract never emits it

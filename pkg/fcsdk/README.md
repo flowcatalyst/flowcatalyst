@@ -210,3 +210,14 @@ See [ERRORS.md](ERRORS.md) for the full table of which sentinels use
 `docs/architecture/go-sdk.md` (in the parent repo) has the full design:
 rationale for sibling vs sub-packages, the seal mechanism, why
 opt-in driver packages, the multi-backend story.
+
+## License
+
+Copyright © 2026 Belac (FlowCatalyst)
+
+Mozilla Public License 2.0 — see [`LICENSE`](LICENSE) in this directory.
+
+MPL-2.0 is file-level copyleft: modifications to the SDK's own files must be
+released under the MPL, but an application that imports the SDK stays under
+whatever licence its authors choose. Note this differs from the rest of the
+repository, which is AGPL-3.0-or-later.
