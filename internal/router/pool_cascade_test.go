@@ -332,3 +332,78 @@ func TestPoolOrderedGroupRecoversAfterCancelDuringBackoff(t *testing.T) {
 	med.mu.Unlock()
 	assert.Equal(t, []string{"m1", "m2"}, last2, "m1 dispatches before m2 after recovery")
 }
+
+// TestReleaseParkedGroupUnwedgesPoolCapacity pins the backstop behind the
+// parking contract. Parking a group is only safe if something is guaranteed to
+// come back for it, and nothing is: the resume must arrive from outside (a new
+// submit, or Manager.route's redelivery kick), both of which need the source
+// consumer to be POLLING — which it stops doing exactly when the destination
+// pool is at capacity, a state the parked buffer itself is holding it in.
+//
+// So the sweep must break the loop: hand the group back to the broker, which
+// drains the buffer (restoring the capacity that lets the consumer poll again)
+// and releases the tracker entries (so the redeliveries are processed rather
+// than dedup-dropped for ever).
+func TestReleaseParkedGroupUnwedgesPoolCapacity(t *testing.T) {
+	cons := &cascadeConsumer{wantTotal: 99, done: make(chan struct{})}
+	med := &cascadeMediator{}
+	m, tr, pool := newRouteHarness(med, cons)
+
+	// Occupy the only concurrency slot so the drainer parks on the acquire.
+	require.NoError(t, pool.sem.acquire(context.Background()))
+
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	m.route(ctx1, []common.QueuedMessage{
+		mkGrouped("m1", "b1", "rh-m1"),
+		mkGrouped("m2", "b2", "rh-m2"),
+	}, cons)
+	require.Eventually(t, func() bool { return pool.QueueSize() == 1 },
+		time.Second, 5*time.Millisecond, "drainer never popped the head")
+
+	cancel1() // the consumer restart / reconfigure
+	require.Eventually(t, func() bool { return groupIdleWithBuffered(pool, "g", 2) },
+		time.Second, 5*time.Millisecond, "cancelled drainer must park the group resumable")
+	require.Equal(t, uint32(2), pool.QueueSize(), "the parked buffer is holding pool capacity")
+	require.Equal(t, 2, tr.Count(), "parked messages stay tracked while parked")
+
+	// Nothing is coming: the consumer that would resume this group is itself
+	// paused on the capacity this buffer is holding.
+	released := m.ReleaseParkedGroups(context.Background(), 0)
+
+	assert.Equal(t, 2, released)
+	assert.Equal(t, uint32(0), pool.QueueSize(),
+		"the buffer must drain — that is what returns the capacity the consumer needs to poll")
+	assert.Equal(t, 0, tr.Count(),
+		"a released message must not stay tracked, or its redelivery is dedup-dropped for ever")
+
+	cons.mu.Lock()
+	defer cons.mu.Unlock()
+	assert.ElementsMatch(t, []string{"rh-m1", "rh-m2"}, cons.nacked,
+		"the whole group goes back to the broker, in-hand head included")
+	assert.Empty(t, cons.acked, "releasing must not ACK anything away")
+}
+
+// A group with a live drainer, or one parked more recently than minAge, must
+// be left alone — the sweep is a backstop, never a competitor to the normal
+// redelivery resume.
+func TestReleaseParkedGroupsRespectsMinAgeAndLiveDrainers(t *testing.T) {
+	cons := &cascadeConsumer{wantTotal: 99, done: make(chan struct{})}
+	med := &cascadeMediator{failID: "m1"} // head retries forever → m2 stays buffered
+	m, _, pool := newRouteHarness(med, cons)
+
+	m.route(context.Background(), []common.QueuedMessage{
+		mkGrouped("m1", "b1", "rh-m1"),
+		mkGrouped("m2", "b2", "rh-m2"),
+	}, cons)
+	require.Eventually(t, func() bool { return pool.QueueSize() == 1 },
+		2*time.Second, 5*time.Millisecond, "m2 never settled behind the retrying head")
+
+	// A live drainer owns the group: never swept, however old.
+	assert.Equal(t, 0, m.ReleaseParkedGroups(context.Background(), 0),
+		"a group with a working drainer must never be released")
+
+	// Park it, then sweep with a grace it has not outlived.
+	pool.clearWorking("g")
+	assert.Equal(t, 0, m.ReleaseParkedGroups(context.Background(), time.Hour),
+		"a freshly parked group must be left for the redelivery resume")
+}

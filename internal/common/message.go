@@ -115,9 +115,25 @@ type InFlightMessage struct {
 	BatchID        string
 	ReceiptHandle  string
 	// Attempts is >0 once the message has failed at least once and is being
-	// retried in-pipeline. The stall detector and the in-flight reaper skip
-	// entries with Attempts>0 — they are legitimately retrying, not stuck.
+	// retried in-pipeline. The stall detector never force-NACKs such an entry
+	// (a live retry owns it, and yanking it away would double-deliver), and
+	// the reaper exempts it from the idle bound — but only for as long as
+	// LastRetryAt says that retry is still live.
 	Attempts uint
+	// LastRetryAt is when this entry last recorded a new in-pipeline attempt
+	// (InFlightTracker.MarkRetrying, the single mutator of Attempts). It is
+	// what makes the reaper's Attempts>0 exemption FINITE.
+	//
+	// The exemption used to be unconditional, on the reasoning that the retry
+	// budget (maxInPipelineAttempts) always ends in a release that removes the
+	// entry. A drainer cancelled mid-retry never reaches that release — it
+	// re-fronts the message, clears the group's working flag and returns — so
+	// the entry outlived its owner and, being permanently exempt, could never
+	// be reaped. Every subsequent redelivery of the message was then dropped
+	// as a duplicate of a copy nobody owned, for ever.
+	//
+	// Zero while Attempts is 0.
+	LastRetryAt time.Time
 }
 
 // GroupID returns the message group, or "" when the message is ungrouped.

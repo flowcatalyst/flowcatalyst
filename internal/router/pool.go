@@ -96,6 +96,12 @@ type MediatingEntry struct {
 type groupQueue struct {
 	msgs    []common.QueuedMessage
 	working bool
+	// parkedAt is when the group was last left buffered with NO drainer
+	// (clearWorking). Zero while a drainer owns it. A parked group is normally
+	// resumed within a broker redelivery, so a parkedAt that keeps ageing is
+	// the signature of a group nothing is coming back for — which is what
+	// ReleaseParkedGroups sweeps.
+	parkedAt time.Time
 }
 
 // pop returns the next message to dispatch (FIFO) and whether the queue is now
@@ -548,6 +554,7 @@ func (p *Pool) tryDrainGroup(ctx context.Context, group string) {
 		return
 	}
 	gq.working = true
+	gq.parkedAt = time.Time{}
 	p.mu.Unlock()
 
 	go p.drainGroup(ctx, group)
@@ -763,16 +770,72 @@ func (p *Pool) ackBuffered(ctx context.Context, group, reason string) int {
 }
 
 // clearWorking flips a group's working flag back off so a subsequent submit
-// can spawn a replacement drainer. Called only by the exiting drainer itself
-// on a ctx-cancelled exit — the single-drainer invariant holds because
+// can spawn a replacement drainer, and stamps parkedAt so an unclaimed park
+// can be found later. Called only by the exiting drainer itself on a
+// ctx-cancelled exit — the single-drainer invariant holds because
 // tryDrainGroup spawns only when working is false, and only the drainer that
 // set the flag clears it.
+//
+// The resume is normally external: the next submit for the group, or
+// Manager.route's redelivery-dedup kick. Both need the source consumer to be
+// POLLING, which is precisely what a pool at capacity stops it doing — and a
+// parked group's own buffer is what holds that capacity. ReleaseParkedGroups
+// is the backstop that keeps that from being a closed loop.
 func (p *Pool) clearWorking(group string) {
 	p.mu.Lock()
 	if gq := p.groupQs[group]; gq != nil {
 		gq.working = false
+		gq.parkedAt = time.Now()
 	}
 	p.mu.Unlock()
+}
+
+// ReleaseParkedGroups hands back to the broker every group that has sat
+// parked — buffered, with no drainer — for longer than minAge. Returns the
+// number of messages released.
+//
+// It exists because parking is only safe if something is guaranteed to come
+// back for it, and nothing is. A drainer parks on ctx cancellation (consumer
+// restart or reconfigure) and the resume must then arrive from outside: a new
+// submit, or a redelivery. Both require the source consumer to be polling, and
+// the consumer stops polling exactly when the destination pool is at capacity
+// — a state this very buffer is holding it in. Left alone the three facts
+// close into a deadlock that no amount of waiting resolves, and on a FIFO
+// queue the un-deleted group head blocks every message behind it until broker
+// retention.
+//
+// Releasing rather than resuming is the deliberate choice: it needs no live
+// delivery context, it returns the messages to the authority that can redeliver
+// them in order (both brokers redeliver a group intact — see releaseGroup), and
+// it drains the buffer, which is what actually restores the pool capacity the
+// consumer needs to poll again. minAge keeps it clear of the fast path, so a
+// group that a redelivery is about to resume is never snatched away from it.
+func (p *Pool) ReleaseParkedGroups(ctx context.Context, minAge time.Duration) int {
+	now := time.Now()
+	p.mu.Lock()
+	var parked []string
+	for group, gq := range p.groupQs {
+		if gq.working || gq.empty() || gq.parkedAt.IsZero() {
+			continue
+		}
+		if now.Sub(gq.parkedAt) > minAge {
+			parked = append(parked, group)
+		}
+	}
+	p.mu.Unlock()
+
+	released := 0
+	for _, group := range parked {
+		// releaseBuffered re-takes p.mu and clears working (already false); a
+		// drainer that claimed the group in the gap simply finds an empty
+		// buffer, which is a normal drain exit.
+		if n := p.releaseBuffered(ctx, group, "group parked with no drainer"); n > 0 {
+			slog.Warn("released a parked message group to the broker; nothing had resumed it",
+				"group", group, "pool", p.cfg.Code, "released", n, "parked_for", minAge)
+			released += n
+		}
+	}
+	return released
 }
 
 // processResult is processOne's verdict, consumed by the caller (drainGroup /

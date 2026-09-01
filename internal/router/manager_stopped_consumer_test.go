@@ -109,3 +109,56 @@ func TestRunConsumerNoHeartbeatOnPollError(t *testing.T) {
 		t.Fatalf("heartbeat advanced on an errored poll (got %d, want %d)", got, sentinel)
 	}
 }
+
+// TestRunConsumerBackpressurePauseKeepsHeartbeatFresh pins the deadlock fix:
+// a consumer paused because its destination pools are FULL is healthy — it is
+// applying backpressure on purpose — and must not look stalled to
+// RestartStalledConsumers.
+//
+// It used to. The loop stamped its heartbeat only after a successful Poll, and
+// the backpressure branch continues before reaching that, so a pool at
+// capacity aged its own consumer out. The watchdog then rebuilt the consumer,
+// the rebuild cancelled workCtx, and that parked the ordered-group drainers
+// that were the only thing draining the buffer that was full — so capacity
+// never returned and the branch never exited. A permanent deadlock assembled
+// entirely from healthy parts.
+func TestRunConsumerBackpressurePauseKeepsHeartbeatFresh(t *testing.T) {
+	m := managerWithCapacity()
+	// Fill the only pool so hasCapacityFor is false for the whole test.
+	m.pools[defaultPoolCode].queueSize.Store(10_000)
+
+	fake := &pollErrConsumer{id: "q.fifo", err: errors.New("must never be polled while full")}
+	rc := &runningConsumer{consumer: fake, cancel: func() {}}
+	stale := time.Now().Add(-10 * time.Minute).UnixNano()
+	rc.lastPoll.Store(stale)
+	m.consumers["q.fifo"] = rc
+
+	ctx, cancel := context.WithCancel(context.Background())
+	m.wg.Add(1)
+	done := make(chan struct{})
+	go func() { m.runConsumer(ctx, rc); close(done) }()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for rc.lastPoll.Load() == stale {
+		if time.Now().After(deadline) {
+			cancel()
+			t.Fatal("backpressure pause never refreshed the heartbeat")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	// The invariant that matters: the watchdog leaves it alone.
+	if n := m.RestartStalledConsumers(ctx, time.Minute); n != 0 {
+		t.Fatalf("watchdog restarted %d consumer(s) that were merely applying backpressure", n)
+	}
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("runConsumer did not exit after context cancel")
+	}
+	if got := fake.polls.Load(); got != 0 {
+		t.Fatalf("polled %d time(s) while every destination pool was full", got)
+	}
+}

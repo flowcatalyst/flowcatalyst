@@ -29,6 +29,11 @@ const defaultPoolConcurrency uint32 = 20
 // avoids a thundering-herd of reconnects when several stall at once (5s).
 const consumerRestartDelay = 5 * time.Second
 
+// capacityStuckWarnInterval is how often a consumer paused on backpressure
+// re-reports that its destination pools are still full. Long enough not to
+// flood /warnings, short enough that a wedged pool is never silent.
+const capacityStuckWarnInterval = 5 * time.Minute
+
 // consumerRestartCriticalAfter escalates a repeatedly-stalling consumer's
 // warning to CRITICAL after this many restart attempts.
 const consumerRestartCriticalAfter = 10
@@ -573,21 +578,51 @@ func (m *Manager) runConsumer(ctx context.Context, rc *runningConsumer) {
 	defer m.wg.Done()
 	const maxPoll = 10
 	wasFull := false
+	var fullSince, nextFullWarn time.Time
 	for {
 		if ctx.Err() != nil {
 			return
 		}
 		// Backpressure: if the pools this queue feeds are full, wait rather than
 		// poll. Surface the transition into full as a PoolCapacity warning (once
-		// per full period, not every tick, to avoid flooding /warnings).
+		// per full period, not every tick, to avoid flooding /warnings), then
+		// re-warn on a slow interval for as long as it lasts.
 		if !m.hasCapacityFor(rc) {
-			if !wasFull {
+			now := time.Now()
+			switch {
+			case !wasFull:
 				wasFull = true
+				fullSince = now
+				nextFullWarn = now.Add(capacityStuckWarnInterval)
 				if w := m.warnings.Load(); w != nil {
 					w.Add(WarningCategoryPoolCapacity, WarningWarning,
 						fmt.Sprintf("destination pools at capacity; pausing %s", rc.consumer.Identifier()), "router")
 				}
+			case now.After(nextFullWarn):
+				// A pool that has been full this long is not absorbing a burst,
+				// it is stuck. Say so again, louder. Without this the condition
+				// warns once and then goes silent for ever — and since the pause
+				// below now keeps the consumer OUT of the restart watchdog, this
+				// is the only thing left that reports it.
+				nextFullWarn = now.Add(capacityStuckWarnInterval)
+				if w := m.warnings.Load(); w != nil {
+					w.Add(WarningCategoryPoolCapacity, WarningError,
+						fmt.Sprintf("destination pools for %s have been at capacity for %s; intake is stalled",
+							rc.consumer.Identifier(), now.Sub(fullSince).Round(time.Second)), "router")
+				}
+				slog.Warn("destination pools still at capacity; intake stalled",
+					"queue", rc.consumer.Identifier(), "full_for", now.Sub(fullSince).Round(time.Second))
 			}
+			// A consumer pausing for backpressure is doing its job, not wedging,
+			// so keep its poll heartbeat fresh. Letting it go stale here made the
+			// restart watchdog (RestartStalledConsumers) rebuild a perfectly
+			// healthy consumer, and the rebuild cancelled workCtx — which parked
+			// the ordered-group drainers that were the only thing draining the
+			// buffer that was full in the first place. The buffer then never
+			// emptied, so capacity never returned, so this branch never exited:
+			// a permanent deadlock built entirely out of healthy parts, in which
+			// the watchdog re-fired every 30s for ever.
+			rc.lastPoll.Store(now.UnixNano())
 			select {
 			case <-ctx.Done():
 				return
@@ -991,6 +1026,27 @@ func (m *Manager) RestartStalledConsumers(ctx context.Context, threshold time.Du
 		}
 	}
 	return restarted
+}
+
+// ReleaseParkedGroups sweeps every pool for message groups left buffered with
+// no drainer for longer than minAge and hands them back to the broker. Wired
+// onto the router's reaper tick. Returns the number of messages released.
+//
+// See Pool.ReleaseParkedGroups for why an unclaimed park cannot be left to
+// resolve itself.
+func (m *Manager) ReleaseParkedGroups(ctx context.Context, minAge time.Duration) int {
+	m.poolMu.RLock()
+	pools := make([]*Pool, 0, len(m.pools))
+	for _, p := range m.pools {
+		pools = append(pools, p)
+	}
+	m.poolMu.RUnlock()
+
+	released := 0
+	for _, p := range pools {
+		released += p.ReleaseParkedGroups(ctx, minAge)
+	}
+	return released
 }
 
 // PoolCount returns the count of running pools (for /health or /metrics).

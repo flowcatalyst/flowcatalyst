@@ -131,8 +131,13 @@ func (t *InFlightTracker) CurrentReceipt(messageID, brokerID string) (string, bo
 }
 
 // MarkRetrying records that a tracked message is being retried in-pipeline by
-// bumping its attempt count, so the stall detector and the reaper leave it
-// alone (it is legitimately retrying, not stuck). No-op when the entry is gone.
+// bumping its attempt count and stamping LastRetryAt, so the stall detector
+// and the reaper leave it alone while the retry is live (it is legitimately
+// retrying, not stuck). No-op when the entry is gone.
+//
+// The stamp is not optional bookkeeping: it is the clock the reaper's
+// exemption expires on. Bumping Attempts without it would restore the
+// unbounded exemption this pair exists to close.
 func (t *InFlightTracker) MarkRetrying(messageID, brokerID string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -142,6 +147,7 @@ func (t *InFlightTracker) MarkRetrying(messageID, brokerID string) {
 	}
 	if im != nil {
 		im.Attempts++
+		im.LastRetryAt = time.Now()
 	}
 }
 
@@ -183,33 +189,82 @@ func (t *InFlightTracker) Snapshot() []common.InFlightMessage {
 	return out
 }
 
-// Reaper periodically prunes entries older than maxAge. Wires together
-// with the lifecycle reaper goroutine in cmd/fc-router.
-func (t *InFlightTracker) Reap(maxAge time.Duration) (reaped int) {
+// reapRetryGrace bounds the reaper's Attempts>0 exemption. An in-pipeline
+// retry re-dispatches after at most retryMaxDelay, so an entry that has not
+// recorded a NEW attempt in twice that is not a live retry: its owner died
+// between attempts and the entry is an orphan, which must become reapable.
+const reapRetryGrace = 2 * retryMaxDelay
+
+// defaultAbsoluteMaxAgeFactor derives Reap's absolute ceiling from its idle
+// bound when the caller supplies none (15m idle -> 2h ceiling).
+const defaultAbsoluteMaxAgeFactor = 8
+
+// Reap prunes stale entries under TWO independent bounds, because neither one
+// alone guarantees the tracker ever lets go of an entry.
+//
+//	maxAge         — the IDLE bound, measured on LastSeenAt. Catches entries
+//	                 the broker has stopped redelivering (leaked / lost).
+//	absoluteMaxAge — the HARD ceiling, measured on StartedAt. Catches
+//	                 everything else, including what the idle bound can never
+//	                 see. Non-positive derives it from maxAge.
+//
+// The ceiling is what makes reaping guaranteed rather than best-effort. The
+// idle bound is circular: every redelivery refreshes LastSeenAt (via
+// UpdateReceiptHandle) — including the redeliveries that Register drops as
+// duplicates of this very entry. An entry whose owner has died therefore
+// resets its own idle clock on every redelivery and can never age out, while
+// the message it keeps dropping cycles on the broker untouched until
+// retention and, on a FIFO queue, holds the head of its message group for
+// that entire time. Ageing on StartedAt as well is what breaks the loop.
+//
+// The ceiling can prune an entry whose message is still legitimately buffered
+// in a very slow ordered group. That is deliberate and survivable: the pool's
+// EnsureTracked backstop re-registers it on dispatch, and the worst case is a
+// duplicate delivery on a broker that is at-least-once anyway. A permanently
+// stuck message blocking a whole FIFO group is strictly worse.
+func (t *InFlightTracker) Reap(maxAge, absoluteMaxAge time.Duration) (reaped int) {
+	if absoluteMaxAge <= 0 {
+		absoluteMaxAge = defaultAbsoluteMaxAgeFactor * maxAge
+	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	now := time.Now()
 	for id, im := range t.byMessage {
-		// Never reap a message that is actively being retried in-pipeline —
-		// it is legitimately long-lived, not stuck, and dropping its entry
-		// would blind the redelivery dedup. This exemption is finite: the
-		// retry budget (maxInPipelineAttempts) ends in a release, which
-		// removes the entry.
-		if im.Attempts > 0 {
-			continue
-		}
-		// Age on LastSeenAt, not StartedAt: while the broker still holds the
-		// message it keeps redelivering it, and every redelivery refreshes
-		// LastSeenAt via the receipt-handle swap. A long-buffered message
-		// (slow ordered group) therefore stays tracked — reaping it would
-		// blind the dedup and re-admit duplicates. Only an entry the broker
-		// has stopped redelivering (leaked/lost) ages out.
-		if time.Since(im.LastSeenAt) > maxAge {
-			delete(t.byMessage, id)
-			if im.BrokerMessageID != "" {
-				delete(t.byBroker, im.BrokerMessageID)
+		if now.Sub(im.StartedAt) > absoluteMaxAge {
+			// Past the ceiling nothing exempts an entry — not a retry in
+			// progress, not a redelivery that just refreshed LastSeenAt.
+			// Reaching here always means something upstream failed to remove
+			// the entry, so say so loudly enough to be chased.
+			slog.Warn("in-flight entry passed the absolute age ceiling; reaping (its owner is gone)",
+				"message_id", im.MessageID, "pool", im.PoolCode,
+				"queue", im.QueueIdentifier, "group", im.MessageGroupID,
+				"attempts", im.Attempts, "elapsed_s", im.ElapsedSeconds(),
+				"ceiling", absoluteMaxAge)
+		} else {
+			// A live in-pipeline retry is legitimately long-running: exempt it
+			// from the idle bound, but only while its last attempt is recent
+			// enough that the retry can still be running. Past the grace the
+			// owner is gone and the entry is judged like any other.
+			if im.Attempts > 0 && !im.LastRetryAt.IsZero() &&
+				now.Sub(im.LastRetryAt) <= reapRetryGrace {
+				continue
 			}
-			reaped++
+			// Age on LastSeenAt, not StartedAt: while the broker still holds
+			// the message it keeps redelivering it, and every redelivery
+			// refreshes LastSeenAt via the receipt-handle swap. A
+			// long-buffered message (slow ordered group) therefore stays
+			// tracked — reaping it here would blind the dedup and re-admit
+			// duplicates for no reason. The ceiling above is what stops that
+			// refresh being unbounded.
+			if now.Sub(im.LastSeenAt) <= maxAge {
+				continue
+			}
 		}
+		delete(t.byMessage, id)
+		if im.BrokerMessageID != "" {
+			delete(t.byBroker, im.BrokerMessageID)
+		}
+		reaped++
 	}
 	// Consistency sweep: drop any byBroker alias that no longer points at a
 	// live byMessage entry (defensive — the two maps are updated together).

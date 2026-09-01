@@ -36,7 +36,28 @@ type ServerConfig struct {
 	// InFlightReapMaxAge bounds the in-flight tracker against backend
 	// bugs that fail to remove completed messages. Zero falls back to
 	// 15m. Reaper ticks every 5m regardless.
+	//
+	// It is an IDLE bound (measured on LastSeenAt), so on its own it cannot
+	// bound an entry the broker keeps redelivering — see
+	// InFlightAbsoluteMaxAge.
 	InFlightReapMaxAge time.Duration
+
+	// ParkedGroupMaxAge is how long an ordered message group may sit buffered
+	// with no drainer before it is handed back to the broker. A park is
+	// normally resumed within a broker redelivery, so this only ever fires on
+	// a group nothing came back for — which, left alone, deadlocks its pool's
+	// capacity and (on FIFO) blocks every message behind it. Zero falls back
+	// to 2m. Swept on the same 5m reaper tick.
+	ParkedGroupMaxAge time.Duration
+
+	// InFlightAbsoluteMaxAge is the hard ceiling on how long any in-flight
+	// entry may live, measured from when it was first tracked. Unlike
+	// InFlightReapMaxAge nothing defers it, which is the point: a broker
+	// redelivery refreshes the idle clock, so an orphaned entry (one whose
+	// owning worker died) would otherwise keep resetting its own age while
+	// dedup-dropping every redelivery of a message nobody is processing.
+	// Zero falls back to 8x InFlightReapMaxAge (2h at the defaults).
+	InFlightAbsoluteMaxAge time.Duration
 
 	// BreakerIdleMaxAge bounds the per-endpoint circuit breaker
 	// registry against unbounded growth from short-lived target URLs.
@@ -92,6 +113,12 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	}
 	if cfg.InFlightReapMaxAge == 0 {
 		cfg.InFlightReapMaxAge = 15 * time.Minute
+	}
+	if cfg.ParkedGroupMaxAge == 0 {
+		cfg.ParkedGroupMaxAge = 2 * time.Minute
+	}
+	if cfg.InFlightAbsoluteMaxAge == 0 {
+		cfg.InFlightAbsoluteMaxAge = defaultAbsoluteMaxAgeFactor * cfg.InFlightReapMaxAge
 	}
 	if cfg.BreakerIdleMaxAge == 0 {
 		cfg.BreakerIdleMaxAge = time.Hour
@@ -288,7 +315,15 @@ func (s *Server) reapInFlight(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-tick.C:
-			if n := s.Tracker.Reap(s.Cfg.InFlightReapMaxAge); n > 0 {
+			// Before reaping tracker entries, unwedge any message group left
+			// buffered with no drainer: that release is what returns the pool
+			// capacity its consumer needs to start polling again.
+			if s.Manager != nil {
+				if n := s.Manager.ReleaseParkedGroups(ctx, s.Cfg.ParkedGroupMaxAge); n > 0 {
+					slog.Warn("router released parked message groups to the broker", "messages", n)
+				}
+			}
+			if n := s.Tracker.Reap(s.Cfg.InFlightReapMaxAge, s.Cfg.InFlightAbsoluteMaxAge); n > 0 {
 				slog.Warn("router reaped stale in-flight entries", "count", n)
 			}
 			if n := s.Breakers.Evict(s.Cfg.BreakerIdleMaxAge); n > 0 {

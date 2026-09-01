@@ -63,7 +63,7 @@ func TestInFlightRemoveAndReap(t *testing.T) {
 	require.Equal(t, router.RegisterNew, tr.Register(im))
 	assert.Equal(t, 1, tr.Count())
 
-	reaped := tr.Reap(30 * time.Minute)
+	reaped := tr.Reap(30*time.Minute, 0)
 	assert.Equal(t, 1, reaped)
 	assert.Equal(t, 0, tr.Count())
 }
@@ -85,8 +85,83 @@ func TestInFlightReapSkipsRecentlyRedelivered(t *testing.T) {
 	redelivery := common.NewInFlightMessage(&msg, "broker-b", "queue-a", "", "receipt-2")
 	require.Equal(t, router.RegisterRedelivery, tr.Register(redelivery))
 
-	assert.Equal(t, 0, tr.Reap(30*time.Minute), "recently-redelivered entry must not be reaped")
+	assert.Equal(t, 0, tr.Reap(30*time.Minute, 0), "recently-redelivered entry must not be reaped")
 	assert.Equal(t, 1, tr.Count())
+}
+
+// TestInFlightReapEndsTheRetryExemption pins the FIRST of the two bugs that
+// made an orphaned entry immortal: the reaper's Attempts>0 exemption was
+// unconditional. It was justified by "the retry budget always ends in a
+// release that removes the entry", which a drainer cancelled mid-retry never
+// reaches — it parks the message and returns. The exemption must therefore
+// expire with the retry that earned it.
+//
+// The ceiling is set far out here so it cannot be what does the reaping;
+// this test is only about the exemption.
+func TestInFlightReapEndsTheRetryExemption(t *testing.T) {
+	tr := router.NewInFlightTracker()
+
+	msg := common.Message{ID: "msg_retrying"}
+	im := common.NewInFlightMessage(&msg, "broker-r", "queue-a", "", "receipt-1")
+	require.Equal(t, router.RegisterNew, tr.Register(im))
+	tr.MarkRetrying(msg.ID, "broker-r")
+	require.Equal(t, uint(1), im.Attempts)
+	require.False(t, im.LastRetryAt.IsZero(), "MarkRetrying must stamp LastRetryAt")
+
+	// A LIVE retry: idle bound long exceeded, but the attempt is recent, so
+	// the entry is still owned and must survive.
+	im.StartedAt = time.Now().Add(-time.Hour)
+	im.LastSeenAt = time.Now().Add(-time.Hour)
+	assert.Equal(t, 0, tr.Reap(30*time.Minute, 24*time.Hour),
+		"a live in-pipeline retry keeps its entry")
+
+	// The owner died between attempts: no new attempt for well past the
+	// grace. The entry is now an orphan and must be reapable.
+	im.LastRetryAt = time.Now().Add(-time.Hour)
+	assert.Equal(t, 1, tr.Reap(30*time.Minute, 24*time.Hour),
+		"a retry that stopped attempting is an orphan, not a live retry")
+	assert.Equal(t, 0, tr.Count())
+}
+
+// TestInFlightReapCeilingBeatsRedeliveryRefresh pins the SECOND bug, and the
+// nastier one: the idle bound is self-defeating. Every redelivery refreshes
+// LastSeenAt — including the redeliveries Register drops as duplicates of
+// this very entry — so an orphan resets its own idle clock forever while the
+// message it keeps dropping is never delivered and never acked. On a FIFO
+// queue that pins the head of a message group until broker retention.
+//
+// The absolute ceiling (measured on StartedAt, which nothing refreshes) is
+// the only thing that can break the loop, so it must fire even when the
+// retry exemption is live AND the idle clock was just refreshed.
+func TestInFlightReapCeilingBeatsRedeliveryRefresh(t *testing.T) {
+	tr := router.NewInFlightTracker()
+
+	msg := common.Message{ID: "msg_orphan"}
+	im := common.NewInFlightMessage(&msg, "broker-x", "queue-a", "", "receipt-1")
+	require.Equal(t, router.RegisterNew, tr.Register(im))
+	tr.MarkRetrying(msg.ID, "broker-x") // exemption live: LastRetryAt is now
+
+	// The owning drainer is cancelled mid-retry and parks the message; from
+	// here nothing will ever remove this entry. Time passes.
+	im.StartedAt = time.Now().Add(-3 * time.Hour)
+
+	// The broker keeps redelivering. Each copy is dropped as a duplicate and
+	// refreshes the idle clock, so the idle bound can never fire.
+	for range 3 {
+		redelivery := common.NewInFlightMessage(&msg, "broker-x", "queue-a", "", "receipt-fresh")
+		require.Equal(t, router.RegisterRedelivery, tr.Register(redelivery))
+	}
+	require.WithinDuration(t, time.Now(), im.LastSeenAt, time.Second,
+		"the redeliveries must have refreshed the idle clock (the trap being tested)")
+
+	assert.Equal(t, 1, tr.Reap(15*time.Minute, 2*time.Hour),
+		"the absolute ceiling must reap an orphan the idle bound can never see")
+	assert.Equal(t, 0, tr.Count())
+
+	// The message is processable again: the next redelivery owns the pipeline
+	// instead of being dropped into the void.
+	assert.Equal(t, router.RegisterNew,
+		tr.Register(common.NewInFlightMessage(&msg, "broker-x", "queue-a", "", "receipt-final")))
 }
 
 // TestInFlightEnsureTrackedBackstop covers the pool's process-time backstop:
