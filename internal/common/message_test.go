@@ -103,10 +103,23 @@ func TestDispatchStatusLifecycle(t *testing.T) {
 	assert.False(t, common.DispatchPending.IsTerminal())
 }
 
-func TestParseDispatchStatusLenient(t *testing.T) {
-	assert.Equal(t, common.DispatchProcessing, common.ParseDispatchStatus("IN_PROGRESS"))
-	assert.Equal(t, common.DispatchFailed, common.ParseDispatchStatus("ERROR"))
-	assert.Equal(t, common.DispatchPending, common.ParseDispatchStatus("WHO_KNOWS"))
+// TestParseDispatchStatusStrict pins the X-06 conversion: ParseDispatchStatus
+// still accepts the legacy aliases (IN_PROGRESS/ERROR — real values
+// msg_dispatch_jobs.status has held, see GroupHoldingStatusSQL) but an
+// actually-unrecognised value must be rejected (ok=false), never silently
+// coerced to PENDING. The PENDING default from the old lenient parser is
+// gone.
+func TestParseDispatchStatusStrict(t *testing.T) {
+	v, ok := common.ParseDispatchStatus("IN_PROGRESS")
+	require.True(t, ok)
+	assert.Equal(t, common.DispatchProcessing, v)
+
+	v, ok = common.ParseDispatchStatus("ERROR")
+	require.True(t, ok)
+	assert.Equal(t, common.DispatchFailed, v)
+
+	_, ok = common.ParseDispatchStatus("WHO_KNOWS")
+	assert.False(t, ok, "an unrecognised status must be rejected, not coerced to PENDING")
 }
 
 func TestOutboxStatusCodes(t *testing.T) {

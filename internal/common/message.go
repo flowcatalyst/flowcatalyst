@@ -44,6 +44,11 @@ const DefaultDispatchMode = DispatchNextOnError
 // unspecified, which is DefaultDispatchMode. Anything unrecognised is a
 // producer bug: it also takes the default, but says so, because silently
 // treating a typo as "no ordering" is how the previous default hid.
+//
+// Deliberately still lenient — this is the one X-06 exemption, ruled X-01:
+// unknown/absent dispatch mode defaults to NEXT_ON_ERROR rather than
+// rejecting. Do not convert this to the (T, bool) strict shape used by
+// ParseDispatchStatus and the rest of this package's enum parsers.
 func ParseDispatchMode(s string) DispatchMode {
 	switch s {
 	case "IMMEDIATE":

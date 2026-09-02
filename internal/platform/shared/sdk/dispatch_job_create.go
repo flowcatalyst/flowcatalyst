@@ -7,6 +7,7 @@ package sdk
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"sort"
 
@@ -94,7 +95,7 @@ func (s *DispatchJobsBatchState) createOne(w http.ResponseWriter, r *http.Reques
 	// Delegate through the batch item mapping so the singular create and a
 	// batch-of-1 persist identically, then layer on the fields only the
 	// singular contract carries (retryStrategy, idempotencyKey, metadata map).
-	j := jobFromItem(BatchItem{
+	j, err := jobFromItem(BatchItem{
 		ExternalID:         req.ExternalID,
 		Kind:               req.Kind,
 		Code:               req.Code,
@@ -115,12 +116,29 @@ func (s *DispatchJobsBatchState) createOne(w http.ResponseWriter, r *http.Reques
 		TimeoutSeconds:     req.TimeoutSeconds,
 		MaxRetries:         req.MaxRetries,
 	})
+	if err != nil {
+		httperror.Write(w, err)
+		return
+	}
 	if req.Sequence != nil {
 		// Pointer on the singular DTO so an explicit `"sequence": 0` is
 		// honored (the batch's value-typed field coerces 0 → default 99).
 		j.Sequence = *req.Sequence
 	}
-	j.RetryStrategy = dispatchjob.ParseRetryStrategy(req.RetryStrategy)
+	// req.RetryStrategy is wire input, not internal state: an unrecognised
+	// (non-empty) value is a caller error (400 VALIDATION), not a silent
+	// coercion to exponential — X-06's write-boundary rejection. Empty (the
+	// field omitted) is the documented "unspecified" case and keeps the
+	// jobFromItem default (exponential).
+	if req.RetryStrategy != "" {
+		retry, ok := dispatchjob.ParseRetryStrategy(req.RetryStrategy)
+		if !ok {
+			httperror.Write(w, httperror.BadRequest("INVALID_RETRY_STRATEGY",
+				fmt.Sprintf("unknown retry strategy %q; must be immediate, fixed, or exponential", req.RetryStrategy)))
+			return
+		}
+		j.RetryStrategy = retry
+	}
 	j.IdempotencyKey = req.IdempotencyKey
 	j.Metadata = metadataFromMap(req.Metadata)
 

@@ -11,6 +11,7 @@ package sdk
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -84,9 +85,25 @@ func RegisterRoutes(r chi.Router, s *DispatchJobsBatchState) {
 // jobFromItem maps one inbound ingest item to a DispatchJob with the
 // shared ingest defaults. Used by both the batch loop and the singular
 // create so the two endpoints persist identically-shaped rows.
-func jobFromItem(it BatchItem) dispatchjob.DispatchJob {
+//
+// it.Kind is wire input, not internal state, so an unrecognised (non-empty)
+// value is a caller error (400 VALIDATION), not a silent coercion to EVENT
+// — X-06's write-boundary rejection. Empty (the field omitted) is the
+// documented "unspecified" case and defaults to EVENT, same as
+// common.ParseDispatchMode's empty-means-unspecified handling for Mode
+// just below (Mode itself stays lenient by ruling X-01 either way).
+func jobFromItem(it BatchItem) (dispatchjob.DispatchJob, error) {
+	kind := dispatchjob.KindEvent
+	if it.Kind != "" {
+		k, ok := dispatchjob.ParseKind(it.Kind)
+		if !ok {
+			return dispatchjob.DispatchJob{}, httperror.BadRequest(
+				"INVALID_KIND", fmt.Sprintf("unknown dispatch job kind %q; must be EVENT or TASK", it.Kind))
+		}
+		kind = k
+	}
 	j := dispatchjob.DispatchJob{
-		Kind:               dispatchjob.ParseKind(it.Kind),
+		Kind:               kind,
 		Code:               it.Code,
 		Source:             it.Source,
 		Subject:            it.Subject,
@@ -117,7 +134,7 @@ func jobFromItem(it BatchItem) dispatchjob.DispatchJob {
 		// 13-char untyped TSID — `msg_dispatch_jobs.id` is VARCHAR(13).
 		j.ID = tsid.GenerateUntyped()
 	}
-	return j
+	return j, nil
 }
 
 func (s *DispatchJobsBatchState) batchIngest(w http.ResponseWriter, r *http.Request) {
@@ -146,7 +163,15 @@ func (s *DispatchJobsBatchState) batchIngest(w http.ResponseWriter, r *http.Requ
 
 	jobs := make([]dispatchjob.DispatchJob, 0, len(body.Items))
 	for _, it := range body.Items {
-		j := jobFromItem(it)
+		j, err := jobFromItem(it)
+		if err != nil {
+			// An unrecognised kind is a whole-batch rejection (400), same as
+			// every other required-field validation this loop performs —
+			// no per-item results are produced yet, so there's nothing to
+			// partially commit.
+			httperror.Write(w, err)
+			return
+		}
 		// Tenant guard: SDK service accounts can only ingest for clients
 		// they have access to.
 		if j.ClientID != nil && !ac.CanAccessClient(*j.ClientID) {

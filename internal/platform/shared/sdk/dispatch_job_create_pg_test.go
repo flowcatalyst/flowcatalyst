@@ -225,3 +225,51 @@ func TestCreateDispatchJob_TenantGuard(t *testing.T) {
 	assert.Contains(t, body, `"error":"FORBIDDEN"`)
 	assert.Contains(t, body, "No access to client")
 }
+
+// TestCreateDispatchJob_InvalidKindRejected pins the X-06 write-boundary
+// conversion of dispatchjob.ParseKind: an unrecognised (non-empty) kind is
+// a 400 on both the singular and batch endpoints — never silently coerced
+// to EVENT. An omitted kind still defaults to EVENT (see
+// TestCreateDispatchJob_SingularOnlyFields).
+func TestCreateDispatchJob_InvalidKindRejected(t *testing.T) {
+	srv, _ := newIngestServer(t, anchorAC())
+
+	resp, body := postJSON(t, srv.URL+"/api/dispatch-jobs", `{
+		"kind": "NOT_A_REAL_KIND",
+		"code": "it:singular:dispatch:badkind",
+		"targetUrl": "https://target.test/hook",
+		"payload": "{}",
+		"serviceAccountId": "sa_dj_badkind"
+	}`)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode, body)
+	assert.Contains(t, body, `"error":"INVALID_KIND"`)
+
+	resp, body = postJSON(t, srv.URL+"/api/dispatch-jobs/batch", `{"items":[{
+		"kind": "NOT_A_REAL_KIND",
+		"code": "it:batch:dispatch:badkind",
+		"targetUrl": "https://target.test/hook",
+		"payload": "{}",
+		"serviceAccountId": "sa_dj_badkind_batch"
+	}]}`)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode, body)
+	assert.Contains(t, body, `"error":"INVALID_KIND"`)
+}
+
+// TestCreateDispatchJob_InvalidRetryStrategyRejected pins the X-06
+// write-boundary conversion of dispatchjob.ParseRetryStrategy on the
+// singular endpoint (the only one that carries retryStrategy): an
+// unrecognised (non-empty) value is a 400, never silently coerced to
+// exponential. An omitted retryStrategy still defaults to exponential.
+func TestCreateDispatchJob_InvalidRetryStrategyRejected(t *testing.T) {
+	srv, _ := newIngestServer(t, anchorAC())
+
+	resp, body := postJSON(t, srv.URL+"/api/dispatch-jobs", `{
+		"code": "it:singular:dispatch:badretry",
+		"targetUrl": "https://target.test/hook",
+		"payload": "{}",
+		"serviceAccountId": "sa_dj_badretry",
+		"retryStrategy": "NOT_A_REAL_STRATEGY"
+	}`)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode, body)
+	assert.Contains(t, body, `"error":"INVALID_RETRY_STRATEGY"`)
+}

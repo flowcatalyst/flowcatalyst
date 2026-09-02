@@ -26,25 +26,33 @@ func (s DispatchStatus) IsTerminal() bool {
 // IsSuccessful reports whether the status is the success terminal.
 func (s DispatchStatus) IsSuccessful() bool { return s == DispatchCompleted }
 
-// ParseDispatchStatus is the lenient parser. Accepts legacy aliases
-// (IN_PROGRESS → PROCESSING, ERROR → FAILED). Defaults to PENDING.
-func ParseDispatchStatus(s string) DispatchStatus {
+// ParseDispatchStatus parses a stored/wire status value. IN_PROGRESS and
+// ERROR are accepted legacy aliases of PROCESSING and FAILED — not just
+// wire input, but real values `msg_dispatch_jobs.status` has held (see
+// dispatchjob.GroupHoldingStatusSQL, which still matches 'ERROR' by design
+// so old rows keep blocking as they always did). Returns ok=false for
+// anything else — callers MUST reject on ok=false rather than coerce an
+// unrecognised value to PENDING (X-06: a loud read error, never a silent
+// default — a corrupted terminal status silently reappearing as PENDING
+// could resurrect a job that already completed or failed). Follows the
+// (T, bool) shape of ParseOutboxItemType.
+func ParseDispatchStatus(s string) (DispatchStatus, bool) {
 	switch s {
 	case "PENDING":
-		return DispatchPending
+		return DispatchPending, true
 	case "QUEUED":
-		return DispatchQueued
+		return DispatchQueued, true
 	case "PROCESSING", "IN_PROGRESS":
-		return DispatchProcessing
+		return DispatchProcessing, true
 	case "COMPLETED":
-		return DispatchCompleted
+		return DispatchCompleted, true
 	case "FAILED", "ERROR":
-		return DispatchFailed
+		return DispatchFailed, true
 	case "CANCELLED":
-		return DispatchCancelled
+		return DispatchCancelled, true
 	case "EXPIRED":
-		return DispatchExpired
+		return DispatchExpired, true
 	default:
-		return DispatchPending
+		return "", false
 	}
 }

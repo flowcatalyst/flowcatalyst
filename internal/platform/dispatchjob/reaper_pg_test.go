@@ -170,8 +170,11 @@ func TestSweepStrandedGroupSiblings_Idempotent(t *testing.T) {
 
 // forceLegacyErrorStatus sets a row's status to the legacy 'ERROR' value.
 // It cannot be seeded through the entity: 'ERROR' predates the current
-// status set and has no common.DispatchStatus constant (and would not
-// survive a read — common.ParseDispatchStatus coerces it to PENDING).
+// status set and has no common.DispatchStatus constant. It IS, however, an
+// accepted legacy alias in common.ParseDispatchStatus (X-06: maps to
+// DispatchFailed, same as the migration 052 CHECK constraint on
+// msg_dispatch_jobs.status admits it) — a row read back after this helper
+// runs is FAILED, not corrupt.
 func forceLegacyErrorStatus(t *testing.T, pool *pgxpool.Pool, id string) {
 	t.Helper()
 	_, err := pool.Exec(context.Background(),

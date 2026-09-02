@@ -25,12 +25,22 @@ const (
 	KindTask  Kind = "TASK"
 )
 
-// ParseKind — lenient parser. Unknown → EVENT.
-func ParseKind(s string) Kind {
-	if s == string(KindTask) {
-		return KindTask
+// ParseKind parses a stored/wire kind value. Returns ok=false for anything
+// other than EVENT or TASK — callers MUST reject on ok=false rather than
+// coerce an unrecognised value to EVENT (X-06: a loud read/write error,
+// never a silent default). Empty (wire field omitted) is also ok=false;
+// callers that treat an absent kind as "default to EVENT" must branch on
+// emptiness themselves before calling this, same as
+// common.ParseDispatchMode's empty-means-unspecified case — see
+// internal/platform/shared/sdk/dispatch_jobs_batch.go's jobFromItem.
+// Follows the (T, bool) shape of common.ParseOutboxItemType.
+func ParseKind(s string) (Kind, bool) {
+	switch Kind(s) {
+	case KindEvent, KindTask:
+		return Kind(s), true
+	default:
+		return "", false
 	}
-	return KindEvent
 }
 
 // Protocol identifies the delivery transport. Currently HTTP_WEBHOOK only.
@@ -47,15 +57,27 @@ const (
 	RetryExponentialBackoff RetryStrategy = "exponential"
 )
 
-// ParseRetryStrategy — lenient parser. Unknown → exponential.
-func ParseRetryStrategy(s string) RetryStrategy {
+// ParseRetryStrategy parses a stored/wire retry-strategy value. IMMEDIATE
+// and FIXED_DELAY are accepted legacy aliases of immediate/fixed — not
+// just wire input, but real values retry_strategy has held. Returns
+// ok=false for anything else — callers MUST reject on ok=false rather
+// than coerce an unrecognised value to exponential (X-06: a loud
+// read/write error, never a silent default). Empty (wire field omitted,
+// or the nullable column unset) is also ok=false; callers that treat
+// absence as "default to exponential" must branch on that themselves
+// before calling this — see
+// internal/platform/shared/sdk/dispatch_job_create.go's createOne.
+// Follows the (T, bool) shape of common.ParseOutboxItemType.
+func ParseRetryStrategy(s string) (RetryStrategy, bool) {
 	switch s {
 	case "immediate", "IMMEDIATE":
-		return RetryImmediate
+		return RetryImmediate, true
 	case "fixed", "FIXED_DELAY":
-		return RetryFixed
+		return RetryFixed, true
+	case "exponential":
+		return RetryExponentialBackoff, true
 	default:
-		return RetryExponentialBackoff
+		return "", false
 	}
 }
 
@@ -70,13 +92,17 @@ const (
 	ErrorUnknown    ErrorType = "UNKNOWN"
 )
 
-// ParseErrorType — lenient parser. Unknown → UNKNOWN.
-func ParseErrorType(s string) ErrorType {
-	switch s {
-	case string(ErrorConnection), string(ErrorTimeout), string(ErrorHTTPError), string(ErrorValidation):
-		return ErrorType(s)
+// ParseErrorType parses a stored error-type value. Returns ok=false for
+// anything other than the five known constants — callers MUST reject on
+// ok=false rather than coerce an unrecognised value to UNKNOWN (X-06: a
+// loud read error, never a silent default). Follows the (T, bool) shape
+// of common.ParseOutboxItemType.
+func ParseErrorType(s string) (ErrorType, bool) {
+	switch ErrorType(s) {
+	case ErrorConnection, ErrorTimeout, ErrorHTTPError, ErrorValidation, ErrorUnknown:
+		return ErrorType(s), true
 	default:
-		return ErrorUnknown
+		return "", false
 	}
 }
 
@@ -122,7 +148,17 @@ func (a *Attempt) CompleteSuccess(status int, body *string) {
 	a.Success = true
 }
 
-// CompleteFailure records an error outcome.
+// CompleteFailure records an error outcome. errType is optional — the
+// processing handler's two cooperative-deferral outcomes (2xx ack=false,
+// and HTTP 429) route through this same non-success path but carry no real
+// error type (a deferral isn't an error), so they call this with the zero
+// value. ErrorType is only set on the attempt when errType is non-empty:
+// blindly storing the zero value here (as this used to) round-trips it as
+// the literal empty string, which migration 052's CHECK constraint on
+// msg_dispatch_job_attempts.error_type now rejects outright (X-06:
+// discovered by that constraint's own integration tests — a genuine
+// pre-existing defect the ruling surfaced, not a change in behaviour it
+// demanded: NULL was always the correct value for "no error type").
 func (a *Attempt) CompleteFailure(msg string, errType ErrorType, status *int) {
 	now := time.Now().UTC()
 	a.CompletedAt = &now
@@ -130,7 +166,9 @@ func (a *Attempt) CompleteFailure(msg string, errType ErrorType, status *int) {
 	a.DurationMillis = &d
 	a.ResponseCode = status
 	a.ErrorMessage = &msg
-	a.ErrorType = &errType
+	if errType != "" {
+		a.ErrorType = &errType
+	}
 	a.Success = false
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -13,6 +14,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -83,7 +85,7 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*DispatchJob, err
 	if row == nil || err != nil {
 		return nil, err
 	}
-	return findByIDRowToJob(*row), nil
+	return findByIDRowToJob(*row)
 }
 
 // FindByEventID lists jobs spawned by a single event. Used for the
@@ -99,9 +101,16 @@ func (r *Repository) FindByEventID(ctx context.Context, eventID string) ([]Dispa
 	if err != nil {
 		return nil, err
 	}
+	// A corrupted kind/status/retry_strategy on any one row fails the WHOLE
+	// list read (X-06: "a list containing the row fails too") rather than
+	// silently skipping or coercing that row.
 	out := make([]DispatchJob, 0, len(collected))
 	for _, rr := range collected {
-		out = append(out, *readRowToJob(rr))
+		j, err := readRowToJob(rr)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *j)
 	}
 	return out, nil
 }
@@ -171,9 +180,16 @@ func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Dis
 	if err != nil {
 		return nil, err
 	}
+	// A corrupted kind/status/retry_strategy on any one row fails the WHOLE
+	// list read (X-06: "a list containing the row fails too") rather than
+	// silently skipping or coercing that row.
 	out := make([]DispatchJob, 0, len(collected))
 	for _, rr := range collected {
-		out = append(out, *readRowToJob(rr))
+		j, err := readRowToJob(rr)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *j)
 	}
 	return out, nil
 }
@@ -206,9 +222,16 @@ func (r *Repository) FindRecentRaw(ctx context.Context, limit int) ([]DispatchJo
 	if err != nil {
 		return nil, err
 	}
+	// A corrupted kind/status/retry_strategy on any one row fails the WHOLE
+	// list read (X-06: "a list containing the row fails too") rather than
+	// silently skipping or coercing that row.
 	out := make([]DispatchJob, 0, len(collected))
 	for _, row := range collected {
-		out = append(out, *findByIDRowToJob(row))
+		j, err := findByIDRowToJob(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *j)
 	}
 	return out, nil
 }
@@ -435,9 +458,16 @@ func (r *Repository) FindByIDs(ctx context.Context, ids []string) ([]DispatchJob
 	if err != nil {
 		return nil, err
 	}
+	// A corrupted kind/status/retry_strategy on any one row fails the WHOLE
+	// list read (X-06: "a list containing the row fails too") rather than
+	// silently skipping or coercing that row.
 	out := make([]DispatchJob, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, *findByIDsRowToJob(row))
+		j, err := findByIDsRowToJob(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *j)
 	}
 	return out, nil
 }
@@ -527,6 +557,12 @@ func (r *Repository) RecordAttempt(ctx context.Context, jobID string, a *Attempt
 // AttemptsByJob returns all attempts for a job, oldest first. The DB
 // stores `status` (SUCCESS / FAILURE); entity exposes the derived
 // Success bool to match the wire shape.
+//
+// A corrupted error_type on any one attempt fails the WHOLE list read
+// (X-06: "a list containing the row fails too") rather than silently
+// coercing it to UNKNOWN. The row carries no id of its own (see
+// DispatchJobAttemptsByJobRow), so the job id + attempt number identify
+// it in the log/error instead.
 func (r *Repository) AttemptsByJob(ctx context.Context, jobID string) ([]Attempt, error) {
 	rows, err := r.q.DispatchJobAttemptsByJob(ctx, jobID)
 	if err != nil {
@@ -554,7 +590,17 @@ func (r *Repository) AttemptsByJob(ctx context.Context, jobID string) ([]Attempt
 			a.Success = *row.Status == "SUCCESS"
 		}
 		if row.ErrorType != nil {
-			et := ParseErrorType(*row.ErrorType)
+			et, ok := ParseErrorType(*row.ErrorType)
+			if !ok {
+				var attemptNumber int32
+				if row.AttemptNumber != nil {
+					attemptNumber = *row.AttemptNumber
+				}
+				slog.Error("dispatch job attempt row has unrecognised error type",
+					"dispatch_job_id", jobID, "attempt_number", attemptNumber, "error_type", *row.ErrorType)
+				return nil, usecase.Internal("CORRUPT_DISPATCH_JOB_ATTEMPT_ERROR_TYPE",
+					fmt.Sprintf("dispatch job %s attempt has an unrecognised error type", jobID), nil)
+			}
 			a.ErrorType = &et
 		}
 		out = append(out, a)
@@ -564,7 +610,7 @@ func (r *Repository) AttemptsByJob(ctx context.Context, jobID string) ([]Attempt
 
 // ── row → entity adapters ──────────────────────────────────────────────
 
-func findByIDRowToJob(r dbq.DispatchJobFindByIDRow) *DispatchJob {
+func findByIDRowToJob(r dbq.DispatchJobFindByIDRow) (*DispatchJob, error) {
 	return rowToJob(rawRow{
 		ID: r.ID, ExternalID: r.ExternalID, Source: r.Source, Kind: r.Kind,
 		Code: r.Code, Subject: r.Subject, EventID: r.EventID,
@@ -588,7 +634,7 @@ func findByIDRowToJob(r dbq.DispatchJobFindByIDRow) *DispatchJob {
 // findByIDsRowToJob adapts DispatchJobFindByIDsRow — column-for-column
 // identical to DispatchJobFindByIDRow, but sqlc mints a distinct Go type per
 // query — onto the same rawRow mapper.
-func findByIDsRowToJob(r dbq.DispatchJobFindByIDsRow) *DispatchJob {
+func findByIDsRowToJob(r dbq.DispatchJobFindByIDsRow) (*DispatchJob, error) {
 	return findByIDRowToJob(dbq.DispatchJobFindByIDRow(r))
 }
 
@@ -632,7 +678,7 @@ type readRow struct {
 	UpdatedAt        time.Time  `db:"updated_at"`
 }
 
-func readRowToJob(r readRow) *DispatchJob {
+func readRowToJob(r readRow) (*DispatchJob, error) {
 	return rowToJob(rawRow{
 		ID: r.ID, ExternalID: r.ExternalID, Source: r.Source, Kind: r.Kind,
 		Code: r.Code, Subject: r.Subject, EventID: r.EventID,
@@ -694,11 +740,32 @@ type rawRow struct {
 	UpdatedAt          time.Time
 }
 
-func rowToJob(r rawRow) *DispatchJob {
+// rowToJob hydrates the entity from its row. A kind, status, or
+// retry_strategy value that isn't one of the known constants (junk written
+// before write-boundary validation existed, or a hand-edited row) is a
+// loud read error — never round-tripped as-is and never coerced to a
+// default, per the X-06 ruling. The row id is logged so the bad row can be
+// found and fixed without a debugger.
+//
+// Mode stays lenient (common.ParseDispatchMode, ruled X-01) — deliberately
+// not converted here.
+func rowToJob(r rawRow) (*DispatchJob, error) {
+	kind, ok := ParseKind(r.Kind)
+	if !ok {
+		slog.Error("dispatch job row has unrecognised kind", "id", r.ID, "kind", r.Kind)
+		return nil, usecase.Internal("CORRUPT_DISPATCH_JOB_KIND",
+			fmt.Sprintf("dispatch job %s has an unrecognised kind", r.ID), nil)
+	}
+	status, ok := common.ParseDispatchStatus(r.Status)
+	if !ok {
+		slog.Error("dispatch job row has unrecognised status", "id", r.ID, "status", r.Status)
+		return nil, usecase.Internal("CORRUPT_DISPATCH_JOB_STATUS",
+			fmt.Sprintf("dispatch job %s has an unrecognised status", r.ID), nil)
+	}
 	j := &DispatchJob{
 		ID:               r.ID,
 		ExternalID:       r.ExternalID,
-		Kind:             ParseKind(r.Kind),
+		Kind:             kind,
 		Code:             r.Code,
 		Source:           r.Source,
 		Subject:          r.Subject,
@@ -718,7 +785,7 @@ func rowToJob(r rawRow) *DispatchJob {
 		TimeoutSeconds:   uint32(r.TimeoutSeconds),
 		SchemaID:         r.SchemaID,
 		MaxRetries:       uint32(r.MaxRetries),
-		Status:           common.ParseDispatchStatus(r.Status),
+		Status:           status,
 		AttemptCount:     r.AttemptCount,
 		LastError:        r.LastError,
 		IdempotencyKey:   r.IdempotencyKey,
@@ -736,7 +803,14 @@ func rowToJob(r rawRow) *DispatchJob {
 		j.PayloadContentType = "application/json"
 	}
 	if r.RetryStrategy != nil {
-		j.RetryStrategy = ParseRetryStrategy(*r.RetryStrategy)
+		retry, ok := ParseRetryStrategy(*r.RetryStrategy)
+		if !ok {
+			slog.Error("dispatch job row has unrecognised retry strategy",
+				"id", r.ID, "retry_strategy", *r.RetryStrategy)
+			return nil, usecase.Internal("CORRUPT_DISPATCH_JOB_RETRY_STRATEGY",
+				fmt.Sprintf("dispatch job %s has an unrecognised retry strategy", r.ID), nil)
+		}
+		j.RetryStrategy = retry
 	} else {
 		j.RetryStrategy = RetryExponentialBackoff
 	}
@@ -744,7 +818,7 @@ func rowToJob(r rawRow) *DispatchJob {
 		_ = json.Unmarshal(r.Metadata, &j.Metadata)
 	}
 	_ = r.Protocol // single protocol today
-	return j
+	return j, nil
 }
 
 // metadataOrEmpty returns an empty slice for nil so the JSONB column
