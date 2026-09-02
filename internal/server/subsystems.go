@@ -25,6 +25,7 @@ import (
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/bridge"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/payload"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalauth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 	sjscheduler "github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob/scheduler"
@@ -479,6 +480,11 @@ func StartRouter(ctx context.Context, _ *pgxpool.Pool, cfg EnvCfg) {
 // count it. Cheap insurance: the excess is a few minutes of events.
 const rateLimitPruneMargin = 10 * time.Minute
 
+// loginAttemptsRetentionYears is how long iam_login_attempts partitions are
+// kept (owner ruling X-03) before the housekeeping sweep below drops them —
+// as whole partitions, never row DELETEs.
+const loginAttemptsRetentionYears = 3
+
 // StartPurger runs the periodic housekeeping loop that drops expired
 // rows from the four ephemeral auth tables: oauth_oidc_payloads
 // (access/refresh tokens), oauth_oidc_login_states (the in-flight OIDC
@@ -486,15 +492,24 @@ const rateLimitPruneMargin = 10 * time.Minute
 // authentication challenges), and portal_login_flows (parked
 // /portal/authorize chains — only consumed rows are deleted inline, so
 // abandoned logins rely on this sweep). It also reaps iam_rate_limit_events,
-// which is append-only and has no other reaper. Always-on; no env toggle.
+// which is append-only and has no other reaper, and maintains the
+// iam_login_attempts quarterly partitions (migration 049): ensuring the
+// current and next quarter's partitions exist, and dropping partitions
+// entirely older than loginAttemptsRetentionYears — a schema-level drop,
+// never a row DELETE. Always-on; no env toggle.
 //
 // Cadence: every minute. Idempotent — each purge is a DELETE WHERE
-// expires_at < NOW(). Failures are logged and the loop keeps going.
+// expires_at < NOW(), and the partition-maintenance calls are themselves
+// idempotent (CREATE TABLE IF NOT EXISTS / a bounded DROP TABLE), so running
+// them on the same tick as everything else costs a few cheap catalog
+// lookups, not a separate cadence. Failures are logged and the loop keeps
+// going.
 func StartPurger(ctx context.Context, pool *pgxpool.Pool) {
 	payloadRepo := payload.NewRepository(pool)
 	loginStateRepo := bridge.NewLoginStateRepo(pool)
 	ceremonyRepo := webauthn.NewCeremonyRepository(pool)
 	portalFlowRepo := portalauth.NewFlowRepo(pool)
+	loginAttemptRepo := loginattempt.NewRepository(pool)
 
 	// The rate-limit reaper targets the Postgres events table specifically,
 	// rather than whatever store ratelimit.Build selected: Redis expires its
@@ -550,6 +565,22 @@ func StartPurger(ctx context.Context, pool *pgxpool.Pool) {
 				slog.Warn("lapsed oauth previous-secret purge failed", "err", err)
 			} else if n > 0 {
 				slog.Debug("lapsed oauth previous-secret purge", "cleared", n)
+			}
+			// Current quarter too, not just next: a long gap between the
+			// migration applying and the server first starting (or a
+			// clock that's drifted) shouldn't leave inserts with nowhere
+			// to land but the DEFAULT partition.
+			now := time.Now().UTC()
+			if err := loginAttemptRepo.EnsureQuarterlyPartition(ctx, now); err != nil {
+				slog.Warn("login-attempts partition ensure failed", "err", err)
+			}
+			if err := loginAttemptRepo.EnsureQuarterlyPartition(ctx, now.AddDate(0, 3, 0)); err != nil {
+				slog.Warn("login-attempts partition ensure failed", "err", err)
+			}
+			if names, err := loginAttemptRepo.DropPartitionsOlderThan(ctx, now.AddDate(-loginAttemptsRetentionYears, 0, 0)); err != nil {
+				slog.Warn("login-attempts partition drop failed", "err", err)
+			} else if len(names) > 0 {
+				slog.Debug("login-attempts old partitions dropped", "partitions", names)
 			}
 		}
 	}

@@ -9,6 +9,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -151,7 +153,7 @@ func (r *Repository) FailureStatsByIdentifierIPSince(ctx context.Context, identi
 }
 
 // FailureCountByIdentifierSince counts FAILURE attempts for an identifier
-// (across all IPs) since the cutoff. Drives the global ceiling.
+// (across all IPs) since the cutoff.
 func (r *Repository) FailureCountByIdentifierSince(ctx context.Context, identifier string, since time.Time) (int, error) {
 	var count int
 	err := r.pool.QueryRow(ctx,
@@ -162,6 +164,36 @@ func (r *Repository) FailureCountByIdentifierSince(ctx context.Context, identifi
 		return 0, fmt.Errorf("failure_count_by_identifier_since: %w", err)
 	}
 	return count, nil
+}
+
+// GlobalCeilingTrippedAt returns the timestamp of the ceiling-th most recent
+// FAILURE attempt for identifier at or after since — the failure whose
+// arrival pushed the in-window count up to ceiling — or nil when fewer than
+// ceiling failures exist in that range (the ceiling has never tripped,
+// within the searched range).
+//
+// Drives the login backoff's global lock (see loginbackoff.Check): both the
+// lock's expiry and the point the count would naturally fall back below the
+// ceiling are computed from this one timestamp, rather than kept in a
+// separate lock record.
+func (r *Repository) GlobalCeilingTrippedAt(ctx context.Context, identifier string, since time.Time, ceiling int64) (*time.Time, error) {
+	if ceiling <= 0 {
+		return nil, nil
+	}
+	var t *time.Time
+	err := r.pool.QueryRow(ctx,
+		`SELECT attempted_at FROM iam_login_attempts
+		   WHERE outcome = 'FAILURE' AND identifier = $1 AND attempted_at >= $2
+		   ORDER BY attempted_at DESC
+		   OFFSET $3 LIMIT 1`,
+		identifier, since, ceiling-1).Scan(&t)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("global_ceiling_tripped_at: %w", err)
+	}
+	return t, nil
 }
 
 // ListParams filters a cursor-paginated query. AfterTime+AfterID together
@@ -253,4 +285,155 @@ func rowToLoginAttempt(row dbq.IamLoginAttempt) LoginAttempt {
 		UserAgent:     row.UserAgent,
 		AttemptedAt:   row.AttemptedAt,
 	}
+}
+
+// ─── Partition maintenance (owner ruling X-03) ──────────────────────────────
+//
+// iam_login_attempts is range-partitioned by quarter on attempted_at as of
+// migration 049. Forward and retention maintenance from here on is a Go-side
+// housekeeping sweep (StartPurger in internal/server/subsystems.go) rather
+// than a Postgres extension — same reasoning as internal/stream's
+// PartitionManager for the messaging tables: no dependency on an extension
+// allowlist, identical behaviour in dev and prod. Retention drops whole
+// partitions; it never issues a row DELETE.
+
+// loginAttemptsPartitionPrefix names every quarterly partition; the DEFAULT
+// partition (created by migration 049) doesn't match it and is deliberately
+// left alone by both methods below.
+const loginAttemptsPartitionPrefix = "iam_login_attempts_"
+
+// isPartitioned reports whether iam_login_attempts is a partitioned table
+// (relkind 'p'). false (not an error) if the table doesn't exist at all or
+// is a plain table — a drop-in over a pre-migration-049 schema shouldn't
+// error on every housekeeping tick.
+func (r *Repository) isPartitioned(ctx context.Context) (bool, error) {
+	var relkind string
+	err := r.pool.QueryRow(ctx,
+		`SELECT relkind::text FROM pg_class WHERE relname = 'iam_login_attempts'`).Scan(&relkind)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		return false, fmt.Errorf("is_partitioned: %w", err)
+	}
+	return relkind == "p", nil
+}
+
+// EnsureQuarterlyPartition creates the iam_login_attempts partition covering
+// at's calendar quarter, if it doesn't already exist. Uses CREATE TABLE IF
+// NOT EXISTS … PARTITION OF, so it's idempotent without a separate
+// existence check. No-op against an unpartitioned table.
+func (r *Repository) EnsureQuarterlyPartition(ctx context.Context, at time.Time) error {
+	partitioned, err := r.isPartitioned(ctx)
+	if err != nil {
+		return err
+	}
+	if !partitioned {
+		return nil
+	}
+	start := quarterStart(at)
+	end := start.AddDate(0, 3, 0)
+	name := quarterPartitionName(start)
+	_, err = r.pool.Exec(ctx, fmt.Sprintf(
+		`CREATE TABLE IF NOT EXISTS %s PARTITION OF iam_login_attempts FOR VALUES FROM ('%s') TO ('%s')`,
+		pgQuoteIdent(name), start.Format("2006-01-02"), end.Format("2006-01-02")))
+	if err != nil {
+		return fmt.Errorf("ensure_quarterly_partition %s: %w", name, err)
+	}
+	return nil
+}
+
+// DropPartitionsOlderThan drops every iam_login_attempts quarterly partition
+// whose entire range ends before cutoff. The DEFAULT partition and any
+// child whose name doesn't match the `..._YYYY_qN` convention are left
+// alone. Returns the dropped partition names so the caller can log what
+// happened; a schema-level DROP TABLE, never a row DELETE.
+func (r *Repository) DropPartitionsOlderThan(ctx context.Context, cutoff time.Time) ([]string, error) {
+	partitioned, err := r.isPartitioned(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !partitioned {
+		return nil, nil
+	}
+	rows, err := r.pool.Query(ctx, `
+		SELECT child.relname
+		  FROM pg_inherits i
+		  JOIN pg_class parent ON i.inhparent = parent.oid
+		  JOIN pg_class child  ON i.inhrelid  = child.oid
+		 WHERE parent.relname = 'iam_login_attempts'`)
+	if err != nil {
+		return nil, fmt.Errorf("list_partitions: %w", err)
+	}
+	var names []string
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		names = append(names, n)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	var dropped []string
+	for _, name := range names {
+		end, ok := quarterPartitionEnd(name)
+		if !ok {
+			continue // not a quarterly partition (e.g. the DEFAULT) — leave it
+		}
+		if !end.After(cutoff) { // whole range is before the cutoff
+			if _, err := r.pool.Exec(ctx, fmt.Sprintf(`DROP TABLE IF EXISTS %s`, pgQuoteIdent(name))); err != nil {
+				return dropped, fmt.Errorf("drop partition %s: %w", name, err)
+			}
+			dropped = append(dropped, name)
+		}
+	}
+	return dropped, nil
+}
+
+// quarterStart truncates t (in UTC) to the first instant of its calendar
+// quarter.
+func quarterStart(t time.Time) time.Time {
+	t = t.UTC()
+	m := ((int(t.Month())-1)/3)*3 + 1
+	return time.Date(t.Year(), time.Month(m), 1, 0, 0, 0, 0, time.UTC)
+}
+
+// quarterPartitionName builds the `iam_login_attempts_YYYY_qN` name for the
+// quarter starting at start (must already be quarter-aligned).
+func quarterPartitionName(start time.Time) string {
+	q := (int(start.Month())-1)/3 + 1
+	return fmt.Sprintf("%s%04d_q%d", loginAttemptsPartitionPrefix, start.Year(), q)
+}
+
+// quarterPartitionEnd parses a `iam_login_attempts_YYYY_qN` partition name
+// and returns its exclusive end (the start of the following quarter).
+// ok=false for anything that doesn't match (e.g. the DEFAULT partition).
+func quarterPartitionEnd(name string) (time.Time, bool) {
+	suffix := strings.TrimPrefix(name, loginAttemptsPartitionPrefix)
+	if suffix == name {
+		return time.Time{}, false
+	}
+	parts := strings.SplitN(suffix, "_q", 2)
+	if len(parts) != 2 {
+		return time.Time{}, false
+	}
+	year, err1 := strconv.Atoi(parts[0])
+	q, err2 := strconv.Atoi(parts[1])
+	if err1 != nil || err2 != nil || q < 1 || q > 4 {
+		return time.Time{}, false
+	}
+	start := time.Date(year, time.Month((q-1)*3+1), 1, 0, 0, 0, 0, time.UTC)
+	return start.AddDate(0, 3, 0), true
+}
+
+// pgQuoteIdent double-quotes a Postgres identifier. The names passed through
+// here are internal constants plus derived YYYY/quarter suffixes, but quote
+// them defensively (same pattern as internal/stream's PartitionManager).
+func pgQuoteIdent(ident string) string {
+	return `"` + strings.ReplaceAll(ident, `"`, `""`) + `"`
 }

@@ -39,7 +39,11 @@ type fakeRepo struct {
 	lastSuccess  *time.Time
 	pairCount    int
 	pairLastFail *time.Time
-	globalCount  int
+	// globalTrippedAt, when set, is returned verbatim by
+	// GlobalCeilingTrippedAt regardless of the (identifier, since, ceiling)
+	// it's called with — the tests below control it directly to place the
+	// "trip" at a specific point in the past.
+	globalTrippedAt *time.Time
 }
 
 func (f *fakeRepo) LastSuccessAt(context.Context, string) (*time.Time, error) {
@@ -50,8 +54,8 @@ func (f *fakeRepo) FailureStatsByIdentifierIPSince(context.Context, string, stri
 	return f.pairCount, f.pairLastFail, nil
 }
 
-func (f *fakeRepo) FailureCountByIdentifierSince(context.Context, string, time.Time) (int, error) {
-	return f.globalCount, nil
+func (f *fakeRepo) GlobalCeilingTrippedAt(context.Context, string, time.Time, int64) (*time.Time, error) {
+	return f.globalTrippedAt, nil
 }
 
 func TestCheckAllowsCleanIdentifier(t *testing.T) {
@@ -93,27 +97,68 @@ func TestCheckPairBackoffElapsedAllows(t *testing.T) {
 }
 
 func TestCheckGlobalCeilingRejects(t *testing.T) {
-	d, err := Check(context.Background(), &fakeRepo{globalCount: 100}, defaultPolicy(), "a@b.com", "")
+	// defaultPolicy: GlobalWindowSecs=3600, GlobalLockSecs=900. Tripped just
+	// now → countEnds (now+3600) outlasts lockEnds (now+900), so Retry-After
+	// is bounded by the window, not the (shorter) advertised lock.
+	now := time.Now().UTC()
+	d, err := Check(context.Background(), &fakeRepo{globalTrippedAt: &now}, defaultPolicy(), "a@b.com", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if d.Allowed || d.Reason != ReasonGlobalCeiling {
 		t.Errorf("want global_ceiling reject, got %+v", d)
 	}
-	if d.RetryAfterSecs != 900 {
-		t.Errorf("retry_after = %d, want 900", d.RetryAfterSecs)
+	if d.RetryAfterSecs < 3599 || d.RetryAfterSecs > 3600 {
+		t.Errorf("retry_after = %d, want ~3600 (bounded by GlobalWindowSecs)", d.RetryAfterSecs)
 	}
 }
 
 func TestCheckNoIPSkipsPairBackoff(t *testing.T) {
 	// Even with a high pair count, an empty IP skips the per-pair gate;
-	// only the global ceiling applies (here under the ceiling → allowed).
+	// only the global ceiling applies (here: never tripped → allowed).
 	now := time.Now().UTC()
-	d, err := Check(context.Background(), &fakeRepo{pairCount: 50, pairLastFail: &now, globalCount: 5}, defaultPolicy(), "a@b.com", "")
+	d, err := Check(context.Background(), &fakeRepo{pairCount: 50, pairLastFail: &now}, defaultPolicy(), "a@b.com", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !d.Allowed {
 		t.Errorf("empty IP should skip pair backoff, got %+v", d)
+	}
+}
+
+// TestCheckGlobalLockOutlastsWindow pins the A-19 fix: GlobalLockSecs is a
+// real lock, not just the Retry-After number. With a policy whose lock is
+// longer than its counting window (the inverse of defaultPolicy), waiting
+// past the window but still inside the lock must stay denied — under the
+// old behaviour (re-querying a live count against a window-bounded cutoff)
+// this would have silently allowed the attempt back in once the window
+// alone had elapsed.
+func TestCheckGlobalLockOutlastsWindow(t *testing.T) {
+	p := Policy{GlobalWindowSecs: 60, GlobalCeiling: 5, GlobalLockSecs: 300}
+	trippedAt := time.Now().UTC().Add(-70 * time.Second) // past the 60s window, inside the 300s lock
+	d, err := Check(context.Background(), &fakeRepo{globalTrippedAt: &trippedAt}, p, "a@b.com", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Allowed || d.Reason != ReasonGlobalCeiling {
+		t.Errorf("want still-locked reject past the window but inside the lock, got %+v", d)
+	}
+	// lockEnds = trippedAt + 300s ≈ now + 230s.
+	if d.RetryAfterSecs < 225 || d.RetryAfterSecs > 231 {
+		t.Errorf("retry_after = %d, want ~230 (bounded by the outlasting lock)", d.RetryAfterSecs)
+	}
+}
+
+// TestCheckGlobalLockAndWindowBothElapsed: once both the window and the
+// lock have elapsed, the identifier is allowed again.
+func TestCheckGlobalLockAndWindowBothElapsed(t *testing.T) {
+	p := Policy{GlobalWindowSecs: 60, GlobalCeiling: 5, GlobalLockSecs: 300}
+	trippedAt := time.Now().UTC().Add(-310 * time.Second) // past both bounds
+	d, err := Check(context.Background(), &fakeRepo{globalTrippedAt: &trippedAt}, p, "a@b.com", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !d.Allowed {
+		t.Errorf("want allowed once both the window and the lock have elapsed, got %+v", d)
 	}
 }

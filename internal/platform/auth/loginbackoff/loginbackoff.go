@@ -18,6 +18,7 @@ package loginbackoff
 
 import (
 	"context"
+	"math"
 	"strings"
 	"time"
 
@@ -86,7 +87,13 @@ type Decision struct {
 type statsRepo interface {
 	LastSuccessAt(ctx context.Context, identifier string) (*time.Time, error)
 	FailureStatsByIdentifierIPSince(ctx context.Context, identifier, ip string, since time.Time) (int, *time.Time, error)
-	FailureCountByIdentifierSince(ctx context.Context, identifier string, since time.Time) (int, error)
+	// GlobalCeilingTrippedAt returns the timestamp of the ceiling-th most
+	// recent FAILURE for identifier at or after since — the failure whose
+	// arrival pushed the in-window count to ceiling — or nil when fewer
+	// than ceiling failures exist in that range (never tripped). Both the
+	// lock expiry and the point the count would naturally fall back below
+	// ceiling are anchored to this single timestamp.
+	GlobalCeilingTrippedAt(ctx context.Context, identifier string, since time.Time, ceiling int64) (*time.Time, error)
 }
 
 var _ statsRepo = (*loginattempt.Repository)(nil)
@@ -136,22 +143,53 @@ func Check(ctx context.Context, repo statsRepo, policy Policy, identifier, ip st
 		}
 	}
 
-	// Window 2: per-identifier global ceiling within GlobalWindowSecs.
-	globalCutoff := now.Add(-time.Duration(policy.GlobalWindowSecs) * time.Second)
-	cutoff := globalCutoff
-	if lastSuccessCutoff.After(cutoff) {
-		cutoff = lastSuccessCutoff
+	// Window 2: per-identifier global ceiling. The lock is real: once
+	// tripped, deny until BOTH the advertised lock has elapsed AND the
+	// in-window count would naturally have fallen back below the ceiling —
+	// not just whichever comes first. Re-querying a live count alone (the
+	// previous approach) let attempts through the instant enough failures
+	// aged out of GlobalWindowSecs, even when that happened sooner than the
+	// GlobalLockSecs already advertised to the caller as the Retry-After.
+	//
+	// Both bounds are anchored to one timestamp: the ceiling-th most recent
+	// failure, i.e. the failure whose arrival pushed the in-window count up
+	// to GlobalCeiling.
+	//   lockEnds  = trippedAt + GlobalLockSecs   (the advertised lock)
+	//   countEnds = trippedAt + GlobalWindowSecs (when the count next drops
+	//               below ceiling on its own — same failure, since it is
+	//               the oldest of the current in-window ceiling-sized set)
+	// Search back far enough to catch any trip whose derived expiry could
+	// still be in the future; a trip older than that has certainly expired
+	// either way, so it's safe to miss.
+	searchWindowSecs := policy.GlobalWindowSecs
+	if policy.GlobalLockSecs > searchWindowSecs {
+		searchWindowSecs = policy.GlobalLockSecs
 	}
-	globalCount, err := repo.FailureCountByIdentifierSince(ctx, identifier, cutoff)
+	searchSince := now.Add(-time.Duration(searchWindowSecs) * time.Second)
+	if lastSuccessCutoff.After(searchSince) {
+		searchSince = lastSuccessCutoff
+	}
+	trippedAt, err := repo.GlobalCeilingTrippedAt(ctx, identifier, searchSince, policy.GlobalCeiling)
 	if err != nil {
 		return Decision{}, err
 	}
-	if int64(globalCount) >= policy.GlobalCeiling {
-		lock := policy.GlobalLockSecs
-		if lock < 0 {
-			lock = 0
+	if trippedAt != nil {
+		lockEnds := trippedAt.Add(time.Duration(policy.GlobalLockSecs) * time.Second)
+		countEnds := trippedAt.Add(time.Duration(policy.GlobalWindowSecs) * time.Second)
+		end := lockEnds
+		if countEnds.After(end) {
+			end = countEnds
 		}
-		return Decision{Allowed: false, RetryAfterSecs: uint32(lock), Reason: ReasonGlobalCeiling}, nil
+		if now.Before(end) {
+			retrySecs := int64(math.Ceil(end.Sub(now).Seconds()))
+			if retrySecs < 1 {
+				retrySecs = 1
+			}
+			if retrySecs > math.MaxUint32 {
+				retrySecs = math.MaxUint32
+			}
+			return Decision{Allowed: false, RetryAfterSecs: uint32(retrySecs), Reason: ReasonGlobalCeiling}, nil
+		}
 	}
 
 	return Decision{Allowed: true}, nil
