@@ -191,7 +191,7 @@ keeps every implementation honest.
 - Migration 052 (strict enums for `ParseDispatchStatus` + dispatchjob trio) after the
   X-06 tranche lands; `ParseDispatchMode` stays lenient by ruling X-01; any dispatch
   status CHECK must admit legacy `'ERROR'`.
-- Migration 051 pre-scan against real production data before deploy (X-06 caveat).
+- ~~Migration 051/052 enum pre-scans against real production data~~ — **DONE 2026-09-03: both scripts returned zero rows on staging and production; deploy gates closed.**
 - Deno-vs-Node one-day spike is superseded by the smoke tests only partially: the
   foundation module (step 1) is the real spike; hold the Node fallback decision open
   until it lands.
