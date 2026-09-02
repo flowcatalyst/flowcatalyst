@@ -70,6 +70,13 @@ type Pool struct {
 	workerSeq   atomic.Uint64
 
 	stopped atomic.Bool
+
+	// srMu guards settledReporter. nil (the default) disables the T3/A-01
+	// settled-message hook entirely — a standalone router with no platform
+	// wiring must behave exactly as it does today. See SetSettledReporter
+	// and reportSettled in settled.go/pool.go.
+	srMu            sync.RWMutex
+	settledReporter SettledReporter
 }
 
 // MediatingEntry is one message currently inside a pool worker (in processOne:
@@ -228,6 +235,20 @@ func (p *Pool) UpdateRateLimit(perMinute *uint32) {
 		v = *perMinute
 	}
 	p.limiter.SetRate(v)
+}
+
+// SetSettledReporter wires (or clears, with nil) the T3/A-01
+// settled-message-hook reporter this pool's ackBuffered fires when a
+// BLOCK_ON_ERROR head fails terminally. NOT a NewPool parameter — it is set
+// after construction (see settled.go's header comment for the intended
+// one-line wiring) so every existing NewPool call site keeps working
+// unchanged. nil is the correct default for a standalone router with no
+// platform behind it, and ackBuffered stays completely silent in that case:
+// no goroutine, no log, ACKs proceed exactly as before this feature existed.
+func (p *Pool) SetSettledReporter(r SettledReporter) {
+	p.srMu.Lock()
+	p.settledReporter = r
+	p.srMu.Unlock()
 }
 
 // UpdateConcurrency re-caps the semaphore. Returns false on n==0 (invalid).
@@ -858,9 +879,78 @@ func (p *Pool) ackBuffered(ctx context.Context, group, reason string) int {
 	if len(buffered) > 0 {
 		slog.Warn("acked untried group messages behind a failed head",
 			"group", group, "pool", p.cfg.Code, "acked", len(buffered), "reason", reason)
+		// Fired AFTER the ACK loop above, not before or alongside it — the
+		// broker actions are what actually matter and must never wait on or
+		// be affected by this. See reportSettled's own doc comment.
+		p.reportSettled(group, reason, buffered)
 	}
 	return len(buffered)
 }
+
+// reportSettled is ackBuffered's T3/A-01 hook: tells the platform which
+// dispatch-job rows it just ACKed off the broker so they can be marked
+// PENDING instead of stranding at QUEUED/PROCESSING (see ackBuffered's
+// "Known gap" comment above, and settled.go's header comment for the full
+// contract). Best-effort by design — the platform's reaper
+// (dispatchjob.RunReaper) is the crash backstop — so this:
+//   - does nothing at all, silently, when no reporter is wired (nil is the
+//     default until the deferred wiring in settled.go lands, and remains
+//     correct forever for a standalone router with no platform);
+//   - filters to only messages carrying scheduler-signed material
+//     (dispatchJobFromMessage) — a message with no AuthToken is not a
+//     platform dispatch job and there is nothing for the hook to mark;
+//   - runs the actual HTTP call in a spawned goroutine on its own bounded
+//     timeout, decoupled from ctx (which belongs to the submitting
+//     consumer and may already be cancelled or about to be — see
+//     drainGroup's doc comment) so a consumer restart can never cut the
+//     report short; the timeout itself is the goroutine's exit guarantee.
+//   - never returns an error to its caller and never blocks it: this call
+//     returns as soon as the (synchronous, in-memory) filtering is done,
+//     with the network call already handed off.
+func (p *Pool) reportSettled(group, reason string, buffered []common.QueuedMessage) {
+	p.srMu.RLock()
+	reporter := p.settledReporter
+	p.srMu.RUnlock()
+	if reporter == nil {
+		return
+	}
+
+	jobs := make([]SettledJob, 0, len(buffered))
+	for _, qm := range buffered {
+		if job, ok := dispatchJobFromMessage(qm.Message); ok {
+			jobs = append(jobs, job)
+		}
+	}
+	if len(jobs) == 0 {
+		// Nothing here was a platform dispatch job (or nothing verifiable) —
+		// no call to make.
+		return
+	}
+
+	report := SettledReport{
+		PoolCode: p.cfg.Code,
+		Group:    group,
+		Reason:   reason,
+		Jobs:     jobs,
+	}
+	go func() {
+		rctx, cancel := context.WithTimeout(context.Background(), settledReportTimeout)
+		defer cancel()
+		if err := reporter.ReportSettled(rctx, report); err != nil {
+			// The reaper is the backstop for exactly this failure mode, so a
+			// CONFIGURATION-class notice rather than an error: this pool has
+			// no WarningService access (unlike manager.go/mediator.go, which
+			// thread one through), so slog.Warn is the available signal.
+			slog.Warn("settled-message hook failed; the platform reaper is the backstop",
+				"pool", p.cfg.Code, "group", group, "jobs", len(jobs), "err", err)
+		}
+	}()
+}
+
+// settledReportTimeout bounds reportSettled's spawned goroutine — its exit
+// guarantee, since the goroutine deliberately does not derive from the
+// caller's ctx (see reportSettled's doc comment).
+const settledReportTimeout = 10 * time.Second
 
 // clearWorking flips a group's working flag back off so a subsequent submit
 // can spawn a replacement drainer, and stamps parkedAt so an unclaimed park
