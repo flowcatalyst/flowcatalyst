@@ -187,3 +187,48 @@ func (j *DispatchJob) PayloadJSON() (json.RawMessage, error) {
 	}
 	return json.RawMessage(*j.Payload), nil
 }
+
+// IDStr satisfies usecase.HasID, so DispatchJob can be committed through the
+// use-case envelope (operations/) — see the package doc: human-initiated
+// actions (cancel, complete, resend) go through use cases; router-driven
+// infra writes (Insert, MarkInProgress, ...) stay direct repo calls.
+func (j DispatchJob) IDStr() string { return j.ID }
+
+// Cancel flips a FAILED job to CANCELLED — an operator override for a
+// stuck/failed job that isn't worth retrying. The FAILED-only guard lives in
+// the operation's Execute (operations/shared.go), not here; the entity just
+// applies the transition.
+func (j *DispatchJob) Cancel() {
+	now := time.Now().UTC()
+	j.Status = common.DispatchCancelled
+	j.CompletedAt = &now
+	j.UpdatedAt = now
+}
+
+// Complete flips a FAILED job to COMPLETED — an operator override recording
+// that the job was actually delivered/handled out of band (verified
+// manually, or via a side channel) and should stop reading as a failure.
+func (j *DispatchJob) Complete() {
+	now := time.Now().UTC()
+	j.Status = common.DispatchCompleted
+	j.CompletedAt = &now
+	j.UpdatedAt = now
+}
+
+// ResetToPending puts the job back at PENDING for a fresh delivery cycle:
+// clears scheduled_for (immediate eligibility), zeroes attempt_count (a full
+// retry budget again), and clears the terminal stamps. reason, when non-nil,
+// is recorded in LastError so an operator can see why the job is back at
+// PENDING — used by the router-settled hook and the stranded-sibling reaper
+// (see the settled package and reaper.go). A nil reason clears LastError
+// instead: the operator Resend path carries no reason of its own, mirroring
+// the pre-envelope Requeue's behaviour of unconditionally clearing it.
+func (j *DispatchJob) ResetToPending(reason *string) {
+	j.Status = common.DispatchPending
+	j.ScheduledFor = nil
+	j.AttemptCount = 0
+	j.CompletedAt = nil
+	j.DurationMillis = nil
+	j.LastError = reason
+	j.UpdatedAt = time.Now().UTC()
+}

@@ -105,6 +105,25 @@ func (q *Queries) DispatchJobAttemptsByJob(ctx context.Context, dispatchJobID st
 	return items, nil
 }
 
+const dispatchJobDelete = `-- name: DispatchJobDelete :exec
+DELETE FROM msg_dispatch_jobs WHERE id = $1 AND created_at = $2
+`
+
+type DispatchJobDeleteParams struct {
+	ID        string    `db:"id"`
+	CreatedAt time.Time `db:"created_at"`
+}
+
+// Satisfies usecasepgx.Persist[DispatchJob], which requires both Persist
+// and Delete. No operation in this module deletes a dispatch job today
+// (Cancel/Complete/Resend all use Save/SaveAll), so this exists purely for
+// interface conformance — but it's a real delete, not a stub, in case that
+// ever changes.
+func (q *Queries) DispatchJobDelete(ctx context.Context, arg DispatchJobDeleteParams) error {
+	_, err := q.db.Exec(ctx, dispatchJobDelete, arg.ID, arg.CreatedAt)
+	return err
+}
+
 const dispatchJobFindByID = `-- name: DispatchJobFindByID :one
 
 SELECT id, external_id, source, kind, code, subject, event_id,
@@ -212,6 +231,122 @@ func (q *Queries) DispatchJobFindByID(ctx context.Context, id string) (DispatchJ
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const dispatchJobFindByIDs = `-- name: DispatchJobFindByIDs :many
+
+SELECT id, external_id, source, kind, code, subject, event_id,
+       correlation_id, metadata, target_url, protocol, payload,
+       payload_content_type, data_only, service_account_id, client_id,
+       subscription_id, mode, dispatch_pool_id, message_group, sequence,
+       timeout_seconds, schema_id, status, max_retries, retry_strategy,
+       scheduled_for, expires_at, attempt_count, last_attempt_at,
+       completed_at, duration_millis, last_error, idempotency_key,
+       created_at, updated_at
+FROM msg_dispatch_jobs
+WHERE id = ANY($1::text[])
+`
+
+type DispatchJobFindByIDsRow struct {
+	ID                 string          `db:"id"`
+	ExternalID         *string         `db:"external_id"`
+	Source             *string         `db:"source"`
+	Kind               string          `db:"kind"`
+	Code               string          `db:"code"`
+	Subject            *string         `db:"subject"`
+	EventID            *string         `db:"event_id"`
+	CorrelationID      *string         `db:"correlation_id"`
+	Metadata           json.RawMessage `db:"metadata"`
+	TargetUrl          string          `db:"target_url"`
+	Protocol           string          `db:"protocol"`
+	Payload            *string         `db:"payload"`
+	PayloadContentType *string         `db:"payload_content_type"`
+	DataOnly           bool            `db:"data_only"`
+	ServiceAccountID   *string         `db:"service_account_id"`
+	ClientID           *string         `db:"client_id"`
+	SubscriptionID     *string         `db:"subscription_id"`
+	Mode               string          `db:"mode"`
+	DispatchPoolID     *string         `db:"dispatch_pool_id"`
+	MessageGroup       *string         `db:"message_group"`
+	Sequence           int32           `db:"sequence"`
+	TimeoutSeconds     int32           `db:"timeout_seconds"`
+	SchemaID           *string         `db:"schema_id"`
+	Status             string          `db:"status"`
+	MaxRetries         int32           `db:"max_retries"`
+	RetryStrategy      *string         `db:"retry_strategy"`
+	ScheduledFor       *time.Time      `db:"scheduled_for"`
+	ExpiresAt          *time.Time      `db:"expires_at"`
+	AttemptCount       int32           `db:"attempt_count"`
+	LastAttemptAt      *time.Time      `db:"last_attempt_at"`
+	CompletedAt        *time.Time      `db:"completed_at"`
+	DurationMillis     *int64          `db:"duration_millis"`
+	LastError          *string         `db:"last_error"`
+	IdempotencyKey     *string         `db:"idempotency_key"`
+	CreatedAt          time.Time       `db:"created_at"`
+	UpdatedAt          time.Time       `db:"updated_at"`
+}
+
+// Queries below back T3/A-01 (BLOCK_ON_ERROR group recovery): the use-case
+// envelope ops (cancel/complete/resend, internal/platform/dispatchjob/operations),
+// the router-settled hook (internal/platform/dispatchjob/settled), and the
+// stranded-sibling reaper (internal/platform/dispatchjob/reaper.go).
+// Batch load by id (write table), for the Resend operation, which reloads
+// multiple aggregates to reset via usecaseop.SaveAll.
+func (q *Queries) DispatchJobFindByIDs(ctx context.Context, ids []string) ([]DispatchJobFindByIDsRow, error) {
+	rows, err := q.db.Query(ctx, dispatchJobFindByIDs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DispatchJobFindByIDsRow{}
+	for rows.Next() {
+		var i DispatchJobFindByIDsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ExternalID,
+			&i.Source,
+			&i.Kind,
+			&i.Code,
+			&i.Subject,
+			&i.EventID,
+			&i.CorrelationID,
+			&i.Metadata,
+			&i.TargetUrl,
+			&i.Protocol,
+			&i.Payload,
+			&i.PayloadContentType,
+			&i.DataOnly,
+			&i.ServiceAccountID,
+			&i.ClientID,
+			&i.SubscriptionID,
+			&i.Mode,
+			&i.DispatchPoolID,
+			&i.MessageGroup,
+			&i.Sequence,
+			&i.TimeoutSeconds,
+			&i.SchemaID,
+			&i.Status,
+			&i.MaxRetries,
+			&i.RetryStrategy,
+			&i.ScheduledFor,
+			&i.ExpiresAt,
+			&i.AttemptCount,
+			&i.LastAttemptAt,
+			&i.CompletedAt,
+			&i.DurationMillis,
+			&i.LastError,
+			&i.IdempotencyKey,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const dispatchJobInsert = `-- name: DispatchJobInsert :exec
@@ -392,6 +527,52 @@ func (q *Queries) DispatchJobMarkInProgress(ctx context.Context, arg DispatchJob
 	return err
 }
 
+const dispatchJobPersist = `-- name: DispatchJobPersist :exec
+UPDATE msg_dispatch_jobs
+   SET status = $2,
+       attempt_count = $3,
+       scheduled_for = $4,
+       completed_at = $5,
+       duration_millis = $6,
+       last_error = $7,
+       updated_at = $8
+ WHERE id = $1
+   AND created_at = $9
+`
+
+type DispatchJobPersistParams struct {
+	ID             string     `db:"id"`
+	Status         string     `db:"status"`
+	AttemptCount   int32      `db:"attempt_count"`
+	ScheduledFor   *time.Time `db:"scheduled_for"`
+	CompletedAt    *time.Time `db:"completed_at"`
+	DurationMillis *int64     `db:"duration_millis"`
+	LastError      *string    `db:"last_error"`
+	UpdatedAt      time.Time  `db:"updated_at"`
+	CreatedAt      time.Time  `db:"created_at"`
+}
+
+// Mutable-field update for human-initiated status overrides that go through
+// the use-case envelope (cancel/complete/resend): scoped to the fields
+// those operations ever change. payload/metadata/target_url/etc are
+// write-once at ingest (DispatchJobInsert/InsertBatch) and never revisited
+// by this path. created_at carries alongside id for partition pruning, like
+// every other status-flip query in this file.
+func (q *Queries) DispatchJobPersist(ctx context.Context, arg DispatchJobPersistParams) error {
+	_, err := q.db.Exec(ctx, dispatchJobPersist,
+		arg.ID,
+		arg.Status,
+		arg.AttemptCount,
+		arg.ScheduledFor,
+		arg.CompletedAt,
+		arg.DurationMillis,
+		arg.LastError,
+		arg.UpdatedAt,
+		arg.CreatedAt,
+	)
+	return err
+}
+
 const dispatchJobScheduleRetry = `-- name: DispatchJobScheduleRetry :exec
 UPDATE msg_dispatch_jobs
    SET attempt_count = attempt_count + 1,
@@ -421,4 +602,110 @@ func (q *Queries) DispatchJobScheduleRetry(ctx context.Context, arg DispatchJobS
 		arg.CreatedAt,
 	)
 	return err
+}
+
+const dispatchJobSettleAcked = `-- name: DispatchJobSettleAcked :many
+UPDATE msg_dispatch_jobs
+   SET status = 'PENDING',
+       scheduled_for = NULL,
+       last_error = $1::text,
+       updated_at = NOW()
+ WHERE id = ANY($2::text[])
+   AND status IN ('QUEUED', 'PROCESSING')
+RETURNING id
+`
+
+type DispatchJobSettleAckedParams struct {
+	Reason string   `db:"reason"`
+	Ids    []string `db:"ids"`
+}
+
+// The router→platform settled-message hook: resets the given ids to
+// PENDING, recording the reason in last_error. Scoped to QUEUED/PROCESSING
+// so a row a concurrent path already advanced (to a terminal status, or
+// already back to PENDING) is left alone — idempotent, so a duplicate hook
+// call is harmless. No created_at is available (the router only knows job
+// ids), so this scans by id across partitions — the same accepted exception
+// the pre-existing operator Requeue-turned-Resend path already relies on.
+func (q *Queries) DispatchJobSettleAcked(ctx context.Context, arg DispatchJobSettleAckedParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, dispatchJobSettleAcked, arg.Reason, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const dispatchJobSweepStrandedSiblings = `-- name: DispatchJobSweepStrandedSiblings :many
+WITH stranded AS (
+    SELECT s.id, s.created_at
+      FROM msg_dispatch_jobs s
+      JOIN msg_dispatch_jobs h
+        ON h.message_group = s.message_group
+       -- Both terminal-failure statuses, matching dispatchjob.GroupHoldingStatusSQL
+       -- exactly. 'ERROR' is the legacy value that predates the current status
+       -- set; the poller still treats it as holding its group, so a sweep that
+       -- recognised only 'FAILED' would leave siblings behind an ERROR head held
+       -- at claim time but never reset here — stranded permanently, which is the
+       -- failure this reaper exists to prevent.
+       AND h.status IN ('FAILED', 'ERROR')
+       AND (h.sequence, h.created_at, h.id) < (s.sequence, s.created_at, s.id)
+     WHERE s.mode = 'BLOCK_ON_ERROR'
+       AND s.message_group IS NOT NULL
+       AND s.status IN ('QUEUED', 'PROCESSING')
+       AND (s.status <> 'PROCESSING' OR s.updated_at < $2::timestamptz)
+)
+UPDATE msg_dispatch_jobs j
+   SET status = 'PENDING',
+       scheduled_for = NULL,
+       last_error = $1::text,
+       updated_at = NOW()
+  FROM stranded st
+ WHERE j.id = st.id AND j.created_at = st.created_at
+RETURNING j.id
+`
+
+type DispatchJobSweepStrandedSiblingsParams struct {
+	Reason     string    `db:"reason"`
+	LiveBefore time.Time `db:"live_before"`
+}
+
+// The reaper backstop (reaper.go): resets to PENDING any QUEUED/PROCESSING
+// job whose message group is headed by a terminally FAILED job under
+// BLOCK_ON_ERROR — i.e. rows the settled-message hook should have caught
+// but didn't (a dropped call, or a router crash between ACK and the hook).
+// A PROCESSING row updated more recently than sqlc.arg('live_before') is
+// presumed to be a genuine in-flight delivery and is left alone; QUEUED
+// rows have no such window (see reaper.go for why). Idempotent — a row
+// already reset by the hook no longer matches status IN (...) and is
+// skipped on the next sweep.
+func (q *Queries) DispatchJobSweepStrandedSiblings(ctx context.Context, arg DispatchJobSweepStrandedSiblingsParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, dispatchJobSweepStrandedSiblings, arg.Reason, arg.LiveBefore)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

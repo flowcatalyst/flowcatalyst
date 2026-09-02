@@ -322,7 +322,10 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			AppDocs: appDocsRepo,
 			Apps:    repos.applicationRepo,
 		})
-		dispatchjobapi.Register(humaAPI, &dispatchjobapi.State{Repo: repos.dispatchJobRepo})
+		// UoW is required by the operator lifecycle actions (A-01):
+		// cancel/complete a FAILED job and resend a group, all of which run
+		// through the use-case envelope rather than a bare UPDATE.
+		dispatchjobapi.Register(humaAPI, &dispatchjobapi.State{Repo: repos.dispatchJobRepo, UoW: uow})
 
 		identityproviderapi.Register(humaAPI, &identityproviderapi.State{
 			Repo:       repos.idpRepo,

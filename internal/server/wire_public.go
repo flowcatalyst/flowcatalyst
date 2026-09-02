@@ -12,6 +12,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	dispatchprocessing "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/processing"
+	dispatchsettled "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/settled"
 	passwordresetapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/passwordreset/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/publicapi"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduler"
@@ -121,6 +122,14 @@ func registerPublicRoutes(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *use
 		dispatchprocessing.New(repos.dispatchJobRepo, scheduler.NewDispatchAuthService(secret)).
 			WithDeliveryCredsResolver(dispatchDeliveryCredsResolver(repos)).
 			Mount(r)
+
+		// POST /api/dispatch/settled — the router→platform settled-message
+		// hook (A-01). Same placement and the same reason as /process above:
+		// outside the bearer middleware, authenticated per job by the
+		// scheduler's HMAC token the router already holds. Without this the
+		// router ACKs a failed group's untried siblings and nothing marks
+		// them, so they strand at QUEUED/PROCESSING forever.
+		dispatchsettled.New(repos.dispatchJobRepo, scheduler.NewDispatchAuthService(secret)).Mount(r)
 	} else {
 		slog.Warn("dispatch-processing callback not mounted: cannot derive dispatch-auth secret", "err", err)
 	}

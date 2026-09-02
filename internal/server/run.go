@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/queue"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/router"
 	routerapi "github.com/flowcatalyst/flowcatalyst-go/internal/router/api"
@@ -111,6 +112,22 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 	var wg sync.WaitGroup
 	if cfg.PlatformEnabled {
 		go StartPurger(ctx, pool)
+
+		// A-01 backstop. The router→platform settled hook
+		// (POST /api/dispatch/settled) is the fast path for marking the
+		// untried siblings a BLOCK_ON_ERROR group leaves behind; this sweep
+		// catches what the hook misses — a dropped call, or a router that
+		// died between the ACK and the callback. Without it those rows sit
+		// at QUEUED/PROCESSING forever, which is the failure A-01 exists to
+		// close, so the hook alone is not sufficient.
+		//
+		// Gated with the purger (platform housekeeping over the platform's
+		// own tables) rather than with the scheduler: the rows are stranded
+		// whether or not this process happens to be the one dispatching.
+		// Not leader-gated — each sweep is a conditional UPDATE guarded on
+		// status IN (QUEUED, PROCESSING), so concurrent instances are safe.
+		go dispatchjob.RunReaper(ctx, dispatchjob.NewRepository(pool),
+			dispatchjob.DefaultReaperInterval, dispatchjob.DefaultProcessingLiveAfter)
 	}
 	if cfg.SchedulerEnabled {
 		wg.Add(1)
@@ -282,6 +299,8 @@ func newRouterServer(cfg EnvCfg, pool *pgxpool.Pool) (*router.Server, error) {
 		ConfigURL:        cfg.RouterConfigURL,
 		NotifyWebhookURL: cfg.RouterNotifyWebhookURL,
 		DrainTimeout:     time.Duration(cfg.RouterDrainTimeoutSec) * time.Second,
+		SynthPoolIdleAge: time.Duration(cfg.RouterSynthPoolIdleSecs) * time.Second,
+		StrictRouting:    cfg.RouterStrictRouting,
 		StandbyEnabled:   cfg.StandbyEnabled,
 		StandbyRedisURL:  cfg.StandbyRedisURL,
 		StandbyLockKey:   cfg.StandbyLockKey,
@@ -302,6 +321,24 @@ func newRouterServer(cfg EnvCfg, pool *pgxpool.Pool) (*router.Server, error) {
 		return nil, err
 	}
 
+	// A-01: report the untried siblings ackBuffered ACKs off the broker when a
+	// BLOCK_ON_ERROR head fails terminally, so the platform can mark the group
+	// pending instead of leaving those job rows stranded at QUEUED/PROCESSING.
+	// Set BEFORE any Reconfigure below, so every pool — configured and
+	// synthesised alike — is built holding it.
+	//
+	// Left nil when no platform URL is configured: that is a standalone router
+	// with nothing to report to, and it must behave exactly as it did before
+	// this feature existed. The platform-side reaper is the backstop in both
+	// cases, so a missing URL degrades the recovery latency (to the reaper's
+	// 2-minute sweep) rather than breaking it.
+	if cfg.RouterPlatformURL != "" {
+		srv.Manager.SetSettledReporter(router.NewHTTPSettledReporter(
+			router.SettledReporterConfig{Endpoint: cfg.RouterPlatformURL},
+		))
+		slog.Info("router: settled-message hook enabled", "platform_url", cfg.RouterPlatformURL)
+	}
+
 	// If no remote config URL was provided, honour the default-broker
 	// switch so dev / single-tenant deployments don't need an HTTP
 	// config service just to spin up one pool.
@@ -314,25 +351,30 @@ func newRouterServer(cfg EnvCfg, pool *pgxpool.Pool) (*router.Server, error) {
 		}
 		def := defaultPostgresRouterConfig(dbURL)
 
-		// Init the queue's tables before Reconfigure spins up consumers
-		// that will try to SELECT from them. The postgres queue backend
-		// exposes InitSchema via the Embedded interface — the factory
-		// returns the same *Queue for Consumer and Publisher, so we
-		// build a transient one here, init, then drop it. The Manager
-		// will then build its own consumer per pool.
+		// Init the queue's tables now, before any Reconfigure spins up
+		// consumers that will try to SELECT from them. This runs on every
+		// replica — leader or standby — since schema creation is
+		// idempotent (IF NOT EXISTS) and cheap, and the tables must exist
+		// by the time whichever replica becomes leader starts polling.
+		// The postgres queue backend exposes InitSchema via the Embedded
+		// interface — the factory returns the same *Queue for Consumer
+		// and Publisher, so we build a transient one here, init, then
+		// drop it. The Manager will then build its own consumer per pool.
 		for _, qc := range def.Queues {
 			if err := initQueueSchema(bootCtx, qc); err != nil {
 				return nil, fmt.Errorf("init queue schema for %q: %w", qc.Name, err)
 			}
 		}
 
-		// bootCtx bounds the queue connect only — the Manager parents its
-		// consumers on its own root, so they outlive this bootstrap context
-		// rather than dying with it.
-		if err := srv.Manager.Reconfigure(bootCtx, def); err != nil {
-			return nil, fmt.Errorf("default broker reconfigure: %w", err)
-		}
-		slog.Info("router: built-in postgres broker active", "pool", "default")
+		// Don't Reconfigure here — that would start consumers polling
+		// immediately, before Server.Run's gateOnLeadership ever runs, so
+		// a standby replica would start pools too (R-34). Stash the
+		// config on the Server instead; Run's startPools closure applies
+		// it — immediately for a non-standby instance, or gated behind
+		// leadership (and re-applied on every regain) when standby is
+		// enabled. See Server.DefaultConfig's doc comment.
+		srv.DefaultConfig = &def
+		slog.Info("router: built-in postgres broker configured", "pool", "default")
 		_ = pool // reserved for future co-tenanted backends
 	}
 	return srv, nil

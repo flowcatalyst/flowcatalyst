@@ -7,13 +7,13 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
 // Repository owns msg_dispatch_jobs (the lean write table) plus the
@@ -422,39 +422,71 @@ func (r *Repository) GroupHeldBefore(ctx context.Context, group string, sequence
 	return held, err
 }
 
-// Requeue resets the given jobs to PENDING for a fresh delivery cycle:
-// clears scheduled_for (immediate eligibility), zeroes attempt_count so a
-// job that had exhausted its retries gets a full budget again, and clears
-// the terminal stamps. Operator action behind POST /bff/dispatch-jobs/requeue.
-//
-// accessibleClientIDs scopes the reset for non-anchor callers: when non-nil,
-// only rows whose client_id is in the set are touched (which also excludes
-// platform-scoped NULL-client jobs — correct, since a non-anchor can't reach
-// them). Pass nil for anchors (no scoping). Returns the rows actually reset.
-func (r *Repository) Requeue(ctx context.Context, ids []string, accessibleClientIDs *[]string) (int64, error) {
+// FindByIDs batch-loads jobs by id from the write table (full envelope,
+// including payload/metadata). Used by the ResendDispatchJobs operation to
+// reload the aggregates it commits via usecaseop.SaveAll. Ids that don't
+// exist are silently omitted — mirrors the pre-envelope bare-UPDATE
+// Requeue's behaviour of no-op'ing on unknown ids.
+func (r *Repository) FindByIDs(ctx context.Context, ids []string) ([]DispatchJob, error) {
 	if len(ids) == 0 {
-		return 0, nil
+		return nil, nil
 	}
-	const base = `UPDATE msg_dispatch_jobs
-		    SET status = 'PENDING',
-		        scheduled_for = NULL,
-		        attempt_count = 0,
-		        completed_at = NULL,
-		        duration_millis = NULL,
-		        last_error = NULL,
-		        updated_at = NOW()
-		  WHERE id = ANY($1)`
-	var tag pgconn.CommandTag
-	var err error
-	if accessibleClientIDs == nil {
-		tag, err = r.pool.Exec(ctx, base, ids)
-	} else {
-		tag, err = r.pool.Exec(ctx, base+` AND client_id = ANY($2)`, ids, *accessibleClientIDs)
-	}
+	rows, err := r.q.DispatchJobFindByIDs(ctx, ids)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return tag.RowsAffected(), nil
+	out := make([]DispatchJob, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, *findByIDsRowToJob(row))
+	}
+	return out, nil
+}
+
+// Persist implements usecasepgx.Persist[DispatchJob] for the human-initiated
+// status overrides that go through the use-case envelope (Cancel / Complete
+// / Resend — see entity.go's package doc and operations/). It only writes
+// the fields those operations ever change (status, attempt_count,
+// scheduled_for, completed_at, duration_millis, last_error, updated_at) —
+// payload/metadata/target_url/etc are write-once at ingest and never
+// revisited here. created_at is carried alongside id for partition pruning,
+// matching every other status-flip query in this file.
+func (r *Repository) Persist(ctx context.Context, j *DispatchJob, tx *usecasepgx.DbTx) error {
+	return r.q.WithTx(tx.Inner()).DispatchJobPersist(ctx, dbq.DispatchJobPersistParams{
+		ID:             j.ID,
+		Status:         string(j.Status),
+		AttemptCount:   j.AttemptCount,
+		ScheduledFor:   j.ScheduledFor,
+		CompletedAt:    j.CompletedAt,
+		DurationMillis: j.DurationMillis,
+		LastError:      j.LastError,
+		UpdatedAt:      time.Now().UTC(),
+		CreatedAt:      j.CreatedAt,
+	})
+}
+
+// Delete satisfies usecasepgx.Persist[DispatchJob], which requires both
+// Persist and Delete. No operation in this module deletes a dispatch job
+// today — Cancel/Complete/Resend all commit via Save/SaveAll, never Delete —
+// so this is currently unreachable through any use case, but it's a real
+// delete (not a stub) in case that changes.
+func (r *Repository) Delete(ctx context.Context, j *DispatchJob, tx *usecasepgx.DbTx) error {
+	return r.q.WithTx(tx.Inner()).DispatchJobDelete(ctx, dbq.DispatchJobDeleteParams{
+		ID: j.ID, CreatedAt: j.CreatedAt,
+	})
+}
+
+// SettleAcked is the router→platform settled-message hook's repo call (see
+// the settled package): resets the given ids to PENDING and records reason
+// in last_error, scoped to QUEUED/PROCESSING so a row a concurrent path
+// already advanced is left alone. Returns the ids actually reset (a subset
+// of ids: some may not exist, or may already be past QUEUED/PROCESSING).
+func (r *Repository) SettleAcked(ctx context.Context, ids []string, reason string) ([]string, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	return r.q.DispatchJobSettleAcked(ctx, dbq.DispatchJobSettleAckedParams{
+		Ids: ids, Reason: reason,
+	})
 }
 
 // RecordAttempt inserts a row into msg_dispatch_job_attempts —
@@ -551,6 +583,13 @@ func findByIDRowToJob(r dbq.DispatchJobFindByIDRow) *DispatchJob {
 		IdempotencyKey: r.IdempotencyKey, CreatedAt: r.CreatedAt,
 		UpdatedAt: r.UpdatedAt,
 	})
+}
+
+// findByIDsRowToJob adapts DispatchJobFindByIDsRow — column-for-column
+// identical to DispatchJobFindByIDRow, but sqlc mints a distinct Go type per
+// query — onto the same rawRow mapper.
+func findByIDsRowToJob(r dbq.DispatchJobFindByIDsRow) *DispatchJob {
+	return findByIDRowToJob(dbq.DispatchJobFindByIDRow(r))
 }
 
 // readRow is the slim msg_dispatch_jobs_read column set scanned by the

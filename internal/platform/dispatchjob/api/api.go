@@ -10,16 +10,23 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
-// State bundles deps.
+// State bundles deps. UoW is required by the Cancel/Complete/Resend
+// use-case-envelope handlers (T3/A-01) — see operations/. The wiring site
+// (internal/server/wire_routes.go, dispatchjobapi.State{...}) must be
+// updated to pass it; see this tranche's report for the exact line.
 type State struct {
 	Repo *dispatchjob.Repository
+	UoW  *usecasepgx.UnitOfWork
 }
 
 const (
@@ -39,6 +46,8 @@ func Register(api huma.API, s *State) {
 	apiroute.Get(g, "getDispatchJobRaw", "/api/dispatch-jobs/{id}/raw", "Get a dispatch job (raw)", s.getRaw)
 	apiroute.Get(g, "listDispatchJobAttempts", "/api/dispatch-jobs/{id}/attempts", "List a dispatch job's attempt history", s.attempts)
 	apiroute.Post(g, "requeueDispatchJobs", "/api/dispatch-jobs/requeue", "Reset dispatch jobs to PENDING for re-dispatch", http.StatusOK, s.requeue)
+	apiroute.Post(g, "cancelDispatchJob", "/api/dispatch-jobs/{id}/cancel", "Cancel a FAILED dispatch job", http.StatusOK, s.cancel)
+	apiroute.Post(g, "completeDispatchJob", "/api/dispatch-jobs/{id}/complete", "Mark a FAILED dispatch job COMPLETED (delivered out of band)", http.StatusOK, s.complete)
 
 	// SDK-compatibility aliases. The Laravel SDK client addresses these as
 	// /api/dispatch-jobs/by-event/{eventId} and the collection-level
@@ -70,6 +79,8 @@ func registerBFF(api huma.API, s *State, base, opPrefix, tag string) {
 	apiroute.Get(g, "getDispatchJobRaw"+opPrefix, base+"/{id}/raw", "Get a dispatch job with raw row", s.getRaw)
 	apiroute.Get(g, "listDispatchJobAttempts"+opPrefix, base+"/{id}/attempts", "List a dispatch job's attempt history", s.attempts)
 	apiroute.Post(g, "requeueDispatchJobs"+opPrefix, base+"/requeue", "Reset dispatch jobs to PENDING for re-dispatch", http.StatusOK, s.requeue)
+	apiroute.Post(g, "cancelDispatchJob"+opPrefix, base+"/{id}/cancel", "Cancel a FAILED dispatch job", http.StatusOK, s.cancel)
+	apiroute.Post(g, "completeDispatchJob"+opPrefix, base+"/{id}/complete", "Mark a FAILED dispatch job COMPLETED (delivered out of band)", http.StatusOK, s.complete)
 }
 
 type listInput struct {
@@ -321,13 +332,16 @@ type RequeueResponse struct {
 
 // requeue resets the given jobs to PENDING so the scheduler re-dispatches
 // them (clears scheduled_for + attempt_count + terminal stamps). An
-// operator recovery action.
+// operator recovery action. Runs through the ResendDispatchJobs use case
+// (T3/A-01) — the route, request/response shape, and permission gate are
+// unchanged from before that migration; only the implementation moved off a
+// bare UPDATE and onto the envelope (see operations/resend.go's doc
+// comment).
 //
 // Gated on the same dispatch-job:view permission as the list: a caller who
-// can see a job may re-drive it. The reset is SQL-scoped to the caller's own
-// tenants for non-anchors (Repo.Requeue drops ids outside AccessibleClientIDs,
-// including platform-scoped NULL-client jobs), so a view grant can't be used
-// to requeue another tenant's jobs.
+// can see a job may re-drive it. Per-tenant scoping (a view grant can't be
+// used to requeue another tenant's jobs) is now enforced inside the use
+// case's Execute, not in SQL here — see ResendDispatchJobs.
 func (s *State) requeue(ctx context.Context, in *apicommon.In[RequeueRequest]) (*apicommon.Out[RequeueResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
@@ -336,16 +350,56 @@ func (s *State) requeue(ctx context.Context, in *apicommon.In[RequeueRequest]) (
 	if len(in.Body.IDs) == 0 {
 		return &apicommon.Out[RequeueResponse]{Body: RequeueResponse{Requeued: 0}}, nil
 	}
-	var scope *[]string
-	if !ac.IsAnchor() {
-		clients := ac.Clients
-		scope = &clients
-	}
-	n, err := s.Repo.Requeue(ctx, in.Body.IDs, scope)
+	ec := auth.NewExecutionContext(ctx)
+	event, err := usecaseop.Run(ctx, s.UoW, operations.ResendDispatchJobs(s.Repo), operations.ResendCommand{IDs: in.Body.IDs}, ec)
 	if err != nil {
-		return nil, usecase.Internal("REPO", "requeue failed", err)
+		return nil, err
 	}
-	return &apicommon.Out[RequeueResponse]{Body: RequeueResponse{Requeued: n}}, nil
+	return &apicommon.Out[RequeueResponse]{Body: RequeueResponse{Requeued: int64(len(event.IDs))}}, nil
+}
+
+// cancel overrides a FAILED job to CANCELLED. Gated on the same
+// dispatch-job:view permission as requeue (a caller who can see a job may
+// resolve it); per-resource client scope is enforced inside the use case.
+// Returns the updated job so the SPA can refresh its row without a second
+// GET.
+func (s *State) cancel(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[DispatchJobResponse], error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
+		return nil, err
+	}
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.CancelDispatchJob(s.Repo), operations.CancelCommand{ID: in.ID}, ec); err != nil {
+		return nil, err
+	}
+	return s.reload(ctx, in.ID)
+}
+
+// complete overrides a FAILED job to COMPLETED (delivered out of band).
+// Same gating and reload shape as cancel.
+func (s *State) complete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[DispatchJobResponse], error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
+		return nil, err
+	}
+	ec := auth.NewExecutionContext(ctx)
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.CompleteDispatchJob(s.Repo), operations.CompleteCommand{ID: in.ID}, ec); err != nil {
+		return nil, err
+	}
+	return s.reload(ctx, in.ID)
+}
+
+// reload re-fetches a job so cancel/complete can return the updated
+// DispatchJobResponse.
+func (s *State) reload(ctx context.Context, id string) (*apicommon.Out[DispatchJobResponse], error) {
+	j, err := s.Repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
+	}
+	if j == nil {
+		return nil, httperror.NotFound("DispatchJob", id)
+	}
+	return &apicommon.Out[DispatchJobResponse]{Body: fromEntity(j)}, nil
 }
 
 func (s *State) filterOptions(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[DispatchJobFilterOptionsResponse], error) {
