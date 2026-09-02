@@ -10,7 +10,7 @@ import (
 
 // PostgresStore appends one row per attempt to iam_rate_limit_events and
 // counts rows in the window. The combined insert+count runs in a single
-// CTE so the read sees its own write — no race between replicas both
+// statement so the read sees its own write — no race between replicas both
 // inserting, both counting "below limit", and both letting the request
 // through.
 type PostgresStore struct {
@@ -27,15 +27,27 @@ func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore {
 func (s *PostgresStore) CheckAndRecord(ctx context.Context, bucket Bucket, key string, policy Policy) (Decision, error) {
 	windowStart := time.Now().UTC().Add(-policy.Window)
 
+	// The INSERT and the count SELECT are sibling statements under one
+	// WITH, which per Postgres's documented behaviour for data-modifying
+	// CTEs run against the SAME snapshot — the outer SELECT cannot see the
+	// row "ins" just inserted, referenced or not. A plain
+	// `SELECT COUNT(*) FROM iam_rate_limit_events WHERE ...` here would
+	// silently undercount by exactly the row this call itself just wrote,
+	// letting one extra request past the limit every single time (caught by
+	// TestPostgresStoreCheckAndRecordCountsWithinWindow: the 3rd of a
+	// Limit=2 policy was wrongly allowed). RETURNING + `+ (SELECT COUNT(*)
+	// FROM ins)` adds that one row back in explicitly rather than relying on
+	// snapshot visibility.
 	var count int64
 	err := s.pool.QueryRow(ctx,
 		`WITH ins AS (
 			INSERT INTO iam_rate_limit_events (bucket, key, occurred_at)
 			VALUES ($1, $2, NOW())
-			RETURNING 1
+			RETURNING occurred_at
 		)
-		SELECT COUNT(*) FROM iam_rate_limit_events
-		WHERE bucket = $1 AND key = $2 AND occurred_at > $3`,
+		SELECT (SELECT COUNT(*) FROM iam_rate_limit_events
+		         WHERE bucket = $1 AND key = $2 AND occurred_at > $3)
+		     + (SELECT COUNT(*) FROM ins)`,
 		string(bucket), key, windowStart).Scan(&count)
 	if err != nil {
 		return Decision{}, fmt.Errorf("rate-limit count: %w", err)
