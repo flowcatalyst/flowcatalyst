@@ -135,6 +135,36 @@ shape.
    finish §4 items, run the conformance corpus + a strict-routing parity soak
    (Rust router shadowing or replacing per environment), then retire the Go router.
    Never swap platform and router in the same step.
+### 5a. Router staging soak (owner decision 2026-09-03: run Rust in staging before switching)
+
+**Expected divergence — do not file as a bug:** until the settled endpoint exists in the
+target platform's deployment AND the Rust router gains its settled client, a terminally
+failed `BLOCK_ON_ERROR` head makes the Rust router **cascade-NACK** the untried siblings
+(they redeliver on broker timing — churn, no loss), where Go ACKs them and reports to
+`/api/dispatch/settled`. Ledger A-01 forbids Rust shipping the ACK branch before the
+platform half; siblings behind a FAILED head redelivering repeatedly in staging is this,
+working as designed.
+
+**Soak entry criteria:** operator-parity lane landed (in-flight/force-ack, blocked-groups,
+group-flushes, breaker reset, dashboard tabs); conformance corpus green in CI;
+`FC_ROUTER_STRICT_ROUTING` OFF (parity posture; flip only as its own experiment).
+
+**Signals to compare against Go over the soak window:**
+- Disposition mix per pool (ack-success / ack-failure / release / retry) — same traffic,
+  same proportions; any skew is a classification divergence.
+- Warning stream by category/severity — new categories firing that Go never fired (or
+  vice versa) are the drift detector.
+- Breaker open/close episodes per endpoint — count and duration should track Go's.
+- Redelivery rate per queue (broker metrics) — expect the BLOCK_ON_ERROR delta above,
+  nothing else.
+- One induced drain: park a few thousand messages, kill/restart the router mid-drain,
+  verify detach/finish + release-remainder behaviour and the drain-rate SLO.
+- Leadership flap drill: force loss→regain, confirm polling pauses/resumes and nothing
+  in flight is aborted (the class of last week's Go incident).
+
+**Exit criteria:** the corpus green against the staged binary, the six signals within
+tolerance for the agreed window, and one clean induced-drain + leadership drill.
+
 5. **Throughput SLO** (reframed by owner): not "30k msg/s" but **"a 1M-message backlog
    drains in under N minutes without degrading live traffic."** The levers live in the
    ingest write path (batching/COPY, partition pruning, payload-by-reference, S3
