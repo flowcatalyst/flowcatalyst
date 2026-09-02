@@ -121,14 +121,14 @@ func TestGuardrail_ResolutionOnSuccess(t *testing.T) {
 	}
 }
 
-// TestGuardrail_DiscardOn500 — a plain 500 that survived the mediator's bounded
-// burst (deliverWithRetry) is the app rejecting this message, not the app being
-// unavailable. Retrying it unchanged would loop forever, so it is ACKed away and
-// can be re-sent once whatever is wrong is resolved.
+// TestGuardrail_DiscardOn500 — a plain 500 is the app rejecting this message,
+// not the app being unavailable. Under the R-57 boundary the mediator
+// classifies every 5xx other than 502/503/504 as ErrorConfig (permanent,
+// single attempt, no burst), so it is ACKed away and can be re-sent once
+// whatever is wrong is resolved.
 func TestGuardrail_DiscardOn500(t *testing.T) {
 	c := &grConsumer{id: "q1"}
-	out := common.ErrorProcess(30, "HTTP 500: Server error")
-	out.StatusCode = http.StatusInternalServerError
+	out := common.ErrorConfig(http.StatusInternalServerError, "HTTP 500: Server error")
 	p := grPool(&grMediator{outcome: out}, c)
 
 	res, _ := p.processOne(context.Background(), grMsg("evt_500", "http://t/500"))

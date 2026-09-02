@@ -89,17 +89,17 @@ func TestMediatorBadRequestIsConfigError(t *testing.T) {
 	assert.Equal(t, 400, out.StatusCode)
 }
 
-// TestMediatorNotImplementedIsConfigError pins 501 as the deliberate exception
-// among the 5xx codes. The others classify as ErrorProcess, which the pool then
-// either discards (500) or releases to the broker to retry until the target
-// recovers (502/503/504). 501 means the app WAS reached and does not implement
-// this endpoint — retrying cannot start working — so it classifies as
-// ErrorConfig and is ACKed away like a 4xx.
+// TestMediatorNotImplementedIsConfigError pins 501 alongside 500/505/... as
+// ErrorConfig (permanent ACK-drop): only 502/503/504 and a transport failure
+// mean "target unavailable" and go back to the broker on ErrorProcess. 501
+// means the app WAS reached and does not implement this endpoint — retrying
+// cannot start working — so it classifies as ErrorConfig and is ACKed away
+// like a 4xx, same as any other non-502/503/504 5xx.
 //
 // This asserts the CLASSIFICATION, which the pool-level guardrail can't: that
-// test supplies the outcome directly, so folding 501 into the generic 5xx branch
-// here would leave a permanently-failing message cycling forever and no test
-// would notice.
+// test supplies the outcome directly, so folding 501 into the 502/503/504
+// branch here would leave a permanently-failing message cycling forever and
+// no test would notice.
 func TestMediatorNotImplementedIsConfigError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotImplemented)
@@ -130,11 +130,14 @@ func TestMediatorRateLimitedReadsRetryAfter(t *testing.T) {
 	assert.Equal(t, 120, out.DelaySeconds)
 }
 
+// TestMediatorServerErrorRetries pins 503 ("target unavailable") as the
+// retryable class: the burst runs to MaxRetries before the outcome is
+// returned to the pool for a broker-level release-with-backoff.
 func TestMediatorServerErrorRetries(t *testing.T) {
 	attempts := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		attempts++
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
 	defer srv.Close()
 
@@ -148,7 +151,35 @@ func TestMediatorServerErrorRetries(t *testing.T) {
 		&common.Message{ID: "m", MediationType: common.MediationTypeHTTP, MediationTarget: srv.URL},
 	)
 	assert.Equal(t, common.MediationErrorProcess, out.Result)
+	assert.Equal(t, 503, out.StatusCode)
 	assert.Equal(t, 3, attempts, "MaxRetries=3 → 3 total attempts")
+}
+
+// TestMediatorPlainServerErrorIsPermanent pins 500 as a permanent ACK-drop,
+// not a retry: the app was reached and threw, so retrying the same message
+// unchanged cannot help. Only 502/503/504 and a transport failure mean
+// "target unavailable" — see TestMediatorServerErrorRetries and
+// TestServerErrorClassificationBoundary.
+func TestMediatorPlainServerErrorIsPermanent(t *testing.T) {
+	attempts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	cfg := router.DevMediatorConfig()
+	cfg.MaxRetries = 3
+	cfg.RetryDelays = []time.Duration{1 * time.Millisecond, 1 * time.Millisecond}
+
+	out := router.NewHTTPMediator(cfg, router.NewBreakerRegistry(router.DefaultBreakerConfig())).Mediate(
+		context.Background(),
+		&common.Message{ID: "m", MediationType: common.MediationTypeHTTP, MediationTarget: srv.URL},
+	)
+	assert.Equal(t, common.MediationErrorConfig, out.Result,
+		"500 must be terminal (ErrorConfig): the app ran and answered, so retrying it can never succeed")
+	assert.Equal(t, 500, out.StatusCode)
+	assert.Equal(t, 1, attempts, "a permanent rejection must not retry in-pipeline")
 }
 
 // TestMediatorHTTP2_StrictMaxConcurrentStreams smoke-tests the

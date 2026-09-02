@@ -2,10 +2,13 @@ package router_test
 
 import (
 	"context"
+	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -185,4 +188,198 @@ func TestPreFlightRejectionsLeaveTheBreakerAlone(t *testing.T) {
 				"a call that never happened must not be recorded either way; got %+v", st)
 		})
 	}
+}
+
+// TestBreakerKeyIgnoresQueryAndFragment pins the circuit-breaker key to
+// origin+path: two targets on the same endpoint that differ only by query
+// string or fragment must share one breaker, so a genuinely dead endpoint
+// accumulates its failures on a single key instead of starting a fresh
+// window per distinct query string. A different path is a different
+// breaker — the key must not over-collapse either.
+func TestBreakerKeyIgnoresQueryAndFragment(t *testing.T) {
+	med, breakers, _ := mediatorFor(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	targets := []string{
+		srv.URL + "/hook?tenant=alpha",
+		srv.URL + "/hook?tenant=beta&other=1",
+		srv.URL + "/hook#section",
+		srv.URL + "/hook",
+	}
+	for _, target := range targets {
+		out := med.Mediate(context.Background(), httpMsg(target))
+		require.Equal(t, common.MediationSuccess, out.Result)
+	}
+
+	assert.Equal(t, 1, breakers.Len(),
+		"distinct query strings/fragments on the same origin+path must share one breaker")
+	cb := breakers.Get(srv.URL + "/hook")
+	assert.Equal(t, uint64(len(targets)), cb.Stats().Successes,
+		"all deliveries must have landed on the same breaker key")
+
+	// Negative control: a different path must NOT collapse into the same key.
+	other := srv.URL + "/other"
+	out := med.Mediate(context.Background(), httpMsg(other))
+	require.Equal(t, common.MediationSuccess, out.Result)
+	assert.Equal(t, 2, breakers.Len(), "a different path must get its own breaker")
+}
+
+// TestBreakerKeyFallsBackOnUnparseableTarget pins the fallback: a target
+// string that url.Parse rejects outright keys the breaker by the raw string,
+// same as before this change, rather than panicking or collapsing onto some
+// other key.
+//
+// This target fails even earlier than HostKeyFromURL: http.NewRequestWithContext
+// parses the URL itself and errors on the bad percent-encoding, so the
+// outcome comes from the "build request" pre-flight path — see
+// TestUnparseableTargetWarnsLikeAnyOtherPreFlightRejection for the
+// classification/warning pin on that path.
+func TestBreakerKeyFallsBackOnUnparseableTarget(t *testing.T) {
+	med, breakers, _ := mediatorFor(t)
+	// Invalid percent-encoding: net/url.Parse errors on this outright.
+	target := "http://target.invalid/%zz"
+
+	out := med.Mediate(context.Background(), httpMsg(target))
+	require.Equal(t, common.MediationErrorConfig, out.Result, "an unparseable target is rejected pre-flight, permanently")
+	require.True(t, out.PreFlight)
+
+	assert.Equal(t, 1, breakers.Len())
+	// Re-Get with the exact same raw string must hit the same entry (not
+	// create a second one), proving the fallback key is the raw string.
+	_ = breakers.Get(target)
+	assert.Equal(t, 1, breakers.Len(), "fallback key must be the raw target string")
+}
+
+// TestUnparseableTargetWarnsLikeAnyOtherPreFlightRejection pins R-06 for the
+// "build request" pre-flight path specifically: an outright-unparseable
+// target string (distinct from "parses fine but has no host", which
+// TestPreFlightRejectionsLeaveTheBreakerAlone already covers) must still
+// warn and must still leave the breaker untouched.
+func TestUnparseableTargetWarnsLikeAnyOtherPreFlightRejection(t *testing.T) {
+	med, breakers, ws := mediatorFor(t)
+	target := "http://target.invalid/%zz"
+
+	out := med.Mediate(context.Background(), httpMsg(target))
+
+	require.Equal(t, common.MediationErrorConfig, out.Result)
+	assert.True(t, out.PreFlight, "the outcome must record that no call was made")
+	assert.NotEmpty(t, ws.BySeverity(router.WarningError),
+		"an unparseable target is a configuration mistake an operator can fix")
+
+	st := breakers.Get(target).Stats()
+	assert.Zerof(t, st.Successes+st.Failures,
+		"a call that never happened must not be recorded either way; got %+v", st)
+}
+
+// TestServerErrorClassificationBoundary pins the R-57 boundary: 502/503/504
+// mean "target unavailable" (never reached a working app) and are held at
+// the broker with backoff; every OTHER 5xx means the app was reached and
+// answered, and is a permanent ACK-drop with the same warning treatment as a
+// 4xx. 501 keeps its pre-existing CRITICAL-severity permanent classification
+// unchanged (see TestMediatorNotImplementedIsConfigError for that pin).
+func TestServerErrorClassificationBoundary(t *testing.T) {
+	cases := []struct {
+		status        int
+		wantRetryable bool // true: MediationErrorProcess, held/retried. false: MediationErrorConfig, permanent.
+	}{
+		{499, false}, // non-standard "client closed request"; already 4xx-range, sanity check
+		{500, false}, // app ran and threw
+		{501, false}, // app reached, endpoint not implemented (pre-existing, unchanged)
+		{502, true},  // bad gateway — never reached a working app
+		{503, true},  // service unavailable — never reached a working app
+		{504, true},  // gateway timeout — never reached a working app
+		{505, false}, // HTTP version not supported — app answered
+	}
+
+	for _, tc := range cases {
+		t.Run(fmt.Sprintf("status_%d", tc.status), func(t *testing.T) {
+			var attempts atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				attempts.Add(1)
+				w.WriteHeader(tc.status)
+			}))
+			defer srv.Close()
+
+			cfg := router.DevMediatorConfig()
+			cfg.MaxRetries = 2
+			cfg.RetryDelays = []time.Duration{1 * time.Millisecond}
+			breakers := router.NewBreakerRegistry(router.DefaultBreakerConfig())
+			ws := router.NewWarningService(router.DefaultWarningServiceConfig())
+			med := router.NewHTTPMediator(cfg, breakers)
+			med.SetWarnings(ws)
+			t.Cleanup(med.Close)
+
+			out := med.Mediate(context.Background(), httpMsg(srv.URL))
+
+			assert.Equal(t, tc.status, out.StatusCode)
+			st := breakers.Get(srv.URL).Stats()
+			if tc.wantRetryable {
+				assert.Equal(t, common.MediationErrorProcess, out.Result)
+				assert.Equal(t, int32(2), attempts.Load(),
+					"target-unavailable class must run the retry burst (MaxRetries=2)")
+				assert.Equal(t, uint64(1), st.Failures, "unavailable class must count as a breaker failure")
+				assert.Zero(t, st.Successes)
+			} else {
+				assert.Equal(t, common.MediationErrorConfig, out.Result)
+				assert.Equal(t, int32(1), attempts.Load(),
+					"a permanent rejection must not retry in-pipeline")
+				assert.Equal(t, uint64(1), st.Successes,
+					"the app answered, so it is reachable — must count as a breaker success")
+				assert.Zero(t, st.Failures)
+				// 501 is the pre-existing deliberate exception: it warns at
+				// CRITICAL (a deployment/routing mistake), not ERROR like
+				// every other permanent 5xx.
+				severity := router.WarningError
+				if tc.status == 501 {
+					severity = router.WarningCritical
+				}
+				assert.NotEmptyf(t, ws.BySeverity(severity),
+					"a permanent 5xx drop must warn (severity %v)", severity)
+			}
+		})
+	}
+}
+
+// TestMediatorTransportFailureRetries pins the transport-failure leg of the
+// R-57 "target unavailable" class alongside 502/503/504: a connection that
+// accepts and then drops (no HTTP response at all) must retry the burst,
+// just like a gateway error, and record a breaker failure — never a
+// success, since no application ever answered.
+func TestMediatorTransportFailureRetries(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer ln.Close()
+
+	var accepts atomic.Int32
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			accepts.Add(1)
+			_ = conn.Close() // drop it: no HTTP response ever sent
+		}
+	}()
+
+	cfg := router.DevMediatorConfig()
+	cfg.MaxRetries = 2
+	cfg.RetryDelays = []time.Duration{1 * time.Millisecond}
+	breakers := router.NewBreakerRegistry(router.DefaultBreakerConfig())
+	med := router.NewHTTPMediator(cfg, breakers)
+	t.Cleanup(med.Close)
+
+	target := "http://" + ln.Addr().String() + "/hook"
+	out := med.Mediate(context.Background(), httpMsg(target))
+
+	assert.Equal(t, common.MediationErrorConnection, out.Result)
+	assert.GreaterOrEqualf(t, accepts.Load(), int32(2),
+		"transport failure must run the retry burst (MaxRetries=2), got %d attempts", accepts.Load())
+
+	st := breakers.Get(target).Stats()
+	assert.Equal(t, uint64(1), st.Failures, "transport failure must count as a breaker failure")
+	assert.Zero(t, st.Successes)
 }

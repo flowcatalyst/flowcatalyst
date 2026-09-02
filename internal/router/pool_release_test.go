@@ -35,6 +35,14 @@ func unreachable(status int) *common.MediationOutcome {
 	return &out
 }
 
+// rejected mirrors the mediator's R-57 classification for a 5xx that is not
+// 502/503/504: the app ran and answered, so the outcome is ErrorConfig —
+// permanent, ACKed away, terminal FAILURE for its group.
+func rejected(status int) *common.MediationOutcome {
+	out := common.ErrorConfig(status, "rejected")
+	return &out
+}
+
 // TestPoolReleasesWholeGroupOnUnreachableTarget is the core of the release rule:
 // when the head of an ordered group can't reach a working app, the head AND
 // every message buffered behind it go back to the broker.
@@ -78,7 +86,7 @@ func TestPoolReleasesWholeGroupOnUnreachableTarget(t *testing.T) {
 // successors still deliver, in order.
 func TestPoolDiscardsOn500AndContinuesUnderNextOnError(t *testing.T) {
 	cons := &cascadeConsumer{wantTotal: 3, done: make(chan struct{})}
-	med := &cascadeMediator{failID: "m1", failWith: unreachable(http.StatusInternalServerError)}
+	med := &cascadeMediator{failID: "m1", failWith: rejected(http.StatusInternalServerError)}
 	pool := newCascadePool(med, func(string) queue.Consumer { return cons })
 
 	submitBatch(context.Background(), pool, []common.QueuedMessage{
@@ -119,7 +127,7 @@ func TestPoolDiscardsOn500AndContinuesUnderNextOnError(t *testing.T) {
 // differ only in what a terminal failure does to the rest of the group.
 func TestPoolDiscardsOn500AndStopsUnderBlockOnError(t *testing.T) {
 	cons := &cascadeConsumer{wantTotal: 3, done: make(chan struct{})}
-	med := &cascadeMediator{failID: "m1", failWith: unreachable(http.StatusInternalServerError)}
+	med := &cascadeMediator{failID: "m1", failWith: rejected(http.StatusInternalServerError)}
 	pool := newCascadePool(med, func(string) queue.Consumer { return cons })
 
 	submitBatch(context.Background(), pool, []common.QueuedMessage{

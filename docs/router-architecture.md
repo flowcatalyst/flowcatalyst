@@ -89,9 +89,9 @@ This table is the router's operational contract.
 | `3xx` | ack | Redirect **not followed**, and permanent: the target reproduces it every time. Following it is not the alternative — 301/302/303 downgrade POST to GET and drop the body, so the redirect target would receive nothing and the router would record a success. |
 | `2xx` + `ack:false` | retry in place | Target is healthy and deferring deliberately. Own curve, 5s→60s. |
 | `4xx` | ack | Client error; retrying cannot change the answer. |
-| `500` | ack | **After the burst.** The app ran the request and threw, so the fault is likely the message. Re-send once resolved. |
-| `501` | ack | The deliberate 5xx exception — app reached, endpoint not implemented. |
-| `502` `503` `504` | **release group** | Never reached a working app. Nothing about the message is wrong. |
+| `500`, `505`+ (any 5xx not below) | ack | **Single attempt, no burst** (R-57). The app ran the request and answered, so retrying the same message unchanged cannot help; a CONFIGURATION warning is the deleted message's trace. Re-send once resolved. |
+| `501` | ack | Same family — app reached, endpoint not implemented (CRITICAL warning). |
+| `502` `503` `504` | **release group** | Never reached a working app (delivered with the bounded burst first). Nothing about the message is wrong. |
 | transport / timeout | **release group** | Same class as a gateway error. |
 | circuit open | **release group** | No delivery attempted. Must match the transport path, or the group is pinned in memory on redelivery. |
 | `429` | retry in place | Target answered, so it is reachable. Honours `Retry-After`. |

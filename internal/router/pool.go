@@ -3,7 +3,6 @@ package router
 import (
 	"context"
 	"log/slog"
-	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -1072,24 +1071,13 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 		return processDiscarded, 0
 
 	case common.MediationErrorProcess:
-		// 5xx. The mediator has already exhausted its bounded burst
-		// (deliverWithRetry: MaxRetries total attempts with RetryDelays between),
-		// so this is the verdict AFTER retrying, not a first response.
-		//
-		// A plain 500 means the app ran the request and threw. Most frameworks
-		// emit 500 for any unhandled exception, which is why it gets the burst
-		// first — a database blip or lock timeout succeeds on the second attempt.
-		// Surviving the burst means the fault is more likely the message itself,
-		// so it is discarded rather than retried forever; it can be re-sent once
-		// whatever is wrong is resolved.
-		//
-		// 502/503/504 (and any other 5xx) mean we never reached a working app.
-		// Nothing about the message is wrong, so it goes back to the broker.
-		if outcome.StatusCode == http.StatusInternalServerError {
-			p.metrics.RecordFailure(durationMs)
-			p.ackTracked(ctx, qm)
-			return processDiscarded, 0
-		}
+		// 502/503/504 or a transport-level fault: we never reached a working
+		// app (R-57 boundary — every other 5xx means the app ran and answered,
+		// and the mediator classifies it MediationErrorConfig, the permanent
+		// ACK-drop handled above). The mediator has already exhausted its
+		// bounded burst (deliverWithRetry: MaxRetries total attempts), so this
+		// is the verdict AFTER retrying. Nothing about the message is wrong,
+		// so it goes back to the broker.
 		p.metrics.RecordTransient(durationMs)
 		return processRelease, 0
 

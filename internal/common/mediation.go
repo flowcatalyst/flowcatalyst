@@ -9,7 +9,10 @@ const (
 	MediationSuccess MediationResult = iota
 	// MediationErrorConfig is a 4xx — ACK to prevent infinite retries.
 	MediationErrorConfig
-	// MediationErrorProcess is a 5xx or timeout — NACK for retry.
+	// MediationErrorProcess is a 502/503/504 ("target unavailable") or a
+	// transport-level timeout — NACK for retry. Every other 5xx means the
+	// app was reached and answered, and classifies as MediationErrorConfig
+	// instead (permanent, like a 4xx).
 	MediationErrorProcess
 	// MediationErrorConnection is a connection failure — NACK for retry.
 	MediationErrorConnection
@@ -82,7 +85,9 @@ func PreFlightError(msg string) MediationOutcome {
 	}
 }
 
-// ErrorProcess builds a 5xx/timeout outcome with optional retry delay.
+// ErrorProcess builds a 502/503/504-or-timeout ("target unavailable")
+// outcome with optional retry delay. Every other 5xx is ErrorConfig instead
+// — see MediationErrorProcess.
 func ErrorProcess(delaySec int, msg string) MediationOutcome {
 	return MediationOutcome{
 		Result: MediationErrorProcess, DelaySeconds: delaySec, ErrorMessage: msg,

@@ -17,6 +17,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -235,13 +236,35 @@ func signWebhook(payload []byte, signingSecret string) (sigHex, ts string) {
 	return hex.EncodeToString(mac.Sum(nil)), ts
 }
 
+// breakerKey derives the circuit-breaker key from a mediation target:
+// scheme://host[:port]/path — the query string and fragment stripped.
+// Keying by the raw target URL let two requests to the same endpoint that
+// differ only in query string (e.g. a per-tenant query param) trip
+// independent breakers, so a genuinely dead endpoint never accumulated
+// enough failures against any single key to open.
+//
+// An unparseable target falls back to the raw string: Get still returns *a*
+// breaker (consistent with today's behaviour), and a target that fails to
+// parse is rejected pre-flight in mediateOnce before any outcome is ever
+// recorded against it.
+func breakerKey(target string) string {
+	u, err := url.Parse(target)
+	if err != nil {
+		return target
+	}
+	u.RawQuery = ""
+	u.Fragment = ""
+	u.RawFragment = ""
+	return u.String()
+}
+
 // Mediate consults the per-endpoint circuit breaker, delivers with retry, and
 // records the breaker outcome in ONE place. Centralising the success/failure
 // recording here (rather than per-outcome in the pool) removes the class of bug
 // where a single switch arm forgets to record. An open breaker short-circuits:
 // no HTTP is attempted and a circuit-open outcome is returned for the pool to DEFER.
 func (m *HTTPMediator) Mediate(ctx context.Context, msg *common.Message) common.MediationOutcome {
-	cb := m.breakers.Get(msg.MediationTarget)
+	cb := m.breakers.Get(breakerKey(msg.MediationTarget))
 	if err := cb.Allow(); err != nil {
 		return common.CircuitOpen(int(cb.ResetTimeout().Seconds()))
 	}
@@ -324,12 +347,17 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, msg.MediationTarget, bytes.NewReader(payload))
 	if err != nil {
-		// Nothing was sent, so the breaker learns nothing here either — the
-		// classification stays a connection error, but it must not be counted
-		// as a failure against a target we never contacted.
-		out := common.ErrorConnection(fmt.Sprintf("build request: %v", err))
-		out.PreFlight = true
-		return out
+		// http.NewRequestWithContext parses the target URL itself and fails
+		// here for a target string that is unparseable outright (invalid
+		// percent-encoding, invalid control characters, ...) — a stricter
+		// rejection than HostKeyFromURL's "parses fine but has no host"
+		// below. Same class as that one: a configuration mistake an
+		// operator can fix, permanent (retrying an unparseable string
+		// cannot make it parse), and no call was ever made so the breaker
+		// must not be touched either way.
+		reason := fmt.Sprintf("invalid mediation target URL: %v", err)
+		m.warnConfig(WarningError, reason, msg)
+		return common.PreFlightError(reason)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
@@ -451,6 +479,17 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 		m.warnConfig(WarningCritical, "HTTP 501: Not implemented", msg)
 		return common.ErrorConfig(status, "HTTP 501: Not implemented")
 
+	case status == 502 || status == 503 || status == 504:
+		// "Target unavailable": never reached a working app — a dead gateway,
+		// an overloaded backend, an upstream timeout. Nothing about the
+		// message is wrong, so hold at the broker with backoff (ErrorProcess,
+		// the retryable path) rather than dropping it. Same class as a
+		// transport failure (see the connection-error branch above).
+		slog.Warn("server error from target", "message_id", msg.ID, "status", status, "target", msg.MediationTarget)
+		out := common.ErrorProcess(30, fmt.Sprintf("HTTP %d: Server error", status))
+		out.StatusCode = status
+		return out
+
 	case status >= 400 && status < 500:
 		// Every 4xx is a permanent ACK-drop, so every 4xx must warn — the
 		// warning is the deleted message's only trace. Naming 400/401/403/404
@@ -461,10 +500,14 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 		return common.ErrorConfig(status, reason)
 
 	case status >= 500:
-		slog.Warn("server error from target", "message_id", msg.ID, "status", status, "target", msg.MediationTarget)
-		out := common.ErrorProcess(30, fmt.Sprintf("HTTP %d: Server error", status))
-		out.StatusCode = status
-		return out
+		// Every 5xx OTHER than 501/502/503/504 (500, 505, 506, ...): the app
+		// was reached and answered — with a fault, but it ran — so retrying
+		// the same message unchanged cannot help. Permanent ACK-drop like a
+		// 4xx, with the same warning treatment 4xx gets: the warning is the
+		// deleted message's only trace.
+		reason := fmt.Sprintf("HTTP %d: Server error", status)
+		m.warnConfig(WarningError, reason, msg)
+		return common.ErrorConfig(status, reason)
 
 	default:
 		slog.Warn("unexpected status from target", "message_id", msg.ID, "status", status)
