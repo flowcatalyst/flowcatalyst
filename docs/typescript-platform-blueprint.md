@@ -106,7 +106,12 @@ already consumes; the seam is HTTP (config poll, delivery, `/api/dispatch/proces
 `/api/dispatch/settled`) plus those tables, and it is already proven in production
 shape.
 
-**Router completion work before it replaces Go's** (small, listed):
+**Router completion work before it replaces Go's** — STATUS 2026-09-03: items 2–5
+DONE (operator-surface parity incl. mediating/in-flight/force-ack/blocked-groups/
+group-flushes + dashboard tabs, api module split, breaker recording centralised in the
+mediator, per-client fallback pools with idle eviction). Remaining: item 1 (settled
+client + ACK branch, gated on the TS platform) and item 6 (inert force-NACK key fix).
+Original list:
 1. `/api/dispatch/settled` client + the A-01 ACK-siblings branch — becomes shippable
    only once the TS platform implements the settled endpoint + reaper (ledger A-01
    forbids shipping it earlier; Go's implementation is the reference).
@@ -115,7 +120,7 @@ shape.
 3. Split `api/mod.rs` (2.7k lines); wire blocked-groups/flush monitoring endpoints to
    the now-public registry accessors.
 4. Non-blocking `update_concurrency` shrink (admission-only convergence, X-11).
-5. R-59 per-client fallback-pool synthesis + idle eviction — **owner decision pending**
+5. R-59 per-client fallback-pool synthesis + idle eviction — **DONE (ruled ADD, c020f444)**
    (add for Go parity/noisy-neighbour isolation, or skip).
 6. Latent (inert) fix: stall force-NACK `in_pipeline` key mismatch (ledger addendum).
 
