@@ -143,6 +143,32 @@ type StreamHealthProvider interface {
 	IsReady() bool
 }
 
+// BlockedGroupsProvider exposes every live message group each pool this
+// Manager is tracking is currently holding — including a pool still
+// draining after removal (X-11; see Manager.AllPools) — for the R-04
+// operator "blocked groups" view.
+type BlockedGroupsProvider interface {
+	BlockedGroups() []router.GroupInfo
+}
+
+// GroupFlushProvider exposes R-52/R-53 group-flush suppression state: a
+// snapshot per pool this Manager is tracking (active suppressions + lifetime
+// counters), and the operator override to lift one suppression early.
+type GroupFlushProvider interface {
+	GroupFlushSnapshots() []GroupFlushSnapshot
+	ClearGroupFlush(poolCode, group string) bool
+}
+
+// GroupFlushSnapshot is one pool's group-flush state, as GroupFlushProvider
+// reports it — reshaped into GroupFlushPoolInfo for the wire.
+type GroupFlushSnapshot struct {
+	PoolCode        string
+	ActiveCount     int
+	TotalFlushes    uint64
+	TotalSuppressed uint64
+	Groups          []router.GroupSuppression
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // State — bundles every dependency the handlers need.
 // ─────────────────────────────────────────────────────────────────────
@@ -151,21 +177,23 @@ type StreamHealthProvider interface {
 // Warnings/Health is optional; handlers gracefully degrade when a
 // provider is nil (return 503 or an empty payload).
 type State struct {
-	Warnings     *router.WarningService
-	Health       *router.HealthService
-	PoolStats    PoolStatsProvider
-	OpenCount    CircuitBreakerOpenCounter
-	Breakers     BreakerSnapshotProvider
-	InFlight     InFlightSnapshotProvider
-	InFlightAck  InFlightAcker
-	Mediating    MediatingProvider
-	BrokerStats  BrokerStatsProvider
-	PoolUpdater  PoolUpdater
-	Publisher    PublisherProvider
-	Leader       LeaderInfo
-	Reloader     ConfigReloader
-	Traffic      TrafficStatusProvider
-	StreamHealth StreamHealthProvider
+	Warnings      *router.WarningService
+	Health        *router.HealthService
+	PoolStats     PoolStatsProvider
+	OpenCount     CircuitBreakerOpenCounter
+	Breakers      BreakerSnapshotProvider
+	InFlight      InFlightSnapshotProvider
+	InFlightAck   InFlightAcker
+	Mediating     MediatingProvider
+	BrokerStats   BrokerStatsProvider
+	PoolUpdater   PoolUpdater
+	Publisher     PublisherProvider
+	Leader        LeaderInfo
+	Reloader      ConfigReloader
+	Traffic       TrafficStatusProvider
+	StreamHealth  StreamHealthProvider
+	BlockedGroups BlockedGroupsProvider
+	GroupFlush    GroupFlushProvider
 
 	// Mocks is the counter set for /api/test/*. Created automatically by
 	// FromServer; tests can substitute their own.
@@ -175,21 +203,23 @@ type State struct {
 // FromServer builds a fully-populated State from a *router.Server.
 func FromServer(s *router.Server) *State {
 	return &State{
-		Warnings:    s.Warnings,
-		Health:      s.Health,
-		PoolStats:   managerPoolStatsAdapter{m: s.Manager},
-		OpenCount:   breakersAdapter{breakers: s.Breakers},
-		Breakers:    breakerSnapshotAdapter{breakers: s.Breakers},
-		InFlight:    inFlightAdapter{tracker: s.Tracker},
-		InFlightAck: managerAckAdapter{m: s.Manager},
-		Mediating:   managerMediatingAdapter{m: s.Manager},
-		BrokerStats: brokerStatsAdapter{cache: s.BrokerStats},
-		PoolUpdater: poolUpdaterAdapter{m: s.Manager},
-		Publisher:   publisherAdapter{m: s.Manager},
-		Leader:      leaderAdapter{s: s},
-		Reloader:    reloaderAdapter{s: s},
-		Traffic:     trafficAdapter{traffic: s.Traffic},
-		Mocks:       NewMockState(),
+		Warnings:      s.Warnings,
+		Health:        s.Health,
+		PoolStats:     managerPoolStatsAdapter{m: s.Manager},
+		OpenCount:     breakersAdapter{breakers: s.Breakers},
+		Breakers:      breakerSnapshotAdapter{breakers: s.Breakers},
+		InFlight:      inFlightAdapter{tracker: s.Tracker},
+		InFlightAck:   managerAckAdapter{m: s.Manager},
+		Mediating:     managerMediatingAdapter{m: s.Manager},
+		BrokerStats:   brokerStatsAdapter{cache: s.BrokerStats},
+		PoolUpdater:   poolUpdaterAdapter{m: s.Manager},
+		Publisher:     publisherAdapter{m: s.Manager},
+		Leader:        leaderAdapter{s: s},
+		Reloader:      reloaderAdapter{s: s},
+		Traffic:       trafficAdapter{traffic: s.Traffic},
+		BlockedGroups: managerBlockedGroupsAdapter{m: s.Manager},
+		GroupFlush:    managerGroupFlushAdapter{m: s.Manager},
+		Mocks:         NewMockState(),
 	}
 }
 
@@ -200,6 +230,59 @@ func (a trafficAdapter) Status() router.TrafficStatus {
 		return router.TrafficStatus{Enabled: false, Mode: "disabled"}
 	}
 	return a.traffic.Status()
+}
+
+// managerBlockedGroupsAdapter serves R-04: every live message group across
+// every pool the Manager is tracking, including one still draining after
+// removal (X-11) — Manager.AllPools is the traversal that covers both.
+type managerBlockedGroupsAdapter struct{ m *router.Manager }
+
+func (a managerBlockedGroupsAdapter) BlockedGroups() []router.GroupInfo {
+	if a.m == nil {
+		return nil
+	}
+	var out []router.GroupInfo
+	for _, p := range a.m.AllPools() {
+		out = append(out, p.GroupSnapshot()...)
+	}
+	return out
+}
+
+// managerGroupFlushAdapter serves R-52/R-53. Same AllPools traversal as
+// managerBlockedGroupsAdapter, for the same reason: a pool still draining
+// after removal can still be holding an active suppression worth showing
+// (and clearing).
+type managerGroupFlushAdapter struct{ m *router.Manager }
+
+func (a managerGroupFlushAdapter) GroupFlushSnapshots() []GroupFlushSnapshot {
+	if a.m == nil {
+		return nil
+	}
+	pools := a.m.AllPools()
+	out := make([]GroupFlushSnapshot, 0, len(pools))
+	for _, p := range pools {
+		active, flushes, suppressed := p.FlushStats()
+		out = append(out, GroupFlushSnapshot{
+			PoolCode:        p.Identifier(),
+			ActiveCount:     active,
+			TotalFlushes:    flushes,
+			TotalSuppressed: suppressed,
+			Groups:          p.ActiveFlushes(),
+		})
+	}
+	return out
+}
+
+func (a managerGroupFlushAdapter) ClearGroupFlush(poolCode, group string) bool {
+	if a.m == nil {
+		return false
+	}
+	for _, p := range a.m.AllPools() {
+		if p.Identifier() == poolCode {
+			return p.ClearFlush(group)
+		}
+	}
+	return false
 }
 
 // Register mounts every router endpoint on the supplied huma API.
@@ -217,6 +300,7 @@ func Register(api huma.API, s *State) {
 	registerMessages(api, s)
 	registerMocks(api, s)
 	registerMisc(api, s)
+	registerGroupMonitoring(api, s)
 }
 
 // MountDashboard registers the embedded HTML dashboard on the chi

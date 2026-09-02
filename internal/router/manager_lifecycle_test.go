@@ -153,14 +153,29 @@ func TestReconfigureReconcilesPoolsAndConsumers(t *testing.T) {
 
 	assert.Equal(t, uint32(9), m.Pool("FAST").Concurrency(), "an existing pool is re-capped, not rebuilt")
 	assert.NotNil(t, m.Pool("SLOW"), "a new pool starts")
-	assert.True(t, qa.stopped.Load(), "a queue dropped from config must have its consumer stopped")
+
+	// X-11 / R-26/R-49: a queue dropped from config stops POLLING immediately
+	// (asserted below via poll-count going quiet) but its consumer is NOT
+	// torn down synchronously — it lingers, addressable for ack/nack, until
+	// retireDetachedConsumers (reaper tick) finds nothing left referencing
+	// it. See TestDetachedConsumerLingersForAckThenRetires for the full
+	// ack-still-resolves pin.
+	pollsAtRemoval := qa.polls.Load()
+	assert.False(t, qa.stopped.Load(), "a queue dropped from config must NOT have its consumer torn down synchronously")
+	time.Sleep(50 * time.Millisecond)
+	assert.Equal(t, pollsAtRemoval, qa.polls.Load(), "a queue dropped from config must stop being polled")
+	assert.Equal(t, 1, m.retireDetachedConsumers(), "nothing references q-a any more; it retires on the next sweep")
+	assert.True(t, qa.stopped.Load(), "a fully-drained detached consumer is torn down by retireDetachedConsumers")
+
 	qb := fakeQueueFor(t, "q-b")
 	assert.True(t, polled(t, qb, 1, time.Second), "the new queue must be polled")
 
-	// Removing a pool stops it.
+	// Removing a pool drains it in the background (X-11) rather than
+	// stopping it synchronously; it still leaves the routing map (m.Pool)
+	// immediately.
 	require.NoError(t, m.Reconfigure(ctx, routerCfg([]string{"q-b"},
 		common.PoolConfig{Code: "FAST", Concurrency: 9})))
-	assert.Nil(t, m.Pool("SLOW"), "a pool dropped from config is removed")
+	assert.Nil(t, m.Pool("SLOW"), "a pool dropped from config is removed from routing immediately")
 }
 
 // TestConsumersOutliveTheReconfigureContext pins the lifetime rule. Callers
@@ -236,9 +251,18 @@ func TestRestartStalledConsumersRebuildsAndEscalates(t *testing.T) {
 	assert.Equal(t, 0, m.RestartStalledConsumers(context.Background(), time.Hour))
 
 	// Any positive threshold shorter than the age of the last poll is a stall.
+	//
+	// R-26/R-49: a restart DETACHES the old consumer rather than tearing it
+	// down synchronously — "stalled" is a judgement about the poll loop, not
+	// about whatever the consumer might still be carrying in-flight, and the
+	// 2026-09-01 incident this watchdog exists to fix was made worse (not
+	// better) by killing healthy in-flight work on every restart. So the old
+	// consumer is NOT stopped here; it lingers (ack-addressable) until
+	// retireDetachedConsumers finds nothing left referencing its queue — see
+	// TestRestartStalledConsumer_DoesNotAbortInFlight for the full pin.
 	time.Sleep(20 * time.Millisecond)
 	assert.Equal(t, 1, m.RestartStalledConsumers(context.Background(), 10*time.Millisecond))
-	assert.True(t, original.stopped.Load(), "the wedged consumer is torn down")
+	assert.False(t, original.stopped.Load(), "the wedged consumer is detached, not torn down synchronously")
 	rebuilt := fakeQueueFor(t, "q-stall")
 	assert.NotSame(t, original, rebuilt, "a fresh consumer replaces it")
 	assert.True(t, polled(t, rebuilt, 1, time.Second), "the replacement polls")

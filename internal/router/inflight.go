@@ -178,6 +178,53 @@ func (t *InFlightTracker) Count() int {
 	return len(t.byMessage)
 }
 
+// CountForQueue returns how many tracked entries originated from queueID
+// (InFlightMessage.QueueIdentifier). Every message a pool is holding —
+// buffered, mid-backoff, or actively mediating — has a live tracker entry
+// for exactly as long as it does (route-time Register through the
+// terminal ack/nack Remove), so zero here is the honest answer to "does
+// anything in the pipeline still reference this queue?" without asking
+// every pool to introspect its own buffers. Used by
+// Manager.retireDetachedConsumers (X-11 / R-26/R-49: a removed/changed
+// queue's consumer stays addressable for ack/nack until nothing
+// references it any more).
+func (t *InFlightTracker) CountForQueue(queueID string) int {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	n := 0
+	for _, im := range t.byMessage {
+		if im.QueueIdentifier == queueID {
+			n++
+		}
+	}
+	return n
+}
+
+// CountForQueueBefore is CountForQueue narrowed to entries whose StartedAt
+// predates cutoff. Used by Manager.retireDetachedConsumers (X-11 / R-26/
+// R-49): a detached consumer's replacement keeps polling and delivering
+// FRESH traffic under the exact same queue identifier, and plain
+// CountForQueue can't tell that traffic apart from the pre-detach messages
+// the old consumer is actually waiting to see resolved — so it would never
+// reach zero for a queue under continuous load, and the detached consumer
+// (and its underlying broker connection) would leak forever. Passing the
+// detaching consumer's own detachedAt as cutoff counts only entries that
+// existed before it stopped polling — the ones it could actually have
+// polled — so the replacement's ongoing traffic (StartedAt always at or
+// after detachedAt, since it can only start polling once installed) never
+// holds up retirement.
+func (t *InFlightTracker) CountForQueueBefore(queueID string, cutoff time.Time) int {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	n := 0
+	for _, im := range t.byMessage {
+		if im.QueueIdentifier == queueID && im.StartedAt.Before(cutoff) {
+			n++
+		}
+	}
+	return n
+}
+
 // Snapshot returns the current in-flight messages (by copy).
 func (t *InFlightTracker) Snapshot() []common.InFlightMessage {
 	t.mu.RLock()

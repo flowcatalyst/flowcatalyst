@@ -259,6 +259,7 @@ flow just works (existing env values win).
 | `FC_LOG_LEVEL` | `info` | — | `internal/logging` | slog level: `debug`, `warn`/`warning`, `error` (case-insensitive variants accepted). |
 | `FLOWCATALYST_CONFIG_URL` | — | — | `internal/server/envcfg.go` | Router pool/broker configuration endpoint; unset → `FC_DEFAULT_BROKER` fallback (or no pools). |
 | `FC_NOTIFY_WEBHOOK_URL` | — (log-only) | — | `internal/server/envcfg.go` | Webhook receiving router stall + backlog warnings. |
+| `FC_NOTIFY_MIN_SEVERITY` | `WARNING` | — | `internal/server/envcfg.go` | Floor below which the notifier drops a warning instead of webhooking it (X-04): one of `INFO`/`WARNING`/`ERROR`/`CRITICAL`, case-insensitive. Empty or unrecognised leaves the `WARNING` default in place — it can never accidentally widen the floor. Warnings below the floor are still recorded on `/warnings`; only the webhook delivery is filtered. |
 | `FC_ALB_ENABLED` | `false` | — | `internal/server/envcfg.go` | Router ALB self-registration: register this instance on leader-gain / start, deregister on leader-loss / shutdown. |
 | `FC_ALB_TARGET_GROUP_ARN` | — | — | `internal/server/envcfg.go` | ELBv2 target group to (de)register with. |
 | `FC_ALB_TARGET_ID` | — | `FC_ALB_INSTANCE_IP` | `internal/server/envcfg.go` | Target id (this instance's IP) for RegisterTargets. |

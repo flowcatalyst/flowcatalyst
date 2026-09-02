@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,6 +39,28 @@ const (
 	WarningError    WarningSeverity = "ERROR"
 	WarningCritical WarningSeverity = "CRITICAL"
 )
+
+// parseWarningSeverity parses FC_NOTIFY_MIN_SEVERITY (case-insensitive) into
+// a WarningSeverity. Reports false for "" and for anything not one of the
+// four known levels — the ONLY safe default, since severityRank ranks an
+// unrecognised value as lowest (INFO), and passing that straight to
+// SetMinSeverity would silently reopen the INFO floodgate the WARNING
+// default exists to close. Server.NewServer only calls SetMinSeverity when
+// this returns true, leaving the default floor untouched otherwise.
+func parseWarningSeverity(raw string) (WarningSeverity, bool) {
+	switch WarningSeverity(strings.ToUpper(strings.TrimSpace(raw))) {
+	case WarningInfo:
+		return WarningInfo, true
+	case WarningWarning:
+		return WarningWarning, true
+	case WarningError:
+		return WarningError, true
+	case WarningCritical:
+		return WarningCritical, true
+	default:
+		return "", false
+	}
+}
 
 // Warning is a structured operational notice. The same shape is
 // persisted by WarningService and forwarded to NotificationService

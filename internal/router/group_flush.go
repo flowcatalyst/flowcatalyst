@@ -104,11 +104,40 @@ func (r *GroupFlushRegistry) SuppressedUntil(group string) (time.Time, bool) {
 	return expiry, true
 }
 
-// Clear lifts suppression for a group immediately (operator override).
-func (r *GroupFlushRegistry) Clear(group string) {
+// Clear lifts suppression for a group immediately (operator override, R-52).
+// Reports whether a currently-active suppression existed to lift — an
+// already-expired or unknown group reports false, so the operator endpoint
+// can 404 rather than claim success for nothing.
+func (r *GroupFlushRegistry) Clear(group string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	expiry, ok := r.until[group]
+	active := ok && time.Now().Before(expiry)
 	delete(r.until, group)
+	return active
+}
+
+// GroupSuppression is one active suppression entry — an operator-facing
+// snapshot row for GET /monitoring/group-flushes (R-52).
+type GroupSuppression struct {
+	Group string
+	Until time.Time
+}
+
+// ActiveSuppressions returns every group currently suppressed (Until still
+// in the future). Like SuppressedUntil, this is the read-only operator
+// view: it counts nothing and evicts nothing, unlike Suppressed.
+func (r *GroupFlushRegistry) ActiveSuppressions() []GroupSuppression {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	now := time.Now()
+	out := make([]GroupSuppression, 0, len(r.until))
+	for group, until := range r.until {
+		if now.Before(until) {
+			out = append(out, GroupSuppression{Group: group, Until: until})
+		}
+	}
+	return out
 }
 
 // Stats reports the live suppression set plus lifetime counters.

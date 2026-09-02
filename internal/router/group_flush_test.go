@@ -83,13 +83,39 @@ func TestGroupFlushRegistryClearAndStats(t *testing.T) {
 	assert.True(t, r.Suppressed("g1"))
 	assert.True(t, r.Suppressed("g2"))
 
-	r.Clear("g1")
+	assert.True(t, r.Clear("g1"), "an active suppression existed to lift")
 	assert.False(t, r.Suppressed("g1"))
+	assert.False(t, r.Clear("g1"), "already cleared; nothing left to lift")
+	assert.False(t, r.Clear("never-flushed"), "clearing a group with no suppression reports false")
 
 	active, flushes, suppressed := r.Stats()
 	assert.Equal(t, 1, active)
 	assert.Equal(t, uint64(2), flushes)
 	assert.Equal(t, uint64(2), suppressed, "two Suppressed hits before the clear")
+}
+
+// TestGroupFlushRegistryActiveSuppressions pins [R-52] the operator-facing
+// listing: every group currently suppressed, with its expiry — and nothing
+// else (an expired entry must not appear, mirroring SuppressedUntil).
+func TestGroupFlushRegistryActiveSuppressions(t *testing.T) {
+	r := NewGroupFlushRegistry()
+	require.True(t, r.Flush("g1", time.Minute))
+	require.True(t, r.Flush("g2", -time.Second)) // clamps to DefaultFlushTTL (still active)
+
+	rows := r.ActiveSuppressions()
+	assert.Len(t, rows, 2)
+	byGroup := make(map[string]GroupSuppression, len(rows))
+	for _, row := range rows {
+		byGroup[row.Group] = row
+	}
+	assert.Contains(t, byGroup, "g1")
+	assert.Contains(t, byGroup, "g2")
+	assert.WithinDuration(t, time.Now().Add(time.Minute), byGroup["g1"].Until, 2*time.Second)
+
+	r.Clear("g1")
+	rows = r.ActiveSuppressions()
+	assert.Len(t, rows, 1)
+	assert.Equal(t, "g2", rows[0].Group)
 }
 
 // flushMediator succeeds for everything, and asks for a group flush on the
@@ -214,4 +240,31 @@ func TestPoolFlushGroupProbesAfterWindow(t *testing.T) {
 	}
 	assert.Equal(t, []string{"s2"}, med.delivered(),
 		"s1 suppressed inside the window; s2 probes after it lapses")
+}
+
+// TestPoolFlushAccessors pins [R-52] the operator-API accessors: FlushStats,
+// ActiveFlushes and ClearFlush all delegate to this pool's OWN
+// GroupFlushRegistry — used by the group-flushes monitoring API's
+// per-pool traversal (see api.managerGroupFlushAdapter).
+func TestPoolFlushAccessors(t *testing.T) {
+	pool := newCascadePool(&flushMediator{}, func(string) queue.Consumer { return nil })
+
+	require.True(t, pool.flushes.Flush("g1", time.Minute))
+	require.True(t, pool.flushes.Flush("g2", time.Minute))
+
+	active, flushes, _ := pool.FlushStats()
+	assert.Equal(t, 2, active)
+	assert.Equal(t, uint64(2), flushes)
+
+	rows := pool.ActiveFlushes()
+	assert.Len(t, rows, 2)
+
+	assert.True(t, pool.ClearFlush("g1"))
+	assert.False(t, pool.ClearFlush("g1"), "already cleared")
+
+	active, _, _ = pool.FlushStats()
+	assert.Equal(t, 1, active)
+	rows = pool.ActiveFlushes()
+	assert.Len(t, rows, 1)
+	assert.Equal(t, "g2", rows[0].Group)
 }

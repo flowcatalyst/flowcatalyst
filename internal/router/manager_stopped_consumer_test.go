@@ -182,12 +182,17 @@ func TestRunConsumerBackpressurePauseKeepsHeartbeatFresh(t *testing.T) {
 }
 
 // stalledRC builds a runningConsumer that already looks stalled, wired to a
-// queue URI whose backend scheme the caller has registered.
+// queue URI whose backend scheme the caller has registered. cancel AND
+// stopPoll are both stubbed (not nil) — a successful restart now detaches
+// via stopPoll rather than cancel (R-26/R-49; see
+// RestartStalledConsumers), so a real func is needed here too or that call
+// panics on a nil CancelFunc.
 func stalledRC(uri string) (*runningConsumer, *pollErrConsumer) {
 	old := &pollErrConsumer{id: "q", err: errors.New("wedged inside Poll")}
 	rc := &runningConsumer{
 		consumer: old,
 		cancel:   func() {},
+		stopPoll: func() {},
 		queueCfg: common.QueueConfig{Name: "q", URI: uri},
 	}
 	rc.lastPoll.Store(time.Now().Add(-time.Hour).UnixNano())

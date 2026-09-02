@@ -91,6 +91,33 @@ type Manager struct {
 	consumers  map[string]*runningConsumer   // queue name → consumer + poll loop
 	queues     map[string]common.QueueConfig // queue name → cfg (for publishers)
 
+	// drainingMu guards drainingPools: pools this Manager removed from
+	// routing (m.pools, via Reconfigure) but which are still finishing their
+	// buffer asynchronously (Pool.Drain — X-11: removals drain, never
+	// flush). A separate lock from poolMu so the operator-facing traversal
+	// accessors (AllPools) and the reaper's ReleaseParkedGroups sweep can
+	// read it without contending with pool reconciliation. A pool leaves
+	// this map only via its own drain-completion callback
+	// (Manager.beginPoolDrain's onDone) — never removed by anything else.
+	drainingMu    sync.Mutex
+	drainingPools map[string]*Pool
+
+	// detachMu guards detaching: consumers Reconfigure removed or
+	// reconfigured out of m.consumers/m.queues but which still own buffered
+	// or in-flight messages (X-11 / R-26/R-49). Poll is already stopped
+	// (rc.stopPoll fired before the entry moved here); the consumer stays
+	// resolvable via resolveConsumer's fallback so those messages can still
+	// ack/nack. A slice, not a map: a CHANGED queue's outgoing instance and
+	// a REMOVED queue's instance carry no natural exclusion against each
+	// other by name (a queue can change more than once before the first
+	// change has finished draining), and both keep the SAME
+	// consumer.Identifier() as whatever replaced them, so keying by name
+	// would let a later entry silently clobber an earlier one still
+	// draining. retireDetachedConsumers (reaper tick) removes an entry once
+	// InFlightTracker.CountForQueue reports nothing left referencing it.
+	detachMu  sync.Mutex
+	detaching []*runningConsumer
+
 	// pollingStopped latches once StopPolling has run, so the stalled-consumer
 	// watchdog doesn't helpfully respawn the poll loops a drain just stopped.
 	pollingStopped atomic.Bool
@@ -226,6 +253,16 @@ type runningConsumer struct {
 	// poll loop, read by nothing else today, but cheap to keep safe.
 	poolsMu sync.Mutex
 	pools   []string
+
+	// detachedAt is stamped once, under Manager.detachMu, the moment this
+	// consumer moves into Manager.detaching (X-11 / R-26/R-49 — a queue
+	// removed/changed under Reconfigure, or a wedged poll loop replaced by
+	// RestartStalledConsumers). Zero while the consumer is still active.
+	// retireDetachedConsumers compares it against each tracked message's
+	// StartedAt (InFlightTracker.CountForQueueBefore) so only messages this
+	// consumer could actually have polled — never the replacement's own
+	// ongoing traffic under the same queue identifier — hold up retirement.
+	detachedAt time.Time
 }
 
 // newRunningConsumer wires a consumer's two contexts under parent.
@@ -249,6 +286,7 @@ func NewManager(mediator Mediator, tracker *InFlightTracker) *Manager {
 		pools:           make(map[string]*Pool),
 		consumers:       make(map[string]*runningConsumer),
 		queues:          make(map[string]common.QueueConfig),
+		drainingPools:   make(map[string]*Pool),
 		publishers:      make(map[string]queue.Publisher),
 		synthPools:      make(map[string]*synthPoolState),
 		restartAttempts: make(map[string]restartRecord),
@@ -290,12 +328,27 @@ func (m *Manager) SetWarnings(ws *WarningService) { m.warnings.Store(ws) }
 func (m *Manager) SetStrictRouting(v bool) { m.strictRouting.Store(v) }
 
 // resolveConsumer maps a message's origin queue to its consumer so a pool can
-// ack/nack on the right queue. Returns nil if the queue was deregistered.
+// ack/nack on the right queue. Checks the active routing table first, then
+// falls back to a lingering (removed/changed) consumer still detaching (X-11
+// / R-26/R-49 — see the detaching field's doc comment): a message buffered
+// before its queue dropped out of config must still resolve to SOMETHING,
+// or its ack/nack is silently skipped, stranding both the tracker entry and
+// the broker copy. Returns nil only once nothing — active or detaching —
+// answers to queueID.
 func (m *Manager) resolveConsumer(queueID string) queue.Consumer {
 	m.consumerMu.RLock()
-	defer m.consumerMu.RUnlock()
 	if rc, ok := m.consumers[queueID]; ok {
+		m.consumerMu.RUnlock()
 		return rc.consumer
+	}
+	m.consumerMu.RUnlock()
+
+	m.detachMu.Lock()
+	defer m.detachMu.Unlock()
+	for _, rc := range m.detaching {
+		if rc.consumer.Identifier() == queueID {
+			return rc.consumer
+		}
 	}
 	return nil
 }
@@ -425,6 +478,30 @@ func (m *Manager) Pool(code string) *Pool {
 	m.poolMu.RLock()
 	defer m.poolMu.RUnlock()
 	return m.pools[code]
+}
+
+// AllPools returns every pool this Manager is tracking — actively routed
+// (m.pools) plus any still finishing an asynchronous removal-drain
+// (drainingPools; see its field doc comment) — for the operator-facing
+// monitoring endpoints (R-52 flush-suppression listing, R-04 blocked-groups)
+// that must keep showing a removed pool's live state for as long as it
+// still holds any. The two locks are taken in sequence, never nested — the
+// same pattern as every other accessor here. Order is unspecified (map
+// iteration).
+func (m *Manager) AllPools() []*Pool {
+	m.poolMu.RLock()
+	out := make([]*Pool, 0, len(m.pools))
+	for _, p := range m.pools {
+		out = append(out, p)
+	}
+	m.poolMu.RUnlock()
+
+	m.drainingMu.Lock()
+	for _, p := range m.drainingPools {
+		out = append(out, p)
+	}
+	m.drainingMu.Unlock()
+	return out
 }
 
 // QueueMetrics returns per-consumer broker attributes + counters. Calls
@@ -1042,6 +1119,23 @@ func (m *Manager) anyPoolHasRoom() bool {
 	return false
 }
 
+// beginPoolDrain registers a pool Reconfigure just removed as draining (so
+// ReleaseParkedGroups and the operator-facing traversal accessors —
+// AllPools — keep sweeping/showing it until it finishes; see drainingPools'
+// field doc comment) and starts its asynchronous drain. The pool has
+// already left m.pools by the time this is called (caller holds poolMu over
+// that removal), so Reconfigure never blocks on the drain completing.
+func (m *Manager) beginPoolDrain(code string, p *Pool) {
+	m.drainingMu.Lock()
+	m.drainingPools[code] = p
+	m.drainingMu.Unlock()
+	p.Drain(func() {
+		m.drainingMu.Lock()
+		delete(m.drainingPools, code)
+		m.drainingMu.Unlock()
+	})
+}
+
 // Reconfigure applies a new RouterConfig: reconciles pools (by code) and
 // consumers (by queue name), starting/stopping/updating as needed. A
 // DEFAULT-POOL is always ensured. Hot-reloadable.
@@ -1074,10 +1168,14 @@ func (m *Manager) Reconfigure(ctx context.Context, cfg common.RouterConfig) erro
 	// stopping just flips the flag so in-flight submits NACK.)
 	for code, p := range m.pools {
 		if _, ok := wantPools[code]; !ok {
-			slog.Info("manager: stopping pool", "code", code)
-			p.Stop()
+			// X-11: a removal drains, it does not flush. The pool leaves the
+			// routing map right here (nothing routes to it again after this
+			// point), but its buffer keeps draining in the background — see
+			// beginPoolDrain / Pool.Drain.
+			slog.Info("manager: removing pool; draining its buffer in the background", "code", code)
 			delete(m.pools, code)
 			m.forgetSynthPool(code)
+			m.beginPoolDrain(code, p)
 		}
 	}
 	for code, pc := range wantPools {
@@ -1111,7 +1209,7 @@ func (m *Manager) Reconfigure(ctx context.Context, cfg common.RouterConfig) erro
 	var stale []*runningConsumer
 	for name, rc := range m.consumers {
 		if wq, ok := wantQueues[name]; !ok || wq != rc.queueCfg {
-			slog.Info("manager: stopping consumer", "queue", name)
+			slog.Info("manager: detaching consumer (queue removed or changed)", "queue", name)
 			stale = append(stale, rc)
 			delete(m.consumers, name)
 			delete(m.queues, name)
@@ -1125,9 +1223,26 @@ func (m *Manager) Reconfigure(ctx context.Context, cfg common.RouterConfig) erro
 	}
 	m.consumerMu.Unlock()
 
-	for _, rc := range stale {
-		rc.cancel()
-		rc.consumer.Stop()
+	// X-11 / R-26/R-49: stop POLLING immediately, never cancel workCtx here.
+	// stopPoll ends the poll loop only (runningConsumer's doc comment); any
+	// delivery already in flight, and any ordered-group drainer, keeps
+	// running under workCtx to its own conclusion — neither is touched by
+	// this consumer leaving m.consumers/m.queues. The consumer itself stays
+	// addressable for ack/nack via resolveConsumer's fallback until
+	// retireDetachedConsumers (reaper tick) finds nothing left referencing
+	// its queue and finishes the teardown (cancel + consumer.Stop()). For a
+	// CHANGED queue, the loop below already builds and starts polling a
+	// replacement under the same name — see missing's computation just
+	// above, which runs after this entry was deleted from m.consumers.
+	if len(stale) > 0 {
+		now := time.Now()
+		m.detachMu.Lock()
+		for _, rc := range stale {
+			rc.stopPoll()
+			rc.detachedAt = now
+			m.detaching = append(m.detaching, rc)
+		}
+		m.detachMu.Unlock()
 	}
 	for _, qc := range missing {
 		// ctx bounds the CONNECT only. The consumer itself lives under the
@@ -1199,6 +1314,20 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 	m.queues = make(map[string]common.QueueConfig)
 	m.consumerMu.Unlock()
 
+	// Any consumer still detaching (X-11 removal/change-drain in progress)
+	// gets the same hard teardown as an active one: process shutdown (or
+	// leadership loss, which runs this same path) is past the graceful
+	// drain window — StopPolling + the bounded wait already happened at the
+	// Server level before Shutdown was ever called — so there is nothing
+	// left to wait on here.
+	m.detachMu.Lock()
+	for _, rc := range m.detaching {
+		rc.cancel()
+		rc.consumer.Stop()
+	}
+	m.detaching = nil
+	m.detachMu.Unlock()
+
 	// Cancel anything still running under the root (and install a fresh one, so
 	// a leadership regain can reconfigure this same Manager), then let polling
 	// resume for that regain.
@@ -1211,6 +1340,17 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 	}
 	m.pools = make(map[string]*Pool)
 	m.poolMu.Unlock()
+
+	// Same hard-teardown reasoning as detaching above: a pool mid-background
+	// -drain (Pool.Drain) gets force-stopped now rather than left to finish
+	// on its own goroutine — Stop is idempotent, so this is safe even if
+	// that goroutine is mid-flight and calls Stop again moments later.
+	m.drainingMu.Lock()
+	for _, p := range m.drainingPools {
+		p.Stop()
+	}
+	m.drainingPools = make(map[string]*Pool)
+	m.drainingMu.Unlock()
 
 	// Same "not necessarily terminal" reasoning as m.pools above: a later
 	// regain re-synthesises fallback pools on demand, into a clean map
@@ -1348,7 +1488,7 @@ func (m *Manager) RestartStalledConsumers(ctx context.Context, threshold time.Du
 		}
 		swept++
 
-		// Build the replacement BEFORE retiring the old consumer, under a
+		// Build the replacement BEFORE detaching the old consumer, under a
 		// bounded context.
 		//
 		// The old order tore down first and built second, so a build that
@@ -1402,12 +1542,31 @@ func (m *Manager) RestartStalledConsumers(ctx context.Context, threshold time.Du
 		m.consumers[c.name] = rc
 		m.consumerMu.Unlock()
 
-		// The replacement is built and installed, so retiring the old one can
-		// no longer leave a gap. The brief overlap is harmless: the old
-		// consumer is stalled by definition, and any duplicate delivery it
-		// managed is deduped by broker id at route time.
-		c.old.cancel()
-		c.old.consumer.Stop()
+		// R-26/R-49: detach, don't abort — the same machinery
+		// Reconfigure's consumer-removal/change path uses (see the
+		// detaching field's doc comment). "Stalled" here is a judgement
+		// about the POLL loop (lastPoll went stale), and says nothing about
+		// whether the consumer is currently carrying an in-flight delivery
+		// or holding buffered ordered-group messages. The 2026-09-01
+		// incident this watchdog exists to fix (a queue backed up to 27k
+		// messages over 51 minutes of restart-every-90s) was made WORSE by
+		// the old cancel-on-restart behaviour, not better: perfectly
+		// healthy in-flight work was killed on every single restart,
+		// alongside the one wedged poll loop that was the actual problem.
+		// stopPoll ends only the poll loop; workCtx — and whatever it is
+		// carrying — is left alone. The old consumer moves to detaching and
+		// stays addressable for ack/nack via resolveConsumer's fallback
+		// until retireDetachedConsumers (reaper tick) finds nothing left
+		// referencing its queue. Even in the case this watchdog is FOR — a
+		// genuinely dead broker connection — an ack attempted through it
+		// simply fails and the message redelivers on the broker's own
+		// clock, which is strictly better than cancelling a delivery that
+		// might otherwise have succeeded.
+		c.old.stopPoll()
+		m.detachMu.Lock()
+		c.old.detachedAt = time.Now()
+		m.detaching = append(m.detaching, c.old)
+		m.detachMu.Unlock()
 
 		m.wg.Add(1)
 		go m.runConsumer(pollCtx, rc)
@@ -1424,18 +1583,72 @@ func (m *Manager) RestartStalledConsumers(ctx context.Context, threshold time.Du
 // See Pool.ReleaseParkedGroups for why an unclaimed park cannot be left to
 // resolve itself.
 func (m *Manager) ReleaseParkedGroups(ctx context.Context, minAge time.Duration) int {
-	m.poolMu.RLock()
-	pools := make([]*Pool, 0, len(m.pools))
-	for _, p := range m.pools {
-		pools = append(pools, p)
-	}
-	m.poolMu.RUnlock()
-
+	// Sweeps AllPools — actively routed pools AND anything still draining
+	// after a removal (drainingPools) — not just m.pools. Without the
+	// latter, a group that parks (ctx cancellation) inside a draining pool
+	// would never be found: the pool already left m.pools, so nothing would
+	// ever release it back to the broker, QueueSize would never reach zero,
+	// and Pool.Drain's background goroutine would sit out its full budget
+	// for no reason. This IS Drain's real safety net (see poolDrainBudget's
+	// doc comment) — this sweep should retire a genuinely stuck group long
+	// before that budget ever matters.
 	released := 0
-	for _, p := range pools {
+	for _, p := range m.AllPools() {
 		released += p.ReleaseParkedGroups(ctx, minAge)
 	}
 	return released
+}
+
+// retireDetachedConsumers finishes the teardown of any consumer Reconfigure
+// or RestartStalledConsumers detached (queue removed/changed, or a wedged
+// poll loop replaced — see the detaching field's doc comment) once nothing
+// the OLD consumer could have polled still references its queue.
+// "Nothing references it" is judged by the in-flight tracker
+// (InFlightTracker.CountForQueueBefore, cutoff = the consumer's own
+// detachedAt) rather than by asking every pool to introspect its buffers
+// directly: every message a pool is holding — buffered, mid-backoff, or
+// actively mediating — has a live tracker entry for exactly as long as it
+// does, so a zero count of entries STARTED BEFORE the detach IS "drained"
+// for this purpose.
+//
+// The cutoff is the whole point, not a refinement: plain CountForQueue
+// counts every tracked entry for the queue identifier, including the
+// REPLACEMENT consumer's own healthy ongoing traffic — which shares the
+// identifier (see resolveConsumer's doc comment) and can arrive
+// continuously the moment the replacement starts polling. Without the
+// cutoff, a queue that stays busy after a restart or a config change would
+// never let its old consumer retire: the count would never reach zero, and
+// the stale runningConsumer — and whatever broker connection it holds open
+// — would leak for the life of the process. Every entry the replacement
+// creates has StartedAt >= detachedAt (it cannot poll before it exists), so
+// the cutoff excludes it categorically, not by timing luck.
+//
+// When the tracker is nil (in-flight tracking disabled — NewManager's
+// tracker parameter, never true for a production router: Server always
+// wires one), there is no signal to wait on at all, so a detached consumer
+// is retired immediately rather than lingering forever with no way to know
+// it is safe.
+//
+// Wired onto the router's reaper tick (see Server.reapInFlight). Returns the
+// number retired.
+func (m *Manager) retireDetachedConsumers() int {
+	m.detachMu.Lock()
+	var kept []*runningConsumer
+	retired := 0
+	for _, rc := range m.detaching {
+		if m.tracker != nil && m.tracker.CountForQueueBefore(rc.consumer.Identifier(), rc.detachedAt) > 0 {
+			kept = append(kept, rc)
+			continue
+		}
+		rc.cancel()
+		rc.consumer.Stop()
+		retired++
+		slog.Info("manager: retired detached consumer; nothing pre-dating its detach still references its queue",
+			"queue", rc.consumer.Identifier())
+	}
+	m.detaching = kept
+	m.detachMu.Unlock()
+	return retired
 }
 
 // bumpRestart records one more restart attempt for a queue and returns the new

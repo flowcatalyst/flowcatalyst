@@ -221,9 +221,55 @@ those kills every poll loop when it expires.
 
 Leadership loss follows the same sequence, for the same reasons.
 
-A pool stopping mid-drain flushes its buffered messages and **releases their tracker
+A pool **stopped for process shutdown** (or leadership loss — `Manager.Shutdown`, past the
+drain window above) flushes its buffered messages immediately and **releases their tracker
 entries**, so the broker's redeliveries re-enter cleanly instead of being dropped as
-duplicates of copies that no longer exist.
+duplicates of copies that no longer exist. That is `Pool.Stop`. A pool **removed by
+`Reconfigure`** (its code simply no longer appears in config) does the opposite: `Pool.Drain`
+closes admission immediately but leaves the buffer alone, letting every group already
+buffered keep draining through its existing drainer — which runs under the *submitting
+consumer's* `workCtx`, not anything the pool owns, so the pool leaving `Manager.pools` doesn't
+touch it. The pool stays visible via `Manager.AllPools` (blocked-groups, group-flush
+suppression) until its buffer and active workers both empty, at which point `Pool.Stop`
+finishes the job — its flush is then a no-op, since there's nothing left to flush.
+
+### Reconfiguration is in-place; removals drain
+
+`Reconfigure` never rebuilds a pool or a consumer that config still wants — a pool already
+running is re-capped/re-rate-limited in place (`SetRateLimit`/`UpdateConcurrency`), and a
+queue whose config is byte-identical is left untouched. Only a genuine **removal** (pool code
+or queue name no longer wanted) or **change** (same queue name, different connection/URI/
+visibility) triggers new lifecycle machinery, and both drain rather than abort:
+
+- **A removed pool** leaves `Manager.pools` (routing) synchronously inside `Reconfigure`, so
+  no new message is ever routed to it again, but `Pool.Drain` runs asynchronously in the
+  background — `Reconfigure` never blocks on a pool finishing its buffer.
+- **A removed or changed queue's consumer** stops *polling* immediately
+  (`runningConsumer.stopPoll`, the same poll-only cancellation shutdown uses) but is **not**
+  torn down: it moves to a lingering set and stays resolvable through `Manager.resolveConsumer`
+  so a message already buffered on it — mid-delivery, or sitting in a pool's group buffer —
+  still resolves its ack/nack instead of silently stranding both the tracker entry and the
+  broker copy. `runningConsumer.workCtx` is *never* cancelled for a config change or removal,
+  only `stopPoll`'s poll context — the same "two cancellations" split described above for
+  shutdown now also governs a single queue's reconfigure. For a **changed** queue, the new
+  consumer starts polling under the same name immediately; the outgoing one only finishes
+  tearing down (`cancel` + `consumer.Stop()`) once the in-flight tracker reports nothing left
+  referencing its queue identifier — checked on the same reaper tick that sweeps parked groups
+  and idle synthesised pools.
+
+One consequence worth naming: because both the old and new consumer for a **changed** queue
+report the same `Identifier()` (the queue name), `resolveConsumer` — which checks the active
+routing table before the lingering set — resolves a buffered message's ack through whichever
+consumer is *currently active* for that name, not necessarily the physical instance that
+polled it. That's harmless when the change didn't swap the underlying broker connection (a
+visibility-timeout or connection-count tweak); it's a known, deliberately out-of-scope
+imprecision if the change pointed the same queue name at a genuinely different broker.
+
+Two new operator-facing endpoints ride on this: `GET /monitoring/blocked-groups` (R-04) lists
+every live message group across every pool the Manager is tracking — including one still
+draining after a removal — and `GET /monitoring/group-flushes` + `POST
+/monitoring/group-flushes/{pool}/{group}/clear` (R-52/R-53) do the same for active
+target-requested group suppressions, with an operator override to lift one early.
 
 ---
 

@@ -55,6 +55,64 @@ func TestNotifierSetMinSeverityCanRaiseAboveDefault(t *testing.T) {
 	}
 }
 
+// TestParseWarningSeverity pins the FC_NOTIFY_MIN_SEVERITY parse guard: the
+// four known levels parse case-insensitively (with surrounding whitespace
+// trimmed), and everything else — including empty — reports false so the
+// caller (Server.NewServer) leaves the Notifier's own WARNING default
+// standing rather than silently reopening the INFO floodgate on a typo.
+func TestParseWarningSeverity(t *testing.T) {
+	cases := []struct {
+		raw    string
+		want   WarningSeverity
+		wantOK bool
+	}{
+		{"INFO", WarningInfo, true},
+		{"warning", WarningWarning, true},
+		{"  Error  ", WarningError, true},
+		{"CRITICAL", WarningCritical, true},
+		{"", "", false},
+		{"bogus", "", false},
+		{"WARN", "", false}, // not one of the four literal levels
+	}
+	for _, tc := range cases {
+		got, ok := parseWarningSeverity(tc.raw)
+		if ok != tc.wantOK || (ok && got != tc.want) {
+			t.Errorf("parseWarningSeverity(%q) = (%q, %v), want (%q, %v)", tc.raw, got, ok, tc.want, tc.wantOK)
+		}
+	}
+}
+
+// TestNewServerAppliesNotifyMinSeverityFromConfig is the end-to-end wiring
+// pin for FC_NOTIFY_MIN_SEVERITY (X-04, task 1a): a valid
+// ServerConfig.NotifyMinSeverity is applied to the constructed Notifier, and
+// an invalid one leaves the Notifier's own WARNING default in place rather
+// than falling through to "unknown ranks lowest" and reopening INFO.
+func TestNewServerAppliesNotifyMinSeverityFromConfig(t *testing.T) {
+	s, err := NewServer(ServerConfig{NotifyMinSeverity: "info"})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	s.Notifier.Add(Warning{Category: WarningCategoryQueueHealth, Severity: WarningInfo, Message: "info", Source: "t"})
+	s.Notifier.mu.Lock()
+	n := len(s.Notifier.queue)
+	s.Notifier.mu.Unlock()
+	if n != 1 {
+		t.Fatalf("queue: got %d want 1 (explicit info config must lower the floor)", n)
+	}
+
+	s2, err := NewServer(ServerConfig{NotifyMinSeverity: "not-a-real-severity"})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	s2.Notifier.Add(Warning{Category: WarningCategoryQueueHealth, Severity: WarningInfo, Message: "info", Source: "t"})
+	s2.Notifier.mu.Lock()
+	n2 := len(s2.Notifier.queue)
+	s2.Notifier.mu.Unlock()
+	if n2 != 0 {
+		t.Fatalf("queue: got %d want 0 (an invalid config value must NOT lower the WARNING default)", n2)
+	}
+}
+
 // TestWarningServiceForwardsToNotifierAndAppliesItsFloor is the task-1
 // verification: WarningService.Add really does forward every add to its
 // attached Notifier (SetNotifier), and the notifier's own severity floor

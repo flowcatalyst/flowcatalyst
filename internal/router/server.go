@@ -31,6 +31,14 @@ type ServerConfig struct {
 	// NotifyWebhookURL receives stall + backlog warnings. Empty → log-only.
 	NotifyWebhookURL string
 
+	// NotifyMinSeverity is FC_NOTIFY_MIN_SEVERITY (X-04): the floor below
+	// which the notifier drops a warning instead of webhooking it. One of
+	// "INFO"/"WARNING"/"ERROR"/"CRITICAL" (case-insensitive); empty or any
+	// other value leaves the Notifier's own WARNING default in place — see
+	// Notifier.SetMinSeverity's doc comment for why this must never
+	// silently reopen the INFO floodgate on a typo.
+	NotifyMinSeverity string
+
 	// DrainTimeout is the upper bound for graceful drain on shutdown.
 	// Zero falls back to 60s.
 	DrainTimeout time.Duration
@@ -198,6 +206,14 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		Tracker:    NewInFlightTracker(),
 		instanceID: uuid.NewString(),
 	}
+	// X-04: FC_NOTIFY_MIN_SEVERITY. Guarded exactly as SetMinSeverity's doc
+	// comment requires — an empty or unrecognised value must never lower the
+	// Notifier's own WARNING default, only ever raise or lower it to a value
+	// the operator actually asked for.
+	if sev, ok := parseWarningSeverity(cfg.NotifyMinSeverity); ok {
+		s.Notifier.SetMinSeverity(sev)
+	}
+
 	s.Manager = NewManager(s.Mediator, s.Tracker)
 	s.Manager.SetStrictRouting(cfg.StrictRouting)
 	s.BrokerStats = NewCachedBrokerStats(s.Manager)
@@ -291,7 +307,14 @@ func (s *Server) Run(ctx context.Context) error {
 	stalls := NewStallDetector(DefaultStallConfig(), s.Tracker, s.Notifier, s.Manager.NackInFlight)
 	stalls.SetWarnings(s.Warnings)
 	go stalls.Watch(ctx)
-	go NewQueueHealthMonitor(DefaultQueueHealthConfig(), s.Notifier).Watch(ctx, s.Manager.Consumers)
+	queueHealth := NewQueueHealthMonitor(DefaultQueueHealthConfig(), s.Notifier)
+	// Share the process-wide warning store (X-04) so backlog/growth warnings
+	// reach /warnings, health counts and acknowledgement — not just the
+	// webhook the private store NewQueueHealthMonitor provisions would
+	// otherwise be limited to. See QueueHealthMonitor.SetWarnings's doc
+	// comment.
+	queueHealth.SetWarnings(s.Warnings)
+	go queueHealth.Watch(ctx, s.Manager.Consumers)
 	go s.reapInFlight(ctx)
 	SpawnBrokerStatsRefresh(ctx, s.BrokerStats)
 	s.Lifecycle.Start(ctx)
@@ -404,6 +427,15 @@ func (s *Server) reapInFlight(ctx context.Context) {
 			if s.Manager != nil {
 				if n := s.Manager.ReleaseParkedGroups(ctx, s.Cfg.ParkedGroupMaxAge); n > 0 {
 					slog.Warn("router released parked message groups to the broker", "messages", n)
+				}
+				// X-11 / R-26/R-49: retire any consumer whose detach-drain
+				// (queue removed or changed under Reconfigure) has finished —
+				// nothing left in the pipeline references its queue. Runs
+				// AFTER ReleaseParkedGroups above so a group release just
+				// unwedged can free ITS queue's consumer on this same tick
+				// rather than waiting a further 5 minutes.
+				if n := s.Manager.retireDetachedConsumers(); n > 0 {
+					slog.Info("router retired detached consumers", "count", n)
 				}
 			}
 			if n := s.Tracker.Reap(s.Cfg.InFlightReapMaxAge, s.Cfg.InFlightAbsoluteMaxAge); n > 0 {

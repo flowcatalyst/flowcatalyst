@@ -71,6 +71,13 @@ type Pool struct {
 
 	stopped atomic.Bool
 
+	// draining is set by Drain (X-11: a pool REMOVAL drains rather than
+	// flushing). It closes admission the same way stopped does — checked
+	// alongside it at the top of submit — but, unlike stopped, does NOT
+	// touch groupQs: existing buffered work keeps draining normally. See
+	// Drain's doc comment.
+	draining atomic.Bool
+
 	// srMu guards settledReporter. nil (the default) disables the T3/A-01
 	// settled-message hook entirely — a standalone router with no platform
 	// wiring must behave exactly as it does today. See SetSettledReporter
@@ -280,8 +287,14 @@ func (p *Pool) Metrics() *PoolMetricsCollector { return p.metrics }
 // is preserved by re-inserting a failed message at the FRONT of its group
 // rather than by cascade-NACKing the rest of a batch.
 func (p *Pool) submit(ctx context.Context, m common.QueuedMessage) {
-	// Reject when the pool is stopping.
-	if p.stopped.Load() {
+	// Reject when the pool is stopping or draining (X-11: a removed pool
+	// admits nothing new, but — unlike stopped — draining does not touch
+	// what's already buffered; see Drain's doc comment). In practice a
+	// draining pool is never reachable here at all: Manager.Reconfigure
+	// removes it from the routing map in the same step that starts the
+	// drain, so no new batch is ever routed to it. This check is the
+	// pool-local backstop for a caller holding a stale *Pool reference.
+	if p.stopped.Load() || p.draining.Load() {
 		p.nackMsg(ctx, m, ptrU32(10), "pool stopped")
 		return
 	}
@@ -404,6 +417,65 @@ func (p *Pool) Stop() {
 	if len(flushed) > 0 {
 		slog.Info("pool stopped; flushed buffered messages for broker redelivery",
 			"pool", p.cfg.Code, "count", len(flushed))
+	}
+}
+
+// drainPollInterval is how often Drain's background goroutine checks whether
+// the buffer and active workers have both emptied.
+const drainPollInterval = 250 * time.Millisecond
+
+// poolDrainBudget bounds Drain's background goroutine (CONVENTIONS.md §9:
+// every goroutine needs an exit path). It is sized well past the mediator's
+// per-attempt timeout (15m — see InFlightMessage's doc comment) so a
+// legitimately slow delivery is never cut off. Past the budget Drain gives
+// up waiting and force-stops (flushing whatever is left for broker
+// redelivery, same as Stop always has) rather than leaking the goroutine —
+// the reaper's ReleaseParkedGroups sweep (which also sweeps a draining pool;
+// see Manager.drainingPools) is the FIRST line of defence against a
+// genuinely stuck group, and should almost always retire the pool long
+// before this budget matters.
+const poolDrainBudget = 30 * time.Minute
+
+// Drain begins a graceful, ASYNCHRONOUS stop for pool REMOVAL (X-11:
+// reconfiguration is in-place and pools are never rebuilt, but a removal
+// drains — it does not flush). Unlike Stop, it does not touch the buffer:
+// new admission is refused immediately (submit checks draining alongside
+// stopped, at the very top — before enqueue/enqueueFront, so neither of
+// those needs to change), but every group already buffered keeps draining
+// through its EXISTING drainer goroutine exactly as it would have if the
+// pool were still routed — the drainer runs under the SUBMITTING CONSUMER's
+// workCtx, not anything this Pool owns, so removing the pool from
+// Manager.pools does not touch it. An IMMEDIATE-mode message mid-backoff
+// keeps retrying the same way.
+//
+// Once the buffer and active workers are both empty (or the drain budget
+// expires), Stop is called to complete the shutdown — its flush is then a
+// no-op in the normal case — and onDone runs so the caller can drop this
+// pool's last reference (Manager.drainingPools). onDone runs on the drain
+// goroutine, never on the caller's.
+//
+// Returns immediately; idempotent (a second call is a no-op — see the
+// draining CompareAndSwap).
+func (p *Pool) Drain(onDone func()) {
+	if !p.draining.CompareAndSwap(false, true) {
+		return
+	}
+	go p.awaitDrainAndStop(onDone)
+}
+
+func (p *Pool) awaitDrainAndStop(onDone func()) {
+	deadline := time.Now().Add(poolDrainBudget)
+	for (p.QueueSize() > 0 || p.ActiveWorkers() > 0) && time.Now().Before(deadline) {
+		time.Sleep(drainPollInterval)
+	}
+	if p.QueueSize() > 0 || p.ActiveWorkers() > 0 {
+		slog.Warn("pool drain exceeded its budget; force-stopping (remaining buffer will flush for broker redelivery)",
+			"pool", p.cfg.Code, "budget", poolDrainBudget, "queue_size", p.QueueSize(), "active_workers", p.ActiveWorkers())
+	}
+	p.Stop()
+	slog.Info("pool drained after removal; fully stopped", "pool", p.cfg.Code)
+	if onDone != nil {
+		onDone()
 	}
 }
 
@@ -573,6 +645,26 @@ func (p *Pool) GroupSnapshot() []GroupInfo {
 		}
 	}
 	return out
+}
+
+// FlushStats returns this pool's group-flush suppression stats (R-52/R-53):
+// how many groups are currently suppressed, and the lifetime flush/suppressed
+// counters — see GroupFlushRegistry.Stats.
+func (p *Pool) FlushStats() (active int, flushes, suppressed uint64) {
+	return p.flushes.Stats()
+}
+
+// ActiveFlushes returns every group currently suppressed on this pool
+// (R-52's monitoring listing).
+func (p *Pool) ActiveFlushes() []GroupSuppression {
+	return p.flushes.ActiveSuppressions()
+}
+
+// ClearFlush lifts an active suppression on this pool early (R-52's operator
+// override). Reports whether a currently-active suppression existed to
+// lift.
+func (p *Pool) ClearFlush(group string) bool {
+	return p.flushes.Clear(group)
 }
 
 // Stats returns the dashboard-shaped snapshot of this pool.

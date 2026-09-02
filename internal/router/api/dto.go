@@ -520,3 +520,52 @@ type StreamProjectionHealth struct {
 type StreamProbeResponse struct {
 	Status string `json:"status"`
 }
+
+// ── Blocked groups (R-04) ────────────────────────────────────────────────
+
+// BlockedGroupInfo is one live message group a pool is currently holding —
+// the operator "blocked groups" view. Mirrors router.GroupInfo field for
+// field; see its doc comment for what "live" means (buffered awaiting a
+// drainer, being drained, or parked with none running). ParkedAt and
+// SuppressedUntil are omitted entirely rather than sent as zero-time, so the
+// dashboard's `r.parkedAt` / `r.suppressedUntil` truthiness checks work
+// without a separate null check.
+type BlockedGroupInfo struct {
+	Group           string     `json:"group"`
+	PoolCode        string     `json:"poolCode"`
+	Buffered        int        `json:"buffered"`
+	Working         bool       `json:"working"`
+	ParkedAt        *time.Time `json:"parkedAt,omitempty"`
+	Suppressed      bool       `json:"suppressed"`
+	SuppressedUntil *time.Time `json:"suppressedUntil,omitempty"`
+}
+
+// ── Group-flush suppression (R-52/R-53) ──────────────────────────────────
+
+// GroupFlushPoolInfo is one pool's group-flush suppression snapshot for GET
+// /monitoring/group-flushes: every group currently suppressed on it, plus
+// this pool's lifetime flush/suppressed counters (GroupFlushRegistry.Stats
+// — see its doc comment for what a "flush" is: a target asking the router to
+// stop sending it a group's messages for a bounded window).
+type GroupFlushPoolInfo struct {
+	PoolCode        string            `json:"poolCode"`
+	ActiveCount     int               `json:"activeCount"`
+	TotalFlushes    uint64            `json:"totalFlushes"`
+	TotalSuppressed uint64            `json:"totalSuppressed"`
+	Groups          []GroupFlushEntry `json:"groups"`
+}
+
+// GroupFlushEntry is one active suppression: a message group and when it
+// lapses on its own (TTL-bounded — see GroupFlushRegistry's doc comment).
+type GroupFlushEntry struct {
+	Group           string    `json:"group"`
+	SuppressedUntil time.Time `json:"suppressedUntil"`
+}
+
+// ClearGroupFlushResponse is the body for POST
+// /monitoring/group-flushes/{pool}/{group}/clear.
+type ClearGroupFlushResponse struct {
+	Cleared  bool   `json:"cleared"`
+	PoolCode string `json:"poolCode"`
+	Group    string `json:"group"`
+}

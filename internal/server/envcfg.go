@@ -110,6 +110,14 @@ type EnvCfg struct {
 	// back to DEFAULT-POOL / DefaultDispatchMode / the shared "" group.
 	RouterStrictRouting bool
 
+	// RouterNotifyMinSeverity is FC_NOTIFY_MIN_SEVERITY (X-04): the floor
+	// below which the notifier drops a warning instead of webhooking it —
+	// one of INFO/WARNING/ERROR/CRITICAL. Empty (the default) leaves the
+	// router package's own WARNING floor in place; router.NewServer guards
+	// against an invalid value the same way, so a typo here can only ever
+	// leave the default floor standing, never open it wider by accident.
+	RouterNotifyMinSeverity string
+
 	// RouterPlatformURL is the platform base URL the router reports settled
 	// BLOCK_ON_ERROR groups to (A-01, POST /api/dispatch/settled). Empty
 	// disables the hook entirely, which is the correct default for a
@@ -216,6 +224,7 @@ func LoadEnv() EnvCfg {
 		RouterDrainTimeoutSec:   envInt("FC_DRAIN_TIMEOUT_SECONDS", 60),
 		RouterSynthPoolIdleSecs: envInt("FC_ROUTER_SYNTH_POOL_IDLE_SECS", 0),
 		RouterStrictRouting:     envBool("FC_ROUTER_STRICT_ROUTING", false),
+		RouterNotifyMinSeverity: envOr("FC_NOTIFY_MIN_SEVERITY", ""),
 		RouterPlatformURL:       envFirst("FC_ROUTER_PLATFORM_URL", "FC_API_BASE_URL", "FLOWCATALYST_URL", "", ""),
 
 		ALBEnabled:        envBool("FC_ALB_ENABLED", false),

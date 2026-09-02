@@ -295,15 +295,16 @@ func (b streamHealthBridge) IsReady() bool { return b.svc.IsReady() }
 // to synthesize an in-process Postgres pool config so fcdev "just works".
 func newRouterServer(cfg EnvCfg, pool *pgxpool.Pool) (*router.Server, error) {
 	rcfg := router.ServerConfig{
-		DevMode:          cfg.RouterDevMode,
-		ConfigURL:        cfg.RouterConfigURL,
-		NotifyWebhookURL: cfg.RouterNotifyWebhookURL,
-		DrainTimeout:     time.Duration(cfg.RouterDrainTimeoutSec) * time.Second,
-		SynthPoolIdleAge: time.Duration(cfg.RouterSynthPoolIdleSecs) * time.Second,
-		StrictRouting:    cfg.RouterStrictRouting,
-		StandbyEnabled:   cfg.StandbyEnabled,
-		StandbyRedisURL:  cfg.StandbyRedisURL,
-		StandbyLockKey:   cfg.StandbyLockKey,
+		DevMode:           cfg.RouterDevMode,
+		ConfigURL:         cfg.RouterConfigURL,
+		NotifyWebhookURL:  cfg.RouterNotifyWebhookURL,
+		NotifyMinSeverity: cfg.RouterNotifyMinSeverity,
+		DrainTimeout:      time.Duration(cfg.RouterDrainTimeoutSec) * time.Second,
+		SynthPoolIdleAge:  time.Duration(cfg.RouterSynthPoolIdleSecs) * time.Second,
+		StrictRouting:     cfg.RouterStrictRouting,
+		StandbyEnabled:    cfg.StandbyEnabled,
+		StandbyRedisURL:   cfg.StandbyRedisURL,
+		StandbyLockKey:    cfg.StandbyLockKey,
 		// ALB self-registration: register on leader-gain / non-standby start,
 		// deregister on leader-loss / drain. No-op unless FC_ALB_ENABLED + the
 		// target group ARN + instance IP are set.
