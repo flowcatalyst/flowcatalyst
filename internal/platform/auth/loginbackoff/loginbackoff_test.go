@@ -162,3 +162,87 @@ func TestCheckGlobalLockAndWindowBothElapsed(t *testing.T) {
 		t.Errorf("want allowed once both the window and the lock have elapsed, got %+v", d)
 	}
 }
+
+// capturingRepo wraps fakeRepo and records the `since` bound Check actually
+// passes to FailureStatsByIdentifierIPSince (Window 1's per-pair lookup),
+// so tests can pin exactly what cutoff a given LastSuccessAt result
+// produces — and that it is always a concrete bound, never the zero value
+// (which a real SQL query would read as unbounded).
+type capturingRepo struct {
+	fakeRepo
+	gotSince time.Time
+}
+
+func (c *capturingRepo) FailureStatsByIdentifierIPSince(ctx context.Context, identifier, ip string, since time.Time) (int, *time.Time, error) {
+	c.gotSince = since
+	return c.fakeRepo.FailureStatsByIdentifierIPSince(ctx, identifier, ip, since)
+}
+
+// TestCheckNilLastSuccessAppliesStandardWindowInFull pins the 2026-09-03
+// owner ruling. A nil LastSuccessAt can mean two different things —
+// genuinely never succeeded, or a true success that lies beyond
+// loginattempt.LastSuccessAt's bounded lookback (lastSuccessLookback) — but
+// Check cannot tell them apart, and per the ruling must not try to: both
+// are treated as NEVER-SUCCEEDED, with the standard 30-day failure-counting
+// window applied in full. This test drives Check with two fakeRepos that
+// are indistinguishable at this boundary (both report lastSuccess = nil,
+// exactly as loginattempt.LastSuccessAt does for both cases — see
+// TestLastSuccessAt_OutsideLookbackReadsAsNone and
+// TestLastSuccessAt_NeverSucceededReturnsNil in loginattempt_pg_test.go)
+// and asserts they produce byte-identical decisions and identical, bounded
+// cutoffs — i.e. dormancy never weakens the lockout, and there is no
+// second, unbounded lookup lurking behind either case.
+func TestCheckNilLastSuccessAppliesStandardWindowInFull(t *testing.T) {
+	p := defaultPolicy()
+	now := time.Now().UTC()
+
+	neverSucceeded := &capturingRepo{fakeRepo: fakeRepo{pairCount: 20, pairLastFail: &now}}
+	dormantBeyondBound := &capturingRepo{fakeRepo: fakeRepo{lastSuccess: nil, pairCount: 20, pairLastFail: &now}}
+
+	dNever, err := Check(context.Background(), neverSucceeded, p, "a@b.com", "1.2.3.4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dDormant, err := Check(context.Background(), dormantBeyondBound, p, "a@b.com", "1.2.3.4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dNever != dDormant {
+		t.Errorf("never-succeeded and dormant-beyond-bound must yield identical decisions, got %+v vs %+v", dNever, dDormant)
+	}
+
+	wantCutoff := now.AddDate(0, 0, -30)
+	for name, got := range map[string]time.Time{
+		"never-succeeded":      neverSucceeded.gotSince,
+		"dormant-beyond-bound": dormantBeyondBound.gotSince,
+	} {
+		if got.IsZero() {
+			t.Errorf("%s: FailureStatsByIdentifierIPSince got a zero-value since — unbounded, not the standard window", name)
+		}
+		if diff := got.Sub(wantCutoff); diff < -time.Second || diff > time.Second {
+			t.Errorf("%s: since = %v, want ~%v (the standard 30-day window, applied in full)", name, got, wantCutoff)
+		}
+	}
+}
+
+// TestCheckRecentSuccessNarrowsWindow pins the other half of the ruling: it
+// governs only the nil case. A genuine, in-bound success must still narrow
+// Window 1's cutoff to the success timestamp itself — not the 30-day
+// fallback — exactly as designed before this ruling.
+func TestCheckRecentSuccessNarrowsWindow(t *testing.T) {
+	p := defaultPolicy()
+	now := time.Now().UTC()
+	// 5 days ago: inside the 30-day fallback window too, so a bug that
+	// ignored lastSuccess and always used the fallback would go unnoticed
+	// unless the cutoff is checked verbatim, which is exactly what this
+	// test does.
+	recentSuccess := now.Add(-5 * 24 * time.Hour)
+	repo := &capturingRepo{fakeRepo: fakeRepo{lastSuccess: &recentSuccess, pairCount: 1, pairLastFail: &now}}
+
+	if _, err := Check(context.Background(), repo, p, "a@b.com", "1.2.3.4"); err != nil {
+		t.Fatal(err)
+	}
+	if diff := repo.gotSince.Sub(recentSuccess); diff < -time.Millisecond || diff > time.Millisecond {
+		t.Errorf("since = %v, want the success timestamp %v verbatim (narrowed, not the 30-day fallback)", repo.gotSince, recentSuccess)
+	}
+}

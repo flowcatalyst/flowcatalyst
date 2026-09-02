@@ -114,6 +114,16 @@ func Check(ctx context.Context, repo statsRepo, policy Policy, identifier, ip st
 	if err != nil {
 		return Decision{}, err
 	}
+	// A nil lastSuccess collapses two cases that are indistinguishable at
+	// this boundary: the identifier has genuinely never succeeded, or its
+	// true last success lies beyond loginattempt.LastSuccessAt's bounded
+	// lookback (see lastSuccessLookback in loginattempt.go). Owner ruling
+	// (2026-09-03): both are treated as NEVER-SUCCEEDED — the standard
+	// 30-day window below applies in full, never weakened by dormancy.
+	// Deliberately no second, unbounded query here to chase a stale
+	// success: that fallback was proposed and retracted, because a
+	// never-succeeded identifier — including every enumeration probe —
+	// would then trigger a full-partition scan on every attempt.
 	lastSuccessCutoff := now.AddDate(0, 0, -30)
 	if lastSuccess != nil {
 		lastSuccessCutoff = *lastSuccess

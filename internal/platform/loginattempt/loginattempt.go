@@ -151,6 +151,15 @@ func (r *Repository) CountRecentFailures(ctx context.Context, identifier string,
 // either way: it never looks back further than
 // max(GlobalWindowSecs, GlobalLockSecs), which defaults to 1h — far inside
 // this bound regardless of which cutoff window 1 computed.
+//
+// Owner ruling (2026-09-03): this collapsing is correct as designed and
+// stays exactly this way. A dormant identifier (success older than the
+// bound) is NEVER-SUCCEEDED as far as the lockout is concerned — dormancy
+// must never weaken it — and there must be no unbounded/full-history
+// fallback lookup to recover the true stale timestamp: a previously
+// proposed fallback of that shape was retracted, since a never-succeeded
+// identifier (including every enumeration probe) would then force a full
+// partition scan on every single attempt.
 const lastSuccessLookback = 400 * 24 * time.Hour
 
 // LastSuccessAt returns the timestamp of the most recent SUCCESS attempt
