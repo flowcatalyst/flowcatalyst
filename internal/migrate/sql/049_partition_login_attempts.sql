@@ -116,14 +116,17 @@ BEGIN
 
     ALTER TABLE iam_login_attempts RENAME TO iam_login_attempts_old;
     ALTER TABLE iam_login_attempts_new RENAME TO iam_login_attempts;
-    ALTER TABLE iam_login_attempts RENAME CONSTRAINT iam_login_attempts_new_pkey TO iam_login_attempts_pkey;
 
     -- Renaming a table does NOT rename its indexes — iam_login_attempts_old
     -- still holds idx_iam_login_attempts_type/outcome/principal/at/
-    -- failure_throttle at this point, so the working-named indexes above
-    -- can't claim those canonical names until the old table (and the
-    -- indexes that came with it) is gone.
+    -- failure_throttle at this point, AND the schema-global index name
+    -- iam_login_attempts_pkey backing its primary key. So the old table must
+    -- be gone before the working-named indexes above (and the new PK
+    -- constraint, whose rename renames its backing index) can claim the
+    -- canonical names.
     DROP TABLE iam_login_attempts_old;
+
+    ALTER TABLE iam_login_attempts RENAME CONSTRAINT iam_login_attempts_new_pkey TO iam_login_attempts_pkey;
 
     ALTER INDEX idx_iam_login_attempts_np_identifier_at RENAME TO idx_iam_login_attempts_identifier_at;
     ALTER INDEX idx_iam_login_attempts_np_identifier_ip_at RENAME TO idx_iam_login_attempts_identifier_ip_at;
