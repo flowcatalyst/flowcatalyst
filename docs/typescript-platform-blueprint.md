@@ -6,6 +6,10 @@ codebases with parallel agent lanes. This document is the entry point for buildi
 TypeScript platform; the detailed behavioural authority it points to lives in the
 sibling repos._
 
+_Published (shareable) version of this document:
+<https://claude.ai/code/artifact/e088c862-82c9-46d6-a919-a128fdfcd21e> — this markdown
+file is canonical; the page mirrors it._
+
 ## 1. The decision
 
 **One language everywhere people and agents live; one compiled appliance where the
