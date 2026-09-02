@@ -7,6 +7,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
@@ -50,12 +51,16 @@ type SyncPrincipalsCommand struct {
 //     assignments from any USER principal whose email is absent from the
 //     payload (counted as "deactivated" in the rollup).
 //
-// Authorization is [usecaseop.Public]: this op is reached by two entry points
-// with different gating — the app-scoped SDK sync (CanSyncPrincipals + per-
-// application access) and the platform-level POST /api/principals/sync
-// (CanSyncPrincipals only, no application). Each entry point keeps its own gate;
-// baking either into the op would break the other. Users are global (matched by
-// email), so there is no per-resource dimension the op itself could check.
+// Authorization is mostly delegated to two entry points with different gating
+// — the app-scoped SDK sync (CanSyncPrincipals + per-application access) and
+// the platform-level POST /api/principals/sync (CanSyncPrincipals only, no
+// application). Each entry point keeps its own gate; baking either into the
+// op would break the other. Users are global (matched by email), so there is
+// no per-resource dimension the op itself could check — EXCEPT one: X-02(d)
+// (docs/owner-rulings-todo.md #27) — a RemoveUnlisted sweep with no
+// ApplicationCode is a platform-wide sweep (every application's SDK_SYNC
+// roles are now up for stripping, see removeUnlisted below), so THAT
+// combination is gated here, anchor-only, regardless of entry point.
 //
 // Emits per-row [UserCreated]/[UserUpdated] events plus one [PrincipalsSynced]
 // rollup, all atomic with the writes via [usecaseop.Sync].
@@ -72,7 +77,17 @@ func SyncPrincipals(principals *principal.Repository) usecaseop.Operation[SyncPr
 			}
 			return nil
 		},
-		Authorize: usecaseop.Public[SyncPrincipalsCommand],
+		Authorize: func(ctx context.Context, cmd SyncPrincipalsCommand) error {
+			if !cmd.RemoveUnlisted || cmd.ApplicationCode != "" {
+				return nil
+			}
+			ac := auth.FromContext(ctx)
+			if ac == nil || (!ac.IsAnchor() && !ac.IsSuperAdmin()) {
+				return usecase.Authorization("ANCHOR_REQUIRED_FOR_PLATFORM_SWEEP",
+					"Only anchor users may sweep (removeUnlisted) principal roles with no application scope")
+			}
+			return nil
+		},
 		Execute: func(ctx context.Context, cmd SyncPrincipalsCommand, ec usecase.ExecutionContext) (usecaseop.Plan[PrincipalsSynced], error) {
 			now := time.Now().UTC()
 			sdkSource := SdkSyncSource
@@ -158,6 +173,21 @@ func SyncPrincipals(principals *principal.Repository) usecaseop.Operation[SyncPr
 			}
 
 			if cmd.RemoveUnlisted {
+				// X-02(c): strip only SDK_SYNC roles belonging to THIS sync's
+				// application — role names are app-prefixed "app:role" (see
+				// role.New / role/entity.go). Without this an app-scoped SDK sync
+				// with removeUnlisted would strip every OTHER application's
+				// SDK_SYNC roles too, on any principal that happens to also lack a
+				// role from THIS payload. An empty ApplicationCode (the
+				// platform-level /api/principals/sync) matches every SDK_SYNC role,
+				// same as before — that combination is anchor-gated above.
+				appPrefix := cmd.ApplicationCode + ":"
+				belongsToThisSync := func(ra serviceaccount.RoleAssignment) bool {
+					if ra.AssignmentSource == nil || *ra.AssignmentSource != SdkSyncSource {
+						return false
+					}
+					return cmd.ApplicationCode == "" || strings.HasPrefix(ra.Role, appPrefix)
+				}
 				all, err := principals.FindAll(ctx)
 				if err != nil {
 					return nil, usecase.Internal("REPO", "find_all failed", err)
@@ -172,7 +202,7 @@ func SyncPrincipals(principals *principal.Repository) usecaseop.Operation[SyncPr
 					}
 					hasSdkRoles := false
 					for _, ra := range pr.Roles {
-						if ra.AssignmentSource != nil && *ra.AssignmentSource == SdkSyncSource {
+						if belongsToThisSync(ra) {
 							hasSdkRoles = true
 							break
 						}
@@ -182,7 +212,7 @@ func SyncPrincipals(principals *principal.Repository) usecaseop.Operation[SyncPr
 					}
 					kept := make([]serviceaccount.RoleAssignment, 0, len(pr.Roles))
 					for _, ra := range pr.Roles {
-						if ra.AssignmentSource != nil && *ra.AssignmentSource == SdkSyncSource {
+						if belongsToThisSync(ra) {
 							continue
 						}
 						kept = append(kept, ra)

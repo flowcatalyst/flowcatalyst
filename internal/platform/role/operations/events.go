@@ -119,7 +119,17 @@ func (e RolesSynced) PrincipalID() string   { return e.Metadata.PrincipalID }
 func (e RolesSynced) CorrelationID() string { return e.Metadata.CorrelationID }
 func (e RolesSynced) CausationID() string   { return e.Metadata.CausationID }
 func (e RolesSynced) ExecutionID() string   { return e.Metadata.ExecutionID }
-func (e RolesSynced) MessageGroup() string  { return "platform:roles" }
+
+// MessageGroup: X-08 (docs/owner-rulings-todo.md #28) — per-application
+// rollup group for the SDK application-scoped role sync; falls back to the
+// bare aggregate group for the static platform-catalogue sync
+// (SyncPlatformRoles), which leaves ApplicationCode empty.
+func (e RolesSynced) MessageGroup() string {
+	if e.ApplicationCode == "" {
+		return "platform:roles"
+	}
+	return "platform:roles:" + e.ApplicationCode
+}
 func (e RolesSynced) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		Created         uint32   `json:"created"`

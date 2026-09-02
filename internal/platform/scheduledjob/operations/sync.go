@@ -78,8 +78,11 @@ func SyncScheduledJobs(repo *scheduledjob.Repository) usecaseop.Operation[SyncSc
 		Authorize: func(ctx context.Context, cmd SyncScheduledJobsCommand) error {
 			ac := auth.FromContext(ctx)
 			// Resource-level scope check: the caller must have access to the
-			// target client (or be anchor/super-admin when targeting platform-
-			// scoped jobs).
+			// target client (or be anchor/super-admin when targeting
+			// platform-scoped jobs, ClientID nil). X-02(d): a platform-scope
+			// sweep is refused unless anchor-tier — this is already stricter,
+			// blocking every non-anchor platform-scope sync outright (not just
+			// ArchiveUnlisted ones), which satisfies the ruling.
 			if cid := cmd.ClientID; cid != nil {
 				if !ac.CanAccessClient(*cid) {
 					return httperror.Forbidden("No access to client: " + *cid)
@@ -87,7 +90,8 @@ func SyncScheduledJobs(repo *scheduledjob.Repository) usecaseop.Operation[SyncSc
 				return nil
 			}
 			if !ac.IsAnchor() && !ac.IsSuperAdmin() {
-				return httperror.Forbidden("Only anchor users can sync platform-scoped scheduled jobs")
+				return usecase.Authorization("ANCHOR_REQUIRED_FOR_PLATFORM_SWEEP",
+					"Only anchor users can sync platform-scoped (clientId-less) scheduled jobs")
 			}
 			return nil
 		},
@@ -219,6 +223,17 @@ func SyncScheduledJobs(repo *scheduledjob.Repository) usecaseop.Operation[SyncSc
 			if cmd.ArchiveUnlisted {
 				for _, cur := range existingByCode {
 					if cur.Status != scheduledjob.StatusActive {
+						continue
+					}
+					// X-02: narrow the sweep to clientId + applicationId — a job
+					// whose application linkage doesn't match this sync's
+					// application (or isn't stamped yet) belongs to another
+					// application's sync scope and must not be archived just
+					// because THIS payload omitted it (docs/owner-rulings-todo.md
+					// #27). When ApplicationID is unset (defensive; every real
+					// caller resolves and supplies it) the sweep falls back to the
+					// pre-fix clientId-only scope.
+					if cmd.ApplicationID != "" && (cur.ApplicationID == nil || *cur.ApplicationID != cmd.ApplicationID) {
 						continue
 					}
 					cur.Archive()

@@ -309,8 +309,11 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	if p == nil {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
+	// Out-of-scope answers the SAME not-found a genuinely missing id would —
+	// never 403 — so an unauthorized caller can't use the response to learn
+	// whether an id is real (PR-3(b), docs/owner-rulings-todo.md #3).
 	if !isSelf && p.ClientID != nil && !ac.CanAccessClient(*p.ClientID) {
-		return nil, httperror.Forbidden("No access to this principal")
+		return nil, httperror.NotFound("Principal", in.ID)
 	}
 	resp := fromEntity(p)
 	// Enrich with the user's confirmed second factors so the admin detail view
@@ -334,9 +337,23 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 // may check any principal's.
 func (s *State) getVersion(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[PrincipalVersionResponse], error) {
 	ac := auth.FromContext(ctx)
-	if ac == nil || ac.PrincipalID != in.ID {
+	isSelf := ac != nil && ac.PrincipalID == in.ID
+	if !isSelf {
 		if err := auth.CanReadPrincipals(ac); err != nil {
 			return nil, err
+		}
+		// PR-4: the same client-scope check as the by-id read — an admin
+		// checking another tenant's principal answers 404, byte-identical to
+		// not-found, never a distinguishing 403.
+		p, err := s.Repo.FindByID(ctx, in.ID)
+		if err != nil {
+			return nil, usecase.Internal("REPO", "find_by_id failed", err)
+		}
+		if p == nil {
+			return nil, httperror.NotFound("Principal", in.ID)
+		}
+		if p.ClientID != nil && !ac.CanAccessClient(*p.ClientID) {
+			return nil, httperror.NotFound("Principal", in.ID)
 		}
 	}
 	var (
@@ -780,6 +797,11 @@ func derefStr(s *string) string {
 // mutate another tenant's principal by id. (UpdatePrincipalRequest deliberately
 // doesn't expose scope/client_id at all, so the scope/client-escalation vector
 // can't exist here — no extra gate needed.)
+//
+// An out-of-scope target answers the SAME not-found error a genuinely missing
+// id would — never 403 — so an unauthorized caller can't use the response to
+// learn whether an id is real (PR-3(b)). blockNonClientTarget stays a 403: a
+// distinct "wrong kind of administrator" decision, not a tenancy boundary.
 func (s *State) requireScopeByID(ctx context.Context, ac *auth.AuthContext, id string) error {
 	p, err := s.Repo.FindByID(ctx, id)
 	if err != nil {
@@ -791,7 +813,10 @@ func (s *State) requireScopeByID(ctx context.Context, ac *auth.AuthContext, id s
 	if err := blockNonClientTarget(ac, p); err != nil {
 		return err
 	}
-	return auth.CheckScopeAccess(ac, p.ClientID)
+	if !auth.CanAccessScope(ac, p.ClientID) {
+		return httperror.NotFound("Principal", id)
+	}
+	return nil
 }
 
 // blockNonClientTarget stops a non-anchor administrator (client-admin) from
@@ -1019,6 +1044,12 @@ type assignRolesInput struct {
 
 func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*apicommon.Out[RolesAssignedResponse], error) {
 	ac := auth.FromContext(ctx)
+	// Coarse permission gate BEFORE any load (PR-3(a)): no permission means
+	// nothing is touched, so an unauthorized caller can't distinguish a real id
+	// from an invented one via this route's response.
+	if err := auth.CanWritePrincipals(ac); err != nil {
+		return nil, err
+	}
 	// Load the target to shape the desired role set for non-anchor admins; the
 	// per-resource authorization (RequireUserAdmin + blockNonClientTarget) is
 	// enforced inside the AssignRoles use case post-load.
@@ -1080,6 +1111,12 @@ type assignAppAccessInput struct {
 
 func (s *State) assignApplicationAccess(ctx context.Context, in *assignAppAccessInput) (*apicommon.Out[SetApplicationAccessResponse], error) {
 	ac := auth.FromContext(ctx)
+	// Coarse permission gate BEFORE any load (PR-3(a)): no permission means
+	// nothing is touched, so an unauthorized caller can't distinguish a real id
+	// from an invented one via this route's response.
+	if err := auth.CanWritePrincipals(ac); err != nil {
+		return nil, err
+	}
 	// Load the target to bound the desired application set for non-anchor admins;
 	// the per-resource authorization (RequireUserAdmin + blockNonClientTarget) is
 	// enforced inside the AssignApplicationAccess use case post-load.
@@ -1260,12 +1297,19 @@ func (s *State) listDeveloperUsers(ctx context.Context, _ *apicommon.Empty) (*ap
 }
 
 // setDeveloperCredential creates or rotates the target principal's
-// self-service developer client_credentials secret. No coarse permission
-// check here — mirrors assignRoles: the SetDeveloperCredential use case's
-// requireSelfOrUserAdmin enforces self-or-admin post-load (a caller acting on
-// their own id needs only the developer role; a caller acting on someone
-// else's id needs user-admin rights over that principal's client).
+// self-service developer client_credentials secret. Coarse permission gate
+// BEFORE any load (PR-3(a)): a caller acting on their own id (no load needed
+// to know that — it's the authenticated principal's own id) needs the
+// self-service developer-credential permission; a caller acting on someone
+// else's id needs the general user-admin write permission. The
+// SetDeveloperCredential use case's requireSelfOrUserAdmin then enforces the
+// finer per-resource rule (the developer role check, and — for the admin
+// branch — client scope) post-load.
 func (s *State) setDeveloperCredential(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[SetDeveloperCredentialResponse], error) {
+	ac := auth.FromContext(ctx)
+	if err := requireDeveloperCredentialAccess(ac, in.ID); err != nil {
+		return nil, err
+	}
 	ec := auth.NewExecutionContext(ctx)
 	ev, err := usecaseop.Run(ctx, s.UoW, operations.SetDeveloperCredential(s.Repo),
 		operations.SetDeveloperCredentialCommand{PrincipalID: in.ID}, ec)
@@ -1281,14 +1325,33 @@ func (s *State) setDeveloperCredential(ctx context.Context, in *apicommon.IDInpu
 
 // revokeDeveloperCredential clears the target principal's developer
 // client_credentials secret without touching their role assignment. Same
-// self-or-admin shape as setDeveloperCredential.
+// self-or-admin shape as setDeveloperCredential, including the coarse gate.
 func (s *State) revokeDeveloperCredential(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
+	ac := auth.FromContext(ctx)
+	if err := requireDeveloperCredentialAccess(ac, in.ID); err != nil {
+		return nil, err
+	}
 	ec := auth.NewExecutionContext(ctx)
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.RevokeDeveloperCredential(s.Repo),
 		operations.RevokeDeveloperCredentialCommand{PrincipalID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
+}
+
+// requireDeveloperCredentialAccess is the coarse, pre-load gate shared by
+// setDeveloperCredential/revokeDeveloperCredential (PR-3(a)): self-targeting
+// needs no load (the id is compared to the caller's own, which is already on
+// the AuthContext) and passes with the self-service developer-credential
+// permission; targeting someone else needs the general user-admin write
+// permission. Either way SOME permission is required before the target is
+// ever loaded — the per-resource fine-grained checks (developer role,
+// requester-vs-admin client scope) stay in the use case's Execute, post-load.
+func requireDeveloperCredentialAccess(ac *auth.AuthContext, targetID string) error {
+	if ac != nil && ac.PrincipalID == targetID {
+		return auth.CanManageOwnDeveloperCredential(ac)
+	}
+	return auth.CanWritePrincipals(ac)
 }
 
 // ── send-password-reset (admin trigger) ──────────────────────────────────
@@ -1307,6 +1370,10 @@ type sendPasswordResetInput struct {
 
 func (s *State) sendPasswordReset(ctx context.Context, in *sendPasswordResetInput) (*apicommon.Out[apicommon.StatusChangeResponse], error) {
 	ac := auth.FromContext(ctx)
+	// Coarse permission gate BEFORE any load (PR-3(a)).
+	if err := auth.CanWritePrincipals(ac); err != nil {
+		return nil, err
+	}
 	p, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
@@ -1314,11 +1381,12 @@ func (s *State) sendPasswordReset(ctx context.Context, in *sendPasswordResetInpu
 	if p == nil {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
-	if err := auth.RequireUserAdmin(ac, p.ClientID); err != nil {
-		return nil, err
-	}
 	if err := blockNonClientTarget(ac, p); err != nil {
 		return nil, err
+	}
+	// Out-of-scope answers the same not-found error a missing id would (PR-3(b)).
+	if !auth.CanAccessScope(ac, p.ClientID) {
+		return nil, httperror.NotFound("Principal", in.ID)
 	}
 	reset2FA := false
 	if in.Body != nil {
@@ -1340,6 +1408,10 @@ func (s *State) resetTwoFactor(ctx context.Context, in *apicommon.IDInput) (*api
 	if s.MFA == nil {
 		return nil, usecase.Internal("MFA_NOT_CONFIGURED", "Two-factor service not configured", nil)
 	}
+	// Coarse permission gate BEFORE any load (PR-3(a)).
+	if err := auth.CanWritePrincipals(ac); err != nil {
+		return nil, err
+	}
 	p, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
@@ -1347,11 +1419,12 @@ func (s *State) resetTwoFactor(ctx context.Context, in *apicommon.IDInput) (*api
 	if p == nil {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
-	if err := auth.RequireUserAdmin(ac, p.ClientID); err != nil {
-		return nil, err
-	}
 	if err := blockNonClientTarget(ac, p); err != nil {
 		return nil, err
+	}
+	// Out-of-scope answers the same not-found error a missing id would (PR-3(b)).
+	if !auth.CanAccessScope(ac, p.ClientID) {
+		return nil, httperror.NotFound("Principal", in.ID)
 	}
 	if !p.IsUser() {
 		return nil, usecase.Validation("NOT_USER", "Two-factor reset only applies to user accounts")
@@ -1543,6 +1616,11 @@ func (s *State) listRoles(ctx context.Context, in *apicommon.IDInput) (*apicommo
 	if p == nil {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
+	// PR-4: the same client-scope check as the by-id read — an out-of-scope
+	// target answers 404, byte-identical to not-found, never 403.
+	if p.ClientID != nil && !ac.CanAccessClient(*p.ClientID) {
+		return nil, httperror.NotFound("Principal", in.ID)
+	}
 	return &apicommon.Out[PrincipalRoleListResponse]{Body: PrincipalRoleListResponse{Roles: roleAssignmentDTOs(in.ID, p.Roles)}}, nil
 }
 
@@ -1553,14 +1631,33 @@ type addRoleInput struct {
 
 func (s *State) addRole(ctx context.Context, in *addRoleInput) (*apicommon.Out[PrincipalResponse], error) {
 	ac := auth.FromContext(ctx)
+	// Coarse permission gate BEFORE any load (PR-3(a)): no permission means
+	// nothing is touched, so an unauthorized caller can't distinguish a real id
+	// from an invented one via this route's response.
+	if err := auth.CanWritePrincipals(ac); err != nil {
+		return nil, err
+	}
 	// Load the target to bound the role for non-anchor admins and to apply the
-	// idempotent skip; the per-resource authorization (RequireUserAdmin +
-	// blockNonClientTarget) is enforced inside the AssignRoles use case post-load.
+	// idempotent skip.
 	p, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if p == nil {
+		return nil, httperror.NotFound("Principal", in.ID)
+	}
+	// Per-resource authorization (the use-case-side requireUserAdmin shape:
+	// blockNonClientTarget + CanAccessScope, out-of-scope answers the same
+	// not-found a missing id would, PR-4). This MUST run before the idempotent
+	// early-return below — the role-already-present branch never reaches
+	// AssignRoles (and therefore never reaches its own post-load
+	// requireUserAdmin check), so without this a cross-tenant caller could
+	// "add" a role the target already holds and read back another tenant's
+	// full PrincipalResponse for free.
+	if err := blockNonClientTarget(ac, p); err != nil {
+		return nil, err
+	}
+	if !auth.CanAccessScope(ac, p.ClientID) {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
 	if !ac.IsAnchor() {
@@ -1597,14 +1694,33 @@ type removeRoleInput struct {
 
 func (s *State) removeRole(ctx context.Context, in *removeRoleInput) (*apicommon.Out[PrincipalResponse], error) {
 	ac := auth.FromContext(ctx)
+	// Coarse permission gate BEFORE any load (PR-3(a)): no permission means
+	// nothing is touched, so an unauthorized caller can't distinguish a real id
+	// from an invented one via this route's response.
+	if err := auth.CanWritePrincipals(ac); err != nil {
+		return nil, err
+	}
 	// Load the target to bound the role for non-anchor admins and to apply the
-	// idempotent skip; the per-resource authorization (RequireUserAdmin +
-	// blockNonClientTarget) is enforced inside the AssignRoles use case post-load.
+	// idempotent skip.
 	p, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if p == nil {
+		return nil, httperror.NotFound("Principal", in.ID)
+	}
+	// Per-resource authorization (the use-case-side requireUserAdmin shape:
+	// blockNonClientTarget + CanAccessScope, out-of-scope answers the same
+	// not-found a missing id would, PR-4). This MUST run before the idempotent
+	// early-return below — the role-not-present branch never reaches
+	// AssignRoles (and therefore never reaches its own post-load
+	// requireUserAdmin check), so without this a cross-tenant caller could
+	// "remove" a role the target never had and read back another tenant's
+	// full PrincipalResponse for free.
+	if err := blockNonClientTarget(ac, p); err != nil {
+		return nil, err
+	}
+	if !auth.CanAccessScope(ac, p.ClientID) {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
 	// A non-anchor admin may only remove roles they could also assign — so they
@@ -1689,6 +1805,10 @@ func (s *State) listApplicationAccess(ctx context.Context, in *apicommon.IDInput
 	if p == nil {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
+	// PR-4: the same client-scope check as the by-id read.
+	if p.ClientID != nil && !ac.CanAccessClient(*p.ClientID) {
+		return nil, httperror.NotFound("Principal", in.ID)
+	}
 	apps, err := s.resolveApplications(ctx, p.AccessibleApplicationIDs)
 	if err != nil {
 		return nil, err
@@ -1731,6 +1851,10 @@ func (s *State) listAvailableApplications(ctx context.Context, in *apicommon.IDI
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if p == nil {
+		return nil, httperror.NotFound("Principal", in.ID)
+	}
+	// PR-4: the same client-scope check as the by-id read.
+	if p.ClientID != nil && !ac.CanAccessClient(*p.ClientID) {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
 	// Available = all active applications the system knows about — the

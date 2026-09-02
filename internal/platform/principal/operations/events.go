@@ -352,17 +352,35 @@ type PrincipalsSynced struct {
 	SyncedEmails    []string
 }
 
-func (e PrincipalsSynced) EventID() string       { return e.Metadata.EventID }
-func (e PrincipalsSynced) EventType() string     { return PrincipalsSyncedType }
-func (e PrincipalsSynced) SpecVersion() string   { return "1.0" }
-func (e PrincipalsSynced) Source() string        { return Source }
-func (e PrincipalsSynced) Subject() string       { return "platform.principals." + e.ApplicationCode }
+func (e PrincipalsSynced) EventID() string     { return e.Metadata.EventID }
+func (e PrincipalsSynced) EventType() string   { return PrincipalsSyncedType }
+func (e PrincipalsSynced) SpecVersion() string { return "1.0" }
+func (e PrincipalsSynced) Source() string      { return Source }
+
+// Subject: X-08 fix (docs/owner-rulings-todo.md #28) — an application-less
+// sync (the platform-level POST /api/principals/sync) must not emit a
+// trailing-dot subject "platform.principals.".
+func (e PrincipalsSynced) Subject() string {
+	if e.ApplicationCode == "" {
+		return "platform.principals"
+	}
+	return "platform.principals." + e.ApplicationCode
+}
 func (e PrincipalsSynced) Time() time.Time       { return e.Metadata.OccurredAt }
 func (e PrincipalsSynced) PrincipalID() string   { return e.Metadata.PrincipalID }
 func (e PrincipalsSynced) CorrelationID() string { return e.Metadata.CorrelationID }
 func (e PrincipalsSynced) CausationID() string   { return e.Metadata.CausationID }
 func (e PrincipalsSynced) ExecutionID() string   { return e.Metadata.ExecutionID }
-func (e PrincipalsSynced) MessageGroup() string  { return "platform:principals" }
+
+// MessageGroup: X-08 — per-application rollup group, falling back to the
+// bare aggregate group when there's genuinely no application in scope (the
+// platform-level sync).
+func (e PrincipalsSynced) MessageGroup() string {
+	if e.ApplicationCode == "" {
+		return "platform:principals"
+	}
+	return "platform:principals:" + e.ApplicationCode
+}
 func (e PrincipalsSynced) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		ApplicationCode string   `json:"applicationCode"`

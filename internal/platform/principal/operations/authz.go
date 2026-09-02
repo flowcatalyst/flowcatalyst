@@ -13,35 +13,49 @@ import (
 // delete). It is the use-case-side move of the controller's old
 // requireScopeByID: a non-anchor administrator may only act on CLIENT-scope
 // users (blockNonClientTarget) homed at a client they can access
-// (CheckScopeAccess). The coarse "may write/delete principals" permission stays
-// at the controller — this is purely the per-resource scope gate.
+// (CanAccessScope). The coarse "may write/delete principals" permission is
+// enforced at the controller BEFORE the target is loaded (docs/owner-rulings-todo.md
+// #3, PR-3) — this function is purely the per-resource scope gate that runs
+// after.
 //
-// Anchors pass both checks unconditionally (CheckScopeAccess short-circuits on
+// A target outside the caller's client scope answers the SAME not-found error
+// a genuinely missing id would — never 403 — so an unauthorized caller can't
+// use the response to learn whether an id is real (PR-3(b)). blockNonClientTarget
+// stays a 403: a client-admin CAN see the target exists (same or no client
+// reach issue) but is the wrong KIND of administrator for it — a distinct,
+// intentional authorization decision, not a tenancy boundary.
+//
+// Anchors pass both checks unconditionally (CanAccessScope is true for an
 // anchor; the kind-of-user block only applies to non-anchors).
 func requireUserResourceAccess(ctx context.Context, p *principal.Principal) error {
 	ac := auth.FromContext(ctx)
 	if err := blockNonClientTarget(ac, p); err != nil {
 		return err
 	}
-	return auth.CheckScopeAccess(ac, p.ClientID)
+	if !auth.CanAccessScope(ac, p.ClientID) {
+		return httperror.NotFound("Principal", p.ID)
+	}
+	return nil
 }
 
 // requireUserAdmin is the post-load resource-level authorization shared by the
-// user-administration operations that the controller gated with
-// auth.RequireUserAdmin + blockNonClientTarget (assign_roles,
-// assign_application_access). It is the use-case-side move of those controller
-// checks: anchors manage any user; a non-anchor administrator must hold a
-// user-write permission AND be able to access the target user's client
-// (RequireUserAdmin) AND the target must be a CLIENT-scope user
-// (blockNonClientTarget). The coarse permission stays implied by RequireUserAdmin
-// itself (it re-checks CanWritePrincipals for non-anchors); no separate coarse
-// check is left in these controllers because RequireUserAdmin subsumes it.
+// user-administration operations (assign_roles, assign_application_access,
+// developer_credential's admin branch). The coarse "may administer users"
+// permission is enforced at the controller BEFORE the target is loaded (PR-3);
+// this is purely the per-resource gate that runs after: the target must be a
+// CLIENT-scope user (blockNonClientTarget) homed at a client the caller can
+// access (CanAccessScope). Out-of-scope answers the same not-found error a
+// missing id would (PR-3(b)) — see requireUserResourceAccess for the same
+// blockNonClientTarget-stays-403 rationale.
 func requireUserAdmin(ctx context.Context, p *principal.Principal) error {
 	ac := auth.FromContext(ctx)
-	if err := auth.RequireUserAdmin(ac, clientIDPtr(p)); err != nil {
+	if err := blockNonClientTarget(ac, p); err != nil {
 		return err
 	}
-	return blockNonClientTarget(ac, p)
+	if !auth.CanAccessScope(ac, p.ClientID) {
+		return httperror.NotFound("User", p.ID)
+	}
+	return nil
 }
 
 // blockNonClientTarget stops a non-anchor administrator (client-admin) from
@@ -53,13 +67,4 @@ func blockNonClientTarget(ac *auth.AuthContext, p *principal.Principal) error {
 		return httperror.Forbidden("Client administrators can only manage client-scope users")
 	}
 	return nil
-}
-
-// clientIDPtr returns the principal's home client id pointer (nil for a
-// clientless / platform principal).
-func clientIDPtr(p *principal.Principal) *string {
-	if p == nil {
-		return nil
-	}
-	return p.ClientID
 }

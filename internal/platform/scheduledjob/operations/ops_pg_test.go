@@ -12,6 +12,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
@@ -437,9 +438,10 @@ func TestFireNow_Errors(t *testing.T) {
 
 // ── Sync (ClientID-scoped; create / no-op / archive-unlisted / reactivate) ─
 
-// Sync is scoped by ClientID and ArchiveUnlisted sweeps that whole scope, so
+// Sync is scoped by ClientID and (as of X-02, docs/owner-rulings-todo.md #27)
+// ArchiveUnlisted narrows further to ApplicationID within that client — so
 // every sync test owns a fresh unique ClientID — never the nil (platform)
-// scope, which would sweep other tests' jobs.
+// scope, which is anchor-only and would sweep other tests' jobs anyway.
 func TestSyncScheduledJobs_CreateNoopArchiveAndReactivate(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -622,4 +624,93 @@ func TestSyncScheduledJobs_BackfillsApplicationID(t *testing.T) {
 	require.NotNil(t, job)
 	require.NotNil(t, job.ApplicationID, "application_id must be backfilled by re-sync")
 	assert.Equal(t, "app_sjbackfill001", *job.ApplicationID)
+}
+
+// TestSyncScheduledJobs_ArchiveUnlisted_NarrowedToApplication pins X-02(a)
+// (docs/owner-rulings-todo.md #27): archiveUnlisted must only sweep the
+// SYNCING application's own jobs within the client scope — a sibling
+// application's job in the SAME client must survive a sync that never
+// mentions it, even with ArchiveUnlisted set.
+func TestSyncScheduledJobs_ArchiveUnlisted_NarrowedToApplication(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := scheduledjob.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+	ec := testpg.TestEC()
+	clientID := "cli_sjsyncnarrow1"
+
+	// Seed one job per application, sharing the same client.
+	appA, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
+		ApplicationCode: "sjnarrowa",
+		ApplicationID:   "app_sjnarrowa001",
+		ClientID:        &clientID,
+		Jobs:            []operations.ScheduledJobSyncEntry{{Code: "sjnarrow-a", Name: "A", Crons: validCrons, Timezone: "UTC", DeliveryMaxAttempts: 3}},
+	}, ec)
+	require.NoError(t, err)
+	require.Len(t, appA.Created, 1)
+
+	appB, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
+		ApplicationCode: "sjnarrowb",
+		ApplicationID:   "app_sjnarrowb001",
+		ClientID:        &clientID,
+		Jobs:            []operations.ScheduledJobSyncEntry{{Code: "sjnarrow-b", Name: "B", Crons: validCrons, Timezone: "UTC", DeliveryMaxAttempts: 3}},
+	}, ec)
+	require.NoError(t, err)
+	require.Len(t, appB.Created, 1)
+
+	// App A syncs again with ArchiveUnlisted and an EMPTY payload — under the
+	// old clientId-only sweep this would archive App B's job too (same
+	// client). It must not: App B's job is out of App A's application scope.
+	swept, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
+		ApplicationCode: "sjnarrowa",
+		ApplicationID:   "app_sjnarrowa001",
+		ClientID:        &clientID,
+		Jobs:            nil,
+		ArchiveUnlisted: true,
+	}, ec)
+	require.NoError(t, err)
+	assert.Equal(t, []string{appA.Created[0]}, swept.Archived, "only App A's own job may be swept")
+
+	jobB, err := repo.FindByCode(ctx, "sjnarrow-b", &clientID)
+	require.NoError(t, err)
+	require.NotNil(t, jobB)
+	assert.Equal(t, scheduledjob.StatusActive, jobB.Status, "a sibling application's job must survive an unrelated app's sweep")
+
+	jobA, err := repo.FindByCode(ctx, "sjnarrow-a", &clientID)
+	require.NoError(t, err)
+	require.NotNil(t, jobA)
+	assert.Equal(t, scheduledjob.StatusArchived, jobA.Status)
+}
+
+// TestSyncScheduledJobs_PlatformScope_NonAnchorRefused pins X-02(d): a
+// platform-scope (ClientID nil) sync is refused for a non-anchor caller —
+// this pre-dates the narrowing fix (it already gates every platform-scope
+// sync, not just ArchiveUnlisted ones) but had no test pinning it.
+func TestSyncScheduledJobs_PlatformScope_NonAnchorRefused(t *testing.T) {
+	t.Parallel()
+	repo := scheduledjob.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+
+	nonAnchor := testpg.WithAuth(context.Background(), &auth.AuthContext{
+		PrincipalID: "prn_sjnonanchor1",
+		Scope:       auth.ScopeClient,
+		Clients:     []string{"cli_sjnonanchor1"},
+		Permissions: []string{"platform:messaging:scheduled-job:sync"},
+	})
+	_, err := usecaseop.Run(nonAnchor, uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
+		ApplicationCode: "sjplatformrefuse",
+		ApplicationID:   "app_sjplatform01",
+		ClientID:        nil,
+		Jobs:            []operations.ScheduledJobSyncEntry{{Code: "sjplatform-x", Name: "X", Crons: validCrons, Timezone: "UTC", DeliveryMaxAttempts: 3}},
+	}, testpg.TestEC())
+	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "ANCHOR_REQUIRED_FOR_PLATFORM_SWEEP")
+
+	// An anchor caller is unaffected.
+	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
+		ApplicationCode: "sjplatformrefuse",
+		ApplicationID:   "app_sjplatform01",
+		ClientID:        nil,
+		Jobs:            []operations.ScheduledJobSyncEntry{{Code: "sjplatform-x", Name: "X", Crons: validCrons, Timezone: "UTC", DeliveryMaxAttempts: 3}},
+	}, testpg.TestEC())
+	require.NoError(t, err)
 }

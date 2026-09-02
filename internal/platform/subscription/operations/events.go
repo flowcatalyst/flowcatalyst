@@ -164,7 +164,16 @@ func (e SubscriptionsSynced) PrincipalID() string   { return e.Metadata.Principa
 func (e SubscriptionsSynced) CorrelationID() string { return e.Metadata.CorrelationID }
 func (e SubscriptionsSynced) CausationID() string   { return e.Metadata.CausationID }
 func (e SubscriptionsSynced) ExecutionID() string   { return e.Metadata.ExecutionID }
-func (e SubscriptionsSynced) MessageGroup() string  { return "platform:subscriptions" }
+
+// MessageGroup: X-08 (docs/owner-rulings-todo.md #28) — per-application
+// rollup group, falling back to the bare aggregate group when there's
+// genuinely no application in scope.
+func (e SubscriptionsSynced) MessageGroup() string {
+	if e.ApplicationCode == "" {
+		return "platform:subscriptions"
+	}
+	return "platform:subscriptions:" + e.ApplicationCode
+}
 func (e SubscriptionsSynced) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		ApplicationCode string   `json:"applicationCode"`

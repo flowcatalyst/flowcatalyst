@@ -119,7 +119,16 @@ func (e ScheduledJobsSynced) PrincipalID() string   { return e.Metadata.Principa
 func (e ScheduledJobsSynced) CorrelationID() string { return e.Metadata.CorrelationID }
 func (e ScheduledJobsSynced) CausationID() string   { return e.Metadata.CausationID }
 func (e ScheduledJobsSynced) ExecutionID() string   { return e.Metadata.ExecutionID }
-func (e ScheduledJobsSynced) MessageGroup() string  { return "platform:scheduledjobs:synced" }
+
+// MessageGroup: X-08 (docs/owner-rulings-todo.md #28) — per-application
+// rollup group, falling back to the pre-existing bare group when there's
+// genuinely no application in scope.
+func (e ScheduledJobsSynced) MessageGroup() string {
+	if e.ApplicationCode == "" {
+		return "platform:scheduledjobs:synced"
+	}
+	return "platform:scheduledjobs:" + e.ApplicationCode
+}
 func (e ScheduledJobsSynced) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		ApplicationCode string   `json:"applicationCode"`

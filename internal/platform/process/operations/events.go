@@ -139,7 +139,16 @@ func (e ProcessesSynced) PrincipalID() string   { return e.Metadata.PrincipalID 
 func (e ProcessesSynced) CorrelationID() string { return e.Metadata.CorrelationID }
 func (e ProcessesSynced) CausationID() string   { return e.Metadata.CausationID }
 func (e ProcessesSynced) ExecutionID() string   { return e.Metadata.ExecutionID }
-func (e ProcessesSynced) MessageGroup() string  { return "platform:processes" }
+
+// MessageGroup: X-08 (docs/owner-rulings-todo.md #28) — per-application
+// rollup group, falling back to the bare aggregate group when there's
+// genuinely no application in scope.
+func (e ProcessesSynced) MessageGroup() string {
+	if e.ApplicationCode == "" {
+		return "platform:processes"
+	}
+	return "platform:processes:" + e.ApplicationCode
+}
 func (e ProcessesSynced) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		ApplicationCode string   `json:"applicationCode"`

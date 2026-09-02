@@ -483,6 +483,56 @@ func TestSyncDispatchPools_RemoveUnlisted_Archives(t *testing.T) {
 	assert.Equal(t, dispatchpool.StatusArchived, dropped.Status, "unlisted pool must be ARCHIVED")
 }
 
+// TestSyncDispatchPools_RemoveUnlisted_AnchorOnly pins X-02(d)
+// (docs/owner-rulings-todo.md #27): dispatch pools are matched by code
+// GLOBALLY with no per-application containment in the schema (see the
+// SyncDispatchPools doc comment), so a RemoveUnlisted sweep is inherently
+// platform-wide — it is refused for a non-anchor caller even though they hold
+// the sync permission for their own application, closing the "any app-scoped
+// sync can wipe every other app's pools" hole
+// TestSyncDispatchPools_RemoveUnlisted_Archives's HAZARD comment documents. A
+// non-sweeping sync (RemoveUnlisted false) is unaffected.
+func TestSyncDispatchPools_RemoveUnlisted_AnchorOnly(t *testing.T) {
+	t.Parallel()
+	repo := dispatchpool.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+	ec := testpg.TestEC()
+
+	nonAnchor := testpg.WithAuth(context.Background(), &auth.AuthContext{
+		PrincipalID:     "prn_dpnonanchor1",
+		Scope:           auth.ScopeClient,
+		AllApplications: true,
+		Permissions:     []string{"platform:messaging:dispatch-pool:sync"},
+	})
+
+	// A plain (non-sweeping) sync succeeds for a non-anchor holding the sync
+	// permission.
+	_, err := usecaseop.Run(nonAnchor, uow, operations.SyncDispatchPools(repo), operations.SyncDispatchPoolsCommand{
+		ApplicationCode: "dpanchoronly",
+		ApplicationID:   "app_dpanchoronly1",
+		Pools:           []operations.SyncDispatchPoolInput{{Code: "dpanchoronly-a", Name: "A", Concurrency: 2}},
+	}, ec)
+	require.NoError(t, err, "a non-sweeping sync must not require anchor")
+
+	// The SAME non-anchor caller with RemoveUnlisted set is refused.
+	_, err = usecaseop.Run(nonAnchor, uow, operations.SyncDispatchPools(repo), operations.SyncDispatchPoolsCommand{
+		ApplicationCode: "dpanchoronly",
+		ApplicationID:   "app_dpanchoronly1",
+		Pools:           []operations.SyncDispatchPoolInput{{Code: "dpanchoronly-a", Name: "A", Concurrency: 2}},
+		RemoveUnlisted:  true,
+	}, ec)
+	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "ANCHOR_REQUIRED_FOR_PLATFORM_SWEEP")
+
+	// An anchor caller may sweep.
+	_, err = usecaseop.Run(appAccessCtx(), uow, operations.SyncDispatchPools(repo), operations.SyncDispatchPoolsCommand{
+		ApplicationCode: "dpanchoronly",
+		ApplicationID:   "app_dpanchoronly1",
+		Pools:           []operations.SyncDispatchPoolInput{{Code: "dpanchoronly-a", Name: "A", Concurrency: 2}},
+		RemoveUnlisted:  true,
+	}, ec)
+	require.NoError(t, err)
+}
+
 func TestSyncDispatchPools_Validation(t *testing.T) {
 	t.Parallel()
 	repo := dispatchpool.NewRepository(testpg.Pool(t))

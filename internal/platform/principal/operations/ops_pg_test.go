@@ -18,6 +18,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	roleops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/operations"
+	sharedauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
@@ -1187,6 +1188,92 @@ func TestSyncPrincipals_Validation(t *testing.T) {
 	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo),
 		operations.SyncPrincipalsCommand{ApplicationCode: "prnsyncval"}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "PRINCIPALS_REQUIRED")
+}
+
+// TestSyncPrincipals_RemoveUnlisted_NarrowedToApplication pins X-02(c)
+// (docs/owner-rulings-todo.md #27): removeUnlisted strips only the SYNCING
+// application's own SDK_SYNC roles (role names are app-prefixed "app:role",
+// see role.New) — a principal holding only a DIFFERENT application's SDK_SYNC
+// role must survive an unrelated application's sweep entirely (not merely
+// keep that one role: it must not even be counted as deactivated).
+func TestSyncPrincipals_RemoveUnlisted_NarrowedToApplication(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := principal.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+	ec := testpg.TestEC()
+
+	// Seed a principal holding ONLY an app-A SDK_SYNC role.
+	_, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo), operations.SyncPrincipalsCommand{
+		ApplicationCode: "prnnarrowa",
+		Principals: []operations.SyncPrincipalInput{
+			{Email: "prn-sync-narrowa@example.com", Name: "Narrow A", Roles: []string{"prnnarrowa:viewer"}, Active: true},
+		},
+	}, ec)
+	require.NoError(t, err)
+
+	// App B syncs a payload that never mentions the app-A principal, with
+	// RemoveUnlisted set. Under the old (unnarrowed) sweep this stripped
+	// every SDK_SYNC role on every unlisted principal system-wide, regardless
+	// of which application it belonged to.
+	swept, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo), operations.SyncPrincipalsCommand{
+		ApplicationCode: "prnnarrowb",
+		Principals:      []operations.SyncPrincipalInput{{Email: "prn-sync-narrowb-nobody@example.com", Name: "Nobody", Active: true}},
+		RemoveUnlisted:  true,
+	}, ec)
+	require.NoError(t, err)
+	assert.Equal(t, uint32(0), swept.Deactivated, "app B's sweep must not touch a principal holding only app A's SDK_SYNC role")
+
+	got, err := repo.FindByEmail(ctx, "prn-sync-narrowa@example.com")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, map[string]string{"prnnarrowa:viewer": "SDK_SYNC"}, roleSources(got), "app A's role must survive app B's sweep")
+}
+
+// TestSyncPrincipals_PlatformScope_RemoveUnlisted_AnchorOnly pins X-02(d): a
+// RemoveUnlisted sweep with no ApplicationCode (the platform-level
+// POST /api/principals/sync shape) is refused for a non-anchor caller — that
+// combination would strip SDK_SYNC roles for every application system-wide.
+// A non-sweeping sync, or an application-scoped sweep, is unaffected.
+func TestSyncPrincipals_PlatformScope_RemoveUnlisted_AnchorOnly(t *testing.T) {
+	t.Parallel()
+	repo := principal.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+	ec := testpg.TestEC()
+
+	nonAnchor := testpg.WithAuth(context.Background(), &sharedauth.AuthContext{
+		PrincipalID: "prn_pnonanchor1",
+		Scope:       sharedauth.ScopeClient,
+		Permissions: []string{"platform:iam:user:manage"},
+	})
+
+	// Non-sweeping, application-less sync: unaffected.
+	_, err := usecaseop.Run(nonAnchor, uow, operations.SyncPrincipals(repo), operations.SyncPrincipalsCommand{
+		Principals: []operations.SyncPrincipalInput{{Email: "prn-sync-panchor1@example.com", Name: "X", Active: true}},
+	}, ec)
+	require.NoError(t, err)
+
+	// The SAME application-less shape with RemoveUnlisted is refused.
+	_, err = usecaseop.Run(nonAnchor, uow, operations.SyncPrincipals(repo), operations.SyncPrincipalsCommand{
+		Principals:     []operations.SyncPrincipalInput{{Email: "prn-sync-panchor1@example.com", Name: "X", Active: true}},
+		RemoveUnlisted: true,
+	}, ec)
+	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "ANCHOR_REQUIRED_FOR_PLATFORM_SWEEP")
+
+	// An application-scoped sweep (has ApplicationCode) is fine for non-anchor.
+	_, err = usecaseop.Run(nonAnchor, uow, operations.SyncPrincipals(repo), operations.SyncPrincipalsCommand{
+		ApplicationCode: "prnanchorapp",
+		Principals:      []operations.SyncPrincipalInput{{Email: "prn-sync-panchor2@example.com", Name: "Y", Active: true}},
+		RemoveUnlisted:  true,
+	}, ec)
+	require.NoError(t, err)
+
+	// An anchor may sweep application-less too.
+	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo), operations.SyncPrincipalsCommand{
+		Principals:     []operations.SyncPrincipalInput{{Email: "prn-sync-panchor1@example.com", Name: "X", Active: true}},
+		RemoveUnlisted: true,
+	}, ec)
+	require.NoError(t, err)
 }
 
 // ── SyncIdpRoles ──────────────────────────────────────────────────────────

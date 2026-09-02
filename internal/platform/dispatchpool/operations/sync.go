@@ -48,7 +48,19 @@ type SyncDispatchPoolsCommand struct {
 //
 // Authorization: the coarse "may sync dispatch pools" permission and the app
 // resolution (code→id) are the controller's job; the use case enforces the
-// per-resource rule — the caller must have access to the target application.
+// per-resource rule — the caller must have access to the target application —
+// plus an anchor-only gate on RemoveUnlisted (X-02(d); see the Authorize func).
+//
+// X-02(b) note: the ruling asks for archiveUnlisted/removeUnlisted to be
+// narrowed to clientId+applicationId, same as scheduled jobs. msg_dispatch_pools
+// has neither an application_id column nor a sync-populated client_id (pools
+// are matched by code alone, globally) — see internal/migrate/sql/004 — so that
+// per-application narrowing isn't achievable without a schema change, which is
+// out of scope here. What IS implemented: RemoveUnlisted (inherently a
+// platform-wide sweep for this aggregate) is now anchor-only, closing the
+// "any app-scoped sync permission can wipe every other app's pools" hole the
+// pre-existing TestSyncDispatchPools_RemoveUnlisted_Archives HAZARD comment
+// documents.
 //
 // Emits per-row [DispatchPoolCreated]/[DispatchPoolUpdated]/[DispatchPoolArchived]
 // events plus one [DispatchPoolsSynced] rollup, atomic via [usecaseop.Sync].
@@ -77,8 +89,22 @@ func SyncDispatchPools(repo *dispatchpool.Repository) usecaseop.Operation[SyncDi
 			return nil
 		},
 		Authorize: func(ctx context.Context, cmd SyncDispatchPoolsCommand) error {
-			if !auth.FromContext(ctx).CanAccessApplication(cmd.ApplicationID) {
+			ac := auth.FromContext(ctx)
+			if !ac.CanAccessApplication(cmd.ApplicationID) {
 				return httperror.Forbidden("Not authorised for application '" + cmd.ApplicationCode + "'")
+			}
+			// X-02(d)/(b): dispatch pools are GLOBAL — matched by code across every
+			// client and application, with no application_id column to narrow a
+			// sweep by (docs/owner-rulings-todo.md #27 asks for the same
+			// clientId+applicationId narrowing scheduled jobs get; the schema
+			// doesn't carry either dimension for pools, so true per-application
+			// narrowing isn't achievable here — see the sync.go doc comment).
+			// Every RemoveUnlisted call is therefore inherently a platform-wide
+			// sweep, so it's gated the same way a clientId-less sweep is
+			// elsewhere: anchor-tier only.
+			if cmd.RemoveUnlisted && !ac.IsAnchor() && !ac.IsSuperAdmin() {
+				return usecase.Authorization("ANCHOR_REQUIRED_FOR_PLATFORM_SWEEP",
+					"Only anchor users may sweep (removeUnlisted) dispatch pools — they are platform-global")
 			}
 			return nil
 		},

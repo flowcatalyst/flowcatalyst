@@ -189,7 +189,16 @@ func (e DispatchPoolsSynced) PrincipalID() string   { return e.Metadata.Principa
 func (e DispatchPoolsSynced) CorrelationID() string { return e.Metadata.CorrelationID }
 func (e DispatchPoolsSynced) CausationID() string   { return e.Metadata.CausationID }
 func (e DispatchPoolsSynced) ExecutionID() string   { return e.Metadata.ExecutionID }
-func (e DispatchPoolsSynced) MessageGroup() string  { return "platform:dispatchpools" }
+
+// MessageGroup: X-08 (docs/owner-rulings-todo.md #28) — per-application
+// rollup group, falling back to the bare aggregate group when there's
+// genuinely no application in scope.
+func (e DispatchPoolsSynced) MessageGroup() string {
+	if e.ApplicationCode == "" {
+		return "platform:dispatchpools"
+	}
+	return "platform:dispatchpools:" + e.ApplicationCode
+}
 func (e DispatchPoolsSynced) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		ApplicationCode string   `json:"applicationCode"`
