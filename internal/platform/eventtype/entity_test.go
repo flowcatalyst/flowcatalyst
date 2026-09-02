@@ -67,24 +67,63 @@ func TestArchiveFlipsStatus(t *testing.T) {
 	assert.True(t, et.UpdatedAt.After(before))
 }
 
-func TestStatusRoundTripWithFallback(t *testing.T) {
-	assert.Equal(t, eventtype.StatusCurrent, eventtype.ParseStatus("CURRENT"))
-	assert.Equal(t, eventtype.StatusArchived, eventtype.ParseStatus("ARCHIVED"))
-	assert.Equal(t, eventtype.StatusCurrent, eventtype.ParseStatus("UNKNOWN"))
+// TestStatusRoundTrip pins the X-06 (T, bool) idiom: known values parse
+// with ok=true, and an unrecognised value is rejected (ok=false) rather
+// than silently coerced to CURRENT.
+func TestStatusRoundTrip(t *testing.T) {
+	got, ok := eventtype.ParseStatus("CURRENT")
+	assert.True(t, ok)
+	assert.Equal(t, eventtype.StatusCurrent, got)
+
+	got, ok = eventtype.ParseStatus("ARCHIVED")
+	assert.True(t, ok)
+	assert.Equal(t, eventtype.StatusArchived, got)
+
+	_, ok = eventtype.ParseStatus("UNKNOWN")
+	assert.False(t, ok, "an unrecognised status must not silently coerce to CURRENT")
 }
 
-func TestSourceRoundTripWithFallback(t *testing.T) {
-	assert.Equal(t, eventtype.SourceCode, eventtype.ParseSource("CODE"))
-	assert.Equal(t, eventtype.SourceAPI, eventtype.ParseSource("API"))
-	assert.Equal(t, eventtype.SourceUI, eventtype.ParseSource("UI"))
-	assert.Equal(t, eventtype.SourceUI, eventtype.ParseSource("UNKNOWN"))
+// TestSourceRoundTrip mirrors TestStatusRoundTrip for Source.
+func TestSourceRoundTrip(t *testing.T) {
+	got, ok := eventtype.ParseSource("CODE")
+	assert.True(t, ok)
+	assert.Equal(t, eventtype.SourceCode, got)
+
+	got, ok = eventtype.ParseSource("API")
+	assert.True(t, ok)
+	assert.Equal(t, eventtype.SourceAPI, got)
+
+	got, ok = eventtype.ParseSource("UI")
+	assert.True(t, ok)
+	assert.Equal(t, eventtype.SourceUI, got)
+
+	_, ok = eventtype.ParseSource("UNKNOWN")
+	assert.False(t, ok, "an unrecognised source must not silently coerce to UI")
 }
 
+// TestSchemaTypeAcceptsAliases pins the legacy-alias behaviour (still
+// accepted) alongside the X-06 rejection of anything else.
 func TestSchemaTypeAcceptsAliases(t *testing.T) {
-	assert.Equal(t, eventtype.SchemaJSON, eventtype.ParseSchemaType("JSON_SCHEMA"))
-	assert.Equal(t, eventtype.SchemaXSD, eventtype.ParseSchemaType("XSD"))
-	assert.Equal(t, eventtype.SchemaXSD, eventtype.ParseSchemaType("XML_SCHEMA"))
-	assert.Equal(t, eventtype.SchemaProto, eventtype.ParseSchemaType("PROTO"))
-	assert.Equal(t, eventtype.SchemaProto, eventtype.ParseSchemaType("PROTOBUF"))
-	assert.Equal(t, eventtype.SchemaJSON, eventtype.ParseSchemaType("UNKNOWN"))
+	got, ok := eventtype.ParseSchemaType("JSON_SCHEMA")
+	assert.True(t, ok)
+	assert.Equal(t, eventtype.SchemaJSON, got)
+
+	got, ok = eventtype.ParseSchemaType("XSD")
+	assert.True(t, ok)
+	assert.Equal(t, eventtype.SchemaXSD, got)
+
+	got, ok = eventtype.ParseSchemaType("XML_SCHEMA")
+	assert.True(t, ok)
+	assert.Equal(t, eventtype.SchemaXSD, got)
+
+	got, ok = eventtype.ParseSchemaType("PROTO")
+	assert.True(t, ok)
+	assert.Equal(t, eventtype.SchemaProto, got)
+
+	got, ok = eventtype.ParseSchemaType("PROTOBUF")
+	assert.True(t, ok)
+	assert.Equal(t, eventtype.SchemaProto, got)
+
+	_, ok = eventtype.ParseSchemaType("UNKNOWN")
+	assert.False(t, ok, "an unrecognised schema type must not silently coerce to JSON_SCHEMA")
 }

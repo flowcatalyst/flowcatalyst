@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -34,7 +36,11 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*IdentityProvider
 	if err != nil {
 		return nil, fmt.Errorf("identity_provider repo: %w", err)
 	}
-	return r.hydrateOne(ctx, rowToIDP(row))
+	ip, err := rowToIDP(row)
+	if err != nil {
+		return nil, err
+	}
+	return r.hydrateOne(ctx, ip)
 }
 
 // FindByCode loads by unique code.
@@ -46,7 +52,11 @@ func (r *Repository) FindByCode(ctx context.Context, code string) (*IdentityProv
 	if err != nil {
 		return nil, fmt.Errorf("identity_provider repo: %w", err)
 	}
-	return r.hydrateOne(ctx, rowToIDP(row))
+	ip, err := rowToIDP(row)
+	if err != nil {
+		return nil, err
+	}
+	return r.hydrateOne(ctx, ip)
 }
 
 // FindAll returns every IDP with hydrated allowed domains.
@@ -55,9 +65,16 @@ func (r *Repository) FindAll(ctx context.Context) ([]IdentityProvider, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A corrupted type on any one row fails the WHOLE list read (X-06: "a
+	// list containing the row fails too") rather than silently skipping or
+	// coercing that row.
 	bare := make([]IdentityProvider, 0, len(rows))
 	for _, row := range rows {
-		bare = append(bare, *rowToIDP(row))
+		ip, err := rowToIDP(row)
+		if err != nil {
+			return nil, err
+		}
+		bare = append(bare, *ip)
 	}
 	return r.hydrateAll(ctx, bare)
 }
@@ -161,12 +178,24 @@ func (r *Repository) hydrateAll(ctx context.Context, idps []IdentityProvider) ([
 	return idps, nil
 }
 
-func rowToIDP(row dbq.OauthIdentityProvider) *IdentityProvider {
+// rowToIDP hydrates the entity from its row. A type value that isn't one of
+// the known Type constants (junk written before write-boundary validation
+// existed, or a hand-edited row) is a loud read error — never
+// round-tripped as-is and never coerced to INTERNAL, per the X-06 ruling.
+// The row id is logged so the bad row can be found and fixed without a
+// debugger.
+func rowToIDP(row dbq.OauthIdentityProvider) (*IdentityProvider, error) {
+	typ, ok := ParseType(row.Type)
+	if !ok {
+		slog.Error("identity provider row has unrecognised type", "id", row.ID, "type", row.Type)
+		return nil, usecase.Internal("CORRUPT_IDENTITY_PROVIDER_TYPE",
+			fmt.Sprintf("identity provider %s has an unrecognised type", row.ID), nil)
+	}
 	return &IdentityProvider{
 		ID:                  row.ID,
 		Code:                row.Code,
 		Name:                row.Name,
-		Type:                ParseType(row.Type),
+		Type:                typ,
 		OIDCIssuerURL:       row.OidcIssuerUrl,
 		OIDCClientID:        row.OidcClientID,
 		OIDCClientSecretRef: row.OidcClientSecretRef,
@@ -177,5 +206,5 @@ func rowToIDP(row dbq.OauthIdentityProvider) *IdentityProvider {
 		UpdatedAt:           row.UpdatedAt,
 		AllowedEmailDomains: []string{},
 		AllowedRoleIDs:      []string{},
-	}
+	}, nil
 }

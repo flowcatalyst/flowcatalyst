@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -33,7 +35,7 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*ScheduledJob, er
 	if row == nil || err != nil {
 		return nil, err
 	}
-	return rowToScheduledJob(*row), nil
+	return rowToScheduledJob(*row)
 }
 
 // FindByCode loads by (code, client_id). clientID may be nil for platform-scoped.
@@ -53,7 +55,7 @@ func (r *Repository) FindByCode(ctx context.Context, code string, clientID *stri
 	if row == nil || err != nil {
 		return nil, err
 	}
-	return rowToScheduledJob(*row), nil
+	return rowToScheduledJob(*row)
 }
 
 // ListFilters drives FindWithFilters / CountWithFilters. AND semantics
@@ -103,9 +105,16 @@ func (r *Repository) FindWithFilters(ctx context.Context, f ListFilters) ([]Sche
 	if err != nil {
 		return nil, err
 	}
-	var out []ScheduledJob
+	// A corrupted status on any one row fails the WHOLE list read (X-06:
+	// "a list containing the row fails too") rather than silently skipping
+	// or coercing that row.
+	out := make([]ScheduledJob, 0, len(collected))
 	for _, row := range collected {
-		out = append(out, *rowToScheduledJob(row))
+		j, err := rowToScheduledJob(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *j)
 	}
 	return out, nil
 }
@@ -199,7 +208,11 @@ func (r *Repository) FindActive(ctx context.Context) ([]ScheduledJob, error) {
 	}
 	out := make([]ScheduledJob, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, *rowToScheduledJob(row))
+		j, err := rowToScheduledJob(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *j)
 	}
 	return out, nil
 }
@@ -255,7 +268,19 @@ func (r *Repository) Delete(ctx context.Context, j *ScheduledJob, tx *usecasepgx
 	return r.q.WithTx(tx.Inner()).ScheduledJobDelete(ctx, j.ID)
 }
 
-func rowToScheduledJob(row dbq.MsgScheduledJob) *ScheduledJob {
+// rowToScheduledJob hydrates the entity from its row. A status value that
+// isn't one of the known Status constants (junk written before
+// write-boundary validation existed, or a hand-edited row) is a loud read
+// error — never round-tripped as-is and never coerced to ACTIVE, per the
+// X-06 ruling. The row id is logged so the bad row can be found and fixed
+// without a debugger.
+func rowToScheduledJob(row dbq.MsgScheduledJob) (*ScheduledJob, error) {
+	status, ok := ParseStatus(row.Status)
+	if !ok {
+		slog.Error("scheduled job row has unrecognised status", "id", row.ID, "status", row.Status)
+		return nil, usecase.Internal("CORRUPT_SCHEDULED_JOB_STATUS",
+			fmt.Sprintf("scheduled job %s has an unrecognised status", row.ID), nil)
+	}
 	j := ScheduledJob{
 		ID:                  row.ID,
 		ClientID:            row.ClientID,
@@ -263,7 +288,7 @@ func rowToScheduledJob(row dbq.MsgScheduledJob) *ScheduledJob {
 		Code:                row.Code,
 		Name:                row.Name,
 		Description:         row.Description,
-		Status:              ParseStatus(row.Status),
+		Status:              status,
 		Crons:               row.Crons,
 		Timezone:            row.Timezone,
 		Concurrent:          row.Concurrent,
@@ -284,5 +309,5 @@ func rowToScheduledJob(row dbq.MsgScheduledJob) *ScheduledJob {
 	if len(row.Payload) > 0 {
 		j.Payload = json.RawMessage(row.Payload)
 	}
-	return &j
+	return &j, nil
 }

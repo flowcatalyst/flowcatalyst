@@ -139,10 +139,14 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreateServiceAccoun
 	if err := auth.CanWriteServiceAccounts(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
+	cmd, err := in.Body.toCommand()
+	if err != nil {
+		return nil, err
+	}
 	ec := auth.NewExecutionContext(ctx)
 	res, err := usecaseop.RunTx(ctx, s.UoW,
 		operations.CreateServiceAccountWithCredentials(s.Repo, s.Principals, s.OAuthClients),
-		in.Body.toCommand(), ec)
+		cmd, ec)
 	if err != nil {
 		return nil, err
 	}
@@ -163,8 +167,12 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, 
 	if err := auth.CanWriteServiceAccounts(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
+	cmd, err := in.Body.toCommand(in.ID)
+	if err != nil {
+		return nil, err
+	}
 	ec := auth.NewExecutionContext(ctx)
-	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateServiceAccount(s.Repo), in.Body.toCommand(in.ID), ec); err != nil {
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateServiceAccount(s.Repo), cmd, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil

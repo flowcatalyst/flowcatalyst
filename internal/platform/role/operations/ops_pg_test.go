@@ -78,14 +78,19 @@ func seedRawRole(t *testing.T, id, name, displayName, source string, application
 // seedPrincipalWithRole creates a bare iam_principals row plus an
 // iam_principal_roles assignment — the same seeding style as
 // principal/repository_pg_test.go. The junction has no FK on role_name,
-// so the role row itself can come from any source.
+// so the role row itself can come from any source. scope is left NULL:
+// these tests exercise role-sync assignment guards, not principal scope,
+// so no scope value is fabricated here — 'PLATFORM' was never a real
+// principal.UserScope value (ANCHOR/PARTNER/CLIENT only) and only ever
+// worked because the pre-X-06 reader silently coerced it; it now
+// correctly fails the CHECK constraint added in migration 051.
 func seedPrincipalWithRole(t *testing.T, principalID, email, roleName string) {
 	t.Helper()
 	ctx := context.Background()
 	pool := testpg.Pool(t)
 	_, err := pool.Exec(ctx,
-		`INSERT INTO iam_principals (id, type, scope, name, active, email)
-		 VALUES ($1, 'USER', 'PLATFORM', 'Role Ops Test User', TRUE, $2)`,
+		`INSERT INTO iam_principals (id, type, name, active, email)
+		 VALUES ($1, 'USER', 'Role Ops Test User', TRUE, $2)`,
 		principalID, email)
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx,

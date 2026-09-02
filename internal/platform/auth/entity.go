@@ -33,12 +33,20 @@ const (
 	OAuthClientConfidential OAuthClientType = "CONFIDENTIAL"
 )
 
-// ParseOAuthClientType — lenient parser. Unknown → PUBLIC.
-func ParseOAuthClientType(s string) OAuthClientType {
-	if s == string(OAuthClientConfidential) {
-		return OAuthClientConfidential
+// ParseOAuthClientType parses a stored/wire client-type value. Returns
+// ok=false for anything other than PUBLIC or CONFIDENTIAL — callers MUST
+// reject on ok=false rather than coerce an unrecognised value to PUBLIC
+// (X-06: a loud read error, never a silent default — and PUBLIC is the
+// LESS trusted type, so a coerced default here would be a security
+// regression, not just a display bug). Follows the (T, bool) shape of
+// common.ParseOutboxItemType.
+func ParseOAuthClientType(s string) (OAuthClientType, bool) {
+	switch OAuthClientType(s) {
+	case OAuthClientPublic, OAuthClientConfidential:
+		return OAuthClientType(s), true
+	default:
+		return "", false
 	}
-	return OAuthClientPublic
 }
 
 // OAuthClient is a registered client of the OAuth provider.
@@ -160,12 +168,18 @@ const (
 	ProviderOIDC     AuthProvider = "OIDC"
 )
 
-// ParseAuthProvider — lenient parser. Unknown → INTERNAL.
-func ParseAuthProvider(s string) AuthProvider {
-	if s == string(ProviderOIDC) {
-		return ProviderOIDC
+// ParseAuthProvider parses a stored/wire provider value. Returns ok=false
+// for anything other than INTERNAL or OIDC — callers MUST reject on
+// ok=false rather than coerce an unrecognised value to INTERNAL (X-06: a
+// loud read error, never a silent default). Follows the (T, bool) shape of
+// common.ParseOutboxItemType.
+func ParseAuthProvider(s string) (AuthProvider, bool) {
+	switch AuthProvider(s) {
+	case ProviderInternal, ProviderOIDC:
+		return AuthProvider(s), true
+	default:
+		return "", false
 	}
-	return ProviderInternal
 }
 
 // AuthConfigType is the scope of an auth config (ANCHOR/PARTNER/CLIENT).
@@ -177,15 +191,17 @@ const (
 	ConfigClient  AuthConfigType = "CLIENT"
 )
 
-// ParseAuthConfigType — lenient parser. Unknown → CLIENT.
-func ParseAuthConfigType(s string) AuthConfigType {
-	switch s {
-	case string(ConfigAnchor):
-		return ConfigAnchor
-	case string(ConfigPartner):
-		return ConfigPartner
+// ParseAuthConfigType parses a stored/wire config-type value. Returns
+// ok=false for anything other than ANCHOR, PARTNER, or CLIENT — callers
+// MUST reject on ok=false rather than coerce an unrecognised value to
+// CLIENT (X-06: a loud read error, never a silent default). Follows the
+// (T, bool) shape of common.ParseOutboxItemType.
+func ParseAuthConfigType(s string) (AuthConfigType, bool) {
+	switch AuthConfigType(s) {
+	case ConfigAnchor, ConfigPartner, ConfigClient:
+		return AuthConfigType(s), true
 	default:
-		return ConfigClient
+		return "", false
 	}
 }
 

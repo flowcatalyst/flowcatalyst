@@ -18,15 +18,17 @@ const (
 	SourceSDK      Source = "SDK"
 )
 
-// ParseSource is the lenient parser. Unknown → DATABASE.
-func ParseSource(s string) Source {
-	switch s {
-	case string(SourceCode):
-		return SourceCode
-	case string(SourceSDK):
-		return SourceSDK
+// ParseSource parses a stored/wire source value. Returns ok=false for
+// anything other than CODE, DATABASE, or SDK — callers MUST reject on
+// ok=false rather than coerce an unrecognised value to DATABASE (X-06: a
+// loud read error, never a silent default). Follows the (T, bool) shape of
+// common.ParseOutboxItemType.
+func ParseSource(s string) (Source, bool) {
+	switch Source(s) {
+	case SourceCode, SourceDatabase, SourceSDK:
+		return Source(s), true
 	default:
-		return SourceDatabase
+		return "", false
 	}
 }
 

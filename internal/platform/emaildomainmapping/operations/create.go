@@ -83,7 +83,15 @@ func CreateMapping(repo *emaildomainmapping.Repository) usecaseop.Operation[Crea
 					"Email domain '"+domain+"' is already mapped")
 			}
 
-			e := emaildomainmapping.New(domain, cmd.IdentityProviderID, emaildomainmapping.ParseScopeType(cmd.ScopeType))
+			// cmd.ScopeType was already restricted to ANCHOR/PARTNER/CLIENT in
+			// Validate above, so ok is guaranteed true here; the fallback error
+			// exists only so a future change to that switch can't silently
+			// reintroduce a coerced scope.
+			scopeType, ok := emaildomainmapping.ParseScopeType(cmd.ScopeType)
+			if !ok {
+				return nil, usecase.Internal("INVARIANT_SCOPE_TYPE", "validated scopeType failed to parse", nil)
+			}
+			e := emaildomainmapping.New(domain, cmd.IdentityProviderID, scopeType)
 			e.PrimaryClientID = cmd.PrimaryClientID
 			e.RequiredOIDCTenantID = cmd.RequiredOIDCTenantID
 			e.Require2FA = cmd.Require2FA

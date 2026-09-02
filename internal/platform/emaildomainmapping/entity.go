@@ -19,15 +19,19 @@ const (
 	ScopeClient  ScopeType = "CLIENT"
 )
 
-// ParseScopeType is the lenient parser. Unknown → ANCHOR.
-func ParseScopeType(s string) ScopeType {
-	switch s {
-	case string(ScopePartner):
-		return ScopePartner
-	case string(ScopeClient):
-		return ScopeClient
+// ParseScopeType parses a stored/wire scope value. Returns ok=false for
+// anything other than ANCHOR, PARTNER, or CLIENT — callers MUST reject on
+// ok=false rather than coerce an unrecognised value to ANCHOR (X-06: a loud
+// read error, never a silent default — and ANCHOR is the MOST privileged
+// scope, so a coerced default here would be a privilege-escalation bug, not
+// just a display bug). Follows the (T, bool) shape of
+// common.ParseOutboxItemType.
+func ParseScopeType(s string) (ScopeType, bool) {
+	switch ScopeType(s) {
+	case ScopeAnchor, ScopePartner, ScopeClient:
+		return ScopeType(s), true
 	default:
-		return ScopeAnchor
+		return "", false
 	}
 }
 

@@ -24,15 +24,17 @@ const (
 	StatusArchived Status = "ARCHIVED"
 )
 
-// ParseStatus is the lenient parser. Unknown → ACTIVE.
-func ParseStatus(s string) Status {
-	switch s {
-	case string(StatusPaused):
-		return StatusPaused
-	case string(StatusArchived):
-		return StatusArchived
+// ParseStatus parses a stored/wire status value. Returns ok=false for
+// anything other than ACTIVE, PAUSED, or ARCHIVED — callers MUST reject on
+// ok=false rather than coerce an unrecognised value to ACTIVE (X-06: a
+// loud read error, never a silent default). Follows the (T, bool) shape of
+// common.ParseOutboxItemType.
+func ParseStatus(s string) (Status, bool) {
+	switch Status(s) {
+	case StatusActive, StatusPaused, StatusArchived:
+		return Status(s), true
 	default:
-		return StatusActive
+		return "", false
 	}
 }
 

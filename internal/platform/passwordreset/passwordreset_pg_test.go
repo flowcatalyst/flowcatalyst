@@ -79,3 +79,39 @@ func TestConsumeRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, again)
 }
+
+// TestFindByTokenHash_CorruptPurposeFailsLoudly is the X-06 read boundary: a
+// row whose purpose column holds a value that isn't one of the known Purpose
+// constants (junk written before write-boundary validation existed, or a
+// hand-edited row) must fail the read with a distinct error, never
+// round-trip as that literal string and never silently coerce to "reset".
+func TestFindByTokenHash_CorruptPurposeFailsLoudly(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := passwordreset.NewRepository(pool)
+
+	const id = "prt_corrupt_test1"
+	const hash = "hash_corrupt_purpose_test_1"
+	// The purpose column is CHECK-constrained since migration 051; drop it
+	// for the seed insert to simulate a row written before the constraint
+	// existed (or hand-edited out of band) — the exact scenario this read
+	// boundary defends against.
+	testpg.WithConstraintDropped(t, pool, "iam_password_reset_tokens", "chk_iam_password_reset_tokens_purpose", func() {
+		_, err := pool.Exec(ctx,
+			`INSERT INTO iam_password_reset_tokens (id, principal_id, token_hash, purpose, expires_at)
+			 VALUES ($1, 'prn_corrupttest01', $2, 'NOT_A_REAL_PURPOSE', NOW() + interval '15 minutes')`,
+			id, hash)
+		require.NoError(t, err)
+		// The row must be gone before WithConstraintDropped restores the
+		// constraint (t.Cleanup runs LIFO, so this fires first), otherwise
+		// re-adding the constraint fails against the still-corrupt row.
+		t.Cleanup(func() {
+			_, _ = pool.Exec(context.Background(), `DELETE FROM iam_password_reset_tokens WHERE id = $1`, id)
+		})
+	})
+
+	tok, err := repo.FindByTokenHash(ctx, hash)
+	require.Error(t, err, "a corrupt purpose must fail the read, not round-trip it")
+	assert.Nil(t, tok)
+	assert.Contains(t, err.Error(), "CORRUPT_PASSWORD_RESET_PURPOSE")
+}

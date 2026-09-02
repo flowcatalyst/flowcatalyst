@@ -20,12 +20,18 @@ const (
 	TypeIntegration Type = "INTEGRATION"
 )
 
-// ParseType is the lenient parser. Unknown → APPLICATION.
-func ParseType(s string) Type {
-	if s == string(TypeIntegration) {
-		return TypeIntegration
+// ParseType parses a stored/wire type value. Returns ok=false for anything
+// other than APPLICATION or INTEGRATION — callers MUST reject on ok=false
+// rather than coerce an unrecognised value to APPLICATION (X-06: a loud
+// read error, never a silent default). Follows the (T, bool) shape of
+// common.ParseOutboxItemType.
+func ParseType(s string) (Type, bool) {
+	switch Type(s) {
+	case TypeApplication, TypeIntegration:
+		return Type(s), true
+	default:
+		return "", false
 	}
-	return TypeApplication
 }
 
 // Application is the aggregate root.

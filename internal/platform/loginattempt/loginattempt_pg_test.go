@@ -103,6 +103,131 @@ func itoa(n int) string {
 	return string(buf[i:])
 }
 
+// TestFindRecentByIdentifier_CorruptOutcomeFailsSafe is the X-06 read
+// boundary, end to end against a real row: a row whose outcome column holds
+// something other than SUCCESS/FAILURE (hand-edited, or written before
+// validation existed) must come back as FAILURE, never SUCCESS — the old
+// ParseOutcome default. Unlike the serviceaccount webhook-auth-type read
+// boundary, this does NOT fail the whole list: it's a display/audit path,
+// and the real backoff counters query the column directly in SQL and are
+// unaffected by this Go-level parse.
+func TestFindRecentByIdentifier_CorruptOutcomeFailsSafe(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := loginattempt.NewRepository(pool)
+	const identifier = "x06-corrupt-outcome@example.com"
+
+	// Migration 051 forbids this value at the write boundary. The fail-safe
+	// read path exists for a value that predates the constraint, so the row is
+	// seeded with the constraint briefly off — precisely the case simulated.
+	// The row is deleted before the constraint is restored (cleanups run LIFO),
+	// or the restore would fail to validate against it.
+	//
+	// iam_login_attempts is RANGE-partitioned (migration 049) and the CHECK
+	// lives on the parent, so dropping it there covers every partition.
+	testpg.WithConstraintDropped(t, pool, "iam_login_attempts", "chk_iam_login_attempts_outcome", func() {
+		_, err := pool.Exec(ctx, `
+			INSERT INTO iam_login_attempts (id, attempt_type, outcome, identifier, attempted_at)
+			VALUES ('sa_corruptoutcm1', 'USER_LOGIN', 'GARBAGE', $1, NOW())`, identifier)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_, _ = pool.Exec(context.Background(),
+				`DELETE FROM iam_login_attempts WHERE id = 'sa_corruptoutcm1'`)
+		})
+	})
+
+	rows, err := repo.FindRecentByIdentifier(ctx, identifier, 5)
+	require.NoError(t, err, "a corrupt outcome must not fail the whole read")
+	require.Len(t, rows, 1)
+	assert.Equal(t, loginattempt.OutcomeFailure, rows[0].Outcome,
+		"an unrecognised outcome must read as FAILURE, never SUCCESS")
+}
+
+// seedSuccess is seedFailure's SUCCESS counterpart, for LastSuccessAt tests.
+func seedSuccess(t *testing.T, ctx context.Context, repo *loginattempt.Repository, identifier string, at time.Time) {
+	t.Helper()
+	a := loginattempt.New(loginattempt.AttemptUserLogin, loginattempt.OutcomeSuccess)
+	a.Identifier = &identifier
+	a.AttemptedAt = at.UTC()
+	require.NoError(t, repo.Record(ctx, a))
+}
+
+// TestLastSuccessAt_FindsARecentSuccess pins the happy path: a success well
+// inside the 400-day lookback bound is found.
+func TestLastSuccessAt_FindsARecentSuccess(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := loginattempt.NewRepository(pool)
+	const identifier = "x06-lastsuccess-recent@example.com"
+
+	at := time.Now().UTC().Add(-time.Hour)
+	seedSuccess(t, ctx, repo, identifier, at)
+
+	got, err := repo.LastSuccessAt(ctx, identifier)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.WithinDuration(t, at, *got, time.Millisecond)
+}
+
+// TestLastSuccessAt_PicksTheMostRecentOfSeveral pins that the rewrite from
+// MAX(attempted_at) to ORDER BY ... LIMIT 1 still returns the LATEST
+// success, not e.g. the first one the index happens to visit.
+func TestLastSuccessAt_PicksTheMostRecentOfSeveral(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := loginattempt.NewRepository(pool)
+	const identifier = "x06-lastsuccess-several@example.com"
+
+	older := time.Now().UTC().Add(-48 * time.Hour)
+	newer := time.Now().UTC().Add(-1 * time.Hour)
+	seedSuccess(t, ctx, repo, identifier, older)
+	seedSuccess(t, ctx, repo, identifier, newer)
+	// A FAILURE in between must not be picked up as a success.
+	seedFailure(t, ctx, repo, identifier, time.Now().UTC().Add(-24*time.Hour))
+
+	got, err := repo.LastSuccessAt(ctx, identifier)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.WithinDuration(t, newer, *got, time.Millisecond, "must return the most recent success, not the oldest")
+}
+
+// TestLastSuccessAt_OutsideLookbackReadsAsNone pins the X-06 performance fix's
+// documented tradeoff: a real SUCCESS older than the 400-day lookback bound
+// is indistinguishable from "never succeeded" — the query returns nil, not
+// the stale timestamp. This is intentional (see lastSuccessLookback's
+// doc comment for why loginbackoff.Check's own 30-day fallback makes this
+// safe), and this test is what would catch an accidental change to the
+// bound's width.
+func TestLastSuccessAt_OutsideLookbackReadsAsNone(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := loginattempt.NewRepository(pool)
+	const identifier = "x06-lastsuccess-stale@example.com"
+
+	stale := time.Now().UTC().AddDate(-2, 0, 0) // 2 years ago — well outside 400 days
+	seedSuccess(t, ctx, repo, identifier, stale)
+
+	got, err := repo.LastSuccessAt(ctx, identifier)
+	require.NoError(t, err)
+	assert.Nil(t, got, "a success older than the lookback bound must read as none, not the stale timestamp")
+}
+
+// TestLastSuccessAt_NeverSucceededReturnsNil pins the pre-existing "no rows
+// at all" case, now via ErrNoRows (the query changed from MAX() to
+// ORDER BY ... LIMIT 1) rather than a NULL aggregate result.
+func TestLastSuccessAt_NeverSucceededReturnsNil(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := loginattempt.NewRepository(pool)
+	const identifier = "x06-lastsuccess-never@example.com"
+
+	seedFailure(t, ctx, repo, identifier, time.Now().UTC())
+
+	got, err := repo.LastSuccessAt(ctx, identifier)
+	require.NoError(t, err)
+	assert.Nil(t, got)
+}
+
 // TestGlobalCeilingTrippedAt_FindsTheCeilingThMostRecentFailure pins the
 // A-19 query: with N failures on record, offset ceiling-1 (0-indexed from
 // the newest) must land on the failure that pushed the in-window count up

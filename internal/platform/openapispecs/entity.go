@@ -18,12 +18,18 @@ const (
 	StatusArchived Status = "ARCHIVED"
 )
 
-// ParseStatus is the lenient parser. Unknown → CURRENT.
-func ParseStatus(s string) Status {
-	if s == string(StatusArchived) {
-		return StatusArchived
+// ParseStatus parses a stored status value. Returns ok=false for anything
+// other than CURRENT or ARCHIVED — callers MUST reject on ok=false rather
+// than coerce an unrecognised value to CURRENT (X-06: a loud read error,
+// never a silent default). Follows the (T, bool) shape of
+// common.ParseOutboxItemType.
+func ParseStatus(s string) (Status, bool) {
+	switch Status(s) {
+	case StatusCurrent, StatusArchived:
+		return Status(s), true
+	default:
+		return "", false
 	}
-	return StatusCurrent
 }
 
 // ChangeNotes is the structured diff persisted as JSONB alongside an

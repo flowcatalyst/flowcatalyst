@@ -92,3 +92,73 @@ func TestReencryptLegacyUpgradesAnUntouchedRow(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, plain, pt, "and it decrypts back to the same secret")
 }
+
+// TestFindByID_CorruptWebhookAuthTypeFailsLoudly is the X-06 read boundary:
+// a row whose wh_auth_type column holds a value that isn't one of the known
+// WebhookAuthType constants (junk written before validation existed, or
+// hand-edited) must fail the read with a distinct error, never round-trip as
+// that literal string and never silently coerce to NONE.
+func TestFindByID_CorruptWebhookAuthTypeFailsLoudly(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := NewRepository(pool)
+
+	const id = "sa_corrupt_test01"
+	// Migration 051 forbids this value at the write boundary, which is the
+	// point of the constraint. The loud read path is defence in depth for a
+	// value that predates it (or survives the constraint being dropped), so
+	// the row is seeded with the constraint briefly off — which is exactly
+	// the situation being simulated. The seeded row is deleted first: cleanups
+	// run LIFO, so this one fires before the helper restores the constraint,
+	// which would otherwise fail to validate against the still-corrupt row.
+	testpg.WithConstraintDropped(t, pool, "iam_service_accounts", "chk_iam_service_accounts_wh_auth_type", func() {
+		_, err := pool.Exec(ctx,
+			`INSERT INTO iam_service_accounts (id, code, name, active, wh_auth_type)
+			 VALUES ($1, 'corrupt-code', 'Corrupt', true, 'NOT_A_REAL_AUTH_TYPE')`, id)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_, _ = pool.Exec(context.Background(), `DELETE FROM iam_service_accounts WHERE id = $1`, id)
+		})
+	})
+
+	sa, err := repo.FindByID(ctx, id)
+	require.Error(t, err, "a corrupt wh_auth_type must fail the read, not round-trip it")
+	assert.Nil(t, sa)
+	assert.Contains(t, err.Error(), "CORRUPT_WEBHOOK_AUTH_TYPE")
+}
+
+// TestFindAll_CorruptWebhookAuthTypeFailsTheWholeList pins the ruling's list
+// semantics explicitly: "a list containing the row fails too" — one bad row
+// must not be silently skipped or coerced while the rest of the list is
+// returned with 200 OK.
+func TestFindAll_CorruptWebhookAuthTypeFailsTheWholeList(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := NewRepository(pool)
+
+	const goodID = "sa_cl_good0123456" // 17 chars, matches VARCHAR(17)
+	const badID = "sa_cl_bad00123456"  // 17 chars, matches VARCHAR(17)
+	_, err := pool.Exec(ctx,
+		`INSERT INTO iam_service_accounts (id, code, name, active, wh_auth_type)
+		 VALUES ($1, 'corruptlist-good', 'Good', true, 'NONE')`, goodID)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM iam_service_accounts WHERE id = $1`, goodID)
+	})
+	// See the note in TestFindByID_CorruptWebhookAuthTypeFailsLoudly: seeded
+	// with the constraint briefly dropped, and removed before it is restored.
+	testpg.WithConstraintDropped(t, pool, "iam_service_accounts", "chk_iam_service_accounts_wh_auth_type", func() {
+		_, err = pool.Exec(ctx,
+			`INSERT INTO iam_service_accounts (id, code, name, active, wh_auth_type)
+			 VALUES ($1, 'corruptlist-bad', 'Bad', true, 'NOT_A_REAL_AUTH_TYPE')`, badID)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_, _ = pool.Exec(context.Background(), `DELETE FROM iam_service_accounts WHERE id = $1`, badID)
+		})
+	})
+
+	rows, err := repo.FindAll(ctx)
+	require.Error(t, err, "the list read must fail, not silently drop the bad row")
+	assert.Nil(t, rows)
+	assert.Contains(t, err.Error(), "CORRUPT_WEBHOOK_AUTH_TYPE")
+}

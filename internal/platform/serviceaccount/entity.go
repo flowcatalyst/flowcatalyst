@@ -23,19 +23,21 @@ const (
 	AuthHMAC   WebhookAuthType = "HMAC_SIGNATURE"
 )
 
-// ParseAuthType is the lenient parser. Unknown → NONE.
-func ParseAuthType(s string) WebhookAuthType {
-	switch s {
-	case string(AuthBearer):
-		return AuthBearer
-	case string(AuthBasic):
-		return AuthBasic
-	case string(AuthAPIKey):
-		return AuthAPIKey
-	case string(AuthHMAC):
-		return AuthHMAC
+// ParseAuthType parses a wire-format auth type string into a
+// WebhookAuthType. Empty string maps to AuthNone — "no auth type given"
+// means "no credentials", matching NoCredentials() — but any other
+// unrecognised value returns ok=false. Callers MUST reject on ok=false
+// rather than coerce it to NONE: a typo silently downgrading a webhook to
+// unauthenticated is the bug this parser exists to prevent. Follows the
+// (T, bool) shape of common.ParseOutboxItemType.
+func ParseAuthType(s string) (WebhookAuthType, bool) {
+	switch WebhookAuthType(s) {
+	case "":
+		return AuthNone, true
+	case AuthNone, AuthBearer, AuthBasic, AuthAPIKey, AuthHMAC:
+		return WebhookAuthType(s), true
 	default:
-		return AuthNone
+		return "", false
 	}
 }
 

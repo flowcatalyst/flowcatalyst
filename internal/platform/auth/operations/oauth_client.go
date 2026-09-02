@@ -46,6 +46,9 @@ func CreateOAuthClient(repo *auth.OAuthClientRepo) usecaseop.Operation[CreateOAu
 			if strings.TrimSpace(cmd.ClientName) == "" {
 				return usecase.Validation("CLIENT_NAME_REQUIRED", "clientName is required")
 			}
+			if _, ok := auth.ParseOAuthClientType(cmd.ClientType); !ok {
+				return usecase.Validation("INVALID_CLIENT_TYPE", "clientType must be PUBLIC or CONFIDENTIAL")
+			}
 			return nil
 		},
 		Authorize: usecaseop.Public[CreateOAuthClientCommand],
@@ -65,7 +68,11 @@ func CreateOAuthClient(repo *auth.OAuthClientRepo) usecaseop.Operation[CreateOAu
 			if existing != nil {
 				return nil, usecase.Conflict("CLIENT_ID_EXISTS", "OAuth client_id '"+clientID+"' already exists")
 			}
-			t := auth.ParseOAuthClientType(cmd.ClientType)
+			// Already restricted to a known value in Validate above.
+			t, ok := auth.ParseOAuthClientType(cmd.ClientType)
+			if !ok {
+				return nil, usecase.Internal("INVARIANT_CLIENT_TYPE", "validated clientType failed to parse", nil)
+			}
 			c := auth.NewOAuthClient(clientID, cmd.ClientName, t)
 			c.RedirectURIs = cmd.RedirectURIs
 			c.PostLogoutRedirectURIs = cmd.PostLogoutRedirectURIs

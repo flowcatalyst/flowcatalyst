@@ -17,12 +17,18 @@ const (
 	ScopeClient Scope = "CLIENT"
 )
 
-// ParseScope is the lenient parser. Unknown → GLOBAL.
-func ParseScope(s string) Scope {
-	if s == string(ScopeClient) {
-		return ScopeClient
+// ParseScope parses a stored/wire scope value. Returns ok=false for
+// anything other than GLOBAL or CLIENT — callers MUST reject on ok=false
+// rather than coerce an unrecognised value to GLOBAL (X-06: a loud read
+// error, never a silent default). Follows the (T, bool) shape of
+// common.ParseOutboxItemType.
+func ParseScope(s string) (Scope, bool) {
+	switch Scope(s) {
+	case ScopeGlobal, ScopeClient:
+		return Scope(s), true
+	default:
+		return "", false
 	}
-	return ScopeGlobal
 }
 
 // ValueType identifies whether a value is plaintext or a secret reference.
@@ -33,12 +39,20 @@ const (
 	ValueSecret ValueType = "SECRET"
 )
 
-// ParseValueType is the lenient parser. Unknown → PLAIN.
-func ParseValueType(s string) ValueType {
-	if s == string(ValueSecret) {
-		return ValueSecret
+// ParseValueType parses a stored/wire value-type value. Returns ok=false
+// for anything other than PLAIN or SECRET — callers MUST reject on
+// ok=false rather than coerce an unrecognised value to PLAIN (X-06: a loud
+// read error, never a silent default — and PLAIN is the LESS protected
+// type, so a coerced default here risks treating a secret reference as
+// displayable plaintext, not just a display bug). Follows the (T, bool)
+// shape of common.ParseOutboxItemType.
+func ParseValueType(s string) (ValueType, bool) {
+	switch ValueType(s) {
+	case ValuePlain, ValueSecret:
+		return ValueType(s), true
+	default:
+		return "", false
 	}
-	return ValuePlain
 }
 
 // Config is a single config row.

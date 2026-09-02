@@ -287,7 +287,10 @@ func (s *State) listInstances(ctx context.Context, in *listInstancesInput) (*api
 	}
 	filters := scheduledjob.InstanceListFilters{ScheduledJobID: &in.ID}
 	if in.Status != "" {
-		st := scheduledjob.ParseInstanceStatus(in.Status)
+		st, ok := scheduledjob.ParseInstanceStatus(in.Status)
+		if !ok {
+			return nil, usecase.Validation("INVALID_STATUS", "status must be a known instance status")
+		}
 		filters.Status = &st
 	}
 	total, err := s.Instances.Count(ctx, filters)
@@ -409,7 +412,10 @@ func (s *State) completeInstance(ctx context.Context, in *completeInstanceInput)
 	if err := auth.CheckScopeAccess(ac, inst.ClientID); err != nil { // A2: per-instance client scope
 		return nil, err
 	}
-	status, completion := resolveInstanceCompletion(in.Body.Status, in.Body.CompletionStatus)
+	status, completion, ok := resolveInstanceCompletion(in.Body.Status, in.Body.CompletionStatus)
+	if !ok {
+		return nil, usecase.Validation("INVALID_STATUS", "status must be SUCCESS, FAILURE, or a known instance status")
+	}
 	var compStatus *string
 	if completion != "" {
 		compStatus = &completion
@@ -438,17 +444,22 @@ func (s *State) completeInstance(ctx context.Context, in *completeInstanceInput)
 // SUCCESS/FAILURE never collide with the instance statuses
 // (QUEUED/IN_FLIGHT/DELIVERED/COMPLETED/FAILED/DELIVERY_FAILED), so the value
 // alone disambiguates. An explicit completionStatus always wins.
-func resolveInstanceCompletion(status, completionStatus string) (scheduledjob.InstanceStatus, string) {
+//
+// Returns ok=false when status is neither SUCCESS/FAILURE nor a known
+// instance status (X-06: the caller MUST reject rather than silently mark
+// the instance QUEUED on a typo'd status).
+func resolveInstanceCompletion(status, completionStatus string) (scheduledjob.InstanceStatus, string, bool) {
 	completion := completionStatus
 	switch strings.ToUpper(status) {
 	case "":
-		return scheduledjob.InstanceStatusCompleted, completion
+		return scheduledjob.InstanceStatusCompleted, completion, true
 	case "SUCCESS", "FAILURE":
 		if completion == "" {
 			completion = strings.ToUpper(status)
 		}
-		return scheduledjob.InstanceStatusCompleted, completion
+		return scheduledjob.InstanceStatusCompleted, completion, true
 	default:
-		return scheduledjob.ParseInstanceStatus(status), completion
+		st, ok := scheduledjob.ParseInstanceStatus(status)
+		return st, completion, ok
 	}
 }

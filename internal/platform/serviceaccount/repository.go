@@ -3,6 +3,7 @@ package serviceaccount
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -52,7 +54,10 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*ServiceAccount, 
 	if row == nil || err != nil {
 		return nil, err
 	}
-	sa := rowToServiceAccount(*row, r.enc)
+	sa, err := rowToServiceAccount(*row, r.enc)
+	if err != nil {
+		return nil, err
+	}
 	r.reencryptLegacySecrets(ctx, *row)
 	if err := r.hydrateRoles(ctx, sa); err != nil {
 		return nil, err
@@ -69,10 +74,14 @@ func (r *Repository) FindFirstByApplicationID(ctx context.Context, applicationID
 	if row == nil || err != nil {
 		return nil, err
 	}
+	sa, err := rowToServiceAccount(*row, r.enc)
+	if err != nil {
+		return nil, err
+	}
 	// The outbound-delivery path reaches credentials through here, so this is
 	// where a legacy row most often gets upgraded.
 	r.reencryptLegacySecrets(ctx, *row)
-	return rowToServiceAccount(*row, r.enc), nil
+	return sa, nil
 }
 
 // FindByCode loads by unique code.
@@ -82,7 +91,10 @@ func (r *Repository) FindByCode(ctx context.Context, code string) (*ServiceAccou
 	if row == nil || err != nil {
 		return nil, err
 	}
-	sa := rowToServiceAccount(*row, r.enc)
+	sa, err := rowToServiceAccount(*row, r.enc)
+	if err != nil {
+		return nil, err
+	}
 	r.reencryptLegacySecrets(ctx, *row)
 	if err := r.hydrateRoles(ctx, sa); err != nil {
 		return nil, err
@@ -233,6 +245,11 @@ func (r *Repository) TouchLastUsed(ctx context.Context, id string) error {
 }
 
 // FindAll returns every service account.
+//
+// A row with a corrupted wh_auth_type fails the WHOLE list read (per the
+// X-06 ruling: "a list containing the row fails too") rather than silently
+// skipping or coercing that one row — the caller must see that something is
+// wrong, not get a truncated list back with 200 OK.
 func (r *Repository) FindAll(ctx context.Context) ([]ServiceAccount, error) {
 	rows, err := r.q.ServiceAccountFindAll(ctx)
 	if err != nil {
@@ -240,7 +257,11 @@ func (r *Repository) FindAll(ctx context.Context) ([]ServiceAccount, error) {
 	}
 	out := make([]ServiceAccount, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, *rowToServiceAccount(row, r.enc))
+		sa, err := rowToServiceAccount(row, r.enc)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *sa)
 	}
 	return out, nil
 }
@@ -284,7 +305,20 @@ func (r *Repository) Delete(ctx context.Context, sa *ServiceAccount, tx *usecase
 	return r.q.WithTx(tx.Inner()).ServiceAccountDelete(ctx, sa.ID)
 }
 
-func rowToServiceAccount(row dbq.IamServiceAccount, enc *encryption.Service) *ServiceAccount {
+// rowToServiceAccount hydrates the entity from its row. A wh_auth_type
+// value that isn't one of the known WebhookAuthType constants (junk written
+// before the write-boundary validation existed, or a hand-edited row) is a
+// loud read error — never round-tripped as-is and never coerced to NONE, per
+// the X-06 ruling. The row id is logged so the bad row can be found and
+// fixed without a debugger.
+func rowToServiceAccount(row dbq.IamServiceAccount, enc *encryption.Service) (*ServiceAccount, error) {
+	authType, ok := ParseAuthType(stringDerefOrEmpty(row.WhAuthType))
+	if !ok {
+		slog.Error("service account row has unrecognised webhook auth type",
+			"id", row.ID, "wh_auth_type", stringDerefOrEmpty(row.WhAuthType))
+		return nil, usecase.Internal("CORRUPT_WEBHOOK_AUTH_TYPE",
+			fmt.Sprintf("service account %s has an unrecognised webhook auth type", row.ID), nil)
+	}
 	sa := &ServiceAccount{
 		ID:            row.ID,
 		Code:          row.Code,
@@ -299,16 +333,13 @@ func rowToServiceAccount(row dbq.IamServiceAccount, enc *encryption.Service) *Se
 		ClientIDs:     append([]string{}, row.ClientIds...),
 		Roles:         []RoleAssignment{},
 		WebhookCredentials: WebhookCredentials{
-			AuthType:         WebhookAuthType(stringDerefOrEmpty(row.WhAuthType)),
+			AuthType:         authType,
 			Token:            decryptSecretRef(enc, row.WhAuthTokenRef),
 			SigningSecret:    decryptSecretRef(enc, row.WhSigningSecretRef),
 			SigningAlgorithm: row.WhSigningAlgorithm,
 		},
 	}
-	if sa.WebhookCredentials.AuthType == "" {
-		sa.WebhookCredentials = NoCredentials()
-	}
-	return sa
+	return sa, nil
 }
 
 func stringPtrOrNil(s string) *string {

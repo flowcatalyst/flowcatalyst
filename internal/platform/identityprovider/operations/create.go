@@ -136,7 +136,11 @@ func CreateIdentityProvider(deps Deps) usecaseop.TxOperation[CreateCommand, Crea
 			if strings.TrimSpace(cmd.Name) == "" {
 				return usecase.Validation("NAME_REQUIRED", "name is required")
 			}
-			if identityprovider.ParseType(cmd.Type) == identityprovider.TypeOIDC {
+			typ, ok := identityprovider.ParseType(cmd.Type)
+			if !ok {
+				return usecase.Validation("INVALID_TYPE", "type must be INTERNAL or OIDC")
+			}
+			if typ == identityprovider.TypeOIDC {
 				if cmd.OIDCIssuerURL == nil || strings.TrimSpace(*cmd.OIDCIssuerURL) == "" {
 					return usecase.Validation("OIDC_ISSUER_REQUIRED", "OIDC IDPs require oidcIssuerUrl")
 				}
@@ -160,7 +164,12 @@ func CreateIdentityProvider(deps Deps) usecaseop.TxOperation[CreateCommand, Crea
 				return zero, usecase.Conflict("CODE_EXISTS", "Identity provider with code '"+cmd.Code+"' already exists")
 			}
 
-			ip := identityprovider.New(cmd.Code, cmd.Name, identityprovider.ParseType(cmd.Type))
+			// Already restricted to a known value in Validate above.
+			typ, ok := identityprovider.ParseType(cmd.Type)
+			if !ok {
+				return zero, usecase.Internal("INVARIANT_TYPE", "validated type failed to parse", nil)
+			}
+			ip := identityprovider.New(cmd.Code, cmd.Name, typ)
 			ip.OIDCIssuerURL = cmd.OIDCIssuerURL
 			ip.OIDCClientID = cmd.OIDCClientID
 			ip.OIDCClientSecretRef = cmd.OIDCClientSecretRef

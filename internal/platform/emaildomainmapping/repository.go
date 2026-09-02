@@ -3,12 +3,14 @@ package emaildomainmapping
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -31,7 +33,11 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*EmailDomainMappi
 	if row == nil || err != nil {
 		return nil, err
 	}
-	return r.hydrateOne(ctx, rowToEDM(*row))
+	edm, err := rowToEDM(*row)
+	if err != nil {
+		return nil, err
+	}
+	return r.hydrateOne(ctx, edm)
 }
 
 // FindByEmailDomain loads by the unique email domain.
@@ -41,7 +47,11 @@ func (r *Repository) FindByEmailDomain(ctx context.Context, domain string) (*Ema
 	if row == nil || err != nil {
 		return nil, err
 	}
-	return r.hydrateOne(ctx, rowToEDM(*row))
+	edm, err := rowToEDM(*row)
+	if err != nil {
+		return nil, err
+	}
+	return r.hydrateOne(ctx, edm)
 }
 
 // FindByIdentityProvider loads every mapping routed to the given IDP,
@@ -52,9 +62,16 @@ func (r *Repository) FindByIdentityProvider(ctx context.Context, idpID string) (
 	if err != nil {
 		return nil, err
 	}
+	// A corrupted scope type on any one row fails the WHOLE list read
+	// (X-06: "a list containing the row fails too") rather than silently
+	// skipping or coercing that row.
 	bare := make([]EmailDomainMapping, 0, len(rows))
 	for _, row := range rows {
-		bare = append(bare, *rowToEDM(row))
+		edm, err := rowToEDM(row)
+		if err != nil {
+			return nil, err
+		}
+		bare = append(bare, *edm)
 	}
 	return r.hydrateAll(ctx, bare)
 }
@@ -65,9 +82,16 @@ func (r *Repository) FindAll(ctx context.Context) ([]EmailDomainMapping, error) 
 	if err != nil {
 		return nil, err
 	}
+	// A corrupted scope type on any one row fails the WHOLE list read
+	// (X-06: "a list containing the row fails too") rather than silently
+	// skipping or coercing that row.
 	bare := make([]EmailDomainMapping, 0, len(rows))
 	for _, row := range rows {
-		bare = append(bare, *rowToEDM(row))
+		edm, err := rowToEDM(row)
+		if err != nil {
+			return nil, err
+		}
+		bare = append(bare, *edm)
 	}
 	return r.hydrateAll(ctx, bare)
 }
@@ -205,12 +229,24 @@ func (r *Repository) hydrateAll(ctx context.Context, edms []EmailDomainMapping) 
 	return edms, nil
 }
 
-func rowToEDM(row dbq.TntEmailDomainMapping) *EmailDomainMapping {
+// rowToEDM hydrates the entity from its row. A scope type value that isn't
+// one of the known ScopeType constants (junk written before write-boundary
+// validation existed, or a hand-edited row) is a loud read error — never
+// round-tripped as-is and never coerced to ANCHOR, per the X-06 ruling. The
+// row id is logged so the bad row can be found and fixed without a
+// debugger.
+func rowToEDM(row dbq.TntEmailDomainMapping) (*EmailDomainMapping, error) {
+	scopeType, ok := ParseScopeType(row.ScopeType)
+	if !ok {
+		slog.Error("email domain mapping row has unrecognised scope type", "id", row.ID, "scope_type", row.ScopeType)
+		return nil, usecase.Internal("CORRUPT_EDM_SCOPE_TYPE",
+			fmt.Sprintf("email domain mapping %s has an unrecognised scope type", row.ID), nil)
+	}
 	return &EmailDomainMapping{
 		ID:                    row.ID,
 		EmailDomain:           row.EmailDomain,
 		IdentityProviderID:    row.IdentityProviderID,
-		ScopeType:             ParseScopeType(row.ScopeType),
+		ScopeType:             scopeType,
 		PrimaryClientID:       row.PrimaryClientID,
 		RequiredOIDCTenantID:  row.RequiredOidcTenantID,
 		Require2FA:            row.Require2fa,
@@ -221,5 +257,5 @@ func rowToEDM(row dbq.TntEmailDomainMapping) *EmailDomainMapping {
 		AdditionalClientIDs:   []string{},
 		GrantedClientIDs:      []string{},
 		Allowed2FAMethods:     []string{},
-	}
+	}, nil
 }

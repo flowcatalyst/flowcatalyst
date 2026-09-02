@@ -3,6 +3,7 @@ package role
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sort"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -30,7 +32,11 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*Role, error) {
 	if row == nil || err != nil {
 		return nil, err
 	}
-	return r.hydrateOne(ctx, rowToRole(*row))
+	role, err := rowToRole(*row)
+	if err != nil {
+		return nil, err
+	}
+	return r.hydrateOne(ctx, role)
 }
 
 // FindByName loads a role by unique name.
@@ -40,7 +46,11 @@ func (r *Repository) FindByName(ctx context.Context, name string) (*Role, error)
 	if row == nil || err != nil {
 		return nil, err
 	}
-	return r.hydrateOne(ctx, rowToRole(*row))
+	role, err := rowToRole(*row)
+	if err != nil {
+		return nil, err
+	}
+	return r.hydrateOne(ctx, role)
 }
 
 // FindByShortNameInApps resolves a role by its UNPREFIXED short name within a
@@ -61,7 +71,11 @@ func (r *Repository) FindByShortNameInApps(ctx context.Context, shortName string
 	if row == nil || err != nil {
 		return nil, err
 	}
-	return r.hydrateOne(ctx, rowToRole(*row))
+	role, err := rowToRole(*row)
+	if err != nil {
+		return nil, err
+	}
+	return r.hydrateOne(ctx, role)
 }
 
 // FindAll returns every role with permissions hydrated.
@@ -70,9 +84,16 @@ func (r *Repository) FindAll(ctx context.Context) ([]Role, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A corrupted source on any one row fails the WHOLE list read (X-06:
+	// "a list containing the row fails too") rather than silently skipping
+	// or coercing that row.
 	bare := make([]Role, 0, len(rows))
 	for _, row := range rows {
-		bare = append(bare, *rowToRole(row))
+		role, err := rowToRole(row)
+		if err != nil {
+			return nil, err
+		}
+		bare = append(bare, *role)
 	}
 	return r.hydrateAll(ctx, bare)
 }
@@ -84,9 +105,16 @@ func (r *Repository) FindBySource(ctx context.Context, source Source) ([]Role, e
 	if err != nil {
 		return nil, err
 	}
+	// A corrupted source on any one row fails the WHOLE list read (X-06:
+	// "a list containing the row fails too") rather than silently skipping
+	// or coercing that row.
 	bare := make([]Role, 0, len(rows))
 	for _, row := range rows {
-		bare = append(bare, *rowToRole(row))
+		role, err := rowToRole(row)
+		if err != nil {
+			return nil, err
+		}
+		bare = append(bare, *role)
 	}
 	return r.hydrateAll(ctx, bare)
 }
@@ -106,9 +134,16 @@ func (r *Repository) FindByApplicationID(ctx context.Context, applicationID stri
 	if err != nil {
 		return nil, err
 	}
+	// A corrupted source on any one row fails the WHOLE list read (X-06:
+	// "a list containing the row fails too") rather than silently skipping
+	// or coercing that row.
 	bare := make([]Role, 0, len(rows))
 	for _, row := range rows {
-		bare = append(bare, *rowToRole(row))
+		role, err := rowToRole(row)
+		if err != nil {
+			return nil, err
+		}
+		bare = append(bare, *role)
 	}
 	return r.hydrateAll(ctx, bare)
 }
@@ -203,7 +238,19 @@ func (r *Repository) hydrateAll(ctx context.Context, roles []Role) ([]Role, erro
 	return roles, nil
 }
 
-func rowToRole(row dbq.IamRole) *Role {
+// rowToRole hydrates the entity from its row. A source value that isn't one
+// of the known Source constants (junk written before write-boundary
+// validation existed, or a hand-edited row) is a loud read error — never
+// round-tripped as-is and never coerced to DATABASE, per the X-06 ruling.
+// The row id is logged so the bad row can be found and fixed without a
+// debugger.
+func rowToRole(row dbq.IamRole) (*Role, error) {
+	source, ok := ParseSource(row.Source)
+	if !ok {
+		slog.Error("role row has unrecognised source", "id", row.ID, "source", row.Source)
+		return nil, usecase.Internal("CORRUPT_ROLE_SOURCE",
+			fmt.Sprintf("role %s has an unrecognised source", row.ID), nil)
+	}
 	return &Role{
 		ID:              row.ID,
 		ApplicationID:   row.ApplicationID,
@@ -211,12 +258,12 @@ func rowToRole(row dbq.IamRole) *Role {
 		DisplayName:     row.DisplayName,
 		Description:     row.Description,
 		ApplicationCode: derefOrEmpty(row.ApplicationCode),
-		Source:          ParseSource(row.Source),
+		Source:          source,
 		ClientManaged:   row.ClientManaged,
 		CreatedAt:       row.CreatedAt,
 		UpdatedAt:       row.UpdatedAt,
 		Permissions:     []string{},
-	}
+	}, nil
 }
 
 func nullIfEmpty(s string) *string {

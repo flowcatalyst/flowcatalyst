@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -33,7 +35,11 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*EventType, error
 	if row == nil || err != nil {
 		return nil, err
 	}
-	return r.hydrateOne(ctx, rowToEventType(*row))
+	et, err := rowToEventType(*row)
+	if err != nil {
+		return nil, err
+	}
+	return r.hydrateOne(ctx, et)
 }
 
 // FindByCode loads an event type by its unique code.
@@ -43,7 +49,11 @@ func (r *Repository) FindByCode(ctx context.Context, code string) (*EventType, e
 	if row == nil || err != nil {
 		return nil, err
 	}
-	return r.hydrateOne(ctx, rowToEventType(*row))
+	et, err := rowToEventType(*row)
+	if err != nil {
+		return nil, err
+	}
+	return r.hydrateOne(ctx, et)
 }
 
 // FindByApplication lists every event type whose first code segment
@@ -53,9 +63,16 @@ func (r *Repository) FindByApplication(ctx context.Context, applicationCode stri
 	if err != nil {
 		return nil, fmt.Errorf("event_types FindByApplication: %w", err)
 	}
+	// A corrupted status/source on any one row fails the WHOLE list read
+	// (X-06: "a list containing the row fails too") rather than silently
+	// skipping or coercing that row.
 	bare := make([]EventType, 0, len(rows))
 	for _, row := range rows {
-		bare = append(bare, *rowToEventType(row))
+		et, err := rowToEventType(row)
+		if err != nil {
+			return nil, err
+		}
+		bare = append(bare, *et)
 	}
 	return r.hydrateAll(ctx, bare)
 }
@@ -85,9 +102,13 @@ func (r *Repository) FindWithFilters(
 	if err != nil {
 		return nil, err
 	}
-	var bare []EventType
+	bare := make([]EventType, 0, len(collected))
 	for _, row := range collected {
-		bare = append(bare, *rowToEventType(row))
+		et, err := rowToEventType(row)
+		if err != nil {
+			return nil, err
+		}
+		bare = append(bare, *et)
 	}
 	return r.hydrateAll(ctx, bare)
 }
@@ -176,6 +197,12 @@ func (r *Repository) hydrateAll(ctx context.Context, ets []EventType) ([]EventTy
 	return ets, nil
 }
 
+// loadSpecVersions reads the schema-version rows for a set of event types.
+// A spec version row whose schema_type or status column holds a value that
+// isn't one of the known constants (junk written before write-boundary
+// validation existed, or a hand-edited row) fails the WHOLE call — per the
+// X-06 ruling, a list containing the bad row fails too, rather than
+// silently skipping or coercing it.
 func (r *Repository) loadSpecVersions(ctx context.Context, eventTypeIDs []string) (map[string][]SpecVersion, error) {
 	rows, err := r.q.SpecVersionsForEventTypes(ctx, eventTypeIDs)
 	if err != nil {
@@ -183,13 +210,27 @@ func (r *Repository) loadSpecVersions(ctx context.Context, eventTypeIDs []string
 	}
 	out := make(map[string][]SpecVersion)
 	for _, row := range rows {
+		schemaType, ok := ParseSchemaType(row.SchemaType)
+		if !ok {
+			slog.Error("spec version row has unrecognised schema type",
+				"id", row.ID, "schema_type", row.SchemaType)
+			return nil, usecase.Internal("CORRUPT_SPEC_VERSION_SCHEMA_TYPE",
+				fmt.Sprintf("spec version %s has an unrecognised schema type", row.ID), nil)
+		}
+		status, ok := ParseSpecVersionStatus(row.Status)
+		if !ok {
+			slog.Error("spec version row has unrecognised status",
+				"id", row.ID, "status", row.Status)
+			return nil, usecase.Internal("CORRUPT_SPEC_VERSION_STATUS",
+				fmt.Sprintf("spec version %s has an unrecognised status", row.ID), nil)
+		}
 		sv := SpecVersion{
 			ID:          row.ID,
 			EventTypeID: row.EventTypeID,
 			Version:     row.Version,
 			MimeType:    row.MimeType,
-			SchemaType:  ParseSchemaType(row.SchemaType),
-			Status:      ParseSpecVersionStatus(row.Status),
+			SchemaType:  schemaType,
+			Status:      status,
 			CreatedAt:   row.CreatedAt,
 			UpdatedAt:   row.UpdatedAt,
 		}
@@ -201,14 +242,34 @@ func (r *Repository) loadSpecVersions(ctx context.Context, eventTypeIDs []string
 	return out, nil
 }
 
-func rowToEventType(row dbq.MsgEventType) *EventType {
+// rowToEventType hydrates the entity from its row. A status or source
+// value that isn't one of the known constants (junk written before
+// write-boundary validation existed, or a hand-edited row) is a loud read
+// error — never round-tripped as-is and never coerced to a default, per the
+// X-06 ruling. The row id is logged so the bad row can be found and fixed
+// without a debugger.
+func rowToEventType(row dbq.MsgEventType) (*EventType, error) {
+	status, ok := ParseStatus(row.Status)
+	if !ok {
+		slog.Error("event type row has unrecognised status",
+			"id", row.ID, "status", row.Status)
+		return nil, usecase.Internal("CORRUPT_EVENT_TYPE_STATUS",
+			fmt.Sprintf("event type %s has an unrecognised status", row.ID), nil)
+	}
+	source, ok := ParseSource(row.Source)
+	if !ok {
+		slog.Error("event type row has unrecognised source",
+			"id", row.ID, "source", row.Source)
+		return nil, usecase.Internal("CORRUPT_EVENT_TYPE_SOURCE",
+			fmt.Sprintf("event type %s has an unrecognised source", row.ID), nil)
+	}
 	et := &EventType{
 		ID:           row.ID,
 		Code:         row.Code,
 		Name:         row.Name,
 		Description:  row.Description,
-		Status:       ParseStatus(row.Status),
-		Source:       ParseSource(row.Source),
+		Status:       status,
+		Source:       source,
 		ClientScoped: row.ClientScoped,
 		Application:  row.Application,
 		Subdomain:    row.Subdomain,
@@ -221,7 +282,7 @@ func rowToEventType(row dbq.MsgEventType) *EventType {
 	if len(parts) == 4 {
 		et.EventName = parts[3]
 	}
-	return et
+	return et, nil
 }
 
 // eventTypeUpsertParams is shared between the two upsert paths so they

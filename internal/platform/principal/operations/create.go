@@ -75,7 +75,15 @@ func CreateUser(repo *principal.Repository) usecaseop.Operation[CreateCommand, U
 				return nil, usecase.Conflict("EMAIL_EXISTS", "User with email '"+email+"' already exists")
 			}
 
-			p := principal.NewUser(email, principal.ParseScope(cmd.Scope))
+			// cmd.Scope was already restricted to ANCHOR/PARTNER/CLIENT in
+			// Validate above, so ok is guaranteed true here; the fallback error
+			// exists only so a future change to that switch can't silently
+			// reintroduce a coerced scope.
+			scope, ok := principal.ParseScope(cmd.Scope)
+			if !ok {
+				return nil, usecase.Internal("INVARIANT_SCOPE", "validated scope failed to parse", nil)
+			}
+			p := principal.NewUser(email, scope)
 			p.ClientID = cmd.ClientID
 			if cmd.Name != nil {
 				p.Name = strings.TrimSpace(*cmd.Name)

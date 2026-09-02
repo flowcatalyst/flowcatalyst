@@ -8,12 +8,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 )
 
 // Purpose distinguishes a normal password reset from a first-time account
@@ -27,12 +29,18 @@ const (
 	PurposeInvite Purpose = "invite"
 )
 
-// ParsePurpose is the lenient parser. Unknown → reset.
-func ParsePurpose(s string) Purpose {
-	if s == string(PurposeInvite) {
-		return PurposeInvite
+// ParsePurpose parses a stored purpose value. Returns ok=false for anything
+// other than exactly "reset" or "invite" — callers MUST reject on ok=false
+// rather than coerce an unrecognised value to "reset" (X-06: a loud read
+// error, never a silent default). Follows the (T, bool) shape of
+// common.ParseOutboxItemType.
+func ParsePurpose(s string) (Purpose, bool) {
+	switch Purpose(s) {
+	case PurposeReset, PurposeInvite:
+		return Purpose(s), true
+	default:
+		return "", false
 	}
-	return PurposeReset
 }
 
 // Token is the reset-token record. The plaintext token is sent via
@@ -141,6 +149,12 @@ func (r *Repository) IncrementFactorAttempts(ctx context.Context, id string) (in
 }
 
 // scanToken reads a token row, mapping pgx.ErrNoRows to (nil, nil).
+//
+// A purpose value that isn't one of the known Purpose constants (junk
+// written before write-boundary validation existed, or a hand-edited row)
+// is a loud read error — never round-tripped as-is and never coerced to
+// "reset", per the X-06 ruling. The row id is logged so the bad row can be
+// found and fixed without a debugger.
 func scanToken(row pgx.Row) (*Token, error) {
 	var t Token
 	var purpose string
@@ -150,7 +164,14 @@ func scanToken(row pgx.Row) (*Token, error) {
 		}
 		return nil, fmt.Errorf("scan token: %w", err)
 	}
-	t.Purpose = ParsePurpose(purpose)
+	p, ok := ParsePurpose(purpose)
+	if !ok {
+		slog.Error("password reset token row has unrecognised purpose",
+			"id", t.ID, "purpose", purpose)
+		return nil, usecase.Internal("CORRUPT_PASSWORD_RESET_PURPOSE",
+			fmt.Sprintf("password reset token %s has an unrecognised purpose", t.ID), nil)
+	}
+	t.Purpose = p
 	return &t, nil
 }
 

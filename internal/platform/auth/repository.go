@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -88,7 +90,11 @@ func (r *OAuthClientRepo) FindByID(ctx context.Context, id string) (*OAuthClient
 	if err != nil {
 		return nil, fmt.Errorf("oauth_client repo: %w", err)
 	}
-	return r.hydrate(ctx, rowToOAuthClient(row))
+	c, err := rowToOAuthClient(row)
+	if err != nil {
+		return nil, err
+	}
+	return r.hydrate(ctx, c)
 }
 
 func (r *OAuthClientRepo) FindByClientID(ctx context.Context, clientID string) (*OAuthClient, error) {
@@ -99,7 +105,11 @@ func (r *OAuthClientRepo) FindByClientID(ctx context.Context, clientID string) (
 	if err != nil {
 		return nil, fmt.Errorf("oauth_client repo: %w", err)
 	}
-	return r.hydrate(ctx, rowToOAuthClient(row))
+	c, err := rowToOAuthClient(row)
+	if err != nil {
+		return nil, err
+	}
+	return r.hydrate(ctx, c)
 }
 
 func (r *OAuthClientRepo) FindAll(ctx context.Context) ([]OAuthClient, error) {
@@ -107,9 +117,16 @@ func (r *OAuthClientRepo) FindAll(ctx context.Context) ([]OAuthClient, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A corrupted client type on any one row fails the WHOLE list read
+	// (X-06: "a list containing the row fails too") rather than silently
+	// skipping or coercing that row.
 	bare := make([]OAuthClient, 0, len(rows))
 	for _, row := range rows {
-		bare = append(bare, *rowToOAuthClient(row))
+		c, err := rowToOAuthClient(row)
+		if err != nil {
+			return nil, err
+		}
+		bare = append(bare, *c)
 	}
 	return r.hydrateAll(ctx, bare)
 }
@@ -122,9 +139,16 @@ func (r *OAuthClientRepo) FindByPortalClient(ctx context.Context, clientID strin
 	if err != nil {
 		return nil, err
 	}
+	// A corrupted client type on any one row fails the WHOLE list read
+	// (X-06: "a list containing the row fails too") rather than silently
+	// skipping or coercing that row.
 	bare := make([]OAuthClient, 0, len(rows))
 	for _, row := range rows {
-		bare = append(bare, *rowToOAuthClient(row))
+		c, err := rowToOAuthClient(row)
+		if err != nil {
+			return nil, err
+		}
+		bare = append(bare, *c)
 	}
 	return r.hydrateAll(ctx, bare)
 }
@@ -352,12 +376,24 @@ func (r *OAuthClientRepo) loadClientStringJunction(ctx context.Context, query st
 	return out, rows.Err()
 }
 
-func rowToOAuthClient(row dbq.OauthClient) *OAuthClient {
+// rowToOAuthClient hydrates the entity from its row. A client type value
+// that isn't one of the known OAuthClientType constants (junk written
+// before write-boundary validation existed, or a hand-edited row) is a
+// loud read error — never round-tripped as-is and never coerced to PUBLIC,
+// per the X-06 ruling. The row id is logged so the bad row can be found and
+// fixed without a debugger.
+func rowToOAuthClient(row dbq.OauthClient) (*OAuthClient, error) {
+	clientType, ok := ParseOAuthClientType(row.ClientType)
+	if !ok {
+		slog.Error("oauth client row has unrecognised client type", "id", row.ID, "client_type", row.ClientType)
+		return nil, usecase.Internal("CORRUPT_OAUTH_CLIENT_TYPE",
+			fmt.Sprintf("oauth client %s has an unrecognised client type", row.ID), nil)
+	}
 	c := OAuthClient{
 		ID:                       row.ID,
 		ClientID:                 row.ClientID,
 		ClientName:               row.ClientName,
-		ClientType:               ParseOAuthClientType(row.ClientType),
+		ClientType:               clientType,
 		SecretRef:                row.ClientSecretRef,
 		PreviousSecretRef:        row.PreviousSecretRef,
 		PreviousSecretExpiresAt:  row.PreviousSecretExpiresAt,
@@ -377,13 +413,13 @@ func rowToOAuthClient(row dbq.OauthClient) *OAuthClient {
 		ApplicationIDs:           []string{},
 	}
 	if row.DefaultScopes != nil && *row.DefaultScopes != "" {
-		for _, s := range strings.Split(*row.DefaultScopes, ",") {
-			if s != "" {
-				c.Scopes = append(c.Scopes, s)
+		for _, sc := range strings.Split(*row.DefaultScopes, ",") {
+			if sc != "" {
+				c.Scopes = append(c.Scopes, sc)
 			}
 		}
 	}
-	return &c
+	return &c, nil
 }
 
 // ── AnchorDomain repo ─────────────────────────────────────────────────────
@@ -523,13 +559,31 @@ func (r *ClientAuthConfigRepo) Delete(ctx context.Context, c *ClientAuthConfig, 
 	return r.q.WithTx(tx.Inner()).ClientAuthConfigDelete(ctx, c.ID)
 }
 
+// rowToClientAuthConfig hydrates the entity from its row. A config type or
+// auth provider value that isn't one of the known constants (junk written
+// before write-boundary validation existed, or a hand-edited row) is a
+// loud read error — never round-tripped as-is and never coerced to a
+// default, per the X-06 ruling. The row id is logged so the bad row can be
+// found and fixed without a debugger.
 func rowToClientAuthConfig(row dbq.TntClientAuthConfig) (*ClientAuthConfig, error) {
+	configType, ok := ParseAuthConfigType(row.ConfigType)
+	if !ok {
+		slog.Error("client auth config row has unrecognised config type", "id", row.ID, "config_type", row.ConfigType)
+		return nil, usecase.Internal("CORRUPT_AUTH_CONFIG_TYPE",
+			fmt.Sprintf("client auth config %s has an unrecognised config type", row.ID), nil)
+	}
+	authProvider, ok := ParseAuthProvider(row.AuthProvider)
+	if !ok {
+		slog.Error("client auth config row has unrecognised auth provider", "id", row.ID, "auth_provider", row.AuthProvider)
+		return nil, usecase.Internal("CORRUPT_AUTH_PROVIDER",
+			fmt.Sprintf("client auth config %s has an unrecognised auth provider", row.ID), nil)
+	}
 	c := ClientAuthConfig{
 		ID:                  row.ID,
 		EmailDomain:         row.EmailDomain,
-		ConfigType:          ParseAuthConfigType(row.ConfigType),
+		ConfigType:          configType,
 		PrimaryClientID:     row.PrimaryClientID,
-		AuthProvider:        ParseAuthProvider(row.AuthProvider),
+		AuthProvider:        authProvider,
 		OIDCIssuerURL:       row.OidcIssuerUrl,
 		OIDCClientID:        row.OidcClientID,
 		OIDCMultiTenant:     row.OidcMultiTenant,

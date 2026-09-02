@@ -119,6 +119,58 @@ func Pool(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
+// WithConstraintDropped runs fn with the named CHECK constraint on table
+// temporarily removed, then restores it. This is how an X-06 "corrupt row
+// fails loudly at read time" test seeds the corrupt row in the first
+// place: since migration 051 (and the serviceaccount/loginattempt phase-1
+// constraints), the enum columns these tests target are now guarded by a
+// CHECK constraint at the write boundary, so a plain INSERT of a bad value
+// is rejected before the read-boundary code under test ever sees it.
+// Dropping the constraint for the duration of the seed insert honestly
+// simulates the scenario the read-boundary check exists for: a row written
+// before the constraint existed (or one that arrives via direct DBA
+// action, or survives the constraint later being dropped) — legacy or
+// out-of-band corruption, not a new write through the app.
+//
+// The constraint is restored via t.Cleanup — including on a panic or
+// t.Fatal in fn — so a failing test can't leave the table unconstrained
+// for whatever runs next.
+//
+// NOT safe under t.Parallel(): every package using this helper shares one
+// pgxpool against one embedded Postgres instance (see the package doc),
+// and the constraint is genuinely off table-wide for the window between
+// the DROP and the deferred ADD. A concurrently running parallel test that
+// writes to the same table during that window could either slip an
+// unconstrained row past validation or itself fail if it depended on the
+// constraint being enforced. Callers MUST NOT call t.Parallel() in a test
+// (or any test in the same package that touches the same table) that uses
+// this helper.
+func WithConstraintDropped(t *testing.T, pool *pgxpool.Pool, table, constraint string, fn func()) {
+	t.Helper()
+	ctx := context.Background()
+
+	var definition string
+	if err := pool.QueryRow(ctx,
+		`SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = $1`,
+		constraint).Scan(&definition); err != nil {
+		t.Fatalf("with_constraint_dropped: look up %s: %v", constraint, err)
+	}
+
+	// #nosec G202 -- table/constraint are hardcoded test-file constants, never
+	// user input; pg_get_constraintdef's output is Postgres-quoted already.
+	if _, err := pool.Exec(ctx, fmt.Sprintf(`ALTER TABLE %s DROP CONSTRAINT %s`, table, constraint)); err != nil {
+		t.Fatalf("with_constraint_dropped: drop %s: %v", constraint, err)
+	}
+	t.Cleanup(func() {
+		if _, err := pool.Exec(context.Background(), fmt.Sprintf(
+			`ALTER TABLE %s ADD CONSTRAINT %s %s`, table, constraint, definition)); err != nil {
+			t.Errorf("with_constraint_dropped: restore %s: %v", constraint, err)
+		}
+	})
+
+	fn()
+}
+
 // freePort grabs an ephemeral TCP port from the kernel and releases it for
 // the embedded instance. The tiny claim-to-bind race window is acceptable
 // for test infrastructure.

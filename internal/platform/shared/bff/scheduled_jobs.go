@@ -271,11 +271,19 @@ func (s *ScheduledJobsState) listInstances(w http.ResponseWriter, r *http.Reques
 		Offset:         &offset,
 	}
 	if status := q.Get("status"); status != "" {
-		st := scheduledjob.ParseInstanceStatus(status)
+		st, ok := scheduledjob.ParseInstanceStatus(status)
+		if !ok {
+			httperror.Write(w, httperror.BadRequest("INVALID_STATUS", "status must be a known instance status"))
+			return
+		}
 		filters.Status = &st
 	}
 	if trigger := q.Get("triggerKind"); trigger != "" {
-		tk := scheduledjob.ParseTriggerKind(trigger)
+		tk, ok := scheduledjob.ParseTriggerKind(trigger)
+		if !ok {
+			httperror.Write(w, httperror.BadRequest("INVALID_TRIGGER_KIND", "triggerKind must be CRON, MANUAL, or BACKFILL"))
+			return
+		}
 		filters.TriggerKind = &tk
 	}
 	if from, ok := parseTimeParam(q.Get("from")); ok {

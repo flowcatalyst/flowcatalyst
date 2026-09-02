@@ -2,6 +2,8 @@ package application
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -9,6 +11,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -30,7 +33,7 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*Application, err
 	if row == nil || err != nil {
 		return nil, err
 	}
-	return rowToApplication(*row), nil
+	return rowToApplication(*row)
 }
 
 // FindByCode loads by unique code.
@@ -40,7 +43,7 @@ func (r *Repository) FindByCode(ctx context.Context, code string) (*Application,
 	if row == nil || err != nil {
 		return nil, err
 	}
-	return rowToApplication(*row), nil
+	return rowToApplication(*row)
 }
 
 // FindWithFilters returns apps matching non-nil filters. Hand-rolled
@@ -71,9 +74,16 @@ func (r *Repository) FindWithFilters(ctx context.Context, appType, active *strin
 	if err != nil {
 		return nil, err
 	}
-	var out []Application
+	// A corrupted type on any one row fails the WHOLE list read (X-06: "a
+	// list containing the row fails too") rather than silently skipping or
+	// coercing that row.
+	out := make([]Application, 0, len(collected))
 	for _, row := range collected {
-		out = append(out, *rowToApplication(row))
+		a, err := rowToApplication(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *a)
 	}
 	return out, nil
 }
@@ -103,10 +113,23 @@ func (r *Repository) Delete(ctx context.Context, a *Application, tx *usecasepgx.
 	return r.q.WithTx(tx.Inner()).ApplicationDelete(ctx, a.ID)
 }
 
-func rowToApplication(row dbq.AppApplication) *Application {
+// rowToApplication hydrates the entity from its row. A type value that
+// isn't one of the known Type constants (junk written before write-boundary
+// validation existed, or a hand-edited row) is a loud read error — never
+// round-tripped as-is and never coerced to APPLICATION, per the X-06
+// ruling. The row id is logged so the bad row can be found and fixed
+// without a debugger.
+func rowToApplication(row dbq.AppApplication) (*Application, error) {
+	typ, ok := ParseType(row.Type)
+	if !ok {
+		slog.Error("application row has unrecognised type",
+			"id", row.ID, "type", row.Type)
+		return nil, usecase.Internal("CORRUPT_APPLICATION_TYPE",
+			fmt.Sprintf("application %s has an unrecognised type", row.ID), nil)
+	}
 	return &Application{
 		ID:               row.ID,
-		Type:             ParseType(row.Type),
+		Type:             typ,
 		Code:             row.Code,
 		Name:             row.Name,
 		Description:      row.Description,
@@ -119,5 +142,5 @@ func rowToApplication(row dbq.AppApplication) *Application {
 		Active:           row.Active,
 		CreatedAt:        row.CreatedAt,
 		UpdatedAt:        row.UpdatedAt,
-	}
+	}, nil
 }

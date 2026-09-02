@@ -52,7 +52,11 @@ func UpdateConnection(repo *connection.Repository) usecaseop.Operation[UpdateCom
 			c.Description = cmd.Description
 			c.ExternalID = cmd.ExternalID
 			if cmd.Status != nil {
-				c.Status = connection.ParseStatus(strings.TrimSpace(*cmd.Status))
+				status, ok := connection.ParseStatus(strings.TrimSpace(*cmd.Status))
+				if !ok {
+					return nil, usecase.Validation("INVALID_STATUS", "status must be ACTIVE or PAUSED")
+				}
+				c.Status = status
 			}
 			event := ConnectionUpdated{
 				Metadata:     usecase.NewEventMetadata(ec, ConnectionUpdatedType, Source, subjectFor(c.ID)),

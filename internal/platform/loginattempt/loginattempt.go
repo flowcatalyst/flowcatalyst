@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -55,12 +56,19 @@ const (
 	OutcomeFailure Outcome = "FAILURE"
 )
 
-// ParseOutcome is the lenient parser. Unknown → SUCCESS.
-func ParseOutcome(s string) Outcome {
-	if s == string(OutcomeFailure) {
-		return OutcomeFailure
+// ParseOutcome parses a stored/wire outcome string. Returns ok=false for
+// anything other than exactly "SUCCESS" or "FAILURE" — callers MUST NOT
+// default an unrecognised value to SUCCESS. That was the X-06 bug: a
+// corrupted outcome column silently undercounted lockout failures, because
+// the illegible row displayed as a clean success. Follows the (T, bool)
+// shape of common.ParseOutboxItemType / serviceaccount.ParseAuthType.
+func ParseOutcome(s string) (Outcome, bool) {
+	switch Outcome(s) {
+	case OutcomeSuccess, OutcomeFailure:
+		return Outcome(s), true
+	default:
+		return "", false
 	}
-	return OutcomeSuccess
 }
 
 // LoginAttempt is a single attempt record.
@@ -121,16 +129,50 @@ func (r *Repository) CountRecentFailures(ctx context.Context, identifier string,
 	return count, nil
 }
 
+// lastSuccessLookback bounds LastSuccessAt's search window. iam_login_attempts
+// is range-partitioned by quarter (migration 049); a bare `MAX(attempted_at)`
+// with no predicate on attempted_at carries no partition-pruning information,
+// so the planner must touch every existing partition on every login. 400
+// days (just over a year, with margin) is chosen so any identifier that
+// succeeds at least annually sees byte-identical behaviour to the old
+// unbounded query.
+//
+// Tradeoff for anything outside the window: if an identifier's true last
+// success is older than this, the query now returns nil — indistinguishable
+// from "never succeeded". loginbackoff.Check already treats a nil
+// LastSuccessAt by falling back to its own hardcoded 30-day cutoff for the
+// per-pair backoff window (see lastSuccessCutoff in Check). That existing
+// 30-day fallback already exceeds the point (~12 failures, with the default
+// policy) past which the exponential delay saturates at MaxDelaySecs — so
+// narrowing a long-dormant identifier's counted window from "years" to
+// "capped at 30 days via the existing fallback" only reduces an
+// already-saturated failure count; it does not reduce the delay actually
+// applied. The global-ceiling window (window 2 in Check) is unaffected
+// either way: it never looks back further than
+// max(GlobalWindowSecs, GlobalLockSecs), which defaults to 1h — far inside
+// this bound regardless of which cutoff window 1 computed.
+const lastSuccessLookback = 400 * 24 * time.Hour
+
 // LastSuccessAt returns the timestamp of the most recent SUCCESS attempt
-// for an identifier, or nil when there has never been one. Used by the
-// login backoff to bound the failure-counting window.
+// for an identifier within the last lastSuccessLookback, or nil when there
+// has been none in that window (including "never"). Used by the login
+// backoff to bound the failure-counting window. Rewritten as an
+// ORDER BY ... LIMIT 1 (was MAX(...)) with an attempted_at lower bound so
+// the query is both index-backed on (identifier, attempted_at) and
+// partition-pruned — see lastSuccessLookback for the bound's tradeoff.
 func (r *Repository) LastSuccessAt(ctx context.Context, identifier string) (*time.Time, error) {
+	since := time.Now().Add(-lastSuccessLookback).UTC()
 	var t *time.Time
 	err := r.pool.QueryRow(ctx,
-		`SELECT MAX(attempted_at) FROM iam_login_attempts
-		   WHERE outcome = 'SUCCESS' AND identifier = $1`,
-		identifier).Scan(&t)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		`SELECT attempted_at FROM iam_login_attempts
+		   WHERE outcome = 'SUCCESS' AND identifier = $1 AND attempted_at >= $2
+		   ORDER BY attempted_at DESC
+		   LIMIT 1`,
+		identifier, since).Scan(&t)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("last_success_at: %w", err)
 	}
 	return t, nil
@@ -273,11 +315,28 @@ func (r *Repository) FindRecentByIdentifier(ctx context.Context, identifier stri
 	return out, nil
 }
 
+// rowToLoginAttempt hydrates the entity from its row.
+//
+// This feeds the admin/self-service attempt-history display (FindPage,
+// FindRecentByIdentifier), NOT the backoff counters above — those run raw
+// `outcome = 'FAILURE'` / `outcome = 'SUCCESS'` SQL directly against the
+// column and are unaffected by this Go-level parse. Even so, an outcome
+// this code can't confidently recognise as SUCCESS must never render as
+// one: that display would be the same lie the old lenient-default bug told
+// the counters. Fail-SAFE, not fail-closed: log loudly with the row id (so
+// the corrupt row can be found and fixed) and show it as FAILURE, rather
+// than failing the whole page for one bad row.
 func rowToLoginAttempt(row dbq.IamLoginAttempt) LoginAttempt {
+	outcome, ok := ParseOutcome(row.Outcome)
+	if !ok {
+		slog.Error("login attempt row has unrecognised outcome",
+			"id", row.ID, "outcome", row.Outcome)
+		outcome = OutcomeFailure
+	}
 	return LoginAttempt{
 		ID:            row.ID,
 		AttemptType:   ParseAttemptType(row.AttemptType),
-		Outcome:       ParseOutcome(row.Outcome),
+		Outcome:       outcome,
 		FailureReason: row.FailureReason,
 		Identifier:    row.Identifier,
 		PrincipalID:   row.PrincipalID,

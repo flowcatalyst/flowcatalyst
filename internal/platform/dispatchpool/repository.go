@@ -2,6 +2,8 @@ package dispatchpool
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -9,6 +11,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -30,7 +33,7 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*DispatchPool, er
 	if row == nil || err != nil {
 		return nil, err
 	}
-	return rowToDispatchPool(*row), nil
+	return rowToDispatchPool(*row)
 }
 
 // FindByCode loads by (code, client_id). clientID may be nil (anchor-scope pool).
@@ -50,7 +53,7 @@ func (r *Repository) FindByCode(ctx context.Context, code string, clientID *stri
 	if row == nil || err != nil {
 		return nil, err
 	}
-	return rowToDispatchPool(*row), nil
+	return rowToDispatchPool(*row)
 }
 
 // FindWithFilters returns pools matching non-nil filters. Hand-rolled
@@ -72,9 +75,16 @@ func (r *Repository) FindWithFilters(ctx context.Context, status, clientID *stri
 	if err != nil {
 		return nil, err
 	}
-	var out []DispatchPool
+	// A corrupted status on any one row fails the WHOLE list read (X-06:
+	// "a list containing the row fails too") rather than silently skipping
+	// or coercing that row.
+	out := make([]DispatchPool, 0, len(collected))
 	for _, row := range collected {
-		out = append(out, *rowToDispatchPool(row))
+		p, err := rowToDispatchPool(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *p)
 	}
 	return out, nil
 }
@@ -101,7 +111,20 @@ func (r *Repository) Delete(ctx context.Context, p *DispatchPool, tx *usecasepgx
 	return r.q.WithTx(tx.Inner()).DispatchPoolDelete(ctx, p.ID)
 }
 
-func rowToDispatchPool(row dbq.MsgDispatchPool) *DispatchPool {
+// rowToDispatchPool hydrates the entity from its row. A status value that
+// isn't one of the known Status constants (junk written before the
+// write-boundary validation existed, or a hand-edited row) is a loud read
+// error — never round-tripped as-is and never coerced to ACTIVE, per the
+// X-06 ruling. The row id is logged so the bad row can be found and fixed
+// without a debugger.
+func rowToDispatchPool(row dbq.MsgDispatchPool) (*DispatchPool, error) {
+	status, ok := ParseStatus(row.Status)
+	if !ok {
+		slog.Error("dispatch pool row has unrecognised status",
+			"id", row.ID, "status", row.Status)
+		return nil, usecase.Internal("CORRUPT_DISPATCH_POOL_STATUS",
+			fmt.Sprintf("dispatch pool %s has an unrecognised status", row.ID), nil)
+	}
 	return &DispatchPool{
 		ID:               row.ID,
 		Code:             row.Code,
@@ -111,8 +134,8 @@ func rowToDispatchPool(row dbq.MsgDispatchPool) *DispatchPool {
 		Concurrency:      row.Concurrency,
 		ClientID:         row.ClientID,
 		ClientIdentifier: row.ClientIdentifier,
-		Status:           ParseStatus(row.Status),
+		Status:           status,
 		CreatedAt:        row.CreatedAt,
 		UpdatedAt:        row.UpdatedAt,
-	}
+	}, nil
 }

@@ -16,12 +16,18 @@ const (
 	StatusPaused Status = "PAUSED"
 )
 
-// ParseStatus is the lenient parser. Unknown → ACTIVE.
-func ParseStatus(s string) Status {
-	if s == string(StatusPaused) {
-		return StatusPaused
+// ParseStatus parses a stored/wire status value. Returns ok=false for
+// anything other than ACTIVE or PAUSED — callers MUST reject on ok=false
+// rather than coerce an unrecognised value to ACTIVE (X-06: a loud read
+// error, never a silent default). Follows the (T, bool) shape of
+// common.ParseOutboxItemType.
+func ParseStatus(s string) (Status, bool) {
+	switch Status(s) {
+	case StatusActive, StatusPaused:
+		return Status(s), true
+	default:
+		return "", false
 	}
-	return StatusActive
 }
 
 // Connection is the aggregate root.

@@ -532,7 +532,7 @@ func TestCreateOAuthClient_DuplicateClientID_Conflict(t *testing.T) {
 	mustCreateClient(t, repo, uow, "oc-dup-conflict", "First", "PUBLIC")
 
 	_, err := runAuthorized(uow, operations.CreateOAuthClient(repo),
-		operations.CreateOAuthClientCommand{ClientID: "oc-dup-conflict", ClientName: "Second"})
+		operations.CreateOAuthClientCommand{ClientID: "oc-dup-conflict", ClientName: "Second", ClientType: "PUBLIC"})
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "CLIENT_ID_EXISTS")
 }
 

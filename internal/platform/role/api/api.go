@@ -193,7 +193,11 @@ func (s *State) bySource(ctx context.Context, in *bySourceInput) (*apicommon.Out
 	if err := auth.CanReadRoles(ac); err != nil {
 		return nil, err
 	}
-	rows, err := s.Repo.FindBySource(ctx, role.ParseSource(in.Source))
+	source, ok := role.ParseSource(in.Source)
+	if !ok {
+		return nil, usecase.Validation("INVALID_SOURCE", "source must be CODE, DATABASE, or SDK")
+	}
+	rows, err := s.Repo.FindBySource(ctx, source)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_source failed", err)
 	}

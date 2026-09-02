@@ -2,10 +2,13 @@
 package api
 
 import (
+	"fmt"
+
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/jsontime"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 )
 
 // WebhookCredentialsDTO mirrors serviceaccount.WebhookCredentials.
@@ -20,9 +23,17 @@ type WebhookCredentialsDTO struct {
 	SignatureHeader  *string `json:"signatureHeader,omitempty"`
 }
 
-func (w WebhookCredentialsDTO) toEntity() serviceaccount.WebhookCredentials {
+// toEntity converts the wire DTO to the entity, rejecting an unrecognised
+// authType loudly (usecase.Validation → 400) rather than silently coercing
+// it to NONE — a typo here would otherwise ship an unauthenticated webhook.
+func (w WebhookCredentialsDTO) toEntity() (serviceaccount.WebhookCredentials, error) {
+	authType, ok := serviceaccount.ParseAuthType(w.AuthType)
+	if !ok {
+		return serviceaccount.WebhookCredentials{}, usecase.Validation(
+			"INVALID_AUTH_TYPE", fmt.Sprintf("unknown webhook auth type %q", w.AuthType))
+	}
 	return serviceaccount.WebhookCredentials{
-		AuthType:         serviceaccount.ParseAuthType(w.AuthType),
+		AuthType:         authType,
 		Token:            w.Token,
 		Username:         w.Username,
 		Password:         w.Password,
@@ -30,7 +41,7 @@ func (w WebhookCredentialsDTO) toEntity() serviceaccount.WebhookCredentials {
 		SigningSecret:    w.SigningSecret,
 		SigningAlgorithm: w.SigningAlgorithm,
 		SignatureHeader:  w.SignatureHeader,
-	}
+	}, nil
 }
 
 // RoleAssignmentDTO mirrors serviceaccount.RoleAssignment.
@@ -68,10 +79,13 @@ type CreateServiceAccountRequest struct {
 	WebhookCredentials *WebhookCredentialsDTO `json:"webhookCredentials,omitempty"`
 }
 
-func (r CreateServiceAccountRequest) toCommand() operations.CreateCommand {
+func (r CreateServiceAccountRequest) toCommand() (operations.CreateCommand, error) {
 	var creds *serviceaccount.WebhookCredentials
 	if r.WebhookCredentials != nil {
-		c := r.WebhookCredentials.toEntity()
+		c, err := r.WebhookCredentials.toEntity()
+		if err != nil {
+			return operations.CreateCommand{}, err
+		}
 		creds = &c
 	}
 	return operations.CreateCommand{
@@ -82,7 +96,7 @@ func (r CreateServiceAccountRequest) toCommand() operations.CreateCommand {
 		ClientIDs:          r.ClientIDs,
 		ApplicationID:      r.ApplicationID,
 		WebhookCredentials: creds,
-	}
+	}, nil
 }
 
 // UpdateServiceAccountRequest is the wire body for PUT /api/service-accounts/{id}.
@@ -94,10 +108,13 @@ type UpdateServiceAccountRequest struct {
 	WebhookCredentials *WebhookCredentialsDTO `json:"webhookCredentials,omitempty"`
 }
 
-func (r UpdateServiceAccountRequest) toCommand(id string) operations.UpdateCommand {
+func (r UpdateServiceAccountRequest) toCommand(id string) (operations.UpdateCommand, error) {
 	var creds *serviceaccount.WebhookCredentials
 	if r.WebhookCredentials != nil {
-		c := r.WebhookCredentials.toEntity()
+		c, err := r.WebhookCredentials.toEntity()
+		if err != nil {
+			return operations.UpdateCommand{}, err
+		}
 		creds = &c
 	}
 	return operations.UpdateCommand{
@@ -107,7 +124,7 @@ func (r UpdateServiceAccountRequest) toCommand(id string) operations.UpdateComma
 		Scope:              r.Scope,
 		ClientIDs:          r.ClientIDs,
 		WebhookCredentials: creds,
-	}
+	}, nil
 }
 
 // AssignRolesRequest is the wire body for PUT /api/service-accounts/{id}/roles.

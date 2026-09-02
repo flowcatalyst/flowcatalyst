@@ -2,12 +2,15 @@ package platformconfig
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -27,7 +30,7 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*Config, error) {
 	if row == nil || err != nil {
 		return nil, err
 	}
-	return rowToConfig(*row), nil
+	return rowToConfig(*row)
 }
 
 // FindByCoordinate loads a config row by its (app, section, property, scope, clientID) key.
@@ -56,7 +59,7 @@ func (r *Repository) FindByCoordinate(ctx context.Context, app, section, propert
 	if row == nil || err != nil {
 		return nil, err
 	}
-	return rowToConfig(*row), nil
+	return rowToConfig(*row)
 }
 
 // FindConfigsByApplication returns all configs for an app.
@@ -65,9 +68,16 @@ func (r *Repository) FindConfigsByApplication(ctx context.Context, app string) (
 	if err != nil {
 		return nil, err
 	}
+	// A corrupted scope or value type on any one row fails the WHOLE list
+	// read (X-06: "a list containing the row fails too") rather than
+	// silently skipping or coercing that row.
 	out := make([]Config, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, *rowToConfig(row))
+		c, err := rowToConfig(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *c)
 	}
 	return out, nil
 }
@@ -164,20 +174,38 @@ func (r *Repository) HasAccess(ctx context.Context, app string, roleCodes []stri
 	})
 }
 
-func rowToConfig(row dbq.AppPlatformConfig) *Config {
+// rowToConfig hydrates the entity from its row. A scope or value type
+// value that isn't one of the known constants (junk written before
+// write-boundary validation existed, or a hand-edited row) is a loud read
+// error — never round-tripped as-is and never coerced to a default, per the
+// X-06 ruling. The row id is logged so the bad row can be found and fixed
+// without a debugger.
+func rowToConfig(row dbq.AppPlatformConfig) (*Config, error) {
+	scope, ok := ParseScope(row.Scope)
+	if !ok {
+		slog.Error("platform config row has unrecognised scope", "id", row.ID, "scope", row.Scope)
+		return nil, usecase.Internal("CORRUPT_PLATFORM_CONFIG_SCOPE",
+			fmt.Sprintf("platform config %s has an unrecognised scope", row.ID), nil)
+	}
+	valueType, ok := ParseValueType(row.ValueType)
+	if !ok {
+		slog.Error("platform config row has unrecognised value type", "id", row.ID, "value_type", row.ValueType)
+		return nil, usecase.Internal("CORRUPT_PLATFORM_CONFIG_VALUE_TYPE",
+			fmt.Sprintf("platform config %s has an unrecognised value type", row.ID), nil)
+	}
 	return &Config{
 		ID:              row.ID,
 		ApplicationCode: row.ApplicationCode,
 		Section:         row.Section,
 		Property:        row.Property,
-		Scope:           ParseScope(row.Scope),
+		Scope:           scope,
 		ClientID:        row.ClientID,
-		ValueType:       ParseValueType(row.ValueType),
+		ValueType:       valueType,
 		Value:           row.Value,
 		Description:     row.Description,
 		CreatedAt:       row.CreatedAt,
 		UpdatedAt:       row.UpdatedAt,
-	}
+	}, nil
 }
 
 func rowToAccess(row dbq.AppPlatformConfigAccess) *Access {

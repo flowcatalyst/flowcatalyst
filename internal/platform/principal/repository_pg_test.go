@@ -245,3 +245,85 @@ func (s *recordingStore) Bump(_ context.Context, principalID string, _ time.Time
 func (s *recordingStore) Get(context.Context, string) (time.Time, bool, error) {
 	return time.Time{}, false, nil
 }
+
+// TestFindByID_CorruptTypeFailsLoudly is the X-06 read boundary: a row
+// whose type column holds a value that isn't one of the known Type
+// constants (junk written before write-boundary validation existed, or a
+// hand-edited row) must fail the read with a distinct error, never
+// round-trip as that literal string and never silently coerce to USER.
+func TestFindByID_CorruptTypeFailsLoudly(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := principal.NewRepository(pool)
+
+	const pid = "prn_corrupttype01"
+	testpg.WithConstraintDropped(t, pool, "iam_principals", "chk_iam_principals_type", func() {
+		_, err := pool.Exec(ctx,
+			`INSERT INTO iam_principals (id, type, name, active)
+		 VALUES ($1, 'NOT_A_REAL_TYPE', 'Corrupt', TRUE)`, pid)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_, _ = pool.Exec(context.Background(), `DELETE FROM iam_principals WHERE id = $1`, pid)
+		})
+	})
+
+	p, err := repo.FindByID(ctx, pid)
+	require.Error(t, err, "a corrupt type must fail the read, not round-trip it")
+	assert.Nil(t, p)
+	assert.Contains(t, err.Error(), "CORRUPT_PRINCIPAL_TYPE")
+}
+
+// TestFindByID_CorruptScopeFailsLoudly mirrors the above for the scope
+// column.
+func TestFindByID_CorruptScopeFailsLoudly(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := principal.NewRepository(pool)
+
+	const pid = "prn_corruptscope1"
+	testpg.WithConstraintDropped(t, pool, "iam_principals", "chk_iam_principals_scope", func() {
+		_, err := pool.Exec(ctx,
+			`INSERT INTO iam_principals (id, type, scope, name, active)
+		 VALUES ($1, 'USER', 'NOT_A_REAL_SCOPE', 'Corrupt', TRUE)`, pid)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_, _ = pool.Exec(context.Background(), `DELETE FROM iam_principals WHERE id = $1`, pid)
+		})
+	})
+
+	p, err := repo.FindByID(ctx, pid)
+	require.Error(t, err, "a corrupt scope must fail the read, not round-trip it")
+	assert.Nil(t, p)
+	assert.Contains(t, err.Error(), "CORRUPT_PRINCIPAL_SCOPE")
+}
+
+// TestFindAll_CorruptTypeFailsTheWholeList pins the ruling's list semantics
+// explicitly: "a list containing the row fails too" — one bad row must not
+// be silently skipped or coerced while the rest of the list is returned
+// successfully.
+func TestFindAll_CorruptTypeFailsTheWholeList(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := principal.NewRepository(pool)
+
+	const goodID = "prn_cl_good012345"
+	const badID = "prn_cl_bad0012345"
+	_, err := pool.Exec(ctx,
+		`INSERT INTO iam_principals (id, type, name, active)
+		 VALUES ($1, 'USER', 'Good', TRUE)`, goodID)
+	require.NoError(t, err)
+	testpg.WithConstraintDropped(t, pool, "iam_principals", "chk_iam_principals_type", func() {
+		_, err = pool.Exec(ctx,
+			`INSERT INTO iam_principals (id, type, name, active)
+		 VALUES ($1, 'NOT_A_REAL_TYPE', 'Bad', TRUE)`, badID)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_, _ = pool.Exec(context.Background(), `DELETE FROM iam_principals WHERE id = $1`, badID)
+		})
+	})
+
+	rows, err := repo.FindAll(ctx)
+	require.Error(t, err, "the list read must fail, not silently drop the bad row")
+	assert.Nil(t, rows)
+	assert.Contains(t, err.Error(), "CORRUPT_PRINCIPAL_TYPE")
+}

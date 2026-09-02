@@ -43,7 +43,11 @@ func CreateAuthConfig(repo *auth.ClientAuthConfigRepo) usecaseop.Operation[Creat
 			default:
 				return usecase.Validation("INVALID_CONFIG_TYPE", "configType must be ANCHOR, PARTNER, or CLIENT")
 			}
-			if auth.ParseAuthProvider(cmd.AuthProvider) == auth.ProviderOIDC {
+			provider, ok := auth.ParseAuthProvider(cmd.AuthProvider)
+			if !ok {
+				return usecase.Validation("INVALID_AUTH_PROVIDER", "authProvider must be INTERNAL or OIDC")
+			}
+			if provider == auth.ProviderOIDC {
 				if cmd.OIDCIssuerURL == nil || strings.TrimSpace(*cmd.OIDCIssuerURL) == "" {
 					return usecase.Validation("OIDC_ISSUER_REQUIRED", "OIDC provider requires oidcIssuerUrl")
 				}
@@ -63,8 +67,20 @@ func CreateAuthConfig(repo *auth.ClientAuthConfigRepo) usecaseop.Operation[Creat
 			if existing != nil {
 				return nil, usecase.Conflict("DOMAIN_ALREADY_CONFIGURED", "Auth config for '"+d+"' already exists")
 			}
-			c := auth.NewClientAuthConfig(d, auth.ParseAuthConfigType(cmd.ConfigType))
-			c.AuthProvider = auth.ParseAuthProvider(cmd.AuthProvider)
+			// cmd.ConfigType and cmd.AuthProvider were already restricted to
+			// their known values in Validate above, so ok is guaranteed true
+			// here; the fallback errors exist only so a future change to
+			// those checks can't silently reintroduce a coerced value.
+			configType, ok := auth.ParseAuthConfigType(cmd.ConfigType)
+			if !ok {
+				return nil, usecase.Internal("INVARIANT_CONFIG_TYPE", "validated configType failed to parse", nil)
+			}
+			authProvider, ok := auth.ParseAuthProvider(cmd.AuthProvider)
+			if !ok {
+				return nil, usecase.Internal("INVARIANT_AUTH_PROVIDER", "validated authProvider failed to parse", nil)
+			}
+			c := auth.NewClientAuthConfig(d, configType)
+			c.AuthProvider = authProvider
 			c.PrimaryClientID = cmd.PrimaryClientID
 			if cmd.AdditionalClientIDs != nil {
 				c.AdditionalClientIDs = cmd.AdditionalClientIDs
@@ -112,6 +128,11 @@ func UpdateAuthConfig(repo *auth.ClientAuthConfigRepo) usecaseop.Operation[Updat
 			if strings.TrimSpace(cmd.ID) == "" {
 				return usecase.Validation("ID_REQUIRED", "id is required")
 			}
+			if cmd.AuthProvider != nil {
+				if _, ok := auth.ParseAuthProvider(*cmd.AuthProvider); !ok {
+					return usecase.Validation("INVALID_AUTH_PROVIDER", "authProvider must be INTERNAL or OIDC")
+				}
+			}
 			return nil
 		},
 		Authorize: usecaseop.Public[UpdateAuthConfigCommand],
@@ -133,7 +154,12 @@ func UpdateAuthConfig(repo *auth.ClientAuthConfigRepo) usecaseop.Operation[Updat
 				c.GrantedClientIDs = cmd.GrantedClientIDs
 			}
 			if cmd.AuthProvider != nil {
-				c.AuthProvider = auth.ParseAuthProvider(*cmd.AuthProvider)
+				// Already restricted to a known value in Validate above.
+				provider, ok := auth.ParseAuthProvider(*cmd.AuthProvider)
+				if !ok {
+					return nil, usecase.Internal("INVARIANT_AUTH_PROVIDER", "validated authProvider failed to parse", nil)
+				}
+				c.AuthProvider = provider
 			}
 			if cmd.OIDCIssuerURL != nil {
 				c.OIDCIssuerURL = cmd.OIDCIssuerURL

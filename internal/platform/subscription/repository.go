@@ -3,6 +3,7 @@ package subscription
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -11,6 +12,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -34,7 +36,11 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*Subscription, er
 	if row == nil || err != nil {
 		return nil, err
 	}
-	return r.hydrateOne(ctx, rowToSubscription(*row))
+	sub, err := rowToSubscription(*row)
+	if err != nil {
+		return nil, err
+	}
+	return r.hydrateOne(ctx, sub)
 }
 
 // FindByCode loads by (code, client_id).
@@ -54,10 +60,17 @@ func (r *Repository) FindByCode(ctx context.Context, code string, clientID *stri
 	if row == nil || err != nil {
 		return nil, err
 	}
-	return r.hydrateOne(ctx, rowToSubscription(*row))
+	sub, err := rowToSubscription(*row)
+	if err != nil {
+		return nil, err
+	}
+	return r.hydrateOne(ctx, sub)
 }
 
-// FindAll returns every subscription, hydrated.
+// FindAll returns every subscription, hydrated. A corrupted status or
+// source on any one row fails the WHOLE list read (X-06: "a list
+// containing the row fails too") rather than silently skipping or coercing
+// that row.
 func (r *Repository) FindAll(ctx context.Context) ([]Subscription, error) {
 	rows, err := r.q.SubscriptionFindAll(ctx)
 	if err != nil {
@@ -65,7 +78,11 @@ func (r *Repository) FindAll(ctx context.Context) ([]Subscription, error) {
 	}
 	bare := make([]Subscription, 0, len(rows))
 	for _, row := range rows {
-		bare = append(bare, *rowToSubscription(row))
+		s, err := rowToSubscription(row)
+		if err != nil {
+			return nil, err
+		}
+		bare = append(bare, *s)
 	}
 	return r.hydrateAll(ctx, bare)
 }
@@ -90,9 +107,13 @@ func (r *Repository) FindWithFilters(ctx context.Context, status, clientID *stri
 	if err != nil {
 		return nil, err
 	}
-	var bare []Subscription
+	bare := make([]Subscription, 0, len(collected))
 	for _, row := range collected {
-		bare = append(bare, *rowToSubscription(row))
+		s, err := rowToSubscription(row)
+		if err != nil {
+			return nil, err
+		}
+		bare = append(bare, *s)
 	}
 	return r.hydrateAll(ctx, bare)
 }
@@ -115,9 +136,13 @@ func (r *Repository) FindByApplicationCode(ctx context.Context, appCode string) 
 	if err != nil {
 		return nil, err
 	}
-	var bare []Subscription
+	bare := make([]Subscription, 0, len(collected))
 	for _, row := range collected {
-		bare = append(bare, *rowToSubscription(row))
+		s, err := rowToSubscription(row)
+		if err != nil {
+			return nil, err
+		}
+		bare = append(bare, *s)
 	}
 	return r.hydrateAll(ctx, bare)
 }
@@ -247,7 +272,27 @@ func (r *Repository) hydrateAll(ctx context.Context, subs []Subscription) ([]Sub
 	return subs, nil
 }
 
-func rowToSubscription(row dbq.MsgSubscription) *Subscription {
+// rowToSubscription hydrates the entity from its row. A status or source
+// value that isn't one of the known constants (junk written before
+// write-boundary validation existed, or a hand-edited row) is a loud read
+// error — never round-tripped as-is and never coerced to a default, per the
+// X-06 ruling. The row id is logged so the bad row can be found and fixed
+// without a debugger.
+func rowToSubscription(row dbq.MsgSubscription) (*Subscription, error) {
+	source, ok := ParseSource(row.Source)
+	if !ok {
+		slog.Error("subscription row has unrecognised source",
+			"id", row.ID, "source", row.Source)
+		return nil, usecase.Internal("CORRUPT_SUBSCRIPTION_SOURCE",
+			fmt.Sprintf("subscription %s has an unrecognised source", row.ID), nil)
+	}
+	status, ok := ParseStatus(row.Status)
+	if !ok {
+		slog.Error("subscription row has unrecognised status",
+			"id", row.ID, "status", row.Status)
+		return nil, usecase.Internal("CORRUPT_SUBSCRIPTION_STATUS",
+			fmt.Sprintf("subscription %s has an unrecognised status", row.ID), nil)
+	}
 	return &Subscription{
 		ID:               row.ID,
 		Code:             row.Code,
@@ -260,8 +305,8 @@ func rowToSubscription(row dbq.MsgSubscription) *Subscription {
 		ConnectionID:     row.ConnectionID,
 		Endpoint:         row.Target,
 		Queue:            row.Queue,
-		Source:           ParseSource(row.Source),
-		Status:           ParseStatus(row.Status),
+		Source:           source,
+		Status:           status,
 		MaxAgeSeconds:    row.MaxAgeSeconds,
 		DispatchPoolID:   row.DispatchPoolID,
 		DispatchPoolCode: row.DispatchPoolCode,
@@ -277,5 +322,5 @@ func rowToSubscription(row dbq.MsgSubscription) *Subscription {
 		UpdatedAt:        row.UpdatedAt,
 		EventTypes:       []EventTypeBinding{},
 		CustomConfig:     []ConfigEntry{},
-	}
+	}, nil
 }

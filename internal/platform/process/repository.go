@@ -2,6 +2,8 @@ package process
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -9,6 +11,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -33,7 +36,7 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*Process, error) 
 	if row == nil || err != nil {
 		return nil, err
 	}
-	return rowToProcess(*row), nil
+	return rowToProcess(*row)
 }
 
 // FindByCode loads by unique code.
@@ -43,7 +46,7 @@ func (r *Repository) FindByCode(ctx context.Context, code string) (*Process, err
 	if row == nil || err != nil {
 		return nil, err
 	}
-	return rowToProcess(*row), nil
+	return rowToProcess(*row)
 }
 
 // FindWithFilters returns processes matching non-nil filters. Hand-rolled
@@ -66,9 +69,16 @@ func (r *Repository) FindWithFilters(ctx context.Context, application, subdomain
 	if err != nil {
 		return nil, err
 	}
+	// A corrupted status or source on any one row fails the WHOLE list read
+	// (X-06: "a list containing the row fails too") rather than silently
+	// skipping or coercing that row.
 	out := make([]Process, 0, len(collected))
 	for _, row := range collected {
-		out = append(out, *rowToProcess(row))
+		p, err := rowToProcess(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *p)
 	}
 	return out, nil
 }
@@ -101,14 +111,34 @@ func (r *Repository) Delete(ctx context.Context, p *Process, tx *usecasepgx.DbTx
 	return r.q.WithTx(tx.Inner()).ProcessDelete(ctx, p.ID)
 }
 
-func rowToProcess(row dbq.MsgProcess) *Process {
+// rowToProcess hydrates the entity from its row. A status or source value
+// that isn't one of the known constants (junk written before write-boundary
+// validation existed, or a hand-edited row) is a loud read error — never
+// round-tripped as-is and never coerced to a default, per the X-06 ruling.
+// The row id is logged so the bad row can be found and fixed without a
+// debugger.
+func rowToProcess(row dbq.MsgProcess) (*Process, error) {
+	status, ok := ParseStatus(row.Status)
+	if !ok {
+		slog.Error("process row has unrecognised status",
+			"id", row.ID, "status", row.Status)
+		return nil, usecase.Internal("CORRUPT_PROCESS_STATUS",
+			fmt.Sprintf("process %s has an unrecognised status", row.ID), nil)
+	}
+	source, ok := ParseSource(row.Source)
+	if !ok {
+		slog.Error("process row has unrecognised source",
+			"id", row.ID, "source", row.Source)
+		return nil, usecase.Internal("CORRUPT_PROCESS_SOURCE",
+			fmt.Sprintf("process %s has an unrecognised source", row.ID), nil)
+	}
 	return &Process{
 		ID:          row.ID,
 		Code:        row.Code,
 		Name:        row.Name,
 		Description: row.Description,
-		Status:      ParseStatus(row.Status),
-		Source:      ParseSource(row.Source),
+		Status:      status,
+		Source:      source,
 		Application: row.Application,
 		Subdomain:   row.Subdomain,
 		ProcessName: row.ProcessName,
@@ -117,5 +147,5 @@ func rowToProcess(row dbq.MsgProcess) *Process {
 		Tags:        append([]string{}, row.Tags...),
 		CreatedAt:   row.CreatedAt,
 		UpdatedAt:   row.UpdatedAt,
-	}
+	}, nil
 }

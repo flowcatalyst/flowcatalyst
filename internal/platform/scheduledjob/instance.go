@@ -22,22 +22,20 @@ const (
 	InstanceStatusDeliveryFailed InstanceStatus = "DELIVERY_FAILED"
 )
 
-// ParseInstanceStatus is a lenient parser. Unknown → QUEUED so list
-// queries don't drop rows on a future schema extension.
-func ParseInstanceStatus(s string) InstanceStatus {
-	switch s {
-	case string(InstanceStatusInFlight):
-		return InstanceStatusInFlight
-	case string(InstanceStatusDelivered):
-		return InstanceStatusDelivered
-	case string(InstanceStatusCompleted):
-		return InstanceStatusCompleted
-	case string(InstanceStatusFailed):
-		return InstanceStatusFailed
-	case string(InstanceStatusDeliveryFailed):
-		return InstanceStatusDeliveryFailed
+// ParseInstanceStatus parses a stored/wire instance-status value. Returns
+// ok=false for anything other than the six known constants — callers MUST
+// reject on ok=false rather than coerce an unrecognised value to QUEUED
+// (X-06: a loud read error, never a silent default — a corrupted terminal
+// status silently reappearing as QUEUED could resurrect a firing that
+// already completed or failed). Follows the (T, bool) shape of
+// common.ParseOutboxItemType.
+func ParseInstanceStatus(s string) (InstanceStatus, bool) {
+	switch InstanceStatus(s) {
+	case InstanceStatusQueued, InstanceStatusInFlight, InstanceStatusDelivered,
+		InstanceStatusCompleted, InstanceStatusFailed, InstanceStatusDeliveryFailed:
+		return InstanceStatus(s), true
 	default:
-		return InstanceStatusQueued
+		return "", false
 	}
 }
 
@@ -50,15 +48,17 @@ const (
 	TriggerBackfill TriggerKind = "BACKFILL"
 )
 
-// ParseTriggerKind is the lenient parser. Unknown → CRON.
-func ParseTriggerKind(s string) TriggerKind {
-	switch s {
-	case string(TriggerManual):
-		return TriggerManual
-	case string(TriggerBackfill):
-		return TriggerBackfill
+// ParseTriggerKind parses a stored/wire trigger-kind value. Returns
+// ok=false for anything other than CRON, MANUAL, or BACKFILL — callers
+// MUST reject on ok=false rather than coerce an unrecognised value to CRON
+// (X-06: a loud read error, never a silent default). Follows the (T, bool)
+// shape of common.ParseOutboxItemType.
+func ParseTriggerKind(s string) (TriggerKind, bool) {
+	switch TriggerKind(s) {
+	case TriggerCron, TriggerManual, TriggerBackfill:
+		return TriggerKind(s), true
 	default:
-		return TriggerCron
+		return "", false
 	}
 }
 

@@ -184,7 +184,11 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	}
 
 	app := application.New(appCode, appName)
-	app.Type = application.ParseType(strings.ToUpper(rawType))
+	appType, ok := application.ParseType(strings.ToUpper(rawType))
+	if !ok {
+		return fmt.Errorf("invalid application type %q: must be APPLICATION or INTEGRATION", rawType)
+	}
+	app.Type = appType
 	if description != "" {
 		app.Description = &description
 	}

@@ -17,12 +17,18 @@ const (
 	TypeOIDC     Type = "OIDC"
 )
 
-// ParseType is the lenient parser. Unknown → INTERNAL.
-func ParseType(s string) Type {
-	if s == string(TypeOIDC) {
-		return TypeOIDC
+// ParseType parses a stored/wire type value. Returns ok=false for anything
+// other than INTERNAL or OIDC — callers MUST reject on ok=false rather
+// than coerce an unrecognised value to INTERNAL (X-06: a loud read error,
+// never a silent default). Follows the (T, bool) shape of
+// common.ParseOutboxItemType.
+func ParseType(s string) (Type, bool) {
+	switch Type(s) {
+	case TypeInternal, TypeOIDC:
+		return Type(s), true
+	default:
+		return "", false
 	}
-	return TypeInternal
 }
 
 // IdentityProvider is the aggregate root.

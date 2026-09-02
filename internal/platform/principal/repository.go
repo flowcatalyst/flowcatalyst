@@ -3,6 +3,7 @@ package principal
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/versioncache"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -124,7 +126,10 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*Principal, error
 	if row == nil || err != nil {
 		return nil, err
 	}
-	p := rowToPrincipal(*row)
+	p, err := rowToPrincipal(*row)
+	if err != nil {
+		return nil, err
+	}
 	if err := r.hydrateRoles(ctx, p); err != nil {
 		return nil, err
 	}
@@ -156,7 +161,10 @@ func (r *Repository) FindByEmail(ctx context.Context, email string) (*Principal,
 	if row == nil || err != nil {
 		return nil, err
 	}
-	p := rowToPrincipal(*row)
+	p, err := rowToPrincipal(*row)
+	if err != nil {
+		return nil, err
+	}
 	if err := r.hydrateRoles(ctx, p); err != nil {
 		return nil, err
 	}
@@ -331,7 +339,10 @@ func (r *Repository) FindByServiceAccount(ctx context.Context, serviceAccountID 
 	if row == nil || err != nil {
 		return nil, err
 	}
-	p := rowToPrincipal(*row)
+	p, err := rowToPrincipal(*row)
+	if err != nil {
+		return nil, err
+	}
 	if err := r.hydrateRoles(ctx, p); err != nil {
 		return nil, err
 	}
@@ -353,9 +364,16 @@ func (r *Repository) FindByRole(ctx context.Context, roleName string) ([]Princip
 	if err != nil {
 		return nil, err
 	}
+	// A corrupted type or scope on any one row fails the WHOLE list read
+	// (X-06: "a list containing the row fails too") rather than silently
+	// skipping or coercing that row.
 	out := make([]Principal, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, *rowToPrincipal(row))
+		p, err := rowToPrincipal(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *p)
 	}
 	if err := r.hydrateRolesAll(ctx, out); err != nil {
 		return nil, err
@@ -372,9 +390,16 @@ func (r *Repository) FindUsersByEmailDomain(ctx context.Context, domain string) 
 	if err != nil {
 		return nil, err
 	}
+	// A corrupted type or scope on any one row fails the WHOLE list read
+	// (X-06: "a list containing the row fails too") rather than silently
+	// skipping or coercing that row.
 	out := make([]Principal, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, *rowToPrincipal(row))
+		p, err := rowToPrincipal(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *p)
 	}
 	if err := r.hydrateRolesAll(ctx, out); err != nil {
 		return nil, err
@@ -392,9 +417,16 @@ func (r *Repository) FindAll(ctx context.Context) ([]Principal, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A corrupted type or scope on any one row fails the WHOLE list read
+	// (X-06: "a list containing the row fails too") rather than silently
+	// skipping or coercing that row.
 	out := make([]Principal, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, *rowToPrincipal(row))
+		p, err := rowToPrincipal(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *p)
 	}
 	if err := r.hydrateRolesAll(ctx, out); err != nil {
 		return nil, err
@@ -781,10 +813,21 @@ func (r *Repository) Delete(ctx context.Context, p *Principal, tx *usecasepgx.Db
 }
 
 // rowToPrincipal projects the flat schema row onto the Principal aggregate.
-func rowToPrincipal(row dbq.IamPrincipal) *Principal {
+// A type or scope value that isn't one of the known constants (junk written
+// before write-boundary validation existed, or a hand-edited row) is a
+// loud read error — never round-tripped as-is and never coerced to a
+// default, per the X-06 ruling. The row id is logged so the bad row can be
+// found and fixed without a debugger.
+func rowToPrincipal(row dbq.IamPrincipal) (*Principal, error) {
+	typ, ok := ParseType(row.Type)
+	if !ok {
+		slog.Error("principal row has unrecognised type", "id", row.ID, "type", row.Type)
+		return nil, usecase.Internal("CORRUPT_PRINCIPAL_TYPE",
+			fmt.Sprintf("principal %s has an unrecognised type", row.ID), nil)
+	}
 	p := Principal{
 		ID:                       row.ID,
-		Type:                     ParseType(row.Type),
+		Type:                     typ,
 		ClientID:                 row.ClientID,
 		ApplicationID:            row.ApplicationID,
 		Name:                     row.Name,
@@ -798,7 +841,13 @@ func rowToPrincipal(row dbq.IamPrincipal) *Principal {
 		AccessibleApplicationIDs: []string{},
 	}
 	if row.Scope != nil {
-		p.Scope = ParseScope(*row.Scope)
+		scope, ok := ParseScope(*row.Scope)
+		if !ok {
+			slog.Error("principal row has unrecognised scope", "id", row.ID, "scope", *row.Scope)
+			return nil, usecase.Internal("CORRUPT_PRINCIPAL_SCOPE",
+				fmt.Sprintf("principal %s has an unrecognised scope", row.ID), nil)
+		}
+		p.Scope = scope
 	} else {
 		p.Scope = ScopeClient
 	}
@@ -823,7 +872,7 @@ func rowToPrincipal(row dbq.IamPrincipal) *Principal {
 			ExternalID: *row.ExternalIdpID,
 		}
 	}
-	return &p
+	return &p, nil
 }
 
 func domainOf(email string) string {

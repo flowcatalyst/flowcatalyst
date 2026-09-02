@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -91,13 +93,25 @@ func (r *Repository) Delete(ctx context.Context, c *Client, tx *usecasepgx.DbTx)
 	return r.q.WithTx(tx.Inner()).ClientDelete(ctx, c.ID)
 }
 
-// rowToClient projects a sqlc-generated row onto the aggregate's Client.
+// rowToClient projects a sqlc-generated row onto the aggregate's Client. A
+// status value that isn't one of the known Status constants (junk written
+// before write-boundary validation existed, or a hand-edited row) is a
+// loud read error — never round-tripped as-is and never coerced to ACTIVE,
+// per the X-06 ruling. The row id is logged so the bad row can be found and
+// fixed without a debugger.
 func rowToClient(row dbq.TntClient) (*Client, error) {
+	status, ok := ParseStatus(row.Status)
+	if !ok {
+		slog.Error("client row has unrecognised status",
+			"id", row.ID, "status", row.Status)
+		return nil, usecase.Internal("CORRUPT_CLIENT_STATUS",
+			fmt.Sprintf("client %s has an unrecognised status", row.ID), nil)
+	}
 	c := Client{
 		ID:              row.ID,
 		Name:            row.Name,
 		Identifier:      row.Identifier,
-		Status:          ParseStatus(row.Status),
+		Status:          status,
 		StatusReason:    row.StatusReason,
 		StatusChangedAt: row.StatusChangedAt,
 		CreatedAt:       row.CreatedAt,

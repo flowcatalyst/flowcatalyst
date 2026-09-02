@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 )
 
 // InstanceRepository is the read-side repo for msg_scheduled_job_instances
@@ -284,6 +286,13 @@ type rowScanner interface {
 	Scan(dest ...any) error
 }
 
+// scanInstance reads a row. A status or trigger_kind value that isn't one
+// of the known constants (junk written before write-boundary validation
+// existed, or a hand-edited row) is a loud read error — never
+// round-tripped as-is and never coerced to a default, per the X-06 ruling.
+// The row id is logged so the bad row can be found and fixed without a
+// debugger. Both callers (List, FindByID) already propagate this error, so
+// a bad row in List fails the whole list read too.
 func scanInstance(rs rowScanner) (*ScheduledJobInstance, error) {
 	var (
 		inst             ScheduledJobInstance
@@ -298,8 +307,20 @@ func scanInstance(rs rowScanner) (*ScheduledJobInstance, error) {
 	); err != nil {
 		return nil, err
 	}
-	inst.Status = ParseInstanceStatus(status)
-	inst.TriggerKind = ParseTriggerKind(trigger)
+	parsedStatus, ok := ParseInstanceStatus(status)
+	if !ok {
+		slog.Error("scheduled job instance row has unrecognised status", "id", inst.ID, "status", status)
+		return nil, usecase.Internal("CORRUPT_SCHEDULED_JOB_INSTANCE_STATUS",
+			fmt.Sprintf("scheduled job instance %s has an unrecognised status", inst.ID), nil)
+	}
+	parsedTrigger, ok := ParseTriggerKind(trigger)
+	if !ok {
+		slog.Error("scheduled job instance row has unrecognised trigger kind", "id", inst.ID, "trigger_kind", trigger)
+		return nil, usecase.Internal("CORRUPT_SCHEDULED_JOB_INSTANCE_TRIGGER",
+			fmt.Sprintf("scheduled job instance %s has an unrecognised trigger kind", inst.ID), nil)
+	}
+	inst.Status = parsedStatus
+	inst.TriggerKind = parsedTrigger
 	if len(completionResult) > 0 {
 		inst.CompletionResult = json.RawMessage(completionResult)
 	}

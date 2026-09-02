@@ -2,6 +2,8 @@ package connection
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -9,6 +11,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -30,7 +33,7 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*Connection, erro
 	if row == nil || err != nil {
 		return nil, err
 	}
-	return rowToConnection(*row), nil
+	return rowToConnection(*row)
 }
 
 // FindByCodeAndClient locates by (code, client_id). clientID may be nil.
@@ -50,7 +53,7 @@ func (r *Repository) FindByCodeAndClient(ctx context.Context, code string, clien
 	if row == nil || err != nil {
 		return nil, err
 	}
-	return rowToConnection(*row), nil
+	return rowToConnection(*row)
 }
 
 // FindAll returns every connection.
@@ -59,9 +62,16 @@ func (r *Repository) FindAll(ctx context.Context) ([]Connection, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A corrupted status on any one row fails the WHOLE list read (X-06:
+	// "a list containing the row fails too") rather than silently skipping
+	// or coercing that row.
 	out := make([]Connection, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, *rowToConnection(row))
+		c, err := rowToConnection(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *c)
 	}
 	return out, nil
 }
@@ -85,9 +95,13 @@ func (r *Repository) FindWithFilters(ctx context.Context, status, clientID *stri
 	if err != nil {
 		return nil, err
 	}
-	var out []Connection
+	out := make([]Connection, 0, len(collected))
 	for _, row := range collected {
-		out = append(out, *rowToConnection(row))
+		c, err := rowToConnection(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *c)
 	}
 	return out, nil
 }
@@ -114,18 +128,30 @@ func (r *Repository) Delete(ctx context.Context, c *Connection, tx *usecasepgx.D
 	return r.q.WithTx(tx.Inner()).ConnectionDelete(ctx, c.ID)
 }
 
-func rowToConnection(row dbq.MsgConnection) *Connection {
+// rowToConnection hydrates the entity from its row. A status value that
+// isn't one of the known Status constants (junk written before
+// write-boundary validation existed, or a hand-edited row) is a loud read
+// error — never round-tripped as-is and never coerced to ACTIVE, per the
+// X-06 ruling. The row id is logged so the bad row can be found and fixed
+// without a debugger.
+func rowToConnection(row dbq.MsgConnection) (*Connection, error) {
+	status, ok := ParseStatus(row.Status)
+	if !ok {
+		slog.Error("connection row has unrecognised status", "id", row.ID, "status", row.Status)
+		return nil, usecase.Internal("CORRUPT_CONNECTION_STATUS",
+			fmt.Sprintf("connection %s has an unrecognised status", row.ID), nil)
+	}
 	return &Connection{
 		ID:               row.ID,
 		Code:             row.Code,
 		Name:             row.Name,
 		Description:      row.Description,
 		ExternalID:       row.ExternalID,
-		Status:           ParseStatus(row.Status),
+		Status:           status,
 		ServiceAccountID: row.ServiceAccountID,
 		ClientID:         row.ClientID,
 		ClientIdentifier: row.ClientIdentifier,
 		CreatedAt:        row.CreatedAt,
 		UpdatedAt:        row.UpdatedAt,
-	}
+	}, nil
 }

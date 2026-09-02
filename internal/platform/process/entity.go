@@ -19,12 +19,18 @@ const (
 	StatusArchived Status = "ARCHIVED"
 )
 
-// ParseStatus is the lenient parser. Unknown → CURRENT.
-func ParseStatus(s string) Status {
-	if s == string(StatusArchived) {
-		return StatusArchived
+// ParseStatus parses a stored status value. Returns ok=false for anything
+// other than CURRENT or ARCHIVED — callers MUST reject on ok=false rather
+// than coerce an unrecognised value to CURRENT (X-06: a loud read error,
+// never a silent default). Follows the (T, bool) shape of
+// common.ParseOutboxItemType.
+func ParseStatus(s string) (Status, bool) {
+	switch Status(s) {
+	case StatusCurrent, StatusArchived:
+		return Status(s), true
+	default:
+		return "", false
 	}
-	return StatusCurrent
 }
 
 // Source identifies where the process was authored.
@@ -36,15 +42,16 @@ const (
 	SourceUI   Source = "UI"
 )
 
-// ParseSource is the lenient parser. Unknown → UI.
-func ParseSource(s string) Source {
-	switch s {
-	case string(SourceCode):
-		return SourceCode
-	case string(SourceAPI):
-		return SourceAPI
+// ParseSource parses a stored source value. Returns ok=false for anything
+// other than CODE, API, or UI — callers MUST reject on ok=false rather than
+// coerce an unrecognised value to UI (X-06: a loud read error, never a
+// silent default). Follows the (T, bool) shape of common.ParseOutboxItemType.
+func ParseSource(s string) (Source, bool) {
+	switch Source(s) {
+	case SourceCode, SourceAPI, SourceUI:
+		return Source(s), true
 	default:
-		return SourceUI
+		return "", false
 	}
 }
 

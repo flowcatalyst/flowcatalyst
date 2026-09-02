@@ -32,7 +32,10 @@ func TestResolveInstanceCompletion(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			gotStatus, gotCompletion := resolveInstanceCompletion(c.status, c.completion)
+			gotStatus, gotCompletion, ok := resolveInstanceCompletion(c.status, c.completion)
+			if !ok {
+				t.Fatalf("expected ok=true for a known status, got ok=false")
+			}
 			if gotStatus != c.wantStatus {
 				t.Errorf("status: got %q want %q", gotStatus, c.wantStatus)
 			}
@@ -40,5 +43,15 @@ func TestResolveInstanceCompletion(t *testing.T) {
 				t.Errorf("completion: got %q want %q", gotCompletion, c.wantCompletion)
 			}
 		})
+	}
+}
+
+// TestResolveInstanceCompletion_UnknownStatusFailsLoudly is the X-06 write
+// boundary: an unrecognised status must be rejected (ok=false), never
+// silently coerced to QUEUED.
+func TestResolveInstanceCompletion_UnknownStatusFailsLoudly(t *testing.T) {
+	_, _, ok := resolveInstanceCompletion("NOT_A_REAL_STATUS", "")
+	if ok {
+		t.Fatal("expected ok=false for an unrecognised status")
 	}
 }

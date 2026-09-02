@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 )
 
 // Repository is the Postgres-backed repo for
@@ -156,6 +159,14 @@ type rowScanner interface {
 	Scan(dest ...any) error
 }
 
+// scanSpec reads a spec row. A status value that isn't one of the known
+// Status constants (junk written before write-boundary validation existed,
+// or a hand-edited row) is a loud read error — never round-tripped as-is
+// and never coerced to CURRENT, per the X-06 ruling. The row id is logged
+// so the bad row can be found and fixed without a debugger. Every caller
+// (FindByID, FindCurrentByApplication, FindAllByApplication) already
+// propagates this error, so a bad row in FindAllByApplication fails the
+// whole list read too.
 func scanSpec(rs rowScanner) (*OpenApiSpec, error) {
 	var (
 		spec       OpenApiSpec
@@ -170,7 +181,13 @@ func scanSpec(rs rowScanner) (*OpenApiSpec, error) {
 	); err != nil {
 		return nil, err
 	}
-	spec.Status = ParseStatus(status)
+	parsedStatus, ok := ParseStatus(status)
+	if !ok {
+		slog.Error("openapi spec row has unrecognised status", "id", spec.ID, "status", status)
+		return nil, usecase.Internal("CORRUPT_OPENAPI_SPEC_STATUS",
+			fmt.Sprintf("openapi spec %s has an unrecognised status", spec.ID), nil)
+	}
+	spec.Status = parsedStatus
 	if len(specBytes) > 0 {
 		spec.Spec = json.RawMessage(specBytes)
 	}

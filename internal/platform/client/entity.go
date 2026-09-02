@@ -19,15 +19,17 @@ const (
 	StatusSuspended Status = "SUSPENDED"
 )
 
-// ParseStatus is the lenient parser. Unknown → ACTIVE.
-func ParseStatus(s string) Status {
-	switch s {
-	case string(StatusInactive):
-		return StatusInactive
-	case string(StatusSuspended):
-		return StatusSuspended
+// ParseStatus parses a stored status value. Returns ok=false for anything
+// other than ACTIVE, INACTIVE, or SUSPENDED — callers MUST reject on
+// ok=false rather than coerce an unrecognised value to ACTIVE (X-06: a loud
+// read error, never a silent default). Follows the (T, bool) shape of
+// common.ParseOutboxItemType.
+func ParseStatus(s string) (Status, bool) {
+	switch Status(s) {
+	case StatusActive, StatusInactive, StatusSuspended:
+		return Status(s), true
 	default:
-		return StatusActive
+		return "", false
 	}
 }
 

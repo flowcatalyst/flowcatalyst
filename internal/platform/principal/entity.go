@@ -29,12 +29,17 @@ const (
 	TypeService Type = "SERVICE"
 )
 
-// ParseType is the lenient parser. Unknown → USER.
-func ParseType(s string) Type {
-	if s == string(TypeService) {
-		return TypeService
+// ParseType parses a stored type value. Returns ok=false for anything other
+// than USER or SERVICE — callers MUST reject on ok=false rather than
+// coerce an unrecognised value to USER (X-06: a loud read error, never a
+// silent default). Follows the (T, bool) shape of common.ParseOutboxItemType.
+func ParseType(s string) (Type, bool) {
+	switch Type(s) {
+	case TypeUser, TypeService:
+		return Type(s), true
+	default:
+		return "", false
 	}
-	return TypeUser
 }
 
 // UserScope determines client access level.
@@ -46,15 +51,18 @@ const (
 	ScopeClient  UserScope = "CLIENT"
 )
 
-// ParseScope is the lenient parser. Unknown → CLIENT (most restrictive).
-func ParseScope(s string) UserScope {
-	switch s {
-	case string(ScopeAnchor):
-		return ScopeAnchor
-	case string(ScopePartner):
-		return ScopePartner
+// ParseScope parses a stored scope value. Returns ok=false for anything
+// other than ANCHOR, PARTNER, or CLIENT — callers MUST reject on ok=false
+// rather than coerce an unrecognised value to CLIENT (X-06: a loud read
+// error, never a silent default — even though CLIENT is the most
+// restrictive scope, a bad row must be surfaced, not quietly narrowed).
+// Follows the (T, bool) shape of common.ParseOutboxItemType.
+func ParseScope(s string) (UserScope, bool) {
+	switch UserScope(s) {
+	case ScopeAnchor, ScopePartner, ScopeClient:
+		return UserScope(s), true
 	default:
-		return ScopeClient
+		return "", false
 	}
 }
 

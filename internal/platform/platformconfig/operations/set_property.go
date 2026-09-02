@@ -40,6 +40,11 @@ func SetProperty(repo *platformconfig.Repository) usecaseop.Operation[SetPropert
 					return usecase.Validation("FIELD_REQUIRED", name+" is required")
 				}
 			}
+			if cmd.ValueType != nil {
+				if _, ok := platformconfig.ParseValueType(*cmd.ValueType); !ok {
+					return usecase.Validation("INVALID_VALUE_TYPE", "valueType must be PLAIN or SECRET")
+				}
+			}
 			return nil
 		},
 		Authorize: func(ctx context.Context, cmd SetPropertyCommand) error {
@@ -71,7 +76,12 @@ func SetProperty(repo *platformconfig.Repository) usecaseop.Operation[SetPropert
 				c.Value = cmd.Value
 				c.Description = cmd.Description
 				if cmd.ValueType != nil {
-					c.ValueType = platformconfig.ParseValueType(*cmd.ValueType)
+					// Already restricted to a known value in Validate above.
+					vt, ok := platformconfig.ParseValueType(*cmd.ValueType)
+					if !ok {
+						return nil, usecase.Internal("INVARIANT_VALUE_TYPE", "validated valueType failed to parse", nil)
+					}
+					c.ValueType = vt
 				}
 			} else {
 				c = platformconfig.NewConfig(cmd.ApplicationCode, cmd.Section, cmd.Property, cmd.Value)
@@ -79,7 +89,12 @@ func SetProperty(repo *platformconfig.Repository) usecaseop.Operation[SetPropert
 				c.ClientID = cmd.ClientID
 				c.Description = cmd.Description
 				if cmd.ValueType != nil {
-					c.ValueType = platformconfig.ParseValueType(*cmd.ValueType)
+					// Already restricted to a known value in Validate above.
+					vt, ok := platformconfig.ParseValueType(*cmd.ValueType)
+					if !ok {
+						return nil, usecase.Internal("INVARIANT_VALUE_TYPE", "validated valueType failed to parse", nil)
+					}
+					c.ValueType = vt
 				}
 			}
 
