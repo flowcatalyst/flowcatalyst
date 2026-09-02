@@ -371,11 +371,15 @@ func (a leaderAdapter) StandbyEnabled() bool {
 	return a.s.Cfg.StandbyEnabled
 }
 
+// InstanceID reports the election's per-process instance id (R-56), not the
+// configured lock key: the lock key names the LOCK (shared by every replica
+// contending for it), so reporting it made every instance behind one router
+// deployment indistinguishable on /monitoring/standby-status.
 func (a leaderAdapter) InstanceID() string {
-	if a.s == nil || a.s.Cfg.StandbyLockKey == "" {
+	if a.s == nil {
 		return "default"
 	}
-	return a.s.Cfg.StandbyLockKey
+	return a.s.InstanceID()
 }
 
 // ─────────────────────────────────────────────────────────────────────

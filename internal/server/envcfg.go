@@ -100,6 +100,24 @@ type EnvCfg struct {
 	RouterDevMode          bool
 	RouterNotifyWebhookURL string
 	RouterDrainTimeoutSec  int
+	// RouterSynthPoolIdleSecs is the idle TTL (router.ServerConfig.SynthPoolIdleAge)
+	// after which a synthesised per-client fallback pool with no routed
+	// message is stopped and removed. 0 → the router package's 1h default.
+	RouterSynthPoolIdleSecs int
+	// RouterStrictRouting is FC_ROUTER_STRICT_ROUTING (R-13/R-16): a message
+	// with an empty pool_code, an empty/absent dispatch_mode, or an ordered
+	// mode with no message_group_id is malformed — ACKed instead of falling
+	// back to DEFAULT-POOL / DefaultDispatchMode / the shared "" group.
+	RouterStrictRouting bool
+
+	// RouterPlatformURL is the platform base URL the router reports settled
+	// BLOCK_ON_ERROR groups to (A-01, POST /api/dispatch/settled). Empty
+	// disables the hook entirely, which is the correct default for a
+	// standalone router with no platform behind it — the reaper on the
+	// platform side is the backstop either way. Shares the FLOWCATALYST_URL /
+	// FC_API_BASE_URL names the outbox and MCP subsystems already use for the
+	// same destination.
+	RouterPlatformURL string
 
 	// ALB self-registration (router). When ALBEnabled, the router registers
 	// this instance's IP with the target group on leader-gain (or non-standby
@@ -192,10 +210,13 @@ func LoadEnv() EnvCfg {
 		OutboxMongoURI: envFirst("FC_OUTBOX_MONGO_URI", "FC_OUTBOX_DB_URL", "", ""),
 		OutboxMongoDB:  envOr("FC_OUTBOX_MONGO_DB", "flowcatalyst"),
 
-		RouterConfigURL:        os.Getenv("FLOWCATALYST_CONFIG_URL"),
-		RouterDevMode:          envBool("FLOWCATALYST_DEV_MODE", false),
-		RouterNotifyWebhookURL: os.Getenv("FC_NOTIFY_WEBHOOK_URL"),
-		RouterDrainTimeoutSec:  envInt("FC_DRAIN_TIMEOUT_SECONDS", 60),
+		RouterConfigURL:         os.Getenv("FLOWCATALYST_CONFIG_URL"),
+		RouterDevMode:           envBool("FLOWCATALYST_DEV_MODE", false),
+		RouterNotifyWebhookURL:  os.Getenv("FC_NOTIFY_WEBHOOK_URL"),
+		RouterDrainTimeoutSec:   envInt("FC_DRAIN_TIMEOUT_SECONDS", 60),
+		RouterSynthPoolIdleSecs: envInt("FC_ROUTER_SYNTH_POOL_IDLE_SECS", 0),
+		RouterStrictRouting:     envBool("FC_ROUTER_STRICT_ROUTING", false),
+		RouterPlatformURL:       envFirst("FC_ROUTER_PLATFORM_URL", "FC_API_BASE_URL", "FLOWCATALYST_URL", "", ""),
 
 		ALBEnabled:        envBool("FC_ALB_ENABLED", false),
 		ALBTargetGroupARN: os.Getenv("FC_ALB_TARGET_GROUP_ARN"),

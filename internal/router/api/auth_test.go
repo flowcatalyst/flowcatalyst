@@ -95,6 +95,54 @@ func TestBasicAuth_PublicPathsBypass(t *testing.T) {
 	}
 }
 
+// TestBasicAuth_PublicPathsBypass_Mounted pins R-43: the router API is
+// normally mounted under a prefix (run.go defaults to "/router"), and
+// chi does not rewrite r.URL.Path for a mounted subrouter — only
+// RouteContext.RoutePath. Before the fix, BasicAuthMiddleware compared
+// r.URL.Path (e.g. "/router/health/live") against the unprefixed
+// publicPaths set and 401'd every probe whenever auth was enabled.
+func TestBasicAuth_PublicPathsBypass_Mounted(t *testing.T) {
+	const prefix = "/router"
+	publicPaths := []string{"/health", "/health/live", "/health/ready", "/metrics", "/openapi.json", "/docs", "/docs/", "/docs/foo"}
+	protectedPath := "/messages"
+
+	root := chi.NewRouter()
+	root.Route(prefix, func(sub chi.Router) {
+		sub.Use(routerapi.BasicAuthMiddleware(routerapi.BasicAuthConfig{Username: "u", Password: "p"}))
+		for _, p := range append(append([]string{}, publicPaths...), protectedPath) {
+			sub.Get(p, func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			})
+		}
+	})
+
+	for _, p := range publicPaths {
+		req := httptest.NewRequest("GET", prefix+p, nil)
+		rec := httptest.NewRecorder()
+		root.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("mounted path=%q status=%d want 200 (public bypass, no creds)", prefix+p, rec.Code)
+		}
+	}
+
+	// A genuinely protected mounted path must still 401 without creds...
+	req := httptest.NewRequest("GET", prefix+protectedPath, nil)
+	rec := httptest.NewRecorder()
+	root.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("mounted protected path status=%d want 401 (no creds)", rec.Code)
+	}
+
+	// ...and succeed with valid creds.
+	req = httptest.NewRequest("GET", prefix+protectedPath, nil)
+	req.SetBasicAuth("u", "p")
+	rec = httptest.NewRecorder()
+	root.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("mounted protected path with valid creds status=%d want 200", rec.Code)
+	}
+}
+
 func TestIsPublicPath(t *testing.T) {
 	cases := map[string]bool{
 		"/health":              true,

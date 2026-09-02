@@ -4,6 +4,8 @@ import (
 	"crypto/subtle"
 	"net/http"
 	"strings"
+
+	"github.com/go-chi/chi/v5"
 )
 
 // BasicAuthConfig configures the optional HTTP BasicAuth middleware.
@@ -42,6 +44,27 @@ var publicPaths = map[string]struct{}{
 // renderer serves arbitrary asset paths under /docs.
 var publicPrefixes = []string{"/docs"}
 
+// mountRelativePath returns the request path to test against
+// IsPublicPath, relative to whatever prefix this middleware is mounted
+// under (e.g. run.go nests the router API in r.Route("/router", ...)
+// by default). chi.Mux.Mount — which is what r.Route uses under the
+// hood — shifts RouteContext.RoutePath to the mount-relative remainder
+// *before* a subrouter's own middleware runs, so a request for
+// "/router/health/live" has RoutePath == "/health/live" by the time we
+// get here. When this middleware is registered directly on a
+// top-level, unmounted router, RoutePath is still "" at this point
+// (chi only fills it in during the final route match) — in that case
+// fall back to r.URL.Path, exactly like chi's own router does
+// internally (see Mux.routeHTTP). This keeps public-path matching
+// correct whether the router API is mounted under a prefix or not,
+// without hard-coding the prefix here.
+func mountRelativePath(r *http.Request) string {
+	if rctx := chi.RouteContext(r.Context()); rctx != nil && rctx.RoutePath != "" {
+		return rctx.RoutePath
+	}
+	return r.URL.Path
+}
+
 // IsPublicPath reports whether path is exempt from auth.
 func IsPublicPath(path string) bool {
 	if _, ok := publicPaths[path]; ok {
@@ -73,7 +96,7 @@ func BasicAuthMiddleware(cfg BasicAuthConfig) func(http.Handler) http.Handler {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if IsPublicPath(r.URL.Path) {
+			if IsPublicPath(mountRelativePath(r)) {
 				next.ServeHTTP(w, r)
 				return
 			}

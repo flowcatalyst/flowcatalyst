@@ -157,6 +157,9 @@ ALB self-registration are in families 11 and 1.
 | `FC_ROUTER_HTTP_PREFIX` | `/router` | — | `internal/server/envcfg.go` | Mount prefix for the router HTTP surface on the unified API listener. |
 | `FC_DRAIN_TIMEOUT_SECONDS` | `60` | — | `internal/server/envcfg.go` | Upper bound for the router's graceful in-flight drain on shutdown. |
 | `FLOWCATALYST_DEV_MODE` | `false` | — | `internal/server/envcfg.go` | Swaps in the router's dev mediator (relaxed TLS, longer timeouts). |
+| `FC_ROUTER_SYNTH_POOL_IDLE_SECS` | `0` (router package default `3600`) | — | `internal/server/envcfg.go` | Idle TTL after which a synthesised per-client `{identifier}-DEFAULT-POOL` with no routed message is stopped and removed; re-synthesised on demand. Configured pools are never evicted. |
+| `FC_ROUTER_STRICT_ROUTING` | `false` | — | `internal/server/envcfg.go` | When true, a message with an empty `pool_code`, an empty/absent `dispatch_mode`, or an ordered mode with no `message_group_id` is malformed: ACKed (never delivered, never NACKed) with a CONFIGURATION warning, instead of the usual fallback (`DEFAULT-POOL` / `NEXT_ON_ERROR` / the shared `""` group). |
+| `FC_ROUTER_PLATFORM_URL` | — (falls back to `FC_API_BASE_URL`, then `FLOWCATALYST_URL`) | `FC_API_BASE_URL`, `FLOWCATALYST_URL` | `internal/server/envcfg.go` | Platform base URL the router POSTs `/api/dispatch/settled` to (A-01), reporting the untried siblings it ACKed when a `BLOCK_ON_ERROR` head failed terminally, so the platform can mark the group pending. Unset disables the hook — correct for a standalone router with no platform; the platform-side reaper still recovers such rows within its 2-minute sweep, so this affects recovery latency, not correctness. |
 
 ### Outbox processor
 

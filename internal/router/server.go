@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/standby"
 )
@@ -66,6 +68,21 @@ type ServerConfig struct {
 	// each 5m tick.
 	BreakerIdleMaxAge time.Duration
 
+	// SynthPoolIdleAge is the idle TTL after which a synthesised per-client
+	// fallback pool ({identifier}-DEFAULT-POOL, see Manager.ensureFallbackPool)
+	// with no routed message is stopped and removed (Manager.EvictIdleSynthPools,
+	// swept on the same 5m reaper tick as InFlightReapMaxAge). It is
+	// re-synthesised on demand by the next message naming it; configured pools
+	// are never evicted. Zero falls back to 1h. FC_ROUTER_SYNTH_POOL_IDLE_SECS.
+	SynthPoolIdleAge time.Duration
+
+	// StrictRouting is FC_ROUTER_STRICT_ROUTING (R-13/R-16): when true, a
+	// message with an empty pool_code, an empty/absent dispatch_mode, or an
+	// ordered mode with no message_group_id is malformed — the router ACKs it
+	// (never delivers, never NACKs) and raises a CONFIGURATION warning instead
+	// of applying the usual fallback. Off by default.
+	StrictRouting bool
+
 	// Standby (Redis leader election). When enabled the pool config
 	// watcher only runs while this instance holds the lock.
 	StandbyEnabled  bool
@@ -98,7 +115,52 @@ type Server struct {
 	ConfigSource *ConfigSource
 	Traffic      *TrafficStrategy
 
-	election *standby.Election
+	// DefaultConfig, when set, bootstraps pools when ConfigSource is nil
+	// (no remote FLOWCATALYST_CONFIG_URL) — e.g. FC_DEFAULT_BROKER=postgres
+	// for fcdev / single-tenant deployments that don't run a config
+	// service. The caller (server.newRouterServer) sets this instead of
+	// calling Manager.Reconfigure itself, so bootstrapping always goes
+	// through Run's startPools closure: applied immediately for
+	// non-standby instances, or gated behind leadership when standby is
+	// enabled. Must be set before Run is called.
+	//
+	// startPools re-applies it on every leadership acquisition, not just
+	// the first: Shutdown (which runs on leadership loss) empties
+	// Manager.pools/consumers by design so a later regain can Reconfigure
+	// the same Manager (see Manager.Shutdown's doc comment) — but nothing
+	// else re-triggers that Reconfigure for the default-broker case, since
+	// there is no ConfigSource to resume polling. Without this a
+	// default-broker router that loses and regains leadership would stop
+	// processing permanently until restarted.
+	DefaultConfig *common.RouterConfig
+
+	election leaderElection
+
+	// instanceID is a process-lifetime identifier, distinct per instance even
+	// when every replica shares the same StandbyLockKey (R-56: the lock key
+	// names the LOCK, not the process holding it — reporting it as the
+	// instance id made every instance behind one router deployment
+	// indistinguishable on /monitoring/standby-status). Generated once in
+	// NewServer; see InstanceID.
+	instanceID string
+}
+
+// InstanceID returns this process's identifier, stable for the process's
+// lifetime and distinct from every other instance — including ones sharing
+// the same Cfg.StandbyLockKey. Reported on GET /monitoring/standby-status.
+func (s *Server) InstanceID() string { return s.instanceID }
+
+// leaderElection is the subset of *standby.Election the Server relies
+// on. Narrowed to an interface (rather than the concrete type) so a
+// leadership transition — including a loss-then-regain, the scenario
+// R-34's regression test drives — can be simulated directly in tests
+// without a live Redis instance backing standby.Election.
+// *standby.Election satisfies this with no changes.
+type leaderElection interface {
+	IsLeader() bool
+	Subscribe() <-chan standby.LeadershipChange
+	Start(ctx context.Context) error
+	Stop(ctx context.Context) error
 }
 
 // NewServer assembles the long-lived components. Nothing starts running
@@ -123,16 +185,21 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	if cfg.BreakerIdleMaxAge == 0 {
 		cfg.BreakerIdleMaxAge = time.Hour
 	}
+	if cfg.SynthPoolIdleAge == 0 {
+		cfg.SynthPoolIdleAge = time.Hour
+	}
 
 	breakers := NewBreakerRegistry(DefaultBreakerConfig())
 	s := &Server{
-		Cfg:      cfg,
-		Notifier: NewNotifier(cfg.NotifyWebhookURL, 20, 10*time.Second),
-		Mediator: pickMediator(cfg.DevMode, breakers),
-		Breakers: breakers,
-		Tracker:  NewInFlightTracker(),
+		Cfg:        cfg,
+		Notifier:   NewNotifier(cfg.NotifyWebhookURL, 20, 10*time.Second),
+		Mediator:   pickMediator(cfg.DevMode, breakers),
+		Breakers:   breakers,
+		Tracker:    NewInFlightTracker(),
+		instanceID: uuid.NewString(),
 	}
 	s.Manager = NewManager(s.Mediator, s.Tracker)
+	s.Manager.SetStrictRouting(cfg.StrictRouting)
 	s.BrokerStats = NewCachedBrokerStats(s.Manager)
 	if cfg.ConfigURL != "" {
 		s.ConfigSource = NewConfigSource(cfg.ConfigURL)
@@ -151,6 +218,11 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	}
 	// Surface manager routing/capacity warnings (unknown pool_code, all-pools-full).
 	s.Manager.SetWarnings(s.Warnings)
+	// Surface "serving stale config" warnings (R-30) while a config source is
+	// failing but still contributing its last-known-good definition.
+	if s.ConfigSource != nil {
+		s.ConfigSource.SetWarnings(s.Warnings)
+	}
 	s.Health = NewHealthService(DefaultHealthServiceConfig(), s.Warnings)
 	// Consumer liveness is read from the Manager rather than pushed into the
 	// health service; without this the consumer half of every health answer is
@@ -226,20 +298,25 @@ func (s *Server) Run(ctx context.Context) error {
 
 	startPools := func(c context.Context) {
 		if s.ConfigSource == nil {
-			// Pools may already be running because the caller bootstrapped
-			// them via a default broker (e.g. server.newRouterServer when
-			// FC_DEFAULT_BROKER=postgres). Don't warn in that case — the
-			// router is correctly configured, there's just no remote URL
-			// to poll for hot reloads.
-			if s.Manager.PoolCount() > 0 {
-				slog.Info("router config URL not set; using bootstrapped pools (no hot reload)",
+			if s.DefaultConfig != nil {
+				// The default-broker path (e.g. FC_DEFAULT_BROKER=postgres):
+				// no remote config service, so there's nothing to hot-reload
+				// from — (re)apply the synthesized config directly. This
+				// runs every time startPools runs, including a leadership
+				// regain, which is what makes the default-broker path
+				// recoverable after Shutdown zeroes the Manager's pools.
+				if err := s.Manager.Reconfigure(c, *s.DefaultConfig); err != nil {
+					slog.Error("router: default broker reconfigure failed", "err", err)
+					return
+				}
+				slog.Info("router: built-in default-broker pools started",
 					"pool_count", s.Manager.PoolCount())
 				return
 			}
 			slog.Warn("router config URL not set; no pools will start")
 			return
 		}
-		go Watch(c, s.ConfigSource, s.Manager, s.Cfg.ConfigPollInterval)
+		go Watch(c, s.ConfigSource, s.Manager, s.Cfg.ConfigPollInterval, s.Warnings)
 	}
 
 	if s.election != nil {
@@ -335,6 +412,11 @@ func (s *Server) reapInFlight(ctx context.Context) {
 			if n := s.Breakers.Evict(s.Cfg.BreakerIdleMaxAge); n > 0 {
 				slog.Info("router evicted idle circuit breakers", "count", n)
 			}
+			if s.Manager != nil {
+				if n := s.Manager.EvictIdleSynthPools(s.Cfg.SynthPoolIdleAge); n > 0 {
+					slog.Info("router evicted idle synthesised fallback pools", "count", n)
+				}
+			}
 			// Memory-health: warn when the in-flight tracker grows past the
 			// threshold — a possible callback leak. Piggybacks on this
 			// reaper's tick.
@@ -358,7 +440,7 @@ func pickMediator(devMode bool, breakers *BreakerRegistry) Mediator {
 // per-leadership context so pools wind down. Also drives the traffic
 // strategy: register on leader-gain, deregister on leader-loss so an
 // ALB stops routing requests to standing-by replicas.
-func gateOnLeadership(ctx context.Context, election *standby.Election, manager *Manager, traffic *TrafficStrategy, tracker *InFlightTracker, drainTimeout time.Duration, startPools func(context.Context)) {
+func gateOnLeadership(ctx context.Context, election leaderElection, manager *Manager, traffic *TrafficStrategy, tracker *InFlightTracker, drainTimeout time.Duration, startPools func(context.Context)) {
 	sub := election.Subscribe()
 	var poolCtx context.Context
 	var poolCancel context.CancelFunc

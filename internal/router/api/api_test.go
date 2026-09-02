@@ -114,6 +114,16 @@ func (l stubLeader) IsLeader() bool       { return l.leader }
 func (l stubLeader) StandbyEnabled() bool { return l.standby }
 func (l stubLeader) InstanceID() string   { return l.instanceID }
 
+type stubReloader struct {
+	calls int
+	err   error
+}
+
+func (r *stubReloader) Reload(_ context.Context) error {
+	r.calls++
+	return r.err
+}
+
 // ── Setup ────────────────────────────────────────────────────────────────
 
 func setupAPI(t *testing.T) (humatest.TestAPI, *chi.Mux, *stubBreakerSnapshotProvider, *stubBrokerStatsProvider, *stubPoolUpdater, *stubPublisher) {
@@ -551,6 +561,95 @@ func TestStandbyStatus(t *testing.T) {
 	decodeBody(t, resp.Body.Bytes(), &body)
 	if !body.IsLeader {
 		t.Errorf("IsLeader=false want true (stub)")
+	}
+}
+
+// ── R-33: leadership-gate POST /config/reload ───────────────────────────
+
+func newMiscState(t *testing.T, leader routerapi.LeaderInfo, reloader routerapi.ConfigReloader) humatest.TestAPI {
+	t.Helper()
+	ws := router.NewWarningService(router.WarningServiceConfig{})
+	hs := router.NewHealthService(router.DefaultHealthServiceConfig(), ws)
+	_, api := humatest.New(t)
+	routerapi.Register(api, &routerapi.State{
+		Warnings: ws, Health: hs, Leader: leader, Reloader: reloader, Mocks: routerapi.NewMockState(),
+	})
+	return api
+}
+
+func TestConfigReload_StandbyDisabled_ReloadsRegardlessOfLeadership(t *testing.T) {
+	reloader := &stubReloader{}
+	api := newMiscState(t, stubLeader{leader: false, standby: false}, reloader)
+
+	resp := api.Post("/config/reload")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status %d body=%s", resp.Code, resp.Body.String())
+	}
+	if reloader.calls != 1 {
+		t.Errorf("reloader.calls=%d want 1", reloader.calls)
+	}
+}
+
+func TestConfigReload_StandbyEnabledLeader_Reloads(t *testing.T) {
+	reloader := &stubReloader{}
+	api := newMiscState(t, stubLeader{leader: true, standby: true}, reloader)
+
+	resp := api.Post("/config/reload")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status %d body=%s", resp.Code, resp.Body.String())
+	}
+	if reloader.calls != 1 {
+		t.Errorf("reloader.calls=%d want 1", reloader.calls)
+	}
+}
+
+func TestConfigReload_StandbyEnabledFollower_409NoReload(t *testing.T) {
+	reloader := &stubReloader{}
+	api := newMiscState(t, stubLeader{leader: false, standby: true}, reloader)
+
+	resp := api.Post("/config/reload")
+	if resp.Code != http.StatusConflict {
+		t.Fatalf("status=%d want 409 body=%s", resp.Code, resp.Body.String())
+	}
+	if reloader.calls != 0 {
+		t.Errorf("reloader.calls=%d want 0 — a follower must never fetch or reconfigure", reloader.calls)
+	}
+	if !strings.Contains(strings.ToLower(resp.Body.String()), "not leader") {
+		t.Errorf("body must note 'not leader': %s", resp.Body.String())
+	}
+}
+
+// ── R-56: real per-process instance id on /monitoring/standby-status ────
+
+// TestInstanceID_NotTheLockKey builds two real router.Server instances that
+// share the same configured lock key and asserts each reports a distinct,
+// non-empty instance id — pinning that InstanceID() no longer echoes
+// Cfg.StandbyLockKey (which every replica behind one deployment shares).
+func TestInstanceID_NotTheLockKey(t *testing.T) {
+	const sharedLockKey = "fc:router:leader"
+	srv1, err := router.NewServer(router.ServerConfig{StandbyLockKey: sharedLockKey})
+	if err != nil {
+		t.Fatalf("NewServer 1: %v", err)
+	}
+	srv2, err := router.NewServer(router.ServerConfig{StandbyLockKey: sharedLockKey})
+	if err != nil {
+		t.Fatalf("NewServer 2: %v", err)
+	}
+
+	state1 := routerapi.FromServer(srv1)
+	state2 := routerapi.FromServer(srv2)
+
+	id1 := state1.Leader.InstanceID()
+	id2 := state2.Leader.InstanceID()
+
+	if id1 == "" || id2 == "" {
+		t.Fatalf("instance ids must not be empty: id1=%q id2=%q", id1, id2)
+	}
+	if id1 == sharedLockKey || id2 == sharedLockKey {
+		t.Errorf("instance id must not be the configured lock key: id1=%q id2=%q lockKey=%q", id1, id2, sharedLockKey)
+	}
+	if id1 == id2 {
+		t.Errorf("two instances sharing a lock key must still report distinct instance ids: both got %q", id1)
 	}
 }
 

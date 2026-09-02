@@ -129,6 +129,61 @@ type Manager struct {
 
 	pubMu      sync.Mutex
 	publishers map[string]queue.Publisher // queue name → publisher (lazy)
+
+	// strictRouting gates R-13/R-16: when set, route() ACKs (never delivers,
+	// never NACKs) a message with an empty pool_code, an empty/absent
+	// dispatch_mode, or an ordered mode with no message_group_id, instead of
+	// silently falling back (DEFAULT-POOL / DefaultDispatchMode / the shared
+	// "" group). Off by default — see SetStrictRouting.
+	strictRouting atomic.Bool
+
+	// synthMu guards synthPools, which tracks only pools this Manager itself
+	// synthesised on demand (see ensureFallbackPool) — never configured ones.
+	// A separate lock from poolMu because the routing hot path touches it on
+	// every message to a fallback pool (touchSynthPool), and that must not
+	// contend with Reconfigure's pool reconciliation. Lock order, whenever
+	// both are held: poolMu before synthMu.
+	synthMu    sync.RWMutex
+	synthPools map[string]*synthPoolState
+
+	// settledReporter is handed to every pool this Manager creates (see
+	// SetSettledReporter). Held here rather than passed to NewPool so there
+	// is one wiring point for both pool-creation sites — configured pools in
+	// Reconfigure and synthesised fallbacks in ensureFallbackPool. nil means
+	// "no platform behind this router", which is the standalone default.
+	srMu            sync.RWMutex
+	settledReporter SettledReporter
+}
+
+// SetSettledReporter wires the T3/A-01 settled-message reporter that every
+// pool this Manager creates will fire from ackBuffered when a
+// BLOCK_ON_ERROR head fails terminally (see settled.go). Set once, before
+// Reconfigure builds any pools; pools created afterwards — including
+// synthesised per-client fallback pools — pick it up at construction, so
+// there is exactly one wiring point rather than one per pool.
+//
+// nil is the correct default: a standalone router with no platform behind
+// it stays completely silent, exactly as before this feature existed.
+func (m *Manager) SetSettledReporter(r SettledReporter) {
+	m.srMu.Lock()
+	m.settledReporter = r
+	m.srMu.Unlock()
+}
+
+// settledReporterRef reads the reporter for a pool being constructed. Both
+// call sites already hold poolMu; this takes only srMu, which is never held
+// while taking any other lock, so it introduces no ordering constraint.
+func (m *Manager) settledReporterRef() SettledReporter {
+	m.srMu.RLock()
+	defer m.srMu.RUnlock()
+	return m.settledReporter
+}
+
+// synthPoolState is the idle tracker for one synthesised fallback pool. Only
+// lastRouted is mutated after creation, and it's atomic so the routing hot
+// path (touchSynthPool) never blocks behind the eviction sweep.
+type synthPoolState struct {
+	lastRouted atomic.Int64 // unix-nano of the most recently routed message
 }
 
 // runningConsumer is one queue's consumer plus its poll loop, and it carries
@@ -195,6 +250,7 @@ func NewManager(mediator Mediator, tracker *InFlightTracker) *Manager {
 		consumers:       make(map[string]*runningConsumer),
 		queues:          make(map[string]common.QueueConfig),
 		publishers:      make(map[string]queue.Publisher),
+		synthPools:      make(map[string]*synthPoolState),
 		restartAttempts: make(map[string]restartRecord),
 		restartDelay:    consumerRestartDelay,
 		rebuildTimeout:  consumerRebuildTimeout,
@@ -225,6 +281,13 @@ func (m *Manager) cancelConsumerRoot() {
 // SetWarnings wires a WarningService so routing/capacity conditions surface on
 // /warnings and into health. Opt-in; set once at startup before Start.
 func (m *Manager) SetWarnings(ws *WarningService) { m.warnings.Store(ws) }
+
+// SetStrictRouting toggles FC_ROUTER_STRICT_ROUTING (R-13/R-16): when true,
+// route() ACKs a malformed message (empty pool_code, empty dispatch_mode, or
+// an ordered mode with no message_group_id) instead of applying the usual
+// fallback. Safe to call at any time; read on the routing hot path via an
+// atomic, so a runtime toggle takes effect on the next batch.
+func (m *Manager) SetStrictRouting(v bool) { m.strictRouting.Store(v) }
 
 // resolveConsumer maps a message's origin queue to its consumer so a pool can
 // ack/nack on the right queue. Returns nil if the queue was deregistered.
@@ -521,6 +584,31 @@ func (m *Manager) route(ctx context.Context, msgs []common.QueuedMessage, source
 			}
 		}
 
+		if m.strictRouting.Load() {
+			if reason := malformedRoutingReason(&msg.Message); reason != "" {
+				// None of these are fixable by the usual fallback (DEFAULT-POOL,
+				// DefaultDispatchMode, the shared "" group) — under strict
+				// routing they are a producer bug, not something to paper over.
+				// ACK only: it must never be delivered, and it must never be
+				// NACKed back onto the broker's redelivery clock either, since
+				// nothing about a retry would fix a malformed message.
+				slog.Warn("strict routing: malformed message; acking without delivery",
+					"message_id", msg.Message.ID, "queue", source.Identifier(), "reason", reason)
+				if w := m.warnings.Load(); w != nil {
+					w.Add(WarningCategoryConfiguration, WarningWarning,
+						fmt.Sprintf("malformed message %s on queue %s: %s", msg.Message.ID, source.Identifier(), reason),
+						"router")
+				}
+				if m.tracker != nil {
+					m.tracker.Remove(msg.Message.ID, msg.BrokerMessageID)
+				}
+				if err := source.Ack(ctx, msg.ReceiptHandle, msg.BrokerMessageID); err != nil {
+					slog.Warn("ack (strict routing malformed) failed", "message_id", msg.Message.ID, "err", err)
+				}
+				continue
+			}
+		}
+
 		pool := m.poolForMessage(msg)
 		if pool == nil {
 			// No pool at all (not even DEFAULT-POOL configured) — NACK so the
@@ -576,6 +664,13 @@ func (m *Manager) poolForMessage(msg common.QueuedMessage) *Pool {
 	p, ok := m.pools[code]
 	m.poolMu.RUnlock()
 	if ok {
+		if isSynthPoolCode(code) {
+			// Reset the idle clock EvictIdleSynthPools judges this pool by. A
+			// no-op if code isn't tracked as synthesised (a configured pool of
+			// the same name — Reconfigure removed its entry — must not be kept
+			// eviction-eligible by traffic that no longer matters to that).
+			m.touchSynthPool(code)
+		}
 		return p
 	}
 	// A per-client fallback pool ({identifier}-DEFAULT-POOL) will not be in the
@@ -611,16 +706,106 @@ func (m *Manager) ensureFallbackPool(code string) *Pool {
 	m.poolMu.Lock()
 	defer m.poolMu.Unlock()
 	if p, ok := m.pools[code]; ok {
+		m.touchSynthPool(code)
 		return p
 	}
 	p := NewPool(
 		common.PoolConfig{Code: code, Concurrency: defaultPoolConcurrency},
 		m.mediator, m.tracker, m.resolveConsumer,
 	)
+	p.SetSettledReporter(m.settledReporterRef())
 	m.pools[code] = p
+	m.trackSynthPool(code)
 	slog.Info("synthesised per-client fallback pool",
 		"pool_code", code, "concurrency", defaultPoolConcurrency)
 	return p
+}
+
+// trackSynthPool registers code as eviction-eligible (see
+// EvictIdleSynthPools), with its idle clock starting now. Called only from
+// ensureFallbackPool at creation, under poolMu — lock order poolMu before
+// synthMu, consistent with every other caller that holds both.
+func (m *Manager) trackSynthPool(code string) {
+	st := &synthPoolState{}
+	st.lastRouted.Store(time.Now().UnixNano())
+	m.synthMu.Lock()
+	m.synthPools[code] = st
+	m.synthMu.Unlock()
+}
+
+// touchSynthPool resets code's idle clock — a message just routed to it. A
+// no-op if code isn't currently tracked as synthesised: a configured pool of
+// the same code (Reconfigure) removes its entry, and traffic to it must not
+// re-arm an eviction that no longer applies.
+func (m *Manager) touchSynthPool(code string) {
+	m.synthMu.RLock()
+	st, ok := m.synthPools[code]
+	m.synthMu.RUnlock()
+	if ok {
+		st.lastRouted.Store(time.Now().UnixNano())
+	}
+}
+
+// forgetSynthPool removes code from eviction tracking — called whenever
+// config takes ownership of the code (Reconfigure) or the pool is torn down
+// outright (Shutdown), so a stale entry never points at a pool that is gone
+// or no longer synthesised.
+func (m *Manager) forgetSynthPool(code string) {
+	m.synthMu.Lock()
+	delete(m.synthPools, code)
+	m.synthMu.Unlock()
+}
+
+// EvictIdleSynthPools stops and removes every synthesised per-client
+// fallback pool (ensureFallbackPool) that has routed no message for at least
+// ttl. Configured pools are never touched: Reconfigure removes a code from
+// the eviction-eligible set the moment config defines it (see wantPools in
+// Reconfigure), so only pools this Manager created on demand are ever
+// candidates here. Uses Pool.Stop — the same drain path Reconfigure calls
+// when a pool drops out of config — so a buffered message is flushed and its
+// tracker entry released for broker redelivery rather than lost; the pool is
+// re-synthesised on demand by the next message that names its code. Wired
+// onto the router's reaper tick (see Server.reapInFlight). Returns the
+// number of pools evicted.
+func (m *Manager) EvictIdleSynthPools(ttl time.Duration) int {
+	if ttl <= 0 {
+		return 0
+	}
+	cutoff := time.Now().Add(-ttl).UnixNano()
+
+	m.synthMu.RLock()
+	var idle []string
+	for code, st := range m.synthPools {
+		if st.lastRouted.Load() < cutoff {
+			idle = append(idle, code)
+		}
+	}
+	m.synthMu.RUnlock()
+	if len(idle) == 0 {
+		return 0
+	}
+
+	evicted := 0
+	m.poolMu.Lock()
+	m.synthMu.Lock()
+	for _, code := range idle {
+		// Re-check under the write locks: a message may have routed to it
+		// (bumping lastRouted) since the read-locked scan above, or
+		// Reconfigure may have promoted/removed it in the meantime.
+		st, tracked := m.synthPools[code]
+		if !tracked || st.lastRouted.Load() >= cutoff {
+			continue
+		}
+		if p, ok := m.pools[code]; ok {
+			p.Stop()
+			delete(m.pools, code)
+			evicted++
+		}
+		delete(m.synthPools, code)
+	}
+	m.synthMu.Unlock()
+	m.poolMu.Unlock()
+	return evicted
 }
 
 // isDefaultPoolCode reports whether code names a fallback pool — the global
@@ -632,6 +817,34 @@ func (m *Manager) ensureFallbackPool(code string) *Pool {
 // suffix is unambiguous only because the literal is fixed.
 func isDefaultPoolCode(code string) bool {
 	return code == defaultPoolCode || strings.HasSuffix(code, "-"+defaultPoolCode)
+}
+
+// isSynthPoolCode reports whether code names a per-client fallback pool —
+// eligible for on-demand synthesis (ensureFallbackPool) and, if it is one,
+// for idle eviction (EvictIdleSynthPools). Excludes the global DEFAULT-POOL
+// itself, which Reconfigure always ensures explicitly and is therefore never
+// synthesised or evicted.
+func isSynthPoolCode(code string) bool {
+	return code != defaultPoolCode && isDefaultPoolCode(code)
+}
+
+// malformedRoutingReason reports why msg is malformed under strict routing
+// (FC_ROUTER_STRICT_ROUTING; see Manager.SetStrictRouting), or "" if it's
+// well-formed. Checked once per message at route time, before pool
+// resolution — every condition here is exactly the case non-strict routing
+// papers over with a fallback (DEFAULT-POOL, DefaultDispatchMode, the shared
+// "" group), so under strict routing none of them may be silently repaired.
+func malformedRoutingReason(msg *common.Message) string {
+	switch {
+	case msg.PoolCode == "":
+		return "empty pool_code"
+	case msg.DispatchMode == "":
+		return "empty dispatch_mode"
+	case msg.DispatchMode.RequiresOrdering() && msg.GroupID() == "":
+		return "ordered dispatch_mode with no message_group_id"
+	default:
+		return ""
+	}
 }
 
 // runConsumer is the per-consumer poll loop. ctx is the consumer's POLL
@@ -864,9 +1077,14 @@ func (m *Manager) Reconfigure(ctx context.Context, cfg common.RouterConfig) erro
 			slog.Info("manager: stopping pool", "code", code)
 			p.Stop()
 			delete(m.pools, code)
+			m.forgetSynthPool(code)
 		}
 	}
 	for code, pc := range wantPools {
+		// Config always wins: a code config now defines is never
+		// eviction-eligible, whether it was previously synthesised or is
+		// brand new — see EvictIdleSynthPools.
+		m.forgetSynthPool(code)
 		if p, ok := m.pools[code]; ok {
 			rate := uint32(0)
 			if pc.RateLimitPerMinute != nil {
@@ -878,7 +1096,9 @@ func (m *Manager) Reconfigure(ctx context.Context, cfg common.RouterConfig) erro
 			}
 			continue
 		}
-		m.pools[code] = NewPool(pc, m.mediator, m.tracker, m.resolveConsumer)
+		np := NewPool(pc, m.mediator, m.tracker, m.resolveConsumer)
+		np.SetSettledReporter(m.settledReporterRef())
+		m.pools[code] = np
 	}
 	m.poolMu.Unlock()
 
@@ -991,6 +1211,13 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 	}
 	m.pools = make(map[string]*Pool)
 	m.poolMu.Unlock()
+
+	// Same "not necessarily terminal" reasoning as m.pools above: a later
+	// regain re-synthesises fallback pools on demand, into a clean map
+	// rather than one carrying entries for pools that no longer exist.
+	m.synthMu.Lock()
+	m.synthPools = make(map[string]*synthPoolState)
+	m.synthMu.Unlock()
 
 	done := make(chan struct{})
 	go func() { m.wg.Wait(); close(done) }()

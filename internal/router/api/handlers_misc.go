@@ -148,6 +148,13 @@ type configReloadOutput struct {
 }
 
 func (s *State) configReload(ctx context.Context, _ *emptyInput) (*configReloadOutput, error) {
+	// R-33: when standby election is enabled and this instance is not the
+	// leader, refuse outright — no fetch, no reconfigure. A follower
+	// reloading its own Manager would start pools a leader-gated deployment
+	// never wants running outside leadership.
+	if s.Leader != nil && s.Leader.StandbyEnabled() && !s.Leader.IsLeader() {
+		return nil, huma.Error409Conflict("not leader; config reload is only served by the current leader")
+	}
 	if s.Reloader == nil {
 		// The router currently has a polling Watch loop; if no explicit
 		// Reloader is wired we acknowledge but report no-op. 200 instead
