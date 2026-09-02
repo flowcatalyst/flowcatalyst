@@ -69,6 +69,41 @@ func TestWarningService_EvictOnCapacity(t *testing.T) {
 	}
 }
 
+// TestWarningService_InfoAgesOutFasterThanWarning pins X-04's per-severity
+// TTL: an INFO-severity warning must age out on the shorter InfoWarningAge
+// (default 1h) rather than the general MaxWarningAge (default 8h), so a
+// chatty INFO source cannot sit in the bounded store long enough to crowd
+// out real WARNING+ entries.
+func TestWarningService_InfoAgesOutFasterThanWarning(t *testing.T) {
+	s := NewWarningService(WarningServiceConfig{
+		MaxWarningAge:      8 * time.Hour,
+		InfoWarningAge:     time.Hour,
+		AutoAcknowledgeAge: 8 * time.Hour, // keep auto-ack out of the way of this test
+	})
+	infoID := s.Add(WarningCategoryQueueHealth, WarningInfo, "info", "t")
+	warnID := s.Add(WarningCategoryQueueHealth, WarningWarning, "warn", "t")
+
+	// Age both past the INFO threshold but well inside MaxWarningAge.
+	s.mu.Lock()
+	for _, id := range []string{infoID, warnID} {
+		w := s.warnings[id]
+		w.CreatedAt = time.Now().UTC().Add(-90 * time.Minute)
+		s.warnings[id] = w
+	}
+	s.mu.Unlock()
+
+	removed := s.ClearAged()
+	if removed != 1 {
+		t.Fatalf("ClearAged: removed %d want 1 (only the INFO entry)", removed)
+	}
+	if _, ok := s.warnings[infoID]; ok {
+		t.Fatal("INFO warning past its 1h TTL must be gone")
+	}
+	if _, ok := s.warnings[warnID]; !ok {
+		t.Fatal("WARNING warning of the same age must survive under the 8h MaxWarningAge")
+	}
+}
+
 func TestWarningService_ActiveFiltersOnAcknowledgedAndAge(t *testing.T) {
 	s := NewWarningService(WarningServiceConfig{})
 	idAck := s.Add(WarningCategoryConnection, WarningError, "a", "t")

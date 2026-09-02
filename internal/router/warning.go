@@ -26,6 +26,14 @@ type WarningServiceConfig struct {
 	// the acknowledged state, and one stale CRITICAL held the router Degraded
 	// for a full 8 hours.
 	AutoAcknowledgeAge time.Duration
+
+	// InfoWarningAge auto-clears INFO-severity warnings after this instead of
+	// MaxWarningAge (X-04). INFO covers routine/expected conditions, which
+	// tend to recur far more often than real WARNING+ signals; without a
+	// shorter TTL a chatty INFO source can occupy a large share of the bounded
+	// MaxWarnings store and, via evictOldestLocked's oldest-10% eviction,
+	// crowd out warnings operators actually need to see. Default: 1 hour.
+	InfoWarningAge time.Duration
 }
 
 // DefaultWarningServiceConfig returns the standard defaults.
@@ -34,6 +42,7 @@ func DefaultWarningServiceConfig() WarningServiceConfig {
 		MaxWarningAge:      8 * time.Hour,
 		MaxWarnings:        1000,
 		AutoAcknowledgeAge: time.Hour,
+		InfoWarningAge:     time.Hour,
 	}
 }
 
@@ -69,6 +78,9 @@ func NewWarningService(cfg WarningServiceConfig) *WarningService {
 		// unobservable in the first place (see the field comment).
 		cfg.AutoAcknowledgeAge = time.Hour
 	}
+	if cfg.InfoWarningAge <= 0 {
+		cfg.InfoWarningAge = time.Hour
+	}
 	return &WarningService{
 		cfg:      cfg,
 		warnings: make(map[string]Warning),
@@ -88,8 +100,11 @@ func (s *WarningService) SetNotifier(n *Notifier) {
 }
 
 // Add records a new warning and returns its id. Forwards to the
-// attached notifier (if any). Evicts the oldest 10% if the store is at
-// capacity.
+// attached notifier (if any) via Notifier.Add, which applies its own
+// severity floor (WARNING by default — see Notifier.SetMinSeverity) so an
+// INFO-severity warning lands here (and on /warnings, health counts,
+// acknowledgement) without also reaching the webhook. Evicts the oldest 10%
+// if the store is at capacity.
 func (s *WarningService) Add(category WarningCategory, severity WarningSeverity, message, source string) string {
 	w := NewWarning(category, severity, message, source)
 
@@ -215,7 +230,10 @@ func (s *WarningService) AutoAcknowledgeOld() int {
 	return s.AcknowledgeMatching(func(w Warning) bool { return w.AgeMinutes() > limit })
 }
 
-// ClearOlderThan removes every warning older than `age`. Returns removed count.
+// ClearOlderThan removes every warning older than `age`, regardless of
+// severity. Not used by Cleanup (which is severity-aware via ClearAged);
+// kept as a blunt uniform-cutoff tool for callers that want one. Returns
+// removed count.
 func (s *WarningService) ClearOlderThan(age time.Duration) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -297,9 +315,39 @@ func (s *WarningService) HasCritical() bool { return s.CriticalCount() > 0 }
 
 // Cleanup auto-acks old warnings and drops very old ones. Idempotent;
 // call from a periodic ticker (LifecycleManager or a dedicated goroutine).
+//
+// Eviction is severity-aware (ClearAged), not a flat MaxWarningAge cutoff:
+// INFO-severity warnings age out on the shorter InfoWarningAge.
 func (s *WarningService) Cleanup() {
 	s.AutoAcknowledgeOld()
-	s.ClearOlderThan(s.cfg.MaxWarningAge)
+	s.ClearAged()
+}
+
+// ClearAged removes every warning past its severity's retention window:
+// INFO-severity warnings older than cfg.InfoWarningAge, everything else
+// older than cfg.MaxWarningAge (X-04). Returns the removed count. Driven by
+// Cleanup(); exported so callers can force a sweep (tests, operator tooling)
+// without waiting on the auto-ack pass.
+func (s *WarningService) ClearAged() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	maxLimit := int64(s.cfg.MaxWarningAge.Minutes())
+	infoLimit := int64(s.cfg.InfoWarningAge.Minutes())
+	removed := 0
+	for id, w := range s.warnings {
+		limit := maxLimit
+		if w.Severity == WarningInfo {
+			limit = infoLimit
+		}
+		if w.AgeMinutes() > limit {
+			delete(s.warnings, id)
+			removed++
+		}
+	}
+	if removed > 0 {
+		slog.Info("warning service: cleared aged warnings", "removed", removed)
+	}
+	return removed
 }
 
 // RunCleanupLoop drives Cleanup on a ticker until ctx is cancelled.

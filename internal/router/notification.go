@@ -77,7 +77,7 @@ type Notifier struct {
 	webhookURL  string
 	batchSize   int
 	interval    time.Duration
-	minSeverity WarningSeverity // "" = deliver all; else drop warnings below it
+	minSeverity WarningSeverity // floor below which Add drops a warning; see NewNotifier/SetMinSeverity
 	client      *http.Client
 
 	mu    sync.Mutex
@@ -103,13 +103,20 @@ func severityRank(s WarningSeverity) int {
 }
 
 // NewNotifier builds a notifier. webhookURL empty → noop.
+//
+// minSeverity defaults to WARNING (X-04): an INFO-severity warning is stored
+// by the WarningService (so it still shows on /warnings) but is never
+// webhooked unless SetMinSeverity(WarningInfo) is called explicitly. Without
+// this default, a chatty INFO source would crowd the destination channel the
+// same way it would have crowded the store before the per-severity TTL.
 func NewNotifier(webhookURL string, batchSize int, interval time.Duration) *Notifier {
 	return &Notifier{
-		webhookURL: webhookURL,
-		batchSize:  batchSize,
-		interval:   interval,
-		client:     &http.Client{Timeout: 10 * time.Second},
-		stopCh:     make(chan struct{}),
+		webhookURL:  webhookURL,
+		batchSize:   batchSize,
+		interval:    interval,
+		minSeverity: WarningWarning,
+		client:      &http.Client{Timeout: 10 * time.Second},
+		stopCh:      make(chan struct{}),
 	}
 }
 
@@ -135,7 +142,19 @@ func (n *Notifier) Run(ctx context.Context) {
 }
 
 // SetMinSeverity sets the minimum severity that will be delivered; warnings
-// below it are dropped before enqueue. Zero value ("") delivers everything.
+// below it are dropped before enqueue. NewNotifier defaults this to WARNING
+// (X-04); pass WarningInfo to deliver everything, including INFO. Intended
+// to be driven by FC_NOTIFY_MIN_SEVERITY at startup — see the deferred
+// wiring note on this function.
+//
+// Deferred: the env var lives in internal/server/envcfg.go and the call site
+// in internal/router/server.go, both owned by another lane. When free, add:
+//
+//	s.Notifier.SetMinSeverity(WarningSeverity(cfg.NotifyMinSeverity))
+//
+// guarded so an empty/invalid env value leaves the WARNING default in place
+// rather than falling through to severityRank's "unknown ranks lowest" and
+// silently reopening the INFO floodgate.
 func (n *Notifier) SetMinSeverity(s WarningSeverity) {
 	n.mu.Lock()
 	n.minSeverity = s
@@ -155,7 +174,7 @@ func (n *Notifier) Add(w Warning) {
 		w.CreatedAt = time.Now().UTC()
 	}
 	n.mu.Lock()
-	if n.minSeverity != "" && severityRank(w.Severity) < severityRank(n.minSeverity) {
+	if severityRank(w.Severity) < severityRank(n.minSeverity) {
 		n.mu.Unlock()
 		return
 	}

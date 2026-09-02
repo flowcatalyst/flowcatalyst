@@ -34,7 +34,7 @@ func DefaultQueueHealthConfig() QueueHealthConfig {
 // for N consecutive periods).
 type QueueHealthMonitor struct {
 	cfg      QueueHealthConfig
-	notifier *Notifier
+	warnings *WarningService // never nil after NewQueueHealthMonitor; see SetWarnings
 
 	mu      sync.Mutex
 	history map[string]*queueSizeHistory
@@ -45,14 +45,32 @@ type queueSizeHistory struct {
 	consecutiveGrowthPeriods uint32
 }
 
-// NewQueueHealthMonitor wires a monitor. notifier may be nil (warnings → log only).
+// NewQueueHealthMonitor wires a monitor. notifier may be nil (warnings are
+// still recorded, just never webhooked).
+//
+// Backlog/growth warnings are routed through a WarningService (X-04) rather
+// than the notifier directly, so they reach /warnings, health counts and
+// acknowledgement — not the webhook alone. NewQueueHealthMonitor provisions
+// a private WarningService wired to notifier so that holds true even before
+// SetWarnings wires in the process-wide store; SetWarnings then swaps in
+// that shared instance without changing behaviour otherwise (same warnings,
+// same forwarding to notifier — see WarningService.SetNotifier/Add).
 func NewQueueHealthMonitor(cfg QueueHealthConfig, notifier *Notifier) *QueueHealthMonitor {
+	ws := NewWarningService(WarningServiceConfig{})
+	ws.SetNotifier(notifier)
 	return &QueueHealthMonitor{
 		cfg:      cfg,
-		notifier: notifier,
+		warnings: ws,
 		history:  make(map[string]*queueSizeHistory),
 	}
 }
+
+// SetWarnings swaps in the process-wide WarningService (e.g. Server.Warnings)
+// so backlog/growth warnings share the same store — and the same
+// acknowledgement/health-count surface — as every other emitter, instead of
+// the private one NewQueueHealthMonitor provisions. Call once at startup,
+// before Watch; nil detaches (warnings become log-only).
+func (m *QueueHealthMonitor) SetWarnings(ws *WarningService) { m.warnings = ws }
 
 // Watch runs the periodic check until ctx is cancelled. consumers is
 // snapshotted on every tick.
@@ -89,13 +107,8 @@ func (m *QueueHealthMonitor) checkBacklog(name string, size uint64) {
 	}
 	msg := formatBacklog(name, size, m.cfg.BacklogThreshold)
 	slog.Warn("queue backlog", "queue", name, "size", size, "threshold", m.cfg.BacklogThreshold)
-	if m.notifier != nil {
-		m.notifier.Add(Warning{
-			Category: WarningCategoryQueueHealth,
-			Severity: WarningWarning,
-			Message:  msg,
-			Source:   "QueueHealthMonitor",
-		})
+	if m.warnings != nil {
+		m.warnings.Add(WarningCategoryQueueHealth, WarningWarning, msg, "QueueHealthMonitor")
 	}
 }
 
@@ -116,13 +129,8 @@ func (m *QueueHealthMonitor) checkGrowth(name string, size uint64) {
 					msg := formatGrowth(name, size, growth, h.consecutiveGrowthPeriods)
 					slog.Warn("queue growth", "queue", name, "size", size, "growth", growth,
 						"consecutive_periods", h.consecutiveGrowthPeriods)
-					if m.notifier != nil {
-						m.notifier.Add(Warning{
-							Category: WarningCategoryQueueHealth,
-							Severity: WarningWarning,
-							Message:  msg,
-							Source:   "QueueHealthMonitor",
-						})
+					if m.warnings != nil {
+						m.warnings.Add(WarningCategoryQueueHealth, WarningWarning, msg, "QueueHealthMonitor")
 					}
 				}
 			} else {

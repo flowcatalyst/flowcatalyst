@@ -332,8 +332,7 @@ type NackFunc func(ctx context.Context, queueID, receiptHandle string, delaySeco
 type StallDetector struct {
 	cfg      StallConfig
 	tracker  *InFlightTracker
-	notifier *Notifier
-	warnings *WarningService // optional; nil → webhook-only, as before
+	warnings *WarningService // never nil after NewStallDetector; see SetWarnings
 	nackFn   NackFunc        // optional; required for the force-NACK path
 
 	// warned remembers which message ids have already been reported in the
@@ -349,23 +348,37 @@ type StallDetector struct {
 	warned   map[string]struct{}
 }
 
-// NewStallDetector wires a detector. notifier may be nil. nackFn may be nil,
-// in which case the force-NACK path is skipped even when ForceNackStalled is
-// set (warnings still fire).
+// NewStallDetector wires a detector. notifier may be nil (warnings are still
+// recorded, just never webhooked). nackFn may be nil, in which case the
+// force-NACK path is skipped even when ForceNackStalled is set (warnings
+// still fire).
+//
+// Stall reports are routed through a WarningService (X-04) rather than the
+// notifier directly, so they reach /warnings, health counts and
+// acknowledgement — not the webhook alone. Without this a message wedged for
+// the better part of an hour raised nothing any UI could show.
+// NewStallDetector provisions a private WarningService wired to notifier so
+// that holds true even before SetWarnings wires in the process-wide store;
+// SetWarnings then swaps in that shared instance without changing behaviour
+// otherwise (same warnings, same forwarding to notifier — see
+// WarningService.SetNotifier/Add).
 func NewStallDetector(cfg StallConfig, tracker *InFlightTracker, notifier *Notifier, nackFn NackFunc) *StallDetector {
+	ws := NewWarningService(WarningServiceConfig{})
+	ws.SetNotifier(notifier)
 	return &StallDetector{
 		cfg:      cfg,
 		tracker:  tracker,
-		notifier: notifier,
+		warnings: ws,
 		nackFn:   nackFn,
 		warned:   make(map[string]struct{}),
 	}
 }
 
-// SetWarnings routes stall reports to the WarningService as well as the
-// webhook notifier, so they reach /warnings, the dashboard and the health
-// report. Without it a message wedged for the better part of an hour raised
-// nothing any UI could show.
+// SetWarnings swaps in the process-wide WarningService (e.g. Server.Warnings)
+// so stall reports share the same store — and the same
+// acknowledgement/health-count surface — as every other emitter, instead of
+// the private one NewStallDetector provisions. nil detaches (reports become
+// log-only).
 func (d *StallDetector) SetWarnings(w *WarningService) { d.warnings = w }
 
 // report emits a stall warning once per message per episode. Returns false if
@@ -379,16 +392,8 @@ func (d *StallDetector) report(id string, severity WarningSeverity, message stri
 	d.warned[id] = struct{}{}
 	d.warnedMu.Unlock()
 
-	w := Warning{Category: WarningCategoryStall, Severity: severity, Message: message, Source: "StallDetector"}
-	// WarningService forwards to the notifier itself, so route through it when
-	// present and fall back to the raw notifier when it is not — never both, or
-	// every stall is webhooked twice.
 	if d.warnings != nil {
-		d.warnings.Add(w.Category, w.Severity, w.Message, w.Source)
-		return true
-	}
-	if d.notifier != nil {
-		d.notifier.Add(w)
+		d.warnings.Add(WarningCategoryStall, severity, message, "StallDetector")
 	}
 	return true
 }
