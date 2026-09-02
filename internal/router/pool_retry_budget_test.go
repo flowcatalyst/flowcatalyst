@@ -24,15 +24,15 @@ func TestRetryBudgetReleasesOnceSpent(t *testing.T) {
 
 	msg := grMsg("evt", "http://t/x")
 	msg.Attempts = maxInPipelineAttempts - 2 // one more retry left
-	result, delay := p.retryAfter(msg, 250*time.Millisecond)
-	assert.Equal(t, processRetry, result, "inside the budget the message keeps retrying in place")
-	assert.Equal(t, 250*time.Millisecond, delay)
+	d := p.retryAfter(msg, 250*time.Millisecond)
+	assert.Equal(t, BrokerRetry, d.Action, "inside the budget the message keeps retrying in place")
+	assert.Equal(t, 250*time.Millisecond, d.RetryAfter)
 
 	msg.Attempts = maxInPipelineAttempts - 1 // this attempt spends the last of it
-	result, delay = p.retryAfter(msg, 250*time.Millisecond)
-	assert.Equal(t, processRelease, result,
+	d = p.retryAfter(msg, 250*time.Millisecond)
+	assert.Equal(t, BrokerRelease, d.Action,
 		"a spent budget must hand the message back to the broker, not keep it")
-	assert.Equal(t, 250*time.Millisecond, delay, "the backoff becomes the redelivery delay")
+	assert.Equal(t, 250*time.Millisecond, d.RetryAfter, "the backoff becomes the redelivery delay")
 }
 
 func TestNackDelayFromBackoff(t *testing.T) {

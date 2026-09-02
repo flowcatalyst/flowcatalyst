@@ -29,11 +29,17 @@ type WindowedMetrics struct {
 // EnhancedPoolMetrics is the rolling-window snapshot embedded in
 // PoolStats.Metrics.
 type EnhancedPoolMetrics struct {
-	TotalSuccess     uint64                `json:"totalSuccess"`
-	TotalFailure     uint64                `json:"totalFailure"`
-	TotalRateLimited uint64                `json:"totalRateLimited"`
-	SuccessRate      float64               `json:"successRate"`
-	ProcessingTime   ProcessingTimeMetrics `json:"processingTime"`
-	Last5Min         WindowedMetrics       `json:"last5Min"`
-	Last30Min        WindowedMetrics       `json:"last30Min"`
+	TotalSuccess     uint64 `json:"totalSuccess"`
+	TotalFailure     uint64 `json:"totalFailure"`
+	TotalRateLimited uint64 `json:"totalRateLimited"`
+	// TotalSuppressed counts messages ACKed without delivery because their
+	// group was suppressed by the GroupFlushRegistry (R-53). Kept separate
+	// from TotalSuccess/TotalFailure: no delivery was attempted, so neither
+	// bucket fits, and a pool suppressing a flushed group should read
+	// busy-but-suppressed rather than idle.
+	TotalSuppressed uint64                `json:"totalSuppressed"`
+	SuccessRate     float64               `json:"successRate"`
+	ProcessingTime  ProcessingTimeMetrics `json:"processingTime"`
+	Last5Min        WindowedMetrics       `json:"last5Min"`
+	Last30Min       WindowedMetrics       `json:"last30Min"`
 }

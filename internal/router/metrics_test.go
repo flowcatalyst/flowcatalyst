@@ -206,3 +206,40 @@ func TestPoolMetricsCollector_MaxSamplesBound(t *testing.T) {
 			m.ProcessingTime.MinMs, m.ProcessingTime.MaxMs)
 	}
 }
+
+// R-53: a message ACKed because its group is suppressed by the
+// GroupFlushRegistry must show up as its own counter, distinct from
+// success/failure/rate-limited — a pool suppressing a flushed group should
+// read busy-but-suppressed, not idle. RecordSuppressed does not add a
+// latency sample (no HTTP call was made, so there is no duration to record)
+// and does not move SuccessRate, which is computed only from
+// TotalSuccess/TotalFailure.
+func TestPoolMetricsCollector_SuppressedRecording(t *testing.T) {
+	c := NewPoolMetricsCollector()
+
+	c.RecordSuccess(100)
+	c.RecordSuppressed()
+	c.RecordSuppressed()
+	c.RecordSuppressed()
+
+	m := c.Snapshot()
+
+	if m.TotalSuppressed != 3 {
+		t.Fatalf("TotalSuppressed=%d, want 3", m.TotalSuppressed)
+	}
+	if m.TotalSuccess != 1 || m.TotalFailure != 0 {
+		t.Fatalf("suppressed ACKs must not be counted as success or failure: TotalSuccess=%d TotalFailure=%d",
+			m.TotalSuccess, m.TotalFailure)
+	}
+	if m.SuccessRate != 1.0 {
+		t.Fatalf("SuccessRate must be unaffected by suppressed ACKs (1 success / 0 failure): got %v", m.SuccessRate)
+	}
+	if m.ProcessingTime.SampleCount != 1 {
+		t.Fatalf("suppressed ACKs must not add a latency sample; got SampleCount=%d", m.ProcessingTime.SampleCount)
+	}
+
+	c.Reset()
+	if got := c.Snapshot().TotalSuppressed; got != 0 {
+		t.Fatalf("Reset must clear TotalSuppressed, got %d", got)
+	}
+}

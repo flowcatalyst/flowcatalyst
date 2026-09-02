@@ -317,20 +317,20 @@ func (p *Pool) runImmediate(ctx context.Context, m common.QueuedMessage) {
 		return
 	}
 	p.queueDec() // now active, not queued
-	result, retryAfter := func() (processResult, time.Duration) {
+	d := func() Disposition {
 		defer p.sem.release() // release on every exit path (acquired above)
 		return p.processOne(ctx, m)
 	}()
-	if result == processRelease {
+	if d.Action == BrokerRelease {
 		// Target unreachable, or the in-pipeline retry budget is spent.
 		// IMMEDIATE mode has no group buffer, so there is nothing behind this
 		// message to release with it — hand just this one back and let the
-		// broker redeliver. retryAfter is non-zero only in the budget case,
+		// broker redeliver. d.RetryAfter is non-zero only in the budget case,
 		// where it becomes the redelivery delay.
-		p.nackMsg(ctx, m, nackDelay(retryAfter), "released to broker")
+		p.nackMsg(ctx, m, nackDelay(d.RetryAfter), "released to broker")
 		return
 	}
-	if result != processRetry {
+	if d.Action != BrokerRetry {
 		return
 	}
 	// Retry in-pipeline: wait out the backoff, then re-dispatch. The in-flight
@@ -351,7 +351,7 @@ func (p *Pool) runImmediate(ctx context.Context, m common.QueuedMessage) {
 				p.tracker.Remove(m.Message.ID, m.BrokerMessageID)
 			}
 			return
-		case <-time.After(retryAfter):
+		case <-time.After(d.RetryAfter):
 		}
 		p.runImmediate(ctx, m)
 	}()
@@ -485,6 +485,73 @@ func (p *Pool) MessageGroupCount() uint32 {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return uint32(len(p.groupQs))
+}
+
+// GroupInfo is one live message group's snapshot row for the operator
+// "blocked groups" view (R-04): which groups this pool is currently holding,
+// how full each is, and why nothing may be moving. A "live" entry is one
+// with a groupQueue in groupQs — buffered awaiting a drainer, actively being
+// drained, or parked; a fully-drained group is deleted from groupQs (see
+// drainGroup's empty-buffer exit), so it never shows up here.
+type GroupInfo struct {
+	// Group is the message group id (Message.GroupID()).
+	Group string
+	// PoolCode is this pool's code — carried per-row so a caller merging
+	// snapshots across pools (the dashboard's blocked-groups panel spans
+	// every pool) doesn't have to track which Pool a GroupInfo came from.
+	PoolCode string
+	// Buffered is how many messages are sitting in this group's FIFO right
+	// now (not counting one a drainer currently holds mid-delivery — that
+	// message has already been popped off the buffer).
+	Buffered int
+	// Working is true while a drainer goroutine owns this group (draining
+	// it one message at a time). False means the group is buffered with no
+	// drainer running — either freshly enqueued (about to be picked up) or
+	// parked (see ParkedAt).
+	Working bool
+	// ParkedAt is when the group was last left with no drainer (clearWorking)
+	// — the zero time while Working is true, or if it has never been parked.
+	// A parkedAt that keeps ageing with Working still false is the signature
+	// ReleaseParkedGroups sweeps: nothing has come back to resume the group.
+	ParkedAt time.Time
+	// Suppressed reports whether GroupFlushRegistry currently suppresses
+	// this group (a target asked to stop receiving it — see
+	// GroupFlushRegistry's doc comment). SuppressedUntil is the zero time
+	// when Suppressed is false.
+	Suppressed      bool
+	SuppressedUntil time.Time
+}
+
+// GroupSnapshot returns a point-in-time view of every live message group
+// this pool is holding, for the operator "blocked groups" view (R-04).
+//
+// Thread-safe and allocation-light: one slice sized to len(groupQs) up
+// front, no further allocation beyond the returned GroupInfo values
+// themselves. p.mu is held only long enough to copy each groupQueue's
+// group/working/parkedAt/len(msgs) — the GroupFlushRegistry lookup (which
+// takes its OWN lock) happens after p.mu is released, so the two locks are
+// never nested.
+func (p *Pool) GroupSnapshot() []GroupInfo {
+	p.mu.Lock()
+	out := make([]GroupInfo, 0, len(p.groupQs))
+	for group, gq := range p.groupQs {
+		out = append(out, GroupInfo{
+			Group:    group,
+			PoolCode: p.cfg.Code,
+			Buffered: len(gq.msgs),
+			Working:  gq.working,
+			ParkedAt: gq.parkedAt,
+		})
+	}
+	p.mu.Unlock()
+
+	for i := range out {
+		if until, ok := p.flushes.SuppressedUntil(out[i].Group); ok {
+			out[i].Suppressed = true
+			out[i].SuppressedUntil = until
+		}
+	}
+	return out
 }
 
 // Stats returns the dashboard-shaped snapshot of this pool.
@@ -646,25 +713,27 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 		// Release the slot per iteration even if processOne panics past its own
 		// recover — a bare deferred release would accumulate across the loop, so
 		// scope it to a closure.
-		result, retryAfter := func() (processResult, time.Duration) {
+		d := func() Disposition {
 			defer p.sem.release()
 			return p.processOne(ctx, msg)
 		}()
 
-		if result == processRelease {
+		if d.Action == BrokerRelease {
 			// Target unreachable, or the in-pipeline retry budget is spent —
 			// hand this message AND everything still buffered behind it back to
 			// the broker, then exit. releaseGroup clears `working`, so a
 			// redelivery spawns a fresh drainer.
-			p.releaseGroup(ctx, group, msg, nackDelay(retryAfter), "released to broker")
+			p.releaseGroup(ctx, group, msg, nackDelay(d.RetryAfter), "released to broker")
 			return
 		}
 
-		if result == processDiscarded && msg.Message.DispatchMode == common.DispatchBlockOnError {
+		if d.Action == BrokerAck && d.Group == GroupBlock {
 			// BLOCK_ON_ERROR: "a failed job blocks the group until resolved."
 			// The head has failed terminally and been ACKed away, so advancing
 			// would deliver its successors PAST the failure — exactly what this
-			// mode exists to prevent.
+			// mode exists to prevent. (DispositionOf already folded the
+			// DispatchMode check into Group, so there's nothing to re-check
+			// here — see its MediationErrorConfig case.)
 			//
 			// The siblings are ACKED, not handed back. Releasing them looked
 			// safer and did the opposite: they redeliver on the BROKER'S timer,
@@ -681,7 +750,7 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 			return
 		}
 
-		if result == processRetry {
+		if d.Action == BrokerRetry {
 			// Preserve FIFO: re-insert the failed message at the FRONT of its
 			// group so it is the next one attempted, then wait out the backoff
 			// before the next attempt (holding no semaphore slot). The single
@@ -701,7 +770,7 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 				// clear working so the group resumes under a fresh drainer.
 				p.clearWorking(group)
 				return
-			case <-time.After(retryAfter):
+			case <-time.After(d.RetryAfter):
 			}
 		}
 	}
@@ -862,47 +931,105 @@ func (p *Pool) ReleaseParkedGroups(ctx context.Context, minAge time.Duration) in
 	return released
 }
 
-// processResult is processOne's verdict, consumed by the caller (drainGroup /
-// runImmediate) to decide whether to ACK-and-drop, retry in-pipeline, or
-// discard a deduplicated copy.
-type processResult int
+// BrokerAction is what a Disposition does to a message at the broker — one
+// of the three broker actions the router's design supports (see
+// docs/router-architecture.md, "Delivery outcomes"): acknowledge, retry in
+// place, or release.
+type BrokerAction int
 
 const (
-	// processDone — terminally resolved SUCCESSFULLY (2xx, or a group the
-	// target asked us to flush); the in-flight entry has been cleared and the
-	// message leaves the pipeline.
-	processDone processResult = iota
-	// processDiscarded — terminally resolved as a FAILURE: a 4xx, or a 500 that
-	// survived the mediator's burst. The message is ACKed away exactly as
-	// processDone, but the distinction matters to an ordered group: under
-	// BLOCK_ON_ERROR a failed job blocks its group until the failure is
-	// resolved, so the drainer must stop rather than advance past it. Under
-	// NEXT_ON_ERROR the group explicitly moves on, which is the whole
-	// difference between the two ordered modes.
-	processDiscarded
-	// processRetry — retryable failure; the in-flight entry was KEPT and the
-	// caller should re-dispatch after the returned backoff (front of the group
-	// for ordered, delayed re-spawn for IMMEDIATE). Never released to the broker.
-	processRetry
-	// processDuplicate — a different copy of this app message owns the
-	// pipeline (an external requeue that slipped past route-time dedup, e.g.
-	// across a tracker reap); this copy was ACK-deleted from the broker with
-	// its own receipt handle and dropped. The owner's entry is untouched.
-	processDuplicate
-	// processRelease — the TARGET is unreachable (transport failure, 502/503/504,
-	// or an open breaker), so nothing about this message is wrong and retrying it
-	// in-process would pin it — and its whole group — in memory for the duration
-	// of an outage. The message goes back to the broker instead, which is what
-	// makes "retry until the broker expires it" true: an in-pipeline retry never
-	// returns the message, so the broker's expiry and DLQ can never act on it.
-	//
-	// The caller releases the whole group, not just the head: leaving successors
-	// buffered while the head returns to the broker would reorder them on
-	// redelivery. The retry cadence is then the broker's (visibility timeout /
-	// ack-wait), NOT our backoff curve, and the circuit breaker is what actually
-	// spares the target from the redelivery rate.
-	processRelease
+	// BrokerAck settles the message — it is gone from the broker, whether
+	// because it succeeded or because it failed in a way retrying cannot fix.
+	// processOne has already ACKed it (or, for a deduplicated copy, ACKed it
+	// under its own receipt handle) by the time a Disposition carrying this
+	// is returned; the caller has nothing further to do at the broker.
+	BrokerAck BrokerAction = iota
+	// BrokerRetry keeps the message in-flight; the caller re-dispatches after
+	// Disposition.RetryAfter (front of the group for ordered, delayed
+	// re-spawn for IMMEDIATE). Never touches the broker.
+	BrokerRetry
+	// BrokerRelease hands the message back to the broker — the TARGET is
+	// unreachable (transport failure, 502/503/504, or an open breaker), so
+	// nothing about the message is wrong and retrying it in-process would pin
+	// it, and its whole group, in memory for the duration of an outage. This
+	// is what makes "retry until the broker expires it" true: an in-pipeline
+	// retry never returns the message, so the broker's expiry and DLQ can
+	// never act on it. Disposition.RetryAfter (when non-zero) becomes the
+	// requested redelivery delay.
+	BrokerRelease
 )
+
+// GroupEffect is what a Disposition means for the REST of an ordered message
+// group — meaningless for IMMEDIATE dispatch, which has no group buffer, and
+// for BrokerRetry, which blocks the group on this same message until it
+// resolves rather than doing anything to the others.
+type GroupEffect int
+
+const (
+	// GroupContinue: the drainer moves on to the next buffered message (or
+	// exits idle if there is none). Covers a success, a discarded failure
+	// under NEXT_ON_ERROR/IMMEDIATE, and a discarded deduplicated copy.
+	GroupContinue GroupEffect = iota
+	// GroupBlock is BLOCK_ON_ERROR's defining behaviour: the head failed
+	// terminally, so the drainer stops advancing and ACKs away everything
+	// still buffered behind it rather than delivering successors past a
+	// failure the mode exists to stop at.
+	GroupBlock
+	// GroupRelease: the drainer hands the whole group — this message plus
+	// everything still buffered behind it — back to the broker. Releasing
+	// only the head while successors stayed buffered would put the head
+	// behind them on redelivery, reordering a group whose entire purpose is
+	// ordering.
+	GroupRelease
+)
+
+// DispositionMetric names which PoolMetricsCollector method a Disposition's
+// outcome records, as DATA rather than a call — the reason DispositionOf can
+// stay pure. recordMetric is the single place that turns this into an actual
+// Record* call.
+type DispositionMetric int
+
+const (
+	// MetricNone: nothing recorded — a deduplicated copy, a suppressed-flush
+	// ACK, a circuit-open release (no delivery was attempted, so there is
+	// nothing to measure), or a retry/release from a path with no mediation
+	// outcome at all (a cancelled rate-limiter wait, a recovered panic).
+	MetricNone DispositionMetric = iota
+	MetricSuccess
+	MetricFailure
+	MetricTransient
+	MetricRateLimited
+)
+
+// Disposition is processOne's pure verdict for a mediation outcome: what
+// happens to THIS message at the broker (Action), what that means for the
+// rest of an ordered group (Group), the metric to record, and the backoff to
+// apply for a retry or the redelivery hint to carry on a release
+// (RetryAfter).
+//
+// It replaces the old flat processResult enum, which encoded broker action
+// and group effect in the SAME five values positionally — see
+// docs/router-go-idiom-plan.md item 5 ("Restructure the outcome enum before
+// it grows again"). DispositionOf is exported specifically so a test can
+// call it directly: mediation_conformance_test.go used to be unable to
+// assert message fate at all, because "the decision lives in an inline
+// switch inside pool.go's delivery loop with nothing a test can call".
+type Disposition struct {
+	Action     BrokerAction
+	Group      GroupEffect
+	Metric     DispositionMetric
+	RetryAfter time.Duration
+
+	// budgetExhausted marks a BrokerRelease produced by retryOrRelease when
+	// the in-pipeline retry budget (maxInPipelineAttempts) is spent, as
+	// opposed to one produced directly by DispositionOf because the target is
+	// unreachable. Unexported: it exists only so settleRetry can log the
+	// distinct "budget exhausted" warning in one place: the mediation-outcome
+	// path (DispositionOf) and the two paths that retry without ever
+	// reaching a mediation outcome (a cancelled rate-limiter wait, a
+	// recovered panic) all funnel through it.
+	budgetExhausted bool
+}
 
 // maxInPipelineAttempts bounds how many times a message may be retried IN
 // PLACE before it is handed back to the broker instead.
@@ -964,12 +1091,126 @@ func backoffDelay(attempts uint, floorSec int, minDelay, maxDelay time.Duration)
 	return d
 }
 
+// DispositionOf maps a mediation outcome to its Disposition. Pure: no I/O, no
+// metrics, no ack/flush/tracker calls — everything needed is passed in, so a
+// test can call it directly instead of simulating a broker and a group
+// buffer to observe the decision.
+//
+// attempts is qm.Attempts, the count of PRIOR in-pipeline attempts: it gates
+// maxInPipelineAttempts for the two retryable outcomes (429, ack=false),
+// past which they convert to a release instead of retrying forever — see
+// maxInPipelineAttempts' doc comment.
+//
+// mode is the message's DispatchMode: only BLOCK_ON_ERROR changes the Group
+// effect of a discarded failure, from GroupContinue to GroupBlock.
+func DispositionOf(outcome common.MediationOutcome, attempts uint, mode common.DispatchMode) Disposition {
+	switch outcome.Result {
+	case common.MediationSuccess:
+		return Disposition{Action: BrokerAck, Group: GroupContinue, Metric: MetricSuccess}
+
+	case common.MediationErrorConfig:
+		// Permanent ACK-drop: a 4xx, or (R-57) any 5xx the mediator has
+		// already classified as "the app answered" rather than "unavailable"
+		// (see mediator.go's status-code switch — every 5xx other than
+		// 502/503/504 lands here). The mediator already recorded the breaker
+		// success (reachable). BLOCK_ON_ERROR must stop the group at this
+		// failure rather than deliver successors past it; every other mode
+		// moves on to the next buffered message.
+		group := GroupContinue
+		if mode == common.DispatchBlockOnError {
+			group = GroupBlock
+		}
+		return Disposition{Action: BrokerAck, Group: group, Metric: MetricFailure}
+
+	case common.MediationErrorProcess:
+		// Pre-classified by the mediator (R-57): reaching this case at all
+		// means 502/503/504 — "never reached a working app", verdict AFTER
+		// the mediator's bounded retry burst — so release rather than retry
+		// in place. The status code is deliberately not inspected here: the
+		// allowlist decision already happened once, in mediator.go, and a
+		// second check here would just be a second place for it to drift
+		// from the ruling.
+		return Disposition{Action: BrokerRelease, Group: GroupRelease, Metric: MetricTransient}
+
+	case common.MediationErrorConnection:
+		// Transport failure / unreachable host / timeout — the target is down.
+		return Disposition{Action: BrokerRelease, Group: GroupRelease, Metric: MetricFailure}
+
+	case common.MediationRateLimited:
+		// 429 — retry in-pipeline honouring Retry-After; NOT a breaker failure.
+		return retryOrRelease(attempts, retryDelay(attempts, outcome.DelaySeconds), MetricRateLimited)
+
+	case common.MediationDeferred:
+		// 2xx + ack=false — the target explicitly deferred this message
+		// (e.g. a blocked record). Not a failure, and the mediator skipped
+		// its in-pipeline retries; requeue on the deferred curve (5s start,
+		// 60s cap) flooring at any delay the target requested.
+		return retryOrRelease(attempts, deferredDelay(attempts, outcome.DelaySeconds), MetricTransient)
+
+	case common.MediationCircuitOpen:
+		// Breaker open (decided by the mediator): no delivery was attempted,
+		// so there is nothing to measure and the target is by definition
+		// unavailable — same class as a transport failure, released to the
+		// broker for the same reason.
+		//
+		// This MUST match the ErrorConnection disposition. The breaker opens
+		// almost immediately during a sustained outage, so retrying
+		// circuit-open in-pipeline would mean: first failure releases the
+		// group, the broker redelivers, the redelivery finds an open breaker
+		// and is pinned in-process again — reinstating the memory pinning
+		// this release exists to prevent, in exactly the scenario it exists
+		// for.
+		return Disposition{Action: BrokerRelease, Group: GroupRelease, Metric: MetricNone}
+	}
+	// Unreachable: MediationResult is a closed enum handled exhaustively
+	// above. Same silent fallback the original inline switch had.
+	return Disposition{Action: BrokerAck, Group: GroupContinue}
+}
+
+// retryOrRelease applies the maxInPipelineAttempts budget: within budget,
+// retry after delay; past it, release with delay as the broker's redelivery
+// hint instead — the only way "retry until the broker expires it" stays true
+// when a target answers 429/ack=false forever. Shared by DispositionOf (the
+// two outcome-driven retryable results) and Pool.retryAfter (a cancelled
+// rate-limiter wait, a recovered panic — paths that retry without ever
+// reaching a mediation outcome, and so share the same budget and the same
+// pure decision).
+func retryOrRelease(attempts uint, delay time.Duration, metric DispositionMetric) Disposition {
+	if attempts+1 >= maxInPipelineAttempts {
+		return Disposition{Action: BrokerRelease, Group: GroupRelease, Metric: metric, RetryAfter: delay, budgetExhausted: true}
+	}
+	return Disposition{Action: BrokerRetry, Group: GroupContinue, Metric: metric, RetryAfter: delay}
+}
+
+// recordMetric applies a Disposition's Metric — data computed by
+// DispositionOf/retryOrRelease — to the PoolMetricsCollector. The single
+// place that turns "which metric" into an actual Record* call, so
+// DispositionOf itself never touches p.metrics.
+func (p *Pool) recordMetric(m DispositionMetric, durationMs uint64) {
+	switch m {
+	case MetricSuccess:
+		p.metrics.RecordSuccess(durationMs)
+	case MetricFailure:
+		p.metrics.RecordFailure(durationMs)
+	case MetricTransient:
+		p.metrics.RecordTransient(durationMs)
+	case MetricRateLimited:
+		p.metrics.RecordRateLimited()
+	case MetricNone:
+		// Nothing to record — see MetricNone's doc comment.
+	}
+}
+
 // processOne runs the per-message pipeline: track (first dispatch only), rate
-// limit, mediate, and resolve by outcome. It does NOT release messages to the
-// broker on failure — a retryable outcome keeps the in-flight entry and returns
-// processRetry so the caller retries in-pipeline (preserving order for grouped
-// messages). Only a terminal 2xx/4xx ACKs and clears the entry.
-func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result processResult, retryAfter time.Duration) {
+// limit, mediate, and resolve by disposition. It does NOT release messages to
+// the broker on failure — a retryable disposition keeps the in-flight entry
+// and returns BrokerRetry so the caller retries in-pipeline (preserving order
+// for grouped messages). Only a terminal 2xx/4xx ACKs and clears the entry.
+//
+// The decision itself lives in DispositionOf (pure); everything here is the
+// side effects around it — tracking, rate limiting, mediating, metrics,
+// ack/flush.
+func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result Disposition) {
 	worker := p.beginMediating(qm)
 	defer p.endMediating(worker)
 
@@ -984,7 +1225,7 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 				"message_id", qm.Message.ID, "panic", r)
 			// Through the same funnel as every other retry: a target that
 			// panics us on every attempt must not be retried for ever either.
-			result, retryAfter = p.retryAfter(qm, panicRetryDelay)
+			result = p.retryAfter(qm, panicRetryDelay)
 		}
 	}()
 
@@ -1008,7 +1249,7 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 					slog.Warn("ack (requeue duplicate) failed", "message_id", qm.Message.ID, "err", err)
 				}
 			}
-			return processDuplicate, 0
+			return Disposition{Action: BrokerAck, Group: GroupContinue}
 		}
 	}
 
@@ -1022,8 +1263,15 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 	if group := qm.Message.GroupID(); group != "" && p.flushes.Suppressed(group) {
 		slog.Debug("message group flushed; ACKing without delivery",
 			"message_id", qm.Message.ID, "group", group, "pool", p.cfg.Code)
+		// R-53: a suppressed ACK previously left no pool metric at all, so a
+		// pool suppressing a whole flushed group read idle rather than
+		// busy-but-suppressed. No mediation happened (no HTTP call, no
+		// duration), so this bypasses the DispositionOf/recordMetric funnel
+		// that ties a metric to a mediation outcome — same reason the
+		// duplicate-copy path above records nothing either.
+		p.metrics.RecordSuppressed()
 		p.ackTracked(ctx, qm)
-		return processDone, 0
+		return Disposition{Action: BrokerAck, Group: GroupContinue}
 	}
 
 	// Rate limit (per-pool token bucket). Record a rate-limited event when the
@@ -1040,12 +1288,16 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 	outcome := p.mediator.Mediate(ctx, &qm.Message)
 	durationMs := uint64(time.Since(start).Milliseconds())
 
-	switch outcome.Result {
-	case common.MediationSuccess:
+	d := p.settleRetry(qm, DispositionOf(outcome, qm.Attempts, qm.Message.DispatchMode))
+	p.recordMetric(d.Metric, durationMs)
+
+	if d.Action == BrokerAck {
 		// A 2xx carrying {"flushGroup": true} delivered normally but asks us
 		// to suppress the rest of its group. DelaySeconds (when the target
-		// sent one) sizes the window; the registry clamps it.
-		if outcome.FlushGroup {
+		// sent one) sizes the window; the registry clamps it. Only reachable
+		// alongside MediationSuccess — a target that wants the message back
+		// (a discarded failure) cannot also discard the group.
+		if outcome.Result == common.MediationSuccess && outcome.FlushGroup {
 			if group := qm.Message.GroupID(); group != "" {
 				ttl := time.Duration(outcome.DelaySeconds) * time.Second
 				if p.flushes.Flush(group, ttl) {
@@ -1058,87 +1310,47 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 					"message_id", qm.Message.ID, "pool", p.cfg.Code)
 			}
 		}
-		p.metrics.RecordSuccess(durationMs)
 		p.ackTracked(ctx, qm)
-		return processDone, 0
-
-	case common.MediationErrorConfig:
-		// The mediator already recorded the breaker success (4xx = reachable).
-		// 4xx — ACK to avoid an infinite client-error retry loop. Do NOT trip
-		// the breaker. Counted against total_failure (a non-success terminal).
-		p.metrics.RecordFailure(durationMs)
-		p.ackTracked(ctx, qm)
-		return processDiscarded, 0
-
-	case common.MediationErrorProcess:
-		// 502/503/504 or a transport-level fault: we never reached a working
-		// app (R-57 boundary — every other 5xx means the app ran and answered,
-		// and the mediator classifies it MediationErrorConfig, the permanent
-		// ACK-drop handled above). The mediator has already exhausted its
-		// bounded burst (deliverWithRetry: MaxRetries total attempts), so this
-		// is the verdict AFTER retrying. Nothing about the message is wrong,
-		// so it goes back to the broker.
-		p.metrics.RecordTransient(durationMs)
-		return processRelease, 0
-
-	case common.MediationErrorConnection:
-		// Transport failure / unreachable host / timeout — the target is down.
-		p.metrics.RecordFailure(durationMs)
-		return processRelease, 0
-
-	case common.MediationRateLimited:
-		// 429 — retry in-pipeline honouring Retry-After; NOT a breaker failure.
-		p.metrics.RecordRateLimited()
-		return p.retry(qm, outcome.DelaySeconds)
-
-	case common.MediationDeferred:
-		// 2xx + ack=false — the target explicitly deferred this message
-		// (e.g. a blocked record). Not a failure, and the mediator skipped
-		// its in-pipeline retries; requeue on the deferred curve (5s start,
-		// 60s cap) flooring at any delay the target requested.
-		p.metrics.RecordTransient(durationMs)
-		return p.retryAfter(qm, deferredDelay(qm.Attempts, outcome.DelaySeconds))
-
-	case common.MediationCircuitOpen:
-		// Breaker open (decided by the mediator): no delivery was attempted, so
-		// the target is by definition unavailable — same class as a transport
-		// failure, and released to the broker for the same reason.
-		//
-		// This MUST match the ErrorConnection path. The breaker opens almost
-		// immediately during a sustained outage, so retrying circuit-open
-		// in-pipeline would mean: first failure releases the group, the broker
-		// redelivers, the redelivery finds an open breaker and is pinned
-		// in-process again — reinstating the memory pinning this release exists
-		// to prevent, in exactly the scenario it exists for.
-		return processRelease, 0
 	}
-	return processDone, 0
+	return d
 }
 
 // retry marks the in-flight entry as retrying (so the stall detector / reaper
-// skip it) and returns the processRetry verdict with the computed backoff.
-func (p *Pool) retry(qm common.QueuedMessage, outcomeDelaySec int) (processResult, time.Duration) {
+// skip it) and returns the retry-or-release Disposition for the computed
+// backoff. Metric is always MetricNone: neither caller (a cancelled
+// rate-limiter wait, a recovered panic) reflects a mediation outcome, so
+// there is nothing to record.
+func (p *Pool) retry(qm common.QueuedMessage, outcomeDelaySec int) Disposition {
 	return p.retryAfter(qm, retryDelay(qm.Attempts, outcomeDelaySec))
 }
 
 // retryAfter is retry with a pre-computed backoff (used by the deferred path,
-// which runs on its own delay curve). It is the single funnel for every
-// processRetry verdict, which is what lets maxInPipelineAttempts be enforced in
-// one place: past the budget the message is released to the broker instead,
-// carrying the backoff as the redelivery delay so it does not come straight
-// back to the pool that just gave up on it.
-func (p *Pool) retryAfter(qm common.QueuedMessage, delay time.Duration) (processResult, time.Duration) {
-	if attempts := qm.Attempts + 1; attempts >= maxInPipelineAttempts {
+// which runs on its own delay curve, and by panic recovery). It funnels
+// through retryOrRelease — the same budget DispositionOf's two retryable
+// outcomes use — via settleRetry, which applies the side effects the pure
+// decision can't make itself.
+func (p *Pool) retryAfter(qm common.QueuedMessage, delay time.Duration) Disposition {
+	return p.settleRetry(qm, retryOrRelease(qm.Attempts, delay, MetricNone))
+}
+
+// settleRetry applies retryOrRelease's side effects to a Disposition however
+// it was produced — from DispositionOf's own retryable outcomes, or from
+// retryAfter's two paths that retry without a mediation outcome — so the
+// budget-exhausted warning and the tracker's retrying mark happen in exactly
+// one place. A Disposition that isn't a retry-or-release verdict (success,
+// discard, a release the target itself caused) passes through untouched.
+func (p *Pool) settleRetry(qm common.QueuedMessage, d Disposition) Disposition {
+	if d.budgetExhausted {
 		slog.Warn("in-pipeline retry budget exhausted; releasing to broker",
 			"message_id", qm.Message.ID, "pool", p.cfg.Code,
-			"attempts", attempts, "max_attempts", maxInPipelineAttempts,
-			"redelivery_delay", delay)
-		return processRelease, delay
+			"attempts", qm.Attempts+1, "max_attempts", maxInPipelineAttempts,
+			"redelivery_delay", d.RetryAfter)
+		return d
 	}
-	if p.tracker != nil {
+	if d.Action == BrokerRetry && p.tracker != nil {
 		p.tracker.MarkRetrying(qm.Message.ID, qm.BrokerMessageID)
 	}
-	return processRetry, delay
+	return d
 }
 
 // nackDelay turns a computed backoff into a broker redelivery delay: whole

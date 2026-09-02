@@ -7,13 +7,23 @@
 // README says so plainly, and so does every claim in this file's comments
 // that starts with "verified" vs. one that starts with "by reading".
 //
-// # Phase 1 only
+// # Phase 1 + disposition (A-27)
 //
 // This asserts outcome, statusCode, delaySeconds, flushGroup, breaker,
-// warning and httpCallMade. It deliberately does NOT assert disposition —
-// see go-runner.md "Phase 2": the decision lives in an inline switch inside
-// pool.go's delivery loop with nothing a test can call, and extracting it
-// is a Go change out of scope here.
+// warning, httpCallMade, and — since router.DispositionOf now exists as a
+// pure function pool.go's delivery loop calls (see pool.go's Disposition
+// type) — disposition too. assertDisposition maps DispositionOf's verdict
+// to the corpus's implementation-neutral vocabulary (DELIVERED /
+// RETRY_IN_PLACE / RETURN_TO_BROKER / REJECTED / UNDELIVERABLE).
+//
+// One granularity gap: the corpus distinguishes REJECTED (process-error-500:
+// the app answered but 500'd — a "reject") from UNDELIVERABLE (every other
+// permanent ACK-drop: 4xx, 501, an unfollowed 3xx, a malformed URL, an
+// unsupported mediation type) even though both share outcome ErrorConfig.
+// Go's Disposition carries no field that captures this — BrokerAck +
+// MetricFailure is identical for both — so assertDisposition normalizes
+// both corpus labels to the same bucket rather than inventing a
+// distinction Go's own type doesn't draw. See its doc comment.
 //
 // # The corpus is not a Go-compatibility harness
 //
@@ -85,9 +95,12 @@ type fixtureExpect struct {
 	HTTPCallMade *bool  `json:"httpCallMade"`
 	Breaker      string `json:"breaker"`
 	Warning      string `json:"warning"`
-	// Disposition and Metric are part of the corpus's case shape and are
-	// read here so a struct-tag typo would still show up in `go vet`, but
-	// Phase 1 intentionally never asserts them.
+	// Disposition is asserted by assertDisposition (A-27). Metric is part of
+	// the corpus's case shape and is read here so a struct-tag typo would
+	// still show up in `go vet`, but is not asserted: PoolMetricsCollector's
+	// Record* calls are a side effect of processOne, one layer above the
+	// pure DispositionOf this test exercises directly, and are already
+	// covered by metrics_test.go / pool_test.go in this package.
 	Disposition string `json:"disposition"`
 	Metric      string `json:"metric"`
 }
@@ -217,6 +230,15 @@ func runCase(t *testing.T, tc fixtureCase) {
 	assertWarning(&mismatches, tc, warnings)
 	if tc.Expect.HTTPCallMade != nil {
 		assertHTTPCallMade(&mismatches, tc, calls.Load())
+	}
+	if tc.Expect.Disposition != "" {
+		// attempts=0, mode=NEXT_ON_ERROR: this is every corpus row's first
+		// (and, bar the retryable ones, only) attempt — msg above is built
+		// with DispatchNextOnError and no group, so DispositionOf's Group
+		// field (meaningless for an ungrouped/first-attempt message here) is
+		// not part of what's being checked; only the broker Action + Metric
+		// class map to the corpus's disposition vocabulary.
+		assertDisposition(&mismatches, tc, router.DispositionOf(outcome, 0, common.DispatchNextOnError))
 	}
 
 	report(t, tc, mismatches)
@@ -420,6 +442,50 @@ func summarizeWarnings(all []router.Warning) string {
 		parts[i] = string(w.Severity) + "/" + string(w.Category)
 	}
 	return strings.Join(parts, ", ")
+}
+
+// dispositionLabel maps a router.Disposition to the corpus's
+// implementation-neutral fate vocabulary. ackTerminalFailureLabel is what
+// both REJECTED and UNDELIVERABLE normalize to on the expected side (see
+// assertDisposition) — Go's Disposition has no field distinguishing them
+// (BrokerAck + MetricFailure covers both), only whether the mediator
+// classified the outcome a success or not.
+const ackTerminalFailureLabel = "ACK_TERMINAL_FAILURE"
+
+func dispositionLabel(d router.Disposition) string {
+	switch d.Action {
+	case router.BrokerAck:
+		if d.Metric == router.MetricSuccess {
+			return "DELIVERED"
+		}
+		return ackTerminalFailureLabel
+	case router.BrokerRelease:
+		return "RETURN_TO_BROKER"
+	case router.BrokerRetry:
+		return "RETRY_IN_PLACE"
+	default:
+		return fmt.Sprintf("Unknown(%d)", d.Action)
+	}
+}
+
+// assertDisposition checks DispositionOf's verdict against the corpus's
+// `expect.disposition` — DELIVERED / RETRY_IN_PLACE / RETURN_TO_BROKER /
+// REJECTED / UNDELIVERABLE — normalizing REJECTED and UNDELIVERABLE to the
+// same bucket on the expected side, per dispositionLabel's doc comment.
+// This normalization is a known, deliberate gap — not something to "fix" by
+// adding a distinguishing field to Disposition; see this file's header.
+func assertDisposition(mismatches *[]mismatch, tc fixtureCase, d router.Disposition) {
+	want := tc.Expect.Disposition
+	if want == "REJECTED" || want == "UNDELIVERABLE" {
+		want = ackTerminalFailureLabel
+	}
+	if got := dispositionLabel(d); got != want {
+		*mismatches = append(*mismatches, mismatch{
+			"disposition",
+			fmt.Sprintf("%s (corpus: %s)", want, tc.Expect.Disposition),
+			got,
+		})
+	}
 }
 
 func assertHTTPCallMade(mismatches *[]mismatch, tc fixtureCase, calls int64) {

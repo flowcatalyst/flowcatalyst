@@ -169,6 +169,9 @@
                     <button id="tabMediating" class="tab-button px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">
                         Mediating
                     </button>
+                    <button id="tabBlockedGroups" class="tab-button px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                        Blocked Groups
+                    </button>
                 </nav>
             </div>
 
@@ -405,6 +408,44 @@
                         Nothing is being mediated right now
                     </div>
                 </div>
+
+                <!-- Blocked Groups Tab: message groups currently held (R-04) -->
+                <div id="contentBlockedGroups" class="tab-content hidden">
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <div class="flex justify-between items-center">
+                            <h3 class="text-lg font-semibold text-gray-900">Blocked Groups <span id="blockedGroupsCount" class="ml-2 text-sm font-normal text-gray-500"></span></h3>
+                            <div class="flex space-x-4">
+                                <input type="text" id="blockedGroupsPoolFilter" placeholder="Filter by pool..."
+                                       class="border border-gray-300 rounded px-3 py-2 text-sm w-64">
+                                <button id="refreshBlockedGroupsBtn" class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
+                                    Refresh
+                                </button>
+                            </div>
+                        </div>
+                        <p class="mt-1 text-xs text-gray-500">Message groups a pool is currently holding — buffered awaiting a drainer, being drained, or parked with none running. A group with no drainer and a growing "parked for" is the signature of nothing coming back to resume it.</p>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Group</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pool</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Buffered</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Drainer</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Parked For</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Suppressed Until</th>
+                                </tr>
+                            </thead>
+                            <tbody id="blockedGroupsTable" class="bg-white divide-y divide-gray-200"></tbody>
+                        </table>
+                    </div>
+                    <div id="noBlockedGroups" class="hidden px-6 py-8 text-center text-gray-500">
+                        No blocked groups right now
+                    </div>
+                    <div id="blockedGroupsUnavailable" class="hidden px-6 py-8 text-center text-gray-500">
+                        The blocked-groups endpoint (<code class="font-mono">/monitoring/blocked-groups</code>) isn't wired up on this server yet — this panel has nothing to show until it is.
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -593,12 +634,13 @@
             }
 
             setupTabListeners() {
-                const tabs = ['Queues', 'Pools', 'Warnings', 'InFlight', 'Mediating'];
+                const tabs = ['Queues', 'Pools', 'Warnings', 'InFlight', 'Mediating', 'BlockedGroups'];
                 tabs.forEach(tab => {
                     document.getElementById(`tab${tab}`).addEventListener('click', () => {
                         this.switchTab(tab);
                         if (tab === 'InFlight') this.loadInFlightMessages();
                         if (tab === 'Mediating') this.loadMediating();
+                        if (tab === 'BlockedGroups') this.loadBlockedGroups();
                     });
                 });
 
@@ -621,6 +663,8 @@
                 });
                 document.getElementById('refreshMediatingBtn').addEventListener('click', () => this.loadMediating());
                 document.getElementById('mediatingPoolFilter').addEventListener('input', () => this.loadMediating());
+                document.getElementById('refreshBlockedGroupsBtn').addEventListener('click', () => this.loadBlockedGroups());
+                document.getElementById('blockedGroupsPoolFilter').addEventListener('input', () => this.loadBlockedGroups());
             }
 
             switchTab(tabName) {
@@ -1553,12 +1597,87 @@
                 }).join('');
             }
 
+            // ── Blocked Groups (R-04) ──────────────────────────────────────
+            // The handler for /monitoring/blocked-groups is owned by another
+            // lane and may not be wired up yet on this server — a 404 (or any
+            // fetch failure) is treated as "endpoint not available", a
+            // distinct empty state from "wired up, nothing blocked right
+            // now", so the panel never reads as a false "all clear".
+            async loadBlockedGroups() {
+                const pool = document.getElementById('blockedGroupsPoolFilter').value.trim();
+                const qs = pool ? `?poolCode=${encodeURIComponent(pool)}` : '';
+                const unavailable = document.getElementById('blockedGroupsUnavailable');
+                try {
+                    const response = await this.fetchWithAuth('/monitoring/blocked-groups' + qs);
+                    if (response.status === 404) {
+                        document.getElementById('blockedGroupsTable').innerHTML = '';
+                        document.getElementById('noBlockedGroups').classList.add('hidden');
+                        unavailable.classList.remove('hidden');
+                        document.getElementById('blockedGroupsCount').textContent = '';
+                        return;
+                    }
+                    if (!response.ok) throw new Error('Failed to load blocked groups (' + response.status + ')');
+                    unavailable.classList.add('hidden');
+                    this.renderBlockedGroups(await response.json());
+                } catch (error) {
+                    console.error('Failed to load blocked groups:', error);
+                    document.getElementById('blockedGroupsTable').innerHTML = '';
+                    document.getElementById('noBlockedGroups').classList.add('hidden');
+                    unavailable.classList.remove('hidden');
+                }
+            }
+
+            renderBlockedGroups(rows) {
+                const table = document.getElementById('blockedGroupsTable');
+                const none = document.getElementById('noBlockedGroups');
+                const countEl = document.getElementById('blockedGroupsCount');
+                document.getElementById('blockedGroupsUnavailable').classList.add('hidden');
+
+                if (countEl) {
+                    countEl.textContent = rows && rows.length ? `(${rows.length})` : '';
+                }
+                if (!rows || rows.length === 0) {
+                    table.innerHTML = '';
+                    none.classList.remove('hidden');
+                    return;
+                }
+                none.classList.add('hidden');
+                table.innerHTML = rows.map(r => {
+                    const buffered = r.buffered ?? r.bufferedCount ?? 0;
+                    const working = !!r.working;
+                    const drainerLabel = working
+                        ? '<span class="text-blue-700 font-medium">draining</span>'
+                        : '<span class="text-amber-600 font-medium">idle</span>';
+                    const parkedAt = r.parkedAt || r.parkedSince || null;
+                    let parkedFor = '—';
+                    if (!working && parkedAt) {
+                        const parkedMs = Date.now() - new Date(parkedAt).getTime();
+                        if (parkedMs > 0) parkedFor = this.fmtElapsed(parkedMs);
+                    }
+                    const suppressedUntil = r.suppressedUntil || null;
+                    const suppressed = !!r.suppressed || !!suppressedUntil;
+                    const suppressedLabel = suppressed && suppressedUntil
+                        ? new Date(suppressedUntil).toLocaleTimeString()
+                        : (suppressed ? 'yes' : '—');
+                    return `
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4 text-sm text-gray-900 font-mono max-w-xs truncate" title="${r.group || ''}">${r.group || '—'}</td>
+                            <td class="px-6 py-4 text-sm text-gray-900">${r.poolCode || r.pool || 'N/A'}</td>
+                            <td class="px-6 py-4 text-sm text-gray-900">${buffered}</td>
+                            <td class="px-6 py-4 text-sm">${drainerLabel}</td>
+                            <td class="px-6 py-4 text-sm ${!working && parkedAt ? 'text-amber-600 font-medium' : 'text-gray-400'}">${parkedFor}</td>
+                            <td class="px-6 py-4 text-sm ${suppressed ? 'text-red-600 font-medium' : 'text-gray-400'}">${suppressedLabel}</td>
+                        </tr>`;
+                }).join('');
+            }
+
             startPeriodicRefresh() {
                 setInterval(() => {
                     this.loadData();
                     // Keep the live-view tabs fresh while they're open.
                     if (this.currentTab === 'Mediating') this.loadMediating();
                     if (this.currentTab === 'InFlight') this.loadInFlightMessages();
+                    if (this.currentTab === 'BlockedGroups') this.loadBlockedGroups();
                 }, 5000);
             }
         }

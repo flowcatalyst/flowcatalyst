@@ -77,7 +77,7 @@ type cascadeMediator struct {
 	// MediationRateLimited because these tests exercise the IN-PIPELINE retry
 	// machinery, and 429 (like 2xx+ack=false) is now the outcome class that
 	// still retries in place. 5xx and transport failures RELEASE the message to
-	// the broker instead — see processRelease — so they can no longer drive a
+	// the broker instead — see BrokerRelease — so they can no longer drive a
 	// retry test. Set explicitly to exercise the release path.
 	failWith *common.MediationOutcome
 	mu       sync.Mutex

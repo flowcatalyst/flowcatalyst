@@ -47,6 +47,7 @@ type PoolMetricsCollector struct {
 	totalSuccess     atomic.Uint64
 	totalFailure     atomic.Uint64
 	totalRateLimited atomic.Uint64
+	totalSuppressed  atomic.Uint64
 
 	// Cumulative mediation-latency histogram, emitted as the Prometheus
 	// fc_mediation_duration_seconds histogram. Monotonic across the process
@@ -116,6 +117,16 @@ func (c *PoolMetricsCollector) RecordTransient(durationMs uint64) {
 	c.addSample(durationMs, false)
 }
 
+// RecordSuppressed records a message ACKed without delivery because its
+// group is currently suppressed by the GroupFlushRegistry (R-53: a
+// suppressed ACK previously left no pool metric at all, so a flushed pool
+// read idle rather than busy-but-suppressed). Does NOT add a latency
+// sample — like RecordRateLimited, this isn't a delivery attempt: no HTTP
+// call was made and no mediation duration exists to record.
+func (c *PoolMetricsCollector) RecordSuppressed() {
+	c.totalSuppressed.Add(1)
+}
+
 // RecordRateLimited records a rate-limit event (either internal limiter
 // or HTTP 429 from destination). Does NOT add a latency sample — these
 // aren't delivery attempts.
@@ -142,6 +153,7 @@ func (c *PoolMetricsCollector) Reset() {
 	c.totalSuccess.Store(0)
 	c.totalFailure.Store(0)
 	c.totalRateLimited.Store(0)
+	c.totalSuppressed.Store(0)
 	c.durationCount.Store(0)
 	c.durationSumMs.Store(0)
 	for i := range c.durationBuckets {
@@ -209,6 +221,7 @@ func (c *PoolMetricsCollector) Snapshot() common.EnhancedPoolMetrics {
 	totalSuccess := c.totalSuccess.Load()
 	totalFailure := c.totalFailure.Load()
 	totalRateLimited := c.totalRateLimited.Load()
+	totalSuppressed := c.totalSuppressed.Load()
 
 	c.mu.Lock()
 	// Take a copy so percentile sort doesn't reorder the live buffer.
@@ -242,6 +255,7 @@ func (c *PoolMetricsCollector) Snapshot() common.EnhancedPoolMetrics {
 		TotalSuccess:     totalSuccess,
 		TotalFailure:     totalFailure,
 		TotalRateLimited: totalRateLimited,
+		TotalSuppressed:  totalSuppressed,
 		SuccessRate:      successRate,
 		ProcessingTime:   processingTimeFromSamples(samples),
 		Last5Min:         last5,

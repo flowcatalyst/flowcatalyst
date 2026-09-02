@@ -105,19 +105,20 @@ func grWaitFor(t *testing.T, cond func() bool, timeout time.Duration) {
 // --- Pool: resolution follows the in-pipeline-retry contract ---
 //
 // Terminal outcomes (2xx success, 4xx) ACK once and clear the in-flight entry.
-// Retryable outcomes (5xx/timeout, connection, 429, circuit-open, panic) DO
-// NOT touch the broker — the message is retried in-pipeline — so processOne
-// returns processRetry with a backoff and the consumer sees zero terminal
-// actions. (SQS Nack is a no-op anyway; releasing to the broker is no longer
-// part of the failure path.)
+// In-pipeline-retryable outcomes (429, deferred, panic) do NOT touch the
+// broker — the message is retried in-pipeline — so processOne returns a
+// BrokerRetry Disposition with a backoff and the consumer sees zero terminal
+// actions. Unreachable-target outcomes (5xx/timeout, connection, circuit-open)
+// RELEASE the message (and its group) back to the broker instead — see the
+// tests below for those.
 
 func TestGuardrail_ResolutionOnSuccess(t *testing.T) {
 	c := &grConsumer{id: "q1"}
 	p := grPool(&grMediator{outcome: common.Success(http.StatusOK)}, c)
-	res, _ := p.processOne(context.Background(), grMsg("evt_ok", "http://t/ok"))
-	if res != processDone || c.acks.Load() != 1 || c.nacks.Load() != 0 || c.defers.Load() != 0 {
-		t.Fatalf("success must ACK exactly once and report processDone; got res=%d acks=%d nacks=%d defers=%d",
-			res, c.acks.Load(), c.nacks.Load(), c.defers.Load())
+	d := p.processOne(context.Background(), grMsg("evt_ok", "http://t/ok"))
+	if d.Action != BrokerAck || d.Metric != MetricSuccess || c.acks.Load() != 1 || c.nacks.Load() != 0 || c.defers.Load() != 0 {
+		t.Fatalf("success must ACK exactly once and report success; got action=%v metric=%v acks=%d nacks=%d defers=%d",
+			d.Action, d.Metric, c.acks.Load(), c.nacks.Load(), c.defers.Load())
 	}
 }
 
@@ -131,11 +132,11 @@ func TestGuardrail_DiscardOn500(t *testing.T) {
 	out := common.ErrorConfig(http.StatusInternalServerError, "HTTP 500: Server error")
 	p := grPool(&grMediator{outcome: out}, c)
 
-	res, _ := p.processOne(context.Background(), grMsg("evt_500", "http://t/500"))
+	d := p.processOne(context.Background(), grMsg("evt_500", "http://t/500"))
 
-	if res != processDiscarded {
-		t.Fatalf("a 500 surviving the burst must be a terminal FAILURE (processDiscarded), "+
-			"which is what lets an ordered group tell BLOCK_ON_ERROR from NEXT_ON_ERROR; got res=%d", res)
+	if d.Action != BrokerAck || d.Metric != MetricFailure {
+		t.Fatalf("a 500 surviving the burst must be a terminal FAILURE (ack + MetricFailure), "+
+			"which is what lets an ordered group tell BLOCK_ON_ERROR from NEXT_ON_ERROR; got action=%v metric=%v", d.Action, d.Metric)
 	}
 	if c.acks.Load() != 1 || c.nacks.Load() != 0 {
 		t.Fatalf("a 500 must ACK exactly once and never NACK; got acks=%d nacks=%d",
@@ -155,10 +156,10 @@ func TestGuardrail_AckOn501(t *testing.T) {
 	c := &grConsumer{id: "q1"}
 	p := grPool(&grMediator{outcome: common.ErrorConfig(http.StatusNotImplemented, "HTTP 501: Not implemented")}, c)
 
-	res, _ := p.processOne(context.Background(), grMsg("evt_501", "http://t/501"))
+	d := p.processOne(context.Background(), grMsg("evt_501", "http://t/501"))
 
-	if res != processDiscarded {
-		t.Fatalf("501 must be a terminal failure, not released or retried; got res=%d", res)
+	if d.Action != BrokerAck || d.Metric != MetricFailure {
+		t.Fatalf("501 must be a terminal failure, not released or retried; got action=%v metric=%v", d.Action, d.Metric)
 	}
 	if c.acks.Load() != 1 || c.nacks.Load() != 0 {
 		t.Fatalf("501 must ACK exactly once and never NACK; got acks=%d nacks=%d",
@@ -177,10 +178,10 @@ func TestGuardrail_ReleaseOnUnreachable(t *testing.T) {
 		out.StatusCode = status
 		p := grPool(&grMediator{outcome: out}, c)
 
-		res, _ := p.processOne(context.Background(), grMsg("evt_5xx", "http://t/5xx"))
+		d := p.processOne(context.Background(), grMsg("evt_5xx", "http://t/5xx"))
 
-		if res != processRelease {
-			t.Fatalf("status %d must release to the broker; got res=%d", status, res)
+		if d.Action != BrokerRelease {
+			t.Fatalf("status %d must release to the broker; got action=%v", status, d.Action)
 		}
 		if c.acks.Load() != 0 {
 			t.Fatalf("status %d must never ACK — the message is not resolved; got acks=%d",
@@ -195,10 +196,10 @@ func TestGuardrail_ReleaseOnConnectionError(t *testing.T) {
 	c := &grConsumer{id: "q1"}
 	p := grPool(&grMediator{outcome: common.ErrorConnection("dial tcp: refused")}, c)
 
-	res, _ := p.processOne(context.Background(), grMsg("evt_conn", "http://t/conn"))
+	d := p.processOne(context.Background(), grMsg("evt_conn", "http://t/conn"))
 
-	if res != processRelease {
-		t.Fatalf("connection error must release to the broker; got res=%d", res)
+	if d.Action != BrokerRelease {
+		t.Fatalf("connection error must release to the broker; got action=%v", d.Action)
 	}
 	if c.acks.Load() != 0 {
 		t.Fatalf("connection error must never ACK; got acks=%d", c.acks.Load())
@@ -215,10 +216,10 @@ func TestGuardrail_ReleaseOnCircuitOpen(t *testing.T) {
 	c := &grConsumer{id: "q1"}
 	p := grPool(&grMediator{outcome: common.CircuitOpen(5)}, c)
 
-	res, _ := p.processOne(context.Background(), grMsg("evt_cb", "http://t/cb"))
+	d := p.processOne(context.Background(), grMsg("evt_cb", "http://t/cb"))
 
-	if res != processRelease {
-		t.Fatalf("circuit-open must release to the broker; got res=%d", res)
+	if d.Action != BrokerRelease {
+		t.Fatalf("circuit-open must release to the broker; got action=%v", d.Action)
 	}
 	if c.acks.Load() != 0 {
 		t.Fatalf("circuit-open must never ACK; got acks=%d", c.acks.Load())
@@ -233,26 +234,26 @@ func TestGuardrail_RateLimitStillRetriesInPipeline(t *testing.T) {
 	c := &grConsumer{id: "q1"}
 	p := grPool(&grMediator{outcome: common.RateLimited(5)}, c)
 
-	res, delay := p.processOne(context.Background(), grMsg("evt_429", "http://t/429"))
+	d := p.processOne(context.Background(), grMsg("evt_429", "http://t/429"))
 
-	if res != processRetry || c.total() != 0 {
-		t.Fatalf("429 must retry in-pipeline with no broker action; got res=%d terminal=%d",
-			res, c.total())
+	if d.Action != BrokerRetry || c.total() != 0 {
+		t.Fatalf("429 must retry in-pipeline with no broker action; got action=%v terminal=%d",
+			d.Action, c.total())
 	}
-	if delay < 5*time.Second {
-		t.Fatalf("429 backoff must honour the Retry-After floor; got %v", delay)
+	if d.RetryAfter < 5*time.Second {
+		t.Fatalf("429 backoff must honour the Retry-After floor; got %v", d.RetryAfter)
 	}
 }
 
 func TestGuardrail_RetryOnPanic(t *testing.T) {
 	// A panic mid-mediation must be recovered, NOT crash the process, and be
 	// retried in-pipeline (the in-flight entry is kept) — processOne recovers
-	// internally and returns processRetry with no broker action.
+	// internally and returns BrokerRetry with no broker action.
 	c := &grConsumer{id: "q1"}
 	p := grPool(&grMediator{panicMsg: "boom"}, c)
-	res, _ := p.processOne(context.Background(), grMsg("evt_panic", "http://t/panic"))
-	if res != processRetry {
-		t.Fatalf("a panic mid-mediation must be recovered and retried in-pipeline; got res=%d", res)
+	d := p.processOne(context.Background(), grMsg("evt_panic", "http://t/panic"))
+	if d.Action != BrokerRetry {
+		t.Fatalf("a panic mid-mediation must be recovered and retried in-pipeline; got action=%v", d.Action)
 	}
 	if c.total() != 0 {
 		t.Fatalf("a recovered panic must not produce a terminal broker action; got %d", c.total())
