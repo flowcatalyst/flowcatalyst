@@ -92,7 +92,13 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	if a == nil {
 		return nil, httperror.NotFound("Application", in.ID)
 	}
-	return &apicommon.Out[ApplicationResponse]{Body: fromEntity(a)}, nil
+	hasLoginClient, err := s.OAuthClients.HasLoginClientForApplication(ctx, a.ID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "has_login_client_for_application failed", err)
+	}
+	resp := fromEntity(a)
+	resp.HasLoginClient = hasLoginClient
+	return &apicommon.Out[ApplicationResponse]{Body: resp}, nil
 }
 
 type getByCodeInput struct {

@@ -153,6 +153,28 @@ func (r *OAuthClientRepo) FindByPortalClient(ctx context.Context, clientID strin
 	return r.hydrateAll(ctx, bare)
 }
 
+// HasLoginClientForApplication reports whether applicationID has a
+// login-type OAuth client provisioned: one linked to the application
+// (oauth_client_application_ids) whose grant types include
+// "authorization_code" — the shape provisionLoginClient always creates,
+// distinguishing it from a client_credentials service-account client
+// (see application/api.provisionLoginClient / provisionServiceAccount).
+// Raw pgx, like the rest of this junction (not wired through sqlc).
+func (r *OAuthClientRepo) HasLoginClientForApplication(ctx context.Context, applicationID string) (bool, error) {
+	var exists bool
+	err := r.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM oauth_client_application_ids a
+			JOIN oauth_client_grant_types g ON g.oauth_client_id = a.oauth_client_id
+			WHERE a.application_id = $1 AND g.grant_type = 'authorization_code'
+		)`, applicationID).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("oauth_client has_login_client_for_application: %w", err)
+	}
+	return exists, nil
+}
+
 func (r *OAuthClientRepo) Persist(ctx context.Context, c *OAuthClient, tx *usecasepgx.DbTx) error {
 	q := r.q.WithTx(tx.Inner())
 	now := time.Now().UTC()
