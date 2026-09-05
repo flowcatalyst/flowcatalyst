@@ -2,11 +2,9 @@ package auth
 
 import "testing"
 
-func scopePtr(s string) *string { return &s }
-
 func TestCheckScopeAccessAndCanAccessScope(t *testing.T) {
-	clientA := scopePtr("clt_A")
-	clientB := scopePtr("clt_B")
+	clientA := new("clt_A")
+	clientB := new("clt_B")
 
 	anchor := &AuthContext{Scope: ScopeAnchor}
 	tenant := &AuthContext{Scope: ScopeClient, Clients: []string{"clt_A"}}

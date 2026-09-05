@@ -33,6 +33,7 @@ import (
 	"crypto/rsa"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -150,7 +151,7 @@ func Validate(token string, key *rsa.PublicKey, expect Expect) (*Claims, error) 
 	if key == nil {
 		return nil, errors.New("sessiontoken: verification key is nil")
 	}
-	parsed, err := jwt.Parse(token, func(t *jwt.Token) (interface{}, error) {
+	parsed, err := jwt.Parse(token, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
 			return nil, fmt.Errorf("unexpected signing method %v", t.Header["alg"])
 		}
@@ -224,7 +225,7 @@ func audienceClaim(mc jwt.MapClaims) []string {
 		return []string{v}
 	case []string:
 		return v
-	case []interface{}:
+	case []any:
 		out := make([]string, 0, len(v))
 		for _, e := range v {
 			if s, ok := e.(string); ok {
@@ -238,12 +239,7 @@ func audienceClaim(mc jwt.MapClaims) []string {
 }
 
 func containsString(ss []string, want string) bool {
-	for _, s := range ss {
-		if s == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(ss, want)
 }
 
 // unixClaim reads a numeric Unix-seconds claim. JWT numeric claims
@@ -270,7 +266,7 @@ func stringSliceClaim(mc jwt.MapClaims, key string) []string {
 	switch x := v.(type) {
 	case []string:
 		return append([]string(nil), x...)
-	case []interface{}:
+	case []any:
 		out := make([]string, 0, len(x))
 		for _, e := range x {
 			if s, ok := e.(string); ok {

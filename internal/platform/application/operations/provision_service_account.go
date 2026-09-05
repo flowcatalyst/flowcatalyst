@@ -31,10 +31,6 @@ import (
 // application. See internal/platform/seed/roles.go ("application-service").
 const applicationServiceRoleName = "platform:application-service"
 
-// ptrStr returns a pointer to s. Used for the optional AssignmentSource on a
-// role assignment.
-func ptrStr(s string) *string { return &s }
-
 // ProvisionServiceAccountCommand provisions a dedicated service account
 // (+ its SERVICE principal + a confidential OAuth client) for an
 // application, atomically — all three writes run in one
@@ -164,7 +160,7 @@ func ProvisionServiceAccount(
 			saPrincipal.AccessibleApplicationIDs = []string{app.ID}
 			saPrincipal.Roles = []serviceaccount.RoleAssignment{{
 				Role:             applicationServiceRoleName,
-				AssignmentSource: ptrStr("PROVISIONED"),
+				AssignmentSource: new("PROVISIONED"),
 				AssignedAt:       time.Now().UTC(),
 			}}
 			if err := s.WithTx(ctx, func(tx pgx.Tx) error {

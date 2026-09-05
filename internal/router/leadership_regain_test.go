@@ -58,9 +58,9 @@ func TestGateOnLeadership_FollowerDoesNotStartPools(t *testing.T) {
 
 	election := newFakeElection(false) // follower from the start
 
-	var calls int32
+	var calls atomic.Int32
 	startPools := func(c context.Context) {
-		atomic.AddInt32(&calls, 1)
+		calls.Add(1)
 		_ = manager.Reconfigure(c, routerCfg([]string{"q-follower"}))
 	}
 
@@ -73,7 +73,7 @@ func TestGateOnLeadership_FollowerDoesNotStartPools(t *testing.T) {
 
 	// Give the goroutine a chance to run its synchronous initial apply().
 	time.Sleep(150 * time.Millisecond)
-	assert.Equal(t, int32(0), atomic.LoadInt32(&calls), "a follower must never start pools")
+	assert.Equal(t, int32(0), calls.Load(), "a follower must never start pools")
 	assert.Equal(t, 0, manager.PoolCount(), "no pools should exist on a follower")
 
 	cancel()

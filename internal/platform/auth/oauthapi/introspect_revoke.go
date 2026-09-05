@@ -79,26 +79,26 @@ func (s *State) Introspect(w http.ResponseWriter, r *http.Request) {
 
 	resp := introspectResponse{
 		Active:        true,
-		Sub:           ptr(claims.Subject),
-		Tier:          ptr(claims.Tier),
+		Sub:           new(claims.Subject),
+		Tier:          new(claims.Tier),
 		Email:         claims.Email,
-		Name:          ptr(claims.Name),
-		PrincipalType: ptr(claims.PrincipalType),
-		Iss:           ptr(claims.Issuer),
-		TokenType:     ptr("Bearer"),
+		Name:          new(claims.Name),
+		PrincipalType: new(claims.PrincipalType),
+		Iss:           new(claims.Issuer),
+		TokenType:     new("Bearer"),
 	}
 	// RFC 7662 `scope` carries the token's granted scopes (now permissions).
 	if claims.Scope != "" {
-		resp.Scope = ptr(claims.Scope)
+		resp.Scope = new(claims.Scope)
 	}
 	if len(claims.Clients) > 0 {
-		resp.ClientID = ptr(claims.Clients[0])
+		resp.ClientID = new(claims.Clients[0])
 	}
 	if claims.ExpiresAt != nil {
-		resp.Exp = ptr(claims.ExpiresAt.Unix())
+		resp.Exp = new(claims.ExpiresAt.Unix())
 	}
 	if claims.IssuedAt != nil {
-		resp.Iat = ptr(claims.IssuedAt.Unix())
+		resp.Iat = new(claims.IssuedAt.Unix())
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -123,8 +123,6 @@ func (s *State) Revoke(w http.ResponseWriter, r *http.Request) {
 	_, _ = s.RefreshTokens.RevokeByHash(r.Context(), tokenHash)
 	w.WriteHeader(http.StatusOK)
 }
-
-func ptr[T any](v T) *T { return &v }
 
 // writeJSON renders v with the given status and Content-Type, without the
 // no-store cache headers the token endpoint adds (introspect/revoke

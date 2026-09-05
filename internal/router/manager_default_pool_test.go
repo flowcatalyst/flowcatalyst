@@ -67,7 +67,7 @@ func TestConcurrentSynthesisYieldsOnePool(t *testing.T) {
 	const routers = 16
 	pools := make([]*Pool, routers)
 	var wg sync.WaitGroup
-	for i := 0; i < routers; i++ {
+	for i := range routers {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()

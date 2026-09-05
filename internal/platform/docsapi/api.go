@@ -124,7 +124,7 @@ func firstHeading(file, fallback string) string {
 	if err != nil {
 		return fallback
 	}
-	for _, line := range strings.Split(string(content), "\n") {
+	for line := range strings.SplitSeq(string(content), "\n") {
 		if after, ok := strings.CutPrefix(strings.TrimSpace(line), "# "); ok {
 			return strings.TrimSpace(after)
 		}

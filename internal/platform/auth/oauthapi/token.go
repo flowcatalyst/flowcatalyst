@@ -20,6 +20,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -879,12 +880,7 @@ func grantAllowed(client *auth.OAuthClient, grant string) bool {
 	if client == nil || len(client.GrantTypes) == 0 {
 		return true
 	}
-	for _, g := range client.GrantTypes {
-		if g == grant {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(client.GrantTypes, grant)
 }
 
 // oidcReservedScopes are OAuth/OIDC flow scopes that are NOT authorization
@@ -927,7 +923,7 @@ func (s *State) grantedScope(ctx context.Context, p *principal.Principal, reques
 		return nil, false, err
 	}
 	var reqPerms []string
-	for _, f := range strings.Fields(requested) {
+	for f := range strings.FieldsSeq(requested) {
 		if _, reserved := oidcReservedScopes[f]; reserved {
 			continue
 		}
@@ -1027,12 +1023,7 @@ func scopeResponse(granted []string) *string {
 func scopeHas(scope, want string) bool { return scopesContain(strings.Fields(scope), want) }
 
 func scopesContain(scopes []string, want string) bool {
-	for _, s := range scopes {
-		if s == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(scopes, want)
 }
 
 // oauthError is an RFC-6749 error body plus its HTTP status.

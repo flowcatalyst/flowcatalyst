@@ -8,6 +8,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -262,10 +263,8 @@ func (s *State) validateRedirectURI(ctx context.Context, clientID, redirectURI s
 		return usecase.Internal("REPO", "find_portal_oauth_clients failed", err)
 	}
 	for _, oc := range oclients {
-		for _, u := range oc.RedirectURIs {
-			if u == redirectURI {
-				return nil
-			}
+		if slices.Contains(oc.RedirectURIs, redirectURI) {
+			return nil
 		}
 	}
 	return usecase.Validation("REDIRECT_URI_INVALID",

@@ -224,7 +224,7 @@ func stringSlice(v any) []string {
 	switch x := v.(type) {
 	case []string:
 		return append([]string(nil), x...)
-	case []interface{}:
+	case []any:
 		out := make([]string, 0, len(x))
 		for _, e := range x {
 			if s, ok := e.(string); ok {

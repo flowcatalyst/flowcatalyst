@@ -697,7 +697,7 @@ func (m *Manager) route(ctx context.Context, msgs []common.QueuedMessage, source
 			if m.tracker != nil {
 				m.tracker.Remove(msg.Message.ID, msg.BrokerMessageID)
 			}
-			if err := source.Nack(ctx, msg.ReceiptHandle, ptrU32(5)); err != nil {
+			if err := source.Nack(ctx, msg.ReceiptHandle, new(uint32(5))); err != nil {
 				slog.Warn("nack (no pool) failed", "message_id", msg.Message.ID, "err", err)
 			}
 			continue

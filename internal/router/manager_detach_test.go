@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -147,9 +148,7 @@ func TestRestartStalledConsumer_RetiresUnderContinuousReplacementTraffic(t *test
 	// stays gated. Every one of these must have StartedAt >= oldRC.detachedAt.
 	stopTraffic := make(chan struct{})
 	var trafficWG sync.WaitGroup
-	trafficWG.Add(1)
-	go func() {
-		defer trafficWG.Done()
+	trafficWG.Go(func() {
 		for i := 0; ; i++ {
 			select {
 			case <-stopTraffic:
@@ -172,7 +171,7 @@ func TestRestartStalledConsumer_RetiresUnderContinuousReplacementTraffic(t *test
 			// backlog this generates never has anywhere to build up.
 			time.Sleep(20 * time.Millisecond)
 		}
-	}()
+	})
 	t.Cleanup(func() { close(stopTraffic); trafficWG.Wait() })
 
 	// Give the replacement a moment to actually start delivering (and
@@ -186,7 +185,7 @@ func TestRestartStalledConsumer_RetiresUnderContinuousReplacementTraffic(t *test
 	// While old1 is still gated (unresolved), the detached consumer must
 	// NOT retire — regardless of how much traffic the replacement is
 	// handling under the same identifier.
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		require.Equal(t, 0, m.retireDetachedConsumers(),
 			"must not retire while its own pre-detach message is still unresolved, even under continuous replacement traffic")
 		time.Sleep(5 * time.Millisecond)
@@ -219,12 +218,7 @@ func TestRestartStalledConsumer_RetiresUnderContinuousReplacementTraffic(t *test
 }
 
 func containsPool(pools []*Pool, target *Pool) bool {
-	for _, p := range pools {
-		if p == target {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(pools, target)
 }
 
 // TestReconfigure_RemovedPoolDrainsThenStops pins [X-11 / R-26 / R-49]:

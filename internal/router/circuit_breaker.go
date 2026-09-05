@@ -77,10 +77,7 @@ type CircuitBreaker struct {
 
 // NewCircuitBreaker builds a fresh breaker in Closed state.
 func NewCircuitBreaker(cfg BreakerConfig) *CircuitBreaker {
-	bs := cfg.BufferSize
-	if bs < 1 {
-		bs = 1
-	}
+	bs := max(cfg.BufferSize, 1)
 	cb := &CircuitBreaker{cfg: cfg, state: CircuitClosed, window: make([]bool, bs)}
 	cb.lastActivity.Store(time.Now().UnixNano())
 	return cb

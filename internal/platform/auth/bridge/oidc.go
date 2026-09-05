@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"sync"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -230,12 +231,7 @@ func (r *resolved) VerifyIDToken(ctx context.Context, raw string) (*oidc.IDToken
 // audienceContains reports whether the token's aud list includes our
 // registered client ID.
 func audienceContains(auds []string, clientID string) bool {
-	for _, a := range auds {
-		if a == clientID {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(auds, clientID)
 }
 
 // isValidIssuer accepts an exact match against the

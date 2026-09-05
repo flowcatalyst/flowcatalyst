@@ -3,6 +3,7 @@
 package role
 
 import (
+	"slices"
 	"strings"
 	"time"
 
@@ -100,10 +101,8 @@ func (r *Role) HasPermission(p string) bool {
 
 // GrantPermission adds a permission (de-duplicated) and bumps UpdatedAt.
 func (r *Role) GrantPermission(p string) {
-	for _, g := range r.Permissions {
-		if g == p {
-			return
-		}
+	if slices.Contains(r.Permissions, p) {
+		return
 	}
 	r.Permissions = append(r.Permissions, p)
 	r.UpdatedAt = time.Now().UTC()

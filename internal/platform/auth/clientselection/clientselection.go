@@ -6,6 +6,7 @@ package clientselection
 import (
 	"encoding/json"
 	"net/http"
+	"slices"
 	"sort"
 
 	"github.com/go-chi/chi/v5"
@@ -274,10 +275,5 @@ func (s *State) resolvePermissions(r *http.Request, roleCodes []string) ([]strin
 }
 
 func contains(ss []string, v string) bool {
-	for _, s := range ss {
-		if s == v {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(ss, v)
 }

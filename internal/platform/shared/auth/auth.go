@@ -22,6 +22,7 @@ package auth
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -180,12 +181,7 @@ func (a *AuthContext) CanAccessClient(clientID string) bool {
 	if a.IsAnchor() {
 		return true
 	}
-	for _, c := range a.Clients {
-		if c == clientID {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(a.Clients, clientID)
 }
 
 // IsApplicationScoped reports whether the principal is restricted to an explicit
@@ -209,12 +205,7 @@ func (a *AuthContext) CanAccessApplication(applicationID string) bool {
 	if a.AllApplications {
 		return true
 	}
-	for _, id := range a.Applications {
-		if id == applicationID {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(a.Applications, applicationID)
 }
 
 // HasPermission reports whether the principal carries a permission that
@@ -418,23 +409,21 @@ func requireAny(a *AuthContext, perms ...string) error {
 	if a.IsAnchor() {
 		return nil
 	}
-	for _, p := range perms {
-		if a.HasPermission(p) {
-			return nil
-		}
+	if slices.ContainsFunc(perms, a.HasPermission) {
+		return nil
 	}
 	return usecase.Authorization("PERMISSION_REQUIRED", "one of: "+joinPerms(perms))
 }
 
 func joinPerms(p []string) string {
-	out := ""
+	var out strings.Builder
 	for i, s := range p {
 		if i > 0 {
-			out += ", "
+			out.WriteString(", ")
 		}
-		out += s
+		out.WriteString(s)
 	}
-	return out
+	return out.String()
 }
 
 // ── EventType permission checks ───────────────────────────────────────────

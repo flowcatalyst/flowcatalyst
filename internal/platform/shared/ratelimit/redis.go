@@ -50,10 +50,7 @@ func redisKey(bucket Bucket, key string, windowIndex int64) string {
 // CheckAndRecord increments the current window's counter and rejects when
 // it exceeds the limit.
 func (s *RedisStore) CheckAndRecord(ctx context.Context, bucket Bucket, key string, policy Policy) (Decision, error) {
-	windowSecs := int64(policy.Window.Seconds())
-	if windowSecs < 1 {
-		windowSecs = 1
-	}
+	windowSecs := max(int64(policy.Window.Seconds()), 1)
 	nowSecs := time.Now().Unix()
 	windowIndex := nowSecs / windowSecs
 	rk := redisKey(bucket, key, windowIndex)
@@ -71,10 +68,7 @@ func (s *RedisStore) CheckAndRecord(ctx context.Context, bucket Bucket, key stri
 
 	if uint64(newCount) > uint64(policy.Limit) {
 		elapsedInWindow := nowSecs % windowSecs
-		retryAfter := windowSecs - elapsedInWindow
-		if retryAfter < 1 {
-			retryAfter = 1
-		}
+		retryAfter := max(windowSecs-elapsedInWindow, 1)
 		return Decision{Allowed: false, RetryAfterSecs: clampU32(retryAfter)}, nil
 	}
 	return Decision{Allowed: true}, nil

@@ -143,10 +143,9 @@ func (q *Queue) Poll(ctx context.Context, maxMessages uint32) ([]common.QueuedMe
 	if !q.running.Load() {
 		return nil, queue.ErrStopped
 	}
-	max := int32(maxMessages)
-	if max > 10 {
-		max = 10 // SQS hard limit
-	}
+	max := min(int32(maxMessages),
+		// SQS hard limit
+		10)
 
 	out, err := q.client.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{
 		QueueUrl:                    aws.String(q.queueURL),
@@ -295,10 +294,7 @@ func (q *Queue) Publish(ctx context.Context, m common.Message) (string, error) {
 func (q *Queue) PublishBatch(ctx context.Context, msgs []common.Message) ([]string, error) {
 	ids := make([]string, 0, len(msgs))
 	for start := 0; start < len(msgs); start += 10 {
-		end := start + 10
-		if end > len(msgs) {
-			end = len(msgs)
-		}
+		end := min(start+10, len(msgs))
 		entries := make([]sqstypes.SendMessageBatchRequestEntry, 0, end-start)
 		for i := start; i < end; i++ {
 			body, err := json.Marshal(msgs[i])

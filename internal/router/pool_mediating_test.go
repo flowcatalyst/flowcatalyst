@@ -33,7 +33,7 @@ func (b *blockingMediator) Mediate(context.Context, *common.Message) common.Medi
 
 func (b *blockingMediator) awaitEntered(t *testing.T, n int) {
 	t.Helper()
-	for i := 0; i < n; i++ {
+	for i := range n {
 		select {
 		case <-b.entered:
 		case <-time.After(2 * time.Second):
@@ -54,7 +54,7 @@ func TestActiveWorkersIsTheMediatingSetSize(t *testing.T) {
 	assert.Equal(t, uint32(0), p.ActiveWorkers())
 
 	var wg sync.WaitGroup
-	for i := 0; i < workers; i++ {
+	for i := range workers {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -85,12 +85,10 @@ func TestMediatingCountsBothCopiesOfOneMessage(t *testing.T) {
 		func(string) queue.Consumer { return c })
 
 	var wg sync.WaitGroup
-	for i := 0; i < 2; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 2 {
+		wg.Go(func() {
 			p.processOne(context.Background(), grMsg("evt_same", "http://t/x"))
-		}()
+		})
 	}
 	med.awaitEntered(t, 2)
 

@@ -44,8 +44,6 @@ func runAuthorized[C any, E usecase.DomainEvent](
 // derivation lives in principal/api and has its own unit tests
 // (api/create_user_test.go).
 
-func ptr[T any](v T) *T { return &v }
-
 // mustCreateUser seeds a user through the public operation — the production
 // path. Emails are hand-unique per test (unique index on iam_principals.email,
 // and the fixture never truncates), so tests own their rows.
@@ -142,9 +140,9 @@ func TestCreateUser_HappyPath(t *testing.T) {
 	// password must land as a verifiable hash (never plaintext).
 	ev, err := runAuthorized(uow, operations.CreateUser(repo), operations.CreateCommand{
 		Email:    "  PRN-Create-Happy@Example.COM  ",
-		Name:     ptr("  Jane Doe  "),
+		Name:     new("  Jane Doe  "),
 		Scope:    "ANCHOR",
-		Password: ptr("s3cret-pass!"),
+		Password: new("s3cret-pass!"),
 	})
 	require.NoError(t, err)
 	assert.NotEmpty(t, ev.UserID)
@@ -186,8 +184,8 @@ func TestCreateUser_OIDCAndClientScope(t *testing.T) {
 	ev0, err := runAuthorized(uow, operations.CreateUser(repo), operations.CreateCommand{
 		Email:    "prn-create-oidc@example.com",
 		Scope:    "ANCHOR",
-		Password: ptr("ignored-password1"),
-		IDPType:  ptr("OIDC"),
+		Password: new("ignored-password1"),
+		IDPType:  new("OIDC"),
 	})
 	require.NoError(t, err)
 	got, err := repo.FindByID(ctx, ev0.UserID)
@@ -265,9 +263,9 @@ func TestUpdateUser_HappyPath(t *testing.T) {
 	// assertion (PUT-a-full-object support), not a change.
 	ev, err := runAuthorized(uow, operations.UpdateUser(repo), operations.UpdateCommand{
 		ID:     seeded.UserID,
-		Name:   ptr("  Renamed User  "),
-		Active: ptr(false),
-		Email:  ptr("PRN-UPDATE-HAPPY@example.com"),
+		Name:   new("  Renamed User  "),
+		Active: new(false),
+		Email:  new("PRN-UPDATE-HAPPY@example.com"),
 	})
 	require.NoError(t, err)
 	assert.Equal(t, seeded.UserID, ev.UserID)
@@ -293,10 +291,10 @@ func TestUpdateUser_Errors(t *testing.T) {
 		kind usecase.Kind
 		code string
 	}{
-		{"missing id", operations.UpdateCommand{Name: ptr("X")}, usecase.KindValidation, "ID_REQUIRED"},
-		{"blank name", operations.UpdateCommand{ID: "prn_doesnotexist1", Name: ptr("  ")}, usecase.KindValidation, "NAME_REQUIRED"},
-		{"unknown id", operations.UpdateCommand{ID: "prn_doesnotexist1", Name: ptr("X")}, usecase.KindNotFound, "Principal_NOT_FOUND"},
-		{"email change refused", operations.UpdateCommand{ID: seeded.UserID, Email: ptr("other@example.com")}, usecase.KindValidation, "EMAIL_IMMUTABLE"},
+		{"missing id", operations.UpdateCommand{Name: new("X")}, usecase.KindValidation, "ID_REQUIRED"},
+		{"blank name", operations.UpdateCommand{ID: "prn_doesnotexist1", Name: new("  ")}, usecase.KindValidation, "NAME_REQUIRED"},
+		{"unknown id", operations.UpdateCommand{ID: "prn_doesnotexist1", Name: new("X")}, usecase.KindNotFound, "Principal_NOT_FOUND"},
+		{"email change refused", operations.UpdateCommand{ID: seeded.UserID, Email: new("other@example.com")}, usecase.KindValidation, "EMAIL_IMMUTABLE"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -488,7 +486,7 @@ func TestAssignApplicationAccess_HappyPath_AllApplicationsFlag(t *testing.T) {
 		operations.AssignApplicationAccessCommand{
 			UserID:          seeded.UserID,
 			ApplicationIDs:  []string{app1, app2},
-			AllApplications: ptr(false),
+			AllApplications: new(false),
 		})
 	require.NoError(t, err)
 	assert.Equal(t, seeded.UserID, ev.UserID)
@@ -524,7 +522,7 @@ func TestAssignApplicationAccess_HappyPath_AllApplicationsFlag(t *testing.T) {
 		operations.AssignApplicationAccessCommand{
 			UserID:          seeded.UserID,
 			ApplicationIDs:  []string{},
-			AllApplications: ptr(true),
+			AllApplications: new(true),
 		})
 	require.NoError(t, err)
 
@@ -588,7 +586,7 @@ func TestAssignApplicationAccess_ServiceAccount(t *testing.T) {
 		operations.AssignApplicationAccessCommand{
 			UserID:          svc.ID,
 			ApplicationIDs:  []string{app1},
-			AllApplications: ptr(false),
+			AllApplications: new(false),
 		})
 	require.NoError(t, err)
 
@@ -849,7 +847,7 @@ func TestResetPassword_HappyPath(t *testing.T) {
 	created, err := runAuthorized(uow, operations.CreateUser(repo), operations.CreateCommand{
 		Email:    "prn-resetpw@example.com",
 		Scope:    "ANCHOR",
-		Password: ptr("original-pass-99"),
+		Password: new("original-pass-99"),
 	})
 	require.NoError(t, err)
 	userID := created.UserID
@@ -886,7 +884,7 @@ func TestPasswordPolicy_IdentityRejectedStrict_AllowedRelaxed(t *testing.T) {
 	_, err := runAuthorized(uow, operations.CreateUser(repo), operations.CreateCommand{
 		Email:    "prn-pwpolicy@example.com",
 		Scope:    "ANCHOR",
-		Password: ptr("prn-pwpolicy@example.com"),
+		Password: new("prn-pwpolicy@example.com"),
 	})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "PASSWORD_CONTAINS_IDENTITY")
 
@@ -909,7 +907,7 @@ func TestPasswordPolicy_IdentityRejectedStrict_AllowedRelaxed(t *testing.T) {
 	_, err = runAuthorized(uow, operations.ResetPassword(repo), operations.ResetPasswordCommand{
 		ID:                        seeded.UserID,
 		NewPassword:               "prn-pwpolicy@example.com",
-		EnforcePasswordComplexity: ptr(false),
+		EnforcePasswordComplexity: new(false),
 	})
 	require.NoError(t, err)
 }
@@ -926,7 +924,7 @@ func TestResetPassword_RelaxedComplexity(t *testing.T) {
 	_, err := runAuthorized(uow, operations.ResetPassword(repo), operations.ResetPasswordCommand{
 		ID:                        seeded.UserID,
 		NewPassword:               "ab",
-		EnforcePasswordComplexity: ptr(false),
+		EnforcePasswordComplexity: new(false),
 	})
 	require.NoError(t, err)
 
@@ -950,7 +948,7 @@ func TestResetPassword_Errors(t *testing.T) {
 	}{
 		{"missing id", operations.ResetPasswordCommand{NewPassword: "longenough99"}, usecase.KindValidation, "ID_REQUIRED"},
 		{"strict default rejects 7 chars", operations.ResetPasswordCommand{ID: "prn_doesnotexist1", NewPassword: "seven77"}, usecase.KindValidation, "PASSWORD_TOO_SHORT"},
-		{"relaxed still rejects 1 char", operations.ResetPasswordCommand{ID: "prn_doesnotexist1", NewPassword: "a", EnforcePasswordComplexity: ptr(false)}, usecase.KindValidation, "PASSWORD_TOO_SHORT"},
+		{"relaxed still rejects 1 char", operations.ResetPasswordCommand{ID: "prn_doesnotexist1", NewPassword: "a", EnforcePasswordComplexity: new(false)}, usecase.KindValidation, "PASSWORD_TOO_SHORT"},
 		{"unknown id", operations.ResetPasswordCommand{ID: "prn_doesnotexist1", NewPassword: "longenough99"}, usecase.KindNotFound, "Principal_NOT_FOUND"},
 		// NOT_A_USER is a Conflict here (not BusinessRule like the other ops) —
 		// pinned from reset_password.go.

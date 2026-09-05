@@ -46,7 +46,6 @@ func TestGroupDistributorBlockOnError(t *testing.T) {
 		}
 	}
 	for _, it := range items {
-		it := it
 		d.Submit(grpItem(it.id, "g1"),
 			func() bool { <-start; rec(&dispatched, it.id); finish(); return it.ok },
 			func() { rec(&aborted, it.id); finish() })
@@ -75,7 +74,6 @@ func TestGroupDistributorNoBlockWhenDisabled(t *testing.T) {
 	var remaining int32 = 3
 	done := make(chan struct{})
 	for _, id := range []string{"A", "B", "C"} {
-		id := id
 		ok := id != "B"
 		d.Submit(grpItem(id, "g1"),
 			func() bool {

@@ -2,6 +2,7 @@ package operations
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"time"
 
@@ -200,13 +201,7 @@ func SyncPrincipals(principals *principal.Repository) usecaseop.Operation[SyncPr
 					if _, present := syncedSet[strings.ToLower(pr.UserIdentity.Email)]; present {
 						continue
 					}
-					hasSdkRoles := false
-					for _, ra := range pr.Roles {
-						if belongsToThisSync(ra) {
-							hasSdkRoles = true
-							break
-						}
-					}
+					hasSdkRoles := slices.ContainsFunc(pr.Roles, belongsToThisSync)
 					if !hasSdkRoles {
 						continue
 					}

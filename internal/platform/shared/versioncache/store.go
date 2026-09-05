@@ -12,6 +12,7 @@ package versioncache
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -109,7 +110,7 @@ func (s *RedisStore) Bump(ctx context.Context, principalID string, at time.Time)
 // (ok=false, err=nil), not an error.
 func (s *RedisStore) Get(ctx context.Context, principalID string) (time.Time, bool, error) {
 	v, err := s.client.Get(ctx, keyPrefix+principalID).Result()
-	if err == redis.Nil {
+	if errors.Is(err, redis.Nil) {
 		return time.Time{}, false, nil
 	}
 	if err != nil {

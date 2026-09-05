@@ -109,7 +109,7 @@ func TestPoolMetricsCollector_Percentiles(t *testing.T) {
 
 func TestPoolMetricsCollector_Windowed(t *testing.T) {
 	c := NewPoolMetricsCollector()
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		if i%3 == 0 {
 			c.RecordFailure(uint64(100 + i*10))
 		} else {

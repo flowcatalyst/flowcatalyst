@@ -346,8 +346,8 @@ func TestRunConsumerBoundsAHangingPoll(t *testing.T) {
 	m.pollTimeout = 100 * time.Millisecond
 
 	fake := &hangConsumer{
-		pollErrConsumer: pollErrConsumer{id: "q.fifo"},
-		entered:         make(chan struct{}),
+		id:      "q.fifo",
+		entered: make(chan struct{}),
 	}
 	rc := &runningConsumer{consumer: fake, cancel: func() {}}
 	rc.lastPoll.Store(time.Now().UnixNano())

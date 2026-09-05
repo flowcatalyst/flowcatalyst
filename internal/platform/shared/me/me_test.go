@@ -6,13 +6,11 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 )
 
-func strptr(s string) *string { return &s }
-
 func TestFilterMyApplications(t *testing.T) {
 	base := "https://orders.example"
 	all := []application.Application{
 		{ID: "app_1", Code: "orders", Name: "Orders", DefaultBaseURL: &base},
-		{ID: "app_2", Code: "billing", Name: "Billing", Description: strptr("Billing app")},
+		{ID: "app_2", Code: "billing", Name: "Billing", Description: new("Billing app")},
 		{ID: "app_3", Code: "secret", Name: "Secret"},
 	}
 

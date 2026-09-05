@@ -218,22 +218,15 @@ func principalMatchesClient(p *principal.Principal, clientID string) bool {
 	if p.ClientID != nil && *p.ClientID == clientID {
 		return true
 	}
-	for _, c := range p.AssignedClients {
-		if c == clientID {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(p.AssignedClients, clientID)
 }
 
 // principalHasAnyRole reports whether the principal holds at least one of the
 // requested role names (OR semantics, matching the multi-select filter UX).
 func principalHasAnyRole(p *principal.Principal, want []string) bool {
 	for _, r := range p.Roles {
-		for _, w := range want {
-			if r.Role == w {
-				return true
-			}
+		if slices.Contains(want, r.Role) {
+			return true
 		}
 	}
 	return false
@@ -241,7 +234,7 @@ func principalHasAnyRole(p *principal.Principal, want []string) bool {
 
 func splitCSV(s string) []string {
 	out := make([]string, 0)
-	for _, part := range strings.Split(s, ",") {
+	for part := range strings.SplitSeq(s, ",") {
 		if t := strings.TrimSpace(part); t != "" {
 			out = append(out, t)
 		}
@@ -279,14 +272,8 @@ func paginate(ps []*principal.Principal, page, pageSize int) []*principal.Princi
 	if page < 0 {
 		page = 0
 	}
-	start := page * pageSize
-	if start > len(ps) {
-		start = len(ps)
-	}
-	end := start + pageSize
-	if end > len(ps) {
-		end = len(ps)
-	}
+	start := min(page*pageSize, len(ps))
+	end := min(start+pageSize, len(ps))
 	return ps[start:end]
 }
 
@@ -538,8 +525,7 @@ func cleanRoles(roles []string) []string {
 // errMessage extracts a user-facing message from a usecase error (or falls back
 // to the raw error text).
 func errMessage(err error) string {
-	var ue *usecase.Error
-	if errors.As(err, &ue) {
+	if ue, ok := errors.AsType[*usecase.Error](err); ok {
 		return ue.Message
 	}
 	if err != nil {
@@ -737,11 +723,8 @@ func deriveUserScope(reqScope *string, isAnchorDomain bool, mapping *emaildomain
 			return "", nil, usecase.Validation("CLIENT_REQUIRED", "clientId is required for partner users")
 		}
 		allowed := (mapping.PrimaryClientID != nil && *mapping.PrimaryClientID == *reqClientID)
-		for _, c := range mapping.GrantedClientIDs {
-			if c == *reqClientID {
-				allowed = true
-				break
-			}
+		if slices.Contains(mapping.GrantedClientIDs, *reqClientID) {
+			allowed = true
 		}
 		if !allowed {
 			return "", nil, usecase.Validation("CLIENT_NOT_ALLOWED",

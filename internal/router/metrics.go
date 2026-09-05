@@ -2,7 +2,7 @@ package router
 
 import (
 	"math"
-	"sort"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -323,7 +323,7 @@ func processingTimeFromSamples(samples []metricSample) common.ProcessingTimeMetr
 		durations[i] = s.durationMs
 		sum += s.durationMs
 	}
-	sort.Slice(durations, func(i, j int) bool { return durations[i] < durations[j] })
+	slices.Sort(durations)
 
 	avg := float64(sum) / float64(len(durations))
 	return common.ProcessingTimeMetrics{
@@ -350,10 +350,7 @@ func quantile(sorted []uint64, q float64) uint64 {
 		return sorted[len(sorted)-1]
 	}
 	// nearest-rank: ceil(q * n) - 1
-	idx := int(math.Ceil(q*float64(len(sorted)))) - 1
-	if idx < 0 {
-		idx = 0
-	}
+	idx := max(int(math.Ceil(q*float64(len(sorted))))-1, 0)
 	if idx >= len(sorted) {
 		idx = len(sorted) - 1
 	}

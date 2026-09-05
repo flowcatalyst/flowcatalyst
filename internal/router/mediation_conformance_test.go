@@ -140,7 +140,6 @@ func loadCorpus(t *testing.T) fixtureCorpus {
 func TestMediationConformance(t *testing.T) {
 	corpus := loadCorpus(t)
 	for _, tc := range corpus.Cases {
-		tc := tc
 		t.Run(tc.ID, func(t *testing.T) {
 			// Each subtest gets its own breaker registry, mediator, and
 			// HTTP server, so there is no shared mutable state between

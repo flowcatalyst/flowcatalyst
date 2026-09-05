@@ -143,10 +143,7 @@ func NewPool(cfg common.PoolConfig, mediator Mediator, tracker *InFlightTracker,
 	if concurrency == 0 {
 		// When concurrency is unset, derive it from
 		// the rate limit — max(rate_per_minute/60, 1) — rather than always 1.
-		concurrency = rate / 60
-		if concurrency < 1 {
-			concurrency = 1
-		}
+		concurrency = max(rate/60, 1)
 	}
 	return &Pool{
 		cfg:             cfg,
@@ -295,13 +292,13 @@ func (p *Pool) submit(ctx context.Context, m common.QueuedMessage) {
 	// drain, so no new batch is ever routed to it. This check is the
 	// pool-local backstop for a caller holding a stale *Pool reference.
 	if p.stopped.Load() || p.draining.Load() {
-		p.nackMsg(ctx, m, ptrU32(10), "pool stopped")
+		p.nackMsg(ctx, m, new(uint32(10)), "pool stopped")
 		return
 	}
 	// Capacity backpressure: NACK (delay 10) when the pre-dispatch buffer is
 	// already at capacity = max(concurrency*20, 50).
 	if p.queueSize.Load() >= p.queueCapacity() {
-		p.nackMsg(ctx, m, ptrU32(10), "pool at capacity")
+		p.nackMsg(ctx, m, new(uint32(10)), "pool at capacity")
 		return
 	}
 
@@ -329,7 +326,7 @@ func (p *Pool) submit(ctx context.Context, m common.QueuedMessage) {
 
 	if !p.enqueue(group, m) {
 		// Raced with Stop: the buffer is flushed and nothing will drain it.
-		p.nackMsg(ctx, m, ptrU32(10), "pool stopped")
+		p.nackMsg(ctx, m, new(uint32(10)), "pool stopped")
 		return
 	}
 	p.tryDrainGroup(ctx, group)
@@ -347,7 +344,7 @@ func (p *Pool) runImmediate(ctx context.Context, m common.QueuedMessage) {
 		// the message reappears after the visibility timeout) re-enters the
 		// pipeline as a fresh copy instead of being dropped as a duplicate.
 		p.queueDec()
-		p.nackMsg(ctx, m, ptrU32(10), "shutdown before dispatch")
+		p.nackMsg(ctx, m, new(uint32(10)), "shutdown before dispatch")
 		return
 	}
 	p.queueDec() // now active, not queued
@@ -696,10 +693,7 @@ const (
 // pool accepts before submit pushes back on the broker. Derived from the
 // concurrency cap, so re-capping a pool re-sizes its buffer with it.
 func (p *Pool) queueCapacity() uint32 {
-	capacity := p.Concurrency() * queueCapacityMultiplier
-	if capacity < minQueueCapacity {
-		capacity = minQueueCapacity
-	}
+	capacity := max(p.Concurrency()*queueCapacityMultiplier, minQueueCapacity)
 	return capacity
 }
 
@@ -816,7 +810,7 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 			// redelivery-dedup path). If the pool stopped meanwhile the buffer
 			// is gone; release the in-hand message to the broker instead.
 			if !p.enqueueFront(group, msg) {
-				p.nackMsg(ctx, msg, ptrU32(10), "pool stopped during drain")
+				p.nackMsg(ctx, msg, new(uint32(10)), "pool stopped during drain")
 				return
 			}
 			p.clearWorking(group)
@@ -874,7 +868,7 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 			if !p.enqueueFront(group, msg) {
 				// Pool stopped while retrying: buffer gone, nothing will drain
 				// it. Release the message to the broker for fresh redelivery.
-				p.nackMsg(ctx, msg, ptrU32(10), "pool stopped during retry")
+				p.nackMsg(ctx, msg, new(uint32(10)), "pool stopped during retry")
 				return
 			}
 			select {
@@ -1259,10 +1253,9 @@ func deferredDelay(attempts uint, outcomeDelaySec int) time.Duration {
 }
 
 func backoffDelay(attempts uint, floorSec int, minDelay, maxDelay time.Duration) time.Duration {
-	shift := attempts
-	if shift > 12 { // cap the shift so the bit-shift can't overflow
-		shift = 12
-	}
+	shift := min(attempts,
+		// cap the shift so the bit-shift can't overflow
+		12)
 	d := minDelay << shift
 	if floor := time.Duration(floorSec) * time.Second; d < floor {
 		d = floor
@@ -1547,5 +1540,3 @@ func nackDelay(d time.Duration) *uint32 {
 	}
 	return &secs
 }
-
-func ptrU32(v uint32) *uint32 { return &v }

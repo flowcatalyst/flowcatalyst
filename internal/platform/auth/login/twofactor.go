@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -517,12 +518,7 @@ func methodStrings(ms []mfa.MethodType) []string {
 }
 
 func containsMethodType(ms []mfa.MethodType, t mfa.MethodType) bool {
-	for _, m := range ms {
-		if m == t {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(ms, t)
 }
 
 func intersect(a, allowed []string) []string {
@@ -536,12 +532,7 @@ func intersect(a, allowed []string) []string {
 }
 
 func containsString(xs []string, s string) bool {
-	for _, x := range xs {
-		if x == s {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(xs, s)
 }
 
 func userAgentLabel(r *http.Request) *string {

@@ -3,6 +3,7 @@ package auth
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 )
 
 // Audience is a JWT aud claim. RFC 7519 allows aud to be either a
@@ -85,12 +86,7 @@ func (c *AccessTokenClaims) HasClientAccess(clientID string) bool {
 
 // HasRole reports whether the principal has the given role code.
 func (c *AccessTokenClaims) HasRole(role string) bool {
-	for _, r := range c.Roles {
-		if r == role {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(c.Roles, role)
 }
 
 // IsAnchor reports whether this is an anchor (platform-wide) principal.

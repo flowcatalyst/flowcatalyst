@@ -88,7 +88,7 @@ func TestRequireUserResourceAccess_CrossTenantAndMissing_IdenticalNotFound(t *te
 	}{
 		{"update", func(id string) error {
 			_, err := usecaseop.Run(callerCtx, uow, operations.UpdateUser(repo),
-				operations.UpdateCommand{ID: id, Name: ptr("New Name")}, ec)
+				operations.UpdateCommand{ID: id, Name: new("New Name")}, ec)
 			return err
 		}},
 		{"activate", func(id string) error {
@@ -146,7 +146,7 @@ func TestRequireUserResourceAccess_KindMismatch_Stays403(t *testing.T) {
 	anchorTarget := mustCreateUser(t, repo, uow, "prn-kindmismatch-anchor@example.com", "ANCHOR", nil)
 
 	_, err := usecaseop.Run(clientCtx(clientA), uow, operations.UpdateUser(repo),
-		operations.UpdateCommand{ID: anchorTarget.UserID, Name: ptr("X")}, ec)
+		operations.UpdateCommand{ID: anchorTarget.UserID, Name: new("X")}, ec)
 	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "FORBIDDEN")
 }
 

@@ -212,11 +212,9 @@ func StartStreamProcessorWithHealth(ctx context.Context, pool *pgxpool.Pool, cfg
 
 	var wg sync.WaitGroup
 	launch := func(name string, run func(context.Context)) {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			run(ctx)
-		}()
+		})
 		slog.Info("stream subsystem started", "name", name)
 	}
 

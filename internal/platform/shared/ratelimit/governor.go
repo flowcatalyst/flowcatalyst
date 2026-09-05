@@ -76,14 +76,8 @@ func OIDCBridgeGovernorFromEnv() GovernorConfig {
 // NewGovernor builds a Governor for the supplied quota. PerMinute or Burst
 // below 1 are clamped to 1.
 func NewGovernor(cfg GovernorConfig) *Governor {
-	perMin := cfg.PerMinute
-	if perMin < 1 {
-		perMin = 1
-	}
-	burst := cfg.Burst
-	if burst < 1 {
-		burst = 1
-	}
+	perMin := max(cfg.PerMinute, 1)
+	burst := max(cfg.Burst, 1)
 	return &Governor{
 		limit:         rate.Limit(float64(perMin) / 60.0),
 		burst:         int(burst),

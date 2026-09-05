@@ -64,10 +64,7 @@ func (s *PostgresStore) CheckAndRecord(ctx context.Context, bucket Bucket, key s
 		}
 		retryAfter := int64(policy.Window.Seconds())
 		if oldest != nil {
-			elapsed := int64(time.Since(*oldest).Seconds())
-			if elapsed < 0 {
-				elapsed = 0
-			}
+			elapsed := max(int64(time.Since(*oldest).Seconds()), 0)
 			retryAfter = int64(policy.Window.Seconds()) - elapsed
 		}
 		if retryAfter < 1 {

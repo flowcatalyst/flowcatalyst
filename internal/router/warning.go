@@ -384,7 +384,7 @@ func (s *WarningService) evictOldestLocked() {
 		all = append(all, kv{id: id, at: w.CreatedAt})
 	}
 	sort.Slice(all, func(i, j int) bool { return all[i].at.Before(all[j].at) })
-	for i := 0; i < toRemove; i++ {
+	for i := range toRemove {
 		delete(s.warnings, all[i].id)
 	}
 }

@@ -504,7 +504,7 @@ func TestSeedMessages(t *testing.T) {
 
 func TestMock_FastIncrementsCounter(t *testing.T) {
 	api, _, _, _, _, _ := setupAPI(t)
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		resp := api.Post("/api/test/fast")
 		if resp.Code != http.StatusOK {
 			t.Fatalf("fast iter %d: status %d", i, resp.Code)

@@ -17,6 +17,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -370,11 +371,8 @@ func buildPermissionList(claims *provider.Claims) []string {
 		return nil
 	}
 	out := append([]string(nil), claims.Permissions...)
-	for _, p := range claims.Permissions {
-		if p == "platform:*:*:*" {
-			out = append(out, "*")
-			break
-		}
+	if slices.Contains(claims.Permissions, "platform:*:*:*") {
+		out = append(out, "*")
 	}
 	return out
 }
@@ -718,7 +716,7 @@ func percentEncode(r rune) string {
 	buf := make([]byte, 4)
 	n := utf8Encode(buf, r)
 	out := make([]byte, 0, n*3)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		out = append(out, '%', hex[buf[i]>>4], hex[buf[i]&0x0F])
 	}
 	return string(out)

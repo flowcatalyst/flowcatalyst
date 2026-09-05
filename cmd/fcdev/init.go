@@ -517,11 +517,11 @@ func writeEnvUpdates(path string, updates [][2]string) error {
 	}
 	seen := map[string]bool{}
 	for i, line := range lines {
-		eq := strings.IndexByte(line, '=')
-		if eq < 0 {
+		before, _, ok := strings.Cut(line, "=")
+		if !ok {
 			continue
 		}
-		key := strings.TrimSpace(line[:eq])
+		key := strings.TrimSpace(before)
 		for _, kv := range updates {
 			if kv[0] == key {
 				lines[i] = fmt.Sprintf("%s=%s", kv[0], quoteEnvValue(kv[1]))

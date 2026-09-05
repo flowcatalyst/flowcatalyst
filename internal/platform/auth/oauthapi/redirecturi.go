@@ -2,6 +2,7 @@ package oauthapi
 
 import (
 	"net/url"
+	"slices"
 	"strings"
 )
 
@@ -26,10 +27,8 @@ import (
 //     match exactly. The incoming uri's query/fragment are ignored (we append
 //     our own state on redirect).
 func MatchRedirectURI(uri string, registered []string) bool {
-	for _, r := range registered {
-		if r == uri {
-			return true
-		}
+	if slices.Contains(registered, uri) {
+		return true
 	}
 	u, err := url.Parse(uri)
 	if err != nil || u.User != nil || u.Hostname() == "" || u.Scheme == "" {

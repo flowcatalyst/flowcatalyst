@@ -30,7 +30,7 @@ func TestGenerateUntyped(t *testing.T) {
 
 func TestUniqueness(t *testing.T) {
 	seen := make(map[string]struct{}, 10000)
-	for i := 0; i < 10000; i++ {
+	for i := range 10000 {
 		id := tsid.Generate(tsid.Client)
 		_, dup := seen[id]
 		require.False(t, dup, "duplicate TSID at iteration %d: %s", i, id)
@@ -47,7 +47,7 @@ func TestUniqueness(t *testing.T) {
 func TestUniquenessUnderCounterOverflow(t *testing.T) {
 	const n = 100_000
 	seen := make(map[string]struct{}, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		id := tsid.GenerateUntyped()
 		_, dup := seen[id]
 		require.False(t, dup, "duplicate TSID at iteration %d: %s", i, id)
@@ -61,7 +61,7 @@ func TestUniquenessConcurrent(t *testing.T) {
 	const workers, per = 8, 20_000
 	results := make([][]string, workers)
 	var wg sync.WaitGroup
-	for w := 0; w < workers; w++ {
+	for w := range workers {
 		wg.Add(1)
 		go func(w int) {
 			defer wg.Done()

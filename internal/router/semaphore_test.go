@@ -81,7 +81,7 @@ func TestSemaphoreServesWaitersFIFO(t *testing.T) {
 	var mu sync.Mutex
 	var order []int
 	var wg sync.WaitGroup
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -130,7 +130,7 @@ func TestSemaphoreGrowAdmitsWaiters(t *testing.T) {
 func TestSemaphoreShrinkOnlyStopsNewWork(t *testing.T) {
 	s := newSemaphore(3)
 	ctx := context.Background()
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		require.NoError(t, s.acquire(ctx))
 	}
 
@@ -162,9 +162,7 @@ func TestSemaphoreResizeUnderLoadConservesSlots(t *testing.T) {
 
 	done := make(chan struct{})
 	var resizers sync.WaitGroup
-	resizers.Add(1)
-	go func() {
-		defer resizers.Done()
+	resizers.Go(func() {
 		for caps, i := []uint32{1, 8, 2, 16, 3}, 0; ; i++ {
 			select {
 			case <-done:
@@ -174,17 +172,15 @@ func TestSemaphoreResizeUnderLoadConservesSlots(t *testing.T) {
 			s.setLimit(caps[i%len(caps)])
 			time.Sleep(time.Millisecond)
 		}
-	}()
+	})
 
 	var workers sync.WaitGroup
-	for i := 0; i < 200; i++ {
-		workers.Add(1)
-		go func() {
-			defer workers.Done()
+	for range 200 {
+		workers.Go(func() {
 			require.NoError(t, s.acquire(ctx))
 			time.Sleep(time.Millisecond)
 			s.release()
-		}()
+		})
 	}
 	workers.Wait()
 	close(done)

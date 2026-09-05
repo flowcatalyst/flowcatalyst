@@ -53,10 +53,7 @@ func (rl *RateLimiter) replaceUnsafe(perMinute uint32) {
 		return
 	}
 	r := rate.Limit(float64(perMinute) / 60.0)
-	burst := int(perMinute)
-	if burst < 1 {
-		burst = 1
-	}
+	burst := max(int(perMinute), 1)
 	rl.limiter.Store(rate.NewLimiter(r, burst))
 }
 

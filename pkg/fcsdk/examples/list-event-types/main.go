@@ -53,8 +53,7 @@ func main() {
 		// APIError carries the HTTP status + body for non-2xx; the
 		// errors.As pattern is the convention across the SDK for any
 		// surface that wraps a remote error.
-		var apiErr *client.APIError
-		if errors.As(err, &apiErr) {
+		if apiErr, ok := errors.AsType[*client.APIError](err); ok {
 			log.Fatalf("platform returned %d: %s", apiErr.StatusCode, apiErr.Body)
 		}
 		log.Fatalf("list event types: %v", err)

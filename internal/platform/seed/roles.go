@@ -12,7 +12,7 @@ import "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 func PlatformRoles() []role.Role {
 	mk := func(roleName, displayName, description string, perms []string) role.Role {
 		r := role.New("platform", roleName, displayName)
-		r.Description = ptr(description)
+		r.Description = new(description)
 		r.Source = role.SourceCode
 		r.Permissions = perms
 		return *r
@@ -187,8 +187,6 @@ func PlatformRoles() []role.Role {
 			append([]string(nil), permsApplicationService...)),
 	}
 }
-
-func ptr[T any](v T) *T { return &v }
 
 // Reference permission constants that don't land in any built-in role
 // today (CLIENT_MANAGE, EVENT_TYPE_MANAGE, etc.) so the unused-symbol

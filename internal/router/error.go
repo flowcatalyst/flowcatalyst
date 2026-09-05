@@ -1,6 +1,9 @@
 package router
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // ErrorKind classifies a RouterError so HealthService can attribute
 // failures to the right bucket and the warning service can match on
@@ -117,24 +120,5 @@ func WrapSerializationError(err error) *RouterError {
 // AsRouterError extracts a RouterError from a wrapped chain. Returns
 // nil + false if the error doesn't carry one.
 func AsRouterError(err error) (*RouterError, bool) {
-	if err == nil {
-		return nil, false
-	}
-	var re *RouterError
-	for cur := err; cur != nil; {
-		if r, ok := cur.(*RouterError); ok {
-			re = r
-			break
-		}
-		type unwrapper interface{ Unwrap() error }
-		u, ok := cur.(unwrapper)
-		if !ok {
-			break
-		}
-		cur = u.Unwrap()
-	}
-	if re == nil {
-		return nil, false
-	}
-	return re, true
+	return errors.AsType[*RouterError](err)
 }

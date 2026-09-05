@@ -5,8 +5,6 @@ import (
 	"testing"
 )
 
-func ptr(s string) *string { return &s }
-
 func TestEncryptSecretRef(t *testing.T) {
 	key, err := GenerateKey()
 	if err != nil {
@@ -25,7 +23,7 @@ func TestEncryptSecretRef(t *testing.T) {
 	})
 
 	t.Run("empty preserved (clears secret)", func(t *testing.T) {
-		out, err := EncryptSecretRef(enc, ptr(""))
+		out, err := EncryptSecretRef(enc, new(""))
 		if err != nil || out == nil || *out != "" {
 			t.Fatalf("want empty preserved, got (%v,%v)", out, err)
 		}
@@ -33,7 +31,7 @@ func TestEncryptSecretRef(t *testing.T) {
 
 	t.Run("plaintext is encrypted and round-trips", func(t *testing.T) {
 		const secret = "oIC8Q~263EHzIfRlOtV8MQTZnLdHdrb4I~~Jydv2" // Azure-style, contains ~
-		out, err := EncryptSecretRef(enc, ptr(secret))
+		out, err := EncryptSecretRef(enc, new(secret))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -50,7 +48,7 @@ func TestEncryptSecretRef(t *testing.T) {
 	})
 
 	t.Run("encrypt: directive is stripped before encrypting", func(t *testing.T) {
-		out, err := EncryptSecretRef(enc, ptr("encrypt:mysecret"))
+		out, err := EncryptSecretRef(enc, new("encrypt:mysecret"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -63,7 +61,7 @@ func TestEncryptSecretRef(t *testing.T) {
 	t.Run("already-encrypted is idempotent", func(t *testing.T) {
 		blob, _ := enc.Encrypt("x")
 		in := "encrypted:" + blob
-		out, err := EncryptSecretRef(enc, ptr(in))
+		out, err := EncryptSecretRef(enc, new(in))
 		if err != nil || *out != in {
 			t.Fatalf("already-encrypted must pass through unchanged, got %q (%v)", *out, err)
 		}
@@ -71,7 +69,7 @@ func TestEncryptSecretRef(t *testing.T) {
 
 	t.Run("external refs pass through unchanged", func(t *testing.T) {
 		for _, ref := range []string{"aws-sm://name", "aws-ps://p", "gcp-sm://s", "vault://path#k", "env://VAR"} {
-			out, err := EncryptSecretRef(enc, ptr(ref))
+			out, err := EncryptSecretRef(enc, new(ref))
 			if err != nil || *out != ref {
 				t.Fatalf("external ref %q must pass through, got %q (%v)", ref, *out, err)
 			}
@@ -79,7 +77,7 @@ func TestEncryptSecretRef(t *testing.T) {
 	})
 
 	t.Run("plaintext with nil service is rejected, never stored raw", func(t *testing.T) {
-		out, err := EncryptSecretRef(nil, ptr("plaintext-secret"))
+		out, err := EncryptSecretRef(nil, new("plaintext-secret"))
 		if err == nil || out != nil {
 			t.Fatalf("want ErrNotConfigured, got (%v,%v)", out, err)
 		}

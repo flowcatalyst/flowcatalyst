@@ -56,10 +56,7 @@ func (p Policy) ComputeDelaySecs(failureCount uint32) uint32 {
 	if failureCount <= p.FreeAttempts {
 		return 0
 	}
-	exponent := failureCount - p.FreeAttempts - 1
-	if exponent > 31 {
-		exponent = 31
-	}
+	exponent := min(failureCount-p.FreeAttempts-1, 31)
 	scaled := uint64(p.BaseDelaySecs) << exponent
 	if scaled > uint64(p.MaxDelaySecs) {
 		return p.MaxDelaySecs
@@ -143,10 +140,7 @@ func Check(ctx context.Context, repo statsRepo, policy Policy, identifier, ip st
 			if lastFailure != nil {
 				last = *lastFailure
 			}
-			elapsed := int64(now.Sub(last).Seconds())
-			if elapsed < 0 {
-				elapsed = 0
-			}
+			elapsed := max(int64(now.Sub(last).Seconds()), 0)
 			if uint32(elapsed) < required {
 				return Decision{Allowed: false, RetryAfterSecs: required - uint32(elapsed), Reason: ReasonPairBackoff}, nil
 			}
@@ -171,10 +165,7 @@ func Check(ctx context.Context, repo statsRepo, policy Policy, identifier, ip st
 	// Search back far enough to catch any trip whose derived expiry could
 	// still be in the future; a trip older than that has certainly expired
 	// either way, so it's safe to miss.
-	searchWindowSecs := policy.GlobalWindowSecs
-	if policy.GlobalLockSecs > searchWindowSecs {
-		searchWindowSecs = policy.GlobalLockSecs
-	}
+	searchWindowSecs := max(policy.GlobalLockSecs, policy.GlobalWindowSecs)
 	searchSince := now.Add(-time.Duration(searchWindowSecs) * time.Second)
 	if lastSuccessCutoff.After(searchSince) {
 		searchSince = lastSuccessCutoff
@@ -191,13 +182,7 @@ func Check(ctx context.Context, repo statsRepo, policy Policy, identifier, ip st
 			end = countEnds
 		}
 		if now.Before(end) {
-			retrySecs := int64(math.Ceil(end.Sub(now).Seconds()))
-			if retrySecs < 1 {
-				retrySecs = 1
-			}
-			if retrySecs > math.MaxUint32 {
-				retrySecs = math.MaxUint32
-			}
+			retrySecs := min(max(int64(math.Ceil(end.Sub(now).Seconds())), 1), math.MaxUint32)
 			return Decision{Allowed: false, RetryAfterSecs: uint32(retrySecs), Reason: ReasonGlobalCeiling}, nil
 		}
 	}

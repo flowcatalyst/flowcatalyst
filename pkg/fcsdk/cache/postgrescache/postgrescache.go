@@ -53,7 +53,7 @@ func (c *Cache) GetBytes(ctx context.Context, key string) ([]byte, bool, error) 
 		return nil, false, nil
 	}
 	if err != nil {
-		return nil, false, fmt.Errorf("%w: %s", cache.ErrBackend, err)
+		return nil, false, fmt.Errorf("%w: %w", cache.ErrBackend, err)
 	}
 	return value, true, nil
 }
@@ -70,7 +70,7 @@ func (c *Cache) SetBytes(ctx context.Context, key string, value []byte, ttl time
 	)
 	expiresAt := time.Now().Add(ttl)
 	if _, err := c.pool.Exec(ctx, sql, key, value, expiresAt); err != nil {
-		return fmt.Errorf("%w: %s", cache.ErrBackend, err)
+		return fmt.Errorf("%w: %w", cache.ErrBackend, err)
 	}
 	return nil
 }
@@ -79,7 +79,7 @@ func (c *Cache) SetBytes(ctx context.Context, key string, value []byte, ttl time
 func (c *Cache) Delete(ctx context.Context, key string) error {
 	sql := fmt.Sprintf("DELETE FROM %s WHERE key = $1", c.table)
 	if _, err := c.pool.Exec(ctx, sql, key); err != nil {
-		return fmt.Errorf("%w: %s", cache.ErrBackend, err)
+		return fmt.Errorf("%w: %w", cache.ErrBackend, err)
 	}
 	return nil
 }
@@ -90,7 +90,7 @@ func (c *Cache) ReapExpired(ctx context.Context) (int64, error) {
 	sql := fmt.Sprintf("DELETE FROM %s WHERE expires_at <= NOW()", c.table)
 	tag, err := c.pool.Exec(ctx, sql)
 	if err != nil {
-		return 0, fmt.Errorf("%w: %s", cache.ErrBackend, err)
+		return 0, fmt.Errorf("%w: %w", cache.ErrBackend, err)
 	}
 	return tag.RowsAffected(), nil
 }
@@ -115,7 +115,7 @@ func InitSchema(ctx context.Context, pool *pgxpool.Pool) error {
 // InitSchemaWithTable creates the cache table with a custom name.
 func InitSchemaWithTable(ctx context.Context, pool *pgxpool.Pool, table string) error {
 	sql := strings.ReplaceAll(CreateTableSQL, "{table}", table)
-	for _, stmt := range strings.Split(sql, ";") {
+	for stmt := range strings.SplitSeq(sql, ";") {
 		trimmed := strings.TrimSpace(stmt)
 		if trimmed == "" {
 			continue

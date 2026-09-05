@@ -2,6 +2,7 @@ package passwordhash
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -22,7 +23,7 @@ func TestVerifyBcryptAndNeedsRehash(t *testing.T) {
 		if err := Verify("S3cret!", h); err != nil {
 			t.Fatalf("bcrypt verify (correct) %q: %v", h[:4], err)
 		}
-		if err := Verify("wrong", h); err != ErrMismatch {
+		if err := Verify("wrong", h); !errors.Is(err, ErrMismatch) {
 			t.Fatalf("bcrypt verify (wrong) %q: got %v, want ErrMismatch", h[:4], err)
 		}
 		if !NeedsRehash(h) {
@@ -42,7 +43,7 @@ func TestHashRoundTrip(t *testing.T) {
 	if err := Verify("correct horse battery staple", encoded); err != nil {
 		t.Errorf("Verify on correct password: %v", err)
 	}
-	if err := Verify("wrong", encoded); err != ErrMismatch {
+	if err := Verify("wrong", encoded); !errors.Is(err, ErrMismatch) {
 		t.Errorf("Verify wrong: got %v, want ErrMismatch", err)
 	}
 }
@@ -65,7 +66,7 @@ func TestVerifyInvalidEnvelope(t *testing.T) {
 		"$argon2id$v=18$m=64,t=1,p=4$AAAA$AAAA", // wrong version
 		"$argon2id$v=19$m=64,t=1,p=4$!!!!$AAAA", // bad base64 salt
 	} {
-		if err := Verify("x", bad); err != ErrInvalidHash {
+		if err := Verify("x", bad); !errors.Is(err, ErrInvalidHash) {
 			t.Errorf("Verify(%q): got %v, want ErrInvalidHash", bad, err)
 		}
 	}
@@ -86,7 +87,7 @@ func TestVerifyArgon2iAndNeedsRehash(t *testing.T) {
 	if err := Verify("S3cret!", argon2iHash); err != nil {
 		t.Fatalf("argon2i verify (correct password): %v", err)
 	}
-	if err := Verify("wrong", argon2iHash); err != ErrMismatch {
+	if err := Verify("wrong", argon2iHash); !errors.Is(err, ErrMismatch) {
 		t.Fatalf("argon2i verify (wrong password): got %v, want ErrMismatch", err)
 	}
 	if !NeedsRehash(argon2iHash) {

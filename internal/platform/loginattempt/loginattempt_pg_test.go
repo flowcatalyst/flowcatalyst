@@ -242,7 +242,7 @@ func TestGlobalCeilingTrippedAt_FindsTheCeilingThMostRecentFailure(t *testing.T)
 	// 5 failures, 10s apart: base, base+10s, base+20s, base+30s, base+40s
 	// (oldest to newest).
 	var stamps []time.Time
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		ts := base.Add(time.Duration(i) * 10 * time.Second)
 		stamps = append(stamps, ts)
 		seedFailure(t, ctx, repo, identifier, ts)

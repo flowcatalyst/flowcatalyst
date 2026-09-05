@@ -92,8 +92,7 @@ func (e *Error) WithDetails(details map[string]any) *Error {
 
 // AsError extracts a *Error from any error in the chain. Returns nil if absent.
 func AsError(err error) *Error {
-	var e *Error
-	if errors.As(err, &e) {
+	if e, ok := errors.AsType[*Error](err); ok {
 		return e
 	}
 	return nil

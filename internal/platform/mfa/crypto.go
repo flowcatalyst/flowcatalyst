@@ -124,11 +124,11 @@ func randomDigits(n int) (string, error) {
 func randomRecoveryCode() (string, error) {
 	const groupLen = 5
 	out := make([]byte, 0, groupLen*2+1)
-	for g := 0; g < 2; g++ {
+	for g := range 2 {
 		if g > 0 {
 			out = append(out, '-')
 		}
-		for i := 0; i < groupLen; i++ {
+		for range groupLen {
 			c, err := randomAlphabetChar(recoveryAlphabet)
 			if err != nil {
 				return "", err

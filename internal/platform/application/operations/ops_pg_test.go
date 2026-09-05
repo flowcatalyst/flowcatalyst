@@ -37,8 +37,6 @@ func TestMain(m *testing.M) {
 	testpg.RunMain(m)
 }
 
-func ptr(s string) *string { return &s }
-
 // runAuthorized drives op through the full use-case envelope (Validate →
 // Authorize → Execute → atomic commit) as an anchor principal — the common
 // case for these tests, which exercise validation, invariants, and
@@ -85,8 +83,8 @@ func TestCreateApplication_HappyPath(t *testing.T) {
 	ev, err := runAuthorized(uow, operations.CreateApplication(repo), operations.CreateCommand{
 		Code:        "  AppCreate-Happy1  ",
 		Name:        "  First App  ",
-		Description: ptr("the first"),
-		Website:     ptr("https://example.com"),
+		Description: new("the first"),
+		Website:     new("https://example.com"),
 	})
 	require.NoError(t, err)
 
@@ -170,8 +168,8 @@ func TestUpdateApplication_HappyPath(t *testing.T) {
 
 	ev, err := runAuthorized(uow, operations.UpdateApplication(repo), operations.UpdateCommand{
 		ID:          seeded.ApplicationID,
-		Name:        ptr("  After  "),
-		Description: ptr("after"),
+		Name:        new("  After  "),
+		Description: new("after"),
 	})
 	require.NoError(t, err)
 	assert.Equal(t, seeded.ApplicationID, ev.ApplicationID)
@@ -197,9 +195,9 @@ func TestUpdateApplication_Errors(t *testing.T) {
 		kind usecase.Kind
 		code string
 	}{
-		{"missing id", operations.UpdateCommand{Name: ptr("X")}, usecase.KindValidation, "ID_REQUIRED"},
-		{"blank name", operations.UpdateCommand{ID: "app_doesnotexist1", Name: ptr("  ")}, usecase.KindValidation, "NAME_REQUIRED"},
-		{"unknown id", operations.UpdateCommand{ID: "app_doesnotexist1", Name: ptr("X")}, usecase.KindNotFound, "Application_NOT_FOUND"},
+		{"missing id", operations.UpdateCommand{Name: new("X")}, usecase.KindValidation, "ID_REQUIRED"},
+		{"blank name", operations.UpdateCommand{ID: "app_doesnotexist1", Name: new("  ")}, usecase.KindValidation, "NAME_REQUIRED"},
+		{"unknown id", operations.UpdateCommand{ID: "app_doesnotexist1", Name: new("X")}, usecase.KindNotFound, "Application_NOT_FOUND"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

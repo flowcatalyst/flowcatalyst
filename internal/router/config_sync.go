@@ -56,7 +56,7 @@ type ConfigSource struct {
 // NewConfigSource builds a source from a (possibly comma-separated) URL.
 func NewConfigSource(url string) *ConfigSource {
 	var urls []string
-	for _, u := range strings.Split(url, ",") {
+	for u := range strings.SplitSeq(url, ",") {
 		if u = strings.TrimSpace(u); u != "" {
 			urls = append(urls, u)
 		}

@@ -20,8 +20,6 @@ import (
 
 func TestMain(m *testing.M) { testpg.RunMain(m) }
 
-func ptr[T any](v T) *T { return &v }
-
 // runAuthorized drives op through the full use-case envelope (Validate →
 // Authorize → Execute → atomic commit) as an anchor principal — the common
 // case for these tests, which exercise validation, invariants, and
@@ -96,8 +94,8 @@ func TestCreateDispatchPool_HappyPath(t *testing.T) {
 	ev, err = runAuthorized(uow, operations.CreateDispatchPool(repo), operations.CreateCommand{
 		Code:        "dpcreate-explicit",
 		Name:        "DP Create Explicit",
-		RateLimit:   ptr(int32(0)),
-		Concurrency: ptr(int32(1)),
+		RateLimit:   new(int32(0)),
+		Concurrency: new(int32(1)),
 	})
 	require.NoError(t, err)
 
@@ -149,10 +147,10 @@ func TestCreateDispatchPool_Validation(t *testing.T) {
 		{"code with space", operations.CreateCommand{Code: "bad code", Name: "X"}, "INVALID_CODE_FORMAT"},
 		{"empty name", operations.CreateCommand{Code: "dpcrt-noname"}, "NAME_REQUIRED"},
 		{"zero concurrency", operations.CreateCommand{
-			Code: "dpcrt-conc", Name: "X", Concurrency: ptr(int32(0)),
+			Code: "dpcrt-conc", Name: "X", Concurrency: new(int32(0)),
 		}, "INVALID_CONCURRENCY"},
 		{"negative rate limit", operations.CreateCommand{
-			Code: "dpcrt-rate", Name: "X", RateLimit: ptr(int32(-1)),
+			Code: "dpcrt-rate", Name: "X", RateLimit: new(int32(-1)),
 		}, "INVALID_RATE_LIMIT"},
 	}
 	for _, tc := range cases {
@@ -226,10 +224,10 @@ func TestUpdateDispatchPool_HappyPath(t *testing.T) {
 	desc := "after"
 	ev, err := runAuthorized(uow, operations.UpdateDispatchPool(repo), operations.UpdateCommand{
 		ID:          seeded.PoolID,
-		Name:        ptr("  After  "), // op must trim
+		Name:        new("  After  "), // op must trim
 		Description: &desc,
-		RateLimit:   ptr(int32(60)),
-		Concurrency: ptr(int32(4)),
+		RateLimit:   new(int32(60)),
+		Concurrency: new(int32(4)),
 	})
 	require.NoError(t, err)
 	assert.Equal(t, seeded.PoolID, ev.PoolID)
@@ -258,15 +256,15 @@ func TestUpdateDispatchPool_Errors(t *testing.T) {
 		kind usecase.Kind
 		code string
 	}{
-		{"missing id", operations.UpdateCommand{Name: ptr("X")}, usecase.KindValidation, "ID_REQUIRED"},
-		{"blank name", operations.UpdateCommand{ID: "dpl_doesnotexist1", Name: ptr(" ")}, usecase.KindValidation, "NAME_REQUIRED"},
+		{"missing id", operations.UpdateCommand{Name: new("X")}, usecase.KindValidation, "ID_REQUIRED"},
+		{"blank name", operations.UpdateCommand{ID: "dpl_doesnotexist1", Name: new(" ")}, usecase.KindValidation, "NAME_REQUIRED"},
 		{"zero concurrency", operations.UpdateCommand{
-			ID: "dpl_doesnotexist1", Concurrency: ptr(int32(0)),
+			ID: "dpl_doesnotexist1", Concurrency: new(int32(0)),
 		}, usecase.KindValidation, "INVALID_CONCURRENCY"},
 		{"negative rate limit", operations.UpdateCommand{
-			ID: "dpl_doesnotexist1", RateLimit: ptr(int32(-1)),
+			ID: "dpl_doesnotexist1", RateLimit: new(int32(-1)),
 		}, usecase.KindValidation, "INVALID_RATE_LIMIT"},
-		{"unknown id", operations.UpdateCommand{ID: "dpl_doesnotexist1", Name: ptr("X")}, usecase.KindNotFound, "DispatchPool_NOT_FOUND"},
+		{"unknown id", operations.UpdateCommand{ID: "dpl_doesnotexist1", Name: new("X")}, usecase.KindNotFound, "DispatchPool_NOT_FOUND"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -403,7 +401,7 @@ func TestSyncDispatchPools_Upsert(t *testing.T) {
 		ApplicationCode: "dpsyncapp",
 		Pools: []operations.SyncDispatchPoolInput{
 			{Code: "dpsynup-one", Name: "A", Concurrency: 5},
-			{Code: "dpsynup-two", Name: "B", Concurrency: 1, RateLimit: ptr(int32(1))},
+			{Code: "dpsynup-two", Name: "B", Concurrency: 1, RateLimit: new(int32(1))},
 		},
 	}, ec)
 	require.NoError(t, err)
@@ -415,7 +413,7 @@ func TestSyncDispatchPools_Upsert(t *testing.T) {
 	second, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncDispatchPools(repo), operations.SyncDispatchPoolsCommand{
 		ApplicationCode: "dpsyncapp",
 		Pools: []operations.SyncDispatchPoolInput{
-			{Code: "dpsynup-one", Name: "A renamed", Concurrency: 7, RateLimit: ptr(int32(60))},
+			{Code: "dpsynup-one", Name: "A renamed", Concurrency: 7, RateLimit: new(int32(60))},
 		},
 	}, ec)
 	require.NoError(t, err)
@@ -564,7 +562,7 @@ func TestSyncDispatchPools_Validation(t *testing.T) {
 		{"zero rate limit", operations.SyncDispatchPoolsCommand{
 			ApplicationCode: "dpsyncval",
 			Pools: []operations.SyncDispatchPoolInput{
-				{Code: "dpsyncval-rate", Name: "X", Concurrency: 1, RateLimit: ptr(int32(0))},
+				{Code: "dpsyncval-rate", Name: "X", Concurrency: 1, RateLimit: new(int32(0))},
 			},
 		}, "INVALID_RATE_LIMIT"},
 		{"zero concurrency", operations.SyncDispatchPoolsCommand{

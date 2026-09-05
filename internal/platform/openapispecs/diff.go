@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -201,12 +202,7 @@ func setIntersection(a, b []string) []string {
 }
 
 func contains(haystack []string, needle string) bool {
-	for _, x := range haystack {
-		if x == needle {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(haystack, needle)
 }
 
 func renderSummary(n ChangeNotes) string {

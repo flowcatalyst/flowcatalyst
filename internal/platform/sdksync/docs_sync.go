@@ -106,7 +106,7 @@ func docTitle(d syncDocInputRequest, slug string) string {
 	if d.Title != nil && strings.TrimSpace(*d.Title) != "" {
 		return strings.TrimSpace(*d.Title)
 	}
-	for _, line := range strings.Split(d.Content, "\n") {
+	for line := range strings.SplitSeq(d.Content, "\n") {
 		if after, ok := strings.CutPrefix(strings.TrimSpace(line), "# "); ok {
 			return strings.TrimSpace(after)
 		}

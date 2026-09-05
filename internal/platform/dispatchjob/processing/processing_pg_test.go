@@ -200,9 +200,9 @@ func TestProcess_AlreadyTerminalAcksWithoutRedelivery(t *testing.T) {
 	pool := testpg.Pool(t)
 	base, auth := harness(t, pool)
 
-	var hits int32
+	var hits atomic.Int32
 	sub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		atomic.AddInt32(&hits, 1)
+		hits.Add(1)
 		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(sub.Close)
@@ -215,7 +215,7 @@ func TestProcess_AlreadyTerminalAcksWithoutRedelivery(t *testing.T) {
 	code, out := callProcess(t, base, "djproc_term", auth.Sign("djproc_term"))
 	assert.Equal(t, http.StatusOK, code)
 	assert.Equal(t, true, out["ack"])
-	assert.EqualValues(t, 0, atomic.LoadInt32(&hits), "terminal job is not re-delivered")
+	assert.EqualValues(t, 0, hits.Load(), "terminal job is not re-delivered")
 }
 
 // TestProcess_SignsSubscriberDelivery pins the subscriber-webhook signature:

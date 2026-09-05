@@ -282,10 +282,7 @@ func (h *Handler) advance(ctx context.Context, job *dispatchjob.DispatchJob, att
 }
 
 func backoffFor(attemptNumber int32) time.Duration {
-	i := int(attemptNumber) - 1
-	if i < 0 {
-		i = 0
-	}
+	i := max(int(attemptNumber)-1, 0)
 	if i >= len(retryBackoff) {
 		i = len(retryBackoff) - 1
 	}

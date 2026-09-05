@@ -76,7 +76,7 @@ func (i *Issuer) Mint(subject string, purpose Purpose, ttl time.Duration) (strin
 // Parse validates the signature, expiry, issuer and that the purpose matches
 // want. Returns the claims on success.
 func (i *Issuer) Parse(token string, want Purpose) (*Claims, error) {
-	parsed, err := jwt.Parse(token, func(t *jwt.Token) (interface{}, error) {
+	parsed, err := jwt.Parse(token, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method %v", t.Header["alg"])
 		}

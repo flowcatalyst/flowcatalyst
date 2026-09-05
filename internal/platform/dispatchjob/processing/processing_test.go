@@ -11,19 +11,17 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 )
 
-func strp(s string) *string { return &s }
-
 func TestBuildPayload_Envelope(t *testing.T) {
 	job := &dispatchjob.DispatchJob{
 		ID:            "dsj_1",
 		Code:          "app:sub:agg:created",
-		Source:        strp("svc"),
-		Subject:       strp("order/42"),
-		CorrelationID: strp("corr_1"),
-		ClientID:      strp("clt_1"),
-		MessageGroup:  strp("grp_1"),
+		Source:        new("svc"),
+		Subject:       new("order/42"),
+		CorrelationID: new("corr_1"),
+		ClientID:      new("clt_1"),
+		MessageGroup:  new("grp_1"),
 		AttemptCount:  2,
-		Payload:       strp(`{"amount":100}`),
+		Payload:       new(`{"amount":100}`),
 	}
 	var env map[string]any
 	require.NoError(t, json.Unmarshal(buildPayload(job), &env))
@@ -43,7 +41,7 @@ func TestBuildPayload_Envelope(t *testing.T) {
 }
 
 func TestBuildPayload_DataOnly(t *testing.T) {
-	job := &dispatchjob.DispatchJob{DataOnly: true, Payload: strp(`{"raw":true}`)}
+	job := &dispatchjob.DispatchJob{DataOnly: true, Payload: new(`{"raw":true}`)}
 	assert.JSONEq(t, `{"raw":true}`, string(buildPayload(job)))
 
 	// Data-only with no payload still produces valid JSON.
@@ -53,7 +51,7 @@ func TestBuildPayload_DataOnly(t *testing.T) {
 func TestBuildPayload_NonJSONPayload(t *testing.T) {
 	// A payload that isn't JSON passes through as a string rather than being
 	// silently dropped.
-	job := &dispatchjob.DispatchJob{Code: "x", Payload: strp("not-json")}
+	job := &dispatchjob.DispatchJob{Code: "x", Payload: new("not-json")}
 	var env map[string]any
 	require.NoError(t, json.Unmarshal(buildPayload(job), &env))
 	assert.Equal(t, "not-json", env["data"])

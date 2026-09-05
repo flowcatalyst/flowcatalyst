@@ -21,8 +21,6 @@ import (
 
 func TestMain(m *testing.M) { testpg.RunMain(m) }
 
-func ptr(s string) *string { return &s }
-
 // runAuthorized drives op through the full use-case envelope (Validate →
 // Authorize → Execute → atomic commit) as an anchor principal — the common
 // case for these tests, which exercise validation, invariants, and
@@ -111,7 +109,7 @@ func TestCreateRole_HappyPath(t *testing.T) {
 		ApplicationCode: "rolecrt",
 		RoleName:        "editor",
 		DisplayName:     "Document Editor",
-		Description:     ptr("Edits documents"),
+		Description:     new("Edits documents"),
 		Permissions:     []string{"rolecrt:doc:edit:*", "rolecrt:doc:read:*"},
 		ClientManaged:   true,
 	})
@@ -183,8 +181,8 @@ func TestUpdateRole_HappyPath(t *testing.T) {
 	cm := true
 	ev, err := runAuthorized(uow, operations.UpdateRole(repo), operations.UpdateCommand{
 		ID:            seeded.RoleID,
-		DisplayName:   ptr("  After  "),
-		Description:   ptr("after"),
+		DisplayName:   new("  After  "),
+		Description:   new("after"),
 		Permissions:   []string{"roleupd:doc:read:*", "roleupd:doc:list:*"},
 		ClientManaged: &cm,
 	})
@@ -214,9 +212,9 @@ func TestUpdateRole_Errors(t *testing.T) {
 		kind usecase.Kind
 		code string
 	}{
-		{"missing id", operations.UpdateCommand{DisplayName: ptr("X")}, usecase.KindValidation, "ID_REQUIRED"},
-		{"blank display name", operations.UpdateCommand{ID: "rol_doesnotexist1", DisplayName: ptr("  ")}, usecase.KindValidation, "DISPLAY_NAME_REQUIRED"},
-		{"unknown id", operations.UpdateCommand{ID: "rol_doesnotexist1", DisplayName: ptr("X")}, usecase.KindNotFound, "Role_NOT_FOUND"},
+		{"missing id", operations.UpdateCommand{DisplayName: new("X")}, usecase.KindValidation, "ID_REQUIRED"},
+		{"blank display name", operations.UpdateCommand{ID: "rol_doesnotexist1", DisplayName: new("  ")}, usecase.KindValidation, "DISPLAY_NAME_REQUIRED"},
+		{"unknown id", operations.UpdateCommand{ID: "rol_doesnotexist1", DisplayName: new("X")}, usecase.KindNotFound, "Role_NOT_FOUND"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -234,7 +232,7 @@ func TestUpdateRole_CodeRole_Immutable(t *testing.T) {
 	seedRawRole(t, "rol_immupdate0001", "roleimm:update-target", "Immutable Upd", "CODE", nil)
 
 	_, err := runAuthorized(uow, operations.UpdateRole(repo), operations.UpdateCommand{
-		ID: "rol_immupdate0001", DisplayName: ptr("Hacked"),
+		ID: "rol_immupdate0001", DisplayName: new("Hacked"),
 	})
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "CODE_ROLE_IMMUTABLE")
 
@@ -434,13 +432,13 @@ func TestSyncRoles_UpsertPreserveAndRemoveUnlisted(t *testing.T) {
 
 	// Non-SDK row in the same application scope: sync must NEVER touch it,
 	// even when its name appears in the payload.
-	seedRawRole(t, "rol_syncmanual001", appCode+":manual", "Manual Row", "DATABASE", ptr(appID))
+	seedRawRole(t, "rol_syncmanual001", appCode+":manual", "Manual Row", "DATABASE", new(appID))
 
 	first, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncRoles(repo), operations.SyncRolesCommand{
 		ApplicationCode: appCode,
 		ApplicationID:   appID,
 		Roles: []operations.SyncRoleInput{
-			{Name: "Editor", DisplayName: ptr("Doc Editor"), Permissions: []string{appCode + ":doc:edit:*"}},
+			{Name: "Editor", DisplayName: new("Doc Editor"), Permissions: []string{appCode + ":doc:edit:*"}},
 			{Name: "Viewer"},
 		},
 	}, ec)
@@ -567,7 +565,7 @@ func TestSyncPlatformRoles_CatalogueLifecycle(t *testing.T) {
 	mkTest := func(roleName, displayName string) role.Role {
 		r := role.New("roleplat", roleName, displayName)
 		r.Source = role.SourceCode
-		r.Description = ptr("platform-sync test role")
+		r.Description = new("platform-sync test role")
 		r.Permissions = []string{"roleplat:thing:read:*"}
 		return *r
 	}

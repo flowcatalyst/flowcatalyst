@@ -413,7 +413,7 @@ func rowToOAuthClient(row dbq.OauthClient) (*OAuthClient, error) {
 		ApplicationIDs:           []string{},
 	}
 	if row.DefaultScopes != nil && *row.DefaultScopes != "" {
-		for _, sc := range strings.Split(*row.DefaultScopes, ",") {
+		for sc := range strings.SplitSeq(*row.DefaultScopes, ",") {
 			if sc != "" {
 				c.Scopes = append(c.Scopes, sc)
 			}

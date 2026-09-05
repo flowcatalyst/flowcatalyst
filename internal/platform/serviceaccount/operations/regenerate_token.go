@@ -80,7 +80,7 @@ func generateAuthToken() string {
 	max := big.NewInt(int64(len(alphabet)))
 	var sb strings.Builder
 	sb.WriteString("fc_")
-	for i := 0; i < 32; i++ {
+	for range 32 {
 		n, err := rand.Int(rand.Reader, max)
 		if err != nil {
 			// crypto/rand failures are catastrophic. Fall through to a
