@@ -174,6 +174,7 @@ func (e SubscriptionsSynced) MessageGroup() string {
 	}
 	return "platform:subscriptions:" + e.ApplicationCode
 }
+
 func (e SubscriptionsSynced) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		ApplicationCode string   `json:"applicationCode"`

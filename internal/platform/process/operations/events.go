@@ -149,6 +149,7 @@ func (e ProcessesSynced) MessageGroup() string {
 	}
 	return "platform:processes:" + e.ApplicationCode
 }
+
 func (e ProcessesSynced) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		ApplicationCode string   `json:"applicationCode"`

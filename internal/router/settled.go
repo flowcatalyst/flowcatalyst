@@ -167,7 +167,7 @@ func (r *HTTPSettledReporter) ReportSettled(ctx context.Context, report SettledR
 func (r *HTTPSettledReporter) postChunk(ctx context.Context, reason string, jobs []SettledJob) error {
 	wireJobs := make([]settledWireJob, len(jobs))
 	for i, j := range jobs {
-		wireJobs[i] = settledWireJob{ID: j.ID, Token: j.Token}
+		wireJobs[i] = settledWireJob(j)
 	}
 	body, err := json.Marshal(settledWireRequest{Reason: reason, Jobs: wireJobs})
 	if err != nil {

@@ -381,6 +381,7 @@ func (e PrincipalsSynced) MessageGroup() string {
 	}
 	return "platform:principals:" + e.ApplicationCode
 }
+
 func (e PrincipalsSynced) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		ApplicationCode string   `json:"applicationCode"`

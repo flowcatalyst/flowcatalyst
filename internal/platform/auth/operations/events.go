@@ -228,6 +228,7 @@ func (e OAuthClientPreviousSecretRevoked) CorrelationID() string {
 func (e OAuthClientPreviousSecretRevoked) CausationID() string  { return e.Metadata.CausationID }
 func (e OAuthClientPreviousSecretRevoked) ExecutionID() string  { return e.Metadata.ExecutionID }
 func (e OAuthClientPreviousSecretRevoked) MessageGroup() string { return oauthGroup(e.OAuthClientID) }
+
 func (e OAuthClientPreviousSecretRevoked) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		ID string `json:"oauthClientId"`

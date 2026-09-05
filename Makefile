@@ -192,7 +192,7 @@ release-java-sdk: ## Cut a Java SDK release: BUMP=… (bumps pom.xml, tags java-
 install-tools: ## Install dev tools (air, gotestsum, golangci-lint, sqlc)
 	$(GO) install github.com/air-verse/air@latest
 	$(GO) install gotest.tools/gotestsum@latest
-	$(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 	$(GO) install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
 	@echo ">> tools installed to $$($(GO) env GOPATH)/bin — ensure it's on your PATH"
 

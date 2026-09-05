@@ -130,6 +130,7 @@ func (e RolesSynced) MessageGroup() string {
 	}
 	return "platform:roles:" + e.ApplicationCode
 }
+
 func (e RolesSynced) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		Created         uint32   `json:"created"`
