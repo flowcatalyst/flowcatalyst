@@ -144,13 +144,22 @@ func (s *AuditBatchState) batchIngest(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// Absent principalId attributes the entry to the ingesting principal
+		// (usually the application's service account) so the by-principal
+		// filter still finds it.
+		principalID := it.PrincipalID
+		if (principalID == nil || *principalID == "") && ac.PrincipalID != "" {
+			id := ac.PrincipalID
+			principalID = &id
+		}
+
 		log := &audit.Log{
 			ID:            tsid.Generate(tsid.AuditLog),
 			EntityType:    it.EntityType,
 			EntityID:      it.EntityID,
 			Operation:     it.Operation,
 			OperationJSON: it.OperationData,
-			PrincipalID:   it.PrincipalID,
+			PrincipalID:   principalID,
 			ApplicationID: applicationID,
 			ClientID:      clientID,
 			PerformedAt:   performedAt,

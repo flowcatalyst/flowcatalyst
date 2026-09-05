@@ -117,3 +117,48 @@ func TestInsertBatch_DedupCollisionDropsOnlyThatRow(t *testing.T) {
 		`SELECT COUNT(*) FROM msg_events WHERE type = 'dedup.test.event'`).Scan(&count))
 	assert.Equal(t, 2, count, "original + fresh row; collision dropped")
 }
+
+// TestInsertBatch_DedupAcrossRequests pins the real-world retry: the outbox
+// re-sends the same deduplication_id in a later request, so created_at
+// differs and the (deduplication_id, created_at) unique index cannot catch
+// it. InsertBatch must drop it anyway, and must also drop a repeat inside
+// one batch whose created_at differs (first occurrence wins).
+func TestInsertBatch_DedupAcrossRequests(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := event.NewRepository(pool)
+
+	mk := func(id, dedupID string, at time.Time) event.Event {
+		return event.Event{
+			ID: id, SpecVersion: "1.0", Type: "dedup.xreq.event",
+			Source: "test://dedup", Time: at, CreatedAt: at,
+			Data: []byte(`{"k":1}`), DeduplicationID: dedupID,
+		}
+	}
+	t0 := time.Now().UTC().Add(-time.Minute)
+
+	inserted, err := repo.InsertBatch(ctx, []event.Event{mk("evtxreq1", "xreq-1", t0)})
+	require.NoError(t, err)
+	require.Equal(t, 1, inserted)
+
+	// Later request, later created_at, same dedup id → dropped. A fresh id
+	// repeated within the batch with different timestamps → one row.
+	t1 := t0.Add(time.Second)
+	inserted, err = repo.InsertBatch(ctx, []event.Event{
+		mk("evtxreq2", "xreq-1", t1),
+		mk("evtxreq3", "xreq-2", t1),
+		mk("evtxreq4", "xreq-2", t1.Add(time.Millisecond)),
+		mk("evtxreq5", "", t1), // no dedup id → always kept
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 2, inserted, "xreq-2 once + the id-less event")
+
+	var count int
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM msg_events WHERE type = 'dedup.xreq.event'`).Scan(&count))
+	assert.Equal(t, 3, count)
+	var kept string
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT id FROM msg_events WHERE deduplication_id = 'xreq-2'`).Scan(&kept))
+	assert.Equal(t, "evtxreq3", kept, "first occurrence wins")
+}

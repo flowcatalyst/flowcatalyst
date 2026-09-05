@@ -473,7 +473,12 @@ func (s *State) handleClientCredentialsGrant(w http.ResponseWriter, r *http.Requ
 	}
 
 	if client.PrincipalID == nil {
-		writeOAuthError(w, http.StatusInternalServerError, "server_error", "Client not properly configured")
+		// A confidential client with no linked principal is a client-side
+		// misconfiguration (RFC 6749 §5.2), not a server fault — 400
+		// unauthorized_client, not 500.
+		reason := "Client not properly configured (no linked principal)"
+		s.recordAttempt(r.Context(), loginattempt.AttemptServiceAccountToken, loginattempt.OutcomeFailure, req.ClientID, nil, &reason)
+		writeOAuthError(w, http.StatusBadRequest, "unauthorized_client", "Client is not configured for this grant")
 		return
 	}
 	p, err := s.Principals.FindByID(r.Context(), *client.PrincipalID)
@@ -482,7 +487,12 @@ func (s *State) handleClientCredentialsGrant(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if p == nil {
-		writeOAuthError(w, http.StatusInternalServerError, "server_error", "Client not properly configured")
+		// Same client-side misconfiguration as above: the linked principal
+		// doesn't exist (dangling reference), so the client is still not
+		// configured for this grant — not a server fault.
+		reason := "Client not properly configured (linked principal not found)"
+		s.recordAttempt(r.Context(), loginattempt.AttemptServiceAccountToken, loginattempt.OutcomeFailure, req.ClientID, nil, &reason)
+		writeOAuthError(w, http.StatusBadRequest, "unauthorized_client", "Client is not configured for this grant")
 		return
 	}
 	if !p.Active {

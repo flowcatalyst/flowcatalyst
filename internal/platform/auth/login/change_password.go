@@ -150,6 +150,10 @@ func (e *Endpoint) handleChangePasswordSendEmailCode(w http.ResponseWriter, r *h
 		writeServerError(w, "MFA_STATUS_FAILED", "could not check two-factor status")
 		return
 	}
+	if len(confirmed) == 0 {
+		writeJSON(w, http.StatusBadRequest, errBody("NO_MFA", "two-factor is not enabled"))
+		return
+	}
 	if !slices.Contains(confirmed, mfa.MethodEmailPin) {
 		writeJSON(w, http.StatusBadRequest, errBody("NO_EMAIL_2FA", "email codes are not enabled for your account"))
 		return

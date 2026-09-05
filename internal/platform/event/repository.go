@@ -24,8 +24,27 @@ func NewRepository(pool *pgxpool.Pool) *Repository { return &Repository{pool: po
 
 // InsertBatch writes a batch of events to msg_events. Used by the
 // POST /api/events/batch endpoint that consumer apps' outbox processors
-// send to. Idempotent via deduplication_id.
+// send to. Idempotent via deduplication_id: an event whose deduplication_id
+// is already stored, or repeats one earlier in the same batch, is dropped
+// and not counted.
+//
+// The unique index on msg_events is (deduplication_id, created_at) because
+// the table is partitioned by created_at and Postgres requires the partition
+// key in every unique index. ON CONFLICT therefore only catches a repeat
+// that carries the identical created_at — which a retry of the same batch
+// never does, since created_at is stamped per request. So the real dedup
+// is the lookup below; ON CONFLICT DO NOTHING stays as the last line of
+// defence. There is a window between the lookup and the insert in which two
+// concurrent requests with the same deduplication_id both land; the outbox
+// retry that dedup exists for is sequential, so that window is accepted.
 func (r *Repository) InsertBatch(ctx context.Context, events []Event) (int, error) {
+	if len(events) == 0 {
+		return 0, nil
+	}
+	events, err := r.dropDuplicates(ctx, events)
+	if err != nil {
+		return 0, err
+	}
 	if len(events) == 0 {
 		return 0, nil
 	}
@@ -69,6 +88,49 @@ func (r *Repository) InsertBatch(ctx context.Context, events []Event) (int, erro
 		}
 	}
 	return inserted, nil
+}
+
+// dropDuplicates removes events whose deduplication_id is already stored
+// or repeats one earlier in the batch (first occurrence wins). Events with
+// no deduplication_id are always kept.
+func (r *Repository) dropDuplicates(ctx context.Context, events []Event) ([]Event, error) {
+	var ids []string
+	for _, e := range events {
+		if e.DeduplicationID != "" {
+			ids = append(ids, e.DeduplicationID)
+		}
+	}
+	if len(ids) == 0 {
+		return events, nil
+	}
+	seen := make(map[string]struct{}, len(ids))
+	rows, err := r.pool.Query(ctx,
+		`SELECT DISTINCT deduplication_id FROM msg_events WHERE deduplication_id = ANY($1)`, ids)
+	if err != nil {
+		return nil, fmt.Errorf("dedup lookup: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("dedup lookup scan: %w", err)
+		}
+		seen[id] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("dedup lookup: %w", err)
+	}
+	kept := events[:0:0]
+	for _, e := range events {
+		if e.DeduplicationID != "" {
+			if _, dup := seen[e.DeduplicationID]; dup {
+				continue
+			}
+			seen[e.DeduplicationID] = struct{}{}
+		}
+		kept = append(kept, e)
+	}
+	return kept, nil
 }
 
 // FindByID loads an event from the read table. `context` isn't denormalised
