@@ -244,7 +244,7 @@ own the rules.
 |---|---|
 | `cfe1237` | Go 1.27, alpine3.24 on every Docker stage, CI lint via goinstall, `install-tools` v2 path, five baseline lint findings |
 | `1df39d0` | `go fix` (unit + integration), 20 dead pointer helpers removed, `AsRouterError` → `errors.AsType`, all errorlint sites, `errorlint` + `modernize` enabled |
-| `<phase 2>` | sort → slices, keys → `slices.Sorted(maps.Keys)`, contains helpers → `slices.Contains`, `sync.OnceValue(s)`, `strings.Cut` |
+| `3d4062b` | sort → slices, keys → `slices.Sorted(maps.Keys)`, contains helpers → `slices.Contains`, `sync.OnceValue(s)`, `strings.Cut` |
 
 Verified after each commit: `make lint` (0 issues), unit suite, full integration
 suite (108 packages) after Phase 1 and the 18 touched packages after Phase 2,
