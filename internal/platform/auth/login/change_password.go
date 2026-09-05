@@ -95,6 +95,7 @@ func (e *Endpoint) handleChangePassword(w http.ResponseWriter, r *http.Request) 
 		if err := e.cfg.MFA.RevokeAllTrustedDevices(r.Context(), p.ID); err != nil {
 			slog.Warn("revoke trusted devices after password change failed", "principal", p.ID, "err", err)
 		}
+		e.clearTrustedDeviceCookie(w)
 	}
 	if e.cfg.RefreshTokens != nil {
 		if _, err := e.cfg.RefreshTokens.RevokeAllForPrincipal(r.Context(), p.ID); err != nil {

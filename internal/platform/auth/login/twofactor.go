@@ -456,6 +456,22 @@ func (e *Endpoint) rememberDevice(w http.ResponseWriter, r *http.Request, p *pri
 	e.cfg.Notifier.NewTrustedDevice(r.Context(), emailOf(p), labelStr)
 }
 
+// clearTrustedDeviceCookie expires the browser's trusted-device cookie. The
+// server-side revocation is what actually invalidates the device; this just
+// stops the client presenting a dead token on every login until it expires.
+// Attributes match rememberDevice's so the browser treats it as the same cookie.
+func (e *Endpoint) clearTrustedDeviceCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     e.trustedDeviceCookieName(),
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   e.cfg.CookieSecure,
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   -1,
+	})
+}
+
 func (e *Endpoint) trustedDeviceCookieName() string {
 	if e.cfg.CookieSecure {
 		return trustedDeviceCookieProd
