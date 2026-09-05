@@ -2283,6 +2283,10 @@
             "description": "Optional client scope; absent means anchor-level",
             "type": "string"
           },
+          "clientScoped": {
+            "description": "Events of this type are per-client",
+            "type": "boolean"
+          },
           "code": {
             "description": "Event type code in application:subdomain:aggregate:event format",
             "examples": [
@@ -2372,8 +2376,7 @@
         "required": [
           "code",
           "name",
-          "type",
-          "oidcMultiTenant"
+          "type"
         ],
         "type": "object"
       },
@@ -7846,6 +7849,10 @@
             "format": "uri",
             "readOnly": true,
             "type": "string"
+          },
+          "clientScoped": {
+            "description": "Events of this type are per-client; absent leaves it unchanged",
+            "type": "boolean"
           },
           "description": {
             "type": "string"

@@ -14,11 +14,13 @@ import (
 
 // CreateCommand is the input DTO for CreateEventType.
 type CreateCommand struct {
-	Code        string          `json:"code"`
-	Name        string          `json:"name"`
-	Description *string         `json:"description,omitempty"`
-	ClientID    *string         `json:"clientId,omitempty"`
-	Schema      json.RawMessage `json:"schema,omitempty"`
+	Code        string  `json:"code"`
+	Name        string  `json:"name"`
+	Description *string `json:"description,omitempty"`
+	ClientID    *string `json:"clientId,omitempty"`
+	// ClientScoped: events of this type are carried per client.
+	ClientScoped bool            `json:"clientScoped,omitempty"`
+	Schema       json.RawMessage `json:"schema,omitempty"`
 }
 
 // CreateEventType validates cmd, enforces per-resource client scope,
@@ -73,6 +75,7 @@ func CreateEventType(repo *eventtype.Repository) usecaseop.Operation[CreateComma
 			}
 			et.Description = cmd.Description
 			et.ClientID = cmd.ClientID
+			et.ClientScoped = cmd.ClientScoped
 			et.CreatedBy = &ec.PrincipalID
 			if len(cmd.Schema) > 0 {
 				et.AddSchemaVersion(eventtype.NewSpecVersion(et.ID, "1.0", cmd.Schema))

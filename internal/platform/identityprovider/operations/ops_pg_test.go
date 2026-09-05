@@ -113,6 +113,7 @@ func TestCreateIdentityProvider_HappyPath(t *testing.T) {
 	clientID := "idpcrt-client-id"
 	secretRef := "secret-ref-idpcrt"
 	pattern := "https://login\\.idpcrt\\.example\\.com/.*"
+	multiTenant := true
 	res, err := runAuthorizedTx(uow, operations.CreateIdentityProvider(d), operations.CreateCommand{
 		Code:                "idpcrt-happy",
 		Name:                "IdP Create Happy",
@@ -120,7 +121,7 @@ func TestCreateIdentityProvider_HappyPath(t *testing.T) {
 		OIDCIssuerURL:       &issuer,
 		OIDCClientID:        &clientID,
 		OIDCClientSecretRef: &secretRef,
-		OIDCMultiTenant:     true,
+		OIDCMultiTenant:     &multiTenant,
 		OIDCIssuerPattern:   &pattern,
 		AllowedEmailDomains: []string{"IDPCRT-A.Example.com", "idpcrt-b.example.com"}, // mixed case: op must lowercase
 		SyncRolesFromIDP:    true,

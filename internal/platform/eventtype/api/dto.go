@@ -15,32 +15,38 @@ import (
 
 // CreateEventTypeRequest is the wire body for POST /api/event-types.
 type CreateEventTypeRequest struct {
-	Code        string          `json:"code" doc:"Event type code in application:subdomain:aggregate:event format" example:"platform:iam:user:created"`
-	Name        string          `json:"name" doc:"Human-readable event type name"`
-	Description *string         `json:"description,omitempty"`
-	ClientID    *string         `json:"clientId,omitempty" doc:"Optional client scope; absent means anchor-level"`
-	Schema      json.RawMessage `json:"schema,omitempty" doc:"Optional JSON Schema for the initial spec version"`
+	Code        string  `json:"code" doc:"Event type code in application:subdomain:aggregate:event format" example:"platform:iam:user:created"`
+	Name        string  `json:"name" doc:"Human-readable event type name"`
+	Description *string `json:"description,omitempty"`
+	ClientID    *string `json:"clientId,omitempty" doc:"Optional client scope; absent means anchor-level"`
+	// ClientScoped marks events of this type as carried per client (the
+	// subscription editor only offers client-scoped types to client-scoped
+	// subscriptions). Distinct from ClientID, which scopes the row itself.
+	ClientScoped bool            `json:"clientScoped,omitempty" doc:"Events of this type are per-client"`
+	Schema       json.RawMessage `json:"schema,omitempty" doc:"Optional JSON Schema for the initial spec version"`
 }
 
 func (r CreateEventTypeRequest) toCommand() operations.CreateCommand {
 	return operations.CreateCommand{
-		Code:        r.Code,
-		Name:        r.Name,
-		Description: r.Description,
-		ClientID:    r.ClientID,
-		Schema:      r.Schema,
+		Code:         r.Code,
+		Name:         r.Name,
+		Description:  r.Description,
+		ClientID:     r.ClientID,
+		ClientScoped: r.ClientScoped,
+		Schema:       r.Schema,
 	}
 }
 
 // UpdateEventTypeRequest is the wire body for PUT /api/event-types/{id}.
 // The path id is authoritative — body.id is ignored by the handler.
 type UpdateEventTypeRequest struct {
-	Name        string  `json:"name"`
-	Description *string `json:"description,omitempty"`
+	Name         string  `json:"name"`
+	Description  *string `json:"description,omitempty"`
+	ClientScoped *bool   `json:"clientScoped,omitempty" doc:"Events of this type are per-client; absent leaves it unchanged"`
 }
 
 func (r UpdateEventTypeRequest) toCommand(id string) operations.UpdateCommand {
-	return operations.UpdateCommand{ID: id, Name: r.Name, Description: r.Description}
+	return operations.UpdateCommand{ID: id, Name: r.Name, Description: r.Description, ClientScoped: r.ClientScoped}
 }
 
 // AddSchemaRequest is the wire body for POST /api/event-types/{id}/schemas.
