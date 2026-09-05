@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -402,7 +402,7 @@ func (s *RolesState) rolePermissions(ctx context.Context, appCode string) ([]bff
 			out = append(out, entry)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Permission < out[j].Permission })
+	slices.SortFunc(out, func(a, b bffPermissionResponse) int { return strings.Compare(a.Permission, b.Permission) })
 	return out, nil
 }
 
@@ -655,7 +655,7 @@ func builtinPermissions() []bffPermissionResponse {
 	out = appendPerm(out, "platform", "messaging", "dispatch-pool", "create", "Create dispatch pools")
 	out = appendPerm(out, "platform", "messaging", "dispatch-pool", "update", "Update dispatch pools")
 	out = appendPerm(out, "platform", "messaging", "dispatch-pool", "delete", "Delete dispatch pools")
-	sort.Slice(out, func(i, j int) bool { return out[i].Permission < out[j].Permission })
+	slices.SortFunc(out, func(a, b bffPermissionResponse) int { return strings.Compare(a.Permission, b.Permission) })
 	return out
 }
 

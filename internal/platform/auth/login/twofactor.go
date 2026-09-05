@@ -369,7 +369,7 @@ func (e *Endpoint) auditMFA(ctx context.Context, principalID, operation string) 
 // its own recovery channel, so an email-only user never gets them.
 func (e *Endpoint) ensureRecoveryCodes(ctx context.Context, p *principal.Principal) []string {
 	confirmed, err := e.cfg.MFA.ConfirmedMethods(ctx, p.ID)
-	if err != nil || !containsMethodType(confirmed, mfa.MethodTOTP) {
+	if err != nil || !slices.Contains(confirmed, mfa.MethodTOTP) {
 		return nil
 	}
 	n, err := e.cfg.MFA.RemainingRecoveryCodes(ctx, p.ID)
@@ -418,7 +418,7 @@ func (e *Endpoint) methodAllowed(ctx context.Context, p *principal.Principal, t 
 	if mapping == nil || !mapping.Require2FA || !internal {
 		return true
 	}
-	return containsString(mapping.Allowed2FAMethods, string(t))
+	return slices.Contains(mapping.Allowed2FAMethods, string(t))
 }
 
 // rememberDevice issues a trusted-device token and sets the cookie, honouring
@@ -517,22 +517,14 @@ func methodStrings(ms []mfa.MethodType) []string {
 	return out
 }
 
-func containsMethodType(ms []mfa.MethodType, t mfa.MethodType) bool {
-	return slices.Contains(ms, t)
-}
-
 func intersect(a, allowed []string) []string {
 	out := make([]string, 0, len(a))
 	for _, x := range a {
-		if containsString(allowed, x) {
+		if slices.Contains(allowed, x) {
 			out = append(out, x)
 		}
 	}
 	return out
-}
-
-func containsString(xs []string, s string) bool {
-	return slices.Contains(xs, s)
 }
 
 func userAgentLabel(r *http.Request) *string {

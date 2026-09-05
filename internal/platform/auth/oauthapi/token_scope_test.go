@@ -3,7 +3,7 @@ package oauthapi
 import (
 	"context"
 	"reflect"
-	"sort"
+	"slices"
 	"testing"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
@@ -22,8 +22,8 @@ func fixedCeiling(ceiling ...string) *State {
 func sortedEqual(a, b []string) bool {
 	a = append([]string(nil), a...)
 	b = append([]string(nil), b...)
-	sort.Strings(a)
-	sort.Strings(b)
+	slices.Sort(a)
+	slices.Sort(b)
 	return reflect.DeepEqual(a, b)
 }
 

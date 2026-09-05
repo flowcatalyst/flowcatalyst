@@ -217,10 +217,6 @@ func TestRestartStalledConsumer_RetiresUnderContinuousReplacementTraffic(t *test
 	assert.False(t, newQ.stopped.Load())
 }
 
-func containsPool(pools []*Pool, target *Pool) bool {
-	return slices.Contains(pools, target)
-}
-
 // TestReconfigure_RemovedPoolDrainsThenStops pins [X-11 / R-26 / R-49]:
 // removed-pool-drains-then-stops at the Manager/Reconfigure level (see
 // TestPoolDrain_BufferedGroupStillDeliversThenPoolStops in pool_drain_test.go
@@ -262,7 +258,7 @@ func TestReconfigure_RemovedPoolDrainsThenStops(t *testing.T) {
 	// path is exercised.
 	require.NoError(t, m.Reconfigure(context.Background(), routerCfg([]string{"q-pooldrop"})))
 	assert.Nil(t, m.Pool("DROPME"), "a removed pool must leave the routing map immediately")
-	assert.True(t, containsPool(m.AllPools(), pool),
+	assert.True(t, slices.Contains(m.AllPools(), pool),
 		"a draining pool must still appear in AllPools (blocked-groups / flush-suppression) until it finishes")
 
 	// The buffered group must still be delivered, not flushed for
@@ -273,7 +269,7 @@ func TestReconfigure_RemovedPoolDrainsThenStops(t *testing.T) {
 
 	// Once drained, the pool is fully stopped and drops out of AllPools.
 	require.Eventually(t, func() bool { return pool.stopped.Load() }, time.Second, 5*time.Millisecond)
-	require.Eventually(t, func() bool { return !containsPool(m.AllPools(), pool) }, time.Second, 5*time.Millisecond,
+	require.Eventually(t, func() bool { return !slices.Contains(m.AllPools(), pool) }, time.Second, 5*time.Millisecond,
 		"a finished drain must remove the pool from AllPools")
 }
 

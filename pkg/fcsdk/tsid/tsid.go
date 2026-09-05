@@ -121,11 +121,7 @@ func GenerateRaw() string {
 func ToLong(s string) (int64, bool) {
 	raw := s
 	if len(s) > 14 && strings.Contains(s, "_") {
-		parts := strings.SplitN(s, "_", 2)
-		if len(parts) != 2 {
-			return 0, false
-		}
-		raw = parts[1]
+		_, raw, _ = strings.Cut(s, "_")
 	}
 	v, ok := decodeCrockford(raw)
 	return int64(v), ok

@@ -4,7 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"testing"
 )
 
@@ -54,8 +54,8 @@ func TestOAuthProviderRoutesMountedOutsideAuthGroup(t *testing.T) {
 			missing = append(missing, name)
 		}
 	}
-	sort.Strings(misplaced)
-	sort.Strings(missing)
+	slices.Sort(misplaced)
+	slices.Sort(missing)
 
 	if len(misplaced) > 0 {
 		t.Errorf("these OAuth routes are registered in wire_routes.go, inside the Authenticator group: %v\n"+

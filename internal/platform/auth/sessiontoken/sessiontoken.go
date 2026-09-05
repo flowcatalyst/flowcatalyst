@@ -176,7 +176,7 @@ func Validate(token string, key *rsa.PublicKey, expect Expect) (*Claims, error) 
 		}
 	}
 	if expect.Audience != "" {
-		if auds := audienceClaim(mc); len(auds) > 0 && !containsString(auds, expect.Audience) {
+		if auds := audienceClaim(mc); len(auds) > 0 && !slices.Contains(auds, expect.Audience) {
 			return nil, errors.New("sessiontoken: audience not accepted (not a platform token)")
 		}
 	}
@@ -236,10 +236,6 @@ func audienceClaim(mc jwt.MapClaims) []string {
 	default:
 		return nil
 	}
-}
-
-func containsString(ss []string, want string) bool {
-	return slices.Contains(ss, want)
 }
 
 // unixClaim reads a numeric Unix-seconds claim. JWT numeric claims

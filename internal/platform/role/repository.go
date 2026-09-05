@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"sort"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -229,7 +229,7 @@ func (r *Repository) hydrateAll(ctx context.Context, roles []Role) ([]Role, erro
 	}
 	for i := range roles {
 		perms := byID[roles[i].ID]
-		sort.Strings(perms)
+		slices.Sort(perms)
 		if perms == nil {
 			perms = []string{}
 		}

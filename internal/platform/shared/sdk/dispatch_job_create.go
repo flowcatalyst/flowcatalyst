@@ -8,8 +8,9 @@ package sdk
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
-	"sort"
+	"slices"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -159,11 +160,7 @@ func metadataFromMap(m map[string]string) []dispatchjob.Metadata {
 	if len(m) == 0 {
 		return nil
 	}
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
+	keys := slices.Sorted(maps.Keys(m))
 	out := make([]dispatchjob.Metadata, 0, len(keys))
 	for _, k := range keys {
 		out = append(out, dispatchjob.Metadata{Key: k, Value: m[k]})

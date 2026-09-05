@@ -1,9 +1,10 @@
 package api
 
 import (
+	"cmp"
 	"context"
 	"net/http"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -312,7 +313,7 @@ func (s *State) dashboardInFlight(_ context.Context, in *dashboardInFlightInput)
 		})
 	}
 	// Longest in flight first — orphans and 60s+ stragglers surface at the top.
-	sort.Slice(all, func(i, j int) bool { return all[i].ElapsedTimeMs > all[j].ElapsedTimeMs })
+	slices.SortFunc(all, func(a, b InFlightMessageInfo) int { return cmp.Compare(b.ElapsedTimeMs, a.ElapsedTimeMs) })
 	if len(all) > limit {
 		all = all[:limit]
 	}
@@ -356,7 +357,7 @@ func (s *State) dashboardMediating(_ context.Context, in *dashboardMediatingInpu
 			ElapsedTimeMs: uint64(now.Sub(e.MediatedAt).Milliseconds()),
 		})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ElapsedTimeMs > out[j].ElapsedTimeMs })
+	slices.SortFunc(out, func(a, b MediatingInfo) int { return cmp.Compare(b.ElapsedTimeMs, a.ElapsedTimeMs) })
 	if len(out) > limit {
 		out = out[:limit]
 	}

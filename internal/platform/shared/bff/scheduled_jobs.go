@@ -4,7 +4,7 @@ import (
 	"context"
 	"math"
 	"net/http"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -401,7 +401,7 @@ func (s *ScheduledJobsState) filterOptions(w http.ResponseWriter, r *http.Reques
 		}
 		visible = append(visible, bffFilterOption{Value: c.ID, Label: c.Name})
 	}
-	sort.Slice(visible, func(i, j int) bool { return visible[i].Label < visible[j].Label })
+	slices.SortFunc(visible, func(a, b bffFilterOption) int { return strings.Compare(a.Label, b.Label) })
 	options = append(options, visible...)
 
 	apps, err := s.Applications.FindWithFilters(r.Context(), nil, nil)
@@ -416,7 +416,7 @@ func (s *ScheduledJobsState) filterOptions(w http.ResponseWriter, r *http.Reques
 		}
 		appOptions = append(appOptions, bffFilterOption{Value: a.ID, Label: a.Name})
 	}
-	sort.Slice(appOptions, func(i, j int) bool { return appOptions[i].Label < appOptions[j].Label })
+	slices.SortFunc(appOptions, func(a, b bffFilterOption) int { return strings.Compare(a.Label, b.Label) })
 
 	writeJSON(w, http.StatusOK, bffScheduledJobsFilterOptions{
 		Clients:      options,

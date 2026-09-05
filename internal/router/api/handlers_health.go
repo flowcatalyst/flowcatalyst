@@ -3,7 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -163,9 +163,8 @@ type monitoringWarningsOutput struct {
 
 func (s *State) monitoringWarnings(_ context.Context, _ *emptyInput) (*monitoringWarningsOutput, error) {
 	warnings := s.Warnings.Active(30)
-	sort.Slice(warnings, func(i, j int) bool {
-		return warnings[i].CreatedAt.After(warnings[j].CreatedAt)
-	})
+	// Newest first.
+	slices.SortFunc(warnings, func(a, b router.Warning) int { return b.CreatedAt.Compare(a.CreatedAt) })
 	return &monitoringWarningsOutput{Body: fromWarnings(warnings)}, nil
 }
 

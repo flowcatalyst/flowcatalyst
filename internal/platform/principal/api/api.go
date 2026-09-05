@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -245,22 +244,22 @@ func splitCSV(s string) []string {
 // sortPrincipals orders in place. Unknown/empty field falls back to createdAt;
 // any order other than "desc" is treated as ascending.
 func sortPrincipals(ps []*principal.Principal, field, order string) {
-	var less func(i, j int) bool
+	var cmpFn func(a, b *principal.Principal) int
 	switch field {
 	case "name":
-		less = func(i, j int) bool { return strings.ToLower(ps[i].Name) < strings.ToLower(ps[j].Name) }
+		cmpFn = func(a, b *principal.Principal) int {
+			return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+		}
 	case "email":
-		less = func(i, j int) bool {
-			return strings.ToLower(principalEmail(ps[i])) < strings.ToLower(principalEmail(ps[j]))
+		cmpFn = func(a, b *principal.Principal) int {
+			return strings.Compare(strings.ToLower(principalEmail(a)), strings.ToLower(principalEmail(b)))
 		}
 	default: // "createdAt" and any unknown key
-		less = func(i, j int) bool { return ps[i].CreatedAt.Before(ps[j].CreatedAt) }
+		cmpFn = func(a, b *principal.Principal) int { return a.CreatedAt.Compare(b.CreatedAt) }
 	}
-	sort.SliceStable(ps, less)
+	slices.SortStableFunc(ps, cmpFn)
 	if strings.EqualFold(order, "desc") {
-		for i, j := 0, len(ps)-1; i < j; i, j = i+1, j-1 {
-			ps[i], ps[j] = ps[j], ps[i]
-		}
+		slices.Reverse(ps)
 	}
 }
 

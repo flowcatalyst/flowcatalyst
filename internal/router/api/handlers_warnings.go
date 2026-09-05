@@ -3,7 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -84,9 +84,8 @@ func (s *State) listWarnings(_ context.Context, in *listWarningsInput) (*listWar
 			return strings.ToUpper(string(w.Category)) == cat
 		})
 	}
-	sort.Slice(warnings, func(i, j int) bool {
-		return warnings[i].CreatedAt.After(warnings[j].CreatedAt)
-	})
+	// Newest first.
+	slices.SortFunc(warnings, func(a, b router.Warning) int { return b.CreatedAt.Compare(a.CreatedAt) })
 	return &listWarningsOutput{Body: fromWarnings(warnings)}, nil
 }
 

@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"slices"
-	"sort"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -151,7 +151,7 @@ func (s *State) listAccessible(w http.ResponseWriter, r *http.Request) {
 			out = append(out, clientInfo{ID: c.ID, Name: c.Name, Identifier: c.Identifier})
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	slices.SortFunc(out, func(a, b clientInfo) int { return strings.Compare(a.Name, b.Name) })
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(accessibleClientsResponse{
@@ -184,7 +184,7 @@ func (s *State) switchClient(w http.ResponseWriter, r *http.Request) {
 			httperror.Write(w, err)
 			return
 		}
-		if !contains(ids, req.ClientID) {
+		if !slices.Contains(ids, req.ClientID) {
 			httperror.Write(w, httperror.Forbidden("Access denied to client: "+req.ClientID))
 			return
 		}
@@ -272,8 +272,4 @@ func (s *State) resolvePermissions(r *http.Request, roleCodes []string) ([]strin
 		}
 	}
 	return out, nil
-}
-
-func contains(ss []string, v string) bool {
-	return slices.Contains(ss, v)
 }

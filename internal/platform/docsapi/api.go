@@ -16,7 +16,7 @@ package docsapi
 import (
 	"context"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 
@@ -86,37 +86,32 @@ type publishedDoc struct {
 	title string
 }
 
-var (
-	publishedOnce sync.Once
-	published     []publishedDoc
-	publishedBy   map[string]publishedDoc
-	orderPrefix   = regexp.MustCompile(`^\d+-`)
-)
+var orderPrefix = regexp.MustCompile(`^\d+-`)
 
-func publishedIndex() ([]publishedDoc, map[string]publishedDoc) {
-	publishedOnce.Do(func() {
-		publishedBy = map[string]publishedDoc{}
-		entries, err := docs.FS.ReadDir("published")
-		if err != nil {
-			return
+// publishedIndex lists the embedded published docs (in ReadDir's name order,
+// so the NN- prefixes are the order) and indexes them by slug. Computed once.
+var publishedIndex = sync.OnceValues(func() ([]publishedDoc, map[string]publishedDoc) {
+	var published []publishedDoc
+	publishedBy := map[string]publishedDoc{}
+	entries, err := docs.FS.ReadDir("published")
+	if err != nil {
+		return nil, publishedBy
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
 		}
-		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-				continue
-			}
-			slug := orderPrefix.ReplaceAllString(strings.TrimSuffix(e.Name(), ".md"), "")
-			d := publishedDoc{
-				file:  "published/" + e.Name(),
-				slug:  slug,
-				title: firstHeading("published/"+e.Name(), slug),
-			}
-			published = append(published, d)
-			publishedBy[slug] = d
+		slug := orderPrefix.ReplaceAllString(strings.TrimSuffix(e.Name(), ".md"), "")
+		d := publishedDoc{
+			file:  "published/" + e.Name(),
+			slug:  slug,
+			title: firstHeading("published/"+e.Name(), slug),
 		}
-		// ReadDir is name-sorted, so the NN- prefixes are the order.
-	})
+		published = append(published, d)
+		publishedBy[slug] = d
+	}
 	return published, publishedBy
-}
+})
 
 // firstHeading returns the page's first `# ` heading, else the fallback.
 func firstHeading(file, fallback string) string {
@@ -164,8 +159,8 @@ func (s *State) list(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[Do
 			}
 			resp.Applications = append(resp.Applications, group)
 		}
-		sort.Slice(resp.Applications, func(i, j int) bool {
-			return resp.Applications[i].ApplicationName < resp.Applications[j].ApplicationName
+		slices.SortFunc(resp.Applications, func(a, b AppDocsGroup) int {
+			return strings.Compare(a.ApplicationName, b.ApplicationName)
 		})
 	}
 	return &apicommon.Out[DocListResponse]{Body: resp}, nil

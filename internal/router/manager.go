@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -575,12 +575,7 @@ func (m *Manager) queueForPublish(key string) (common.QueueConfig, bool) {
 	if len(m.queues) == 0 {
 		return common.QueueConfig{}, false
 	}
-	names := make([]string, 0, len(m.queues))
-	for n := range m.queues {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	return m.queues[names[0]], true
+	return m.queues[slices.Min(slices.Collect(maps.Keys(m.queues)))], true
 }
 
 // UpdatePool applies a runtime config update to an existing pool. See the

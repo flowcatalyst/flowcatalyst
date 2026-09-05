@@ -5,11 +5,13 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
@@ -27,12 +29,7 @@ const developerRoleName = "platform:developer"
 // checking it here too means SetDeveloperCredential fails fast with a clear
 // error instead of silently minting a secret nothing can ever use.
 func hasRole(p *principal.Principal, roleName string) bool {
-	for _, ra := range p.Roles {
-		if ra.Role == roleName {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(p.Roles, func(ra serviceaccount.RoleAssignment) bool { return ra.Role == roleName })
 }
 
 // requireSelfOrUserAdmin allows a principal to manage its own developer

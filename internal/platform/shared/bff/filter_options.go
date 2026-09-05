@@ -3,7 +3,7 @@ package bff
 import (
 	"encoding/json"
 	"net/http"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -71,7 +71,7 @@ func (s *FilterOptionsState) clientOptions(w http.ResponseWriter, r *http.Reques
 		}
 		out = append(out, FilterOption{Value: c.ID, Label: c.Name})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Label < out[j].Label })
+	slices.SortFunc(out, func(a, b FilterOption) int { return strings.Compare(a.Label, b.Label) })
 	writeJSON(w, http.StatusOK, map[string]any{"clients": out})
 }
 
@@ -100,9 +100,7 @@ func (s *FilterOptionsState) eventTypeApplications(w http.ResponseWriter, r *htt
 		// rows missing the denormalised field still contribute.
 		app := et.Application
 		if app == "" {
-			if parts := strings.SplitN(et.Code, ":", 2); len(parts) > 0 {
-				app = parts[0]
-			}
+			app, _, _ = strings.Cut(et.Code, ":")
 		}
 		if app == "" {
 			continue
@@ -113,7 +111,7 @@ func (s *FilterOptionsState) eventTypeApplications(w http.ResponseWriter, r *htt
 	for app := range seen {
 		out = append(out, app)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	writeJSON(w, http.StatusOK, map[string]any{"options": out})
 }
 
