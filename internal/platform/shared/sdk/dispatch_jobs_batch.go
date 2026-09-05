@@ -141,7 +141,7 @@ func (s *DispatchJobsBatchState) batchIngest(w http.ResponseWriter, r *http.Requ
 	ac := auth.FromContext(r.Context())
 	// Permission: ingest needs a write-dispatch-jobs permission. Service
 	// accounts authenticated via client_credentials typically carry this.
-	if err := auth.CanWritePermission(ac, "WRITE_DISPATCH_JOBS"); err != nil {
+	if err := auth.CanWritePermission(ac, "platform:messaging:batch:dispatch-jobs-write"); err != nil {
 		httperror.Write(w, err)
 		return
 	}

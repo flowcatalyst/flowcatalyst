@@ -60,7 +60,7 @@ type CreatedResponse struct {
 // code, targetUrl, payload and serviceAccountId required fields.
 func (s *DispatchJobsBatchState) createOne(w http.ResponseWriter, r *http.Request) {
 	ac := auth.FromContext(r.Context())
-	if err := auth.CanWritePermission(ac, "WRITE_DISPATCH_JOBS"); err != nil {
+	if err := auth.CanWritePermission(ac, "platform:messaging:batch:dispatch-jobs-write"); err != nil {
 		httperror.Write(w, err)
 		return
 	}
