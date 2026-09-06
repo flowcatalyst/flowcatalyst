@@ -10,6 +10,7 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/branding"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/email"
 )
 
@@ -33,14 +34,15 @@ func (n *Notifier) WithName(f func(context.Context) string) *Notifier {
 }
 
 // platformName resolves the brand name for email copy, defaulting to
-// "Flowcatalyst" when no resolver is set or it returns "".
+// branding.DefaultPlatformName ("FlowCatalyst") when no resolver is set or it
+// returns "".
 func (n *Notifier) platformName(ctx context.Context) string {
 	if n != nil && n.name != nil {
 		if s := n.name(ctx); s != "" {
 			return s
 		}
 	}
-	return "Flowcatalyst"
+	return branding.DefaultPlatformName
 }
 
 // send is the best-effort core: nil receiver / nil service → no-op; errors are

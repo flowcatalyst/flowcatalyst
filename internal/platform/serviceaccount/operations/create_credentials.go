@@ -60,6 +60,10 @@ func CreateServiceAccountWithCredentials(
 			if code == "" {
 				return usecase.Validation("CODE_REQUIRED", "code is required")
 			}
+			if strings.HasPrefix(code, "app:") {
+				return usecase.Validation("RESERVED_CODE",
+					"codes starting with 'app:' are reserved for application service accounts")
+			}
 			if !validate.CodePattern.MatchString(code) {
 				return usecase.Validation("INVALID_CODE_FORMAT",
 					"code must start with a lowercase letter and contain only lowercase alphanumeric and hyphens")

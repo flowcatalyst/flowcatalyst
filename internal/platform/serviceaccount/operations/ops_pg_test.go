@@ -150,6 +150,7 @@ func TestCreateServiceAccount_Validation(t *testing.T) {
 		{"underscore in code", operations.CreateCommand{Code: "bad_code", Name: "X"}, "INVALID_CODE_FORMAT"},
 		{"digit-leading code", operations.CreateCommand{Code: "9starts-digit", Name: "X"}, "INVALID_CODE_FORMAT"},
 		{"empty name", operations.CreateCommand{Code: "sacreate-noname", Name: " "}, "NAME_REQUIRED"},
+		{"app: reserved namespace", operations.CreateCommand{Code: "app:foo", Name: "X"}, "RESERVED_CODE"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -282,6 +283,7 @@ func TestCreateServiceAccountWithCredentials_Errors(t *testing.T) {
 		{"empty code", operations.CreateCommand{Name: "X"}, usecase.KindValidation, "CODE_REQUIRED"},
 		{"bad code", operations.CreateCommand{Code: "Bad Code", Name: "X"}, usecase.KindValidation, "INVALID_CODE_FORMAT"},
 		{"empty name", operations.CreateCommand{Code: "sawcerr-noname"}, usecase.KindValidation, "NAME_REQUIRED"},
+		{"app: reserved namespace", operations.CreateCommand{Code: "app:foo", Name: "X"}, usecase.KindValidation, "RESERVED_CODE"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
