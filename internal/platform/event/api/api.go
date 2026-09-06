@@ -137,11 +137,20 @@ func (s *State) batchIngest(ctx context.Context, in *apicommon.In[BatchRequest])
 	if len(in.Body.Items) > 1000 {
 		return nil, httperror.BadRequest("BATCH_TOO_LARGE", "max 1000 items per batch")
 	}
+	// Partial success with honest per-item results (ruling 2026-09-06 #10a):
+	// an invalid item reports BAD_REQUEST in its own results[] slot and the
+	// valid items are still persisted. results is positional, one per item.
+	results := make([]BatchResultItem, len(in.Body.Items))
 	events := make([]event.Event, 0, len(in.Body.Items))
+	eventSlot := make([]int, 0, len(in.Body.Items)) // events[i] → results index
 	// Per-batch cache of clientCode → client_id (a batch usually shares one
 	// client). A nil entry means "looked up, not found" so we don't re-query.
 	clientByCode := map[string]*string{}
-	for _, it := range in.Body.Items {
+	for i, it := range in.Body.Items {
+		if msg := validateBatchItem(&it); msg != "" {
+			results[i] = BatchResultItem{ID: it.ID, Status: "BAD_REQUEST", Error: msg}
+			continue
+		}
 		ev := event.New(it.Type, it.Source, it.Subject, it.Data)
 		if it.ID != "" {
 			ev.ID = it.ID
@@ -179,16 +188,36 @@ func (s *State) batchIngest(ctx context.Context, in *apicommon.In[BatchRequest])
 			ev.Context = append(ev.Context, event.ContextEntry{Key: c.Key, Value: c.Value})
 		}
 		events = append(events, *ev)
+		eventSlot = append(eventSlot, i)
 	}
-	if _, err := s.Repo.InsertBatch(ctx, events); err != nil {
-		return nil, usecase.Internal("REPO", "insert batch failed", err)
+	if len(events) > 0 {
+		if _, err := s.Repo.InsertBatch(ctx, events); err != nil {
+			return nil, usecase.Internal("REPO", "insert batch failed", err)
+		}
 	}
-	// Per-item result list — 1:1 with the outbox/SDK contract. Insert is
-	// all-or-nothing here, so every persisted event reports SUCCESS.
-	results := apicommon.MapSlice(events, func(e *event.Event) BatchResultItem {
-		return BatchResultItem{ID: e.ID, Status: "SUCCESS"}
-	})
+	// Insert is all-or-nothing for the valid items, so each reports SUCCESS —
+	// including one dropped as a deduplication repeat, which is the
+	// idempotent outcome the sender wants acknowledged.
+	for j := range events {
+		results[eventSlot[j]] = BatchResultItem{ID: events[j].ID, Status: "SUCCESS"}
+	}
 	return &apicommon.Out[BatchResponse]{Body: BatchResponse{Results: results}}, nil
+}
+
+// validateBatchItem mirrors the singular create's schema-required fields
+// (type, source, data) for a batch item, whose wire type keeps every field
+// optional so the SDK's snake_case aliases can coalesce. Returns the
+// per-item error message, or "" when the item is acceptable.
+func validateBatchItem(it *BatchEventItem) string {
+	switch {
+	case strings.TrimSpace(it.Type) == "":
+		return "type is required"
+	case strings.TrimSpace(it.Source) == "":
+		return "source is required"
+	case len(it.Data) == 0 || string(it.Data) == "null":
+		return "data is required"
+	}
+	return ""
 }
 
 // ── list / detail ────────────────────────────────────────────────────────

@@ -3,6 +3,7 @@ package sdk
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -27,14 +28,16 @@ type AuditBatchState struct {
 // AuditBatchItem is one inbound audit row. camelCase only
 // (no snake_case aliases, unlike the events batch).
 type AuditBatchItem struct {
-	EntityType      string          `json:"entityType"`
-	EntityID        string          `json:"entityId"`
-	Operation       string          `json:"operation"`
-	OperationData   json.RawMessage `json:"operationData,omitempty"`
-	PrincipalID     *string         `json:"principalId,omitempty"`
-	PerformedAt     *string         `json:"performedAt,omitempty"`
-	ApplicationCode *string         `json:"applicationCode,omitempty"`
-	ClientCode      *string         `json:"clientCode,omitempty"`
+	EntityType    string          `json:"entityType"`
+	EntityID      string          `json:"entityId"`
+	Operation     string          `json:"operation"`
+	OperationData json.RawMessage `json:"operationData,omitempty"`
+	// PrincipalID is required (ruling 2026-09-06 #10b): an audit entry
+	// without an actor is refused per item, never defaulted to the caller.
+	PrincipalID     string  `json:"principalId"`
+	PerformedAt     *string `json:"performedAt,omitempty"`
+	ApplicationCode *string `json:"applicationCode,omitempty"`
+	ClientCode      *string `json:"clientCode,omitempty"`
 }
 
 // AuditBatchRequest is the inbound POST shape.
@@ -144,13 +147,10 @@ func (s *AuditBatchState) batchIngest(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// Absent principalId attributes the entry to the ingesting principal
-		// (usually the application's service account) so the by-principal
-		// filter still finds it.
-		principalID := it.PrincipalID
-		if (principalID == nil || *principalID == "") && ac.PrincipalID != "" {
-			id := ac.PrincipalID
-			principalID = &id
+		principalID := strings.TrimSpace(it.PrincipalID)
+		if principalID == "" {
+			results = append(results, BatchResultItem{Status: "BAD_REQUEST", Error: "principalId is required"})
+			continue
 		}
 
 		log := &audit.Log{
@@ -159,7 +159,7 @@ func (s *AuditBatchState) batchIngest(w http.ResponseWriter, r *http.Request) {
 			EntityID:      it.EntityID,
 			Operation:     it.Operation,
 			OperationJSON: it.OperationData,
-			PrincipalID:   principalID,
+			PrincipalID:   &principalID,
 			ApplicationID: applicationID,
 			ClientID:      clientID,
 			PerformedAt:   performedAt,

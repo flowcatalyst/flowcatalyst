@@ -4,6 +4,7 @@ package sdk
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -43,48 +44,47 @@ func newAuditBatchServer(t *testing.T, ac *auth.AuthContext) (*httptest.Server, 
 	return srv, repo
 }
 
-// TestAuditBatchIngest_MissingPrincipalIDFallsBackToCaller is the regression
-// guard for the batch-ingest principal fallback: an item that omits
-// principalId must be attributed to the ingesting principal (the auth
-// context), not stored with a NULL principal_id — otherwise the by-principal
-// filter can never find it.
-func TestAuditBatchIngest_MissingPrincipalIDFallsBackToCaller(t *testing.T) {
+// TestAuditBatchIngest_MissingPrincipalIDIsRefused pins ruling 2026-09-06
+// #10b: an audit entry without an actor is refused per item (BAD_REQUEST in
+// its results[] slot), never stored with NULL and never attributed to the
+// ingesting caller. The rest of the batch still lands.
+func TestAuditBatchIngest_MissingPrincipalIDIsRefused(t *testing.T) {
 	ac := &auth.AuthContext{PrincipalID: "prn_audit_batch_caller", Scope: auth.ScopeAnchor}
 	srv, repo := newAuditBatchServer(t, ac)
 
 	resp, err := http.Post(srv.URL+"/api/audit-logs/batch", "application/json", strings.NewReader(`{
-		"items": [{
-			"entityType": "widget",
-			"entityId": "w_no_princ_1",
-			"operation": "CREATE"
-		}]
+		"items": [
+			{"entityType": "widget", "entityId": "w_no_princ_1", "operation": "CREATE"},
+			{"entityType": "widget", "entityId": "w_no_princ_2", "operation": "CREATE", "principalId": "prn_actor_2"}
+		]
 	}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
+	var body BatchResponse
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	require.Len(t, body.Results, 2)
+	assert.Equal(t, "BAD_REQUEST", body.Results[0].Status)
+	assert.Equal(t, "principalId is required", body.Results[0].Error)
+	assert.Equal(t, "SUCCESS", body.Results[1].Status)
 
 	logs, err := repo.FindWithFilters(context.Background(), audit.FilterParams{
 		EntityID: new("w_no_princ_1"),
 		Limit:    10,
 	})
 	require.NoError(t, err)
-	require.Len(t, logs, 1)
-	require.NotNil(t, logs[0].PrincipalID, "principal_id must not be NULL when the item omitted principalId")
-	assert.Equal(t, ac.PrincipalID, *logs[0].PrincipalID)
+	require.Empty(t, logs, "an item without principalId must not be stored")
 
-	// The by-principal filter must find it too.
-	byPrincipal, err := repo.FindWithFilters(context.Background(), audit.FilterParams{
-		PrincipalID: &ac.PrincipalID,
-		EntityID:    new("w_no_princ_1"),
-		Limit:       10,
+	logs, err = repo.FindWithFilters(context.Background(), audit.FilterParams{
+		EntityID: new("w_no_princ_2"),
+		Limit:    10,
 	})
 	require.NoError(t, err)
-	require.Len(t, byPrincipal, 1, "by-principal filter must find the entry attributed to the caller")
+	require.Len(t, logs, 1, "the valid sibling still lands")
 }
 
 // TestAuditBatchIngest_ExplicitPrincipalIDIsNotOverridden pins that the
-// fallback only fires when the item omits principalId — an item that
-// explicitly names a different principal keeps that attribution.
+// item's principalId is stored verbatim — never replaced by the caller.
 func TestAuditBatchIngest_ExplicitPrincipalIDIsNotOverridden(t *testing.T) {
 	ac := &auth.AuthContext{PrincipalID: "prn_audit_batch_caller_2", Scope: auth.ScopeAnchor}
 	srv, repo := newAuditBatchServer(t, ac)
