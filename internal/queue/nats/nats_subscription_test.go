@@ -195,15 +195,27 @@ func TestStopUnblocksParkedPollWithin500ms(t *testing.T) {
 }
 
 // (d) With the channel full, the subscription stops requesting more:
-// num_ack_pending stays bounded to a couple of batches, never anywhere
-// near the full backlog, and most of the backlog stays un-pulled
-// (num_pending > 0) on the broker.
+// num_ack_pending stays bounded to about one batch, never anywhere near
+// the full backlog, and most of the backlog stays un-pulled (num_pending
+// > 0) on the broker.
+//
+// G15 (owner ruling 2026-09-07): the pull threshold is nats.go's own
+// default (half of max-messages), not "wait until fully drained" — a
+// 1-CPU single queue at threshold=1 measured 4,276/s (every batch a bare
+// broker round trip with the workers idle in between); requesting the
+// next batch at half-drained keeps a batch usually already arriving by
+// the time the current one runs out. That raises steady-state client-side
+// residency from ~2×max-messages to ~1.5-1.6×max-messages (observed: 8 of
+// max=5, i.e. the original batch of 5 plus a half-batch top-up of 3) —
+// still "about one batch", not an unbounded prefetch, so the bound below
+// is tightened to 2×max (comfortable headroom over the observed 8)
+// rather than the looser 3× that covered the old threshold=1 behaviour.
 //
 // Mutant: make msgCh unbounded (e.g. `make(chan common.QueuedMessage)`
 // with no capacity limit, or a capacity far larger than max-messages) and
 // this test fails — nothing then stops forward() from draining the
 // entire backlog into the channel, so num_ack_pending climbs toward the
-// full publish count instead of staying near 2×max-messages.
+// full publish count instead of staying near 1.5×max-messages.
 func TestFullChannelStopsRequestingMoreBatches(t *testing.T) {
 	const max = 5
 	const total = 50 // 10x max-messages
@@ -222,8 +234,8 @@ func TestFullChannelStopsRequestingMoreBatches(t *testing.T) {
 	t.Logf("num_ack_pending=%d num_pending=%d (max-messages=%d, published=%d)",
 		info.NumAckPending, info.NumPending, max, total)
 
-	assert.LessOrEqual(t, int(info.NumAckPending), 3*max,
-		"num_ack_pending must stay bounded to roughly one or two batches, not grow toward the full backlog")
+	assert.LessOrEqual(t, int(info.NumAckPending), 2*max,
+		"num_ack_pending must stay bounded to about one batch (half-threshold tops up to ~1.5x), not grow toward the full backlog")
 	assert.Greater(t, info.NumPending, uint64(0),
 		"most of the backlog must still be sitting un-pulled on the broker")
 }
@@ -277,4 +289,22 @@ func TestPollDeadlineIsNotAnError(t *testing.T) {
 	assert.Empty(t, msgs)
 	assert.GreaterOrEqual(t, elapsed, 200*time.Millisecond,
 		"Poll must actually have waited out the deadline, not returned early")
+}
+
+// TestPullThresholdIsHalfOfBatch pins G15 precisely (the embedded-server
+// TestFullChannelStopsRequestingMoreBatches confirms the observable
+// consequence, but its bound is loose enough to pass under several
+// threshold values — this pins the exact number). ceil(batch/2) matches
+// nats.go's own default (jetstream.parseMessagesOpts), with the batch=1
+// edge case (no "half" of one) clamped to 1.
+//
+// Mutant: hardcode pullThreshold to always return 1 (the pre-G15 "wait
+// until fully drained" behaviour) and this fails for every case above 2.
+func TestPullThresholdIsHalfOfBatch(t *testing.T) {
+	cases := []struct{ batch, want int }{
+		{1, 1}, {2, 1}, {5, 3}, {10, 5}, {11, 6}, {100, 50},
+	}
+	for _, c := range cases {
+		assert.Equal(t, c.want, pullThreshold(c.batch), "batch=%d", c.batch)
+	}
 }

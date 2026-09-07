@@ -2,9 +2,12 @@
 //
 //   - Continuous pull-based JetStream subscription (owner ruling), not a
 //     per-poll Fetch: the client keeps one jetstream.Messages() iterator
-//     open for the life of the consumer, bounded client-side to one
-//     in-flight batch (PullMaxMessages + PullThresholdMessages(1), so the
-//     next batch isn't requested until the current one is fully drained).
+//     open for the life of the consumer, bounded client-side to about one
+//     in-flight batch (PullMaxMessages + nats.go's own default threshold,
+//     half of max-messages, so the next batch is requested while the
+//     current one is still half full rather than after a broker round
+//     trip idles the workers — client-side residency stays ≤1.5 batches,
+//     which is what "about one batch" means in practice; see G15).
 //     A background goroutine forwards the iterator into a channel of
 //     capacity max-messages; Poll blocks on that channel rather than
 //     issuing a broker round-trip.
@@ -159,16 +162,26 @@ type Queue struct {
 	// msgCh is fed by forward() and drained by Poll. Its capacity is
 	// max-messages: forward()'s send blocks once it's full, which is what
 	// stops the subscription from being drained further (Next isn't called
-	// again until there's room). Combined with PullThresholdMessages(1),
-	// the subscription only asks for a fresh batch once the previous one
-	// is fully drained out of the library and into msgCh — so with a
-	// consumer actively draining msgCh (the normal case) at most one
-	// batch's worth of ack-wait is ticking at a time. If nothing drains
-	// msgCh at all, one extra batch can land just as the first finishes
-	// draining (the request that empties the library's own buffer fires
-	// before forward() notices msgCh is full) — client-side residency
-	// then plateaus at two batches, never growing further, because that
-	// next send blocks forward() before a third batch is ever requested.
+	// again until there's room).
+	//
+	// G15 (owner ruling 2026-09-07): the pull threshold is nats.go's own
+	// default — half of max-messages — not "wait until fully drained".
+	// PullThresholdMessages(1) (the original choice here) minimises
+	// client-side residency in the abstract, but it means the SERVER
+	// round trip for the next batch doesn't even start until this one is
+	// completely gone: on one CPU, with the workers otherwise idle
+	// between batches, that round trip is pure dead time on every single
+	// batch (measured: 10 messages per ~2.3ms RTT, 4,276/s). Requesting
+	// the next batch once half of this one is consumed means the new
+	// batch is usually already arriving by the time the old one runs out
+	// — client-side residency rises to ≤1.5 batches instead of ≤1, which
+	// is still what "about one batch, not an unbounded prefetch" means in
+	// practice (see TestFullChannelStopsRequestingMoreBatches, whose
+	// bound documents the same number). If nothing drains msgCh at all,
+	// residency plateaus at two batches, exactly as before — the
+	// threshold only changes WHEN the next request goes out, not the cap
+	// on how many batches can ever be outstanding (msgCh's capacity is
+	// still the only thing forward() will overrun before blocking).
 	msgCh chan common.QueuedMessage
 
 	// stopCh is closed by Stop to unblock a Poll parked on msgCh, or a
@@ -191,6 +204,19 @@ type Queue struct {
 	totalAcked    atomic.Uint64
 	totalNacked   atomic.Uint64
 	totalDeferred atomic.Uint64
+}
+
+// pullThreshold mirrors nats.go's own default (jetstream.parseMessagesOpts:
+// ceil(MaxMessages/2)) — see G15. Exported behaviour, not just an internal
+// default: this is what "next batch requested at half-drained" means for
+// any max-messages value, including the batch=1 edge case (threshold=1,
+// i.e. every message is its own round trip — there's no "half" of one).
+func pullThreshold(batch int) int {
+	t := (batch + 1) / 2
+	if t < 1 {
+		t = 1
+	}
+	return t
 }
 
 func newQueue(ctx context.Context, qc common.QueueConfig) (*Queue, error) {
@@ -245,15 +271,17 @@ func newQueue(ctx context.Context, qc common.QueueConfig) (*Queue, error) {
 	if batch <= 0 {
 		batch = DefaultConfig().MaxMessagesPerPoll
 	}
-	// PullThresholdMessages(1): don't request the next batch until the
-	// current one is fully drained (pending < 1, i.e. 0). The library's
-	// own default threshold (half of MaxMessages) would start a second
-	// batch while the first is still half full, letting up to ~1.5
-	// batches sit client-side with their ack-wait ticking — the owner's
-	// ruling is one batch at a time.
+	// G15 (owner ruling 2026-09-07): use nats.go's own default threshold —
+	// half of max-messages — rather than 1 (wait until fully drained). See
+	// msgCh's doc comment for the measured reason (a 1-CPU single queue at
+	// threshold=1 ran at 4,276/s: ten messages per broker round trip, then
+	// idle workers waiting the RTT out). Requesting the next batch while
+	// this one is still half full keeps client-side residency at ≤1.5
+	// batches — still "about one batch", not an unbounded prefetch.
+	threshold := pullThreshold(batch)
 	msgsCtx, err := consumer.Messages(
 		jetstream.PullMaxMessages(batch),
-		jetstream.PullThresholdMessages(1),
+		jetstream.PullThresholdMessages(threshold),
 	)
 	if err != nil {
 		nc.Close()
@@ -270,7 +298,7 @@ func newQueue(ctx context.Context, qc common.QueueConfig) (*Queue, error) {
 		resubscribe: func() (messagesIterator, error) {
 			return consumer.Messages(
 				jetstream.PullMaxMessages(batch),
-				jetstream.PullThresholdMessages(1),
+				jetstream.PullThresholdMessages(threshold),
 			)
 		},
 		msgCh:       make(chan common.QueuedMessage, batch),
