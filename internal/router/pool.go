@@ -59,6 +59,18 @@ type Pool struct {
 	// populations above and the gaps between them.
 	queueSize atomic.Uint32
 
+	// full is whether queueSize was at or over queueCapacity() as of the
+	// last call to capacityChanged — tracked so capacityFreed fires only on
+	// the crossing back UNDER capacity, never on every admission or
+	// completion (G12, docs/spec/router.md §3.2). See capacityChanged.
+	full atomic.Bool
+
+	// capacityFreed runs on that crossing — how a poll loop parked in
+	// Manager.awaitCapacity learns there is room again without polling on a
+	// fixed interval. nil (checked, not called) until the Manager wires it
+	// in via SetCapacityFreed, which every pool-creation site does.
+	capacityFreed func()
+
 	// mediating is keyed per WORKER, not per message: the process-time dedup
 	// backstop means two copies of one message id can briefly sit in two
 	// workers, and keying by id would then under-report the count and let the
@@ -161,7 +173,51 @@ func NewPool(cfg common.PoolConfig, mediator Mediator, tracker *InFlightTracker,
 
 // queueDec drops the pre-dispatch count by one. (atomic.Uint32 has no Sub;
 // adding ^0 is the two's-complement decrement.)
-func (p *Pool) queueDec() { p.queueSize.Add(^uint32(0)) }
+func (p *Pool) queueDec() {
+	p.queueSize.Add(^uint32(0))
+	p.capacityChanged()
+}
+
+// queueInc raises the pre-dispatch count by one — the increment counterpart
+// to queueDec, used everywhere queueSize grows (a fresh admission, a
+// re-queue for backoff) so capacityChanged sees every mutation, not just
+// decrements. Without this, an admission that pushes queueSize AT capacity
+// leaves p.full stale at false, and the decrement that later crosses back
+// under capacity would find full already false — swap reports "was not
+// full" and capacityFreed never fires for a pool that plainly was.
+func (p *Pool) queueInc() {
+	p.queueSize.Add(1)
+	p.capacityChanged()
+}
+
+// SetCapacityFreed registers the callback to run on the crossing back under
+// capacity (docs/spec/router.md §3.2) — set once, by whatever registers
+// this pool with a Manager. A pool built and used before this is called
+// (every test that constructs one directly) simply never signals; nil is
+// checked, not invoked.
+func (p *Pool) SetCapacityFreed(fn func()) { p.capacityFreed = fn }
+
+// capacityChanged re-evaluates queueSize against queueCapacity and runs
+// capacityFreed exactly on the transition from full to not-full — never on
+// every admission or completion, which at pool throughput would mean a
+// wake-up on every single message. Called after every event that can
+// change queueSize (queueInc, queueDec).
+//
+// A no-op when sem is nil: queueCapacity derives from Concurrency, which
+// reads sem — nil only for a Pool built as a bare struct literal rather
+// than via NewPool (whitebox tests exercising groupQs/flushes in
+// isolation). Every pool NewPool builds, which is every pool a Manager
+// ever routes through, has one.
+func (p *Pool) capacityChanged() {
+	if p.sem == nil {
+		return
+	}
+	atCapacity := p.queueSize.Load() >= p.queueCapacity()
+	wasFull := p.full.Swap(atCapacity)
+	if wasFull && !atCapacity && p.capacityFreed != nil {
+		p.capacityFreed()
+	}
+}
 
 // consumerFor resolves the source consumer for a message via its origin
 // queue (QueueIdentifier); nil when that queue was deregistered between
@@ -319,7 +375,7 @@ func (p *Pool) submit(ctx context.Context, m common.QueuedMessage) {
 		// queueSize is incremented here and decremented once the worker holds a
 		// semaphore slot, so the "queued (pre-dispatch)" gauge mirrors the
 		// ordered path.
-		p.queueSize.Add(1)
+		p.queueInc()
 		go p.runImmediate(ctx, m)
 		return
 	}
@@ -368,7 +424,7 @@ func (p *Pool) runImmediate(ctx context.Context, m common.QueuedMessage) {
 	// tracker entry is kept (so redeliveries are deduped against it), and
 	// Attempts grows the backoff and tells processOne not to re-track.
 	m.Attempts++
-	p.queueSize.Add(1) // re-queued (pre-dispatch) for the duration of the backoff
+	p.queueInc() // re-queued (pre-dispatch) for the duration of the backoff
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -714,7 +770,7 @@ func (p *Pool) enqueue(group string, m common.QueuedMessage) bool {
 	}
 	gq.msgs = append(gq.msgs, m)
 	p.mu.Unlock()
-	p.queueSize.Add(1)
+	p.queueInc()
 	return true
 }
 
@@ -735,7 +791,7 @@ func (p *Pool) enqueueFront(group string, m common.QueuedMessage) bool {
 	}
 	gq.msgs = append([]common.QueuedMessage{m}, gq.msgs...)
 	p.mu.Unlock()
-	p.queueSize.Add(1)
+	p.queueInc()
 	return true
 }
 

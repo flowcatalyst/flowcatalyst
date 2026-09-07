@@ -32,6 +32,19 @@ type fakeQueue struct {
 
 	mu      sync.Mutex
 	pending []common.QueuedMessage
+	// pollLog records each Poll call's timestamp and result size, in order.
+	// Only consulted by G12's pacing tests, which need to measure the gap
+	// between two SPECIFIC consecutive polls (e.g. the one that delivered a
+	// batch and the one right after it) — a plain counter comparison taken
+	// after some delay can't tell which poll it last observed, and racing
+	// that read against an already-completed immediate re-poll is exactly
+	// the flake this log avoids.
+	pollLog []pollRecord
+}
+
+type pollRecord struct {
+	at   time.Time
+	size int
 }
 
 var fakeQueues sync.Map // queue name → *fakeQueue
@@ -63,8 +76,16 @@ func (q *fakeQueue) Poll(_ context.Context, _ uint32) ([]common.QueuedMessage, e
 	q.mu.Lock()
 	out := q.pending
 	q.pending = nil
+	q.pollLog = append(q.pollLog, pollRecord{at: time.Now(), size: len(out)})
 	q.mu.Unlock()
 	return out, nil
+}
+
+// pollLogSnapshot returns a copy of the poll log so far.
+func (q *fakeQueue) pollLogSnapshot() []pollRecord {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return append([]pollRecord(nil), q.pollLog...)
 }
 
 func (q *fakeQueue) enqueue(msgs ...common.QueuedMessage) {
