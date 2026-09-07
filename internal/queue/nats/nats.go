@@ -26,13 +26,19 @@
 //
 // poll-timeout-ms is accepted for URI compatibility but UNUSED by this
 // backend: Poll no longer issues a timed Fetch. It blocks untimed on the
-// subscription's channel (ctx-aware), which is what "continuous
-// subscription, not a poller" means in practice — see Poll below.
+// subscription's channel, bounded only by the CALLER's context — which is
+// what "continuous subscription, not a poller" means in practice — see
+// Poll below. Because it has no poll-timeout of its own, the caller's
+// context deadline lapsing is Poll's only "nothing arrived" signal, and
+// Poll reports that as a plain empty result (nil, nil), not an error —
+// see G13 in Poll's doc comment for why that distinction matters to the
+// router's poll loop and stall detector.
 package nats
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -370,17 +376,32 @@ func parseURI(uri string) (Config, error) {
 func (q *Queue) Identifier() string { return q.identifier }
 
 // Poll takes up to max messages from the continuous subscription's buffer
-// (see forward). It blocks untimed on the first message — ctx-aware, so a
-// caller's deadline or cancellation still applies — then drains whatever is
-// immediately available without waiting further, up to max.
+// (see forward). It blocks on the first message for as long as ctx allows,
+// then drains whatever is immediately available without waiting further,
+// up to max.
 //
 // poll-timeout-ms plays no part here: this is not a broker round-trip, it's
 // a channel read against a subscription that has been open all along.
 //
-// Poll never returns (nil, nil): it returns at least one message, or a
-// non-nil error (ctx.Err() or, once Stop has been called, ErrStopped). The
-// router's empty-batch pause (manager.go) is therefore unreachable for this
-// backend — see the package doc and the test that pins this.
+// G13 (owner ruling 2026-09-07): if ctx's OWN deadline lapses before
+// anything arrives, Poll returns (nil, nil) — a plain empty result, not an
+// error. Poll has no timeout of its own; ctx's deadline is the only thing
+// bounding how long it stays parked on a quiet queue, so hitting it means
+// "nothing showed up in the window the caller gave me", which is exactly
+// what an empty batch means for any other backend. The router's poll loop
+// (manager.go) treats that as a successful, empty poll: it stamps a
+// heartbeat and re-polls immediately (no added sleep, since the wait
+// already happened) rather than logging a "poll error" and pausing. Before
+// this, the caller's own bounding context was the thing that made a
+// healthy blocking Poll look stalled to the restart watchdog — see
+// TestPollDeadlineIsNotAnError and the manager-side test pinning that a
+// long-blocking, message-free Poll is never flagged.
+//
+// A real Cancel (Stop() closing stopCh, or the caller cancelling ctx for
+// shutdown) is NOT reclassified this way — it still returns a non-nil
+// error (ErrStopped, or ctx.Err() for a plain cancel) so a caller whose
+// loop exits on error actually exits, instead of reading a shutdown signal
+// as "try again".
 func (q *Queue) Poll(ctx context.Context, max uint32) ([]common.QueuedMessage, error) {
 	if !q.running.Load() {
 		return nil, queue.ErrStopped
@@ -400,6 +421,28 @@ func (q *Queue) Poll(ctx context.Context, max uint32) ([]common.QueuedMessage, e
 	case <-q.stopCh:
 		return nil, queue.ErrStopped
 	case <-ctx.Done():
+		// G13 (owner ruling 2026-09-07): the caller's context expiring on
+		// its OWN deadline — as opposed to being cancelled — means nothing
+		// arrived within the window the caller was willing to wait, not
+		// that anything is wrong. This backend blocks by contract (no
+		// poll-timeout of its own; see the package doc), so the caller's
+		// context is the only bound on how long a genuinely quiet queue
+		// leaves Poll parked. Reporting that as a plain empty result (nil
+		// error) rather than an error is what lets a healthy blocking Poll
+		// look exactly like any other backend's fast "nothing queued"
+		// answer to the router's poll loop: no error log, no backoff
+		// pause, and — because it reaches the loop's success path — a
+		// heartbeat stamp that keeps a merely-idle consumer from ever
+		// looking stalled to the restart watchdog.
+		//
+		// A genuine Cancel (real shutdown, or Stop()/stopPoll() cancelling
+		// the parent context) is NOT reclassified: it still returns
+		// ctx.Err() so the caller's shutdown/restart path — which checks
+		// for a non-nil error — actually observes it and exits its loop
+		// rather than reading this as "queue's just quiet, keep going".
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return nil, nil
+		}
 		return nil, ctx.Err()
 	}
 

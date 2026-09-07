@@ -228,15 +228,16 @@ func TestFullChannelStopsRequestingMoreBatches(t *testing.T) {
 		"most of the backlog must still be sitting un-pulled on the broker")
 }
 
-// Poll never returns (nil, nil): manager.go's empty-batch 1s pause
-// (runConsumer, len(msgs)==0 branch) is unreachable for this backend
-// because Poll always returns at least one message or a non-nil error.
-// This is the behaviour the package doc promises; pin it directly rather
-// than only inferring it from the blocking tests above.
-func TestPollNeverReturnsEmptyWithoutError(t *testing.T) {
+// TestPollRealCancelIsStillAnError pins that a genuine Cancel — the
+// caller's own context cancellation, or Stop() — is NOT reclassified as
+// "no messages": both must still return a non-nil error, never (nil, nil)
+// or ([], nil). Only a DEADLINE lapsing gets the empty-result treatment
+// (TestPollDeadlineIsNotAnError below); a caller whose loop exits on error
+// (like the router's shutdown/restart path) must actually see one here.
+func TestPollRealCancelIsStillAnError(t *testing.T) {
 	q := startTestQueue(t, 10)
 
-	// Cancelled context: must return an error, never (nil, nil) or ([], nil).
+	// Cancelled (not deadline-expired) context: must return an error.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	msgs, err := q.Poll(ctx, 10)
@@ -250,4 +251,30 @@ func TestPollNeverReturnsEmptyWithoutError(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, queue.ErrStopped)
 	assert.Empty(t, msgs)
+}
+
+// TestPollDeadlineIsNotAnError pins G13 (owner ruling 2026-09-07): on an
+// empty stream, a caller-supplied context whose own DEADLINE lapses (not a
+// Cancel) gets back (nil, nil) — an empty, successful result — not an
+// error. This is what stops the router's manager from logging a "poll
+// error" and pausing, and from ever treating a merely-idle NATS consumer
+// as stalled (see manager_test.go's blocking-consumer stall test, which
+// exercises the same contract from the caller's side).
+//
+// Mutant: change the ctx.Done() branch back to `return nil, ctx.Err()`
+// unconditionally and this test fails — it gets a non-nil
+// DeadlineExceeded error instead of (nil, nil).
+func TestPollDeadlineIsNotAnError(t *testing.T) {
+	q := startTestQueue(t, 10)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	msgs, err := q.Poll(ctx, 10)
+	elapsed := time.Since(start)
+
+	assert.NoError(t, err, "a lapsed deadline on an empty stream must not be an error")
+	assert.Empty(t, msgs)
+	assert.GreaterOrEqual(t, elapsed, 200*time.Millisecond,
+		"Poll must actually have waited out the deadline, not returned early")
 }

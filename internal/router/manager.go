@@ -1062,9 +1062,34 @@ func (m *Manager) runConsumer(ctx context.Context, rc *runningConsumer) {
 		// Heartbeat only on a SUCCESSFUL poll (empty or not). Stamping it on an
 		// errored poll keeps a wedged, error-spinning consumer looking alive to
 		// the restart watchdog, so it is never rebuilt.
+		//
+		// G13 (owner ruling 2026-09-07): a backend whose Poll blocks by
+		// contract (NATS's continuous subscription) reports "no messages
+		// yet" by letting pollCtx's own deadline lapse — Poll returns
+		// (nil, nil), not an error, once it recognises that (see the nats
+		// backend). That is a SUCCESSFUL, empty poll, so it lands here and
+		// gets exactly the same heartbeat treatment as any other backend's
+		// instant "queue's empty" answer. This is what keeps a healthy
+		// blocking Poll's lastPoll fresh every pollTimeout — well inside
+		// any sane stall threshold — without the restart watchdog ever
+		// needing to know which backend blocks and which doesn't.
 		rc.lastPoll.Store(time.Now().UnixNano())
 
 		if len(msgs) == 0 {
+			// pollCtx already having reached ITS OWN deadline (as opposed to
+			// returning empty well within it) means this call already spent
+			// up to pollTimeout waiting — that wait already paced the loop,
+			// so re-polling immediately isn't a hot loop. Without this
+			// check, a blocking backend got pollTimeout of real waiting PLUS
+			// an extra fixed 1s on top of it, and — worse — that extra
+			// fixed sleep is exactly the "resurrected timed cadence" this
+			// design deliberately avoids. A backend that returns empty fast
+			// (SQS/Postgres with nothing queued) still gets the 1s pause:
+			// it hasn't waited at all, and hammering an empty queue at full
+			// loop speed is the hot-spin this pause exists to prevent.
+			if errors.Is(pollCtx.Err(), context.DeadlineExceeded) {
+				continue
+			}
 			select {
 			case <-ctx.Done():
 				return
