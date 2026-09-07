@@ -40,6 +40,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strconv"
 	"strings"
@@ -109,6 +110,16 @@ func publisherFactory(ctx context.Context, cfg common.QueueConfig) (queue.Publis
 	return q, nil
 }
 
+// messagesIterator is the subset of jetstream.MessagesContext that forward
+// depends on (Next to pull a message, Stop to unwind on shutdown). It
+// exists so a test can substitute a fake that errors or blocks on demand —
+// see nats_resubscribe_test.go — without needing a live broker connection.
+// jetstream.MessagesContext satisfies it structurally.
+type messagesIterator interface {
+	Next(opts ...jetstream.NextOpt) (jetstream.Msg, error)
+	Stop()
+}
+
 // Queue is a NATS JetStream-backed queue (consumer + publisher).
 type Queue struct {
 	cfg        Config
@@ -118,9 +129,32 @@ type Queue struct {
 	js       jetstream.JetStream
 	consumer jetstream.Consumer
 
-	// msgsCtx is the one continuous pull subscription open for the life of
-	// the Queue. forward() drains it into msgCh; nothing else calls Next.
-	msgsCtx jetstream.MessagesContext
+	// msgsCtxMu guards msgsCtx: forward() replaces it on resubscribe, Stop()
+	// reads it to unwind the current one, and both can run concurrently.
+	msgsCtxMu sync.Mutex
+	// msgsCtx is the current continuous pull subscription. forward() drains
+	// it into msgCh; nothing else calls Next. It is REPLACED (not just
+	// reopened in place) whenever forward() sees an error from it — see
+	// resubscribe and G14 in forward's doc comment.
+	msgsCtx messagesIterator
+
+	// resubscribe opens a fresh subscription with the same options as the
+	// original. A field (not a hardcoded call) so tests can substitute one
+	// that fails, to exercise the "can't recover" path deterministically.
+	resubscribe func() (messagesIterator, error)
+
+	// healthy is false from the moment forward() sees an unexpected error
+	// from msgsCtx.Next until a resubscribe succeeds. Poll consults it: a
+	// caller-deadline lapse while healthy means "genuinely idle, nothing to
+	// report" (nil, nil); while unhealthy it means "the subscription is
+	// broken and forward() is retrying", surfaced as an error so the
+	// router's normal poll-error handling (and, if resubscribing keeps
+	// failing, the stall watchdog) can see it. See G14.
+	healthy atomic.Bool
+	// unhealthyMsg is the most recent error forward() saw, for Poll's error
+	// text. Plain string (not the error itself) so a stale *error can't be
+	// read back after being reused/wrapped elsewhere.
+	unhealthyMsg atomic.Value
 
 	// msgCh is fed by forward() and drained by Poll. Its capacity is
 	// max-messages: forward()'s send blocks once it's full, which is what
@@ -227,39 +261,71 @@ func newQueue(ctx context.Context, qc common.QueueConfig) (*Queue, error) {
 	}
 
 	q := &Queue{
-		cfg:         cfg,
-		identifier:  cfg.StreamName + "/" + cfg.ConsumerName,
-		nc:          nc,
-		js:          js,
-		consumer:    consumer,
-		msgsCtx:     msgsCtx,
+		cfg:        cfg,
+		identifier: cfg.StreamName + "/" + cfg.ConsumerName,
+		nc:         nc,
+		js:         js,
+		consumer:   consumer,
+		msgsCtx:    msgsCtx,
+		resubscribe: func() (messagesIterator, error) {
+			return consumer.Messages(
+				jetstream.PullMaxMessages(batch),
+				jetstream.PullThresholdMessages(1),
+			)
+		},
 		msgCh:       make(chan common.QueuedMessage, batch),
 		stopCh:      make(chan struct{}),
 		forwardDone: make(chan struct{}),
 		pending:     make(map[string]jetstream.Msg),
 	}
+	q.healthy.Store(true)
 	q.running.Store(true)
 	go q.forward()
 	return q, nil
 }
 
 // forward is the one goroutine that ever calls msgsCtx.Next. It blocks
-// until a message is available (or the subscription is stopped/drained),
-// converts it, and hands it to Poll via msgCh. A full msgCh blocks the
-// send — and therefore blocks the next Next call — which is the
-// back-pressure that keeps the subscription from requesting more than one
-// batch ahead.
+// until a message is available, converts it, and hands it to Poll via
+// msgCh. A full msgCh blocks the send — and therefore blocks the next Next
+// call — which is the back-pressure that keeps the subscription from
+// requesting more than one batch ahead.
+//
+// G14 (owner ruling 2026-09-07): forward must never let an unexpected
+// error from Next silently end the subscription. On the bench rig, a
+// sustained high-throughput single queue hit "nats: no heartbeat
+// received" from the library's per-Next hbMonitor (jetstream/pull.go) —
+// not a connection loss, not a broker problem (num_pending stayed at the
+// full backlog, num_waiting at 0: the broker had plenty to send and
+// nobody was asking) — and the old code just returned, leaving msgCh
+// permanently empty and Poll blocking out its caller's deadline forever,
+// reporting (nil, nil) every cycle because nothing here said otherwise.
+// Whatever the exact trigger, an iterator error must never be fatal to
+// the Queue: log it, mark unhealthy (so Poll stops claiming "idle and
+// fine" — see the healthy field doc and Poll below), and resubscribe with
+// backoff until it succeeds or Stop is called. A resubscribe is cheap
+// (JetStream's durable consumer keeps its ack-pending/delivery state; it's
+// a fresh pull subscription, not a fresh consumer) and self-heals the
+// exact failure mode seen on the rig.
 func (q *Queue) forward() {
 	defer close(q.forwardDone)
 	for {
-		msg, err := q.msgsCtx.Next()
+		msg, err := q.currentIterator().Next()
 		if err != nil {
-			// ErrMsgIteratorClosed: Stop() or Drain() was called (including
-			// our own Stop). ErrConnectionClosed / any other error: the
-			// connection is gone. Either way there is nothing left to
-			// forward — exit and let msgCh's lack of further sends (plus
-			// stopCh, closed by Stop) unblock any parked Poll.
-			return
+			if !q.running.Load() {
+				// Expected: our own Stop() called msgsCtx.Stop() (or closed
+				// nc), which is what makes Next return here. Nothing to
+				// recover — msgCh's lack of further sends, plus stopCh,
+				// unblock any parked Poll.
+				return
+			}
+			slog.Error("nats: subscription iterator error; resubscribing",
+				"queue", q.identifier, "err", err)
+			q.healthy.Store(false)
+			q.unhealthyMsg.Store(err.Error())
+			if !q.resubscribeUntilHealthy() {
+				return // Stop() fired while retrying
+			}
+			continue
 		}
 		qm, ok := q.toQueuedMessage(msg)
 		if !ok {
@@ -271,6 +337,49 @@ func (q *Queue) forward() {
 			return
 		}
 	}
+}
+
+// resubscribeUntilHealthy retries resubscribe with capped exponential
+// backoff until it succeeds (swapping in the new iterator and marking
+// healthy again) or Stop is called. Returns false only in the latter case.
+func (q *Queue) resubscribeUntilHealthy() bool {
+	const maxBackoff = 5 * time.Second
+	backoff := 200 * time.Millisecond
+	for {
+		select {
+		case <-q.stopCh:
+			return false
+		default:
+		}
+		newIt, err := q.resubscribe()
+		if err == nil {
+			q.setIterator(newIt)
+			q.healthy.Store(true)
+			slog.Info("nats: resubscribed; subscription healthy again", "queue", q.identifier)
+			return true
+		}
+		slog.Error("nats: resubscribe failed; retrying", "queue", q.identifier, "err", err, "backoff", backoff)
+		select {
+		case <-q.stopCh:
+			return false
+		case <-time.After(backoff):
+		}
+		if backoff *= 2; backoff > maxBackoff {
+			backoff = maxBackoff
+		}
+	}
+}
+
+func (q *Queue) currentIterator() messagesIterator {
+	q.msgsCtxMu.Lock()
+	defer q.msgsCtxMu.Unlock()
+	return q.msgsCtx
+}
+
+func (q *Queue) setIterator(it messagesIterator) {
+	q.msgsCtxMu.Lock()
+	q.msgsCtx = it
+	q.msgsCtxMu.Unlock()
 }
 
 // toQueuedMessage converts a jetstream.Msg into a common.QueuedMessage,
@@ -441,7 +550,21 @@ func (q *Queue) Poll(ctx context.Context, max uint32) ([]common.QueuedMessage, e
 		// for a non-nil error — actually observes it and exits its loop
 		// rather than reading this as "queue's just quiet, keep going".
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return nil, nil
+			// G14: "nothing arrived" is only a benign, plain-empty result
+			// while the subscription is actually healthy. If forward() has
+			// seen the iterator error and is mid-resubscribe, an empty
+			// result here would be indistinguishable from a genuinely
+			// quiet queue — exactly the bug that let a dead subscription
+			// look like an idle one forever. Surface it as an error
+			// instead: the router's ordinary poll-error handling applies
+			// (logged, 1s backoff, no heartbeat stamp), and if
+			// resubscribing keeps failing for long enough, the stall
+			// watchdog rebuilds the whole Queue.
+			if q.healthy.Load() {
+				return nil, nil
+			}
+			reason, _ := q.unhealthyMsg.Load().(string)
+			return nil, fmt.Errorf("nats: subscription unhealthy, resubscribing (last error: %s)", reason)
 		}
 		return nil, ctx.Err()
 	}
@@ -535,7 +658,7 @@ func (q *Queue) Stop() {
 	q.stopOnce.Do(func() {
 		q.running.Store(false)
 		close(q.stopCh)
-		q.msgsCtx.Stop()
+		q.currentIterator().Stop()
 	})
 	q.pendingMu.Lock()
 	q.pending = make(map[string]jetstream.Msg)
