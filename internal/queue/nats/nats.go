@@ -1,6 +1,13 @@
 // Package nats is the NATS JetStream queue backend.
 //
-//   - Pull-based JetStream consumer with configurable batch + timeout.
+//   - Continuous pull-based JetStream subscription (owner ruling), not a
+//     per-poll Fetch: the client keeps one jetstream.Messages() iterator
+//     open for the life of the consumer, bounded client-side to one
+//     in-flight batch (PullMaxMessages + PullThresholdMessages(1), so the
+//     next batch isn't requested until the current one is fully drained).
+//     A background goroutine forwards the iterator into a channel of
+//     capacity max-messages; Poll blocks on that channel rather than
+//     issuing a broker round-trip.
 //   - WorkQueue retention (messages removed after ack).
 //   - Durable consumer auto-provisioned at startup.
 //   - Receipt handles are `streamName:streamSequence` (the historical
@@ -16,12 +23,16 @@
 // subject=flowcatalyst.>, max-messages=10, poll-timeout=20s, ack-wait=120s,
 // max-deliver=10, max-ack-pending=1000, storage=file, replicas=1,
 // max-age-days=7.
+//
+// poll-timeout-ms is accepted for URI compatibility but UNUSED by this
+// backend: Poll no longer issues a timed Fetch. It blocks untimed on the
+// subscription's channel (ctx-aware), which is what "continuous
+// subscription, not a poller" means in practice — see Poll below.
 package nats
 
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -101,6 +112,36 @@ type Queue struct {
 	js       jetstream.JetStream
 	consumer jetstream.Consumer
 
+	// msgsCtx is the one continuous pull subscription open for the life of
+	// the Queue. forward() drains it into msgCh; nothing else calls Next.
+	msgsCtx jetstream.MessagesContext
+
+	// msgCh is fed by forward() and drained by Poll. Its capacity is
+	// max-messages: forward()'s send blocks once it's full, which is what
+	// stops the subscription from being drained further (Next isn't called
+	// again until there's room). Combined with PullThresholdMessages(1),
+	// the subscription only asks for a fresh batch once the previous one
+	// is fully drained out of the library and into msgCh — so with a
+	// consumer actively draining msgCh (the normal case) at most one
+	// batch's worth of ack-wait is ticking at a time. If nothing drains
+	// msgCh at all, one extra batch can land just as the first finishes
+	// draining (the request that empties the library's own buffer fires
+	// before forward() notices msgCh is full) — client-side residency
+	// then plateaus at two batches, never growing further, because that
+	// next send blocks forward() before a third batch is ever requested.
+	msgCh chan common.QueuedMessage
+
+	// stopCh is closed by Stop to unblock a Poll parked on msgCh, or a
+	// forward() blocked sending to a full msgCh, without waiting for
+	// forward() to notice the subscription closed.
+	stopCh   chan struct{}
+	stopOnce sync.Once
+
+	// forwardDone closes once forward() has returned (subscription closed
+	// or Stop called). Not waited on by Stop (which must return promptly);
+	// tests use it to confirm the goroutine actually exited.
+	forwardDone chan struct{}
+
 	running atomic.Bool
 
 	pendingMu sync.Mutex
@@ -160,16 +201,101 @@ func newQueue(ctx context.Context, qc common.QueueConfig) (*Queue, error) {
 		return nil, fmt.Errorf("nats: get/create consumer %q: %w", cfg.ConsumerName, err)
 	}
 
+	batch := cfg.MaxMessagesPerPoll
+	if batch <= 0 {
+		batch = DefaultConfig().MaxMessagesPerPoll
+	}
+	// PullThresholdMessages(1): don't request the next batch until the
+	// current one is fully drained (pending < 1, i.e. 0). The library's
+	// own default threshold (half of MaxMessages) would start a second
+	// batch while the first is still half full, letting up to ~1.5
+	// batches sit client-side with their ack-wait ticking — the owner's
+	// ruling is one batch at a time.
+	msgsCtx, err := consumer.Messages(
+		jetstream.PullMaxMessages(batch),
+		jetstream.PullThresholdMessages(1),
+	)
+	if err != nil {
+		nc.Close()
+		return nil, fmt.Errorf("nats: open subscription: %w", err)
+	}
+
 	q := &Queue{
-		cfg:        cfg,
-		identifier: cfg.StreamName + "/" + cfg.ConsumerName,
-		nc:         nc,
-		js:         js,
-		consumer:   consumer,
-		pending:    make(map[string]jetstream.Msg),
+		cfg:         cfg,
+		identifier:  cfg.StreamName + "/" + cfg.ConsumerName,
+		nc:          nc,
+		js:          js,
+		consumer:    consumer,
+		msgsCtx:     msgsCtx,
+		msgCh:       make(chan common.QueuedMessage, batch),
+		stopCh:      make(chan struct{}),
+		forwardDone: make(chan struct{}),
+		pending:     make(map[string]jetstream.Msg),
 	}
 	q.running.Store(true)
+	go q.forward()
 	return q, nil
+}
+
+// forward is the one goroutine that ever calls msgsCtx.Next. It blocks
+// until a message is available (or the subscription is stopped/drained),
+// converts it, and hands it to Poll via msgCh. A full msgCh blocks the
+// send — and therefore blocks the next Next call — which is the
+// back-pressure that keeps the subscription from requesting more than one
+// batch ahead.
+func (q *Queue) forward() {
+	defer close(q.forwardDone)
+	for {
+		msg, err := q.msgsCtx.Next()
+		if err != nil {
+			// ErrMsgIteratorClosed: Stop() or Drain() was called (including
+			// our own Stop). ErrConnectionClosed / any other error: the
+			// connection is gone. Either way there is nothing left to
+			// forward — exit and let msgCh's lack of further sends (plus
+			// stopCh, closed by Stop) unblock any parked Poll.
+			return
+		}
+		qm, ok := q.toQueuedMessage(msg)
+		if !ok {
+			continue
+		}
+		select {
+		case q.msgCh <- qm:
+		case <-q.stopCh:
+			return
+		}
+	}
+}
+
+// toQueuedMessage converts a jetstream.Msg into a common.QueuedMessage,
+// registering it in the pending-ack map. Returns ok=false for a message
+// that was term'd on the spot (unreadable metadata / malformed body) and
+// therefore never becomes a QueuedMessage.
+func (q *Queue) toQueuedMessage(msg jetstream.Msg) (common.QueuedMessage, bool) {
+	meta, err := msg.Metadata()
+	if err != nil {
+		// Can't track — term so the server stops redelivering.
+		_ = msg.Term()
+		return common.QueuedMessage{}, false
+	}
+	receipt := receiptFor(q.cfg.StreamName, meta.Sequence.Stream)
+	var m common.Message
+	if err := json.Unmarshal(msg.Data(), &m); err != nil {
+		_ = msg.Term() // malformed
+		return common.QueuedMessage{}, false
+	}
+	// A redelivery replaces the pending entry: same stream sequence, but
+	// only the newest jetstream.Msg can be acked (the older delivery's ack
+	// is stale), so the map must hold the newest.
+	q.pendingMu.Lock()
+	q.pending[receipt] = msg
+	q.pendingMu.Unlock()
+	return common.QueuedMessage{
+		Message:         m,
+		ReceiptHandle:   receipt,
+		BrokerMessageID: brokerIDFor(meta.Sequence.Stream),
+		QueueIdentifier: q.identifier,
+	}, true
 }
 
 // parseURI accepts `nats://host:port[?stream=...&consumer=...&subject=...&...]`.
@@ -243,56 +369,57 @@ func parseURI(uri string) (Config, error) {
 // Identifier returns "stream/consumer" — the historical identifier format.
 func (q *Queue) Identifier() string { return q.identifier }
 
-// Poll fetches up to max messages with the configured poll timeout.
+// Poll takes up to max messages from the continuous subscription's buffer
+// (see forward). It blocks untimed on the first message — ctx-aware, so a
+// caller's deadline or cancellation still applies — then drains whatever is
+// immediately available without waiting further, up to max.
+//
+// poll-timeout-ms plays no part here: this is not a broker round-trip, it's
+// a channel read against a subscription that has been open all along.
+//
+// Poll never returns (nil, nil): it returns at least one message, or a
+// non-nil error (ctx.Err() or, once Stop has been called, ErrStopped). The
+// router's empty-batch pause (manager.go) is therefore unreachable for this
+// backend — see the package doc and the test that pins this.
 func (q *Queue) Poll(ctx context.Context, max uint32) ([]common.QueuedMessage, error) {
 	if !q.running.Load() {
 		return nil, queue.ErrStopped
 	}
-	batch := int(max)
-	if batch <= 0 || batch > q.cfg.MaxMessagesPerPoll {
-		batch = q.cfg.MaxMessagesPerPoll
+	limit := int(max)
+	if limit <= 0 || limit > q.cfg.MaxMessagesPerPoll {
+		limit = q.cfg.MaxMessagesPerPoll
 	}
-	// Expiring fetch: block up to the poll timeout for a full batch.
-	// FetchNoWait would return immediately and hot-spin the router's
-	// poll loop.
-	msgs, err := q.consumer.Fetch(batch, jetstream.FetchMaxWait(q.cfg.PollTimeout))
-	if err != nil {
-		return nil, fmt.Errorf("nats: fetch: %w", err)
-	}
-	var out []common.QueuedMessage
-	for msg := range msgs.Messages() {
-		meta, err := msg.Metadata()
-		if err != nil {
-			// Can't track — term so the server stops redelivering.
-			_ = msg.Term()
-			continue
+
+	var first common.QueuedMessage
+	select {
+	case qm, ok := <-q.msgCh:
+		if !ok {
+			return nil, queue.ErrStopped
 		}
-		receipt := receiptFor(q.cfg.StreamName, meta.Sequence.Stream)
-		var m common.Message
-		if err := json.Unmarshal(msg.Data(), &m); err != nil {
-			_ = msg.Term() // malformed
-			continue
+		first = qm
+	case <-q.stopCh:
+		return nil, queue.ErrStopped
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+
+	out := make([]common.QueuedMessage, 0, limit)
+	out = append(out, first)
+	q.totalPolled.Add(1)
+
+	// Drain whatever is already sitting in the channel, up to limit. This
+	// never blocks: an empty channel falls straight to default.
+	for len(out) < limit {
+		select {
+		case qm, ok := <-q.msgCh:
+			if !ok {
+				return out, nil
+			}
+			out = append(out, qm)
+			q.totalPolled.Add(1)
+		default:
+			return out, nil
 		}
-		// A redelivery replaces the pending entry: same stream sequence, but
-		// only the newest jetstream.Msg can be acked (the older delivery's ack
-		// is stale), so the map must hold the newest.
-		q.pendingMu.Lock()
-		q.pending[receipt] = msg
-		q.pendingMu.Unlock()
-		out = append(out, common.QueuedMessage{
-			Message:         m,
-			ReceiptHandle:   receipt,
-			BrokerMessageID: brokerIDFor(meta.Sequence.Stream),
-			QueueIdentifier: q.identifier,
-		})
-	}
-	if msgsErr := msgs.Error(); msgsErr != nil && !errors.Is(msgsErr, natsgo.ErrTimeout) {
-		// Real fetch error (timeout is fine — just means nothing available).
-		// Drop through; we still return whatever we successfully drained.
-		_ = msgsErr
-	}
-	if len(out) > 0 {
-		q.totalPolled.Add(uint64(len(out)))
 	}
 	return out, nil
 }
@@ -356,8 +483,17 @@ func (q *Queue) Healthy() bool {
 // Stop signals the consumer to wind down. In-flight messages are
 // dropped from the local tracker; the server will redeliver after the
 // ack-wait expires.
+//
+// Closing stopCh unblocks a Poll parked on msgCh (or a forward() blocked
+// sending to a full msgCh) immediately, without waiting for msgsCtx.Stop to
+// unwind the subscription — that's what keeps Stop's effect on a parked
+// Poll bounded regardless of how long the subscription takes to tear down.
 func (q *Queue) Stop() {
-	q.running.Store(false)
+	q.stopOnce.Do(func() {
+		q.running.Store(false)
+		close(q.stopCh)
+		q.msgsCtx.Stop()
+	})
 	q.pendingMu.Lock()
 	q.pending = make(map[string]jetstream.Msg)
 	q.pendingMu.Unlock()
