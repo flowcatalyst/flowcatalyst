@@ -88,8 +88,21 @@ type Manager struct {
 	pools  map[string]*Pool // pool code → passive pool
 
 	consumerMu sync.RWMutex
-	consumers  map[string]*runningConsumer   // queue name → consumer + poll loop
+	consumers  map[string]*runningConsumer   // queue name (config) → consumer + poll loop
 	queues     map[string]common.QueueConfig // queue name → cfg (for publishers)
+
+	// consumersByID mirrors consumers, keyed by each consumer's OWN
+	// Identifier() rather than the config queue name. The two differ for
+	// NATS: its Identifier() is "<stream>/<consumer>", not the operator's
+	// config-name label, and every QueuedMessage/InFlightMessage carries
+	// QueueIdentifier — the broker identity, not the config name (see
+	// resolveConsumer). Postgres and SQS happen to report the config name
+	// as their Identifier() too, so this only changes behaviour for NATS,
+	// but ack/nack resolution must always go through the identity the
+	// backend itself reports, not an operator-chosen label it may not
+	// share. Maintained in lockstep with consumers at every registration,
+	// replacement and teardown — never read or written on its own.
+	consumersByID map[string]*runningConsumer
 
 	// drainingMu guards drainingPools: pools this Manager removed from
 	// routing (m.pools, via Reconfigure) but which are still finishing their
@@ -285,6 +298,7 @@ func NewManager(mediator Mediator, tracker *InFlightTracker) *Manager {
 		tracker:         tracker,
 		pools:           make(map[string]*Pool),
 		consumers:       make(map[string]*runningConsumer),
+		consumersByID:   make(map[string]*runningConsumer),
 		queues:          make(map[string]common.QueueConfig),
 		drainingPools:   make(map[string]*Pool),
 		publishers:      make(map[string]queue.Publisher),
@@ -328,7 +342,10 @@ func (m *Manager) SetWarnings(ws *WarningService) { m.warnings.Store(ws) }
 func (m *Manager) SetStrictRouting(v bool) { m.strictRouting.Store(v) }
 
 // resolveConsumer maps a message's origin queue to its consumer so a pool can
-// ack/nack on the right queue. Checks the active routing table first, then
+// ack/nack on the right queue. queueID is always a QueueIdentifier off a
+// QueuedMessage or InFlightMessage — the queue backend's OWN identity (see
+// consumersByID's doc comment), never the config queue name. Checks the
+// active routing table first (by that identity, via consumersByID), then
 // falls back to a lingering (removed/changed) consumer still detaching (X-11
 // / R-26/R-49 — see the detaching field's doc comment): a message buffered
 // before its queue dropped out of config must still resolve to SOMETHING,
@@ -337,7 +354,7 @@ func (m *Manager) SetStrictRouting(v bool) { m.strictRouting.Store(v) }
 // answers to queueID.
 func (m *Manager) resolveConsumer(queueID string) queue.Consumer {
 	m.consumerMu.RLock()
-	if rc, ok := m.consumers[queueID]; ok {
+	if rc, ok := m.consumersByID[queueID]; ok {
 		m.consumerMu.RUnlock()
 		return rc.consumer
 	}
@@ -1207,6 +1224,7 @@ func (m *Manager) Reconfigure(ctx context.Context, cfg common.RouterConfig) erro
 			slog.Info("manager: detaching consumer (queue removed or changed)", "queue", name)
 			stale = append(stale, rc)
 			delete(m.consumers, name)
+			delete(m.consumersByID, rc.consumer.Identifier())
 			delete(m.queues, name)
 		}
 	}
@@ -1259,6 +1277,7 @@ func (m *Manager) Reconfigure(ctx context.Context, cfg common.RouterConfig) erro
 			continue
 		}
 		m.consumers[qc.Name] = rc
+		m.consumersByID[consumer.Identifier()] = rc
 		m.queues[qc.Name] = qc
 		m.consumerMu.Unlock()
 
@@ -1306,6 +1325,7 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 		rc.consumer.Stop()
 	}
 	m.consumers = make(map[string]*runningConsumer)
+	m.consumersByID = make(map[string]*runningConsumer)
 	m.queues = make(map[string]common.QueueConfig)
 	m.consumerMu.Unlock()
 
@@ -1535,6 +1555,7 @@ func (m *Manager) RestartStalledConsumers(ctx context.Context, threshold time.Du
 			continue
 		}
 		m.consumers[c.name] = rc
+		m.consumersByID[consumer.Identifier()] = rc
 		m.consumerMu.Unlock()
 
 		// R-26/R-49: detach, don't abort — the same machinery

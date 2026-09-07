@@ -158,7 +158,16 @@ func bufferedCopies(p *Pool, group, id string) int {
 func newRouteHarness(med Mediator, cons queue.Consumer) (*Manager, *InFlightTracker, *Pool) {
 	tr := NewInFlightTracker()
 	m := NewManager(med, tr)
-	m.consumers["q"] = &runningConsumer{consumer: cons}
+	rc := &runningConsumer{consumer: cons}
+	m.consumers["q"] = rc
+	// resolveConsumer (ack/nack) now resolves by the consumer's OWN
+	// identifier (G10 — a config name and a broker identifier need not
+	// match, e.g. NATS's "<stream>/<consumer>"), not by the config name
+	// "q" used above for reconfigure diffing. mkGrouped's messages carry
+	// QueueIdentifier "q", so register under that identifier too — as a
+	// real consumer whose backend reports "q" as its own Identifier()
+	// would be, via Reconfigure's registration path.
+	m.consumersByID["q"] = rc
 	pool := NewPool(common.PoolConfig{Code: defaultPoolCode, Concurrency: 1}, med, tr, m.resolveConsumer)
 	m.pools[defaultPoolCode] = pool
 	return m, tr, pool
