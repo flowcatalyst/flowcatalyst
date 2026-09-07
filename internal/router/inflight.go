@@ -16,16 +16,34 @@ import (
 //   - graceful shutdown (drain to zero before exit)
 type InFlightTracker struct {
 	mu sync.RWMutex
-	// keyed by broker message ID; the message itself doubles as the lookup
-	// key when the broker ID is unavailable (Postgres-backed queues etc.).
-	byBroker  map[string]*common.InFlightMessage
+	// keyed by (QueueIdentifier, BrokerMessageID); the message itself doubles
+	// as the lookup key when the broker ID is unavailable (Postgres-backed
+	// queues etc.).
+	//
+	// The queue identifier is part of the key, not just the broker id, because
+	// a broker message id is only unique WITHIN the queue that produced it —
+	// NATS's <streamSeq>:<consumerSeq> broker id is unique per stream only, so
+	// with several NATS streams configured, every stream's Nth message shares
+	// the same bare id. Keying on the bare id let one queue's arriving message
+	// look like a redelivery of a different queue's, swapping that entry's
+	// receipt handle and producing an ACK on the wrong consumer with a foreign
+	// receipt handle (the broker rejects it, or worse, deletes something else).
+	byBroker  map[brokerKey]*common.InFlightMessage
 	byMessage map[string]*common.InFlightMessage
+}
+
+// brokerKey scopes a broker message id to the queue that produced it — see
+// InFlightTracker.byBroker. Every lookup and mutation of byBroker must go
+// through this pair, never the bare broker id.
+type brokerKey struct {
+	queueID  string
+	brokerID string
 }
 
 // NewInFlightTracker constructs an empty tracker.
 func NewInFlightTracker() *InFlightTracker {
 	return &InFlightTracker{
-		byBroker:  make(map[string]*common.InFlightMessage),
+		byBroker:  make(map[brokerKey]*common.InFlightMessage),
 		byMessage: make(map[string]*common.InFlightMessage),
 	}
 }
@@ -63,7 +81,7 @@ func (t *InFlightTracker) Register(im *common.InFlightMessage) RegisterOutcome {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if im.BrokerMessageID != "" {
-		if prev, ok := t.byBroker[im.BrokerMessageID]; ok {
+		if prev, ok := t.byBroker[brokerKey{im.QueueIdentifier, im.BrokerMessageID}]; ok {
 			prev.UpdateReceiptHandle(im.ReceiptHandle)
 			return RegisterRedelivery
 		}
@@ -77,7 +95,7 @@ func (t *InFlightTracker) Register(im *common.InFlightMessage) RegisterOutcome {
 		return RegisterRedelivery
 	}
 	if im.BrokerMessageID != "" {
-		t.byBroker[im.BrokerMessageID] = im
+		t.byBroker[brokerKey{im.QueueIdentifier, im.BrokerMessageID}] = im
 	}
 	t.byMessage[im.MessageID] = im
 	return RegisterNew
@@ -96,7 +114,7 @@ func (t *InFlightTracker) EnsureTracked(im *common.InFlightMessage) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if im.BrokerMessageID != "" {
-		if _, ok := t.byBroker[im.BrokerMessageID]; ok {
+		if _, ok := t.byBroker[brokerKey{im.QueueIdentifier, im.BrokerMessageID}]; ok {
 			return true
 		}
 	}
@@ -107,23 +125,26 @@ func (t *InFlightTracker) EnsureTracked(im *common.InFlightMessage) bool {
 		return true
 	}
 	if im.BrokerMessageID != "" {
-		t.byBroker[im.BrokerMessageID] = im
+		t.byBroker[brokerKey{im.QueueIdentifier, im.BrokerMessageID}] = im
 	}
 	t.byMessage[im.MessageID] = im
 	return true
 }
 
-// CurrentReceipt returns the freshest receipt handle for a tracked message
-// (broker id preferred, message id fallback) — the handle to ACK with after a
-// possible redelivery swap. Reports false when the message is no longer tracked.
-func (t *InFlightTracker) CurrentReceipt(messageID, brokerID string) (string, bool) {
+// CurrentReceipt returns the freshest receipt handle for a tracked message —
+// the handle to ACK with after a possible redelivery swap. Reports false when
+// the message is no longer tracked.
+//
+// Looked up by message id alone (brokerID is accepted for API symmetry with
+// Remove/MarkRetrying but not consulted): Register and EnsureTracked always
+// keep byMessage's entry pointer identical to byBroker's for the same
+// delivery, so a redelivery's handle swap (UpdateReceiptHandle) is visible
+// through either map. Reading byBroker here would additionally require
+// scoping the lookup to the message's own queue — its bare broker id is not
+// globally unique (see brokerKey) — for no benefit over the message-id path.
+func (t *InFlightTracker) CurrentReceipt(messageID, _ string) (string, bool) {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
-	if brokerID != "" {
-		if im, ok := t.byBroker[brokerID]; ok {
-			return im.ReceiptHandle, true
-		}
-	}
 	if im, ok := t.byMessage[messageID]; ok {
 		return im.ReceiptHandle, true
 	}
@@ -138,13 +159,14 @@ func (t *InFlightTracker) CurrentReceipt(messageID, brokerID string) (string, bo
 // The stamp is not optional bookkeeping: it is the clock the reaper's
 // exemption expires on. Bumping Attempts without it would restore the
 // unbounded exemption this pair exists to close.
-func (t *InFlightTracker) MarkRetrying(messageID, brokerID string) {
+//
+// Looked up by message id alone (brokerID is accepted for call-site symmetry
+// but not consulted) — see CurrentReceipt's doc for why byMessage always has
+// whatever byBroker would have found.
+func (t *InFlightTracker) MarkRetrying(messageID, _ string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	im := t.byMessage[messageID]
-	if im == nil && brokerID != "" {
-		im = t.byBroker[brokerID]
-	}
 	if im != nil {
 		im.Attempts++
 		im.LastRetryAt = time.Now()
@@ -162,12 +184,23 @@ func (t *InFlightTracker) Lookup(messageID string) (common.InFlightMessage, bool
 }
 
 // Remove clears the message from the tracker. Idempotent.
-func (t *InFlightTracker) Remove(messageID, brokerID string) {
+//
+// The byBroker eviction uses the removed entry's OWN QueueIdentifier and
+// BrokerMessageID to build the key, not the caller-supplied brokerID: since
+// byBroker is now scoped to (queue, broker id), the entry's stored queue is
+// the only reliable half of that pair, and only the entry we just removed
+// (checked by pointer identity) may be evicted — a later copy may already
+// have claimed that key, and evicting it would un-track a live delivery.
+func (t *InFlightTracker) Remove(messageID, _ string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	im, ok := t.byMessage[messageID]
 	delete(t.byMessage, messageID)
-	if brokerID != "" {
-		delete(t.byBroker, brokerID)
+	if ok && im.BrokerMessageID != "" {
+		key := brokerKey{im.QueueIdentifier, im.BrokerMessageID}
+		if cur, exists := t.byBroker[key]; exists && cur == im {
+			delete(t.byBroker, key)
+		}
 	}
 }
 
@@ -318,7 +351,7 @@ func (t *InFlightTracker) Reap(maxAge, absoluteMaxAge time.Duration) (reaped int
 		}
 		delete(t.byMessage, id)
 		if im.BrokerMessageID != "" {
-			delete(t.byBroker, im.BrokerMessageID)
+			delete(t.byBroker, brokerKey{im.QueueIdentifier, im.BrokerMessageID})
 		}
 		reaped++
 	}

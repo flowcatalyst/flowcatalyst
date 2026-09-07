@@ -53,6 +53,47 @@ func TestInFlightExternalRequeueDoesNotContaminate(t *testing.T) {
 		"no phantom byBroker entry may survive the requeue registration")
 }
 
+// TestInFlightBrokerIdScopedToQueue pins G11: the NATS broker id
+// <streamSeq>:<consumerSeq> is unique only within one stream, so with several
+// NATS-backed queues configured, two different queues' Nth message can share
+// the exact same bare broker id ("9:9" on both S1/router and S2/router).
+// Before this fix the tracker's byBroker index was keyed on the bare broker
+// id, so registering S2's message classified it as a REDELIVERY of S1's
+// still-in-flight message, swapped S1's receipt handle onto it, and later
+// acking S1 sent S2's receipt handle to S1's consumer — a receipt the broker
+// never issued there. Scoping the index to (QueueIdentifier, BrokerMessageID)
+// is what a mutant that reverts to the bare id fails: it must classify the
+// second stream's message as NEW, and CurrentReceipt for each message must
+// return each stream's own handle, never the other's.
+func TestInFlightBrokerIdScopedToQueue(t *testing.T) {
+	tr := router.NewInFlightTracker()
+
+	msg1 := common.Message{ID: "s1-msg"}
+	msg2 := common.Message{ID: "s2-msg"}
+
+	// Both streams' 9th message shares the bare broker id "9:9".
+	im1 := common.NewInFlightMessage(&msg1, "9:9", "S1/router", "", "S1:9")
+	im2 := common.NewInFlightMessage(&msg2, "9:9", "S2/router", "", "S2:9")
+
+	require.Equal(t, router.RegisterNew, tr.Register(im1), "S1's message must register")
+	// Load-bearing: with an unscoped broker-id index this comes back
+	// RegisterRedelivery (misclassified as another copy of im1), swapping
+	// im1's receipt handle to "S2:9" and never tracking s2-msg under its own
+	// application id.
+	require.Equal(t, router.RegisterNew, tr.Register(im2),
+		"S2's message must register as a distinct NEW entry, not a redelivery of S1's")
+	assert.Equal(t, 2, tr.Count(), "both messages must be tracked independently")
+
+	// Each queue's message keeps its own receipt handle.
+	rh1, ok1 := tr.CurrentReceipt("s1-msg", "9:9")
+	require.True(t, ok1)
+	assert.Equal(t, "S1:9", rh1, "S1's message must never adopt S2's receipt handle")
+
+	rh2, ok2 := tr.CurrentReceipt("s2-msg", "9:9")
+	require.True(t, ok2)
+	assert.Equal(t, "S2:9", rh2, "S2's message must never adopt S1's receipt handle")
+}
+
 func TestInFlightRemoveAndReap(t *testing.T) {
 	tr := router.NewInFlightTracker()
 
