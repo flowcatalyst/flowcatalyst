@@ -18,8 +18,8 @@ import (
 // --- a minimal fake jetstream.Msg, just enough for toQueuedMessage ---
 
 // fakeMsg implements jetstream.Msg with a real stream sequence and body;
-// every method besides Metadata/Data/Term is a no-op stub, since forward's
-// happy path never calls them (Ack/Nack/Term are exercised elsewhere,
+// every method besides Metadata/Data is a no-op stub, since handleMsg's
+// happy path never calls the rest (Ack/Nack/Term are exercised elsewhere,
 // against the real embedded-server harness in nats_subscription_test.go).
 type fakeMsg struct {
 	streamSeq uint64
@@ -48,79 +48,74 @@ func (m *fakeMsg) InProgress() error                { return nil }
 func (m *fakeMsg) Term() error                      { return nil }
 func (m *fakeMsg) TermWithReason(string) error      { return nil }
 
-// --- a scriptable fake messagesIterator ---
+// fakeConsumeContext is a minimal jetstream.ConsumeContext: Stop is the
+// only method our code ever calls on one (in Queue.Stop). Returned by a
+// fake resubscribe to prove a resubscribe attempt swapped it in.
+type fakeConsumeContext struct{ stopped chan struct{} }
 
-// scriptedIterator.Next returns whatever the next entry in results says to:
-// a message, or an error. Once exhausted it blocks until stopCh closes,
-// simulating a genuinely idle-but-healthy subscription.
-type scriptedIterator struct {
-	results []nextResult
-	i       int
-	stopCh  chan struct{}
+func newFakeConsumeContext() *fakeConsumeContext {
+	return &fakeConsumeContext{stopped: make(chan struct{})}
 }
-
-type nextResult struct {
-	msg jetstream.Msg
-	err error
-}
-
-func (it *scriptedIterator) Next(...jetstream.NextOpt) (jetstream.Msg, error) {
-	if it.i < len(it.results) {
-		r := it.results[it.i]
-		it.i++
-		return r.msg, r.err
-	}
-	<-it.stopCh
-	return nil, jetstream.ErrMsgIteratorClosed
-}
-
-func (it *scriptedIterator) Stop() {}
-
-// alwaysErrIterator.Next always returns the same error immediately —
-// "the iterator is dead and nothing will ever come out of it again".
-type alwaysErrIterator struct{ err error }
-
-func (it alwaysErrIterator) Next(...jetstream.NextOpt) (jetstream.Msg, error) { return nil, it.err }
-func (it alwaysErrIterator) Stop()                                            {}
+func (c *fakeConsumeContext) Stop()                   { close(c.stopped) }
+func (c *fakeConsumeContext) Drain()                  {}
+func (c *fakeConsumeContext) Closed() <-chan struct{} { return c.stopped }
 
 // newBareQueue builds a Queue with just enough wired up to exercise
-// forward/Poll/Stop directly, without a live broker connection. Tests own
-// msgsCtx and resubscribe.
+// handleMsg/handleConsumeErr/Poll/Stop directly, without a live broker
+// connection. Tests own consumeCtx and resubscribe, and invoke
+// handleMsg/handleConsumeErr themselves the way the library would.
 func newBareQueue(maxMessages int) *Queue {
 	q := &Queue{
-		cfg:         Config{MaxMessagesPerPoll: maxMessages},
-		msgCh:       make(chan common.QueuedMessage, maxMessages),
-		stopCh:      make(chan struct{}),
-		forwardDone: make(chan struct{}),
-		pending:     make(map[string]jetstream.Msg),
+		cfg:        Config{MaxMessagesPerPoll: maxMessages},
+		msgCh:      make(chan common.QueuedMessage, maxMessages),
+		stopCh:     make(chan struct{}),
+		pending:    make(map[string]jetstream.Msg),
+		consumeCtx: newFakeConsumeContext(),
 	}
 	q.running.Store(true)
 	q.healthy.Store(true)
 	return q
 }
 
-// TestPollErrorsWhenSubscriptionUnhealthy pins G14: once forward() has
-// seen an iterator error and resubscribing keeps failing, Poll must
-// surface an error at the caller's deadline — never (nil, nil) — so the
-// router's poll-error handling (and, eventually, the stall watchdog) can
-// see the consumer is not actually making progress. This is the direct
-// regression test for the bug found on the bench rig: a dead subscription
-// silently looking like an idle-but-healthy one.
+// TestHandleMsgDeliversToChannel is a direct, no-broker unit test of the
+// Consume callback: a message handed to handleMsg (the way the library's
+// delivery goroutine would call it) must come back out of Poll unchanged.
+func TestHandleMsgDeliversToChannel(t *testing.T) {
+	q := newBareQueue(10)
+	t.Cleanup(q.Stop)
+
+	q.handleMsg(newFakeMsg(t, 7, common.Message{ID: "m7", MediationType: common.MediationTypeHTTP, MediationTarget: "http://x"}))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	msgs, err := q.Poll(ctx, 10)
+	require.NoError(t, err)
+	require.Len(t, msgs, 1)
+	assert.Equal(t, "m7", msgs[0].Message.ID)
+	assert.Equal(t, "7", msgs[0].BrokerMessageID)
+}
+
+// TestPollErrorsWhenSubscriptionUnhealthy pins G14/G16: once
+// handleConsumeErr has seen a TERMINAL error (the ConsumeContext has
+// stopped for good) and resubscribing keeps failing, Poll must surface an
+// error at the caller's deadline — never (nil, nil) — so the router's
+// poll-error handling (and, eventually, the stall watchdog) can see the
+// consumer is not actually making progress.
 //
 // Mutant: remove the `if q.healthy.Load()` guard in Poll's deadline branch
 // (always return (nil, nil)) and this test fails — Poll never errors.
 func TestPollErrorsWhenSubscriptionUnhealthy(t *testing.T) {
 	q := newBareQueue(10)
-	q.msgsCtx = alwaysErrIterator{err: errors.New("boom: connection dead")}
 	// resubscribe never succeeds — the "can't recover" path.
-	q.resubscribe = func() (messagesIterator, error) {
+	q.resubscribe = func() (jetstream.ConsumeContext, error) {
 		return nil, errors.New("still dead")
 	}
-	go q.forward()
 	t.Cleanup(q.Stop)
 
+	q.handleConsumeErr(nil, jetstream.ErrConnectionClosed)
+
 	require.Eventually(t, func() bool { return !q.healthy.Load() }, time.Second, time.Millisecond,
-		"forward must mark the queue unhealthy as soon as Next errors")
+		"handleConsumeErr must mark the queue unhealthy immediately on a terminal error")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
@@ -129,46 +124,73 @@ func TestPollErrorsWhenSubscriptionUnhealthy(t *testing.T) {
 	elapsed := time.Since(start)
 
 	require.Error(t, err, "Poll must surface an error once the subscription is unhealthy")
-	assert.Contains(t, err.Error(), "boom: connection dead",
+	assert.Contains(t, err.Error(), "connection closed",
 		"the error should carry forward WHY the subscription went unhealthy in the first place")
 	assert.Empty(t, msgs)
 	assert.Less(t, elapsed, 500*time.Millisecond, "must error at roughly one deadline, not hang")
 }
 
-// TestForwardResubscribesAndRecovers pins the other half of G14: forward
-// must never let an iterator error end the subscription permanently. When
-// Next errors ONCE and the next resubscribe attempt succeeds, forward
-// must pick back up and keep delivering — proven by an actual message
-// flowing through Poll afterward, not just the healthy flag flipping back.
+// TestTerminalConsumeErrResubscribesAndRecovers pins the other half of
+// G14/G16: a terminal error must never end the Queue permanently. When
+// resubscribe succeeds, healthy must be restored and the NEW
+// ConsumeContext swapped in — proven by Stop() then stopping the new one,
+// not the old (already-dead) one.
 //
-// Mutant: change forward's error branch back to a bare `return` (the
-// pre-fix behaviour) and this test fails — Poll never gets the message
-// because nothing is pulling for it any more.
-func TestForwardResubscribesAndRecovers(t *testing.T) {
+// Mutant: change handleConsumeErr to never call resubscribeUntilHealthy
+// (the pre-G16-equivalent "give up" behaviour) and this test fails —
+// healthy never recovers.
+func TestTerminalConsumeErrResubscribesAndRecovers(t *testing.T) {
 	q := newBareQueue(10)
-	q.msgsCtx = alwaysErrIterator{err: errors.New("transient: no heartbeat received")}
-
-	recovered := &scriptedIterator{
-		stopCh: q.stopCh,
-		results: []nextResult{
-			{msg: newFakeMsg(t, 42, common.Message{ID: "after-recovery", MediationType: common.MediationTypeHTTP, MediationTarget: "http://x"})},
-		},
-	}
+	oldCtx := q.consumeCtx.(*fakeConsumeContext)
+	newCtx := newFakeConsumeContext()
 	resubCalls := 0
-	q.resubscribe = func() (messagesIterator, error) {
+	q.resubscribe = func() (jetstream.ConsumeContext, error) {
 		resubCalls++
-		return recovered, nil
+		return newCtx, nil
 	}
-	go q.forward()
-	t.Cleanup(q.Stop)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	msgs, err := q.Poll(ctx, 10)
-	require.NoError(t, err)
-	require.Len(t, msgs, 1)
-	assert.Equal(t, "after-recovery", msgs[0].Message.ID)
-	assert.Equal(t, "42", msgs[0].BrokerMessageID)
-	assert.True(t, q.healthy.Load(), "healthy must be restored once resubscribe succeeds")
+	q.handleConsumeErr(nil, jetstream.ErrConnectionClosed)
+
+	require.Eventually(t, func() bool { return q.healthy.Load() }, time.Second, time.Millisecond,
+		"healthy must be restored once resubscribe succeeds")
 	assert.Equal(t, 1, resubCalls)
+
+	q.Stop()
+	select {
+	case <-newCtx.stopped:
+	default:
+		t.Fatal("Stop must stop the CURRENT (post-resubscribe) ConsumeContext")
+	}
+	select {
+	case <-oldCtx.stopped:
+		t.Fatal("Stop must not touch the old, already-dead ConsumeContext")
+	default:
+	}
+}
+
+// TestNonTerminalConsumeErrDoesNotResubscribe pins G16's narrower trigger:
+// Consume recovers from a missed heartbeat (and similar transient
+// conditions) internally, without ending the ConsumeContext — so
+// handleConsumeErr must NOT mark the queue unhealthy or resubscribe for
+// those, only log. Resubscribing unnecessarily would tear down a
+// perfectly healthy subscription.
+//
+// Mutant: remove the isTerminalConsumeErr check (treat every error as
+// terminal) and this test fails — healthy flips false and resubscribe is
+// called for a no-heartbeat notice that the library already handled.
+func TestNonTerminalConsumeErrDoesNotResubscribe(t *testing.T) {
+	q := newBareQueue(10)
+	t.Cleanup(q.Stop)
+	resubCalls := 0
+	q.resubscribe = func() (jetstream.ConsumeContext, error) {
+		resubCalls++
+		return newFakeConsumeContext(), nil
+	}
+
+	q.handleConsumeErr(nil, jetstream.ErrNoHeartbeat)
+
+	// Give a wrongly-triggered resubscribe a chance to run before asserting.
+	time.Sleep(50 * time.Millisecond)
+	assert.True(t, q.healthy.Load(), "a self-recovering notice must not mark the queue unhealthy")
+	assert.Equal(t, 0, resubCalls, "a self-recovering notice must not trigger a resubscribe")
 }

@@ -1,20 +1,43 @@
 // Package nats is the NATS JetStream queue backend.
 //
 //   - Continuous pull-based JetStream subscription (owner ruling), not a
-//     per-poll Fetch: the client keeps one jetstream.Messages() iterator
-//     open for the life of the consumer, bounded client-side to about one
-//     in-flight batch (PullMaxMessages + nats.go's own default threshold,
-//     half of max-messages, so the next batch is requested while the
-//     current one is still half full rather than after a broker round
-//     trip idles the workers — client-side residency stays ≤1.5 batches,
-//     which is what "about one batch" means in practice; see G15).
-//     A background goroutine forwards the iterator into a channel of
-//     capacity max-messages; Poll blocks on that channel rather than
+//     per-poll Fetch: the client keeps one jetstream.Consumer.Consume
+//     callback subscription open for the life of the consumer, bounded
+//     client-side to about one in-flight batch (PullMaxMessages + nats.go's
+//     own default threshold, half of max-messages, so the next batch is
+//     requested while the current one is still half full rather than
+//     after a broker round trip idles the workers — client-side
+//     residency stays ≤1.5 batches, which is what "about one batch"
+//     means in practice; see G15). The handler pushes each message into a
+//     channel of capacity max-messages (blocking when full — the
+//     back-pressure signal); Poll blocks on that channel rather than
 //     issuing a broker round-trip.
+//
+//     G16 (owner ruling 2026-09-07): Consume, not Messages/Next. Both
+//     multiplex the same underlying pull mechanics, but Messages/Next only
+//     issues its next pull request from INSIDE a call to Next — so a
+//     forwarder that calls Next only when it has downstream room (the
+//     Messages-based design this replaced) stops asking the broker for
+//     more the moment downstream is briefly saturated, even though
+//     nothing else is wrong. On one CPU, 256 workers filling their buffer
+//     was enough to park the poll loop, which stopped Next calls, which
+//     stopped pull requests, until the outstanding one expired and the
+//     per-Next heartbeat monitor timed out — five single-queue "no
+//     heartbeat" recovery cycles at ~3k/s where 2 CPUs (workers draining
+//     fast enough to keep calling Next) saw zero. Consume's pull-request
+//     lifecycle, expiry handling and heartbeat monitoring run in the
+//     library's own goroutine, entirely decoupled from whether OUR
+//     handler is currently blocked on a full channel — matching how
+//     nats.java and async-nats structure their consumers, which is why
+//     they don't show this pathology on the same row.
+//
 //   - WorkQueue retention (messages removed after ack).
+//
 //   - Durable consumer auto-provisioned at startup.
+//
 //   - Receipt handles are `streamName:streamSequence` (the historical
 //     receipt format).
+//
 //   - Defer maps to NAK-with-delay (same as Nack with delay >0).
 //
 // URI scheme: `nats://host:port` (optionally with comma-separated hosts).
@@ -113,16 +136,6 @@ func publisherFactory(ctx context.Context, cfg common.QueueConfig) (queue.Publis
 	return q, nil
 }
 
-// messagesIterator is the subset of jetstream.MessagesContext that forward
-// depends on (Next to pull a message, Stop to unwind on shutdown). It
-// exists so a test can substitute a fake that errors or blocks on demand —
-// see nats_resubscribe_test.go — without needing a live broker connection.
-// jetstream.MessagesContext satisfies it structurally.
-type messagesIterator interface {
-	Next(opts ...jetstream.NextOpt) (jetstream.Msg, error)
-	Stop()
-}
-
 // Queue is a NATS JetStream-backed queue (consumer + publisher).
 type Queue struct {
 	cfg        Config
@@ -132,37 +145,54 @@ type Queue struct {
 	js       jetstream.JetStream
 	consumer jetstream.Consumer
 
-	// msgsCtxMu guards msgsCtx: forward() replaces it on resubscribe, Stop()
-	// reads it to unwind the current one, and both can run concurrently.
-	msgsCtxMu sync.Mutex
-	// msgsCtx is the current continuous pull subscription. forward() drains
-	// it into msgCh; nothing else calls Next. It is REPLACED (not just
-	// reopened in place) whenever forward() sees an error from it — see
-	// resubscribe and G14 in forward's doc comment.
-	msgsCtx messagesIterator
+	// consumeCtxMu guards consumeCtx: handleConsumeErr replaces it on
+	// resubscribe (from a goroutine it starts), Stop() reads it to unwind
+	// the current one, and both can run concurrently.
+	consumeCtxMu sync.Mutex
+	// consumeCtx is the current Consume() subscription. The library's own
+	// goroutines own its pull-request lifecycle end to end (issuing,
+	// expiry, heartbeats) and invoke handleMsg/handleConsumeErr; nothing
+	// here calls Next or otherwise drives it. Replaced (not reopened in
+	// place) when handleConsumeErr sees a terminal error — see resubscribe
+	// and G16 above.
+	consumeCtx jetstream.ConsumeContext
 
-	// resubscribe opens a fresh subscription with the same options as the
-	// original. A field (not a hardcoded call) so tests can substitute one
-	// that fails, to exercise the "can't recover" path deterministically.
-	resubscribe func() (messagesIterator, error)
+	// resubscribe opens a fresh Consume() subscription with the same
+	// options as the original. A field (not a hardcoded call) so tests can
+	// substitute one that fails, to exercise the "can't recover" path
+	// deterministically.
+	resubscribe func() (jetstream.ConsumeContext, error)
 
-	// healthy is false from the moment forward() sees an unexpected error
-	// from msgsCtx.Next until a resubscribe succeeds. Poll consults it: a
+	// resubscribing guards against handleConsumeErr starting more than one
+	// concurrent resubscribe attempt — it can fire multiple times for the
+	// same underlying failure (the library calls it once per error, and
+	// errors can repeat while a subscription is going down).
+	resubscribing atomic.Bool
+
+	// healthy is false from the moment handleConsumeErr sees a terminal
+	// error until a resubscribe succeeds. Poll consults it: a
 	// caller-deadline lapse while healthy means "genuinely idle, nothing to
 	// report" (nil, nil); while unhealthy it means "the subscription is
-	// broken and forward() is retrying", surfaced as an error so the
+	// broken and a resubscribe is in progress", surfaced as an error so the
 	// router's normal poll-error handling (and, if resubscribing keeps
-	// failing, the stall watchdog) can see it. See G14.
+	// failing, the stall watchdog) can see it. See G14; the trigger
+	// condition is narrower now (terminal errors only — see
+	// isTerminalConsumeErr) because Consume self-recovers from the
+	// transient ones (a missed heartbeat, a reconnect) without ending the
+	// subscription at all.
 	healthy atomic.Bool
-	// unhealthyMsg is the most recent error forward() saw, for Poll's error
+	// unhealthyMsg is the most recent terminal error, for Poll's error
 	// text. Plain string (not the error itself) so a stale *error can't be
 	// read back after being reused/wrapped elsewhere.
 	unhealthyMsg atomic.Value
 
-	// msgCh is fed by forward() and drained by Poll. Its capacity is
-	// max-messages: forward()'s send blocks once it's full, which is what
-	// stops the subscription from being drained further (Next isn't called
-	// again until there's room).
+	// msgCh is fed by handleMsg (invoked by the library's own delivery
+	// goroutine, one message at a time, serially) and drained by Poll. Its
+	// capacity is max-messages: handleMsg's send blocks once it's full,
+	// which is the back-pressure signal — with Consume, that blocks
+	// handleMsg, not the pull-request lifecycle (G16), so a saturated
+	// downstream no longer stops the subscription asking the broker for
+	// more.
 	//
 	// G15 (owner ruling 2026-09-07): the pull threshold is nats.go's own
 	// default — half of max-messages — not "wait until fully drained".
@@ -181,19 +211,14 @@ type Queue struct {
 	// residency plateaus at two batches, exactly as before — the
 	// threshold only changes WHEN the next request goes out, not the cap
 	// on how many batches can ever be outstanding (msgCh's capacity is
-	// still the only thing forward() will overrun before blocking).
+	// still the only thing handleMsg will overrun before blocking).
 	msgCh chan common.QueuedMessage
 
 	// stopCh is closed by Stop to unblock a Poll parked on msgCh, or a
-	// forward() blocked sending to a full msgCh, without waiting for
-	// forward() to notice the subscription closed.
+	// handleMsg call blocked sending to a full msgCh, without waiting for
+	// the library to notice the subscription closed.
 	stopCh   chan struct{}
 	stopOnce sync.Once
-
-	// forwardDone closes once forward() has returned (subscription closed
-	// or Stop called). Not waited on by Stop (which must return promptly);
-	// tests use it to confirm the goroutine actually exited.
-	forwardDone chan struct{}
 
 	running atomic.Bool
 
@@ -279,14 +304,6 @@ func newQueue(ctx context.Context, qc common.QueueConfig) (*Queue, error) {
 	// this one is still half full keeps client-side residency at ≤1.5
 	// batches — still "about one batch", not an unbounded prefetch.
 	threshold := pullThreshold(batch)
-	msgsCtx, err := consumer.Messages(
-		jetstream.PullMaxMessages(batch),
-		jetstream.PullThresholdMessages(threshold),
-	)
-	if err != nil {
-		nc.Close()
-		return nil, fmt.Errorf("nats: open subscription: %w", err)
-	}
 
 	q := &Queue{
 		cfg:        cfg,
@@ -294,102 +311,112 @@ func newQueue(ctx context.Context, qc common.QueueConfig) (*Queue, error) {
 		nc:         nc,
 		js:         js,
 		consumer:   consumer,
-		msgsCtx:    msgsCtx,
-		resubscribe: func() (messagesIterator, error) {
-			return consumer.Messages(
-				jetstream.PullMaxMessages(batch),
-				jetstream.PullThresholdMessages(threshold),
-			)
-		},
-		msgCh:       make(chan common.QueuedMessage, batch),
-		stopCh:      make(chan struct{}),
-		forwardDone: make(chan struct{}),
-		pending:     make(map[string]jetstream.Msg),
+		msgCh:      make(chan common.QueuedMessage, batch),
+		stopCh:     make(chan struct{}),
+		pending:    make(map[string]jetstream.Msg),
 	}
+	// A field, not a hardcoded call: the SAME closure is used for the
+	// initial subscribe (right below) and every later resubscribe
+	// (handleConsumeErr), so the options can never drift between the two.
+	q.resubscribe = func() (jetstream.ConsumeContext, error) {
+		return consumer.Consume(q.handleMsg,
+			jetstream.PullMaxMessages(batch),
+			jetstream.PullThresholdMessages(threshold),
+			jetstream.ConsumeErrHandler(q.handleConsumeErr),
+		)
+	}
+	consumeCtx, err := q.resubscribe()
+	if err != nil {
+		nc.Close()
+		return nil, fmt.Errorf("nats: open subscription: %w", err)
+	}
+	q.consumeCtx = consumeCtx
 	q.healthy.Store(true)
 	q.running.Store(true)
-	go q.forward()
 	return q, nil
 }
 
-// forward is the one goroutine that ever calls msgsCtx.Next. It blocks
-// until a message is available, converts it, and hands it to Poll via
-// msgCh. A full msgCh blocks the send — and therefore blocks the next Next
-// call — which is the back-pressure that keeps the subscription from
-// requesting more than one batch ahead.
-//
-// G14 (owner ruling 2026-09-07): forward must never let an unexpected
-// error from Next silently end the subscription. On the bench rig, a
-// sustained high-throughput single queue hit "nats: no heartbeat
-// received" from the library's per-Next hbMonitor (jetstream/pull.go) —
-// not a connection loss, not a broker problem (num_pending stayed at the
-// full backlog, num_waiting at 0: the broker had plenty to send and
-// nobody was asking) — and the old code just returned, leaving msgCh
-// permanently empty and Poll blocking out its caller's deadline forever,
-// reporting (nil, nil) every cycle because nothing here said otherwise.
-// Whatever the exact trigger, an iterator error must never be fatal to
-// the Queue: log it, mark unhealthy (so Poll stops claiming "idle and
-// fine" — see the healthy field doc and Poll below), and resubscribe with
-// backoff until it succeeds or Stop is called. A resubscribe is cheap
-// (JetStream's durable consumer keeps its ack-pending/delivery state; it's
-// a fresh pull subscription, not a fresh consumer) and self-heals the
-// exact failure mode seen on the rig.
-func (q *Queue) forward() {
-	defer close(q.forwardDone)
-	for {
-		msg, err := q.currentIterator().Next()
-		if err != nil {
-			if !q.running.Load() {
-				// Expected: our own Stop() called msgsCtx.Stop() (or closed
-				// nc), which is what makes Next return here. Nothing to
-				// recover — msgCh's lack of further sends, plus stopCh,
-				// unblock any parked Poll.
-				return
-			}
-			slog.Error("nats: subscription iterator error; resubscribing",
-				"queue", q.identifier, "err", err)
-			q.healthy.Store(false)
-			q.unhealthyMsg.Store(err.Error())
-			if !q.resubscribeUntilHealthy() {
-				return // Stop() fired while retrying
-			}
-			continue
-		}
-		qm, ok := q.toQueuedMessage(msg)
-		if !ok {
-			continue
-		}
-		select {
-		case q.msgCh <- qm:
-		case <-q.stopCh:
-			return
-		}
+// handleMsg is the Consume callback: the library's own delivery goroutine
+// invokes it once per message, serially (never concurrently with itself).
+// It converts the message and hands it to Poll via msgCh. A full msgCh
+// blocks this call — the back-pressure signal — but that block is entirely
+// ours: per G16, it does NOT reach into the library's pull-request
+// lifecycle (issuing, expiry, heartbeats), which runs in Consume's own
+// goroutine regardless of how long handleMsg takes to return.
+func (q *Queue) handleMsg(msg jetstream.Msg) {
+	qm, ok := q.toQueuedMessage(msg)
+	if !ok {
+		return
+	}
+	select {
+	case q.msgCh <- qm:
+	case <-q.stopCh:
 	}
 }
 
+// isTerminalConsumeErr reports whether err means the ConsumeContext that
+// reported it has stopped (or is about to) for good, rather than one of
+// the errors Consume recovers from on its own (a missed heartbeat, a
+// reconnect) without ending the subscription.
+func isTerminalConsumeErr(err error) bool {
+	return errors.Is(err, jetstream.ErrConnectionClosed) ||
+		errors.Is(err, jetstream.ErrConsumerDeleted) ||
+		errors.Is(err, jetstream.ErrBadRequest)
+}
+
+// handleConsumeErr is Consume's ConsumeErrHandler: the library calls it
+// for every error it sees on the subscription, including ones it has
+// already recovered from by the time this runs (a missed heartbeat
+// triggers an automatic internal re-pull; a brief reconnect is likewise
+// handled without our involvement). Only a TERMINAL error — one after
+// which the library has stopped (or is stopping) this ConsumeContext for
+// good — needs us to act: mark unhealthy and resubscribe with backoff in
+// a fresh goroutine (never block here — this runs on the library's own
+// event-loop goroutine, and blocking it would stall the ConsumeContext's
+// own teardown). See G14 (why unhealthy must be surfaced through Poll) and
+// G16 (why this trigger is narrower than the old Messages/Next one).
+func (q *Queue) handleConsumeErr(_ jetstream.ConsumeContext, err error) {
+	if !q.running.Load() {
+		return // Stop() was called; nothing to recover.
+	}
+	if !isTerminalConsumeErr(err) {
+		slog.Warn("nats: consume notice (self-recovering)", "queue", q.identifier, "err", err)
+		return
+	}
+	slog.Error("nats: consume subscription terminated; resubscribing",
+		"queue", q.identifier, "err", err)
+	q.healthy.Store(false)
+	q.unhealthyMsg.Store(err.Error())
+	if !q.resubscribing.CompareAndSwap(false, true) {
+		return // a resubscribe attempt is already in flight
+	}
+	go q.resubscribeUntilHealthy()
+}
+
 // resubscribeUntilHealthy retries resubscribe with capped exponential
-// backoff until it succeeds (swapping in the new iterator and marking
-// healthy again) or Stop is called. Returns false only in the latter case.
-func (q *Queue) resubscribeUntilHealthy() bool {
+// backoff until it succeeds (swapping in the new ConsumeContext and
+// marking healthy again) or Stop is called.
+func (q *Queue) resubscribeUntilHealthy() {
+	defer q.resubscribing.Store(false)
 	const maxBackoff = 5 * time.Second
 	backoff := 200 * time.Millisecond
 	for {
 		select {
 		case <-q.stopCh:
-			return false
+			return
 		default:
 		}
-		newIt, err := q.resubscribe()
+		newCtx, err := q.resubscribe()
 		if err == nil {
-			q.setIterator(newIt)
+			q.setConsumeCtx(newCtx)
 			q.healthy.Store(true)
 			slog.Info("nats: resubscribed; subscription healthy again", "queue", q.identifier)
-			return true
+			return
 		}
 		slog.Error("nats: resubscribe failed; retrying", "queue", q.identifier, "err", err, "backoff", backoff)
 		select {
 		case <-q.stopCh:
-			return false
+			return
 		case <-time.After(backoff):
 		}
 		if backoff *= 2; backoff > maxBackoff {
@@ -398,16 +425,16 @@ func (q *Queue) resubscribeUntilHealthy() bool {
 	}
 }
 
-func (q *Queue) currentIterator() messagesIterator {
-	q.msgsCtxMu.Lock()
-	defer q.msgsCtxMu.Unlock()
-	return q.msgsCtx
+func (q *Queue) currentConsumeCtx() jetstream.ConsumeContext {
+	q.consumeCtxMu.Lock()
+	defer q.consumeCtxMu.Unlock()
+	return q.consumeCtx
 }
 
-func (q *Queue) setIterator(it messagesIterator) {
-	q.msgsCtxMu.Lock()
-	q.msgsCtx = it
-	q.msgsCtxMu.Unlock()
+func (q *Queue) setConsumeCtx(cc jetstream.ConsumeContext) {
+	q.consumeCtxMu.Lock()
+	q.consumeCtx = cc
+	q.consumeCtxMu.Unlock()
 }
 
 // toQueuedMessage converts a jetstream.Msg into a common.QueuedMessage,
@@ -686,7 +713,7 @@ func (q *Queue) Stop() {
 	q.stopOnce.Do(func() {
 		q.running.Store(false)
 		close(q.stopCh)
-		q.currentIterator().Stop()
+		q.currentConsumeCtx().Stop()
 	})
 	q.pendingMu.Lock()
 	q.pending = make(map[string]jetstream.Msg)
