@@ -205,10 +205,10 @@ func ProvisionServiceAccount(
 	}
 }
 
-// generateClientSecret returns a fresh URL-safe secret + its encrypted
+// generateClientSecret returns a fresh URL-safe secret + its at-rest
 // reference (client_secret_ref). Same scheme as
-// auth/operations.generateSecret: secrets are reversibly
-// encrypted, not hashed.
+// auth/operations.generateSecret: a keyed hash, not a reversible
+// encryption — this OAuth client secret is verify-only.
 func generateClientSecret() (plaintext, ref string, err error) {
 	b := make([]byte, 32)
 	if _, err = rand.Read(b); err != nil {
@@ -220,11 +220,7 @@ func generateClientSecret() (plaintext, ref string, err error) {
 		return "", "", err
 	}
 	if enc == nil {
-		return "", "", errors.New("FLOWCATALYST_APP_KEY not configured; cannot encrypt client secret")
+		return "", "", errors.New("FLOWCATALYST_APP_KEY not configured; cannot hash client secret")
 	}
-	ref, err = enc.Encrypt(plaintext)
-	if err != nil {
-		return "", "", err
-	}
-	return plaintext, ref, nil
+	return plaintext, enc.Hash(plaintext), nil
 }

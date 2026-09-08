@@ -435,11 +435,15 @@ func RevokeOAuthClientPreviousSecret(repo *auth.OAuthClientRepo) usecaseop.Opera
 
 // ── helpers ───────────────────────────────────────────────────────────────
 
-// generateSecret mints a random client secret and returns it alongside
-// its encrypted reference (the value stored in client_secret_ref).
-// The secret is reversibly encrypted with FLOWCATALYST_APP_KEY
-// and verified at /oauth/token by decrypt-and-compare. Fails if no app
-// key is configured rather than storing a plaintext or unverifiable secret.
+// generateSecret mints a random client secret and returns it alongside its
+// at-rest reference (the value stored in client_secret_ref): a keyed hash,
+// "hashed:v1:" + HMAC-SHA256(FLOWCATALYST_APP_KEY, plaintext). This is a
+// verify-only secret — /oauth/token only ever checks a caller-supplied guess
+// against it, never sends or signs with it — so the ref cannot be reversed
+// back to the plaintext even with the app key. Fails if no app key is
+// configured rather than storing a plaintext or unverifiable secret. (Older
+// rows may still hold a reversibly-encrypted ref from before this existed;
+// /oauth/token verifies that shape too and migrates it to hashed: lazily.)
 func generateSecret() (plaintext, ref string, err error) {
 	b := make([]byte, 32)
 	if _, err = rand.Read(b); err != nil {
@@ -451,16 +455,7 @@ func generateSecret() (plaintext, ref string, err error) {
 		return "", "", err
 	}
 	if enc == nil {
-		return "", "", errors.New("FLOWCATALYST_APP_KEY not configured; cannot encrypt client secret")
+		return "", "", errors.New("FLOWCATALYST_APP_KEY not configured; cannot hash client secret")
 	}
-	encrypted, err := enc.Encrypt(plaintext)
-	if err != nil {
-		return "", "", err
-	}
-	// Store with the "encrypted:" prefix — the storage convention for
-	// client_secret_ref values. Decrypt strips the prefix on
-	// read, so verification is unaffected; this keeps client_secret_ref
-	// values uniform across all rows.
-	ref = "encrypted:" + encrypted
-	return plaintext, ref, nil
+	return plaintext, enc.Hash(plaintext), nil
 }
