@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"syscall"
 
 	"github.com/jackc/pgx/v5"
@@ -29,6 +30,23 @@ import (
 
 func main() {
 	logging.Init()
+
+	// A panic anywhere in main's own call tree (config load, DB connect,
+	// server.Run's synchronous setup) would otherwise unwind straight past
+	// every deferred cleanup and print only a bare Go runtime stack trace —
+	// on stderr, same as our JSON logs, but NOT through slog, so it's easy
+	// to miss in a log pipeline that filters/parses JSON lines. This
+	// guarantees at least one structured, greppable line exists before the
+	// process exits, whatever crashed. It can't catch a panic in another
+	// goroutine (Go doesn't allow that), but startup and the main loop
+	// itself run here.
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("fc-server: panic, exiting", "panic", r, "stack", string(debug.Stack()))
+			os.Exit(2)
+		}
+	}()
+
 	cfg := server.LoadEnv()
 
 	slog.Info("starting fc-server",

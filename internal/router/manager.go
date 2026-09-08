@@ -88,8 +88,21 @@ type Manager struct {
 	pools  map[string]*Pool // pool code → passive pool
 
 	consumerMu sync.RWMutex
-	consumers  map[string]*runningConsumer   // queue name → consumer + poll loop
+	consumers  map[string]*runningConsumer   // queue name (config) → consumer + poll loop
 	queues     map[string]common.QueueConfig // queue name → cfg (for publishers)
+
+	// consumersByID mirrors consumers, keyed by each consumer's OWN
+	// Identifier() rather than the config queue name. The two differ for
+	// NATS: its Identifier() is "<stream>/<consumer>", not the operator's
+	// config-name label, and every QueuedMessage/InFlightMessage carries
+	// QueueIdentifier — the broker identity, not the config name (see
+	// resolveConsumer). Postgres and SQS happen to report the config name
+	// as their Identifier() too, so this only changes behaviour for NATS,
+	// but ack/nack resolution must always go through the identity the
+	// backend itself reports, not an operator-chosen label it may not
+	// share. Maintained in lockstep with consumers at every registration,
+	// replacement and teardown — never read or written on its own.
+	consumersByID map[string]*runningConsumer
 
 	// drainingMu guards drainingPools: pools this Manager removed from
 	// routing (m.pools, via Reconfigure) but which are still finishing their
@@ -180,6 +193,13 @@ type Manager struct {
 	// "no platform behind this router", which is the standalone default.
 	srMu            sync.RWMutex
 	settledReporter SettledReporter
+
+	// capacityGate wakes every poll loop parked in awaitCapacity the moment
+	// some pool's capacity might have changed (G12): a pool crossing back
+	// under capacity (wired via Pool.SetCapacityFreed at every
+	// pool-creation site), or a reconfigure that could change which pools
+	// exist or feed a queue. Never nil after NewManager.
+	capacityGate *capacityGate
 }
 
 // SetSettledReporter wires the T3/A-01 settled-message reporter that every
@@ -285,6 +305,7 @@ func NewManager(mediator Mediator, tracker *InFlightTracker) *Manager {
 		tracker:         tracker,
 		pools:           make(map[string]*Pool),
 		consumers:       make(map[string]*runningConsumer),
+		consumersByID:   make(map[string]*runningConsumer),
 		queues:          make(map[string]common.QueueConfig),
 		drainingPools:   make(map[string]*Pool),
 		publishers:      make(map[string]queue.Publisher),
@@ -293,6 +314,7 @@ func NewManager(mediator Mediator, tracker *InFlightTracker) *Manager {
 		restartDelay:    consumerRestartDelay,
 		rebuildTimeout:  consumerRebuildTimeout,
 		pollTimeout:     consumerPollTimeout,
+		capacityGate:    newCapacityGate(),
 	}
 	m.root, m.rootCancel = context.WithCancel(context.Background())
 	return m
@@ -328,7 +350,10 @@ func (m *Manager) SetWarnings(ws *WarningService) { m.warnings.Store(ws) }
 func (m *Manager) SetStrictRouting(v bool) { m.strictRouting.Store(v) }
 
 // resolveConsumer maps a message's origin queue to its consumer so a pool can
-// ack/nack on the right queue. Checks the active routing table first, then
+// ack/nack on the right queue. queueID is always a QueueIdentifier off a
+// QueuedMessage or InFlightMessage — the queue backend's OWN identity (see
+// consumersByID's doc comment), never the config queue name. Checks the
+// active routing table first (by that identity, via consumersByID), then
 // falls back to a lingering (removed/changed) consumer still detaching (X-11
 // / R-26/R-49 — see the detaching field's doc comment): a message buffered
 // before its queue dropped out of config must still resolve to SOMETHING,
@@ -337,7 +362,7 @@ func (m *Manager) SetStrictRouting(v bool) { m.strictRouting.Store(v) }
 // answers to queueID.
 func (m *Manager) resolveConsumer(queueID string) queue.Consumer {
 	m.consumerMu.RLock()
-	if rc, ok := m.consumers[queueID]; ok {
+	if rc, ok := m.consumersByID[queueID]; ok {
 		m.consumerMu.RUnlock()
 		return rc.consumer
 	}
@@ -786,10 +811,16 @@ func (m *Manager) ensureFallbackPool(code string) *Pool {
 		m.mediator, m.tracker, m.resolveConsumer,
 	)
 	p.SetSettledReporter(m.settledReporterRef())
+	p.SetCapacityFreed(m.capacityGate.signal)
 	m.pools[code] = p
 	m.trackSynthPool(code)
 	slog.Info("synthesised per-client fallback pool",
 		"pool_code", code, "concurrency", defaultPoolConcurrency)
+	// A new pool existing at all is itself a capacity event: a consumer
+	// parked in awaitCapacity because its last batch's dests pointed at a
+	// now-gone pool re-evaluates on the fallback ("any pool has room") path
+	// and would otherwise wait for an unrelated pool's queue to drain.
+	m.capacityGate.signal()
 	return p
 }
 
@@ -973,12 +1004,25 @@ func (m *Manager) runConsumer(ctx context.Context, rc *runningConsumer) {
 			// a permanent deadlock built entirely out of healthy parts, in which
 			// the watchdog re-fired every 30s for ever.
 			rc.lastPoll.Store(now.UnixNano())
-			select {
-			case <-ctx.Done():
+			// G12 (owner ruling 2026-09-07): no timed wait here. Park
+			// untimed on the capacity gate — some pool crossing back under
+			// capacity, or a reconfigure, wakes this loop the instant
+			// there is real room, instead of a fixed 2s poll that left the
+			// router at 22% CPU with workers idle while a fast broker's
+			// shared buffer refilled and drained many times over within
+			// one sleep. Still exits promptly on ctx cancellation.
+			if !m.awaitCapacity(ctx, rc) {
 				return
-			case <-time.After(2 * time.Second):
 			}
 			continue
+		}
+		if wasFull {
+			// The resume half of the PoolCapacity warning above: an
+			// operator who saw "pausing" deserves to see when intake
+			// actually picked back up, not silence until the next
+			// unrelated log line.
+			slog.Info("destination pools have capacity again; resuming intake",
+				"queue", rc.consumer.Identifier())
 		}
 		wasFull = false
 
@@ -1018,9 +1062,34 @@ func (m *Manager) runConsumer(ctx context.Context, rc *runningConsumer) {
 		// Heartbeat only on a SUCCESSFUL poll (empty or not). Stamping it on an
 		// errored poll keeps a wedged, error-spinning consumer looking alive to
 		// the restart watchdog, so it is never rebuilt.
+		//
+		// G13 (owner ruling 2026-09-07): a backend whose Poll blocks by
+		// contract (NATS's continuous subscription) reports "no messages
+		// yet" by letting pollCtx's own deadline lapse — Poll returns
+		// (nil, nil), not an error, once it recognises that (see the nats
+		// backend). That is a SUCCESSFUL, empty poll, so it lands here and
+		// gets exactly the same heartbeat treatment as any other backend's
+		// instant "queue's empty" answer. This is what keeps a healthy
+		// blocking Poll's lastPoll fresh every pollTimeout — well inside
+		// any sane stall threshold — without the restart watchdog ever
+		// needing to know which backend blocks and which doesn't.
 		rc.lastPoll.Store(time.Now().UnixNano())
 
 		if len(msgs) == 0 {
+			// pollCtx already having reached ITS OWN deadline (as opposed to
+			// returning empty well within it) means this call already spent
+			// up to pollTimeout waiting — that wait already paced the loop,
+			// so re-polling immediately isn't a hot loop. Without this
+			// check, a blocking backend got pollTimeout of real waiting PLUS
+			// an extra fixed 1s on top of it, and — worse — that extra
+			// fixed sleep is exactly the "resurrected timed cadence" this
+			// design deliberately avoids. A backend that returns empty fast
+			// (SQS/Postgres with nothing queued) still gets the 1s pause:
+			// it hasn't waited at all, and hammering an empty queue at full
+			// loop speed is the hot-spin this pause exists to prevent.
+			if errors.Is(pollCtx.Err(), context.DeadlineExceeded) {
+				continue
+			}
 			select {
 			case <-ctx.Done():
 				return
@@ -1034,15 +1103,13 @@ func (m *Manager) runConsumer(ctx context.Context, rc *runningConsumer) {
 		// graceful drain graceful.
 		rc.setPools(m.route(rc.workCtx, msgs, rc.consumer))
 
-		// Full batch → re-poll immediately (more likely waiting). Partial →
-		// brief pause (queue draining).
-		if len(msgs) < maxPoll {
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(500 * time.Millisecond):
-			}
-		}
+		// G12 (owner ruling 2026-09-07): a partial batch used to pause
+		// 500ms on the theory that the queue was draining — but a partial
+		// batch says nothing about the QUEUE, only about what this one
+		// poll happened to return; on a fast broker it is routine and the
+		// pause did nothing but idle the workers between batches. Re-poll
+		// immediately, same as a full batch; the empty-poll branch above
+		// is what actually paces an idle queue.
 	}
 }
 
@@ -1112,6 +1179,31 @@ func (m *Manager) anyPoolHasRoom() bool {
 		}
 	}
 	return false
+}
+
+// awaitCapacity blocks the calling poll loop, UNTIMED, until hasCapacityFor
+// reports true or ctx is cancelled — the G12 replacement for the fixed
+// time.Sleep(2s) runConsumer used to fall back on whenever every pool this
+// queue feeds was full.
+//
+// Snapshots m.capacityGate BEFORE checking hasCapacityFor, never after: a
+// pool crossing back under capacity between the check and the wait would
+// otherwise be a signal raised into a gap nothing is listening in yet, lost
+// for good — see capacityGate's doc. Returns false only on ctx cancellation,
+// so runConsumer can exit its poll loop promptly instead of parking through
+// a shutdown.
+func (m *Manager) awaitCapacity(ctx context.Context, rc *runningConsumer) bool {
+	for {
+		sig := m.capacityGate.snapshot()
+		if m.hasCapacityFor(rc) {
+			return true
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-sig:
+		}
+	}
 }
 
 // beginPoolDrain registers a pool Reconfigure just removed as draining (so
@@ -1191,6 +1283,7 @@ func (m *Manager) Reconfigure(ctx context.Context, cfg common.RouterConfig) erro
 		}
 		np := NewPool(pc, m.mediator, m.tracker, m.resolveConsumer)
 		np.SetSettledReporter(m.settledReporterRef())
+		np.SetCapacityFreed(m.capacityGate.signal)
 		m.pools[code] = np
 	}
 	m.poolMu.Unlock()
@@ -1207,6 +1300,7 @@ func (m *Manager) Reconfigure(ctx context.Context, cfg common.RouterConfig) erro
 			slog.Info("manager: detaching consumer (queue removed or changed)", "queue", name)
 			stale = append(stale, rc)
 			delete(m.consumers, name)
+			delete(m.consumersByID, rc.consumer.Identifier())
 			delete(m.queues, name)
 		}
 	}
@@ -1259,12 +1353,19 @@ func (m *Manager) Reconfigure(ctx context.Context, cfg common.RouterConfig) erro
 			continue
 		}
 		m.consumers[qc.Name] = rc
+		m.consumersByID[consumer.Identifier()] = rc
 		m.queues[qc.Name] = qc
 		m.consumerMu.Unlock()
 
 		m.wg.Add(1)
 		go m.runConsumer(pollCtx, rc)
 	}
+	// A reconfigure can add, remove, resize or repoint any pool a parked
+	// consumer's next hasCapacityFor check depends on — wake every waiter
+	// so it re-evaluates against the new topology instead of sitting out
+	// however long is left on a queueDec that may never come from a pool
+	// that no longer exists.
+	m.capacityGate.signal()
 	return nil
 }
 
@@ -1306,6 +1407,7 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 		rc.consumer.Stop()
 	}
 	m.consumers = make(map[string]*runningConsumer)
+	m.consumersByID = make(map[string]*runningConsumer)
 	m.queues = make(map[string]common.QueueConfig)
 	m.consumerMu.Unlock()
 
@@ -1535,6 +1637,7 @@ func (m *Manager) RestartStalledConsumers(ctx context.Context, threshold time.Du
 			continue
 		}
 		m.consumers[c.name] = rc
+		m.consumersByID[consumer.Identifier()] = rc
 		m.consumerMu.Unlock()
 
 		// R-26/R-49: detach, don't abort — the same machinery

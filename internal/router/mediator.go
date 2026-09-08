@@ -19,6 +19,8 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/net/http2"
@@ -94,6 +96,35 @@ type HTTPMediator struct {
 	cfg      MediatorConfig
 	breakers *BreakerRegistry
 	warnings *WarningService // optional; set via SetWarnings. nil → no-op.
+
+	// protoCounts tallies the negotiated protocol (resp.Proto, e.g.
+	// "HTTP/2.0" or "HTTP/1.1") of every response actually received, one
+	// atomic counter per distinct value. There is no pre-existing
+	// HTTP-version metric in the Prometheus collector (routerCollector
+	// reads pool/queue/breaker snapshots, not the mediator), so this is a
+	// self-contained counter exposed via ProtoCounts for tests and future
+	// wiring, rather than a new label threaded through that collector.
+	protoCounts sync.Map // string -> *atomic.Uint64
+}
+
+// recordProto increments the counter for proto (resp.Proto). Called for
+// every response actually received, regardless of status code — the
+// count answers "what protocol did deliveries negotiate", not "how many
+// succeeded".
+func (m *HTTPMediator) recordProto(proto string) {
+	v, _ := m.protoCounts.LoadOrStore(proto, new(atomic.Uint64))
+	v.(*atomic.Uint64).Add(1)
+}
+
+// ProtoCounts returns a snapshot of negotiated-protocol counts, e.g.
+// {"HTTP/2.0": 41, "HTTP/1.1": 2}.
+func (m *HTTPMediator) ProtoCounts() map[string]uint64 {
+	out := make(map[string]uint64)
+	m.protoCounts.Range(func(k, v any) bool {
+		out[k.(string)] = v.(*atomic.Uint64).Load()
+		return true
+	})
+	return out
 }
 
 // NewHTTPMediator wires an HTTP mediator with the supplied config.
@@ -160,6 +191,30 @@ func (m *HTTPMediator) warnConfig(severity WarningSeverity, message string, msg 
 	}
 }
 
+// schemeRoundTripper dispatches an outbound request to one of two
+// transports by URL scheme. Go's stdlib http.Transport never negotiates
+// HTTP/2 over cleartext — http2.ConfigureTransports only wires ALPN
+// negotiation into the TLS handshake — so an "http://" target under a
+// ForceAttemptHTTP2 transport silently runs HTTP/1.1 forever. h2c
+// (cleartext h2, prior-knowledge) needs its own http2.Transport with
+// AllowHTTP set and a DialTLSContext that hands back a plain net.Conn.
+// Splitting by scheme keeps https on the ALPN-negotiated path (h2, or h1
+// for a peer that doesn't advertise h2) and routes http to the h2c path,
+// with no silent downgrade either way: an h2c target that turns out to
+// speak HTTP/1.1 only fails the request (protocol-preface mismatch)
+// rather than falling back.
+type schemeRoundTripper struct {
+	h2c   http.RoundTripper // AllowHTTP h2c transport, scheme "http"
+	other http.RoundTripper // ALPN-negotiated transport, everything else
+}
+
+func (t *schemeRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL != nil && req.URL.Scheme == "http" && t.h2c != nil {
+		return t.h2c.RoundTrip(req)
+	}
+	return t.other.RoundTrip(req)
+}
+
 // newClientBuilder returns a ClientBuilder that mints a fresh
 // *http.Client with its own *http.Transport per call. Each Transport
 // owns its own connection pool, so two slots backed by separate
@@ -176,6 +231,7 @@ func newClientBuilder(cfg MediatorConfig) ClientBuilder {
 			IdleConnTimeout:     90 * time.Second,
 			TLSHandshakeTimeout: cfg.TLSHandshakeTimeout,
 		}
+		var roundTripper http.RoundTripper = transport
 		if cfg.HTTPVersion == HTTPVersion1 {
 			transport.ForceAttemptHTTP2 = false
 			transport.TLSNextProto = map[string]func(authority string, c *tls.Conn) http.RoundTripper{}
@@ -184,9 +240,22 @@ func newClientBuilder(cfg MediatorConfig) ClientBuilder {
 			if h2, err := http2.ConfigureTransports(transport); err == nil && h2 != nil {
 				h2.StrictMaxConcurrentStreams = true
 			}
+			// h2c (cleartext, prior-knowledge): the transport above only
+			// ever negotiates h2 via TLS ALPN, so a plain "http://" target
+			// needs its own transport that skips negotiation entirely and
+			// speaks the HTTP/2 preface straight over a raw TCP conn.
+			h2cTransport := &http2.Transport{
+				AllowHTTP:                  true,
+				StrictMaxConcurrentStreams: true,
+				DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
+					d := net.Dialer{Timeout: cfg.ConnectTimeout, KeepAlive: 30 * time.Second}
+					return d.DialContext(ctx, network, addr)
+				},
+			}
+			roundTripper = &schemeRoundTripper{h2c: h2cTransport, other: transport}
 		}
 		return &http.Client{
-			Transport: transport,
+			Transport: roundTripper,
 			Timeout:   cfg.Timeout,
 			// Never follow a redirect. Go's default follows up to ten, and for
 			// 301/302/303 it rewrites the POST to a GET and drops the body — so
@@ -398,6 +467,7 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 		return common.ErrorConnection(fmt.Sprintf("Request failed: %v", err))
 	}
 	defer resp.Body.Close()
+	m.recordProto(resp.Proto)
 
 	status := resp.StatusCode
 	switch {
