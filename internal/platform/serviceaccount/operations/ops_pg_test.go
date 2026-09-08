@@ -5,6 +5,7 @@ package operations_test
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -22,9 +23,9 @@ import (
 )
 
 // TestMain seeds FLOWCATALYST_APP_KEY before the embedded-PG boot:
-// create-with-credentials encrypts the OAuth client secret via
-// encryption.FromEnv, which reads the env at call time. os.Setenv (not
-// t.Setenv) because every test here runs t.Parallel().
+// create-with-credentials hashes the OAuth client secret and encrypts the
+// webhook credentials via encryption.FromEnv, which reads the env at call
+// time. os.Setenv (not t.Setenv) because every test here runs t.Parallel().
 func TestMain(m *testing.M) {
 	key, err := encryption.GenerateKey()
 	if err != nil {
@@ -252,18 +253,19 @@ func TestCreateServiceAccountWithCredentials_HappyPath(t *testing.T) {
 	assert.ElementsMatch(t, []string{"client_credentials", "refresh_token"}, oc.GrantTypes)
 	assert.Equal(t, []string{"openid"}, oc.Scopes)
 
-	// The stored ref decrypts back to the returned plaintext (the
-	// /oauth/token decrypt-and-compare contract). NOTE: this path stores the
-	// raw envelope WITHOUT the "encrypted:" prefix that auth/operations'
-	// generateSecret adds — pinned so a future unification flips it knowingly.
+	// The stored ref is the keyed-hash form (the OAuth client secret is
+	// verify-only: /oauth/token only ever checks a caller-supplied guess
+	// against it, never decrypts it back out). VerifySecret against the
+	// returned plaintext must match under the current key with nothing left
+	// to migrate.
 	require.NotNil(t, oc.SecretRef)
-	assert.NotRegexp(t, `^encrypted:`, *oc.SecretRef)
+	assert.True(t, strings.HasPrefix(*oc.SecretRef, "hashed:v1:"), "OAuth client secret must be stored hashed, got %q", *oc.SecretRef)
 	enc, err := encryption.FromEnv()
 	require.NoError(t, err)
 	require.NotNil(t, enc)
-	plain, err := enc.Decrypt(*oc.SecretRef)
-	require.NoError(t, err)
-	assert.Equal(t, res.OAuthClientSecret, plain)
+	ok, rehash := enc.VerifySecret(*oc.SecretRef, res.OAuthClientSecret)
+	assert.True(t, ok, "stored hash must verify against the returned plaintext")
+	assert.False(t, rehash, "a freshly-hashed ref under the current key needs no migration")
 }
 
 func TestCreateServiceAccountWithCredentials_Errors(t *testing.T) {
