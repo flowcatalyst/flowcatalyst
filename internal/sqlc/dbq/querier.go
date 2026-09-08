@@ -65,6 +65,19 @@ type Querier interface {
 	// derived `success` bool to match the legacy-platform wire shape.
 	DispatchJobAttemptInsert(ctx context.Context, arg DispatchJobAttemptInsertParams) error
 	DispatchJobAttemptsByJob(ctx context.Context, dispatchJobID string) ([]DispatchJobAttemptsByJobRow, error)
+	// Atomically claims a job for ONE delivery. Same PROCESSING flip the old
+	// (now-removed) unconditional MarkInProgress used to do, but guarded on the
+	// status it flips FROM, so the affected-row count answers "did I win this
+	// delivery?". Only PENDING/QUEUED is claimable: a row already PROCESSING
+	// belongs to a delivery still in flight, and a terminal row is finished. A
+	// concurrent redelivery therefore updates no row and its caller must not
+	// call the subscriber.
+	// A positive status list, not an exclusion list: an unrecognised stored value
+	// is then un-claimable rather than deliverable.
+	// These status flips all carry `created_at = $N` alongside the id: the
+	// table is partitioned by created_at, and without it every statement
+	// probes every partition instead of pruning to the row's own.
+	DispatchJobClaimForDelivery(ctx context.Context, arg DispatchJobClaimForDeliveryParams) (int64, error)
 	// Satisfies usecasepgx.Persist[DispatchJob], which requires both Persist
 	// and Delete. No operation in this module deletes a dispatch job today
 	// (Cancel/Complete/Resend all use Save/SaveAll), so this exists purely for
@@ -96,12 +109,6 @@ type Querier interface {
 	DispatchJobMarkCompleted(ctx context.Context, arg DispatchJobMarkCompletedParams) error
 	// Terminal failure. Stamps last_error + completed_at + duration_millis.
 	DispatchJobMarkFailed(ctx context.Context, arg DispatchJobMarkFailedParams) error
-	// Status → PROCESSING. Stamps last_attempt_at. Called by the router
-	// immediately before the first delivery attempt.
-	// These status flips all carry `created_at = $N` alongside the id: the
-	// table is partitioned by created_at, and without it every statement
-	// probes every partition instead of pruning to the row's own.
-	DispatchJobMarkInProgress(ctx context.Context, arg DispatchJobMarkInProgressParams) error
 	// Mutable-field update for human-initiated status overrides that go through
 	// the use-case envelope (cancel/complete/resend): scoped to the fields
 	// those operations ever change. payload/metadata/target_url/etc are

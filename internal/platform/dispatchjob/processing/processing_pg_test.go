@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -326,4 +327,68 @@ func TestProcess_BlockedGroupAcksAndRevertsToPending(t *testing.T) {
 	assert.True(t, delivered.Load(), "unblocked job must deliver")
 	status, _, _ = jobRow(t, pool, "djblknext0001")
 	assert.Equal(t, "COMPLETED", status)
+}
+
+// TestProcess_ConcurrentDeliveriesCallSubscriberOnce is the headline pin for
+// the atomic-claim fix (mirrors the Java G14 fix): two overlapping
+// deliveries of the SAME job — a queue redelivery racing an attempt still in
+// flight, or a router restart re-sending — must call the subscriber exactly
+// once. Before the fix, the handler loaded the job unlocked and called the
+// best-effort, unconditional MarkInProgress UPDATE (no status guard, error
+// swallowed): both concurrent callers passed the non-atomic
+// check-then-write and both delivered to the subscriber. The atomic claim
+// (UPDATE ... WHERE status IN ('PENDING','QUEUED')) makes exactly one of the
+// two racing UPDATEs affect a row; the affected-row count is what decides
+// whether this caller may call the subscriber.
+//
+// The subscriber sleeps 300ms so the first request is still inside delivery
+// when the second one's claim attempt runs — if the atomic guard were
+// missing (or removed), the second call would win its own unconditional
+// UPDATE and deliver too, so this assertion is a live pin, not decorative:
+// see the deliberate-mutant check in the report for this task.
+func TestProcess_ConcurrentDeliveriesCallSubscriberOnce(t *testing.T) {
+	pool := testpg.Pool(t)
+	base, auth := harness(t, pool)
+
+	var hits atomic.Int32
+	sub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		time.Sleep(300 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(sub.Close)
+
+	const jobID = "djproc_race01"
+	seedJob(t, pool, jobID, sub.URL, 3, 0)
+	token := auth.Sign(jobID)
+
+	var wg sync.WaitGroup
+	codes := make([]int, 2)
+	acks := make([]bool, 2)
+	start := make(chan struct{})
+	for i := range 2 {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			code, out := callProcess(t, base, jobID, token)
+			codes[i] = code
+			acks[i], _ = out["ack"].(bool)
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	assert.EqualValues(t, 1, hits.Load(),
+		"the subscriber must receive exactly one delivery for the two overlapping calls")
+	assert.Equal(t, http.StatusOK, codes[0])
+	assert.Equal(t, http.StatusOK, codes[1])
+	assert.True(t, acks[0], "both calls must ack: one delivers, the other sees the job already claimed")
+	assert.True(t, acks[1], "both calls must ack: one delivers, the other sees the job already claimed")
+
+	assert.Equal(t, 1, attemptCount(t, pool, jobID), "exactly one attempt row recorded for the job")
+
+	status, attempts, _ := jobRow(t, pool, jobID)
+	assert.Equal(t, "COMPLETED", status)
+	assert.EqualValues(t, 0, attempts, "the winning delivery succeeded on its first attempt; attempt_count is only bumped on retry scheduling")
 }

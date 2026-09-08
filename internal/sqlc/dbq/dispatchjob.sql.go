@@ -105,6 +105,42 @@ func (q *Queries) DispatchJobAttemptsByJob(ctx context.Context, dispatchJobID st
 	return items, nil
 }
 
+const dispatchJobClaimForDelivery = `-- name: DispatchJobClaimForDelivery :execrows
+UPDATE msg_dispatch_jobs
+   SET status = 'PROCESSING',
+       last_attempt_at = $2,
+       updated_at = $2
+ WHERE id = $1
+   AND created_at = $3
+   AND status IN ('PENDING', 'QUEUED')
+`
+
+type DispatchJobClaimForDeliveryParams struct {
+	ID            string     `db:"id"`
+	LastAttemptAt *time.Time `db:"last_attempt_at"`
+	CreatedAt     time.Time  `db:"created_at"`
+}
+
+// Atomically claims a job for ONE delivery. Same PROCESSING flip the old
+// (now-removed) unconditional MarkInProgress used to do, but guarded on the
+// status it flips FROM, so the affected-row count answers "did I win this
+// delivery?". Only PENDING/QUEUED is claimable: a row already PROCESSING
+// belongs to a delivery still in flight, and a terminal row is finished. A
+// concurrent redelivery therefore updates no row and its caller must not
+// call the subscriber.
+// A positive status list, not an exclusion list: an unrecognised stored value
+// is then un-claimable rather than deliverable.
+// These status flips all carry `created_at = $N` alongside the id: the
+// table is partitioned by created_at, and without it every statement
+// probes every partition instead of pruning to the row's own.
+func (q *Queries) DispatchJobClaimForDelivery(ctx context.Context, arg DispatchJobClaimForDeliveryParams) (int64, error) {
+	result, err := q.db.Exec(ctx, dispatchJobClaimForDelivery, arg.ID, arg.LastAttemptAt, arg.CreatedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const dispatchJobDelete = `-- name: DispatchJobDelete :exec
 DELETE FROM msg_dispatch_jobs WHERE id = $1 AND created_at = $2
 `
@@ -499,31 +535,6 @@ func (q *Queries) DispatchJobMarkFailed(ctx context.Context, arg DispatchJobMark
 		arg.LastError,
 		arg.CreatedAt,
 	)
-	return err
-}
-
-const dispatchJobMarkInProgress = `-- name: DispatchJobMarkInProgress :exec
-UPDATE msg_dispatch_jobs
-   SET status = 'PROCESSING',
-       last_attempt_at = $2,
-       updated_at = $2
- WHERE id = $1
-   AND created_at = $3
-`
-
-type DispatchJobMarkInProgressParams struct {
-	ID            string     `db:"id"`
-	LastAttemptAt *time.Time `db:"last_attempt_at"`
-	CreatedAt     time.Time  `db:"created_at"`
-}
-
-// Status → PROCESSING. Stamps last_attempt_at. Called by the router
-// immediately before the first delivery attempt.
-// These status flips all carry `created_at = $N` alongside the id: the
-// table is partitioned by created_at, and without it every statement
-// probes every partition instead of pruning to the row's own.
-func (q *Queries) DispatchJobMarkInProgress(ctx context.Context, arg DispatchJobMarkInProgressParams) error {
-	_, err := q.db.Exec(ctx, dispatchJobMarkInProgress, arg.ID, arg.LastAttemptAt, arg.CreatedAt)
 	return err
 }
 

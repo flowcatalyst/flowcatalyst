@@ -372,13 +372,19 @@ func (r *Repository) InsertBatch(ctx context.Context, jobs []DispatchJob) error 
 // lets the planner prune to the row's own partition instead of probing all
 // of them. Callers have the loaded job in hand, so it's free.
 
-// MarkInProgress flips status to PROCESSING and stamps last_attempt_at.
-// Called by the router immediately before the first attempt.
-func (r *Repository) MarkInProgress(ctx context.Context, id string, createdAt time.Time) error {
+// ClaimForDelivery atomically claims a job for one delivery attempt. It
+// reports whether this caller won the claim; false means another delivery of
+// this job is already in flight (or the job finished), and the caller must not
+// call the subscriber.
+func (r *Repository) ClaimForDelivery(ctx context.Context, id string, createdAt time.Time) (bool, error) {
 	now := time.Now().UTC()
-	return r.q.DispatchJobMarkInProgress(ctx, dbq.DispatchJobMarkInProgressParams{
+	rows, err := r.q.DispatchJobClaimForDelivery(ctx, dbq.DispatchJobClaimForDeliveryParams{
 		ID: id, LastAttemptAt: &now, CreatedAt: createdAt,
 	})
+	if err != nil {
+		return false, err
+	}
+	return rows == 1, nil
 }
 
 // MarkCompleted flips status to COMPLETED and stamps completed_at +
