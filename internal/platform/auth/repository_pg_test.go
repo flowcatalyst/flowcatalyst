@@ -150,3 +150,66 @@ func TestClientAuthConfigFindAll_CorruptConfigTypeFailsTheWholeList(t *testing.T
 	assert.Nil(t, rows)
 	assert.Contains(t, err.Error(), "CORRUPT_AUTH_CONFIG_TYPE")
 }
+
+// TestOAuthClientRewriteSecretRef_PersistsExactly is the DB-round-trip half
+// of the client-secret-hash migration: RewriteSecretRef must land exactly
+// the given value in client_secret_ref and touch no other column, so the
+// caller (oauthapi.acceptClientSecret) can rely on FindByID reflecting it on
+// the very next read.
+func TestOAuthClientRewriteSecretRef_PersistsExactly(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := auth.NewRepository(pool)
+
+	const id = "oac_rw_secret_tst"
+	_, err := pool.Exec(ctx,
+		`INSERT INTO oauth_clients (id, client_id, client_name, client_type, client_secret_ref)
+		 VALUES ($1, 'rewrite-secret-client', 'Rewrite Secret', 'CONFIDENTIAL', 'encrypted:seed-value')`, id)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM oauth_clients WHERE id = $1`, id)
+	})
+
+	before, err := repo.OAuthClients.FindByID(ctx, id)
+	require.NoError(t, err)
+	require.NotNil(t, before.SecretRef)
+	require.Equal(t, "encrypted:seed-value", *before.SecretRef)
+
+	require.NoError(t, repo.OAuthClients.RewriteSecretRef(ctx, id, "hashed:v1:persisted-check"))
+
+	after, err := repo.OAuthClients.FindByID(ctx, id)
+	require.NoError(t, err)
+	require.NotNil(t, after.SecretRef)
+	assert.Equal(t, "hashed:v1:persisted-check", *after.SecretRef,
+		"RewriteSecretRef must persist exactly the value it was given")
+	assert.Equal(t, "Rewrite Secret", after.ClientName, "RewriteSecretRef must not disturb other columns")
+}
+
+// TestOAuthClientRewritePreviousSecretRef_PersistsExactly mirrors the above
+// for the rotation-overlap column, and confirms the CURRENT secret ref is
+// left untouched — a previous-secret migration must never bleed into the
+// current one.
+func TestOAuthClientRewritePreviousSecretRef_PersistsExactly(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := auth.NewRepository(pool)
+
+	const id = "oac_rw_prevsec_ts"
+	_, err := pool.Exec(ctx,
+		`INSERT INTO oauth_clients (id, client_id, client_name, client_type, client_secret_ref, previous_secret_ref)
+		 VALUES ($1, 'rewrite-prev-client', 'Rewrite Prev', 'CONFIDENTIAL', 'hashed:v1:current-unchanged', 'encrypted:seed-previous')`, id)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM oauth_clients WHERE id = $1`, id)
+	})
+
+	require.NoError(t, repo.OAuthClients.RewritePreviousSecretRef(ctx, id, "hashed:v1:previous-persisted"))
+
+	after, err := repo.OAuthClients.FindByID(ctx, id)
+	require.NoError(t, err)
+	require.NotNil(t, after.PreviousSecretRef)
+	assert.Equal(t, "hashed:v1:previous-persisted", *after.PreviousSecretRef)
+	require.NotNil(t, after.SecretRef)
+	assert.Equal(t, "hashed:v1:current-unchanged", *after.SecretRef,
+		"rewriting the previous ref must not touch the current secret ref")
+}

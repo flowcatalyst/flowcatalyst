@@ -46,10 +46,15 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 // oauth_client_allowed_origins + oauth_client_application_ids. The
 // post-logout, allowed-origins, and application-ids junctions are
 // loaded/persisted via raw pgx (they aren't wired through sqlc).
-// client_secret_ref holds the reversibly-encrypted client secret
-// (AES-256-GCM under FLOWCATALYST_APP_KEY, "encrypted:"-prefixed);
-// it is verified at /oauth/token by decrypt-and-compare,
-// NOT by hashing. See internal/platform/shared/encryption.
+// client_secret_ref (and previous_secret_ref) hold a verify-only client
+// secret: a new or freshly-rotated client stores "hashed:v1:<mac>" (keyed
+// HMAC-SHA256 under FLOWCATALYST_APP_KEY — the platform never recovers the
+// plaintext, only checks a caller-supplied guess against it), and a row
+// written before this existed may still hold the older reversibly-encrypted
+// form ("encrypted:"-prefixed AES-256-GCM, or a bare envelope). /oauth/token
+// verifies either shape and lazily rewrites a legacy row to hashed: on its
+// next successful use (RewriteSecretRef / RewritePreviousSecretRef). See
+// internal/platform/shared/encryption (Service.Hash / Service.VerifySecret).
 
 type OAuthClientRepo struct {
 	q    *dbq.Queries
@@ -80,6 +85,30 @@ func (r *OAuthClientRepo) TouchPreviousSecretUsed(ctx context.Context, id string
 // Returns how many rows were cleared.
 func (r *OAuthClientRepo) PurgeLapsedPreviousSecrets(ctx context.Context) (int64, error) {
 	return r.q.OAuthClientPurgeLapsedPreviousSecrets(ctx)
+}
+
+// RewriteSecretRef overwrites only client_secret_ref (and updated_at) — the
+// lazy migration that runs after a successful verify against an older
+// (encrypted, or hashed-under-a-previous-key) shape, so the row reads
+// "hashed:v1:…" under the current key from then on. Like
+// principal.Repository.UpdatePasswordHash, a direct UPDATE rather than a
+// domain event: this is an internal at-rest-format upgrade triggered by a
+// read, not a client-initiated secret change.
+func (r *OAuthClientRepo) RewriteSecretRef(ctx context.Context, id, newRef string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE oauth_clients SET client_secret_ref = $1, updated_at = $2 WHERE id = $3`,
+		newRef, time.Now().UTC(), id)
+	return err
+}
+
+// RewritePreviousSecretRef is RewriteSecretRef for the rotation-overlap
+// secret (previous_secret_ref) — used when a client authenticated with its
+// superseded secret in an older shape.
+func (r *OAuthClientRepo) RewritePreviousSecretRef(ctx context.Context, id, newRef string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE oauth_clients SET previous_secret_ref = $1, updated_at = $2 WHERE id = $3`,
+		newRef, time.Now().UTC(), id)
+	return err
 }
 
 func (r *OAuthClientRepo) FindByID(ctx context.Context, id string) (*OAuthClient, error) {

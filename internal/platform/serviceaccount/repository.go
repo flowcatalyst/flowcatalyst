@@ -140,7 +140,8 @@ func (r *Repository) hydrateRoles(ctx context.Context, sa *ServiceAccount) error
 
 // encryptCreds converts the entity's plaintext webhook credentials into their
 // at-rest form, through the same helper (and the same "encrypted:" convention)
-// that OAuth client secrets and identity-provider secrets already use.
+// that identity-provider secrets already use — OAuth client secrets moved to
+// a keyed hash instead (verify-only; see auth/operations.generateSecret).
 //
 // These are the only secrets the platform must be able to REPRODUCE rather
 // than verify — the signing secret is the HMAC key a subscriber checks to know

@@ -492,20 +492,22 @@ func TestCreateOAuthClient_ConfidentialSecretStash(t *testing.T) {
 	assert.False(t, ok, "second pop must miss — stash is one-shot")
 	assert.Empty(t, again)
 
-	// At rest: "encrypted:"-prefixed envelope (the storage convention) that
-	// decrypts back to the popped plaintext (decrypt-and-compare contract).
+	// At rest: "hashed:v1:"-prefixed keyed hash (verify-only — a CONFIDENTIAL
+	// client's secret is only ever checked against a caller-supplied guess,
+	// never decrypted back out) that verifies against the popped plaintext
+	// under the current key with nothing left to migrate.
 	got, err := repo.FindByID(ctx, ev.OAuthClientID)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, auth.OAuthClientConfidential, got.ClientType)
 	require.NotNil(t, got.SecretRef)
-	assert.True(t, strings.HasPrefix(*got.SecretRef, "encrypted:"))
+	assert.True(t, strings.HasPrefix(*got.SecretRef, "hashed:v1:"))
 	enc, err := encryption.FromEnv()
 	require.NoError(t, err)
 	require.NotNil(t, enc)
-	decrypted, err := enc.Decrypt(*got.SecretRef)
-	require.NoError(t, err)
-	assert.Equal(t, plaintext, decrypted)
+	ok, rehash := enc.VerifySecret(*got.SecretRef, plaintext)
+	assert.True(t, ok, "stored hash must verify against the popped plaintext")
+	assert.False(t, rehash, "a freshly-hashed ref under the current key needs no migration")
 }
 
 func TestCreateOAuthClient_Validation(t *testing.T) {
@@ -695,13 +697,13 @@ func TestRotateOAuthClientSecret_HappyPathAndStash(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, after.SecretRef)
 	assert.NotEqual(t, oldRef, *after.SecretRef, "stored ref must change on rotation")
-	assert.True(t, strings.HasPrefix(*after.SecretRef, "encrypted:"))
+	assert.True(t, strings.HasPrefix(*after.SecretRef, "hashed:v1:"))
 	enc, err := encryption.FromEnv()
 	require.NoError(t, err)
 	require.NotNil(t, enc)
-	decrypted, err := enc.Decrypt(*after.SecretRef)
-	require.NoError(t, err)
-	assert.Equal(t, rotated, decrypted)
+	ok, rehash := enc.VerifySecret(*after.SecretRef, rotated)
+	assert.True(t, ok, "stored hash must verify against the rotated plaintext")
+	assert.False(t, rehash, "a freshly-hashed ref under the current key needs no migration")
 }
 
 func TestRotateOAuthClientSecret_PublicClient_Conflict(t *testing.T) {
