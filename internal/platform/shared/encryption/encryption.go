@@ -53,6 +53,9 @@ const currentVersion byte = 1
 // checked by VerifySecret's hash branch, never decrypted.
 const hashPrefix = "hashed:v1:"
 
+// literalPrefix marks a dev-bypass value that is its own plaintext.
+const literalPrefix = "literal:"
+
 // Service performs field-level encryption with optional key rotation.
 type Service struct {
 	current  cipher.AEAD
@@ -130,6 +133,20 @@ func FromEnv() (*Service, error) {
 	return WithPreviousKeys(current, prevKeys)
 }
 
+// MustFromEnv is FromEnv for the startup paths that have no error to return.
+// A *malformed* key is a boot-time misconfiguration and is fatal (owner ruling
+// 2026-09-08): carrying on with encryption silently disabled means the process
+// comes up, fails closed on every read and refuses every secret write, with
+// nothing pointing at the fat-fingered key. An unset key is still not an
+// error — that is the documented "encryption disabled" state and returns nil.
+func MustFromEnv() *Service {
+	svc, err := FromEnv()
+	if err != nil {
+		panic(fmt.Sprintf("encryption init: %v", err))
+	}
+	return svc
+}
+
 // Encrypt returns the base64-encoded versioned envelope for plaintext.
 func (s *Service) Encrypt(plaintext string) (string, error) {
 	nonce := make([]byte, s.current.NonceSize())
@@ -149,6 +166,13 @@ func (s *Service) Encrypt(plaintext string) (string, error) {
 // byte), and TypeScript-style "encrypted:" prefixed values. It tries
 // the current key first then each previous key.
 func (s *Service) Decrypt(encrypted string) (string, error) {
+	// "literal:<value>" means the value IS the plaintext (owner ruling
+	// 2026-09-08). One shape, one meaning, wherever it is read: previously
+	// only secrets.Service.Resolve honoured it and Decrypt reported it as
+	// invalid base64.
+	if lit := strings.TrimSpace(encrypted); strings.HasPrefix(lit, literalPrefix) {
+		return strings.TrimPrefix(lit, literalPrefix), nil
+	}
 	raw := strings.TrimPrefix(encrypted, "encrypted:")
 	data, err := base64.StdEncoding.DecodeString(raw)
 	if err != nil {
@@ -161,10 +185,15 @@ func (s *Service) Decrypt(encrypted string) (string, error) {
 	nonceSize := s.current.NonceSize()
 	if data[0] == currentVersion {
 		// v1: version(1) || nonce(12) || ciphertext
-		if len(data) < 1+nonceSize+1 {
-			return "", errors.New("encryption: ciphertext too short (v1)")
+		if len(data) >= 1+nonceSize+1 {
+			if pt, err := s.tryDecrypt(data[1:1+nonceSize], data[1+nonceSize:]); err == nil {
+				return pt, nil
+			}
 		}
-		return s.tryDecrypt(data[1:1+nonceSize], data[1+nonceSize:])
+		// A v0 envelope whose random nonce happens to begin 0x01 (1 in 256)
+		// reads as v1 and fails under every key. Retrying the v0 layout is
+		// safe because GCM authenticates: a wrong layout cannot yield a false
+		// positive, only a failure (owner ruling 2026-09-08). Falls through.
 	}
 	// v0 legacy: nonce(12) || ciphertext
 	if len(data) < nonceSize+1 {

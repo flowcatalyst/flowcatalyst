@@ -43,7 +43,10 @@ type Repository struct {
 func NewRepository(pool *pgxpool.Pool) *Repository {
 	// Same lazy resolution the OAuth client-secret path uses; an unset key is
 	// not an error here, only at the point a secret would have to be written.
-	enc, _ := encryption.FromEnv()
+	// A *malformed* key is fatal, though (owner ruling 2026-09-08): this ran
+	// at boot and discarded the error, leaving a process that refused every
+	// credential write with nothing naming the bad key.
+	enc := encryption.MustFromEnv()
 	return &Repository{q: dbq.New(pool), pool: pool, enc: enc}
 }
 
