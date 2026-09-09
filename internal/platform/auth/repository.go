@@ -46,10 +46,15 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 // oauth_client_allowed_origins + oauth_client_application_ids. The
 // post-logout, allowed-origins, and application-ids junctions are
 // loaded/persisted via raw pgx (they aren't wired through sqlc).
-// client_secret_ref holds the reversibly-encrypted client secret
-// (AES-256-GCM under FLOWCATALYST_APP_KEY, "encrypted:"-prefixed);
-// it is verified at /oauth/token by decrypt-and-compare,
-// NOT by hashing. See internal/platform/shared/encryption.
+// client_secret_ref (and previous_secret_ref) hold a verify-only client
+// secret: a new or freshly-rotated client stores "hashed:v1:<mac>" (keyed
+// HMAC-SHA256 under FLOWCATALYST_APP_KEY — the platform never recovers the
+// plaintext, only checks a caller-supplied guess against it), and a row
+// written before this existed may still hold the older reversibly-encrypted
+// form ("encrypted:"-prefixed AES-256-GCM, or a bare envelope). /oauth/token
+// verifies either shape and lazily rewrites a legacy row to hashed: on its
+// next successful use (RewriteSecretRef / RewritePreviousSecretRef). See
+// internal/platform/shared/encryption (Service.Hash / Service.VerifySecret).
 
 type OAuthClientRepo struct {
 	q    *dbq.Queries
@@ -80,6 +85,30 @@ func (r *OAuthClientRepo) TouchPreviousSecretUsed(ctx context.Context, id string
 // Returns how many rows were cleared.
 func (r *OAuthClientRepo) PurgeLapsedPreviousSecrets(ctx context.Context) (int64, error) {
 	return r.q.OAuthClientPurgeLapsedPreviousSecrets(ctx)
+}
+
+// RewriteSecretRef overwrites only client_secret_ref (and updated_at) — the
+// lazy migration that runs after a successful verify against an older
+// (encrypted, or hashed-under-a-previous-key) shape, so the row reads
+// "hashed:v1:…" under the current key from then on. Like
+// principal.Repository.UpdatePasswordHash, a direct UPDATE rather than a
+// domain event: this is an internal at-rest-format upgrade triggered by a
+// read, not a client-initiated secret change.
+func (r *OAuthClientRepo) RewriteSecretRef(ctx context.Context, id, newRef string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE oauth_clients SET client_secret_ref = $1, updated_at = $2 WHERE id = $3`,
+		newRef, time.Now().UTC(), id)
+	return err
+}
+
+// RewritePreviousSecretRef is RewriteSecretRef for the rotation-overlap
+// secret (previous_secret_ref) — used when a client authenticated with its
+// superseded secret in an older shape.
+func (r *OAuthClientRepo) RewritePreviousSecretRef(ctx context.Context, id, newRef string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE oauth_clients SET previous_secret_ref = $1, updated_at = $2 WHERE id = $3`,
+		newRef, time.Now().UTC(), id)
+	return err
 }
 
 func (r *OAuthClientRepo) FindByID(ctx context.Context, id string) (*OAuthClient, error) {
@@ -151,6 +180,28 @@ func (r *OAuthClientRepo) FindByPortalClient(ctx context.Context, clientID strin
 		bare = append(bare, *c)
 	}
 	return r.hydrateAll(ctx, bare)
+}
+
+// HasLoginClientForApplication reports whether applicationID has a
+// login-type OAuth client provisioned: one linked to the application
+// (oauth_client_application_ids) whose grant types include
+// "authorization_code" — the shape provisionLoginClient always creates,
+// distinguishing it from a client_credentials service-account client
+// (see application/api.provisionLoginClient / provisionServiceAccount).
+// Raw pgx, like the rest of this junction (not wired through sqlc).
+func (r *OAuthClientRepo) HasLoginClientForApplication(ctx context.Context, applicationID string) (bool, error) {
+	var exists bool
+	err := r.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM oauth_client_application_ids a
+			JOIN oauth_client_grant_types g ON g.oauth_client_id = a.oauth_client_id
+			WHERE a.application_id = $1 AND g.grant_type = 'authorization_code'
+		)`, applicationID).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("oauth_client has_login_client_for_application: %w", err)
+	}
+	return exists, nil
 }
 
 func (r *OAuthClientRepo) Persist(ctx context.Context, c *OAuthClient, tx *usecasepgx.DbTx) error {
@@ -413,7 +464,7 @@ func rowToOAuthClient(row dbq.OauthClient) (*OAuthClient, error) {
 		ApplicationIDs:           []string{},
 	}
 	if row.DefaultScopes != nil && *row.DefaultScopes != "" {
-		for _, sc := range strings.Split(*row.DefaultScopes, ",") {
+		for sc := range strings.SplitSeq(*row.DefaultScopes, ",") {
 			if sc != "" {
 				c.Scopes = append(c.Scopes, sc)
 			}

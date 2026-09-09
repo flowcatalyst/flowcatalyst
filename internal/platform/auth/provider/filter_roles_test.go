@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
@@ -26,10 +27,8 @@ func (f fakeRoleLookup) FindByShortNameInApps(_ context.Context, shortName strin
 	if r == nil || r.ApplicationID == nil {
 		return nil, nil
 	}
-	for _, id := range appIDs {
-		if id == *r.ApplicationID {
-			return r, nil
-		}
+	if slices.Contains(appIDs, *r.ApplicationID) {
+		return r, nil
 	}
 	return nil, nil
 }

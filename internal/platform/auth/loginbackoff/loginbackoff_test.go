@@ -196,8 +196,8 @@ func TestCheckNilLastSuccessAppliesStandardWindowInFull(t *testing.T) {
 	p := defaultPolicy()
 	now := time.Now().UTC()
 
-	neverSucceeded := &capturingRepo{fakeRepo: fakeRepo{pairCount: 20, pairLastFail: &now}}
-	dormantBeyondBound := &capturingRepo{fakeRepo: fakeRepo{lastSuccess: nil, pairCount: 20, pairLastFail: &now}}
+	neverSucceeded := &capturingRepo{pairCount: 20, pairLastFail: &now}
+	dormantBeyondBound := &capturingRepo{lastSuccess: nil, pairCount: 20, pairLastFail: &now}
 
 	dNever, err := Check(context.Background(), neverSucceeded, p, "a@b.com", "1.2.3.4")
 	if err != nil {
@@ -237,7 +237,7 @@ func TestCheckRecentSuccessNarrowsWindow(t *testing.T) {
 	// unless the cutoff is checked verbatim, which is exactly what this
 	// test does.
 	recentSuccess := now.Add(-5 * 24 * time.Hour)
-	repo := &capturingRepo{fakeRepo: fakeRepo{lastSuccess: &recentSuccess, pairCount: 1, pairLastFail: &now}}
+	repo := &capturingRepo{lastSuccess: &recentSuccess, pairCount: 1, pairLastFail: &now}
 
 	if _, err := Check(context.Background(), repo, p, "a@b.com", "1.2.3.4"); err != nil {
 		t.Fatal(err)

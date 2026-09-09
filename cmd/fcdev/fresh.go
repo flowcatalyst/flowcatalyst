@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
 	"github.com/spf13/cobra"
@@ -155,15 +156,16 @@ func runFresh(cmd *cobra.Command, _ []string) error {
 	// SQL level. The explicit table list is still the source of truth
 	// for which tables are "FlowCatalyst's" — anything not listed
 	// belongs to a consumer app and is intentionally left alone.
-	stmt := "TRUNCATE TABLE "
+	var stmt strings.Builder
+	stmt.WriteString("TRUNCATE TABLE ")
 	for i, t := range freshTables {
 		if i > 0 {
-			stmt += ", "
+			stmt.WriteString(", ")
 		}
-		stmt += t
+		stmt.WriteString(t)
 	}
-	stmt += " RESTART IDENTITY CASCADE"
-	if _, err := pool.Exec(ctx, stmt); err != nil {
+	stmt.WriteString(" RESTART IDENTITY CASCADE")
+	if _, err := pool.Exec(ctx, stmt.String()); err != nil {
 		return fmt.Errorf("truncate: %w", err)
 	}
 	slog.Info("FlowCatalyst tables truncated", "table_count", len(freshTables))

@@ -129,6 +129,7 @@ func (e ScheduledJobsSynced) MessageGroup() string {
 	}
 	return "platform:scheduledjobs:" + e.ApplicationCode
 }
+
 func (e ScheduledJobsSynced) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		ApplicationCode string   `json:"applicationCode"`

@@ -123,6 +123,9 @@ func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet,
 	svcs.oauthTokenEP = &oauthapi.State{
 		// Records rotation-overlap secret use for the client drawer's status line.
 		OAuthClientWrites: repos.authRepo.OAuthClients,
+		// Persists the lazy migration of a verified client secret to its
+		// hashed:v1: form.
+		SecretRewrites:    repos.authRepo.OAuthClients,
 		OAuthClients:      repos.authRepo.OAuthClients,
 		Principals:        repos.principalRepo,
 		PortalIdentities:  repos.portalIdentityRepo,

@@ -10,7 +10,7 @@
 # Run:    docker run -p 8080:8080 -e FC_DATABASE_URL=... flowcatalyst-go
 
 # ── Stage 1 — Vue SPA ──────────────────────────────────────────────────────
-FROM node:24-alpine AS frontend
+FROM node:24-alpine3.24 AS frontend
 WORKDIR /app/frontend
 RUN corepack enable
 # pnpm version is pinned via package.json "packageManager"; corepack honours it.
@@ -18,7 +18,7 @@ COPY frontend/ ./
 RUN pnpm install --frozen-lockfile && pnpm build
 
 # ── Stage 2 — Go binary ────────────────────────────────────────────────────
-FROM golang:1.26-alpine AS build
+FROM golang:1.27-alpine3.24 AS build
 WORKDIR /src
 ENV CGO_ENABLED=0
 # Module layer cached independently of source.
@@ -36,7 +36,7 @@ RUN go build -trimpath \
 # ── Stage 3 — runtime ──────────────────────────────────────────────────────
 # Alpine (not distroless) so the image carries wget for a self-contained
 # HEALTHCHECK. ca-certificates for outbound TLS (SQS/Secrets Manager/webhooks).
-FROM alpine:3.20 AS runtime
+FROM alpine:3.24 AS runtime
 RUN apk add --no-cache ca-certificates wget \
  && adduser -D -u 10001 flowcatalyst
 USER flowcatalyst

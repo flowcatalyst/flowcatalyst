@@ -45,7 +45,6 @@ import (
 	serviceaccountapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	bff "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/bff"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 	meapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/me"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
@@ -204,9 +203,12 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		// session.
 		// Field-level encryption (FLOWCATALYST_APP_KEY) — nil-safe; the
 		// bridge will surface a clear error if a confidential OIDC config
-		// needs a secret and the key isn't set.
-		appEnc, _ := encryption.FromEnv()
-		bridgeClient := bridge.NewBridge(repos.edmRepo, repos.idpRepo, appEnc)
+		// needs a secret and the key isn't set. Reuse the service wired in
+		// wire_services rather than re-reading the environment: that read is
+		// fatal on a malformed key, and this one silently discarded the error
+		// (owner ruling 2026-09-08 — a key that cannot decrypt is worse than
+		// no key, so it must never be swallowed).
+		bridgeClient := bridge.NewBridge(repos.edmRepo, repos.idpRepo, svcs.encSvc)
 		loginStateRepo := bridge.NewLoginStateRepo(pool)
 		bridgeLoginEP := bridge.NewLoginEndpoint(bridgeClient, loginStateRepo, repos.principalRepo, repos.edmRepo,
 			repos.roleRepo, repos.authRepo.IdpRoleMappings, uow, repos.authRepo.OAuthClients)

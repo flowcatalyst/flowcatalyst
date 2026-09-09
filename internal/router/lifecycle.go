@@ -151,21 +151,15 @@ func (l *LifecycleManager) Start(parent context.Context) {
 		ctx, cancel := context.WithCancel(parent)
 		l.cancelFn = cancel
 
-		l.wg.Add(1)
-		go func() {
-			defer l.wg.Done()
+		l.wg.Go(func() {
 			l.warningCleanupLoop(ctx)
-		}()
-		l.wg.Add(1)
-		go func() {
-			defer l.wg.Done()
+		})
+		l.wg.Go(func() {
 			l.consumerHealthLoop(ctx)
-		}()
-		l.wg.Add(1)
-		go func() {
-			defer l.wg.Done()
+		})
+		l.wg.Go(func() {
 			l.healthReportLoop(ctx)
-		}()
+		})
 
 		slog.Info("router lifecycle manager started",
 			"warning_cleanup", l.cfg.WarningCleanupInterval,

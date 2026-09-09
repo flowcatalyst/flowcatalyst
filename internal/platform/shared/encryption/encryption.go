@@ -1,6 +1,8 @@
 // Package encryption implements field-level AES-256-GCM encryption with
-// FLOWCATALYST_APP_KEY rotation support. Used for OAuth client secrets,
-// webhook signing keys, and other sensitive column values.
+// FLOWCATALYST_APP_KEY rotation support, plus a keyed-hash form for secrets
+// that are only ever verified (never resent or re-signed by the platform).
+// Used for OAuth client secrets, webhook signing keys, and other sensitive
+// column values.
 //
 // Wire format:
 //
@@ -14,15 +16,26 @@
 // TypeScript-era values may also be prefixed "encrypted:" — Decrypt
 // strips that prefix transparently.
 //
+// A verify-only secret is instead stored as "hashed:v1:<base64 MAC>" where
+// MAC = HMAC-SHA256(current key, plaintext) — see Hash and VerifySecret.
+// A hashed: value never falls back to decrypt-and-compare on mismatch: the
+// prefix is a closed claim, same as the encrypted: one.
+//
 // Key rotation: instantiate with FromEnv (FLOWCATALYST_APP_KEY current,
-// FLOWCATALYST_APP_KEY_PREVIOUS optional fallback). Encrypt always uses
-// the current key. Decrypt tries current, then each previous key. Use
-// ReEncrypt + NeedsReEncryption to migrate.
+// FLOWCATALYST_APP_KEY_PREVIOUS optional fallback). Encrypt and Hash always
+// use the current key. Decrypt and VerifySecret try current, then each
+// previous key. Use ReEncrypt + NeedsReEncryption to migrate encrypted
+// values across a rotation; VerifySecret reports the equivalent signal
+// (rehash) for hashed ones inline, since a hash can only be recomputed from
+// the plaintext a caller just supplied, not from the stored value.
 package encryption
 
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -35,38 +48,72 @@ import (
 // currentVersion is the format version byte for new encryptions.
 const currentVersion byte = 1
 
+// hashPrefix marks a keyed-hash, verify-only secret: hashed:v1:<base64 MAC>.
+// A closed claim like encrypted: — a value carrying this prefix is only ever
+// checked by VerifySecret's hash branch, never decrypted.
+const hashPrefix = "hashed:v1:"
+
+// literalPrefix marks a dev-bypass value that is its own plaintext.
+const literalPrefix = "literal:"
+
 // Service performs field-level encryption with optional key rotation.
 type Service struct {
 	current  cipher.AEAD
 	previous []cipher.AEAD
+
+	// currentKeyBytes / previousKeyBytes are the same raw key bytes behind
+	// current / previous, kept alongside the AEADs so Hash and VerifySecret
+	// can key an HMAC with "the same key bytes the encryption service uses
+	// for AES-GCM" without re-deriving anything.
+	currentKeyBytes  []byte
+	previousKeyBytes [][]byte
 }
 
 // New constructs a Service with a single key (no rotation). keyB64 is a
 // base64-encoded 32-byte AES-256 key.
 func New(keyB64 string) (*Service, error) {
-	aead, err := makeAEAD(keyB64)
+	keyBytes, err := decodeKey(keyB64)
 	if err != nil {
 		return nil, err
 	}
-	return &Service{current: aead}, nil
+	aead, err := aeadFromKey(keyBytes)
+	if err != nil {
+		return nil, err
+	}
+	return &Service{current: aead, currentKeyBytes: keyBytes}, nil
 }
 
 // WithPreviousKeys constructs a Service with rotation: new encryptions
 // use currentKeyB64; decryption falls back through previousKeysB64.
 func WithPreviousKeys(currentKeyB64 string, previousKeysB64 []string) (*Service, error) {
-	current, err := makeAEAD(currentKeyB64)
+	currentKeyBytes, err := decodeKey(currentKeyB64)
+	if err != nil {
+		return nil, err
+	}
+	current, err := aeadFromKey(currentKeyBytes)
 	if err != nil {
 		return nil, err
 	}
 	prev := make([]cipher.AEAD, 0, len(previousKeysB64))
+	prevKeyBytes := make([][]byte, 0, len(previousKeysB64))
 	for i, k := range previousKeysB64 {
-		a, err := makeAEAD(k)
+		kb, err := decodeKey(k)
+		if err != nil {
+			return nil, fmt.Errorf("previous key %d: %w", i, err)
+		}
+		a, err := aeadFromKey(kb)
 		if err != nil {
 			return nil, fmt.Errorf("previous key %d: %w", i, err)
 		}
 		prev = append(prev, a)
+		prevKeyBytes = append(prevKeyBytes, kb)
 	}
-	return &Service{current: current, previous: prev}, nil
+	return &Service{
+		current:          current,
+		previous:         prev,
+		currentKeyBytes:  currentKeyBytes,
+		previousKeyBytes: prevKeyBytes,
+	}, nil
 }
 
 // FromEnv reads FLOWCATALYST_APP_KEY (required) and
@@ -84,6 +131,20 @@ func FromEnv() (*Service, error) {
 		prevKeys = []string{prev}
 	}
 	return WithPreviousKeys(current, prevKeys)
+}
+
+// MustFromEnv is FromEnv for the startup paths that have no error to return.
+// A *malformed* key is a boot-time misconfiguration and is fatal (owner ruling
+// 2026-09-08): carrying on with encryption silently disabled means the process
+// comes up, fails closed on every read and refuses every secret write, with
+// nothing pointing at the fat-fingered key. An unset key is still not an
+// error — that is the documented "encryption disabled" state and returns nil.
+func MustFromEnv() *Service {
+	svc, err := FromEnv()
+	if err != nil {
+		panic(fmt.Sprintf("encryption init: %v", err))
+	}
+	return svc
 }
 
 // Encrypt returns the base64-encoded versioned envelope for plaintext.
@@ -105,6 +166,13 @@ func (s *Service) Encrypt(plaintext string) (string, error) {
 // byte), and TypeScript-style "encrypted:" prefixed values. It tries
 // the current key first then each previous key.
 func (s *Service) Decrypt(encrypted string) (string, error) {
+	// "literal:<value>" means the value IS the plaintext (owner ruling
+	// 2026-09-08). One shape, one meaning, wherever it is read: previously
+	// only secrets.Service.Resolve honoured it and Decrypt reported it as
+	// invalid base64.
+	if lit := strings.TrimSpace(encrypted); strings.HasPrefix(lit, literalPrefix) {
+		return strings.TrimPrefix(lit, literalPrefix), nil
+	}
 	raw := strings.TrimPrefix(encrypted, "encrypted:")
 	data, err := base64.StdEncoding.DecodeString(raw)
 	if err != nil {
@@ -117,10 +185,15 @@ func (s *Service) Decrypt(encrypted string) (string, error) {
 	nonceSize := s.current.NonceSize()
 	if data[0] == currentVersion {
 		// v1: version(1) || nonce(12) || ciphertext
-		if len(data) < 1+nonceSize+1 {
-			return "", errors.New("encryption: ciphertext too short (v1)")
+		if len(data) >= 1+nonceSize+1 {
+			if pt, err := s.tryDecrypt(data[1:1+nonceSize], data[1+nonceSize:]); err == nil {
+				return pt, nil
+			}
 		}
-		return s.tryDecrypt(data[1:1+nonceSize], data[1+nonceSize:])
+		// A v0 envelope whose random nonce happens to begin 0x01 (1 in 256)
+		// reads as v1 and fails under every key. Retrying the v0 layout is
+		// safe because GCM authenticates: a wrong layout cannot yield a false
+		// positive, only a failure (owner ruling 2026-09-08). Falls through.
 	}
 	// v0 legacy: nonce(12) || ciphertext
 	if len(data) < nonceSize+1 {
@@ -181,7 +254,7 @@ func GenerateKey() (string, error) {
 	return base64.StdEncoding.EncodeToString(key), nil
 }
 
-func makeAEAD(keyB64 string) (cipher.AEAD, error) {
+func decodeKey(keyB64 string) ([]byte, error) {
 	keyBytes, err := base64.StdEncoding.DecodeString(keyB64)
 	if err != nil {
 		return nil, fmt.Errorf("encryption: invalid base64 key: %w", err)
@@ -189,6 +262,10 @@ func makeAEAD(keyB64 string) (cipher.AEAD, error) {
 	if len(keyBytes) != 32 {
 		return nil, fmt.Errorf("encryption: key must be 32 bytes, got %d", len(keyBytes))
 	}
+	return keyBytes, nil
+}
+
+func aeadFromKey(keyBytes []byte) (cipher.AEAD, error) {
 	block, err := aes.NewCipher(keyBytes)
 	if err != nil {
 		return nil, fmt.Errorf("encryption: aes cipher: %w", err)
@@ -198,4 +275,64 @@ func makeAEAD(keyB64 string) (cipher.AEAD, error) {
 		return nil, fmt.Errorf("encryption: gcm: %w", err)
 	}
 	return gcm, nil
+}
+
+// Hash returns the keyed-hash at-rest form of plaintext for a verify-only
+// secret: "hashed:v1:" + base64(HMAC-SHA256(current key, plaintext)). Unlike
+// Encrypt, this is deterministic and irreversible — there is no plaintext to
+// recover from the stored value, only a caller-supplied guess to check
+// against it (see VerifySecret). Always keyed with the current key.
+func (s *Service) Hash(plaintext string) string {
+	return hashPrefix + base64.StdEncoding.EncodeToString(macFor(s.currentKeyBytes, plaintext))
+}
+
+// VerifySecret checks provided against stored, a verify-only secret ref in
+// either shape found in the wild:
+//
+//   - "hashed:v1:<mac>" — the current form. Compared with the keyed MAC only
+//     (hmac.Equal, constant-time); current key first, then each previous key
+//     in the same order Decrypt tries them. A hashed: ref never falls back
+//     to decrypt-and-compare — the prefix is a closed claim, so a mismatch
+//     here is failure, not "try the other shape".
+//   - anything else — the legacy shape: Decrypt, then compare in constant
+//     time (subtle.ConstantTimeCompare), exactly as before this type existed.
+//
+// ok reports whether provided matched. rehash reports whether the caller
+// should rewrite stored to Hash(provided) under the current key: true for
+// every legacy-shape match (lazy migration to the hashed form) and for a
+// hashed: match that only a previous key could verify (rotation catch-up);
+// false for a hashed: match already keyed under the current key, and for no
+// match at all.
+func (s *Service) VerifySecret(stored, provided string) (ok, rehash bool) {
+	if raw, isHash := strings.CutPrefix(stored, hashPrefix); isHash {
+		mac, err := base64.StdEncoding.DecodeString(raw)
+		if err != nil {
+			return false, false
+		}
+		if hmac.Equal(mac, macFor(s.currentKeyBytes, provided)) {
+			return true, false
+		}
+		for _, prevKey := range s.previousKeyBytes {
+			if hmac.Equal(mac, macFor(prevKey, provided)) {
+				return true, true
+			}
+		}
+		return false, false
+	}
+
+	decrypted, err := s.Decrypt(stored)
+	if err != nil {
+		return false, false
+	}
+	if subtle.ConstantTimeCompare([]byte(decrypted), []byte(provided)) == 1 {
+		return true, true
+	}
+	return false, false
+}
+
+// macFor computes HMAC-SHA256(key, plaintext).
+func macFor(key []byte, plaintext string) []byte {
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte(plaintext))
+	return mac.Sum(nil)
 }

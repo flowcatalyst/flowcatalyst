@@ -45,25 +45,39 @@ func TestSyncOpenApiSpec_Validation(t *testing.T) {
 		cmd  operations.SyncOpenApiSpecCommand
 		code string
 	}{
-		{"missing application id",
+		{
+			"missing application id",
 			operations.SyncOpenApiSpecCommand{ApplicationCode: "x", Spec: valid},
-			"APPLICATION_ID_REQUIRED"},
-		{"missing application code",
+			"APPLICATION_ID_REQUIRED",
+		},
+		{
+			"missing application code",
 			operations.SyncOpenApiSpecCommand{ApplicationID: "app_x", Spec: valid},
-			"APPLICATION_CODE_REQUIRED"},
+			"APPLICATION_CODE_REQUIRED",
+		},
 		// Site 1: the document must be a JSON object at all.
-		{"spec is a JSON array",
-			operations.SyncOpenApiSpecCommand{ApplicationID: "app_x", ApplicationCode: "x",
-				Spec: json.RawMessage(`["not","an","object"]`)},
-			"INVALID_OPENAPI_SPEC"},
-		{"spec is nil",
+		{
+			"spec is a JSON array",
+			operations.SyncOpenApiSpecCommand{
+				ApplicationID: "app_x", ApplicationCode: "x",
+				Spec: json.RawMessage(`["not","an","object"]`),
+			},
+			"INVALID_OPENAPI_SPEC",
+		},
+		{
+			"spec is nil",
 			operations.SyncOpenApiSpecCommand{ApplicationID: "app_x", ApplicationCode: "x"},
-			"INVALID_OPENAPI_SPEC"},
+			"INVALID_OPENAPI_SPEC",
+		},
 		// Site 2: an object missing both `openapi` and `swagger`.
-		{"spec missing openapi/swagger field",
-			operations.SyncOpenApiSpecCommand{ApplicationID: "app_x", ApplicationCode: "x",
-				Spec: json.RawMessage(`{"info":{"version":"1.0.0"}}`)},
-			"INVALID_OPENAPI_SPEC"},
+		{
+			"spec missing openapi/swagger field",
+			operations.SyncOpenApiSpecCommand{
+				ApplicationID: "app_x", ApplicationCode: "x",
+				Spec: json.RawMessage(`{"info":{"version":"1.0.0"}}`),
+			},
+			"INVALID_OPENAPI_SPEC",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

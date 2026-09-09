@@ -22,8 +22,11 @@ import (
 )
 
 // CreateWithCredentialsResult carries the freshly-minted account plus the
-// one-time plaintext secrets. The OAuth client secret + webhook secrets are
-// stored hashed/at-rest; the plaintext is only ever returned here, once.
+// one-time plaintext secrets. The OAuth client secret is verify-only and
+// stored as a keyed hash; the webhook token + signing secret are things the
+// platform must send/sign with later, so they stay reversibly encrypted
+// (see serviceaccount.Repository.encryptCreds). Either way, the plaintext is
+// only ever returned here, once.
 type CreateWithCredentialsResult struct {
 	ServiceAccount    *serviceaccount.ServiceAccount
 	PrincipalID       string
@@ -59,6 +62,10 @@ func CreateServiceAccountWithCredentials(
 			code := strings.ToLower(strings.TrimSpace(cmd.Code))
 			if code == "" {
 				return usecase.Validation("CODE_REQUIRED", "code is required")
+			}
+			if strings.HasPrefix(code, "app:") {
+				return usecase.Validation("RESERVED_CODE",
+					"codes starting with 'app:' are reserved for application service accounts")
 			}
 			if !validate.CodePattern.MatchString(code) {
 				return usecase.Validation("INVALID_CODE_FORMAT",
@@ -158,9 +165,11 @@ func CreateServiceAccountWithCredentials(
 	}
 }
 
-// generateOAuthClientSecret returns a fresh URL-safe secret + its
-// encrypted reference (stored in client_secret_ref; verified at
-// /oauth/token by decrypt-and-compare).
+// generateOAuthClientSecret returns a fresh URL-safe secret + its at-rest
+// reference: a keyed hash ("hashed:v1:" + HMAC-SHA256(FLOWCATALYST_APP_KEY,
+// plaintext)), not a reversible encryption — the OAuth client secret is
+// verify-only, so there is nothing to decrypt back out. See
+// auth/operations.generateSecret, which this mirrors.
 func generateOAuthClientSecret() (plaintext, ref string, err error) {
 	b := make([]byte, 32)
 	if _, err = rand.Read(b); err != nil {
@@ -172,11 +181,7 @@ func generateOAuthClientSecret() (plaintext, ref string, err error) {
 		return "", "", err
 	}
 	if enc == nil {
-		return "", "", errors.New("FLOWCATALYST_APP_KEY not configured; cannot encrypt client secret")
+		return "", "", errors.New("FLOWCATALYST_APP_KEY not configured; cannot hash client secret")
 	}
-	ref, err = enc.Encrypt(plaintext)
-	if err != nil {
-		return "", "", err
-	}
-	return plaintext, ref, nil
+	return plaintext, enc.Hash(plaintext), nil
 }

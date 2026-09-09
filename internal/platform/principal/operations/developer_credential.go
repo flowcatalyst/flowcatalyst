@@ -5,11 +5,13 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
@@ -27,12 +29,7 @@ const developerRoleName = "platform:developer"
 // checking it here too means SetDeveloperCredential fails fast with a clear
 // error instead of silently minting a secret nothing can ever use.
 func hasRole(p *principal.Principal, roleName string) bool {
-	for _, ra := range p.Roles {
-		if ra.Role == roleName {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(p.Roles, func(ra serviceaccount.RoleAssignment) bool { return ra.Role == roleName })
 }
 
 // requireSelfOrUserAdmin allows a principal to manage its own developer
@@ -150,9 +147,11 @@ func RevokeDeveloperCredential(repo *principal.Repository) usecaseop.Operation[R
 // generateDevClientSecret mirrors serviceaccount/operations.generateOAuthClientSecret
 // (duplicated rather than cross-imported — this package already follows that
 // convention for small resource-checks like blockNonClientTarget): 32 random
-// bytes, base64url plaintext, encrypted via the same encryption.Service OAuth
-// client secrets use, so /oauth/token's verifyClientSecret can decrypt+compare
-// either kind of secret through one shared helper.
+// bytes, base64url plaintext, hashed via the same encryption.Service OAuth
+// client secrets use, so /oauth/token's verifyClientSecret can verify either
+// kind of secret through one shared helper. This secret is verify-only — the
+// platform only ever checks a caller-supplied guess against the stored
+// ref — so it's a keyed hash, not a reversible encryption.
 func generateDevClientSecret() (plaintext, ref string, err error) {
 	b := make([]byte, 32)
 	if _, err = rand.Read(b); err != nil {
@@ -164,13 +163,9 @@ func generateDevClientSecret() (plaintext, ref string, err error) {
 		return "", "", err
 	}
 	if enc == nil {
-		return "", "", errors.New("FLOWCATALYST_APP_KEY not configured; cannot encrypt developer client secret")
+		return "", "", errors.New("FLOWCATALYST_APP_KEY not configured; cannot hash developer client secret")
 	}
-	ref, err = enc.Encrypt(plaintext)
-	if err != nil {
-		return "", "", err
-	}
-	return plaintext, ref, nil
+	return plaintext, enc.Hash(plaintext), nil
 }
 
 // devSecretStash is a process-local one-shot stash keyed by principal id —

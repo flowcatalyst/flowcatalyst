@@ -130,41 +130,33 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 			dispatchjob.DefaultReaperInterval, dispatchjob.DefaultProcessingLiveAfter)
 	}
 	if cfg.SchedulerEnabled {
-		wg.Add(1)
-		go func() { defer wg.Done(); StartScheduler(ctx, pool, cfg) }()
+		wg.Go(func() { StartScheduler(ctx, pool, cfg) })
 		slog.Info("scheduler started")
 	}
 	if cfg.ScheduledJobEnabled {
-		wg.Add(1)
-		go func() { defer wg.Done(); StartScheduledJobScheduler(ctx, pool, cfg) }()
+		wg.Go(func() { StartScheduledJobScheduler(ctx, pool, cfg) })
 		slog.Info("scheduled-job scheduler started")
 	}
 	if cfg.StreamEnabled {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			StartStreamProcessorWithHealth(ctx, pool, cfg, streamHealth)
-		}()
+		})
 		slog.Info("stream processor started")
 	}
 	if cfg.OutboxEnabled {
-		wg.Add(1)
-		go func() { defer wg.Done(); StartOutboxProcessor(ctx, pool, cfg) }()
+		wg.Go(func() { StartOutboxProcessor(ctx, pool, cfg) })
 		slog.Info("outbox processor started")
 	}
 	if cfg.RouterEnabled {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			if err := routerSrv.Run(ctx); err != nil {
 				slog.Warn("router run failed", "err", err)
 			}
-		}()
+		})
 		slog.Info("router engine started")
 	}
 	if cfg.MCPEnabled {
-		wg.Add(1)
-		go func() { defer wg.Done(); StartMCP(ctx, cfg) }()
+		wg.Go(func() { StartMCP(ctx, cfg) })
 		slog.Info("mcp started")
 	}
 

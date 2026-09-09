@@ -15,6 +15,7 @@
 package principal
 
 import (
+	"slices"
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
@@ -75,12 +76,7 @@ func (s UserScope) CanAccessClient(clientID string, homeClientID *string, assign
 	case ScopeAnchor:
 		return true
 	case ScopePartner:
-		for _, c := range assignedClients {
-			if c == clientID {
-				return true
-			}
-		}
-		return false
+		return slices.Contains(assignedClients, clientID)
 	default: // CLIENT
 		return homeClientID != nil && *homeClientID == clientID
 	}

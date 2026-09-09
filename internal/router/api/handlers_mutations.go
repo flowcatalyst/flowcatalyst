@@ -122,10 +122,7 @@ func (s *State) brokerStatsRefresh(_ context.Context, _ *emptyInput) (*brokerSta
 		return nil, notConfigured("broker stats")
 	}
 	s.BrokerStats.Refresh()
-	age := s.BrokerStats.AgeSeconds()
-	if age < 0 {
-		age = 0
-	}
+	age := max(s.BrokerStats.AgeSeconds(), 0)
 	return &brokerStatsRefreshOutput{Body: BrokerStatsRefreshResponse{
 		Refreshed:  true,
 		AgeSeconds: age,

@@ -3,6 +3,7 @@ package login
 import (
 	"log/slog"
 	"net/http"
+	"slices"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordhash"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordpolicy"
@@ -94,6 +95,7 @@ func (e *Endpoint) handleChangePassword(w http.ResponseWriter, r *http.Request) 
 		if err := e.cfg.MFA.RevokeAllTrustedDevices(r.Context(), p.ID); err != nil {
 			slog.Warn("revoke trusted devices after password change failed", "principal", p.ID, "err", err)
 		}
+		e.clearTrustedDeviceCookie(w)
 	}
 	if e.cfg.RefreshTokens != nil {
 		if _, err := e.cfg.RefreshTokens.RevokeAllForPrincipal(r.Context(), p.ID); err != nil {
@@ -124,7 +126,7 @@ func (e *Endpoint) verifyAnySecondFactor(r *http.Request, p *principal.Principal
 			}
 		}
 	}
-	if containsMethodType(confirmed, mfa.MethodTOTP) {
+	if slices.Contains(confirmed, mfa.MethodTOTP) {
 		if ok, _ := e.cfg.MFA.VerifyRecoveryCode(ctx, p.ID, code); ok {
 			return true
 		}
@@ -149,7 +151,11 @@ func (e *Endpoint) handleChangePasswordSendEmailCode(w http.ResponseWriter, r *h
 		writeServerError(w, "MFA_STATUS_FAILED", "could not check two-factor status")
 		return
 	}
-	if !containsMethodType(confirmed, mfa.MethodEmailPin) {
+	if len(confirmed) == 0 {
+		writeJSON(w, http.StatusBadRequest, errBody("NO_MFA", "two-factor is not enabled"))
+		return
+	}
+	if !slices.Contains(confirmed, mfa.MethodEmailPin) {
 		writeJSON(w, http.StatusBadRequest, errBody("NO_EMAIL_2FA", "email codes are not enabled for your account"))
 		return
 	}

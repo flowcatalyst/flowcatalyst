@@ -124,7 +124,6 @@ func TestCancelDispatchJob_NonFailedSource_Conflict(t *testing.T) {
 		common.DispatchCompleted, common.DispatchCancelled, common.DispatchExpired,
 	}
 	for _, st := range statuses {
-		st := st
 		t.Run(string(st), func(t *testing.T) {
 			t.Parallel()
 			j := seedJob(t, repo, "opstest:cancel:conflict:"+string(st), st, seedOpts{})

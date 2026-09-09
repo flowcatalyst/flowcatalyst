@@ -25,8 +25,6 @@ import (
 
 func TestMain(m *testing.M) { testpg.RunMain(m) }
 
-func ptr[T any](v T) *T { return &v }
-
 // runAuthorized drives op through the full use-case envelope (Validate →
 // Authorize → Execute → atomic commit) as an anchor principal — the common
 // case for these tests, which exercise validation, invariants, and
@@ -84,18 +82,18 @@ func TestCreateSubscription_HappyPath(t *testing.T) {
 		Name:             "  Sub Create Happy  ",
 		Endpoint:         "https://orders.example.test/hook",
 		Description:      &desc,
-		ServiceAccountID: ptr("sva_subcrthappy1"),
+		ServiceAccountID: new("sva_subcrthappy1"),
 		EventTypes: []subscription.EventTypeBinding{
-			{EventTypeCode: "subcrt:orders:order:created", SpecVersion: ptr("1.0")},
+			{EventTypeCode: "subcrt:orders:order:created", SpecVersion: new("1.0")},
 			{EventTypeCode: "subcrt:orders:order:*"},
 		},
 		CustomConfig:   []subscription.ConfigEntry{{Key: "X-Env", Value: "test"}},
 		Mode:           "BLOCK_ON_ERROR",
-		TimeoutSeconds: ptr(int32(60)),
-		MaxRetries:     ptr(int32(5)),
-		DelaySeconds:   ptr(int32(10)),
-		MaxAgeSeconds:  ptr(int32(3600)),
-		DataOnly:       ptr(false),
+		TimeoutSeconds: new(int32(60)),
+		MaxRetries:     new(int32(5)),
+		DelaySeconds:   new(int32(10)),
+		MaxAgeSeconds:  new(int32(3600)),
+		DataOnly:       new(false),
 	})
 	require.NoError(t, err)
 
@@ -250,19 +248,19 @@ func TestUpdateSubscription_HappyPath(t *testing.T) {
 
 	ev, err := runAuthorized(uow, operations.UpdateSubscription(repo), operations.UpdateCommand{
 		ID:          seeded.SubscriptionID,
-		Name:        ptr("  After  "), // op must trim
-		Description: ptr("after"),
-		Endpoint:    ptr("https://after.example.test/hook"),
+		Name:        new("  After  "), // op must trim
+		Description: new("after"),
+		Endpoint:    new("https://after.example.test/hook"),
 		EventTypes: []subscription.EventTypeBinding{
 			subscription.NewEventTypeBinding("subupd:orders:order:updated"),
 		},
-		Mode:             ptr("NEXT_ON_ERROR"),
-		TimeoutSeconds:   ptr(int32(90)),
-		MaxRetries:       ptr(int32(7)),
-		DelaySeconds:     ptr(int32(5)),
-		MaxAgeSeconds:    ptr(int32(7200)),
-		ServiceAccountID: ptr("sva_subupdafter1"),
-		DataOnly:         ptr(false),
+		Mode:             new("NEXT_ON_ERROR"),
+		TimeoutSeconds:   new(int32(90)),
+		MaxRetries:       new(int32(7)),
+		DelaySeconds:     new(int32(5)),
+		MaxAgeSeconds:    new(int32(7200)),
+		ServiceAccountID: new("sva_subupdafter1"),
+		DataOnly:         new(false),
 	})
 	require.NoError(t, err)
 	assert.Equal(t, seeded.SubscriptionID, ev.SubscriptionID)
@@ -300,10 +298,10 @@ func TestUpdateSubscription_Errors(t *testing.T) {
 		kind usecase.Kind
 		code string
 	}{
-		{"missing id", operations.UpdateCommand{Name: ptr("X")}, usecase.KindValidation, "ID_REQUIRED"},
-		{"blank name", operations.UpdateCommand{ID: "sub_doesnotexist1", Name: ptr(" ")}, usecase.KindValidation, "NAME_REQUIRED"},
-		{"bad endpoint", operations.UpdateCommand{ID: "sub_doesnotexist1", Endpoint: ptr("not-a-url")}, usecase.KindValidation, "INVALID_ENDPOINT"},
-		{"unknown id", operations.UpdateCommand{ID: "sub_doesnotexist1", Name: ptr("X")}, usecase.KindNotFound, "Subscription_NOT_FOUND"},
+		{"missing id", operations.UpdateCommand{Name: new("X")}, usecase.KindValidation, "ID_REQUIRED"},
+		{"blank name", operations.UpdateCommand{ID: "sub_doesnotexist1", Name: new(" ")}, usecase.KindValidation, "NAME_REQUIRED"},
+		{"bad endpoint", operations.UpdateCommand{ID: "sub_doesnotexist1", Endpoint: new("not-a-url")}, usecase.KindValidation, "INVALID_ENDPOINT"},
+		{"unknown id", operations.UpdateCommand{ID: "sub_doesnotexist1", Name: new("X")}, usecase.KindNotFound, "Subscription_NOT_FOUND"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -454,12 +452,12 @@ func TestSyncSubscriptions_UpsertRemoveAndPoolResolution(t *testing.T) {
 					Code: "subsync-a", Name: "A", Target: "https://a.example.test/hook",
 					ConnectionID:     &connID,
 					EventTypes:       []operations.SyncEventTypeBindingInput{{EventTypeCode: "subsync:orders:order:created"}},
-					DispatchPoolCode: ptr("subsync-pool1"),
+					DispatchPoolCode: new("subsync-pool1"),
 				},
 				{
 					Code: "subsync-b", Name: "B", Target: "https://b.example.test/hook",
 					EventTypes:       []operations.SyncEventTypeBindingInput{{EventTypeCode: "subsync:orders:order:updated"}},
-					DispatchPoolCode: ptr("subsync-nosuchpool"),
+					DispatchPoolCode: new("subsync-nosuchpool"),
 				},
 			},
 		}, ec)
@@ -589,7 +587,7 @@ func TestSyncSubscriptions_ConnectionNotFound(t *testing.T) {
 			Subscriptions: []operations.SyncSubscriptionInput{
 				{
 					Code: "subsync-badconn", Name: "X", Target: "https://x.example.test",
-					ConnectionID: ptr("con_doesnotexist1"),
+					ConnectionID: new("con_doesnotexist1"),
 					EventTypes:   []operations.SyncEventTypeBindingInput{{EventTypeCode: "subsync:a:b:c"}},
 				},
 			},

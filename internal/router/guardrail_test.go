@@ -275,7 +275,7 @@ func TestGuardrail_ConcurrentSubmitNoRaceAndResolvesEach(t *testing.T) {
 	ctx := context.Background()
 
 	var wg sync.WaitGroup
-	for i := 0; i < n; i++ {
+	for i := range n {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -335,7 +335,7 @@ func TestGuardrail_MediatorShortCircuitsWhenOpen(t *testing.T) {
 	defer srv.Close()
 
 	br := NewBreakerRegistry(DefaultBreakerConfig())
-	for i := 0; i < 10; i++ { // trip: 10 failures @ 100% >= 0.5 threshold, MinCalls 10
+	for range 10 { // trip: 10 failures @ 100% >= 0.5 threshold, MinCalls 10
 		br.Get(srv.URL).RecordFailure()
 	}
 	med := NewHTTPMediator(DevMediatorConfig(), br)

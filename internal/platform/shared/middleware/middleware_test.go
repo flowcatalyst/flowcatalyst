@@ -161,7 +161,7 @@ func TestStringSliceFromJWTExtra(t *testing.T) {
 	if got := stringSlice([]string{"a", "b"}); !reflect.DeepEqual(got, []string{"a", "b"}) {
 		t.Errorf("stringSlice([]string): %v", got)
 	}
-	if got := stringSlice([]interface{}{"a", "b"}); !reflect.DeepEqual(got, []string{"a", "b"}) {
+	if got := stringSlice([]any{"a", "b"}); !reflect.DeepEqual(got, []string{"a", "b"}) {
 		t.Errorf("stringSlice([]interface{}): %v", got)
 	}
 	if got := stringSlice("nope"); got != nil {

@@ -530,3 +530,41 @@ func TestDeprecateEventTypeSchema_Errors(t *testing.T) {
 		operations.DeprecateSchemaCommand{EventTypeID: seeded.EventTypeID, Version: "9.9"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "SpecVersion_NOT_FOUND")
 }
+
+// TestCreateEventType_ClientScopedRoundTrips pins that clientScoped is
+// carried from the create command (it was hard-coded false, so the SPA's
+// toggle was silently dropped) and that update changes it only when set.
+func TestCreateEventType_ClientScopedRoundTrips(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := eventtype.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+
+	ev, err := runAuthorized(uow, operations.CreateEventType(repo), operations.CreateCommand{
+		Code: "etscoped:orders:order:created", Name: "Scoped", ClientScoped: true,
+	})
+	require.NoError(t, err)
+	got, err := repo.FindByID(ctx, ev.EventTypeID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.True(t, got.ClientScoped)
+
+	// Update without the field leaves it alone.
+	_, err = runAuthorized(uow, operations.UpdateEventType(repo), operations.UpdateCommand{
+		ID: ev.EventTypeID, Name: "Scoped renamed",
+	})
+	require.NoError(t, err)
+	got, err = repo.FindByID(ctx, ev.EventTypeID)
+	require.NoError(t, err)
+	assert.True(t, got.ClientScoped)
+
+	// Update with it set flips it.
+	off := false
+	_, err = runAuthorized(uow, operations.UpdateEventType(repo), operations.UpdateCommand{
+		ID: ev.EventTypeID, Name: "Scoped renamed", ClientScoped: &off,
+	})
+	require.NoError(t, err)
+	got, err = repo.FindByID(ctx, ev.EventTypeID)
+	require.NoError(t, err)
+	assert.False(t, got.ClientScoped)
+}

@@ -47,7 +47,7 @@ func TestPrincipalMatchesQuery(t *testing.T) {
 }
 
 func TestPrincipalMatchesClient(t *testing.T) {
-	home := strptr("clt_home")
+	home := new("clt_home")
 	p := mkPrincipal("U", "u@x.io", home, true, nil, time.Now())
 	p.AssignedClients = []string{"clt_granted"}
 

@@ -5,8 +5,6 @@ import (
 	"testing"
 )
 
-func intPtr(n int) *int { return &n }
-
 func TestBuildDBSecretDSN(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -31,13 +29,13 @@ func TestBuildDBSecretDSN(t *testing.T) {
 		{
 			name: "secret JSON port overrides DB_PORT",
 			host: "db.internal", dbName: "fc", envPort: "6543",
-			sec:  dbSecret{Username: "u", Password: "p", Port: intPtr(7000)},
+			sec:  dbSecret{Username: "u", Password: "p", Port: new(7000)},
 			want: "postgresql://u:p@db.internal:7000/fc",
 		},
 		{
 			name: "host already has port → no port appended",
 			host: "db.internal:9999", dbName: "fc", envPort: "5432",
-			sec:  dbSecret{Username: "u", Password: "p", Port: intPtr(7000)},
+			sec:  dbSecret{Username: "u", Password: "p", Port: new(7000)},
 			want: "postgresql://u:p@db.internal:9999/fc",
 		},
 		{

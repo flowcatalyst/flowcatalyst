@@ -486,12 +486,12 @@ func quarterPartitionEnd(name string) (time.Time, bool) {
 	if suffix == name {
 		return time.Time{}, false
 	}
-	parts := strings.SplitN(suffix, "_q", 2)
-	if len(parts) != 2 {
+	yearStr, qStr, ok := strings.Cut(suffix, "_q")
+	if !ok {
 		return time.Time{}, false
 	}
-	year, err1 := strconv.Atoi(parts[0])
-	q, err2 := strconv.Atoi(parts[1])
+	year, err1 := strconv.Atoi(yearStr)
+	q, err2 := strconv.Atoi(qStr)
 	if err1 != nil || err2 != nil || q < 1 || q > 4 {
 		return time.Time{}, false
 	}

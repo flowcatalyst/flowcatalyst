@@ -289,7 +289,7 @@ event types and roles, and webhook signature verification.
 
 | Layer | Technology |
 |---|---|
-| Language | Go 1.26 |
+| Language | Go 1.27 |
 | HTTP router | go-chi/chi v5 |
 | API / OpenAPI | huma v2 (OpenAPI 3.1, generated spec) |
 | Database | PostgreSQL via pgx v5; handwritten SQL compiled with sqlc; goose migrations |

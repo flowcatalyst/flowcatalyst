@@ -77,7 +77,7 @@ func (p *Provider) Acquire(ctx context.Context, key string, ttl time.Duration) (
 		return nil, nil // contended
 	}
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", lock.ErrBackend, err)
+		return nil, fmt.Errorf("%w: %w", lock.ErrBackend, err)
 	}
 	if winner != holder {
 		return nil, nil // someone else won (extremely rare race)
@@ -92,7 +92,7 @@ func (p *Provider) ReapExpired(ctx context.Context) (int64, error) {
 	sql := fmt.Sprintf("DELETE FROM %s WHERE expires_at <= NOW()", p.table)
 	tag, err := p.pool.Exec(ctx, sql)
 	if err != nil {
-		return 0, fmt.Errorf("%w: %s", lock.ErrBackend, err)
+		return 0, fmt.Errorf("%w: %w", lock.ErrBackend, err)
 	}
 	return tag.RowsAffected(), nil
 }
@@ -114,7 +114,7 @@ func (h *handle) Release(ctx context.Context) error {
 	h.released = true
 	sql := fmt.Sprintf("DELETE FROM %s WHERE key = $1 AND holder = $2", h.table)
 	if _, err := h.pool.Exec(ctx, sql, h.key, h.holder); err != nil {
-		return fmt.Errorf("%w: %s", lock.ErrBackend, err)
+		return fmt.Errorf("%w: %w", lock.ErrBackend, err)
 	}
 	return nil
 }
@@ -139,7 +139,7 @@ func InitSchema(ctx context.Context, pool *pgxpool.Pool) error {
 // InitSchemaWithTable creates the lock table with a custom name.
 func InitSchemaWithTable(ctx context.Context, pool *pgxpool.Pool, table string) error {
 	sql := strings.ReplaceAll(CreateTableSQL, "{table}", table)
-	for _, stmt := range strings.Split(sql, ";") {
+	for stmt := range strings.SplitSeq(sql, ";") {
 		trimmed := strings.TrimSpace(stmt)
 		if trimmed == "" {
 			continue

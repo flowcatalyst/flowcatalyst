@@ -6,7 +6,10 @@
 // POSTs {"messageId": id} to this endpoint, which then:
 //
 //  1. loads the job and verifies the scheduler-signed bearer token,
-//  2. marks it PROCESSING,
+//  2. atomically claims it for delivery (a conditional UPDATE that flips
+//     PENDING/QUEUED → PROCESSING; a redelivery that loses the race — the
+//     row is already PROCESSING or terminal — acks WITHOUT delivering, and a
+//     claim that errors NACKs rather than deliver with unknown ownership),
 //  3. delivers the real webhook to the subscriber's target_url,
 //  4. records the attempt in msg_dispatch_job_attempts,
 //  5. advances the job status (COMPLETED / retry-scheduled / FAILED),
@@ -216,8 +219,28 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := h.repo.MarkInProgress(ctx, jobID, job.CreatedAt); err != nil {
-		slog.Warn("dispatch process: mark in-progress failed", "job_id", jobID, "err", err)
+	// Atomically claim the job for this delivery: a conditional UPDATE
+	// guarded on the status it flips FROM (PENDING/QUEUED only), so the
+	// affected-row count answers "did I win this delivery?" — see
+	// DispatchJobClaimForDelivery. This is no longer best-effort like the old
+	// unconditional MarkInProgress: a claim error means ownership is unknown,
+	// and delivering anyway is exactly the duplicate the guard exists to
+	// prevent.
+	claimed, err := h.repo.ClaimForDelivery(ctx, jobID, job.CreatedAt)
+	if err != nil {
+		// Transient DB error — NACK so the queue redelivers. Do NOT deliver:
+		// we don't know whether we hold the claim.
+		slog.Error("dispatch process: claim failed", "job_id", jobID, "err", err)
+		writeJSON(w, http.StatusInternalServerError, processResponse{Ack: false, Message: "claim failed"})
+		return
+	}
+	if !claimed {
+		// Lost the race: another delivery of this job is already in flight
+		// (or it just reached a terminal status). Ack without re-delivering —
+		// the in-flight delivery owns advancing the job.
+		slog.Info("dispatch process: already claimed, skipping duplicate delivery", "job_id", jobID)
+		writeJSON(w, http.StatusOK, processResponse{Ack: true, Message: "already claimed"})
+		return
 	}
 
 	attemptNumber := job.AttemptCount + 1
@@ -282,10 +305,7 @@ func (h *Handler) advance(ctx context.Context, job *dispatchjob.DispatchJob, att
 }
 
 func backoffFor(attemptNumber int32) time.Duration {
-	i := int(attemptNumber) - 1
-	if i < 0 {
-		i = 0
-	}
+	i := max(int(attemptNumber)-1, 0)
 	if i >= len(retryBackoff) {
 		i = len(retryBackoff) - 1
 	}

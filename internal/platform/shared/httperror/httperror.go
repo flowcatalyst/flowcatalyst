@@ -109,8 +109,7 @@ func IsValidation(err error) bool {
 
 // As extracts a *usecase.Error from any error in the chain.
 func As(err error) (*usecase.Error, bool) {
-	var ue *usecase.Error
-	if errors.As(err, &ue) {
+	if ue, ok := errors.AsType[*usecase.Error](err); ok {
 		return ue, true
 	}
 	return nil, false

@@ -412,7 +412,7 @@ func isCleanSemver(s string) bool {
 func compareSemver(a, b string) int {
 	pa := strings.SplitN(a, ".", 3)
 	pb := strings.SplitN(b, ".", 3)
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		na, nb := 0, 0
 		if i < len(pa) {
 			na, _ = strconv.Atoi(pa[i])

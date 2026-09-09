@@ -31,8 +31,6 @@ func insertPool(t *testing.T, pool *pgxpool.Pool, id, code string, clientID, cli
 	require.NoError(t, err)
 }
 
-func ptr(s string) *string { return &s }
-
 // TestPoolCodeResolutionChain walks every branch of the ruled chain. The
 // namespacing exists because msg_dispatch_pools is unique on (code, client_id):
 // two clients may each own a pool coded FAST with different concurrency, while
@@ -45,8 +43,8 @@ func TestPoolCodeResolutionChain(t *testing.T) {
 
 	insertClient(t, pool, "clt_acme", "acme")
 	insertClient(t, pool, "clt_globex", "globex")
-	insertPool(t, pool, "dsp_acme_fast", "FAST", ptr("clt_acme"), ptr("acme"))
-	insertPool(t, pool, "dsp_globex_fast", "FAST", ptr("clt_globex"), ptr("globex"))
+	insertPool(t, pool, "dsp_acme_fast", "FAST", new("clt_acme"), new("acme"))
+	insertPool(t, pool, "dsp_globex_fast", "FAST", new("clt_globex"), new("globex"))
 	insertPool(t, pool, "dsp_platform", "PLATFORM-WIDE", nil, nil)
 
 	r := NewPoolCodeResolver(pool, time.Minute)
@@ -80,8 +78,8 @@ func TestSameCodeDifferentClientsDoNotCollide(t *testing.T) {
 
 	insertClient(t, pool, "clt_a", "alpha")
 	insertClient(t, pool, "clt_b", "beta")
-	insertPool(t, pool, "dsp_a", "SHARED-CODE", ptr("clt_a"), ptr("alpha"))
-	insertPool(t, pool, "dsp_b", "SHARED-CODE", ptr("clt_b"), ptr("beta"))
+	insertPool(t, pool, "dsp_a", "SHARED-CODE", new("clt_a"), new("alpha"))
+	insertPool(t, pool, "dsp_b", "SHARED-CODE", new("clt_b"), new("beta"))
 
 	r := NewPoolCodeResolver(pool, time.Minute)
 

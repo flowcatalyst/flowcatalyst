@@ -112,11 +112,11 @@ func CreateScheduledJob(repo *scheduledjob.Repository) usecaseop.Operation[Creat
 			j.TargetURL = cmd.TargetURL
 			j.CreatedBy = &ec.PrincipalID
 
-			event := ScheduledJobCreated{commonEvent: commonEvent{
+			event := ScheduledJobCreated{
 				Metadata:       usecase.NewEventMetadata(ec, ScheduledJobCreatedType, Source, subjectFor(j.ID)),
 				ScheduledJobID: j.ID,
 				Code:           j.Code,
-			}}
+			}
 			return usecaseop.Save(j, repo, event), nil
 		},
 	}
@@ -211,11 +211,11 @@ func UpdateScheduledJob(repo *scheduledjob.Repository) usecaseop.Operation[Updat
 			j.UpdatedBy = &ec.PrincipalID
 			j.Version++
 
-			event := ScheduledJobUpdated{commonEvent: commonEvent{
+			event := ScheduledJobUpdated{
 				Metadata:       usecase.NewEventMetadata(ec, ScheduledJobUpdatedType, Source, subjectFor(j.ID)),
 				ScheduledJobID: j.ID,
 				Code:           j.Code,
-			}}
+			}
 			return usecaseop.Save(j, repo, event), nil
 		},
 	}
@@ -275,10 +275,10 @@ func PauseScheduledJob(repo *scheduledjob.Repository) usecaseop.Operation[PauseC
 	return statusFlip("PauseScheduledJob", repo,
 		func(j *scheduledjob.ScheduledJob) { j.Pause() },
 		func(j *scheduledjob.ScheduledJob, ec usecase.ExecutionContext) ScheduledJobPaused {
-			return ScheduledJobPaused{commonEvent: commonEvent{
+			return ScheduledJobPaused{
 				Metadata:       usecase.NewEventMetadata(ec, ScheduledJobPausedType, Source, subjectFor(j.ID)),
 				ScheduledJobID: j.ID, Code: j.Code,
-			}}
+			}
 		})
 }
 
@@ -287,10 +287,10 @@ func ResumeScheduledJob(repo *scheduledjob.Repository) usecaseop.Operation[Resum
 	return statusFlip("ResumeScheduledJob", repo,
 		func(j *scheduledjob.ScheduledJob) { j.Resume() },
 		func(j *scheduledjob.ScheduledJob, ec usecase.ExecutionContext) ScheduledJobResumed {
-			return ScheduledJobResumed{commonEvent: commonEvent{
+			return ScheduledJobResumed{
 				Metadata:       usecase.NewEventMetadata(ec, ScheduledJobResumedType, Source, subjectFor(j.ID)),
 				ScheduledJobID: j.ID, Code: j.Code,
-			}}
+			}
 		})
 }
 
@@ -299,10 +299,10 @@ func ArchiveScheduledJob(repo *scheduledjob.Repository) usecaseop.Operation[Arch
 	return statusFlip("ArchiveScheduledJob", repo,
 		func(j *scheduledjob.ScheduledJob) { j.Archive() },
 		func(j *scheduledjob.ScheduledJob, ec usecase.ExecutionContext) ScheduledJobArchived {
-			return ScheduledJobArchived{commonEvent: commonEvent{
+			return ScheduledJobArchived{
 				Metadata:       usecase.NewEventMetadata(ec, ScheduledJobArchivedType, Source, subjectFor(j.ID)),
 				ScheduledJobID: j.ID, Code: j.Code,
-			}}
+			}
 		})
 }
 
@@ -335,10 +335,10 @@ func DeleteScheduledJob(repo *scheduledjob.Repository) usecaseop.Operation[Delet
 			if err := auth.CheckScopeAccess(auth.FromContext(ctx), j.ClientID); err != nil {
 				return nil, err
 			}
-			event := ScheduledJobDeleted{commonEvent: commonEvent{
+			event := ScheduledJobDeleted{
 				Metadata:       usecase.NewEventMetadata(ec, ScheduledJobDeletedType, Source, subjectFor(j.ID)),
 				ScheduledJobID: j.ID, Code: j.Code,
-			}}
+			}
 			return usecaseop.Delete(j, repo, event), nil
 		},
 	}
@@ -408,10 +408,8 @@ func FireNow(repo *scheduledjob.Repository, instances *scheduledjob.InstanceRepo
 			}
 
 			event := ScheduledJobFiredManually{
-				commonEvent: commonEvent{
-					Metadata:       usecase.NewEventMetadata(ec, ScheduledJobFiredManuallyType, Source, subjectFor(j.ID)),
-					ScheduledJobID: j.ID, Code: j.Code,
-				},
+				Metadata:       usecase.NewEventMetadata(ec, ScheduledJobFiredManuallyType, Source, subjectFor(j.ID)),
+				ScheduledJobID: j.ID, Code: j.Code,
 				InstanceID: instanceID,
 			}
 			return usecaseop.Emit(event), nil

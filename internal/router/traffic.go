@@ -90,11 +90,11 @@ func (s *TrafficStrategy) Register(ctx context.Context) error {
 	s.mu.Unlock()
 
 	target := elbv2types.TargetDescription{
-		Id:   ptrStr(s.cfg.InstanceIP),
-		Port: ptrInt32(s.cfg.Port),
+		Id:   new(s.cfg.InstanceIP),
+		Port: new(s.cfg.Port),
 	}
 	_, err := s.client.RegisterTargets(ctx, &elasticloadbalancingv2.RegisterTargetsInput{
-		TargetGroupArn: ptrStr(s.cfg.TargetGroupARN),
+		TargetGroupArn: new(s.cfg.TargetGroupARN),
 		Targets:        []elbv2types.TargetDescription{target},
 	})
 	s.mu.Lock()
@@ -125,11 +125,11 @@ func (s *TrafficStrategy) Deregister(ctx context.Context) error {
 	s.mu.Unlock()
 
 	target := elbv2types.TargetDescription{
-		Id:   ptrStr(s.cfg.InstanceIP),
-		Port: ptrInt32(s.cfg.Port),
+		Id:   new(s.cfg.InstanceIP),
+		Port: new(s.cfg.Port),
 	}
 	_, err := s.client.DeregisterTargets(ctx, &elasticloadbalancingv2.DeregisterTargetsInput{
-		TargetGroupArn: ptrStr(s.cfg.TargetGroupARN),
+		TargetGroupArn: new(s.cfg.TargetGroupARN),
 		Targets:        []elbv2types.TargetDescription{target},
 	})
 	s.mu.Lock()
@@ -165,15 +165,15 @@ func (s *TrafficStrategy) waitForDeregistration(ctx context.Context) error {
 	const pollInterval = 5 * time.Second
 	deadline := time.Now().Add(time.Duration(delay) * time.Second)
 	target := elbv2types.TargetDescription{
-		Id:   ptrStr(s.cfg.InstanceIP),
-		Port: ptrInt32(s.cfg.Port),
+		Id:   new(s.cfg.InstanceIP),
+		Port: new(s.cfg.Port),
 	}
 	for {
 		if time.Now().After(deadline) {
 			return fmt.Errorf("deregistration drain wait timed out after %ds", delay)
 		}
 		out, err := s.client.DescribeTargetHealth(ctx, &elasticloadbalancingv2.DescribeTargetHealthInput{
-			TargetGroupArn: ptrStr(s.cfg.TargetGroupARN),
+			TargetGroupArn: new(s.cfg.TargetGroupARN),
 			Targets:        []elbv2types.TargetDescription{target},
 		})
 		if err != nil {
@@ -229,6 +229,3 @@ func (s *TrafficStrategy) Status() TrafficStatus {
 // something but it isn't configured — exposed for tests; production
 // callers should just treat the no-op as success.
 var ErrTrafficDisabled = errors.New("traffic strategy disabled")
-
-func ptrStr(s string) *string { return &s }
-func ptrInt32(n int32) *int32 { return &n }

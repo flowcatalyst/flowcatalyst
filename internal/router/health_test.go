@@ -8,14 +8,14 @@ import (
 
 func TestHealthService_PoolSuccessRate(t *testing.T) {
 	s := NewHealthService(DefaultHealthServiceConfig(), nil)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		s.RecordPoolResult("pool-1", true)
 	}
 	rate, ok := s.PoolSuccessRate("pool-1")
 	if !ok || rate != 1.0 {
 		t.Fatalf("PoolSuccessRate: got (%v, %v) want (1.0, true)", rate, ok)
 	}
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		s.RecordPoolResult("pool-1", false)
 	}
 	rate, ok = s.PoolSuccessRate("pool-1")
@@ -116,13 +116,13 @@ func TestHealthService_HealthReport_WarnsOnCount(t *testing.T) {
 	cfg.MaxWarningsWarning = 5
 	s := healthWithConsumers(cfg, ws, polling("c1"))
 
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		ws.Add(WarningCategoryConnection, WarningError, "x", "t")
 	}
 	if got := s.HealthReport(nil).Status; got != HealthWarning {
 		t.Fatalf("3 warnings (>2 healthy): got %v want Warning", got)
 	}
-	for i := 0; i < 4; i++ {
+	for range 4 {
 		ws.Add(WarningCategoryConnection, WarningError, "x", "t")
 	}
 	if got := s.HealthReport(nil).Status; got != HealthDegraded {

@@ -46,6 +46,11 @@ func encryptOIDCSecretRef(enc *encryption.Service, ref *string) (*string, error)
 	case errors.Is(err, encryption.ErrNotConfigured):
 		return nil, usecase.Validation("ENCRYPTION_NOT_CONFIGURED",
 			"cannot store OIDC client secret: FLOWCATALYST_APP_KEY is not configured")
+	case errors.Is(err, encryption.ErrUnsupportedScheme):
+		// The caller sent a secret-manager reference we cannot resolve —
+		// their input, so 400 with the message naming the supported schemes,
+		// not a 500 that reads as our fault.
+		return nil, usecase.Validation("UNSUPPORTED_SECRET_SCHEME", err.Error())
 	case err != nil:
 		return nil, usecase.Internal("ENCRYPT", "encrypt OIDC client secret", err)
 	}

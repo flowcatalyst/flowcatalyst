@@ -59,6 +59,18 @@ type Pool struct {
 	// populations above and the gaps between them.
 	queueSize atomic.Uint32
 
+	// full is whether queueSize was at or over queueCapacity() as of the
+	// last call to capacityChanged — tracked so capacityFreed fires only on
+	// the crossing back UNDER capacity, never on every admission or
+	// completion (G12, docs/spec/router.md §3.2). See capacityChanged.
+	full atomic.Bool
+
+	// capacityFreed runs on that crossing — how a poll loop parked in
+	// Manager.awaitCapacity learns there is room again without polling on a
+	// fixed interval. nil (checked, not called) until the Manager wires it
+	// in via SetCapacityFreed, which every pool-creation site does.
+	capacityFreed func()
+
 	// mediating is keyed per WORKER, not per message: the process-time dedup
 	// backstop means two copies of one message id can briefly sit in two
 	// workers, and keying by id would then under-report the count and let the
@@ -143,10 +155,7 @@ func NewPool(cfg common.PoolConfig, mediator Mediator, tracker *InFlightTracker,
 	if concurrency == 0 {
 		// When concurrency is unset, derive it from
 		// the rate limit — max(rate_per_minute/60, 1) — rather than always 1.
-		concurrency = rate / 60
-		if concurrency < 1 {
-			concurrency = 1
-		}
+		concurrency = max(rate/60, 1)
 	}
 	return &Pool{
 		cfg:             cfg,
@@ -164,7 +173,51 @@ func NewPool(cfg common.PoolConfig, mediator Mediator, tracker *InFlightTracker,
 
 // queueDec drops the pre-dispatch count by one. (atomic.Uint32 has no Sub;
 // adding ^0 is the two's-complement decrement.)
-func (p *Pool) queueDec() { p.queueSize.Add(^uint32(0)) }
+func (p *Pool) queueDec() {
+	p.queueSize.Add(^uint32(0))
+	p.capacityChanged()
+}
+
+// queueInc raises the pre-dispatch count by one — the increment counterpart
+// to queueDec, used everywhere queueSize grows (a fresh admission, a
+// re-queue for backoff) so capacityChanged sees every mutation, not just
+// decrements. Without this, an admission that pushes queueSize AT capacity
+// leaves p.full stale at false, and the decrement that later crosses back
+// under capacity would find full already false — swap reports "was not
+// full" and capacityFreed never fires for a pool that plainly was.
+func (p *Pool) queueInc() {
+	p.queueSize.Add(1)
+	p.capacityChanged()
+}
+
+// SetCapacityFreed registers the callback to run on the crossing back under
+// capacity (docs/spec/router.md §3.2) — set once, by whatever registers
+// this pool with a Manager. A pool built and used before this is called
+// (every test that constructs one directly) simply never signals; nil is
+// checked, not invoked.
+func (p *Pool) SetCapacityFreed(fn func()) { p.capacityFreed = fn }
+
+// capacityChanged re-evaluates queueSize against queueCapacity and runs
+// capacityFreed exactly on the transition from full to not-full — never on
+// every admission or completion, which at pool throughput would mean a
+// wake-up on every single message. Called after every event that can
+// change queueSize (queueInc, queueDec).
+//
+// A no-op when sem is nil: queueCapacity derives from Concurrency, which
+// reads sem — nil only for a Pool built as a bare struct literal rather
+// than via NewPool (whitebox tests exercising groupQs/flushes in
+// isolation). Every pool NewPool builds, which is every pool a Manager
+// ever routes through, has one.
+func (p *Pool) capacityChanged() {
+	if p.sem == nil {
+		return
+	}
+	atCapacity := p.queueSize.Load() >= p.queueCapacity()
+	wasFull := p.full.Swap(atCapacity)
+	if wasFull && !atCapacity && p.capacityFreed != nil {
+		p.capacityFreed()
+	}
+}
 
 // consumerFor resolves the source consumer for a message via its origin
 // queue (QueueIdentifier); nil when that queue was deregistered between
@@ -295,13 +348,13 @@ func (p *Pool) submit(ctx context.Context, m common.QueuedMessage) {
 	// drain, so no new batch is ever routed to it. This check is the
 	// pool-local backstop for a caller holding a stale *Pool reference.
 	if p.stopped.Load() || p.draining.Load() {
-		p.nackMsg(ctx, m, ptrU32(10), "pool stopped")
+		p.nackMsg(ctx, m, new(uint32(10)), "pool stopped")
 		return
 	}
 	// Capacity backpressure: NACK (delay 10) when the pre-dispatch buffer is
 	// already at capacity = max(concurrency*20, 50).
 	if p.queueSize.Load() >= p.queueCapacity() {
-		p.nackMsg(ctx, m, ptrU32(10), "pool at capacity")
+		p.nackMsg(ctx, m, new(uint32(10)), "pool at capacity")
 		return
 	}
 
@@ -322,14 +375,14 @@ func (p *Pool) submit(ctx context.Context, m common.QueuedMessage) {
 		// queueSize is incremented here and decremented once the worker holds a
 		// semaphore slot, so the "queued (pre-dispatch)" gauge mirrors the
 		// ordered path.
-		p.queueSize.Add(1)
+		p.queueInc()
 		go p.runImmediate(ctx, m)
 		return
 	}
 
 	if !p.enqueue(group, m) {
 		// Raced with Stop: the buffer is flushed and nothing will drain it.
-		p.nackMsg(ctx, m, ptrU32(10), "pool stopped")
+		p.nackMsg(ctx, m, new(uint32(10)), "pool stopped")
 		return
 	}
 	p.tryDrainGroup(ctx, group)
@@ -347,7 +400,7 @@ func (p *Pool) runImmediate(ctx context.Context, m common.QueuedMessage) {
 		// the message reappears after the visibility timeout) re-enters the
 		// pipeline as a fresh copy instead of being dropped as a duplicate.
 		p.queueDec()
-		p.nackMsg(ctx, m, ptrU32(10), "shutdown before dispatch")
+		p.nackMsg(ctx, m, new(uint32(10)), "shutdown before dispatch")
 		return
 	}
 	p.queueDec() // now active, not queued
@@ -371,7 +424,7 @@ func (p *Pool) runImmediate(ctx context.Context, m common.QueuedMessage) {
 	// tracker entry is kept (so redeliveries are deduped against it), and
 	// Attempts grows the backoff and tells processOne not to re-track.
 	m.Attempts++
-	p.queueSize.Add(1) // re-queued (pre-dispatch) for the duration of the backoff
+	p.queueInc() // re-queued (pre-dispatch) for the duration of the backoff
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -696,10 +749,7 @@ const (
 // pool accepts before submit pushes back on the broker. Derived from the
 // concurrency cap, so re-capping a pool re-sizes its buffer with it.
 func (p *Pool) queueCapacity() uint32 {
-	capacity := p.Concurrency() * queueCapacityMultiplier
-	if capacity < minQueueCapacity {
-		capacity = minQueueCapacity
-	}
+	capacity := max(p.Concurrency()*queueCapacityMultiplier, minQueueCapacity)
 	return capacity
 }
 
@@ -720,7 +770,7 @@ func (p *Pool) enqueue(group string, m common.QueuedMessage) bool {
 	}
 	gq.msgs = append(gq.msgs, m)
 	p.mu.Unlock()
-	p.queueSize.Add(1)
+	p.queueInc()
 	return true
 }
 
@@ -741,7 +791,7 @@ func (p *Pool) enqueueFront(group string, m common.QueuedMessage) bool {
 	}
 	gq.msgs = append([]common.QueuedMessage{m}, gq.msgs...)
 	p.mu.Unlock()
-	p.queueSize.Add(1)
+	p.queueInc()
 	return true
 }
 
@@ -816,7 +866,7 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 			// redelivery-dedup path). If the pool stopped meanwhile the buffer
 			// is gone; release the in-hand message to the broker instead.
 			if !p.enqueueFront(group, msg) {
-				p.nackMsg(ctx, msg, ptrU32(10), "pool stopped during drain")
+				p.nackMsg(ctx, msg, new(uint32(10)), "pool stopped during drain")
 				return
 			}
 			p.clearWorking(group)
@@ -874,7 +924,7 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 			if !p.enqueueFront(group, msg) {
 				// Pool stopped while retrying: buffer gone, nothing will drain
 				// it. Release the message to the broker for fresh redelivery.
-				p.nackMsg(ctx, msg, ptrU32(10), "pool stopped during retry")
+				p.nackMsg(ctx, msg, new(uint32(10)), "pool stopped during retry")
 				return
 			}
 			select {
@@ -1259,10 +1309,9 @@ func deferredDelay(attempts uint, outcomeDelaySec int) time.Duration {
 }
 
 func backoffDelay(attempts uint, floorSec int, minDelay, maxDelay time.Duration) time.Duration {
-	shift := attempts
-	if shift > 12 { // cap the shift so the bit-shift can't overflow
-		shift = 12
-	}
+	shift := min(attempts,
+		// cap the shift so the bit-shift can't overflow
+		12)
 	d := minDelay << shift
 	if floor := time.Duration(floorSec) * time.Second; d < floor {
 		d = floor
@@ -1547,5 +1596,3 @@ func nackDelay(d time.Duration) *uint32 {
 	}
 	return &secs
 }
-
-func ptrU32(v uint32) *uint32 { return &v }

@@ -21,8 +21,6 @@ import (
 
 func TestMain(m *testing.M) { testpg.RunMain(m) }
 
-func ptr[T any](v T) *T { return &v }
-
 // validCrons is the canonical 6-field seconds-first shape the firing parser
 // accepts; ValidateCronShape allows 5-7 fields.
 var validCrons = []string{"0 0 * * * *"}
@@ -58,9 +56,9 @@ func TestCreateScheduledJob_HappyPath(t *testing.T) {
 		Payload:             json.RawMessage(`{"kind":"refresh"}`),
 		Concurrent:          true,
 		TracksCompletion:    true,
-		TimeoutSeconds:      ptr(int32(120)),
-		DeliveryMaxAttempts: ptr(int32(5)),
-		TargetURL:           ptr("https://jobs.example.test/fire"),
+		TimeoutSeconds:      new(int32(120)),
+		DeliveryMaxAttempts: new(int32(5)),
+		TargetURL:           new("https://jobs.example.test/fire"),
 	}, ec)
 	require.NoError(t, err)
 
@@ -157,16 +155,16 @@ func TestUpdateScheduledJob_HappyPath(t *testing.T) {
 
 	committed, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.UpdateScheduledJob(repo), operations.UpdateCommand{
 		ID:                  seeded.ScheduledJobID,
-		Name:                ptr("  After  "), // op must trim
-		Description:         ptr("after"),
+		Name:                new("  After  "), // op must trim
+		Description:         new("after"),
 		Crons:               []string{"0 15 3 * * *"},
-		Timezone:            ptr("Europe/Amsterdam"),
+		Timezone:            new("Europe/Amsterdam"),
 		Payload:             json.RawMessage(`{"after":true}`),
-		Concurrent:          ptr(true),
-		TracksCompletion:    ptr(true),
-		TimeoutSeconds:      ptr(int32(45)),
-		DeliveryMaxAttempts: ptr(int32(9)),
-		TargetURL:           ptr("https://after.example.test/job"),
+		Concurrent:          new(true),
+		TracksCompletion:    new(true),
+		TimeoutSeconds:      new(int32(45)),
+		DeliveryMaxAttempts: new(int32(9)),
+		TargetURL:           new("https://after.example.test/job"),
 	}, ec)
 	require.NoError(t, err)
 	assert.Equal(t, seeded.ScheduledJobID, committed.ScheduledJobID)
@@ -210,9 +208,9 @@ func TestUpdateScheduledJob_Errors(t *testing.T) {
 		kind usecase.Kind
 		code string
 	}{
-		{"missing id", operations.UpdateCommand{Name: ptr("X")}, usecase.KindValidation, "ID_REQUIRED"},
-		{"blank name", operations.UpdateCommand{ID: "sjb_doesnotexist1", Name: ptr(" ")}, usecase.KindValidation, "NAME_REQUIRED"},
-		{"unknown id", operations.UpdateCommand{ID: "sjb_doesnotexist1", Name: ptr("X")}, usecase.KindNotFound, "ScheduledJob_NOT_FOUND"},
+		{"missing id", operations.UpdateCommand{Name: new("X")}, usecase.KindValidation, "ID_REQUIRED"},
+		{"blank name", operations.UpdateCommand{ID: "sjb_doesnotexist1", Name: new(" ")}, usecase.KindValidation, "NAME_REQUIRED"},
+		{"unknown id", operations.UpdateCommand{ID: "sjb_doesnotexist1", Name: new("X")}, usecase.KindNotFound, "ScheduledJob_NOT_FOUND"},
 		{"empty crons", operations.UpdateCommand{ID: seeded.ScheduledJobID, Crons: []string{}}, usecase.KindValidation, "CRONS_REQUIRED"},
 		{"blank cron", operations.UpdateCommand{ID: seeded.ScheduledJobID, Crons: []string{" "}}, usecase.KindValidation, "INVALID_CRON"},
 		{"bad cron shape", operations.UpdateCommand{ID: seeded.ScheduledJobID, Crons: []string{"1 2 3"}}, usecase.KindValidation, "CRON_INVALID_SHAPE"},

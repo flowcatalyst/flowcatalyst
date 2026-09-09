@@ -25,7 +25,7 @@ func TestGovernorBurstThenThrottle(t *testing.T) {
 	g := newTestGovernor(60, 5, clk)
 
 	// The burst of 5 is admitted instantly (no time advance).
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		if ok, _ := g.Check("1.2.3.4"); !ok {
 			t.Fatalf("burst request %d should be allowed", i+1)
 		}
@@ -137,7 +137,7 @@ func TestGovernorMiddlewareNoIPPassesThrough(t *testing.T) {
 	}))
 
 	// No XFF and a blank RemoteAddr → no resolvable IP → pass through.
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest("POST", "/oauth/token", nil)
 		req.RemoteAddr = ""

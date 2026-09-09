@@ -229,7 +229,7 @@ func (j *DispatchJob) PayloadJSON() (json.RawMessage, error) {
 // IDStr satisfies usecase.HasID, so DispatchJob can be committed through the
 // use-case envelope (operations/) — see the package doc: human-initiated
 // actions (cancel, complete, resend) go through use cases; router-driven
-// infra writes (Insert, MarkInProgress, ...) stay direct repo calls.
+// infra writes (Insert, ClaimForDelivery, ...) stay direct repo calls.
 func (j DispatchJob) IDStr() string { return j.ID }
 
 // Cancel flips a FAILED job to CANCELLED — an operator override for a

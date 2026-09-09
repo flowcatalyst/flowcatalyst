@@ -10,7 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -517,11 +517,11 @@ func writeEnvUpdates(path string, updates [][2]string) error {
 	}
 	seen := map[string]bool{}
 	for i, line := range lines {
-		eq := strings.IndexByte(line, '=')
-		if eq < 0 {
+		before, _, ok := strings.Cut(line, "=")
+		if !ok {
 			continue
 		}
-		key := strings.TrimSpace(line[:eq])
+		key := strings.TrimSpace(before)
 		for _, kv := range updates {
 			if kv[0] == key {
 				lines[i] = fmt.Sprintf("%s=%s", kv[0], quoteEnvValue(kv[1]))
@@ -535,7 +535,7 @@ func writeEnvUpdates(path string, updates [][2]string) error {
 			toAppend = append(toAppend, kv)
 		}
 	}
-	sort.SliceStable(toAppend, func(i, j int) bool { return toAppend[i][0] < toAppend[j][0] })
+	slices.SortStableFunc(toAppend, func(a, b [2]string) int { return strings.Compare(a[0], b[0]) })
 	if len(toAppend) > 0 {
 		if len(lines) > 0 && lines[len(lines)-1] != "" {
 			lines = append(lines, "")

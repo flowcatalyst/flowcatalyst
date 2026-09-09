@@ -73,11 +73,6 @@ func HashWithParams(plaintext string, p Params) (string, error) {
 	return encode(p, salt, hash), nil
 }
 
-var (
-	dummyHashOnce sync.Once
-	dummyHash     string
-)
-
 // EqualizeTiming performs one Argon2id verification against a fixed internal
 // hash and discards the result. Login handlers call it on the
 // principal-not-found / no-password-set path so a rejected login spends
@@ -88,20 +83,25 @@ var (
 // can't be optimised away. The dummy hash is computed once, lazily, using
 // DefaultParams so its cost matches a live verify.
 func EqualizeTiming(plaintext string) {
-	dummyHashOnce.Do(func() {
-		// The sentinel value is irrelevant — the comparison result is
-		// discarded; only the Argon2id work matters. If hashing somehow
-		// fails, dummyHash stays empty and this becomes a cheap no-op, which
-		// weakens the equalization but never affects correctness.
-		if h, err := Hash("fc-login-timing-equalization-sentinel"); err == nil {
-			dummyHash = h
-		}
-	})
-	if dummyHash == "" {
+	h := dummyHash()
+	if h == "" {
 		return
 	}
-	_ = Verify(plaintext, dummyHash)
+	_ = Verify(plaintext, h)
 }
+
+// dummyHash is the fixed Argon2id hash EqualizeTiming verifies against,
+// computed once on first use. The sentinel value is irrelevant — the
+// comparison result is discarded; only the Argon2id work matters. If hashing
+// somehow fails it stays empty and EqualizeTiming becomes a cheap no-op,
+// which weakens the equalization but never affects correctness.
+var dummyHash = sync.OnceValue(func() string {
+	h, err := Hash("fc-login-timing-equalization-sentinel")
+	if err != nil {
+		return ""
+	}
+	return h
+})
 
 // Verify returns nil iff `plaintext` re-hashes to the same value as the
 // stored PHC string. `ErrInvalidHash` for malformed input; `ErrMismatch`

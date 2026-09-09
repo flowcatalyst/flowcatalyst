@@ -3,7 +3,7 @@ package bff
 import (
 	"encoding/json"
 	"net/http"
-	"sort"
+	"slices"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -371,7 +371,7 @@ func distinctOptions(rows []eventtype.EventType, pick func(eventtype.EventType) 
 	for v := range seen {
 		out = append(out, v)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return map[string]any{"options": out}
 }
 

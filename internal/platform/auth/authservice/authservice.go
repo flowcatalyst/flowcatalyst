@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"slices"
 	"strings"
 	"time"
 
@@ -452,14 +453,12 @@ func (s *AuthService) generateTokenWithExpiry(p *principal.Principal, expirySecs
 	exp := now.Add(time.Duration(expirySecs) * time.Second)
 
 	claims := AccessTokenClaims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    s.config.Issuer,
-			Subject:   p.ID,
-			ExpiresAt: jwt.NewNumericDate(exp),
-			IssuedAt:  jwt.NewNumericDate(now),
-			NotBefore: jwt.NewNumericDate(now),
-			ID:        tsid.GenerateUntyped(),
-		},
+		Issuer:        s.config.Issuer,
+		Subject:       p.ID,
+		ExpiresAt:     jwt.NewNumericDate(exp),
+		IssuedAt:      jwt.NewNumericDate(now),
+		NotBefore:     jwt.NewNumericDate(now),
+		ID:            tsid.GenerateUntyped(),
 		Aud:           s.config.Audience,
 		PrincipalType: string(p.Type),
 		Tier:          string(p.Scope),
@@ -542,12 +541,10 @@ func (s *AuthService) generateIDToken(p *principal.Principal, clientID string, n
 	azp := clientID
 
 	claims := IDTokenClaims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    s.config.Issuer,
-			Subject:   p.ID,
-			ExpiresAt: jwt.NewNumericDate(exp),
-			IssuedAt:  jwt.NewNumericDate(now),
-		},
+		Issuer:          s.config.Issuer,
+		Subject:         p.ID,
+		ExpiresAt:       jwt.NewNumericDate(exp),
+		IssuedAt:        jwt.NewNumericDate(now),
 		Aud:             clientID,
 		AuthTime:        &authTimeUnix,
 		Nonce:           nonce,
@@ -612,7 +609,7 @@ func (s *AuthService) ValidateToken(token string) (*AccessTokenClaims, error) {
 		}
 		lastErr = err
 	}
-	return nil, fmt.Errorf("%w: %v", ErrInvalidToken, lastErr)
+	return nil, fmt.Errorf("%w: %w", ErrInvalidToken, lastErr)
 }
 
 // HasClientAccess reports whether the claims grant access to clientID,
@@ -628,12 +625,7 @@ func (s *AuthService) HasClientAccess(claims *AccessTokenClaims, clientID string
 
 // HasRole reports whether the claims carry the named role.
 func (s *AuthService) HasRole(claims *AccessTokenClaims, role string) bool {
-	for _, r := range claims.Roles {
-		if r == role {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(claims.Roles, role)
 }
 
 // IsAnchor reports whether the claims are for an anchor-tier principal.

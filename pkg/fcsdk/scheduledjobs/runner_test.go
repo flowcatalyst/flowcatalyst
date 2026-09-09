@@ -3,6 +3,7 @@ package scheduledjobs_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -220,7 +221,7 @@ func TestHandlerPanicSurfacedViaOnError(t *testing.T) {
 		OnError(func(err error, _ *scheduledjobs.Envelope) {
 			mu.Lock()
 			defer mu.Unlock()
-			if re, ok := err.(*scheduledjobs.RunnerError); ok {
+			if re, ok := errors.AsType[*scheduledjobs.RunnerError](err); ok {
 				captured = re
 			}
 		}).

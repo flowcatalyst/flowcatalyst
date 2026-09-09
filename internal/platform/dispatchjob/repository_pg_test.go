@@ -226,6 +226,76 @@ func TestFindWithFilters_CorruptStatusFailsTheWholeList(t *testing.T) {
 	assert.Contains(t, err.Error(), "CORRUPT_DISPATCH_JOB_STATUS")
 }
 
+// TestClaimForDelivery_WinsOnceThenLoses pins the atomic-claim contract that
+// backs the dispatch-processing duplicate-delivery fix: a PENDING row is
+// claimable exactly once. The second call — same job, no status change in
+// between — must observe it already flipped to PROCESSING and report false,
+// never claim it a second time.
+func TestClaimForDelivery_WinsOnceThenLoses(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := dispatchjob.NewRepository(pool)
+
+	id := tsid.GenerateUntyped()
+	_, err := pool.Exec(ctx,
+		`INSERT INTO msg_dispatch_jobs (id, code, target_url, status)
+		 VALUES ($1, 'claim:test:pending', 'http://example.invalid/hook', 'PENDING')`, id)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM msg_dispatch_jobs WHERE id = $1`, id)
+	})
+
+	job, err := repo.FindByID(ctx, id)
+	require.NoError(t, err)
+	require.NotNil(t, job)
+
+	won, err := repo.ClaimForDelivery(ctx, id, job.CreatedAt)
+	require.NoError(t, err)
+	assert.True(t, won, "first claim on a PENDING row must win")
+
+	// Second, immediate call against the same (unchanged) row: the first
+	// claim already flipped status to PROCESSING, so this one must lose.
+	won, err = repo.ClaimForDelivery(ctx, id, job.CreatedAt)
+	require.NoError(t, err)
+	assert.False(t, won, "a row already claimed for delivery must not be claimable again")
+
+	// The winning claim actually flipped status + stamped last_attempt_at —
+	// not just returned true without writing anything.
+	after, err := repo.FindByID(ctx, id)
+	require.NoError(t, err)
+	require.NotNil(t, after)
+	assert.Equal(t, common.DispatchProcessing, after.Status, "a won claim must flip status to PROCESSING")
+	require.NotNil(t, after.LastAttemptAt, "a won claim must stamp last_attempt_at")
+}
+
+// TestClaimForDelivery_TerminalRowNotClaimable pins the other claimability
+// boundary: a row that has already finished (COMPLETED) must never be
+// claimed for another delivery, even though nothing else is "in flight" for
+// it — the claim is a positive PENDING/QUEUED allow-list, not merely a
+// not-PROCESSING check.
+func TestClaimForDelivery_TerminalRowNotClaimable(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := dispatchjob.NewRepository(pool)
+
+	id := tsid.GenerateUntyped()
+	_, err := pool.Exec(ctx,
+		`INSERT INTO msg_dispatch_jobs (id, code, target_url, status)
+		 VALUES ($1, 'claim:test:completed', 'http://example.invalid/hook', 'COMPLETED')`, id)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM msg_dispatch_jobs WHERE id = $1`, id)
+	})
+
+	job, err := repo.FindByID(ctx, id)
+	require.NoError(t, err)
+	require.NotNil(t, job)
+
+	won, err := repo.ClaimForDelivery(ctx, id, job.CreatedAt)
+	require.NoError(t, err)
+	assert.False(t, won, "a COMPLETED row must never be claimable for delivery")
+}
+
 // TestAttemptsByJob_CorruptErrorTypeFailsLoudly pins the read-boundary
 // conversion for dispatchjob.ParseErrorType, applied inside
 // Repository.AttemptsByJob: an unrecognised error_type on one attempt fails

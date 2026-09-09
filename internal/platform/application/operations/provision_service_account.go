@@ -31,10 +31,6 @@ import (
 // application. See internal/platform/seed/roles.go ("application-service").
 const applicationServiceRoleName = "platform:application-service"
 
-// ptrStr returns a pointer to s. Used for the optional AssignmentSource on a
-// role assignment.
-func ptrStr(s string) *string { return &s }
-
 // ProvisionServiceAccountCommand provisions a dedicated service account
 // (+ its SERVICE principal + a confidential OAuth client) for an
 // application, atomically — all three writes run in one
@@ -164,7 +160,7 @@ func ProvisionServiceAccount(
 			saPrincipal.AccessibleApplicationIDs = []string{app.ID}
 			saPrincipal.Roles = []serviceaccount.RoleAssignment{{
 				Role:             applicationServiceRoleName,
-				AssignmentSource: ptrStr("PROVISIONED"),
+				AssignmentSource: new("PROVISIONED"),
 				AssignedAt:       time.Now().UTC(),
 			}}
 			if err := s.WithTx(ctx, func(tx pgx.Tx) error {
@@ -209,10 +205,10 @@ func ProvisionServiceAccount(
 	}
 }
 
-// generateClientSecret returns a fresh URL-safe secret + its encrypted
+// generateClientSecret returns a fresh URL-safe secret + its at-rest
 // reference (client_secret_ref). Same scheme as
-// auth/operations.generateSecret: secrets are reversibly
-// encrypted, not hashed.
+// auth/operations.generateSecret: a keyed hash, not a reversible
+// encryption — this OAuth client secret is verify-only.
 func generateClientSecret() (plaintext, ref string, err error) {
 	b := make([]byte, 32)
 	if _, err = rand.Read(b); err != nil {
@@ -224,11 +220,7 @@ func generateClientSecret() (plaintext, ref string, err error) {
 		return "", "", err
 	}
 	if enc == nil {
-		return "", "", errors.New("FLOWCATALYST_APP_KEY not configured; cannot encrypt client secret")
+		return "", "", errors.New("FLOWCATALYST_APP_KEY not configured; cannot hash client secret")
 	}
-	ref, err = enc.Encrypt(plaintext)
-	if err != nil {
-		return "", "", err
-	}
-	return plaintext, ref, nil
+	return plaintext, enc.Hash(plaintext), nil
 }

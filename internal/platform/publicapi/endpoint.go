@@ -65,7 +65,7 @@ func (e *Endpoint) RegisterRoutes(r chi.Router) {
 // future expansion adds env-driven flags.
 type platformResponse struct {
 	Features featuresResponse `json:"features"`
-	// PlatformName is the configurable brand name, defaulting to "Flowcatalyst".
+	// PlatformName is the configurable brand name, defaulting to "FlowCatalyst".
 	// The SPA uses it for the document title and as the fallback brand.
 	PlatformName string `json:"platformName"`
 }

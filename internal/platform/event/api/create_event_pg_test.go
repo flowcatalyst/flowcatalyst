@@ -103,6 +103,25 @@ func TestCreateEvent_PersistsAndMatchesBatchOfOne(t *testing.T) {
 	require.Len(t, bout.Body.Results, 1)
 	require.Equal(t, "SUCCESS", bout.Body.Results[0].Status)
 
+	// Ruling 2026-09-06 #10a: partial success with honest per-item results.
+	// An invalid item gets BAD_REQUEST in its own slot; the valid item lands.
+	pout, err := s.batchIngest(ctx, &apicommon.In[BatchRequest]{Body: BatchRequest{
+		Items: []BatchEventItem{
+			{ID: "evt-bad-1", Type: "", Source: "test://singular", Data: json.RawMessage(`{}`)},
+			{Type: "it:singular:event:created", Source: "test://singular", Data: json.RawMessage(`{"k":"partial"}`)},
+			{Type: "it:singular:event:created", Source: "test://singular", Data: json.RawMessage(`null`)},
+		},
+	}})
+	require.NoError(t, err)
+	require.Len(t, pout.Body.Results, 3)
+	assert.Equal(t, BatchResultItem{ID: "evt-bad-1", Status: "BAD_REQUEST", Error: "type is required"}, pout.Body.Results[0])
+	assert.Equal(t, "SUCCESS", pout.Body.Results[1].Status)
+	assert.NotEmpty(t, pout.Body.Results[1].ID)
+	assert.Equal(t, "BAD_REQUEST", pout.Body.Results[2].Status)
+	assert.Equal(t, "data is required", pout.Body.Results[2].Error)
+	partial := fetchEventRow(t, ctx, pool, pout.Body.Results[1].ID)
+	assert.JSONEq(t, `{"k":"partial"}`, partial.Data)
+
 	single := fetchEventRow(t, ctx, pool, out.Body.Event.ID)
 	batch := fetchEventRow(t, ctx, pool, bout.Body.Results[0].ID)
 	assert.Equal(t, batch, single,

@@ -16,7 +16,7 @@ type CreateIdentityProviderRequest struct {
 	OIDCIssuerURL       *string  `json:"oidcIssuerUrl,omitempty"`
 	OIDCClientID        *string  `json:"oidcClientId,omitempty"`
 	OIDCClientSecretRef *string  `json:"oidcClientSecretRef,omitempty"`
-	OIDCMultiTenant     bool     `json:"oidcMultiTenant"`
+	OIDCMultiTenant     *bool    `json:"oidcMultiTenant,omitempty"`
 	OIDCIssuerPattern   *string  `json:"oidcIssuerPattern,omitempty"`
 	AllowedEmailDomains []string `json:"allowedEmailDomains,omitempty" doc:"Email domains to route to this provider; mappings are created (or claimed from their current provider) in Email Domain management"`
 	PrimaryClientID     *string  `json:"primaryClientId,omitempty" doc:"Client to link on mappings that are new or not yet linked to a primary client"`

@@ -177,8 +177,7 @@ func relaxOperationBody(reg huma.Registry, op *huma.Operation) {
 // from the [*usecase.Error.Kind] so handlers don't have to thread it.
 func newError(_ int, message string, errs ...error) huma.StatusError {
 	for _, e := range errs {
-		var ue *usecase.Error
-		if errors.As(e, &ue) {
+		if ue, ok := errors.AsType[*usecase.Error](e); ok {
 			return &ErrorModel{
 				Code:    ue.Code,
 				Message: ue.Message,
@@ -212,8 +211,7 @@ func validationDetails(errs []error) []map[string]any {
 		if e == nil {
 			continue
 		}
-		var d *huma.ErrorDetail
-		if errors.As(e, &d) {
+		if d, ok := errors.AsType[*huma.ErrorDetail](e); ok {
 			m := map[string]any{"message": d.Message}
 			if d.Location != "" {
 				m["location"] = d.Location

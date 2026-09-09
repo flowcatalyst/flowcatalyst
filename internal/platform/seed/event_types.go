@@ -156,7 +156,7 @@ func (s *Seeder) seedPlatformEventTypes(ctx context.Context) error {
 			`INSERT INTO msg_event_type_spec_versions
 			     (id, event_type_id, version, mime_type, schema_content, schema_type,
 			      status, created_at, updated_at)
-			 VALUES ($1, $2, 'v1', 'application/schema+json', $3, 'JSON', 'CURRENT', $4, $4)`,
+			 VALUES ($1, $2, 'v1', 'application/schema+json', $3, 'JSON_SCHEMA', 'CURRENT', $4, $4)`,
 			tsid.Generate(tsid.Schema), id, []byte(d.Schema), now); err != nil {
 			return fmt.Errorf("insert spec version %s: %w", d.Code, err)
 		}

@@ -760,6 +760,25 @@ func (r *Repository) UpdatePasswordHash(ctx context.Context, principalID, hash s
 	return nil
 }
 
+// RewriteDevClientSecretRef overwrites only dev_client_secret_ref for a
+// principal — the lazy migration that runs after /oauth/token verifies a
+// developer client_credentials secret against an older (encrypted, or
+// hashed-under-a-previous-key) shape, so the row reads "hashed:v1:…" under
+// the current key from then on. Like UpdatePasswordHash, a direct UPDATE
+// rather than a domain event: an internal at-rest-format upgrade triggered
+// by a read, not a user-initiated credential change. Callers should treat
+// any error as non-fatal — the caller has already authenticated.
+func (r *Repository) RewriteDevClientSecretRef(ctx context.Context, principalID, newRef string) error {
+	now := time.Now().UTC()
+	if _, err := r.pool.Exec(ctx,
+		`UPDATE iam_principals SET dev_client_secret_ref = $1, dev_client_secret_updated_at = $2, updated_at = $3 WHERE id = $4`,
+		newRef, now, now, principalID); err != nil {
+		return err
+	}
+	r.bumpVersion(ctx, principalID, now)
+	return nil
+}
+
 // LowercaseEmail normalises a principal's stored email (and the derived
 // email_domain) to lower-case in place, but only when it isn't already
 // normalised — an already-lower-case row triggers no write. Like

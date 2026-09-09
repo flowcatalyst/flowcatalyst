@@ -96,9 +96,7 @@ func (s *State) whoami(w http.ResponseWriter, r *http.Request) {
 	}
 	if p != nil {
 		out.PrincipalType = string(p.Type)
-		if p.UserIdentity != nil {
-			out.Name = p.UserIdentity.DisplayName()
-		}
+		out.Name = resolvePrincipalName(p)
 	} else {
 		// Test-header principals (X-FC-Test-*) don't have a DB row.
 		out.PrincipalType = "USER"
@@ -197,6 +195,21 @@ func filterMyApplications(all []application.Application, allApplications bool, a
 		}
 	}
 	return apps
+}
+
+// resolvePrincipalName picks the display name for a DB-backed principal:
+// prefer the principal's own Name — the only source for a SERVICE principal,
+// which has no UserIdentity — falling back to the identity's display name
+// when Name is unset (e.g. legacy rows). Pure, so it's unit-testable without
+// a DB.
+func resolvePrincipalName(p *principal.Principal) string {
+	if p.Name != "" {
+		return p.Name
+	}
+	if p.UserIdentity != nil {
+		return p.UserIdentity.DisplayName()
+	}
+	return ""
 }
 
 func stringSliceOrEmpty(s []string) []string {

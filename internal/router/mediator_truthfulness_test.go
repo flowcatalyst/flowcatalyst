@@ -351,7 +351,7 @@ func TestServerErrorClassificationBoundary(t *testing.T) {
 func TestMediatorTransportFailureRetries(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	var accepts atomic.Int32
 	go func() {

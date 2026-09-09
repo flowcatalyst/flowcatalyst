@@ -4,7 +4,7 @@ import (
 	"context"
 	"math"
 	"net/http"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -157,6 +157,26 @@ func (s *ScheduledJobsState) listJobs(w http.ResponseWriter, r *http.Request) {
 	}
 	if search := strings.TrimSpace(q.Get("search")); search != "" {
 		filters.Search = &search
+	}
+	// A non-anchor caller only ever sees jobs of clients it can access;
+	// platform-scoped jobs are anchor-only (canViewJob). Fold that into the
+	// SQL filter so COUNT and LIMIT/OFFSET agree with the rows the caller
+	// can see, instead of counting rows canViewJob then hides — which leaked
+	// the global total and produced pages that ran past the visible rows.
+	if !ac.IsAnchor() {
+		allowed := ac.Clients
+		if len(filters.ClientIDs) > 0 {
+			allowed = slices.DeleteFunc(slices.Clone(filters.ClientIDs), func(id string) bool {
+				return !ac.CanAccessClient(id)
+			})
+		}
+		if len(allowed) == 0 {
+			writeJSON(w, http.StatusOK, bffPaginatedResponse{
+				Data: []bffScheduledJobResponse{}, Page: page, Size: size,
+			})
+			return
+		}
+		filters.ClientIDs = allowed
 	}
 	limit := int64(size)
 	offset := int64(page) * int64(size)
@@ -401,7 +421,7 @@ func (s *ScheduledJobsState) filterOptions(w http.ResponseWriter, r *http.Reques
 		}
 		visible = append(visible, bffFilterOption{Value: c.ID, Label: c.Name})
 	}
-	sort.Slice(visible, func(i, j int) bool { return visible[i].Label < visible[j].Label })
+	slices.SortFunc(visible, func(a, b bffFilterOption) int { return strings.Compare(a.Label, b.Label) })
 	options = append(options, visible...)
 
 	apps, err := s.Applications.FindWithFilters(r.Context(), nil, nil)
@@ -416,7 +436,7 @@ func (s *ScheduledJobsState) filterOptions(w http.ResponseWriter, r *http.Reques
 		}
 		appOptions = append(appOptions, bffFilterOption{Value: a.ID, Label: a.Name})
 	}
-	sort.Slice(appOptions, func(i, j int) bool { return appOptions[i].Label < appOptions[j].Label })
+	slices.SortFunc(appOptions, func(a, b bffFilterOption) int { return strings.Compare(a.Label, b.Label) })
 
 	writeJSON(w, http.StatusOK, bffScheduledJobsFilterOptions{
 		Clients:      options,

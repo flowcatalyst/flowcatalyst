@@ -6,8 +6,6 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
 )
 
-func strptr(s string) *string { return &s }
-
 // TestDeriveUserScope covers the create-user scope resolution: the requested
 // scope wins (ANCHOR/PARTNER only when the domain setup backs them), and an
 // absent scope defaults to CLIENT — the domain never upgrades it.
@@ -25,28 +23,28 @@ func TestDeriveUserScope(t *testing.T) {
 		// ── no scope sent → CLIENT, never promoted ─────────────────────
 		{
 			name:      "no scope, unmapped domain → client, verbatim clientId",
-			reqClient: strptr("clt_x"), wantScope: "CLIENT", wantClient: strptr("clt_x"),
+			reqClient: new("clt_x"), wantScope: "CLIENT", wantClient: new("clt_x"),
 		},
 		{
 			name: "no scope, anchor domain NOT promoted → client", isAnchorDom: true,
-			reqClient: strptr("clt_x"), wantScope: "CLIENT", wantClient: strptr("clt_x"),
+			reqClient: new("clt_x"), wantScope: "CLIENT", wantClient: new("clt_x"),
 		},
 		{
 			name:      "no scope, ANCHOR mapping NOT promoted → client",
 			mapping:   &emaildomainmapping.EmailDomainMapping{ScopeType: emaildomainmapping.ScopeAnchor},
-			reqClient: strptr("clt_x"), wantScope: "CLIENT", wantClient: strptr("clt_x"),
+			reqClient: new("clt_x"), wantScope: "CLIENT", wantClient: new("clt_x"),
 		},
 		{
 			name: "no scope, PARTNER mapping NOT promoted → client",
 			mapping: &emaildomainmapping.EmailDomainMapping{
 				ScopeType: emaildomainmapping.ScopePartner, GrantedClientIDs: []string{"clt_x"},
 			},
-			reqClient: strptr("clt_x"), wantScope: "CLIENT", wantClient: strptr("clt_x"),
+			reqClient: new("clt_x"), wantScope: "CLIENT", wantClient: new("clt_x"),
 		},
 		{
 			name:      "no scope, CLIENT mapping falls back to primary when no clientId",
-			mapping:   &emaildomainmapping.EmailDomainMapping{ScopeType: emaildomainmapping.ScopeClient, PrimaryClientID: strptr("clt_primary")},
-			wantScope: "CLIENT", wantClient: strptr("clt_primary"),
+			mapping:   &emaildomainmapping.EmailDomainMapping{ScopeType: emaildomainmapping.ScopeClient, PrimaryClientID: new("clt_primary")},
+			wantScope: "CLIENT", wantClient: new("clt_primary"),
 		},
 		{
 			name:      "no scope, no clientId → client with nil client (op rejects downstream)",
@@ -55,75 +53,75 @@ func TestDeriveUserScope(t *testing.T) {
 
 		// ── explicit CLIENT ────────────────────────────────────────────
 		{
-			name: "explicit CLIENT uses request clientId over mapping primary", reqScope: strptr("CLIENT"),
-			mapping:   &emaildomainmapping.EmailDomainMapping{ScopeType: emaildomainmapping.ScopeClient, PrimaryClientID: strptr("clt_primary")},
-			reqClient: strptr("clt_req"), wantScope: "CLIENT", wantClient: strptr("clt_req"),
+			name: "explicit CLIENT uses request clientId over mapping primary", reqScope: new("CLIENT"),
+			mapping:   &emaildomainmapping.EmailDomainMapping{ScopeType: emaildomainmapping.ScopeClient, PrimaryClientID: new("clt_primary")},
+			reqClient: new("clt_req"), wantScope: "CLIENT", wantClient: new("clt_req"),
 		},
 		{
-			name: "explicit CLIENT on anchor domain is a downgrade, allowed", reqScope: strptr("CLIENT"),
-			isAnchorDom: true, reqClient: strptr("clt_x"), wantScope: "CLIENT", wantClient: strptr("clt_x"),
+			name: "explicit CLIENT on anchor domain is a downgrade, allowed", reqScope: new("CLIENT"),
+			isAnchorDom: true, reqClient: new("clt_x"), wantScope: "CLIENT", wantClient: new("clt_x"),
 		},
 
 		// ── explicit ANCHOR: must be backed by the domain setup ────────
 		{
-			name: "ANCHOR on registered anchor domain, client ignored", reqScope: strptr("ANCHOR"),
-			isAnchorDom: true, reqClient: strptr("clt_x"), wantScope: "ANCHOR", wantClient: nil,
+			name: "ANCHOR on registered anchor domain, client ignored", reqScope: new("ANCHOR"),
+			isAnchorDom: true, reqClient: new("clt_x"), wantScope: "ANCHOR", wantClient: nil,
 		},
 		{
-			name: "ANCHOR via ANCHOR mapping", reqScope: strptr("ANCHOR"),
+			name: "ANCHOR via ANCHOR mapping", reqScope: new("ANCHOR"),
 			mapping:   &emaildomainmapping.EmailDomainMapping{ScopeType: emaildomainmapping.ScopeAnchor},
 			wantScope: "ANCHOR", wantClient: nil,
 		},
 		{
-			name: "ANCHOR on unmapped domain rejected", reqScope: strptr("ANCHOR"),
+			name: "ANCHOR on unmapped domain rejected", reqScope: new("ANCHOR"),
 			wantErr: true,
 		},
 		{
-			name: "ANCHOR on CLIENT-mapped domain rejected", reqScope: strptr("ANCHOR"),
+			name: "ANCHOR on CLIENT-mapped domain rejected", reqScope: new("ANCHOR"),
 			mapping: &emaildomainmapping.EmailDomainMapping{ScopeType: emaildomainmapping.ScopeClient},
 			wantErr: true,
 		},
 
 		// ── explicit PARTNER: must be backed by a PARTNER mapping ──────
 		{
-			name: "PARTNER without mapping rejected", reqScope: strptr("PARTNER"),
-			reqClient: strptr("clt_x"), wantErr: true,
+			name: "PARTNER without mapping rejected", reqScope: new("PARTNER"),
+			reqClient: new("clt_x"), wantErr: true,
 		},
 		{
-			name: "PARTNER requires clientId", reqScope: strptr("PARTNER"),
+			name: "PARTNER requires clientId", reqScope: new("PARTNER"),
 			mapping: &emaildomainmapping.EmailDomainMapping{ScopeType: emaildomainmapping.ScopePartner},
 			wantErr: true,
 		},
 		{
-			name: "PARTNER rejects clientId not in mapping", reqScope: strptr("PARTNER"),
+			name: "PARTNER rejects clientId not in mapping", reqScope: new("PARTNER"),
 			mapping: &emaildomainmapping.EmailDomainMapping{
 				ScopeType: emaildomainmapping.ScopePartner, GrantedClientIDs: []string{"clt_a"},
 			},
-			reqClient: strptr("clt_b"), wantErr: true,
+			reqClient: new("clt_b"), wantErr: true,
 		},
 		{
-			name: "PARTNER accepts granted clientId", reqScope: strptr("PARTNER"),
+			name: "PARTNER accepts granted clientId", reqScope: new("PARTNER"),
 			mapping: &emaildomainmapping.EmailDomainMapping{
 				ScopeType: emaildomainmapping.ScopePartner, GrantedClientIDs: []string{"clt_a", "clt_b"},
 			},
-			reqClient: strptr("clt_b"), wantScope: "PARTNER", wantClient: strptr("clt_b"),
+			reqClient: new("clt_b"), wantScope: "PARTNER", wantClient: new("clt_b"),
 		},
 		{
-			name: "PARTNER accepts primary clientId", reqScope: strptr("PARTNER"),
+			name: "PARTNER accepts primary clientId", reqScope: new("PARTNER"),
 			mapping: &emaildomainmapping.EmailDomainMapping{
-				ScopeType: emaildomainmapping.ScopePartner, PrimaryClientID: strptr("clt_primary"),
+				ScopeType: emaildomainmapping.ScopePartner, PrimaryClientID: new("clt_primary"),
 			},
-			reqClient: strptr("clt_primary"), wantScope: "PARTNER", wantClient: strptr("clt_primary"),
+			reqClient: new("clt_primary"), wantScope: "PARTNER", wantClient: new("clt_primary"),
 		},
 
 		// ── malformed scope ────────────────────────────────────────────
 		{
-			name: "unknown scope rejected", reqScope: strptr("SUPERUSER"),
+			name: "unknown scope rejected", reqScope: new("SUPERUSER"),
 			wantErr: true,
 		},
 		{
-			name: "scope is case-insensitive and trimmed", reqScope: strptr("  client "),
-			reqClient: strptr("clt_x"), wantScope: "CLIENT", wantClient: strptr("clt_x"),
+			name: "scope is case-insensitive and trimmed", reqScope: new("  client "),
+			reqClient: new("clt_x"), wantScope: "CLIENT", wantClient: new("clt_x"),
 		},
 	}
 	for _, c := range cases {

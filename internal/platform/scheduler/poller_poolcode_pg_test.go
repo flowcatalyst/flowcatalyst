@@ -80,9 +80,9 @@ func TestPublishedMessageCarriesResolvedPoolCode(t *testing.T) {
 	pool := testpg.Pool(t)
 
 	insertClient(t, pool, "clt_e2e_acme", "acme-e2e")
-	insertPool(t, pool, "dsp_e2e_fast", "FAST", ptr("clt_e2e_acme"), ptr("acme-e2e"))
+	insertPool(t, pool, "dsp_e2e_fast", "FAST", new("clt_e2e_acme"), new("acme-e2e"))
 	seedRoutableJob(t, pool, "dje2epool001", "BLOCK_ON_ERROR",
-		ptr("dsp_e2e_fast"), ptr("clt_e2e_acme"))
+		new("dsp_e2e_fast"), new("clt_e2e_acme"))
 
 	msgs := pollAndCapture(t, pool)
 
@@ -99,7 +99,7 @@ func TestPublishedPoolCodeFallsBackToClientDefault(t *testing.T) {
 	pool := testpg.Pool(t)
 
 	insertClient(t, pool, "clt_e2e_nopool", "nopool-e2e")
-	seedRoutableJob(t, pool, "dje2epool002", "IMMEDIATE", nil, ptr("clt_e2e_nopool"))
+	seedRoutableJob(t, pool, "dje2epool002", "IMMEDIATE", nil, new("clt_e2e_nopool"))
 
 	msgs := pollAndCapture(t, pool)
 
@@ -126,7 +126,7 @@ func TestPublishedPoolCodeForPlatformPoolHasNoPrefix(t *testing.T) {
 	pool := testpg.Pool(t)
 
 	insertPool(t, pool, "dsp_e2e_platform", "PLATFORM-POOL", nil, nil)
-	seedRoutableJob(t, pool, "dje2epool004", "IMMEDIATE", ptr("dsp_e2e_platform"), nil)
+	seedRoutableJob(t, pool, "dje2epool004", "IMMEDIATE", new("dsp_e2e_platform"), nil)
 
 	msgs := pollAndCapture(t, pool)
 

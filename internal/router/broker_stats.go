@@ -3,6 +3,8 @@ package router
 import (
 	"context"
 	"log/slog"
+	"maps"
+	"slices"
 	"sync"
 	"time"
 
@@ -126,16 +128,14 @@ func (c *CachedBrokerStats) GetWindowed(window time.Duration) []queue.Metrics {
 
 	c.mu.RLock()
 	attrs := make(map[string]queueAttr, len(c.attrs))
-	for k, v := range c.attrs {
-		attrs[k] = v
-	}
+	maps.Copy(attrs, c.attrs)
 	var baseline map[string]counterSnapshot
 	if window > 0 && len(c.counterHistory) > 0 {
 		target := time.Now().Add(-window)
 		// Walk newest → oldest, take the newest entry with ts <= target.
-		for i := len(c.counterHistory) - 1; i >= 0; i-- {
-			if !c.counterHistory[i].ts.After(target) {
-				baseline = c.counterHistory[i].perQueue
+		for _, v := range slices.Backward(c.counterHistory) {
+			if !v.ts.After(target) {
+				baseline = v.perQueue
 				break
 			}
 		}

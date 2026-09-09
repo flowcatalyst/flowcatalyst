@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -319,17 +320,11 @@ func querySep(redirectURI string) string {
 func invalidScopes(scope string, clientScopes []string) []string {
 	standard := map[string]bool{"openid": true, "profile": true, "email": true, "offline_access": true}
 	var invalid []string
-	for _, sc := range strings.Fields(scope) {
+	for sc := range strings.FieldsSeq(scope) {
 		if standard[sc] {
 			continue
 		}
-		found := false
-		for _, ds := range clientScopes {
-			if ds == sc {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(clientScopes, sc)
 		if !found {
 			invalid = append(invalid, sc)
 		}

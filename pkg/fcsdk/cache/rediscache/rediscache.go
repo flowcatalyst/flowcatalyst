@@ -52,7 +52,7 @@ func (c *Cache) GetBytes(ctx context.Context, key string) ([]byte, bool, error) 
 		return nil, false, nil
 	}
 	if err != nil {
-		return nil, false, fmt.Errorf("%w: %s", cache.ErrBackend, err)
+		return nil, false, fmt.Errorf("%w: %w", cache.ErrBackend, err)
 	}
 	return v, true, nil
 }
@@ -63,7 +63,7 @@ func (c *Cache) SetBytes(ctx context.Context, key string, value []byte, ttl time
 		return err
 	}
 	if err := c.client.Set(ctx, c.fullKey(key), value, ttl).Err(); err != nil {
-		return fmt.Errorf("%w: %s", cache.ErrBackend, err)
+		return fmt.Errorf("%w: %w", cache.ErrBackend, err)
 	}
 	return nil
 }
@@ -71,7 +71,7 @@ func (c *Cache) SetBytes(ctx context.Context, key string, value []byte, ttl time
 // Delete — see cache.Cache.Delete.
 func (c *Cache) Delete(ctx context.Context, key string) error {
 	if err := c.client.Del(ctx, c.fullKey(key)).Err(); err != nil {
-		return fmt.Errorf("%w: %s", cache.ErrBackend, err)
+		return fmt.Errorf("%w: %w", cache.ErrBackend, err)
 	}
 	return nil
 }

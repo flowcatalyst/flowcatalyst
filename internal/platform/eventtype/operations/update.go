@@ -16,6 +16,8 @@ type UpdateCommand struct {
 	ID          string  `json:"id"`
 	Name        string  `json:"name"`
 	Description *string `json:"description,omitempty"`
+	// ClientScoped: nil leaves the current value unchanged.
+	ClientScoped *bool `json:"clientScoped,omitempty"`
 }
 
 // UpdateEventType mutates name + description on an existing event type
@@ -50,6 +52,9 @@ func UpdateEventType(repo *eventtype.Repository) usecaseop.Operation[UpdateComma
 
 			et.Name = cmd.Name
 			et.Description = cmd.Description
+			if cmd.ClientScoped != nil {
+				et.ClientScoped = *cmd.ClientScoped
+			}
 
 			event := EventTypeUpdated{
 				Metadata:    usecase.NewEventMetadata(ec, EventTypeUpdatedType, EventTypeSourceConst, subjectFor(et.ID)),

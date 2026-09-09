@@ -44,7 +44,7 @@ func TestSyncPrincipals_PasswordHashCarry(t *testing.T) {
 	_, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo), operations.SyncPrincipalsCommand{
 		ApplicationCode: "syncpw",
 		Principals: []operations.SyncPrincipalInput{{
-			Email: email, Name: "Synced User", Active: true, PasswordHash: ptr(origHash),
+			Email: email, Name: "Synced User", Active: true, PasswordHash: new(origHash),
 		}},
 	}, ec)
 	require.NoError(t, err)
@@ -77,7 +77,7 @@ func TestSyncPrincipals_PasswordHashCarry(t *testing.T) {
 	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncPrincipals(repo), operations.SyncPrincipalsCommand{
 		ApplicationCode: "syncpw",
 		Principals: []operations.SyncPrincipalInput{{
-			Email: email, Name: "Synced User Renamed", Active: true, PasswordHash: ptr(newHash),
+			Email: email, Name: "Synced User Renamed", Active: true, PasswordHash: new(newHash),
 		}},
 	}, ec)
 	require.NoError(t, err)

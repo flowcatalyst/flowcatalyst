@@ -66,7 +66,7 @@ func (p *Provider) Acquire(ctx context.Context, key string, ttl time.Duration) (
 	token := uuid.NewString()
 	ok, err := p.client.SetNX(ctx, p.fullKey(key), token, ttl).Result()
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", lock.ErrBackend, err)
+		return nil, fmt.Errorf("%w: %w", lock.ErrBackend, err)
 	}
 	if !ok {
 		return nil, nil // contended
@@ -90,7 +90,7 @@ func (h *handle) Release(ctx context.Context) error {
 	h.released = true
 	_, err := h.script.Run(ctx, h.client, []string{h.fullKey}, h.token).Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
-		return fmt.Errorf("%w: %s", lock.ErrBackend, err)
+		return fmt.Errorf("%w: %w", lock.ErrBackend, err)
 	}
 	return nil
 }

@@ -199,6 +199,7 @@ func (e DispatchPoolsSynced) MessageGroup() string {
 	}
 	return "platform:dispatchpools:" + e.ApplicationCode
 }
+
 func (e DispatchPoolsSynced) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		ApplicationCode string   `json:"applicationCode"`

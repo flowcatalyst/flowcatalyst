@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -368,7 +369,7 @@ func (e *Endpoint) auditMFA(ctx context.Context, principalID, operation string) 
 // its own recovery channel, so an email-only user never gets them.
 func (e *Endpoint) ensureRecoveryCodes(ctx context.Context, p *principal.Principal) []string {
 	confirmed, err := e.cfg.MFA.ConfirmedMethods(ctx, p.ID)
-	if err != nil || !containsMethodType(confirmed, mfa.MethodTOTP) {
+	if err != nil || !slices.Contains(confirmed, mfa.MethodTOTP) {
 		return nil
 	}
 	n, err := e.cfg.MFA.RemainingRecoveryCodes(ctx, p.ID)
@@ -417,7 +418,7 @@ func (e *Endpoint) methodAllowed(ctx context.Context, p *principal.Principal, t 
 	if mapping == nil || !mapping.Require2FA || !internal {
 		return true
 	}
-	return containsString(mapping.Allowed2FAMethods, string(t))
+	return slices.Contains(mapping.Allowed2FAMethods, string(t))
 }
 
 // rememberDevice issues a trusted-device token and sets the cookie, honouring
@@ -453,6 +454,22 @@ func (e *Endpoint) rememberDevice(w http.ResponseWriter, r *http.Request, p *pri
 		labelStr = *label
 	}
 	e.cfg.Notifier.NewTrustedDevice(r.Context(), emailOf(p), labelStr)
+}
+
+// clearTrustedDeviceCookie expires the browser's trusted-device cookie. The
+// server-side revocation is what actually invalidates the device; this just
+// stops the client presenting a dead token on every login until it expires.
+// Attributes match rememberDevice's so the browser treats it as the same cookie.
+func (e *Endpoint) clearTrustedDeviceCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     e.trustedDeviceCookieName(),
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   e.cfg.CookieSecure,
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   -1,
+	})
 }
 
 func (e *Endpoint) trustedDeviceCookieName() string {
@@ -516,32 +533,14 @@ func methodStrings(ms []mfa.MethodType) []string {
 	return out
 }
 
-func containsMethodType(ms []mfa.MethodType, t mfa.MethodType) bool {
-	for _, m := range ms {
-		if m == t {
-			return true
-		}
-	}
-	return false
-}
-
 func intersect(a, allowed []string) []string {
 	out := make([]string, 0, len(a))
 	for _, x := range a {
-		if containsString(allowed, x) {
+		if slices.Contains(allowed, x) {
 			out = append(out, x)
 		}
 	}
 	return out
-}
-
-func containsString(xs []string, s string) bool {
-	for _, x := range xs {
-		if x == s {
-			return true
-		}
-	}
-	return false
 }
 
 func userAgentLabel(r *http.Request) *string {

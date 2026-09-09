@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -518,12 +519,7 @@ func (s *State) hasStrongFactor(ctx context.Context, principalID string) bool {
 	if err != nil {
 		return false
 	}
-	for _, m := range methods {
-		if m == mfa.MethodTOTP {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(methods, mfa.MethodTOTP)
 }
 
 // queueApproval files a lost-device reset for client-admin approval and notifies
@@ -564,11 +560,11 @@ func (s *State) validateToken(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case err != nil:
 		slog.Warn("token validation error", "err", err)
-		writeJSON(w, http.StatusOK, validateTokenResponse{Valid: false, Reason: reason("not_found")})
+		writeJSON(w, http.StatusOK, validateTokenResponse{Valid: false, Reason: new("not_found")})
 	case t == nil:
-		writeJSON(w, http.StatusOK, validateTokenResponse{Valid: false, Reason: reason("not_found")})
+		writeJSON(w, http.StatusOK, validateTokenResponse{Valid: false, Reason: new("not_found")})
 	case t.IsExpired():
-		writeJSON(w, http.StatusOK, validateTokenResponse{Valid: false, Reason: reason("expired")})
+		writeJSON(w, http.StatusOK, validateTokenResponse{Valid: false, Reason: new("expired")})
 	default:
 		writeJSON(w, http.StatusOK, validateTokenResponse{
 			Valid: true, Reason: nil, RequiresFactor: t.RequiresFactor,
@@ -792,8 +788,6 @@ func generateRawToken() (string, error) {
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
-
-func reason(s string) *string { return &s }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")

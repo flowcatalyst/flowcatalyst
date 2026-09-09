@@ -5,7 +5,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"strings"
 )
 
@@ -45,11 +46,7 @@ func canonicalJSON(v any) ([]byte, error) {
 func writeCanonical(b *strings.Builder, v any) error {
 	switch t := v.(type) {
 	case map[string]any:
-		keys := make([]string, 0, len(t))
-		for k := range t {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
+		keys := slices.Sorted(maps.Keys(t))
 		b.WriteByte('{')
 		for i, k := range keys {
 			if i > 0 {
@@ -114,17 +111,17 @@ func ComputeChangeNotes(prior, current json.RawMessage) (ChangeNotes, string) {
 		priorVerbs := verbsForPath(nestedObject(priorDoc, "paths", path))
 		currentVerbs := verbsForPath(nestedObject(currentDoc, "paths", path))
 		for _, v := range priorVerbs {
-			if !contains(currentVerbs, v) {
+			if !slices.Contains(currentVerbs, v) {
 				notes.RemovedOperations = append(notes.RemovedOperations,
 					strings.ToUpper(v)+" "+path)
 			}
 		}
 	}
-	sort.Strings(notes.AddedPaths)
-	sort.Strings(notes.RemovedPaths)
-	sort.Strings(notes.AddedSchemas)
-	sort.Strings(notes.RemovedSchemas)
-	sort.Strings(notes.RemovedOperations)
+	slices.Sort(notes.AddedPaths)
+	slices.Sort(notes.RemovedPaths)
+	slices.Sort(notes.AddedSchemas)
+	slices.Sort(notes.RemovedSchemas)
+	slices.Sort(notes.RemovedOperations)
 
 	notes.HasBreaking = len(notes.RemovedPaths) > 0 ||
 		len(notes.RemovedSchemas) > 0 ||
@@ -158,7 +155,7 @@ func objectKeys(o map[string]any) []string {
 	for k := range o {
 		out = append(out, k)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 
@@ -198,15 +195,6 @@ func setIntersection(a, b []string) []string {
 		}
 	}
 	return out
-}
-
-func contains(haystack []string, needle string) bool {
-	for _, x := range haystack {
-		if x == needle {
-			return true
-		}
-	}
-	return false
 }
 
 func renderSummary(n ChangeNotes) string {

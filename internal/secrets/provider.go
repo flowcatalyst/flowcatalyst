@@ -100,15 +100,15 @@ func (s *Service) Validate(ctx context.Context, ref string) error {
 // "encrypted:" uses a single colon (no "://") — the historical reference
 // syntax, preserved so existing references keep resolving.
 func parseRef(ref string) (scheme, key string, isRef bool) {
-	if strings.HasPrefix(ref, "literal:") {
-		return "", strings.TrimPrefix(ref, "literal:"), false
+	if after, ok := strings.CutPrefix(ref, "literal:"); ok {
+		return "", after, false
 	}
-	if strings.HasPrefix(ref, "encrypted:") {
-		return "encrypted", strings.TrimPrefix(ref, "encrypted:"), true
+	if after, ok := strings.CutPrefix(ref, "encrypted:"); ok {
+		return "encrypted", after, true
 	}
-	idx := strings.Index(ref, "://")
-	if idx < 0 {
+	before, after, ok := strings.Cut(ref, "://")
+	if !ok {
 		return "", ref, false
 	}
-	return ref[:idx], ref[idx+3:], true
+	return before, after, true
 }

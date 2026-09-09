@@ -3,7 +3,8 @@ package bff
 import (
 	"encoding/json"
 	"net/http"
-	"sort"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -261,7 +262,7 @@ func (s *DeveloperState) listAppEventTypes(w http.ResponseWriter, r *http.Reques
 		httperror.Write(w, usecase.Internal("REPO", "list event types failed", err))
 		return
 	}
-	sort.Slice(ets, func(i, j int) bool { return ets[i].Code < ets[j].Code })
+	slices.SortFunc(ets, func(a, b eventtype.EventType) int { return strings.Compare(a.Code, b.Code) })
 	out := make([]bffDeveloperEventTypeSummary, 0, len(ets))
 	for i := range ets {
 		out = append(out, toDeveloperEventType(&ets[i]))

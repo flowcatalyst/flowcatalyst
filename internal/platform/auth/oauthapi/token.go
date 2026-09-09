@@ -20,6 +20,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -53,6 +54,17 @@ type OAuthClientToucher interface {
 	TouchPreviousSecretUsed(ctx context.Context, id string, now, staleBefore time.Time) error
 }
 
+// OAuthClientSecretRewriter lazily migrates a client's stored secret ref(s)
+// to the "hashed:v1:" keyed-hash form after a successful verify against an
+// older (reversibly-encrypted, or hashed-under-a-previous-key) shape.
+// Narrowed to these two columns for the same reason as OAuthClientToucher.
+// Optional — nil disables the migration: authentication itself is
+// unaffected, the row just isn't rewritten this time.
+type OAuthClientSecretRewriter interface {
+	RewriteSecretRef(ctx context.Context, id, newRef string) error
+	RewritePreviousSecretRef(ctx context.Context, id, newRef string) error
+}
+
 // State bundles the dependencies the OAuth endpoints need.
 type State struct {
 	OAuthClients OAuthClientFinder
@@ -60,7 +72,11 @@ type State struct {
 	// secret (rotation overlap). Optional — nil disables the signal, leaving
 	// authentication itself unchanged.
 	OAuthClientWrites OAuthClientToucher
-	Principals        *principal.Repository
+	// SecretRewrites persists the lazy migration of a verified client secret
+	// (current or previous) to the hashed form. Optional — see
+	// OAuthClientSecretRewriter.
+	SecretRewrites OAuthClientSecretRewriter
+	Principals     *principal.Repository
 	// PortalIdentities resolves PORTAL-plane subjects (ptu_… ids minted by
 	// /portal/authorize flows) on the authorization_code grant. Optional —
 	// nil rejects portal codes (fail closed).
@@ -321,21 +337,71 @@ func (s *State) authenticateClient(r *http.Request, clientIDBody, clientSecretBo
 // Both branches always run a constant-time compare: returning early on a
 // current-secret match would make a still-valid old secret measurably slower
 // than a new one, which leaks where a client sits in its rotation.
+//
+// A match against a ref that isn't yet the current hashed:v1: form (an older
+// encrypted ref, or one hashed under a superseded key) is migrated in place —
+// best-effort, after both compares have already run and authentication has
+// already succeeded, so a migration failure never turns into a login failure.
 func (s *State) acceptClientSecret(ctx context.Context, client *auth.OAuthClient, provided string) bool {
-	current := client.SecretRef != nil && s.verifyClientSecret(*client.SecretRef, provided)
+	var currentOK, currentRehash bool
+	if client.SecretRef != nil {
+		currentOK, currentRehash = s.verifyClientSecret(*client.SecretRef, provided)
+	}
 
-	usedPrevious := false
+	var usedPrevious, previousRehash bool
 	if prev := client.UsablePreviousSecretRef(); prev != nil {
 		// Both compares always run — see above. Record the FACT of the match
 		// here but branch on it only after, so accepting an old secret is not
 		// measurably slower than accepting a new one.
-		usedPrevious = s.verifyClientSecret(*prev, provided)
+		usedPrevious, previousRehash = s.verifyClientSecret(*prev, provided)
 	}
 
 	if usedPrevious {
 		s.notePreviousSecretUsed(ctx, client.ID)
 	}
-	return current || usedPrevious
+	if currentOK && currentRehash {
+		s.rewriteClientSecretRef(ctx, client.ID, provided)
+	}
+	if usedPrevious && previousRehash {
+		s.rewritePreviousClientSecretRef(ctx, client.ID, provided)
+	}
+	return currentOK || usedPrevious
+}
+
+// rewriteClientSecretRef persists the lazy migration of client's CURRENT
+// secret to its hashed:v1: form. Best-effort: failures are logged and
+// dropped, never surfaced — the caller has already authenticated.
+func (s *State) rewriteClientSecretRef(ctx context.Context, clientID, plaintext string) {
+	if s.SecretRewrites == nil {
+		return
+	}
+	if err := s.SecretRewrites.RewriteSecretRef(ctx, clientID, s.Encryption.Hash(plaintext)); err != nil {
+		slog.Warn("could not migrate client secret to hashed form", "oauth_client_id", clientID, "err", err)
+	}
+}
+
+// rewritePreviousClientSecretRef is rewriteClientSecretRef for the
+// rotation-overlap secret.
+func (s *State) rewritePreviousClientSecretRef(ctx context.Context, clientID, plaintext string) {
+	if s.SecretRewrites == nil {
+		return
+	}
+	if err := s.SecretRewrites.RewritePreviousSecretRef(ctx, clientID, s.Encryption.Hash(plaintext)); err != nil {
+		slog.Warn("could not migrate client's previous secret to hashed form", "oauth_client_id", clientID, "err", err)
+	}
+}
+
+// rewriteDevClientSecretRef is rewriteClientSecretRef for a developer's
+// self-service client_credentials secret (principal.DevClientSecretRef).
+// Best-effort: failures are logged and dropped — the caller has already
+// authenticated.
+func (s *State) rewriteDevClientSecretRef(ctx context.Context, principalID, plaintext string) {
+	if s.Principals == nil {
+		return
+	}
+	if err := s.Principals.RewriteDevClientSecretRef(ctx, principalID, s.Encryption.Hash(plaintext)); err != nil {
+		slog.Warn("could not migrate developer client secret to hashed form", "principal_id", principalID, "err", err)
+	}
 }
 
 // previousSecretTouchInterval coalesces the last-used stamp. A fleet mid-rollout
@@ -364,19 +430,17 @@ func (s *State) notePreviousSecretUsed(ctx context.Context, clientID string) {
 		"oauth_client_id", clientID, "at", now)
 }
 
-// verifyClientSecret decrypts the stored ref and compares it to the
-// provided secret in constant time (a naive == short-circuits on the first
-// differing byte, leaking prefix length to a timing observer). Fails closed
-// when no encryption service is configured.
-func (s *State) verifyClientSecret(secretRef, provided string) bool {
+// verifyClientSecret checks provided against the stored secretRef — either
+// the current "hashed:v1:" keyed-hash form (MAC compare) or an older
+// reversibly-encrypted one (decrypt then constant-time compare) — via
+// encryption.Service.VerifySecret. Fails closed when no encryption service
+// is configured. rehash reports whether secretRef should be rewritten to
+// the hashed form under the current key; see acceptClientSecret.
+func (s *State) verifyClientSecret(secretRef, provided string) (ok, rehash bool) {
 	if s.Encryption == nil {
-		return false
+		return false, false
 	}
-	decrypted, err := s.Encryption.Decrypt(secretRef)
-	if err != nil {
-		return false
-	}
-	return subtle.ConstantTimeCompare([]byte(decrypted), []byte(provided)) == 1
+	return s.Encryption.VerifySecret(secretRef, provided)
 }
 
 // basicAuthCreds decodes an HTTP Basic Authorization header
@@ -472,7 +536,12 @@ func (s *State) handleClientCredentialsGrant(w http.ResponseWriter, r *http.Requ
 	}
 
 	if client.PrincipalID == nil {
-		writeOAuthError(w, http.StatusInternalServerError, "server_error", "Client not properly configured")
+		// A confidential client with no linked principal is a client-side
+		// misconfiguration (RFC 6749 §5.2), not a server fault — 400
+		// unauthorized_client, not 500.
+		reason := "Client not properly configured (no linked principal)"
+		s.recordAttempt(r.Context(), loginattempt.AttemptServiceAccountToken, loginattempt.OutcomeFailure, req.ClientID, nil, &reason)
+		writeOAuthError(w, http.StatusBadRequest, "unauthorized_client", "Client is not configured for this grant")
 		return
 	}
 	p, err := s.Principals.FindByID(r.Context(), *client.PrincipalID)
@@ -481,7 +550,12 @@ func (s *State) handleClientCredentialsGrant(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if p == nil {
-		writeOAuthError(w, http.StatusInternalServerError, "server_error", "Client not properly configured")
+		// Same client-side misconfiguration as above: the linked principal
+		// doesn't exist (dangling reference), so the client is still not
+		// configured for this grant — not a server fault.
+		reason := "Client not properly configured (linked principal not found)"
+		s.recordAttempt(r.Context(), loginattempt.AttemptServiceAccountToken, loginattempt.OutcomeFailure, req.ClientID, nil, &reason)
+		writeOAuthError(w, http.StatusBadRequest, "unauthorized_client", "Client is not configured for this grant")
 		return
 	}
 	if !p.Active {
@@ -528,11 +602,15 @@ func (s *State) handleDeveloperCredentialGrant(w http.ResponseWriter, r *http.Re
 		writeOAuthError(w, http.StatusUnauthorized, "invalid_client", "Invalid client credentials")
 		return
 	}
-	if !s.verifyClientSecret(*p.UserIdentity.DevClientSecretRef, req.ClientSecret) {
+	devOK, devRehash := s.verifyClientSecret(*p.UserIdentity.DevClientSecretRef, req.ClientSecret)
+	if !devOK {
 		reason := "Invalid developer client secret"
 		s.recordAttempt(r.Context(), loginattempt.AttemptDeveloperToken, loginattempt.OutcomeFailure, req.ClientID, &p.ID, &reason)
 		writeOAuthError(w, http.StatusUnauthorized, "invalid_client", "Invalid client credentials")
 		return
+	}
+	if devRehash {
+		s.rewriteDevClientSecretRef(r.Context(), p.ID, req.ClientSecret)
 	}
 
 	s.mintClientCredentialsToken(w, r, p, req, loginattempt.AttemptDeveloperToken,
@@ -879,12 +957,7 @@ func grantAllowed(client *auth.OAuthClient, grant string) bool {
 	if client == nil || len(client.GrantTypes) == 0 {
 		return true
 	}
-	for _, g := range client.GrantTypes {
-		if g == grant {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(client.GrantTypes, grant)
 }
 
 // oidcReservedScopes are OAuth/OIDC flow scopes that are NOT authorization
@@ -927,7 +1000,7 @@ func (s *State) grantedScope(ctx context.Context, p *principal.Principal, reques
 		return nil, false, err
 	}
 	var reqPerms []string
-	for _, f := range strings.Fields(requested) {
+	for f := range strings.FieldsSeq(requested) {
 		if _, reserved := oidcReservedScopes[f]; reserved {
 			continue
 		}
@@ -1027,12 +1100,7 @@ func scopeResponse(granted []string) *string {
 func scopeHas(scope, want string) bool { return scopesContain(strings.Fields(scope), want) }
 
 func scopesContain(scopes []string, want string) bool {
-	for _, s := range scopes {
-		if s == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(scopes, want)
 }
 
 // oauthError is an RFC-6749 error body plus its HTTP status.

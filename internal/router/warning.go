@@ -3,7 +3,7 @@ package router
 import (
 	"context"
 	"log/slog"
-	"sort"
+	"slices"
 	"sync"
 	"time"
 )
@@ -383,8 +383,8 @@ func (s *WarningService) evictOldestLocked() {
 	for id, w := range s.warnings {
 		all = append(all, kv{id: id, at: w.CreatedAt})
 	}
-	sort.Slice(all, func(i, j int) bool { return all[i].at.Before(all[j].at) })
-	for i := 0; i < toRemove; i++ {
+	slices.SortFunc(all, func(a, b kv) int { return a.at.Compare(b.at) })
+	for i := range toRemove {
 		delete(s.warnings, all[i].id)
 	}
 }

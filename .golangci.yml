@@ -18,6 +18,14 @@ linters:
     - misspell
     - revive
     - whitespace
+    # errorlint: type assertions / == on error values and %v-formatted errors
+    # all break under wrapping; errors.As / errors.Is / %w are the fix. This is
+    # the linter that flags a hand-rolled unwrap loop on day one.
+    - errorlint
+    # modernize: the gopls modernizers (slices.Contains, min/max, range-over-int,
+    # WaitGroup.Go, errors.AsType, new(expr), ...). Same analyzers `go fix` runs;
+    # enabled here so the class cannot creep back in.
+    - modernize
     # unparam intentionally not enabled: its findings here were all benign
     # generality — helper params (writeJSON status, appendPerm app) that are
     # constant today but reasonable to keep across 16–43 call sites.

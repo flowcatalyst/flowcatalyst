@@ -211,7 +211,7 @@ func TestCreateDispatchJob_TenantGuard(t *testing.T) {
 		PrincipalID: "p_dj_client",
 		Scope:       auth.ScopeClient,
 		Clients:     []string{"clt_djmine"},
-		Permissions: []string{"WRITE_DISPATCH_JOBS"},
+		Permissions: []string{"platform:messaging:batch:dispatch-jobs-write"},
 	})
 
 	resp, body := postJSON(t, srv.URL+"/api/dispatch-jobs", `{

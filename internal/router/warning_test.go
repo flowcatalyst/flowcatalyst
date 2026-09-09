@@ -57,7 +57,7 @@ func TestWarningService_EvictOnCapacity(t *testing.T) {
 	// capacity; eviction removes the oldest 10% (= 1) and then the
 	// 10th add succeeds, leaving 10. Adding an 11th repeats the cycle.
 	s := NewWarningService(WarningServiceConfig{MaxWarnings: 10})
-	for i := 0; i < 15; i++ {
+	for range 15 {
 		s.Add(WarningCategoryConnection, WarningWarning, "msg", "t")
 		// Sequential adds within the same nanosecond would race the
 		// eviction sort key; sleep a hair so each entry has a distinct

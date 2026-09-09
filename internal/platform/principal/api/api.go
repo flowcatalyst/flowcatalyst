@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -218,22 +217,15 @@ func principalMatchesClient(p *principal.Principal, clientID string) bool {
 	if p.ClientID != nil && *p.ClientID == clientID {
 		return true
 	}
-	for _, c := range p.AssignedClients {
-		if c == clientID {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(p.AssignedClients, clientID)
 }
 
 // principalHasAnyRole reports whether the principal holds at least one of the
 // requested role names (OR semantics, matching the multi-select filter UX).
 func principalHasAnyRole(p *principal.Principal, want []string) bool {
 	for _, r := range p.Roles {
-		for _, w := range want {
-			if r.Role == w {
-				return true
-			}
+		if slices.Contains(want, r.Role) {
+			return true
 		}
 	}
 	return false
@@ -241,7 +233,7 @@ func principalHasAnyRole(p *principal.Principal, want []string) bool {
 
 func splitCSV(s string) []string {
 	out := make([]string, 0)
-	for _, part := range strings.Split(s, ",") {
+	for part := range strings.SplitSeq(s, ",") {
 		if t := strings.TrimSpace(part); t != "" {
 			out = append(out, t)
 		}
@@ -252,22 +244,22 @@ func splitCSV(s string) []string {
 // sortPrincipals orders in place. Unknown/empty field falls back to createdAt;
 // any order other than "desc" is treated as ascending.
 func sortPrincipals(ps []*principal.Principal, field, order string) {
-	var less func(i, j int) bool
+	var cmpFn func(a, b *principal.Principal) int
 	switch field {
 	case "name":
-		less = func(i, j int) bool { return strings.ToLower(ps[i].Name) < strings.ToLower(ps[j].Name) }
+		cmpFn = func(a, b *principal.Principal) int {
+			return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+		}
 	case "email":
-		less = func(i, j int) bool {
-			return strings.ToLower(principalEmail(ps[i])) < strings.ToLower(principalEmail(ps[j]))
+		cmpFn = func(a, b *principal.Principal) int {
+			return strings.Compare(strings.ToLower(principalEmail(a)), strings.ToLower(principalEmail(b)))
 		}
 	default: // "createdAt" and any unknown key
-		less = func(i, j int) bool { return ps[i].CreatedAt.Before(ps[j].CreatedAt) }
+		cmpFn = func(a, b *principal.Principal) int { return a.CreatedAt.Compare(b.CreatedAt) }
 	}
-	sort.SliceStable(ps, less)
+	slices.SortStableFunc(ps, cmpFn)
 	if strings.EqualFold(order, "desc") {
-		for i, j := 0, len(ps)-1; i < j; i, j = i+1, j-1 {
-			ps[i], ps[j] = ps[j], ps[i]
-		}
+		slices.Reverse(ps)
 	}
 }
 
@@ -279,14 +271,8 @@ func paginate(ps []*principal.Principal, page, pageSize int) []*principal.Princi
 	if page < 0 {
 		page = 0
 	}
-	start := page * pageSize
-	if start > len(ps) {
-		start = len(ps)
-	}
-	end := start + pageSize
-	if end > len(ps) {
-		end = len(ps)
-	}
+	start := min(page*pageSize, len(ps))
+	end := min(start+pageSize, len(ps))
 	return ps[start:end]
 }
 
@@ -538,8 +524,7 @@ func cleanRoles(roles []string) []string {
 // errMessage extracts a user-facing message from a usecase error (or falls back
 // to the raw error text).
 func errMessage(err error) string {
-	var ue *usecase.Error
-	if errors.As(err, &ue) {
+	if ue, ok := errors.AsType[*usecase.Error](err); ok {
 		return ue.Message
 	}
 	if err != nil {
@@ -737,11 +722,8 @@ func deriveUserScope(reqScope *string, isAnchorDomain bool, mapping *emaildomain
 			return "", nil, usecase.Validation("CLIENT_REQUIRED", "clientId is required for partner users")
 		}
 		allowed := (mapping.PrimaryClientID != nil && *mapping.PrimaryClientID == *reqClientID)
-		for _, c := range mapping.GrantedClientIDs {
-			if c == *reqClientID {
-				allowed = true
-				break
-			}
+		if slices.Contains(mapping.GrantedClientIDs, *reqClientID) {
+			allowed = true
 		}
 		if !allowed {
 			return "", nil, usecase.Validation("CLIENT_NOT_ALLOWED",

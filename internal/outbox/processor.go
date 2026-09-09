@@ -144,7 +144,6 @@ func (p *Processor) tick(ctx context.Context) {
 	// there's no ordering to preserve for them).
 	byType := make(map[common.OutboxItemType][]Item)
 	for _, item := range items {
-		item := item
 		if item.MessageGroup != nil && *item.MessageGroup != "" {
 			// State machine: skip a Paused/Blocked group — release its claimed
 			// items back to PENDING (re-claimed once the group is resumed/
@@ -168,7 +167,6 @@ func (p *Processor) tick(ctx context.Context) {
 		byType[item.ItemType] = append(byType[item.ItemType], item)
 	}
 	for _, batch := range byType {
-		batch := batch
 		p.inFlight.Add(int64(len(batch)))
 		go p.dispatchBatch(ctx, batch)
 	}

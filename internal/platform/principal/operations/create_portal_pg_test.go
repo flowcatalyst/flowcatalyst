@@ -29,8 +29,8 @@ func TestCreatePortalUser_InertShape(t *testing.T) {
 
 	ev, err := runAuthorized(uow, operations.CreatePortalUser(repo), operations.CreatePortalUserCommand{
 		Email:    "  Portal-Inert@Tigerbrands.COM  ",
-		Name:     ptr("  Sipho Dlamini  "),
-		Provider: ptr("OIDC"),
+		Name:     new("  Sipho Dlamini  "),
+		Provider: new("OIDC"),
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "portal-inert@tigerbrands.com", ev.Email, "email is lower-cased + trimmed")

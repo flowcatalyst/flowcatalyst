@@ -2,6 +2,7 @@ package login
 
 import (
 	"net/http"
+	"slices"
 
 	"github.com/go-chi/chi/v5"
 
@@ -227,7 +228,7 @@ func (e *Endpoint) handle2FARegenRecovery(w http.ResponseWriter, r *http.Request
 		writeServerError(w, "REGEN_FAILED", "could not load methods")
 		return
 	}
-	if !containsMethodType(confirmed, mfa.MethodTOTP) {
+	if !slices.Contains(confirmed, mfa.MethodTOTP) {
 		writeJSON(w, http.StatusBadRequest, errBody("NO_TOTP", "recovery codes apply to authenticator-app 2FA"))
 		return
 	}

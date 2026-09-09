@@ -35,9 +35,16 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
         $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
         $27, $28, $29, $30, $31, $32, $33, $34, $35, $36);
 
--- name: DispatchJobMarkInProgress :exec
--- Status → PROCESSING. Stamps last_attempt_at. Called by the router
--- immediately before the first delivery attempt.
+-- name: DispatchJobClaimForDelivery :execrows
+-- Atomically claims a job for ONE delivery. Same PROCESSING flip the old
+-- (now-removed) unconditional MarkInProgress used to do, but guarded on the
+-- status it flips FROM, so the affected-row count answers "did I win this
+-- delivery?". Only PENDING/QUEUED is claimable: a row already PROCESSING
+-- belongs to a delivery still in flight, and a terminal row is finished. A
+-- concurrent redelivery therefore updates no row and its caller must not
+-- call the subscriber.
+-- A positive status list, not an exclusion list: an unrecognised stored value
+-- is then un-claimable rather than deliverable.
 -- These status flips all carry `created_at = $N` alongside the id: the
 -- table is partitioned by created_at, and without it every statement
 -- probes every partition instead of pruning to the row's own.
@@ -46,7 +53,8 @@ UPDATE msg_dispatch_jobs
        last_attempt_at = $2,
        updated_at = $2
  WHERE id = $1
-   AND created_at = $3;
+   AND created_at = $3
+   AND status IN ('PENDING', 'QUEUED');
 
 -- name: DispatchJobMarkCompleted :exec
 -- Status → COMPLETED. Stamps completed_at + duration_millis.
