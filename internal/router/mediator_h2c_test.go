@@ -8,15 +8,28 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/router"
 )
+
+// newCleartextDualProtocolServer serves both h2c (HTTP/2 prior-knowledge over
+// cleartext) and plain HTTP/1.1 on the same listener, so one server can answer
+// a deployed-mode client and a dev-mode one and the tests below can assert
+// which protocol each actually negotiated. Uses net/http's own unencrypted-h2
+// support rather than x/net/http2/h2c, which is deprecated in favour of it.
+func newCleartextDualProtocolServer(t *testing.T, h http.Handler) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewUnstartedServer(h)
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
+	srv.Config.Protocols = protocols
+	srv.Start()
+	return srv
+}
 
 // fastMediatorConfig is DefaultMediatorConfig with test-friendly timeouts:
 // short enough that a hung/failed connect doesn't stall the suite, one
@@ -51,12 +64,11 @@ func TestMediatorDeployedModeSpeaksH2COverCleartext(t *testing.T) {
 		gotProto string
 		gotBody  []byte
 	)
-	h2s := &http2.Server{}
-	srv := httptest.NewServer(h2c.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newCleartextDualProtocolServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotProto = r.Proto
 		gotBody, _ = io.ReadAll(r.Body)
 		w.WriteHeader(http.StatusOK)
-	}), h2s))
+	}))
 	defer srv.Close()
 
 	m := router.NewHTTPMediator(fastMediatorConfig(router.HTTPVersion2), router.NewBreakerRegistry(router.DefaultBreakerConfig()))
@@ -108,11 +120,10 @@ func TestMediatorDeployedModeFailsAgainstHTTP1OnlyCleartext(t *testing.T) {
 // negotiates plain HTTP/1.1.
 func TestMediatorDevModeSpeaksHTTP1AgainstTheSameServer(t *testing.T) {
 	var gotProto string
-	h2s := &http2.Server{}
-	srv := httptest.NewServer(h2c.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newCleartextDualProtocolServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotProto = r.Proto
 		w.WriteHeader(http.StatusOK)
-	}), h2s))
+	}))
 	defer srv.Close()
 
 	m := router.NewHTTPMediator(fastMediatorConfig(router.HTTPVersion1), router.NewBreakerRegistry(router.DefaultBreakerConfig()))

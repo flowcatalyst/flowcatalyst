@@ -256,11 +256,7 @@ type Queue struct {
 // any max-messages value, including the batch=1 edge case (threshold=1,
 // i.e. every message is its own round trip — there's no "half" of one).
 func pullThreshold(batch int) int {
-	t := (batch + 1) / 2
-	if t < 1 {
-		t = 1
-	}
-	return t
+	return max((batch+1)/2, 1)
 }
 
 func newQueue(ctx context.Context, qc common.QueueConfig) (*Queue, error) {

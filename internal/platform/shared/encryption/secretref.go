@@ -3,6 +3,7 @@ package encryption
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -40,10 +41,8 @@ func unsupportedScheme(v string) string {
 	if !isSchemeToken(scheme) {
 		return "" // not a scheme: a secret that merely contains "://"
 	}
-	for _, known := range externalSecretSchemes {
-		if scheme+"://" == known {
-			return ""
-		}
+	if slices.Contains(externalSecretSchemes, scheme+"://") {
+		return ""
 	}
 	return scheme
 }

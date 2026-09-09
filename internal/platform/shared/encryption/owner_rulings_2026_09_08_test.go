@@ -28,7 +28,7 @@ func newService(t *testing.T) *Service {
 func TestUnknownSchemeIsRejectedNotSealedAsThoughItWereTheSecret(t *testing.T) {
 	enc := newService(t)
 	for _, ref := range []string{"aws-smm://prod/db-password", "vaultt://secret/x", "gcp://x"} {
-		out, err := EncryptSecretRef(enc, ptr(ref))
+		out, err := EncryptSecretRef(enc, new(ref))
 		if err == nil {
 			t.Fatalf("%q: want rejection, got stored %q", ref, *out)
 		}
@@ -52,7 +52,7 @@ func TestEverySupportedSchemeStillPassesThroughVerbatim(t *testing.T) {
 	enc := newService(t)
 	for _, scheme := range []string{"aws-sm", "aws-ps", "gcp-sm", "vault", "env"} {
 		ref := scheme + "://prod/db-password"
-		out, err := EncryptSecretRef(enc, ptr(ref))
+		out, err := EncryptSecretRef(enc, new(ref))
 		if err != nil {
 			t.Fatalf("%s: %v", scheme, err)
 		}
@@ -64,7 +64,7 @@ func TestEverySupportedSchemeStillPassesThroughVerbatim(t *testing.T) {
 
 func TestEncryptDirectiveIsTheOverrideForASecretShapedLikeAUrl(t *testing.T) {
 	enc := newService(t)
-	out, err := EncryptSecretRef(enc, ptr("encrypt:foo://bar"))
+	out, err := EncryptSecretRef(enc, new("encrypt:foo://bar"))
 	if err != nil {
 		t.Fatalf("the explicit directive must win: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestEncryptDirectiveIsTheOverrideForASecretShapedLikeAUrl(t *testing.T) {
 func TestASecretThatMerelyContainsTheSeparatorIsNotASchemeAndIsEncrypted(t *testing.T) {
 	enc := newService(t)
 	// "p@ss" is not an RFC 3986 scheme token, so this is a password.
-	out, err := EncryptSecretRef(enc, ptr("p@ss://word"))
+	out, err := EncryptSecretRef(enc, new("p@ss://word"))
 	if err != nil {
 		t.Fatalf("a password containing :// must still be encrypted, got %v", err)
 	}
@@ -165,5 +165,3 @@ func TestMustFromEnvReturnsNilWhenTheKeyIsUnset(t *testing.T) {
 		t.Fatalf("an unset key is the documented disabled state, got %v", svc)
 	}
 }
-
-func ptr(s string) *string { return &s }

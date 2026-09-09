@@ -73,8 +73,8 @@ func (q *fakeBrokerIdentityQueue) Ack(context.Context, string, string) error {
 }
 func (q *fakeBrokerIdentityQueue) Nack(context.Context, string, *uint32) error  { return nil }
 func (q *fakeBrokerIdentityQueue) Defer(context.Context, string, *uint32) error { return nil }
-func (q *fakeBrokerIdentityQueue) Healthy() bool                               { return true }
-func (q *fakeBrokerIdentityQueue) Stop()                                       {}
+func (q *fakeBrokerIdentityQueue) Healthy() bool                                { return true }
+func (q *fakeBrokerIdentityQueue) Stop()                                        {}
 func (q *fakeBrokerIdentityQueue) Metrics(context.Context) (*queue.Metrics, error) {
 	return &queue.Metrics{QueueIdentifier: q.identifier}, nil
 }
