@@ -263,6 +263,39 @@ func (r *Repository) FindRecentRaw(ctx context.Context, limit int) ([]Event, err
 	return out, rows.Err()
 }
 
+// FindRawByID loads one write-side msg_events row, including
+// context_data — the detail counterpart of FindRecentRaw (GET
+// /bff/debug/events/{id}). Unlike FindByID (the read-table lookup, which
+// drops context_data) this is what the debug detail route needs so its
+// response is the exact same shape as one row of the debug list.
+//
+// Deliberately NOT client-scoped, matching FindRecentRaw / listDebugRaw:
+// the list this mirrors already hands every raw row to any holder of
+// event:view-raw, so scoping only the detail would be inconsistent without
+// adding any real protection. Returns (nil, nil) when no such row exists.
+func (r *Repository) FindRawByID(ctx context.Context, id string) (*Event, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, spec_version, type, source, subject, time, data,
+		        deduplication_id, client_id, message_group, correlation_id,
+		        causation_id, context_data, created_at
+		   FROM msg_events WHERE id = $1`, id)
+	if err != nil {
+		return nil, fmt.Errorf("event repo: %w", err)
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return nil, nil
+	}
+	e, err := scanRawRow(rows)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return e, rows.Err()
+}
+
 // scanRawRow scans a write-side msg_events row, including context_data.
 func scanRawRow(rows pgx.Rows) (*Event, error) {
 	var e Event

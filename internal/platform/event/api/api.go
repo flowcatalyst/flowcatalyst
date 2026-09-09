@@ -53,6 +53,9 @@ func Register(api huma.API, s *State) {
 	// array of RawEventResponse.
 	gd := apiroute.New(api, "bff-debug-events")
 	apiroute.Get(gd, "listDebugEvents", "/bff/debug/events", "List raw events (debug view of msg_events)", s.listDebugRaw)
+	// The list's detail counterpart: same gate, same mapper, no tenant
+	// scoping — see getDebugRaw's doc comment for why.
+	apiroute.Get(gd, "getDebugEvent", "/bff/debug/events/{id}", "Get a raw event by id (debug view of msg_events)", s.getDebugRaw)
 }
 
 // registerBFF mirrors Register under a different base path. Used so the
@@ -360,6 +363,30 @@ func (s *State) listDebugRaw(ctx context.Context, in *rawListInput) (*apicommon.
 	}
 	out := apicommon.MapSlice(rows, rawFromEntity)
 	return &apicommon.Out[[]RawEventResponse]{Body: out}, nil
+}
+
+// getDebugRaw is the detail counterpart of listDebugRaw (GET
+// /bff/debug/events/{id}): same permission gate (event:view-raw, NOT the
+// regular event:view that getByID uses) and the same RawEventResponse
+// mapper as one row of the list.
+//
+// Deliberately NOT client-scoped, unlike getByID: the list this mirrors
+// already hands every raw row to any holder of event:view-raw with no
+// scoping at all, so scoping only the detail would be inconsistent without
+// adding any real protection.
+func (s *State) getDebugRaw(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[RawEventResponse], error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, "platform:messaging:event:view-raw"); err != nil {
+		return nil, err
+	}
+	ev, err := s.Repo.FindRawByID(ctx, in.ID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_raw_by_id failed", err)
+	}
+	if ev == nil {
+		return nil, httperror.NotFound("Event", in.ID)
+	}
+	return &apicommon.Out[RawEventResponse]{Body: rawFromEntity(ev)}, nil
 }
 
 func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[EventResponse], error) {

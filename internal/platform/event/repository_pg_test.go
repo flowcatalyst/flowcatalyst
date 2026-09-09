@@ -80,6 +80,56 @@ func TestFindWithFilters_TenantScoping(t *testing.T) {
 	assert.ElementsMatch(t, []string{"evtscopetest1"}, ids(rows))
 }
 
+// TestFindRawByID pins the detail counterpart of FindRecentRaw (backs GET
+// /bff/debug/events/{id}): it must read the WRITE-side msg_events row,
+// context_data included — not the projected msg_events_read row, which
+// drops context_data (that's what FindByID reads, and is the wrong table
+// for this route). An unknown id is (nil, nil), not an error.
+func TestFindRawByID(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := event.NewRepository(pool)
+
+	const id = "evtrawbyid001" // varchar(13) id column
+	now := time.Now().UTC()
+	_, err := pool.Exec(ctx,
+		`INSERT INTO msg_events (id, spec_version, type, source, subject, time, data,
+		        deduplication_id, client_id, message_group, correlation_id, causation_id,
+		        context_data, created_at)
+		 VALUES ($1, '1.0', 'rawbyid.test.event', 'test://rawbyid', 'subj-1', $2, '{"n":1}',
+		        'dedup-rawbyid-1', 'clt_rawbyid0001', 'grp-1', 'corr-1', 'caus-1',
+		        '[{"key":"principalId","value":"prn_x"}]', $2)`,
+		id, now)
+	require.NoError(t, err)
+
+	got, err := repo.FindRawByID(ctx, id)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, id, got.ID)
+	assert.Equal(t, "dedup-rawbyid-1", got.DeduplicationID)
+	require.Len(t, got.Context, 1, "context_data must come back — the projected table this is NOT reading drops it")
+	assert.Equal(t, "principalId", got.Context[0].Key)
+	assert.Equal(t, "prn_x", got.Context[0].Value)
+
+	// Same shape as the one row FindRecentRaw would return for this id —
+	// the list and detail routes must agree.
+	recent, err := repo.FindRecentRaw(ctx, 1000)
+	require.NoError(t, err)
+	var fromList *event.Event
+	for i := range recent {
+		if recent[i].ID == id {
+			fromList = &recent[i]
+			break
+		}
+	}
+	require.NotNil(t, fromList, "seeded row must appear in FindRecentRaw too")
+	assert.Equal(t, *fromList, *got, "FindRawByID and FindRecentRaw must agree on this row's shape")
+
+	missing, err := repo.FindRawByID(ctx, "evtrawbyidmissing")
+	require.NoError(t, err)
+	assert.Nil(t, missing, "unknown id is (nil, nil), not an error")
+}
+
 // TestInsertBatch_DedupCollisionDropsOnlyThatRow pins the ON CONFLICT DO
 // NOTHING behavior: a duplicate deduplication_id drops just the colliding
 // row — the rest of the batch still lands and no error surfaces (previously
