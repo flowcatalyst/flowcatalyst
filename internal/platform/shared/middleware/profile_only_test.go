@@ -51,6 +51,13 @@ func TestProfileOnlyWithoutRole(t *testing.T) {
 		assert.Equal(t, http.StatusOK, do(ac, http.MethodGet, "/auth/2fa/status"))
 		assert.Equal(t, http.StatusOK, do(ac, http.MethodGet, "/api/me"))
 	}
+	// The rejection uses the platform error envelope.
+	req := httptest.NewRequest(http.MethodGet, "/bff/roles", nil)
+	req = req.WithContext(auth.WithContext(req.Context(), roleless))
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	assert.JSONEq(t, `{"error":"NO_PLATFORM_ROLE","message":"Your account has no platform access. Only your profile is available."}`, rr.Body.String())
+
 	assert.Equal(t, http.StatusOK, do(admin, http.MethodGet, "/bff/roles"))
 	assert.Equal(t, http.StatusOK, do(appSA, http.MethodPost, "/api/sdk/sync"), "service accounts are exempt")
 	assert.Equal(t, http.StatusOK, do(&auth.AuthContext{PrincipalID: "t"}, http.MethodGet, "/bff/roles"), "unknown type exempt")

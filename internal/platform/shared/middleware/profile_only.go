@@ -1,11 +1,12 @@
 package middleware
 
 import (
-	"encoding/json"
 	"net/http"
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 )
 
 // ProfileOnlyWithoutRole confines a USER who holds no platform role (and so
@@ -21,12 +22,10 @@ import (
 func ProfileOnlyWithoutRole(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if ac := auth.FromContext(r.Context()); ac.IsRoleless() && !profileAllowed(r) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusForbidden)
-			_ = json.NewEncoder(w).Encode(map[string]string{
-				"code":    "NO_PLATFORM_ROLE",
-				"message": "Your account has no platform access. Only your profile is available.",
-			})
+			// The platform error envelope ({"error": code, "message"}), like
+			// every other /api and /bff rejection.
+			httperror.Write(w, usecase.Authorization("NO_PLATFORM_ROLE",
+				"Your account has no platform access. Only your profile is available."))
 			return
 		}
 		next.ServeHTTP(w, r)

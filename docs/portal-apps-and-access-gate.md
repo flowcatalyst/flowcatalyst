@@ -5,6 +5,11 @@ What changed in the portal identity plane and in platform access control
 `docs/portal-implementation-guide.md`; the architecture overview is
 `docs/published/40-portal-users.md`.
 
+**Reimplementing this elsewhere (e.g. Java)?** Use
+`docs/portal-apps-reimplementation-spec.md` — the normative spec: exact
+schema, operation algorithms, wire shapes, error codes, events, gate order,
+and acceptance scenarios.
+
 ## Summary
 
 | Area | Before | After |
