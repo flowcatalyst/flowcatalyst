@@ -248,6 +248,12 @@ DELETE /api/portal-apps/{id}?clientId=clt_…         (refused while OAuth clien
 - **Revoke an app** to remove one portal's access while the identity (and
   its other portals) stays; **delete** offboards from every portal of the
   client.
+- **Users with no portal app** (e.g. created before portal apps existed)
+  are refused by an app-linked OAuth client. Find them with
+  `GET /api/portal-users?clientId=…&unassigned=true` (the apps list reports
+  `unassignedUsers`) and either grant one by one, or grant them all an app
+  with `POST /api/portal-apps/{id}/assign-unassigned {"clientId": "…"}` →
+  `{"portalAppCode", "assigned"}`.
 
 - **Deactivate** blocks all portal login (password and SSO — an SSO login
   never self-reactivates) but keeps the row for reactivation.

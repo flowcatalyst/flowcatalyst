@@ -86,11 +86,17 @@ type Identity struct {
 	// not by Persist. A nil expiry with InvitedAt set is an SSO invite.
 	InvitedAt       *time.Time `json:"invitedAt,omitempty"`
 	InviteExpiresAt *time.Time `json:"inviteExpiresAt,omitempty"`
-	// Apps are the portal apps this identity may sign in to. Persist syncs
-	// the grant rows to this set.
+	// Apps are the portal apps this identity may sign in to. Persist inserts
+	// any grant here that is missing and deletes only the grants explicitly
+	// revoked (revoked) — never "whatever isn't in Apps", so a grant added
+	// concurrently by another request is not silently lost.
 	Apps      []AppGrant `json:"apps"`
 	CreatedAt time.Time  `json:"createdAt"`
 	UpdatedAt time.Time  `json:"updatedAt"`
+
+	// revoked are the app ids Revoke removed since load — the only grant
+	// rows Persist deletes.
+	revoked []string
 }
 
 // IDStr satisfies usecase.HasID.
@@ -117,16 +123,25 @@ func (i *Identity) Grant(appID string, source Source) bool {
 	if appID == "" || i.HasApp(appID) {
 		return false
 	}
+	i.revoked = slices.DeleteFunc(i.revoked, func(id string) bool { return id == appID })
 	i.Apps = append(i.Apps, AppGrant{AppID: appID, Source: source, GrantedAt: time.Now().UTC()})
 	return true
 }
 
-// Revoke removes the app grant, reporting whether one existed.
+// Revoke removes the app grant, reporting whether one existed. The removal
+// is recorded so Persist deletes exactly this grant row.
 func (i *Identity) Revoke(appID string) bool {
 	before := len(i.Apps)
 	i.Apps = slices.DeleteFunc(i.Apps, func(g AppGrant) bool { return g.AppID == appID })
-	return len(i.Apps) != before
+	if len(i.Apps) == before {
+		return false
+	}
+	i.revoked = append(i.revoked, appID)
+	return true
 }
+
+// RevokedApps are the app ids revoked since load (Persist deletes these).
+func (i *Identity) RevokedApps() []string { return slices.Clone(i.revoked) }
 
 // State derives the admin-facing lifecycle at time now.
 func (i *Identity) State(now time.Time) AccessState {

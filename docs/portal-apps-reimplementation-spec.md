@@ -102,13 +102,16 @@ TSID entity type **`PortalApp`, prefix `pta`** — add to every TSID registry
 ### 2.2 Portal identity additions
 
 - `apps`: the identity's grants `[{appId, source, grantedAt}]`, loaded with
-  the identity. Persisting an identity **syncs** the grant rows to exactly
-  this set (delete rows not in the set; insert missing with
-  `ON CONFLICT DO NOTHING`), keyed by the id that actually holds the row
-  (the identity upsert is `ON CONFLICT (client_id, email) … RETURNING id`, so
-  a racing ensure resolves to the winner's id).
-- `grant(appId, source)` is idempotent (no-op if held); `revoke(appId)` is
-  idempotent.
+  the identity. Persisting an identity applies grants against the id that
+  actually holds the row (the identity upsert is `ON CONFLICT (client_id,
+  email) … RETURNING id`, so a racing ensure resolves to the winner's id):
+  **delete only the grants explicitly revoked since load**, then insert
+  every grant in `apps` with `ON CONFLICT DO NOTHING`. Never "delete
+  whatever isn't in the loaded set" — that loses a grant another request
+  added concurrently (errata P6, §11).
+- `grant(appId, source)` is idempotent (no-op if held; un-records a pending
+  revoke of the same app); `revoke(appId)` is idempotent and records the app
+  id as a pending deletion.
 - `invited_at` / `invite_expires_at` are bookkeeping written outside the
   aggregate persist (a direct `UPDATE … SET invited_at, invite_expires_at,
   updated_at = NOW()`), never by the identity upsert.
@@ -188,6 +191,27 @@ Command: `{clientId, identityId, portalAppId}`, all required
 (`PortalIdentity_NOT_FOUND`); app must exist with the same client
 (`PortalApp_NOT_FOUND`). Grant uses source `ADMIN`. Both idempotent; both
 always persist and emit their event.
+
+### 3.2a AssignUnassignedToApp — ONE transaction
+
+Command `{clientId, portalAppId}`, both required (`TARGET_REQUIRED`). The
+gap-closer for identities holding **no** portal app (e.g. created before
+portal apps existed — once their OAuth client is linked to an app, the gate
+refuses them).
+
+1. App must exist, belong to the client (`PortalApp_NOT_FOUND`) and be
+   active (400 `PORTAL_APP_INACTIVE`).
+2. Load the client's identities with no grant:
+   `… WHERE pi.client_id = $1 AND NOT EXISTS (SELECT 1 FROM
+   portal_identity_apps g WHERE g.identity_id = pi.id) ORDER BY
+   pi.created_at, pi.id`.
+3. For each: grant the app with source `ADMIN`, persist, emit
+   `identity:app-granted` — all in the one transaction.
+4. Status is untouched (a suspended identity is assigned but stays
+   suspended); identities already holding any grant are untouched. A second
+   run assigns nobody.
+
+Result: `{appId, appCode, identityIds[]}`.
 
 ### 3.3 CreateApp (single-aggregate; used internally/tests)
 
@@ -339,6 +363,11 @@ ORDER BY pi.created_at DESC, pi.id DESC LIMIT $n OFFSET $m
   be resolved, `code` and `name` fall back to the app id. Optional
   timestamps are omitted when null.
 
+**Unassigned filter**: `unassigned=true` restricts to identities holding
+no portal app (the `NOT EXISTS` condition of §3.2a). Combining it with a
+non-blank `portalAppCode` → 400 `FILTER_CONFLICT` (`unassigned and
+portalAppCode cannot be combined`).
+
 ### 4.3 Grants — manage
 
 - `POST /api/portal-users/{id}/apps` — `grantPortalUserApp`, 200. Body
@@ -364,7 +393,12 @@ always an array; `userCount` = grant rows for the app.
 
 - `GET /api/portal-apps?clientId=` — `listPortalApps`, 200, read.
   `clientId` omitted → anchors get every client's apps; others 400
-  `CLIENT_ID_REQUIRED`. Ordered by name. Body `{"portalApps": [ … ]}`.
+  `CLIENT_ID_REQUIRED`. Ordered by name. Body `{"portalApps": [ … ],
+  "unassignedUsers": 3}` — `unassignedUsers` (count of the client's
+  identities with no grant) is present **only when `clientId` is given**.
+- `POST /api/portal-apps/{id}/assign-unassigned` —
+  `assignUnassignedPortalUsers`, 200, manage. Body `{"clientId"}`. Runs
+  §3.2a. Response `{"portalAppCode": "customers", "assigned": 2}`.
 - `POST /api/portal-apps` — `createPortalApp`, **201**, manage. Body
   `{clientId, code, name, description?, redirectUris?, clientType?
   ("CONFIDENTIAL"|"PUBLIC")}`. Runs §3.4. Response:
@@ -502,12 +536,20 @@ human users.
   (info), Invite expired (warn), Active (success), Suspended (danger);
   tooltip with invite dates), **Portal Apps** (removable chips → confirm →
   revoke), Source (`JIT` → "SSO sign-in", else "Invite"), last login,
-  created, actions (suspend/reactivate, delete). **No invite button.**
+  created, actions (grant portal app, suspend/reactivate, delete). **No
+  invite button.** The app filter's first option is "No portal app
+  (unassigned)" (→ `unassigned=true`); a user with no apps shows a warn tag
+  "No portal app". *Grant portal app* opens a dialog listing the active
+  apps the user doesn't hold (button disabled when there are none) and calls
+  the grant endpoint.
 - **Portal Apps page**: client picker; table of name/description, code,
   OAuth client ids (link to the OAuth client + copy), user count, status;
   create/edit dialog (create: name, code, description, callback URLs one
   per line, client type; edit: name, description, active; code read-only);
-  delete confirm states the OAuth client(s) are deleted too. After create, a
+  delete confirm states the OAuth client(s) are deleted too. When
+  `unassignedUsers > 0`, a warning banner states the count (they can't sign
+  in through app-linked portals) and each active app row offers *Assign
+  unassigned users* (confirm → §3.2a → toast with the count). After create, a
   **credentials dialog**: app code, client id, client secret (once; "None —
   public client" for PUBLIC), endpoints (`{origin}/portal/authorize`,
   `/oauth/token`, `/.well-known/jwks.json`,
@@ -580,7 +622,16 @@ today):
    wildcard callback → 400 `REDIRECT_URI_INVALID`.
 8. **Delete**: deleting app B removes B's OAuth client, leaves A's, and the
    user loses B's grant.
-9. **Profile-only**: role-less CLIENT and role-less ANCHOR users get 403
+9. **Assign unassigned**: two users with no app (one suspended) and one
+   holding app B; `unassignedUsers = 2` and the `unassigned` filter finds 2;
+   `unassigned` + `portalAppCode` → 400 `FILTER_CONFLICT`; assigning app A
+   grants the two (the suspended one stays DISABLED), leaves the B user
+   without A, `unassignedUsers` becomes 0, and a second run assigns 0; an
+   inactive app → 400 `PORTAL_APP_INACTIVE`.
+10. **Concurrent grant survives**: load a copy holding {A}; another request
+   grants B; the copy grants C, revokes A and saves → the identity holds
+   {B, C}.
+11. **Profile-only**: role-less CLIENT and role-less ANCHOR users get 403
    `NO_PLATFORM_ROLE` (exact envelope) on `/bff/roles`, `/api/clients`,
    `/api/me/clients`, `POST /api/audit-logs/batch`, and pass on `/auth/me`,
    `/auth/change-password`, `/auth/2fa/status`, `GET /api/me`; an admin, a
@@ -619,3 +670,4 @@ Found by the Java port; Go now behaves as below, and ports should match
 | P3 | Portal code redemption | Access token minted without `azp` | Carries `azp` = the OAuth client_id |
 | P4 | Unsupported secret-manager scheme (400 `UNSUPPORTED_SECRET_SCHEME`) | Message quoted the scheme before `://` (`"ref"://`) and listed `literal:` as a secret manager | `unsupported secret-manager scheme "ref://"; supported: aws-sm://, aws-ps://, gcp-sm://, vault://, env:// (prefix the value with "encrypt:" to store it as an encrypted plaintext secret instead)`. Note the list keeps the `aws-sm://` form — an owner ruling (2026-09-08) requires a typo like `aws-smm://` to see the correct spelling — so ports should match **this** list, not bare names. `literal:` is still *accepted*; it is just not advertised. |
 | P5 | Portal id_token | `updated_at` was the mint time | The identity's own `updated_at` |
+| P6 | Identity persist | Saving deleted every grant not in the loaded set, so a grant another request added concurrently was silently lost | Deletes only explicitly revoked grants (§2.2) |

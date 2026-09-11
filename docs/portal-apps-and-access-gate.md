@@ -155,6 +155,27 @@ wire; `state` is added.
 - The platform UI's **invite button is removed**: the portal owns the
   membership half of an invite, so invites come from the portal app.
 
+### Closing the gap: users with no portal app
+
+Identities created before portal apps existed (or without a
+`portalAppCode`) hold no grant, so the moment their portal OAuth client is
+linked to an app the login gate refuses them. Two ways to close it:
+
+- **Bulk** — `POST /api/portal-apps/{id}/assign-unassigned {clientId}`
+  (`AssignUnassignedToApp`) grants the app to every one of the client's
+  users holding no app, in one transaction, one `app-granted` event each.
+  Users already holding an app, and user status, are untouched.
+  `GET /api/portal-apps?clientId=` reports `unassignedUsers`, and the
+  Portal Apps page shows a banner plus an *Assign unassigned users* action
+  per app.
+- **One by one** — the Portal Users page filters "No portal app
+  (unassigned)" (`unassigned=true` on the list), tags such users, and offers
+  *Grant portal app* on every row.
+
+Saving an identity now deletes only explicitly revoked grants (it used to
+delete any grant missing from the loaded copy, which could lose a grant
+added concurrently).
+
 ### Portal Users page
 
 *Portal → Portal Users* (moved out of Client Administration): client

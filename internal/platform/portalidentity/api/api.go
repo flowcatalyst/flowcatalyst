@@ -84,6 +84,7 @@ func Register(api huma.API, s *State) {
 	apiroute.Post(a, "createPortalApp", "/api/portal-apps", "Register a portal app for a client and provision its portal OAuth client", http.StatusCreated, s.createApp)
 	apiroute.Put(a, "updatePortalApp", "/api/portal-apps/{id}", "Update a portal app's name, description, or active flag", http.StatusOK, s.updateApp)
 	apiroute.Delete(a, "deletePortalApp", "/api/portal-apps/{id}", "Delete a portal app together with its portal OAuth clients", http.StatusOK, s.deleteApp)
+	apiroute.Post(a, "assignUnassignedPortalUsers", "/api/portal-apps/{id}/assign-unassigned", "Grant a portal app to every one of the client's portal users that has no portal app", http.StatusOK, s.assignUnassigned)
 }
 
 // Authorization (docs/portal-identity-plan.md Phase 2.5 v2): portal users
@@ -394,6 +395,7 @@ type listInput struct {
 	ClientID      string `query:"clientId" doc:"Tenant client whose portal identities to list"`
 	Q             string `query:"q" doc:"Prefix (TERM%) matched case-insensitively against email and name"`
 	PortalAppCode string `query:"portalAppCode" doc:"Only identities granted this portal app"`
+	Unassigned    bool   `query:"unassigned" doc:"Only identities granted no portal app (cannot be combined with portalAppCode)"`
 	Page          int    `query:"page" doc:"0-based page index (default 0)"`
 	Size          int    `query:"size" doc:"Page size (default 100, max 1000)"`
 }
@@ -407,7 +409,10 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[PortalU
 	if err := auth.CanReadPortalUsers(ac, clientID); err != nil {
 		return nil, err
 	}
-	filter := portalidentity.SearchFilter{ClientID: clientID, Query: in.Q}
+	filter := portalidentity.SearchFilter{ClientID: clientID, Query: in.Q, Unassigned: in.Unassigned}
+	if in.Unassigned && strings.TrimSpace(in.PortalAppCode) != "" {
+		return nil, usecase.Validation("FILTER_CONFLICT", "unassigned and portalAppCode cannot be combined")
+	}
 	if code := strings.TrimSpace(in.PortalAppCode); code != "" {
 		app, err := s.appByCode(ctx, clientID, code)
 		if err != nil {
@@ -638,6 +643,10 @@ type PortalAppResponse struct {
 // PortalAppListResponse is the GET /api/portal-apps envelope.
 type PortalAppListResponse struct {
 	PortalApps []PortalAppResponse `json:"portalApps"`
+	// UnassignedUsers counts the client's portal users granted no portal
+	// app (present only when clientId is given). Such users cannot sign in
+	// through any app-linked portal OAuth client.
+	UnassignedUsers *int64 `json:"unassignedUsers,omitempty"`
 }
 
 type listAppsInput struct {
@@ -662,7 +671,15 @@ func (s *State) listApps(ctx context.Context, in *listAppsInput) (*apicommon.Out
 	if err != nil {
 		return nil, err
 	}
-	return &apicommon.Out[PortalAppListResponse]{Body: PortalAppListResponse{PortalApps: out}}, nil
+	body := PortalAppListResponse{PortalApps: out}
+	if clientID != "" {
+		n, err := s.Identities.CountUnassigned(ctx, clientID)
+		if err != nil {
+			return nil, usecase.Internal("REPO", "count_unassigned failed", err)
+		}
+		body.UnassignedUsers = &n
+	}
+	return &apicommon.Out[PortalAppListResponse]{Body: body}, nil
 }
 
 func (s *State) appResponses(ctx context.Context, apps []portalidentity.App) ([]PortalAppResponse, error) {
@@ -821,4 +838,37 @@ func (s *State) appOut(ctx context.Context, id string) (*apicommon.Out[PortalApp
 		return nil, err
 	}
 	return &apicommon.Out[PortalAppResponse]{Body: out[0]}, nil
+}
+
+// AssignUnassignedBody names the tenant client that owns the portal app.
+type AssignUnassignedBody struct {
+	ClientID string `json:"clientId"`
+}
+
+// AssignUnassignedResponse reports the bulk assignment.
+type AssignUnassignedResponse struct {
+	PortalAppCode string `json:"portalAppCode"`
+	// Assigned is how many portal users were granted the app.
+	Assigned int `json:"assigned"`
+}
+
+type assignUnassignedInput struct {
+	ID   string `path:"id"`
+	Body AssignUnassignedBody
+}
+
+func (s *State) assignUnassigned(ctx context.Context, in *assignUnassignedInput) (*apicommon.Out[AssignUnassignedResponse], error) {
+	clientID := strings.TrimSpace(in.Body.ClientID)
+	if err := s.authorizeManage(ctx, clientID); err != nil {
+		return nil, err
+	}
+	ec := auth.NewExecutionContext(ctx)
+	res, err := usecaseop.RunTx(ctx, s.UoW, portalidentity.AssignUnassignedToApp(s.Identities, s.Apps),
+		portalidentity.AssignUnassignedCommand{ClientID: clientID, PortalAppID: in.ID}, ec)
+	if err != nil {
+		return nil, err
+	}
+	return &apicommon.Out[AssignUnassignedResponse]{Body: AssignUnassignedResponse{
+		PortalAppCode: res.AppCode, Assigned: len(res.IdentityIDs),
+	}}, nil
 }

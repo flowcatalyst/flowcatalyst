@@ -47,9 +47,11 @@ type SearchFilter struct {
 	// and name. Empty matches everything.
 	Query string
 	// AppID restricts to identities granted that portal app. Empty = all.
-	AppID  string
-	Offset int
-	Limit  int
+	AppID string
+	// Unassigned restricts to identities granted no portal app at all.
+	Unassigned bool
+	Offset     int
+	Limit      int
 }
 
 // Search lists a client's identities, newest first, with the total match
@@ -66,6 +68,9 @@ func (r *Repository) Search(ctx context.Context, f SearchFilter) ([]Identity, in
 		args = append(args, f.AppID)
 		where = append(where, `EXISTS (SELECT 1 FROM portal_identity_apps g
 			WHERE g.identity_id = pi.id AND g.portal_app_id = $`+strconv.Itoa(len(args))+`)`)
+	}
+	if f.Unassigned {
+		where = append(where, notAssigned)
 	}
 	cond := strings.Join(where, " AND ")
 
@@ -88,6 +93,38 @@ func (r *Repository) Search(ctx context.Context, f SearchFilter) ([]Identity, in
 		return nil, 0, err
 	}
 	return out, total, nil
+}
+
+// notAssigned matches identities holding no portal-app grant.
+const notAssigned = `NOT EXISTS (SELECT 1 FROM portal_identity_apps g WHERE g.identity_id = pi.id)`
+
+// FindUnassigned lists a client's identities that hold no portal-app grant,
+// oldest first.
+func (r *Repository) FindUnassigned(ctx context.Context, clientID string) ([]Identity, error) {
+	rows, err := r.pool.Query(ctx,
+		identitySelect+` WHERE pi.client_id = $1 AND `+notAssigned+` ORDER BY pi.created_at, pi.id`, clientID)
+	if err != nil {
+		return nil, fmt.Errorf("portal_identity unassigned: %w", err)
+	}
+	out, err := scanAll(rows)
+	if err != nil {
+		return nil, err
+	}
+	for n := range out {
+		out[n].Apps = []AppGrant{}
+	}
+	return out, nil
+}
+
+// CountUnassigned counts a client's identities that hold no portal-app grant.
+func (r *Repository) CountUnassigned(ctx context.Context, clientID string) (int64, error) {
+	var n int64
+	err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM portal_identities pi WHERE pi.client_id = $1 AND `+notAssigned, clientID).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("portal_identity count unassigned: %w", err)
+	}
+	return n, nil
 }
 
 // escapeLike neutralises LIKE metacharacters in user input (backslash is
@@ -130,9 +167,10 @@ func (r *Repository) SetPasswordHash(ctx context.Context, id, hash string) error
 
 // Persist implements usecasepgx.Persist[Identity]. Conflict on the
 // (client, email) unique key updates the mutable fields — re-ensuring an
-// existing identity keeps its id/source/created_at. The app grants are then
-// synced to i.Apps against the id that actually holds the row (a racing
-// ensure may have won the insert).
+// existing identity keeps its id/source/created_at. Grants are then applied
+// against the id that actually holds the row (a racing ensure may have won
+// the insert): explicitly revoked grants are deleted, every grant in i.Apps
+// is inserted if missing, and nothing else is touched.
 func (r *Repository) Persist(ctx context.Context, i *Identity, tx *usecasepgx.DbTx) error {
 	now := time.Now().UTC()
 	var rowID string
@@ -150,14 +188,12 @@ func (r *Repository) Persist(ctx context.Context, i *Identity, tx *usecasepgx.Db
 	if err != nil {
 		return err
 	}
-	appIDs := make([]string, 0, len(i.Apps))
-	for _, g := range i.Apps {
-		appIDs = append(appIDs, g.AppID)
-	}
-	if _, err := tx.Inner().Exec(ctx,
-		`DELETE FROM portal_identity_apps WHERE identity_id = $1 AND NOT (portal_app_id = ANY($2))`,
-		rowID, appIDs); err != nil {
-		return err
+	if revoked := i.RevokedApps(); len(revoked) > 0 {
+		if _, err := tx.Inner().Exec(ctx,
+			`DELETE FROM portal_identity_apps WHERE identity_id = $1 AND portal_app_id = ANY($2)`,
+			rowID, revoked); err != nil {
+			return err
+		}
 	}
 	for _, g := range i.Apps {
 		if _, err := tx.Inner().Exec(ctx,
