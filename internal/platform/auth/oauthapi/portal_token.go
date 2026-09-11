@@ -57,15 +57,22 @@ func (s *State) redeemPortalCode(w http.ResponseWriter, r *http.Request, code *g
 	// A transient principal-shaped view of the identity: the token
 	// generators only read ID/Name/email/roles, and this synthetic value
 	// never touches the principal store. sub = the ptu_ id.
+	//
+	// UpdatedAt is the identity's own: the id_token's updated_at must
+	// report a real profile change, not every login (a zero value would be
+	// replaced with the mint time).
 	synth := &principal.Principal{
-		ID:   ident.ID,
-		Type: principal.TypeUser,
-		Name: ident.Name,
+		ID:        ident.ID,
+		Type:      principal.TypeUser,
+		Name:      ident.Name,
+		UpdatedAt: ident.UpdatedAt,
 		UserIdentity: &principal.UserIdentity{
 			Email: ident.Email,
 		},
 	}
-	accessToken, err := s.Auth.GenerateIdentityAccessToken(synth)
+	// Client-bound, like every other interactive identity token: azp lets
+	// /oauth/userinfo tell which relying party is asking.
+	accessToken, err := s.Auth.GenerateIdentityAccessTokenFor(synth, client.ClientID)
 	if err != nil {
 		writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 		return

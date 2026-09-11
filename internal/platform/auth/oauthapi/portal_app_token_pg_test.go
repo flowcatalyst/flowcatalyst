@@ -89,6 +89,18 @@ func TestPortalCodeRedemptionReportsApp(t *testing.T) {
 	assert.Equal(t, appEv.AppID, claims["portal_app_id"])
 	assert.Equal(t, tenantID, claims["portal_client_id"])
 
+	// The access token is client-bound (azp) like every other interactive
+	// identity token, and the id_token's updated_at is the identity's own —
+	// not the mint time.
+	var tok struct {
+		AccessToken string `json:"access_token"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(body), &tok))
+	assert.Equal(t, oauthEv.ClientID, decodeClaims(t, tok.AccessToken)["azp"])
+	ident, err := identities.FindByID(ctx, identEv.IdentityID)
+	require.NoError(t, err)
+	assert.EqualValues(t, ident.UpdatedAt.Unix(), claims["updated_at"])
+
 	_, err = usecaseop.Run(ctx, uow, portalidentity.RevokeApp(identities, apps),
 		portalidentity.AppGrantCommand{ClientID: tenantID, IdentityID: identEv.IdentityID, PortalAppID: appEv.AppID}, testpg.TestEC())
 	require.NoError(t, err)

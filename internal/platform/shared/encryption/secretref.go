@@ -16,6 +16,20 @@ var ErrNotConfigured = errors.New("encryption not configured: FLOWCATALYST_APP_K
 // verbatim and resolved at read time — never encrypted inline.
 var externalSecretSchemes = []string{"aws-sm://", "aws-ps://", "gcp-sm://", "vault://", "env://", "literal:"}
 
+// secretManagerSchemeNames lists the secret-manager schemes for messages, in
+// their "aws-sm://" form (owner ruling 2026-09-08: a typo like "aws-smm://"
+// must see the correct spelling) and without "literal:" — that is the dev
+// bypass, not a secret manager, even though it is accepted as a reference.
+func secretManagerSchemeNames() []string {
+	out := make([]string, 0, len(externalSecretSchemes))
+	for _, s := range externalSecretSchemes {
+		if strings.HasSuffix(s, "://") {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // ErrUnsupportedScheme is returned by EncryptSecretRef for a "<scheme>://…"
 // value whose scheme is not in externalSecretSchemes. Callers map it to a
 // user-facing validation error (400, not 500 — it is the caller's input).
@@ -94,8 +108,8 @@ func EncryptSecretRef(enc *Service, ref *string) (*string, error) {
 		}
 	}
 	if scheme := unsupportedScheme(v); scheme != "" {
-		return nil, fmt.Errorf("%w %q://; supported: %s (prefix the value with \"encrypt:\" to store it as an encrypted plaintext secret instead)",
-			ErrUnsupportedScheme, scheme, strings.Join(externalSecretSchemes, ", "))
+		return nil, fmt.Errorf("%w %q; supported: %s (prefix the value with \"encrypt:\" to store it as an encrypted plaintext secret instead)",
+			ErrUnsupportedScheme, scheme+"://", strings.Join(secretManagerSchemeNames(), ", "))
 	}
 	plaintext := strings.TrimPrefix(v, "encrypt:")
 	if enc == nil {
