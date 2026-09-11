@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalidentity"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
@@ -15,11 +16,13 @@ import (
 var portalSubjectPrefix = tsid.PortalUser.Prefix() + "_"
 
 // redeemPortalCode completes the authorization_code grant for a PORTAL-plane
-// subject. The identity must still exist and be ACTIVE (a suspension or
-// offboarding between code issuance and redemption bites here). Token
-// shapes: identity-only access token (authority-free, as every interactive
-// login), id_token minted from the portal identity with an EMPTY roles claim
-// (portal roles are portal-side data), and never a refresh token.
+// subject. The identity must still exist and be ACTIVE, and — when the
+// OAuth client fronts a portal app — still hold that app's grant (a
+// suspension, offboarding or revocation between code issuance and
+// redemption bites here). Token shapes: identity-only access token
+// (authority-free, as every interactive login), id_token minted from the
+// portal identity with an EMPTY roles claim plus the portal client/app
+// claims, and never a refresh token.
 func (s *State) redeemPortalCode(w http.ResponseWriter, r *http.Request, code *grantstore.AuthorizationCode, client *auth.OAuthClient) {
 	if s.PortalIdentities == nil {
 		writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "Portal subjects are not supported")
@@ -33,6 +36,22 @@ func (s *State) redeemPortalCode(w http.ResponseWriter, r *http.Request, code *g
 	if ident == nil || ident.Status != portalidentity.StatusActive {
 		writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "Portal identity not found or suspended")
 		return
+	}
+
+	portal := authservice.PortalIDClaims{ClientID: ident.ClientID}
+	if s.PortalApps != nil {
+		app, aerr := s.PortalApps.FindByOAuthClientID(r.Context(), client.ClientID)
+		if aerr != nil {
+			writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
+			return
+		}
+		if app != nil {
+			if !app.Active || !ident.HasApp(app.ID) {
+				writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "Portal identity has no access to this portal")
+				return
+			}
+			portal.AppID, portal.AppCode = app.ID, app.Code
+		}
 	}
 
 	// A transient principal-shaped view of the identity: the token
@@ -57,14 +76,13 @@ func (s *State) redeemPortalCode(w http.ResponseWriter, r *http.Request, code *g
 	}
 	var idToken *string
 	if scopeHas(scope, "openid") {
-		t, terr := s.Auth.GenerateIDTokenWithRoles(synth, code.ClientID, code.Nonce, []string{}, code.AuthTime)
+		t, terr := s.Auth.GeneratePortalIDToken(synth, code.ClientID, code.Nonce, code.AuthTime, portal)
 		if terr != nil {
 			writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 			return
 		}
 		idToken = &t
 	}
-	_ = client // client identity was already bound to the code by the caller
 
 	writeToken(w, tokenResponse{
 		AccessToken: accessToken,

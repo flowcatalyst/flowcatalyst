@@ -60,6 +60,10 @@ type Claims struct {
 	// an "identity" bearer as an API credential. Empty for session cookies and
 	// legacy tokens minted before the marker existed.
 	TokenUse string
+	// PrincipalType is the "type" claim ("USER" | "SERVICE") that
+	// authservice access tokens carry. Empty for session cookies (always a
+	// USER) and tokens without it.
+	PrincipalType string
 	// IssuedAt is the token's `iat` (when it was minted ≈ login time).
 	// Zero if the token carried no iat. Used for OIDC max_age enforcement.
 	IssuedAt time.Time
@@ -190,9 +194,10 @@ func Validate(token string, key *rsa.PublicKey, expect Expect) (*Claims, error) 
 		Applications:    stringSliceClaim(mc, "applications"),
 		AllApplications: boolClaim(mc, "all_applications"),
 		// Granted permissions arrive on the space-delimited "scope" claim.
-		Permissions: strings.Fields(stringClaim(mc, "scope")),
-		TokenUse:    stringClaim(mc, "token_use"),
-		IssuedAt:    unixClaim(mc, "iat"),
+		Permissions:   strings.Fields(stringClaim(mc, "scope")),
+		TokenUse:      stringClaim(mc, "token_use"),
+		PrincipalType: stringClaim(mc, "type"),
+		IssuedAt:      unixClaim(mc, "iat"),
 	}
 	if out.Subject == "" {
 		return nil, errors.New("sessiontoken: token is missing sub claim")

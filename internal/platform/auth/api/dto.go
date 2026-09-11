@@ -42,6 +42,10 @@ type CreateOAuthClientRequest struct {
 	// by that tenant client (admitted to /portal/authorize, refused at
 	// /oauth/authorize).
 	PortalClientID *string `json:"portalClientId,omitempty"`
+	// PortalAppID links this portal client to one of the client's portal
+	// apps (logins then need the app grant; the id_token carries its code).
+	// Implies portalClientId = the app's client.
+	PortalAppID *string `json:"portalAppId,omitempty"`
 	// APIAccess opts this trusted first-party client into authority-bearing
 	// interactive access tokens (token_use=api, narrowed to the client's
 	// applications). Mutually exclusive with portalClientId.
@@ -61,6 +65,7 @@ func (r CreateOAuthClientRequest) toCommand() operations.CreateOAuthClientComman
 		PrincipalID:            r.PrincipalID,
 		PKCERequired:           r.PKCERequired,
 		PortalClientID:         r.PortalClientID,
+		PortalAppID:            r.PortalAppID,
 		APIAccess:              r.APIAccess,
 	}
 }
@@ -85,6 +90,9 @@ type UpdateOAuthClientRequest struct {
 	// PortalClientID marks this OAuth client as a portal entry point owned by
 	// that tenant client (empty string clears the flag; omitted keeps it).
 	PortalClientID *string `json:"portalClientId,omitempty"`
+	// PortalAppID links a portal app (empty string unlinks; omitted keeps).
+	// Implies portalClientId = the app's client.
+	PortalAppID *string `json:"portalAppId,omitempty"`
 	// APIAccess opts into authority-bearing interactive access tokens.
 	APIAccess *bool `json:"apiAccess,omitempty"`
 }
@@ -101,6 +109,7 @@ func (r UpdateOAuthClientRequest) toCommand(id string) operations.UpdateOAuthCli
 		ApplicationIDs:         r.ApplicationIDs,
 		PKCERequired:           r.PKCERequired,
 		PortalClientID:         r.PortalClientID,
+		PortalAppID:            r.PortalAppID,
 		APIAccess:              r.APIAccess,
 	}
 }
@@ -141,6 +150,8 @@ type OAuthClientResponse struct {
 	ServiceAccountPrincipalID *string `json:"serviceAccountPrincipalId,omitempty"`
 	// PortalClientID marks a portal entry point (see the create request).
 	PortalClientID *string `json:"portalClientId,omitempty"`
+	// PortalAppID is the linked portal app (see the create request).
+	PortalAppID *string `json:"portalAppId,omitempty"`
 	// APIAccess mirrors the entity flag (see the create request).
 	APIAccess bool `json:"apiAccess"`
 	// PreviousSecretExpiresAt is when a rotation overlap lapses. ABSENT means
@@ -198,6 +209,7 @@ func oauthClientFromEntity(c *auth.OAuthClient) OAuthClientResponse {
 		Active:                    c.Active,
 		ServiceAccountPrincipalID: c.PrincipalID,
 		PortalClientID:            c.PortalClientID,
+		PortalAppID:               c.PortalAppID,
 		APIAccess:                 c.APIAccess,
 		CreatedAt:                 jsontime.New(c.CreatedAt),
 		UpdatedAt:                 jsontime.New(c.UpdatedAt),

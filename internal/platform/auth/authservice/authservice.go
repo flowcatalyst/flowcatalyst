@@ -168,6 +168,22 @@ type IDTokenClaims struct {
 	// AllApplications — see AccessTokenClaims.AllApplications.
 	AllApplications bool     `json:"all_applications"`
 	Clients         []string `json:"clients"`
+
+	// Portal-plane logins through an app-linked portal OAuth client report
+	// which portal the user signed in to (omitted otherwise).
+	PortalAppCode  *string `json:"portal_app_code,omitempty"`
+	PortalAppID    *string `json:"portal_app_id,omitempty"`
+	PortalClientID *string `json:"portal_client_id,omitempty"`
+}
+
+// PortalIDClaims are the portal-plane additions to an ID token.
+type PortalIDClaims struct {
+	// ClientID is the tenant client whose portal identity signed in.
+	ClientID string
+	// AppID/AppCode name the portal app (empty for a legacy client-wide
+	// portal OAuth client).
+	AppID   string
+	AppCode string
 }
 
 // Config bundles the construction-time settings. TTLs are in seconds.
@@ -517,6 +533,26 @@ func (s *AuthService) GenerateIDTokenWithRoles(p *principal.Principal, clientID 
 // updated_at likewise reports the principal's real last modification, so an RP
 // watching it for profile changes doesn't see one on every login.
 func (s *AuthService) generateIDToken(p *principal.Principal, clientID string, nonce *string, roles []string, authTime time.Time) (string, error) {
+	return s.sign(s.idTokenClaims(p, clientID, nonce, roles, authTime))
+}
+
+// GeneratePortalIDToken mints the ID token for a portal-plane login: the
+// synthetic portal-identity view as subject, an EMPTY roles claim (portal
+// roles are portal-side data), and the portal client/app claims.
+func (s *AuthService) GeneratePortalIDToken(p *principal.Principal, clientID string, nonce *string, authTime time.Time, portal PortalIDClaims) (string, error) {
+	claims := s.idTokenClaims(p, clientID, nonce, []string{}, authTime)
+	if portal.ClientID != "" {
+		claims.PortalClientID = &portal.ClientID
+	}
+	if portal.AppCode != "" {
+		claims.PortalAppCode = &portal.AppCode
+		claims.PortalAppID = &portal.AppID
+	}
+	return s.sign(claims)
+}
+
+// idTokenClaims builds (without signing) the ID token claim set.
+func (s *AuthService) idTokenClaims(p *principal.Principal, clientID string, nonce *string, roles []string, authTime time.Time) IDTokenClaims {
 	if roles == nil {
 		roles = []string{}
 	}
@@ -561,7 +597,7 @@ func (s *AuthService) generateIDToken(p *principal.Principal, clientID string, n
 		AllApplications: p.AllApplications,
 		Clients:         buildClients(p),
 	}
-	return s.sign(claims)
+	return claims
 }
 
 // sign serializes and signs the supplied claims with the current key,

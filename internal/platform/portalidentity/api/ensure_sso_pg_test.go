@@ -4,7 +4,9 @@ package api
 
 import (
 	"context"
+	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,11 +23,22 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 )
 
-func TestMain(m *testing.M) { testpg.RunMain(m) }
+// TestMain seeds FLOWCATALYST_APP_KEY before the embedded-PG boot: portal
+// app creation provisions a CONFIDENTIAL OAuth client, whose secret is
+// hashed via encryption.FromEnv at call time.
+func TestMain(m *testing.M) {
+	key, err := encryption.GenerateKey()
+	if err != nil {
+		panic(err)
+	}
+	_ = os.Setenv("FLOWCATALYST_APP_KEY", key)
+	testpg.RunMain(m)
+}
 
 // fakeInviteMinter records what kind of invite ensure decided to send.
 type fakeInviteMinter struct {
@@ -33,13 +46,13 @@ type fakeInviteMinter struct {
 	ssoInvites         []string // emails that got the "open the portal" invite
 }
 
-func (f *fakeInviteMinter) PortalInviteLink(_ context.Context, identityID string, _ *string) (string, error) {
-	return "https://platform.test/auth/set-password?token=for-" + identityID, nil
+func (f *fakeInviteMinter) PortalInviteLink(_ context.Context, identityID string, _ *string) (string, time.Time, error) {
+	return "https://platform.test/auth/set-password?token=for-" + identityID, time.Now().Add(72 * time.Hour), nil
 }
 
-func (f *fakeInviteMinter) SendPortalInvite(_ context.Context, _, email string, _ *string) error {
+func (f *fakeInviteMinter) SendPortalInvite(_ context.Context, _, email string, _ *string) (time.Time, error) {
 	f.setPasswordInvites = append(f.setPasswordInvites, email)
-	return nil
+	return time.Now().Add(72 * time.Hour), nil
 }
 
 func (f *fakeInviteMinter) SendPortalSSOInvite(_ context.Context, email, _ string) error {

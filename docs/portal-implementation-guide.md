@@ -37,10 +37,26 @@ Identity ids are branded TSIDs with the `ptu_` prefix (e.g.
 
 ## 2. Platform setup (once per portal)
 
-All three are configurable in the platform dashboard; the third can also be
-managed via API.
+All of these are configurable in the platform dashboard; the portal app and
+the identity providers can also be managed via API.
 
-1. **A portal OAuth client** (*Identity & Access → OAuth Clients*):
+0. **A portal app** (*Portal → Portal Apps*, or `POST /api/portal-apps`
+   `{clientId, code, name, redirectUris?, clientType?}`): the named portal
+   a client runs. A client may run several (e.g. `customer-portal`,
+   `supplier-portal`); its users are one population with one password each,
+   **granted per app**. The `code` is what your backend sends as
+   `portalAppCode`, and what comes back in the id_token as
+   `portal_app_code`. It cannot be changed later.
+   **Creating the app also provisions its portal OAuth client** in the same
+   transaction — portal-flagged for the client, linked to the app,
+   `authorization_code` only, PKCE required, your callback URL(s)
+   registered — and returns `oauthClientId` plus, for the default
+   `CONFIDENTIAL` type, a `clientSecret` shown **exactly once** (the UI
+   shows both, with the endpoints and a ready-to-paste Laravel env block).
+   Step 1 is then already done; deleting the app deletes its OAuth
+   client(s) too.
+1. **A portal OAuth client** — provisioned automatically by step 0. To wire
+   one by hand instead (*Identity & Access → OAuth Clients*):
    - Type: **CONFIDENTIAL** for a server-side portal app (the backend
      exchanges the code and keeps the secret — client authentication plus
      PKCE, keep *Require PKCE* on); **PUBLIC** only for a portal whose
@@ -51,12 +67,17 @@ managed via API.
      admits the OAuth client to `/portal/authorize` — without it the portal
      plane refuses it, and with it the client stops being usable for
      ordinary platform logins.
+   - **Portal app** set to the app from step 0 (`portalAppId`). Logins
+     through the OAuth client then require the identity to hold that app's
+     grant, and the id_token carries its code. Left empty, the OAuth client
+     is a *legacy client-wide* portal (any of the client's portal identities
+     may sign in; no app code is reported).
 2. **A service account** for the portal backend, holding the built-in
    **`platform:portal-administrator`** role. That role (permissions
    `platform:iam:portal-user:view` + `platform:iam:portal-user:manage`) is
    all the authority the portal-user admin API needs. The same role given
    to one of the client's administrators lets them manage portal users in
-   the platform UI (*Client Administration → Portal Users*); client scope
+   the platform UI (*Portal → Portal Users* / *Portal Apps*); client scope
    confines each holder to their own client.
 3. **Identity providers for federated customer orgs** (optional, per org):
    an OIDC IdP row with the org's email domains claimed — that is all.
@@ -107,8 +128,15 @@ Portal app                        FlowCatalyst platform
 Key properties:
 
 - **id_token claims**: `sub` = the portal identity id (`ptu_…`), `email`,
-  `name`, `aud` = your client_id, `nonce`, and an **empty `roles` claim** —
-  portal roles are your data, never the platform's.
+  `name`, `aud` = your client_id, `nonce`, an **empty `roles` claim** —
+  portal roles are your data, never the platform's — plus
+  `portal_client_id` and (for an app-linked OAuth client) `portal_app_code`
+  / `portal_app_id`.
+- **App gate**: a user without a grant for your portal app is refused at
+  the platform login page ("You don't have access to this portal"); an SSO
+  user's *first* login grants the app it came through automatically, later
+  logins of an identity lacking the grant come back as
+  `error=access_denied`. Revoking the grant kills an outstanding code.
 - **The access token is deliberately useless** for platform APIs
   (`token_use=identity`). All platform calls from your backend use the
   service account (client_credentials).
@@ -141,12 +169,22 @@ POST /api/portal-users
   "clientId": "clt_…",
   "email": "pat@customer.example",
   "name": "Pat Jones",                    // optional, applied on create
+  "portalAppCode": "customer-portal",     // grants your portal app
   "returnInviteLink": true,               // optional, see below
   "redirectUri": "https://portal.example.com/auth/entry"  // optional
 }
 → { "identityId": "ptu_…", "created": true, "invited": false,
-    "inviteUrl": "https://platform…/auth/reset-password?token=…" }
+    "inviteUrl": "https://platform…/auth/reset-password?token=…",
+    "portalAppCode": "customer-portal", "state": "INVITED" }
 ```
+
+- **`portalAppCode`** (case-insensitive) names the calling portal: the
+  identity is granted that app (existing grants to the client's other
+  portals are untouched), and the invite's default redirect prefers that
+  app's OAuth client. Omit it only for a legacy client-wide portal.
+- **Invites are the portal's job.** The platform UI deliberately has no
+  invite button — the portal writes its own membership row in the same
+  step.
 
 - **Idempotent.** Re-calling for an existing identity reactivates a
   suspended one and re-mints/re-sends the invite while the identity has no
@@ -180,15 +218,36 @@ POST /api/portal-users
 ### List, suspend, reactivate, delete
 
 ```
-GET    /api/portal-users?clientId=clt_…
-→ { "portalUsers": [ { "identityId", "email", "name", "status",
-                       "source", "hasPassword", "lastLoginAt",
-                       "createdAt", "updatedAt" } ] }
+GET    /api/portal-users?clientId=clt_…&q=pat&portalAppCode=customer-portal&page=0&size=100
+→ { "portalUsers": [ { "identityId", "email", "name", "status", "state",
+                       "source", "hasPassword", "apps": [{ "id", "code", "name",
+                       "source", "grantedAt" }], "invitedAt", "inviteExpiresAt",
+                       "lastLoginAt", "createdAt", "updatedAt" } ],
+    "total": 1, "page": 0, "size": 100 }
 
 POST   /api/portal-users/{identityId}/deactivate   { "clientId": "clt_…" }
 POST   /api/portal-users/{identityId}/activate     { "clientId": "clt_…" }
+POST   /api/portal-users/{identityId}/apps         { "clientId": "clt_…", "portalAppCode": "…" }
+DELETE /api/portal-users/{identityId}/apps/{portalAppCode}?clientId=clt_…
 DELETE /api/portal-users/{identityId}?clientId=clt_…
+
+GET    /api/portal-apps?clientId=clt_…              (anchors may omit clientId)
+POST   /api/portal-apps     { "clientId", "code", "name", "description"? }
+PUT    /api/portal-apps/{id} { "clientId", "name"?, "description"?, "active"? }
+DELETE /api/portal-apps/{id}?clientId=clt_…         (refused while OAuth clients link to it)
 ```
+
+- **Search**: `q` is a case-insensitive prefix (`TERM%`) on email and
+  name; `portalAppCode` restricts to that app's users. Pages default to 100
+  rows (max 1000) — **page through `total`** if you previously relied on
+  the list returning everything.
+- **`state`** (derived): `INVITED` (invite outstanding; SSO invites never
+  expire), `INVITE_EXPIRED` (72h link lapsed unused — re-ensure to resend),
+  `ACTIVE` (password created or signed in), `SUSPENDED`. `status` remains
+  the raw ACTIVE/DISABLED flag.
+- **Revoke an app** to remove one portal's access while the identity (and
+  its other portals) stays; **delete** offboards from every portal of the
+  client.
 
 - **Deactivate** blocks all portal login (password and SSO — an SSO login
   never self-reactivates) but keeps the row for reactivation.

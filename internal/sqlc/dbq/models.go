@@ -671,6 +671,7 @@ type OauthClient struct {
 	PreviousSecretRef         *string    `db:"previous_secret_ref"`
 	PreviousSecretExpiresAt   *time.Time `db:"previous_secret_expires_at"`
 	PreviousSecretLastUsedAt  *time.Time `db:"previous_secret_last_used_at"`
+	PortalAppID               *string    `db:"portal_app_id"`
 }
 
 type OauthClientAllowedOrigin struct {
@@ -767,17 +768,37 @@ type OauthOidcPayload struct {
 	CreatedAt  time.Time       `db:"created_at"`
 }
 
+type PortalApp struct {
+	ID          string    `db:"id"`
+	ClientID    string    `db:"client_id"`
+	Code        string    `db:"code"`
+	Name        string    `db:"name"`
+	Description *string   `db:"description"`
+	Active      bool      `db:"active"`
+	CreatedAt   time.Time `db:"created_at"`
+	UpdatedAt   time.Time `db:"updated_at"`
+}
+
 type PortalIdentity struct {
-	ID           string     `db:"id"`
-	ClientID     string     `db:"client_id"`
-	Email        string     `db:"email"`
-	Name         *string    `db:"name"`
-	PasswordHash *string    `db:"password_hash"`
-	Status       string     `db:"status"`
-	Source       string     `db:"source"`
-	LastLoginAt  *time.Time `db:"last_login_at"`
-	CreatedAt    time.Time  `db:"created_at"`
-	UpdatedAt    time.Time  `db:"updated_at"`
+	ID              string     `db:"id"`
+	ClientID        string     `db:"client_id"`
+	Email           string     `db:"email"`
+	Name            *string    `db:"name"`
+	PasswordHash    *string    `db:"password_hash"`
+	Status          string     `db:"status"`
+	Source          string     `db:"source"`
+	LastLoginAt     *time.Time `db:"last_login_at"`
+	CreatedAt       time.Time  `db:"created_at"`
+	UpdatedAt       time.Time  `db:"updated_at"`
+	InvitedAt       *time.Time `db:"invited_at"`
+	InviteExpiresAt *time.Time `db:"invite_expires_at"`
+}
+
+type PortalIdentityApp struct {
+	IdentityID  string    `db:"identity_id"`
+	PortalAppID string    `db:"portal_app_id"`
+	Source      string    `db:"source"`
+	GrantedAt   time.Time `db:"granted_at"`
 }
 
 type PortalLoginFlow struct {

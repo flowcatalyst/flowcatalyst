@@ -290,19 +290,23 @@ func (e *principalEmailer) SendPortalSSOInvite(ctx context.Context, emailAddr, p
 
 // PortalInviteLink mints a set-password invite for a PORTAL identity (the
 // token keys the ptu_ id; the confirm flow branches on the prefix) and
-// returns the link WITHOUT emailing it — the portal-managed invite path.
-func (e *principalEmailer) PortalInviteLink(ctx context.Context, identityID string, redirectURI *string) (string, error) {
-	return e.mintInviteLink(ctx, identityID, redirectURI)
+// returns the link WITHOUT emailing it — the portal-managed invite path —
+// plus when it expires (recorded on the identity for the admin state).
+func (e *principalEmailer) PortalInviteLink(ctx context.Context, identityID string, redirectURI *string) (string, time.Time, error) {
+	expires := time.Now().UTC().Add(inviteTokenTTL)
+	link, err := e.mintInviteLink(ctx, identityID, redirectURI)
+	return link, expires, err
 }
 
 // SendPortalInvite mints the portal invite and emails it via the platform
 // mailer (the default delivery when the portal doesn't send its own).
-func (e *principalEmailer) SendPortalInvite(ctx context.Context, identityID, email string, redirectURI *string) error {
+func (e *principalEmailer) SendPortalInvite(ctx context.Context, identityID, email string, redirectURI *string) (time.Time, error) {
+	expires := time.Now().UTC().Add(inviteTokenTTL)
 	link, err := e.mintInviteLink(ctx, identityID, redirectURI)
 	if err != nil {
-		return err
+		return time.Time{}, err
 	}
-	return e.mail.SendPortalInviteLink(ctx, email, link)
+	return expires, e.mail.SendPortalInviteLink(ctx, email, link)
 }
 
 // SendInvite mints a longer-lived invite token and emails a "set your password"

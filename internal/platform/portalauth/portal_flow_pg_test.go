@@ -62,7 +62,7 @@ func TestPortalPasswordJourney(t *testing.T) {
 	oauthClientID := oauthEv.ClientID
 
 	// Portal identity with a working password.
-	identEv, err := usecaseop.Run(ctx, uow, portalidentity.Ensure(identities, clients),
+	identEv, err := usecaseop.Run(ctx, uow, portalidentity.Ensure(identities, clients, nil),
 		portalidentity.EnsureCommand{ClientID: tenantID, Email: "pat@portal-flow.test", Source: "INVITE"}, testpg.TestEC())
 	require.NoError(t, err)
 	hash, err := passwordhash.Hash("Portal-pass-123456")
@@ -175,7 +175,7 @@ func TestPortalLoginRefusesSuspendedIdentity(t *testing.T) {
 		}, testpg.TestEC())
 	require.NoError(t, err)
 
-	identEv, err := usecaseop.Run(ctx, uow, portalidentity.Ensure(identities, clients),
+	identEv, err := usecaseop.Run(ctx, uow, portalidentity.Ensure(identities, clients, nil),
 		portalidentity.EnsureCommand{ClientID: tenantID, Email: "sus@portal-susp.test", Source: "INVITE"}, testpg.TestEC())
 	require.NoError(t, err)
 	hash, err := passwordhash.Hash("Portal-pass-123456")
@@ -248,7 +248,7 @@ func TestPortalForgotPassword(t *testing.T) {
 			GrantTypes:   []string{"authorization_code"}, PortalClientID: &tenantID,
 		}, testpg.TestEC())
 	require.NoError(t, err)
-	identEv, err := usecaseop.Run(ctx, uow, portalidentity.Ensure(identities, clients),
+	identEv, err := usecaseop.Run(ctx, uow, portalidentity.Ensure(identities, clients, nil),
 		portalidentity.EnsureCommand{ClientID: tenantID, Email: "resetme@portal-reset.test", Source: "INVITE"}, testpg.TestEC())
 	require.NoError(t, err)
 
@@ -329,7 +329,7 @@ func TestPortalSSODomainEnforcement(t *testing.T) {
 
 	// An identity that somehow holds a password (e.g. invited before the
 	// domain was claimed by the IdP).
-	identEv, err := usecaseop.Run(ctx, uow, portalidentity.Ensure(identities, clients),
+	identEv, err := usecaseop.Run(ctx, uow, portalidentity.Ensure(identities, clients, nil),
 		portalidentity.EnsureCommand{ClientID: tenantID, Email: "pat@tigerbrands.test", Source: "INVITE"}, testpg.TestEC())
 	require.NoError(t, err)
 	hash, err := passwordhash.Hash("Portal-pass-123456")

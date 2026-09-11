@@ -45,6 +45,7 @@ const (
 	ApplicationOpenApiSpec
 	Process
 	PortalUser
+	PortalApp
 )
 
 // Prefix returns the 3-character platform prefix for the entity type.
@@ -124,6 +125,8 @@ func (e EntityType) Prefix() string {
 		return "prc"
 	case PortalUser:
 		return "ptu"
+	case PortalApp:
+		return "pta"
 	}
 	return "unk"
 }

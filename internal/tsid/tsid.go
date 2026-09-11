@@ -74,6 +74,9 @@ const (
 	PortalUser
 	// AppDoc backs application-synced documentation pages (app_docs).
 	AppDoc
+	// PortalApp backs a client's portal applications (portal_apps) — the
+	// named portals a client runs, each reached through linked OAuth clients.
+	PortalApp
 )
 
 // Prefix returns the 3-character prefix for this entity type. These are
@@ -170,6 +173,8 @@ func (e EntityType) Prefix() string {
 		return "ptu"
 	case AppDoc:
 		return "doc"
+	case PortalApp:
+		return "pta"
 	default:
 		return "unk"
 	}

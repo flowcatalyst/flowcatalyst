@@ -436,7 +436,8 @@ const oAuthClientFindAll = `-- name: OAuthClientFindAll :many
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
        active, created_at, updated_at, portal_client_id, api_access,
-       previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at
+       previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at,
+       portal_app_id
 FROM oauth_clients
 ORDER BY client_name
 `
@@ -467,6 +468,7 @@ func (q *Queries) OAuthClientFindAll(ctx context.Context) ([]OauthClient, error)
 			&i.PreviousSecretRef,
 			&i.PreviousSecretExpiresAt,
 			&i.PreviousSecretLastUsedAt,
+			&i.PortalAppID,
 		); err != nil {
 			return nil, err
 		}
@@ -482,7 +484,8 @@ const oAuthClientFindByClientID = `-- name: OAuthClientFindByClientID :one
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
        active, created_at, updated_at, portal_client_id, api_access,
-       previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at
+       previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at,
+       portal_app_id
 FROM oauth_clients
 WHERE client_id = $1
 `
@@ -507,6 +510,7 @@ func (q *Queries) OAuthClientFindByClientID(ctx context.Context, clientID string
 		&i.PreviousSecretRef,
 		&i.PreviousSecretExpiresAt,
 		&i.PreviousSecretLastUsedAt,
+		&i.PortalAppID,
 	)
 	return i, err
 }
@@ -517,7 +521,8 @@ const oAuthClientFindByID = `-- name: OAuthClientFindByID :one
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
        active, created_at, updated_at, portal_client_id, api_access,
-       previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at
+       previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at,
+       portal_app_id
 FROM oauth_clients
 WHERE id = $1
 `
@@ -551,6 +556,7 @@ func (q *Queries) OAuthClientFindByID(ctx context.Context, id string) (OauthClie
 		&i.PreviousSecretRef,
 		&i.PreviousSecretExpiresAt,
 		&i.PreviousSecretLastUsedAt,
+		&i.PortalAppID,
 	)
 	return i, err
 }
@@ -559,7 +565,8 @@ const oAuthClientFindByPortalClient = `-- name: OAuthClientFindByPortalClient :m
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
        active, created_at, updated_at, portal_client_id, api_access,
-       previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at
+       previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at,
+       portal_app_id
 FROM oauth_clients
 WHERE portal_client_id = $1
 ORDER BY client_name
@@ -593,6 +600,7 @@ func (q *Queries) OAuthClientFindByPortalClient(ctx context.Context, portalClien
 			&i.PreviousSecretRef,
 			&i.PreviousSecretExpiresAt,
 			&i.PreviousSecretLastUsedAt,
+			&i.PortalAppID,
 		); err != nil {
 			return nil, err
 		}
@@ -805,8 +813,9 @@ INSERT INTO oauth_clients
     (id, client_id, client_name, client_type, client_secret_ref,
      default_scopes, pkce_required, service_account_principal_id,
      active, created_at, updated_at, portal_client_id, api_access,
-     previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+     previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at,
+     portal_app_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 ON CONFLICT (id) DO UPDATE SET
     client_id = EXCLUDED.client_id,
     client_name = EXCLUDED.client_name,
@@ -821,7 +830,8 @@ ON CONFLICT (id) DO UPDATE SET
     active = EXCLUDED.active,
     updated_at = EXCLUDED.updated_at,
     portal_client_id = EXCLUDED.portal_client_id,
-    api_access = EXCLUDED.api_access
+    api_access = EXCLUDED.api_access,
+    portal_app_id = EXCLUDED.portal_app_id
 `
 
 type OAuthClientUpsertParams struct {
@@ -841,6 +851,7 @@ type OAuthClientUpsertParams struct {
 	PreviousSecretRef         *string    `db:"previous_secret_ref"`
 	PreviousSecretExpiresAt   *time.Time `db:"previous_secret_expires_at"`
 	PreviousSecretLastUsedAt  *time.Time `db:"previous_secret_last_used_at"`
+	PortalAppID               *string    `db:"portal_app_id"`
 }
 
 func (q *Queries) OAuthClientUpsert(ctx context.Context, arg OAuthClientUpsertParams) error {
@@ -861,6 +872,7 @@ func (q *Queries) OAuthClientUpsert(ctx context.Context, arg OAuthClientUpsertPa
 		arg.PreviousSecretRef,
 		arg.PreviousSecretExpiresAt,
 		arg.PreviousSecretLastUsedAt,
+		arg.PortalAppID,
 	)
 	return err
 }

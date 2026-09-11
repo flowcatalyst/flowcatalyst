@@ -157,6 +157,22 @@ type AuthContext struct {
 	AllApplications bool
 	// Permissions is the flattened set of permission codes from all roles.
 	Permissions []string
+	// PrincipalType is "USER" or "SERVICE" when known: session cookies are
+	// always USER; bearers carry the token's "type" claim. Empty (legacy
+	// tokens, dev test headers) = unknown, which the profile-only gate
+	// treats as exempt.
+	PrincipalType string
+}
+
+// PrincipalTypeUser marks an interactive human principal.
+const PrincipalTypeUser = "USER"
+
+// IsRoleless reports a USER principal holding no platform role and no
+// permission — someone who authenticated (an SSO JIT provision, a revoked
+// admin) but was never given platform access. Such users may reach only
+// their own profile (see middleware.ProfileOnlyWithoutRole).
+func (a *AuthContext) IsRoleless() bool {
+	return a != nil && a.PrincipalType == PrincipalTypeUser && len(a.Roles) == 0 && len(a.Permissions) == 0
 }
 
 // The boolean methods below are nil-receiver-safe and fail closed: an

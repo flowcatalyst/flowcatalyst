@@ -4,9 +4,15 @@
 // (client, email) context, platform-implemented (password machinery,
 // reset tokens, OIDC bridge reuse) but with initiation endpoints
 // independent of the employee auth surface.
+//
+// A client may run several portal apps ([App]). The identity stays one per
+// (client, email) — one password across that client's portals — and is
+// GRANTED per app; a login through an app-linked OAuth client requires the
+// grant.
 package portalidentity
 
 import (
+	"slices"
 	"strings"
 	"time"
 
@@ -24,7 +30,7 @@ const (
 	StatusDisabled Status = "DISABLED"
 )
 
-// Source records how the identity came to exist.
+// Source records how the identity (or an app grant) came to exist.
 type Source string
 
 const (
@@ -32,7 +38,34 @@ const (
 	SourceInvite Source = "INVITE"
 	// SourceJIT — created by a first SSO login through the portal plane.
 	SourceJIT Source = "JIT"
+	// SourceAdmin — an app grant added directly (POST /api/portal-users/{id}/apps).
+	SourceAdmin Source = "ADMIN"
 )
+
+// AccessState is the admin-facing lifecycle of an identity, derived — never
+// stored — from status, credentials, logins, and the invite dates, so it can
+// never drift from the facts it summarises.
+type AccessState string
+
+const (
+	// StateInvited — invited, has not yet set a password or signed in; the
+	// invite is still usable (SSO invites never expire).
+	StateInvited AccessState = "INVITED"
+	// StateInviteExpired — invited, never completed, and the set-password
+	// link has lapsed. Re-ensuring re-sends it.
+	StateInviteExpired AccessState = "INVITE_EXPIRED"
+	// StateActive — has created a password or signed in at least once.
+	StateActive AccessState = "ACTIVE"
+	// StateSuspended — status DISABLED.
+	StateSuspended AccessState = "SUSPENDED"
+)
+
+// AppGrant is one identity's access to one portal app.
+type AppGrant struct {
+	AppID     string    `json:"appId"`
+	Source    Source    `json:"source"`
+	GrantedAt time.Time `json:"grantedAt"`
+}
 
 // Identity is one portal end-user identity in one client's portal context.
 // The same human at two clients' portals is two Identities with independent
@@ -48,17 +81,65 @@ type Identity struct {
 	Status       Status     `json:"status"`
 	Source       Source     `json:"source"`
 	LastLoginAt  *time.Time `json:"lastLoginAt,omitempty"`
-	CreatedAt    time.Time  `json:"createdAt"`
-	UpdatedAt    time.Time  `json:"updatedAt"`
+	// InvitedAt / InviteExpiresAt record the latest invite. They are
+	// infrastructure bookkeeping written by the invite path (MarkInvited),
+	// not by Persist. A nil expiry with InvitedAt set is an SSO invite.
+	InvitedAt       *time.Time `json:"invitedAt,omitempty"`
+	InviteExpiresAt *time.Time `json:"inviteExpiresAt,omitempty"`
+	// Apps are the portal apps this identity may sign in to. Persist syncs
+	// the grant rows to this set.
+	Apps      []AppGrant `json:"apps"`
+	CreatedAt time.Time  `json:"createdAt"`
+	UpdatedAt time.Time  `json:"updatedAt"`
 }
 
 // IDStr satisfies usecase.HasID.
 func (i Identity) IDStr() string { return i.ID }
 
+// HasPassword reports whether a password has been set.
+func (i *Identity) HasPassword() bool {
+	return i.PasswordHash != nil && *i.PasswordHash != ""
+}
+
 // CanSignInWithPassword reports whether a password login is possible (has a
 // hash and is ACTIVE).
 func (i *Identity) CanSignInWithPassword() bool {
-	return i.Status == StatusActive && i.PasswordHash != nil && *i.PasswordHash != ""
+	return i.Status == StatusActive && i.HasPassword()
+}
+
+// HasApp reports whether the identity is granted the portal app.
+func (i *Identity) HasApp(appID string) bool {
+	return slices.ContainsFunc(i.Apps, func(g AppGrant) bool { return g.AppID == appID })
+}
+
+// Grant adds the app grant, reporting whether it was new.
+func (i *Identity) Grant(appID string, source Source) bool {
+	if appID == "" || i.HasApp(appID) {
+		return false
+	}
+	i.Apps = append(i.Apps, AppGrant{AppID: appID, Source: source, GrantedAt: time.Now().UTC()})
+	return true
+}
+
+// Revoke removes the app grant, reporting whether one existed.
+func (i *Identity) Revoke(appID string) bool {
+	before := len(i.Apps)
+	i.Apps = slices.DeleteFunc(i.Apps, func(g AppGrant) bool { return g.AppID == appID })
+	return len(i.Apps) != before
+}
+
+// State derives the admin-facing lifecycle at time now.
+func (i *Identity) State(now time.Time) AccessState {
+	switch {
+	case i.Status == StatusDisabled:
+		return StateSuspended
+	case i.HasPassword(), i.LastLoginAt != nil, i.Source == SourceJIT:
+		return StateActive
+	case i.InviteExpiresAt != nil && !now.Before(*i.InviteExpiresAt):
+		return StateInviteExpired
+	default:
+		return StateInvited
+	}
 }
 
 // New constructs an ACTIVE identity. Email is normalised to lower-case (the
@@ -72,6 +153,7 @@ func New(clientID, email, name string, source Source) *Identity {
 		Name:      name,
 		Status:    StatusActive,
 		Source:    source,
+		Apps:      []AppGrant{},
 		CreatedAt: now,
 		UpdatedAt: now,
 	}

@@ -177,6 +177,8 @@ func introspect(ctx context.Context, p *provider.Provider, token string, fromCoo
 			Applications:    apps,
 			AllApplications: allApps || rc.AllApplications,
 			Permissions:     rc.Permissions,
+			// Session cookies are minted only by interactive logins.
+			PrincipalType: auth.PrincipalTypeUser,
 		}, nil
 	}
 
@@ -215,6 +217,7 @@ func introspect(ctx context.Context, p *provider.Provider, token string, fromCoo
 		// the "*" sentinel until consumers have moved off it.
 		AllApplications: allApps || c.AllApplications,
 		Permissions:     perms,
+		PrincipalType:   c.PrincipalType,
 	}, nil
 }
 
@@ -262,6 +265,7 @@ func writeInvalidTokenError(w http.ResponseWriter, err error) {
 //	X-FC-Test-Permissions:  comma-separated permission codes
 //	X-FC-Test-Roles:        comma-separated role names
 //	X-FC-Test-Email:        principal email
+//	X-FC-Test-Principal-Type: USER | SERVICE (default unset)
 func buildTestAuthContext(r *http.Request) *auth.AuthContext {
 	scope := auth.Scope(r.Header.Get("X-FC-Test-Scope"))
 	if scope == "" {
@@ -286,6 +290,9 @@ func buildTestAuthContext(r *http.Request) *auth.AuthContext {
 		Applications:    apps,
 		AllApplications: allApps,
 		Permissions:     splitCSV(r.Header.Get("X-FC-Test-Permissions")),
+		// Unset (the default) = unknown type, exempt from the profile-only
+		// gate; tests of that gate send X-FC-Test-Principal-Type: USER.
+		PrincipalType: r.Header.Get("X-FC-Test-Principal-Type"),
 	}
 }
 

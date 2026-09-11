@@ -36,7 +36,7 @@ func TestPortalCodeRedemption(t *testing.T) {
 	clientEv, err := usecaseop.Run(ctx, uow, clientops.CreateClient(clients),
 		clientops.CreateCommand{Name: "Portal Token Co", Identifier: "portal-token-co"}, testpg.TestEC())
 	require.NoError(t, err)
-	identEv, err := usecaseop.Run(ctx, uow, portalidentity.Ensure(identities, clients),
+	identEv, err := usecaseop.Run(ctx, uow, portalidentity.Ensure(identities, clients, nil),
 		portalidentity.EnsureCommand{ClientID: clientEv.ClientID, Email: "tok@portal-token.test", Source: "INVITE"}, testpg.TestEC())
 	require.NoError(t, err)
 

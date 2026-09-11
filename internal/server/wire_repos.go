@@ -40,6 +40,7 @@ type repoSet struct {
 	principalRepo               *principal.Repository
 	principalGrantRepo          *principal.ClientAccessGrantRepo
 	portalIdentityRepo          *portalidentity.Repository
+	portalAppRepo               *portalidentity.AppRepository
 	serviceAccountRepo          *serviceaccount.Repository
 	authRepo                    *auth.Repository
 	corsRepo                    *cors.Repository
@@ -71,6 +72,7 @@ func buildRepos(pool *pgxpool.Pool) *repoSet {
 		principalRepo:               principal.NewRepository(pool),
 		principalGrantRepo:          principal.NewClientAccessGrantRepo(pool),
 		portalIdentityRepo:          portalidentity.NewRepository(pool),
+		portalAppRepo:               portalidentity.NewAppRepository(pool),
 		serviceAccountRepo:          serviceaccount.NewRepository(pool),
 		authRepo:                    auth.NewRepository(pool),
 		corsRepo:                    cors.NewRepository(pool),

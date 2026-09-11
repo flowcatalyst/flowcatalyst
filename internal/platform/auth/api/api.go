@@ -7,12 +7,14 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalidentity"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -31,7 +33,10 @@ type State struct {
 	// display refs for OAuthClientResponse.Applications. Optional: nil
 	// leaves Applications empty (clients can still use applicationIds).
 	Applications *application.Repository
-	UoW          *usecasepgx.UnitOfWork
+	// PortalApps resolves an OAuth client's portalAppId to its owning client
+	// (which becomes portalClientId). Optional — nil rejects portalAppId.
+	PortalApps *portalidentity.AppRepository
+	UoW        *usecasepgx.UnitOfWork
 	// Enc encrypts the auth-config OIDC client secret before it is persisted,
 	// so a plaintext secret is never stored verbatim. May be nil when
 	// FLOWCATALYST_APP_KEY is unset (saving a plaintext secret is then rejected).
@@ -224,6 +229,9 @@ func (s *State) createOAuthClient(ctx context.Context, in *apicommon.In[CreateOA
 	if _, err := authedAnchor(ctx); err != nil {
 		return nil, err
 	}
+	if err := s.resolvePortalApp(ctx, in.Body.PortalAppID, &in.Body.PortalClientID); err != nil {
+		return nil, err
+	}
 	ec := platformauth.NewExecutionContext(ctx)
 	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateOAuthClient(s.Repo.OAuthClients), in.Body.toCommand(), ec)
 	if err != nil {
@@ -255,6 +263,9 @@ type updateOAuthClientInput struct {
 
 func (s *State) updateOAuthClient(ctx context.Context, in *updateOAuthClientInput) (*apicommon.Empty, error) {
 	if _, err := authedAnchor(ctx); err != nil {
+		return nil, err
+	}
+	if err := s.resolvePortalApp(ctx, in.Body.PortalAppID, &in.Body.PortalClientID); err != nil {
 		return nil, err
 	}
 	ec := platformauth.NewExecutionContext(ctx)
@@ -518,4 +529,31 @@ func (s *State) deleteIdpRoleMapping(ctx context.Context, in *apicommon.IDInput)
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
+}
+
+// resolvePortalApp makes a linked portal app authoritative for the portal
+// owner: portalAppId (when non-empty) must name an existing app, and
+// portalClientId becomes that app's client — a conflicting explicit
+// portalClientId is refused rather than silently overridden.
+func (s *State) resolvePortalApp(ctx context.Context, appID *string, portalClientID **string) error {
+	if appID == nil || strings.TrimSpace(*appID) == "" {
+		return nil
+	}
+	if s.PortalApps == nil {
+		return usecase.Internal("PORTAL_APPS", "portal app repo not wired", nil)
+	}
+	app, err := s.PortalApps.FindByID(ctx, strings.TrimSpace(*appID))
+	if err != nil {
+		return usecase.Internal("REPO", "find_portal_app failed", err)
+	}
+	if app == nil {
+		return httperror.NotFound("PortalApp", *appID)
+	}
+	if pc := *portalClientID; pc != nil && strings.TrimSpace(*pc) != "" && strings.TrimSpace(*pc) != app.ClientID {
+		return usecase.Validation("PORTAL_APP_CLIENT_MISMATCH",
+			"portalAppId belongs to a different client than portalClientId")
+	}
+	owner := app.ClientID
+	*portalClientID = &owner
+	return nil
 }

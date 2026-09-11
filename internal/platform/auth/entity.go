@@ -94,6 +94,11 @@ type OAuthClient struct {
 	// point owned by that tenant client: it is admitted to /portal/authorize
 	// and refused at /oauth/authorize. NULL = ordinary first-party client.
 	PortalClientID *string `json:"portalClientId,omitempty"`
+	// PortalAppID links a portal client to the portal app (portal_apps) it
+	// fronts: logins through it require an app grant and the id_token
+	// carries the app's code. Requires PortalClientID = the app's client.
+	// NULL on a portal client = legacy client-wide portal (no grant check).
+	PortalAppID *string `json:"portalAppId,omitempty"`
 	// APIAccess restores authority-bearing access tokens for this client's
 	// interactive logins: authorization_code/refresh mint token_use=api
 	// tokens (roles/scope/applications narrowed to the client's

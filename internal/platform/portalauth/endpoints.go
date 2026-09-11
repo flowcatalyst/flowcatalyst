@@ -29,9 +29,13 @@ type PasswordResetSender interface {
 type State struct {
 	OAuthClients oauthapi.OAuthClientFinder
 	Identities   *portalidentity.Repository
-	IdPs         *identityprovider.Repository
-	Flows        *FlowRepo
-	AuthCodes    *grantstore.AuthorizationCodeRepository
+	// Apps resolves the portal app a flow's OAuth client fronts; a password
+	// login through an app-linked client needs the identity's grant for it.
+	// Optional — nil skips the app gate (legacy client-wide portals).
+	Apps      *portalidentity.AppRepository
+	IdPs      *identityprovider.Repository
+	Flows     *FlowRepo
+	AuthCodes *grantstore.AuthorizationCodeRepository
 	// PasswordReset backs POST /portal/auth/password-reset (optional — nil
 	// silently accepts requests without sending, like an unconfigured
 	// mailer).
@@ -252,6 +256,25 @@ func (s *State) PasswordLogin(w http.ResponseWriter, r *http.Request) {
 	if err := passwordhash.Verify(body.Password, *ident.PasswordHash); err != nil {
 		writeInvalidCredentials(w)
 		return
+	}
+
+	// App gate — after the password check, so it reveals nothing to someone
+	// who cannot prove the credential.
+	if s.Apps != nil {
+		app, aerr := s.Apps.FindByOAuthClientID(r.Context(), flow.OAuthClientID)
+		if aerr != nil {
+			httperror.Write(w, usecase.Internal("PORTAL_APP", "portal app lookup failed", aerr))
+			return
+		}
+		if app != nil && (!app.Active || !ident.HasApp(app.ID)) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"code":    "NO_PORTAL_ACCESS",
+				"message": "You don't have access to this portal",
+			})
+			return
+		}
 	}
 
 	// Success: single-use the flow, then mint the code.

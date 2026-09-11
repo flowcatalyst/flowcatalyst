@@ -81,10 +81,15 @@ type State struct {
 	// /portal/authorize flows) on the authorization_code grant. Optional —
 	// nil rejects portal codes (fail closed).
 	PortalIdentities *portalidentity.Repository
-	Auth             *authservice.AuthService
-	AuthCodes        *grantstore.AuthorizationCodeRepository
-	RefreshTokens    *grantstore.RefreshTokenRepository
-	PendingAuth      *grantstore.PendingAuthRepository
+	// PortalApps resolves the portal app a portal OAuth client fronts, so
+	// redemption re-checks the identity's app grant and the id_token reports
+	// the app's code. Optional — nil treats every portal client as legacy
+	// client-wide.
+	PortalApps    *portalidentity.AppRepository
+	Auth          *authservice.AuthService
+	AuthCodes     *grantstore.AuthorizationCodeRepository
+	RefreshTokens *grantstore.RefreshTokenRepository
+	PendingAuth   *grantstore.PendingAuthRepository
 	// ValidateSession resolves the principal id + token issue time from a
 	// session-cookie / bearer token on /oauth/authorize, returning ok=false
 	// when the token is absent, invalid, or expired (authorize then

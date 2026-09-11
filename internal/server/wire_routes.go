@@ -86,6 +86,9 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			Provider:         svcs.authProvider,
 			AllowTestHeaders: cfg.AuthAllowTestHeaders,
 		}))
+		// A USER with no platform role reaches only their own profile
+		// (/auth/*, GET /api/me) — see ProfileOnlyWithoutRole.
+		r.Use(platformmw.ProfileOnlyWithoutRole)
 		// /auth/me — needs the AuthContext, so mounted INSIDE the auth
 		// group. /auth/check-domain + /auth/login + /auth/logout are
 		// public (see registerPublicRoutes).
@@ -154,6 +157,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 
 		portalusersapi.Register(humaAPI, &portalusersapi.State{
 			Identities:   repos.portalIdentityRepo,
+			Apps:         repos.portalAppRepo,
 			Clients:      repos.clientRepo,
 			OAuthClients: repos.authRepo.OAuthClients,
 			UoW:          uow,
@@ -183,6 +187,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		authapi.Register(humaAPI, &authapi.State{
 			Repo:         repos.authRepo,
 			Applications: repos.applicationRepo,
+			PortalApps:   repos.portalAppRepo,
 			UoW:          uow,
 			Enc:          svcs.encSvc,
 		})
@@ -251,6 +256,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		portalAuthState := &portalauth.State{
 			OAuthClients:      repos.authRepo.OAuthClients,
 			Identities:        repos.portalIdentityRepo,
+			Apps:              repos.portalAppRepo,
 			IdPs:              repos.idpRepo,
 			Flows:             portalFlowRepo,
 			AuthCodes:         grantstore.NewAuthorizationCodeRepository(pool),
@@ -262,6 +268,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			Flows:      portalFlowRepo,
 			Identities: repos.portalIdentityRepo,
 			Clients:    repos.clientRepo,
+			Apps:       repos.portalAppRepo,
 			IssueCode:  portalAuthState.IssueCode,
 		}
 		oidcGov := ratelimit.NewGovernor(ratelimit.OIDCBridgeGovernorFromEnv())

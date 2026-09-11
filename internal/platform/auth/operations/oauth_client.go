@@ -31,6 +31,7 @@ type CreateOAuthClientCommand struct {
 	PrincipalID            *string  `json:"principalId,omitempty"`
 	PKCERequired           *bool    `json:"pkceRequired,omitempty"`
 	PortalClientID         *string  `json:"portalClientId,omitempty"`
+	PortalAppID            *string  `json:"portalAppId,omitempty"`
 	APIAccess              *bool    `json:"apiAccess,omitempty"`
 }
 
@@ -85,6 +86,10 @@ func CreateOAuthClient(repo *auth.OAuthClientRepo) usecaseop.Operation[CreateOAu
 				trimmed := strings.TrimSpace(*cmd.PortalClientID)
 				c.PortalClientID = &trimmed
 			}
+			if cmd.PortalAppID != nil && strings.TrimSpace(*cmd.PortalAppID) != "" {
+				trimmed := strings.TrimSpace(*cmd.PortalAppID)
+				c.PortalAppID = &trimmed
+			}
 			if cmd.APIAccess != nil {
 				c.APIAccess = *cmd.APIAccess
 			}
@@ -127,6 +132,7 @@ type UpdateOAuthClientCommand struct {
 	ApplicationIDs         []string `json:"applicationIds,omitempty"`
 	PKCERequired           *bool    `json:"pkceRequired,omitempty"`
 	PortalClientID         *string  `json:"portalClientId,omitempty"`
+	PortalAppID            *string  `json:"portalAppId,omitempty"`
 	APIAccess              *bool    `json:"apiAccess,omitempty"`
 }
 
@@ -181,8 +187,17 @@ func UpdateOAuthClient(repo *auth.OAuthClientRepo) usecaseop.Operation[UpdateOAu
 				// Empty string clears the portal flag; a value sets it.
 				if trimmed := strings.TrimSpace(*cmd.PortalClientID); trimmed == "" {
 					c.PortalClientID = nil
+					c.PortalAppID = nil // no portal, no portal app
 				} else {
 					c.PortalClientID = &trimmed
+				}
+			}
+			if cmd.PortalAppID != nil {
+				// Empty string unlinks the portal app; a value links it.
+				if trimmed := strings.TrimSpace(*cmd.PortalAppID); trimmed == "" {
+					c.PortalAppID = nil
+				} else {
+					c.PortalAppID = &trimmed
 				}
 			}
 			if cmd.APIAccess != nil {
@@ -206,9 +221,14 @@ func UpdateOAuthClient(repo *auth.OAuthClientRepo) usecaseop.Operation[UpdateOAu
 // portal identities carry no platform authority, so a portal client must
 // never mint authority-bearing tokens.
 func validatePlaneFlags(c *auth.OAuthClient) error {
-	if c.APIAccess && c.PortalClientID != nil && *c.PortalClientID != "" {
+	isPortal := c.PortalClientID != nil && *c.PortalClientID != ""
+	if c.APIAccess && isPortal {
 		return usecase.Validation("PORTAL_API_ACCESS_CONFLICT",
 			"a portal client cannot have apiAccess — portal identities never carry platform authority")
+	}
+	if c.PortalAppID != nil && *c.PortalAppID != "" && !isPortal {
+		return usecase.Validation("PORTAL_APP_REQUIRES_PORTAL_CLIENT",
+			"a portal app can only be linked to a portal client (portalClientId)")
 	}
 	return nil
 }
@@ -459,3 +479,9 @@ func generateSecret() (plaintext, ref string, err error) {
 	}
 	return plaintext, enc.Hash(plaintext), nil
 }
+
+// GenerateClientSecret mints a fresh confidential-client secret: the
+// plaintext (show once, never store) and the hashed ref for
+// OAuthClient.SetSecretRef. For orchestrations that create an OAuth client
+// inside their own transaction (e.g. portal-app provisioning).
+func GenerateClientSecret() (plaintext, ref string, err error) { return generateSecret() }

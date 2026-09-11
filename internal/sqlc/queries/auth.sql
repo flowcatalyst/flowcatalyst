@@ -13,7 +13,8 @@
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
        active, created_at, updated_at, portal_client_id, api_access,
-       previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at
+       previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at,
+       portal_app_id
 FROM oauth_clients
 WHERE id = $1;
 
@@ -21,7 +22,8 @@ WHERE id = $1;
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
        active, created_at, updated_at, portal_client_id, api_access,
-       previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at
+       previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at,
+       portal_app_id
 FROM oauth_clients
 WHERE client_id = $1;
 
@@ -29,7 +31,8 @@ WHERE client_id = $1;
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
        active, created_at, updated_at, portal_client_id, api_access,
-       previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at
+       previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at,
+       portal_app_id
 FROM oauth_clients
 ORDER BY client_name;
 
@@ -38,8 +41,9 @@ INSERT INTO oauth_clients
     (id, client_id, client_name, client_type, client_secret_ref,
      default_scopes, pkce_required, service_account_principal_id,
      active, created_at, updated_at, portal_client_id, api_access,
-     previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+     previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at,
+     portal_app_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 ON CONFLICT (id) DO UPDATE SET
     client_id = EXCLUDED.client_id,
     client_name = EXCLUDED.client_name,
@@ -54,7 +58,8 @@ ON CONFLICT (id) DO UPDATE SET
     active = EXCLUDED.active,
     updated_at = EXCLUDED.updated_at,
     portal_client_id = EXCLUDED.portal_client_id,
-    api_access = EXCLUDED.api_access;
+    api_access = EXCLUDED.api_access,
+    portal_app_id = EXCLUDED.portal_app_id;
 
 -- name: OAuthClientFindByPortalClient :many
 -- Portal-flagged OAuth clients owned by a tenant client — consulted when
@@ -62,7 +67,8 @@ ON CONFLICT (id) DO UPDATE SET
 SELECT id, client_id, client_name, client_type, client_secret_ref,
        default_scopes, pkce_required, service_account_principal_id,
        active, created_at, updated_at, portal_client_id, api_access,
-       previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at
+       previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at,
+       portal_app_id
 FROM oauth_clients
 WHERE portal_client_id = $1
 ORDER BY client_name;

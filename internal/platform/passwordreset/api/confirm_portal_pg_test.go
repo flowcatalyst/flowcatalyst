@@ -42,7 +42,7 @@ func TestConfirmPortalReset_PolicyViolationIs400(t *testing.T) {
 	require.NoError(t, err)
 
 	name := "Bartholomew Kuznetsov"
-	identEv, err := usecaseop.Run(ctx, uow, portalidentity.Ensure(identities, clients),
+	identEv, err := usecaseop.Run(ctx, uow, portalidentity.Ensure(identities, clients, nil),
 		portalidentity.EnsureCommand{
 			ClientID: clientEv.ClientID, Email: "bart@confirmportal.test",
 			Name: &name, Source: "INVITE",

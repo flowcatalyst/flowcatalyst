@@ -91,6 +91,10 @@ type PortalBridge struct {
 	Flows      *portalauth.FlowRepo
 	Identities *portalidentity.Repository
 	Clients    *client.Repository
+	// Apps resolves the portal app an OAuth client fronts: a login through
+	// an app-linked client needs the identity to hold that app's grant (a
+	// first SSO login JIT-grants it).
+	Apps *portalidentity.AppRepository
 	// IssueCode is portalauth.State.IssueCode — mints the chained
 	// authorization code with a portal-identity subject.
 	IssueCode func(r *http.Request, flow *portalauth.LoginFlow, subjectID string) (string, error)
@@ -945,6 +949,22 @@ func (e *LoginEndpoint) handlePortalCallback(w http.ResponseWriter, r *http.Requ
 	}
 	portalClientID := *loginState.PortalClientID
 
+	// The portal app this OAuth client fronts (nil = legacy client-wide
+	// portal: no grant required).
+	var app *portalidentity.App
+	if e.Portal.Apps != nil {
+		a, aerr := e.Portal.Apps.FindByOAuthClientID(r.Context(), *loginState.OAuthClientID)
+		if aerr != nil {
+			httperror.Write(w, usecase.Internal("PORTAL_APP", "portal app lookup failed", aerr))
+			return
+		}
+		app = a
+	}
+	if app != nil && !app.Active {
+		e.portalErrorRedirect(w, r, loginState, "access_denied", "This portal is not currently available")
+		return
+	}
+
 	ident, err := e.Portal.Identities.FindByClientAndEmail(r.Context(), portalClientID, email)
 	if err != nil {
 		httperror.Write(w, usecase.Internal("IDENTITY", "identity lookup failed", err))
@@ -960,10 +980,12 @@ func (e *LoginEndpoint) handlePortalCallback(w http.ResponseWriter, r *http.Requ
 			namePtr = &trimmed
 		}
 		ev, eerr := usecaseop.Run(r.Context(), e.uow,
-			portalidentity.Ensure(e.Portal.Identities, e.Portal.Clients),
+			portalidentity.Ensure(e.Portal.Identities, e.Portal.Clients, e.Portal.Apps),
 			portalidentity.EnsureCommand{
 				ClientID: portalClientID, Email: email, Name: namePtr,
 				Source: string(portalidentity.SourceJIT),
+				// First login JIT-grants the app it came through.
+				PortalAppID: appIDOf(app),
 			}, usecase.NewExecutionContext(""))
 		if eerr != nil {
 			httperror.Write(w, eerr)
@@ -977,6 +999,11 @@ func (e *LoginEndpoint) handlePortalCallback(w http.ResponseWriter, r *http.Requ
 	case ident.Status != portalidentity.StatusActive:
 		// Suspended stays suspended — an SSO login must never self-reactivate.
 		e.portalErrorRedirect(w, r, loginState, "access_denied", "This account is suspended for this portal")
+		return
+	case app != nil && !ident.HasApp(app.ID):
+		// An existing identity (e.g. one granted another of the client's
+		// portals) is not JIT-granted this one — access is the portal's call.
+		e.portalErrorRedirect(w, r, loginState, "access_denied", "You don't have access to this portal")
 		return
 	}
 
@@ -1011,4 +1038,12 @@ func (e *LoginEndpoint) portalErrorRedirect(w http.ResponseWriter, r *http.Reque
 		"&error_description=" + url.QueryEscape(desc) +
 		"&state=" + url.QueryEscape(*loginState.OAuthState)
 	http.Redirect(w, r, u, http.StatusFound) //nolint:gosec // G710: redirect target validated at /portal/authorize
+}
+
+// appIDOf is the app's id, or "" for a legacy client-wide portal.
+func appIDOf(app *portalidentity.App) string {
+	if app == nil {
+		return ""
+	}
+	return app.ID
 }

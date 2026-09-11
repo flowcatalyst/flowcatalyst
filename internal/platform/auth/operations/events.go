@@ -436,3 +436,14 @@ func (e IdpRoleMappingDeleted) ToDataJSON() ([]byte, error) {
 		IdpRoleName string `json:"idpRoleName"`
 	}{e.MappingID, e.IdpRoleName})
 }
+
+// NewOAuthClientDeletedEvent builds the deletion event for orchestrations
+// that delete an OAuth client inside their own transaction (e.g. deleting a
+// portal app together with its portal OAuth clients).
+func NewOAuthClientDeletedEvent(ec usecase.ExecutionContext, oauthID, clientID string) OAuthClientDeleted {
+	return OAuthClientDeleted{
+		Metadata:      usecase.NewEventMetadata(ec, OAuthClientDeletedType, Source, oauthSubject(oauthID)),
+		OAuthClientID: oauthID,
+		ClientID:      clientID,
+	}
+}

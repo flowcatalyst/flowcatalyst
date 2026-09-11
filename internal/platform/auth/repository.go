@@ -228,6 +228,7 @@ func (r *OAuthClientRepo) Persist(ctx context.Context, c *OAuthClient, tx *useca
 		UpdatedAt:                 now,
 		PortalClientID:            c.PortalClientID,
 		ApiAccess:                 c.APIAccess,
+		PortalAppID:               c.PortalAppID,
 	}); err != nil {
 		return fmt.Errorf("oauth_client persist: %w", err)
 	}
@@ -453,6 +454,7 @@ func rowToOAuthClient(row dbq.OauthClient) (*OAuthClient, error) {
 		Active:                   row.Active,
 		PrincipalID:              row.ServiceAccountPrincipalID,
 		PortalClientID:           row.PortalClientID,
+		PortalAppID:              row.PortalAppID,
 		APIAccess:                row.ApiAccess,
 		CreatedAt:                row.CreatedAt,
 		UpdatedAt:                row.UpdatedAt,
