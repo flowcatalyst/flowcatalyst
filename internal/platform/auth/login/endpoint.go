@@ -44,9 +44,9 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 )
 
-// SessionTTL is the cookie lifetime fc-server uses. 24h flat
-// for both dev and regular use, so we hardcode it here rather than
-// thread it through env. Override at link time if you need to.
+// SessionTTL is the session cookie (and session JWT) lifetime. Default 24h;
+// fc-server sets it once at startup from OIDC_SESSION_TTL, before any route
+// that reads it is wired.
 var SessionTTL = 24 * time.Hour
 
 // Config bundles the dependencies the handlers need.

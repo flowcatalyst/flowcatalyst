@@ -33,13 +33,15 @@ const (
 	refreshTokenPayloadType = "RefreshToken"
 
 	authCodeDefaultExpiry = 10 * time.Minute
-	// refreshTokenDefaultExpiry is the lifetime stamped on a freshly issued
-	// refresh token. It is also the family's ABSOLUTE cap: Rotate carries this
-	// original deadline forward on every rotation instead of extending it, so a
-	// refresh-token family dies one week after first issuance no matter how
-	// often it is rotated, forcing a re-login.
-	refreshTokenDefaultExpiry = 7 * 24 * time.Hour
 )
+
+// RefreshTokenTTL is the lifetime stamped on a freshly issued refresh token.
+// It is also the family's ABSOLUTE cap: Rotate carries this original deadline
+// forward on every rotation instead of extending it, so a refresh-token family
+// dies this long after first issuance no matter how often it is rotated,
+// forcing a re-login. Default one week; fc-server sets it once at startup from
+// OIDC_REFRESH_TOKEN_TTL, before any token is issued.
+var RefreshTokenTTL = 7 * 24 * time.Hour
 
 // ─── Authorization Code ─────────────────────────────────────────────────
 
@@ -277,7 +279,7 @@ func NewRefreshToken(tokenHash, principalID string) *RefreshToken {
 		TokenHash:   tokenHash,
 		PrincipalID: principalID,
 		CreatedAt:   now,
-		ExpiresAt:   now.Add(refreshTokenDefaultExpiry),
+		ExpiresAt:   now.Add(RefreshTokenTTL),
 	}
 }
 
@@ -534,7 +536,7 @@ func scanRefreshToken(row pgx.Row) (*RefreshToken, error) {
 	if err := json.Unmarshal(payload, &p); err != nil {
 		return nil, fmt.Errorf("unmarshal refresh-token payload: %w", err)
 	}
-	exp := createdAt.Add(refreshTokenDefaultExpiry)
+	exp := createdAt.Add(RefreshTokenTTL)
 	if expiresAt != nil {
 		exp = *expiresAt
 	}

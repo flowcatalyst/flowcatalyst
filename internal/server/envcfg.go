@@ -43,8 +43,19 @@ type EnvCfg struct {
 	// into each dispatch message's mediation_target. The router POSTs
 	// {messageId} here and THIS platform endpoint performs the actual
 	// webhook delivery + status transitions (POST /api/dispatch/process).
-	// Empty → derived from the local API listener at load time.
+	// Empty → derived from the local API listener at load time. On ECS the
+	// router is a separate task, so the deployment must point this at the
+	// platform (DISPATCH_SCHEDULER_PROCESSING_ENDPOINT in the task defs).
 	DispatchProcessingEndpoint string
+
+	// Token and session lifetimes, in seconds. Always positive: an unset,
+	// unparseable, or non-positive value falls back to the default.
+	//   SessionTTLSecs      — session cookie + session JWT (OIDC_SESSION_TTL, default 24h)
+	//   AccessTokenTTLSecs  — access tokens (FC_JWT_ACCESS_TOKEN_TTL_SECS / OIDC_ACCESS_TOKEN_TTL, default 1h)
+	//   RefreshTokenTTLSecs — refresh-token family absolute cap (OIDC_REFRESH_TOKEN_TTL, default 7d)
+	SessionTTLSecs      int
+	AccessTokenTTLSecs  int
+	RefreshTokenTTLSecs int
 
 	// MCPPort is the listener for the MCP subsystem. Default 8090.
 	MCPPort int
@@ -246,7 +257,15 @@ func LoadEnv() EnvCfg {
 		MCPClientID:     os.Getenv("FLOWCATALYST_CLIENT_ID"),
 		MCPClientSecret: os.Getenv("FLOWCATALYST_CLIENT_SECRET"),
 
-		DispatchProcessingEndpoint: envOr("FC_DISPATCH_PROCESSING_ENDPOINT", ""),
+		// DISPATCH_SCHEDULER_PROCESSING_ENDPOINT is the name the ECS task
+		// definitions set (worker + platform).
+		DispatchProcessingEndpoint: envFirst("FC_DISPATCH_PROCESSING_ENDPOINT", "DISPATCH_SCHEDULER_PROCESSING_ENDPOINT", ""),
+
+		// OIDC_* are the names the ECS task definitions set; the FC_* name
+		// wins where one exists.
+		SessionTTLSecs:      positiveOr(envInt("OIDC_SESSION_TTL", 0), 24*60*60),
+		AccessTokenTTLSecs:  positiveOr(envIntAlias("FC_JWT_ACCESS_TOKEN_TTL_SECS", "OIDC_ACCESS_TOKEN_TTL", 0), 60*60),
+		RefreshTokenTTLSecs: positiveOr(envInt("OIDC_REFRESH_TOKEN_TTL", 0), 7*24*60*60),
 	}
 	// Default the dispatch callback to the local API listener: the router
 	// consumes a queued job and POSTs {messageId} here for delivery.
@@ -332,6 +351,13 @@ func envFirst(keys ...string) string {
 		if v := os.Getenv(k); v != "" {
 			return v
 		}
+	}
+	return def
+}
+
+func positiveOr(n, def int) int {
+	if n > 0 {
+		return n
 	}
 	return def
 }

@@ -52,6 +52,11 @@ type serviceSet struct {
 func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet, error) {
 	svcs := &serviceSet{}
 
+	// Session + refresh-token lifetimes are package-level settings read at
+	// issue time; set them before any route that mints either is wired.
+	login.SessionTTL = time.Duration(cfg.SessionTTLSecs) * time.Second
+	grantstore.RefreshTokenTTL = time.Duration(cfg.RefreshTokenTTLSecs) * time.Second
+
 	// ── Auth provider (claims projection + session JWTs) ───────────────
 	// SigningKey is supplied via cfg.JWTSigningKeyPath in production. In
 	// dev we fall back to a generated ephemeral key so the binary can
@@ -85,8 +90,10 @@ func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet,
 		RSAPublicKeyPreviousPEM: cfg.JWTPreviousPublicKey,
 		// Token responses derive expires_in from this, so raising it moves
 		// both the minted exp and the advertised lifetime together.
-		AccessTokenExpirySecs: int64(envutil.Int("FC_JWT_ACCESS_TOKEN_TTL_SECS", 3600)),
-		IDTokenExpirySecs:     300,
+		AccessTokenExpirySecs:  int64(cfg.AccessTokenTTLSecs),
+		SessionTokenExpirySecs: int64(cfg.SessionTTLSecs),
+		RefreshTokenExpirySecs: int64(cfg.RefreshTokenTTLSecs),
+		IDTokenExpirySecs:      300,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("authservice init: %w", err)

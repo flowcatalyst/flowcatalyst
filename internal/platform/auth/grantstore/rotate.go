@@ -71,7 +71,7 @@ func Rotate(ctx context.Context, repo *RefreshTokenRepository, rawToken string, 
 	entity.AuthTime = stored.AuthTime
 	// Inherit the presented token's expiry rather than the fresh
 	// now+default GenerateTokenPair stamped on. The original deadline is the
-	// family's absolute one-week cap (see refreshTokenDefaultExpiry); carrying
+	// family's absolute cap (see RefreshTokenTTL); carrying
 	// it forward unchanged means rotation renews the access token without ever
 	// extending the refresh window, so a stolen-then-rotated chain still can't
 	// outlive the cap.

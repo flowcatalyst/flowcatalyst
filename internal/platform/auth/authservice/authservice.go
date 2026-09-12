@@ -209,7 +209,7 @@ type Config struct {
 	// SessionTokenExpirySecs is the session-cookie lifetime (default 86400).
 	SessionTokenExpirySecs int64
 	// RefreshTokenExpirySecs is the refresh-token lifetime (default 7d — the
-	// absolute family cap enforced by grantstore, see refreshTokenDefaultExpiry).
+	// absolute family cap enforced by grantstore, see RefreshTokenTTL).
 	RefreshTokenExpirySecs int64
 	// IDTokenExpirySecs is the OIDC ID token lifetime (default 300). Kept
 	// short and independent of AccessTokenExpirySecs: the ID token is only
