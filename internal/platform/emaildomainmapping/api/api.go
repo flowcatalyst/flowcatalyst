@@ -52,7 +52,7 @@ func Register(api huma.API, s *State) {
 
 func (s *State) list(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[MappingListResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanReadEmailDomainMappings(ac); err != nil {
 		return nil, err
 	}
 	rows, err := s.Repo.FindAll(ctx)
@@ -105,7 +105,7 @@ func (s *State) idpName(ctx context.Context, idpID string) *string {
 
 func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[MappingResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanReadEmailDomainMappings(ac); err != nil {
 		return nil, err
 	}
 	e, err := s.Repo.FindByID(ctx, in.ID)
@@ -122,7 +122,7 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreateMappingReques
 	// Coarse anchor check at the controller: email-domain mappings are
 	// platform-owned config with no per-client resource dimension, so the use
 	// case carries no resource-level authz (Authorize = usecaseop.Public).
-	if err := auth.RequireAnchor(auth.FromContext(ctx)); err != nil {
+	if err := auth.CanCreateEmailDomainMappings(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -141,7 +141,7 @@ type updateInput struct {
 func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, error) {
 	// Coarse anchor check at the controller (see create): no resource-level
 	// authz in the use case.
-	if err := auth.RequireAnchor(auth.FromContext(ctx)); err != nil {
+	if err := auth.CanUpdateEmailDomainMappings(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -161,7 +161,7 @@ type moveProviderInput struct {
 func (s *State) moveProvider(ctx context.Context, in *moveProviderInput) (*apicommon.Out[MoveProviderResponse], error) {
 	// Coarse anchor check at the controller (see create): no resource-level
 	// authz in the use case.
-	if err := auth.RequireAnchor(auth.FromContext(ctx)); err != nil {
+	if err := auth.CanUpdateEmailDomainMappings(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -185,7 +185,7 @@ func (s *State) moveProvider(ctx context.Context, in *moveProviderInput) (*apico
 func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	// Coarse anchor check at the controller (see create): no resource-level
 	// authz in the use case.
-	if err := auth.RequireAnchor(auth.FromContext(ctx)); err != nil {
+	if err := auth.CanDeleteEmailDomainMappings(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -229,7 +229,7 @@ type byDomainInput struct {
 // when no mapping exists for the domain.
 func (s *State) byDomain(ctx context.Context, in *byDomainInput) (*apicommon.Out[MappingResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanReadEmailDomainMappings(ac); err != nil {
 		return nil, err
 	}
 	if in.Domain == "" {

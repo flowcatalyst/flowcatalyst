@@ -73,7 +73,43 @@ const (
 	permProcessDelete = "platform:messaging:process:delete"
 	permProcessSync   = "platform:messaging:process:sync"
 	// Client (admin)
-	permAdminClientView = "platform:admin:client:view"
+	permAdminClientView       = "platform:admin:client:view"
+	permAdminClientCreate     = "platform:admin:client:create"
+	permAdminClientUpdate     = "platform:admin:client:update"
+	permAdminClientDelete     = "platform:admin:client:delete"
+	permAdminClientActivate   = "platform:admin:client:activate"
+	permAdminClientSuspend    = "platform:admin:client:suspend"
+	permAdminClientDeactivate = "platform:admin:client:deactivate"
+	// Families that were anchor-only with no permission gate until the anchor
+	// bypass was withdrawn. Every code here already existed in the seed.
+	permOAuthClientView             = "platform:auth:oauth-client:view"
+	permOAuthClientCreate           = "platform:auth:oauth-client:create"
+	permOAuthClientUpdate           = "platform:auth:oauth-client:update"
+	permOAuthClientDelete           = "platform:auth:oauth-client:delete"
+	permOAuthClientRegenerateSecret = "platform:auth:oauth-client:regenerate-secret"
+	permIdpView                     = "platform:iam:idp:view"
+	permIdpCreate                   = "platform:iam:idp:create"
+	permIdpUpdate                   = "platform:iam:idp:update"
+	permIdpDelete                   = "platform:iam:idp:delete"
+	permAnchorDomainView            = "platform:admin:anchor-domain:view"
+	permAnchorDomainCreate          = "platform:admin:anchor-domain:create"
+	permAnchorDomainUpdate          = "platform:admin:anchor-domain:update"
+	permAnchorDomainDelete          = "platform:admin:anchor-domain:delete"
+	permClientAuthConfigView        = "platform:auth:client-auth-config:view"
+	permClientAuthConfigCreate      = "platform:auth:client-auth-config:create"
+	permClientAuthConfigUpdate      = "platform:auth:client-auth-config:update"
+	permClientAuthConfigDelete      = "platform:auth:client-auth-config:delete"
+	permEmailDomainMappingView      = "platform:iam:email-domain-mapping:view"
+	permEmailDomainMappingCreate    = "platform:iam:email-domain-mapping:create"
+	permEmailDomainMappingUpdate    = "platform:iam:email-domain-mapping:update"
+	permEmailDomainMappingDelete    = "platform:iam:email-domain-mapping:delete"
+	permAdminConfigView             = "platform:admin:config:view"
+	permAdminConfigUpdate           = "platform:admin:config:update"
+	permCorsOriginView              = "platform:admin:cors-origin:view"
+	permCorsOriginCreate            = "platform:admin:cors-origin:create"
+	permCorsOriginDelete            = "platform:admin:cors-origin:delete"
+	permLoginAttemptView            = "platform:admin:login-attempt:view"
+	permAppOpenApiView              = "platform:developer:application-openapi:view"
 	// Application (admin)
 	permApplicationView   = "platform:admin:application:view"
 	permApplicationCreate = "platform:admin:application:create"
@@ -641,13 +677,109 @@ func CanWriteServiceAccounts(a *AuthContext) error {
 	return requireAny(a, permServiceAccountCreate, permServiceAccountUpdate, permServiceAccountDelete)
 }
 
+// ── Reach + authority ────────────────────────────────────────────────────
+
+// anchorWith is the gate for a platform-owner route: anchor reach first, then
+// the permission its roles must grant.
+//
+// These families were anchor-only and carried NO permission gate, which was
+// invisible while anchor scope satisfied every gate. With that bypass gone,
+// "anchor" alone would have meant any anchor principal — a read-only staff
+// role, a provisioned service account — could write here.
+func anchorWith(a *AuthContext, perm string) error {
+	if err := RequireAnchor(a); err != nil {
+		return err
+	}
+	return requirePermission(a, perm)
+}
+
 // ── Client (tenant) permissions ──────────────────────────────────────────
 // Anchor-only by convention — tenant management is platform-owner work.
-func CanReadClients(a *AuthContext) error   { return RequireAnchor(a) }
-func CanCreateClients(a *AuthContext) error { return RequireAnchor(a) }
-func CanUpdateClients(a *AuthContext) error { return RequireAnchor(a) }
-func CanDeleteClients(a *AuthContext) error { return RequireAnchor(a) }
-func CanWriteClients(a *AuthContext) error  { return RequireAnchor(a) }
+func CanReadClients(a *AuthContext) error   { return anchorWith(a, permAdminClientView) }
+func CanCreateClients(a *AuthContext) error { return anchorWith(a, permAdminClientCreate) }
+func CanUpdateClients(a *AuthContext) error { return anchorWith(a, permAdminClientUpdate) }
+func CanDeleteClients(a *AuthContext) error { return anchorWith(a, permAdminClientDelete) }
+func CanWriteClients(a *AuthContext) error {
+	if err := RequireAnchor(a); err != nil {
+		return err
+	}
+	return requireAny(a, permAdminClientCreate, permAdminClientUpdate, permAdminClientDelete)
+}
+
+// Lifecycle transitions have their own codes rather than folding into update:
+// suspending a client stops its traffic, which is an operational act a
+// role may grant without granting edits.
+func CanActivateClients(a *AuthContext) error   { return anchorWith(a, permAdminClientActivate) }
+func CanSuspendClients(a *AuthContext) error    { return anchorWith(a, permAdminClientSuspend) }
+func CanDeactivateClients(a *AuthContext) error { return anchorWith(a, permAdminClientDeactivate) }
+
+// ── OAuth client (auth) ──────────────────────────────────────────────────
+func CanReadOAuthClients(a *AuthContext) error   { return anchorWith(a, permOAuthClientView) }
+func CanCreateOAuthClients(a *AuthContext) error { return anchorWith(a, permOAuthClientCreate) }
+func CanUpdateOAuthClients(a *AuthContext) error { return anchorWith(a, permOAuthClientUpdate) }
+func CanDeleteOAuthClients(a *AuthContext) error { return anchorWith(a, permOAuthClientDelete) }
+
+// CanRotateOAuthClientSecrets covers rotate, regenerate and revoke-previous:
+// all three mint or withdraw a credential, which is the act the
+// regenerate-secret code names.
+func CanRotateOAuthClientSecrets(a *AuthContext) error {
+	return anchorWith(a, permOAuthClientRegenerateSecret)
+}
+
+// ── Identity provider (iam) ──────────────────────────────────────────────
+func CanReadIdentityProviders(a *AuthContext) error   { return anchorWith(a, permIdpView) }
+func CanCreateIdentityProviders(a *AuthContext) error { return anchorWith(a, permIdpCreate) }
+func CanUpdateIdentityProviders(a *AuthContext) error { return anchorWith(a, permIdpUpdate) }
+func CanDeleteIdentityProviders(a *AuthContext) error { return anchorWith(a, permIdpDelete) }
+
+// ── Anchor domain (admin) ────────────────────────────────────────────────
+func CanReadAnchorDomains(a *AuthContext) error   { return anchorWith(a, permAnchorDomainView) }
+func CanCreateAnchorDomains(a *AuthContext) error { return anchorWith(a, permAnchorDomainCreate) }
+func CanUpdateAnchorDomains(a *AuthContext) error { return anchorWith(a, permAnchorDomainUpdate) }
+func CanDeleteAnchorDomains(a *AuthContext) error { return anchorWith(a, permAnchorDomainDelete) }
+
+// ── Client auth config (auth) ────────────────────────────────────────────
+func CanReadAuthConfigs(a *AuthContext) error   { return anchorWith(a, permClientAuthConfigView) }
+func CanCreateAuthConfigs(a *AuthContext) error { return anchorWith(a, permClientAuthConfigCreate) }
+func CanUpdateAuthConfigs(a *AuthContext) error { return anchorWith(a, permClientAuthConfigUpdate) }
+func CanDeleteAuthConfigs(a *AuthContext) error { return anchorWith(a, permClientAuthConfigDelete) }
+
+// ── Email domain mapping (iam) ───────────────────────────────────────────
+func CanReadEmailDomainMappings(a *AuthContext) error {
+	return anchorWith(a, permEmailDomainMappingView)
+}
+
+func CanCreateEmailDomainMappings(a *AuthContext) error {
+	return anchorWith(a, permEmailDomainMappingCreate)
+}
+
+func CanUpdateEmailDomainMappings(a *AuthContext) error {
+	return anchorWith(a, permEmailDomainMappingUpdate)
+}
+
+func CanDeleteEmailDomainMappings(a *AuthContext) error {
+	return anchorWith(a, permEmailDomainMappingDelete)
+}
+
+// ── Platform config (admin) ──────────────────────────────────────────────
+// The per-application access GRANTS fold under the config codes: a grant is
+// configuration about configuration, not a resource of its own. The property
+// routes keep their own access-grant gate and are deliberately not covered
+// here — a non-anchor grant holder acts there without a permission code.
+func CanReadPlatformConfig(a *AuthContext) error   { return anchorWith(a, permAdminConfigView) }
+func CanUpdatePlatformConfig(a *AuthContext) error { return anchorWith(a, permAdminConfigUpdate) }
+
+// ── CORS origin (admin) ──────────────────────────────────────────────────
+func CanReadCorsOrigins(a *AuthContext) error   { return anchorWith(a, permCorsOriginView) }
+func CanCreateCorsOrigins(a *AuthContext) error { return anchorWith(a, permCorsOriginCreate) }
+func CanDeleteCorsOrigins(a *AuthContext) error { return anchorWith(a, permCorsOriginDelete) }
+
+// ── Login attempts (admin) ───────────────────────────────────────────────
+func CanReadLoginAttempts(a *AuthContext) error { return anchorWith(a, permLoginAttemptView) }
+
+// ── Developer portal (developer) ─────────────────────────────────────────
+func CanReadDeveloperPortal(a *AuthContext) error { return anchorWith(a, permAppOpenApiView) }
+func CanSyncPlatformOpenAPI(a *AuthContext) error { return anchorWith(a, permAppOpenApiSync) }
 
 // ── Principal (user) permissions ─────────────────────────────────────────
 func CanReadPrincipals(a *AuthContext) error   { return requirePermission(a, permUserView) }
@@ -707,10 +839,14 @@ func CanReadPlatformDocs(a *AuthContext) error { return requirePermission(a, per
 // confined to their own app by requireAppAccess at the handler).
 func CanSyncAppDocs(a *AuthContext) error { return requireAny(a, permAppSvcDocsSync) }
 
-// ── Identity provider permissions ────────────────────────────────────────
-// Anchor-only — IDPs are platform-level config.
-func CanReadIdentityProviders(a *AuthContext) error  { return RequireAnchor(a) }
-func CanWriteIdentityProviders(a *AuthContext) error { return RequireAnchor(a) }
+// CanWriteIdentityProviders covers any of the three IdP writes, for callers
+// that gate a mixed handler. The per-verb checks are above.
+func CanWriteIdentityProviders(a *AuthContext) error {
+	if err := RequireAnchor(a); err != nil {
+		return err
+	}
+	return requireAny(a, permIdpCreate, permIdpUpdate, permIdpDelete)
+}
 
 // ── Scheduled job permissions ────────────────────────────────────────────
 func CanReadScheduledJobs(a *AuthContext) error { return requirePermission(a, permScheduledJobView) }

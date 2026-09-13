@@ -154,9 +154,12 @@ func Register(api huma.API, s *State) {
 
 // ── shared helpers ────────────────────────────────────────────────────────
 
-func authedAnchor(ctx context.Context) (*platformauth.AuthContext, error) {
+// authedWith is reach THEN authority: every route here is anchor-only, and
+// each also needs the permission its family's roles grant. The check func is
+// the family's own Can* helper, which applies both.
+func authedWith(ctx context.Context, check func(*platformauth.AuthContext) error) (*platformauth.AuthContext, error) {
 	ac := platformauth.FromContext(ctx)
-	if err := platformauth.RequireAnchor(ac); err != nil {
+	if err := check(ac); err != nil {
 		return nil, err
 	}
 	return ac, nil
@@ -165,7 +168,7 @@ func authedAnchor(ctx context.Context) (*platformauth.AuthContext, error) {
 // ── OAuthClient ───────────────────────────────────────────────────────────
 
 func (s *State) listOAuthClients(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[OAuthClientListResponse], error) {
-	if _, err := authedAnchor(ctx); err != nil {
+	if _, err := authedWith(ctx, platformauth.CanReadOAuthClients); err != nil {
 		return nil, err
 	}
 	rows, err := s.Repo.OAuthClients.FindAll(ctx)
@@ -184,7 +187,7 @@ func (s *State) listOAuthClients(ctx context.Context, _ *apicommon.Empty) (*apic
 }
 
 func (s *State) getOAuthClient(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[OAuthClientResponse], error) {
-	if _, err := authedAnchor(ctx); err != nil {
+	if _, err := authedWith(ctx, platformauth.CanReadOAuthClients); err != nil {
 		return nil, err
 	}
 	c, err := s.Repo.OAuthClients.FindByID(ctx, in.ID)
@@ -208,7 +211,7 @@ type clientIDPathInput struct {
 // getOAuthClientByClientID backs GET /api/oauth-clients/by-client-id/{clientId}
 // (SDK lookup by the OAuth client_id rather than the internal TSID).
 func (s *State) getOAuthClientByClientID(ctx context.Context, in *clientIDPathInput) (*apicommon.Out[OAuthClientResponse], error) {
-	if _, err := authedAnchor(ctx); err != nil {
+	if _, err := authedWith(ctx, platformauth.CanReadOAuthClients); err != nil {
 		return nil, err
 	}
 	c, err := s.Repo.OAuthClients.FindByClientID(ctx, in.ClientID)
@@ -226,7 +229,7 @@ func (s *State) getOAuthClientByClientID(ctx context.Context, in *clientIDPathIn
 }
 
 func (s *State) createOAuthClient(ctx context.Context, in *apicommon.In[CreateOAuthClientRequest]) (*apicommon.Out[CreateOAuthClientResponse], error) {
-	if _, err := authedAnchor(ctx); err != nil {
+	if _, err := authedWith(ctx, platformauth.CanCreateOAuthClients); err != nil {
 		return nil, err
 	}
 	if err := s.resolvePortalApp(ctx, in.Body.PortalAppID, &in.Body.PortalClientID); err != nil {
@@ -262,7 +265,7 @@ type updateOAuthClientInput struct {
 }
 
 func (s *State) updateOAuthClient(ctx context.Context, in *updateOAuthClientInput) (*apicommon.Empty, error) {
-	if _, err := authedAnchor(ctx); err != nil {
+	if _, err := authedWith(ctx, platformauth.CanUpdateOAuthClients); err != nil {
 		return nil, err
 	}
 	if err := s.resolvePortalApp(ctx, in.Body.PortalAppID, &in.Body.PortalClientID); err != nil {
@@ -280,7 +283,7 @@ func (s *State) updateOAuthClient(ctx context.Context, in *updateOAuthClientInpu
 // is preserved. Returns 200 + body rather than 204 so apiFetch does not
 // resolve to undefined.
 func (s *State) activateOAuthClient(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[apicommon.SuccessResponse], error) {
-	if _, err := authedAnchor(ctx); err != nil {
+	if _, err := authedWith(ctx, platformauth.CanUpdateOAuthClients); err != nil {
 		return nil, err
 	}
 	ec := platformauth.NewExecutionContext(ctx)
@@ -292,7 +295,7 @@ func (s *State) activateOAuthClient(ctx context.Context, in *apicommon.IDInput) 
 }
 
 func (s *State) deactivateOAuthClient(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[apicommon.SuccessResponse], error) {
-	if _, err := authedAnchor(ctx); err != nil {
+	if _, err := authedWith(ctx, platformauth.CanUpdateOAuthClients); err != nil {
 		return nil, err
 	}
 	ec := platformauth.NewExecutionContext(ctx)
@@ -313,7 +316,7 @@ type rotateOAuthClientSecretInput struct {
 }
 
 func (s *State) rotateOAuthClientSecret(ctx context.Context, in *rotateOAuthClientSecretInput) (*apicommon.Out[RotateOAuthClientSecretResponse], error) {
-	if _, err := authedAnchor(ctx); err != nil {
+	if _, err := authedWith(ctx, platformauth.CanRotateOAuthClientSecrets); err != nil {
 		return nil, err
 	}
 	cmd := operations.RotateOAuthClientSecretCommand{ID: in.ID}
@@ -350,7 +353,7 @@ func (s *State) rotateOAuthClientSecret(ctx context.Context, in *rotateOAuthClie
 // its timer. Idempotent, so it is safe to call after the window has already
 // closed.
 func (s *State) revokeOAuthClientPreviousSecret(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[apicommon.SuccessResponse], error) {
-	if _, err := authedAnchor(ctx); err != nil {
+	if _, err := authedWith(ctx, platformauth.CanRotateOAuthClientSecrets); err != nil {
 		return nil, err
 	}
 	ec := platformauth.NewExecutionContext(ctx)
@@ -364,7 +367,7 @@ func (s *State) revokeOAuthClientPreviousSecret(ctx context.Context, in *apicomm
 }
 
 func (s *State) deleteOAuthClient(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	if _, err := authedAnchor(ctx); err != nil {
+	if _, err := authedWith(ctx, platformauth.CanDeleteOAuthClients); err != nil {
 		return nil, err
 	}
 	ec := platformauth.NewExecutionContext(ctx)
@@ -378,7 +381,7 @@ func (s *State) deleteOAuthClient(ctx context.Context, in *apicommon.IDInput) (*
 // ── AnchorDomain ──────────────────────────────────────────────────────────
 
 func (s *State) listAnchorDomains(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[AnchorDomainListResponse], error) {
-	if _, err := authedAnchor(ctx); err != nil {
+	if _, err := authedWith(ctx, platformauth.CanReadAnchorDomains); err != nil {
 		return nil, err
 	}
 	rows, err := s.Repo.AnchorDomains.FindAll(ctx)
@@ -390,7 +393,7 @@ func (s *State) listAnchorDomains(ctx context.Context, _ *apicommon.Empty) (*api
 }
 
 func (s *State) createAnchorDomain(ctx context.Context, in *apicommon.In[CreateAnchorDomainRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
-	if _, err := authedAnchor(ctx); err != nil {
+	if _, err := authedWith(ctx, platformauth.CanCreateAnchorDomains); err != nil {
 		return nil, err
 	}
 	ec := platformauth.NewExecutionContext(ctx)
@@ -407,7 +410,7 @@ type updateAnchorDomainInput struct {
 }
 
 func (s *State) updateAnchorDomain(ctx context.Context, in *updateAnchorDomainInput) (*apicommon.Empty, error) {
-	if _, err := authedAnchor(ctx); err != nil {
+	if _, err := authedWith(ctx, platformauth.CanUpdateAnchorDomains); err != nil {
 		return nil, err
 	}
 	ec := platformauth.NewExecutionContext(ctx)
@@ -418,7 +421,7 @@ func (s *State) updateAnchorDomain(ctx context.Context, in *updateAnchorDomainIn
 }
 
 func (s *State) deleteAnchorDomain(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	if _, err := authedAnchor(ctx); err != nil {
+	if _, err := authedWith(ctx, platformauth.CanDeleteAnchorDomains); err != nil {
 		return nil, err
 	}
 	ec := platformauth.NewExecutionContext(ctx)
@@ -432,7 +435,7 @@ func (s *State) deleteAnchorDomain(ctx context.Context, in *apicommon.IDInput) (
 // ── AuthConfig ────────────────────────────────────────────────────────────
 
 func (s *State) listAuthConfigs(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[AuthConfigListResponse], error) {
-	if _, err := authedAnchor(ctx); err != nil {
+	if _, err := authedWith(ctx, platformauth.CanReadAuthConfigs); err != nil {
 		return nil, err
 	}
 	rows, err := s.Repo.ClientAuthConfigs.FindAll(ctx)
@@ -444,7 +447,7 @@ func (s *State) listAuthConfigs(ctx context.Context, _ *apicommon.Empty) (*apico
 }
 
 func (s *State) createAuthConfig(ctx context.Context, in *apicommon.In[CreateAuthConfigRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
-	if _, err := authedAnchor(ctx); err != nil {
+	if _, err := authedWith(ctx, platformauth.CanCreateAuthConfigs); err != nil {
 		return nil, err
 	}
 	secretRef, err := encryptOIDCSecretRef(s.Enc, in.Body.OIDCClientSecretRef)
@@ -466,7 +469,7 @@ type updateAuthConfigInput struct {
 }
 
 func (s *State) updateAuthConfig(ctx context.Context, in *updateAuthConfigInput) (*apicommon.Empty, error) {
-	if _, err := authedAnchor(ctx); err != nil {
+	if _, err := authedWith(ctx, platformauth.CanUpdateAuthConfigs); err != nil {
 		return nil, err
 	}
 	secretRef, err := encryptOIDCSecretRef(s.Enc, in.Body.OIDCClientSecretRef)
@@ -482,7 +485,7 @@ func (s *State) updateAuthConfig(ctx context.Context, in *updateAuthConfigInput)
 }
 
 func (s *State) deleteAuthConfig(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	if _, err := authedAnchor(ctx); err != nil {
+	if _, err := authedWith(ctx, platformauth.CanDeleteAuthConfigs); err != nil {
 		return nil, err
 	}
 	ec := platformauth.NewExecutionContext(ctx)
@@ -496,7 +499,7 @@ func (s *State) deleteAuthConfig(ctx context.Context, in *apicommon.IDInput) (*a
 // ── IdpRoleMapping ────────────────────────────────────────────────────────
 
 func (s *State) listIdpRoleMappings(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[IdpRoleMappingListResponse], error) {
-	if _, err := authedAnchor(ctx); err != nil {
+	if _, err := authedWith(ctx, platformauth.CanReadIdentityProviders); err != nil {
 		return nil, err
 	}
 	rows, err := s.Repo.IdpRoleMappings.FindAll(ctx)
@@ -508,7 +511,7 @@ func (s *State) listIdpRoleMappings(ctx context.Context, _ *apicommon.Empty) (*a
 }
 
 func (s *State) createIdpRoleMapping(ctx context.Context, in *apicommon.In[CreateIdpRoleMappingRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
-	if _, err := authedAnchor(ctx); err != nil {
+	if _, err := authedWith(ctx, platformauth.CanUpdateIdentityProviders); err != nil {
 		return nil, err
 	}
 	ec := platformauth.NewExecutionContext(ctx)
@@ -520,7 +523,7 @@ func (s *State) createIdpRoleMapping(ctx context.Context, in *apicommon.In[Creat
 }
 
 func (s *State) deleteIdpRoleMapping(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	if _, err := authedAnchor(ctx); err != nil {
+	if _, err := authedWith(ctx, platformauth.CanUpdateIdentityProviders); err != nil {
 		return nil, err
 	}
 	ec := platformauth.NewExecutionContext(ctx)

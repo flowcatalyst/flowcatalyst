@@ -119,7 +119,7 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 func (s *State) create(ctx context.Context, in *apicommon.In[CreateIdentityProviderRequest]) (*apicommon.Out[IdentityProviderResponse], error) {
 	// Coarse anchor-only permission at the controller; the use case enforces
 	// validation and uniqueness. The handler also encrypts the secret.
-	if err := auth.CanWriteIdentityProviders(auth.FromContext(ctx)); err != nil {
+	if err := auth.CanCreateIdentityProviders(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	secretRef, err := encryptSecretRef(s.Enc, in.Body.OIDCClientSecretRef)
@@ -152,7 +152,7 @@ type updateInput struct {
 // detail page sets `provider.value = updated` after PUT, and its card is
 // gated on a truthy provider — a 204/undefined collapses the view.
 func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Out[IdentityProviderResponse], error) {
-	if err := auth.CanWriteIdentityProviders(auth.FromContext(ctx)); err != nil {
+	if err := auth.CanUpdateIdentityProviders(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	secretRef, err := encryptSecretRef(s.Enc, in.Body.OIDCClientSecretRef)
@@ -175,7 +175,7 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Out[Ide
 }
 
 func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	if err := auth.CanWriteIdentityProviders(auth.FromContext(ctx)); err != nil {
+	if err := auth.CanDeleteIdentityProviders(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)

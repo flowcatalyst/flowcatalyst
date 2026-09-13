@@ -82,7 +82,7 @@ type listInput struct {
 
 func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[LoginAttemptListResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanReadLoginAttempts(ac); err != nil {
 		return nil, err
 	}
 

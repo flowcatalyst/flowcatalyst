@@ -39,6 +39,11 @@ func PlatformRoles() []role.Role {
 				permAdminLoginAttemptRead,
 				permAdminDocsRead,
 				permDeveloperApplicationOpenAPIManage,
+				// These families existed in the catalogue but were held by no
+				// role — harmless while anchor scope satisfied every gate,
+				// locked out the moment it stopped.
+				permAdminConfigRead, permAdminConfigUpdate,
+				permAdminCorsOriginRead, permAdminCorsOriginCreate, permAdminCorsOriginDelete,
 			}),
 
 		// platform:admin-readonly
@@ -52,6 +57,8 @@ func PlatformRoles() []role.Role {
 				permAdminLoginAttemptRead,
 				permAdminDocsRead,
 				permDeveloperApplicationOpenAPIView,
+				permAdminConfigRead,
+				permAdminCorsOriginRead,
 			}),
 
 		// platform:iam-admin
@@ -62,6 +69,10 @@ func PlatformRoles() []role.Role {
 				permIAMUserActivate, permIAMUserDeactivate, permIAMUserAssignRoles,
 				permIAMRoleRead, permIAMRoleCreate, permIAMRoleUpdate, permIAMRoleDelete,
 				permIAMClientAccessGrant, permIAMClientAccessRevoke, permIAMClientAccessRead,
+				permAdminIdentityProviderRead, permAdminIdentityProviderCreate,
+				permAdminIdentityProviderUpdate, permAdminIdentityProviderDelete,
+				permAdminEmailDomainMappingRead, permAdminEmailDomainMappingCreate,
+				permAdminEmailDomainMappingUpdate, permAdminEmailDomainMappingDelete,
 			}),
 
 		// platform:iam-readonly
@@ -71,6 +82,8 @@ func PlatformRoles() []role.Role {
 				permIAMUserRead,
 				permIAMRoleRead,
 				permIAMClientAccessRead,
+				permAdminIdentityProviderRead,
+				permAdminEmailDomainMappingRead,
 			}),
 
 		// platform:client-admin — delegated user management scoped to the
@@ -157,6 +170,10 @@ func PlatformRoles() []role.Role {
 				permAdminProcessRead,
 				permAdminAuditLogRead,
 				permAdminLoginAttemptRead,
+				permAdminIdentityProviderRead,
+				permAdminEmailDomainMappingRead,
+				permAdminConfigRead,
+				permAdminCorsOriginRead,
 			}),
 
 		// platform:portal-administrator — CLIENT-delegable: assign to a

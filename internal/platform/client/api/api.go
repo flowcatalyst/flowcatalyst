@@ -166,7 +166,7 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, 
 }
 
 func (s *State) activate(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[apicommon.StatusChangeResponse], error) {
-	if err := auth.CanUpdateClients(auth.FromContext(ctx)); err != nil {
+	if err := auth.CanActivateClients(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -182,7 +182,7 @@ type suspendInput struct {
 }
 
 func (s *State) suspend(ctx context.Context, in *suspendInput) (*apicommon.Out[apicommon.StatusChangeResponse], error) {
-	if err := auth.CanUpdateClients(auth.FromContext(ctx)); err != nil {
+	if err := auth.CanSuspendClients(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -232,8 +232,10 @@ type deactivateInput struct {
 }
 
 func (s *State) deactivate(ctx context.Context, in *deactivateInput) (*apicommon.Out[apicommon.StatusChangeResponse], error) {
-	// Deactivate is a soft-delete — same coarse permission as delete.
-	if err := auth.CanDeleteClients(auth.FromContext(ctx)); err != nil {
+	// Deactivate is a soft-delete, but it has its own code: withdrawing a
+	// client's access is an operational act a role may grant without granting
+	// the irreversible delete.
+	if err := auth.CanDeactivateClients(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)

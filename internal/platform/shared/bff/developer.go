@@ -133,7 +133,7 @@ type bffSyncPlatformOpenAPIResponse struct {
 // GET /bff/developer/applications
 func (s *DeveloperState) listApplications(w http.ResponseWriter, r *http.Request) {
 	ac := auth.FromContext(r.Context())
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanReadDeveloperPortal(ac); err != nil {
 		httperror.Write(w, err)
 		return
 	}
@@ -157,7 +157,7 @@ func (s *DeveloperState) listApplications(w http.ResponseWriter, r *http.Request
 // GET /bff/developer/applications/{appId}
 func (s *DeveloperState) getApplication(w http.ResponseWriter, r *http.Request) {
 	ac := auth.FromContext(r.Context())
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanReadDeveloperPortal(ac); err != nil {
 		httperror.Write(w, err)
 		return
 	}
@@ -182,7 +182,7 @@ func (s *DeveloperState) getApplication(w http.ResponseWriter, r *http.Request) 
 // GET /bff/developer/applications/{appId}/openapi/current
 func (s *DeveloperState) getCurrentSpec(w http.ResponseWriter, r *http.Request) {
 	ac := auth.FromContext(r.Context())
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanReadDeveloperPortal(ac); err != nil {
 		httperror.Write(w, err)
 		return
 	}
@@ -202,7 +202,7 @@ func (s *DeveloperState) getCurrentSpec(w http.ResponseWriter, r *http.Request) 
 // GET /bff/developer/applications/{appId}/openapi/versions
 func (s *DeveloperState) listSpecVersions(w http.ResponseWriter, r *http.Request) {
 	ac := auth.FromContext(r.Context())
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanReadDeveloperPortal(ac); err != nil {
 		httperror.Write(w, err)
 		return
 	}
@@ -222,7 +222,7 @@ func (s *DeveloperState) listSpecVersions(w http.ResponseWriter, r *http.Request
 // GET /bff/developer/applications/{appId}/openapi/versions/{specId}
 func (s *DeveloperState) getSpecVersion(w http.ResponseWriter, r *http.Request) {
 	ac := auth.FromContext(r.Context())
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanReadDeveloperPortal(ac); err != nil {
 		httperror.Write(w, err)
 		return
 	}
@@ -243,7 +243,7 @@ func (s *DeveloperState) getSpecVersion(w http.ResponseWriter, r *http.Request) 
 // GET /bff/developer/applications/{appId}/event-types
 func (s *DeveloperState) listAppEventTypes(w http.ResponseWriter, r *http.Request) {
 	ac := auth.FromContext(r.Context())
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanReadDeveloperPortal(ac); err != nil {
 		httperror.Write(w, err)
 		return
 	}
@@ -276,7 +276,7 @@ func (s *DeveloperState) listAppEventTypes(w http.ResponseWriter, r *http.Reques
 // the sync use case against the seeded `platform` application row.
 func (s *DeveloperState) syncPlatformOpenAPI(w http.ResponseWriter, r *http.Request) {
 	ac := auth.FromContext(r.Context())
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanSyncPlatformOpenAPI(ac); err != nil {
 		httperror.Write(w, err)
 		return
 	}

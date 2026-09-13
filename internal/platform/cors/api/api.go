@@ -45,7 +45,7 @@ func (s *State) publicAllowed(ctx context.Context, _ *apicommon.Empty) (*apicomm
 
 func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[AllowedOriginResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanReadCorsOrigins(ac); err != nil {
 		return nil, err
 	}
 	o, err := s.Repo.FindByID(ctx, in.ID)
@@ -60,7 +60,7 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 
 func (s *State) list(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[CorsOriginListResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanReadCorsOrigins(ac); err != nil {
 		return nil, err
 	}
 	rows, err := s.Repo.FindAll(ctx)
@@ -75,7 +75,7 @@ func (s *State) add(ctx context.Context, in *apicommon.In[AddOriginRequest]) (*a
 	// Coarse anchor check at the controller: CORS origins are platform-owned
 	// config with no per-client resource dimension, so the use case carries no
 	// resource-level authz (Authorize = usecaseop.Public).
-	if err := auth.RequireAnchor(auth.FromContext(ctx)); err != nil {
+	if err := auth.CanCreateCorsOrigins(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -89,7 +89,7 @@ func (s *State) add(ctx context.Context, in *apicommon.In[AddOriginRequest]) (*a
 func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	// Coarse anchor check at the controller (see add): no resource-level authz
 	// in the use case.
-	if err := auth.RequireAnchor(auth.FromContext(ctx)); err != nil {
+	if err := auth.CanDeleteCorsOrigins(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)

@@ -183,7 +183,7 @@ type listAccessInput struct {
 
 func (s *State) listAccess(ctx context.Context, in *listAccessInput) (*apicommon.Out[AccessListResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanReadPlatformConfig(ac); err != nil {
 		return nil, err
 	}
 	rows, err := s.Repo.FindAccessByApplication(ctx, in.App)
@@ -201,7 +201,7 @@ type grantAccessInput struct {
 
 func (s *State) grantAccess(ctx context.Context, in *grantAccessInput) (*apicommon.Out[apicommon.CreatedResponse], error) {
 	// Coarse anchor-only authorization at the controller.
-	if err := auth.RequireAnchor(auth.FromContext(ctx)); err != nil {
+	if err := auth.CanUpdatePlatformConfig(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -214,7 +214,7 @@ func (s *State) grantAccess(ctx context.Context, in *grantAccessInput) (*apicomm
 
 func (s *State) revokeAccess(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	// Coarse anchor-only authorization at the controller.
-	if err := auth.RequireAnchor(auth.FromContext(ctx)); err != nil {
+	if err := auth.CanUpdatePlatformConfig(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
