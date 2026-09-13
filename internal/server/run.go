@@ -17,9 +17,8 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatch"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/queue"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/router"
 	routerapi "github.com/flowcatalyst/flowcatalyst-go/internal/router/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/stream"
@@ -58,6 +57,23 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 	// Always build a stream HealthService — empty when stream is off so
 	// the router's StreamHealthProvider reports zero streams gracefully.
 	streamHealth := stream.NewHealthService()
+
+	// Dispatch queue settings are resolved ONCE, here, before any subsystem
+	// starts: a deployment that asks for SQS queues without the prefix (or
+	// without an addressable account/region) is misconfigured, and must fail
+	// loudly at boot rather than compose meaningless queue names at runtime.
+	// The same value feeds the served router-config document and the
+	// scheduler's publisher, so the two can never disagree about queue type.
+	dispatchSettings, err := dispatch.ResolveSettings(
+		cfg.DispatchQueueType, cfg.DispatchQueueURL, cfg.DispatchQueueRegion,
+		cfg.DispatchQueuePrefix, cfg.DatabaseURL)
+	if err != nil {
+		return fmt.Errorf("dispatch queue settings: %w", err)
+	}
+	var routerConfigDoc *dispatch.DocumentBuilder
+	if cfg.PlatformEnabled && pool != nil {
+		routerConfigDoc = dispatch.NewDocumentBuilder(pool, dispatchSettings)
+	}
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -130,7 +146,7 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 			dispatchjob.DefaultReaperInterval, dispatchjob.DefaultProcessingLiveAfter)
 	}
 	if cfg.SchedulerEnabled {
-		wg.Go(func() { StartScheduler(ctx, pool, cfg) })
+		wg.Go(func() { StartScheduler(ctx, pool, cfg, dispatchSettings) })
 		slog.Info("scheduler started")
 	}
 	if cfg.ScheduledJobEnabled {
@@ -168,7 +184,7 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 	}
 	metricsSrv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.MetricsPort),
-		Handler:           metricsRouter(cfg),
+		Handler:           metricsRouter(cfg, routerConfigDoc),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -282,9 +298,14 @@ func (b streamHealthBridge) Aggregate() routerapi.StreamHealthAggregate {
 func (b streamHealthBridge) IsLive() bool  { return b.svc.IsLive() }
 func (b streamHealthBridge) IsReady() bool { return b.svc.IsReady() }
 
-// newRouterServer wraps router.NewServer with the env-driven router
-// config. When cfg.RouterConfigURL is empty we honour cfg.DefaultBroker
-// to synthesize an in-process Postgres pool config so fcdev "just works".
+// newRouterServer wraps router.NewServer with the env-driven router config.
+//
+// There is ONE code path, dev and prod alike: the router learns its queues and
+// pools from the config URL it polls, and nothing else. In dev that URL points
+// at this platform's own served document, which names Postgres-backed queues
+// instead of SQS ones — the dev/prod difference is the queue TYPE inside one
+// document, not a separate branch here. Without a config URL the router starts
+// with no queues and no pools at all; FC_DEFAULT_BROKER no longer changes that.
 func newRouterServer(cfg EnvCfg, pool *pgxpool.Pool) (*router.Server, error) {
 	rcfg := router.ServerConfig{
 		DevMode:           cfg.RouterDevMode,
@@ -332,99 +353,6 @@ func newRouterServer(cfg EnvCfg, pool *pgxpool.Pool) (*router.Server, error) {
 		slog.Info("router: settled-message hook enabled", "platform_url", cfg.RouterPlatformURL)
 	}
 
-	// If no remote config URL was provided, honour the default-broker
-	// switch so dev / single-tenant deployments don't need an HTTP
-	// config service just to spin up one pool.
-	if cfg.RouterConfigURL == "" && cfg.DefaultBroker == "postgres" {
-		bootCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		dbURL := cfg.DatabaseURL
-		if dbURL == "" {
-			dbURL = "postgresql://postgres@localhost:5432/flowcatalyst"
-		}
-		def := defaultPostgresRouterConfig(dbURL)
-
-		// Init the queue's tables now, before any Reconfigure spins up
-		// consumers that will try to SELECT from them. This runs on every
-		// replica — leader or standby — since schema creation is
-		// idempotent (IF NOT EXISTS) and cheap, and the tables must exist
-		// by the time whichever replica becomes leader starts polling.
-		// The postgres queue backend exposes InitSchema via the Embedded
-		// interface — the factory returns the same *Queue for Consumer
-		// and Publisher, so we build a transient one here, init, then
-		// drop it. The Manager will then build its own consumer per pool.
-		for _, qc := range def.Queues {
-			if err := initQueueSchema(bootCtx, qc); err != nil {
-				return nil, fmt.Errorf("init queue schema for %q: %w", qc.Name, err)
-			}
-		}
-
-		// Don't Reconfigure here — that would start consumers polling
-		// immediately, before Server.Run's gateOnLeadership ever runs, so
-		// a standby replica would start pools too (R-34). Stash the
-		// config on the Server instead; Run's startPools closure applies
-		// it — immediately for a non-standby instance, or gated behind
-		// leadership (and re-applied on every regain) when standby is
-		// enabled. See Server.DefaultConfig's doc comment.
-		srv.DefaultConfig = &def
-		slog.Info("router: built-in postgres broker configured", "pool", "default")
-		_ = pool // reserved for future co-tenanted backends
-	}
+	_ = pool // the router's consumers open their own connections per queue
 	return srv, nil
-}
-
-// initQueueSchema bootstraps the backend's tables when the underlying
-// queue.Consumer also implements queue.Embedded (the in-process backends
-// — Postgres, SQLite — do). External backends like SQS no-op cleanly
-// because their factory doesn't implement Embedded.
-func initQueueSchema(ctx context.Context, qc common.QueueConfig) error {
-	c, err := queue.NewConsumer(ctx, qc)
-	if err != nil {
-		return err
-	}
-	if e, ok := c.(queue.Embedded); ok {
-		if err := e.InitSchema(ctx); err != nil {
-			return err
-		}
-	}
-	// We don't keep this consumer; Manager.Reconfigure builds its own.
-	c.Stop()
-	return nil
-}
-
-// defaultPostgresRouterConfig synthesizes a single-pool config pointing
-// at the shared Postgres pool. Used by fcdev (and any single-tenant
-// deployment) so the router has somewhere to poll without an external
-// config service.
-func defaultPostgresRouterConfig(databaseURL string) common.RouterConfig {
-	return common.RouterConfig{
-		ProcessingPools: []common.PoolConfig{
-			// Coded DEFAULT-POOL, not "default", so the configured pool IS the
-			// fallback pool. A pool coded "default" received no traffic at all:
-			// messages with no pool code fall back to DEFAULT-POOL, which the
-			// router auto-adds at concurrency 20 — so an operator setting
-			// concurrency 4 here silently got 20, and "default" sat idle with
-			// nothing able to route to it.
-			{Code: "DEFAULT-POOL", Concurrency: 4},
-		},
-		Queues: []common.QueueConfig{
-			{Name: "default", URI: postgresQueueURI(databaseURL), VisibilityTimeout: 30},
-		},
-	}
-}
-
-// postgresQueueURI takes a database URL like
-//
-//	postgresql://user:pass@host:5432/db
-//
-// and produces the queue URI the postgres queue backend expects, which
-// it recognises by the `postgres://` scheme.
-func postgresQueueURI(databaseURL string) string {
-	// The postgres queue backend accepts the standard pg URL; only the
-	// scheme matters to the queue registry. Caller's URL already uses
-	// postgresql:// or postgres://; normalise to postgres://.
-	if len(databaseURL) > 13 && databaseURL[:13] == "postgresql://" {
-		return "postgres://" + databaseURL[13:]
-	}
-	return databaseURL
 }

@@ -25,6 +25,7 @@ import (
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/bridge"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/payload"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatch"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalauth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
@@ -33,7 +34,6 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/queue"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/router"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/standby"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/stream"
@@ -60,13 +60,13 @@ import (
 // Fail-closed: the dispatch-auth HMAC secret is derived from
 // FLOWCATALYST_APP_KEY; without it the scheduler refuses to start rather
 // than signing with a known literal.
-func StartScheduler(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg) {
+func StartScheduler(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, settings dispatch.Settings) {
 	secret, err := dispatchAuthSecret()
 	if err != nil {
 		slog.Error("scheduler disabled: cannot derive dispatch-auth secret; set FLOWCATALYST_APP_KEY", "err", err)
 		return
 	}
-	pub, err := schedulerPublisher(ctx, cfg)
+	pub, err := schedulerPublisher(ctx, pool, cfg, settings)
 	if err != nil {
 		slog.Error("scheduler disabled: cannot build dispatch publisher", "err", err)
 		return
@@ -82,38 +82,49 @@ func StartScheduler(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg) {
 	slog.Info("scheduler stopped")
 }
 
-// schedulerPublisher builds the queue.Publisher the dispatcher uses to hand
-// claimed dispatch jobs to the router. In dev / single-tenant mode
-// (DefaultBroker=postgres) it targets the SAME built-in Postgres broker queue
-// the router consumes from — reusing defaultPostgresRouterConfig so the
-// publish queue and the router's consume queue can never drift — so dispatch
-// jobs flow end-to-end without external infrastructure.
+// schedulerPublisher builds the publisher the dispatcher hands claimed jobs to.
 //
-// The queue table is created up front (idempotent): the router bootstraps it
-// too, but the scheduler goroutine may publish before that completes.
+// The queue TYPE is the only dev/prod difference, and it comes from the
+// dispatch settings rather than from which subsystem happens to be enabled:
+// FC_DISPATCH_QUEUE_TYPE=SQS publishes to per-(tenant, priority) SQS FIFO
+// queues, created lazily on first use; anything else publishes to the built-in
+// Postgres broker — the same queue_messages table the router's own Postgres
+// consumers claim from, with one row-queue per (tenant, priority).
 //
-// Falls back to the noop publisher (with a loud warning) only when no broker
-// can be resolved — e.g. a production deployment whose real queue.Publisher
-// env knobs are not yet wired. Claimed jobs then drain into the void and are
+// Both publishers resolve destinations through the SAME resolver, so they
+// cannot drift on where a job goes; the names they compose are the names the
+// served router-config document advertises.
+//
+// Falls back to the noop publisher (with a loud warning) only when there is no
+// database to publish to either. Claimed jobs then drain into the void and are
 // recovered by stale recovery, so make that impossible to miss in the logs.
-func schedulerPublisher(ctx context.Context, cfg EnvCfg) (queue.Publisher, error) {
-	if cfg.DefaultBroker == "postgres" && cfg.DatabaseURL != "" {
-		// Single source of truth for the dev queue: whatever the router
-		// consumes is what the scheduler publishes to.
-		qc := defaultPostgresRouterConfig(cfg.DatabaseURL).Queues[0]
-		if err := initQueueSchema(ctx, qc); err != nil {
-			return nil, fmt.Errorf("init dispatch queue schema for %q: %w", qc.Name, err)
-		}
-		pub, err := queue.NewPublisher(ctx, qc)
+func schedulerPublisher(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, settings dispatch.Settings) (scheduler.DispatchPublisher, error) {
+	if pool == nil {
+		slog.Warn("scheduler running with NOOP publisher: no database pool, so dispatch jobs will be " +
+			"claimed but NOT delivered; do not enable FC_SCHEDULER_ENABLED in production like this")
+		return scheduler.NoopDispatchPublisher{}, nil
+	}
+	scfg := scheduler.DefaultConfig()
+	destinations := scheduler.NewDestinationResolver(
+		scheduler.NewPoolCodeResolver(pool, scfg.PausedCacheTTL),
+		scheduler.NewSubscriptionPriorityCache(pool, scfg.PausedCacheTTL),
+		settings,
+	)
+	if settings.SQS {
+		pub, err := scheduler.NewSQSDispatchPublisher(ctx, settings, destinations)
 		if err != nil {
-			return nil, fmt.Errorf("postgres dispatch publisher: %w", err)
+			return nil, fmt.Errorf("sqs dispatch publisher: %w", err)
 		}
-		slog.Info("scheduler: dispatch jobs published to built-in postgres broker", "queue", qc.Name)
+		slog.Info("scheduler: dispatch jobs published to SQS FIFO queues",
+			"prefix", settings.Prefix, "region", settings.SQSRegion)
 		return pub, nil
 	}
-	slog.Warn("scheduler running with NOOP publisher: dispatch jobs will be claimed but NOT delivered; " +
-		"do not enable FC_SCHEDULER_ENABLED in production until a real queue.Publisher is wired")
-	return NoopPublisher{}, nil
+	pub, err := scheduler.NewPostgresDispatchPublisher(ctx, pool, destinations)
+	if err != nil {
+		return nil, fmt.Errorf("postgres dispatch publisher: %w", err)
+	}
+	slog.Info("scheduler: dispatch jobs published to the built-in postgres broker")
+	return pub, nil
 }
 
 // dispatchAuthSecret derives the HMAC key for dispatch-job auth tokens from
@@ -584,26 +595,3 @@ func StartPurger(ctx context.Context, pool *pgxpool.Pool) {
 		}
 	}
 }
-
-// NoopPublisher satisfies queue.Publisher without doing anything. Used
-// when the scheduler is enabled but no queue backend is configured —
-// the poller still runs (so QUEUED rows drain into the noop), but no
-// downstream router consumes them. This keeps the boot path green
-// during initial deployment validation.
-type NoopPublisher struct{}
-
-func (NoopPublisher) Identifier() string { return "noop" }
-func (NoopPublisher) Publish(_ context.Context, _ common.Message) (string, error) {
-	return "noop", nil
-}
-
-func (NoopPublisher) PublishBatch(_ context.Context, msgs []common.Message) ([]string, error) {
-	out := make([]string, len(msgs))
-	for i := range msgs {
-		out[i] = "noop"
-	}
-	return out, nil
-}
-
-// keep the queue import live so the noop assertion compiles.
-var _ queue.Publisher = NoopPublisher{}

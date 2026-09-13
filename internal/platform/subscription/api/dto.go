@@ -66,6 +66,7 @@ type CreateSubscriptionRequest struct {
 	DelaySeconds     *int32                `json:"delaySeconds,omitempty"`
 	MaxAgeSeconds    *int32                `json:"maxAgeSeconds,omitempty"`
 	DataOnly         *bool                 `json:"dataOnly,omitempty"`
+	Queue            *string               `json:"queue,omitempty" doc:"Dispatch priority: DEFAULT or HIGH_PRIORITY (matched ignoring case). Selects which of the client's two dispatch queues jobs raised from this subscription publish to. Omitted or blank leaves it unset, which publishes as DEFAULT."`
 }
 
 func (r CreateSubscriptionRequest) toCommand() operations.CreateCommand {
@@ -97,14 +98,17 @@ func (r CreateSubscriptionRequest) toCommand() operations.CreateCommand {
 		DelaySeconds:     r.DelaySeconds,
 		MaxAgeSeconds:    r.MaxAgeSeconds,
 		DataOnly:         r.DataOnly,
+		Queue:            r.Queue,
 	}
 }
 
 // UpdateSubscriptionRequest is the wire body for PUT /api/subscriptions/{id}.
 //
-// queue/sequence are intentionally absent: they are server-derived
-// and dropped on input (the leniency net accepts them without persisting).
-// connectionId IS accepted + persisted.
+// sequence is intentionally absent: it is server-derived and dropped on input
+// (the leniency net accepts it without persisting). connectionId IS accepted +
+// persisted. queue IS now accepted and persisted — it carries the dispatch
+// priority; until then the SPA sent it on every create and both servers
+// discarded it silently.
 type UpdateSubscriptionRequest struct {
 	Name             *string               `json:"name,omitempty"`
 	Description      *string               `json:"description,omitempty"`
@@ -120,6 +124,7 @@ type UpdateSubscriptionRequest struct {
 	DispatchPoolID   *string               `json:"dispatchPoolId,omitempty"`
 	ServiceAccountID *string               `json:"serviceAccountId,omitempty"`
 	DataOnly         *bool                 `json:"dataOnly,omitempty"`
+	Queue            *string               `json:"queue,omitempty" doc:"Dispatch priority: DEFAULT or HIGH_PRIORITY (matched ignoring case). Omitted leaves the stored value alone; an explicit blank clears it, which publishes as DEFAULT."`
 }
 
 func (r UpdateSubscriptionRequest) toCommand(id string) operations.UpdateCommand {
@@ -153,6 +158,7 @@ func (r UpdateSubscriptionRequest) toCommand(id string) operations.UpdateCommand
 		DispatchPoolID:   r.DispatchPoolID,
 		ServiceAccountID: r.ServiceAccountID,
 		DataOnly:         r.DataOnly,
+		Queue:            r.Queue,
 	}
 }
 

@@ -273,6 +273,11 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 				TargetURL:    c.target,
 				Mode:         c.mode,
 				PoolCode:     p.poolCodes.Resolve(ctx, c.poolID, c.clientID),
+				// Carried unresolved: the publisher turns them into the
+				// destination queue (tenant from the client, priority from the
+				// subscription), which the pool code says nothing about.
+				ClientID:       c.clientID,
+				SubscriptionID: c.subID,
 			})
 		}
 	}
@@ -483,4 +488,11 @@ type DispatchJobToken struct {
 	// which sends the message down the concurrent path and silently discards
 	// the FIFO guarantee the group exists to provide.
 	Mode string
+	// ClientID and SubscriptionID are the job's own foreign keys, carried
+	// unresolved for the publisher to turn into a destination queue: the
+	// client gives the tenant segment, the subscription the priority. Both may
+	// be empty — a client-less job publishes under the platform tenant, and a
+	// job with no subscription at the DEFAULT priority.
+	ClientID       string
+	SubscriptionID string
 }

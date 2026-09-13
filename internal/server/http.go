@@ -2,9 +2,12 @@ package server
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatch"
 )
 
 // swaggerUIHTML is a minimal Swagger UI page (served at /swagger-ui) that
@@ -41,9 +44,32 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 // the router prefix on the API port via routerapi.PrometheusHandler —
 // this router stays a small "is the binary up" target until we add
 // platform-level Prometheus exporters.
-func metricsRouter(cfg EnvCfg) http.Handler {
+//
+// It also serves ONE application endpoint: GET /api/dispatch/router-config,
+// the platform's own router-config document, when routerConfig is non-nil
+// (platform mode). It lives on this listener rather than the public API one
+// because the API port is ALB-facing and the document lists client
+// identifiers, pool codes and queue URLs; this listener is reached only
+// in-VPC. It carries no authentication, deliberately — the router that polls
+// it runs with no credentials store of its own.
+func metricsRouter(cfg EnvCfg, routerConfig *dispatch.DocumentBuilder) http.Handler {
 	r := chi.NewRouter()
 	r.Get("/health", healthHandler)
+	if routerConfig != nil {
+		r.Get("/api/dispatch/router-config", func(w http.ResponseWriter, req *http.Request) {
+			doc, err := routerConfig.Build(req.Context())
+			if err != nil {
+				slog.Error("router-config document build failed", "err", err)
+				http.Error(w, `{"error":"could not build the router-config document"}`,
+					http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(doc); err != nil {
+				slog.Warn("router-config document write failed", "err", err)
+			}
+		})
+	}
 	r.Get("/ready", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{

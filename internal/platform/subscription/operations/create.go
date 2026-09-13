@@ -7,6 +7,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/dispatchqueue"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/validate"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -33,6 +34,11 @@ type CreateCommand struct {
 	DelaySeconds     *int32                          `json:"delaySeconds,omitempty"`
 	MaxAgeSeconds    *int32                          `json:"maxAgeSeconds,omitempty"`
 	DataOnly         *bool                           `json:"dataOnly,omitempty"`
+	// Queue is the dispatch priority — DEFAULT or HIGH_PRIORITY, matched
+	// ignoring case. It selects which of the client's two dispatch queues a
+	// job raised from this subscription publishes to. Omitted or blank leaves
+	// it unset, which the publish path reads as DEFAULT.
+	Queue *string `json:"queue,omitempty"`
 }
 
 // CreateSubscription validates cmd, enforces code uniqueness within the
@@ -57,6 +63,11 @@ func CreateSubscription(repo *subscription.Repository) usecaseop.Operation[Creat
 			}
 			if len(cmd.EventTypes) == 0 {
 				return usecase.Validation("EVENT_TYPES_REQUIRED", "at least one event type binding is required")
+			}
+			if cmd.Queue != nil {
+				if _, err := dispatchqueue.Parse(*cmd.Queue); err != nil {
+					return err
+				}
 			}
 			return nil
 		},
@@ -108,6 +119,15 @@ func CreateSubscription(repo *subscription.Repository) usecaseop.Operation[Creat
 			}
 			if cmd.DataOnly != nil {
 				s.DataOnly = *cmd.DataOnly
+			}
+			// Stored in its canonical upper-case form, so the publish path and
+			// the served router-config document read one spelling however the
+			// caller spelled it. Validate has already rejected anything else.
+			if cmd.Queue != nil {
+				if p, _ := dispatchqueue.Parse(*cmd.Queue); p != "" {
+					stored := string(p)
+					s.Queue = &stored
+				}
 			}
 			s.CreatedBy = &ec.PrincipalID
 

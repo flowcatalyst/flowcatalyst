@@ -85,6 +85,11 @@ func TestCreateClient_Validation(t *testing.T) {
 		{"empty identifier", operations.CreateCommand{Name: "X"}, "IDENTIFIER_REQUIRED"},
 		{"underscore rejected", operations.CreateCommand{Name: "X", Identifier: "my_client"}, "INVALID_IDENTIFIER"},
 		{"leading hyphen rejected", operations.CreateCommand{Name: "X", Identifier: "-abc"}, "INVALID_IDENTIFIER"},
+		// Submitted uppercase to pin that the reservation applies to the
+		// normalized form, like uniqueness does. "platform" is the tenant
+		// segment client-less dispatch jobs publish under, so a client
+		// holding it would share that lane.
+		{"reserved platform identifier", operations.CreateCommand{Name: "X", Identifier: "PLATFORM"}, "RESERVED_IDENTIFIER"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

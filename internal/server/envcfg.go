@@ -32,13 +32,6 @@ type EnvCfg struct {
 	// /router. fc-router (when it exists) ignores this and mounts at root.
 	RouterHTTPPrefix string
 
-	// DefaultBroker picks the fallback queue backend when no
-	// FLOWCATALYST_CONFIG_URL is configured. "postgres" synthesises a
-	// single 'default' pool against the shared Postgres pool. Empty
-	// means "no pools start" — the historical behaviour. fcdev sets
-	// this to "postgres"; fc-server leaves it empty in prod.
-	DefaultBroker string
-
 	// DispatchProcessingEndpoint is the callback URL the scheduler stamps
 	// into each dispatch message's mediation_target. The router POSTs
 	// {messageId} here and THIS platform endpoint performs the actual
@@ -56,6 +49,28 @@ type EnvCfg struct {
 	SessionTTLSecs      int
 	AccessTokenTTLSecs  int
 	RefreshTokenTTLSecs int
+
+	// Dispatch queue naming + addressing. The platform composes one queue per
+	// (tenant, priority) and advertises them in the router-config document it
+	// serves; these say what type those queues are and how to address them.
+	//   DispatchQueueType   — FC_DISPATCH_QUEUE_TYPE (alias DISPATCH_QUEUE_TYPE):
+	//                         "SQS" deployed, anything else (incl. unset) names
+	//                         Postgres-backed queues, as fcdev runs.
+	//   DispatchQueueURL    — FC_DISPATCH_QUEUE_URL (alias DISPATCH_QUEUE_URL):
+	//                         read ONLY to derive the AWS account and region;
+	//                         the single queue it names is itself unused.
+	//   DispatchQueueRegion — FC_DISPATCH_QUEUE_REGION (alias
+	//                         DISPATCH_QUEUE_REGION): overrides the region
+	//                         parsed from the URL.
+	//   DispatchQueuePrefix — FC_DISPATCH_QUEUE_PREFIX (new name, no alias):
+	//                         the "FC-{env}" prefix every composed queue name
+	//                         starts with. Required when the type is SQS — a
+	//                         blank prefix there is a startup error, never a
+	//                         queue literally named "FC-{env}-...".
+	DispatchQueueType   string
+	DispatchQueueURL    string
+	DispatchQueueRegion string
+	DispatchQueuePrefix string
 
 	// MCPPort is the listener for the MCP subsystem. Default 8090.
 	MCPPort int
@@ -191,7 +206,6 @@ func LoadEnv() EnvCfg {
 		MCPEnabled:          envBool("FC_MCP_ENABLED", false),
 
 		RouterHTTPPrefix: envOr("FC_ROUTER_HTTP_PREFIX", "/router"),
-		DefaultBroker:    envOr("FC_DEFAULT_BROKER", ""),
 		MCPPort:          envInt("FC_MCP_PORT", 8090),
 		MCPBind:          envOr("FC_MCP_BIND", "127.0.0.1"),
 
@@ -263,6 +277,11 @@ func LoadEnv() EnvCfg {
 
 		// OIDC_* are the names the ECS task definitions set; the FC_* name
 		// wins where one exists.
+		DispatchQueueType:   envFirst("FC_DISPATCH_QUEUE_TYPE", "DISPATCH_QUEUE_TYPE", ""),
+		DispatchQueueURL:    envFirst("FC_DISPATCH_QUEUE_URL", "DISPATCH_QUEUE_URL", ""),
+		DispatchQueueRegion: envFirst("FC_DISPATCH_QUEUE_REGION", "DISPATCH_QUEUE_REGION", ""),
+		DispatchQueuePrefix: envOr("FC_DISPATCH_QUEUE_PREFIX", ""),
+
 		SessionTTLSecs:      positiveOr(envInt("OIDC_SESSION_TTL", 0), 24*60*60),
 		AccessTokenTTLSecs:  positiveOr(envIntAlias("FC_JWT_ACCESS_TOKEN_TTL_SECS", "OIDC_ACCESS_TOKEN_TTL", 0), 60*60),
 		RefreshTokenTTLSecs: positiveOr(envInt("OIDC_REFRESH_TOKEN_TTL", 0), 7*24*60*60),

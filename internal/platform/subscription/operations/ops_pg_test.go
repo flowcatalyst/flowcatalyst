@@ -163,6 +163,10 @@ func TestCreateSubscription_Validation(t *testing.T) {
 		{"no event types", operations.CreateCommand{
 			Code: "subcrt-noet", Name: "X", Endpoint: "https://x.example.test",
 		}, "EVENT_TYPES_REQUIRED"},
+		{"unknown queue value", operations.CreateCommand{
+			Code: "subcrt-badq", Name: "X", Endpoint: "https://x.example.test",
+			EventTypes: bindings, Queue: new("workers-high"),
+		}, "INVALID_QUEUE"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -171,6 +175,117 @@ func TestCreateSubscription_Validation(t *testing.T) {
 			testpg.RequireUsecaseError(t, err, usecase.KindValidation, tc.code)
 		})
 	}
+}
+
+// Re-pointing the connection must actually persist. It did not: connection_id
+// was in the upsert's INSERT list but not its DO UPDATE SET, so the update use
+// case set it on the entity and the SQL dropped it — while the request DTO
+// documented the field as "accepted + persisted".
+func TestUpdateSubscription_ConnectionIDPersists(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := subscription.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+	seeded := mustCreate(t, repo, uow, "subupd-conn", "Before")
+
+	_, err := runAuthorized(uow, operations.UpdateSubscription(repo), operations.UpdateCommand{
+		ID: seeded.SubscriptionID, ConnectionID: new("con_subupdconn1"),
+	})
+	require.NoError(t, err)
+	got, err := repo.FindByID(ctx, seeded.SubscriptionID)
+	require.NoError(t, err)
+	require.NotNil(t, got.ConnectionID, "a re-pointed connection must survive the upsert")
+	assert.Equal(t, "con_subupdconn1", *got.ConnectionID)
+
+	// And re-pointing again replaces it, rather than sticking at the first
+	// value the row was ever written with.
+	_, err = runAuthorized(uow, operations.UpdateSubscription(repo), operations.UpdateCommand{
+		ID: seeded.SubscriptionID, ConnectionID: new("con_subupdconn2"),
+	})
+	require.NoError(t, err)
+	got, err = repo.FindByID(ctx, seeded.SubscriptionID)
+	require.NoError(t, err)
+	require.NotNil(t, got.ConnectionID)
+	assert.Equal(t, "con_subupdconn2", *got.ConnectionID)
+}
+
+// The queue column is the dispatch priority: which of the client's two
+// queues a job raised from this subscription publishes to. The SPA sends
+// "default" (lower-case, always) on create, so the lower-case cases here are
+// the shipped UI's actual payload, not a curiosity — and the stored form is
+// canonical upper-case regardless of how it arrived.
+func TestSubscriptionQueuePriority_RoundTrip(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := subscription.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+
+	bindings := []subscription.EventTypeBinding{subscription.NewEventTypeBinding("subq:a:b:c")}
+
+	// Omitted entirely → NULL, which the publish path reads as DEFAULT.
+	ev, err := runAuthorized(uow, operations.CreateSubscription(repo), operations.CreateCommand{
+		Code: "subq-unset", Name: "X", Endpoint: "https://q.example.test", EventTypes: bindings,
+	})
+	require.NoError(t, err)
+	got, err := repo.FindByID(ctx, ev.SubscriptionID)
+	require.NoError(t, err)
+	assert.Nil(t, got.Queue, "an omitted queue stays unset")
+
+	// The SPA's actual create payload.
+	ev, err = runAuthorized(uow, operations.CreateSubscription(repo), operations.CreateCommand{
+		Code: "subq-default", Name: "X", Endpoint: "https://q.example.test",
+		EventTypes: bindings, Queue: new("default"),
+	})
+	require.NoError(t, err)
+	got, err = repo.FindByID(ctx, ev.SubscriptionID)
+	require.NoError(t, err)
+	require.NotNil(t, got.Queue)
+	assert.Equal(t, "DEFAULT", *got.Queue, "stored canonically upper-case")
+
+	ev, err = runAuthorized(uow, operations.CreateSubscription(repo), operations.CreateCommand{
+		Code: "subq-high", Name: "X", Endpoint: "https://q.example.test",
+		EventTypes: bindings, Queue: new("high_priority"),
+	})
+	require.NoError(t, err)
+	id := ev.SubscriptionID
+	got, err = repo.FindByID(ctx, id)
+	require.NoError(t, err)
+	require.NotNil(t, got.Queue)
+	assert.Equal(t, "HIGH_PRIORITY", *got.Queue)
+
+	// Update re-points it …
+	_, err = runAuthorized(uow, operations.UpdateSubscription(repo), operations.UpdateCommand{
+		ID: id, Queue: new("DEFAULT"),
+	})
+	require.NoError(t, err)
+	got, err = repo.FindByID(ctx, id)
+	require.NoError(t, err)
+	require.NotNil(t, got.Queue)
+	assert.Equal(t, "DEFAULT", *got.Queue)
+
+	// … an omitted queue leaves it alone …
+	_, err = runAuthorized(uow, operations.UpdateSubscription(repo), operations.UpdateCommand{
+		ID: id, Name: new("Renamed"),
+	})
+	require.NoError(t, err)
+	got, err = repo.FindByID(ctx, id)
+	require.NoError(t, err)
+	require.NotNil(t, got.Queue, "an omitted queue must not clear the stored value")
+
+	// … and an explicit blank clears it, the only way back to unset.
+	_, err = runAuthorized(uow, operations.UpdateSubscription(repo), operations.UpdateCommand{
+		ID: id, Queue: new(""),
+	})
+	require.NoError(t, err)
+	got, err = repo.FindByID(ctx, id)
+	require.NoError(t, err)
+	assert.Nil(t, got.Queue)
+
+	// Update validates the same way create does.
+	_, err = runAuthorized(uow, operations.UpdateSubscription(repo), operations.UpdateCommand{
+		ID: id, Queue: new("workers-high"),
+	})
+	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "INVALID_QUEUE")
 }
 
 // Conflict is pinned by seeding through the operation itself: the first

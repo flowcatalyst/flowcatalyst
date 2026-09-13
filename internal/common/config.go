@@ -62,16 +62,19 @@ func (q *QueueConfig) UnmarshalJSON(data []byte) error {
 		q.Name = q.URI
 	}
 
-	if raw.Connections != nil {
+	// A non-positive value means "unstated", exactly as an absent key does. A
+	// config document that carries explicit zeros — which is what a producer
+	// emitting the full struct writes for "no opinion" — must not leave the
+	// consumer at 0 connections and a 0-second visibility timeout, where each
+	// backend would then improvise its own fallback.
+	q.Connections = 1
+	if raw.Connections != nil && *raw.Connections > 0 {
 		q.Connections = *raw.Connections
-	} else {
-		q.Connections = 1
 	}
 
-	if raw.VisibilityTimeout != nil {
+	q.VisibilityTimeout = 120
+	if raw.VisibilityTimeout != nil && *raw.VisibilityTimeout > 0 {
 		q.VisibilityTimeout = *raw.VisibilityTimeout
-	} else {
-		q.VisibilityTimeout = 120
 	}
 	return nil
 }

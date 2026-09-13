@@ -52,6 +52,34 @@ func TestQueueConfigUnmarshal_Defaults(t *testing.T) {
 	}
 }
 
+// An explicit zero means "unstated", exactly as an absent key does. The
+// platform's own served document emits the full struct, so it writes zeros for
+// the two it has no opinion about; reading those literally would leave a
+// consumer with 0 connections and a 0-second visibility window, each backend
+// then improvising a different fallback.
+func TestQueueConfigUnmarshal_ExplicitZerosTakeTheDefaults(t *testing.T) {
+	const body = `{"queueUri":"postgres://localhost/fc","queueName":"acme-DEFAULT","connections":0,"visibilityTimeout":0}`
+	var q QueueConfig
+	if err := json.Unmarshal([]byte(body), &q); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if q.Connections != 1 {
+		t.Errorf("connections = %d, want the default of 1", q.Connections)
+	}
+	if q.VisibilityTimeout != 120 {
+		t.Errorf("visibilityTimeout = %d, want the default of 120", q.VisibilityTimeout)
+	}
+	// A stated value still wins.
+	const stated = `{"queueUri":"sqs://orders","connections":4,"visibilityTimeout":30}`
+	var s QueueConfig
+	if err := json.Unmarshal([]byte(stated), &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if s.Connections != 4 || s.VisibilityTimeout != 30 {
+		t.Errorf("stated values = %d/%d, want 4/30", s.Connections, s.VisibilityTimeout)
+	}
+}
+
 // TestQueueConfigMarshal_EmitsCamelCase verifies a Go-served config is readable
 // by existing routers (which expect queueName/queueUri).
 func TestQueueConfigMarshal_EmitsCamelCase(t *testing.T) {

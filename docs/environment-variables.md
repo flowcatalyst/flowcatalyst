@@ -36,13 +36,16 @@ All read in `internal/server/envcfg.go`.
 | `FC_METRICS_PORT` | `9090` | — | `internal/server/envcfg.go` | Prometheus metrics listener port. |
 | `FC_PLATFORM_ENABLED` | `true` | `PLATFORM_ENABLED` | `internal/server/envcfg.go` | Run the platform API (IAM, events, dispatch, BFF). |
 | `FC_ROUTER_ENABLED` | `false` | `MESSAGE_ROUTER_ENABLED` | `internal/server/envcfg.go` | Run the message router subsystem. |
-| `FC_SCHEDULER_ENABLED` | `false` | `DISPATCH_SCHEDULER_ENABLED` | `internal/server/envcfg.go` | Run the dispatch-job scheduler (currently NOOP publisher — see `internal/server/subsystems.go` warning). |
+| `FC_SCHEDULER_ENABLED` | `false` | `DISPATCH_SCHEDULER_ENABLED` | `internal/server/envcfg.go` | Run the dispatch-job scheduler. It publishes each claimed job to its client's queue for its priority — SQS FIFO or the built-in Postgres broker, per `FC_DISPATCH_QUEUE_TYPE` below. Only a process with no database at all falls back to the noop publisher (with a loud warning). |
 | `FC_DISPATCH_PROCESSING_ENDPOINT` | `http://localhost:<FC_API_PORT>/api/dispatch/process` | `DISPATCH_SCHEDULER_PROCESSING_ENDPOINT` | `internal/server/envcfg.go` | Internal callback the scheduler stamps as each dispatch message's `mediation_target`; the router POSTs `{messageId}` here and the platform delivers to the subscription's real target. Must point at the platform when the router runs in a separate task (ECS: `http://fc-platform:8080/api/dispatch/process`). |
 | `FC_SCHEDULED_JOB_ENABLED` | `false` | `SCHEDULED_JOB_SCHEDULER_ENABLED` | `internal/server/envcfg.go` | Run the scheduled-job cron + dispatch engine. |
 | `FC_STREAM_PROCESSOR_ENABLED` | `false` | `STREAM_PROCESSOR_ENABLED` | `internal/server/envcfg.go` | Run the stream processor (CQRS projections + fan-out + partition manager). |
 | `FC_OUTBOX_ENABLED` | `false` | `OUTBOX_PROCESSOR_ENABLED` | `internal/server/envcfg.go` | Run the outbox processor. |
 | `FC_MCP_ENABLED` | `false` | — | `internal/server/envcfg.go` | Run the MCP HTTP server. |
-| `FC_DEFAULT_BROKER` | `""` (no pools start) | — | `internal/server/envcfg.go` | Fallback queue backend when no `FLOWCATALYST_CONFIG_URL` is set; `postgres` synthesises a single `default` pool on the shared pool (fcdev sets this). |
+| `FC_DISPATCH_QUEUE_TYPE` | `""` (Postgres-backed) | `DISPATCH_QUEUE_TYPE` | `internal/server/envcfg.go` | `SQS` (case-insensitive) publishes dispatch jobs to per-(tenant, priority) SQS FIFO queues and advertises them in the served router-config document; any other value, including unset, names Postgres-backed queues on the platform's own database (what fcdev runs). |
+| `FC_DISPATCH_QUEUE_URL` | `""` | `DISPATCH_QUEUE_URL` | `internal/server/envcfg.go` | Read **only** to derive the AWS account id and region the platform composes its own per-tenant queue URLs with. The single queue this URL names is itself unused. |
+| `FC_DISPATCH_QUEUE_REGION` | `""` | `DISPATCH_QUEUE_REGION` | `internal/server/envcfg.go` | Overrides the region parsed from `FC_DISPATCH_QUEUE_URL`. |
+| `FC_DISPATCH_QUEUE_PREFIX` | `""` | — | `internal/server/envcfg.go` | The `FC-{env}` prefix every composed queue name starts with (e.g. `FC-staging`, giving `FC-staging-acme-DEFAULT.fifo`). **Required when the type is SQS** — a blank prefix there is a startup error, never a queue literally named `FC-{env}-...`. |
 
 ## 2. Database & AWS Secrets Manager
 
@@ -152,7 +155,7 @@ emails (password-reset links, 2FA PINs) are **logged instead of sent**.
 ### Router
 
 Toggle (`FC_ROUTER_ENABLED`) and BasicAuth are in families 1 and 3; broker
-config (`FLOWCATALYST_CONFIG_URL`, `FC_DEFAULT_BROKER`), notifications and
+config (`FLOWCATALYST_CONFIG_URL`), notifications and
 ALB self-registration are in families 11 and 1.
 
 | Variable | Default | Aliases | Read in | Purpose |
@@ -260,7 +263,7 @@ flow just works (existing env values win).
 | Variable | Default | Aliases | Read in | Purpose |
 |---|---|---|---|---|
 | `FC_LOG_LEVEL` | `info` | — | `internal/logging` | slog level: `debug`, `warn`/`warning`, `error` (case-insensitive variants accepted). |
-| `FLOWCATALYST_CONFIG_URL` | — | — | `internal/server/envcfg.go` | Router pool/broker configuration endpoint; unset → `FC_DEFAULT_BROKER` fallback (or no pools). |
+| `FLOWCATALYST_CONFIG_URL` | — | — | `internal/server/envcfg.go` | Router pool/queue configuration endpoint(s), comma-separated — the platform serves its own at `GET /api/dispatch/router-config` on the **metrics** port, and fcdev defaults this to its own. Unset → the router starts with **no queues and no pools**. (`FC_DEFAULT_BROKER` used to synthesise a single fixed queue here; that branch is gone — dev and prod both learn their queues from a served document.) |
 | `FC_NOTIFY_WEBHOOK_URL` | — (log-only) | — | `internal/server/envcfg.go` | Webhook receiving router stall + backlog warnings. |
 | `FC_NOTIFY_MIN_SEVERITY` | `WARNING` | — | `internal/server/envcfg.go` | Floor below which the notifier drops a warning instead of webhooking it (X-04): one of `INFO`/`WARNING`/`ERROR`/`CRITICAL`, case-insensitive. Empty or unrecognised leaves the `WARNING` default in place — it can never accidentally widen the floor. Warnings below the floor are still recorded on `/warnings`; only the webhook delivery is filtered. |
 | `FC_ALB_ENABLED` | `false` | — | `internal/server/envcfg.go` | Router ALB self-registration: register this instance on leader-gain / start, deregister on leader-loss / shutdown. |

@@ -57,6 +57,19 @@ ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,
     description = EXCLUDED.description,
     target = EXCLUDED.target,
+    -- connection_id was likewise absent here while the INSERT list, the
+    -- repository and the update use case all carried it, so re-pointing a
+    -- subscription's connection through PUT /api/subscriptions/{id} silently
+    -- no-oped. Note the consequence for SyncSubscriptions, whose update branch
+    -- assigns the payload's connectionId unconditionally: an SDK sync that
+    -- omits it now clears the column on API/CODE-sourced rows, which is what
+    -- that declarative assignment always meant to do.
+    connection_id = EXCLUDED.connection_id,
+    -- queue is the dispatch priority (DEFAULT / HIGH_PRIORITY). It was
+    -- insert-only until it became writable on subscription update: omitted
+    -- from this list, a re-pointed priority was silently discarded at the SQL
+    -- layer, with the operation and repository both appearing to set it.
+    queue = EXCLUDED.queue,
     status = EXCLUDED.status,
     max_age_seconds = EXCLUDED.max_age_seconds,
     dispatch_pool_id = EXCLUDED.dispatch_pool_id,

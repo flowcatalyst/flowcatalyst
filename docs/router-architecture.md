@@ -61,9 +61,16 @@ response means; the pool decides what that means for the broker.**
    the JetStream *consumer* sequence into the id, turning at-least-once into at-most-once.
    SQS uses `MessageId`, Postgres the row id, NATS the *stream* sequence.
 2. **Select the pool.** `PoolCode` names it. An unknown code falls back to `DEFAULT-POOL`
-   with a routing warning. A code ending `-DEFAULT-POOL` is a per-client fallback and is
-   **synthesised on demand**, because nothing emits `processingPools` — the router polls an
-   external config service, so those codes never appear in config.
+   with a routing warning. A code ending `-DEFAULT-POOL` is a per-tenant fallback and is
+   **synthesised on demand**, so those codes never need to appear in config — which is why
+   the platform's own document omits them deliberately.
+
+   The platform now serves a config document of its own
+   (`GET /api/dispatch/router-config`, on the internal listener), listing its dispatch pools
+   and its per-(tenant, priority) queues. `FLOWCATALYST_CONFIG_URL` is comma-separated, so
+   that document is merged with any external config service's; pools merge by code, first
+   definition winning. That merge is exactly why platform-level pool codes carry the
+   `platform-` prefix (§5).
 3. **Admit or push back.** A pool at buffer capacity NACKs with a short delay. This is the
    only backpressure signal the router sends the broker. Upstream of it, a consumer pauses
    polling when the pools **its own last batch fed** are full — judging a queue by the whole
@@ -182,9 +189,15 @@ the code it is handed and needs to know nothing about clients.
 | Job state | Published `poolCode` |
 |---|---|
 | pool set, pool has a client identifier | `{clientIdentifier}-{poolCode}` |
-| pool set, platform-level pool | `{poolCode}` — no prefix |
+| pool set, platform-level pool | `platform-{poolCode}` |
 | no pool, job's client resolves | `{clientIdentifier}-DEFAULT-POOL` |
-| neither | `DEFAULT-POOL` |
+| neither | `platform-DEFAULT-POOL` |
+
+A platform-level pool used to publish its code bare. That is unsafe once the router merges
+this platform's document with another config source: pools merge by code, first definition
+winning, so a bare `WEBHOOKS` would silently inherit another tenant's pool of the same name
+— different concurrency and rate limit, with only a merge-conflict log line to show for it.
+`platform` is therefore a reserved client identifier, refused at client creation.
 
 Namespacing is required because `msg_dispatch_pools` is unique on `(code, client_id)` — two
 clients may each own a pool coded `FAST` — while the router keys pools by code alone and

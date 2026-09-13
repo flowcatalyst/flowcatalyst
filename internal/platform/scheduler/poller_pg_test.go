@@ -12,47 +12,39 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
-	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 )
 
 func TestMain(m *testing.M) { testpg.RunMain(m) }
 
-// capturePublisher is a queue.Publisher that records published message
-// IDs. Submit dispatches asynchronously, so it must be race-safe.
+// capturePublisher is a DispatchPublisher that records what it was handed.
+// Submit dispatches asynchronously, so it must be race-safe.
 type capturePublisher struct {
-	mu  sync.Mutex
-	ids []string
+	mu    sync.Mutex
+	ids   []string
+	items []PublishItem
 }
 
-func (p *capturePublisher) Identifier() string { return "capture" }
-
-func (p *capturePublisher) Publish(_ context.Context, m common.Message) (string, error) {
+func (p *capturePublisher) Publish(_ context.Context, items []PublishItem) ([]string, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.ids = append(p.ids, m.ID)
-	return m.ID, nil
-}
-
-func (p *capturePublisher) PublishBatch(ctx context.Context, msgs []common.Message) ([]string, error) {
-	out := make([]string, 0, len(msgs))
-	for _, m := range msgs {
-		id, _ := p.Publish(ctx, m)
-		out = append(out, id)
+	for _, item := range items {
+		p.ids = append(p.ids, item.JobID)
+		p.items = append(p.items, item)
 	}
-	return out, nil
+	return nil, nil
 }
 
-// failPublisher fails every publish — exercises the batch revert path.
+// failPublisher publishes nothing — every job comes back unpublished, which is
+// what drives the revert path.
 type failPublisher struct{}
 
-func (failPublisher) Identifier() string { return "fail" }
-func (failPublisher) Publish(context.Context, common.Message) (string, error) {
-	return "", errors.New("publish boom")
-}
-
-func (failPublisher) PublishBatch(context.Context, []common.Message) ([]string, error) {
-	return nil, errors.New("batch publish boom")
+func (failPublisher) Publish(_ context.Context, items []PublishItem) ([]string, error) {
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.JobID)
+	}
+	return ids, errors.New("batch publish boom")
 }
 
 // TestPollOnce_BatchPublishFailureRevertsToPending pins the batched-dispatch

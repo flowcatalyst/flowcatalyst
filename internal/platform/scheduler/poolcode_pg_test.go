@@ -57,11 +57,19 @@ func TestPoolCodeResolutionChain(t *testing.T) {
 	}{
 		{"client-owned pool is namespaced", "dsp_acme_fast", "clt_acme", "acme-FAST"},
 		{"same code, other client, distinct pool", "dsp_globex_fast", "clt_globex", "globex-FAST"},
-		{"platform-level pool keeps its bare code", "dsp_platform", "", "PLATFORM-WIDE"},
+		// A platform-level pool takes the platform- prefix rather than going
+		// out bare: the router merges this document with other config sources
+		// and pools merge by code, first definition winning, so an unprefixed
+		// PLATFORM-WIDE would silently inherit another tenant's pool of the
+		// same name. This supersedes the earlier "keeps its bare code" rule.
+		{"platform-level pool takes the platform prefix", "dsp_platform", "", "platform-PLATFORM-WIDE"},
 		{"no pool but a resolvable client", "", "clt_acme", "acme-DEFAULT-POOL"},
-		{"neither pool nor client", "", "", "DEFAULT-POOL"},
+		// Likewise the wholly unresolvable case lands on the platform tenant's
+		// default pool, which self-synthesises through the router's
+		// -DEFAULT-POOL suffix rule like every other tenant's fallback.
+		{"neither pool nor client", "", "", "platform-DEFAULT-POOL"},
 		{"unknown pool falls back to the client's default", "dsp_deleted", "clt_acme", "acme-DEFAULT-POOL"},
-		{"unknown client falls back to the global default", "", "clt_missing", "DEFAULT-POOL"},
+		{"unknown client falls back to the platform default", "", "clt_missing", "platform-DEFAULT-POOL"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.want, r.Resolve(ctx, tc.poolID, tc.clientID))

@@ -20,8 +20,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-
-	"github.com/flowcatalyst/flowcatalyst-go/internal/queue"
 )
 
 // Config tunes the scheduler.
@@ -73,7 +71,7 @@ func DefaultConfig() Config {
 type Scheduler struct {
 	cfg       Config
 	pool      *pgxpool.Pool
-	publisher queue.Publisher
+	publisher DispatchPublisher
 
 	poller      *PendingJobPoller
 	dispatcher  *MessageGroupDispatcher
@@ -88,10 +86,11 @@ type Scheduler struct {
 	IsLeader func() bool
 }
 
-// New wires the scheduler. publisher publishes to the queue (typically
-// SQS in prod). The HMAC secret is used to sign the dispatch-job IDs
-// that the router callback verifies.
-func New(cfg Config, pool *pgxpool.Pool, publisher queue.Publisher, hmacSecret string) *Scheduler {
+// New wires the scheduler. publisher hands each claimed job to its destination
+// queue (SQS FIFO in prod, the built-in Postgres broker in dev). The HMAC
+// secret is used to sign the dispatch-job IDs that the router callback
+// verifies.
+func New(cfg Config, pool *pgxpool.Pool, publisher DispatchPublisher, hmacSecret string) *Scheduler {
 	authSvc := NewDispatchAuthService(hmacSecret)
 	pausedCache := NewPausedConnectionCache(pool, cfg.PausedCacheTTL)
 	dispatcher := NewMessageGroupDispatcher(pool, publisher, authSvc, cfg.ProcessingEndpoint)

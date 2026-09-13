@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/dispatchqueue"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 )
@@ -36,6 +37,14 @@ func CreateClient(repo *client.Repository) usecaseop.Operation[CreateCommand, Cl
 			if !identifierPattern.MatchString(id) {
 				return usecase.Validation("INVALID_IDENTIFIER",
 					"identifier must be lowercase alphanumeric with optional hyphens (URL-safe)")
+			}
+			// Client-less dispatch jobs publish to the {prefix}-platform-*
+			// queues, so a client identified literally "platform" would share
+			// that lane. The identifier is immutable after create, so refusing
+			// it here closes the collision permanently.
+			if id == dispatchqueue.TenantPlatform {
+				return usecase.Validation("RESERVED_IDENTIFIER",
+					"identifier '"+dispatchqueue.TenantPlatform+"' is reserved for platform-wide dispatch")
 			}
 			return nil
 		},

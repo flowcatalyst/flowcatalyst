@@ -22,22 +22,13 @@ type msgCapturePublisher struct {
 	msgs []common.Message
 }
 
-func (p *msgCapturePublisher) Identifier() string { return "msg-capture" }
-
-func (p *msgCapturePublisher) Publish(_ context.Context, m common.Message) (string, error) {
+func (p *msgCapturePublisher) Publish(_ context.Context, items []PublishItem) ([]string, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.msgs = append(p.msgs, m)
-	return m.ID, nil
-}
-
-func (p *msgCapturePublisher) PublishBatch(ctx context.Context, msgs []common.Message) ([]string, error) {
-	out := make([]string, 0, len(msgs))
-	for _, m := range msgs {
-		id, _ := p.Publish(ctx, m)
-		out = append(out, id)
+	for _, item := range items {
+		p.msgs = append(p.msgs, item.Message)
 	}
-	return out, nil
+	return nil, nil
 }
 
 func (p *msgCapturePublisher) captured() []common.Message {
@@ -107,9 +98,12 @@ func TestPublishedPoolCodeFallsBackToClientDefault(t *testing.T) {
 	require.Equal(t, "nopool-e2e-DEFAULT-POOL", msgs[0].PoolCode)
 }
 
-// TestPublishedPoolCodeIsGlobalDefaultWithNeither preserves the pre-existing
-// behaviour for a platform-level job: the bare global fallback.
-func TestPublishedPoolCodeIsGlobalDefaultWithNeither(t *testing.T) {
+// TestPublishedPoolCodeIsPlatformDefaultWithNeither: a job with neither a pool
+// nor a resolvable client publishes the PLATFORM tenant's default pool, not the
+// bare global one. That code self-synthesises through the router's
+// -DEFAULT-POOL suffix rule exactly like any client's fallback, so the platform
+// tenant needs no row in the served document.
+func TestPublishedPoolCodeIsPlatformDefaultWithNeither(t *testing.T) {
 	pool := testpg.Pool(t)
 
 	seedRoutableJob(t, pool, "dje2epool003", "IMMEDIATE", nil, nil)
@@ -117,12 +111,16 @@ func TestPublishedPoolCodeIsGlobalDefaultWithNeither(t *testing.T) {
 	msgs := pollAndCapture(t, pool)
 
 	require.Len(t, msgs, 1)
-	require.Equal(t, "DEFAULT-POOL", msgs[0].PoolCode)
+	require.Equal(t, "platform-DEFAULT-POOL", msgs[0].PoolCode)
 }
 
-// TestPublishedPoolCodeForPlatformPoolHasNoPrefix: a pool with no owning client
-// publishes its bare code — prefixing it would invent a client that isn't there.
-func TestPublishedPoolCodeForPlatformPoolHasNoPrefix(t *testing.T) {
+// TestPublishedPoolCodeForPlatformPoolIsPrefixed: a pool with no owning client
+// publishes platform-{code}. Publishing it bare was the earlier rule, and it is
+// unsafe once the router merges this platform's document with other config
+// sources: pools merge by code, first definition winning, so a bare WEBHOOKS
+// would silently inherit another tenant's pool of that name — differing
+// concurrency and rate limit, with only a merge-conflict log line to show it.
+func TestPublishedPoolCodeForPlatformPoolIsPrefixed(t *testing.T) {
 	pool := testpg.Pool(t)
 
 	insertPool(t, pool, "dsp_e2e_platform", "PLATFORM-POOL", nil, nil)
@@ -131,7 +129,7 @@ func TestPublishedPoolCodeForPlatformPoolHasNoPrefix(t *testing.T) {
 	msgs := pollAndCapture(t, pool)
 
 	require.Len(t, msgs, 1)
-	require.Equal(t, "PLATFORM-POOL", msgs[0].PoolCode)
+	require.Equal(t, "platform-PLATFORM-POOL", msgs[0].PoolCode)
 }
 
 // TestUnknownModePublishesAsTheDefault matches the poller's own parse: an

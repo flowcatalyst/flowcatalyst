@@ -3,24 +3,21 @@ package scheduler
 import (
 	"context"
 	"log/slog"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/dispatchqueue"
 )
 
-// DefaultPoolCode is the router's global fallback pool. A job with neither a
-// dispatch pool nor a resolvable client publishes exactly this, which is the
-// behaviour that predates per-client namespacing.
-const DefaultPoolCode = "DEFAULT-POOL"
-
-// DefaultPoolSuffix is the one structural read permitted on a composed pool
-// code. The composed form is `{clientIdentifier}-{poolCode}` and BOTH halves may
-// themselves contain hyphens, so `-` is not a safe delimiter to split on and
-// nothing may reconstruct the parts. A suffix test is unambiguous because the
-// literal is fixed.
-const DefaultPoolSuffix = "-" + DefaultPoolCode
+// DefaultPoolCode and DefaultPoolSuffix live with the rest of the dispatch
+// naming rules, shared with the router-config document builder so a stamped
+// code and the document can never disagree.
+const (
+	DefaultPoolCode   = dispatchqueue.DefaultPoolCode
+	DefaultPoolSuffix = dispatchqueue.DefaultPoolSuffix
+)
 
 // poolRef is a dispatch pool's routing identity: its code and the client that
 // owns it. ClientIdentifier is empty for a platform-level pool.
@@ -66,9 +63,16 @@ func NewPoolCodeResolver(pool *pgxpool.Pool, ttl time.Duration) *PoolCodeResolve
 // Resolve returns the pool code to publish for a job, per the ruled chain:
 //
 //	pool set, pool has a client identifier   → {clientIdentifier}-{poolCode}
-//	pool set, pool is platform-level         → {poolCode}, unprefixed
+//	pool set, pool is platform-level         → platform-{poolCode}
 //	no pool, job's client resolves           → {clientIdentifier}-DEFAULT-POOL
-//	neither                                  → DEFAULT-POOL
+//	neither                                  → platform-DEFAULT-POOL
+//
+// Platform-level pools carry the platform- prefix rather than going out bare,
+// and the wholly unresolvable case lands on the platform tenant's default pool
+// rather than the bare global one — so it self-synthesises through the
+// router's -DEFAULT-POOL suffix rule exactly like every other tenant's
+// fallback. See dispatchqueue.ComposePoolCode for why an unprefixed platform
+// pool is unsafe once several config sources are merged.
 //
 // Namespacing is required because msg_dispatch_pools is unique on
 // (code, client_id) — two clients may each own a pool coded FAST with different
@@ -95,10 +99,11 @@ func (r *PoolCodeResolver) Resolve(ctx context.Context, poolID, clientID string)
 
 	if poolID != "" {
 		if p, ok := r.pools[poolID]; ok && p.Code != "" {
+			var identifier *string
 			if p.ClientIdentifier != "" {
-				return p.ClientIdentifier + "-" + p.Code
+				identifier = &p.ClientIdentifier
 			}
-			return p.Code
+			return dispatchqueue.ComposePoolCode(p.Code, identifier)
 		}
 	}
 	if clientID != "" {
@@ -106,7 +111,26 @@ func (r *PoolCodeResolver) Resolve(ctx context.Context, poolID, clientID string)
 			return identifier + DefaultPoolSuffix
 		}
 	}
-	return DefaultPoolCode
+	return dispatchqueue.TenantPlatform + DefaultPoolSuffix
+}
+
+// ClientIdentifier returns the client's identifier, or nil when clientID is
+// empty or unresolved — from the SAME cached tnt_clients snapshot Resolve
+// reads, so a claimed job's tenant costs no second query. A claimed job
+// carries only client_id, never the identifier itself.
+func (r *PoolCodeResolver) ClientIdentifier(ctx context.Context, clientID string) *string {
+	if clientID == "" {
+		return nil
+	}
+	if err := r.ensureFresh(ctx); err != nil {
+		slog.Warn("pool code cache refresh failed; resolving client identifier from stale cache", "err", err)
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if identifier, ok := r.clients[clientID]; ok && identifier != "" {
+		return &identifier
+	}
+	return nil
 }
 
 func (r *PoolCodeResolver) ensureFresh(ctx context.Context) error {
@@ -172,8 +196,6 @@ func (r *PoolCodeResolver) refresh(ctx context.Context) error {
 }
 
 // IsDefaultPoolCode reports whether code names a fallback pool — the global
-// DEFAULT-POOL or any per-client {identifier}-DEFAULT-POOL. This is the only
+// DEFAULT-POOL or any per-tenant {identifier}-DEFAULT-POOL. This is the only
 // permitted structural read of a composed code.
-func IsDefaultPoolCode(code string) bool {
-	return code == DefaultPoolCode || strings.HasSuffix(code, DefaultPoolSuffix)
-}
+func IsDefaultPoolCode(code string) bool { return dispatchqueue.IsDefaultPoolCode(code) }

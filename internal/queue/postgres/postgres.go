@@ -87,7 +87,15 @@ func (q *Queue) Identifier() string { return q.cfg.Name }
 // InitSchema creates the queue table and index (idempotent). The DDL
 // matches the pre-existing layout exactly so it is a no-op when the table
 // was already provisioned by the existing system.
-func (q *Queue) InitSchema(ctx context.Context) error {
+func (q *Queue) InitSchema(ctx context.Context) error { return InitSchema(ctx, q.pool) }
+
+// InitSchema creates the queue tables on an existing pool. Exported for the
+// party that OWNS the database the queue lives on — the platform, whose
+// dispatch scheduler publishes there. A router process must not call it
+// against the platform's database: the platform owns that schema, and running
+// DDL from a consumer build fails wherever the shared pool cannot hand out a
+// connection.
+func InitSchema(ctx context.Context, pool *pgxpool.Pool) error {
 	const ddl = `
 CREATE TABLE IF NOT EXISTS queue_messages (
     id               TEXT NOT NULL,
@@ -144,7 +152,7 @@ BEGIN
     END IF;
 END $$;
 `
-	_, err := q.pool.Exec(ctx, ddl)
+	_, err := pool.Exec(ctx, ddl)
 	return err
 }
 
@@ -340,31 +348,73 @@ func (q *Queue) Defer(ctx context.Context, receipt string, delaySeconds *uint32)
 // Publish writes a single message. Uses ON CONFLICT DO NOTHING so a
 // duplicate id is a no-op (at-least-once publish semantics).
 func (q *Queue) Publish(ctx context.Context, m common.Message) (string, error) {
-	payload, err := json.Marshal(m)
-	if err != nil {
+	if err := InsertBatch(ctx, q.pool, []Row{{QueueName: q.cfg.Name, Message: m}}); err != nil {
 		return "", err
 	}
-	now := time.Now().Unix()
-	_, err = q.pool.Exec(ctx,
-		`INSERT INTO queue_messages
-		     (id, queue_name, message_group_id, visible_at, payload, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6)
-		 ON CONFLICT (queue_name, id) DO NOTHING`,
-		m.ID, q.cfg.Name, m.MessageGroupID, now, string(payload), now)
-	return m.ID, err
+	return m.ID, nil
 }
 
-// PublishBatch writes a batch of messages (loops Publish).
+// PublishBatch writes a batch of messages, all bound for this queue, in one
+// statement.
 func (q *Queue) PublishBatch(ctx context.Context, msgs []common.Message) ([]string, error) {
+	rows := make([]Row, 0, len(msgs))
 	ids := make([]string, 0, len(msgs))
 	for _, m := range msgs {
-		id, err := q.Publish(ctx, m)
-		if err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
+		rows = append(rows, Row{QueueName: q.cfg.Name, Message: m})
+		ids = append(ids, m.ID)
+	}
+	if err := InsertBatch(ctx, q.pool, rows); err != nil {
+		return nil, err
 	}
 	return ids, nil
+}
+
+// Row is one message bound for one named queue — the unit InsertBatch writes,
+// so a single statement can span several destination queues. The dispatch
+// scheduler publishes a claimed batch that way: one row-queue per (tenant,
+// priority), all in this one table.
+type Row struct {
+	QueueName string
+	Message   common.Message
+}
+
+// InsertBatch writes one row per Row in a single statement, so a failure never
+// partially applies. Each row may name a different queue.
+//
+// Exported so the dispatch scheduler's Postgres publisher writes through the
+// same column mapping this backend's own publisher uses: two mappings for one
+// table is how a producer and its consumer drift apart. ON CONFLICT DO NOTHING
+// keeps at-least-once publish semantics — re-publishing a message still
+// sitting on the queue is a no-op rather than a duplicate.
+func InsertBatch(ctx context.Context, pool *pgxpool.Pool, rows []Row) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	ids := make([]string, len(rows))
+	names := make([]string, len(rows))
+	groups := make([]*string, len(rows))
+	payloads := make([]string, len(rows))
+	for i, r := range rows {
+		payload, err := json.Marshal(r.Message)
+		if err != nil {
+			return fmt.Errorf("marshal queue message %q: %w", r.Message.ID, err)
+		}
+		ids[i] = r.Message.ID
+		names[i] = r.QueueName
+		groups[i] = r.Message.MessageGroupID
+		payloads[i] = string(payload)
+	}
+	// UNNEST zips the four arrays positionally; visible_at and created_at are
+	// the same instant for every row in the batch.
+	_, err := pool.Exec(ctx,
+		`INSERT INTO queue_messages
+		     (id, queue_name, message_group_id, visible_at, payload, created_at)
+		 SELECT u.id, u.queue_name, u.message_group_id, $5::bigint, u.payload, $5::bigint
+		   FROM UNNEST($1::text[], $2::text[], $3::text[], $4::text[])
+		     AS u(id, queue_name, message_group_id, payload)
+		 ON CONFLICT (queue_name, id) DO NOTHING`,
+		ids, names, groups, payloads, time.Now().Unix())
+	return err
 }
 
 // Healthy reports whether we can talk to Postgres.

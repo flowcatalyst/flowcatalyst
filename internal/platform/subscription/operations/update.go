@@ -6,6 +6,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/dispatchqueue"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -29,6 +30,10 @@ type UpdateCommand struct {
 	DispatchPoolID   *string                         `json:"dispatchPoolId,omitempty"`
 	ServiceAccountID *string                         `json:"serviceAccountId,omitempty"`
 	DataOnly         *bool                           `json:"dataOnly,omitempty"`
+	// Queue is the dispatch priority — DEFAULT or HIGH_PRIORITY, matched
+	// ignoring case. Omitted leaves the stored value alone; an explicit blank
+	// clears it, which the publish path reads as DEFAULT.
+	Queue *string `json:"queue,omitempty"`
 }
 
 // UpdateSubscription mutates mutable fields and emits [SubscriptionUpdated].
@@ -44,6 +49,11 @@ func UpdateSubscription(repo *subscription.Repository) usecaseop.Operation[Updat
 			}
 			if cmd.Endpoint != nil && !urlPattern.MatchString(*cmd.Endpoint) {
 				return usecase.Validation("INVALID_ENDPOINT", "endpoint must be a http(s) URL")
+			}
+			if cmd.Queue != nil {
+				if _, err := dispatchqueue.Parse(*cmd.Queue); err != nil {
+					return err
+				}
 			}
 			return nil
 		},
@@ -109,6 +119,20 @@ func UpdateSubscription(repo *subscription.Repository) usecaseop.Operation[Updat
 			}
 			if cmd.DataOnly != nil {
 				s.DataOnly = *cmd.DataOnly
+			}
+			// Stored canonically upper-case (see CreateCommand.Queue). Unlike
+			// the set-if-provided fields above, an explicit blank CLEARS the
+			// priority rather than being ignored: there is otherwise no way to
+			// put a subscription back on the default lane once it has been
+			// moved off it, and "" is not a value the column can hold.
+			if cmd.Queue != nil {
+				p, _ := dispatchqueue.Parse(*cmd.Queue)
+				if p == "" {
+					s.Queue = nil
+				} else {
+					stored := string(p)
+					s.Queue = &stored
+				}
 			}
 
 			event := SubscriptionUpdated{
