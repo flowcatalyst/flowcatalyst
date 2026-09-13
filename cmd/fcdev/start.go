@@ -189,6 +189,19 @@ func runStart(cmd *cobra.Command, _ []string) error {
 		slog.Warn("MCP credential bootstrap failed (continuing)", "err", err)
 	}
 
+	// The dev router fetches its configuration document from this same
+	// process's API, authenticated like any other caller. Non-fatal: a router
+	// that cannot authenticate starts with no queues, which is what a
+	// misconfigured deployment does too.
+	var routerCreds routerCredentials
+	if opts.RouterEnabled {
+		if creds, err := bootstrapRouterCredentials(rootCtx, pool); err != nil {
+			slog.Warn("router credential bootstrap failed (continuing)", "err", err)
+		} else {
+			routerCreds = creds
+		}
+	}
+
 	// SIGTERM / SIGINT → cancel rootCtx so server.Run drains.
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
@@ -199,7 +212,7 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	}()
 
 	// ── Delegate to the shared run-loop ────────────────────────────────
-	cfg := devEnvCfg(opts, databaseURL)
+	cfg := devEnvCfg(opts, databaseURL, routerCreds)
 	runOpts := server.RunOptions{}
 	if frontend.IsAvailable() {
 		runOpts.Fallback = frontend.Handler()

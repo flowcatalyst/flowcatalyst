@@ -176,6 +176,14 @@ func PlatformRoles() []role.Role {
 				permAdminCorsOriginRead,
 			}),
 
+		// platform:router — the deployed message router's own role. Exactly
+		// one permission: it fetches its configuration document and does
+		// nothing else on the platform. Anchor-only (the document spans every
+		// client's queues) and not client-delegable.
+		mk("router", "Router",
+			"Fetches the dispatch router configuration",
+			[]string{permAdminDispatchPoolRead}),
+
 		// platform:portal-administrator — CLIENT-delegable: assign to a
 		// client administrator (manage their client's portal users in the
 		// platform UI) or to the portal application's service account (the

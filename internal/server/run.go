@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/oauthtoken"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatch"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/router"
@@ -70,10 +72,6 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 	if err != nil {
 		return fmt.Errorf("dispatch queue settings: %w", err)
 	}
-	var routerConfigDoc *dispatch.DocumentBuilder
-	if cfg.PlatformEnabled && pool != nil {
-		routerConfigDoc = dispatch.NewDocumentBuilder(pool, dispatchSettings)
-	}
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -85,7 +83,7 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 	var routerErr error
 
 	if cfg.PlatformEnabled {
-		if err := WirePlatform(r, pool, cfg); err != nil {
+		if err := WirePlatform(r, pool, cfg, dispatchSettings); err != nil {
 			return fmt.Errorf("platform wiring: %w", err)
 		}
 		slog.Info("platform API wired")
@@ -122,6 +120,34 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 			}
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		})
+	}
+
+	// ── Listeners: BIND before any subsystem starts ───────────────────────
+	// The router fetches its configuration document over HTTP, and in a
+	// co-tenanted process (fcdev, or a single-binary deployment) that document
+	// is served by this very listener. Binding first means the router's first
+	// fetch finds an open port instead of connection-refused — the kernel
+	// accepts as soon as Listen returns, and Serve below picks the connection
+	// up. Serving still starts after the subsystems, so nothing is answered
+	// before its dependencies are running.
+	apiSrv := &http.Server{
+		Addr:              fmt.Sprintf(":%d", cfg.APIPort),
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+	metricsSrv := &http.Server{
+		Addr:              fmt.Sprintf(":%d", cfg.MetricsPort),
+		Handler:           metricsRouter(cfg),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	apiLn, err := net.Listen("tcp", apiSrv.Addr)
+	if err != nil {
+		return fmt.Errorf("api listener: %w", err)
+	}
+	metricsLn, err := net.Listen("tcp", metricsSrv.Addr)
+	if err != nil {
+		_ = apiLn.Close()
+		return fmt.Errorf("metrics listener: %w", err)
 	}
 
 	// ── Background subsystems ─────────────────────────────────────────────
@@ -176,28 +202,17 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 		slog.Info("mcp started")
 	}
 
-	// ── Listeners ─────────────────────────────────────────────────────────
-	apiSrv := &http.Server{
-		Addr:              fmt.Sprintf(":%d", cfg.APIPort),
-		Handler:           r,
-		ReadHeaderTimeout: 10 * time.Second,
-	}
-	metricsSrv := &http.Server{
-		Addr:              fmt.Sprintf(":%d", cfg.MetricsPort),
-		Handler:           metricsRouter(cfg, routerConfigDoc),
-		ReadHeaderTimeout: 5 * time.Second,
-	}
-
+	// ── Serve on the already-bound listeners ──────────────────────────────
 	listenErr := make(chan error, 2)
 	go func() {
 		slog.Info("api server listening", "addr", apiSrv.Addr)
-		if err := apiSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := apiSrv.Serve(apiLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			listenErr <- fmt.Errorf("api server: %w", err)
 		}
 	}()
 	go func() {
 		slog.Info("metrics server listening", "addr", metricsSrv.Addr)
-		if err := metricsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := metricsSrv.Serve(metricsLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			listenErr <- fmt.Errorf("metrics server: %w", err)
 		}
 	}()
@@ -351,6 +366,31 @@ func newRouterServer(cfg EnvCfg, pool *pgxpool.Pool) (*router.Server, error) {
 			router.SettledReporterConfig{Endpoint: cfg.RouterPlatformURL},
 		))
 		slog.Info("router: settled-message hook enabled", "platform_url", cfg.RouterPlatformURL)
+	}
+
+	// The router authenticates to its own platform to fetch the config
+	// document. Refused here, at the composition root, rather than failing on
+	// the first fetch: a half-configured credential is a deployment mistake,
+	// and the router would otherwise 401 against its own platform every
+	// attempt, for ever, with only a warning to show for it.
+	haveID := strings.TrimSpace(cfg.RouterClientID) != ""
+	haveSecret := strings.TrimSpace(cfg.RouterClientSecret) != ""
+	switch {
+	case haveID != haveSecret:
+		return nil, errors.New(
+			"FC_ROUTER_CLIENT_ID and FC_ROUTER_CLIENT_SECRET must be set together (one without the other " +
+				"cannot authenticate to the platform's router-config document)")
+	case haveID && strings.TrimSpace(cfg.RouterPlatformURL) == "":
+		return nil, errors.New(
+			"FC_ROUTER_CLIENT_ID/SECRET need FC_ROUTER_PLATFORM_URL: the credential belongs to one platform, " +
+				"and a comma-separated FLOWCATALYST_CONFIG_URL may list third-party config services the " +
+				"credential must never be sent to")
+	case haveID && srv.ConfigSource != nil:
+		srv.ConfigSource.SetCredentials(
+			oauthtoken.New(cfg.RouterPlatformURL, cfg.RouterClientID, cfg.RouterClientSecret, nil),
+			cfg.RouterPlatformURL)
+		slog.Info("router: config document fetched with client credentials",
+			"platform_url", cfg.RouterPlatformURL, "client_id", cfg.RouterClientID)
 	}
 
 	_ = pool // the router's consumers open their own connections per queue

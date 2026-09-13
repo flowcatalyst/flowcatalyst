@@ -21,6 +21,7 @@ import (
 	clientapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/api"
 	connectionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection/api"
 	corsapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/cors/api"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatch"
 	dispatchjobapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/api"
 	dispatchpoolapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/docsapi"
@@ -68,7 +69,7 @@ import (
 // chi requires middleware to be defined before any routes on a given
 // mux; the Group creates its own scope so that ordering rule is
 // satisfied locally regardless of caller ordering.
-func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usecasepgx.UnitOfWork, repos *repoSet, svcs *serviceSet) huma.API {
+func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usecasepgx.UnitOfWork, repos *repoSet, svcs *serviceSet, dispatchSettings dispatch.Settings) huma.API {
 	// humaAPI is assigned inside the auth Group below so its routes
 	// inherit chi auth middleware. Captured at function scope so the
 	// spec/docs handlers (mounted on the parent router OUTSIDE the
@@ -337,6 +338,13 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		// cancel/complete a FAILED job and resend a group, all of which run
 		// through the use-case envelope rather than a bare UPDATE.
 		dispatchjobapi.Register(humaAPI, &dispatchjobapi.State{Repo: repos.dispatchJobRepo, UoW: uow})
+
+		// The router's own configuration document. An ordinary authenticated
+		// route: the router presents a client-credentials bearer like any
+		// other caller.
+		dispatch.Register(humaAPI, &dispatch.State{
+			Documents: dispatch.NewDocumentBuilder(pool, dispatchSettings),
+		})
 
 		identityproviderapi.Register(humaAPI, &identityproviderapi.State{
 			Repo:       repos.idpRepo,

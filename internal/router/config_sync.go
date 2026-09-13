@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	neturl "net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -31,6 +32,16 @@ type ConfigSource struct {
 	MaxAttempts int
 	RetryDelay  time.Duration
 
+	// Credentials is how this router authenticates to ITS OWN platform's
+	// config document. It is consulted only for a URL whose origin matches
+	// CredentialOrigin: a deployed FLOWCATALYST_CONFIG_URL lists several
+	// third-party config services beside the platform's own document, and the
+	// router's credential must never be sent to any of them. Nil means every
+	// URL is fetched unauthenticated, which is what a router with no
+	// credentials configured does.
+	Credentials      TokenSource
+	CredentialOrigin string
+
 	mu   sync.Mutex
 	last []byte // last merged config (marshaled) for change detection
 
@@ -51,6 +62,35 @@ type ConfigSource struct {
 	// "serving stale config" warning per URL, so a failure streak emits
 	// exactly one warning (not one per tick) and recovery can resolve it.
 	staleWarnIDs map[string]string
+}
+
+// TokenSource mints bearer tokens for the platform, and is told when one was
+// rejected. oauthtoken.Manager satisfies it.
+type TokenSource interface {
+	Token(ctx context.Context) (string, error)
+	Invalidate()
+}
+
+// SetCredentials makes every request to platformURL's origin carry a bearer
+// token from src. A blank platformURL, or a nil src, leaves every URL
+// unauthenticated.
+func (cs *ConfigSource) SetCredentials(src TokenSource, platformURL string) {
+	if src == nil || strings.TrimSpace(platformURL) == "" {
+		return
+	}
+	cs.Credentials = src
+	cs.CredentialOrigin = originOf(platformURL)
+}
+
+// originOf is scheme://host[:port] — the unit "same platform" is decided on.
+// A path, query or trailing slash must not change whether the credential is
+// sent, and a different host or port must.
+func originOf(raw string) string {
+	u, err := neturl.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	return strings.ToLower(u.Scheme + "://" + u.Host)
 }
 
 // NewConfigSource builds a source from a (possibly comma-separated) URL.
@@ -185,12 +225,31 @@ func (cs *ConfigSource) fetchOnce(ctx context.Context, url string) (*common.Rout
 	if err != nil {
 		return nil, err
 	}
+	// The credential goes to this router's own platform and nowhere else.
+	authenticated := cs.Credentials != nil && cs.CredentialOrigin != "" &&
+		originOf(url) == cs.CredentialOrigin
+	if authenticated {
+		// A minting failure is an attempt failure like any transport failure,
+		// not a fatal one: the retry loop keeps trying, and the CONFIGURATION
+		// warning reports it.
+		token, terr := cs.Credentials.Token(ctx)
+		if terr != nil {
+			return nil, fmt.Errorf("config fetch: mint token: %w", terr)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	resp, err := cs.Client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("config fetch: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
+		// A rejected token is the one failure re-minting can fix, so drop the
+		// cached one and let the next attempt mint. Otherwise every attempt
+		// until the token expires fails identically.
+		if authenticated && resp.StatusCode == http.StatusUnauthorized {
+			cs.Credentials.Invalidate()
+		}
 		return nil, fmt.Errorf("config fetch: HTTP %d", resp.StatusCode)
 	}
 	body, err := io.ReadAll(resp.Body)

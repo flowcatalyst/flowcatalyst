@@ -144,6 +144,16 @@ type EnvCfg struct {
 	// leave the default floor standing, never open it wider by accident.
 	RouterNotifyMinSeverity string
 
+	// RouterClientID / RouterClientSecret are the OAuth client_credentials the
+	// router authenticates to ITS OWN platform with, to fetch the
+	// router-config document. Set together or not at all, and only alongside
+	// RouterPlatformURL — which names the platform the credential belongs to,
+	// so "which of several config URLs gets the token" is never positional.
+	// Unset means every config URL is fetched unauthenticated, exactly as
+	// before; a platform-served URL then answers 401 on every attempt.
+	RouterClientID     string
+	RouterClientSecret string
+
 	// RouterPlatformURL is the platform base URL the router reports settled
 	// BLOCK_ON_ERROR groups to (A-01, POST /api/dispatch/settled). Empty
 	// disables the hook entirely, which is the correct default for a
@@ -251,6 +261,8 @@ func LoadEnv() EnvCfg {
 		RouterStrictRouting:     envBool("FC_ROUTER_STRICT_ROUTING", false),
 		RouterNotifyMinSeverity: envOr("FC_NOTIFY_MIN_SEVERITY", ""),
 		RouterPlatformURL:       envFirst("FC_ROUTER_PLATFORM_URL", "FC_API_BASE_URL", "FLOWCATALYST_URL", "", ""),
+		RouterClientID:          envOr("FC_ROUTER_CLIENT_ID", ""),
+		RouterClientSecret:      envOr("FC_ROUTER_CLIENT_SECRET", ""),
 
 		ALBEnabled:        envBool("FC_ALB_ENABLED", false),
 		ALBTargetGroupARN: os.Getenv("FC_ALB_TARGET_GROUP_ARN"),

@@ -66,11 +66,14 @@ response means; the pool decides what that means for the broker.**
    the platform's own document omits them deliberately.
 
    The platform now serves a config document of its own
-   (`GET /api/dispatch/router-config`, on the internal listener), listing its dispatch pools
-   and its per-(tenant, priority) queues. `FLOWCATALYST_CONFIG_URL` is comma-separated, so
-   that document is merged with any external config service's; pools merge by code, first
-   definition winning. That merge is exactly why platform-level pool codes carry the
-   `platform-` prefix (§5).
+   (`GET /api/dispatch/router-config`), listing its dispatch pools and its per-(tenant,
+   priority) queues. It is an ordinary authenticated API route: the router presents an OAuth
+   client-credentials bearer (`FC_ROUTER_CLIENT_ID`/`SECRET`), and the built-in
+   `platform:router` role carries the one permission it needs. The credential goes only to
+   URLs whose origin matches `FC_ROUTER_PLATFORM_URL` — `FLOWCATALYST_CONFIG_URL` is
+   comma-separated and may list third-party config services beside the platform's own
+   document. Documents merge by code, first definition winning, which is exactly why
+   platform-level pool codes carry the `platform-` prefix (§5).
 3. **Admit or push back.** A pool at buffer capacity NACKs with a short delay. This is the
    only backpressure signal the router sends the broker. Upstream of it, a consumer pauses
    polling when the pools **its own last batch fed** are full — judging a queue by the whole

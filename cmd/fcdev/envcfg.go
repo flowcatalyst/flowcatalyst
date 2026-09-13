@@ -14,7 +14,7 @@ import (
 //
 // JWT signing keys stay ephemeral in dev — pin them with
 // FC_JWT_SIGNING_KEY_PATH if needed.
-func devEnvCfg(opts startOpts, databaseURL string) server.EnvCfg {
+func devEnvCfg(opts startOpts, databaseURL string, routerCreds routerCredentials) server.EnvCfg {
 	cfg := server.LoadEnv()
 	cfg.DatabaseURL = databaseURL
 	cfg.APIPort = opts.APIPort
@@ -38,12 +38,32 @@ func devEnvCfg(opts startOpts, databaseURL string) server.EnvCfg {
 	// platform, whose document names Postgres-backed queues rather than SQS
 	// ones — the only dev/prod difference is the queue type inside it.
 	//
-	// The document is served on the INTERNAL listener (metrics port), not the
-	// API one, so the URL is built off MetricsPort. Only defaulted: an
-	// operator who has already pointed FLOWCATALYST_CONFIG_URL somewhere else
-	// is never overridden.
-	if cfg.RouterConfigURL == "" && opts.MetricsPort > 0 {
-		cfg.RouterConfigURL = fmt.Sprintf("http://localhost:%d/api/dispatch/router-config", opts.MetricsPort)
+	// The document is an authenticated route on the API listener, so the URL
+	// is built off APIPort and the credential bootstrapped alongside it is
+	// what the router presents. Only defaulted: an operator who has already
+	// pointed FLOWCATALYST_CONFIG_URL somewhere else (at another config
+	// service, say), or supplied their own credential, is never overridden.
+	//
+	// An ephemeral --api-port 0 is not knowable here — EnvCfg is built before
+	// the listener binds — so nothing is synthesised rather than a URL naming
+	// port 0, which could never work. The router then runs with no queues, as
+	// it did before.
+	if opts.APIPort > 0 {
+		base := fmt.Sprintf("http://localhost:%d", opts.APIPort)
+		if cfg.RouterConfigURL == "" {
+			cfg.RouterConfigURL = base + "/api/dispatch/router-config"
+		}
+		if cfg.RouterClientID == "" && routerCreds.ClientID != "" {
+			cfg.RouterClientID = routerCreds.ClientID
+			cfg.RouterClientSecret = routerCreds.Secret
+			// The credential belongs to one platform, and this names which.
+			// Setting it also turns on the A-01 settled-group hook against
+			// that platform — the intended behaviour whenever the router
+			// consumes its dispatch queues.
+			if cfg.RouterPlatformURL == "" {
+				cfg.RouterPlatformURL = base
+			}
+		}
 	}
 	return cfg
 }

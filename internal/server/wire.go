@@ -4,6 +4,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatch"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 	platformsink "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/platformsink"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
@@ -27,7 +28,7 @@ import (
 //	                   repo, build the use cases, build the api.State,
 //	                   register it on the huma API.
 //	wire_spec.go     — registerSpecRoutes: unauthenticated OpenAPI/Swagger
-func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
+func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg, dispatchSettings dispatch.Settings) error {
 	// Wire the huma error transformer so handler-returned *usecase.Error
 	// values flow out as the canonical {code, message, details} envelope.
 	httpcompat.Init()
@@ -42,7 +43,7 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg) error {
 	}
 
 	registerPublicRoutes(r, cfg, pool, uow, repos, svcs)
-	humaAPI := registerPlatformAPI(r, cfg, pool, uow, repos, svcs)
+	humaAPI := registerPlatformAPI(r, cfg, pool, uow, repos, svcs, dispatchSettings)
 	registerSpecRoutes(r, humaAPI)
 	return nil
 }

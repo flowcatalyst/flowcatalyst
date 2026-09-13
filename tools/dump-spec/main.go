@@ -22,6 +22,7 @@ import (
 	clientapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/api"
 	connectionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection/api"
 	corsapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/cors/api"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatch"
 	dispatchjobapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/api"
 	dispatchpoolapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/docsapi"
@@ -62,6 +63,7 @@ func main() {
 	clientapi.Register(api, &clientapi.State{})
 	connectionapi.Register(api, &connectionapi.State{})
 	corsapi.Register(api, &corsapi.State{})
+	dispatch.Register(api, &dispatch.State{})
 	dispatchjobapi.Register(api, &dispatchjobapi.State{})
 	dispatchpoolapi.Register(api, &dispatchpoolapi.State{})
 	emaildomainapi.Register(api, &emaildomainapi.State{})
