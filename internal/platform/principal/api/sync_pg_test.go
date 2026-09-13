@@ -33,6 +33,7 @@ func TestSyncUsers_Endpoint_NoAppCode(t *testing.T) {
 	authCtx := auth.WithContext(ctx, &auth.AuthContext{
 		PrincipalID: "p_syncusers_http",
 		Scope:       auth.ScopeAnchor, // anchor clears CanSyncPrincipals
+		Permissions: []string{"platform:*:*:*"},
 	})
 
 	hash, err := bcrypt.GenerateFromPassword([]byte("migrated-pw"), bcrypt.DefaultCost)

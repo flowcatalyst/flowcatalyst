@@ -41,7 +41,7 @@ func newIngestServer(t *testing.T, ac *auth.AuthContext) (*httptest.Server, *dis
 }
 
 func anchorAC() *auth.AuthContext {
-	return &auth.AuthContext{PrincipalID: "p_dj_test", Scope: auth.ScopeAnchor}
+	return &auth.AuthContext{PrincipalID: "p_dj_test", Scope: auth.ScopeAnchor, Permissions: []string{"platform:*:*:*"}}
 }
 
 func postJSON(t *testing.T, url, body string) (*http.Response, string) {

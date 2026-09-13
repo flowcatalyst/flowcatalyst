@@ -58,20 +58,43 @@ func TestSuperAdminWildcardGrantsEverything(t *testing.T) {
 	assert.NoError(t, CanReadEventTypes(a))
 	assert.NoError(t, CanWriteApplications(a))
 	assert.NoError(t, CanDeleteRoles(a))
-	assert.NoError(t, IsAdmin(a), "super-admin wildcard satisfies IsAdmin")
+	assert.NoError(t, CanViewDashboardStats(a), "the super-admin wildcard matches every permission")
 }
 
-func TestAnchorBypassesPermissionChecks(t *testing.T) {
+// Scope is reach; authority comes from roles. An anchor principal passes
+// RequireAnchor (it may act for every tenant) and nothing else: without a
+// permission behind it, every gate refuses. This is the rule that makes a
+// provisioned service account's role mean something — every one of them is
+// anchor-scoped, so while scope implied authority, any application's
+// credentials could call every admin route.
+func TestAnchorScopeIsReachNotAuthority(t *testing.T) {
 	a := &AuthContext{Scope: ScopeAnchor} // no explicit permissions
-	assert.NoError(t, CanReadEventTypes(a))
-	assert.NoError(t, CanWriteConnections(a))
-	assert.NoError(t, IsAdmin(a))
-	assert.NoError(t, RequireAnchor(a))
+	assert.NoError(t, RequireAnchor(a), "anchor reach is unchanged")
+	assert.Error(t, CanReadEventTypes(a), "anchor scope alone must not grant a read")
+	assert.Error(t, CanWriteConnections(a), "anchor scope alone must not grant a write")
+	assert.Error(t, CanViewDashboardStats(a))
+
+	// The same principal, once its roles actually grant the permission.
+	withPerm := &AuthContext{Scope: ScopeAnchor, Permissions: []string{"platform:messaging:event-type:view"}}
+	assert.NoError(t, CanReadEventTypes(withPerm))
+	assert.Error(t, CanWriteConnections(withPerm), "an unrelated permission grants nothing else")
+}
+
+// The user-admin check: an anchor's reach covers any target, but it must still
+// hold a user-write permission.
+func TestRequireUserAdmin_AnchorStillNeedsAUserWritePermission(t *testing.T) {
+	bare := &AuthContext{Scope: ScopeAnchor}
+	assert.Error(t, RequireUserAdmin(bare, nil))
+
+	writer := &AuthContext{Scope: ScopeAnchor, Permissions: []string{"platform:iam:user:update"}}
+	assert.NoError(t, RequireUserAdmin(writer, nil), "a platform user is an anchor-only target")
+	other := "clt_other"
+	assert.NoError(t, RequireUserAdmin(writer, &other), "an anchor reaches every client")
 }
 
 func TestNonAnchorWithoutPermissionDenied(t *testing.T) {
 	a := &AuthContext{Scope: ScopeClient, Permissions: []string{"platform:messaging:event:view"}}
 	assert.Error(t, CanReadEventTypes(a), "an unrelated permission must not grant event-type view")
 	assert.Error(t, RequireAnchor(a), "non-anchor must fail RequireAnchor")
-	assert.Error(t, IsAdmin(a))
+	assert.Error(t, CanViewDashboardStats(a))
 }

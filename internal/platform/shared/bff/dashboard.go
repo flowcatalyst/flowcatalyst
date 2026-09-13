@@ -50,7 +50,14 @@ func RegisterRoutes(r chi.Router, s *DashboardState) {
 
 func (s *DashboardState) stats(w http.ResponseWriter, r *http.Request) {
 	ac := auth.FromContext(r.Context())
-	if err := auth.IsAdmin(ac); err != nil {
+	// Reach, then authority: the counts span every tenant, so anchor scope is
+	// required, and either the client or the application view permission
+	// grants it.
+	if err := auth.RequireAnchor(ac); err != nil {
+		httperror.Write(w, err)
+		return
+	}
+	if err := auth.CanViewDashboardStats(ac); err != nil {
 		httperror.Write(w, err)
 		return
 	}

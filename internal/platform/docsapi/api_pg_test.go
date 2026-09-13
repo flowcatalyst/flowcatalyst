@@ -45,6 +45,7 @@ func TestGroupedListWithApplicationDocs(t *testing.T) {
 	s := &State{AppDocs: repo, Apps: apps}
 	authCtx := auth.WithContext(ctx, &auth.AuthContext{
 		PrincipalID: "prn_docsapipg", Scope: auth.ScopeAnchor,
+		Permissions: []string{"platform:*:*:*"},
 	})
 
 	list, err := s.list(authCtx, &apicommon.Empty{})

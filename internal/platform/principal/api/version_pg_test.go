@@ -81,7 +81,7 @@ func TestGetVersion_AnchorCanCheckAnyPrincipal(t *testing.T) {
 		targetPID, updatedAt)
 	require.NoError(t, err)
 
-	authCtx := auth.WithContext(ctx, &auth.AuthContext{PrincipalID: callerPID, Scope: auth.ScopeAnchor})
+	authCtx := auth.WithContext(ctx, &auth.AuthContext{PrincipalID: callerPID, Scope: auth.ScopeAnchor, Permissions: []string{"platform:*:*:*"}})
 	out, err := s.getVersion(authCtx, &apicommon.IDInput{ID: targetPID})
 	require.NoError(t, err, "an anchor must be able to check any principal's version")
 	assert.True(t, out.Body.UpdatedAt.Underlying().Equal(updatedAt))

@@ -54,6 +54,7 @@ func TestBulkImport_DropsForeignDomainAndExisting(t *testing.T) {
 	s := &State{Repo: repo, UoW: uow, Mappings: edm, InviteEmailer: noopInviteEmailer{}}
 	authCtx := auth.WithContext(ctx, &auth.AuthContext{
 		PrincipalID: "p_bulkimp_admin", Scope: auth.ScopeAnchor, // platform admin
+		Permissions: []string{"platform:*:*:*"},
 	})
 
 	out, err := s.bulkImport(authCtx, &apicommon.In[BulkImportRequest]{Body: BulkImportRequest{

@@ -5,8 +5,7 @@
 //   - CanRead<Resource>(ctx)   for GET
 //   - CanCreate/Update/Delete  for the specific verbs
 //   - CanWrite<Resource>       for any of create/update/delete
-//   - RequireAnchor(ctx)       for anchor-only endpoints
-//   - IsAdmin(ctx)             anchor OR the super-admin wildcard
+//   - RequireAnchor(ctx)       for anchor-only endpoints (reach, not authority)
 //
 // The check functions return a usecase.Error (Kind=Authorization) on
 // failure so handlers can httperror.Write(err) without branching.
@@ -73,6 +72,8 @@ const (
 	permProcessUpdate = "platform:messaging:process:update"
 	permProcessDelete = "platform:messaging:process:delete"
 	permProcessSync   = "platform:messaging:process:sync"
+	// Client (admin)
+	permAdminClientView = "platform:admin:client:view"
 	// Application (admin)
 	permApplicationView   = "platform:admin:application:view"
 	permApplicationCreate = "platform:admin:application:create"
@@ -328,8 +329,10 @@ func RequireUserAdmin(a *AuthContext, targetClientID *string) error {
 	if a == nil {
 		return usecase.Authorization("UNAUTHENTICATED", "authentication required")
 	}
+	// An anchor's reach covers every target, but it still needs a user-write
+	// permission from its roles — reach is not authority.
 	if a.IsAnchor() {
-		return nil
+		return CanWritePrincipals(a)
 	}
 	if targetClientID == nil {
 		return usecase.Authorization("ANCHOR_REQUIRED", "anchor scope required for platform users")
@@ -340,16 +343,14 @@ func RequireUserAdmin(a *AuthContext, targetClientID *string) error {
 	return CanWritePrincipals(a)
 }
 
-// IsAdmin returns nil if the principal is anchor-scoped or holds the
-// super-admin wildcard.
-func IsAdmin(a *AuthContext) error {
-	if a == nil {
-		return usecase.Authorization("UNAUTHENTICATED", "authentication required")
-	}
-	if a.IsAnchor() || a.HasPermission(permSuperAdmin) {
-		return nil
-	}
-	return usecase.Authorization("ADMIN_REQUIRED", "admin permission required")
+// CanViewDashboardStats gates the dashboard's aggregate counts: a view over
+// clients and applications, so either family's view permission grants it.
+//
+// It replaces the former IsAdmin ("anchor OR the super-admin wildcard"), which
+// was the last place scope stood in for authority. Its only real caller was
+// this one route.
+func CanViewDashboardStats(a *AuthContext) error {
+	return requireAny(a, permAdminClientView, permApplicationView)
 }
 
 // CanAccessScope reports whether the caller may access a resource owned by the
@@ -402,11 +403,19 @@ func CheckScopeAccess(a *AuthContext, clientID *string) error {
 }
 
 // requirePermission is the generic helper.
+//
+// Permission only — scope is NOT authority. An anchor-scoped principal used to
+// pass every permission gate here, which fused the two axes: scope says which
+// tenants a principal may act for, and its roles say what it may do. Fused,
+// every provisioned service account (all anchor-scoped) held every admin
+// permission its role never granted, and anchor staff carrying a read-only role
+// could write. The bootstrap admin is unaffected: it holds the super-admin
+// wildcard, which HasPermission matches.
 func requirePermission(a *AuthContext, perm string) error {
 	if a == nil {
 		return usecase.Authorization("UNAUTHENTICATED", "authentication required")
 	}
-	if a.IsAnchor() || a.HasPermission(perm) {
+	if a.HasPermission(perm) {
 		return nil
 	}
 	return usecase.Authorization("PERMISSION_REQUIRED", "permission required: "+perm)
@@ -417,13 +426,12 @@ func requirePermission(a *AuthContext, perm string) error {
 // Can* helper. Callers pass the full 4-segment permission string.
 func CanWritePermission(a *AuthContext, perm string) error { return requirePermission(a, perm) }
 
-// requireAny returns nil if the principal has ANY of perms.
+// requireAny returns nil if the principal has ANY of perms. Permission only,
+// for the same reason as requirePermission: anchor scope is reach, not
+// authority.
 func requireAny(a *AuthContext, perms ...string) error {
 	if a == nil {
 		return usecase.Authorization("UNAUTHENTICATED", "authentication required")
-	}
-	if a.IsAnchor() {
-		return nil
 	}
 	if slices.ContainsFunc(perms, a.HasPermission) {
 		return nil

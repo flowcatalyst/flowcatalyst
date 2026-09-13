@@ -51,6 +51,7 @@ func TestGetApplication_HasLoginClient(t *testing.T) {
 	s := &State{Repo: repo, OAuthClients: oauthClients, UoW: uow}
 	authCtx := auth.WithContext(context.Background(), &auth.AuthContext{
 		PrincipalID: "prn_hlc_admin", Scope: auth.ScopeAnchor,
+		Permissions: []string{"platform:*:*:*"},
 	})
 
 	// Before provisioning: no login client yet.

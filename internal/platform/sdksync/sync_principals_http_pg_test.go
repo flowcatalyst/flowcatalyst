@@ -50,6 +50,7 @@ func TestSyncPrincipals_Endpoint_SetsPasswordHash(t *testing.T) {
 	authCtx := auth.WithContext(ctx, &auth.AuthContext{
 		PrincipalID:     "p_syncpw_http",
 		Scope:           auth.ScopeAnchor,
+		Permissions:     []string{"platform:*:*:*"},
 		AllApplications: true,
 	})
 

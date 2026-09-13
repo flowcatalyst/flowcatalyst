@@ -38,6 +38,7 @@ func TestSyncAppDocs_ReplaceAndRead(t *testing.T) {
 	}
 	authCtx := auth.WithContext(ctx, &auth.AuthContext{
 		PrincipalID: "p_docsync", Scope: auth.ScopeAnchor, AllApplications: true,
+		Permissions: []string{"platform:*:*:*"},
 	})
 
 	title := "Getting Started"

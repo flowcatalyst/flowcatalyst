@@ -27,6 +27,7 @@ func anchorCtx() context.Context {
 	return auth.WithContext(context.Background(), &auth.AuthContext{
 		PrincipalID: "p_evt_test",
 		Scope:       auth.ScopeAnchor,
+		Permissions: []string{"platform:*:*:*"},
 	})
 }
 

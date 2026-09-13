@@ -39,10 +39,17 @@ func TestEC() usecase.ExecutionContext {
 func AnchorCtx() context.Context { return AnchorCtxFor(context.Background()) }
 
 // AnchorCtxFor attaches an anchor-scoped AuthContext to the given context.
+//
+// It carries the super-admin wildcard because it stands in for a full platform
+// administrator, and scope alone grants nothing: anchor scope is reach — which
+// tenants a principal may act for — while every permission gate reads the
+// permissions its roles granted. A test that wants to exercise a gate builds
+// its own narrower principal with WithAuth.
 func AnchorCtxFor(ctx context.Context) context.Context {
 	return WithAuth(ctx, &auth.AuthContext{
 		PrincipalID: "prn_optestrunner1",
 		Scope:       auth.ScopeAnchor,
+		Permissions: []string{"platform:*:*:*"},
 	})
 }
 

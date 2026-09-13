@@ -49,7 +49,7 @@ func newAuditBatchServer(t *testing.T, ac *auth.AuthContext) (*httptest.Server, 
 // its results[] slot), never stored with NULL and never attributed to the
 // ingesting caller. The rest of the batch still lands.
 func TestAuditBatchIngest_MissingPrincipalIDIsRefused(t *testing.T) {
-	ac := &auth.AuthContext{PrincipalID: "prn_audit_batch_caller", Scope: auth.ScopeAnchor}
+	ac := &auth.AuthContext{PrincipalID: "prn_audit_batch_caller", Scope: auth.ScopeAnchor, Permissions: []string{"platform:*:*:*"}}
 	srv, repo := newAuditBatchServer(t, ac)
 
 	resp, err := http.Post(srv.URL+"/api/audit-logs/batch", "application/json", strings.NewReader(`{
@@ -86,7 +86,7 @@ func TestAuditBatchIngest_MissingPrincipalIDIsRefused(t *testing.T) {
 // TestAuditBatchIngest_ExplicitPrincipalIDIsNotOverridden pins that the
 // item's principalId is stored verbatim — never replaced by the caller.
 func TestAuditBatchIngest_ExplicitPrincipalIDIsNotOverridden(t *testing.T) {
-	ac := &auth.AuthContext{PrincipalID: "prn_audit_batch_caller_2", Scope: auth.ScopeAnchor}
+	ac := &auth.AuthContext{PrincipalID: "prn_audit_batch_caller_2", Scope: auth.ScopeAnchor, Permissions: []string{"platform:*:*:*"}}
 	srv, repo := newAuditBatchServer(t, ac)
 
 	resp, err := http.Post(srv.URL+"/api/audit-logs/batch", "application/json", strings.NewReader(`{

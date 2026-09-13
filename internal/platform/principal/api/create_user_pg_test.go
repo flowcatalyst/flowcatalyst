@@ -38,6 +38,7 @@ func TestCreateUser_ClientIdentifierResolution(t *testing.T) {
 	s := &State{Repo: repo, UoW: uow, Clients: clients, InviteEmailer: noopInviteEmailer{}}
 	authCtx := auth.WithContext(ctx, &auth.AuthContext{
 		PrincipalID: "prn_createuser_admin", Scope: auth.ScopeAnchor,
+		Permissions: []string{"platform:*:*:*"},
 	})
 
 	// Identifier slug resolves to the canonical client id; absent scope

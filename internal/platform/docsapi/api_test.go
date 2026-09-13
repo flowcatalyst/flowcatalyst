@@ -8,9 +8,14 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 )
 
+// anchorCtx is an anchor principal holding the docs-view permission. The
+// permission is explicit because anchor scope is reach, not authority: it says
+// which tenants a principal may act for, never what it may do.
 func anchorCtx() context.Context {
 	return auth.WithContext(context.Background(), &auth.AuthContext{
-		PrincipalID: "prn_docstest", Scope: auth.ScopeAnchor,
+		PrincipalID: "prn_docstest",
+		Scope:       auth.ScopeAnchor,
+		Permissions: []string{"platform:admin:docs:view"},
 	})
 }
 
