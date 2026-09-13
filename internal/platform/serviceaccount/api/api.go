@@ -12,6 +12,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/operations"
@@ -33,6 +34,11 @@ type State struct {
 	Principals   *principal.Repository
 	OAuthClients *platformauth.OAuthClientRepo
 	UoW          *usecasepgx.UnitOfWork
+	// Clients + Grants back the account's client links: the linked SERVICE
+	// principal's reach is derived from them, and a partner-linked account
+	// needs one assigned-client grant per link.
+	Clients *client.Repository
+	Grants  *principal.ClientAccessGrantRepo
 	// Auth mints the admin-requested bearer on POST /{id}/token. Optional —
 	// nil disables that endpoint (fail closed).
 	Auth *authservice.AuthService
@@ -145,7 +151,7 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreateServiceAccoun
 	}
 	ec := auth.NewExecutionContext(ctx)
 	res, err := usecaseop.RunTx(ctx, s.UoW,
-		operations.CreateServiceAccountWithCredentials(s.Repo, s.Principals, s.OAuthClients),
+		operations.CreateServiceAccountWithCredentials(s.Repo, s.Principals, s.OAuthClients, s.Clients, s.Grants),
 		cmd, ec)
 	if err != nil {
 		return nil, err
@@ -172,7 +178,7 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, 
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
-	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateServiceAccount(s.Repo), cmd, ec); err != nil {
+	if _, err := usecaseop.RunTx(ctx, s.UoW, operations.UpdateServiceAccount(s.Repo, s.Principals, s.Clients, s.Grants), cmd, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil

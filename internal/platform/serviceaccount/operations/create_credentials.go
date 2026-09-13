@@ -11,6 +11,7 @@ import (
 
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	authops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
@@ -55,6 +56,8 @@ func CreateServiceAccountWithCredentials(
 	saRepo *serviceaccount.Repository,
 	principals *principal.Repository,
 	oauthRepo *platformauth.OAuthClientRepo,
+	clients *client.Repository,
+	grants *principal.ClientAccessGrantRepo,
 ) usecaseop.TxOperation[CreateCommand, CreateWithCredentialsResult] {
 	return usecaseop.TxOperation[CreateCommand, CreateWithCredentialsResult]{
 		Name: "CreateServiceAccountWithCredentials",
@@ -105,6 +108,13 @@ func CreateServiceAccountWithCredentials(
 			}
 
 			saPrincipal := principal.NewService(sa.ID, sa.Name)
+			// Reach follows the account's client links. Without this the
+			// principal is always ANCHOR, so a token built from it reaches every
+			// tenant however the account was linked.
+			if err := requireClientsExist(ctx, clients, sa.ClientIDs); err != nil {
+				return zero, err
+			}
+			grantClientIDs := applyClientReach(saPrincipal, sa.ClientIDs)
 
 			plaintext, ref, err := generateOAuthClientSecret()
 			if err != nil {
@@ -132,7 +142,12 @@ func CreateServiceAccountWithCredentials(
 			//    as supplied (no existence check), matching the posture of
 			//    iam_service_accounts.application_id on this endpoint.
 			persistPrincipal := func(tx pgx.Tx) error {
-				return principals.Persist(ctx, saPrincipal, usecasepgx.WrapTxForBootstrap(tx))
+				return principal.ClientAssociationPersister{
+					Repository:     principals,
+					Grants:         grants,
+					GrantClientIDs: grantClientIDs,
+					GrantedBy:      ec.PrincipalID,
+				}.Persist(ctx, saPrincipal, usecasepgx.WrapTxForBootstrap(tx))
 			}
 			if cmd.ApplicationID != nil && strings.TrimSpace(*cmd.ApplicationID) != "" {
 				saPrincipal.AllApplications = false

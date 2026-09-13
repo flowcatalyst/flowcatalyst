@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/operations"
@@ -45,6 +46,12 @@ func runOp[C any, E usecase.DomainEvent](
 	return usecaseop.Run(testpg.AnchorCtx(), uow, op, cmd, testpg.TestEC())
 }
 
+func runTxOp[C any, R any](
+	uow *usecasepgx.UnitOfWork, op usecaseop.TxOperation[C, R], cmd C,
+) (R, error) {
+	return usecaseop.RunTx(testpg.AnchorCtx(), uow, op, cmd, testpg.TestEC())
+}
+
 // mustCreate seeds a service account through the public operation. Codes
 // are hand-unique per test: the fixture never truncates, so tests own
 // their rows and never assert table-wide.
@@ -61,7 +68,7 @@ func mustCreate(t *testing.T, repo *serviceaccount.Repository, uow *usecasepgx.U
 func mustProvision(t *testing.T, saRepo *serviceaccount.Repository, principals *principal.Repository, oauthRepo *platformauth.OAuthClientRepo, uow *usecasepgx.UnitOfWork, code, name string) operations.CreateWithCredentialsResult {
 	t.Helper()
 	res, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
-		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo),
+		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t))),
 		operations.CreateCommand{Code: code, Name: name}, testpg.TestEC())
 	require.NoError(t, err)
 	return res
@@ -123,7 +130,7 @@ func TestCreateServiceAccountWithCredentials_NoApplicationID_Unconfined(t *testi
 	uow := testpg.NewUoW(t)
 
 	res, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
-		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo),
+		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t))),
 		operations.CreateCommand{
 			Code: "sawithcreds-unconfined",
 			Name: "Unconfined",
@@ -190,7 +197,7 @@ func TestCreateServiceAccountWithCredentials_HappyPath(t *testing.T) {
 	scope := "anchor"
 	appID := "app_sawithcreds01"
 	res, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
-		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo),
+		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t))),
 		operations.CreateCommand{
 			Code:          "sawithcreds-happy",
 			Name:          "With Creds",
@@ -291,7 +298,7 @@ func TestCreateServiceAccountWithCredentials_Errors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
-				operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo),
+				operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t))),
 				tc.cmd, testpg.TestEC())
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
@@ -301,7 +308,7 @@ func TestCreateServiceAccountWithCredentials_Errors(t *testing.T) {
 		t.Parallel()
 		mustCreate(t, saRepo, uow, "sawcdup-conflict", "First")
 		_, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
-			operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo),
+			operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t))),
 			operations.CreateCommand{Code: "sawcdup-conflict", Name: "Second"}, testpg.TestEC())
 		testpg.RequireUsecaseError(t, err, usecase.KindConflict, "CODE_EXISTS")
 	})
@@ -318,7 +325,7 @@ func TestUpdateServiceAccount_HappyPath(t *testing.T) {
 
 	newName := "  After  "
 	newDesc := "after"
-	ev, err := runOp(uow, operations.UpdateServiceAccount(repo), operations.UpdateCommand{
+	ev, err := runTxOp(uow, operations.UpdateServiceAccount(repo, principal.NewRepository(testpg.Pool(t)), client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t))), operations.UpdateCommand{
 		ID: seeded.ServiceAccountID, Name: &newName, Description: &newDesc,
 	})
 	require.NoError(t, err)
@@ -354,7 +361,7 @@ func TestUpdateServiceAccount_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := runOp(uow, operations.UpdateServiceAccount(repo), tc.cmd)
+			_, err := runTxOp(uow, operations.UpdateServiceAccount(repo, principal.NewRepository(testpg.Pool(t)), client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t))), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}

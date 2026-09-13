@@ -176,6 +176,8 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			Repo:         repos.serviceAccountRepo,
 			Principals:   repos.principalRepo,
 			OAuthClients: repos.authRepo.OAuthClients,
+			Clients:      repos.clientRepo,
+			Grants:       repos.principalGrantRepo,
 			UoW:          uow,
 			// Admin token mint (POST /{id}/token) reuses the exact
 			// client_credentials mint machinery.
