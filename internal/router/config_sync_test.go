@@ -259,7 +259,11 @@ func TestWatch_ReconfigureFailureRaisesAndClearsWarning(t *testing.T) {
 
 	cs := NewConfigSource(srv.URL)
 	cs.MaxAttempts = 1
-	cs.RetryDelay = time.Millisecond
+	// Slow enough to observe the warning between the two attempts: a
+	// configuration that has never applied is now retried at THIS cadence
+	// rather than waiting for the poll tick, so a 1ms delay would raise and
+	// clear the warning faster than the assertion below can sample it.
+	cs.RetryDelay = 150 * time.Millisecond
 
 	manager := newTestManager(t, &grMediator{outcome: common.Success(http.StatusOK)}, NewInFlightTracker())
 	ws := NewWarningService(WarningServiceConfig{})

@@ -73,6 +73,17 @@ func NewConfigSource(url string) *ConfigSource {
 // previous fetch — callers can skip reconfigure in that case.
 var ErrUnchanged = errors.New("config unchanged")
 
+// forgetLast drops the change-detection baseline, so the next Fetch returns
+// the configuration again instead of ErrUnchanged. Called when a fetched
+// configuration was not applied: change detection answers "has the source
+// changed since we last READ it", and the caller needs "since we last
+// APPLIED it".
+func (cs *ConfigSource) forgetLast() {
+	cs.mu.Lock()
+	cs.last = nil
+	cs.mu.Unlock()
+}
+
 type sourceConfig struct {
 	url string
 	cfg common.RouterConfig
@@ -326,9 +337,6 @@ func u32PtrEqual(a, b *uint32) bool {
 // tests construct the watcher bare); when set, apply() raises a
 // CONFIGURATION warning on failure and clears it on recovery (R-30).
 func Watch(ctx context.Context, cs *ConfigSource, manager *Manager, interval time.Duration, warnings *WarningService) {
-	tick := time.NewTicker(interval)
-	defer tick.Stop()
-
 	// watchWarnID tracks the CONFIGURATION warning (if any) raised by this
 	// watcher's own apply() failures — distinct from ConfigSource's
 	// per-URL "serving stale config" warnings (Fetch already raises those
@@ -343,26 +351,73 @@ func Watch(ctx context.Context, cs *ConfigSource, manager *Manager, interval tim
 	// succeeds end to end.
 	var watchWarnID string
 
-	apply := func() {
+	// failures counts the current streak, so a source that is down logs once
+	// on the way down and once on the way back up rather than a line per
+	// attempt — the initial loop below can run for as long as the source is
+	// unreachable.
+	failures := 0
+
+	// apply reports whether a configuration actually reached the manager.
+	apply := func() bool {
 		cfg, err := cs.Fetch(ctx)
 		if errors.Is(err, ErrUnchanged) {
 			clearWatchWarning(warnings, &watchWarnID)
-			return
+			return true
 		}
 		if err != nil {
-			slog.Warn("config fetch failed", "err", err)
+			if failures == 0 {
+				slog.Warn("config fetch failed; retrying", "err", err)
+			}
+			failures++
 			raiseWatchWarning(warnings, &watchWarnID, fmt.Sprintf("config fetch failed: %v", err))
-			return
+			return false
 		}
 		if err := manager.Reconfigure(ctx, *cfg); err != nil {
-			slog.Warn("manager reconfigure failed", "err", err)
+			if failures == 0 {
+				slog.Warn("manager reconfigure failed; retrying", "err", err)
+			}
+			failures++
+			// The config was fetched but NOT applied, so it must not count as
+			// the last-applied one: leaving it cached makes the next fetch
+			// report ErrUnchanged and the router would never retry the config
+			// it is missing.
+			cs.forgetLast()
 			raiseWatchWarning(warnings, &watchWarnID, fmt.Sprintf("manager reconfigure failed: %v", err))
-			return
+			return false
+		}
+		if failures > 0 {
+			slog.Info("configuration applied", "failed_attempts", failures)
+			failures = 0
 		}
 		clearWatchWarning(warnings, &watchWarnID)
+		return true
 	}
 
-	apply()
+	// A source that has never answered is retried at the RETRY cadence until
+	// it does; only then does the poll interval govern. Without this, a config
+	// service that is down at boot for longer than one Fetch's own retry
+	// budget leaves the router with no queues and no pools until the next
+	// poll — five minutes by default — even though it recovered seconds later.
+	//
+	// The poll ticker starts only once a configuration has landed, so no tick
+	// can queue up behind the initial loop and fire the instant it finishes.
+	retry := cs.RetryDelay
+	if retry <= 0 {
+		retry = 5 * time.Second
+	}
+	for !apply() {
+		select {
+		case <-ctx.Done():
+			// Shutdown, or leadership lost: stop retrying. The pools this
+			// watcher would have started belong to whoever holds leadership
+			// now.
+			return
+		case <-time.After(retry):
+		}
+	}
+
+	tick := time.NewTicker(interval)
+	defer tick.Stop()
 	for {
 		select {
 		case <-ctx.Done():
