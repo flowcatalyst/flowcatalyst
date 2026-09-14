@@ -68,7 +68,7 @@ func (r *Repository) FindMethodsByPrincipal(ctx context.Context, principalID str
 		return nil, fmt.Errorf("find methods: %w", err)
 	}
 	defer rows.Close()
-	var out []Method
+	out := []Method{} // never nil: the wire shape is [] when the user has none
 	for rows.Next() {
 		m, err := scanMethodRow(rows)
 		if err != nil {
@@ -275,7 +275,7 @@ func (r *Repository) FindTrustedDevicesByPrincipal(ctx context.Context, principa
 		return nil, fmt.Errorf("list trusted devices: %w", err)
 	}
 	defer rows.Close()
-	var out []TrustedDevice
+	out := []TrustedDevice{} // never nil: the SPA's 2FA card does devices.length
 	for rows.Next() {
 		var d TrustedDevice
 		if err := rows.Scan(&d.ID, &d.PrincipalID, &d.TokenHash, &d.Label, &d.ExpiresAt, &d.CreatedAt, &d.LastUsedAt); err != nil {
