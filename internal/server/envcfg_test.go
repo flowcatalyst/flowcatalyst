@@ -63,3 +63,41 @@ func TestLoadEnv_DeployedAliases(t *testing.T) {
 		}
 	})
 }
+
+// The deployed router task sets NOTIFICATION_BATCH_INTERVAL and
+// FLOWCATALYST_CONFIG_INTERVAL (in seconds); LoadEnv must honour both, with
+// the FC_* name winning where set, and leave 0 (router default) when unset.
+func TestLoadEnv_RouterIntervalAliases(t *testing.T) {
+	t.Run("unset leaves router defaults", func(t *testing.T) {
+		for _, k := range []string{
+			"FC_NOTIFY_BATCH_INTERVAL_SECONDS", "NOTIFICATION_BATCH_INTERVAL",
+			"FC_ROUTER_CONFIG_INTERVAL_SECONDS", "FLOWCATALYST_CONFIG_INTERVAL",
+		} {
+			t.Setenv(k, "")
+		}
+		c := LoadEnv()
+		if c.RouterNotifyBatchIntervalSec != 0 || c.RouterConfigIntervalSec != 0 {
+			t.Errorf("intervals = %d/%d, want 0/0", c.RouterNotifyBatchIntervalSec, c.RouterConfigIntervalSec)
+		}
+	})
+	t.Run("deployed names", func(t *testing.T) {
+		t.Setenv("FC_NOTIFY_BATCH_INTERVAL_SECONDS", "")
+		t.Setenv("NOTIFICATION_BATCH_INTERVAL", "300")
+		t.Setenv("FC_ROUTER_CONFIG_INTERVAL_SECONDS", "")
+		t.Setenv("FLOWCATALYST_CONFIG_INTERVAL", "120")
+		c := LoadEnv()
+		if c.RouterNotifyBatchIntervalSec != 300 || c.RouterConfigIntervalSec != 120 {
+			t.Errorf("intervals = %d/%d, want 300/120", c.RouterNotifyBatchIntervalSec, c.RouterConfigIntervalSec)
+		}
+	})
+	t.Run("FC name wins", func(t *testing.T) {
+		t.Setenv("FC_NOTIFY_BATCH_INTERVAL_SECONDS", "45")
+		t.Setenv("NOTIFICATION_BATCH_INTERVAL", "300")
+		t.Setenv("FC_ROUTER_CONFIG_INTERVAL_SECONDS", "60")
+		t.Setenv("FLOWCATALYST_CONFIG_INTERVAL", "120")
+		c := LoadEnv()
+		if c.RouterNotifyBatchIntervalSec != 45 || c.RouterConfigIntervalSec != 60 {
+			t.Errorf("intervals = %d/%d, want 45/60", c.RouterNotifyBatchIntervalSec, c.RouterConfigIntervalSec)
+		}
+	})
+}

@@ -466,14 +466,16 @@ func StartMCP(ctx context.Context, cfg EnvCfg) {
 // case a future co-tenanted Postgres queue backend wants to share it.
 func StartRouter(ctx context.Context, _ *pgxpool.Pool, cfg EnvCfg) {
 	rcfg := router.ServerConfig{
-		DevMode:           cfg.RouterDevMode,
-		ConfigURL:         cfg.RouterConfigURL,
-		NotifyWebhookURL:  cfg.RouterNotifyWebhookURL,
-		NotifyMinSeverity: cfg.RouterNotifyMinSeverity,
-		DrainTimeout:      time.Duration(cfg.RouterDrainTimeoutSec) * time.Second,
-		StandbyEnabled:    cfg.StandbyEnabled,
-		StandbyRedisURL:   cfg.StandbyRedisURL,
-		StandbyLockKey:    cfg.StandbyLockKey,
+		DevMode:             cfg.RouterDevMode,
+		ConfigURL:           cfg.RouterConfigURL,
+		ConfigPollInterval:  time.Duration(cfg.RouterConfigIntervalSec) * time.Second,
+		NotifyWebhookURL:    cfg.RouterNotifyWebhookURL,
+		NotifyMinSeverity:   cfg.RouterNotifyMinSeverity,
+		NotifyBatchInterval: time.Duration(cfg.RouterNotifyBatchIntervalSec) * time.Second,
+		DrainTimeout:        time.Duration(cfg.RouterDrainTimeoutSec) * time.Second,
+		StandbyEnabled:      cfg.StandbyEnabled,
+		StandbyRedisURL:     cfg.StandbyRedisURL,
+		StandbyLockKey:      cfg.StandbyLockKey,
 	}
 	srv, err := router.NewServer(rcfg)
 	if err != nil {

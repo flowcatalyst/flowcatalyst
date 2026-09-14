@@ -144,6 +144,16 @@ type EnvCfg struct {
 	// leave the default floor standing, never open it wider by accident.
 	RouterNotifyMinSeverity string
 
+	// RouterNotifyBatchIntervalSec is FC_NOTIFY_BATCH_INTERVAL_SECONDS (alias
+	// NOTIFICATION_BATCH_INTERVAL, the name the deployed task sets): how long
+	// the router's warning notifier holds non-critical warnings before
+	// flushing a batch to the webhook. 0 → the router package's default.
+	RouterNotifyBatchIntervalSec int
+	// RouterConfigIntervalSec is FC_ROUTER_CONFIG_INTERVAL_SECONDS (alias
+	// FLOWCATALYST_CONFIG_INTERVAL): how often the router re-fetches
+	// FLOWCATALYST_CONFIG_URL. 0 → the router package's 300s default.
+	RouterConfigIntervalSec int
+
 	// RouterClientID / RouterClientSecret are the OAuth client_credentials the
 	// router authenticates to ITS OWN platform with, to fetch the
 	// router-config document. Set together or not at all, and only alongside
@@ -253,16 +263,18 @@ func LoadEnv() EnvCfg {
 		OutboxMongoURI: envFirst("FC_OUTBOX_MONGO_URI", "FC_OUTBOX_DB_URL", "", ""),
 		OutboxMongoDB:  envOr("FC_OUTBOX_MONGO_DB", "flowcatalyst"),
 
-		RouterConfigURL:         os.Getenv("FLOWCATALYST_CONFIG_URL"),
-		RouterDevMode:           envBool("FLOWCATALYST_DEV_MODE", false),
-		RouterNotifyWebhookURL:  os.Getenv("FC_NOTIFY_WEBHOOK_URL"),
-		RouterDrainTimeoutSec:   envInt("FC_DRAIN_TIMEOUT_SECONDS", 60),
-		RouterSynthPoolIdleSecs: envInt("FC_ROUTER_SYNTH_POOL_IDLE_SECS", 0),
-		RouterStrictRouting:     envBool("FC_ROUTER_STRICT_ROUTING", false),
-		RouterNotifyMinSeverity: envOr("FC_NOTIFY_MIN_SEVERITY", ""),
-		RouterPlatformURL:       envFirst("FC_ROUTER_PLATFORM_URL", "FC_API_BASE_URL", "FLOWCATALYST_URL", "", ""),
-		RouterClientID:          envOr("FC_ROUTER_CLIENT_ID", ""),
-		RouterClientSecret:      envOr("FC_ROUTER_CLIENT_SECRET", ""),
+		RouterConfigURL:              os.Getenv("FLOWCATALYST_CONFIG_URL"),
+		RouterDevMode:                envBool("FLOWCATALYST_DEV_MODE", false),
+		RouterNotifyWebhookURL:       os.Getenv("FC_NOTIFY_WEBHOOK_URL"),
+		RouterDrainTimeoutSec:        envInt("FC_DRAIN_TIMEOUT_SECONDS", 60),
+		RouterSynthPoolIdleSecs:      envInt("FC_ROUTER_SYNTH_POOL_IDLE_SECS", 0),
+		RouterStrictRouting:          envBool("FC_ROUTER_STRICT_ROUTING", false),
+		RouterNotifyMinSeverity:      envOr("FC_NOTIFY_MIN_SEVERITY", ""),
+		RouterNotifyBatchIntervalSec: envIntAlias("FC_NOTIFY_BATCH_INTERVAL_SECONDS", "NOTIFICATION_BATCH_INTERVAL", 0),
+		RouterConfigIntervalSec:      envIntAlias("FC_ROUTER_CONFIG_INTERVAL_SECONDS", "FLOWCATALYST_CONFIG_INTERVAL", 0),
+		RouterPlatformURL:            envFirst("FC_ROUTER_PLATFORM_URL", "FC_API_BASE_URL", "FLOWCATALYST_URL", "", ""),
+		RouterClientID:               envOr("FC_ROUTER_CLIENT_ID", ""),
+		RouterClientSecret:           envOr("FC_ROUTER_CLIENT_SECRET", ""),
 
 		ALBEnabled:        envBool("FC_ALB_ENABLED", false),
 		ALBTargetGroupARN: os.Getenv("FC_ALB_TARGET_GROUP_ARN"),

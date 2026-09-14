@@ -323,16 +323,18 @@ func (b streamHealthBridge) IsReady() bool { return b.svc.IsReady() }
 // with no queues and no pools at all; FC_DEFAULT_BROKER no longer changes that.
 func newRouterServer(cfg EnvCfg, pool *pgxpool.Pool) (*router.Server, error) {
 	rcfg := router.ServerConfig{
-		DevMode:           cfg.RouterDevMode,
-		ConfigURL:         cfg.RouterConfigURL,
-		NotifyWebhookURL:  cfg.RouterNotifyWebhookURL,
-		NotifyMinSeverity: cfg.RouterNotifyMinSeverity,
-		DrainTimeout:      time.Duration(cfg.RouterDrainTimeoutSec) * time.Second,
-		SynthPoolIdleAge:  time.Duration(cfg.RouterSynthPoolIdleSecs) * time.Second,
-		StrictRouting:     cfg.RouterStrictRouting,
-		StandbyEnabled:    cfg.StandbyEnabled,
-		StandbyRedisURL:   cfg.StandbyRedisURL,
-		StandbyLockKey:    cfg.StandbyLockKey,
+		DevMode:             cfg.RouterDevMode,
+		ConfigURL:           cfg.RouterConfigURL,
+		ConfigPollInterval:  time.Duration(cfg.RouterConfigIntervalSec) * time.Second,
+		NotifyWebhookURL:    cfg.RouterNotifyWebhookURL,
+		NotifyMinSeverity:   cfg.RouterNotifyMinSeverity,
+		NotifyBatchInterval: time.Duration(cfg.RouterNotifyBatchIntervalSec) * time.Second,
+		DrainTimeout:        time.Duration(cfg.RouterDrainTimeoutSec) * time.Second,
+		SynthPoolIdleAge:    time.Duration(cfg.RouterSynthPoolIdleSecs) * time.Second,
+		StrictRouting:       cfg.RouterStrictRouting,
+		StandbyEnabled:      cfg.StandbyEnabled,
+		StandbyRedisURL:     cfg.StandbyRedisURL,
+		StandbyLockKey:      cfg.StandbyLockKey,
 		// ALB self-registration: register on leader-gain / non-standby start,
 		// deregister on leader-loss / drain. No-op unless FC_ALB_ENABLED + the
 		// target group ARN + instance IP are set.

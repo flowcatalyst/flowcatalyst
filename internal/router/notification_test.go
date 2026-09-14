@@ -138,3 +138,23 @@ func TestWarningServiceForwardsToNotifierAndAppliesItsFloor(t *testing.T) {
 		t.Fatalf("notifier queue[0].Severity: got %q want WARNING", n.queue[0].Severity)
 	}
 }
+
+// NOTIFICATION_BATCH_INTERVAL was hard-coded to 10s for a long time; the
+// deployed task sets 300. NewServer must honour ServerConfig.NotifyBatchInterval
+// and default to 300s when it is zero.
+func TestNewServerAppliesNotifyBatchIntervalFromConfig(t *testing.T) {
+	s, err := NewServer(ServerConfig{NotifyBatchInterval: 42 * time.Second})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	if s.Notifier.interval != 42*time.Second {
+		t.Fatalf("interval: got %v want 42s", s.Notifier.interval)
+	}
+	s2, err := NewServer(ServerConfig{})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	if s2.Notifier.interval != defaultNotifyBatchInterval || s2.Cfg.ConfigPollInterval != 300*time.Second {
+		t.Fatalf("defaults: notify=%v config=%v", s2.Notifier.interval, s2.Cfg.ConfigPollInterval)
+	}
+}

@@ -16,6 +16,12 @@ import (
 // ServerConfig is the runtime config for an in-process router server.
 // Mirrors the env-driven knobs that cmd/fc-router/main.go reads — the
 // standalone binary and fc-server's StartRouter both go through here.
+// Notifier batching defaults (see ServerConfig.NotifyBatchInterval).
+const (
+	defaultNotifyBatchSize     = 20
+	defaultNotifyBatchInterval = 300 * time.Second
+)
+
 type ServerConfig struct {
 	// DevMode swaps in the dev mediator (relaxed TLS, longer timeouts).
 	DevMode bool
@@ -24,12 +30,21 @@ type ServerConfig struct {
 	// pool definitions. Empty disables config sync — no pools will run.
 	ConfigURL string
 
-	// ConfigPollInterval governs how often ConfigURL is re-fetched.
-	// Zero falls back to 30s (matches cmd/fc-router).
+	// ConfigPollInterval governs how often ConfigURL is re-fetched
+	// (FC_ROUTER_CONFIG_INTERVAL_SECONDS / FLOWCATALYST_CONFIG_INTERVAL).
+	// Zero falls back to 300s.
 	ConfigPollInterval time.Duration
 
 	// NotifyWebhookURL receives stall + backlog warnings. Empty → log-only.
 	NotifyWebhookURL string
+
+	// NotifyBatchInterval is how long the Notifier holds non-critical
+	// warnings before flushing a batch to NotifyWebhookURL
+	// (FC_NOTIFY_BATCH_INTERVAL_SECONDS / NOTIFICATION_BATCH_INTERVAL). A
+	// full batch or a CRITICAL warning flushes immediately regardless. Zero
+	// falls back to 300s — the value every deployment has set since the
+	// predecessor, and what the Java platform defaults to.
+	NotifyBatchInterval time.Duration
 
 	// NotifyMinSeverity is FC_NOTIFY_MIN_SEVERITY (X-04): the floor below
 	// which the notifier drops a warning instead of webhooking it. One of
@@ -196,11 +211,14 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	if cfg.SynthPoolIdleAge == 0 {
 		cfg.SynthPoolIdleAge = time.Hour
 	}
+	if cfg.NotifyBatchInterval == 0 {
+		cfg.NotifyBatchInterval = defaultNotifyBatchInterval
+	}
 
 	breakers := NewBreakerRegistry(DefaultBreakerConfig())
 	s := &Server{
 		Cfg:        cfg,
-		Notifier:   NewNotifier(cfg.NotifyWebhookURL, 20, 10*time.Second),
+		Notifier:   NewNotifier(cfg.NotifyWebhookURL, defaultNotifyBatchSize, cfg.NotifyBatchInterval),
 		Mediator:   pickMediator(cfg.DevMode, breakers),
 		Breakers:   breakers,
 		Tracker:    NewInFlightTracker(),
