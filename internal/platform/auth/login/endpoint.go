@@ -152,11 +152,18 @@ func (e *Endpoint) RegisterAuthenticatedRoutes(r chi.Router) {
 
 // checkDomainResponse matches what the SPA expects (auth.ts):
 //
-//	{ "authMethod": "internal" | "external", "loginUrl"?, "idpIssuer"? }
+//	{ "authMethod": "internal" | "external", "loginUrl"?, "idpIssuer"?, "passwordSetupRequired"? }
 type checkDomainResponse struct {
 	AuthMethod string `json:"authMethod"`
 	LoginURL   string `json:"loginUrl,omitempty"`
 	IDPIssuer  string `json:"idpIssuer,omitempty"`
+	// PasswordSetupRequired is true when this is an internal (password) USER
+	// principal who has never set a password — an application created them
+	// via the SDK with the invite email suppressed. The SPA offers "Create
+	// your password" (which emails a set-password link — see
+	// POST /auth/password-setup/request) instead of a password prompt.
+	// Never set on the "external" branch.
+	PasswordSetupRequired bool `json:"passwordSetupRequired,omitempty"`
 }
 
 func (e *Endpoint) handleCheckDomain(w http.ResponseWriter, r *http.Request) {
@@ -176,19 +183,19 @@ func (e *Endpoint) handleCheckDomain(w http.ResponseWriter, r *http.Request) {
 	if at < 0 || at == len(email)-1 {
 		// Don't leak that the domain is malformed — fall back to internal
 		// so the SPA shows a password prompt.
-		writeJSON(w, http.StatusOK, checkDomainResponse{AuthMethod: "internal"})
+		writeJSON(w, http.StatusOK, e.withPasswordSetupRequired(r, checkDomainResponse{AuthMethod: "internal"}, email))
 		return
 	}
 	domain := strings.ToLower(email[at+1:])
 
 	edm, err := e.cfg.Mappings.FindByEmailDomain(r.Context(), domain)
 	if err != nil || edm == nil {
-		writeJSON(w, http.StatusOK, checkDomainResponse{AuthMethod: "internal"})
+		writeJSON(w, http.StatusOK, e.withPasswordSetupRequired(r, checkDomainResponse{AuthMethod: "internal"}, email))
 		return
 	}
 	idp, err := e.cfg.IdentityProviders.FindByID(r.Context(), edm.IdentityProviderID)
 	if err != nil || idp == nil {
-		writeJSON(w, http.StatusOK, checkDomainResponse{AuthMethod: "internal"})
+		writeJSON(w, http.StatusOK, e.withPasswordSetupRequired(r, checkDomainResponse{AuthMethod: "internal"}, email))
 		return
 	}
 
@@ -202,8 +209,69 @@ func (e *Endpoint) handleCheckDomain(w http.ResponseWriter, r *http.Request) {
 		if idp.OIDCIssuerURL != nil {
 			resp.IDPIssuer = *idp.OIDCIssuerURL
 		}
+	} else {
+		resp = e.withPasswordSetupRequired(r, resp, email)
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// withPasswordSetupRequired sets PasswordSetupRequired on resp when email
+// resolves (case-insensitively) to an internal (password) USER principal who
+// has never set a password: Active, UserIdentity != nil,
+// UserIdentity.PasswordHash == nil, no linked ExternalIdentity, and not
+// provisioned via OIDC (UserIdentity.Provider != "OIDC"). Only called on
+// branches where authMethod is already "internal" — never set alongside
+// "external".
+//
+// This is a UX hint, not a security decision: any lookup error, or a hit
+// against the login rate limiter, fails towards the ordinary password
+// prompt (flag omitted) rather than surfacing the eligibility check itself
+// as a signal.
+func (e *Endpoint) withPasswordSetupRequired(r *http.Request, resp checkDomainResponse, email string) checkDomainResponse {
+	if e.cfg.Principals == nil {
+		return resp
+	}
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return resp
+	}
+	// check-domain has no failure/success outcome of its own to record
+	// against, so there's no dedicated per-email limiter for it. Reuse the
+	// login package's existing per-(email, IP) brute-force backoff
+	// read-only, as the general login rate limiter, to throttle this
+	// account-existence signal the same way a wrong password would be.
+	if e.cfg.LoginAttempts != nil {
+		if d, err := loginbackoff.Check(r.Context(), e.cfg.LoginAttempts, e.cfg.BackoffPolicy, email, clientIP(r)); err == nil && !d.Allowed {
+			return resp
+		}
+	}
+	p, err := e.cfg.Principals.FindByEmail(r.Context(), email)
+	if err != nil || p == nil {
+		return resp
+	}
+	resp.PasswordSetupRequired = isPasswordSetupEligible(p)
+	return resp
+}
+
+// isPasswordSetupEligible reports whether p is an internal (password) USER
+// principal who has never set a password: Active, UserIdentity != nil,
+// UserIdentity.PasswordHash == nil, no linked ExternalIdentity, and not
+// provisioned via OIDC (UserIdentity.Provider != "OIDC"). Pulled out as a
+// pure predicate so the rule is unit-testable without a principal
+// repository/DB. Kept in lockstep with
+// passwordresetapi.passwordSetupEligible — the two endpoints must agree on
+// who gets the "create your password" offer.
+func isPasswordSetupEligible(p *principal.Principal) bool {
+	if p == nil || !p.Active || !p.IsUser() || p.UserIdentity == nil {
+		return false
+	}
+	if p.UserIdentity.PasswordHash != nil || p.ExternalIdentity != nil {
+		return false
+	}
+	if p.UserIdentity.Provider != nil && *p.UserIdentity.Provider == "OIDC" {
+		return false
+	}
+	return true
 }
 
 // ── GET /auth/check-domain (legacy query variant) ─────────────────────────

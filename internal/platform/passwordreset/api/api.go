@@ -18,6 +18,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/login"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/mfatoken"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordhash"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordpolicy"
@@ -32,6 +33,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/resetapproval"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/email"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
@@ -385,6 +387,28 @@ type State struct {
 	// (the link alone authorises the reset; users who DO have TOTP must still
 	// prove it at confirm time regardless of this flag).
 	RequireStrongFactorForReset bool
+
+	// Sessions mints the platform session-cookie JWT. Optional: when nil,
+	// confirmReset never signs the user in itself (today's behaviour). When
+	// wired, a successful confirm of an INVITE-purpose token (the
+	// create-your-password flow — see POST /auth/password-setup/request)
+	// additionally establishes an fc_session cookie, so the SPA doesn't have
+	// to bounce the user through /auth/login with a password they were never
+	// asked to type inline. Satisfied by *provider.Provider (the same one
+	// backing the login package's completeLogin).
+	Sessions SessionMinter
+	// CookieSecure flips the session cookie's Secure flag — mirrors
+	// login.Config.CookieSecure and MUST be given the same value (false in
+	// fcdev/HTTP localhost, true behind HTTPS).
+	CookieSecure bool
+}
+
+// SessionMinter mints the signed session-cookie JWT for a principal.
+// *provider.Provider (internal/platform/auth/provider) implements it —
+// declared here as the narrow per-consumer interface so this package
+// doesn't depend on the provider package concretely.
+type SessionMinter interface {
+	MintSessionToken(ctx context.Context, principalID string, ttl time.Duration) (string, error)
 }
 
 // ClientAdminFinder returns the email addresses of the client-administrators of
@@ -409,12 +433,18 @@ func (s *State) enrollTTL() time.Duration {
 	return 30 * time.Minute
 }
 
-// RegisterRoutes mounts the three unauthenticated endpoints. Mount OUTSIDE the
+// RegisterRoutes mounts the unauthenticated endpoints. Mount OUTSIDE the
 // auth middleware (alongside /auth/login).
 func RegisterRoutes(r chi.Router, s *State) {
 	r.Post("/auth/password-reset/request", s.requestReset)
 	r.Get("/auth/password-reset/validate", s.validateToken)
 	r.Post("/auth/password-reset/confirm", s.confirmReset)
+	// Create-your-password: an internal USER created via the SDK with the
+	// invite email suppressed asks, from the login page, to be emailed a
+	// set-password link. Shares the reset/confirm machinery (same token
+	// table, same "invite" purpose, same set-password page) — this is just
+	// an alternate entry point into minting that invite token.
+	r.Post("/auth/password-setup/request", s.requestPasswordSetup)
 }
 
 type messageResponse struct {
@@ -511,6 +541,99 @@ func (s *State) tryIssueToken(ctx context.Context, email string) error {
 		}
 	}
 	return nil
+}
+
+// ── POST /auth/password-setup/request ───────────────────────────────────────
+
+// requestPasswordSetup emails a "create your password" link to an internal
+// USER who has never set a password — the create-your-password flow the SPA
+// offers from the login page when /auth/check-domain reports
+// passwordSetupRequired (see login.Endpoint.withPasswordSetupRequired, which
+// this eligibility check deliberately mirrors). Silent-success like
+// requestReset: the response never reveals whether the account exists or was
+// eligible.
+func (s *State) requestPasswordSetup(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Email       string  `json:"email"`
+		RedirectURI *string `json:"redirectUri"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		httperror.Write(w, usecase.Validation("INVALID_BODY", "malformed request body"))
+		return
+	}
+	if err := s.tryIssuePasswordSetupInvite(r.Context(), strings.TrimSpace(body.Email), body.RedirectURI); err != nil {
+		slog.Warn("password setup request error (suppressed)", "err", err)
+	}
+	writeJSON(w, http.StatusOK, messageResponse{
+		Message: "If your account needs a password, we've emailed you a link to create it.",
+	})
+}
+
+// tryIssuePasswordSetupInvite looks up the principal by email and, only when
+// eligible, mints a fresh invite token (via the same machinery as an
+// admin/SDK-triggered invite) carrying redirectURI — validated as a safe
+// same-site-relative path, silently dropped otherwise — and emails the
+// existing "set your password" link. Errors are returned to the caller for
+// suppressed logging only; they never reach the client (anti-enumeration).
+func (s *State) tryIssuePasswordSetupInvite(ctx context.Context, email string, redirectURI *string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" || s.Emailer == nil {
+		return nil
+	}
+	p, err := s.Principals.FindByEmail(ctx, email)
+	if err != nil {
+		return err
+	}
+	if !passwordSetupEligible(p) {
+		return nil
+	}
+	// Mirrors handleCheckDomain's authMethod=="internal" resolution: an
+	// unmapped domain, or one mapped to a non-OIDC identity provider.
+	if s.Policy.Mappings != nil && !s.Policy.Evaluate(ctx, email).Internal {
+		return nil
+	}
+
+	var redirect *string
+	if redirectURI != nil {
+		if safe := safeRelativeReturnURL(*redirectURI); safe != "" {
+			redirect = &safe
+		}
+	}
+
+	pe := &principalEmailer{tokens: s.Tokens, base: s.ExternalBaseURL, mail: s.Emailer}
+	return pe.SendInviteRedirect(ctx, p, redirect)
+}
+
+// passwordSetupEligible reports whether p is an internal (password) USER
+// principal who has never set a password: Active, UserIdentity != nil,
+// UserIdentity.PasswordHash == nil, no linked ExternalIdentity, and not
+// provisioned via OIDC (UserIdentity.Provider != "OIDC"). Deliberately kept
+// in lockstep with login.Endpoint.withPasswordSetupRequired's rule — the two
+// endpoints must agree on who gets the "create your password" offer.
+func passwordSetupEligible(p *principal.Principal) bool {
+	if p == nil || !p.Active || !p.IsUser() || p.UserIdentity == nil {
+		return false
+	}
+	if p.UserIdentity.PasswordHash != nil || p.ExternalIdentity != nil {
+		return false
+	}
+	if p.UserIdentity.Provider != nil && *p.UserIdentity.Provider == "OIDC" {
+		return false
+	}
+	return true
+}
+
+// safeRelativeReturnURL returns u only when it is a safe same-site relative
+// path — it must start with a single "/" and not "//" or "/\" (which
+// browsers treat as host-relative and would redirect off-site). Anything
+// else → "". Copied from
+// internal/platform/auth/bridge/login_endpoint.go's rule of the same name
+// (unexported there; duplicated rather than exported cross-package).
+func safeRelativeReturnURL(u string) string {
+	if u == "" || u[0] != '/' || strings.HasPrefix(u, "//") || strings.HasPrefix(u, "/\\") {
+		return ""
+	}
+	return u
 }
 
 // hasStrongFactor reports whether the user has a confirmed authenticator (TOTP)
@@ -675,7 +798,67 @@ func (s *State) confirmReset(w http.ResponseWriter, r *http.Request) {
 	// flow fully completes (immediately on "ok"; after enrollment when the
 	// 2FA gate fires), landing the user back in the portal's login.
 	resp.RedirectURI = t.RedirectURI
+
+	// Create-your-password sign-in: a completed INVITE confirm (never
+	// "reset" — that keeps today's reset UX) that finished plain "ok" (never
+	// enrollment_required — that flow mints its own session once enrollment
+	// completes) additionally establishes the platform session cookie, so
+	// the SPA lands the user signed in without a follow-up /auth/login call
+	// the invite flow never asked them to make. Skipped whenever the
+	// principal's domain requires 2FA — minting here would bypass that
+	// challenge entirely.
+	if shouldAttemptSessionMint(t.Purpose, resp.Status, s.Sessions != nil) {
+		s.maybeEstablishSession(w, r.Context(), t.PrincipalID, &resp)
+	}
+
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// shouldAttemptSessionMint is the top-level gate on the create-your-password
+// session mint: only an INVITE-purpose token whose confirm finished plain
+// "ok" (never "reset" — keeps today's reset UX; never "enrollment_required"
+// — that flow mints its own session once enrollment completes), with a
+// Sessions minter actually wired. Pulled out as a pure predicate so this part
+// of the rule is unit-testable without a DB; the remaining condition (the
+// principal's domain must not require 2FA) is checked in
+// maybeEstablishSession, which needs the mapping/IdP repositories.
+func shouldAttemptSessionMint(purpose passwordreset.Purpose, status string, sessionsWired bool) bool {
+	return sessionsWired && purpose == passwordreset.PurposeInvite && status == "ok"
+}
+
+// maybeEstablishSession mints the fc_session cookie for principalID and sets
+// resp.SessionEstablished, unless the principal's email domain requires 2FA
+// (see State.Sessions' doc comment for the full gating rule, enforced by the
+// caller). Best-effort: a lookup or mint failure just leaves the user to sign
+// in normally — the password write already succeeded.
+func (s *State) maybeEstablishSession(w http.ResponseWriter, ctx context.Context, principalID string, resp *confirmResponse) {
+	p, err := s.Principals.FindByID(ctx, principalID)
+	if err != nil || p == nil {
+		return
+	}
+	emailAddr := ""
+	if p.UserIdentity != nil {
+		emailAddr = p.UserIdentity.Email
+	}
+	if s.Policy.Mappings != nil && s.Policy.Evaluate(ctx, emailAddr).Requires2FA() {
+		return
+	}
+	token, err := s.Sessions.MintSessionToken(ctx, p.ID, login.SessionTTL)
+	if err != nil {
+		slog.Warn("post-invite session mint failed", "principal", p.ID, "err", err)
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     platformmw.SessionCookieName,
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   s.CookieSecure,
+		SameSite: http.SameSiteLaxMode,
+		Expires:  time.Now().Add(login.SessionTTL),
+		MaxAge:   int(login.SessionTTL.Seconds()),
+	})
+	resp.SessionEstablished = true
 }
 
 // confirmResponse is the confirm body, extended with the optional 2FA
@@ -693,6 +876,13 @@ type confirmResponse struct {
 	// reset (and any required 2FA enrollment) completes — the portal-invite
 	// chain back into the portal's OAuth login.
 	RedirectURI *string `json:"redirectUri,omitempty"`
+	// SessionEstablished is true when this confirm also set the fc_session
+	// cookie: an INVITE-purpose (create-your-password) confirm that finished
+	// "ok" for a principal whose domain doesn't require 2FA. The SPA can then
+	// treat the user as signed in immediately, instead of bouncing them
+	// through /auth/login. Never set for a "reset" purpose token, for
+	// enrollment_required, for a 2FA-required domain, or for a portal token.
+	SessionEstablished bool `json:"sessionEstablished,omitempty"`
 }
 
 // postResetTwoFactor runs the after-reset security side effects — optional 2FA

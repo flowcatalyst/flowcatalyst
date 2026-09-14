@@ -74,6 +74,12 @@ func registerPublicRoutes(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *use
 		// client-admin approval and notifies them, instead of issuing a token.
 		Approvals:    repos.resetApprovalRepo,
 		ClientAdmins: repos.principalRepo,
+		// Create-your-password sign-in: a completed INVITE confirm mints the
+		// same fc_session cookie completeLogin does. Same provider + secure
+		// flag as svcs.loginEP (see wire_services.go) — deliberately kept in
+		// lockstep.
+		Sessions:     svcs.authProvider,
+		CookieSecure: !cfg.AuthAllowTestHeaders,
 	})
 
 	// The OAuth/OIDC provider surface is mounted OUTSIDE the bearer-token

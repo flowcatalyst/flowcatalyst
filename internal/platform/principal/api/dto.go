@@ -19,6 +19,11 @@ type CreatePrincipalRequest struct {
 	ClientID *string `json:"clientId,omitempty"`
 	Password *string `json:"password,omitempty"`
 	IDPType  *string `json:"idpType,omitempty"`
+	// SendInvitation and ReturnInviteLink are USER-only (ignored for service
+	// accounts) — see CreateUserRequest's doc comment for the full field
+	// semantics and precedence rule; identical here.
+	SendInvitation   *bool `json:"sendInvitation,omitempty"`
+	ReturnInviteLink *bool `json:"returnInviteLink,omitempty"`
 }
 
 func (r CreatePrincipalRequest) toCommand() operations.CreateCommand {
@@ -50,6 +55,40 @@ type CreateUserRequest struct {
 	// (looked up either way; unknown references are rejected).
 	ClientID                  *string `json:"clientId,omitempty"`
 	EnforcePasswordComplexity *bool   `json:"enforcePasswordComplexity,omitempty"`
+	// SendInvitation controls whether the platform emails a newly-created
+	// INTERNAL user at all. Defaults to true (omitted == true): a passwordless
+	// user gets the "set your password" invite, a user created WITH a password
+	// gets the "account created" welcome. Set to false when the calling
+	// application is taking over the invitation itself (e.g. it will embed
+	// returnInviteLink's link in its own branded email) — false suppresses
+	// BOTH the invite and the welcome email; nothing is sent by the platform.
+	// Ignored for service-account creates.
+	SendInvitation *bool `json:"sendInvitation,omitempty"`
+	// ReturnInviteLink, when true, mints a "set your password" invite token
+	// and returns the live link as inviteLink in the response — for a
+	// passwordless INTERNAL user only (OIDC/federated users have no
+	// set-password step; a user created WITH a password has nothing to set).
+	// Precedence: returnInviteLink:true ALWAYS suppresses the platform's own
+	// invite email, even when sendInvitation is true (unset or true) — the
+	// invite token can only be minted once per delivery (minting again to
+	// email it would invalidate the very link just returned), so the caller
+	// that asks for the link back is presumed to be sending its own email
+	// with it. To get the platform-sent invite instead, leave
+	// returnInviteLink unset/false. The link is a live 72h bearer credential:
+	// treat it exactly like a password — never log it.
+	ReturnInviteLink *bool `json:"returnInviteLink,omitempty"`
+}
+
+// CreatePrincipalResponse is the wire body for POST /api/principals. It
+// mirrors apicommon.CreatedResponse's `id` field but adds the optional
+// inviteLink — a dedicated type rather than growing the shared
+// CreatedResponse, since that type is reused by many unrelated create
+// endpoints that must never gain this field.
+type CreatePrincipalResponse struct {
+	ID string `json:"id"`
+	// InviteLink — see CreateUserRequest.ReturnInviteLink's doc comment for
+	// the full semantics/precedence. Live 72h bearer credential: never log it.
+	InviteLink *string `json:"inviteLink,omitempty"`
 }
 
 // UpdatePrincipalRequest is the wire body for PUT /api/principals/{id}. It
@@ -152,6 +191,12 @@ type PrincipalResponse struct {
 	// (getByID) — it's empty/absent on list responses to avoid an MFA lookup
 	// per row. Empty means the user has no 2FA enrolled.
 	TwoFactorMethods []string `json:"twoFactorMethods,omitempty"`
+	// InviteLink is populated ONLY on a create-user response, and only when
+	// the request asked for returnInviteLink:true (and the user is a
+	// passwordless INTERNAL user). It is a live 72h bearer credential — the
+	// same "set your password" link the platform would otherwise email —
+	// never log it. Absent on every other read of a principal.
+	InviteLink *string `json:"inviteLink,omitempty"`
 }
 
 // PrincipalVersionResponse is the wire body for

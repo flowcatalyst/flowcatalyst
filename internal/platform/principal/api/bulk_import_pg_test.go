@@ -26,6 +26,10 @@ type noopInviteEmailer struct{}
 
 func (noopInviteEmailer) SendInvite(context.Context, *principal.Principal) error { return nil }
 
+func (noopInviteEmailer) InviteLink(_ context.Context, p *principal.Principal, _ *string) (string, error) {
+	return "https://example.test/auth/set-password?token=fake-" + p.ID, nil
+}
+
 // TestBulkImport_DropsForeignDomainAndExisting pins the platform-admin import
 // rules: a row whose email domain is registered to a DIFFERENT client is
 // dropped, an already-present email is skipped, a domain owned by the TARGET

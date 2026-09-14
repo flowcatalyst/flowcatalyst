@@ -75,6 +75,9 @@ type State struct {
 // passwordreset principalEmailer satisfies it.
 type InviteEmailer interface {
 	SendInvite(ctx context.Context, p *principal.Principal) error
+	// InviteLink mints the same invite token as SendInvite but returns the
+	// link instead of emailing it — backs CreateUserRequest.ReturnInviteLink.
+	InviteLink(ctx context.Context, p *principal.Principal, redirectURI *string) (string, error)
 }
 
 const tag = "principals"
@@ -357,7 +360,7 @@ func (s *State) getVersion(ctx context.Context, in *apicommon.IDInput) (*apicomm
 	return &apicommon.Out[PrincipalVersionResponse]{Body: PrincipalVersionResponse{UpdatedAt: jsontime.New(at)}}, nil
 }
 
-func (s *State) create(ctx context.Context, in *apicommon.In[CreatePrincipalRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
+func (s *State) create(ctx context.Context, in *apicommon.In[CreatePrincipalRequest]) (*apicommon.Out[CreatePrincipalResponse], error) {
 	ac := auth.FromContext(ctx)
 	// Anchors create any scope/client. A non-anchor administrator
 	// (client-admin) may only create CLIENT-scope users in a client they can
@@ -373,10 +376,12 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreatePrincipalRequ
 	if err != nil {
 		return nil, err
 	}
+	resp := CreatePrincipalResponse{ID: event.UserID}
 	if created, ferr := s.Repo.FindByID(ctx, event.UserID); ferr == nil && created != nil {
-		s.notifyNewUser(ctx, created, in.Body.Password)
+		resp.InviteLink = s.notifyNewUser(ctx, created, in.Body.Password,
+			boolDefaultTrue(in.Body.SendInvitation), boolOrFalse(in.Body.ReturnInviteLink))
 	}
-	return &apicommon.Out[apicommon.CreatedResponse]{Body: apicommon.CreatedResponse{ID: event.UserID}}, nil
+	return &apicommon.Out[CreatePrincipalResponse]{Body: resp}, nil
 }
 
 // bulkImport onboards a list of CLIENT users under one client (CSV import).
@@ -489,7 +494,9 @@ func (s *State) importRow(ctx context.Context, ac *auth.AuthContext, ec usecase.
 		}
 	}
 	if created, gerr := s.Repo.FindByID(ctx, userID); gerr == nil && created != nil {
-		s.notifyNewUser(ctx, created, nil)
+		// Bulk import never gains the sendInvitation/returnInviteLink flags —
+		// always the original passwordless-invite behaviour.
+		s.notifyNewUser(ctx, created, nil, true, false)
 	}
 	return "created", ""
 }
@@ -654,8 +661,11 @@ func (s *State) createUser(ctx context.Context, in *apicommon.In[CreateUserReque
 	if err != nil || created == nil {
 		return nil, httperror.NotFound("Principal", event.UserID)
 	}
-	s.notifyNewUser(ctx, created, in.Body.Password)
-	return &apicommon.Out[PrincipalResponse]{Body: fromEntity(created)}, nil
+	inviteLink := s.notifyNewUser(ctx, created, in.Body.Password,
+		boolDefaultTrue(in.Body.SendInvitation), boolOrFalse(in.Body.ReturnInviteLink))
+	resp := fromEntity(created)
+	resp.InviteLink = inviteLink
+	return &apicommon.Out[PrincipalResponse]{Body: resp}, nil
 }
 
 // notifyNewUser emails a freshly-created INTERNAL user (best-effort): a
@@ -663,9 +673,22 @@ func (s *State) createUser(ctx context.Context, in *apicommon.In[CreateUserReque
 // invite token + the 2FA enrollment hand-off); an account created WITH a
 // password gets a plain "account created" welcome (2FA, if required, is then
 // enforced at first sign-in). Federated/OIDC users get nothing.
-func (s *State) notifyNewUser(ctx context.Context, p *principal.Principal, password *string) {
+//
+// sendInvitation and returnInviteLink implement CreateUserRequest's flags
+// (see its doc comments for the full semantics). Precedence:
+//   - returnInviteLink wins whenever it applies (passwordless INTERNAL user,
+//     InviteEmailer configured): the link is minted and returned, and the
+//     platform's OWN invite email is suppressed regardless of sendInvitation
+//     — a second mint to also email it would invalidate the link just
+//     returned (each mint invalidates the previous outstanding token).
+//   - Otherwise, sendInvitation:false suppresses ALL platform email (neither
+//     invite nor welcome) — the caller has taken over notification.
+//   - Otherwise, behaviour is unchanged from before these flags existed.
+//
+// Returns the invite link when one was minted-and-returned, else nil.
+func (s *State) notifyNewUser(ctx context.Context, p *principal.Principal, password *string, sendInvitation, returnInviteLink bool) *string {
 	if p == nil || p.UserIdentity == nil {
-		return // service account
+		return nil // service account
 	}
 	// Skip federated/OIDC users — they manage credentials at their IdP. NB:
 	// the repo loads UserIdentity.Provider from idp_type for ALL users (so it's
@@ -674,19 +697,36 @@ func (s *State) notifyNewUser(ctx context.Context, p *principal.Principal, passw
 	// first callback populates ExternalIdentity.
 	if p.ExternalIdentity != nil ||
 		(p.UserIdentity.Provider != nil && *p.UserIdentity.Provider == "OIDC") {
-		return
+		return nil
 	}
 	emailAddr := strings.TrimSpace(p.UserIdentity.Email)
 	if emailAddr == "" {
-		return
+		return nil
 	}
-	if (password == nil || *password == "") && s.InviteEmailer != nil {
+	passwordless := password == nil || *password == ""
+
+	if returnInviteLink && passwordless && s.InviteEmailer != nil {
+		link, err := s.InviteEmailer.InviteLink(ctx, p, nil)
+		if err != nil {
+			slog.Warn("mint invite link failed", "principal", p.ID, "err", err)
+			return nil
+		}
+		return &link
+	}
+
+	if !sendInvitation {
+		slog.Info("invite suppressed by caller", "principal", p.ID)
+		return nil
+	}
+
+	if passwordless && s.InviteEmailer != nil {
 		if err := s.InviteEmailer.SendInvite(ctx, p); err != nil {
 			slog.Warn("send account invite failed", "principal", p.ID, "err", err)
 		}
-		return
+		return nil
 	}
 	s.Notifier.AccountCreated(ctx, emailAddr)
+	return nil
 }
 
 // deriveUserScope resolves (scope, home-client) for create-user. The
@@ -772,6 +812,18 @@ func derefStr(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// boolDefaultTrue reads an optional flag whose absence means true (e.g.
+// CreateUserRequest.SendInvitation).
+func boolDefaultTrue(b *bool) bool {
+	return b == nil || *b
+}
+
+// boolOrFalse reads an optional flag whose absence means false (e.g.
+// CreateUserRequest.ReturnInviteLink).
+func boolOrFalse(b *bool) bool {
+	return b != nil && *b
 }
 
 // requireScopeByID loads the principal and enforces per-resource scope (A2) on
