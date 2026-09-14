@@ -101,6 +101,9 @@ type bffCreateEventTypeRequest struct {
 	Description *string         `json:"description,omitempty"`
 	Schema      json.RawMessage `json:"schema,omitempty"`
 	ClientID    *string         `json:"clientId,omitempty"`
+	// ClientScoped marks events of this type as carried per client. Honoured
+	// on create (ruling 2026-09-06 #7) exactly as /api/event-types does.
+	ClientScoped bool `json:"clientScoped,omitempty"`
 }
 
 type bffUpdateEventTypeRequest struct {
@@ -178,11 +181,12 @@ func (s *EventTypesState) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cmd := operations.CreateCommand{
-		Code:        body.Code,
-		Name:        body.Name,
-		Description: body.Description,
-		ClientID:    body.ClientID,
-		Schema:      body.Schema,
+		Code:         body.Code,
+		Name:         body.Name,
+		Description:  body.Description,
+		ClientID:     body.ClientID,
+		ClientScoped: body.ClientScoped,
+		Schema:       body.Schema,
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
 	event, err := usecaseop.Run(r.Context(), s.UoW, operations.CreateEventType(s.Repo), cmd, ec)
