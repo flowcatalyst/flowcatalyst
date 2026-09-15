@@ -67,16 +67,21 @@ func mustCreate(t *testing.T, d operations.Deps, uow *usecasepgx.UnitOfWork, cod
 	return res
 }
 
-// mustCreateOIDC seeds an OIDC IdP (issuer/client filled with test values).
+// mustCreateOIDC seeds an OIDC IdP (issuer/client filled with test values)
+// with ANCHOR-scoped domain mappings.
 func mustCreateOIDC(t *testing.T, d operations.Deps, uow *usecasepgx.UnitOfWork, code string, domains []string) operations.CreateResult {
 	t.Helper()
 	issuer := "https://login." + code + ".example.com/v2.0"
 	clientID := code + "-client-id"
-	res, err := runAuthorizedTx(uow, operations.CreateIdentityProvider(d), operations.CreateCommand{
+	cmd := operations.CreateCommand{
 		Code: code, Name: code, Type: "OIDC",
 		OIDCIssuerURL: &issuer, OIDCClientID: &clientID,
 		AllowedEmailDomains: domains,
-	})
+	}
+	if len(domains) > 0 {
+		cmd.MappingScope = new("ANCHOR")
+	}
+	res, err := runAuthorizedTx(uow, operations.CreateIdentityProvider(d), cmd)
 	require.NoError(t, err)
 	return res
 }
@@ -124,6 +129,7 @@ func TestCreateIdentityProvider_HappyPath(t *testing.T) {
 		OIDCMultiTenant:     &multiTenant,
 		OIDCIssuerPattern:   &pattern,
 		AllowedEmailDomains: []string{"IDPCRT-A.Example.com", "idpcrt-b.example.com"}, // mixed case: op must lowercase
+		MappingScope:        new("ANCHOR"),
 		SyncRolesFromIDP:    true,
 		AllowedRoleIDs:      []string{"rol_idpcrtrole1"},
 	})
@@ -133,6 +139,7 @@ func TestCreateIdentityProvider_HappyPath(t *testing.T) {
 	assert.Equal(t, "idpcrt-happy", res.Code)
 	assert.ElementsMatch(t, []string{"idpcrt-a.example.com", "idpcrt-b.example.com"}, res.DomainsCreated)
 	assert.Empty(t, res.DomainsClaimed)
+	assert.Empty(t, res.DomainsLinked)
 
 	got, err := d.Repo.FindByID(ctx, res.IdentityProviderID)
 	require.NoError(t, err)
@@ -189,11 +196,14 @@ func TestCreateIdentityProvider_ClaimsExistingDomain(t *testing.T) {
 		Code: "idpclaim-new", Name: "Claimer", Type: "OIDC",
 		OIDCIssuerURL: &issuer, OIDCClientID: &clientID,
 		AllowedEmailDomains: []string{"idpclaim-hasclient.example.com", "idpclaim-noclient.example.com", "idpclaim-fresh.example.com"},
+		MappingScope:        new("CLIENT"),
 		PrimaryClientID:     &newClient,
 	})
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{"idpclaim-fresh.example.com"}, res.DomainsCreated)
 	assert.ElementsMatch(t, []string{"idpclaim-hasclient.example.com", "idpclaim-noclient.example.com"}, res.DomainsClaimed)
+	assert.ElementsMatch(t, []string{"idpclaim-noclient.example.com", "idpclaim-fresh.example.com"}, res.DomainsLinked,
+		"the already-cliented mapping keeps its link untouched; the unclaimed and fresh mappings get linked")
 
 	kept, err := d.MoveDeps.Mappings.FindByEmailDomain(ctx, "idpclaim-hasclient.example.com")
 	require.NoError(t, err)
@@ -239,6 +249,26 @@ func TestCreateIdentityProvider_Validation(t *testing.T) {
 			Code: "idpcrt-baddomain", Name: "X", Type: "INTERNAL",
 			AllowedEmailDomains: []string{"nodot"},
 		}, "INVALID_EMAIL_DOMAIN"},
+		{"new domain, no mappingScope", operations.CreateCommand{
+			Code: "idpcrt-noscope", Name: "X", Type: "INTERNAL",
+			AllowedEmailDomains: []string{"idpcrt-noscope.example.com"},
+		}, "MAPPING_SCOPE_REQUIRED"},
+		{"CLIENT scope without primaryClientId", operations.CreateCommand{
+			Code: "idpcrt-clientnoprimary", Name: "X", Type: "INTERNAL",
+			MappingScope: new("CLIENT"),
+		}, "PRIMARY_CLIENT_REQUIRED"},
+		{"ANCHOR scope with primaryClientId", operations.CreateCommand{
+			Code: "idpcrt-anchorwithclient", Name: "X", Type: "INTERNAL",
+			MappingScope: new("ANCHOR"), PrimaryClientID: new("cli_idpcrtanchor"),
+		}, "PRIMARY_CLIENT_NOT_ALLOWED"},
+		{"PARTNER mappingScope rejected", operations.CreateCommand{
+			Code: "idpcrt-partnerscope", Name: "X", Type: "INTERNAL",
+			MappingScope: new("PARTNER"), PrimaryClientID: new("cli_idpcrtpartner"),
+		}, "INVALID_MAPPING_SCOPE"},
+		{"primaryClientId without mappingScope", operations.CreateCommand{
+			Code: "idpcrt-clientnoscope", Name: "X", Type: "INTERNAL",
+			PrimaryClientID: new("cli_idpcrtnoscope"),
+		}, "MAPPING_SCOPE_REQUIRED"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -262,6 +292,57 @@ func TestCreateIdentityProvider_DuplicateCode_Conflict(t *testing.T) {
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "CODE_EXISTS")
 }
 
+// A create with a brand-new domain and no mappingScope fails, and — because
+// CreateIdentityProvider is a TxOperation — the whole transaction rolls back:
+// neither the IdP row nor any mapping is left behind.
+func TestCreateIdentityProvider_NoMappingScope_RollsBackWholeTx(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	d := deps(t)
+	uow := testpg.NewUoW(t)
+
+	_, err := runAuthorizedTx(uow, operations.CreateIdentityProvider(d), operations.CreateCommand{
+		Code: "idpcrt-noscope-rollback", Name: "X", Type: "INTERNAL",
+		AllowedEmailDomains: []string{"idpcrt-noscope-rollback.example.com"},
+	})
+	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "MAPPING_SCOPE_REQUIRED")
+
+	ip, ferr := d.Repo.FindByCode(ctx, "idpcrt-noscope-rollback")
+	require.NoError(t, ferr)
+	assert.Nil(t, ip, "IdP row must not survive a rolled-back create")
+
+	m, merr := d.MoveDeps.Mappings.FindByEmailDomain(ctx, "idpcrt-noscope-rollback.example.com")
+	require.NoError(t, merr)
+	assert.Nil(t, m, "mapping must not survive a rolled-back create")
+}
+
+// ANCHOR-scoped creates produce ANCHOR mappings with no client, regardless of
+// whether the domain is new.
+func TestCreateIdentityProvider_AnchorScope_NewMapping(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	d := deps(t)
+	uow := testpg.NewUoW(t)
+
+	issuer := "https://login.idpcrt-anchor.example.com/v2.0"
+	clientID := "idpcrt-anchor-client-id"
+	res, err := runAuthorizedTx(uow, operations.CreateIdentityProvider(d), operations.CreateCommand{
+		Code: "idpcrt-anchorscope", Name: "Anchor Scope", Type: "OIDC",
+		OIDCIssuerURL: &issuer, OIDCClientID: &clientID,
+		AllowedEmailDomains: []string{"idpcrt-anchorscope.example.com"},
+		MappingScope:        new("ANCHOR"),
+	})
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"idpcrt-anchorscope.example.com"}, res.DomainsCreated)
+	assert.Empty(t, res.DomainsLinked)
+
+	m, err := d.MoveDeps.Mappings.FindByEmailDomain(ctx, "idpcrt-anchorscope.example.com")
+	require.NoError(t, err)
+	require.NotNil(t, m)
+	assert.Equal(t, emaildomainmapping.ScopeAnchor, m.ScopeType)
+	assert.Nil(t, m.PrimaryClientID)
+}
+
 // ── Update ────────────────────────────────────────────────────────────────
 
 func TestUpdateIdentityProvider_HappyPath(t *testing.T) {
@@ -281,6 +362,7 @@ func TestUpdateIdentityProvider_HappyPath(t *testing.T) {
 		OIDCIssuerURL:       &issuer,
 		OIDCMultiTenant:     &multiTenant,
 		AllowedEmailDomains: []string{"idpupd.example.com"},
+		MappingScope:        new("ANCHOR"),
 		SyncRolesFromIDP:    &sync,
 		AllowedRoleIDs:      []string{"rol_idpupdrole1"},
 	})
@@ -288,6 +370,7 @@ func TestUpdateIdentityProvider_HappyPath(t *testing.T) {
 	assert.Equal(t, seeded.IdentityProviderID, res.IdentityProviderID)
 	assert.Equal(t, "idpupd-happy", res.Code)
 	assert.ElementsMatch(t, []string{"idpupd.example.com"}, res.DomainsCreated)
+	assert.Empty(t, res.DomainsLinked)
 
 	got, err := d.Repo.FindByID(ctx, seeded.IdentityProviderID)
 	require.NoError(t, err)
@@ -349,6 +432,87 @@ func TestUpdateIdentityProvider_NilDomainsLeaveMappingsAlone(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, m)
 	assert.Equal(t, seeded.IdentityProviderID, m.IdentityProviderID, "nil domain list must not touch mappings")
+}
+
+// Removing domains from the set (never adding) needs no mappingScope — every
+// domain in the request already has a mapping, so there is nothing new to
+// choose a scope for.
+func TestUpdateIdentityProvider_RemovalOnly_NoMappingScopeNeeded(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	d := deps(t)
+	uow := testpg.NewUoW(t)
+	ensureInternalIdP(t, d, uow)
+	seeded := mustCreateOIDC(t, d, uow, "idpupd-removeonly", []string{"idpupd-removeonly-keep.example.com", "idpupd-removeonly-drop.example.com"})
+
+	res, err := runAuthorizedTx(uow, operations.UpdateIdentityProvider(d), operations.UpdateCommand{
+		ID:                  seeded.IdentityProviderID,
+		AllowedEmailDomains: []string{"idpupd-removeonly-keep.example.com"},
+	})
+	require.NoError(t, err, "no mappingScope required when the request only removes domains")
+	assert.ElementsMatch(t, []string{"idpupd-removeonly-drop.example.com"}, res.DomainsReleased)
+
+	kept, err := d.MoveDeps.Mappings.FindByEmailDomain(ctx, "idpupd-removeonly-keep.example.com")
+	require.NoError(t, err)
+	require.NotNil(t, kept)
+	assert.Equal(t, seeded.IdentityProviderID, kept.IdentityProviderID)
+}
+
+// Adding a brand-new domain on update requires a mappingScope, exactly like
+// create.
+func TestUpdateIdentityProvider_NewDomainWithoutMappingScope_Fails(t *testing.T) {
+	t.Parallel()
+	d := deps(t)
+	uow := testpg.NewUoW(t)
+	seeded := mustCreate(t, d, uow, "idpupd-noscope", "No Scope")
+
+	_, err := runAuthorizedTx(uow, operations.UpdateIdentityProvider(d), operations.UpdateCommand{
+		ID:                  seeded.IdentityProviderID,
+		AllowedEmailDomains: []string{"idpupd-noscope-new.example.com"},
+	})
+	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "MAPPING_SCOPE_REQUIRED")
+}
+
+// Regression for the owner's 2026-09-15 ruling: a primaryClientId supplied on
+// update must link onto a mapping that was created without one — even though
+// the domain already routes to this provider (previously mapDomainTx
+// returned early for an already-routed domain and never applied the client).
+// The mapping's scope is untouched.
+func TestUpdateIdentityProvider_LinksClientOntoAlreadyRoutedDomain(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	d := deps(t)
+	uow := testpg.NewUoW(t)
+
+	domain := "idpupd-link.example.com"
+	issuer := "https://login.idpupd-link.example.com/v2.0"
+	clientID := "idpupd-link-client-id"
+	seeded, err := runAuthorizedTx(uow, operations.CreateIdentityProvider(d), operations.CreateCommand{
+		Code: "idpupd-link", Name: "Link Target", Type: "OIDC",
+		OIDCIssuerURL: &issuer, OIDCClientID: &clientID,
+		AllowedEmailDomains: []string{domain},
+		MappingScope:        new("ANCHOR"),
+	})
+	require.NoError(t, err)
+
+	primaryClient := "cli_idpupdlink"
+	res, err := runAuthorizedTx(uow, operations.UpdateIdentityProvider(d), operations.UpdateCommand{
+		ID:                  seeded.IdentityProviderID,
+		AllowedEmailDomains: []string{domain},
+		MappingScope:        new("CLIENT"),
+		PrimaryClientID:     &primaryClient,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{domain}, res.DomainsLinked)
+	assert.Empty(t, res.DomainsCreated)
+	assert.Empty(t, res.DomainsClaimed)
+
+	m, err := d.MoveDeps.Mappings.FindByEmailDomain(ctx, domain)
+	require.NoError(t, err)
+	require.NotNil(t, m)
+	require.NotNil(t, m.PrimaryClientID)
+	assert.Equal(t, primaryClient, *m.PrimaryClientID)
+	assert.Equal(t, emaildomainmapping.ScopeAnchor, m.ScopeType, "linking a client must not change the mapping's existing scope")
 }
 
 func TestUpdateIdentityProvider_Errors(t *testing.T) {

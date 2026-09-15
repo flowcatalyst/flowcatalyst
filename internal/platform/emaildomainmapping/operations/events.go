@@ -79,6 +79,18 @@ func (e EmailDomainMappingUpdated) ToDataJSON() ([]byte, error) {
 	}{e.MappingID, e.EmailDomain})
 }
 
+// NewMappingUpdatedEvent builds the updated event. Exported for the
+// identity-provider orchestration ops, which link a primary client onto an
+// existing mapping (one already routed to the provider) inside their own
+// transaction.
+func NewMappingUpdatedEvent(ec usecase.ExecutionContext, mappingID, emailDomain string) EmailDomainMappingUpdated {
+	return EmailDomainMappingUpdated{
+		Metadata:    usecase.NewEventMetadata(ec, EmailDomainMappingUpdatedType, Source, subjectFor(mappingID)),
+		MappingID:   mappingID,
+		EmailDomain: emailDomain,
+	}
+}
+
 // EmailDomainMappingProviderChanged is emitted when a domain is re-pointed to
 // a different identity provider (the move use case, or an IdP claiming /
 // releasing the domain via the IdP orchestration ops).

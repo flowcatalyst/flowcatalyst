@@ -324,6 +324,7 @@ func TestPortalSSODomainEnforcement(t *testing.T) {
 			Code: "tb-portal-idp", Name: "Tiger Brands", Type: "OIDC",
 			OIDCIssuerURL: &issuer, OIDCClientID: &oidcClient,
 			AllowedEmailDomains: []string{"tigerbrands.test"},
+			MappingScope:        new("ANCHOR"),
 		}, testpg.TestEC())
 	require.NoError(t, err)
 

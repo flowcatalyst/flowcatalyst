@@ -19,6 +19,7 @@ type CreateIdentityProviderRequest struct {
 	OIDCMultiTenant     *bool    `json:"oidcMultiTenant,omitempty"`
 	OIDCIssuerPattern   *string  `json:"oidcIssuerPattern,omitempty"`
 	AllowedEmailDomains []string `json:"allowedEmailDomains,omitempty" doc:"Email domains to route to this provider; mappings are created (or claimed from their current provider) in Email Domain management"`
+	MappingScope        *string  `json:"mappingScope,omitempty" enum:"ANCHOR,CLIENT" doc:"Scope for email-domain mappings this request creates: ANCHOR (platform administrators) or CLIENT (requires primaryClientId). Required when the request creates a new mapping. Existing mappings keep their scope; with CLIENT the client is linked on any mapping that has no primary client yet."`
 	PrimaryClientID     *string  `json:"primaryClientId,omitempty" doc:"Client to link on mappings that are new or not yet linked to a primary client"`
 	SyncRolesFromIDP    bool     `json:"syncRolesFromIdp,omitempty" doc:"Reconcile users' IDP_SYNC roles from the token's roles claim at login"`
 	AllowedRoleIDs      []string `json:"allowedRoleIds,omitempty" doc:"Platform roles (by id) this provider may confer via role sync; empty = no restriction"`
@@ -35,6 +36,7 @@ func (r CreateIdentityProviderRequest) toCommand() operations.CreateCommand {
 		OIDCMultiTenant:     r.OIDCMultiTenant,
 		OIDCIssuerPattern:   r.OIDCIssuerPattern,
 		AllowedEmailDomains: r.AllowedEmailDomains,
+		MappingScope:        r.MappingScope,
 		PrimaryClientID:     r.PrimaryClientID,
 		SyncRolesFromIDP:    r.SyncRolesFromIDP,
 		AllowedRoleIDs:      r.AllowedRoleIDs,
@@ -50,6 +52,7 @@ type UpdateIdentityProviderRequest struct {
 	OIDCMultiTenant     *bool    `json:"oidcMultiTenant,omitempty"`
 	OIDCIssuerPattern   *string  `json:"oidcIssuerPattern,omitempty"`
 	AllowedEmailDomains []string `json:"allowedEmailDomains,omitempty" doc:"Desired set of domains routed to this provider; additions are mapped/claimed, removals fall back to internal auth"`
+	MappingScope        *string  `json:"mappingScope,omitempty" enum:"ANCHOR,CLIENT" doc:"Scope for email-domain mappings this request creates: ANCHOR (platform administrators) or CLIENT (requires primaryClientId). Required when the request creates a new mapping. Existing mappings keep their scope; with CLIENT the client is linked on any mapping that has no primary client yet."`
 	PrimaryClientID     *string  `json:"primaryClientId,omitempty" doc:"Client to link on mappings that are new or not yet linked to a primary client"`
 	SyncRolesFromIDP    *bool    `json:"syncRolesFromIdp,omitempty"`
 	AllowedRoleIDs      []string `json:"allowedRoleIds,omitempty"`
@@ -65,6 +68,7 @@ func (r UpdateIdentityProviderRequest) toCommand(id string) operations.UpdateCom
 		OIDCMultiTenant:     r.OIDCMultiTenant,
 		OIDCIssuerPattern:   r.OIDCIssuerPattern,
 		AllowedEmailDomains: r.AllowedEmailDomains,
+		MappingScope:        r.MappingScope,
 		PrimaryClientID:     r.PrimaryClientID,
 		SyncRolesFromIDP:    r.SyncRolesFromIDP,
 		AllowedRoleIDs:      r.AllowedRoleIDs,

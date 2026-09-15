@@ -30,6 +30,7 @@ type UpdateCommand struct {
 	OIDCMultiTenant     *bool    `json:"oidcMultiTenant,omitempty"`
 	OIDCIssuerPattern   *string  `json:"oidcIssuerPattern,omitempty"`
 	AllowedEmailDomains []string `json:"allowedEmailDomains,omitempty"`
+	MappingScope        *string  `json:"mappingScope,omitempty"`
 	PrimaryClientID     *string  `json:"primaryClientId,omitempty"`
 	SyncRolesFromIDP    *bool    `json:"syncRolesFromIdp,omitempty"`
 	AllowedRoleIDs      []string `json:"allowedRoleIds,omitempty"`
@@ -42,6 +43,9 @@ type UpdateResult struct {
 	DomainsCreated     []string `json:"domainsCreated"`
 	DomainsClaimed     []string `json:"domainsClaimed"`
 	DomainsReleased    []string `json:"domainsReleased"`
+	// DomainsLinked lists domains whose mapping gained a primary client link
+	// from this request — see [CreateResult.DomainsLinked].
+	DomainsLinked []string `json:"domainsLinked"`
 	// UsersReset counts OIDC-provisioned users converted back to internal
 	// auth because their domain was removed from this provider.
 	UsersReset int `json:"usersReset"`
@@ -59,7 +63,11 @@ func UpdateIdentityProvider(deps Deps) usecaseop.TxOperation[UpdateCommand, Upda
 			if cmd.Name != nil && strings.TrimSpace(*cmd.Name) == "" {
 				return usecase.Validation("NAME_REQUIRED", "name cannot be empty")
 			}
-			return validateDomains(cmd.AllowedEmailDomains)
+			if err := validateDomains(cmd.AllowedEmailDomains); err != nil {
+				return err
+			}
+			_, _, err := validateMappingScope(cmd.MappingScope, cmd.PrimaryClientID)
+			return err
 		},
 		// The coarse "may write identity providers" permission (anchor-only) is
 		// enforced at the controller; there is no per-resource authz dimension.
@@ -74,6 +82,20 @@ func UpdateIdentityProvider(deps Deps) usecaseop.TxOperation[UpdateCommand, Upda
 			if ip == nil {
 				return zero, httperror.NotFound("IdentityProvider", cmd.ID)
 			}
+
+			// Already restricted to legal values in Validate above.
+			scope, primaryClientID, err := validateMappingScope(cmd.MappingScope, cmd.PrimaryClientID)
+			if err != nil {
+				return zero, usecase.Internal("INVARIANT_MAPPING_SCOPE", "validated mapping scope failed to resolve", err)
+			}
+			var domains []string
+			if cmd.AllowedEmailDomains != nil {
+				domains = normalizeDomains(cmd.AllowedEmailDomains)
+				if err := requireScopeForNewDomains(ctx, deps, domains, scope); err != nil {
+					return zero, err
+				}
+			}
+
 			if cmd.Name != nil {
 				ip.Name = strings.TrimSpace(*cmd.Name)
 			}
@@ -115,12 +137,13 @@ func UpdateIdentityProvider(deps Deps) usecaseop.TxOperation[UpdateCommand, Upda
 				DomainsCreated:     []string{},
 				DomainsClaimed:     []string{},
 				DomainsReleased:    []string{},
+				DomainsLinked:      []string{},
 			}
 			if cmd.AllowedEmailDomains == nil {
 				return result, nil // domain set untouched
 			}
 
-			desired := normalizeDomains(cmd.AllowedEmailDomains)
+			desired := domains
 			desiredSet := make(map[string]struct{}, len(desired))
 			for _, d := range desired {
 				desiredSet[d] = struct{}{}
@@ -132,15 +155,18 @@ func UpdateIdentityProvider(deps Deps) usecaseop.TxOperation[UpdateCommand, Upda
 
 			// Additions: map like create does.
 			for _, domain := range desired {
-				created, claimed, err := mapDomainTx(ctx, s, deps, ip, domain, cmd.PrimaryClientID, ec, cmd)
+				mr, err := mapDomainTx(ctx, s, deps, ip, domain, scope, primaryClientID, ec, cmd)
 				if err != nil {
 					return zero, err
 				}
-				if created {
+				if mr.created {
 					result.DomainsCreated = append(result.DomainsCreated, domain)
 				}
-				if claimed {
+				if mr.claimed {
 					result.DomainsClaimed = append(result.DomainsClaimed, domain)
+				}
+				if mr.linked {
+					result.DomainsLinked = append(result.DomainsLinked, domain)
 				}
 			}
 

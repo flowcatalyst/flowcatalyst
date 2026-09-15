@@ -104,6 +104,7 @@ func TestEnsurePortalUser_SSODomainGetsNoPassword(t *testing.T) {
 			Code: "ensure-sso-idp", Name: "Ensure SSO Org", Type: "OIDC",
 			OIDCIssuerURL: &issuer, OIDCClientID: &oidcClient,
 			AllowedEmailDomains: []string{"ssoorg.test"},
+			MappingScope:        new("ANCHOR"),
 		}, testpg.TestEC())
 	require.NoError(t, err)
 
