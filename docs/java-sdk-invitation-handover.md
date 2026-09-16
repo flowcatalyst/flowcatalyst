@@ -21,6 +21,7 @@ hand-written.
 |---|---|---|
 | `sendInvitation` | `true` | `false` suppresses **all** platform email for the new user: neither the "set your password" invite nor the "account created" welcome is sent. The application takes over inviting the user. Ignored for service accounts and OIDC/federated users (they never get email anyway). |
 | `returnInviteLink` | `false` | `true` mints the 72-hour "set your password" token and returns the link in the response as `inviteLink`. Only applies to a passwordless INTERNAL user; absent when a password was supplied or the user is OIDC/federated. |
+| `inviteRedirectUri` | absent | Where the invitee goes after setting their password (and any 2FA enrolment), with their platform session already established. Rides on the invite token, so it applies to both the platform-sent email and `returnInviteLink`. Must match (the `/oauth/authorize` rule, wildcards included) a redirect URI of an active, non-portal `authorization_code` OAuth client serving an application the caller can access; otherwise the request fails `INVITE_REDIRECT_URI_INVALID` and no user is created. Added 2026-09-16. |
 
 Precedence: `returnInviteLink:true` **always** suppresses the platform's own
 invite email, even when `sendInvitation` is true or omitted. The token can
@@ -69,9 +70,10 @@ Endpoints involved (chi-mounted, not in the OpenAPI spec, no SDK surface):
    returns the user to you. No link handling on your side.
 2. **Embedded link.** Create the user with `returnInviteLink:true`, read
    `inviteLink` from the response, and embed it in your own email. The user
-   sets their password on the platform, is signed in, and lands on the
-   platform's own landing page (the link carries no application redirect
-   today). Prefer pattern 1 when you want the user back in your application.
+   sets their password on the platform and is signed in. Pass
+   `inviteRedirectUri` (one of your login client's redirect URIs) to send
+   them back to your application afterwards; without it they land on the
+   platform's own landing page.
 
 ## Java SDK work
 
@@ -90,8 +92,8 @@ signal the README describes; fix them.
 
 - `createUser(CreateUserRequest)` already posts the generated model and
   returns `PrincipalResponse`, so it picks the fields up automatically. Add
-  Javadoc on the method describing `sendInvitation`, `returnInviteLink`, the
-  precedence rule, and the never-log warning on `inviteLink`. Mirror the
+  Javadoc on the method describing `sendInvitation`, `returnInviteLink`,
+  `inviteRedirectUri`, the precedence rule, and the never-log warning on `inviteLink`. Mirror the
   wording in `clients/typescript-sdk/src/resources/principals.ts` (the
   `createUser` JSDoc) and
   `clients/laravel-sdk/src/Client/Resources/Principals.php`.

@@ -792,11 +792,12 @@ func (s *State) confirmReset(w http.ResponseWriter, r *http.Request) {
 
 	// Post-reset side effects (best-effort) + the 2FA enrollment gate.
 	resp := s.postResetTwoFactor(r.Context(), t)
-	// Portal invites carry a post-set-password redirect (validated against
-	// the owning client's portal OAuth clients at mint time — see
-	// docs/portal-identity-plan.md Phase 2.5). The SPA follows it once the
-	// flow fully completes (immediately on "ok"; after enrollment when the
-	// 2FA gate fires), landing the user back in the portal's login.
+	// Invites may carry a post-set-password redirect, validated at mint time:
+	// portal invites against the owning client's portal OAuth clients (see
+	// docs/portal-identity-plan.md Phase 2.5), create-user's
+	// inviteRedirectUri against the caller's applications' login clients.
+	// The SPA follows it once the flow fully completes (immediately on "ok";
+	// after enrollment when the 2FA gate fires).
 	resp.RedirectURI = t.RedirectURI
 
 	// Create-your-password sign-in: a completed INVITE confirm (never

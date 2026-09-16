@@ -17,15 +17,19 @@ type fakeInviteEmailer struct {
 	inviteLinkCalls int
 	inviteLinkErr   error
 	linkToReturn    string
+	// lastRedirect is the redirect handed to the most recent mint.
+	lastRedirect *string
 }
 
-func (f *fakeInviteEmailer) SendInvite(context.Context, *principal.Principal) error {
+func (f *fakeInviteEmailer) SendInviteRedirect(_ context.Context, _ *principal.Principal, redirectURI *string) error {
 	f.sendInviteCalls++
+	f.lastRedirect = redirectURI
 	return f.sendInviteErr
 }
 
-func (f *fakeInviteEmailer) InviteLink(_ context.Context, _ *principal.Principal, _ *string) (string, error) {
+func (f *fakeInviteEmailer) InviteLink(_ context.Context, _ *principal.Principal, redirectURI *string) (string, error) {
 	f.inviteLinkCalls++
+	f.lastRedirect = redirectURI
 	if f.inviteLinkErr != nil {
 		return "", f.inviteLinkErr
 	}
@@ -79,7 +83,7 @@ func TestNotifyNewUser_DefaultSendsInvite(t *testing.T) {
 	mail := &fakeEmailService{}
 	s := newState(invite, mail)
 
-	link := s.notifyNewUser(context.Background(), testPrincipal(false), nil, true, false)
+	link := s.notifyNewUser(context.Background(), testPrincipal(false), nil, true, false, nil)
 
 	if link != nil {
 		t.Fatalf("expected no link returned, got %q", *link)
@@ -102,7 +106,7 @@ func TestNotifyNewUser_DefaultWithPasswordSendsWelcome(t *testing.T) {
 	s := newState(invite, mail)
 
 	pw := "s3cret!!"
-	link := s.notifyNewUser(context.Background(), testPrincipal(true), &pw, true, false)
+	link := s.notifyNewUser(context.Background(), testPrincipal(true), &pw, true, false, nil)
 
 	if link != nil {
 		t.Fatalf("expected no link returned, got %q", *link)
@@ -122,7 +126,7 @@ func TestNotifyNewUser_SendInvitationFalseSuppressesAllEmail(t *testing.T) {
 	mail := &fakeEmailService{}
 	s := newState(invite, mail)
 
-	link := s.notifyNewUser(context.Background(), testPrincipal(false), nil, false, false)
+	link := s.notifyNewUser(context.Background(), testPrincipal(false), nil, false, false, nil)
 	if link != nil {
 		t.Fatalf("expected no link returned, got %q", *link)
 	}
@@ -135,7 +139,7 @@ func TestNotifyNewUser_SendInvitationFalseSuppressesAllEmail(t *testing.T) {
 
 	// Same with a password supplied — welcome must also be suppressed.
 	pw := "s3cret!!"
-	link = s.notifyNewUser(context.Background(), testPrincipal(true), &pw, false, false)
+	link = s.notifyNewUser(context.Background(), testPrincipal(true), &pw, false, false, nil)
 	if link != nil {
 		t.Fatalf("expected no link returned, got %q", *link)
 	}
@@ -152,7 +156,7 @@ func TestNotifyNewUser_ReturnInviteLinkSuppressesPlatformEmail(t *testing.T) {
 	mail := &fakeEmailService{}
 	s := newState(invite, mail)
 
-	link := s.notifyNewUser(context.Background(), testPrincipal(false), nil, true, true)
+	link := s.notifyNewUser(context.Background(), testPrincipal(false), nil, true, true, nil)
 
 	if link == nil || *link != invite.linkToReturn {
 		t.Fatalf("expected link %q, got %v", invite.linkToReturn, link)
@@ -175,7 +179,7 @@ func TestNotifyNewUser_ReturnInviteLinkWinsOverSendInvitationFalse(t *testing.T)
 	mail := &fakeEmailService{}
 	s := newState(invite, mail)
 
-	link := s.notifyNewUser(context.Background(), testPrincipal(false), nil, false, true)
+	link := s.notifyNewUser(context.Background(), testPrincipal(false), nil, false, true, nil)
 
 	if link == nil || *link != invite.linkToReturn {
 		t.Fatalf("expected link %q, got %v", invite.linkToReturn, link)
@@ -194,7 +198,7 @@ func TestNotifyNewUser_ReturnInviteLinkIgnoredWhenPasswordSupplied(t *testing.T)
 	s := newState(invite, mail)
 
 	pw := "s3cret!!"
-	link := s.notifyNewUser(context.Background(), testPrincipal(true), &pw, true, true)
+	link := s.notifyNewUser(context.Background(), testPrincipal(true), &pw, true, true, nil)
 
 	if link != nil {
 		t.Fatalf("expected no link (user has a password), got %q", *link)
@@ -214,7 +218,7 @@ func TestNotifyNewUser_OIDCUserNeverNotified(t *testing.T) {
 	mail := &fakeEmailService{}
 	s := newState(invite, mail)
 
-	link := s.notifyNewUser(context.Background(), oidcPrincipal(), nil, true, true)
+	link := s.notifyNewUser(context.Background(), oidcPrincipal(), nil, true, true, nil)
 
 	if link != nil {
 		t.Fatalf("expected no link for an OIDC user, got %q", *link)
@@ -235,7 +239,7 @@ func TestNotifyNewUser_ServiceAccountNoOp(t *testing.T) {
 	s := newState(invite, mail)
 
 	sa := &principal.Principal{ID: "prn_sa1", Type: principal.TypeService}
-	link := s.notifyNewUser(context.Background(), sa, nil, true, true)
+	link := s.notifyNewUser(context.Background(), sa, nil, true, true, nil)
 
 	if link != nil {
 		t.Fatalf("expected no link for a service account, got %q", *link)
@@ -252,7 +256,7 @@ func TestNotifyNewUser_ReturnInviteLinkMintFailureIsBestEffort(t *testing.T) {
 	mail := &fakeEmailService{}
 	s := newState(invite, mail)
 
-	link := s.notifyNewUser(context.Background(), testPrincipal(false), nil, true, true)
+	link := s.notifyNewUser(context.Background(), testPrincipal(false), nil, true, true, nil)
 	if link != nil {
 		t.Fatalf("expected nil link on mint failure, got %q", *link)
 	}
@@ -263,3 +267,23 @@ var errMint = &mintError{}
 type mintError struct{}
 
 func (*mintError) Error() string { return "mint failed" }
+
+// inviteRedirectUri rides on whichever invite is minted: the platform-sent
+// email and the returned link both carry it.
+func TestNotifyNewUser_InviteRedirectReachesBothDeliveryModes(t *testing.T) {
+	redirect := "https://app.example.test/callback"
+
+	invite := &fakeInviteEmailer{}
+	s := newState(invite, &fakeEmailService{})
+	s.notifyNewUser(context.Background(), testPrincipal(false), nil, true, false, &redirect)
+	if invite.sendInviteCalls != 1 || invite.lastRedirect == nil || *invite.lastRedirect != redirect {
+		t.Fatalf("emailed invite: calls=%d redirect=%v, want 1 call carrying %q", invite.sendInviteCalls, invite.lastRedirect, redirect)
+	}
+
+	invite = &fakeInviteEmailer{linkToReturn: "https://fc.example.test/auth/set-password?token=x"}
+	s = newState(invite, &fakeEmailService{})
+	s.notifyNewUser(context.Background(), testPrincipal(false), nil, true, true, &redirect)
+	if invite.inviteLinkCalls != 1 || invite.lastRedirect == nil || *invite.lastRedirect != redirect {
+		t.Fatalf("returned link: calls=%d redirect=%v, want 1 call carrying %q", invite.inviteLinkCalls, invite.lastRedirect, redirect)
+	}
+}

@@ -24,7 +24,9 @@ import (
 // before touching the (nil) Notifier.
 type noopInviteEmailer struct{}
 
-func (noopInviteEmailer) SendInvite(context.Context, *principal.Principal) error { return nil }
+func (noopInviteEmailer) SendInviteRedirect(context.Context, *principal.Principal, *string) error {
+	return nil
+}
 
 func (noopInviteEmailer) InviteLink(_ context.Context, p *principal.Principal, _ *string) (string, error) {
 	return "https://example.test/auth/set-password?token=fake-" + p.ID, nil

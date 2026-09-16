@@ -16,6 +16,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/oauthapi"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
@@ -57,8 +58,12 @@ type State struct {
 	Mappings          *emaildomainmapping.Repository // for /check-email-domain + create-user scope derivation
 	IdentityProviders *identityprovider.Repository   // for /check-email-domain + create-user idp-type
 	AnchorDomains     *platformauth.AnchorDomainRepo // for create-user anchor-domain check (optional)
-	UoW               *usecasepgx.UnitOfWork
-	PasswordEmailer   operations.PasswordResetEmailer // optional; gates /send-password-reset
+	// OAuthClients validates create-user's inviteRedirectUri against the
+	// login clients of the caller's applications. Nil rejects any
+	// inviteRedirectUri (fail closed).
+	OAuthClients    *platformauth.OAuthClientRepo
+	UoW             *usecasepgx.UnitOfWork
+	PasswordEmailer operations.PasswordResetEmailer // optional; gates /send-password-reset
 
 	// InviteEmailer (optional) sends a "set your password" link to a newly
 	// created internal user that has no password yet. Notifier (optional) sends
@@ -74,7 +79,9 @@ type State struct {
 // InviteEmailer mints a first-time set-password link for a new user. The
 // passwordreset principalEmailer satisfies it.
 type InviteEmailer interface {
-	SendInvite(ctx context.Context, p *principal.Principal) error
+	// SendInviteRedirect emails the invite; redirectURI (already validated,
+	// may be nil) is stored on the token and followed after set-password.
+	SendInviteRedirect(ctx context.Context, p *principal.Principal, redirectURI *string) error
 	// InviteLink mints the same invite token as SendInvite but returns the
 	// link instead of emailing it — backs CreateUserRequest.ReturnInviteLink.
 	InviteLink(ctx context.Context, p *principal.Principal, redirectURI *string) (string, error)
@@ -371,6 +378,10 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreatePrincipalRequ
 	if err := auth.RequireUserAdmin(ac, in.Body.ClientID); err != nil {
 		return nil, err
 	}
+	inviteRedirect, err := s.resolveInviteRedirect(ctx, ac, in.Body.InviteRedirectURI)
+	if err != nil {
+		return nil, err
+	}
 	ec := auth.NewExecutionContext(ctx)
 	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateUser(s.Repo), in.Body.toCommand(), ec)
 	if err != nil {
@@ -379,7 +390,7 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreatePrincipalRequ
 	resp := CreatePrincipalResponse{ID: event.UserID}
 	if created, ferr := s.Repo.FindByID(ctx, event.UserID); ferr == nil && created != nil {
 		resp.InviteLink = s.notifyNewUser(ctx, created, in.Body.Password,
-			boolDefaultTrue(in.Body.SendInvitation), boolOrFalse(in.Body.ReturnInviteLink))
+			boolDefaultTrue(in.Body.SendInvitation), boolOrFalse(in.Body.ReturnInviteLink), inviteRedirect)
 	}
 	return &apicommon.Out[CreatePrincipalResponse]{Body: resp}, nil
 }
@@ -496,7 +507,7 @@ func (s *State) importRow(ctx context.Context, ac *auth.AuthContext, ec usecase.
 	if created, gerr := s.Repo.FindByID(ctx, userID); gerr == nil && created != nil {
 		// Bulk import never gains the sendInvitation/returnInviteLink flags —
 		// always the original passwordless-invite behaviour.
-		s.notifyNewUser(ctx, created, nil, true, false)
+		s.notifyNewUser(ctx, created, nil, true, false, nil)
 	}
 	return "created", ""
 }
@@ -609,6 +620,12 @@ func (s *State) createUser(ctx context.Context, in *apicommon.In[CreateUserReque
 	if err := auth.RequireUserAdmin(ac, clientID); err != nil {
 		return nil, err
 	}
+	// Validated before anything is written: a rejected redirect must not
+	// leave behind a user whose invite was never minted.
+	inviteRedirect, err := s.resolveInviteRedirect(ctx, ac, in.Body.InviteRedirectURI)
+	if err != nil {
+		return nil, err
+	}
 
 	ec := auth.NewExecutionContext(ctx)
 
@@ -662,7 +679,7 @@ func (s *State) createUser(ctx context.Context, in *apicommon.In[CreateUserReque
 		return nil, httperror.NotFound("Principal", event.UserID)
 	}
 	inviteLink := s.notifyNewUser(ctx, created, in.Body.Password,
-		boolDefaultTrue(in.Body.SendInvitation), boolOrFalse(in.Body.ReturnInviteLink))
+		boolDefaultTrue(in.Body.SendInvitation), boolOrFalse(in.Body.ReturnInviteLink), inviteRedirect)
 	resp := fromEntity(created)
 	resp.InviteLink = inviteLink
 	return &apicommon.Out[PrincipalResponse]{Body: resp}, nil
@@ -685,8 +702,11 @@ func (s *State) createUser(ctx context.Context, in *apicommon.In[CreateUserReque
 //     invite nor welcome) — the caller has taken over notification.
 //   - Otherwise, behaviour is unchanged from before these flags existed.
 //
+// inviteRedirect (validated by resolveInviteRedirect, may be nil) rides on
+// whichever invite token is minted, so both delivery modes honour it.
+//
 // Returns the invite link when one was minted-and-returned, else nil.
-func (s *State) notifyNewUser(ctx context.Context, p *principal.Principal, password *string, sendInvitation, returnInviteLink bool) *string {
+func (s *State) notifyNewUser(ctx context.Context, p *principal.Principal, password *string, sendInvitation, returnInviteLink bool, inviteRedirect *string) *string {
 	if p == nil || p.UserIdentity == nil {
 		return nil // service account
 	}
@@ -706,7 +726,7 @@ func (s *State) notifyNewUser(ctx context.Context, p *principal.Principal, passw
 	passwordless := password == nil || *password == ""
 
 	if returnInviteLink && passwordless && s.InviteEmailer != nil {
-		link, err := s.InviteEmailer.InviteLink(ctx, p, nil)
+		link, err := s.InviteEmailer.InviteLink(ctx, p, inviteRedirect)
 		if err != nil {
 			slog.Warn("mint invite link failed", "principal", p.ID, "err", err)
 			return nil
@@ -720,13 +740,59 @@ func (s *State) notifyNewUser(ctx context.Context, p *principal.Principal, passw
 	}
 
 	if passwordless && s.InviteEmailer != nil {
-		if err := s.InviteEmailer.SendInvite(ctx, p); err != nil {
+		if err := s.InviteEmailer.SendInviteRedirect(ctx, p, inviteRedirect); err != nil {
 			slog.Warn("send account invite failed", "principal", p.ID, "err", err)
 		}
 		return nil
 	}
 	s.Notifier.AccountCreated(ctx, emailAddr)
 	return nil
+}
+
+// resolveInviteRedirect validates create-user's inviteRedirectUri. Absent or
+// blank is no redirect. Otherwise the URI must be permitted — by the same
+// matcher /oauth/authorize uses — by a registered redirect URI of an active,
+// non-portal login (authorization_code) OAuth client that serves an
+// application the caller can access. An all-applications caller also reaches
+// clients linked to no application. The allow-list is admin-registered OAuth
+// config, so the set-password page can never be turned into an open redirect,
+// and an application-scoped service account can only send invitees to its
+// own applications. Fails closed.
+func (s *State) resolveInviteRedirect(ctx context.Context, ac *auth.AuthContext, raw *string) (*string, error) {
+	if raw == nil || strings.TrimSpace(*raw) == "" {
+		return nil, nil
+	}
+	uri := strings.TrimSpace(*raw)
+	if s.OAuthClients == nil {
+		return nil, usecase.Internal("INVITE_REDIRECT", "OAuth client repo not wired", nil)
+	}
+	clients, err := s.OAuthClients.FindAll(ctx)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_oauth_clients failed", err)
+	}
+	for _, oc := range clients {
+		if !inviteRedirectClientReachable(ac, oc) {
+			continue
+		}
+		if oauthapi.MatchRedirectURI(uri, oc.RedirectURIs) {
+			return &uri, nil
+		}
+	}
+	return nil, usecase.Validation("INVITE_REDIRECT_URI_INVALID",
+		"inviteRedirectUri must match a registered redirect URI of a login OAuth client for an application you can access")
+}
+
+// inviteRedirectClientReachable reports whether oc's redirect URIs may back an
+// inviteRedirectUri for this caller: an active, non-portal login client
+// serving an application the caller can access.
+func inviteRedirectClientReachable(ac *auth.AuthContext, oc platformauth.OAuthClient) bool {
+	if !oc.Active || oc.PortalClientID != nil || !slices.Contains(oc.GrantTypes, "authorization_code") {
+		return false
+	}
+	if len(oc.ApplicationIDs) == 0 {
+		return ac != nil && ac.AllApplications
+	}
+	return slices.ContainsFunc(oc.ApplicationIDs, ac.CanAccessApplication)
 }
 
 // deriveUserScope resolves (scope, home-client) for create-user. The

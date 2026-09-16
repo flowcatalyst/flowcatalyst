@@ -19,11 +19,12 @@ type CreatePrincipalRequest struct {
 	ClientID *string `json:"clientId,omitempty"`
 	Password *string `json:"password,omitempty"`
 	IDPType  *string `json:"idpType,omitempty"`
-	// SendInvitation and ReturnInviteLink are USER-only (ignored for service
-	// accounts) — see CreateUserRequest's doc comment for the full field
-	// semantics and precedence rule; identical here.
-	SendInvitation   *bool `json:"sendInvitation,omitempty"`
-	ReturnInviteLink *bool `json:"returnInviteLink,omitempty"`
+	// SendInvitation, ReturnInviteLink and InviteRedirectURI are USER-only
+	// (ignored for service accounts) — see CreateUserRequest's doc comments
+	// for the full field semantics and precedence rule; identical here.
+	SendInvitation    *bool   `json:"sendInvitation,omitempty"`
+	ReturnInviteLink  *bool   `json:"returnInviteLink,omitempty"`
+	InviteRedirectURI *string `json:"inviteRedirectUri,omitempty"`
 }
 
 func (r CreatePrincipalRequest) toCommand() operations.CreateCommand {
@@ -77,6 +78,19 @@ type CreateUserRequest struct {
 	// returnInviteLink unset/false. The link is a live 72h bearer credential:
 	// treat it exactly like a password — never log it.
 	ReturnInviteLink *bool `json:"returnInviteLink,omitempty"`
+	// InviteRedirectURI is where the invitee is sent once they have set their
+	// password (and enrolled 2FA, when their domain requires it) — typically
+	// the calling application, which then signs them in through
+	// /oauth/authorize. It rides on the invite token, so it applies to both
+	// delivery modes: the platform-sent invite email and returnInviteLink's
+	// link. It must match a redirect URI registered on an active login
+	// (authorization_code) OAuth client of an application the caller can
+	// access, using the same matching rule as /oauth/authorize; anything else
+	// rejects the whole request before the user is created. Ignored when no
+	// invite is minted (a user created with a password, a federated user, or
+	// sendInvitation:false without returnInviteLink). Without it the invitee
+	// lands in the platform console.
+	InviteRedirectURI *string `json:"inviteRedirectUri,omitempty"`
 }
 
 // CreatePrincipalResponse is the wire body for POST /api/principals. It
