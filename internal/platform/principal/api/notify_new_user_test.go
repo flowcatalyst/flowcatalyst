@@ -287,3 +287,38 @@ func TestNotifyNewUser_InviteRedirectReachesBothDeliveryModes(t *testing.T) {
 		t.Fatalf("returned link: calls=%d redirect=%v, want 1 call carrying %q", invite.inviteLinkCalls, invite.lastRedirect, redirect)
 	}
 }
+
+func TestResolveInviteRedirect(t *testing.T) {
+	str := func(s string) *string { return &s }
+	accepted := []string{
+		"https://app.example.test/",
+		"https://app.example.test/welcome?from=invite",
+		"http://localhost:5173",
+		"  https://app.example.test  ",
+	}
+	for _, in := range accepted {
+		got, err := resolveInviteRedirect(str(in))
+		if err != nil || got == nil {
+			t.Fatalf("%q: got (%v, %v), want accepted", in, got, err)
+		}
+	}
+	rejected := []string{
+		"/dashboard",
+		"app.example.test",
+		"javascript:alert(1)",
+		"data:text/html,hi",
+		"ftp://app.example.test/",
+		"https://trusted.example@evil.test/",
+		"https:///no-host",
+	}
+	for _, in := range rejected {
+		if got, err := resolveInviteRedirect(str(in)); err == nil {
+			t.Fatalf("%q: accepted as %q, want INVITE_REDIRECT_URI_INVALID", in, *got)
+		}
+	}
+	for _, in := range []*string{nil, str(""), str("   ")} {
+		if got, err := resolveInviteRedirect(in); err != nil || got != nil {
+			t.Fatalf("blank: got (%v, %v), want no redirect", got, err)
+		}
+	}
+}

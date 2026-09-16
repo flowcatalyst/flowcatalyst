@@ -148,7 +148,6 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			Mappings:          repos.edmRepo,
 			IdentityProviders: repos.idpRepo,
 			AnchorDomains:     repos.authRepo.AnchorDomains,
-			OAuthClients:      repos.authRepo.OAuthClients,
 			PasswordEmailer:   principalResetEmailer,
 			InviteEmailer:     principalResetEmailer,
 			Notifier:          svcs.notifier,

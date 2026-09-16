@@ -16,7 +16,6 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/oauthapi"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
@@ -58,12 +57,8 @@ type State struct {
 	Mappings          *emaildomainmapping.Repository // for /check-email-domain + create-user scope derivation
 	IdentityProviders *identityprovider.Repository   // for /check-email-domain + create-user idp-type
 	AnchorDomains     *platformauth.AnchorDomainRepo // for create-user anchor-domain check (optional)
-	// OAuthClients validates create-user's inviteRedirectUri against the
-	// login clients of the caller's applications. Nil rejects any
-	// inviteRedirectUri (fail closed).
-	OAuthClients    *platformauth.OAuthClientRepo
-	UoW             *usecasepgx.UnitOfWork
-	PasswordEmailer operations.PasswordResetEmailer // optional; gates /send-password-reset
+	UoW               *usecasepgx.UnitOfWork
+	PasswordEmailer   operations.PasswordResetEmailer // optional; gates /send-password-reset
 
 	// InviteEmailer (optional) sends a "set your password" link to a newly
 	// created internal user that has no password yet. Notifier (optional) sends
@@ -378,7 +373,7 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreatePrincipalRequ
 	if err := auth.RequireUserAdmin(ac, in.Body.ClientID); err != nil {
 		return nil, err
 	}
-	inviteRedirect, err := s.resolveInviteRedirect(ctx, ac, in.Body.InviteRedirectURI)
+	inviteRedirect, err := resolveInviteRedirect(in.Body.InviteRedirectURI)
 	if err != nil {
 		return nil, err
 	}
@@ -622,7 +617,7 @@ func (s *State) createUser(ctx context.Context, in *apicommon.In[CreateUserReque
 	}
 	// Validated before anything is written: a rejected redirect must not
 	// leave behind a user whose invite was never minted.
-	inviteRedirect, err := s.resolveInviteRedirect(ctx, ac, in.Body.InviteRedirectURI)
+	inviteRedirect, err := resolveInviteRedirect(in.Body.InviteRedirectURI)
 	if err != nil {
 		return nil, err
 	}
@@ -749,50 +744,26 @@ func (s *State) notifyNewUser(ctx context.Context, p *principal.Principal, passw
 	return nil
 }
 
-// resolveInviteRedirect validates create-user's inviteRedirectUri. Absent or
-// blank is no redirect. Otherwise the URI must be permitted — by the same
-// matcher /oauth/authorize uses — by a registered redirect URI of an active,
-// non-portal login (authorization_code) OAuth client that serves an
-// application the caller can access. An all-applications caller also reaches
-// clients linked to no application. The allow-list is admin-registered OAuth
-// config, so the set-password page can never be turned into an open redirect,
-// and an application-scoped service account can only send invitees to its
-// own applications. Fails closed.
-func (s *State) resolveInviteRedirect(ctx context.Context, ac *auth.AuthContext, raw *string) (*string, error) {
+// resolveInviteRedirect validates create-user's inviteRedirectUri: where the
+// calling application wants the invitee sent after set-password — usually its
+// own home page, which then starts its own sign-in. Absent or blank is no
+// redirect. Otherwise it must be an absolute http(s) URL with a host and no
+// userinfo (so no javascript:/data: URLs and no "https://trusted@evil"
+// host confusion). It is deliberately NOT tied to OAuth redirect URIs: it is
+// set by an authenticated caller already allowed to create the user, and it
+// is stored on the invite token rather than read from the link, so the
+// set-password page is not an open redirect.
+func resolveInviteRedirect(raw *string) (*string, error) {
 	if raw == nil || strings.TrimSpace(*raw) == "" {
 		return nil, nil
 	}
 	uri := strings.TrimSpace(*raw)
-	if s.OAuthClients == nil {
-		return nil, usecase.Internal("INVITE_REDIRECT", "OAuth client repo not wired", nil)
+	u, err := url.Parse(uri)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil {
+		return nil, usecase.Validation("INVITE_REDIRECT_URI_INVALID",
+			"inviteRedirectUri must be an absolute http or https URL")
 	}
-	clients, err := s.OAuthClients.FindAll(ctx)
-	if err != nil {
-		return nil, usecase.Internal("REPO", "find_oauth_clients failed", err)
-	}
-	for _, oc := range clients {
-		if !inviteRedirectClientReachable(ac, oc) {
-			continue
-		}
-		if oauthapi.MatchRedirectURI(uri, oc.RedirectURIs) {
-			return &uri, nil
-		}
-	}
-	return nil, usecase.Validation("INVITE_REDIRECT_URI_INVALID",
-		"inviteRedirectUri must match a registered redirect URI of a login OAuth client for an application you can access")
-}
-
-// inviteRedirectClientReachable reports whether oc's redirect URIs may back an
-// inviteRedirectUri for this caller: an active, non-portal login client
-// serving an application the caller can access.
-func inviteRedirectClientReachable(ac *auth.AuthContext, oc platformauth.OAuthClient) bool {
-	if !oc.Active || oc.PortalClientID != nil || !slices.Contains(oc.GrantTypes, "authorization_code") {
-		return false
-	}
-	if len(oc.ApplicationIDs) == 0 {
-		return ac != nil && ac.AllApplications
-	}
-	return slices.ContainsFunc(oc.ApplicationIDs, ac.CanAccessApplication)
+	return &uri, nil
 }
 
 // deriveUserScope resolves (scope, home-client) for create-user. The

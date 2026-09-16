@@ -795,7 +795,7 @@ func (s *State) confirmReset(w http.ResponseWriter, r *http.Request) {
 	// Invites may carry a post-set-password redirect, validated at mint time:
 	// portal invites against the owning client's portal OAuth clients (see
 	// docs/portal-identity-plan.md Phase 2.5), create-user's
-	// inviteRedirectUri against the caller's applications' login clients.
+	// inviteRedirectUri as an absolute http(s) URL set by the creating caller.
 	// The SPA follows it once the flow fully completes (immediately on "ok";
 	// after enrollment when the 2FA gate fires).
 	resp.RedirectURI = t.RedirectURI
