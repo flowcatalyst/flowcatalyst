@@ -208,6 +208,13 @@ func (cs *ConfigSource) fetchWithRetry(ctx context.Context, url string) (*common
 		if err == nil {
 			return cfg, nil
 		}
+		// A refusal the next attempt cannot change (403, 404, ...) fails the
+		// source now. Burning the retry budget on it would only hold every
+		// other source's configuration back: Fetch applies nothing until
+		// each source has finished.
+		if _, ok := errors.AsType[*permanentFetchError](err); ok {
+			return nil, err
+		}
 		lastErr = err
 		if attempt < cs.MaxAttempts {
 			select {
@@ -250,7 +257,15 @@ func (cs *ConfigSource) fetchOnce(ctx context.Context, url string) (*common.Rout
 		if authenticated && resp.StatusCode == http.StatusUnauthorized {
 			cs.Credentials.Invalidate()
 		}
-		return nil, fmt.Errorf("config fetch: HTTP %d", resp.StatusCode)
+		msg := fmt.Sprintf("config fetch: HTTP %d", resp.StatusCode)
+		if !authenticated && (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) {
+			msg += " (sent without credentials: a platform's /api/dispatch/router-config needs " +
+				"FC_ROUTER_PLATFORM_URL set to that platform plus FC_ROUTER_CLIENT_ID/FC_ROUTER_CLIENT_SECRET)"
+		}
+		if !retryableStatus(resp.StatusCode, authenticated) {
+			return nil, &permanentFetchError{msg: msg}
+		}
+		return nil, errors.New(msg)
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -261,6 +276,30 @@ func (cs *ConfigSource) fetchOnce(ctx context.Context, url string) (*common.Rout
 		return nil, fmt.Errorf("config decode: %w", err)
 	}
 	return &cfg, nil
+}
+
+// permanentFetchError is a config-source response that retrying cannot fix.
+type permanentFetchError struct{ msg string }
+
+func (e *permanentFetchError) Error() string { return e.msg }
+
+// retryableStatus reports whether another attempt could plausibly get a
+// different answer: server-side and throttling failures, and a 401 on an
+// authenticated request (the rejected token was just invalidated, so the
+// next attempt mints a fresh one). Every other client error — a 403 for
+// missing permissions or credentials, a 404 for a wrong URL — answers the
+// same way until someone changes the deployment.
+func retryableStatus(code int, authenticated bool) bool {
+	switch {
+	case code >= 500:
+		return true
+	case code == http.StatusRequestTimeout, code == http.StatusTooEarly, code == http.StatusTooManyRequests:
+		return true
+	case code == http.StatusUnauthorized:
+		return authenticated
+	default:
+		return false
+	}
 }
 
 // recordSuccess caches url's freshly fetched config as its last-known-good
@@ -444,10 +483,12 @@ func Watch(ctx context.Context, cs *ConfigSource, manager *Manager, interval tim
 			raiseWatchWarning(warnings, &watchWarnID, fmt.Sprintf("manager reconfigure failed: %v", err))
 			return false
 		}
-		if failures > 0 {
-			slog.Info("configuration applied", "failed_attempts", failures)
-			failures = 0
-		}
+		// Logged on every applied change — the first one included — so a
+		// router that is running reads differently in the logs from one
+		// still waiting on its sources.
+		slog.Info("router configuration applied",
+			"pools", len(cfg.ProcessingPools), "queues", len(cfg.Queues), "failed_attempts", failures)
+		failures = 0
 		clearWatchWarning(warnings, &watchWarnID)
 		return true
 	}

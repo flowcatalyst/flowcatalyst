@@ -312,3 +312,79 @@ func TestWatch_NilWarningsIsSafe(t *testing.T) {
 	cancel()
 	<-done
 }
+
+// statusServer answers every request with code and counts the calls.
+func statusServer(t *testing.T, code int) (*httptest.Server, *atomic.Int32) {
+	t.Helper()
+	calls := &atomic.Int32{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(code)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, calls
+}
+
+// A source that refuses with a status retrying cannot change (403 for a router
+// without credentials) must fail at once, so the other sources' configuration
+// is applied now rather than after that source's whole retry budget.
+func TestFetchPermanentRefusalFailsFastAndOtherSourcesApply(t *testing.T) {
+	refusing, refusals := statusServer(t, http.StatusForbidden)
+	healthy := poolServer(t, "HEALTHY", func() uint32 { return 4 }, nil)
+
+	cs := NewConfigSource(refusing.URL + "," + healthy.URL)
+	cs.RetryDelay = time.Second // 11 retries would take 11s; the test would time out on it
+
+	start := time.Now()
+	cfg, err := cs.Fetch(context.Background())
+	require.NoError(t, err)
+	assert.Less(t, time.Since(start), 500*time.Millisecond, "a 403 must not wait out the retry budget")
+	assert.Equal(t, int32(1), refusals.Load(), "a 403 is not retried")
+	_, ok := poolByCode(cfg, "HEALTHY")
+	assert.True(t, ok, "the healthy source's configuration is applied")
+}
+
+// Transient failures keep their retry budget.
+func TestFetchServerErrorIsRetried(t *testing.T) {
+	srv, calls := statusServer(t, http.StatusBadGateway)
+	cs := NewConfigSource(srv.URL)
+	cs.MaxAttempts = 3
+	cs.RetryDelay = time.Millisecond
+
+	_, err := cs.Fetch(context.Background())
+	require.Error(t, err)
+	assert.Equal(t, int32(3), calls.Load())
+}
+
+// An unauthenticated 401/403 names the settings that fix it, since the cause
+// is almost always a router deployed without its client credentials.
+func TestFetchUnauthenticatedRefusalNamesTheCredentialSettings(t *testing.T) {
+	srv, _ := statusServer(t, http.StatusForbidden)
+	cs := NewConfigSource(srv.URL)
+
+	_, err := cs.fetchWithRetry(context.Background(), srv.URL)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "HTTP 403")
+	assert.Contains(t, err.Error(), "FC_ROUTER_CLIENT_ID")
+}
+
+func TestRetryableStatus(t *testing.T) {
+	for _, tc := range []struct {
+		code          int
+		authenticated bool
+		want          bool
+	}{
+		{http.StatusInternalServerError, false, true},
+		{http.StatusServiceUnavailable, true, true},
+		{http.StatusTooManyRequests, false, true},
+		{http.StatusRequestTimeout, false, true},
+		{http.StatusUnauthorized, true, true},
+		{http.StatusUnauthorized, false, false},
+		{http.StatusForbidden, true, false},
+		{http.StatusForbidden, false, false},
+		{http.StatusNotFound, false, false},
+		{http.StatusBadRequest, false, false},
+	} {
+		assert.Equal(t, tc.want, retryableStatus(tc.code, tc.authenticated), "status %d authenticated=%v", tc.code, tc.authenticated)
+	}
+}
