@@ -182,6 +182,30 @@ func (r *OAuthClientRepo) FindByPortalClient(ctx context.Context, clientID strin
 	return r.hydrateAll(ctx, bare)
 }
 
+// FindByPrincipalID lists the OAuth clients linked to a SERVICE principal
+// (service_account_principal_id = principalID), earliest first — consulted
+// by the service-account read to surface the public client_id of the
+// account's provisioned OAuth client (a service account's own PrincipalID,
+// not the service account's own id).
+func (r *OAuthClientRepo) FindByPrincipalID(ctx context.Context, principalID string) ([]OAuthClient, error) {
+	rows, err := r.q.OAuthClientFindByPrincipalID(ctx, &principalID)
+	if err != nil {
+		return nil, err
+	}
+	// A corrupted client type on any one row fails the WHOLE list read
+	// (X-06: "a list containing the row fails too") rather than silently
+	// skipping or coercing that row.
+	bare := make([]OAuthClient, 0, len(rows))
+	for _, row := range rows {
+		c, err := rowToOAuthClient(row)
+		if err != nil {
+			return nil, err
+		}
+		bare = append(bare, *c)
+	}
+	return r.hydrateAll(ctx, bare)
+}
+
 // HasLoginClientForApplication reports whether applicationID has a
 // login-type OAuth client provisioned: one linked to the application
 // (oauth_client_application_ids) whose grant types include

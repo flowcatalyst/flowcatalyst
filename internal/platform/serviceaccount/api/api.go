@@ -135,6 +135,12 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	// (roles + app-access live on the principal, not the service-account row).
 	if p, err := s.Principals.FindByServiceAccount(ctx, in.ID); err == nil && p != nil {
 		resp.PrincipalID = &p.ID
+		// Surface the public client_id of the OAuth client provisioned for
+		// this account's principal — the earliest by (created_at, id) when
+		// several exist. Absent when none is linked.
+		if clients, err := s.OAuthClients.FindByPrincipalID(ctx, p.ID); err == nil && len(clients) > 0 {
+			resp.OAuthClientID = &clients[0].ClientID
+		}
 	}
 	return &apicommon.Out[ServiceAccountResponse]{Body: resp}, nil
 }

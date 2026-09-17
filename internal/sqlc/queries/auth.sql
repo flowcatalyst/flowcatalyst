@@ -73,6 +73,19 @@ FROM oauth_clients
 WHERE portal_client_id = $1
 ORDER BY client_name;
 
+-- name: OAuthClientFindByPrincipalID :many
+-- OAuth clients linked to a SERVICE principal (service_account_principal_id),
+-- earliest first — consulted by the service-account read to surface the
+-- public client_id of the account's provisioned OAuth client.
+SELECT id, client_id, client_name, client_type, client_secret_ref,
+       default_scopes, pkce_required, service_account_principal_id,
+       active, created_at, updated_at, portal_client_id, api_access,
+       previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at,
+       portal_app_id
+FROM oauth_clients
+WHERE service_account_principal_id = $1
+ORDER BY created_at, id;
+
 -- name: OAuthClientDelete :exec
 DELETE FROM oauth_clients WHERE id = $1;
 

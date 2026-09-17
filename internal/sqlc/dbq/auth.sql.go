@@ -612,6 +612,58 @@ func (q *Queries) OAuthClientFindByPortalClient(ctx context.Context, portalClien
 	return items, nil
 }
 
+const oAuthClientFindByPrincipalID = `-- name: OAuthClientFindByPrincipalID :many
+SELECT id, client_id, client_name, client_type, client_secret_ref,
+       default_scopes, pkce_required, service_account_principal_id,
+       active, created_at, updated_at, portal_client_id, api_access,
+       previous_secret_ref, previous_secret_expires_at, previous_secret_last_used_at,
+       portal_app_id
+FROM oauth_clients
+WHERE service_account_principal_id = $1
+ORDER BY created_at, id
+`
+
+// OAuth clients linked to a SERVICE principal (service_account_principal_id),
+// earliest first — consulted by the service-account read to surface the
+// public client_id of the account's provisioned OAuth client.
+func (q *Queries) OAuthClientFindByPrincipalID(ctx context.Context, serviceAccountPrincipalID *string) ([]OauthClient, error) {
+	rows, err := q.db.Query(ctx, oAuthClientFindByPrincipalID, serviceAccountPrincipalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []OauthClient{}
+	for rows.Next() {
+		var i OauthClient
+		if err := rows.Scan(
+			&i.ID,
+			&i.ClientID,
+			&i.ClientName,
+			&i.ClientType,
+			&i.ClientSecretRef,
+			&i.DefaultScopes,
+			&i.PkceRequired,
+			&i.ServiceAccountPrincipalID,
+			&i.Active,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.PortalClientID,
+			&i.ApiAccess,
+			&i.PreviousSecretRef,
+			&i.PreviousSecretExpiresAt,
+			&i.PreviousSecretLastUsedAt,
+			&i.PortalAppID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const oAuthClientGrantTypeInsert = `-- name: OAuthClientGrantTypeInsert :exec
 INSERT INTO oauth_client_grant_types (oauth_client_id, grant_type)
 VALUES ($1, $2)

@@ -173,10 +173,16 @@ type ServiceAccountResponse struct {
 	// own principal row). Populated on the single-account read so the UI can
 	// drive the shared /api/principals/{id}/application-access endpoints; omitted
 	// from list responses to avoid a per-row lookup.
-	PrincipalID *string          `json:"principalId,omitempty"`
-	LastUsedAt  *httpcompat.Time `json:"lastUsedAt,omitempty"`
-	CreatedAt   httpcompat.Time  `json:"createdAt"`
-	UpdatedAt   httpcompat.Time  `json:"updatedAt"`
+	PrincipalID *string `json:"principalId,omitempty"`
+	// OAuthClientID is the public client_id (NOT the OAuth client row's own
+	// id) of the OAuth client whose principal_id is this account's linked
+	// SERVICE principal — the earliest by (created_at, id) when several.
+	// Populated on the same single-account read as PrincipalID, for the same
+	// reason: no per-row lookup on list responses.
+	OAuthClientID *string          `json:"oauthClientId,omitempty"`
+	LastUsedAt    *httpcompat.Time `json:"lastUsedAt,omitempty"`
+	CreatedAt     httpcompat.Time  `json:"createdAt"`
+	UpdatedAt     httpcompat.Time  `json:"updatedAt"`
 }
 
 func fromEntity(sa *serviceaccount.ServiceAccount) ServiceAccountResponse {

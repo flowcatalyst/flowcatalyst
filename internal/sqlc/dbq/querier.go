@@ -221,6 +221,10 @@ type Querier interface {
 	// Portal-flagged OAuth clients owned by a tenant client — consulted when
 	// validating a portal invite's post-set-password redirectUri.
 	OAuthClientFindByPortalClient(ctx context.Context, portalClientID *string) ([]OauthClient, error)
+	// OAuth clients linked to a SERVICE principal (service_account_principal_id),
+	// earliest first — consulted by the service-account read to surface the
+	// public client_id of the account's provisioned OAuth client.
+	OAuthClientFindByPrincipalID(ctx context.Context, serviceAccountPrincipalID *string) ([]OauthClient, error)
 	OAuthClientGrantTypeInsert(ctx context.Context, arg OAuthClientGrantTypeInsertParams) error
 	OAuthClientGrantTypesClear(ctx context.Context, oauthClientID string) error
 	OAuthClientGrantTypesForClient(ctx context.Context, oauthClientID string) ([]string, error)

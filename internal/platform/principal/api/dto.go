@@ -210,6 +210,11 @@ type PrincipalResponse struct {
 	// same "set your password" link the platform would otherwise email —
 	// never log it. Absent on every other read of a principal.
 	InviteLink *string `json:"inviteLink,omitempty"`
+	// ServiceAccountID is the linked service account's id for a SERVICE
+	// principal (the inverse of ServiceAccountResponse.PrincipalID) — absent
+	// for a USER principal. Carried on every read: it's a column on the row
+	// already loaded, no extra lookup.
+	ServiceAccountID *string `json:"serviceAccountId,omitempty"`
 }
 
 // PrincipalVersionResponse is the wire body for
@@ -270,6 +275,7 @@ func fromEntity(p *principal.Principal) PrincipalResponse {
 		UpdatedAt:                    jsontime.New(p.UpdatedAt),
 		HasDeveloperCredential:       hasDevCred,
 		DeveloperCredentialUpdatedAt: devCredUpdatedAt,
+		ServiceAccountID:             p.ServiceAccountID,
 	}
 }
 
