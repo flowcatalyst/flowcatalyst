@@ -416,7 +416,7 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 		}
 		oidcClient, idp = res, resolvedIdp
 	} else {
-		res, _, resolvedMapping, err := e.bridge.ResolveForEmail(r.Context(),
+		res, resolvedIdp, resolvedMapping, err := e.bridge.ResolveForEmail(r.Context(),
 			"x@"+loginState.EmailDomain)
 		if err != nil {
 			httperror.Write(w, usecase.Internal("OIDC_RESOLVE_FAILED",
@@ -428,7 +428,10 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 				"OIDC is not configured for this domain"))
 			return
 		}
-		oidcClient, mapping = res, resolvedMapping
+		// resolvedIdp is captured (previously discarded) so the UserLoggedIn
+		// event emitted below (docs/spec/oidc-logged-in-event.md) can carry
+		// the identity provider's code on the mapping-based path too.
+		oidcClient, idp, mapping = res, resolvedIdp, resolvedMapping
 	}
 
 	redirectURI := e.absoluteCallbackURL(r)
@@ -591,6 +594,13 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 			target = safe
 		}
 	}
+
+	// Emit platform:iam:user:logged-in (docs/spec/oidc-logged-in-event.md):
+	// after every check above has passed and the session is about to be
+	// established, before the redirect. OIDC logins only — the portal-plane
+	// callback already returned earlier and never reaches here.
+	e.emitUserLoggedIn(r.Context(), p, !providerDirect, email, idp, idToken, tok)
+
 	e.SessionWriter(w, r, p.ID, target)
 }
 

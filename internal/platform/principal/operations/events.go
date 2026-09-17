@@ -21,11 +21,22 @@ const (
 	PrincipalsSyncedType           = "platform:iam:principals:synced"
 	DeveloperCredentialSetType     = "platform:iam:user:developer-credential-set"
 	DeveloperCredentialRevokedType = "platform:iam:user:developer-credential-revoked"
+	UserLoggedInType               = "platform:iam:user:logged-in"
 	Source                         = "platform:iam"
 )
 
 func subjectFor(id string) string { return "platform.principal." + id }
 func groupFor(id string) string   { return "platform:principal:" + id }
+
+// UserLoggedInSubject / UserLoggedInMessageGroup: UserLoggedIn deliberately
+// does NOT use subjectFor/groupFor above — docs/spec/oidc-logged-in-event.md
+// calls for "platform.user.{userId}" / "platform:user:{userId}" (matching the
+// Rust reference, fc-platform's UserLoggedIn), not this file's
+// "platform.principal...." family shape. Exported so the OIDC bridge, which
+// builds this event's Metadata before usecaseop.Run, and tests, can use the
+// same literals rather than re-deriving them.
+func UserLoggedInSubject(userID string) string      { return "platform.user." + userID }
+func UserLoggedInMessageGroup(userID string) string { return "platform:user:" + userID }
 
 // Note on naming: the entity's ID (the subject of the event — who was
 // created/updated/etc.) is named `UserID` to avoid colliding with the
@@ -197,6 +208,76 @@ func (e RolesAssigned) ToDataJSON() ([]byte, error) {
 		Added       []string `json:"added"`
 		Removed     []string `json:"removed"`
 	}{e.UserID, defaultEmpty(e.Roles), defaultEmpty(e.Added), defaultEmpty(e.Removed)})
+}
+
+// FlowcatalystClaims is the "flowcatalyst-side" view of the logged-in user
+// embedded in UserLoggedIn — mirrors what a minted platform token would
+// carry for this principal.
+type FlowcatalystClaims struct {
+	Email string `json:"email"`
+	// Type is always "USER" — a service account never logs in via OIDC.
+	Type         string   `json:"type"`
+	Roles        []string `json:"roles"`
+	Clients      []string `json:"clients"`
+	Applications []string `json:"applications"`
+}
+
+// FederatedClaims carries the external IDP's token contents, verified-and-
+// sanitised for the id token, best-effort-decoded for the access token. The
+// raw token strings themselves are never stored here — only their claims.
+type FederatedClaims struct {
+	// IDToken is the verified id_token's full claim set, minus the OIDC
+	// protocol artefacts nonce/at_hash/c_hash (docs/spec/oidc-logged-in-event.md).
+	IDToken map[string]any `json:"idToken"`
+	// AccessToken is the access token's payload, decoded WITHOUT signature
+	// verification, when it is a three-part JWT whose middle segment is
+	// base64url JSON; an empty object for an opaque access token.
+	AccessToken map[string]any `json:"accessToken"`
+}
+
+// UserLoggedIn is emitted after a successful OIDC login — OIDC only;
+// password/2FA/passkey logins never emit this (owner ruling, 2026-09-17).
+// It is an event-only plan (usecaseop.Emit): the login already succeeded
+// (session about to be established) by the time this is built, so there is
+// no aggregate to write.
+type UserLoggedIn struct {
+	Metadata    usecase.EventMetadata
+	UserID      string
+	Email       string
+	LoginMethod string
+	// IdentityProviderCode is the identity provider's `code` — nil only if
+	// the IdP vanished between resolution and emit (shouldn't happen; the
+	// callback already used it to exchange the code).
+	IdentityProviderCode *string
+	FlowcatalystClaims   FlowcatalystClaims
+	// FederatedClaims is nil only for a non-OIDC login method; OIDC logins
+	// (the only ones that emit this event today) always set it.
+	FederatedClaims *FederatedClaims
+}
+
+func (e UserLoggedIn) EventID() string     { return e.Metadata.EventID }
+func (e UserLoggedIn) EventType() string   { return UserLoggedInType }
+func (e UserLoggedIn) SpecVersion() string { return "1.0" }
+func (e UserLoggedIn) Source() string      { return Source }
+
+// Subject / MessageGroup: see UserLoggedInSubject/UserLoggedInMessageGroup's
+// doc comment above for why this event doesn't use subjectFor/groupFor.
+func (e UserLoggedIn) Subject() string       { return UserLoggedInSubject(e.UserID) }
+func (e UserLoggedIn) Time() time.Time       { return e.Metadata.OccurredAt }
+func (e UserLoggedIn) PrincipalID() string   { return e.Metadata.PrincipalID }
+func (e UserLoggedIn) CorrelationID() string { return e.Metadata.CorrelationID }
+func (e UserLoggedIn) CausationID() string   { return e.Metadata.CausationID }
+func (e UserLoggedIn) ExecutionID() string   { return e.Metadata.ExecutionID }
+func (e UserLoggedIn) MessageGroup() string  { return UserLoggedInMessageGroup(e.UserID) }
+func (e UserLoggedIn) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		UserID               string             `json:"userId"`
+		Email                string             `json:"email"`
+		LoginMethod          string             `json:"loginMethod"`
+		IdentityProviderCode *string            `json:"identityProviderCode,omitempty"`
+		FlowcatalystClaims   FlowcatalystClaims `json:"flowcatalystClaims"`
+		FederatedClaims      *FederatedClaims   `json:"federatedClaims,omitempty"`
+	}{e.UserID, e.Email, e.LoginMethod, e.IdentityProviderCode, e.FlowcatalystClaims, e.FederatedClaims})
 }
 
 // DeveloperCredentialSet — emitted when a user's self-service developer
