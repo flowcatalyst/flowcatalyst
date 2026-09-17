@@ -19,6 +19,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalauth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalidentity"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
@@ -26,6 +27,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
@@ -76,6 +78,14 @@ type LoginEndpoint struct {
 	// some browsers treat a Secure and a non-Secure cookie of the same name
 	// as distinct, leaving the real session cookie standing after "logout".
 	CookieSecure bool
+
+	// LoginAttempts records USER_LOGIN outcomes for the OIDC callback
+	// (docs/spec/sso-login-attempts.md): one row per accepted or refused
+	// identity the IdP sent us, employee-plane only — a login state that
+	// routes to the portal sink (handlePortalCallback) writes no row at
+	// all, success or failure. Optional; nil disables recording (the
+	// callback behaves exactly as before this field existed).
+	LoginAttempts *loginattempt.Repository
 
 	// Portal wires the PORTAL-plane SSO reuse of this bridge
 	// (docs/portal-identity-plan.md Phase 2.5 v2): /portal/auth/oidc/login
@@ -397,6 +407,12 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A login state that routes to the portal completion (handlePortalCallback
+	// below) never writes a login-attempt row, success or failure
+	// (docs/spec/sso-login-attempts.md — employee plane only). Known as soon
+	// as the state is consumed, so every refusal from here on can gate on it.
+	isPortal := loginState.PortalClientID != nil && *loginState.PortalClientID != ""
+
 	// Re-resolve the OIDC client the same way the login started: an empty
 	// mapping id marks a provider-direct (portal) login, which never consults
 	// the email-domain mapping table. providerDirect drives the trust-binding
@@ -447,6 +463,9 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	idToken, err := oidcClient.VerifyIDToken(r.Context(), rawIDToken)
 	if err != nil {
+		// Unverified — never record the presented (untrusted) token's claims
+		// as an identifier here.
+		e.recordSSOAttempt(r, isPortal, loginattempt.OutcomeFailure, nil, nil, "SSO: id_token verification failed")
 		httperror.Write(w, usecase.Authorization("OIDC_VERIFY", "id_token verification failed: "+err.Error()))
 		return
 	}
@@ -459,10 +478,26 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 		Roles             []string `json:"roles"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
+		// Malformed claims yield no usable identifier. Recorded as a
+		// verification failure, the same row Java writes (its claim parse
+		// is part of id_token verification).
+		e.recordSSOAttempt(r, isPortal, loginattempt.OutcomeFailure, nil, nil, "SSO: id_token verification failed")
 		httperror.Write(w, httperror.BadRequest("OIDC_CLAIMS", "id_token claims malformed"))
 		return
 	}
 	if claims.Nonce != loginState.Nonce {
+		// The id_token is already signature-verified at this point, so its
+		// email/preferred_username claim is a trustworthy identifier even
+		// though the nonce itself didn't match.
+		nonceIdentifier := claims.Email
+		if nonceIdentifier == "" {
+			nonceIdentifier = claims.PreferredUsername
+		}
+		var identifier *string
+		if nonceIdentifier != "" {
+			identifier = &nonceIdentifier
+		}
+		e.recordSSOAttempt(r, isPortal, loginattempt.OutcomeFailure, identifier, nil, "SSO: nonce mismatch")
 		httperror.Write(w, usecase.Authorization("NONCE_MISMATCH", "nonce did not match"))
 		return
 	}
@@ -473,6 +508,7 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 		email = claims.PreferredUsername
 	}
 	if email == "" {
+		e.recordSSOAttempt(r, isPortal, loginattempt.OutcomeFailure, nil, nil, "SSO: no email claim")
 		httperror.Write(w, usecase.Authorization("NO_EMAIL", "id_token has no email / preferred_username claim"))
 		return
 	}
@@ -480,6 +516,7 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 	// Reject Entra external/guest accounts (#EXT# UPNs): their identity is owned
 	// by another organisation and falls outside this domain's trust boundary.
 	if strings.Contains(strings.ToLower(email), "#ext#") {
+		e.recordSSOAttempt(r, isPortal, loginattempt.OutcomeFailure, &email, nil, "SSO: external guest account")
 		httperror.Write(w, usecase.Authorization("EXTERNAL_GUEST", "external guest accounts are not supported"))
 		return
 	}
@@ -500,22 +537,26 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 	// the IdP itself bounds.
 	if providerDirect {
 		if len(idp.AllowedEmailDomains) > 0 && !domainAllowed(emailDomain(email), idp.AllowedEmailDomains) {
+			e.recordSSOAttempt(r, isPortal, loginattempt.OutcomeFailure, &email, nil, "SSO: email domain not allowed")
 			httperror.Write(w, usecase.Authorization("EMAIL_DOMAIN_MISMATCH",
 				"the token's email domain is not allowed for this identity provider"))
 			return
 		}
 	} else {
 		if !strings.EqualFold(emailDomain(email), loginState.EmailDomain) {
+			e.recordSSOAttempt(r, isPortal, loginattempt.OutcomeFailure, &email, nil, "SSO: email domain not allowed")
 			httperror.Write(w, usecase.Authorization("EMAIL_DOMAIN_MISMATCH",
 				"the token's email domain does not match the login domain"))
 			return
 		}
 		if mapping.RequiredOIDCTenantID != nil && *mapping.RequiredOIDCTenantID != "" {
 			if claims.Tid == "" {
+				e.recordSSOAttempt(r, isPortal, loginattempt.OutcomeFailure, &email, nil, "SSO: tenant mismatch")
 				httperror.Write(w, usecase.Authorization("TENANT_MISMATCH", "id_token has no tenant id (tid) claim"))
 				return
 			}
 			if claims.Tid != *mapping.RequiredOIDCTenantID {
+				e.recordSSOAttempt(r, isPortal, loginattempt.OutcomeFailure, &email, nil, "SSO: tenant mismatch")
 				httperror.Write(w, usecase.Authorization("TENANT_MISMATCH", "id_token tenant does not match the configured tenant"))
 				return
 			}
@@ -552,6 +593,13 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 			p, err = e.autoProvision(r.Context(), email, loginState.EmailDomainMappingID)
 		}
 		if err != nil {
+			// A refused provisioning attempt (4xx, e.g. MAPPING_GONE) is an
+			// identity being refused; an Internal (500) fault is
+			// infrastructure noise and is not recorded
+			// (docs/spec/sso-login-attempts.md).
+			if isProvisioningRefusal(err) {
+				e.recordSSOAttempt(r, isPortal, loginattempt.OutcomeFailure, &email, nil, "SSO: account provisioning refused")
+			}
 			httperror.Write(w, err)
 			return
 		}
@@ -601,6 +649,12 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 	// callback already returned earlier and never reaches here.
 	e.emitUserLoggedIn(r.Context(), p, !providerDirect, email, idp, idToken, tok)
 
+	// Record the accepted identity next to the logged-in emit
+	// (docs/spec/sso-login-attempts.md). isPortal is always false on this
+	// path — the portal sink returned earlier — kept for symmetry with the
+	// refusal call sites above.
+	e.recordSSOAttempt(r, isPortal, loginattempt.OutcomeSuccess, &email, &p.ID, "")
+
 	e.SessionWriter(w, r, p.ID, target)
 }
 
@@ -639,6 +693,50 @@ func safeRelativeReturnURL(u string) string {
 		return ""
 	}
 	return u
+}
+
+// recordSSOAttempt best-effort records a USER_LOGIN row for an OIDC callback
+// (docs/spec/sso-login-attempts.md): outcome, an optional identifier (nil
+// when no verified claim exists for the refusal, e.g. a signature failure),
+// an optional principal id (success only), and a failure reason. IP and user
+// agent are taken from r the same way the password-login endpoint takes
+// them (internal/platform/auth/login/endpoint.go recordAttempt): the
+// rightmost X-Forwarded-For hop, and the trimmed User-Agent header, so all
+// three login surfaces agree on what "the client" means. No-op when
+// LoginAttempts is unset, or when isPortal — a login state that routes to
+// the portal completion writes no row at all, success or failure. A write
+// failure is logged at WARN and never changes the response.
+func (e *LoginEndpoint) recordSSOAttempt(r *http.Request, isPortal bool, outcome loginattempt.Outcome, identifier, principalID *string, failureReason string) {
+	if e.LoginAttempts == nil || isPortal {
+		return
+	}
+	a := loginattempt.New(loginattempt.AttemptUserLogin, outcome)
+	if identifier != nil {
+		norm := strings.ToLower(strings.TrimSpace(*identifier))
+		a.Identifier = &norm
+	}
+	a.PrincipalID = principalID
+	if ip := ratelimit.ClientIP(r); ip != "" {
+		a.IPAddress = &ip
+	}
+	if ua := strings.TrimSpace(r.UserAgent()); ua != "" {
+		a.UserAgent = &ua
+	}
+	if failureReason != "" {
+		a.FailureReason = &failureReason
+	}
+	if err := e.LoginAttempts.Record(r.Context(), a); err != nil {
+		slog.Warn("failed to record SSO login attempt", "outcome", outcome, "err", err)
+	}
+}
+
+// isProvisioningRefusal reports whether err is a 4xx usecase.Error — an
+// account-provisioning refusal such as MAPPING_GONE — as opposed to an
+// Internal (500) infrastructure fault, which docs/spec/sso-login-attempts.md
+// says must not be recorded.
+func isProvisioningRefusal(err error) bool {
+	ue := usecase.AsError(err)
+	return ue != nil && ue.HTTPStatus() < 500
 }
 
 // autoProvision creates a Principal for `email` using the scope +

@@ -226,6 +226,10 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		// SessionWriter sets below.
 		bridgeLoginEP.ExternalBaseURL = cfg.JWTIssuer
 		bridgeLoginEP.CookieSecure = !cfg.AuthAllowTestHeaders
+		// SSO logins record USER_LOGIN attempts the same way password/passkey
+		// logins do (docs/spec/sso-login-attempts.md), sharing the same
+		// backoff-feeding table.
+		bridgeLoginEP.LoginAttempts = repos.loginAttemptRepo
 		bridgeLoginEP.SessionWriter = func(w http.ResponseWriter, r *http.Request, principalID, returnURL string) {
 			token, err := svcs.authProvider.MintSessionToken(r.Context(), principalID, login.SessionTTL)
 			if err != nil {

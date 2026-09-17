@@ -30,6 +30,7 @@ import (
 	edmops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
 	idpops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	roleops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/operations"
@@ -58,6 +59,12 @@ type fakeIdP struct {
 	// NEXT exchange; each test sets them before driving a callback.
 	idTokenClaims map[string]any
 	accessToken   string
+	// signKeyOverride, when set, signs the NEXT id_token with this key
+	// instead of signKey. The JWKS still advertises signKey's public half,
+	// so the resulting token is syntactically well-formed but fails
+	// signature verification — used to drive T3
+	// (docs/spec/sso-login-attempts.md: a bad-signature id_token).
+	signKeyOverride jwk.Key
 }
 
 func newFakeIdP(t *testing.T, clientID string) *fakeIdP {
@@ -79,13 +86,13 @@ func newFakeIdP(t *testing.T, clientID string) *fakeIdP {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"issuer":                                 f.issuerURL,
-			"authorization_endpoint":                 f.issuerURL + "/authorize",
-			"token_endpoint":                          f.issuerURL + "/token",
-			"jwks_uri":                                f.issuerURL + "/jwks",
-			"id_token_signing_alg_values_supported":   []string{"RS256"},
-			"response_types_supported":                []string{"code"},
-			"subject_types_supported":                 []string{"public"},
+			"issuer":                                f.issuerURL,
+			"authorization_endpoint":                f.issuerURL + "/authorize",
+			"token_endpoint":                        f.issuerURL + "/token",
+			"jwks_uri":                              f.issuerURL + "/jwks",
+			"id_token_signing_alg_values_supported": []string{"RS256"},
+			"response_types_supported":              []string{"code"},
+			"subject_types_supported":               []string{"public"},
 		})
 	})
 	mux.HandleFunc("/jwks", func(w http.ResponseWriter, _ *http.Request) {
@@ -124,7 +131,11 @@ func (f *fakeIdP) mintIDToken(t *testing.T) string {
 	for k, v := range f.idTokenClaims {
 		require.NoError(t, tok.Set(k, v))
 	}
-	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.RS256, f.signKey, jws.WithProtectedHeaders(jws.NewHeaders())))
+	key := f.signKey
+	if f.signKeyOverride != nil {
+		key = f.signKeyOverride
+	}
+	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.RS256, key, jws.WithProtectedHeaders(jws.NewHeaders())))
 	require.NoError(t, err)
 	return string(signed)
 }
@@ -145,11 +156,12 @@ func fakeJWTAccessToken(t *testing.T, payload map[string]any) string {
 // to it — everything the mapping-based (employee-plane) callback needs.
 
 type oidcTestFixture struct {
-	t        *testing.T
-	pool     *pgxpool.Pool
-	endpoint *LoginEndpoint
-	states   *LoginStateRepo
-	idp      *fakeIdP
+	t             *testing.T
+	pool          *pgxpool.Pool
+	endpoint      *LoginEndpoint
+	states        *LoginStateRepo
+	idp           *fakeIdP
+	loginAttempts *loginattempt.Repository
 
 	domain               string
 	identityProviderID   string
@@ -238,8 +250,12 @@ func newOidcTestFixture(t *testing.T) *oidcTestFixture {
 		rawIdpRoleName:       rawIdpRoleName,
 	}
 
+	attempts := loginattempt.NewRepository(pool)
+	f.loginAttempts = attempts
+
 	ep := NewLoginEndpoint(b, states, principals, mappings, roles, authRepo.IdpRoleMappings, uow, authRepo.OAuthClients)
 	ep.ExternalBaseURL = "https://fc.test"
+	ep.LoginAttempts = attempts
 	// The production default SessionWriter passes a nil *http.Request into
 	// http.Redirect for a relative return URL, which panics — unrelated to
 	// this spec. Override with a plain recorder so these tests exercise the
@@ -272,9 +288,50 @@ func (f *oidcTestFixture) login(t *testing.T, idTokenClaims map[string]any, acce
 	f.lastSessionPrincipalID = ""
 
 	req := httptest.NewRequest(http.MethodGet, "/auth/oidc/callback?state="+state+"&code=fake-code-"+state, nil)
+	// docs/spec/sso-login-attempts.md's T1-T5 harness contract: every
+	// callback in this file carries these so the login-attempt tests can
+	// assert on IP/UA without a bespoke request per case.
+	setSSOTestHeaders(req)
 	rec := httptest.NewRecorder()
 	f.endpoint.handleCallback(rec, req)
 	return rec
+}
+
+// setSSOTestHeaders applies the fixed X-Forwarded-For / User-Agent pair
+// docs/spec/sso-login-attempts.md's test table specifies: rightmost
+// X-Forwarded-For hop 198.51.100.7, User-Agent fc-test/1.0.
+func setSSOTestHeaders(r *http.Request) {
+	r.Header.Set("X-Forwarded-For", "203.0.113.9, 198.51.100.7")
+	r.Header.Set("User-Agent", "fc-test/1.0")
+}
+
+// recentSSOAttempts returns iam_login_attempts USER_LOGIN rows recorded at or
+// after since, most recent first. Tests run sequentially against the shared
+// testpg instance (no t.Parallel() in this file), so a `since` timestamp
+// captured just before driving one callback reliably isolates that
+// callback's own writes (docs/spec/sso-login-attempts.md).
+func recentSSOAttempts(t *testing.T, pool *pgxpool.Pool, since time.Time) []loginattempt.LoginAttempt {
+	t.Helper()
+	rows, err := pool.Query(context.Background(),
+		`SELECT id, attempt_type, outcome, failure_reason, identifier, principal_id,
+		        ip_address, user_agent, attempted_at
+		   FROM iam_login_attempts
+		  WHERE attempt_type = 'USER_LOGIN' AND attempted_at >= $1
+		  ORDER BY attempted_at DESC`, since)
+	require.NoError(t, err)
+	defer rows.Close()
+	var out []loginattempt.LoginAttempt
+	for rows.Next() {
+		var a loginattempt.LoginAttempt
+		var attemptType, outcome string
+		require.NoError(t, rows.Scan(&a.ID, &attemptType, &outcome, &a.FailureReason, &a.Identifier,
+			&a.PrincipalID, &a.IPAddress, &a.UserAgent, &a.AttemptedAt))
+		a.AttemptType = loginattempt.ParseAttemptType(attemptType)
+		a.Outcome, _ = loginattempt.ParseOutcome(outcome)
+		out = append(out, a)
+	}
+	require.NoError(t, rows.Err())
+	return out
 }
 
 // loggedInEventData returns the decoded `data` column of every
@@ -467,4 +524,162 @@ func TestOidcLogin_EventValidatesAgainstSeededSchema(t *testing.T) {
 	resolved, err := schema.Resolve(nil)
 	require.NoError(t, err)
 	assert.NoError(t, resolved.Validate(rows[0]), "the stored event data must validate against its seeded schema")
+}
+
+// ── docs/spec/sso-login-attempts.md T1-T5 ─────────────────────────────────
+//
+// SSO logins write iam_login_attempts rows on the callbacks the platform
+// itself accepts or refuses (employee plane only — a portal-flow state
+// writes nothing, success or failure). These reuse the same fake-IdP
+// callback harness above; f.login()/setSSOTestHeaders supply the fixed
+// X-Forwarded-For / User-Agent pair the spec's test table specifies.
+
+// TestSSOLoginAttempt_SuccessRecordsOneRow pins T1: a successful SSO login
+// writes exactly one USER_LOGIN SUCCESS row with identifier = the email,
+// the resolved principal id, and the request's IP/UA. Mutant: remove the
+// success write.
+func TestSSOLoginAttempt_SuccessRecordsOneRow(t *testing.T) {
+	f := newOidcTestFixture(t)
+	email := "gina@" + f.domain
+	since := time.Now().UTC()
+
+	rec := f.login(t, map[string]any{"nonce": "nonce-sso-t1", "email": email}, "opaque-sso-t1")
+	require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+	require.True(t, f.lastSessionCalled)
+
+	rows := recentSSOAttempts(t, f.pool, since)
+	require.Len(t, rows, 1, "exactly one login-attempt row for this callback")
+	row := rows[0]
+	assert.Equal(t, loginattempt.OutcomeSuccess, row.Outcome)
+	require.NotNil(t, row.Identifier)
+	assert.Equal(t, email, *row.Identifier)
+	require.NotNil(t, row.PrincipalID)
+	assert.Equal(t, f.lastSessionPrincipalID, *row.PrincipalID)
+	require.NotNil(t, row.IPAddress)
+	assert.Equal(t, "198.51.100.7", *row.IPAddress, "must be the rightmost X-Forwarded-For hop")
+	require.NotNil(t, row.UserAgent)
+	assert.Equal(t, "fc-test/1.0", *row.UserAgent)
+}
+
+// TestSSOLoginAttempt_EmailDomainMismatchRecordsFailure pins T2: a refused
+// callback (email-domain mismatch, the cheapest of the table's refusals to
+// drive) writes one FAILURE row with the table's reason and the verified
+// email as identifier; principal id is null. Mutant: remove that failure
+// write.
+func TestSSOLoginAttempt_EmailDomainMismatchRecordsFailure(t *testing.T) {
+	f := newOidcTestFixture(t)
+	// A verified email whose domain does NOT match the login's mapped
+	// domain — the mapping-based (non-provider-direct) branch's
+	// EMAIL_DOMAIN_MISMATCH check.
+	email := "hank@not-" + f.domain
+	since := time.Now().UTC()
+
+	rec := f.login(t, map[string]any{"nonce": "nonce-sso-t2", "email": email}, "opaque-sso-t2")
+	require.NotEqual(t, http.StatusOK, rec.Code, "an email-domain mismatch must be refused")
+	assert.False(t, f.lastSessionCalled)
+
+	rows := recentSSOAttempts(t, f.pool, since)
+	require.Len(t, rows, 1, "exactly one login-attempt row for this refusal")
+	row := rows[0]
+	assert.Equal(t, loginattempt.OutcomeFailure, row.Outcome)
+	require.NotNil(t, row.FailureReason)
+	assert.Equal(t, "SSO: email domain not allowed", *row.FailureReason)
+	require.NotNil(t, row.Identifier)
+	assert.Equal(t, email, *row.Identifier)
+	assert.Nil(t, row.PrincipalID, "principal id must be null on every recorded failure")
+}
+
+// TestSSOLoginAttempt_BadSignatureRecordsNullIdentifier pins T3: an
+// id_token signed with a key OTHER than the one the IdP's JWKS advertises
+// fails verification and writes one FAILURE row with the table's reason and
+// a NULL identifier — the presented (unverified) token's email claim must
+// never be trusted as the identifier. Mutant: record the unverified token's
+// email as identifier.
+func TestSSOLoginAttempt_BadSignatureRecordsNullIdentifier(t *testing.T) {
+	f := newOidcTestFixture(t)
+	email := "ivan@" + f.domain
+	since := time.Now().UTC()
+
+	badKeyRaw, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	badKey, err := jwk.FromRaw(badKeyRaw)
+	require.NoError(t, err)
+	require.NoError(t, badKey.Set(jwk.AlgorithmKey, jwa.RS256))
+	f.idp.signKeyOverride = badKey
+
+	rec := f.login(t, map[string]any{"nonce": "nonce-sso-t3", "email": email}, "opaque-sso-t3")
+	require.NotEqual(t, http.StatusOK, rec.Code, "a bad-signature id_token must be refused")
+	assert.False(t, f.lastSessionCalled)
+
+	rows := recentSSOAttempts(t, f.pool, since)
+	require.Len(t, rows, 1, "exactly one login-attempt row for this refusal")
+	row := rows[0]
+	assert.Equal(t, loginattempt.OutcomeFailure, row.Outcome)
+	require.NotNil(t, row.FailureReason)
+	assert.Equal(t, "SSO: id_token verification failed", *row.FailureReason)
+	assert.Nil(t, row.Identifier, "an unverified token's claims must never become the identifier")
+	assert.Nil(t, row.PrincipalID)
+}
+
+// TestSSOLoginAttempt_UnknownStateRecordsNoRow pins T4: an unknown/expired
+// state writes no login-attempt row at all — it's infrastructure/replay
+// noise, not an identity being refused. Mutant: record on that branch.
+func TestSSOLoginAttempt_UnknownStateRecordsNoRow(t *testing.T) {
+	f := newOidcTestFixture(t)
+	since := time.Now().UTC()
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/auth/oidc/callback?state=never-existed-"+randString(8)+"&code=fake-code", nil)
+	setSSOTestHeaders(req)
+	rec := httptest.NewRecorder()
+	f.endpoint.handleCallback(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.False(t, f.lastSessionCalled)
+
+	rows := recentSSOAttempts(t, f.pool, since)
+	assert.Empty(t, rows, "an unknown/expired state must write no login-attempt row")
+}
+
+// TestSSOLoginAttempt_PortalFlowRecordsNoRow pins T5: a login state that
+// routes to the portal completion writes no row at all — success or
+// failure. Driven cheaply as a provider-direct, portal-flagged state that
+// also fails the table's EMAIL_DOMAIN_MISMATCH refusal: this is a real call
+// site that WOULD record for an employee-plane login, so the assertion
+// genuinely exercises the portal-plane guard rather than merely avoiding
+// every call site by accident. Mutant: drop the plane check.
+func TestSSOLoginAttempt_PortalFlowRecordsNoRow(t *testing.T) {
+	f := newOidcTestFixture(t)
+	// Domain deliberately outside the IdP's allowed_email_domains (=
+	// {f.domain}) so the providerDirect EMAIL_DOMAIN_MISMATCH branch fires
+	// before the portal hand-off — proving the plane check, not just that
+	// the portal branch itself never records.
+	email := "julia@not-" + f.domain
+	since := time.Now().UTC()
+
+	state := randString(16)
+	// mappingID "" marks provider-direct, exactly as handlePortalOIDCLogin
+	// builds a portal state.
+	loginState := NewLoginState(state, "", f.identityProviderID, "", "nonce-sso-t5", "")
+	// oauth_oidc_login_states.portal_client_id is VARCHAR(17) (TSID-shaped in
+	// production); any non-empty value is enough to mark the state
+	// portal-flagged for this test, which never resolves it against a real
+	// client (e.Portal is unset in this fixture).
+	portalClientID := "portal-test-id-1"
+	loginState.PortalClientID = &portalClientID
+	require.NoError(t, f.states.Insert(context.Background(), loginState))
+
+	f.idp.idTokenClaims = map[string]any{"nonce": "nonce-sso-t5", "email": email}
+	f.idp.accessToken = "opaque-sso-t5"
+
+	req := httptest.NewRequest(http.MethodGet, "/auth/oidc/callback?state="+state+"&code=fake-code-"+state, nil)
+	setSSOTestHeaders(req)
+	rec := httptest.NewRecorder()
+	f.endpoint.handleCallback(rec, req)
+
+	require.NotEqual(t, http.StatusOK, rec.Code, "the email-domain mismatch must still be refused")
+	assert.False(t, f.lastSessionCalled)
+
+	rows := recentSSOAttempts(t, f.pool, since)
+	assert.Empty(t, rows, "a portal-flow login state must write no login-attempt row, success or failure")
 }
