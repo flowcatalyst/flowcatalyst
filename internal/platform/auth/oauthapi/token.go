@@ -145,8 +145,12 @@ type State struct {
 
 // recordAttempt best-effort logs a login attempt; failures are swallowed
 // (a logging miss must never fail the auth flow). No-op when the repo is
-// unset.
-func (s *State) recordAttempt(ctx context.Context, t loginattempt.AttemptType, outcome loginattempt.Outcome, identifier string, principalID, failureReason *string) {
+// unset. IP and user agent are taken from r the same way the password
+// login endpoint takes them (internal/platform/auth/login/endpoint.go),
+// so both kinds of row agree: rightmost X-Forwarded-For hop else remote
+// address without port, and the User-Agent header — either left nil when
+// empty/blank.
+func (s *State) recordAttempt(r *http.Request, t loginattempt.AttemptType, outcome loginattempt.Outcome, identifier string, principalID, failureReason *string) {
 	if s.LoginAttempts == nil {
 		return
 	}
@@ -154,7 +158,13 @@ func (s *State) recordAttempt(ctx context.Context, t loginattempt.AttemptType, o
 	a.Identifier = &identifier
 	a.PrincipalID = principalID
 	a.FailureReason = failureReason
-	_ = s.LoginAttempts.Record(ctx, a)
+	if ip := ratelimit.ClientIP(r); ip != "" {
+		a.IPAddress = &ip
+	}
+	if ua := strings.TrimSpace(r.UserAgent()); ua != "" {
+		a.UserAgent = &ua
+	}
+	_ = s.LoginAttempts.Record(r.Context(), a)
 }
 
 // RegisterTokenRoutes mounts POST /oauth/token.
@@ -522,7 +532,7 @@ func (s *State) handleClientCredentialsGrant(w http.ResponseWriter, r *http.Requ
 	}
 	if !grantAllowed(client, "client_credentials") {
 		reason := "client_credentials grant not permitted for this client"
-		s.recordAttempt(r.Context(), loginattempt.AttemptServiceAccountToken, loginattempt.OutcomeFailure, req.ClientID, nil, &reason)
+		s.recordAttempt(r, loginattempt.AttemptServiceAccountToken, loginattempt.OutcomeFailure, req.ClientID, nil, &reason)
 		writeOAuthError(w, http.StatusUnauthorized, "unauthorized_client",
 			"Client is not permitted to use the client_credentials grant type")
 		return
@@ -535,7 +545,7 @@ func (s *State) handleClientCredentialsGrant(w http.ResponseWriter, r *http.Requ
 	// machine-to-machine grant, so it is the path a fleet mid-rollout uses.
 	if !s.acceptClientSecret(r.Context(), client, req.ClientSecret) {
 		reason := "Invalid client secret"
-		s.recordAttempt(r.Context(), loginattempt.AttemptServiceAccountToken, loginattempt.OutcomeFailure, req.ClientID, nil, &reason)
+		s.recordAttempt(r, loginattempt.AttemptServiceAccountToken, loginattempt.OutcomeFailure, req.ClientID, nil, &reason)
 		writeOAuthError(w, http.StatusUnauthorized, "invalid_client", "Invalid client credentials")
 		return
 	}
@@ -545,7 +555,7 @@ func (s *State) handleClientCredentialsGrant(w http.ResponseWriter, r *http.Requ
 		// misconfiguration (RFC 6749 §5.2), not a server fault — 400
 		// unauthorized_client, not 500.
 		reason := "Client not properly configured (no linked principal)"
-		s.recordAttempt(r.Context(), loginattempt.AttemptServiceAccountToken, loginattempt.OutcomeFailure, req.ClientID, nil, &reason)
+		s.recordAttempt(r, loginattempt.AttemptServiceAccountToken, loginattempt.OutcomeFailure, req.ClientID, nil, &reason)
 		writeOAuthError(w, http.StatusBadRequest, "unauthorized_client", "Client is not configured for this grant")
 		return
 	}
@@ -559,7 +569,7 @@ func (s *State) handleClientCredentialsGrant(w http.ResponseWriter, r *http.Requ
 		// doesn't exist (dangling reference), so the client is still not
 		// configured for this grant — not a server fault.
 		reason := "Client not properly configured (linked principal not found)"
-		s.recordAttempt(r.Context(), loginattempt.AttemptServiceAccountToken, loginattempt.OutcomeFailure, req.ClientID, nil, &reason)
+		s.recordAttempt(r, loginattempt.AttemptServiceAccountToken, loginattempt.OutcomeFailure, req.ClientID, nil, &reason)
 		writeOAuthError(w, http.StatusBadRequest, "unauthorized_client", "Client is not configured for this grant")
 		return
 	}
@@ -610,7 +620,7 @@ func (s *State) handleDeveloperCredentialGrant(w http.ResponseWriter, r *http.Re
 	devOK, devRehash := s.verifyClientSecret(*p.UserIdentity.DevClientSecretRef, req.ClientSecret)
 	if !devOK {
 		reason := "Invalid developer client secret"
-		s.recordAttempt(r.Context(), loginattempt.AttemptDeveloperToken, loginattempt.OutcomeFailure, req.ClientID, &p.ID, &reason)
+		s.recordAttempt(r, loginattempt.AttemptDeveloperToken, loginattempt.OutcomeFailure, req.ClientID, &p.ID, &reason)
 		writeOAuthError(w, http.StatusUnauthorized, "invalid_client", "Invalid client credentials")
 		return
 	}
@@ -643,7 +653,7 @@ func (s *State) mintClientCredentialsToken(
 		// The caller explicitly requested permission scopes but holds none of
 		// them — a scope request can't escalate, so this is a client error.
 		reason := "requested scope exceeds granted permissions"
-		s.recordAttempt(r.Context(), attemptType, loginattempt.OutcomeFailure, req.ClientID, &p.ID, &reason)
+		s.recordAttempt(r, attemptType, loginattempt.OutcomeFailure, req.ClientID, &p.ID, &reason)
 		writeOAuthError(w, http.StatusBadRequest, "invalid_scope",
 			"Requested scope exceeds "+deniedScopeSubject)
 		return
@@ -653,7 +663,7 @@ func (s *State) mintClientCredentialsToken(
 		writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 		return
 	}
-	s.recordAttempt(r.Context(), attemptType, loginattempt.OutcomeSuccess, req.ClientID, &p.ID, nil)
+	s.recordAttempt(r, attemptType, loginattempt.OutcomeSuccess, req.ClientID, &p.ID, nil)
 	// A service account just authenticated. (The developer-credential path
 	// through here is a USER principal with no linked account, so this is a
 	// no-op for it.) Best-effort — never fail a token on a bookkeeping write.
