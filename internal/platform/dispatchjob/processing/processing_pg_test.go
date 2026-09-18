@@ -183,6 +183,78 @@ func TestProcess_Deferral429DoesNotSpendBudget(t *testing.T) {
 	assert.True(t, scheduled.After(time.Now()))
 }
 
+// TestProcess_DeferralAckFalseRecordsResponseCode pins that a 2xx carrying
+// {"ack": false} — a cooperative deferral, not a failure — still records the
+// real HTTP status on the recorded attempt. Losing the status here left
+// msg_dispatch_job_attempts.response_code NULL for a delivery that did get
+// an HTTP response. Mutant: pass nil instead of the real status into
+// CompleteFailure for a deferral — this must fail under it.
+func TestProcess_DeferralAckFalseRecordsResponseCode(t *testing.T) {
+	pool := testpg.Pool(t)
+	base, auth := harness(t, pool)
+
+	sub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ack":false}`))
+	}))
+	t.Cleanup(sub.Close)
+
+	seedJob(t, pool, "djproc_ackf1", sub.URL, 3, 0)
+	callProcess(t, base, "djproc_ackf1", auth.Sign("djproc_ackf1"))
+
+	repo := dispatchjob.NewRepository(pool)
+	attempts, err := repo.AttemptsByJob(context.Background(), "djproc_ackf1")
+	require.NoError(t, err)
+	require.Len(t, attempts, 1)
+	require.NotNil(t, attempts[0].ResponseCode,
+		"a 2xx ack=false deferral got a real HTTP response and must record it")
+	assert.Equal(t, http.StatusOK, *attempts[0].ResponseCode)
+}
+
+// TestProcess_Deferral429RecordsResponseCode pins the same for the other
+// cooperative-deferral outcome: a 429 records response_code 429. Mutant:
+// pass nil instead of the real status — this must fail under it.
+func TestProcess_Deferral429RecordsResponseCode(t *testing.T) {
+	pool := testpg.Pool(t)
+	base, auth := harness(t, pool)
+
+	sub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	t.Cleanup(sub.Close)
+
+	seedJob(t, pool, "djproc_429c01", sub.URL, 3, 0)
+	callProcess(t, base, "djproc_429c01", auth.Sign("djproc_429c01"))
+
+	repo := dispatchjob.NewRepository(pool)
+	attempts, err := repo.AttemptsByJob(context.Background(), "djproc_429c01")
+	require.NoError(t, err)
+	require.Len(t, attempts, 1)
+	require.NotNil(t, attempts[0].ResponseCode, "a 429 got a real HTTP response and must record it")
+	assert.Equal(t, http.StatusTooManyRequests, *attempts[0].ResponseCode)
+}
+
+// TestProcess_TransportFailureRecordsNoResponseCode pins the negative case:
+// a genuine transport failure (no HTTP response at all) still records no
+// response code — carrying the real status must not mean fabricating one
+// where none exists.
+func TestProcess_TransportFailureRecordsNoResponseCode(t *testing.T) {
+	pool := testpg.Pool(t)
+	base, auth := harness(t, pool)
+
+	// Port 1 on loopback: nothing listens there, so this is a connection
+	// failure (no HTTP response), not a slow one.
+	seedJob(t, pool, "djproc_tport1", "http://127.0.0.1:1/hook", 3, 0)
+	callProcess(t, base, "djproc_tport1", auth.Sign("djproc_tport1"))
+
+	repo := dispatchjob.NewRepository(pool)
+	attempts, err := repo.AttemptsByJob(context.Background(), "djproc_tport1")
+	require.NoError(t, err)
+	require.Len(t, attempts, 1)
+	assert.Nil(t, attempts[0].ResponseCode,
+		"a transport failure never got an HTTP response; response_code must stay unset")
+}
+
 func TestProcess_BadTokenUnauthorized(t *testing.T) {
 	pool := testpg.Pool(t)
 	base, _ := harness(t, pool)
