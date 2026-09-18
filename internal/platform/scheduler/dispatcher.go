@@ -62,6 +62,7 @@ func (d *MessageGroupDispatcher) SubmitBatch(ctx context.Context, toks []Dispatc
 			JobID:          tok.JobID,
 			ClientID:       tok.ClientID,
 			SubscriptionID: tok.SubscriptionID,
+			Queue:          tok.Queue,
 			Message:        d.buildMessage(tok),
 		}
 	}

@@ -207,13 +207,24 @@ type DispatchJob struct {
 	Attempts           []Attempt             `json:"attempts,omitempty"`
 	Metadata           []Metadata            `json:"metadata,omitempty"`
 	IdempotencyKey     *string               `json:"idempotencyKey,omitempty"`
-	CreatedAt          time.Time             `json:"createdAt"`
-	UpdatedAt          time.Time             `json:"updatedAt"`
-	ScheduledFor       *time.Time            `json:"scheduledFor,omitempty"`
-	ExpiresAt          *time.Time            `json:"expiresAt,omitempty"`
-	LastAttemptAt      *time.Time            `json:"lastAttemptAt,omitempty"`
-	CompletedAt        *time.Time            `json:"completedAt,omitempty"`
-	DurationMillis     *int64                `json:"durationMillis,omitempty"`
+	// Queue is the job's OWN dispatch priority claim — DEFAULT or
+	// HIGH_PRIORITY, matched ignoring case, same shape as
+	// msg_subscriptions.queue. Nil/absent is the legacy state, not an
+	// error: resolution falls through to the subscription, exactly as
+	// before this field existed (see dispatchqueue.ForJob). Set at
+	// ingest — either directly (POST /api/dispatch-jobs(/batch)) or
+	// copied verbatim from the raising subscription by fan-out — and
+	// never mutated afterward, so a job's priority stays stable even if
+	// the subscription is later edited or deleted.
+	// (docs/spec/dispatch-job-priority.md R1/R2)
+	Queue          *string    `json:"queue,omitempty"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	UpdatedAt      time.Time  `json:"updatedAt"`
+	ScheduledFor   *time.Time `json:"scheduledFor,omitempty"`
+	ExpiresAt      *time.Time `json:"expiresAt,omitempty"`
+	LastAttemptAt  *time.Time `json:"lastAttemptAt,omitempty"`
+	CompletedAt    *time.Time `json:"completedAt,omitempty"`
+	DurationMillis *int64     `json:"durationMillis,omitempty"`
 }
 
 // PayloadJSON returns the payload parsed as JSON when ContentType is

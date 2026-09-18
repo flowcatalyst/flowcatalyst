@@ -379,6 +379,7 @@ type MsgDispatchJob struct {
 	UpdatedAt          time.Time       `db:"updated_at"`
 	ProjectedAt        *time.Time      `db:"projected_at"`
 	QueuedAt           *time.Time      `db:"queued_at"`
+	Queue              *string         `db:"queue"`
 }
 
 type MsgDispatchJobAttempt struct {

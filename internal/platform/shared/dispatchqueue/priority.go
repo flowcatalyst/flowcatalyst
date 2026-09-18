@@ -57,6 +57,35 @@ func Parse(raw string) (Priority, error) {
 	}
 }
 
+// ForJob is the READ counterpart of Parse for msg_dispatch_jobs.queue — the
+// job's OWN priority claim, distinct from ForPublishing's subscription
+// fallback. It reports whether stored named a recognised priority at all
+// (ok=false for nil, blank, or unrecognised legacy text), because
+// DestinationResolver's resolution order (docs/spec/dispatch-job-priority.md
+// R4) needs to tell "the job asked for a priority" from "the job said
+// nothing, defer to the subscription": a job that explicitly stored DEFAULT
+// must still win over a HIGH_PRIORITY subscription (job wins, R4/T6) rather
+// than reading as unset, but a legacy job with no usable value of its own
+// must fall through to the subscription lookup (R4/T7) exactly as it did
+// before this column existed.
+//
+// Never fails, for the same reason ForPublishing never fails: an error here
+// would strand a job that happens to carry legacy text in its own column
+// rather than just falling through to the subscription.
+func ForJob(stored *string) (Priority, bool) {
+	if stored == nil {
+		return "", false
+	}
+	switch Priority(strings.ToUpper(strings.TrimSpace(*stored))) {
+	case PriorityDefault:
+		return PriorityDefault, true
+	case PriorityHighPriority:
+		return PriorityHighPriority, true
+	default:
+		return "", false
+	}
+}
+
 // ForPublishing is the READ counterpart of Parse, for the publish path: which
 // queue a stored msg_subscriptions.queue value routes to.
 //

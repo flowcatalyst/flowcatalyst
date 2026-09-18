@@ -183,16 +183,20 @@ func claimUnfannedEvents(ctx context.Context, tx pgx.Tx, batchSize int) ([]claim
 // cachedSubscription is the minimal field set fanout needs. Loaded by
 // `loadActiveSubscriptions` and refreshed every SubscriptionTTL.
 type cachedSubscription struct {
-	ID                string
-	ClientID          *string
-	Target            string
-	Mode              common.DispatchMode
-	DataOnly          bool
-	DispatchPoolID    *string
-	ServiceAccountID  *string
-	MaxRetries        int32
-	TimeoutSeconds    int32
-	Sequence          int32
+	ID               string
+	ClientID         *string
+	Target           string
+	Mode             common.DispatchMode
+	DataOnly         bool
+	DispatchPoolID   *string
+	ServiceAccountID *string
+	MaxRetries       int32
+	TimeoutSeconds   int32
+	Sequence         int32
+	// Queue is the subscription's raw stored dispatch priority — copied
+	// verbatim onto a raised job's own queue column (R2). nil when the
+	// subscription has none set.
+	Queue             *string
 	EventTypePatterns []string
 }
 
@@ -255,7 +259,7 @@ func loadActiveSubscriptions(ctx context.Context, pool *pgxpool.Pool) ([]cachedS
 	rows, err := pool.Query(ctx,
 		`SELECT s.id, s.client_id, s.target, s.mode, s.data_only,
 		        s.dispatch_pool_id, s.service_account_id, s.max_retries,
-		        s.timeout_seconds, s.sequence, e.event_type_code
+		        s.timeout_seconds, s.sequence, s.queue, e.event_type_code
 		   FROM msg_subscriptions s
 		   LEFT JOIN msg_subscription_event_types e ON e.subscription_id = s.id
 		  WHERE s.status = 'ACTIVE'
@@ -268,14 +272,14 @@ func loadActiveSubscriptions(ctx context.Context, pool *pgxpool.Pool) ([]cachedS
 	var order []string
 	for rows.Next() {
 		var (
-			id, target, mode                       string
-			clientID, dispatchPoolID, saID, etCode *string
-			dataOnly                               bool
-			maxRetries, timeoutSeconds, sequence   int32
+			id, target, mode                              string
+			clientID, dispatchPoolID, saID, queue, etCode *string
+			dataOnly                                      bool
+			maxRetries, timeoutSeconds, sequence          int32
 		)
 		if err := rows.Scan(&id, &clientID, &target, &mode, &dataOnly,
 			&dispatchPoolID, &saID, &maxRetries, &timeoutSeconds,
-			&sequence, &etCode); err != nil {
+			&sequence, &queue, &etCode); err != nil {
 			return nil, err
 		}
 		entry, ok := byID[id]
@@ -291,6 +295,7 @@ func loadActiveSubscriptions(ctx context.Context, pool *pgxpool.Pool) ([]cachedS
 				MaxRetries:       maxRetries,
 				TimeoutSeconds:   timeoutSeconds,
 				Sequence:         sequence,
+				Queue:            queue,
 			}
 			byID[id] = entry
 			order = append(order, id)
@@ -336,6 +341,9 @@ type newJob struct {
 	MaxRetries     int32
 	IdempotencyKey string
 	CreatedAt      time.Time
+	// Queue is the raising subscription's queue value, copied verbatim
+	// (R2) — nil when the subscription has none set.
+	Queue *string
 }
 
 func buildJobs(events []claimedEvent, subs []cachedSubscription) []newJob {
@@ -378,6 +386,7 @@ func buildJobs(events []claimedEvent, subs []cachedSubscription) []newJob {
 				MaxRetries:     s.MaxRetries,
 				IdempotencyKey: fmt.Sprintf("%s:%s", e.ID, s.ID),
 				CreatedAt:      e.CreatedAt,
+				Queue:          s.Queue,
 			})
 		}
 	}
@@ -417,16 +426,16 @@ func insertJobsInTx(ctx context.Context, tx pgx.Tx, jobs []newJob) error {
 			    target_url, protocol, payload, data_only, service_account_id,
 			    client_id, subscription_id, mode, dispatch_pool_id, message_group,
 			    sequence, timeout_seconds, status, max_retries, idempotency_key,
-			    created_at, updated_at)
+			    queue, created_at, updated_at)
 			 VALUES ($1, $2, $3, $4, $5, $6, $7, 'HTTP_WEBHOOK', $8, $9,
 			         $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-			         $21, $21)
+			         $21, $22, $22)
 			 ON CONFLICT (id, created_at) DO NOTHING`,
 			j.ID, j.Code, j.Source, j.Subject, j.EventID, j.CorrelationID,
 			j.TargetURL, j.Payload, j.DataOnly, j.ServiceAcctID,
 			j.ClientID, j.SubscriptionID, j.Mode, j.DispatchPoolID,
 			j.MessageGroup, j.Sequence, j.TimeoutSeconds, j.Status,
-			j.MaxRetries, j.IdempotencyKey, j.CreatedAt)
+			j.MaxRetries, j.IdempotencyKey, j.Queue, j.CreatedAt)
 	}
 	br := tx.SendBatch(ctx, batch)
 	defer br.Close()

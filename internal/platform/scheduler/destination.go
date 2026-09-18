@@ -34,16 +34,28 @@ func NewDestinationResolver(tenants *PoolCodeResolver, priorities *SubscriptionP
 // Destination is the composed queue name item publishes to.
 //
 // The tenant is the job's client identifier, or the reserved platform tenant
-// for a client-less or unresolved job. The priority comes from the
-// subscription that raised the job: no subscription, an unresolvable one, a
-// NULL stored value or unrecognised legacy text all read as DEFAULT, never an
-// error and never a dropped job.
+// for a client-less or unresolved job.
+//
+// The priority resolves in this order (docs/spec/dispatch-job-priority.md
+// R4): the job's OWN queue when it names a recognised value (job wins, even
+// over a subscription that disagrees — T6); else the raising subscription's,
+// through today's cache, when the job has a subscription_id; else DEFAULT.
+// Unrecognised text in either place, no subscription, an unresolvable one,
+// or nothing set anywhere all read as DEFAULT — never an error and never a
+// dropped job.
 func (r *DestinationResolver) Destination(ctx context.Context, item PublishItem) (string, error) {
 	tenant := dispatchqueue.TenantPlatform
 	if identifier := r.tenants.ClientIdentifier(ctx, item.ClientID); identifier != nil {
 		tenant = *identifier
 	}
-	priority := r.priorities.PriorityFor(ctx, item.SubscriptionID)
+	var jobQueue *string
+	if item.Queue != "" {
+		jobQueue = &item.Queue
+	}
+	priority, ok := dispatchqueue.ForJob(jobQueue)
+	if !ok {
+		priority = r.priorities.PriorityFor(ctx, item.SubscriptionID)
+	}
 	return dispatchqueue.ComposeName(r.settings.Prefix, tenant, priority, r.settings.SQS)
 }
 

@@ -47,6 +47,11 @@ type CreateDispatchJobRequest struct {
 	IdempotencyKey     *string           `json:"idempotencyKey,omitempty"`
 	ExternalID         *string           `json:"externalId,omitempty"`
 	Metadata           map[string]string `json:"metadata,omitempty"`
+	// Queue is the job's own dispatch priority: DEFAULT or HIGH_PRIORITY,
+	// matched ignoring case. Validated the same way a subscription's is —
+	// anything else is a 400 naming the field. Omitted stays absent, never
+	// silently DEFAULT (docs/spec/dispatch-job-priority.md R3).
+	Queue *string `json:"queue,omitempty"`
 }
 
 // CreatedResponse is the wire body for POST /api/dispatch-jobs: {id},
@@ -116,6 +121,7 @@ func (s *DispatchJobsBatchState) createOne(w http.ResponseWriter, r *http.Reques
 		Mode:               req.Mode,
 		TimeoutSeconds:     req.TimeoutSeconds,
 		MaxRetries:         req.MaxRetries,
+		Queue:              req.Queue,
 	})
 	if err != nil {
 		httperror.Write(w, err)

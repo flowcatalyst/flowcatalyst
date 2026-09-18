@@ -255,6 +255,148 @@ func TestCreateDispatchJob_InvalidKindRejected(t *testing.T) {
 	assert.Contains(t, body, `"error":"INVALID_KIND"`)
 }
 
+// TestCreateDispatchJob_QueueStoredWhenRecognised pins T1: a job created
+// via POST /api/dispatch-jobs with queue: HIGH_PRIORITY stores it. Mutant:
+// ignore the field on create — this must fail under it.
+func TestCreateDispatchJob_QueueStoredWhenRecognised(t *testing.T) {
+	srv, repo := newIngestServer(t, anchorAC())
+
+	resp, body := postJSON(t, srv.URL+"/api/dispatch-jobs", `{
+		"code": "it:singular:dispatch:queue-hi",
+		"targetUrl": "https://target.test/hook",
+		"payload": "{}",
+		"serviceAccountId": "sa_dj_queuehi",
+		"queue": "HIGH_PRIORITY"
+	}`)
+	require.Equal(t, http.StatusCreated, resp.StatusCode, body)
+	var created struct {
+		ID string `json:"id"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(body), &created))
+
+	job, err := repo.FindByID(context.Background(), created.ID)
+	require.NoError(t, err)
+	require.NotNil(t, job)
+	require.NotNil(t, job.Queue, "queue: HIGH_PRIORITY on create must be stored on the job")
+	assert.Equal(t, "HIGH_PRIORITY", *job.Queue)
+}
+
+// TestCreateDispatchJob_QueueAbsentStoresNull pins T2: a job created with no
+// queue field stores null (never a silently-defaulted "DEFAULT"), so
+// "not asked for" stays distinguishable from "asked for DEFAULT". Mutant:
+// default the column to DEFAULT on create — this must fail under it.
+func TestCreateDispatchJob_QueueAbsentStoresNull(t *testing.T) {
+	srv, repo := newIngestServer(t, anchorAC())
+
+	resp, body := postJSON(t, srv.URL+"/api/dispatch-jobs", `{
+		"code": "it:singular:dispatch:queue-absent",
+		"targetUrl": "https://target.test/hook",
+		"payload": "{}",
+		"serviceAccountId": "sa_dj_queueabsent"
+	}`)
+	require.Equal(t, http.StatusCreated, resp.StatusCode, body)
+	var created struct {
+		ID string `json:"id"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(body), &created))
+
+	job, err := repo.FindByID(context.Background(), created.ID)
+	require.NoError(t, err)
+	require.NotNil(t, job)
+	assert.Nil(t, job.Queue, "an absent queue field must store null, not a defaulted value")
+}
+
+// countJobsByCode counts write-table rows by code — used to confirm a
+// rejected create wrote nothing, checked directly against msg_dispatch_jobs
+// rather than the read projection (which only a running stream processor
+// populates, and would read empty regardless of whether the write
+// succeeded).
+func countJobsByCode(t *testing.T, code string) int {
+	t.Helper()
+	pool := testpg.Pool(t)
+	var n int
+	require.NoError(t, pool.QueryRow(context.Background(),
+		`SELECT COUNT(*) FROM msg_dispatch_jobs WHERE code = $1`, code).Scan(&n))
+	return n
+}
+
+// TestCreateDispatchJob_InvalidQueueRejected pins T3: queue: "workers-high"
+// on create is a 400 naming the field, and no job row is written — on both
+// the singular and batch endpoints. Mutant: accept any string — this must
+// fail (no 400, and/or a row written) under it.
+func TestCreateDispatchJob_InvalidQueueRejected(t *testing.T) {
+	srv, _ := newIngestServer(t, anchorAC())
+
+	resp, body := postJSON(t, srv.URL+"/api/dispatch-jobs", `{
+		"code": "it:singular:dispatch:queue-bad",
+		"targetUrl": "https://target.test/hook",
+		"payload": "{}",
+		"serviceAccountId": "sa_dj_queuebad",
+		"queue": "workers-high"
+	}`)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode, body)
+	assert.Contains(t, body, "queue", "the 400 must name the offending field")
+	assert.Equal(t, 0, countJobsByCode(t, "it:singular:dispatch:queue-bad"),
+		"an invalid queue must not persist a job row")
+
+	// Same rejection on the batch endpoint, and still no row.
+	resp, body = postJSON(t, srv.URL+"/api/dispatch-jobs/batch", `{"items":[{
+		"code": "it:batch:dispatch:queue-bad",
+		"targetUrl": "https://target.test/hook",
+		"payload": "{}",
+		"serviceAccountId": "sa_dj_queuebad_batch",
+		"queue": "workers-high"
+	}]}`)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode, body)
+	assert.Equal(t, 0, countJobsByCode(t, "it:batch:dispatch:queue-bad"),
+		"an invalid queue must not persist a job row on the batch path either")
+}
+
+// TestCreateDispatchJob_BatchPerItemQueueIndependent pins T4: a batch's
+// per-item queue is honoured independently — one item HIGH_PRIORITY, one
+// absent — not the first item's value applied to every job. Mutant: read
+// the first item's value for all — this must fail under it.
+func TestCreateDispatchJob_BatchPerItemQueueIndependent(t *testing.T) {
+	srv, repo := newIngestServer(t, anchorAC())
+
+	resp, body := postJSON(t, srv.URL+"/api/dispatch-jobs/batch", `{"items":[
+		{
+			"code": "it:batch:dispatch:queue-item-hi",
+			"targetUrl": "https://target.test/hook",
+			"payload": "{}",
+			"serviceAccountId": "sa_dj_item_hi",
+			"queue": "HIGH_PRIORITY"
+		},
+		{
+			"code": "it:batch:dispatch:queue-item-absent",
+			"targetUrl": "https://target.test/hook",
+			"payload": "{}",
+			"serviceAccountId": "sa_dj_item_absent"
+		}
+	]}`)
+	require.Equal(t, http.StatusCreated, resp.StatusCode, body)
+	var bres struct {
+		Results []struct {
+			ID     string `json:"id"`
+			Status string `json:"status"`
+		} `json:"results"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(body), &bres))
+	require.Len(t, bres.Results, 2)
+
+	hiJob, err := repo.FindByID(context.Background(), bres.Results[0].ID)
+	require.NoError(t, err)
+	require.NotNil(t, hiJob)
+	require.NotNil(t, hiJob.Queue, "the first item's HIGH_PRIORITY must be honoured")
+	assert.Equal(t, "HIGH_PRIORITY", *hiJob.Queue)
+
+	absentJob, err := repo.FindByID(context.Background(), bres.Results[1].ID)
+	require.NoError(t, err)
+	require.NotNil(t, absentJob)
+	assert.Nil(t, absentJob.Queue,
+		"the second item's absent queue must stay absent, not inherit the first item's value")
+}
+
 // TestCreateDispatchJob_InvalidRetryStrategyRejected pins the X-06
 // write-boundary conversion of dispatchjob.ParseRetryStrategy on the
 // singular endpoint (the only one that carries retryStrategy): an

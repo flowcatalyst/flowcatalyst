@@ -67,6 +67,38 @@ func TestForPublishing(t *testing.T) {
 	}
 }
 
+func TestForJob(t *testing.T) {
+	// ForJob distinguishes "the job named a recognised priority" from "the
+	// job said nothing" — unlike ForPublishing, it must report ok=false
+	// rather than silently defaulting, so DestinationResolver knows to fall
+	// through to the subscription.
+	str := func(s string) *string { return &s }
+	cases := []struct {
+		name   string
+		stored *string
+		wantP  dispatchqueue.Priority
+		wantOK bool
+	}{
+		{name: "nil (legacy/absent job column)", stored: nil, wantOK: false},
+		{name: "blank", stored: str("  "), wantOK: false},
+		{name: "legacy text", stored: str("workers-high"), wantOK: false},
+		{name: "canonical default", stored: str("DEFAULT"), wantP: dispatchqueue.PriorityDefault, wantOK: true},
+		{name: "canonical high", stored: str("HIGH_PRIORITY"), wantP: dispatchqueue.PriorityHighPriority, wantOK: true},
+		{name: "lower-case high", stored: str("high_priority"), wantP: dispatchqueue.PriorityHighPriority, wantOK: true},
+		{name: "mixed-case default", stored: str("Default"), wantP: dispatchqueue.PriorityDefault, wantOK: true},
+	}
+	for _, c := range cases {
+		gotP, gotOK := dispatchqueue.ForJob(c.stored)
+		if gotOK != c.wantOK {
+			t.Errorf("ForJob(%s): ok = %v, want %v", c.name, gotOK, c.wantOK)
+			continue
+		}
+		if gotOK && gotP != c.wantP {
+			t.Errorf("ForJob(%s) = %q, want %q", c.name, gotP, c.wantP)
+		}
+	}
+}
+
 func TestComposeName(t *testing.T) {
 	cases := []struct {
 		name     string

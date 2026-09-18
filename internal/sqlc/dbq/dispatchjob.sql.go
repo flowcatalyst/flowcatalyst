@@ -169,7 +169,7 @@ SELECT id, external_id, source, kind, code, subject, event_id,
        timeout_seconds, schema_id, status, max_retries, retry_strategy,
        scheduled_for, expires_at, attempt_count, last_attempt_at,
        completed_at, duration_millis, last_error, idempotency_key,
-       created_at, updated_at
+       queue, created_at, updated_at
 FROM msg_dispatch_jobs
 WHERE id = $1
 `
@@ -209,6 +209,7 @@ type DispatchJobFindByIDRow struct {
 	DurationMillis     *int64          `db:"duration_millis"`
 	LastError          *string         `db:"last_error"`
 	IdempotencyKey     *string         `db:"idempotency_key"`
+	Queue              *string         `db:"queue"`
 	CreatedAt          time.Time       `db:"created_at"`
 	UpdatedAt          time.Time       `db:"updated_at"`
 }
@@ -263,6 +264,7 @@ func (q *Queries) DispatchJobFindByID(ctx context.Context, id string) (DispatchJ
 		&i.DurationMillis,
 		&i.LastError,
 		&i.IdempotencyKey,
+		&i.Queue,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -278,7 +280,7 @@ SELECT id, external_id, source, kind, code, subject, event_id,
        timeout_seconds, schema_id, status, max_retries, retry_strategy,
        scheduled_for, expires_at, attempt_count, last_attempt_at,
        completed_at, duration_millis, last_error, idempotency_key,
-       created_at, updated_at
+       queue, created_at, updated_at
 FROM msg_dispatch_jobs
 WHERE id = ANY($1::text[])
 `
@@ -318,6 +320,7 @@ type DispatchJobFindByIDsRow struct {
 	DurationMillis     *int64          `db:"duration_millis"`
 	LastError          *string         `db:"last_error"`
 	IdempotencyKey     *string         `db:"idempotency_key"`
+	Queue              *string         `db:"queue"`
 	CreatedAt          time.Time       `db:"created_at"`
 	UpdatedAt          time.Time       `db:"updated_at"`
 }
@@ -372,6 +375,7 @@ func (q *Queries) DispatchJobFindByIDs(ctx context.Context, ids []string) ([]Dis
 			&i.DurationMillis,
 			&i.LastError,
 			&i.IdempotencyKey,
+			&i.Queue,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -392,10 +396,11 @@ INSERT INTO msg_dispatch_jobs
      service_account_id, client_id, subscription_id, mode, dispatch_pool_id,
      message_group, sequence, timeout_seconds, schema_id, status, max_retries,
      retry_strategy, scheduled_for, expires_at, attempt_count, last_attempt_at,
-     completed_at, duration_millis, last_error, idempotency_key, created_at, updated_at)
+     completed_at, duration_millis, last_error, idempotency_key, queue,
+     created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
         $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
-        $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)
+        $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
 `
 
 type DispatchJobInsertParams struct {
@@ -433,6 +438,7 @@ type DispatchJobInsertParams struct {
 	DurationMillis     *int64          `db:"duration_millis"`
 	LastError          *string         `db:"last_error"`
 	IdempotencyKey     *string         `db:"idempotency_key"`
+	Queue              *string         `db:"queue"`
 	CreatedAt          time.Time       `db:"created_at"`
 	UpdatedAt          time.Time       `db:"updated_at"`
 }
@@ -473,6 +479,7 @@ func (q *Queries) DispatchJobInsert(ctx context.Context, arg DispatchJobInsertPa
 		arg.DurationMillis,
 		arg.LastError,
 		arg.IdempotencyKey,
+		arg.Queue,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)

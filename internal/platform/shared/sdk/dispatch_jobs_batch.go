@@ -19,6 +19,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/dispatchqueue"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -53,6 +54,13 @@ type BatchItem struct {
 	TimeoutSeconds     uint32                 `json:"timeoutSeconds,omitempty"`
 	MaxRetries         uint32                 `json:"maxRetries,omitempty"`
 	Metadata           []dispatchjob.Metadata `json:"metadata,omitempty"`
+	// Queue is the job's own dispatch priority: DEFAULT or HIGH_PRIORITY,
+	// matched ignoring case, same as a subscription's. Validated on the way
+	// in — anything else is a 400 naming the field. Omitted means "not
+	// asked for" and stays distinguishable from an explicit DEFAULT: the
+	// column is left nil rather than defaulted, so resolution still falls
+	// through to the subscription (docs/spec/dispatch-job-priority.md R3).
+	Queue *string `json:"queue,omitempty"`
 }
 
 // BatchRequest is the inbound POST shape.
@@ -102,6 +110,23 @@ func jobFromItem(it BatchItem) (dispatchjob.DispatchJob, error) {
 		}
 		kind = k
 	}
+	// it.Queue is wire input, validated the same way a subscription's is
+	// (dispatchqueue.Parse): DEFAULT | HIGH_PRIORITY only, case-insensitive
+	// — anything else is a 400 naming the field, and no job row is written
+	// (docs/spec/dispatch-job-priority.md R3). Absent stays absent: only a
+	// recognised non-blank value is stored, so "not asked for" never
+	// collapses into a stored DEFAULT.
+	var queue *string
+	if it.Queue != nil {
+		p, err := dispatchqueue.Parse(*it.Queue)
+		if err != nil {
+			return dispatchjob.DispatchJob{}, err
+		}
+		if p != "" {
+			stored := string(p)
+			queue = &stored
+		}
+	}
 	j := dispatchjob.DispatchJob{
 		Kind:               kind,
 		Code:               it.Code,
@@ -127,6 +152,7 @@ func jobFromItem(it BatchItem) (dispatchjob.DispatchJob, error) {
 		RetryStrategy:      dispatchjob.RetryExponentialBackoff,
 		Status:             common.DispatchPending,
 		Metadata:           it.Metadata,
+		Queue:              queue,
 	}
 	if it.ID != nil && *it.ID != "" {
 		j.ID = *it.ID

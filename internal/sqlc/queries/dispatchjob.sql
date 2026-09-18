@@ -19,7 +19,7 @@ SELECT id, external_id, source, kind, code, subject, event_id,
        timeout_seconds, schema_id, status, max_retries, retry_strategy,
        scheduled_for, expires_at, attempt_count, last_attempt_at,
        completed_at, duration_millis, last_error, idempotency_key,
-       created_at, updated_at
+       queue, created_at, updated_at
 FROM msg_dispatch_jobs
 WHERE id = $1;
 
@@ -30,10 +30,11 @@ INSERT INTO msg_dispatch_jobs
      service_account_id, client_id, subscription_id, mode, dispatch_pool_id,
      message_group, sequence, timeout_seconds, schema_id, status, max_retries,
      retry_strategy, scheduled_for, expires_at, attempt_count, last_attempt_at,
-     completed_at, duration_millis, last_error, idempotency_key, created_at, updated_at)
+     completed_at, duration_millis, last_error, idempotency_key, queue,
+     created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
         $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
-        $27, $28, $29, $30, $31, $32, $33, $34, $35, $36);
+        $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37);
 
 -- name: DispatchJobClaimForDelivery :execrows
 -- Atomically claims a job for ONE delivery. Same PROCESSING flip the old
@@ -122,7 +123,7 @@ SELECT id, external_id, source, kind, code, subject, event_id,
        timeout_seconds, schema_id, status, max_retries, retry_strategy,
        scheduled_for, expires_at, attempt_count, last_attempt_at,
        completed_at, duration_millis, last_error, idempotency_key,
-       created_at, updated_at
+       queue, created_at, updated_at
 FROM msg_dispatch_jobs
 WHERE id = ANY(sqlc.arg('ids')::text[]);
 

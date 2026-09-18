@@ -318,6 +318,7 @@ func (r *Repository) Insert(ctx context.Context, j *DispatchJob) error {
 		DurationMillis:     j.DurationMillis,
 		LastError:          j.LastError,
 		IdempotencyKey:     j.IdempotencyKey,
+		Queue:              j.Queue,
 		CreatedAt:          j.CreatedAt,
 		UpdatedAt:          j.UpdatedAt,
 	})
@@ -345,8 +346,8 @@ func (r *Repository) InsertBatch(ctx context.Context, jobs []DispatchJob) error 
 			      service_account_id, client_id, subscription_id, mode, dispatch_pool_id,
 			      message_group, sequence, timeout_seconds, schema_id, status, max_retries,
 			      retry_strategy, scheduled_for, expires_at, attempt_count, last_attempt_at,
-			      completed_at, duration_millis, last_error, idempotency_key, created_at, updated_at)
-			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36)
+			      completed_at, duration_millis, last_error, idempotency_key, queue, created_at, updated_at)
+			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37)
 			 ON CONFLICT (id, created_at) DO NOTHING`,
 			j.ID, j.ExternalID, j.Source, string(j.Kind), j.Code, j.Subject, j.EventID,
 			j.CorrelationID, metaJSON, j.TargetURL, string(j.Protocol), j.Payload,
@@ -355,7 +356,7 @@ func (r *Repository) InsertBatch(ctx context.Context, jobs []DispatchJob) error 
 			j.Sequence, j.TimeoutSeconds, j.SchemaID, string(j.Status), j.MaxRetries,
 			string(j.RetryStrategy), j.ScheduledFor, j.ExpiresAt, j.AttemptCount,
 			j.LastAttemptAt, j.CompletedAt, j.DurationMillis, j.LastError,
-			j.IdempotencyKey, j.CreatedAt, now)
+			j.IdempotencyKey, j.Queue, j.CreatedAt, now)
 	}
 	br := r.pool.SendBatch(ctx, batch)
 	defer br.Close()
@@ -632,7 +633,7 @@ func findByIDRowToJob(r dbq.DispatchJobFindByIDRow) (*DispatchJob, error) {
 		ExpiresAt: r.ExpiresAt, AttemptCount: r.AttemptCount,
 		LastAttemptAt: r.LastAttemptAt, CompletedAt: r.CompletedAt,
 		DurationMillis: r.DurationMillis, LastError: r.LastError,
-		IdempotencyKey: r.IdempotencyKey, CreatedAt: r.CreatedAt,
+		IdempotencyKey: r.IdempotencyKey, Queue: r.Queue, CreatedAt: r.CreatedAt,
 		UpdatedAt: r.UpdatedAt,
 	})
 }
@@ -742,6 +743,7 @@ type rawRow struct {
 	DurationMillis     *int64
 	LastError          *string
 	IdempotencyKey     *string
+	Queue              *string
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 }
@@ -795,6 +797,7 @@ func rowToJob(r rawRow) (*DispatchJob, error) {
 		AttemptCount:     r.AttemptCount,
 		LastError:        r.LastError,
 		IdempotencyKey:   r.IdempotencyKey,
+		Queue:            r.Queue,
 		CreatedAt:        r.CreatedAt,
 		UpdatedAt:        r.UpdatedAt,
 		ScheduledFor:     r.ScheduledFor,

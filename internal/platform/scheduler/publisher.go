@@ -20,7 +20,12 @@ type PublishItem struct {
 	JobID          string
 	ClientID       string
 	SubscriptionID string
-	Message        common.Message
+	// Queue is the job's OWN stored priority claim (msg_dispatch_jobs.queue,
+	// raw and unresolved — "" when the job has none). DestinationResolver
+	// consults this before the subscription lookup: see
+	// docs/spec/dispatch-job-priority.md R4.
+	Queue   string
+	Message common.Message
 }
 
 // DispatchPublisher hands a claimed batch of dispatch jobs to the queues the

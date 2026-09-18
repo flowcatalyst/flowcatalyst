@@ -177,7 +177,7 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 	// total order to compare "earlier" at all.
 	rows, err := tx.Query(ctx,
 		`SELECT id, subscription_id, message_group, mode, dispatch_pool_id, client_id,
-		        attempt_count, target_url, created_at, sequence
+		        attempt_count, target_url, created_at, sequence, queue
 		   FROM msg_dispatch_jobs
 		  WHERE status = 'PENDING'
 		    AND (scheduled_for IS NULL OR scheduled_for <= NOW())
@@ -195,8 +195,9 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 		var subID *string
 		var poolID *string
 		var clientID *string
+		var queue *string
 		if err := rows.Scan(&c.id, &subID, &msgGroup, &c.mode, &poolID, &clientID,
-			&c.attempt, &c.target, &c.createdAt, &c.sequence); err != nil {
+			&c.attempt, &c.target, &c.createdAt, &c.sequence, &queue); err != nil {
 			rows.Close()
 			return err
 		}
@@ -211,6 +212,9 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 		}
 		if clientID != nil {
 			c.clientID = *clientID
+		}
+		if queue != nil {
+			c.queue = *queue
 		}
 		claims = append(claims, c)
 	}
@@ -278,6 +282,9 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 				// subscription), which the pool code says nothing about.
 				ClientID:       c.clientID,
 				SubscriptionID: c.subID,
+				// The job's OWN priority claim — takes precedence over the
+				// subscription's at publish time (R4). "" when unset.
+				Queue: c.queue,
 			})
 		}
 	}
@@ -322,9 +329,9 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 // resolved through PoolCodeResolver rather than joined, so the claim's
 // FOR UPDATE SKIP LOCKED keeps locking msg_dispatch_jobs alone.
 type dispatchClaim struct {
-	id, subID, group, mode, poolID, clientID, target string
-	attempt, sequence                                int32
-	createdAt                                        time.Time
+	id, subID, group, mode, poolID, clientID, target, queue string
+	attempt, sequence                                       int32
+	createdAt                                               time.Time
 }
 
 // key is the claim's position in its group's delivery order — the same
@@ -495,4 +502,8 @@ type DispatchJobToken struct {
 	// job with no subscription at the DEFAULT priority.
 	ClientID       string
 	SubscriptionID string
+	// Queue is the job's OWN stored priority claim (msg_dispatch_jobs.queue,
+	// raw and unresolved, "" when unset). Takes precedence over the
+	// subscription's at publish time (docs/spec/dispatch-job-priority.md R4).
+	Queue string
 }

@@ -135,4 +135,149 @@ func TestPostgresDispatchPublisher_WritesConsumableRows(t *testing.T) {
 	assert.Equal(t, 1, count)
 }
 
+// TestDestinationResolver_JobOwnQueueWinsOverSubscription pins R4/T6: a
+// job's own recognised queue value takes precedence over its subscription's
+// disagreeing one. Mutant: consult the subscription first — this must fail
+// under it (see docs/spec/dispatch-job-priority.md).
+func TestDestinationResolver_JobOwnQueueWinsOverSubscription(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+
+	insertClient(t, pool, "clt_pri_acme", "priacme")
+	lo := "DEFAULT"
+	insertSubscriptionWithQueue(t, pool, "sub_pri_lo", "pri-lo", strPtrPub("priacme"), &lo)
+
+	settings, err := dispatch.ResolveSettings("postgres", "", "", "FC-dev", "postgresql://x@localhost/fc")
+	require.NoError(t, err)
+	destinations := NewDestinationResolver(
+		NewPoolCodeResolver(pool, time.Minute),
+		NewSubscriptionPriorityCache(pool, time.Minute),
+		settings,
+	)
+
+	// The job's own queue says HIGH_PRIORITY; its subscription says DEFAULT.
+	// The job must win.
+	name, err := destinations.Destination(ctx, PublishItem{
+		ClientID: "clt_pri_acme", SubscriptionID: "sub_pri_lo", Queue: "HIGH_PRIORITY",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "FC-dev-priacme-HIGH_PRIORITY", name,
+		"the job's own queue must win over a disagreeing subscription")
+}
+
+// TestDestinationResolver_LegacyJobFallsBackToSubscription pins R4/T7: a job
+// with no queue of its own (the pre-existing state) still resolves through
+// its subscription, exactly as it did before this column existed. Mutant:
+// drop the subscription fallback — this must fail under it.
+func TestDestinationResolver_LegacyJobFallsBackToSubscription(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+
+	insertClient(t, pool, "clt_pri_globex", "priglobex")
+	hi := "HIGH_PRIORITY"
+	insertSubscriptionWithQueue(t, pool, "sub_pri_hi2", "pri-hi2", strPtrPub("priglobex"), &hi)
+
+	settings, err := dispatch.ResolveSettings("postgres", "", "", "FC-dev", "postgresql://x@localhost/fc")
+	require.NoError(t, err)
+	destinations := NewDestinationResolver(
+		NewPoolCodeResolver(pool, time.Minute),
+		NewSubscriptionPriorityCache(pool, time.Minute),
+		settings,
+	)
+
+	name, err := destinations.Destination(ctx, PublishItem{
+		ClientID: "clt_pri_globex", SubscriptionID: "sub_pri_hi2", Queue: "",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "FC-dev-priglobex-HIGH_PRIORITY", name,
+		"a legacy job (no queue of its own) must still fall back to its subscription")
+}
+
+// TestDestinationResolver_JobWithLegacyTextFallsBackToSubscription pins the
+// other half of R4's fallback: a job whose OWN queue holds unrecognised
+// legacy text has not named a priority, so it defers to its subscription
+// rather than reading as DEFAULT. Distinct from T7, where the job's column
+// is NULL. Mutant: make ForJob treat unrecognised text as DEFAULT+ok — this
+// must fail under it (T7 and T8 both survive that mutant).
+func TestDestinationResolver_JobWithLegacyTextFallsBackToSubscription(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+
+	insertClient(t, pool, "clt_pri_legacy", "prilegacy")
+	hi := "HIGH_PRIORITY"
+	insertSubscriptionWithQueue(t, pool, "sub_pri_legacy", "pri-legacy", strPtrPub("prilegacy"), &hi)
+
+	settings, err := dispatch.ResolveSettings("postgres", "", "", "FC-dev", "postgresql://x@localhost/fc")
+	require.NoError(t, err)
+	destinations := NewDestinationResolver(
+		NewPoolCodeResolver(pool, time.Minute),
+		NewSubscriptionPriorityCache(pool, time.Minute),
+		settings,
+	)
+
+	name, err := destinations.Destination(ctx, PublishItem{
+		ClientID: "clt_pri_legacy", SubscriptionID: "sub_pri_legacy", Queue: "workers-high",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "FC-dev-prilegacy-HIGH_PRIORITY", name,
+		"legacy text on the job names no priority, so the subscription still decides")
+}
+
+// TestDestinationResolver_UnrecognisedEverywhereReadsAsDefault pins R4/T8:
+// unrecognised text on both the job's own queue and its subscription's
+// reads as DEFAULT, never an error. Mutant: throw on unrecognised text —
+// this must fail (as an error) under it.
+func TestDestinationResolver_UnrecognisedEverywhereReadsAsDefault(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+
+	insertClient(t, pool, "clt_pri_legacy", "prilegacy")
+	legacy := "workers-high"
+	insertSubscriptionWithQueue(t, pool, "sub_pri_legacy2", "pri-legacy2", strPtrPub("prilegacy"), &legacy)
+
+	settings, err := dispatch.ResolveSettings("postgres", "", "", "FC-dev", "postgresql://x@localhost/fc")
+	require.NoError(t, err)
+	destinations := NewDestinationResolver(
+		NewPoolCodeResolver(pool, time.Minute),
+		NewSubscriptionPriorityCache(pool, time.Minute),
+		settings,
+	)
+
+	name, err := destinations.Destination(ctx, PublishItem{
+		ClientID: "clt_pri_legacy", SubscriptionID: "sub_pri_legacy2", Queue: "workers-high",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "FC-dev-prilegacy-DEFAULT", name,
+		"unrecognised text anywhere in the chain must read as DEFAULT, never error")
+}
+
+// TestDestinationResolver_DirectJobWithNoSubscriptionUsesOwnQueue pins the
+// publish-routing half of T1/T2: a directly-created job (no
+// subscription_id — the SDK ingest surface, docs/spec/dispatch-job-priority.md
+// R3) publishes per its own queue when set, and to DEFAULT when it isn't.
+func TestDestinationResolver_DirectJobWithNoSubscriptionUsesOwnQueue(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+
+	insertClient(t, pool, "clt_pri_direct", "pridirect")
+
+	settings, err := dispatch.ResolveSettings("postgres", "", "", "FC-dev", "postgresql://x@localhost/fc")
+	require.NoError(t, err)
+	destinations := NewDestinationResolver(
+		NewPoolCodeResolver(pool, time.Minute),
+		NewSubscriptionPriorityCache(pool, time.Minute),
+		settings,
+	)
+
+	// T1: own queue set, no subscription at all.
+	name, err := destinations.Destination(ctx, PublishItem{ClientID: "clt_pri_direct", Queue: "HIGH_PRIORITY"})
+	require.NoError(t, err)
+	assert.Equal(t, "FC-dev-pridirect-HIGH_PRIORITY", name)
+
+	// T2: queue absent, no subscription at all → DEFAULT.
+	name, err = destinations.Destination(ctx, PublishItem{ClientID: "clt_pri_direct", Queue: ""})
+	require.NoError(t, err)
+	assert.Equal(t, "FC-dev-pridirect-DEFAULT", name)
+}
+
 func strPtrPub(s string) *string { return &s }
