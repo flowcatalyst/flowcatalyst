@@ -24,7 +24,10 @@ func TestBuildPayload_Envelope(t *testing.T) {
 		Payload:       new(`{"amount":100}`),
 	}
 	var env map[string]any
-	require.NoError(t, json.Unmarshal(buildPayload(job), &env))
+	// clientCode = "" here: this test pins the pre-existing envelope fields,
+	// unaffected by the clientCode ruling. See TestBuildPayload_ClientCode*
+	// in processing_clientcode_test.go for that behaviour.
+	require.NoError(t, json.Unmarshal(buildPayload(job, ""), &env))
 
 	assert.Equal(t, "dsj_1", env["id"])
 	assert.Equal(t, "app:sub:agg:created", env["type"])
@@ -42,10 +45,10 @@ func TestBuildPayload_Envelope(t *testing.T) {
 
 func TestBuildPayload_DataOnly(t *testing.T) {
 	job := &dispatchjob.DispatchJob{DataOnly: true, Payload: new(`{"raw":true}`)}
-	assert.JSONEq(t, `{"raw":true}`, string(buildPayload(job)))
+	assert.JSONEq(t, `{"raw":true}`, string(buildPayload(job, "")))
 
 	// Data-only with no payload still produces valid JSON.
-	assert.JSONEq(t, `{}`, string(buildPayload(&dispatchjob.DispatchJob{DataOnly: true})))
+	assert.JSONEq(t, `{}`, string(buildPayload(&dispatchjob.DispatchJob{DataOnly: true}, "")))
 }
 
 func TestBuildPayload_NonJSONPayload(t *testing.T) {
@@ -53,7 +56,7 @@ func TestBuildPayload_NonJSONPayload(t *testing.T) {
 	// silently dropped.
 	job := &dispatchjob.DispatchJob{Code: "x", Payload: new("not-json")}
 	var env map[string]any
-	require.NoError(t, json.Unmarshal(buildPayload(job), &env))
+	require.NoError(t, json.Unmarshal(buildPayload(job, ""), &env))
 	assert.Equal(t, "not-json", env["data"])
 }
 

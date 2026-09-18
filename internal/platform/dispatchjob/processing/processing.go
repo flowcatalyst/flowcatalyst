@@ -48,6 +48,14 @@ import (
 const (
 	signatureHeader = "X-FlowCatalyst-Signature"
 	timestampHeader = "X-FlowCatalyst-Timestamp"
+
+	// clientHeader names the tenant a multi-tenant subscriber's endpoint is
+	// receiving a delivery for — "{clientId}:{clientCode}", the same
+	// "{id}:{code}" pair shape the platform's clients/applications claims
+	// already use. Sent for dataOnly deliveries too, since that mode's raw
+	// body carries no envelope for clientCode to ride in. See
+	// docs/spec/webhook-client-code.md R2.
+	clientHeader = "X-FlowCatalyst-Client"
 )
 
 // DeliveryCredsResolver returns the delivery credentials (bearer token +
@@ -55,6 +63,12 @@ const (
 // by the server to resolve job → subscription → application →
 // service-account webhook credentials.
 type DeliveryCredsResolver func(ctx context.Context, job *dispatchjob.DispatchJob) (serviceaccount.OutboundCreds, error)
+
+// ClientCodeResolver returns the client's identifier slug for a job's
+// client_id (ok=false when it has none, or the client cannot be resolved).
+// Wired by the server to client.NewCachedIdentifierResolver so the delivery
+// path pays no DB round trip per job. See docs/spec/webhook-client-code.md.
+type ClientCodeResolver func(ctx context.Context, clientID string) (identifier string, ok bool)
 
 // maxResponseBody caps how much of a subscriber response we read into the
 // recorded attempt — a hostile or chatty endpoint must not balloon a row.
@@ -88,6 +102,9 @@ type Handler struct {
 	// creds (nil = bare delivery) stamps bearer + signature on subscriber
 	// deliveries; see WithDeliveryCredsResolver.
 	creds DeliveryCredsResolver
+	// clientCode (nil = never resolved) stamps the envelope's clientCode and
+	// the X-FlowCatalyst-Client header; see WithClientCodeResolver.
+	clientCode ClientCodeResolver
 }
 
 // New wires the handler. verifier may be nil (dev/no-auth), in which case the
@@ -116,6 +133,17 @@ func New(repo *dispatchjob.Repository, verifier Verifier) *Handler {
 // rejects with a descriptive 401 recorded on the attempt.
 func (h *Handler) WithDeliveryCredsResolver(fn DeliveryCredsResolver) *Handler {
 	h.creds = fn
+	return h
+}
+
+// WithClientCodeResolver makes every delivery whose client resolves carry
+// X-FlowCatalyst-Client: {clientId}:{clientCode} (dataOnly deliveries
+// included), and makes the non-dataOnly envelope carry clientCode alongside
+// clientId. Never a half pair: a platform-scoped job (no client_id) or a
+// client that does not resolve gets neither the header nor the field. See
+// docs/spec/webhook-client-code.md R1/R2.
+func (h *Handler) WithClientCodeResolver(fn ClientCodeResolver) *Handler {
+	h.clientCode = fn
 	return h
 }
 
@@ -342,7 +370,17 @@ func (h *Handler) deliver(ctx context.Context, job *dispatchjob.DispatchJob) del
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	body := buildPayload(job)
+	// Resolve the client's identifier once, up front: buildPayload needs it
+	// for the envelope's clientCode and the header decision below needs it
+	// too. A platform-scoped job (no client_id) skips the lookup entirely.
+	var clientCode string
+	if job.ClientID != nil && *job.ClientID != "" && h.clientCode != nil {
+		if code, ok := h.clientCode(ctx, *job.ClientID); ok {
+			clientCode = code
+		}
+	}
+
+	body := buildPayload(job, clientCode)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, job.TargetURL, bytes.NewReader(body))
 	if err != nil {
 		return deliveryResult{errMessage: "build request: " + err.Error(), errType: dispatchjob.ErrorConnection}
@@ -350,6 +388,14 @@ func (h *Handler) deliver(ctx context.Context, job *dispatchjob.DispatchJob) del
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Dispatch-Job-Id", job.ID)
 	req.Header.Set("X-Event-Type", job.Code)
+	// Sent for dataOnly deliveries too (R2) — the raw-payload body has no
+	// envelope for clientCode to ride in, which is the whole reason this is
+	// a header rather than just an envelope field. Computed from job.ClientID
+	// directly (not clientCode alone) so a resolved code never gets attached
+	// to a header build that skips the id half.
+	if v, ok := clientHeaderValue(job, clientCode); ok {
+		req.Header.Set(clientHeader, v)
+	}
 	if h.creds != nil {
 		creds, serr := h.creds(ctx, job)
 		if serr != nil {
@@ -421,8 +467,13 @@ func (h *Handler) deliver(ctx context.Context, job *dispatchjob.DispatchJob) del
 }
 
 // buildPayload renders the request body: raw payload in data-only mode,
-// otherwise a CloudEvents-style envelope.
-func buildPayload(job *dispatchjob.DispatchJob) []byte {
+// otherwise a CloudEvents-style envelope. clientCode is the job's client's
+// identifier slug ("" when the job has no client_id, or the client didn't
+// resolve) — embedded as clientCode alongside clientId, per
+// docs/spec/webhook-client-code.md R1. Ignored in data-only mode: that body
+// is the raw payload, byte-for-byte, with no envelope to carry it — R2 covers
+// that case with the X-FlowCatalyst-Client header instead.
+func buildPayload(job *dispatchjob.DispatchJob, clientCode string) []byte {
 	if job.DataOnly {
 		if job.Payload != nil {
 			return []byte(*job.Payload)
@@ -449,6 +500,11 @@ func buildPayload(job *dispatchjob.DispatchJob) []byte {
 	}
 	if job.ClientID != nil {
 		env["clientId"] = *job.ClientID
+		// Omitted — the key absent, not null — when the client cannot be
+		// resolved. clientId keeps its current meaning and position.
+		if clientCode != "" {
+			env["clientCode"] = clientCode
+		}
 	}
 	if job.Payload != nil {
 		// Embed as JSON when it parses; otherwise pass the raw string through
@@ -465,6 +521,18 @@ func buildPayload(job *dispatchjob.DispatchJob) []byte {
 		return []byte("{}")
 	}
 	return out
+}
+
+// clientHeaderValue composes the X-FlowCatalyst-Client header value, or
+// ok=false to omit the header entirely. Never a half pair (R2): a
+// platform-scoped job (no client_id) or a client that did not resolve
+// (clientCode == "") omits the header, exactly like the envelope's
+// clientCode field.
+func clientHeaderValue(job *dispatchjob.DispatchJob, clientCode string) (string, bool) {
+	if job.ClientID == nil || *job.ClientID == "" || clientCode == "" {
+		return "", false
+	}
+	return *job.ClientID + ":" + clientCode, true
 }
 
 // parseDeferral reports a 2xx body of the form {"ack": false} (optionally

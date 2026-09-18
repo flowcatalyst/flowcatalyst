@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	dispatchprocessing "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/processing"
 	dispatchsettled "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/settled"
@@ -127,6 +128,16 @@ func registerPublicRoutes(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *use
 	if secret, err := dispatchAuthSecret(); err == nil {
 		dispatchprocessing.New(repos.dispatchJobRepo, scheduler.NewDispatchAuthService(secret)).
 			WithDeliveryCredsResolver(dispatchDeliveryCredsResolver(repos)).
+			// clientCode in the envelope + the X-FlowCatalyst-Client header
+			// (docs/spec/webhook-client-code.md). A dedicated cache, not the
+			// scheduler's PoolCodeResolver: that resolver is constructed
+			// inside StartScheduler (internal/server/subsystems.go), a
+			// separate goroutine with its own fail-closed startup gate, and
+			// carries pool-code baggage this endpoint has no use for.
+			// Same TTL policy as dispatchDeliveryCredsResolver's SA cache
+			// above; see client.NewCachedIdentifierResolver for the
+			// permanent-hit/bounded-miss policy.
+			WithClientCodeResolver(client.NewCachedIdentifierResolver(repos.clientRepo, time.Minute)).
 			Mount(r)
 
 		// POST /api/dispatch/settled — the router→platform settled-message

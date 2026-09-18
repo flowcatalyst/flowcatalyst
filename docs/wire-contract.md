@@ -204,6 +204,42 @@ Other signing sites are HMAC-over-plain-strings (dispatch-job auth token signs
 the raw job id) or not HMAC at all (JWT RS256, Argon2id, AES-GCM) — none sign
 serialized JSON.
 
+### Dispatch-processing delivery request
+
+`POST /api/dispatch/process` (`internal/platform/dispatchjob/processing`) is
+the *other* subscriber-facing delivery path — the platform, not the router,
+POSTs directly to the subscription's `target_url` (the router only invokes
+this endpoint; it never sees the real webhook). The request:
+
+- **Headers:** `Content-Type: application/json`, `X-Dispatch-Job-Id`,
+  `X-Event-Type` (the job's code), `Authorization: Bearer <token>` (when the
+  resolved service account has one), and the same
+  `X-FlowCatalyst-Signature`/`X-FlowCatalyst-Timestamp` pair described above
+  — same byte format (HMAC-SHA256 over `timestamp+body`, millisecond ISO8601
+  UTC timestamp), computed over the **body only**.
+- **`X-FlowCatalyst-Client: {clientId}:{clientCode}`** (owner ruling
+  2026-09-18, `docs/spec/webhook-client-code.md`) — names the tenant a
+  multi-tenant subscriber's endpoint is receiving a delivery for. Sent for
+  **every** delivery whose job carries a `client_id` that resolves to a
+  `tnt_clients.identifier`, including `dataOnly` deliveries (whose raw body
+  has no envelope to carry a `clientCode` field). **Never a half pair**: a
+  platform-scoped job (no `client_id`) or a client that does not resolve
+  omits the header entirely. Adding this header does not change what the
+  signature covers — it is still the body alone.
+- **Body:** the raw payload byte-for-byte in `dataOnly` mode; otherwise a
+  CloudEvents-style envelope — `id`, `type`, `attemptNumber`, and, when
+  present, `source`, `subject`, `correlationId`, `messageGroup`, `clientId`,
+  `clientCode` (identifier slug, alongside `clientId`, omitted — the key
+  absent, not null — when the job has no `clientId` or the client cannot be
+  resolved), and `data` (the parsed or raw payload).
+
+Client-identifier resolution is cached in memory
+(`client.NewCachedIdentifierResolver`): a hit is permanent for the process's
+life (identifiers are immutable after create), a miss is cached for a
+bounded window (1 minute, same as the delivery-credentials cache below) so a
+client created after an initial miss still resolves on a later delivery, and
+a repository failure resolves to "unknown" rather than failing the delivery.
+
 ### Mediation response
 
 The target answers the mediation POST with 2xx and an optional JSON body.
