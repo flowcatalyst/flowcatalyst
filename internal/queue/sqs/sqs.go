@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	neturl "net/url"
 	"strconv"
 	"strings"
@@ -33,6 +34,12 @@ import (
 // redeliveries (SQS standard queues are at-least-once) are
 // short-circuited to DeleteMessage. 15 minutes.
 const PendingDeleteTTL = 15 * time.Minute
+
+// MaxVisibility is SQS's own ceiling on a message's total
+// invisibility, counted from the ORIGINAL ReceiveMessage — not from any one
+// ChangeMessageVisibility call (R3, owner ruling 2026-09-17,
+// docs/spec/router-deferral-handback.md). Nack's clamp.
+const MaxVisibility = 12 * time.Hour
 
 // DefaultWaitSeconds is the long-poll wait time. AWS max is 20s.
 const DefaultWaitSeconds = 20
@@ -88,6 +95,7 @@ func build(ctx context.Context, cfg common.QueueConfig) (*Queue, error) {
 		visibilityTimeout: int32(vt),
 		waitSeconds:       DefaultWaitSeconds,
 		pendingDelete:     make(map[string]time.Time),
+		receiptPolledAt:   make(map[string]time.Time),
 	}
 	q.running.Store(true)
 	return q, nil
@@ -126,6 +134,15 @@ type Queue struct {
 
 	mu            sync.Mutex
 	pendingDelete map[string]time.Time
+	// receiptPolledAt records when THIS consumer's ReceiveMessage first
+	// handed out each currently-outstanding receipt handle — Nack's clamp
+	// (R3) measures SQS's 12-hour ceiling from here, since SQS itself counts
+	// it from the original receive, not from any one ChangeMessageVisibility
+	// call. Entries are removed on Ack/Nack (the receipt is then spent —
+	// this consumer never sees it again as a live handle) and swept for
+	// staleness on every Poll, so growth is bounded by outstanding receipts,
+	// not by every receipt ever issued.
+	receiptPolledAt map[string]time.Time
 
 	running atomic.Bool
 
@@ -163,6 +180,7 @@ func (q *Queue) Poll(ctx context.Context, maxMessages uint32) ([]common.QueuedMe
 	}
 
 	q.evictExpiredPendingDeletesLocked()
+	q.evictStaleReceiptTimestampsLocked()
 	results := make([]common.QueuedMessage, 0, len(out.Messages))
 	for _, sm := range out.Messages {
 		if sm.MessageId != nil {
@@ -187,6 +205,7 @@ func (q *Queue) Poll(ctx context.Context, maxMessages uint32) ([]common.QueuedMe
 			}
 			continue
 		}
+		q.recordPolled(receipt)
 		results = append(results, common.QueuedMessage{
 			Message:         msg,
 			ReceiptHandle:   receipt,
@@ -233,6 +252,7 @@ func (q *Queue) parseMessage(sm sqstypes.Message) (common.Message, string, strin
 // so this remembers recent deletes, never all of them.
 func (q *Queue) Ack(ctx context.Context, receipt string, brokerMessageID string) error {
 	q.markDeleted(brokerMessageID)
+	q.forgetReceipt(receipt)
 
 	_, err := q.client.DeleteMessage(ctx, &sqs.DeleteMessageInput{
 		QueueUrl:      aws.String(q.queueURL),
@@ -245,26 +265,101 @@ func (q *Queue) Ack(ctx context.Context, receipt string, brokerMessageID string)
 	return nil
 }
 
-// Nack is intentionally a NO-OP for SQS. The router retries failed messages
-// in-process — it keeps them in the message-group pipeline with an internal
-// backoff rather than releasing them to the broker — so it must NOT shorten
-// the visibility timeout here. Doing so would let SQS redeliver the message
-// (to this or another replica) while the router is still retrying it. Instead
-// the message stays invisible until its visibility timeout lapses naturally;
-// any such redelivery is deduplicated by broker MessageId (the router swaps the
-// receipt handle onto the in-flight copy and drops the duplicate). The message
-// only leaves SQS when the router DeleteMessages it on success. delaySeconds is
-// ignored by design. The counter is kept for observability.
-func (q *Queue) Nack(_ context.Context, _ string, _ *uint32) error {
-	q.nacked.Add(1)
+// Nack honours the delay via ChangeMessageVisibility — R3 (owner ruling
+// 2026-09-17, docs/spec/router-deferral-handback.md).
+//
+// This used to be a no-op: the router retried a failing message in-process,
+// keeping it in its message-group pipeline with its own backoff rather than
+// releasing it to the broker, so shortening SQS's own visibility timeout
+// here would have let SQS redeliver the message while this process was
+// still retrying it — a concurrent duplicate. That is no longer the shape
+// of every call: a delay-bearing MediationDeferred (R1) is now handed back
+// to the broker on its FIRST occurrence rather than retried, and every
+// Pool.nackMsg call first removes the message's in-flight tracker entry
+// before Nack ever runs — see nackMsg's doc comment — so by the time this
+// method is called the router has already given up ownership of the
+// message. A redelivery once the delay elapses is therefore a fresh
+// delivery, not a duplicate of a retry still running here.
+//
+// delaySeconds is floored at zero and clamped to MaxVisibility,
+// measured from when THIS consumer first polled the receipt (SQS counts its
+// own 12-hour ceiling from the original ReceiveMessage, not from this call)
+// — see remainingVisibilitySeconds. Best-effort, matching the
+// queue.Consumer contract every backend's Nack already keeps: a failure
+// (e.g. a stale or already-deleted receipt) is logged at WARN and
+// swallowed rather than returned, so the message simply returns at its
+// natural visibility timeout — the same outcome this method always had.
+// The nacked counter is incremented regardless of the AWS call's outcome,
+// same as before.
+func (q *Queue) Nack(ctx context.Context, receipt string, delaySeconds *uint32) error {
+	defer q.nacked.Add(1)
+	defer q.forgetReceipt(receipt)
+
+	var seconds uint32
+	if delaySeconds != nil {
+		seconds = *delaySeconds
+	}
+	clamped := q.clampToRemainingVisibility(receipt, seconds)
+
+	_, err := q.client.ChangeMessageVisibility(ctx, &sqs.ChangeMessageVisibilityInput{
+		QueueUrl:          aws.String(q.queueURL),
+		ReceiptHandle:     aws.String(receipt),
+		VisibilityTimeout: clamped,
+	})
+	if err != nil {
+		slog.Warn("sqs ChangeMessageVisibility failed; message returns at its natural visibility timeout instead",
+			"queue", q.queueName, "err", err)
+	}
 	return nil
 }
 
-// Defer is a NO-OP for the same reason as Nack — 429 / circuit-open retries are
-// also driven in-process. See Nack.
+// Defer is a NO-OP for the same reason Nack used to be — 429 / circuit-open
+// retries are also driven in-process, and no call site hands one of these
+// back to the broker the way a delay-bearing MediationDeferred hand-back
+// does (R1 touches Nack only). See Nack's doc comment for the mechanism
+// that makes THAT release safe.
 func (q *Queue) Defer(_ context.Context, _ string, _ *uint32) error {
 	q.deferred.Add(1)
 	return nil
+}
+
+// HonoursDelayedReturn is true (R5, docs/spec/router-deferral-handback.md):
+// Nack's ChangeMessageVisibility call (R3) really does hold the message
+// back for delay.
+func (q *Queue) HonoursDelayedReturn() bool { return true }
+
+// clampToRemainingVisibility bounds requested (seconds) to what's left of
+// SQS's MaxVisibility ceiling for receipt, floored at zero. AWS
+// rejects a ChangeMessageVisibility that would push a message's total
+// invisibility (from its ORIGINAL ReceiveMessage) past that ceiling, so the
+// clamp is what makes a large requested delay (a target asking for longer
+// than SQS allows) a successful, smaller Nack instead of a rejected one.
+func (q *Queue) clampToRemainingVisibility(receipt string, requested uint32) int32 {
+	remaining := q.remainingVisibilitySeconds(receipt)
+	if int64(requested) < remaining {
+		return int32(requested)
+	}
+	return int32(remaining)
+}
+
+// remainingVisibilitySeconds is how much of MaxVisibility receipt has
+// left, counted from when THIS consumer polled it (receiptPolledAt). A
+// receipt not currently recorded there — evicted for staleness, or never
+// recorded (e.g. a receipt this process didn't poll itself) — gets the full
+// ceiling: there is nothing here to say it should be any shorter.
+func (q *Queue) remainingVisibilitySeconds(receipt string) int64 {
+	q.mu.Lock()
+	polledAt, ok := q.receiptPolledAt[receipt]
+	q.mu.Unlock()
+	if !ok {
+		return int64(MaxVisibility / time.Second)
+	}
+	elapsed := time.Since(polledAt)
+	remaining := MaxVisibility - elapsed
+	if remaining < 0 {
+		return 0
+	}
+	return int64(remaining / time.Second)
 }
 
 // Publish sends a single message via SendMessage.
@@ -410,6 +505,42 @@ func (q *Queue) alreadyDeleted(brokerMessageID string) bool {
 	defer q.mu.Unlock()
 	_, ok := q.pendingDelete[brokerMessageID]
 	return ok
+}
+
+// recordPolled remembers when THIS consumer first received receipt — Nack's
+// clamp (R3) reads it back via remainingVisibilitySeconds. Called once per
+// delivered message, at the point Poll hands out its receipt handle.
+func (q *Queue) recordPolled(receipt string) {
+	q.mu.Lock()
+	q.receiptPolledAt[receipt] = time.Now()
+	q.mu.Unlock()
+}
+
+// forgetReceipt drops receipt's poll-time entry once it is spent (acked, or
+// nacked — either way this consumer will never see this exact receipt handle
+// live again; a redelivery gets a fresh one). Keeps receiptPolledAt bounded
+// by outstanding receipts rather than every receipt ever issued.
+func (q *Queue) forgetReceipt(receipt string) {
+	q.mu.Lock()
+	delete(q.receiptPolledAt, receipt)
+	q.mu.Unlock()
+}
+
+// evictStaleReceiptTimestampsLocked prunes receiptPolledAt entries older
+// than MaxVisibility: a receipt that old is beyond SQS's own ceiling
+// regardless (remainingVisibilitySeconds would return 0 for it anyway), and
+// forgetReceipt alone cannot bound the map for a receipt this consumer polled
+// but never itself acked or nacked (e.g. lost to a consumer restart). Called
+// at the top of each poll, alongside evictExpiredPendingDeletesLocked.
+func (q *Queue) evictStaleReceiptTimestampsLocked() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	now := time.Now()
+	for receipt, ts := range q.receiptPolledAt {
+		if now.Sub(ts) > MaxVisibility {
+			delete(q.receiptPolledAt, receipt)
+		}
+	}
 }
 
 // brokerIDOf is the message's SQS MessageId, or "" when absent — used on the

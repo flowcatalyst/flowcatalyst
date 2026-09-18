@@ -34,3 +34,15 @@ func TestDistinctMessagesGetDistinctBrokerIDs(t *testing.T) {
 		t.Fatal("different stream sequences must yield different broker ids")
 	}
 }
+
+// T14 (docs/spec/router-deferral-handback.md, R5): NATS answers false — a
+// delay-bearing deferral must stay on the in-memory retry curve rather than
+// being handed back to a broker that will neither block a group's
+// successors on it (no per-group subject here) nor honour the delay before
+// spending one of MaxDeliver's limited redeliveries on it.
+func TestHonoursDelayedReturnIsFalse(t *testing.T) {
+	q := &Queue{}
+	if q.HonoursDelayedReturn() {
+		t.Fatal("NATS must answer false — see queue.Consumer.HonoursDelayedReturn's doc comment")
+	}
+}

@@ -158,13 +158,27 @@ END $$;
 
 // Poll claims up to maxMessages eligible messages from this queue.
 //
-// Eligibility = visible_at <= now AND the message is the earliest visible
+// Eligibility = visible_at <= now AND the message is the earliest ELIGIBLE
 // message in its group (COALESCE(message_group_id, id)). Each claimed row
 // gets a unique receipt handle (<pollUUID>:<id>) and its visibility window
 // is pushed out by the configured timeout. We use a correlated NOT EXISTS
 // rather than a windowed CTE because FOR UPDATE SKIP LOCKED cannot be
 // applied over a ROW_NUMBER() result under Postgres CTE inlining; the
 // resulting claim set is equivalent.
+//
+// Two NOT EXISTS clauses gate "earliest eligible in its group", not one:
+//   - an earlier row that is CLAIMED (receipt_handle IS NOT NULL) does NOT
+//     block — an in-flight head's cross-poll ordering is still not enforced
+//     by the broker, same as always;
+//   - an earlier row that was NACKED WITH A DELAY (R4, owner ruling
+//     2026-09-17, docs/spec/router-deferral-handback.md: receipt_handle IS
+//     NULL AND visible_at > now) DOES block. Before R4 this state was
+//     treated the same as "claimed" — not visible, so not blocking — which
+//     let a returned group head's own successors overtake it on the very
+//     next poll, exactly the ordering violation an ordered group exists to
+//     prevent. A delay-bearing MediationDeferred hand-back (R1) sits in
+//     precisely this state, which is what made the gap load-bearing rather
+//     than academic.
 func (q *Queue) Poll(ctx context.Context, maxMessages uint32) ([]common.QueuedMessage, error) {
 	if q.stopped.Load() {
 		return nil, queue.ErrStopped
@@ -188,6 +202,20 @@ WITH claimed AS (
             WHERE e.queue_name = m.queue_name
               AND COALESCE(e.message_group_id, e.id) = COALESCE(m.message_group_id, m.id)
               AND e.visible_at <= $2
+              AND (e.created_at < m.created_at
+                   OR (e.created_at = m.created_at AND e.id < m.id))
+         )
+     AND NOT EXISTS (
+           -- R4 (owner ruling 2026-09-17, docs/spec/router-deferral-handback.md):
+           -- an earlier row of the same group RETURNED with a delay (nacked —
+           -- receipt_handle cleared — but not yet visible) blocks this one. A
+           -- CLAIMED earlier row (receipt_handle IS NOT NULL) is deliberately
+           -- excluded here — see the Poll doc comment above.
+           SELECT 1 FROM queue_messages e
+            WHERE e.queue_name = m.queue_name
+              AND COALESCE(e.message_group_id, e.id) = COALESCE(m.message_group_id, m.id)
+              AND e.receipt_handle IS NULL
+              AND e.visible_at > $2
               AND (e.created_at < m.created_at
                    OR (e.created_at = m.created_at AND e.id < m.id))
          )
@@ -344,6 +372,12 @@ func (q *Queue) Defer(ctx context.Context, receipt string, delaySeconds *uint32)
 	q.deferred.Add(1)
 	return nil
 }
+
+// HonoursDelayedReturn is true (R5, docs/spec/router-deferral-handback.md):
+// Nack's visible_at update really does hold the row back for delay, and the
+// claim query's second NOT EXISTS clause (see Poll's doc comment) blocks a
+// nacked-with-delay group head's successors from claiming ahead of it.
+func (q *Queue) HonoursDelayedReturn() bool { return true }
 
 // Publish writes a single message. Uses ON CONFLICT DO NOTHING so a
 // duplicate id is a no-op (at-least-once publish semantics).

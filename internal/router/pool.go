@@ -229,6 +229,20 @@ func (p *Pool) consumerFor(qm common.QueuedMessage) queue.Consumer {
 	return p.resolveConsumer(qm.QueueIdentifier)
 }
 
+// honoursDelayedReturn reports whether qm's SOURCE consumer will actually
+// hold the message back for a Nack's delay before redelivering it — R5
+// (owner ruling 2026-09-17, docs/spec/router-deferral-handback.md, second
+// unit). Gates DispositionOf's R1 hand-back for a delay-bearing
+// MediationDeferred.
+//
+// A queue with no registered consumer (deregistered between routing and
+// processing) answers false: nothing there to honour a hand-back, so the
+// deferral is safer kept in memory than nacked away.
+func (p *Pool) honoursDelayedReturn(qm common.QueuedMessage) bool {
+	c := p.consumerFor(qm)
+	return c != nil && c.HonoursDelayedReturn()
+}
+
 // ackTracked / nackMsg resolve a message's source consumer and apply the
 // terminal action there — a pool processes messages routed from many queues, so
 // the action must target the queue the message arrived on. A missing consumer
@@ -1334,7 +1348,17 @@ func backoffDelay(attempts uint, floorSec int, minDelay, maxDelay time.Duration)
 //
 // mode is the message's DispatchMode: only BLOCK_ON_ERROR changes the Group
 // effect of a discarded failure, from GroupContinue to GroupBlock.
-func DispositionOf(outcome common.MediationOutcome, attempts uint, mode common.DispatchMode) Disposition {
+//
+// honoursDelayedReturn is whether the message's SOURCE broker actually
+// enforces a Nack's delay before redelivering — R5 (owner ruling
+// 2026-09-17, docs/spec/router-deferral-handback.md, second unit). It
+// gates R1's hand-back for a delay-bearing MediationDeferred: SQS and
+// Postgres both honour it (true), NATS does not (false, see
+// queue.Consumer.HonoursDelayedReturn's doc comment). It is meaningless for
+// every other outcome, which is why it is threaded through as a single bool
+// rather than the whole Consumer — DispositionOf stays pure and testable
+// without a queue.
+func DispositionOf(outcome common.MediationOutcome, attempts uint, mode common.DispatchMode, honoursDelayedReturn bool) Disposition {
 	switch outcome.Result {
 	case common.MediationSuccess:
 		return Disposition{Action: BrokerAck, Group: GroupContinue, Metric: MetricSuccess}
@@ -1374,8 +1398,39 @@ func DispositionOf(outcome common.MediationOutcome, attempts uint, mode common.D
 	case common.MediationDeferred:
 		// 2xx + ack=false — the target explicitly deferred this message
 		// (e.g. a blocked record). Not a failure, and the mediator skipped
-		// its in-pipeline retries; requeue on the deferred curve (5s start,
-		// 60s cap) flooring at any delay the target requested.
+		// its in-pipeline retries.
+		//
+		// R1 (owner ruling 2026-09-17, docs/spec/router-deferral-handback.md):
+		// when the target NAMED a delay and the source broker actually
+		// honours a delayed return (R5), there is nothing to learn from
+		// retrying this in-pipeline first — the target told us exactly how
+		// long to wait, and the broker (not this process) is where that
+		// wait belongs. So it skips the retry budget entirely and releases
+		// on this, its FIRST, occurrence, carrying that EXACT delay — no
+		// curve, no cap. This applies identically to both dispatch paths:
+		// runImmediate nacks just this message with RetryAfter (via
+		// nackDelay); the ordered drainer's releaseGroup nacks the HEAD
+		// with the very same RetryAfter and only the untried siblings keep
+		// their own fixed delay — one Disposition, shared by both callers,
+		// is what makes R2 (the head's real delay) fall out of R1 for free
+		// rather than needing a second decision point the way a design with
+		// separate ordered/unordered outcome handling would.
+		//
+		// delaySeconds == 0 (nothing specific requested), or a broker that
+		// does NOT honour a delayed return (R5: NATS — a hand-back there
+		// would spend one of its limited redeliveries for nothing, since
+		// nothing will actually hold the message back), falls through
+		// unchanged to the pre-ruling behaviour: requeue on the deferred
+		// curve (5s start, 60s cap) flooring at any requested delay, within
+		// the ordinary in-pipeline retry budget.
+		if outcome.DelaySeconds > 0 && honoursDelayedReturn {
+			return Disposition{
+				Action:     BrokerRelease,
+				Group:      GroupRelease,
+				Metric:     MetricTransient,
+				RetryAfter: time.Duration(outcome.DelaySeconds) * time.Second,
+			}
+		}
 		return retryOrRelease(attempts, deferredDelay(attempts, outcome.DelaySeconds), MetricTransient)
 
 	case common.MediationCircuitOpen:
@@ -1519,7 +1574,7 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 	outcome := p.mediator.Mediate(ctx, &qm.Message)
 	durationMs := uint64(time.Since(start).Milliseconds())
 
-	d := p.settleRetry(qm, DispositionOf(outcome, qm.Attempts, qm.Message.DispatchMode))
+	d := p.settleRetry(qm, DispositionOf(outcome, qm.Attempts, qm.Message.DispatchMode, p.honoursDelayedReturn(qm)))
 	p.recordMetric(d.Metric, durationMs)
 
 	if d.Action == BrokerAck {

@@ -29,6 +29,11 @@ type grConsumer struct {
 	nacks         atomic.Int64
 	defers        atomic.Int64
 	lastNackDelay atomic.Pointer[uint32]
+	// neverHonoursDelayedReturn is named in the negative so its Go zero
+	// value (false) matches the common case — SQS/Postgres both honour a
+	// nack's delay (R3/R4, docs/spec/router-deferral-handback.md) — and only
+	// a test simulating NATS (R5) needs to set it explicitly.
+	neverHonoursDelayedReturn atomic.Bool
 }
 
 func (c *grConsumer) Identifier() string { return c.id }
@@ -52,6 +57,7 @@ func (c *grConsumer) Defer(ctx context.Context, receipt string, delay *uint32) e
 	return nil
 }
 
+func (c *grConsumer) HonoursDelayedReturn() bool                          { return !c.neverHonoursDelayedReturn.Load() }
 func (c *grConsumer) Healthy() bool                                       { return true }
 func (c *grConsumer) Stop()                                               {}
 func (c *grConsumer) Metrics(ctx context.Context) (*queue.Metrics, error) { return nil, nil }

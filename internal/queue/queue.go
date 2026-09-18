@@ -78,6 +78,26 @@ type Consumer interface {
 	// Defer marks the message visible again without counting as a failure.
 	// Use for backpressure / rate-limiting; default falls back to Nack.
 	Defer(ctx context.Context, receipt string, delaySeconds *uint32) error
+	// HonoursDelayedReturn reports whether a Nack's delay is actually
+	// enforced by this backend before it redelivers — R5 (owner ruling
+	// 2026-09-17, docs/spec/router-deferral-handback.md, second unit).
+	//
+	// SQS and Postgres answer true: a Nack genuinely holds the message
+	// invisible for the requested delay (Postgres additionally blocks a
+	// nacked-with-delay group head's successors from claiming ahead of it —
+	// see its Poll doc comment). NATS answers false: its stream is one
+	// durable WorkQueue consumer with no per-group subject, so a Nack never
+	// blocks a group's successors the way Postgres's claim does, and each
+	// redelivery spends one of the stream's limited MaxDeliver attempts —
+	// treating a deferral as a hand-back there would turn a bounded number
+	// of in-memory retries into the same number of deliveries and then
+	// silent, permanent redelivery loss.
+	//
+	// Deliberately no default: every backend answers explicitly (Go has no
+	// default interface methods to omit it from), which is what the router
+	// relies on to decide, per delay-bearing deferral, whether to hand the
+	// message back to the broker (R1) or keep retrying it in memory (R5).
+	HonoursDelayedReturn() bool
 	// Healthy reports liveness.
 	Healthy() bool
 	// Stop signals the consumer to wind down.

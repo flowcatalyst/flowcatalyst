@@ -37,6 +37,7 @@ func (c *pollErrConsumer) Poll(context.Context, uint32) ([]common.QueuedMessage,
 func (c *pollErrConsumer) Ack(context.Context, string, string) error       { return nil }
 func (c *pollErrConsumer) Nack(context.Context, string, *uint32) error     { return nil }
 func (c *pollErrConsumer) Defer(context.Context, string, *uint32) error    { return nil }
+func (c *pollErrConsumer) HonoursDelayedReturn() bool                      { return true }
 func (c *pollErrConsumer) Healthy() bool                                   { return true }
 func (c *pollErrConsumer) Stop()                                           { c.stopped.Store(true) }
 func (c *pollErrConsumer) Metrics(context.Context) (*queue.Metrics, error) { return nil, nil }

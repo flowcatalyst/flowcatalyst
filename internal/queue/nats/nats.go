@@ -754,6 +754,18 @@ func (q *Queue) nakWith(msg jetstream.Msg, delaySeconds *uint32) error {
 	return msg.Nak()
 }
 
+// HonoursDelayedReturn is false (R5, owner ruling 2026-09-17,
+// docs/spec/router-deferral-handback.md): this stream is one durable
+// WorkQueue consumer with no per-group subject, so the broker enforces no
+// group ordering at all — a NakWithDelay never blocks a delayed head's
+// successors the way Postgres's claim query does — and each redelivery
+// spends one of the consumer's limited MaxDeliver attempts. Handing a
+// delay-bearing deferral back here would turn a bounded number of in-memory
+// retries into the same number of deliveries and then silent, permanent
+// redelivery loss, so the router keeps it on the in-memory DEFERRED curve
+// instead (see DispositionOf).
+func (q *Queue) HonoursDelayedReturn() bool { return false }
+
 // Healthy reports whether the consumer is running and the underlying
 // connection is up.
 func (q *Queue) Healthy() bool {

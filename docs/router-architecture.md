@@ -117,8 +117,23 @@ Two properties worth not breaking:
   group — in memory, exempt from reaping and, until recently, silent to the stall detector.
 - **After a release the cadence is the broker's** (visibility timeout / ack-wait), not our
   backoff curve, and the **circuit breaker** is what actually spares the target from the
-  redelivery rate. Of the three backends only SQS ignores a nack delay (its `Nack` is a
-  deliberate no-op); Postgres honours it via `makeVisible`, NATS via `NakWithDelay`.
+  redelivery rate. All three backends honour a nack delay: SQS via
+  `ChangeMessageVisibility` (owner ruling 2026-09-17,
+  `docs/spec/router-deferral-handback.md` R3 — its `Nack` used to be a deliberate no-op;
+  every `Nack` call is a hand-back, so shortening the visibility timeout no longer races
+  an in-process retry the way it would have before R1), Postgres via `makeVisible`, NATS
+  via `NakWithDelay`.
+- **A delay-bearing `Deferred` (2xx + `ack:false` + `delaySeconds`) skips the in-place
+  retry budget entirely on a broker that honours a delayed return** (R1/R5, same doc): it
+  is released on its first occurrence with exactly the requested delay, not retried
+  in-pipeline on the deferred curve first. NATS does not honour a delayed return
+  (`queue.Consumer.HonoursDelayedReturn()` is false — no per-group subject, and a
+  hand-back there spends one of `MaxDeliver`'s limited redeliveries), so a delay-bearing
+  deferral on NATS keeps the pre-R1 in-place-retry behaviour. `DispositionOf` decides
+  this once, for both dispatch paths, so an ordered group's released head automatically
+  carries the same delay the unordered path would have used for the same outcome (R2) —
+  there is no separate fixed redelivery delay hard-coded for the ordered case the way an
+  earlier design (and the Java port) needed to guard against.
 
 ## 4. Ordering
 
@@ -147,7 +162,12 @@ honouring the mode literally would file a pool's entire ungrouped volume into on
 behind one drainer — concurrency 20 delivering one message at a time.
 
 Ordering survives a release because both brokers redeliver a group in order: the Postgres
-queue makes only the earliest visible message of each group claimable, and SQS FIFO orders by
+queue makes only the earliest ELIGIBLE message of each group claimable — as of R4 (owner
+ruling 2026-09-17, `docs/spec/router-deferral-handback.md`) that excludes not just an
+earlier CLAIMED row (in-flight; unchanged) but also an earlier row NACKED WITH A DELAY
+(`receipt_handle IS NULL AND visible_at > now`), which a delay-bearing `Deferred`
+hand-back (R1) leaves its head sitting in — so a returned head's own successors can no
+longer overtake it on a later poll the way they could before R4 — and SQS FIFO orders by
 `MessageGroupId`. **Ordered work on a non-FIFO SQS queue would reorder on release.**
 
 ### Where it is enforced for dispatch jobs

@@ -237,7 +237,15 @@ func runCase(t *testing.T, tc fixtureCase) {
 		// field (meaningless for an ungrouped/first-attempt message here) is
 		// not part of what's being checked; only the broker Action + Metric
 		// class map to the corpus's disposition vocabulary.
-		assertDisposition(&mismatches, tc, router.DispositionOf(outcome, 0, common.DispatchNextOnError))
+		// honoursDelayedReturn=false: this corpus asserts the OUTCOME's own
+		// classification (mirroring Java's outcome.disposition(), asserted
+		// the same way in conformance/MediationConformanceTest.java) — a
+		// property of the mediation outcome alone, not of R1/R5's router-
+		// level "hand this delay-bearing deferral back to the broker or
+		// keep it in memory" policy. false reproduces DispositionOf's
+		// pre-R1 behaviour, so this stays a test of classification, not of
+		// R1 (which pool_test.go / T1-T3 cover directly).
+		assertDisposition(&mismatches, tc, router.DispositionOf(outcome, 0, common.DispatchNextOnError, false))
 	}
 
 	report(t, tc, mismatches)

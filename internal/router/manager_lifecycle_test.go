@@ -99,8 +99,9 @@ func (q *fakeQueue) Nack(context.Context, string, *uint32) error { q.nacks.Add(1
 func (q *fakeQueue) Defer(context.Context, string, *uint32) error {
 	return nil
 }
-func (q *fakeQueue) Healthy() bool { return !q.stopped.Load() }
-func (q *fakeQueue) Stop()         { q.stopped.Store(true) }
+func (q *fakeQueue) HonoursDelayedReturn() bool { return true }
+func (q *fakeQueue) Healthy() bool              { return !q.stopped.Load() }
+func (q *fakeQueue) Stop()                      { q.stopped.Store(true) }
 func (q *fakeQueue) Metrics(context.Context) (*queue.Metrics, error) {
 	return &queue.Metrics{QueueIdentifier: q.name}, nil
 }

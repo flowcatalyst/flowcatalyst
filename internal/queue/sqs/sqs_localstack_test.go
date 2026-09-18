@@ -6,6 +6,7 @@ import (
 	"context"
 	"net"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -35,6 +36,17 @@ func localstackEndpoint() string {
 // sleep; long-poll wait is 0 for the same reason.
 func newLocalstackQueue(t *testing.T, name string) *Queue {
 	t.Helper()
+	return newLocalstackQueueVis(t, name, 1)
+}
+
+// newLocalstackQueueVis is newLocalstackQueue with an explicit default
+// visibility timeout — for a test (nack_delay_test.go's R3 suite) that needs
+// to tell "Nack held the message back" apart from "the queue's own default
+// visibility lapsed", 1s is too close to the delays under test to leave a
+// reliable margin. Those tests use 0 (immediately re-visible without a
+// Nack), so ANY observed delay is attributable to Nack, not the default.
+func newLocalstackQueueVis(t *testing.T, name string, visibilitySeconds int32) *Queue {
+	t.Helper()
 	endpoint := localstackEndpoint()
 
 	conn, err := net.DialTimeout("tcp", stripScheme(endpoint), 300*time.Millisecond)
@@ -57,7 +69,7 @@ func newLocalstackQueue(t *testing.T, name string) *Queue {
 	})
 	out, err := client.CreateQueue(ctx, &sqs.CreateQueueInput{
 		QueueName:  aws.String(name),
-		Attributes: map[string]string{"VisibilityTimeout": "1"},
+		Attributes: map[string]string{"VisibilityTimeout": strconv.Itoa(int(visibilitySeconds))},
 	})
 	require.NoError(t, err)
 
@@ -69,9 +81,10 @@ func newLocalstackQueue(t *testing.T, name string) *Queue {
 		client:            client,
 		queueURL:          *out.QueueUrl,
 		queueName:         name,
-		visibilityTimeout: 1,
+		visibilityTimeout: visibilitySeconds,
 		waitSeconds:       0,
 		pendingDelete:     make(map[string]time.Time),
+		receiptPolledAt:   make(map[string]time.Time),
 	}
 	q.running.Store(true) // build() does this; Poll returns ErrStopped without it
 	return q

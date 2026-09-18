@@ -69,6 +69,7 @@ func (q *blockingFakeQueue) Poll(ctx context.Context, _ uint32) ([]common.Queued
 func (q *blockingFakeQueue) Ack(context.Context, string, string) error    { return nil }
 func (q *blockingFakeQueue) Nack(context.Context, string, *uint32) error  { return nil }
 func (q *blockingFakeQueue) Defer(context.Context, string, *uint32) error { return nil }
+func (q *blockingFakeQueue) HonoursDelayedReturn() bool                   { return true }
 func (q *blockingFakeQueue) Healthy() bool                                { return !q.stopped.Load() }
 func (q *blockingFakeQueue) Stop()                                        { q.stopped.Store(true) }
 func (q *blockingFakeQueue) Metrics(context.Context) (*queue.Metrics, error) {

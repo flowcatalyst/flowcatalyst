@@ -21,11 +21,19 @@ type cascadeConsumer struct {
 	wantTotal int
 	done      chan struct{}
 
-	mu       sync.Mutex
-	nacked   []string
-	acked    []string
-	deferred []string
-	doneOnce sync.Once
+	mu         sync.Mutex
+	nacked     []string
+	nackDelays map[string]*uint32
+	acked      []string
+	deferred   []string
+	doneOnce   sync.Once
+
+	// neverHonoursDelayedReturn is named in the negative so its Go zero
+	// value (false) matches the common case: SQS and Postgres both honour a
+	// nack's delay (R3/R4, docs/spec/router-deferral-handback.md), and every
+	// existing use of cascadeConsumer relies on that default. Only a test
+	// simulating NATS (R5, which does not) sets this explicitly.
+	neverHonoursDelayedReturn bool
 }
 
 func (c *cascadeConsumer) Poll(context.Context, uint32) ([]common.QueuedMessage, error) {
@@ -47,7 +55,13 @@ func (c *cascadeConsumer) Ack(_ context.Context, rh string, _ string) error {
 	return nil
 }
 
-func (c *cascadeConsumer) Nack(_ context.Context, rh string, _ *uint32) error {
+func (c *cascadeConsumer) Nack(_ context.Context, rh string, delay *uint32) error {
+	c.mu.Lock()
+	if c.nackDelays == nil {
+		c.nackDelays = make(map[string]*uint32)
+	}
+	c.nackDelays[rh] = delay
+	c.mu.Unlock()
 	c.record(&c.nacked, rh)
 	return nil
 }
@@ -57,9 +71,20 @@ func (c *cascadeConsumer) Defer(_ context.Context, rh string, _ *uint32) error {
 	return nil
 }
 
+// nackDelayFor returns the delay passed to Nack for rh (nil if never nacked,
+// or nacked with a nil delay — same ambiguity nackMsg's callers live with).
+func (c *cascadeConsumer) nackDelayFor(rh string) *uint32 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.nackDelays[rh]
+}
+
 func (c *cascadeConsumer) Identifier() string { return "cascade-test" }
-func (c *cascadeConsumer) Healthy() bool      { return true }
-func (c *cascadeConsumer) Stop()              {}
+func (c *cascadeConsumer) HonoursDelayedReturn() bool {
+	return !c.neverHonoursDelayedReturn
+}
+func (c *cascadeConsumer) Healthy() bool { return true }
+func (c *cascadeConsumer) Stop()         {}
 func (c *cascadeConsumer) Metrics(context.Context) (*queue.Metrics, error) {
 	return &queue.Metrics{}, nil
 }
