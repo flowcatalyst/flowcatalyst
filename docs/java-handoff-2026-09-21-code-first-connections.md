@@ -171,9 +171,25 @@ by any create, update or sync path in Go. Synced rows leave them unset too.
    `application-service` roles do NOT hold the new connection permissions and
    every connection sync is 403.
 
-## Also pending on the Java side (from the same day)
+## Already mirrored — nothing to do
 
-- The platform seeder attaches event-type schemas as version `v1`
-  (`Seeder.java` ~238–251). Go now writes `1.0` and migration 055 renamed the
-  existing rows. Until Java changes, its next start re-adds a `v1` row beside
-  each renamed `1.0`.
+- Seeded event-type schema version `v1` → `1.0` (Go migration 055): Java has
+  it as `V11__platform_event_schema_version.sql` and the seeder writes `1.0`.
+
+## Reference commits (Go, `main`)
+
+| Commit | Contents |
+|---|---|
+| `56aea7c` | subscription sync accepts `connectionCode` |
+| `291ae7a` | migration 056, connection `applicationCode` + `source`, per-application uniqueness |
+| `f06ebc2` | connection sync endpoint, permissions, ownership rule |
+| `774a18b` | subscription sync `clientId` + `sharedConnection`, scope checks |
+
+`api/openapi.lock.json` at `774a18b` or later is the wire authority for the
+request/response shapes above. The integration tests beside each use case
+(`connection/operations/sync_pg_test.go`,
+`subscription/operations/ops_pg_test.go`,
+`sdksync/sync_{connections,subscriptions}_http_pg_test.go`,
+`migrate/application_scope_pre{check,scan}_pg_test.go`) are the executable
+statement of every rule here — the scoped-removal tests in particular were
+mutation-checked and are the ones to port first.
