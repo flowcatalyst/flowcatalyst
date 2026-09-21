@@ -82,7 +82,11 @@ func CreateSubscription(repo *subscription.Repository) usecaseop.Operation[Creat
 		Execute: func(ctx context.Context, cmd CreateCommand, ec usecase.ExecutionContext) (usecaseop.Plan[SubscriptionCreated], error) {
 			code := strings.ToLower(strings.TrimSpace(cmd.Code))
 
-			existing, err := repo.FindByCode(ctx, code, cmd.ClientID)
+			// A UI/API create never sets ApplicationCode (only SyncSubscriptions
+			// does), so this always checks the "no application" partition of the
+			// new (application_code, client_id, code) key — consistent with what
+			// the row will actually be persisted with below.
+			existing, err := repo.FindByCode(ctx, code, nil, cmd.ClientID)
 			if err != nil {
 				return nil, usecase.Internal("REPO", "find_by_code failed", err)
 			}

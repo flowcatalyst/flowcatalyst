@@ -204,67 +204,30 @@ func (q *Queries) SubscriptionFindAll(ctx context.Context) ([]MsgSubscription, e
 	return items, nil
 }
 
-const subscriptionFindByCodeAnchor = `-- name: SubscriptionFindByCodeAnchor :one
+const subscriptionFindByCode = `-- name: SubscriptionFindByCode :one
 SELECT id, code, application_code, name, description, client_id,
        client_identifier, client_scoped, target, queue,
        source, status, max_age_seconds, dispatch_pool_id, dispatch_pool_code,
        delay_seconds, sequence, mode, timeout_seconds, max_retries,
        service_account_id, data_only, created_at, updated_at, connection_id, created_by
 FROM msg_subscriptions
-WHERE code = $1 AND client_id IS NULL
+WHERE code = $1
+  AND application_code IS NOT DISTINCT FROM $2
+  AND client_id IS NOT DISTINCT FROM $3
 `
 
-func (q *Queries) SubscriptionFindByCodeAnchor(ctx context.Context, code string) (MsgSubscription, error) {
-	row := q.db.QueryRow(ctx, subscriptionFindByCodeAnchor, code)
-	var i MsgSubscription
-	err := row.Scan(
-		&i.ID,
-		&i.Code,
-		&i.ApplicationCode,
-		&i.Name,
-		&i.Description,
-		&i.ClientID,
-		&i.ClientIdentifier,
-		&i.ClientScoped,
-		&i.Target,
-		&i.Queue,
-		&i.Source,
-		&i.Status,
-		&i.MaxAgeSeconds,
-		&i.DispatchPoolID,
-		&i.DispatchPoolCode,
-		&i.DelaySeconds,
-		&i.Sequence,
-		&i.Mode,
-		&i.TimeoutSeconds,
-		&i.MaxRetries,
-		&i.ServiceAccountID,
-		&i.DataOnly,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.ConnectionID,
-		&i.CreatedBy,
-	)
-	return i, err
+type SubscriptionFindByCodeParams struct {
+	Code            string  `db:"code"`
+	ApplicationCode *string `db:"application_code"`
+	ClientID        *string `db:"client_id"`
 }
 
-const subscriptionFindByCodeClient = `-- name: SubscriptionFindByCodeClient :one
-SELECT id, code, application_code, name, description, client_id,
-       client_identifier, client_scoped, target, queue,
-       source, status, max_age_seconds, dispatch_pool_id, dispatch_pool_code,
-       delay_seconds, sequence, mode, timeout_seconds, max_retries,
-       service_account_id, data_only, created_at, updated_at, connection_id, created_by
-FROM msg_subscriptions
-WHERE code = $1 AND client_id = $2
-`
-
-type SubscriptionFindByCodeClientParams struct {
-	Code     string  `db:"code"`
-	ClientID *string `db:"client_id"`
-}
-
-func (q *Queries) SubscriptionFindByCodeClient(ctx context.Context, arg SubscriptionFindByCodeClientParams) (MsgSubscription, error) {
-	row := q.db.QueryRow(ctx, subscriptionFindByCodeClient, arg.Code, arg.ClientID)
+// NULL-as-a-value semantics on both nullable parts of the key: a caller
+// asking for "no application" (application_code = NULL) or "no client"
+// (client_id = NULL) must match rows stored with NULL there, which plain
+// `=` never does. Mirrors uq_msg_subscriptions_app_client_code (migration 056).
+func (q *Queries) SubscriptionFindByCode(ctx context.Context, arg SubscriptionFindByCodeParams) (MsgSubscription, error) {
+	row := q.db.QueryRow(ctx, subscriptionFindByCode, arg.Code, arg.ApplicationCode, arg.ClientID)
 	var i MsgSubscription
 	err := row.Scan(
 		&i.ID,

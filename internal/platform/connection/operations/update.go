@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
@@ -13,15 +14,19 @@ import (
 
 // UpdateCommand is the input DTO.
 type UpdateCommand struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name"`
-	Description *string `json:"description,omitempty"`
-	ExternalID  *string `json:"externalId,omitempty"`
-	Status      *string `json:"status,omitempty"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// ApplicationCode is set-if-provided: nil/omitted leaves the existing
+	// link alone, so it cannot be cleared through this endpoint (mirrors
+	// ConnectionID's set-if-provided semantics on subscription update).
+	ApplicationCode *string `json:"applicationCode,omitempty"`
+	Description     *string `json:"description,omitempty"`
+	ExternalID      *string `json:"externalId,omitempty"`
+	Status          *string `json:"status,omitempty"`
 }
 
 // UpdateConnection mutates mutable fields and emits [ConnectionUpdated].
-func UpdateConnection(repo *connection.Repository) usecaseop.Operation[UpdateCommand, ConnectionUpdated] {
+func UpdateConnection(repo *connection.Repository, apps *application.Repository) usecaseop.Operation[UpdateCommand, ConnectionUpdated] {
 	return usecaseop.Operation[UpdateCommand, ConnectionUpdated]{
 		Name: "UpdateConnection",
 		Validate: func(_ context.Context, cmd UpdateCommand) error {
@@ -51,6 +56,28 @@ func UpdateConnection(repo *connection.Repository) usecaseop.Operation[UpdateCom
 			c.Name = strings.TrimSpace(cmd.Name)
 			c.Description = cmd.Description
 			c.ExternalID = cmd.ExternalID
+			if cmd.ApplicationCode != nil && !strPtrEqual(cmd.ApplicationCode, c.ApplicationCode) {
+				app, err := apps.FindByCode(ctx, *cmd.ApplicationCode)
+				if err != nil {
+					return nil, usecase.Internal("REPO", "find_application_by_code failed", err)
+				}
+				if app == nil {
+					return nil, httperror.NotFound("Application", *cmd.ApplicationCode)
+				}
+				// Re-pointing to a different application changes the effective
+				// uniqueness key (application_code, client_id, code); a collision
+				// there must be reported the same way create does, not surface
+				// as a raw database error out of the unique index.
+				dup, err := repo.FindByCode(ctx, c.Code, cmd.ApplicationCode, c.ClientID)
+				if err != nil {
+					return nil, usecase.Internal("REPO", "find_by_code failed", err)
+				}
+				if dup != nil && dup.ID != c.ID {
+					return nil, usecase.Conflict("CODE_EXISTS",
+						"Connection with code '"+c.Code+"' already exists")
+				}
+				c.ApplicationCode = cmd.ApplicationCode
+			}
 			if cmd.Status != nil {
 				status, ok := connection.ParseStatus(strings.TrimSpace(*cmd.Status))
 				if !ok {
@@ -66,6 +93,15 @@ func UpdateConnection(repo *connection.Repository) usecaseop.Operation[UpdateCom
 			return usecaseop.Save(c, repo, event), nil
 		},
 	}
+}
+
+// strPtrEqual reports whether two optional strings hold the same value,
+// treating nil and nil as equal.
+func strPtrEqual(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 // statusCommand is the input DTO for the pause/activate status-flip ops.

@@ -21,7 +21,7 @@ func (q *Queries) ConnectionDelete(ctx context.Context, id string) error {
 
 const connectionFindAll = `-- name: ConnectionFindAll :many
 SELECT id, code, name, description, external_id, status, service_account_id,
-       client_id, client_identifier, created_at, updated_at
+       client_id, client_identifier, created_at, updated_at, application_code, source
 FROM msg_connections
 ORDER BY code
 `
@@ -47,6 +47,8 @@ func (q *Queries) ConnectionFindAll(ctx context.Context) ([]MsgConnection, error
 			&i.ClientIdentifier,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ApplicationCode,
+			&i.Source,
 		); err != nil {
 			return nil, err
 		}
@@ -58,15 +60,27 @@ func (q *Queries) ConnectionFindAll(ctx context.Context) ([]MsgConnection, error
 	return items, nil
 }
 
-const connectionFindByCodeAnchor = `-- name: ConnectionFindByCodeAnchor :one
+const connectionFindByCode = `-- name: ConnectionFindByCode :one
 SELECT id, code, name, description, external_id, status, service_account_id,
-       client_id, client_identifier, created_at, updated_at
+       client_id, client_identifier, created_at, updated_at, application_code, source
 FROM msg_connections
-WHERE code = $1 AND client_id IS NULL
+WHERE code = $1
+  AND application_code IS NOT DISTINCT FROM $2
+  AND client_id IS NOT DISTINCT FROM $3
 `
 
-func (q *Queries) ConnectionFindByCodeAnchor(ctx context.Context, code string) (MsgConnection, error) {
-	row := q.db.QueryRow(ctx, connectionFindByCodeAnchor, code)
+type ConnectionFindByCodeParams struct {
+	Code            string  `db:"code"`
+	ApplicationCode *string `db:"application_code"`
+	ClientID        *string `db:"client_id"`
+}
+
+// NULL-as-a-value semantics on both nullable parts of the key: a caller
+// asking for "no application" (application_code = NULL) or "no client"
+// (client_id = NULL) must match rows stored with NULL there, which plain
+// `=` never does. Mirrors uq_msg_connections_app_client_code (migration 056).
+func (q *Queries) ConnectionFindByCode(ctx context.Context, arg ConnectionFindByCodeParams) (MsgConnection, error) {
+	row := q.db.QueryRow(ctx, connectionFindByCode, arg.Code, arg.ApplicationCode, arg.ClientID)
 	var i MsgConnection
 	err := row.Scan(
 		&i.ID,
@@ -80,37 +94,8 @@ func (q *Queries) ConnectionFindByCodeAnchor(ctx context.Context, code string) (
 		&i.ClientIdentifier,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const connectionFindByCodeClient = `-- name: ConnectionFindByCodeClient :one
-SELECT id, code, name, description, external_id, status, service_account_id,
-       client_id, client_identifier, created_at, updated_at
-FROM msg_connections
-WHERE code = $1 AND client_id = $2
-`
-
-type ConnectionFindByCodeClientParams struct {
-	Code     string  `db:"code"`
-	ClientID *string `db:"client_id"`
-}
-
-func (q *Queries) ConnectionFindByCodeClient(ctx context.Context, arg ConnectionFindByCodeClientParams) (MsgConnection, error) {
-	row := q.db.QueryRow(ctx, connectionFindByCodeClient, arg.Code, arg.ClientID)
-	var i MsgConnection
-	err := row.Scan(
-		&i.ID,
-		&i.Code,
-		&i.Name,
-		&i.Description,
-		&i.ExternalID,
-		&i.Status,
-		&i.ServiceAccountID,
-		&i.ClientID,
-		&i.ClientIdentifier,
-		&i.CreatedAt,
-		&i.UpdatedAt,
+		&i.ApplicationCode,
+		&i.Source,
 	)
 	return i, err
 }
@@ -118,12 +103,15 @@ func (q *Queries) ConnectionFindByCodeClient(ctx context.Context, arg Connection
 const connectionFindByID = `-- name: ConnectionFindByID :one
 
 SELECT id, code, name, description, external_id, status, service_account_id,
-       client_id, client_identifier, created_at, updated_at
+       client_id, client_identifier, created_at, updated_at, application_code, source
 FROM msg_connections
 WHERE id = $1
 `
 
-// Queries for msg_connections.
+// Queries for msg_connections. Column lists are kept in the table's
+// physical column order (application_code/source were appended by migration
+// 056) so sqlc maps every query onto the shared MsgConnection model instead
+// of minting a one-off row type per query.
 func (q *Queries) ConnectionFindByID(ctx context.Context, id string) (MsgConnection, error) {
 	row := q.db.QueryRow(ctx, connectionFindByID, id)
 	var i MsgConnection
@@ -139,6 +127,8 @@ func (q *Queries) ConnectionFindByID(ctx context.Context, id string) (MsgConnect
 		&i.ClientIdentifier,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ApplicationCode,
+		&i.Source,
 	)
 	return i, err
 }
@@ -146,8 +136,8 @@ func (q *Queries) ConnectionFindByID(ctx context.Context, id string) (MsgConnect
 const connectionUpsert = `-- name: ConnectionUpsert :exec
 INSERT INTO msg_connections
     (id, code, name, description, external_id, status, service_account_id,
-     client_id, client_identifier, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+     client_id, client_identifier, created_at, updated_at, application_code, source)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 ON CONFLICT (id) DO UPDATE SET
     code = EXCLUDED.code,
     name = EXCLUDED.name,
@@ -157,7 +147,9 @@ ON CONFLICT (id) DO UPDATE SET
     service_account_id = EXCLUDED.service_account_id,
     client_id = EXCLUDED.client_id,
     client_identifier = EXCLUDED.client_identifier,
-    updated_at = EXCLUDED.updated_at
+    updated_at = EXCLUDED.updated_at,
+    application_code = EXCLUDED.application_code,
+    source = EXCLUDED.source
 `
 
 type ConnectionUpsertParams struct {
@@ -172,6 +164,8 @@ type ConnectionUpsertParams struct {
 	ClientIdentifier *string   `db:"client_identifier"`
 	CreatedAt        time.Time `db:"created_at"`
 	UpdatedAt        time.Time `db:"updated_at"`
+	ApplicationCode  *string   `db:"application_code"`
+	Source           string    `db:"source"`
 }
 
 func (q *Queries) ConnectionUpsert(ctx context.Context, arg ConnectionUpsertParams) error {
@@ -187,6 +181,8 @@ func (q *Queries) ConnectionUpsert(ctx context.Context, arg ConnectionUpsertPara
 		arg.ClientIdentifier,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.ApplicationCode,
+		arg.Source,
 	)
 	return err
 }

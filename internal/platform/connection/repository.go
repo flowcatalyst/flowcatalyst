@@ -36,19 +36,14 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*Connection, erro
 	return rowToConnection(*row)
 }
 
-// FindByCodeAndClient locates by (code, client_id). clientID may be nil.
-func (r *Repository) FindByCodeAndClient(ctx context.Context, code string, clientID *string) (*Connection, error) {
-	var (
-		res dbq.MsgConnection
-		err error
-	)
-	if clientID != nil {
-		res, err = r.q.ConnectionFindByCodeClient(ctx, dbq.ConnectionFindByCodeClientParams{
-			Code: code, ClientID: clientID,
-		})
-	} else {
-		res, err = r.q.ConnectionFindByCodeAnchor(ctx, code)
-	}
+// FindByCode locates by (code, application_code, client_id). applicationCode
+// and clientID may each independently be nil — "no application" (a shared
+// connection) and "no client" (global) are real values in the key, not
+// wildcards, so a nil here only matches a row whose column is also NULL.
+func (r *Repository) FindByCode(ctx context.Context, code string, applicationCode, clientID *string) (*Connection, error) {
+	res, err := r.q.ConnectionFindByCode(ctx, dbq.ConnectionFindByCodeParams{
+		Code: code, ApplicationCode: applicationCode, ClientID: clientID,
+	})
 	row, err := repocommon.One(res, err, "connection repo")
 	if row == nil || err != nil {
 		return nil, err
@@ -84,7 +79,8 @@ func (r *Repository) FindWithFilters(ctx context.Context, status, clientID *stri
 	f.EqPtr("client_id", clientID)
 
 	q := `SELECT id, code, name, description, external_id, status,
-		service_account_id, client_id, client_identifier, created_at, updated_at
+		service_account_id, client_id, client_identifier, created_at, updated_at,
+		application_code, source
 		FROM msg_connections` + f.Where() + ` ORDER BY code`
 
 	rows, err := r.pool.Query(ctx, q, f.Args()...)
@@ -120,6 +116,8 @@ func (r *Repository) Persist(ctx context.Context, c *Connection, tx *usecasepgx.
 		ClientIdentifier: c.ClientIdentifier,
 		CreatedAt:        c.CreatedAt,
 		UpdatedAt:        time.Now().UTC(),
+		ApplicationCode:  c.ApplicationCode,
+		Source:           string(c.Source),
 	})
 }
 
@@ -128,12 +126,12 @@ func (r *Repository) Delete(ctx context.Context, c *Connection, tx *usecasepgx.D
 	return r.q.WithTx(tx.Inner()).ConnectionDelete(ctx, c.ID)
 }
 
-// rowToConnection hydrates the entity from its row. A status value that
-// isn't one of the known Status constants (junk written before
-// write-boundary validation existed, or a hand-edited row) is a loud read
-// error — never round-tripped as-is and never coerced to ACTIVE, per the
-// X-06 ruling. The row id is logged so the bad row can be found and fixed
-// without a debugger.
+// rowToConnection hydrates the entity from its row. A status or source value
+// that isn't one of the known constants (junk written before write-boundary
+// validation existed, or a hand-edited row) is a loud read error — never
+// round-tripped as-is and never coerced to a default, per the X-06 ruling.
+// The row id is logged so the bad row can be found and fixed without a
+// debugger.
 func rowToConnection(row dbq.MsgConnection) (*Connection, error) {
 	status, ok := ParseStatus(row.Status)
 	if !ok {
@@ -141,9 +139,16 @@ func rowToConnection(row dbq.MsgConnection) (*Connection, error) {
 		return nil, usecase.Internal("CORRUPT_CONNECTION_STATUS",
 			fmt.Sprintf("connection %s has an unrecognised status", row.ID), nil)
 	}
+	source, ok := ParseSource(row.Source)
+	if !ok {
+		slog.Error("connection row has unrecognised source", "id", row.ID, "source", row.Source)
+		return nil, usecase.Internal("CORRUPT_CONNECTION_SOURCE",
+			fmt.Sprintf("connection %s has an unrecognised source", row.ID), nil)
+	}
 	return &Connection{
 		ID:               row.ID,
 		Code:             row.Code,
+		ApplicationCode:  row.ApplicationCode,
 		Name:             row.Name,
 		Description:      row.Description,
 		ExternalID:       row.ExternalID,
@@ -151,6 +156,7 @@ func rowToConnection(row dbq.MsgConnection) (*Connection, error) {
 		ServiceAccountID: row.ServiceAccountID,
 		ClientID:         row.ClientID,
 		ClientIdentifier: row.ClientIdentifier,
+		Source:           source,
 		CreatedAt:        row.CreatedAt,
 		UpdatedAt:        row.UpdatedAt,
 	}, nil

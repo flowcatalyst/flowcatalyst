@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	connops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
@@ -304,6 +305,84 @@ func TestCreateSubscription_DuplicateCode_Conflict(t *testing.T) {
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "CODE_EXISTS")
 }
 
+// TestSyncSubscriptions_SameCodeDifferentApplications_Allowed pins the new
+// (application_code, client_id, code) key for subscriptions: the same code
+// under two different applications must not collide. CreateSubscription
+// (the plain create use case) never sets ApplicationCode — only
+// SyncSubscriptions does — so this goes through the real production path
+// that actually exercises the application dimension of the key.
+func TestSyncSubscriptions_SameCodeDifferentApplications_Allowed(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	subRepo := subscription.NewRepository(pool)
+	connRepo := connection.NewRepository(pool)
+	poolRepo := dispatchpool.NewRepository(pool)
+	uow := testpg.NewUoW(t)
+
+	const code = "subappscope-shared"
+	bindings := []operations.SyncEventTypeBindingInput{{EventTypeCode: "subappscope:a:b:c"}}
+
+	_, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncSubscriptions(subRepo, connRepo, poolRepo),
+		operations.SyncSubscriptionsCommand{
+			ApplicationCode: "subappscope-app-a",
+			Subscriptions: []operations.SyncSubscriptionInput{
+				{Code: code, Name: "A", Target: "https://a.example.test/hook", EventTypes: bindings},
+			},
+		}, testpg.TestEC())
+	require.NoError(t, err)
+
+	_, err = usecaseop.Run(appAccessCtx(), uow, operations.SyncSubscriptions(subRepo, connRepo, poolRepo),
+		operations.SyncSubscriptionsCommand{
+			ApplicationCode: "subappscope-app-b",
+			Subscriptions: []operations.SyncSubscriptionInput{
+				{Code: code, Name: "B", Target: "https://b.example.test/hook", EventTypes: bindings},
+			},
+		}, testpg.TestEC())
+	require.NoError(t, err, "the same code under a different application must not conflict")
+
+	appA := "subappscope-app-a"
+	appB := "subappscope-app-b"
+	subA, err := subRepo.FindByCode(ctx, code, &appA, nil)
+	require.NoError(t, err)
+	require.NotNil(t, subA)
+	assert.Equal(t, "A", subA.Name)
+
+	subB, err := subRepo.FindByCode(ctx, code, &appB, nil)
+	require.NoError(t, err)
+	require.NotNil(t, subB)
+	assert.Equal(t, "B", subB.Name)
+}
+
+// TestSubscriptions_DuplicateSharedNoClient_RejectedAtDatabase proves the
+// actual bug fix in migration 056 for msg_subscriptions: two subscriptions
+// with the same code, no application, and no client used to be allowed by
+// the OLD idx_msg_subscriptions_code_client index because Postgres treats
+// NULLs as distinct in a plain unique index. It goes straight at the
+// database with a second raw INSERT — bypassing CreateSubscription's
+// find-then-insert check entirely — to prove the constraint itself is what
+// now refuses the second row.
+func TestSubscriptions_DuplicateSharedNoClient_RejectedAtDatabase(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+
+	const code = "subappscope-db-dupe"
+	_, err := pool.Exec(ctx,
+		`INSERT INTO msg_subscriptions (id, code, name, target)
+		 VALUES ('sub_dbdupe0000001', $1, 'First', 'https://dbdupe.example.test/hook')`, code)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM msg_subscriptions WHERE id = 'sub_dbdupe0000001'`)
+	})
+
+	_, err = pool.Exec(ctx,
+		`INSERT INTO msg_subscriptions (id, code, name, target)
+		 VALUES ('sub_dbdupe0000002', $1, 'Second', 'https://dbdupe.example.test/hook')`, code)
+	require.Error(t, err, "a second shared, clientless subscription with the same code must be rejected by the unique index")
+	assert.Contains(t, err.Error(), "uq_msg_subscriptions_app_client_code")
+}
+
 // TestCreateSubscription_ResourceScope proves the use case's per-resource
 // authorization: the coarse "may write subscriptions" permission is the
 // controller's job, but the use case enforces that you can only bind a
@@ -529,14 +608,15 @@ func TestSyncSubscriptions_UpsertRemoveAndPoolResolution(t *testing.T) {
 	pool := testpg.Pool(t)
 	subRepo := subscription.NewRepository(pool)
 	connRepo := connection.NewRepository(pool)
+	connApps := application.NewRepository(pool)
 	poolRepo := dispatchpool.NewRepository(pool)
 	uow := testpg.NewUoW(t)
 	ec := testpg.TestEC()
-	const appCode = "subsyncapp1"
+	appCode := "subsyncapp1"
 
 	// Real connection for the connectionId binding. ServiceAccountID is an
 	// arbitrary string — CreateConnection does not validate it.
-	connEv, err := runAuthorized(uow, connops.CreateConnection(connRepo), connops.CreateCommand{
+	connEv, err := runAuthorized(uow, connops.CreateConnection(connRepo, connApps), connops.CreateCommand{
 		Code: "subsync-conn1", Name: "Sub Sync Conn", ServiceAccountID: "sva_subsync1",
 	})
 	require.NoError(t, err)
@@ -583,7 +663,7 @@ func TestSyncSubscriptions_UpsertRemoveAndPoolResolution(t *testing.T) {
 	assert.Equal(t, appCode, first.ApplicationCode)
 	assert.Equal(t, []string{"subsync-a", "subsync-b"}, first.SyncedCodes)
 
-	subA, err := subRepo.FindByCode(ctx, "subsync-a", nil)
+	subA, err := subRepo.FindByCode(ctx, "subsync-a", &appCode, nil)
 	require.NoError(t, err)
 	require.NotNil(t, subA)
 	assert.Equal(t, subscription.SourceAPI, subA.Source, "synced rows are API-sourced")
@@ -597,7 +677,7 @@ func TestSyncSubscriptions_UpsertRemoveAndPoolResolution(t *testing.T) {
 	assert.Equal(t, "subsync-pool1", *subA.DispatchPoolCode)
 
 	// Pin: an unresolvable dispatchPoolCode is silently left unset — no error.
-	subB, err := subRepo.FindByCode(ctx, "subsync-b", nil)
+	subB, err := subRepo.FindByCode(ctx, "subsync-b", &appCode, nil)
 	require.NoError(t, err)
 	require.NotNil(t, subB)
 	assert.Nil(t, subB.DispatchPoolID, "unresolvable pool code must leave the pool ref unset")
@@ -619,14 +699,14 @@ func TestSyncSubscriptions_UpsertRemoveAndPoolResolution(t *testing.T) {
 	assert.Equal(t, uint32(1), second.Updated)
 	assert.Equal(t, uint32(1), second.Deleted)
 
-	kept, err := subRepo.FindByCode(ctx, "subsync-a", nil)
+	kept, err := subRepo.FindByCode(ctx, "subsync-a", &appCode, nil)
 	require.NoError(t, err)
 	require.NotNil(t, kept)
 	assert.Equal(t, "A renamed", kept.Name)
 	require.NotNil(t, kept.DispatchPoolCode, "omitted dispatchPoolCode must leave the existing pool link")
 	assert.Equal(t, "subsync-pool1", *kept.DispatchPoolCode)
 
-	goneB, err := subRepo.FindByCode(ctx, "subsync-b", nil)
+	goneB, err := subRepo.FindByCode(ctx, "subsync-b", &appCode, nil)
 	require.NoError(t, err)
 	assert.Nil(t, goneB, "RemoveUnlisted must hard-delete unlisted API rows")
 

@@ -18,23 +18,20 @@ SELECT id, code, application_code, name, description, client_id,
 FROM msg_subscriptions
 WHERE id = $1;
 
--- name: SubscriptionFindByCodeClient :one
+-- name: SubscriptionFindByCode :one
+-- NULL-as-a-value semantics on both nullable parts of the key: a caller
+-- asking for "no application" (application_code = NULL) or "no client"
+-- (client_id = NULL) must match rows stored with NULL there, which plain
+-- `=` never does. Mirrors uq_msg_subscriptions_app_client_code (migration 056).
 SELECT id, code, application_code, name, description, client_id,
        client_identifier, client_scoped, target, queue,
        source, status, max_age_seconds, dispatch_pool_id, dispatch_pool_code,
        delay_seconds, sequence, mode, timeout_seconds, max_retries,
        service_account_id, data_only, created_at, updated_at, connection_id, created_by
 FROM msg_subscriptions
-WHERE code = $1 AND client_id = $2;
-
--- name: SubscriptionFindByCodeAnchor :one
-SELECT id, code, application_code, name, description, client_id,
-       client_identifier, client_scoped, target, queue,
-       source, status, max_age_seconds, dispatch_pool_id, dispatch_pool_code,
-       delay_seconds, sequence, mode, timeout_seconds, max_retries,
-       service_account_id, data_only, created_at, updated_at, connection_id, created_by
-FROM msg_subscriptions
-WHERE code = $1 AND client_id IS NULL;
+WHERE code = sqlc.arg('code')
+  AND application_code IS NOT DISTINCT FROM sqlc.narg('application_code')
+  AND client_id IS NOT DISTINCT FROM sqlc.narg('client_id');
 
 -- name: SubscriptionFindAll :many
 SELECT id, code, application_code, name, description, client_id,

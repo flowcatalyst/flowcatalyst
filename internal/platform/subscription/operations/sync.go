@@ -123,7 +123,11 @@ func SyncSubscriptions(
 				in := &subs[i]
 				if in.ConnectionCode != nil && strings.TrimSpace(*in.ConnectionCode) != "" {
 					code := strings.TrimSpace(*in.ConnectionCode)
-					c, err := connRepo.FindByCodeAndClient(ctx, code, nil)
+					// Part A behaviour pinned as-is: resolve the connection with no
+					// application and no client, exactly as before this key gained
+					// an application dimension. Scoping this lookup to the syncing
+					// application is Part C's job, not this change's.
+					c, err := connRepo.FindByCode(ctx, code, nil, nil)
 					if err != nil {
 						return nil, usecase.Internal("REPO", "find_by_code(connection) failed", err)
 					}

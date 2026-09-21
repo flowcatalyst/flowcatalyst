@@ -48,9 +48,15 @@ type Querier interface {
 	ClientUpsert(ctx context.Context, arg ClientUpsertParams) error
 	ConnectionDelete(ctx context.Context, id string) error
 	ConnectionFindAll(ctx context.Context) ([]MsgConnection, error)
-	ConnectionFindByCodeAnchor(ctx context.Context, code string) (MsgConnection, error)
-	ConnectionFindByCodeClient(ctx context.Context, arg ConnectionFindByCodeClientParams) (MsgConnection, error)
-	// Queries for msg_connections.
+	// NULL-as-a-value semantics on both nullable parts of the key: a caller
+	// asking for "no application" (application_code = NULL) or "no client"
+	// (client_id = NULL) must match rows stored with NULL there, which plain
+	// `=` never does. Mirrors uq_msg_connections_app_client_code (migration 056).
+	ConnectionFindByCode(ctx context.Context, arg ConnectionFindByCodeParams) (MsgConnection, error)
+	// Queries for msg_connections. Column lists are kept in the table's
+	// physical column order (application_code/source were appended by migration
+	// 056) so sqlc maps every query onto the shared MsgConnection model instead
+	// of minting a one-off row type per query.
 	ConnectionFindByID(ctx context.Context, id string) (MsgConnection, error)
 	ConnectionUpsert(ctx context.Context, arg ConnectionUpsertParams) error
 	CorsOriginDelete(ctx context.Context, id string) error
@@ -372,8 +378,11 @@ type Querier interface {
 	SubscriptionEventTypesClear(ctx context.Context, subscriptionID string) error
 	SubscriptionEventTypesForSubs(ctx context.Context, subscriptionIds []string) ([]SubscriptionEventTypesForSubsRow, error)
 	SubscriptionFindAll(ctx context.Context) ([]MsgSubscription, error)
-	SubscriptionFindByCodeAnchor(ctx context.Context, code string) (MsgSubscription, error)
-	SubscriptionFindByCodeClient(ctx context.Context, arg SubscriptionFindByCodeClientParams) (MsgSubscription, error)
+	// NULL-as-a-value semantics on both nullable parts of the key: a caller
+	// asking for "no application" (application_code = NULL) or "no client"
+	// (client_id = NULL) must match rows stored with NULL there, which plain
+	// `=` never does. Mirrors uq_msg_subscriptions_app_client_code (migration 056).
+	SubscriptionFindByCode(ctx context.Context, arg SubscriptionFindByCodeParams) (MsgSubscription, error)
 	// Queries for msg_subscriptions + msg_subscription_event_types +
 	// msg_subscription_custom_configs.
 	//

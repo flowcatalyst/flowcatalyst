@@ -1,34 +1,37 @@
--- Queries for msg_connections.
+-- Queries for msg_connections. Column lists are kept in the table's
+-- physical column order (application_code/source were appended by migration
+-- 056) so sqlc maps every query onto the shared MsgConnection model instead
+-- of minting a one-off row type per query.
 
 -- name: ConnectionFindByID :one
 SELECT id, code, name, description, external_id, status, service_account_id,
-       client_id, client_identifier, created_at, updated_at
+       client_id, client_identifier, created_at, updated_at, application_code, source
 FROM msg_connections
 WHERE id = $1;
 
--- name: ConnectionFindByCodeClient :one
+-- name: ConnectionFindByCode :one
+-- NULL-as-a-value semantics on both nullable parts of the key: a caller
+-- asking for "no application" (application_code = NULL) or "no client"
+-- (client_id = NULL) must match rows stored with NULL there, which plain
+-- `=` never does. Mirrors uq_msg_connections_app_client_code (migration 056).
 SELECT id, code, name, description, external_id, status, service_account_id,
-       client_id, client_identifier, created_at, updated_at
+       client_id, client_identifier, created_at, updated_at, application_code, source
 FROM msg_connections
-WHERE code = $1 AND client_id = $2;
-
--- name: ConnectionFindByCodeAnchor :one
-SELECT id, code, name, description, external_id, status, service_account_id,
-       client_id, client_identifier, created_at, updated_at
-FROM msg_connections
-WHERE code = $1 AND client_id IS NULL;
+WHERE code = sqlc.arg('code')
+  AND application_code IS NOT DISTINCT FROM sqlc.narg('application_code')
+  AND client_id IS NOT DISTINCT FROM sqlc.narg('client_id');
 
 -- name: ConnectionFindAll :many
 SELECT id, code, name, description, external_id, status, service_account_id,
-       client_id, client_identifier, created_at, updated_at
+       client_id, client_identifier, created_at, updated_at, application_code, source
 FROM msg_connections
 ORDER BY code;
 
 -- name: ConnectionUpsert :exec
 INSERT INTO msg_connections
     (id, code, name, description, external_id, status, service_account_id,
-     client_id, client_identifier, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+     client_id, client_identifier, created_at, updated_at, application_code, source)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 ON CONFLICT (id) DO UPDATE SET
     code = EXCLUDED.code,
     name = EXCLUDED.name,
@@ -38,7 +41,9 @@ ON CONFLICT (id) DO UPDATE SET
     service_account_id = EXCLUDED.service_account_id,
     client_id = EXCLUDED.client_id,
     client_identifier = EXCLUDED.client_identifier,
-    updated_at = EXCLUDED.updated_at;
+    updated_at = EXCLUDED.updated_at,
+    application_code = EXCLUDED.application_code,
+    source = EXCLUDED.source;
 
 -- name: ConnectionDelete :exec
 DELETE FROM msg_connections WHERE id = $1;

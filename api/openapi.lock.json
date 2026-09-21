@@ -1891,6 +1891,9 @@
             "readOnly": true,
             "type": "string"
           },
+          "applicationCode": {
+            "type": "string"
+          },
           "clientId": {
             "type": "string"
           },
@@ -1919,6 +1922,9 @@
           "serviceAccountId": {
             "type": "string"
           },
+          "source": {
+            "type": "string"
+          },
           "status": {
             "type": "string"
           },
@@ -1933,6 +1939,7 @@
           "name",
           "status",
           "serviceAccountId",
+          "source",
           "createdAt",
           "updatedAt"
         ],
@@ -2149,6 +2156,10 @@
             ],
             "format": "uri",
             "readOnly": true,
+            "type": "string"
+          },
+          "applicationCode": {
+            "description": "Optional application this connection belongs to. Omitted means shared (usable from any application).",
             "type": "string"
           },
           "clientId": {
@@ -8301,6 +8312,9 @@
             ],
             "format": "uri",
             "readOnly": true,
+            "type": "string"
+          },
+          "applicationCode": {
             "type": "string"
           },
           "description": {

@@ -338,6 +338,8 @@ type MsgConnection struct {
 	ClientIdentifier *string   `db:"client_identifier"`
 	CreatedAt        time.Time `db:"created_at"`
 	UpdatedAt        time.Time `db:"updated_at"`
+	ApplicationCode  *string   `db:"application_code"`
+	Source           string    `db:"source"`
 }
 
 type MsgDispatchJob struct {

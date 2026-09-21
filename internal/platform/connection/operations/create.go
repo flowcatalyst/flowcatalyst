@@ -4,8 +4,10 @@ import (
 	"context"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/validate"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
@@ -13,7 +15,11 @@ import (
 
 // CreateCommand is the input DTO.
 type CreateCommand struct {
-	Code             string  `json:"code"`
+	Code string `json:"code"`
+	// ApplicationCode optionally links the connection to a registered
+	// application. Omitted means "shared" — usable from any application (not
+	// to be confused with ClientID nil, which this codebase calls global).
+	ApplicationCode  *string `json:"applicationCode,omitempty"`
 	Name             string  `json:"name"`
 	Description      *string `json:"description,omitempty"`
 	ServiceAccountID string  `json:"serviceAccountId"`
@@ -22,12 +28,13 @@ type CreateCommand struct {
 }
 
 // CreateConnection validates cmd, enforces anchor-only authorization and
-// (code, clientID) uniqueness, persists the connection, and emits
-// [ConnectionCreated].
+// (applicationCode, clientID, code) uniqueness, persists the connection, and
+// emits [ConnectionCreated]. A connection created through this UI/API path
+// is source UI (the entity default; mirrors subscription.New/CreateSubscription).
 //
 // TODO(wave-3c): validate that ServiceAccountID exists once
 // service_account is ported.
-func CreateConnection(repo *connection.Repository) usecaseop.Operation[CreateCommand, ConnectionCreated] {
+func CreateConnection(repo *connection.Repository, apps *application.Repository) usecaseop.Operation[CreateCommand, ConnectionCreated] {
 	return usecaseop.Operation[CreateCommand, ConnectionCreated]{
 		Name: "CreateConnection",
 		Validate: func(_ context.Context, cmd CreateCommand) error {
@@ -58,9 +65,19 @@ func CreateConnection(repo *connection.Repository) usecaseop.Operation[CreateCom
 		Execute: func(ctx context.Context, cmd CreateCommand, ec usecase.ExecutionContext) (usecaseop.Plan[ConnectionCreated], error) {
 			code := strings.ToLower(strings.TrimSpace(cmd.Code))
 
-			existing, err := repo.FindByCodeAndClient(ctx, code, cmd.ClientID)
+			if cmd.ApplicationCode != nil {
+				app, err := apps.FindByCode(ctx, *cmd.ApplicationCode)
+				if err != nil {
+					return nil, usecase.Internal("REPO", "find_application_by_code failed", err)
+				}
+				if app == nil {
+					return nil, httperror.NotFound("Application", *cmd.ApplicationCode)
+				}
+			}
+
+			existing, err := repo.FindByCode(ctx, code, cmd.ApplicationCode, cmd.ClientID)
 			if err != nil {
-				return nil, usecase.Internal("REPO", "find_by_code_and_client failed", err)
+				return nil, usecase.Internal("REPO", "find_by_code failed", err)
 			}
 			if existing != nil {
 				return nil, usecase.Conflict("CODE_EXISTS",
@@ -68,6 +85,7 @@ func CreateConnection(repo *connection.Repository) usecaseop.Operation[CreateCom
 			}
 
 			c := connection.New(code, strings.TrimSpace(cmd.Name), cmd.ServiceAccountID)
+			c.ApplicationCode = cmd.ApplicationCode
 			c.Description = cmd.Description
 			c.ExternalID = cmd.ExternalID
 			c.ClientID = cmd.ClientID

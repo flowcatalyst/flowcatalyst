@@ -43,19 +43,14 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*Subscription, er
 	return r.hydrateOne(ctx, sub)
 }
 
-// FindByCode loads by (code, client_id).
-func (r *Repository) FindByCode(ctx context.Context, code string, clientID *string) (*Subscription, error) {
-	var (
-		res dbq.MsgSubscription
-		err error
-	)
-	if clientID != nil {
-		res, err = r.q.SubscriptionFindByCodeClient(ctx, dbq.SubscriptionFindByCodeClientParams{
-			Code: code, ClientID: clientID,
-		})
-	} else {
-		res, err = r.q.SubscriptionFindByCodeAnchor(ctx, code)
-	}
+// FindByCode loads by (code, application_code, client_id). applicationCode
+// and clientID may each independently be nil — "no application" and "no
+// client" are real values in the key, not wildcards, so a nil here only
+// matches a row whose column is also NULL.
+func (r *Repository) FindByCode(ctx context.Context, code string, applicationCode, clientID *string) (*Subscription, error) {
+	res, err := r.q.SubscriptionFindByCode(ctx, dbq.SubscriptionFindByCodeParams{
+		Code: code, ApplicationCode: applicationCode, ClientID: clientID,
+	})
 	row, err := repocommon.One(res, err, "subscription repo")
 	if row == nil || err != nil {
 		return nil, err

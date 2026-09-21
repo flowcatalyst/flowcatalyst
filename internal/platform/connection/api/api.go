@@ -7,6 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
@@ -21,6 +22,7 @@ import (
 // State bundles the dependencies.
 type State struct {
 	Repo *connection.Repository
+	Apps *application.Repository
 	UoW  *usecasepgx.UnitOfWork
 }
 
@@ -88,7 +90,7 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreateConnectionReq
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
-	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateConnection(s.Repo), in.Body.toCommand(), ec)
+	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateConnection(s.Repo, s.Apps), in.Body.toCommand(), ec)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +115,7 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, 
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
-	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateConnection(s.Repo), in.Body.toCommand(in.ID), ec); err != nil {
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateConnection(s.Repo, s.Apps), in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
