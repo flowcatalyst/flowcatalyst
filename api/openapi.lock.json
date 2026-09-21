@@ -8034,7 +8034,7 @@
             "type": "string"
           },
           "connectionCode": {
-            "description": "Connection code — stable across environments, unlike connectionId. Resolves an anchor-level connection.",
+            "description": "Connection code — stable across environments, unlike connectionId. By default resolves a connection owned by THIS application; set sharedConnection to resolve it among the shared (application-less) connections instead. Within either namespace, a client-scoped sync (clientId set) prefers its own client's connection, falling back to a global one; a client-less sync only resolves a global connection.",
             "type": "string"
           },
           "connectionId": {
@@ -8065,6 +8065,10 @@
           "name": {
             "type": "string"
           },
+          "sharedConnection": {
+            "description": "Resolve connectionCode among the shared (application-less) connections instead of this application's own. Requires connectionCode.",
+            "type": "boolean"
+          },
           "target": {
             "type": "string"
           },
@@ -8091,6 +8095,9 @@
             ],
             "format": "uri",
             "readOnly": true,
+            "type": "string"
+          },
+          "clientId": {
             "type": "string"
           },
           "subscriptions": {

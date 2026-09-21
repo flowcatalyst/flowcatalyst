@@ -6,6 +6,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -67,6 +68,36 @@ func mustCreate(t *testing.T, repo *subscription.Repository, uow *usecasepgx.Uni
 		})
 	require.NoError(t, err)
 	return ev
+}
+
+// insertRawConnection seeds a msg_connections row directly, bypassing every
+// use case, so a test can pin an exact (application_code, client_id, code)
+// combination for the sync's connection lookup — application_code has no FK,
+// and service_account_id is unvalidated (CreateConnection's TODO(wave-3c)),
+// so neither needs a real backing row. Mirrors
+// connection/operations.insertRawConnection (a different package instance;
+// not importable across packages).
+func insertRawConnection(t *testing.T, pool *pgxpool.Pool, id, code, serviceAccountID string, applicationCode, clientID *string) {
+	t.Helper()
+	_, err := pool.Exec(context.Background(),
+		`INSERT INTO msg_connections (id, code, name, status, service_account_id, application_code, client_id, source)
+		 VALUES ($1, $2, $3, 'ACTIVE', $4, $5, $6, 'API')`,
+		id, code, code, serviceAccountID, applicationCode, clientID)
+	require.NoError(t, err)
+}
+
+// insertRawSubscription seeds a msg_subscriptions row directly, bypassing
+// every use case, so a test can pin an exact (application_code, client_id,
+// code, source) combination — including source=API rows outside the scope
+// under test, which no public operation can produce (CreateSubscription
+// always stamps source=UI and never sets application_code).
+func insertRawSubscription(t *testing.T, pool *pgxpool.Pool, id, code, name string, applicationCode, clientID *string, source string) {
+	t.Helper()
+	_, err := pool.Exec(context.Background(),
+		`INSERT INTO msg_subscriptions (id, code, application_code, name, client_id, target, source)
+		 VALUES ($1, $2, $3, $4, $5, 'https://raw.example.test/hook', $6)`,
+		id, code, applicationCode, name, clientID, source)
+	require.NoError(t, err)
 }
 
 // ── Create ────────────────────────────────────────────────────────────────
@@ -792,7 +823,9 @@ func TestSyncSubscriptions_ConnectionNotFound(t *testing.T) {
 
 // TestSyncSubscriptions_ConnectionCode is the code-first route: a connection id
 // is minted per environment, so a definition compiled into an app can only
-// name the connection by its code. The sync resolves that code to THIS
+// name the connection by its code. The sync resolves that code, within THIS
+// application's own namespace (see TestSyncSubscriptions_ConnectionNamespace_
+// NoFallback for the shared namespace and its explicit opt-in), to THIS
 // environment's id — and refuses a code that doesn't exist, or an id + code
 // pair that name different connections.
 func TestSyncSubscriptions_ConnectionCode(t *testing.T) {
@@ -803,45 +836,461 @@ func TestSyncSubscriptions_ConnectionCode(t *testing.T) {
 	connRepo := connection.NewRepository(pool)
 	poolRepo := dispatchpool.NewRepository(pool)
 
-	const connID, connCode = "con_subsynccode1", "subsync-conn-code"
-	_, err := pool.Exec(ctx,
-		`INSERT INTO msg_connections (id, code, name, status, service_account_id)
-		 VALUES ($1, $2, 'Sync conn', 'ACTIVE', 'sac_subsynccode1')`, connID, connCode)
-	require.NoError(t, err)
+	appCode := "subsyncconncode"
+	const connID, connCode = "cnx_subsynccode1", "subsync-conn-code"
+	insertRawConnection(t, pool, connID, connCode, "sac_subsynccode1", &appCode, nil)
 
-	run := func(appCode string, in operations.SyncSubscriptionInput) error {
+	run := func(cmd operations.SyncSubscriptionsCommand) error {
+		_, err := usecaseop.Run(appAccessCtx(), testpg.NewUoW(t),
+			operations.SyncSubscriptions(subRepo, connRepo, poolRepo), cmd, testpg.TestEC())
+		return err
+	}
+	entry := func(in operations.SyncSubscriptionInput) operations.SyncSubscriptionInput {
 		in.Name, in.Target = "X", "https://x.example.test"
 		in.EventTypes = []operations.SyncEventTypeBindingInput{{EventTypeCode: "subsync:a:b:c"}}
+		return in
+	}
+
+	require.NoError(t, run(operations.SyncSubscriptionsCommand{
+		ApplicationCode: appCode,
+		Subscriptions:   []operations.SyncSubscriptionInput{entry(operations.SyncSubscriptionInput{Code: "subsync-bycode", ConnectionCode: new(connCode)})},
+	}))
+	got, err := subRepo.FindByCode(ctx, "subsync-bycode", &appCode, nil)
+	require.NoError(t, err)
+	require.NotNil(t, got.ConnectionID)
+	assert.Equal(t, connID, *got.ConnectionID, "the code resolves, within this application's own namespace, to this environment's connection id")
+
+	// Re-sync by code updates the same row rather than losing the connection.
+	require.NoError(t, run(operations.SyncSubscriptionsCommand{
+		ApplicationCode: appCode,
+		Subscriptions:   []operations.SyncSubscriptionInput{entry(operations.SyncSubscriptionInput{Code: "subsync-bycode", ConnectionCode: new(connCode), ConnectionID: new(connID)})},
+	}))
+
+	testpg.RequireUsecaseError(t, run(operations.SyncSubscriptionsCommand{
+		ApplicationCode: "subsyncconncode404",
+		Subscriptions:   []operations.SyncSubscriptionInput{entry(operations.SyncSubscriptionInput{Code: "subsync-badcode", ConnectionCode: new("no-such-connection")})},
+	}), usecase.KindNotFound, "CONNECTION_NOT_FOUND")
+
+	testpg.RequireUsecaseError(t, run(operations.SyncSubscriptionsCommand{
+		ApplicationCode: appCode,
+		Subscriptions:   []operations.SyncSubscriptionInput{entry(operations.SyncSubscriptionInput{Code: "subsync-mismatch", ConnectionCode: new(connCode), ConnectionID: new("con_someotherone1")})},
+	}), usecase.KindValidation, "CONNECTION_MISMATCH")
+}
+
+// TestSyncSubscriptions_ConnectionNamespace_NoFallback pins ruling
+// 2026-09-21 #4: a connectionCode lookup NEVER falls between the
+// application-owned namespace and the shared (application-less) one. A bare
+// code only ever resolves an application-owned connection; sharedConnection
+// switches to ONLY the shared namespace. A connection existing at the same
+// code in the other namespace is invisible to the lookup, not a fallback
+// target.
+func TestSyncSubscriptions_ConnectionNamespace_NoFallback(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	subRepo := subscription.NewRepository(pool)
+	connRepo := connection.NewRepository(pool)
+	poolRepo := dispatchpool.NewRepository(pool)
+
+	appCode := "subns-app"
+	run := func(in operations.SyncSubscriptionInput) error {
+		in.Name, in.Target = "X", "https://x.example.test"
+		in.EventTypes = []operations.SyncEventTypeBindingInput{{EventTypeCode: "subns:a:b:c"}}
+		_, err := usecaseop.Run(appAccessCtx(), testpg.NewUoW(t),
+			operations.SyncSubscriptions(subRepo, connRepo, poolRepo),
+			operations.SyncSubscriptionsCommand{ApplicationCode: appCode, Subscriptions: []operations.SyncSubscriptionInput{in}},
+			testpg.TestEC())
+		return err
+	}
+
+	// Only a SHARED connection exists at this code: a bare code lookup must
+	// not fall through to it.
+	const onlySharedCode = "subns-only-shared"
+	insertRawConnection(t, pool, "cnx_subnsonlysh1", onlySharedCode, "sva_subns1", nil, nil)
+	testpg.RequireUsecaseError(t,
+		run(operations.SyncSubscriptionInput{Code: "subns-bare-miss", ConnectionCode: new(onlySharedCode)}),
+		usecase.KindNotFound, "CONNECTION_NOT_FOUND")
+	// sharedConnection:true DOES find it.
+	require.NoError(t, run(operations.SyncSubscriptionInput{
+		Code: "subns-shared-hit", ConnectionCode: new(onlySharedCode), SharedConnection: true,
+	}))
+	gotSharedHit, err := subRepo.FindByCode(ctx, "subns-shared-hit", &appCode, nil)
+	require.NoError(t, err)
+	require.NotNil(t, gotSharedHit.ConnectionID)
+	assert.Equal(t, "cnx_subnsonlysh1", *gotSharedHit.ConnectionID)
+
+	// Only an APPLICATION-OWNED connection exists at this code: sharedConnection
+	// must not fall through to it.
+	const onlyOwnedCode = "subns-only-owned"
+	insertRawConnection(t, pool, "cnx_subnsonlyow1", onlyOwnedCode, "sva_subns2", &appCode, nil)
+	testpg.RequireUsecaseError(t,
+		run(operations.SyncSubscriptionInput{Code: "subns-shared-miss", ConnectionCode: new(onlyOwnedCode), SharedConnection: true}),
+		usecase.KindNotFound, "CONNECTION_NOT_FOUND")
+	// The bare (default) lookup DOES find it.
+	require.NoError(t, run(operations.SyncSubscriptionInput{Code: "subns-bare-hit", ConnectionCode: new(onlyOwnedCode)}))
+	gotBareHit, err := subRepo.FindByCode(ctx, "subns-bare-hit", &appCode, nil)
+	require.NoError(t, err)
+	require.NotNil(t, gotBareHit.ConnectionID)
+	assert.Equal(t, "cnx_subnsonlyow1", *gotBareHit.ConnectionID)
+
+	// Both namespaces have a connection at the SAME code: bare and shared
+	// resolve to two DIFFERENT rows, proving there's no fallback either way.
+	const bothCode = "subns-both"
+	insertRawConnection(t, pool, "cnx_subnsbothown1", bothCode, "sva_subns3", &appCode, nil)
+	insertRawConnection(t, pool, "cnx_subnsbothshr1", bothCode, "sva_subns4", nil, nil)
+	require.NoError(t, run(operations.SyncSubscriptionInput{Code: "subns-both-bare", ConnectionCode: new(bothCode)}))
+	require.NoError(t, run(operations.SyncSubscriptionInput{Code: "subns-both-shared", ConnectionCode: new(bothCode), SharedConnection: true}))
+	gotBare, err := subRepo.FindByCode(ctx, "subns-both-bare", &appCode, nil)
+	require.NoError(t, err)
+	gotShared, err := subRepo.FindByCode(ctx, "subns-both-shared", &appCode, nil)
+	require.NoError(t, err)
+	require.NotNil(t, gotBare.ConnectionID)
+	require.NotNil(t, gotShared.ConnectionID)
+	assert.Equal(t, "cnx_subnsbothown1", *gotBare.ConnectionID)
+	assert.Equal(t, "cnx_subnsbothshr1", *gotShared.ConnectionID)
+}
+
+// TestSyncSubscriptions_ConnectionClientPreference pins ruling 2026-09-21 #4's
+// client axis: within whichever namespace was chosen, a client-scoped sync
+// prefers its OWN client's connection at that code, falling back to a global
+// one only when the client has none.
+func TestSyncSubscriptions_ConnectionClientPreference(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	subRepo := subscription.NewRepository(pool)
+	connRepo := connection.NewRepository(pool)
+	poolRepo := dispatchpool.NewRepository(pool)
+
+	appCode := "subcli-app"
+	clientA := "cli_subcli_a00a"
+
+	run := func(clientID *string, in operations.SyncSubscriptionInput) error {
+		in.Name, in.Target = "X", "https://x.example.test"
+		in.EventTypes = []operations.SyncEventTypeBindingInput{{EventTypeCode: "subcli:a:b:c"}}
+		_, err := usecaseop.Run(appAccessCtx(), testpg.NewUoW(t),
+			operations.SyncSubscriptions(subRepo, connRepo, poolRepo),
+			operations.SyncSubscriptionsCommand{ApplicationCode: appCode, ClientID: clientID, Subscriptions: []operations.SyncSubscriptionInput{in}},
+			testpg.TestEC())
+		return err
+	}
+
+	// Only a global (application-owned, client-less) connection exists at this
+	// code: a client-scoped sync falls back to it.
+	const fallbackCode = "subcli-fallback"
+	insertRawConnection(t, pool, "cnx_subclifb00001", fallbackCode, "sva_subcli1", &appCode, nil)
+	require.NoError(t, run(&clientA, operations.SyncSubscriptionInput{Code: "subcli-fb", ConnectionCode: new(fallbackCode)}))
+	gotFallback, err := subRepo.FindByCode(ctx, "subcli-fb", &appCode, &clientA)
+	require.NoError(t, err)
+	require.NotNil(t, gotFallback.ConnectionID)
+	assert.Equal(t, "cnx_subclifb00001", *gotFallback.ConnectionID)
+
+	// Both a global AND the client's own connection exist at the same code:
+	// the client's own connection wins.
+	const preferCode = "subcli-prefer"
+	insertRawConnection(t, pool, "cnx_subcliglob001", preferCode, "sva_subcli2", &appCode, nil)
+	insertRawConnection(t, pool, "cnx_subcliownA001", preferCode, "sva_subcli3", &appCode, &clientA)
+	require.NoError(t, run(&clientA, operations.SyncSubscriptionInput{Code: "subcli-pref", ConnectionCode: new(preferCode)}))
+	gotPreferred, err := subRepo.FindByCode(ctx, "subcli-pref", &appCode, &clientA)
+	require.NoError(t, err)
+	require.NotNil(t, gotPreferred.ConnectionID)
+	assert.Equal(t, "cnx_subcliownA001", *gotPreferred.ConnectionID, "the client's own connection must be preferred over the global one")
+}
+
+// TestSyncSubscriptions_ConnectionScopeMismatch pins ruling 2026-09-21 #5: a
+// global subscription may never bind to a client-owned connection. Naming it
+// by connectionId surfaces CONNECTION_SCOPE_MISMATCH (the id lookup doesn't
+// filter by client, so it finds the row and the explicit check catches it).
+// Naming the SAME connection by connectionCode instead surfaces
+// CONNECTION_NOT_FOUND — not a scope mismatch — because a global sync's code
+// lookup is restricted to a NULL client_id by construction (ruling #4: "a
+// global subscription may use ONLY a global connection"), so a client-owned
+// row is never even a candidate match; there's nothing to compare scopes
+// against.
+func TestSyncSubscriptions_ConnectionScopeMismatch(t *testing.T) {
+	t.Parallel()
+	pool := testpg.Pool(t)
+	subRepo := subscription.NewRepository(pool)
+	connRepo := connection.NewRepository(pool)
+	poolRepo := dispatchpool.NewRepository(pool)
+
+	appCode := "subscmis-app"
+	clientA := "cli_subscmis_a0a"
+	const code = "subscmis-conn"
+	insertRawConnection(t, pool, "cnx_subscmisown1", code, "sva_subscmis1", &appCode, &clientA)
+
+	run := func(in operations.SyncSubscriptionInput) error {
+		in.Name, in.Target = "X", "https://x.example.test"
+		in.EventTypes = []operations.SyncEventTypeBindingInput{{EventTypeCode: "subscmis:a:b:c"}}
+		_, err := usecaseop.Run(appAccessCtx(), testpg.NewUoW(t),
+			operations.SyncSubscriptions(subRepo, connRepo, poolRepo),
+			// No ClientID: a global subscription.
+			operations.SyncSubscriptionsCommand{ApplicationCode: appCode, Subscriptions: []operations.SyncSubscriptionInput{in}},
+			testpg.TestEC())
+		return err
+	}
+
+	testpg.RequireUsecaseError(t,
+		run(operations.SyncSubscriptionInput{Code: "subscmis-byid", ConnectionID: new("cnx_subscmisown1")}),
+		usecase.KindValidation, "CONNECTION_SCOPE_MISMATCH")
+
+	testpg.RequireUsecaseError(t,
+		run(operations.SyncSubscriptionInput{Code: "subscmis-bycode", ConnectionCode: new(code)}),
+		usecase.KindNotFound, "CONNECTION_NOT_FOUND")
+}
+
+// TestSyncSubscriptions_ConnectionIdCannotCrossApplications closes the id
+// path's hole on the application axis: a connection signs deliveries with its
+// application's credentials, so a sync for one application must not be able to
+// bind a subscription to another application's connection just by knowing its
+// id. A shared (application-less) connection stays usable by id from anywhere.
+func TestSyncSubscriptions_ConnectionIdCannotCrossApplications(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	subRepo := subscription.NewRepository(pool)
+	connRepo := connection.NewRepository(pool)
+	poolRepo := dispatchpool.NewRepository(pool)
+
+	otherApp := "subxapp-other"
+	insertRawConnection(t, pool, "cnx_subxappothr1", "subxapp-theirs", "sva_subxapp1", &otherApp, nil)
+	insertRawConnection(t, pool, "cnx_subxappshrd1", "subxapp-shared", "sva_subxapp2", nil, nil)
+
+	run := func(code, connID string) error {
+		_, err := usecaseop.Run(appAccessCtx(), testpg.NewUoW(t),
+			operations.SyncSubscriptions(subRepo, connRepo, poolRepo),
+			operations.SyncSubscriptionsCommand{ApplicationCode: "subxapp-mine", Subscriptions: []operations.SyncSubscriptionInput{{
+				Code: code, Name: "X", Target: "https://x.example.test", ConnectionID: &connID,
+				EventTypes: []operations.SyncEventTypeBindingInput{{EventTypeCode: "subxapp:a:b:c"}},
+			}}}, testpg.TestEC())
+		return err
+	}
+
+	testpg.RequireUsecaseError(t, run("subxapp-borrow", "cnx_subxappothr1"),
+		usecase.KindValidation, "CONNECTION_SCOPE_MISMATCH")
+
+	require.NoError(t, run("subxapp-useshared", "cnx_subxappshrd1"))
+	subs, err := subRepo.FindByApplicationAndClient(ctx, "subxapp-mine", nil)
+	require.NoError(t, err)
+	require.Len(t, subs, 1, "only the shared-connection subscription was created")
+	require.NotNil(t, subs[0].ConnectionID)
+	assert.Equal(t, "cnx_subxappshrd1", *subs[0].ConnectionID)
+}
+
+// TestSyncSubscriptions_SharedConnectionRequiresCode pins ruling 2026-09-21
+// #4's validation edge: sharedConnection is meaningless without a code to
+// resolve within that namespace.
+func TestSyncSubscriptions_SharedConnectionRequiresCode(t *testing.T) {
+	t.Parallel()
+	pool := testpg.Pool(t)
+	subRepo := subscription.NewRepository(pool)
+	connRepo := connection.NewRepository(pool)
+	poolRepo := dispatchpool.NewRepository(pool)
+
+	_, err := usecaseop.Run(appAccessCtx(), testpg.NewUoW(t),
+		operations.SyncSubscriptions(subRepo, connRepo, poolRepo),
+		operations.SyncSubscriptionsCommand{
+			ApplicationCode: "subsharedreq-app",
+			Subscriptions: []operations.SyncSubscriptionInput{
+				{
+					Code: "subsharedreq-x", Name: "X", Target: "https://x.example.test",
+					EventTypes:       []operations.SyncEventTypeBindingInput{{EventTypeCode: "subsharedreq:a:b:c"}},
+					SharedConnection: true,
+				},
+			},
+		}, testpg.TestEC())
+	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "SHARED_CONNECTION_REQUIRES_CODE")
+}
+
+// TestSyncSubscriptions_SameCodeAcrossClientPartitions proves the same
+// subscription code exists independently under client A, client B, and
+// globally for one application — each partition is updated only by its own
+// sync, never by another partition's.
+func TestSyncSubscriptions_SameCodeAcrossClientPartitions(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	subRepo := subscription.NewRepository(pool)
+	connRepo := connection.NewRepository(pool)
+	poolRepo := dispatchpool.NewRepository(pool)
+
+	appCode := "subpart-app"
+	clientA := "cli_subpart_a0a"
+	clientB := "cli_subpart_b0b"
+	const code = "subpart-shared-code"
+	bindings := []operations.SyncEventTypeBindingInput{{EventTypeCode: "subpart:a:b:c"}}
+
+	run := func(clientID *string, name string) {
 		_, err := usecaseop.Run(appAccessCtx(), testpg.NewUoW(t),
 			operations.SyncSubscriptions(subRepo, connRepo, poolRepo),
 			operations.SyncSubscriptionsCommand{
 				ApplicationCode: appCode,
-				Subscriptions:   []operations.SyncSubscriptionInput{in},
+				ClientID:        clientID,
+				Subscriptions: []operations.SyncSubscriptionInput{
+					{Code: code, Name: name, Target: "https://x.example.test/" + name, EventTypes: bindings},
+				},
 			}, testpg.TestEC())
-		return err
+		require.NoError(t, err)
 	}
 
-	require.NoError(t, run("subsyncconncode", operations.SyncSubscriptionInput{
-		Code: "subsync-bycode", ConnectionCode: new(connCode),
-	}))
-	subs, err := subRepo.FindByApplicationCode(ctx, "subsyncconncode")
+	run(&clientA, "A1")
+	run(&clientB, "B1")
+	run(nil, "G1")
+	// Re-syncing client A's partition must not touch the others.
+	run(&clientA, "A2")
+
+	subA, err := subRepo.FindByCode(ctx, code, &appCode, &clientA)
 	require.NoError(t, err)
-	require.Len(t, subs, 1)
-	require.NotNil(t, subs[0].ConnectionID)
-	assert.Equal(t, connID, *subs[0].ConnectionID, "the code resolves to this environment's connection id")
+	require.NotNil(t, subA)
+	assert.Equal(t, "A2", subA.Name)
 
-	// Re-sync by code updates the same row rather than losing the connection.
-	require.NoError(t, run("subsyncconncode", operations.SyncSubscriptionInput{
-		Code: "subsync-bycode", ConnectionCode: new(connCode), ConnectionID: new(connID),
-	}))
+	subB, err := subRepo.FindByCode(ctx, code, &appCode, &clientB)
+	require.NoError(t, err)
+	require.NotNil(t, subB)
+	assert.Equal(t, "B1", subB.Name, "client B's row must be untouched by client A's sync")
 
-	testpg.RequireUsecaseError(t, run("subsyncconncode404", operations.SyncSubscriptionInput{
-		Code: "subsync-badcode", ConnectionCode: new("no-such-connection"),
-	}), usecase.KindNotFound, "CONNECTION_NOT_FOUND")
+	subG, err := subRepo.FindByCode(ctx, code, &appCode, nil)
+	require.NoError(t, err)
+	require.NotNil(t, subG)
+	assert.Equal(t, "G1", subG.Name, "the global row must be untouched by client A's sync")
+}
 
-	testpg.RequireUsecaseError(t, run("subsyncconnmismatch", operations.SyncSubscriptionInput{
-		Code: "subsync-mismatch", ConnectionCode: new(connCode), ConnectionID: new("con_someotherone1"),
-	}), usecase.KindValidation, "CONNECTION_MISMATCH")
+// TestSyncSubscriptions_RemoveUnlisted_ScopedToApplicationAndClient is the
+// single most important test in this feature: it seeds five pre-existing
+// rows that all look like plausible deletion candidates — same code, various
+// (application, client, source) combinations — and proves a sync targeting
+// exactly one (application, client) pair with RemoveUnlisted removes ONLY the
+// one row in that exact scope, never a sibling client's row, the
+// application's global (client-less) row, another application's row, or a
+// UI-authored row even inside the deletion scope. It then mirrors the case
+// for a client-less sync, proving backward compatibility: a sync with no
+// clientId behaves exactly as before — RemoveUnlisted only ever sweeps the
+// application's global partition.
+func TestSyncSubscriptions_RemoveUnlisted_ScopedToApplicationAndClient(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	subRepo := subscription.NewRepository(pool)
+	connRepo := connection.NewRepository(pool)
+	poolRepo := dispatchpool.NewRepository(pool)
+
+	// application_code feeds aud_logs.entity_id (VARCHAR(17)) via the rollup
+	// event's Subject(), so these must fit that width.
+	appCode := "rmsub-app-main"
+	otherAppCode := "rmsub-app-other" // application_code has no FK
+	clientA := "cli_rmsubscope_a"
+	clientB := "cli_rmsubscope_b"
+	const sharedCode = "rmsubscope-code"
+
+	// The one row that must be removed: (this app, client A), API-sourced,
+	// not listed in the sync payload.
+	insertRawSubscription(t, pool, "sub_rmsubscope01", sharedCode, "Target", &appCode, &clientA, "API")
+	// A UI row at the SAME (app, client) scope, same code family but its own
+	// code (can't collide on the unique key) — must survive even though it's
+	// inside the exact scope RemoveUnlisted sweeps.
+	insertRawSubscription(t, pool, "sub_rmsubscope02", "rmsubscope-ui-kept", "UI Kept", &appCode, &clientA, "UI")
+	// Same app, DIFFERENT client — must survive.
+	insertRawSubscription(t, pool, "sub_rmsubscope03", sharedCode, "Client B row", &appCode, &clientB, "API")
+	// Same app, NO client (the application's global partition) — must survive.
+	insertRawSubscription(t, pool, "sub_rmsubscope04", sharedCode, "No client row", &appCode, nil, "API")
+	// DIFFERENT application, same client — must survive.
+	insertRawSubscription(t, pool, "sub_rmsubscope05", sharedCode, "Other app row", &otherAppCode, &clientA, "API")
+
+	result, err := usecaseop.Run(appAccessCtx(), testpg.NewUoW(t),
+		operations.SyncSubscriptions(subRepo, connRepo, poolRepo),
+		operations.SyncSubscriptionsCommand{
+			ApplicationCode: appCode,
+			ClientID:        &clientA,
+			Subscriptions:   nil, // nothing listed: everything in scope is "unlisted"
+			RemoveUnlisted:  true,
+		}, testpg.TestEC())
+	require.NoError(t, err)
+	assert.Equal(t, uint32(0), result.Created)
+	assert.Equal(t, uint32(0), result.Updated)
+	assert.Equal(t, uint32(1), result.Deleted, "exactly one row is in the deletion scope")
+
+	gone, err := subRepo.FindByCode(ctx, sharedCode, &appCode, &clientA)
+	require.NoError(t, err)
+	assert.Nil(t, gone, "the unlisted API row in the exact synced scope must be removed")
+
+	uiKept, err := subRepo.FindByCode(ctx, "rmsubscope-ui-kept", &appCode, &clientA)
+	require.NoError(t, err)
+	require.NotNil(t, uiKept, "a UI row in the same scope must survive")
+	assert.Equal(t, subscription.SourceUI, uiKept.Source)
+
+	clientBRow, err := subRepo.FindByCode(ctx, sharedCode, &appCode, &clientB)
+	require.NoError(t, err)
+	require.NotNil(t, clientBRow, "a sibling client's row must survive")
+
+	noClientRow, err := subRepo.FindByCode(ctx, sharedCode, &appCode, nil)
+	require.NoError(t, err)
+	require.NotNil(t, noClientRow, "the application's global (client-less) row must survive")
+
+	otherAppRow, err := subRepo.FindByCode(ctx, sharedCode, &otherAppCode, &clientA)
+	require.NoError(t, err)
+	require.NotNil(t, otherAppRow, "another application's row must survive")
+
+	// ── Mirror case: a client-less sync only ever sweeps the global partition ──
+	result2, err := usecaseop.Run(appAccessCtx(), testpg.NewUoW(t),
+		operations.SyncSubscriptions(subRepo, connRepo, poolRepo),
+		operations.SyncSubscriptionsCommand{
+			ApplicationCode: appCode,
+			Subscriptions:   nil,
+			RemoveUnlisted:  true,
+		}, testpg.TestEC())
+	require.NoError(t, err)
+	assert.Equal(t, uint32(1), result2.Deleted, "the client-less sync removes only the global row")
+
+	goneGlobal, err := subRepo.FindByCode(ctx, sharedCode, &appCode, nil)
+	require.NoError(t, err)
+	assert.Nil(t, goneGlobal, "the global row must now be gone")
+
+	stillClientB, err := subRepo.FindByCode(ctx, sharedCode, &appCode, &clientB)
+	require.NoError(t, err)
+	require.NotNil(t, stillClientB, "client B's row must survive the client-less sync")
+
+	stillOtherApp, err := subRepo.FindByCode(ctx, sharedCode, &otherAppCode, &clientA)
+	require.NoError(t, err)
+	require.NotNil(t, stillOtherApp, "another application's row must survive the client-less sync")
+}
+
+// TestSyncSubscriptions_Authorization_ClientScope covers the remaining two
+// authorization branches TestSyncSubscriptions_RequiresAppAccess doesn't: a
+// client named in the request that the caller cannot access is forbidden
+// even though the caller can reach the application, and a non-anchor caller
+// with application access and NO client is allowed (mirrors
+// connection.TestSyncConnections_Authorization's ruling).
+func TestSyncSubscriptions_Authorization_ClientScope(t *testing.T) {
+	t.Parallel()
+	pool := testpg.Pool(t)
+	subRepo := subscription.NewRepository(pool)
+	connRepo := connection.NewRepository(pool)
+	poolRepo := dispatchpool.NewRepository(pool)
+
+	run := func(ctx context.Context, cmd operations.SyncSubscriptionsCommand) (operations.SubscriptionsSynced, error) {
+		return usecaseop.Run(ctx, testpg.NewUoW(t), operations.SyncSubscriptions(subRepo, connRepo, poolRepo), cmd, testpg.TestEC())
+	}
+	bindings := []operations.SyncEventTypeBindingInput{{EventTypeCode: "subauthcli:a:b:c"}}
+
+	otherClient := "cli_subauthcli_oth"
+	appOnlyCtx := testpg.WithAuth(context.Background(), &auth.AuthContext{
+		PrincipalID: "prn_subauthcli_apponly", Scope: auth.ScopeClient, Applications: []string{"app_subauthcli"},
+	})
+	_, err := run(appOnlyCtx, operations.SyncSubscriptionsCommand{
+		ApplicationID: "app_subauthcli", ApplicationCode: "subauthcli-app", ClientID: &otherClient,
+		Subscriptions: []operations.SyncSubscriptionInput{{Code: "subauthcli-x", Name: "X", Target: "https://x.example.test", EventTypes: bindings}},
+	})
+	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "FORBIDDEN")
+
+	// Ruling (2026-09-21): a NON-anchor caller with application access and NO
+	// client is allowed — a client-less subscription sync needs no anchor
+	// tier, exactly like the connection sync (ownership, not reach, is the
+	// fence).
+	_, err = run(appOnlyCtx, operations.SyncSubscriptionsCommand{
+		ApplicationID: "app_subauthcli", ApplicationCode: "subauthcli-app",
+		Subscriptions: []operations.SyncSubscriptionInput{{Code: "subauthcli-allowed", Name: "X", Target: "https://x.example.test", EventTypes: bindings}},
+	})
+	require.NoError(t, err)
 }
 
 // TestSyncSubscriptions_RequiresAppAccess proves the use case's resource-level

@@ -34,12 +34,27 @@ type SyncSubscriptionInput struct {
 	Description  *string
 	Target       string
 	ConnectionID *string
-	// ConnectionCode names the connection by its code instead of its id. An
+	// ConnectionCode names the connection by its code instead of its id — an
 	// id is minted per environment, so a code-first definition can only ever
-	// carry the code; it resolves here to this environment's id. Anchor-level
-	// connections only (client_id IS NULL) — the sync is application-scoped
-	// and has no client to pick a client-owned connection by.
-	ConnectionCode   *string
+	// carry the code. The lookup is EXPLICIT about which namespace the code
+	// lives in, with no silent fallback between them (ruling 2026-09-21 #4):
+	// by default the code must name a connection OWNED BY THIS APPLICATION;
+	// SharedConnection true looks it up among the application-less (shared)
+	// connections instead. Within the chosen namespace, a client-scoped sync
+	// (Command.ClientID set) prefers that client's own connection, falling
+	// back to a global one; a client-less sync may only resolve a global
+	// connection.
+	ConnectionCode *string
+	// SharedConnection resolves ConnectionCode among the shared
+	// (application-less) connections rather than this application's own.
+	// Requires ConnectionCode (SHARED_CONNECTION_REQUIRES_CODE without one).
+	// Without this explicit switch, a bare code would have to guess which
+	// namespace it named — and if it silently fell back from one to the
+	// other, an application later minting its OWN connection with the same
+	// code as a pre-existing shared one would silently switch which
+	// credentials sign a subscription's deliveries, with nobody touching the
+	// subscription itself.
+	SharedConnection bool
 	EventTypes       []SyncEventTypeBindingInput
 	DispatchPoolCode *string
 	Mode             *string
@@ -48,35 +63,53 @@ type SyncSubscriptionInput struct {
 	DataOnly         bool
 }
 
-// SyncSubscriptionsCommand syncs one application's API-sourced subscriptions.
-// ApplicationID is the resolved application id the sync is scoped to (the
-// controller resolves it from the {appCode}); the use case authorizes against it.
+// SyncSubscriptionsCommand syncs one application's API-sourced subscriptions,
+// scoped to a single (application, client) pair. ApplicationID is the
+// resolved application id the sync is scoped to (the controller resolves it
+// from the {appCode}); the use case authorizes against it. ClientID, when
+// set, is already resolved to an id by the controller (the wire accepts
+// either the client's id or its identifier). ClientID nil scopes the sync to
+// the application's global, client-less subscriptions — today's behaviour,
+// kept unchanged for callers that never send a client.
 type SyncSubscriptionsCommand struct {
 	ApplicationID   string
 	ApplicationCode string
+	ClientID        *string
 	Subscriptions   []SyncSubscriptionInput
 	RemoveUnlisted  bool
 }
 
-// SyncSubscriptions bulk-upserts an application's subscription catalogue
-// within a single transaction:
+// SyncSubscriptions bulk-upserts an application's subscription catalogue,
+// scoped to (ApplicationID, ClientID), within a single transaction:
 //
 //   - Validates app code; each subscription needs code, name, target, and at
 //     least one event-type binding.
-//   - A connection is named by connectionCode (stable across environments)
+//   - A connection is named by connectionCode (stable across environments,
+//     resolved within an explicit namespace — see [SyncSubscriptionInput])
 //     or connectionId; whichever is provided must resolve (404
-//     CONNECTION_NOT_FOUND), and if both are, they must agree.
-//   - Matches existing rows by code, scoped to the application. Only API- and
-//     CODE-sourced rows are updated/removed; UI-authored rows are untouched.
-//     New rows are created with source=API.
+//     CONNECTION_NOT_FOUND), and if both are, they must agree
+//     (CONNECTION_MISMATCH). However it is named, the resolved connection's
+//     client must be absent or equal to this sync's ClientID
+//     (CONNECTION_SCOPE_MISMATCH) — a global subscription may never point at
+//     a client-owned connection.
+//   - Matches existing rows by code, scoped to (this application, this
+//     client — NULL matches only NULL). Only API- and CODE-sourced rows are
+//     updated/removed; UI-authored rows are untouched. New rows are created
+//     with source=API.
 //   - dispatchPoolCode is resolved to (id, code) via the global pool lookup;
 //     an unresolvable code is silently left unset.
 //   - maxRetries / timeoutSeconds are only overwritten when present.
-//   - RemoveUnlisted hard-deletes API/CODE rows absent from the payload.
+//   - RemoveUnlisted hard-deletes API/CODE rows absent from the payload,
+//     scoped to the same (application, client) key — never a sibling
+//     client's rows, the application's global rows, or another
+//     application's rows.
 //
 // Authorization: the coarse "may sync subscriptions" permission and the app
-// resolution (code→id) are the controller's job; the use case enforces the
-// per-resource rule — the caller must have access to the target application.
+// resolution (code→id) are the controller's job; the use case enforces
+// application access (CanAccessApplication) and, when ClientID is set,
+// client access (CanAccessClient) — mirrors connection.SyncConnections; a
+// client-less sync needs no anchor tier because ownership, not reach, is the
+// fence (see that use case's Authorize for the fuller argument).
 //
 // Emits per-row [SubscriptionCreated]/[SubscriptionUpdated]/[SubscriptionDeleted]
 // events plus one [SubscriptionsSynced] rollup, atomic via [usecaseop.Sync].
@@ -104,32 +137,70 @@ func SyncSubscriptions(
 				if len(in.EventTypes) == 0 {
 					return usecase.Validation("EVENT_TYPES_REQUIRED", "At least one event type is required")
 				}
+				if in.SharedConnection && (in.ConnectionCode == nil || strings.TrimSpace(*in.ConnectionCode) == "") {
+					return usecase.Validation("SHARED_CONNECTION_REQUIRES_CODE",
+						"Subscription '"+in.Code+"': sharedConnection requires connectionCode")
+				}
 			}
 			return nil
 		},
 		Authorize: func(ctx context.Context, cmd SyncSubscriptionsCommand) error {
-			if !auth.FromContext(ctx).CanAccessApplication(cmd.ApplicationID) {
+			ac := auth.FromContext(ctx)
+			if !ac.CanAccessApplication(cmd.ApplicationID) {
 				return httperror.Forbidden("Not authorised for application '" + cmd.ApplicationCode + "'")
+			}
+			// Ruling (2026-09-21): mirrors connection.SyncConnections — a
+			// client-less (global) subscription sync needs no anchor tier. It can
+			// only ever create, update, or remove rows that belong to ITS OWN
+			// application AND were authored by a prior sync (source API/CODE) —
+			// never a UI row or another application's row — so ownership, not
+			// reach, already fences it in. See SyncConnections' Authorize for the
+			// fuller argument (it contrasts with the scheduled-job sync, where a
+			// client-less job genuinely has platform-wide reach).
+			if cmd.ClientID != nil && !ac.CanAccessClient(*cmd.ClientID) {
+				return httperror.Forbidden("No access to client: " + *cmd.ClientID)
 			}
 			return nil
 		},
 		Execute: func(ctx context.Context, cmd SyncSubscriptionsCommand, ec usecase.ExecutionContext) (usecaseop.Plan[SubscriptionsSynced], error) {
-			// Resolve each subscription's connection to an id. A code is looked
-			// up (anchor-level); an id is only checked to exist. Both may be
-			// sent, but they must then name the same connection. Work on a
-			// copy so the caller's command is left as it was sent.
+			// Resolve each subscription's connection to an id, and check that
+			// wherever it came from, its scope is consistent with this
+			// subscription's client (ruling 2026-09-21 #5). Work on a copy so the
+			// caller's command is left as it was sent.
 			subs := slices.Clone(cmd.Subscriptions)
 			for i := range subs {
 				in := &subs[i]
 				if in.ConnectionCode != nil && strings.TrimSpace(*in.ConnectionCode) != "" {
 					code := strings.TrimSpace(*in.ConnectionCode)
-					// Part A behaviour pinned as-is: resolve the connection with no
-					// application and no client, exactly as before this key gained
-					// an application dimension. Scoping this lookup to the syncing
-					// application is Part C's job, not this change's.
-					c, err := connRepo.FindByCode(ctx, code, nil, nil)
-					if err != nil {
-						return nil, usecase.Internal("REPO", "find_by_code(connection) failed", err)
+
+					// The namespace is explicit, never guessed: a bare code names a
+					// connection owned by THIS application; sharedConnection switches
+					// to the application-less (shared) connections. No fallback
+					// between the two — see SyncSubscriptionInput.SharedConnection.
+					var namespaceAppCode *string
+					if !in.SharedConnection {
+						appCode := cmd.ApplicationCode
+						namespaceAppCode = &appCode
+					}
+
+					// Within that namespace: a client-scoped sync prefers its own
+					// client's connection, falling back to a global one; a
+					// client-less sync only ever resolves a global connection (the
+					// fallback lookup below IS that resolution when cmd.ClientID is
+					// nil, since FindByCode(..., nil) only matches a NULL client_id).
+					var c *connection.Connection
+					var err error
+					if cmd.ClientID != nil {
+						c, err = connRepo.FindByCode(ctx, code, namespaceAppCode, cmd.ClientID)
+						if err != nil {
+							return nil, usecase.Internal("REPO", "find_by_code(connection) failed", err)
+						}
+					}
+					if c == nil {
+						c, err = connRepo.FindByCode(ctx, code, namespaceAppCode, nil)
+						if err != nil {
+							return nil, usecase.Internal("REPO", "find_by_code(connection) failed", err)
+						}
 					}
 					if c == nil {
 						return nil, usecase.NotFound("CONNECTION_NOT_FOUND", "Connection with code '"+code+"' not found")
@@ -151,11 +222,30 @@ func SyncSubscriptions(
 				if c == nil {
 					return nil, usecase.NotFound("CONNECTION_NOT_FOUND", "Connection '"+*in.ConnectionID+"' not found")
 				}
+				// Scope consistency applies however the connection was named
+				// (ruling 2026-09-21 #5): its client must be absent, or equal to
+				// this subscription's client. A connectionCode lookup above can
+				// never violate this (it only ever resolves this client's own
+				// connection or a global one); a bare connectionId can name
+				// anything, so it needs the explicit check.
+				if c.ClientID != nil && (cmd.ClientID == nil || *c.ClientID != *cmd.ClientID) {
+					return nil, usecase.Validation("CONNECTION_SCOPE_MISMATCH",
+						"Subscription '"+in.Code+"': connection '"+*in.ConnectionID+"' is scoped to a different client")
+				}
+				// The same goes for the application axis. A connection signs
+				// deliveries with its application's credentials, so an id must
+				// not reach across: a caller with access to this application
+				// only could otherwise borrow another application's. Shared
+				// (application-less) connections stay usable by anyone.
+				if c.ApplicationCode != nil && *c.ApplicationCode != cmd.ApplicationCode {
+					return nil, usecase.Validation("CONNECTION_SCOPE_MISMATCH",
+						"Subscription '"+in.Code+"': connection '"+*in.ConnectionID+"' belongs to a different application")
+				}
 			}
 
-			existing, err := subRepo.FindByApplicationCode(ctx, cmd.ApplicationCode)
+			existing, err := subRepo.FindByApplicationAndClient(ctx, cmd.ApplicationCode, cmd.ClientID)
 			if err != nil {
-				return nil, usecase.Internal("REPO", "find_by_application_code failed", err)
+				return nil, usecase.Internal("REPO", "find_by_application_and_client failed", err)
 			}
 			existingByCode := make(map[string]*subscription.Subscription, len(existing))
 			for i := range existing {
@@ -216,6 +306,7 @@ func SyncSubscriptions(
 				sub.ConnectionID = in.ConnectionID
 				appCode := cmd.ApplicationCode
 				sub.ApplicationCode = &appCode
+				sub.ClientID = cmd.ClientID
 				sub.Source = subscription.SourceAPI
 				sub.Description = in.Description
 				sub.EventTypes = bindings
@@ -265,6 +356,7 @@ func SyncSubscriptions(
 			rollup := SubscriptionsSynced{
 				Metadata:        usecase.NewEventMetadata(ec, SubscriptionsSyncedType, Source, "platform.subscriptions."+cmd.ApplicationCode),
 				ApplicationCode: cmd.ApplicationCode,
+				ClientID:        cmd.ClientID,
 				Created:         created,
 				Updated:         updated,
 				Deleted:         deleted,

@@ -272,12 +272,18 @@ type syncSubscriptionEventTypeRequest struct {
 }
 
 type syncSubscriptionInputRequest struct {
-	Code             string                             `json:"code"`
-	Name             string                             `json:"name"`
-	Description      *string                            `json:"description,omitempty"`
-	Target           string                             `json:"target"`
-	ConnectionID     *string                            `json:"connectionId,omitempty"`
-	ConnectionCode   *string                            `json:"connectionCode,omitempty" doc:"Connection code — stable across environments, unlike connectionId. Resolves an anchor-level connection."`
+	Code           string  `json:"code"`
+	Name           string  `json:"name"`
+	Description    *string `json:"description,omitempty"`
+	Target         string  `json:"target"`
+	ConnectionID   *string `json:"connectionId,omitempty"`
+	ConnectionCode *string `json:"connectionCode,omitempty" doc:"Connection code — stable across environments, unlike connectionId. By default resolves a connection owned by THIS application; set sharedConnection to resolve it among the shared (application-less) connections instead. Within either namespace, a client-scoped sync (clientId set) prefers its own client's connection, falling back to a global one; a client-less sync only resolves a global connection."`
+	// SharedConnection resolves ConnectionCode among the shared
+	// (application-less) connections instead of this application's own.
+	// Requires connectionCode. There is no fallback between the two
+	// namespaces (ruling 2026-09-21 #4) — see SyncSubscriptionInput in the
+	// use case for why.
+	SharedConnection bool                               `json:"sharedConnection,omitempty" doc:"Resolve connectionCode among the shared (application-less) connections instead of this application's own. Requires connectionCode."`
 	EventTypes       []syncSubscriptionEventTypeRequest `json:"eventTypes"`
 	DispatchPoolCode *string                            `json:"dispatchPoolCode,omitempty"`
 	Mode             *string                            `json:"mode,omitempty"`
@@ -287,6 +293,12 @@ type syncSubscriptionInputRequest struct {
 }
 
 type syncSubscriptionsRequest struct {
+	// ClientID names the tenant this batch of subscriptions belongs to —
+	// either the client's id or its identifier slug, resolved the same way as
+	// the connections sync (see resolveClientRef). Omitted/nil syncs the
+	// application's global, client-less subscriptions — today's behaviour,
+	// unchanged for callers that never send it.
+	ClientID      *string                        `json:"clientId,omitempty"`
 	Subscriptions []syncSubscriptionInputRequest `json:"subscriptions"`
 }
 
@@ -306,6 +318,15 @@ func (s *State) syncSubscriptions(ctx context.Context, in *syncSubscriptionsInpu
 		return nil, err
 	}
 
+	var clientID *string
+	if in.Body.ClientID != nil && strings.TrimSpace(*in.Body.ClientID) != "" {
+		resolved, rerr := s.resolveClientRef(ctx, strings.TrimSpace(*in.Body.ClientID))
+		if rerr != nil {
+			return nil, rerr
+		}
+		clientID = resolved
+	}
+
 	inputs := make([]subscriptionops.SyncSubscriptionInput, 0, len(in.Body.Subscriptions))
 	for _, sub := range in.Body.Subscriptions {
 		bindings := make([]subscriptionops.SyncEventTypeBindingInput, 0, len(sub.EventTypes))
@@ -322,6 +343,7 @@ func (s *State) syncSubscriptions(ctx context.Context, in *syncSubscriptionsInpu
 			Target:           sub.Target,
 			ConnectionID:     sub.ConnectionID,
 			ConnectionCode:   sub.ConnectionCode,
+			SharedConnection: sub.SharedConnection,
 			EventTypes:       bindings,
 			DispatchPoolCode: sub.DispatchPoolCode,
 			Mode:             sub.Mode,
@@ -334,6 +356,7 @@ func (s *State) syncSubscriptions(ctx context.Context, in *syncSubscriptionsInpu
 	cmd := subscriptionops.SyncSubscriptionsCommand{
 		ApplicationID:   app.ID,
 		ApplicationCode: app.Code,
+		ClientID:        clientID,
 		Subscriptions:   inputs,
 		RemoveUnlisted:  in.RemoveUnlisted,
 	}

@@ -144,10 +144,14 @@ func (e SubscriptionResumed) ToDataJSON() ([]byte, error) {
 }
 
 // SubscriptionsSynced is the rollup emitted by the SDK app-scoped
-// subscription sync (SyncSubscriptions).
+// subscription sync (SyncSubscriptions). ClientID mirrors
+// connection.ConnectionsSynced's: unlike ApplicationCode (always present, a
+// subscription sync is always application-scoped), a nil ClientID means the
+// sync targeted the application's global, client-less subscriptions.
 type SubscriptionsSynced struct {
 	Metadata        usecase.EventMetadata
 	ApplicationCode string
+	ClientID        *string
 	Created         uint32
 	Updated         uint32
 	Deleted         uint32
@@ -178,9 +182,10 @@ func (e SubscriptionsSynced) MessageGroup() string {
 func (e SubscriptionsSynced) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		ApplicationCode string   `json:"applicationCode"`
+		ClientID        *string  `json:"clientId,omitempty"`
 		Created         uint32   `json:"created"`
 		Updated         uint32   `json:"updated"`
 		Deleted         uint32   `json:"deleted"`
 		SyncedCodes     []string `json:"syncedCodes"`
-	}{e.ApplicationCode, e.Created, e.Updated, e.Deleted, e.SyncedCodes})
+	}{e.ApplicationCode, e.ClientID, e.Created, e.Updated, e.Deleted, e.SyncedCodes})
 }

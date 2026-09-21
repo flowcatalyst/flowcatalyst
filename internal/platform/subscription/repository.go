@@ -142,6 +142,40 @@ func (r *Repository) FindByApplicationCode(ctx context.Context, appCode string) 
 	return r.hydrateAll(ctx, bare)
 }
 
+// FindByApplicationAndClient returns the subscriptions scoped to this
+// application AND this client, hydrated — client_id IS NULL matches only a
+// NULL column, not "any client" — used by SyncSubscriptions to load exactly
+// the row set one (application, client) sync run may touch. Mirrors
+// connection.Repository.FindByApplicationAndClient. Unlike
+// FindByApplicationCode (every client of the application), a nil clientID
+// here is a real value in the key, not "don't filter".
+func (r *Repository) FindByApplicationAndClient(ctx context.Context, appCode string, clientID *string) ([]Subscription, error) {
+	const q = `SELECT id, code, application_code, name, description, client_id,
+		client_identifier, client_scoped, target, queue, source, status,
+		max_age_seconds, dispatch_pool_id, dispatch_pool_code, delay_seconds, sequence,
+		mode, timeout_seconds, max_retries, service_account_id, data_only,
+		created_by, created_at, updated_at, connection_id FROM msg_subscriptions
+		WHERE application_code = $1 AND client_id IS NOT DISTINCT FROM $2
+		ORDER BY code`
+	rows, err := r.pool.Query(ctx, q, appCode, clientID)
+	if err != nil {
+		return nil, err
+	}
+	collected, err := pgx.CollectRows(rows, pgx.RowToStructByName[dbq.MsgSubscription])
+	if err != nil {
+		return nil, err
+	}
+	bare := make([]Subscription, 0, len(collected))
+	for _, row := range collected {
+		s, err := rowToSubscription(row)
+		if err != nil {
+			return nil, err
+		}
+		bare = append(bare, *s)
+	}
+	return r.hydrateAll(ctx, bare)
+}
+
 // FindCodesByConnectionID returns the codes of subscriptions that target
 // this connection. Used by the connection sync's delete-guard: removing a
 // connection a live subscription still points at would silently orphan its
