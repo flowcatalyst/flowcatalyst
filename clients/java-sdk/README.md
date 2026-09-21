@@ -23,8 +23,8 @@ var eventTypes = client.eventTypes().list(null);
 | `…sdk.error` | `sealed interface SdkError` + `FlowCatalystException` — handle failures with a pattern-matching `switch` |
 | `…sdk.outbox` | Transactional outbox: `OutboxManager`, DTO builders, `OutboxDriver` SPI + `JdbcOutboxDriver`, raw SQL migrations in `migrations/` |
 | `…sdk.tsid` | TSID generation (13-char Crockford Base32, platform-compatible; collision-free monotonic sequence) |
-| `…sdk.sync` | `DefinitionSynchronizer` + `DefinitionSet` — bulk-sync roles / event types / subscriptions / dispatch pools / principals / processes / scheduled jobs / OpenAPI per application |
-| `…sdk.annotations` | `@AsEventType` / `@AsSubscription` / `@AsDispatchPool` / `@AsRole` + `DefinitionScanner` (explicit class registration — no classpath scanning) |
+| `…sdk.sync` | `DefinitionSynchronizer` + `DefinitionSet` — bulk-sync roles / event types / connections / subscriptions / dispatch pools / principals / processes / scheduled jobs / OpenAPI per application |
+| `…sdk.annotations` | `@AsEventType` / `@AsConnection` / `@AsSubscription` / `@AsDispatchPool` / `@AsRole` + `DefinitionScanner` (explicit class registration — no classpath scanning) |
 | `…sdk.webhook` | `WebhookSignature.verify(...)` — HMAC-SHA256 verification of signed deliveries |
 
 ## Auth modes
@@ -118,6 +118,120 @@ blank, rather than letting a missing code surface later as a request to
 There is no per-definition application override: the set a definition is built
 into *is* its application. For several applications, build one set each and
 pass them to `client.definitions().syncAll(sets, options)`.
+
+### Connections and subscriptions
+
+A connection is application-owned: the platform assigns its service account
+itself (the application's own provisioned one), so `Connection` carries
+nothing environment-specific — no service account id, no secret. Connections
+sync BEFORE subscriptions, so a subscription's `connectionCode` resolves in
+the same run:
+
+```java
+var set = Definitions.DefinitionSet.define("orders")
+        .withConnections(List.of(
+                Definitions.Connection.of("orders-webhook", "Orders Webhook")))
+        .withSubscriptions(List.of(Definitions.Subscription.of(
+                        "order-shipped-hook", "Order Shipped Hook",
+                        "https://app.example.com/webhooks/order-shipped",
+                        List.of(Definitions.SubscriptionEventType.of(
+                                "orders:fulfillment:shipment:shipped")))
+                .withConnectionCode("orders-webhook")));
+
+client.definitions().sync(set, SyncOptions.removingUnlisted());
+```
+
+`connectionCode` names a connection in one of two namespaces, with **no
+fallback** between them: a bare code names a connection owned by THIS
+application; `.withSharedConnection(true)` names a shared (application-less)
+one instead. `connectionId` still works but is environment-specific (ids
+differ per environment; codes don't).
+
+A subscription's `target` may be a path (`/webhooks/orders`) instead of an
+absolute URL — it is resolved at sync time against, in order, the definition
+set's own base (see `forClient` below) then a synchronizer-level default:
+
+```java
+var synchronizer = new DefinitionSynchronizer(client.transport(), "https://app.example.com");
+synchronizer.sync(set);
+```
+
+or configure the default once on the client:
+
+```java
+var client = FlowCatalystClient.builder()
+        .baseUrl("https://your-instance.flowcatalyst.io")
+        .clientCredentials("oac_your_client_id", "your_client_secret")
+        .subscriptionTargetBaseUrl("https://app.example.com")
+        .build();
+```
+
+A blank target, or a path with no base available anywhere, fails that
+subscription's sync LOCALLY (naming it) and sends nothing for the whole
+group — under `removeUnlisted`, sending a partial list would delete the
+subscriptions left out.
+
+### Client scoping and multi-tenant applications
+
+Connections and subscriptions may be scoped to a FlowCatalyst **client**,
+always by its identifier slug — never its id, since ids differ per
+environment. The platform treats each `(application, client)` sync as the
+COMPLETE list for that scope, so the SDK issues one platform call per
+distinct client (global first, connections before subscriptions within
+each) and never merges or splits a scope across calls.
+
+A single-tenant application can set a client per row:
+
+```java
+Definitions.Connection.of("orders-webhook", "Orders Webhook").withClient("acme");
+```
+
+or via the annotation:
+
+```java
+@AsConnection(code = "orders-webhook", name = "Orders Webhook", client = "acme")
+```
+
+A **multi-tenant** application should NOT do this per-row — build one
+`DefinitionSet` per `(application, client)` instead, the tenant list being
+your own runtime data (never an annotation):
+
+```java
+var tenantSet = Definitions.DefinitionSet.define("orders")
+        .forClient("acme", "https://acme.example.com")   // per-tenant target base URL, optional
+        .withConnections(...)
+        .withSubscriptions(...);
+
+client.definitions().sync(tenantSet, SyncOptions.removingUnlisted());
+```
+
+A row's own `client` wins over its set's; a scanned annotation's own
+`client()` wins over the `defaultClient` passed to `DefinitionScanner.scan`:
+
+```java
+var set = DefinitionScanner.scan("orders", classes, "acme");   // single-tenant default
+```
+
+### Syncing several sets for one application: `syncAll` vs `syncGrouped`
+
+`sync`/`syncAll` keep single-set behaviour and do **not** merge — two sets
+targeting the same `(application, client)` scope become two platform calls,
+and the second's `removeUnlisted` deletes what the first just created.
+
+`syncGrouped` MERGES every set sharing an application code into one combined
+sync before calling the platform — the safe way to combine, say, scanned
+annotation definitions with a multi-tenant provider's per-tenant sets:
+
+```java
+Map<String, SyncResult> results = client.definitions().syncGrouped(
+        List.of(scannedSet, tenantSetAcme, tenantSetBeta),
+        SyncOptions.removingUnlisted());
+```
+
+The same code appearing twice in one `(application, client)` scope after
+merging is a configuration error: that type's sync for that scope fails
+LOCALLY, naming the code and the scope, and nothing is sent for it — other
+types and other scopes still sync.
 
 ## Webhook verification
 

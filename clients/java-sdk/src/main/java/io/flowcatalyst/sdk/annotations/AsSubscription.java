@@ -45,6 +45,25 @@ public @interface AsSubscription {
     /** Connection id. Environment-specific — prefer {@link #connectionCode()}. */
     String connectionId() default "";
 
+    /**
+     * When true, {@link #connectionCode()} names a SHARED (application-less)
+     * connection rather than one owned by this application. The two
+     * namespaces are distinct with no fallback between them; false without a
+     * code is simply "no connection".
+     */
+    boolean sharedConnection() default false;
+
+    /**
+     * The FlowCatalyst client (by identifier slug) this subscription is
+     * scoped to. Empty = the default client passed to {@link
+     * DefinitionScanner#scan(String, java.util.Collection, String)} (single-
+     * tenant apps), and empty there too means global (no client). For a
+     * multi-tenant application, don't set this on the annotation — build one
+     * {@link io.flowcatalyst.sdk.sync.Definitions.DefinitionSet} per client
+     * instead (see {@code DefinitionSet.forClient}).
+     */
+    String client() default "";
+
     /** Dispatch pool code; platform default pool when omitted. */
     String dispatchPoolCode() default "";
 

@@ -1,5 +1,6 @@
 package io.flowcatalyst.sdk.sync;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.ArrayList;
 import java.util.List;
@@ -156,6 +157,12 @@ public final class Definitions {
      * A subscription declaration: where to deliver ({@code target} URL or
      * {@code connectionCode} reference), which event types trigger it, and how
      * to handle failures.
+     *
+     * <p>{@code client} and {@code sharedConnection} are resolved by {@link
+     * DefinitionSynchronizer} to pick which platform call this row belongs to
+     * and which connection namespace {@code connectionCode} resolves in —
+     * {@code client} never rides along on the wire (it is a routing field,
+     * {@link JsonIgnore}d); {@code sharedConnection} is sent only when true.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Subscription(
@@ -170,7 +177,9 @@ public final class Definitions {
             Integer maxRetries,
             Integer timeoutSeconds,
             Boolean dataOnly,
-            String connectionCode) {
+            String connectionCode,
+            Boolean sharedConnection,
+            @JsonIgnore String client) {
 
         /**
          * The pre-{@code connectionCode} component list, kept so existing
@@ -184,56 +193,149 @@ public final class Definitions {
                     maxRetries, timeoutSeconds, dataOnly, null);
         }
 
+        /**
+         * The pre-{@code sharedConnection}/{@code client} component list,
+         * kept so existing callers of the (post-bb1b483) canonical
+         * constructor keep compiling.
+         */
+        public Subscription(
+                String code, String name, String description, String target, String connectionId,
+                List<SubscriptionEventType> eventTypes, String dispatchPoolCode, SubscriptionMode mode,
+                Integer maxRetries, Integer timeoutSeconds, Boolean dataOnly, String connectionCode) {
+            this(code, name, description, target, connectionId, eventTypes, dispatchPoolCode, mode,
+                    maxRetries, timeoutSeconds, dataOnly, connectionCode, null, null);
+        }
+
         public static Subscription of(
                 String code, String name, String target, List<SubscriptionEventType> eventTypes) {
             return new Subscription(
-                    code, name, null, target, null, eventTypes, null, null, null, null, null);
+                    code, name, null, target, null, eventTypes, null, null, null, null, null, null,
+                    null, null);
         }
 
         public Subscription withDescription(String description) {
             return new Subscription(code, name, description, target, connectionId, eventTypes,
-                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly, connectionCode);
+                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly, connectionCode,
+                    sharedConnection, client);
         }
 
         public Subscription withConnectionId(String connectionId) {
             return new Subscription(code, name, description, target, connectionId, eventTypes,
-                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly, connectionCode);
+                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly, connectionCode,
+                    sharedConnection, client);
         }
 
         /**
          * Names the connection by its code — stable across environments,
          * unlike {@link #withConnectionId}, whose id is minted per environment.
-         * The platform resolves the code (anchor-level connections).
+         * A bare code names a connection owned by THIS application; combine
+         * with {@link #withSharedConnection} to name a shared one instead.
+         * There is no fallback between the two namespaces.
          */
         public Subscription withConnectionCode(String connectionCode) {
             return new Subscription(code, name, description, target, connectionId, eventTypes,
-                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly, connectionCode);
+                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly, connectionCode,
+                    sharedConnection, client);
         }
 
         public Subscription withDispatchPoolCode(String dispatchPoolCode) {
             return new Subscription(code, name, description, target, connectionId, eventTypes,
-                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly, connectionCode);
+                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly, connectionCode,
+                    sharedConnection, client);
         }
 
         public Subscription withMode(SubscriptionMode mode) {
             return new Subscription(code, name, description, target, connectionId, eventTypes,
-                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly, connectionCode);
+                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly, connectionCode,
+                    sharedConnection, client);
         }
 
         public Subscription withMaxRetries(int maxRetries) {
             return new Subscription(code, name, description, target, connectionId, eventTypes,
-                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly, connectionCode);
+                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly, connectionCode,
+                    sharedConnection, client);
         }
 
         public Subscription withTimeoutSeconds(int timeoutSeconds) {
             return new Subscription(code, name, description, target, connectionId, eventTypes,
-                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly, connectionCode);
+                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly, connectionCode,
+                    sharedConnection, client);
         }
 
         /** When true, only the event's {@code data} field is POSTed (no metadata envelope). */
         public Subscription withDataOnly(boolean dataOnly) {
             return new Subscription(code, name, description, target, connectionId, eventTypes,
-                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly, connectionCode);
+                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly, connectionCode,
+                    sharedConnection, client);
+        }
+
+        /**
+         * Marks {@link #connectionCode} as naming a SHARED (application-less)
+         * connection rather than one owned by this application — the two
+         * namespaces are distinct with no fallback between them. Normalises
+         * {@code false} to {@code null} so the field is omitted from the
+         * wire payload entirely when not true (the platform default).
+         */
+        public Subscription withSharedConnection(boolean sharedConnection) {
+            return new Subscription(code, name, description, target, connectionId, eventTypes,
+                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly, connectionCode,
+                    sharedConnection ? Boolean.TRUE : null, client);
+        }
+
+        /**
+         * FlowCatalyst client (identifier slug) this subscription is scoped
+         * to. Null means this row inherits the owning {@link
+         * DefinitionSet#forClient} client, or is global if the set doesn't
+         * set one either. Routing only — {@link DefinitionSynchronizer} reads
+         * it to pick which platform call the row belongs to; it never rides
+         * along in the posted entry itself.
+         */
+        public Subscription withClient(String client) {
+            return new Subscription(code, name, description, target, connectionId, eventTypes,
+                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly, connectionCode,
+                    sharedConnection, client);
+        }
+    }
+
+    /**
+     * A connection declaration. A connection is application-owned: the
+     * platform assigns its service account itself (the application's own
+     * provisioned account), so this definition carries nothing
+     * environment-specific — no service account id, no secret. It exists
+     * purely to give a subscription's {@code connectionCode} something to
+     * resolve, and is synced BEFORE subscriptions for that reason.
+     *
+     * <p>{@code client} is resolved by {@link DefinitionSynchronizer} to pick
+     * which platform call this row belongs to; it never rides along on the
+     * wire (it is a routing field, {@link JsonIgnore}d).
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record Connection(String code, String name, String description, String externalId,
+            @JsonIgnore String client) {
+
+        public static Connection of(String code, String name) {
+            return new Connection(code, name, null, null, null);
+        }
+
+        public Connection withDescription(String description) {
+            return new Connection(code, name, description, externalId, client);
+        }
+
+        /** Your own system's identifier for this connection, if any. */
+        public Connection withExternalId(String externalId) {
+            return new Connection(code, name, description, externalId, client);
+        }
+
+        /**
+         * FlowCatalyst client (identifier slug) this connection is scoped
+         * to — ALWAYS the identifier, never the id (ids differ per
+         * environment). Null means this row inherits the owning {@link
+         * DefinitionSet#forClient} client, or is global if the set doesn't
+         * set one either. Routing only — never sent to the platform (it
+         * selects which sync call this row belongs to).
+         */
+        public Connection withClient(String client) {
+            return new Connection(code, name, description, externalId, client);
         }
     }
 
@@ -408,11 +510,14 @@ public final class Definitions {
         private final List<Permission> permissions = new ArrayList<>();
         private final List<EventType> eventTypes = new ArrayList<>();
         private final List<Subscription> subscriptions = new ArrayList<>();
+        private final List<Connection> connections = new ArrayList<>();
         private final List<DispatchPool> dispatchPools = new ArrayList<>();
         private final List<Principal> principals = new ArrayList<>();
         private final List<Process> processes = new ArrayList<>();
         private final List<ScheduledJob> scheduledJobs = new ArrayList<>();
         private Map<String, Object> openapiSpec;
+        private String client;
+        private String targetBaseUrl;
 
         private DefinitionSet(String applicationCode) {
             this.applicationCode = applicationCode;
@@ -472,6 +577,61 @@ public final class Definitions {
         public DefinitionSet withSubscriptions(List<Subscription> subscriptions) {
             this.subscriptions.addAll(subscriptions);
             return this;
+        }
+
+        /**
+         * Add connections to the definition set. Synced BEFORE subscriptions
+         * — a subscription's {@code connectionCode} must resolve in the same
+         * run.
+         */
+        public DefinitionSet withConnections(List<Connection> connections) {
+            this.connections.addAll(connections);
+            return this;
+        }
+
+        public List<Connection> connections() {
+            return connections;
+        }
+
+        /**
+         * Scope this set to a FlowCatalyst client (identifier slug — never an
+         * id; ids differ per environment). This is the multi-tenant shape:
+         * build one {@link DefinitionSet} per (application, client) — the
+         * plain {@link #define} set stays global, and one more set per
+         * tenant via {@code define(app).forClient(tenant)}. The tenant list
+         * is your own runtime data; it never belongs in an annotation.
+         *
+         * <p>A connection or subscription row's own {@code client} (set via
+         * the annotation or {@code withClient(...)}) wins over this; this is
+         * only the fallback applied to rows that don't set one themselves.
+         *
+         * @return this set, now scoped to {@code client}
+         */
+        public DefinitionSet forClient(String client) {
+            return forClient(client, null);
+        }
+
+        /**
+         * As {@link #forClient(String)}, additionally overriding the base
+         * URL a path-style subscription target ({@code /webhooks/orders})
+         * resolves against for THIS set only — a tenant often has its own
+         * host. Null keeps {@link DefinitionSynchronizer}'s configured
+         * default.
+         */
+        public DefinitionSet forClient(String client, String targetBaseUrl) {
+            this.client = client;
+            this.targetBaseUrl = targetBaseUrl;
+            return this;
+        }
+
+        /** The client (identifier slug) this set is scoped to, or null for global. */
+        public String client() {
+            return client;
+        }
+
+        /** This set's subscription-target base URL override, or null. */
+        public String targetBaseUrl() {
+            return targetBaseUrl;
         }
 
         public DefinitionSet withDispatchPools(List<DispatchPool> pools) {
