@@ -73,6 +73,9 @@ func CreateConnection(repo *connection.Repository, apps *application.Repository)
 				if app == nil {
 					return nil, httperror.NotFound("Application", *cmd.ApplicationCode)
 				}
+				if err := requireApplicationAccess(ctx, app); err != nil {
+					return nil, err
+				}
 			}
 
 			existing, err := repo.FindByCode(ctx, code, cmd.ApplicationCode, cmd.ClientID)
@@ -99,4 +102,17 @@ func CreateConnection(repo *connection.Repository, apps *application.Repository)
 			return usecaseop.Save(c, repo, event), nil
 		},
 	}
+}
+
+// requireApplicationAccess enforces that the caller may act on the named
+// application before a connection is linked to it. Create/update never
+// checked this before this addition — only the target CLIENT's scope was
+// enforced (CheckScopeAccess), so a client-scoped caller holding the
+// connection-create/update permission could link a connection to an
+// application it has no access to at all.
+func requireApplicationAccess(ctx context.Context, app *application.Application) error {
+	if !auth.FromContext(ctx).CanAccessApplication(app.ID) {
+		return httperror.Forbidden("Not authorised for application '" + app.Code + "'")
+	}
+	return nil
 }

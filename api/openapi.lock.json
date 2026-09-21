@@ -7397,6 +7397,55 @@
         ],
         "type": "object"
       },
+      "SyncConnectionInputRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ],
+        "type": "object"
+      },
+      "SyncConnectionsRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SyncConnectionsRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "connections": {
+            "items": {
+              "$ref": "#/components/schemas/SyncConnectionInputRequest"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "connections"
+        ],
+        "type": "object"
+      },
       "SyncDispatchPoolInputRequest": {
         "additionalProperties": false,
         "properties": {
@@ -9290,6 +9339,69 @@
         "summary": "List roles registered against an application",
         "tags": [
           "applications"
+        ]
+      }
+    },
+    "/api/applications/{appCode}/connections/sync": {
+      "post": {
+        "operationId": "syncConnections",
+        "parameters": [
+          {
+            "description": "Application code",
+            "in": "path",
+            "name": "appCode",
+            "required": true,
+            "schema": {
+              "description": "Application code",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Remove API/CODE connections not in the list",
+            "explode": false,
+            "in": "query",
+            "name": "removeUnlisted",
+            "schema": {
+              "description": "Remove API/CODE connections not in the list",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncConnectionsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncResultResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Sync an application's connections (SDK self-registration)",
+        "tags": [
+          "sdk-sync"
         ]
       }
     },

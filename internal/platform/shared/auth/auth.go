@@ -52,6 +52,8 @@ const (
 	permConnectionCreate = "platform:messaging:connection:create"
 	permConnectionUpdate = "platform:messaging:connection:update"
 	permConnectionDelete = "platform:messaging:connection:delete"
+	permConnectionSync   = "platform:messaging:connection:sync"
+	permConnectionManage = "platform:messaging:connection:manage"
 	// Subscription (messaging)
 	permSubscriptionView   = "platform:messaging:subscription:view"
 	permSubscriptionCreate = "platform:messaging:subscription:create"
@@ -135,6 +137,9 @@ const (
 	permAppSvcSubscriptionCreate = "platform:application-service:subscription:create"
 	permAppSvcSubscriptionUpdate = "platform:application-service:subscription:update"
 	permAppSvcSubscriptionDelete = "platform:application-service:subscription:delete"
+	permAppSvcConnectionCreate   = "platform:application-service:connection:create"
+	permAppSvcConnectionUpdate   = "platform:application-service:connection:update"
+	permAppSvcConnectionDelete   = "platform:application-service:connection:delete"
 	permAppSvcScheduledJobSync   = "platform:application-service:scheduled-job:sync"
 	permAppSvcDocsSync           = "platform:application-service:docs:sync"
 	// Developer (application OpenAPI documents)
@@ -606,6 +611,16 @@ func CanSyncSubscriptions(a *AuthContext) error {
 	return requireAny(a,
 		permSubscriptionSync, permSubscriptionManage,
 		permAppSvcSubscriptionCreate, permAppSvcSubscriptionUpdate, permAppSvcSubscriptionDelete)
+}
+
+// CanSyncConnections guards POST /api/applications/{appCode}/connections/sync.
+// Admits admin sync/manage plus the
+// application-service create/update/delete permissions an SDK service account
+// holds. Per-application (and per-client) scope is enforced inside the use case.
+func CanSyncConnections(a *AuthContext) error {
+	return requireAny(a,
+		permConnectionSync, permConnectionManage,
+		permAppSvcConnectionCreate, permAppSvcConnectionUpdate, permAppSvcConnectionDelete)
 }
 
 // CanSyncPrincipals guards POST /api/applications/{appCode}/principals/sync.

@@ -82,7 +82,7 @@ func PlatformEventTypes() []PlatformEventTypeDef {
 		"schema-added", "schema-finalised", "schema-deprecated")
 	push("platform:admin:eventtypes:synced", "Event Types Synced")
 
-	group("platform:admin:connection", "created", "updated", "deleted")
+	group("platform:admin:connection", "created", "updated", "deleted", "synced")
 
 	group("platform:admin:dispatch-pool",
 		"created", "updated", "archived", "deleted")

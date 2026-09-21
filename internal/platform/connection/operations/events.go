@@ -11,6 +11,7 @@ const (
 	ConnectionCreatedType = "platform:admin:connection:created"
 	ConnectionUpdatedType = "platform:admin:connection:updated"
 	ConnectionDeletedType = "platform:admin:connection:deleted"
+	ConnectionsSyncedType = "platform:admin:connection:synced"
 	Source                = "platform:admin"
 )
 
@@ -92,4 +93,51 @@ func (e ConnectionDeleted) ToDataJSON() ([]byte, error) {
 		ConnectionID string `json:"connectionId"`
 		Code         string `json:"code"`
 	}{e.ConnectionID, e.Code})
+}
+
+// ConnectionsSynced is the rollup emitted by the SDK app-scoped connection
+// sync (SyncConnections). Shaped like subscription.SubscriptionsSynced, plus
+// ClientID: unlike the subscription sync (application-scoped only), a
+// connection sync is also scoped to one client (2026-09-21 ruling) — a nil
+// ClientID synced the application's shared, client-less connections.
+type ConnectionsSynced struct {
+	Metadata        usecase.EventMetadata
+	ApplicationCode string
+	ClientID        *string
+	Created         uint32
+	Updated         uint32
+	Deleted         uint32
+	SyncedCodes     []string
+}
+
+func (e ConnectionsSynced) EventID() string       { return e.Metadata.EventID }
+func (e ConnectionsSynced) EventType() string     { return ConnectionsSyncedType }
+func (e ConnectionsSynced) SpecVersion() string   { return "1.0" }
+func (e ConnectionsSynced) Source() string        { return Source }
+func (e ConnectionsSynced) Subject() string       { return "platform.connections." + e.ApplicationCode }
+func (e ConnectionsSynced) Time() time.Time       { return e.Metadata.OccurredAt }
+func (e ConnectionsSynced) PrincipalID() string   { return e.Metadata.PrincipalID }
+func (e ConnectionsSynced) CorrelationID() string { return e.Metadata.CorrelationID }
+func (e ConnectionsSynced) CausationID() string   { return e.Metadata.CausationID }
+func (e ConnectionsSynced) ExecutionID() string   { return e.Metadata.ExecutionID }
+
+// MessageGroup: per-application rollup group, mirroring
+// SubscriptionsSynced (X-08 / docs/owner-rulings-todo.md #28) — falling back
+// to the bare aggregate group when there's genuinely no application in scope.
+func (e ConnectionsSynced) MessageGroup() string {
+	if e.ApplicationCode == "" {
+		return "platform:connections"
+	}
+	return "platform:connections:" + e.ApplicationCode
+}
+
+func (e ConnectionsSynced) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		ApplicationCode string   `json:"applicationCode"`
+		ClientID        *string  `json:"clientId,omitempty"`
+		Created         uint32   `json:"created"`
+		Updated         uint32   `json:"updated"`
+		Deleted         uint32   `json:"deleted"`
+		SyncedCodes     []string `json:"syncedCodes"`
+	}{e.ApplicationCode, e.ClientID, e.Created, e.Updated, e.Deleted, e.SyncedCodes})
 }

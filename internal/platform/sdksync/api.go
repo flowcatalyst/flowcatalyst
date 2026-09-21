@@ -23,12 +23,15 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/appdocs"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
+	connectionops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	dispatchpoolops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
@@ -62,6 +65,10 @@ type State struct {
 	Roles         *role.Repository
 	Subscriptions *subscription.Repository
 	Connections   *connection.Repository
+	// Clients backs the connections sync's clientId resolution (id or
+	// identifier, see resolveClientRef). Optional — nil passes the given
+	// reference through unchanged (handler tests without a client repo).
+	Clients       *client.Repository
 	Processes     *process.Repository
 	DispatchPools *dispatchpool.Repository
 	Principals    *principal.Repository
@@ -90,6 +97,7 @@ func Register(api huma.API, s *State) {
 	apiroute.Post(g, "syncRoles", "/api/applications/{appCode}/roles/sync", "Sync an application's roles (SDK self-registration)", http.StatusOK, s.syncRoles)
 	apiroute.Post(g, "syncEventTypes", "/api/applications/{appCode}/event-types/sync", "Sync an application's event types (SDK self-registration)", http.StatusOK, s.syncEventTypes)
 	apiroute.Post(g, "syncSubscriptions", "/api/applications/{appCode}/subscriptions/sync", "Sync an application's subscriptions (SDK self-registration)", http.StatusOK, s.syncSubscriptions)
+	apiroute.Post(g, "syncConnections", "/api/applications/{appCode}/connections/sync", "Sync an application's connections (SDK self-registration)", http.StatusOK, s.syncConnections)
 	apiroute.Post(g, "syncDispatchPools", "/api/applications/{appCode}/dispatch-pools/sync", "Sync dispatch pools (SDK self-registration)", http.StatusOK, s.syncDispatchPools)
 	apiroute.Post(g, "syncPrincipals", "/api/applications/{appCode}/principals/sync", "Sync an application's principals (SDK self-registration)", http.StatusOK, s.syncPrincipals)
 	apiroute.Post(g, "syncAppDocs", "/api/applications/{appCode}/docs/sync", "Sync an application's documentation pages (SDK self-registration; declarative full replace)", http.StatusOK, s.syncAppDocs)
@@ -341,6 +349,107 @@ func (s *State) syncSubscriptions(ctx context.Context, in *syncSubscriptionsInpu
 		Deleted:         ev.Deleted,
 		SyncedCodes:     ev.SyncedCodes,
 	}}, nil
+}
+
+// ── Connections ───────────────────────────────────────────────────────────
+
+type syncConnectionInputRequest struct {
+	Code        string  `json:"code"`
+	Name        string  `json:"name"`
+	Description *string `json:"description,omitempty"`
+	ExternalID  *string `json:"externalId,omitempty"`
+}
+
+type syncConnectionsRequest struct {
+	// ClientID names the tenant this batch of connections belongs to —
+	// either the client's id or its identifier slug, resolved the same way
+	// as principal/api's user-scope requests (see resolveClientRef).
+	// Omitted/nil syncs the application's shared, client-less connections —
+	// still owned by this application, just tenant-less.
+	ClientID    *string                      `json:"clientId,omitempty"`
+	Connections []syncConnectionInputRequest `json:"connections"`
+}
+
+type syncConnectionsInput struct {
+	AppCode        string `path:"appCode" doc:"Application code"`
+	RemoveUnlisted bool   `query:"removeUnlisted" doc:"Remove API/CODE connections not in the list"`
+	Body           syncConnectionsRequest
+}
+
+func (s *State) syncConnections(ctx context.Context, in *syncConnectionsInput) (*syncResultOutput, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanSyncConnections(ac); err != nil {
+		return nil, err
+	}
+	app, err := s.resolveApp(ctx, in.AppCode)
+	if err != nil {
+		return nil, err
+	}
+
+	var clientID *string
+	if in.Body.ClientID != nil && strings.TrimSpace(*in.Body.ClientID) != "" {
+		resolved, rerr := s.resolveClientRef(ctx, strings.TrimSpace(*in.Body.ClientID))
+		if rerr != nil {
+			return nil, rerr
+		}
+		clientID = resolved
+	}
+
+	inputs := make([]connectionops.SyncConnectionEntry, 0, len(in.Body.Connections))
+	for _, c := range in.Body.Connections {
+		inputs = append(inputs, connectionops.SyncConnectionEntry{
+			Code:        c.Code,
+			Name:        c.Name,
+			Description: c.Description,
+			ExternalID:  c.ExternalID,
+		})
+	}
+
+	cmd := connectionops.SyncConnectionsCommand{
+		ApplicationID:   app.ID,
+		ApplicationCode: app.Code,
+		ClientID:        clientID,
+		Connections:     inputs,
+		RemoveUnlisted:  in.RemoveUnlisted,
+	}
+	ec := usecase.NewExecutionContext(ac.PrincipalID)
+	ev, err := usecaseop.Run(ctx, s.UoW, connectionops.SyncConnections(s.Connections, s.Apps, s.Subscriptions), cmd, ec)
+	if err != nil {
+		return nil, err
+	}
+	return &syncResultOutput{Body: SyncResultResponse{
+		ApplicationCode: ev.ApplicationCode,
+		Created:         ev.Created,
+		Updated:         ev.Updated,
+		Deleted:         ev.Deleted,
+		SyncedCodes:     ev.SyncedCodes,
+	}}, nil
+}
+
+// resolveClientRef canonicalises a request's client reference — either the
+// clt_ id or the client's identifier slug — to the client id. Unknown
+// references fail closed (a typo'd identifier must not silently sync
+// against the wrong tenant). Mirrors principal/api.State.resolveClientRef.
+func (s *State) resolveClientRef(ctx context.Context, ref string) (*string, error) {
+	if s.Clients == nil {
+		return &ref, nil // handler tests without a client repo: pass through
+	}
+	c, err := s.Clients.FindByID(ctx, ref)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "client lookup failed", err)
+	}
+	if c == nil {
+		// Identifiers are lowercase-normalised at create time (CreateClient),
+		// so match case-insensitively here.
+		c, err = s.Clients.FindByIdentifier(ctx, strings.ToLower(ref))
+		if err != nil {
+			return nil, usecase.Internal("REPO", "client lookup failed", err)
+		}
+	}
+	if c == nil {
+		return nil, httperror.NotFound("Client", ref)
+	}
+	return &c.ID, nil
 }
 
 // ── Principals ────────────────────────────────────────────────────────────

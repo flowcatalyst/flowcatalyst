@@ -70,6 +70,7 @@ const (
 	permAdminConnectionUpdate = "platform:messaging:connection:update"
 	permAdminConnectionDelete = "platform:messaging:connection:delete"
 	permAdminConnectionManage = "platform:messaging:connection:manage"
+	permAdminConnectionSync   = "platform:messaging:connection:sync"
 
 	// Subscription
 	permAdminSubscriptionRead   = "platform:messaging:subscription:view"
@@ -206,6 +207,10 @@ var permsApplicationService = []string{
 	"platform:application-service:subscription:create",
 	"platform:application-service:subscription:update",
 	"platform:application-service:subscription:delete",
+	"platform:application-service:connection:view",
+	"platform:application-service:connection:create",
+	"platform:application-service:connection:update",
+	"platform:application-service:connection:delete",
 	"platform:application-service:role:view",
 	"platform:application-service:role:create",
 	"platform:application-service:role:update",

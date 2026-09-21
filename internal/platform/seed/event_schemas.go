@@ -237,6 +237,11 @@ func platformEventSchemas() map[string]json.RawMessage {
 	m["platform:admin:connection:deleted"] = obj(
 		reqStr("connectionId"), reqStr("code"), optStr("clientId"),
 	)
+	m["platform:admin:connection:synced"] = obj(
+		reqStr("applicationCode"), optStr("clientId"),
+		reqU32("created"), reqU32("updated"), reqU32("deleted"),
+		reqStrArray("syncedCodes"),
+	)
 
 	// ── platform:admin:dispatch-pool ────────────────────────────────────
 	m["platform:admin:dispatch-pool:created"] = obj(

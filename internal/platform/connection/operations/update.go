@@ -64,6 +64,9 @@ func UpdateConnection(repo *connection.Repository, apps *application.Repository)
 				if app == nil {
 					return nil, httperror.NotFound("Application", *cmd.ApplicationCode)
 				}
+				if err := requireApplicationAccess(ctx, app); err != nil {
+					return nil, err
+				}
 				// Re-pointing to a different application changes the effective
 				// uniqueness key (application_code, client_id, code); a collision
 				// there must be reported the same way create does, not surface

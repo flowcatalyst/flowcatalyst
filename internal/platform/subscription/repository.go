@@ -142,6 +142,28 @@ func (r *Repository) FindByApplicationCode(ctx context.Context, appCode string) 
 	return r.hydrateAll(ctx, bare)
 }
 
+// FindCodesByConnectionID returns the codes of subscriptions that target
+// this connection. Used by the connection sync's delete-guard: removing a
+// connection a live subscription still points at would silently orphan its
+// deliveries, so the guard needs to name what's still pointing at it.
+func (r *Repository) FindCodesByConnectionID(ctx context.Context, connectionID string) ([]string, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT code FROM msg_subscriptions WHERE connection_id = $1 ORDER BY code`, connectionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var codes []string
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			return nil, err
+		}
+		codes = append(codes, code)
+	}
+	return codes, rows.Err()
+}
+
 // Persist implements usecasepgx.Persist[Subscription]. Replaces the
 // junction-table rows (event_types, custom_config) wholesale.
 func (r *Repository) Persist(ctx context.Context, s *Subscription, tx *usecasepgx.DbTx) error {

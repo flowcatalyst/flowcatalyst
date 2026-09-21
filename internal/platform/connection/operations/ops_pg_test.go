@@ -55,13 +55,25 @@ func mustCreate(t *testing.T, pool *pgxpool.Pool, uow *usecasepgx.UnitOfWork, co
 // mustCreateApplication seeds an application through its own public
 // operation (mirrors principal/operations/ops_pg_test.go's helper of the
 // same shape) so CreateConnection's applicationCode-existence check has a
-// real row to find.
-func mustCreateApplication(t *testing.T, uow *usecasepgx.UnitOfWork, code, name string) string {
+// real row to find. Returns the full event (id + code): tests need the id
+// for CanAccessApplication contexts and the code for ApplicationCode fields.
+func mustCreateApplication(t *testing.T, uow *usecasepgx.UnitOfWork, code, name string) appops.ApplicationCreated {
 	t.Helper()
 	ev, err := runAuthorized(uow, appops.CreateApplication(application.NewRepository(testpg.Pool(t))),
 		appops.CreateCommand{Code: code, Name: name})
 	require.NoError(t, err)
-	return ev.Code
+	return ev
+}
+
+// appAccessCtx is an all-applications anchor principal. CreateConnection,
+// UpdateConnection, and SyncConnections authorize an application link via
+// CanAccessApplication — a bare AnchorCtx sets Scope=Anchor but NOT
+// AllApplications, so it would be denied. Tests that link a connection to an
+// application run under this principal so they can reach any application.
+func appAccessCtx() context.Context {
+	return testpg.WithAuth(context.Background(), &auth.AuthContext{
+		PrincipalID: "prn_optestrunner1", Scope: auth.ScopeAnchor, AllApplications: true,
+	})
 }
 
 // ── Create ────────────────────────────────────────────────────────────────
@@ -204,24 +216,57 @@ func TestCreateConnection_ApplicationScopedUniqueness(t *testing.T) {
 	appA := mustCreateApplication(t, uow, "connappscope-a", "App A")
 	appB := mustCreateApplication(t, uow, "connappscope-b", "App B")
 
+	// Linking a connection to an application requires access to it
+	// (CanAccessApplication) — run as an all-applications principal.
+	create := func(cmd operations.CreateCommand) (operations.ConnectionCreated, error) {
+		return usecaseop.Run(appAccessCtx(), uow, operations.CreateConnection(repo, apps), cmd, testpg.TestEC())
+	}
+
 	// Same code, two different applications → both succeed.
-	_, err := runAuthorized(uow, operations.CreateConnection(repo, apps),
-		operations.CreateCommand{Code: "connappscope-shared", Name: "A", ServiceAccountID: "sva_x", ApplicationCode: &appA})
+	_, err := create(operations.CreateCommand{Code: "connappscope-shared", Name: "A", ServiceAccountID: "sva_x", ApplicationCode: &appA.Code})
 	require.NoError(t, err)
-	_, err = runAuthorized(uow, operations.CreateConnection(repo, apps),
-		operations.CreateCommand{Code: "connappscope-shared", Name: "B", ServiceAccountID: "sva_x", ApplicationCode: &appB})
+	_, err = create(operations.CreateCommand{Code: "connappscope-shared", Name: "B", ServiceAccountID: "sva_x", ApplicationCode: &appB.Code})
 	require.NoError(t, err, "the same code under a different application must not conflict")
 
 	// Same code, same application, same (nil) client → rejected.
-	_, err = runAuthorized(uow, operations.CreateConnection(repo, apps),
-		operations.CreateCommand{Code: "connappscope-shared", Name: "A again", ServiceAccountID: "sva_x", ApplicationCode: &appA})
+	_, err = create(operations.CreateCommand{Code: "connappscope-shared", Name: "A again", ServiceAccountID: "sva_x", ApplicationCode: &appA.Code})
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "CODE_EXISTS")
 
 	// An applicationCode that names no application is rejected up front.
 	noSuch := "connappscope-no-such-app"
-	_, err = runAuthorized(uow, operations.CreateConnection(repo, apps),
-		operations.CreateCommand{Code: "connappscope-newcode", Name: "X", ServiceAccountID: "sva_x", ApplicationCode: &noSuch})
+	_, err = create(operations.CreateCommand{Code: "connappscope-newcode", Name: "X", ServiceAccountID: "sva_x", ApplicationCode: &noSuch})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "Application_NOT_FOUND")
+}
+
+// TestCreateConnection_ApplicationCode_RequiresApplicationAccess proves the
+// use case's application-axis authorization: linking a connection to an
+// application requires CanAccessApplication, checked independently of the
+// client-scope check CheckScopeAccess already performed. A principal with
+// full access to the target CLIENT but no access to the target APPLICATION
+// (an application-scoped principal restricted to a different app) must
+// still be denied.
+func TestCreateConnection_ApplicationCode_RequiresApplicationAccess(t *testing.T) {
+	t.Parallel()
+	pool := testpg.Pool(t)
+	repo := connection.NewRepository(pool)
+	apps := application.NewRepository(pool)
+	uow := testpg.NewUoW(t)
+
+	app := mustCreateApplication(t, uow, "connappaccess-app", "App")
+
+	noAccessCtx := testpg.WithAuth(context.Background(), &auth.AuthContext{
+		PrincipalID: "prn_connappaccess1", Scope: auth.ScopeAnchor, Applications: []string{"app_someotherone"},
+	})
+	_, err := usecaseop.Run(noAccessCtx, uow, operations.CreateConnection(repo, apps),
+		operations.CreateCommand{Code: "connappaccess-x", Name: "X", ServiceAccountID: "sva_x", ApplicationCode: &app.Code},
+		testpg.TestEC())
+	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "FORBIDDEN")
+
+	// The same application, from a principal that can reach it, succeeds.
+	_, err = usecaseop.Run(appAccessCtx(), uow, operations.CreateConnection(repo, apps),
+		operations.CreateCommand{Code: "connappaccess-x", Name: "X", ServiceAccountID: "sva_x", ApplicationCode: &app.Code},
+		testpg.TestEC())
+	require.NoError(t, err)
 }
 
 // TestCreateConnection_DuplicateSharedNoClient_RejectedAtDatabase proves the
@@ -306,40 +351,64 @@ func TestUpdateConnection_ApplicationCode(t *testing.T) {
 	appB := mustCreateApplication(t, uow, "connupdapp-b", "App B")
 	seeded := mustCreate(t, pool, uow, "connupdapp-target", "Target")
 
+	// Linking a connection to an application requires access to it
+	// (CanAccessApplication) — run as an all-applications principal.
+	update := func(cmd operations.UpdateCommand) (operations.ConnectionUpdated, error) {
+		return usecaseop.Run(appAccessCtx(), uow, operations.UpdateConnection(repo, apps), cmd, testpg.TestEC())
+	}
+
 	// Omitted applicationCode leaves it unset.
-	_, err := runAuthorized(uow, operations.UpdateConnection(repo, apps),
-		operations.UpdateCommand{ID: seeded.ConnectionID, Name: "Target"})
+	_, err := update(operations.UpdateCommand{ID: seeded.ConnectionID, Name: "Target"})
 	require.NoError(t, err)
 	got, err := repo.FindByID(ctx, seeded.ConnectionID)
 	require.NoError(t, err)
 	assert.Nil(t, got.ApplicationCode)
 
 	// Set to a real application.
-	_, err = runAuthorized(uow, operations.UpdateConnection(repo, apps),
-		operations.UpdateCommand{ID: seeded.ConnectionID, Name: "Target", ApplicationCode: &appA})
+	_, err = update(operations.UpdateCommand{ID: seeded.ConnectionID, Name: "Target", ApplicationCode: &appA.Code})
 	require.NoError(t, err)
 	got, err = repo.FindByID(ctx, seeded.ConnectionID)
 	require.NoError(t, err)
 	require.NotNil(t, got.ApplicationCode)
-	assert.Equal(t, appA, *got.ApplicationCode)
+	assert.Equal(t, appA.Code, *got.ApplicationCode)
 
 	// Unknown application code 404s and leaves the row untouched.
 	noSuch := "connupdapp-no-such"
-	_, err = runAuthorized(uow, operations.UpdateConnection(repo, apps),
-		operations.UpdateCommand{ID: seeded.ConnectionID, Name: "Target", ApplicationCode: &noSuch})
+	_, err = update(operations.UpdateCommand{ID: seeded.ConnectionID, Name: "Target", ApplicationCode: &noSuch})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "Application_NOT_FOUND")
 
 	// Re-pointing onto an application that already owns this exact
 	// (application, client, code) triple conflicts.
 	other := mustCreate(t, pool, uow, "connupdapp-target", "Other")
-	_, err = runAuthorized(uow, operations.UpdateConnection(repo, apps),
-		operations.UpdateCommand{ID: other.ConnectionID, Name: "Other", ApplicationCode: &appA})
+	_, err = update(operations.UpdateCommand{ID: other.ConnectionID, Name: "Other", ApplicationCode: &appA.Code})
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "CODE_EXISTS")
 
 	// Re-pointing onto a DIFFERENT application that has no such row succeeds.
-	_, err = runAuthorized(uow, operations.UpdateConnection(repo, apps),
-		operations.UpdateCommand{ID: other.ConnectionID, Name: "Other", ApplicationCode: &appB})
+	_, err = update(operations.UpdateCommand{ID: other.ConnectionID, Name: "Other", ApplicationCode: &appB.Code})
 	require.NoError(t, err)
+}
+
+// TestUpdateConnection_ApplicationCode_RequiresApplicationAccess mirrors
+// TestCreateConnection_ApplicationCode_RequiresApplicationAccess for update:
+// re-pointing a connection onto an application the caller cannot access is
+// denied, independent of the client-scope check.
+func TestUpdateConnection_ApplicationCode_RequiresApplicationAccess(t *testing.T) {
+	t.Parallel()
+	pool := testpg.Pool(t)
+	repo := connection.NewRepository(pool)
+	apps := application.NewRepository(pool)
+	uow := testpg.NewUoW(t)
+
+	app := mustCreateApplication(t, uow, "connupdappaccess-app", "App")
+	seeded := mustCreate(t, pool, uow, "connupdappaccess-target", "Target")
+
+	noAccessCtx := testpg.WithAuth(context.Background(), &auth.AuthContext{
+		PrincipalID: "prn_connupdappaccess1", Scope: auth.ScopeAnchor, Applications: []string{"app_someotherone"},
+	})
+	_, err := usecaseop.Run(noAccessCtx, uow, operations.UpdateConnection(repo, apps),
+		operations.UpdateCommand{ID: seeded.ConnectionID, Name: "Target", ApplicationCode: &app.Code},
+		testpg.TestEC())
+	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "FORBIDDEN")
 }
 
 func TestUpdateConnection_Errors(t *testing.T) {

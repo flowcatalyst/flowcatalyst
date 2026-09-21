@@ -102,6 +102,38 @@ func (r *Repository) FindWithFilters(ctx context.Context, status, clientID *stri
 	return out, nil
 }
 
+// FindByApplicationAndClient returns the connections scoped to this
+// application AND this client — client_id IS NULL matches only a NULL
+// column, not "any client" — used by the connection sync (SyncConnections)
+// to load exactly the row set one (application, client) sync run may touch.
+// Unlike FindWithFilters (an admin-list filter where a nil clientID means
+// "don't filter"), a nil clientID here is a real value in the key.
+func (r *Repository) FindByApplicationAndClient(ctx context.Context, applicationCode string, clientID *string) ([]Connection, error) {
+	const q = `SELECT id, code, name, description, external_id, status,
+		service_account_id, client_id, client_identifier, created_at, updated_at,
+		application_code, source
+		FROM msg_connections
+		WHERE application_code = $1 AND client_id IS NOT DISTINCT FROM $2
+		ORDER BY code`
+	rows, err := r.pool.Query(ctx, q, applicationCode, clientID)
+	if err != nil {
+		return nil, err
+	}
+	collected, err := pgx.CollectRows(rows, pgx.RowToStructByName[dbq.MsgConnection])
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Connection, 0, len(collected))
+	for _, row := range collected {
+		c, err := rowToConnection(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *c)
+	}
+	return out, nil
+}
+
 // Persist implements usecasepgx.Persist[Connection].
 func (r *Repository) Persist(ctx context.Context, c *Connection, tx *usecasepgx.DbTx) error {
 	return r.q.WithTx(tx.Inner()).ConnectionUpsert(ctx, dbq.ConnectionUpsertParams{

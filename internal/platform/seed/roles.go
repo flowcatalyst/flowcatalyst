@@ -140,7 +140,7 @@ func PlatformRoles() []role.Role {
 				permAdminDispatchPoolRead, permAdminDispatchPoolCreate,
 				permAdminDispatchPoolUpdate, permAdminDispatchPoolDelete, permAdminDispatchPoolSync,
 				permAdminConnectionRead, permAdminConnectionCreate,
-				permAdminConnectionUpdate, permAdminConnectionDelete,
+				permAdminConnectionUpdate, permAdminConnectionDelete, permAdminConnectionSync,
 				permAdminEventRead, permAdminEventViewRaw,
 				permAdminDispatchJobRead, permAdminDispatchJobViewRaw,
 				permAdminScheduledJobRead, permAdminScheduledJobCreate,
