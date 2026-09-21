@@ -139,14 +139,17 @@ func (s *Seeder) seedPlatformEventTypes(ctx context.Context) error {
 			}
 		}
 
-		// Schema attach (idempotent). Version "v1" by convention.
+		// Schema attach (idempotent). Version "1.0", the same initial version
+		// the create operation and the SDKs use. A legacy 'v1' row (what this
+		// seeder wrote before migration 055 renamed them) also counts as
+		// present, so the same schema is never attached twice.
 		if len(d.Schema) == 0 {
 			continue
 		}
 		var existing int
 		if err := s.pool.QueryRow(ctx,
 			`SELECT COUNT(*) FROM msg_event_type_spec_versions
-			  WHERE event_type_id = $1 AND version = 'v1'`, id).Scan(&existing); err != nil {
+			  WHERE event_type_id = $1 AND version IN ('1.0', 'v1')`, id).Scan(&existing); err != nil {
 			return fmt.Errorf("count spec versions %s: %w", d.Code, err)
 		}
 		if existing > 0 {
@@ -156,7 +159,7 @@ func (s *Seeder) seedPlatformEventTypes(ctx context.Context) error {
 			`INSERT INTO msg_event_type_spec_versions
 			     (id, event_type_id, version, mime_type, schema_content, schema_type,
 			      status, created_at, updated_at)
-			 VALUES ($1, $2, 'v1', 'application/schema+json', $3, 'JSON_SCHEMA', 'CURRENT', $4, $4)`,
+			 VALUES ($1, $2, '1.0', 'application/schema+json', $3, 'JSON_SCHEMA', 'CURRENT', $4, $4)`,
 			tsid.Generate(tsid.Schema), id, []byte(d.Schema), now); err != nil {
 			return fmt.Errorf("insert spec version %s: %w", d.Code, err)
 		}
@@ -170,7 +173,7 @@ func (s *Seeder) seedPlatformEventTypes(ctx context.Context) error {
 // seedPlatformEventSchemas is a no-op now that schemas are attached
 // inside seedPlatformEventTypes — keep the function so seed.go's
 // scaffolding doesn't drift, and we have a place to hang schema-only
-// upgrades in the future (e.g. a "v2" rollout).
+// upgrades in the future (e.g. a "2.0" rollout).
 func (s *Seeder) seedPlatformEventSchemas(_ context.Context) error { return nil }
 
 // ── helpers ──────────────────────────────────────────────────────────────
