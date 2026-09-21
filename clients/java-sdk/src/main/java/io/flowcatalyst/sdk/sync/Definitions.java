@@ -154,7 +154,7 @@ public final class Definitions {
 
     /**
      * A subscription declaration: where to deliver ({@code target} URL or
-     * {@code connectionId} reference), which event types trigger it, and how
+     * {@code connectionCode} reference), which event types trigger it, and how
      * to handle failures.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -169,7 +169,20 @@ public final class Definitions {
             SubscriptionMode mode,
             Integer maxRetries,
             Integer timeoutSeconds,
-            Boolean dataOnly) {
+            Boolean dataOnly,
+            String connectionCode) {
+
+        /**
+         * The pre-{@code connectionCode} component list, kept so existing
+         * callers of the canonical constructor keep compiling.
+         */
+        public Subscription(
+                String code, String name, String description, String target, String connectionId,
+                List<SubscriptionEventType> eventTypes, String dispatchPoolCode, SubscriptionMode mode,
+                Integer maxRetries, Integer timeoutSeconds, Boolean dataOnly) {
+            this(code, name, description, target, connectionId, eventTypes, dispatchPoolCode, mode,
+                    maxRetries, timeoutSeconds, dataOnly, null);
+        }
 
         public static Subscription of(
                 String code, String name, String target, List<SubscriptionEventType> eventTypes) {
@@ -179,38 +192,48 @@ public final class Definitions {
 
         public Subscription withDescription(String description) {
             return new Subscription(code, name, description, target, connectionId, eventTypes,
-                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly);
+                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly, connectionCode);
         }
 
         public Subscription withConnectionId(String connectionId) {
             return new Subscription(code, name, description, target, connectionId, eventTypes,
-                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly);
+                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly, connectionCode);
+        }
+
+        /**
+         * Names the connection by its code — stable across environments,
+         * unlike {@link #withConnectionId}, whose id is minted per environment.
+         * The platform resolves the code (anchor-level connections).
+         */
+        public Subscription withConnectionCode(String connectionCode) {
+            return new Subscription(code, name, description, target, connectionId, eventTypes,
+                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly, connectionCode);
         }
 
         public Subscription withDispatchPoolCode(String dispatchPoolCode) {
             return new Subscription(code, name, description, target, connectionId, eventTypes,
-                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly);
+                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly, connectionCode);
         }
 
         public Subscription withMode(SubscriptionMode mode) {
             return new Subscription(code, name, description, target, connectionId, eventTypes,
-                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly);
+                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly, connectionCode);
         }
 
         public Subscription withMaxRetries(int maxRetries) {
             return new Subscription(code, name, description, target, connectionId, eventTypes,
-                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly);
+                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly, connectionCode);
         }
 
         public Subscription withTimeoutSeconds(int timeoutSeconds) {
             return new Subscription(code, name, description, target, connectionId, eventTypes,
-                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly);
+                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly, connectionCode);
         }
 
         /** When true, only the event's {@code data} field is POSTed (no metadata envelope). */
         public Subscription withDataOnly(boolean dataOnly) {
             return new Subscription(code, name, description, target, connectionId, eventTypes,
-                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly);
+                    dispatchPoolCode, mode, maxRetries, timeoutSeconds, dataOnly, connectionCode);
         }
     }
 

@@ -146,7 +146,7 @@ export interface SubscriptionEventTypeBinding {
  * A subscription declaration.
  *
  * The subscription describes a downstream consumer: where to deliver
- * (`target` URL or `connectionId` reference), which event types trigger it,
+ * (`target` URL, plus an optional `connectionCode`), which event types trigger it,
  * and how to handle failures.
  */
 export interface SubscriptionDefinition {
@@ -156,7 +156,16 @@ export interface SubscriptionDefinition {
 	description?: string;
 	/** Webhook URL where events are delivered */
 	target: string;
-	/** Pre-configured connection reference (alternative to `target`) */
+	/**
+	 * Code of the connection that delivers this subscription. Prefer it over
+	 * `connectionId`: an id is minted per environment, a code is the same
+	 * everywhere, and the platform resolves it (anchor-level connections).
+	 */
+	connectionCode?: string;
+	/**
+	 * Connection id. Environment-specific — use `connectionCode` in anything
+	 * that is synced to more than one environment.
+	 */
 	connectionId?: string;
 	/** Event types this subscription consumes */
 	eventTypes: SubscriptionEventTypeBinding[];

@@ -35,7 +35,14 @@ public @interface AsSubscription {
     /** Full event type codes this subscription consumes. */
     String[] eventTypes();
 
-    /** Pre-configured connection reference (alternative to {@code target}). */
+    /**
+     * Code of the connection that delivers this subscription. Prefer it over
+     * {@link #connectionId()}: a code is the same in every environment, an id
+     * is not. The platform resolves it (anchor-level connections).
+     */
+    String connectionCode() default "";
+
+    /** Connection id. Environment-specific — prefer {@link #connectionCode()}. */
     String connectionId() default "";
 
     /** Dispatch pool code; platform default pool when omitted. */
