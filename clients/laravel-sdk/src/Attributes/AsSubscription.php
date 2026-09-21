@@ -15,10 +15,11 @@ use FlowCatalyst\Enums\DispatchMode;
  * #[AsSubscription(
  *     code: 'order-processor',
  *     name: 'Order Processor',
+ *     target: '/webhooks/orders',  // path → resolved against APP_URL at sync
  *     description: 'Processes new orders',
  *     clientScoped: true,  // Set to true for client-scoped subscriptions
  *     eventTypes: ['myapp:orders:order:created', 'myapp:orders:order:updated'],
- *     connectionId: 'conn_abc123',
+ *     connectionCode: 'orders-webhook',
  *     queue: 'orders',
  *     dispatchPoolCode: 'default',
  *     mode: DispatchMode::BLOCK_ON_ERROR
@@ -32,7 +33,18 @@ final class AsSubscription
     /**
      * @param string $code Unique subscription code
      * @param string $name Human-friendly name
-     * @param string $connectionId Connection ID for dispatch routing
+     * @param string $target Where the platform delivers this subscription's
+     *        events. Either an absolute URL, sent as-is, or a path
+     *        (`/webhooks/orders`), which the sync resolves against
+     *        `flowcatalyst.subscriptions.target_base_url`, falling back to
+     *        `app.url`. Prefer a path: the attribute is compiled into the
+     *        codebase while the host differs per environment, and resolving at
+     *        sync time (not scan time) means a definition cache built in CI
+     *        still gets the deploying environment's host.
+     * @param string $connectionCode Code of the connection that delivers this
+     *        subscription. The code, not the id: an id is minted per
+     *        environment, a code is the same everywhere. The platform resolves
+     *        it at sync time (anchor-level connections).
      * @param string $queue Queue name for message routing
      * @param string $dispatchPoolCode Dispatch pool code for rate limiting
      * @param string|null $description Subscription description
@@ -55,7 +67,8 @@ final class AsSubscription
     public function __construct(
         public readonly string $code,
         public readonly string $name,
-        public readonly string $connectionId,
+        public readonly string $target,
+        public readonly string $connectionCode,
         public readonly string $queue,
         public readonly string $dispatchPoolCode,
         public readonly ?string $description = null,
@@ -91,9 +104,10 @@ final class AsSubscription
         $data = [
             'code' => $this->code,
             'name' => $this->name,
+            'target' => $this->target,
             'clientScoped' => $this->clientScoped,
             'eventTypes' => $eventTypeBindings ?: null,
-            'connectionId' => $this->connectionId,
+            'connectionCode' => $this->connectionCode,
             'queue' => $this->queue,
             'dispatchPoolCode' => $this->dispatchPoolCode,
         ];

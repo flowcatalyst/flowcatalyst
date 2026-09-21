@@ -609,6 +609,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Subscriptions
+    |--------------------------------------------------------------------------
+    |
+    | #[AsSubscription(target: ...)] takes either an absolute URL or a path.
+    | A path is resolved at SYNC time against target_base_url, which defaults
+    | to APP_URL — so one definition serves every environment. Set it only
+    | when the URL the platform must call differs from APP_URL (tunnels,
+    | internal gateways, a per-tenant host).
+    |
+    */
+    'subscriptions' => [
+        'target_base_url' => env('FLOWCATALYST_SUBSCRIPTION_TARGET_BASE_URL'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Outbox Configuration
     |--------------------------------------------------------------------------
     |

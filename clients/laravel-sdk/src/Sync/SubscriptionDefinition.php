@@ -14,7 +14,10 @@ final class SubscriptionDefinition
     /**
      * @param string $code Unique subscription code
      * @param string $name Human-readable name
-     * @param string $connectionId Connection ID for dispatch routing
+     * @param string $target Delivery URL — absolute, or a path the sync
+     *        resolves against flowcatalyst.subscriptions.target_base_url / app.url
+     * @param string $connectionCode Code of the connection that delivers this
+     *        subscription — stable across environments, unlike its id
      * @param string $queue Queue name for delivery
      * @param string $dispatchPoolCode Code of the dispatch pool to use
      * @param string|null $applicationCode Application code this subscription belongs to
@@ -29,7 +32,8 @@ final class SubscriptionDefinition
     public function __construct(
         public readonly string $code,
         public readonly string $name,
-        public readonly string $connectionId,
+        public readonly string $target,
+        public readonly string $connectionCode,
         public readonly string $queue,
         public readonly string $dispatchPoolCode,
         public readonly ?string $applicationCode = null,
@@ -48,11 +52,12 @@ final class SubscriptionDefinition
     public static function make(
         string $code,
         string $name,
-        string $connectionId,
+        string $target,
+        string $connectionCode,
         string $queue,
         string $dispatchPoolCode
     ): self {
-        return new self($code, $name, $connectionId, $queue, $dispatchPoolCode);
+        return new self($code, $name, $target, $connectionCode, $queue, $dispatchPoolCode);
     }
 
     /**
@@ -63,7 +68,7 @@ final class SubscriptionDefinition
         return new self(
             code: $this->code,
             name: $this->name,
-            connectionId: $this->connectionId,
+            connectionCode: $this->connectionCode,
             queue: $this->queue,
             dispatchPoolCode: $this->dispatchPoolCode,
             applicationCode: $this->applicationCode,
@@ -74,6 +79,31 @@ final class SubscriptionDefinition
             retryDelaySeconds: $this->retryDelaySeconds,
             timeoutSeconds: $this->timeoutSeconds,
             active: $this->active,
+            target: $this->target,
+        );
+    }
+
+    /**
+     * Create a copy that delivers to $target — an absolute URL, or a path
+     * resolved against the configured base URL at sync time.
+     */
+    public function withTarget(string $target): self
+    {
+        return new self(
+            code: $this->code,
+            name: $this->name,
+            connectionCode: $this->connectionCode,
+            queue: $this->queue,
+            dispatchPoolCode: $this->dispatchPoolCode,
+            applicationCode: $this->applicationCode,
+            description: $this->description,
+            clientScoped: $this->clientScoped,
+            eventTypeCode: $this->eventTypeCode,
+            maxRetries: $this->maxRetries,
+            retryDelaySeconds: $this->retryDelaySeconds,
+            timeoutSeconds: $this->timeoutSeconds,
+            active: $this->active,
+            target: $target,
         );
     }
 
@@ -85,7 +115,7 @@ final class SubscriptionDefinition
         return new self(
             code: $this->code,
             name: $this->name,
-            connectionId: $this->connectionId,
+            connectionCode: $this->connectionCode,
             queue: $this->queue,
             dispatchPoolCode: $this->dispatchPoolCode,
             applicationCode: $this->applicationCode,
@@ -96,6 +126,7 @@ final class SubscriptionDefinition
             retryDelaySeconds: $this->retryDelaySeconds,
             timeoutSeconds: $this->timeoutSeconds,
             active: $this->active,
+            target: $this->target,
         );
     }
 
@@ -107,7 +138,7 @@ final class SubscriptionDefinition
         return new self(
             code: $this->code,
             name: $this->name,
-            connectionId: $this->connectionId,
+            connectionCode: $this->connectionCode,
             queue: $this->queue,
             dispatchPoolCode: $this->dispatchPoolCode,
             applicationCode: $this->applicationCode,
@@ -118,6 +149,7 @@ final class SubscriptionDefinition
             retryDelaySeconds: $this->retryDelaySeconds,
             timeoutSeconds: $this->timeoutSeconds,
             active: $this->active,
+            target: $this->target,
         );
     }
 
@@ -129,7 +161,7 @@ final class SubscriptionDefinition
         return new self(
             code: $this->code,
             name: $this->name,
-            connectionId: $this->connectionId,
+            connectionCode: $this->connectionCode,
             queue: $this->queue,
             dispatchPoolCode: $this->dispatchPoolCode,
             applicationCode: $this->applicationCode,
@@ -140,6 +172,7 @@ final class SubscriptionDefinition
             retryDelaySeconds: $delaySeconds,
             timeoutSeconds: $this->timeoutSeconds,
             active: $this->active,
+            target: $this->target,
         );
     }
 
@@ -151,7 +184,7 @@ final class SubscriptionDefinition
         return new self(
             code: $this->code,
             name: $this->name,
-            connectionId: $this->connectionId,
+            connectionCode: $this->connectionCode,
             queue: $this->queue,
             dispatchPoolCode: $this->dispatchPoolCode,
             applicationCode: $this->applicationCode,
@@ -162,6 +195,7 @@ final class SubscriptionDefinition
             retryDelaySeconds: $this->retryDelaySeconds,
             timeoutSeconds: $seconds,
             active: $this->active,
+            target: $this->target,
         );
     }
 
@@ -173,7 +207,7 @@ final class SubscriptionDefinition
         return new self(
             code: $this->code,
             name: $this->name,
-            connectionId: $this->connectionId,
+            connectionCode: $this->connectionCode,
             queue: $this->queue,
             dispatchPoolCode: $this->dispatchPoolCode,
             applicationCode: $this->applicationCode,
@@ -184,6 +218,7 @@ final class SubscriptionDefinition
             retryDelaySeconds: $this->retryDelaySeconds,
             timeoutSeconds: $this->timeoutSeconds,
             active: false,
+            target: $this->target,
         );
     }
 
@@ -197,7 +232,8 @@ final class SubscriptionDefinition
         $data = [
             'code' => $this->code,
             'name' => $this->name,
-            'connectionId' => $this->connectionId,
+            'target' => $this->target,
+            'connectionCode' => $this->connectionCode,
             'queue' => $this->queue,
             'dispatchPoolCode' => $this->dispatchPoolCode,
             'clientScoped' => $this->clientScoped,
@@ -232,7 +268,7 @@ final class SubscriptionDefinition
         return new self(
             code: $data['code'],
             name: $data['name'],
-            connectionId: $data['connectionId'],
+            connectionCode: $data['connectionCode'],
             queue: $data['queue'],
             dispatchPoolCode: $data['dispatchPoolCode'],
             applicationCode: $data['applicationCode'] ?? null,
@@ -243,6 +279,7 @@ final class SubscriptionDefinition
             retryDelaySeconds: $data['retryDelaySeconds'] ?? 60,
             timeoutSeconds: $data['timeoutSeconds'] ?? 30,
             active: $data['active'] ?? true,
+            target: $data['target'] ?? $data['endpoint'],
         );
     }
 }

@@ -57,6 +57,13 @@ class DefinitionSynchronizer
         // service provider passes APP_URL + ScheduledJobRunner's conventional
         // process path.
         private readonly ?string $defaultScheduledJobTargetUrl = null,
+        // Base URL a subscription's path-style target (`/webhooks/orders`) is
+        // resolved against. The service provider passes
+        // `flowcatalyst.subscriptions.target_base_url`, falling back to
+        // `app.url`. Resolved HERE rather than at scan time because the scan
+        // cache may be built in CI, where the deploying environment's host
+        // isn't known yet.
+        private readonly ?string $subscriptionTargetBaseUrl = null,
     ) {}
 
     /**
@@ -292,6 +299,31 @@ class DefinitionSynchronizer
     }
 
     /**
+     * The absolute delivery URL for one subscription row, or null when it
+     * cannot be determined. An absolute `target` (anything with a scheme) is
+     * used verbatim; a path is joined onto the configured base URL. `endpoint`
+     * is accepted as an alias — it is the platform's name for the same field
+     * on the single-subscription create path.
+     *
+     * @param array<string, mixed> $row
+     */
+    private function resolveSubscriptionTarget(array $row): ?string
+    {
+        $target = trim((string) ($row['target'] ?? $row['endpoint'] ?? ''));
+        if ($target === '') {
+            return null;
+        }
+        if (preg_match('#^[a-z][a-z0-9+.\-]*://#i', $target) === 1) {
+            return $target;
+        }
+        $base = $this->subscriptionTargetBaseUrl;
+        if ($base === null || trim($base) === '') {
+            return null;
+        }
+        return rtrim(trim($base), '/') . '/' . ltrim($target, '/');
+    }
+
+    /**
      * Sync subscriptions for an application.
      *
      * @param string $appCode Application code
@@ -302,8 +334,32 @@ class DefinitionSynchronizer
     private function syncSubscriptions(string $appCode, array $subscriptions, bool $removeUnlisted): array
     {
         try {
+            // Resolve every target BEFORE building the payload, and refuse
+            // the whole sync if any is missing. The platform rejects an empty
+            // target anyway, but with an opaque TARGET_REQUIRED for the batch;
+            // naming the subscriptions here is what makes it fixable. Sending
+            // only the resolvable ones is not an option: with removeUnlisted
+            // the omitted subscriptions would be DELETED.
+            $targets = [];
+            $unresolved = [];
+            foreach ($subscriptions as $i => $row) {
+                $target = $this->resolveSubscriptionTarget($row);
+                if ($target === null) {
+                    $unresolved[] = (string) ($row['code'] ?? "#{$i}");
+                    continue;
+                }
+                $targets[$i] = $target;
+            }
+            if ($unresolved !== []) {
+                throw new \InvalidArgumentException(
+                    'No delivery target for subscription(s): ' . implode(', ', $unresolved)
+                    . '. `target` must be an absolute URL, or a path — which needs'
+                    . ' flowcatalyst.subscriptions.target_base_url or app.url to resolve against.'
+                );
+            }
+
             $entries = array_map(
-                function (array $row) {
+                function (array $row, int|string $i) use ($targets) {
                     $rawBindings = $row['eventTypes'] ?? (
                         isset($row['eventTypeCode']) ? [['eventTypeCode' => $row['eventTypeCode']]] : []
                     );
@@ -317,10 +373,11 @@ class DefinitionSynchronizer
                     return new SyncSubscriptionEntry(
                         code: (string) ($row['code'] ?? ''),
                         name: (string) ($row['name'] ?? ''),
-                        target: (string) ($row['target'] ?? $row['endpoint'] ?? ''),
+                        target: $targets[$i],
                         eventTypes: $bindings,
                         description: isset($row['description']) ? (string) $row['description'] : null,
                         connectionId: isset($row['connectionId']) ? (string) $row['connectionId'] : null,
+                        connectionCode: isset($row['connectionCode']) ? (string) $row['connectionCode'] : null,
                         dispatchPoolCode: isset($row['dispatchPoolCode']) ? (string) $row['dispatchPoolCode'] : null,
                         mode: $row['mode'] ?? null,
                         maxRetries: isset($row['maxRetries']) ? (int) $row['maxRetries'] : null,
@@ -329,6 +386,7 @@ class DefinitionSynchronizer
                     );
                 },
                 $subscriptions,
+                array_keys($subscriptions),
             );
             $result = $this->client->subscriptions()->sync($appCode, $entries, $removeUnlisted);
 

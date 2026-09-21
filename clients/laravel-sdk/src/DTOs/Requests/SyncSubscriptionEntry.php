@@ -32,6 +32,9 @@ final class SyncSubscriptionEntry
         public readonly ?int $maxRetries = null,
         public readonly ?int $timeoutSeconds = null,
         public readonly bool $dataOnly = false,
+        // Stable across environments, unlike connectionId (a per-environment
+        // id). Prefer it; the platform resolves it to the local id.
+        public readonly ?string $connectionCode = null,
     ) {}
 
     /**
@@ -54,6 +57,9 @@ final class SyncSubscriptionEntry
         }
         if ($this->connectionId !== null) {
             $payload['connectionId'] = $this->connectionId;
+        }
+        if ($this->connectionCode !== null) {
+            $payload['connectionCode'] = $this->connectionCode;
         }
         if ($this->dispatchPoolCode !== null) {
             $payload['dispatchPoolCode'] = $this->dispatchPoolCode;

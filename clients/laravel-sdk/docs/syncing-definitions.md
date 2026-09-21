@@ -243,18 +243,38 @@ use FlowCatalyst\Attributes\AsSubscription;
 #[AsSubscription(
     code: 'order-notifications',
     name: 'Order Notifications',
-    target: 'https://myapp.com/webhooks/orders',
+    target: '/webhooks/orders',     // path → resolved against APP_URL at sync
+    connectionCode: 'orders-webhook',
     queue: 'orders',
     dispatchPoolCode: 'default',
-    eventTypeCode: 'order.placed',  // Subscribe to specific event type
+    eventTypes: ['myapp:orders:order:placed'],
     description: 'Sends order notifications to our webhook',
     maxRetries: 5,
-    retryDelaySeconds: 120,
     timeoutSeconds: 30,
-    active: true
 )]
 class OrderNotificationSubscription {}
 ```
+
+#### Where events are delivered: `target`
+
+The platform requires a delivery URL for every subscription, so `target` is a
+required argument. The SDK mounts no event-receiving route of its own (unlike
+scheduled jobs), so there is nothing it could default to — you name the route
+your app handles.
+
+`target` takes either form:
+
+- **A path** (`/webhooks/orders`) — recommended. It is joined onto a base URL
+  when you run `flowcatalyst:sync`, so the same class works in every
+  environment. The base is `flowcatalyst.subscriptions.target_base_url`
+  (`FLOWCATALYST_SUBSCRIPTION_TARGET_BASE_URL`) when set, otherwise `app.url`
+  (`APP_URL`).
+- **An absolute URL** (`https://hooks.example.org/orders`) — sent as-is.
+
+Resolution happens at sync time, not scan time, so a definition cache built in
+CI still picks up the host of the environment that runs the sync. Set
+`target_base_url` when the URL the platform must call is not `APP_URL` — a
+tunnel, an internal gateway, or a per-tenant host.
 
 ### Step 3: Scan Definitions
 
@@ -436,7 +456,8 @@ $eventType = EventTypeDefinition::make('article.published', 'Article Published')
 $subscription = SubscriptionDefinition::make(
     code: 'article-webhook',
     name: 'Article Webhook',
-    target: 'https://example.com/webhooks/articles',
+    target: '/webhooks/articles',   // or an absolute URL
+    connectionCode: 'orders-webhook',
     queue: 'webhooks',
     dispatchPoolCode: 'default'
 )
@@ -499,6 +520,7 @@ $crmDefinitions = SyncDefinitionSet::forApplication('crm-service')
             code: 'billing-integration',
             name: 'Billing Integration',
             target: 'https://crm.example.com/webhooks/billing',
+            connectionCode: 'orders-webhook',
             queue: 'integrations',
             dispatchPoolCode: 'default',
             eventTypeCode: 'invoice.created',
@@ -743,7 +765,8 @@ class FlowCatalystSyncProvider extends ServiceProvider
 | ------------------- | ------ | -------- | ---------------------------------------------- |
 | `code`              | string | Yes      | Unique subscription code                       |
 | `name`              | string | Yes      | Human-readable name                            |
-| `target`            | string | Yes      | Webhook URL                                    |
+| `target`            | string | Yes      | Delivery URL — absolute, or a path resolved against `target_base_url` / `APP_URL` at sync |
+| `connectionCode`    | string | Yes      | Connection code — stable across environments   |
 | `queue`             | string | Yes      | Queue name for delivery                        |
 | `dispatchPoolCode`  | string | Yes      | Dispatch pool code                             |
 | `description`       | string | No       | Subscription description                       |
