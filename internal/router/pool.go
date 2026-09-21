@@ -970,9 +970,16 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 func (p *Pool) releaseGroup(ctx context.Context, group string, inHand common.QueuedMessage, delay *uint32, reason string) {
 	p.nackMsg(ctx, inHand, delay, reason)
 	released := p.releaseBuffered(ctx, group, reason)
+	// delay_seconds is how long the broker was asked to hold the head back —
+	// 0 means "redeliver now". Without it a release that parks the group for
+	// minutes (a target-named deferral) reads the same as an instant one.
+	var delaySeconds uint32
+	if delay != nil {
+		delaySeconds = *delay
+	}
 	slog.Info("released message group to broker",
 		"group", group, "pool", p.cfg.Code, "message_id", inHand.Message.ID,
-		"buffered_released", released, "reason", reason)
+		"buffered_released", released, "delay_seconds", delaySeconds, "reason", reason)
 }
 
 // takeBuffered empties a group's buffer and clears `working`, returning what
@@ -1576,6 +1583,15 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 
 	d := p.settleRetry(qm, DispositionOf(outcome, qm.Attempts, qm.Message.DispatchMode, p.honoursDelayedReturn(qm)))
 	p.recordMetric(d.Metric, durationMs)
+
+	// A deferral is the one delivery outcome the mediator logs nothing for
+	// (it is a 2xx), yet it can hold a message back for as long as the target
+	// names — so say who asked, and for how long.
+	if outcome.Result == common.MediationDeferred {
+		slog.Info("target deferred message (ack=false)",
+			"message_id", qm.Message.ID, "group", qm.Message.GroupID(), "pool", p.cfg.Code,
+			"delay_seconds", outcome.DelaySeconds, "status", outcome.StatusCode)
+	}
 
 	if d.Action == BrokerAck {
 		// A 2xx carrying {"flushGroup": true} delivered normally but asks us
