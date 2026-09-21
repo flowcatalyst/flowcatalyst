@@ -44,7 +44,9 @@ final class AsSubscription
      * @param string $connectionCode Code of the connection that delivers this
      *        subscription. The code, not the id: an id is minted per
      *        environment, a code is the same everywhere. The platform resolves
-     *        it at sync time (anchor-level connections).
+     *        it at sync time. A bare code names a connection owned by THIS
+     *        application; set `sharedConnection: true` when it names a
+     *        shared (application-less) connection instead.
      * @param string $queue Queue name for message routing
      * @param string $dispatchPoolCode Dispatch pool code for rate limiting
      * @param string|null $description Subscription description
@@ -63,6 +65,16 @@ final class AsSubscription
      *        during sync — set it when one codebase defines subscriptions for
      *        more than one application. Null = resolve from the namespace map /
      *        default.
+     * @param bool $sharedConnection Whether `connectionCode` names a SHARED
+     *        (application-less) connection rather than one owned by this
+     *        application. Only meaningful together with `connectionCode`;
+     *        the payload only carries this field when true.
+     * @param string|null $client The FlowCatalyst client (by identifier
+     *        slug) this subscription is scoped to. Null = the config default
+     *        `flowcatalyst.client` (single-tenant apps), and null there too
+     *        means global (no client). For a multi-tenant application, don't
+     *        set this on the attribute — build one `SyncDefinitionSet` per
+     *        client instead (see `SyncDefinitionSet::forClient()`).
      */
     public function __construct(
         public readonly string $code,
@@ -83,6 +95,8 @@ final class AsSubscription
         public readonly ?int $maxRetries = null,
         public readonly ?bool $dataOnly = null,
         public readonly ?string $application = null,
+        public readonly bool $sharedConnection = false,
+        public readonly ?string $client = null,
     ) {}
 
     /**
@@ -138,6 +152,9 @@ final class AsSubscription
         }
         if ($this->dataOnly !== null) {
             $data['dataOnly'] = $this->dataOnly;
+        }
+        if ($this->sharedConnection) {
+            $data['sharedConnection'] = true;
         }
 
         return $data;

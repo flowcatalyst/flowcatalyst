@@ -498,12 +498,30 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Client (Single-Tenant Deployments)
+    |--------------------------------------------------------------------------
+    |
+    | The FlowCatalyst client (by IDENTIFIER slug, never an id — ids differ
+    | per environment) that #[AsSubscription] / #[AsConnection] definitions
+    | belong to when the attribute itself doesn't set `client:`. Leave unset
+    | (the default) for a global — client-less — definition.
+    |
+    | This is only for SINGLE-tenant apps. A MULTI-tenant application (one
+    | codebase, many clients) doesn't use this default at all — it builds one
+    | `SyncDefinitionSet` per client programmatically instead; see
+    | `definitions.set_providers` below and docs/syncing-definitions.md.
+    |
+    */
+    'client' => env('FLOWCATALYST_CLIENT'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Definition Scanning
     |--------------------------------------------------------------------------
     |
     | Configuration for scanning PHP classes with FlowCatalyst attributes
-    | (#[AsRole], #[AsEventType], #[AsSubscription]) and caching them for
-    | syncing to the platform.
+    | (#[AsRole], #[AsEventType], #[AsSubscription], #[AsConnection]) and
+    | caching them for syncing to the platform.
     |
     */
     'definitions' => [
@@ -528,6 +546,27 @@ return [
         |
         */
         'application_map' => [],
+
+        /*
+        |----------------------------------------------------------------------
+        | Definition Set Providers (Multi-Tenant Deployments)
+        |----------------------------------------------------------------------
+        |
+        | Class names implementing `FlowCatalyst\Sync\ProvidesSyncDefinitionSets`,
+        | resolved through the container. A multi-tenant application's client
+        | list is runtime data (a database table, a config file, …) that no
+        | attribute could express, so it builds one `SyncDefinitionSet` per
+        | (application, client) programmatically here instead of using
+        | attributes for this. `flowcatalyst:sync` resolves each provider and
+        | syncs every set it yields, IN ADDITION to the scanned attribute
+        | definitions:
+        |
+        |   'set_providers' => [
+        |       App\FlowCatalyst\TenantDefinitionSetProvider::class,
+        |   ],
+        |
+        */
+        'set_providers' => [],
 
         /*
         |----------------------------------------------------------------------

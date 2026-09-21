@@ -17,7 +17,10 @@ final class SubscriptionDefinition
      * @param string $target Delivery URL — absolute, or a path the sync
      *        resolves against flowcatalyst.subscriptions.target_base_url / app.url
      * @param string $connectionCode Code of the connection that delivers this
-     *        subscription — stable across environments, unlike its id
+     *        subscription — stable across environments, unlike its id. A
+     *        bare code names a connection owned by THIS application; set
+     *        `sharedConnection: true` when it names a shared
+     *        (application-less) connection instead.
      * @param string $queue Queue name for delivery
      * @param string $dispatchPoolCode Code of the dispatch pool to use
      * @param string|null $applicationCode Application code this subscription belongs to
@@ -28,6 +31,13 @@ final class SubscriptionDefinition
      * @param int $retryDelaySeconds Delay between retries in seconds (default: 60)
      * @param int $timeoutSeconds Webhook timeout in seconds (default: 30)
      * @param bool $active Whether the subscription is active (default: true)
+     * @param bool $sharedConnection Whether `connectionCode` names a shared
+     *        (application-less) connection. Only sent when true.
+     * @param string|null $client FlowCatalyst client (identifier slug) this
+     *        subscription is scoped to. Null = global. Unlike the attribute
+     *        default, this is never overridden by `flowcatalyst.client` —
+     *        set it explicitly, or scope the whole set via
+     *        `SyncDefinitionSet::forClient()` instead.
      */
     public function __construct(
         public readonly string $code,
@@ -44,6 +54,8 @@ final class SubscriptionDefinition
         public readonly int $retryDelaySeconds = 60,
         public readonly int $timeoutSeconds = 30,
         public readonly bool $active = true,
+        public readonly bool $sharedConnection = false,
+        public readonly ?string $client = null,
     ) {}
 
     /**
@@ -80,6 +92,8 @@ final class SubscriptionDefinition
             timeoutSeconds: $this->timeoutSeconds,
             active: $this->active,
             target: $this->target,
+            sharedConnection: $this->sharedConnection,
+            client: $this->client,
         );
     }
 
@@ -104,6 +118,8 @@ final class SubscriptionDefinition
             timeoutSeconds: $this->timeoutSeconds,
             active: $this->active,
             target: $target,
+            sharedConnection: $this->sharedConnection,
+            client: $this->client,
         );
     }
 
@@ -127,6 +143,8 @@ final class SubscriptionDefinition
             timeoutSeconds: $this->timeoutSeconds,
             active: $this->active,
             target: $this->target,
+            sharedConnection: $this->sharedConnection,
+            client: $this->client,
         );
     }
 
@@ -150,6 +168,8 @@ final class SubscriptionDefinition
             timeoutSeconds: $this->timeoutSeconds,
             active: $this->active,
             target: $this->target,
+            sharedConnection: $this->sharedConnection,
+            client: $this->client,
         );
     }
 
@@ -173,6 +193,8 @@ final class SubscriptionDefinition
             timeoutSeconds: $this->timeoutSeconds,
             active: $this->active,
             target: $this->target,
+            sharedConnection: $this->sharedConnection,
+            client: $this->client,
         );
     }
 
@@ -196,6 +218,8 @@ final class SubscriptionDefinition
             timeoutSeconds: $seconds,
             active: $this->active,
             target: $this->target,
+            sharedConnection: $this->sharedConnection,
+            client: $this->client,
         );
     }
 
@@ -219,11 +243,42 @@ final class SubscriptionDefinition
             timeoutSeconds: $this->timeoutSeconds,
             active: false,
             target: $this->target,
+            sharedConnection: $this->sharedConnection,
+            client: $this->client,
         );
     }
 
     /**
-     * Convert to array for the sync API.
+     * Create a copy scoped to a specific client.
+     */
+    public function forClient(string $client): self
+    {
+        return new self(
+            code: $this->code,
+            name: $this->name,
+            connectionCode: $this->connectionCode,
+            queue: $this->queue,
+            dispatchPoolCode: $this->dispatchPoolCode,
+            applicationCode: $this->applicationCode,
+            description: $this->description,
+            clientScoped: $this->clientScoped,
+            eventTypeCode: $this->eventTypeCode,
+            maxRetries: $this->maxRetries,
+            retryDelaySeconds: $this->retryDelaySeconds,
+            timeoutSeconds: $this->timeoutSeconds,
+            active: $this->active,
+            target: $this->target,
+            sharedConnection: $this->sharedConnection,
+            client: $client,
+        );
+    }
+
+    /**
+     * Convert to array for the sync API. `client` is a routing field (read
+     * by the synchronizer to pick which call this row belongs to) rather
+     * than a payload field of the subscription itself, but is included here
+     * — unlike the attribute's `toArray()` — because nothing else resolves
+     * it for a programmatically-built definition.
      *
      * @return array<string, mixed>
      */
@@ -255,6 +310,14 @@ final class SubscriptionDefinition
             $data['eventTypeCode'] = $this->eventTypeCode;
         }
 
+        if ($this->sharedConnection) {
+            $data['sharedConnection'] = true;
+        }
+
+        if ($this->client !== null) {
+            $data['client'] = $this->client;
+        }
+
         return $data;
     }
 
@@ -280,6 +343,8 @@ final class SubscriptionDefinition
             timeoutSeconds: $data['timeoutSeconds'] ?? 30,
             active: $data['active'] ?? true,
             target: $data['target'] ?? $data['endpoint'],
+            sharedConnection: $data['sharedConnection'] ?? false,
+            client: $data['client'] ?? null,
         );
     }
 }
