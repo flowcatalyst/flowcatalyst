@@ -3,6 +3,7 @@ package io.flowcatalyst.sdk.sync;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -151,16 +152,18 @@ class ConnectionSyncTest {
     }
 
     @Test
-    void pathTargetWithNoBaseAvailableFailsLocallyNamingTheSubscription() {
+    void pathTargetWithNoBaseAvailableFailsLocallyNamingTheSubscriptionAndThrows() {
         DefinitionSet set = DefinitionSet.define("orders")
                 .withSubscriptions(List.of(Subscription.of(
                         "sub-a", "Sub A", "/webhooks/orders",
                         List.of(SubscriptionEventType.of("orders:sales:order:created")))));
 
-        SyncResult result = client().definitions().sync(set);
+        DefinitionSyncException ex = assertThrows(
+                DefinitionSyncException.class, () -> client().definitions().sync(set));
 
-        Category.Failed failed = assertInstanceOf(Category.Failed.class, result.subscriptions());
+        Category.Failed failed = assertInstanceOf(Category.Failed.class, ex.result().subscriptions());
         assertTrue(failed.error().contains("sub-a"), "names the subscription: " + failed.error());
+        assertTrue(ex.getMessage().contains("sub-a"), "exception message names it too: " + ex.getMessage());
         assertTrue(syncCalls().isEmpty(), "no request sent — a partial list would delete under removeUnlisted");
     }
 
@@ -182,7 +185,7 @@ class ConnectionSyncTest {
     }
 
     @Test
-    void duplicateSubscriptionCodeWithinOneSetFailsLocally() {
+    void duplicateSubscriptionCodeWithinOneSetFailsLocallyAndThrows() {
         DefinitionSet set = DefinitionSet.define("orders")
                 .withSubscriptions(List.of(
                         Subscription.of("dup", "First", "https://a.example.com/hook",
@@ -190,9 +193,10 @@ class ConnectionSyncTest {
                         Subscription.of("dup", "Second", "https://b.example.com/hook",
                                 List.of(SubscriptionEventType.of("orders:sales:order:created")))));
 
-        SyncResult result = client().definitions().sync(set);
+        DefinitionSyncException ex = assertThrows(
+                DefinitionSyncException.class, () -> client().definitions().sync(set));
 
-        Category.Failed failed = assertInstanceOf(Category.Failed.class, result.subscriptions());
+        Category.Failed failed = assertInstanceOf(Category.Failed.class, ex.result().subscriptions());
         assertTrue(failed.error().contains("dup"));
         assertTrue(syncCalls().isEmpty());
     }

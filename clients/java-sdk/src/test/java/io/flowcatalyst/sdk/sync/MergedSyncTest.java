@@ -3,6 +3,7 @@ package io.flowcatalyst.sdk.sync;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -178,7 +179,11 @@ class MergedSyncTest {
         assertEquals("beta", call2.get("clientId").asText());
     }
 
-    /** Duplicate code across two merged sets in the same scope fails locally; other types still sync. */
+    /**
+     * Duplicate code across two merged sets in the same scope fails locally;
+     * other types still sync; the call throws once at the end but still
+     * carries the partial result (roles DID sync).
+     */
     @Test
     void duplicateCodeAcrossMergedSetsFailsLocallyWithoutBlockingOtherTypes() throws Exception {
         server.on("POST", "/api/applications/orders/roles/sync", 200, SYNC_OK);
@@ -189,8 +194,15 @@ class MergedSyncTest {
         DefinitionSet setB = DefinitionSet.define("orders")
                 .withConnections(List.of(Connection.of("dup", "Second")));
 
-        SyncResult result = client().definitions().syncGrouped(List.of(setA, setB)).get("orders");
+        DefinitionSyncException ex = assertThrows(DefinitionSyncException.class,
+                () -> client().definitions().syncGrouped(List.of(setA, setB)));
 
+        assertTrue(ex.getMessage().contains("dup"), "message names the code: " + ex.getMessage());
+        assertTrue(ex.getMessage().contains("orders"), "message names the scope: " + ex.getMessage());
+        assertEquals(null, ex.result(), "thrown by syncGrouped, not sync()");
+        assertEquals(null, ex.results(), "thrown by syncGrouped, not syncAll()");
+
+        SyncResult result = ex.resultsByApplication().get("orders");
         Category.Failed connections = assertInstanceOf(Category.Failed.class, result.connections());
         assertTrue(connections.error().contains("dup"), "names the code");
         assertTrue(connections.error().contains("orders"), "names the scope");
@@ -233,6 +245,39 @@ class MergedSyncTest {
 
         assertEquals(Category.SKIPPED, result.connections());
         assertTrue(callsTo("connections/sync").isEmpty());
+    }
+
+    /**
+     * Two applications, the first with a failed category: the second
+     * application must still be synced (its request goes out) before
+     * {@code syncGrouped} throws once at the end, carrying BOTH
+     * applications' results — not stopping at the first failure.
+     */
+    @Test
+    void syncGroupedRunsEveryApplicationToCompletionBeforeThrowingOnce() {
+        server.on("POST", "/api/applications/first/connections/sync", 500,
+                "{\"error\":\"INTERNAL\",\"message\":\"boom\"}");
+        server.on("POST", "/api/applications/second/connections/sync", 200, SYNC_OK);
+
+        DefinitionSet first = DefinitionSet.define("first")
+                .withConnections(List.of(Connection.of("conn-a", "A")));
+        DefinitionSet second = DefinitionSet.define("second")
+                .withConnections(List.of(Connection.of("conn-b", "B")));
+
+        DefinitionSyncException ex = assertThrows(DefinitionSyncException.class,
+                () -> client().definitions().syncGrouped(List.of(first, second)));
+
+        assertTrue(
+                server.requests.stream()
+                        .anyMatch(r -> r.pathAndQuery().contains("/applications/second/connections/sync")),
+                "the second application's request was still made despite the first's failure");
+
+        Map<String, SyncResult> resultsByApp = ex.resultsByApplication();
+        assertEquals(2, resultsByApp.size(), "both applications' results carried");
+        assertInstanceOf(Category.Failed.class, resultsByApp.get("first").connections());
+        assertInstanceOf(Category.Synced.class, resultsByApp.get("second").connections());
+        assertEquals(null, ex.result());
+        assertEquals(null, ex.results());
     }
 
     /** client never appears inside a posted entry; sharedConnection only when true. */
@@ -337,10 +382,10 @@ class MergedSyncTest {
         assertEquals(null, withCode.client());
     }
 
-    // ── connection sync failure skips subscriptions for that scope ────
+    // ── connection sync failure skips subscriptions for that scope, but throws loudly ────
 
     @Test
-    void connectionSyncFailureSkipsSubscriptionsForThatScopeOnly() throws Exception {
+    void connectionSyncFailureSkipsSubscriptionsForThatScopeOnlyAndThrows() throws Exception {
         server.on("POST", "/api/applications/orders/connections/sync", 500,
                 "{\"error\":\"INTERNAL\",\"message\":\"boom\"}");
 
@@ -351,11 +396,126 @@ class MergedSyncTest {
                         List.of(SubscriptionEventType.of("orders:sales:order:created")))
                         .withConnectionCode("conn-a")));
 
-        SyncResult result = client().definitions().sync(set);
+        DefinitionSyncException ex = assertThrows(
+                DefinitionSyncException.class, () -> client().definitions().sync(set));
 
+        assertTrue(ex.getMessage().contains("connections"), "names the failed category: " + ex.getMessage());
+        SyncResult result = ex.result();
         assertInstanceOf(Category.Failed.class, result.connections());
         Category.Failed subs = assertInstanceOf(Category.Failed.class, result.subscriptions());
         assertTrue(subs.error().contains("connection sync failed"), "says why: " + subs.error());
         assertTrue(callsTo("subscriptions/sync").isEmpty(), "no subscriptions request sent");
+    }
+
+    /**
+     * A failure in ONE client scope must not stop a SIBLING scope from being
+     * attempted — its connections AND subscriptions requests still go out —
+     * while the overall call still throws once, carrying both scopes'
+     * outcomes in the partial result.
+     */
+    @Test
+    void failureInOneScopeDoesNotStopASiblingScopeButStillThrows() throws Exception {
+        server.on("POST", "/api/applications/orders/connections/sync", r -> {
+            boolean isBeta = r.body().contains("\"clientId\":\"beta\"");
+            return isBeta
+                    ? new StubServer.Reply(500, "{\"error\":\"INTERNAL\",\"message\":\"boom\"}")
+                    : new StubServer.Reply(200, SYNC_OK);
+        });
+        server.on("POST", "/api/applications/orders/subscriptions/sync", 200, SYNC_OK);
+
+        DefinitionSet set = DefinitionSet.define("orders")
+                // beta listed FIRST: its failure must not prevent acme (which
+                // comes after it) from being attempted.
+                .withConnections(List.of(
+                        Connection.of("conn-beta", "Beta").withClient("beta"),
+                        Connection.of("conn-acme", "Acme").withClient("acme")))
+                .withSubscriptions(List.of(
+                        Subscription.of("sub-beta", "Sub Beta", "https://x.example.com/hook",
+                                        List.of(SubscriptionEventType.of("orders:sales:order:created")))
+                                .withConnectionCode("conn-beta").withClient("beta"),
+                        Subscription.of("sub-acme", "Sub Acme", "https://x.example.com/hook",
+                                        List.of(SubscriptionEventType.of("orders:sales:order:created")))
+                                .withConnectionCode("conn-acme").withClient("acme")));
+
+        DefinitionSyncException ex = assertThrows(
+                DefinitionSyncException.class,
+                () -> client().definitions().sync(set, SyncOptions.removingUnlisted()));
+
+        List<StubServer.Recorded> connCalls = callsTo("connections/sync");
+        List<StubServer.Recorded> subCalls = callsTo("subscriptions/sync");
+        assertEquals(2, connCalls.size(), "BOTH scopes' connection requests were made");
+        assertEquals(1, subCalls.size(), "only acme's subscriptions were sent — beta's were skipped");
+
+        SyncResult result = ex.result();
+        Category.Failed connections = assertInstanceOf(Category.Failed.class, result.connections());
+        assertEquals(1, connections.created(), "acme's successful group still counted");
+        assertTrue(connections.error().contains("beta") || connections.error().contains("boom"),
+                "names the failing scope: " + connections.error());
+
+        Category.Failed subscriptions = assertInstanceOf(Category.Failed.class, result.subscriptions());
+        assertEquals(1, subscriptions.created(), "acme's successful subscriptions still counted");
+        assertTrue(subscriptions.error().contains("beta"), "names the skipped scope: " + subscriptions.error());
+    }
+
+    // ── syncAll: run-to-completion for Category.Failed, stop-at-first for genuine exceptions ────
+
+    /**
+     * {@code syncAll} must run every set to completion for a {@link
+     * Category.Failed} (a duplicate code, an unresolvable target, a caught
+     * connection HTTP failure) before throwing once at the end — the same
+     * guarantee as {@code syncGrouped}, carrying {@code results()} (a
+     * {@code List}, since {@code syncAll} never merges/keys by application).
+     */
+    @Test
+    void syncAllRunsEveryApplicationToCompletionForCategoryFailedThenThrowsOnce() {
+        server.on("POST", "/api/applications/first/connections/sync", 500,
+                "{\"error\":\"INTERNAL\",\"message\":\"boom\"}");
+        server.on("POST", "/api/applications/second/connections/sync", 200, SYNC_OK);
+
+        DefinitionSet first = DefinitionSet.define("first")
+                .withConnections(List.of(Connection.of("conn-a", "A")));
+        DefinitionSet second = DefinitionSet.define("second")
+                .withConnections(List.of(Connection.of("conn-b", "B")));
+
+        DefinitionSyncException ex = assertThrows(DefinitionSyncException.class,
+                () -> client().definitions().syncAll(List.of(first, second), SyncOptions.defaults()));
+
+        assertTrue(
+                server.requests.stream()
+                        .anyMatch(r -> r.pathAndQuery().contains("/applications/second/connections/sync")),
+                "the second application's request was still made despite the first's failure");
+
+        List<SyncResult> results = ex.results();
+        assertEquals(2, results.size(), "both applications' results carried, in order");
+        assertEquals("first", results.get(0).applicationCode());
+        assertInstanceOf(Category.Failed.class, results.get(0).connections());
+        assertEquals("second", results.get(1).applicationCode());
+        assertInstanceOf(Category.Synced.class, results.get(1).connections());
+        assertEquals(null, ex.result());
+        assertEquals(null, ex.resultsByApplication());
+    }
+
+    /**
+     * A GENUINE uncaught exception — here, an HTTP failure from a category
+     * that does not catch its own (roles) — must still stop {@code syncAll}
+     * at the first failing set, exactly as it always has; this is NOT a
+     * {@link Category.Failed} case and must not be swallowed into one.
+     */
+    @Test
+    void syncAllStillStopsAtFirstGenuineUncaughtException() {
+        server.on("POST", "/api/applications/first/roles/sync", 500,
+                "{\"error\":\"INTERNAL\",\"message\":\"boom\"}");
+        server.on("POST", "/api/applications/second/roles/sync", 200, SYNC_OK);
+
+        DefinitionSet first = DefinitionSet.define("first").withRoles(List.of(Role.of("admin")));
+        DefinitionSet second = DefinitionSet.define("second").withRoles(List.of(Role.of("admin")));
+
+        assertThrows(io.flowcatalyst.sdk.error.FlowCatalystException.class,
+                () -> client().definitions().syncAll(List.of(first, second), SyncOptions.defaults()));
+
+        assertTrue(
+                server.requests.stream()
+                        .noneMatch(r -> r.pathAndQuery().contains("/applications/second/roles/sync")),
+                "the second application must NOT have been attempted — genuine exceptions still stop the run");
     }
 }

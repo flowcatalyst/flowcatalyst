@@ -171,6 +171,68 @@ subscription's sync LOCALLY (naming it) and sends nothing for the whole
 group — under `removeUnlisted`, sending a partial list would delete the
 subscriptions left out.
 
+### Failure handling: `DefinitionSyncException`
+
+`sync`, `syncAll` and `syncGrouped` all **throw `DefinitionSyncException`**
+(a `FlowCatalystException`) if ANY category of ANY application they synced
+came back failed — a duplicate code, an unresolvable target, or a connection
+sync failure that skipped its subscriptions. A caller that doesn't inspect
+every category of the returned `SyncResult` (a deploy step that just calls
+`sync(set)` and relies on "no exception" to mean success, say) would
+otherwise report success while part of the sync silently did not happen.
+
+Every application/scope that COULD run still runs before the exception is
+thrown — one tenant's bad definition, or one scope's failed connection sync,
+does not stop its siblings from being attempted. What DID sync is never
+lost: it's carried on the exception via a typed accessor.
+
+```java
+try {
+    client.definitions().sync(set, SyncOptions.removingUnlisted());
+} catch (DefinitionSyncException e) {
+    SyncResult partial = e.result();               // never null when sync() threw
+    if (partial.connections() instanceof SyncResult.Category.Failed f) {
+        log.warn("connections failed: {}", f.error());
+    }
+    throw e;   // or handle/report and continue, as your deploy step needs
+}
+```
+
+`syncAll` and `syncGrouped` run every set/application to completion first,
+then throw ONCE at the end — never at the first failing one — carrying every
+result, including the ones that synced fully:
+
+```java
+try {
+    Map<String, SyncResult> results = client.definitions().syncGrouped(sets, options);
+} catch (DefinitionSyncException e) {
+    e.resultsByApplication().forEach((app, result) -> { /* inspect each */ });
+    throw e;
+}
+```
+
+| Thrown by | Partial result accessor | Type |
+|---|---|---|
+| `sync` | `e.result()` | `SyncResult` |
+| `syncAll` | `e.results()` | `List<SyncResult>`, same order as the input sets |
+| `syncGrouped` | `e.resultsByApplication()` | `Map<String, SyncResult>`, keyed by application code |
+
+Only the accessor matching the method that threw is non-null; the others are
+null. `e.getMessage()` names every failed category and its error text across
+every application, so even an uninspected `catch` block's log line is
+actionable.
+
+A genuinely uncaught exception from a category that does not catch its own
+HTTP failures (roles, event types, dispatch pools, principals, processes,
+scheduled jobs, OpenAPI — connections and subscriptions are the ones that
+catch theirs, per above) still propagates immediately and stops `syncAll`/
+`syncGrouped` at whichever set was running, exactly as it always has — that
+is a real, unrecovered failure (e.g. a network outage), not a partial result
+to collect.
+
+A pure success — no category anywhere failed — returns exactly as before;
+nothing changes on the happy path.
+
 ### Client scoping and multi-tenant applications
 
 Connections and subscriptions may be scoped to a FlowCatalyst **client**,
@@ -231,7 +293,10 @@ Map<String, SyncResult> results = client.definitions().syncGrouped(
 The same code appearing twice in one `(application, client)` scope after
 merging is a configuration error: that type's sync for that scope fails
 LOCALLY, naming the code and the scope, and nothing is sent for it — other
-types and other scopes still sync.
+types and other scopes still sync. As with `sync`, a failure anywhere means
+`syncGrouped` throws `DefinitionSyncException` — see [Failure
+handling](#failure-handling-definitionsyncexception) above for how to read
+`e.resultsByApplication()`.
 
 ## Webhook verification
 

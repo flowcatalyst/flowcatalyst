@@ -45,6 +45,15 @@ import java.util.regex.Pattern;
  * because two sets syncing the SAME (application, client) scope separately
  * would let the second call's {@code removeUnlisted} delete what the first
  * call just created.
+ *
+ * <p>If ANY category of ANY application ends up {@link Category.Failed},
+ * the call throws {@link DefinitionSyncException} rather than returning
+ * normally — a caller that doesn't inspect every category must not be able
+ * to mistake a partial failure for success. {@link #syncAll} and {@link
+ * #syncGrouped} still run every set/application to completion first and
+ * throw once at the end, carrying every result (including the ones that DID
+ * sync); see {@link DefinitionSyncException} for how to read the partial
+ * outcome.
  */
 public final class DefinitionSynchronizer {
 
@@ -78,8 +87,20 @@ public final class DefinitionSynchronizer {
         return sync(set, SyncOptions.defaults());
     }
 
-    /** Sync one application's definitions. */
+    /**
+     * Sync one application's definitions.
+     *
+     * @throws DefinitionSyncException if any category came back {@link
+     *         Category.Failed} — {@link DefinitionSyncException#result()}
+     *         carries the full result, including every category that DID
+     *         sync
+     */
     public SyncResult sync(DefinitionSet set, SyncOptions options) {
+        return DefinitionSyncException.throwIfFailed(syncInternal(set, options));
+    }
+
+    /** The actual single-set sync; never throws for a {@link Category.Failed} — {@link #sync} does that. */
+    private SyncResult syncInternal(DefinitionSet set, SyncOptions options) {
         String app = set.applicationCode();
         boolean removeUnlisted = options.removeUnlisted();
 
@@ -117,21 +138,33 @@ public final class DefinitionSynchronizer {
 
     /**
      * Sync multiple applications' definitions sequentially; results are
-     * returned in the same order. A failure in one set short-circuits the
-     * rest (the thrown exception propagates).
+     * returned in the same order.
      *
      * <p>Unlike {@link #syncGrouped}, sets are NOT merged — two sets for the
      * same application are synced as two separate calls. When they share an
      * (application, client) scope, the second call's {@code removeUnlisted}
      * will delete what the first just created; use {@link #syncGrouped} for
      * several sets contributing to one application.
+     *
+     * <p>Every set is synced before this can throw for a {@link
+     * Category.Failed} — one set's duplicate code or failed connection sync
+     * does not stop the rest from being attempted. A genuinely uncaught
+     * exception (e.g. a network failure from a category that does not catch
+     * its own — roles, event types, dispatch pools, principals, processes,
+     * scheduled jobs, OpenAPI) still propagates immediately and stops the
+     * run, exactly as it always has.
+     *
+     * @throws DefinitionSyncException if any set's any category came back
+     *         {@link Category.Failed} — {@link
+     *         DefinitionSyncException#results()} carries every set's result,
+     *         in order, including the ones that synced fully
      */
     public List<SyncResult> syncAll(List<DefinitionSet> sets, SyncOptions options) {
         List<SyncResult> results = new ArrayList<>(sets.size());
         for (DefinitionSet set : sets) {
-            results.add(sync(set, options));
+            results.add(syncInternal(set, options));
         }
-        return results;
+        return DefinitionSyncException.throwIfAnyFailed(results);
     }
 
     /** {@link #syncGrouped(List, SyncOptions)} with default options. */
@@ -162,7 +195,17 @@ public final class DefinitionSynchronizer {
      * scope fails LOCALLY, naming the code and the scope, and nothing is
      * sent for it — other types and other scopes still sync.
      *
+     * <p>Every application is synced before this can throw for a {@link
+     * Category.Failed} — one application's failure does not stop the rest
+     * from being attempted. A genuinely uncaught exception (e.g. a network
+     * failure from a category that does not catch its own) still propagates
+     * immediately and stops the run, exactly as it always has.
+     *
      * @return results keyed by application code
+     * @throws DefinitionSyncException if any application's any category
+     *         came back {@link Category.Failed} — {@link
+     *         DefinitionSyncException#resultsByApplication()} carries every
+     *         application's result, including the ones that synced fully
      */
     public Map<String, SyncResult> syncGrouped(List<DefinitionSet> sets, SyncOptions options) {
         Map<String, List<DefinitionSet>> byApp = new LinkedHashMap<>();
@@ -174,7 +217,7 @@ public final class DefinitionSynchronizer {
         for (Map.Entry<String, List<DefinitionSet>> entry : byApp.entrySet()) {
             results.put(entry.getKey(), syncMerged(entry.getKey(), entry.getValue(), options));
         }
-        return results;
+        return DefinitionSyncException.throwIfAnyFailed(results);
     }
 
     /**
