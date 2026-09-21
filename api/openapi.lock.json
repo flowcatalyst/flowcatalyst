@@ -7973,6 +7973,10 @@
           "code": {
             "type": "string"
           },
+          "connectionCode": {
+            "description": "Connection code — stable across environments, unlike connectionId. Resolves an anchor-level connection.",
+            "type": "string"
+          },
           "connectionId": {
             "type": "string"
           },

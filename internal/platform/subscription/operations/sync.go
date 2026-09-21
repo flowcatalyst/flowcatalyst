@@ -2,6 +2,7 @@ package operations
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
@@ -28,11 +29,17 @@ type SyncEventTypeBindingInput struct {
 // would diverge the router's per-subscription dispatch behaviour. See the
 // create/update branches below.
 type SyncSubscriptionInput struct {
-	Code             string
-	Name             string
-	Description      *string
-	Target           string
-	ConnectionID     *string
+	Code         string
+	Name         string
+	Description  *string
+	Target       string
+	ConnectionID *string
+	// ConnectionCode names the connection by its code instead of its id. An
+	// id is minted per environment, so a code-first definition can only ever
+	// carry the code; it resolves here to this environment's id. Anchor-level
+	// connections only (client_id IS NULL) — the sync is application-scoped
+	// and has no client to pick a client-owned connection by.
+	ConnectionCode   *string
 	EventTypes       []SyncEventTypeBindingInput
 	DispatchPoolCode *string
 	Mode             *string
@@ -56,7 +63,9 @@ type SyncSubscriptionsCommand struct {
 //
 //   - Validates app code; each subscription needs code, name, target, and at
 //     least one event-type binding.
-//   - When connectionId is provided it must resolve (404 CONNECTION_NOT_FOUND).
+//   - A connection is named by connectionCode (stable across environments)
+//     or connectionId; whichever is provided must resolve (404
+//     CONNECTION_NOT_FOUND), and if both are, they must agree.
 //   - Matches existing rows by code, scoped to the application. Only API- and
 //     CODE-sourced rows are updated/removed; UI-authored rows are untouched.
 //     New rows are created with source=API.
@@ -105,8 +114,29 @@ func SyncSubscriptions(
 			return nil
 		},
 		Execute: func(ctx context.Context, cmd SyncSubscriptionsCommand, ec usecase.ExecutionContext) (usecaseop.Plan[SubscriptionsSynced], error) {
-			// Validate connections exist (only when connectionId is provided).
-			for _, in := range cmd.Subscriptions {
+			// Resolve each subscription's connection to an id. A code is looked
+			// up (anchor-level); an id is only checked to exist. Both may be
+			// sent, but they must then name the same connection. Work on a
+			// copy so the caller's command is left as it was sent.
+			subs := slices.Clone(cmd.Subscriptions)
+			for i := range subs {
+				in := &subs[i]
+				if in.ConnectionCode != nil && strings.TrimSpace(*in.ConnectionCode) != "" {
+					code := strings.TrimSpace(*in.ConnectionCode)
+					c, err := connRepo.FindByCodeAndClient(ctx, code, nil)
+					if err != nil {
+						return nil, usecase.Internal("REPO", "find_by_code(connection) failed", err)
+					}
+					if c == nil {
+						return nil, usecase.NotFound("CONNECTION_NOT_FOUND", "Connection with code '"+code+"' not found")
+					}
+					if in.ConnectionID != nil && *in.ConnectionID != c.ID {
+						return nil, usecase.Validation("CONNECTION_MISMATCH",
+							"Subscription '"+in.Code+"': connectionId and connectionCode name different connections")
+					}
+					in.ConnectionID = &c.ID
+					continue
+				}
 				if in.ConnectionID == nil {
 					continue
 				}
@@ -138,7 +168,7 @@ func SyncSubscriptions(
 				deleted     uint32
 			)
 
-			for _, in := range cmd.Subscriptions {
+			for _, in := range subs {
 				syncedCodes = append(syncedCodes, in.Code)
 				syncedSet[in.Code] = struct{}{}
 

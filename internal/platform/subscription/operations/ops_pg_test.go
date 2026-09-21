@@ -710,6 +710,60 @@ func TestSyncSubscriptions_ConnectionNotFound(t *testing.T) {
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "CONNECTION_NOT_FOUND")
 }
 
+// TestSyncSubscriptions_ConnectionCode is the code-first route: a connection id
+// is minted per environment, so a definition compiled into an app can only
+// name the connection by its code. The sync resolves that code to THIS
+// environment's id — and refuses a code that doesn't exist, or an id + code
+// pair that name different connections.
+func TestSyncSubscriptions_ConnectionCode(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	subRepo := subscription.NewRepository(pool)
+	connRepo := connection.NewRepository(pool)
+	poolRepo := dispatchpool.NewRepository(pool)
+
+	const connID, connCode = "con_subsynccode1", "subsync-conn-code"
+	_, err := pool.Exec(ctx,
+		`INSERT INTO msg_connections (id, code, name, status, service_account_id)
+		 VALUES ($1, $2, 'Sync conn', 'ACTIVE', 'sac_subsynccode1')`, connID, connCode)
+	require.NoError(t, err)
+
+	run := func(appCode string, in operations.SyncSubscriptionInput) error {
+		in.Name, in.Target = "X", "https://x.example.test"
+		in.EventTypes = []operations.SyncEventTypeBindingInput{{EventTypeCode: "subsync:a:b:c"}}
+		_, err := usecaseop.Run(appAccessCtx(), testpg.NewUoW(t),
+			operations.SyncSubscriptions(subRepo, connRepo, poolRepo),
+			operations.SyncSubscriptionsCommand{
+				ApplicationCode: appCode,
+				Subscriptions:   []operations.SyncSubscriptionInput{in},
+			}, testpg.TestEC())
+		return err
+	}
+
+	require.NoError(t, run("subsyncconncode", operations.SyncSubscriptionInput{
+		Code: "subsync-bycode", ConnectionCode: new(connCode),
+	}))
+	subs, err := subRepo.FindByApplicationCode(ctx, "subsyncconncode")
+	require.NoError(t, err)
+	require.Len(t, subs, 1)
+	require.NotNil(t, subs[0].ConnectionID)
+	assert.Equal(t, connID, *subs[0].ConnectionID, "the code resolves to this environment's connection id")
+
+	// Re-sync by code updates the same row rather than losing the connection.
+	require.NoError(t, run("subsyncconncode", operations.SyncSubscriptionInput{
+		Code: "subsync-bycode", ConnectionCode: new(connCode), ConnectionID: new(connID),
+	}))
+
+	testpg.RequireUsecaseError(t, run("subsyncconncode404", operations.SyncSubscriptionInput{
+		Code: "subsync-badcode", ConnectionCode: new("no-such-connection"),
+	}), usecase.KindNotFound, "CONNECTION_NOT_FOUND")
+
+	testpg.RequireUsecaseError(t, run("subsyncconnmismatch", operations.SyncSubscriptionInput{
+		Code: "subsync-mismatch", ConnectionCode: new(connCode), ConnectionID: new("con_someotherone1"),
+	}), usecase.KindValidation, "CONNECTION_MISMATCH")
+}
+
 // TestSyncSubscriptions_RequiresAppAccess proves the use case's resource-level
 // authorization: a principal without access to the target application is
 // denied before any write (the coarse "may sync" permission is the

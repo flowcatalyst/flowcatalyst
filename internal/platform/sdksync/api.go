@@ -269,6 +269,7 @@ type syncSubscriptionInputRequest struct {
 	Description      *string                            `json:"description,omitempty"`
 	Target           string                             `json:"target"`
 	ConnectionID     *string                            `json:"connectionId,omitempty"`
+	ConnectionCode   *string                            `json:"connectionCode,omitempty" doc:"Connection code — stable across environments, unlike connectionId. Resolves an anchor-level connection."`
 	EventTypes       []syncSubscriptionEventTypeRequest `json:"eventTypes"`
 	DispatchPoolCode *string                            `json:"dispatchPoolCode,omitempty"`
 	Mode             *string                            `json:"mode,omitempty"`
@@ -312,6 +313,7 @@ func (s *State) syncSubscriptions(ctx context.Context, in *syncSubscriptionsInpu
 			Description:      sub.Description,
 			Target:           sub.Target,
 			ConnectionID:     sub.ConnectionID,
+			ConnectionCode:   sub.ConnectionCode,
 			EventTypes:       bindings,
 			DispatchPoolCode: sub.DispatchPoolCode,
 			Mode:             sub.Mode,
