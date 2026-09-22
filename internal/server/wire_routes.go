@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
@@ -18,11 +19,13 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/login"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/loginbackoff"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	clientapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/api"
 	connectionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection/api"
 	corsapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/cors/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatch"
 	dispatchjobapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/api"
+	dispatchprocessing "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/processing"
 	dispatchpoolapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/docsapi"
 	emaildomainapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping/api"
@@ -343,7 +346,16 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		// UoW is required by the operator lifecycle actions (A-01):
 		// cancel/complete a FAILED job and resend a group, all of which run
 		// through the use-case envelope rather than a bare UPDATE.
-		dispatchjobapi.Register(humaAPI, &dispatchjobapi.State{Repo: repos.dispatchJobRepo, UoW: uow})
+		dispatchjobapi.Register(humaAPI, &dispatchjobapi.State{
+			Repo: repos.dispatchJobRepo, UoW: uow,
+			ClientIdentifier: client.NewCachedIdentifierResolver(repos.clientRepo, time.Minute),
+			// The sign action builds a delivery exactly as /api/dispatch/process
+			// would (same resolvers), minus the send — no verifier needed.
+			Plan: dispatchprocessing.New(repos.dispatchJobRepo, nil).
+				WithDeliveryCredsResolver(dispatchDeliveryCredsResolver(repos)).
+				WithClientCodeResolver(client.NewCachedIdentifierResolver(repos.clientRepo, time.Minute)).
+				Plan,
+		})
 
 		// The router's own configuration document. An ordinary authenticated
 		// route: the router presents a client-credentials bearer like any

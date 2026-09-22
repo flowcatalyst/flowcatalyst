@@ -52,3 +52,43 @@ func TestFindRecentRaw_AgreesWithFindByID(t *testing.T) {
 	require.NotNil(t, fromList, "seeded row must appear in FindRecentRaw")
 	assert.Equal(t, *byID, *fromList, "FindByID and FindRecentRaw must agree on the row's shape — queue included")
 }
+
+// TestFindWithFilters_MessageGroupAndProjectedColumns pins the 2026-09-22
+// grid additions on the read projection: an exact message_group filter, and
+// descriptor + metadata coming back on list rows (migration 057 projected
+// them; the readSelect must name them or the grid shows nothing).
+func TestFindWithFilters_MessageGroupAndProjectedColumns(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := dispatchjob.NewRepository(pool)
+
+	const code = "grouptest:jobs:list"
+	seed := func(id, group, descriptor string) {
+		t.Helper()
+		_, err := pool.Exec(ctx,
+			`INSERT INTO msg_dispatch_jobs_read
+			     (id, code, target_url, kind, protocol, mode, status, max_retries, updated_at,
+			      message_group, descriptor, metadata)
+			 VALUES ($1, $2, 'http://example.invalid/hook',
+			         'EVENT', 'HTTP_WEBHOOK', 'IMMEDIATE', 'PENDING', 3, NOW(),
+			         $3, $4, '[{"key":"tenant","value":"acme"}]')`,
+			id, code, group, descriptor)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_, _ = pool.Exec(context.Background(), `DELETE FROM msg_dispatch_jobs_read WHERE id = $1`, id)
+		})
+	}
+	seed("djgrouptest01", "order-1", "Notify Value of orders")
+	seed("djgrouptest02", "order-2", "Notify Value of orders")
+
+	group := "order-1"
+	rows, err := repo.FindWithFilters(ctx, dispatchjob.FilterParams{Codes: []string{code}, MessageGroup: &group})
+	require.NoError(t, err)
+	require.Len(t, rows, 1, "messageGroup is an exact filter")
+	assert.Equal(t, "djgrouptest01", rows[0].ID)
+	require.NotNil(t, rows[0].Descriptor)
+	assert.Equal(t, "Notify Value of orders", *rows[0].Descriptor)
+	require.Len(t, rows[0].Metadata, 1, "metadata is projected onto list rows")
+	assert.Equal(t, "tenant", rows[0].Metadata[0].Key)
+	assert.Equal(t, "acme", rows[0].Metadata[0].Value)
+}

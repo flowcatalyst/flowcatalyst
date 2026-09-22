@@ -130,6 +130,9 @@ type Attempt struct {
 	Success        bool       `json:"success"`
 	ErrorMessage   *string    `json:"errorMessage,omitempty"`
 	ErrorType      *ErrorType `json:"errorType,omitempty"`
+	// Request is what was sent on this attempt (see RequestSummary). nil on
+	// attempts recorded before it existed.
+	Request *RequestSummary `json:"request,omitempty"`
 }
 
 // NewAttempt constructs a started attempt.
@@ -159,17 +162,45 @@ func (a *Attempt) CompleteSuccess(status int, body *string) {
 // discovered by that constraint's own integration tests — a genuine
 // pre-existing defect the ruling surfaced, not a change in behaviour it
 // demanded: NULL was always the correct value for "no error type").
-func (a *Attempt) CompleteFailure(msg string, errType ErrorType, status *int) {
+//
+// body is the subscriber's response body, kept exactly as on success: a
+// failed delivery's answer is the one an operator needs to read ("Invalid
+// webhook signature."), and until 2026-09-22 it was the one that was
+// dropped.
+func (a *Attempt) CompleteFailure(msg string, errType ErrorType, status *int, body *string) {
 	now := time.Now().UTC()
 	a.CompletedAt = &now
 	d := now.Sub(a.AttemptedAt).Milliseconds()
 	a.DurationMillis = &d
 	a.ResponseCode = status
+	a.ResponseBody = body
 	a.ErrorMessage = &msg
 	if errType != "" {
 		a.ErrorType = &errType
 	}
 	a.Success = false
+}
+
+// RequestSummary is what the platform SENT on an attempt, recorded beside
+// the subscriber's answer so a rejection can be read against the request
+// that earned it — without a database archaeology session (2026-09-22).
+// Never carries a secret: the signing account's code, not its key; the
+// header names, not their values.
+type RequestSummary struct {
+	// SignedBy is the code of the service account whose credentials were
+	// used; empty when the delivery went out bare.
+	SignedBy string `json:"signedBy,omitempty"`
+	// Signature / Bearer say which of the two credential headers were sent.
+	Signature bool `json:"signature"`
+	Bearer    bool `json:"bearer"`
+	// Timestamp is the X-FlowCatalyst-Timestamp value the signature covers.
+	Timestamp string `json:"timestamp,omitempty"`
+	// Headers are the names of every header sent, sorted.
+	Headers []string `json:"headers,omitempty"`
+	// UnsignedReason is why no credentials were attached, when none were.
+	UnsignedReason string `json:"unsignedReason,omitempty"`
+	// Target is the URL the request went to.
+	Target string `json:"target,omitempty"`
 }
 
 // DispatchJob is the aggregate. Lives in msg_dispatch_jobs (write side)
@@ -217,7 +248,13 @@ type DispatchJob struct {
 	// never mutated afterward, so a job's priority stays stable even if
 	// the subscription is later edited or deleted.
 	// (docs/spec/dispatch-job-priority.md R1/R2)
-	Queue          *string    `json:"queue,omitempty"`
+	Queue *string `json:"queue,omitempty"`
+	// Descriptor is what the job IS, in words: for a job the event fan-out
+	// raises, the raising subscription's name ("Notify Value of user
+	// logins"); a directly created job may supply its own. The grid shows
+	// it where a code and a target URL say nothing to an operator. Nil is
+	// the legacy state (2026-09-22).
+	Descriptor     *string    `json:"descriptor,omitempty"`
 	CreatedAt      time.Time  `json:"createdAt"`
 	UpdatedAt      time.Time  `json:"updatedAt"`
 	ScheduledFor   *time.Time `json:"scheduledFor,omitempty"`

@@ -464,3 +464,99 @@ func TestProcess_ConcurrentDeliveriesCallSubscriberOnce(t *testing.T) {
 	assert.Equal(t, "COMPLETED", status)
 	assert.EqualValues(t, 0, attempts, "the winning delivery succeeded on its first attempt; attempt_count is only bumped on retry scheduling")
 }
+
+// TestProcess_UnauthorizedFailsFast pins the 2026-09-22 ruling: a subscriber
+// answering 401/403 has refused the credentials, and a retry sends the very
+// same credentials, so the job is FAILED on the first attempt instead of
+// spending three attempts over a few minutes to report the same 401.
+// Mutant: drop the 401/403 arm from advance — status stays PENDING with a
+// scheduled retry.
+func TestProcess_UnauthorizedFailsFast(t *testing.T) {
+	pool := testpg.Pool(t)
+	base, auth := harness(t, pool)
+
+	sub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"Invalid webhook signature."}`))
+	}))
+	t.Cleanup(sub.Close)
+
+	// attempt 1 of 3 — would be a retry for any other failure.
+	seedJob(t, pool, "djproc_401fst", sub.URL, 3, 0)
+	code, out := callProcess(t, base, "djproc_401fst", auth.Sign("djproc_401fst"))
+	assert.Equal(t, http.StatusOK, code)
+	assert.Equal(t, true, out["ack"])
+
+	status, attempts, scheduled := jobRow(t, pool, "djproc_401fst")
+	assert.Equal(t, "FAILED", status, "a 401 is terminal on the first attempt")
+	// attempt_count is bumped by ScheduleRetry only (MarkFailed never has), so
+	// a first-attempt terminal failure leaves it at 0 — the attempt ROW is the
+	// record of the attempt. Pre-existing semantics, pinned as-is.
+	assert.EqualValues(t, 0, attempts)
+	assert.Nil(t, scheduled, "no retry is scheduled for a credential refusal")
+
+	var lastError, body *string
+	require.NoError(t, pool.QueryRow(context.Background(),
+		`SELECT j.last_error, a.response_body
+		   FROM msg_dispatch_jobs j JOIN msg_dispatch_job_attempts a ON a.dispatch_job_id = j.id
+		  WHERE j.id = $1`, "djproc_401fst").Scan(&lastError, &body))
+	require.NotNil(t, lastError)
+	assert.Contains(t, *lastError, "HTTP 401")
+	require.NotNil(t, body)
+	assert.Contains(t, *body, "Invalid webhook signature.", "the subscriber's answer is kept on the attempt")
+
+	// And what was SENT is on the attempt too: this harness wires no
+	// credential resolver, so the summary says so instead of saying nothing.
+	var requestInfo []byte
+	require.NoError(t, pool.QueryRow(context.Background(),
+		`SELECT request_info FROM msg_dispatch_job_attempts WHERE dispatch_job_id = $1`, "djproc_401fst").Scan(&requestInfo))
+	var summary dispatchjob.RequestSummary
+	require.NoError(t, json.Unmarshal(requestInfo, &summary))
+	assert.Equal(t, "no credential resolver configured", summary.UnsignedReason)
+	assert.False(t, summary.Signature)
+	assert.Contains(t, summary.Headers, "X-Dispatch-Job-Id", "header names are recorded")
+}
+
+// TestPlan_BuildsARealSignatureWithoutSending pins the "sign" action (owner,
+// 2026-09-22): Plan returns the delivery a job WOULD get — signing account,
+// every header, a signature that verifies against the returned body and
+// timestamp with the account's secret — and sends nothing. The bearer is
+// masked: it is a credential, not a diagnostic.
+func TestPlan_BuildsARealSignatureWithoutSending(t *testing.T) {
+	pool := testpg.Pool(t)
+	repo := dispatchjob.NewRepository(pool)
+	const secret = "plan-secret-xyz"
+
+	calls := 0
+	sub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(sub.Close)
+
+	seedJob(t, pool, "djproc_plan01", sub.URL, 3, 0)
+	job, err := repo.FindByID(context.Background(), "djproc_plan01")
+	require.NoError(t, err)
+	require.NotNil(t, job)
+
+	h := processing.New(repo, nil).WithDeliveryCredsResolver(
+		func(context.Context, *dispatchjob.DispatchJob) (serviceaccount.OutboundCreds, error) {
+			return serviceaccount.OutboundCreds{BearerToken: "fc_testbearer", SigningSecret: secret, SignedBy: "sa-conn"}, nil
+		})
+	plan, err := h.Plan(context.Background(), job)
+	require.NoError(t, err)
+
+	assert.Equal(t, 0, calls, "Plan must not deliver")
+	assert.Equal(t, "sa-conn", plan.Request.SignedBy)
+	assert.True(t, plan.Request.Signature)
+	assert.True(t, plan.Request.Bearer)
+	assert.Equal(t, "Bearer ••••••", plan.Headers["Authorization"], "the bearer is masked")
+	assert.Equal(t, plan.Request.Timestamp, plan.Headers["X-FlowCatalyst-Timestamp"])
+	assert.Contains(t, plan.Body, `"hello":"world"`, "the real payload, so a subscriber can verify against it")
+
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(plan.Headers["X-FlowCatalyst-Timestamp"]))
+	mac.Write([]byte(plan.Body))
+	assert.Equal(t, hex.EncodeToString(mac.Sum(nil)), plan.Headers["X-FlowCatalyst-Signature"],
+		"the signature verifies against the returned timestamp + body with the account's secret")
+}

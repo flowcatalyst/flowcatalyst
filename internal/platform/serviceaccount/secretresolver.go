@@ -21,6 +21,11 @@ type OutboundCreds struct {
 	BearerToken   string
 	SigningSecret string
 	Reason        string
+	// SignedBy is the code of the service account the credentials belong
+	// to — recorded on the delivery attempt so an operator can see WHICH
+	// account signed a request without reading the secret. Empty with
+	// Reason.
+	SignedBy string
 }
 
 // Empty reports whether the delivery would go out bare.
@@ -84,6 +89,7 @@ func credsOf(ctx context.Context, repo *Repository, sa *ServiceAccount, who stri
 		creds.Reason = who + " has no webhook credentials"
 		return creds
 	}
+	creds.SignedBy = sa.Code
 	_ = repo.TouchLastUsed(ctx, sa.ID)
 	return creds
 }

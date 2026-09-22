@@ -52,6 +52,10 @@ type CreateDispatchJobRequest struct {
 	// anything else is a 400 naming the field. Omitted stays absent, never
 	// silently DEFAULT (docs/spec/dispatch-job-priority.md R3).
 	Queue *string `json:"queue,omitempty"`
+	// Descriptor is what the job is, in words, for the dispatch-jobs grid
+	// ("Notify Value of user logins"). Optional; a fanned-out job gets its
+	// subscription's name here.
+	Descriptor *string `json:"descriptor,omitempty" maxLength:"255"`
 }
 
 // CreatedResponse is the wire body for POST /api/dispatch-jobs: {id},
@@ -122,6 +126,7 @@ func (s *DispatchJobsBatchState) createOne(w http.ResponseWriter, r *http.Reques
 		TimeoutSeconds:     req.TimeoutSeconds,
 		MaxRetries:         req.MaxRetries,
 		Queue:              req.Queue,
+		Descriptor:         req.Descriptor,
 	})
 	if err != nil {
 		httperror.Write(w, err)

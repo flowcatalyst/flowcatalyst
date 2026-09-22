@@ -1031,8 +1031,10 @@ func (m *Manager) runConsumer(ctx context.Context, rc *runningConsumer) {
 				nextFullWarn = now.Add(capacityStuckWarnInterval)
 				if w := m.warnings.Load(); w != nil {
 					w.Add(WarningCategoryPoolCapacity, WarningWarning,
-						fmt.Sprintf("destination pools at capacity and %d deferrals outstanding; pausing %s",
-							rc.deferrals.outstanding(now), rc.consumer.Identifier()), "router")
+						fmt.Sprintf("destination pools at capacity and %d deferrals outstanding (budget %d); pausing %s — "+
+							"a slow pool's backlog larger than the budget blocks the rest of this queue: raise "+
+							"FC_ROUTER_DEFERRAL_BUDGET (SQS FIFO allows 20k in flight) or give that job its own queue",
+							rc.deferrals.outstanding(now), m.deferralBudgetValue(), rc.consumer.Identifier()), "router")
 				}
 			case now.After(nextFullWarn):
 				// A pool that has been full this long is not absorbing a burst,

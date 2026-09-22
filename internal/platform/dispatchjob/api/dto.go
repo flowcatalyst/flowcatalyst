@@ -28,6 +28,10 @@ type AttemptDTO struct {
 	Success        bool             `json:"success"`
 	ErrorMessage   *string          `json:"errorMessage,omitempty"`
 	ErrorType      *string          `json:"errorType,omitempty"`
+	// Request is what the platform sent on this attempt — signing account,
+	// which credential headers, timestamp, header names, or why it went out
+	// unsigned. nil on attempts recorded before 2026-09-22.
+	Request *dispatchjob.RequestSummary `json:"request,omitempty"`
 }
 
 func attemptFromEntity(a *dispatchjob.Attempt) AttemptDTO {
@@ -51,6 +55,7 @@ func attemptFromEntity(a *dispatchjob.Attempt) AttemptDTO {
 		Success:        a.Success,
 		ErrorMessage:   a.ErrorMessage,
 		ErrorType:      errType,
+		Request:        a.Request,
 	}
 }
 
@@ -86,6 +91,7 @@ type DispatchJobResponse struct {
 	Attempts           []AttemptDTO        `json:"attempts,omitempty"`
 	Metadata           []MetadataDTO       `json:"metadata,omitempty"`
 	IdempotencyKey     *string             `json:"idempotencyKey,omitempty"`
+	Descriptor         *string             `json:"descriptor,omitempty"`
 	CreatedAt          httpcompat.Time     `json:"createdAt"`
 	UpdatedAt          httpcompat.Time     `json:"updatedAt"`
 	ScheduledFor       *httpcompat.Time    `json:"scheduledFor,omitempty"`
@@ -152,6 +158,7 @@ func fromEntity(j *dispatchjob.DispatchJob) DispatchJobResponse {
 		Attempts:           attempts,
 		Metadata:           meta,
 		IdempotencyKey:     j.IdempotencyKey,
+		Descriptor:         j.Descriptor,
 		CreatedAt:          jsontime.New(j.CreatedAt),
 		UpdatedAt:          jsontime.New(j.UpdatedAt),
 		ScheduledFor:       sched,
@@ -168,30 +175,36 @@ func fromEntity(j *dispatchjob.DispatchJob) DispatchJobResponse {
 // the list grid binds id/code/source/status/mode/targetUrl/createdAt, and
 // the interface also carries the projection facets.
 type DispatchJobRead struct {
-	ID               string           `json:"id"`
-	EventID          *string          `json:"eventId,omitempty"`
-	SubscriptionID   *string          `json:"subscriptionId,omitempty"`
-	ClientID         *string          `json:"clientId,omitempty"`
-	ClientIdentifier *string          `json:"clientIdentifier,omitempty"`
-	Application      *string          `json:"application,omitempty"`
-	Subdomain        *string          `json:"subdomain,omitempty"`
-	Aggregate        *string          `json:"aggregate,omitempty"`
-	Code             string           `json:"code"`
-	Source           *string          `json:"source,omitempty"`
-	Subject          *string          `json:"subject,omitempty"`
-	Status           string           `json:"status"`
-	Kind             string           `json:"kind"`
-	TargetURL        string           `json:"targetUrl"`
-	Mode             string           `json:"mode"`
-	DispatchMode     *string          `json:"dispatchMode,omitempty"`
-	Priority         *int32           `json:"priority,omitempty"`
-	CorrelationID    *string          `json:"correlationId,omitempty"`
-	ScheduledFor     *httpcompat.Time `json:"scheduledFor,omitempty"`
-	CreatedAt        httpcompat.Time  `json:"createdAt"`
-	UpdatedAt        httpcompat.Time  `json:"updatedAt"`
-	CompletedAt      *httpcompat.Time `json:"completedAt,omitempty"`
-	LastAttemptAt    *httpcompat.Time `json:"lastAttemptAt,omitempty"`
-	AttemptCount     int32            `json:"attemptCount"`
+	ID               string  `json:"id"`
+	EventID          *string `json:"eventId,omitempty"`
+	SubscriptionID   *string `json:"subscriptionId,omitempty"`
+	ClientID         *string `json:"clientId,omitempty"`
+	ClientIdentifier *string `json:"clientIdentifier,omitempty"`
+	Application      *string `json:"application,omitempty"`
+	Subdomain        *string `json:"subdomain,omitempty"`
+	Aggregate        *string `json:"aggregate,omitempty"`
+	Code             string  `json:"code"`
+	Source           *string `json:"source,omitempty"`
+	Subject          *string `json:"subject,omitempty"`
+	Status           string  `json:"status"`
+	Kind             string  `json:"kind"`
+	TargetURL        string  `json:"targetUrl"`
+	Mode             string  `json:"mode"`
+	DispatchMode     *string `json:"dispatchMode,omitempty"`
+	Priority         *int32  `json:"priority,omitempty"`
+	CorrelationID    *string `json:"correlationId,omitempty"`
+	MessageGroup     *string `json:"messageGroup,omitempty"`
+	// Descriptor is what the job is, in words (the raising subscription's
+	// name for a fanned-out job); Metadata its key/value tags — both on the
+	// list row so the grid can show them (2026-09-22).
+	Descriptor    *string          `json:"descriptor,omitempty"`
+	Metadata      []MetadataDTO    `json:"metadata,omitempty"`
+	ScheduledFor  *httpcompat.Time `json:"scheduledFor,omitempty"`
+	CreatedAt     httpcompat.Time  `json:"createdAt"`
+	UpdatedAt     httpcompat.Time  `json:"updatedAt"`
+	CompletedAt   *httpcompat.Time `json:"completedAt,omitempty"`
+	LastAttemptAt *httpcompat.Time `json:"lastAttemptAt,omitempty"`
+	AttemptCount  int32            `json:"attemptCount"`
 }
 
 func readFromEntity(j *dispatchjob.DispatchJob) DispatchJobRead {
@@ -204,11 +217,18 @@ func readFromEntity(j *dispatchjob.DispatchJob) DispatchJobRead {
 	}
 	mode := string(j.Mode)
 	app, sub, agg := splitCode(j.Code)
+	var meta []MetadataDTO
+	for _, m := range j.Metadata {
+		meta = append(meta, MetadataDTO{Key: m.Key, Value: m.Value})
+	}
 	return DispatchJobRead{
 		ID:             j.ID,
 		EventID:        j.EventID,
 		SubscriptionID: j.SubscriptionID,
 		ClientID:       j.ClientID,
+		MessageGroup:   j.MessageGroup,
+		Descriptor:     j.Descriptor,
+		Metadata:       meta,
 		Application:    app,
 		Subdomain:      sub,
 		Aggregate:      agg,

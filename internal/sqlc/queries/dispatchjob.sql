@@ -19,7 +19,7 @@ SELECT id, external_id, source, kind, code, subject, event_id,
        timeout_seconds, schema_id, status, max_retries, retry_strategy,
        scheduled_for, expires_at, attempt_count, last_attempt_at,
        completed_at, duration_millis, last_error, idempotency_key,
-       queue, created_at, updated_at
+       queue, descriptor, created_at, updated_at
 FROM msg_dispatch_jobs
 WHERE id = $1;
 
@@ -31,10 +31,10 @@ INSERT INTO msg_dispatch_jobs
      message_group, sequence, timeout_seconds, schema_id, status, max_retries,
      retry_strategy, scheduled_for, expires_at, attempt_count, last_attempt_at,
      completed_at, duration_millis, last_error, idempotency_key, queue,
-     created_at, updated_at)
+     descriptor, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
         $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
-        $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37);
+        $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38);
 
 -- name: DispatchJobClaimForDelivery :execrows
 -- Atomically claims a job for ONE delivery. Same PROCESSING flip the old
@@ -98,12 +98,13 @@ UPDATE msg_dispatch_jobs
 INSERT INTO msg_dispatch_job_attempts
     (id, dispatch_job_id, attempt_number, status, response_code,
      response_body, error_message, error_type, duration_millis,
-     attempted_at, completed_at, created_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);
+     attempted_at, completed_at, created_at, request_info)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13);
 
 -- name: DispatchJobAttemptsByJob :many
 SELECT attempt_number, attempted_at, completed_at, duration_millis,
-       response_code, response_body, status, error_message, error_type
+       response_code, response_body, status, error_message, error_type,
+       request_info
 FROM msg_dispatch_job_attempts
 WHERE dispatch_job_id = $1
 ORDER BY attempt_number ASC;
@@ -123,7 +124,7 @@ SELECT id, external_id, source, kind, code, subject, event_id,
        timeout_seconds, schema_id, status, max_retries, retry_strategy,
        scheduled_for, expires_at, attempt_count, last_attempt_at,
        completed_at, duration_millis, last_error, idempotency_key,
-       queue, created_at, updated_at
+       queue, descriptor, created_at, updated_at
 FROM msg_dispatch_jobs
 WHERE id = ANY(sqlc.arg('ids')::text[]);
 

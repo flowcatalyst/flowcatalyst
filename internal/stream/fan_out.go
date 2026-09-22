@@ -137,6 +137,12 @@ type claimedEvent struct {
 	MessageGroup  *string
 	ClientID      *string
 	CreatedAt     time.Time
+	// ContextData is the event's key/value tags (msg_events.context_data,
+	// a JSON array of {key,value}) — copied verbatim onto each raised job's
+	// metadata, which has the same shape, so a job shows the same
+	// "additional data" its event does (2026-09-22). nil when the event
+	// has none.
+	ContextData json.RawMessage
 }
 
 // claimUnfannedEvents stamps `fanned_out_at` and returns the claimed
@@ -156,7 +162,8 @@ func claimUnfannedEvents(ctx context.Context, tx pgx.Tx, batchSize int) ([]claim
 		   FROM batch b
 		  WHERE e.id = b.id AND e.created_at = b.created_at
 		 RETURNING e.id, e.type, e.source, e.subject, e.data,
-		           e.correlation_id, e.message_group, e.client_id, e.created_at`,
+		           e.correlation_id, e.message_group, e.client_id, e.created_at,
+		           e.context_data`,
 		batchSize)
 	if err != nil {
 		return nil, err
@@ -165,13 +172,17 @@ func claimUnfannedEvents(ctx context.Context, tx pgx.Tx, batchSize int) ([]claim
 	var out []claimedEvent
 	for rows.Next() {
 		var e claimedEvent
-		var data []byte
+		var data, contextData []byte
 		if err := rows.Scan(&e.ID, &e.EventType, &e.Source, &e.Subject, &data,
-			&e.CorrelationID, &e.MessageGroup, &e.ClientID, &e.CreatedAt); err != nil {
+			&e.CorrelationID, &e.MessageGroup, &e.ClientID, &e.CreatedAt,
+			&contextData); err != nil {
 			return nil, err
 		}
 		if len(data) > 0 {
 			e.Data = data
+		}
+		if len(contextData) > 0 {
+			e.ContextData = contextData
 		}
 		out = append(out, e)
 	}
@@ -196,7 +207,10 @@ type cachedSubscription struct {
 	// Queue is the subscription's raw stored dispatch priority — copied
 	// verbatim onto a raised job's own queue column (R2). nil when the
 	// subscription has none set.
-	Queue             *string
+	Queue *string
+	// Name becomes each raised job's descriptor — what the job IS, in
+	// words, on the dispatch-jobs grid (2026-09-22).
+	Name              string
 	EventTypePatterns []string
 }
 
@@ -259,7 +273,7 @@ func loadActiveSubscriptions(ctx context.Context, pool *pgxpool.Pool) ([]cachedS
 	rows, err := pool.Query(ctx,
 		`SELECT s.id, s.client_id, s.target, s.mode, s.data_only,
 		        s.dispatch_pool_id, s.service_account_id, s.max_retries,
-		        s.timeout_seconds, s.sequence, s.queue, e.event_type_code
+		        s.timeout_seconds, s.sequence, s.queue, s.name, e.event_type_code
 		   FROM msg_subscriptions s
 		   LEFT JOIN msg_subscription_event_types e ON e.subscription_id = s.id
 		  WHERE s.status = 'ACTIVE'
@@ -272,14 +286,14 @@ func loadActiveSubscriptions(ctx context.Context, pool *pgxpool.Pool) ([]cachedS
 	var order []string
 	for rows.Next() {
 		var (
-			id, target, mode                              string
+			id, target, mode, name                        string
 			clientID, dispatchPoolID, saID, queue, etCode *string
 			dataOnly                                      bool
 			maxRetries, timeoutSeconds, sequence          int32
 		)
 		if err := rows.Scan(&id, &clientID, &target, &mode, &dataOnly,
 			&dispatchPoolID, &saID, &maxRetries, &timeoutSeconds,
-			&sequence, &queue, &etCode); err != nil {
+			&sequence, &queue, &name, &etCode); err != nil {
 			return nil, err
 		}
 		entry, ok := byID[id]
@@ -296,6 +310,7 @@ func loadActiveSubscriptions(ctx context.Context, pool *pgxpool.Pool) ([]cachedS
 				TimeoutSeconds:   timeoutSeconds,
 				Sequence:         sequence,
 				Queue:            queue,
+				Name:             name,
 			}
 			byID[id] = entry
 			order = append(order, id)
@@ -341,6 +356,10 @@ type newJob struct {
 	MaxRetries     int32
 	IdempotencyKey string
 	CreatedAt      time.Time
+	// Descriptor is the raising subscription's name; Metadata the raising
+	// event's context_data, verbatim (2026-09-22). nil when absent.
+	Descriptor *string
+	Metadata   json.RawMessage
 	// Queue is the raising subscription's queue value, copied verbatim
 	// (R2) — nil when the subscription has none set.
 	Queue *string
@@ -387,10 +406,26 @@ func buildJobs(events []claimedEvent, subs []cachedSubscription) []newJob {
 				IdempotencyKey: fmt.Sprintf("%s:%s", e.ID, s.ID),
 				CreatedAt:      e.CreatedAt,
 				Queue:          s.Queue,
+				Descriptor:     descriptorFor(s.Name),
+				Metadata:       e.ContextData,
 			})
 		}
 	}
 	return jobs
+}
+
+// descriptorFor is the raised job's descriptor: the subscription's name,
+// nil when it has none (the column is nullable and absent is the legacy
+// state, not an empty string). Clipped to the column's width.
+func descriptorFor(name string) *string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil
+	}
+	if len(name) > 255 {
+		name = name[:255]
+	}
+	return &name
 }
 
 // dispatchModeStr renders the subscription's mode for the job row. Each mode
@@ -426,16 +461,17 @@ func insertJobsInTx(ctx context.Context, tx pgx.Tx, jobs []newJob) error {
 			    target_url, protocol, payload, data_only, service_account_id,
 			    client_id, subscription_id, mode, dispatch_pool_id, message_group,
 			    sequence, timeout_seconds, status, max_retries, idempotency_key,
-			    queue, created_at, updated_at)
+			    queue, descriptor, metadata, created_at, updated_at)
 			 VALUES ($1, $2, $3, $4, $5, $6, $7, 'HTTP_WEBHOOK', $8, $9,
 			         $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-			         $21, $22, $22)
+			         $21, $22, COALESCE($23::jsonb, '[]'::jsonb), $24, $24)
 			 ON CONFLICT (id, created_at) DO NOTHING`,
 			j.ID, j.Code, j.Source, j.Subject, j.EventID, j.CorrelationID,
 			j.TargetURL, j.Payload, j.DataOnly, j.ServiceAcctID,
 			j.ClientID, j.SubscriptionID, j.Mode, j.DispatchPoolID,
 			j.MessageGroup, j.Sequence, j.TimeoutSeconds, j.Status,
-			j.MaxRetries, j.IdempotencyKey, j.Queue, j.CreatedAt)
+			j.MaxRetries, j.IdempotencyKey, j.Queue, j.Descriptor,
+			nullableJSON(j.Metadata), j.CreatedAt)
 	}
 	br := tx.SendBatch(ctx, batch)
 	defer br.Close()
@@ -445,4 +481,15 @@ func insertJobsInTx(ctx context.Context, tx pgx.Tx, jobs []newJob) error {
 		}
 	}
 	return nil
+}
+
+// nullableJSON passes a raw JSON document as a nullable text parameter —
+// nil, not an empty string, when there is none, so the SQL COALESCE can
+// fall back to the column default.
+func nullableJSON(raw json.RawMessage) *string {
+	if len(raw) == 0 {
+		return nil
+	}
+	s := string(raw)
+	return &s
 }

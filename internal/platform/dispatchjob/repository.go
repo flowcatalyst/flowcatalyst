@@ -54,8 +54,12 @@ type FilterParams struct {
 	SubscriptionID *string
 	Code           *string
 	Source         *string
-	Since          *time.Time
-	Until          *time.Time
+	// MessageGroup narrows to one ordered group — the grid's way of following
+	// an aggregate's jobs in sequence (2026-09-22). Exact match; the read
+	// projection indexes message_group.
+	MessageGroup *string
+	Since        *time.Time
+	Until        *time.Time
 	// SortAscending flips the created_at ordering (default: newest first).
 	SortAscending bool
 	Limit         int
@@ -116,15 +120,17 @@ func (r *Repository) FindByEventID(ctx context.Context, eventID string) ([]Dispa
 }
 
 // readSelect is the slim projection column set shared by the filtered list
-// and by-event reads. msg_dispatch_jobs_read omits payload / metadata /
-// schema_id / payload_content_type / data_only — the DispatchJobRead wire
-// shape doesn't surface them. Columns map to readRow by db tag (order cosmetic).
+// and by-event reads. msg_dispatch_jobs_read omits payload / schema_id /
+// payload_content_type / data_only — the DispatchJobRead wire shape doesn't
+// surface them. metadata and descriptor ARE projected (migration 057): the
+// grid shows both. Columns map to readRow by db tag (order cosmetic).
 const readSelect = `SELECT id, external_id, source, kind, code, subject,
 	event_id, correlation_id, target_url, protocol, service_account_id,
 	client_id, subscription_id, mode, dispatch_pool_id, message_group,
 	sequence, timeout_seconds, status, max_retries, retry_strategy,
 	scheduled_for, expires_at, attempt_count, last_attempt_at, completed_at,
-	duration_millis, last_error, idempotency_key, created_at, updated_at
+	duration_millis, last_error, idempotency_key, descriptor, metadata,
+	created_at, updated_at
 	FROM msg_dispatch_jobs_read`
 
 // FindWithFilters returns dispatch jobs matching non-nil filters, ordered
@@ -148,6 +154,7 @@ func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Dis
 	f.EqPtr("code", p.Code)
 	f.Any("code", p.Codes)
 	f.EqPtr("source", p.Source)
+	f.EqPtr("message_group", p.MessageGroup)
 	// Facets filter the projection's real columns (split_part of code), backed
 	// by their own indexes — replacing the old leading-wildcard code LIKEs.
 	f.Any("application", p.Applications)
@@ -211,7 +218,7 @@ func (r *Repository) FindRecentRaw(ctx context.Context, limit int) ([]DispatchJo
 		        timeout_seconds, schema_id, status, max_retries, retry_strategy,
 		        scheduled_for, expires_at, attempt_count, last_attempt_at,
 		        completed_at, duration_millis, last_error, idempotency_key,
-		        queue, created_at, updated_at
+		        queue, descriptor, created_at, updated_at
 		   FROM msg_dispatch_jobs
 		  ORDER BY created_at DESC
 		  LIMIT $1`, limit)
@@ -319,6 +326,7 @@ func (r *Repository) Insert(ctx context.Context, j *DispatchJob) error {
 		LastError:          j.LastError,
 		IdempotencyKey:     j.IdempotencyKey,
 		Queue:              j.Queue,
+		Descriptor:         j.Descriptor,
 		CreatedAt:          j.CreatedAt,
 		UpdatedAt:          j.UpdatedAt,
 	})
@@ -346,8 +354,8 @@ func (r *Repository) InsertBatch(ctx context.Context, jobs []DispatchJob) error 
 			      service_account_id, client_id, subscription_id, mode, dispatch_pool_id,
 			      message_group, sequence, timeout_seconds, schema_id, status, max_retries,
 			      retry_strategy, scheduled_for, expires_at, attempt_count, last_attempt_at,
-			      completed_at, duration_millis, last_error, idempotency_key, queue, created_at, updated_at)
-			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37)
+			      completed_at, duration_millis, last_error, idempotency_key, queue, descriptor, created_at, updated_at)
+			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38)
 			 ON CONFLICT (id, created_at) DO NOTHING`,
 			j.ID, j.ExternalID, j.Source, string(j.Kind), j.Code, j.Subject, j.EventID,
 			j.CorrelationID, metaJSON, j.TargetURL, string(j.Protocol), j.Payload,
@@ -356,7 +364,7 @@ func (r *Repository) InsertBatch(ctx context.Context, jobs []DispatchJob) error 
 			j.Sequence, j.TimeoutSeconds, j.SchemaID, string(j.Status), j.MaxRetries,
 			string(j.RetryStrategy), j.ScheduledFor, j.ExpiresAt, j.AttemptCount,
 			j.LastAttemptAt, j.CompletedAt, j.DurationMillis, j.LastError,
-			j.IdempotencyKey, j.Queue, j.CreatedAt, now)
+			j.IdempotencyKey, j.Queue, j.Descriptor, j.CreatedAt, now)
 	}
 	br := r.pool.SendBatch(ctx, batch)
 	defer br.Close()
@@ -545,6 +553,10 @@ func (r *Repository) RecordAttempt(ctx context.Context, jobID string, a *Attempt
 		v := string(*a.ErrorType)
 		errType = &v
 	}
+	var requestInfo json.RawMessage
+	if a.Request != nil {
+		requestInfo, _ = json.Marshal(a.Request)
+	}
 	return r.q.DispatchJobAttemptInsert(ctx, dbq.DispatchJobAttemptInsertParams{
 		ID:             tsid.GenerateUntyped(),
 		DispatchJobID:  jobID,
@@ -558,6 +570,7 @@ func (r *Repository) RecordAttempt(ctx context.Context, jobID string, a *Attempt
 		AttemptedAt:    &a.AttemptedAt,
 		CompletedAt:    a.CompletedAt,
 		CreatedAt:      time.Now().UTC(),
+		RequestInfo:    requestInfo,
 	})
 }
 
@@ -582,6 +595,12 @@ func (r *Repository) AttemptsByJob(ctx context.Context, jobID string) ([]Attempt
 			DurationMillis: row.DurationMillis,
 			ResponseBody:   row.ResponseBody,
 			ErrorMessage:   row.ErrorMessage,
+		}
+		if len(row.RequestInfo) > 0 {
+			var req RequestSummary
+			if err := json.Unmarshal(row.RequestInfo, &req); err == nil {
+				a.Request = &req
+			}
 		}
 		if row.AttemptNumber != nil {
 			a.AttemptNumber = *row.AttemptNumber
@@ -633,8 +652,8 @@ func findByIDRowToJob(r dbq.DispatchJobFindByIDRow) (*DispatchJob, error) {
 		ExpiresAt: r.ExpiresAt, AttemptCount: r.AttemptCount,
 		LastAttemptAt: r.LastAttemptAt, CompletedAt: r.CompletedAt,
 		DurationMillis: r.DurationMillis, LastError: r.LastError,
-		IdempotencyKey: r.IdempotencyKey, Queue: r.Queue, CreatedAt: r.CreatedAt,
-		UpdatedAt: r.UpdatedAt,
+		IdempotencyKey: r.IdempotencyKey, Queue: r.Queue, Descriptor: r.Descriptor,
+		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	})
 }
 
@@ -652,41 +671,44 @@ func findByIDsRowToJob(r dbq.DispatchJobFindByIDsRow) (*DispatchJob, error) {
 // the projection drops them and the DispatchJobRead wire shape doesn't carry
 // them.
 type readRow struct {
-	ID               string     `db:"id"`
-	ExternalID       *string    `db:"external_id"`
-	Source           *string    `db:"source"`
-	Kind             string     `db:"kind"`
-	Code             string     `db:"code"`
-	Subject          *string    `db:"subject"`
-	EventID          *string    `db:"event_id"`
-	CorrelationID    *string    `db:"correlation_id"`
-	TargetUrl        string     `db:"target_url"`
-	Protocol         string     `db:"protocol"`
-	ServiceAccountID *string    `db:"service_account_id"`
-	ClientID         *string    `db:"client_id"`
-	SubscriptionID   *string    `db:"subscription_id"`
-	Mode             string     `db:"mode"`
-	DispatchPoolID   *string    `db:"dispatch_pool_id"`
-	MessageGroup     *string    `db:"message_group"`
-	Sequence         int32      `db:"sequence"`
-	TimeoutSeconds   int32      `db:"timeout_seconds"`
-	Status           string     `db:"status"`
-	MaxRetries       int32      `db:"max_retries"`
-	RetryStrategy    *string    `db:"retry_strategy"`
-	ScheduledFor     *time.Time `db:"scheduled_for"`
-	ExpiresAt        *time.Time `db:"expires_at"`
-	AttemptCount     int32      `db:"attempt_count"`
-	LastAttemptAt    *time.Time `db:"last_attempt_at"`
-	CompletedAt      *time.Time `db:"completed_at"`
-	DurationMillis   *int64     `db:"duration_millis"`
-	LastError        *string    `db:"last_error"`
-	IdempotencyKey   *string    `db:"idempotency_key"`
-	CreatedAt        time.Time  `db:"created_at"`
-	UpdatedAt        time.Time  `db:"updated_at"`
+	ID               string          `db:"id"`
+	ExternalID       *string         `db:"external_id"`
+	Source           *string         `db:"source"`
+	Kind             string          `db:"kind"`
+	Code             string          `db:"code"`
+	Subject          *string         `db:"subject"`
+	EventID          *string         `db:"event_id"`
+	CorrelationID    *string         `db:"correlation_id"`
+	TargetUrl        string          `db:"target_url"`
+	Protocol         string          `db:"protocol"`
+	ServiceAccountID *string         `db:"service_account_id"`
+	ClientID         *string         `db:"client_id"`
+	SubscriptionID   *string         `db:"subscription_id"`
+	Mode             string          `db:"mode"`
+	DispatchPoolID   *string         `db:"dispatch_pool_id"`
+	MessageGroup     *string         `db:"message_group"`
+	Sequence         int32           `db:"sequence"`
+	TimeoutSeconds   int32           `db:"timeout_seconds"`
+	Status           string          `db:"status"`
+	MaxRetries       int32           `db:"max_retries"`
+	RetryStrategy    *string         `db:"retry_strategy"`
+	ScheduledFor     *time.Time      `db:"scheduled_for"`
+	ExpiresAt        *time.Time      `db:"expires_at"`
+	AttemptCount     int32           `db:"attempt_count"`
+	LastAttemptAt    *time.Time      `db:"last_attempt_at"`
+	CompletedAt      *time.Time      `db:"completed_at"`
+	DurationMillis   *int64          `db:"duration_millis"`
+	LastError        *string         `db:"last_error"`
+	IdempotencyKey   *string         `db:"idempotency_key"`
+	Descriptor       *string         `db:"descriptor"`
+	Metadata         json.RawMessage `db:"metadata"`
+	CreatedAt        time.Time       `db:"created_at"`
+	UpdatedAt        time.Time       `db:"updated_at"`
 }
 
 func readRowToJob(r readRow) (*DispatchJob, error) {
 	return rowToJob(rawRow{
+		Descriptor: r.Descriptor, Metadata: r.Metadata,
 		ID: r.ID, ExternalID: r.ExternalID, Source: r.Source, Kind: r.Kind,
 		Code: r.Code, Subject: r.Subject, EventID: r.EventID,
 		CorrelationID: r.CorrelationID,
@@ -702,7 +724,7 @@ func readRowToJob(r readRow) (*DispatchJob, error) {
 		DurationMillis: r.DurationMillis, LastError: r.LastError,
 		IdempotencyKey: r.IdempotencyKey, CreatedAt: r.CreatedAt,
 		UpdatedAt: r.UpdatedAt,
-		// Payload / Metadata / SchemaID / PayloadContentType / DataOnly absent.
+		// Payload / SchemaID / PayloadContentType / DataOnly absent.
 	})
 }
 
@@ -744,6 +766,7 @@ type rawRow struct {
 	LastError          *string
 	IdempotencyKey     *string
 	Queue              *string
+	Descriptor         *string
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 }
@@ -798,6 +821,7 @@ func rowToJob(r rawRow) (*DispatchJob, error) {
 		LastError:        r.LastError,
 		IdempotencyKey:   r.IdempotencyKey,
 		Queue:            r.Queue,
+		Descriptor:       r.Descriptor,
 		CreatedAt:        r.CreatedAt,
 		UpdatedAt:        r.UpdatedAt,
 		ScheduledFor:     r.ScheduledFor,

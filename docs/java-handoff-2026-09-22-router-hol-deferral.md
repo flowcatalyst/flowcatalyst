@@ -186,3 +186,15 @@ Every deferral is a redelivery: SQS bumps `ApproximateReceiveCount`, so a
 redrive policy with a low `maxReceiveCount` would DLQ messages that were
 never attempted. Already true of the visibility-lapse design; check the FC
 queues' redrive policy.
+
+## Addendum (same day): the budget must exceed the backlog
+
+First production run: 10k slow-pool backlog, 5k budget → 5,000 deferred ("in
+flight") and the other 5,000 still visible in front of every other pool's
+messages. SQS FIFO serves oldest-first, so the other pools are reachable only
+once EVERY visible message of the backlog has been deferred; a budget smaller
+than the backlog moves the head-of-line block along by budget-many messages
+and stops. Default raised to **15,000** (20k ceiling minus headroom for
+buffers + mediation); the pause warning now states the budget and the remedy.
+A slow backlog beyond ~15k on a shared FIFO queue is not workable from the
+consumer side — that job needs its own queue.

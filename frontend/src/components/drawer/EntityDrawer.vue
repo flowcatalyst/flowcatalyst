@@ -7,7 +7,8 @@ const props = withDefaults(
 	defineProps<{
 		title: string;
 		subtitle?: string;
-		size?: "default" | "wide";
+		/** two-thirds: a working panel (payload + attempts side by side), not a form. */
+		size?: "default" | "wide" | "two-thirds";
 		loading?: boolean;
 		error?: string | null;
 		dirty?: boolean;
@@ -68,7 +69,7 @@ defineExpose({
     :block-scroll="false"
     :dismissable="false"
     class="entity-drawer"
-    :class="size === 'wide' ? 'entity-drawer-wide' : 'entity-drawer-default'"
+    :class="`entity-drawer-${size}`"
     @update:visible="onVisibleUpdate"
     @hide="emit('close')"
   >
@@ -175,6 +176,10 @@ defineExpose({
 
 .p-drawer.entity-drawer.entity-drawer-wide {
   width: min(800px, calc(100vw - 24px));
+}
+
+.p-drawer.entity-drawer.entity-drawer-two-thirds {
+  width: min(66.667vw, calc(100vw - 24px));
 }
 
 /* No modal mask anymore — a stronger shadow separates the panel from the

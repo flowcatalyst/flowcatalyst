@@ -89,12 +89,12 @@ func TestParseErrorTypeStrict(t *testing.T) {
 // and only be set for a real, non-empty error type.
 func TestCompleteFailure_EmptyErrorTypeLeavesItNil(t *testing.T) {
 	a := dispatchjob.NewAttempt(1)
-	a.CompleteFailure("rate limited (429)", "", nil)
+	a.CompleteFailure("rate limited (429)", "", nil, nil)
 	assert.False(t, a.Success)
 	assert.Nil(t, a.ErrorType, "a deferral's zero-value error type must persist as NULL, not the empty string")
 
 	a2 := dispatchjob.NewAttempt(1)
-	a2.CompleteFailure("boom", dispatchjob.ErrorHTTPError, nil)
+	a2.CompleteFailure("boom", dispatchjob.ErrorHTTPError, nil, nil)
 	require.NotNil(t, a2.ErrorType)
 	assert.Equal(t, dispatchjob.ErrorHTTPError, *a2.ErrorType)
 }

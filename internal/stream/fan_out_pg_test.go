@@ -97,3 +97,59 @@ func TestFanOut_CopiesSubscriptionQueueOntoJob(t *testing.T) {
 		`SELECT fanned_out_at FROM msg_events WHERE id = $1`, "evt_fo_01").Scan(&fannedOut))
 	assert.False(t, fannedOut.IsZero())
 }
+
+// TestFanOut_CopiesSubscriptionNameAndEventContextOntoJob pins 2026-09-22:
+// a raised job's descriptor is the raising subscription's NAME, and its
+// metadata is the raising event's context_data, verbatim — so the
+// dispatch-jobs grid can say what a job is and show the same "additional
+// data" its event does. Real SQL (insertJobsInTx + the context_data column
+// on the claim), not just buildJobs.
+//
+// Mutants: drop `descriptor`/`metadata` from insertJobsInTx's column list;
+// drop e.context_data from claimUnfannedEvents' RETURNING.
+func TestFanOut_CopiesSubscriptionNameAndEventContextOntoJob(t *testing.T) {
+	pool := testpg.Pool(t)
+	ctx := context.Background()
+
+	_, err := pool.Exec(ctx,
+		`INSERT INTO msg_subscriptions (id, code, name, target, status, mode, source)
+		 VALUES ('sub_fo_desc', 'fo-desc', 'Notify Value of user logins',
+		         'https://sub.fanout.test/hook', 'ACTIVE', 'IMMEDIATE', 'UI')
+		 ON CONFLICT (id) DO NOTHING`)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx,
+		`INSERT INTO msg_subscription_event_types (subscription_id, event_type_code)
+		 VALUES ('sub_fo_desc', 'fanout:desc:evt')`)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx,
+		`INSERT INTO msg_events (id, type, source, time, context_data)
+		 VALUES ('evt_fo_desc1', 'fanout:desc:evt', 'test://fanout', NOW(),
+		         '[{"key":"tenant","value":"acme"},{"key":"actor","value":"usr_1"}]')`)
+	require.NoError(t, err)
+
+	n, err := NewFanOut(pool).step(ctx, 10)
+	require.NoError(t, err)
+	require.Equal(t, 1, n)
+
+	var descriptor *string
+	var metadata []byte
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT descriptor, metadata FROM msg_dispatch_jobs WHERE event_id = 'evt_fo_desc1'`).
+		Scan(&descriptor, &metadata))
+	require.NotNil(t, descriptor, "the raised job carries the subscription's name as its descriptor")
+	assert.Equal(t, "Notify Value of user logins", *descriptor)
+	assert.JSONEq(t, `[{"key":"tenant","value":"acme"},{"key":"actor","value":"usr_1"}]`, string(metadata),
+		"the raised job carries the event's context_data as its metadata")
+
+	// An event with no context_data leaves the column at its default, not NULL
+	// and not a SQL error.
+	_, err = pool.Exec(ctx,
+		`INSERT INTO msg_events (id, type, source, time)
+		 VALUES ('evt_fo_desc2', 'fanout:desc:evt', 'test://fanout', NOW())`)
+	require.NoError(t, err)
+	_, err = NewFanOut(pool).step(ctx, 10)
+	require.NoError(t, err)
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT metadata FROM msg_dispatch_jobs WHERE event_id = 'evt_fo_desc2'`).Scan(&metadata))
+	assert.JSONEq(t, `[]`, string(metadata))
+}

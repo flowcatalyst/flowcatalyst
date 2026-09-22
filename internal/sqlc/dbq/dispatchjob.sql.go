@@ -15,23 +15,24 @@ const dispatchJobAttemptInsert = `-- name: DispatchJobAttemptInsert :exec
 INSERT INTO msg_dispatch_job_attempts
     (id, dispatch_job_id, attempt_number, status, response_code,
      response_body, error_message, error_type, duration_millis,
-     attempted_at, completed_at, created_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     attempted_at, completed_at, created_at, request_info)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 `
 
 type DispatchJobAttemptInsertParams struct {
-	ID             string     `db:"id"`
-	DispatchJobID  string     `db:"dispatch_job_id"`
-	AttemptNumber  *int32     `db:"attempt_number"`
-	Status         *string    `db:"status"`
-	ResponseCode   *int32     `db:"response_code"`
-	ResponseBody   *string    `db:"response_body"`
-	ErrorMessage   *string    `db:"error_message"`
-	ErrorType      *string    `db:"error_type"`
-	DurationMillis *int64     `db:"duration_millis"`
-	AttemptedAt    *time.Time `db:"attempted_at"`
-	CompletedAt    *time.Time `db:"completed_at"`
-	CreatedAt      time.Time  `db:"created_at"`
+	ID             string          `db:"id"`
+	DispatchJobID  string          `db:"dispatch_job_id"`
+	AttemptNumber  *int32          `db:"attempt_number"`
+	Status         *string         `db:"status"`
+	ResponseCode   *int32          `db:"response_code"`
+	ResponseBody   *string         `db:"response_body"`
+	ErrorMessage   *string         `db:"error_message"`
+	ErrorType      *string         `db:"error_type"`
+	DurationMillis *int64          `db:"duration_millis"`
+	AttemptedAt    *time.Time      `db:"attempted_at"`
+	CompletedAt    *time.Time      `db:"completed_at"`
+	CreatedAt      time.Time       `db:"created_at"`
+	RequestInfo    json.RawMessage `db:"request_info"`
 }
 
 // One row per delivery attempt. The schema column `status` stores the
@@ -51,28 +52,31 @@ func (q *Queries) DispatchJobAttemptInsert(ctx context.Context, arg DispatchJobA
 		arg.AttemptedAt,
 		arg.CompletedAt,
 		arg.CreatedAt,
+		arg.RequestInfo,
 	)
 	return err
 }
 
 const dispatchJobAttemptsByJob = `-- name: DispatchJobAttemptsByJob :many
 SELECT attempt_number, attempted_at, completed_at, duration_millis,
-       response_code, response_body, status, error_message, error_type
+       response_code, response_body, status, error_message, error_type,
+       request_info
 FROM msg_dispatch_job_attempts
 WHERE dispatch_job_id = $1
 ORDER BY attempt_number ASC
 `
 
 type DispatchJobAttemptsByJobRow struct {
-	AttemptNumber  *int32     `db:"attempt_number"`
-	AttemptedAt    *time.Time `db:"attempted_at"`
-	CompletedAt    *time.Time `db:"completed_at"`
-	DurationMillis *int64     `db:"duration_millis"`
-	ResponseCode   *int32     `db:"response_code"`
-	ResponseBody   *string    `db:"response_body"`
-	Status         *string    `db:"status"`
-	ErrorMessage   *string    `db:"error_message"`
-	ErrorType      *string    `db:"error_type"`
+	AttemptNumber  *int32          `db:"attempt_number"`
+	AttemptedAt    *time.Time      `db:"attempted_at"`
+	CompletedAt    *time.Time      `db:"completed_at"`
+	DurationMillis *int64          `db:"duration_millis"`
+	ResponseCode   *int32          `db:"response_code"`
+	ResponseBody   *string         `db:"response_body"`
+	Status         *string         `db:"status"`
+	ErrorMessage   *string         `db:"error_message"`
+	ErrorType      *string         `db:"error_type"`
+	RequestInfo    json.RawMessage `db:"request_info"`
 }
 
 func (q *Queries) DispatchJobAttemptsByJob(ctx context.Context, dispatchJobID string) ([]DispatchJobAttemptsByJobRow, error) {
@@ -94,6 +98,7 @@ func (q *Queries) DispatchJobAttemptsByJob(ctx context.Context, dispatchJobID st
 			&i.Status,
 			&i.ErrorMessage,
 			&i.ErrorType,
+			&i.RequestInfo,
 		); err != nil {
 			return nil, err
 		}
@@ -169,7 +174,7 @@ SELECT id, external_id, source, kind, code, subject, event_id,
        timeout_seconds, schema_id, status, max_retries, retry_strategy,
        scheduled_for, expires_at, attempt_count, last_attempt_at,
        completed_at, duration_millis, last_error, idempotency_key,
-       queue, created_at, updated_at
+       queue, descriptor, created_at, updated_at
 FROM msg_dispatch_jobs
 WHERE id = $1
 `
@@ -210,6 +215,7 @@ type DispatchJobFindByIDRow struct {
 	LastError          *string         `db:"last_error"`
 	IdempotencyKey     *string         `db:"idempotency_key"`
 	Queue              *string         `db:"queue"`
+	Descriptor         *string         `db:"descriptor"`
 	CreatedAt          time.Time       `db:"created_at"`
 	UpdatedAt          time.Time       `db:"updated_at"`
 }
@@ -265,6 +271,7 @@ func (q *Queries) DispatchJobFindByID(ctx context.Context, id string) (DispatchJ
 		&i.LastError,
 		&i.IdempotencyKey,
 		&i.Queue,
+		&i.Descriptor,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -280,7 +287,7 @@ SELECT id, external_id, source, kind, code, subject, event_id,
        timeout_seconds, schema_id, status, max_retries, retry_strategy,
        scheduled_for, expires_at, attempt_count, last_attempt_at,
        completed_at, duration_millis, last_error, idempotency_key,
-       queue, created_at, updated_at
+       queue, descriptor, created_at, updated_at
 FROM msg_dispatch_jobs
 WHERE id = ANY($1::text[])
 `
@@ -321,6 +328,7 @@ type DispatchJobFindByIDsRow struct {
 	LastError          *string         `db:"last_error"`
 	IdempotencyKey     *string         `db:"idempotency_key"`
 	Queue              *string         `db:"queue"`
+	Descriptor         *string         `db:"descriptor"`
 	CreatedAt          time.Time       `db:"created_at"`
 	UpdatedAt          time.Time       `db:"updated_at"`
 }
@@ -376,6 +384,7 @@ func (q *Queries) DispatchJobFindByIDs(ctx context.Context, ids []string) ([]Dis
 			&i.LastError,
 			&i.IdempotencyKey,
 			&i.Queue,
+			&i.Descriptor,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -397,10 +406,10 @@ INSERT INTO msg_dispatch_jobs
      message_group, sequence, timeout_seconds, schema_id, status, max_retries,
      retry_strategy, scheduled_for, expires_at, attempt_count, last_attempt_at,
      completed_at, duration_millis, last_error, idempotency_key, queue,
-     created_at, updated_at)
+     descriptor, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
         $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
-        $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
+        $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38)
 `
 
 type DispatchJobInsertParams struct {
@@ -439,6 +448,7 @@ type DispatchJobInsertParams struct {
 	LastError          *string         `db:"last_error"`
 	IdempotencyKey     *string         `db:"idempotency_key"`
 	Queue              *string         `db:"queue"`
+	Descriptor         *string         `db:"descriptor"`
 	CreatedAt          time.Time       `db:"created_at"`
 	UpdatedAt          time.Time       `db:"updated_at"`
 }
@@ -480,6 +490,7 @@ func (q *Queries) DispatchJobInsert(ctx context.Context, arg DispatchJobInsertPa
 		arg.LastError,
 		arg.IdempotencyKey,
 		arg.Queue,
+		arg.Descriptor,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)

@@ -32,6 +32,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -276,11 +277,14 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 	res := h.deliver(ctx, job)
 
 	// Record the attempt (best-effort; a recording failure must not change
-	// the delivery decision).
+	// the delivery decision). The response body is kept on failure too —
+	// it is the subscriber's stated reason — and the request summary says
+	// what was sent to earn it.
+	attempt.Request = res.request
 	if res.success {
 		attempt.CompleteSuccess(res.statusCode, res.body)
 	} else {
-		attempt.CompleteFailure(res.errMessage, res.errType, res.statusCodePtr())
+		attempt.CompleteFailure(res.errMessage, res.errType, res.statusCodePtr(), res.body)
 	}
 	if err := h.repo.RecordAttempt(ctx, jobID, attempt); err != nil {
 		slog.Warn("dispatch process: record attempt failed", "job_id", jobID, "err", err)
@@ -313,6 +317,19 @@ func (h *Handler) advance(ctx context.Context, job *dispatchjob.DispatchJob, att
 			slog.Warn("dispatch process: reschedule failed", "job_id", jobID, "err", err)
 		}
 		slog.Info("dispatch deferred", "job_id", jobID, "retry_after", res.retryAfter, "reason", res.errMessage)
+
+	case res.hasStatus && (res.statusCode == http.StatusUnauthorized || res.statusCode == http.StatusForbidden):
+		// The subscriber refused the credentials. Nothing about a retry
+		// changes what was sent — same secret, same token — so retrying only
+		// spends the budget over a few minutes and reports the same 401 at
+		// the end of it (owner, 2026-09-22: fail fast). Terminal on the first
+		// attempt; the operator fixes the credential and requeues.
+		errMsg := res.errMessage
+		if err := h.repo.MarkFailed(ctx, jobID, job.CreatedAt, &errMsg, dur); err != nil {
+			slog.Warn("dispatch process: mark failed failed", "job_id", jobID, "err", err)
+		}
+		slog.Warn("dispatch failed (subscriber refused credentials; not retried)",
+			"job_id", jobID, "status", res.statusCode, "attempt", attemptNumber, "err", errMsg)
 
 	case int(attemptNumber) >= int(job.MaxRetries):
 		// Out of retries → terminal failure.
@@ -350,6 +367,8 @@ type deliveryResult struct {
 	body       *string
 	errMessage string
 	errType    dispatchjob.ErrorType
+	// request is what was sent — recorded on the attempt.
+	request *dispatchjob.RequestSummary
 }
 
 func (r deliveryResult) statusCodePtr() *int {
@@ -370,6 +389,23 @@ func (h *Handler) deliver(ctx context.Context, job *dispatchjob.DispatchJob) del
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	req, summary, err := h.buildRequest(ctx, job)
+	if err != nil {
+		return deliveryResult{errMessage: "build request: " + err.Error(), errType: dispatchjob.ErrorConnection}
+	}
+	res := h.exchange(req)
+	res.request = summary
+	if summary.UnsignedReason != "" && !res.success && !res.deferral {
+		res.errMessage += " (delivered unsigned: " + summary.UnsignedReason + ")"
+	}
+	return res
+}
+
+// buildRequest assembles the subscriber request for job — body, headers,
+// credentials — and the RequestSummary describing it. Shared by deliver
+// (which sends it) and Plan (which only shows it), so what the operator is
+// shown is byte-for-byte what a delivery would send at that instant.
+func (h *Handler) buildRequest(ctx context.Context, job *dispatchjob.DispatchJob) (*http.Request, *dispatchjob.RequestSummary, error) {
 	// Resolve the client's identifier once, up front: buildPayload needs it
 	// for the envelope's clientCode and the header decision below needs it
 	// too. A platform-scoped job (no client_id) skips the lookup entirely.
@@ -383,7 +419,7 @@ func (h *Handler) deliver(ctx context.Context, job *dispatchjob.DispatchJob) del
 	body := buildPayload(job, clientCode)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, job.TargetURL, bytes.NewReader(body))
 	if err != nil {
-		return deliveryResult{errMessage: "build request: " + err.Error(), errType: dispatchjob.ErrorConnection}
+		return nil, nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Dispatch-Job-Id", job.ID)
@@ -396,49 +432,109 @@ func (h *Handler) deliver(ctx context.Context, job *dispatchjob.DispatchJob) del
 	if v, ok := clientHeaderValue(job, clientCode); ok {
 		req.Header.Set(clientHeader, v)
 	}
-	// unsigned is why this delivery carries no credentials, when it carries
-	// none. A bare delivery to a subscriber that verifies signatures is a
-	// guaranteed rejection, and the rejection alone ("HTTP 401") says nothing
-	// about the cause — so the cause is logged here and, on a failure,
-	// appended to the attempt's error message (owner, 2026-09-22: never
-	// skip silently).
-	var unsigned string
-	if h.creds != nil {
+
+	summary := &dispatchjob.RequestSummary{Target: job.TargetURL}
+	// UnsignedReason is why this delivery carries no credentials, when it
+	// carries none. A bare delivery to a subscriber that verifies signatures
+	// is a guaranteed rejection, and the rejection alone ("HTTP 401") says
+	// nothing about the cause — so the cause is logged, recorded on the
+	// attempt, and on a failure appended to its error message (owner,
+	// 2026-09-22: never skip silently).
+	if h.creds == nil {
+		summary.UnsignedReason = "no credential resolver configured"
+	} else {
 		creds, serr := h.creds(ctx, job)
 		switch {
 		case serr != nil:
-			unsigned = "credential lookup failed: " + serr.Error()
+			summary.UnsignedReason = "credential lookup failed: " + serr.Error()
 			slog.Warn("dispatch process: delivery-creds lookup failed; delivering unsigned",
 				"job_id", job.ID, "err", serr)
 		case creds.Empty():
-			unsigned = creds.Reason
-			if unsigned == "" {
-				unsigned = "no credentials resolved"
+			summary.UnsignedReason = creds.Reason
+			if summary.UnsignedReason == "" {
+				summary.UnsignedReason = "no credentials resolved"
 			}
 			slog.Warn("dispatch process: delivering unsigned",
-				"job_id", job.ID, "subscription_id", deref(job.SubscriptionID), "reason", unsigned)
+				"job_id", job.ID, "subscription_id", deref(job.SubscriptionID), "reason", summary.UnsignedReason)
 		default:
 			// Same header set as router-mediated webhooks: bearer (static
 			// convenience credential) + HMAC signature (the real boundary).
+			summary.SignedBy = creds.SignedBy
 			if creds.BearerToken != "" {
 				req.Header.Set("Authorization", "Bearer "+creds.BearerToken)
+				summary.Bearer = true
 			}
 			if creds.SigningSecret != "" {
 				ts := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
-				mac := hmac.New(sha256.New, []byte(creds.SigningSecret))
-				mac.Write([]byte(ts))
-				mac.Write(body)
-				req.Header.Set(signatureHeader, hex.EncodeToString(mac.Sum(nil)))
+				req.Header.Set(signatureHeader, signBody(creds.SigningSecret, ts, body))
 				req.Header.Set(timestampHeader, ts)
+				summary.Signature = true
+				summary.Timestamp = ts
 			}
 		}
 	}
-
-	res := h.exchange(req)
-	if unsigned != "" && !res.success && !res.deferral {
-		res.errMessage += " (delivered unsigned: " + unsigned + ")"
+	for name := range req.Header {
+		summary.Headers = append(summary.Headers, headerDisplayName(name))
 	}
-	return res
+	sort.Strings(summary.Headers)
+	return req, summary, nil
+}
+
+// headerDisplayName undoes http.Header's canonicalisation for the headers
+// this package documents with their own casing (X-FlowCatalyst-*): the wire
+// is case-insensitive, but an operator reading a plan against the SDK docs
+// should see the spelling the docs use.
+func headerDisplayName(canonical string) string {
+	for _, documented := range []string{signatureHeader, timestampHeader, clientHeader} {
+		if http.CanonicalHeaderKey(documented) == canonical {
+			return documented
+		}
+	}
+	return canonical
+}
+
+// signBody is the delivery signature: HMAC-SHA256 over timestamp+body, hex
+// — the byte format every SDK's WebhookValidator verifies.
+func signBody(secret, ts string, body []byte) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(ts))
+	mac.Write(body)
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// DeliveryPlan is what a delivery of the job would send RIGHT NOW, without
+// sending it (owner, 2026-09-22: "an action on the dispatch job where I can
+// see which service account it will use and generate a signature for the
+// payload"). Every header is real and the signature is a real, verifiable
+// signature over Body with Timestamp — an operator can hand the three to
+// the subscriber's verify command (php artisan flowcatalyst:verify-signature)
+// and see whether THEIR secret accepts it. The Authorization value is
+// masked: the bearer is a static credential, not a diagnostic.
+type DeliveryPlan struct {
+	Request *dispatchjob.RequestSummary `json:"request"`
+	Headers map[string]string           `json:"headers"`
+	Body    string                      `json:"body"`
+}
+
+// Plan builds the delivery for job and returns it instead of sending it.
+func (h *Handler) Plan(ctx context.Context, job *dispatchjob.DispatchJob) (*DeliveryPlan, error) {
+	req, summary, err := h.buildRequest(ctx, job)
+	if err != nil {
+		return nil, err
+	}
+	headers := make(map[string]string, len(req.Header))
+	for name, values := range req.Header {
+		if len(values) == 0 {
+			continue
+		}
+		if name == "Authorization" {
+			headers[name] = "Bearer ••••••"
+			continue
+		}
+		headers[headerDisplayName(name)] = values[0]
+	}
+	raw, _ := io.ReadAll(req.Body)
+	return &DeliveryPlan{Request: summary, Headers: headers, Body: string(raw)}, nil
 }
 
 func deref(s *string) string {

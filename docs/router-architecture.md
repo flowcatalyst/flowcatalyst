@@ -149,13 +149,18 @@ Now (owner ruling 2026-09-22):
 
 - **The consumer keeps polling** while any pool it feeds has room, and — with all of them
   full — while its per-queue **deferral budget** lasts (`FC_ROUTER_DEFERRAL_BUDGET`, default
-  5,000). "Pools it feeds" is only the last batch's destinations; the budget is what lets a
+  15,000). "Pools it feeds" is only the last batch's destinations; the budget is what lets a
   queue whose last ten messages all named the full pool discover the other pool's traffic
   queued behind them. It pauses only with every pool full *and* the budget spent — the one
   state in which a poll could do nothing but bounce the batch whole — and wakes on a pool
   freeing or on the earliest deferral coming due. The budget exists because a deferred
   message is still in flight from the broker's side, and **SQS FIFO stops delivering
-  anything from a queue at 20,000 in flight**.
+  anything from a queue at 20,000 in flight**. The budget must be at least the slow-pool
+  backlog: SQS FIFO serves oldest-first, so the other pools' messages are only reachable once
+  every visible message of the backlog ahead of them has been deferred — a budget smaller
+  than the backlog just moves the head-of-line block along by budget-many messages. A
+  backlog beyond ~15k on a shared FIFO queue is not workable from the consumer side; that
+  job needs its own queue.
 - **A message for a full pool is Deferred, not Nacked**, with a **reservation**: the pool
   measures its completion rate over the last five minutes and keeps a cursor of when the last
   deferred message was told to return; each deferral is booked one slot (`1/rate`) after the

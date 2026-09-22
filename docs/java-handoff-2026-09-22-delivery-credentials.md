@@ -97,3 +97,38 @@ Spec §5's S1–S8 stay valid with S2/S4 re-read under the new order.
   step-3 fallback.
 - Retry policy for a config-caused 401 (three attempts cannot fix a missing
   credential) — not ruled; deliveries still retry to `max_retries`.
+
+## Addendum (same day): attempts record what was sent; 401/403 fail fast; the "sign" action
+
+Follow-on rulings after the first deploy still 401'd and the platform's own
+records could not say why (owner: "walking around Mount Everest blindfolded").
+
+- **Failed attempts keep the response body.** `Attempt.CompleteFailure` now
+  takes the body; before, only successes stored it, so every 401 recorded
+  `HTTP 401 Unauthorized` and discarded the SDK's reason. Java's equivalent
+  must store `response_body` on failure too.
+- **`msg_dispatch_job_attempts.request_info JSONB`** (Go migration 057) — a
+  `RequestSummary` of what was SENT: `signedBy` (service-account code),
+  `signature`/`bearer` booleans, `timestamp`, sorted header `names`,
+  `unsignedReason`, `target`. Never a secret. `OutboundCreds` gains
+  `signedBy` (the SA code) to feed it. Exposed as `request` on the attempt DTO.
+- **401/403 → FAILED on the first attempt** (`advance`): a retry sends the
+  same credentials, so three attempts only delay the same answer. Logged as
+  `dispatch failed (subscriber refused credentials; not retried)`. Note
+  `MarkFailed` still does not bump `attempt_count` (pre-existing; requeue does
+  not reset it, so bumping would make a requeued job fail immediately).
+- **`POST /api/dispatch-jobs/{id}/sign`** (+ `/bff/...`), gated on
+  `dispatch-job:view-raw`: builds the delivery exactly as `/api/dispatch/process`
+  would — same resolvers, same `buildRequest` — and returns `{request, headers,
+  body}` WITHOUT sending. The signature is real and verifies against the returned
+  timestamp + body; `Authorization` is masked `Bearer ••••••`. Header names in the
+  plan use the documented spelling (`X-FlowCatalyst-*`), not Go's canonical form.
+- **Laravel SDK `php artisan flowcatalyst:verify-signature --timestamp --signature
+  --body-file`** recomputes the HMAC with the app's configured secret and prints
+  presented vs expected (plus a secret fingerprint), distinguishing "wrong
+  secret" from "stale timestamp". Java/TS SDKs: a matching CLI is desirable but
+  not built.
+- Dispatch jobs gain `descriptor` (subscription name at fan-out; optional on
+  direct create) and the read projection gains `descriptor` + `metadata`
+  (fan-out copies the event's `context_data` onto the job's metadata). List
+  filter `messageGroup` (exact). List rows carry `clientIdentifier`.

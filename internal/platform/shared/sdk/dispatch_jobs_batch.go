@@ -61,6 +61,9 @@ type BatchItem struct {
 	// column is left nil rather than defaulted, so resolution still falls
 	// through to the subscription (docs/spec/dispatch-job-priority.md R3).
 	Queue *string `json:"queue,omitempty"`
+	// Descriptor is what the job is, in words, for the dispatch-jobs grid.
+	// Optional.
+	Descriptor *string `json:"descriptor,omitempty" maxLength:"255"`
 }
 
 // BatchRequest is the inbound POST shape.
@@ -153,6 +156,7 @@ func jobFromItem(it BatchItem) (dispatchjob.DispatchJob, error) {
 		Status:             common.DispatchPending,
 		Metadata:           it.Metadata,
 		Queue:              queue,
+		Descriptor:         it.Descriptor,
 	}
 	if it.ID != nil && *it.ID != "" {
 		j.ID = *it.ID

@@ -86,6 +86,7 @@ func (p *DispatchJobProjection) step(ctx context.Context, batchSize int) (int, e
 		     attempt_count, last_attempt_at, completed_at, duration_millis, last_error,
 		     idempotency_key, is_completed, is_terminal,
 		     application, subdomain, aggregate,
+		     descriptor, metadata,
 		     created_at, updated_at, projected_at)
 		 SELECT j.id, j.external_id, j.source, j.kind, j.code, j.subject,
 		        j.event_id, j.correlation_id, j.target_url, j.protocol,
@@ -106,6 +107,7 @@ func (p *DispatchJobProjection) step(ctx context.Context, batchSize int) (int, e
 		        split_part(j.code, ':', 1),
 		        NULLIF(split_part(j.code, ':', 2), ''),
 		        NULLIF(split_part(j.code, ':', 3), ''),
+		        j.descriptor, j.metadata,
 		        j.created_at, j.updated_at, NOW()
 		   FROM msg_dispatch_jobs j
 		  WHERE j.id = ANY($1)

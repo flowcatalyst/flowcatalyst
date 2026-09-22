@@ -382,22 +382,24 @@ type MsgDispatchJob struct {
 	ProjectedAt        *time.Time      `db:"projected_at"`
 	QueuedAt           *time.Time      `db:"queued_at"`
 	Queue              *string         `db:"queue"`
+	Descriptor         *string         `db:"descriptor"`
 }
 
 type MsgDispatchJobAttempt struct {
-	ID              string     `db:"id"`
-	DispatchJobID   string     `db:"dispatch_job_id"`
-	AttemptNumber   *int32     `db:"attempt_number"`
-	Status          *string    `db:"status"`
-	ResponseCode    *int32     `db:"response_code"`
-	ResponseBody    *string    `db:"response_body"`
-	ErrorMessage    *string    `db:"error_message"`
-	ErrorStackTrace *string    `db:"error_stack_trace"`
-	ErrorType       *string    `db:"error_type"`
-	DurationMillis  *int64     `db:"duration_millis"`
-	AttemptedAt     *time.Time `db:"attempted_at"`
-	CompletedAt     *time.Time `db:"completed_at"`
-	CreatedAt       time.Time  `db:"created_at"`
+	ID              string          `db:"id"`
+	DispatchJobID   string          `db:"dispatch_job_id"`
+	AttemptNumber   *int32          `db:"attempt_number"`
+	Status          *string         `db:"status"`
+	ResponseCode    *int32          `db:"response_code"`
+	ResponseBody    *string         `db:"response_body"`
+	ErrorMessage    *string         `db:"error_message"`
+	ErrorStackTrace *string         `db:"error_stack_trace"`
+	ErrorType       *string         `db:"error_type"`
+	DurationMillis  *int64          `db:"duration_millis"`
+	AttemptedAt     *time.Time      `db:"attempted_at"`
+	CompletedAt     *time.Time      `db:"completed_at"`
+	CreatedAt       time.Time       `db:"created_at"`
+	RequestInfo     json.RawMessage `db:"request_info"`
 }
 
 type MsgDispatchJobProjectionFeed struct {
@@ -412,43 +414,45 @@ type MsgDispatchJobProjectionFeed struct {
 }
 
 type MsgDispatchJobsRead struct {
-	ID               string     `db:"id"`
-	ExternalID       *string    `db:"external_id"`
-	Source           *string    `db:"source"`
-	Kind             string     `db:"kind"`
-	Code             string     `db:"code"`
-	Subject          *string    `db:"subject"`
-	EventID          *string    `db:"event_id"`
-	CorrelationID    *string    `db:"correlation_id"`
-	TargetUrl        string     `db:"target_url"`
-	Protocol         string     `db:"protocol"`
-	ServiceAccountID *string    `db:"service_account_id"`
-	ClientID         *string    `db:"client_id"`
-	SubscriptionID   *string    `db:"subscription_id"`
-	DispatchPoolID   *string    `db:"dispatch_pool_id"`
-	Mode             string     `db:"mode"`
-	MessageGroup     *string    `db:"message_group"`
-	Sequence         *int32     `db:"sequence"`
-	TimeoutSeconds   *int32     `db:"timeout_seconds"`
-	Status           string     `db:"status"`
-	MaxRetries       int32      `db:"max_retries"`
-	RetryStrategy    *string    `db:"retry_strategy"`
-	ScheduledFor     *time.Time `db:"scheduled_for"`
-	ExpiresAt        *time.Time `db:"expires_at"`
-	AttemptCount     int32      `db:"attempt_count"`
-	LastAttemptAt    *time.Time `db:"last_attempt_at"`
-	CompletedAt      *time.Time `db:"completed_at"`
-	DurationMillis   *int64     `db:"duration_millis"`
-	LastError        *string    `db:"last_error"`
-	IdempotencyKey   *string    `db:"idempotency_key"`
-	IsCompleted      *bool      `db:"is_completed"`
-	IsTerminal       *bool      `db:"is_terminal"`
-	Application      *string    `db:"application"`
-	Subdomain        *string    `db:"subdomain"`
-	Aggregate        *string    `db:"aggregate"`
-	CreatedAt        time.Time  `db:"created_at"`
-	UpdatedAt        time.Time  `db:"updated_at"`
-	ProjectedAt      *time.Time `db:"projected_at"`
+	ID               string          `db:"id"`
+	ExternalID       *string         `db:"external_id"`
+	Source           *string         `db:"source"`
+	Kind             string          `db:"kind"`
+	Code             string          `db:"code"`
+	Subject          *string         `db:"subject"`
+	EventID          *string         `db:"event_id"`
+	CorrelationID    *string         `db:"correlation_id"`
+	TargetUrl        string          `db:"target_url"`
+	Protocol         string          `db:"protocol"`
+	ServiceAccountID *string         `db:"service_account_id"`
+	ClientID         *string         `db:"client_id"`
+	SubscriptionID   *string         `db:"subscription_id"`
+	DispatchPoolID   *string         `db:"dispatch_pool_id"`
+	Mode             string          `db:"mode"`
+	MessageGroup     *string         `db:"message_group"`
+	Sequence         *int32          `db:"sequence"`
+	TimeoutSeconds   *int32          `db:"timeout_seconds"`
+	Status           string          `db:"status"`
+	MaxRetries       int32           `db:"max_retries"`
+	RetryStrategy    *string         `db:"retry_strategy"`
+	ScheduledFor     *time.Time      `db:"scheduled_for"`
+	ExpiresAt        *time.Time      `db:"expires_at"`
+	AttemptCount     int32           `db:"attempt_count"`
+	LastAttemptAt    *time.Time      `db:"last_attempt_at"`
+	CompletedAt      *time.Time      `db:"completed_at"`
+	DurationMillis   *int64          `db:"duration_millis"`
+	LastError        *string         `db:"last_error"`
+	IdempotencyKey   *string         `db:"idempotency_key"`
+	IsCompleted      *bool           `db:"is_completed"`
+	IsTerminal       *bool           `db:"is_terminal"`
+	Application      *string         `db:"application"`
+	Subdomain        *string         `db:"subdomain"`
+	Aggregate        *string         `db:"aggregate"`
+	CreatedAt        time.Time       `db:"created_at"`
+	UpdatedAt        time.Time       `db:"updated_at"`
+	ProjectedAt      *time.Time      `db:"projected_at"`
+	Descriptor       *string         `db:"descriptor"`
+	Metadata         json.RawMessage `db:"metadata"`
 }
 
 type MsgDispatchPool struct {

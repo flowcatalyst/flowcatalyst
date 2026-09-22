@@ -11,6 +11,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/operations"
+	dispatchprocessing "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/processing"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -27,6 +28,32 @@ import (
 type State struct {
 	Repo *dispatchjob.Repository
 	UoW  *usecasepgx.UnitOfWork
+	// ClientIdentifier resolves a job's client_id to the client's identifier
+	// slug for the list rows (the grid shows a client, not an id). nil
+	// leaves clientIdentifier empty. Wired to client.NewCachedIdentifierResolver.
+	ClientIdentifier func(ctx context.Context, clientID string) (string, bool)
+	// Plan builds a job's delivery — signing account, headers, a real
+	// signature over the real body — WITHOUT sending it, for the "sign"
+	// action (owner, 2026-09-22). nil disables the route's body (501).
+	// Wired to processing.Handler.Plan.
+	Plan func(ctx context.Context, job *dispatchjob.DispatchJob) (*dispatchprocessing.DeliveryPlan, error)
+}
+
+// withClientIdentifier fills each list row's clientIdentifier through the
+// resolver's cache — one lookup per distinct client per TTL, not per row.
+func (s *State) withClientIdentifier(ctx context.Context, rows []DispatchJobRead) []DispatchJobRead {
+	if s.ClientIdentifier == nil {
+		return rows
+	}
+	for i := range rows {
+		if rows[i].ClientID == nil || *rows[i].ClientID == "" {
+			continue
+		}
+		if ident, ok := s.ClientIdentifier(ctx, *rows[i].ClientID); ok {
+			rows[i].ClientIdentifier = &ident
+		}
+	}
+	return rows
 }
 
 const (
@@ -48,6 +75,7 @@ func Register(api huma.API, s *State) {
 	apiroute.Post(g, "requeueDispatchJobs", "/api/dispatch-jobs/requeue", "Reset dispatch jobs to PENDING for re-dispatch", http.StatusOK, s.requeue)
 	apiroute.Post(g, "cancelDispatchJob", "/api/dispatch-jobs/{id}/cancel", "Cancel a FAILED dispatch job", http.StatusOK, s.cancel)
 	apiroute.Post(g, "completeDispatchJob", "/api/dispatch-jobs/{id}/complete", "Mark a FAILED dispatch job COMPLETED (delivered out of band)", http.StatusOK, s.complete)
+	apiroute.Post(g, "signDispatchJob", "/api/dispatch-jobs/{id}/sign", "Build the job's delivery (signing account, headers, signature) without sending it", http.StatusOK, s.sign)
 
 	// SDK-compatibility aliases. The Laravel SDK client addresses these as
 	// /api/dispatch-jobs/by-event/{eventId} and the collection-level
@@ -81,6 +109,37 @@ func registerBFF(api huma.API, s *State, base, opPrefix, tag string) {
 	apiroute.Post(g, "requeueDispatchJobs"+opPrefix, base+"/requeue", "Reset dispatch jobs to PENDING for re-dispatch", http.StatusOK, s.requeue)
 	apiroute.Post(g, "cancelDispatchJob"+opPrefix, base+"/{id}/cancel", "Cancel a FAILED dispatch job", http.StatusOK, s.cancel)
 	apiroute.Post(g, "completeDispatchJob"+opPrefix, base+"/{id}/complete", "Mark a FAILED dispatch job COMPLETED (delivered out of band)", http.StatusOK, s.complete)
+	apiroute.Post(g, "signDispatchJob"+opPrefix, base+"/{id}/sign", "Build the job's delivery (signing account, headers, signature) without sending it", http.StatusOK, s.sign)
+}
+
+// sign is the dry run: what a delivery of this job would send right now.
+// The signature it returns is real — verifiable by the subscriber's own
+// verify command against the same body and timestamp — which is the point:
+// it lets an operator prove which side holds the wrong secret without a
+// delivery. Gated on the raw-view permission, like the payload it returns.
+func (s *State) sign(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[dispatchprocessing.DeliveryPlan], error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, viewRawPerm); err != nil {
+		return nil, err
+	}
+	if s.Plan == nil {
+		return nil, huma.Error501NotImplemented("delivery planning is not wired on this server")
+	}
+	j, err := s.Repo.FindByID(ctx, in.ID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
+	}
+	if j == nil {
+		return nil, httperror.NotFound("DispatchJob", in.ID)
+	}
+	if err := auth.CheckScopeAccess(ac, j.ClientID); err != nil {
+		return nil, err
+	}
+	plan, err := s.Plan(ctx, j)
+	if err != nil {
+		return nil, usecase.Internal("PLAN", "build delivery failed", err)
+	}
+	return &apicommon.Out[dispatchprocessing.DeliveryPlan]{Body: *plan}, nil
 }
 
 type listInput struct {
@@ -91,6 +150,7 @@ type listInput struct {
 	Code           string `query:"code"`
 	Since          string `query:"since" doc:"RFC3339 timestamp"`
 	Until          string `query:"until" doc:"RFC3339 timestamp"`
+	MessageGroup   string `query:"messageGroup" doc:"Exact message group"`
 	Limit          int    `query:"limit"`
 	Offset         int    `query:"offset"`
 
@@ -146,6 +206,7 @@ func (in *listInput) toFilters() dispatchjob.FilterParams {
 		SubscriptionID: apicommon.OptStr(in.SubscriptionID),
 		Code:           apicommon.OptStr(in.Code),
 		Source:         src,
+		MessageGroup:   apicommon.OptStr(in.MessageGroup),
 		Since:          ts(in.Since),
 		Until:          ts(in.Until),
 		Limit:          limit,
@@ -185,7 +246,7 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[[]Dispa
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_with_filters failed", err)
 	}
-	out := apicommon.MapSlice(rows, readFromEntity)
+	out := s.withClientIdentifier(ctx, apicommon.MapSlice(rows, readFromEntity))
 	return &apicommon.Out[[]DispatchJobRead]{Body: out}, nil
 }
 
@@ -198,7 +259,7 @@ func (s *State) listRaw(ctx context.Context, in *listInput) (*apicommon.Out[[]Di
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_raw failed", err)
 	}
-	out := apicommon.MapSlice(rows, readFromEntity)
+	out := s.withClientIdentifier(ctx, apicommon.MapSlice(rows, readFromEntity))
 	return &apicommon.Out[[]DispatchJobRead]{Body: out}, nil
 }
 

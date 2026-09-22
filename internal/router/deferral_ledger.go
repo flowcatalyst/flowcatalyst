@@ -12,10 +12,21 @@ import (
 // point of view — invisible on SQS, unacknowledged on NATS — and SQS FIFO
 // stops delivering ANYTHING from a queue once 20,000 of its messages are in
 // flight, which would turn the deferral into a broker-side head-of-line
-// block of its own. Half of that, less what the pools themselves may hold,
-// keeps well clear. On the other backends the budget is only what bounds
-// the churn of re-deferring a wedged backlog.
-const defaultDeferralBudget = 5000
+// block of its own.
+//
+// It must be as LARGE as that ceiling allows, not merely safe: SQS FIFO
+// hands out visible messages oldest-first, so reaching the other pools'
+// messages behind a slow pool's backlog means deferring EVERY visible
+// message of that backlog first. A budget smaller than the backlog defers
+// what it can, pauses, and leaves the rest of the backlog in front of
+// everyone else — the head-of-line block, moved along by budget-many
+// messages (owner, 2026-09-22: 10k backlog, 5k budget, "5000+ in flight
+// and nothing moves"). 15,000 leaves ~5,000 of the ceiling for what the
+// pools hold in buffers and mediation. A slow backlog beyond that on a
+// shared FIFO queue cannot be worked around from the consumer side at all;
+// that job needs its own queue. On the other backends the budget is only
+// what bounds the churn of re-deferring a wedged backlog.
+const defaultDeferralBudget = 15000
 
 // deferralLedger is one consumer's record of when its deferred messages are
 // due back, so the poll loop can tell how many are still out
