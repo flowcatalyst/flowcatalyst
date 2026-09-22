@@ -82,6 +82,7 @@ type WirePoolStats struct {
 	MessageGroupCount  uint32                      `json:"message_group_count"`
 	RateLimitPerMinute *uint32                     `json:"rate_limit_per_minute,omitempty"`
 	IsRateLimited      bool                        `json:"is_rate_limited"`
+	TotalDeferred      uint64                      `json:"total_deferred"`
 	Metrics            *common.EnhancedPoolMetrics `json:"metrics,omitempty"`
 }
 
@@ -98,6 +99,7 @@ func fromPoolStats(s []router.PoolStats) []WirePoolStats {
 			MessageGroupCount:  p.MessageGroupCount,
 			RateLimitPerMinute: p.RateLimitPerMinute,
 			IsRateLimited:      p.IsRateLimited,
+			TotalDeferred:      p.TotalDeferred,
 			Metrics:            p.Metrics,
 		}
 	}
@@ -137,6 +139,7 @@ type DashboardPoolStats struct {
 	TotalSucceeded          uint64  `json:"totalSucceeded"`
 	TotalFailed             uint64  `json:"totalFailed"`
 	TotalRateLimited        uint64  `json:"totalRateLimited"`
+	TotalDeferred           uint64  `json:"totalDeferred"`
 	SuccessRate             float64 `json:"successRate"`
 	ActiveWorkers           uint32  `json:"activeWorkers"`
 	AvailablePermits        uint32  `json:"availablePermits"`

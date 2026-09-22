@@ -200,6 +200,52 @@ type Manager struct {
 	// pool-creation site), or a reconfigure that could change which pools
 	// exist or feed a queue. Never nil after NewManager.
 	capacityGate *capacityGate
+
+	// deferralBudget and maxDeferral are the backpressure-deferral knobs
+	// (pool_admission.go, deferral_ledger.go), zero meaning the package
+	// defaults. Set before Reconfigure builds pools; maxDeferral is handed
+	// to each pool at construction, deferralBudget is read per poll.
+	deferralBudget atomic.Int64
+	maxDeferral    atomic.Int64
+}
+
+// SetDeferralBudget bounds how many deferred messages one queue's consumer
+// may have outstanding before it stops polling into full pools (see
+// defaultDeferralBudget). Zero restores the default.
+func (m *Manager) SetDeferralBudget(n int) { m.deferralBudget.Store(int64(n)) }
+
+// SetMaxDeferral sets the reservation horizon handed to every pool built
+// after this call (see defaultMaxDeferral). Zero restores the default.
+func (m *Manager) SetMaxDeferral(d time.Duration) { m.maxDeferral.Store(int64(d)) }
+
+func (m *Manager) deferralBudgetValue() int {
+	if n := m.deferralBudget.Load(); n > 0 {
+		return int(n)
+	}
+	return defaultDeferralBudget
+}
+
+// noteDeferral is every pool's deferral observer (Pool.SetDeferralObserver):
+// it books the return time on the ledger of the consumer that owns queueID
+// so that consumer's poll loop can count what is out and wake when it
+// lands. A queue that has already been deregistered has no ledger to book
+// on, and needs none — nothing polls it.
+func (m *Manager) noteDeferral(queueID string, returnAt time.Time) {
+	m.consumerMu.RLock()
+	rc, ok := m.consumersByID[queueID]
+	m.consumerMu.RUnlock()
+	if ok {
+		rc.deferrals.add(returnAt)
+	}
+}
+
+// wirePool applies the Manager-level wiring every pool needs, whichever of
+// the two creation sites (Reconfigure, ensureFallbackPool) built it.
+func (m *Manager) wirePool(p *Pool) {
+	p.SetSettledReporter(m.settledReporterRef())
+	p.SetCapacityFreed(m.capacityGate.signal)
+	p.SetDeferralObserver(m.noteDeferral)
+	p.SetMaxDeferral(time.Duration(m.maxDeferral.Load()))
 }
 
 // SetSettledReporter wires the T3/A-01 settled-message reporter that every
@@ -273,6 +319,12 @@ type runningConsumer struct {
 	// poll loop, read by nothing else today, but cheap to keep safe.
 	poolsMu sync.Mutex
 	pools   []string
+
+	// deferrals is when the messages this consumer's pools handed back for
+	// capacity (Pool.deferMsg) are due to be redelivered. hasCapacityFor
+	// reads it to keep polling into full pools only while the deferral
+	// budget lasts, and awaitCapacity to wake when the next one lands.
+	deferrals deferralLedger
 
 	// detachedAt is stamped once, under Manager.detachMu, the moment this
 	// consumer moves into Manager.detaching (X-11 / R-26/R-49 — a queue
@@ -810,8 +862,7 @@ func (m *Manager) ensureFallbackPool(code string) *Pool {
 		common.PoolConfig{Code: code, Concurrency: defaultPoolConcurrency},
 		m.mediator, m.tracker, m.resolveConsumer,
 	)
-	p.SetSettledReporter(m.settledReporterRef())
-	p.SetCapacityFreed(m.capacityGate.signal)
+	m.wirePool(p)
 	m.pools[code] = p
 	m.trackSynthPool(code)
 	slog.Info("synthesised per-client fallback pool",
@@ -964,10 +1015,13 @@ func (m *Manager) runConsumer(ctx context.Context, rc *runningConsumer) {
 		if ctx.Err() != nil {
 			return
 		}
-		// Backpressure: if the pools this queue feeds are full, wait rather than
-		// poll. Surface the transition into full as a PoolCapacity warning (once
-		// per full period, not every tick, to avoid flooding /warnings), then
-		// re-warn on a slow interval for as long as it lasts.
+		// Backpressure: if every pool this queue feeds is full AND the queue's
+		// deferral budget is spent, wait rather than poll (one full pool among
+		// several is not a pause any more — its messages are deferred and the
+		// rest flow; see hasCapacityFor). Surface the transition into full as
+		// a PoolCapacity warning (once per full period, not every tick, to
+		// avoid flooding /warnings), then re-warn on a slow interval for as
+		// long as it lasts.
 		if !m.hasCapacityFor(rc) {
 			now := time.Now()
 			switch {
@@ -977,7 +1031,8 @@ func (m *Manager) runConsumer(ctx context.Context, rc *runningConsumer) {
 				nextFullWarn = now.Add(capacityStuckWarnInterval)
 				if w := m.warnings.Load(); w != nil {
 					w.Add(WarningCategoryPoolCapacity, WarningWarning,
-						fmt.Sprintf("destination pools at capacity; pausing %s", rc.consumer.Identifier()), "router")
+						fmt.Sprintf("destination pools at capacity and %d deferrals outstanding; pausing %s",
+							rc.deferrals.outstanding(now), rc.consumer.Identifier()), "router")
 				}
 			case now.After(nextFullWarn):
 				// A pool that has been full this long is not absorbing a burst,
@@ -1131,25 +1186,48 @@ func (rc *runningConsumer) destPools() []string {
 	return rc.pools
 }
 
-// hasCapacityFor reports whether this consumer should keep polling: whether the
-// pools its own last batch fed still have room in their pre-dispatch buffers.
+// hasCapacityFor reports whether this consumer should keep polling: whether
+// ANY of the pools its own last batch fed still has room in its pre-dispatch
+// buffer.
 //
-// It used to ask whether ANY pool in the process had room, which meant a single
-// idle pool kept every consumer polling — messages for a saturated pool were
-// fetched and immediately bounced (a NACK that SQS ignores outright), burning
-// round-trips and receive counts to no end. Judging a queue by the pools it
-// actually feeds makes the pause mean something.
+// It is judged by the pools this queue actually feeds, not by every pool in
+// the process — a single idle pool elsewhere must not keep a consumer polling
+// into pools that are all saturated.
 //
-// A queue feeding several pools pauses when ANY of them is full: a batch cannot
-// be split, so the alternative is fetching messages we know we would bounce.
-// The pause is 2s and draining does not depend on polling, so this cannot
-// deadlock — the pool empties and the queue resumes.
+// It used to pause when ANY of those pools was full, on the reasoning that a
+// batch cannot be split so the alternative was fetching messages we knew we
+// would bounce — and, at the time, SQS ignored the bounce outright. That was
+// the head-of-line block of 2026-09-22: one dedicated pool at concurrency 1
+// with a 10k backlog parked its client's whole queue for the fourteen hours
+// it took to drain, starving every other pool on it. A bounce is now a
+// scheduled Defer on every backend (Pool.deferMsg), so polling into one full
+// pool among several is the right trade: the full pool's messages come back
+// at its own pace and everything else on the queue keeps flowing.
+//
+// When every pool this queue is known to feed is full, it still polls while
+// its deferral budget lasts. "Known to feed" is only the last batch's
+// destinations — a queue whose last ten messages all named the full pool
+// may well have another pool's traffic queued behind them, and the only way
+// to find out is to poll and defer the ones in the way. The budget
+// (defaultDeferralBudget) is what stops that from being unbounded: with
+// every pool full AND the budget spent there is nothing a poll could do but
+// bounce, so the loop parks until a pool frees or a deferred message comes
+// due (awaitCapacity).
 func (m *Manager) hasCapacityFor(rc *runningConsumer) bool {
 	m.poolMu.RLock()
 	defer m.poolMu.RUnlock()
 	if len(m.pools) == 0 {
 		return false // nothing to route to
 	}
+	if m.destHasRoom(rc) {
+		return true
+	}
+	return rc.deferrals.outstanding(time.Now()) < m.deferralBudgetValue()
+}
+
+// destHasRoom reports whether any pool this consumer's last batch fed has
+// room. Caller holds poolMu.
+func (m *Manager) destHasRoom(rc *runningConsumer) bool {
 	dests := rc.destPools()
 	if len(dests) == 0 {
 		// Nothing routed yet (first poll, or every message was deduped): fall
@@ -1163,11 +1241,11 @@ func (m *Manager) hasCapacityFor(rc *runningConsumer) bool {
 			// where this queue's traffic goes.
 			return m.anyPoolHasRoom()
 		}
-		if p.QueueSize() >= p.queueCapacity() {
-			return false
+		if p.QueueSize() < p.queueCapacity() {
+			return true
 		}
 	}
-	return true
+	return false
 }
 
 // anyPoolHasRoom reports whether at least one pool has room. Caller holds
@@ -1192,16 +1270,33 @@ func (m *Manager) anyPoolHasRoom() bool {
 // for good — see capacityGate's doc. Returns false only on ctx cancellation,
 // so runConsumer can exit its poll loop promptly instead of parking through
 // a shutdown.
+//
+// The second wake-up is the deferral ledger: a loop parked because its
+// budget is spent gets budget back when the earliest deferred message comes
+// due, and no pool signals that.
 func (m *Manager) awaitCapacity(ctx context.Context, rc *runningConsumer) bool {
 	for {
 		sig := m.capacityGate.snapshot()
 		if m.hasCapacityFor(rc) {
 			return true
 		}
+		var due <-chan time.Time
+		var timer *time.Timer
+		if at, ok := rc.deferrals.earliest(); ok {
+			timer = time.NewTimer(time.Until(at))
+			due = timer.C
+		}
 		select {
 		case <-ctx.Done():
+			if timer != nil {
+				timer.Stop()
+			}
 			return false
 		case <-sig:
+			if timer != nil {
+				timer.Stop()
+			}
+		case <-due:
 		}
 	}
 }
@@ -1282,8 +1377,7 @@ func (m *Manager) Reconfigure(ctx context.Context, cfg common.RouterConfig) erro
 			continue
 		}
 		np := NewPool(pc, m.mediator, m.tracker, m.resolveConsumer)
-		np.SetSettledReporter(m.settledReporterRef())
-		np.SetCapacityFreed(m.capacityGate.signal)
+		m.wirePool(np)
 		m.pools[code] = np
 	}
 	m.poolMu.Unlock()

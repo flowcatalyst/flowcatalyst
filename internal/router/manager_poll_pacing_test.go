@@ -23,6 +23,11 @@ import (
 // goes through — see Pool.submit/enqueue) and observing the poll loop via
 // the fake queue's poll counter, the same observable a NATS JetStream
 // consumer's fetch rate would show in production.
+//
+// Since 2026-09-22 a full pool alone no longer parks the consumer — it
+// keeps polling and defers what it cannot admit while its deferral budget
+// lasts — so the test spends that budget first; the park it pins is the one
+// state left that parks.
 func TestConsumerParksOnFullPoolAndResumesEventDriven(t *testing.T) {
 	m := newTestManager(t, &grMediator{outcome: common.Success(http.StatusOK)}, NewInFlightTracker())
 	ws := NewWarningService(DefaultWarningServiceConfig())
@@ -34,6 +39,12 @@ func TestConsumerParksOnFullPoolAndResumesEventDriven(t *testing.T) {
 	pool := m.Pool(defaultPoolCode)
 	require.NotNil(t, pool)
 	capacity := int(pool.queueCapacity())
+
+	m.consumerMu.RLock()
+	rc := m.consumers["q-cap"]
+	m.consumerMu.RUnlock()
+	require.NotNil(t, rc)
+	spendDeferralBudget(m, rc)
 
 	pollsAtFull := q.polls.Load()
 	for range capacity {
@@ -140,16 +151,18 @@ func TestAwaitCapacityReturnsPromptlyOnCancel(t *testing.T) {
 	pool.SetCapacityFreed(m.capacityGate.signal)
 	m.pools[defaultPoolCode] = pool
 
-	// Saturate: nothing has capacity, so awaitCapacity has no choice but to
-	// park.
+	// Saturate, and spend the deferral budget: nothing has capacity and
+	// nothing may be deferred, so awaitCapacity has no choice but to park.
 	capacity := int(pool.queueCapacity())
 	for range capacity {
 		pool.queueInc()
 	}
+	rc := &runningConsumer{}
+	spendDeferralBudget(m, rc)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan bool, 1)
-	go func() { done <- m.awaitCapacity(ctx, &runningConsumer{}) }()
+	go func() { done <- m.awaitCapacity(ctx, rc) }()
 
 	time.Sleep(30 * time.Millisecond) // let the goroutine actually park
 	start := time.Now()

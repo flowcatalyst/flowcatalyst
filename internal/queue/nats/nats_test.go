@@ -37,9 +37,9 @@ func TestDistinctMessagesGetDistinctBrokerIDs(t *testing.T) {
 
 // T14 (docs/spec/router-deferral-handback.md, R5): NATS answers false — a
 // delay-bearing deferral must stay on the in-memory retry curve rather than
-// being handed back to a broker that will neither block a group's
-// successors on it (no per-group subject here) nor honour the delay before
-// spending one of MaxDeliver's limited redeliveries on it.
+// being handed back to a broker that will not block a group's successors on
+// it (no per-group subject here). (The answer also used to protect a finite
+// MaxDeliver; that is unlimited by default since 2026-09-22.)
 func TestHonoursDelayedReturnIsFalse(t *testing.T) {
 	q := &Queue{}
 	if q.HonoursDelayedReturn() {

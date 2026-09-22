@@ -143,11 +143,13 @@ func TestRunConsumerNoHeartbeatOnPollError(t *testing.T) {
 // entirely from healthy parts.
 func TestRunConsumerBackpressurePauseKeepsHeartbeatFresh(t *testing.T) {
 	m := managerWithCapacity()
-	// Fill the only pool so hasCapacityFor is false for the whole test.
+	// Fill the only pool, and spend the deferral budget, so hasCapacityFor is
+	// false for the whole test.
 	m.pools[defaultPoolCode].queueSize.Store(10_000)
 
 	fake := &pollErrConsumer{id: "q.fifo", err: errors.New("must never be polled while full")}
 	rc := &runningConsumer{consumer: fake, cancel: func() {}}
+	spendDeferralBudget(m, rc)
 	stale := time.Now().Add(-10 * time.Minute).UnixNano()
 	rc.lastPoll.Store(stale)
 	m.consumers["q.fifo"] = rc

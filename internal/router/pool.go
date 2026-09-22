@@ -71,6 +71,10 @@ type Pool struct {
 	// in via SetCapacityFreed, which every pool-creation site does.
 	capacityFreed func()
 
+	// admission is the deferral schedule for messages that arrive while the
+	// pool is full — see pool_admission.go.
+	admission admissionSchedule
+
 	// mediating is keyed per WORKER, not per message: the process-time dedup
 	// backstop means two copies of one message id can briefly sit in two
 	// workers, and keying by id would then under-report the count and let the
@@ -273,10 +277,10 @@ func (p *Pool) ackTracked(ctx context.Context, qm common.QueuedMessage) {
 }
 
 // nackMsg releases a message back to its source broker. It is used only for the
-// non-retryable control paths (pool stopped, pool at capacity, shutdown before
-// dispatch). NB: on SQS, Nack is a deliberate no-op — the message simply stays
-// invisible until its visibility timeout lapses and is then redelivered fresh.
-// Retryable mediation failures do NOT go here; they are retried in-pipeline.
+// non-retryable control paths (pool stopped, shutdown before dispatch, a
+// released group). A full pool is not one of them — that is deferMsg, which
+// is a Defer with a computed delay rather than a Nack. Retryable mediation
+// failures do NOT go here; they are retried in-pipeline.
 //
 // The message is leaving the pipeline, so its in-flight entry (claimed at
 // route time) is released first: a lingering entry would classify the coming
@@ -365,10 +369,13 @@ func (p *Pool) submit(ctx context.Context, m common.QueuedMessage) {
 		p.nackMsg(ctx, m, new(uint32(10)), "pool stopped")
 		return
 	}
-	// Capacity backpressure: NACK (delay 10) when the pre-dispatch buffer is
-	// already at capacity = max(concurrency*20, 50).
+	// Capacity backpressure: hand the message back, to return when the
+	// pool's admission schedule expects to have room for it (see
+	// pool_admission.go). This is the ordinary path for a full pool now that
+	// a consumer keeps polling while any of its queue's pools has room — not
+	// a race backstop — so the delay is computed, not a flat 10s.
 	if p.queueSize.Load() >= p.queueCapacity() {
-		p.nackMsg(ctx, m, new(uint32(10)), "pool at capacity")
+		p.deferMsg(ctx, m, "pool at capacity")
 		return
 	}
 
@@ -747,16 +754,22 @@ func (p *Pool) Stats() PoolStats {
 		MessageGroupCount:  p.MessageGroupCount(),
 		RateLimitPerMinute: p.RateLimitPerMinute(),
 		IsRateLimited:      p.IsRateLimited(),
+		TotalDeferred:      p.Deferred(),
 		Metrics:            &m,
 		Histogram:          p.metrics.HistogramSnapshot(),
 	}
 }
 
 // queueCapacityMultiplier and minQueueCapacity define the capacity
-// derivation: capacity = max(concurrency * 20, 50).
+// derivation: capacity = max(concurrency * 40, 100). Doubled from 20/50
+// (owner ruling 2026-09-22): a buffered message is a pointer-sized struct,
+// and twice the buffer is twice the burst a pool absorbs before it starts
+// deferring messages to the broker. (It also doubles how long a buffered
+// message waits, and so how many visibility lapses the tracker dedups for
+// it while it waits — accepted.)
 const (
-	queueCapacityMultiplier uint32 = 20
-	minQueueCapacity        uint32 = 50
+	queueCapacityMultiplier uint32 = 40
+	minQueueCapacity        uint32 = 100
 )
 
 // queueCapacity is the ceiling on queueSize: how much pre-dispatch backlog the

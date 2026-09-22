@@ -160,3 +160,31 @@ func TestNackNeverErrorsWhenChangeMessageVisibilityFails(t *testing.T) {
 
 	require.Equal(t, before+1, q.Counters().TotalNacked, "the counter increments regardless of the AWS call's outcome")
 }
+
+// Defer is the same ChangeMessageVisibility as Nack (2026-09-22: the
+// router's backpressure hand-back, Pool.deferMsg), counted as a deferral
+// rather than a failure. Same shape as T6: a 2s deferral must reappear at
+// ~2s, far short of the queue's 20s default, which the old no-op Defer
+// could not produce.
+func TestDeferChangesVisibilityToTheRequestedDelay(t *testing.T) {
+	ctx := context.Background()
+	q := newLocalstackQueueVis(t, "fc-defer-delay-test", nackTestQueueDefaultVisibility)
+
+	_, err := q.Publish(ctx, common.Message{
+		ID: "evt-defer", MediationType: common.MediationTypeHTTP, MediationTarget: "http://t/defer",
+	})
+	require.NoError(t, err)
+
+	msgs := pollUntil(t, q, 1, 5*time.Second)
+	require.Len(t, msgs, 1)
+	qm := msgs[0]
+
+	require.NoError(t, q.Defer(ctx, qm.ReceiptHandle, secs(2)))
+
+	reappeared := pollUntil(t, q, 1, 4*time.Second)
+	require.Len(t, reappeared, 1,
+		"the message must reappear at ~2s — a no-op Defer would leave it hidden for the queue's 20s default instead")
+
+	require.Equal(t, uint64(1), q.Counters().TotalDeferred, "a deferral is counted as a deferral")
+	require.Equal(t, uint64(0), q.Counters().TotalNacked, "and not as a failure")
+}

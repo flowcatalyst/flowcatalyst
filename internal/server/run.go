@@ -331,6 +331,8 @@ func newRouterServer(cfg EnvCfg, pool *pgxpool.Pool) (*router.Server, error) {
 		NotifyBatchInterval: time.Duration(cfg.RouterNotifyBatchIntervalSec) * time.Second,
 		DrainTimeout:        time.Duration(cfg.RouterDrainTimeoutSec) * time.Second,
 		SynthPoolIdleAge:    time.Duration(cfg.RouterSynthPoolIdleSecs) * time.Second,
+		DeferralMaxDelay:    time.Duration(cfg.RouterDeferralMaxDelaySecs) * time.Second,
+		DeferralBudget:      cfg.RouterDeferralBudget,
 		StrictRouting:       cfg.RouterStrictRouting,
 		StandbyEnabled:      cfg.StandbyEnabled,
 		StandbyRedisURL:     cfg.StandbyRedisURL,

@@ -215,6 +215,33 @@ func (c *PoolMetricsCollector) addSample(durationMs uint64, success bool) {
 	}
 }
 
+// CompletionRate estimates the pool's current throughput in deliveries per
+// second from the completions recorded within the last window: their count
+// over the time since the OLDEST of them, not over the whole window — a
+// pool that woke up thirty seconds ago after a quiet hour is running at the
+// rate of those thirty seconds, and dividing by the window would report a
+// tenth of it. Reports ok=false with no completion in the window at all;
+// callers pick their own fallback. Feeds Pool.admissionDelay.
+func (c *PoolMetricsCollector) CompletionRate(window time.Duration) (perSec float64, ok bool) {
+	now := time.Now()
+	cutoff := now.Add(-window)
+	c.mu.Lock()
+	recent := filterSamples(c.samples, cutoff)
+	n := len(recent)
+	var oldest time.Time
+	if n > 0 {
+		oldest = recent[0].ts
+	}
+	c.mu.Unlock()
+	if n == 0 {
+		return 0, false
+	}
+	// Floor the span at a second: one completion a moment ago is one per
+	// second at most, not one per nanosecond.
+	span := max(now.Sub(oldest), time.Second)
+	return float64(n) / span.Seconds(), true
+}
+
 // Snapshot returns the dashboard-shaped metrics. Safe to call at any
 // time; copies are taken under the lock.
 func (c *PoolMetricsCollector) Snapshot() common.EnhancedPoolMetrics {

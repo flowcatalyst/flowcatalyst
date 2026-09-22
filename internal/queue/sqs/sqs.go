@@ -293,6 +293,32 @@ func (q *Queue) Ack(ctx context.Context, receipt string, brokerMessageID string)
 // same as before.
 func (q *Queue) Nack(ctx context.Context, receipt string, delaySeconds *uint32) error {
 	defer q.nacked.Add(1)
+	return q.returnAfter(ctx, receipt, delaySeconds)
+}
+
+// Defer is the same ChangeMessageVisibility as Nack, counted as a deferral
+// rather than a failure. It used to be a no-op, because nothing handed a
+// backpressure signal to the broker: a consumer whose destination pool was
+// full simply stopped polling. That pause is now reserved for the case
+// where EVERY pool the queue feeds is full (Manager.hasCapacityFor); a
+// message for one full pool among several is deferred here, for the delay
+// the pool's admission schedule computed (Pool.deferMsg), so the rest of the
+// queue keeps flowing past it.
+//
+// Same ownership contract as Nack: the caller has already dropped the
+// message's in-flight tracker entry, so the redelivery is a fresh delivery.
+// Each redelivery is one more ReceiveMessage, so it bumps the message's
+// ApproximateReceiveCount — a redrive policy on the source queue counts
+// deferrals against maxReceiveCount exactly as it counts failures.
+func (q *Queue) Defer(ctx context.Context, receipt string, delaySeconds *uint32) error {
+	defer q.deferred.Add(1)
+	return q.returnAfter(ctx, receipt, delaySeconds)
+}
+
+// returnAfter is the shared body of Nack and Defer: make receipt visible
+// again after delaySeconds (clamped — see clampToRemainingVisibility), and
+// forget the receipt. Best-effort, per the queue.Consumer contract.
+func (q *Queue) returnAfter(ctx context.Context, receipt string, delaySeconds *uint32) error {
 	defer q.forgetReceipt(receipt)
 
 	var seconds uint32
@@ -310,16 +336,6 @@ func (q *Queue) Nack(ctx context.Context, receipt string, delaySeconds *uint32) 
 		slog.Warn("sqs ChangeMessageVisibility failed; message returns at its natural visibility timeout instead",
 			"queue", q.queueName, "err", err)
 	}
-	return nil
-}
-
-// Defer is a NO-OP for the same reason Nack used to be — 429 / circuit-open
-// retries are also driven in-process, and no call site hands one of these
-// back to the broker the way a delay-bearing MediationDeferred hand-back
-// does (R1 touches Nack only). See Nack's doc comment for the mechanism
-// that makes THAT release safe.
-func (q *Queue) Defer(_ context.Context, _ string, _ *uint32) error {
-	q.deferred.Add(1)
 	return nil
 }
 

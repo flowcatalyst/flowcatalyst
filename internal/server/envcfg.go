@@ -130,6 +130,14 @@ type EnvCfg struct {
 	// after which a synthesised per-client fallback pool with no routed
 	// message is stopped and removed. 0 → the router package's 1h default.
 	RouterSynthPoolIdleSecs int
+	// RouterDeferralMaxDelaySecs / RouterDeferralBudget are the backpressure
+	// deferral knobs (router.ServerConfig.DeferralMaxDelay / DeferralBudget):
+	// the longest a full pool asks the broker to hold a message it handed
+	// back, and how many such messages one queue may have out before its
+	// consumer stops polling into full pools. 0 → the router package's
+	// defaults (1h, 5000).
+	RouterDeferralMaxDelaySecs int
+	RouterDeferralBudget       int
 	// RouterStrictRouting is FC_ROUTER_STRICT_ROUTING (R-13/R-16): a message
 	// with an empty pool_code, an empty/absent dispatch_mode, or an ordered
 	// mode with no message_group_id is malformed — ACKed instead of falling
@@ -268,6 +276,8 @@ func LoadEnv() EnvCfg {
 		RouterNotifyWebhookURL:       os.Getenv("FC_NOTIFY_WEBHOOK_URL"),
 		RouterDrainTimeoutSec:        envInt("FC_DRAIN_TIMEOUT_SECONDS", 60),
 		RouterSynthPoolIdleSecs:      envInt("FC_ROUTER_SYNTH_POOL_IDLE_SECS", 0),
+		RouterDeferralMaxDelaySecs:   envInt("FC_ROUTER_DEFERRAL_MAX_DELAY_SECONDS", 0),
+		RouterDeferralBudget:         envInt("FC_ROUTER_DEFERRAL_BUDGET", 0),
 		RouterStrictRouting:          envBool("FC_ROUTER_STRICT_ROUTING", false),
 		RouterNotifyMinSeverity:      envOr("FC_NOTIFY_MIN_SEVERITY", ""),
 		RouterNotifyBatchIntervalSec: envIntAlias("FC_NOTIFY_BATCH_INTERVAL_SECONDS", "NOTIFICATION_BATCH_INTERVAL", 0),

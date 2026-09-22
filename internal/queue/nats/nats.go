@@ -54,8 +54,28 @@
 //
 // Defaults: stream=FLOWCATALYST, consumer=fc-router,
 // subject=flowcatalyst.>, max-messages=10, poll-timeout=20s, ack-wait=120s,
-// max-deliver=10, max-ack-pending=1000, storage=file, replicas=1,
-// max-age-days=7.
+// max-deliver=-1 (unlimited), max-ack-pending=-1 (unlimited), storage=file,
+// replicas=1, max-age-days=7.
+//
+// max-deliver is unlimited by default (owner ruling 2026-09-22): the router
+// owns give-up. It terminal-ACKs what must not be retried and releases the
+// rest to the broker on its own schedule, and a release — a Nack or a
+// backpressure Defer (Pool.deferMsg) — spends one delivery here. With a
+// finite cap, a large backlog for a slow pool (10k messages at concurrency
+// 1, deferred and redelivered a dozen times over the hours it takes to
+// drain) hits the cap and the message stops being redelivered: silent,
+// permanent loss of work that was never attempted. Unlimited turns that
+// into a message that can always be redelivered — and, should something
+// truly wedge, republished from the platform. A cap can still be set per
+// URI for a stream where poison-message protection is wanted.
+//
+// max-ack-pending is unlimited for the same backlog: a message NAKed with
+// a delay stays outstanding (unacknowledged) on the server until it is
+// redelivered and finally acked, so every deferred message holds one of
+// these slots for its whole delay. At the old default of 1000, deferring a
+// backlog of that size would have suspended delivery of EVERYTHING on the
+// stream — every other pool's messages included — which is precisely the
+// head-of-line block the deferral exists to remove.
 //
 // poll-timeout-ms is accepted for URI compatibility but UNUSED by this
 // backend: Poll no longer issues a timed Fetch. It blocks untimed on the
@@ -119,8 +139,8 @@ func DefaultConfig() Config {
 		MaxMessagesPerPoll: 10,
 		PollTimeout:        20 * time.Second,
 		AckWait:            120 * time.Second,
-		MaxDeliver:         10,
-		MaxAckPending:      1000,
+		MaxDeliver:         -1, // unlimited; see the package doc
+		MaxAckPending:      -1, // unlimited; see the package doc
 		Storage:            "file",
 		Replicas:           1,
 		MaxAge:             7 * 24 * time.Hour,
@@ -758,12 +778,20 @@ func (q *Queue) nakWith(msg jetstream.Msg, delaySeconds *uint32) error {
 // docs/spec/router-deferral-handback.md): this stream is one durable
 // WorkQueue consumer with no per-group subject, so the broker enforces no
 // group ordering at all — a NakWithDelay never blocks a delayed head's
-// successors the way Postgres's claim query does — and each redelivery
-// spends one of the consumer's limited MaxDeliver attempts. Handing a
-// delay-bearing deferral back here would turn a bounded number of in-memory
-// retries into the same number of deliveries and then silent, permanent
-// redelivery loss, so the router keeps it on the in-memory DEFERRED curve
+// successors the way Postgres's claim query does. Handing a target-named
+// deferral back here would let the successors of a deferred head deliver
+// ahead of it, so the router keeps those on the in-memory DEFERRED curve
 // instead (see DispositionOf).
+//
+// (This answer used to also protect the consumer's finite MaxDeliver
+// budget; that is unlimited by default now — see the package doc.)
+//
+// The router's backpressure deferral (Pool.deferMsg) is the one hand-back
+// that DOES reach this broker regardless of this answer: with a full pool
+// there is nowhere in memory to keep the message. It reads this false to
+// space consecutive reservations at least a second apart, so a deferred
+// group's messages come back in the order they were deferred — see
+// Pool.admissionDelay.
 func (q *Queue) HonoursDelayedReturn() bool { return false }
 
 // Healthy reports whether the consumer is running and the underlying

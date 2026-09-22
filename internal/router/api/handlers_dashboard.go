@@ -123,6 +123,7 @@ func poolStatsToDashboard(s router.PoolStats, window time.Duration) DashboardPoo
 		TotalSucceeded:          succeeded,
 		TotalFailed:             failed,
 		TotalRateLimited:        rateLimited,
+		TotalDeferred:           s.TotalDeferred,
 		SuccessRate:             successRate,
 		ActiveWorkers:           s.ActiveWorkers,
 		AvailablePermits:        avail,

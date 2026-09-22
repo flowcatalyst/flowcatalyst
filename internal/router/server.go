@@ -99,6 +99,19 @@ type ServerConfig struct {
 	// are never evicted. Zero falls back to 1h. FC_ROUTER_SYNTH_POOL_IDLE_SECS.
 	SynthPoolIdleAge time.Duration
 
+	// DeferralMaxDelay is the reservation horizon for messages a full pool
+	// hands back to the broker (pool_admission.go): the longest any one
+	// deferral asks the broker to hold a message, and so the longest a pool
+	// can sit idle waiting for already-deferred messages after its capacity
+	// improves. Zero falls back to 1h. FC_ROUTER_DEFERRAL_MAX_DELAY_SECONDS.
+	DeferralMaxDelay time.Duration
+
+	// DeferralBudget is how many deferred messages one queue's consumer may
+	// have outstanding before it stops polling into pools that are all full
+	// (deferral_ledger.go — sized against SQS FIFO's 20k in-flight ceiling).
+	// Zero falls back to 5000. FC_ROUTER_DEFERRAL_BUDGET.
+	DeferralBudget int
+
 	// StrictRouting is FC_ROUTER_STRICT_ROUTING (R-13/R-16): when true, a
 	// message with an empty pool_code, an empty/absent dispatch_mode, or an
 	// ordered mode with no message_group_id is malformed — the router ACKs it
@@ -234,6 +247,8 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 
 	s.Manager = NewManager(s.Mediator, s.Tracker)
 	s.Manager.SetStrictRouting(cfg.StrictRouting)
+	s.Manager.SetMaxDeferral(cfg.DeferralMaxDelay)
+	s.Manager.SetDeferralBudget(cfg.DeferralBudget)
 	s.BrokerStats = NewCachedBrokerStats(s.Manager)
 	if cfg.ConfigURL != "" {
 		s.ConfigSource = NewConfigSource(cfg.ConfigURL)

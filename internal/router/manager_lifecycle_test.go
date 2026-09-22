@@ -40,11 +40,18 @@ type fakeQueue struct {
 	// that read against an already-completed immediate re-poll is exactly
 	// the flake this log avoids.
 	pollLog []pollRecord
+	// deferred records every Defer, in order, with the delay it asked for.
+	deferred []deferRecord
 }
 
 type pollRecord struct {
 	at   time.Time
 	size int
+}
+
+type deferRecord struct {
+	receipt      string
+	delaySeconds uint32
 }
 
 var fakeQueues sync.Map // queue name → *fakeQueue
@@ -96,12 +103,34 @@ func (q *fakeQueue) enqueue(msgs ...common.QueuedMessage) {
 
 func (q *fakeQueue) Ack(context.Context, string, string) error   { q.acks.Add(1); return nil }
 func (q *fakeQueue) Nack(context.Context, string, *uint32) error { q.nacks.Add(1); return nil }
-func (q *fakeQueue) Defer(context.Context, string, *uint32) error {
+func (q *fakeQueue) Defer(_ context.Context, receipt string, delay *uint32) error {
+	var d uint32
+	if delay != nil {
+		d = *delay
+	}
+	q.mu.Lock()
+	q.deferred = append(q.deferred, deferRecord{receipt: receipt, delaySeconds: d})
+	q.mu.Unlock()
 	return nil
 }
+
+// deferredSnapshot returns a copy of every Defer this queue has received.
+func (q *fakeQueue) deferredSnapshot() []deferRecord {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return append([]deferRecord(nil), q.deferred...)
+}
 func (q *fakeQueue) HonoursDelayedReturn() bool { return true }
-func (q *fakeQueue) Healthy() bool              { return !q.stopped.Load() }
-func (q *fakeQueue) Stop()                      { q.stopped.Store(true) }
+
+// spendDeferralBudget puts rc into the state that makes hasCapacityFor
+// pause a consumer whose pools are all full: a budget of one, already
+// taken by a deferral not due back for an hour.
+func spendDeferralBudget(m *Manager, rc *runningConsumer) {
+	m.SetDeferralBudget(1)
+	rc.deferrals.add(time.Now().Add(time.Hour))
+}
+func (q *fakeQueue) Healthy() bool { return !q.stopped.Load() }
+func (q *fakeQueue) Stop()         { q.stopped.Store(true) }
 func (q *fakeQueue) Metrics(context.Context) (*queue.Metrics, error) {
 	return &queue.Metrics{QueueIdentifier: q.name}, nil
 }
@@ -317,9 +346,11 @@ func TestRestartSkippedWhileDraining(t *testing.T) {
 
 // --- per-queue backpressure ---
 
-// Poll-level backpressure used to ask whether ANY pool had room, so one idle
-// pool kept every consumer polling into a saturated one. A queue is now judged
-// by the pools its own traffic feeds.
+// Poll-level backpressure is judged by the pools a queue's own traffic feeds,
+// and (2026-09-22) a queue keeps polling while ANY of them has room — or,
+// with all of them full, while its deferral budget lasts. It pauses only
+// when every pool it feeds is full AND the budget is spent: the one state in
+// which a poll could do nothing but bounce the whole batch.
 func TestBackpressureFollowsTheQueuesOwnPools(t *testing.T) {
 	m := newTestManager(t, &grMediator{outcome: common.Success(http.StatusOK)}, nil)
 	require.NoError(t, m.Reconfigure(context.Background(), routerCfg(nil,
@@ -337,12 +368,21 @@ func TestBackpressureFollowsTheQueuesOwnPools(t *testing.T) {
 
 	// Fill BUSY's pre-dispatch buffer.
 	busy.queueSize.Store(busy.queueCapacity())
+	assert.True(t, m.hasCapacityFor(rc),
+		"a queue whose only known pool is full keeps polling while it has deferral budget — "+
+			"the last batch's destinations are not the whole queue, and deferring what is in the way is how it finds the rest")
+
+	spendDeferralBudget(m, rc)
 	assert.False(t, m.hasCapacityFor(rc),
-		"a queue feeding a saturated pool must pause even though IDLE has room")
+		"with every pool it feeds full AND the budget spent, a poll could only bounce the batch whole: pause")
 
 	rc.setPools([]string{"IDLE"})
 	assert.True(t, m.hasCapacityFor(rc),
-		"a queue feeding an idle pool must keep flowing even though BUSY is saturated")
+		"a queue feeding an idle pool must keep flowing even though BUSY is saturated and the budget is spent")
+
+	rc.setPools([]string{"BUSY", "IDLE"})
+	assert.True(t, m.hasCapacityFor(rc),
+		"one pool with room among the queue's destinations is enough: BUSY's messages are deferred, IDLE's flow")
 
 	// A pool that disappears under a reconfigure falls back rather than wedging.
 	rc.setPools([]string{"GONE"})

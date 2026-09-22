@@ -44,13 +44,19 @@ type PoolStats struct {
 	ActiveWorkers uint32 `json:"activeWorkers"`
 	// OldestMediatingMs is the age of the longest-running delivery currently
 	// inside a worker. Zero when idle. See Pool.OldestMediatingAge.
-	OldestMediatingMs  uint64                      `json:"oldestMediatingMs"`
-	QueueSize          uint32                      `json:"queueSize"`
-	QueueCapacity      uint32                      `json:"queueCapacity"`
-	MessageGroupCount  uint32                      `json:"messageGroupCount"`
-	RateLimitPerMinute *uint32                     `json:"rateLimitPerMinute,omitempty"`
-	IsRateLimited      bool                        `json:"isRateLimited"`
-	Metrics            *common.EnhancedPoolMetrics `json:"metrics,omitempty"`
+	OldestMediatingMs  uint64  `json:"oldestMediatingMs"`
+	QueueSize          uint32  `json:"queueSize"`
+	QueueCapacity      uint32  `json:"queueCapacity"`
+	MessageGroupCount  uint32  `json:"messageGroupCount"`
+	RateLimitPerMinute *uint32 `json:"rateLimitPerMinute,omitempty"`
+	IsRateLimited      bool    `json:"isRateLimited"`
+	// TotalDeferred is how many messages this pool has handed back to the
+	// broker for lack of buffer room since it was created (Pool.deferMsg).
+	// A pool that keeps deferring is one whose intake outruns its
+	// concurrency — the number to look at when a queue's other pools are
+	// fine but this one's backlog is growing.
+	TotalDeferred uint64                      `json:"totalDeferred"`
+	Metrics       *common.EnhancedPoolMetrics `json:"metrics,omitempty"`
 	// Histogram is the cumulative mediation-latency histogram, emitted by the
 	// Prometheus collector as fc_mediation_duration_seconds. Not serialized to
 	// the dashboard JSON (the dashboard uses Metrics.ProcessingTime instead).

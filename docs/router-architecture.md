@@ -74,11 +74,12 @@ response means; the pool decides what that means for the broker.**
    comma-separated and may list third-party config services beside the platform's own
    document. Documents merge by code, first definition winning, which is exactly why
    platform-level pool codes carry the `platform-` prefix (§5).
-3. **Admit or push back.** A pool at buffer capacity NACKs with a short delay. This is the
-   only backpressure signal the router sends the broker. Upstream of it, a consumer pauses
-   polling when the pools **its own last batch fed** are full — judging a queue by the whole
-   process meant one idle pool kept every consumer fetching messages it would immediately
-   bounce.
+3. **Admit or push back.** A pool at buffer capacity (`max(concurrency × 40, 100)`) hands
+   the message back with a **Defer** — not a Nack; it has not failed — for a delay the pool
+   computes (`pool_admission.go`). This is the only backpressure signal the router sends the
+   broker. Upstream of it, a consumer keeps polling while **any** of the pools its own last
+   batch fed has room, or while its **deferral budget** lasts; it pauses only when every pool
+   it feeds is full *and* the budget is spent. See §3a.
 4. **Branch on dispatch mode.** `IMMEDIATE` dispatches concurrently, one goroutine per
    message, bounded only by the pool semaphore. Ordered modes enqueue into their message
    group's FIFO buffer, drained serially by a single drainer.
@@ -127,13 +128,62 @@ Two properties worth not breaking:
   retry budget entirely on a broker that honours a delayed return** (R1/R5, same doc): it
   is released on its first occurrence with exactly the requested delay, not retried
   in-pipeline on the deferred curve first. NATS does not honour a delayed return
-  (`queue.Consumer.HonoursDelayedReturn()` is false — no per-group subject, and a
-  hand-back there spends one of `MaxDeliver`'s limited redeliveries), so a delay-bearing
-  deferral on NATS keeps the pre-R1 in-place-retry behaviour. `DispositionOf` decides
+  (`queue.Consumer.HonoursDelayedReturn()` is false — no per-group subject, so a delayed
+  head's successors would deliver ahead of it), so a delay-bearing deferral on NATS keeps
+  the pre-R1 in-place-retry behaviour. `DispositionOf` decides
   this once, for both dispatch paths, so an ordered group's released head automatically
   carries the same delay the unordered path would have used for the same outcome (R2) —
   there is no separate fixed redelivery delay hard-coded for the ordered case the way an
   earlier design (and the Java port) needed to guard against.
+
+## 3a. Backpressure without head-of-line blocking
+
+A queue feeds many pools. Until 2026-09-22 a consumer stopped polling its queue when **any**
+pool its last batch fed was full — so one dedicated pool at concurrency 1, handed 10,000
+five-second messages, parked its client's whole queue for the fourteen hours it took to
+drain, and every other pool on that queue starved. (The reasoning at the time: a batch can't
+be split, and SQS ignored the bounce outright, so fetching messages we'd bounce was pure
+waste. R3 made the bounce real.)
+
+Now (owner ruling 2026-09-22):
+
+- **The consumer keeps polling** while any pool it feeds has room, and — with all of them
+  full — while its per-queue **deferral budget** lasts (`FC_ROUTER_DEFERRAL_BUDGET`, default
+  5,000). "Pools it feeds" is only the last batch's destinations; the budget is what lets a
+  queue whose last ten messages all named the full pool discover the other pool's traffic
+  queued behind them. It pauses only with every pool full *and* the budget spent — the one
+  state in which a poll could do nothing but bounce the batch whole — and wakes on a pool
+  freeing or on the earliest deferral coming due. The budget exists because a deferred
+  message is still in flight from the broker's side, and **SQS FIFO stops delivering
+  anything from a queue at 20,000 in flight**.
+- **A message for a full pool is Deferred, not Nacked**, with a **reservation**: the pool
+  measures its completion rate over the last five minutes and keeps a cursor of when the last
+  deferred message was told to return; each deferral is booked one slot (`1/rate`) after the
+  later of that cursor and the buffer's own drain time (`queued/rate`). Deferred messages
+  therefore return spaced at the pool's pace, in the order they were deferred, each bouncing
+  about once — not all at the same moment to be bounced again as a herd. There is
+  deliberately **no "come back early" hedge**: an early return finds the pool still full and
+  re-books at the *back* of the schedule, pushing the cursor further from reality each time.
+- **The horizon** (`FC_ROUTER_DEFERRAL_MAX_DELAY_SECONDS`, default 1h) caps any one
+  reservation, with backward jitter over its last quarter so a large backlog's tail trickles
+  in. A reservation is not recalled: raise the pool's concurrency tenfold mid-backlog and
+  already-deferred messages still return on the old schedule, so the pool idles until they
+  do — bounded by the horizon, and accepted (someone who set concurrency 1 is not about to
+  change it drastically).
+- **Every backend honours the deferral delay** — SQS `Defer` is now the same
+  `ChangeMessageVisibility` as Nack (it used to be a no-op) — and every backend counts the
+  redelivery: SQS bumps `ApproximateReceiveCount` (a redrive policy counts it against
+  `maxReceiveCount`), NATS spends a `MaxDeliver` attempt and holds a `MaxAckPending` slot for
+  the whole delay. So the NATS consumer defaults are now **`max-deliver=-1` and
+  `max-ack-pending=-1`** (both unlimited): the router owns give-up, and a finite cap turns a
+  slow backlog into silent, permanent loss of work that was never attempted — or, for
+  `MaxAckPending`, back into the head-of-line block. NATS also doesn't order a deferred
+  group's redeliveries, so its reservations are spaced at least a second apart.
+- **Intra-pool head-of-line** — one slow message group monopolising a shared pool's buffer —
+  is *not* addressed here: that is a job that belongs in its own pool (owner ruling).
+
+Dashboard: the Pools table's **Deferred** column (`totalDeferred`, lifetime) is the number
+to look at when a queue's other pools are fine but one pool's backlog keeps growing.
 
 ## 4. Ordering
 
