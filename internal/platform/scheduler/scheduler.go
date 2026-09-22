@@ -59,8 +59,17 @@ func DefaultConfig() Config {
 	return Config{
 		PollInterval:      1 * time.Second,
 		BatchSize:         100,
-		PausedCacheTTL:    60 * time.Second,
-		StaleAfter:        5 * time.Minute,
+		PausedCacheTTL: 60 * time.Second,
+		// StaleAfter must exceed the router's deferral horizon (1h,
+		// FC_ROUTER_DEFERRAL_MAX_DELAY_SECONDS): a job whose queue message
+		// the router has parked for capacity sits QUEUED, legitimately, for
+		// up to that long. At the old 5m this loop reverted every such job to
+		// PENDING, the poller republished it with a fresh dedup id, and the
+		// broker held two (then three, four…) copies of one job — "500 in
+		// flight, 200 pending" (owner, 2026-09-22). A genuinely stranded
+		// QUEUED row (crash between commit and publish) now waits this long;
+		// that is rare and cheap next to a duplicate storm on every backlog.
+		StaleAfter:        75 * time.Minute,
 		StaleScanInterval: 60 * time.Second,
 	}
 }

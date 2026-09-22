@@ -184,6 +184,11 @@ Now (owner ruling 2026-09-22):
   slow backlog into silent, permanent loss of work that was never attempted — or, for
   `MaxAckPending`, back into the head-of-line block. NATS also doesn't order a deferred
   group's redeliveries, so its reservations are spaced at least a second apart.
+- **A deferred copy keeps its in-flight entry** (`DeferredUntil`): while it is parked, a second
+  copy of the same message id under a new broker id — the platform republishing a job whose
+  message sat QUEUED past its stale threshold — is ACKed as a duplicate, not deferred beside
+  it; the parked copy re-enters as itself when it returns. `Count()` excludes parked copies.
+  The platform side of the same bug: `scheduler.StaleAfter` is 75 min, above the horizon.
 - **Intra-pool head-of-line** — one slow message group monopolising a shared pool's buffer —
   is *not* addressed here: that is a job that belongs in its own pool (owner ruling).
 

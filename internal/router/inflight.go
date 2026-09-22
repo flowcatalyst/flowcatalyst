@@ -82,16 +82,31 @@ func (t *InFlightTracker) Register(im *common.InFlightMessage) RegisterOutcome {
 	defer t.mu.Unlock()
 	if im.BrokerMessageID != "" {
 		if prev, ok := t.byBroker[brokerKey{im.QueueIdentifier, im.BrokerMessageID}]; ok {
+			if !prev.DeferredUntil.IsZero() {
+				// The copy the router deferred is back from the broker: it
+				// re-enters the pipeline as itself — fresh receipt, fresh
+				// LastSeenAt, no longer deferred — and the caller submits it.
+				prev.DeferredUntil = time.Time{}
+				prev.UpdateReceiptHandle(im.ReceiptHandle)
+				return RegisterNew
+			}
 			prev.UpdateReceiptHandle(im.ReceiptHandle)
 			return RegisterRedelivery
 		}
 	}
 	if prev, ok := t.byMessage[im.MessageID]; ok {
 		if im.BrokerMessageID != "" && prev.BrokerMessageID != "" && prev.BrokerMessageID != im.BrokerMessageID {
+			// Also the deferred case: a second broker copy of a message whose
+			// first copy is parked is a duplicate the platform republished.
+			// The caller deletes it; the parked copy comes back on schedule.
 			return RegisterExternalRequeue
 		}
 		// Blank-broker-id redelivery: same logical message, adopt the handle.
 		prev.UpdateReceiptHandle(im.ReceiptHandle)
+		if !prev.DeferredUntil.IsZero() {
+			prev.DeferredUntil = time.Time{}
+			return RegisterNew
+		}
 		return RegisterRedelivery
 	}
 	if im.BrokerMessageID != "" {
@@ -208,8 +223,51 @@ func (t *InFlightTracker) Remove(messageID, _ string) {
 func (t *InFlightTracker) Count() int {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
-	return len(t.byMessage)
+	// Deferred copies are the broker's to hold, not this process's to
+	// finish: they must not keep a drain waiting or inflate the in-flight
+	// gauge. They are counted separately (DeferredCount).
+	n := 0
+	for _, im := range t.byMessage {
+		if im.DeferredUntil.IsZero() {
+			n++
+		}
+	}
+	return n
 }
+
+// DeferredCount is how many tracked messages are currently parked on the
+// broker by a capacity deferral, awaiting their scheduled return.
+func (t *InFlightTracker) DeferredCount() int {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	n := 0
+	for _, im := range t.byMessage {
+		if !im.DeferredUntil.IsZero() {
+			n++
+		}
+	}
+	return n
+}
+
+// MarkDeferred keeps a message's entry across a capacity deferral, stamped
+// with when the broker is expected to redeliver it. Until then a copy of the
+// same message id under a different broker id is a duplicate (Register →
+// RegisterExternalRequeue), and the reaper leaves the entry alone. A message
+// the tracker does not know is ignored.
+func (t *InFlightTracker) MarkDeferred(messageID string, until time.Time) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if im, ok := t.byMessage[messageID]; ok {
+		im.DeferredUntil = until
+		im.LastSeenAt = time.Now()
+	}
+}
+
+// deferredReapGrace is how long past DeferredUntil a parked entry is kept
+// before the idle rule may reap it: the broker's redelivery is not to the
+// second, and a copy that never returns (past the broker's own ceiling) must
+// still age out so a later republish is admitted.
+const deferredReapGrace = 5 * time.Minute
 
 // CountForQueue returns how many tracked entries originated from queueID
 // (InFlightMessage.QueueIdentifier). Every message a pool is holding —
@@ -336,6 +394,12 @@ func (t *InFlightTracker) Reap(maxAge, absoluteMaxAge time.Duration) (reaped int
 			// owner is gone and the entry is judged like any other.
 			if im.Attempts > 0 && !im.LastRetryAt.IsZero() &&
 				now.Sub(im.LastRetryAt) <= reapRetryGrace {
+				continue
+			}
+			// A deferred copy is parked on the broker by design for up to the
+			// deferral horizon — well past the idle bound. Keep it until it is
+			// overdue; the ceiling above still bounds it absolutely.
+			if !im.DeferredUntil.IsZero() && now.Before(im.DeferredUntil.Add(deferredReapGrace)) {
 				continue
 			}
 			// Age on LastSeenAt, not StartedAt: while the broker still holds

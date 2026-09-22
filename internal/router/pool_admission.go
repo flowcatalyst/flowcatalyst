@@ -128,17 +128,26 @@ func (p *Pool) Deferred() uint64 {
 // logged and skipped, as nackMsg does: the broker redelivers at its own
 // visibility timeout, which is the worse-but-safe outcome.
 func (p *Pool) deferMsg(ctx context.Context, qm common.QueuedMessage, reason string) {
-	if p.tracker != nil {
-		p.tracker.Remove(qm.Message.ID, qm.BrokerMessageID)
-	}
 	c := p.consumerFor(qm)
 	if c == nil {
+		if p.tracker != nil {
+			p.tracker.Remove(qm.Message.ID, qm.BrokerMessageID)
+		}
 		slog.Warn("defer: no consumer for queue", "queue", qm.QueueIdentifier, "message_id", qm.Message.ID, "reason", reason)
 		return
 	}
 	now := time.Now()
 	delay := p.admissionDelay(now, c.HonoursDelayedReturn())
 	seconds := uint32(delay / time.Second)
+	// The tracker entry is KEPT and marked, not removed: the copy is coming
+	// back, and until it does a second copy of the same message id (the
+	// platform republishing a job it thinks is stranded) must be deleted as a
+	// duplicate rather than deferred beside it. Marked even when the broker
+	// call fails — the message then returns at its natural visibility, still
+	// as itself.
+	if p.tracker != nil {
+		p.tracker.MarkDeferred(qm.Message.ID, now.Add(time.Duration(seconds)*time.Second))
+	}
 	if err := c.Defer(ctx, qm.ReceiptHandle, &seconds); err != nil {
 		slog.Warn("defer failed", "reason", reason, "message_id", qm.Message.ID, "err", err)
 		return

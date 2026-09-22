@@ -119,6 +119,16 @@ type InFlightMessage struct {
 	MessageGroupID string
 	BatchID        string
 	ReceiptHandle  string
+	// DeferredUntil is set while the router has handed this copy back to the
+	// broker for capacity (Pool.deferMsg) and expects it to return at about
+	// this time. The entry is KEPT, not removed, so that a second copy of the
+	// same message id published meanwhile — the platform's stale-QUEUED
+	// recovery republishes a job whose message is parked longer than its
+	// stale threshold, with a fresh broker id — is recognised as a duplicate
+	// and deleted instead of being deferred alongside it (owner, 2026-09-22:
+	// "500 in flight but only 200 pending — use the messageId, not the SQS
+	// id"). Zero while the copy is in the pipeline.
+	DeferredUntil time.Time
 	// Attempts is >0 once the message has failed at least once and is being
 	// retried in-pipeline. The stall detector never force-NACKs such an entry
 	// (a live retry owns it, and yanking it away would double-deliver), and

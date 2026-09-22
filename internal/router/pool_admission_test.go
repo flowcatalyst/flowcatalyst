@@ -263,3 +263,39 @@ func TestFullPoolDefersInsteadOfBlockingTheQueue(t *testing.T) {
 	assert.Equal(t, 5, rc.deferrals.outstanding(time.Now()))
 	assert.True(t, m.hasCapacityFor(rc))
 }
+
+// While a message's copy is deferred, a republished copy under a new broker
+// id is ACKed (deleted) rather than deferred beside it — the "500 in flight,
+// 200 pending" duplicate storm (2026-09-22).
+func TestDeferredMessageRepublishedCopyIsDeletedNotDeferred(t *testing.T) {
+	m := newTestManager(t, &grMediator{outcome: common.Success(http.StatusOK)}, NewInFlightTracker())
+	require.NoError(t, m.Reconfigure(context.Background(), routerCfg([]string{"q-dup"},
+		common.PoolConfig{Code: "SLOW", Concurrency: 1},
+		common.PoolConfig{Code: "FAST", Concurrency: 4},
+	)))
+	q := fakeQueueFor(t, "q-dup")
+	require.True(t, polled(t, q, 1, time.Second))
+	slow := m.Pool("SLOW")
+	for range int(slow.queueCapacity()) {
+		slow.queueInc()
+	}
+
+	msg := func(broker, receipt string) common.QueuedMessage {
+		return common.QueuedMessage{
+			Message:         common.Message{ID: "job-dup", PoolCode: "SLOW", MediationTarget: "http://t/slow"},
+			ReceiptHandle:   receipt,
+			BrokerMessageID: broker,
+			QueueIdentifier: "q-dup",
+		}
+	}
+	q.enqueue(msg("sqs-1", "rh-1"))
+	require.Eventually(t, func() bool { return len(q.deferredSnapshot()) == 1 },
+		2*time.Second, 5*time.Millisecond, "the first copy is deferred")
+	assert.Equal(t, 1, m.tracker.DeferredCount())
+
+	q.enqueue(msg("sqs-2", "rh-2"))
+	require.Eventually(t, func() bool { return q.acks.Load() == 1 },
+		2*time.Second, 5*time.Millisecond, "the republished copy is deleted from the broker")
+	assert.Len(t, q.deferredSnapshot(), 1, "and NOT deferred beside the first")
+	assert.Equal(t, 1, m.tracker.DeferredCount())
+}
