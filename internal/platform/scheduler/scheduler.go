@@ -57,8 +57,8 @@ type Config struct {
 // legacy values. All are env-overridable.
 func DefaultConfig() Config {
 	return Config{
-		PollInterval:      1 * time.Second,
-		BatchSize:         100,
+		PollInterval:   1 * time.Second,
+		BatchSize:      100,
 		PausedCacheTTL: 60 * time.Second,
 		// StaleAfter must exceed the router's deferral horizon (1h,
 		// FC_ROUTER_DEFERRAL_MAX_DELAY_SECONDS): a job whose queue message
