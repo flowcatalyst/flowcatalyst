@@ -217,6 +217,18 @@ this endpoint; it never sees the real webhook). The request:
   `X-FlowCatalyst-Signature`/`X-FlowCatalyst-Timestamp` pair described above
   — same byte format (HMAC-SHA256 over `timestamp+body`, millisecond ISO8601
   UTC timestamp), computed over the **body only**.
+- **Which service account signs** (owner ruling 2026-09-22, reversing
+  2026-09-19's application-first rule; `internal/server/delivery_creds.go`):
+  the first of these that *names* an account decides, with no fall-through
+  past it — (1) the subscription's own `serviceAccountId`, (2) the
+  subscription's **connection's** `serviceAccountId` (the normal case: it is
+  the account the connection form requires), (3) the application's oldest
+  active service account, via the subscription's `applicationCode` or a
+  direct job's `app:` code prefix. A named account that is inactive or has no
+  webhook credentials makes the delivery go out **unsigned with a reason**
+  (never silently signed by another account); the reason is logged and, on a
+  failed attempt, appended to the attempt's `errorMessage` as
+  `(delivered unsigned: …)`.
 - **`X-FlowCatalyst-Client: {clientId}:{clientCode}`** (owner ruling
   2026-09-18, `docs/spec/webhook-client-code.md`) — names the tenant a
   multi-tenant subscriber's endpoint is receiving a delivery for. Sent for

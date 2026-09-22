@@ -396,12 +396,28 @@ func (h *Handler) deliver(ctx context.Context, job *dispatchjob.DispatchJob) del
 	if v, ok := clientHeaderValue(job, clientCode); ok {
 		req.Header.Set(clientHeader, v)
 	}
+	// unsigned is why this delivery carries no credentials, when it carries
+	// none. A bare delivery to a subscriber that verifies signatures is a
+	// guaranteed rejection, and the rejection alone ("HTTP 401") says nothing
+	// about the cause — so the cause is logged here and, on a failure,
+	// appended to the attempt's error message (owner, 2026-09-22: never
+	// skip silently).
+	var unsigned string
 	if h.creds != nil {
 		creds, serr := h.creds(ctx, job)
-		if serr != nil {
+		switch {
+		case serr != nil:
+			unsigned = "credential lookup failed: " + serr.Error()
 			slog.Warn("dispatch process: delivery-creds lookup failed; delivering unsigned",
 				"job_id", job.ID, "err", serr)
-		} else {
+		case creds.Empty():
+			unsigned = creds.Reason
+			if unsigned == "" {
+				unsigned = "no credentials resolved"
+			}
+			slog.Warn("dispatch process: delivering unsigned",
+				"job_id", job.ID, "subscription_id", deref(job.SubscriptionID), "reason", unsigned)
+		default:
 			// Same header set as router-mediated webhooks: bearer (static
 			// convenience credential) + HMAC signature (the real boundary).
 			if creds.BearerToken != "" {
@@ -418,6 +434,22 @@ func (h *Handler) deliver(ctx context.Context, job *dispatchjob.DispatchJob) del
 		}
 	}
 
+	res := h.exchange(req)
+	if unsigned != "" && !res.success && !res.deferral {
+		res.errMessage += " (delivered unsigned: " + unsigned + ")"
+	}
+	return res
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// exchange sends the built request and classifies the response.
+func (h *Handler) exchange(req *http.Request) deliveryResult {
 	resp, err := h.client.Do(req)
 	if err != nil {
 		msg, et := classifyTransportErr(err)
