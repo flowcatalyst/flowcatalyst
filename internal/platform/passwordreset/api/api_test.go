@@ -47,3 +47,33 @@ func TestGenerateRawToken(t *testing.T) {
 		t.Fatalf("generated token must hash to 64-char hex; got %d", len(h))
 	}
 }
+
+// A self-service reset may resume exactly one thing: the OAuth authorize
+// round-trip the user was in when they clicked "Forgot password". Anything
+// else — another path on this origin, an absolute URL, a protocol-relative
+// one — is dropped, because a reset is requested by whoever knows an email
+// address (2026-09-22).
+func TestResetReturnURLAcceptsOnlyAnAuthorizeRoundTrip(t *testing.T) {
+	ok := "/oauth/authorize?response_type=code&client_id=app&redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=s1"
+	got := resetReturnURL(&ok)
+	if got == nil || *got != ok {
+		t.Fatalf("authorize round-trip must be kept, got %v", got)
+	}
+	for _, bad := range []string{
+		"", "/", "/dashboard", "/oauth/authorize", "/oauth/token?x=1",
+		"//evil.example/oauth/authorize?x=1", "https://evil.example/oauth/authorize?x=1",
+		"/\\evil.example", " /oauth/authorize?x=1 ",
+	} {
+		b := bad
+		if got := resetReturnURL(&b); got != nil && bad != " /oauth/authorize?x=1 " {
+			t.Errorf("%q must be dropped, got %q", bad, *got)
+		}
+	}
+	trimmed := " /oauth/authorize?x=1 "
+	if got := resetReturnURL(&trimmed); got == nil || *got != "/oauth/authorize?x=1" {
+		t.Errorf("surrounding whitespace is trimmed, got %v", got)
+	}
+	if resetReturnURL(nil) != nil {
+		t.Error("nil stays nil")
+	}
+}

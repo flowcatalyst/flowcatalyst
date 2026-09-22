@@ -470,12 +470,19 @@ type validateTokenResponse struct {
 func (s *State) requestReset(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Email string `json:"email"`
+		// RedirectURI is where to send the user once the reset completes —
+		// the OAuth authorize round-trip they were in the middle of when they
+		// clicked "Forgot password" on the login page (owner, 2026-09-22: a
+		// user signing in to another application via our IdP lost where they
+		// were going). Only a same-origin /oauth/authorize URL is accepted;
+		// anything else is dropped silently and the reset behaves as before.
+		RedirectURI *string `json:"redirectUri"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		httperror.Write(w, usecase.Validation("INVALID_BODY", "malformed request body"))
 		return
 	}
-	if err := s.tryIssueToken(r.Context(), strings.TrimSpace(body.Email)); err != nil {
+	if err := s.tryIssueToken(r.Context(), strings.TrimSpace(body.Email), resetReturnURL(body.RedirectURI)); err != nil {
 		slog.Warn("password reset request error (suppressed)", "err", err)
 	}
 	writeJSON(w, http.StatusOK, messageResponse{
@@ -487,7 +494,7 @@ func (s *State) requestReset(w http.ResponseWriter, r *http.Request) {
 // any outstanding tokens, mints + stores a fresh one (15-min TTL), and emails
 // the link best-effort. Errors are returned to the caller for suppressed
 // logging — they never reach the client (anti-enumeration).
-func (s *State) tryIssueToken(ctx context.Context, email string) error {
+func (s *State) tryIssueToken(ctx context.Context, email string, redirectURI *string) error {
 	if email == "" {
 		return nil
 	}
@@ -529,6 +536,11 @@ func (s *State) tryIssueToken(ctx context.Context, email string) error {
 	}
 	tok := passwordreset.New(p.ID, hashToken(raw), time.Now().UTC().Add(resetTokenTTL))
 	tok.RequiresFactor = strong
+	// Carried to the confirm response (resp.RedirectURI) so the SPA resumes
+	// the authorize round-trip — /oauth/authorize sends a user with no session
+	// back to the login page with the same OAuth params, and one with a
+	// session straight on to the application.
+	tok.RedirectURI = redirectURI
 	if err := s.Tokens.Insert(ctx, tok); err != nil {
 		return err
 	}
@@ -634,6 +646,23 @@ func safeRelativeReturnURL(u string) string {
 		return ""
 	}
 	return u
+}
+
+// resetReturnURL is the stricter rule for a self-service password reset's
+// post-reset redirect: only the OAuth authorize round-trip the user was in
+// the middle of. A reset is requested by anyone who knows an email address,
+// so its redirect must not be a general "send me anywhere on this origin" —
+// the authorize endpoint validates its own client_id/redirect_uri, which is
+// the only reason this one is safe to honour. nil for anything else.
+func resetReturnURL(u *string) *string {
+	if u == nil {
+		return nil
+	}
+	safe := safeRelativeReturnURL(strings.TrimSpace(*u))
+	if safe == "" || !strings.HasPrefix(safe, "/oauth/authorize?") || len(safe) > 4096 {
+		return nil
+	}
+	return &safe
 }
 
 // hasStrongFactor reports whether the user has a confirmed authenticator (TOTP)
