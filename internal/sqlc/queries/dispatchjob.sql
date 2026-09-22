@@ -107,7 +107,10 @@ SELECT attempt_number, attempted_at, completed_at, duration_millis,
        request_info
 FROM msg_dispatch_job_attempts
 WHERE dispatch_job_id = $1
-ORDER BY attempt_number ASC;
+-- Chronological, not by attempt_number: a requeue starts a new run whose
+-- attempts are numbered from 1 again, so ordering by number interleaves
+-- runs. attempted_at is the order an operator reads them in.
+ORDER BY attempted_at ASC, attempt_number ASC;
 
 -- Queries below back T3/A-01 (BLOCK_ON_ERROR group recovery): the use-case
 -- envelope ops (cancel/complete/resend, internal/platform/dispatchjob/operations),

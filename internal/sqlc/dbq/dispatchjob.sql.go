@@ -63,7 +63,7 @@ SELECT attempt_number, attempted_at, completed_at, duration_millis,
        request_info
 FROM msg_dispatch_job_attempts
 WHERE dispatch_job_id = $1
-ORDER BY attempt_number ASC
+ORDER BY attempted_at ASC, attempt_number ASC
 `
 
 type DispatchJobAttemptsByJobRow struct {
@@ -79,6 +79,9 @@ type DispatchJobAttemptsByJobRow struct {
 	RequestInfo    json.RawMessage `db:"request_info"`
 }
 
+// Chronological, not by attempt_number: a requeue starts a new run whose
+// attempts are numbered from 1 again, so ordering by number interleaves
+// runs. attempted_at is the order an operator reads them in.
 func (q *Queries) DispatchJobAttemptsByJob(ctx context.Context, dispatchJobID string) ([]DispatchJobAttemptsByJobRow, error) {
 	rows, err := q.db.Query(ctx, dispatchJobAttemptsByJob, dispatchJobID)
 	if err != nil {
