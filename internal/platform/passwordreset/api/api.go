@@ -510,8 +510,13 @@ func (s *State) tryIssueToken(ctx context.Context, email string, redirectURI *st
 		return nil
 	}
 	// Eligibility (mirrors the admin send-password-reset op): USER, has email,
-	// not OIDC-federated. Ineligible → silent skip (still silent-success).
-	if !p.IsUser() || p.ExternalIdentity != nil || p.UserIdentity == nil || strings.TrimSpace(p.UserIdentity.Email) == "" {
+	// not OIDC-federated. Ineligible → silent-success to the caller, but never
+	// silent in the logs: an operator chasing "no reset email arrived" needs
+	// to see that the account was skipped and why (owner, 2026-09-22). The
+	// reason is a class, never the address.
+	if reason := ineligibleForReset(p); reason != "" {
+		slog.Info("password reset requested for an ineligible account; no email sent",
+			"principal", p.ID, "reason", reason)
 		return nil
 	}
 
@@ -663,6 +668,20 @@ func resetReturnURL(u *string) *string {
 		return nil
 	}
 	return &safe
+}
+
+// ineligibleForReset names why a self-service reset cannot be issued for p, or
+// "" when it can. The reasons are the eligibility rule's own clauses.
+func ineligibleForReset(p *principal.Principal) string {
+	switch {
+	case !p.IsUser():
+		return "not a USER principal"
+	case p.ExternalIdentity != nil:
+		return "OIDC-federated (signs in through an external identity provider; has no platform password)"
+	case p.UserIdentity == nil || strings.TrimSpace(p.UserIdentity.Email) == "":
+		return "no email address on the account"
+	}
+	return ""
 }
 
 // hasStrongFactor reports whether the user has a confirmed authenticator (TOTP)
