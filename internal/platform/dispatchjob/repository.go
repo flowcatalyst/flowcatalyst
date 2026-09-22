@@ -211,7 +211,7 @@ func (r *Repository) FindRecentRaw(ctx context.Context, limit int) ([]DispatchJo
 		        timeout_seconds, schema_id, status, max_retries, retry_strategy,
 		        scheduled_for, expires_at, attempt_count, last_attempt_at,
 		        completed_at, duration_millis, last_error, idempotency_key,
-		        created_at, updated_at
+		        queue, created_at, updated_at
 		   FROM msg_dispatch_jobs
 		  ORDER BY created_at DESC
 		  LIMIT $1`, limit)
