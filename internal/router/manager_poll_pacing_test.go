@@ -131,10 +131,15 @@ func TestPartialBatchRepollsImmediately(t *testing.T) {
 
 	gap := log[batchIdx+1].at.Sub(log[batchIdx].at)
 	// Load-bearing timing assertion: the re-poll immediately following a
-	// partial batch must land within 100ms of it — fails against the old
-	// 500ms pause (mutant: put the
-	// `if len(msgs) < maxPoll { time.Sleep(500ms) }` branch back).
-	assert.Less(t, gap, 100*time.Millisecond,
+	// partial batch must land well inside the old 500ms pause — fails against
+	// it (mutant: put the `if len(msgs) < maxPoll { time.Sleep(500ms) }`
+	// branch back). The bound is 300ms, not the 100ms an idle machine
+	// manages: under -race with other suites running alongside, routing +
+	// delivering one message before the re-poll has been measured past
+	// 100ms, and a pin that fails on a busy CI box for a reason unrelated
+	// to the behaviour it guards is worse than no pin. 300ms still leaves a
+	// clear gap to the 500ms it exists to catch.
+	assert.Less(t, gap, 300*time.Millisecond,
 		"a partial batch must be followed by an immediate re-poll, not a 500ms pause")
 }
 
