@@ -70,6 +70,9 @@ type Querier interface {
 	// attempt outcome (`SUCCESS` / `FAILURE`); the entity exposes a
 	// derived `success` bool to match the legacy-platform wire shape.
 	DispatchJobAttemptInsert(ctx context.Context, arg DispatchJobAttemptInsertParams) error
+	// Chronological, not by attempt_number: a requeue starts a new run whose
+	// attempts are numbered from 1 again, so ordering by number interleaves
+	// runs. attempted_at is the order an operator reads them in.
 	DispatchJobAttemptsByJob(ctx context.Context, dispatchJobID string) ([]DispatchJobAttemptsByJobRow, error)
 	// Atomically claims a job for ONE delivery. Same PROCESSING flip the old
 	// (now-removed) unconditional MarkInProgress used to do, but guarded on the
