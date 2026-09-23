@@ -17,8 +17,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"slices"
+	"strconv"
 	"sync"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -138,7 +140,7 @@ func (b *Bridge) resolveIdP(ctx context.Context, idp *identityprovider.IdentityP
 		return nil, errors.New("OIDC config missing issuer or client ID")
 	}
 
-	key := *idp.OIDCIssuerURL + "|" + *idp.OIDCClientID
+	key := cacheKey(idp)
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if r, ok := b.cache[key]; ok {
@@ -166,6 +168,13 @@ func (b *Bridge) resolveIdP(ctx context.Context, idp *identityprovider.IdentityP
 	if err != nil {
 		return nil, err
 	}
+	if clientSecret == "" {
+		// Legal (a public client), but a confidential IdP registration will
+		// refuse the code exchange with nothing more helpful than Entra's
+		// AADSTS7000218 — so say it here, where the operator can find it.
+		slog.Info("OIDC provider has no client secret configured; the code exchange will run as a public client",
+			"identity_provider", idp.ID, "code", idp.Code, "issuer", *idp.OIDCIssuerURL)
+	}
 	r := &resolved{
 		provider:      provider,
 		verifier:      provider.Verifier(verifierCfg),
@@ -182,6 +191,32 @@ func (b *Bridge) resolveIdP(ctx context.Context, idp *identityprovider.IdentityP
 	}
 	b.cache[key] = r
 	return r, nil
+}
+
+// cacheKey identifies a resolved OIDC client by EVERY IdP field that shapes
+// it — issuer, client id, the client-secret ref, multi-tenancy and the issuer
+// pattern — so that editing any of them yields a new entry on the next login
+// instead of the stale one. The cache used to key on issuer|client id alone
+// and never expire: an IdP created without its secret (or logged in to
+// before the secret was entered) cached a secret-less oauth2.Config, and
+// saving the secret afterwards changed the database but not the running
+// process — every exchange failed with AADSTS7000218 until a restart, and
+// "saving it in the front end does not save it" was the reasonable
+// conclusion (owner, 2026-09-23). The ref is the stored ciphertext (or
+// literal:/scheme:// reference), never the plaintext; it is a map key, not
+// a log field. Superseded entries are never evicted — they are a handful of
+// small structs per edit, and an edit is rare.
+func cacheKey(idp *identityprovider.IdentityProvider) string {
+	secretRef := ""
+	if idp.OIDCClientSecretRef != nil {
+		secretRef = *idp.OIDCClientSecretRef
+	}
+	pattern := ""
+	if idp.OIDCIssuerPattern != nil {
+		pattern = *idp.OIDCIssuerPattern
+	}
+	return *idp.OIDCIssuerURL + "|" + *idp.OIDCClientID + "|" + secretRef +
+		"|" + strconv.FormatBool(idp.OIDCMultiTenant) + "|" + pattern
 }
 
 // resolveClientSecret decrypts the IdP's OIDCClientSecretRef using the
