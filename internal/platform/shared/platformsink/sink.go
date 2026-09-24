@@ -93,7 +93,9 @@ func nullIfEmpty(s string) any {
 // operation, operation_json, principal_id, application_id, client_id,
 // performed_at.
 func (*Sink) WriteAudit(ctx context.Context, tx *usecasepgx.DbTx, event usecase.DomainEvent, command any) error {
-	cmdJSON, err := json.Marshal(command)
+	// Passwords and secrets never reach aud_logs (the same rule as the Java
+	// platform and the SDKs: usecase.RedactAuditJSON).
+	cmdJSON, err := usecase.RedactedAuditCommand(command)
 	if err != nil {
 		return fmt.Errorf("marshal command: %w", err)
 	}

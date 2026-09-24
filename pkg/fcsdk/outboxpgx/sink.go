@@ -125,7 +125,8 @@ func buildEventPayload(event usecase.DomainEvent) ([]byte, error) {
 
 // buildAuditPayload serializes an audit log row.
 func buildAuditPayload(event usecase.DomainEvent, command any) ([]byte, error) {
-	cmdJSON, err := json.Marshal(command)
+	// Redacted before it reaches the outbox (usecase.RedactAuditJSON).
+	cmdJSON, err := usecase.RedactedAuditCommand(command)
 	if err != nil {
 		return nil, err
 	}

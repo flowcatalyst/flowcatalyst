@@ -153,12 +153,21 @@ func (s *AuditBatchState) batchIngest(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
+		// Backstop: an SDK that predates audit redaction, or an app writing its
+		// own outbox rows, still never stores a password or secret.
+		opData := it.OperationData
+		if len(opData) > 0 {
+			if red, err := usecase.RedactAuditJSON(opData, nil); err == nil {
+				opData = red
+			}
+		}
+
 		log := &audit.Log{
 			ID:            tsid.Generate(tsid.AuditLog),
 			EntityType:    it.EntityType,
 			EntityID:      it.EntityID,
 			Operation:     it.Operation,
-			OperationJSON: it.OperationData,
+			OperationJSON: opData,
 			PrincipalID:   &principalID,
 			ApplicationID: applicationID,
 			ClientID:      clientID,

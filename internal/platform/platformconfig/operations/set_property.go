@@ -22,6 +22,16 @@ type SetPropertyCommand struct {
 	ClientID        *string `json:"clientId,omitempty"`
 }
 
+// AuditMaskedFields hides the value from the audit row unless the command
+// says PLAIN explicitly — a nil type keeps the current type, which may be
+// SECRET (the Java platform's SetPropertyCommand does the same).
+func (c SetPropertyCommand) AuditMaskedFields() []string {
+	if c.ValueType != nil && *c.ValueType == "PLAIN" {
+		return nil
+	}
+	return []string{"value"}
+}
+
 // SetProperty upserts the (app, section, property, scope, client_id)
 // coordinate with the supplied value and emits [PropertySet].
 //
