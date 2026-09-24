@@ -148,8 +148,14 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 func (s *State) create(ctx context.Context, in *apicommon.In[CreateServiceAccountRequest]) (*apicommon.Out[CreateServiceAccountResponse], error) {
 	// Coarse permission at the controller; the orchestration runs inside one
 	// transaction and has no per-client resource check (admin-managed create).
-	if err := auth.CanWriteServiceAccounts(auth.FromContext(ctx)); err != nil {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWriteServiceAccounts(ac); err != nil {
 		return nil, err
+	}
+	// Same rule as assigning application access: only a caller that itself
+	// holds all-applications access may grant it.
+	if in.Body.AllApplications != nil && *in.Body.AllApplications && !ac.AllApplications {
+		return nil, httperror.Forbidden("Only an all-applications administrator may grant all-applications access")
 	}
 	cmd, err := in.Body.toCommand()
 	if err != nil {

@@ -12,12 +12,16 @@ import (
 
 // CreateCommand is the input DTO.
 type CreateCommand struct {
-	Code               string                             `json:"code"`
-	Name               string                             `json:"name"`
-	Description        *string                            `json:"description,omitempty"`
-	Scope              *string                            `json:"scope,omitempty"`
-	ClientIDs          []string                           `json:"clientIds,omitempty"`
-	ApplicationID      *string                            `json:"applicationId,omitempty"`
+	Code          string   `json:"code"`
+	Name          string   `json:"name"`
+	Description   *string  `json:"description,omitempty"`
+	Scope         *string  `json:"scope,omitempty"`
+	ClientIDs     []string `json:"clientIds,omitempty"`
+	ApplicationID *string  `json:"applicationId,omitempty"`
+	// AllApplications grants the account's principal access to every
+	// application. Absent or false leaves it with no application access until
+	// some is assigned. Only read by CreateServiceAccountWithCredentials.
+	AllApplications    *bool                              `json:"allApplications,omitempty"`
 	WebhookCredentials *serviceaccount.WebhookCredentials `json:"webhookCredentials,omitempty"`
 }
 

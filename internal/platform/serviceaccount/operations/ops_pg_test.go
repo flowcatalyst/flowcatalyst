@@ -118,9 +118,9 @@ func TestCreateServiceAccount_HappyPath(t *testing.T) {
 	assert.Equal(t, []string{"clt_sacreatehappy"}, got.ClientIDs)
 }
 
-// Without applicationId the standalone path stays unconfined — the
-// NewService default (AllApplications=true, no bindings) is preserved.
-func TestCreateServiceAccountWithCredentials_NoApplicationID_Unconfined(t *testing.T) {
+// Without applicationId or allApplications the account starts with no
+// application access: AllApplications=false and no bindings.
+func TestCreateServiceAccountWithCredentials_Default_NoApplicationAccess(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	pool := testpg.Pool(t)
@@ -132,16 +132,63 @@ func TestCreateServiceAccountWithCredentials_NoApplicationID_Unconfined(t *testi
 	res, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
 		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t))),
 		operations.CreateCommand{
-			Code: "sawithcreds-unconfined",
-			Name: "Unconfined",
+			Code: "sawithcreds-noapps",
+			Name: "No Apps",
 		}, testpg.TestEC())
 	require.NoError(t, err)
 
 	p, err := principals.FindByID(ctx, res.PrincipalID)
 	require.NoError(t, err)
 	require.NotNil(t, p)
-	assert.True(t, p.AllApplications, "no applicationId → unrestricted on the application axis")
+	assert.False(t, p.AllApplications, "default → no application access")
 	assert.Empty(t, p.AccessibleApplicationIDs)
+}
+
+// allApplications=true opts the account into every application.
+func TestCreateServiceAccountWithCredentials_AllApplications(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	saRepo := serviceaccount.NewRepository(pool)
+	principals := principal.NewRepository(pool)
+	oauthRepo := platformauth.NewRepository(pool).OAuthClients
+	uow := testpg.NewUoW(t)
+
+	all := true
+	res, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
+		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t))),
+		operations.CreateCommand{
+			Code:            "sawithcreds-allapps",
+			Name:            "All Apps",
+			AllApplications: &all,
+		}, testpg.TestEC())
+	require.NoError(t, err)
+
+	p, err := principals.FindByID(ctx, res.PrincipalID)
+	require.NoError(t, err)
+	require.NotNil(t, p)
+	assert.True(t, p.AllApplications)
+	assert.Empty(t, p.AccessibleApplicationIDs)
+}
+
+// allApplications and applicationId contradict each other.
+func TestCreateServiceAccountWithCredentials_AllApplicationsWithApplicationID_Rejected(t *testing.T) {
+	t.Parallel()
+	pool := testpg.Pool(t)
+	uow := testpg.NewUoW(t)
+
+	all := true
+	appID := "app_conflict"
+	_, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
+		operations.CreateServiceAccountWithCredentials(serviceaccount.NewRepository(pool), principal.NewRepository(pool), platformauth.NewRepository(pool).OAuthClients, client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool)),
+		operations.CreateCommand{
+			Code:            "sawithcreds-conflict",
+			Name:            "Conflict",
+			AllApplications: &all,
+			ApplicationID:   &appID,
+		}, testpg.TestEC())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ALL_APPLICATIONS_WITH_APPLICATION_ID")
 }
 
 func TestCreateServiceAccount_Validation(t *testing.T) {

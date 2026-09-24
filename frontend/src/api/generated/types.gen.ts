@@ -1133,6 +1133,7 @@ export type CreateServiceAccountRequest = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    allApplications?: boolean;
     applicationId?: string;
     clientIds?: Array<string>;
     code: string;
@@ -3878,6 +3879,7 @@ export type CreateScheduledJobRequestWritable = {
 };
 
 export type CreateServiceAccountRequestWritable = {
+    allApplications?: boolean;
     applicationId?: string;
     clientIds?: Array<string>;
     code: string;

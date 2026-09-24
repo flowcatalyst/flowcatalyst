@@ -19,6 +19,8 @@ const name = ref("");
 const description = ref("");
 const scope = ref<PrincipalScope>("ANCHOR");
 const selectedClientIds = ref<string[]>([]);
+// Off by default: a new account has no application access until granted.
+const allApplications = ref(false);
 const clients = ref<Client[]>([]);
 const saving = ref(false);
 
@@ -107,6 +109,7 @@ async function createServiceAccount() {
 					selectedClientIds.value.length > 0
 						? selectedClientIds.value
 						: undefined,
+				allApplications: allApplications.value || undefined,
 			});
 
 		// Store credentials and show the secret-once dialog; navigation waits
@@ -231,6 +234,19 @@ function closeDialogAndNavigate() {
       </div>
     </FcFormSection>
 
+    <FcFormSection title="Application Access" flat>
+      <div class="all-apps-toggle">
+        <ToggleSwitch inputId="createAllApplications" v-model="allApplications" />
+        <label for="createAllApplications" class="all-apps-label">
+          <span class="all-apps-title">Access to all applications</span>
+          <span class="all-apps-hint">
+            Leave off to start with no application access; grant specific
+            applications from the account's detail view after creating it.
+          </span>
+        </label>
+      </div>
+    </FcFormSection>
+
     <!-- Credentials Dialog (shown once after creation) -->
     <Dialog
       v-model:visible="showCredentialsDialog"
@@ -351,6 +367,30 @@ function closeDialogAndNavigate() {
 </template>
 
 <style scoped>
+.all-apps-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 4px 0 16px 0;
+}
+
+.all-apps-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  cursor: pointer;
+}
+
+.all-apps-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.all-apps-hint {
+  font-size: 12px;
+  color: #64748b;
+}
+
 .help-text {
   display: block;
   font-size: 12px;

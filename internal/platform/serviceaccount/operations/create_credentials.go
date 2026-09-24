@@ -77,6 +77,11 @@ func CreateServiceAccountWithCredentials(
 			if strings.TrimSpace(cmd.Name) == "" {
 				return usecase.Validation("NAME_REQUIRED", "name is required")
 			}
+			if cmd.AllApplications != nil && *cmd.AllApplications &&
+				cmd.ApplicationID != nil && strings.TrimSpace(*cmd.ApplicationID) != "" {
+				return usecase.Validation("ALL_APPLICATIONS_WITH_APPLICATION_ID",
+					"allApplications cannot be combined with applicationId")
+			}
 			return nil
 		},
 		Authorize: usecaseop.Public[CreateCommand],
@@ -108,6 +113,9 @@ func CreateServiceAccountWithCredentials(
 			}
 
 			saPrincipal := principal.NewService(sa.ID, sa.Name)
+			// No application access unless asked for: an account made here
+			// starts with none, and access is granted explicitly afterwards.
+			saPrincipal.AllApplications = cmd.AllApplications != nil && *cmd.AllApplications
 			// Reach follows the account's client links. Without this the
 			// principal is always ANCHOR, so a token built from it reaches every
 			// tenant however the account was linked.

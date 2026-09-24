@@ -70,12 +70,15 @@ func roleDTOs(roles []serviceaccount.RoleAssignment) []RoleAssignmentDTO {
 
 // CreateServiceAccountRequest is the wire body for POST /api/service-accounts.
 type CreateServiceAccountRequest struct {
-	Code               string                 `json:"code"`
-	Name               string                 `json:"name"`
-	Description        *string                `json:"description,omitempty"`
-	Scope              *string                `json:"scope,omitempty"`
-	ClientIDs          []string               `json:"clientIds,omitempty"`
-	ApplicationID      *string                `json:"applicationId,omitempty"`
+	Code          string   `json:"code"`
+	Name          string   `json:"name"`
+	Description   *string  `json:"description,omitempty"`
+	Scope         *string  `json:"scope,omitempty"`
+	ClientIDs     []string `json:"clientIds,omitempty"`
+	ApplicationID *string  `json:"applicationId,omitempty"`
+	// AllApplications grants access to every application. Omitted or false
+	// creates the account with no application access.
+	AllApplications    *bool                  `json:"allApplications,omitempty"`
 	WebhookCredentials *WebhookCredentialsDTO `json:"webhookCredentials,omitempty"`
 }
 
@@ -95,6 +98,7 @@ func (r CreateServiceAccountRequest) toCommand() (operations.CreateCommand, erro
 		Scope:              r.Scope,
 		ClientIDs:          r.ClientIDs,
 		ApplicationID:      r.ApplicationID,
+		AllApplications:    r.AllApplications,
 		WebhookCredentials: creds,
 	}, nil
 }
