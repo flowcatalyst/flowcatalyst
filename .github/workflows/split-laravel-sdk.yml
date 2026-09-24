@@ -21,6 +21,9 @@ on:
 
 jobs:
   split:
+    # DISABLED 2026-09-24: tag pushes and manual dispatches no longer split/push.
+    # Remove this `if` to re-enable.
+    if: false
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
