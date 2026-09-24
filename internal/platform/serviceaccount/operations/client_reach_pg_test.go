@@ -153,3 +153,36 @@ func TestServiceAccountReach_UnknownClientRefused(t *testing.T) {
 		testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "Client_NOT_FOUND")
 }
+
+// An account created for one application keeps its client links too. The
+// app-scoped path used to persist only the application binding, so a partner
+// account came out with no grants and reached no tenant.
+func TestServiceAccountReach_AppScopedKeepsClientGrants(t *testing.T) {
+	pool := testpg.Pool(t)
+	uow := testpg.NewUoW(t)
+	principals := principal.NewRepository(pool)
+	seedClient(t, pool, "clt_reach_app_a", "reach-app-a")
+	seedClient(t, pool, "clt_reach_app_b", "reach-app-b")
+
+	appID := "app_reachscoped"
+	res, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
+		operations.CreateServiceAccountWithCredentials(
+			serviceaccount.NewRepository(pool), principals,
+			platformauth.NewRepository(pool).OAuthClients,
+			client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool)),
+		operations.CreateCommand{
+			Code:          "sareach-appscoped",
+			Name:          "sareach-appscoped",
+			ApplicationID: &appID,
+			ClientIDs:     []string{"clt_reach_app_a", "clt_reach_app_b"},
+		}, testpg.TestEC())
+	require.NoError(t, err)
+
+	p, err := principals.FindByID(context.Background(), res.PrincipalID)
+	require.NoError(t, err)
+	require.NotNil(t, p)
+	assert.Equal(t, principal.ScopePartner, p.Scope)
+	assert.ElementsMatch(t, []string{"clt_reach_app_a", "clt_reach_app_b"}, p.AssignedClients)
+	assert.False(t, p.AllApplications)
+	assert.Equal(t, []string{appID}, p.AccessibleApplicationIDs)
+}

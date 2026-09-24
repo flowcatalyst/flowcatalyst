@@ -149,21 +149,19 @@ func CreateServiceAccountWithCredentials(
 			//    sdksync.requireAppAccess confines its writes. The id is stored
 			//    as supplied (no existence check), matching the posture of
 			//    iam_service_accounts.application_id on this endpoint.
-			persistPrincipal := func(tx pgx.Tx) error {
-				return principal.ClientAssociationPersister{
-					Repository:     principals,
-					Grants:         grants,
-					GrantClientIDs: grantClientIDs,
-					GrantedBy:      ec.PrincipalID,
-				}.Persist(ctx, saPrincipal, usecasepgx.WrapTxForBootstrap(tx))
-			}
-			if cmd.ApplicationID != nil && strings.TrimSpace(*cmd.ApplicationID) != "" {
+			appScoped := cmd.ApplicationID != nil && strings.TrimSpace(*cmd.ApplicationID) != ""
+			if appScoped {
 				saPrincipal.AllApplications = false
 				saPrincipal.AccessibleApplicationIDs = []string{*cmd.ApplicationID}
-				persistPrincipal = func(tx pgx.Tx) error {
-					return principal.AppAccessPersister{Repository: principals}.Persist(
-						ctx, saPrincipal, usecasepgx.WrapTxForBootstrap(tx))
-				}
+			}
+			persistPrincipal := func(tx pgx.Tx) error {
+				return principal.ClientAssociationPersister{
+					Repository:       principals,
+					Grants:           grants,
+					GrantClientIDs:   grantClientIDs,
+					GrantedBy:        ec.PrincipalID,
+					ReplaceAppAccess: appScoped,
+				}.Persist(ctx, saPrincipal, usecasepgx.WrapTxForBootstrap(tx))
 			}
 			if err := s.WithTx(ctx, persistPrincipal); err != nil {
 				return zero, usecase.Internal("PERSIST", "service principal persist failed", err)

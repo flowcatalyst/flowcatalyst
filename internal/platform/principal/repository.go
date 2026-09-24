@@ -658,6 +658,9 @@ type ClientAssociationPersister struct {
 	GrantClientIDs []string
 	// GrantedBy is the acting principal recorded on each new grant row.
 	GrantedBy string
+	// ReplaceAppAccess also rewrites the application-access junction from
+	// p.AccessibleApplicationIDs, for a caller that sets both at once.
+	ReplaceAppAccess bool
 }
 
 // Persist upserts the principal row, then inserts any missing client-access
@@ -666,6 +669,11 @@ func (cp ClientAssociationPersister) Persist(ctx context.Context, p *Principal, 
 	// Explicit selector on Persist avoids recursing into this method.
 	if err := cp.Repository.Persist(ctx, p, tx); err != nil {
 		return err
+	}
+	if cp.ReplaceAppAccess {
+		if err := cp.replaceAppAccessTx(ctx, p, tx); err != nil {
+			return err
+		}
 	}
 	if cp.Grants == nil {
 		return nil
