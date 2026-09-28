@@ -986,7 +986,7 @@ func (m *Manager) EvictIdleSynthPools(ttl time.Duration) int {
 		return 0
 	}
 
-	evicted := 0
+	var stopping []*Pool
 	m.poolMu.Lock()
 	m.synthMu.Lock()
 	for _, code := range idle {
@@ -998,15 +998,19 @@ func (m *Manager) EvictIdleSynthPools(ttl time.Duration) int {
 			continue
 		}
 		if p, ok := m.pools[code]; ok {
-			p.Stop()
+			stopping = append(stopping, p)
 			delete(m.pools, code)
-			evicted++
 		}
 		delete(m.synthPools, code)
 	}
 	m.synthMu.Unlock()
 	m.poolMu.Unlock()
-	return evicted
+	// Stopped outside the locks: Stop nacks anything still buffered through
+	// the broker, and routing must not wait on that.
+	for _, p := range stopping {
+		p.Stop()
+	}
+	return len(stopping)
 }
 
 // isDefaultPoolCode reports whether code names a fallback pool — the global
