@@ -936,7 +936,7 @@ export type CreateFunctionRequest = {
      */
     name: string;
     /**
-     * Explicit dispatch pool override; omitted uses the function's implied pool
+     * The runner pool that hosts the function (FC_FUNCTIONS_POOL on its runners); omitted means the default pool. Not the dispatch pool, which is always the function's own.
      */
     pool?: string;
     warm?: boolean;
@@ -3256,7 +3256,7 @@ export type UpdateFunctionRequest = {
      */
     readonly $schema?: string;
     /**
-     * Set true to clear an explicit pool override back to the implied pool
+     * Set true to move the function back to the default runner pool
      */
     clearPool?: boolean;
     description?: string;
@@ -4065,7 +4065,7 @@ export type CreateFunctionRequestWritable = {
      */
     name: string;
     /**
-     * Explicit dispatch pool override; omitted uses the function's implied pool
+     * The runner pool that hosts the function (FC_FUNCTIONS_POOL on its runners); omitted means the default pool. Not the dispatch pool, which is always the function's own.
      */
     pool?: string;
     warm?: boolean;
@@ -5348,7 +5348,7 @@ export type UpdateEventTypeRequestWritable = {
 
 export type UpdateFunctionRequestWritable = {
     /**
-     * Set true to clear an explicit pool override back to the implied pool
+     * Set true to move the function back to the default runner pool
      */
     clearPool?: boolean;
     description?: string;

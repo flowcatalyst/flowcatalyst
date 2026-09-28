@@ -2509,7 +2509,7 @@
             "type": "string"
           },
           "pool": {
-            "description": "Explicit dispatch pool override; omitted uses the function's implied pool",
+            "description": "The runner pool that hosts the function (FC_FUNCTIONS_POOL on its runners); omitted means the default pool. Not the dispatch pool, which is always the function's own.",
             "type": "string"
           },
           "warm": {
@@ -9374,7 +9374,7 @@
             "type": "string"
           },
           "clearPool": {
-            "description": "Set true to clear an explicit pool override back to the implied pool",
+            "description": "Set true to move the function back to the default runner pool",
             "type": "boolean"
           },
           "description": {

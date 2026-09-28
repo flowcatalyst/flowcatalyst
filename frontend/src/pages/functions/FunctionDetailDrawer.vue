@@ -512,7 +512,7 @@ function formatDate(dateString: string | undefined | null) {
                 <Textarea :id="fieldId" v-model="editDescription" rows="2" />
               </template>
             </FcFormField>
-            <FcFormField label="Dispatch Pool" help="Blank restores the function's implied pool.">
+            <FcFormField label="Runner Pool" help="The runner pool that hosts the function. Blank runs it in the default pool.">
               <template #default="{ id: fieldId }">
                 <InputText :id="fieldId" v-model="editPool" placeholder="default" />
               </template>
@@ -555,7 +555,7 @@ function formatDate(dateString: string | undefined | null) {
             </FcDetailField>
             <FcDetailField label="Application" :value="`${fn.applicationCode}`" />
             <FcDetailField label="Client" :value="clientLabel" />
-            <FcDetailField label="Pool" :value="poolLabel" />
+            <FcDetailField label="Runner Pool" :value="poolLabel" />
             <FcDetailField label="Warm" :value="fn.warm ? 'Yes' : 'No'" />
             <FcDetailField v-if="fn.description" label="Description" :value="fn.description" span />
             <FcDetailField label="Memory" :value="`${fn.limits?.memoryMb ?? 64} MB`" />

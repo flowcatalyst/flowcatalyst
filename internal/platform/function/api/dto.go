@@ -47,7 +47,7 @@ type CreateFunctionRequest struct {
 	Name          string     `json:"name" doc:"Function name (lowercase, alphanumeric, hyphens; matches ^[a-z][a-z0-9-]{0,62}$)"`
 	ClientID      *string    `json:"clientId,omitempty"`
 	Description   *string    `json:"description,omitempty"`
-	Pool          *string    `json:"pool,omitempty" doc:"Explicit dispatch pool override; omitted uses the function's implied pool"`
+	Pool          *string    `json:"pool,omitempty" doc:"The runner pool that hosts the function (FC_FUNCTIONS_POOL on its runners); omitted means the default pool. Not the dispatch pool, which is always the function's own."`
 	Warm          *bool      `json:"warm,omitempty"`
 	Limits        *LimitsDTO `json:"limits,omitempty"`
 }
@@ -68,7 +68,7 @@ func (r CreateFunctionRequest) toCommand() operations.CreateCommand {
 type UpdateFunctionRequest struct {
 	Description *string    `json:"description,omitempty"`
 	Pool        *string    `json:"pool,omitempty"`
-	ClearPool   bool       `json:"clearPool,omitempty" doc:"Set true to clear an explicit pool override back to the implied pool"`
+	ClearPool   bool       `json:"clearPool,omitempty" doc:"Set true to move the function back to the default runner pool"`
 	Warm        *bool      `json:"warm,omitempty"`
 	Limits      *LimitsDTO `json:"limits,omitempty"`
 }

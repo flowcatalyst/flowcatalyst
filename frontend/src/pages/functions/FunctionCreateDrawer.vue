@@ -160,9 +160,9 @@ async function onSubmit() {
       <h3>Runner</h3>
 
       <div class="form-field">
-        <label>Dispatch Pool</label>
+        <label>Runner Pool</label>
         <InputText v-model="pool" placeholder="default" class="full-width" />
-        <small class="hint">Optional override. Left blank, the function uses its implied pool.</small>
+        <small class="hint">The runner pool that hosts the function. Left blank, it runs in the default pool.</small>
       </div>
 
       <div class="form-field">
