@@ -14,9 +14,11 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/budget"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/control"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/engine"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/runtimes"
 )
 
-// TestSDKExamples runs the guest SDKs' example modules through the real
+// TestSDKExamples runs the guest SDKs' example artifacts (a .js path is a
+// script for the shared JS engine) through the real
 // engine and runner: describe exactly as publish reads it, then HTTP calls
 // through every auth mode. The examples are build outputs, so the test runs
 // only when pointed at them:
@@ -43,6 +45,12 @@ func runExample(t *testing.T, path string) {
 	sum := sha256.Sum256(wasm)
 	digest := hex.EncodeToString(sum[:])
 
+	// A .js artifact runs on the shared JS engine; anything else is a module.
+	runtime := runtimes.Wasm
+	if strings.HasSuffix(path, ".js") {
+		runtime = runtimes.JS
+	}
+
 	// Describe, as publish will: an instance with no capabilities.
 	b, _ := budget.New(512<<20, 0)
 	e, err := engine.New(t.Context(), engine.Config{Budget: b})
@@ -51,20 +59,11 @@ func runExample(t *testing.T, path string) {
 	}
 	defer func() { _ = e.Close(context.Background()) }()
 	start := time.Now()
-	mod, err := e.Compile(t.Context(), wasm)
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
-	compiled := time.Since(start)
-	inst, err := mod.Instantiate(t.Context(), engine.InstanceConfig{MemoryCapBytes: 64 << 20})
-	if err != nil {
-		t.Fatalf("instantiate: %v", err)
-	}
-	doc, err := inst.Describe(t.Context())
+	doc, err := runtimes.NewLoader(e).Describe(t.Context(), runtime, wasm, 64<<20)
 	if err != nil {
 		t.Fatalf("describe: %v", err)
 	}
-	t.Logf("%d bytes, compiled in %v, describe %s", len(wasm), compiled, doc)
+	t.Logf("%s, %d bytes, prepared+described in %v, describe %s", runtime, len(wasm), time.Since(start), doc)
 	d, err := abi.ParseDescribe(doc)
 	if err != nil {
 		t.Fatalf("the SDK's describe does not validate: %v", err)
@@ -78,7 +77,7 @@ func runExample(t *testing.T, path string) {
 		Limits:        control.Limits{MemoryMB: 64, MaxConcurrency: 4, TimeoutMs: 5000},
 		WebhookSecret: secret,
 		Config:        map[string]string{"GREETING": "Kia ora"},
-		Versions:      []control.Version{{Number: 1, Digest: digest, ABI: 1, Describe: doc, Roles: []string{control.RoleLive}}},
+		Versions:      []control.Version{{Number: 1, Digest: digest, Runtime: runtime, ABI: 1, Describe: doc, Roles: []string{control.RoleLive}}},
 	}}})
 	r, err := New(t.Context(), Config{Pool: "default", ControlPlane: cp, Budget: b, Tokens: fakeTokens{}})
 	if err != nil {
