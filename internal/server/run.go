@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -81,14 +82,28 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 
 	var routerSrv *router.Server
 	var routerErr error
+	var platformAuth func(http.Handler) http.Handler
 
 	if cfg.PlatformEnabled {
-		if err := WirePlatform(r, pool, cfg, dispatchSettings); err != nil {
+		handles, err := WirePlatform(r, pool, cfg, dispatchSettings)
+		if err != nil {
 			return fmt.Errorf("platform wiring: %w", err)
 		}
+		platformAuth = handles.Authenticate
 		slog.Info("platform API wired")
 	}
 
+	// The debug surface's gate (nil: not mounted). See newDebugGate.
+	var debugGate func(http.Handler) http.Handler
+	if cfg.DebugEndpointsEnabled {
+		debugGate = newDebugGate(resolveRouterAuth(), platformAuth)
+		if debugGate == nil {
+			slog.Warn("FC_DEBUG_ENDPOINTS_ENABLED is set but nothing here can authenticate a caller " +
+				"(no router Basic auth, no platform API in this process); the debug endpoints are NOT mounted")
+		}
+	}
+
+	var routerState *routerapi.State
 	if cfg.RouterEnabled {
 		routerSrv, routerErr = newRouterServer(cfg, pool)
 		if routerErr != nil {
@@ -98,9 +113,22 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 		if prefix == "" {
 			prefix = "/router"
 		}
-		MountRouterHTTP(r, prefix, routerSrv, streamHealth, cfg)
+		routerState = MountRouterHTTP(r, prefix, routerSrv, streamHealth, cfg, debugGate)
 		slog.Info("router HTTP mounted", "prefix", prefix)
+		if debugGate != nil {
+			slog.Info("debug endpoints mounted (authenticated)", "path", prefix+"/debug/")
+		}
+	} else if debugGate != nil {
+		// No router in this process: the same surface (pprof, expvar, a dump
+		// of every goroutine) at /debug on the API listener.
+		routerapi.MountDebug(r, &routerapi.State{}, debugGate)
+		slog.Info("debug endpoints mounted (authenticated)", "path", "/debug/")
 	}
+
+	// SIGQUIT writes the router dump (workers, held groups, every stack) to
+	// stderr and keeps running; a second one within 5s dumps and exits.
+	stopSIGQUIT := installSIGQUITDump(func(w io.Writer) { routerapi.WriteDump(w, routerState) })
+	defer stopSIGQUIT()
 
 	if opts.ExtraAPIRoutes != nil {
 		opts.ExtraAPIRoutes(r)
@@ -244,7 +272,11 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 // the supplied prefix. Authentication is BasicAuth (env-driven). The
 // router engine itself must be started separately — this only wires
 // the HTTP surface that reads its state.
-func MountRouterHTTP(r chi.Router, prefix string, srv *router.Server, streamHealth *stream.HealthService, cfg EnvCfg) {
+//
+// debugGate, when non-nil, also mounts the debug surface (pprof, expvar, the
+// router dump) at <prefix>/debug behind it; see newDebugGate. Returns the
+// router API state, which the SIGQUIT dump reads.
+func MountRouterHTTP(r chi.Router, prefix string, srv *router.Server, streamHealth *stream.HealthService, cfg EnvCfg, debugGate func(http.Handler) http.Handler) *routerapi.State {
 	state := routerapi.FromServer(srv)
 	if streamHealth != nil {
 		state.StreamHealth = streamHealthBridge{svc: streamHealth}
@@ -262,7 +294,11 @@ func MountRouterHTTP(r chi.Router, prefix string, srv *router.Server, streamHeal
 		routerapi.Register(api, state)
 		routerapi.MountDashboard(sub)
 		sub.Mount("/metrics", routerapi.PrometheusHandler(state))
+		if debugGate != nil {
+			routerapi.MountDebug(sub, state, debugGate)
+		}
 	})
+	return state
 }
 
 // resolveRouterAuth reads the router HTTP BasicAuth config, accepting the legacy

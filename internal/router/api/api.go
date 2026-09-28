@@ -151,6 +151,13 @@ type BlockedGroupsProvider interface {
 	BlockedGroups() []router.GroupInfo
 }
 
+// EventCountersProvider exposes the router's event-time counters (submitted,
+// rejected by reason, processed by result, consumer polls and errors,
+// recovered panics) for the Prometheus surface. Optional.
+type EventCountersProvider interface {
+	EventCounters() router.RouterEventCounts
+}
+
 // GroupFlushProvider exposes R-52/R-53 group-flush suppression state: a
 // snapshot per pool this Manager is tracking (active suppressions + lifetime
 // counters), and the operator override to lift one suppression early.
@@ -194,6 +201,7 @@ type State struct {
 	StreamHealth  StreamHealthProvider
 	BlockedGroups BlockedGroupsProvider
 	GroupFlush    GroupFlushProvider
+	EventCounters EventCountersProvider
 
 	// Mocks is the counter set for /api/test/*. Created automatically by
 	// FromServer; tests can substitute their own.
@@ -219,6 +227,7 @@ func FromServer(s *router.Server) *State {
 		Traffic:       trafficAdapter{traffic: s.Traffic},
 		BlockedGroups: managerBlockedGroupsAdapter{m: s.Manager},
 		GroupFlush:    managerGroupFlushAdapter{m: s.Manager},
+		EventCounters: s.Manager,
 		Mocks:         NewMockState(),
 	}
 }

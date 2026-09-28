@@ -3,6 +3,8 @@ package router
 import (
 	"context"
 	"log/slog"
+	"runtime/pprof"
+	"runtime/trace"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -86,6 +88,10 @@ type Pool struct {
 	workerSeq   atomic.Uint64
 
 	stopped atomic.Bool
+
+	// events are the pool's event-time counters (event_counters.go), read by
+	// the Prometheus scrape.
+	events poolEventCounters
 
 	// draining is set by Drain (X-11: a pool REMOVAL drains rather than
 	// flushing). It closes admission the same way stopped does — checked
@@ -377,6 +383,7 @@ func (p *Pool) Metrics() *PoolMetricsCollector { return p.metrics }
 // is preserved by re-inserting a failed message at the FRONT of its group
 // rather than by cascade-NACKing the rest of a batch.
 func (p *Pool) submit(ctx context.Context, m common.QueuedMessage) {
+	p.events.submitted.Add(1)
 	// Reject when the pool is stopping or draining (X-11: a removed pool
 	// admits nothing new, but — unlike stopped — draining does not touch
 	// what's already buffered; see Drain's doc comment). In practice a
@@ -385,6 +392,7 @@ func (p *Pool) submit(ctx context.Context, m common.QueuedMessage) {
 	// drain, so no new batch is ever routed to it. This check is the
 	// pool-local backstop for a caller holding a stale *Pool reference.
 	if p.stopped.Load() || p.draining.Load() {
+		p.events.reject(RejectStopped, 1)
 		p.nackMsg(ctx, m, new(uint32(10)), "pool stopped")
 		return
 	}
@@ -394,6 +402,7 @@ func (p *Pool) submit(ctx context.Context, m common.QueuedMessage) {
 	// a consumer keeps polling while any of its queue's pools has room — not
 	// a race backstop — so the delay is computed, not a flat 10s.
 	if p.queueSize.Load() >= p.queueCapacity() {
+		p.events.reject(RejectCapacity, 1)
 		p.deferMsg(ctx, m, "pool at capacity")
 		return
 	}
@@ -422,6 +431,7 @@ func (p *Pool) submit(ctx context.Context, m common.QueuedMessage) {
 
 	if !p.enqueue(group, m) {
 		// Raced with Stop: the buffer is flushed and nothing will drain it.
+		p.events.reject(RejectStopped, 1)
 		p.nackMsg(ctx, m, new(uint32(10)), "pool stopped")
 		return
 	}
@@ -473,6 +483,7 @@ func (p *Pool) runImmediate(ctx context.Context, m common.QueuedMessage) {
 		// broker redeliver after d.RetryAfter: the outcome's own delay (30s for
 		// an unreachable target, the breaker's reset for an open breaker, the
 		// backoff when the budget is spent), never an immediate redelivery.
+		p.events.reject(RejectReleased, 1)
 		p.nackMsg(ctx, m, nackDelay(d.RetryAfter), "released to broker")
 		return
 	}
@@ -548,6 +559,7 @@ func (p *Pool) Stop() {
 	defer cancel()
 	flushed := 0
 	for _, g := range groups {
+		p.events.reject(RejectStopped, len(g.msgs))
 		var delay *uint32
 		if g.working {
 			delay = siblingNackDelay(nil)
@@ -1098,6 +1110,7 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 func (p *Pool) releaseGroup(ctx context.Context, group string, inHand common.QueuedMessage, delay *uint32, reason string) {
 	p.nackMsg(ctx, inHand, delay, reason)
 	released := p.releaseBuffered(ctx, group, siblingNackDelay(delay), reason)
+	p.events.reject(RejectReleased, 1+released)
 	// delay_seconds is how long the broker was asked to hold the head back —
 	// 0 means "redeliver now". Without it a release that parks the group for
 	// minutes (a target-named deferral) reads the same as an instant one.
@@ -1165,6 +1178,7 @@ func (p *Pool) releaseBuffered(ctx context.Context, group string, delay *uint32,
 // Returns how many were ACKed.
 func (p *Pool) ackBuffered(ctx context.Context, group, reason string) int {
 	buffered := p.takeBuffered(group)
+	p.events.reject(RejectBlocked, len(buffered))
 	for i := range buffered {
 		p.queueDec()
 		p.ackTracked(ctx, buffered[i])
@@ -1316,6 +1330,7 @@ func (p *Pool) ReleaseParkedGroups(ctx context.Context, minAge time.Duration) in
 		// Every message goes back with the same sibling delay, so the group
 		// returns together and in order rather than all visible at once.
 		if n := p.releaseBuffered(ctx, group, siblingNackDelay(nil), "group parked with no drainer"); n > 0 {
+			p.events.reject(RejectReleased, n)
 			slog.Warn("released a parked message group to the broker; nothing had resumed it",
 				"group", group, "pool", p.cfg.Code, "released", n, "parked_for", minAge)
 			released += n
@@ -1694,6 +1709,26 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 	log := p.logger(qm)
 	ctx = withMessageLogger(ctx, log)
 
+	// Profiler and tracer correlation, stdlib only. The pprof labels name
+	// the message this goroutine is working on, so a goroutine dump taken
+	// through /debug/pprof/goroutine?debug=1 (and every CPU profile sample)
+	// says which message and group each stuck worker holds. The labels are
+	// restored on the way out: a drainer goroutine goes on to the next
+	// message of its group. An execution trace (/debug/pprof/trace) shows
+	// each delivery as a "router.dispatch" task.
+	labelled := pprof.WithLabels(ctx, pprof.Labels(
+		logKeyMessageID, qm.Message.ID, logKeyGroup, qm.Message.GroupID(),
+		logKeyPool, p.cfg.Code, logKeyQueue, qm.QueueIdentifier))
+	pprof.SetGoroutineLabels(labelled)
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = labelled
+	if trace.IsEnabled() {
+		var task *trace.Task
+		ctx, task = trace.NewTask(ctx, "router.dispatch")
+		defer task.End()
+		trace.Log(ctx, logKeyMessageID, qm.Message.ID)
+	}
+
 	// Panic isolation: a panic mid-mediation must not crash the process (an
 	// unrecovered panic in a goroutine takes down the program) or strand the
 	// message. Recover and retry in-pipeline — the in-flight entry is kept, so
@@ -1747,6 +1782,7 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 		// that ties a metric to a mediation outcome — same reason the
 		// duplicate-copy path above records nothing either.
 		p.metrics.RecordSuppressed()
+		p.events.reject(RejectSuppressed, 1)
 		p.ackTracked(ctx, qm)
 		return Disposition{Action: BrokerAck, Group: GroupContinue}
 	}
@@ -1767,6 +1803,7 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 
 	d := p.settleRetry(qm, DispositionOf(outcome, qm.Attempts, qm.Message.DispatchMode, p.honoursDelayedReturn(qm)))
 	p.recordMetric(d.Metric, durationMs)
+	p.events.processedOutcome(outcome.Result, d.Metric)
 
 	// A deferral is the one delivery outcome the mediator logs nothing for
 	// (it is a 2xx), yet it can hold a message back for as long as the target

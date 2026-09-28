@@ -5,6 +5,9 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // swaggerUIHTML is a minimal Swagger UI page (served at /swagger-ui) that
@@ -37,10 +40,9 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 }
 
 // metricsRouter builds the /metrics + /ready + /health surface bound to
-// the metrics port. Detailed router/pool Prometheus series live under
-// the router prefix on the API port via routerapi.PrometheusHandler —
-// this router stays a small "is the binary up" target until we add
-// platform-level Prometheus exporters.
+// the metrics port. /metrics carries the process's Go runtime and OS
+// metrics; detailed router/pool Prometheus series live under the router
+// prefix on the API port via routerapi.PrometheusHandler.
 //
 // It serves NO application endpoint. The router-config document briefly lived
 // here, unauthenticated, reached through a network alias; it is now an
@@ -62,12 +64,21 @@ func metricsRouter(cfg EnvCfg) http.Handler {
 			"mcp":           cfg.MCPEnabled,
 		})
 	})
-	r.Get("/metrics", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		// Platform-level Prometheus exporters are still on the to-do
-		// list; router-level metrics live at <prefix>/metrics under the
-		// API port.
-		_, _ = w.Write([]byte("# fc-server metrics placeholder\n"))
-	})
+	// The process's Go runtime and OS metrics (goroutines, GC, heap,
+	// scheduler latency, CPU, RSS, open fds), for every subsystem this
+	// process runs. Router pool/queue metrics live at <prefix>/metrics on
+	// the API port.
+	r.Handle("/metrics", runtimeMetricsHandler())
 	return r
+}
+
+// runtimeMetricsHandler serves the Go runtime and process collectors from a
+// registry of their own.
+func runtimeMetricsHandler() http.Handler {
+	reg := prometheus.NewRegistry()
+	reg.MustRegister(
+		collectors.NewGoCollector(),
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
+	)
+	return promhttp.HandlerFor(reg, promhttp.HandlerOpts{ErrorHandling: promhttp.ContinueOnError})
 }

@@ -145,6 +145,11 @@ type Manager struct {
 	root       context.Context
 	rootCancel context.CancelFunc
 
+	// consumerCounters maps a queue name to its *consumerEventCounters (see
+	// event_counters.go): per-queue poll counters that outlive any one
+	// consumer instance.
+	consumerCounters sync.Map
+
 	// wg counts the running poll loops (runConsumer). An idleGroup rather
 	// than a sync.WaitGroup so Shutdown can wait on it with a deadline
 	// without leaking a helper goroutine when the deadline wins.
@@ -1147,9 +1152,16 @@ func (m *Manager) runConsumer(ctx context.Context, rc *runningConsumer) {
 		msgs, err := pollSafely(pollCtx, rc.consumer, maxPoll)
 		cancelPoll()
 		rc.pollsReturned.Add(1)
+		counters := m.consumerCountersFor(rc.queueCfg.Name)
+		counters.polls.Add(1)
 		if err != nil {
 			if ctx.Err() != nil {
 				return
+			}
+			if errors.Is(err, errPollPanicked) {
+				counters.pollPanics.Add(1)
+			} else {
+				counters.pollErrors.Add(1)
 			}
 			// A stopped consumer never resumes: Stop() was called but this poll
 			// loop wasn't torn down (e.g. a stop path that didn't also cancel our
@@ -1222,6 +1234,9 @@ func (m *Manager) runConsumer(ctx context.Context, rc *runningConsumer) {
 	}
 }
 
+// errPollPanicked marks a poll error that was a recovered panic.
+var errPollPanicked = errors.New("poll panicked")
+
 // pollSafely is consumer.Poll behind a panic boundary: a broker client that
 // panics mid-receive becomes an ordinary poll error (logged with its stack),
 // retried like any other, instead of killing the process. Nothing was handed
@@ -1230,7 +1245,7 @@ func pollSafely(ctx context.Context, c queue.Consumer, maxMessages uint32) (msgs
 	defer func() {
 		if r := recover(); r != nil {
 			logRecovered("consumer.Poll", r, logKeyQueue, c.Identifier())
-			msgs, err = nil, fmt.Errorf("poll panicked: %v", r)
+			msgs, err = nil, fmt.Errorf("%w: %v", errPollPanicked, r)
 		}
 	}()
 	return c.Poll(ctx, maxMessages)

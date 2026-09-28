@@ -1,11 +1,14 @@
 package server
 
 import (
+	"net/http"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatch"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
+	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	platformsink "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/platformsink"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -28,7 +31,17 @@ import (
 //	                   repo, build the use cases, build the api.State,
 //	                   register it on the huma API.
 //	wire_spec.go     — registerSpecRoutes: unauthenticated OpenAPI/Swagger
-func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg, dispatchSettings dispatch.Settings) error {
+//
+// PlatformHandles are what the rest of the server needs from a wired
+// platform.
+type PlatformHandles struct {
+	// Authenticate is the platform's bearer/session authenticator, without
+	// the X-FC-Test-Principal dev fallback: it attaches the caller's
+	// AuthContext (or none) to the request. The debug surface's gate uses it.
+	Authenticate func(http.Handler) http.Handler
+}
+
+func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg, dispatchSettings dispatch.Settings) (PlatformHandles, error) {
 	// Wire the huma error transformer so handler-returned *usecase.Error
 	// values flow out as the canonical {code, message, details} envelope.
 	httpcompat.Init()
@@ -39,11 +52,13 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg, dispatchSettings
 	repos := buildRepos(pool)
 	svcs, err := buildServices(cfg, pool, repos)
 	if err != nil {
-		return err
+		return PlatformHandles{}, err
 	}
 
 	registerPublicRoutes(r, cfg, pool, uow, repos, svcs)
 	humaAPI := registerPlatformAPI(r, cfg, pool, uow, repos, svcs, dispatchSettings)
 	registerSpecRoutes(r, humaAPI)
-	return nil
+	return PlatformHandles{
+		Authenticate: platformmw.Authenticator(platformmw.AuthConfig{Provider: svcs.authProvider}),
+	}, nil
 }

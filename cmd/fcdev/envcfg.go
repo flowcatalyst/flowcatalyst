@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/server"
 )
@@ -23,6 +24,13 @@ func devEnvCfg(opts startOpts, databaseURL string, routerCreds routerCredentials
 	// Always-on in dev.
 	cfg.PlatformEnabled = true
 	cfg.AuthAllowTestHeaders = true
+
+	// The debug surface (pprof, expvar, the router dump) is on in dev unless
+	// FC_DEBUG_ENDPOINTS_ENABLED says otherwise. It stays authenticated: an
+	// anchor login (the dev admin) or router Basic auth.
+	if _, set := os.LookupEnv("FC_DEBUG_ENDPOINTS_ENABLED"); !set {
+		cfg.DebugEndpointsEnabled = true
+	}
 
 	// Subsystem toggles follow the CLI flags. Defaults (in flag config)
 	// match the historical fcdev: scheduler+stream on, outbox+router off.

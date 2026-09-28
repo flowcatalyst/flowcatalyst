@@ -215,6 +215,14 @@ type EnvCfg struct {
 	// in the platform Authenticator middleware. Defaults to false in
 	// production. fcdev flips it on for the local embedded-PG flow.
 	AuthAllowTestHeaders bool
+
+	// DebugEndpointsEnabled mounts the debug surface (net/http/pprof, expvar,
+	// the router dump) under <RouterHTTPPrefix>/debug, or /debug when the
+	// router is off (FC_DEBUG_ENDPOINTS_ENABLED). Off by default; fcdev
+	// turns it on. Always authenticated: router Basic auth when configured,
+	// otherwise an anchor principal's platform bearer or session; with
+	// neither available it is not mounted at all.
+	DebugEndpointsEnabled bool
 }
 
 func LoadEnv() EnvCfg {
@@ -300,6 +308,8 @@ func LoadEnv() EnvCfg {
 		JWTSigningKeyPath:    os.Getenv("FC_JWT_SIGNING_KEY_PATH"),
 		JWTPreviousPublicKey: normalizedPreviousPublicKey(),
 		AuthAllowTestHeaders: envBool("FC_AUTH_ALLOW_TEST_HEADERS", false),
+
+		DebugEndpointsEnabled: envBool("FC_DEBUG_ENDPOINTS_ENABLED", false),
 
 		MCPPlatformURL:  envFirst("FLOWCATALYST_URL", "FC_MCP_PLATFORM_URL", "", ""),
 		MCPClientID:     os.Getenv("FLOWCATALYST_CLIENT_ID"),

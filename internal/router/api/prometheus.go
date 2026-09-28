@@ -2,9 +2,12 @@ package api
 
 import (
 	"net/http"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/router"
@@ -19,32 +22,48 @@ import (
 //
 // Per pool (label: pool):
 //   - fc_pool_queue_size, fc_pool_active_workers, fc_pool_message_groups (gauges)
-//   - fc_messages_processed_total{success}                              (counter)
+//   - fc_messages_processed_total{success,result}                       (counter)
+//   - fc_messages_submitted_total                                       (counter)
+//   - fc_messages_rejected_total{reason}                                (counter)
 //   - fc_rate_limit_exceeded_total                                      (counter)
 //   - fc_mediation_duration_seconds                                     (histogram)
 //
 // Global:
 //   - fc_in_pipeline_messages                                          (gauge)
+//   - fc_router_panics_recovered_total                                 (counter)
+//   - go_* (runtime: goroutines, GC, memory, scheduler)                (Go collector)
+//   - process_* (CPU, RSS, open fds, start time)                        (process collector)
 //
 // Per queue/consumer:
 //   - fc_queue_pending_messages, fc_queue_in_flight_messages           (gauges)
 //   - fc_consumer_messages_received_total{consumer}                    (counter)
 //   - fc_queue_messages_total{queue,outcome=acked|nacked|deferred}     (counter)
+//   - fc_consumer_polls_total{queue}                                   (counter)
+//   - fc_consumer_errors_total{queue,type=poll|panic}                  (counter)
 //
 // Circuit breaker (label: target):
 //   - fc_circuit_breaker_open                                          (gauge)
 //   - fc_circuit_breaker_calls_total{outcome=success|failure}          (counter)
 //
-// Note (contract gap, dashboards only): the established contract additionally
-// defines fc_messages_submitted_total, fc_messages_rejected_total{reason},
-// fc_consumer_polls_total / fc_consumer_errors_total{type}, the `result`
-// label on fc_messages_processed_total, and flowcatalyst_broker_*. Those are
-// event-time labeled counters the pull-based collector does not currently
-// track; emitting them faithfully needs the metrics collector reworked to a
-// push model. The primary panels above are covered.
+// fc_messages_processed_total counts the same deliveries as before (the
+// successes and the failures), now split by mediation result, so a query
+// summing over result reads exactly as the two-label series did. The
+// counters the snapshot cannot give are event-time counters kept by the
+// router (router.RouterEventCounts), read here at scrape time.
+//
+// Not emitted: the contract's flowcatalyst_broker_* family. The broker-side
+// numbers it carries are the fc_queue_* series above; duplicating them under
+// a second name would only double the series count.
 func PrometheusHandler(s *State) http.Handler {
 	registry := prometheus.NewRegistry()
-	registry.MustRegister(&routerCollector{state: s})
+	registry.MustRegister(
+		&routerCollector{state: s},
+		// Go runtime and process metrics: goroutine count, GC pauses, heap,
+		// scheduler latency, RSS, CPU, open file descriptors. Without them a
+		// goroutine leak or a GC-bound router was invisible to Prometheus.
+		collectors.NewGoCollector(),
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
+	)
 	return promhttp.HandlerFor(registry, promhttp.HandlerOpts{
 		ErrorLog:      nil,
 		ErrorHandling: promhttp.ContinueOnError,
@@ -60,15 +79,68 @@ func (c *routerCollector) Describe(_ chan<- *prometheus.Desc) {}
 
 // Collect builds one snapshot per scrape.
 func (c *routerCollector) Collect(ch chan<- prometheus.Metric) {
-	c.collectPools(ch)
+	var events *router.RouterEventCounts
+	if c.state.EventCounters != nil {
+		ev := c.state.EventCounters.EventCounters()
+		events = &ev
+	}
+	c.collectPools(ch, events)
+	c.collectEvents(ch, events)
 	c.collectQueues(ch)
 	c.collectBreakers(ch)
 	c.collectInFlight(ch)
 }
 
-func (c *routerCollector) collectPools(ch chan<- prometheus.Metric) {
+// collectEvents emits the event-time counters (nil: no provider wired).
+func (c *routerCollector) collectEvents(ch chan<- prometheus.Metric, events *router.RouterEventCounts) {
+	if events == nil {
+		return
+	}
+	for _, p := range events.Pools {
+		counter(ch, "fc_messages_submitted_total",
+			"Cumulative messages routed to the pool.",
+			float64(p.Submitted), []string{"pool"}, []string{p.Pool})
+		for _, reason := range sortedKeys(p.Rejected) {
+			counter(ch, "fc_messages_rejected_total",
+				"Cumulative messages the pool handed back or settled without delivering them, by reason.",
+				float64(p.Rejected[reason]), []string{"pool", "reason"}, []string{p.Pool, reason})
+		}
+	}
+	for _, q := range events.Consumers {
+		qn := normaliseQueueID(q.Queue)
+		counter(ch, "fc_consumer_polls_total",
+			"Cumulative broker polls by the queue's consumer.",
+			float64(q.Polls), []string{"queue"}, []string{qn})
+		for _, typ := range sortedKeys(q.Errors) {
+			counter(ch, "fc_consumer_errors_total",
+				"Cumulative failed broker polls, by type (poll error, recovered panic).",
+				float64(q.Errors[typ]), []string{"queue", "type"}, []string{qn, typ})
+		}
+	}
+	counter(ch, "fc_router_panics_recovered_total",
+		"Cumulative panics recovered at a router goroutine boundary (each logged with its stack).",
+		float64(events.PanicsRecovered), nil, nil)
+}
+
+// sortedKeys returns m's keys in order, so a scrape is deterministic.
+func sortedKeys(m map[string]uint64) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func (c *routerCollector) collectPools(ch chan<- prometheus.Metric, events *router.RouterEventCounts) {
 	if c.state.PoolStats == nil {
 		return
+	}
+	processed := map[string]map[string]uint64{}
+	if events != nil {
+		for _, p := range events.Pools {
+			processed[p.Pool] = p.Processed
+		}
 	}
 	poolLabel := []string{"pool"}
 	for _, s := range c.state.PoolStats.PoolStats() {
@@ -85,12 +157,25 @@ func (c *routerCollector) collectPools(ch chan<- prometheus.Metric) {
 
 		if s.Metrics != nil {
 			m := s.Metrics
-			counter(ch, "fc_messages_processed_total",
-				"Cumulative messages processed, by success.",
-				float64(m.TotalSuccess), []string{"pool", "success"}, []string{s.PoolCode, "true"})
-			counter(ch, "fc_messages_processed_total",
-				"Cumulative messages processed, by success.",
-				float64(m.TotalFailure), []string{"pool", "success"}, []string{s.PoolCode, "false"})
+			if events != nil {
+				// By result, from the event-time counters. One label set
+				// for the whole family: a registry refuses a family whose
+				// series disagree on label names.
+				byResult := processed[s.PoolCode]
+				for _, result := range sortedKeys(byResult) {
+					counter(ch, "fc_messages_processed_total",
+						"Cumulative messages processed, by success and mediation result.",
+						float64(byResult[result]), []string{"pool", "success", "result"},
+						[]string{s.PoolCode, strconv.FormatBool(router.ProcessedSuccess(result)), result})
+				}
+			} else {
+				counter(ch, "fc_messages_processed_total",
+					"Cumulative messages processed, by success.",
+					float64(m.TotalSuccess), []string{"pool", "success"}, []string{s.PoolCode, "true"})
+				counter(ch, "fc_messages_processed_total",
+					"Cumulative messages processed, by success.",
+					float64(m.TotalFailure), []string{"pool", "success"}, []string{s.PoolCode, "false"})
+			}
 			counter(ch, "fc_rate_limit_exceeded_total",
 				"Cumulative rate-limit events.",
 				float64(m.TotalRateLimited), poolLabel, lv)
