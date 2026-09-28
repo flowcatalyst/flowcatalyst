@@ -478,6 +478,17 @@ func (h *Handler) advance(ctx context.Context, job *dispatchjob.DispatchJob, att
 		slog.Warn("dispatch failed (subscriber refused credentials; not retried)",
 			"job_id", jobID, "status", res.statusCode, "attempt", attemptNumber, "err", errMsg)
 
+	case res.rejected:
+		// The subscriber answered that retrying cannot help (a function's
+		// fn.Reject): terminal on this attempt, like refused credentials.
+		errMsg := res.errMessage
+		if err := h.repo.MarkFailed(ctx, jobID, job.CreatedAt, &errMsg, dur); err != nil {
+			slog.Warn("dispatch process: mark failed failed", "job_id", jobID, "err", err)
+			return false
+		}
+		slog.Warn("dispatch failed (subscriber rejected; not retried)",
+			"job_id", jobID, "status", res.statusCode, "attempt", attemptNumber)
+
 	case int(attemptNumber) >= int(job.MaxRetries):
 		// Out of retries → terminal failure.
 		errMsg := res.errMessage
@@ -511,6 +522,7 @@ func backoffFor(attemptNumber int32) time.Duration {
 type deliveryResult struct {
 	success    bool
 	deferral   bool // cooperative back-pressure (retry, no budget spend)
+	rejected   bool // the target's terminal "do not retry" (422 + FlowCatalyst-Outcome: reject)
 	retryAfter time.Duration
 	statusCode int
 	hasStatus  bool
@@ -731,6 +743,16 @@ func (h *Handler) exchange(req *http.Request) deliveryResult {
 			hasStatus:  true,
 			body:       &bodyStr,
 			errMessage: "rate limited (429)",
+		}
+
+	case common.IsDeliveryRejected(status, resp.Header.Get(common.DeliveryOutcomeHeader)):
+		return deliveryResult{
+			rejected:   true,
+			statusCode: status,
+			hasStatus:  true,
+			body:       &bodyStr,
+			errMessage: "subscriber rejected the delivery (422, FlowCatalyst-Outcome: reject): not retried",
+			errType:    dispatchjob.ErrorHTTPError,
 		}
 
 	default: // 3xx / 4xx / 5xx → delivery failure

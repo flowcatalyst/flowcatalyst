@@ -221,6 +221,24 @@ func (r *InstanceRepository) MarkDeliveryFailed(ctx context.Context, instanceID,
 	return nil
 }
 
+// DeferDelivery returns an IN_FLIGHT instance to QUEUED, not to be
+// delivered before until, and gives back the attempt MarkInFlight counted:
+// the target asked to be called later (429 + Retry-After), which is
+// back-pressure, not a failed delivery.
+func (r *InstanceRepository) DeferDelivery(ctx context.Context, instanceID string, until time.Time, reason string) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE msg_scheduled_job_instances
+		   SET status = 'QUEUED',
+		       not_before = $2,
+		       delivery_error = $3,
+		       delivery_attempts = GREATEST(delivery_attempts - 1, 0)
+		 WHERE id = $1`, instanceID, until, reason)
+	if err != nil {
+		return fmt.Errorf("scheduled_job_instance defer_delivery: %w", err)
+	}
+	return nil
+}
+
 // ListLogs returns up to `limit` log rows for the supplied instance,
 // oldest first. A limit of <= 0 falls back to 500.
 func (r *InstanceRepository) ListLogs(ctx context.Context, instanceID string, limit int64) ([]ScheduledJobInstanceLog, error) {
@@ -266,6 +284,9 @@ func buildInstanceQuery(base string, fl InstanceListFilters, withPagination bool
 	}
 	if fl.To != nil {
 		f.Clause("created_at < $%d", *fl.To)
+	}
+	if fl.DeliverableAt != nil {
+		f.Clause("(not_before IS NULL OR not_before <= $%d)", *fl.DeliverableAt)
 	}
 	q := base + f.Where()
 	if withPagination {

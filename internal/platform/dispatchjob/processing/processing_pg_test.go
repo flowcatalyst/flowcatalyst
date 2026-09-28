@@ -521,6 +521,39 @@ func TestProcess_UnauthorizedFailsFast(t *testing.T) {
 	assert.Contains(t, summary.Headers, "X-Dispatch-Job-Id", "header names are recorded")
 }
 
+// TestProcess_RejectOutcomeFailsFast pins the function runner's terminal
+// answer (docs/function-runner-plan.md §13.2): 422 with FlowCatalyst-Outcome:
+// reject fails the job on the first attempt, while a plain 422 is an ordinary
+// retryable failure. Mutant: drop the rejected arm from advance.
+func TestProcess_RejectOutcomeFailsFast(t *testing.T) {
+	pool := testpg.Pool(t)
+	base, auth := harness(t, pool)
+
+	reject := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("FlowCatalyst-Outcome", "reject")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(`{"error":"ORDER_UNKNOWN"}`))
+	}))
+	t.Cleanup(reject.Close)
+	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+	}))
+	t.Cleanup(plain.Close)
+
+	seedJob(t, pool, "djproc_rejfst", reject.URL, 3, 0)
+	code, _ := callProcess(t, base, "djproc_rejfst", auth.Sign("djproc_rejfst"))
+	assert.Equal(t, http.StatusOK, code)
+	status, _, scheduled := jobRow(t, pool, "djproc_rejfst")
+	assert.Equal(t, "FAILED", status, "a reject is terminal on the first attempt")
+	assert.Nil(t, scheduled, "no retry is scheduled for a reject")
+
+	seedJob(t, pool, "djproc_422pln", plain.URL, 3, 0)
+	callProcess(t, base, "djproc_422pln", auth.Sign("djproc_422pln"))
+	status, _, scheduled = jobRow(t, pool, "djproc_422pln")
+	assert.Equal(t, "PENDING", status, "a 422 without the reject header is retried")
+	assert.NotNil(t, scheduled)
+}
+
 // TestPlan_BuildsARealSignatureWithoutSending pins the "sign" action (owner,
 // 2026-09-22): Plan returns the delivery a job WOULD get — signing account,
 // every header, a signature that verifies against the returned body and

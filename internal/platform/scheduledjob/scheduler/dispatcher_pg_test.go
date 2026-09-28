@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -220,4 +221,85 @@ func TestDispatcherTick_SignsFiringWithApplicationSecret(t *testing.T) {
 	mac.Write(c.body)
 	assert.Equal(t, hex.EncodeToString(mac.Sum(nil)), c.sig,
 		"signature must verify against timestamp+body with the application secret")
+}
+
+// fireAgainst creates a job targeting url, fires it once and returns the
+// instance id and a dispatcher over the same repositories.
+func fireAgainst(t *testing.T, code, url string) (string, *dispatcher, *scheduledjob.InstanceRepository) {
+	t.Helper()
+	pool := testpg.Pool(t)
+	jobs := scheduledjob.NewRepository(pool)
+	instances := scheduledjob.NewInstanceRepository(pool)
+	uow := testpg.NewUoW(t)
+	ec := testpg.TestEC()
+	created, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.CreateScheduledJob(jobs), operations.CreateCommand{
+		Code: code, Name: code, Crons: []string{"0 0 * * * *"}, TargetURL: &url,
+	}, ec)
+	require.NoError(t, err)
+	fired, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.FireNow(jobs, instances),
+		operations.FireNowCommand{ID: created.ScheduledJobID}, ec)
+	require.NoError(t, err)
+	d := &dispatcher{
+		cfg:       Config{DispatchInterval: time.Second, DispatchBatchSize: 32, HTTPTimeout: time.Second},
+		jobs:      jobs,
+		instances: instances,
+		http:      &http.Client{Timeout: time.Second},
+		isLeader:  func() bool { return true },
+	}
+	return fired.InstanceID, d, instances
+}
+
+// TestDispatcherTick_429DefersWithoutSpendingAnAttempt pins §13.3 of the
+// function-runner plan: a 429 with Retry-After requeues the firing no sooner
+// than Retry-After and gives back the attempt, and the next tick leaves it
+// alone. Mutant: drop the 429 arm — the instance is a failed attempt.
+func TestDispatcherTick_429DefersWithoutSpendingAnAttempt(t *testing.T) {
+	ctx := context.Background()
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		w.Header().Set("Retry-After", "120")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+	id, d, instances := fireAgainst(t, "sjdsp-429", server.URL)
+
+	before := time.Now()
+	require.NoError(t, d.tick(ctx))
+	got, err := instances.FindByID(ctx, id)
+	require.NoError(t, err)
+	assert.Equal(t, scheduledjob.InstanceStatusQueued, got.Status)
+	assert.EqualValues(t, 0, got.DeliveryAttempts, "a deferral spends no attempt")
+
+	var notBefore time.Time
+	require.NoError(t, testpg.Pool(t).QueryRow(ctx, `SELECT not_before FROM msg_scheduled_job_instances WHERE id = $1`, id).Scan(&notBefore))
+	assert.WithinDuration(t, before.Add(120*time.Second), notBefore, 5*time.Second)
+
+	require.NoError(t, d.tick(ctx))
+	assert.EqualValues(t, 1, hits.Load(), "a deferred firing is not delivered before not_before")
+}
+
+// TestDispatcherTick_RejectIsTerminal: 422 + FlowCatalyst-Outcome: reject
+// fails the firing at once, with attempts left.
+func TestDispatcherTick_RejectIsTerminal(t *testing.T) {
+	ctx := context.Background()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("FlowCatalyst-Outcome", "reject")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+	}))
+	defer server.Close()
+	id, d, instances := fireAgainst(t, "sjdsp-reject", server.URL)
+	require.NoError(t, d.tick(ctx))
+	got, err := instances.FindByID(ctx, id)
+	require.NoError(t, err)
+	assert.Equal(t, scheduledjob.InstanceStatusDeliveryFailed, got.Status)
+	require.NotNil(t, got.DeliveryError)
+	assert.Contains(t, *got.DeliveryError, "reject")
+}
+
+func TestRetryAfter(t *testing.T) {
+	assert.Equal(t, 30*time.Second, retryAfter(""))
+	assert.Equal(t, 5*time.Second, retryAfter("5"))
+	assert.Equal(t, time.Hour, retryAfter("99999"))
+	assert.Equal(t, 30*time.Second, retryAfter("soon"))
 }

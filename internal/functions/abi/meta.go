@@ -1,5 +1,7 @@
 package abi
 
+import "github.com/flowcatalyst/flowcatalyst-go/internal/common"
+
 // Version is the ABI this package speaks. A module declares it by exporting
 // the marker function named by ExportMarker.
 const Version = 1
@@ -215,6 +217,6 @@ type DBTx struct {
 // Outcome header: a function's terminal "do not retry" answer is 422 with
 // this header set to OutcomeReject (plan §13.2).
 const (
-	OutcomeHeader = "FlowCatalyst-Outcome"
-	OutcomeReject = "reject"
+	OutcomeHeader = common.DeliveryOutcomeHeader
+	OutcomeReject = common.DeliveryOutcomeReject
 )

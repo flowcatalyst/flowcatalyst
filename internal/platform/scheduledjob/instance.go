@@ -108,6 +108,9 @@ type InstanceListFilters struct {
 	TriggerKind    *TriggerKind
 	From           *time.Time
 	To             *time.Time
-	Limit          *int64
-	Offset         *int64
+	// DeliverableAt keeps only instances not deferred past this time
+	// (not_before NULL or reached) — the dispatcher's view of the queue.
+	DeliverableAt *time.Time
+	Limit         *int64
+	Offset        *int64
 }

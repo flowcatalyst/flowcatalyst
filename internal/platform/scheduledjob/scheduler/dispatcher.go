@@ -11,8 +11,11 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 )
@@ -107,9 +110,11 @@ func (d *dispatcher) run(ctx context.Context) {
 func (d *dispatcher) tick(ctx context.Context) error {
 	queued := scheduledjob.InstanceStatusQueued
 	limit := d.cfg.DispatchBatchSize
+	now := time.Now()
 	instances, err := d.instances.List(ctx, scheduledjob.InstanceListFilters{
-		Status: &queued,
-		Limit:  &limit,
+		Status:        &queued,
+		DeliverableAt: &now,
+		Limit:         &limit,
 	})
 	if err != nil {
 		return err
@@ -240,8 +245,48 @@ func (d *dispatcher) dispatchOne(ctx context.Context, job *scheduledjob.Schedule
 
 	// Non-2xx: read up to 500 chars of the body for the error message.
 	snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 500))
+
+	switch {
+	case resp.StatusCode == http.StatusTooManyRequests:
+		// Back-pressure, not failure: ask again after Retry-After without
+		// spending an attempt (as dispatch-job delivery does).
+		wait := retryAfter(resp.Header.Get("Retry-After"))
+		if err := d.instances.DeferDelivery(ctx, inst.ID, time.Now().Add(wait), fmt.Sprintf("HTTP 429: deferred %s", wait)); err != nil {
+			slog.Warn("scheduled-job dispatcher: defer_delivery failed", "instance_id", inst.ID, "err", err)
+		}
+		return
+	case common.IsDeliveryRejected(resp.StatusCode, resp.Header.Get(common.DeliveryOutcomeHeader)):
+		// The target answered that retrying cannot help: terminal now.
+		msg := fmt.Sprintf("HTTP 422 rejected (FlowCatalyst-Outcome: reject), not retried: %s", string(snippet))
+		if err := d.instances.MarkDeliveryFailed(ctx, inst.ID, msg, true); err != nil {
+			slog.Warn("scheduled-job dispatcher: mark_delivery_failed failed", "instance_id", inst.ID, "err", err)
+		}
+		return
+	}
 	d.handleFailure(ctx, job, inst, attemptsAfter,
 		fmt.Sprintf("HTTP %d (expected 2xx): %s", resp.StatusCode, string(snippet)))
+}
+
+// Retry-After bounds for a deferred firing.
+const (
+	defaultRetryAfter = 30 * time.Second
+	maxRetryAfter     = time.Hour
+)
+
+// retryAfter reads a Retry-After header in seconds or HTTP-date form,
+// defaulting to 30 s and capped at an hour.
+func retryAfter(v string) time.Duration {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return defaultRetryAfter
+	}
+	if n, err := strconv.Atoi(v); err == nil {
+		return min(max(time.Duration(n)*time.Second, 0), maxRetryAfter)
+	}
+	if t, err := http.ParseTime(v); err == nil {
+		return min(max(time.Until(t), 0), maxRetryAfter)
+	}
+	return defaultRetryAfter
 }
 
 // handleFailure records a failed attempt: terminal (DELIVERY_FAILED) when max

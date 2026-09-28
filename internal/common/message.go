@@ -9,6 +9,7 @@ package common
 
 import (
 	"log/slog"
+	"strings"
 	"time"
 )
 
@@ -18,6 +19,20 @@ type MediationType string
 const (
 	MediationTypeHTTP MediationType = "HTTP"
 )
+
+// A delivery target's terminal "do not retry" answer: HTTP 422 carrying
+// DeliveryOutcomeHeader: DeliveryOutcomeReject. Dispatch-job and
+// scheduled-job delivery fail the attempt's job at once instead of spending
+// the remaining retries (function runner, docs/function-runner-plan.md §13.2).
+const (
+	DeliveryOutcomeHeader = "FlowCatalyst-Outcome"
+	DeliveryOutcomeReject = "reject"
+)
+
+// IsDeliveryRejected reports whether a response is the terminal reject.
+func IsDeliveryRejected(status int, outcomeHeader string) bool {
+	return status == 422 && strings.EqualFold(strings.TrimSpace(outcomeHeader), DeliveryOutcomeReject)
+}
 
 // DispatchMode controls ordering behavior within a message group.
 // Shared across platform, scheduler, and router.
