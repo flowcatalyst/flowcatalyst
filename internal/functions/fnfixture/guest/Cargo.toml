@@ -1,6 +1,6 @@
-# Test fixture for internal/functions/engine: a raw ABI v1 guest (no SDK).
-# Rebuild with `make fn-fixtures`; the compiled module is committed at
-# ../fixture.wasm so tests need no Rust toolchain.
+# Test fixture for the function runner: a raw ABI v1 guest (no SDK).
+# The compiled module is committed at ../fixture.wasm so tests need no Rust
+# toolchain; see ../fnfixture.go for the rebuild command.
 [package]
 name = "fixture-guest"
 version = "0.0.0"

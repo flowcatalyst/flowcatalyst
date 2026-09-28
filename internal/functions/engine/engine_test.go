@@ -2,7 +2,6 @@ package engine
 
 import (
 	"context"
-	_ "embed"
 	"encoding/json"
 	"errors"
 	"strconv"
@@ -13,10 +12,10 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/abi"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/budget"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/fnfixture"
 )
 
-//go:embed testdata/fixture.wasm
-var fixture []byte
+var fixture = fnfixture.Wasm
 
 const mib = 1 << 20
 

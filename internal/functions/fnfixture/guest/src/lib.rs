@@ -79,6 +79,11 @@ pub unsafe extern "C" fn fc_handle(ptr: *mut u8, len: u32) -> u64 {
             h.insert("x-path", req.path.clone());
             respond(200, &h, body)
         }
+        "/meta" => {
+            // The request meta exactly as the host sent it.
+            h.insert("content-type", "application/json".to_string());
+            respond(200, &h, meta)
+        }
         "/count" => {
             COUNTER += 1;
             respond(200, &h, COUNTER.to_string().as_bytes())
