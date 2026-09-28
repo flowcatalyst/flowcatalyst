@@ -12,14 +12,17 @@ contract below (schema, guest ABI, manifest, API) is ours to choose. Written aga
 | Engine (wazero, disk cache, fc host module, preload) | built | `internal/functions/engine` |
 | Memory budget + mmap allocator + limit detection | built | `internal/functions/budget` |
 | Control-plane contract + runner client | built | `internal/functions/control` |
-| Runner (invoke, auth, permits, capabilities incl. db/http/emit, reconcile, swap, eviction, heartbeat) | built | `internal/functions/runner` |
+| Runner (invoke, auth, permits, capabilities incl. db/http/emit, reconcile, swap, eviction, heartbeat, public entry) | built | `internal/functions/runner` |
 | Runtimes (`wasm`, `js` on one shared QuickJS engine) | built | `internal/functions/runtimes`, `jsengine`, `clients/fn-js-engine` |
-| Go and Rust guest SDKs | built, proven through the runner | `clients/fn-go`, `clients/fn-rust` |
-| TypeScript guest SDK | in progress | `clients/fn-ts` |
+| Go, Rust and TypeScript guest SDKs | built, proven through the runner | `clients/fn-go`, `clients/fn-rust`, `clients/fn-ts` |
+| Platform registry, publish, versions, aliases, settings, promote wiring | built | `internal/platform/function` |
+| Control-plane server | built | `internal/platform/function/control` |
+| fc-server subsystem, fc-dev wiring | built | `internal/server/functions.go`, `cmd/fcdev` |
+| `fcdev fn` init/build/describe/run/publish/promote/deploy/set/invoke/status | built | `cmd/fcdev/fn*.go` |
+| End-to-end on fc-dev (deploy → event → signed delivery → function → emitted event) | verified 2026-09-28 | — |
 | Terminal reject outcome; scheduled jobs honour 429 (§13.2, §13.3) | built | dispatch-job processing, scheduled-job dispatcher, migration 060 |
-| Platform registry, publish, promote wiring, control-plane server | in progress | `internal/platform/function` |
-| fc-server subsystem + fc-dev wiring + `fcdev fn` CLI | not started | |
-| Public listener, domains | not started | |
+| Admin UI pages | not started | |
+| Public routes: domain claims and route materialisation (platform side) | not started; the runner's public entry is built | |
 
 Owner decisions §13.1–13.3 were taken as proposed (two-label addresses, the reject outcome,
 scheduled-job 429). §13.4 was ruled 2026-09-28: no native runtime for now — Wasm only, with the

@@ -42,6 +42,24 @@ curl -H "Authorization: Bearer dev" localhost:8099/fn/local.fn/hello/Aroha
   printed; platform endpoints accept any bearer token; `--watch` picks up
   every rebuild.
 
+## Publishing and promoting
+
+```sh
+fcdev fn deploy billing.invoice-pdf . --create   # build, publish, wait until loaded, promote live
+fcdev fn set billing.invoice-pdf --config GREETING=Hi --secret STRIPE_KEY=sk_…
+fcdev fn publish billing.invoice-pdf function.wasm   # publish only
+fcdev fn promote billing.invoice-pdf 7                # point live at version 7 (--alias for others)
+fcdev fn invoke billing.invoice-pdf@qa hello/Aroha    # call through a runner
+fcdev fn status billing.invoice-pdf
+```
+
+A version must be loaded by a runner before it can be promoted (`deploy` waits for this).
+Promotion is refused while a config key, secret or database the version declares has no value.
+Against a local `fcdev` the commands sign in by themselves; in CI pass `--platform`,
+`--client-id` and `--client-secret` (or `FC_PLATFORM_URL`, `FC_CLIENT_ID`, `FC_CLIENT_SECRET`)
+for a service account holding `platform:function-publisher` (plus `platform:function:function:manage`
+to create functions).
+
 ## Declaring what the function needs
 
 Everything a function needs is declared **in its code**, and the platform
