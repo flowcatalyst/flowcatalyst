@@ -38,15 +38,21 @@ const (
 	SourceCode Source = "CODE"
 	SourceAPI  Source = "API"
 	SourceUI   Source = "UI"
+	// SourceFunction marks a subscription materialised by a function
+	// promote (docs/function-runner-plan.md §8.5, work package 8):
+	// FunctionID is set, and SDK sync (sdksync) must never touch these rows
+	// — see sdksync's guard.
+	SourceFunction Source = "FUNCTION"
 )
 
 // ParseSource parses a stored source value. Returns ok=false for anything
-// other than CODE, API, or UI — callers MUST reject on ok=false rather than
-// coerce an unrecognised value to UI (X-06: a loud read error, never a
-// silent default). Follows the (T, bool) shape of common.ParseOutboxItemType.
+// other than CODE, API, UI, or FUNCTION — callers MUST reject on ok=false
+// rather than coerce an unrecognised value to UI (X-06: a loud read error,
+// never a silent default). Follows the (T, bool) shape of
+// common.ParseOutboxItemType.
 func ParseSource(s string) (Source, bool) {
 	switch Source(s) {
-	case SourceCode, SourceAPI, SourceUI:
+	case SourceCode, SourceAPI, SourceUI, SourceFunction:
 		return Source(s), true
 	default:
 		return "", false
@@ -116,9 +122,13 @@ type Subscription struct {
 	MaxRetries       int32               `json:"maxRetries"`
 	ServiceAccountID *string             `json:"serviceAccountId,omitempty"`
 	DataOnly         bool                `json:"dataOnly"`
-	CreatedBy        *string             `json:"createdBy,omitempty"`
-	CreatedAt        time.Time           `json:"createdAt"`
-	UpdatedAt        time.Time           `json:"updatedAt"`
+	// FunctionID is set only for Source == SourceFunction: the owning
+	// function (docs/function-runner-plan.md §8.5). Nil for every other
+	// source.
+	FunctionID *string   `json:"functionId,omitempty"`
+	CreatedBy  *string   `json:"createdBy,omitempty"`
+	CreatedAt  time.Time `json:"createdAt"`
+	UpdatedAt  time.Time `json:"updatedAt"`
 }
 
 // IDStr satisfies usecase.HasID.

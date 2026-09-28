@@ -258,9 +258,10 @@ INSERT INTO msg_scheduled_jobs
     (id, client_id, code, name, description, status, crons, timezone,
      payload, concurrent, tracks_completion, timeout_seconds,
      delivery_max_attempts, target_url, last_fired_at,
-     created_at, updated_at, created_by, updated_by, version, application_id)
+     created_at, updated_at, created_by, updated_by, version, application_id,
+     function_id)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-        $13, $14, $15, $16, $17, $18, $19, $20, $21)
+        $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
 ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,
     description = EXCLUDED.description,
@@ -277,7 +278,12 @@ ON CONFLICT (id) DO UPDATE SET
     updated_at = EXCLUDED.updated_at,
     updated_by = EXCLUDED.updated_by,
     version = EXCLUDED.version,
-    application_id = EXCLUDED.application_id
+    application_id = EXCLUDED.application_id,
+    -- function_id is set once at creation by the promote wiring
+    -- reconciliation (docs/function-runner-plan.md §8.5) and never changes
+    -- for the row's lifetime, but is included in the upsert for symmetry
+    -- with every other column here.
+    function_id = EXCLUDED.function_id
 `
 
 type ScheduledJobUpsertParams struct {
@@ -302,6 +308,7 @@ type ScheduledJobUpsertParams struct {
 	UpdatedBy           *string         `db:"updated_by"`
 	Version             int32           `db:"version"`
 	ApplicationID       *string         `db:"application_id"`
+	FunctionID          *string         `db:"function_id"`
 }
 
 func (q *Queries) ScheduledJobUpsert(ctx context.Context, arg ScheduledJobUpsertParams) error {
@@ -327,6 +334,7 @@ func (q *Queries) ScheduledJobUpsert(ctx context.Context, arg ScheduledJobUpsert
 		arg.UpdatedBy,
 		arg.Version,
 		arg.ApplicationID,
+		arg.FunctionID,
 	)
 	return err
 }

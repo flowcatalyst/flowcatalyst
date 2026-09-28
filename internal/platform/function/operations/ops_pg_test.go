@@ -4,6 +4,7 @@ package operations_test
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -11,16 +12,33 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
-func TestMain(m *testing.M) { testpg.RunMain(m) }
+// TestMain sets FLOWCATALYST_APP_KEY before the shared embedded-PG fixture
+// boots, same convention as function/repository_pg_test.go and
+// serviceaccount/repository_pg_test.go: the wiring tests seed real service
+// accounts with webhook credentials (encrypted at rest), and settings tests
+// write SECRET/DB values — both need encryption configured.
+func TestMain(m *testing.M) {
+	key, err := encryption.GenerateKey()
+	if err != nil {
+		panic(err)
+	}
+	_ = os.Setenv("FLOWCATALYST_APP_KEY", key)
+	testpg.RunMain(m)
+}
 
 // runAuthorized drives op through the full use-case envelope as an anchor
 // principal — mirrors dispatchpool/operations/ops_pg_test.go.
@@ -28,6 +46,25 @@ func runAuthorized[C any, E usecase.DomainEvent](
 	uow *usecasepgx.UnitOfWork, op usecaseop.Operation[C, E], cmd C,
 ) (E, error) {
 	return usecaseop.Run(testpg.AnchorCtx(), uow, op, cmd, testpg.TestEC())
+}
+
+// runAuthorizedTx is runAuthorized's TxOperation sibling.
+func runAuthorizedTx[C any, R any](
+	uow *usecasepgx.UnitOfWork, op usecaseop.TxOperation[C, R], cmd C,
+) (R, error) {
+	return usecaseop.RunTx(testpg.AnchorCtx(), uow, op, cmd, testpg.TestEC())
+}
+
+// testWiring builds a WiringDeps against the test pool for DeleteFunction /
+// PutAlias / DeleteAlias tests in this package.
+func testWiring(pool *pgxpool.Pool) operations.WiringDeps {
+	return operations.WiringDeps{
+		Subscriptions:     subscription.NewRepository(pool),
+		ScheduledJobs:     scheduledjob.NewRepository(pool),
+		DispatchPools:     dispatchpool.NewRepository(pool),
+		ServiceAccounts:   serviceaccount.NewRepository(pool),
+		RunnerURLTemplate: "http://127.0.0.1:8095",
+	}
 }
 
 // seedApplication inserts a bare app_applications row directly — the
@@ -347,9 +384,9 @@ func TestDeleteFunction_HappyPath(t *testing.T) {
 	seedApplication(t, pool, "app_opdeletefn001", "opdeletefnapp")
 	seeded := mustCreate(t, repo, apps, uow, "app_opdeletefn001", "del-fn")
 
-	ev, err := runAuthorized(uow, operations.DeleteFunction(repo), operations.DeleteCommand{ID: seeded.FunctionID})
+	ev, err := runAuthorizedTx(uow, operations.DeleteFunction(repo, testWiring(pool)), operations.DeleteCommand{ID: seeded.FunctionID})
 	require.NoError(t, err)
-	assert.Equal(t, seeded.FunctionID, ev.FunctionID)
+	assert.Equal(t, seeded.FunctionID, ev.Event.FunctionID)
 
 	got, err := repo.FindByID(ctx, seeded.FunctionID)
 	require.NoError(t, err)
@@ -362,10 +399,10 @@ func TestDeleteFunction_Errors(t *testing.T) {
 	repo := function.NewRepository(pool)
 	uow := testpg.NewUoW(t)
 
-	_, err := runAuthorized(uow, operations.DeleteFunction(repo), operations.DeleteCommand{})
+	_, err := runAuthorizedTx(uow, operations.DeleteFunction(repo, testWiring(pool)), operations.DeleteCommand{})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = runAuthorized(uow, operations.DeleteFunction(repo), operations.DeleteCommand{ID: "fnc_doesnotexist1"})
+	_, err = runAuthorizedTx(uow, operations.DeleteFunction(repo, testWiring(pool)), operations.DeleteCommand{ID: "fnc_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "Function_NOT_FOUND")
 }
 
@@ -397,7 +434,7 @@ func TestDeleteFunction_ResourceScope_AnchorOnlyForPlatformOwned(t *testing.T) {
 		Permissions: []string{"platform:function:manage"},
 	})
 
-	_, err = usecaseop.Run(clientCtx, uow, operations.DeleteFunction(repo),
+	_, err = usecaseop.RunTx(clientCtx, uow, operations.DeleteFunction(repo, testWiring(pool)),
 		operations.DeleteCommand{ID: platformFn.FunctionID}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "SCOPE_FORBIDDEN")
 
@@ -407,7 +444,7 @@ func TestDeleteFunction_ResourceScope_AnchorOnlyForPlatformOwned(t *testing.T) {
 	assert.NotNil(t, got)
 
 	// The client's own function may be deleted.
-	_, err = usecaseop.Run(clientCtx, uow, operations.DeleteFunction(repo),
+	_, err = usecaseop.RunTx(clientCtx, uow, operations.DeleteFunction(repo, testWiring(pool)),
 		operations.DeleteCommand{ID: ownEv.FunctionID}, testpg.TestEC())
 	require.NoError(t, err)
 }

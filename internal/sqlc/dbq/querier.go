@@ -208,10 +208,10 @@ type Querier interface {
 	FunctionSettingList(ctx context.Context, functionID string) ([]FnSetting, error)
 	FunctionSettingUpsert(ctx context.Context, arg FunctionSettingUpsertParams) error
 	FunctionUpsert(ctx context.Context, arg FunctionUpsertParams) error
-	FunctionVersionGetByDigest(ctx context.Context, arg FunctionVersionGetByDigestParams) (FnVersion, error)
-	FunctionVersionGetByNumber(ctx context.Context, arg FunctionVersionGetByNumberParams) (FnVersion, error)
+	FunctionVersionGetByDigest(ctx context.Context, arg FunctionVersionGetByDigestParams) (FunctionVersionGetByDigestRow, error)
+	FunctionVersionGetByNumber(ctx context.Context, arg FunctionVersionGetByNumberParams) (FunctionVersionGetByNumberRow, error)
 	FunctionVersionInsert(ctx context.Context, arg FunctionVersionInsertParams) error
-	FunctionVersionListByFunction(ctx context.Context, functionID string) ([]FnVersion, error)
+	FunctionVersionListByFunction(ctx context.Context, functionID string) ([]FunctionVersionListByFunctionRow, error)
 	FunctionVersionSetFailure(ctx context.Context, arg FunctionVersionSetFailureParams) error
 	FunctionVersionSetReady(ctx context.Context, arg FunctionVersionSetReadyParams) error
 	FunctionVersionSetStatus(ctx context.Context, arg FunctionVersionSetStatusParams) error

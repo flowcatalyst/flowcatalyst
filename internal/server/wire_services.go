@@ -8,6 +8,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/envutil"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/budget"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/engine"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/runtimes"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/login"
@@ -18,6 +21,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/twofa"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/branding"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/artifact"
+	functioncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/control"
+	functionops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/mfa"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/notify"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/email"
@@ -49,7 +54,32 @@ type serviceSet struct {
 	loginEP             *login.Endpoint
 	principalVersions   *versioncache.Reader
 	functionArtifacts   artifact.Store
+	// functionControlListener fans out NOTIFY fng_desired to the control
+	// plane's held long-polls (docs/function-runner-plan.md §8.3). Started
+	// by run.go via PlatformHandles.FunctionControlListener; nil only when
+	// buildServices was handed a nil pool.
+	functionControlListener *functioncontrol.Listener
+	// functionLoader reads a published artifact's fc_describe document the
+	// way the runner will (plan §3, §8.2 WP4 task 2): the platform's own
+	// tiny, no-capability wazero engine, built once here and shared by
+	// every publish.
+	functionLoader *runtimes.Loader
+	// functionWiring bundles the repositories + FC_FUNCTIONS_RUNNER_URL
+	// template the promote wiring reconciliation (WP8) composes against.
+	functionWiring functionops.WiringDeps
 }
+
+// functionDescribeMemoryLimitBytes / functionDescribeMemoryReserveBytes size
+// the platform's own tiny engine for reading fc_describe at publish (plan
+// §3: "at publish it instantiates the module with no capabilities to read
+// its manifest... That is safe because the module is sandboxed"). Far more
+// than any describe call needs; reserve 0 because this engine hosts nothing
+// else (plan §8.2 WP4 task 2: "its own small budget (e.g. 256 MiB, reserve
+// 0)").
+const (
+	functionDescribeMemoryLimitBytes   = 256 << 20
+	functionDescribeMemoryReserveBytes = 0
+)
 
 // defaultFunctionArtifactDir is the file-store root used when
 // FC_FUNCTIONS_ARTIFACT_STORE is unset (docs/function-runner-plan.md §8.4).
@@ -247,6 +277,42 @@ func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet,
 	svcs.functionArtifacts, err = artifact.FromURL(context.Background(), cfg.FunctionsArtifactStore, defaultFunctionArtifactDir)
 	if err != nil {
 		return nil, fmt.Errorf("function artifact store init: %w", err)
+	}
+
+	// The platform's own tiny engine for reading a published artifact's
+	// fc_describe document at publish time (plan §3, §8.2 WP4 task 2) —
+	// built ONCE here, no capabilities, a small dedicated budget distinct
+	// from the runner's own (internal/server/functions.go): this engine
+	// only ever instantiates one no-capability instance per publish call.
+	functionBudget, err := budget.New(functionDescribeMemoryLimitBytes, functionDescribeMemoryReserveBytes)
+	if err != nil {
+		return nil, fmt.Errorf("function describe budget init: %w", err)
+	}
+	functionEngine, err := engine.New(context.Background(), engine.Config{Budget: functionBudget})
+	if err != nil {
+		return nil, fmt.Errorf("function describe engine init: %w", err)
+	}
+	svcs.functionLoader = runtimes.NewLoader(functionEngine)
+
+	// Promote wiring deps (WP8, plan §8.5): the repositories + runner URL
+	// template SetAlias/DeleteAlias/DeleteFunction reconcile against.
+	svcs.functionWiring = functionops.WiringDeps{
+		Subscriptions:     repos.subscriptionRepo,
+		ScheduledJobs:     repos.scheduledJobRepo,
+		DispatchPools:     repos.dispatchPoolRepo,
+		ServiceAccounts:   repos.serviceAccountRepo,
+		RunnerURLTemplate: cfg.FunctionsRunnerURL,
+	}
+
+	// Function control-plane NOTIFY listener (docs/function-runner-plan.md
+	// §8.3): fans out `NOTIFY fng_desired` to held long-polls. Built here
+	// (Run is started by the caller — see run.go's PlatformHandles.
+	// FunctionControlListener) so it shares this process's pool like every
+	// other service; a nil pool (no database) leaves it unusable, matching
+	// how the rest of buildServices behaves under FC_PLATFORM_ENABLED with
+	// no DB configured.
+	if pool != nil {
+		svcs.functionControlListener = functioncontrol.NewListener(pool, nil)
 	}
 
 	return svcs, nil

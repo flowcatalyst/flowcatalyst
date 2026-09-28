@@ -223,15 +223,13 @@ func PlatformRoles() []role.Role {
 			[]string{permFunctionView, permFunctionPublish, permFunctionPromote}),
 
 		// platform:function-runner — the deployed function runner's own
-		// role (docs/function-runner-plan.md §3, §6.5). Holds no
-		// permissions yet: the control-plane routes it will poll
+		// role (docs/function-runner-plan.md §3, §6.5). One permission,
+		// same posture as platform:router: it polls its own control plane
 		// (/control/functions/desired, /heartbeat, /artifacts/{digest},
-		// /events — plan §8.3) and their permission(s) are a WP5 addition,
-		// same posture "platform:router" started from before its one
-		// permission existed.
+		// /events — plan §8.3) and does nothing else on the platform.
 		mk("function-runner", "Function Runner",
-			"Fetches function runner desired state and reports heartbeats (WP5 control plane, not yet wired)",
-			[]string{}),
+			"Fetches function runner desired state and reports heartbeats",
+			[]string{permFunctionRunnerControl}),
 	}
 }
 

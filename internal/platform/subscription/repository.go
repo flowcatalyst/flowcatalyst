@@ -176,6 +176,36 @@ func (r *Repository) FindByApplicationAndClient(ctx context.Context, appCode str
 	return r.hydrateAll(ctx, bare)
 }
 
+// FindByFunctionID returns every subscription owned by a function (Source ==
+// SourceFunction, function_id = functionID), hydrated — used by the promote
+// wiring reconciliation (docs/function-runner-plan.md §8.5, work package 8)
+// to diff the desired set from describe against what already exists.
+func (r *Repository) FindByFunctionID(ctx context.Context, functionID string) ([]Subscription, error) {
+	const q = `SELECT id, code, application_code, name, description, client_id,
+		client_identifier, client_scoped, target, queue, source, status,
+		max_age_seconds, dispatch_pool_id, dispatch_pool_code, delay_seconds, sequence,
+		mode, timeout_seconds, max_retries, service_account_id, data_only,
+		created_by, created_at, updated_at, connection_id, function_id FROM msg_subscriptions
+		WHERE function_id = $1 ORDER BY code`
+	rows, err := r.pool.Query(ctx, q, functionID)
+	if err != nil {
+		return nil, err
+	}
+	collected, err := pgx.CollectRows(rows, pgx.RowToStructByName[dbq.MsgSubscription])
+	if err != nil {
+		return nil, err
+	}
+	bare := make([]Subscription, 0, len(collected))
+	for _, row := range collected {
+		s, err := rowToSubscription(row)
+		if err != nil {
+			return nil, err
+		}
+		bare = append(bare, *s)
+	}
+	return r.hydrateAll(ctx, bare)
+}
+
 // FindCodesByConnectionID returns the codes of subscriptions that target
 // this connection. Used by the connection sync's delete-guard: removing a
 // connection a live subscription still points at would silently orphan its
@@ -229,6 +259,7 @@ func (r *Repository) Persist(ctx context.Context, s *Subscription, tx *usecasepg
 		CreatedBy:        s.CreatedBy,
 		CreatedAt:        s.CreatedAt,
 		UpdatedAt:        time.Now().UTC(),
+		FunctionID:       s.FunctionID,
 	}); err != nil {
 		return fmt.Errorf("subscription persist: %w", err)
 	}
@@ -368,6 +399,7 @@ func rowToSubscription(row dbq.MsgSubscription) (*Subscription, error) {
 		MaxRetries:       row.MaxRetries,
 		ServiceAccountID: row.ServiceAccountID,
 		DataOnly:         row.DataOnly,
+		FunctionID:       row.FunctionID,
 		CreatedBy:        row.CreatedBy,
 		CreatedAt:        row.CreatedAt,
 		UpdatedAt:        row.UpdatedAt,

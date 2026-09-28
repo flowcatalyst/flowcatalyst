@@ -325,6 +325,40 @@ func scanRawRow(rows pgx.Rows) (*Event, error) {
 	return &e, nil
 }
 
+// FindByDeduplicationID returns the most recently stored msg_events row
+// carrying deduplicationID, or nil if none exists. Used by callers that
+// need to report back an idempotent write's existing id — the function
+// control plane's emit endpoint (docs/function-runner-plan.md §8.3)
+// ingests through InsertBatch, this repository's own dedup path, and then
+// looks the row back up here to answer with the id either way, so a retried
+// emit with the same dedupId is idempotent the same way POST /api/events is.
+func (r *Repository) FindByDeduplicationID(ctx context.Context, deduplicationID string) (*Event, error) {
+	if deduplicationID == "" {
+		return nil, nil
+	}
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, spec_version, type, source, subject, time, data,
+		        deduplication_id, client_id, message_group, correlation_id,
+		        causation_id, context_data, created_at
+		   FROM msg_events WHERE deduplication_id = $1
+		   ORDER BY created_at DESC LIMIT 1`, deduplicationID)
+	if err != nil {
+		return nil, fmt.Errorf("event repo: %w", err)
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return nil, nil
+	}
+	e, err := scanRawRow(rows)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return e, rows.Err()
+}
+
 // DistinctValues lists up to `limit` distinct non-null values for the
 // given column. Used to populate the frontend's filter-options dropdowns
 // (event types, sources, client IDs). The column name is hardcoded by

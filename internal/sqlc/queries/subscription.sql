@@ -48,9 +48,14 @@ INSERT INTO msg_subscriptions
      client_scoped, connection_id, target, queue, source, status, max_age_seconds,
      dispatch_pool_id, dispatch_pool_code, delay_seconds, sequence, mode,
      timeout_seconds, max_retries, service_account_id, data_only,
-     created_by, created_at, updated_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
+     created_by, created_at, updated_at, function_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
 ON CONFLICT (id) DO UPDATE SET
+    -- function_id is set once at creation by the promote wiring
+    -- reconciliation (docs/function-runner-plan.md §8.5) and never changes
+    -- for the row's lifetime, but is included in the upsert for symmetry
+    -- with every other column here.
+    function_id = EXCLUDED.function_id,
     name = EXCLUDED.name,
     description = EXCLUDED.description,
     target = EXCLUDED.target,

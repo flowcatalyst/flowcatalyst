@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	fncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/functions/control"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/appdocs"
 	applicationapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/api"
 	auditapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit/api"
@@ -32,6 +33,7 @@ import (
 	eventapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/event/api"
 	eventtypeapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/api"
 	functionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/api"
+	functioncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/control"
 	identityproviderapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider/api"
 	loginattemptapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/openapispecs"
@@ -47,6 +49,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 	scheduledjobapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/sdksync"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	serviceaccountapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	bff "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/bff"
@@ -321,6 +324,24 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			Apps:      repos.applicationRepo,
 			UoW:       uow,
 			Artifacts: svcs.functionArtifacts,
+			Loader:    svcs.functionLoader,
+			Wiring:    svcs.functionWiring,
+		})
+
+		// Control plane (docs/function-runner-plan.md §8.3): the function
+		// runner's own surface, gated on platform:function:runner:control
+		// (role platform:function-runner) rather than any of the
+		// human-facing function permissions above. Registered as an
+		// ordinary huma route for the same reason
+		// GET /api/dispatch/router-config is (internal/platform/dispatch,
+		// dispatch/api.go's doc comment) — one auth story, one spec.
+		functioncontrol.Register(humaAPI, &functioncontrol.State{
+			Repo:      repos.functionRepo,
+			Events:    repos.eventRepo,
+			Artifacts: svcs.functionArtifacts,
+			Creds:     serviceaccount.NewCachedOutboundCredsResolver(repos.serviceAccountRepo, time.Minute),
+			Auth:      fncontrol.TokenAuth{Issuer: cfg.JWTIssuer, Audience: cfg.JWTIssuer},
+			Listener:  svcs.functionControlListener,
 		})
 
 		// SDK self-registration ("sync") endpoints, scoped under

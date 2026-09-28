@@ -200,6 +200,34 @@ func buildJobQuery(base string, f ListFilters, withPagination bool) (string, []a
 	return q, args
 }
 
+// FindByFunctionID returns every job owned by a function, hydrated — used by
+// the promote wiring reconciliation (docs/function-runner-plan.md §8.5, work
+// package 8) to diff the desired set from describe against what already
+// exists.
+func (r *Repository) FindByFunctionID(ctx context.Context, functionID string) ([]ScheduledJob, error) {
+	rows, err := r.pool.Query(ctx, `SELECT id, client_id, code, name, description, status, crons, timezone,
+		payload, concurrent, tracks_completion, timeout_seconds,
+		delivery_max_attempts, target_url, last_fired_at, created_at, updated_at,
+		created_by, updated_by, version, application_id, function_id FROM msg_scheduled_jobs
+		WHERE function_id = $1 ORDER BY code`, functionID)
+	if err != nil {
+		return nil, err
+	}
+	collected, err := pgx.CollectRows(rows, pgx.RowToStructByName[dbq.MsgScheduledJob])
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ScheduledJob, 0, len(collected))
+	for _, row := range collected {
+		j, err := rowToScheduledJob(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *j)
+	}
+	return out, nil
+}
+
 // FindActive lists ACTIVE jobs; used by the scheduler poller.
 func (r *Repository) FindActive(ctx context.Context) ([]ScheduledJob, error) {
 	rows, err := r.q.ScheduledJobFindActive(ctx)
@@ -260,6 +288,7 @@ func (r *Repository) Persist(ctx context.Context, j *ScheduledJob, tx *usecasepg
 		CreatedBy:           j.CreatedBy,
 		UpdatedBy:           j.UpdatedBy,
 		Version:             j.Version,
+		FunctionID:          j.FunctionID,
 	})
 }
 
@@ -302,6 +331,7 @@ func rowToScheduledJob(row dbq.MsgScheduledJob) (*ScheduledJob, error) {
 		CreatedBy:           row.CreatedBy,
 		UpdatedBy:           row.UpdatedBy,
 		Version:             row.Version,
+		FunctionID:          row.FunctionID,
 	}
 	if j.Crons == nil {
 		j.Crons = []string{}

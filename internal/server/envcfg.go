@@ -230,6 +230,15 @@ type EnvCfg struct {
 	// see internal/platform/function/artifact.FromURL and
 	// defaultFunctionArtifactDir in wire_services.go. docs/function-runner-plan.md §8.4.
 	FunctionsArtifactStore string
+
+	// FunctionsRunnerURL is the function runner's base URL
+	// (FC_FUNCTIONS_RUNNER_URL), templated with "{pool}" so one platform can
+	// address several runner deployments (one per pool in production; fc-dev
+	// runs a single in-process runner). Promote wiring (WP8,
+	// docs/function-runner-plan.md §8.5) substitutes "{pool}" and appends
+	// "/fn/<address><path>" to build a subscription/scheduled-job delivery
+	// target. Defaults to the fc-dev/single-runner loopback address.
+	FunctionsRunnerURL string
 }
 
 func LoadEnv() EnvCfg {
@@ -338,6 +347,7 @@ func LoadEnv() EnvCfg {
 		RefreshTokenTTLSecs: positiveOr(envInt("OIDC_REFRESH_TOKEN_TTL", 0), 7*24*60*60),
 
 		FunctionsArtifactStore: envOr("FC_FUNCTIONS_ARTIFACT_STORE", ""),
+		FunctionsRunnerURL:     envOr("FC_FUNCTIONS_RUNNER_URL", "http://127.0.0.1:8095"),
 	}
 	// Default the dispatch callback to the local API listener: the router
 	// consumes a queued job and POSTs {messageId} here for delivery.

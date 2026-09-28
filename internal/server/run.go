@@ -86,13 +86,15 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 	var routerSrv *router.Server
 	var routerErr error
 	var platformAuth func(http.Handler) http.Handler
+	var platformHandles PlatformHandles
 
 	if cfg.PlatformEnabled {
-		handles, err := WirePlatform(r, pool, cfg, dispatchSettings)
+		var err error
+		platformHandles, err = WirePlatform(r, pool, cfg, dispatchSettings)
 		if err != nil {
 			return fmt.Errorf("platform wiring: %w", err)
 		}
-		platformAuth = handles.Authenticate
+		platformAuth = platformHandles.Authenticate
 		slog.Info("platform API wired")
 	}
 
@@ -201,6 +203,15 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 		// status IN (QUEUED, PROCESSING), so concurrent instances are safe.
 		go dispatchjob.RunReaper(ctx, dispatchjob.NewRepository(pool),
 			dispatchjob.DefaultReaperInterval, dispatchjob.DefaultProcessingLiveAfter)
+
+		// Function control plane's NOTIFY fng_desired fan-out
+		// (docs/function-runner-plan.md §8.3). Not leader-gated: every
+		// platform process LISTENs and fans out to its own in-process
+		// waiters only, so running it on every replica is correct, not
+		// just harmless.
+		if platformHandles.FunctionControlListener != nil {
+			go platformHandles.FunctionControlListener.Run(ctx)
+		}
 	}
 	if cfg.SchedulerEnabled {
 		wg.Go(func() { StartScheduler(ctx, pool, cfg, dispatchSettings) })

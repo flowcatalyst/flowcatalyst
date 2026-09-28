@@ -152,6 +152,7 @@ type FnVersion struct {
 	ReadyAt     *time.Time      `db:"ready_at"`
 	PublishedBy *string         `db:"published_by"`
 	CreatedAt   time.Time       `db:"created_at"`
+	Runtime     string          `db:"runtime"`
 }
 
 type IamAuthorizationCode struct {

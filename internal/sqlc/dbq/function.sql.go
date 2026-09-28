@@ -348,9 +348,24 @@ type FunctionVersionGetByDigestParams struct {
 	Digest     string `db:"digest"`
 }
 
-func (q *Queries) FunctionVersionGetByDigest(ctx context.Context, arg FunctionVersionGetByDigestParams) (FnVersion, error) {
+type FunctionVersionGetByDigestRow struct {
+	ID          string          `db:"id"`
+	FunctionID  string          `db:"function_id"`
+	Number      int32           `db:"number"`
+	Digest      string          `db:"digest"`
+	SizeBytes   int64           `db:"size_bytes"`
+	Abi         int32           `db:"abi"`
+	Describe    json.RawMessage `db:"describe"`
+	Status      string          `db:"status"`
+	Failure     json.RawMessage `db:"failure"`
+	ReadyAt     *time.Time      `db:"ready_at"`
+	PublishedBy *string         `db:"published_by"`
+	CreatedAt   time.Time       `db:"created_at"`
+}
+
+func (q *Queries) FunctionVersionGetByDigest(ctx context.Context, arg FunctionVersionGetByDigestParams) (FunctionVersionGetByDigestRow, error) {
 	row := q.db.QueryRow(ctx, functionVersionGetByDigest, arg.FunctionID, arg.Digest)
-	var i FnVersion
+	var i FunctionVersionGetByDigestRow
 	err := row.Scan(
 		&i.ID,
 		&i.FunctionID,
@@ -380,9 +395,24 @@ type FunctionVersionGetByNumberParams struct {
 	Number     int32  `db:"number"`
 }
 
-func (q *Queries) FunctionVersionGetByNumber(ctx context.Context, arg FunctionVersionGetByNumberParams) (FnVersion, error) {
+type FunctionVersionGetByNumberRow struct {
+	ID          string          `db:"id"`
+	FunctionID  string          `db:"function_id"`
+	Number      int32           `db:"number"`
+	Digest      string          `db:"digest"`
+	SizeBytes   int64           `db:"size_bytes"`
+	Abi         int32           `db:"abi"`
+	Describe    json.RawMessage `db:"describe"`
+	Status      string          `db:"status"`
+	Failure     json.RawMessage `db:"failure"`
+	ReadyAt     *time.Time      `db:"ready_at"`
+	PublishedBy *string         `db:"published_by"`
+	CreatedAt   time.Time       `db:"created_at"`
+}
+
+func (q *Queries) FunctionVersionGetByNumber(ctx context.Context, arg FunctionVersionGetByNumberParams) (FunctionVersionGetByNumberRow, error) {
 	row := q.db.QueryRow(ctx, functionVersionGetByNumber, arg.FunctionID, arg.Number)
-	var i FnVersion
+	var i FunctionVersionGetByNumberRow
 	err := row.Scan(
 		&i.ID,
 		&i.FunctionID,
@@ -448,15 +478,30 @@ WHERE function_id = $1
 ORDER BY number DESC
 `
 
-func (q *Queries) FunctionVersionListByFunction(ctx context.Context, functionID string) ([]FnVersion, error) {
+type FunctionVersionListByFunctionRow struct {
+	ID          string          `db:"id"`
+	FunctionID  string          `db:"function_id"`
+	Number      int32           `db:"number"`
+	Digest      string          `db:"digest"`
+	SizeBytes   int64           `db:"size_bytes"`
+	Abi         int32           `db:"abi"`
+	Describe    json.RawMessage `db:"describe"`
+	Status      string          `db:"status"`
+	Failure     json.RawMessage `db:"failure"`
+	ReadyAt     *time.Time      `db:"ready_at"`
+	PublishedBy *string         `db:"published_by"`
+	CreatedAt   time.Time       `db:"created_at"`
+}
+
+func (q *Queries) FunctionVersionListByFunction(ctx context.Context, functionID string) ([]FunctionVersionListByFunctionRow, error) {
 	rows, err := q.db.Query(ctx, functionVersionListByFunction, functionID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []FnVersion{}
+	items := []FunctionVersionListByFunctionRow{}
 	for rows.Next() {
-		var i FnVersion
+		var i FunctionVersionListByFunctionRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.FunctionID,

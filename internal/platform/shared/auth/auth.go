@@ -181,6 +181,10 @@ const (
 	permFunctionPromote       = "platform:function:promote"
 	permFunctionSecretManage  = "platform:function:secret:manage"
 	permFunctionVersionInvoke = "platform:function:version:invoke"
+	// permFunctionRunnerControl gates the control-plane routes
+	// (/control/functions/… — docs/function-runner-plan.md §8.3, WP5): a
+	// deployed runner's own credential, never granted to a human role.
+	permFunctionRunnerControl = "platform:function:runner:control"
 	// Super-admin wildcard.
 	permSuperAdmin = "platform:*:*:*"
 )
@@ -913,4 +917,14 @@ func CanManageFunctionSecrets(a *AuthContext) error {
 
 func CanInvokeFunctionVersions(a *AuthContext) error {
 	return requirePermission(a, permFunctionVersionInvoke)
+}
+
+// CanControlFunctionRunner gates the control plane a function runner polls
+// (docs/function-runner-plan.md §8.3, WP5): desired state, heartbeat,
+// artifact download, event emit. Anchor-only in addition to the permission
+// (see the handlers), the same posture as CanReadDispatchPools's use on
+// /api/dispatch/router-config — the desired document spans every client's
+// function secrets and DSNs in the pool, so it is never client-delegable.
+func CanControlFunctionRunner(a *AuthContext) error {
+	return requirePermission(a, permFunctionRunnerControl)
 }

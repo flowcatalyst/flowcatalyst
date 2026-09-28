@@ -7,6 +7,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatch"
+	functioncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/control"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	platformsink "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/platformsink"
@@ -39,6 +40,12 @@ type PlatformHandles struct {
 	// the X-FC-Test-Principal dev fallback: it attaches the caller's
 	// AuthContext (or none) to the request. The debug surface's gate uses it.
 	Authenticate func(http.Handler) http.Handler
+	// FunctionControlListener fans out `NOTIFY fng_desired` to the function
+	// control plane's held long-polls (docs/function-runner-plan.md §8.3,
+	// internal/platform/function/control). The caller (run.go) starts its
+	// Run(ctx) as a background subsystem; nil when platform wiring built no
+	// pool.
+	FunctionControlListener *functioncontrol.Listener
 }
 
 func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg, dispatchSettings dispatch.Settings) (PlatformHandles, error) {
@@ -59,6 +66,7 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg, dispatchSettings
 	humaAPI := registerPlatformAPI(r, cfg, pool, uow, repos, svcs, dispatchSettings)
 	registerSpecRoutes(r, humaAPI)
 	return PlatformHandles{
-		Authenticate: platformmw.Authenticator(platformmw.AuthConfig{Provider: svcs.authProvider}),
+		Authenticate:            platformmw.Authenticator(platformmw.AuthConfig{Provider: svcs.authProvider}),
+		FunctionControlListener: svcs.functionControlListener,
 	}, nil
 }

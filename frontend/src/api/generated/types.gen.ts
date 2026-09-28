@@ -69,6 +69,14 @@ export type AddSchemaRequest = {
     [key: string]: unknown;
 };
 
+export type AliasResponse = {
+    functionId: string;
+    name: string;
+    updatedAt: string;
+    updatedBy?: string;
+    version: number;
+};
+
 export type AllowedOriginResponse = {
     /**
      * A URL to the JSON Schema for this object.
@@ -420,6 +428,18 @@ export type BatchResultItem = {
     error?: string;
     id: string;
     status: string;
+};
+
+export type BudgetReport = {
+    budgetBytes: number;
+    compiledBytes: number;
+    evictions: number;
+    limitBytes: number;
+    linearBytes: number;
+    loaded: number;
+    refused: number;
+    reserveBytes: number;
+    rssBytes?: number;
 };
 
 export type BulkImportRequest = {
@@ -1267,6 +1287,18 @@ export type DeliveryPlan = {
     request: RequestSummary;
 };
 
+export type Desired = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    auth: TokenAuth;
+    functions: Array<Function>;
+    pool: string;
+    revision: number;
+    routes?: Array<Route>;
+};
+
 export type DeveloperUserListResponse = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1415,6 +1447,26 @@ export type DocSummary = {
     title: string;
 };
 
+export type EmitRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    data: string;
+    event: Event;
+    functionId: string;
+    version: number;
+    [key: string]: unknown;
+};
+
+export type EmitResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    eventId: string;
+};
+
 export type ErrorModel = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1425,6 +1477,17 @@ export type ErrorModel = {
     };
     error: string;
     message: string;
+};
+
+export type Event = {
+    causationId?: string;
+    contentType?: string;
+    correlationId?: string;
+    dedupId: string;
+    messageGroup?: string;
+    source?: string;
+    subject?: string;
+    type: string;
 };
 
 export type EventFilterOption = {
@@ -1538,6 +1601,26 @@ export type FireNowResponse = {
     scheduledJobId: string;
 };
 
+export type Function = {
+    address: string;
+    applicationId: string;
+    clientId?: string;
+    config?: {
+        [key: string]: string;
+    };
+    db?: {
+        [key: string]: string;
+    };
+    id: string;
+    limits: Limits;
+    secrets?: {
+        [key: string]: string;
+    };
+    versions: Array<Version>;
+    warm: boolean;
+    webhookSecret?: string;
+};
+
 export type FunctionResponse = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1583,6 +1666,20 @@ export type GrantPermissionRequest = {
      */
     readonly $schema?: string;
     permission: string;
+    [key: string]: unknown;
+};
+
+export type Heartbeat = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    budget: BudgetReport;
+    pool: string;
+    revision: number;
+    runnerId: string;
+    startedAt: string;
+    versions: Array<VersionReport>;
     [key: string]: unknown;
 };
 
@@ -1634,6 +1731,13 @@ export type IdpRoleMappingResponse = {
     idpType: string;
     platformRoleName: string;
     updatedAt: string;
+};
+
+export type Limits = {
+    maxBodyBytes: number;
+    maxConcurrency: number;
+    memoryMb: number;
+    timeoutMs: number;
 };
 
 export type LimitsDto = {
@@ -2084,6 +2188,49 @@ export type PublicAllowedResponse = {
     origins: Array<string>;
 };
 
+export type PublishVersionRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Lowercase hex sha256 of a previously-uploaded artifact
+     */
+    digest: string;
+    /**
+     * "wasm" (default) or "js"
+     */
+    runtime?: string;
+    [key: string]: unknown;
+};
+
+export type PutAliasRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    version: number;
+    [key: string]: unknown;
+};
+
+export type PutAliasResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    alias: AliasResponse;
+    wiring?: WiringResponse;
+};
+
+export type PutSettingRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    value: string;
+    [key: string]: unknown;
+};
+
 export type QueueConfig = {
     connections: number;
     queueName: string;
@@ -2322,6 +2469,13 @@ export type RotateOAuthClientSecretResponse = {
     previousSecretExpiresAt?: string;
 };
 
+export type Route = {
+    address: string;
+    alias?: string;
+    hostname: string;
+    pathPrefix: string;
+};
+
 export type RouterConfig = {
     /**
      * A URL to the JSON Schema for this object.
@@ -2515,6 +2669,17 @@ export type SetPropertyRequest = {
      */
     valueType?: string;
     [key: string]: unknown;
+};
+
+export type SettingResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    key: string;
+    kind: string;
+    updatedAt: string;
+    value?: string;
 };
 
 export type SpecVersionResponse = {
@@ -2922,6 +3087,11 @@ export type SyncUsersResponse = {
     updated: number;
 };
 
+export type TokenAuth = {
+    audience: string;
+    issuer: string;
+};
+
 export type UpdateAnchorDomainRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -3207,6 +3377,42 @@ export type UpdateSubscriptionRequest = {
     [key: string]: unknown;
 };
 
+export type Version = {
+    abi: number;
+    describe: unknown;
+    digest: string;
+    number: number;
+    roles: Array<string>;
+    runtime?: string;
+};
+
+export type VersionReport = {
+    functionId: string;
+    number: number;
+    reason?: string;
+    state: string;
+};
+
+export type VersionResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    abi: number;
+    createdAt: string;
+    describe: unknown;
+    digest: string;
+    failure?: unknown;
+    functionId: string;
+    id: string;
+    number: number;
+    publishedBy?: string;
+    readyAt?: string;
+    runtime: string;
+    sizeBytes: number;
+    status: string;
+};
+
 export type WebauthnAuthenticateCompleteResponse = {
     /**
      * A URL to the JSON Schema for this object.
@@ -3234,6 +3440,20 @@ export type WebhookCredentialsDto = {
     signingSecret?: string;
     token?: string;
     username?: string;
+};
+
+export type WiringResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    dispatchPoolCode?: string;
+    schedulesCreated?: number;
+    schedulesDeleted?: number;
+    schedulesUpdated?: number;
+    subscriptionsCreated?: number;
+    subscriptionsDeleted?: number;
+    subscriptionsUpdated?: number;
 };
 
 export type WriteInstanceLogRequest = {
@@ -4051,6 +4271,14 @@ export type DeliveryPlanWritable = {
     request: RequestSummary;
 };
 
+export type DesiredWritable = {
+    auth: TokenAuth;
+    functions: Array<Function>;
+    pool: string;
+    revision: number;
+    routes?: Array<Route>;
+};
+
 export type DeveloperUserListResponseWritable = {
     principals: Array<PrincipalResponseWritable>;
     total: number;
@@ -4134,6 +4362,18 @@ export type DocResponseWritable = {
     content: string;
     slug: string;
     title: string;
+};
+
+export type EmitRequestWritable = {
+    data: string;
+    event: Event;
+    functionId: string;
+    version: number;
+    [key: string]: unknown;
+};
+
+export type EmitResponseWritable = {
+    eventId: string;
 };
 
 export type ErrorModelWritable = {
@@ -4233,6 +4473,16 @@ export type GrantClientAccessRequestWritable = {
 
 export type GrantPermissionRequestWritable = {
     permission: string;
+    [key: string]: unknown;
+};
+
+export type HeartbeatWritable = {
+    budget: BudgetReport;
+    pool: string;
+    revision: number;
+    runnerId: string;
+    startedAt: string;
+    versions: Array<VersionReport>;
     [key: string]: unknown;
 };
 
@@ -4512,6 +4762,33 @@ export type PublicAllowedResponseWritable = {
     origins: Array<string>;
 };
 
+export type PublishVersionRequestWritable = {
+    /**
+     * Lowercase hex sha256 of a previously-uploaded artifact
+     */
+    digest: string;
+    /**
+     * "wasm" (default) or "js"
+     */
+    runtime?: string;
+    [key: string]: unknown;
+};
+
+export type PutAliasRequestWritable = {
+    version: number;
+    [key: string]: unknown;
+};
+
+export type PutAliasResponseWritable = {
+    alias: AliasResponse;
+    wiring?: WiringResponseWritable;
+};
+
+export type PutSettingRequestWritable = {
+    value: string;
+    [key: string]: unknown;
+};
+
 export type RawEventResponseWritable = {
     causationId?: string;
     clientId?: string;
@@ -4737,6 +5014,13 @@ export type SetPropertyRequestWritable = {
      */
     valueType?: string;
     [key: string]: unknown;
+};
+
+export type SettingResponseWritable = {
+    key: string;
+    kind: string;
+    updatedAt: string;
+    value?: string;
 };
 
 export type StatusChangeRequestWritable = {
@@ -5106,11 +5390,37 @@ export type UpdateSubscriptionRequestWritable = {
     [key: string]: unknown;
 };
 
+export type VersionResponseWritable = {
+    abi: number;
+    createdAt: string;
+    describe: unknown;
+    digest: string;
+    failure?: unknown;
+    functionId: string;
+    id: string;
+    number: number;
+    publishedBy?: string;
+    readyAt?: string;
+    runtime: string;
+    sizeBytes: number;
+    status: string;
+};
+
 export type WebauthnAuthenticateCompleteResponseWritable = {
     email: string | null;
     name: string;
     principalId: string;
     roles: Array<string>;
+};
+
+export type WiringResponseWritable = {
+    dispatchPoolCode?: string;
+    schedulesCreated?: number;
+    schedulesDeleted?: number;
+    schedulesUpdated?: number;
+    subscriptionsCreated?: number;
+    subscriptionsDeleted?: number;
+    subscriptionsUpdated?: number;
 };
 
 export type WriteInstanceLogRequestWritable = {
@@ -8822,6 +9132,89 @@ export type UpdateFunctionResponses = {
 
 export type UpdateFunctionResponse = UpdateFunctionResponses[keyof UpdateFunctionResponses];
 
+export type ListFunctionAliasesData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/functions/{id}/aliases';
+};
+
+export type ListFunctionAliasesErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListFunctionAliasesError = ListFunctionAliasesErrors[keyof ListFunctionAliasesErrors];
+
+export type ListFunctionAliasesResponses = {
+    /**
+     * OK
+     */
+    200: Array<AliasResponse>;
+};
+
+export type ListFunctionAliasesResponse = ListFunctionAliasesResponses[keyof ListFunctionAliasesResponses];
+
+export type DeleteFunctionAliasData = {
+    body?: never;
+    path: {
+        id: string;
+        name: string;
+    };
+    query?: never;
+    url: '/api/functions/{id}/aliases/{name}';
+};
+
+export type DeleteFunctionAliasErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type DeleteFunctionAliasError = DeleteFunctionAliasErrors[keyof DeleteFunctionAliasErrors];
+
+export type DeleteFunctionAliasResponses = {
+    /**
+     * OK
+     */
+    200: WiringResponse;
+};
+
+export type DeleteFunctionAliasResponse = DeleteFunctionAliasResponses[keyof DeleteFunctionAliasResponses];
+
+export type PutFunctionAliasData = {
+    body: PutAliasRequestWritable;
+    path: {
+        id: string;
+        name: string;
+    };
+    query?: never;
+    url: '/api/functions/{id}/aliases/{name}';
+};
+
+export type PutFunctionAliasErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PutFunctionAliasError = PutFunctionAliasErrors[keyof PutFunctionAliasErrors];
+
+export type PutFunctionAliasResponses = {
+    /**
+     * OK
+     */
+    200: PutAliasResponse;
+};
+
+export type PutFunctionAliasResponse = PutFunctionAliasResponses[keyof PutFunctionAliasResponses];
+
 export type PutFunctionArtifactData = {
     body: Blob | File;
     path: {
@@ -8850,6 +9243,311 @@ export type PutFunctionArtifactResponses = {
      */
     201: unknown;
 };
+
+export type DeleteFunctionConfigData = {
+    body?: never;
+    path: {
+        id: string;
+        key: string;
+    };
+    query?: never;
+    url: '/api/functions/{id}/config/{key}';
+};
+
+export type DeleteFunctionConfigErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type DeleteFunctionConfigError = DeleteFunctionConfigErrors[keyof DeleteFunctionConfigErrors];
+
+export type DeleteFunctionConfigResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type DeleteFunctionConfigResponse = DeleteFunctionConfigResponses[keyof DeleteFunctionConfigResponses];
+
+export type PutFunctionConfigData = {
+    body: PutSettingRequestWritable;
+    path: {
+        id: string;
+        key: string;
+    };
+    query?: never;
+    url: '/api/functions/{id}/config/{key}';
+};
+
+export type PutFunctionConfigErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PutFunctionConfigError = PutFunctionConfigErrors[keyof PutFunctionConfigErrors];
+
+export type PutFunctionConfigResponses = {
+    /**
+     * OK
+     */
+    200: SettingResponse;
+};
+
+export type PutFunctionConfigResponse = PutFunctionConfigResponses[keyof PutFunctionConfigResponses];
+
+export type DeleteFunctionDbData = {
+    body?: never;
+    path: {
+        id: string;
+        name: string;
+    };
+    query?: never;
+    url: '/api/functions/{id}/db/{name}';
+};
+
+export type DeleteFunctionDbErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type DeleteFunctionDbError = DeleteFunctionDbErrors[keyof DeleteFunctionDbErrors];
+
+export type DeleteFunctionDbResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type DeleteFunctionDbResponse = DeleteFunctionDbResponses[keyof DeleteFunctionDbResponses];
+
+export type PutFunctionDbData = {
+    body: PutSettingRequestWritable;
+    path: {
+        id: string;
+        name: string;
+    };
+    query?: never;
+    url: '/api/functions/{id}/db/{name}';
+};
+
+export type PutFunctionDbErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PutFunctionDbError = PutFunctionDbErrors[keyof PutFunctionDbErrors];
+
+export type PutFunctionDbResponses = {
+    /**
+     * OK
+     */
+    200: SettingResponse;
+};
+
+export type PutFunctionDbResponse = PutFunctionDbResponses[keyof PutFunctionDbResponses];
+
+export type DeleteFunctionSecretData = {
+    body?: never;
+    path: {
+        id: string;
+        key: string;
+    };
+    query?: never;
+    url: '/api/functions/{id}/secrets/{key}';
+};
+
+export type DeleteFunctionSecretErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type DeleteFunctionSecretError = DeleteFunctionSecretErrors[keyof DeleteFunctionSecretErrors];
+
+export type DeleteFunctionSecretResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type DeleteFunctionSecretResponse = DeleteFunctionSecretResponses[keyof DeleteFunctionSecretResponses];
+
+export type PutFunctionSecretData = {
+    body: PutSettingRequestWritable;
+    path: {
+        id: string;
+        key: string;
+    };
+    query?: never;
+    url: '/api/functions/{id}/secrets/{key}';
+};
+
+export type PutFunctionSecretErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PutFunctionSecretError = PutFunctionSecretErrors[keyof PutFunctionSecretErrors];
+
+export type PutFunctionSecretResponses = {
+    /**
+     * OK
+     */
+    200: SettingResponse;
+};
+
+export type PutFunctionSecretResponse = PutFunctionSecretResponses[keyof PutFunctionSecretResponses];
+
+export type ListFunctionSettingsData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/functions/{id}/settings';
+};
+
+export type ListFunctionSettingsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListFunctionSettingsError = ListFunctionSettingsErrors[keyof ListFunctionSettingsErrors];
+
+export type ListFunctionSettingsResponses = {
+    /**
+     * OK
+     */
+    200: Array<SettingResponse>;
+};
+
+export type ListFunctionSettingsResponse = ListFunctionSettingsResponses[keyof ListFunctionSettingsResponses];
+
+export type ListFunctionVersionsData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/functions/{id}/versions';
+};
+
+export type ListFunctionVersionsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListFunctionVersionsError = ListFunctionVersionsErrors[keyof ListFunctionVersionsErrors];
+
+export type ListFunctionVersionsResponses = {
+    /**
+     * OK
+     */
+    200: Array<VersionResponse>;
+};
+
+export type ListFunctionVersionsResponse = ListFunctionVersionsResponses[keyof ListFunctionVersionsResponses];
+
+export type PublishFunctionVersionData = {
+    body: PublishVersionRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/functions/{id}/versions';
+};
+
+export type PublishFunctionVersionErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PublishFunctionVersionError = PublishFunctionVersionErrors[keyof PublishFunctionVersionErrors];
+
+export type PublishFunctionVersionResponses = {
+    /**
+     * OK
+     */
+    200: VersionResponse;
+};
+
+export type PublishFunctionVersionResponse = PublishFunctionVersionResponses[keyof PublishFunctionVersionResponses];
+
+export type GetFunctionVersionData = {
+    body?: never;
+    path: {
+        id: string;
+        number: number;
+    };
+    query?: never;
+    url: '/api/functions/{id}/versions/{number}';
+};
+
+export type GetFunctionVersionErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetFunctionVersionError = GetFunctionVersionErrors[keyof GetFunctionVersionErrors];
+
+export type GetFunctionVersionResponses = {
+    /**
+     * OK
+     */
+    200: VersionResponse;
+};
+
+export type GetFunctionVersionResponse = GetFunctionVersionResponses[keyof GetFunctionVersionResponses];
+
+export type RetireFunctionVersionData = {
+    body?: never;
+    path: {
+        id: string;
+        number: number;
+    };
+    query?: never;
+    url: '/api/functions/{id}/versions/{number}/retire';
+};
+
+export type RetireFunctionVersionErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type RetireFunctionVersionError = RetireFunctionVersionErrors[keyof RetireFunctionVersionErrors];
+
+export type RetireFunctionVersionResponses = {
+    /**
+     * OK
+     */
+    200: VersionResponse;
+};
+
+export type RetireFunctionVersionResponse = RetireFunctionVersionResponses[keyof RetireFunctionVersionResponses];
 
 export type ListIdentityProvidersData = {
     body?: never;
@@ -12657,3 +13355,118 @@ export type WebauthnRegisterCompleteResponses = {
 };
 
 export type WebauthnRegisterCompleteResponse = WebauthnRegisterCompleteResponses[keyof WebauthnRegisterCompleteResponses];
+
+export type GetFunctionRunnerArtifactData = {
+    body?: never;
+    path: {
+        /**
+         * Lowercase hex sha256 of the artifact (64 characters)
+         */
+        digest: string;
+    };
+    query?: never;
+    url: '/control/functions/artifacts/{digest}';
+};
+
+export type GetFunctionRunnerArtifactErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetFunctionRunnerArtifactError = GetFunctionRunnerArtifactErrors[keyof GetFunctionRunnerArtifactErrors];
+
+export type GetFunctionRunnerArtifactResponses = {
+    /**
+     * OK
+     */
+    200: unknown;
+};
+
+export type GetFunctionRunnerDesiredData = {
+    body?: never;
+    headers?: {
+        'If-None-Match'?: string;
+    };
+    path?: never;
+    query: {
+        /**
+         * The runner pool to fetch desired state for
+         */
+        pool: string;
+        /**
+         * Seconds to hold the request open for a change, capped at control.MaxWait
+         */
+        wait?: number;
+    };
+    url: '/control/functions/desired';
+};
+
+export type GetFunctionRunnerDesiredErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetFunctionRunnerDesiredError = GetFunctionRunnerDesiredErrors[keyof GetFunctionRunnerDesiredErrors];
+
+export type GetFunctionRunnerDesiredResponses = {
+    /**
+     * OK
+     */
+    200: Desired;
+};
+
+export type GetFunctionRunnerDesiredResponse = GetFunctionRunnerDesiredResponses[keyof GetFunctionRunnerDesiredResponses];
+
+export type PostFunctionRunnerEventData = {
+    body: EmitRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/control/functions/events';
+};
+
+export type PostFunctionRunnerEventErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PostFunctionRunnerEventError = PostFunctionRunnerEventErrors[keyof PostFunctionRunnerEventErrors];
+
+export type PostFunctionRunnerEventResponses = {
+    /**
+     * Created
+     */
+    201: EmitResponse;
+};
+
+export type PostFunctionRunnerEventResponse = PostFunctionRunnerEventResponses[keyof PostFunctionRunnerEventResponses];
+
+export type PostFunctionRunnerHeartbeatData = {
+    body: HeartbeatWritable;
+    path?: never;
+    query?: never;
+    url: '/control/functions/heartbeat';
+};
+
+export type PostFunctionRunnerHeartbeatErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PostFunctionRunnerHeartbeatError = PostFunctionRunnerHeartbeatErrors[keyof PostFunctionRunnerHeartbeatErrors];
+
+export type PostFunctionRunnerHeartbeatResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type PostFunctionRunnerHeartbeatResponse = PostFunctionRunnerHeartbeatResponses[keyof PostFunctionRunnerHeartbeatResponses];

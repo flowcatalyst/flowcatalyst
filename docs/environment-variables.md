@@ -257,6 +257,7 @@ package (§12.1 WP6), not yet implemented.
 | Variable | Default | Aliases | Read in | Purpose |
 |---|---|---|---|---|
 | `FC_FUNCTIONS_ARTIFACT_STORE` | `` (empty → a file-store default directory) | — | `internal/server/envcfg.go` | Artifact store URL for `PUT /api/functions/{id}/artifacts/{digest}`: `file:///abs/path` or `s3://bucket/prefix`. Empty uses `file://` rooted at a fixed data directory (`internal/server/wire_services.go`'s `defaultFunctionArtifactDir`) — set this to an `s3://` URL in any deployed environment. |
+| `FC_FUNCTIONS_RUNNER_URL` | `http://127.0.0.1:8095` | — | `internal/server/envcfg.go` | The function runner's base URL, templated with `{pool}` (one platform may address several runner deployments, one per pool). `8095` is the runner's own private-listener default (`8090` is `FC_MCP_PORT`'s default, also live in fc-dev). Promote wiring (WP8, docs/function-runner-plan.md §8.5) substitutes `{pool}` and appends `/fn/<address><path>` to build each subscription/scheduled-job delivery target. |
 
 ## 10. Bootstrap & seeding
 

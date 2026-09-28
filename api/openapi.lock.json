@@ -158,6 +158,35 @@
         ],
         "type": "object"
       },
+      "AliasResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "functionId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedBy": {
+            "type": "string"
+          },
+          "version": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "functionId",
+          "name",
+          "version",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
       "AllowedOriginResponse": {
         "additionalProperties": false,
         "properties": {
@@ -1227,6 +1256,58 @@
         "required": [
           "id",
           "status"
+        ],
+        "type": "object"
+      },
+      "BudgetReport": {
+        "additionalProperties": false,
+        "properties": {
+          "budgetBytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "compiledBytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "evictions": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "limitBytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "linearBytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "loaded": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "refused": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "reserveBytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "rssBytes": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "compiledBytes",
+          "loaded",
+          "evictions",
+          "limitBytes",
+          "reserveBytes",
+          "budgetBytes",
+          "linearBytes",
+          "refused"
         ],
         "type": "object"
       },
@@ -3321,6 +3402,49 @@
         ],
         "type": "object"
       },
+      "Desired": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/Desired.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "auth": {
+            "$ref": "#/components/schemas/TokenAuth"
+          },
+          "functions": {
+            "items": {
+              "$ref": "#/components/schemas/Function"
+            },
+            "type": "array"
+          },
+          "pool": {
+            "type": "string"
+          },
+          "revision": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "routes": {
+            "items": {
+              "$ref": "#/components/schemas/Route"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "pool",
+          "revision",
+          "auth",
+          "functions"
+        ],
+        "type": "object"
+      },
       "DeveloperUserListResponse": {
         "additionalProperties": false,
         "properties": {
@@ -3849,6 +3973,62 @@
         ],
         "type": "object"
       },
+      "EmitRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/EmitRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "data": {
+            "contentEncoding": "base64",
+            "type": "string"
+          },
+          "event": {
+            "$ref": "#/components/schemas/Event"
+          },
+          "functionId": {
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "functionId",
+          "version",
+          "event",
+          "data"
+        ],
+        "type": "object"
+      },
+      "EmitResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/EmitResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "eventId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "eventId"
+        ],
+        "type": "object"
+      },
       "ErrorModel": {
         "additionalProperties": false,
         "properties": {
@@ -3875,6 +4055,40 @@
         "required": [
           "error",
           "message"
+        ],
+        "type": "object"
+      },
+      "Event": {
+        "additionalProperties": false,
+        "properties": {
+          "causationId": {
+            "type": "string"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "correlationId": {
+            "type": "string"
+          },
+          "dedupId": {
+            "type": "string"
+          },
+          "messageGroup": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "dedupId"
         ],
         "type": "object"
       },
@@ -4237,6 +4451,65 @@
         ],
         "type": "object"
       },
+      "Function": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "applicationId": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "config": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "db": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "id": {
+            "type": "string"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/Limits"
+          },
+          "secrets": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/Version"
+            },
+            "type": "array"
+          },
+          "warm": {
+            "type": "boolean"
+          },
+          "webhookSecret": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "address",
+          "applicationId",
+          "limits",
+          "warm",
+          "versions"
+        ],
+        "type": "object"
+      },
       "FunctionResponse": {
         "additionalProperties": false,
         "properties": {
@@ -4368,6 +4641,52 @@
         },
         "required": [
           "permission"
+        ],
+        "type": "object"
+      },
+      "Heartbeat": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/Heartbeat.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "budget": {
+            "$ref": "#/components/schemas/BudgetReport"
+          },
+          "pool": {
+            "type": "string"
+          },
+          "revision": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "runnerId": {
+            "type": "string"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/VersionReport"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "runnerId",
+          "pool",
+          "startedAt",
+          "revision",
+          "budget",
+          "versions"
         ],
         "type": "object"
       },
@@ -4534,6 +4853,34 @@
           "platformRoleName",
           "createdAt",
           "updatedAt"
+        ],
+        "type": "object"
+      },
+      "Limits": {
+        "additionalProperties": false,
+        "properties": {
+          "maxBodyBytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "maxConcurrency": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "memoryMb": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "timeoutMs": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "memoryMb",
+          "maxConcurrency",
+          "timeoutMs",
+          "maxBodyBytes"
         ],
         "type": "object"
       },
@@ -6047,6 +6394,99 @@
         ],
         "type": "object"
       },
+      "PublishVersionRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PublishVersionRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "digest": {
+            "description": "Lowercase hex sha256 of a previously-uploaded artifact",
+            "type": "string"
+          },
+          "runtime": {
+            "description": "\"wasm\" (default) or \"js\"",
+            "type": "string"
+          }
+        },
+        "required": [
+          "digest"
+        ],
+        "type": "object"
+      },
+      "PutAliasRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PutAliasRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "version": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "type": "object"
+      },
+      "PutAliasResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PutAliasResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "alias": {
+            "$ref": "#/components/schemas/AliasResponse"
+          },
+          "wiring": {
+            "$ref": "#/components/schemas/WiringResponse"
+          }
+        },
+        "required": [
+          "alias"
+        ],
+        "type": "object"
+      },
+      "PutSettingRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PutSettingRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "type": "object"
+      },
       "QueueConfig": {
         "additionalProperties": false,
         "properties": {
@@ -6774,6 +7214,29 @@
         ],
         "type": "object"
       },
+      "Route": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "alias": {
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "pathPrefix": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "hostname",
+          "pathPrefix",
+          "address"
+        ],
+        "type": "object"
+      },
       "RouterConfig": {
         "additionalProperties": false,
         "properties": {
@@ -7386,6 +7849,39 @@
         },
         "required": [
           "value"
+        ],
+        "type": "object"
+      },
+      "SettingResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SettingResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "key",
+          "updatedAt"
         ],
         "type": "object"
       },
@@ -8474,6 +8970,22 @@
         ],
         "type": "object"
       },
+      "TokenAuth": {
+        "additionalProperties": false,
+        "properties": {
+          "audience": {
+            "type": "string"
+          },
+          "issuer": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "issuer",
+          "audience"
+        ],
+        "type": "object"
+      },
       "UpdateAnchorDomainRequest": {
         "additionalProperties": true,
         "properties": {
@@ -9188,6 +9700,131 @@
         },
         "type": "object"
       },
+      "Version": {
+        "additionalProperties": false,
+        "properties": {
+          "abi": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "describe": {},
+          "digest": {
+            "type": "string"
+          },
+          "number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "runtime": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "digest",
+          "abi",
+          "describe",
+          "roles"
+        ],
+        "type": "object"
+      },
+      "VersionReport": {
+        "additionalProperties": false,
+        "properties": {
+          "functionId": {
+            "type": "string"
+          },
+          "number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "functionId",
+          "number",
+          "state"
+        ],
+        "type": "object"
+      },
+      "VersionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/VersionResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "abi": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "describe": {},
+          "digest": {
+            "type": "string"
+          },
+          "failure": {},
+          "functionId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "publishedBy": {
+            "type": "string"
+          },
+          "readyAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "runtime": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "functionId",
+          "number",
+          "digest",
+          "sizeBytes",
+          "abi",
+          "runtime",
+          "describe",
+          "status",
+          "createdAt"
+        ],
+        "type": "object"
+      },
       "WebauthnAuthenticateCompleteResponse": {
         "additionalProperties": false,
         "properties": {
@@ -9282,6 +9919,48 @@
         "required": [
           "authType"
         ],
+        "type": "object"
+      },
+      "WiringResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/WiringResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "dispatchPoolCode": {
+            "type": "string"
+          },
+          "schedulesCreated": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "schedulesDeleted": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "schedulesUpdated": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "subscriptionsCreated": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "subscriptionsDeleted": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "subscriptionsUpdated": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
         "type": "object"
       },
       "WriteInstanceLogRequest": {
@@ -15691,6 +16370,156 @@
         ]
       }
     },
+    "/api/functions/{id}/aliases": {
+      "get": {
+        "operationId": "listFunctionAliases",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AliasResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List a function's aliases",
+        "tags": [
+          "functions"
+        ]
+      }
+    },
+    "/api/functions/{id}/aliases/{name}": {
+      "delete": {
+        "operationId": "deleteFunctionAlias",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WiringResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Remove an alias",
+        "tags": [
+          "functions"
+        ]
+      },
+      "put": {
+        "operationId": "putFunctionAlias",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutAliasRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PutAliasResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Point an alias at a version",
+        "tags": [
+          "functions"
+        ]
+      }
+    },
     "/api/functions/{id}/artifacts/{digest}": {
       "put": {
         "operationId": "putFunctionArtifact",
@@ -15742,6 +16571,540 @@
           }
         },
         "summary": "Upload a function artifact by its sha256 digest",
+        "tags": [
+          "functions"
+        ]
+      }
+    },
+    "/api/functions/{id}/config/{key}": {
+      "delete": {
+        "operationId": "deleteFunctionConfig",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Remove a config value",
+        "tags": [
+          "functions"
+        ]
+      },
+      "put": {
+        "operationId": "putFunctionConfig",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutSettingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Set a config value",
+        "tags": [
+          "functions"
+        ]
+      }
+    },
+    "/api/functions/{id}/db/{name}": {
+      "delete": {
+        "operationId": "deleteFunctionDB",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Remove a database DSN",
+        "tags": [
+          "functions"
+        ]
+      },
+      "put": {
+        "operationId": "putFunctionDB",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutSettingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Set a database DSN",
+        "tags": [
+          "functions"
+        ]
+      }
+    },
+    "/api/functions/{id}/secrets/{key}": {
+      "delete": {
+        "operationId": "deleteFunctionSecret",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Remove a secret value",
+        "tags": [
+          "functions"
+        ]
+      },
+      "put": {
+        "operationId": "putFunctionSecret",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutSettingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Set a secret value",
+        "tags": [
+          "functions"
+        ]
+      }
+    },
+    "/api/functions/{id}/settings": {
+      "get": {
+        "operationId": "listFunctionSettings",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SettingResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List a function's settings keys",
+        "tags": [
+          "functions"
+        ]
+      }
+    },
+    "/api/functions/{id}/versions": {
+      "get": {
+        "operationId": "listFunctionVersions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VersionResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List a function's versions",
+        "tags": [
+          "functions"
+        ]
+      },
+      "post": {
+        "operationId": "publishFunctionVersion",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Publish a new function version from a stored artifact",
+        "tags": [
+          "functions"
+        ]
+      }
+    },
+    "/api/functions/{id}/versions/{number}": {
+      "get": {
+        "operationId": "getFunctionVersion",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "number",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get one function version",
+        "tags": [
+          "functions"
+        ]
+      }
+    },
+    "/api/functions/{id}/versions/{number}/retire": {
+      "post": {
+        "operationId": "retireFunctionVersion",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "number",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Retire a function version",
         "tags": [
           "functions"
         ]
@@ -21757,6 +23120,191 @@
         "summary": "Complete a WebAuthn registration ceremony",
         "tags": [
           "webauthn"
+        ]
+      }
+    },
+    "/control/functions/artifacts/{digest}": {
+      "get": {
+        "operationId": "getFunctionRunnerArtifact",
+        "parameters": [
+          {
+            "description": "Lowercase hex sha256 of the artifact (64 characters)",
+            "in": "path",
+            "name": "digest",
+            "required": true,
+            "schema": {
+              "description": "Lowercase hex sha256 of the artifact (64 characters)",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Download a function artifact by digest (function-runner role only)",
+        "tags": [
+          "function-control"
+        ]
+      }
+    },
+    "/control/functions/desired": {
+      "get": {
+        "operationId": "getFunctionRunnerDesired",
+        "parameters": [
+          {
+            "description": "The runner pool to fetch desired state for",
+            "explode": false,
+            "in": "query",
+            "name": "pool",
+            "required": true,
+            "schema": {
+              "description": "The runner pool to fetch desired state for",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Seconds to hold the request open for a change, capped at control.MaxWait",
+            "explode": false,
+            "in": "query",
+            "name": "wait",
+            "schema": {
+              "description": "Seconds to hold the request open for a change, capped at control.MaxWait",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-None-Match",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Desired"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "A function pool's desired state (long-poll; function-runner role only)",
+        "tags": [
+          "function-control"
+        ]
+      }
+    },
+    "/control/functions/events": {
+      "post": {
+        "operationId": "postFunctionRunnerEvent",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmitResponse"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Emit an event on a function's behalf (function-runner role only)",
+        "tags": [
+          "function-control"
+        ]
+      }
+    },
+    "/control/functions/heartbeat": {
+      "post": {
+        "operationId": "postFunctionRunnerHeartbeat",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Heartbeat"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "A function runner's heartbeat report (function-runner role only)",
+        "tags": [
+          "function-control"
         ]
       }
     }

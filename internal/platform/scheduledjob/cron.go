@@ -32,6 +32,17 @@ func ValidateCronShape(expr string) error {
 	return nil
 }
 
+// ValidateCronFires parses expr with the same strict, seconds-first parser
+// the firing loop uses (cronParser) — unlike ValidateCronShape, which only
+// checks the field count, this proves the expression will actually produce
+// fire slots. Used by function publish (docs/function-runner-plan.md §8.2,
+// work package 4) to reject a describe `schedules[].cron` that would
+// silently never fire.
+func ValidateCronFires(expr string) error {
+	_, err := cronParser.Parse(expr)
+	return err
+}
+
 // LatestSlotInWindow returns the latest cron slot in the half-open window
 // (after, upTo] across all of a job's cron expressions, evaluated in tzName.
 //

@@ -7,6 +7,7 @@ package function
 
 import (
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
@@ -19,11 +20,31 @@ var NamePattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
 // ValidName reports whether name matches NamePattern.
 func ValidName(name string) bool { return NamePattern.MatchString(name) }
 
+// AliasNamePattern is the alias name rule (plan §8.2 WP4 task 4): a
+// lowercase letter followed by up to 30 lowercase alphanumerics/hyphens.
+var AliasNamePattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,30}$`)
+
+// ValidAliasName reports whether name matches AliasNamePattern.
+func ValidAliasName(name string) bool { return AliasNamePattern.MatchString(name) }
+
+// LiveAlias is the one alias name that drives wiring (plan §4, §8.5): a
+// subscription/scheduled-job/dispatch-pool reconcile runs only when this
+// alias is the one changing.
+const LiveAlias = "live"
+
 // BuildAddress composes the two-label function address (owner decision
 // §13.1: {applicationCode}.{name}, no service label).
 func BuildAddress(applicationCode, name string) string {
 	return applicationCode + "." + name
 }
+
+// RuntimeJS is the "js" runtime name (mirrors internal/functions/runtimes.JS;
+// duplicated here rather than imported so entity.go stays free of
+// I/O-adjacent dependencies). DefaultRuntime, below, is the "wasm" sibling.
+const RuntimeJS = "js"
+
+// ValidRuntime reports whether r names a runtime ("" means DefaultRuntime).
+func ValidRuntime(r string) bool { return r == "" || r == DefaultRuntime || r == RuntimeJS }
 
 // Limits are the per-function resource caps (plan §7.1). Stored as the
 // fn_functions.limits JSONB column.
@@ -75,9 +96,9 @@ type Function struct {
 	Name            string
 	Address         string
 	Description     *string
-	// Pool overrides the function's implied dispatch pool
-	// (fn-{address}, materialised at promote — WP8). Nil means "use the
-	// implied pool".
+	// Pool is the runner pool that hosts the function (FC_FUNCTIONS_POOL
+	// on the runners; plan §3). Nil means DefaultRunnerPool. It is NOT the
+	// dispatch pool: that is always DispatchPoolCode.
 	Pool      *string
 	Warm      bool
 	Limits    Limits
@@ -88,6 +109,26 @@ type Function struct {
 
 // IDStr satisfies usecase.HasID.
 func (f Function) IDStr() string { return f.ID }
+
+// DefaultRunnerPool is the runner pool a function without one belongs to.
+const DefaultRunnerPool = "default"
+
+// RunnerPool is the runner pool hosting the function: the one whose runners
+// load it, whose revision a change bumps, and the {pool} substituted into
+// FC_FUNCTIONS_RUNNER_URL (plan §3, §8.5).
+func (f Function) RunnerPool() string {
+	if f.Pool != nil && strings.TrimSpace(*f.Pool) != "" {
+		return *f.Pool
+	}
+	return DefaultRunnerPool
+}
+
+// DispatchPoolCode is the function's own dispatch pool (plan §8.5): one per
+// function, so a slow function throttles only itself — "fn-{address}" with
+// every "." mapped to "-" (dispatch-pool codes don't allow dots).
+func (f Function) DispatchPoolCode() string {
+	return "fn-" + strings.ReplaceAll(f.Address, ".", "-")
+}
 
 // New constructs a Function with default limits. applicationCode is used
 // only to compute Address and populate the read-side field — it is not
@@ -130,14 +171,24 @@ func ParseVersionStatus(s string) (VersionStatus, bool) {
 	}
 }
 
+// DefaultRuntime is what an unspecified publish `runtime` means: an ABI v1
+// wasm module — the only runtime WP1-3 supported. Matches
+// internal/functions/runtimes.Wasm and migration 061's column default.
+const DefaultRuntime = "wasm"
+
 // Version is an immutable published artifact. Table: fn_versions.
 type Version struct {
-	ID          string
-	FunctionID  string
-	Number      int32
-	Digest      string
-	SizeBytes   int64
-	ABI         int32
+	ID         string
+	FunctionID string
+	Number     int32
+	Digest     string
+	SizeBytes  int64
+	ABI        int32
+	// Runtime is "wasm" (an ABI v1 module) or "js" (a script run on the
+	// shared JS engine) — migration 061. Never empty on a read row (the
+	// column default backfills it); DefaultRuntime is what an empty/omitted
+	// publish request `runtime` field resolves to.
+	Runtime     string
 	Describe    []byte // raw describe JSON, plan §5.4
 	Status      VersionStatus
 	Failure     []byte // raw failure JSON, nil unless Status == VersionFailed

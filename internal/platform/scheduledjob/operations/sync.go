@@ -123,6 +123,15 @@ func SyncScheduledJobs(repo *scheduledjob.Repository) usecaseop.Operation[SyncSc
 			for _, entry := range cmd.Jobs {
 				if cur, ok := existingByCode[entry.Code]; ok {
 					delete(existingByCode, entry.Code)
+					// A job materialised by a function promote
+					// (docs/function-runner-plan.md §8.5, work package 8) is never
+					// touched by SDK sync — its crons/target/payload are owned by
+					// the function's describe document, reconciled only by a
+					// promote. sdksync must not silently overwrite (or, below,
+					// archive) it just because a payload happens to reuse its code.
+					if cur.FunctionID != nil {
+						continue
+					}
 					changed := false
 					if cur.Name != entry.Name {
 						cur.Name = entry.Name
@@ -223,6 +232,11 @@ func SyncScheduledJobs(repo *scheduledjob.Repository) usecaseop.Operation[SyncSc
 			if cmd.ArchiveUnlisted {
 				for _, cur := range existingByCode {
 					if cur.Status != scheduledjob.StatusActive {
+						continue
+					}
+					// Never sweep a function-owned job — see the matching guard
+					// above.
+					if cur.FunctionID != nil {
 						continue
 					}
 					// X-02: narrow the sweep to clientId + applicationId — a job

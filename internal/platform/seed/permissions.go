@@ -152,6 +152,11 @@ const (
 	permFunctionPromote       = "platform:function:promote"
 	permFunctionSecretManage  = "platform:function:secret:manage"
 	permFunctionVersionInvoke = "platform:function:version:invoke"
+	// permFunctionRunnerControl gates the control-plane routes a deployed
+	// function runner polls (/control/functions/… — WP5): desired state,
+	// heartbeat, artifact download, event emit. Held only by
+	// platform:function-runner, never by a human role.
+	permFunctionRunnerControl = "platform:function:runner:control"
 )
 
 // IAM context — users, roles, access control.

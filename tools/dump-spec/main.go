@@ -30,6 +30,7 @@ import (
 	eventapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/event/api"
 	eventtypeapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/api"
 	functionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/api"
+	functioncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/control"
 	identityproviderapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider/api"
 	loginattemptapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt/api"
 	platformconfigapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig/api"
@@ -71,6 +72,7 @@ func main() {
 	eventapi.Register(api, &eventapi.State{})
 	eventtypeapi.Register(api, &eventtypeapi.State{})
 	functionapi.Register(api, &functionapi.State{})
+	functioncontrol.Register(api, &functioncontrol.State{})
 	identityproviderapi.Register(api, &identityproviderapi.State{})
 	platformconfigapi.Register(api, &platformconfigapi.State{})
 	portalusersapi.Register(api, &portalusersapi.State{})

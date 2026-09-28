@@ -61,6 +61,11 @@ type ScheduledJob struct {
 	CreatedBy           *string         `json:"createdBy,omitempty"`
 	UpdatedBy           *string         `json:"updatedBy,omitempty"`
 	Version             int32           `json:"version"`
+	// FunctionID is set only for a job materialised by a function promote
+	// (docs/function-runner-plan.md §8.5, work package 8). Nil for every
+	// admin/SDK-sync-authored job. SDK sync (sdksync) must never touch a
+	// function-owned job.
+	FunctionID *string `json:"functionId,omitempty"`
 }
 
 // IDStr satisfies usecase.HasID.

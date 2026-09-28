@@ -2,6 +2,8 @@
 package api
 
 import (
+	"encoding/json"
+
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
@@ -114,5 +116,124 @@ func fromEntity(f *function.Function) FunctionResponse {
 		CreatedBy:       f.CreatedBy,
 		CreatedAt:       jsontime.New(f.CreatedAt),
 		UpdatedAt:       jsontime.New(f.UpdatedAt),
+	}
+}
+
+// ── Versions (WP4) ──────────────────────────────────────────────────────
+
+// PublishVersionRequest is the wire body for POST …/versions.
+type PublishVersionRequest struct {
+	Digest  string  `json:"digest" doc:"Lowercase hex sha256 of a previously-uploaded artifact"`
+	Runtime *string `json:"runtime,omitempty" doc:"\"wasm\" (default) or \"js\""`
+}
+
+func (r PublishVersionRequest) toCommand(functionID string) operations.PublishCommand {
+	cmd := operations.PublishCommand{FunctionID: functionID, Digest: r.Digest}
+	if r.Runtime != nil {
+		cmd.Runtime = *r.Runtime
+	}
+	return cmd
+}
+
+// VersionResponse mirrors function.Version.
+type VersionResponse struct {
+	ID          string           `json:"id"`
+	FunctionID  string           `json:"functionId"`
+	Number      int32            `json:"number"`
+	Digest      string           `json:"digest"`
+	SizeBytes   int64            `json:"sizeBytes"`
+	ABI         int32            `json:"abi"`
+	Runtime     string           `json:"runtime"`
+	Describe    json.RawMessage  `json:"describe"`
+	Status      string           `json:"status"`
+	Failure     json.RawMessage  `json:"failure,omitempty"`
+	ReadyAt     *httpcompat.Time `json:"readyAt,omitempty"`
+	PublishedBy *string          `json:"publishedBy,omitempty"`
+	CreatedAt   httpcompat.Time  `json:"createdAt"`
+}
+
+func versionResponse(v function.Version) VersionResponse {
+	out := VersionResponse{
+		ID:          v.ID,
+		FunctionID:  v.FunctionID,
+		Number:      v.Number,
+		Digest:      v.Digest,
+		SizeBytes:   v.SizeBytes,
+		ABI:         v.ABI,
+		Runtime:     v.Runtime,
+		Describe:    v.Describe,
+		Status:      string(v.Status),
+		Failure:     v.Failure,
+		PublishedBy: v.PublishedBy,
+		CreatedAt:   jsontime.New(v.CreatedAt),
+	}
+	if v.ReadyAt != nil {
+		t := jsontime.New(*v.ReadyAt)
+		out.ReadyAt = &t
+	}
+	return out
+}
+
+// ── Aliases (WP4/WP8) ───────────────────────────────────────────────────
+
+// PutAliasRequest is the wire body for PUT …/aliases/{name}.
+type PutAliasRequest struct {
+	Version int32 `json:"version"`
+}
+
+// AliasResponse mirrors function.Alias, denormalised with the version
+// number it points at (the wire never needs the raw version row id).
+type AliasResponse struct {
+	FunctionID string          `json:"functionId"`
+	Name       string          `json:"name"`
+	Version    int32           `json:"version"`
+	UpdatedAt  httpcompat.Time `json:"updatedAt"`
+	UpdatedBy  *string         `json:"updatedBy,omitempty"`
+}
+
+// WiringResponse is the promote/unwire summary — only populated (non-zero)
+// when the alias touched is `live`.
+type WiringResponse struct {
+	DispatchPoolCode     string `json:"dispatchPoolCode,omitempty"`
+	SubscriptionsCreated int    `json:"subscriptionsCreated,omitempty"`
+	SubscriptionsUpdated int    `json:"subscriptionsUpdated,omitempty"`
+	SubscriptionsDeleted int    `json:"subscriptionsDeleted,omitempty"`
+	SchedulesCreated     int    `json:"schedulesCreated,omitempty"`
+	SchedulesUpdated     int    `json:"schedulesUpdated,omitempty"`
+	SchedulesDeleted     int    `json:"schedulesDeleted,omitempty"`
+}
+
+// PutAliasResponse is the wire body for PUT …/aliases/{name}.
+type PutAliasResponse struct {
+	Alias AliasResponse `json:"alias"`
+	// omitempty has no effect on a nested struct field (it is never
+	// considered "empty"); omitzero (Go 1.24+) is the field's actual
+	// omit-when-zero-value behaviour.
+	Wiring WiringResponse `json:"wiring,omitzero"`
+}
+
+// ── Settings (WP4) ──────────────────────────────────────────────────────
+
+// PutSettingRequest is the wire body for PUT …/config/{key}, …/secrets/{key}
+// and …/db/{name}.
+type PutSettingRequest struct {
+	Value string `json:"value"`
+}
+
+// SettingResponse mirrors function.Setting. Value is empty for SECRET/DB
+// kinds — plan §8.2: "Secrets are write-only and never returned."
+type SettingResponse struct {
+	Kind      string          `json:"kind"`
+	Key       string          `json:"key"`
+	Value     string          `json:"value,omitempty"`
+	UpdatedAt httpcompat.Time `json:"updatedAt"`
+}
+
+func settingResponse(s function.Setting) SettingResponse {
+	return SettingResponse{
+		Kind:      string(s.Kind),
+		Key:       s.Key,
+		Value:     s.Value,
+		UpdatedAt: jsontime.New(s.UpdatedAt),
 	}
 }
