@@ -145,11 +145,24 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	return &apicommon.Out[ServiceAccountResponse]{Body: resp}, nil
 }
 
+// requireAnchorWriter is the gate on service-account create, update and
+// delete: the permission, and anchor scope on top of it (owner decision #19).
+// A service account's SERVICE principal is anchor-tier, so with the
+// permission alone a non-anchor administrator could mint an anchor-tier
+// credential for itself — an escalation. The other credential writes
+// (assign roles, regenerate, mint) already required anchor.
+func requireAnchorWriter(ac *auth.AuthContext, can func(*auth.AuthContext) error) error {
+	if err := can(ac); err != nil {
+		return err
+	}
+	return auth.RequireAnchor(ac)
+}
+
 func (s *State) create(ctx context.Context, in *apicommon.In[CreateServiceAccountRequest]) (*apicommon.Out[CreateServiceAccountResponse], error) {
 	// Coarse permission at the controller; the orchestration runs inside one
 	// transaction and has no per-client resource check (admin-managed create).
 	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteServiceAccounts(ac); err != nil {
+	if err := requireAnchorWriter(ac, auth.CanWriteServiceAccounts); err != nil {
 		return nil, err
 	}
 	// Same rule as assigning application access: only a caller that itself
@@ -182,7 +195,7 @@ type updateInput struct {
 }
 
 func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, error) {
-	if err := auth.CanWriteServiceAccounts(auth.FromContext(ctx)); err != nil {
+	if err := requireAnchorWriter(auth.FromContext(ctx), auth.CanWriteServiceAccounts); err != nil {
 		return nil, err
 	}
 	cmd, err := in.Body.toCommand(in.ID)
@@ -208,7 +221,7 @@ func (s *State) deactivate(ctx context.Context, in *apicommon.IDInput) (*apicomm
 }
 
 func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	if err := auth.CanDeleteServiceAccounts(auth.FromContext(ctx)); err != nil {
+	if err := requireAnchorWriter(auth.FromContext(ctx), auth.CanDeleteServiceAccounts); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)

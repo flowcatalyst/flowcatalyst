@@ -73,6 +73,12 @@ type EventTypesSynced struct {
 	Updated         uint32
 	Deleted         uint32
 	SyncedCodes     []string
+	// The schema tally: how many listed types' spec version 1.0 the sync
+	// created, changed, or left as it was (a type sent without a schema
+	// counts as unchanged). Reported by the BFF sync-platform response.
+	SchemasCreated   uint32
+	SchemasUpdated   uint32
+	SchemasUnchanged uint32
 }
 
 func (e EventTypesSynced) EventID() string       { return e.Metadata.EventID }

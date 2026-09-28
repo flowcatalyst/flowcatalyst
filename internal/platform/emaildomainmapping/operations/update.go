@@ -12,6 +12,8 @@ import (
 
 // UpdateCommand mirrors CreateCommand but with the mapping ID + optional
 // fields. A nil pointer means "do not change"; an empty slice means "clear".
+// PrimaryClientID and RequiredOIDCTenantID: nil leaves the stored value, a
+// blank string clears it, anything else sets it.
 // The identity provider is deliberately NOT updatable here — re-pointing a
 // domain changes its users' auth method and has direction-specific side
 // effects, so it goes through [MoveMappingToProvider].
@@ -52,8 +54,15 @@ func UpdateMapping(repo *emaildomainmapping.Repository) usecaseop.Operation[Upda
 				return nil, httperror.NotFound("EmailDomainMapping", cmd.ID)
 			}
 
-			e.PrimaryClientID = cmd.PrimaryClientID
-			e.RequiredOIDCTenantID = cmd.RequiredOIDCTenantID
+			// Absent leaves these alone. They used to be assigned outright, so
+			// an update that did not resend them cleared them (owner decision
+			// #38): a 2FA toggle unlinked the domain's primary client.
+			if cmd.PrimaryClientID != nil {
+				e.PrimaryClientID = blankToNil(*cmd.PrimaryClientID)
+			}
+			if cmd.RequiredOIDCTenantID != nil {
+				e.RequiredOIDCTenantID = blankToNil(*cmd.RequiredOIDCTenantID)
+			}
 			if cmd.AdditionalClientIDs != nil {
 				e.AdditionalClientIDs = cmd.AdditionalClientIDs
 			}
@@ -85,4 +94,12 @@ func UpdateMapping(repo *emaildomainmapping.Repository) usecaseop.Operation[Upda
 			return usecaseop.Save(e, repo, event), nil
 		},
 	}
+}
+
+// blankToNil is nil for a blank string (the "clear" value), else a copy.
+func blankToNil(s string) *string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	return &s
 }

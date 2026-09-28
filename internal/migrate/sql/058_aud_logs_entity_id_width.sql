@@ -1,0 +1,16 @@
+-- +goose Up
+-- aud_logs.entity_id was VARCHAR(17), a TSID's width. But a sync rollup
+-- event's subject is `platform.<aggregate>.{applicationCode}` (EventTypesSynced,
+-- PrincipalsSynced, SubscriptionsSynced, ...), and the unit of work keys the
+-- audit row by the subject's last segment, so the entity id is the
+-- application code (up to 50 characters). Every app-scoped sync of an
+-- application whose code is longer than 17 characters failed at the audit
+-- write with 500 AUDIT_WRITE (owner decision #40). Java's V18 and the Rust
+-- platform's migration 038 widen it to 100, the width entity_type and
+-- principal_id already have.
+--
+-- Widening a VARCHAR is a catalogue-only change in PostgreSQL (no table
+-- rewrite, the index is kept). Re-running it is a no-op, and it is the same
+-- end state the Rust platform's 038 leaves, so either platform may have run
+-- first.
+ALTER TABLE aud_logs ALTER COLUMN entity_id TYPE VARCHAR(100);

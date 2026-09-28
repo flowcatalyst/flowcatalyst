@@ -68,6 +68,12 @@ func NewBridge(mappings *emaildomainmapping.Repository, idps *identityprovider.R
 	return &Bridge{mappings: mappings, idps: idps, enc: enc, cache: make(map[string]*resolved)}
 }
 
+// ErrEmailDomainNotMapped is ResolveForEmail's answer for a domain with no
+// email-domain mapping: a user's typo or a stale link, not a server fault.
+// The login endpoint answers it 404 EMAIL_DOMAIN_NOT_MAPPED; a mapped domain
+// whose provider is broken is still an init failure (500).
+var ErrEmailDomainNotMapped = errors.New("no email-domain mapping")
+
 // ResolveForEmail resolves the OIDC client for the user's email domain via the
 // email-domain mapping → identity provider chain. Returns the OIDC
 // client + the IdP + the mapping; the caller drives the redirect / callback and
@@ -82,7 +88,7 @@ func (b *Bridge) ResolveForEmail(ctx context.Context, email string) (*resolved, 
 		return nil, nil, nil, fmt.Errorf("email_domain_mapping lookup: %w", err)
 	}
 	if mapping == nil {
-		return nil, nil, nil, errors.New("no email-domain mapping for " + domain)
+		return nil, nil, nil, fmt.Errorf("%w: %s", ErrEmailDomainNotMapped, domain)
 	}
 	idp, err := b.idps.FindByID(ctx, mapping.IdentityProviderID)
 	if err != nil {

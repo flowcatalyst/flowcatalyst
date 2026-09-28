@@ -2,6 +2,10 @@
 package api
 
 import (
+	"encoding/json"
+
+	"github.com/danielgtaylor/huma/v2"
+
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
@@ -45,29 +49,75 @@ func (r CreateMappingRequest) toCommand() operations.CreateCommand {
 // The identity provider is not updatable here — re-pointing a domain goes
 // through POST /api/email-domain-mappings/{id}/move-provider, which applies
 // the direction-specific side effects.
+//
+// primaryClientId and requiredOidcTenantId tell an absent member from an
+// explicit null: absent leaves the stored value, null (or "") clears it.
+// They used to be plain pointers, which cannot tell the two apart, so any
+// update that did not resend them — a 2FA toggle, say — silently cleared the
+// mapping's primary client (owner decision #38).
 type UpdateMappingRequest struct {
-	PrimaryClientID       *string  `json:"primaryClientId,omitempty"`
-	AdditionalClientIDs   []string `json:"additionalClientIds,omitempty"`
-	GrantedClientIDs      []string `json:"grantedClientIds,omitempty"`
-	RequiredOIDCTenantID  *string  `json:"requiredOidcTenantId,omitempty"`
-	Require2FA            *bool    `json:"require2fa,omitempty"`
-	Allowed2FAMethods     []string `json:"allowed2faMethods,omitempty"`
-	RememberDeviceEnabled *bool    `json:"rememberDeviceEnabled,omitempty"`
-	RememberDeviceDays    *int     `json:"rememberDeviceDays,omitempty"`
+	PrimaryClientID       nullableString `json:"primaryClientId,omitzero"`
+	AdditionalClientIDs   []string       `json:"additionalClientIds,omitempty"`
+	GrantedClientIDs      []string       `json:"grantedClientIds,omitempty"`
+	RequiredOIDCTenantID  nullableString `json:"requiredOidcTenantId,omitzero"`
+	Require2FA            *bool          `json:"require2fa,omitempty"`
+	Allowed2FAMethods     []string       `json:"allowed2faMethods,omitempty"`
+	RememberDeviceEnabled *bool          `json:"rememberDeviceEnabled,omitempty"`
+	RememberDeviceDays    *int           `json:"rememberDeviceDays,omitempty"`
 }
 
 func (r UpdateMappingRequest) toCommand(id string) operations.UpdateCommand {
 	return operations.UpdateCommand{
 		ID:                    id,
-		PrimaryClientID:       r.PrimaryClientID,
+		PrimaryClientID:       r.PrimaryClientID.update(),
 		AdditionalClientIDs:   r.AdditionalClientIDs,
 		GrantedClientIDs:      r.GrantedClientIDs,
-		RequiredOIDCTenantID:  r.RequiredOIDCTenantID,
+		RequiredOIDCTenantID:  r.RequiredOIDCTenantID.update(),
 		Require2FA:            r.Require2FA,
 		Allowed2FAMethods:     r.Allowed2FAMethods,
 		RememberDeviceEnabled: r.RememberDeviceEnabled,
 		RememberDeviceDays:    r.RememberDeviceDays,
 	}
+}
+
+// nullableString is a string member that tells absent (Set false) from an
+// explicit null (Set true, Value nil). Documented to the OpenAPI contract as
+// a plain string, exactly as the *string it replaces was.
+type nullableString struct {
+	Set   bool
+	Value *string
+}
+
+// UnmarshalJSON runs only when the member is present: null or a string.
+func (n *nullableString) UnmarshalJSON(b []byte) error {
+	n.Set = true
+	if string(b) == "null" {
+		n.Value = nil
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	n.Value = &s
+	return nil
+}
+
+// Schema keeps the member's contract a plain string.
+func (nullableString) Schema(huma.Registry) *huma.Schema {
+	return &huma.Schema{Type: "string"}
+}
+
+// update is the command's tri-state for the member: nil leaves the stored
+// value, a pointer to "" clears it, anything else sets it.
+func (n nullableString) update() *string {
+	if !n.Set {
+		return nil
+	}
+	if n.Value == nil {
+		return new("")
+	}
+	return n.Value
 }
 
 // MappingResponse mirrors emaildomainmapping.EmailDomainMapping.

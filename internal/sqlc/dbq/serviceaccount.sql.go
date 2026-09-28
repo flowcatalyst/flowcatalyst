@@ -19,6 +19,54 @@ func (q *Queries) ServiceAccountDelete(ctx context.Context, id string) error {
 	return err
 }
 
+const serviceAccountDeleteOAuthClients = `-- name: ServiceAccountDeleteOAuthClients :exec
+DELETE FROM oauth_clients
+ WHERE service_account_principal_id IN
+       (SELECT id FROM iam_principals WHERE service_account_id = $1)
+`
+
+// The OAuth clients wired to the account's SERVICE principal. Migration 027's
+// FK would cascade them with the principal; deleted explicitly anyway so the
+// order is visible and an install without the FK is covered.
+func (q *Queries) ServiceAccountDeleteOAuthClients(ctx context.Context, serviceAccountID *string) error {
+	_, err := q.db.Exec(ctx, serviceAccountDeleteOAuthClients, serviceAccountID)
+	return err
+}
+
+const serviceAccountDeletePrincipalApplicationAccess = `-- name: ServiceAccountDeletePrincipalApplicationAccess :exec
+DELETE FROM iam_principal_application_access
+ WHERE principal_id IN (SELECT id FROM iam_principals WHERE service_account_id = $1)
+`
+
+// iam_principal_application_access has no FK cascade on principal_id.
+func (q *Queries) ServiceAccountDeletePrincipalApplicationAccess(ctx context.Context, serviceAccountID *string) error {
+	_, err := q.db.Exec(ctx, serviceAccountDeletePrincipalApplicationAccess, serviceAccountID)
+	return err
+}
+
+const serviceAccountDeletePrincipalClientGrants = `-- name: ServiceAccountDeletePrincipalClientGrants :exec
+DELETE FROM iam_client_access_grants
+ WHERE principal_id IN (SELECT id FROM iam_principals WHERE service_account_id = $1)
+`
+
+// iam_client_access_grants has no FK cascade on principal_id.
+func (q *Queries) ServiceAccountDeletePrincipalClientGrants(ctx context.Context, serviceAccountID *string) error {
+	_, err := q.db.Exec(ctx, serviceAccountDeletePrincipalClientGrants, serviceAccountID)
+	return err
+}
+
+const serviceAccountDeletePrincipals = `-- name: ServiceAccountDeletePrincipals :exec
+DELETE FROM iam_principals WHERE service_account_id = $1
+`
+
+// The account's SERVICE principal. Its role rows cascade
+// (iam_principal_roles), and an application pointing at it is set NULL
+// (migration 028).
+func (q *Queries) ServiceAccountDeletePrincipals(ctx context.Context, serviceAccountID *string) error {
+	_, err := q.db.Exec(ctx, serviceAccountDeletePrincipals, serviceAccountID)
+	return err
+}
+
 const serviceAccountFindAll = `-- name: ServiceAccountFindAll :many
 SELECT id, code, name, description, application_id, active,
        wh_auth_type, wh_auth_token_ref, wh_signing_secret_ref,
@@ -191,6 +239,27 @@ func (q *Queries) ServiceAccountFindFirstByApplicationID(ctx context.Context, ap
 		&i.ClientIds,
 	)
 	return i, err
+}
+
+const serviceAccountRenamePrincipal = `-- name: ServiceAccountRenamePrincipal :exec
+UPDATE iam_principals
+   SET name = $2
+ WHERE service_account_id = $1
+   AND name IS DISTINCT FROM $2
+`
+
+type ServiceAccountRenamePrincipalParams struct {
+	ServiceAccountID *string `db:"service_account_id"`
+	Name             string  `db:"name"`
+}
+
+// Keeps the SERVICE principal's name in step with its account's, so a token
+// minted after a rename carries the new name. updated_at is left alone on
+// purpose: it is the principal's token version, and renaming an account must
+// not revoke its live tokens.
+func (q *Queries) ServiceAccountRenamePrincipal(ctx context.Context, arg ServiceAccountRenamePrincipalParams) error {
+	_, err := q.db.Exec(ctx, serviceAccountRenamePrincipal, arg.ServiceAccountID, arg.Name)
+	return err
 }
 
 const serviceAccountUpsert = `-- name: ServiceAccountUpsert :exec

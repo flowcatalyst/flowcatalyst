@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
+	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -74,11 +76,13 @@ func SyncEventTypes(repo *eventtype.Repository) usecaseop.Operation[SyncEventTyp
 				deleted     int
 			)
 
+			var schemas schemaTally
 			for _, in := range cmd.EventTypes {
 				syncedCodes = append(syncedCodes, in.Code)
 				if cur, ok := existingByCode[in.Code]; ok {
 					cur.Name = in.Name
 					cur.Description = in.Description
+					schemas.apply(cur, in.Schema)
 					saves = append(saves, usecasepgx.SyncSaveItem[eventtype.EventType]{
 						Aggregate: cur,
 						Event: EventTypeUpdated{
@@ -100,6 +104,7 @@ func SyncEventTypes(repo *eventtype.Repository) usecaseop.Operation[SyncEventTyp
 				}
 				et.Description = in.Description
 				et.Source = eventtype.SourceAPI
+				schemas.apply(et, in.Schema)
 				saves = append(saves, usecasepgx.SyncSaveItem[eventtype.EventType]{
 					Aggregate: et,
 					Event: EventTypeCreated{
@@ -141,13 +146,64 @@ func SyncEventTypes(repo *eventtype.Repository) usecaseop.Operation[SyncEventTyp
 			rollup := EventTypesSynced{
 				Metadata: usecase.NewEventMetadata(ec, EventTypesSyncedType, EventTypeSourceConst,
 					"platform.eventtypes."+cmd.ApplicationCode),
-				ApplicationCode: cmd.ApplicationCode,
-				Created:         uint32(created),
-				Updated:         uint32(updated),
-				Deleted:         uint32(deleted),
-				SyncedCodes:     syncedCodes,
+				ApplicationCode:  cmd.ApplicationCode,
+				Created:          uint32(created),
+				Updated:          uint32(updated),
+				Deleted:          uint32(deleted),
+				SyncedCodes:      syncedCodes,
+				SchemasCreated:   schemas.created,
+				SchemasUpdated:   schemas.updated,
+				SchemasUnchanged: schemas.unchanged,
 			}
 			return usecaseop.Sync(repo, saves, deletes, rollup), nil
 		},
 	}
+}
+
+// syncSchemaVersion is the spec version a sync's schema is: the type's first
+// version, as create mints it.
+const syncSchemaVersion = "1.0"
+
+// schemaTally applies a sync's schemas and counts what each did. It used to
+// be missing altogether: a sync ignored every schema it was sent, and the
+// sync-platform response reported a tally of zeros whatever it did.
+type schemaTally struct {
+	created, updated, unchanged uint32
+}
+
+// apply sets et's spec version 1.0 to schema: minted when absent (as create
+// mints it), rewritten when its content differs, left alone when the same. A
+// type sent without a schema is unchanged.
+func (t *schemaTally) apply(et *eventtype.EventType, schema json.RawMessage) {
+	if len(schema) == 0 || string(schema) == "null" {
+		t.unchanged++
+		return
+	}
+	for i := range et.SpecVersions {
+		sv := &et.SpecVersions[i]
+		if sv.Version != syncSchemaVersion {
+			continue
+		}
+		if sameJSON(sv.SchemaContent, schema) {
+			t.unchanged++
+			return
+		}
+		sv.SchemaContent = schema
+		sv.UpdatedAt = time.Now().UTC()
+		t.updated++
+		return
+	}
+	et.SpecVersions = append(et.SpecVersions, eventtype.NewSpecVersion(et.ID, syncSchemaVersion, schema))
+	t.created++
+}
+
+// sameJSON compares two JSON documents by value: the stored copy comes back
+// from JSONB with its keys reordered and its whitespace dropped, so a byte
+// comparison would call every unchanged schema changed.
+func sameJSON(a, b json.RawMessage) bool {
+	var va, vb any
+	if json.Unmarshal(a, &va) != nil || json.Unmarshal(b, &vb) != nil {
+		return string(a) == string(b)
+	}
+	return reflect.DeepEqual(va, vb)
 }

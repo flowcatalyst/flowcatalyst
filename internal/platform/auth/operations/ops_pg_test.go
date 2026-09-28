@@ -346,6 +346,43 @@ func TestDeleteAuthConfig_HappyPathAndErrors(t *testing.T) {
 
 // ══ IdpRoleMapping ════════════════════════════════════════════════════════
 
+// Updating an anchor domain to one that already exists used to reach the
+// unique index and answer 500; it is a conflict, as on create (owner decision
+// #38).
+func TestUpdateAnchorDomain_IntoAnExistingDomain_Conflict(t *testing.T) {
+	t.Parallel()
+	repo := auth.NewRepository(testpg.Pool(t)).AnchorDomains
+	uow := testpg.NewUoW(t)
+	mustCreateAnchor(t, repo, uow, "adclash-taken.example.com")
+	moving := mustCreateAnchor(t, repo, uow, "adclash-moving.example.com")
+
+	_, err := runAuthorized(uow, operations.UpdateAnchorDomain(repo), operations.UpdateAnchorDomainCommand{
+		ID: moving.AnchorDomainID, Domain: "ADClash-Taken.example.com",
+	})
+	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "DOMAIN_EXISTS")
+
+	// Re-saving a domain under its own id is not a clash.
+	_, err = runAuthorized(uow, operations.UpdateAnchorDomain(repo), operations.UpdateAnchorDomainCommand{
+		ID: moving.AnchorDomainID, Domain: "adclash-moving.example.com",
+	})
+	require.NoError(t, err)
+}
+
+// A second mapping for an IdP role name used to reach the unique index and
+// answer 500; it is a conflict (owner decision #38).
+func TestCreateIdpRoleMapping_Duplicate_Conflict(t *testing.T) {
+	t.Parallel()
+	repo := auth.NewRepository(testpg.Pool(t)).IdpRoleMappings
+	uow := testpg.NewUoW(t)
+	cmd := operations.CreateIdpRoleMappingCommand{
+		IdpType: "keycloak", IdpRoleName: "irm-dup-upstream", PlatformRoleName: "irmdup:admin",
+	}
+	_, err := runAuthorized(uow, operations.CreateIdpRoleMapping(repo), cmd)
+	require.NoError(t, err)
+	_, err = runAuthorized(uow, operations.CreateIdpRoleMapping(repo), cmd)
+	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "MAPPING_EXISTS")
+}
+
 func TestCreateIdpRoleMapping_HappyPath(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

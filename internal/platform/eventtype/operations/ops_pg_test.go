@@ -332,6 +332,86 @@ func TestSyncEventTypes_Validation(t *testing.T) {
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "INVALID_CODE")
 }
 
+// The sync used to ignore every schema it was sent, and the BFF
+// sync-platform response reported a schema tally of zeros. A listed type's
+// schema is now its spec version 1.0: minted, rewritten when it changed, left
+// alone (and counted unchanged) when the same — compared by value, since
+// JSONB hands the stored copy back reordered.
+func TestSyncEventTypes_SchemaTally(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := eventtype.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+	const app = "etschtally"
+	a, b := app+":orders:order:created", app+":orders:order:shipped"
+
+	first, err := runAuthorized(uow, operations.SyncEventTypes(repo), operations.SyncEventTypesCommand{
+		ApplicationCode: app,
+		EventTypes: []operations.SyncEventTypeInput{
+			{Code: a, Name: "A", Schema: json.RawMessage(`{"type":"object","required":["id"]}`)},
+			{Code: b, Name: "B"},
+		},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, uint32(1), first.SchemasCreated)
+	assert.Equal(t, uint32(0), first.SchemasUpdated)
+	assert.Equal(t, uint32(1), first.SchemasUnchanged, "a type sent without a schema is unchanged")
+
+	second, err := runAuthorized(uow, operations.SyncEventTypes(repo), operations.SyncEventTypesCommand{
+		ApplicationCode: app,
+		EventTypes: []operations.SyncEventTypeInput{
+			{Code: a, Name: "A", Schema: json.RawMessage(`{ "required": ["id"], "type": "object" }`)},
+			{Code: b, Name: "B", Schema: json.RawMessage(`{"type":"object"}`)},
+		},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, uint32(1), second.SchemasCreated, "B's first schema")
+	assert.Equal(t, uint32(1), second.SchemasUnchanged, "A's schema, reordered, is the same schema")
+
+	third, err := runAuthorized(uow, operations.SyncEventTypes(repo), operations.SyncEventTypesCommand{
+		ApplicationCode: app,
+		EventTypes: []operations.SyncEventTypeInput{
+			{Code: a, Name: "A", Schema: json.RawMessage(`{"type":"object","required":["id","total"]}`)},
+			{Code: b, Name: "B", Schema: json.RawMessage(`{"type":"object"}`)},
+		},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, uint32(1), third.SchemasUpdated)
+	assert.Equal(t, uint32(1), third.SchemasUnchanged)
+
+	got, err := repo.FindByCode(ctx, a)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	sv := specByVersion(t, got, "1.0")
+	assert.JSONEq(t, `{"type":"object","required":["id","total"]}`, string(sv.SchemaContent))
+	assert.Len(t, got.SpecVersions, 1, "a sync rewrites version 1.0, it does not add versions")
+}
+
+// An app-scoped sync's rollup event is audited under the application code
+// (the subject's last segment). aud_logs.entity_id was VARCHAR(17), so every
+// sync of an application whose code is longer than 17 characters failed with
+// 500 AUDIT_WRITE (owner decision #40; migration 058).
+func TestSyncEventTypes_ApplicationCodeLongerThan17Characters(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := eventtype.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+	const app = "etsynclongapplicationcode40characters"
+	require.Greater(t, len(app), 17)
+
+	ev, err := runAuthorized(uow, operations.SyncEventTypes(repo), operations.SyncEventTypesCommand{
+		ApplicationCode: app,
+		EventTypes:      []operations.SyncEventTypeInput{{Code: app + ":orders:order:created", Name: "A"}},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, uint32(1), ev.Created)
+
+	var n int
+	require.NoError(t, testpg.Pool(t).QueryRow(ctx,
+		`SELECT COUNT(*) FROM aud_logs WHERE entity_id = $1`, app).Scan(&n))
+	assert.Equal(t, 1, n, "the sync's audit row is written under the application code")
+}
+
 // ── Schema lifecycle (add / finalise / deprecate) ─────────────────────────
 
 // mustCreateWithSchema seeds an event type whose create-time schema mints

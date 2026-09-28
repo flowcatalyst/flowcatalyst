@@ -196,6 +196,46 @@ func TestUpdateMapping_HappyPath(t *testing.T) {
 	assert.Equal(t, 7, got.RememberDeviceDays)
 }
 
+// An update that does not name primaryClientId / requiredOidcTenantId leaves
+// them alone; a blank one (the API's explicit null) clears them. They used to
+// be overwritten with whatever the update carried, so a 2FA toggle unlinked
+// the domain's primary client (owner decision #38).
+func TestUpdateMapping_AbsentPrimaryClientIsKept(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := emaildomainmapping.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+	seeded := mustCreate(t, repo, uow, "edmupd-keep.example.com")
+
+	primary, tenant := "cli_edmkeepprim1", "tenant-keep"
+	_, err := runAuthorized(uow, operations.UpdateMapping(repo), operations.UpdateCommand{
+		ID: seeded.MappingID, PrimaryClientID: &primary, RequiredOIDCTenantID: &tenant,
+	})
+	require.NoError(t, err)
+
+	on := true
+	_, err = runAuthorized(uow, operations.UpdateMapping(repo), operations.UpdateCommand{
+		ID: seeded.MappingID, RememberDeviceEnabled: &on,
+	})
+	require.NoError(t, err)
+	got, err := repo.FindByID(ctx, seeded.MappingID)
+	require.NoError(t, err)
+	require.NotNil(t, got.PrimaryClientID, "an update that does not name the primary client keeps it")
+	assert.Equal(t, primary, *got.PrimaryClientID)
+	require.NotNil(t, got.RequiredOIDCTenantID)
+	assert.Equal(t, tenant, *got.RequiredOIDCTenantID)
+
+	blank := ""
+	_, err = runAuthorized(uow, operations.UpdateMapping(repo), operations.UpdateCommand{
+		ID: seeded.MappingID, PrimaryClientID: &blank, RequiredOIDCTenantID: &blank,
+	})
+	require.NoError(t, err)
+	got, err = repo.FindByID(ctx, seeded.MappingID)
+	require.NoError(t, err)
+	assert.Nil(t, got.PrimaryClientID, "an explicit clear unlinks it")
+	assert.Nil(t, got.RequiredOIDCTenantID)
+}
+
 func TestUpdateMapping_Errors(t *testing.T) {
 	t.Parallel()
 	repo := emaildomainmapping.NewRepository(testpg.Pool(t))

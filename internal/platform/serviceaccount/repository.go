@@ -283,7 +283,8 @@ func (r *Repository) Persist(ctx context.Context, sa *ServiceAccount, tx *usecas
 	if err != nil {
 		return err
 	}
-	return r.q.WithTx(tx.Inner()).ServiceAccountUpsert(ctx, dbq.ServiceAccountUpsertParams{
+	q := r.q.WithTx(tx.Inner())
+	if err := q.ServiceAccountUpsert(ctx, dbq.ServiceAccountUpsertParams{
 		ID:                         sa.ID,
 		Code:                       sa.Code,
 		Name:                       sa.Name,
@@ -301,12 +302,40 @@ func (r *Repository) Persist(ctx context.Context, sa *ServiceAccount, tx *usecas
 		LastUsedAt:                 sa.LastUsedAt,
 		CreatedAt:                  sa.CreatedAt,
 		UpdatedAt:                  time.Now().UTC(),
+	}); err != nil {
+		return err
+	}
+	// The SERVICE principal carries the account's name into every token
+	// minted for it; a rename that left it behind kept minting tokens under
+	// the old name (API parity run 6, service-accounts mint-token).
+	return q.ServiceAccountRenamePrincipal(ctx, dbq.ServiceAccountRenamePrincipalParams{
+		ServiceAccountID: &sa.ID, Name: sa.Name,
 	})
 }
 
-// Delete removes the row.
+// Delete removes the account and everything that authenticates as it: its
+// SERVICE principal (with the principal's access grants and role rows) and
+// the OAuth clients wired to that principal, in the same transaction.
+//
+// It used to delete only the iam_service_accounts row, so the principal and
+// its OAuth client survived and a deleted account's client credentials still
+// minted working tokens (owner decision #40).
 func (r *Repository) Delete(ctx context.Context, sa *ServiceAccount, tx *usecasepgx.DbTx) error {
-	return r.q.WithTx(tx.Inner()).ServiceAccountDelete(ctx, sa.ID)
+	q := r.q.WithTx(tx.Inner())
+	id := &sa.ID
+	if err := q.ServiceAccountDeleteOAuthClients(ctx, id); err != nil {
+		return fmt.Errorf("delete service account oauth clients: %w", err)
+	}
+	if err := q.ServiceAccountDeletePrincipalApplicationAccess(ctx, id); err != nil {
+		return fmt.Errorf("delete service principal application access: %w", err)
+	}
+	if err := q.ServiceAccountDeletePrincipalClientGrants(ctx, id); err != nil {
+		return fmt.Errorf("delete service principal client grants: %w", err)
+	}
+	if err := q.ServiceAccountDeletePrincipals(ctx, id); err != nil {
+		return fmt.Errorf("delete service principal: %w", err)
+	}
+	return q.ServiceAccountDelete(ctx, sa.ID)
 }
 
 // rowToServiceAccount hydrates the entity from its row. A wh_auth_type

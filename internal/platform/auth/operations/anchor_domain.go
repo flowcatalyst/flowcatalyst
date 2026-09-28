@@ -86,6 +86,18 @@ func UpdateAnchorDomain(repo *auth.AnchorDomainRepo) usecaseop.Operation[UpdateA
 			if a == nil {
 				return nil, httperror.NotFound("AnchorDomain", cmd.ID)
 			}
+			// The new domain must be unique, like a created one. Without this
+			// check the unique index refused the write and the caller got a
+			// 500 (owner decision #38).
+			if d != a.Domain {
+				other, err := repo.FindByDomain(ctx, d)
+				if err != nil {
+					return nil, usecase.Internal("REPO", "find_by_domain failed", err)
+				}
+				if other != nil && other.ID != a.ID {
+					return nil, usecase.Conflict("DOMAIN_EXISTS", "Anchor domain '"+d+"' already exists")
+				}
+			}
 			a.Domain = d
 			event := AnchorDomainUpdated{
 				Metadata:       usecase.NewEventMetadata(ec, AnchorDomainUpdatedType, Source, anchorSubject(a.ID)),

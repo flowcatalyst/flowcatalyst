@@ -360,6 +360,18 @@ type Querier interface {
 	ScheduledJobFindByID(ctx context.Context, id string) (MsgScheduledJob, error)
 	ScheduledJobUpsert(ctx context.Context, arg ScheduledJobUpsertParams) error
 	ServiceAccountDelete(ctx context.Context, id string) error
+	// The OAuth clients wired to the account's SERVICE principal. Migration 027's
+	// FK would cascade them with the principal; deleted explicitly anyway so the
+	// order is visible and an install without the FK is covered.
+	ServiceAccountDeleteOAuthClients(ctx context.Context, serviceAccountID *string) error
+	// iam_principal_application_access has no FK cascade on principal_id.
+	ServiceAccountDeletePrincipalApplicationAccess(ctx context.Context, serviceAccountID *string) error
+	// iam_client_access_grants has no FK cascade on principal_id.
+	ServiceAccountDeletePrincipalClientGrants(ctx context.Context, serviceAccountID *string) error
+	// The account's SERVICE principal. Its role rows cascade
+	// (iam_principal_roles), and an application pointing at it is set NULL
+	// (migration 028).
+	ServiceAccountDeletePrincipals(ctx context.Context, serviceAccountID *string) error
 	ServiceAccountFindAll(ctx context.Context) ([]IamServiceAccount, error)
 	ServiceAccountFindByCode(ctx context.Context, code string) (IamServiceAccount, error)
 	// Queries for iam_service_accounts. Webhook credentials are stored as
@@ -375,6 +387,11 @@ type Querier interface {
 	// with several linked SAs could sign with one SA while the operator rotates
 	// credentials on another.
 	ServiceAccountFindFirstByApplicationID(ctx context.Context, applicationID *string) (IamServiceAccount, error)
+	// Keeps the SERVICE principal's name in step with its account's, so a token
+	// minted after a rename carries the new name. updated_at is left alone on
+	// purpose: it is the principal's token version, and renaming an account must
+	// not revoke its live tokens.
+	ServiceAccountRenamePrincipal(ctx context.Context, arg ServiceAccountRenamePrincipalParams) error
 	ServiceAccountUpsert(ctx context.Context, arg ServiceAccountUpsertParams) error
 	SpecVersionUpsert(ctx context.Context, arg SpecVersionUpsertParams) error
 	SpecVersionsClear(ctx context.Context, eventTypeID string) error

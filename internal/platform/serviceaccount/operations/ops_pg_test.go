@@ -434,6 +434,61 @@ func TestDeleteServiceAccount_HappyPath(t *testing.T) {
 	assert.Nil(t, got, "deleted row must be gone")
 }
 
+// Deleting an account used to delete only its iam_service_accounts row: the
+// SERVICE principal and its OAuth client survived, so the deleted account's
+// client credentials still minted working tokens (owner decision #40). The
+// whole identity now goes in the same transaction.
+func TestDeleteServiceAccount_RemovesItsPrincipalAndOAuthClient(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	saRepo := serviceaccount.NewRepository(pool)
+	principals := principal.NewRepository(pool)
+	oauthRepo := platformauth.NewRepository(pool).OAuthClients
+	uow := testpg.NewUoW(t)
+	res := mustProvision(t, saRepo, principals, oauthRepo, uow, "sadel-identity", "Doomed identity")
+
+	_, err := runOp(uow, operations.DeleteServiceAccount(saRepo),
+		operations.DeleteCommand{ID: res.ServiceAccount.ID})
+	require.NoError(t, err)
+
+	p, err := principals.FindByID(ctx, res.PrincipalID)
+	require.NoError(t, err)
+	assert.Nil(t, p, "the SERVICE principal is deleted with its account")
+	oc, err := oauthRepo.FindByID(ctx, res.OAuthClientRowID)
+	require.NoError(t, err)
+	assert.Nil(t, oc, "the OAuth client is deleted, so its credentials mint nothing")
+}
+
+// Renaming an account used to leave its SERVICE principal under the old
+// name, so every token minted afterwards still carried it (API parity run 6,
+// service-accounts mint-token). The principal's version (updated_at) is not
+// bumped: a rename must not revoke the account's live tokens.
+func TestUpdateServiceAccount_RenameReachesItsPrincipal(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	saRepo := serviceaccount.NewRepository(pool)
+	principals := principal.NewRepository(pool)
+	oauthRepo := platformauth.NewRepository(pool).OAuthClients
+	uow := testpg.NewUoW(t)
+	res := mustProvision(t, saRepo, principals, oauthRepo, uow, "saren-identity", "Old name")
+	before, err := principals.FindByID(ctx, res.PrincipalID)
+	require.NoError(t, err)
+	require.NotNil(t, before)
+
+	newName := "New name"
+	_, err = runTxOp(uow, operations.UpdateServiceAccount(saRepo, principals, client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool)),
+		operations.UpdateCommand{ID: res.ServiceAccount.ID, Name: &newName})
+	require.NoError(t, err)
+
+	after, err := principals.FindByID(ctx, res.PrincipalID)
+	require.NoError(t, err)
+	require.NotNil(t, after)
+	assert.Equal(t, "New name", after.Name)
+	assert.True(t, before.UpdatedAt.Equal(after.UpdatedAt), "the principal's token version is unchanged")
+}
+
 func TestDeleteServiceAccount_Errors(t *testing.T) {
 	t.Parallel()
 	repo := serviceaccount.NewRepository(testpg.Pool(t))

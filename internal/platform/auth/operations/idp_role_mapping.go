@@ -36,7 +36,18 @@ func CreateIdpRoleMapping(repo *auth.IdpRoleMappingRepo) usecaseop.Operation[Cre
 			return nil
 		},
 		Authorize: usecaseop.Public[CreateIdpRoleMappingCommand],
-		Execute: func(_ context.Context, cmd CreateIdpRoleMappingCommand, ec usecase.ExecutionContext) (usecaseop.Plan[IdpRoleMappingCreated], error) {
+		Execute: func(ctx context.Context, cmd CreateIdpRoleMappingCommand, ec usecase.ExecutionContext) (usecaseop.Plan[IdpRoleMappingCreated], error) {
+			// An IdP role name maps to one platform role (the table's unique
+			// index is on idp_role_name). A duplicate used to reach that index
+			// and answer 500; it is a conflict (owner decision #38).
+			existing, err := repo.FindByIdpRole(ctx, cmd.IdpType, cmd.IdpRoleName)
+			if err != nil {
+				return nil, usecase.Internal("REPO", "find_by_idp_role failed", err)
+			}
+			if len(existing) > 0 {
+				return nil, usecase.Conflict("MAPPING_EXISTS",
+					"Mapping for '"+cmd.IdpType+":"+cmd.IdpRoleName+"' already exists")
+			}
 			m := auth.NewIdpRoleMapping(cmd.IdpType, cmd.IdpRoleName, cmd.PlatformRoleName)
 			event := IdpRoleMappingCreated{
 				Metadata:         usecase.NewEventMetadata(ec, IdpRoleMappingCreatedType, Source, mappingSubject(m.ID)),

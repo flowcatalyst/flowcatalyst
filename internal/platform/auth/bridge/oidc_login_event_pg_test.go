@@ -683,3 +683,22 @@ func TestSSOLoginAttempt_PortalFlowRecordsNoRow(t *testing.T) {
 	rows := recentSSOAttempts(t, f.pool, since)
 	assert.Empty(t, rows, "a portal-flow login state must write no login-attempt row, success or failure")
 }
+
+// An OIDC login for an email domain with no mapping is a user's typo or a
+// stale link, not a server fault. Go answered 500 OIDC_RESOLVE_FAILED (API
+// parity run 6, auth-remainder oidc-login-unmapped-domain); it now answers
+// 404 EMAIL_DOMAIN_NOT_MAPPED, as the Rust platform does.
+func TestOidcLogin_UnmappedDomainIsNotFound(t *testing.T) {
+	f := newOidcTestFixture(t)
+	req := httptest.NewRequest(http.MethodGet, "/auth/oidc/login?domain=unmapped-"+randString(8)+".example", nil)
+	rec := httptest.NewRecorder()
+	f.endpoint.handleLogin(rec, req)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+	assert.Contains(t, rec.Body.String(), "EMAIL_DOMAIN_NOT_MAPPED")
+
+	// A mapped domain still starts the login.
+	req = httptest.NewRequest(http.MethodGet, "/auth/oidc/login?domain="+f.domain, nil)
+	rec = httptest.NewRecorder()
+	f.endpoint.handleLogin(rec, req)
+	assert.Equal(t, http.StatusFound, rec.Code)
+}

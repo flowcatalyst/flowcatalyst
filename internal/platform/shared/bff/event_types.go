@@ -471,10 +471,9 @@ type bffSyncPlatformRequest struct {
 	ApplicationCode string `json:"applicationCode"`
 }
 
-// bffSyncPlatformResponse is the sync-platform result envelope —
-// schemas tally is wire-compatible but currently not instrumented
-// (created=updated=unchanged=0). The event-type-level counts ARE
-// correct.
+// bffSyncPlatformResponse is the sync-platform result envelope: the
+// event-type counts and the schema tally (spec version 1.0 of each listed
+// type created, changed, or left as it was).
 type bffSyncPlatformResponse struct {
 	Created uint32                 `json:"created"`
 	Updated uint32                 `json:"updated"`
@@ -496,12 +495,6 @@ type bffSyncPlatformSchemas struct {
 // RemoveUnlisted is hard-coded true to keep
 // the catalogue authoritative — stale API-sourced rows in the same
 // application get dropped.
-//
-// Schemas-tally fields in the response are currently zero;
-// instrumenting them needs a tighter sync use case that tracks per-
-// schema outcomes (the underlying Sync helper has the data; it's the
-// eventtype sync use case that doesn't extract it). Filed as a
-// follow-up.
 func (s *EventTypesState) syncPlatform(w http.ResponseWriter, r *http.Request) {
 	ac := auth.FromContext(r.Context())
 	if err := auth.RequireAnchor(ac); err != nil {
@@ -541,5 +534,10 @@ func (s *EventTypesState) syncPlatform(w http.ResponseWriter, r *http.Request) {
 		Updated: ev.Updated,
 		Deleted: ev.Deleted,
 		Total:   uint32(len(defs)),
+		Schemas: bffSyncPlatformSchemas{
+			Created:   ev.SchemasCreated,
+			Updated:   ev.SchemasUpdated,
+			Unchanged: ev.SchemasUnchanged,
+		},
 	})
 }

@@ -331,6 +331,15 @@ func (e *LoginEndpoint) handleLogin(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// Resolve uses email; synthesise one with a throwaway local-part.
 		res, idp, mapping, err := e.bridge.ResolveForEmail(r.Context(), "x@"+domain)
+		if errors.Is(err, ErrEmailDomainNotMapped) {
+			// A user's typo or a stale link, not a server fault: 404, as the
+			// Rust platform answers (owner ruling 2026-09-25 item 8). Go used
+			// to answer 500 OIDC_RESOLVE_FAILED (API parity run 6).
+			slog.Info("OIDC login for an email domain with no mapping", "domain", domain)
+			httperror.Write(w, usecase.NotFound("EMAIL_DOMAIN_NOT_MAPPED",
+				"No authentication configuration found for domain: "+domain))
+			return
+		}
 		if err != nil {
 			// A real failure (client-secret decrypt, issuer discovery, lookup) —
 			// surface it as an init error with the cause logged, not a misleading
