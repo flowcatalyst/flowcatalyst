@@ -215,6 +215,11 @@ export const NAVIGATION_CONFIG: NavGroup[] = [
 				route: "/dispatch-pools",
 			},
 			{
+				label: "Functions",
+				icon: "pi pi-box",
+				route: "/functions",
+			},
+			{
 				label: "Dispatch Jobs",
 				icon: "pi pi-send",
 				route: "/dispatch-jobs",

@@ -158,6 +158,10 @@ export const ROUTE_PERMISSIONS: Record<string, string> = {
 	"/dispatch-pools": "platform:messaging:dispatch-pool:view",
 	"/dispatch-pools/new": "platform:messaging:dispatch-pool:create",
 
+	// Functions
+	"/functions": "platform:function:function:view",
+	"/functions/new": "platform:function:function:manage",
+
 	// Dispatch Jobs
 	"/dispatch-jobs": "platform:messaging:dispatch-job:view",
 

@@ -477,6 +477,26 @@ const router = createRouter({
 						},
 					],
 				},
+				// Functions
+				{
+					path: "functions",
+					name: "functions",
+					component: () => import("@/pages/functions/FunctionListPage.vue"),
+					children: [
+						{
+							path: "new",
+							name: "function-create",
+							component: () =>
+								import("@/pages/functions/FunctionCreateDrawer.vue"),
+						},
+						{
+							path: ":id",
+							name: "function-detail",
+							component: () =>
+								import("@/pages/functions/FunctionDetailDrawer.vue"),
+						},
+					],
+				},
 				// Dispatch Jobs
 				{
 					path: "dispatch-jobs",
