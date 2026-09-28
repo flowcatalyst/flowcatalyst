@@ -1,0 +1,22 @@
+# Test fixture for internal/functions/engine: a raw ABI v1 guest (no SDK).
+# Rebuild with `make fn-fixtures`; the compiled module is committed at
+# ../fixture.wasm so tests need no Rust toolchain.
+[package]
+name = "fixture-guest"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = "s"
+lto = true
+panic = "abort"
+strip = true
