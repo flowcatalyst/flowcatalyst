@@ -21,7 +21,7 @@ contract below (schema, guest ABI, manifest, API) is ours to choose. Written aga
 | `fcdev fn` init/build/describe/run/publish/promote/deploy/set/invoke/status | built | `cmd/fcdev/fn*.go` |
 | End-to-end on fc-dev (deploy → event → signed delivery → function → emitted event) | verified 2026-09-28 | — |
 | Terminal reject outcome; scheduled jobs honour 429 (§13.2, §13.3) | built | dispatch-job processing, scheduled-job dispatcher, migration 060 |
-| Admin UI pages | not started | |
+| Admin UI pages (functions list, detail: versions, aliases, declarations, settings) | built, live-verified in Chrome | `frontend/src/pages/functions` |
 | Public routes: domain claims and route materialisation (platform side) | built | `internal/platform/functiondomain`, `internal/platform/function` (route.go, repository_routes.go, operations/routes.go), `internal/platform/function/control/document.go` |
 
 Owner decisions §13.1–13.3 were taken as proposed (two-label addresses, the reject outcome,
