@@ -209,7 +209,7 @@ func TestCreateFunction_ResourceScope(t *testing.T) {
 		PrincipalID: "prn_opcreatfnscp1",
 		Scope:       auth.ScopeClient,
 		Clients:     []string{ownClient},
-		Permissions: []string{"platform:function:manage"},
+		Permissions: []string{"platform:function:function:manage"},
 	})
 
 	// Platform-owned (nil ClientID) → anchor required → denied.
@@ -355,7 +355,7 @@ func TestUpdateFunction_ResourceScope(t *testing.T) {
 		PrincipalID: "prn_opupdatfnscp1",
 		Scope:       auth.ScopeClient,
 		Clients:     []string{ownClient},
-		Permissions: []string{"platform:function:manage"},
+		Permissions: []string{"platform:function:function:manage"},
 	})
 
 	newDesc := "d"
@@ -431,7 +431,7 @@ func TestDeleteFunction_ResourceScope_AnchorOnlyForPlatformOwned(t *testing.T) {
 		PrincipalID: "prn_opdeletfnscp1",
 		Scope:       auth.ScopeClient,
 		Clients:     []string{ownClient},
-		Permissions: []string{"platform:function:manage"},
+		Permissions: []string{"platform:function:function:manage"},
 	})
 
 	_, err = usecaseop.RunTx(clientCtx, uow, operations.DeleteFunction(repo, testWiring(pool)),

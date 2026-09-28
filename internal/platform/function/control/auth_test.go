@@ -49,7 +49,7 @@ func TestAuth_MissingPermissionIsForbidden(t *testing.T) {
 	s := newTestState(t)
 
 	noPerm := auth.WithContext(context.Background(), &auth.AuthContext{
-		PrincipalID: "sa_no_perm", Scope: auth.ScopeAnchor, Permissions: []string{"platform:function:view"},
+		PrincipalID: "sa_no_perm", Scope: auth.ScopeAnchor, Permissions: []string{"platform:function:function:view"},
 	})
 	_, err := s.desired(noPerm, &desiredInput{Pool: "default"})
 	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "PERMISSION_REQUIRED")

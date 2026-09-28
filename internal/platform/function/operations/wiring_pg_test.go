@@ -622,7 +622,7 @@ func TestPublish_ResourceScope_Denied(t *testing.T) {
 		PrincipalID: "prn_optpubscope1",
 		Scope:       auth.ScopeClient,
 		Clients:     []string{"cli_optpubscope01"},
-		Permissions: []string{"platform:function:publish", "platform:function:promote", "platform:function:manage"},
+		Permissions: []string{"platform:function:version:publish", "platform:function:alias:promote", "platform:function:function:manage"},
 	})
 	_, err := usecaseop.RunTx(clientCtx, f.uow, operations.Publish(f.repo, f.artifacts, f.loader),
 		operations.PublishCommand{FunctionID: f.fn.ID, Digest: digest}, testpg.TestEC())

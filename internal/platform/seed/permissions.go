@@ -143,13 +143,13 @@ const (
 	permAdminBatchDispatchJobsWrite = "platform:messaging:batch:dispatch-jobs-write"
 	permAdminBatchAuditLogsWrite    = "platform:admin:batch:audit-logs-write"
 
-	// Function (function runner) — docs/function-runner-plan.md §8.2. Named
-	// platform:function:* (not platform:messaging:function:*) per the WP3
-	// task spec, an explicit owner decision baked into the plan.
-	permFunctionView          = "platform:function:view"
-	permFunctionManage        = "platform:function:manage"
-	permFunctionPublish       = "platform:function:publish"
-	permFunctionPromote       = "platform:function:promote"
+	// Function (function runner) — docs/function-runner-plan.md §8.2: the
+	// function subdomain, four segments like every platform permission
+	// (platform:function:<resource>:<action>), so platform:*:*:* covers them.
+	permFunctionView          = "platform:function:function:view"
+	permFunctionManage        = "platform:function:function:manage"
+	permFunctionPublish       = "platform:function:version:publish"
+	permFunctionPromote       = "platform:function:alias:promote"
 	permFunctionSecretManage  = "platform:function:secret:manage"
 	permFunctionVersionInvoke = "platform:function:version:invoke"
 	// permFunctionRunnerControl gates the control-plane routes a deployed

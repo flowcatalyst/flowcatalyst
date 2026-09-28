@@ -472,8 +472,9 @@ scope in the operation).
 | `PUT` / `DELETE …/config/{key}`, `…/secrets/{key}`, `…/db/{name}` | Settings values. Secrets are write-only and never returned. |
 | `GET …/status` | Runners that hold it, per-version state, last failures. |
 
-**Permissions** (`platform:function:*`): `view`, `manage`, `publish`, `promote`, `secret:manage`,
-`version:invoke`. **Roles:** `platform:function-publisher` (CI) and `platform:function-runner`.
+**Permissions** (four segments, `platform:function:<resource>:<action>`, so `platform:*:*:*` covers
+them): `function:view`, `function:manage`, `version:publish`, `alias:promote`, `secret:manage`,
+`version:invoke`, and the runner's own `runner:control`. **Roles:** `platform:function-publisher` (CI) and `platform:function-runner`.
 **Reach:** client-owned functions follow `CheckScopeAccess`; platform-owned functions (null
 `client_id`) are anchor-only.
 
@@ -580,7 +581,7 @@ capabilities, from a normal `go test`.
 
 ## 11. Security model
 
-- **What may run:** artifacts published by a caller holding `platform:function:publish`, verified
+- **What may run:** artifacts published by a caller holding `platform:function:version:publish`, verified
   by digest end to end (upload, store, runner cache, runner load). Artifact signing (sigstore-go:
   full bundle, certificate-log and trust-root verification) is a phase-4 option, not a v1
   requirement.
