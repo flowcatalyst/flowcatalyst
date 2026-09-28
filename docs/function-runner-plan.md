@@ -119,6 +119,28 @@ runs in Endive's interpreter (confirmed with `InterpreterFallback.WARN`: one fun
 and build-time compilation has the same limit. wazero compiles to native code and has no such
 limit.
 
+### 2.4 Reference: the Rust host (wasmtime) on the same guests
+
+Measured 2026-09-28 on the same kind of machine (14-core M-series Mac), against the Rust repo's
+density study (`docs/function-runner-density.md` there), with harnesses mirroring theirs.
+
+| | Rust host (wasmtime) | Go host (wazero) |
+|---|---|---|
+| Rust echo guest, **Extism ABI** (native kernel on both): p50, calls/s at c=64 | 5.9 µs, 753k | 39.6 µs, 78k |
+| JS echo guest (extism-js QuickJS, the same artifact): p50, calls/s at c=64 | 7.8 µs, 739k | 50.1 µs, 131k |
+| **As each runner actually runs:** Wasm warm call | 5.9 µs | 8.2 µs (own ABI, different guest) |
+| JS, the same echo logic: p50, calls/s at c=64 | 7.8 µs, 739k | 13.9 µs, 421k (shared engine, own ABI) |
+| JS memory per function | 5.7 MB compiled; 0.63 MB fp from `.cwasm` | 0.95 MB (engine shared) |
+| JS first call on a fresh instance | ≈0.8 ms (0.41 ms load + 0.42 ms call) | ≈2.5 ms (engine compiled once per runner) |
+| Wasm memory per function | 0.64 MB; 0.05–0.15 MB from `.cwasm` | ≈1.7 MB compiled |
+| Reload precompiled code | 0.22 ms (`.cwasm` mmap) | 0.74 ms (disk cache) |
+
+Readings: wazero's host-call transition is far more expensive than wasmtime's, which a chatty ABI
+multiplies (6–7×); our bulk-frame ABI keeps the real paths within 1.4–1.8×, invisible next to an
+HTTP delivery. Density splits — the Go runner's shared JS engine beats per-function QuickJS, while
+wasmtime's mmap'd precompiled code beats wazero for Wasm. Cold starts favour the Rust host. Keep
+host crossings coarse in any future capability (§5.3).
+
 ## 3. Architecture
 
 ```
