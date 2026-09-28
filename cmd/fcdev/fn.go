@@ -26,7 +26,7 @@ func newFnCmd() *cobra.Command {
 		Use:   "fn",
 		Short: "Build, publish and run FlowCatalyst functions",
 	}
-	cmd.AddCommand(newFnInitCmd(), newFnBuildCmd(), newFnDescribeCmd())
+	cmd.AddCommand(newFnInitCmd(), newFnBuildCmd(), newFnDescribeCmd(), newFnRunCmd())
 	addFnPlatformCmds(cmd)
 	return cmd
 }
