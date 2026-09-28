@@ -37,7 +37,9 @@ func fnCLICredentialsPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "flowcatalyst-dev", "fn-cli.json"), nil
+	// fng-: the other platforms' fcdevs keep their own fn-cli.json in this
+	// shared directory, in another format (the fng_ prefix decision).
+	return filepath.Join(dir, "flowcatalyst-dev", "fng-cli.json"), nil
 }
 
 // writeFnCLICredentials records the dev CLI credential (mode 0600).
