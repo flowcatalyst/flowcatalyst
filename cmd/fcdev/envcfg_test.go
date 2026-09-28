@@ -69,3 +69,19 @@ func TestDevEnvCfg_EphemeralAPIPortSynthesisesNothing(t *testing.T) {
 		t.Errorf("RouterClientID = %q, want no credential without a knowable platform URL", cfg.RouterClientID)
 	}
 }
+
+func TestDevFunctionRunner(t *testing.T) {
+	opts := startOpts{APIPort: 8080, FunctionsEnabled: true, FunctionsPort: 8095, FunctionsPublicPort: 8096, FunctionsMemoryMB: 256}
+	c := devFunctionRunner(opts, routerCredentials{ClientID: "fcdev-functions", Secret: "s"})
+	if !c.Enabled || c.Bind != "127.0.0.1" || c.Port != 8095 || c.PublicPort != 8096 || c.PlatformURL != "http://localhost:8080" ||
+		c.ClientID != "fcdev-functions" || c.MemoryLimitMB != 256 || c.ReserveMB != 32 || c.SetMemoryLimit {
+		t.Fatalf("config = %+v", c)
+	}
+	if devFunctionRunner(opts, routerCredentials{}).Enabled {
+		t.Error("enabled without a credential")
+	}
+	opts.APIPort = 0
+	if devFunctionRunner(opts, routerCredentials{ClientID: "x", Secret: "y"}).Enabled {
+		t.Error("enabled without a knowable platform URL")
+	}
+}

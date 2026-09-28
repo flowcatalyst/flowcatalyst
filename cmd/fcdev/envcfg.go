@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/server"
 )
@@ -73,5 +74,39 @@ func devEnvCfg(opts startOpts, databaseURL string, routerCreds routerCredentials
 			}
 		}
 	}
+	// Function artifacts live beside fcdev's other data, not under the
+	// deployed default (/var/lib), unless FC_FUNCTIONS_ARTIFACT_STORE says.
+	if cfg.FunctionsArtifactStore == "" {
+		cfg.FunctionsArtifactStore = "file://" + filepath.Join(userDataDir(), "flowcatalyst", "functions", "artifacts")
+	}
 	return cfg
+}
+
+// functionsLocalClientID is the fixed client_id of the dev function runner's
+// OAuth client (see bootstrapLocalCredentials).
+const functionsLocalClientID = "fcdev-functions"
+
+// devFunctionRunner configures the in-process function runner: loopback
+// listeners, this fcdev's own platform, the bootstrapped credential, a
+// memory budget sized for a machine running everything, and caches in the
+// OS cache directory. FC_FUNCTIONS_* overrides still apply through the flags.
+func devFunctionRunner(opts startOpts, creds routerCredentials) *server.FunctionRunnerConfig {
+	c := server.LoadFunctionRunnerEnv(server.EnvCfg{PlatformEnabled: true, APIPort: opts.APIPort})
+	c.Enabled = opts.FunctionsEnabled && creds.ClientID != "" && opts.APIPort > 0
+	c.Bind = "127.0.0.1"
+	c.Port = opts.FunctionsPort
+	c.PublicPort = opts.FunctionsPublicPort
+	c.PlatformURL = fmt.Sprintf("http://localhost:%d", opts.APIPort)
+	c.ClientID, c.ClientSecret = creds.ClientID, creds.Secret
+	c.MemoryLimitMB = opts.FunctionsMemoryMB
+	if c.ReserveMB == 0 {
+		// The platform's own memory is outside the runner's budget here, so
+		// only a small reserve for the runner itself.
+		c.ReserveMB = 32
+	}
+	c.SetMemoryLimit = false // shares the process with the platform
+	if dir, err := os.UserCacheDir(); err == nil && c.CacheDir == "" {
+		c.CacheDir = filepath.Join(dir, "flowcatalyst", "fcdev-functions")
+	}
+	return &c
 }

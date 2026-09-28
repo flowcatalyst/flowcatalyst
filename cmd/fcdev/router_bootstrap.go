@@ -41,6 +41,14 @@ type routerCredentials struct {
 // service-account row is created — the router is not an SDK integration, and
 // the linked principal is all token minting reads.
 func bootstrapRouterCredentials(ctx context.Context, pool *pgxpool.Pool) (routerCredentials, error) {
+	return bootstrapLocalCredentials(ctx, pool, routerLocalClientID, "fcdev router", "FlowCatalyst Router (local dev)", "platform:router")
+}
+
+// bootstrapLocalCredentials provisions (or re-secrets) an anchor-scoped
+// client_credentials principal holding exactly one role, for an in-process
+// subsystem that authenticates to this fcdev's platform like any deployment
+// would (the router, the function runner). See bootstrapRouterCredentials.
+func bootstrapLocalCredentials(ctx context.Context, pool *pgxpool.Pool, clientID, principalName, clientName, role string) (routerCredentials, error) {
 	var zero routerCredentials
 
 	enc, err := encryption.FromEnv()
@@ -48,7 +56,7 @@ func bootstrapRouterCredentials(ctx context.Context, pool *pgxpool.Pool) (router
 		return zero, fmt.Errorf("init encryption: %w", err)
 	}
 	if enc == nil {
-		return zero, fmt.Errorf("FLOWCATALYST_APP_KEY not set; cannot encrypt the router client secret")
+		return zero, fmt.Errorf("FLOWCATALYST_APP_KEY not set; cannot encrypt the %s client secret", clientID)
 	}
 	secret, err := generateSecret()
 	if err != nil {
@@ -56,15 +64,15 @@ func bootstrapRouterCredentials(ctx context.Context, pool *pgxpool.Pool) (router
 	}
 	secretRef, err := enc.Encrypt(secret)
 	if err != nil {
-		return zero, fmt.Errorf("encrypt router client secret: %w", err)
+		return zero, fmt.Errorf("encrypt %s client secret: %w", clientID, err)
 	}
 
 	authRepo := auth.NewRepository(pool)
 	principalRepo := principal.NewRepository(pool)
 
-	existing, err := authRepo.OAuthClients.FindByClientID(ctx, routerLocalClientID)
+	existing, err := authRepo.OAuthClients.FindByClientID(ctx, clientID)
 	if err != nil {
-		return zero, fmt.Errorf("look up router client: %w", err)
+		return zero, fmt.Errorf("look up %s client: %w", clientID, err)
 	}
 
 	if existing != nil {
@@ -74,41 +82,41 @@ func bootstrapRouterCredentials(ctx context.Context, pool *pgxpool.Pool) (router
 		if err := infraPersist(ctx, pool, func(tx *usecasepgx.DbTx) error {
 			return authRepo.OAuthClients.Persist(ctx, existing, tx)
 		}); err != nil {
-			return zero, fmt.Errorf("re-secret router client: %w", err)
+			return zero, fmt.Errorf("re-secret %s client: %w", clientID, err)
 		}
-		slog.Info("refreshed the dev router credential", "client_id", routerLocalClientID)
-		return routerCredentials{ClientID: routerLocalClientID, Secret: secret}, nil
+		slog.Info("refreshed a dev credential", "client_id", clientID)
+		return routerCredentials{ClientID: clientID, Secret: secret}, nil
 	}
 
-	routerPrincipal := principal.NewService("", "fcdev router")
+	routerPrincipal := principal.NewService("", principalName)
 	routerPrincipal.ServiceAccountID = nil
 	routerPrincipal.Scope = principal.ScopeAnchor
 
-	oauthClient := auth.NewOAuthClient(routerLocalClientID, "FlowCatalyst Router (local dev)", auth.OAuthClientConfidential)
+	oauthClient := auth.NewOAuthClient(clientID, clientName, auth.OAuthClientConfidential)
 	oauthClient.SecretRef = &secretRef
 	oauthClient.GrantTypes = []string{"client_credentials"}
 	oauthClient.PrincipalID = &routerPrincipal.ID
 
 	if err := infraPersist(ctx, pool, func(tx *usecasepgx.DbTx) error {
 		if err := principalRepo.Persist(ctx, routerPrincipal, tx); err != nil {
-			return fmt.Errorf("router principal: %w", err)
+			return fmt.Errorf("%s principal: %w", clientID, err)
 		}
 		if err := authRepo.OAuthClients.Persist(ctx, oauthClient, tx); err != nil {
-			return fmt.Errorf("router oauth client: %w", err)
+			return fmt.Errorf("%s oauth client: %w", clientID, err)
 		}
 		// principal.Persist does not sync iam_principal_roles, so the role is
 		// written directly — it is the whole authority this credential has.
 		_, err := tx.Inner().Exec(ctx,
 			`INSERT INTO iam_principal_roles
 			     (principal_id, role_name, assignment_source, assigned_at)
-			 VALUES ($1, 'platform:router', 'BOOTSTRAP', NOW())
+			 VALUES ($1, $2, 'BOOTSTRAP', NOW())
 			 ON CONFLICT DO NOTHING`,
-			routerPrincipal.ID)
+			routerPrincipal.ID, role)
 		return err
 	}); err != nil {
 		return zero, err
 	}
 
-	slog.Info("bootstrapped the dev router credential", "client_id", routerLocalClientID)
-	return routerCredentials{ClientID: routerLocalClientID, Secret: secret}, nil
+	slog.Info("bootstrapped a dev credential", "client_id", clientID, "role", role)
+	return routerCredentials{ClientID: clientID, Secret: secret}, nil
 }

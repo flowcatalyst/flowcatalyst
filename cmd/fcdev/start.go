@@ -37,6 +37,10 @@ type startOpts struct {
 	OutboxEnabled       bool
 	RouterEnabled       bool
 	MCPEnabled          bool
+	FunctionsEnabled    bool
+	FunctionsPort       int
+	FunctionsPublicPort int
+	FunctionsMemoryMB   int
 }
 
 func newStartCmd() *cobra.Command {
@@ -63,6 +67,10 @@ func addStartFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool("outbox", envBoolDefault("FC_OUTBOX_ENABLED", false), "run the outbox processor")
 	cmd.Flags().Bool("router", envBoolDefault("FC_ROUTER_ENABLED", true), "run the message router (uses the embedded Postgres broker by default)")
 	cmd.Flags().Bool("mcp", envBoolDefault("FC_MCP_ENABLED", false), "run the MCP HTTP server")
+	cmd.Flags().Bool("functions", envBoolDefault("FC_FUNCTIONS_ENABLED", true), "run the function runner in-process")
+	cmd.Flags().Int("functions-port", envIntDefault("FC_FUNCTIONS_PORT", server.DefaultFunctionRunnerPort), "function runner private entry port (/fn/…)")
+	cmd.Flags().Int("functions-public-port", envIntDefault("FC_FUNCTIONS_PUBLIC_PORT", 8096), "function runner public entry port (Host routing); 0 = off")
+	cmd.Flags().Int("functions-memory-mb", envIntDefault("FC_FUNCTIONS_MEMORY_LIMIT_MB", 256), "memory the function runner may use (fcdev shares the process with everything else)")
 	cmd.Flags().String("pid-file", envStrDefault("FC_DEV_PID_FILE", pidFilePath()), "PID file written while running; used by `fcdev stop`")
 }
 
@@ -84,6 +92,10 @@ func optsFromFlags(cmd *cobra.Command) startOpts {
 		OutboxEnabled:       getBool("outbox"),
 		RouterEnabled:       getBool("router"),
 		MCPEnabled:          getBool("mcp"),
+		FunctionsEnabled:    getBool("functions"),
+		FunctionsPort:       getInt("functions-port"),
+		FunctionsPublicPort: getInt("functions-public-port"),
+		FunctionsMemoryMB:   getInt("functions-memory-mb"),
 	}
 }
 
@@ -202,6 +214,18 @@ func runStart(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
+	// The function runner authenticates to this platform's control plane
+	// like a deployed runner does, with a credential minted here.
+	var functionCreds routerCredentials
+	if opts.FunctionsEnabled {
+		if creds, err := bootstrapLocalCredentials(rootCtx, pool, functionsLocalClientID, "fcdev function runner",
+			"FlowCatalyst Function Runner (local dev)", "platform:function-runner"); err != nil {
+			slog.Warn("function runner credential bootstrap failed (continuing)", "err", err)
+		} else {
+			functionCreds = creds
+		}
+	}
+
 	// SIGTERM / SIGINT → cancel rootCtx so server.Run drains.
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
@@ -221,6 +245,7 @@ func runStart(cmd *cobra.Command, _ []string) error {
 		slog.Warn("frontend not embedded — run `make frontend` and rebuild to ship the SPA")
 	}
 	runOpts.ExtraAPIRoutes = func(_ chi.Router) {} // no extras today
+	runOpts.FunctionRunner = devFunctionRunner(opts, functionCreds)
 	return server.Run(rootCtx, pool, cfg, runOpts)
 }
 
@@ -237,6 +262,7 @@ func banner(opts startOpts) {
 		"outbox", opts.OutboxEnabled,
 		"router", opts.RouterEnabled,
 		"mcp", opts.MCPEnabled,
+		"functions", opts.FunctionsEnabled,
 	)
 }
 

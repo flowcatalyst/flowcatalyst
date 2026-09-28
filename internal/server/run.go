@@ -34,6 +34,9 @@ import (
 type RunOptions struct {
 	ExtraAPIRoutes func(r chi.Router)
 	Fallback       http.Handler
+	// FunctionRunner overrides the function runner's configuration (fc-dev
+	// passes in-process credentials); nil reads FC_FUNCTIONS_* from the env.
+	FunctionRunner *FunctionRunnerConfig
 }
 
 // Run is the single orchestrator that fc-server and fcdev both call.
@@ -228,6 +231,15 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 	if cfg.MCPEnabled {
 		wg.Go(func() { StartMCP(ctx, cfg) })
 		slog.Info("mcp started")
+	}
+	fnCfg := opts.FunctionRunner
+	if fnCfg == nil {
+		c := LoadFunctionRunnerEnv(cfg)
+		fnCfg = &c
+	}
+	if fnCfg.Enabled {
+		wg.Go(func() { StartFunctionRunner(ctx, *fnCfg) })
+		slog.Info("function runner started")
 	}
 
 	// ── Serve on the already-bound listeners ──────────────────────────────
