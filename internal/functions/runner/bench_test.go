@@ -1,7 +1,6 @@
 package runner
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -36,9 +35,7 @@ func TestLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { _ = r.Run(ctx) }()
+	go func() { _ = r.Run(t.Context()) }()
 	h := &harness{t: t, cp: cp, r: r}
 	h.waitServing("app.hello", 1)
 
@@ -52,7 +49,7 @@ func TestLoad(t *testing.T) {
 	}
 	srv := &http.Server{Handler: r.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = srv.Serve(ln) }()
-	defer srv.Close()
+	defer func() { _ = srv.Close() }()
 	url := fmt.Sprintf("http://%s/fn/app.hello/echo", ln.Addr())
 	if mode == "serve" {
 		t.Logf("serving %s for 5 minutes", url)
