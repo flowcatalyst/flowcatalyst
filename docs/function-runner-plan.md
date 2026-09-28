@@ -1,8 +1,28 @@
 # Function runner — plan
 
-*Status: design agreed in outline (owner, 2026-09-28); nothing built. Greenfield: nothing uses a
-function service today, so every contract below (schema, guest ABI, manifest, API) is ours to
-choose. Written against `main` at `0cfb595`.*
+*Status: in progress — see §0. Greenfield: nothing uses a function service today, so every
+contract below (schema, guest ABI, manifest, API) is ours to choose. Written against `main` at
+`0cfb595`; §0 tracks what has landed since.*
+
+## 0. Progress (2026-09-28)
+
+| Piece | State | Where |
+|---|---|---|
+| ABI v1, describe, routing | built | `internal/functions/abi` |
+| Engine (wazero, disk cache, fc host module, preload) | built | `internal/functions/engine` |
+| Memory budget + mmap allocator + limit detection | built | `internal/functions/budget` |
+| Control-plane contract + runner client | built | `internal/functions/control` |
+| Runner (invoke, auth, permits, capabilities incl. db/http/emit, reconcile, swap, eviction, heartbeat) | built | `internal/functions/runner` |
+| Runtimes (`wasm`, `js` on one shared QuickJS engine) | built | `internal/functions/runtimes`, `jsengine`, `clients/fn-js-engine` |
+| Go and Rust guest SDKs | built, proven through the runner | `clients/fn-go`, `clients/fn-rust` |
+| TypeScript guest SDK | in progress | `clients/fn-ts` |
+| Terminal reject outcome; scheduled jobs honour 429 (§13.2, §13.3) | built | dispatch-job processing, scheduled-job dispatcher, migration 060 |
+| Platform registry, publish, promote wiring, control-plane server | in progress | `internal/platform/function` |
+| fc-server subsystem + fc-dev wiring + `fcdev fn` CLI | not started | |
+| Public listener, domains | not started | |
+
+Owner decisions §13.1–13.3 were taken as proposed (two-label addresses, the reject outcome,
+scheduled-job 429). §13.4 (native process runtime) awaits a ruling.
 
 ## 1. What it is
 
@@ -49,6 +69,8 @@ container.
 | Rust via Extism PDK | 278 KB | 51 ms | — | 67 µs | 50 / 485 µs | 4.9 MB (Extism) / 1.7 MB compiled-only in a shared runtime |
 | Standard Go (`GOOS=wasip1`, `-buildmode=c-shared`) | 4.4 MB | 1.0 s | **28 ms** | 1.9 ms (Go runtime init) | not measured | 7.9 MB compiled + 3.7 MB linear memory per instance |
 | JavaScript (QuickJS via extism-js) | 2.5 MB | 328 ms | — | 574 µs | 153 / 272 µs | 7.6 MB compiled (the engine, per function) |
+| **JavaScript on the shared engine (built)** | script only; engine 708 KB | 205 ms, once per runner | — | 2.5 ms (instance + load script) | **72 / 245 µs** | **0.95 MB** (instances only) |
+| Go SDK example (`clients/fn-go`, net/http + database/sql) | 7.6 MB | 2.6 s | — | — | ~1 ms over HTTP | — |
 
 Throughput with 8 goroutines on 8 instances: 283k calls/s (Rust, own ABI), 99k (Rust via
 Extism), 35k (JS).
@@ -469,7 +491,8 @@ Configured with `FC_FUNCTIONS_ARTIFACT_STORE`. The runner keeps a disk cache by 
 
 ## 9. Guest SDKs
 
-**Go: `pkg/fn`** (`//go:build wasip1`, standard Go 1.24+ with `go:wasmexport`). Handlers are plain
+**Go: `clients/fn-go`** (its own module, no dependencies; standard Go 1.24+ with `go:wasmexport`,
+which works from a library package). Handlers are plain
 `net/http`:
 
 ```go
@@ -502,9 +525,16 @@ func getOrder(w http.ResponseWriter, r *http.Request) {
 **Rust: `clients/fn-rust`** (crate `flowcatalyst-fn`, `wasm32-unknown-unknown`). Same declarations
 through a builder, with handlers returning `Result<Response, Error>`.
 
-**JavaScript: phase 3,** through the shared engine (§2.2).
+**JavaScript: `clients/fn-ts`** (in progress) on the shared engine. A JS artifact is one bundled
+script defining `globalThis.__fc = {describe, handle}`; the engine protocol is documented in
+`clients/fn-js-engine/src/lib.rs`. Versions carry `runtime: "js"`.
 
-**Local testing:** `pkg/fn/fntest` runs a guest module in-process on the real engine, with fake
+**Proof through the runner:** `TestSDKExamples` (`internal/functions/runner`) runs each SDK's
+example artifact through the real engine and runner — describe as publish reads it, then calls in
+every auth mode. It found three real mismatches the SDKs' own fakes could not. Run it for every SDK
+change.
+
+**Local testing (not built yet):** `fntest` would run a guest module in-process on the real engine, with fake
 capabilities, from a normal `go test`.
 
 ## 10. Developer surface (`fcdev fn …`)
@@ -558,7 +588,7 @@ capabilities, from a normal `go test`.
   budget fails only its own call.
 
 **Phase 2 — capabilities and operation.**
-- http, emit, db capabilities, with the `database/sql` driver and `RoundTripper` in `pkg/fn`.
+- http, emit, db capabilities, with the `database/sql` driver and `RoundTripper` in the Go SDK (built).
 - Status page and function pages in the SPA; metrics dashboard.
 - Named-alias HTTP; retire; explicit-version invoke.
 
@@ -584,7 +614,7 @@ Sized for one agent each. Every package names its tests and runs a mutation chec
 | 4 | Publish (no-capability describe via WP1's engine) + validation + versions/aliases/settings ops | 1, 3 |
 | 5 | Control plane: desired document, revision + `NOTIFY`, long-poll, heartbeat, artifacts route | 3 |
 | 6 | `runner` + `reconcile`: listener, routing, auth modes, permits, pools, swap/drain, heartbeat client; `StartFunctionRunner` + envcfg + `docs/environment-variables.md` | 1, 2, 5 |
-| 7 | `pkg/fn` Go guest SDK + `fntest`; `clients/fn-rust` | 1 |
+| 7 | `clients/fn-go` Go guest SDK; `clients/fn-rust` (built; `fntest` not built) | 1 |
 | 8 | Promote wiring: dispatch pool, `FUNCTION` subscriptions, scheduled jobs, signing-secret path (confirm §8.5 first) | 4 |
 | 9 | fcdev: `--functions`, in-process runner, `fn` commands, acceptance script | 6, 7, 8 |
 
