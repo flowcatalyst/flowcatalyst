@@ -35,6 +35,12 @@ type Request struct {
 	PathParams     map[string]string   `json:"pathParams"`
 	Caller         Caller              `json:"caller"`
 	DeadlineUnixMs int64               `json:"deadlineUnixMs"`
+	// Host is the Host the caller used; RemoteAddr the caller's address
+	// (through trusted proxies on the public entry).
+	Host       string `json:"host,omitempty"`
+	RemoteAddr string `json:"remoteAddr,omitempty"`
+	// Public is true for calls through the public entry.
+	Public bool `json:"public,omitempty"`
 }
 
 // Caller kinds.

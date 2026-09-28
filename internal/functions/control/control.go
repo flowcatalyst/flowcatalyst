@@ -34,6 +34,18 @@ type Desired struct {
 	// `auth: platform` endpoints.
 	Auth      TokenAuth  `json:"auth"`
 	Functions []Function `json:"functions"`
+	// Routes are the pool's public routes: requests on the runner's public
+	// entry are matched by Host and path prefix.
+	Routes []Route `json:"routes,omitempty"`
+}
+
+// Route maps a public hostname and path prefix to a function. The prefix is
+// stripped before the function's own endpoint matching.
+type Route struct {
+	Hostname   string `json:"hostname"`
+	PathPrefix string `json:"pathPrefix"`
+	Address    string `json:"address"`
+	Alias      string `json:"alias,omitempty"` // "" = live
 }
 
 // TokenAuth names the issuer and audience of the platform's access tokens.

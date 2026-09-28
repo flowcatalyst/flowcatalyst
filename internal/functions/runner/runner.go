@@ -12,6 +12,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -51,6 +52,8 @@ type Config struct {
 	MaxDBPools int
 	// IssuerFallback verifies platform tokens when Desired carries no issuer.
 	IssuerFallback string
+	// TrustedProxies may set X-Forwarded-For on the public entry.
+	TrustedProxies []netip.Prefix
 	// Tokens overrides platform-token verification (tests).
 	Tokens TokenVerifier
 	Logger *slog.Logger
@@ -75,6 +78,7 @@ type Runner struct {
 
 	mu        sync.RWMutex
 	functions map[string]*function // by address
+	routes    routeTable
 	revision  int64
 
 	prepareSem chan struct{}
@@ -277,6 +281,7 @@ func (r *Runner) apply(ctx context.Context, d *control.Desired) {
 		}
 		delete(r.functions, addr)
 	}
+	r.routes = buildRoutes(d.Routes)
 	r.revision = d.Revision
 	r.mu.Unlock()
 

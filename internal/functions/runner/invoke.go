@@ -83,14 +83,18 @@ func parseTarget(s string) (target, bool) {
 }
 
 func (r *Runner) serveInvoke(w http.ResponseWriter, req *http.Request) {
-	start := time.Now()
 	t, ok := parseTarget(req.PathValue("target"))
 	if !ok {
 		writeError(w, http.StatusNotFound, "FUNCTION_NOT_FOUND", "no such function", 0)
 		return
 	}
-	path := "/" + req.PathValue("path")
+	r.invoke(w, req, t, "/"+req.PathValue("path"), false)
+}
 
+// invoke runs one call to target t at path, from the private entry or (public
+// true) the public one.
+func (r *Runner) invoke(w http.ResponseWriter, req *http.Request, t target, path string, public bool) {
+	start := time.Now()
 	fn, ver, rerr := r.resolve(t)
 	if rerr != nil {
 		rerr.write(w)
@@ -244,6 +248,9 @@ func (r *Runner) serveInvoke(w http.ResponseWriter, req *http.Request) {
 		PathParams:     params,
 		Caller:         *caller,
 		DeadlineUnixMs: deadline.UnixMilli(),
+		Host:           req.Host,
+		RemoteAddr:     r.clientAddr(req, public),
+		Public:         public,
 	}, body)
 	if err != nil {
 		p.put(inst)

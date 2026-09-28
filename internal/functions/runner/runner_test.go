@@ -611,3 +611,24 @@ func newTestServer(t *testing.T, r *Runner) *httptest.Server {
 	t.Cleanup(srv.Close)
 	return srv
 }
+
+// waitReady waits until version n of address is prepared (any role).
+func (h *harness) waitReady(address string, n int) {
+	h.t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		h.r.mu.RLock()
+		var st versionState = -1
+		if fn := h.r.functions[address]; fn != nil {
+			if v := fn.versions[n]; v != nil {
+				st, _ = v.currentState()
+			}
+		}
+		h.r.mu.RUnlock()
+		if st == stateReady || st == stateEvicted {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	h.t.Fatalf("%s version %d never became ready", address, n)
+}
