@@ -604,3 +604,10 @@ func TestRewritePlaceholders(t *testing.T) {
 }
 
 func parseURL(s string) (*url.URL, error) { return url.Parse(s) }
+
+func newTestServer(t *testing.T, r *Runner) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(r.Handler())
+	t.Cleanup(srv.Close)
+	return srv
+}

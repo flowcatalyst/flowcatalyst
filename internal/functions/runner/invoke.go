@@ -228,6 +228,10 @@ func (r *Runner) serveInvoke(w http.ResponseWriter, req *http.Request) {
 	for _, h := range hopHeaders {
 		headers.Del(h)
 	}
+	params := m.PathParams
+	if params == nil {
+		params = map[string]string{} // always an object on the wire, never null
+	}
 	frame, err := abi.MarshalFrame(abi.Request{
 		ID:             invID,
 		Address:        fn.address,
@@ -237,7 +241,7 @@ func (r *Runner) serveInvoke(w http.ResponseWriter, req *http.Request) {
 		RawQuery:       req.URL.RawQuery,
 		Headers:        headers,
 		Route:          ep.Pattern(),
-		PathParams:     m.PathParams,
+		PathParams:     params,
 		Caller:         *caller,
 		DeadlineUnixMs: deadline.UnixMilli(),
 	}, body)

@@ -1,0 +1,16 @@
+[package]
+name = "flowcatalyst-fn"
+version = "0.1.0"
+edition = "2021"
+description = "Guest SDK for FlowCatalyst functions (Guest ABI v1)"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+# preserve_order: serde_json::Map iterates in insertion order, so a
+# db_query row's Map key order matches the host's SQL column order
+# (plan §5.3 op 6). This is a feature flag of serde_json, not a new
+# top-level dependency.
+serde_json = { version = "1", features = ["preserve_order"] }
