@@ -454,42 +454,50 @@ func (s *Server) reapInFlight(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-tick.C:
-			// Before reaping tracker entries, unwedge any message group left
-			// buffered with no drainer: that release is what returns the pool
-			// capacity its consumer needs to start polling again.
-			if s.Manager != nil {
-				if n := s.Manager.ReleaseParkedGroups(ctx, s.Cfg.ParkedGroupMaxAge); n > 0 {
-					slog.Warn("router released parked message groups to the broker", "messages", n)
-				}
-				// X-11 / R-26/R-49: retire any consumer whose detach-drain
-				// (queue removed or changed under Reconfigure) has finished —
-				// nothing left in the pipeline references its queue. Runs
-				// AFTER ReleaseParkedGroups above so a group release just
-				// unwedged can free ITS queue's consumer on this same tick
-				// rather than waiting a further 5 minutes.
-				if n := s.Manager.retireDetachedConsumers(); n > 0 {
-					slog.Info("router retired detached consumers", "count", n)
-				}
-			}
-			if n := s.Tracker.Reap(s.Cfg.InFlightReapMaxAge, s.Cfg.InFlightAbsoluteMaxAge); n > 0 {
-				slog.Warn("router reaped stale in-flight entries", "count", n)
-			}
-			if n := s.Breakers.Evict(s.Cfg.BreakerIdleMaxAge); n > 0 {
-				slog.Info("router evicted idle circuit breakers", "count", n)
-			}
-			if s.Manager != nil {
-				if n := s.Manager.EvictIdleSynthPools(s.Cfg.SynthPoolIdleAge); n > 0 {
-					slog.Info("router evicted idle synthesised fallback pools", "count", n)
-				}
-			}
-			// Memory-health: warn when the in-flight tracker grows past the
-			// threshold — a possible callback leak. Piggybacks on this
-			// reaper's tick.
-			if n := s.Tracker.Count(); n > inFlightMemoryWarnThreshold {
-				s.Warnings.Add(WarningCategoryResource, WarningError,
-					fmt.Sprintf("in-flight tracker is large (%d entries) - possible leak", n), "router")
-			}
+			// One tick behind a panic boundary: it nacks, retires consumers
+			// and evicts pools (broker client code), and a panic in any of it
+			// must not stop the janitor for the life of the process.
+			safely("server.reapInFlight", func() { s.reapOnce(ctx) })
 		}
+	}
+}
+
+// reapOnce is one janitor tick; see reapInFlight.
+func (s *Server) reapOnce(ctx context.Context) {
+	// Before reaping tracker entries, unwedge any message group left
+	// buffered with no drainer: that release is what returns the pool
+	// capacity its consumer needs to start polling again.
+	if s.Manager != nil {
+		if n := s.Manager.ReleaseParkedGroups(ctx, s.Cfg.ParkedGroupMaxAge); n > 0 {
+			slog.Warn("router released parked message groups to the broker", "messages", n)
+		}
+		// X-11 / R-26/R-49: retire any consumer whose detach-drain
+		// (queue removed or changed under Reconfigure) has finished —
+		// nothing left in the pipeline references its queue. Runs
+		// AFTER ReleaseParkedGroups above so a group release just
+		// unwedged can free ITS queue's consumer on this same tick
+		// rather than waiting a further 5 minutes.
+		if n := s.Manager.retireDetachedConsumers(); n > 0 {
+			slog.Info("router retired detached consumers", "count", n)
+		}
+	}
+	if n := s.Tracker.Reap(s.Cfg.InFlightReapMaxAge, s.Cfg.InFlightAbsoluteMaxAge); n > 0 {
+		slog.Warn("router reaped stale in-flight entries", "count", n)
+	}
+	if n := s.Breakers.Evict(s.Cfg.BreakerIdleMaxAge); n > 0 {
+		slog.Info("router evicted idle circuit breakers", "count", n)
+	}
+	if s.Manager != nil {
+		if n := s.Manager.EvictIdleSynthPools(s.Cfg.SynthPoolIdleAge); n > 0 {
+			slog.Info("router evicted idle synthesised fallback pools", "count", n)
+		}
+	}
+	// Memory-health: warn when the in-flight tracker grows past the
+	// threshold — a possible callback leak. Piggybacks on this
+	// reaper's tick.
+	if n := s.Tracker.Count(); n > inFlightMemoryWarnThreshold {
+		s.Warnings.Add(WarningCategoryResource, WarningError,
+			fmt.Sprintf("in-flight tracker is large (%d entries) - possible leak", n), "router")
 	}
 }
 

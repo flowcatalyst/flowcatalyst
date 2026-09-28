@@ -108,6 +108,13 @@ type Notifier struct {
 
 	stopOnce sync.Once
 	stopCh   chan struct{}
+
+	// flushNow asks Run's loop for an immediate flush (a full batch, or a
+	// CRITICAL warning). Buffered with room for one: a request made while
+	// one is already pending is folded into it, since that flush takes the
+	// whole queue anyway. Written only by Add (non-blocking), read only by
+	// Run; never closed.
+	flushNow chan struct{}
 }
 
 // severityRank orders severities for the MinSeverity filter (higher = more
@@ -140,6 +147,7 @@ func NewNotifier(webhookURL string, batchSize int, interval time.Duration) *Noti
 		minSeverity: WarningWarning,
 		client:      &http.Client{Timeout: 10 * time.Second},
 		stopCh:      make(chan struct{}),
+		flushNow:    make(chan struct{}, 1),
 	}
 }
 
@@ -152,13 +160,15 @@ func (n *Notifier) Run(ctx context.Context) {
 	defer tick.Stop()
 	for {
 		select {
-		case <-ctx.Done():
-			n.flush(ctx)
+		case <-ctx.Done(): // shutdown
+			n.finalFlush()
 			return
-		case <-n.stopCh:
-			n.flush(ctx)
+		case <-n.stopCh: // Stop
+			n.finalFlush()
 			return
-		case <-tick.C:
+		case <-tick.C: // batch interval elapsed
+			n.flush(ctx)
+		case <-n.flushNow: // Add asked for an immediate flush
 			n.flush(ctx)
 		}
 	}
@@ -205,8 +215,26 @@ func (n *Notifier) Add(w Warning) {
 	flushNow := len(n.queue) >= n.batchSize || w.Severity == WarningCritical
 	n.mu.Unlock()
 	if flushNow {
-		go n.flush(context.Background())
+		// Hand the flush to Run's loop rather than starting a goroutine per
+		// warning: an incident raising CRITICAL warnings by the thousand used
+		// to start one goroutine each, every one holding an HTTP call to a
+		// webhook that was probably slow by then. At most one request is
+		// ever pending, and one flush sends everything queued.
+		select {
+		case n.flushNow <- struct{}{}:
+		default: // a flush is already pending; it will take this warning too
+		}
 	}
+}
+
+// finalFlush sends whatever is still queued on the way out. It runs on a
+// context of its own: the run context is already cancelled by then, and a
+// request made on it would fail before it was sent, losing exactly the
+// warnings raised during the shutdown.
+func (n *Notifier) finalFlush() {
+	ctx, cancel := context.WithTimeout(context.Background(), n.client.Timeout)
+	defer cancel()
+	n.flush(ctx)
 }
 
 // Stop signals the loop to exit and flushes any pending warnings.

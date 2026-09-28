@@ -266,10 +266,10 @@ func (p *Pool) ackTracked(ctx context.Context, qm common.QueuedMessage) {
 	}
 	if c := p.consumerFor(qm); c != nil {
 		if err := c.Ack(ctx, receipt, qm.BrokerMessageID); err != nil {
-			slog.Warn("ack failed", "message_id", qm.Message.ID, "err", err)
+			p.logger(qm).Warn("ack failed", "err", err)
 		}
 	} else {
-		slog.Warn("ack: no consumer for queue", "queue", qm.QueueIdentifier, "message_id", qm.Message.ID)
+		p.logger(qm).Warn("ack: no consumer for queue")
 	}
 	if p.tracker != nil {
 		p.tracker.Remove(qm.Message.ID, qm.BrokerMessageID)
@@ -291,12 +291,31 @@ func (p *Pool) nackMsg(ctx context.Context, qm common.QueuedMessage, delay *uint
 	}
 	c := p.consumerFor(qm)
 	if c == nil {
-		slog.Warn("nack: no consumer for queue", "queue", qm.QueueIdentifier, "message_id", qm.Message.ID, "reason", reason)
+		p.logger(qm).Warn("nack: no consumer for queue", "reason", reason)
 		return
 	}
 	if err := c.Nack(ctx, qm.ReceiptHandle, delay); err != nil {
-		slog.Warn("nack failed", "reason", reason, "message_id", qm.Message.ID, "err", err)
+		p.logger(qm).Warn("nack failed", "reason", reason, "err", err)
 	}
+}
+
+// nackSafely is nackMsg for a panic boundary: the nack that hands the
+// message back must not itself be able to take the process down (it calls
+// into the broker, which may be what panicked in the first place).
+func (p *Pool) nackSafely(ctx context.Context, qm common.QueuedMessage, delay *uint32, reason string) {
+	safely("pool.nack", func() { p.nackMsg(ctx, qm, delay, reason) }, p.msgAttrs(qm)...)
+}
+
+// logger is the per-message logger (see messageLogger).
+func (p *Pool) logger(qm common.QueuedMessage) *slog.Logger {
+	return messageLogger(p.cfg.Code, qm)
+}
+
+// msgAttrs is the correlation set every per-message log line in this pool
+// carries: which message, which group, which pool, which queue. The same
+// four keys everywhere, so one grep follows a message through the router.
+func (p *Pool) msgAttrs(qm common.QueuedMessage) []any {
+	return messageAttrs(p.cfg.Code, qm)
 }
 
 // Identifier is the pool code.
@@ -415,16 +434,34 @@ func (p *Pool) submit(ctx context.Context, m common.QueuedMessage) {
 // backoff (one chained goroutine per failing message — sequential, not a leak),
 // keeping it in-pipeline rather than releasing it to the broker.
 func (p *Pool) runImmediate(ctx context.Context, m common.QueuedMessage) {
+	// Panic boundary. processOne recovers its own panics (the mediator is
+	// the target's code); this catches one anywhere else on this goroutine
+	// — a broker Nack, the semaphore — which would otherwise take the whole
+	// process down. The message is handed back to the broker rather than
+	// dropped: its tracker entry is released by nackMsg, so the redelivery
+	// re-enters the pipeline.
+	queued := true // m still counts in queueSize
+	defer func() {
+		if r := recover(); r != nil {
+			logRecovered("pool.runImmediate", r, p.msgAttrs(m)...)
+			if queued {
+				p.queueDec()
+			}
+			p.nackSafely(ctx, m, new(siblingNackDelaySeconds), "worker panicked")
+		}
+	}()
 	if err := p.sem.acquire(ctx); err != nil {
 		// Shutdown before we could start. nackMsg releases the route-time
 		// tracker entry so the broker's redelivery (NACK is a no-op on SQS;
 		// the message reappears after the visibility timeout) re-enters the
 		// pipeline as a fresh copy instead of being dropped as a duplicate.
 		p.queueDec()
+		queued = false
 		p.nackMsg(ctx, m, new(uint32(10)), "shutdown before dispatch")
 		return
 	}
 	p.queueDec() // now active, not queued
+	queued = false
 	d := func() Disposition {
 		defer p.sem.release() // release on every exit path (acquired above)
 		return p.processOne(ctx, m)
@@ -433,8 +470,9 @@ func (p *Pool) runImmediate(ctx context.Context, m common.QueuedMessage) {
 		// Target unreachable, or the in-pipeline retry budget is spent.
 		// IMMEDIATE mode has no group buffer, so there is nothing behind this
 		// message to release with it — hand just this one back and let the
-		// broker redeliver. d.RetryAfter is non-zero only in the budget case,
-		// where it becomes the redelivery delay.
+		// broker redeliver after d.RetryAfter: the outcome's own delay (30s for
+		// an unreachable target, the breaker's reset for an open breaker, the
+		// backoff when the budget is spent), never an immediate redelivery.
 		p.nackMsg(ctx, m, nackDelay(d.RetryAfter), "released to broker")
 		return
 	}
@@ -446,6 +484,10 @@ func (p *Pool) runImmediate(ctx context.Context, m common.QueuedMessage) {
 	// Attempts grows the backoff and tells processOne not to re-track.
 	m.Attempts++
 	p.queueInc() // re-queued (pre-dispatch) for the duration of the backoff
+	// The count now belongs to the retry goroutine below (it decrements it
+	// on cancellation, or the next runImmediate does after its acquire), so
+	// this goroutine's panic boundary must not decrement it too.
+	queued = false
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -465,34 +507,65 @@ func (p *Pool) runImmediate(ctx context.Context, m common.QueuedMessage) {
 	}()
 }
 
-// Stop signals the pool to exit and flushes every buffered (not yet
-// dispatched) message, releasing their in-flight tracker entries. The buffer
-// is abandoned on stop — nothing will ever drain it — so a retained entry
-// would classify the broker's redeliveries as duplicates forever and the
-// messages would never be processed anywhere. With the entries released, the
-// redeliveries re-enter the pipeline fresh (routed per the new config).
-// In-flight workers drain out on their own and ack/remove per outcome.
+// Stop signals the pool to exit and hands every buffered (not yet
+// dispatched) message back to its broker. The buffer is abandoned on stop —
+// nothing will ever drain it — so each message is NACKed at once rather
+// than left to reappear only when its visibility timeout lapses (minutes on
+// SQS, during which its group is stuck behind it). nackMsg also releases
+// its in-flight tracker entry, so the redelivery re-enters the pipeline
+// fresh (routed per the new config) instead of being dropped as a
+// duplicate. In-flight workers drain out on their own and ack/remove per
+// outcome.
+//
+// A group whose drainer is still delivering its head gets the sibling delay
+// (siblingNackDelay): its successors must not surface before that head is
+// settled. An idle or parked group comes back straight away.
+//
+// Stop calls into the broker, so callers must not hold the Manager's
+// consumer lock (the nack resolves the consumer through it); Manager.Shutdown
+// stops pools before it tears consumers down, so the nacks still reach them.
 func (p *Pool) Stop() {
 	p.stopped.Store(true)
+	type flushedGroup struct {
+		msgs    []common.QueuedMessage
+		working bool
+	}
 	p.mu.Lock()
-	var flushed []common.QueuedMessage
+	var groups []flushedGroup
 	for _, gq := range p.groupQs {
-		flushed = append(flushed, gq.msgs...)
+		if len(gq.msgs) > 0 {
+			groups = append(groups, flushedGroup{msgs: gq.msgs, working: gq.working})
+		}
 		gq.msgs = nil
 	}
 	p.groupQs = make(map[string]*groupQueue)
 	p.mu.Unlock()
-	for i := range flushed {
-		p.queueDec()
-		if p.tracker != nil {
-			p.tracker.Remove(flushed[i].Message.ID, flushed[i].BrokerMessageID)
+
+	if len(groups) == 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), stopNackTimeout)
+	defer cancel()
+	flushed := 0
+	for _, g := range groups {
+		var delay *uint32
+		if g.working {
+			delay = siblingNackDelay(nil)
+		}
+		for i := range g.msgs {
+			p.queueDec()
+			p.nackSafely(ctx, g.msgs[i], delay, "pool stopped")
+			flushed++
 		}
 	}
-	if len(flushed) > 0 {
-		slog.Info("pool stopped; flushed buffered messages for broker redelivery",
-			"pool", p.cfg.Code, "count", len(flushed))
-	}
+	slog.Info("pool stopped; nacked buffered messages back to the broker",
+		"pool", p.cfg.Code, "count", flushed)
 }
+
+// stopNackTimeout bounds the nacks Stop sends for its abandoned buffer, so a
+// broker that has gone away cannot hold shutdown up. A nack that does not
+// make it simply leaves that message to its visibility timeout, as before.
+const stopNackTimeout = 10 * time.Second
 
 // drainPollInterval is how often Drain's background goroutine checks whether
 // the buffer and active workers have both emptied.
@@ -538,6 +611,11 @@ func (p *Pool) Drain(onDone func()) {
 }
 
 func (p *Pool) awaitDrainAndStop(onDone func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			logRecovered("pool.awaitDrainAndStop", r, "pool", p.cfg.Code)
+		}
+	}()
 	deadline := time.Now().Add(poolDrainBudget)
 	for (p.QueueSize() > 0 || p.ActiveWorkers() > 0) && time.Now().Before(deadline) {
 		time.Sleep(drainPollInterval)
@@ -866,6 +944,37 @@ func (p *Pool) tryDrainGroup(ctx context.Context, group string) {
 // flag off. A bare return with working still true wedges the group
 // permanently (tryDrainGroup will never spawn another drainer).
 func (p *Pool) drainGroup(ctx context.Context, group string) {
+	// inHand is the message this drainer has popped and not yet resolved
+	// (acked, nacked or put back in the buffer). Read only by the panic
+	// boundary below.
+	var inHand *common.QueuedMessage
+	// Panic boundary. processOne recovers the mediator's panics; this catches
+	// one anywhere else on the drainer — a broker Ack/Nack, the settled
+	// report — which would otherwise kill the process, and would in any case
+	// leave the group's working flag set with no drainer, wedging it for
+	// good. The message in hand and the rest of the group go back to the
+	// broker together (siblings no earlier than the head), and working is
+	// cleared, so the group resumes on redelivery.
+	defer func() {
+		if r := recover(); r != nil {
+			attrs := []any{"pool", p.cfg.Code, "group", group}
+			if inHand != nil {
+				attrs = p.msgAttrs(*inHand)
+			}
+			logRecovered("pool.drainGroup", r, attrs...)
+			delay := siblingNackDelay(nil)
+			if inHand != nil {
+				p.nackSafely(ctx, *inHand, delay, "drainer panicked")
+			}
+			// Each buffered message is nacked behind its own boundary, so a
+			// broker that panics on one nack cannot strand the rest.
+			buffered := p.takeBuffered(group)
+			for i := range buffered {
+				p.queueDec()
+				p.nackSafely(ctx, buffered[i], delay, "drainer panicked")
+			}
+		}
+	}()
 	for {
 		p.mu.Lock()
 		gq := p.groupQs[group]
@@ -879,6 +988,7 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 		}
 		msg, _ := gq.pop()
 		p.mu.Unlock()
+		inHand = &msg
 		// Pop happens under p.mu before any await, so queueSize stays
 		// consistent with what's actually buffered in groupQs.
 		p.queueDec()
@@ -896,6 +1006,7 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 				p.nackMsg(ctx, msg, new(uint32(10)), "pool stopped during drain")
 				return
 			}
+			inHand = nil // back in the buffer
 			p.clearWorking(group)
 			return
 		}
@@ -907,6 +1018,9 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 			defer p.sem.release()
 			return p.processOne(ctx, msg)
 		}()
+		if d.Action == BrokerAck {
+			inHand = nil // processOne has settled it at the broker
+		}
 
 		if d.Action == BrokerRelease {
 			// Target unreachable, or the in-pipeline retry budget is spent —
@@ -954,6 +1068,7 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 				p.nackMsg(ctx, msg, new(uint32(10)), "pool stopped during retry")
 				return
 			}
+			inHand = nil // back in the buffer
 			select {
 			case <-ctx.Done():
 				// Cancelled mid-backoff. The message is already re-fronted;
@@ -982,7 +1097,7 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 // duplicate of a copy that no longer exists.
 func (p *Pool) releaseGroup(ctx context.Context, group string, inHand common.QueuedMessage, delay *uint32, reason string) {
 	p.nackMsg(ctx, inHand, delay, reason)
-	released := p.releaseBuffered(ctx, group, reason)
+	released := p.releaseBuffered(ctx, group, siblingNackDelay(delay), reason)
 	// delay_seconds is how long the broker was asked to hold the head back —
 	// 0 means "redeliver now". Without it a release that parks the group for
 	// minutes (a target-named deferral) reads the same as an instant one.
@@ -990,8 +1105,7 @@ func (p *Pool) releaseGroup(ctx context.Context, group string, inHand common.Que
 	if delay != nil {
 		delaySeconds = *delay
 	}
-	slog.Info("released message group to broker",
-		"group", group, "pool", p.cfg.Code, "message_id", inHand.Message.ID,
+	p.logger(inHand).Info("released message group to broker",
 		"buffered_released", released, "delay_seconds", delaySeconds, "reason", reason)
 }
 
@@ -1016,12 +1130,15 @@ func (p *Pool) takeBuffered(group string) []common.QueuedMessage {
 // drainer. Used when the TARGET is unreachable: the messages are blameless and
 // the broker should redeliver them once it recovers.
 //
+// delay is the nack delay every released message carries (see
+// siblingNackDelay): they come back together, no earlier than the head.
+//
 // Returns how many were released.
-func (p *Pool) releaseBuffered(ctx context.Context, group, reason string) int {
+func (p *Pool) releaseBuffered(ctx context.Context, group string, delay *uint32, reason string) int {
 	buffered := p.takeBuffered(group)
 	for i := range buffered {
 		p.queueDec()
-		p.nackMsg(ctx, buffered[i], nil, reason)
+		p.nackMsg(ctx, buffered[i], delay, reason)
 	}
 	if len(buffered) > 0 {
 		slog.Info("released buffered group messages to broker",
@@ -1110,6 +1227,14 @@ func (p *Pool) reportSettled(group, reason string, buffered []common.QueuedMessa
 		Jobs:     jobs,
 	}
 	go func() {
+		// Panic boundary: the reporter is an HTTP client call; a panic in it
+		// must not take the process down. Nothing is in hand — the ACKs are
+		// done, and the platform reaper is the backstop for a lost report.
+		defer func() {
+			if r := recover(); r != nil {
+				logRecovered("pool.reportSettled", r, "pool", p.cfg.Code, "group", group, "jobs", len(jobs))
+			}
+		}()
 		rctx, cancel := context.WithTimeout(context.Background(), settledReportTimeout)
 		defer cancel()
 		if err := reporter.ReportSettled(rctx, report); err != nil {
@@ -1188,7 +1313,9 @@ func (p *Pool) ReleaseParkedGroups(ctx context.Context, minAge time.Duration) in
 		// releaseBuffered re-takes p.mu and clears working (already false); a
 		// drainer that claimed the group in the gap simply finds an empty
 		// buffer, which is a normal drain exit.
-		if n := p.releaseBuffered(ctx, group, "group parked with no drainer"); n > 0 {
+		// Every message goes back with the same sibling delay, so the group
+		// returns together and in order rather than all visible at once.
+		if n := p.releaseBuffered(ctx, group, siblingNackDelay(nil), "group parked with no drainer"); n > 0 {
 			slog.Warn("released a parked message group to the broker; nothing had resumed it",
 				"group", group, "pool", p.cfg.Code, "released", n, "parked_for", minAge)
 			released += n
@@ -1405,11 +1532,18 @@ func DispositionOf(outcome common.MediationOutcome, attempts uint, mode common.D
 		// allowlist decision already happened once, in mediator.go, and a
 		// second check here would just be a second place for it to drift
 		// from the ruling.
-		return Disposition{Action: BrokerRelease, Group: GroupRelease, Metric: MetricTransient}
+		//
+		// The release carries the outcome's own delay (30s from the
+		// mediator). Owner decision #41 (2026-09-26): a release with no delay
+		// makes the message visible again at once, so during an outage the
+		// router hot-loops redeliveries against a target it already knows is
+		// down, spending one SQS receive count toward the DLQ on every lap.
+		return Disposition{Action: BrokerRelease, Group: GroupRelease, Metric: MetricTransient, RetryAfter: outcomeDelay(outcome)}
 
 	case common.MediationErrorConnection:
 		// Transport failure / unreachable host / timeout — the target is down.
-		return Disposition{Action: BrokerRelease, Group: GroupRelease, Metric: MetricFailure}
+		// Released with the outcome's delay (30s), for the reason above.
+		return Disposition{Action: BrokerRelease, Group: GroupRelease, Metric: MetricFailure, RetryAfter: outcomeDelay(outcome)}
 
 	case common.MediationRateLimited:
 		// 429 — retry in-pipeline honouring Retry-After; NOT a breaker failure.
@@ -1466,11 +1600,45 @@ func DispositionOf(outcome common.MediationOutcome, attempts uint, mode common.D
 		// and is pinned in-process again — reinstating the memory pinning
 		// this release exists to prevent, in exactly the scenario it exists
 		// for.
-		return Disposition{Action: BrokerRelease, Group: GroupRelease, Metric: MetricNone}
+		//
+		// The release carries the breaker's reset timeout (the outcome's
+		// delay): redelivering sooner could only find the same open breaker
+		// again (owner decision #41).
+		return Disposition{Action: BrokerRelease, Group: GroupRelease, Metric: MetricNone, RetryAfter: outcomeDelay(outcome)}
 	}
 	// Unreachable: MediationResult is a closed enum handled exhaustively
 	// above. Same silent fallback the original inline switch had.
 	return Disposition{Action: BrokerAck, Group: GroupContinue}
+}
+
+// outcomeDelay is the delay a mediation outcome asks for, as a duration. A
+// negative or zero delay is none.
+func outcomeDelay(outcome common.MediationOutcome) time.Duration {
+	if outcome.DelaySeconds <= 0 {
+		return 0
+	}
+	return time.Duration(outcome.DelaySeconds) * time.Second
+}
+
+// siblingNackDelaySeconds is the least a message is held back when it goes
+// back to the broker only because the message in front of it in its group
+// did: it was never attempted.
+const siblingNackDelaySeconds uint32 = 10
+
+// siblingNackDelay is the nack delay for the untried messages behind a
+// released head: never shorter than the head's own, so no sibling can become
+// visible before the head it queued behind. With a shorter (or no) delay the
+// group's order rests on the broker refusing a group's later messages while
+// its head is held back. SQS FIFO does that; LocalStack's long poll does not,
+// and nor does a broker without group locks (delivery run 5, platform-down:
+// Go delivered g1's seq 6 after 7-10 because head and siblings came back
+// visible at once).
+func siblingNackDelay(head *uint32) *uint32 {
+	d := siblingNackDelaySeconds
+	if head != nil && *head > d {
+		d = *head
+	}
+	return &d
 }
 
 // retryOrRelease applies the maxInPipelineAttempts budget: within budget,
@@ -1520,6 +1688,12 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 	worker := p.beginMediating(qm)
 	defer p.endMediating(worker)
 
+	// One logger for everything said about this message from here down,
+	// carried on ctx so the mediator's lines carry the same correlation set
+	// (message id, group, pool, queue) without knowing the pool or queue.
+	log := p.logger(qm)
+	ctx = withMessageLogger(ctx, log)
+
 	// Panic isolation: a panic mid-mediation must not crash the process (an
 	// unrecovered panic in a goroutine takes down the program) or strand the
 	// message. Recover and retry in-pipeline — the in-flight entry is kept, so
@@ -1527,8 +1701,7 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 	// let the deferred recover set the verdict.
 	defer func() {
 		if r := recover(); r != nil {
-			slog.Error("panic in processOne; retrying in-pipeline",
-				"message_id", qm.Message.ID, "panic", r)
+			logRecovered("pool.processOne (retrying in-pipeline)", r, p.msgAttrs(qm)...)
 			// Through the same funnel as every other retry: a target that
 			// panics us on every attempt must not be retried for ever either.
 			result = p.retryAfter(qm, panicRetryDelay)
@@ -1548,11 +1721,10 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 			// requeue that slipped past route-time dedup). ACK-delete THIS
 			// copy with its own receipt handle — leaving it un-acked would let
 			// it redeliver forever — and leave the owner's entry alone.
-			slog.Info("external requeue duplicate (process-time backstop); ACKing copy",
-				"message_id", qm.Message.ID, "queue", qm.QueueIdentifier)
+			log.Info("external requeue duplicate (process-time backstop); ACKing copy")
 			if c := p.consumerFor(qm); c != nil {
 				if err := c.Ack(ctx, qm.ReceiptHandle, qm.BrokerMessageID); err != nil {
-					slog.Warn("ack (requeue duplicate) failed", "message_id", qm.Message.ID, "err", err)
+					log.Warn("ack (requeue duplicate) failed", "err", err)
 				}
 			}
 			return Disposition{Action: BrokerAck, Group: GroupContinue}
@@ -1567,8 +1739,7 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 	// itself. Suppression is TTL-bounded, so once the window lapses the next
 	// message probes the target again.
 	if group := qm.Message.GroupID(); group != "" && p.flushes.Suppressed(group) {
-		slog.Debug("message group flushed; ACKing without delivery",
-			"message_id", qm.Message.ID, "group", group, "pool", p.cfg.Code)
+		log.Debug("message group flushed; ACKing without delivery")
 		// R-53: a suppressed ACK previously left no pool metric at all, so a
 		// pool suppressing a whole flushed group read idle rather than
 		// busy-but-suppressed. No mediation happened (no HTTP call, no
@@ -1601,8 +1772,7 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 	// (it is a 2xx), yet it can hold a message back for as long as the target
 	// names — so say who asked, and for how long.
 	if outcome.Result == common.MediationDeferred {
-		slog.Info("target deferred message (ack=false)",
-			"message_id", qm.Message.ID, "group", qm.Message.GroupID(), "pool", p.cfg.Code,
+		log.Info("target deferred message (ack=false)",
 			"delay_seconds", outcome.DelaySeconds, "status", outcome.StatusCode)
 	}
 
@@ -1616,13 +1786,10 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 			if group := qm.Message.GroupID(); group != "" {
 				ttl := time.Duration(outcome.DelaySeconds) * time.Second
 				if p.flushes.Flush(group, ttl) {
-					slog.Info("message group flushed by target",
-						"group", group, "pool", p.cfg.Code,
-						"message_id", qm.Message.ID, "delay_seconds", outcome.DelaySeconds)
+					log.Info("message group flushed by target", "delay_seconds", outcome.DelaySeconds)
 				}
 			} else {
-				slog.Warn("flushGroup ignored: message has no message group",
-					"message_id", qm.Message.ID, "pool", p.cfg.Code)
+				log.Warn("flushGroup ignored: message has no message group")
 			}
 		}
 		p.ackTracked(ctx, qm)
@@ -1656,8 +1823,7 @@ func (p *Pool) retryAfter(qm common.QueuedMessage, delay time.Duration) Disposit
 // discard, a release the target itself caused) passes through untouched.
 func (p *Pool) settleRetry(qm common.QueuedMessage, d Disposition) Disposition {
 	if d.budgetExhausted {
-		slog.Warn("in-pipeline retry budget exhausted; releasing to broker",
-			"message_id", qm.Message.ID, "pool", p.cfg.Code,
+		p.logger(qm).Warn("in-pipeline retry budget exhausted; releasing to broker",
 			"attempts", qm.Attempts+1, "max_attempts", maxInPipelineAttempts,
 			"redelivery_delay", d.RetryAfter)
 		return d

@@ -456,7 +456,20 @@ func Watch(ctx context.Context, cs *ConfigSource, manager *Manager, interval tim
 	failures := 0
 
 	// apply reports whether a configuration actually reached the manager.
-	apply := func() bool {
+	apply := func() (applied bool) {
+		// Panic boundary: a fetch parses a remote document and a reconfigure
+		// builds broker consumers. A panic in either is counted as a failed
+		// apply (retried, warned) instead of ending the watcher, and with it
+		// every future config change, or the process.
+		defer func() {
+			if r := recover(); r != nil {
+				logRecovered("config.Watch apply", r)
+				failures++
+				cs.forgetLast()
+				raiseWatchWarning(warnings, &watchWarnID, fmt.Sprintf("config apply panicked: %v", r))
+				applied = false
+			}
+		}()
 		cfg, err := cs.Fetch(ctx)
 		if errors.Is(err, ErrUnchanged) {
 			clearWatchWarning(warnings, &watchWarnID)

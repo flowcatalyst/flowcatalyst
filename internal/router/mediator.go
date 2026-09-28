@@ -14,7 +14,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -183,8 +182,8 @@ func (m *HTTPMediator) SetWarnings(ws *WarningService) { m.warnings = ws }
 // warnConfig logs a configuration-class warning and, when a WarningService is
 // wired, records it so it shows on /warnings and (for Critical, e.g. 501)
 // degrades health.
-func (m *HTTPMediator) warnConfig(severity WarningSeverity, message string, msg *common.Message) {
-	slog.Warn("mediation config error", "message_id", msg.ID, "target", msg.MediationTarget,
+func (m *HTTPMediator) warnConfig(ctx context.Context, severity WarningSeverity, message string, msg *common.Message) {
+	mediationLogger(ctx, msg).Warn("mediation config error", "target", msg.MediationTarget,
 		"detail", message, "severity", severity)
 	if m.warnings != nil {
 		m.warnings.Add(WarningCategoryConfiguration, severity, message, "HttpMediator")
@@ -405,7 +404,7 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 		// mistake an operator can fix — so it warns, like the named 4xx codes.
 		// Silence here is worse than for a 404: nothing was even attempted.
 		reason := fmt.Sprintf("Unsupported mediation type: %s", msg.MediationType)
-		m.warnConfig(WarningError, reason, msg)
+		m.warnConfig(ctx, WarningError, reason, msg)
 		return common.PreFlightError(reason)
 	}
 
@@ -425,7 +424,7 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 		// cannot make it parse), and no call was ever made so the breaker
 		// must not be touched either way.
 		reason := fmt.Sprintf("invalid mediation target URL: %v", err)
-		m.warnConfig(WarningError, reason, msg)
+		m.warnConfig(ctx, WarningError, reason, msg)
 		return common.PreFlightError(reason)
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -446,7 +445,7 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 		// here is ACK-dropped, and the cause is a configuration mistake an
 		// operator can fix. It must not pass silently.
 		reason := fmt.Sprintf("invalid mediation target URL: %v", err)
-		m.warnConfig(WarningError, reason, msg)
+		m.warnConfig(ctx, WarningError, reason, msg)
 		return common.PreFlightError(reason)
 	}
 	guard := m.pools.Acquire(host)
@@ -458,7 +457,7 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 		// HTTP-status failures below they produce no response, and a silently
 		// unreachable target otherwise leaves no log evidence at all while
 		// every message retries in-pipeline.
-		slog.Warn("delivery request failed", "message_id", msg.ID, "target", msg.MediationTarget, "err", err)
+		mediationLogger(ctx, msg).Warn("delivery request failed", "target", msg.MediationTarget, "err", err)
 		// Map common error types.
 		var netErr interface{ Timeout() bool }
 		if errors.As(err, &netErr) && netErr.Timeout() {
@@ -514,19 +513,19 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 		// to GET and drop the body, so the target would receive nothing and the
 		// router would record a success.
 		reason := fmt.Sprintf("HTTP %d: redirect not followed — target misconfigured", status)
-		m.warnConfig(WarningError, reason, msg)
+		m.warnConfig(ctx, WarningError, reason, msg)
 		return common.ErrorConfig(status, reason)
 
 	case status == 400:
-		m.warnConfig(WarningError, "HTTP 400: Bad request", msg)
+		m.warnConfig(ctx, WarningError, "HTTP 400: Bad request", msg)
 		return common.ErrorConfig(status, "HTTP 400: Bad request")
 
 	case status == 401 || status == 403:
-		m.warnConfig(WarningError, fmt.Sprintf("HTTP %d: Auth error", status), msg)
+		m.warnConfig(ctx, WarningError, fmt.Sprintf("HTTP %d: Auth error", status), msg)
 		return common.ErrorConfig(status, fmt.Sprintf("HTTP %d: Auth error", status))
 
 	case status == 404:
-		m.warnConfig(WarningError, "HTTP 404: Not found", msg)
+		m.warnConfig(ctx, WarningError, "HTTP 404: Not found", msg)
 		return common.ErrorConfig(status, "HTTP 404: Not found")
 
 	case status == 429:
@@ -536,7 +535,7 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 				retryAfter = n
 			}
 		}
-		slog.Warn("rate limited by target", "message_id", msg.ID, "retry_after", retryAfter)
+		mediationLogger(ctx, msg).Warn("rate limited by target", "retry_after", retryAfter)
 		return common.RateLimited(retryAfter)
 
 	case status == 501:
@@ -546,7 +545,7 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 		// not implement this endpoint. Retrying that cannot start working, so it
 		// is terminal like a 4xx. Raised as CRITICAL because it is a deployment
 		// or routing mistake, not a runtime fault.
-		m.warnConfig(WarningCritical, "HTTP 501: Not implemented", msg)
+		m.warnConfig(ctx, WarningCritical, "HTTP 501: Not implemented", msg)
 		return common.ErrorConfig(status, "HTTP 501: Not implemented")
 
 	case status == 502 || status == 503 || status == 504:
@@ -555,7 +554,7 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 		// message is wrong, so hold at the broker with backoff (ErrorProcess,
 		// the retryable path) rather than dropping it. Same class as a
 		// transport failure (see the connection-error branch above).
-		slog.Warn("server error from target", "message_id", msg.ID, "status", status, "target", msg.MediationTarget)
+		mediationLogger(ctx, msg).Warn("server error from target", "status", status, "target", msg.MediationTarget)
 		out := common.ErrorProcess(30, fmt.Sprintf("HTTP %d: Server error", status))
 		out.StatusCode = status
 		return out
@@ -566,7 +565,7 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 		// individually and leaving the rest to a log line meant an operator
 		// heard about a 404 and not about a 422, for identical consequences.
 		reason := fmt.Sprintf("HTTP %d: Client error", status)
-		m.warnConfig(WarningError, reason, msg)
+		m.warnConfig(ctx, WarningError, reason, msg)
 		return common.ErrorConfig(status, reason)
 
 	case status >= 500:
@@ -576,11 +575,11 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 		// 4xx, with the same warning treatment 4xx gets: the warning is the
 		// deleted message's only trace.
 		reason := fmt.Sprintf("HTTP %d: Server error", status)
-		m.warnConfig(WarningError, reason, msg)
+		m.warnConfig(ctx, WarningError, reason, msg)
 		return common.ErrorConfig(status, reason)
 
 	default:
-		slog.Warn("unexpected status from target", "message_id", msg.ID, "status", status)
+		mediationLogger(ctx, msg).Warn("unexpected status from target", "status", status)
 		return common.ErrorProcess(30, fmt.Sprintf("HTTP %d: Unexpected status", status))
 	}
 }

@@ -242,9 +242,13 @@ func (l *LifecycleManager) consumerHealthLoop(ctx context.Context) {
 			r := l.consumerRestarter
 			l.consumerRestarterMu.RUnlock()
 			if r != nil {
-				if n := r.RestartStalledConsumers(ctx, l.cfg.ConsumerStallThreshold); n > 0 {
-					slog.Warn("restarted stalled consumers", "count", n)
-				}
+				// Rebuilding a consumer runs broker client code; a panic in it
+				// must not end this loop (or the process) for good.
+				safely("lifecycle.restartStalledConsumers", func() {
+					if n := r.RestartStalledConsumers(ctx, l.cfg.ConsumerStallThreshold); n > 0 {
+						slog.Warn("restarted stalled consumers", "count", n)
+					}
+				})
 			}
 		}
 	}

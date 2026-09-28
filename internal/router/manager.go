@@ -145,7 +145,10 @@ type Manager struct {
 	root       context.Context
 	rootCancel context.CancelFunc
 
-	wg sync.WaitGroup
+	// wg counts the running poll loops (runConsumer). An idleGroup rather
+	// than a sync.WaitGroup so Shutdown can wait on it with a deadline
+	// without leaking a helper goroutine when the deadline wins.
+	wg idleGroup
 
 	// restartAttempts tracks consecutive restart attempts per stalled consumer
 	// so a repeatedly-failing consumer escalates to a CRITICAL warning, and a
@@ -694,92 +697,131 @@ func (m *Manager) route(ctx context.Context, msgs []common.QueuedMessage, source
 	for i := range msgs {
 		msg := msgs[i]
 		msg.BatchID = batchID
-
-		if m.tracker != nil {
-			im := common.NewInFlightMessage(&msg.Message, msg.BrokerMessageID, msg.QueueIdentifier, msg.BatchID, msg.ReceiptHandle)
-			switch m.tracker.Register(im) {
-			case RegisterRedelivery:
-				// A copy of a message already in the pipeline (processing,
-				// retrying, or buffered in an ordered group). The owner adopted
-				// this fresher receipt handle; drop this copy — nothing to
-				// release, SQS Nack is a no-op. If the owner sits in an ordered
-				// group whose drainer died with its consumer (restart /
-				// reconfigure), this redelivery is the resume signal: kick the
-				// group so a fresh drainer picks the buffer back up.
-				slog.Debug("broker redelivery of in-flight message; swapped receipt handle, dropped copy",
-					"message_id", msg.Message.ID, "queue", source.Identifier())
-				if group := msg.Message.GroupID(); group != "" && msg.Message.DispatchMode.RequiresOrdering() {
-					if pool := m.poolByCode(msg.Message.PoolCode); pool != nil {
-						pool.tryDrainGroup(ctx, group)
-					}
-				}
-				continue
-
-			case RegisterExternalRequeue:
-				// The same application message ID is in flight under a
-				// DIFFERENT broker id: an external process requeued a message
-				// it thought was lost while the original still owns the work.
-				// ACK this copy so the duplicate is DELETED from the broker —
-				// otherwise it redelivers forever. The owner's entry (and
-				// receipt handle) was deliberately left untouched.
-				slog.Info("external requeue detected; ACKing duplicate", "message_id", msg.Message.ID, "queue", source.Identifier())
-				if err := source.Ack(ctx, msg.ReceiptHandle, msg.BrokerMessageID); err != nil {
-					slog.Warn("ack (external requeue) failed", "message_id", msg.Message.ID, "err", err)
-				}
-				continue
-
-			case RegisterNew:
-				// This copy owns the pipeline; fall through to submit.
-			}
+		if code := m.routeOne(ctx, msg, source); code != "" && !slices.Contains(fed, code) {
+			fed = append(fed, code)
 		}
+	}
+	return fed
+}
 
-		if m.strictRouting.Load() {
-			if reason := malformedRoutingReason(&msg.Message); reason != "" {
-				// None of these are fixable by the usual fallback (DEFAULT-POOL,
-				// DefaultDispatchMode, the shared "" group) — under strict
-				// routing they are a producer bug, not something to paper over.
-				// ACK only: it must never be delivered, and it must never be
-				// NACKed back onto the broker's redelivery clock either, since
-				// nothing about a retry would fix a malformed message.
-				slog.Warn("strict routing: malformed message; acking without delivery",
-					"message_id", msg.Message.ID, "queue", source.Identifier(), "reason", reason)
-				if w := m.warnings.Load(); w != nil {
-					w.Add(WarningCategoryConfiguration, WarningWarning,
-						fmt.Sprintf("malformed message %s on queue %s: %s", msg.Message.ID, source.Identifier(), reason),
-						"router")
-				}
-				if m.tracker != nil {
-					m.tracker.Remove(msg.Message.ID, msg.BrokerMessageID)
-				}
-				if err := source.Ack(ctx, msg.ReceiptHandle, msg.BrokerMessageID); err != nil {
-					slog.Warn("ack (strict routing malformed) failed", "message_id", msg.Message.ID, "err", err)
-				}
-				continue
+// routeOne routes one polled message: dedup against the in-flight tracker,
+// the strict-routing check, then submission to its pool. Returns the code of
+// the pool it was submitted to, or "" when it was not submitted.
+//
+// It is a panic boundary for this one message. A panic here would otherwise
+// unwind the consumer's poll loop and take the process down with the rest of
+// the batch in hand; instead it is logged with its stack, the message's
+// tracker entry is released and the message handed back to the broker, and
+// the next message in the batch is routed as usual.
+func (m *Manager) routeOne(ctx context.Context, msg common.QueuedMessage, source queue.Consumer) (fedCode string) {
+	// ownsEntry is whether this copy registered the message's in-flight
+	// entry. Only then is the message this copy's to hand back: a panic while
+	// handling a redelivery or an external requeue must leave the owning
+	// copy's entry (Remove is by message id) and its receipt handle alone.
+	ownsEntry := m.tracker == nil
+	defer func() {
+		if r := recover(); r != nil {
+			logRecovered("manager.route", r, messageAttrs(msg.Message.PoolCode, msg)...)
+			fedCode = ""
+			if !ownsEntry {
+				return
 			}
-		}
-
-		pool := m.poolForMessage(msg)
-		if pool == nil {
-			// No pool at all (not even DEFAULT-POOL configured) — NACK so the
-			// message is redelivered once a pool exists. It is leaving the
-			// pipeline, so release its just-claimed tracker entry; a lingering
-			// entry would classify every future redelivery as a duplicate and
-			// the message would never be processed.
-			slog.Warn("no pool available for message; nacking", "message_id", msg.Message.ID, "pool_code", msg.Message.PoolCode)
 			if m.tracker != nil {
 				m.tracker.Remove(msg.Message.ID, msg.BrokerMessageID)
 			}
-			if err := source.Nack(ctx, msg.ReceiptHandle, new(uint32(5))); err != nil {
-				slog.Warn("nack (no pool) failed", "message_id", msg.Message.ID, "err", err)
+			// At-least-once: if the panic came after the pool had already
+			// buffered the message, this nack makes a second copy. The
+			// platform's /process claim delivers a dispatch job once.
+			safely("manager.route nack", func() {
+				if err := source.Nack(ctx, msg.ReceiptHandle, new(siblingNackDelaySeconds)); err != nil {
+					slog.Warn("nack (after routing panic) failed", logKeyMessageID, msg.Message.ID, "err", err)
+				}
+			}, logKeyMessageID, msg.Message.ID)
+		}
+	}()
+
+	if m.tracker != nil {
+		im := common.NewInFlightMessage(&msg.Message, msg.BrokerMessageID, msg.QueueIdentifier, msg.BatchID, msg.ReceiptHandle)
+		switch m.tracker.Register(im) {
+		case RegisterRedelivery:
+			// A copy of a message already in the pipeline (processing,
+			// retrying, or buffered in an ordered group). The owner adopted
+			// this fresher receipt handle; drop this copy — nothing to
+			// release, SQS Nack is a no-op. If the owner sits in an ordered
+			// group whose drainer died with its consumer (restart /
+			// reconfigure), this redelivery is the resume signal: kick the
+			// group so a fresh drainer picks the buffer back up.
+			slog.Debug("broker redelivery of in-flight message; swapped receipt handle, dropped copy",
+				"message_id", msg.Message.ID, "queue", source.Identifier())
+			if group := msg.Message.GroupID(); group != "" && msg.Message.DispatchMode.RequiresOrdering() {
+				if pool := m.poolByCode(msg.Message.PoolCode); pool != nil {
+					pool.tryDrainGroup(ctx, group)
+				}
 			}
-			continue
+			return ""
+
+		case RegisterExternalRequeue:
+			// The same application message ID is in flight under a
+			// DIFFERENT broker id: an external process requeued a message
+			// it thought was lost while the original still owns the work.
+			// ACK this copy so the duplicate is DELETED from the broker —
+			// otherwise it redelivers forever. The owner's entry (and
+			// receipt handle) was deliberately left untouched.
+			slog.Info("external requeue detected; ACKing duplicate", "message_id", msg.Message.ID, "queue", source.Identifier())
+			if err := source.Ack(ctx, msg.ReceiptHandle, msg.BrokerMessageID); err != nil {
+				slog.Warn("ack (external requeue) failed", "message_id", msg.Message.ID, "err", err)
+			}
+			return ""
+
+		case RegisterNew:
+			// This copy owns the pipeline; fall through to submit.
+			ownsEntry = true
 		}
-		if code := pool.Identifier(); !slices.Contains(fed, code) {
-			fed = append(fed, code)
-		}
-		pool.submit(ctx, msg)
 	}
-	return fed
+
+	if m.strictRouting.Load() {
+		if reason := malformedRoutingReason(&msg.Message); reason != "" {
+			// None of these are fixable by the usual fallback (DEFAULT-POOL,
+			// DefaultDispatchMode, the shared "" group) — under strict
+			// routing they are a producer bug, not something to paper over.
+			// ACK only: it must never be delivered, and it must never be
+			// NACKed back onto the broker's redelivery clock either, since
+			// nothing about a retry would fix a malformed message.
+			slog.Warn("strict routing: malformed message; acking without delivery",
+				"message_id", msg.Message.ID, "queue", source.Identifier(), "reason", reason)
+			if w := m.warnings.Load(); w != nil {
+				w.Add(WarningCategoryConfiguration, WarningWarning,
+					fmt.Sprintf("malformed message %s on queue %s: %s", msg.Message.ID, source.Identifier(), reason),
+					"router")
+			}
+			if m.tracker != nil {
+				m.tracker.Remove(msg.Message.ID, msg.BrokerMessageID)
+			}
+			if err := source.Ack(ctx, msg.ReceiptHandle, msg.BrokerMessageID); err != nil {
+				slog.Warn("ack (strict routing malformed) failed", "message_id", msg.Message.ID, "err", err)
+			}
+			return ""
+		}
+	}
+
+	pool := m.poolForMessage(msg)
+	if pool == nil {
+		// No pool at all (not even DEFAULT-POOL configured) — NACK so the
+		// message is redelivered once a pool exists. It is leaving the
+		// pipeline, so release its just-claimed tracker entry; a lingering
+		// entry would classify every future redelivery as a duplicate and
+		// the message would never be processed.
+		slog.Warn("no pool available for message; nacking", "message_id", msg.Message.ID, "pool_code", msg.Message.PoolCode)
+		if m.tracker != nil {
+			m.tracker.Remove(msg.Message.ID, msg.BrokerMessageID)
+		}
+		if err := source.Nack(ctx, msg.ReceiptHandle, new(uint32(5))); err != nil {
+			slog.Warn("nack (no pool) failed", "message_id", msg.Message.ID, "err", err)
+		}
+		return ""
+	}
+	pool.submit(ctx, msg)
+	return pool.Identifier()
 }
 
 // poolByCode resolves a pool by code with the DEFAULT-POOL fallback, without
@@ -1008,6 +1050,16 @@ func malformedRoutingReason(msg *common.Message) string {
 // itself by batch fullness.
 func (m *Manager) runConsumer(ctx context.Context, rc *runningConsumer) {
 	defer m.wg.Done()
+	// Last-resort panic boundary for the loop itself. Polls and per-message
+	// routing have their own (pollSafely, routeOne), so reaching this means
+	// the loop's own code panicked; nothing is in hand. The loop ends, its
+	// lastPoll goes stale, and the restart watchdog builds a replacement.
+	defer func() {
+		if r := recover(); r != nil {
+			logRecovered("manager.runConsumer (poll loop ended; the watchdog rebuilds it)", r,
+				logKeyQueue, rc.consumer.Identifier())
+		}
+	}()
 	const maxPoll = 10
 	wasFull := false
 	var fullSince, nextFullWarn time.Time
@@ -1092,7 +1144,7 @@ func (m *Manager) runConsumer(ctx context.Context, rc *runningConsumer) {
 		// and retried a second later.
 		rc.pollsStarted.Add(1)
 		pollCtx, cancelPoll := context.WithTimeout(ctx, m.pollTimeout)
-		msgs, err := rc.consumer.Poll(pollCtx, maxPoll)
+		msgs, err := pollSafely(pollCtx, rc.consumer, maxPoll)
 		cancelPoll()
 		rc.pollsReturned.Add(1)
 		if err != nil {
@@ -1168,6 +1220,20 @@ func (m *Manager) runConsumer(ctx context.Context, rc *runningConsumer) {
 		// immediately, same as a full batch; the empty-poll branch above
 		// is what actually paces an idle queue.
 	}
+}
+
+// pollSafely is consumer.Poll behind a panic boundary: a broker client that
+// panics mid-receive becomes an ordinary poll error (logged with its stack),
+// retried like any other, instead of killing the process. Nothing was handed
+// to the router yet, so nothing is in hand to account for.
+func pollSafely(ctx context.Context, c queue.Consumer, maxMessages uint32) (msgs []common.QueuedMessage, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			logRecovered("consumer.Poll", r, logKeyQueue, c.Identifier())
+			msgs, err = nil, fmt.Errorf("poll panicked: %v", r)
+		}
+	}()
+	return c.Poll(ctx, maxMessages)
 }
 
 // setPools records the destination pools of the batch just routed. An empty
@@ -1429,13 +1495,22 @@ func (m *Manager) Reconfigure(ctx context.Context, cfg common.RouterConfig) erro
 		}
 		m.detachMu.Unlock()
 	}
+	// One queue whose consumer cannot be built (a broker that is down, a bad
+	// URI) must not cost every queue after it: the rest are still built, and
+	// the failures are reported together at the end (as Java's RouterServer
+	// does). A failed queue is simply absent from m.consumers, so the next
+	// Reconfigure — the watcher retries a failed apply — builds it again.
+	var failed []QueueFailure
 	for _, qc := range missing {
 		// ctx bounds the CONNECT only. The consumer itself lives under the
 		// manager's root — see the field comment: a caller's context is not a
 		// lifetime.
-		consumer, err := queue.NewConsumer(ctx, qc)
+		consumer, err := buildConsumerSafely(ctx, qc)
 		if err != nil {
-			return fmt.Errorf("build consumer for queue %s: %w", qc.Name, err)
+			slog.Error("manager: could not build consumer; continuing with the other queues",
+				logKeyQueue, qc.Name, "err", err)
+			failed = append(failed, QueueFailure{Queue: qc.Name, Err: err})
+			continue
 		}
 		rc, pollCtx := newRunningConsumer(m.consumerRoot(), consumer, qc)
 
@@ -1462,7 +1537,61 @@ func (m *Manager) Reconfigure(ctx context.Context, cfg common.RouterConfig) erro
 	// however long is left on a queueDec that may never come from a pool
 	// that no longer exists.
 	m.capacityGate.signal()
+	if len(failed) > 0 {
+		err := &ReconfigureError{Failed: failed}
+		// Running with less than the configuration asks for is an
+		// operator-visible condition, not a log line: those queues are not
+		// being consumed at all.
+		if w := m.warnings.Load(); w != nil {
+			w.Add(WarningCategoryConfiguration, WarningError, err.Error(), "router")
+		}
+		return err
+	}
 	return nil
+}
+
+// QueueFailure is one queue a Reconfigure could not start a consumer for.
+type QueueFailure struct {
+	Queue string
+	Err   error
+}
+
+// ReconfigureError reports the queues a Reconfigure could not start. Every
+// other part of the configuration (pools, the remaining queues) was applied;
+// the caller retries the whole apply, which builds only what is missing.
+type ReconfigureError struct {
+	Failed []QueueFailure
+}
+
+func (e *ReconfigureError) Error() string {
+	parts := make([]string, 0, len(e.Failed))
+	for _, f := range e.Failed {
+		parts = append(parts, fmt.Sprintf("%s (%v)", f.Queue, f.Err))
+	}
+	return fmt.Sprintf("router is running without %d configured queue(s): %s",
+		len(e.Failed), strings.Join(parts, ", "))
+}
+
+// Unwrap exposes each queue's error to errors.Is / errors.As.
+func (e *ReconfigureError) Unwrap() []error {
+	errs := make([]error, 0, len(e.Failed))
+	for _, f := range e.Failed {
+		errs = append(errs, f.Err)
+	}
+	return errs
+}
+
+// buildConsumerSafely is queue.NewConsumer behind a panic boundary: a broker
+// client that panics while connecting fails that one queue, like any other
+// build error, rather than the whole reconfigure (or the process).
+func buildConsumerSafely(ctx context.Context, qc common.QueueConfig) (c queue.Consumer, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			logRecovered("queue.NewConsumer", r, logKeyQueue, qc.Name)
+			c, err = nil, fmt.Errorf("consumer build panicked: %v", r)
+		}
+	}()
+	return queue.NewConsumer(ctx, qc)
 }
 
 // StopPolling ends every consumer's poll loop while leaving work already in the
@@ -1497,6 +1626,12 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 	m.reconfigureMu.Lock()
 	defer m.reconfigureMu.Unlock()
 
+	// Pools first, while their consumers are still up: Stop nacks every
+	// buffered message back to its broker, and a nack needs the source
+	// consumer. Stopping consumers first (as this used to) left every
+	// buffered message to its visibility timeout, its group stuck behind it.
+	m.stopAllPools()
+
 	m.consumerMu.Lock()
 	for _, rc := range m.consumers {
 		rc.cancel()
@@ -1527,38 +1662,54 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 	m.cancelConsumerRoot()
 	m.pollingStopped.Store(false)
 
-	m.poolMu.Lock()
-	for _, p := range m.pools {
-		p.Stop()
-	}
-	m.pools = make(map[string]*Pool)
-	m.poolMu.Unlock()
-
-	// Same hard-teardown reasoning as detaching above: a pool mid-background
-	// -drain (Pool.Drain) gets force-stopped now rather than left to finish
-	// on its own goroutine — Stop is idempotent, so this is safe even if
-	// that goroutine is mid-flight and calls Stop again moments later.
-	m.drainingMu.Lock()
-	for _, p := range m.drainingPools {
-		p.Stop()
-	}
-	m.drainingPools = make(map[string]*Pool)
-	m.drainingMu.Unlock()
-
-	// Same "not necessarily terminal" reasoning as m.pools above: a later
+	// Same "not necessarily terminal" reasoning as the pool maps: a later
 	// regain re-synthesises fallback pools on demand, into a clean map
 	// rather than one carrying entries for pools that no longer exist.
 	m.synthMu.Lock()
 	m.synthPools = make(map[string]*synthPoolState)
 	m.synthMu.Unlock()
 
-	done := make(chan struct{})
-	go func() { m.wg.Wait(); close(done) }()
+	// Wait for the poll loops to exit, or the caller's budget to run out.
+	// No helper goroutine bridges a WaitGroup here: that helper leaked on
+	// every timeout (once per leadership flap), parked in Wait until the
+	// stragglers exited. idleGroup reports "none left" as a channel.
 	select {
-	case <-done:
+	case <-m.wg.Idle(): // every poll loop has exited
 		return nil
-	case <-ctx.Done():
+	case <-ctx.Done(): // shutdown budget spent; stragglers exit on their own
 		return ctx.Err()
+	}
+}
+
+// stopAllPools stops every routed pool and every pool still draining after
+// removal, and empties both maps. Shutdown is not necessarily terminal (see
+// its doc comment), so the maps are re-made rather than nil'd.
+//
+// Same hard-teardown reasoning for a draining pool as for a detaching
+// consumer: a pool mid-background-drain (Pool.Drain) is force-stopped now
+// rather than left to finish on its own goroutine. Stop is idempotent, so
+// this is safe even if that goroutine calls Stop again moments later.
+//
+// The pools are taken under their locks and stopped outside them: Stop
+// nacks through the broker, and routing must not wait on that.
+func (m *Manager) stopAllPools() {
+	m.poolMu.Lock()
+	stopping := make([]*Pool, 0, len(m.pools))
+	for _, p := range m.pools {
+		stopping = append(stopping, p)
+	}
+	m.pools = make(map[string]*Pool)
+	m.poolMu.Unlock()
+
+	m.drainingMu.Lock()
+	for _, p := range m.drainingPools {
+		stopping = append(stopping, p)
+	}
+	m.drainingPools = make(map[string]*Pool)
+	m.drainingMu.Unlock()
+
+	for _, p := range stopping {
+		p.Stop()
 	}
 }
 
@@ -1693,7 +1844,7 @@ func (m *Manager) RestartStalledConsumers(ctx context.Context, threshold time.Du
 		// watchdog's tick and took the whole loop with it. Building first makes
 		// a failed rebuild leave things exactly as it found them.
 		buildCtx, cancelBuild := context.WithTimeout(ctx, m.rebuildTimeout)
-		consumer, err := queue.NewConsumer(buildCtx, c.qc)
+		consumer, err := buildConsumerSafely(buildCtx, c.qc)
 		cancelBuild()
 		if err != nil {
 			// Count the failure. A rebuild that keeps failing leaves the
