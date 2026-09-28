@@ -22,7 +22,8 @@ contract below (schema, guest ABI, manifest, API) is ours to choose. Written aga
 | Public listener, domains | not started | |
 
 Owner decisions §13.1–13.3 were taken as proposed (two-label addresses, the reject outcome,
-scheduled-job 429). §13.4 (native process runtime) awaits a ruling.
+scheduled-job 429). §13.4 was ruled 2026-09-28: no native runtime for now — Wasm only, with the
+native Go option documented in §15 for if it is ever needed.
 
 ## 1. What it is
 
@@ -601,9 +602,8 @@ capabilities, from a normal `go test`.
 - Shared-engine JS guests.
 - Public listener: claimed domains, `Host`-based routing, CORS, trusted proxies.
 
-**Phase 4 — optional.**
-- Native Go process runtime: static binaries serving HTTP on a Unix socket the runner creates and
-  passes, cgroup limits where delegated. For CPU-heavy or cgo functions.
+**Phase 4 — optional, not scheduled.**
+- Native Go process runtime — deferred by the owner (2026-09-28); the option is written up in §15.
 - Artifact signing.
 - Autoscaling signals from dispatch-pool depth.
 
@@ -633,7 +633,8 @@ Sized for one agent each. Every package names its tests and runs a mutation chec
    in practice only functions will.
 3. **Scheduled jobs honouring 429.** The scheduled-job dispatcher counts every non-2xx as a failed
    attempt. Proposal: treat `429` + `Retry-After` as a deferral there too, matching dispatch jobs.
-4. **Phase 4 scope.** Whether a native-process runtime is wanted at all, or Wasm only.
+4. **Phase 4 scope.** *Ruled 2026-09-28:* Wasm only for now; a native Go runtime is added later only if
+   needed, and §15 records how.
 
 ## 14. Non-goals
 
@@ -643,3 +644,52 @@ Sized for one agent each. Every package names its tests and runs a mutation chec
   small enough to version ourselves.
 - A JVM runtime, or compatibility with any other function-service artifact format.
 - Subscription filters (the platform has no filter column; out of scope here).
+
+## 15. Option: a native Go process runtime (deferred)
+
+*Not built. Owner, 2026-09-28: add it later only if a real need appears. This section is so that
+whoever picks it up starts from a design, not a blank page.*
+
+**When it would be worth it.** A function that needs what the Wasm sandbox cannot give: real
+parallelism inside one call (goroutines across cores — a Wasm instance is single-threaded), cgo or
+a native library, a dependency that does not build for `wasip1` (most database drivers, anything
+using raw sockets), or sustained CPU work where native code beats wazero's compiler by a margin
+that matters. Glue code — webhooks, transforms, API calls, queries through the `db` capability —
+does not need it.
+
+**Why it is viable in Go at all.** A static Go binary starts in milliseconds and idles at roughly
+10 MB, so one process per function version is affordable; the same model on the JVM is not.
+
+**Shape.**
+
+- **Artifact:** a static `linux/amd64` or `linux/arm64` binary (`CGO_ENABLED=0` by default), one per
+  architecture a pool runs; a version carries `runtime: "native"` and the digest per architecture.
+- **Contract:** the binary serves plain HTTP on a Unix socket it inherits as file descriptor 3
+  (socket activation). The runner creates and listens on the socket *before* starting the process,
+  so the kernel queues connections until the function accepts them: lazy start needs no
+  readiness probe. Request meta (caller, invocation, deadline) travels as headers; the SDK is the
+  Go SDK's `net/http` API unchanged, served from the socket instead of `fc_handle`.
+- **Describe:** `binary --fc-describe` prints the describe document and exits, run by publish in a
+  throwaway sandbox (no network, a short deadline).
+- **Capabilities:** config and secrets are read from the runner over a second socket at start (never
+  environment variables, which other same-user processes can read); `emit` and `log` go to the
+  runner as today; databases and HTTP are the function's own — it holds the DSN and opens its own
+  sockets. This is the one real change in the security model: a native function is trusted code
+  published by CI, and `httpAllow` becomes a convention unless the pool runs it in a network
+  namespace.
+- **Lifecycle:** start on first call, stop after the idle timeout, `warm` keeps one running; a crash
+  restarts with backoff; a version swap starts the new process, routes to it, then sends the old one
+  `SIGTERM` after its in-flight calls drain.
+- **Isolation and limits:** one process per version, a separate uid where the host allows. Where
+  the runner can create cgroups (EC2, Kubernetes with delegation — not Fargate), each process gets
+  `memory.max` and `cpu.max`, which gives real noisy-neighbour isolation the Wasm runtime cannot.
+  Elsewhere: `GOMEMLIMIT` set for the child, an RSS watchdog that kills it over its limit, and the
+  runner's per-function permits and deadlines as today. A deadline cannot stop a goroutine inside
+  the process; a function that repeatedly overruns is killed and restarted.
+- **Budget:** a native function is charged its memory limit against the runner's budget while its
+  process runs, since the runner cannot see inside it.
+
+**Cost to build.** Roughly the runner's `runtimes` seam plus a process supervisor (start, socket,
+restart, drain, watchdog), a `runtime: "native"` path through publish, and the SDK's socket entry
+point — perhaps a third of the Wasm runtime's size, most of it the supervisor and its tests.
+
