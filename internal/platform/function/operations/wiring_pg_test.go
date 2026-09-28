@@ -659,7 +659,7 @@ func TestAlias_Live_RunnerPoolVsDispatchPool(t *testing.T) {
 	t.Parallel()
 	f := newTestFunctionFixture(t, "app_optwirepools1", "optwirepoolsapp", "pool-fn")
 	f.seedActiveServiceAccount("optwirepoolsapp-sa")
-	_, err := f.pool.Exec(context.Background(), `UPDATE fn_functions SET pool = 'gpu' WHERE id = $1`, f.fn.ID)
+	_, err := f.pool.Exec(context.Background(), `UPDATE fng_functions SET pool = 'gpu' WHERE id = $1`, f.fn.ID)
 	require.NoError(t, err)
 	f.fn, err = f.repo.FindByID(context.Background(), f.fn.ID)
 	require.NoError(t, err)

@@ -32,7 +32,7 @@ func TestMain(m *testing.M) {
 	testpg.RunMain(m)
 }
 
-// seedApplication inserts a bare app_applications row (fn_functions has no
+// seedApplication inserts a bare app_applications row (fng_functions has no
 // FK to it — see migration 059's header comment — so this is only needed
 // for FindByID/FindWithFilters' read-side application_code join to have
 // something to find).
@@ -352,7 +352,7 @@ func TestRepository_Setting_SecretEncryptedAtRestAndNeverListed(t *testing.T) {
 	}))
 
 	var stored string
-	row := pool.QueryRow(ctx, `SELECT value FROM fn_settings WHERE function_id = $1 AND kind = 'SECRET' AND key = 'STRIPE_KEY'`, f.ID)
+	row := pool.QueryRow(ctx, `SELECT value FROM fng_settings WHERE function_id = $1 AND kind = 'SECRET' AND key = 'STRIPE_KEY'`, f.ID)
 	require.NoError(t, row.Scan(&stored))
 	assert.NotEqual(t, plaintext, stored, "the raw DB column must not hold the plaintext secret")
 	assert.NotContains(t, stored, plaintext)
@@ -373,19 +373,19 @@ func TestRepository_Runner_Heartbeat(t *testing.T) {
 	report := json.RawMessage(`{"loaded":3}`)
 	require.NoError(t, repo.UpsertRunnerHeartbeat(ctx, "fnr_repotest00001", "default", report))
 	t.Cleanup(func() {
-		_, _ = pool.Exec(context.Background(), `DELETE FROM fn_runners WHERE id = 'fnr_repotest00001'`)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM fng_runners WHERE id = 'fnr_repotest00001'`)
 	})
 
 	var gotPool string
 	var gotReport json.RawMessage
-	row := pool.QueryRow(ctx, `SELECT pool, report FROM fn_runners WHERE id = $1`, "fnr_repotest00001")
+	row := pool.QueryRow(ctx, `SELECT pool, report FROM fng_runners WHERE id = $1`, "fnr_repotest00001")
 	require.NoError(t, row.Scan(&gotPool, &gotReport))
 	assert.Equal(t, "default", gotPool)
 	assert.JSONEq(t, `{"loaded":3}`, string(gotReport))
 
 	// Upsert again with a different pool — proves ON CONFLICT DO UPDATE.
 	require.NoError(t, repo.UpsertRunnerHeartbeat(ctx, "fnr_repotest00001", "other", json.RawMessage(`{"loaded":4}`)))
-	row = pool.QueryRow(ctx, `SELECT pool, report FROM fn_runners WHERE id = $1`, "fnr_repotest00001")
+	row = pool.QueryRow(ctx, `SELECT pool, report FROM fng_runners WHERE id = $1`, "fnr_repotest00001")
 	require.NoError(t, row.Scan(&gotPool, &gotReport))
 	assert.Equal(t, "other", gotPool)
 }
@@ -397,7 +397,7 @@ func TestRepository_PoolRevision_BumpAndGet(t *testing.T) {
 	repo := function.NewRepository(pool)
 	uow := testpg.NewUoW(t)
 	t.Cleanup(func() {
-		_, _ = pool.Exec(context.Background(), `DELETE FROM fn_pool_revisions WHERE pool = 'repo-test-pool'`)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM fng_pool_revisions WHERE pool = 'repo-test-pool'`)
 	})
 
 	_, ok, err := repo.GetPoolRevision(ctx, "repo-test-pool")

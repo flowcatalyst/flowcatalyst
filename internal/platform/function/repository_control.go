@@ -22,7 +22,7 @@ import (
 // ── Functions by pool ──────────────────────────────────────────────────────
 
 // FindFunctionsByPool returns every function whose runner pool is pool
-// (docs/function-runner-plan.md §8.3): fn_functions.pool, or "default" when
+// (docs/function-runner-plan.md §8.3): fng_functions.pool, or "default" when
 // unset — matching FC_FUNCTIONS_POOL's own default
 // (internal/server/functions.go LoadFunctionRunnerEnv). Ordered by address
 // for a stable, diffable rendering of the desired document.
@@ -31,7 +31,7 @@ func (r *Repository) FindFunctionsByPool(ctx context.Context, pool string) ([]Fu
 		SELECT f.id, f.application_id, f.client_id, f.name, f.address,
 		       f.description, f.pool, f.warm, f.limits, f.created_by,
 		       f.created_at, f.updated_at, a.code AS application_code
-		FROM fn_functions f
+		FROM fng_functions f
 		LEFT JOIN app_applications a ON a.id = f.application_id
 		WHERE COALESCE(f.pool, 'default') = $1
 		ORDER BY f.address`, pool)
@@ -44,7 +44,7 @@ func (r *Repository) FindFunctionsByPool(ctx context.Context, pool string) ([]Fu
 	}
 	out := make([]Function, 0, len(collected))
 	for _, row := range collected {
-		fn, err := rowToFunction(row.FnFunction, row.ApplicationCode)
+		fn, err := rowToFunction(row.FngFunction, row.ApplicationCode)
 		if err != nil {
 			return nil, err
 		}
@@ -123,7 +123,7 @@ func decryptSettingValue(enc *encryption.Service, value string) string {
 // version actually references — 404 otherwise — and picks the response
 // Content-Type from the runtime.
 func (r *Repository) VersionRuntimeForDigest(ctx context.Context, digest string) (runtime string, ok bool, err error) {
-	err = r.pool.QueryRow(ctx, `SELECT runtime FROM fn_versions WHERE digest = $1 LIMIT 1`, digest).Scan(&runtime)
+	err = r.pool.QueryRow(ctx, `SELECT runtime FROM fng_versions WHERE digest = $1 LIMIT 1`, digest).Scan(&runtime)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", false, nil

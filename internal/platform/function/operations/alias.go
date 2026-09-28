@@ -166,7 +166,7 @@ func PutAlias(repo *function.Repository, wiring WiringDeps) usecaseop.TxOperatio
 }
 
 // missingSettings returns the sorted list of "KIND/key" strings declared by
-// d (config/secrets/db) that have no fn_settings row yet.
+// d (config/secrets/db) that have no fng_settings row yet.
 func missingSettings(d *abi.Describe, functionID string, repo *function.Repository, ctx context.Context) []string {
 	settings, err := repo.ListSettings(ctx, functionID)
 	if err != nil {

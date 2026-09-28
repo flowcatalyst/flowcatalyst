@@ -39,7 +39,7 @@ type DeleteFunctionResult struct {
 // the function is deleted" — the one case reconcileWiring never handles
 // itself), computes which of its versions' artifact digests become
 // orphaned, and deletes the function row — cascading to its versions,
-// aliases, and settings via the fn_versions/fn_aliases/fn_settings FK ON
+// aliases, and settings via the fng_versions/fng_aliases/fng_settings FK ON
 // DELETE CASCADE (migration 059). All in one transaction; [FunctionDeleted]
 // is emitted atomically with it.
 func DeleteFunction(repo *function.Repository, wiring WiringDeps) usecaseop.TxOperation[DeleteCommand, DeleteFunctionResult] {
@@ -100,7 +100,7 @@ func DeleteFunction(repo *function.Repository, wiring WiringDeps) usecaseop.TxOp
 					seen[v.Digest] = true
 					var otherCount int
 					if qerr := tx.QueryRow(ctx,
-						`SELECT COUNT(*) FROM fn_versions WHERE digest = $1 AND function_id != $2`,
+						`SELECT COUNT(*) FROM fng_versions WHERE digest = $1 AND function_id != $2`,
 						v.Digest, f.ID).Scan(&otherCount); qerr != nil {
 						return qerr
 					}

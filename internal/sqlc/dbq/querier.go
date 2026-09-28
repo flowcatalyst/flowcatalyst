@@ -194,18 +194,18 @@ type Querier interface {
 	EventTypeUpsertByCode(ctx context.Context, arg EventTypeUpsertByCodeParams) error
 	EventTypeUpsertByID(ctx context.Context, arg EventTypeUpsertByIDParams) error
 	FunctionAliasDelete(ctx context.Context, arg FunctionAliasDeleteParams) error
-	FunctionAliasList(ctx context.Context, functionID string) ([]FnAlias, error)
+	FunctionAliasList(ctx context.Context, functionID string) ([]FngAlias, error)
 	FunctionAliasUpsert(ctx context.Context, arg FunctionAliasUpsertParams) error
 	FunctionDelete(ctx context.Context, id string) error
 	FunctionFindByAddress(ctx context.Context, address string) (FunctionFindByAddressRow, error)
-	// Queries for fn_functions, fn_versions, fn_aliases, fn_settings,
-	// fn_runners, fn_pool_revisions.
+	// Queries for fng_functions, fng_versions, fng_aliases, fng_settings,
+	// fng_runners, fng_pool_revisions.
 	FunctionFindByID(ctx context.Context, id string) (FunctionFindByIDRow, error)
 	FunctionPoolRevisionBump(ctx context.Context, pool string) (int64, error)
 	FunctionPoolRevisionGet(ctx context.Context, pool string) (int64, error)
 	FunctionRunnerUpsertHeartbeat(ctx context.Context, arg FunctionRunnerUpsertHeartbeatParams) error
 	FunctionSettingDelete(ctx context.Context, arg FunctionSettingDeleteParams) error
-	FunctionSettingList(ctx context.Context, functionID string) ([]FnSetting, error)
+	FunctionSettingList(ctx context.Context, functionID string) ([]FngSetting, error)
 	FunctionSettingUpsert(ctx context.Context, arg FunctionSettingUpsertParams) error
 	FunctionUpsert(ctx context.Context, arg FunctionUpsertParams) error
 	FunctionVersionGetByDigest(ctx context.Context, arg FunctionVersionGetByDigestParams) (FunctionVersionGetByDigestRow, error)

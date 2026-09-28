@@ -132,7 +132,7 @@ limit.
  router / dispatch ── signed POST ──▶ ┌──────── function runner (FC_FUNCTIONS_ENABLED) ───────────────┐
  scheduled jobs ──── signed POST ──▶ │ one wazero.Runtime · disk compile cache · mmap allocator       │
  API callers ─────── bearer ───────▶ │ budget (memory) · per-function permits · instance pools        │
-                                     │ :8090 /fn/{address}[@{alias}|@v{n}]/{path}                     │
+                                     │ :8095 /fn/{address}[@{alias}|@v{n}]/{path}                     │
                                      │ host calls: log · config · secret · http · emit · db           │
                                      └────────────────────────────────────────────────────────────────┘
 ```
@@ -410,17 +410,22 @@ Defaults for new functions, overridable per function up to ceilings in platform 
 
 ### 8.1 Schema: `internal/migrate/sql/059_functions.sql`
 
+Tables are prefixed `fng_` (owner decision, 2026-09-28): the Java, Rust and Go platforms share
+databases with incompatible function-runner schemas — Java keeps `fn_`, Rust uses `fnr_`, Go uses
+`fng_` — until one implementation is chosen and renamed back to `fn_`. The `NOTIFY` channel is
+`fng_desired` for the same reason.
+
 | Table | Columns |
 |---|---|
-| `fn_functions` | `id` (TSID, prefix `fn_`), `application_id`, `client_id` null, `name`, `address` unique, `description`, `pool`, `warm`, `limits` jsonb, audit columns |
-| `fn_versions` | `id`, `function_id`, `number`, `digest`, `size_bytes`, `abi`, `describe` jsonb, `status`, `failure` jsonb, `ready_at`, `published_by`, `created_at`; unique `(function_id, number)` and `(function_id, digest)` |
-| `fn_aliases` | `function_id`, `name`, `version_id`, `updated_at`, `updated_by`; PK `(function_id, name)` |
-| `fn_settings` | `function_id`, `kind` (`CONFIG`, `SECRET`, `DB`), `key`, `value` (config plain; secrets and DSNs encrypted at rest the way service-account/connection secrets are); PK `(function_id, kind, key)` |
-| `fn_runners` | `id`, `pool`, `heartbeat_at`, `report` jsonb |
-| `fn_pool_revisions` | `pool` PK, `revision` bigint |
+| `fng_functions` | `id` (TSID, prefix `fn_`), `application_id`, `client_id` null, `name`, `address` unique, `description`, `pool`, `warm`, `limits` jsonb, audit columns |
+| `fng_versions` | `id`, `function_id`, `number`, `digest`, `size_bytes`, `abi`, `describe` jsonb, `status`, `failure` jsonb, `ready_at`, `published_by`, `created_at`; unique `(function_id, number)` and `(function_id, digest)` |
+| `fng_aliases` | `function_id`, `name`, `version_id`, `updated_at`, `updated_by`; PK `(function_id, name)` |
+| `fng_settings` | `function_id`, `kind` (`CONFIG`, `SECRET`, `DB`), `key`, `value` (config plain; secrets and DSNs encrypted at rest the way service-account/connection secrets are); PK `(function_id, kind, key)` |
+| `fng_runners` | `id`, `pool`, `heartbeat_at`, `report` jsonb |
+| `fng_pool_revisions` | `pool` PK, `revision` bigint |
 
-`fn_pool_revisions` is bumped in the same transaction as any promote, alias or settings change,
-which also issues `NOTIFY fn_desired, '<pool>'`.
+`fng_pool_revisions` is bumped in the same transaction as any promote, alias or settings change,
+which also issues `NOTIFY fng_desired, '<pool>'`.
 
 Also:
 
@@ -455,7 +460,7 @@ New routes go into the lockfile with `make api-bump`; `make api-diff` must pass.
 
 | Route | Purpose |
 |---|---|
-| `GET /desired?pool=P&wait=30s` | The pool's document; `ETag` = revision. Waits on `LISTEN fn_desired` with a 5 s re-check fallback. |
+| `GET /desired?pool=P&wait=30s` | The pool's document; `ETag` = revision. Waits on `LISTEN fng_desired` with a 5 s re-check fallback. |
 | `POST /heartbeat` | Runner report (§6.5, §7). Marks versions `READY`/`FAILED`. |
 | `GET /artifacts/{digest}` | `302` to a presigned S3 URL, or streamed from the file store. The runner holds no storage credentials. |
 | `POST /events` `{functionId, event}` | Emit on a function's behalf (§6.3). |

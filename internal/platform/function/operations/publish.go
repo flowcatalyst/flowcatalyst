@@ -363,7 +363,7 @@ func RetireVersion(repo *function.Repository) usecaseop.TxOperation[RetireComman
 			}
 
 			if err := s.WithTx(ctx, func(tx pgx.Tx) error {
-				if _, execErr := tx.Exec(ctx, `UPDATE fn_versions SET status = $2 WHERE id = $1`, v.ID, string(function.VersionRetired)); execErr != nil {
+				if _, execErr := tx.Exec(ctx, `UPDATE fng_versions SET status = $2 WHERE id = $1`, v.ID, string(function.VersionRetired)); execErr != nil {
 					return execErr
 				}
 				_, bumpErr := repo.BumpPoolRevision(ctx, usecasepgx.WrapTxForBootstrap(tx), f.RunnerPool())

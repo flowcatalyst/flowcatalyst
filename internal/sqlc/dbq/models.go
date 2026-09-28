@@ -96,7 +96,7 @@ type AudLog struct {
 	ClientID      *string         `db:"client_id"`
 }
 
-type FnAlias struct {
+type FngAlias struct {
 	FunctionID string    `db:"function_id"`
 	Name       string    `db:"name"`
 	VersionID  string    `db:"version_id"`
@@ -104,7 +104,7 @@ type FnAlias struct {
 	UpdatedBy  *string   `db:"updated_by"`
 }
 
-type FnFunction struct {
+type FngFunction struct {
 	ID            string          `db:"id"`
 	ApplicationID string          `db:"application_id"`
 	ClientID      *string         `db:"client_id"`
@@ -119,19 +119,19 @@ type FnFunction struct {
 	UpdatedAt     time.Time       `db:"updated_at"`
 }
 
-type FnPoolRevision struct {
+type FngPoolRevision struct {
 	Pool     string `db:"pool"`
 	Revision int64  `db:"revision"`
 }
 
-type FnRunner struct {
+type FngRunner struct {
 	ID          string          `db:"id"`
 	Pool        string          `db:"pool"`
 	HeartbeatAt time.Time       `db:"heartbeat_at"`
 	Report      json.RawMessage `db:"report"`
 }
 
-type FnSetting struct {
+type FngSetting struct {
 	FunctionID string    `db:"function_id"`
 	Kind       string    `db:"kind"`
 	Key        string    `db:"key"`
@@ -139,7 +139,7 @@ type FnSetting struct {
 	UpdatedAt  time.Time `db:"updated_at"`
 }
 
-type FnVersion struct {
+type FngVersion struct {
 	ID          string          `db:"id"`
 	FunctionID  string          `db:"function_id"`
 	Number      int32           `db:"number"`

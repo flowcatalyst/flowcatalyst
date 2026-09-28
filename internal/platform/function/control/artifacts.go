@@ -22,7 +22,7 @@ type artifactInput struct {
 // artifact serves GET /control/functions/artifacts/{digest} (plan §8.3):
 // a 302 to a presigned URL when the store supports one, else the bytes
 // streamed straight from the store — the runner holds no storage
-// credentials either way. Only digests some fn_versions row references are
+// credentials either way. Only digests some fng_versions row references are
 // served; anything else is 404, so a runner can never pull an artifact
 // nobody published.
 //

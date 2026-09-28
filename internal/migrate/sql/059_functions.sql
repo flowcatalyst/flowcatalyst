@@ -4,30 +4,38 @@
 -- widenings of existing tables so subscriptions and scheduled jobs can be
 -- owned by a function.
 --
--- fn_functions   — the aggregate root. Identity is the address
+-- The fng_ prefix is deliberate (owner decision, 2026-09-28): the Java,
+-- Rust and Go platforms share databases and each has its own, incompatible
+-- function-runner schema — Java keeps fn_, Rust uses fnr_, Go uses fng_ —
+-- until one implementation is chosen and renamed back to fn_. Every table
+-- here CREATEs IF NOT EXISTS, so a shared prefix would silently reuse
+-- another implementation's table. The same goes for the fng_desired NOTIFY
+-- channel.
+--
+-- fng_functions   — the aggregate root. Identity is the address
 --                   `{applicationCode}.{name}` (two DNS labels, immutable,
 --                   unique). application_id is a bare column, no FK — same
 --                   convention as msg_subscriptions.dispatch_pool_id and
 --                   msg_connections.application_code: every cross-aggregate
 --                   reference in this schema is a plain column, not a FK,
 --                   so aggregates can be migrated/reordered independently.
--- fn_versions    — immutable artifacts (sha256 digest) plus their describe
---                   document. Owned by fn_functions: FK ON DELETE CASCADE,
+-- fng_versions    — immutable artifacts (sha256 digest) plus their describe
+--                   document. Owned by fng_functions: FK ON DELETE CASCADE,
 --                   the same pattern migrations 020/031/032/053 use for a
 --                   true parent/child relationship (not a loose reference).
--- fn_aliases     — named pointers to a version (`live`, `canary`, …). Owned
---                   by fn_functions: FK ON DELETE CASCADE.
--- fn_settings    — platform-held config/secret/DB values, keyed by
---                   (function_id, kind, key). Owned by fn_functions: FK ON
+-- fng_aliases     — named pointers to a version (`live`, `canary`, …). Owned
+--                   by fng_functions: FK ON DELETE CASCADE.
+-- fng_settings    — platform-held config/secret/DB values, keyed by
+--                   (function_id, kind, key). Owned by fng_functions: FK ON
 --                   DELETE CASCADE. SECRET and DB values are stored through
 --                   the same encryption.EncryptSecretRef convention as
 --                   iam_service_accounts.wh_*_ref (encrypted:<blob>, or an
 --                   external secret-manager reference stored verbatim) —
 --                   the `value` column holds ciphertext or a reference, never
 --                   plaintext, for those two kinds.
--- fn_runners     — one row per live runner process, heartbeat + budget
+-- fng_runners     — one row per live runner process, heartbeat + budget
 --                   report. Not owned by any function.
--- fn_pool_revisions — one row per pool, bumped whenever that pool's desired
+-- fng_pool_revisions — one row per pool, bumped whenever that pool's desired
 --                   state changes (promote, alias, settings). No FK: "pool"
 --                   is a bare string key shared with msg_dispatch_pools.code,
 --                   not every pool in this table need have a dispatch-pool
@@ -39,7 +47,7 @@
 -- tables) — same X-06 discipline: an unrecognised value is a write-boundary
 -- rejection, never silently coerced.
 
-CREATE TABLE IF NOT EXISTS fn_functions (
+CREATE TABLE IF NOT EXISTS fng_functions (
     id             VARCHAR(17) PRIMARY KEY,
     application_id VARCHAR(17) NOT NULL,
     client_id      VARCHAR(17),
@@ -54,13 +62,13 @@ CREATE TABLE IF NOT EXISTS fn_functions (
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS uq_fn_functions_address ON fn_functions (address);
-CREATE INDEX IF NOT EXISTS idx_fn_functions_application_id ON fn_functions (application_id);
-CREATE INDEX IF NOT EXISTS idx_fn_functions_client_id ON fn_functions (client_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_fng_functions_address ON fng_functions (address);
+CREATE INDEX IF NOT EXISTS idx_fng_functions_application_id ON fng_functions (application_id);
+CREATE INDEX IF NOT EXISTS idx_fng_functions_client_id ON fng_functions (client_id);
 
-CREATE TABLE IF NOT EXISTS fn_versions (
+CREATE TABLE IF NOT EXISTS fng_versions (
     id           VARCHAR(17) PRIMARY KEY,
-    function_id  VARCHAR(17) NOT NULL REFERENCES fn_functions(id) ON DELETE CASCADE,
+    function_id  VARCHAR(17) NOT NULL REFERENCES fng_functions(id) ON DELETE CASCADE,
     number       INTEGER NOT NULL,
     digest       VARCHAR(64) NOT NULL,
     size_bytes   BIGINT NOT NULL,
@@ -74,13 +82,13 @@ CREATE TABLE IF NOT EXISTS fn_versions (
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS uq_fn_versions_function_number ON fn_versions (function_id, number);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_fn_versions_function_digest ON fn_versions (function_id, digest);
-CREATE INDEX IF NOT EXISTS idx_fn_versions_function_id ON fn_versions (function_id);
-CREATE INDEX IF NOT EXISTS idx_fn_versions_status ON fn_versions (status);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_fng_versions_function_number ON fng_versions (function_id, number);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_fng_versions_function_digest ON fng_versions (function_id, digest);
+CREATE INDEX IF NOT EXISTS idx_fng_versions_function_id ON fng_versions (function_id);
+CREATE INDEX IF NOT EXISTS idx_fng_versions_status ON fng_versions (status);
 
-CREATE TABLE IF NOT EXISTS fn_aliases (
-    function_id VARCHAR(17) NOT NULL REFERENCES fn_functions(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS fng_aliases (
+    function_id VARCHAR(17) NOT NULL REFERENCES fng_functions(id) ON DELETE CASCADE,
     name        VARCHAR(63) NOT NULL,
     version_id  VARCHAR(17) NOT NULL,
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -88,10 +96,10 @@ CREATE TABLE IF NOT EXISTS fn_aliases (
     PRIMARY KEY (function_id, name)
 );
 
-CREATE INDEX IF NOT EXISTS idx_fn_aliases_version_id ON fn_aliases (version_id);
+CREATE INDEX IF NOT EXISTS idx_fng_aliases_version_id ON fng_aliases (version_id);
 
-CREATE TABLE IF NOT EXISTS fn_settings (
-    function_id VARCHAR(17) NOT NULL REFERENCES fn_functions(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS fng_settings (
+    function_id VARCHAR(17) NOT NULL REFERENCES fng_functions(id) ON DELETE CASCADE,
     kind        VARCHAR(20) NOT NULL CHECK (kind IN ('CONFIG', 'SECRET', 'DB')),
     key         VARCHAR(100) NOT NULL,
     value       TEXT NOT NULL,
@@ -99,18 +107,18 @@ CREATE TABLE IF NOT EXISTS fn_settings (
     PRIMARY KEY (function_id, kind, key)
 );
 
-CREATE INDEX IF NOT EXISTS idx_fn_settings_function_id ON fn_settings (function_id);
+CREATE INDEX IF NOT EXISTS idx_fng_settings_function_id ON fng_settings (function_id);
 
-CREATE TABLE IF NOT EXISTS fn_runners (
+CREATE TABLE IF NOT EXISTS fng_runners (
     id           VARCHAR(17) PRIMARY KEY,
     pool         VARCHAR(100) NOT NULL,
     heartbeat_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     report       JSONB
 );
 
-CREATE INDEX IF NOT EXISTS idx_fn_runners_pool ON fn_runners (pool);
+CREATE INDEX IF NOT EXISTS idx_fng_runners_pool ON fng_runners (pool);
 
-CREATE TABLE IF NOT EXISTS fn_pool_revisions (
+CREATE TABLE IF NOT EXISTS fng_pool_revisions (
     pool     VARCHAR(100) PRIMARY KEY,
     revision BIGINT NOT NULL DEFAULT 0
 );
@@ -143,9 +151,9 @@ ALTER TABLE msg_subscriptions
     CHECK (source IN ('CODE', 'API', 'UI'));
 ALTER TABLE msg_subscriptions DROP COLUMN IF EXISTS function_id;
 
-DROP TABLE IF EXISTS fn_pool_revisions;
-DROP TABLE IF EXISTS fn_runners;
-DROP TABLE IF EXISTS fn_settings;
-DROP TABLE IF EXISTS fn_aliases;
-DROP TABLE IF EXISTS fn_versions;
-DROP TABLE IF EXISTS fn_functions;
+DROP TABLE IF EXISTS fng_pool_revisions;
+DROP TABLE IF EXISTS fng_runners;
+DROP TABLE IF EXISTS fng_settings;
+DROP TABLE IF EXISTS fng_aliases;
+DROP TABLE IF EXISTS fng_versions;
+DROP TABLE IF EXISTS fng_functions;

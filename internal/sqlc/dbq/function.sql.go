@@ -12,7 +12,7 @@ import (
 )
 
 const functionAliasDelete = `-- name: FunctionAliasDelete :exec
-DELETE FROM fn_aliases WHERE function_id = $1 AND name = $2
+DELETE FROM fng_aliases WHERE function_id = $1 AND name = $2
 `
 
 type FunctionAliasDeleteParams struct {
@@ -27,20 +27,20 @@ func (q *Queries) FunctionAliasDelete(ctx context.Context, arg FunctionAliasDele
 
 const functionAliasList = `-- name: FunctionAliasList :many
 SELECT function_id, name, version_id, updated_at, updated_by
-FROM fn_aliases
+FROM fng_aliases
 WHERE function_id = $1
 ORDER BY name
 `
 
-func (q *Queries) FunctionAliasList(ctx context.Context, functionID string) ([]FnAlias, error) {
+func (q *Queries) FunctionAliasList(ctx context.Context, functionID string) ([]FngAlias, error) {
 	rows, err := q.db.Query(ctx, functionAliasList, functionID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []FnAlias{}
+	items := []FngAlias{}
 	for rows.Next() {
-		var i FnAlias
+		var i FngAlias
 		if err := rows.Scan(
 			&i.FunctionID,
 			&i.Name,
@@ -59,7 +59,7 @@ func (q *Queries) FunctionAliasList(ctx context.Context, functionID string) ([]F
 }
 
 const functionAliasUpsert = `-- name: FunctionAliasUpsert :exec
-INSERT INTO fn_aliases (function_id, name, version_id, updated_at, updated_by)
+INSERT INTO fng_aliases (function_id, name, version_id, updated_at, updated_by)
 VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (function_id, name) DO UPDATE SET
     version_id = EXCLUDED.version_id,
@@ -87,7 +87,7 @@ func (q *Queries) FunctionAliasUpsert(ctx context.Context, arg FunctionAliasUpse
 }
 
 const functionDelete = `-- name: FunctionDelete :exec
-DELETE FROM fn_functions WHERE id = $1
+DELETE FROM fng_functions WHERE id = $1
 `
 
 func (q *Queries) FunctionDelete(ctx context.Context, id string) error {
@@ -97,32 +97,32 @@ func (q *Queries) FunctionDelete(ctx context.Context, id string) error {
 
 const functionFindByAddress = `-- name: FunctionFindByAddress :one
 SELECT f.id, f.application_id, f.client_id, f.name, f.address, f.description, f.pool, f.warm, f.limits, f.created_by, f.created_at, f.updated_at, a.code AS application_code
-FROM fn_functions f
+FROM fng_functions f
 LEFT JOIN app_applications a ON a.id = f.application_id
 WHERE f.address = $1
 `
 
 type FunctionFindByAddressRow struct {
-	FnFunction      FnFunction `db:"fn_function"`
-	ApplicationCode *string    `db:"application_code"`
+	FngFunction     FngFunction `db:"fng_function"`
+	ApplicationCode *string     `db:"application_code"`
 }
 
 func (q *Queries) FunctionFindByAddress(ctx context.Context, address string) (FunctionFindByAddressRow, error) {
 	row := q.db.QueryRow(ctx, functionFindByAddress, address)
 	var i FunctionFindByAddressRow
 	err := row.Scan(
-		&i.FnFunction.ID,
-		&i.FnFunction.ApplicationID,
-		&i.FnFunction.ClientID,
-		&i.FnFunction.Name,
-		&i.FnFunction.Address,
-		&i.FnFunction.Description,
-		&i.FnFunction.Pool,
-		&i.FnFunction.Warm,
-		&i.FnFunction.Limits,
-		&i.FnFunction.CreatedBy,
-		&i.FnFunction.CreatedAt,
-		&i.FnFunction.UpdatedAt,
+		&i.FngFunction.ID,
+		&i.FngFunction.ApplicationID,
+		&i.FngFunction.ClientID,
+		&i.FngFunction.Name,
+		&i.FngFunction.Address,
+		&i.FngFunction.Description,
+		&i.FngFunction.Pool,
+		&i.FngFunction.Warm,
+		&i.FngFunction.Limits,
+		&i.FngFunction.CreatedBy,
+		&i.FngFunction.CreatedAt,
+		&i.FngFunction.UpdatedAt,
 		&i.ApplicationCode,
 	)
 	return i, err
@@ -131,43 +131,43 @@ func (q *Queries) FunctionFindByAddress(ctx context.Context, address string) (Fu
 const functionFindByID = `-- name: FunctionFindByID :one
 
 SELECT f.id, f.application_id, f.client_id, f.name, f.address, f.description, f.pool, f.warm, f.limits, f.created_by, f.created_at, f.updated_at, a.code AS application_code
-FROM fn_functions f
+FROM fng_functions f
 LEFT JOIN app_applications a ON a.id = f.application_id
 WHERE f.id = $1
 `
 
 type FunctionFindByIDRow struct {
-	FnFunction      FnFunction `db:"fn_function"`
-	ApplicationCode *string    `db:"application_code"`
+	FngFunction     FngFunction `db:"fng_function"`
+	ApplicationCode *string     `db:"application_code"`
 }
 
-// Queries for fn_functions, fn_versions, fn_aliases, fn_settings,
-// fn_runners, fn_pool_revisions.
+// Queries for fng_functions, fng_versions, fng_aliases, fng_settings,
+// fng_runners, fng_pool_revisions.
 func (q *Queries) FunctionFindByID(ctx context.Context, id string) (FunctionFindByIDRow, error) {
 	row := q.db.QueryRow(ctx, functionFindByID, id)
 	var i FunctionFindByIDRow
 	err := row.Scan(
-		&i.FnFunction.ID,
-		&i.FnFunction.ApplicationID,
-		&i.FnFunction.ClientID,
-		&i.FnFunction.Name,
-		&i.FnFunction.Address,
-		&i.FnFunction.Description,
-		&i.FnFunction.Pool,
-		&i.FnFunction.Warm,
-		&i.FnFunction.Limits,
-		&i.FnFunction.CreatedBy,
-		&i.FnFunction.CreatedAt,
-		&i.FnFunction.UpdatedAt,
+		&i.FngFunction.ID,
+		&i.FngFunction.ApplicationID,
+		&i.FngFunction.ClientID,
+		&i.FngFunction.Name,
+		&i.FngFunction.Address,
+		&i.FngFunction.Description,
+		&i.FngFunction.Pool,
+		&i.FngFunction.Warm,
+		&i.FngFunction.Limits,
+		&i.FngFunction.CreatedBy,
+		&i.FngFunction.CreatedAt,
+		&i.FngFunction.UpdatedAt,
 		&i.ApplicationCode,
 	)
 	return i, err
 }
 
 const functionPoolRevisionBump = `-- name: FunctionPoolRevisionBump :one
-INSERT INTO fn_pool_revisions (pool, revision)
+INSERT INTO fng_pool_revisions (pool, revision)
 VALUES ($1, 1)
-ON CONFLICT (pool) DO UPDATE SET revision = fn_pool_revisions.revision + 1
+ON CONFLICT (pool) DO UPDATE SET revision = fng_pool_revisions.revision + 1
 RETURNING revision
 `
 
@@ -179,7 +179,7 @@ func (q *Queries) FunctionPoolRevisionBump(ctx context.Context, pool string) (in
 }
 
 const functionPoolRevisionGet = `-- name: FunctionPoolRevisionGet :one
-SELECT revision FROM fn_pool_revisions WHERE pool = $1
+SELECT revision FROM fng_pool_revisions WHERE pool = $1
 `
 
 func (q *Queries) FunctionPoolRevisionGet(ctx context.Context, pool string) (int64, error) {
@@ -190,7 +190,7 @@ func (q *Queries) FunctionPoolRevisionGet(ctx context.Context, pool string) (int
 }
 
 const functionRunnerUpsertHeartbeat = `-- name: FunctionRunnerUpsertHeartbeat :exec
-INSERT INTO fn_runners (id, pool, heartbeat_at, report)
+INSERT INTO fng_runners (id, pool, heartbeat_at, report)
 VALUES ($1, $2, $3, $4)
 ON CONFLICT (id) DO UPDATE SET
     pool = EXCLUDED.pool,
@@ -216,7 +216,7 @@ func (q *Queries) FunctionRunnerUpsertHeartbeat(ctx context.Context, arg Functio
 }
 
 const functionSettingDelete = `-- name: FunctionSettingDelete :exec
-DELETE FROM fn_settings WHERE function_id = $1 AND kind = $2 AND key = $3
+DELETE FROM fng_settings WHERE function_id = $1 AND kind = $2 AND key = $3
 `
 
 type FunctionSettingDeleteParams struct {
@@ -232,20 +232,20 @@ func (q *Queries) FunctionSettingDelete(ctx context.Context, arg FunctionSetting
 
 const functionSettingList = `-- name: FunctionSettingList :many
 SELECT function_id, kind, key, value, updated_at
-FROM fn_settings
+FROM fng_settings
 WHERE function_id = $1
 ORDER BY kind, key
 `
 
-func (q *Queries) FunctionSettingList(ctx context.Context, functionID string) ([]FnSetting, error) {
+func (q *Queries) FunctionSettingList(ctx context.Context, functionID string) ([]FngSetting, error) {
 	rows, err := q.db.Query(ctx, functionSettingList, functionID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []FnSetting{}
+	items := []FngSetting{}
 	for rows.Next() {
-		var i FnSetting
+		var i FngSetting
 		if err := rows.Scan(
 			&i.FunctionID,
 			&i.Kind,
@@ -264,7 +264,7 @@ func (q *Queries) FunctionSettingList(ctx context.Context, functionID string) ([
 }
 
 const functionSettingUpsert = `-- name: FunctionSettingUpsert :exec
-INSERT INTO fn_settings (function_id, kind, key, value, updated_at)
+INSERT INTO fng_settings (function_id, kind, key, value, updated_at)
 VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (function_id, kind, key) DO UPDATE SET
     value = EXCLUDED.value,
@@ -291,7 +291,7 @@ func (q *Queries) FunctionSettingUpsert(ctx context.Context, arg FunctionSetting
 }
 
 const functionUpsert = `-- name: FunctionUpsert :exec
-INSERT INTO fn_functions
+INSERT INTO fng_functions
     (id, application_id, client_id, name, address, description, pool, warm,
      limits, created_by, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
@@ -339,7 +339,7 @@ func (q *Queries) FunctionUpsert(ctx context.Context, arg FunctionUpsertParams) 
 const functionVersionGetByDigest = `-- name: FunctionVersionGetByDigest :one
 SELECT id, function_id, number, digest, size_bytes, abi, describe, status,
        failure, ready_at, published_by, created_at
-FROM fn_versions
+FROM fng_versions
 WHERE function_id = $1 AND digest = $2
 `
 
@@ -386,7 +386,7 @@ func (q *Queries) FunctionVersionGetByDigest(ctx context.Context, arg FunctionVe
 const functionVersionGetByNumber = `-- name: FunctionVersionGetByNumber :one
 SELECT id, function_id, number, digest, size_bytes, abi, describe, status,
        failure, ready_at, published_by, created_at
-FROM fn_versions
+FROM fng_versions
 WHERE function_id = $1 AND number = $2
 `
 
@@ -431,7 +431,7 @@ func (q *Queries) FunctionVersionGetByNumber(ctx context.Context, arg FunctionVe
 }
 
 const functionVersionInsert = `-- name: FunctionVersionInsert :exec
-INSERT INTO fn_versions
+INSERT INTO fng_versions
     (id, function_id, number, digest, size_bytes, abi, describe, status,
      failure, ready_at, published_by, created_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
@@ -473,7 +473,7 @@ func (q *Queries) FunctionVersionInsert(ctx context.Context, arg FunctionVersion
 const functionVersionListByFunction = `-- name: FunctionVersionListByFunction :many
 SELECT id, function_id, number, digest, size_bytes, abi, describe, status,
        failure, ready_at, published_by, created_at
-FROM fn_versions
+FROM fng_versions
 WHERE function_id = $1
 ORDER BY number DESC
 `
@@ -527,7 +527,7 @@ func (q *Queries) FunctionVersionListByFunction(ctx context.Context, functionID 
 }
 
 const functionVersionSetFailure = `-- name: FunctionVersionSetFailure :exec
-UPDATE fn_versions SET status = 'FAILED', failure = $2 WHERE id = $1
+UPDATE fng_versions SET status = 'FAILED', failure = $2 WHERE id = $1
 `
 
 type FunctionVersionSetFailureParams struct {
@@ -541,7 +541,7 @@ func (q *Queries) FunctionVersionSetFailure(ctx context.Context, arg FunctionVer
 }
 
 const functionVersionSetReady = `-- name: FunctionVersionSetReady :exec
-UPDATE fn_versions SET status = 'READY', ready_at = $2 WHERE id = $1
+UPDATE fng_versions SET status = 'READY', ready_at = $2 WHERE id = $1
 `
 
 type FunctionVersionSetReadyParams struct {
@@ -555,7 +555,7 @@ func (q *Queries) FunctionVersionSetReady(ctx context.Context, arg FunctionVersi
 }
 
 const functionVersionSetStatus = `-- name: FunctionVersionSetStatus :exec
-UPDATE fn_versions SET status = $2 WHERE id = $1
+UPDATE fng_versions SET status = $2 WHERE id = $1
 `
 
 type FunctionVersionSetStatusParams struct {

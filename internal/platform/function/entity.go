@@ -1,7 +1,7 @@
 // Package function is the function-runner platform aggregate: the function
 // itself (identity, ownership, pool/warm/limits settings) plus the child
 // records a function owns — versions, aliases, and settings — and the
-// runner-fleet bookkeeping (fn_runners, fn_pool_revisions). See
+// runner-fleet bookkeeping (fng_runners, fng_pool_revisions). See
 // docs/function-runner-plan.md §4 (model) and §8.1 (schema).
 package function
 
@@ -47,7 +47,7 @@ const RuntimeJS = "js"
 func ValidRuntime(r string) bool { return r == "" || r == DefaultRuntime || r == RuntimeJS }
 
 // Limits are the per-function resource caps (plan §7.1). Stored as the
-// fn_functions.limits JSONB column.
+// fng_functions.limits JSONB column.
 type Limits struct {
 	MemoryMB       int32 `json:"memoryMb"`
 	MaxConcurrency int32 `json:"maxConcurrency"`
@@ -84,7 +84,7 @@ func DefaultLimits() Limits {
 	}
 }
 
-// Function is the aggregate root. Table: fn_functions.
+// Function is the aggregate root. Table: fng_functions.
 type Function struct {
 	ID            string
 	ApplicationID string
@@ -176,7 +176,7 @@ func ParseVersionStatus(s string) (VersionStatus, bool) {
 // internal/functions/runtimes.Wasm and migration 061's column default.
 const DefaultRuntime = "wasm"
 
-// Version is an immutable published artifact. Table: fn_versions.
+// Version is an immutable published artifact. Table: fng_versions.
 type Version struct {
 	ID         string
 	FunctionID string
@@ -200,7 +200,7 @@ type Version struct {
 // IDStr satisfies usecase.HasID.
 func (v Version) IDStr() string { return v.ID }
 
-// Alias is a named pointer to a version. Table: fn_aliases, PK
+// Alias is a named pointer to a version. Table: fng_aliases, PK
 // (function_id, name).
 type Alias struct {
 	FunctionID string
@@ -230,7 +230,7 @@ func ParseSettingKind(s string) (SettingKind, bool) {
 	}
 }
 
-// Setting is one platform-held config/secret/DB value. Table: fn_settings,
+// Setting is one platform-held config/secret/DB value. Table: fng_settings,
 // PK (function_id, kind, key). SECRET and DB values are encrypted (or an
 // external secret-manager reference) at rest — see repository.go.
 type Setting struct {

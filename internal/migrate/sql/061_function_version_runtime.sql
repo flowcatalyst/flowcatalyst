@@ -5,12 +5,12 @@
 -- script run on the shared JS engine, internal/functions/runtimes). Every
 -- version published before this migration is a wasm module, hence the
 -- DEFAULT — no backfill needed.
-ALTER TABLE fn_versions ADD COLUMN IF NOT EXISTS runtime TEXT NOT NULL DEFAULT 'wasm';
-ALTER TABLE fn_versions DROP CONSTRAINT IF EXISTS chk_fn_versions_runtime;
-ALTER TABLE fn_versions
-    ADD CONSTRAINT chk_fn_versions_runtime
+ALTER TABLE fng_versions ADD COLUMN IF NOT EXISTS runtime TEXT NOT NULL DEFAULT 'wasm';
+ALTER TABLE fng_versions DROP CONSTRAINT IF EXISTS chk_fng_versions_runtime;
+ALTER TABLE fng_versions
+    ADD CONSTRAINT chk_fng_versions_runtime
     CHECK (runtime IN ('wasm', 'js'));
 
 -- +goose Down
-ALTER TABLE fn_versions DROP CONSTRAINT IF EXISTS chk_fn_versions_runtime;
-ALTER TABLE fn_versions DROP COLUMN IF EXISTS runtime;
+ALTER TABLE fng_versions DROP CONSTRAINT IF EXISTS chk_fng_versions_runtime;
+ALTER TABLE fng_versions DROP COLUMN IF EXISTS runtime;

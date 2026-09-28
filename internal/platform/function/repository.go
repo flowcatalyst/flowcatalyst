@@ -18,8 +18,8 @@ import (
 )
 
 // Repository is the Postgres-backed repository for the function aggregate
-// and its child records. Table: fn_functions (+ fn_versions, fn_aliases,
-// fn_settings, fn_runners, fn_pool_revisions).
+// and its child records. Table: fng_functions (+ fng_versions, fng_aliases,
+// fng_settings, fng_runners, fng_pool_revisions).
 type Repository struct {
 	pool *pgxpool.Pool // retained for FindWithFilters / CountWithFilters
 	q    *dbq.Queries
@@ -48,7 +48,7 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*Function, error)
 	if row == nil || err != nil {
 		return nil, err
 	}
-	return rowToFunction(row.FnFunction, row.ApplicationCode)
+	return rowToFunction(row.FngFunction, row.ApplicationCode)
 }
 
 // FindByAddress loads a function by its unique address.
@@ -58,7 +58,7 @@ func (r *Repository) FindByAddress(ctx context.Context, address string) (*Functi
 	if row == nil || err != nil {
 		return nil, err
 	}
-	return rowToFunction(row.FnFunction, row.ApplicationCode)
+	return rowToFunction(row.FngFunction, row.ApplicationCode)
 }
 
 // ListFilters drives FindWithFilters / CountWithFilters. Non-nil fields are
@@ -95,7 +95,7 @@ func (r *Repository) FindWithFilters(ctx context.Context, f ListFilters) ([]Func
 	q := `SELECT f.id, f.application_id, f.client_id, f.name, f.address,
 			f.description, f.pool, f.warm, f.limits, f.created_by,
 			f.created_at, f.updated_at, a.code AS application_code
-		FROM fn_functions f
+		FROM fng_functions f
 		LEFT JOIN app_applications a ON a.id = f.application_id` + flt.Where() + ` ORDER BY f.address`
 	if f.Limit != nil {
 		q += fmt.Sprintf(" LIMIT $%d", flt.Arg(*f.Limit))
@@ -114,7 +114,7 @@ func (r *Repository) FindWithFilters(ctx context.Context, f ListFilters) ([]Func
 	}
 	out := make([]Function, 0, len(collected))
 	for _, row := range collected {
-		fn, err := rowToFunction(row.FnFunction, row.ApplicationCode)
+		fn, err := rowToFunction(row.FngFunction, row.ApplicationCode)
 		if err != nil {
 			return nil, err
 		}
@@ -124,7 +124,7 @@ func (r *Repository) FindWithFilters(ctx context.Context, f ListFilters) ([]Func
 }
 
 // CountWithFilters returns the total function count for f (ignoring
-// Limit/Offset). No join needed: every filter is a column on fn_functions.
+// Limit/Offset). No join needed: every filter is a column on fng_functions.
 func (r *Repository) CountWithFilters(ctx context.Context, f ListFilters) (int64, error) {
 	var flt repocommon.Filter
 	flt.EqPtr("application_id", f.ApplicationID)
@@ -135,7 +135,7 @@ func (r *Repository) CountWithFilters(ctx context.Context, f ListFilters) (int64
 	if f.AccessibleClientIDs != nil {
 		flt.Clause("(client_id IS NULL OR client_id = ANY($%d))", *f.AccessibleClientIDs)
 	}
-	q := `SELECT COUNT(*) FROM fn_functions` + flt.Where()
+	q := `SELECT COUNT(*) FROM fng_functions` + flt.Where()
 	rows, err := r.pool.Query(ctx, q, flt.Args()...)
 	if err != nil {
 		return 0, err
@@ -166,7 +166,7 @@ func (r *Repository) Persist(ctx context.Context, f *Function, tx *usecasepgx.Db
 	})
 }
 
-// Delete removes the function row. fn_versions, fn_aliases, and fn_settings
+// Delete removes the function row. fng_versions, fng_aliases, and fng_settings
 // cascade via their FK ON DELETE CASCADE (migration 059). Artifact deletion
 // is a WP4 TODO (docs/function-runner-plan.md §8.2: "Delete cascades
 // versions, aliases, wiring and artifacts" — the artifact store has no
@@ -176,12 +176,12 @@ func (r *Repository) Delete(ctx context.Context, f *Function, tx *usecasepgx.DbT
 	return r.q.WithTx(tx.Inner()).FunctionDelete(ctx, f.ID)
 }
 
-// functionJoinRow is the row shape for FindWithFilters: every fn_functions
+// functionJoinRow is the row shape for FindWithFilters: every fng_functions
 // column plus the read-side application_code join. pgx.RowToStructByName
 // matches by db tag/field name across the embedded struct, same technique
 // sqlc's own generated rows use.
 type functionJoinRow struct {
-	dbq.FnFunction
+	dbq.FngFunction
 	ApplicationCode *string `db:"application_code"`
 }
 
@@ -189,7 +189,7 @@ type functionJoinRow struct {
 // application code (empty string when the join found no application row —
 // display-only, never treated as a read failure per the "bare column, no
 // FK" convention this table follows).
-func rowToFunction(row dbq.FnFunction, applicationCode *string) (*Function, error) {
+func rowToFunction(row dbq.FngFunction, applicationCode *string) (*Function, error) {
 	var limits Limits
 	if err := json.Unmarshal(row.Limits, &limits); err != nil {
 		slog.Error("function row has unparseable limits", "id", row.ID, "err", err)
@@ -224,7 +224,7 @@ func rowToFunction(row dbq.FnFunction, applicationCode *string) (*Function, erro
 // `runtime` column (migration 061), and internal/sqlc/queries/function.sql
 // is shared with WP5's concurrent work on the control-plane repository, so
 // this avoids a `make sqlc` regen that could collide with it. The other
-// fn_versions methods below (SetVersionStatus/Ready/Failure) are untouched
+// fng_versions methods below (SetVersionStatus/Ready/Failure) are untouched
 // :exec queries with no column list to go stale.
 
 // functionVersionColumns is shared by InsertVersionTx and every read below.
@@ -252,7 +252,7 @@ type functionVersionRow struct {
 // transaction that also locks the function row for the next version number
 // and bumps the pool revision.
 func (r *Repository) InsertVersion(ctx context.Context, v *Version) error {
-	_, err := r.pool.Exec(ctx, `INSERT INTO fn_versions (`+functionVersionColumns+`)
+	_, err := r.pool.Exec(ctx, `INSERT INTO fng_versions (`+functionVersionColumns+`)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
 		v.ID, v.FunctionID, v.Number, v.Digest, v.SizeBytes, v.ABI, versionRuntimeOrDefault(v.Runtime),
 		v.Describe, string(v.Status), v.Failure, v.ReadyAt, v.PublishedBy, v.CreatedAt)
@@ -263,7 +263,7 @@ func (r *Repository) InsertVersion(ctx context.Context, v *Version) error {
 // publish operation's tx, which also locks the function row — see
 // LockAndNextVersionNumber).
 func (r *Repository) InsertVersionTx(ctx context.Context, v *Version, tx pgx.Tx) error {
-	_, err := tx.Exec(ctx, `INSERT INTO fn_versions (`+functionVersionColumns+`)
+	_, err := tx.Exec(ctx, `INSERT INTO fng_versions (`+functionVersionColumns+`)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
 		v.ID, v.FunctionID, v.Number, v.Digest, v.SizeBytes, v.ABI, versionRuntimeOrDefault(v.Runtime),
 		v.Describe, string(v.Status), v.Failure, v.ReadyAt, v.PublishedBy, v.CreatedAt)
@@ -277,11 +277,11 @@ func (r *Repository) InsertVersionTx(ctx context.Context, v *Version, tx pgx.Tx)
 // the same transaction before committing, so the lock covers the whole
 // read-then-insert.
 func (r *Repository) LockAndNextVersionNumber(ctx context.Context, tx pgx.Tx, functionID string) (int32, error) {
-	if _, err := tx.Exec(ctx, `SELECT id FROM fn_functions WHERE id = $1 FOR UPDATE`, functionID); err != nil {
+	if _, err := tx.Exec(ctx, `SELECT id FROM fng_functions WHERE id = $1 FOR UPDATE`, functionID); err != nil {
 		return 0, fmt.Errorf("function repo: lock function row: %w", err)
 	}
 	var n int32
-	if err := tx.QueryRow(ctx, `SELECT COALESCE(MAX(number), 0) + 1 FROM fn_versions WHERE function_id = $1`, functionID).Scan(&n); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT COALESCE(MAX(number), 0) + 1 FROM fng_versions WHERE function_id = $1`, functionID).Scan(&n); err != nil {
 		return 0, fmt.Errorf("function repo: next version number: %w", err)
 	}
 	return n, nil
@@ -290,7 +290,7 @@ func (r *Repository) LockAndNextVersionNumber(ctx context.Context, tx pgx.Tx, fu
 // ListVersionsByFunction returns every version for functionID, newest number
 // first.
 func (r *Repository) ListVersionsByFunction(ctx context.Context, functionID string) ([]Version, error) {
-	rows, err := r.pool.Query(ctx, `SELECT `+functionVersionColumns+` FROM fn_versions
+	rows, err := r.pool.Query(ctx, `SELECT `+functionVersionColumns+` FROM fng_versions
 		WHERE function_id = $1 ORDER BY number DESC`, functionID)
 	if err != nil {
 		return nil, err
@@ -322,14 +322,14 @@ func (r *Repository) GetVersionByDigest(ctx context.Context, functionID, digest 
 }
 
 // GetVersionByID loads one version by its own row id — used to resolve an
-// alias's VersionID to a version number for API responses (fn_aliases
+// alias's VersionID to a version number for API responses (fng_aliases
 // stores the version id, not its number).
 func (r *Repository) GetVersionByID(ctx context.Context, id string) (*Version, error) {
 	return r.getVersion(ctx, `id = $1`, id)
 }
 
 func (r *Repository) getVersion(ctx context.Context, where string, args ...any) (*Version, error) {
-	rows, err := r.pool.Query(ctx, `SELECT `+functionVersionColumns+` FROM fn_versions WHERE `+where, args...)
+	rows, err := r.pool.Query(ctx, `SELECT `+functionVersionColumns+` FROM fng_versions WHERE `+where, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -78,7 +78,7 @@ const (
 	// named portals a client runs, each reached through linked OAuth clients.
 	PortalApp
 	// Function, FunctionVersion, and FunctionRunner back the function-runner
-	// subsystem (fn_functions, fn_versions, fn_runners) — see
+	// subsystem (fng_functions, fng_versions, fng_runners) — see
 	// docs/function-runner-plan.md §8.1. Aliases, settings, and pool
 	// revisions have no synthetic id of their own (their primary keys are
 	// natural composites), so they get no EntityType here.
