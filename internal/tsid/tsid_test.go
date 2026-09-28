@@ -171,6 +171,9 @@ func TestPrefixCatalogStable(t *testing.T) {
 		tsid.ScheduledJobInstanceLog: "sjl",
 		tsid.ApplicationOpenApiSpec:  "oas",
 		tsid.Process:                 "prc",
+		tsid.Function:                "fnc",
+		tsid.FunctionVersion:         "fnv",
+		tsid.FunctionRunner:          "fnr",
 	}
 	for et, want := range cases {
 		assert.Equal(t, want, et.Prefix(), "entity %v", et)

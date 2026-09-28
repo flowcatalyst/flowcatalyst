@@ -96,6 +96,64 @@ type AudLog struct {
 	ClientID      *string         `db:"client_id"`
 }
 
+type FnAlias struct {
+	FunctionID string    `db:"function_id"`
+	Name       string    `db:"name"`
+	VersionID  string    `db:"version_id"`
+	UpdatedAt  time.Time `db:"updated_at"`
+	UpdatedBy  *string   `db:"updated_by"`
+}
+
+type FnFunction struct {
+	ID            string          `db:"id"`
+	ApplicationID string          `db:"application_id"`
+	ClientID      *string         `db:"client_id"`
+	Name          string          `db:"name"`
+	Address       string          `db:"address"`
+	Description   *string         `db:"description"`
+	Pool          *string         `db:"pool"`
+	Warm          bool            `db:"warm"`
+	Limits        json.RawMessage `db:"limits"`
+	CreatedBy     *string         `db:"created_by"`
+	CreatedAt     time.Time       `db:"created_at"`
+	UpdatedAt     time.Time       `db:"updated_at"`
+}
+
+type FnPoolRevision struct {
+	Pool     string `db:"pool"`
+	Revision int64  `db:"revision"`
+}
+
+type FnRunner struct {
+	ID          string          `db:"id"`
+	Pool        string          `db:"pool"`
+	HeartbeatAt time.Time       `db:"heartbeat_at"`
+	Report      json.RawMessage `db:"report"`
+}
+
+type FnSetting struct {
+	FunctionID string    `db:"function_id"`
+	Kind       string    `db:"kind"`
+	Key        string    `db:"key"`
+	Value      string    `db:"value"`
+	UpdatedAt  time.Time `db:"updated_at"`
+}
+
+type FnVersion struct {
+	ID          string          `db:"id"`
+	FunctionID  string          `db:"function_id"`
+	Number      int32           `db:"number"`
+	Digest      string          `db:"digest"`
+	SizeBytes   int64           `db:"size_bytes"`
+	Abi         int32           `db:"abi"`
+	Describe    json.RawMessage `db:"describe"`
+	Status      string          `db:"status"`
+	Failure     json.RawMessage `db:"failure"`
+	ReadyAt     *time.Time      `db:"ready_at"`
+	PublishedBy *string         `db:"published_by"`
+	CreatedAt   time.Time       `db:"created_at"`
+}
+
 type IamAuthorizationCode struct {
 	Code                string    `db:"code"`
 	ClientID            string    `db:"client_id"`
@@ -585,6 +643,7 @@ type MsgScheduledJob struct {
 	UpdatedBy           *string         `db:"updated_by"`
 	Version             int32           `db:"version"`
 	ApplicationID       *string         `db:"application_id"`
+	FunctionID          *string         `db:"function_id"`
 }
 
 type MsgScheduledJobInstance struct {
@@ -604,6 +663,7 @@ type MsgScheduledJobInstance struct {
 	CompletionResult json.RawMessage `db:"completion_result"`
 	CorrelationID    *string         `db:"correlation_id"`
 	CreatedAt        time.Time       `db:"created_at"`
+	NotBefore        *time.Time      `db:"not_before"`
 }
 
 type MsgScheduledJobInstanceLog struct {
@@ -644,6 +704,7 @@ type MsgSubscription struct {
 	UpdatedAt        time.Time `db:"updated_at"`
 	ConnectionID     *string   `db:"connection_id"`
 	CreatedBy        *string   `db:"created_by"`
+	FunctionID       *string   `db:"function_id"`
 }
 
 type MsgSubscriptionCustomConfig struct {

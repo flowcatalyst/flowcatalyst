@@ -77,6 +77,14 @@ const (
 	// PortalApp backs a client's portal applications (portal_apps) — the
 	// named portals a client runs, each reached through linked OAuth clients.
 	PortalApp
+	// Function, FunctionVersion, and FunctionRunner back the function-runner
+	// subsystem (fn_functions, fn_versions, fn_runners) — see
+	// docs/function-runner-plan.md §8.1. Aliases, settings, and pool
+	// revisions have no synthetic id of their own (their primary keys are
+	// natural composites), so they get no EntityType here.
+	Function
+	FunctionVersion
+	FunctionRunner
 )
 
 // Prefix returns the 3-character prefix for this entity type. These are
@@ -175,6 +183,12 @@ func (e EntityType) Prefix() string {
 		return "doc"
 	case PortalApp:
 		return "pta"
+	case Function:
+		return "fnc"
+	case FunctionVersion:
+		return "fnv"
+	case FunctionRunner:
+		return "fnr"
 	default:
 		return "unk"
 	}

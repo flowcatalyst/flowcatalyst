@@ -9,7 +9,7 @@
 SELECT id, client_id, code, name, description, status, crons, timezone,
        payload, concurrent, tracks_completion, timeout_seconds,
        delivery_max_attempts, target_url, last_fired_at,
-       created_at, updated_at, created_by, updated_by, version, application_id
+       created_at, updated_at, created_by, updated_by, version, application_id, function_id
 FROM msg_scheduled_jobs
 WHERE id = $1;
 
@@ -17,7 +17,7 @@ WHERE id = $1;
 SELECT id, client_id, code, name, description, status, crons, timezone,
        payload, concurrent, tracks_completion, timeout_seconds,
        delivery_max_attempts, target_url, last_fired_at,
-       created_at, updated_at, created_by, updated_by, version, application_id
+       created_at, updated_at, created_by, updated_by, version, application_id, function_id
 FROM msg_scheduled_jobs
 WHERE code = $1 AND client_id = $2;
 
@@ -25,7 +25,7 @@ WHERE code = $1 AND client_id = $2;
 SELECT id, client_id, code, name, description, status, crons, timezone,
        payload, concurrent, tracks_completion, timeout_seconds,
        delivery_max_attempts, target_url, last_fired_at,
-       created_at, updated_at, created_by, updated_by, version, application_id
+       created_at, updated_at, created_by, updated_by, version, application_id, function_id
 FROM msg_scheduled_jobs
 WHERE code = $1 AND client_id IS NULL;
 
@@ -33,7 +33,7 @@ WHERE code = $1 AND client_id IS NULL;
 SELECT id, client_id, code, name, description, status, crons, timezone,
        payload, concurrent, tracks_completion, timeout_seconds,
        delivery_max_attempts, target_url, last_fired_at,
-       created_at, updated_at, created_by, updated_by, version, application_id
+       created_at, updated_at, created_by, updated_by, version, application_id, function_id
 FROM msg_scheduled_jobs
 ORDER BY code;
 
@@ -41,7 +41,7 @@ ORDER BY code;
 SELECT id, client_id, code, name, description, status, crons, timezone,
        payload, concurrent, tracks_completion, timeout_seconds,
        delivery_max_attempts, target_url, last_fired_at,
-       created_at, updated_at, created_by, updated_by, version, application_id
+       created_at, updated_at, created_by, updated_by, version, application_id, function_id
 FROM msg_scheduled_jobs
 WHERE status = 'ACTIVE';
 

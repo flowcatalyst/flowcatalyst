@@ -17,6 +17,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/provider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/twofa"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/branding"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/artifact"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/mfa"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/notify"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/email"
@@ -47,7 +48,16 @@ type serviceSet struct {
 	twofaPolicy         twofa.Policy
 	loginEP             *login.Endpoint
 	principalVersions   *versioncache.Reader
+	functionArtifacts   artifact.Store
 }
+
+// defaultFunctionArtifactDir is the file-store root used when
+// FC_FUNCTIONS_ARTIFACT_STORE is unset (docs/function-runner-plan.md §8.4).
+// A deployed environment is expected to set FC_FUNCTIONS_ARTIFACT_STORE to
+// an s3:// URL; this is only the fallback for a boot with neither set.
+// fc-dev wiring its own state directory in here is a later work package
+// (§12.1 WP9) — out of WP3's scope.
+const defaultFunctionArtifactDir = "/var/lib/flowcatalyst/functions/artifacts"
 
 func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet, error) {
 	svcs := &serviceSet{}
@@ -231,6 +241,13 @@ func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet,
 		Notifier:  svcs.notifier,
 		Audit:     repos.auditRepo,
 	})
+
+	// Function-runner artifact store (docs/function-runner-plan.md §8.4):
+	// file:// or s3://, per FC_FUNCTIONS_ARTIFACT_STORE.
+	svcs.functionArtifacts, err = artifact.FromURL(context.Background(), cfg.FunctionsArtifactStore, defaultFunctionArtifactDir)
+	if err != nil {
+		return nil, fmt.Errorf("function artifact store init: %w", err)
+	}
 
 	return svcs, nil
 }

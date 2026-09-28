@@ -24,7 +24,7 @@ const scheduledJobFindActive = `-- name: ScheduledJobFindActive :many
 SELECT id, client_id, code, name, description, status, crons, timezone,
        payload, concurrent, tracks_completion, timeout_seconds,
        delivery_max_attempts, target_url, last_fired_at,
-       created_at, updated_at, created_by, updated_by, version, application_id
+       created_at, updated_at, created_by, updated_by, version, application_id, function_id
 FROM msg_scheduled_jobs
 WHERE status = 'ACTIVE'
 `
@@ -60,6 +60,7 @@ func (q *Queries) ScheduledJobFindActive(ctx context.Context) ([]MsgScheduledJob
 			&i.UpdatedBy,
 			&i.Version,
 			&i.ApplicationID,
+			&i.FunctionID,
 		); err != nil {
 			return nil, err
 		}
@@ -75,7 +76,7 @@ const scheduledJobFindAll = `-- name: ScheduledJobFindAll :many
 SELECT id, client_id, code, name, description, status, crons, timezone,
        payload, concurrent, tracks_completion, timeout_seconds,
        delivery_max_attempts, target_url, last_fired_at,
-       created_at, updated_at, created_by, updated_by, version, application_id
+       created_at, updated_at, created_by, updated_by, version, application_id, function_id
 FROM msg_scheduled_jobs
 ORDER BY code
 `
@@ -111,6 +112,7 @@ func (q *Queries) ScheduledJobFindAll(ctx context.Context) ([]MsgScheduledJob, e
 			&i.UpdatedBy,
 			&i.Version,
 			&i.ApplicationID,
+			&i.FunctionID,
 		); err != nil {
 			return nil, err
 		}
@@ -126,7 +128,7 @@ const scheduledJobFindByCodeClient = `-- name: ScheduledJobFindByCodeClient :one
 SELECT id, client_id, code, name, description, status, crons, timezone,
        payload, concurrent, tracks_completion, timeout_seconds,
        delivery_max_attempts, target_url, last_fired_at,
-       created_at, updated_at, created_by, updated_by, version, application_id
+       created_at, updated_at, created_by, updated_by, version, application_id, function_id
 FROM msg_scheduled_jobs
 WHERE code = $1 AND client_id = $2
 `
@@ -161,6 +163,7 @@ func (q *Queries) ScheduledJobFindByCodeClient(ctx context.Context, arg Schedule
 		&i.UpdatedBy,
 		&i.Version,
 		&i.ApplicationID,
+		&i.FunctionID,
 	)
 	return i, err
 }
@@ -169,7 +172,7 @@ const scheduledJobFindByCodePlatform = `-- name: ScheduledJobFindByCodePlatform 
 SELECT id, client_id, code, name, description, status, crons, timezone,
        payload, concurrent, tracks_completion, timeout_seconds,
        delivery_max_attempts, target_url, last_fired_at,
-       created_at, updated_at, created_by, updated_by, version, application_id
+       created_at, updated_at, created_by, updated_by, version, application_id, function_id
 FROM msg_scheduled_jobs
 WHERE code = $1 AND client_id IS NULL
 `
@@ -199,6 +202,7 @@ func (q *Queries) ScheduledJobFindByCodePlatform(ctx context.Context, code strin
 		&i.UpdatedBy,
 		&i.Version,
 		&i.ApplicationID,
+		&i.FunctionID,
 	)
 	return i, err
 }
@@ -208,7 +212,7 @@ const scheduledJobFindByID = `-- name: ScheduledJobFindByID :one
 SELECT id, client_id, code, name, description, status, crons, timezone,
        payload, concurrent, tracks_completion, timeout_seconds,
        delivery_max_attempts, target_url, last_fired_at,
-       created_at, updated_at, created_by, updated_by, version, application_id
+       created_at, updated_at, created_by, updated_by, version, application_id, function_id
 FROM msg_scheduled_jobs
 WHERE id = $1
 `
@@ -244,6 +248,7 @@ func (q *Queries) ScheduledJobFindByID(ctx context.Context, id string) (MsgSched
 		&i.UpdatedBy,
 		&i.Version,
 		&i.ApplicationID,
+		&i.FunctionID,
 	)
 	return i, err
 }

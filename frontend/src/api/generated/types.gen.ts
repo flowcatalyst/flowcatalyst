@@ -883,6 +883,30 @@ export type CreateEventTypeRequest = {
     [key: string]: unknown;
 };
 
+export type CreateFunctionRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Owning application id
+     */
+    applicationId: string;
+    clientId?: string;
+    description?: string;
+    limits?: LimitsDto;
+    /**
+     * Function name (lowercase, alphanumeric, hyphens; matches ^[a-z][a-z0-9-]{0,62}$)
+     */
+    name: string;
+    /**
+     * Explicit dispatch pool override; omitted uses the function's implied pool
+     */
+    pool?: string;
+    warm?: boolean;
+    [key: string]: unknown;
+};
+
 export type CreateIdentityProviderRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1514,6 +1538,26 @@ export type FireNowResponse = {
     scheduledJobId: string;
 };
 
+export type FunctionResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    address: string;
+    applicationCode: string;
+    applicationId: string;
+    clientId?: string;
+    createdAt: string;
+    createdBy?: string;
+    description?: string;
+    id: string;
+    limits: LimitsDto;
+    name: string;
+    pool?: string;
+    updatedAt: string;
+    warm: boolean;
+};
+
 export type GrantAccessRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1590,6 +1634,13 @@ export type IdpRoleMappingResponse = {
     idpType: string;
     platformRoleName: string;
     updatedAt: string;
+};
+
+export type LimitsDto = {
+    maxBodyBytes?: number;
+    maxConcurrency?: number;
+    memoryMb?: number;
+    timeoutMs?: number;
 };
 
 export type LinkedOAuthClient = {
@@ -1737,6 +1788,18 @@ export type OAuthClientResponse = {
     redirectUris: Array<string>;
     serviceAccountPrincipalId?: string;
     updatedAt: string;
+};
+
+export type OffsetPageFunctionResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    data: Array<FunctionResponse>;
+    page: number;
+    size: number;
+    total: number;
+    total_pages: number;
 };
 
 export type OffsetPageScheduledJobInstanceResponse = {
@@ -2957,6 +3020,22 @@ export type UpdateEventTypeRequest = {
     [key: string]: unknown;
 };
 
+export type UpdateFunctionRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Set true to clear an explicit pool override back to the implied pool
+     */
+    clearPool?: boolean;
+    description?: string;
+    limits?: LimitsDto;
+    pool?: string;
+    warm?: boolean;
+    [key: string]: unknown;
+};
+
 export type UpdateIdentityProviderRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -3681,6 +3760,26 @@ export type CreateEventTypeRequestWritable = {
     [key: string]: unknown;
 };
 
+export type CreateFunctionRequestWritable = {
+    /**
+     * Owning application id
+     */
+    applicationId: string;
+    clientId?: string;
+    description?: string;
+    limits?: LimitsDto;
+    /**
+     * Function name (lowercase, alphanumeric, hyphens; matches ^[a-z][a-z0-9-]{0,62}$)
+     */
+    name: string;
+    /**
+     * Explicit dispatch pool override; omitted uses the function's implied pool
+     */
+    pool?: string;
+    warm?: boolean;
+    [key: string]: unknown;
+};
+
 export type CreateIdentityProviderRequestWritable = {
     /**
      * Email domains to route to this provider; mappings are created (or claimed from their current provider) in Email Domain management
@@ -4105,6 +4204,22 @@ export type FireNowResponseWritable = {
     scheduledJobId: string;
 };
 
+export type FunctionResponseWritable = {
+    address: string;
+    applicationCode: string;
+    applicationId: string;
+    clientId?: string;
+    createdAt: string;
+    createdBy?: string;
+    description?: string;
+    id: string;
+    limits: LimitsDto;
+    name: string;
+    pool?: string;
+    updatedAt: string;
+    warm: boolean;
+};
+
 export type GrantAccessRequestWritable = {
     canWrite: boolean;
     roleCode: string;
@@ -4228,6 +4343,14 @@ export type OAuthClientResponseWritable = {
     redirectUris: Array<string>;
     serviceAccountPrincipalId?: string;
     updatedAt: string;
+};
+
+export type OffsetPageFunctionResponseWritable = {
+    data: Array<FunctionResponseWritable>;
+    page: number;
+    size: number;
+    total: number;
+    total_pages: number;
 };
 
 export type OffsetPageScheduledJobInstanceResponseWritable = {
@@ -4837,6 +4960,18 @@ export type UpdateEventTypeRequestWritable = {
     clientScoped?: boolean;
     description?: string;
     name: string;
+    [key: string]: unknown;
+};
+
+export type UpdateFunctionRequestWritable = {
+    /**
+     * Set true to clear an explicit pool override back to the implied pool
+     */
+    clearPool?: boolean;
+    description?: string;
+    limits?: LimitsDto;
+    pool?: string;
+    warm?: boolean;
     [key: string]: unknown;
 };
 
@@ -8537,6 +8672,184 @@ export type GetEventResponses = {
 };
 
 export type GetEventResponse = GetEventResponses[keyof GetEventResponses];
+
+export type ListFunctionsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Filter by owning application id
+         */
+        applicationId?: string;
+        /**
+         * Filter by client id
+         */
+        clientId?: string;
+        /**
+         * Filter by address prefix (e.g. an application code)
+         */
+        addressPrefix?: string;
+        page?: number;
+        size?: number;
+        limit?: number;
+        pageSize?: number;
+        page_size?: number;
+    };
+    url: '/api/functions';
+};
+
+export type ListFunctionsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListFunctionsError = ListFunctionsErrors[keyof ListFunctionsErrors];
+
+export type ListFunctionsResponses = {
+    /**
+     * OK
+     */
+    200: OffsetPageFunctionResponse;
+};
+
+export type ListFunctionsResponse = ListFunctionsResponses[keyof ListFunctionsResponses];
+
+export type CreateFunctionData = {
+    body: CreateFunctionRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/functions';
+};
+
+export type CreateFunctionErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type CreateFunctionError = CreateFunctionErrors[keyof CreateFunctionErrors];
+
+export type CreateFunctionResponses = {
+    /**
+     * Created
+     */
+    201: CreatedResponse;
+};
+
+export type CreateFunctionResponse = CreateFunctionResponses[keyof CreateFunctionResponses];
+
+export type DeleteFunctionData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/functions/{id}';
+};
+
+export type DeleteFunctionErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type DeleteFunctionError = DeleteFunctionErrors[keyof DeleteFunctionErrors];
+
+export type DeleteFunctionResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type DeleteFunctionResponse = DeleteFunctionResponses[keyof DeleteFunctionResponses];
+
+export type GetFunctionData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/functions/{id}';
+};
+
+export type GetFunctionErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetFunctionError = GetFunctionErrors[keyof GetFunctionErrors];
+
+export type GetFunctionResponses = {
+    /**
+     * OK
+     */
+    200: FunctionResponse;
+};
+
+export type GetFunctionResponse = GetFunctionResponses[keyof GetFunctionResponses];
+
+export type UpdateFunctionData = {
+    body: UpdateFunctionRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/functions/{id}';
+};
+
+export type UpdateFunctionErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type UpdateFunctionError = UpdateFunctionErrors[keyof UpdateFunctionErrors];
+
+export type UpdateFunctionResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type UpdateFunctionResponse = UpdateFunctionResponses[keyof UpdateFunctionResponses];
+
+export type PutFunctionArtifactData = {
+    body: Blob | File;
+    path: {
+        id: string;
+        /**
+         * Lowercase hex sha256 of the artifact (64 characters)
+         */
+        digest: string;
+    };
+    query?: never;
+    url: '/api/functions/{id}/artifacts/{digest}';
+};
+
+export type PutFunctionArtifactErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PutFunctionArtifactError = PutFunctionArtifactErrors[keyof PutFunctionArtifactErrors];
+
+export type PutFunctionArtifactResponses = {
+    /**
+     * Created
+     */
+    201: unknown;
+};
 
 export type ListIdentityProvidersData = {
     body?: never;

@@ -96,7 +96,7 @@ func (r *Repository) FindWithFilters(ctx context.Context, f ListFilters) ([]Sche
 	q, args := buildJobQuery(`SELECT id, client_id, code, name, description, status, crons, timezone,
 		payload, concurrent, tracks_completion, timeout_seconds,
 		delivery_max_attempts, target_url, last_fired_at, created_at, updated_at,
-		created_by, updated_by, version, application_id FROM msg_scheduled_jobs`, f, true)
+		created_by, updated_by, version, application_id, function_id FROM msg_scheduled_jobs`, f, true)
 	rows, err := r.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err

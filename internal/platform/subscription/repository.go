@@ -92,7 +92,7 @@ func (r *Repository) FindWithFilters(ctx context.Context, status, clientID *stri
 		client_identifier, client_scoped, target, queue, source, status,
 		max_age_seconds, dispatch_pool_id, dispatch_pool_code, delay_seconds, sequence,
 		mode, timeout_seconds, max_retries, service_account_id, data_only,
-		created_by, created_at, updated_at, connection_id FROM msg_subscriptions` + f.Where() + ` ORDER BY code`
+		created_by, created_at, updated_at, connection_id, function_id FROM msg_subscriptions` + f.Where() + ` ORDER BY code`
 
 	rows, err := r.pool.Query(ctx, q, f.Args()...)
 	if err != nil {
@@ -121,7 +121,7 @@ func (r *Repository) FindByApplicationCode(ctx context.Context, appCode string) 
 		client_identifier, client_scoped, target, queue, source, status,
 		max_age_seconds, dispatch_pool_id, dispatch_pool_code, delay_seconds, sequence,
 		mode, timeout_seconds, max_retries, service_account_id, data_only,
-		created_by, created_at, updated_at, connection_id FROM msg_subscriptions
+		created_by, created_at, updated_at, connection_id, function_id FROM msg_subscriptions
 		WHERE application_code = $1 ORDER BY code`
 	rows, err := r.pool.Query(ctx, baseSelect, appCode)
 	if err != nil {
@@ -154,7 +154,7 @@ func (r *Repository) FindByApplicationAndClient(ctx context.Context, appCode str
 		client_identifier, client_scoped, target, queue, source, status,
 		max_age_seconds, dispatch_pool_id, dispatch_pool_code, delay_seconds, sequence,
 		mode, timeout_seconds, max_retries, service_account_id, data_only,
-		created_by, created_at, updated_at, connection_id FROM msg_subscriptions
+		created_by, created_at, updated_at, connection_id, function_id FROM msg_subscriptions
 		WHERE application_code = $1 AND client_id IS NOT DISTINCT FROM $2
 		ORDER BY code`
 	rows, err := r.pool.Query(ctx, q, appCode, clientID)

@@ -223,6 +223,13 @@ type EnvCfg struct {
 	// otherwise an anchor principal's platform bearer or session; with
 	// neither available it is not mounted at all.
 	DebugEndpointsEnabled bool
+
+	// FunctionsArtifactStore is the function-runner artifact store URL
+	// (FC_FUNCTIONS_ARTIFACT_STORE): "file:///abs/path", "s3://bucket/prefix",
+	// or empty for the file-store default under a sensible data directory —
+	// see internal/platform/function/artifact.FromURL and
+	// defaultFunctionArtifactDir in wire_services.go. docs/function-runner-plan.md §8.4.
+	FunctionsArtifactStore string
 }
 
 func LoadEnv() EnvCfg {
@@ -329,6 +336,8 @@ func LoadEnv() EnvCfg {
 		SessionTTLSecs:      positiveOr(envInt("OIDC_SESSION_TTL", 0), 24*60*60),
 		AccessTokenTTLSecs:  positiveOr(envIntAlias("FC_JWT_ACCESS_TOKEN_TTL_SECS", "OIDC_ACCESS_TOKEN_TTL", 0), 60*60),
 		RefreshTokenTTLSecs: positiveOr(envInt("OIDC_REFRESH_TOKEN_TTL", 0), 7*24*60*60),
+
+		FunctionsArtifactStore: envOr("FC_FUNCTIONS_ARTIFACT_STORE", ""),
 	}
 	// Default the dispatch callback to the local API listener: the router
 	// consumes a queued job and POSTs {messageId} here for delivery.

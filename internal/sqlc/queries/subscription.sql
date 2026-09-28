@@ -14,7 +14,7 @@ SELECT id, code, application_code, name, description, client_id,
        client_identifier, client_scoped, target, queue,
        source, status, max_age_seconds, dispatch_pool_id, dispatch_pool_code,
        delay_seconds, sequence, mode, timeout_seconds, max_retries,
-       service_account_id, data_only, created_at, updated_at, connection_id, created_by
+       service_account_id, data_only, created_at, updated_at, connection_id, created_by, function_id
 FROM msg_subscriptions
 WHERE id = $1;
 
@@ -27,7 +27,7 @@ SELECT id, code, application_code, name, description, client_id,
        client_identifier, client_scoped, target, queue,
        source, status, max_age_seconds, dispatch_pool_id, dispatch_pool_code,
        delay_seconds, sequence, mode, timeout_seconds, max_retries,
-       service_account_id, data_only, created_at, updated_at, connection_id, created_by
+       service_account_id, data_only, created_at, updated_at, connection_id, created_by, function_id
 FROM msg_subscriptions
 WHERE code = sqlc.arg('code')
   AND application_code IS NOT DISTINCT FROM sqlc.narg('application_code')
@@ -38,7 +38,7 @@ SELECT id, code, application_code, name, description, client_id,
        client_identifier, client_scoped, target, queue,
        source, status, max_age_seconds, dispatch_pool_id, dispatch_pool_code,
        delay_seconds, sequence, mode, timeout_seconds, max_retries,
-       service_account_id, data_only, created_at, updated_at, connection_id, created_by
+       service_account_id, data_only, created_at, updated_at, connection_id, created_by, function_id
 FROM msg_subscriptions
 ORDER BY code;
 

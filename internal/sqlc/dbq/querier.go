@@ -193,6 +193,28 @@ type Querier interface {
 	EventTypeFindByID(ctx context.Context, id string) (MsgEventType, error)
 	EventTypeUpsertByCode(ctx context.Context, arg EventTypeUpsertByCodeParams) error
 	EventTypeUpsertByID(ctx context.Context, arg EventTypeUpsertByIDParams) error
+	FunctionAliasDelete(ctx context.Context, arg FunctionAliasDeleteParams) error
+	FunctionAliasList(ctx context.Context, functionID string) ([]FnAlias, error)
+	FunctionAliasUpsert(ctx context.Context, arg FunctionAliasUpsertParams) error
+	FunctionDelete(ctx context.Context, id string) error
+	FunctionFindByAddress(ctx context.Context, address string) (FunctionFindByAddressRow, error)
+	// Queries for fn_functions, fn_versions, fn_aliases, fn_settings,
+	// fn_runners, fn_pool_revisions.
+	FunctionFindByID(ctx context.Context, id string) (FunctionFindByIDRow, error)
+	FunctionPoolRevisionBump(ctx context.Context, pool string) (int64, error)
+	FunctionPoolRevisionGet(ctx context.Context, pool string) (int64, error)
+	FunctionRunnerUpsertHeartbeat(ctx context.Context, arg FunctionRunnerUpsertHeartbeatParams) error
+	FunctionSettingDelete(ctx context.Context, arg FunctionSettingDeleteParams) error
+	FunctionSettingList(ctx context.Context, functionID string) ([]FnSetting, error)
+	FunctionSettingUpsert(ctx context.Context, arg FunctionSettingUpsertParams) error
+	FunctionUpsert(ctx context.Context, arg FunctionUpsertParams) error
+	FunctionVersionGetByDigest(ctx context.Context, arg FunctionVersionGetByDigestParams) (FnVersion, error)
+	FunctionVersionGetByNumber(ctx context.Context, arg FunctionVersionGetByNumberParams) (FnVersion, error)
+	FunctionVersionInsert(ctx context.Context, arg FunctionVersionInsertParams) error
+	FunctionVersionListByFunction(ctx context.Context, functionID string) ([]FnVersion, error)
+	FunctionVersionSetFailure(ctx context.Context, arg FunctionVersionSetFailureParams) error
+	FunctionVersionSetReady(ctx context.Context, arg FunctionVersionSetReadyParams) error
+	FunctionVersionSetStatus(ctx context.Context, arg FunctionVersionSetStatusParams) error
 	IdentityProviderAllowedRoleInsert(ctx context.Context, arg IdentityProviderAllowedRoleInsertParams) error
 	IdentityProviderAllowedRolesClear(ctx context.Context, identityProviderID string) error
 	IdentityProviderAllowedRolesForIDPs(ctx context.Context, idpIds []string) ([]IdentityProviderAllowedRolesForIDPsRow, error)

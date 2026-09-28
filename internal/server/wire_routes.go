@@ -31,6 +31,7 @@ import (
 	emaildomainapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping/api"
 	eventapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/event/api"
 	eventtypeapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/api"
+	functionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/api"
 	identityproviderapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider/api"
 	loginattemptapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/openapispecs"
@@ -313,6 +314,13 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		eventtypeapi.Register(humaAPI, &eventtypeapi.State{
 			Repo: repos.eventTypeRepo,
 			UoW:  uow,
+		})
+
+		functionapi.Register(humaAPI, &functionapi.State{
+			Repo:      repos.functionRepo,
+			Apps:      repos.applicationRepo,
+			UoW:       uow,
+			Artifacts: svcs.functionArtifacts,
 		})
 
 		// SDK self-registration ("sync") endpoints, scoped under

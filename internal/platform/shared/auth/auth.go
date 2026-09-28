@@ -172,6 +172,15 @@ const (
 	permScheduledJobFire   = "platform:messaging:scheduled-job:fire"
 	permScheduledJobSync   = "platform:messaging:scheduled-job:sync"
 	permScheduledJobManage = "platform:messaging:scheduled-job:manage"
+	// Function (function runner — docs/function-runner-plan.md §8.2). Named
+	// platform:function:* rather than platform:messaging:function:* per the
+	// WP3 task spec (owner decision baked into the plan's API section).
+	permFunctionView          = "platform:function:view"
+	permFunctionManage        = "platform:function:manage"
+	permFunctionPublish       = "platform:function:publish"
+	permFunctionPromote       = "platform:function:promote"
+	permFunctionSecretManage  = "platform:function:secret:manage"
+	permFunctionVersionInvoke = "platform:function:version:invoke"
 	// Super-admin wildcard.
 	permSuperAdmin = "platform:*:*:*"
 )
@@ -883,3 +892,25 @@ func CanWriteScheduledJobs(a *AuthContext) error {
 }
 
 func CanFireScheduledJobs(a *AuthContext) error { return requirePermission(a, permScheduledJobFire) }
+
+// ── Function permissions (function runner) ───────────────────────────────
+// The plan names one coarse "manage" permission for create/update/delete
+// (no separate create/update/delete grants, unlike dispatch-pool/scheduled-job)
+// — docs/function-runner-plan.md §8.2.
+func CanReadFunctions(a *AuthContext) error  { return requirePermission(a, permFunctionView) }
+func CanWriteFunctions(a *AuthContext) error { return requirePermission(a, permFunctionManage) }
+func CanPublishFunctions(a *AuthContext) error {
+	return requirePermission(a, permFunctionPublish)
+}
+
+func CanPromoteFunctions(a *AuthContext) error {
+	return requirePermission(a, permFunctionPromote)
+}
+
+func CanManageFunctionSecrets(a *AuthContext) error {
+	return requirePermission(a, permFunctionSecretManage)
+}
+
+func CanInvokeFunctionVersions(a *AuthContext) error {
+	return requirePermission(a, permFunctionVersionInvoke)
+}

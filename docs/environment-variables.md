@@ -246,6 +246,18 @@ platform unauthenticated (local dev only — the standalone server fails fast).
 | `FLOWCATALYST_CLIENT_ID` | — (credentials-file fallback) | — | `internal/mcp`, `internal/server/envcfg.go` | OAuth client_credentials client id for token minting. |
 | `FLOWCATALYST_CLIENT_SECRET` | — (credentials-file fallback) | — | `internal/mcp`, `internal/server/envcfg.go` | OAuth client secret (or static bearer token when used alone). |
 
+### Function runner (platform side)
+
+Platform-side artifact storage for the function runner
+(`internal/platform/function/artifact`, docs/function-runner-plan.md §8.4).
+The runner subsystem's own toggles/knobs (`FC_FUNCTIONS_ENABLED`,
+`FC_FUNCTIONS_CACHE_DIR`, `FC_FUNCTIONS_MEMORY_LIMIT`, …) are a later work
+package (§12.1 WP6), not yet implemented.
+
+| Variable | Default | Aliases | Read in | Purpose |
+|---|---|---|---|---|
+| `FC_FUNCTIONS_ARTIFACT_STORE` | `` (empty → a file-store default directory) | — | `internal/server/envcfg.go` | Artifact store URL for `PUT /api/functions/{id}/artifacts/{digest}`: `file:///abs/path` or `s3://bucket/prefix`. Empty uses `file://` rooted at a fixed data directory (`internal/server/wire_services.go`'s `defaultFunctionArtifactDir`) — set this to an `s3://` URL in any deployed environment. |
+
 ## 10. Bootstrap & seeding
 
 The seeder creates the initial super-admin only when **both** email and

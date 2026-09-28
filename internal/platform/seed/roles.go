@@ -149,6 +149,7 @@ func PlatformRoles() []role.Role {
 				permAdminScheduledJobInstanceRead,
 				permAdminProcessRead, permAdminProcessCreate, permAdminProcessUpdate,
 				permAdminProcessDelete, permAdminProcessArchive, permAdminProcessSync,
+				permFunctionView, permFunctionManage,
 			}),
 
 		// platform:viewer
@@ -168,6 +169,7 @@ func PlatformRoles() []role.Role {
 				permAdminScheduledJobRead,
 				permAdminScheduledJobInstanceRead,
 				permAdminProcessRead,
+				permFunctionView,
 				permAdminAuditLogRead,
 				permAdminLoginAttemptRead,
 				permAdminIdentityProviderRead,
@@ -210,6 +212,26 @@ func PlatformRoles() []role.Role {
 		mk("application-service", "Application Service Account",
 			"Permissions for application service accounts (scoped to own application)",
 			append([]string(nil), permsApplicationService...)),
+
+		// platform:function-publisher — CI / developer tooling (`fcdev fn
+		// publish|promote`, docs/function-runner-plan.md §10). View, publish,
+		// and promote; NOT manage (create/update/delete the function
+		// resource itself is a separate, more privileged grant) and NOT
+		// secret:manage.
+		mk("function-publisher", "Function Publisher",
+			"Publish and promote function versions",
+			[]string{permFunctionView, permFunctionPublish, permFunctionPromote}),
+
+		// platform:function-runner — the deployed function runner's own
+		// role (docs/function-runner-plan.md §3, §6.5). Holds no
+		// permissions yet: the control-plane routes it will poll
+		// (/control/functions/desired, /heartbeat, /artifacts/{digest},
+		// /events — plan §8.3) and their permission(s) are a WP5 addition,
+		// same posture "platform:router" started from before its one
+		// permission existed.
+		mk("function-runner", "Function Runner",
+			"Fetches function runner desired state and reports heartbeats (WP5 control plane, not yet wired)",
+			[]string{}),
 	}
 }
 
@@ -245,4 +267,5 @@ var _ = []string{
 	permIAMUserManage, permIAMRoleManage, permIAMPermissionRead,
 	permAuthClientAuthConfigManage, permAuthOAuthClientManage,
 	permDeveloperApplicationOpenAPISync,
+	permFunctionSecretManage, permFunctionVersionInvoke,
 }

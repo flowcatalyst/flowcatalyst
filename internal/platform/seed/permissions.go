@@ -142,6 +142,16 @@ const (
 	permAdminBatchEventsWrite       = "platform:messaging:batch:events-write"
 	permAdminBatchDispatchJobsWrite = "platform:messaging:batch:dispatch-jobs-write"
 	permAdminBatchAuditLogsWrite    = "platform:admin:batch:audit-logs-write"
+
+	// Function (function runner) — docs/function-runner-plan.md §8.2. Named
+	// platform:function:* (not platform:messaging:function:*) per the WP3
+	// task spec, an explicit owner decision baked into the plan.
+	permFunctionView          = "platform:function:view"
+	permFunctionManage        = "platform:function:manage"
+	permFunctionPublish       = "platform:function:publish"
+	permFunctionPromote       = "platform:function:promote"
+	permFunctionSecretManage  = "platform:function:secret:manage"
+	permFunctionVersionInvoke = "platform:function:version:invoke"
 )
 
 // IAM context — users, roles, access control.
