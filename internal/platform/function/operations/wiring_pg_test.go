@@ -385,6 +385,8 @@ func TestAlias_Live_PromoteWiring_CreatesPoolSubscriptionAndSchedule(t *testing.
 	assert.Equal(t, "optwirepromoapp:orders:order:created", sub.EventTypes[0].EventTypeCode)
 	require.NotNil(t, sub.DispatchPoolCode)
 	assert.Equal(t, wantPool, *sub.DispatchPoolCode)
+	require.NotNil(t, sub.DispatchPoolID, "dispatch jobs take the subscription's pool ID; the code alone leaves every job without a pool")
+	assert.Equal(t, pool.ID, *sub.DispatchPoolID)
 	assert.Contains(t, sub.Endpoint, "/fn/"+f.fn.Address+"/on-order")
 
 	jobs, err := scheduledjob.NewRepository(f.pool).FindByFunctionID(context.Background(), f.fn.ID)

@@ -167,6 +167,7 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 		Addr:              fmt.Sprintf(":%d", cfg.APIPort),
 		Handler:           r,
 		ReadHeaderTimeout: 10 * time.Second,
+		Protocols:         cleartextHTTP2Protocols(),
 	}
 	metricsSrv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.MetricsPort),

@@ -234,5 +234,5 @@ func newFnDescribeCmd() *cobra.Command {
 }
 
 // addFnPlatformCmds adds the commands that talk to a platform (publish,
-// promote, deploy, invoke, status, watch) — see fn_platform.go.
+// promote, deploy, set, invoke, status); fn_platform.go sets it.
 var addFnPlatformCmds = func(*cobra.Command) {}

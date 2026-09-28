@@ -59,6 +59,20 @@ func devEnvCfg(opts startOpts, databaseURL string, routerCreds routerCredentials
 	// it did before.
 	if opts.APIPort > 0 {
 		base := fmt.Sprintf("http://localhost:%d", opts.APIPort)
+		// LoadEnv derived the dispatch callback from FC_API_PORT's value
+		// before --api-port applied; re-derive it from the port this
+		// instance actually serves, or every dispatch job's delivery is
+		// called back on whatever listens on the default port.
+		if os.Getenv("FC_DISPATCH_PROCESSING_ENDPOINT") == "" && os.Getenv("DISPATCH_SCHEDULER_PROCESSING_ENDPOINT") == "" {
+			cfg.DispatchProcessingEndpoint = base + "/api/dispatch/process"
+		}
+		// Likewise the token issuer (and audience, which follows it): the
+		// default names port 8080, so tokens minted here claimed another
+		// server's issuer, and anything validating by issuer discovery
+		// fetched that server's keys.
+		if os.Getenv("FC_JWT_ISSUER") == "" && os.Getenv("FC_EXTERNAL_BASE_URL") == "" && os.Getenv("EXTERNAL_BASE_URL") == "" {
+			cfg.JWTIssuer = base
+		}
 		if cfg.RouterConfigURL == "" {
 			cfg.RouterConfigURL = base + "/api/dispatch/router-config"
 		}
@@ -74,6 +88,11 @@ func devEnvCfg(opts startOpts, databaseURL string, routerCreds routerCredentials
 			}
 		}
 	}
+	// Promote wires subscriptions and schedules to this instance's own
+	// runner, on the port it actually listens on.
+	if os.Getenv("FC_FUNCTIONS_RUNNER_URL") == "" && opts.FunctionsPort > 0 {
+		cfg.FunctionsRunnerURL = fmt.Sprintf("http://127.0.0.1:%d", opts.FunctionsPort)
+	}
 	// Function artifacts live beside fcdev's other data, not under the
 	// deployed default (/var/lib), unless FC_FUNCTIONS_ARTIFACT_STORE says.
 	if cfg.FunctionsArtifactStore == "" {
@@ -85,6 +104,9 @@ func devEnvCfg(opts startOpts, databaseURL string, routerCreds routerCredentials
 // functionsLocalClientID is the fixed client_id of the dev function runner's
 // OAuth client (see bootstrapLocalCredentials).
 const functionsLocalClientID = "fcdev-functions"
+
+// fnCLILocalClientID is the fixed client_id of the dev `fcdev fn` CLI.
+const fnCLILocalClientID = "fcdev-fn-cli"
 
 // devFunctionRunner configures the in-process function runner: loopback
 // listeners, this fcdev's own platform, the bootstrapped credential, a

@@ -189,5 +189,19 @@ func newRunnerServer(addr string, h http.Handler) *http.Server {
 		Handler:           h,
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       75 * time.Second,
+		Protocols:         cleartextHTTP2Protocols(),
 	}
+}
+
+// cleartextHTTP2Protocols serves HTTP/1.1 and, on the same plain-TCP
+// listener, HTTP/2 with prior knowledge (h2c). The router mediates to
+// "http://" targets over h2c outside dev mode (router/mediator.go) — the
+// platform's own /api/dispatch/process callback and the function runner are
+// both such targets — so a listener that spoke only HTTP/1.1 failed every
+// delivery with "http2: frame too large". HTTP/1.1 clients are unaffected.
+func cleartextHTTP2Protocols() *http.Protocols {
+	p := new(http.Protocols)
+	p.SetHTTP1(true)
+	p.SetUnencryptedHTTP2(true)
+	return p
 }

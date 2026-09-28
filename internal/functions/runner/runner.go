@@ -497,7 +497,8 @@ func (r *Runner) heartbeatLoop(ctx context.Context) {
 }
 
 func (r *Runner) heartbeat() control.Heartbeat {
-	hb := control.Heartbeat{RunnerID: r.id, Pool: r.cfg.Pool, StartedAt: r.started}
+	// Versions is always a list, never null: the platform validates the body.
+	hb := control.Heartbeat{RunnerID: r.id, Pool: r.cfg.Pool, StartedAt: r.started, Versions: []control.VersionReport{}}
 	loaded := 0
 	r.mu.RLock()
 	hb.Revision = r.revision

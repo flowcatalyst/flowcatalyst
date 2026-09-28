@@ -85,3 +85,44 @@ func TestDevFunctionRunner(t *testing.T) {
 		t.Error("enabled without a knowable platform URL")
 	}
 }
+
+// TestDevEnvCfg_DispatchCallbackFollowsAPIPort: an fcdev on a non-default
+// --api-port must have its dispatch jobs called back on its own port, not
+// on whatever listens on 8080.
+func TestDevEnvCfg_DispatchCallbackFollowsAPIPort(t *testing.T) {
+	t.Setenv("FC_DISPATCH_PROCESSING_ENDPOINT", "")
+	t.Setenv("DISPATCH_SCHEDULER_PROCESSING_ENDPOINT", "")
+	cfg := devEnvCfg(startOpts{APIPort: 18180}, "postgres://x", routerCredentials{})
+	if cfg.DispatchProcessingEndpoint != "http://localhost:18180/api/dispatch/process" {
+		t.Fatalf("callback = %q", cfg.DispatchProcessingEndpoint)
+	}
+	t.Setenv("FC_DISPATCH_PROCESSING_ENDPOINT", "http://elsewhere/api/dispatch/process")
+	if cfg := devEnvCfg(startOpts{APIPort: 18180}, "postgres://x", routerCredentials{}); cfg.DispatchProcessingEndpoint != "http://elsewhere/api/dispatch/process" {
+		t.Fatalf("an explicit endpoint was overridden: %q", cfg.DispatchProcessingEndpoint)
+	}
+}
+
+// TestDevEnvCfg_RunnerURLFollowsFunctionsPort: promote wires deliveries to
+// the runner on the port this fcdev's runner listens on.
+func TestDevEnvCfg_RunnerURLFollowsFunctionsPort(t *testing.T) {
+	t.Setenv("FC_FUNCTIONS_RUNNER_URL", "")
+	cfg := devEnvCfg(startOpts{APIPort: 18180, FunctionsPort: 18195}, "postgres://x", routerCredentials{})
+	if cfg.FunctionsRunnerURL != "http://127.0.0.1:18195" {
+		t.Fatalf("runner URL = %q", cfg.FunctionsRunnerURL)
+	}
+}
+
+// TestDevEnvCfg_IssuerFollowsAPIPort: tokens an fcdev on a non-default port
+// mints must name that fcdev as their issuer.
+func TestDevEnvCfg_IssuerFollowsAPIPort(t *testing.T) {
+	for _, k := range []string{"FC_JWT_ISSUER", "FC_EXTERNAL_BASE_URL", "EXTERNAL_BASE_URL"} {
+		t.Setenv(k, "")
+	}
+	if cfg := devEnvCfg(startOpts{APIPort: 18180}, "postgres://x", routerCredentials{}); cfg.JWTIssuer != "http://localhost:18180" {
+		t.Fatalf("issuer = %q", cfg.JWTIssuer)
+	}
+	t.Setenv("FC_EXTERNAL_BASE_URL", "https://dev.example.test")
+	if cfg := devEnvCfg(startOpts{APIPort: 18180}, "postgres://x", routerCredentials{}); cfg.JWTIssuer != "https://dev.example.test" {
+		t.Fatalf("an explicit base URL was overridden: %q", cfg.JWTIssuer)
+	}
+}

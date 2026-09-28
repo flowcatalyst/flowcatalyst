@@ -133,14 +133,17 @@ func reconcileWiring(
 		signingAccountID = &id
 	}
 
+	var poolID string
 	if needsPool {
-		if err := ensureDispatchPool(ctx, s, deps.DispatchPools, f, poolCode, ec, cmd); err != nil {
+		id, err := ensureDispatchPool(ctx, s, deps.DispatchPools, f, poolCode, ec, cmd)
+		if err != nil {
 			return sum, err
 		}
+		poolID = id
 		sum.DispatchPoolCode = poolCode
 	}
 
-	created, updated, deleted, err := reconcileSubscriptions(ctx, s, deps, f, d, poolCode, signingAccountID, ec, cmd)
+	created, updated, deleted, err := reconcileSubscriptions(ctx, s, deps, f, d, dispatchPoolRef{id: poolID, code: poolCode}, signingAccountID, ec, cmd)
 	if err != nil {
 		return sum, err
 	}
@@ -167,13 +170,13 @@ func targetURL(template, pool, address, path string) string {
 // tuning on a function's pool survives every promote. Reuses dispatchpool's
 // own CreateDispatchPool event type for consistency with pools created
 // through the ordinary API.
-func ensureDispatchPool(ctx context.Context, s *usecasepgx.TxScopedUnitOfWork, repo *dispatchpool.Repository, f *function.Function, code string, ec usecase.ExecutionContext, cmd any) error {
+func ensureDispatchPool(ctx context.Context, s *usecasepgx.TxScopedUnitOfWork, repo *dispatchpool.Repository, f *function.Function, code string, ec usecase.ExecutionContext, cmd any) (string, error) {
 	existing, err := repo.FindByCode(ctx, code, f.ClientID)
 	if err != nil {
-		return usecase.Internal("REPO", "find_by_code(dispatch pool) failed", err)
+		return "", usecase.Internal("REPO", "find_by_code(dispatch pool) failed", err)
 	}
 	if existing != nil {
-		return nil
+		return existing.ID, nil
 	}
 	p := dispatchpool.New(code, "Function: "+f.Address)
 	p.ClientID = f.ClientID
@@ -187,10 +190,15 @@ func ensureDispatchPool(ctx context.Context, s *usecasepgx.TxScopedUnitOfWork, r
 	}
 	if r := usecasepgx.CommitScoped(ctx, s, p, repo, event, cmd); !usecase.IsSuccess(r) {
 		_, e := usecase.Into(r)
-		return e
+		return "", e
 	}
-	return nil
+	return p.ID, nil
 }
+
+// dispatchPoolRef names the function's dispatch pool both ways: dispatch
+// jobs are created with the subscription's pool ID (the code alone left
+// every job without a pool), and the code is what operators see.
+type dispatchPoolRef struct{ id, code string }
 
 // ── Subscriptions ───────────────────────────────────────────────────────
 
@@ -207,7 +215,7 @@ func reconcileSubscriptions(
 	deps WiringDeps,
 	f *function.Function,
 	d *abi.Describe,
-	poolCode string,
+	pool dispatchPoolRef,
 	signingAccountID *string,
 	ec usecase.ExecutionContext,
 	cmd any,
@@ -228,7 +236,7 @@ func reconcileSubscriptions(
 		endpoint := targetURL(deps.RunnerURLTemplate, f.RunnerPool(), f.Address, sub.Path)
 
 		if cur, ok := currentByCode[code]; ok {
-			if !applyDesiredSubscription(cur, sub, poolCode, endpoint, signingAccountID) {
+			if !applyDesiredSubscription(cur, sub, pool, endpoint, signingAccountID) {
 				updated++ // still counted as reconciled, even when nothing changed
 				continue
 			}
@@ -253,7 +261,7 @@ func reconcileSubscriptions(
 		ns.Source = subscription.SourceFunction
 		ns.FunctionID = &f.ID
 		ns.EventTypes = []subscription.EventTypeBinding{subscription.NewEventTypeBinding(sub.EventType)}
-		applyDesiredSubscription(ns, sub, poolCode, endpoint, signingAccountID)
+		applyDesiredSubscription(ns, sub, pool, endpoint, signingAccountID)
 		pid := ec.PrincipalID
 		ns.CreatedBy = &pid
 
@@ -293,7 +301,7 @@ func reconcileSubscriptions(
 // returning whether anything changed. An omitted mode maps to
 // common.DefaultDispatchMode (NEXT_ON_ERROR) — never IMMEDIATE (plan §5.4:
 // "A default must not quietly weaken ordering").
-func applyDesiredSubscription(cur *subscription.Subscription, sub abi.Subscription, poolCode, endpoint string, signingAccountID *string) bool {
+func applyDesiredSubscription(cur *subscription.Subscription, sub abi.Subscription, pool dispatchPoolRef, endpoint string, signingAccountID *string) bool {
 	changed := false
 	if cur.Endpoint != endpoint {
 		cur.Endpoint = endpoint
@@ -327,9 +335,14 @@ func applyDesiredSubscription(cur *subscription.Subscription, sub abi.Subscripti
 		cur.DataOnly = sub.DataOnly
 		changed = true
 	}
-	if cur.DispatchPoolCode == nil || *cur.DispatchPoolCode != poolCode {
-		pc := poolCode
+	if cur.DispatchPoolCode == nil || *cur.DispatchPoolCode != pool.code {
+		pc := pool.code
 		cur.DispatchPoolCode = &pc
+		changed = true
+	}
+	if pool.id != "" && (cur.DispatchPoolID == nil || *cur.DispatchPoolID != pool.id) {
+		pid := pool.id
+		cur.DispatchPoolID = &pid
 		changed = true
 	}
 	if !ptrStrEqual(cur.ServiceAccountID, signingAccountID) {

@@ -226,6 +226,22 @@ func runStart(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
+	// `fcdev fn` publishes and invokes as a dev CLI credential, recorded
+	// (with this instance's URLs) where the CLI finds it.
+	if opts.FunctionsEnabled && opts.APIPort > 0 {
+		if creds, err := bootstrapLocalCredentials(rootCtx, pool, fnCLILocalClientID, "fcdev fn cli",
+			"FlowCatalyst fn CLI (local dev)", "platform:super-admin"); err != nil {
+			slog.Warn("fn CLI credential bootstrap failed (continuing)", "err", err)
+		} else if err := writeFnCLICredentials(fnCredentials{
+			PlatformURL:  fmt.Sprintf("http://localhost:%d", opts.APIPort),
+			RunnerURL:    fmt.Sprintf("http://127.0.0.1:%d", opts.FunctionsPort),
+			ClientID:     creds.ClientID,
+			ClientSecret: creds.Secret,
+		}); err != nil {
+			slog.Warn("could not write the fn CLI credential", "err", err)
+		}
+	}
+
 	// SIGTERM / SIGINT → cancel rootCtx so server.Run drains.
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)

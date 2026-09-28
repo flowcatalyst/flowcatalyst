@@ -1,8 +1,15 @@
 package server
 
 import (
+	"context"
+	"crypto/tls"
+	"io"
+	"net"
+	"net/http"
 	"net/netip"
 	"testing"
+
+	"golang.org/x/net/http2"
 )
 
 func TestLoadFunctionRunnerEnv(t *testing.T) {
@@ -21,5 +28,42 @@ func TestLoadFunctionRunnerEnv(t *testing.T) {
 	}
 	if c := LoadFunctionRunnerEnv(EnvCfg{}); !c.SetMemoryLimit || c.PlatformURL != "" {
 		t.Errorf("a runner-only process: %+v", c)
+	}
+}
+
+// TestCleartextHTTP2Protocols: a listener with these protocols answers the
+// router's h2c prior-knowledge requests and plain HTTP/1.1 alike. Without
+// h2c, every delivery the router mediated to an http:// platform callback or
+// function runner failed with "http2: frame too large".
+func TestCleartextHTTP2Protocols(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &http.Server{
+		Handler:   http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, r.Proto) }),
+		Protocols: cleartextHTTP2Protocols(),
+	}
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { _ = srv.Close() })
+	url := "http://" + ln.Addr().String() + "/"
+
+	h2c := &http.Client{Transport: &http2.Transport{
+		AllowHTTP: true,
+		DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, network, addr)
+		},
+	}}
+	for name, c := range map[string]*http.Client{"h2c": h2c, "http/1.1": {}} {
+		resp, err := c.Get(url)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		want := map[string]string{"h2c": "HTTP/2.0", "http/1.1": "HTTP/1.1"}[name]
+		if string(body) != want {
+			t.Errorf("%s: served as %q, want %q", name, body, want)
+		}
 	}
 }

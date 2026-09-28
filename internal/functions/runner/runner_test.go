@@ -632,3 +632,18 @@ func (h *harness) waitReady(address string, n int) {
 	}
 	h.t.Fatalf("%s version %d never became ready", address, n)
 }
+
+// TestHeartbeatVersionsIsAListWhenEmpty: the platform validates the
+// heartbeat body, and a runner holding nothing must still send [] — a null
+// list was rejected with 400 VALIDATION until the first version loaded.
+func TestHeartbeatVersionsIsAListWhenEmpty(t *testing.T) {
+	b, _ := budget.New(64<<20, 0)
+	r := &Runner{cfg: Config{Pool: "p"}, budget: b, functions: map[string]*function{}}
+	raw, err := json.Marshal(r.heartbeat())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"versions":[]`) {
+		t.Fatalf("heartbeat = %s", raw)
+	}
+}
