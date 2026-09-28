@@ -15,6 +15,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/artifact"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/functiondomain"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -41,6 +42,10 @@ type State struct {
 	// Wiring bundles the repositories + runner URL template promote wiring
 	// (WP8) reconciles against.
 	Wiring operations.WiringDeps
+	// Domains resolves claimed zones for the route write path's
+	// ROUTE_HOST_NOT_CLAIMED check (docs/function-runner-plan.md §8, "public
+	// routes").
+	Domains *functiondomain.Repository
 }
 
 const tag = "functions"
@@ -105,6 +110,11 @@ func Register(api huma.API, s *State) {
 	apiroute.Put(g, "putFunctionDB", "/api/functions/{id}/db/{name}", "Set a database DSN", http.StatusOK, s.putDB)
 	apiroute.Delete(g, "deleteFunctionDB", "/api/functions/{id}/db/{name}", "Remove a database DSN", http.StatusNoContent, s.deleteDB)
 	apiroute.Get(g, "listFunctionSettings", "/api/functions/{id}/settings", "List a function's settings keys", s.listSettings)
+
+	// ── Public routes (docs/function-runner-plan.md §8, "public routes") ──
+	apiroute.Put(g, "putFunctionRoute", "/api/functions/{id}/routes", "Create or update a public route", http.StatusOK, s.putRoute)
+	apiroute.Delete(g, "deleteFunctionRoute", "/api/functions/{id}/routes/{routeId}", "Remove a public route", http.StatusNoContent, s.deleteRoute)
+	apiroute.Get(g, "listFunctionRoutes", "/api/functions/{id}/routes", "List a function's public routes", s.listRoutes)
 }
 
 type listInput struct {
@@ -551,4 +561,52 @@ func (s *State) listSettings(ctx context.Context, in *apicommon.IDInput) (*apico
 		return nil, err
 	}
 	return &apicommon.Out[[]SettingResponse]{Body: apicommon.MapSlice(settings, func(st *function.Setting) SettingResponse { return settingResponse(*st) })}, nil
+}
+
+// ── Public routes ─────────────────────────────────────────────────────────
+
+type putRouteInput struct {
+	ID   string `path:"id"`
+	Body PutRouteRequest
+}
+
+func (s *State) putRoute(ctx context.Context, in *putRouteInput) (*apicommon.Out[RouteResponse], error) {
+	if err := auth.CanManageFunctionRoutes(auth.FromContext(ctx)); err != nil {
+		return nil, err
+	}
+	ec := auth.NewExecutionContext(ctx)
+	cmd := in.Body.toCommand(in.ID)
+	route, err := usecaseop.RunTx(ctx, s.UoW, operations.PutRoute(s.Repo, s.Domains), cmd, ec)
+	if err != nil {
+		return nil, err
+	}
+	return &apicommon.Out[RouteResponse]{Body: routeResponse(route)}, nil
+}
+
+type routePathInput struct {
+	ID      string `path:"id"`
+	RouteID string `path:"routeId"`
+}
+
+func (s *State) deleteRoute(ctx context.Context, in *routePathInput) (*apicommon.Empty, error) {
+	if err := auth.CanManageFunctionRoutes(auth.FromContext(ctx)); err != nil {
+		return nil, err
+	}
+	ec := auth.NewExecutionContext(ctx)
+	cmd := operations.DeleteRouteCommand{FunctionID: in.ID, RouteID: in.RouteID}
+	if _, err := usecaseop.RunTx(ctx, s.UoW, operations.DeleteRoute(s.Repo), cmd, ec); err != nil {
+		return nil, err
+	}
+	return &apicommon.Empty{}, nil
+}
+
+func (s *State) listRoutes(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[[]RouteResponse], error) {
+	if err := auth.CanReadFunctions(auth.FromContext(ctx)); err != nil {
+		return nil, err
+	}
+	_, routes, err := operations.ListRoutes(ctx, s.Repo, in.ID)
+	if err != nil {
+		return nil, err
+	}
+	return &apicommon.Out[[]RouteResponse]{Body: apicommon.MapSlice(routes, func(r *function.Route) RouteResponse { return routeResponse(*r) })}, nil
 }

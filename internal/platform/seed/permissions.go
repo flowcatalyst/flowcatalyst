@@ -152,6 +152,12 @@ const (
 	permFunctionPromote       = "platform:function:alias:promote"
 	permFunctionSecretManage  = "platform:function:secret:manage"
 	permFunctionVersionInvoke = "platform:function:version:invoke"
+	// permFunctionDomainManage and permFunctionRouteManage gate the public
+	// routes surface (docs/function-runner-plan.md §8, "public routes"):
+	// claiming a hostname zone, and pointing a route at a function — operator
+	// actions granted where dispatch-pool admin perms are (messaging-admin).
+	permFunctionDomainManage = "platform:function:domain:manage"
+	permFunctionRouteManage  = "platform:function:route:manage"
 	// permFunctionRunnerControl gates the control-plane routes a deployed
 	// function runner polls (/control/functions/… — WP5): desired state,
 	// heartbeat, artifact download, event emit. Held only by

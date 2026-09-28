@@ -85,6 +85,11 @@ const (
 	Function
 	FunctionVersion
 	FunctionRunner
+	// FunctionDomain and FunctionRoute back the function runner's public
+	// routes (fng_domains, fng_routes) — see
+	// docs/function-runner-plan.md §8 (public routes).
+	FunctionDomain
+	FunctionRoute
 )
 
 // Prefix returns the 3-character prefix for this entity type. These are
@@ -189,6 +194,10 @@ func (e EntityType) Prefix() string {
 		return "fnv"
 	case FunctionRunner:
 		return "fnr"
+	case FunctionDomain:
+		return "fdm"
+	case FunctionRoute:
+		return "frt"
 	default:
 		return "unk"
 	}

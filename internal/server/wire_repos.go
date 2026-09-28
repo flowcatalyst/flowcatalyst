@@ -15,6 +15,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/event"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/functiondomain"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/passwordreset"
@@ -51,6 +52,7 @@ type repoSet struct {
 	dispatchJobRepo             *dispatchjob.Repository
 	eventTypeRepo               *eventtype.Repository
 	functionRepo                *function.Repository
+	functionDomainRepo          *functiondomain.Repository
 	eventRepo                   *event.Repository
 	auditRepo                   *audit.Repository
 	idpRepo                     *identityprovider.Repository
@@ -84,6 +86,7 @@ func buildRepos(pool *pgxpool.Pool) *repoSet {
 		dispatchJobRepo:             dispatchjob.NewRepository(pool),
 		eventTypeRepo:               eventtype.NewRepository(pool),
 		functionRepo:                function.NewRepository(pool),
+		functionDomainRepo:          functiondomain.NewRepository(pool),
 		eventRepo:                   event.NewRepository(pool),
 		auditRepo:                   audit.NewRepository(pool),
 		idpRepo:                     identityprovider.NewRepository(pool),

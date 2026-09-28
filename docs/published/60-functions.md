@@ -155,3 +155,51 @@ as a service account holding the `platform:function-runner` role, learns what
 to run from the platform, and uses all of its container's memory except a
 reserve for itself. In `fcdev` it runs in-process on port 8095 (the public
 entry on 8096).
+
+## Public routes
+
+A function's own endpoints (`Webhook`, `Platform`, `Open`) are always
+reachable through `/fn/{address}[@alias]/{path}`. A **public route** maps a
+plain hostname and path prefix straight to a function, so `https://api.acme.
+example.com/webhooks/orders` can reach `shop.orders` without the `/fn/…`
+shape — the prefix is stripped before the function's own endpoint matching,
+so the function still declares `/orders` as usual.
+
+Adding a route is two steps:
+
+1. **Claim the zone.** A zone claim covers the hostname itself and everything
+   under it — claiming `acme.example.com` also covers `api.acme.example.com`.
+   A claim is verified by being made; there is no DNS check. Two different
+   owners cannot claim overlapping zones (in either direction); the same
+   owner can.
+
+   ```sh
+   curl -X POST https://platform.example.com/api/function-domains \
+     -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+     -d '{"zone": "acme.example.com", "clientId": "clt_…"}'   # omit clientId for a platform zone (anchor only)
+   ```
+
+   Claiming and releasing a zone needs `platform:function:domain:manage`.
+   Releasing one is refused while a route still uses a hostname it covers.
+
+2. **Add the route.** The hostname must be covered by a zone your client (or,
+   for a platform-owned function, a platform zone) has claimed.
+
+   ```sh
+   curl -X PUT https://platform.example.com/api/functions/$FUNCTION_ID/routes \
+     -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+     -d '{"hostname": "api.acme.example.com", "pathPrefix": "/webhooks", "alias": ""}'
+   ```
+
+   `alias` names an existing alias to route to; empty routes to `live`. A
+   `(hostname, pathPrefix)` pair belongs to exactly one function at a time —
+   claiming one already routed elsewhere is refused. Adding, changing or
+   removing a route takes effect immediately, the same way a promote does.
+   Writing routes needs `platform:function:route:manage`; listing a
+   function's own routes needs the ordinary `platform:function:function:view`.
+
+For DNS to actually deliver traffic, point `api.acme.example.com` at the
+runner pool's public entry — the same port `fcdev`'s `8096` stands in for
+(a load balancer or ingress in front of the runner deployment in
+production). The route only decides which function answers once a request
+reaches that port; it is not itself a DNS record.

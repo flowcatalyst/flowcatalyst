@@ -150,6 +150,7 @@ func PlatformRoles() []role.Role {
 				permAdminProcessRead, permAdminProcessCreate, permAdminProcessUpdate,
 				permAdminProcessDelete, permAdminProcessArchive, permAdminProcessSync,
 				permFunctionView, permFunctionManage,
+				permFunctionDomainManage, permFunctionRouteManage,
 			}),
 
 		// platform:viewer

@@ -237,3 +237,46 @@ func settingResponse(s function.Setting) SettingResponse {
 		UpdatedAt: jsontime.New(s.UpdatedAt),
 	}
 }
+
+// ── Public routes ────────────────────────────────────────────────────────
+
+// PutRouteRequest is the wire body for PUT /api/functions/{id}/routes.
+type PutRouteRequest struct {
+	Hostname   string `json:"hostname" doc:"A lowercase DNS hostname covered by a claimed zone (no port, no wildcard)"`
+	PathPrefix string `json:"pathPrefix" doc:"The path prefix routed to this function, e.g. \"/\" or \"/webhooks\""`
+	Alias      string `json:"alias,omitempty" doc:"An existing alias name to route to; omitted routes to live"`
+}
+
+func (r PutRouteRequest) toCommand(functionID string) operations.PutRouteCommand {
+	return operations.PutRouteCommand{
+		FunctionID: functionID,
+		Hostname:   r.Hostname,
+		PathPrefix: r.PathPrefix,
+		Alias:      r.Alias,
+	}
+}
+
+// RouteResponse mirrors function.Route.
+type RouteResponse struct {
+	ID         string          `json:"id"`
+	FunctionID string          `json:"functionId"`
+	Hostname   string          `json:"hostname"`
+	PathPrefix string          `json:"pathPrefix"`
+	Alias      *string         `json:"alias,omitempty"`
+	CreatedBy  *string         `json:"createdBy,omitempty"`
+	CreatedAt  httpcompat.Time `json:"createdAt"`
+	UpdatedAt  httpcompat.Time `json:"updatedAt"`
+}
+
+func routeResponse(r function.Route) RouteResponse {
+	return RouteResponse{
+		ID:         r.ID,
+		FunctionID: r.FunctionID,
+		Hostname:   r.Hostname,
+		PathPrefix: r.PathPrefix,
+		Alias:      r.Alias,
+		CreatedBy:  r.CreatedBy,
+		CreatedAt:  jsontime.New(r.CreatedAt),
+		UpdatedAt:  jsontime.New(r.UpdatedAt),
+	}
+}

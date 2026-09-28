@@ -34,6 +34,7 @@ import (
 	eventtypeapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/api"
 	functionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/api"
 	functioncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/control"
+	functiondomainapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/functiondomain/api"
 	identityproviderapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider/api"
 	loginattemptapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/openapispecs"
@@ -326,6 +327,18 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			Artifacts: svcs.functionArtifacts,
 			Loader:    svcs.functionLoader,
 			Wiring:    svcs.functionWiring,
+			Domains:   repos.functionDomainRepo,
+		})
+
+		// Public routes: domain claims (docs/function-runner-plan.md §8).
+		// RouteHostnames feeds the DOMAIN_IN_USE check on delete — a plain
+		// hostname-string read against fng_routes, not a dependency on
+		// internal/platform/function (see functiondomain/operations/delete.go's
+		// doc comment on RouteHostnames for why).
+		functiondomainapi.Register(humaAPI, &functiondomainapi.State{
+			Repo:           repos.functionDomainRepo,
+			UoW:            uow,
+			RouteHostnames: repos.functionDomainRepo.ListDistinctRouteHostnames,
 		})
 
 		// Control plane (docs/function-runner-plan.md §8.3): the function

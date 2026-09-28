@@ -2315,6 +2315,32 @@
         ],
         "type": "object"
       },
+      "CreateDomainRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CreateDomainRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "clientId": {
+            "description": "Omitted claims a platform-owned zone (anchor only)",
+            "type": "string"
+          },
+          "zone": {
+            "description": "The claimed hostname zone (e.g. \"acme.example.com\")",
+            "type": "string"
+          }
+        },
+        "required": [
+          "zone"
+        ],
+        "type": "object"
+      },
       "CreateEventRequest": {
         "additionalProperties": true,
         "properties": {
@@ -3970,6 +3996,38 @@
         "required": [
           "slug",
           "title"
+        ],
+        "type": "object"
+      },
+      "DomainResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "clientId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "zone": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "zone",
+          "createdAt",
+          "updatedAt"
         ],
         "type": "object"
       },
@@ -6466,6 +6524,37 @@
         ],
         "type": "object"
       },
+      "PutRouteRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PutRouteRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "alias": {
+            "description": "An existing alias name to route to; omitted routes to live",
+            "type": "string"
+          },
+          "hostname": {
+            "description": "A lowercase DNS hostname covered by a claimed zone (no port, no wildcard)",
+            "type": "string"
+          },
+          "pathPrefix": {
+            "description": "The path prefix routed to this function, e.g. \"/\" or \"/webhooks\"",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hostname",
+          "pathPrefix"
+        ],
+        "type": "object"
+      },
       "PutSettingRequest": {
         "additionalProperties": true,
         "properties": {
@@ -7234,6 +7323,55 @@
           "hostname",
           "pathPrefix",
           "address"
+        ],
+        "type": "object"
+      },
+      "RouteResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RouteResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "alias": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "functionId": {
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "pathPrefix": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "functionId",
+          "hostname",
+          "pathPrefix",
+          "createdAt",
+          "updatedAt"
         ],
         "type": "object"
       },
@@ -16108,6 +16246,125 @@
         ]
       }
     },
+    "/api/function-domains": {
+      "get": {
+        "operationId": "listFunctionDomains",
+        "parameters": [
+          {
+            "description": "Filter by owning client id",
+            "explode": false,
+            "in": "query",
+            "name": "clientId",
+            "schema": {
+              "description": "Filter by owning client id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DomainResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List claimed hostname zones",
+        "tags": [
+          "function-domains"
+        ]
+      },
+      "post": {
+        "operationId": "createFunctionDomain",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDomainRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedResponse"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Claim a hostname zone for a client (or the platform)",
+        "tags": [
+          "function-domains"
+        ]
+      }
+    },
+    "/api/function-domains/{id}": {
+      "delete": {
+        "operationId": "deleteFunctionDomain",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Release a claimed zone",
+        "tags": [
+          "function-domains"
+        ]
+      }
+    },
     "/api/functions": {
       "get": {
         "operationId": "listFunctions",
@@ -16769,6 +17026,141 @@
           }
         },
         "summary": "Set a database DSN",
+        "tags": [
+          "functions"
+        ]
+      }
+    },
+    "/api/functions/{id}/routes": {
+      "get": {
+        "operationId": "listFunctionRoutes",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RouteResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List a function's public routes",
+        "tags": [
+          "functions"
+        ]
+      },
+      "put": {
+        "operationId": "putFunctionRoute",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutRouteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouteResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Create or update a public route",
+        "tags": [
+          "functions"
+        ]
+      }
+    },
+    "/api/functions/{id}/routes/{routeId}": {
+      "delete": {
+        "operationId": "deleteFunctionRoute",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "routeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Remove a public route",
         "tags": [
           "functions"
         ]

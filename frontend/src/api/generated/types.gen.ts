@@ -810,6 +810,22 @@ export type CreateDispatchPoolRequest = {
     [key: string]: unknown;
 };
 
+export type CreateDomainRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Omitted claims a platform-owned zone (anchor only)
+     */
+    clientId?: string;
+    /**
+     * The claimed hostname zone (e.g. "acme.example.com")
+     */
+    zone: string;
+    [key: string]: unknown;
+};
+
 export type CreateEventRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1445,6 +1461,15 @@ export type DocResponse = {
 export type DocSummary = {
     slug: string;
     title: string;
+};
+
+export type DomainResponse = {
+    clientId?: string;
+    createdAt: string;
+    createdBy?: string;
+    id: string;
+    updatedAt: string;
+    zone: string;
 };
 
 export type EmitRequest = {
@@ -2222,6 +2247,26 @@ export type PutAliasResponse = {
     wiring?: WiringResponse;
 };
 
+export type PutRouteRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * An existing alias name to route to; omitted routes to live
+     */
+    alias?: string;
+    /**
+     * A lowercase DNS hostname covered by a claimed zone (no port, no wildcard)
+     */
+    hostname: string;
+    /**
+     * The path prefix routed to this function, e.g. "/" or "/webhooks"
+     */
+    pathPrefix: string;
+    [key: string]: unknown;
+};
+
 export type PutSettingRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -2474,6 +2519,21 @@ export type Route = {
     alias?: string;
     hostname: string;
     pathPrefix: string;
+};
+
+export type RouteResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    alias?: string;
+    createdAt: string;
+    createdBy?: string;
+    functionId: string;
+    hostname: string;
+    id: string;
+    pathPrefix: string;
+    updatedAt: string;
 };
 
 export type RouterConfig = {
@@ -3899,6 +3959,18 @@ export type CreateDispatchPoolRequestWritable = {
     [key: string]: unknown;
 };
 
+export type CreateDomainRequestWritable = {
+    /**
+     * Omitted claims a platform-owned zone (anchor only)
+     */
+    clientId?: string;
+    /**
+     * The claimed hostname zone (e.g. "acme.example.com")
+     */
+    zone: string;
+    [key: string]: unknown;
+};
+
 export type CreateEventRequestWritable = {
     /**
      * Causation ID - the event that caused this event
@@ -4784,6 +4856,22 @@ export type PutAliasResponseWritable = {
     wiring?: WiringResponseWritable;
 };
 
+export type PutRouteRequestWritable = {
+    /**
+     * An existing alias name to route to; omitted routes to live
+     */
+    alias?: string;
+    /**
+     * A lowercase DNS hostname covered by a claimed zone (no port, no wildcard)
+     */
+    hostname: string;
+    /**
+     * The path prefix routed to this function, e.g. "/" or "/webhooks"
+     */
+    pathPrefix: string;
+    [key: string]: unknown;
+};
+
 export type PutSettingRequestWritable = {
     value: string;
     [key: string]: unknown;
@@ -4892,6 +4980,17 @@ export type RotateOAuthClientSecretResponseWritable = {
     clientId: string;
     clientSecret?: string;
     previousSecretExpiresAt?: string;
+};
+
+export type RouteResponseWritable = {
+    alias?: string;
+    createdAt: string;
+    createdBy?: string;
+    functionId: string;
+    hostname: string;
+    id: string;
+    pathPrefix: string;
+    updatedAt: string;
 };
 
 export type RouterConfigWritable = {
@@ -8983,6 +9082,88 @@ export type GetEventResponses = {
 
 export type GetEventResponse = GetEventResponses[keyof GetEventResponses];
 
+export type ListFunctionDomainsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Filter by owning client id
+         */
+        clientId?: string;
+    };
+    url: '/api/function-domains';
+};
+
+export type ListFunctionDomainsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListFunctionDomainsError = ListFunctionDomainsErrors[keyof ListFunctionDomainsErrors];
+
+export type ListFunctionDomainsResponses = {
+    /**
+     * OK
+     */
+    200: Array<DomainResponse>;
+};
+
+export type ListFunctionDomainsResponse = ListFunctionDomainsResponses[keyof ListFunctionDomainsResponses];
+
+export type CreateFunctionDomainData = {
+    body: CreateDomainRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/function-domains';
+};
+
+export type CreateFunctionDomainErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type CreateFunctionDomainError = CreateFunctionDomainErrors[keyof CreateFunctionDomainErrors];
+
+export type CreateFunctionDomainResponses = {
+    /**
+     * Created
+     */
+    201: CreatedResponse;
+};
+
+export type CreateFunctionDomainResponse = CreateFunctionDomainResponses[keyof CreateFunctionDomainResponses];
+
+export type DeleteFunctionDomainData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/function-domains/{id}';
+};
+
+export type DeleteFunctionDomainErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type DeleteFunctionDomainError = DeleteFunctionDomainErrors[keyof DeleteFunctionDomainErrors];
+
+export type DeleteFunctionDomainResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type DeleteFunctionDomainResponse = DeleteFunctionDomainResponses[keyof DeleteFunctionDomainResponses];
+
 export type ListFunctionsData = {
     body?: never;
     path?: never;
@@ -9355,6 +9536,88 @@ export type PutFunctionDbResponses = {
 };
 
 export type PutFunctionDbResponse = PutFunctionDbResponses[keyof PutFunctionDbResponses];
+
+export type ListFunctionRoutesData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/functions/{id}/routes';
+};
+
+export type ListFunctionRoutesErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListFunctionRoutesError = ListFunctionRoutesErrors[keyof ListFunctionRoutesErrors];
+
+export type ListFunctionRoutesResponses = {
+    /**
+     * OK
+     */
+    200: Array<RouteResponse>;
+};
+
+export type ListFunctionRoutesResponse = ListFunctionRoutesResponses[keyof ListFunctionRoutesResponses];
+
+export type PutFunctionRouteData = {
+    body: PutRouteRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/functions/{id}/routes';
+};
+
+export type PutFunctionRouteErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PutFunctionRouteError = PutFunctionRouteErrors[keyof PutFunctionRouteErrors];
+
+export type PutFunctionRouteResponses = {
+    /**
+     * OK
+     */
+    200: RouteResponse;
+};
+
+export type PutFunctionRouteResponse = PutFunctionRouteResponses[keyof PutFunctionRouteResponses];
+
+export type DeleteFunctionRouteData = {
+    body?: never;
+    path: {
+        id: string;
+        routeId: string;
+    };
+    query?: never;
+    url: '/api/functions/{id}/routes/{routeId}';
+};
+
+export type DeleteFunctionRouteErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type DeleteFunctionRouteError = DeleteFunctionRouteErrors[keyof DeleteFunctionRouteErrors];
+
+export type DeleteFunctionRouteResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type DeleteFunctionRouteResponse = DeleteFunctionRouteResponses[keyof DeleteFunctionRouteResponses];
 
 export type DeleteFunctionSecretData = {
     body?: never;

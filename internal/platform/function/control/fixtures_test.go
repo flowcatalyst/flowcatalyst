@@ -152,6 +152,26 @@ func sha256Hex(b []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// seedRoute inserts a route row directly (hand-rolled, mirrors seedAlias):
+// tests that exercise buildDesired's Routes rendering don't need the full
+// PutRoute operation's validation.
+func seedRoute(t *testing.T, repo *function.Repository, functionID, hostname, pathPrefix, alias string) function.Route {
+	t.Helper()
+	var aliasPtr *string
+	if alias != "" {
+		aliasPtr = &alias
+	}
+	rt := function.Route{
+		ID: tsid.Generate(tsid.FunctionRoute), FunctionID: functionID,
+		Hostname: hostname, PathPrefix: pathPrefix, Alias: aliasPtr,
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}
+	withRawTx(t, testpg.Pool(t), func(tx pgx.Tx) error {
+		return repo.UpsertRouteTx(context.Background(), &rt, tx)
+	})
+	return rt
+}
+
 // seedAlias points functionID/name at versionID.
 func seedAlias(t *testing.T, repo *function.Repository, functionID, name, versionID string) {
 	t.Helper()

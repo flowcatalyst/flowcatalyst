@@ -22,7 +22,7 @@ contract below (schema, guest ABI, manifest, API) is ours to choose. Written aga
 | End-to-end on fc-dev (deploy → event → signed delivery → function → emitted event) | verified 2026-09-28 | — |
 | Terminal reject outcome; scheduled jobs honour 429 (§13.2, §13.3) | built | dispatch-job processing, scheduled-job dispatcher, migration 060 |
 | Admin UI pages | not started | |
-| Public routes: domain claims and route materialisation (platform side) | not started; the runner's public entry is built | |
+| Public routes: domain claims and route materialisation (platform side) | built | `internal/platform/functiondomain`, `internal/platform/function` (route.go, repository_routes.go, operations/routes.go), `internal/platform/function/control/document.go` |
 
 Owner decisions §13.1–13.3 were taken as proposed (two-label addresses, the reject outcome,
 scheduled-job 429). §13.4 was ruled 2026-09-28: no native runtime for now — Wasm only, with the
@@ -520,6 +520,40 @@ Configured with `FC_FUNCTIONS_ARTIFACT_STORE`. The runner keeps a disk cache by 
   the application's). Desired state carries that secret as `webhookSecret`, so the runner verifies
   exactly what the platform signs. Work package 8 confirms this against
   `dispatchjob/processing` credential resolution before building on it.
+
+### 8.6 Public routes (as built)
+
+Two new aggregates, both `fng_`-prefixed (migration `062_function_routes.sql`):
+
+- **`internal/platform/functiondomain`** — a claimed hostname **zone** (`fng_domains`): `id`
+  (TSID prefix `fdm`), `zone` (unique, lowercase), `client_id` (nullable = platform/anchor-owned).
+  A claim is verified by being made — no DNS step. It covers the zone itself and every hostname
+  under it (`functiondomain.Covers`). `POST /api/function-domains` refuses `ZONE_OVERLAP` when an
+  existing claim by a **different** owner covers the new zone or is covered by it (checked both
+  directions); the same owner may claim overlapping zones. `DELETE /api/function-domains/{id}`
+  refuses `DOMAIN_IN_USE` while some route's hostname is still covered by the zone. Gated on
+  `platform:function:domain:manage`, granted alongside the dispatch-pool admin permissions
+  (`platform:messaging-admin`) — claims are an operator action.
+- **`internal/platform/function`** (route.go, repository_routes.go, operations/routes.go) — a
+  function's own route rows (`fng_routes`, TSID prefix `frt`, FK `function_id` → `fng_functions`
+  ON DELETE CASCADE): `hostname`, `path_prefix` (normalised, `"/"` for root), `alias` (nullable =
+  live). `PUT /api/functions/{id}/routes` upserts by `(hostname, pathPrefix)` — a write that hits
+  an existing row owned by the SAME function is an update; owned by a DIFFERENT function refuses
+  `ROUTE_TAKEN` (unique index on `(hostname, path_prefix)` backs this at the DB level too). The
+  hostname must be covered by a zone claimed by the function's own client (or, for a
+  platform-owned function, a platform zone) — `ROUTE_HOST_NOT_CLAIMED` otherwise. An `alias` must
+  either be empty (live) or name an alias that already exists on the function —
+  `ALIAS_NOT_FOUND` otherwise. `DELETE /api/functions/{id}/routes/{routeId}` removes one route.
+  Both writes bump the function's runner pool revision in the same transaction as settings.go's
+  `PutSetting`/`DeleteSetting` do, so a route change reaches runners without waiting for a
+  promote. Gated on `platform:function:route:manage`; `GET .../routes` uses the ordinary
+  `function:view` permission, like the alias/settings sub-resource lists.
+- **Control document:** `internal/platform/function/control/document.go`'s `buildDesired` fills
+  `Desired.Routes` with every route owned by a function in the requested pool (`Address` from the
+  owning function, `Alias` as stored, `""` = live) — the exact shape
+  `internal/functions/runner/public.go`'s `buildRoutes`/`match` already consume. Because the
+  ETag is a hash of the whole rendered document, a route change is visible to a held long-poll the
+  same way a promote is.
 
 ## 9. Guest SDKs
 

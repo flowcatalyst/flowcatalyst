@@ -181,6 +181,13 @@ const (
 	permFunctionPromote       = "platform:function:alias:promote"
 	permFunctionSecretManage  = "platform:function:secret:manage"
 	permFunctionVersionInvoke = "platform:function:version:invoke"
+	// permFunctionDomainManage and permFunctionRouteManage gate the public
+	// routes surface (docs/function-runner-plan.md §8, "public routes"):
+	// claiming a hostname zone, and pointing a route at a function. Claims
+	// and routes are operator actions, not part of the ordinary
+	// function-manage grant.
+	permFunctionDomainManage = "platform:function:domain:manage"
+	permFunctionRouteManage  = "platform:function:route:manage"
 	// permFunctionRunnerControl gates the control-plane routes
 	// (/control/functions/… — docs/function-runner-plan.md §8.3, WP5): a
 	// deployed runner's own credential, never granted to a human role.
@@ -917,6 +924,18 @@ func CanManageFunctionSecrets(a *AuthContext) error {
 
 func CanInvokeFunctionVersions(a *AuthContext) error {
 	return requirePermission(a, permFunctionVersionInvoke)
+}
+
+// CanManageFunctionDomains gates claiming/releasing a public-routes hostname
+// zone (docs/function-runner-plan.md §8, "public routes") — an operator
+// action, not delegated by the ordinary function-manage grant.
+func CanManageFunctionDomains(a *AuthContext) error {
+	return requirePermission(a, permFunctionDomainManage)
+}
+
+// CanManageFunctionRoutes gates writing a function's public routes.
+func CanManageFunctionRoutes(a *AuthContext) error {
+	return requirePermission(a, permFunctionRouteManage)
 }
 
 // CanControlFunctionRunner gates the control plane a function runner polls

@@ -20,15 +20,32 @@ func (s *State) buildDesired(ctx context.Context, pool string) (*fncontrol.Desir
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_functions_by_pool failed", err)
 	}
+	routes, addresses, err := s.Repo.ListRoutesByPool(ctx, pool)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "list_routes_by_pool failed", err)
+	}
 
 	doc := &fncontrol.Desired{
 		Pool:      pool,
 		Revision:  revision,
 		Auth:      s.Auth,
 		Functions: make([]fncontrol.Function, 0, len(functions)),
-		// Routes: public routing lands in a later phase (plan §3); always
-		// empty for now, matching fncontrol.Desired's own doc comment.
-		Routes: []fncontrol.Route{},
+		// Routes: the pool's public routes (plan §8, "public routes"). Address
+		// comes from the owning function (joined in ListRoutesByPool), Alias
+		// as stored ("" = live).
+		Routes: make([]fncontrol.Route, 0, len(routes)),
+	}
+	for i, rt := range routes {
+		alias := ""
+		if rt.Alias != nil {
+			alias = *rt.Alias
+		}
+		doc.Routes = append(doc.Routes, fncontrol.Route{
+			Hostname:   rt.Hostname,
+			PathPrefix: rt.PathPrefix,
+			Address:    addresses[i],
+			Alias:      alias,
+		})
 	}
 	for i := range functions {
 		fdoc, err := s.buildFunction(ctx, &functions[i])

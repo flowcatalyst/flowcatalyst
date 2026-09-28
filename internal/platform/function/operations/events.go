@@ -19,6 +19,8 @@ const (
 	FunctionSettingDeletedType   = "platform:admin:function-setting:deleted"
 	FunctionPromotedType         = "platform:admin:function:promoted"
 	FunctionScheduleWiredType    = "platform:admin:function-schedule:wired"
+	RouteSetType                 = "platform:admin:function-route:set"
+	RouteDeletedType             = "platform:admin:function-route:deleted"
 	Source                       = "platform:admin"
 )
 
@@ -312,6 +314,64 @@ func (e FunctionScheduleWired) ToDataJSON() ([]byte, error) {
 		Code           string `json:"code"`
 		Action         string `json:"action"`
 	}{e.FunctionID, e.ScheduledJobID, e.Code, e.Action})
+}
+
+// RouteSet is emitted when a public route is created or repointed.
+type RouteSet struct {
+	Metadata   usecase.EventMetadata
+	FunctionID string
+	RouteID    string
+	Hostname   string
+	PathPrefix string
+}
+
+func (e RouteSet) EventID() string       { return e.Metadata.EventID }
+func (e RouteSet) EventType() string     { return RouteSetType }
+func (e RouteSet) SpecVersion() string   { return "1.0" }
+func (e RouteSet) Source() string        { return Source }
+func (e RouteSet) Subject() string       { return subjectFor(e.FunctionID) }
+func (e RouteSet) Time() time.Time       { return e.Metadata.OccurredAt }
+func (e RouteSet) PrincipalID() string   { return e.Metadata.PrincipalID }
+func (e RouteSet) CorrelationID() string { return e.Metadata.CorrelationID }
+func (e RouteSet) CausationID() string   { return e.Metadata.CausationID }
+func (e RouteSet) ExecutionID() string   { return e.Metadata.ExecutionID }
+func (e RouteSet) MessageGroup() string  { return groupFor(e.FunctionID) }
+func (e RouteSet) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		FunctionID string `json:"functionId"`
+		RouteID    string `json:"routeId"`
+		Hostname   string `json:"hostname"`
+		PathPrefix string `json:"pathPrefix"`
+	}{e.FunctionID, e.RouteID, e.Hostname, e.PathPrefix})
+}
+
+// RouteDeleted is emitted when a public route is removed.
+type RouteDeleted struct {
+	Metadata   usecase.EventMetadata
+	FunctionID string
+	RouteID    string
+	Hostname   string
+	PathPrefix string
+}
+
+func (e RouteDeleted) EventID() string       { return e.Metadata.EventID }
+func (e RouteDeleted) EventType() string     { return RouteDeletedType }
+func (e RouteDeleted) SpecVersion() string   { return "1.0" }
+func (e RouteDeleted) Source() string        { return Source }
+func (e RouteDeleted) Subject() string       { return subjectFor(e.FunctionID) }
+func (e RouteDeleted) Time() time.Time       { return e.Metadata.OccurredAt }
+func (e RouteDeleted) PrincipalID() string   { return e.Metadata.PrincipalID }
+func (e RouteDeleted) CorrelationID() string { return e.Metadata.CorrelationID }
+func (e RouteDeleted) CausationID() string   { return e.Metadata.CausationID }
+func (e RouteDeleted) ExecutionID() string   { return e.Metadata.ExecutionID }
+func (e RouteDeleted) MessageGroup() string  { return groupFor(e.FunctionID) }
+func (e RouteDeleted) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		FunctionID string `json:"functionId"`
+		RouteID    string `json:"routeId"`
+		Hostname   string `json:"hostname"`
+		PathPrefix string `json:"pathPrefix"`
+	}{e.FunctionID, e.RouteID, e.Hostname, e.PathPrefix})
 }
 
 // FunctionSettingSet is emitted when a config/secret/db setting is written.
