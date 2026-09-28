@@ -78,8 +78,11 @@ const (
 
 // Version is one version the runner should hold, and why.
 type Version struct {
-	Number   int             `json:"number"`
-	Digest   string          `json:"digest"`
+	Number int    `json:"number"`
+	Digest string `json:"digest"`
+	// Runtime is "wasm" (or empty) for an ABI v1 module, "js" for a script
+	// run on the shared JS engine (internal/functions/runtimes).
+	Runtime  string          `json:"runtime,omitempty"`
 	ABI      int             `json:"abi"`
 	Describe json.RawMessage `json:"describe"`
 	Roles    []string        `json:"roles"`

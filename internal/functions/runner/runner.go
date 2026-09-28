@@ -21,6 +21,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/budget"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/control"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/engine"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/runtimes"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
@@ -60,6 +61,7 @@ type Runner struct {
 	cfg        Config
 	cp         ControlPlane
 	eng        *engine.Engine
+	loader     *runtimes.Loader
 	budget     *budget.Budget
 	artifacts  *artifactCache
 	tokens     TokenVerifier
@@ -120,6 +122,7 @@ func New(ctx context.Context, cfg Config) (*Runner, error) {
 		cfg:        cfg,
 		cp:         cfg.ControlPlane,
 		eng:        eng,
+		loader:     runtimes.NewLoader(eng),
 		budget:     cfg.Budget,
 		artifacts:  arts,
 		db:         newDBPools(cfg.MaxDBPools, 4),
@@ -297,7 +300,10 @@ func newVersion(fn *function, dv control.Version) (*version, error) {
 	if err != nil {
 		return nil, fmt.Errorf("DESCRIBE: %w", err)
 	}
-	return &version{fn: fn, fnID: fn.id, number: dv.Number, digest: dv.Digest, describe: d, router: rt, roles: dv.Roles, state: statePreparing}, nil
+	if !runtimes.Valid(dv.Runtime) {
+		return nil, fmt.Errorf("RUNTIME: %q is not a runtime this runner has", dv.Runtime)
+	}
+	return &version{fn: fn, fnID: fn.id, number: dv.Number, digest: dv.Digest, runtime: dv.Runtime, describe: d, router: rt, roles: dv.Roles, state: statePreparing}, nil
 }
 
 // promoteLocked routes live to the desired live version once it is ready,
@@ -371,21 +377,21 @@ func (r *Runner) prepare(ctx context.Context, v *version) {
 // compileLocked fetches and compiles v's module and gives it a pool.
 // Caller holds v.mu (and must not hold r.mu).
 func (r *Runner) compileLocked(ctx context.Context, v *version) error {
-	wasm, err := r.artifacts.get(ctx, v.digest)
+	artifact, err := r.artifacts.get(ctx, v.digest)
 	if err != nil {
 		return fmt.Errorf("ARTIFACT: %w", err)
 	}
-	mod, err := r.eng.Compile(ctx, wasm)
+	p, err := r.loader.Prepare(ctx, v.runtime, artifact)
 	if err != nil {
 		return err
 	}
 	lim := limitsOf(v.fn.snapshot())
-	v.module = mod
-	v.pool = newPool(mod, engine.InstanceConfig{
+	v.prepared = p
+	v.pool = newPool(p.Module, p.InstanceConfig(engine.InstanceConfig{
 		MemoryCapBytes: uint64(lim.MemoryMB) << 20,
 		Stdout:         &guestWriter{log: r.log, fn: v.fn.address, ver: v.number, level: slog.LevelInfo},
 		Stderr:         &guestWriter{log: r.log, fn: v.fn.address, ver: v.number, level: slog.LevelWarn},
-	}, false)
+	}), false)
 	v.state, v.reason = stateReady, ""
 	v.touch()
 	return nil

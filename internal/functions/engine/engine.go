@@ -132,6 +132,16 @@ type InstanceConfig struct {
 	MemoryCapBytes uint64
 	// Stdout and Stderr receive the guest's WASI output; nil discards it.
 	Stdout, Stderr io.Writer
+	// Preload, when set, is handed to the instance once after _initialize
+	// (a JS function's script, loaded into the shared JS engine).
+	Preload *Preload
+}
+
+// Preload names an export (ptr, len) → i32 that takes a buffer allocated with
+// fc_alloc; a non-zero result fails the instance.
+type Preload struct {
+	Export string
+	Data   []byte
 }
 
 // ErrNoMemory means the budget cannot cover a new instance's minimum memory.
@@ -185,7 +195,37 @@ func (m *Module) Instantiate(ctx context.Context, cfg InstanceConfig) (*Instance
 			return nil, fmt.Errorf("engine: _initialize: %w", err)
 		}
 	}
+	if p := cfg.Preload; p != nil {
+		if err := inst.preload(ctx, p); err != nil {
+			_ = inst.Close(context.Background())
+			return nil, err
+		}
+	}
 	return inst, nil
+}
+
+func (i *Instance) preload(ctx context.Context, p *Preload) error {
+	fn := i.mod.ExportedFunction(p.Export)
+	if fn == nil {
+		return &LoadError{Code: LoadExportMissing, Detail: "the module does not export " + p.Export}
+	}
+	ctx = withState(ctx, nil)
+	r, err := i.alloc.Call(ctx, uint64(len(p.Data)))
+	if err != nil {
+		return &LoadError{Code: LoadInstantiate, Detail: "preload: " + i.classify(ctx, err).Error()}
+	}
+	if !i.mod.Memory().Write(uint32(r[0]), p.Data) {
+		return &LoadError{Code: LoadInstantiate, Detail: "preload: fc_alloc returned a buffer outside memory"}
+	}
+	rc, err := fn.Call(ctx, r[0], uint64(len(p.Data)))
+	if err != nil {
+		return &LoadError{Code: LoadInstantiate, Detail: "preload: " + i.classify(ctx, err).Error()}
+	}
+	if len(rc) != 1 || rc[0] != 0 {
+		return &LoadError{Code: LoadInstantiate, Detail: p.Export + " refused the data (see the function's log)"}
+	}
+	i.broken = false
+	return nil
 }
 
 // Instance is one live instance of a module. It is not safe for concurrent

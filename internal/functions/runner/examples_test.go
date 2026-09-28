@@ -30,7 +30,7 @@ func TestSDKExamples(t *testing.T) {
 	if paths == "" {
 		t.Skip("FN_EXAMPLE_WASM not set")
 	}
-	for _, p := range strings.Split(paths, ",") {
+	for p := range strings.SplitSeq(paths, ",") {
 		t.Run(p[strings.LastIndex(p, "/clients/")+1:], func(t *testing.T) { runExample(t, p) })
 	}
 }
@@ -49,7 +49,7 @@ func runExample(t *testing.T, path string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer e.Close(context.Background())
+	defer func() { _ = e.Close(context.Background()) }()
 	start := time.Now()
 	mod, err := e.Compile(t.Context(), wasm)
 	if err != nil {

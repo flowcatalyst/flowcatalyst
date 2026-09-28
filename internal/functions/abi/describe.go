@@ -80,9 +80,9 @@ func (e Endpoint) Pattern() string {
 }
 
 var (
-	keyPattern       = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_./-]{0,99}$`)
-	dbNamePattern    = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,62}$`)
-	hostPattern      = regexp.MustCompile(`^(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:[0-9]{1,5})?$`)
+	keyPattern    = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_./-]{0,99}$`)
+	dbNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,62}$`)
+	hostPattern   = regexp.MustCompile(`^(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:[0-9]{1,5})?$`)
 	// The platform's own rule for event-type codes: four non-empty
 	// colon-separated segments (eventtype.New). Ownership — the first
 	// segment is the function's application — is publish's check.

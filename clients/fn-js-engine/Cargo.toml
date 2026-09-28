@@ -1,0 +1,20 @@
+[package]
+name = "fc-js-engine"
+version = "0.1.0"
+edition = "2021"
+description = "The FlowCatalyst function runner's shared JavaScript engine: QuickJS behind ABI v1"
+license = "Apache-2.0"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+rquickjs = { version = "0.11", features = ["array-buffer"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+panic = "abort"
+strip = true
+codegen-units = 1

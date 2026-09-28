@@ -8,7 +8,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/abi"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/control"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/engine"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/runtimes"
 )
 
 // function is one function the runner serves. Its settings (limits, config,
@@ -69,6 +69,7 @@ type version struct {
 	fnID     string
 	number   int
 	digest   string
+	runtime  string
 	describe *abi.Describe
 	router   *abi.Router
 	roles    []string // guarded by Runner.mu
@@ -76,7 +77,7 @@ type version struct {
 	mu       sync.Mutex // guards module, pool, state transitions
 	state    versionState
 	reason   string
-	module   *engine.Module
+	prepared *runtimes.Prepared
 	pool     *pool
 	lastUsed atomic.Int64 // unix nanos
 	inflight sync.WaitGroup
@@ -117,10 +118,8 @@ func (v *version) evictLocked(ctx context.Context) {
 		v.pool.close()
 		v.pool = nil
 	}
-	if v.module != nil {
-		_ = v.module.Close(ctx)
-		v.module = nil
-	}
+	v.prepared.Close(ctx)
+	v.prepared = nil
 	v.state = stateEvicted
 }
 
@@ -138,9 +137,7 @@ func (v *version) close(grace time.Duration) {
 		v.pool.close()
 		v.pool = nil
 	}
-	if v.module != nil {
-		_ = v.module.Close(context.Background())
-		v.module = nil
-	}
+	v.prepared.Close(context.Background())
+	v.prepared = nil
 	v.state = stateClosed
 }
