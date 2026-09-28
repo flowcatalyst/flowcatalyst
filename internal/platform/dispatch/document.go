@@ -48,25 +48,33 @@ type poolRow struct {
 // would fall back to the synthesised default pool, quietly changing that
 // pool's concurrency and rate limit with only a log line to explain it.
 //
-// Queues: one per (tenant, priority actually in use). A tenant is a client's
-// identifier, or "platform" for client-less dispatch. A tenant gets a DEFAULT
-// queue when it owns a dispatch pool (any status) or an ACTIVE subscription;
-// the platform tenant always qualifies. It additionally gets a HIGH_PRIORITY
-// queue when at least one of its ACTIVE subscriptions reads that way. An extra
-// queue that turns out unused costs nothing — queues are created lazily and
-// the router already tolerates one that does not exist yet.
+// Queues: a DEFAULT and a HIGH_PRIORITY queue per tenant. A tenant is a
+// client's identifier, or "platform" for client-less dispatch: the platform
+// tenant, then every tenant owning a dispatch pool (any status), then every
+// tenant of an ACTIVE subscription, then every client.
+//
+// Every client, and both lanes, because the scheduler publishes a job to
+// {prefix}-{its client's identifier}-{its priority} (DestinationResolver),
+// whatever pools or subscriptions say. This document used to list only the
+// tenants named by client_identifier on a pool or subscription — a column
+// the API never sets — and HIGH_PRIORITY only where a subscription asked for
+// it. So a client-scoped job, or a job claiming HIGH_PRIORITY itself (R4),
+// was published to a queue no router consumed and sat QUEUED for good
+// (delivery harness; owner decision #31). An extra queue that turns out
+// unused costs nothing — queues are created lazily and the router already
+// tolerates one that does not exist yet.
 func (b *DocumentBuilder) Build(ctx context.Context) (common.RouterConfig, error) {
 	pools, err := b.loadPools(ctx)
 	if err != nil {
 		return common.RouterConfig{}, err
 	}
-	tenants, highPriority, err := b.loadTenants(ctx, pools)
+	tenants, err := b.loadTenants(ctx, pools)
 	if err != nil {
 		return common.RouterConfig{}, err
 	}
 	return common.RouterConfig{
 		ProcessingPools: b.buildPools(pools),
-		Queues:          b.buildQueues(tenants, highPriority),
+		Queues:          b.buildQueues(tenants),
 	}, nil
 }
 
@@ -88,9 +96,9 @@ func (b *DocumentBuilder) loadPools(ctx context.Context) ([]poolRow, error) {
 	return out, rows.Err()
 }
 
-// loadTenants returns the tenants with dispatch work, in a stable order, and
-// the subset needing a HIGH_PRIORITY queue.
-func (b *DocumentBuilder) loadTenants(ctx context.Context, pools []poolRow) ([]string, map[string]bool, error) {
+// loadTenants returns every tenant the scheduler can publish to, in a
+// stable order (see Build).
+func (b *DocumentBuilder) loadTenants(ctx context.Context, pools []poolRow) ([]string, error) {
 	seen := map[string]bool{dispatchqueue.TenantPlatform: true}
 	tenants := []string{dispatchqueue.TenantPlatform}
 	add := func(identifier *string) {
@@ -104,26 +112,40 @@ func (b *DocumentBuilder) loadTenants(ctx context.Context, pools []poolRow) ([]s
 		add(p.clientIdentifier)
 	}
 
-	rows, err := b.pool.Query(ctx,
-		`SELECT client_identifier, queue FROM msg_subscriptions WHERE status = 'ACTIVE' ORDER BY id`)
+	subs, err := b.pool.Query(ctx,
+		`SELECT client_identifier FROM msg_subscriptions WHERE status = 'ACTIVE' ORDER BY id`)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	defer rows.Close()
-	highPriority := make(map[string]bool)
-	for rows.Next() {
-		var identifier, queue *string
-		if err := rows.Scan(&identifier, &queue); err != nil {
-			return nil, nil, err
+	for subs.Next() {
+		var identifier *string
+		if err := subs.Scan(&identifier); err != nil {
+			subs.Close()
+			return nil, err
 		}
 		add(identifier)
-		// Lenient by design: NULL, blank and legacy text all read as DEFAULT,
-		// so only an explicit HIGH_PRIORITY opens that lane.
-		if dispatchqueue.ForPublishing(queue) == dispatchqueue.PriorityHighPriority {
-			highPriority[tenantOf(identifier)] = true
-		}
 	}
-	return tenants, highPriority, rows.Err()
+	subs.Close()
+	if err := subs.Err(); err != nil {
+		return nil, err
+	}
+
+	// Every client, whatever its status: the scheduler's PoolCodeResolver
+	// and DestinationResolver read tnt_clients the same way.
+	clients, err := b.pool.Query(ctx,
+		`SELECT identifier FROM tnt_clients WHERE identifier <> '' ORDER BY identifier`)
+	if err != nil {
+		return nil, err
+	}
+	defer clients.Close()
+	for clients.Next() {
+		var identifier string
+		if err := clients.Scan(&identifier); err != nil {
+			return nil, err
+		}
+		add(&identifier)
+	}
+	return tenants, clients.Err()
 }
 
 // buildPools namespaces every pool exactly as the scheduler stamps it, so a
@@ -153,30 +175,23 @@ func (b *DocumentBuilder) buildPools(pools []poolRow) []common.PoolConfig {
 	return out
 }
 
-func (b *DocumentBuilder) buildQueues(tenants []string, highPriority map[string]bool) []common.QueueConfig {
-	queues := make([]common.QueueConfig, 0, len(tenants))
+func (b *DocumentBuilder) buildQueues(tenants []string) []common.QueueConfig {
+	queues := make([]common.QueueConfig, 0, 2*len(tenants))
 	for _, tenant := range tenants {
 		defaultQueue, err := b.queueFor(tenant, dispatchqueue.PriorityDefault)
 		if err != nil {
 			logOmittedTenant(tenant, err)
 			continue
 		}
-		var highQueue *common.QueueConfig
-		if highPriority[tenant] {
-			q, err := b.queueFor(tenant, dispatchqueue.PriorityHighPriority)
-			if err != nil {
-				logOmittedTenant(tenant, err)
-				continue
-			}
-			highQueue = &q
+		highQueue, err := b.queueFor(tenant, dispatchqueue.PriorityHighPriority)
+		if err != nil {
+			logOmittedTenant(tenant, err)
+			continue
 		}
 		// Both composed before either is appended: a tenant whose identifier
 		// is too long to compose ANY of its queue names is omitted entirely,
 		// never half-published with only its DEFAULT queue.
-		queues = append(queues, defaultQueue)
-		if highQueue != nil {
-			queues = append(queues, *highQueue)
-		}
+		queues = append(queues, defaultQueue, highQueue)
 	}
 	return queues
 }

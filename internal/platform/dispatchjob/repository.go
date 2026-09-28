@@ -396,6 +396,24 @@ func (r *Repository) ClaimForDelivery(ctx context.Context, id string, createdAt 
 	return rows == 1, nil
 }
 
+// ReclaimStaleDelivery takes over a delivery whose attempt died (the process
+// was killed mid-delivery, so the job stayed PROCESSING with no outcome): it
+// re-stamps the claim time, only when the current claim was made before
+// claimedBefore. Reports whether this caller won; like ClaimForDelivery, the
+// winner's fresh claim time takes every concurrent taker out of the
+// condition, so exactly one of them delivers.
+func (r *Repository) ReclaimStaleDelivery(ctx context.Context, id string, createdAt, claimedBefore time.Time) (bool, error) {
+	now := time.Now().UTC()
+	claimedBefore = claimedBefore.UTC()
+	rows, err := r.q.DispatchJobReclaimStaleDelivery(ctx, dbq.DispatchJobReclaimStaleDeliveryParams{
+		Now: &now, ID: id, CreatedAt: createdAt, ClaimedBefore: &claimedBefore,
+	})
+	if err != nil {
+		return false, err
+	}
+	return rows == 1, nil
+}
+
 // MarkCompleted flips status to COMPLETED and stamps completed_at +
 // duration_millis (end-to-end). Called after a successful delivery.
 func (r *Repository) MarkCompleted(ctx context.Context, id string, createdAt time.Time, durationMillis int64) error {

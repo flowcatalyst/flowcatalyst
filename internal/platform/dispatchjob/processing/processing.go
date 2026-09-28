@@ -19,6 +19,24 @@
 // queue: this endpoint always ACKs and reschedules failed jobs to
 // NOW()+backoff, so exactly one component re-dispatches a job (no queue-NACK
 // racing the poller into a double dispatch).
+//
+// Two ways a job used to be lost, now closed (delivery harness, platform-down;
+// the Rust platform's dispatch_process_api does the same):
+//
+//   - An internal error (the database unreachable while loading, holding,
+//     claiming or recording) answers 503 {"ack": false}, never 500. Every
+//     router treats a 500 as the target's permanent answer (R-57) and ACKs
+//     the message away, which left the job QUEUED until stale recovery.
+//   - A claim has a lease (claimLease). A copy that loses the claim to a
+//     PROCESSING job inside its lease is deferred ({"ack": false,
+//     "delaySeconds": <rest of the lease>}) so the router keeps the message
+//     and holds its group; one that finds the lease run out takes the claim
+//     over and delivers. Before, a copy that lost the claim was always acked
+//     away, so a platform killed mid-delivery left the job PROCESSING for
+//     good. The delivery also no longer follows the request context: a
+//     router hanging up mid-call cannot cut an attempt short, so only a
+//     dying process leaves a claim behind. At-least-once: after such a death
+//     the subscriber may see the message twice.
 package processing
 
 import (
@@ -32,6 +50,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"time"
@@ -118,7 +137,7 @@ func New(repo *dispatchjob.Repository, verifier Verifier) *Handler {
 		// Outer ceiling only; each delivery uses a per-job context timeout.
 		// No redirect-following: a 3xx from a webhook target is not a success.
 		client: &http.Client{
-			Timeout: 2 * time.Minute,
+			Timeout: deliveryClientCeiling,
 			CheckRedirect: func(*http.Request, []*http.Request) error {
 				return http.ErrUseLastResponse
 			},
@@ -161,11 +180,45 @@ type processRequest struct {
 
 // processResponse is the router's contract (see internal/router mediator):
 // ack=false with an optional delaySeconds asks the router to retry via the
-// queue. This endpoint always acks (poller owns retries), so it only ever
-// returns ack=true — the fields exist for shape compatibility.
+// queue. A message this endpoint handled is always acked (the poller owns
+// retries); ack=false is only for a message it could not handle yet — an
+// internal error (503), or a delivery still in progress elsewhere
+// (200 with delaySeconds, see lostClaim).
 type processResponse struct {
-	Ack     bool   `json:"ack"`
-	Message string `json:"message,omitempty"`
+	Ack          bool    `json:"ack"`
+	Message      string  `json:"message,omitempty"`
+	DelaySeconds *uint32 `json:"delaySeconds,omitempty"`
+}
+
+// claimLeaseMargin is the slack on top of a delivery's own bound before its
+// claim counts as dead (see claimLease): the credential lookup before it and
+// the attempt and status writes after it.
+const claimLeaseMargin = 30 * time.Second
+
+// deliveryClientCeiling is the delivery client's outer timeout (see New).
+const deliveryClientCeiling = 2 * time.Minute
+
+// claimLease is how long a claimed attempt may hold its job before a
+// redelivery may take it over: the delivery's own bound (the job's timeout,
+// capped by the client's ceiling) plus claimLeaseMargin.
+func claimLease(job *dispatchjob.DispatchJob) time.Duration {
+	d := defaultTimeout
+	if job.TimeoutSeconds > 0 {
+		d = time.Duration(job.TimeoutSeconds) * time.Second
+	}
+	return min(d, deliveryClientCeiling) + claimLeaseMargin
+}
+
+// unavailable answers 503 {"ack": false}: this endpoint could not handle the
+// message (an internal error), so the router must keep it and retry.
+func unavailable(w http.ResponseWriter, msg string) {
+	writeJSON(w, http.StatusServiceUnavailable, processResponse{Ack: false, Message: msg})
+}
+
+// deferred answers 200 {"ack": false, "delaySeconds": n}: come back in n
+// seconds (the router holds the message and its group behind it).
+func deferred(w http.ResponseWriter, seconds uint32, msg string) {
+	writeJSON(w, http.StatusOK, processResponse{Ack: false, Message: msg, DelaySeconds: &seconds})
 }
 
 func writeJSON(w http.ResponseWriter, code int, body processResponse) {
@@ -176,6 +229,16 @@ func writeJSON(w http.ResponseWriter, code int, body processResponse) {
 
 func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	// A panic here must not reach the server's recoverer, which answers 500:
+	// the router would ACK the message away (R-57) with the job possibly
+	// already claimed. 503 keeps the message; if the job was claimed, its
+	// next copy takes the claim over once the lease runs out.
+	defer func() {
+		if rec := recover(); rec != nil {
+			slog.Error("dispatch process: panic", "panic", rec, "stack", string(debug.Stack()))
+			unavailable(w, "internal error")
+		}
+	}()
 
 	var req processRequest
 	if err := json.NewDecoder(io.LimitReader(r.Body, 4<<10)).Decode(&req); err != nil || strings.TrimSpace(req.MessageID) == "" {
@@ -200,7 +263,7 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Transient DB error — NACK so the queue redelivers.
 		slog.Error("dispatch process: load job failed", "job_id", jobID, "err", err)
-		writeJSON(w, http.StatusInternalServerError, processResponse{Ack: false, Message: "load failed"})
+		unavailable(w, "load failed")
 		return
 	}
 	if job == nil {
@@ -230,7 +293,7 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			// Transient DB error — NACK so the queue redelivers.
 			slog.Error("dispatch process: blocked-group check failed", "job_id", jobID, "err", err)
-			writeJSON(w, http.StatusInternalServerError, processResponse{Ack: false, Message: "blocked check failed"})
+			unavailable(w, "blocked check failed")
 			return
 		}
 		if blocked {
@@ -238,7 +301,7 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 				// Revert failed: NACK rather than ack, or the job would sit
 				// QUEUED with no queue message until stale recovery.
 				slog.Error("dispatch process: blocked-group revert failed", "job_id", jobID, "err", err)
-				writeJSON(w, http.StatusInternalServerError, processResponse{Ack: false, Message: "revert failed"})
+				unavailable(w, "revert failed")
 				return
 			}
 			slog.Info("dispatch held: group blocked, returned to PENDING",
@@ -260,18 +323,100 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 		// Transient DB error — NACK so the queue redelivers. Do NOT deliver:
 		// we don't know whether we hold the claim.
 		slog.Error("dispatch process: claim failed", "job_id", jobID, "err", err)
-		writeJSON(w, http.StatusInternalServerError, processResponse{Ack: false, Message: "claim failed"})
+		unavailable(w, "claim failed")
 		return
 	}
 	if !claimed {
-		// Lost the race: another delivery of this job is already in flight
-		// (or it just reached a terminal status). Ack without re-delivering —
-		// the in-flight delivery owns advancing the job.
-		slog.Info("dispatch process: already claimed, skipping duplicate delivery", "job_id", jobID)
-		writeJSON(w, http.StatusOK, processResponse{Ack: true, Message: "already claimed"})
-		return
+		var ok bool
+		if job, ok = h.lostClaim(ctx, w, jobID); !ok {
+			return // answered
+		}
 	}
 
+	// The delivery and its bookkeeping run on a context the router cannot
+	// cancel: once claimed, the attempt's outcome is always recorded, even if
+	// the router hangs up (a router restarting mid-call). The delivery itself
+	// is still bounded by the job's timeout (see deliver).
+	if !h.deliverAndRecord(context.WithoutCancel(ctx), job) {
+		// The job is still PROCESSING with its outcome unwritten. Keep the
+		// message: its next copy takes the claim over once the lease runs out
+		// (at-least-once), instead of the job staying PROCESSING for good.
+		unavailable(w, "status update failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, processResponse{Ack: true})
+}
+
+// lostClaim decides what a call that lost the claim does. Before, it always
+// acked the message away without delivering — right while another attempt is
+// live, and the job's end when that attempt died with its process (a platform
+// killed mid-delivery: the webhook may have gone out, the outcome was never
+// written, and the router's retry was acked away). So:
+//   - the job is PROCESSING and its claim is inside claimLease: an attempt may
+//     be live. Answer {"ack": false, "delaySeconds": <rest of the lease>} so
+//     the router keeps the message (and the group behind it) and asks again;
+//   - the lease has run out: that attempt is dead. Take the claim over and
+//     deliver again (at-least-once);
+//   - anything else (finished, or back to PENDING for a retry the poller
+//     owns): ack without delivering, as before.
+//
+// Returns the job to deliver and true when this call took the claim over;
+// otherwise it has written the answer and returns false.
+func (h *Handler) lostClaim(ctx context.Context, w http.ResponseWriter, jobID string) (*dispatchjob.DispatchJob, bool) {
+	job, err := h.repo.FindByID(ctx, jobID)
+	if err != nil {
+		slog.Error("dispatch process: reload after a lost claim failed", "job_id", jobID, "err", err)
+		unavailable(w, "load failed")
+		return nil, false
+	}
+	if job == nil {
+		writeJSON(w, http.StatusOK, processResponse{Ack: true, Message: "job not found"})
+		return nil, false
+	}
+	if job.Status != common.DispatchProcessing {
+		slog.Info("dispatch process: already claimed, skipping duplicate delivery",
+			"job_id", jobID, "status", job.Status)
+		writeJSON(w, http.StatusOK, processResponse{Ack: true, Message: "already claimed"})
+		return nil, false
+	}
+	lease := claimLease(job)
+	claimedAt := job.UpdatedAt
+	if job.LastAttemptAt != nil {
+		claimedAt = *job.LastAttemptAt
+	}
+	now := time.Now()
+	if leaseEnds := claimedAt.Add(lease); now.Before(leaseEnds) {
+		wait := leaseEnds.Sub(now)
+		secs := uint32((wait + time.Second - 1) / time.Second)
+		if secs == 0 {
+			secs = 1
+		}
+		slog.Info("dispatch process: delivery in progress elsewhere; asking the router to retry",
+			"job_id", jobID, "delay_seconds", secs)
+		deferred(w, secs, "delivery in progress")
+		return nil, false
+	}
+	took, err := h.repo.ReclaimStaleDelivery(ctx, jobID, job.CreatedAt, now.Add(-lease))
+	if err != nil {
+		slog.Error("dispatch process: reclaim failed", "job_id", jobID, "err", err)
+		unavailable(w, "claim failed")
+		return nil, false
+	}
+	if !took {
+		// Another copy took it over first; it is now the live attempt.
+		deferred(w, 1, "delivery in progress")
+		return nil, false
+	}
+	slog.Warn("dispatch process: the previous attempt never finished; delivering again",
+		"job_id", jobID, "claimed_at", claimedAt, "lease", lease)
+	return job, true
+}
+
+// deliverAndRecord delivers a job this call has claimed, records the attempt
+// and advances the job. Returns false when the outcome could not be written
+// (the job is still PROCESSING).
+func (h *Handler) deliverAndRecord(ctx context.Context, job *dispatchjob.DispatchJob) bool {
+	jobID := job.ID
 	attemptNumber := job.AttemptCount + 1
 	attempt := dispatchjob.NewAttempt(attemptNumber)
 	res := h.deliver(ctx, job)
@@ -290,13 +435,12 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("dispatch process: record attempt failed", "job_id", jobID, "err", err)
 	}
 
-	h.advance(ctx, job, attemptNumber, res, attempt)
-
-	writeJSON(w, http.StatusOK, processResponse{Ack: true})
+	return h.advance(ctx, job, attemptNumber, res, attempt)
 }
 
-// advance transitions the job row based on the delivery result.
-func (h *Handler) advance(ctx context.Context, job *dispatchjob.DispatchJob, attemptNumber int32, res deliveryResult, attempt *dispatchjob.Attempt) {
+// advance transitions the job row based on the delivery result. Returns
+// false when the status write failed, leaving the job PROCESSING.
+func (h *Handler) advance(ctx context.Context, job *dispatchjob.DispatchJob, attemptNumber int32, res deliveryResult, attempt *dispatchjob.Attempt) bool {
 	jobID := job.ID
 	dur := int64(0)
 	if attempt.DurationMillis != nil {
@@ -307,6 +451,7 @@ func (h *Handler) advance(ctx context.Context, job *dispatchjob.DispatchJob, att
 	case res.success:
 		if err := h.repo.MarkCompleted(ctx, jobID, job.CreatedAt, dur); err != nil {
 			slog.Warn("dispatch process: mark completed failed", "job_id", jobID, "err", err)
+			return false
 		}
 		slog.Debug("dispatch delivered", "job_id", jobID, "status", res.statusCode, "attempt", attemptNumber)
 
@@ -315,6 +460,7 @@ func (h *Handler) advance(ctx context.Context, job *dispatchjob.DispatchJob, att
 		// WITHOUT consuming the retry budget.
 		if err := h.repo.Reschedule(ctx, jobID, job.CreatedAt, time.Now().Add(res.retryAfter)); err != nil {
 			slog.Warn("dispatch process: reschedule failed", "job_id", jobID, "err", err)
+			return false
 		}
 		slog.Info("dispatch deferred", "job_id", jobID, "retry_after", res.retryAfter, "reason", res.errMessage)
 
@@ -327,6 +473,7 @@ func (h *Handler) advance(ctx context.Context, job *dispatchjob.DispatchJob, att
 		errMsg := res.errMessage
 		if err := h.repo.MarkFailed(ctx, jobID, job.CreatedAt, &errMsg, dur); err != nil {
 			slog.Warn("dispatch process: mark failed failed", "job_id", jobID, "err", err)
+			return false
 		}
 		slog.Warn("dispatch failed (subscriber refused credentials; not retried)",
 			"job_id", jobID, "status", res.statusCode, "attempt", attemptNumber, "err", errMsg)
@@ -336,6 +483,7 @@ func (h *Handler) advance(ctx context.Context, job *dispatchjob.DispatchJob, att
 		errMsg := res.errMessage
 		if err := h.repo.MarkFailed(ctx, jobID, job.CreatedAt, &errMsg, dur); err != nil {
 			slog.Warn("dispatch process: mark failed failed", "job_id", jobID, "err", err)
+			return false
 		}
 		slog.Warn("dispatch failed (retries exhausted)", "job_id", jobID, "attempts", attemptNumber, "max", job.MaxRetries, "err", errMsg)
 
@@ -344,9 +492,11 @@ func (h *Handler) advance(ctx context.Context, job *dispatchjob.DispatchJob, att
 		errMsg := res.errMessage
 		if err := h.repo.ScheduleRetry(ctx, jobID, job.CreatedAt, time.Now().Add(backoffFor(attemptNumber)), &errMsg); err != nil {
 			slog.Warn("dispatch process: schedule retry failed", "job_id", jobID, "err", err)
+			return false
 		}
 		slog.Info("dispatch retry scheduled", "job_id", jobID, "attempt", attemptNumber, "backoff", backoffFor(attemptNumber), "err", errMsg)
 	}
+	return true
 }
 
 func backoffFor(attemptNumber int32) time.Duration {

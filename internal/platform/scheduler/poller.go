@@ -223,13 +223,29 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 		return nil
 	}
 
-	// Filter and gather IDs to mark QUEUED. Dispatch is deliberately
-	// deferred until the claim tx has committed: publishing while the tx was
-	// still open meant (a) a commit failure after a publish re-claimed the
-	// already-published job on the next poll (duplicate dispatch), and (b) a
-	// publish failure's QUEUED→PENDING revert no-oped because the QUEUED
-	// status it guards on hadn't committed yet (row stuck until stale
-	// recovery).
+	// Filter, publish, then mark QUEUED and commit — in that order, with the
+	// claim's rows still locked while the batch is published.
+	//
+	// This used to commit the claim QUEUED first and publish afterwards. A
+	// worker that died between the two (a SIGKILL, an OOM, a deploy past its
+	// stop timeout) left every unpublished row QUEUED with no queue message,
+	// and nothing looked at them again until stale recovery's 75 minutes were
+	// up: the delivery harness lost 2 of 40 jobs to a SIGKILL that way
+	// (worker-restart, delivery runs 3 and 4). Publishing first means a worker
+	// that dies mid-publish rolls the whole claim back to PENDING, and the
+	// next poll (its own after a restart, or a standby's) publishes it again.
+	//
+	// The price is at-least-once at the queue: the jobs it did publish before
+	// dying are published a second time. That costs no second delivery —
+	// /api/dispatch/process claims a job before delivering it, and a copy
+	// that finds the job taken or finished never delivers it — only a
+	// second, redundant queue message. A commit that fails after a publish
+	// has the same effect. A /process call that arrives for a job before
+	// this commit waits on the row lock for it, then claims it QUEUED.
+	//
+	// Only the jobs the publisher reports published are marked QUEUED; the
+	// rest simply stay PENDING for the next poll (no revert needed: their
+	// QUEUED status was never written).
 	//
 	// Filter order: paused-subscription
 	// filter, then group, then the blocked-group hold-back, then the
@@ -248,8 +264,8 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 	}
 
 	var queued []string
+	var createdAt []time.Time // createdAt[i] is queued[i]'s created_at
 	var tokens []DispatchJobToken
-	var minCreated, maxCreated time.Time
 	skippedBlocked := 0
 	for group, jobs := range byGroup {
 		// A FAILED/ERROR sibling holds back this group's BLOCK_ON_ERROR
@@ -264,13 +280,8 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 			skippedBlocked += held
 		}
 		for _, c := range dispatchable {
-			if len(queued) == 0 || c.createdAt.Before(minCreated) {
-				minCreated = c.createdAt
-			}
-			if len(queued) == 0 || c.createdAt.After(maxCreated) {
-				maxCreated = c.createdAt
-			}
 			queued = append(queued, c.id)
+			createdAt = append(createdAt, c.createdAt)
 			tokens = append(tokens, DispatchJobToken{
 				JobID:        c.id,
 				MessageGroup: c.group,
@@ -289,28 +300,56 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 		}
 	}
 
-	if len(queued) > 0 {
-		// created_at bounds let the created_at-partitioned table prune to
-		// the partitions the claimed rows actually span.
-		if _, err := tx.Exec(ctx,
-			`UPDATE msg_dispatch_jobs SET status = 'QUEUED', updated_at = NOW()
-			  WHERE id = ANY($1)
-			    AND created_at >= $2 AND created_at <= $3`,
-			queued, minCreated, maxCreated); err != nil {
-			return err
-		}
+	if len(tokens) == 0 {
+		// Nothing dispatchable: the claim is released (rolled back by the
+		// deferred Rollback), every row still PENDING.
+		return nil
 	}
-	if err := tx.Commit(ctx); err != nil {
+
+	// Publish while the claim is still locked and uncommitted — see above.
+	unpublished := p.dispatcher.PublishClaim(ctx, tokens)
+	notPublished := make(map[string]struct{}, len(unpublished))
+	for _, id := range unpublished {
+		notPublished[id] = struct{}{}
+	}
+	published := make([]string, 0, len(queued))
+	var minCreated, maxCreated time.Time
+	for i, id := range queued {
+		if _, skip := notPublished[id]; skip {
+			continue
+		}
+		at := createdAt[i]
+		if len(published) == 0 || at.Before(minCreated) {
+			minCreated = at
+		}
+		if len(published) == 0 || at.After(maxCreated) {
+			maxCreated = at
+		}
+		published = append(published, id)
+	}
+	if len(published) == 0 {
+		// Nothing reached the broker; rolling back leaves every row PENDING
+		// for the next poll.
+		return nil
+	}
+	// created_at bounds let the created_at-partitioned table prune to the
+	// partitions the published rows actually span.
+	if _, err := tx.Exec(ctx,
+		`UPDATE msg_dispatch_jobs SET status = 'QUEUED', updated_at = NOW()
+		  WHERE id = ANY($1)
+		    AND created_at >= $2 AND created_at <= $3`,
+		published, minCreated, maxCreated); err != nil {
+		slog.Warn("marking published dispatch jobs QUEUED failed; they will be published again",
+			"published", len(published), "err", err)
 		return err
 	}
-
-	// QUEUED is durable — now hand the whole batch to the dispatcher in ONE
-	// PublishBatch (SQS SendMessageBatch, 10 per call), preserving the claim
-	// order. A publish failure reverts QUEUED→PENDING for the next poll; a
-	// crash between commit and publish leaves rows QUEUED for stale recovery —
-	// the same failure mode the recovery loop already covers.
-	p.dispatcher.SubmitBatch(ctx, tokens)
-
+	if err := tx.Commit(ctx); err != nil {
+		// Published but still PENDING: the next poll publishes them again,
+		// and /process delivers each once.
+		slog.Warn("committing published dispatch jobs failed; they will be published again",
+			"published", len(published), "err", err)
+		return err
+	}
 	if len(queued) > 0 || skippedPaused > 0 || skippedBlocked > 0 {
 		slog.Debug("poll tick",
 			"queued", len(queued),

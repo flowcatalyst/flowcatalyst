@@ -39,22 +39,21 @@ func NewMessageGroupDispatcher(pool *pgxpool.Pool, publisher DispatchPublisher, 
 	}
 }
 
-// SubmitBatch publishes a batch of claimed jobs in one PublishBatch call. `toks`
-// MUST already be in dispatch order (the poller claims them ordered by
-// message_group, sequence, created_at); that order is preserved into the batch,
-// and the SQS backend chunks it to SendMessageBatch's limit of 10.
+// PublishClaim publishes a claimed batch in one Publish call and returns the
+// ids the publisher reports it did NOT publish. `toks` MUST already be in
+// dispatch order (the poller claims them ordered by message_group, sequence,
+// created_at); that order is preserved into the batch, and the SQS backend
+// chunks it to SendMessageBatch's limit of 10.
 //
-// Only the jobs the publisher reports UNPUBLISHED are reverted QUEUED→PENDING
-// for the next poll. A job the broker accepted is legitimately QUEUED, and
-// reverting it too would publish it a second time and deliver it twice — which
-// is why the publisher's list is trusted exactly rather than being widened to
-// the whole batch on any error. The `status = 'QUEUED'` guard leaves alone any
-// job /api/dispatch/process has already advanced. A crash between the caller's
-// commit and this publish leaves rows QUEUED for stale recovery — the same
-// failure mode the recovery loop already covers.
-func (d *MessageGroupDispatcher) SubmitBatch(ctx context.Context, toks []DispatchJobToken) {
+// The poller calls it while its claim transaction is still open, then marks
+// exactly the published ids QUEUED and commits (see pollOnce). The
+// unpublished ids need no revert: their QUEUED status is never written, so
+// they stay PENDING for the next poll. The publisher's list is trusted
+// exactly — a job the broker accepted must be marked QUEUED, or the next
+// poll publishes it again.
+func (d *MessageGroupDispatcher) PublishClaim(ctx context.Context, toks []DispatchJobToken) (unpublished []string) {
 	if len(toks) == 0 {
-		return
+		return nil
 	}
 	items := make([]PublishItem, len(toks))
 	for i, tok := range toks {
@@ -68,16 +67,10 @@ func (d *MessageGroupDispatcher) SubmitBatch(ctx context.Context, toks []Dispatc
 	}
 	unpublished, err := d.publisher.Publish(ctx, items)
 	if err != nil {
-		slog.Warn("dispatch publish failed", "unpublished", len(unpublished), "of", len(items), "err", err)
+		slog.Warn("dispatch publish failed; the unpublished jobs stay PENDING for the next poll",
+			"unpublished", len(unpublished), "of", len(items), "err", err)
 	}
-	if len(unpublished) == 0 {
-		return
-	}
-	if _, err := d.pool.Exec(ctx,
-		`UPDATE msg_dispatch_jobs SET status = 'PENDING', updated_at = NOW()
-		  WHERE id = ANY($1) AND status = 'QUEUED'`, unpublished); err != nil {
-		slog.Warn("revert of unpublished jobs failed", "count", len(unpublished), "err", err)
-	}
+	return unpublished
 }
 
 // buildMessage renders the queue message for a claimed job. mediation_target is

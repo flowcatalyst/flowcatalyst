@@ -57,6 +57,20 @@ UPDATE msg_dispatch_jobs
    AND created_at = $3
    AND status IN ('PENDING', 'QUEUED');
 
+-- name: DispatchJobReclaimStaleDelivery :execrows
+-- Takes over a delivery whose attempt died with its process: PROCESSING →
+-- PROCESSING with a fresh claim time, only when the current claim was made
+-- before @claimed_before (the attempt's lease has run out). Like
+-- DispatchJobClaimForDelivery the affected-row count answers "did I win?":
+-- the winner's new claim time takes every other taker out of the condition.
+UPDATE msg_dispatch_jobs
+   SET last_attempt_at = @now,
+       updated_at = @now
+ WHERE id = @id
+   AND created_at = @created_at
+   AND status = 'PROCESSING'
+   AND COALESCE(last_attempt_at, updated_at) < @claimed_before;
+
 -- name: DispatchJobMarkCompleted :exec
 -- Status → COMPLETED. Stamps completed_at + duration_millis.
 UPDATE msg_dispatch_jobs

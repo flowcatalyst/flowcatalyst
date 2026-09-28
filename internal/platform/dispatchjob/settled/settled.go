@@ -148,7 +148,9 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 	settledIDs, err := h.repo.SettleAcked(ctx, ids, reason)
 	if err != nil {
 		slog.Error("dispatch settled: settle failed", "err", err, "submitted", len(ids))
-		writeJSON(w, http.StatusInternalServerError, settledResponse{})
+		// 503, not 500: a database error is transient, and a 5xx other
+		// than 502/503/504 reads as the platform's permanent answer.
+		writeJSON(w, http.StatusServiceUnavailable, settledResponse{})
 		return
 	}
 	if len(settledIDs) > 0 {

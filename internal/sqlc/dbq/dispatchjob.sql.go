@@ -605,6 +605,41 @@ func (q *Queries) DispatchJobPersist(ctx context.Context, arg DispatchJobPersist
 	return err
 }
 
+const dispatchJobReclaimStaleDelivery = `-- name: DispatchJobReclaimStaleDelivery :execrows
+UPDATE msg_dispatch_jobs
+   SET last_attempt_at = $1,
+       updated_at = $1
+ WHERE id = $2
+   AND created_at = $3
+   AND status = 'PROCESSING'
+   AND COALESCE(last_attempt_at, updated_at) < $4
+`
+
+type DispatchJobReclaimStaleDeliveryParams struct {
+	Now           *time.Time `db:"now"`
+	ID            string     `db:"id"`
+	CreatedAt     time.Time  `db:"created_at"`
+	ClaimedBefore *time.Time `db:"claimed_before"`
+}
+
+// Takes over a delivery whose attempt died with its process: PROCESSING →
+// PROCESSING with a fresh claim time, only when the current claim was made
+// before @claimed_before (the attempt's lease has run out). Like
+// DispatchJobClaimForDelivery the affected-row count answers "did I win?":
+// the winner's new claim time takes every other taker out of the condition.
+func (q *Queries) DispatchJobReclaimStaleDelivery(ctx context.Context, arg DispatchJobReclaimStaleDeliveryParams) (int64, error) {
+	result, err := q.db.Exec(ctx, dispatchJobReclaimStaleDelivery,
+		arg.Now,
+		arg.ID,
+		arg.CreatedAt,
+		arg.ClaimedBefore,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const dispatchJobScheduleRetry = `-- name: DispatchJobScheduleRetry :exec
 UPDATE msg_dispatch_jobs
    SET attempt_count = attempt_count + 1,

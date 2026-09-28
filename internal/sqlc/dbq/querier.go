@@ -125,6 +125,12 @@ type Querier interface {
 	// by this path. created_at carries alongside id for partition pruning, like
 	// every other status-flip query in this file.
 	DispatchJobPersist(ctx context.Context, arg DispatchJobPersistParams) error
+	// Takes over a delivery whose attempt died with its process: PROCESSING →
+	// PROCESSING with a fresh claim time, only when the current claim was made
+	// before @claimed_before (the attempt's lease has run out). Like
+	// DispatchJobClaimForDelivery the affected-row count answers "did I win?":
+	// the winner's new claim time takes every other taker out of the condition.
+	DispatchJobReclaimStaleDelivery(ctx context.Context, arg DispatchJobReclaimStaleDeliveryParams) (int64, error)
 	// Bumps attempt_count + stamps scheduled_for so the next poll picks
 	// it up once due. Status stays PENDING.
 	DispatchJobScheduleRetry(ctx context.Context, arg DispatchJobScheduleRetryParams) error

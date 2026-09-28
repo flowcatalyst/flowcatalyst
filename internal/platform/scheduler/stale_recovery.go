@@ -8,7 +8,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// StaleQueuedJobPoller recovers dispatch jobs stuck in QUEUED. When the
+// StaleQueuedJobPoller recovers dispatch jobs stuck in QUEUED (and in
+// PROCESSING; see recoverOnce). When the
 // scheduler crashes between marking PENDING→QUEUED and successfully
 // publishing to the broker, or when the broker drops a message, the
 // row stays QUEUED indefinitely. This loop reverts such rows to PENDING
@@ -52,7 +53,21 @@ func (p *StaleQueuedJobPoller) Run(ctx context.Context) {
 	}
 }
 
-// recoverOnce reverts stale QUEUED jobs to PENDING. Returns the count.
+// StaleProcessingReason is recorded in last_error on a PROCESSING job this
+// loop returns to PENDING, so an operator can tell why it was re-dispatched.
+const StaleProcessingReason = "stale recovery: PROCESSING with no outcome recorded; returned to PENDING"
+
+// recoverOnce reverts stale QUEUED and PROCESSING jobs to PENDING. Returns
+// the count.
+//
+// PROCESSING is recovered too. A job whose attempt died with its process is
+// normally taken over by the next copy of its queue message once the claim's
+// lease runs out (/api/dispatch/process); but when no copy is coming — the
+// message went to the DLQ, or was acked away by an older router — nothing
+// else would ever move it, and it stayed PROCESSING for good. After
+// StaleAfter (far past any lease: the delivery client's ceiling is two
+// minutes) it goes back to PENDING and the poller dispatches it again.
+// At-least-once: the dead attempt may have reached the subscriber.
 func (p *StaleQueuedJobPoller) recoverOnce(ctx context.Context) (int64, error) {
 	cutoff := time.Now().Add(-p.staleAfter).UTC()
 	tag, err := p.pool.Exec(ctx,
@@ -63,5 +78,13 @@ func (p *StaleQueuedJobPoller) recoverOnce(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return tag.RowsAffected(), nil
+	processing, err := p.pool.Exec(ctx,
+		`UPDATE msg_dispatch_jobs
+		    SET status = 'PENDING', last_error = $2, updated_at = NOW()
+		  WHERE status = 'PROCESSING' AND updated_at < $1`,
+		cutoff, StaleProcessingReason)
+	if err != nil {
+		return tag.RowsAffected(), err
+	}
+	return tag.RowsAffected() + processing.RowsAffected(), nil
 }

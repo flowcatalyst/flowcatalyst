@@ -455,8 +455,12 @@ func TestProcess_ConcurrentDeliveriesCallSubscriberOnce(t *testing.T) {
 		"the subscriber must receive exactly one delivery for the two overlapping calls")
 	assert.Equal(t, http.StatusOK, codes[0])
 	assert.Equal(t, http.StatusOK, codes[1])
-	assert.True(t, acks[0], "both calls must ack: one delivers, the other sees the job already claimed")
-	assert.True(t, acks[1], "both calls must ack: one delivers, the other sees the job already claimed")
+	// One call delivers and acks. The other either finds the job finished
+	// (acks) or finds the delivery still in progress inside its lease: then
+	// it asks the router to come back later ({"ack": false, "delaySeconds"})
+	// rather than acking the message away, so a delivery that dies with its
+	// process is still recovered.
+	assert.True(t, acks[0] || acks[1], "the delivering call acks")
 
 	assert.Equal(t, 1, attemptCount(t, pool, jobID), "exactly one attempt row recorded for the job")
 

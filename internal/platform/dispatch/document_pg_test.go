@@ -96,42 +96,42 @@ func TestDocument_PoolsAreNamespacedAndPrioritiesDriveQueues(t *testing.T) {
 	assert.Nil(t, poolCoded(doc, "platform-DEFAULT-POOL"))
 	assert.Nil(t, poolCoded(doc, "docacme-DEFAULT-POOL"))
 
-	// Queues: every tenant with work gets DEFAULT; only acme asked for the
-	// expedited lane. The platform tenant always qualifies.
-	require.NotNil(t, queueNamed(doc, "FC-test-platform-DEFAULT.fifo"))
-	require.NotNil(t, queueNamed(doc, "FC-test-docacme-DEFAULT.fifo"))
-	require.NotNil(t, queueNamed(doc, "FC-test-docglobex-DEFAULT.fifo"))
-	require.NotNil(t, queueNamed(doc, "FC-test-docacme-HIGH_PRIORITY.fifo"))
-	assert.Nil(t, queueNamed(doc, "FC-test-docglobex-HIGH_PRIORITY.fifo"),
-		"a tenant with no HIGH_PRIORITY subscription gets no HIGH_PRIORITY queue")
+	// Queues: every tenant gets both lanes, the platform tenant included. A
+	// job can claim HIGH_PRIORITY itself (R4), so a tenant with no
+	// HIGH_PRIORITY subscription still needs that queue consumed.
+	for _, tenant := range []string{"platform", "docacme", "docglobex"} {
+		require.NotNil(t, queueNamed(doc, "FC-test-"+tenant+"-DEFAULT.fifo"), tenant)
+		require.NotNil(t, queueNamed(doc, "FC-test-"+tenant+"-HIGH_PRIORITY.fifo"), tenant)
+	}
 
 	q := queueNamed(doc, "FC-test-docacme-DEFAULT.fifo")
 	assert.Equal(t, "https://sqs.eu-west-1.amazonaws.com/123456789012/FC-test-docacme-DEFAULT.fifo", q.URI)
 }
 
-// Legacy and unusable stored values must not open the expedited lane: they
-// read as DEFAULT on the publish path, so advertising a HIGH_PRIORITY queue
-// for them would create a queue nothing ever publishes to.
-func TestDocument_UnusableQueueValuesDoNotCreateHighPriorityQueues(t *testing.T) {
+// A client-scoped job is published to its client's own queues. Those queues
+// used to be listed only for a client named by client_identifier on a pool or
+// subscription (a column the API never sets), so the job sat QUEUED on a
+// queue no router consumed. Every client is now a tenant with both lanes.
+func TestDocument_EveryClientGetsItsQueues(t *testing.T) {
 	ctx := context.Background()
 	pool := testpg.Pool(t)
-
-	tenant := "doclegacy"
-	seedSubscription(t, pool, "sub_doc_legacy", "doc-legacy", &tenant, "ACTIVE", strPtr("workers-high"))
-	seedSubscription(t, pool, "sub_doc_blank", "doc-blank", &tenant, "ACTIVE", strPtr("   "))
+	_, err := pool.Exec(ctx,
+		`INSERT INTO tnt_clients (id, name, identifier) VALUES ('clt_docnowork1', 'Doc no work', 'docnowork')
+		 ON CONFLICT (id) DO NOTHING`)
+	require.NoError(t, err)
 
 	settings, err := dispatch.ResolveSettings("SQS", sqsURL, "", "FC-test", "")
 	require.NoError(t, err)
 	doc, err := dispatch.NewDocumentBuilder(pool, settings).Build(ctx)
 	require.NoError(t, err)
 
-	require.NotNil(t, queueNamed(doc, "FC-test-doclegacy-DEFAULT.fifo"))
-	assert.Nil(t, queueNamed(doc, "FC-test-doclegacy-HIGH_PRIORITY.fifo"))
+	require.NotNil(t, queueNamed(doc, "FC-test-docnowork-DEFAULT.fifo"))
+	require.NotNil(t, queueNamed(doc, "FC-test-docnowork-HIGH_PRIORITY.fifo"))
 }
 
 // A paused subscription is not dispatch work: it must not be the only reason a
-// tenant appears. (A tenant owning a pool still appears, whatever its status —
-// pool status governs nothing downstream.)
+// tenant appears. (A tenant owning a pool, or a client row, still appears,
+// whatever its status — status governs nothing downstream.)
 func TestDocument_OnlyActiveSubscriptionsCountAsWork(t *testing.T) {
 	ctx := context.Background()
 	pool := testpg.Pool(t)

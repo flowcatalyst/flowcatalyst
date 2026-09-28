@@ -29,16 +29,17 @@ type PublishItem struct {
 }
 
 // DispatchPublisher hands a claimed batch of dispatch jobs to the queues the
-// router consumes from. The poller calls it once per tick, AFTER the claim
-// transaction commits.
+// router consumes from. The poller calls it once per tick, while the claim
+// transaction is still open (see pollOnce): only what it reports published
+// is then marked QUEUED and committed.
 //
 // Publishing is deliberately NOT all-or-nothing. SQS caps a batch send at 10
 // while the poller claims up to 100, so an implementation chunks internally
 // and a partial failure is the broker's normal operating mode, not an
 // exceptional one. Publish returns the job ids it did NOT publish; the caller
-// reverts exactly those to PENDING and leaves the rest QUEUED, because a job
-// the broker accepted is legitimately queued and reverting it would deliver it
-// twice. An implementation must never report a job unpublished that the broker
+// leaves exactly those PENDING and marks the rest QUEUED, because a job the
+// broker accepted is legitimately queued and leaving it PENDING would publish
+// it again. An implementation must never report a job unpublished that the broker
 // accepted, or the reverse: the caller trusts this list exactly.
 //
 // On a clean run it returns (nil, nil). The error is for logging and carries
