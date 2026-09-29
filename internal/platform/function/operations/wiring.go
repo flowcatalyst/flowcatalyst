@@ -416,9 +416,9 @@ func reconcileSchedules(
 				cur.Payload = sc.Payload
 				changed = true
 			}
-			if cur.ApplicationID == nil || *cur.ApplicationID != f.ApplicationID {
+			if cur.ApplicationID == nil || string(*cur.ApplicationID) != f.ApplicationID {
 				aid := f.ApplicationID
-				cur.ApplicationID = &aid
+				cur.ApplicationID = ids.PtrOf[ids.ApplicationID](&aid)
 				changed = true
 			}
 			if !ptrStrEqual(ids.StringPtr(cur.ClientID), f.ClientID) {
@@ -451,7 +451,7 @@ func reconcileSchedules(
 
 		nj := scheduledjob.New(code, "Function: "+f.Address+sc.Path, []string{sc.Cron})
 		aid := f.ApplicationID
-		nj.ApplicationID = &aid
+		nj.ApplicationID = ids.PtrOf[ids.ApplicationID](&aid)
 		nj.ClientID = ids.PtrOf[ids.ClientID](f.ClientID)
 		nj.FunctionID = &f.ID
 		nj.Timezone = timezone

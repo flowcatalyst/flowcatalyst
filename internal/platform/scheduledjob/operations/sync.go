@@ -179,9 +179,9 @@ func SyncScheduledJobs(repo *scheduledjob.Repository) usecaseop.Operation[SyncSc
 					// otherwise — and a NULL application means the dispatcher
 					// cannot resolve signing credentials, so every firing
 					// goes out unsigned.
-					if cmd.ApplicationID != "" && (cur.ApplicationID == nil || *cur.ApplicationID != cmd.ApplicationID) {
+					if cmd.ApplicationID != "" && (cur.ApplicationID == nil || string(*cur.ApplicationID) != cmd.ApplicationID) {
 						appID := cmd.ApplicationID
-						cur.ApplicationID = &appID
+						cur.ApplicationID = ids.PtrOf[ids.ApplicationID](&appID)
 						changed = true
 					}
 					// A sync re-activates archived/paused jobs that reappear.
@@ -216,7 +216,7 @@ func SyncScheduledJobs(repo *scheduledjob.Repository) usecaseop.Operation[SyncSc
 				j.TargetURL = entry.TargetURL
 				j.ClientID = ids.PtrOf[ids.ClientID](cmd.ClientID)
 				if cmd.ApplicationID != "" {
-					j.ApplicationID = &cmd.ApplicationID
+					j.ApplicationID = ids.PtrOf[ids.ApplicationID](&cmd.ApplicationID)
 				}
 				j.CreatedBy = &pid
 				saves = append(saves, usecasepgx.SyncSaveItem[scheduledjob.ScheduledJob]{
@@ -248,7 +248,7 @@ func SyncScheduledJobs(repo *scheduledjob.Repository) usecaseop.Operation[SyncSc
 					// #27). When ApplicationID is unset (defensive; every real
 					// caller resolves and supplies it) the sweep falls back to the
 					// pre-fix clientId-only scope.
-					if cmd.ApplicationID != "" && (cur.ApplicationID == nil || *cur.ApplicationID != cmd.ApplicationID) {
+					if cmd.ApplicationID != "" && (cur.ApplicationID == nil || string(*cur.ApplicationID) != cmd.ApplicationID) {
 						continue
 					}
 					cur.Archive()

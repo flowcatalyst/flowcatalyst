@@ -9,6 +9,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/operations"
 	dispatchprocessing "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/processing"
@@ -132,7 +133,7 @@ func (s *State) sign(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out
 	if j == nil {
 		return nil, httperror.NotFound("DispatchJob", in.ID)
 	}
-	if err := auth.CheckScopeAccess(ac, j.ClientID); err != nil {
+	if err := auth.CheckScopeAccess(ac, ids.StringPtr(j.ClientID)); err != nil {
 		return nil, err
 	}
 	plan, err := s.Plan(ctx, j)
@@ -304,7 +305,7 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	if j == nil {
 		return nil, httperror.NotFound("DispatchJob", in.ID)
 	}
-	if err := auth.CheckScopeAccess(ac, j.ClientID); err != nil { // A2: per-resource client scope
+	if err := auth.CheckScopeAccess(ac, ids.StringPtr(j.ClientID)); err != nil { // A2: per-resource client scope
 		return nil, err
 	}
 	return &apicommon.Out[DispatchJobResponse]{Body: fromEntity(j)}, nil
@@ -322,7 +323,7 @@ func (s *State) getRaw(ctx context.Context, in *apicommon.IDInput) (*apicommon.O
 	if j == nil {
 		return nil, httperror.NotFound("DispatchJob", in.ID)
 	}
-	if err := auth.CheckScopeAccess(ac, j.ClientID); err != nil { // A2: per-resource client scope
+	if err := auth.CheckScopeAccess(ac, ids.StringPtr(j.ClientID)); err != nil { // A2: per-resource client scope
 		return nil, err
 	}
 	return &apicommon.Out[DispatchJobResponse]{Body: fromEntity(j)}, nil
@@ -344,7 +345,7 @@ func (s *State) attempts(ctx context.Context, in *apicommon.IDInput) (*apicommon
 	if j == nil {
 		return nil, httperror.NotFound("DispatchJob", in.ID)
 	}
-	if err := auth.CheckScopeAccess(ac, j.ClientID); err != nil {
+	if err := auth.CheckScopeAccess(ac, ids.StringPtr(j.ClientID)); err != nil {
 		return nil, err
 	}
 	rows, err := s.Repo.AttemptsByJob(ctx, in.ID)
@@ -373,7 +374,7 @@ func (s *State) byEvent(ctx context.Context, in *byEventInput) (*apicommon.Out[[
 		// A2: a non-anchor caller only sees jobs for clients it can access.
 		// NOTE: CanAccessScope (not FilterClientScoped) — platform-scoped
 		// jobs (nil client) are visible to anchors/super-admins only here.
-		if !auth.CanAccessScope(ac, rows[i].ClientID) {
+		if !auth.CanAccessScope(ac, ids.StringPtr(rows[i].ClientID)) {
 			continue
 		}
 		out = append(out, readFromEntity(&rows[i]))

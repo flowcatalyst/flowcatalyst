@@ -449,7 +449,7 @@ func TestUpdateClientApplications_HappyPath(t *testing.T) {
 		require.NoError(t, err)
 		out := make(map[string]bool, len(rows))
 		for _, row := range rows {
-			out[row.ApplicationID] = row.Enabled
+			out[string(row.ApplicationID)] = row.Enabled
 		}
 		return out
 	}

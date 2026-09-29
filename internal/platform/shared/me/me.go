@@ -327,7 +327,7 @@ func (s *State) listMyClientApplications(w http.ResponseWriter, r *http.Request)
 	enabled := map[string]bool{}
 	for i := range configs {
 		if configs[i].Enabled {
-			enabled[configs[i].ApplicationID] = true
+			enabled[string(configs[i].ApplicationID)] = true
 		}
 	}
 	all, err := s.Applications.FindWithFilters(r.Context(), nil, nil)

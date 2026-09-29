@@ -77,7 +77,7 @@ type ServiceAccount struct {
 	Active                bool               `json:"active"`
 	ClientIDs             []string           `json:"clientIds"`
 	Scope                 *string            `json:"scope,omitempty"`
-	ApplicationID         *string            `json:"applicationId,omitempty"`
+	ApplicationID         *ids.ApplicationID `json:"applicationId,omitempty"`
 	WebhookCredentials    WebhookCredentials `json:"webhookCredentials"`
 	ServiceAccountTableID *string            `json:"-"`
 	Roles                 []RoleAssignment   `json:"roles"`

@@ -118,7 +118,7 @@ func fromEntity(j *scheduledjob.ScheduledJob) ScheduledJobResponse {
 	return ScheduledJobResponse{
 		ID:                  j.ID,
 		ClientID:            ids.StringPtr(j.ClientID),
-		ApplicationID:       j.ApplicationID,
+		ApplicationID:       ids.StringPtr(j.ApplicationID),
 		Code:                j.Code,
 		Name:                j.Name,
 		Description:         j.Description,

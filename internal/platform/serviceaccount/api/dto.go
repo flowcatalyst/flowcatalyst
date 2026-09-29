@@ -212,7 +212,7 @@ func fromEntity(sa *serviceaccount.ServiceAccount) ServiceAccountResponse {
 		Active:        sa.Active,
 		ClientIDs:     clientIDs,
 		Scope:         sa.Scope,
-		ApplicationID: sa.ApplicationID,
+		ApplicationID: ids.StringPtr(sa.ApplicationID),
 		AuthType:      string(sa.WebhookCredentials.AuthType),
 		Roles:         roles,
 		LastUsedAt:    lastUsed,

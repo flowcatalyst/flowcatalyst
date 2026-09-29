@@ -171,7 +171,7 @@ func (r *Repository) Persist(ctx context.Context, role *Role, tx *usecasepgx.DbT
 	q := r.q.WithTx(tx.Inner())
 	if err := q.RoleUpsert(ctx, dbq.RoleUpsertParams{
 		ID:              role.ID,
-		ApplicationID:   ids.PtrOf[ids.ApplicationID](role.ApplicationID),
+		ApplicationID:   role.ApplicationID,
 		Name:            role.Name,
 		DisplayName:     role.DisplayName,
 		Description:     role.Description,
@@ -254,7 +254,7 @@ func rowToRole(row dbq.IamRole) (*Role, error) {
 	}
 	return &Role{
 		ID:              row.ID,
-		ApplicationID:   ids.StringPtr(row.ApplicationID),
+		ApplicationID:   row.ApplicationID,
 		Name:            row.Name,
 		DisplayName:     row.DisplayName,
 		Description:     row.Description,

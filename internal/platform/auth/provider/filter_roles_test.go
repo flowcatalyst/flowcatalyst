@@ -6,6 +6,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 )
 
@@ -27,7 +28,7 @@ func (f fakeRoleLookup) FindByShortNameInApps(_ context.Context, shortName strin
 	if r == nil || r.ApplicationID == nil {
 		return nil, nil
 	}
-	if slices.Contains(appIDs, *r.ApplicationID) {
+	if slices.Contains(appIDs, string(*r.ApplicationID)) {
 		return r, nil
 	}
 	return nil, nil
@@ -35,11 +36,11 @@ func (f fakeRoleLookup) FindByShortNameInApps(_ context.Context, shortName strin
 
 func TestFilterRolesForApplications(t *testing.T) {
 	appHR, appBilling, appLog := "app_hr", "app_billing", "app_logistics"
-	hrManager := &role.Role{Name: "hr:hr-manager", ApplicationID: &appHR, ApplicationCode: "hr"}
-	billingViewer := &role.Role{Name: "billing:viewer", ApplicationID: &appBilling, ApplicationCode: "billing"}
+	hrManager := &role.Role{Name: "hr:hr-manager", ApplicationID: ids.PtrOf[ids.ApplicationID](&appHR), ApplicationCode: "hr"}
+	billingViewer := &role.Role{Name: "billing:viewer", ApplicationID: ids.PtrOf[ids.ApplicationID](&appBilling), ApplicationCode: "billing"}
 	platformAdmin := &role.Role{Name: "platform:admin"} // ApplicationID nil
 	// Malformed: the role's own short name contains a colon.
-	logDash := &role.Role{Name: "logistics_portal:dashboard:user", ApplicationID: &appLog, ApplicationCode: "logistics_portal"}
+	logDash := &role.Role{Name: "logistics_portal:dashboard:user", ApplicationID: ids.PtrOf[ids.ApplicationID](&appLog), ApplicationCode: "logistics_portal"}
 
 	lookup := fakeRoleLookup{
 		byName: map[string]*role.Role{

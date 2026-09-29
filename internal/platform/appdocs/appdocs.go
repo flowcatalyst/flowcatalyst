@@ -15,19 +15,20 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
 // Doc is one synced documentation page.
 type Doc struct {
-	ID            string    `json:"id"`
-	ApplicationID string    `json:"applicationId"`
-	Slug          string    `json:"slug"`
-	Title         string    `json:"title"`
-	Content       string    `json:"content"`
-	Position      int       `json:"position"`
-	CreatedAt     time.Time `json:"createdAt"`
-	UpdatedAt     time.Time `json:"updatedAt"`
+	ID            string            `json:"id"`
+	ApplicationID ids.ApplicationID `json:"applicationId"`
+	Slug          string            `json:"slug"`
+	Title         string            `json:"title"`
+	Content       string            `json:"content"`
+	Position      int               `json:"position"`
+	CreatedAt     time.Time         `json:"createdAt"`
+	UpdatedAt     time.Time         `json:"updatedAt"`
 }
 
 // Summary is a Doc without its content (list surfaces).

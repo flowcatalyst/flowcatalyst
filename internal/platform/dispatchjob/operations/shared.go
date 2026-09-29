@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
@@ -54,7 +55,7 @@ func statusFlip[E usecase.DomainEvent](
 			if j == nil {
 				return nil, httperror.NotFound("DispatchJob", cmd.ID)
 			}
-			if err := auth.CheckScopeAccess(auth.FromContext(ctx), j.ClientID); err != nil {
+			if err := auth.CheckScopeAccess(auth.FromContext(ctx), ids.StringPtr(j.ClientID)); err != nil {
 				return nil, err
 			}
 			if j.Status != common.DispatchFailed {

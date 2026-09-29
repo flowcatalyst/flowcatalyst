@@ -109,7 +109,7 @@ func TestCreateServiceAccount_HappyPath(t *testing.T) {
 	require.NotNil(t, got.Description)
 	assert.Equal(t, desc, *got.Description)
 	require.NotNil(t, got.ApplicationID)
-	assert.Equal(t, appID, *got.ApplicationID)
+	assert.Equal(t, appID, string(*got.ApplicationID))
 	assert.Equal(t, serviceaccount.AuthNone, got.WebhookCredentials.AuthType,
 		"no credentials in cmd → NONE")
 	// scope + client_ids persist since migration 035 (pre-035 rows
@@ -275,7 +275,7 @@ func TestCreateServiceAccountWithCredentials_HappyPath(t *testing.T) {
 	require.NotNil(t, sa.WebhookCredentials.SigningSecret)
 	assert.Equal(t, res.SigningSecret, *sa.WebhookCredentials.SigningSecret)
 	require.NotNil(t, sa.ApplicationID)
-	assert.Equal(t, appID, *sa.ApplicationID)
+	assert.Equal(t, appID, string(*sa.ApplicationID))
 	require.NotNil(t, sa.Scope, "scope persists since migration 035")
 	assert.Equal(t, scope, *sa.Scope)
 

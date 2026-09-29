@@ -208,7 +208,7 @@ func filterRolesForApplications(ctx context.Context, roles roleLookup, roleNames
 		if r == nil || r.ApplicationID == nil {
 			continue
 		}
-		if _, ok := allowed[*r.ApplicationID]; ok {
+		if _, ok := allowed[string(*r.ApplicationID)]; ok {
 			// Emit the role's CANONICAL name — the same "{applicationCode}:{role}"
 			// string iam_roles stores and every other mint path already carries.
 			//

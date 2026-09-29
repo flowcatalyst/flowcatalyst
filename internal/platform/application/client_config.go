@@ -18,14 +18,14 @@ import (
 // app_client_configs. It's a separate aggregate from Application — the
 // enable/disable ops mutate this row, not the Application aggregate.
 type ClientConfig struct {
-	ID              string          `json:"id"`
-	ApplicationID   string          `json:"applicationId"`
-	ClientID        string          `json:"clientId"`
-	Enabled         bool            `json:"enabled"`
-	BaseURLOverride *string         `json:"baseUrlOverride,omitempty"` // transient (API-only)
-	ConfigJSON      json.RawMessage `json:"configJson,omitempty"`      // transient (API-only)
-	CreatedAt       time.Time       `json:"createdAt"`
-	UpdatedAt       time.Time       `json:"updatedAt"`
+	ID              string            `json:"id"`
+	ApplicationID   ids.ApplicationID `json:"applicationId"`
+	ClientID        ids.ClientID      `json:"clientId"`
+	Enabled         bool              `json:"enabled"`
+	BaseURLOverride *string           `json:"baseUrlOverride,omitempty"` // transient (API-only)
+	ConfigJSON      json.RawMessage   `json:"configJson,omitempty"`      // transient (API-only)
+	CreatedAt       time.Time         `json:"createdAt"`
+	UpdatedAt       time.Time         `json:"updatedAt"`
 }
 
 // IDStr satisfies usecase.HasID.
@@ -36,8 +36,8 @@ func NewClientConfig(applicationID, clientID string) *ClientConfig {
 	now := time.Now().UTC()
 	return &ClientConfig{
 		ID:            tsid.Generate(tsid.AppClientConfig),
-		ApplicationID: applicationID,
-		ClientID:      clientID,
+		ApplicationID: ids.ApplicationID(applicationID),
+		ClientID:      ids.ClientID(clientID),
 		Enabled:       true,
 		CreatedAt:     now,
 		UpdatedAt:     now,
@@ -99,8 +99,8 @@ func (r *ClientConfigRepo) FindByClient(ctx context.Context, clientID string) ([
 func (r *ClientConfigRepo) Persist(ctx context.Context, c *ClientConfig, tx *usecasepgx.DbTx) error {
 	return r.q.WithTx(tx.Inner()).ClientConfigUpsert(ctx, dbq.ClientConfigUpsertParams{
 		ID:            c.ID,
-		ApplicationID: ids.ApplicationID(c.ApplicationID),
-		ClientID:      ids.ClientID(c.ClientID),
+		ApplicationID: c.ApplicationID,
+		ClientID:      c.ClientID,
 		Enabled:       c.Enabled,
 		CreatedAt:     c.CreatedAt,
 		UpdatedAt:     time.Now().UTC(),
@@ -115,8 +115,8 @@ func (r *ClientConfigRepo) Delete(ctx context.Context, c *ClientConfig, tx *usec
 func rowToClientConfig(row dbq.AppClientConfig) *ClientConfig {
 	return &ClientConfig{
 		ID:            row.ID,
-		ApplicationID: string(row.ApplicationID),
-		ClientID:      string(row.ClientID),
+		ApplicationID: row.ApplicationID,
+		ClientID:      row.ClientID,
 		Enabled:       row.Enabled,
 		CreatedAt:     row.CreatedAt,
 		UpdatedAt:     row.UpdatedAt,

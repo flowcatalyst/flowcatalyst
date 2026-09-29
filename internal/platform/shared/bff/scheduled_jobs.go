@@ -514,7 +514,7 @@ func toBffJob(j *scheduledjob.ScheduledJob, clientsByID, applicationsByID map[st
 	}
 	var applicationName *string
 	if j.ApplicationID != nil {
-		if n, ok := applicationsByID[*j.ApplicationID]; ok {
+		if n, ok := applicationsByID[string(*j.ApplicationID)]; ok {
 			applicationName = &n
 		}
 	}
@@ -526,7 +526,7 @@ func toBffJob(j *scheduledjob.ScheduledJob, clientsByID, applicationsByID map[st
 		ID:                  j.ID,
 		ClientID:            ids.StringPtr(j.ClientID),
 		ClientName:          clientName,
-		ApplicationID:       j.ApplicationID,
+		ApplicationID:       ids.StringPtr(j.ApplicationID),
 		ApplicationName:     applicationName,
 		Code:                j.Code,
 		Name:                j.Name,

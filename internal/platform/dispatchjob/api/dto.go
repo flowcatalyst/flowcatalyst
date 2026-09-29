@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/jsontime"
@@ -141,7 +142,7 @@ func fromEntity(j *dispatchjob.DispatchJob) DispatchJobResponse {
 		DataOnly:           j.DataOnly,
 		EventID:            j.EventID,
 		CorrelationID:      j.CorrelationID,
-		ClientID:           j.ClientID,
+		ClientID:           ids.StringPtr(j.ClientID),
 		SubscriptionID:     j.SubscriptionID,
 		ServiceAccountID:   j.ServiceAccountID,
 		DispatchPoolID:     j.DispatchPoolID,
@@ -225,7 +226,7 @@ func readFromEntity(j *dispatchjob.DispatchJob) DispatchJobRead {
 		ID:             j.ID,
 		EventID:        j.EventID,
 		SubscriptionID: j.SubscriptionID,
-		ClientID:       j.ClientID,
+		ClientID:       ids.StringPtr(j.ClientID),
 		MessageGroup:   j.MessageGroup,
 		Descriptor:     j.Descriptor,
 		Metadata:       meta,
@@ -330,7 +331,7 @@ func rawFromEntity(j *dispatchjob.DispatchJob) RawDispatchJobResponse {
 		CorrelationID:       j.CorrelationID,
 		TargetURL:           j.TargetURL,
 		Protocol:            string(j.Protocol),
-		ClientID:            j.ClientID,
+		ClientID:            ids.StringPtr(j.ClientID),
 		SubscriptionID:      j.SubscriptionID,
 		ServiceAccountID:    j.ServiceAccountID,
 		DispatchPoolID:      j.DispatchPoolID,

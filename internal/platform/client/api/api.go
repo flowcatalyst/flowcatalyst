@@ -277,7 +277,7 @@ func (s *State) getApplications(ctx context.Context, in *apicommon.IDInput) (*ap
 			return nil, usecase.Internal("REPO", "find_configs failed", err)
 		}
 		for _, cfg := range cfgs {
-			enabledByApp[cfg.ApplicationID] = cfg.Enabled
+			enabledByApp[string(cfg.ApplicationID)] = cfg.Enabled
 		}
 	}
 

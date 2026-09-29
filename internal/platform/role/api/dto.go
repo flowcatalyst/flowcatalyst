@@ -4,6 +4,7 @@
 package api
 
 import (
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
@@ -78,7 +79,7 @@ func fromEntity(r *role.Role) RoleResponse {
 	}
 	return RoleResponse{
 		ID:              r.ID,
-		ApplicationID:   r.ApplicationID,
+		ApplicationID:   ids.StringPtr(r.ApplicationID),
 		Name:            r.Name,
 		DisplayName:     r.DisplayName,
 		Description:     r.Description,

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
@@ -43,17 +44,17 @@ type Permission struct {
 
 // Role is the aggregate root.
 type Role struct {
-	ID              string    `json:"id"`
-	ApplicationID   *string   `json:"applicationId,omitempty"`
-	Name            string    `json:"name"` // e.g. "platform:admin"
-	DisplayName     string    `json:"displayName"`
-	Description     *string   `json:"description,omitempty"`
-	ApplicationCode string    `json:"applicationCode"`
-	Permissions     []string  `json:"permissions"` // de-duplicated, sorted
-	Source          Source    `json:"source"`
-	ClientManaged   bool      `json:"clientManaged"`
-	CreatedAt       time.Time `json:"createdAt"`
-	UpdatedAt       time.Time `json:"updatedAt"`
+	ID              string             `json:"id"`
+	ApplicationID   *ids.ApplicationID `json:"applicationId,omitempty"`
+	Name            string             `json:"name"` // e.g. "platform:admin"
+	DisplayName     string             `json:"displayName"`
+	Description     *string            `json:"description,omitempty"`
+	ApplicationCode string             `json:"applicationCode"`
+	Permissions     []string           `json:"permissions"` // de-duplicated, sorted
+	Source          Source             `json:"source"`
+	ClientManaged   bool               `json:"clientManaged"`
+	CreatedAt       time.Time          `json:"createdAt"`
+	UpdatedAt       time.Time          `json:"updatedAt"`
 }
 
 // IDStr satisfies usecase.HasID.

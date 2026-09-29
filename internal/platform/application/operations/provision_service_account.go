@@ -106,7 +106,7 @@ func ProvisionServiceAccount(
 
 			sa := serviceaccount.New(saCode, saName)
 			sa.Description = &desc
-			sa.ApplicationID = ids.StringPtr(&appID)
+			sa.ApplicationID = &appID
 			// Webhook credentials from day one: the platform signs this
 			// application's scheduled-job firings with the SA's signing
 			// secret, and the SDK's fc-signature middleware verifies it.

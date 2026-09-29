@@ -77,9 +77,9 @@ func UpdateClientApplications(
 			currentlyEnabled := make(map[string]struct{}, len(current))
 			for i := range current {
 				row := current[i]
-				currentByApp[row.ApplicationID] = &row
+				currentByApp[string(row.ApplicationID)] = &row
 				if row.Enabled {
-					currentlyEnabled[row.ApplicationID] = struct{}{}
+					currentlyEnabled[string(row.ApplicationID)] = struct{}{}
 				}
 			}
 

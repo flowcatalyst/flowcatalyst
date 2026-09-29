@@ -456,7 +456,7 @@ func TestSyncRoles_UpsertPreserveAndRemoveUnlisted(t *testing.T) {
 	require.NotNil(t, editor)
 	assert.Equal(t, role.SourceSDK, editor.Source)
 	require.NotNil(t, editor.ApplicationID)
-	assert.Equal(t, appID, *editor.ApplicationID, "fresh SDK rows are stamped with the app id")
+	assert.Equal(t, appID, string(*editor.ApplicationID), "fresh SDK rows are stamped with the app id")
 	assert.Equal(t, "Doc Editor", editor.DisplayName)
 	assert.ElementsMatch(t, []string{appCode + ":doc:edit:*"}, editor.Permissions)
 

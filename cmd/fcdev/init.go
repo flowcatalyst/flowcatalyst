@@ -209,7 +209,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	sa := serviceaccount.New(saCode, saName)
 	saDesc := "Service account for application: " + appName
 	sa.Description = &saDesc
-	sa.ApplicationID = ids.StringPtr(&app.ID)
+	sa.ApplicationID = &app.ID
 
 	saPrincipal := principal.NewService(sa.ID, saName)
 	saPrincipal.ApplicationID = &app.ID

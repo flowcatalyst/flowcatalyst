@@ -98,7 +98,7 @@ func CreateScheduledJob(repo *scheduledjob.Repository) usecaseop.Operation[Creat
 			}
 			j := scheduledjob.New(code, strings.TrimSpace(cmd.Name), cmd.Crons)
 			j.ClientID = ids.PtrOf[ids.ClientID](cmd.ClientID)
-			j.ApplicationID = cmd.ApplicationID
+			j.ApplicationID = ids.PtrOf[ids.ApplicationID](cmd.ApplicationID)
 			j.Description = cmd.Description
 			if cmd.Timezone != "" {
 				j.Timezone = cmd.Timezone

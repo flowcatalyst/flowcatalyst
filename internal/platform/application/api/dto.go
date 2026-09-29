@@ -133,8 +133,8 @@ type ClientConfigResponse struct {
 func clientConfigFromEntity(c *application.ClientConfig) ClientConfigResponse {
 	return ClientConfigResponse{
 		ID:              c.ID,
-		ApplicationID:   c.ApplicationID,
-		ClientID:        c.ClientID,
+		ApplicationID:   string(c.ApplicationID),
+		ClientID:        string(c.ClientID),
 		Enabled:         c.Enabled,
 		BaseURLOverride: c.BaseURLOverride,
 		ConfigJSON:      c.ConfigJSON,

@@ -924,7 +924,7 @@ func (s *State) assertAssignableRoles(ctx context.Context, roleNames []string, a
 			return usecase.Authorization("PLATFORM_ROLE_FORBIDDEN",
 				"client administrators cannot assign platform roles")
 		}
-		if !allowed[*r.ApplicationID] {
+		if !allowed[string(*r.ApplicationID)] {
 			return usecase.Authorization("ROLE_APP_FORBIDDEN",
 				"role belongs to an application the client cannot access")
 		}
@@ -946,7 +946,7 @@ func (s *State) clientAppIDs(ctx context.Context, clientID string) (map[string]b
 	}
 	for _, c := range cfgs {
 		if c.Enabled {
-			allowed[c.ApplicationID] = true
+			allowed[string(c.ApplicationID)] = true
 		}
 	}
 	return allowed, nil
@@ -999,7 +999,7 @@ func (s *State) protectedRoleNames(ctx context.Context, roleNames []string, allo
 		if err != nil {
 			return nil, usecase.Internal("REPO", "find_role failed", err)
 		}
-		if r == nil || r.ApplicationID == nil || !allowed[*r.ApplicationID] {
+		if r == nil || r.ApplicationID == nil || !allowed[string(*r.ApplicationID)] {
 			out = append(out, name)
 		}
 	}

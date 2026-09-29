@@ -101,7 +101,7 @@ func CreateServiceAccountWithCredentials(
 			sa := serviceaccount.New(code, strings.TrimSpace(cmd.Name))
 			sa.Description = cmd.Description
 			sa.Scope = cmd.Scope
-			sa.ApplicationID = cmd.ApplicationID
+			sa.ApplicationID = ids.PtrOf[ids.ApplicationID](cmd.ApplicationID)
 			if cmd.ClientIDs != nil {
 				sa.ClientIDs = cmd.ClientIDs
 			}

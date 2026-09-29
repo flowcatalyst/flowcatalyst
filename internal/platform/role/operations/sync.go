@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
@@ -257,7 +258,7 @@ func SyncRoles(repo *role.Repository) usecaseop.Operation[SyncRolesCommand, Role
 				row := role.New(cmd.ApplicationCode, short, displayNameOr(in.DisplayName, in.Name))
 				if cmd.ApplicationID != "" {
 					appID := cmd.ApplicationID
-					row.ApplicationID = &appID
+					row.ApplicationID = ids.PtrOf[ids.ApplicationID](&appID)
 				}
 				row.Source = role.SourceSDK
 				row.Description = in.Description

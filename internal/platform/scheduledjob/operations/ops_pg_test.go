@@ -621,7 +621,7 @@ func TestSyncScheduledJobs_BackfillsApplicationID(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, job)
 	require.NotNil(t, job.ApplicationID, "application_id must be backfilled by re-sync")
-	assert.Equal(t, "app_sjbackfill001", *job.ApplicationID)
+	assert.Equal(t, "app_sjbackfill001", string(*job.ApplicationID))
 }
 
 // TestSyncScheduledJobs_ArchiveUnlisted_NarrowedToApplication pins X-02(a)

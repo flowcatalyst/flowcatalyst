@@ -233,7 +233,7 @@ func (s *DeveloperState) getSpecVersion(w http.ResponseWriter, r *http.Request) 
 		httperror.Write(w, usecase.Internal("REPO", "find spec failed", err))
 		return
 	}
-	if spec == nil || spec.ApplicationID != appID {
+	if spec == nil || string(spec.ApplicationID) != appID {
 		httperror.Write(w, httperror.NotFound("OpenApiSpec", specID))
 		return
 	}
@@ -348,7 +348,7 @@ func toAppSummary(a *application.Application, current *openapispecs.OpenApiSpec)
 func toSpecResponse(s *openapispecs.OpenApiSpec) bffOpenAPISpecResponse {
 	return bffOpenAPISpecResponse{
 		ID:              s.ID,
-		ApplicationID:   s.ApplicationID,
+		ApplicationID:   string(s.ApplicationID),
 		Version:         s.Version,
 		Status:          string(s.Status),
 		Spec:            s.Spec,

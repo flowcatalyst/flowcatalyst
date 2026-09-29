@@ -17,6 +17,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/dispatchqueue"
@@ -143,7 +144,7 @@ func jobFromItem(it BatchItem) (dispatchjob.DispatchJob, error) {
 		ExternalID:         it.ExternalID,
 		EventID:            it.EventID,
 		CorrelationID:      it.CorrelationID,
-		ClientID:           it.ClientID,
+		ClientID:           ids.PtrOf[ids.ClientID](it.ClientID),
 		SubscriptionID:     it.SubscriptionID,
 		ServiceAccountID:   it.ServiceAccountID,
 		DispatchPoolID:     it.DispatchPoolID,
@@ -204,8 +205,8 @@ func (s *DispatchJobsBatchState) batchIngest(w http.ResponseWriter, r *http.Requ
 		}
 		// Tenant guard: SDK service accounts can only ingest for clients
 		// they have access to.
-		if j.ClientID != nil && !ac.CanAccessClient(*j.ClientID) {
-			httperror.Write(w, httperror.Forbidden("No access to client: "+*j.ClientID))
+		if j.ClientID != nil && !ac.CanAccessClient(string(*j.ClientID)) {
+			httperror.Write(w, httperror.Forbidden("No access to client: "+string(*j.ClientID)))
 			return
 		}
 		jobs = append(jobs, j)

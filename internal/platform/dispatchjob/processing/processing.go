@@ -573,7 +573,7 @@ func (h *Handler) buildRequest(ctx context.Context, job *dispatchjob.DispatchJob
 	// too. A platform-scoped job (no client_id) skips the lookup entirely.
 	var clientCode string
 	if job.ClientID != nil && *job.ClientID != "" && h.clientCode != nil {
-		if code, ok := h.clientCode(ctx, *job.ClientID); ok {
+		if code, ok := h.clientCode(ctx, string(*job.ClientID)); ok {
 			clientCode = code
 		}
 	}
@@ -832,7 +832,7 @@ func clientHeaderValue(job *dispatchjob.DispatchJob, clientCode string) (string,
 	if job.ClientID == nil || *job.ClientID == "" || clientCode == "" {
 		return "", false
 	}
-	return *job.ClientID + ":" + clientCode, true
+	return string(*job.ClientID) + ":" + clientCode, true
 }
 
 // parseDeferral reports a 2xx body of the form {"ack": false} (optionally

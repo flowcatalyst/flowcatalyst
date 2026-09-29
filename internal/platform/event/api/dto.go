@@ -4,6 +4,7 @@ package api
 import (
 	"encoding/json"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/event"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/jsontime"
@@ -62,7 +63,7 @@ func fromEntity(e *event.Event) EventResponse {
 		Data:            e.Data,
 		Context:         ctx,
 		DeduplicationID: e.DeduplicationID,
-		ClientID:        e.ClientID,
+		ClientID:        ids.StringPtr(e.ClientID),
 		MessageGroup:    e.MessageGroup,
 		CorrelationID:   e.CorrelationID,
 		CausationID:     e.CausationID,
@@ -114,7 +115,7 @@ func readFromEntity(e *event.Event) EventRead {
 		Aggregate:     e.Aggregate,
 		MessageGroup:  e.MessageGroup,
 		CorrelationID: e.CorrelationID,
-		ClientID:      e.ClientID,
+		ClientID:      ids.StringPtr(e.ClientID),
 		ProjectedAt:   jsontime.New(projected),
 	}
 }
@@ -169,7 +170,7 @@ func rawFromEntity(e *event.Event) RawEventResponse {
 		CausationID:     e.CausationID,
 		DeduplicationID: dedup,
 		ContextData:     ctx,
-		ClientID:        e.ClientID,
+		ClientID:        ids.StringPtr(e.ClientID),
 	}
 }
 
@@ -244,7 +245,7 @@ func createdFromEntity(e *event.Event) CreatedEvent {
 		CorrelationID:   e.CorrelationID,
 		CausationID:     e.CausationID,
 		DeduplicationID: e.DeduplicationID,
-		ClientID:        e.ClientID,
+		ClientID:        ids.StringPtr(e.ClientID),
 		ContextData:     ctx,
 		CreatedAt:       jsontime.New(e.CreatedAt),
 	}

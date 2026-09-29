@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/validate"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -67,7 +68,7 @@ func CreateServiceAccount(repo *serviceaccount.Repository) usecaseop.Operation[C
 			sa := serviceaccount.New(code, strings.TrimSpace(cmd.Name))
 			sa.Description = cmd.Description
 			sa.Scope = cmd.Scope
-			sa.ApplicationID = cmd.ApplicationID
+			sa.ApplicationID = ids.PtrOf[ids.ApplicationID](cmd.ApplicationID)
 			if cmd.ClientIDs != nil {
 				sa.ClientIDs = cmd.ClientIDs
 			}

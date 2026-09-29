@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 )
 
@@ -18,7 +19,7 @@ func TestBuildPayload_Envelope(t *testing.T) {
 		Source:        new("svc"),
 		Subject:       new("order/42"),
 		CorrelationID: new("corr_1"),
-		ClientID:      new("clt_1"),
+		ClientID:      ids.PtrOf[ids.ClientID](new("clt_1")),
 		MessageGroup:  new("grp_1"),
 		AttemptCount:  2,
 		Payload:       new(`{"amount":100}`),

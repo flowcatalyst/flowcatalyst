@@ -200,7 +200,7 @@ func (d *dispatcher) dispatchOne(ctx context.Context, job *scheduledjob.Schedule
 			"job_code", job.Code)
 	}
 	if d.creds != nil && job.ApplicationID != nil && *job.ApplicationID != "" {
-		creds, serr := d.creds(ctx, *job.ApplicationID)
+		creds, serr := d.creds(ctx, string(*job.ApplicationID))
 		switch {
 		case serr != nil:
 			slog.Warn("scheduled-job dispatcher: delivery-creds lookup failed; delivering unsigned",

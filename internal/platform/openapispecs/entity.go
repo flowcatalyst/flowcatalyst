@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
@@ -56,18 +57,18 @@ func (n ChangeNotes) IsEmpty() bool {
 
 // OpenApiSpec is one stored OpenAPI document for an application.
 type OpenApiSpec struct {
-	ID              string          `json:"id"`
-	ApplicationID   string          `json:"applicationId"`
-	Version         string          `json:"version"`
-	Status          Status          `json:"status"`
-	Spec            json.RawMessage `json:"spec"`
-	SpecHash        string          `json:"specHash"`
-	ChangeNotes     *ChangeNotes    `json:"changeNotes,omitempty"`
-	ChangeNotesText *string         `json:"changeNotesText,omitempty"`
-	SyncedAt        time.Time       `json:"syncedAt"`
-	SyncedBy        *string         `json:"syncedBy,omitempty"`
-	CreatedAt       time.Time       `json:"createdAt"`
-	UpdatedAt       time.Time       `json:"updatedAt"`
+	ID              string            `json:"id"`
+	ApplicationID   ids.ApplicationID `json:"applicationId"`
+	Version         string            `json:"version"`
+	Status          Status            `json:"status"`
+	Spec            json.RawMessage   `json:"spec"`
+	SpecHash        string            `json:"specHash"`
+	ChangeNotes     *ChangeNotes      `json:"changeNotes,omitempty"`
+	ChangeNotesText *string           `json:"changeNotesText,omitempty"`
+	SyncedAt        time.Time         `json:"syncedAt"`
+	SyncedBy        *string           `json:"syncedBy,omitempty"`
+	CreatedAt       time.Time         `json:"createdAt"`
+	UpdatedAt       time.Time         `json:"updatedAt"`
 }
 
 // IDStr satisfies usecase.HasID.
@@ -78,7 +79,7 @@ func New(applicationID, version string, spec json.RawMessage, specHash string) *
 	now := time.Now().UTC()
 	return &OpenApiSpec{
 		ID:            tsid.Generate(tsid.ApplicationOpenApiSpec),
-		ApplicationID: applicationID,
+		ApplicationID: ids.ApplicationID(applicationID),
 		Version:       version,
 		Status:        StatusCurrent,
 		Spec:          spec,

@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -201,7 +202,7 @@ func seedSetting(t *testing.T, repo *function.Repository, functionID string, kin
 func seedServiceAccount(t *testing.T, pool *pgxpool.Pool, saRepo *serviceaccount.Repository, applicationID, code, signingSecret string) *serviceaccount.ServiceAccount {
 	t.Helper()
 	sa := serviceaccount.New(code, code)
-	sa.ApplicationID = &applicationID
+	sa.ApplicationID = ids.PtrOf[ids.ApplicationID](&applicationID)
 	sa.WebhookCredentials = serviceaccount.WebhookCredentials{
 		AuthType:      serviceaccount.AuthHMAC,
 		SigningSecret: &signingSecret,
@@ -220,7 +221,7 @@ func seedServiceAccount(t *testing.T, pool *pgxpool.Pool, saRepo *serviceaccount
 // digestFor builds a deterministic, valid (lowercase hex sha256) digest so
 // different (functionID, number) pairs never collide within a test.
 func digestFor(number int32, functionID string) string {
-	sum := sha256.Sum256([]byte(functionID + "-" + string(rune('0'+number))))
+	sum := sha256.Sum256([]byte(functionID + "-" + string('0'+number)))
 	return hex.EncodeToString(sum[:])
 }
 

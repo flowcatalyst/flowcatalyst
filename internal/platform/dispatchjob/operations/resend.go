@@ -3,6 +3,7 @@ package operations
 import (
 	"context"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -55,7 +56,7 @@ func ResendDispatchJobs(repo *dispatchjob.Repository) usecaseop.Operation[Resend
 
 			accessible := make([]dispatchjob.DispatchJob, 0, len(jobs))
 			for _, j := range jobs {
-				if auth.CanAccessScope(ac, j.ClientID) {
+				if auth.CanAccessScope(ac, ids.StringPtr(j.ClientID)) {
 					accessible = append(accessible, j)
 				}
 			}

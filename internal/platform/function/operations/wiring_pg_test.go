@@ -33,6 +33,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/engine"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/fnfixture"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/runtimes"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
@@ -150,7 +151,7 @@ func newTestFunctionFixture(t *testing.T, appIDSeed, appCodeSeed, fnName string)
 func (f *testFunctionFixture) seedActiveServiceAccount(code string) *serviceaccount.ServiceAccount {
 	f.t.Helper()
 	sa := serviceaccount.New(code, code)
-	sa.ApplicationID = &f.appID
+	sa.ApplicationID = ids.PtrOf[ids.ApplicationID](&f.appID)
 	token, secret := "tok_"+code, "sig_"+code
 	sa.WebhookCredentials = serviceaccount.WebhookCredentials{
 		AuthType:      serviceaccount.AuthBearer,
@@ -369,7 +370,9 @@ func TestAlias_Live_PromoteWiring_CreatesPoolSubscriptionAndSchedule(t *testing.
 	require.NoError(t, err)
 	require.NotNil(t, pool, "promote must create the function's dispatch pool")
 	assert.Equal(t, dispatchpool.StatusActive, pool.Status)
-	t.Cleanup(func() { _, _ = f.pool.Exec(context.Background(), `DELETE FROM msg_dispatch_pools WHERE code = $1`, wantPool) })
+	t.Cleanup(func() {
+		_, _ = f.pool.Exec(context.Background(), `DELETE FROM msg_dispatch_pools WHERE code = $1`, wantPool)
+	})
 
 	subs, err := subscription.NewRepository(f.pool).FindByFunctionID(context.Background(), f.fn.ID)
 	require.NoError(t, err)
@@ -396,7 +399,7 @@ func TestAlias_Live_PromoteWiring_CreatesPoolSubscriptionAndSchedule(t *testing.
 	require.NotNil(t, job.FunctionID)
 	assert.Equal(t, f.fn.ID, *job.FunctionID)
 	require.NotNil(t, job.ApplicationID)
-	assert.Equal(t, f.appID, *job.ApplicationID)
+	assert.Equal(t, f.appID, string(*job.ApplicationID))
 	require.NotNil(t, job.TargetURL)
 	assert.Contains(t, *job.TargetURL, "/fn/"+f.fn.Address+"/tick")
 	assert.Equal(t, []string{"0 */5 * * * *"}, job.Crons)
@@ -492,7 +495,9 @@ func TestAlias_Live_Delete_RemovesWiringButKeepsPool(t *testing.T) {
 	require.NoError(t, err)
 
 	wantPool := "fn-" + f.appCode + "-del-fn"
-	t.Cleanup(func() { _, _ = f.pool.Exec(context.Background(), `DELETE FROM msg_dispatch_pools WHERE code = $1`, wantPool) })
+	t.Cleanup(func() {
+		_, _ = f.pool.Exec(context.Background(), `DELETE FROM msg_dispatch_pools WHERE code = $1`, wantPool)
+	})
 
 	unwired, err := f.deleteAlias("live")
 	require.NoError(t, err)
@@ -678,7 +683,9 @@ func TestAlias_Live_RunnerPoolVsDispatchPool(t *testing.T) {
 
 	dispatchPool := "fn-optwirepoolsapp-pool-fn"
 	assert.Equal(t, dispatchPool, got.Wiring.DispatchPoolCode, "the dispatch pool is the function's own, whatever its runner pool")
-	t.Cleanup(func() { _, _ = f.pool.Exec(context.Background(), `DELETE FROM msg_dispatch_pools WHERE code = $1`, dispatchPool) })
+	t.Cleanup(func() {
+		_, _ = f.pool.Exec(context.Background(), `DELETE FROM msg_dispatch_pools WHERE code = $1`, dispatchPool)
+	})
 
 	subs, err := subscription.NewRepository(f.pool).FindByFunctionID(context.Background(), f.fn.ID)
 	require.NoError(t, err)

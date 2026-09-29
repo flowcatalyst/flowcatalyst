@@ -8,6 +8,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/abi"
 	fncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/functions/control"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/event"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -81,7 +82,7 @@ func (s *State) emit(ctx context.Context, in *apicommon.In[fncontrol.EmitRequest
 	if req.Event.DedupID != "" {
 		ev.DeduplicationID = req.Event.DedupID
 	}
-	ev.ClientID = fn.ClientID
+	ev.ClientID = ids.PtrOf[ids.ClientID](fn.ClientID)
 	if req.Event.CorrelationID != "" {
 		v := req.Event.CorrelationID
 		ev.CorrelationID = &v
