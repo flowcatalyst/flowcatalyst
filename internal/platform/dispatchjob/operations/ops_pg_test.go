@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -65,7 +64,7 @@ func seedJob(t *testing.T, repo *dispatchjob.Repository, code string, status com
 		MaxRetries:         3,
 		RetryStrategy:      dispatchjob.RetryExponentialBackoff,
 		Status:             status,
-		ClientID:           ids.PtrOf[ids.ClientID](opts.ClientID),
+		ClientID:           opts.ClientID,
 		MessageGroup:       opts.MessageGroup,
 		Sequence:           opts.Sequence,
 		AttemptCount:       opts.AttemptCount,

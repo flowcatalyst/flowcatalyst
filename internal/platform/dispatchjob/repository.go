@@ -825,7 +825,7 @@ func rowToJob(r rawRow) (*DispatchJob, error) {
 		DataOnly:         r.DataOnly,
 		EventID:          r.EventID,
 		CorrelationID:    r.CorrelationID,
-		ClientID:         ids.PtrOf[ids.ClientID](r.ClientID),
+		ClientID:         r.ClientID,
 		SubscriptionID:   r.SubscriptionID,
 		ServiceAccountID: r.ServiceAccountID,
 		DispatchPoolID:   r.DispatchPoolID,

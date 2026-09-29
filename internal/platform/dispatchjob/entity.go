@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 )
 
 // Kind is EVENT or TASK.
@@ -222,7 +221,7 @@ type DispatchJob struct {
 	DataOnly           bool                  `json:"dataOnly"`
 	EventID            *string               `json:"eventId,omitempty"`
 	CorrelationID      *string               `json:"correlationId,omitempty"`
-	ClientID           *ids.ClientID         `json:"clientId,omitempty"`
+	ClientID           *string               `json:"clientId,omitempty"`
 	SubscriptionID     *string               `json:"subscriptionId,omitempty"`
 	ServiceAccountID   *string               `json:"serviceAccountId,omitempty"`
 	DispatchPoolID     *string               `json:"dispatchPoolId,omitempty"`

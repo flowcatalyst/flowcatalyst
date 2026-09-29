@@ -402,7 +402,7 @@ func FireNow(repo *scheduledjob.Repository, instances *scheduledjob.InstanceRepo
 			inst := &scheduledjob.ScheduledJobInstance{
 				ID:               instanceID,
 				ScheduledJobID:   j.ID,
-				ClientID:         j.ClientID,
+				ClientID:         ids.StringPtr(j.ClientID),
 				JobCode:          j.Code,
 				TriggerKind:      scheduledjob.TriggerManual,
 				FiredAt:          now,

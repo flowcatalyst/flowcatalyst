@@ -3,8 +3,6 @@ package scheduledjob
 import (
 	"encoding/json"
 	"time"
-
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 )
 
 // InstanceStatus is the lifecycle state of a single firing.
@@ -70,7 +68,7 @@ func ParseTriggerKind(s string) (TriggerKind, bool) {
 type ScheduledJobInstance struct {
 	ID               string          `json:"id"`
 	ScheduledJobID   string          `json:"scheduledJobId"`
-	ClientID         *ids.ClientID   `json:"clientId,omitempty"`
+	ClientID         *string         `json:"clientId,omitempty"`
 	JobCode          string          `json:"jobCode"`
 	TriggerKind      TriggerKind     `json:"triggerKind"`
 	ScheduledFor     *time.Time      `json:"scheduledFor,omitempty"`
@@ -93,7 +91,7 @@ type ScheduledJobInstanceLog struct {
 	ID             string          `json:"id"`
 	InstanceID     string          `json:"instanceId"`
 	ScheduledJobID *string         `json:"scheduledJobId,omitempty"`
-	ClientID       *ids.ClientID   `json:"clientId,omitempty"`
+	ClientID       *string         `json:"clientId,omitempty"`
 	Level          string          `json:"level"`
 	Message        string          `json:"message"`
 	Metadata       json.RawMessage `json:"metadata,omitempty"`

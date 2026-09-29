@@ -439,7 +439,7 @@ type MsgDispatchJob struct {
 	PayloadContentType *string         `db:"payload_content_type"`
 	DataOnly           bool            `db:"data_only"`
 	ServiceAccountID   *string         `db:"service_account_id"`
-	ClientID           *ids.ClientID   `db:"client_id"`
+	ClientID           *string         `db:"client_id"`
 	SubscriptionID     *string         `db:"subscription_id"`
 	Mode               string          `db:"mode"`
 	DispatchPoolID     *string         `db:"dispatch_pool_id"`
@@ -506,7 +506,7 @@ type MsgDispatchJobsRead struct {
 	TargetUrl        string          `db:"target_url"`
 	Protocol         string          `db:"protocol"`
 	ServiceAccountID *string         `db:"service_account_id"`
-	ClientID         *ids.ClientID   `db:"client_id"`
+	ClientID         *string         `db:"client_id"`
 	SubscriptionID   *string         `db:"subscription_id"`
 	DispatchPoolID   *string         `db:"dispatch_pool_id"`
 	Mode             string          `db:"mode"`
@@ -562,7 +562,7 @@ type MsgEvent struct {
 	CausationID     *string         `db:"causation_id"`
 	DeduplicationID *string         `db:"deduplication_id"`
 	MessageGroup    *string         `db:"message_group"`
-	ClientID        *ids.ClientID   `db:"client_id"`
+	ClientID        *string         `db:"client_id"`
 	ContextData     json.RawMessage `db:"context_data"`
 	CreatedAt       time.Time       `db:"created_at"`
 	ProjectedAt     *time.Time      `db:"projected_at"`
@@ -608,23 +608,23 @@ type MsgEventTypeSpecVersion struct {
 }
 
 type MsgEventsRead struct {
-	ID              string        `db:"id"`
-	SpecVersion     *string       `db:"spec_version"`
-	Type            string        `db:"type"`
-	Source          string        `db:"source"`
-	Subject         *string       `db:"subject"`
-	Time            time.Time     `db:"time"`
-	Data            *string       `db:"data"`
-	CorrelationID   *string       `db:"correlation_id"`
-	CausationID     *string       `db:"causation_id"`
-	DeduplicationID *string       `db:"deduplication_id"`
-	MessageGroup    *string       `db:"message_group"`
-	ClientID        *ids.ClientID `db:"client_id"`
-	Application     *string       `db:"application"`
-	Subdomain       *string       `db:"subdomain"`
-	Aggregate       *string       `db:"aggregate"`
-	ProjectedAt     time.Time     `db:"projected_at"`
-	CreatedAt       time.Time     `db:"created_at"`
+	ID              string    `db:"id"`
+	SpecVersion     *string   `db:"spec_version"`
+	Type            string    `db:"type"`
+	Source          string    `db:"source"`
+	Subject         *string   `db:"subject"`
+	Time            time.Time `db:"time"`
+	Data            *string   `db:"data"`
+	CorrelationID   *string   `db:"correlation_id"`
+	CausationID     *string   `db:"causation_id"`
+	DeduplicationID *string   `db:"deduplication_id"`
+	MessageGroup    *string   `db:"message_group"`
+	ClientID        *string   `db:"client_id"`
+	Application     *string   `db:"application"`
+	Subdomain       *string   `db:"subdomain"`
+	Aggregate       *string   `db:"aggregate"`
+	ProjectedAt     time.Time `db:"projected_at"`
+	CreatedAt       time.Time `db:"created_at"`
 }
 
 type MsgProcess struct {
@@ -672,7 +672,7 @@ type MsgScheduledJob struct {
 type MsgScheduledJobInstance struct {
 	ID               string          `db:"id"`
 	ScheduledJobID   string          `db:"scheduled_job_id"`
-	ClientID         *ids.ClientID   `db:"client_id"`
+	ClientID         *string         `db:"client_id"`
 	JobCode          string          `db:"job_code"`
 	TriggerKind      string          `db:"trigger_kind"`
 	ScheduledFor     *time.Time      `db:"scheduled_for"`
@@ -693,7 +693,7 @@ type MsgScheduledJobInstanceLog struct {
 	ID             string          `db:"id"`
 	InstanceID     string          `db:"instance_id"`
 	ScheduledJobID *string         `db:"scheduled_job_id"`
-	ClientID       *ids.ClientID   `db:"client_id"`
+	ClientID       *string         `db:"client_id"`
 	Level          string          `db:"level"`
 	Message        string          `db:"message"`
 	Metadata       json.RawMessage `db:"metadata"`

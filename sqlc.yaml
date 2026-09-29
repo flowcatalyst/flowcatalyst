@@ -67,7 +67,10 @@ sql:
           # migration's nullability (ALTER TABLE ... ADD COLUMN included; the audit
           # of this list read CREATE TABLE and ADD COLUMN statements only).
           #
-          # Left as string on purpose: oauth_clients.client_id and
+          # Left as string on purpose: client_id on the high-volume msg_* tables
+          # (events, dispatch jobs, scheduled-job instances and their logs),
+          # which is set from external SDK payloads and unchecked, so a type would
+          # cost an allocation per item and vouch for nothing; oauth_clients.client_id and
           # iam_authorization_codes.client_id (the OAuth client_id, not a tenant
           # client), aud_logs.principal_id (whatever actor id the caller
           # supplied; also its client_id and application_id), and the *_service_account_* columns (legacy rows key the
@@ -206,37 +209,7 @@ sql:
               import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
               type: "ClientID"
               pointer: true
-          - column: "msg_dispatch_jobs.client_id"
-            go_type:
-              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
-              type: "ClientID"
-              pointer: true
-          - column: "msg_dispatch_jobs_read.client_id"
-            go_type:
-              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
-              type: "ClientID"
-              pointer: true
           - column: "msg_dispatch_pools.client_id"
-            go_type:
-              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
-              type: "ClientID"
-              pointer: true
-          - column: "msg_events.client_id"
-            go_type:
-              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
-              type: "ClientID"
-              pointer: true
-          - column: "msg_events_read.client_id"
-            go_type:
-              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
-              type: "ClientID"
-              pointer: true
-          - column: "msg_scheduled_job_instance_logs.client_id"
-            go_type:
-              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
-              type: "ClientID"
-              pointer: true
-          - column: "msg_scheduled_job_instances.client_id"
             go_type:
               import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
               type: "ClientID"

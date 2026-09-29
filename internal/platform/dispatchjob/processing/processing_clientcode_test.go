@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 )
@@ -72,7 +71,7 @@ func fakeSubscriber(t *testing.T, out *atomic.Value) *httptest.Server {
 // T1 — a client-scoped job's envelope carries clientCode = the client's
 // identifier, alongside clientId. Mutant: drop the field.
 func TestBuildPayload_ClientCode_Present(t *testing.T) {
-	job := &dispatchjob.DispatchJob{ID: "dsj_1", Code: "app:evt", ClientID: ids.PtrOf[ids.ClientID](new("clt_1"))}
+	job := &dispatchjob.DispatchJob{ID: "dsj_1", Code: "app:evt", ClientID: new("clt_1")}
 
 	var env map[string]any
 	require.NoError(t, json.Unmarshal(buildPayload(job, "acme"), &env))
@@ -113,7 +112,7 @@ func TestClientHeaderValue(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			job := &dispatchjob.DispatchJob{ClientID: ids.PtrOf[ids.ClientID](tc.clientID)}
+			job := &dispatchjob.DispatchJob{ClientID: tc.clientID}
 			v, ok := clientHeaderValue(job, tc.clientCode)
 			assert.Equal(t, tc.wantOK, ok)
 			assert.Equal(t, tc.wantValue, v)
@@ -156,7 +155,7 @@ func TestDeliver_ClientHeader_ExactFormat(t *testing.T) {
 	var calls atomic.Int32
 	h := New(nil, nil).WithClientCodeResolver(alwaysResolve("acme-corp", &calls))
 
-	job := &dispatchjob.DispatchJob{ID: "dsj_4", Code: "app:evt", TargetURL: sub.URL, ClientID: ids.PtrOf[ids.ClientID](new("clt_42"))}
+	job := &dispatchjob.DispatchJob{ID: "dsj_4", Code: "app:evt", TargetURL: sub.URL, ClientID: new("clt_42")}
 	res := h.deliver(context.Background(), job)
 	require.True(t, res.success)
 
@@ -179,7 +178,7 @@ func TestDeliver_DataOnly_BodyUnchangedHeaderPresent(t *testing.T) {
 	rawPayload := `{"raw":true,"n":7}`
 	job := &dispatchjob.DispatchJob{
 		ID: "dsj_5", Code: "app:evt", TargetURL: sub.URL,
-		DataOnly: true, ClientID: ids.PtrOf[ids.ClientID](new("clt_1")), Payload: new(rawPayload),
+		DataOnly: true, ClientID: new("clt_1"), Payload: new(rawPayload),
 	}
 	res := h.deliver(context.Background(), job)
 	require.True(t, res.success)
@@ -199,7 +198,7 @@ func TestDeliver_UnresolvableClient_StillDelivers(t *testing.T) {
 
 	h := New(nil, nil).WithClientCodeResolver(neverResolve())
 
-	job := &dispatchjob.DispatchJob{ID: "dsj_6", Code: "app:evt", TargetURL: sub.URL, ClientID: ids.PtrOf[ids.ClientID](new("clt_ghost"))}
+	job := &dispatchjob.DispatchJob{ID: "dsj_6", Code: "app:evt", TargetURL: sub.URL, ClientID: new("clt_ghost")}
 	res := h.deliver(context.Background(), job)
 
 	require.True(t, res.success, "an unresolvable client must not fail or block the delivery")
@@ -231,7 +230,7 @@ func TestDeliver_SignatureCoversBodyOnly_WithClientHeaderPresent(t *testing.T) {
 			return serviceaccount.OutboundCreds{SigningSecret: secret}, nil
 		})
 
-	job := &dispatchjob.DispatchJob{ID: "dsj_7", Code: "app:evt", TargetURL: sub.URL, ClientID: ids.PtrOf[ids.ClientID](new("clt_9"))}
+	job := &dispatchjob.DispatchJob{ID: "dsj_7", Code: "app:evt", TargetURL: sub.URL, ClientID: new("clt_9")}
 	res := h.deliver(context.Background(), job)
 	require.True(t, res.success)
 

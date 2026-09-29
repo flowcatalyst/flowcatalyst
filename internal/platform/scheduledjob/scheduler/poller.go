@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
@@ -63,7 +64,7 @@ func (p *poller) tick(ctx context.Context) error {
 		inst := &scheduledjob.ScheduledJobInstance{
 			ID:               tsid.Generate(tsid.ScheduledJobInstance),
 			ScheduledJobID:   j.ID,
-			ClientID:         j.ClientID,
+			ClientID:         ids.StringPtr(j.ClientID),
 			JobCode:          j.Code,
 			TriggerKind:      scheduledjob.TriggerCron,
 			ScheduledFor:     &slot,

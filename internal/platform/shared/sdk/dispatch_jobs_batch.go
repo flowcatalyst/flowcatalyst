@@ -17,7 +17,6 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -148,7 +147,7 @@ func jobFromItem(it BatchItem) (dispatchjob.DispatchJob, error) {
 		ExternalID:         it.ExternalID,
 		EventID:            it.EventID,
 		CorrelationID:      it.CorrelationID,
-		ClientID:           ids.PtrOf[ids.ClientID](it.ClientID),
+		ClientID:           it.ClientID,
 		SubscriptionID:     it.SubscriptionID,
 		ServiceAccountID:   it.ServiceAccountID,
 		DispatchPoolID:     it.DispatchPoolID,

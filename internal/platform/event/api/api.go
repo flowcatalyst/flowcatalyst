@@ -113,7 +113,7 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreateEventRequest]
 	if req.DeduplicationID != "" {
 		ev.DeduplicationID = req.DeduplicationID
 	}
-	ev.ClientID = ids.PtrOf[ids.ClientID](clientID)
+	ev.ClientID = clientID
 	ev.MessageGroup = req.MessageGroup
 	ev.CorrelationID = req.CorrelationID
 	ev.CausationID = req.CausationID
@@ -165,7 +165,7 @@ func (s *State) batchIngest(ctx context.Context, in *apicommon.In[BatchRequest])
 		if it.DeduplicationID != "" {
 			ev.DeduplicationID = it.DeduplicationID
 		}
-		ev.ClientID = ids.PtrOf[ids.ClientID](it.ClientID)
+		ev.ClientID = it.ClientID
 		// Resolve clientCode → client_id when no explicit clientId was given.
 		// An unknown code leaves the event unlinked rather than failing the
 		// batch (the event is a fact; keep it).
@@ -183,7 +183,7 @@ func (s *State) batchIngest(ctx context.Context, in *apicommon.In[BatchRequest])
 				}
 				clientByCode[code] = id
 			}
-			ev.ClientID = ids.PtrOf[ids.ClientID](id)
+			ev.ClientID = id
 		}
 		ev.MessageGroup = it.MessageGroup
 		ev.CorrelationID = it.CorrelationID

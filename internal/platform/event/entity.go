@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
@@ -41,7 +40,7 @@ type Event struct {
 	Data            json.RawMessage `json:"data,omitempty"`
 	Context         []ContextEntry  `json:"context,omitempty"`
 	DeduplicationID string          `json:"deduplicationId"`
-	ClientID        *ids.ClientID   `json:"clientId,omitempty"`
+	ClientID        *string         `json:"clientId,omitempty"`
 	MessageGroup    *string         `json:"messageGroup,omitempty"`
 	CorrelationID   *string         `json:"correlationId,omitempty"`
 	CausationID     *string         `json:"causationId,omitempty"`
