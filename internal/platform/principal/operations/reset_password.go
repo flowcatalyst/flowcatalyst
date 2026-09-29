@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordhash"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordpolicy"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
@@ -14,8 +15,8 @@ import (
 )
 
 type ResetPasswordCommand struct {
-	ID          string `json:"id"`
-	NewPassword string `json:"newPassword"`
+	ID          ids.PrincipalID `json:"id"`
+	NewPassword string          `json:"newPassword"`
 	// EnforcePasswordComplexity defaults to true when nil: the full
 	// passwordpolicy runs (length bounds, common-password blocklist, not
 	// derived from the user's email/name). When false the caller owns its own
@@ -37,7 +38,7 @@ func ResetPassword(repo *principal.Repository) usecaseop.Operation[ResetPassword
 	return usecaseop.Operation[ResetPasswordCommand, UserPasswordReset]{
 		Name: "ResetPassword",
 		Validate: func(_ context.Context, cmd ResetPasswordCommand) error {
-			if strings.TrimSpace(cmd.ID) == "" {
+			if strings.TrimSpace(string(cmd.ID)) == "" {
 				return usecase.Validation("ID_REQUIRED", "id is required")
 			}
 			// The relaxed (SDK) path checks only its minimal floor here; the strict
@@ -63,7 +64,7 @@ func ResetPassword(repo *principal.Repository) usecaseop.Operation[ResetPassword
 				return nil, usecase.Internal("REPO", "find_by_id failed", err)
 			}
 			if p == nil {
-				return nil, httperror.NotFound("Principal", cmd.ID)
+				return nil, httperror.NotFound("Principal", string(cmd.ID))
 			}
 			if p.Type != principal.TypeUser {
 				return nil, usecase.Conflict("NOT_A_USER", "Password reset only applies to USER principals")

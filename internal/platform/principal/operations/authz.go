@@ -33,7 +33,7 @@ func requireUserResourceAccess(ctx context.Context, p *principal.Principal) erro
 		return err
 	}
 	if !auth.CanAccessScope(ac, p.ClientID) {
-		return httperror.NotFound("Principal", p.ID)
+		return httperror.NotFound("Principal", string(p.ID))
 	}
 	return nil
 }
@@ -53,7 +53,7 @@ func requireUserAdmin(ctx context.Context, p *principal.Principal) error {
 		return err
 	}
 	if !auth.CanAccessScope(ac, p.ClientID) {
-		return httperror.NotFound("User", p.ID)
+		return httperror.NotFound("User", string(p.ID))
 	}
 	return nil
 }

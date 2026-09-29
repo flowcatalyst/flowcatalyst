@@ -7,6 +7,8 @@ package dbq
 import (
 	"encoding/json"
 	"time"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 )
 
 type AppApplication struct {
@@ -104,6 +106,15 @@ type FngAlias struct {
 	UpdatedBy  *string   `db:"updated_by"`
 }
 
+type FngDomain struct {
+	ID        string    `db:"id"`
+	Zone      string    `db:"zone"`
+	ClientID  *string   `db:"client_id"`
+	CreatedBy *string   `db:"created_by"`
+	CreatedAt time.Time `db:"created_at"`
+	UpdatedAt time.Time `db:"updated_at"`
+}
+
 type FngFunction struct {
 	ID            string          `db:"id"`
 	ApplicationID string          `db:"application_id"`
@@ -122,6 +133,17 @@ type FngFunction struct {
 type FngPoolRevision struct {
 	Pool     string `db:"pool"`
 	Revision int64  `db:"revision"`
+}
+
+type FngRoute struct {
+	ID         string    `db:"id"`
+	FunctionID string    `db:"function_id"`
+	Hostname   string    `db:"hostname"`
+	PathPrefix string    `db:"path_prefix"`
+	Alias      *string   `db:"alias"`
+	CreatedBy  *string   `db:"created_by"`
+	CreatedAt  time.Time `db:"created_at"`
+	UpdatedAt  time.Time `db:"updated_at"`
 }
 
 type FngRunner struct {
@@ -156,61 +178,61 @@ type FngVersion struct {
 }
 
 type IamAuthorizationCode struct {
-	Code                string    `db:"code"`
-	ClientID            string    `db:"client_id"`
-	PrincipalID         string    `db:"principal_id"`
-	RedirectUri         string    `db:"redirect_uri"`
-	Scope               *string   `db:"scope"`
-	CodeChallenge       *string   `db:"code_challenge"`
-	CodeChallengeMethod *string   `db:"code_challenge_method"`
-	Nonce               *string   `db:"nonce"`
-	State               *string   `db:"state"`
-	ContextClientID     *string   `db:"context_client_id"`
-	CreatedAt           time.Time `db:"created_at"`
-	ExpiresAt           time.Time `db:"expires_at"`
-	Used                bool      `db:"used"`
+	Code                string          `db:"code"`
+	ClientID            string          `db:"client_id"`
+	PrincipalID         ids.PrincipalID `db:"principal_id"`
+	RedirectUri         string          `db:"redirect_uri"`
+	Scope               *string         `db:"scope"`
+	CodeChallenge       *string         `db:"code_challenge"`
+	CodeChallengeMethod *string         `db:"code_challenge_method"`
+	Nonce               *string         `db:"nonce"`
+	State               *string         `db:"state"`
+	ContextClientID     *string         `db:"context_client_id"`
+	CreatedAt           time.Time       `db:"created_at"`
+	ExpiresAt           time.Time       `db:"expires_at"`
+	Used                bool            `db:"used"`
 }
 
 type IamClientAccessGrant struct {
-	ID          string    `db:"id"`
-	PrincipalID string    `db:"principal_id"`
-	ClientID    string    `db:"client_id"`
-	GrantedBy   string    `db:"granted_by"`
-	GrantedAt   time.Time `db:"granted_at"`
-	CreatedAt   time.Time `db:"created_at"`
-	UpdatedAt   time.Time `db:"updated_at"`
+	ID          string          `db:"id"`
+	PrincipalID ids.PrincipalID `db:"principal_id"`
+	ClientID    string          `db:"client_id"`
+	GrantedBy   string          `db:"granted_by"`
+	GrantedAt   time.Time       `db:"granted_at"`
+	CreatedAt   time.Time       `db:"created_at"`
+	UpdatedAt   time.Time       `db:"updated_at"`
 }
 
 type IamLoginAttempt struct {
-	ID            string    `db:"id"`
-	AttemptType   string    `db:"attempt_type"`
-	Outcome       string    `db:"outcome"`
-	FailureReason *string   `db:"failure_reason"`
-	Identifier    *string   `db:"identifier"`
-	PrincipalID   *string   `db:"principal_id"`
-	IpAddress     *string   `db:"ip_address"`
-	UserAgent     *string   `db:"user_agent"`
-	AttemptedAt   time.Time `db:"attempted_at"`
+	ID            string           `db:"id"`
+	AttemptType   string           `db:"attempt_type"`
+	Outcome       string           `db:"outcome"`
+	FailureReason *string          `db:"failure_reason"`
+	Identifier    *string          `db:"identifier"`
+	PrincipalID   *ids.PrincipalID `db:"principal_id"`
+	IpAddress     *string          `db:"ip_address"`
+	UserAgent     *string          `db:"user_agent"`
+	AttemptedAt   time.Time        `db:"attempted_at"`
 }
 
 type IamMfaEmailPin struct {
-	ID          string    `db:"id"`
-	PrincipalID string    `db:"principal_id"`
-	Purpose     string    `db:"purpose"`
-	PinHash     string    `db:"pin_hash"`
-	Attempts    int32     `db:"attempts"`
-	ExpiresAt   time.Time `db:"expires_at"`
-	CreatedAt   time.Time `db:"created_at"`
+	ID          string          `db:"id"`
+	PrincipalID ids.PrincipalID `db:"principal_id"`
+	Purpose     string          `db:"purpose"`
+	PinHash     string          `db:"pin_hash"`
+	Attempts    int32           `db:"attempts"`
+	ExpiresAt   time.Time       `db:"expires_at"`
+	CreatedAt   time.Time       `db:"created_at"`
 }
 
 type IamMfaTrustedDevice struct {
-	ID          string     `db:"id"`
-	PrincipalID string     `db:"principal_id"`
-	TokenHash   string     `db:"token_hash"`
-	Label       *string    `db:"label"`
-	ExpiresAt   time.Time  `db:"expires_at"`
-	CreatedAt   time.Time  `db:"created_at"`
-	LastUsedAt  *time.Time `db:"last_used_at"`
+	ID          string          `db:"id"`
+	PrincipalID ids.PrincipalID `db:"principal_id"`
+	TokenHash   string          `db:"token_hash"`
+	Label       *string         `db:"label"`
+	ExpiresAt   time.Time       `db:"expires_at"`
+	CreatedAt   time.Time       `db:"created_at"`
+	LastUsedAt  *time.Time      `db:"last_used_at"`
 }
 
 type IamOidcLoginState struct {
@@ -232,16 +254,16 @@ type IamOidcLoginState struct {
 }
 
 type IamPasswordResetToken struct {
-	ID             string    `db:"id"`
-	PrincipalID    string    `db:"principal_id"`
-	TokenHash      string    `db:"token_hash"`
-	ExpiresAt      time.Time `db:"expires_at"`
-	CreatedAt      time.Time `db:"created_at"`
-	Purpose        string    `db:"purpose"`
-	Reset2fa       bool      `db:"reset_2fa"`
-	RequiresFactor bool      `db:"requires_factor"`
-	FactorAttempts int32     `db:"factor_attempts"`
-	RedirectUri    *string   `db:"redirect_uri"`
+	ID             string          `db:"id"`
+	PrincipalID    ids.PrincipalID `db:"principal_id"`
+	TokenHash      string          `db:"token_hash"`
+	ExpiresAt      time.Time       `db:"expires_at"`
+	CreatedAt      time.Time       `db:"created_at"`
+	Purpose        string          `db:"purpose"`
+	Reset2fa       bool            `db:"reset_2fa"`
+	RequiresFactor bool            `db:"requires_factor"`
+	FactorAttempts int32           `db:"factor_attempts"`
+	RedirectUri    *string         `db:"redirect_uri"`
 }
 
 type IamPermission struct {
@@ -257,38 +279,38 @@ type IamPermission struct {
 }
 
 type IamPrincipal struct {
-	ID                       string     `db:"id"`
-	Type                     string     `db:"type"`
-	Scope                    *string    `db:"scope"`
-	ClientID                 *string    `db:"client_id"`
-	ApplicationID            *string    `db:"application_id"`
-	Name                     string     `db:"name"`
-	Active                   bool       `db:"active"`
-	Email                    *string    `db:"email"`
-	EmailDomain              *string    `db:"email_domain"`
-	IdpType                  *string    `db:"idp_type"`
-	ExternalIdpID            *string    `db:"external_idp_id"`
-	PasswordHash             *string    `db:"password_hash"`
-	LastLoginAt              *time.Time `db:"last_login_at"`
-	ServiceAccountID         *string    `db:"service_account_id"`
-	CreatedAt                time.Time  `db:"created_at"`
-	UpdatedAt                time.Time  `db:"updated_at"`
-	AllApplications          bool       `db:"all_applications"`
-	DevClientSecretRef       *string    `db:"dev_client_secret_ref"`
-	DevClientSecretUpdatedAt *time.Time `db:"dev_client_secret_updated_at"`
+	ID                       ids.PrincipalID `db:"id"`
+	Type                     string          `db:"type"`
+	Scope                    *string         `db:"scope"`
+	ClientID                 *string         `db:"client_id"`
+	ApplicationID            *string         `db:"application_id"`
+	Name                     string          `db:"name"`
+	Active                   bool            `db:"active"`
+	Email                    *string         `db:"email"`
+	EmailDomain              *string         `db:"email_domain"`
+	IdpType                  *string         `db:"idp_type"`
+	ExternalIdpID            *string         `db:"external_idp_id"`
+	PasswordHash             *string         `db:"password_hash"`
+	LastLoginAt              *time.Time      `db:"last_login_at"`
+	ServiceAccountID         *string         `db:"service_account_id"`
+	CreatedAt                time.Time       `db:"created_at"`
+	UpdatedAt                time.Time       `db:"updated_at"`
+	AllApplications          bool            `db:"all_applications"`
+	DevClientSecretRef       *string         `db:"dev_client_secret_ref"`
+	DevClientSecretUpdatedAt *time.Time      `db:"dev_client_secret_updated_at"`
 }
 
 type IamPrincipalApplicationAccess struct {
-	PrincipalID   string    `db:"principal_id"`
-	ApplicationID string    `db:"application_id"`
-	GrantedAt     time.Time `db:"granted_at"`
+	PrincipalID   ids.PrincipalID `db:"principal_id"`
+	ApplicationID string          `db:"application_id"`
+	GrantedAt     time.Time       `db:"granted_at"`
 }
 
 type IamPrincipalRole struct {
-	PrincipalID      string    `db:"principal_id"`
-	RoleName         string    `db:"role_name"`
-	AssignmentSource *string   `db:"assignment_source"`
-	AssignedAt       time.Time `db:"assigned_at"`
+	PrincipalID      ids.PrincipalID `db:"principal_id"`
+	RoleName         string          `db:"role_name"`
+	AssignmentSource *string         `db:"assignment_source"`
+	AssignedAt       time.Time       `db:"assigned_at"`
 }
 
 type IamRateLimitEvent struct {
@@ -299,34 +321,34 @@ type IamRateLimitEvent struct {
 }
 
 type IamRefreshToken struct {
-	ID                string     `db:"id"`
-	TokenHash         string     `db:"token_hash"`
-	PrincipalID       string     `db:"principal_id"`
-	OauthClientID     *string    `db:"oauth_client_id"`
-	Scopes            *string    `db:"scopes"`
-	AccessibleClients *string    `db:"accessible_clients"`
-	Revoked           bool       `db:"revoked"`
-	RevokedAt         *time.Time `db:"revoked_at"`
-	TokenFamily       *string    `db:"token_family"`
-	ReplacedBy        *string    `db:"replaced_by"`
-	CreatedAt         time.Time  `db:"created_at"`
-	ExpiresAt         time.Time  `db:"expires_at"`
-	LastUsedAt        *time.Time `db:"last_used_at"`
-	CreatedFromIp     *string    `db:"created_from_ip"`
-	UserAgent         *string    `db:"user_agent"`
+	ID                string          `db:"id"`
+	TokenHash         string          `db:"token_hash"`
+	PrincipalID       ids.PrincipalID `db:"principal_id"`
+	OauthClientID     *string         `db:"oauth_client_id"`
+	Scopes            *string         `db:"scopes"`
+	AccessibleClients *string         `db:"accessible_clients"`
+	Revoked           bool            `db:"revoked"`
+	RevokedAt         *time.Time      `db:"revoked_at"`
+	TokenFamily       *string         `db:"token_family"`
+	ReplacedBy        *string         `db:"replaced_by"`
+	CreatedAt         time.Time       `db:"created_at"`
+	ExpiresAt         time.Time       `db:"expires_at"`
+	LastUsedAt        *time.Time      `db:"last_used_at"`
+	CreatedFromIp     *string         `db:"created_from_ip"`
+	UserAgent         *string         `db:"user_agent"`
 }
 
 type IamResetApprovalRequest struct {
-	ID          string     `db:"id"`
-	PrincipalID string     `db:"principal_id"`
-	ClientID    *string    `db:"client_id"`
-	Status      string     `db:"status"`
-	Reset2fa    bool       `db:"reset_2fa"`
-	Note        *string    `db:"note"`
-	DecidedBy   *string    `db:"decided_by"`
-	DecidedAt   *time.Time `db:"decided_at"`
-	ExpiresAt   time.Time  `db:"expires_at"`
-	CreatedAt   time.Time  `db:"created_at"`
+	ID          string          `db:"id"`
+	PrincipalID ids.PrincipalID `db:"principal_id"`
+	ClientID    *string         `db:"client_id"`
+	Status      string          `db:"status"`
+	Reset2fa    bool            `db:"reset_2fa"`
+	Note        *string         `db:"note"`
+	DecidedBy   *string         `db:"decided_by"`
+	DecidedAt   *time.Time      `db:"decided_at"`
+	ExpiresAt   time.Time       `db:"expires_at"`
+	CreatedAt   time.Time       `db:"created_at"`
 }
 
 type IamRole struct {
@@ -368,21 +390,21 @@ type IamServiceAccount struct {
 }
 
 type IamUserMfaMethod struct {
-	ID              string     `db:"id"`
-	PrincipalID     string     `db:"principal_id"`
-	Method          string     `db:"method"`
-	SecretEncrypted *string    `db:"secret_encrypted"`
-	ConfirmedAt     *time.Time `db:"confirmed_at"`
-	LastUsedAt      *time.Time `db:"last_used_at"`
-	CreatedAt       time.Time  `db:"created_at"`
+	ID              string          `db:"id"`
+	PrincipalID     ids.PrincipalID `db:"principal_id"`
+	Method          string          `db:"method"`
+	SecretEncrypted *string         `db:"secret_encrypted"`
+	ConfirmedAt     *time.Time      `db:"confirmed_at"`
+	LastUsedAt      *time.Time      `db:"last_used_at"`
+	CreatedAt       time.Time       `db:"created_at"`
 }
 
 type IamUserMfaRecoveryCode struct {
-	ID          string     `db:"id"`
-	PrincipalID string     `db:"principal_id"`
-	CodeHash    string     `db:"code_hash"`
-	UsedAt      *time.Time `db:"used_at"`
-	CreatedAt   time.Time  `db:"created_at"`
+	ID          string          `db:"id"`
+	PrincipalID ids.PrincipalID `db:"principal_id"`
+	CodeHash    string          `db:"code_hash"`
+	UsedAt      *time.Time      `db:"used_at"`
+	CreatedAt   time.Time       `db:"created_at"`
 }
 
 type MsgConnection struct {
@@ -970,7 +992,7 @@ type TntEmailDomainMappingGrantedClient struct {
 
 type WebauthnCredential struct {
 	ID           string          `db:"id"`
-	PrincipalID  string          `db:"principal_id"`
+	PrincipalID  ids.PrincipalID `db:"principal_id"`
 	CredentialID []byte          `db:"credential_id"`
 	PasskeyData  json.RawMessage `db:"passkey_data"`
 	Name         *string         `db:"name"`

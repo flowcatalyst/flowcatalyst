@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 )
 
@@ -25,8 +27,8 @@ const (
 	Source                         = "platform:iam"
 )
 
-func subjectFor(id string) string { return "platform.principal." + id }
-func groupFor(id string) string   { return "platform:principal:" + id }
+func subjectFor(id ids.PrincipalID) string { return "platform.principal." + string(id) }
+func groupFor(id string) string            { return "platform:principal:" + id }
 
 // UserLoggedInSubject / UserLoggedInMessageGroup: UserLoggedIn deliberately
 // does NOT use subjectFor/groupFor above — docs/spec/oidc-logged-in-event.md
@@ -45,7 +47,7 @@ func UserLoggedInMessageGroup(userID string) string { return "platform:user:" + 
 
 type UserCreated struct {
 	Metadata usecase.EventMetadata
-	UserID   string
+	UserID   ids.PrincipalID
 	Email    string
 }
 
@@ -59,17 +61,17 @@ func (e UserCreated) PrincipalID() string   { return e.Metadata.PrincipalID }
 func (e UserCreated) CorrelationID() string { return e.Metadata.CorrelationID }
 func (e UserCreated) CausationID() string   { return e.Metadata.CausationID }
 func (e UserCreated) ExecutionID() string   { return e.Metadata.ExecutionID }
-func (e UserCreated) MessageGroup() string  { return groupFor(e.UserID) }
+func (e UserCreated) MessageGroup() string  { return groupFor(string(e.UserID)) }
 func (e UserCreated) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
-		UserID string `json:"principalId"`
-		Email  string `json:"email"`
+		UserID ids.PrincipalID `json:"principalId"`
+		Email  string          `json:"email"`
 	}{e.UserID, e.Email})
 }
 
 type UserUpdated struct {
 	Metadata usecase.EventMetadata
-	UserID   string
+	UserID   ids.PrincipalID
 	Name     string
 }
 
@@ -83,17 +85,17 @@ func (e UserUpdated) PrincipalID() string   { return e.Metadata.PrincipalID }
 func (e UserUpdated) CorrelationID() string { return e.Metadata.CorrelationID }
 func (e UserUpdated) CausationID() string   { return e.Metadata.CausationID }
 func (e UserUpdated) ExecutionID() string   { return e.Metadata.ExecutionID }
-func (e UserUpdated) MessageGroup() string  { return groupFor(e.UserID) }
+func (e UserUpdated) MessageGroup() string  { return groupFor(string(e.UserID)) }
 func (e UserUpdated) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
-		UserID string `json:"principalId"`
-		Name   string `json:"name"`
+		UserID ids.PrincipalID `json:"principalId"`
+		Name   string          `json:"name"`
 	}{e.UserID, e.Name})
 }
 
 type UserActivated struct {
 	Metadata usecase.EventMetadata
-	UserID   string
+	UserID   ids.PrincipalID
 }
 
 func (e UserActivated) EventID() string       { return e.Metadata.EventID }
@@ -106,16 +108,16 @@ func (e UserActivated) PrincipalID() string   { return e.Metadata.PrincipalID }
 func (e UserActivated) CorrelationID() string { return e.Metadata.CorrelationID }
 func (e UserActivated) CausationID() string   { return e.Metadata.CausationID }
 func (e UserActivated) ExecutionID() string   { return e.Metadata.ExecutionID }
-func (e UserActivated) MessageGroup() string  { return groupFor(e.UserID) }
+func (e UserActivated) MessageGroup() string  { return groupFor(string(e.UserID)) }
 func (e UserActivated) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
-		UserID string `json:"principalId"`
+		UserID ids.PrincipalID `json:"principalId"`
 	}{e.UserID})
 }
 
 type UserDeactivated struct {
 	Metadata usecase.EventMetadata
-	UserID   string
+	UserID   ids.PrincipalID
 }
 
 func (e UserDeactivated) EventID() string       { return e.Metadata.EventID }
@@ -128,16 +130,16 @@ func (e UserDeactivated) PrincipalID() string   { return e.Metadata.PrincipalID 
 func (e UserDeactivated) CorrelationID() string { return e.Metadata.CorrelationID }
 func (e UserDeactivated) CausationID() string   { return e.Metadata.CausationID }
 func (e UserDeactivated) ExecutionID() string   { return e.Metadata.ExecutionID }
-func (e UserDeactivated) MessageGroup() string  { return groupFor(e.UserID) }
+func (e UserDeactivated) MessageGroup() string  { return groupFor(string(e.UserID)) }
 func (e UserDeactivated) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
-		UserID string `json:"principalId"`
+		UserID ids.PrincipalID `json:"principalId"`
 	}{e.UserID})
 }
 
 type UserDeleted struct {
 	Metadata usecase.EventMetadata
-	UserID   string
+	UserID   ids.PrincipalID
 	Email    string
 }
 
@@ -151,17 +153,17 @@ func (e UserDeleted) PrincipalID() string   { return e.Metadata.PrincipalID }
 func (e UserDeleted) CorrelationID() string { return e.Metadata.CorrelationID }
 func (e UserDeleted) CausationID() string   { return e.Metadata.CausationID }
 func (e UserDeleted) ExecutionID() string   { return e.Metadata.ExecutionID }
-func (e UserDeleted) MessageGroup() string  { return groupFor(e.UserID) }
+func (e UserDeleted) MessageGroup() string  { return groupFor(string(e.UserID)) }
 func (e UserDeleted) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
-		UserID string `json:"principalId"`
-		Email  string `json:"email"`
+		UserID ids.PrincipalID `json:"principalId"`
+		Email  string          `json:"email"`
 	}{e.UserID, e.Email})
 }
 
 type UserPasswordReset struct {
 	Metadata usecase.EventMetadata
-	UserID   string
+	UserID   ids.PrincipalID
 }
 
 func (e UserPasswordReset) EventID() string       { return e.Metadata.EventID }
@@ -174,17 +176,17 @@ func (e UserPasswordReset) PrincipalID() string   { return e.Metadata.PrincipalI
 func (e UserPasswordReset) CorrelationID() string { return e.Metadata.CorrelationID }
 func (e UserPasswordReset) CausationID() string   { return e.Metadata.CausationID }
 func (e UserPasswordReset) ExecutionID() string   { return e.Metadata.ExecutionID }
-func (e UserPasswordReset) MessageGroup() string  { return groupFor(e.UserID) }
+func (e UserPasswordReset) MessageGroup() string  { return groupFor(string(e.UserID)) }
 func (e UserPasswordReset) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
-		UserID string `json:"principalId"`
+		UserID ids.PrincipalID `json:"principalId"`
 	}{e.UserID})
 }
 
 // RolesAssigned — emitted when assign_roles replaces the user's role set.
 type RolesAssigned struct {
 	Metadata usecase.EventMetadata
-	UserID   string
+	UserID   ids.PrincipalID
 	Roles    []string
 	Added    []string
 	Removed  []string
@@ -200,13 +202,13 @@ func (e RolesAssigned) PrincipalID() string   { return e.Metadata.PrincipalID }
 func (e RolesAssigned) CorrelationID() string { return e.Metadata.CorrelationID }
 func (e RolesAssigned) CausationID() string   { return e.Metadata.CausationID }
 func (e RolesAssigned) ExecutionID() string   { return e.Metadata.ExecutionID }
-func (e RolesAssigned) MessageGroup() string  { return groupFor(e.UserID) }
+func (e RolesAssigned) MessageGroup() string  { return groupFor(string(e.UserID)) }
 func (e RolesAssigned) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
-		PrincipalID string   `json:"principalId"`
-		Roles       []string `json:"roles"`
-		Added       []string `json:"added"`
-		Removed     []string `json:"removed"`
+		PrincipalID ids.PrincipalID `json:"principalId"`
+		Roles       []string        `json:"roles"`
+		Added       []string        `json:"added"`
+		Removed     []string        `json:"removed"`
 	}{e.UserID, defaultEmpty(e.Roles), defaultEmpty(e.Added), defaultEmpty(e.Removed)})
 }
 
@@ -242,7 +244,7 @@ type FederatedClaims struct {
 // no aggregate to write.
 type UserLoggedIn struct {
 	Metadata    usecase.EventMetadata
-	UserID      string
+	UserID      ids.PrincipalID
 	Email       string
 	LoginMethod string
 	// IdentityProviderCode is the identity provider's `code` — nil only if
@@ -262,16 +264,16 @@ func (e UserLoggedIn) Source() string      { return Source }
 
 // Subject / MessageGroup: see UserLoggedInSubject/UserLoggedInMessageGroup's
 // doc comment above for why this event doesn't use subjectFor/groupFor.
-func (e UserLoggedIn) Subject() string       { return UserLoggedInSubject(e.UserID) }
+func (e UserLoggedIn) Subject() string       { return UserLoggedInSubject(string(e.UserID)) }
 func (e UserLoggedIn) Time() time.Time       { return e.Metadata.OccurredAt }
 func (e UserLoggedIn) PrincipalID() string   { return e.Metadata.PrincipalID }
 func (e UserLoggedIn) CorrelationID() string { return e.Metadata.CorrelationID }
 func (e UserLoggedIn) CausationID() string   { return e.Metadata.CausationID }
 func (e UserLoggedIn) ExecutionID() string   { return e.Metadata.ExecutionID }
-func (e UserLoggedIn) MessageGroup() string  { return UserLoggedInMessageGroup(e.UserID) }
+func (e UserLoggedIn) MessageGroup() string  { return UserLoggedInMessageGroup(string(e.UserID)) }
 func (e UserLoggedIn) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
-		UserID               string             `json:"userId"`
+		UserID               ids.PrincipalID    `json:"userId"`
 		Email                string             `json:"email"`
 		LoginMethod          string             `json:"loginMethod"`
 		IdentityProviderCode *string            `json:"identityProviderCode,omitempty"`
@@ -285,7 +287,7 @@ func (e UserLoggedIn) ToDataJSON() ([]byte, error) {
 // itself (only ever returned once, out-of-band, via the process-local stash).
 type DeveloperCredentialSet struct {
 	Metadata usecase.EventMetadata
-	UserID   string
+	UserID   ids.PrincipalID
 }
 
 func (e DeveloperCredentialSet) EventID() string       { return e.Metadata.EventID }
@@ -298,10 +300,10 @@ func (e DeveloperCredentialSet) PrincipalID() string   { return e.Metadata.Princ
 func (e DeveloperCredentialSet) CorrelationID() string { return e.Metadata.CorrelationID }
 func (e DeveloperCredentialSet) CausationID() string   { return e.Metadata.CausationID }
 func (e DeveloperCredentialSet) ExecutionID() string   { return e.Metadata.ExecutionID }
-func (e DeveloperCredentialSet) MessageGroup() string  { return groupFor(e.UserID) }
+func (e DeveloperCredentialSet) MessageGroup() string  { return groupFor(string(e.UserID)) }
 func (e DeveloperCredentialSet) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
-		UserID string `json:"userId"`
+		UserID ids.PrincipalID `json:"userId"`
 	}{e.UserID})
 }
 
@@ -309,7 +311,7 @@ func (e DeveloperCredentialSet) ToDataJSON() ([]byte, error) {
 // client_credentials secret is cleared (role untouched).
 type DeveloperCredentialRevoked struct {
 	Metadata usecase.EventMetadata
-	UserID   string
+	UserID   ids.PrincipalID
 }
 
 func (e DeveloperCredentialRevoked) EventID() string       { return e.Metadata.EventID }
@@ -322,10 +324,10 @@ func (e DeveloperCredentialRevoked) PrincipalID() string   { return e.Metadata.P
 func (e DeveloperCredentialRevoked) CorrelationID() string { return e.Metadata.CorrelationID }
 func (e DeveloperCredentialRevoked) CausationID() string   { return e.Metadata.CausationID }
 func (e DeveloperCredentialRevoked) ExecutionID() string   { return e.Metadata.ExecutionID }
-func (e DeveloperCredentialRevoked) MessageGroup() string  { return groupFor(e.UserID) }
+func (e DeveloperCredentialRevoked) MessageGroup() string  { return groupFor(string(e.UserID)) }
 func (e DeveloperCredentialRevoked) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
-		UserID string `json:"userId"`
+		UserID ids.PrincipalID `json:"userId"`
 	}{e.UserID})
 }
 
@@ -335,7 +337,7 @@ func (e DeveloperCredentialRevoked) ToDataJSON() ([]byte, error) {
 // the frontend's vocabulary).
 type ApplicationAccessAssigned struct {
 	Metadata       usecase.EventMetadata
-	UserID         string
+	UserID         ids.PrincipalID
 	ApplicationIDs []string
 	Added          []string
 	Removed        []string
@@ -351,13 +353,13 @@ func (e ApplicationAccessAssigned) PrincipalID() string   { return e.Metadata.Pr
 func (e ApplicationAccessAssigned) CorrelationID() string { return e.Metadata.CorrelationID }
 func (e ApplicationAccessAssigned) CausationID() string   { return e.Metadata.CausationID }
 func (e ApplicationAccessAssigned) ExecutionID() string   { return e.Metadata.ExecutionID }
-func (e ApplicationAccessAssigned) MessageGroup() string  { return groupFor(e.UserID) }
+func (e ApplicationAccessAssigned) MessageGroup() string  { return groupFor(string(e.UserID)) }
 func (e ApplicationAccessAssigned) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
-		UserID         string   `json:"userId"`
-		ApplicationIDs []string `json:"applicationIds"`
-		Added          []string `json:"added"`
-		Removed        []string `json:"removed"`
+		UserID         ids.PrincipalID `json:"userId"`
+		ApplicationIDs []string        `json:"applicationIds"`
+		Added          []string        `json:"added"`
+		Removed        []string        `json:"removed"`
 	}{e.UserID, defaultEmpty(e.ApplicationIDs), defaultEmpty(e.Added), defaultEmpty(e.Removed)})
 }
 
@@ -365,7 +367,7 @@ func (e ApplicationAccessAssigned) ToDataJSON() ([]byte, error) {
 // to a specific client.
 type ClientAccessGranted struct {
 	Metadata usecase.EventMetadata
-	UserID   string
+	UserID   ids.PrincipalID
 	ClientID string
 }
 
@@ -379,11 +381,11 @@ func (e ClientAccessGranted) PrincipalID() string   { return e.Metadata.Principa
 func (e ClientAccessGranted) CorrelationID() string { return e.Metadata.CorrelationID }
 func (e ClientAccessGranted) CausationID() string   { return e.Metadata.CausationID }
 func (e ClientAccessGranted) ExecutionID() string   { return e.Metadata.ExecutionID }
-func (e ClientAccessGranted) MessageGroup() string  { return groupFor(e.UserID) }
+func (e ClientAccessGranted) MessageGroup() string  { return groupFor(string(e.UserID)) }
 func (e ClientAccessGranted) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
-		PrincipalID string `json:"principalId"`
-		ClientID    string `json:"clientId"`
+		PrincipalID ids.PrincipalID `json:"principalId"`
+		ClientID    string          `json:"clientId"`
 	}{e.UserID, e.ClientID})
 }
 
@@ -391,7 +393,7 @@ func (e ClientAccessGranted) ToDataJSON() ([]byte, error) {
 // specific client.
 type ClientAccessRevoked struct {
 	Metadata usecase.EventMetadata
-	UserID   string
+	UserID   ids.PrincipalID
 	ClientID string
 }
 
@@ -405,11 +407,11 @@ func (e ClientAccessRevoked) PrincipalID() string   { return e.Metadata.Principa
 func (e ClientAccessRevoked) CorrelationID() string { return e.Metadata.CorrelationID }
 func (e ClientAccessRevoked) CausationID() string   { return e.Metadata.CausationID }
 func (e ClientAccessRevoked) ExecutionID() string   { return e.Metadata.ExecutionID }
-func (e ClientAccessRevoked) MessageGroup() string  { return groupFor(e.UserID) }
+func (e ClientAccessRevoked) MessageGroup() string  { return groupFor(string(e.UserID)) }
 func (e ClientAccessRevoked) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
-		PrincipalID string `json:"principalId"`
-		ClientID    string `json:"clientId"`
+		PrincipalID ids.PrincipalID `json:"principalId"`
+		ClientID    string          `json:"clientId"`
 	}{e.UserID, e.ClientID})
 }
 

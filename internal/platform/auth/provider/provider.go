@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/sessiontoken"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
@@ -82,7 +83,7 @@ type Claims struct {
 // permission gates still work, gated handlers reject with
 // PERMISSION_REQUIRED).
 func BuildClaims(ctx context.Context, cfg Config, principals *principal.Repository, roles *role.Repository, principalID string) (*Claims, error) {
-	p, err := principals.FindByID(ctx, principalID)
+	p, err := principals.FindByID(ctx, ids.PrincipalID(principalID))
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +114,7 @@ func BuildClaims(ctx context.Context, cfg Config, principals *principal.Reposito
 	}
 	return &Claims{
 		Issuer:          cfg.Issuer,
-		Subject:         p.ID,
+		Subject:         string(p.ID),
 		Scope:           string(p.Scope),
 		Clients:         clients,
 		Roles:           roleNames,

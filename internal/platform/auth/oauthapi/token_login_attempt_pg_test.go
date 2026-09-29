@@ -46,7 +46,7 @@ func newActivePrincipal(t *testing.T, email string) string {
 	ev, err := usecaseop.Run(testpg.AnchorCtx(), uow, principalops.CreateUser(principal.NewRepository(testpg.Pool(t))),
 		principalops.CreateCommand{Email: email, Scope: "ANCHOR"}, testpg.TestEC())
 	require.NoError(t, err)
-	return ev.UserID
+	return string(ev.UserID)
 }
 
 // confidentialClient builds an active confidential OAuth client with the

@@ -85,7 +85,7 @@ func TestAPIAccessInteractiveTokens(t *testing.T) {
 
 	mint := func(scope string) string {
 		raw := "apiacc-" + strings.ReplaceAll(scope, " ", "-") + "-code-xxxxxxxxxxxxxxxx"
-		code := grantstore.NewAuthorizationCode(raw, "apiacc-app", userEv.UserID, "https://apiacc.test/cb")
+		code := grantstore.NewAuthorizationCode(raw, "apiacc-app", string(userEv.UserID), "https://apiacc.test/cb")
 		code.Scope = &scope
 		require.NoError(t, authCodes.Insert(ctx, code))
 		return raw

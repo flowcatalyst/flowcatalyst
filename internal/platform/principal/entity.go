@@ -18,6 +18,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
@@ -128,7 +129,7 @@ type ExternalIdentity struct {
 
 // Principal is the aggregate root. Unified for users and service accounts.
 type Principal struct {
-	ID                  string                          `json:"id"`
+	ID                  ids.PrincipalID                 `json:"id"`
 	Type                Type                            `json:"type"`
 	Scope               UserScope                       `json:"scope"`
 	ClientID            *string                         `json:"clientId,omitempty"`
@@ -158,7 +159,7 @@ type Principal struct {
 }
 
 // IDStr satisfies usecase.HasID.
-func (p Principal) IDStr() string { return p.ID }
+func (p Principal) IDStr() string { return string(p.ID) }
 
 // IsUser reports whether this principal is a USER (vs SERVICE).
 func (p Principal) IsUser() bool { return p.Type == TypeUser }
@@ -171,7 +172,7 @@ func NewUser(email string, scope UserScope) *Principal {
 	now := time.Now().UTC()
 	identity := NewUserIdentity(email)
 	return &Principal{
-		ID:                       tsid.Generate(tsid.Principal),
+		ID:                       ids.PrincipalID(tsid.Generate(tsid.Principal)),
 		Type:                     TypeUser,
 		Scope:                    scope,
 		Name:                     identity.DisplayName(),
@@ -190,7 +191,7 @@ func NewUser(email string, scope UserScope) *Principal {
 func NewService(serviceAccountID, name string) *Principal {
 	now := time.Now().UTC()
 	return &Principal{
-		ID:                       tsid.Generate(tsid.Principal),
+		ID:                       ids.PrincipalID(tsid.Generate(tsid.Principal)),
 		Type:                     TypeService,
 		Scope:                    ScopeAnchor,
 		Name:                     name,

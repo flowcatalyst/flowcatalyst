@@ -470,7 +470,7 @@ func (s *AuthService) generateTokenWithExpiry(p *principal.Principal, expirySecs
 
 	claims := AccessTokenClaims{
 		Issuer:        s.config.Issuer,
-		Subject:       p.ID,
+		Subject:       string(p.ID),
 		ExpiresAt:     jwt.NewNumericDate(exp),
 		IssuedAt:      jwt.NewNumericDate(now),
 		NotBefore:     jwt.NewNumericDate(now),
@@ -578,7 +578,7 @@ func (s *AuthService) idTokenClaims(p *principal.Principal, clientID string, non
 
 	claims := IDTokenClaims{
 		Issuer:          s.config.Issuer,
-		Subject:         p.ID,
+		Subject:         string(p.ID),
 		ExpiresAt:       jwt.NewNumericDate(exp),
 		IssuedAt:        jwt.NewNumericDate(now),
 		Aud:             clientID,

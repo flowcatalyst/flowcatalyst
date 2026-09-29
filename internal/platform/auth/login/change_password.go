@@ -55,7 +55,7 @@ func (e *Endpoint) handleChangePassword(w http.ResponseWriter, r *http.Request) 
 	// no code; we answer MFA_REQUIRED (+ the user's methods) so it can collect a
 	// code, then resubmit.
 	if e.cfg.MFA != nil {
-		confirmed, err := e.cfg.MFA.ConfirmedMethods(r.Context(), p.ID)
+		confirmed, err := e.cfg.MFA.ConfirmedMethods(r.Context(), string(p.ID))
 		if err != nil {
 			writeServerError(w, "MFA_STATUS_FAILED", "could not check two-factor status")
 			return
@@ -92,13 +92,13 @@ func (e *Endpoint) handleChangePassword(w http.ResponseWriter, r *http.Request) 
 	// the old one, not just future logins. Best-effort: the password is
 	// already changed, so failures are logged rather than surfaced.
 	if e.cfg.MFA != nil {
-		if err := e.cfg.MFA.RevokeAllTrustedDevices(r.Context(), p.ID); err != nil {
+		if err := e.cfg.MFA.RevokeAllTrustedDevices(r.Context(), string(p.ID)); err != nil {
 			slog.Warn("revoke trusted devices after password change failed", "principal", p.ID, "err", err)
 		}
 		e.clearTrustedDeviceCookie(w)
 	}
 	if e.cfg.RefreshTokens != nil {
-		if _, err := e.cfg.RefreshTokens.RevokeAllForPrincipal(r.Context(), p.ID); err != nil {
+		if _, err := e.cfg.RefreshTokens.RevokeAllForPrincipal(r.Context(), string(p.ID)); err != nil {
 			slog.Warn("revoke refresh tokens after password change failed", "principal", p.ID, "err", err)
 		}
 	}
@@ -117,17 +117,17 @@ func (e *Endpoint) verifyAnySecondFactor(r *http.Request, p *principal.Principal
 	for _, m := range confirmed {
 		switch m {
 		case mfa.MethodTOTP:
-			if ok, _ := e.cfg.MFA.VerifyTOTP(ctx, p.ID, code); ok {
+			if ok, _ := e.cfg.MFA.VerifyTOTP(ctx, string(p.ID), code); ok {
 				return true
 			}
 		case mfa.MethodEmailPin:
-			if ok, _ := e.cfg.MFA.VerifyLoginEmailPin(ctx, p.ID, code); ok {
+			if ok, _ := e.cfg.MFA.VerifyLoginEmailPin(ctx, string(p.ID), code); ok {
 				return true
 			}
 		}
 	}
 	if slices.Contains(confirmed, mfa.MethodTOTP) {
-		if ok, _ := e.cfg.MFA.VerifyRecoveryCode(ctx, p.ID, code); ok {
+		if ok, _ := e.cfg.MFA.VerifyRecoveryCode(ctx, string(p.ID), code); ok {
 			return true
 		}
 	}
@@ -146,7 +146,7 @@ func (e *Endpoint) handleChangePasswordSendEmailCode(w http.ResponseWriter, r *h
 		writeJSON(w, http.StatusBadRequest, errBody("NO_MFA", "two-factor is not enabled"))
 		return
 	}
-	confirmed, err := e.cfg.MFA.ConfirmedMethods(r.Context(), p.ID)
+	confirmed, err := e.cfg.MFA.ConfirmedMethods(r.Context(), string(p.ID))
 	if err != nil {
 		writeServerError(w, "MFA_STATUS_FAILED", "could not check two-factor status")
 		return
@@ -164,7 +164,7 @@ func (e *Endpoint) handleChangePasswordSendEmailCode(w http.ResponseWriter, r *h
 		writeJSON(w, http.StatusBadRequest, errBody("NO_EMAIL", "account has no email"))
 		return
 	}
-	if err := e.cfg.MFA.SendLoginEmailPin(r.Context(), p.ID, email); err != nil {
+	if err := e.cfg.MFA.SendLoginEmailPin(r.Context(), string(p.ID), email); err != nil {
 		writeServerError(w, "SEND_FAILED", "could not send the code")
 		return
 	}

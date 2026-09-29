@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/migrate"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
@@ -220,7 +221,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	// (migration 028) — so we store the SA *principal* id, not the SA row id.
 	// This diverges from internal/platform/application/operations/attach_service_account.go
 	// which incorrectly stores sa.ID; that's a separate bug to fix (docs/wire-contract.md).
-	app.ServiceAccountID = &saPrincipal.ID
+	app.ServiceAccountID = ids.StringPtr(&saPrincipal.ID)
 	app.UpdatedAt = time.Now().UTC()
 
 	principalRepo := principal.NewRepository(pool)
@@ -269,7 +270,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	oauthClient := auth.NewOAuthClient(publicClientID, appName+" Service Account Client", auth.OAuthClientConfidential)
 	oauthClient.SecretRef = &secretRef
 	oauthClient.GrantTypes = []string{"client_credentials"}
-	oauthClient.PrincipalID = &saPrincipal.ID
+	oauthClient.PrincipalID = ids.StringPtr(&saPrincipal.ID)
 
 	authRepo := auth.NewRepository(pool)
 	if err := infraPersist(ctx, pool, func(tx *usecasepgx.DbTx) error {

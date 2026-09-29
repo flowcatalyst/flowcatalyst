@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -11,7 +12,7 @@ import (
 )
 
 type DeleteCommand struct {
-	ID string `json:"id"`
+	ID ids.PrincipalID `json:"id"`
 }
 
 // DeleteUser removes a principal and emits [UserDeleted].
@@ -24,7 +25,7 @@ func DeleteUser(repo *principal.Repository) usecaseop.Operation[DeleteCommand, U
 	return usecaseop.Operation[DeleteCommand, UserDeleted]{
 		Name: "DeleteUser",
 		Validate: func(_ context.Context, cmd DeleteCommand) error {
-			if strings.TrimSpace(cmd.ID) == "" {
+			if strings.TrimSpace(string(cmd.ID)) == "" {
 				return usecase.Validation("ID_REQUIRED", "id is required")
 			}
 			return nil
@@ -36,7 +37,7 @@ func DeleteUser(repo *principal.Repository) usecaseop.Operation[DeleteCommand, U
 				return nil, usecase.Internal("REPO", "find_by_id failed", err)
 			}
 			if p == nil {
-				return nil, httperror.NotFound("Principal", cmd.ID)
+				return nil, httperror.NotFound("Principal", string(cmd.ID))
 			}
 			if err := requireUserResourceAccess(ctx, p); err != nil {
 				return nil, err

@@ -4,6 +4,7 @@ package api
 import (
 	"fmt"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
@@ -119,7 +120,7 @@ type UpdatePrincipalRequest struct {
 
 func (r UpdatePrincipalRequest) toCommand(id string) operations.UpdateCommand {
 	return operations.UpdateCommand{
-		ID:     id,
+		ID:     ids.PrincipalID(id),
 		Name:   r.Name,
 		Active: r.Active,
 		Email:  r.Email,
@@ -260,7 +261,7 @@ func fromEntity(p *principal.Principal) PrincipalResponse {
 		}
 	}
 	return PrincipalResponse{
-		ID:                           p.ID,
+		ID:                           string(p.ID),
 		Type:                         string(p.Type),
 		Scope:                        string(p.Scope),
 		ClientID:                     p.ClientID,

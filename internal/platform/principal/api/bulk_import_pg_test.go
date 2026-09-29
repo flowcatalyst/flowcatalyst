@@ -29,7 +29,7 @@ func (noopInviteEmailer) SendInviteRedirect(context.Context, *principal.Principa
 }
 
 func (noopInviteEmailer) InviteLink(_ context.Context, p *principal.Principal, _ *string) (string, error) {
-	return "https://example.test/auth/set-password?token=fake-" + p.ID, nil
+	return string("https://example.test/auth/set-password?token=fake-" + p.ID), nil
 }
 
 // TestBulkImport_DropsForeignDomainAndExisting pins the platform-admin import

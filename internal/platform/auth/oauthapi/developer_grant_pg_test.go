@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	principalops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
@@ -107,10 +108,10 @@ func seedDeveloperGrantFixture(t *testing.T, email string) (principalID, plainte
 		principalops.SetDeveloperCredential(repo),
 		principalops.SetDeveloperCredentialCommand{PrincipalID: userEv.UserID}, testpg.TestEC())
 	require.NoError(t, err)
-	secret, ok := principalops.PopDevClientSecret(userEv.UserID)
+	secret, ok := principalops.PopDevClientSecret(string(userEv.UserID))
 	require.True(t, ok)
 
-	return userEv.UserID, secret
+	return string(userEv.UserID), secret
 }
 
 func TestHandleDeveloperCredentialGrant_Success(t *testing.T) {
@@ -157,7 +158,7 @@ func TestHandleDeveloperCredentialGrant_RoleRevoked(t *testing.T) {
 	roles := role.NewRepository(testpg.Pool(t))
 	_, err := usecaseop.Run(testpg.AnchorCtx(), uow,
 		principalops.AssignRoles(repo, roles),
-		principalops.AssignRolesCommand{UserID: principalID, Roles: []string{}}, testpg.TestEC())
+		principalops.AssignRolesCommand{UserID: ids.PrincipalID(principalID), Roles: []string{}}, testpg.TestEC())
 	require.NoError(t, err)
 
 	s := testStateForDeveloperGrant(t, enc)
@@ -180,7 +181,7 @@ func TestHandleDeveloperCredentialGrant_InactivePrincipal(t *testing.T) {
 	repo := principal.NewRepository(testpg.Pool(t))
 	_, err := usecaseop.Run(testpg.AnchorCtx(), uow,
 		principalops.DeactivateUser(repo),
-		principalops.DeactivateCommand{ID: principalID}, testpg.TestEC())
+		principalops.DeactivateCommand{ID: ids.PrincipalID(principalID)}, testpg.TestEC())
 	require.NoError(t, err)
 
 	s := testStateForDeveloperGrant(t, enc)
@@ -213,7 +214,7 @@ func TestHandleDeveloperCredentialGrant_NoCredentialSet(t *testing.T) {
 	s := testStateForDeveloperGrant(t, enc)
 	rr := doTokenRequest(t, s, url.Values{
 		"grant_type":    {"client_credentials"},
-		"client_id":     {userEv.UserID},
+		"client_id":     {string(userEv.UserID)},
 		"client_secret": {"anything"},
 	})
 
@@ -250,7 +251,7 @@ func TestHandleDeveloperCredentialGrant_FreshSecretIsStoredHashed(t *testing.T) 
 	principalID, plaintext := seedDeveloperGrantFixture(t, "oauth-devgrant-freshhash@example.com")
 
 	repo := principal.NewRepository(testpg.Pool(t))
-	p, err := repo.FindByID(context.Background(), principalID)
+	p, err := repo.FindByID(context.Background(), ids.PrincipalID(principalID))
 	require.NoError(t, err)
 	require.NotNil(t, p)
 	require.NotNil(t, p.UserIdentity)
@@ -285,7 +286,7 @@ func seedLegacyDeveloperGrantFixture(t *testing.T, enc *encryption.Service, emai
 		principalops.AssignRolesCommand{UserID: userEv.UserID, Roles: []string{devRole}}, testpg.TestEC())
 	require.NoError(t, err)
 
-	plaintext = "legacy-dev-secret-" + userEv.UserID
+	plaintext = string("legacy-dev-secret-" + userEv.UserID)
 	legacyRef, err := enc.Encrypt(plaintext)
 	require.NoError(t, err)
 	_, err = testpg.Pool(t).Exec(context.Background(),
@@ -293,7 +294,7 @@ func seedLegacyDeveloperGrantFixture(t *testing.T, enc *encryption.Service, emai
 		legacyRef, userEv.UserID)
 	require.NoError(t, err)
 
-	return userEv.UserID, plaintext
+	return string(userEv.UserID), plaintext
 }
 
 // TestHandleDeveloperCredentialGrant_LegacyEncryptedMigratesPersistedValue
@@ -309,7 +310,7 @@ func TestHandleDeveloperCredentialGrant_LegacyEncryptedMigratesPersistedValue(t 
 	principalID, plaintext := seedLegacyDeveloperGrantFixture(t, enc, "oauth-devgrant-legacymigrate@example.com")
 
 	repo := principal.NewRepository(testpg.Pool(t))
-	before, err := repo.FindByID(context.Background(), principalID)
+	before, err := repo.FindByID(context.Background(), ids.PrincipalID(principalID))
 	require.NoError(t, err)
 	require.NotNil(t, before.UserIdentity.DevClientSecretRef)
 	require.False(t, strings.HasPrefix(*before.UserIdentity.DevClientSecretRef, "hashed:v1:"),
@@ -323,7 +324,7 @@ func TestHandleDeveloperCredentialGrant_LegacyEncryptedMigratesPersistedValue(t 
 	})
 	require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
 
-	after, err := repo.FindByID(context.Background(), principalID)
+	after, err := repo.FindByID(context.Background(), ids.PrincipalID(principalID))
 	require.NoError(t, err)
 	require.NotNil(t, after.UserIdentity.DevClientSecretRef)
 	newRef := *after.UserIdentity.DevClientSecretRef
@@ -343,7 +344,7 @@ func TestHandleDeveloperCredentialGrant_LegacyEncryptedWrongSecretFails(t *testi
 	principalID, _ := seedLegacyDeveloperGrantFixture(t, enc, "oauth-devgrant-legacywrong@example.com")
 
 	repo := principal.NewRepository(testpg.Pool(t))
-	before, err := repo.FindByID(context.Background(), principalID)
+	before, err := repo.FindByID(context.Background(), ids.PrincipalID(principalID))
 	require.NoError(t, err)
 	beforeRef := *before.UserIdentity.DevClientSecretRef
 
@@ -355,7 +356,7 @@ func TestHandleDeveloperCredentialGrant_LegacyEncryptedWrongSecretFails(t *testi
 	})
 	assert.Equal(t, http.StatusUnauthorized, rr.Code)
 
-	after, err := repo.FindByID(context.Background(), principalID)
+	after, err := repo.FindByID(context.Background(), ids.PrincipalID(principalID))
 	require.NoError(t, err)
 	assert.Equal(t, beforeRef, *after.UserIdentity.DevClientSecretRef,
 		"a failed verify must never rewrite the stored ref")

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -11,7 +12,7 @@ import (
 )
 
 type ActivateCommand struct {
-	ID string `json:"id"`
+	ID ids.PrincipalID `json:"id"`
 }
 
 // ActivateUser flips a user principal active and emits [UserActivated].
@@ -25,7 +26,7 @@ func ActivateUser(repo *principal.Repository) usecaseop.Operation[ActivateComman
 	return usecaseop.Operation[ActivateCommand, UserActivated]{
 		Name: "ActivateUser",
 		Validate: func(_ context.Context, cmd ActivateCommand) error {
-			if strings.TrimSpace(cmd.ID) == "" {
+			if strings.TrimSpace(string(cmd.ID)) == "" {
 				return usecase.Validation("ID_REQUIRED", "id is required")
 			}
 			return nil
@@ -37,7 +38,7 @@ func ActivateUser(repo *principal.Repository) usecaseop.Operation[ActivateComman
 				return nil, usecase.Internal("REPO", "find_by_id failed", err)
 			}
 			if p == nil {
-				return nil, httperror.NotFound("Principal", cmd.ID)
+				return nil, httperror.NotFound("Principal", string(cmd.ID))
 			}
 			if err := requireUserResourceAccess(ctx, p); err != nil {
 				return nil, err

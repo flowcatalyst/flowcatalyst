@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
@@ -89,7 +90,7 @@ func (s *State) whoami(w http.ResponseWriter, r *http.Request) {
 	out.AccessibleApplicationIDs = stringSliceOrEmpty(ac.Applications)
 	out.AllApplications = ac.AllApplications
 
-	p, err := s.Principals.FindByID(r.Context(), ac.PrincipalID)
+	p, err := s.Principals.FindByID(r.Context(), ids.PrincipalID(ac.PrincipalID))
 	if err != nil {
 		httperror.Write(w, usecase.Internal("REPO", "principal lookup failed", err))
 		return

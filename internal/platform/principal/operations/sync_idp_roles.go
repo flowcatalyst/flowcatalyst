@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
@@ -23,8 +24,8 @@ const IdpSyncSource = "IDP_SYNC"
 // EmailDomainMapping.AllowedRoleIDs filter. Empty slice = remove all
 // IDP-sourced roles (the user lost every group upstream).
 type SyncIdpRolesCommand struct {
-	UserID        string   `json:"userId"`
-	PlatformRoles []string `json:"platformRoles"`
+	UserID        ids.PrincipalID `json:"userId"`
+	PlatformRoles []string        `json:"platformRoles"`
 }
 
 // SyncIdpRoles replaces the principal's IDP_SYNC-sourced role
@@ -45,7 +46,7 @@ func SyncIdpRoles(principals *principal.Repository, roles *role.Repository) usec
 	return usecaseop.Operation[SyncIdpRolesCommand, RolesAssigned]{
 		Name: "SyncIdpRoles",
 		Validate: func(_ context.Context, cmd SyncIdpRolesCommand) error {
-			if strings.TrimSpace(cmd.UserID) == "" {
+			if strings.TrimSpace(string(cmd.UserID)) == "" {
 				return usecase.Validation("USER_ID_REQUIRED", "User ID is required")
 			}
 			return nil
@@ -57,7 +58,7 @@ func SyncIdpRoles(principals *principal.Repository, roles *role.Repository) usec
 				return nil, usecase.Internal("REPO", "find_by_id failed", err)
 			}
 			if p == nil {
-				return nil, httperror.NotFound("User", cmd.UserID)
+				return nil, httperror.NotFound("User", string(cmd.UserID))
 			}
 			if p.Type != principal.TypeUser {
 				return nil, usecase.BusinessRule("NOT_A_USER",

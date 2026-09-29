@@ -9,6 +9,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
@@ -134,11 +135,11 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	// account's application access via /api/principals/{id}/application-access
 	// (roles + app-access live on the principal, not the service-account row).
 	if p, err := s.Principals.FindByServiceAccount(ctx, in.ID); err == nil && p != nil {
-		resp.PrincipalID = &p.ID
+		resp.PrincipalID = ids.StringPtr(&p.ID)
 		// Surface the public client_id of the OAuth client provisioned for
 		// this account's principal — the earliest by (created_at, id) when
 		// several exist. Absent when none is linked.
-		if clients, err := s.OAuthClients.FindByPrincipalID(ctx, p.ID); err == nil && len(clients) > 0 {
+		if clients, err := s.OAuthClients.FindByPrincipalID(ctx, string(p.ID)); err == nil && len(clients) > 0 {
 			resp.OAuthClientID = &clients[0].ClientID
 		}
 	}

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
@@ -13,8 +14,8 @@ import (
 )
 
 type AssignApplicationAccessCommand struct {
-	UserID         string   `json:"userId"`
-	ApplicationIDs []string `json:"applicationIds"`
+	UserID         ids.PrincipalID `json:"userId"`
+	ApplicationIDs []string        `json:"applicationIds"`
 	// AllApplications, when non-nil, sets the principal's all-applications flag.
 	// Nil leaves it unchanged.
 	AllApplications *bool `json:"allApplications,omitempty"`
@@ -33,7 +34,7 @@ func AssignApplicationAccess(repo *principal.Repository, applications *applicati
 	return usecaseop.Operation[AssignApplicationAccessCommand, ApplicationAccessAssigned]{
 		Name: "AssignApplicationAccess",
 		Validate: func(_ context.Context, cmd AssignApplicationAccessCommand) error {
-			if strings.TrimSpace(cmd.UserID) == "" {
+			if strings.TrimSpace(string(cmd.UserID)) == "" {
 				return usecase.Validation("USER_ID_REQUIRED", "User ID is required")
 			}
 			return nil
@@ -45,7 +46,7 @@ func AssignApplicationAccess(repo *principal.Repository, applications *applicati
 				return nil, usecase.Internal("REPO", "find_by_id failed", err)
 			}
 			if p == nil {
-				return nil, httperror.NotFound("User", cmd.UserID)
+				return nil, httperror.NotFound("User", string(cmd.UserID))
 			}
 			if err := requireUserAdmin(ctx, p); err != nil {
 				return nil, err

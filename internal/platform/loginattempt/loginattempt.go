@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
@@ -348,7 +349,7 @@ func rowToLoginAttempt(row dbq.IamLoginAttempt) LoginAttempt {
 		Outcome:       outcome,
 		FailureReason: row.FailureReason,
 		Identifier:    row.Identifier,
-		PrincipalID:   row.PrincipalID,
+		PrincipalID:   ids.StringPtr(row.PrincipalID),
 		IPAddress:     row.IpAddress,
 		UserAgent:     row.UserAgent,
 		AttemptedAt:   row.AttemptedAt,

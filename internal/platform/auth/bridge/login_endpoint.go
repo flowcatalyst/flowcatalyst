@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/oauthapi"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
@@ -662,9 +663,9 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 	// (docs/spec/sso-login-attempts.md). isPortal is always false on this
 	// path — the portal sink returned earlier — kept for symmetry with the
 	// refusal call sites above.
-	e.recordSSOAttempt(r, isPortal, loginattempt.OutcomeSuccess, &email, &p.ID, "")
+	e.recordSSOAttempt(r, isPortal, loginattempt.OutcomeSuccess, &email, ids.StringPtr(&p.ID), "")
 
-	e.SessionWriter(w, r, p.ID, target)
+	e.SessionWriter(w, r, string(p.ID), target)
 }
 
 // buildAuthorizeRedirect resumes a chained OAuth flow: a relative /oauth/authorize

@@ -27,6 +27,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
@@ -414,7 +415,7 @@ func (s *State) rewriteDevClientSecretRef(ctx context.Context, principalID, plai
 	if s.Principals == nil {
 		return
 	}
-	if err := s.Principals.RewriteDevClientSecretRef(ctx, principalID, s.Encryption.Hash(plaintext)); err != nil {
+	if err := s.Principals.RewriteDevClientSecretRef(ctx, ids.PrincipalID(principalID), s.Encryption.Hash(plaintext)); err != nil {
 		slog.Warn("could not migrate developer client secret to hashed form", "principal_id", principalID, "err", err)
 	}
 }
@@ -559,7 +560,7 @@ func (s *State) handleClientCredentialsGrant(w http.ResponseWriter, r *http.Requ
 		writeOAuthError(w, http.StatusBadRequest, "unauthorized_client", "Client is not configured for this grant")
 		return
 	}
-	p, err := s.Principals.FindByID(r.Context(), *client.PrincipalID)
+	p, err := s.Principals.FindByID(r.Context(), ids.PrincipalID(*client.PrincipalID))
 	if err != nil {
 		writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 		return
@@ -593,7 +594,7 @@ const developerRoleName = "platform:developer"
 // just "does a secret exist") so revoking the role cuts off new tokens
 // immediately, independent of whether the secret row still exists.
 func (s *State) handleDeveloperCredentialGrant(w http.ResponseWriter, r *http.Request, req tokenRequest) {
-	p, err := s.Principals.FindByID(r.Context(), req.ClientID)
+	p, err := s.Principals.FindByID(r.Context(), ids.PrincipalID(req.ClientID))
 	if err != nil {
 		writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 		return
@@ -620,12 +621,12 @@ func (s *State) handleDeveloperCredentialGrant(w http.ResponseWriter, r *http.Re
 	devOK, devRehash := s.verifyClientSecret(*p.UserIdentity.DevClientSecretRef, req.ClientSecret)
 	if !devOK {
 		reason := "Invalid developer client secret"
-		s.recordAttempt(r, loginattempt.AttemptDeveloperToken, loginattempt.OutcomeFailure, req.ClientID, &p.ID, &reason)
+		s.recordAttempt(r, loginattempt.AttemptDeveloperToken, loginattempt.OutcomeFailure, req.ClientID, ids.StringPtr(&p.ID), &reason)
 		writeOAuthError(w, http.StatusUnauthorized, "invalid_client", "Invalid client credentials")
 		return
 	}
 	if devRehash {
-		s.rewriteDevClientSecretRef(r.Context(), p.ID, req.ClientSecret)
+		s.rewriteDevClientSecretRef(r.Context(), string(p.ID), req.ClientSecret)
 	}
 
 	s.mintClientCredentialsToken(w, r, p, req, loginattempt.AttemptDeveloperToken,
@@ -653,7 +654,7 @@ func (s *State) mintClientCredentialsToken(
 		// The caller explicitly requested permission scopes but holds none of
 		// them — a scope request can't escalate, so this is a client error.
 		reason := "requested scope exceeds granted permissions"
-		s.recordAttempt(r, attemptType, loginattempt.OutcomeFailure, req.ClientID, &p.ID, &reason)
+		s.recordAttempt(r, attemptType, loginattempt.OutcomeFailure, req.ClientID, ids.StringPtr(&p.ID), &reason)
 		writeOAuthError(w, http.StatusBadRequest, "invalid_scope",
 			"Requested scope exceeds "+deniedScopeSubject)
 		return
@@ -663,7 +664,7 @@ func (s *State) mintClientCredentialsToken(
 		writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 		return
 	}
-	s.recordAttempt(r, attemptType, loginattempt.OutcomeSuccess, req.ClientID, &p.ID, nil)
+	s.recordAttempt(r, attemptType, loginattempt.OutcomeSuccess, req.ClientID, ids.StringPtr(&p.ID), nil)
 	// A service account just authenticated. (The developer-credential path
 	// through here is a USER principal with no linked account, so this is a
 	// no-op for it.) Best-effort — never fail a token on a bookkeeping write.
@@ -732,7 +733,7 @@ func (s *State) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	p, err := s.Principals.FindByID(r.Context(), code.PrincipalID)
+	p, err := s.Principals.FindByID(r.Context(), ids.PrincipalID(code.PrincipalID))
 	if err != nil {
 		writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 		return
@@ -772,7 +773,7 @@ func (s *State) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Requ
 
 	var refreshToken *string
 	if scopeHas(scope, "offline_access") {
-		raw, entity, err := grantstore.GenerateTokenPair(p.ID)
+		raw, entity, err := grantstore.GenerateTokenPair(string(p.ID))
 		if err != nil {
 			writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 			return
@@ -849,7 +850,7 @@ func (s *State) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request, 
 	}
 	stored := res.Stored
 
-	p, err := s.Principals.FindByID(r.Context(), stored.PrincipalID)
+	p, err := s.Principals.FindByID(r.Context(), ids.PrincipalID(stored.PrincipalID))
 	if err != nil {
 		writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 		return

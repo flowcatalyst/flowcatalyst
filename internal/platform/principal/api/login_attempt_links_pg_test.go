@@ -67,7 +67,7 @@ func TestGetPrincipal_ServiceAccountID(t *testing.T) {
 		}, testpg.TestEC())
 	require.NoError(t, err)
 
-	userOut, err := s.getByID(testpg.AnchorCtx(), &apicommon.IDInput{ID: ev.UserID})
+	userOut, err := s.getByID(testpg.AnchorCtx(), &apicommon.IDInput{ID: string(ev.UserID)})
 	require.NoError(t, err)
 	assert.Nil(t, userOut.Body.ServiceAccountID, "a USER principal must not carry serviceAccountId")
 }

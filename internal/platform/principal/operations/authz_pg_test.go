@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/operations"
@@ -88,22 +89,22 @@ func TestRequireUserResourceAccess_CrossTenantAndMissing_IdenticalNotFound(t *te
 	}{
 		{"update", func(id string) error {
 			_, err := usecaseop.Run(callerCtx, uow, operations.UpdateUser(repo),
-				operations.UpdateCommand{ID: id, Name: new("New Name")}, ec)
+				operations.UpdateCommand{ID: ids.PrincipalID(id), Name: new("New Name")}, ec)
 			return err
 		}},
 		{"activate", func(id string) error {
 			_, err := usecaseop.Run(callerCtx, uow, operations.ActivateUser(repo),
-				operations.ActivateCommand{ID: id}, ec)
+				operations.ActivateCommand{ID: ids.PrincipalID(id)}, ec)
 			return err
 		}},
 		{"deactivate", func(id string) error {
 			_, err := usecaseop.Run(callerCtx, uow, operations.DeactivateUser(repo),
-				operations.DeactivateCommand{ID: id}, ec)
+				operations.DeactivateCommand{ID: ids.PrincipalID(id)}, ec)
 			return err
 		}},
 		{"delete", func(id string) error {
 			_, err := usecaseop.Run(callerCtx, uow, operations.DeleteUser(repo),
-				operations.DeleteCommand{ID: id}, ec)
+				operations.DeleteCommand{ID: ids.PrincipalID(id)}, ec)
 			return err
 		}},
 	}
@@ -114,12 +115,12 @@ func TestRequireUserResourceAccess_CrossTenantAndMissing_IdenticalNotFound(t *te
 			// shared one) and its own definitely-nonexistent id.
 			target := mustCreateUser(t, repo, uow, "prn-rua-"+tc.name+"@example.com", "CLIENT", &clientB)
 
-			crossErr := tc.run(target.UserID)
+			crossErr := tc.run(string(target.UserID))
 			missingErr := tc.run("prn_doesnotexist_" + tc.name)
 
 			testpg.RequireUsecaseError(t, crossErr, usecase.KindNotFound, "Principal_NOT_FOUND")
 			testpg.RequireUsecaseError(t, missingErr, usecase.KindNotFound, "Principal_NOT_FOUND")
-			assertCanonicalNotFound(t, "Principal", target.UserID, crossErr)
+			assertCanonicalNotFound(t, "Principal", string(target.UserID), crossErr)
 			assertCanonicalNotFound(t, "Principal", "prn_doesnotexist_"+tc.name, missingErr)
 
 			// Confirm nothing was touched: the cross-tenant target still exists,
@@ -171,17 +172,17 @@ func TestRequireUserAdmin_CrossTenantAndMissing_IdenticalNotFound(t *testing.T) 
 	}{
 		{"assign_roles", func(id string) error {
 			_, err := usecaseop.Run(callerCtx, uow, operations.AssignRoles(repo, roles),
-				operations.AssignRolesCommand{UserID: id, Roles: nil}, ec)
+				operations.AssignRolesCommand{UserID: ids.PrincipalID(id), Roles: nil}, ec)
 			return err
 		}},
 		{"assign_application_access", func(id string) error {
 			_, err := usecaseop.Run(callerCtx, uow, operations.AssignApplicationAccess(repo, apps),
-				operations.AssignApplicationAccessCommand{UserID: id, ApplicationIDs: nil}, ec)
+				operations.AssignApplicationAccessCommand{UserID: ids.PrincipalID(id), ApplicationIDs: nil}, ec)
 			return err
 		}},
 		{"set_developer_credential_admin_branch", func(id string) error {
 			_, err := usecaseop.Run(callerCtx, uow, operations.SetDeveloperCredential(repo),
-				operations.SetDeveloperCredentialCommand{PrincipalID: id}, ec)
+				operations.SetDeveloperCredentialCommand{PrincipalID: ids.PrincipalID(id)}, ec)
 			return err
 		}},
 	}
@@ -190,12 +191,12 @@ func TestRequireUserAdmin_CrossTenantAndMissing_IdenticalNotFound(t *testing.T) 
 		t.Run(tc.name, func(t *testing.T) {
 			target := mustCreateUser(t, repo, uow, "prn-ruadm-"+tc.name+"@example.com", "CLIENT", &clientB)
 
-			crossErr := tc.run(target.UserID)
+			crossErr := tc.run(string(target.UserID))
 			missingErr := tc.run("prn_doesnotexist_" + tc.name)
 
 			testpg.RequireUsecaseError(t, crossErr, usecase.KindNotFound, "User_NOT_FOUND")
 			testpg.RequireUsecaseError(t, missingErr, usecase.KindNotFound, "User_NOT_FOUND")
-			assertCanonicalNotFound(t, "User", target.UserID, crossErr)
+			assertCanonicalNotFound(t, "User", string(target.UserID), crossErr)
 			assertCanonicalNotFound(t, "User", "prn_doesnotexist_"+tc.name, missingErr)
 
 			still, ferr := repo.FindByID(context.Background(), target.UserID)

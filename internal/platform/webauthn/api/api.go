@@ -23,6 +23,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-webauthn/webauthn/protocol"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/loginbackoff"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/provider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt"
@@ -102,7 +103,7 @@ func (s *State) registerBegin(ctx context.Context, in *registerBeginInput) (*reg
 	if ac == nil || ac.PrincipalID == "" {
 		return nil, usecase.Authorization("UNAUTHENTICATED", "authentication required")
 	}
-	p, err := s.Principals.FindByID(ctx, ac.PrincipalID)
+	p, err := s.Principals.FindByID(ctx, ids.PrincipalID(ac.PrincipalID))
 	if err != nil || p == nil {
 		return nil, httperror.NotFound("Principal", ac.PrincipalID)
 	}
@@ -115,12 +116,12 @@ func (s *State) registerBegin(ctx context.Context, in *registerBeginInput) (*reg
 		displayName = *in.Body.DisplayName
 	}
 
-	existing, err := s.Service.Credentials().LibraryCredentialsByPrincipal(ctx, p.ID)
+	existing, err := s.Service.Credentials().LibraryCredentialsByPrincipal(ctx, string(p.ID))
 	if err != nil {
 		return nil, usecase.Internal("REPO", "list credentials failed", err)
 	}
 	user := &webauthn.PrincipalUser{
-		PrincipalID: p.ID,
+		PrincipalID: string(p.ID),
 		DisplayName: displayName,
 		Username:    email,
 		Credentials: existing,
@@ -135,7 +136,7 @@ func (s *State) registerBegin(ctx context.Context, in *registerBeginInput) (*reg
 		return nil, usecase.Internal("WEBAUTHN", "begin registration failed", err)
 	}
 	stateID := newUUID()
-	if err := s.Service.Ceremonies().StoreRegistration(ctx, stateID, p.ID, sessionData, &displayName); err != nil {
+	if err := s.Service.Ceremonies().StoreRegistration(ctx, stateID, string(p.ID), sessionData, &displayName); err != nil {
 		return nil, usecase.Internal("REPO", "store ceremony failed", err)
 	}
 	return &registerBeginOutput{Body: RegisterBeginResponse{StateID: stateID, Options: options}}, nil
@@ -175,11 +176,11 @@ func (s *State) registerComplete(ctx context.Context, in *registerCompleteInput)
 		return nil, httperror.Forbidden("registration ceremony belongs to a different principal")
 	}
 
-	p, err := s.Principals.FindByID(ctx, consumed.PrincipalID)
+	p, err := s.Principals.FindByID(ctx, ids.PrincipalID(consumed.PrincipalID))
 	if err != nil || p == nil {
 		return nil, httperror.NotFound("Principal", consumed.PrincipalID)
 	}
-	user := &webauthn.PrincipalUser{PrincipalID: p.ID, DisplayName: p.Name}
+	user := &webauthn.PrincipalUser{PrincipalID: string(p.ID), DisplayName: p.Name}
 
 	parsed, err := protocol.ParseCredentialCreationResponseBody(io.NopCloser(bytes.NewReader(in.Body.Credential)))
 	if err != nil {
@@ -237,12 +238,12 @@ func (s *State) authenticateBegin(ctx context.Context, in *authenticateBeginInpu
 	if p == nil || !p.Active {
 		return &authenticateBeginOutput{Body: AuthenticateBeginResponse{StateID: newUUID(), Options: decoyChallenge(s.Service.RPID())}}, nil
 	}
-	creds, err := s.Service.Credentials().LibraryCredentialsByPrincipal(ctx, p.ID)
+	creds, err := s.Service.Credentials().LibraryCredentialsByPrincipal(ctx, string(p.ID))
 	if err != nil || len(creds) == 0 {
 		return &authenticateBeginOutput{Body: AuthenticateBeginResponse{StateID: newUUID(), Options: decoyChallenge(s.Service.RPID())}}, nil
 	}
 	user := &webauthn.PrincipalUser{
-		PrincipalID: p.ID,
+		PrincipalID: string(p.ID),
 		DisplayName: p.Name,
 		Credentials: creds,
 	}
@@ -251,7 +252,7 @@ func (s *State) authenticateBegin(ctx context.Context, in *authenticateBeginInpu
 		return nil, usecase.Internal("WEBAUTHN", "begin login failed", err)
 	}
 	stateID := newUUID()
-	if err := s.Service.Ceremonies().StoreAuthentication(ctx, stateID, &p.ID, sessionData); err != nil {
+	if err := s.Service.Ceremonies().StoreAuthentication(ctx, stateID, ids.StringPtr(&p.ID), sessionData); err != nil {
 		return nil, usecase.Internal("REPO", "store ceremony failed", err)
 	}
 	return &authenticateBeginOutput{Body: AuthenticateBeginResponse{StateID: stateID, Options: options}}, nil
@@ -276,7 +277,7 @@ func (s *State) recordPasskeyAttempt(ctx context.Context, p *principal.Principal
 	email := strings.ToLower(strings.TrimSpace(p.UserIdentity.Email))
 	a := loginattempt.New(loginattempt.AttemptUserLogin, outcome)
 	a.Identifier = &email
-	a.PrincipalID = &p.ID
+	a.PrincipalID = ids.StringPtr(&p.ID)
 	if ip := ratelimit.RightmostForwardedFor(in.XForwardedFor); ip != "" {
 		a.IPAddress = &ip
 	}
@@ -310,16 +311,16 @@ func (s *State) authenticateComplete(ctx context.Context, in *authenticateComple
 	if err != nil || consumed == nil || consumed.PrincipalID == nil {
 		return nil, invalidCredentialsErr()
 	}
-	p, err := s.Principals.FindByID(ctx, *consumed.PrincipalID)
+	p, err := s.Principals.FindByID(ctx, ids.PrincipalID(*consumed.PrincipalID))
 	if err != nil || p == nil || !p.Active {
 		return nil, invalidCredentialsErr()
 	}
-	creds, err := s.Service.Credentials().LibraryCredentialsByPrincipal(ctx, p.ID)
+	creds, err := s.Service.Credentials().LibraryCredentialsByPrincipal(ctx, string(p.ID))
 	if err != nil || len(creds) == 0 {
 		return nil, invalidCredentialsErr()
 	}
 	user := &webauthn.PrincipalUser{
-		PrincipalID: p.ID,
+		PrincipalID: string(p.ID),
 		DisplayName: p.Name,
 		Credentials: creds,
 	}
@@ -336,7 +337,7 @@ func (s *State) authenticateComplete(ctx context.Context, in *authenticateComple
 		return nil, invalidCredentialsErr()
 	}
 
-	ec := usecase.NewExecutionContext(p.ID)
+	ec := usecase.NewExecutionContext(string(p.ID))
 	// Counter persistence failure is non-fatal; session still issued.
 	_, _ = usecaseop.Run(ctx, s.UoW, operations.Authenticate(s.Creds),
 		operations.AuthenticateCommand{StateID: in.Body.StateID, UpdatedCredential: *cred}, ec)
@@ -360,7 +361,7 @@ func (s *State) authenticateComplete(ctx context.Context, in *authenticateComple
 	if ttl <= 0 {
 		ttl = 24 * time.Hour
 	}
-	token, err := s.Provider.MintSessionToken(ctx, p.ID, ttl)
+	token, err := s.Provider.MintSessionToken(ctx, string(p.ID), ttl)
 	if err != nil {
 		return nil, usecase.Internal("MINT_FAILED", "failed to mint session token", err)
 	}
@@ -381,7 +382,7 @@ func (s *State) authenticateComplete(ctx context.Context, in *authenticateComple
 	return &authenticateCompleteOutput{
 		SetCookie: cookie.String(),
 		Body: WebauthnAuthenticateCompleteResponse{
-			PrincipalID: p.ID,
+			PrincipalID: string(p.ID),
 			Email:       email,
 			Name:        p.Name,
 			Roles:       roles,

@@ -42,7 +42,7 @@ func TestUserinfoAcceptsIdentityToken(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if resp.Sub != p.ID {
+	if resp.Sub != string(p.ID) {
 		t.Errorf("sub = %q, want %q", resp.Sub, p.ID)
 	}
 	if resp.Email == nil || *resp.Email != "u@example.com" {

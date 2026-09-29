@@ -13,8 +13,8 @@ import (
 )
 
 type GrantClientAccessCommand struct {
-	UserID   string `json:"userId"`
-	ClientID string `json:"clientId"`
+	UserID   ids.PrincipalID `json:"userId"`
+	ClientID string          `json:"clientId"`
 }
 
 // GrantClientAccess records a PARTNER user's access to a specific client and
@@ -30,7 +30,7 @@ func GrantClientAccess(repo *principal.Repository, clients *client.Repository, g
 	return usecaseop.Operation[GrantClientAccessCommand, ClientAccessGranted]{
 		Name: "GrantClientAccess",
 		Validate: func(_ context.Context, cmd GrantClientAccessCommand) error {
-			if strings.TrimSpace(cmd.UserID) == "" {
+			if strings.TrimSpace(string(cmd.UserID)) == "" {
 				return usecase.Validation("USER_ID_REQUIRED", "User ID is required")
 			}
 			if strings.TrimSpace(cmd.ClientID) == "" {
@@ -45,7 +45,7 @@ func GrantClientAccess(repo *principal.Repository, clients *client.Repository, g
 				return nil, usecase.Internal("REPO", "find_user failed", err)
 			}
 			if p == nil {
-				return nil, httperror.NotFound("User", cmd.UserID)
+				return nil, httperror.NotFound("User", string(cmd.UserID))
 			}
 			if p.Type != principal.TypeUser {
 				return nil, usecase.BusinessRule("NOT_A_USER",
@@ -64,7 +64,7 @@ func GrantClientAccess(repo *principal.Repository, clients *client.Repository, g
 				return nil, httperror.NotFound("Client", cmd.ClientID)
 			}
 
-			existing, err := grants.FindByPrincipalAndClient(ctx, ids.PrincipalID(cmd.UserID), ids.ClientID(cmd.ClientID))
+			existing, err := grants.FindByPrincipalAndClient(ctx, cmd.UserID, ids.ClientID(cmd.ClientID))
 			if err != nil {
 				return nil, usecase.Internal("REPO", "find_existing_grant failed", err)
 			}
@@ -72,7 +72,7 @@ func GrantClientAccess(repo *principal.Repository, clients *client.Repository, g
 				return nil, usecase.BusinessRule("GRANT_EXISTS", "User already has access to this client")
 			}
 
-			grant := principal.NewClientAccessGrant(ids.PrincipalID(cmd.UserID), ids.ClientID(cmd.ClientID), ids.PrincipalID(ec.PrincipalID))
+			grant := principal.NewClientAccessGrant(cmd.UserID, ids.ClientID(cmd.ClientID), ids.PrincipalID(ec.PrincipalID))
 
 			event := ClientAccessGranted{
 				Metadata: usecase.NewEventMetadata(ec, ClientAccessGrantedType, Source, subjectFor(p.ID)),

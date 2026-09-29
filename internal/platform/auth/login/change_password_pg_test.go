@@ -37,7 +37,7 @@ func sendEmailCodeState(t *testing.T, email_ string, confirmed ...mfa.MethodType
 
 	mfaRepo := mfa.NewRepository(pool)
 	for _, mt := range confirmed {
-		m := mfa.NewMethod(userEv.UserID, mt)
+		m := mfa.NewMethod(string(userEv.UserID), mt)
 		now := time.Now().UTC()
 		m.ConfirmedAt = &now
 		require.NoError(t, mfaRepo.InsertMethod(testpg.AnchorCtx(), m))
@@ -48,7 +48,7 @@ func sendEmailCodeState(t *testing.T, email_ string, confirmed ...mfa.MethodType
 		Principals: principals,
 		MFA:        mfaSvc,
 	})
-	return e, userEv.UserID
+	return e, string(userEv.UserID)
 }
 
 func doSendEmailCode(t *testing.T, e *Endpoint, principalID string) (int, map[string]any) {

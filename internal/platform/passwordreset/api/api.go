@@ -18,6 +18,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/login"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/mfatoken"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordhash"
@@ -224,14 +225,14 @@ func (e *principalEmailer) SendResetEmail(ctx context.Context, p *principal.Prin
 	if p == nil || p.UserIdentity == nil || strings.TrimSpace(p.UserIdentity.Email) == "" {
 		return nil
 	}
-	if err := e.tokens.DeleteByPrincipalID(ctx, p.ID); err != nil {
+	if err := e.tokens.DeleteByPrincipalID(ctx, string(p.ID)); err != nil {
 		return err
 	}
 	raw, err := generateRawToken()
 	if err != nil {
 		return err
 	}
-	tok := passwordreset.New(p.ID, hashToken(raw), time.Now().UTC().Add(resetTokenTTL))
+	tok := passwordreset.New(string(p.ID), hashToken(raw), time.Now().UTC().Add(resetTokenTTL))
 	tok.Reset2FA = reset2FA
 	if err := e.tokens.Insert(ctx, tok); err != nil {
 		return err
@@ -325,7 +326,7 @@ func (e *principalEmailer) SendInviteRedirect(ctx context.Context, p *principal.
 	if p == nil || p.UserIdentity == nil || strings.TrimSpace(p.UserIdentity.Email) == "" {
 		return nil
 	}
-	link, err := e.mintInviteLink(ctx, p.ID, redirectURI)
+	link, err := e.mintInviteLink(ctx, string(p.ID), redirectURI)
 	if err != nil {
 		return err
 	}
@@ -340,7 +341,7 @@ func (e *principalEmailer) InviteLink(ctx context.Context, p *principal.Principa
 	if p == nil || p.UserIdentity == nil || strings.TrimSpace(p.UserIdentity.Email) == "" {
 		return "", nil
 	}
-	return e.mintInviteLink(ctx, p.ID, redirectURI)
+	return e.mintInviteLink(ctx, string(p.ID), redirectURI)
 }
 
 // State holds the deps the password-reset handlers reach into.
@@ -527,19 +528,19 @@ func (s *State) tryIssueToken(ctx context.Context, email string, redirectURI *st
 	// authenticator → client-admin approval queue instead of a link) is opt-in
 	// via RequireStrongFactorForReset. Either way, a Require2FA-domain user who
 	// isn't enrolled is forced into 2FA setup at confirm time (postResetTwoFactor).
-	strong := s.hasStrongFactor(ctx, p.ID)
+	strong := s.hasStrongFactor(ctx, string(p.ID))
 	if !strong && s.RequireStrongFactorForReset {
 		return s.queueApproval(ctx, p)
 	}
 
-	if err := s.Tokens.DeleteByPrincipalID(ctx, p.ID); err != nil {
+	if err := s.Tokens.DeleteByPrincipalID(ctx, string(p.ID)); err != nil {
 		return err
 	}
 	raw, err := generateRawToken()
 	if err != nil {
 		return err
 	}
-	tok := passwordreset.New(p.ID, hashToken(raw), time.Now().UTC().Add(resetTokenTTL))
+	tok := passwordreset.New(string(p.ID), hashToken(raw), time.Now().UTC().Add(resetTokenTTL))
 	tok.RequiresFactor = strong
 	// Carried to the confirm response (resp.RedirectURI) so the SPA resumes
 	// the authorize round-trip — /oauth/authorize sends a user with no session
@@ -704,10 +705,10 @@ func (s *State) queueApproval(ctx context.Context, p *principal.Principal) error
 	if s.Approvals == nil || p.ClientID == nil {
 		return nil
 	}
-	if pending, _ := s.Approvals.HasPending(ctx, p.ID); pending {
+	if pending, _ := s.Approvals.HasPending(ctx, string(p.ID)); pending {
 		return nil
 	}
-	req := resetapproval.New(p.ID, p.ClientID, s.approvalTTL())
+	req := resetapproval.New(string(p.ID), p.ClientID, s.approvalTTL())
 	if err := s.Approvals.Insert(ctx, req); err != nil {
 		return err
 	}
@@ -826,7 +827,7 @@ func (s *State) confirmReset(w http.ResponseWriter, r *http.Request) {
 	// atomically via ResetPassword. The unauthenticated reset is "system".
 	ec := usecase.NewExecutionContext("system")
 	if _, err := usecaseop.Run(r.Context(), s.UoW, principalops.ResetPassword(s.Principals),
-		principalops.ResetPasswordCommand{ID: t.PrincipalID, NewPassword: body.Password}, ec); err != nil {
+		principalops.ResetPasswordCommand{ID: ids.PrincipalID(t.PrincipalID), NewPassword: body.Password}, ec); err != nil {
 		httperror.Write(w, err)
 		return
 	}
@@ -881,7 +882,7 @@ func shouldAttemptSessionMint(purpose passwordreset.Purpose, status string, sess
 // caller). Best-effort: a lookup or mint failure just leaves the user to sign
 // in normally — the password write already succeeded.
 func (s *State) maybeEstablishSession(w http.ResponseWriter, ctx context.Context, principalID string, resp *confirmResponse) {
-	p, err := s.Principals.FindByID(ctx, principalID)
+	p, err := s.Principals.FindByID(ctx, ids.PrincipalID(principalID))
 	if err != nil || p == nil {
 		return
 	}
@@ -892,7 +893,7 @@ func (s *State) maybeEstablishSession(w http.ResponseWriter, ctx context.Context
 	if s.Policy.Mappings != nil && s.Policy.Evaluate(ctx, emailAddr).Requires2FA() {
 		return
 	}
-	token, err := s.Sessions.MintSessionToken(ctx, p.ID, login.SessionTTL)
+	token, err := s.Sessions.MintSessionToken(ctx, string(p.ID), login.SessionTTL)
 	if err != nil {
 		slog.Warn("post-invite session mint failed", "principal", p.ID, "err", err)
 		return
@@ -940,7 +941,7 @@ type confirmResponse struct {
 func (s *State) postResetTwoFactor(ctx context.Context, t *passwordreset.Token) confirmResponse {
 	ok := confirmResponse{Status: "ok", Message: "Password reset successfully."}
 
-	p, err := s.Principals.FindByID(ctx, t.PrincipalID)
+	p, err := s.Principals.FindByID(ctx, ids.PrincipalID(t.PrincipalID))
 	if err != nil || p == nil {
 		return ok
 	}
@@ -952,21 +953,21 @@ func (s *State) postResetTwoFactor(ctx context.Context, t *passwordreset.Token) 
 	if s.MFA != nil {
 		// reset_2fa tokens clear all enrolled factors → forces re-enrollment.
 		if t.Reset2FA {
-			if err := s.MFA.ResetAll(ctx, p.ID); err != nil {
+			if err := s.MFA.ResetAll(ctx, string(p.ID)); err != nil {
 				slog.Warn("2FA reset during password reset failed", "principal", p.ID, "err", err)
 			} else {
 				s.Notifier.TwoFactorReset(ctx, emailAddr)
 			}
 		}
 		// Any password change invalidates remembered devices (hygiene).
-		if err := s.MFA.RevokeAllTrustedDevices(ctx, p.ID); err != nil {
+		if err := s.MFA.RevokeAllTrustedDevices(ctx, string(p.ID)); err != nil {
 			slog.Warn("revoke trusted devices failed", "principal", p.ID, "err", err)
 		}
 	}
 	// Refresh tokens minted under the old credential die with it — same
 	// posture as the self-service change-password path. Best-effort.
 	if s.RefreshTokens != nil {
-		if _, err := s.RefreshTokens.RevokeAllForPrincipal(ctx, p.ID); err != nil {
+		if _, err := s.RefreshTokens.RevokeAllForPrincipal(ctx, string(p.ID)); err != nil {
 			slog.Warn("revoke refresh tokens after reset failed", "principal", p.ID, "err", err)
 		}
 	}
@@ -982,7 +983,7 @@ func (s *State) postResetTwoFactor(ctx context.Context, t *passwordreset.Token) 
 	if !ev.Requires2FA() {
 		return ok
 	}
-	enrolled, err := s.MFA.HasConfirmedMethod(ctx, p.ID)
+	enrolled, err := s.MFA.HasConfirmedMethod(ctx, string(p.ID))
 	if err != nil {
 		slog.Warn("2FA enrollment check failed", "principal", p.ID, "err", err)
 		return ok
@@ -990,7 +991,7 @@ func (s *State) postResetTwoFactor(ctx context.Context, t *passwordreset.Token) 
 	if enrolled {
 		return ok
 	}
-	tok, err := s.MFATokens.Mint(p.ID, mfatoken.PurposeEnroll, s.enrollTTL())
+	tok, err := s.MFATokens.Mint(string(p.ID), mfatoken.PurposeEnroll, s.enrollTTL())
 	if err != nil {
 		slog.Error("mint enroll token failed", "principal", p.ID, "err", err)
 		return ok

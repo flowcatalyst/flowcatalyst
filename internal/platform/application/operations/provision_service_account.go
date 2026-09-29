@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	authops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/operations"
@@ -120,7 +121,7 @@ func ProvisionServiceAccount(
 			oauthClientID := tsid.Generate(tsid.OAuthClient)
 			oc := platformauth.NewOAuthClient(oauthClientID, app.Name+" Service Account Client", platformauth.OAuthClientConfidential)
 			oc.SetSecretRef(ref)
-			oc.PrincipalID = &saPrincipal.ID
+			oc.PrincipalID = ids.StringPtr(&saPrincipal.ID)
 			oc.GrantTypes = []string{"client_credentials", "refresh_token"}
 			oc.Scopes = []string{"openid"}
 			// Limit the OAuth client to the application it was provisioned under
@@ -171,7 +172,7 @@ func ProvisionServiceAccount(
 			}
 
 			// 3. Attach the SA's principal to the application.
-			app.ServiceAccountID = &saPrincipal.ID
+			app.ServiceAccountID = ids.StringPtr(&saPrincipal.ID)
 			app.UpdatedAt = time.Now().UTC()
 			attached := ApplicationServiceAccountProvisionedEvent{
 				Metadata:           usecase.NewEventMetadata(ec, ApplicationServiceAccountProvisioned, Source, subjectFor(app.ID)),
@@ -196,7 +197,7 @@ func ProvisionServiceAccount(
 				ServiceAccountID:   sa.ID,
 				ServiceAccountCode: saCode,
 				ServiceAccountName: saName,
-				ServicePrincipalID: saPrincipal.ID,
+				ServicePrincipalID: string(saPrincipal.ID),
 				OAuthClientRowID:   oc.ID,
 				OAuthClientID:      oc.ClientID,
 				OAuthClientSecret:  plaintext,

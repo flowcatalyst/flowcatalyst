@@ -7,6 +7,8 @@ package dbq
 import (
 	"context"
 	"encoding/json"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 )
 
 type Querier interface {
@@ -112,7 +114,7 @@ type Querier interface {
 	// stranded-sibling reaper (internal/platform/dispatchjob/reaper.go).
 	// Batch load by id (write table), for the Resend operation, which reloads
 	// multiple aggregates to reset via usecaseop.SaveAll.
-	DispatchJobFindByIDs(ctx context.Context, ids []string) ([]DispatchJobFindByIDsRow, error)
+	DispatchJobFindByIDs(ctx context.Context, argIds []string) ([]DispatchJobFindByIDsRow, error)
 	DispatchJobInsert(ctx context.Context, arg DispatchJobInsertParams) error
 	// Status → COMPLETED. Stamps completed_at + duration_millis.
 	DispatchJobMarkCompleted(ctx context.Context, arg DispatchJobMarkCompletedParams) error
@@ -312,9 +314,9 @@ type Querier interface {
 	// iam_principal_application_access + iam_client_access_grants do NOT have
 	// FK ON DELETE CASCADE on principal_id (only iam_principal_roles does), so
 	// Delete has to clean them explicitly. Mirrors the wire contract's delete() + Persist::delete.
-	PrincipalApplicationAccessClear(ctx context.Context, principalID string) error
-	PrincipalClientAccessGrantsClear(ctx context.Context, principalID string) error
-	PrincipalDelete(ctx context.Context, id string) error
+	PrincipalApplicationAccessClear(ctx context.Context, principalID ids.PrincipalID) error
+	PrincipalClientAccessGrantsClear(ctx context.Context, principalID ids.PrincipalID) error
+	PrincipalDelete(ctx context.Context, id ids.PrincipalID) error
 	PrincipalFindAll(ctx context.Context) ([]IamPrincipal, error)
 	// Case-insensitive match: emails are stored lower-cased (see repository.Persist),
 	// but callers pass values from sources whose casing we don't control (OIDC
@@ -331,7 +333,7 @@ type Querier interface {
 	// (dev_client_secret_ref/dev_client_secret_updated_at last — appended by
 	// migration 039's ALTER TABLE) so sqlc maps rows onto the shared
 	// IamPrincipal model instead of generating a bespoke per-query Row type.
-	PrincipalFindByID(ctx context.Context, id string) (IamPrincipal, error)
+	PrincipalFindByID(ctx context.Context, id ids.PrincipalID) (IamPrincipal, error)
 	// Backs the Developer Users admin page (generalises the previous
 	// hardcoded-to-platform:client-admin FindClientAdminEmails query).
 	PrincipalFindByRole(ctx context.Context, roleName string) ([]IamPrincipal, error)
@@ -456,7 +458,7 @@ type Querier interface {
 	// Column is passkey_data (JSONB), not "credential" — the entity field
 	// name and the column name differ.
 	WebauthnCredentialFindByID(ctx context.Context, id string) (WebauthnCredential, error)
-	WebauthnCredentialFindByPrincipal(ctx context.Context, principalID string) ([]WebauthnCredential, error)
+	WebauthnCredentialFindByPrincipal(ctx context.Context, principalID ids.PrincipalID) ([]WebauthnCredential, error)
 	WebauthnCredentialUpsert(ctx context.Context, arg WebauthnCredentialUpsertParams) error
 }
 

@@ -82,3 +82,12 @@ func Strings[T ~string](in []T) []string {
 	}
 	return out
 }
+
+// StringPtr is the *string form of an optional typed ID; nil stays nil.
+func StringPtr[T ~string](id *T) *string {
+	if id == nil {
+		return nil
+	}
+	s := string(*id)
+	return &s
+}

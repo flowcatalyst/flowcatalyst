@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
@@ -137,7 +138,7 @@ func TestCreateServiceAccountWithCredentials_Default_NoApplicationAccess(t *test
 		}, testpg.TestEC())
 	require.NoError(t, err)
 
-	p, err := principals.FindByID(ctx, res.PrincipalID)
+	p, err := principals.FindByID(ctx, ids.PrincipalID(res.PrincipalID))
 	require.NoError(t, err)
 	require.NotNil(t, p)
 	assert.False(t, p.AllApplications, "default → no application access")
@@ -164,7 +165,7 @@ func TestCreateServiceAccountWithCredentials_AllApplications(t *testing.T) {
 		}, testpg.TestEC())
 	require.NoError(t, err)
 
-	p, err := principals.FindByID(ctx, res.PrincipalID)
+	p, err := principals.FindByID(ctx, ids.PrincipalID(res.PrincipalID))
 	require.NoError(t, err)
 	require.NotNil(t, p)
 	assert.True(t, p.AllApplications)
@@ -282,7 +283,7 @@ func TestCreateServiceAccountWithCredentials_HappyPath(t *testing.T) {
 	// same way the application-provision flow does whenever applicationId is
 	// supplied: AllApplications=false plus a single app-access binding, so
 	// the token's `applications` claim carries exactly that app.
-	p, err := principals.FindByID(ctx, res.PrincipalID)
+	p, err := principals.FindByID(ctx, ids.PrincipalID(res.PrincipalID))
 	require.NoError(t, err)
 	require.NotNil(t, p)
 	assert.Equal(t, principal.TypeService, p.Type)
@@ -452,7 +453,7 @@ func TestDeleteServiceAccount_RemovesItsPrincipalAndOAuthClient(t *testing.T) {
 		operations.DeleteCommand{ID: res.ServiceAccount.ID})
 	require.NoError(t, err)
 
-	p, err := principals.FindByID(ctx, res.PrincipalID)
+	p, err := principals.FindByID(ctx, ids.PrincipalID(res.PrincipalID))
 	require.NoError(t, err)
 	assert.Nil(t, p, "the SERVICE principal is deleted with its account")
 	oc, err := oauthRepo.FindByID(ctx, res.OAuthClientRowID)
@@ -473,7 +474,7 @@ func TestUpdateServiceAccount_RenameReachesItsPrincipal(t *testing.T) {
 	oauthRepo := platformauth.NewRepository(pool).OAuthClients
 	uow := testpg.NewUoW(t)
 	res := mustProvision(t, saRepo, principals, oauthRepo, uow, "saren-identity", "Old name")
-	before, err := principals.FindByID(ctx, res.PrincipalID)
+	before, err := principals.FindByID(ctx, ids.PrincipalID(res.PrincipalID))
 	require.NoError(t, err)
 	require.NotNil(t, before)
 
@@ -482,7 +483,7 @@ func TestUpdateServiceAccount_RenameReachesItsPrincipal(t *testing.T) {
 		operations.UpdateCommand{ID: res.ServiceAccount.ID, Name: &newName})
 	require.NoError(t, err)
 
-	after, err := principals.FindByID(ctx, res.PrincipalID)
+	after, err := principals.FindByID(ctx, ids.PrincipalID(res.PrincipalID))
 	require.NoError(t, err)
 	require.NotNil(t, after)
 	assert.Equal(t, "New name", after.Name)

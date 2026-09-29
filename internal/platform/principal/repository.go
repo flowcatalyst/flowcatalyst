@@ -61,9 +61,9 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 
 // bumpVersion publishes now as principalID's new version, if a VersionCache
 // is configured. No-op otherwise.
-func (r *Repository) bumpVersion(ctx context.Context, principalID string, now time.Time) {
+func (r *Repository) bumpVersion(ctx context.Context, principalID ids.PrincipalID, now time.Time) {
 	if r.VersionCache != nil {
-		r.VersionCache.Bump(ctx, principalID, now)
+		r.VersionCache.Bump(ctx, string(principalID), now)
 	}
 }
 
@@ -72,7 +72,7 @@ func (r *Repository) bumpVersion(ctx context.Context, principalID string, now ti
 // updated_at of any role it holds (a role's permissions can change without
 // the principal row itself changing). Used as versioncache.Reader's
 // FallbackFunc.
-func (r *Repository) LookupVersion(ctx context.Context, principalID string) (time.Time, error) {
+func (r *Repository) LookupVersion(ctx context.Context, principalID ids.PrincipalID) (time.Time, error) {
 	var at time.Time
 	err := r.pool.QueryRow(ctx, `
 		SELECT GREATEST(
@@ -121,7 +121,7 @@ func (r *Repository) FindClientAdminEmails(ctx context.Context, clientID string)
 
 // FindByID loads a principal by id, with role assignments hydrated
 // from iam_principal_roles.
-func (r *Repository) FindByID(ctx context.Context, id string) (*Principal, error) {
+func (r *Repository) FindByID(ctx context.Context, id ids.PrincipalID) (*Principal, error) {
 	res, err := r.q.PrincipalFindByID(ctx, id)
 	row, err := repocommon.One(res, err, "principal repo")
 	if row == nil || err != nil {
@@ -440,14 +440,14 @@ func (r *Repository) FindAll(ctx context.Context) ([]Principal, error) {
 
 // principalIndex builds the id → *Principal lookup plus the id list used by
 // the batched hydrators below.
-func principalIndex(ps []Principal) (map[string]*Principal, []string) {
-	idx := make(map[string]*Principal, len(ps))
-	ids := make([]string, 0, len(ps))
+func principalIndex(ps []Principal) (map[ids.PrincipalID]*Principal, []string) {
+	idx := make(map[ids.PrincipalID]*Principal, len(ps))
+	pids := make([]string, 0, len(ps))
 	for i := range ps {
 		idx[ps[i].ID] = &ps[i]
-		ids = append(ids, ps[i].ID)
+		pids = append(pids, string(ps[i].ID))
 	}
-	return idx, ids
+	return idx, pids
 }
 
 // hydrateRolesAll is the batched form of hydrateRoles: one
@@ -457,12 +457,12 @@ func (r *Repository) hydrateRolesAll(ctx context.Context, ps []Principal) error 
 	if r.pool == nil || len(ps) == 0 {
 		return nil
 	}
-	idx, ids := principalIndex(ps)
+	idx, pids := principalIndex(ps)
 	rows, err := r.pool.Query(ctx,
 		`SELECT principal_id, role_name, assignment_source, assigned_at
 		 FROM iam_principal_roles
 		 WHERE principal_id = ANY($1)
-		 ORDER BY assigned_at`, ids)
+		 ORDER BY assigned_at`, pids)
 	if err != nil {
 		return fmt.Errorf("principal roles (bulk): %w", err)
 	}
@@ -475,7 +475,7 @@ func (r *Repository) hydrateRolesAll(ctx context.Context, ps []Principal) error 
 			return fmt.Errorf("principal roles (bulk) scan: %w", err)
 		}
 		ra.AssignmentSource = src
-		if p := idx[pid]; p != nil {
+		if p := idx[ids.PrincipalID(pid)]; p != nil {
 			p.Roles = append(p.Roles, ra)
 		}
 	}
@@ -492,12 +492,12 @@ func (r *Repository) hydrateClientGrantsAll(ctx context.Context, ps []Principal)
 	if r.pool == nil || len(ps) == 0 {
 		return nil
 	}
-	idx, ids := principalIndex(ps)
+	idx, pids := principalIndex(ps)
 	rows, err := r.pool.Query(ctx,
 		`SELECT principal_id, client_id
 		 FROM iam_client_access_grants
 		 WHERE principal_id = ANY($1)
-		 ORDER BY client_id`, ids)
+		 ORDER BY client_id`, pids)
 	if err != nil {
 		return fmt.Errorf("principal client grants (bulk): %w", err)
 	}
@@ -507,7 +507,7 @@ func (r *Repository) hydrateClientGrantsAll(ctx context.Context, ps []Principal)
 		if err := rows.Scan(&pid, &cid); err != nil {
 			return fmt.Errorf("principal client grants (bulk) scan: %w", err)
 		}
-		if p := idx[pid]; p != nil {
+		if p := idx[ids.PrincipalID(pid)]; p != nil {
 			p.AssignedClients = append(p.AssignedClients, cid)
 		}
 	}
@@ -685,7 +685,7 @@ func (cp ClientAssociationPersister) Persist(ctx context.Context, p *Principal, 
 		// Idempotent: a grant for (principal, client) already present is left
 		// untouched, mirroring the prior FindByPrincipalAndClient skip. ON
 		// CONFLICT on the natural key keeps this safe even under a race.
-		grant := NewClientAccessGrant(ids.PrincipalID(p.ID), ids.ClientID(cid), ids.PrincipalID(cp.GrantedBy))
+		grant := NewClientAccessGrant(p.ID, ids.ClientID(cid), ids.PrincipalID(cp.GrantedBy))
 		if _, err := q.Exec(ctx,
 			`INSERT INTO iam_client_access_grants
 			     (id, principal_id, client_id, granted_by, granted_at, created_at, updated_at)
@@ -758,7 +758,7 @@ func (rap RolesAndAppAccessPersister) Persist(ctx context.Context, p *Principal,
 // Laravel argon2i hash) to the native scheme after a successful verify. A
 // direct UPDATE — not a domain event — because it's an internal migration, not
 // a user-initiated password change.
-func (r *Repository) UpdatePasswordHash(ctx context.Context, principalID, hash string) error {
+func (r *Repository) UpdatePasswordHash(ctx context.Context, principalID ids.PrincipalID, hash string) error {
 	now := time.Now().UTC()
 	if _, err := r.pool.Exec(ctx,
 		`UPDATE iam_principals SET password_hash = $1, updated_at = $2 WHERE id = $3`,
@@ -777,7 +777,7 @@ func (r *Repository) UpdatePasswordHash(ctx context.Context, principalID, hash s
 // rather than a domain event: an internal at-rest-format upgrade triggered
 // by a read, not a user-initiated credential change. Callers should treat
 // any error as non-fatal — the caller has already authenticated.
-func (r *Repository) RewriteDevClientSecretRef(ctx context.Context, principalID, newRef string) error {
+func (r *Repository) RewriteDevClientSecretRef(ctx context.Context, principalID ids.PrincipalID, newRef string) error {
 	now := time.Now().UTC()
 	if _, err := r.pool.Exec(ctx,
 		`UPDATE iam_principals SET dev_client_secret_ref = $1, dev_client_secret_updated_at = $2, updated_at = $3 WHERE id = $4`,

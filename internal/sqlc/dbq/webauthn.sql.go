@@ -9,6 +9,8 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 )
 
 const webauthnCredentialDelete = `-- name: WebauthnCredentialDelete :exec
@@ -73,7 +75,7 @@ WHERE principal_id = $1
 ORDER BY created_at
 `
 
-func (q *Queries) WebauthnCredentialFindByPrincipal(ctx context.Context, principalID string) ([]WebauthnCredential, error) {
+func (q *Queries) WebauthnCredentialFindByPrincipal(ctx context.Context, principalID ids.PrincipalID) ([]WebauthnCredential, error) {
 	rows, err := q.db.Query(ctx, webauthnCredentialFindByPrincipal, principalID)
 	if err != nil {
 		return nil, err
@@ -113,7 +115,7 @@ ON CONFLICT (id) DO UPDATE SET
 
 type WebauthnCredentialUpsertParams struct {
 	ID           string          `db:"id"`
-	PrincipalID  string          `db:"principal_id"`
+	PrincipalID  ids.PrincipalID `db:"principal_id"`
 	CredentialID []byte          `db:"credential_id"`
 	PasskeyData  json.RawMessage `db:"passkey_data"`
 	Name         *string         `db:"name"`

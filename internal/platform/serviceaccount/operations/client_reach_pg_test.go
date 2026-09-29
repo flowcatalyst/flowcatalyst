@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
@@ -44,7 +45,7 @@ func provisionWithClients(t *testing.T, code string, clientIDs []string) (*princ
 		operations.CreateCommand{Code: code, Name: code, ClientIDs: clientIDs}, testpg.TestEC())
 	require.NoError(t, err)
 
-	p, err := principals.FindByID(context.Background(), res.PrincipalID)
+	p, err := principals.FindByID(context.Background(), ids.PrincipalID(res.PrincipalID))
 	require.NoError(t, err)
 	require.NotNil(t, p)
 	return p, res
@@ -93,14 +94,14 @@ func TestServiceAccountReach_UpdateReDerives(t *testing.T) {
 	p, res := provisionWithClients(t, "sareach-upd", []string{"clt_reach_upd_a"})
 	require.Equal(t, principal.ScopeClient, p.Scope)
 
-	update := func(ids []string) *principal.Principal {
+	update := func(clientIDs []string) *principal.Principal {
 		t.Helper()
 		_, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
 			operations.UpdateServiceAccount(serviceaccount.NewRepository(pool), principals,
 				client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool)),
-			operations.UpdateCommand{ID: res.ServiceAccount.ID, ClientIDs: ids}, testpg.TestEC())
+			operations.UpdateCommand{ID: res.ServiceAccount.ID, ClientIDs: clientIDs}, testpg.TestEC())
 		require.NoError(t, err)
-		got, err := principals.FindByID(context.Background(), res.PrincipalID)
+		got, err := principals.FindByID(context.Background(), ids.PrincipalID(res.PrincipalID))
 		require.NoError(t, err)
 		return got
 	}
@@ -123,7 +124,7 @@ func TestServiceAccountReach_UpdateReDerives(t *testing.T) {
 			client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool)),
 		operations.UpdateCommand{ID: res.ServiceAccount.ID, Name: &name}, testpg.TestEC())
 	require.NoError(t, err)
-	got, err = principals.FindByID(context.Background(), res.PrincipalID)
+	got, err = principals.FindByID(context.Background(), ids.PrincipalID(res.PrincipalID))
 	require.NoError(t, err)
 	assert.Equal(t, principal.ScopeClient, got.Scope)
 }
@@ -178,7 +179,7 @@ func TestServiceAccountReach_AppScopedKeepsClientGrants(t *testing.T) {
 		}, testpg.TestEC())
 	require.NoError(t, err)
 
-	p, err := principals.FindByID(context.Background(), res.PrincipalID)
+	p, err := principals.FindByID(context.Background(), ids.PrincipalID(res.PrincipalID))
 	require.NoError(t, err)
 	require.NotNil(t, p)
 	assert.Equal(t, principal.ScopePartner, p.Scope)

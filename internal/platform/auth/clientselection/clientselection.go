@@ -67,7 +67,7 @@ type currentClientResponse struct {
 }
 
 func (s *State) loadPrincipal(r *http.Request, ac *auth.AuthContext) (*principal.Principal, error) {
-	p, err := s.Principals.FindByID(r.Context(), ac.PrincipalID)
+	p, err := s.Principals.FindByID(r.Context(), ids.PrincipalID(ac.PrincipalID))
 	if err != nil {
 		return nil, usecase.Internal("REPO", "principal find_by_id failed", err)
 	}
@@ -100,10 +100,10 @@ func (s *State) accessibleClientIDs(r *http.Request, p *principal.Principal) ([]
 		if p.ClientID != nil {
 			ids = append(ids, *p.ClientID)
 		}
-		return s.appendGrants(r, ids, p.ID)
+		return s.appendGrants(r, ids, string(p.ID))
 	default: // ScopePartner
 		ids := append([]string(nil), p.AssignedClients...)
-		return s.appendGrants(r, ids, p.ID)
+		return s.appendGrants(r, ids, string(p.ID))
 	}
 }
 

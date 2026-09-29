@@ -3,6 +3,7 @@ package oauthapi
 import (
 	"net/http"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
@@ -62,7 +63,7 @@ func (s *State) redeemPortalCode(w http.ResponseWriter, r *http.Request, code *g
 	// report a real profile change, not every login (a zero value would be
 	// replaced with the mint time).
 	synth := &principal.Principal{
-		ID:        ident.ID,
+		ID:        ids.PrincipalID(ident.ID),
 		Type:      principal.TypeUser,
 		Name:      ident.Name,
 		UpdatedAt: ident.UpdatedAt,

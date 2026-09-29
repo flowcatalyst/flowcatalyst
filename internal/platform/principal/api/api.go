@@ -294,7 +294,7 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 			return nil, err
 		}
 	}
-	p, err := s.Repo.FindByID(ctx, in.ID)
+	p, err := s.Repo.FindByID(ctx, ids.PrincipalID(in.ID))
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
@@ -312,7 +312,7 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	// can show whether 2FA is enrolled (and which kind). Best-effort: an MFA
 	// lookup failure just leaves the list empty rather than failing the read.
 	if s.MFA != nil {
-		if methods, err := s.MFA.ConfirmedMethods(ctx, p.ID); err == nil {
+		if methods, err := s.MFA.ConfirmedMethods(ctx, string(p.ID)); err == nil {
 			out := make([]string, 0, len(methods))
 			for _, m := range methods {
 				out = append(out, string(m))
@@ -337,7 +337,7 @@ func (s *State) getVersion(ctx context.Context, in *apicommon.IDInput) (*apicomm
 		// PR-4: the same client-scope check as the by-id read — an admin
 		// checking another tenant's principal answers 404, byte-identical to
 		// not-found, never a distinguishing 403.
-		p, err := s.Repo.FindByID(ctx, in.ID)
+		p, err := s.Repo.FindByID(ctx, ids.PrincipalID(in.ID))
 		if err != nil {
 			return nil, usecase.Internal("REPO", "find_by_id failed", err)
 		}
@@ -355,7 +355,7 @@ func (s *State) getVersion(ctx context.Context, in *apicommon.IDInput) (*apicomm
 	if s.Versions != nil {
 		at, err = s.Versions.Version(ctx, in.ID)
 	} else {
-		at, err = s.Repo.LookupVersion(ctx, in.ID)
+		at, err = s.Repo.LookupVersion(ctx, ids.PrincipalID(in.ID))
 	}
 	if err != nil {
 		return nil, usecase.Internal("REPO", "lookup_version failed", err)
@@ -383,7 +383,7 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreatePrincipalRequ
 	if err != nil {
 		return nil, err
 	}
-	resp := CreatePrincipalResponse{ID: event.UserID}
+	resp := CreatePrincipalResponse{ID: string(event.UserID)}
 	if created, ferr := s.Repo.FindByID(ctx, event.UserID); ferr == nil && created != nil {
 		resp.InviteLink = s.notifyNewUser(ctx, created, in.Body.Password,
 			boolDefaultTrue(in.Body.SendInvitation), boolOrFalse(in.Body.ReturnInviteLink), inviteRedirect)
@@ -643,7 +643,7 @@ func (s *State) createUser(ctx context.Context, in *apicommon.In[CreateUserReque
 			}
 			refreshed, rerr := s.Repo.FindByID(ctx, existing.ID)
 			if rerr != nil || refreshed == nil {
-				return nil, httperror.NotFound("Principal", existing.ID)
+				return nil, httperror.NotFound("Principal", string(existing.ID))
 			}
 			return &apicommon.Out[PrincipalResponse]{Body: fromEntity(refreshed)}, nil
 		}
@@ -672,7 +672,7 @@ func (s *State) createUser(ctx context.Context, in *apicommon.In[CreateUserReque
 
 	created, err := s.Repo.FindByID(ctx, event.UserID)
 	if err != nil || created == nil {
-		return nil, httperror.NotFound("Principal", event.UserID)
+		return nil, httperror.NotFound("Principal", string(event.UserID))
 	}
 	inviteLink := s.notifyNewUser(ctx, created, in.Body.Password,
 		boolDefaultTrue(in.Body.SendInvitation), boolOrFalse(in.Body.ReturnInviteLink), inviteRedirect)
@@ -875,7 +875,7 @@ func boolOrFalse(b *bool) bool {
 // learn whether an id is real (PR-3(b)). blockNonClientTarget stays a 403: a
 // distinct "wrong kind of administrator" decision, not a tenancy boundary.
 func (s *State) requireScopeByID(ctx context.Context, ac *auth.AuthContext, id string) error {
-	p, err := s.Repo.FindByID(ctx, id)
+	p, err := s.Repo.FindByID(ctx, ids.PrincipalID(id))
 	if err != nil {
 		return usecase.Internal("REPO", "find_by_id failed", err)
 	}
@@ -1035,7 +1035,7 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Out[Pri
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateUser(s.Repo), in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
-	p, err := s.Repo.FindByID(ctx, in.ID)
+	p, err := s.Repo.FindByID(ctx, ids.PrincipalID(in.ID))
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
@@ -1052,7 +1052,7 @@ func (s *State) activate(ctx context.Context, in *apicommon.IDInput) (*apicommon
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
-	if _, err := usecaseop.Run(ctx, s.UoW, operations.ActivateUser(s.Repo), operations.ActivateCommand{ID: in.ID}, ec); err != nil {
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.ActivateUser(s.Repo), operations.ActivateCommand{ID: ids.PrincipalID(in.ID)}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Out[apicommon.StatusChangeResponse]{Body: apicommon.StatusChangeResponse{Message: "Principal activated"}}, nil
@@ -1065,7 +1065,7 @@ func (s *State) deactivate(ctx context.Context, in *apicommon.IDInput) (*apicomm
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
-	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeactivateUser(s.Repo), operations.DeactivateCommand{ID: in.ID}, ec); err != nil {
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeactivateUser(s.Repo), operations.DeactivateCommand{ID: ids.PrincipalID(in.ID)}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Out[apicommon.StatusChangeResponse]{Body: apicommon.StatusChangeResponse{Message: "Principal deactivated"}}, nil
@@ -1087,7 +1087,7 @@ func (s *State) resetPassword(ctx context.Context, in *resetPasswordInput) (*api
 	ec := auth.NewExecutionContext(ctx)
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.ResetPassword(s.Repo),
 		operations.ResetPasswordCommand{
-			ID:                        in.ID,
+			ID:                        ids.PrincipalID(in.ID),
 			NewPassword:               in.Body.NewPassword,
 			EnforcePasswordComplexity: in.Body.EnforcePasswordComplexity,
 		}, ec); err != nil {
@@ -1103,7 +1103,7 @@ func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.E
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
-	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeleteUser(s.Repo), operations.DeleteCommand{ID: in.ID}, ec); err != nil {
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeleteUser(s.Repo), operations.DeleteCommand{ID: ids.PrincipalID(in.ID)}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
@@ -1125,7 +1125,7 @@ func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*apicomm
 	// Load the target to shape the desired role set for non-anchor admins; the
 	// per-resource authorization (RequireUserAdmin + blockNonClientTarget) is
 	// enforced inside the AssignRoles use case post-load.
-	p, err := s.Repo.FindByID(ctx, in.ID)
+	p, err := s.Repo.FindByID(ctx, ids.PrincipalID(in.ID))
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
@@ -1159,10 +1159,10 @@ func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*apicomm
 
 	ec := auth.NewExecutionContext(ctx)
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.AssignRoles(s.Repo, s.Roles),
-		operations.AssignRolesCommand{UserID: in.ID, Roles: effectiveRoles}, ec); err != nil {
+		operations.AssignRolesCommand{UserID: ids.PrincipalID(in.ID), Roles: effectiveRoles}, ec); err != nil {
 		return nil, err
 	}
-	refreshed, err := s.Repo.FindByID(ctx, in.ID)
+	refreshed, err := s.Repo.FindByID(ctx, ids.PrincipalID(in.ID))
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
@@ -1192,7 +1192,7 @@ func (s *State) assignApplicationAccess(ctx context.Context, in *assignAppAccess
 	// Load the target to bound the desired application set for non-anchor admins;
 	// the per-resource authorization (RequireUserAdmin + blockNonClientTarget) is
 	// enforced inside the AssignApplicationAccess use case post-load.
-	p, err := s.Repo.FindByID(ctx, in.ID)
+	p, err := s.Repo.FindByID(ctx, ids.PrincipalID(in.ID))
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
@@ -1225,7 +1225,7 @@ func (s *State) assignApplicationAccess(ctx context.Context, in *assignAppAccess
 	ec := auth.NewExecutionContext(ctx)
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.AssignApplicationAccess(s.Repo, s.Applications),
 		operations.AssignApplicationAccessCommand{
-			UserID:          in.ID,
+			UserID:          ids.PrincipalID(in.ID),
 			ApplicationIDs:  desiredIDs,
 			AllApplications: in.Body.AllApplications,
 		}, ec); err != nil {
@@ -1275,7 +1275,7 @@ func (s *State) grantClientAccess(ctx context.Context, in *grantClientAccessInpu
 	}
 	ec := auth.NewExecutionContext(ctx)
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.GrantClientAccess(s.Repo, s.Clients, s.GrantRepo),
-		operations.GrantClientAccessCommand{UserID: in.ID, ClientID: in.Body.ClientID}, ec); err != nil {
+		operations.GrantClientAccessCommand{UserID: ids.PrincipalID(in.ID), ClientID: in.Body.ClientID}, ec); err != nil {
 		return nil, err
 	}
 	g, err := s.GrantRepo.FindByPrincipalAndClient(ctx, ids.PrincipalID(in.ID), ids.ClientID(in.Body.ClientID))
@@ -1310,13 +1310,13 @@ func (s *State) setClientAssociation(ctx context.Context, in *setClientAssociati
 	}
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.SetClientAssociation(s.Repo, s.Clients, s.GrantRepo),
 		operations.SetClientAssociationCommand{
-			UserID:   in.ID,
+			UserID:   ids.PrincipalID(in.ID),
 			ClientID: in.Body.ClientID,
 			Mode:     operations.ClientAssociationMode(mode),
 		}, ec); err != nil {
 		return nil, err
 	}
-	p, err := s.Repo.FindByID(ctx, in.ID)
+	p, err := s.Repo.FindByID(ctx, ids.PrincipalID(in.ID))
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
@@ -1339,7 +1339,7 @@ func (s *State) revokeClientAccess(ctx context.Context, in *revokeClientAccessIn
 	}
 	ec := auth.NewExecutionContext(ctx)
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.RevokeClientAccess(s.Repo, s.GrantRepo),
-		operations.RevokeClientAccessCommand{UserID: in.ID, ClientID: in.ClientID}, ec); err != nil {
+		operations.RevokeClientAccessCommand{UserID: ids.PrincipalID(in.ID), ClientID: in.ClientID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
@@ -1384,12 +1384,12 @@ func (s *State) setDeveloperCredential(ctx context.Context, in *apicommon.IDInpu
 	}
 	ec := auth.NewExecutionContext(ctx)
 	ev, err := usecaseop.Run(ctx, s.UoW, operations.SetDeveloperCredential(s.Repo),
-		operations.SetDeveloperCredentialCommand{PrincipalID: in.ID}, ec)
+		operations.SetDeveloperCredentialCommand{PrincipalID: ids.PrincipalID(in.ID)}, ec)
 	if err != nil {
 		return nil, err
 	}
-	resp := SetDeveloperCredentialResponse{ID: ev.UserID}
-	if secret, ok := operations.PopDevClientSecret(ev.UserID); ok {
+	resp := SetDeveloperCredentialResponse{ID: string(ev.UserID)}
+	if secret, ok := operations.PopDevClientSecret(string(ev.UserID)); ok {
 		resp.ClientSecret = secret
 	}
 	return &apicommon.Out[SetDeveloperCredentialResponse]{Body: resp}, nil
@@ -1405,7 +1405,7 @@ func (s *State) revokeDeveloperCredential(ctx context.Context, in *apicommon.IDI
 	}
 	ec := auth.NewExecutionContext(ctx)
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.RevokeDeveloperCredential(s.Repo),
-		operations.RevokeDeveloperCredentialCommand{PrincipalID: in.ID}, ec); err != nil {
+		operations.RevokeDeveloperCredentialCommand{PrincipalID: ids.PrincipalID(in.ID)}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
@@ -1446,7 +1446,7 @@ func (s *State) sendPasswordReset(ctx context.Context, in *sendPasswordResetInpu
 	if err := auth.CanWritePrincipals(ac); err != nil {
 		return nil, err
 	}
-	p, err := s.Repo.FindByID(ctx, in.ID)
+	p, err := s.Repo.FindByID(ctx, ids.PrincipalID(in.ID))
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
@@ -1466,7 +1466,7 @@ func (s *State) sendPasswordReset(ctx context.Context, in *sendPasswordResetInpu
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
 	if err := operations.SendPasswordReset(ctx, s.Repo, s.PasswordEmailer,
-		operations.SendPasswordResetCommand{ID: in.ID, Reset2FA: reset2FA}, ec); err != nil {
+		operations.SendPasswordResetCommand{ID: ids.PrincipalID(in.ID), Reset2FA: reset2FA}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Out[apicommon.StatusChangeResponse]{Body: apicommon.StatusChangeResponse{Message: "Password reset email sent"}}, nil
@@ -1484,7 +1484,7 @@ func (s *State) resetTwoFactor(ctx context.Context, in *apicommon.IDInput) (*api
 	if err := auth.CanWritePrincipals(ac); err != nil {
 		return nil, err
 	}
-	p, err := s.Repo.FindByID(ctx, in.ID)
+	p, err := s.Repo.FindByID(ctx, ids.PrincipalID(in.ID))
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
@@ -1501,7 +1501,7 @@ func (s *State) resetTwoFactor(ctx context.Context, in *apicommon.IDInput) (*api
 	if !p.IsUser() {
 		return nil, usecase.Validation("NOT_USER", "Two-factor reset only applies to user accounts")
 	}
-	if err := s.MFA.ResetAll(ctx, p.ID); err != nil {
+	if err := s.MFA.ResetAll(ctx, string(p.ID)); err != nil {
 		return nil, usecase.Internal("MFA", "reset failed", err)
 	}
 	if p.UserIdentity != nil {
@@ -1512,7 +1512,7 @@ func (s *State) resetTwoFactor(ctx context.Context, in *apicommon.IDInput) (*api
 		_ = s.Audit.Insert(ctx, &audit.Log{
 			ID:          tsid.Generate(tsid.AuditLog),
 			EntityType:  "PRINCIPAL",
-			EntityID:    p.ID,
+			EntityID:    string(p.ID),
 			Operation:   "2FA_RESET_BY_ADMIN",
 			PrincipalID: &actor,
 			PerformedAt: time.Now().UTC(),
@@ -1682,7 +1682,7 @@ func (s *State) listRoles(ctx context.Context, in *apicommon.IDInput) (*apicommo
 	if err := auth.CanReadPrincipals(ac); err != nil {
 		return nil, err
 	}
-	p, err := s.Repo.FindByID(ctx, in.ID)
+	p, err := s.Repo.FindByID(ctx, ids.PrincipalID(in.ID))
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
@@ -1712,7 +1712,7 @@ func (s *State) addRole(ctx context.Context, in *addRoleInput) (*apicommon.Out[P
 	}
 	// Load the target to bound the role for non-anchor admins and to apply the
 	// idempotent skip.
-	p, err := s.Repo.FindByID(ctx, in.ID)
+	p, err := s.Repo.FindByID(ctx, ids.PrincipalID(in.ID))
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
@@ -1747,10 +1747,10 @@ func (s *State) addRole(ctx context.Context, in *addRoleInput) (*apicommon.Out[P
 		desired := append(roleNamesFrom(p.Roles), in.Body.Role)
 		ec := auth.NewExecutionContext(ctx)
 		if _, err := usecaseop.Run(ctx, s.UoW, operations.AssignRoles(s.Repo, s.Roles),
-			operations.AssignRolesCommand{UserID: in.ID, Roles: desired}, ec); err != nil {
+			operations.AssignRolesCommand{UserID: ids.PrincipalID(in.ID), Roles: desired}, ec); err != nil {
 			return nil, err
 		}
-		if p, err = s.Repo.FindByID(ctx, in.ID); err != nil {
+		if p, err = s.Repo.FindByID(ctx, ids.PrincipalID(in.ID)); err != nil {
 			return nil, usecase.Internal("REPO", "find_by_id failed", err)
 		} else if p == nil {
 			return nil, httperror.NotFound("Principal", in.ID)
@@ -1775,7 +1775,7 @@ func (s *State) removeRole(ctx context.Context, in *removeRoleInput) (*apicommon
 	}
 	// Load the target to bound the role for non-anchor admins and to apply the
 	// idempotent skip.
-	p, err := s.Repo.FindByID(ctx, in.ID)
+	p, err := s.Repo.FindByID(ctx, ids.PrincipalID(in.ID))
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
@@ -1820,10 +1820,10 @@ func (s *State) removeRole(ctx context.Context, in *removeRoleInput) (*apicommon
 	if found { // skip mutation when absent (idempotent)
 		ec := auth.NewExecutionContext(ctx)
 		if _, err := usecaseop.Run(ctx, s.UoW, operations.AssignRoles(s.Repo, s.Roles),
-			operations.AssignRolesCommand{UserID: in.ID, Roles: desired}, ec); err != nil {
+			operations.AssignRolesCommand{UserID: ids.PrincipalID(in.ID), Roles: desired}, ec); err != nil {
 			return nil, err
 		}
-		if p, err = s.Repo.FindByID(ctx, in.ID); err != nil {
+		if p, err = s.Repo.FindByID(ctx, ids.PrincipalID(in.ID)); err != nil {
 			return nil, usecase.Internal("REPO", "find_by_id failed", err)
 		} else if p == nil {
 			return nil, httperror.NotFound("Principal", in.ID)
@@ -1871,7 +1871,7 @@ func (s *State) listApplicationAccess(ctx context.Context, in *apicommon.IDInput
 	if err := auth.CanReadPrincipals(ac); err != nil {
 		return nil, err
 	}
-	p, err := s.Repo.FindByID(ctx, in.ID)
+	p, err := s.Repo.FindByID(ctx, ids.PrincipalID(in.ID))
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
@@ -1919,7 +1919,7 @@ func (s *State) listAvailableApplications(ctx context.Context, in *apicommon.IDI
 	if err := auth.CanReadPrincipals(ac); err != nil {
 		return nil, err
 	}
-	p, err := s.Repo.FindByID(ctx, in.ID)
+	p, err := s.Repo.FindByID(ctx, ids.PrincipalID(in.ID))
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
@@ -95,7 +96,7 @@ func bootstrapLocalCredentials(ctx context.Context, pool *pgxpool.Pool, clientID
 	oauthClient := auth.NewOAuthClient(clientID, clientName, auth.OAuthClientConfidential)
 	oauthClient.SecretRef = &secretRef
 	oauthClient.GrantTypes = []string{"client_credentials"}
-	oauthClient.PrincipalID = &routerPrincipal.ID
+	oauthClient.PrincipalID = ids.StringPtr(&routerPrincipal.ID)
 
 	if err := infraPersist(ctx, pool, func(tx *usecasepgx.DbTx) error {
 		if err := principalRepo.Persist(ctx, routerPrincipal, tx); err != nil {

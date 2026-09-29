@@ -12,8 +12,8 @@ import (
 )
 
 type RevokeClientAccessCommand struct {
-	UserID   string `json:"userId"`
-	ClientID string `json:"clientId"`
+	UserID   ids.PrincipalID `json:"userId"`
+	ClientID string          `json:"clientId"`
 }
 
 // RevokeClientAccess removes a PARTNER user's client-access grant and emits
@@ -26,7 +26,7 @@ func RevokeClientAccess(repo *principal.Repository, grants *principal.ClientAcce
 	return usecaseop.Operation[RevokeClientAccessCommand, ClientAccessRevoked]{
 		Name: "RevokeClientAccess",
 		Validate: func(_ context.Context, cmd RevokeClientAccessCommand) error {
-			if strings.TrimSpace(cmd.UserID) == "" {
+			if strings.TrimSpace(string(cmd.UserID)) == "" {
 				return usecase.Validation("USER_ID_REQUIRED", "User ID is required")
 			}
 			if strings.TrimSpace(cmd.ClientID) == "" {
@@ -41,19 +41,19 @@ func RevokeClientAccess(repo *principal.Repository, grants *principal.ClientAcce
 				return nil, usecase.Internal("REPO", "find_user failed", err)
 			}
 			if p == nil {
-				return nil, httperror.NotFound("User", cmd.UserID)
+				return nil, httperror.NotFound("User", string(cmd.UserID))
 			}
 			if p.Type != principal.TypeUser {
 				return nil, usecase.BusinessRule("NOT_A_USER",
 					"Client access can only be revoked from USER type principals")
 			}
 
-			grant, err := grants.FindByPrincipalAndClient(ctx, ids.PrincipalID(cmd.UserID), ids.ClientID(cmd.ClientID))
+			grant, err := grants.FindByPrincipalAndClient(ctx, cmd.UserID, ids.ClientID(cmd.ClientID))
 			if err != nil {
 				return nil, usecase.Internal("REPO", "find_grant failed", err)
 			}
 			if grant == nil {
-				return nil, httperror.NotFound("Grant", cmd.UserID+":"+cmd.ClientID)
+				return nil, httperror.NotFound("Grant", string(cmd.UserID)+":"+cmd.ClientID)
 			}
 
 			event := ClientAccessRevoked{

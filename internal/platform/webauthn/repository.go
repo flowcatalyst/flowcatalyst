@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -56,7 +57,7 @@ func (r *Repository) FindByCredentialID(ctx context.Context, credID []byte) (*Cr
 
 // FindByPrincipal returns all credentials for a principal.
 func (r *Repository) FindByPrincipal(ctx context.Context, principalID string) ([]Credential, error) {
-	rows, err := r.q.WebauthnCredentialFindByPrincipal(ctx, principalID)
+	rows, err := r.q.WebauthnCredentialFindByPrincipal(ctx, ids.PrincipalID(principalID))
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +101,7 @@ func (r *Repository) Persist(ctx context.Context, c *Credential, tx *usecasepgx.
 	}
 	return r.q.WithTx(tx.Inner()).WebauthnCredentialUpsert(ctx, dbq.WebauthnCredentialUpsertParams{
 		ID:           c.ID,
-		PrincipalID:  c.PrincipalID,
+		PrincipalID:  ids.PrincipalID(c.PrincipalID),
 		CredentialID: c.CredentialIDBytes(),
 		PasskeyData:  credJSON,
 		Name:         c.Name,
@@ -117,7 +118,7 @@ func (r *Repository) Delete(ctx context.Context, c *Credential, tx *usecasepgx.D
 func rowToCredential(row dbq.WebauthnCredential) (*Credential, error) {
 	c := Credential{
 		ID:          row.ID,
-		PrincipalID: row.PrincipalID,
+		PrincipalID: string(row.PrincipalID),
 		Name:        row.Name,
 		CreatedAt:   row.CreatedAt,
 		LastUsedAt:  row.LastUsedAt,

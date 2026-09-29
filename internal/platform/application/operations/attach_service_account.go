@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
@@ -63,7 +64,7 @@ func AttachServiceAccount(repo *application.Repository, principals *principal.Re
 			if saPrincipal == nil {
 				return nil, httperror.NotFound("ServiceAccountPrincipal", cmd.ServiceAccountID)
 			}
-			app.ServiceAccountID = &saPrincipal.ID
+			app.ServiceAccountID = ids.StringPtr(&saPrincipal.ID)
 			app.UpdatedAt = time.Now().UTC()
 
 			event := ApplicationServiceAccountProvisionedEvent{

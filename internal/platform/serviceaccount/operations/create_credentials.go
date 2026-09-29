@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	authops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
@@ -131,7 +132,7 @@ func CreateServiceAccountWithCredentials(
 			oauthClientID := tsid.Generate(tsid.OAuthClient)
 			oc := platformauth.NewOAuthClient(oauthClientID, sa.Name+" Client", platformauth.OAuthClientConfidential)
 			oc.SetSecretRef(ref)
-			oc.PrincipalID = &saPrincipal.ID
+			oc.PrincipalID = ids.StringPtr(&saPrincipal.ID)
 			oc.GrantTypes = []string{"client_credentials", "refresh_token"}
 			oc.Scopes = []string{"openid"}
 
@@ -175,7 +176,7 @@ func CreateServiceAccountWithCredentials(
 
 			return CreateWithCredentialsResult{
 				ServiceAccount:    sa,
-				PrincipalID:       saPrincipal.ID,
+				PrincipalID:       string(saPrincipal.ID),
 				OAuthClientRowID:  oc.ID,
 				OAuthClientID:     oc.ClientID,
 				OAuthClientSecret: plaintext,

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -26,7 +27,7 @@ type PasswordResetEmailer interface {
 
 // SendPasswordResetCommand triggers an admin-side reset email.
 type SendPasswordResetCommand struct {
-	ID string `json:"id"`
+	ID ids.PrincipalID `json:"id"`
 	// Reset2FA also clears the user's enrolled second factors when they
 	// complete the reset (lost-device recovery).
 	Reset2FA bool `json:"reset2fa"`
@@ -42,7 +43,7 @@ func SendPasswordReset(
 	cmd SendPasswordResetCommand,
 	_ usecase.ExecutionContext,
 ) error {
-	if strings.TrimSpace(cmd.ID) == "" {
+	if strings.TrimSpace(string(cmd.ID)) == "" {
 		return usecase.Validation("ID_REQUIRED", "id is required")
 	}
 	if emailer == nil {
@@ -54,7 +55,7 @@ func SendPasswordReset(
 		return usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if p == nil {
-		return httperror.NotFound("Principal", cmd.ID)
+		return httperror.NotFound("Principal", string(cmd.ID))
 	}
 
 	if !p.IsUser() {

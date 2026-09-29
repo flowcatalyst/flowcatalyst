@@ -52,3 +52,32 @@ sql:
             go_type:
               type: "RawMessage"
               import: "encoding/json"
+          # Entity identifiers carry their own Go types (internal/ids), so a
+          # principal id and a client id cannot be swapped between a query
+          # result and a domain call. A column named for an entity id maps to
+          # that entity's type wherever it appears.
+          #
+          # Column overrides ignore `nullable:` and take the FIRST match, so the
+          # pointer form of a nullable column has to be listed per table, ahead
+          # of the wildcard. Adding a nullable principal_id column means adding
+          # its table here; the giveaway is a NOT NULL-typed field where a
+          # pointer belongs.
+          # aud_logs.principal_id stays a string: the audit log records whatever
+          # actor id the caller supplied, not only principals.
+          - column: "aud_logs.principal_id"
+            go_type:
+              type: "string"
+              pointer: true
+          - column: "iam_login_attempts.principal_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "PrincipalID"
+              pointer: true
+          - column: "iam_principals.id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "PrincipalID"
+          - column: "*.principal_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "PrincipalID"

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -39,7 +40,7 @@ func hasRole(p *principal.Principal, roleName string) bool {
 // another user — requires the same user-admin bar role assignment does.
 func requireSelfOrUserAdmin(ctx context.Context, p *principal.Principal) error {
 	ac := auth.FromContext(ctx)
-	if ac != nil && ac.PrincipalID == p.ID {
+	if ac != nil && ac.PrincipalID == string(p.ID) {
 		return nil
 	}
 	return requireUserAdmin(ctx, p)
@@ -48,7 +49,7 @@ func requireSelfOrUserAdmin(ctx context.Context, p *principal.Principal) error {
 // ── Set (create-or-rotate) ──────────────────────────────────────────────
 
 type SetDeveloperCredentialCommand struct {
-	PrincipalID string `json:"principalId"`
+	PrincipalID ids.PrincipalID `json:"principalId"`
 }
 
 // SetDeveloperCredential creates or rotates a developer's self-service
@@ -59,7 +60,7 @@ func SetDeveloperCredential(repo *principal.Repository) usecaseop.Operation[SetD
 	return usecaseop.Operation[SetDeveloperCredentialCommand, DeveloperCredentialSet]{
 		Name: "SetDeveloperCredential",
 		Validate: func(_ context.Context, cmd SetDeveloperCredentialCommand) error {
-			if strings.TrimSpace(cmd.PrincipalID) == "" {
+			if strings.TrimSpace(string(cmd.PrincipalID)) == "" {
 				return usecase.Validation("PRINCIPAL_ID_REQUIRED", "Principal ID is required")
 			}
 			return nil
@@ -71,7 +72,7 @@ func SetDeveloperCredential(repo *principal.Repository) usecaseop.Operation[SetD
 				return nil, usecase.Internal("REPO", "find_by_id failed", err)
 			}
 			if p == nil {
-				return nil, httperror.NotFound("User", cmd.PrincipalID)
+				return nil, httperror.NotFound("User", string(cmd.PrincipalID))
 			}
 			if err := requireSelfOrUserAdmin(ctx, p); err != nil {
 				return nil, err
@@ -90,7 +91,7 @@ func SetDeveloperCredential(repo *principal.Repository) usecaseop.Operation[SetD
 				return nil, usecase.Internal("SECRET", "generate developer client secret failed", err)
 			}
 			p.SetDevClientSecretRef(ref)
-			stashDevSecret(p.ID, plaintext)
+			stashDevSecret(string(p.ID), plaintext)
 
 			event := DeveloperCredentialSet{
 				Metadata: usecase.NewEventMetadata(ec, DeveloperCredentialSetType, Source, subjectFor(p.ID)),
@@ -104,7 +105,7 @@ func SetDeveloperCredential(repo *principal.Repository) usecaseop.Operation[SetD
 // ── Revoke ───────────────────────────────────────────────────────────────
 
 type RevokeDeveloperCredentialCommand struct {
-	PrincipalID string `json:"principalId"`
+	PrincipalID ids.PrincipalID `json:"principalId"`
 }
 
 // RevokeDeveloperCredential clears a principal's developer client_credentials
@@ -114,7 +115,7 @@ func RevokeDeveloperCredential(repo *principal.Repository) usecaseop.Operation[R
 	return usecaseop.Operation[RevokeDeveloperCredentialCommand, DeveloperCredentialRevoked]{
 		Name: "RevokeDeveloperCredential",
 		Validate: func(_ context.Context, cmd RevokeDeveloperCredentialCommand) error {
-			if strings.TrimSpace(cmd.PrincipalID) == "" {
+			if strings.TrimSpace(string(cmd.PrincipalID)) == "" {
 				return usecase.Validation("PRINCIPAL_ID_REQUIRED", "Principal ID is required")
 			}
 			return nil
@@ -126,7 +127,7 @@ func RevokeDeveloperCredential(repo *principal.Repository) usecaseop.Operation[R
 				return nil, usecase.Internal("REPO", "find_by_id failed", err)
 			}
 			if p == nil {
-				return nil, httperror.NotFound("User", cmd.PrincipalID)
+				return nil, httperror.NotFound("User", string(cmd.PrincipalID))
 			}
 			if err := requireSelfOrUserAdmin(ctx, p); err != nil {
 				return nil, err

@@ -8,6 +8,8 @@ package dbq
 import (
 	"context"
 	"time"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 )
 
 const principalApplicationAccessClear = `-- name: PrincipalApplicationAccessClear :exec
@@ -18,7 +20,7 @@ DELETE FROM iam_principal_application_access WHERE principal_id = $1
 // iam_principal_application_access + iam_client_access_grants do NOT have
 // FK ON DELETE CASCADE on principal_id (only iam_principal_roles does), so
 // Delete has to clean them explicitly. Mirrors the wire contract's delete() + Persist::delete.
-func (q *Queries) PrincipalApplicationAccessClear(ctx context.Context, principalID string) error {
+func (q *Queries) PrincipalApplicationAccessClear(ctx context.Context, principalID ids.PrincipalID) error {
 	_, err := q.db.Exec(ctx, principalApplicationAccessClear, principalID)
 	return err
 }
@@ -27,7 +29,7 @@ const principalClientAccessGrantsClear = `-- name: PrincipalClientAccessGrantsCl
 DELETE FROM iam_client_access_grants WHERE principal_id = $1
 `
 
-func (q *Queries) PrincipalClientAccessGrantsClear(ctx context.Context, principalID string) error {
+func (q *Queries) PrincipalClientAccessGrantsClear(ctx context.Context, principalID ids.PrincipalID) error {
 	_, err := q.db.Exec(ctx, principalClientAccessGrantsClear, principalID)
 	return err
 }
@@ -36,7 +38,7 @@ const principalDelete = `-- name: PrincipalDelete :exec
 DELETE FROM iam_principals WHERE id = $1
 `
 
-func (q *Queries) PrincipalDelete(ctx context.Context, id string) error {
+func (q *Queries) PrincipalDelete(ctx context.Context, id ids.PrincipalID) error {
 	_, err := q.db.Exec(ctx, principalDelete, id)
 	return err
 }
@@ -150,7 +152,7 @@ WHERE id = $1
 // (dev_client_secret_ref/dev_client_secret_updated_at last — appended by
 // migration 039's ALTER TABLE) so sqlc maps rows onto the shared
 // IamPrincipal model instead of generating a bespoke per-query Row type.
-func (q *Queries) PrincipalFindByID(ctx context.Context, id string) (IamPrincipal, error) {
+func (q *Queries) PrincipalFindByID(ctx context.Context, id ids.PrincipalID) (IamPrincipal, error) {
 	row := q.db.QueryRow(ctx, principalFindByID, id)
 	var i IamPrincipal
 	err := row.Scan(
@@ -347,25 +349,25 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type PrincipalUpsertParams struct {
-	ID                       string     `db:"id"`
-	Type                     string     `db:"type"`
-	Scope                    *string    `db:"scope"`
-	ClientID                 *string    `db:"client_id"`
-	ApplicationID            *string    `db:"application_id"`
-	Name                     string     `db:"name"`
-	Active                   bool       `db:"active"`
-	Email                    *string    `db:"email"`
-	EmailDomain              *string    `db:"email_domain"`
-	IdpType                  *string    `db:"idp_type"`
-	ExternalIdpID            *string    `db:"external_idp_id"`
-	PasswordHash             *string    `db:"password_hash"`
-	LastLoginAt              *time.Time `db:"last_login_at"`
-	ServiceAccountID         *string    `db:"service_account_id"`
-	AllApplications          bool       `db:"all_applications"`
-	CreatedAt                time.Time  `db:"created_at"`
-	UpdatedAt                time.Time  `db:"updated_at"`
-	DevClientSecretRef       *string    `db:"dev_client_secret_ref"`
-	DevClientSecretUpdatedAt *time.Time `db:"dev_client_secret_updated_at"`
+	ID                       ids.PrincipalID `db:"id"`
+	Type                     string          `db:"type"`
+	Scope                    *string         `db:"scope"`
+	ClientID                 *string         `db:"client_id"`
+	ApplicationID            *string         `db:"application_id"`
+	Name                     string          `db:"name"`
+	Active                   bool            `db:"active"`
+	Email                    *string         `db:"email"`
+	EmailDomain              *string         `db:"email_domain"`
+	IdpType                  *string         `db:"idp_type"`
+	ExternalIdpID            *string         `db:"external_idp_id"`
+	PasswordHash             *string         `db:"password_hash"`
+	LastLoginAt              *time.Time      `db:"last_login_at"`
+	ServiceAccountID         *string         `db:"service_account_id"`
+	AllApplications          bool            `db:"all_applications"`
+	CreatedAt                time.Time       `db:"created_at"`
+	UpdatedAt                time.Time       `db:"updated_at"`
+	DevClientSecretRef       *string         `db:"dev_client_secret_ref"`
+	DevClientSecretUpdatedAt *time.Time      `db:"dev_client_secret_updated_at"`
 }
 
 func (q *Queries) PrincipalUpsert(ctx context.Context, arg PrincipalUpsertParams) error {

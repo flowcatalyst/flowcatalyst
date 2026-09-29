@@ -83,10 +83,10 @@ func TestSetDeveloperCredential_HappyPath(t *testing.T) {
 	require.NotNil(t, got.UserIdentity)
 	require.NotNil(t, got.UserIdentity.DevClientSecretUpdatedAt)
 
-	plaintext, ok := operations.PopDevClientSecret(seeded.UserID)
+	plaintext, ok := operations.PopDevClientSecret(string(seeded.UserID))
 	require.True(t, ok, "plaintext must be stashed exactly once after a successful set")
 	assert.NotEmpty(t, plaintext)
-	_, ok = operations.PopDevClientSecret(seeded.UserID)
+	_, ok = operations.PopDevClientSecret(string(seeded.UserID))
 	assert.False(t, ok, "stash is one-shot — a second pop must find nothing")
 
 	// Rotating replaces the ref (and stashes a new plaintext).
@@ -97,7 +97,7 @@ func TestSetDeveloperCredential_HappyPath(t *testing.T) {
 	rotated, err := repo.FindByID(ctx, seeded.UserID)
 	require.NoError(t, err)
 	assert.NotEqual(t, *firstRef, *rotated.UserIdentity.DevClientSecretRef, "rotate must generate a fresh ref")
-	_, ok = operations.PopDevClientSecret(seeded.UserID)
+	_, ok = operations.PopDevClientSecret(string(seeded.UserID))
 	assert.True(t, ok)
 }
 
@@ -129,7 +129,7 @@ func TestSetDeveloperCredential_RevokedRoleBlocksFutureSets(t *testing.T) {
 	_, err = runAuthorized(uow, operations.SetDeveloperCredential(repo),
 		operations.SetDeveloperCredentialCommand{PrincipalID: seeded.UserID})
 	require.NoError(t, err)
-	operations.PopDevClientSecret(seeded.UserID) // drain the stash
+	operations.PopDevClientSecret(string(seeded.UserID)) // drain the stash
 
 	// Revoking the role (full role-set replace with the role omitted) must
 	// block any FUTURE SetDeveloperCredential call — the live re-check.
@@ -185,7 +185,7 @@ func TestRevokeDeveloperCredential_HappyPath(t *testing.T) {
 	_, err = runAuthorized(uow, operations.SetDeveloperCredential(repo),
 		operations.SetDeveloperCredentialCommand{PrincipalID: seeded.UserID})
 	require.NoError(t, err)
-	operations.PopDevClientSecret(seeded.UserID)
+	operations.PopDevClientSecret(string(seeded.UserID))
 
 	ev, err := runAuthorized(uow, operations.RevokeDeveloperCredential(repo),
 		operations.RevokeDeveloperCredentialCommand{PrincipalID: seeded.UserID})

@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/mcp"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
@@ -73,7 +74,7 @@ func bootstrapMCPCredentials(ctx context.Context, pool *pgxpool.Pool, baseURL st
 	oauthClient := auth.NewOAuthClient(mcpLocalClientID, "FlowCatalyst MCP (local dev)", auth.OAuthClientConfidential)
 	oauthClient.SecretRef = &secretRef
 	oauthClient.GrantTypes = []string{"client_credentials"}
-	oauthClient.PrincipalID = &saPrincipal.ID
+	oauthClient.PrincipalID = ids.StringPtr(&saPrincipal.ID)
 
 	principalRepo := principal.NewRepository(pool)
 	saRepo := serviceaccount.NewRepository(pool)

@@ -11,6 +11,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/budget"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/engine"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/runtimes"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/login"
@@ -165,7 +166,9 @@ func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet,
 		versionStore,
 		envutil.Int("FC_PRINCIPAL_VERSION_CACHE_SIZE", 10_000),
 		time.Duration(envutil.Int("FC_PRINCIPAL_VERSION_CACHE_TTL_SECS", 30))*time.Second,
-		repos.principalRepo.LookupVersion,
+		func(ctx context.Context, principalID string) (time.Time, error) {
+			return repos.principalRepo.LookupVersion(ctx, ids.PrincipalID(principalID))
+		},
 	)
 	svcs.oauthTokenEP = &oauthapi.State{
 		// Records rotation-overlap secret use for the client drawer's status line.

@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/operations"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
@@ -551,7 +552,7 @@ func TestProvisionServiceAccount_AssignsRoleAndScopesClient(t *testing.T) {
 
 	// 1 + app scope. The SERVICE principal carries the application-service role
 	// and is confined to its own application.
-	p, err := principals.FindByID(ctx, result.ServicePrincipalID)
+	p, err := principals.FindByID(ctx, ids.PrincipalID(result.ServicePrincipalID))
 	require.NoError(t, err)
 	require.NotNil(t, p)
 	assert.False(t, p.AllApplications, "provisioned SA is app-scoped, not all-applications")

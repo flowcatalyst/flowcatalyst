@@ -90,9 +90,9 @@ func (e *LoginEndpoint) emitUserLoggedIn(
 		idpCode = &c
 	}
 
-	ec := usecase.NewExecutionContext(p.ID)
+	ec := usecase.NewExecutionContext(string(p.ID))
 	event := principalops.UserLoggedIn{
-		Metadata:             usecase.NewEventMetadata(ec, principalops.UserLoggedInType, principalops.Source, principalops.UserLoggedInSubject(p.ID)),
+		Metadata:             usecase.NewEventMetadata(ec, principalops.UserLoggedInType, principalops.Source, principalops.UserLoggedInSubject(string(p.ID))),
 		UserID:               p.ID,
 		Email:                email,
 		LoginMethod:          "OIDC",

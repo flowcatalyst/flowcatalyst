@@ -11,6 +11,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/resetapproval"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
@@ -88,7 +89,7 @@ func (s *State) list(ctx context.Context, _ *struct{}) (*listOutput, error) {
 			ExpiresAt:   jsontime.New(r.ExpiresAt),
 			CreatedAt:   jsontime.New(r.CreatedAt),
 		}
-		if p, _ := s.Principals.FindByID(ctx, r.PrincipalID); p != nil {
+		if p, _ := s.Principals.FindByID(ctx, ids.PrincipalID(r.PrincipalID)); p != nil {
 			dto.Name = p.Name
 			if p.UserIdentity != nil {
 				dto.Email = p.UserIdentity.Email
@@ -127,7 +128,7 @@ func (s *State) approve(ctx context.Context, in *idInput) (*messageOutput, error
 		return nil, usecase.Validation("ALREADY_DECIDED", "request is no longer pending")
 	}
 	// Email the user an authorised reset link (clears 2FA so they re-onboard).
-	p, err := s.Principals.FindByID(ctx, req.PrincipalID)
+	p, err := s.Principals.FindByID(ctx, ids.PrincipalID(req.PrincipalID))
 	if err != nil || p == nil {
 		return nil, httperror.NotFound("Principal", req.PrincipalID)
 	}

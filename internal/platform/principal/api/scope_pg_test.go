@@ -93,7 +93,7 @@ func newScopeFixture(t *testing.T, suffix string) scopeFixture {
 	return scopeFixture{
 		s:         &State{Repo: repo, UoW: uow, Clients: clients},
 		adminCtx:  adminCtx,
-		targetID:  target.UserID,
+		targetID:  string(target.UserID),
 		missingID: "prn_doesnotexist_" + suffix,
 	}
 }

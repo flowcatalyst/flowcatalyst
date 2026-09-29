@@ -24,6 +24,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
@@ -369,7 +370,7 @@ func (e *Endpoint) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p, err := e.cfg.Principals.FindByID(r.Context(), res.Stored.PrincipalID)
+	p, err := e.cfg.Principals.FindByID(r.Context(), ids.PrincipalID(res.Stored.PrincipalID))
 	if err != nil {
 		httperror.Write(w, err)
 		return
@@ -561,7 +562,7 @@ func (e *Endpoint) completeLogin(w http.ResponseWriter, r *http.Request, p *prin
 	if p.UserIdentity != nil {
 		email = p.UserIdentity.Email
 	}
-	token, err := e.cfg.Provider.MintSessionToken(r.Context(), p.ID, SessionTTL)
+	token, err := e.cfg.Provider.MintSessionToken(r.Context(), string(p.ID), SessionTTL)
 	if err != nil {
 		// The credentials already verified — a mint failure here is a
 		// server-side fault (signing key missing/unreadable), not something the
@@ -583,8 +584,8 @@ func (e *Endpoint) completeLogin(w http.ResponseWriter, r *http.Request, p *prin
 		Expires:  time.Now().Add(SessionTTL),
 		MaxAge:   int(SessionTTL.Seconds()),
 	})
-	e.recordAttempt(r.Context(), loginattempt.OutcomeSuccess, email, &p.ID, clientIP(r), "")
-	claims, err := e.cfg.Provider.ResolveClaims(r.Context(), p.ID)
+	e.recordAttempt(r.Context(), loginattempt.OutcomeSuccess, email, ids.StringPtr(&p.ID), clientIP(r), "")
+	claims, err := e.cfg.Provider.ResolveClaims(r.Context(), string(p.ID))
 	if err != nil {
 		// Auth succeeded but we couldn't load roles/permissions — log
 		// and continue with an empty permission list. The user is signed
@@ -597,7 +598,7 @@ func (e *Endpoint) completeLogin(w http.ResponseWriter, r *http.Request, p *prin
 	}
 	writeJSON(w, http.StatusOK, loginResponse{
 		Status:        "ok",
-		PrincipalID:   p.ID,
+		PrincipalID:   string(p.ID),
 		Name:          p.Name,
 		Email:         email,
 		Roles:         roles,
@@ -661,7 +662,7 @@ func (e *Endpoint) handleMe(w http.ResponseWriter, r *http.Request) {
 	}
 	// Reload the principal so we return fresh name / active state /
 	// roles rather than whatever was stamped on the JWT minutes ago.
-	p, err := e.cfg.Principals.FindByID(r.Context(), ac.PrincipalID)
+	p, err := e.cfg.Principals.FindByID(r.Context(), ids.PrincipalID(ac.PrincipalID))
 	if err != nil {
 		httperror.Write(w, err)
 		return
@@ -670,7 +671,7 @@ func (e *Endpoint) handleMe(w http.ResponseWriter, r *http.Request) {
 		writeUnauthorized(w, "Not authenticated")
 		return
 	}
-	claims, err := e.cfg.Provider.ResolveClaims(r.Context(), p.ID)
+	claims, err := e.cfg.Provider.ResolveClaims(r.Context(), string(p.ID))
 	if err != nil {
 		claims = &provider.Claims{}
 	}
@@ -683,7 +684,7 @@ func (e *Endpoint) handleMe(w http.ResponseWriter, r *http.Request) {
 		email = p.UserIdentity.Email
 	}
 	writeJSON(w, http.StatusOK, loginResponse{
-		PrincipalID: p.ID,
+		PrincipalID: string(p.ID),
 		Name:        p.Name,
 		Email:       email,
 		Roles:       roles,

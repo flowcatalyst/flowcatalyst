@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
@@ -32,7 +33,7 @@ const (
 )
 
 type SetClientAssociationCommand struct {
-	UserID   string
+	UserID   ids.PrincipalID
 	ClientID string
 	Mode     ClientAssociationMode
 }
@@ -49,7 +50,7 @@ func SetClientAssociation(repo *principal.Repository, clients *client.Repository
 	return usecaseop.Operation[SetClientAssociationCommand, UserUpdated]{
 		Name: "SetClientAssociation",
 		Validate: func(_ context.Context, cmd SetClientAssociationCommand) error {
-			if strings.TrimSpace(cmd.UserID) == "" {
+			if strings.TrimSpace(string(cmd.UserID)) == "" {
 				return usecase.Validation("USER_ID_REQUIRED", "User ID is required")
 			}
 			if strings.TrimSpace(cmd.ClientID) == "" {
@@ -66,7 +67,7 @@ func SetClientAssociation(repo *principal.Repository, clients *client.Repository
 				return nil, usecase.Internal("REPO", "find_user failed", err)
 			}
 			if p == nil {
-				return nil, httperror.NotFound("User", cmd.UserID)
+				return nil, httperror.NotFound("User", string(cmd.UserID))
 			}
 			if p.Type != principal.TypeUser {
 				return nil, usecase.BusinessRule("NOT_A_USER", "Client association only applies to USER principals")

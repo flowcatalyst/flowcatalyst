@@ -90,7 +90,7 @@ func TestUserinfoAnswersFromThePrincipal(t *testing.T) {
 
 		assert.Equal(t, []string{mine.Name}, resp.Roles,
 			"the other application's role must not be disclosed")
-		assert.Equal(t, p.ID, resp.Sub)
+		assert.Equal(t, string(p.ID), resp.Sub)
 		assert.Empty(t, resp.Scope, "an identity token grants no scope; that is not recomputed")
 	})
 

@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
@@ -99,7 +100,7 @@ func (s *State) userinfoPrincipal(r *http.Request, subject string) *principal.Pr
 	if s.Principals == nil || subject == "" {
 		return nil
 	}
-	p, err := s.Principals.FindByID(r.Context(), subject)
+	p, err := s.Principals.FindByID(r.Context(), ids.PrincipalID(subject))
 	if err != nil || p == nil || !p.Active {
 		return nil
 	}

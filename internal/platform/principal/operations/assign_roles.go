@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
@@ -14,8 +15,8 @@ import (
 )
 
 type AssignRolesCommand struct {
-	UserID string   `json:"userId"`
-	Roles  []string `json:"roles"`
+	UserID ids.PrincipalID `json:"userId"`
+	Roles  []string        `json:"roles"`
 }
 
 // AssignRoles replaces a user principal's full role set and emits
@@ -30,7 +31,7 @@ func AssignRoles(repo *principal.Repository, roles *role.Repository) usecaseop.O
 	return usecaseop.Operation[AssignRolesCommand, RolesAssigned]{
 		Name: "AssignRoles",
 		Validate: func(_ context.Context, cmd AssignRolesCommand) error {
-			if strings.TrimSpace(cmd.UserID) == "" {
+			if strings.TrimSpace(string(cmd.UserID)) == "" {
 				return usecase.Validation("USER_ID_REQUIRED", "User ID is required")
 			}
 			return nil
@@ -42,7 +43,7 @@ func AssignRoles(repo *principal.Repository, roles *role.Repository) usecaseop.O
 				return nil, usecase.Internal("REPO", "find_by_id failed", err)
 			}
 			if p == nil {
-				return nil, httperror.NotFound("User", cmd.UserID)
+				return nil, httperror.NotFound("User", string(cmd.UserID))
 			}
 			if err := requireUserAdmin(ctx, p); err != nil {
 				return nil, err

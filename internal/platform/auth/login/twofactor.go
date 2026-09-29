@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/loginbackoff"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/mfatoken"
@@ -88,7 +89,7 @@ func (e *Endpoint) maybeChallenge2FA(w http.ResponseWriter, r *http.Request, p *
 	domainRequires := mapping != nil && mapping.Require2FA && internalDomain
 	rememberAllowed := mapping != nil && mapping.RememberDeviceEnabled
 
-	confirmed, err := e.cfg.MFA.ConfirmedMethods(r.Context(), p.ID)
+	confirmed, err := e.cfg.MFA.ConfirmedMethods(r.Context(), string(p.ID))
 	if err != nil {
 		return false, err
 	}
@@ -104,7 +105,7 @@ func (e *Endpoint) maybeChallenge2FA(w http.ResponseWriter, r *http.Request, p *
 		// A remembered device skips the challenge for this browser.
 		if rememberAllowed {
 			if raw := e.readTrustedDeviceCookie(r); raw != "" {
-				ok, verr := e.cfg.MFA.VerifyTrustedDevice(r.Context(), p.ID, raw)
+				ok, verr := e.cfg.MFA.VerifyTrustedDevice(r.Context(), string(p.ID), raw)
 				if verr != nil {
 					return false, verr
 				}
@@ -113,7 +114,7 @@ func (e *Endpoint) maybeChallenge2FA(w http.ResponseWriter, r *http.Request, p *
 				}
 			}
 		}
-		tok, err := e.cfg.MFATokens.Mint(p.ID, mfatoken.PurposePending, e.pendingTTL())
+		tok, err := e.cfg.MFATokens.Mint(string(p.ID), mfatoken.PurposePending, e.pendingTTL())
 		if err != nil {
 			return false, err
 		}
@@ -133,7 +134,7 @@ func (e *Endpoint) maybeChallenge2FA(w http.ResponseWriter, r *http.Request, p *
 	if !domainRequires {
 		return false, nil
 	}
-	tok, err := e.cfg.MFATokens.Mint(p.ID, mfatoken.PurposeEnroll, e.enrollTTL())
+	tok, err := e.cfg.MFATokens.Mint(string(p.ID), mfatoken.PurposeEnroll, e.enrollTTL())
 	if err != nil {
 		return false, err
 	}
@@ -181,11 +182,11 @@ func (e *Endpoint) handle2FAVerify(w http.ResponseWriter, r *http.Request) {
 	method := strings.ToUpper(strings.TrimSpace(req.Method))
 	switch method {
 	case string(mfa.MethodTOTP):
-		ok, err = e.cfg.MFA.VerifyTOTP(r.Context(), p.ID, req.Code)
+		ok, err = e.cfg.MFA.VerifyTOTP(r.Context(), string(p.ID), req.Code)
 	case string(mfa.MethodEmailPin):
-		ok, err = e.cfg.MFA.VerifyLoginEmailPin(r.Context(), p.ID, req.Code)
+		ok, err = e.cfg.MFA.VerifyLoginEmailPin(r.Context(), string(p.ID), req.Code)
 	case "RECOVERY_CODE":
-		ok, err = e.cfg.MFA.VerifyRecoveryCode(r.Context(), p.ID, req.Code)
+		ok, err = e.cfg.MFA.VerifyRecoveryCode(r.Context(), string(p.ID), req.Code)
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]any{"code": "INVALID_METHOD", "message": "unknown 2FA method"})
 		return
@@ -196,7 +197,7 @@ func (e *Endpoint) handle2FAVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !ok {
-		e.recordAttempt(r.Context(), loginattempt.OutcomeFailure, email, &p.ID, ip, "Invalid 2FA code")
+		e.recordAttempt(r.Context(), loginattempt.OutcomeFailure, email, ids.StringPtr(&p.ID), ip, "Invalid 2FA code")
 		writeUnauthorized(w, "Invalid or expired code")
 		return
 	}
@@ -230,7 +231,7 @@ func (e *Endpoint) handle2FAChallengeEmail(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusBadRequest, map[string]any{"code": "NO_EMAIL", "message": "account has no email"})
 		return
 	}
-	if err := e.cfg.MFA.SendLoginEmailPin(r.Context(), p.ID, email); err != nil {
+	if err := e.cfg.MFA.SendLoginEmailPin(r.Context(), string(p.ID), email); err != nil {
 		slog.Error("send email pin failed", "principal", p.ID, "err", err)
 		writeJSON(w, http.StatusBadGateway, map[string]any{"code": "EMAIL_SEND_FAILED", "message": "could not send code"})
 		return
@@ -262,7 +263,7 @@ func (e *Endpoint) handle2FAEnrollTOTPBegin(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusForbidden, map[string]any{"code": "METHOD_NOT_ALLOWED", "message": "authenticator app is not permitted for this domain"})
 		return
 	}
-	enr, err := e.cfg.MFA.BeginTOTPEnrollment(r.Context(), p.ID, emailOf(p))
+	enr, err := e.cfg.MFA.BeginTOTPEnrollment(r.Context(), string(p.ID), emailOf(p))
 	if err != nil {
 		e.writeEnrollErr(w, err)
 		return
@@ -279,7 +280,7 @@ func (e *Endpoint) handle2FAEnrollTOTPConfirm(w http.ResponseWriter, r *http.Req
 	if p == nil {
 		return
 	}
-	ok, err := e.cfg.MFA.ConfirmTOTPEnrollment(r.Context(), p.ID, req.Code)
+	ok, err := e.cfg.MFA.ConfirmTOTPEnrollment(r.Context(), string(p.ID), req.Code)
 	if err != nil {
 		e.writeEnrollErr(w, err)
 		return
@@ -289,7 +290,7 @@ func (e *Endpoint) handle2FAEnrollTOTPConfirm(w http.ResponseWriter, r *http.Req
 		return
 	}
 	e.cfg.Notifier.TwoFactorEnrolled(r.Context(), emailOf(p), string(mfa.MethodTOTP))
-	e.auditMFA(r.Context(), p.ID, "2FA_TOTP_ENROLLED")
+	e.auditMFA(r.Context(), string(p.ID), "2FA_TOTP_ENROLLED")
 	e.completeEnrollment(w, r, p)
 }
 
@@ -311,7 +312,7 @@ func (e *Endpoint) handle2FAEnrollEmailBegin(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, http.StatusBadRequest, map[string]any{"code": "NO_EMAIL", "message": "account has no email"})
 		return
 	}
-	if err := e.cfg.MFA.BeginEmailEnrollment(r.Context(), p.ID, email); err != nil {
+	if err := e.cfg.MFA.BeginEmailEnrollment(r.Context(), string(p.ID), email); err != nil {
 		e.writeEnrollErr(w, err)
 		return
 	}
@@ -327,7 +328,7 @@ func (e *Endpoint) handle2FAEnrollEmailConfirm(w http.ResponseWriter, r *http.Re
 	if p == nil {
 		return
 	}
-	ok, err := e.cfg.MFA.ConfirmEmailEnrollment(r.Context(), p.ID, req.Code)
+	ok, err := e.cfg.MFA.ConfirmEmailEnrollment(r.Context(), string(p.ID), req.Code)
 	if err != nil {
 		e.writeEnrollErr(w, err)
 		return
@@ -337,7 +338,7 @@ func (e *Endpoint) handle2FAEnrollEmailConfirm(w http.ResponseWriter, r *http.Re
 		return
 	}
 	e.cfg.Notifier.TwoFactorEnrolled(r.Context(), emailOf(p), string(mfa.MethodEmailPin))
-	e.auditMFA(r.Context(), p.ID, "2FA_EMAIL_ENROLLED")
+	e.auditMFA(r.Context(), string(p.ID), "2FA_EMAIL_ENROLLED")
 	e.completeEnrollment(w, r, p)
 }
 
@@ -368,15 +369,15 @@ func (e *Endpoint) auditMFA(ctx context.Context, principalID, operation string) 
 // generation. Recovery codes only back authenticator-app (TOTP) 2FA — email is
 // its own recovery channel, so an email-only user never gets them.
 func (e *Endpoint) ensureRecoveryCodes(ctx context.Context, p *principal.Principal) []string {
-	confirmed, err := e.cfg.MFA.ConfirmedMethods(ctx, p.ID)
+	confirmed, err := e.cfg.MFA.ConfirmedMethods(ctx, string(p.ID))
 	if err != nil || !slices.Contains(confirmed, mfa.MethodTOTP) {
 		return nil
 	}
-	n, err := e.cfg.MFA.RemainingRecoveryCodes(ctx, p.ID)
+	n, err := e.cfg.MFA.RemainingRecoveryCodes(ctx, string(p.ID))
 	if err != nil || n > 0 {
 		return nil
 	}
-	codes, gerr := e.cfg.MFA.GenerateRecoveryCodes(ctx, p.ID)
+	codes, gerr := e.cfg.MFA.GenerateRecoveryCodes(ctx, string(p.ID))
 	if gerr != nil {
 		slog.Error("recovery code generation failed", "principal", p.ID, "err", gerr)
 		return nil
@@ -395,7 +396,7 @@ func (e *Endpoint) principalFromToken(w http.ResponseWriter, r *http.Request, to
 		writeUnauthorized(w, "Invalid or expired session")
 		return nil
 	}
-	p, err := e.cfg.Principals.FindByID(r.Context(), claims.Subject)
+	p, err := e.cfg.Principals.FindByID(r.Context(), ids.PrincipalID(claims.Subject))
 	if err != nil || p == nil || !p.Active {
 		writeUnauthorized(w, "Invalid or expired session")
 		return nil
@@ -434,7 +435,7 @@ func (e *Endpoint) rememberDevice(w http.ResponseWriter, r *http.Request, p *pri
 	}
 	ttl := time.Duration(days) * 24 * time.Hour
 	label := userAgentLabel(r)
-	raw, err := e.cfg.MFA.IssueTrustedDevice(r.Context(), p.ID, label, ttl)
+	raw, err := e.cfg.MFA.IssueTrustedDevice(r.Context(), string(p.ID), label, ttl)
 	if err != nil {
 		slog.Error("issue trusted device failed", "principal", p.ID, "err", err)
 		return

@@ -69,7 +69,7 @@ func TestGenerateAndValidateAccessToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("validate: %v", err)
 	}
-	if claims.Subject != p.ID {
+	if claims.Subject != string(p.ID) {
 		t.Errorf("sub = %q, want %q", claims.Subject, p.ID)
 	}
 	if claims.Tier != "ANCHOR" {
@@ -435,7 +435,7 @@ func TestIdentityAccessTokenCarriesNoAuthority(t *testing.T) {
 	if claims.AllApplications {
 		t.Error("all_applications = true, want false on an identity token")
 	}
-	if claims.Subject != p.ID {
+	if claims.Subject != string(p.ID) {
 		t.Errorf("sub = %q, want %q (identity must survive)", claims.Subject, p.ID)
 	}
 	if claims.Tier != "ANCHOR" {
