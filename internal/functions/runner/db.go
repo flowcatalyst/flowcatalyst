@@ -167,6 +167,7 @@ func (c *capabilities) dbCall(ctx context.Context, op abi.Op, meta []byte) ([]by
 	if c.database == nil {
 		return nil, nil, abi.Errorf(abi.CodeCapabilityUnavailable, "databases are not available on this runner")
 	}
+	//exhaustive:ignore only the DB ops are routed here; the fallthrough below rejects the rest
 	switch op {
 	case abi.OpDBBegin:
 		b, aerr := decode[abi.DBBegin](meta)

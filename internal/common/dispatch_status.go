@@ -16,6 +16,7 @@ const (
 
 // IsTerminal reports whether a status will not change further.
 func (s DispatchStatus) IsTerminal() bool {
+	//exhaustive:ignore membership test: only the terminal members matter
 	switch s {
 	case DispatchCompleted, DispatchFailed, DispatchCancelled, DispatchExpired:
 		return true

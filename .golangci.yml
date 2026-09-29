@@ -26,10 +26,17 @@ linters:
     # WaitGroup.Go, errors.AsType, new(expr), ...). Same analyzers `go fix` runs;
     # enabled here so the class cannot creep back in.
     - modernize
+    # exhaustive: a switch over one of the string enums (principal.Type,
+    # UserScope, the Status types...) must name every member or carry a
+    # default. Adding a member then points at every switch that needs a case.
+    - exhaustive
     # unparam intentionally not enabled: its findings here were all benign
     # generality — helper params (writeJSON status, appendPerm app) that are
     # constant today but reasonable to keep across 16–43 call sites.
   settings:
+    exhaustive:
+      # A default case is an explicit decision about the remaining members.
+      default-signifies-exhaustive: true
     revive:
       rules:
         # Two revive rules are intentionally NOT enabled:

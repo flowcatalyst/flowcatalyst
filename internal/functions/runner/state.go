@@ -95,6 +95,7 @@ func (v *version) currentState() (versionState, string) {
 func (v *version) acquirePool(ctx context.Context, r *Runner) (*pool, error) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
+	//exhaustive:ignore closed falls through to the shared error below
 	switch v.state {
 	case stateReady:
 		return v.pool, nil

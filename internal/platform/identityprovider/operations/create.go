@@ -118,6 +118,7 @@ func validateMappingScope(mappingScope, primaryClientID *string) (*emaildomainma
 		return nil, nil, usecase.Validation("INVALID_MAPPING_SCOPE",
 			"mappingScope must be ANCHOR or CLIENT; partner mappings are managed on the email-domain page")
 	}
+	//exhaustive:ignore PARTNER was rejected above
 	switch scope {
 	case emaildomainmapping.ScopeClient:
 		if clientID == nil {
