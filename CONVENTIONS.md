@@ -312,6 +312,30 @@ runs in CI without infra.
 
 ---
 
+## 5b. Typed entity ids
+
+`internal/ids` gives `Principal`, `Client` and `Application` (and the OAuth
+client's public `client_id`) their own string types, so passing a `ClientID`
+where a `PrincipalID` belongs is a compile error. JSON, SQL and OpenAPI still
+see plain strings.
+
+- **sqlc:** typed columns are listed one by one in `sqlc.yaml` (never by
+  wildcard). A nullable column needs its own `pointer: true` entry; sqlc column
+  overrides take the first match and ignore `nullable:`. An unlisted column
+  stays a string.
+- **Stay strings:** `client_id` on the high-volume `msg_*` tables (set from
+  unchecked SDK payloads), the audit log, the OAuth `client_id` columns, and
+  anything that can hold the `"*"` wildcard (claims, the client-association
+  command).
+- **Conversions are the weak point.** `ids.ClientID("x")` always compiles.
+  `make analyze` runs `tools/analyzer/idconv`, which rejects converting one id
+  kind to another, converting another entity's `.ID` field (a portal identity's
+  `ptu_` id must never become a `PrincipalID`), and any conversion outside
+  `internal/platform`, `internal/server` and `cmd`. Mark a deliberate exception
+  `//idconv:ok <reason>`.
+- **Tests:** comparing a typed id with a string in `assert.Equal` compiles and
+  then fails at runtime (different types); convert one side.
+
 ## 6. Migrations
 
 - One numbered file per migration: `internal/migrate/sql/NNN_subject.sql` where
