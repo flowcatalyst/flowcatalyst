@@ -49,6 +49,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"runtime/debug"
 	"sort"
@@ -58,6 +59,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 )
@@ -137,7 +139,8 @@ func New(repo *dispatchjob.Repository, verifier Verifier) *Handler {
 		// Outer ceiling only; each delivery uses a per-job context timeout.
 		// No redirect-following: a 3xx from a webhook target is not a success.
 		client: &http.Client{
-			Timeout: deliveryClientCeiling,
+			Timeout:   deliveryClientCeiling,
+			Transport: guardedTransport(),
 			CheckRedirect: func(*http.Request, []*http.Request) error {
 				return http.ErrUseLastResponse
 			},
@@ -873,4 +876,13 @@ func classifyTransportErr(err error) (string, dispatchjob.ErrorType) {
 		return "Connection timeout", dispatchjob.ErrorTimeout
 	}
 	return "Connection error: " + err.Error(), dispatchjob.ErrorConnection
+}
+
+// guardedTransport is http.DefaultTransport with the dial refusing the
+// destinations netguard forbids: a subscription's target URL is customer
+// input, and this is the hop that POSTs to it from inside the cluster.
+func guardedTransport() *http.Transport {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.DialContext = netguard.Default.DialContext(&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second})
+	return t
 }

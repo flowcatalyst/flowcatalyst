@@ -23,6 +23,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/frontend"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/logging"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/migrate"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/seed"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/database"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/server"
@@ -48,6 +49,9 @@ func main() {
 	}()
 
 	cfg := server.LoadEnv()
+	// Customer webhook targets may not reach loopback, cloud metadata or (by
+	// default) private networks; the platform's own endpoints are exempt.
+	cfg.ApplyDeliveryPolicy(netguard.Default)
 
 	slog.Info("starting fc-server",
 		"platform", cfg.PlatformEnabled,

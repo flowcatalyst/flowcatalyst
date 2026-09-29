@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/server"
 )
 
@@ -98,6 +99,16 @@ func devEnvCfg(opts startOpts, databaseURL string, routerCreds routerCredentials
 	if cfg.FunctionsArtifactStore == "" {
 		cfg.FunctionsArtifactStore = "file://" + filepath.Join(userDataDir(), "flowcatalyst", "functions", "artifacts")
 	}
+	// Developers run webhook receivers on their own machine and network, so the
+	// delivery guard allows loopback and private targets here unless the
+	// environment says otherwise. Cloud metadata and link-local stay blocked.
+	if os.Getenv("FC_DELIVERY_ALLOW_LOOPBACK") == "" {
+		netguard.Default.AllowLoopback = true
+	}
+	if os.Getenv("FC_DELIVERY_ALLOW_PRIVATE") == "" {
+		netguard.Default.AllowPrivate = true
+	}
+	cfg.ApplyDeliveryPolicy(netguard.Default)
 	return cfg
 }
 

@@ -6,6 +6,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
 )
 
 // EnvCfg captures every env-driven knob fc-server reads: the
@@ -484,4 +486,15 @@ func envBoolAlias(key, alias string, def bool) bool {
 		return envBool(key, def)
 	}
 	return envBool(alias, def)
+}
+
+// ApplyDeliveryPolicy exempts the platform's own internal endpoints from the
+// outbound delivery guard (internal/netguard). The router POSTs each dispatch
+// job to DispatchProcessingEndpoint, and function subscriptions point at the
+// runner; both are normally on loopback or a private address, which the guard
+// otherwise refuses for customer webhooks. Call it once, after the config is
+// final (fc-dev adjusts these URLs after LoadEnv).
+func (c EnvCfg) ApplyDeliveryPolicy(p *netguard.Policy) {
+	p.AllowURL(c.DispatchProcessingEndpoint)
+	p.AllowURL(c.FunctionsRunnerURL)
 }

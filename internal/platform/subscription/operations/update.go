@@ -6,6 +6,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/dispatchqueue"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
@@ -48,8 +49,10 @@ func UpdateSubscription(repo *subscription.Repository) usecaseop.Operation[Updat
 			if cmd.Name != nil && strings.TrimSpace(*cmd.Name) == "" {
 				return usecase.Validation("NAME_REQUIRED", "name cannot be empty")
 			}
-			if cmd.Endpoint != nil && !urlPattern.MatchString(*cmd.Endpoint) {
-				return usecase.Validation("INVALID_ENDPOINT", "endpoint must be a http(s) URL")
+			if cmd.Endpoint != nil {
+				if err := netguard.Default.ValidateURL(*cmd.Endpoint); err != nil {
+					return usecase.Validation("INVALID_ENDPOINT", "endpoint "+err.Error())
+				}
 			}
 			if cmd.Queue != nil {
 				if _, err := dispatchqueue.Parse(*cmd.Queue); err != nil {

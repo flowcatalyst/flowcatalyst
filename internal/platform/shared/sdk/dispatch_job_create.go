@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"slices"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
@@ -87,6 +88,9 @@ func (s *DispatchJobsBatchState) createOne(w http.ResponseWriter, r *http.Reques
 		return
 	case req.TargetURL == "":
 		httperror.Write(w, httperror.BadRequest("VALIDATION", "targetUrl is required"))
+		return
+	case netguard.Default.ValidateURL(req.TargetURL) != nil:
+		httperror.Write(w, httperror.BadRequest("INVALID_TARGET_URL", "targetUrl "+netguard.Default.ValidateURL(req.TargetURL).Error()))
 		return
 	case req.Payload == nil:
 		httperror.Write(w, httperror.BadRequest("VALIDATION", "payload is required"))

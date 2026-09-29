@@ -192,6 +192,21 @@ func TestCreateSubscription_Validation(t *testing.T) {
 		{"non-http endpoint", operations.CreateCommand{
 			Code: "subcrt-ftpep", Name: "X", Endpoint: "ftp://files.example.test", EventTypes: bindings,
 		}, "INVALID_ENDPOINT"},
+		{"loopback endpoint", operations.CreateCommand{
+			Code: "subcrt-loop", Name: "X", Endpoint: "http://127.0.0.1:8080/hook", EventTypes: bindings,
+		}, "INVALID_ENDPOINT"},
+		{"localhost endpoint", operations.CreateCommand{
+			Code: "subcrt-lhost", Name: "X", Endpoint: "http://localhost/hook", EventTypes: bindings,
+		}, "INVALID_ENDPOINT"},
+		{"cloud metadata endpoint", operations.CreateCommand{
+			Code: "subcrt-meta", Name: "X", Endpoint: "http://169.254.169.254/latest/meta-data/", EventTypes: bindings,
+		}, "INVALID_ENDPOINT"},
+		{"private-network endpoint", operations.CreateCommand{
+			Code: "subcrt-priv", Name: "X", Endpoint: "http://10.0.0.7:9000/hook", EventTypes: bindings,
+		}, "INVALID_ENDPOINT"},
+		{"endpoint with embedded credentials", operations.CreateCommand{
+			Code: "subcrt-cred", Name: "X", Endpoint: "https://user:pw@x.example.test/hook", EventTypes: bindings,
+		}, "INVALID_ENDPOINT"},
 		{"no event types", operations.CreateCommand{
 			Code: "subcrt-noet", Name: "X", Endpoint: "https://x.example.test",
 		}, "EVENT_TYPES_REQUIRED"},

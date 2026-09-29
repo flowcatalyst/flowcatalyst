@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
@@ -70,6 +71,9 @@ func CreateScheduledJob(repo *scheduledjob.Repository) usecaseop.Operation[Creat
 				if err := scheduledjob.ValidateCronShape(c); err != nil {
 					return usecase.Validation("CRON_INVALID_SHAPE", err.Error())
 				}
+			}
+			if err := validateTargetURL(cmd.TargetURL); err != nil {
+				return err
 			}
 			return nil
 		},
@@ -148,6 +152,9 @@ func UpdateScheduledJob(repo *scheduledjob.Repository) usecaseop.Operation[Updat
 		Validate: func(_ context.Context, cmd UpdateCommand) error {
 			if strings.TrimSpace(cmd.ID) == "" {
 				return usecase.Validation("ID_REQUIRED", "id is required")
+			}
+			if err := validateTargetURL(cmd.TargetURL); err != nil {
+				return err
 			}
 			if cmd.Name != nil && strings.TrimSpace(*cmd.Name) == "" {
 				return usecase.Validation("NAME_REQUIRED", "name cannot be empty")
@@ -416,4 +423,17 @@ func FireNow(repo *scheduledjob.Repository, instances *scheduledjob.InstanceRepo
 			return usecaseop.Emit(event), nil
 		},
 	}
+}
+
+// validateTargetURL applies the delivery policy (internal/netguard) to a job's
+// target: it is customer input the scheduler POSTs to from inside the cluster.
+// Nil or empty means "no target" and is left to the existing rules.
+func validateTargetURL(u *string) error {
+	if u == nil || strings.TrimSpace(*u) == "" {
+		return nil
+	}
+	if err := netguard.Default.ValidateURL(*u); err != nil {
+		return usecase.Validation("INVALID_TARGET_URL", "targetUrl "+err.Error())
+	}
+	return nil
 }

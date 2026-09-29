@@ -22,11 +22,13 @@ package scheduler
 import (
 	"context"
 	"log/slog"
+	"net"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/envutil"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 )
 
@@ -93,7 +95,11 @@ func NewService(
 	if isLeader == nil {
 		isLeader = func() bool { return true }
 	}
-	httpClient := &http.Client{Timeout: cfg.HTTPTimeout}
+	// A job's TargetURL is customer input, so the dial refuses the destinations
+	// netguard forbids (loopback, metadata, link-local, private by default).
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DialContext = netguard.Default.DialContext(&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second})
+	httpClient := &http.Client{Timeout: cfg.HTTPTimeout, Transport: transport}
 	return &Service{
 		cfg:    cfg,
 		poller: &poller{cfg: cfg, jobs: jobs, instances: instances, isLeader: isLeader},

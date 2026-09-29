@@ -18,6 +18,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/dispatchqueue"
@@ -120,6 +121,9 @@ func jobFromItem(it BatchItem) (dispatchjob.DispatchJob, error) {
 	// (docs/spec/dispatch-job-priority.md R3). Absent stays absent: only a
 	// recognised non-blank value is stored, so "not asked for" never
 	// collapses into a stored DEFAULT.
+	if err := netguard.Default.ValidateURL(it.TargetURL); err != nil {
+		return dispatchjob.DispatchJob{}, httperror.BadRequest("INVALID_TARGET_URL", "targetUrl "+err.Error())
+	}
 	var queue *string
 	if it.Queue != nil {
 		p, err := dispatchqueue.Parse(*it.Queue)

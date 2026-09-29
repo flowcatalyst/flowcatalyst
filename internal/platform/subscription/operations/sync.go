@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -134,6 +135,9 @@ func SyncSubscriptions(
 				}
 				if strings.TrimSpace(in.Target) == "" {
 					return usecase.Validation("TARGET_REQUIRED", "Target endpoint URL is required")
+				}
+				if err := netguard.Default.ValidateURL(in.Target); err != nil {
+					return usecase.Validation("INVALID_ENDPOINT", "Target for '"+in.Code+"' "+err.Error())
 				}
 				if len(in.EventTypes) == 0 {
 					return usecase.Validation("EVENT_TYPES_REQUIRED", "At least one event type is required")

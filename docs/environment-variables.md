@@ -115,6 +115,26 @@ as defence-in-depth.
 | `FC_RATE_LIMIT_DISABLE` | unset | — | `internal/platform/shared/ratelimit` | `1` replaces the distributed store with a no-op (everything allowed). |
 | `FC_REDIS_URL` | — | — | `internal/platform/shared/ratelimit` | Redis backend for the distributed rate-limit store; set + reachable → Redis, else falls back to the Postgres store. |
 
+## 5a. Outbound delivery guard
+
+A subscription endpoint, scheduled-job target or SDK dispatch-job `targetUrl` is
+customer input that the platform POSTs to from inside the cluster. The guard in
+`internal/netguard` refuses destinations that could expose the cluster: at write
+time (a 400 `INVALID_ENDPOINT` / `INVALID_TARGET_URL`) and, authoritatively, at
+dial time after DNS resolution, so a hostname that resolves to a forbidden
+address is refused too. Cloud metadata (`169.254.169.254`, `fd00:ec2::254`),
+link-local, unspecified and multicast addresses are **always** refused.
+
+The platform's own endpoints (`FC_DISPATCH_PROCESSING_ENDPOINT`,
+`FC_FUNCTIONS_RUNNER_URL`) are exempted automatically. `fc-dev` allows loopback
+and private targets unless the variables below are set.
+
+| Variable | Default | Aliases | Read in | Description |
+|---|---|---|---|---|
+| `FC_DELIVERY_ALLOW_LOOPBACK` | `false` | — | `internal/netguard` | Permit `127.0.0.0/8`, `::1` and `localhost` targets. Development only. |
+| `FC_DELIVERY_ALLOW_PRIVATE` | `false` | — | `internal/netguard` | Permit RFC 1918, `fc00::/7` and CGNAT (`100.64.0.0/10`) targets. Off by default: these are the cluster's pods, services and internal APIs. |
+| `FC_DELIVERY_ALLOW_HOSTS` | — | — | `internal/netguard` | Comma-separated `host:port` patterns (`*` wildcard) exempt from the checks, e.g. `partner-gw.internal:443,*.fn.svc:8095`. Use for a specific private target instead of opening every private range. |
+
 ## 6. Login backoff
 
 All read in `internal/platform/auth/loginbackoff` (`PolicyFromEnv`) —

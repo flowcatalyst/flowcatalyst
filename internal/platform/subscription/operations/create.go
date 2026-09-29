@@ -2,11 +2,11 @@ package operations
 
 import (
 	"context"
-	"regexp"
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/dispatchqueue"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/validate"
@@ -14,8 +14,6 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 )
-
-var urlPattern = regexp.MustCompile(`^https?://.+`)
 
 // CreateCommand is the input DTO.
 type CreateCommand struct {
@@ -59,8 +57,8 @@ func CreateSubscription(repo *subscription.Repository) usecaseop.Operation[Creat
 			if strings.TrimSpace(cmd.Name) == "" {
 				return usecase.Validation("NAME_REQUIRED", "name is required")
 			}
-			if !urlPattern.MatchString(cmd.Endpoint) {
-				return usecase.Validation("INVALID_ENDPOINT", "endpoint must be a http(s) URL")
+			if err := netguard.Default.ValidateURL(cmd.Endpoint); err != nil {
+				return usecase.Validation("INVALID_ENDPOINT", "endpoint "+err.Error())
 			}
 			if len(cmd.EventTypes) == 0 {
 				return usecase.Validation("EVENT_TYPES_REQUIRED", "at least one event type binding is required")
