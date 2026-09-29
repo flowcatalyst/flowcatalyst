@@ -27,6 +27,54 @@ const (
 	StatusExpired  Status = "EXPIRED"
 )
 
+// ParseStatus parses a stored status. Returns ok=false for anything other than
+// the four known values — callers MUST reject rather than coerce (X-06: a loud
+// read error, never a silent default). Follows the (T, bool) shape of
+// principal.ParseScope.
+func ParseStatus(s string) (Status, bool) {
+	switch st := Status(s); st {
+	case StatusPending, StatusApproved, StatusDenied, StatusExpired:
+		return st, true
+	default:
+		return "", false
+	}
+}
+
+// ErrCorruptRow marks a stored request that breaks the state invariants. A read
+// returns it (with the row id and the reason) instead of handing the caller a
+// request that claims a decision nobody made.
+var ErrCorruptRow = errors.New("corrupt reset-approval row")
+
+// check enforces what the state means: a decision carries its decider and time,
+// and a request still pending carries neither. EXPIRED is left unconstrained —
+// nothing writes it today (expiry is expires_at), so its shape is unspecified.
+func (r *Request) check() error {
+	decided := r.DecidedBy != nil && *r.DecidedBy != "" && r.DecidedAt != nil
+	switch r.Status {
+	case StatusApproved, StatusDenied:
+		if !decided {
+			return fmt.Errorf("%w: %s is %s with no decider or decision time", ErrCorruptRow, r.ID, r.Status)
+		}
+	case StatusPending:
+		if r.DecidedBy != nil || r.DecidedAt != nil {
+			return fmt.Errorf("%w: %s is PENDING but carries a decision", ErrCorruptRow, r.ID)
+		}
+	case StatusExpired:
+		// Unconstrained: nothing writes EXPIRED (expiry is expires_at).
+	}
+	return nil
+}
+
+// hydrate turns the raw status column into a Status and validates the row.
+func (r *Request) hydrate(status string) error {
+	st, ok := ParseStatus(status)
+	if !ok {
+		return fmt.Errorf("%w: %s has unknown status %q", ErrCorruptRow, r.ID, status)
+	}
+	r.Status = st
+	return r.check()
+}
+
 // Request is a pending lost-device reset awaiting admin approval.
 type Request struct {
 	ID          string        `json:"id"`
@@ -73,7 +121,9 @@ func scan(row pgx.Row) (*Request, error) {
 		}
 		return nil, fmt.Errorf("scan reset-approval: %w", err)
 	}
-	r.Status = Status(status)
+	if err := r.hydrate(status); err != nil {
+		return nil, err
+	}
 	return &r, nil
 }
 
@@ -142,13 +192,21 @@ func scanRows(rows pgx.Rows) (*Request, error) {
 		&r.Note, &r.DecidedBy, &r.DecidedAt, &r.ExpiresAt, &r.CreatedAt); err != nil {
 		return nil, fmt.Errorf("scan reset-approval row: %w", err)
 	}
-	r.Status = Status(status)
+	if err := r.hydrate(status); err != nil {
+		return nil, err
+	}
 	return &r, nil
 }
 
 // Decide transitions a PENDING request to APPROVED/DENIED. The guarded UPDATE is
 // race-free: RowsAffected==0 means it was already decided/expired.
 func (r *Repository) Decide(ctx context.Context, id string, status Status, decidedBy string) (bool, error) {
+	if status != StatusApproved && status != StatusDenied {
+		return false, fmt.Errorf("decide reset-approval: %q is not a decision", status)
+	}
+	if decidedBy == "" {
+		return false, errors.New("decide reset-approval: a decision needs its decider")
+	}
 	tag, err := r.pool.Exec(ctx,
 		`UPDATE iam_reset_approval_requests
 		    SET status = $2, decided_by = $3, decided_at = NOW()
