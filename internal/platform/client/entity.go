@@ -7,7 +7,7 @@ package client
 import (
 	"time"
 
-	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 )
 
 // Status is the tenant lifecycle state.
@@ -53,25 +53,25 @@ func NewNote(category, text string, addedBy *string) Note {
 
 // Client is the aggregate root.
 type Client struct {
-	ID              string     `json:"id"`
-	Name            string     `json:"name"`
-	Identifier      string     `json:"identifier"`
-	Status          Status     `json:"status"`
-	StatusReason    *string    `json:"statusReason,omitempty"`
-	StatusChangedAt *time.Time `json:"statusChangedAt,omitempty"`
-	Notes           []Note     `json:"notes"`
-	CreatedAt       time.Time  `json:"createdAt"`
-	UpdatedAt       time.Time  `json:"updatedAt"`
+	ID              ids.ClientID `json:"id"`
+	Name            string       `json:"name"`
+	Identifier      string       `json:"identifier"`
+	Status          Status       `json:"status"`
+	StatusReason    *string      `json:"statusReason,omitempty"`
+	StatusChangedAt *time.Time   `json:"statusChangedAt,omitempty"`
+	Notes           []Note       `json:"notes"`
+	CreatedAt       time.Time    `json:"createdAt"`
+	UpdatedAt       time.Time    `json:"updatedAt"`
 }
 
 // IDStr satisfies usecase.HasID.
-func (c Client) IDStr() string { return c.ID }
+func (c Client) IDStr() string { return string(c.ID) }
 
 // New constructs a Client (default Status=ACTIVE).
 func New(name, identifier string) *Client {
 	now := time.Now().UTC()
 	return &Client{
-		ID:         tsid.Generate(tsid.Client),
+		ID:         ids.NewClientID(),
 		Name:       name,
 		Identifier: identifier,
 		Status:     StatusActive,

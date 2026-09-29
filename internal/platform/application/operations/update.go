@@ -71,8 +71,8 @@ func UpdateApplication(repo *application.Repository) usecaseop.Operation[UpdateC
 			}
 
 			event := ApplicationUpdated{
-				Metadata:      usecase.NewEventMetadata(ec, ApplicationUpdatedType, Source, subjectFor(a.ID)),
-				ApplicationID: a.ID,
+				Metadata:      usecase.NewEventMetadata(ec, ApplicationUpdatedType, Source, subjectFor(string(a.ID))),
+				ApplicationID: string(a.ID),
 				Name:          a.Name,
 			}
 			return usecaseop.Save(a, repo, event), nil

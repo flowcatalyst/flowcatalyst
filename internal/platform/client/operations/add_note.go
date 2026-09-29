@@ -44,8 +44,8 @@ func AddNote(repo *client.Repository) usecaseop.Operation[AddNoteCommand, Client
 			}
 			c.AddNote(client.NewNote(cmd.Category, cmd.Text, &ec.PrincipalID))
 			event := ClientNoteAdded{
-				Metadata: usecase.NewEventMetadata(ec, ClientNoteAddedType, Source, subjectFor(c.ID)),
-				ClientID: c.ID,
+				Metadata: usecase.NewEventMetadata(ec, ClientNoteAddedType, Source, subjectFor(string(c.ID))),
+				ClientID: string(c.ID),
 				Category: cmd.Category,
 				Text:     cmd.Text,
 			}

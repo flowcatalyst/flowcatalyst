@@ -27,6 +27,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/appdocs"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
@@ -134,7 +135,7 @@ func (s *State) resolveApp(ctx context.Context, code string) (*application.Appli
 // actually has access to. Platform CODE roles (no application binding) are
 // additionally protected by the source check in the role sync use case.
 func (s *State) requireAppAccess(ac *auth.AuthContext, app *application.Application) error {
-	if ac.CanAccessApplication(app.ID) {
+	if ac.CanAccessApplication(string(app.ID)) {
 		return nil
 	}
 	return httperror.Forbidden("Not authorised for application '" + app.Code + "'")
@@ -246,7 +247,7 @@ func (s *State) syncRoles(ctx context.Context, in *syncRolesInput) (*syncResultO
 
 	cmd := roleops.SyncRolesCommand{
 		ApplicationCode: app.Code,
-		ApplicationID:   app.ID,
+		ApplicationID:   string(app.ID),
 		Roles:           inputs,
 		RemoveUnlisted:  in.RemoveUnlisted,
 	}
@@ -354,7 +355,7 @@ func (s *State) syncSubscriptions(ctx context.Context, in *syncSubscriptionsInpu
 	}
 
 	cmd := subscriptionops.SyncSubscriptionsCommand{
-		ApplicationID:   app.ID,
+		ApplicationID:   string(app.ID),
 		ApplicationCode: app.Code,
 		ClientID:        clientID,
 		Subscriptions:   inputs,
@@ -429,7 +430,7 @@ func (s *State) syncConnections(ctx context.Context, in *syncConnectionsInput) (
 	}
 
 	cmd := connectionops.SyncConnectionsCommand{
-		ApplicationID:   app.ID,
+		ApplicationID:   string(app.ID),
 		ApplicationCode: app.Code,
 		ClientID:        clientID,
 		Connections:     inputs,
@@ -472,7 +473,7 @@ func (s *State) resolveClientRef(ctx context.Context, ref string) (*string, erro
 	if c == nil {
 		return nil, httperror.NotFound("Client", ref)
 	}
-	return &c.ID, nil
+	return ids.StringPtr(&c.ID), nil
 }
 
 // ── Principals ────────────────────────────────────────────────────────────
@@ -594,7 +595,7 @@ func (s *State) syncDispatchPools(ctx context.Context, in *syncDispatchPoolsInpu
 	}
 
 	cmd := dispatchpoolops.SyncDispatchPoolsCommand{
-		ApplicationID:   app.ID,
+		ApplicationID:   string(app.ID),
 		ApplicationCode: app.Code,
 		Pools:           inputs,
 		RemoveUnlisted:  in.RemoveUnlisted,
@@ -687,7 +688,7 @@ func (s *State) runProcessSync(ctx context.Context, appCode string, processes []
 	}
 
 	cmd := processops.SyncProcessesCommand{
-		ApplicationID:   app.ID,
+		ApplicationID:   string(app.ID),
 		ApplicationCode: app.Code,
 		Processes:       inputs,
 		RemoveUnlisted:  removeUnlisted,
@@ -788,7 +789,7 @@ func (s *State) syncScheduledJobs(ctx context.Context, in *syncScheduledJobsInpu
 
 	cmd := scheduledjobops.SyncScheduledJobsCommand{
 		ApplicationCode: app.Code,
-		ApplicationID:   app.ID,
+		ApplicationID:   string(app.ID),
 		ClientID:        in.Body.ClientID,
 		Jobs:            jobs,
 		ArchiveUnlisted: in.Body.ArchiveUnlisted,
@@ -857,7 +858,7 @@ func (s *State) syncOpenapi(ctx context.Context, in *syncOpenapiInput) (*syncOpe
 	}
 
 	cmd := openapiops.SyncOpenApiSpecCommand{
-		ApplicationID:   app.ID,
+		ApplicationID:   string(app.ID),
 		ApplicationCode: app.Code,
 		Spec:            in.Body.Spec,
 	}

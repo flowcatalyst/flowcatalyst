@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
@@ -58,8 +59,8 @@ func NewClientConfigRepo(pool *pgxpool.Pool) *ClientConfigRepo {
 // FindByApplicationAndClient returns the per-(app, client) config or nil.
 func (r *ClientConfigRepo) FindByApplicationAndClient(ctx context.Context, applicationID, clientID string) (*ClientConfig, error) {
 	res, err := r.q.ClientConfigFindByAppAndClient(ctx, dbq.ClientConfigFindByAppAndClientParams{
-		ApplicationID: applicationID,
-		ClientID:      clientID,
+		ApplicationID: ids.ApplicationID(applicationID),
+		ClientID:      ids.ClientID(clientID),
 	})
 	row, err := repocommon.One(res, err, "app_client_configs repo")
 	if row == nil || err != nil {
@@ -70,7 +71,7 @@ func (r *ClientConfigRepo) FindByApplicationAndClient(ctx context.Context, appli
 
 // FindByApplication lists every config for the application.
 func (r *ClientConfigRepo) FindByApplication(ctx context.Context, applicationID string) ([]ClientConfig, error) {
-	rows, err := r.q.ClientConfigFindByApp(ctx, applicationID)
+	rows, err := r.q.ClientConfigFindByApp(ctx, ids.ApplicationID(applicationID))
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +84,7 @@ func (r *ClientConfigRepo) FindByApplication(ctx context.Context, applicationID 
 
 // FindByClient lists every (application) config row for a client.
 func (r *ClientConfigRepo) FindByClient(ctx context.Context, clientID string) ([]ClientConfig, error) {
-	rows, err := r.q.ClientConfigFindByClient(ctx, clientID)
+	rows, err := r.q.ClientConfigFindByClient(ctx, ids.ClientID(clientID))
 	if err != nil {
 		return nil, err
 	}
@@ -98,8 +99,8 @@ func (r *ClientConfigRepo) FindByClient(ctx context.Context, clientID string) ([
 func (r *ClientConfigRepo) Persist(ctx context.Context, c *ClientConfig, tx *usecasepgx.DbTx) error {
 	return r.q.WithTx(tx.Inner()).ClientConfigUpsert(ctx, dbq.ClientConfigUpsertParams{
 		ID:            c.ID,
-		ApplicationID: c.ApplicationID,
-		ClientID:      c.ClientID,
+		ApplicationID: ids.ApplicationID(c.ApplicationID),
+		ClientID:      ids.ClientID(c.ClientID),
 		Enabled:       c.Enabled,
 		CreatedAt:     c.CreatedAt,
 		UpdatedAt:     time.Now().UTC(),
@@ -114,8 +115,8 @@ func (r *ClientConfigRepo) Delete(ctx context.Context, c *ClientConfig, tx *usec
 func rowToClientConfig(row dbq.AppClientConfig) *ClientConfig {
 	return &ClientConfig{
 		ID:            row.ID,
-		ApplicationID: row.ApplicationID,
-		ClientID:      row.ClientID,
+		ApplicationID: string(row.ApplicationID),
+		ClientID:      string(row.ClientID),
 		Enabled:       row.Enabled,
 		CreatedAt:     row.CreatedAt,
 		UpdatedAt:     row.UpdatedAt,

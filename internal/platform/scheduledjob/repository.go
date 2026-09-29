@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -46,7 +47,7 @@ func (r *Repository) FindByCode(ctx context.Context, code string, clientID *stri
 	)
 	if clientID != nil {
 		res, err = r.q.ScheduledJobFindByCodeClient(ctx, dbq.ScheduledJobFindByCodeClientParams{
-			Code: code, ClientID: clientID,
+			Code: code, ClientID: ids.PtrOf[ids.ClientID](clientID),
 		})
 	} else {
 		res, err = r.q.ScheduledJobFindByCodePlatform(ctx, code)
@@ -268,8 +269,8 @@ func (r *Repository) Persist(ctx context.Context, j *ScheduledJob, tx *usecasepg
 	}
 	return r.q.WithTx(tx.Inner()).ScheduledJobUpsert(ctx, dbq.ScheduledJobUpsertParams{
 		ID:                  j.ID,
-		ClientID:            j.ClientID,
-		ApplicationID:       j.ApplicationID,
+		ClientID:            ids.PtrOf[ids.ClientID](j.ClientID),
+		ApplicationID:       ids.PtrOf[ids.ApplicationID](j.ApplicationID),
 		Code:                j.Code,
 		Name:                j.Name,
 		Description:         j.Description,
@@ -312,8 +313,8 @@ func rowToScheduledJob(row dbq.MsgScheduledJob) (*ScheduledJob, error) {
 	}
 	j := ScheduledJob{
 		ID:                  row.ID,
-		ClientID:            row.ClientID,
-		ApplicationID:       row.ApplicationID,
+		ClientID:            ids.StringPtr(row.ClientID),
+		ApplicationID:       ids.StringPtr(row.ApplicationID),
 		Code:                row.Code,
 		Name:                row.Name,
 		Description:         row.Description,

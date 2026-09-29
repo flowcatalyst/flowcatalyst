@@ -99,7 +99,7 @@ func BuildClaims(ctx context.Context, cfg Config, principals *principal.Reposito
 	}
 	clients := append([]string(nil), p.AssignedClients...)
 	if p.ClientID != nil && *p.ClientID != "" {
-		clients = append(clients, *p.ClientID)
+		clients = append(clients, string(*p.ClientID))
 	}
 	// Same wire shape as the OAuth tokens ("id:code" pairs, or "*"), so a
 	// session cookie and a bearer are interchangeable to consumers.

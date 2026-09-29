@@ -106,7 +106,7 @@ func ProvisionServiceAccount(
 
 			sa := serviceaccount.New(saCode, saName)
 			sa.Description = &desc
-			sa.ApplicationID = &appID
+			sa.ApplicationID = ids.StringPtr(&appID)
 			// Webhook credentials from day one: the platform signs this
 			// application's scheduled-job firings with the SA's signing
 			// secret, and the SDK's fc-signature middleware verifies it.
@@ -128,7 +128,7 @@ func ProvisionServiceAccount(
 			// (oauth_client_application_ids). This formally links the client to its
 			// application — it surfaces "under" the app in the OAuth-client UI and
 			// makes the scoping explicit alongside the principal's app confinement.
-			oc.ApplicationIDs = []string{app.ID}
+			oc.ApplicationIDs = []string{string(app.ID)}
 
 			// 1. Service account.
 			if r := usecasepgx.CommitScoped(ctx, s, sa, saRepo,
@@ -158,7 +158,7 @@ func ProvisionServiceAccount(
 			//    iam_principal_roles and iam_principal_application_access junctions
 			//    in this transaction.
 			saPrincipal.AllApplications = false
-			saPrincipal.AccessibleApplicationIDs = []string{app.ID}
+			saPrincipal.AccessibleApplicationIDs = []string{string(app.ID)}
 			saPrincipal.Roles = []serviceaccount.RoleAssignment{{
 				Role:             applicationServiceRoleName,
 				AssignmentSource: new("PROVISIONED"),
@@ -175,8 +175,8 @@ func ProvisionServiceAccount(
 			app.ServiceAccountID = ids.StringPtr(&saPrincipal.ID)
 			app.UpdatedAt = time.Now().UTC()
 			attached := ApplicationServiceAccountProvisionedEvent{
-				Metadata:           usecase.NewEventMetadata(ec, ApplicationServiceAccountProvisioned, Source, subjectFor(app.ID)),
-				ApplicationID:      app.ID,
+				Metadata:           usecase.NewEventMetadata(ec, ApplicationServiceAccountProvisioned, Source, subjectFor(string(app.ID))),
+				ApplicationID:      string(app.ID),
 				ApplicationCode:    app.Code,
 				ServiceAccountID:   sa.ID,
 				ServiceAccountCode: saCode,

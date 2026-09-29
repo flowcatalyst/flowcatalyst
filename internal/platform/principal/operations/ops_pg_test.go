@@ -206,7 +206,7 @@ func TestCreateUser_OIDCAndClientScope(t *testing.T) {
 	require.NotNil(t, gotC)
 	assert.Equal(t, principal.ScopeClient, gotC.Scope)
 	require.NotNil(t, gotC.ClientID)
-	assert.Equal(t, clientID, *gotC.ClientID)
+	assert.Equal(t, clientID, string(*gotC.ClientID))
 }
 
 func TestCreateUser_Validation(t *testing.T) {
@@ -766,7 +766,7 @@ func TestSetClientAssociation_ChangeClient(t *testing.T) {
 	require.NotNil(t, got)
 	assert.Equal(t, principal.ScopeClient, got.Scope, "CHANGE_CLIENT keeps CLIENT scope")
 	require.NotNil(t, got.ClientID)
-	assert.Equal(t, newClient, *got.ClientID)
+	assert.Equal(t, newClient, string(*got.ClientID))
 	assert.Empty(t, got.AssignedClients, "no partner grants on a home-client change")
 }
 

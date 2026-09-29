@@ -18,10 +18,10 @@ type Querier interface {
 	// ── AnchorDomain (tnt_anchor_domains) ────────────────────────────────
 	AnchorDomainFindByID(ctx context.Context, id string) (TntAnchorDomain, error)
 	AnchorDomainUpsert(ctx context.Context, arg AnchorDomainUpsertParams) error
-	ApplicationDelete(ctx context.Context, id string) error
+	ApplicationDelete(ctx context.Context, id ids.ApplicationID) error
 	ApplicationFindByCode(ctx context.Context, code string) (AppApplication, error)
 	// Queries for app_applications.
-	ApplicationFindByID(ctx context.Context, id string) (AppApplication, error)
+	ApplicationFindByID(ctx context.Context, id ids.ApplicationID) (AppApplication, error)
 	ApplicationUpsert(ctx context.Context, arg ApplicationUpsertParams) error
 	// Queries for aud_logs (read-only — writes happen in platformsink).
 	AuditFindByID(ctx context.Context, id string) (AuditFindByIDRow, error)
@@ -35,16 +35,16 @@ type Querier interface {
 	ClientAuthConfigFindByID(ctx context.Context, id string) (TntClientAuthConfig, error)
 	ClientAuthConfigUpsert(ctx context.Context, arg ClientAuthConfigUpsertParams) error
 	ClientConfigDelete(ctx context.Context, id string) error
-	ClientConfigFindByApp(ctx context.Context, applicationID string) ([]AppClientConfig, error)
+	ClientConfigFindByApp(ctx context.Context, applicationID ids.ApplicationID) ([]AppClientConfig, error)
 	ClientConfigFindByAppAndClient(ctx context.Context, arg ClientConfigFindByAppAndClientParams) (AppClientConfig, error)
-	ClientConfigFindByClient(ctx context.Context, clientID string) ([]AppClientConfig, error)
+	ClientConfigFindByClient(ctx context.Context, clientID ids.ClientID) ([]AppClientConfig, error)
 	ClientConfigUpsert(ctx context.Context, arg ClientConfigUpsertParams) error
-	ClientDelete(ctx context.Context, id string) error
+	ClientDelete(ctx context.Context, id ids.ClientID) error
 	ClientFindAll(ctx context.Context) ([]TntClient, error)
 	// All queries operating on tnt_clients. The Repository wrapper in
 	// internal/platform/client maps the generated row type onto the
 	// aggregate's Client struct.
-	ClientFindByID(ctx context.Context, id string) (TntClient, error)
+	ClientFindByID(ctx context.Context, id ids.ClientID) (TntClient, error)
 	ClientFindByIdentifier(ctx context.Context, identifier string) (TntClient, error)
 	ClientSearch(ctx context.Context, pattern string) ([]TntClient, error)
 	ClientUpsert(ctx context.Context, arg ClientUpsertParams) error
@@ -353,7 +353,7 @@ type Querier interface {
 	RoleCountAssignments(ctx context.Context, roleName string) (int64, error)
 	RoleDelete(ctx context.Context, id string) error
 	RoleFindAll(ctx context.Context) ([]IamRole, error)
-	RoleFindByApplicationID(ctx context.Context, applicationID *string) ([]IamRole, error)
+	RoleFindByApplicationID(ctx context.Context, applicationID *ids.ApplicationID) ([]IamRole, error)
 	// Queries for iam_roles + iam_role_permissions. Permissions are
 	// many-to-many; Persist replaces them wholesale.
 	RoleFindByID(ctx context.Context, id string) (IamRole, error)
@@ -410,7 +410,7 @@ type Querier interface {
 	// application_id; among the rest, oldest active first. Without this an app
 	// with several linked SAs could sign with one SA while the operator rotates
 	// credentials on another.
-	ServiceAccountFindFirstByApplicationID(ctx context.Context, applicationID *string) (IamServiceAccount, error)
+	ServiceAccountFindFirstByApplicationID(ctx context.Context, applicationID *ids.ApplicationID) (IamServiceAccount, error)
 	// Keeps the SERVICE principal's name in step with its account's, so a token
 	// minted after a rename carries the new name. updated_at is left alone on
 	// purpose: it is the principal's token version, and renaming an account must

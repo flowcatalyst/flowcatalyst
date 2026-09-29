@@ -205,7 +205,7 @@ func (s *State) getApplication(ctx context.Context, in *getApplicationDocInput) 
 	if app == nil {
 		return nil, httperror.NotFound("Application", in.AppCode)
 	}
-	doc, err := s.AppDocs.GetByApplicationSlug(ctx, app.ID, in.Slug)
+	doc, err := s.AppDocs.GetByApplicationSlug(ctx, string(app.ID), in.Slug)
 	if err != nil {
 		return nil, usecase.Internal("DOCS", "doc lookup failed", err)
 	}

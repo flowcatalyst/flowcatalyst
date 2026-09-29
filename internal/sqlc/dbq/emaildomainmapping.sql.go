@@ -8,6 +8,8 @@ package dbq
 import (
 	"context"
 	"time"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 )
 
 const emailDomainMapping2FAMethodInsert = `-- name: EmailDomainMapping2FAMethodInsert :exec
@@ -74,8 +76,8 @@ VALUES ($1, $2)
 `
 
 type EmailDomainMappingAdditionalClientInsertParams struct {
-	EmailDomainMappingID string `db:"email_domain_mapping_id"`
-	ClientID             string `db:"client_id"`
+	EmailDomainMappingID string       `db:"email_domain_mapping_id"`
+	ClientID             ids.ClientID `db:"client_id"`
 }
 
 func (q *Queries) EmailDomainMappingAdditionalClientInsert(ctx context.Context, arg EmailDomainMappingAdditionalClientInsertParams) error {
@@ -103,8 +105,8 @@ WHERE email_domain_mapping_id = ANY($1::varchar[])
 `
 
 type EmailDomainMappingAdditionalClientsForMappingsRow struct {
-	EmailDomainMappingID string `db:"email_domain_mapping_id"`
-	ClientID             string `db:"client_id"`
+	EmailDomainMappingID string       `db:"email_domain_mapping_id"`
+	ClientID             ids.ClientID `db:"client_id"`
 }
 
 // ── junctions: batch hydrate via ANY($1) ─────────────────────────────
@@ -301,8 +303,8 @@ VALUES ($1, $2)
 `
 
 type EmailDomainMappingGrantedClientInsertParams struct {
-	EmailDomainMappingID string `db:"email_domain_mapping_id"`
-	ClientID             string `db:"client_id"`
+	EmailDomainMappingID string       `db:"email_domain_mapping_id"`
+	ClientID             ids.ClientID `db:"client_id"`
 }
 
 func (q *Queries) EmailDomainMappingGrantedClientInsert(ctx context.Context, arg EmailDomainMappingGrantedClientInsertParams) error {
@@ -327,8 +329,8 @@ WHERE email_domain_mapping_id = ANY($1::varchar[])
 `
 
 type EmailDomainMappingGrantedClientsForMappingsRow struct {
-	EmailDomainMappingID string `db:"email_domain_mapping_id"`
-	ClientID             string `db:"client_id"`
+	EmailDomainMappingID string       `db:"email_domain_mapping_id"`
+	ClientID             ids.ClientID `db:"client_id"`
 }
 
 func (q *Queries) EmailDomainMappingGrantedClientsForMappings(ctx context.Context, dollar_1 []string) ([]EmailDomainMappingGrantedClientsForMappingsRow, error) {
@@ -370,17 +372,17 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type EmailDomainMappingUpsertParams struct {
-	ID                    string    `db:"id"`
-	EmailDomain           string    `db:"email_domain"`
-	IdentityProviderID    string    `db:"identity_provider_id"`
-	ScopeType             string    `db:"scope_type"`
-	PrimaryClientID       *string   `db:"primary_client_id"`
-	RequiredOidcTenantID  *string   `db:"required_oidc_tenant_id"`
-	Require2fa            bool      `db:"require_2fa"`
-	RememberDeviceEnabled bool      `db:"remember_device_enabled"`
-	RememberDeviceDays    int32     `db:"remember_device_days"`
-	CreatedAt             time.Time `db:"created_at"`
-	UpdatedAt             time.Time `db:"updated_at"`
+	ID                    string        `db:"id"`
+	EmailDomain           string        `db:"email_domain"`
+	IdentityProviderID    string        `db:"identity_provider_id"`
+	ScopeType             string        `db:"scope_type"`
+	PrimaryClientID       *ids.ClientID `db:"primary_client_id"`
+	RequiredOidcTenantID  *string       `db:"required_oidc_tenant_id"`
+	Require2fa            bool          `db:"require_2fa"`
+	RememberDeviceEnabled bool          `db:"remember_device_enabled"`
+	RememberDeviceDays    int32         `db:"remember_device_days"`
+	CreatedAt             time.Time     `db:"created_at"`
+	UpdatedAt             time.Time     `db:"updated_at"`
 }
 
 func (q *Queries) EmailDomainMappingUpsert(ctx context.Context, arg EmailDomainMappingUpsertParams) error {

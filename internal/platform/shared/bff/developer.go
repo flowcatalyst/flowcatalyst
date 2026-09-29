@@ -144,7 +144,7 @@ func (s *DeveloperState) listApplications(w http.ResponseWriter, r *http.Request
 	}
 	out := make([]bffDeveloperApplicationSummary, 0, len(apps))
 	for i := range apps {
-		current, err := s.Specs.FindCurrentByApplication(r.Context(), apps[i].ID)
+		current, err := s.Specs.FindCurrentByApplication(r.Context(), string(apps[i].ID))
 		if err != nil {
 			httperror.Write(w, usecase.Internal("REPO", "find current spec failed", err))
 			return
@@ -171,7 +171,7 @@ func (s *DeveloperState) getApplication(w http.ResponseWriter, r *http.Request) 
 		httperror.Write(w, httperror.NotFound("Application", appID))
 		return
 	}
-	current, err := s.Specs.FindCurrentByApplication(r.Context(), app.ID)
+	current, err := s.Specs.FindCurrentByApplication(r.Context(), string(app.ID))
 	if err != nil {
 		httperror.Write(w, usecase.Internal("REPO", "find current spec failed", err))
 		return
@@ -299,7 +299,7 @@ func (s *DeveloperState) syncPlatformOpenAPI(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	cmd := openapiops.SyncOpenApiSpecCommand{
-		ApplicationID:   app.ID,
+		ApplicationID:   string(app.ID),
 		ApplicationCode: app.Code,
 		Spec:            spec,
 	}
@@ -328,7 +328,7 @@ func (s *DeveloperState) syncPlatformOpenAPI(w http.ResponseWriter, r *http.Requ
 
 func toAppSummary(a *application.Application, current *openapispecs.OpenApiSpec) bffDeveloperApplicationSummary {
 	out := bffDeveloperApplicationSummary{
-		ID:          a.ID,
+		ID:          string(a.ID),
 		Code:        a.Code,
 		Name:        a.Name,
 		Description: a.Description,

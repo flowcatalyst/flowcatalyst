@@ -91,3 +91,22 @@ func StringPtr[T ~string](id *T) *string {
 	s := string(*id)
 	return &s
 }
+
+// PtrOf is the typed form of an optional plain-string ID; nil stays nil. The
+// inverse of StringPtr, for the edge where a row or request field is *string.
+func PtrOf[T ~string](s *string) *T {
+	if s == nil {
+		return nil
+	}
+	id := T(*s)
+	return &id
+}
+
+// NewClientID mints a fresh client id.
+func NewClientID() ClientID { return ClientID(tsid.Generate(tsid.Client)) }
+
+// NewPrincipalID mints a fresh principal id.
+func NewPrincipalID() PrincipalID { return PrincipalID(tsid.Generate(tsid.Principal)) }
+
+// NewApplicationID mints a fresh application id.
+func NewApplicationID() ApplicationID { return ApplicationID(tsid.Generate(tsid.Application)) }

@@ -416,10 +416,10 @@ func (s *ScheduledJobsState) filterOptions(w http.ResponseWriter, r *http.Reques
 		if c.Status != client.StatusActive {
 			continue
 		}
-		if !ac.IsAnchor() && !ac.CanAccessClient(c.ID) {
+		if !ac.IsAnchor() && !ac.CanAccessClient(string(c.ID)) {
 			continue
 		}
-		visible = append(visible, bffFilterOption{Value: c.ID, Label: c.Name})
+		visible = append(visible, bffFilterOption{Value: string(c.ID), Label: c.Name})
 	}
 	slices.SortFunc(visible, func(a, b bffFilterOption) int { return strings.Compare(a.Label, b.Label) })
 	options = append(options, visible...)
@@ -434,7 +434,7 @@ func (s *ScheduledJobsState) filterOptions(w http.ResponseWriter, r *http.Reques
 		if !a.Active {
 			continue
 		}
-		appOptions = append(appOptions, bffFilterOption{Value: a.ID, Label: a.Name})
+		appOptions = append(appOptions, bffFilterOption{Value: string(a.ID), Label: a.Name})
 	}
 	slices.SortFunc(appOptions, func(a, b bffFilterOption) int { return strings.Compare(a.Label, b.Label) })
 
@@ -487,7 +487,7 @@ func (s *ScheduledJobsState) allClientsByID(ctx context.Context) (map[string]str
 	}
 	out := make(map[string]string, len(rows))
 	for _, c := range rows {
-		out[c.ID] = c.Name
+		out[string(c.ID)] = c.Name
 	}
 	return out, nil
 }
@@ -499,7 +499,7 @@ func (s *ScheduledJobsState) allApplicationsByID(ctx context.Context) (map[strin
 	}
 	out := make(map[string]string, len(rows))
 	for _, a := range rows {
-		out[a.ID] = a.Name
+		out[string(a.ID)] = a.Name
 	}
 	return out, nil
 }

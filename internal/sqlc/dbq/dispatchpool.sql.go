@@ -8,6 +8,8 @@ package dbq
 import (
 	"context"
 	"time"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 )
 
 const dispatchPoolDelete = `-- name: DispatchPoolDelete :exec
@@ -92,8 +94,8 @@ WHERE code = $1 AND client_id = $2
 `
 
 type DispatchPoolFindByCodeClientParams struct {
-	Code     string  `db:"code"`
-	ClientID *string `db:"client_id"`
+	Code     string        `db:"code"`
+	ClientID *ids.ClientID `db:"client_id"`
 }
 
 func (q *Queries) DispatchPoolFindByCodeClient(ctx context.Context, arg DispatchPoolFindByCodeClientParams) (MsgDispatchPool, error) {
@@ -161,17 +163,17 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type DispatchPoolUpsertParams struct {
-	ID               string    `db:"id"`
-	Code             string    `db:"code"`
-	Name             string    `db:"name"`
-	Description      *string   `db:"description"`
-	RateLimit        *int32    `db:"rate_limit"`
-	Concurrency      int32     `db:"concurrency"`
-	ClientID         *string   `db:"client_id"`
-	ClientIdentifier *string   `db:"client_identifier"`
-	Status           string    `db:"status"`
-	CreatedAt        time.Time `db:"created_at"`
-	UpdatedAt        time.Time `db:"updated_at"`
+	ID               string        `db:"id"`
+	Code             string        `db:"code"`
+	Name             string        `db:"name"`
+	Description      *string       `db:"description"`
+	RateLimit        *int32        `db:"rate_limit"`
+	Concurrency      int32         `db:"concurrency"`
+	ClientID         *ids.ClientID `db:"client_id"`
+	ClientIdentifier *string       `db:"client_identifier"`
+	Status           string        `db:"status"`
+	CreatedAt        time.Time     `db:"created_at"`
+	UpdatedAt        time.Time     `db:"updated_at"`
 }
 
 func (q *Queries) DispatchPoolUpsert(ctx context.Context, arg DispatchPoolUpsertParams) error {

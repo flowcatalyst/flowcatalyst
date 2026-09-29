@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -45,7 +46,7 @@ func (r *Repository) FindByCoordinate(ctx context.Context, app, section, propert
 			Section:         section,
 			Property:        property,
 			Scope:           string(scope),
-			ClientID:        clientID,
+			ClientID:        ids.PtrOf[ids.ClientID](clientID),
 		})
 	} else {
 		res, err = r.q.PlatformConfigFindByCoordinateAnchor(ctx, dbq.PlatformConfigFindByCoordinateAnchorParams{
@@ -90,7 +91,7 @@ func (r *Repository) Persist(ctx context.Context, c *Config, tx *usecasepgx.DbTx
 		Section:         c.Section,
 		Property:        c.Property,
 		Scope:           string(c.Scope),
-		ClientID:        c.ClientID,
+		ClientID:        ids.PtrOf[ids.ClientID](c.ClientID),
 		ValueType:       string(c.ValueType),
 		Value:           c.Value,
 		Description:     c.Description,
@@ -199,7 +200,7 @@ func rowToConfig(row dbq.AppPlatformConfig) (*Config, error) {
 		Section:         row.Section,
 		Property:        row.Property,
 		Scope:           scope,
-		ClientID:        row.ClientID,
+		ClientID:        ids.StringPtr(row.ClientID),
 		ValueType:       valueType,
 		Value:           row.Value,
 		Description:     row.Description,

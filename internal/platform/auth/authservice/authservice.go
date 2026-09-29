@@ -28,6 +28,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
@@ -591,7 +592,7 @@ func (s *AuthService) idTokenClaims(p *principal.Principal, clientID string, non
 		AZP:             &azp,
 		PrincipalType:   string(p.Type),
 		Tier:            string(p.Scope),
-		ClientID:        p.ClientID,
+		ClientID:        ids.StringPtr(p.ClientID),
 		Roles:           roles,
 		Applications:    appAccessOf(p),
 		AllApplications: p.AllApplications,
@@ -710,7 +711,7 @@ func buildClients(p *principal.Principal) []string {
 	default: // CLIENT
 		out := make([]string, 0, 1)
 		if p.ClientID != nil {
-			out = append(out, clientPair(p, *p.ClientID))
+			out = append(out, clientPair(p, string(*p.ClientID)))
 		}
 		return out
 	}

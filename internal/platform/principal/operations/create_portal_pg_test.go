@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
@@ -50,7 +51,7 @@ func TestCreatePortalUser_InertShape(t *testing.T) {
 	assert.Empty(t, got.AssignedClients)
 	assert.Empty(t, got.AccessibleApplicationIDs)
 	assert.False(t, got.AllApplications, "portal identities must not pass application-axis checks")
-	assert.False(t, got.Scope.CanAccessClient("clt_anything", got.ClientID, got.AssignedClients))
+	assert.False(t, got.Scope.CanAccessClient("clt_anything", ids.StringPtr(got.ClientID), got.AssignedClients))
 
 	require.NotNil(t, got.UserIdentity)
 	assert.Nil(t, got.UserIdentity.PasswordHash, "SSO-provisioned portal identities carry no password")

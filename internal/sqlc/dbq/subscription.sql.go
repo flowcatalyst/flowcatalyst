@@ -8,6 +8,8 @@ package dbq
 import (
 	"context"
 	"time"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 )
 
 const subscriptionConfigInsert = `-- name: SubscriptionConfigInsert :exec
@@ -218,9 +220,9 @@ WHERE code = $1
 `
 
 type SubscriptionFindByCodeParams struct {
-	Code            string  `db:"code"`
-	ApplicationCode *string `db:"application_code"`
-	ClientID        *string `db:"client_id"`
+	Code            string        `db:"code"`
+	ApplicationCode *string       `db:"application_code"`
+	ClientID        *ids.ClientID `db:"client_id"`
 }
 
 // NULL-as-a-value semantics on both nullable parts of the key: a caller
@@ -364,33 +366,33 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type SubscriptionUpsertParams struct {
-	ID               string    `db:"id"`
-	Code             string    `db:"code"`
-	ApplicationCode  *string   `db:"application_code"`
-	Name             string    `db:"name"`
-	Description      *string   `db:"description"`
-	ClientID         *string   `db:"client_id"`
-	ClientIdentifier *string   `db:"client_identifier"`
-	ClientScoped     bool      `db:"client_scoped"`
-	ConnectionID     *string   `db:"connection_id"`
-	Target           string    `db:"target"`
-	Queue            *string   `db:"queue"`
-	Source           string    `db:"source"`
-	Status           string    `db:"status"`
-	MaxAgeSeconds    int32     `db:"max_age_seconds"`
-	DispatchPoolID   *string   `db:"dispatch_pool_id"`
-	DispatchPoolCode *string   `db:"dispatch_pool_code"`
-	DelaySeconds     int32     `db:"delay_seconds"`
-	Sequence         int32     `db:"sequence"`
-	Mode             string    `db:"mode"`
-	TimeoutSeconds   int32     `db:"timeout_seconds"`
-	MaxRetries       int32     `db:"max_retries"`
-	ServiceAccountID *string   `db:"service_account_id"`
-	DataOnly         bool      `db:"data_only"`
-	CreatedBy        *string   `db:"created_by"`
-	CreatedAt        time.Time `db:"created_at"`
-	UpdatedAt        time.Time `db:"updated_at"`
-	FunctionID       *string   `db:"function_id"`
+	ID               string        `db:"id"`
+	Code             string        `db:"code"`
+	ApplicationCode  *string       `db:"application_code"`
+	Name             string        `db:"name"`
+	Description      *string       `db:"description"`
+	ClientID         *ids.ClientID `db:"client_id"`
+	ClientIdentifier *string       `db:"client_identifier"`
+	ClientScoped     bool          `db:"client_scoped"`
+	ConnectionID     *string       `db:"connection_id"`
+	Target           string        `db:"target"`
+	Queue            *string       `db:"queue"`
+	Source           string        `db:"source"`
+	Status           string        `db:"status"`
+	MaxAgeSeconds    int32         `db:"max_age_seconds"`
+	DispatchPoolID   *string       `db:"dispatch_pool_id"`
+	DispatchPoolCode *string       `db:"dispatch_pool_code"`
+	DelaySeconds     int32         `db:"delay_seconds"`
+	Sequence         int32         `db:"sequence"`
+	Mode             string        `db:"mode"`
+	TimeoutSeconds   int32         `db:"timeout_seconds"`
+	MaxRetries       int32         `db:"max_retries"`
+	ServiceAccountID *string       `db:"service_account_id"`
+	DataOnly         bool          `db:"data_only"`
+	CreatedBy        *string       `db:"created_by"`
+	CreatedAt        time.Time     `db:"created_at"`
+	UpdatedAt        time.Time     `db:"updated_at"`
+	FunctionID       *string       `db:"function_id"`
 }
 
 func (q *Queries) SubscriptionUpsert(ctx context.Context, arg SubscriptionUpsertParams) error {

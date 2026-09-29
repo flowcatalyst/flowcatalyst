@@ -44,7 +44,7 @@ func registerPublicRoutes(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *use
 			if err != nil || c == nil {
 				return "", err
 			}
-			return c.ID, nil
+			return string(c.ID), nil
 		}).
 		RegisterRoutes(r)
 

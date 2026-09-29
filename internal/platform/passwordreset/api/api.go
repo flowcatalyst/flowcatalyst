@@ -708,12 +708,12 @@ func (s *State) queueApproval(ctx context.Context, p *principal.Principal) error
 	if pending, _ := s.Approvals.HasPending(ctx, string(p.ID)); pending {
 		return nil
 	}
-	req := resetapproval.New(string(p.ID), p.ClientID, s.approvalTTL())
+	req := resetapproval.New(string(p.ID), ids.StringPtr(p.ClientID), s.approvalTTL())
 	if err := s.Approvals.Insert(ctx, req); err != nil {
 		return err
 	}
 	if s.ClientAdmins != nil && s.Notifier != nil {
-		admins, _ := s.ClientAdmins.FindClientAdminEmails(ctx, *p.ClientID)
+		admins, _ := s.ClientAdmins.FindClientAdminEmails(ctx, string(*p.ClientID))
 		link := strings.TrimRight(s.ExternalBaseURL, "/") + "/authentication/reset-approvals/" + req.ID
 		for _, addr := range admins {
 			s.Notifier.ResetApprovalNeeded(ctx, addr, link)

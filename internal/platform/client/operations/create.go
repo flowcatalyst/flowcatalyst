@@ -63,8 +63,8 @@ func CreateClient(repo *client.Repository) usecaseop.Operation[CreateCommand, Cl
 			c := client.New(strings.TrimSpace(cmd.Name), id)
 
 			event := ClientCreated{
-				Metadata:   usecase.NewEventMetadata(ec, ClientCreatedType, Source, subjectFor(c.ID)),
-				ClientID:   c.ID,
+				Metadata:   usecase.NewEventMetadata(ec, ClientCreatedType, Source, subjectFor(string(c.ID))),
+				ClientID:   string(c.ID),
 				Name:       c.Name,
 				Identifier: c.Identifier,
 			}

@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
@@ -72,7 +73,7 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*ServiceAccount, 
 // an application — by convention the app's provisioned sync account. Nil when
 // the application has no active SA.
 func (r *Repository) FindFirstByApplicationID(ctx context.Context, applicationID string) (*ServiceAccount, error) {
-	res, err := r.q.ServiceAccountFindFirstByApplicationID(ctx, &applicationID)
+	res, err := r.q.ServiceAccountFindFirstByApplicationID(ctx, ids.PtrOf[ids.ApplicationID](&applicationID))
 	row, err := repocommon.One(res, err, "service_account repo")
 	if row == nil || err != nil {
 		return nil, err
@@ -289,7 +290,7 @@ func (r *Repository) Persist(ctx context.Context, sa *ServiceAccount, tx *usecas
 		Code:                       sa.Code,
 		Name:                       sa.Name,
 		Description:                sa.Description,
-		ApplicationID:              sa.ApplicationID,
+		ApplicationID:              ids.PtrOf[ids.ApplicationID](sa.ApplicationID),
 		Scope:                      sa.Scope,
 		ClientIds:                  sa.ClientIDs,
 		Active:                     sa.Active,
@@ -358,7 +359,7 @@ func rowToServiceAccount(row dbq.IamServiceAccount, enc *encryption.Service) (*S
 		Name:          row.Name,
 		Description:   row.Description,
 		Active:        row.Active,
-		ApplicationID: row.ApplicationID,
+		ApplicationID: ids.StringPtr(row.ApplicationID),
 		Scope:         row.Scope,
 		LastUsedAt:    row.LastUsedAt,
 		CreatedAt:     row.CreatedAt,

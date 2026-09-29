@@ -68,8 +68,8 @@ func AttachServiceAccount(repo *application.Repository, principals *principal.Re
 			app.UpdatedAt = time.Now().UTC()
 
 			event := ApplicationServiceAccountProvisionedEvent{
-				Metadata:           usecase.NewEventMetadata(ec, ApplicationServiceAccountProvisioned, Source, subjectFor(app.ID)),
-				ApplicationID:      app.ID,
+				Metadata:           usecase.NewEventMetadata(ec, ApplicationServiceAccountProvisioned, Source, subjectFor(string(app.ID))),
+				ApplicationID:      string(app.ID),
 				ApplicationCode:    app.Code,
 				ServiceAccountID:   cmd.ServiceAccountID,
 				ServiceAccountCode: cmd.ServiceAccountCode,

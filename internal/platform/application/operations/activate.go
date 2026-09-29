@@ -40,8 +40,8 @@ func ActivateApplication(repo *application.Repository) usecaseop.Operation[Activ
 			}
 			a.Activate()
 			event := ApplicationActivated{
-				Metadata:      usecase.NewEventMetadata(ec, ApplicationActivatedType, Source, subjectFor(a.ID)),
-				ApplicationID: a.ID,
+				Metadata:      usecase.NewEventMetadata(ec, ApplicationActivatedType, Source, subjectFor(string(a.ID))),
+				ApplicationID: string(a.ID),
 			}
 			return usecaseop.Save(a, repo, event), nil
 		},

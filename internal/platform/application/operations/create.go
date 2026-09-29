@@ -77,8 +77,8 @@ func CreateApplication(repo *application.Repository) usecaseop.Operation[CreateC
 			a.DefaultBaseURL = cmd.DefaultBaseURL
 
 			event := ApplicationCreated{
-				Metadata:      usecase.NewEventMetadata(ec, ApplicationCreatedType, Source, subjectFor(a.ID)),
-				ApplicationID: a.ID,
+				Metadata:      usecase.NewEventMetadata(ec, ApplicationCreatedType, Source, subjectFor(string(a.ID))),
+				ApplicationID: string(a.ID),
 				Code:          a.Code,
 				Name:          a.Name,
 			}

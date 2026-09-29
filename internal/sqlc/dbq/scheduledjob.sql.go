@@ -9,6 +9,8 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 )
 
 const scheduledJobDelete = `-- name: ScheduledJobDelete :exec
@@ -134,8 +136,8 @@ WHERE code = $1 AND client_id = $2
 `
 
 type ScheduledJobFindByCodeClientParams struct {
-	Code     string  `db:"code"`
-	ClientID *string `db:"client_id"`
+	Code     string        `db:"code"`
+	ClientID *ids.ClientID `db:"client_id"`
 }
 
 func (q *Queries) ScheduledJobFindByCodeClient(ctx context.Context, arg ScheduledJobFindByCodeClientParams) (MsgScheduledJob, error) {
@@ -287,28 +289,28 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type ScheduledJobUpsertParams struct {
-	ID                  string          `db:"id"`
-	ClientID            *string         `db:"client_id"`
-	Code                string          `db:"code"`
-	Name                string          `db:"name"`
-	Description         *string         `db:"description"`
-	Status              string          `db:"status"`
-	Crons               []string        `db:"crons"`
-	Timezone            string          `db:"timezone"`
-	Payload             json.RawMessage `db:"payload"`
-	Concurrent          bool            `db:"concurrent"`
-	TracksCompletion    bool            `db:"tracks_completion"`
-	TimeoutSeconds      *int32          `db:"timeout_seconds"`
-	DeliveryMaxAttempts int32           `db:"delivery_max_attempts"`
-	TargetUrl           *string         `db:"target_url"`
-	LastFiredAt         *time.Time      `db:"last_fired_at"`
-	CreatedAt           time.Time       `db:"created_at"`
-	UpdatedAt           time.Time       `db:"updated_at"`
-	CreatedBy           *string         `db:"created_by"`
-	UpdatedBy           *string         `db:"updated_by"`
-	Version             int32           `db:"version"`
-	ApplicationID       *string         `db:"application_id"`
-	FunctionID          *string         `db:"function_id"`
+	ID                  string             `db:"id"`
+	ClientID            *ids.ClientID      `db:"client_id"`
+	Code                string             `db:"code"`
+	Name                string             `db:"name"`
+	Description         *string            `db:"description"`
+	Status              string             `db:"status"`
+	Crons               []string           `db:"crons"`
+	Timezone            string             `db:"timezone"`
+	Payload             json.RawMessage    `db:"payload"`
+	Concurrent          bool               `db:"concurrent"`
+	TracksCompletion    bool               `db:"tracks_completion"`
+	TimeoutSeconds      *int32             `db:"timeout_seconds"`
+	DeliveryMaxAttempts int32              `db:"delivery_max_attempts"`
+	TargetUrl           *string            `db:"target_url"`
+	LastFiredAt         *time.Time         `db:"last_fired_at"`
+	CreatedAt           time.Time          `db:"created_at"`
+	UpdatedAt           time.Time          `db:"updated_at"`
+	CreatedBy           *string            `db:"created_by"`
+	UpdatedBy           *string            `db:"updated_by"`
+	Version             int32              `db:"version"`
+	ApplicationID       *ids.ApplicationID `db:"application_id"`
+	FunctionID          *string            `db:"function_id"`
 }
 
 func (q *Queries) ScheduledJobUpsert(ctx context.Context, arg ScheduledJobUpsertParams) error {

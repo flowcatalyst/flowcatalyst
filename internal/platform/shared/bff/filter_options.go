@@ -66,10 +66,10 @@ func (s *FilterOptionsState) clientOptions(w http.ResponseWriter, r *http.Reques
 		if c.Status != client.StatusActive {
 			continue
 		}
-		if !ac.IsAnchor() && !ac.CanAccessClient(c.ID) {
+		if !ac.IsAnchor() && !ac.CanAccessClient(string(c.ID)) {
 			continue
 		}
-		out = append(out, FilterOption{Value: c.ID, Label: c.Name})
+		out = append(out, FilterOption{Value: string(c.ID), Label: c.Name})
 	}
 	slices.SortFunc(out, func(a, b FilterOption) int { return strings.Compare(a.Label, b.Label) })
 	writeJSON(w, http.StatusOK, map[string]any{"clients": out})

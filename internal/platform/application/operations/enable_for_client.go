@@ -74,7 +74,7 @@ func EnableApplicationForClient(
 			}
 
 			event := ApplicationEnabledForClient{
-				Metadata:      usecase.NewEventMetadata(ec, ApplicationEnabledForClientType, Source, subjectFor(app.ID)),
+				Metadata:      usecase.NewEventMetadata(ec, ApplicationEnabledForClientType, Source, subjectFor(string(app.ID))),
 				ApplicationID: cmd.ApplicationID,
 				ClientID:      cmd.ClientID,
 				ConfigID:      cfg.ID,

@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordhash"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordpolicy"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
@@ -84,7 +85,7 @@ func CreateUser(repo *principal.Repository) usecaseop.Operation[CreateCommand, U
 				return nil, usecase.Internal("INVARIANT_SCOPE", "validated scope failed to parse", nil)
 			}
 			p := principal.NewUser(email, scope)
-			p.ClientID = cmd.ClientID
+			p.ClientID = ids.PtrOf[ids.ClientID](cmd.ClientID)
 			if cmd.Name != nil {
 				p.Name = strings.TrimSpace(*cmd.Name)
 			}

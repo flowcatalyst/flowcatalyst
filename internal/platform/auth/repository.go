@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
@@ -618,7 +619,7 @@ func (r *ClientAuthConfigRepo) Persist(ctx context.Context, c *ClientAuthConfig,
 		ID:                  c.ID,
 		EmailDomain:         c.EmailDomain,
 		ConfigType:          string(c.ConfigType),
-		PrimaryClientID:     c.PrimaryClientID,
+		PrimaryClientID:     ids.PtrOf[ids.ClientID](c.PrimaryClientID),
 		AdditionalClientIds: additional,
 		GrantedClientIds:    granted,
 		AuthProvider:        string(c.AuthProvider),
@@ -659,7 +660,7 @@ func rowToClientAuthConfig(row dbq.TntClientAuthConfig) (*ClientAuthConfig, erro
 		ID:                  row.ID,
 		EmailDomain:         row.EmailDomain,
 		ConfigType:          configType,
-		PrimaryClientID:     row.PrimaryClientID,
+		PrimaryClientID:     ids.StringPtr(row.PrimaryClientID),
 		AuthProvider:        authProvider,
 		OIDCIssuerURL:       row.OidcIssuerUrl,
 		OIDCClientID:        row.OidcClientID,

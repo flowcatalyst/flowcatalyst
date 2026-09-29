@@ -3,6 +3,7 @@ package operations
 import (
 	"context"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
@@ -30,7 +31,7 @@ func applyClientReach(p *principal.Principal, clientIDs []string) []string {
 	case 1:
 		id := clientIDs[0]
 		p.Scope = principal.ScopeClient
-		p.ClientID = &id
+		p.ClientID = ids.PtrOf[ids.ClientID](&id)
 		p.AssignedClients = []string{}
 		return nil
 	default:

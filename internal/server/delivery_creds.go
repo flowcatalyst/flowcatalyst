@@ -103,7 +103,7 @@ func newDeliveryCredsResolver(d deliveryCredsDeps) dispatchprocessing.DeliveryCr
 		if app == nil {
 			return serviceaccount.OutboundCreds{Reason: "application " + appCode + " does not exist"}, nil
 		}
-		creds, err := d.byApplicationID(ctx, app.ID)
+		creds, err := d.byApplicationID(ctx, string(app.ID))
 		if err != nil {
 			return serviceaccount.OutboundCreds{}, err
 		}

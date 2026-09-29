@@ -164,7 +164,7 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[Princip
 		// Platform-level principals (client_id == nil) are hidden from
 		// non-anchors. (get-by-id stays lenient on the nil case — it
 		// only checks access when client_id is set.)
-		if !ac.IsAnchor() && (p.ClientID == nil || !ac.CanAccessClient(*p.ClientID)) {
+		if !ac.IsAnchor() && (p.ClientID == nil || !ac.CanAccessClient(string(*p.ClientID))) {
 			continue
 		}
 		if wantType != "" && string(p.Type) != wantType {
@@ -220,7 +220,7 @@ func principalMatchesQuery(p *principal.Principal, qLower string) bool {
 // client, so the Client filter surfaces both client-homed and partner users
 // who can reach that client.
 func principalMatchesClient(p *principal.Principal, clientID string) bool {
-	if p.ClientID != nil && *p.ClientID == clientID {
+	if p.ClientID != nil && string(*p.ClientID) == clientID {
 		return true
 	}
 	return slices.Contains(p.AssignedClients, clientID)
@@ -304,7 +304,7 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	// Out-of-scope answers the SAME not-found a genuinely missing id would —
 	// never 403 — so an unauthorized caller can't use the response to learn
 	// whether an id is real (PR-3(b), docs/owner-rulings-todo.md #3).
-	if !isSelf && p.ClientID != nil && !ac.CanAccessClient(*p.ClientID) {
+	if !isSelf && p.ClientID != nil && !ac.CanAccessClient(string(*p.ClientID)) {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
 	resp := fromEntity(p)
@@ -344,7 +344,7 @@ func (s *State) getVersion(ctx context.Context, in *apicommon.IDInput) (*apicomm
 		if p == nil {
 			return nil, httperror.NotFound("Principal", in.ID)
 		}
-		if p.ClientID != nil && !ac.CanAccessClient(*p.ClientID) {
+		if p.ClientID != nil && !ac.CanAccessClient(string(*p.ClientID)) {
 			return nil, httperror.NotFound("Principal", in.ID)
 		}
 	}
@@ -634,7 +634,7 @@ func (s *State) createUser(ctx context.Context, in *apicommon.In[CreateUserReque
 			return nil, usecase.Internal("REPO", "find_by_email failed", ferr)
 		}
 		if existing != nil {
-			if existing.ClientID != nil && clientID != nil && *existing.ClientID == *clientID {
+			if existing.ClientID != nil && clientID != nil && string(*existing.ClientID) == *clientID {
 				return nil, usecase.Conflict("EMAIL_EXISTS", "User with email '"+email+"' already exists")
 			}
 			if _, gerr := usecaseop.Run(ctx, s.UoW, operations.GrantClientAccess(s.Repo, s.Clients, s.GrantRepo),
@@ -842,7 +842,7 @@ func (s *State) resolveClientRef(ctx context.Context, ref string) (*string, erro
 	if c == nil {
 		return nil, httperror.NotFound("Client", ref)
 	}
-	return &c.ID, nil
+	return ids.StringPtr(&c.ID), nil
 }
 
 func derefStr(s *string) string {
@@ -885,7 +885,7 @@ func (s *State) requireScopeByID(ctx context.Context, ac *auth.AuthContext, id s
 	if err := blockNonClientTarget(ac, p); err != nil {
 		return err
 	}
-	if !auth.CanAccessScope(ac, p.ClientID) {
+	if !auth.CanAccessScope(ac, ids.StringPtr(p.ClientID)) {
 		return httperror.NotFound("Principal", id)
 	}
 	return nil
@@ -957,7 +957,7 @@ func clientIDOf(p *principal.Principal) string {
 	if p == nil || p.ClientID == nil {
 		return ""
 	}
-	return *p.ClientID
+	return string(*p.ClientID)
 }
 
 // assertAssignableApplications bounds a non-anchor (client-admin) application
@@ -1457,7 +1457,7 @@ func (s *State) sendPasswordReset(ctx context.Context, in *sendPasswordResetInpu
 		return nil, err
 	}
 	// Out-of-scope answers the same not-found error a missing id would (PR-3(b)).
-	if !auth.CanAccessScope(ac, p.ClientID) {
+	if !auth.CanAccessScope(ac, ids.StringPtr(p.ClientID)) {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
 	reset2FA := false
@@ -1495,7 +1495,7 @@ func (s *State) resetTwoFactor(ctx context.Context, in *apicommon.IDInput) (*api
 		return nil, err
 	}
 	// Out-of-scope answers the same not-found error a missing id would (PR-3(b)).
-	if !auth.CanAccessScope(ac, p.ClientID) {
+	if !auth.CanAccessScope(ac, ids.StringPtr(p.ClientID)) {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
 	if !p.IsUser() {
@@ -1691,7 +1691,7 @@ func (s *State) listRoles(ctx context.Context, in *apicommon.IDInput) (*apicommo
 	}
 	// PR-4: the same client-scope check as the by-id read — an out-of-scope
 	// target answers 404, byte-identical to not-found, never 403.
-	if p.ClientID != nil && !ac.CanAccessClient(*p.ClientID) {
+	if p.ClientID != nil && !ac.CanAccessClient(string(*p.ClientID)) {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
 	return &apicommon.Out[PrincipalRoleListResponse]{Body: PrincipalRoleListResponse{Roles: roleAssignmentDTOs(in.ID, p.Roles)}}, nil
@@ -1730,7 +1730,7 @@ func (s *State) addRole(ctx context.Context, in *addRoleInput) (*apicommon.Out[P
 	if err := blockNonClientTarget(ac, p); err != nil {
 		return nil, err
 	}
-	if !auth.CanAccessScope(ac, p.ClientID) {
+	if !auth.CanAccessScope(ac, ids.StringPtr(p.ClientID)) {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
 	if !ac.IsAnchor() {
@@ -1793,7 +1793,7 @@ func (s *State) removeRole(ctx context.Context, in *removeRoleInput) (*apicommon
 	if err := blockNonClientTarget(ac, p); err != nil {
 		return nil, err
 	}
-	if !auth.CanAccessScope(ac, p.ClientID) {
+	if !auth.CanAccessScope(ac, ids.StringPtr(p.ClientID)) {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
 	// A non-anchor admin may only remove roles they could also assign — so they
@@ -1879,7 +1879,7 @@ func (s *State) listApplicationAccess(ctx context.Context, in *apicommon.IDInput
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
 	// PR-4: the same client-scope check as the by-id read.
-	if p.ClientID != nil && !ac.CanAccessClient(*p.ClientID) {
+	if p.ClientID != nil && !ac.CanAccessClient(string(*p.ClientID)) {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
 	apps, err := s.resolveApplications(ctx, p.AccessibleApplicationIDs)
@@ -1906,7 +1906,7 @@ func (s *State) resolveApplications(ctx context.Context, ids []string) ([]Applic
 			continue
 		}
 		out = append(out, ApplicationAccessResponse{
-			ApplicationID:   a.ID,
+			ApplicationID:   string(a.ID),
 			ApplicationCode: a.Code,
 			ApplicationName: a.Name,
 		})
@@ -1927,7 +1927,7 @@ func (s *State) listAvailableApplications(ctx context.Context, in *apicommon.IDI
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
 	// PR-4: the same client-scope check as the by-id read.
-	if p.ClientID != nil && !ac.CanAccessClient(*p.ClientID) {
+	if p.ClientID != nil && !ac.CanAccessClient(string(*p.ClientID)) {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
 	// Available = all active applications the system knows about — the
@@ -1953,11 +1953,11 @@ func (s *State) listAvailableApplications(ctx context.Context, in *apicommon.IDI
 	out := make([]PrincipalAvailableApplication, 0, len(apps))
 	for i := range apps {
 		a := &apps[i]
-		if !ac.IsAnchor() && !allowed[a.ID] {
+		if !ac.IsAnchor() && !allowed[string(a.ID)] {
 			continue
 		}
 		out = append(out, PrincipalAvailableApplication{
-			ID:   a.ID,
+			ID:   string(a.ID),
 			Code: a.Code,
 			Name: a.Name,
 		})

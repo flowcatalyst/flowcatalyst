@@ -8,6 +8,8 @@ package dbq
 import (
 	"context"
 	"time"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 )
 
 const platformConfigAccessDelete = `-- name: PlatformConfigAccessDelete :exec
@@ -267,11 +269,11 @@ WHERE application_code = $1 AND section = $2 AND property = $3
 `
 
 type PlatformConfigFindByCoordinateClientParams struct {
-	ApplicationCode string  `db:"application_code"`
-	Section         string  `db:"section"`
-	Property        string  `db:"property"`
-	Scope           string  `db:"scope"`
-	ClientID        *string `db:"client_id"`
+	ApplicationCode string        `db:"application_code"`
+	Section         string        `db:"section"`
+	Property        string        `db:"property"`
+	Scope           string        `db:"scope"`
+	ClientID        *ids.ClientID `db:"client_id"`
 }
 
 func (q *Queries) PlatformConfigFindByCoordinateClient(ctx context.Context, arg PlatformConfigFindByCoordinateClientParams) (AppPlatformConfig, error) {
@@ -341,17 +343,17 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type PlatformConfigUpsertParams struct {
-	ID              string    `db:"id"`
-	ApplicationCode string    `db:"application_code"`
-	Section         string    `db:"section"`
-	Property        string    `db:"property"`
-	Scope           string    `db:"scope"`
-	ClientID        *string   `db:"client_id"`
-	ValueType       string    `db:"value_type"`
-	Value           string    `db:"value"`
-	Description     *string   `db:"description"`
-	CreatedAt       time.Time `db:"created_at"`
-	UpdatedAt       time.Time `db:"updated_at"`
+	ID              string        `db:"id"`
+	ApplicationCode string        `db:"application_code"`
+	Section         string        `db:"section"`
+	Property        string        `db:"property"`
+	Scope           string        `db:"scope"`
+	ClientID        *ids.ClientID `db:"client_id"`
+	ValueType       string        `db:"value_type"`
+	Value           string        `db:"value"`
+	Description     *string       `db:"description"`
+	CreatedAt       time.Time     `db:"created_at"`
+	UpdatedAt       time.Time     `db:"updated_at"`
 }
 
 func (q *Queries) PlatformConfigUpsert(ctx context.Context, arg PlatformConfigUpsertParams) error {

@@ -9,6 +9,8 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 )
 
 const dispatchJobAttemptInsert = `-- name: DispatchJobAttemptInsert :exec
@@ -198,7 +200,7 @@ type DispatchJobFindByIDRow struct {
 	PayloadContentType *string         `db:"payload_content_type"`
 	DataOnly           bool            `db:"data_only"`
 	ServiceAccountID   *string         `db:"service_account_id"`
-	ClientID           *string         `db:"client_id"`
+	ClientID           *ids.ClientID   `db:"client_id"`
 	SubscriptionID     *string         `db:"subscription_id"`
 	Mode               string          `db:"mode"`
 	DispatchPoolID     *string         `db:"dispatch_pool_id"`
@@ -311,7 +313,7 @@ type DispatchJobFindByIDsRow struct {
 	PayloadContentType *string         `db:"payload_content_type"`
 	DataOnly           bool            `db:"data_only"`
 	ServiceAccountID   *string         `db:"service_account_id"`
-	ClientID           *string         `db:"client_id"`
+	ClientID           *ids.ClientID   `db:"client_id"`
 	SubscriptionID     *string         `db:"subscription_id"`
 	Mode               string          `db:"mode"`
 	DispatchPoolID     *string         `db:"dispatch_pool_id"`
@@ -342,8 +344,8 @@ type DispatchJobFindByIDsRow struct {
 // stranded-sibling reaper (internal/platform/dispatchjob/reaper.go).
 // Batch load by id (write table), for the Resend operation, which reloads
 // multiple aggregates to reset via usecaseop.SaveAll.
-func (q *Queries) DispatchJobFindByIDs(ctx context.Context, ids []string) ([]DispatchJobFindByIDsRow, error) {
-	rows, err := q.db.Query(ctx, dispatchJobFindByIDs, ids)
+func (q *Queries) DispatchJobFindByIDs(ctx context.Context, argIds []string) ([]DispatchJobFindByIDsRow, error) {
+	rows, err := q.db.Query(ctx, dispatchJobFindByIDs, argIds)
 	if err != nil {
 		return nil, err
 	}
@@ -431,7 +433,7 @@ type DispatchJobInsertParams struct {
 	PayloadContentType *string         `db:"payload_content_type"`
 	DataOnly           bool            `db:"data_only"`
 	ServiceAccountID   *string         `db:"service_account_id"`
-	ClientID           *string         `db:"client_id"`
+	ClientID           *ids.ClientID   `db:"client_id"`
 	SubscriptionID     *string         `db:"subscription_id"`
 	Mode               string          `db:"mode"`
 	DispatchPoolID     *string         `db:"dispatch_pool_id"`

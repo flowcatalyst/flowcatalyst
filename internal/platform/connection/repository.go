@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -42,7 +43,7 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*Connection, erro
 // wildcards, so a nil here only matches a row whose column is also NULL.
 func (r *Repository) FindByCode(ctx context.Context, code string, applicationCode, clientID *string) (*Connection, error) {
 	res, err := r.q.ConnectionFindByCode(ctx, dbq.ConnectionFindByCodeParams{
-		Code: code, ApplicationCode: applicationCode, ClientID: clientID,
+		Code: code, ApplicationCode: applicationCode, ClientID: ids.PtrOf[ids.ClientID](clientID),
 	})
 	row, err := repocommon.One(res, err, "connection repo")
 	if row == nil || err != nil {
@@ -144,7 +145,7 @@ func (r *Repository) Persist(ctx context.Context, c *Connection, tx *usecasepgx.
 		ExternalID:       c.ExternalID,
 		Status:           string(c.Status),
 		ServiceAccountID: c.ServiceAccountID,
-		ClientID:         c.ClientID,
+		ClientID:         ids.PtrOf[ids.ClientID](c.ClientID),
 		ClientIdentifier: c.ClientIdentifier,
 		CreatedAt:        c.CreatedAt,
 		UpdatedAt:        time.Now().UTC(),
@@ -186,7 +187,7 @@ func rowToConnection(row dbq.MsgConnection) (*Connection, error) {
 		ExternalID:       row.ExternalID,
 		Status:           status,
 		ServiceAccountID: row.ServiceAccountID,
-		ClientID:         row.ClientID,
+		ClientID:         ids.StringPtr(row.ClientID),
 		ClientIdentifier: row.ClientIdentifier,
 		Source:           source,
 		CreatedAt:        row.CreatedAt,

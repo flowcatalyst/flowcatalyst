@@ -603,7 +603,7 @@ func (e *Endpoint) completeLogin(w http.ResponseWriter, r *http.Request, p *prin
 		Email:         email,
 		Roles:         roles,
 		Permissions:   buildPermissionList(claims),
-		ClientID:      p.ClientID,
+		ClientID:      ids.StringPtr(p.ClientID),
 		RecoveryCodes: recoveryCodes,
 		SsoManaged:    e.ssoManaged(r.Context(), p),
 	})
@@ -689,7 +689,7 @@ func (e *Endpoint) handleMe(w http.ResponseWriter, r *http.Request) {
 		Email:       email,
 		Roles:       roles,
 		Permissions: buildPermissionList(claims),
-		ClientID:    p.ClientID,
+		ClientID:    ids.StringPtr(p.ClientID),
 		SsoManaged:  e.ssoManaged(r.Context(), p),
 	})
 }

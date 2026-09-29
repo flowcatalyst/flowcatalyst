@@ -54,30 +54,239 @@ sql:
               import: "encoding/json"
           # Entity identifiers carry their own Go types (internal/ids), so a
           # principal id and a client id cannot be swapped between a query
-          # result and a domain call. A column named for an entity id maps to
-          # that entity's type wherever it appears.
+          # result and a domain call.
           #
-          # Column overrides ignore `nullable:` and take the FIRST match, so the
-          # pointer form of a nullable column has to be listed per table, ahead
-          # of the wildcard. Adding a nullable principal_id column means adding
-          # its table here; the giveaway is a NOT NULL-typed field where a
-          # pointer belongs.
-          # aud_logs.principal_id stays a string: the audit log records whatever
-          # actor id the caller supplied, not only principals.
-          - column: "aud_logs.principal_id"
+          # Every column is listed explicitly, never by wildcard: column
+          # overrides ignore `nullable:` and take the first match, so the
+          # pointer form of a nullable column has to be stated per table, and a
+          # wildcard would silently strip the pointer from any nullable column
+          # it was not told about (a NULL then fails to scan at runtime). An
+          # unlisted column stays a plain string, which is the safe default: it
+          # shows up as a compile error at the first typed use, not as a
+          # runtime scan error. To type a new column, add it here, matching the
+          # migration's nullability (ALTER TABLE ... ADD COLUMN included; the audit
+          # of this list read CREATE TABLE and ADD COLUMN statements only).
+          #
+          # Left as string on purpose: oauth_clients.client_id and
+          # iam_authorization_codes.client_id (the OAuth client_id, not a tenant
+          # client), aud_logs.principal_id (whatever actor id the caller
+          # supplied; also its client_id and application_id), and the *_service_account_* columns (legacy rows key the
+          # account by the principal's own id).
+          - column: "tnt_clients.id"
             go_type:
-              type: "string"
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ClientID"
+          - column: "app_applications.id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ApplicationID"
+          - column: "iam_principals.id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "PrincipalID"
+          - column: "app_application_openapi_specs.application_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ApplicationID"
+          - column: "app_client_configs.application_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ApplicationID"
+          - column: "app_client_configs.client_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ClientID"
+          - column: "app_docs.application_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ApplicationID"
+          - column: "app_platform_configs.client_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ClientID"
               pointer: true
+          - column: "fng_domains.client_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ClientID"
+              pointer: true
+          - column: "fng_functions.application_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ApplicationID"
+          - column: "fng_functions.client_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ClientID"
+              pointer: true
+          - column: "iam_authorization_codes.principal_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "PrincipalID"
+          - column: "iam_client_access_grants.client_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ClientID"
+          - column: "iam_client_access_grants.principal_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "PrincipalID"
           - column: "iam_login_attempts.principal_id"
             go_type:
               import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
               type: "PrincipalID"
               pointer: true
-          - column: "iam_principals.id"
+          - column: "iam_mfa_email_pins.principal_id"
             go_type:
               import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
               type: "PrincipalID"
-          - column: "*.principal_id"
+          - column: "iam_mfa_trusted_devices.principal_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "PrincipalID"
+          - column: "iam_password_reset_tokens.principal_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "PrincipalID"
+          - column: "iam_principal_application_access.application_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ApplicationID"
+          - column: "iam_principal_application_access.principal_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "PrincipalID"
+          - column: "iam_principal_roles.principal_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "PrincipalID"
+          - column: "iam_principals.application_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ApplicationID"
+              pointer: true
+          - column: "iam_principals.client_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ClientID"
+              pointer: true
+          - column: "iam_refresh_tokens.principal_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "PrincipalID"
+          - column: "iam_reset_approval_requests.client_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ClientID"
+              pointer: true
+          - column: "iam_reset_approval_requests.principal_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "PrincipalID"
+          - column: "iam_roles.application_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ApplicationID"
+              pointer: true
+          - column: "iam_service_accounts.application_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ApplicationID"
+              pointer: true
+          - column: "iam_user_mfa_methods.principal_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "PrincipalID"
+          - column: "iam_user_mfa_recovery_codes.principal_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "PrincipalID"
+          - column: "msg_connections.client_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ClientID"
+              pointer: true
+          - column: "msg_dispatch_jobs.client_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ClientID"
+              pointer: true
+          - column: "msg_dispatch_jobs_read.client_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ClientID"
+              pointer: true
+          - column: "msg_dispatch_pools.client_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ClientID"
+              pointer: true
+          - column: "msg_events.client_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ClientID"
+              pointer: true
+          - column: "msg_events_read.client_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ClientID"
+              pointer: true
+          - column: "msg_scheduled_job_instance_logs.client_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ClientID"
+              pointer: true
+          - column: "msg_scheduled_job_instances.client_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ClientID"
+              pointer: true
+          - column: "msg_scheduled_jobs.client_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ClientID"
+              pointer: true
+          - column: "msg_scheduled_jobs.application_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ApplicationID"
+              pointer: true
+          - column: "msg_subscriptions.client_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ClientID"
+              pointer: true
+          - column: "oauth_client_application_ids.application_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ApplicationID"
+          - column: "portal_apps.client_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ClientID"
+          - column: "portal_identities.client_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ClientID"
+          - column: "tnt_client_auth_configs.primary_client_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ClientID"
+              pointer: true
+          - column: "tnt_email_domain_mapping_additional_clients.client_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ClientID"
+          - column: "tnt_email_domain_mapping_granted_clients.client_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ClientID"
+          - column: "tnt_email_domain_mappings.primary_client_id"
+            go_type:
+              import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+              type: "ClientID"
+              pointer: true
+          - column: "webauthn_credentials.principal_id"
             go_type:
               import: "github.com/flowcatalyst/flowcatalyst-go/internal/ids"
               type: "PrincipalID"

@@ -119,7 +119,7 @@ func TestCreateApplication_UnderscoreCodeAllowed(t *testing.T) {
 	got, err := repo.FindByCode(context.Background(), "app_with_underscores")
 	require.NoError(t, err)
 	require.NotNil(t, got)
-	assert.Equal(t, ev.ApplicationID, got.ID)
+	assert.Equal(t, ev.ApplicationID, string(got.ID))
 }
 
 func TestCreateApplication_Validation(t *testing.T) {

@@ -20,7 +20,6 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
 // Type is the principal kind.
@@ -132,8 +131,8 @@ type Principal struct {
 	ID                  ids.PrincipalID                 `json:"id"`
 	Type                Type                            `json:"type"`
 	Scope               UserScope                       `json:"scope"`
-	ClientID            *string                         `json:"clientId,omitempty"`
-	ApplicationID       *string                         `json:"applicationId,omitempty"`
+	ClientID            *ids.ClientID                   `json:"clientId,omitempty"`
+	ApplicationID       *ids.ApplicationID              `json:"applicationId,omitempty"`
 	Name                string                          `json:"name"`
 	Active              bool                            `json:"active"`
 	UserIdentity        *UserIdentity                   `json:"userIdentity,omitempty"`
@@ -172,7 +171,7 @@ func NewUser(email string, scope UserScope) *Principal {
 	now := time.Now().UTC()
 	identity := NewUserIdentity(email)
 	return &Principal{
-		ID:                       ids.PrincipalID(tsid.Generate(tsid.Principal)),
+		ID:                       ids.NewPrincipalID(),
 		Type:                     TypeUser,
 		Scope:                    scope,
 		Name:                     identity.DisplayName(),
@@ -191,7 +190,7 @@ func NewUser(email string, scope UserScope) *Principal {
 func NewService(serviceAccountID, name string) *Principal {
 	now := time.Now().UTC()
 	return &Principal{
-		ID:                       ids.PrincipalID(tsid.Generate(tsid.Principal)),
+		ID:                       ids.NewPrincipalID(),
 		Type:                     TypeService,
 		Scope:                    ScopeAnchor,
 		Name:                     name,

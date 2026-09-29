@@ -148,7 +148,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	}
 	var defaultClientID string
 	if existingClient != nil {
-		defaultClientID = existingClient.ID
+		defaultClientID = string(existingClient.ID)
 		fmt.Printf("→ reusing default client \"%s\" (id=%s)\n", existingClient.Identifier, existingClient.ID)
 	} else {
 		c := client.New(get("client-name"), clientIdent)
@@ -157,7 +157,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		}); err != nil {
 			return fmt.Errorf("insert default client: %w", err)
 		}
-		defaultClientID = c.ID
+		defaultClientID = string(c.ID)
 		fmt.Printf("  → default client \"%s\" created (id=%s)\n", c.Identifier, c.ID)
 	}
 
@@ -209,11 +209,11 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	sa := serviceaccount.New(saCode, saName)
 	saDesc := "Service account for application: " + appName
 	sa.Description = &saDesc
-	sa.ApplicationID = &app.ID
+	sa.ApplicationID = ids.StringPtr(&app.ID)
 
 	saPrincipal := principal.NewService(sa.ID, saName)
 	saPrincipal.ApplicationID = &app.ID
-	saPrincipal.ClientID = &defaultClientID
+	saPrincipal.ClientID = ids.PtrOf[ids.ClientID](&defaultClientID)
 	saPrincipal.Scope = principal.ScopeAnchor
 
 	// Attach the SA back to the application + persist all three in one tx.

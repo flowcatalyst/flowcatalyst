@@ -8,6 +8,8 @@ package dbq
 import (
 	"context"
 	"time"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 )
 
 const serviceAccountDelete = `-- name: ServiceAccountDelete :exec
@@ -216,7 +218,7 @@ LIMIT 1
 // application_id; among the rest, oldest active first. Without this an app
 // with several linked SAs could sign with one SA while the operator rotates
 // credentials on another.
-func (q *Queries) ServiceAccountFindFirstByApplicationID(ctx context.Context, applicationID *string) (IamServiceAccount, error) {
+func (q *Queries) ServiceAccountFindFirstByApplicationID(ctx context.Context, applicationID *ids.ApplicationID) (IamServiceAccount, error) {
 	row := q.db.QueryRow(ctx, serviceAccountFindFirstByApplicationID, applicationID)
 	var i IamServiceAccount
 	err := row.Scan(
@@ -287,23 +289,23 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type ServiceAccountUpsertParams struct {
-	ID                         string     `db:"id"`
-	Code                       string     `db:"code"`
-	Name                       string     `db:"name"`
-	Description                *string    `db:"description"`
-	ApplicationID              *string    `db:"application_id"`
-	Scope                      *string    `db:"scope"`
-	ClientIds                  []string   `db:"client_ids"`
-	Active                     bool       `db:"active"`
-	WhAuthType                 *string    `db:"wh_auth_type"`
-	WhAuthTokenRef             *string    `db:"wh_auth_token_ref"`
-	WhSigningSecretRef         *string    `db:"wh_signing_secret_ref"`
-	WhSigningAlgorithm         *string    `db:"wh_signing_algorithm"`
-	WhCredentialsCreatedAt     *time.Time `db:"wh_credentials_created_at"`
-	WhCredentialsRegeneratedAt *time.Time `db:"wh_credentials_regenerated_at"`
-	LastUsedAt                 *time.Time `db:"last_used_at"`
-	CreatedAt                  time.Time  `db:"created_at"`
-	UpdatedAt                  time.Time  `db:"updated_at"`
+	ID                         string             `db:"id"`
+	Code                       string             `db:"code"`
+	Name                       string             `db:"name"`
+	Description                *string            `db:"description"`
+	ApplicationID              *ids.ApplicationID `db:"application_id"`
+	Scope                      *string            `db:"scope"`
+	ClientIds                  []string           `db:"client_ids"`
+	Active                     bool               `db:"active"`
+	WhAuthType                 *string            `db:"wh_auth_type"`
+	WhAuthTokenRef             *string            `db:"wh_auth_token_ref"`
+	WhSigningSecretRef         *string            `db:"wh_signing_secret_ref"`
+	WhSigningAlgorithm         *string            `db:"wh_signing_algorithm"`
+	WhCredentialsCreatedAt     *time.Time         `db:"wh_credentials_created_at"`
+	WhCredentialsRegeneratedAt *time.Time         `db:"wh_credentials_regenerated_at"`
+	LastUsedAt                 *time.Time         `db:"last_used_at"`
+	CreatedAt                  time.Time          `db:"created_at"`
+	UpdatedAt                  time.Time          `db:"updated_at"`
 }
 
 func (q *Queries) ServiceAccountUpsert(ctx context.Context, arg ServiceAccountUpsertParams) error {

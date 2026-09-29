@@ -111,7 +111,7 @@ func CreateConnection(repo *connection.Repository, apps *application.Repository)
 // connection-create/update permission could link a connection to an
 // application it has no access to at all.
 func requireApplicationAccess(ctx context.Context, app *application.Application) error {
-	if !auth.FromContext(ctx).CanAccessApplication(app.ID) {
+	if !auth.FromContext(ctx).CanAccessApplication(string(app.ID)) {
 		return httperror.Forbidden("Not authorised for application '" + app.Code + "'")
 	}
 	return nil

@@ -8,6 +8,8 @@ package dbq
 import (
 	"context"
 	"time"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 )
 
 const connectionDelete = `-- name: ConnectionDelete :exec
@@ -70,9 +72,9 @@ WHERE code = $1
 `
 
 type ConnectionFindByCodeParams struct {
-	Code            string  `db:"code"`
-	ApplicationCode *string `db:"application_code"`
-	ClientID        *string `db:"client_id"`
+	Code            string        `db:"code"`
+	ApplicationCode *string       `db:"application_code"`
+	ClientID        *ids.ClientID `db:"client_id"`
 }
 
 // NULL-as-a-value semantics on both nullable parts of the key: a caller
@@ -153,19 +155,19 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type ConnectionUpsertParams struct {
-	ID               string    `db:"id"`
-	Code             string    `db:"code"`
-	Name             string    `db:"name"`
-	Description      *string   `db:"description"`
-	ExternalID       *string   `db:"external_id"`
-	Status           string    `db:"status"`
-	ServiceAccountID string    `db:"service_account_id"`
-	ClientID         *string   `db:"client_id"`
-	ClientIdentifier *string   `db:"client_identifier"`
-	CreatedAt        time.Time `db:"created_at"`
-	UpdatedAt        time.Time `db:"updated_at"`
-	ApplicationCode  *string   `db:"application_code"`
-	Source           string    `db:"source"`
+	ID               string        `db:"id"`
+	Code             string        `db:"code"`
+	Name             string        `db:"name"`
+	Description      *string       `db:"description"`
+	ExternalID       *string       `db:"external_id"`
+	Status           string        `db:"status"`
+	ServiceAccountID string        `db:"service_account_id"`
+	ClientID         *ids.ClientID `db:"client_id"`
+	ClientIdentifier *string       `db:"client_identifier"`
+	CreatedAt        time.Time     `db:"created_at"`
+	UpdatedAt        time.Time     `db:"updated_at"`
+	ApplicationCode  *string       `db:"application_code"`
+	Source           string        `db:"source"`
 }
 
 func (q *Queries) ConnectionUpsert(ctx context.Context, arg ConnectionUpsertParams) error {

@@ -43,8 +43,8 @@ func UpdateClient(repo *client.Repository) usecaseop.Operation[UpdateCommand, Cl
 			}
 
 			event := ClientUpdated{
-				Metadata: usecase.NewEventMetadata(ec, ClientUpdatedType, Source, subjectFor(c.ID)),
-				ClientID: c.ID,
+				Metadata: usecase.NewEventMetadata(ec, ClientUpdatedType, Source, subjectFor(string(c.ID))),
+				ClientID: string(c.ID),
 				Name:     c.Name,
 			}
 			return usecaseop.Save(c, repo, event), nil

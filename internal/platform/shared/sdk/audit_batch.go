@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
@@ -98,7 +99,7 @@ func (s *AuditBatchState) batchIngest(w http.ResponseWriter, r *http.Request) {
 				}
 				if app != nil {
 					v := app.ID
-					id = &v
+					id = ids.StringPtr(&v)
 				}
 				appByCode[code] = id
 			}
@@ -122,7 +123,7 @@ func (s *AuditBatchState) batchIngest(w http.ResponseWriter, r *http.Request) {
 				}
 				if c != nil {
 					v := c.ID
-					id = &v
+					id = ids.StringPtr(&v)
 				}
 				clientByCode[code] = id
 			}

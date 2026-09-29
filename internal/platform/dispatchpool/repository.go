@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -44,7 +45,7 @@ func (r *Repository) FindByCode(ctx context.Context, code string, clientID *stri
 	)
 	if clientID != nil {
 		res, err = r.q.DispatchPoolFindByCodeClient(ctx, dbq.DispatchPoolFindByCodeClientParams{
-			Code: code, ClientID: clientID,
+			Code: code, ClientID: ids.PtrOf[ids.ClientID](clientID),
 		})
 	} else {
 		res, err = r.q.DispatchPoolFindByCodeAnchor(ctx, code)
@@ -98,7 +99,7 @@ func (r *Repository) Persist(ctx context.Context, p *DispatchPool, tx *usecasepg
 		Description:      p.Description,
 		RateLimit:        p.RateLimit,
 		Concurrency:      p.Concurrency,
-		ClientID:         p.ClientID,
+		ClientID:         ids.PtrOf[ids.ClientID](p.ClientID),
 		ClientIdentifier: p.ClientIdentifier,
 		Status:           string(p.Status),
 		CreatedAt:        p.CreatedAt,
@@ -132,7 +133,7 @@ func rowToDispatchPool(row dbq.MsgDispatchPool) (*DispatchPool, error) {
 		Description:      row.Description,
 		RateLimit:        row.RateLimit,
 		Concurrency:      row.Concurrency,
-		ClientID:         row.ClientID,
+		ClientID:         ids.StringPtr(row.ClientID),
 		ClientIdentifier: row.ClientIdentifier,
 		Status:           status,
 		CreatedAt:        row.CreatedAt,

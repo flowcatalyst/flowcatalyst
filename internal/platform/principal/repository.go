@@ -218,7 +218,7 @@ func (r *Repository) hydrateClientAccess(ctx context.Context, p *Principal) erro
 		idSet[c] = struct{}{}
 	}
 	if p.ClientID != nil && *p.ClientID != "" {
-		idSet[*p.ClientID] = struct{}{}
+		idSet[string(*p.ClientID)] = struct{}{}
 	}
 	if len(idSet) == 0 {
 		return nil
@@ -569,8 +569,8 @@ func (r *Repository) Persist(ctx context.Context, p *Principal, tx *usecasepgx.D
 		ID:                       p.ID,
 		Type:                     string(p.Type),
 		Scope:                    &scope,
-		ClientID:                 p.ClientID,
-		ApplicationID:            p.ApplicationID,
+		ClientID:                 ids.PtrOf[ids.ClientID](ids.StringPtr(p.ClientID)),
+		ApplicationID:            ids.PtrOf[ids.ApplicationID](ids.StringPtr(p.ApplicationID)),
 		Name:                     p.Name,
 		Active:                   p.Active,
 		Email:                    email,
@@ -856,8 +856,8 @@ func rowToPrincipal(row dbq.IamPrincipal) (*Principal, error) {
 	p := Principal{
 		ID:                       row.ID,
 		Type:                     typ,
-		ClientID:                 row.ClientID,
-		ApplicationID:            row.ApplicationID,
+		ClientID:                 ids.PtrOf[ids.ClientID](ids.StringPtr(row.ClientID)),
+		ApplicationID:            ids.PtrOf[ids.ApplicationID](ids.StringPtr(row.ApplicationID)),
 		Name:                     row.Name,
 		Active:                   row.Active,
 		ServiceAccountID:         row.ServiceAccountID,

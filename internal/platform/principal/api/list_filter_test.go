@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 )
@@ -18,7 +19,7 @@ func mkPrincipal(name, email string, clientID *string, active bool, roles []stri
 		Name:         name,
 		Type:         principal.TypeUser,
 		Active:       active,
-		ClientID:     clientID,
+		ClientID:     ids.PtrOf[ids.ClientID](clientID),
 		UserIdentity: principal.NewUserIdentity(email),
 		Roles:        ras,
 		CreatedAt:    created,

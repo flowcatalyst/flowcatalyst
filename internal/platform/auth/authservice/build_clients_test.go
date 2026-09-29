@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 )
 
@@ -26,7 +27,7 @@ func TestBuildClientsFormat(t *testing.T) {
 	t.Run("client scope emits id:identifier for the home client", func(t *testing.T) {
 		p := &principal.Principal{
 			Scope:               principal.ScopeClient,
-			ClientID:            idPtr("clt_spar"),
+			ClientID:            ids.PtrOf[ids.ClientID](idPtr("clt_spar")),
 			ClientIdentifierMap: map[string]string{"clt_spar": "spar"},
 		}
 		got := buildClients(p)
@@ -59,7 +60,7 @@ func TestBuildClientsFormat(t *testing.T) {
 		// Documents the failure mode: with no identifier hydrated, the claim is a
 		// bare id and the SDK can't match the tenant. hydrateClientAccess prevents
 		// this for real loads.
-		p := &principal.Principal{Scope: principal.ScopeClient, ClientID: idPtr("clt_spar")}
+		p := &principal.Principal{Scope: principal.ScopeClient, ClientID: ids.PtrOf[ids.ClientID](idPtr("clt_spar"))}
 		got := buildClients(p)
 		if len(got) != 1 || got[0] != "clt_spar" {
 			t.Fatalf("fallback: got %v, want [clt_spar]", got)

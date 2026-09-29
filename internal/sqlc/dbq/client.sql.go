@@ -9,13 +9,15 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 )
 
 const clientDelete = `-- name: ClientDelete :exec
 DELETE FROM tnt_clients WHERE id = $1
 `
 
-func (q *Queries) ClientDelete(ctx context.Context, id string) error {
+func (q *Queries) ClientDelete(ctx context.Context, id ids.ClientID) error {
 	_, err := q.db.Exec(ctx, clientDelete, id)
 	return err
 }
@@ -68,7 +70,7 @@ WHERE id = $1
 // All queries operating on tnt_clients. The Repository wrapper in
 // internal/platform/client maps the generated row type onto the
 // aggregate's Client struct.
-func (q *Queries) ClientFindByID(ctx context.Context, id string) (TntClient, error) {
+func (q *Queries) ClientFindByID(ctx context.Context, id ids.ClientID) (TntClient, error) {
 	row := q.db.QueryRow(ctx, clientFindByID, id)
 	var i TntClient
 	err := row.Scan(
@@ -165,7 +167,7 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type ClientUpsertParams struct {
-	ID              string          `db:"id"`
+	ID              ids.ClientID    `db:"id"`
 	Name            string          `db:"name"`
 	Identifier      string          `db:"identifier"`
 	Status          string          `db:"status"`

@@ -264,7 +264,7 @@ func fromEntity(p *principal.Principal) PrincipalResponse {
 		ID:                           string(p.ID),
 		Type:                         string(p.Type),
 		Scope:                        string(p.Scope),
-		ClientID:                     p.ClientID,
+		ClientID:                     ids.StringPtr(p.ClientID),
 		Name:                         p.Name,
 		Active:                       p.Active,
 		Email:                        email,

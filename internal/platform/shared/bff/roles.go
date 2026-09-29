@@ -175,7 +175,7 @@ func (s *RolesState) filterApplications(w http.ResponseWriter, r *http.Request) 
 		}
 		for _, a := range apps {
 			options = append(options, bffApplicationOption{
-				ID:   a.ID,
+				ID:   string(a.ID),
 				Code: a.Code,
 				Name: a.Name,
 			})

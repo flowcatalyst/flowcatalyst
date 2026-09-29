@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 )
@@ -159,7 +160,7 @@ func TestClientScopeClients(t *testing.T) {
 	svc := newRS256(t)
 	cid := "clt_123"
 	p := principal.NewUser("u@example.com", principal.ScopeClient)
-	p.ClientID = &cid
+	p.ClientID = ids.PtrOf[ids.ClientID](&cid)
 	p.ClientIdentifierMap = map[string]string{cid: "acme"}
 
 	tok, err := svc.GenerateAccessToken(p)

@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -49,7 +50,7 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*Subscription, er
 // matches a row whose column is also NULL.
 func (r *Repository) FindByCode(ctx context.Context, code string, applicationCode, clientID *string) (*Subscription, error) {
 	res, err := r.q.SubscriptionFindByCode(ctx, dbq.SubscriptionFindByCodeParams{
-		Code: code, ApplicationCode: applicationCode, ClientID: clientID,
+		Code: code, ApplicationCode: applicationCode, ClientID: ids.PtrOf[ids.ClientID](clientID),
 	})
 	row, err := repocommon.One(res, err, "subscription repo")
 	if row == nil || err != nil {
@@ -238,7 +239,7 @@ func (r *Repository) Persist(ctx context.Context, s *Subscription, tx *usecasepg
 		ApplicationCode:  s.ApplicationCode,
 		Name:             s.Name,
 		Description:      s.Description,
-		ClientID:         s.ClientID,
+		ClientID:         ids.PtrOf[ids.ClientID](s.ClientID),
 		ClientIdentifier: s.ClientIdentifier,
 		ClientScoped:     s.ClientScoped,
 		ConnectionID:     s.ConnectionID,
@@ -381,7 +382,7 @@ func rowToSubscription(row dbq.MsgSubscription) (*Subscription, error) {
 		ApplicationCode:  row.ApplicationCode,
 		Name:             row.Name,
 		Description:      row.Description,
-		ClientID:         row.ClientID,
+		ClientID:         ids.StringPtr(row.ClientID),
 		ClientIdentifier: row.ClientIdentifier,
 		ClientScoped:     row.ClientScoped,
 		ConnectionID:     row.ConnectionID,

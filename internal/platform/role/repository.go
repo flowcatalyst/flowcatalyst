@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -130,7 +131,7 @@ func (r *Repository) CountAssignments(ctx context.Context, name string) (int64, 
 // FindByApplicationID returns every role whose application_id matches,
 // hydrated with permissions.
 func (r *Repository) FindByApplicationID(ctx context.Context, applicationID string) ([]Role, error) {
-	rows, err := r.q.RoleFindByApplicationID(ctx, &applicationID)
+	rows, err := r.q.RoleFindByApplicationID(ctx, ids.PtrOf[ids.ApplicationID](&applicationID))
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +171,7 @@ func (r *Repository) Persist(ctx context.Context, role *Role, tx *usecasepgx.DbT
 	q := r.q.WithTx(tx.Inner())
 	if err := q.RoleUpsert(ctx, dbq.RoleUpsertParams{
 		ID:              role.ID,
-		ApplicationID:   role.ApplicationID,
+		ApplicationID:   ids.PtrOf[ids.ApplicationID](role.ApplicationID),
 		Name:            role.Name,
 		DisplayName:     role.DisplayName,
 		Description:     role.Description,
@@ -253,7 +254,7 @@ func rowToRole(row dbq.IamRole) (*Role, error) {
 	}
 	return &Role{
 		ID:              row.ID,
-		ApplicationID:   row.ApplicationID,
+		ApplicationID:   ids.StringPtr(row.ApplicationID),
 		Name:            row.Name,
 		DisplayName:     row.DisplayName,
 		Description:     row.Description,

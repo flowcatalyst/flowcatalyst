@@ -349,25 +349,25 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type PrincipalUpsertParams struct {
-	ID                       ids.PrincipalID `db:"id"`
-	Type                     string          `db:"type"`
-	Scope                    *string         `db:"scope"`
-	ClientID                 *string         `db:"client_id"`
-	ApplicationID            *string         `db:"application_id"`
-	Name                     string          `db:"name"`
-	Active                   bool            `db:"active"`
-	Email                    *string         `db:"email"`
-	EmailDomain              *string         `db:"email_domain"`
-	IdpType                  *string         `db:"idp_type"`
-	ExternalIdpID            *string         `db:"external_idp_id"`
-	PasswordHash             *string         `db:"password_hash"`
-	LastLoginAt              *time.Time      `db:"last_login_at"`
-	ServiceAccountID         *string         `db:"service_account_id"`
-	AllApplications          bool            `db:"all_applications"`
-	CreatedAt                time.Time       `db:"created_at"`
-	UpdatedAt                time.Time       `db:"updated_at"`
-	DevClientSecretRef       *string         `db:"dev_client_secret_ref"`
-	DevClientSecretUpdatedAt *time.Time      `db:"dev_client_secret_updated_at"`
+	ID                       ids.PrincipalID    `db:"id"`
+	Type                     string             `db:"type"`
+	Scope                    *string            `db:"scope"`
+	ClientID                 *ids.ClientID      `db:"client_id"`
+	ApplicationID            *ids.ApplicationID `db:"application_id"`
+	Name                     string             `db:"name"`
+	Active                   bool               `db:"active"`
+	Email                    *string            `db:"email"`
+	EmailDomain              *string            `db:"email_domain"`
+	IdpType                  *string            `db:"idp_type"`
+	ExternalIdpID            *string            `db:"external_idp_id"`
+	PasswordHash             *string            `db:"password_hash"`
+	LastLoginAt              *time.Time         `db:"last_login_at"`
+	ServiceAccountID         *string            `db:"service_account_id"`
+	AllApplications          bool               `db:"all_applications"`
+	CreatedAt                time.Time          `db:"created_at"`
+	UpdatedAt                time.Time          `db:"updated_at"`
+	DevClientSecretRef       *string            `db:"dev_client_secret_ref"`
+	DevClientSecretUpdatedAt *time.Time         `db:"dev_client_secret_updated_at"`
 }
 
 func (q *Queries) PrincipalUpsert(ctx context.Context, arg PrincipalUpsertParams) error {

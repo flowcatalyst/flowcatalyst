@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
@@ -306,7 +307,7 @@ func (r *Repository) Insert(ctx context.Context, j *DispatchJob) error {
 		PayloadContentType: &pct,
 		DataOnly:           j.DataOnly,
 		ServiceAccountID:   j.ServiceAccountID,
-		ClientID:           j.ClientID,
+		ClientID:           ids.PtrOf[ids.ClientID](j.ClientID),
 		SubscriptionID:     j.SubscriptionID,
 		Mode:               string(j.Mode),
 		DispatchPoolID:     j.DispatchPoolID,
@@ -661,7 +662,7 @@ func findByIDRowToJob(r dbq.DispatchJobFindByIDRow) (*DispatchJob, error) {
 		CorrelationID: r.CorrelationID, Metadata: r.Metadata,
 		TargetUrl: r.TargetUrl, Protocol: r.Protocol, Payload: r.Payload,
 		PayloadContentType: r.PayloadContentType, DataOnly: r.DataOnly,
-		ServiceAccountID: r.ServiceAccountID, ClientID: r.ClientID,
+		ServiceAccountID: r.ServiceAccountID, ClientID: ids.StringPtr(r.ClientID),
 		SubscriptionID: r.SubscriptionID, Mode: r.Mode,
 		DispatchPoolID: r.DispatchPoolID, MessageGroup: r.MessageGroup,
 		Sequence: r.Sequence, TimeoutSeconds: r.TimeoutSeconds,

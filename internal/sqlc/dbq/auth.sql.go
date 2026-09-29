@@ -9,6 +9,8 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 )
 
 const anchorDomainDelete = `-- name: AnchorDomainDelete :exec
@@ -257,7 +259,7 @@ type ClientAuthConfigUpsertParams struct {
 	ID                  string          `db:"id"`
 	EmailDomain         string          `db:"email_domain"`
 	ConfigType          string          `db:"config_type"`
-	PrimaryClientID     *string         `db:"primary_client_id"`
+	PrimaryClientID     *ids.ClientID   `db:"primary_client_id"`
 	AdditionalClientIds json.RawMessage `db:"additional_client_ids"`
 	GrantedClientIds    json.RawMessage `db:"granted_client_ids"`
 	AuthProvider        string          `db:"auth_provider"`

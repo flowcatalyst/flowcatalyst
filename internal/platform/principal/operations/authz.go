@@ -3,6 +3,7 @@ package operations
 import (
 	"context"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
@@ -32,7 +33,7 @@ func requireUserResourceAccess(ctx context.Context, p *principal.Principal) erro
 	if err := blockNonClientTarget(ac, p); err != nil {
 		return err
 	}
-	if !auth.CanAccessScope(ac, p.ClientID) {
+	if !auth.CanAccessScope(ac, ids.StringPtr(p.ClientID)) {
 		return httperror.NotFound("Principal", string(p.ID))
 	}
 	return nil
@@ -52,7 +53,7 @@ func requireUserAdmin(ctx context.Context, p *principal.Principal) error {
 	if err := blockNonClientTarget(ac, p); err != nil {
 		return err
 	}
-	if !auth.CanAccessScope(ac, p.ClientID) {
+	if !auth.CanAccessScope(ac, ids.StringPtr(p.ClientID)) {
 		return httperror.NotFound("User", string(p.ID))
 	}
 	return nil

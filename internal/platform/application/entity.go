@@ -9,7 +9,7 @@ package application
 import (
 	"time"
 
-	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 )
 
 // Type is the application kind.
@@ -36,30 +36,30 @@ func ParseType(s string) (Type, bool) {
 
 // Application is the aggregate root.
 type Application struct {
-	ID               string    `json:"id"`
-	Type             Type      `json:"type"`
-	Code             string    `json:"code"`
-	Name             string    `json:"name"`
-	Description      *string   `json:"description,omitempty"`
-	IconURL          *string   `json:"iconUrl,omitempty"`
-	Website          *string   `json:"website,omitempty"`
-	Logo             *string   `json:"logo,omitempty"`
-	LogoMimeType     *string   `json:"logoMimeType,omitempty"`
-	DefaultBaseURL   *string   `json:"defaultBaseUrl,omitempty"`
-	ServiceAccountID *string   `json:"serviceAccountId,omitempty"`
-	Active           bool      `json:"active"`
-	CreatedAt        time.Time `json:"createdAt"`
-	UpdatedAt        time.Time `json:"updatedAt"`
+	ID               ids.ApplicationID `json:"id"`
+	Type             Type              `json:"type"`
+	Code             string            `json:"code"`
+	Name             string            `json:"name"`
+	Description      *string           `json:"description,omitempty"`
+	IconURL          *string           `json:"iconUrl,omitempty"`
+	Website          *string           `json:"website,omitempty"`
+	Logo             *string           `json:"logo,omitempty"`
+	LogoMimeType     *string           `json:"logoMimeType,omitempty"`
+	DefaultBaseURL   *string           `json:"defaultBaseUrl,omitempty"`
+	ServiceAccountID *string           `json:"serviceAccountId,omitempty"`
+	Active           bool              `json:"active"`
+	CreatedAt        time.Time         `json:"createdAt"`
+	UpdatedAt        time.Time         `json:"updatedAt"`
 }
 
 // IDStr satisfies usecase.HasID.
-func (a Application) IDStr() string { return a.ID }
+func (a Application) IDStr() string { return string(a.ID) }
 
 // New constructs an Application (default Type=APPLICATION, Active=true).
 func New(code, name string) *Application {
 	now := time.Now().UTC()
 	return &Application{
-		ID:        tsid.Generate(tsid.Application),
+		ID:        ids.NewApplicationID(),
 		Type:      TypeApplication,
 		Code:      code,
 		Name:      name,

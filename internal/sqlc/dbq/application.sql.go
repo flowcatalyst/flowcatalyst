@@ -8,13 +8,15 @@ package dbq
 import (
 	"context"
 	"time"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 )
 
 const applicationDelete = `-- name: ApplicationDelete :exec
 DELETE FROM app_applications WHERE id = $1
 `
 
-func (q *Queries) ApplicationDelete(ctx context.Context, id string) error {
+func (q *Queries) ApplicationDelete(ctx context.Context, id ids.ApplicationID) error {
 	_, err := q.db.Exec(ctx, applicationDelete, id)
 	return err
 }
@@ -57,7 +59,7 @@ WHERE id = $1
 `
 
 // Queries for app_applications.
-func (q *Queries) ApplicationFindByID(ctx context.Context, id string) (AppApplication, error) {
+func (q *Queries) ApplicationFindByID(ctx context.Context, id ids.ApplicationID) (AppApplication, error) {
 	row := q.db.QueryRow(ctx, applicationFindByID, id)
 	var i AppApplication
 	err := row.Scan(
@@ -99,20 +101,20 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type ApplicationUpsertParams struct {
-	ID               string    `db:"id"`
-	Type             string    `db:"type"`
-	Code             string    `db:"code"`
-	Name             string    `db:"name"`
-	Description      *string   `db:"description"`
-	IconUrl          *string   `db:"icon_url"`
-	Website          *string   `db:"website"`
-	Logo             *string   `db:"logo"`
-	LogoMimeType     *string   `db:"logo_mime_type"`
-	DefaultBaseUrl   *string   `db:"default_base_url"`
-	ServiceAccountID *string   `db:"service_account_id"`
-	Active           bool      `db:"active"`
-	CreatedAt        time.Time `db:"created_at"`
-	UpdatedAt        time.Time `db:"updated_at"`
+	ID               ids.ApplicationID `db:"id"`
+	Type             string            `db:"type"`
+	Code             string            `db:"code"`
+	Name             string            `db:"name"`
+	Description      *string           `db:"description"`
+	IconUrl          *string           `db:"icon_url"`
+	Website          *string           `db:"website"`
+	Logo             *string           `db:"logo"`
+	LogoMimeType     *string           `db:"logo_mime_type"`
+	DefaultBaseUrl   *string           `db:"default_base_url"`
+	ServiceAccountID *string           `db:"service_account_id"`
+	Active           bool              `db:"active"`
+	CreatedAt        time.Time         `db:"created_at"`
+	UpdatedAt        time.Time         `db:"updated_at"`
 }
 
 func (q *Queries) ApplicationUpsert(ctx context.Context, arg ApplicationUpsertParams) error {
@@ -151,7 +153,7 @@ WHERE application_id = $1
 ORDER BY created_at
 `
 
-func (q *Queries) ClientConfigFindByApp(ctx context.Context, applicationID string) ([]AppClientConfig, error) {
+func (q *Queries) ClientConfigFindByApp(ctx context.Context, applicationID ids.ApplicationID) ([]AppClientConfig, error) {
 	rows, err := q.db.Query(ctx, clientConfigFindByApp, applicationID)
 	if err != nil {
 		return nil, err
@@ -185,8 +187,8 @@ WHERE application_id = $1 AND client_id = $2
 `
 
 type ClientConfigFindByAppAndClientParams struct {
-	ApplicationID string `db:"application_id"`
-	ClientID      string `db:"client_id"`
+	ApplicationID ids.ApplicationID `db:"application_id"`
+	ClientID      ids.ClientID      `db:"client_id"`
 }
 
 func (q *Queries) ClientConfigFindByAppAndClient(ctx context.Context, arg ClientConfigFindByAppAndClientParams) (AppClientConfig, error) {
@@ -210,7 +212,7 @@ WHERE client_id = $1
 ORDER BY created_at
 `
 
-func (q *Queries) ClientConfigFindByClient(ctx context.Context, clientID string) ([]AppClientConfig, error) {
+func (q *Queries) ClientConfigFindByClient(ctx context.Context, clientID ids.ClientID) ([]AppClientConfig, error) {
 	rows, err := q.db.Query(ctx, clientConfigFindByClient, clientID)
 	if err != nil {
 		return nil, err
@@ -247,12 +249,12 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type ClientConfigUpsertParams struct {
-	ID            string    `db:"id"`
-	ApplicationID string    `db:"application_id"`
-	ClientID      string    `db:"client_id"`
-	Enabled       bool      `db:"enabled"`
-	CreatedAt     time.Time `db:"created_at"`
-	UpdatedAt     time.Time `db:"updated_at"`
+	ID            string            `db:"id"`
+	ApplicationID ids.ApplicationID `db:"application_id"`
+	ClientID      ids.ClientID      `db:"client_id"`
+	Enabled       bool              `db:"enabled"`
+	CreatedAt     time.Time         `db:"created_at"`
+	UpdatedAt     time.Time         `db:"updated_at"`
 }
 
 func (q *Queries) ClientConfigUpsert(ctx context.Context, arg ClientConfigUpsertParams) error {

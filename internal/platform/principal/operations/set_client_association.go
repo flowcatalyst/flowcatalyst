@@ -85,14 +85,14 @@ func SetClientAssociation(repo *principal.Repository, clients *client.Repository
 					return nil, err
 				}
 				p.Scope = principal.ScopeClient
-				p.ClientID = &clientID
+				p.ClientID = ids.PtrOf[ids.ClientID](&clientID)
 			case cmd.Mode == ModeToPartner:
 				if err := requireClientExists(ctx, clients, clientID); err != nil {
 					return nil, err
 				}
 				// Promoting from CLIENT: keep the old home client as access too.
-				if p.Scope == principal.ScopeClient && p.ClientID != nil && *p.ClientID != "" && *p.ClientID != clientID {
-					grantClientIDs = append(grantClientIDs, *p.ClientID)
+				if p.Scope == principal.ScopeClient && p.ClientID != nil && *p.ClientID != "" && *p.ClientID != ids.ClientID(clientID) {
+					grantClientIDs = append(grantClientIDs, string(*p.ClientID))
 				}
 				grantClientIDs = append(grantClientIDs, clientID)
 				p.Scope = principal.ScopePartner

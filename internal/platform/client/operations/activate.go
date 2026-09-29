@@ -36,8 +36,8 @@ func ActivateClient(repo *client.Repository) usecaseop.Operation[ActivateCommand
 			}
 			c.Activate()
 			event := ClientActivated{
-				Metadata: usecase.NewEventMetadata(ec, ClientActivatedType, Source, subjectFor(c.ID)),
-				ClientID: c.ID,
+				Metadata: usecase.NewEventMetadata(ec, ClientActivatedType, Source, subjectFor(string(c.ID))),
+				ClientID: string(c.ID),
 			}
 			return usecaseop.Save(c, repo, event), nil
 		},

@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
@@ -152,8 +153,8 @@ func (r *Repository) Persist(ctx context.Context, f *Function, tx *usecasepgx.Db
 	}
 	return r.q.WithTx(tx.Inner()).FunctionUpsert(ctx, dbq.FunctionUpsertParams{
 		ID:            f.ID,
-		ApplicationID: f.ApplicationID,
-		ClientID:      f.ClientID,
+		ApplicationID: ids.ApplicationID(f.ApplicationID),
+		ClientID:      ids.PtrOf[ids.ClientID](f.ClientID),
 		Name:          f.Name,
 		Address:       f.Address,
 		Description:   f.Description,
@@ -202,9 +203,9 @@ func rowToFunction(row dbq.FngFunction, applicationCode *string) (*Function, err
 	}
 	return &Function{
 		ID:              row.ID,
-		ApplicationID:   row.ApplicationID,
+		ApplicationID:   string(row.ApplicationID),
 		ApplicationCode: code,
-		ClientID:        row.ClientID,
+		ClientID:        ids.StringPtr(row.ClientID),
 		Name:            row.Name,
 		Address:         row.Address,
 		Description:     row.Description,

@@ -83,7 +83,7 @@ func fromEntity(c *client.Client) ClientResponse {
 		statusChanged = &v
 	}
 	return ClientResponse{
-		ID:              c.ID,
+		ID:              string(c.ID),
 		Name:            c.Name,
 		Identifier:      c.Identifier,
 		Status:          string(c.Status),

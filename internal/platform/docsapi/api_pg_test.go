@@ -37,7 +37,7 @@ func TestGroupedListWithApplicationDocs(t *testing.T) {
 	require.NotNil(t, appRow)
 
 	repo := appdocs.NewRepository(pool)
-	_, err = repo.ReplaceForApplication(ctx, appRow.ID, []appdocs.Input{
+	_, err = repo.ReplaceForApplication(ctx, string(appRow.ID), []appdocs.Input{
 		{Slug: "guide", Title: "Integration Guide", Content: "# Integration Guide\nBody."},
 	})
 	require.NoError(t, err)

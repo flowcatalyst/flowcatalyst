@@ -8,6 +8,8 @@ package dbq
 import (
 	"context"
 	"time"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 )
 
 const permissionDeleteByCode = `-- name: PermissionDeleteByCode :exec
@@ -203,7 +205,7 @@ WHERE application_id = $1
 ORDER BY name
 `
 
-func (q *Queries) RoleFindByApplicationID(ctx context.Context, applicationID *string) ([]IamRole, error) {
+func (q *Queries) RoleFindByApplicationID(ctx context.Context, applicationID *ids.ApplicationID) ([]IamRole, error) {
 	rows, err := q.db.Query(ctx, roleFindByApplicationID, applicationID)
 	if err != nil {
 		return nil, err
@@ -432,16 +434,16 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type RoleUpsertParams struct {
-	ID              string    `db:"id"`
-	ApplicationID   *string   `db:"application_id"`
-	Name            string    `db:"name"`
-	DisplayName     string    `db:"display_name"`
-	Description     *string   `db:"description"`
-	ApplicationCode *string   `db:"application_code"`
-	Source          string    `db:"source"`
-	ClientManaged   bool      `db:"client_managed"`
-	CreatedAt       time.Time `db:"created_at"`
-	UpdatedAt       time.Time `db:"updated_at"`
+	ID              string             `db:"id"`
+	ApplicationID   *ids.ApplicationID `db:"application_id"`
+	Name            string             `db:"name"`
+	DisplayName     string             `db:"display_name"`
+	Description     *string            `db:"description"`
+	ApplicationCode *string            `db:"application_code"`
+	Source          string             `db:"source"`
+	ClientManaged   bool               `db:"client_managed"`
+	CreatedAt       time.Time          `db:"created_at"`
+	UpdatedAt       time.Time          `db:"updated_at"`
 }
 
 func (q *Queries) RoleUpsert(ctx context.Context, arg RoleUpsertParams) error {

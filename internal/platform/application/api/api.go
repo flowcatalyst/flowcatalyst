@@ -92,7 +92,7 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	if a == nil {
 		return nil, httperror.NotFound("Application", in.ID)
 	}
-	hasLoginClient, err := s.OAuthClients.HasLoginClientForApplication(ctx, a.ID)
+	hasLoginClient, err := s.OAuthClients.HasLoginClientForApplication(ctx, string(a.ID))
 	if err != nil {
 		return nil, usecase.Internal("REPO", "has_login_client_for_application failed", err)
 	}
@@ -340,7 +340,7 @@ func (s *State) provisionLoginClient(ctx context.Context, in *provisionLoginClie
 		// Link the login client to the application it was provisioned under
 		// (oauth_client_application_ids), so it surfaces "under" the app in the
 		// OAuth-client UI — mirroring the service-account client's app scoping.
-		ApplicationIDs: []string{app.ID},
+		ApplicationIDs: []string{string(app.ID)},
 	}
 	event, err := usecaseop.Run(ctx, s.UoW, authops.CreateOAuthClient(s.OAuthClients), cmd, ec)
 	if err != nil {

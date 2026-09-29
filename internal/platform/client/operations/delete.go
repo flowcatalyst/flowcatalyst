@@ -38,8 +38,8 @@ func DeleteClient(repo *client.Repository) usecaseop.Operation[DeleteCommand, Cl
 				return nil, httperror.NotFound("Client", cmd.ID)
 			}
 			event := ClientDeleted{
-				Metadata:   usecase.NewEventMetadata(ec, ClientDeletedType, Source, subjectFor(c.ID)),
-				ClientID:   c.ID,
+				Metadata:   usecase.NewEventMetadata(ec, ClientDeletedType, Source, subjectFor(string(c.ID))),
+				ClientID:   string(c.ID),
 				Identifier: c.Identifier,
 			}
 			return usecaseop.Delete(c, repo, event), nil

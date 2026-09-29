@@ -39,8 +39,8 @@ func DeleteApplication(repo *application.Repository) usecaseop.Operation[DeleteC
 				return nil, httperror.NotFound("Application", cmd.ID)
 			}
 			event := ApplicationDeleted{
-				Metadata:      usecase.NewEventMetadata(ec, ApplicationDeletedType, Source, subjectFor(a.ID)),
-				ApplicationID: a.ID,
+				Metadata:      usecase.NewEventMetadata(ec, ApplicationDeletedType, Source, subjectFor(string(a.ID))),
+				ApplicationID: string(a.ID),
 				Code:          a.Code,
 			}
 			return usecaseop.Delete(a, repo, event), nil

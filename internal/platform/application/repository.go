@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -28,7 +29,7 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 
 // FindByID loads by id.
 func (r *Repository) FindByID(ctx context.Context, id string) (*Application, error) {
-	res, err := r.q.ApplicationFindByID(ctx, id)
+	res, err := r.q.ApplicationFindByID(ctx, ids.ApplicationID(id))
 	row, err := repocommon.One(res, err, "application repo")
 	if row == nil || err != nil {
 		return nil, err

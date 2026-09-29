@@ -93,7 +93,7 @@ type ApplicationResponse struct {
 
 func fromEntity(a *application.Application) ApplicationResponse {
 	return ApplicationResponse{
-		ID:               a.ID,
+		ID:               string(a.ID),
 		Type:             string(a.Type),
 		Code:             a.Code,
 		Name:             a.Name,

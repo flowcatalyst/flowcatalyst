@@ -282,13 +282,13 @@ func (s *State) getApplications(ctx context.Context, in *apicommon.IDInput) (*ap
 
 	out := apicommon.MapSlice(allApps, func(a *application.Application) ClientApplicationResponse {
 		return ClientApplicationResponse{
-			ID:               a.ID,
+			ID:               string(a.ID),
 			Code:             a.Code,
 			Name:             a.Name,
 			Description:      a.Description,
 			IconURL:          a.IconURL,
 			Active:           a.Active,
-			EnabledForClient: enabledByApp[a.ID],
+			EnabledForClient: enabledByApp[string(a.ID)],
 		}
 	})
 	return &apicommon.Out[ClientApplicationsResponse]{Body: ClientApplicationsResponse{

@@ -91,14 +91,14 @@ func (s *State) accessibleClientIDs(r *http.Request, p *principal.Principal) ([]
 		ids := make([]string, 0, len(all))
 		for i := range all {
 			if all[i].Status == client.StatusActive {
-				ids = append(ids, all[i].ID)
+				ids = append(ids, string(all[i].ID))
 			}
 		}
 		return ids, nil
 	case principal.ScopeClient:
 		var ids []string
 		if p.ClientID != nil {
-			ids = append(ids, *p.ClientID)
+			ids = append(ids, string(*p.ClientID))
 		}
 		return s.appendGrants(r, ids, string(p.ID))
 	default: // ScopePartner
@@ -136,20 +136,20 @@ func (s *State) listAccessible(w http.ResponseWriter, r *http.Request) {
 		httperror.Write(w, err)
 		return
 	}
-	ids, err := s.accessibleClientIDs(r, p)
+	cids, err := s.accessibleClientIDs(r, p)
 	if err != nil {
 		httperror.Write(w, err)
 		return
 	}
-	out := make([]clientInfo, 0, len(ids))
-	for _, id := range ids {
+	out := make([]clientInfo, 0, len(cids))
+	for _, id := range cids {
 		c, err := s.Clients.FindByID(r.Context(), id)
 		if err != nil {
 			httperror.Write(w, usecase.Internal("REPO", "client find_by_id failed", err))
 			return
 		}
 		if c != nil && c.Status == client.StatusActive {
-			out = append(out, clientInfo{ID: c.ID, Name: c.Name, Identifier: c.Identifier})
+			out = append(out, clientInfo{ID: string(c.ID), Name: c.Name, Identifier: c.Identifier})
 		}
 	}
 	slices.SortFunc(out, func(a, b clientInfo) int { return strings.Compare(a.Name, b.Name) })
@@ -157,7 +157,7 @@ func (s *State) listAccessible(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(accessibleClientsResponse{
 		Clients:         out,
-		CurrentClientID: p.ClientID,
+		CurrentClientID: ids.StringPtr(p.ClientID),
 		GlobalAccess:    p.Scope == principal.ScopeAnchor,
 	})
 }
@@ -180,12 +180,12 @@ func (s *State) switchClient(w http.ResponseWriter, r *http.Request) {
 	}
 	// Access check (anchors may access any client).
 	if p.Scope != principal.ScopeAnchor {
-		ids, err := s.accessibleClientIDs(r, p)
+		cids, err := s.accessibleClientIDs(r, p)
 		if err != nil {
 			httperror.Write(w, err)
 			return
 		}
-		if !slices.Contains(ids, req.ClientID) {
+		if !slices.Contains(cids, req.ClientID) {
 			httperror.Write(w, httperror.Forbidden("Access denied to client: "+req.ClientID))
 			return
 		}
@@ -221,7 +221,7 @@ func (s *State) switchClient(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(switchClientResponse{
 		Token:       token,
-		Client:      clientInfo{ID: c.ID, Name: c.Name, Identifier: c.Identifier},
+		Client:      clientInfo{ID: string(c.ID), Name: c.Name, Identifier: c.Identifier},
 		Roles:       roleCodes,
 		Permissions: perms,
 	})
@@ -240,13 +240,13 @@ func (s *State) currentClient(w http.ResponseWriter, r *http.Request) {
 	}
 	var info *clientInfo
 	if p.ClientID != nil {
-		c, err := s.Clients.FindByID(r.Context(), *p.ClientID)
+		c, err := s.Clients.FindByID(r.Context(), string(*p.ClientID))
 		if err != nil {
 			httperror.Write(w, usecase.Internal("REPO", "client find_by_id failed", err))
 			return
 		}
 		if c != nil {
-			info = &clientInfo{ID: c.ID, Name: c.Name, Identifier: c.Identifier}
+			info = &clientInfo{ID: string(c.ID), Name: c.Name, Identifier: c.Identifier}
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")

@@ -40,8 +40,8 @@ func SuspendClient(repo *client.Repository) usecaseop.Operation[SuspendCommand, 
 			}
 			c.Suspend(cmd.Reason)
 			event := ClientSuspended{
-				Metadata: usecase.NewEventMetadata(ec, ClientSuspendedType, Source, subjectFor(c.ID)),
-				ClientID: c.ID,
+				Metadata: usecase.NewEventMetadata(ec, ClientSuspendedType, Source, subjectFor(string(c.ID))),
+				ClientID: string(c.ID),
 				Reason:   cmd.Reason,
 			}
 			return usecaseop.Save(c, repo, event), nil

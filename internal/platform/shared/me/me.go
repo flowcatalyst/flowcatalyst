@@ -182,9 +182,9 @@ func filterMyApplications(all []application.Application, allApplications bool, a
 	apps := make([]myApplicationResponse, 0, len(all))
 	for i := range all {
 		a := &all[i]
-		if allApplications || accessible[a.ID] {
+		if allApplications || accessible[string(a.ID)] {
 			apps = append(apps, myApplicationResponse{
-				ID:           a.ID,
+				ID:           string(a.ID),
 				Code:         a.Code,
 				Name:         a.Name,
 				Description:  a.Description,
@@ -239,7 +239,7 @@ type myClientsListResponse struct {
 func clientToMyResponse(c *client.Client) myClientResponse {
 	status := string(c.Status)
 	return myClientResponse{
-		ID:         c.ID,
+		ID:         string(c.ID),
 		Name:       c.Name,
 		Identifier: c.Identifier,
 		Status:     &status,
@@ -264,7 +264,7 @@ func (s *State) listMyClients(w http.ResponseWriter, r *http.Request) {
 	out := make([]myClientResponse, 0, len(all))
 	for i := range all {
 		c := &all[i]
-		if ac.IsAnchor() || ac.CanAccessClient(c.ID) {
+		if ac.IsAnchor() || ac.CanAccessClient(string(c.ID)) {
 			out = append(out, clientToMyResponse(c))
 		}
 	}
@@ -289,7 +289,7 @@ func (s *State) getMyClient(w http.ResponseWriter, r *http.Request) {
 		httperror.Write(w, httperror.NotFound("Client", id))
 		return
 	}
-	if !ac.IsAnchor() && !ac.CanAccessClient(c.ID) {
+	if !ac.IsAnchor() && !ac.CanAccessClient(string(c.ID)) {
 		httperror.Write(w, httperror.Forbidden("No access to this client"))
 		return
 	}

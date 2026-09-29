@@ -71,7 +71,7 @@ func TestServiceAccountReach_DerivedFromClientLinks(t *testing.T) {
 		p, _ := provisionWithClients(t, "sareach-one", []string{"clt_reach_one"})
 		assert.Equal(t, principal.ScopeClient, p.Scope)
 		require.NotNil(t, p.ClientID)
-		assert.Equal(t, "clt_reach_one", *p.ClientID)
+		assert.Equal(t, "clt_reach_one", string(*p.ClientID))
 	})
 
 	t.Run("several links become a partner with a grant each", func(t *testing.T) {
@@ -115,7 +115,7 @@ func TestServiceAccountReach_UpdateReDerives(t *testing.T) {
 	got = update([]string{"clt_reach_upd_b"})
 	assert.Equal(t, principal.ScopeClient, got.Scope)
 	require.NotNil(t, got.ClientID)
-	assert.Equal(t, "clt_reach_upd_b", *got.ClientID)
+	assert.Equal(t, "clt_reach_upd_b", string(*got.ClientID))
 
 	// An update that does not mention the links leaves reach alone.
 	name := "Renamed"

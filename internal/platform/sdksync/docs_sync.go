@@ -87,7 +87,7 @@ func (s *State) syncAppDocs(ctx context.Context, in *syncDocsInput) (*syncResult
 		})
 	}
 
-	res, err := s.AppDocs.ReplaceForApplication(ctx, app.ID, inputs)
+	res, err := s.AppDocs.ReplaceForApplication(ctx, string(app.ID), inputs)
 	if err != nil {
 		return nil, usecase.Internal("DOCS", "documentation sync failed", err)
 	}

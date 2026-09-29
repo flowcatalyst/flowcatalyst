@@ -40,8 +40,8 @@ func DeactivateApplication(repo *application.Repository) usecaseop.Operation[Dea
 			}
 			a.Deactivate()
 			event := ApplicationDeactivated{
-				Metadata:      usecase.NewEventMetadata(ec, ApplicationDeactivatedType, Source, subjectFor(a.ID)),
-				ApplicationID: a.ID,
+				Metadata:      usecase.NewEventMetadata(ec, ApplicationDeactivatedType, Source, subjectFor(string(a.ID))),
+				ApplicationID: string(a.ID),
 			}
 			return usecaseop.Save(a, repo, event), nil
 		},

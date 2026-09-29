@@ -9,6 +9,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/event"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
@@ -178,7 +179,7 @@ func (s *State) batchIngest(ctx context.Context, in *apicommon.In[BatchRequest])
 				}
 				if c != nil {
 					cid := c.ID
-					id = &cid
+					id = ids.StringPtr(&cid)
 				}
 				clientByCode[code] = id
 			}

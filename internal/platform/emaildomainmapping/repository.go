@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -105,7 +106,7 @@ func (r *Repository) Persist(ctx context.Context, e *EmailDomainMapping, tx *use
 		EmailDomain:           e.EmailDomain,
 		IdentityProviderID:    e.IdentityProviderID,
 		ScopeType:             string(e.ScopeType),
-		PrimaryClientID:       e.PrimaryClientID,
+		PrimaryClientID:       ids.PtrOf[ids.ClientID](e.PrimaryClientID),
 		RequiredOidcTenantID:  e.RequiredOIDCTenantID,
 		Require2fa:            e.Require2FA,
 		RememberDeviceEnabled: e.RememberDeviceEnabled,
@@ -126,14 +127,14 @@ func (r *Repository) Persist(ctx context.Context, e *EmailDomainMapping, tx *use
 	}
 	for _, c := range e.AdditionalClientIDs {
 		if err := q.EmailDomainMappingAdditionalClientInsert(ctx, dbq.EmailDomainMappingAdditionalClientInsertParams{
-			EmailDomainMappingID: e.ID, ClientID: c,
+			EmailDomainMappingID: e.ID, ClientID: ids.ClientID(c),
 		}); err != nil {
 			return err
 		}
 	}
 	for _, c := range e.GrantedClientIDs {
 		if err := q.EmailDomainMappingGrantedClientInsert(ctx, dbq.EmailDomainMappingGrantedClientInsertParams{
-			EmailDomainMappingID: e.ID, ClientID: c,
+			EmailDomainMappingID: e.ID, ClientID: ids.ClientID(c),
 		}); err != nil {
 			return err
 		}
@@ -202,11 +203,11 @@ func (r *Repository) hydrateAll(ctx context.Context, edms []EmailDomainMapping) 
 
 	additionalByID := map[string][]string{}
 	for _, a := range addRows {
-		additionalByID[a.EmailDomainMappingID] = append(additionalByID[a.EmailDomainMappingID], a.ClientID)
+		additionalByID[a.EmailDomainMappingID] = append(additionalByID[a.EmailDomainMappingID], string(a.ClientID))
 	}
 	grantedByID := map[string][]string{}
 	for _, g := range grantRows {
-		grantedByID[g.EmailDomainMappingID] = append(grantedByID[g.EmailDomainMappingID], g.ClientID)
+		grantedByID[g.EmailDomainMappingID] = append(grantedByID[g.EmailDomainMappingID], string(g.ClientID))
 	}
 	methodsByID := map[string][]string{}
 	for _, m := range methodRows {
@@ -247,7 +248,7 @@ func rowToEDM(row dbq.TntEmailDomainMapping) (*EmailDomainMapping, error) {
 		EmailDomain:           row.EmailDomain,
 		IdentityProviderID:    row.IdentityProviderID,
 		ScopeType:             scopeType,
-		PrimaryClientID:       row.PrimaryClientID,
+		PrimaryClientID:       ids.StringPtr(row.PrimaryClientID),
 		RequiredOIDCTenantID:  row.RequiredOidcTenantID,
 		Require2FA:            row.Require2fa,
 		RememberDeviceEnabled: row.RememberDeviceEnabled,
