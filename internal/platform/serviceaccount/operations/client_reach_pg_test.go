@@ -78,7 +78,7 @@ func TestServiceAccountReach_DerivedFromClientLinks(t *testing.T) {
 		p, _ := provisionWithClients(t, "sareach-two", []string{"clt_reach_one", "clt_reach_two"})
 		assert.Equal(t, principal.ScopePartner, p.Scope)
 		assert.Nil(t, p.ClientID, "a partner reaches through its grants, not a single client")
-		assert.ElementsMatch(t, []string{"clt_reach_one", "clt_reach_two"}, p.AssignedClients)
+		assert.ElementsMatch(t, []string{"clt_reach_one", "clt_reach_two"}, ids.Strings(p.AssignedClients))
 	})
 }
 
@@ -109,7 +109,7 @@ func TestServiceAccountReach_UpdateReDerives(t *testing.T) {
 	// One → two: becomes a partner.
 	got := update([]string{"clt_reach_upd_a", "clt_reach_upd_b"})
 	assert.Equal(t, principal.ScopePartner, got.Scope)
-	assert.ElementsMatch(t, []string{"clt_reach_upd_a", "clt_reach_upd_b"}, got.AssignedClients)
+	assert.ElementsMatch(t, []string{"clt_reach_upd_a", "clt_reach_upd_b"}, ids.Strings(got.AssignedClients))
 
 	// Two → one: back to a single client.
 	got = update([]string{"clt_reach_upd_b"})
@@ -183,7 +183,7 @@ func TestServiceAccountReach_AppScopedKeepsClientGrants(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, p)
 	assert.Equal(t, principal.ScopePartner, p.Scope)
-	assert.ElementsMatch(t, []string{"clt_reach_app_a", "clt_reach_app_b"}, p.AssignedClients)
+	assert.ElementsMatch(t, []string{"clt_reach_app_a", "clt_reach_app_b"}, ids.Strings(p.AssignedClients))
 	assert.False(t, p.AllApplications)
-	assert.Equal(t, []string{appID}, p.AccessibleApplicationIDs)
+	assert.Equal(t, []string{appID}, ids.Strings(p.AccessibleApplicationIDs))
 }

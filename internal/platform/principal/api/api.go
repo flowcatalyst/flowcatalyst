@@ -223,7 +223,7 @@ func principalMatchesClient(p *principal.Principal, clientID string) bool {
 	if p.ClientID != nil && string(*p.ClientID) == clientID {
 		return true
 	}
-	return slices.Contains(p.AssignedClients, clientID)
+	return slices.Contains(p.AssignedClients, ids.ClientID(clientID))
 }
 
 // principalHasAnyRole reports whether the principal holds at least one of the
@@ -1214,10 +1214,10 @@ func (s *State) assignApplicationAccess(ctx context.Context, in *assignAppAccess
 		if err := s.assertAssignableApplications(in.Body.ApplicationIDs, allowed); err != nil {
 			return nil, err
 		}
-		preserved := preservedApplications(p.AccessibleApplicationIDs, allowed)
+		preserved := preservedApplications(ids.Strings(p.AccessibleApplicationIDs), allowed)
 		desiredIDs = dedupeStrings(append(append([]string{}, in.Body.ApplicationIDs...), preserved...))
 	}
-	old := stringSet(p.AccessibleApplicationIDs)
+	old := stringSet(ids.Strings(p.AccessibleApplicationIDs))
 	desired := stringSet(desiredIDs)
 	added := len(setDifference(desired, old))
 	removed := len(setDifference(old, desired))
@@ -1882,7 +1882,7 @@ func (s *State) listApplicationAccess(ctx context.Context, in *apicommon.IDInput
 	if p.ClientID != nil && !ac.CanAccessClient(string(*p.ClientID)) {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
-	apps, err := s.resolveApplications(ctx, p.AccessibleApplicationIDs)
+	apps, err := s.resolveApplications(ctx, ids.Strings(p.AccessibleApplicationIDs))
 	if err != nil {
 		return nil, err
 	}

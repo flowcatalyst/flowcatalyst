@@ -292,7 +292,7 @@ func TestCreateServiceAccountWithCredentials_HappyPath(t *testing.T) {
 	assert.Equal(t, principal.ScopeAnchor, p.Scope, "SERVICE principals are anchor-tier")
 	assert.True(t, p.Active)
 	assert.False(t, p.AllApplications, "applicationId supplied → principal is app-scoped")
-	assert.Equal(t, []string{appID}, p.AccessibleApplicationIDs, "single app-access binding written")
+	assert.Equal(t, []string{appID}, ids.Strings(p.AccessibleApplicationIDs), "single app-access binding written")
 
 	// OAuth client row: CONFIDENTIAL, owned by the principal, with the
 	// client_credentials/refresh_token grants and an encrypted secret ref.

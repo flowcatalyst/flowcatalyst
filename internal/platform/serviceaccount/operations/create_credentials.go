@@ -153,7 +153,7 @@ func CreateServiceAccountWithCredentials(
 			appScoped := cmd.ApplicationID != nil && strings.TrimSpace(*cmd.ApplicationID) != ""
 			if appScoped {
 				saPrincipal.AllApplications = false
-				saPrincipal.AccessibleApplicationIDs = []string{*cmd.ApplicationID}
+				saPrincipal.AccessibleApplicationIDs = []ids.ApplicationID{ids.ApplicationID(*cmd.ApplicationID)}
 			}
 			persistPrincipal := func(tx pgx.Tx) error {
 				return principal.ClientAssociationPersister{

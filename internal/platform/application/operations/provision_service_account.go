@@ -158,7 +158,7 @@ func ProvisionServiceAccount(
 			//    iam_principal_roles and iam_principal_application_access junctions
 			//    in this transaction.
 			saPrincipal.AllApplications = false
-			saPrincipal.AccessibleApplicationIDs = []string{string(app.ID)}
+			saPrincipal.AccessibleApplicationIDs = []ids.ApplicationID{app.ID}
 			saPrincipal.Roles = []serviceaccount.RoleAssignment{{
 				Role:             applicationServiceRoleName,
 				AssignmentSource: new("PROVISIONED"),

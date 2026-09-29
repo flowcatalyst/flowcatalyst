@@ -138,14 +138,14 @@ type Principal struct {
 	UserIdentity        *UserIdentity                   `json:"userIdentity,omitempty"`
 	ServiceAccountID    *string                         `json:"serviceAccountId,omitempty"`
 	Roles               []serviceaccount.RoleAssignment `json:"roles"`
-	AssignedClients     []string                        `json:"assignedClients"`
-	ClientIdentifierMap map[string]string               `json:"clientIdentifierMap,omitempty"`
+	AssignedClients     []ids.ClientID                  `json:"assignedClients"`
+	ClientIdentifierMap map[ids.ClientID]string         `json:"clientIdentifierMap,omitempty"`
 	// ApplicationCodeMap maps accessible application id → application code.
 	// Hydrated alongside AccessibleApplicationIDs so the `applications` claim
 	// can carry "id:code" pairs, the way `clients` carries "id:identifier" —
 	// a consumer then reads the human-meaningful half without a lookup.
-	ApplicationCodeMap       map[string]string `json:"applicationCodeMap,omitempty"`
-	AccessibleApplicationIDs []string          `json:"accessibleApplicationIds"`
+	ApplicationCodeMap       map[ids.ApplicationID]string `json:"applicationCodeMap,omitempty"`
+	AccessibleApplicationIDs []ids.ApplicationID          `json:"accessibleApplicationIds"`
 	// AllApplications grants access to every application (present and future),
 	// the application-axis analogue of the anchor client tier. When false, the
 	// principal is restricted to AccessibleApplicationIDs. Stored (not derived
@@ -178,8 +178,8 @@ func NewUser(email string, scope UserScope) *Principal {
 		Active:                   true,
 		UserIdentity:             identity,
 		Roles:                    []serviceaccount.RoleAssignment{},
-		AssignedClients:          []string{},
-		AccessibleApplicationIDs: []string{},
+		AssignedClients:          []ids.ClientID{},
+		AccessibleApplicationIDs: []ids.ApplicationID{},
 		AllApplications:          true,
 		CreatedAt:                now,
 		UpdatedAt:                now,
@@ -197,8 +197,8 @@ func NewService(serviceAccountID, name string) *Principal {
 		Active:                   true,
 		ServiceAccountID:         &serviceAccountID,
 		Roles:                    []serviceaccount.RoleAssignment{},
-		AssignedClients:          []string{},
-		AccessibleApplicationIDs: []string{},
+		AssignedClients:          []ids.ClientID{},
+		AccessibleApplicationIDs: []ids.ApplicationID{},
 		AllApplications:          true,
 		CreatedAt:                now,
 		UpdatedAt:                now,

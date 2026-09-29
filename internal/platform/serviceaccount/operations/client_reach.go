@@ -26,19 +26,19 @@ func applyClientReach(p *principal.Principal, clientIDs []string) []string {
 	case 0:
 		p.Scope = principal.ScopeAnchor
 		p.ClientID = nil
-		p.AssignedClients = []string{}
+		p.AssignedClients = []ids.ClientID{}
 		return nil
 	case 1:
 		id := clientIDs[0]
 		p.Scope = principal.ScopeClient
 		p.ClientID = ids.PtrOf[ids.ClientID](&id)
-		p.AssignedClients = []string{}
+		p.AssignedClients = []ids.ClientID{}
 		return nil
 	default:
 		p.Scope = principal.ScopePartner
 		p.ClientID = nil
-		p.AssignedClients = append([]string(nil), clientIDs...)
-		return p.AssignedClients
+		p.AssignedClients = ids.Typed[ids.ClientID](append([]string(nil), clientIDs...))
+		return ids.Strings(p.AssignedClients)
 	}
 }
 

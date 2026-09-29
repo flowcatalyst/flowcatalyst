@@ -102,7 +102,7 @@ func (s *State) accessibleClientIDs(r *http.Request, p *principal.Principal) ([]
 		}
 		return s.appendGrants(r, ids, string(p.ID))
 	default: // ScopePartner
-		ids := append([]string(nil), p.AssignedClients...)
+		ids := append([]string(nil), ids.Strings(p.AssignedClients)...)
 		return s.appendGrants(r, ids, string(p.ID))
 	}
 }

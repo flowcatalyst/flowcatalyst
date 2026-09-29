@@ -73,10 +73,10 @@ func AssignApplicationAccess(repo *principal.Repository, applications *applicati
 				}
 			}
 
-			added := stringDifference(cmd.ApplicationIDs, p.AccessibleApplicationIDs)
-			removed := stringDifference(p.AccessibleApplicationIDs, cmd.ApplicationIDs)
+			added := stringDifference(cmd.ApplicationIDs, ids.Strings(p.AccessibleApplicationIDs))
+			removed := stringDifference(ids.Strings(p.AccessibleApplicationIDs), cmd.ApplicationIDs)
 
-			p.AccessibleApplicationIDs = append([]string(nil), cmd.ApplicationIDs...)
+			p.AccessibleApplicationIDs = ids.Typed[ids.ApplicationID](append([]string(nil), cmd.ApplicationIDs...))
 			if cmd.AllApplications != nil {
 				p.AllApplications = *cmd.AllApplications
 			}

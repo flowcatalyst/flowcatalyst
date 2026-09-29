@@ -38,7 +38,7 @@ func anchorUser() *principal.Principal {
 	p.Roles = []serviceaccount.RoleAssignment{{Role: "platform:admin"}, {Role: "operant:viewer"}}
 	// The `applications` claim is the principal's explicit application bindings
 	// (iam_principal_application_access), not derived from role-name prefixes.
-	p.AccessibleApplicationIDs = []string{"app_alpha", "app_beta"}
+	p.AccessibleApplicationIDs = []ids.ApplicationID{"app_alpha", "app_beta"}
 	return p
 }
 
@@ -161,7 +161,7 @@ func TestClientScopeClients(t *testing.T) {
 	cid := "clt_123"
 	p := principal.NewUser("u@example.com", principal.ScopeClient)
 	p.ClientID = ids.PtrOf[ids.ClientID](&cid)
-	p.ClientIdentifierMap = map[string]string{cid: "acme"}
+	p.ClientIdentifierMap = map[ids.ClientID]string{ids.ClientID(cid): "acme"}
 
 	tok, err := svc.GenerateAccessToken(p)
 	if err != nil {
@@ -520,8 +520,8 @@ func TestApplicationsClaimShape(t *testing.T) {
 
 	scoped := anchorUser()
 	scoped.AllApplications = false
-	scoped.AccessibleApplicationIDs = []string{"app_alpha", "app_beta", "app_orphan"}
-	scoped.ApplicationCodeMap = map[string]string{"app_alpha": "alpha", "app_beta": "beta"}
+	scoped.AccessibleApplicationIDs = []ids.ApplicationID{"app_alpha", "app_beta", "app_orphan"}
+	scoped.ApplicationCodeMap = map[ids.ApplicationID]string{"app_alpha": "alpha", "app_beta": "beta"}
 
 	tok, err := svc.GenerateAccessToken(scoped)
 	if err != nil {

@@ -1081,7 +1081,7 @@ func (s *State) confineToClient(ctx context.Context, p *principal.Principal, cli
 	// synthetic value never reaches the principal store.
 	scoped := *p
 	scoped.AllApplications = false
-	scoped.AccessibleApplicationIDs = intersectApps(p, client.ApplicationIDs)
+	scoped.AccessibleApplicationIDs = ids.Typed[ids.ApplicationID](intersectApps(p, client.ApplicationIDs))
 
 	roles := roleNamesOf(p)
 	if s.FilterRolesForApplications != nil {

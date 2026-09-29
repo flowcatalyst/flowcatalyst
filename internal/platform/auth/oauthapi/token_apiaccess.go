@@ -3,6 +3,7 @@ package oauthapi
 import (
 	"context"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 )
@@ -49,7 +50,7 @@ func (s *State) mintInteractiveAccessToken(ctx context.Context, p *principal.Pri
 			}
 		}
 		clone.AllApplications = false
-		clone.AccessibleApplicationIDs = intersectApps(p, client.ApplicationIDs)
+		clone.AccessibleApplicationIDs = ids.Typed[ids.ApplicationID](intersectApps(p, client.ApplicationIDs))
 		narrowed = &clone
 	}
 	granted, _, err := s.grantedScope(ctx, narrowed, requestedScope)
@@ -68,7 +69,7 @@ func intersectApps(p *principal.Principal, clientApps []string) []string {
 	}
 	userApps := make(map[string]struct{}, len(p.AccessibleApplicationIDs))
 	for _, id := range p.AccessibleApplicationIDs {
-		userApps[id] = struct{}{}
+		userApps[string(id)] = struct{}{}
 	}
 	out := make([]string, 0, len(clientApps))
 	for _, id := range clientApps {

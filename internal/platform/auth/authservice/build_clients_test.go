@@ -28,7 +28,7 @@ func TestBuildClientsFormat(t *testing.T) {
 		p := &principal.Principal{
 			Scope:               principal.ScopeClient,
 			ClientID:            ids.PtrOf[ids.ClientID](idPtr("clt_spar")),
-			ClientIdentifierMap: map[string]string{"clt_spar": "spar"},
+			ClientIdentifierMap: map[ids.ClientID]string{"clt_spar": "spar"},
 		}
 		got := buildClients(p)
 		if len(got) != 1 || got[0] != "clt_spar:spar" {
@@ -43,8 +43,8 @@ func TestBuildClientsFormat(t *testing.T) {
 	t.Run("partner scope emits id:identifier per granted client", func(t *testing.T) {
 		p := &principal.Principal{
 			Scope:           principal.ScopePartner,
-			AssignedClients: []string{"clt_a", "clt_b"},
-			ClientIdentifierMap: map[string]string{
+			AssignedClients: []ids.ClientID{"clt_a", "clt_b"},
+			ClientIdentifierMap: map[ids.ClientID]string{
 				"clt_a": "alpha",
 				"clt_b": "bravo",
 			},

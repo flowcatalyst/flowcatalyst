@@ -705,7 +705,7 @@ func buildClients(p *principal.Principal) []string {
 	case principal.ScopePartner:
 		out := make([]string, 0, len(p.AssignedClients))
 		for _, id := range p.AssignedClients {
-			out = append(out, clientPair(p, id))
+			out = append(out, clientPair(p, string(id)))
 		}
 		return out
 	default: // CLIENT
@@ -718,7 +718,7 @@ func buildClients(p *principal.Principal) []string {
 }
 
 func clientPair(p *principal.Principal, id string) string {
-	if ident, ok := p.ClientIdentifierMap[id]; ok {
+	if ident, ok := p.ClientIdentifierMap[ids.ClientID(id)]; ok {
 		return id + ":" + ident
 	}
 	return id
@@ -746,10 +746,10 @@ func appAccessOf(p *principal.Principal) []string {
 	out := make([]string, 0, len(p.AccessibleApplicationIDs))
 	for _, id := range p.AccessibleApplicationIDs {
 		if code, ok := p.ApplicationCodeMap[id]; ok && code != "" {
-			out = append(out, id+":"+code)
+			out = append(out, string(id)+":"+code)
 			continue
 		}
-		out = append(out, id)
+		out = append(out, string(id))
 	}
 	return out
 }

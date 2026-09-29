@@ -11,6 +11,7 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	principalops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/operations"
@@ -64,7 +65,7 @@ func (e *LoginEndpoint) emitUserLoggedIn(
 	if current.Scope.IsAnchor() {
 		clients = []string{"*"}
 	} else {
-		clients = current.AssignedClients
+		clients = ids.Strings(current.AssignedClients)
 		if clients == nil {
 			clients = []string{}
 		}

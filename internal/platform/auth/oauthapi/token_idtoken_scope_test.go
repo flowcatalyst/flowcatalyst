@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
@@ -143,7 +144,7 @@ func TestMintIDTokenConfinesApplications(t *testing.T) {
 		p := principal.NewUser("u@example.com", principal.ScopeClient)
 		p.Roles = []serviceaccount.RoleAssignment{{Role: "za-logistics:orders-admin"}}
 		p.AllApplications = false
-		p.AccessibleApplicationIDs = []string{"app_own", "app_other1", "app_other2"}
+		p.AccessibleApplicationIDs = []ids.ApplicationID{"app_own", "app_other1", "app_other2"}
 		return p
 	}
 	scopedClient := func() *auth.OAuthClient {

@@ -50,7 +50,7 @@ func TestPrincipalMatchesQuery(t *testing.T) {
 func TestPrincipalMatchesClient(t *testing.T) {
 	home := new("clt_home")
 	p := mkPrincipal("U", "u@x.io", home, true, nil, time.Now())
-	p.AssignedClients = []string{"clt_granted"}
+	p.AssignedClients = []ids.ClientID{"clt_granted"}
 
 	if !principalMatchesClient(p, "clt_home") {
 		t.Error("should match home client")

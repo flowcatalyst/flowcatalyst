@@ -556,7 +556,7 @@ func TestProvisionServiceAccount_AssignsRoleAndScopesClient(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, p)
 	assert.False(t, p.AllApplications, "provisioned SA is app-scoped, not all-applications")
-	assert.Equal(t, []string{app.ApplicationID}, p.AccessibleApplicationIDs)
+	assert.Equal(t, []string{app.ApplicationID}, ids.Strings(p.AccessibleApplicationIDs))
 	roleNames := make([]string, 0, len(p.Roles))
 	for _, ra := range p.Roles {
 		roleNames = append(roleNames, ra.Role)

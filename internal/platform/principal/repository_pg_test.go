@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 )
@@ -60,7 +61,7 @@ func TestFindAll_HydratesRolesAndClientGrants(t *testing.T) {
 	}
 	assert.ElementsMatch(t, []string{"hydrate:role-a", "hydrate:role-b"}, roleNames,
 		"FindAll must hydrate role assignments")
-	assert.ElementsMatch(t, []string{client}, got.AssignedClients,
+	assert.ElementsMatch(t, []string{client}, ids.Strings(got.AssignedClients),
 		"FindAll must hydrate granted-client access")
 
 	// Parity with the single-row path: FindByID returns the same view.
@@ -103,7 +104,7 @@ func TestAllApplications_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, sa)
 	assert.False(t, sa.AllApplications, "scoped SA must read all_applications=false")
-	assert.ElementsMatch(t, []string{appID}, sa.AccessibleApplicationIDs)
+	assert.ElementsMatch(t, []string{appID}, ids.Strings(sa.AccessibleApplicationIDs))
 
 	// Unrestricted principal: all_applications=true, no access rows.
 	const adminPID = "prn_allapps00001"

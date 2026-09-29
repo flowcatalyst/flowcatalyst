@@ -249,7 +249,7 @@ func fromEntity(p *principal.Principal) PrincipalResponse {
 	}
 	granted := p.AssignedClients
 	if granted == nil {
-		granted = []string{}
+		granted = []ids.ClientID{}
 	}
 	var hasDevCred bool
 	var devCredUpdatedAt *httpcompat.Time
@@ -271,7 +271,7 @@ func fromEntity(p *principal.Principal) PrincipalResponse {
 		IdpType:                      idpType,
 		Roles:                        roles,
 		IsAnchorUser:                 p.Scope.IsAnchor(),
-		GrantedClientIDs:             granted,
+		GrantedClientIDs:             ids.Strings(granted),
 		CreatedAt:                    jsontime.New(p.CreatedAt),
 		UpdatedAt:                    jsontime.New(p.UpdatedAt),
 		HasDeveloperCredential:       hasDevCred,

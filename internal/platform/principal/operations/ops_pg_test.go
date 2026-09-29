@@ -498,7 +498,7 @@ func TestAssignApplicationAccess_HappyPath_AllApplicationsFlag(t *testing.T) {
 	got, err := repo.FindByID(ctx, seeded.UserID)
 	require.NoError(t, err)
 	require.NotNil(t, got)
-	assert.ElementsMatch(t, []string{app1, app2}, got.AccessibleApplicationIDs,
+	assert.ElementsMatch(t, []string{app1, app2}, ids.Strings(got.AccessibleApplicationIDs),
 		"junction rewritten from the id list")
 	assert.False(t, got.AllApplications, "explicit false is stored on iam_principals (326772d)")
 
@@ -515,7 +515,7 @@ func TestAssignApplicationAccess_HappyPath_AllApplicationsFlag(t *testing.T) {
 	got, err = repo.FindByID(ctx, seeded.UserID)
 	require.NoError(t, err)
 	require.NotNil(t, got)
-	assert.Equal(t, []string{app1}, got.AccessibleApplicationIDs)
+	assert.Equal(t, []string{app1}, ids.Strings(got.AccessibleApplicationIDs))
 	assert.False(t, got.AllApplications, "nil flag must not touch the stored value (326772d)")
 
 	// 3. Back to unrestricted: empty list + AllApplications=true.
@@ -594,7 +594,7 @@ func TestAssignApplicationAccess_ServiceAccount(t *testing.T) {
 	got, err := repo.FindByID(ctx, svc.ID)
 	require.NoError(t, err)
 	require.NotNil(t, got)
-	assert.Equal(t, []string{app1}, got.AccessibleApplicationIDs, "service account confined to the id list")
+	assert.Equal(t, []string{app1}, ids.Strings(got.AccessibleApplicationIDs), "service account confined to the id list")
 	assert.False(t, got.AllApplications, "all-applications flag cleared on the service principal")
 }
 
@@ -625,7 +625,7 @@ func TestGrantRevokeClientAccess_RoundTrip(t *testing.T) {
 	reloaded, err := repo.FindByID(ctx, partner.UserID)
 	require.NoError(t, err)
 	require.NotNil(t, reloaded)
-	assert.Equal(t, []string{clientID}, reloaded.AssignedClients, "grant hydrates onto the principal")
+	assert.Equal(t, []string{clientID}, ids.Strings(reloaded.AssignedClients), "grant hydrates onto the principal")
 
 	// Granting twice is refused.
 	_, err = runAuthorized(uow, operations.GrantClientAccess(repo, clients, grants),
@@ -795,7 +795,7 @@ func TestSetClientAssociation_ToPartner_PreservesOldHomeAsGrant(t *testing.T) {
 	require.NotNil(t, got)
 	assert.Equal(t, principal.ScopePartner, got.Scope)
 	assert.Nil(t, got.ClientID, "partner users have no home client")
-	assert.ElementsMatch(t, []string{oldHome, newClient}, got.AssignedClients,
+	assert.ElementsMatch(t, []string{oldHome, newClient}, ids.Strings(got.AssignedClients),
 		"old home client is preserved as an access grant alongside the new one")
 
 	oldGrant, err := grants.FindByPrincipalAndClient(ctx, seeded.UserID, ids.ClientID(oldHome))

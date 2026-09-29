@@ -210,7 +210,7 @@ func (r *Repository) hydrateClientAccess(ctx context.Context, p *Principal) erro
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("principal client grants: %w", err)
 	}
-	p.AssignedClients = granted
+	p.AssignedClients = ids.Typed[ids.ClientID](granted)
 
 	// Identifier lookup for the home + granted client ids.
 	idSet := make(map[string]struct{}, len(granted)+1)
@@ -223,23 +223,23 @@ func (r *Repository) hydrateClientAccess(ctx context.Context, p *Principal) erro
 	if len(idSet) == 0 {
 		return nil
 	}
-	ids := make([]string, 0, len(idSet))
+	cids := make([]string, 0, len(idSet))
 	for id := range idSet {
-		ids = append(ids, id)
+		cids = append(cids, id)
 	}
 	idRows, err := r.pool.Query(ctx,
-		`SELECT id, identifier FROM tnt_clients WHERE id = ANY($1)`, ids)
+		`SELECT id, identifier FROM tnt_clients WHERE id = ANY($1)`, cids)
 	if err != nil {
 		return fmt.Errorf("client identifiers: %w", err)
 	}
 	defer idRows.Close()
-	idMap := make(map[string]string, len(ids))
+	idMap := make(map[ids.ClientID]string, len(cids))
 	for idRows.Next() {
 		var id, identifier string
 		if err := idRows.Scan(&id, &identifier); err != nil {
 			return fmt.Errorf("client identifiers scan: %w", err)
 		}
-		idMap[id] = identifier
+		idMap[ids.ClientID(id)] = identifier
 	}
 	if err := idRows.Err(); err != nil {
 		return fmt.Errorf("client identifiers: %w", err)
@@ -301,23 +301,23 @@ func (r *Repository) hydrateAppAccess(ctx context.Context, p *Principal) error {
 		return fmt.Errorf("principal application access: %w", err)
 	}
 	defer rows.Close()
-	ids := make([]string, 0)
-	codes := make(map[string]string)
+	appIDs := make([]ids.ApplicationID, 0)
+	codes := make(map[ids.ApplicationID]string)
 	for rows.Next() {
 		var id string
 		var code *string
 		if err := rows.Scan(&id, &code); err != nil {
 			return fmt.Errorf("principal application access scan: %w", err)
 		}
-		ids = append(ids, id)
+		appIDs = append(appIDs, ids.ApplicationID(id))
 		if code != nil && *code != "" {
-			codes[id] = *code
+			codes[ids.ApplicationID(id)] = *code
 		}
 	}
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("principal application access: %w", err)
 	}
-	p.AccessibleApplicationIDs = ids
+	p.AccessibleApplicationIDs = appIDs
 	p.ApplicationCodeMap = codes
 	return nil
 }
@@ -508,7 +508,7 @@ func (r *Repository) hydrateClientGrantsAll(ctx context.Context, ps []Principal)
 			return fmt.Errorf("principal client grants (bulk) scan: %w", err)
 		}
 		if p := idx[ids.PrincipalID(pid)]; p != nil {
-			p.AssignedClients = append(p.AssignedClients, cid)
+			p.AssignedClients = append(p.AssignedClients, ids.ClientID(cid))
 		}
 	}
 	return rows.Err()
@@ -865,8 +865,8 @@ func rowToPrincipal(row dbq.IamPrincipal) (*Principal, error) {
 		CreatedAt:                row.CreatedAt,
 		UpdatedAt:                row.UpdatedAt,
 		Roles:                    []serviceaccount.RoleAssignment{},
-		AssignedClients:          []string{},
-		AccessibleApplicationIDs: []string{},
+		AssignedClients:          []ids.ClientID{},
+		AccessibleApplicationIDs: []ids.ApplicationID{},
 	}
 	if row.Scope != nil {
 		scope, ok := ParseScope(*row.Scope)

@@ -110,3 +110,15 @@ func NewPrincipalID() PrincipalID { return PrincipalID(tsid.Generate(tsid.Princi
 
 // NewApplicationID mints a fresh application id.
 func NewApplicationID() ApplicationID { return ApplicationID(tsid.Generate(tsid.Application)) }
+
+// Typed converts plain strings to typed IDs. The inverse of Strings.
+func Typed[T ~string](in []string) []T {
+	if in == nil {
+		return nil
+	}
+	out := make([]T, len(in))
+	for i, v := range in {
+		out[i] = T(v)
+	}
+	return out
+}
