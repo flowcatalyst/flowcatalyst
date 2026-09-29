@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -47,7 +48,7 @@ func RevokeClientAccess(repo *principal.Repository, grants *principal.ClientAcce
 					"Client access can only be revoked from USER type principals")
 			}
 
-			grant, err := grants.FindByPrincipalAndClient(ctx, cmd.UserID, cmd.ClientID)
+			grant, err := grants.FindByPrincipalAndClient(ctx, ids.PrincipalID(cmd.UserID), ids.ClientID(cmd.ClientID))
 			if err != nil {
 				return nil, usecase.Internal("REPO", "find_grant failed", err)
 			}

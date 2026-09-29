@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	appops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordhash"
@@ -614,12 +615,12 @@ func TestGrantRevokeClientAccess_RoundTrip(t *testing.T) {
 		operations.GrantClientAccessCommand{UserID: partner.UserID, ClientID: clientID})
 	require.NoError(t, err)
 	assert.Equal(t, partner.UserID, granted.UserID)
-	assert.Equal(t, clientID, granted.ClientID)
+	assert.Equal(t, clientID, string(granted.ClientID))
 
-	grant, err := grants.FindByPrincipalAndClient(ctx, partner.UserID, clientID)
+	grant, err := grants.FindByPrincipalAndClient(ctx, ids.PrincipalID(partner.UserID), ids.ClientID(clientID))
 	require.NoError(t, err)
 	require.NotNil(t, grant)
-	assert.Equal(t, testpg.TestEC().PrincipalID, grant.GrantedBy)
+	assert.Equal(t, testpg.TestEC().PrincipalID, string(grant.GrantedBy))
 
 	reloaded, err := repo.FindByID(ctx, partner.UserID)
 	require.NoError(t, err)
@@ -637,7 +638,7 @@ func TestGrantRevokeClientAccess_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, clientID, revoked.ClientID)
 
-	grant, err = grants.FindByPrincipalAndClient(ctx, partner.UserID, clientID)
+	grant, err = grants.FindByPrincipalAndClient(ctx, ids.PrincipalID(partner.UserID), ids.ClientID(clientID))
 	require.NoError(t, err)
 	assert.Nil(t, grant)
 
@@ -797,10 +798,10 @@ func TestSetClientAssociation_ToPartner_PreservesOldHomeAsGrant(t *testing.T) {
 	assert.ElementsMatch(t, []string{oldHome, newClient}, got.AssignedClients,
 		"old home client is preserved as an access grant alongside the new one")
 
-	oldGrant, err := grants.FindByPrincipalAndClient(ctx, seeded.UserID, oldHome)
+	oldGrant, err := grants.FindByPrincipalAndClient(ctx, ids.PrincipalID(seeded.UserID), ids.ClientID(oldHome))
 	require.NoError(t, err)
 	require.NotNil(t, oldGrant)
-	assert.Equal(t, testpg.TestEC().PrincipalID, oldGrant.GrantedBy)
+	assert.Equal(t, testpg.TestEC().PrincipalID, string(oldGrant.GrantedBy))
 }
 
 func TestSetClientAssociation_Errors(t *testing.T) {

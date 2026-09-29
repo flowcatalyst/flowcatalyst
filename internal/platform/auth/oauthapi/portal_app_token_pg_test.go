@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
 	authops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/operations"
@@ -66,7 +67,7 @@ func TestPortalCodeRedemptionReportsApp(t *testing.T) {
 	}
 	redeem := func(raw string) (int, string) {
 		scope := "openid profile"
-		code := grantstore.NewAuthorizationCode(raw, oauthEv.ClientID, identEv.IdentityID, "https://portal.app-token.test/cb")
+		code := grantstore.NewAuthorizationCode(raw, ids.OAuthClientID(oauthEv.ClientID), identEv.IdentityID, "https://portal.app-token.test/cb")
 		code.Scope = &scope
 		require.NoError(t, authCodes.Insert(ctx, code))
 		rr := doTokenRequest(t, s, url.Values{

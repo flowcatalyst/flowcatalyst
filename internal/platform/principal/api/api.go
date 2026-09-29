@@ -13,6 +13,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
@@ -1253,7 +1254,7 @@ func (s *State) listClientAccess(ctx context.Context, in *apicommon.IDInput) (*a
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
 	}
-	grants, err := s.GrantRepo.FindByPrincipal(ctx, in.ID)
+	grants, err := s.GrantRepo.FindByPrincipal(ctx, ids.PrincipalID(in.ID))
 	if err != nil {
 		return nil, usecase.Internal("REPO", "list grants failed", err)
 	}
@@ -1277,7 +1278,7 @@ func (s *State) grantClientAccess(ctx context.Context, in *grantClientAccessInpu
 		operations.GrantClientAccessCommand{UserID: in.ID, ClientID: in.Body.ClientID}, ec); err != nil {
 		return nil, err
 	}
-	g, err := s.GrantRepo.FindByPrincipalAndClient(ctx, in.ID, in.Body.ClientID)
+	g, err := s.GrantRepo.FindByPrincipalAndClient(ctx, ids.PrincipalID(in.ID), ids.ClientID(in.Body.ClientID))
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find grant failed", err)
 	}
@@ -1646,6 +1647,7 @@ func allowedClientIDsForDomain(mapping *emaildomainmapping.EmailDomainMapping) [
 	if mapping == nil {
 		return out
 	}
+	//exhaustive:ignore ANCHOR mappings restrict nothing: no client ids
 	switch mapping.ScopeType {
 	case emaildomainmapping.ScopePartner:
 		seen := map[string]struct{}{}

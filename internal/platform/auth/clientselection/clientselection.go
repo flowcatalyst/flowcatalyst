@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
@@ -106,22 +107,22 @@ func (s *State) accessibleClientIDs(r *http.Request, p *principal.Principal) ([]
 	}
 }
 
-func (s *State) appendGrants(r *http.Request, ids []string, principalID string) ([]string, error) {
-	grants, err := s.Grants.FindByPrincipal(r.Context(), principalID)
+func (s *State) appendGrants(r *http.Request, clientIDs []string, principalID string) ([]string, error) {
+	grants, err := s.Grants.FindByPrincipal(r.Context(), ids.PrincipalID(principalID))
 	if err != nil {
 		return nil, usecase.Internal("REPO", "grant find_by_principal failed", err)
 	}
 	seen := map[string]bool{}
-	for _, id := range ids {
+	for _, id := range clientIDs {
 		seen[id] = true
 	}
 	for i := range grants {
-		if !seen[grants[i].ClientID] {
-			ids = append(ids, grants[i].ClientID)
-			seen[grants[i].ClientID] = true
+		if !seen[string(grants[i].ClientID)] {
+			clientIDs = append(clientIDs, string(grants[i].ClientID))
+			seen[string(grants[i].ClientID)] = true
 		}
 	}
-	return ids, nil
+	return clientIDs, nil
 }
 
 func (s *State) listAccessible(w http.ResponseWriter, r *http.Request) {

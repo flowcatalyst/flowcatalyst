@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -18,20 +19,20 @@ import (
 // is its own aggregate (UoW-managed) so the grant/revoke ops emit the
 // matching iam:user:client-access-* events.
 type ClientAccessGrant struct {
-	ID          string    `json:"id"`
-	PrincipalID string    `json:"principalId"`
-	ClientID    string    `json:"clientId"`
-	GrantedBy   string    `json:"grantedBy"`
-	GrantedAt   time.Time `json:"grantedAt"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	ID          string          `json:"id"`
+	PrincipalID ids.PrincipalID `json:"principalId"`
+	ClientID    ids.ClientID    `json:"clientId"`
+	GrantedBy   ids.PrincipalID `json:"grantedBy"`
+	GrantedAt   time.Time       `json:"grantedAt"`
+	CreatedAt   time.Time       `json:"createdAt"`
+	UpdatedAt   time.Time       `json:"updatedAt"`
 }
 
 // IDStr satisfies usecase.HasID.
 func (g ClientAccessGrant) IDStr() string { return g.ID }
 
 // NewClientAccessGrant constructs a new grant row.
-func NewClientAccessGrant(principalID, clientID, grantedBy string) *ClientAccessGrant {
+func NewClientAccessGrant(principalID ids.PrincipalID, clientID ids.ClientID, grantedBy ids.PrincipalID) *ClientAccessGrant {
 	now := time.Now().UTC()
 	return &ClientAccessGrant{
 		ID:          tsid.Generate(tsid.ClientAccessGrant),
@@ -58,7 +59,7 @@ const grantSelect = `SELECT id, principal_id, client_id, granted_by, granted_at,
 	created_at, updated_at FROM iam_client_access_grants`
 
 // FindByPrincipalAndClient returns the existing grant (nil if none).
-func (r *ClientAccessGrantRepo) FindByPrincipalAndClient(ctx context.Context, principalID, clientID string) (*ClientAccessGrant, error) {
+func (r *ClientAccessGrantRepo) FindByPrincipalAndClient(ctx context.Context, principalID ids.PrincipalID, clientID ids.ClientID) (*ClientAccessGrant, error) {
 	rows, err := r.pool.Query(ctx,
 		grantSelect+` WHERE principal_id = $1 AND client_id = $2`, principalID, clientID)
 	if err != nil {
@@ -72,7 +73,7 @@ func (r *ClientAccessGrantRepo) FindByPrincipalAndClient(ctx context.Context, pr
 }
 
 // FindByPrincipal lists all grants for a principal.
-func (r *ClientAccessGrantRepo) FindByPrincipal(ctx context.Context, principalID string) ([]ClientAccessGrant, error) {
+func (r *ClientAccessGrantRepo) FindByPrincipal(ctx context.Context, principalID ids.PrincipalID) ([]ClientAccessGrant, error) {
 	rows, err := r.pool.Query(ctx,
 		grantSelect+` WHERE principal_id = $1 ORDER BY granted_at`, principalID)
 	if err != nil {

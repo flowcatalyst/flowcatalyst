@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
@@ -150,7 +151,7 @@ func (s *State) Authorize(w http.ResponseWriter, r *http.Request) {
 
 	// Authenticated, fresh session → issue the code immediately.
 	if !forceLogin && sessOK && !sessionStale {
-		code := grantstore.NewAuthorizationCode(randomString(64), clientID, sessSubject, redirectURI)
+		code := grantstore.NewAuthorizationCode(randomString(64), ids.OAuthClientID(clientID), sessSubject, redirectURI)
 		code.Scope = strPtrOrNil(scope)
 		code.Nonce = strPtrOrNil(nonce)
 		code.State = strPtrOrNil(stateParam)

@@ -83,7 +83,7 @@ func (s *State) redeemPortalCode(w http.ResponseWriter, r *http.Request, code *g
 	}
 	var idToken *string
 	if scopeHas(scope, "openid") {
-		t, terr := s.Auth.GeneratePortalIDToken(synth, code.ClientID, code.Nonce, code.AuthTime, portal)
+		t, terr := s.Auth.GeneratePortalIDToken(synth, string(code.ClientID), code.Nonce, code.AuthTime, portal)
 		if terr != nil {
 			writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 			return

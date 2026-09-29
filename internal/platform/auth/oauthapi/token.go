@@ -706,7 +706,7 @@ func (s *State) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Requ
 	// echoing the victim's client_id in the body and redeem a code that was
 	// never issued to it. (handleTokenEndpoint guarantees client != nil for
 	// this grant; the nil check is belt-and-braces.)
-	if client == nil || client.ClientID != code.ClientID {
+	if client == nil || client.ClientID != string(code.ClientID) {
 		writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "Client ID mismatch")
 		return
 	}
@@ -762,7 +762,7 @@ func (s *State) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Requ
 
 	var idToken *string
 	if scopeHas(scope, "openid") {
-		t, err := s.mintIDToken(r.Context(), p, code.ClientID, client, code.Nonce, code.AuthTime)
+		t, err := s.mintIDToken(r.Context(), p, string(code.ClientID), client, code.Nonce, code.AuthTime)
 		if err != nil {
 			writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 			return
@@ -777,7 +777,7 @@ func (s *State) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Requ
 			writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 			return
 		}
-		cid := code.ClientID
+		cid := string(code.ClientID)
 		entity.OAuthClientID = &cid
 		entity.Scopes = strings.Fields(scope)
 		// Root a rotation family on this first token so every later rotation

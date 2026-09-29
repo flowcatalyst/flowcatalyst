@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/oauthapi"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordhash"
@@ -377,7 +378,7 @@ func (s *State) IssueCode(r *http.Request, flow *LoginFlow, subjectID string) (s
 	if err != nil {
 		return "", err
 	}
-	code := grantstore.NewAuthorizationCode(raw, flow.OAuthClientID, subjectID, flow.RedirectURI)
+	code := grantstore.NewAuthorizationCode(raw, ids.OAuthClientID(flow.OAuthClientID), subjectID, flow.RedirectURI)
 	code.Scope = flow.Scope
 	code.Nonce = flow.Nonce
 	code.State = &flow.State

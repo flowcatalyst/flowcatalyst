@@ -25,6 +25,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
@@ -50,7 +51,7 @@ var RefreshTokenTTL = 7 * 24 * time.Hour
 // to PKCE.
 type AuthorizationCode struct {
 	Code                string
-	ClientID            string
+	ClientID            ids.OAuthClientID
 	PrincipalID         string
 	RedirectURI         string
 	Scope               *string
@@ -71,7 +72,7 @@ type AuthorizationCode struct {
 }
 
 // NewAuthorizationCode builds a code with the default 10-minute expiry.
-func NewAuthorizationCode(code, clientID, principalID, redirectURI string) *AuthorizationCode {
+func NewAuthorizationCode(code string, clientID ids.OAuthClientID, principalID, redirectURI string) *AuthorizationCode {
 	now := time.Now().UTC()
 	return &AuthorizationCode{
 		Code:        code,
@@ -142,7 +143,7 @@ func authCodeID(code string) string { return authCodePayloadType + ":" + code }
 func (r *AuthorizationCodeRepository) Insert(ctx context.Context, c *AuthorizationCode) error {
 	payload, err := json.Marshal(authCodePayload{
 		AccountID:           c.PrincipalID,
-		ClientID:            c.ClientID,
+		ClientID:            string(c.ClientID),
 		RedirectURI:         c.RedirectURI,
 		Scope:               c.Scope,
 		CodeChallenge:       c.CodeChallenge,
@@ -229,7 +230,7 @@ func scanAuthCode(row pgx.Row) (*AuthorizationCode, error) {
 	}
 	return &AuthorizationCode{
 		Code:                strings.TrimPrefix(id, authCodePayloadType+":"),
-		ClientID:            p.ClientID,
+		ClientID:            ids.OAuthClientID(p.ClientID),
 		PrincipalID:         p.AccountID,
 		RedirectURI:         p.RedirectURI,
 		Scope:               p.Scope,

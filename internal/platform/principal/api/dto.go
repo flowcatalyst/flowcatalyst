@@ -316,7 +316,7 @@ type ClientAccessGrantResponse struct {
 func clientAccessGrantFromEntity(g *principal.ClientAccessGrant) ClientAccessGrantResponse {
 	return ClientAccessGrantResponse{
 		ID:        g.ID,
-		ClientID:  g.ClientID,
+		ClientID:  g.ClientID.String(),
 		GrantedAt: jsontime.New(g.GrantedAt),
 	}
 }

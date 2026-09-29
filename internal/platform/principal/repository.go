@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/versioncache"
@@ -684,7 +685,7 @@ func (cp ClientAssociationPersister) Persist(ctx context.Context, p *Principal, 
 		// Idempotent: a grant for (principal, client) already present is left
 		// untouched, mirroring the prior FindByPrincipalAndClient skip. ON
 		// CONFLICT on the natural key keeps this safe even under a race.
-		grant := NewClientAccessGrant(p.ID, cid, cp.GrantedBy)
+		grant := NewClientAccessGrant(ids.PrincipalID(p.ID), ids.ClientID(cid), ids.PrincipalID(cp.GrantedBy))
 		if _, err := q.Exec(ctx,
 			`INSERT INTO iam_client_access_grants
 			     (id, principal_id, client_id, granted_by, granted_at, created_at, updated_at)

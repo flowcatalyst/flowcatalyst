@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
@@ -63,7 +64,7 @@ func GrantClientAccess(repo *principal.Repository, clients *client.Repository, g
 				return nil, httperror.NotFound("Client", cmd.ClientID)
 			}
 
-			existing, err := grants.FindByPrincipalAndClient(ctx, cmd.UserID, cmd.ClientID)
+			existing, err := grants.FindByPrincipalAndClient(ctx, ids.PrincipalID(cmd.UserID), ids.ClientID(cmd.ClientID))
 			if err != nil {
 				return nil, usecase.Internal("REPO", "find_existing_grant failed", err)
 			}
@@ -71,7 +72,7 @@ func GrantClientAccess(repo *principal.Repository, clients *client.Repository, g
 				return nil, usecase.BusinessRule("GRANT_EXISTS", "User already has access to this client")
 			}
 
-			grant := principal.NewClientAccessGrant(cmd.UserID, cmd.ClientID, ec.PrincipalID)
+			grant := principal.NewClientAccessGrant(ids.PrincipalID(cmd.UserID), ids.ClientID(cmd.ClientID), ids.PrincipalID(ec.PrincipalID))
 
 			event := ClientAccessGranted{
 				Metadata: usecase.NewEventMetadata(ec, ClientAccessGrantedType, Source, subjectFor(p.ID)),
