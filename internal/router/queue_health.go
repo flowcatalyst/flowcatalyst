@@ -85,7 +85,7 @@ func (m *QueueHealthMonitor) Watch(ctx context.Context, consumers func() []queue
 		case <-ctx.Done():
 			return
 		case <-tick.C:
-			m.tick(ctx, consumers())
+			safely("queueHealth.tick", func() { m.tick(ctx, consumers()) })
 		}
 	}
 }

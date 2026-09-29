@@ -567,7 +567,7 @@ func (d *StallDetector) Watch(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-tick.C:
-			d.tick(ctx)
+			safely("stallDetector.tick", func() { d.tick(ctx) })
 		}
 	}
 }

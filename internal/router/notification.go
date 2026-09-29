@@ -161,15 +161,15 @@ func (n *Notifier) Run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done(): // shutdown
-			n.finalFlush()
+			safely("notifier.finalFlush", n.finalFlush)
 			return
 		case <-n.stopCh: // Stop
-			n.finalFlush()
+			safely("notifier.finalFlush", n.finalFlush)
 			return
 		case <-tick.C: // batch interval elapsed
-			n.flush(ctx)
+			safely("notifier.flush", func() { n.flush(ctx) })
 		case <-n.flushNow: // Add asked for an immediate flush
-			n.flush(ctx)
+			safely("notifier.flush", func() { n.flush(ctx) })
 		}
 	}
 }

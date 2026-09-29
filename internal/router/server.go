@@ -554,7 +554,10 @@ func gateOnLeadership(ctx context.Context, election leaderElection, manager *Man
 		}
 	}
 
-	apply(election.IsLeader())
+	if safely("server.gateOnLeadership", func() { apply(election.IsLeader()) }) && poolCancel != nil {
+		poolCancel()
+		poolCtx, poolCancel = nil, nil
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -563,7 +566,14 @@ func gateOnLeadership(ctx context.Context, election leaderElection, manager *Man
 			}
 			return
 		case ch := <-sub:
-			apply(ch.IsLeader)
+			// A panic here must not end the loop: this goroutine decides
+			// whether the instance processes messages at all. A failed
+			// leader-gain is rolled back so the next event can retry it
+			// (apply's "already leader" guard would otherwise wedge it).
+			if safely("server.gateOnLeadership", func() { apply(ch.IsLeader) }) && ch.IsLeader && poolCancel != nil {
+				poolCancel()
+				poolCtx, poolCancel = nil, nil
+			}
 		}
 	}
 }

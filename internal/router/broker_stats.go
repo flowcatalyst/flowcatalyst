@@ -194,7 +194,8 @@ func saturatingSub(a, b uint64) uint64 {
 // until ctx is cancelled.
 func SpawnBrokerStatsRefresh(ctx context.Context, c *CachedBrokerStats) {
 	go func() {
-		c.Refresh(ctx)
+		refresh := func() { safely("brokerStats.refresh", func() { c.Refresh(ctx) }) }
+		refresh()
 		t := time.NewTicker(brokerRefreshInterval)
 		defer t.Stop()
 		for {
@@ -202,7 +203,7 @@ func SpawnBrokerStatsRefresh(ctx context.Context, c *CachedBrokerStats) {
 			case <-ctx.Done():
 				return
 			case <-t.C:
-				c.Refresh(ctx)
+				refresh()
 			}
 		}
 	}()

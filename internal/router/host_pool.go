@@ -464,7 +464,7 @@ func (r *HostPoolRegistry) StartSweep() {
 			case <-stop:
 				return
 			case <-t.C:
-				r.SweepAll()
+				safely("hostPool.sweep", r.SweepAll)
 			}
 		}
 	}()
