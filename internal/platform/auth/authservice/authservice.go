@@ -455,6 +455,54 @@ func (s *AuthService) GenerateIdentityAccessTokenFor(p *principal.Principal, cli
 	return s.generateTokenWithExpiry(p, s.config.AccessTokenExpirySecs, nil, false, clientID)
 }
 
+// PortalSubject is a portal identity as a token subject. It is not a
+// principal: its id is a "ptu_" id of its own kind, it has no roles, clients or
+// applications, and it is never looked up in the principal store — so it must
+// not travel as a principal.Principal, whose ID is a PrincipalID.
+type PortalSubject struct {
+	ID        string
+	Name      string
+	Email     string
+	UpdatedAt time.Time
+}
+
+// subject is who a token is about: the identity fields every token carries,
+// plus — for a real principal — the principal its authority claims are read
+// from. p is nil for a portal identity, which carries no authority.
+type subject struct {
+	id        string
+	name      string
+	email     *string
+	updatedAt time.Time
+	ptype     string
+	tier      string
+	p         *principal.Principal
+}
+
+func subjectOf(p *principal.Principal) subject {
+	return subject{
+		id: string(p.ID), name: p.Name, email: principalEmail(p), updatedAt: p.UpdatedAt,
+		ptype: string(p.Type), tier: string(p.Scope), p: p,
+	}
+}
+
+func (ps PortalSubject) subject() subject {
+	var email *string
+	if ps.Email != "" {
+		e := ps.Email
+		email = &e
+	}
+	// Portal identities are presented as plain USER subjects with no tier.
+	return subject{id: ps.ID, name: ps.Name, email: email, updatedAt: ps.UpdatedAt, ptype: string(principal.TypeUser)}
+}
+
+// GeneratePortalAccessToken mints the identity access token for a portal
+// login, bound to the OAuth client (azp) like every other interactive
+// identity token.
+func (s *AuthService) GeneratePortalAccessToken(sub PortalSubject, clientID string) (string, error) {
+	return s.mintAccessToken(sub.subject(), s.config.AccessTokenExpirySecs, nil, false, clientID)
+}
+
 // GenerateSessionToken mints a longer-lived, authority-bearing token for cookie
 // sessions.
 func (s *AuthService) GenerateSessionToken(p *principal.Principal) (string, error) {
@@ -466,21 +514,30 @@ func (s *AuthService) GenerateSessionToken(p *principal.Principal) (string, erro
 // TokenUseAPI; when false it carries only identity (sub/tier/type/name/email),
 // emits empty authority arrays, and is marked TokenUseIdentity.
 func (s *AuthService) generateTokenWithExpiry(p *principal.Principal, expirySecs int64, scope []string, authoritative bool, azp string) (string, error) {
+	return s.mintAccessToken(subjectOf(p), expirySecs, scope, authoritative, azp)
+}
+
+// mintAccessToken is generateTokenWithExpiry for any subject. An authoritative
+// token needs a principal to read authority from; a portal identity has none.
+func (s *AuthService) mintAccessToken(sub subject, expirySecs int64, scope []string, authoritative bool, azp string) (string, error) {
+	if authoritative && sub.p == nil {
+		return "", errors.New("authoritative token requires a principal")
+	}
 	now := time.Now().UTC()
 	exp := now.Add(time.Duration(expirySecs) * time.Second)
 
 	claims := AccessTokenClaims{
 		Issuer:        s.config.Issuer,
-		Subject:       string(p.ID),
+		Subject:       sub.id,
 		ExpiresAt:     jwt.NewNumericDate(exp),
 		IssuedAt:      jwt.NewNumericDate(now),
 		NotBefore:     jwt.NewNumericDate(now),
 		ID:            tsid.GenerateUntyped(),
 		Aud:           s.config.Audience,
-		PrincipalType: string(p.Type),
-		Tier:          string(p.Scope),
-		Email:         principalEmail(p),
-		Name:          p.Name,
+		PrincipalType: sub.ptype,
+		Tier:          sub.tier,
+		Email:         sub.email,
+		Name:          sub.name,
 		// Emit empty (non-nil) authority arrays by default so the wire shape is
 		// stable; the authoritative branch overwrites them.
 		Clients:      []string{},
@@ -493,10 +550,10 @@ func (s *AuthService) generateTokenWithExpiry(p *principal.Principal, expirySecs
 	if authoritative {
 		claims.TokenUse = TokenUseAPI
 		claims.Scope = strings.Join(scope, " ")
-		claims.Clients = buildClients(p)
-		claims.Roles = roleNames(p)
-		claims.Applications = appAccessOf(p)
-		claims.AllApplications = p.AllApplications
+		claims.Clients = buildClients(sub.p)
+		claims.Roles = roleNames(sub.p)
+		claims.Applications = appAccessOf(sub.p)
+		claims.AllApplications = sub.p.AllApplications
 	} else {
 		claims.TokenUse = TokenUseIdentity
 	}
@@ -534,14 +591,14 @@ func (s *AuthService) GenerateIDTokenWithRoles(p *principal.Principal, clientID 
 // updated_at likewise reports the principal's real last modification, so an RP
 // watching it for profile changes doesn't see one on every login.
 func (s *AuthService) generateIDToken(p *principal.Principal, clientID string, nonce *string, roles []string, authTime time.Time) (string, error) {
-	return s.sign(s.idTokenClaims(p, clientID, nonce, roles, authTime))
+	return s.sign(s.idTokenClaims(subjectOf(p), clientID, nonce, roles, authTime))
 }
 
 // GeneratePortalIDToken mints the ID token for a portal-plane login: the
 // synthetic portal-identity view as subject, an EMPTY roles claim (portal
 // roles are portal-side data), and the portal client/app claims.
-func (s *AuthService) GeneratePortalIDToken(p *principal.Principal, clientID string, nonce *string, authTime time.Time, portal PortalIDClaims) (string, error) {
-	claims := s.idTokenClaims(p, clientID, nonce, []string{}, authTime)
+func (s *AuthService) GeneratePortalIDToken(sub PortalSubject, clientID string, nonce *string, authTime time.Time, portal PortalIDClaims) (string, error) {
+	claims := s.idTokenClaims(sub.subject(), clientID, nonce, []string{}, authTime)
 	if portal.ClientID != "" {
 		claims.PortalClientID = &portal.ClientID
 	}
@@ -553,7 +610,7 @@ func (s *AuthService) GeneratePortalIDToken(p *principal.Principal, clientID str
 }
 
 // idTokenClaims builds (without signing) the ID token claim set.
-func (s *AuthService) idTokenClaims(p *principal.Principal, clientID string, nonce *string, roles []string, authTime time.Time) IDTokenClaims {
+func (s *AuthService) idTokenClaims(sub subject, clientID string, nonce *string, roles []string, authTime time.Time) IDTokenClaims {
 	if roles == nil {
 		roles = []string{}
 	}
@@ -563,23 +620,33 @@ func (s *AuthService) idTokenClaims(p *principal.Principal, clientID string, non
 		authTime = now
 	}
 	authTimeUnix := authTime.Unix()
-	updatedAtUnix := p.UpdatedAt.UTC().Unix()
-	if p.UpdatedAt.IsZero() {
+	updatedAtUnix := sub.updatedAt.UTC().Unix()
+	if sub.updatedAt.IsZero() {
 		updatedAtUnix = now.Unix()
 	}
 
-	email := principalEmail(p)
+	email := sub.email
 	var emailVerified *bool
 	if email != nil {
 		v := true
 		emailVerified = &v
 	}
-	name := p.Name
+	name := sub.name
 	azp := clientID
+
+	// A portal identity has no principal, hence no home client, applications
+	// or client list: those claims are present but empty.
+	var homeClient *string
+	apps, clients := []string{}, []string{}
+	allApps := false
+	if sub.p != nil {
+		homeClient = ids.StringPtr(sub.p.ClientID)
+		apps, clients, allApps = appAccessOf(sub.p), buildClients(sub.p), sub.p.AllApplications
+	}
 
 	claims := IDTokenClaims{
 		Issuer:          s.config.Issuer,
-		Subject:         string(p.ID),
+		Subject:         sub.id,
 		ExpiresAt:       jwt.NewNumericDate(exp),
 		IssuedAt:        jwt.NewNumericDate(now),
 		Aud:             clientID,
@@ -590,13 +657,13 @@ func (s *AuthService) idTokenClaims(p *principal.Principal, clientID string, non
 		EmailVerified:   emailVerified,
 		UpdatedAt:       &updatedAtUnix,
 		AZP:             &azp,
-		PrincipalType:   string(p.Type),
-		Tier:            string(p.Scope),
-		ClientID:        ids.StringPtr(p.ClientID),
+		PrincipalType:   sub.ptype,
+		Tier:            sub.tier,
+		ClientID:        homeClient,
 		Roles:           roles,
-		Applications:    appAccessOf(p),
-		AllApplications: p.AllApplications,
-		Clients:         buildClients(p),
+		Applications:    apps,
+		AllApplications: allApps,
+		Clients:         clients,
 	}
 	return claims
 }

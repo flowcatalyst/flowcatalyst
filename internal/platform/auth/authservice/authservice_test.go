@@ -544,3 +544,48 @@ func TestApplicationsClaimShape(t *testing.T) {
 		t.Error("all_applications must stay false for a scoped principal")
 	}
 }
+
+// A portal identity is a token subject of its own kind: its "ptu_" id is the
+// sub, it is presented as a plain USER, and it carries no authority.
+func TestPortalSubjectTokens(t *testing.T) {
+	svc := newRS256(t)
+	sub := PortalSubject{ID: "ptu_ABC123", Name: "Pat Portal", Email: "pat@example.test", UpdatedAt: time.Unix(1_700_000_000, 0)}
+
+	access, err := svc.GeneratePortalAccessToken(sub, "oauth-client")
+	if err != nil {
+		t.Fatalf("access token: %v", err)
+	}
+	claims, err := svc.ValidateToken(access)
+	if err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	if claims.Subject != "ptu_ABC123" || claims.PrincipalType != "USER" || claims.Tier != "" {
+		t.Errorf("sub/type/tier = %q/%q/%q", claims.Subject, claims.PrincipalType, claims.Tier)
+	}
+	if claims.TokenUse != TokenUseIdentity {
+		t.Errorf("token_use = %q, want identity", claims.TokenUse)
+	}
+	if len(claims.Clients) != 0 || len(claims.Roles) != 0 || len(claims.Applications) != 0 {
+		t.Errorf("portal access token carries authority: %+v", claims)
+	}
+	if claims.Email == nil || *claims.Email != "pat@example.test" {
+		t.Errorf("email = %v", claims.Email)
+	}
+
+	idTok, err := svc.GeneratePortalIDToken(sub, "oauth-client", nil, time.Time{}, PortalIDClaims{})
+	if err != nil {
+		t.Fatalf("id token: %v", err)
+	}
+	p := decodeJWTPayload(t, idTok)
+	if p["sub"] != "ptu_ABC123" || p["updated_at"] != float64(1_700_000_000) {
+		t.Errorf("sub/updated_at = %v/%v", p["sub"], p["updated_at"])
+	}
+	for _, k := range []string{"roles", "clients", "applications"} {
+		if arr, _ := p[k].([]any); len(arr) != 0 {
+			t.Errorf("%s = %v, want empty", k, p[k])
+		}
+	}
+	if _, ok := p["client_id"]; ok {
+		t.Error("portal id token must not carry a home client_id")
+	}
+}

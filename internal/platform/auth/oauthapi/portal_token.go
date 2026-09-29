@@ -3,12 +3,10 @@ package oauthapi
 import (
 	"net/http"
 
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalidentity"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
@@ -55,25 +53,22 @@ func (s *State) redeemPortalCode(w http.ResponseWriter, r *http.Request, code *g
 		}
 	}
 
-	// A transient principal-shaped view of the identity: the token
-	// generators only read ID/Name/email/roles, and this synthetic value
-	// never touches the principal store. sub = the ptu_ id.
+	// The identity as a token subject, not as a principal: its id is a "ptu_"
+	// id of its own kind and it never touches the principal store. sub = the
+	// ptu_ id.
 	//
 	// UpdatedAt is the identity's own: the id_token's updated_at must
 	// report a real profile change, not every login (a zero value would be
 	// replaced with the mint time).
-	synth := &principal.Principal{
-		ID:        ids.PrincipalID(ident.ID),
-		Type:      principal.TypeUser,
+	synth := authservice.PortalSubject{
+		ID:        ident.ID,
 		Name:      ident.Name,
+		Email:     ident.Email,
 		UpdatedAt: ident.UpdatedAt,
-		UserIdentity: &principal.UserIdentity{
-			Email: ident.Email,
-		},
 	}
 	// Client-bound, like every other interactive identity token: azp lets
 	// /oauth/userinfo tell which relying party is asking.
-	accessToken, err := s.Auth.GenerateIdentityAccessTokenFor(synth, client.ClientID)
+	accessToken, err := s.Auth.GeneratePortalAccessToken(synth, client.ClientID)
 	if err != nil {
 		writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
 		return
