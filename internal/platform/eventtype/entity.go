@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
@@ -172,7 +173,7 @@ type EventType struct {
 	Subdomain    string        `json:"subdomain"`
 	Aggregate    string        `json:"aggregate"`
 	EventName    string        `json:"eventName"`
-	ClientID     *string       `json:"clientId,omitempty"`
+	ClientID     *ids.ClientID `json:"clientId,omitempty"`
 	CreatedBy    *string       `json:"createdBy,omitempty"`
 	CreatedAt    time.Time     `json:"createdAt"`
 	UpdatedAt    time.Time     `json:"updatedAt"`

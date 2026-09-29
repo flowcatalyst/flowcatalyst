@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/validate"
@@ -74,7 +75,7 @@ func CreateDispatchPool(repo *dispatchpool.Repository) usecaseop.Operation[Creat
 			if cmd.Concurrency != nil {
 				p.Concurrency = *cmd.Concurrency
 			}
-			p.ClientID = cmd.ClientID
+			p.ClientID = ids.PtrOf[ids.ClientID](cmd.ClientID)
 
 			event := DispatchPoolCreated{
 				Metadata: usecase.NewEventMetadata(ec, DispatchPoolCreatedType, Source, subjectFor(p.ID)),

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -50,7 +51,7 @@ func UpdateConnection(repo *connection.Repository, apps *application.Repository)
 			if c == nil {
 				return nil, httperror.NotFound("Connection", cmd.ID)
 			}
-			if err := auth.CheckScopeAccess(auth.FromContext(ctx), c.ClientID); err != nil {
+			if err := auth.CheckScopeAccess(auth.FromContext(ctx), ids.StringPtr(c.ClientID)); err != nil {
 				return nil, err
 			}
 			c.Name = strings.TrimSpace(cmd.Name)
@@ -71,7 +72,7 @@ func UpdateConnection(repo *connection.Repository, apps *application.Repository)
 				// uniqueness key (application_code, client_id, code); a collision
 				// there must be reported the same way create does, not surface
 				// as a raw database error out of the unique index.
-				dup, err := repo.FindByCode(ctx, c.Code, cmd.ApplicationCode, c.ClientID)
+				dup, err := repo.FindByCode(ctx, c.Code, cmd.ApplicationCode, ids.StringPtr(c.ClientID))
 				if err != nil {
 					return nil, usecase.Internal("REPO", "find_by_code failed", err)
 				}
@@ -143,7 +144,7 @@ func flipStatus(
 			if c == nil {
 				return nil, httperror.NotFound("Connection", cmd.ID)
 			}
-			if err := auth.CheckScopeAccess(auth.FromContext(ctx), c.ClientID); err != nil {
+			if err := auth.CheckScopeAccess(auth.FromContext(ctx), ids.StringPtr(c.ClientID)); err != nil {
 				return nil, err
 			}
 			apply(c)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -58,7 +59,7 @@ func UpdateMapping(repo *emaildomainmapping.Repository) usecaseop.Operation[Upda
 			// an update that did not resend them cleared them (owner decision
 			// #38): a 2FA toggle unlinked the domain's primary client.
 			if cmd.PrimaryClientID != nil {
-				e.PrimaryClientID = blankToNil(*cmd.PrimaryClientID)
+				e.PrimaryClientID = ids.PtrOf[ids.ClientID](blankToNil(*cmd.PrimaryClientID))
 			}
 			if cmd.RequiredOIDCTenantID != nil {
 				e.RequiredOIDCTenantID = blankToNil(*cmd.RequiredOIDCTenantID)

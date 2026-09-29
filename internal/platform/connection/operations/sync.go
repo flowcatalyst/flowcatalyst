@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -187,7 +188,7 @@ func SyncConnections(
 				c := connection.New(code, strings.TrimSpace(in.Name), appServiceAccountID)
 				appCode := cmd.ApplicationCode
 				c.ApplicationCode = &appCode
-				c.ClientID = cmd.ClientID
+				c.ClientID = ids.PtrOf[ids.ClientID](cmd.ClientID)
 				c.Source = connection.SourceAPI
 				c.Description = in.Description
 				c.ExternalID = in.ExternalID

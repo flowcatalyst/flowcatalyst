@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
@@ -117,7 +118,7 @@ func SyncEventTypes(repo *eventtype.Repository) usecaseop.Operation[SyncEventTyp
 						Subdomain:   et.Subdomain,
 						Aggregate:   et.Aggregate,
 						EventName:   et.EventName,
-						ClientID:    et.ClientID,
+						ClientID:    ids.StringPtr(et.ClientID),
 					},
 				})
 				created++

@@ -10,6 +10,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
@@ -76,7 +77,7 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[EventTy
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_with_filters failed", err)
 	}
-	visible := auth.FilterClientScoped(ac, rows, func(et *eventtype.EventType) *string { return et.ClientID })
+	visible := auth.FilterClientScoped(ac, rows, func(et *eventtype.EventType) *string { return ids.StringPtr(et.ClientID) })
 	out := apicommon.MapSlice(visible, fromEntity)
 	return &apicommon.Out[EventTypeListResponse]{Body: EventTypeListResponse{Items: out}}, nil
 }
@@ -97,7 +98,7 @@ func (s *State) getByID(ctx context.Context, in *getByIDInput) (*apicommon.Out[E
 	if et == nil {
 		return nil, httperror.NotFound("EventType", in.ID)
 	}
-	if et.ClientID != nil && !ac.CanAccessClient(*et.ClientID) {
+	if et.ClientID != nil && !ac.CanAccessClient(string(*et.ClientID)) {
 		return nil, httperror.Forbidden("No access to this event type")
 	}
 	return &apicommon.Out[EventTypeResponse]{Body: fromEntity(et)}, nil
@@ -119,7 +120,7 @@ func (s *State) getByCode(ctx context.Context, in *getByCodeInput) (*apicommon.O
 	if et == nil {
 		return nil, httperror.NotFound("EventType", in.Code)
 	}
-	if et.ClientID != nil && !ac.CanAccessClient(*et.ClientID) {
+	if et.ClientID != nil && !ac.CanAccessClient(string(*et.ClientID)) {
 		return nil, httperror.Forbidden("No access to this event type")
 	}
 	return &apicommon.Out[EventTypeResponse]{Body: fromEntity(et)}, nil

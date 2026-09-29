@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
@@ -92,7 +93,7 @@ func CreateMapping(repo *emaildomainmapping.Repository) usecaseop.Operation[Crea
 				return nil, usecase.Internal("INVARIANT_SCOPE_TYPE", "validated scopeType failed to parse", nil)
 			}
 			e := emaildomainmapping.New(domain, cmd.IdentityProviderID, scopeType)
-			e.PrimaryClientID = cmd.PrimaryClientID
+			e.PrimaryClientID = ids.PtrOf[ids.ClientID](cmd.PrimaryClientID)
 			e.RequiredOIDCTenantID = cmd.RequiredOIDCTenantID
 			e.Require2FA = cmd.Require2FA
 			e.RememberDeviceEnabled = cmd.RememberDeviceEnabled

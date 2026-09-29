@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
@@ -102,7 +103,7 @@ type Subscription struct {
 	ApplicationCode  *string             `json:"applicationCode,omitempty"`
 	Name             string              `json:"name"`
 	Description      *string             `json:"description,omitempty"`
-	ClientID         *string             `json:"clientId,omitempty"`
+	ClientID         *ids.ClientID       `json:"clientId,omitempty"`
 	ClientIdentifier *string             `json:"clientIdentifier,omitempty"`
 	ClientScoped     bool                `json:"clientScoped"`
 	EventTypes       []EventTypeBinding  `json:"eventTypes"`
@@ -191,5 +192,5 @@ func (s *Subscription) MatchesClient(eventClientID *string) bool {
 	if eventClientID == nil {
 		return false
 	}
-	return *s.ClientID == *eventClientID
+	return string(*s.ClientID) == *eventClientID
 }

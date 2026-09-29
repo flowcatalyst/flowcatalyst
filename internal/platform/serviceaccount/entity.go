@@ -9,6 +9,7 @@ package serviceaccount
 import (
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
@@ -60,11 +61,11 @@ func NoCredentials() WebhookCredentials {
 
 // RoleAssignment is a role granted to this account (optionally scoped to a client).
 type RoleAssignment struct {
-	Role             string    `json:"roleName"`
-	ClientID         *string   `json:"clientId,omitempty"`
-	AssignmentSource *string   `json:"assignmentSource,omitempty"`
-	AssignedAt       time.Time `json:"assignedAt"`
-	AssignedBy       *string   `json:"assignedBy,omitempty"`
+	Role             string        `json:"roleName"`
+	ClientID         *ids.ClientID `json:"clientId,omitempty"`
+	AssignmentSource *string       `json:"assignmentSource,omitempty"`
+	AssignedAt       time.Time     `json:"assignedAt"`
+	AssignedBy       *string       `json:"assignedBy,omitempty"`
 }
 
 // ServiceAccount is the aggregate root.

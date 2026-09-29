@@ -210,20 +210,20 @@ func TestCreateIdentityProvider_ClaimsExistingDomain(t *testing.T) {
 	require.NotNil(t, kept)
 	assert.Equal(t, res.IdentityProviderID, kept.IdentityProviderID)
 	require.NotNil(t, kept.PrimaryClientID)
-	assert.Equal(t, withClient, *kept.PrimaryClientID, "existing client link must not be overwritten")
+	assert.Equal(t, withClient, string(*kept.PrimaryClientID), "existing client link must not be overwritten")
 
 	filled, err := d.MoveDeps.Mappings.FindByEmailDomain(ctx, "idpclaim-noclient.example.com")
 	require.NoError(t, err)
 	require.NotNil(t, filled)
 	require.NotNil(t, filled.PrimaryClientID)
-	assert.Equal(t, newClient, *filled.PrimaryClientID, "unclaimed mapping takes the command's client")
+	assert.Equal(t, newClient, string(*filled.PrimaryClientID), "unclaimed mapping takes the command's client")
 
 	fresh, err := d.MoveDeps.Mappings.FindByEmailDomain(ctx, "idpclaim-fresh.example.com")
 	require.NoError(t, err)
 	require.NotNil(t, fresh)
 	assert.Equal(t, emaildomainmapping.ScopeClient, fresh.ScopeType, "client supplied → CLIENT scope on new mappings")
 	require.NotNil(t, fresh.PrimaryClientID)
-	assert.Equal(t, newClient, *fresh.PrimaryClientID)
+	assert.Equal(t, newClient, string(*fresh.PrimaryClientID))
 }
 
 func TestCreateIdentityProvider_Validation(t *testing.T) {
@@ -511,7 +511,7 @@ func TestUpdateIdentityProvider_LinksClientOntoAlreadyRoutedDomain(t *testing.T)
 	require.NoError(t, err)
 	require.NotNil(t, m)
 	require.NotNil(t, m.PrimaryClientID)
-	assert.Equal(t, primaryClient, *m.PrimaryClientID)
+	assert.Equal(t, primaryClient, string(*m.PrimaryClientID))
 	assert.Equal(t, emaildomainmapping.ScopeAnchor, m.ScopeType, "linking a client must not change the mapping's existing scope")
 }
 

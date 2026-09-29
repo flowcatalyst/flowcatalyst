@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
@@ -39,7 +40,7 @@ func PauseSubscription(repo *subscription.Repository) usecaseop.Operation[PauseC
 				return nil, httperror.NotFound("Subscription", cmd.ID)
 			}
 			// Per-resource scope.
-			if err := auth.CheckScopeAccess(auth.FromContext(ctx), s.ClientID); err != nil {
+			if err := auth.CheckScopeAccess(auth.FromContext(ctx), ids.StringPtr(s.ClientID)); err != nil {
 				return nil, err
 			}
 			s.Pause()

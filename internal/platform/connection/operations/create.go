@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -91,7 +92,7 @@ func CreateConnection(repo *connection.Repository, apps *application.Repository)
 			c.ApplicationCode = cmd.ApplicationCode
 			c.Description = cmd.Description
 			c.ExternalID = cmd.ExternalID
-			c.ClientID = cmd.ClientID
+			c.ClientID = ids.PtrOf[ids.ClientID](cmd.ClientID)
 
 			event := ConnectionCreated{
 				Metadata:     usecase.NewEventMetadata(ec, ConnectionCreatedType, Source, subjectFor(c.ID)),

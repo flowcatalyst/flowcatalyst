@@ -5,6 +5,7 @@ package dispatchpool
 import (
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
@@ -38,13 +39,13 @@ type DispatchPool struct {
 	Name        string  `json:"name"`
 	Description *string `json:"description,omitempty"`
 	// RateLimit is messages per minute. nil → no rate limit, concurrency-only.
-	RateLimit        *int32    `json:"rateLimit,omitempty"`
-	Concurrency      int32     `json:"concurrency"`
-	ClientID         *string   `json:"clientId,omitempty"`
-	ClientIdentifier *string   `json:"clientIdentifier,omitempty"`
-	Status           Status    `json:"status"`
-	CreatedAt        time.Time `json:"createdAt"`
-	UpdatedAt        time.Time `json:"updatedAt"`
+	RateLimit        *int32        `json:"rateLimit,omitempty"`
+	Concurrency      int32         `json:"concurrency"`
+	ClientID         *ids.ClientID `json:"clientId,omitempty"`
+	ClientIdentifier *string       `json:"clientIdentifier,omitempty"`
+	Status           Status        `json:"status"`
+	CreatedAt        time.Time     `json:"createdAt"`
+	UpdatedAt        time.Time     `json:"updatedAt"`
 }
 
 // IDStr satisfies usecase.HasID.

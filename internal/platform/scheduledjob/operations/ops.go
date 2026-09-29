@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
@@ -96,7 +97,7 @@ func CreateScheduledJob(repo *scheduledjob.Repository) usecaseop.Operation[Creat
 				return nil, usecase.Conflict("CODE_EXISTS", "Scheduled job with code '"+code+"' already exists")
 			}
 			j := scheduledjob.New(code, strings.TrimSpace(cmd.Name), cmd.Crons)
-			j.ClientID = cmd.ClientID
+			j.ClientID = ids.PtrOf[ids.ClientID](cmd.ClientID)
 			j.ApplicationID = cmd.ApplicationID
 			j.Description = cmd.Description
 			if cmd.Timezone != "" {
@@ -175,7 +176,7 @@ func UpdateScheduledJob(repo *scheduledjob.Repository) usecaseop.Operation[Updat
 			if j == nil {
 				return nil, httperror.NotFound("ScheduledJob", cmd.ID)
 			}
-			if err := auth.CheckScopeAccess(auth.FromContext(ctx), j.ClientID); err != nil {
+			if err := auth.CheckScopeAccess(auth.FromContext(ctx), ids.StringPtr(j.ClientID)); err != nil {
 				return nil, err
 			}
 			if cmd.Name != nil {
@@ -249,7 +250,7 @@ func statusFlip[E usecase.DomainEvent](
 			if j == nil {
 				return nil, httperror.NotFound("ScheduledJob", cmd.ID)
 			}
-			if err := auth.CheckScopeAccess(auth.FromContext(ctx), j.ClientID); err != nil {
+			if err := auth.CheckScopeAccess(auth.FromContext(ctx), ids.StringPtr(j.ClientID)); err != nil {
 				return nil, err
 			}
 			apply(j)
@@ -332,7 +333,7 @@ func DeleteScheduledJob(repo *scheduledjob.Repository) usecaseop.Operation[Delet
 			if j == nil {
 				return nil, httperror.NotFound("ScheduledJob", cmd.ID)
 			}
-			if err := auth.CheckScopeAccess(auth.FromContext(ctx), j.ClientID); err != nil {
+			if err := auth.CheckScopeAccess(auth.FromContext(ctx), ids.StringPtr(j.ClientID)); err != nil {
 				return nil, err
 			}
 			event := ScheduledJobDeleted{
@@ -382,7 +383,7 @@ func FireNow(repo *scheduledjob.Repository, instances *scheduledjob.InstanceRepo
 			if j == nil {
 				return nil, httperror.NotFound("ScheduledJob", cmd.ID)
 			}
-			if err := auth.CheckScopeAccess(auth.FromContext(ctx), j.ClientID); err != nil {
+			if err := auth.CheckScopeAccess(auth.FromContext(ctx), ids.StringPtr(j.ClientID)); err != nil {
 				return nil, err
 			}
 			if j.Status == scheduledjob.StatusArchived {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
 	edmops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
@@ -199,7 +200,7 @@ func mapDomainTx(
 		}
 		m := emaildomainmapping.New(domain, ip.ID, *scope)
 		if *scope == emaildomainmapping.ScopeClient {
-			m.PrimaryClientID = primaryClientID
+			m.PrimaryClientID = ids.PtrOf[ids.ClientID](primaryClientID)
 		}
 		event := edmops.NewMappingCreatedEvent(ec, m.ID, m.EmailDomain)
 		if r := usecasepgx.CommitScoped(ctx, s, m, deps.MoveDeps.Mappings, event, auditCmd); !usecase.IsSuccess(r) {
@@ -214,7 +215,7 @@ func mapDomainTx(
 		if primaryClientID == nil || existing.PrimaryClientID != nil {
 			return mapDomainResult{}, nil
 		}
-		existing.PrimaryClientID = primaryClientID
+		existing.PrimaryClientID = ids.PtrOf[ids.ClientID](primaryClientID)
 		event := edmops.NewMappingUpdatedEvent(ec, existing.ID, existing.EmailDomain)
 		if r := usecasepgx.CommitScoped(ctx, s, existing, deps.MoveDeps.Mappings, event, auditCmd); !usecase.IsSuccess(r) {
 			_, e := usecase.Into(r)
@@ -226,7 +227,7 @@ func mapDomainTx(
 	// re-point through the shared move behaviour (event + any side effects).
 	linked := false
 	if primaryClientID != nil && existing.PrimaryClientID == nil {
-		existing.PrimaryClientID = primaryClientID
+		existing.PrimaryClientID = ids.PtrOf[ids.ClientID](primaryClientID)
 		linked = true
 	}
 	if _, err := edmops.MoveMappingTx(ctx, s, deps.MoveDeps, existing, ip, ec, auditCmd); err != nil {

@@ -2,6 +2,7 @@
 package api
 
 import (
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
@@ -65,7 +66,7 @@ func configFromEntity(c *platformconfig.Config) ConfigResponse {
 		Section:         c.Section,
 		Property:        c.Property,
 		Scope:           string(c.Scope),
-		ClientID:        c.ClientID,
+		ClientID:        ids.StringPtr(c.ClientID),
 		ValueType:       string(c.ValueType),
 		Value:           c.Value,
 		Description:     c.Description,

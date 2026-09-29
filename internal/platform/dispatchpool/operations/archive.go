@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
@@ -39,7 +40,7 @@ func ArchiveDispatchPool(repo *dispatchpool.Repository) usecaseop.Operation[Arch
 			if p == nil {
 				return nil, httperror.NotFound("DispatchPool", cmd.ID)
 			}
-			if err := auth.CheckScopeAccess(auth.FromContext(ctx), p.ClientID); err != nil {
+			if err := auth.CheckScopeAccess(auth.FromContext(ctx), ids.StringPtr(p.ClientID)); err != nil {
 				return nil, err
 			}
 

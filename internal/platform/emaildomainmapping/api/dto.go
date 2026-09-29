@@ -6,6 +6,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
@@ -160,7 +161,7 @@ func fromEntity(e *emaildomainmapping.EmailDomainMapping, idpName *string) Mappi
 		IdentityProviderID:    e.IdentityProviderID,
 		IdentityProviderName:  idpName,
 		ScopeType:             string(e.ScopeType),
-		PrimaryClientID:       e.PrimaryClientID,
+		PrimaryClientID:       ids.StringPtr(e.PrimaryClientID),
 		AdditionalClientIDs:   addl,
 		GrantedClientIDs:      granted,
 		RequiredOIDCTenantID:  e.RequiredOIDCTenantID,

@@ -37,6 +37,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/abi"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	dispatchpoolops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
@@ -179,7 +180,7 @@ func ensureDispatchPool(ctx context.Context, s *usecasepgx.TxScopedUnitOfWork, r
 		return existing.ID, nil
 	}
 	p := dispatchpool.New(code, "Function: "+f.Address)
-	p.ClientID = f.ClientID
+	p.ClientID = ids.PtrOf[ids.ClientID](f.ClientID)
 	desc := "Owned by function " + f.Address + " (fn_id=" + f.ID + "); deleted only when the function is deleted."
 	p.Description = &desc
 	event := dispatchpoolops.DispatchPoolCreated{
@@ -256,7 +257,7 @@ func reconcileSubscriptions(
 		ns := subscription.New(code, "Function: "+f.Address+sub.Path, endpoint)
 		appCode := f.ApplicationCode
 		ns.ApplicationCode = &appCode
-		ns.ClientID = f.ClientID
+		ns.ClientID = ids.PtrOf[ids.ClientID](f.ClientID)
 		ns.ClientScoped = f.ClientID != nil
 		ns.Source = subscription.SourceFunction
 		ns.FunctionID = &f.ID
@@ -420,8 +421,8 @@ func reconcileSchedules(
 				cur.ApplicationID = &aid
 				changed = true
 			}
-			if !ptrStrEqual(cur.ClientID, f.ClientID) {
-				cur.ClientID = f.ClientID
+			if !ptrStrEqual(ids.StringPtr(cur.ClientID), f.ClientID) {
+				cur.ClientID = ids.PtrOf[ids.ClientID](f.ClientID)
 				changed = true
 			}
 			if cur.Status != scheduledjob.StatusActive {
@@ -451,7 +452,7 @@ func reconcileSchedules(
 		nj := scheduledjob.New(code, "Function: "+f.Address+sc.Path, []string{sc.Cron})
 		aid := f.ApplicationID
 		nj.ApplicationID = &aid
-		nj.ClientID = f.ClientID
+		nj.ClientID = ids.PtrOf[ids.ClientID](f.ClientID)
 		nj.FunctionID = &f.ID
 		nj.Timezone = timezone
 		nj.Payload = sc.Payload

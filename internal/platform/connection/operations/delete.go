@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
@@ -37,7 +38,7 @@ func DeleteConnection(repo *connection.Repository) usecaseop.Operation[DeleteCom
 			if c == nil {
 				return nil, httperror.NotFound("Connection", cmd.ID)
 			}
-			if err := auth.CheckScopeAccess(auth.FromContext(ctx), c.ClientID); err != nil {
+			if err := auth.CheckScopeAccess(auth.FromContext(ctx), ids.StringPtr(c.ClientID)); err != nil {
 				return nil, err
 			}
 			event := ConnectionDeleted{

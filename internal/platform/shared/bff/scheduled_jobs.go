@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
@@ -470,14 +471,14 @@ func canViewJob(ac *auth.AuthContext, j *scheduledjob.ScheduledJob) bool {
 	if j.ClientID == nil {
 		return ac.IsAnchor()
 	}
-	return ac.CanAccessClient(*j.ClientID)
+	return ac.CanAccessClient(string(*j.ClientID))
 }
 
 func canViewInstance(ac *auth.AuthContext, inst *scheduledjob.ScheduledJobInstance) bool {
 	if inst.ClientID == nil {
 		return ac.IsAnchor()
 	}
-	return ac.CanAccessClient(*inst.ClientID)
+	return ac.CanAccessClient(string(*inst.ClientID))
 }
 
 func (s *ScheduledJobsState) allClientsByID(ctx context.Context) (map[string]string, error) {
@@ -507,7 +508,7 @@ func (s *ScheduledJobsState) allApplicationsByID(ctx context.Context) (map[strin
 func toBffJob(j *scheduledjob.ScheduledJob, clientsByID, applicationsByID map[string]string, hasActive bool) bffScheduledJobResponse {
 	var clientName *string
 	if j.ClientID != nil {
-		if n, ok := clientsByID[*j.ClientID]; ok {
+		if n, ok := clientsByID[string(*j.ClientID)]; ok {
 			clientName = &n
 		}
 	}
@@ -523,7 +524,7 @@ func toBffJob(j *scheduledjob.ScheduledJob, clientsByID, applicationsByID map[st
 	}
 	out := bffScheduledJobResponse{
 		ID:                  j.ID,
-		ClientID:            j.ClientID,
+		ClientID:            ids.StringPtr(j.ClientID),
 		ClientName:          clientName,
 		ApplicationID:       j.ApplicationID,
 		ApplicationName:     applicationName,
@@ -555,7 +556,7 @@ func toBffInstance(inst *scheduledjob.ScheduledJobInstance) bffScheduledJobInsta
 		ID:               inst.ID,
 		ScheduledJobID:   inst.ScheduledJobID,
 		JobCode:          inst.JobCode,
-		ClientID:         inst.ClientID,
+		ClientID:         ids.StringPtr(inst.ClientID),
 		TriggerKind:      string(inst.TriggerKind),
 		ScheduledFor:     inst.ScheduledFor,
 		FiredAt:          inst.FiredAt,

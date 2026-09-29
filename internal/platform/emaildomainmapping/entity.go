@@ -7,6 +7,7 @@ package emaildomainmapping
 import (
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
@@ -57,14 +58,14 @@ func ValidMFAMethod(s string) bool {
 
 // EmailDomainMapping is the aggregate root.
 type EmailDomainMapping struct {
-	ID                   string    `json:"id"`
-	EmailDomain          string    `json:"emailDomain"`
-	IdentityProviderID   string    `json:"identityProviderId"`
-	ScopeType            ScopeType `json:"scopeType"`
-	PrimaryClientID      *string   `json:"primaryClientId,omitempty"`
-	AdditionalClientIDs  []string  `json:"additionalClientIds"`
-	GrantedClientIDs     []string  `json:"grantedClientIds"`
-	RequiredOIDCTenantID *string   `json:"requiredOidcTenantId,omitempty"`
+	ID                   string        `json:"id"`
+	EmailDomain          string        `json:"emailDomain"`
+	IdentityProviderID   string        `json:"identityProviderId"`
+	ScopeType            ScopeType     `json:"scopeType"`
+	PrimaryClientID      *ids.ClientID `json:"primaryClientId,omitempty"`
+	AdditionalClientIDs  []string      `json:"additionalClientIds"`
+	GrantedClientIDs     []string      `json:"grantedClientIds"`
+	RequiredOIDCTenantID *string       `json:"requiredOidcTenantId,omitempty"`
 	// 2FA enforcement (internal-auth domains only; inert for OIDC domains).
 	Require2FA bool `json:"require2fa"`
 	// Allowed2FAMethods is the set of permitted mechanisms ("TOTP",

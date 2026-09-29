@@ -6,6 +6,7 @@ package platformconfig
 import (
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
@@ -57,17 +58,17 @@ func ParseValueType(s string) (ValueType, bool) {
 
 // Config is a single config row.
 type Config struct {
-	ID              string    `json:"id"`
-	ApplicationCode string    `json:"applicationCode"`
-	Section         string    `json:"section"`
-	Property        string    `json:"property"`
-	Scope           Scope     `json:"scope"`
-	ClientID        *string   `json:"clientId,omitempty"`
-	ValueType       ValueType `json:"valueType"`
-	Value           string    `json:"value"`
-	Description     *string   `json:"description,omitempty"`
-	CreatedAt       time.Time `json:"createdAt"`
-	UpdatedAt       time.Time `json:"updatedAt"`
+	ID              string        `json:"id"`
+	ApplicationCode string        `json:"applicationCode"`
+	Section         string        `json:"section"`
+	Property        string        `json:"property"`
+	Scope           Scope         `json:"scope"`
+	ClientID        *ids.ClientID `json:"clientId,omitempty"`
+	ValueType       ValueType     `json:"valueType"`
+	Value           string        `json:"value"`
+	Description     *string       `json:"description,omitempty"`
+	CreatedAt       time.Time     `json:"createdAt"`
+	UpdatedAt       time.Time     `json:"updatedAt"`
 }
 
 // IDStr satisfies usecase.HasID.

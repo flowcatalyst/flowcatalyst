@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
@@ -28,16 +29,16 @@ const (
 
 // Request is a pending lost-device reset awaiting admin approval.
 type Request struct {
-	ID          string     `json:"id"`
-	PrincipalID string     `json:"principalId"`
-	ClientID    *string    `json:"clientId,omitempty"`
-	Status      Status     `json:"status"`
-	Reset2FA    bool       `json:"reset2fa"`
-	Note        *string    `json:"note,omitempty"`
-	DecidedBy   *string    `json:"decidedBy,omitempty"`
-	DecidedAt   *time.Time `json:"decidedAt,omitempty"`
-	ExpiresAt   time.Time  `json:"expiresAt"`
-	CreatedAt   time.Time  `json:"createdAt"`
+	ID          string        `json:"id"`
+	PrincipalID string        `json:"principalId"`
+	ClientID    *ids.ClientID `json:"clientId,omitempty"`
+	Status      Status        `json:"status"`
+	Reset2FA    bool          `json:"reset2fa"`
+	Note        *string       `json:"note,omitempty"`
+	DecidedBy   *string       `json:"decidedBy,omitempty"`
+	DecidedAt   *time.Time    `json:"decidedAt,omitempty"`
+	ExpiresAt   time.Time     `json:"expiresAt"`
+	CreatedAt   time.Time     `json:"createdAt"`
 }
 
 // New builds a pending request (always clears 2FA on approval — lost device).
@@ -46,7 +47,7 @@ func New(principalID string, clientID *string, ttl time.Duration) *Request {
 	return &Request{
 		ID:          tsid.Generate(tsid.ResetApprovalRequest),
 		PrincipalID: principalID,
-		ClientID:    clientID,
+		ClientID:    ids.PtrOf[ids.ClientID](clientID),
 		Status:      StatusPending,
 		Reset2FA:    true,
 		ExpiresAt:   now.Add(ttl),

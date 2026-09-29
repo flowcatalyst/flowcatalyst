@@ -7,6 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -54,7 +55,7 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[Subscri
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_with_filters failed", err)
 	}
-	visible := auth.FilterClientScoped(ac, rows, func(sub *subscription.Subscription) *string { return sub.ClientID })
+	visible := auth.FilterClientScoped(ac, rows, func(sub *subscription.Subscription) *string { return ids.StringPtr(sub.ClientID) })
 	out := apicommon.MapSlice(visible, fromEntity)
 	return &apicommon.Out[SubscriptionListResponse]{Body: SubscriptionListResponse{Subscriptions: out, Total: len(out)}}, nil
 }
@@ -71,7 +72,7 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	if sub == nil {
 		return nil, httperror.NotFound("Subscription", in.ID)
 	}
-	if sub.ClientID != nil && !ac.CanAccessClient(*sub.ClientID) {
+	if sub.ClientID != nil && !ac.CanAccessClient(string(*sub.ClientID)) {
 		return nil, httperror.Forbidden("No access to this subscription")
 	}
 	return &apicommon.Out[SubscriptionResponse]{Body: fromEntity(sub)}, nil

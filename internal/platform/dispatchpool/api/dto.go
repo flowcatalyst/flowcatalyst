@@ -2,6 +2,7 @@
 package api
 
 import (
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
@@ -70,7 +71,7 @@ func fromEntity(p *dispatchpool.DispatchPool) DispatchPoolResponse {
 		Description:      p.Description,
 		RateLimit:        p.RateLimit,
 		Concurrency:      p.Concurrency,
-		ClientID:         p.ClientID,
+		ClientID:         ids.StringPtr(p.ClientID),
 		ClientIdentifier: p.ClientIdentifier,
 		Status:           string(p.Status),
 		CreatedAt:        jsontime.New(p.CreatedAt),

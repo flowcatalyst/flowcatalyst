@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
@@ -74,7 +75,7 @@ func CreateEventType(repo *eventtype.Repository) usecaseop.Operation[CreateComma
 				return nil, usecase.Validation("INVALID_CODE_FORMAT", err.Error())
 			}
 			et.Description = cmd.Description
-			et.ClientID = cmd.ClientID
+			et.ClientID = ids.PtrOf[ids.ClientID](cmd.ClientID)
 			et.ClientScoped = cmd.ClientScoped
 			et.CreatedBy = &ec.PrincipalID
 			if len(cmd.Schema) > 0 {
@@ -91,7 +92,7 @@ func CreateEventType(repo *eventtype.Repository) usecaseop.Operation[CreateComma
 				Aggregate:   et.Aggregate,
 				EventName:   et.EventName,
 				Description: et.Description,
-				ClientID:    et.ClientID,
+				ClientID:    ids.StringPtr(et.ClientID),
 			}
 			return usecaseop.Save(et, repo, event), nil
 		},

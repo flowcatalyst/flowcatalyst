@@ -473,7 +473,7 @@ func TestSyncScheduledJobs_CreateNoopArchiveAndReactivate(t *testing.T) {
 	require.NotNil(t, jobA)
 	assert.Equal(t, scheduledjob.StatusActive, jobA.Status)
 	require.NotNil(t, jobA.ClientID)
-	assert.Equal(t, clientID, *jobA.ClientID)
+	assert.Equal(t, clientID, string(*jobA.ClientID))
 	assert.Equal(t, int32(1), jobA.Version)
 	jobB, err := repo.FindByCode(ctx, "sjsync-b", &clientID)
 	require.NoError(t, err)

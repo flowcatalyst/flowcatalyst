@@ -85,7 +85,7 @@ func (s *State) list(ctx context.Context, _ *struct{}) (*listOutput, error) {
 		dto := RequestDTO{
 			ID:          r.ID,
 			PrincipalID: r.PrincipalID,
-			ClientID:    r.ClientID,
+			ClientID:    ids.StringPtr(r.ClientID),
 			ExpiresAt:   jsontime.New(r.ExpiresAt),
 			CreatedAt:   jsontime.New(r.CreatedAt),
 		}
@@ -117,7 +117,7 @@ func (s *State) approve(ctx context.Context, in *idInput) (*messageOutput, error
 	if req == nil {
 		return nil, httperror.NotFound("ResetApprovalRequest", in.ID)
 	}
-	if err := auth.RequireUserAdmin(ac, req.ClientID); err != nil {
+	if err := auth.RequireUserAdmin(ac, ids.StringPtr(req.ClientID)); err != nil {
 		return nil, err
 	}
 	ok, err := s.Approvals.Decide(ctx, req.ID, resetapproval.StatusApproved, ac.PrincipalID)
@@ -149,7 +149,7 @@ func (s *State) deny(ctx context.Context, in *idInput) (*messageOutput, error) {
 	if req == nil {
 		return nil, httperror.NotFound("ResetApprovalRequest", in.ID)
 	}
-	if err := auth.RequireUserAdmin(ac, req.ClientID); err != nil {
+	if err := auth.RequireUserAdmin(ac, ids.StringPtr(req.ClientID)); err != nil {
 		return nil, err
 	}
 	ok, err := s.Approvals.Decide(ctx, req.ID, resetapproval.StatusDenied, ac.PrincipalID)

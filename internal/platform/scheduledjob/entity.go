@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
@@ -41,7 +42,7 @@ func ParseStatus(s string) (Status, bool) {
 // ScheduledJob is the aggregate root.
 type ScheduledJob struct {
 	ID                  string          `json:"id"`
-	ClientID            *string         `json:"clientId,omitempty"`
+	ClientID            *ids.ClientID   `json:"clientId,omitempty"`
 	ApplicationID       *string         `json:"applicationId,omitempty"`
 	Code                string          `json:"code"`
 	Name                string          `json:"name"`

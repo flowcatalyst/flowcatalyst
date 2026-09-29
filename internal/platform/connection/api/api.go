@@ -7,6 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection/operations"
@@ -56,7 +57,7 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[Connect
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_with_filters failed", err)
 	}
-	visible := auth.FilterClientScoped(ac, rows, func(c *connection.Connection) *string { return c.ClientID })
+	visible := auth.FilterClientScoped(ac, rows, func(c *connection.Connection) *string { return ids.StringPtr(c.ClientID) })
 	out := apicommon.MapSlice(visible, fromEntity)
 	return &apicommon.Out[ConnectionListResponse]{Body: ConnectionListResponse{Connections: out, Total: len(out)}}, nil
 }
@@ -73,7 +74,7 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	if c == nil {
 		return nil, httperror.NotFound("Connection", in.ID)
 	}
-	if c.ClientID != nil && !ac.CanAccessClient(*c.ClientID) {
+	if c.ClientID != nil && !ac.CanAccessClient(string(*c.ClientID)) {
 		return nil, httperror.Forbidden("No access to this connection")
 	}
 	return &apicommon.Out[ConnectionResponse]{Body: fromEntity(c)}, nil

@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
@@ -115,7 +116,7 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	if j == nil {
 		return nil, httperror.NotFound("ScheduledJob", in.ID)
 	}
-	if j.ClientID != nil && !ac.CanAccessClient(*j.ClientID) {
+	if j.ClientID != nil && !ac.CanAccessClient(string(*j.ClientID)) {
 		return nil, httperror.Forbidden("No access to this scheduled job")
 	}
 	resp := fromEntity(j)
@@ -259,7 +260,7 @@ func (s *State) getByCode(ctx context.Context, in *byCodeInput) (*apicommon.Out[
 	if j == nil {
 		return nil, httperror.NotFound("ScheduledJob", in.Code)
 	}
-	if j.ClientID != nil && !ac.CanAccessClient(*j.ClientID) {
+	if j.ClientID != nil && !ac.CanAccessClient(string(*j.ClientID)) {
 		return nil, httperror.Forbidden("No access to this scheduled job")
 	}
 	resp := fromEntity(j)
@@ -327,7 +328,7 @@ func (s *State) getInstance(ctx context.Context, in *instanceInput) (*apicommon.
 	if inst == nil {
 		return nil, httperror.NotFound("ScheduledJobInstance", in.InstanceID)
 	}
-	if inst.ClientID != nil && !ac.CanAccessClient(*inst.ClientID) {
+	if inst.ClientID != nil && !ac.CanAccessClient(string(*inst.ClientID)) {
 		return nil, httperror.Forbidden("No access to this instance")
 	}
 	return &apicommon.Out[ScheduledJobInstanceResponse]{Body: instanceToResponse(inst)}, nil
@@ -371,7 +372,7 @@ func (s *State) writeInstanceLog(ctx context.Context, in *writeLogInput) (*apico
 	if inst == nil {
 		return nil, httperror.NotFound("ScheduledJobInstance", in.InstanceID)
 	}
-	if err := auth.CheckScopeAccess(ac, inst.ClientID); err != nil { // A2: per-instance client scope
+	if err := auth.CheckScopeAccess(ac, ids.StringPtr(inst.ClientID)); err != nil { // A2: per-instance client scope
 		return nil, err
 	}
 	log := &scheduledjob.ScheduledJobInstanceLog{
@@ -409,7 +410,7 @@ func (s *State) completeInstance(ctx context.Context, in *completeInstanceInput)
 	if inst == nil {
 		return nil, httperror.NotFound("ScheduledJobInstance", in.InstanceID)
 	}
-	if err := auth.CheckScopeAccess(ac, inst.ClientID); err != nil { // A2: per-instance client scope
+	if err := auth.CheckScopeAccess(ac, ids.StringPtr(inst.ClientID)); err != nil { // A2: per-instance client scope
 		return nil, err
 	}
 	status, completion, ok := resolveInstanceCompletion(in.Body.Status, in.Body.CompletionStatus)

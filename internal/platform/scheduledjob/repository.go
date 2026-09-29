@@ -269,7 +269,7 @@ func (r *Repository) Persist(ctx context.Context, j *ScheduledJob, tx *usecasepg
 	}
 	return r.q.WithTx(tx.Inner()).ScheduledJobUpsert(ctx, dbq.ScheduledJobUpsertParams{
 		ID:                  j.ID,
-		ClientID:            ids.PtrOf[ids.ClientID](j.ClientID),
+		ClientID:            ids.PtrOf[ids.ClientID](ids.StringPtr(j.ClientID)),
 		ApplicationID:       ids.PtrOf[ids.ApplicationID](j.ApplicationID),
 		Code:                j.Code,
 		Name:                j.Name,
@@ -313,7 +313,7 @@ func rowToScheduledJob(row dbq.MsgScheduledJob) (*ScheduledJob, error) {
 	}
 	j := ScheduledJob{
 		ID:                  row.ID,
-		ClientID:            ids.StringPtr(row.ClientID),
+		ClientID:            ids.PtrOf[ids.ClientID](ids.StringPtr(row.ClientID)),
 		ApplicationID:       ids.StringPtr(row.ApplicationID),
 		Code:                row.Code,
 		Name:                row.Name,

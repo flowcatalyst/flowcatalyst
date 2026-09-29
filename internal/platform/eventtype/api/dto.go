@@ -7,6 +7,7 @@ package api
 import (
 	"encoding/json"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
@@ -100,7 +101,7 @@ func fromEntity(et *eventtype.EventType) EventTypeResponse {
 		Description: et.Description,
 		Status:      string(et.Status),
 		Source:      string(et.Source),
-		ClientID:    et.ClientID,
+		ClientID:    ids.StringPtr(et.ClientID),
 		CreatedBy:   et.CreatedBy,
 		CreatedAt:   jsontime.New(et.CreatedAt),
 		UpdatedAt:   jsontime.New(et.UpdatedAt),

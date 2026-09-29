@@ -773,7 +773,7 @@ func (e *LoginEndpoint) autoProvision(ctx context.Context, email, mappingID stri
 	cmd := principalops.CreateCommand{
 		Email:    email,
 		Scope:    string(mapping.ScopeType),
-		ClientID: mapping.PrimaryClientID,
+		ClientID: ids.StringPtr(mapping.PrimaryClientID),
 		IDPType:  &idpType,
 	}
 	// The execution context's PrincipalID is empty — the new user is

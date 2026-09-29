@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/dispatchqueue"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/validate"
@@ -98,7 +99,7 @@ func CreateSubscription(repo *subscription.Repository) usecaseop.Operation[Creat
 
 			s := subscription.New(code, strings.TrimSpace(cmd.Name), cmd.Endpoint)
 			s.Description = cmd.Description
-			s.ClientID = cmd.ClientID
+			s.ClientID = ids.PtrOf[ids.ClientID](cmd.ClientID)
 			s.ConnectionID = cmd.ConnectionID
 			s.DispatchPoolID = cmd.DispatchPoolID
 			s.ServiceAccountID = cmd.ServiceAccountID

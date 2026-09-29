@@ -3,6 +3,7 @@ package api
 import (
 	"testing"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
 )
 
@@ -43,7 +44,7 @@ func TestDeriveUserScope(t *testing.T) {
 		},
 		{
 			name:      "no scope, CLIENT mapping falls back to primary when no clientId",
-			mapping:   &emaildomainmapping.EmailDomainMapping{ScopeType: emaildomainmapping.ScopeClient, PrimaryClientID: new("clt_primary")},
+			mapping:   &emaildomainmapping.EmailDomainMapping{ScopeType: emaildomainmapping.ScopeClient, PrimaryClientID: ids.PtrOf[ids.ClientID](new("clt_primary"))},
 			wantScope: "CLIENT", wantClient: new("clt_primary"),
 		},
 		{
@@ -54,7 +55,7 @@ func TestDeriveUserScope(t *testing.T) {
 		// ── explicit CLIENT ────────────────────────────────────────────
 		{
 			name: "explicit CLIENT uses request clientId over mapping primary", reqScope: new("CLIENT"),
-			mapping:   &emaildomainmapping.EmailDomainMapping{ScopeType: emaildomainmapping.ScopeClient, PrimaryClientID: new("clt_primary")},
+			mapping:   &emaildomainmapping.EmailDomainMapping{ScopeType: emaildomainmapping.ScopeClient, PrimaryClientID: ids.PtrOf[ids.ClientID](new("clt_primary"))},
 			reqClient: new("clt_req"), wantScope: "CLIENT", wantClient: new("clt_req"),
 		},
 		{
@@ -109,7 +110,7 @@ func TestDeriveUserScope(t *testing.T) {
 		{
 			name: "PARTNER accepts primary clientId", reqScope: new("PARTNER"),
 			mapping: &emaildomainmapping.EmailDomainMapping{
-				ScopeType: emaildomainmapping.ScopePartner, PrimaryClientID: new("clt_primary"),
+				ScopeType: emaildomainmapping.ScopePartner, PrimaryClientID: ids.PtrOf[ids.ClientID](new("clt_primary")),
 			},
 			reqClient: new("clt_primary"), wantScope: "PARTNER", wantClient: new("clt_primary"),
 		},

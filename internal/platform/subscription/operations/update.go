@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/dispatchqueue"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
@@ -71,7 +72,7 @@ func UpdateSubscription(repo *subscription.Repository) usecaseop.Operation[Updat
 			}
 			// Per-resource scope: a non-anchor principal must not mutate another
 			// tenant's subscription by guessing its id.
-			if err := auth.CheckScopeAccess(auth.FromContext(ctx), s.ClientID); err != nil {
+			if err := auth.CheckScopeAccess(auth.FromContext(ctx), ids.StringPtr(s.ClientID)); err != nil {
 				return nil, err
 			}
 

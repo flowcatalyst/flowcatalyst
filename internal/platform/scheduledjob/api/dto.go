@@ -4,6 +4,7 @@ package api
 import (
 	"encoding/json"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
@@ -116,7 +117,7 @@ func fromEntity(j *scheduledjob.ScheduledJob) ScheduledJobResponse {
 	}
 	return ScheduledJobResponse{
 		ID:                  j.ID,
-		ClientID:            j.ClientID,
+		ClientID:            ids.StringPtr(j.ClientID),
 		ApplicationID:       j.ApplicationID,
 		Code:                j.Code,
 		Name:                j.Name,
@@ -195,7 +196,7 @@ func instanceToResponse(i *scheduledjob.ScheduledJobInstance) ScheduledJobInstan
 	return ScheduledJobInstanceResponse{
 		ID:               i.ID,
 		ScheduledJobID:   i.ScheduledJobID,
-		ClientID:         i.ClientID,
+		ClientID:         ids.StringPtr(i.ClientID),
 		JobCode:          i.JobCode,
 		TriggerKind:      string(i.TriggerKind),
 		ScheduledFor:     sched,
@@ -229,7 +230,7 @@ func instanceLogToResponse(l *scheduledjob.ScheduledJobInstanceLog) ScheduledJob
 		ID:             l.ID,
 		InstanceID:     l.InstanceID,
 		ScheduledJobID: l.ScheduledJobID,
-		ClientID:       l.ClientID,
+		ClientID:       ids.StringPtr(l.ClientID),
 		Level:          l.Level,
 		Message:        l.Message,
 		Metadata:       l.Metadata,

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
@@ -213,7 +214,7 @@ func SyncScheduledJobs(repo *scheduledjob.Repository) usecaseop.Operation[SyncSc
 				j.Payload = entry.Payload
 				j.TimeoutSeconds = entry.TimeoutSeconds
 				j.TargetURL = entry.TargetURL
-				j.ClientID = cmd.ClientID
+				j.ClientID = ids.PtrOf[ids.ClientID](cmd.ClientID)
 				if cmd.ApplicationID != "" {
 					j.ApplicationID = &cmd.ApplicationID
 				}

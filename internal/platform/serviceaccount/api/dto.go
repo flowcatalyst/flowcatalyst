@@ -4,6 +4,7 @@ package api
 import (
 	"fmt"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
@@ -59,7 +60,7 @@ func roleDTOs(roles []serviceaccount.RoleAssignment) []RoleAssignmentDTO {
 	for _, r := range roles {
 		out = append(out, RoleAssignmentDTO{
 			Role:             r.Role,
-			ClientID:         r.ClientID,
+			ClientID:         ids.StringPtr(r.ClientID),
 			AssignmentSource: r.AssignmentSource,
 			AssignedAt:       jsontime.New(r.AssignedAt),
 			AssignedBy:       r.AssignedBy,

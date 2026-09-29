@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
@@ -96,7 +97,7 @@ func SetProperty(repo *platformconfig.Repository) usecaseop.Operation[SetPropert
 			} else {
 				c = platformconfig.NewConfig(cmd.ApplicationCode, cmd.Section, cmd.Property, cmd.Value)
 				c.Scope = scope
-				c.ClientID = cmd.ClientID
+				c.ClientID = ids.PtrOf[ids.ClientID](cmd.ClientID)
 				c.Description = cmd.Description
 				if cmd.ValueType != nil {
 					// Already restricted to a known value in Validate above.

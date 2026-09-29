@@ -2,6 +2,7 @@
 package api
 
 import (
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/jsontime"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
@@ -209,7 +210,7 @@ func fromEntity(s *subscription.Subscription) SubscriptionResponse {
 		ApplicationCode:  s.ApplicationCode,
 		Name:             s.Name,
 		Description:      s.Description,
-		ClientID:         s.ClientID,
+		ClientID:         ids.StringPtr(s.ClientID),
 		ClientIdentifier: s.ClientIdentifier,
 		ClientScoped:     s.ClientScoped,
 		EventTypes:       events,

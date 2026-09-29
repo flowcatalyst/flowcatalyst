@@ -5,6 +5,7 @@ package connection
 import (
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
@@ -63,17 +64,17 @@ type Connection struct {
 	// application, exactly like subscription.Subscription.ApplicationCode. A
 	// connection with no application is "shared" (not "global" — that word is
 	// reserved in this codebase for "no client").
-	ApplicationCode  *string   `json:"applicationCode,omitempty"`
-	Name             string    `json:"name"`
-	Description      *string   `json:"description,omitempty"`
-	ExternalID       *string   `json:"externalId,omitempty"`
-	Status           Status    `json:"status"`
-	ServiceAccountID string    `json:"serviceAccountId"`
-	ClientID         *string   `json:"clientId,omitempty"`
-	ClientIdentifier *string   `json:"clientIdentifier,omitempty"`
-	Source           Source    `json:"source"`
-	CreatedAt        time.Time `json:"createdAt"`
-	UpdatedAt        time.Time `json:"updatedAt"`
+	ApplicationCode  *string       `json:"applicationCode,omitempty"`
+	Name             string        `json:"name"`
+	Description      *string       `json:"description,omitempty"`
+	ExternalID       *string       `json:"externalId,omitempty"`
+	Status           Status        `json:"status"`
+	ServiceAccountID string        `json:"serviceAccountId"`
+	ClientID         *ids.ClientID `json:"clientId,omitempty"`
+	ClientIdentifier *string       `json:"clientIdentifier,omitempty"`
+	Source           Source        `json:"source"`
+	CreatedAt        time.Time     `json:"createdAt"`
+	UpdatedAt        time.Time     `json:"updatedAt"`
 }
 
 // IDStr satisfies usecase.HasID.

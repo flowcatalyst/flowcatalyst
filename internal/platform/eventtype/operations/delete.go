@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
@@ -38,7 +39,7 @@ func DeleteEventType(repo *eventtype.Repository) usecaseop.Operation[DeleteComma
 			if et == nil {
 				return nil, httperror.NotFound("EventType", cmd.ID)
 			}
-			if err := auth.CheckScopeAccess(auth.FromContext(ctx), et.ClientID); err != nil {
+			if err := auth.CheckScopeAccess(auth.FromContext(ctx), ids.StringPtr(et.ClientID)); err != nil {
 				return nil, err
 			}
 

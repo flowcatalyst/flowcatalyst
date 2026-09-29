@@ -518,7 +518,7 @@ func domainOwnerClientIDs(m *emaildomainmapping.EmailDomainMapping) []string {
 	}
 	owners := make([]string, 0, 1+len(m.AdditionalClientIDs))
 	if m.PrimaryClientID != nil && *m.PrimaryClientID != "" {
-		owners = append(owners, *m.PrimaryClientID)
+		owners = append(owners, string(*m.PrimaryClientID))
 	}
 	owners = append(owners, m.AdditionalClientIDs...)
 	return owners
@@ -799,7 +799,7 @@ func deriveUserScope(reqScope *string, isAnchorDomain bool, mapping *emaildomain
 		if reqClientID == nil || *reqClientID == "" {
 			return "", nil, usecase.Validation("CLIENT_REQUIRED", "clientId is required for partner users")
 		}
-		allowed := (mapping.PrimaryClientID != nil && *mapping.PrimaryClientID == *reqClientID)
+		allowed := (mapping.PrimaryClientID != nil && string(*mapping.PrimaryClientID) == *reqClientID)
 		if slices.Contains(mapping.GrantedClientIDs, *reqClientID) {
 			allowed = true
 		}
@@ -811,7 +811,7 @@ func deriveUserScope(reqScope *string, isAnchorDomain bool, mapping *emaildomain
 	case "CLIENT":
 		clientID := reqClientID
 		if clientID == nil && mapping != nil && mapping.ScopeType == emaildomainmapping.ScopeClient {
-			clientID = mapping.PrimaryClientID
+			clientID = ids.StringPtr(mapping.PrimaryClientID)
 		}
 		return "CLIENT", clientID, nil
 	default:
@@ -1662,14 +1662,14 @@ func allowedClientIDsForDomain(mapping *emaildomainmapping.EmailDomainMapping) [
 			out = append(out, id)
 		}
 		if mapping.PrimaryClientID != nil {
-			add(*mapping.PrimaryClientID)
+			add(string(*mapping.PrimaryClientID))
 		}
 		for _, c := range mapping.GrantedClientIDs {
 			add(c)
 		}
 	case emaildomainmapping.ScopeClient:
 		if mapping.PrimaryClientID != nil && *mapping.PrimaryClientID != "" {
-			out = append(out, *mapping.PrimaryClientID)
+			out = append(out, string(*mapping.PrimaryClientID))
 		}
 	}
 	return out

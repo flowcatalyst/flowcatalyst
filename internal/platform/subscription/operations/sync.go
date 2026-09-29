@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -228,7 +229,7 @@ func SyncSubscriptions(
 				// never violate this (it only ever resolves this client's own
 				// connection or a global one); a bare connectionId can name
 				// anything, so it needs the explicit check.
-				if c.ClientID != nil && (cmd.ClientID == nil || *c.ClientID != *cmd.ClientID) {
+				if c.ClientID != nil && (cmd.ClientID == nil || string(*c.ClientID) != *cmd.ClientID) {
 					return nil, usecase.Validation("CONNECTION_SCOPE_MISMATCH",
 						"Subscription '"+in.Code+"': connection '"+*in.ConnectionID+"' is scoped to a different client")
 				}
@@ -306,7 +307,7 @@ func SyncSubscriptions(
 				sub.ConnectionID = in.ConnectionID
 				appCode := cmd.ApplicationCode
 				sub.ApplicationCode = &appCode
-				sub.ClientID = cmd.ClientID
+				sub.ClientID = ids.PtrOf[ids.ClientID](cmd.ClientID)
 				sub.Source = subscription.SourceAPI
 				sub.Description = in.Description
 				sub.EventTypes = bindings

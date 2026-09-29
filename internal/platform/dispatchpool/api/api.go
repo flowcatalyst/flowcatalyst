@@ -7,6 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
@@ -55,7 +56,7 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[Dispatc
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_with_filters failed", err)
 	}
-	visible := auth.FilterClientScoped(ac, rows, func(p *dispatchpool.DispatchPool) *string { return p.ClientID })
+	visible := auth.FilterClientScoped(ac, rows, func(p *dispatchpool.DispatchPool) *string { return ids.StringPtr(p.ClientID) })
 	out := apicommon.MapSlice(visible, fromEntity)
 	return &apicommon.Out[DispatchPoolListResponse]{Body: DispatchPoolListResponse{Pools: out, Total: len(out)}}, nil
 }
@@ -72,7 +73,7 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	if p == nil {
 		return nil, httperror.NotFound("DispatchPool", in.ID)
 	}
-	if p.ClientID != nil && !ac.CanAccessClient(*p.ClientID) {
+	if p.ClientID != nil && !ac.CanAccessClient(string(*p.ClientID)) {
 		return nil, httperror.Forbidden("No access to this dispatch pool")
 	}
 	return &apicommon.Out[DispatchPoolResponse]{Body: fromEntity(p)}, nil

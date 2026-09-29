@@ -2,6 +2,7 @@
 package api
 
 import (
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
@@ -80,7 +81,7 @@ func fromEntity(c *connection.Connection) ConnectionResponse {
 		ExternalID:       c.ExternalID,
 		Status:           string(c.Status),
 		ServiceAccountID: c.ServiceAccountID,
-		ClientID:         c.ClientID,
+		ClientID:         ids.StringPtr(c.ClientID),
 		ClientIdentifier: c.ClientIdentifier,
 		Source:           string(c.Source),
 		CreatedAt:        jsontime.New(c.CreatedAt),
