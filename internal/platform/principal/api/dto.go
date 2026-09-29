@@ -118,9 +118,9 @@ type UpdatePrincipalRequest struct {
 	Email  *string `json:"email,omitempty" doc:"Optional; asserted against the stored email — a different value is rejected, not treated as a rename"`
 }
 
-func (r UpdatePrincipalRequest) toCommand(id string) operations.UpdateCommand {
+func (r UpdatePrincipalRequest) toCommand(id ids.PrincipalID) operations.UpdateCommand {
 	return operations.UpdateCommand{
-		ID:     ids.PrincipalID(id),
+		ID:     id,
 		Name:   r.Name,
 		Active: r.Active,
 		Email:  r.Email,
@@ -368,7 +368,7 @@ type PrincipalRoleAssignmentDTO struct {
 // roleAssignmentDTOs builds the wire rows for a principal's roles. The id is
 // synthetic (principals don't store a per-assignment id), using the
 // "{principalID}-role-{i}" scheme so the SPA has a stable :key.
-func roleAssignmentDTOs(principalID string, roles []serviceaccount.RoleAssignment) []PrincipalRoleAssignmentDTO {
+func roleAssignmentDTOs(principalID ids.PrincipalID, roles []serviceaccount.RoleAssignment) []PrincipalRoleAssignmentDTO {
 	out := make([]PrincipalRoleAssignmentDTO, 0, len(roles))
 	for i, r := range roles {
 		source := "ADMIN"

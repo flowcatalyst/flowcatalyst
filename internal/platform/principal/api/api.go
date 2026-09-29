@@ -874,19 +874,19 @@ func boolOrFalse(b *bool) bool {
 // id would — never 403 — so an unauthorized caller can't use the response to
 // learn whether an id is real (PR-3(b)). blockNonClientTarget stays a 403: a
 // distinct "wrong kind of administrator" decision, not a tenancy boundary.
-func (s *State) requireScopeByID(ctx context.Context, ac *auth.AuthContext, id string) error {
-	p, err := s.Repo.FindByID(ctx, ids.PrincipalID(id))
+func (s *State) requireScopeByID(ctx context.Context, ac *auth.AuthContext, id ids.PrincipalID) error {
+	p, err := s.Repo.FindByID(ctx, id)
 	if err != nil {
 		return usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if p == nil {
-		return httperror.NotFound("Principal", id)
+		return httperror.NotFound("Principal", string(id))
 	}
 	if err := blockNonClientTarget(ac, p); err != nil {
 		return err
 	}
 	if !auth.CanAccessScope(ac, ids.StringPtr(p.ClientID)) {
-		return httperror.NotFound("Principal", id)
+		return httperror.NotFound("Principal", string(id))
 	}
 	return nil
 }
@@ -1020,7 +1020,7 @@ func dedupeStrings(xs []string) []string {
 }
 
 type updateInput struct {
-	ID   string `path:"id"`
+	ID   ids.PrincipalID `path:"id"`
 	Body UpdatePrincipalRequest
 }
 
@@ -1035,12 +1035,12 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Out[Pri
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateUser(s.Repo), in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
-	p, err := s.Repo.FindByID(ctx, ids.PrincipalID(in.ID))
+	p, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if p == nil {
-		return nil, httperror.NotFound("Principal", in.ID)
+		return nil, httperror.NotFound("Principal", string(in.ID))
 	}
 	return &apicommon.Out[PrincipalResponse]{Body: fromEntity(p)}, nil
 }
@@ -1072,7 +1072,7 @@ func (s *State) deactivate(ctx context.Context, in *apicommon.IDInput) (*apicomm
 }
 
 type resetPasswordInput struct {
-	ID   string `path:"id"`
+	ID   ids.PrincipalID `path:"id"`
 	Body ResetPasswordRequest
 }
 
@@ -1087,7 +1087,7 @@ func (s *State) resetPassword(ctx context.Context, in *resetPasswordInput) (*api
 	ec := auth.NewExecutionContext(ctx)
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.ResetPassword(s.Repo),
 		operations.ResetPasswordCommand{
-			ID:                        ids.PrincipalID(in.ID),
+			ID:                        in.ID,
 			NewPassword:               in.Body.NewPassword,
 			EnforcePasswordComplexity: in.Body.EnforcePasswordComplexity,
 		}, ec); err != nil {
@@ -1110,7 +1110,7 @@ func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.E
 }
 
 type assignRolesInput struct {
-	ID   string `path:"id"`
+	ID   ids.PrincipalID `path:"id"`
 	Body AssignPrincipalRolesRequest
 }
 
@@ -1125,12 +1125,12 @@ func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*apicomm
 	// Load the target to shape the desired role set for non-anchor admins; the
 	// per-resource authorization (RequireUserAdmin + blockNonClientTarget) is
 	// enforced inside the AssignRoles use case post-load.
-	p, err := s.Repo.FindByID(ctx, ids.PrincipalID(in.ID))
+	p, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if p == nil {
-		return nil, httperror.NotFound("Principal", in.ID)
+		return nil, httperror.NotFound("Principal", string(in.ID))
 	}
 	// A non-anchor administrator (client-admin) may only assign
 	// application-scoped roles for applications their client can access —
@@ -1159,15 +1159,15 @@ func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*apicomm
 
 	ec := auth.NewExecutionContext(ctx)
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.AssignRoles(s.Repo, s.Roles),
-		operations.AssignRolesCommand{UserID: ids.PrincipalID(in.ID), Roles: effectiveRoles}, ec); err != nil {
+		operations.AssignRolesCommand{UserID: in.ID, Roles: effectiveRoles}, ec); err != nil {
 		return nil, err
 	}
-	refreshed, err := s.Repo.FindByID(ctx, ids.PrincipalID(in.ID))
+	refreshed, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if refreshed == nil {
-		return nil, httperror.NotFound("Principal", in.ID)
+		return nil, httperror.NotFound("Principal", string(in.ID))
 	}
 	return &apicommon.Out[RolesAssignedResponse]{Body: RolesAssignedResponse{
 		Roles:   roleAssignmentDTOs(in.ID, refreshed.Roles),
@@ -1177,7 +1177,7 @@ func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*apicomm
 }
 
 type assignAppAccessInput struct {
-	ID   string `path:"id"`
+	ID   ids.PrincipalID `path:"id"`
 	Body AssignApplicationAccessRequest
 }
 
@@ -1192,12 +1192,12 @@ func (s *State) assignApplicationAccess(ctx context.Context, in *assignAppAccess
 	// Load the target to bound the desired application set for non-anchor admins;
 	// the per-resource authorization (RequireUserAdmin + blockNonClientTarget) is
 	// enforced inside the AssignApplicationAccess use case post-load.
-	p, err := s.Repo.FindByID(ctx, ids.PrincipalID(in.ID))
+	p, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if p == nil {
-		return nil, httperror.NotFound("Principal", in.ID)
+		return nil, httperror.NotFound("Principal", string(in.ID))
 	}
 	// Granting all-applications access exceeds any client-bounded reach, so only
 	// an assigner that itself holds all-applications access (e.g. an anchor admin)
@@ -1225,7 +1225,7 @@ func (s *State) assignApplicationAccess(ctx context.Context, in *assignAppAccess
 	ec := auth.NewExecutionContext(ctx)
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.AssignApplicationAccess(s.Repo, s.Applications),
 		operations.AssignApplicationAccessCommand{
-			UserID:          ids.PrincipalID(in.ID),
+			UserID:          in.ID,
 			ApplicationIDs:  desiredIDs,
 			AllApplications: in.Body.AllApplications,
 		}, ec); err != nil {
@@ -1263,7 +1263,7 @@ func (s *State) listClientAccess(ctx context.Context, in *apicommon.IDInput) (*a
 }
 
 type grantClientAccessInput struct {
-	ID   string `path:"id"`
+	ID   ids.PrincipalID `path:"id"`
 	Body GrantClientAccessRequest
 }
 
@@ -1275,10 +1275,10 @@ func (s *State) grantClientAccess(ctx context.Context, in *grantClientAccessInpu
 	}
 	ec := auth.NewExecutionContext(ctx)
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.GrantClientAccess(s.Repo, s.Clients, s.GrantRepo),
-		operations.GrantClientAccessCommand{UserID: ids.PrincipalID(in.ID), ClientID: in.Body.ClientID}, ec); err != nil {
+		operations.GrantClientAccessCommand{UserID: in.ID, ClientID: in.Body.ClientID}, ec); err != nil {
 		return nil, err
 	}
-	g, err := s.GrantRepo.FindByPrincipalAndClient(ctx, ids.PrincipalID(in.ID), ids.ClientID(in.Body.ClientID))
+	g, err := s.GrantRepo.FindByPrincipalAndClient(ctx, in.ID, ids.ClientID(in.Body.ClientID))
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find grant failed", err)
 	}
@@ -1289,7 +1289,7 @@ func (s *State) grantClientAccess(ctx context.Context, in *grantClientAccessInpu
 }
 
 type setClientAssociationInput struct {
-	ID   string `path:"id"`
+	ID   ids.PrincipalID `path:"id"`
 	Body ClientAssociationRequest
 }
 
@@ -1310,25 +1310,25 @@ func (s *State) setClientAssociation(ctx context.Context, in *setClientAssociati
 	}
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.SetClientAssociation(s.Repo, s.Clients, s.GrantRepo),
 		operations.SetClientAssociationCommand{
-			UserID:   ids.PrincipalID(in.ID),
+			UserID:   in.ID,
 			ClientID: in.Body.ClientID,
 			Mode:     operations.ClientAssociationMode(mode),
 		}, ec); err != nil {
 		return nil, err
 	}
-	p, err := s.Repo.FindByID(ctx, ids.PrincipalID(in.ID))
+	p, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if p == nil {
-		return nil, httperror.NotFound("Principal", in.ID)
+		return nil, httperror.NotFound("Principal", string(in.ID))
 	}
 	return &apicommon.Out[PrincipalResponse]{Body: fromEntity(p)}, nil
 }
 
 type revokeClientAccessInput struct {
-	ID       string `path:"id"`
-	ClientID string `path:"clientId"`
+	ID       ids.PrincipalID `path:"id"`
+	ClientID ids.ClientID    `path:"clientId"`
 }
 
 func (s *State) revokeClientAccess(ctx context.Context, in *revokeClientAccessInput) (*apicommon.Empty, error) {
@@ -1339,7 +1339,7 @@ func (s *State) revokeClientAccess(ctx context.Context, in *revokeClientAccessIn
 	}
 	ec := auth.NewExecutionContext(ctx)
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.RevokeClientAccess(s.Repo, s.GrantRepo),
-		operations.RevokeClientAccessCommand{UserID: ids.PrincipalID(in.ID), ClientID: in.ClientID}, ec); err != nil {
+		operations.RevokeClientAccessCommand{UserID: in.ID, ClientID: string(in.ClientID)}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
@@ -1434,7 +1434,7 @@ func requireDeveloperCredentialAccess(ac *auth.AuthContext, targetID string) err
 // no body at all: with a non-pointer Body, huma marks the request body
 // required and rejects a body-less call with "request body is required".
 type sendPasswordResetInput struct {
-	ID   string `path:"id"`
+	ID   ids.PrincipalID `path:"id"`
 	Body *struct {
 		Reset2FA bool `json:"reset2fa,omitempty"`
 	}
@@ -1446,19 +1446,19 @@ func (s *State) sendPasswordReset(ctx context.Context, in *sendPasswordResetInpu
 	if err := auth.CanWritePrincipals(ac); err != nil {
 		return nil, err
 	}
-	p, err := s.Repo.FindByID(ctx, ids.PrincipalID(in.ID))
+	p, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if p == nil {
-		return nil, httperror.NotFound("Principal", in.ID)
+		return nil, httperror.NotFound("Principal", string(in.ID))
 	}
 	if err := blockNonClientTarget(ac, p); err != nil {
 		return nil, err
 	}
 	// Out-of-scope answers the same not-found error a missing id would (PR-3(b)).
 	if !auth.CanAccessScope(ac, ids.StringPtr(p.ClientID)) {
-		return nil, httperror.NotFound("Principal", in.ID)
+		return nil, httperror.NotFound("Principal", string(in.ID))
 	}
 	reset2FA := false
 	if in.Body != nil {
@@ -1466,7 +1466,7 @@ func (s *State) sendPasswordReset(ctx context.Context, in *sendPasswordResetInpu
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
 	if err := operations.SendPasswordReset(ctx, s.Repo, s.PasswordEmailer,
-		operations.SendPasswordResetCommand{ID: ids.PrincipalID(in.ID), Reset2FA: reset2FA}, ec); err != nil {
+		operations.SendPasswordResetCommand{ID: in.ID, Reset2FA: reset2FA}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Out[apicommon.StatusChangeResponse]{Body: apicommon.StatusChangeResponse{Message: "Password reset email sent"}}, nil
@@ -1694,11 +1694,11 @@ func (s *State) listRoles(ctx context.Context, in *apicommon.IDInput) (*apicommo
 	if p.ClientID != nil && !ac.CanAccessClient(string(*p.ClientID)) {
 		return nil, httperror.NotFound("Principal", in.ID)
 	}
-	return &apicommon.Out[PrincipalRoleListResponse]{Body: PrincipalRoleListResponse{Roles: roleAssignmentDTOs(in.ID, p.Roles)}}, nil
+	return &apicommon.Out[PrincipalRoleListResponse]{Body: PrincipalRoleListResponse{Roles: roleAssignmentDTOs(ids.PrincipalID(in.ID), p.Roles)}}, nil
 }
 
 type addRoleInput struct {
-	ID   string `path:"id"`
+	ID   ids.PrincipalID `path:"id"`
 	Body AddRoleRequest
 }
 
@@ -1712,12 +1712,12 @@ func (s *State) addRole(ctx context.Context, in *addRoleInput) (*apicommon.Out[P
 	}
 	// Load the target to bound the role for non-anchor admins and to apply the
 	// idempotent skip.
-	p, err := s.Repo.FindByID(ctx, ids.PrincipalID(in.ID))
+	p, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if p == nil {
-		return nil, httperror.NotFound("Principal", in.ID)
+		return nil, httperror.NotFound("Principal", string(in.ID))
 	}
 	// Per-resource authorization (the use-case-side requireUserAdmin shape:
 	// blockNonClientTarget + CanAccessScope, out-of-scope answers the same
@@ -1731,7 +1731,7 @@ func (s *State) addRole(ctx context.Context, in *addRoleInput) (*apicommon.Out[P
 		return nil, err
 	}
 	if !auth.CanAccessScope(ac, ids.StringPtr(p.ClientID)) {
-		return nil, httperror.NotFound("Principal", in.ID)
+		return nil, httperror.NotFound("Principal", string(in.ID))
 	}
 	if !ac.IsAnchor() {
 		allowed, aerr := s.clientAppIDs(ctx, clientIDOf(p))
@@ -1747,13 +1747,13 @@ func (s *State) addRole(ctx context.Context, in *addRoleInput) (*apicommon.Out[P
 		desired := append(roleNamesFrom(p.Roles), in.Body.Role)
 		ec := auth.NewExecutionContext(ctx)
 		if _, err := usecaseop.Run(ctx, s.UoW, operations.AssignRoles(s.Repo, s.Roles),
-			operations.AssignRolesCommand{UserID: ids.PrincipalID(in.ID), Roles: desired}, ec); err != nil {
+			operations.AssignRolesCommand{UserID: in.ID, Roles: desired}, ec); err != nil {
 			return nil, err
 		}
-		if p, err = s.Repo.FindByID(ctx, ids.PrincipalID(in.ID)); err != nil {
+		if p, err = s.Repo.FindByID(ctx, in.ID); err != nil {
 			return nil, usecase.Internal("REPO", "find_by_id failed", err)
 		} else if p == nil {
-			return nil, httperror.NotFound("Principal", in.ID)
+			return nil, httperror.NotFound("Principal", string(in.ID))
 		}
 	}
 	// Return the updated principal (full PrincipalResponse).
@@ -1761,8 +1761,8 @@ func (s *State) addRole(ctx context.Context, in *addRoleInput) (*apicommon.Out[P
 }
 
 type removeRoleInput struct {
-	ID   string `path:"id"`
-	Role string `path:"role"`
+	ID   ids.PrincipalID `path:"id"`
+	Role string          `path:"role"`
 }
 
 func (s *State) removeRole(ctx context.Context, in *removeRoleInput) (*apicommon.Out[PrincipalResponse], error) {
@@ -1775,12 +1775,12 @@ func (s *State) removeRole(ctx context.Context, in *removeRoleInput) (*apicommon
 	}
 	// Load the target to bound the role for non-anchor admins and to apply the
 	// idempotent skip.
-	p, err := s.Repo.FindByID(ctx, ids.PrincipalID(in.ID))
+	p, err := s.Repo.FindByID(ctx, in.ID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if p == nil {
-		return nil, httperror.NotFound("Principal", in.ID)
+		return nil, httperror.NotFound("Principal", string(in.ID))
 	}
 	// Per-resource authorization (the use-case-side requireUserAdmin shape:
 	// blockNonClientTarget + CanAccessScope, out-of-scope answers the same
@@ -1794,7 +1794,7 @@ func (s *State) removeRole(ctx context.Context, in *removeRoleInput) (*apicommon
 		return nil, err
 	}
 	if !auth.CanAccessScope(ac, ids.StringPtr(p.ClientID)) {
-		return nil, httperror.NotFound("Principal", in.ID)
+		return nil, httperror.NotFound("Principal", string(in.ID))
 	}
 	// A non-anchor admin may only remove roles they could also assign — so they
 	// can't strip a user's platform / other-application roles.
@@ -1820,13 +1820,13 @@ func (s *State) removeRole(ctx context.Context, in *removeRoleInput) (*apicommon
 	if found { // skip mutation when absent (idempotent)
 		ec := auth.NewExecutionContext(ctx)
 		if _, err := usecaseop.Run(ctx, s.UoW, operations.AssignRoles(s.Repo, s.Roles),
-			operations.AssignRolesCommand{UserID: ids.PrincipalID(in.ID), Roles: desired}, ec); err != nil {
+			operations.AssignRolesCommand{UserID: in.ID, Roles: desired}, ec); err != nil {
 			return nil, err
 		}
-		if p, err = s.Repo.FindByID(ctx, ids.PrincipalID(in.ID)); err != nil {
+		if p, err = s.Repo.FindByID(ctx, in.ID); err != nil {
 			return nil, usecase.Internal("REPO", "find_by_id failed", err)
 		} else if p == nil {
-			return nil, httperror.NotFound("Principal", in.ID)
+			return nil, httperror.NotFound("Principal", string(in.ID))
 		}
 	}
 	// Return the updated principal (full PrincipalResponse).

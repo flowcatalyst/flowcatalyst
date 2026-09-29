@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/operations"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
@@ -61,7 +62,7 @@ func TestGetApplication_HasLoginClient(t *testing.T) {
 
 	// Provision a login client (authorization_code grant, linked to the app).
 	_, err = s.provisionLoginClient(authCtx, &provisionLoginClientInput{
-		ID: ev.ApplicationID,
+		ID: ids.ApplicationID(ev.ApplicationID),
 		Body: ProvisionLoginClientRequest{
 			RedirectURIs: []string{"https://hlc-app.example.com/callback"},
 		},

@@ -7,6 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	appops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
@@ -150,7 +151,7 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreateClientRequest
 }
 
 type updateInput struct {
-	ID   string `path:"id"`
+	ID   ids.ClientID `path:"id"`
 	Body UpdateClientRequest
 }
 
@@ -159,7 +160,7 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, 
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
-	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateClient(s.Repo), in.Body.toCommand(in.ID), ec); err != nil {
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateClient(s.Repo), in.Body.toCommand(string(in.ID)), ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
@@ -177,7 +178,7 @@ func (s *State) activate(ctx context.Context, in *apicommon.IDInput) (*apicommon
 }
 
 type suspendInput struct {
-	ID   string `path:"id"`
+	ID   ids.ClientID `path:"id"`
 	Body SuspendClientRequest
 }
 
@@ -186,14 +187,14 @@ func (s *State) suspend(ctx context.Context, in *suspendInput) (*apicommon.Out[a
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
-	if _, err := usecaseop.Run(ctx, s.UoW, operations.SuspendClient(s.Repo), operations.SuspendCommand{ID: in.ID, Reason: in.Body.Reason}, ec); err != nil {
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.SuspendClient(s.Repo), operations.SuspendCommand{ID: string(in.ID), Reason: in.Body.Reason}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Out[apicommon.StatusChangeResponse]{Body: apicommon.StatusChangeResponse{Message: "Client suspended"}}, nil
 }
 
 type addNoteInput struct {
-	ID   string `path:"id"`
+	ID   ids.ClientID `path:"id"`
 	Body AddNoteRequest
 }
 
@@ -203,7 +204,7 @@ func (s *State) addNote(ctx context.Context, in *addNoteInput) (*apicommon.Out[a
 	}
 	ec := auth.NewExecutionContext(ctx)
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.AddNote(s.Repo), operations.AddNoteCommand{
-		ClientID: in.ID,
+		ClientID: string(in.ID),
 		Category: in.Body.Category,
 		Text:     in.Body.Text,
 	}, ec); err != nil {
@@ -227,7 +228,7 @@ func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.E
 // ── deactivate (alias for delete with a reason) ──────────────────────────
 
 type deactivateInput struct {
-	ID   string `path:"id"`
+	ID   ids.ClientID `path:"id"`
 	Body StatusChangeRequest
 }
 
@@ -239,7 +240,7 @@ func (s *State) deactivate(ctx context.Context, in *deactivateInput) (*apicommon
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
-	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeleteClient(s.Repo), operations.DeleteCommand{ID: in.ID}, ec); err != nil {
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeleteClient(s.Repo), operations.DeleteCommand{ID: string(in.ID)}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Out[apicommon.StatusChangeResponse]{Body: apicommon.StatusChangeResponse{Message: "Client deactivated"}}, nil
@@ -298,7 +299,7 @@ func (s *State) getApplications(ctx context.Context, in *apicommon.IDInput) (*ap
 }
 
 type updateApplicationsInput struct {
-	ID   string `path:"id"`
+	ID   ids.ClientID `path:"id"`
 	Body UpdateClientApplicationsRequest
 }
 
@@ -312,7 +313,7 @@ func (s *State) updateApplications(ctx context.Context, in *updateApplicationsIn
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
 	cmd := appops.UpdateClientApplicationsCommand{
-		ClientID:              in.ID,
+		ClientID:              string(in.ID),
 		EnabledApplicationIDs: in.Body.EnabledApplicationIDs,
 	}
 	if _, err := usecaseop.Run(ctx, s.UoW, appops.UpdateClientApplications(s.Applications, s.Repo, s.ClientConfigs), cmd, ec); err != nil {
@@ -322,8 +323,8 @@ func (s *State) updateApplications(ctx context.Context, in *updateApplicationsIn
 }
 
 type appLinkInput struct {
-	ID            string `path:"id"`
-	ApplicationID string `path:"applicationId"`
+	ID            ids.ClientID      `path:"id"`
+	ApplicationID ids.ApplicationID `path:"applicationId"`
 }
 
 func (s *State) enableApplication(ctx context.Context, in *appLinkInput) (*apicommon.Empty, error) {
@@ -336,8 +337,8 @@ func (s *State) enableApplication(ctx context.Context, in *appLinkInput) (*apico
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
 	cmd := appops.EnableForClientCommand{
-		ApplicationID: in.ApplicationID,
-		ClientID:      in.ID,
+		ApplicationID: string(in.ApplicationID),
+		ClientID:      string(in.ID),
 	}
 	if _, err := usecaseop.Run(ctx, s.UoW, appops.EnableApplicationForClient(s.Applications, s.Repo, s.ClientConfigs), cmd, ec); err != nil {
 		return nil, err
@@ -355,8 +356,8 @@ func (s *State) disableApplication(ctx context.Context, in *appLinkInput) (*apic
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
 	cmd := appops.DisableForClientCommand{
-		ApplicationID: in.ApplicationID,
-		ClientID:      in.ID,
+		ApplicationID: string(in.ApplicationID),
+		ClientID:      string(in.ID),
 	}
 	if _, err := usecaseop.Run(ctx, s.UoW, appops.DisableApplicationForClient(s.ClientConfigs), cmd, ec); err != nil {
 		return nil, err

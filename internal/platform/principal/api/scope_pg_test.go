@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	clientops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
@@ -165,7 +166,7 @@ func TestListAvailableApplications_CrossTenant_NotFound(t *testing.T) {
 func TestAddRole_IdempotentSkip_CrossTenant_NotFoundNotLeaked(t *testing.T) {
 	fx := newScopeFixture(t, "addrole")
 
-	out, err := fx.s.addRole(fx.adminCtx, &addRoleInput{ID: fx.targetID, Body: AddRoleRequest{Role: "does-not-matter:role"}})
+	out, err := fx.s.addRole(fx.adminCtx, &addRoleInput{ID: ids.PrincipalID(fx.targetID), Body: AddRoleRequest{Role: "does-not-matter:role"}})
 	require.Nil(t, out, "must never leak the cross-tenant principal's data")
 	status, _ := envelopeOf(err)
 	assert.Equal(t, http.StatusNotFound, status)
@@ -178,7 +179,7 @@ func TestAddRole_IdempotentSkip_CrossTenant_NotFoundNotLeaked(t *testing.T) {
 func TestRemoveRole_IdempotentSkip_CrossTenant_NotFoundNotLeaked(t *testing.T) {
 	fx := newScopeFixture(t, "removerole")
 
-	out, err := fx.s.removeRole(fx.adminCtx, &removeRoleInput{ID: fx.targetID, Role: "does-not-matter:role"})
+	out, err := fx.s.removeRole(fx.adminCtx, &removeRoleInput{ID: ids.PrincipalID(fx.targetID), Role: "does-not-matter:role"})
 	require.Nil(t, out, "must never leak the cross-tenant principal's data")
 	status, _ := envelopeOf(err)
 	assert.Equal(t, http.StatusNotFound, status)

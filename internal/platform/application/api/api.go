@@ -7,6 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/operations"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
@@ -134,7 +135,7 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreateApplicationRe
 }
 
 type updateInput struct {
-	ID   string `path:"id"`
+	ID   ids.ApplicationID `path:"id"`
 	Body UpdateApplicationRequest
 }
 
@@ -144,7 +145,7 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, 
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
-	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateApplication(s.Repo), in.Body.toCommand(in.ID), ec); err != nil {
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateApplication(s.Repo), in.Body.toCommand(string(in.ID)), ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
@@ -200,7 +201,7 @@ func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.E
 }
 
 type attachSAInput struct {
-	ID   string `path:"id"`
+	ID   ids.ApplicationID `path:"id"`
 	Body AttachServiceAccountRequest
 }
 
@@ -212,7 +213,7 @@ func (s *State) attachServiceAccount(ctx context.Context, in *attachSAInput) (*a
 	ec := auth.NewExecutionContext(ctx)
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.AttachServiceAccount(s.Repo, s.Principals),
 		operations.AttachServiceAccountCommand{
-			ApplicationID:      in.ID,
+			ApplicationID:      string(in.ID),
 			ServiceAccountID:   in.Body.ServiceAccountID,
 			ServiceAccountCode: in.Body.ServiceAccountCode,
 		}, ec); err != nil {
@@ -235,8 +236,8 @@ func (s *State) listClientConfigs(ctx context.Context, in *apicommon.IDInput) (*
 }
 
 type clientToggleInput struct {
-	ID       string `path:"id"`
-	ClientID string `path:"clientId"`
+	ID       ids.ApplicationID `path:"id"`
+	ClientID string            `path:"clientId"`
 }
 
 func (s *State) enableForClient(ctx context.Context, in *clientToggleInput) (*apicommon.Empty, error) {
@@ -246,7 +247,7 @@ func (s *State) enableForClient(ctx context.Context, in *clientToggleInput) (*ap
 	}
 	ec := auth.NewExecutionContext(ctx)
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.EnableApplicationForClient(s.Repo, s.ClientRepo, s.ClientConfigRepo),
-		operations.EnableForClientCommand{ApplicationID: in.ID, ClientID: in.ClientID}, ec); err != nil {
+		operations.EnableForClientCommand{ApplicationID: string(in.ID), ClientID: in.ClientID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
@@ -259,7 +260,7 @@ func (s *State) disableForClient(ctx context.Context, in *clientToggleInput) (*a
 	}
 	ec := auth.NewExecutionContext(ctx)
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.DisableApplicationForClient(s.ClientConfigRepo),
-		operations.DisableForClientCommand{ApplicationID: in.ID, ClientID: in.ClientID}, ec); err != nil {
+		operations.DisableForClientCommand{ApplicationID: string(in.ID), ClientID: in.ClientID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
@@ -299,7 +300,7 @@ func (s *State) provisionServiceAccount(ctx context.Context, in *apicommon.IDInp
 }
 
 type provisionLoginClientInput struct {
-	ID   string `path:"id"`
+	ID   ids.ApplicationID `path:"id"`
 	Body ProvisionLoginClientRequest
 }
 
@@ -315,12 +316,12 @@ func (s *State) provisionLoginClient(ctx context.Context, in *provisionLoginClie
 	if len(in.Body.RedirectURIs) == 0 {
 		return nil, usecase.Validation("REDIRECT_URIS_REQUIRED", "At least one redirect URI is required")
 	}
-	app, err := s.Repo.FindByID(ctx, in.ID)
+	app, err := s.Repo.FindByID(ctx, string(in.ID))
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if app == nil {
-		return nil, httperror.NotFound("Application", in.ID)
+		return nil, httperror.NotFound("Application", string(in.ID))
 	}
 
 	clientType := "PUBLIC"
@@ -391,8 +392,8 @@ func (s *State) listApplicationRoles(ctx context.Context, in *apicommon.IDInput)
 }
 
 type singleConfigInput struct {
-	ID       string `path:"id"`
-	ClientID string `path:"clientId"`
+	ID       ids.ApplicationID `path:"id"`
+	ClientID string            `path:"clientId"`
 }
 
 func (s *State) getClientConfig(ctx context.Context, in *singleConfigInput) (*apicommon.Out[ClientConfigResponse], error) {
@@ -400,12 +401,12 @@ func (s *State) getClientConfig(ctx context.Context, in *singleConfigInput) (*ap
 	if err := auth.CanReadApplications(ac); err != nil {
 		return nil, err
 	}
-	cfg, err := s.ClientConfigRepo.FindByApplicationAndClient(ctx, in.ID, in.ClientID)
+	cfg, err := s.ClientConfigRepo.FindByApplicationAndClient(ctx, string(in.ID), in.ClientID)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_config failed", err)
 	}
 	if cfg == nil {
-		return nil, httperror.NotFound("ClientConfig", in.ID+":"+in.ClientID)
+		return nil, httperror.NotFound("ClientConfig", string(in.ID)+":"+in.ClientID)
 	}
 	return &apicommon.Out[ClientConfigResponse]{Body: clientConfigFromEntity(cfg)}, nil
 }
