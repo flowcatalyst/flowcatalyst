@@ -7,6 +7,7 @@ package operations
 
 import (
 	"context"
+	"errors"
 	"regexp"
 	"strings"
 
@@ -14,6 +15,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
@@ -39,6 +41,15 @@ type PutSettingCommand struct {
 	Kind       function.SettingKind `json:"kind"`
 	Key        string               `json:"key"`
 	Value      string               `json:"value"`
+}
+
+// AuditMaskedFields keeps SECRET and DB values out of aud_logs and the event
+// payload; a CONFIG value is not sensitive and stays visible.
+func (c PutSettingCommand) AuditMaskedFields() []string {
+	if c.Kind == function.SettingConfig {
+		return nil
+	}
+	return []string{"value"}
 }
 
 // PutSetting writes one CONFIG/SECRET/DB value. SECRET and DB are encrypted
@@ -95,6 +106,13 @@ func PutSetting(repo *function.Repository) usecaseop.TxOperation[PutSettingComma
 				_, bumpErr := repo.BumpPoolRevision(ctx, usecasepgx.WrapTxForBootstrap(tx), f.RunnerPool())
 				return bumpErr
 			}); err != nil {
+				switch {
+				case errors.Is(err, encryption.ErrNotConfigured):
+					return zero, usecase.Validation("ENCRYPTION_NOT_CONFIGURED",
+						"cannot store a SECRET or DB setting: FLOWCATALYST_APP_KEY is not configured")
+				case errors.Is(err, encryption.ErrUnsupportedScheme):
+					return zero, usecase.Validation("UNSUPPORTED_SECRET_SCHEME", err.Error())
+				}
 				return zero, usecase.Internal("REPO", "setting write failed", err)
 			}
 

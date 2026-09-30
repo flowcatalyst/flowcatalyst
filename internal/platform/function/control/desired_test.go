@@ -73,10 +73,7 @@ func TestDesired_RendersFullDocument(t *testing.T) {
 	})
 	seedSetting(t, s.Repo, fn.ID, function.SettingConfig, "GREETING", "hello")
 	seedSetting(t, s.Repo, fn.ID, function.SettingSecret, "STRIPE_KEY", "sk_live_secret")
-	// "postgres://" looks like an (unsupported) external secret-manager
-	// scheme to EncryptSecretRef; "encrypt:" is the documented override to
-	// store a plaintext value shaped like a URL as an encrypted secret.
-	seedSetting(t, s.Repo, fn.ID, function.SettingDB, "main", "encrypt:postgres://user:pass@host/db")
+	seedSetting(t, s.Repo, fn.ID, function.SettingDB, "main", "postgres://user:pass@host/db")
 
 	live := seedVersion(t, s.Repo, fn.ID, 1, function.VersionReady, "wasm", describeJSON(t))
 	seedAlias(t, s.Repo, fn.ID, "live", live.ID)

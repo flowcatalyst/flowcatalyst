@@ -79,6 +79,21 @@ func isSchemeToken(s string) bool {
 	return true
 }
 
+// IsStoredForm reports whether v is already in an at-rest form EncryptSecretRef
+// passes through unchanged: an inline ciphertext or an external secret-manager
+// reference.
+func IsStoredForm(v string) bool {
+	if strings.HasPrefix(v, "encrypted:") {
+		return true
+	}
+	for _, scheme := range externalSecretSchemes {
+		if strings.HasPrefix(v, scheme) {
+			return true
+		}
+	}
+	return false
+}
+
 // EncryptSecretRef converts an incoming secret reference into its at-rest form.
 //
 // A plaintext value — optionally carrying the SecretRefInput "encrypt:"

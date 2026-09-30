@@ -474,6 +474,18 @@ func (r *Repository) ListAliases(ctx context.Context, functionID string) ([]Alia
 
 // ── Settings ────────────────────────────────────────────────────────────
 
+// sealableSettingValue marks a SECRET/DB value as a plaintext to encrypt.
+// These values are opaque (a DSN is "postgres://…", a secret may hold "://"),
+// so only an already-encrypted blob or an external secret-manager reference
+// is passed through; everything else gets the "encrypt:" directive so
+// EncryptSecretRef does not reject its scheme.
+func sealableSettingValue(v string) *string {
+	if !encryption.IsStoredForm(v) {
+		v = "encrypt:" + v
+	}
+	return &v
+}
+
 // UpsertSetting writes one setting. SECRET and DB values are encrypted at
 // rest through encryption.EncryptSecretRef — the same at-rest convention
 // iam_service_accounts.wh_*_ref uses: a plaintext value becomes
@@ -484,7 +496,7 @@ func (r *Repository) ListAliases(ctx context.Context, functionID string) ([]Alia
 func (r *Repository) UpsertSetting(ctx context.Context, s *Setting) error {
 	value := s.Value
 	if s.Kind == SettingSecret || s.Kind == SettingDB {
-		ref, err := encryption.EncryptSecretRef(r.enc, &value)
+		ref, err := encryption.EncryptSecretRef(r.enc, sealableSettingValue(value))
 		if err != nil {
 			return fmt.Errorf("function repo: encrypt setting %s/%s: %w", s.Kind, s.Key, err)
 		}
@@ -504,7 +516,7 @@ func (r *Repository) UpsertSetting(ctx context.Context, s *Setting) error {
 func (r *Repository) UpsertSettingTx(ctx context.Context, s *Setting, tx pgx.Tx) error {
 	value := s.Value
 	if s.Kind == SettingSecret || s.Kind == SettingDB {
-		ref, err := encryption.EncryptSecretRef(r.enc, &value)
+		ref, err := encryption.EncryptSecretRef(r.enc, sealableSettingValue(value))
 		if err != nil {
 			return fmt.Errorf("function repo: encrypt setting %s/%s: %w", s.Kind, s.Key, err)
 		}

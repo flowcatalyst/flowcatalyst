@@ -590,6 +590,43 @@ func TestSettings_SecretAndDB_WriteOnly(t *testing.T) {
 	}
 }
 
+// A SECRET/DB value must never reach the audit log or the event payload, and
+// a real DSN or a "://"-bearing secret must be accepted and stored encrypted.
+func TestSettings_SecretAndDB_NotAudited_AndURLShapedValuesAccepted(t *testing.T) {
+	t.Parallel()
+	f := newTestFunctionFixture(t, "app_optsetaud0001", "optsetaudapp", "aud-fn")
+
+	cases := []struct {
+		kind  function.SettingKind
+		key   string
+		value string
+	}{
+		{function.SettingSecret, "PLAIN", "sentinel-plain-9f3a"},
+		{function.SettingSecret, "URLISH", "https://x.example/?token=sentinel-url-7c1d"},
+		{function.SettingDB, "maindb", "postgres://u:sentinel-dsn-42be@host/db"},
+	}
+	for _, c := range cases {
+		_, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.PutSetting(f.repo),
+			operations.PutSettingCommand{FunctionID: f.fn.ID, Kind: c.kind, Key: c.key, Value: c.value}, testpg.TestEC())
+		require.NoError(t, err, c.key)
+	}
+
+	// Each stored value is ciphertext, not the input.
+	var stored int
+	require.NoError(t, f.pool.QueryRow(context.Background(),
+		`SELECT COUNT(*) FROM fng_settings WHERE function_id = $1 AND kind IN ('SECRET','DB') AND value LIKE 'encrypted:%'`,
+		f.fn.ID).Scan(&stored))
+	assert.Equal(t, 3, stored)
+
+	for _, table := range []string{"aud_logs", "msg_events"} {
+		var leaked int
+		require.NoError(t, f.pool.QueryRow(context.Background(),
+			`SELECT COUNT(*) FROM `+table+` t WHERE to_jsonb(t)::text LIKE '%sentinel-%' AND to_jsonb(t)::text LIKE '%'||$1||'%'`,
+			f.fn.ID).Scan(&leaked))
+		assert.Zero(t, leaked, "%s must not contain a SECRET/DB value", table)
+	}
+}
+
 // ── Retire ───────────────────────────────────────────────────────────────
 
 func TestRetireVersion_RefusesInUse_ThenSucceeds(t *testing.T) {
