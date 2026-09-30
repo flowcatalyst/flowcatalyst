@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/netip"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
@@ -158,6 +159,9 @@ func (d *Describe) Validate() error {
 		}
 		if e.CORS != nil && len(e.CORS.Origins) == 0 {
 			add("%s: cors needs at least one origin", at)
+		}
+		if e.CORS != nil && e.CORS.AllowCredentials && slices.Contains(e.CORS.Origins, "*") {
+			add("%s: cors cannot combine origin \"*\" with allowCredentials; list the origins", at)
 		}
 	}
 	// Only build the router over endpoints that passed the checks above; a

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/budget"
@@ -175,12 +176,40 @@ func StartFunctionRunner(ctx context.Context, c FunctionRunnerConfig) {
 	s := b.Stats()
 	log.Info("function runner started", "budget_mb", s.BudgetBytes>>20, "reserve_mb", s.ReserveBytes>>20, "platform", c.PlatformURL, "cache_dir", c.CacheDir)
 
-	_ = r.Run(ctx)
-	shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// The runner outlives ctx by exactly the drain: it is stopped last, after
+	// the listeners have finished their calls.
+	runCtx, stopRun := context.WithCancel(context.WithoutCancel(ctx))
+	runDone := make(chan struct{})
+	go func() { _ = r.Run(runCtx); close(runDone) }()
+	<-ctx.Done()
+	shutdownRunner(r, servers, stopRun, runDone, functionsDrainTimeout)
+}
+
+// functionsDrainTimeout bounds how long shutdown waits for calls in flight.
+// It exceeds the runner's default per-call timeout (30 s), so a call running
+// at the deadline still finishes before anything it uses is released.
+const functionsDrainTimeout = 45 * time.Second
+
+// shutdownRunner stops a function runner in the order that keeps callers
+// well-served: first mark it not-ready (new calls get 503, /readyz fails) and
+// stop the listeners accepting, then let calls in flight finish, and only then
+// stop the runner, which unloads every version and closes the engine. Servers
+// that outlast wait are closed, which cancels their requests.
+func shutdownRunner(r *runner.Runner, servers []*http.Server, stopRun context.CancelFunc, runDone <-chan struct{}, wait time.Duration) {
+	r.Drain()
+	drain, cancel := context.WithTimeout(context.Background(), wait)
 	defer cancel()
+	var wg sync.WaitGroup
 	for _, s := range servers {
-		_ = s.Shutdown(shutdown)
+		wg.Go(func() {
+			if err := s.Shutdown(drain); err != nil {
+				_ = s.Close()
+			}
+		})
 	}
+	wg.Wait()
+	stopRun()
+	<-runDone
 }
 
 // runnerReadTimeout bounds reading a whole request, headers and body. The body

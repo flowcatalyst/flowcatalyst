@@ -13,7 +13,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"unicode/utf8"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/engine"
@@ -54,14 +53,25 @@ func (p *Prepared) InstanceConfig(cfg engine.InstanceConfig) engine.InstanceConf
 
 // Loader prepares artifacts on one engine.
 type Loader struct {
-	eng    *engine.Engine
-	jsOnce sync.Once
-	jsMod  *engine.Module
-	jsErr  error
+	eng *engine.Engine
+	// jsLock serialises the shared JS engine's compile (a one-slot channel so a
+	// waiter can give up with its context). Only a success is cached: a failed
+	// or cancelled compile is retried by the next caller.
+	jsLock    chan struct{}
+	jsMod     *engine.Module // guarded by jsLock
+	compileJS func(ctx context.Context) (*engine.Module, error)
 }
 
 // NewLoader builds a loader for eng.
-func NewLoader(eng *engine.Engine) *Loader { return &Loader{eng: eng} }
+func NewLoader(eng *engine.Engine) *Loader {
+	return &Loader{
+		eng:    eng,
+		jsLock: make(chan struct{}, 1),
+		compileJS: func(ctx context.Context) (*engine.Module, error) {
+			return eng.Compile(ctx, jsengine.Wasm)
+		},
+	}
+}
 
 // maxScriptBytes caps a JS artifact.
 const maxScriptBytes = 16 << 20
@@ -92,13 +102,21 @@ func (l *Loader) Prepare(ctx context.Context, runtime string, artifact []byte) (
 }
 
 func (l *Loader) jsEngine(ctx context.Context) (*engine.Module, error) {
-	l.jsOnce.Do(func() {
-		l.jsMod, l.jsErr = l.eng.Compile(ctx, jsengine.Wasm)
-		if l.jsErr != nil {
-			l.jsErr = fmt.Errorf("the shared JS engine failed to compile: %w", l.jsErr)
-		}
-	})
-	return l.jsMod, l.jsErr
+	select {
+	case l.jsLock <- struct{}{}:
+		defer func() { <-l.jsLock }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	if l.jsMod != nil {
+		return l.jsMod, nil
+	}
+	m, err := l.compileJS(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("the shared JS engine failed to compile: %w", err)
+	}
+	l.jsMod = m
+	return m, nil
 }
 
 // Describe reads an artifact's describe document the way publish must: one

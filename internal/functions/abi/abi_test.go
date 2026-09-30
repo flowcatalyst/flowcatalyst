@@ -92,22 +92,24 @@ func TestParseDescribeRejects(t *testing.T) {
 			`{"abi":1,"endpoints":[{"path":"/e","auth":"platform"}],"subscriptions":[{"eventType":"a:b:c:d","path":"/e"}]}`,
 			"not webhook",
 		},
-		"sub to nowhere":      {`{"abi":1,"endpoints":[{"path":"/e","auth":"webhook"}],"subscriptions":[{"eventType":"a:b:c:d","path":"/f"}]}`, "matches no endpoint"},
-		"sub bad event type":  {`{"abi":1,"endpoints":[{"path":"/e","auth":"webhook"}],"subscriptions":[{"eventType":"a:b","path":"/e"}]}`, "app:domain:aggregate:event"},
-		"sub bad mode":        {`{"abi":1,"endpoints":[{"path":"/e","auth":"webhook"}],"subscriptions":[{"eventType":"a:b:c:d","path":"/e","mode":"FAST"}]}`, `mode "FAST"`},
-		"schedule no cron":    {`{"abi":1,"endpoints":[{"path":"/e","auth":"webhook"}],"schedules":[{"cron":" ","path":"/e"}]}`, "cron is required"},
-		"duplicate secret":    {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"secrets":["K","K"]}`, "declared twice"},
-		"bad config key":      {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"config":["1BAD"]}`, `config: "1BAD"`},
-		"bad http host":       {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"httpAllow":["https://x.com"]}`, "httpAllow"},
-		"http IP literal":     {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"httpAllow":["169.254.169.254"]}`, "IP address"},
-		"http IP with port":   {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"httpAllow":["127.0.0.1:8080"]}`, "IP address"},
-		"http numeric tld":    {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"httpAllow":["10.1"]}`, "IP address"},
-		"http localhost":      {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"httpAllow":["localhost:8080"]}`, "loopback"},
-		"http sub localhost":  {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"httpAllow":["*.foo.localhost"]}`, "loopback"},
-		"http wildcard tld":   {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"httpAllow":["*.com"]}`, "too broad"},
-		"http wildcard stars": {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"httpAllow":["*.*"]}`, "httpAllow"},
-		"negative body limit": {`{"abi":1,"endpoints":[{"path":"/e","auth":"none","maxBodyBytes":-1}]}`, "maxBodyBytes"},
-		"trailing data":       {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}]} {}`, "trailing data"},
+		"sub to nowhere":                            {`{"abi":1,"endpoints":[{"path":"/e","auth":"webhook"}],"subscriptions":[{"eventType":"a:b:c:d","path":"/f"}]}`, "matches no endpoint"},
+		"sub bad event type":                        {`{"abi":1,"endpoints":[{"path":"/e","auth":"webhook"}],"subscriptions":[{"eventType":"a:b","path":"/e"}]}`, "app:domain:aggregate:event"},
+		"sub bad mode":                              {`{"abi":1,"endpoints":[{"path":"/e","auth":"webhook"}],"subscriptions":[{"eventType":"a:b:c:d","path":"/e","mode":"FAST"}]}`, `mode "FAST"`},
+		"schedule no cron":                          {`{"abi":1,"endpoints":[{"path":"/e","auth":"webhook"}],"schedules":[{"cron":" ","path":"/e"}]}`, "cron is required"},
+		"duplicate secret":                          {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"secrets":["K","K"]}`, "declared twice"},
+		"bad config key":                            {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"config":["1BAD"]}`, `config: "1BAD"`},
+		"bad http host":                             {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"httpAllow":["https://x.com"]}`, "httpAllow"},
+		"http IP literal":                           {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"httpAllow":["169.254.169.254"]}`, "IP address"},
+		"http IP with port":                         {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"httpAllow":["127.0.0.1:8080"]}`, "IP address"},
+		"http numeric tld":                          {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"httpAllow":["10.1"]}`, "IP address"},
+		"http localhost":                            {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"httpAllow":["localhost:8080"]}`, "loopback"},
+		"http sub localhost":                        {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"httpAllow":["*.foo.localhost"]}`, "loopback"},
+		"http wildcard tld":                         {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"httpAllow":["*.com"]}`, "too broad"},
+		"http wildcard stars":                       {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"httpAllow":["*.*"]}`, "httpAllow"},
+		"negative body limit":                       {`{"abi":1,"endpoints":[{"path":"/e","auth":"none","maxBodyBytes":-1}]}`, "maxBodyBytes"},
+		"cors wildcard with credentials":            {`{"abi":1,"endpoints":[{"path":"/e","auth":"none","cors":{"origins":["*"],"allowCredentials":true}}]}`, "allowCredentials"},
+		"cors listed with wildcard and credentials": {`{"abi":1,"endpoints":[{"path":"/e","auth":"none","cors":{"origins":["https://a.com","*"],"allowCredentials":true}}]}`, "allowCredentials"},
+		"trailing data":                             {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}]} {}`, "trailing data"},
 	}
 	for name, c := range cases {
 		_, err := ParseDescribe([]byte(c.doc))
@@ -117,6 +119,19 @@ func TestParseDescribeRejects(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: err = %v, want it to mention %q", name, err, c.want)
+		}
+	}
+}
+
+// A wildcard origin without credentials, and credentials with listed origins,
+// stay valid.
+func TestParseDescribeCORSValid(t *testing.T) {
+	for _, doc := range []string{
+		`{"abi":1,"endpoints":[{"path":"/e","auth":"none","cors":{"origins":["*"]}}]}`,
+		`{"abi":1,"endpoints":[{"path":"/e","auth":"none","cors":{"origins":["https://a.com"],"allowCredentials":true}}]}`,
+	} {
+		if _, err := ParseDescribe([]byte(doc)); err != nil {
+			t.Errorf("%s: %v", doc, err)
 		}
 	}
 }

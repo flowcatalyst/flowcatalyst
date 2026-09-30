@@ -6,12 +6,18 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/netip"
 	"strings"
 	"testing"
 	"time"
 
 	"golang.org/x/net/http2"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/abi"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/budget"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/control"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/runner"
 )
 
 func TestLoadFunctionRunnerEnv(t *testing.T) {
@@ -106,4 +112,108 @@ func TestRunnerServerCutsOffSlowBody(t *testing.T) {
 	if strings.Contains(string(b), " 200 ") {
 		t.Fatalf("stalled body was served: %q", b)
 	}
+}
+
+// stubControlPlane is a platform that has nothing to say.
+type stubControlPlane struct{}
+
+func (stubControlPlane) Desired(ctx context.Context, _, etag string, wait time.Duration) (*control.Desired, string, bool, error) {
+	select {
+	case <-ctx.Done():
+		return nil, "", false, ctx.Err()
+	case <-time.After(wait):
+		return nil, etag, false, nil
+	}
+}
+func (stubControlPlane) Heartbeat(context.Context, control.Heartbeat) error { return nil }
+func (stubControlPlane) Artifact(context.Context, string) (io.ReadCloser, error) {
+	return nil, io.EOF
+}
+func (stubControlPlane) Emit(context.Context, control.EmitRequest) (*control.EmitResponse, *abi.Error) {
+	return nil, &abi.Error{}
+}
+
+// TestShutdownRunnerDrainsBeforeStopping: shutdown marks the runner not-ready
+// first, lets a call in flight finish, and only then stops the runner (which
+// unloads versions and closes the engine). The old order stopped the runner
+// first and closed the listeners afterwards.
+func TestShutdownRunnerDrainsBeforeStopping(t *testing.T) {
+	b, err := budget.New(64<<20, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := runner.New(t.Context(), runner.Config{Pool: "p", ControlPlane: stubControlPlane{}, Budget: b})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCtx, stopRun := context.WithCancel(context.Background())
+	runDone := make(chan struct{})
+	go func() { _ = r.Run(runCtx); close(runDone) }()
+
+	inHandler := make(chan struct{})
+	finish := make(chan struct{})
+	mux := http.NewServeMux()
+	mux.HandleFunc("/slow", func(w http.ResponseWriter, _ *http.Request) {
+		close(inHandler)
+		<-finish
+		w.WriteHeader(http.StatusOK)
+	})
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := newRunnerServer(ln.Addr().String(), mux)
+	go func() { _ = srv.Serve(ln) }()
+
+	code := make(chan int, 1)
+	go func() {
+		resp, err := http.Get("http://" + ln.Addr().String() + "/slow")
+		if err != nil {
+			code <- -1
+			return
+		}
+		resp.Body.Close()
+		code <- resp.StatusCode
+	}()
+	<-inHandler
+
+	stopped := make(chan struct{})
+	go func() {
+		shutdownRunner(r, []*http.Server{srv}, stopRun, runDone, 5*time.Second)
+		close(stopped)
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for r.Ready() || !drainingObserved(r) {
+		if time.Now().After(deadline) {
+			t.Fatal("the runner never went not-ready when shutdown began")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	select {
+	case <-runDone:
+		t.Fatal("the runner was stopped while a call was still in flight")
+	case <-time.After(150 * time.Millisecond):
+	}
+	close(finish)
+	if got := <-code; got != http.StatusOK {
+		t.Fatalf("the in-flight call finished with %d", got)
+	}
+	select {
+	case <-stopped:
+	case <-time.After(5 * time.Second):
+		t.Fatal("shutdown never completed")
+	}
+	select {
+	case <-runDone:
+	default:
+		t.Fatal("the runner was not stopped after the drain")
+	}
+}
+
+// drainingObserved: a draining runner answers new calls 503 on its handler.
+func drainingObserved(r *runner.Runner) bool {
+	rec := httptest.NewRecorder()
+	r.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/fn/a.b/x", nil))
+	return rec.Code == http.StatusServiceUnavailable
 }

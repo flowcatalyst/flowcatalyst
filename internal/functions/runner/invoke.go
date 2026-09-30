@@ -44,6 +44,11 @@ const MaxRequestBodyBytes = 32 << 20
 // unauthenticated caller, so it must never become a label value.
 const unknownAddress = "unknown"
 
+// statusClientClosed is the (nginx) status recorded when the caller went away
+// before the runner answered. Nobody reads the reply; the code only keeps
+// access logs from claiming the function timed out.
+const statusClientClosed = 499
+
 // Handler is the runner's invocation entry: /fn/{address}[@{alias}|@v{n}]/{path...}.
 func (r *Runner) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -164,6 +169,16 @@ func (r *Runner) invoke(w http.ResponseWriter, req *http.Request, t target, path
 	// unauthenticated caller cannot make the runner buffer anything. (Webhook
 	// auth signs the body, so that path has to read first; it is bounded by
 	// the same ceiling.)
+	// Deliveries are always POST. A webhook endpoint that declares no method
+	// matches every method, so refuse the rest here: a captured signed delivery
+	// cannot be replayed as a GET/PUT/DELETE, and a webhook endpoint stays
+	// unreachable by simple cross-site requests.
+	if ep.Auth == abi.AuthWebhook && req.Method != http.MethodPost {
+		outcome = "no_route"
+		writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "the endpoint does not accept "+req.Method, 0)
+		return
+	}
+
 	if caller == nil && ep.Auth == abi.AuthPlatform {
 		c, err := r.tokens.Verify(req.Context(), req.Header.Get("Authorization"))
 		if err != nil {
@@ -184,8 +199,20 @@ func (r *Runner) invoke(w http.ResponseWriter, req *http.Request, t target, path
 	maxBody = min(maxBody, MaxRequestBodyBytes)
 	body, err := io.ReadAll(http.MaxBytesReader(w, req.Body, maxBody))
 	if err != nil {
-		outcome = "too_large"
-		writeError(w, http.StatusRequestEntityTooLarge, "BODY_TOO_LARGE", fmt.Sprintf("the body is over %d bytes", maxBody), 0)
+		var tooLarge *http.MaxBytesError
+		switch {
+		case errors.As(err, &tooLarge):
+			outcome = "too_large"
+			writeError(w, http.StatusRequestEntityTooLarge, "BODY_TOO_LARGE", fmt.Sprintf("the body is over %d bytes", maxBody), 0)
+		case req.Context().Err() != nil:
+			outcome = "client_closed"
+			r.log.Debug("client went away while sending the body", "fn.address", fn.address, "err", err)
+			w.WriteHeader(statusClientClosed)
+		default:
+			outcome = "bad_body"
+			r.log.Debug("request body could not be read", "fn.address", fn.address, "err", err)
+			writeError(w, http.StatusBadRequest, "BODY_UNREADABLE", "the request body could not be read", 0)
+		}
 		return
 	}
 
@@ -230,7 +257,9 @@ func (r *Runner) invoke(w http.ResponseWriter, req *http.Request, t target, path
 	p, err := ver.acquirePool(ctx, r)
 	if err != nil {
 		outcome = "unavailable"
-		writeError(w, http.StatusServiceUnavailable, "FUNCTION_UNAVAILABLE", err.Error(), 5*time.Second)
+		// err can carry compiler or control-plane text; keep it in the log.
+		r.log.Warn("function version unavailable", "fn.address", fn.address, "fn.version", ver.number, "err", err)
+		writeError(w, http.StatusServiceUnavailable, "FUNCTION_UNAVAILABLE", "the function is not available right now", 5*time.Second)
 		return
 	}
 	inst, err := p.get(ctx)
@@ -243,6 +272,17 @@ func (r *Runner) invoke(w http.ResponseWriter, req *http.Request, t target, path
 		writeError(w, http.StatusServiceUnavailable, "FUNCTION_UNAVAILABLE", "the runner has no capacity for this call right now", time.Second)
 		return
 	}
+
+	// From here until the instance is handed back, anything that leaves this
+	// function (an early return or a panic, which net/http recovers) must not
+	// keep the instance and its memory charge. A call that did not finish
+	// cleanly is closed, never pooled: its state is unknown.
+	returned := false
+	defer func() {
+		if !returned {
+			_ = inst.Close(context.Background())
+		}
+	}()
 
 	invID := tsid.GenerateUntyped()
 	headers := req.Header.Clone()
@@ -275,6 +315,7 @@ func (r *Runner) invoke(w http.ResponseWriter, req *http.Request, t target, path
 		Public:         public,
 	}, body)
 	if err != nil {
+		returned = true
 		p.put(inst)
 		outcome = "error"
 		writeError(w, http.StatusInternalServerError, "FUNCTION_FAILED", "the request could not be encoded", 0)
@@ -282,11 +323,20 @@ func (r *Runner) invoke(w http.ResponseWriter, req *http.Request, t target, path
 	}
 
 	caps := &capabilities{fn: fn, ver: ver, invID: invID, log: r.guestLogger(fn, ver), emitter: r.cp, http: r.httpClient, database: r.db}
-	out, herr := inst.Handle(ctx, frame, caps)
-	caps.tx.rollbackAll()
+	out, herr := func() ([]byte, error) {
+		defer caps.tx.rollbackAll()
+		return inst.Handle(ctx, frame, caps)
+	}()
+	returned = true
 	p.put(inst)
 	if herr != nil {
 		switch {
+		case errors.Is(herr, engine.ErrDeadline) && req.Context().Err() != nil:
+			// The caller hung up (the request context ended, not the call's
+			// own deadline). Not a function fault, and there is nobody to tell.
+			outcome = "client_closed"
+			r.log.Debug("client went away during the call", "fn.address", fn.address, "fn.version", ver.number, "fn.invocation", invID)
+			w.WriteHeader(statusClientClosed)
 		case errors.Is(herr, engine.ErrDeadline):
 			outcome = "timeout"
 			writeError(w, http.StatusGatewayTimeout, "FUNCTION_TIMEOUT", "the function did not finish before its deadline", 0)
@@ -303,25 +353,45 @@ func (r *Runner) invoke(w http.ResponseWriter, req *http.Request, t target, path
 	}
 	var resp abi.Response
 	respBody, err := abi.UnmarshalFrame(out, &resp)
-	if err != nil || resp.Status < 100 || resp.Status > 999 {
+	switch {
+	case err != nil:
 		outcome = "malformed"
 		r.log.Warn("function returned a malformed response", "fn.address", fn.address, "fn.version", ver.number, "fn.invocation", invID, "err", err)
 		writeError(w, http.StatusInternalServerError, "FUNCTION_FAILED", "the function failed", 0)
-		return
+	case !validGuestStatus(resp.Status):
+		outcome = "malformed"
+		r.log.Warn("function returned an out-of-range status", "fn.address", fn.address, "fn.version", ver.number, "fn.invocation", invID, "status", resp.Status)
+		writeError(w, http.StatusBadGateway, "FUNCTION_BAD_RESPONSE", "the function returned an invalid response", 0)
+	default:
+		writeGuestResponse(w, resp, respBody, ep.CORS != nil, invID)
+		outcome = statusClass(resp.Status)
 	}
+}
+
+// validGuestStatus is the range a guest may answer with: informational (1xx)
+// and out-of-range codes are not a final response.
+func validGuestStatus(s int) bool { return s >= 200 && s <= 599 }
+
+// writeGuestResponse sends the guest's answer. When the endpoint has a CORS
+// policy the runner already set the Access-Control-* headers from it; the guest
+// cannot add to or override them.
+func writeGuestResponse(w http.ResponseWriter, resp abi.Response, body []byte, runnerCORS bool, invID string) {
+	h := w.Header()
 	for k, vs := range resp.Headers {
+		if runnerCORS && strings.HasPrefix(http.CanonicalHeaderKey(k), "Access-Control-") {
+			continue
+		}
 		for _, v := range vs {
-			w.Header().Add(k, v)
+			h.Add(k, v)
 		}
 	}
-	for _, h := range hopHeaders {
-		w.Header().Del(h)
+	for _, name := range hopHeaders {
+		h.Del(name)
 	}
-	w.Header().Del("Content-Length")
-	w.Header().Set("X-FlowCatalyst-Invocation", invID)
+	h.Del("Content-Length")
+	h.Set("X-FlowCatalyst-Invocation", invID)
 	w.WriteHeader(resp.Status)
-	_, _ = w.Write(respBody)
-	outcome = statusClass(resp.Status)
+	_, _ = w.Write(body)
 }
 
 func statusClass(s int) string {
@@ -352,6 +422,10 @@ func (e *resolveError) write(w http.ResponseWriter) {
 
 // resolve finds the function and the version a target names.
 func (r *Runner) resolve(t target) (*function, *version, *resolveError) {
+	if r.draining.Load() {
+		// Shutting down: answer 503 (not a misleading 404) so callers retry elsewhere.
+		return nil, nil, &resolveError{http.StatusServiceUnavailable, "FUNCTION_UNAVAILABLE", "the runner is shutting down", 5 * time.Second}
+	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	fn, ok := r.functions[t.address]
@@ -382,11 +456,11 @@ func (r *Runner) resolve(t target) (*function, *version, *resolveError) {
 		return nil, nil, &resolveError{http.StatusServiceUnavailable, "FUNCTION_UNAVAILABLE", "the function has no loaded version", 5 * time.Second}
 	}
 	//exhaustive:ignore ready and evicted versions are servable; only the unusable states need a reply
-	switch st, reason := ver.currentState(); st {
+	switch st, _ := ver.currentState(); st {
 	case statePreparing:
 		return nil, nil, &resolveError{http.StatusServiceUnavailable, "FUNCTION_PREPARING", "the version is still being prepared", 2 * time.Second}
 	case stateFailed:
-		return nil, nil, &resolveError{http.StatusServiceUnavailable, "FUNCTION_UNAVAILABLE", "the version could not be loaded: " + reason, 30 * time.Second}
+		return nil, nil, &resolveError{http.StatusServiceUnavailable, "FUNCTION_UNAVAILABLE", "the version could not be loaded", 30 * time.Second} // the reason is in the heartbeat and the log, not the caller's reply
 	case stateClosed:
 		return nil, nil, &resolveError{http.StatusServiceUnavailable, "FUNCTION_UNAVAILABLE", "the version was unloaded", time.Second}
 	}
@@ -402,7 +476,9 @@ func handleCORS(w http.ResponseWriter, req *http.Request, c *abi.CORS) bool {
 	}
 	allowed := false
 	for _, o := range c.Origins {
-		if o == "*" || strings.EqualFold(o, origin) {
+		// A wildcard never applies with credentials (validation refuses the
+		// combination; this covers documents published before it did).
+		if (o == "*" && !c.AllowCredentials) || strings.EqualFold(o, origin) {
 			allowed = true
 			break
 		}
@@ -415,7 +491,7 @@ func handleCORS(w http.ResponseWriter, req *http.Request, c *abi.CORS) bool {
 		return false
 	}
 	h := w.Header()
-	h.Add("Vary", "Origin")
+	h.Set("Vary", "Origin")
 	if len(c.Origins) == 1 && c.Origins[0] == "*" && !c.AllowCredentials {
 		h.Set("Access-Control-Allow-Origin", "*")
 	} else {

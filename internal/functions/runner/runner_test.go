@@ -33,6 +33,7 @@ type fakeCP struct {
 	artifacts  map[string][]byte
 	heartbeats []control.Heartbeat
 	emits      []control.EmitRequest
+	emitPanics bool // Emit panics (a host-side fault inside a call)
 }
 
 func newFakeCP() *fakeCP {
@@ -87,6 +88,9 @@ func (f *fakeCP) Artifact(_ context.Context, digest string) (io.ReadCloser, erro
 }
 
 func (f *fakeCP) Emit(_ context.Context, r control.EmitRequest) (*control.EmitResponse, *abi.Error) {
+	if f.emitPanics {
+		panic("emit exploded")
+	}
 	f.mu.Lock()
 	f.emits = append(f.emits, r)
 	f.mu.Unlock()
@@ -162,13 +166,23 @@ type harness struct {
 
 func start(t *testing.T, fns ...control.Function) *harness {
 	t.Helper()
+	return startCfg(t, nil, fns...)
+}
+
+// startCfg is start with a hook to adjust the runner's Config.
+func startCfg(t *testing.T, adjust func(*Config), fns ...control.Function) *harness {
+	t.Helper()
 	b, err := budget.New(512<<20, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	cp := newFakeCP()
 	cp.push(control.Desired{Pool: "default", Functions: fns})
-	r, err := New(t.Context(), Config{Pool: "default", ControlPlane: cp, Budget: b, HeartbeatEvery: 50 * time.Millisecond, DrainGrace: time.Second, Tokens: fakeTokens{}})
+	cfg := Config{Pool: "default", ControlPlane: cp, Budget: b, HeartbeatEvery: 50 * time.Millisecond, DrainGrace: time.Second, Tokens: fakeTokens{}}
+	if adjust != nil {
+		adjust(&cfg)
+	}
+	r, err := New(t.Context(), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

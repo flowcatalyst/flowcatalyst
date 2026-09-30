@@ -82,7 +82,10 @@ type Runner struct {
 	revision  int64
 
 	prepareSem chan struct{}
+	prepares   sync.WaitGroup // running prepare goroutines; awaited before the engine closes
+	retryBase  time.Duration  // first retry delay for a failed version; doubles per attempt
 	ready      atomic.Bool
+	draining   atomic.Bool // shutdown has begun: not ready, new calls are refused
 	evictions  atomic.Int64
 	wake       chan struct{} // heartbeat soon
 }
@@ -137,6 +140,7 @@ func New(ctx context.Context, cfg Config) (*Runner, error) {
 		started:    time.Now().UTC(),
 		functions:  map[string]*function{},
 		prepareSem: make(chan struct{}, 4),
+		retryBase:  defaultRetryBase,
 		wake:       make(chan struct{}, 1),
 	}
 	r.jwks = &jwksVerifier{fallback: cfg.IssuerFallback}
@@ -145,6 +149,21 @@ func New(ctx context.Context, cfg Config) (*Runner, error) {
 		r.tokens = cfg.Tokens
 	}
 	return r, nil
+}
+
+// Retry policy for a version that failed to prepare (a transient artifact
+// fetch or compile failure must not be permanent).
+const (
+	defaultRetryBase = 5 * time.Second
+	maxRetryDelay    = 5 * time.Minute
+)
+
+// Drain begins shutdown: the runner reports not ready and answers new calls
+// 503, while calls already running finish. Call it before stopping the
+// listeners; Run's own shutdown then unloads once its context ends.
+func (r *Runner) Drain() {
+	r.draining.Store(true)
+	r.ready.Store(false)
 }
 
 // Run reconciles until ctx ends, then unloads everything.
@@ -159,6 +178,7 @@ func (r *Runner) Run(ctx context.Context) error {
 }
 
 func (r *Runner) shutdown() {
+	r.Drain()
 	r.mu.Lock()
 	var vers []*version
 	for _, fn := range r.functions {
@@ -173,6 +193,9 @@ func (r *Runner) shutdown() {
 		wg.Go(func() { v.close(r.cfg.DrainGrace) })
 	}
 	wg.Wait()
+	// Every prepare has stopped (versions were told to close, and their
+	// context has ended) before the engine they compile on goes away.
+	r.prepares.Wait()
 	r.db.closeAll()
 	_ = r.eng.Close(context.Background())
 }
@@ -244,11 +267,17 @@ func (r *Runner) apply(ctx context.Context, d *control.Desired) {
 			v, have := fn.versions[dv.Number]
 			if have && v.digest == dv.Digest {
 				v.roles = dv.Roles
+				// A failed version is never pinned: this apply retries it
+				// once its backoff has passed.
+				if v.tryRetry(time.Now()) {
+					toPrepare = append(toPrepare, v)
+				}
 				continue
 			}
 			nv, err := newVersion(fn, dv)
 			if err != nil {
-				nv = &version{fn: fn, fnID: df.ID, number: dv.Number, digest: dv.Digest, roles: dv.Roles, state: stateFailed, reason: err.Error()}
+				nv = &version{fn: fn, fnID: df.ID, number: dv.Number, digest: dv.Digest, roles: dv.Roles}
+				nv.setStateLocked(stateFailed, err.Error()) // the document itself is bad: retrying cannot help
 			} else {
 				toPrepare = append(toPrepare, nv)
 			}
@@ -290,9 +319,12 @@ func (r *Runner) apply(ctx context.Context, d *control.Desired) {
 		go v.close(r.cfg.DrainGrace)
 	}
 	for _, v := range toPrepare {
-		go r.prepare(ctx, v)
+		r.spawnPrepare(ctx, v)
 	}
 	r.ready.Store(true)
+	if r.draining.Load() {
+		r.ready.Store(false)
+	}
 	r.poke()
 }
 
@@ -308,7 +340,62 @@ func newVersion(fn *function, dv control.Version) (*version, error) {
 	if !runtimes.Valid(dv.Runtime) {
 		return nil, fmt.Errorf("RUNTIME: %q is not a runtime this runner has", dv.Runtime)
 	}
-	return &version{fn: fn, fnID: fn.id, number: dv.Number, digest: dv.Digest, runtime: dv.Runtime, describe: d, router: rt, roles: dv.Roles, state: statePreparing}, nil
+	v := &version{fn: fn, fnID: fn.id, number: dv.Number, digest: dv.Digest, runtime: dv.Runtime, describe: d, router: rt, roles: dv.Roles}
+	v.setStateLocked(statePreparing, "")
+	v.work.Add(1) // the prepare that follows; Add before the version is visible, so close's Wait cannot race it
+	return v, nil
+}
+
+// spawnPrepare starts v's prepare (v.work was already incremented).
+func (r *Runner) spawnPrepare(ctx context.Context, v *version) {
+	r.prepares.Add(1)
+	go func() {
+		defer r.prepares.Done()
+		defer v.work.Done()
+		r.prepare(ctx, v)
+	}()
+}
+
+// tryRetry moves a failed version back to preparing when its backoff has
+// passed, and reports whether the caller must now spawn its prepare.
+func (v *version) tryRetry(now time.Time) bool {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	at := v.retryAt.Load()
+	if v.closing || versionState(v.state.Load()) != stateFailed || at == 0 || now.UnixNano() < at {
+		return false
+	}
+	v.setStateLocked(statePreparing, "")
+	v.work.Add(1)
+	return true
+}
+
+// retryFailed retries every failed version whose backoff has passed (called
+// on the maintenance tick).
+func (r *Runner) retryFailed(ctx context.Context) {
+	now := time.Now()
+	var retry []*version
+	for _, v := range r.allVersions() {
+		if v.tryRetry(now) {
+			retry = append(retry, v)
+		}
+	}
+	for _, v := range retry {
+		r.spawnPrepare(ctx, v)
+	}
+}
+
+// allVersions snapshots every version the runner holds.
+func (r *Runner) allVersions() []*version {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var vs []*version
+	for _, fn := range r.functions {
+		for _, v := range fn.versions {
+			vs = append(vs, v)
+		}
+	}
+	return vs
 }
 
 // promoteLocked routes live to the desired live version once it is ready,
@@ -346,32 +433,47 @@ func (r *Runner) wantedLocked(fn *function, n int) bool {
 }
 
 // prepare downloads, verifies and compiles a version, proving it loadable by
-// instantiating it once; warm live versions keep that instance.
+// instantiating it once; warm live versions keep that instance. Nothing here
+// holds v.mu across I/O: it compiles first, then installs the result under a
+// short lock that also checks the version was not closed meanwhile.
 func (r *Runner) prepare(ctx context.Context, v *version) {
-	r.prepareSem <- struct{}{}
-	defer func() { <-r.prepareSem }()
+	pctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	v.mu.Lock()
+	if v.closing {
+		v.mu.Unlock()
+		return
+	}
+	v.cancelPrep = cancel
+	v.mu.Unlock()
+
+	select {
+	case r.prepareSem <- struct{}{}:
+		defer func() { <-r.prepareSem }()
+	case <-pctx.Done():
+		return
+	}
 	r.mu.RLock()
 	warm := v.fn.snapshot().Warm && slices.Contains(v.roles, control.RoleLive)
 	r.mu.RUnlock()
 
-	v.mu.Lock()
-	err := r.compileLocked(ctx, v)
-	if err == nil {
-		v.pool.warm = warm
-		err = v.pool.prewarm(ctx)
-		if err == nil && !warm {
-			v.pool.trim(time.Now().Add(2 * idleInstanceTTL))
-		}
-		if errors.Is(err, engine.ErrNoMemory) {
-			err = nil // loadable; there is simply no room for an idle instance now
-		}
+	err := r.load(pctx, v, warm)
+	if err != nil && (errors.Is(err, errVersionClosed) || pctx.Err() != nil) {
+		// Closed or interrupted (shutdown): not a load failure.
+		return
 	}
 	if err != nil {
-		v.evictLocked(ctx)
-		v.state, v.reason = stateFailed, reasonOf(err)
-		r.log.Warn("function version failed to load", "fn.address", v.fn.address, "fn.version", v.number, "reason", v.reason)
+		v.mu.Lock()
+		if !v.closing {
+			v.evictIfLoadedLocked(pctx)
+			n := v.attempts.Add(1)
+			delay := min(r.retryBase<<min(n-1, 20), maxRetryDelay)
+			v.retryAt.Store(time.Now().Add(delay).UnixNano())
+			v.setStateLocked(stateFailed, reasonOf(err))
+			r.log.Warn("function version failed to load", "fn.address", v.fn.address, "fn.version", v.number, "reason", reasonOf(err), "attempt", n, "retry_in", delay)
+		}
+		v.mu.Unlock()
 	}
-	v.mu.Unlock()
 
 	r.mu.Lock()
 	r.promoteLocked(v.fn)
@@ -379,27 +481,70 @@ func (r *Runner) prepare(ctx context.Context, v *version) {
 	r.poke()
 }
 
-// compileLocked fetches and compiles v's module and gives it a pool.
-// Caller holds v.mu (and must not hold r.mu).
-func (r *Runner) compileLocked(ctx context.Context, v *version) error {
-	artifact, err := r.artifacts.get(ctx, v.digest)
-	if err != nil {
-		return fmt.Errorf("ARTIFACT: %w", err)
-	}
-	p, err := r.loader.Prepare(ctx, v.runtime, artifact)
+// errVersionClosed marks a prepare that stopped because its version was closed.
+var errVersionClosed = errors.New("the version was closed while it was preparing")
+
+// load compiles v, gives it a pool, proves it by instantiating once, and marks
+// it ready. On errVersionClosed everything it built has been released.
+func (r *Runner) load(ctx context.Context, v *version, warm bool) error {
+	p, pl, err := r.compile(ctx, v, warm)
 	if err != nil {
 		return err
 	}
+	v.mu.Lock()
+	ok := v.installLocked(p, pl, statePreparing)
+	v.mu.Unlock()
+	if !ok {
+		p.Close(context.Background())
+		return errVersionClosed
+	}
+	err = pl.prewarm(ctx)
+	if err == nil && !warm {
+		pl.trim(time.Now().Add(2 * idleInstanceTTL))
+	}
+	if errors.Is(err, engine.ErrNoMemory) {
+		err = nil // loadable; there is simply no room for an idle instance now
+	}
+	if err != nil {
+		return err
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.closing {
+		return errVersionClosed // close tears down what was installed
+	}
+	v.setStateLocked(stateReady, "")
+	v.retryAt.Store(0)
+	v.attempts.Store(0)
+	v.touch()
+	return nil
+}
+
+// evictIfLoadedLocked releases what a failed prepare had installed.
+func (v *version) evictIfLoadedLocked(ctx context.Context) {
+	if v.pool != nil || v.prepared != nil {
+		v.evictLocked(ctx)
+	}
+}
+
+// compile fetches and compiles v's module and builds its pool. It takes no
+// locks and installs nothing: the caller installs the result (or closes it).
+func (r *Runner) compile(ctx context.Context, v *version, warm bool) (*runtimes.Prepared, *pool, error) {
+	artifact, err := r.artifacts.get(ctx, v.digest)
+	if err != nil {
+		return nil, nil, fmt.Errorf("ARTIFACT: %w", err)
+	}
+	p, err := r.loader.Prepare(ctx, v.runtime, artifact)
+	if err != nil {
+		return nil, nil, err
+	}
 	lim := limitsOf(v.fn.snapshot())
-	v.prepared = p
-	v.pool = newPool(p.Module, p.InstanceConfig(engine.InstanceConfig{
+	pl := newPool(p.Module, p.InstanceConfig(engine.InstanceConfig{
 		MemoryCapBytes: uint64(lim.MemoryMB) << 20,
 		Stdout:         &guestWriter{log: r.log, fn: v.fn.address, ver: v.number, level: slog.LevelInfo},
 		Stderr:         &guestWriter{log: r.log, fn: v.fn.address, ver: v.number, level: slog.LevelWarn},
-	}), false)
-	v.state, v.reason = stateReady, ""
-	v.touch()
-	return nil
+	}), warm)
+	return p, pl, nil
 }
 
 func reasonOf(err error) string {
@@ -421,29 +566,40 @@ func (r *Runner) maintenanceLoop(ctx context.Context) {
 		case <-t.C:
 		}
 		now := time.Now()
+		r.retryFailed(ctx)
 		var candidates []*version
+		// Snapshot under the runner lock, then work each version on its own
+		// short v.mu hold: nothing here waits on a version while holding r.mu.
 		r.mu.RLock()
+		type held struct {
+			v      *version
+			pinned bool
+		}
+		var all []held
 		for _, fn := range r.functions {
 			warm := fn.snapshot().Warm
 			for n, v := range fn.versions {
-				v.mu.Lock()
-				if v.pool != nil {
-					v.pool.trim(now)
-				}
-				idle := now.Sub(time.Unix(0, v.lastUsed.Load()))
-				pinned := warm && n == fn.serving
-				if v.state == stateReady && !pinned {
-					if idle > r.cfg.IdleEvict {
-						v.evictLocked(ctx)
-						r.evictions.Add(1)
-					} else {
-						candidates = append(candidates, v)
-					}
-				}
-				v.mu.Unlock()
+				all = append(all, held{v, warm && n == fn.serving})
 			}
 		}
 		r.mu.RUnlock()
+		for _, h := range all {
+			v := h.v
+			v.mu.Lock()
+			if v.pool != nil {
+				v.pool.trim(now)
+			}
+			idle := now.Sub(time.Unix(0, v.lastUsed.Load()))
+			if versionState(v.state.Load()) == stateReady && !h.pinned {
+				if idle > r.cfg.IdleEvict {
+					v.evictLocked(ctx)
+					r.evictions.Add(1)
+				} else {
+					candidates = append(candidates, v)
+				}
+			}
+			v.mu.Unlock()
+		}
 		r.relieveMemory(ctx, candidates)
 		r.db.closeIdle(10 * time.Minute)
 	}
@@ -460,7 +616,7 @@ func (r *Runner) relieveMemory(ctx context.Context, candidates []*version) {
 	slices.SortFunc(candidates, func(a, b *version) int { return int(a.lastUsed.Load() - b.lastUsed.Load()) })
 	for _, v := range candidates {
 		v.mu.Lock()
-		if v.state == stateReady {
+		if versionState(v.state.Load()) == stateReady {
 			v.evictLocked(ctx)
 			r.evictions.Add(1)
 		}
