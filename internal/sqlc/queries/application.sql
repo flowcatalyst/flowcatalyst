@@ -33,6 +33,18 @@ ON CONFLICT (id) DO UPDATE SET
 -- name: ApplicationDelete :exec
 DELETE FROM app_applications WHERE id = $1;
 
+-- name: ApplicationReferenceCounts :one
+-- The delete guard's inputs (owner decision #53, matching Rust): every
+-- code-enforced reference to an application. None of these columns has a
+-- foreign key, so each is a place the application must be unwired from
+-- before it can be deleted.
+SELECT
+    (SELECT COUNT(*) FROM iam_principal_application_access pa WHERE pa.application_id = sqlc.arg(application_id))::bigint AS access_grants,
+    (SELECT COUNT(*) FROM app_client_configs cc WHERE cc.application_id = sqlc.arg(application_id))::bigint AS client_configs,
+    (SELECT COUNT(*) FROM iam_service_accounts sa WHERE sa.application_id = sqlc.arg(application_id))::bigint AS service_accounts,
+    (SELECT COUNT(*) FROM iam_roles r WHERE r.application_id = sqlc.arg(application_id))::bigint AS roles,
+    (SELECT COUNT(*) FROM iam_principals p WHERE p.application_id = sqlc.arg(application_id))::bigint AS principal_refs;
+
 -- name: ClientConfigFindByAppAndClient :one
 SELECT id, application_id, client_id, enabled, created_at, updated_at
 FROM app_client_configs

@@ -15,6 +15,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
+	subscriptionops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
@@ -502,7 +504,7 @@ func TestDeleteConnection_HappyPath(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreate(t, testpg.Pool(t), uow, "conndel-happy", "Doomed")
 
-	ev, err := runAuthorized(uow, operations.DeleteConnection(repo),
+	ev, err := runAuthorized(uow, operations.DeleteConnection(repo, subscription.NewRepository(testpg.Pool(t))),
 		operations.DeleteCommand{ID: seeded.ConnectionID})
 	require.NoError(t, err)
 	assert.Equal(t, seeded.ConnectionID, ev.ConnectionID)
@@ -516,12 +518,70 @@ func TestDeleteConnection_HappyPath(t *testing.T) {
 func TestDeleteConnection_Errors(t *testing.T) {
 	t.Parallel()
 	repo := connection.NewRepository(testpg.Pool(t))
+	subRepo := subscription.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	_, err := runAuthorized(uow, operations.DeleteConnection(repo), operations.DeleteCommand{})
+	_, err := runAuthorized(uow, operations.DeleteConnection(repo, subRepo), operations.DeleteCommand{})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ID_REQUIRED")
 
-	_, err = runAuthorized(uow, operations.DeleteConnection(repo),
+	_, err = runAuthorized(uow, operations.DeleteConnection(repo, subRepo),
 		operations.DeleteCommand{ID: "con_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "Connection_NOT_FOUND")
+}
+
+// TestDeleteConnection_RefusedWhileSubscribed covers the delete guard (owner
+// decision #53, matching Rust): a connection any subscription still targets,
+// whatever that subscription's status, is refused with 409 HAS_SUBSCRIPTIONS
+// and survives; once the subscription is gone the delete goes through.
+func TestDeleteConnection_RefusedWhileSubscribed(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := connection.NewRepository(pool)
+	subRepo := subscription.NewRepository(pool)
+	uow := testpg.NewUoW(t)
+	seeded := mustCreate(t, pool, uow, "conndel-guarded", "Guarded")
+
+	sub, err := usecaseop.Run(testpg.AnchorCtx(), uow, subscriptionops.CreateSubscription(subRepo),
+		subscriptionops.CreateCommand{
+			Code: "conndel-guarded-sub", Name: "Guarded Sub", Endpoint: "https://conndel.example.test/hook",
+			ConnectionID: &seeded.ConnectionID,
+			EventTypes:   []subscription.EventTypeBinding{subscription.NewEventTypeBinding("conndel:a:b:c")},
+		}, testpg.TestEC())
+	require.NoError(t, err)
+
+	requireRefused := func(state string) {
+		t.Helper()
+		_, err := runAuthorized(uow, operations.DeleteConnection(repo, subRepo),
+			operations.DeleteCommand{ID: seeded.ConnectionID})
+		testpg.RequireUsecaseError(t, err, usecase.KindConflict, "HAS_SUBSCRIPTIONS")
+		ue := usecase.AsError(err)
+		require.NotNil(t, ue)
+		assert.Equal(t, 409, ue.HTTPStatus())
+		assert.Equal(t, "Cannot delete a connection that has subscriptions. Remove all subscriptions first.", ue.Message)
+		assert.Empty(t, ue.Details)
+		got, err := repo.FindByID(ctx, seeded.ConnectionID)
+		require.NoError(t, err)
+		assert.NotNil(t, got, "a refused delete (%s subscription) must leave the connection", state)
+	}
+
+	requireRefused("active")
+
+	// A paused subscription still references the connection.
+	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, subscriptionops.PauseSubscription(subRepo),
+		subscriptionops.PauseCommand{ID: sub.SubscriptionID}, testpg.TestEC())
+	require.NoError(t, err)
+	requireRefused("paused")
+
+	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, subscriptionops.DeleteSubscription(subRepo),
+		subscriptionops.DeleteCommand{ID: sub.SubscriptionID}, testpg.TestEC())
+	require.NoError(t, err)
+
+	ev, err := runAuthorized(uow, operations.DeleteConnection(repo, subRepo),
+		operations.DeleteCommand{ID: seeded.ConnectionID})
+	require.NoError(t, err)
+	assert.Equal(t, seeded.ConnectionID, ev.ConnectionID)
+	got, err := repo.FindByID(ctx, seeded.ConnectionID)
+	require.NoError(t, err)
+	assert.Nil(t, got, "the delete goes through once no subscription targets the connection")
 }

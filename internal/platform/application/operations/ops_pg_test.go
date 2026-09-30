@@ -17,6 +17,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	clientops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
+	principalops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
@@ -241,6 +242,109 @@ func TestDeleteApplication_Errors(t *testing.T) {
 	_, err = runAuthorized(uow, operations.DeleteApplication(repo),
 		operations.DeleteCommand{ID: "app_doesnotexist1"})
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "Application_NOT_FOUND")
+}
+
+// grantAccess replaces a fresh user's application-access set with appIDs
+// through the principal's public operation; an empty list revokes.
+func grantAccess(t *testing.T, uow *usecasepgx.UnitOfWork, apps *application.Repository, userID ids.PrincipalID, appIDs ...string) {
+	t.Helper()
+	if appIDs == nil {
+		appIDs = []string{}
+	}
+	_, err := runAuthorized(uow, principalops.AssignApplicationAccess(principal.NewRepository(testpg.Pool(t)), apps),
+		principalops.AssignApplicationAccessCommand{UserID: userID, ApplicationIDs: appIDs})
+	require.NoError(t, err)
+}
+
+func mustCreateUser(t *testing.T, uow *usecasepgx.UnitOfWork, email string) principalops.UserCreated {
+	t.Helper()
+	ev, err := runAuthorized(uow, principalops.CreateUser(principal.NewRepository(testpg.Pool(t))),
+		principalops.CreateCommand{Email: email, Scope: "ANCHOR"})
+	require.NoError(t, err)
+	return ev
+}
+
+// requireHasReferences asserts the delete guard's refusal (owner decision
+// #53, matching Rust byte for byte) and that the application survived it.
+func requireHasReferences(t *testing.T, err error, repo *application.Repository, appID, wantMessage string) {
+	t.Helper()
+	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "APPLICATION_HAS_REFERENCES")
+	ue := usecase.AsError(err)
+	require.NotNil(t, ue)
+	assert.Equal(t, 409, ue.HTTPStatus())
+	assert.Equal(t, wantMessage, ue.Message)
+	assert.Empty(t, ue.Details)
+	got, err := repo.FindByID(context.Background(), appID)
+	require.NoError(t, err)
+	assert.NotNil(t, got, "a refused delete must leave the application")
+}
+
+// TestDeleteApplication_RefusedWhileGranted: an application a principal still
+// holds an access grant to is not deleted (409 APPLICATION_HAS_REFERENCES);
+// once the grant is revoked the delete goes through.
+func TestDeleteApplication_RefusedWhileGranted(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := application.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+	app := mustCreateApp(t, repo, uow, "appdelgrant1", "Granted")
+	user := mustCreateUser(t, uow, "appdelgrant1@example.com")
+	grantAccess(t, uow, repo, user.UserID, app.ApplicationID)
+
+	_, err := runAuthorized(uow, operations.DeleteApplication(repo),
+		operations.DeleteCommand{ID: app.ApplicationID})
+	requireHasReferences(t, err, repo, app.ApplicationID,
+		"Cannot delete application 'appdelgrant1' — 1 access grants still reference it. Remove those before deleting.")
+
+	grantAccess(t, uow, repo, user.UserID) // revoke
+
+	ev, err := runAuthorized(uow, operations.DeleteApplication(repo),
+		operations.DeleteCommand{ID: app.ApplicationID})
+	require.NoError(t, err)
+	assert.Equal(t, app.ApplicationID, ev.ApplicationID)
+	got, err := repo.FindByID(ctx, app.ApplicationID)
+	require.NoError(t, err)
+	assert.Nil(t, got, "the delete goes through once nothing references the application")
+}
+
+// TestDeleteApplication_RefusedWhileClientConfigured: per-client config rows
+// count as references whether enabled or not (as in Rust, which counts every
+// app_client_configs row), and every kind of reference is named, in order.
+func TestDeleteApplication_RefusedWhileClientConfigured(t *testing.T) {
+	t.Parallel()
+	pool := testpg.Pool(t)
+	repo := application.NewRepository(pool)
+	clients := client.NewRepository(pool)
+	configs := application.NewClientConfigRepo(pool)
+	uow := testpg.NewUoW(t)
+	app := mustCreateApp(t, repo, uow, "appdelcfg1", "Configured")
+	cl := mustCreateClient(t, uow, "App Delete Cfg Client", "appdelcfg-client1")
+	user1 := mustCreateUser(t, uow, "appdelcfg1a@example.com")
+	user2 := mustCreateUser(t, uow, "appdelcfg1b@example.com")
+	grantAccess(t, uow, repo, user1.UserID, app.ApplicationID)
+	grantAccess(t, uow, repo, user2.UserID, app.ApplicationID)
+
+	_, err := runAuthorized(uow, operations.EnableApplicationForClient(repo, clients, configs),
+		operations.EnableForClientCommand{ApplicationID: app.ApplicationID, ClientID: cl.ClientID})
+	require.NoError(t, err)
+
+	_, err = runAuthorized(uow, operations.DeleteApplication(repo),
+		operations.DeleteCommand{ID: app.ApplicationID})
+	requireHasReferences(t, err, repo, app.ApplicationID,
+		"Cannot delete application 'appdelcfg1' — 2 access grants, 1 client configs still reference it. Remove those before deleting.")
+
+	// Revoking the grants and disabling the client leaves the (disabled)
+	// config row, which still counts.
+	grantAccess(t, uow, repo, user1.UserID)
+	grantAccess(t, uow, repo, user2.UserID)
+	_, err = runAuthorized(uow, operations.DisableApplicationForClient(configs),
+		operations.DisableForClientCommand{ApplicationID: app.ApplicationID, ClientID: cl.ClientID})
+	require.NoError(t, err)
+
+	_, err = runAuthorized(uow, operations.DeleteApplication(repo),
+		operations.DeleteCommand{ID: app.ApplicationID})
+	requireHasReferences(t, err, repo, app.ApplicationID,
+		"Cannot delete application 'appdelcfg1' — 1 client configs still reference it. Remove those before deleting.")
 }
 
 // ── Activate / Deactivate ─────────────────────────────────────────────────

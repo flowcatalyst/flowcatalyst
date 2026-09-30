@@ -302,6 +302,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		connectionapi.Register(humaAPI, &connectionapi.State{
 			Repo: repos.connectionRepo,
 			Apps: repos.applicationRepo,
+			Subs: repos.subscriptionRepo,
 			UoW:  uow,
 		})
 

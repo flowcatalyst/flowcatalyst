@@ -2,6 +2,7 @@ package operations
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
@@ -20,6 +21,12 @@ type DeleteCommand struct {
 // An application is platform-level (no tenant ClientID), so there is no
 // resource-level access check; the coarse "may delete applications" permission
 // (auth.CanDeleteApplications) is enforced at the controller.
+//
+// The delete is refused (409 APPLICATION_HAS_REFERENCES) while anything still
+// references the application: access grants, per-client configs, service
+// accounts, application-scoped roles or principals' application refs. None of
+// those columns has a foreign key, so deleting would leave them dangling
+// (owner decision #53, matching Rust).
 func DeleteApplication(repo *application.Repository) usecaseop.Operation[DeleteCommand, ApplicationDeleted] {
 	return usecaseop.Operation[DeleteCommand, ApplicationDeleted]{
 		Name: "DeleteApplication",
@@ -38,6 +45,15 @@ func DeleteApplication(repo *application.Repository) usecaseop.Operation[DeleteC
 			if a == nil {
 				return nil, httperror.NotFound("Application", cmd.ID)
 			}
+			refs, err := repo.CountReferences(ctx, a.ID)
+			if err != nil {
+				return nil, usecase.Internal("REPO", "count_references failed", err)
+			}
+			if blockers := referenceBlockers(refs); len(blockers) > 0 {
+				return nil, usecase.Conflict("APPLICATION_HAS_REFERENCES",
+					fmt.Sprintf("Cannot delete application '%s' — %s still reference it. Remove those before deleting.",
+						a.Code, strings.Join(blockers, ", ")))
+			}
 			event := ApplicationDeleted{
 				Metadata:      usecase.NewEventMetadata(ec, ApplicationDeletedType, Source, subjectFor(string(a.ID))),
 				ApplicationID: string(a.ID),
@@ -46,4 +62,26 @@ func DeleteApplication(repo *application.Repository) usecaseop.Operation[DeleteC
 			return usecaseop.Delete(a, repo, event), nil
 		},
 	}
+}
+
+// referenceBlockers names each non-zero reference count, in Rust's order and
+// wording ("2 access grants"), for the APPLICATION_HAS_REFERENCES message.
+func referenceBlockers(refs application.References) []string {
+	counts := []struct {
+		label string
+		n     int64
+	}{
+		{"access grants", refs.AccessGrants},
+		{"client configs", refs.ClientConfigs},
+		{"service accounts", refs.ServiceAccounts},
+		{"application roles", refs.Roles},
+		{"principal refs", refs.PrincipalRefs},
+	}
+	var blockers []string
+	for _, c := range counts {
+		if c.n > 0 {
+			blockers = append(blockers, fmt.Sprintf("%d %s", c.n, c.label))
+		}
+	}
+	return blockers
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 )
@@ -18,7 +19,12 @@ type DeleteCommand struct {
 }
 
 // DeleteConnection removes a connection and emits [ConnectionDeleted].
-func DeleteConnection(repo *connection.Repository) usecaseop.Operation[DeleteCommand, ConnectionDeleted] {
+//
+// The delete is refused (409 HAS_SUBSCRIPTIONS) while any subscription, in
+// any status, still targets the connection: removing it would orphan their
+// deliveries (owner decision #53, matching Rust). SyncConnections applies the
+// same rule to the connections a sync removes.
+func DeleteConnection(repo *connection.Repository, subRepo *subscription.Repository) usecaseop.Operation[DeleteCommand, ConnectionDeleted] {
 	return usecaseop.Operation[DeleteCommand, ConnectionDeleted]{
 		Name: "DeleteConnection",
 		Validate: func(_ context.Context, cmd DeleteCommand) error {
@@ -40,6 +46,14 @@ func DeleteConnection(repo *connection.Repository) usecaseop.Operation[DeleteCom
 			}
 			if err := auth.CheckScopeAccess(auth.FromContext(ctx), ids.StringPtr(c.ClientID)); err != nil {
 				return nil, err
+			}
+			refs, err := subRepo.FindCodesByConnectionID(ctx, c.ID)
+			if err != nil {
+				return nil, usecase.Internal("REPO", "find subscriptions by connection failed", err)
+			}
+			if len(refs) > 0 {
+				return nil, usecase.Conflict("HAS_SUBSCRIPTIONS",
+					"Cannot delete a connection that has subscriptions. Remove all subscriptions first.")
 			}
 			event := ConnectionDeleted{
 				Metadata:     usecase.NewEventMetadata(ec, ConnectionDeletedType, Source, subjectFor(c.ID)),

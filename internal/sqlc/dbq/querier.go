@@ -22,6 +22,11 @@ type Querier interface {
 	ApplicationFindByCode(ctx context.Context, code string) (AppApplication, error)
 	// Queries for app_applications.
 	ApplicationFindByID(ctx context.Context, id ids.ApplicationID) (AppApplication, error)
+	// The delete guard's inputs (owner decision #53, matching Rust): every
+	// code-enforced reference to an application. None of these columns has a
+	// foreign key, so each is a place the application must be unwired from
+	// before it can be deleted.
+	ApplicationReferenceCounts(ctx context.Context, applicationID ids.ApplicationID) (ApplicationReferenceCountsRow, error)
 	ApplicationUpsert(ctx context.Context, arg ApplicationUpsertParams) error
 	// Queries for aud_logs (read-only — writes happen in platformsink).
 	AuditFindByID(ctx context.Context, id string) (AuditFindByIDRow, error)

@@ -15,6 +15,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
@@ -24,6 +25,9 @@ import (
 type State struct {
 	Repo *connection.Repository
 	Apps *application.Repository
+	// Subs backs the delete guard: a connection a subscription still
+	// targets is not deleted.
+	Subs *subscription.Repository
 	UoW  *usecasepgx.UnitOfWork
 }
 
@@ -127,7 +131,7 @@ func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.E
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
-	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeleteConnection(s.Repo), operations.DeleteCommand{ID: in.ID}, ec); err != nil {
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeleteConnection(s.Repo, s.Subs), operations.DeleteCommand{ID: in.ID}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil

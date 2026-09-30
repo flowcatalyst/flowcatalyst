@@ -114,6 +114,34 @@ func (r *Repository) Delete(ctx context.Context, a *Application, tx *usecasepgx.
 	return r.q.WithTx(tx.Inner()).ApplicationDelete(ctx, a.ID)
 }
 
+// References counts what still points at an application: principals'
+// access grants, per-client configs, service accounts, application-scoped
+// roles and principals whose application ref names it. None of those
+// columns has a foreign key, so the delete use case refuses while any is
+// non-zero rather than leave them dangling.
+type References struct {
+	AccessGrants    int64
+	ClientConfigs   int64
+	ServiceAccounts int64
+	Roles           int64
+	PrincipalRefs   int64
+}
+
+// CountReferences loads [References] for an application in one query.
+func (r *Repository) CountReferences(ctx context.Context, id ids.ApplicationID) (References, error) {
+	row, err := r.q.ApplicationReferenceCounts(ctx, id)
+	if err != nil {
+		return References{}, err
+	}
+	return References{
+		AccessGrants:    row.AccessGrants,
+		ClientConfigs:   row.ClientConfigs,
+		ServiceAccounts: row.ServiceAccounts,
+		Roles:           row.Roles,
+		PrincipalRefs:   row.PrincipalRefs,
+	}, nil
+}
+
 // rowToApplication hydrates the entity from its row. A type value that
 // isn't one of the known Type constants (junk written before write-boundary
 // validation existed, or a hand-edited row) is a loud read error — never
