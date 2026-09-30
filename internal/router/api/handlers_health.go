@@ -64,8 +64,10 @@ func (s *State) liveness(_ context.Context, _ *emptyInput) (*probeOutput, error)
 }
 
 func (s *State) readiness(_ context.Context, _ *emptyInput) (*probeOutput, error) {
+	// R-36: any consumer that is meant to be polling and is not makes the
+	// router NOT_READY, whatever the overall status.
 	report := s.Health.HealthReport(s.poolStatsSnap())
-	if report.Status == router.HealthDegraded {
+	if report.Status == router.HealthDegraded || len(s.Health.StalledConsumers()) > 0 {
 		return &probeOutput{
 			Status: http.StatusServiceUnavailable,
 			Body:   ProbeResponse{Status: "NOT_READY"},
@@ -175,7 +177,7 @@ type consumerHealthOutput struct {
 func (s *State) consumerHealth(_ context.Context, _ *emptyInput) (*consumerHealthOutput, error) {
 	now := time.Now().UTC()
 	consumers := map[string]ConsumerHealthDetail{}
-	for _, id := range s.Health.StalledConsumers() {
+	for _, id := range s.Health.ConsumerNames() {
 		h := s.Health.ConsumerHealth(id)
 		consumers[id] = consumerDetail(id, h, now)
 	}

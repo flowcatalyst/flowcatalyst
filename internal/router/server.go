@@ -277,6 +277,9 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	// health service; without this the consumer half of every health answer is
 	// empty (zero queues on the dashboard, a wedged consumer invisible).
 	s.Health.SetConsumerStats(s.Manager)
+	// Pools report each delivery outcome so the health report's pool
+	// success-rate clause has data.
+	s.Manager.SetPoolResultRecorder(s.Health)
 	s.Lifecycle = NewLifecycleManager(DefaultLifecycleConfig(), s.Warnings, s.Health)
 	// The Manager owns the consumer poll loops, so it is the consumer-restart
 	// source; the lifecycle consumer-health tick restarts any stalled loop.

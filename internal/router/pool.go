@@ -93,6 +93,11 @@ type Pool struct {
 	// the Prometheus scrape.
 	events poolEventCounters
 
+	// results receives one bool per delivery outcome the pool's success and
+	// failure totals count (MetricSuccess, MetricFailure), feeding the health
+	// service's rolling success rate. nil is a no-op. Set by Manager.wirePool.
+	results func(poolCode string, success bool)
+
 	// draining is set by Drain (X-11: a pool REMOVAL drains rather than
 	// flushing). It closes admission the same way stopped does — checked
 	// alongside it at the top of submit — but, unlike stopped, does NOT
@@ -1679,14 +1684,23 @@ func (p *Pool) recordMetric(m DispositionMetric, durationMs uint64) {
 	switch m {
 	case MetricSuccess:
 		p.metrics.RecordSuccess(durationMs)
+		p.recordResult(true)
 	case MetricFailure:
 		p.metrics.RecordFailure(durationMs)
+		p.recordResult(false)
 	case MetricTransient:
 		p.metrics.RecordTransient(durationMs)
 	case MetricRateLimited:
 		p.metrics.RecordRateLimited()
 	case MetricNone:
 		// Nothing to record — see MetricNone's doc comment.
+	}
+}
+
+// recordResult forwards a success/failure outcome to the health recorder.
+func (p *Pool) recordResult(success bool) {
+	if p.results != nil {
+		p.results(p.cfg.Code, success)
 	}
 }
 

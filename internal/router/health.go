@@ -182,12 +182,22 @@ func (s *HealthService) ConsumerHealth(queueName string) ConsumerHealth {
 		}
 		out := ConsumerHealth{QueueIdentifier: c.QueueName, IsRunning: c.Running, IsHealthy: s.healthy(c)}
 		if !c.LastPoll.IsZero() {
-			ms := time.Since(c.LastPoll).Milliseconds()
-			out.LastPollTimeMs, out.TimeSinceLastPollMs = &ms, &ms
+			at, since := c.LastPoll.UnixMilli(), time.Since(c.LastPoll).Milliseconds()
+			out.LastPollTimeMs, out.TimeSinceLastPollMs = &at, &since
 		}
 		return out
 	}
 	return ConsumerHealth{QueueIdentifier: queueName}
+}
+
+// ConsumerNames returns every consumer the manager currently runs.
+func (s *HealthService) ConsumerNames() []string {
+	stats := s.consumerStats()
+	out := make([]string, 0, len(stats))
+	for _, c := range stats {
+		out = append(out, c.QueueName)
+	}
+	return out
 }
 
 // StalledConsumers returns the queue names of consumers that are meant to be

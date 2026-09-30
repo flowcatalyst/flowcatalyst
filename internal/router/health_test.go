@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 )
 
 func TestHealthService_PoolSuccessRate(t *testing.T) {
@@ -230,5 +232,25 @@ func TestManagerConsumerStatsMirrorsTheWatchdogHeartbeat(t *testing.T) {
 		if c.QueueName == "n" && !c.LastPoll.IsZero() {
 			t.Fatalf("never-polled consumer reported LastPoll %v", c.LastPoll)
 		}
+	}
+}
+
+// A pool that reports its outcomes through the manager's recorder feeds the
+// health service's rolling success rate (nothing else in production writes it).
+func TestPoolOutcomes_FeedHealthSuccessRate(t *testing.T) {
+	s := NewHealthService(DefaultHealthServiceConfig(), nil)
+	m := &Manager{}
+	m.SetPoolResultRecorder(s)
+	p := &Pool{cfg: common.PoolConfig{Code: "p1"}, metrics: NewPoolMetricsCollector()}
+	p.results = m.recordPoolResult
+
+	for i := 0; i < 9; i++ {
+		p.recordMetric(MetricSuccess, 1)
+	}
+	p.recordMetric(MetricFailure, 1)
+	p.recordMetric(MetricTransient, 1) // not counted
+	rate, ok := s.PoolSuccessRate("p1")
+	if !ok || rate != 0.9 {
+		t.Fatalf("rate = (%v, %v), want (0.9, true)", rate, ok)
 	}
 }

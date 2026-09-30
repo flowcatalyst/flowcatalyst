@@ -72,9 +72,10 @@ const consumerRestartCriticalAfter = 10
 // routed from many queues, and ack/nack targets each message's SOURCE
 // consumer (resolved by QueueIdentifier via resolveConsumer).
 type Manager struct {
-	mediator Mediator
-	tracker  *InFlightTracker
-	warnings atomic.Pointer[WarningService] // optional; set via SetWarnings. nil → no-op.
+	mediator    Mediator
+	tracker     *InFlightTracker
+	poolResults atomic.Pointer[PoolResultRecorder] // optional; set via SetPoolResultRecorder.
+	warnings    atomic.Pointer[WarningService]     // optional; set via SetWarnings. nil → no-op.
 
 	// reconfigureMu serialises whole reconciles (Reconfigure, Shutdown) against
 	// each other. It guards no state; the two data locks below do that, and are
@@ -254,6 +255,24 @@ func (m *Manager) wirePool(p *Pool) {
 	p.SetCapacityFreed(m.capacityGate.signal)
 	p.SetDeferralObserver(m.noteDeferral)
 	p.SetMaxDeferral(time.Duration(m.maxDeferral.Load()))
+	p.results = m.recordPoolResult
+}
+
+// PoolResultRecorder receives each pool's delivery outcomes; HealthService
+// implements it and turns them into the rolling pool success rate.
+type PoolResultRecorder interface {
+	RecordPoolResult(poolCode string, success bool)
+}
+
+// SetPoolResultRecorder wires the recorder every pool reports outcomes to.
+// Opt-in; set once at startup before Start. Without it the pool success-rate
+// clause of the health report never fires.
+func (m *Manager) SetPoolResultRecorder(r PoolResultRecorder) { m.poolResults.Store(&r) }
+
+func (m *Manager) recordPoolResult(poolCode string, success bool) {
+	if r := m.poolResults.Load(); r != nil {
+		(*r).RecordPoolResult(poolCode, success)
+	}
 }
 
 // SetSettledReporter wires the T3/A-01 settled-message reporter that every
