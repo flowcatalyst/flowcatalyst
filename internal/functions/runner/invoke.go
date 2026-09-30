@@ -31,6 +31,19 @@ const (
 	defaultMaxBodyBytes   = 1 << 20
 )
 
+// MaxRequestBodyBytes is the runner-wide hard ceiling on a request body. The
+// effective limit is min(the endpoint's or function's limit, this), so a
+// manifest cannot ask for an unbounded read: the body is buffered in memory
+// before it is framed for the guest, and a caller on the public entry is not
+// trusted. 32 MiB is far above the 1 MiB default and any webhook payload while
+// keeping the worst case per in-flight request small.
+const MaxRequestBodyBytes = 32 << 20
+
+// unknownAddress is the metric label for a request whose address is not a
+// loaded function. The address comes from the URL or Host of an
+// unauthenticated caller, so it must never become a label value.
+const unknownAddress = "unknown"
+
 // Handler is the runner's invocation entry: /fn/{address}[@{alias}|@v{n}]/{path...}.
 func (r *Runner) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -98,7 +111,7 @@ func (r *Runner) invoke(w http.ResponseWriter, req *http.Request, t target, path
 	fn, ver, rerr := r.resolve(t)
 	if rerr != nil {
 		rerr.write(w)
-		r.metrics.observe(t.address, 0, rerr.code, start)
+		r.metrics.observe(r.metricAddress(t.address), 0, rerr.code, start)
 		return
 	}
 	settings := fn.snapshot()
@@ -147,6 +160,20 @@ func (r *Runner) invoke(w http.ResponseWriter, req *http.Request, t target, path
 		return
 	}
 
+	// A platform bearer token is checked before the body is touched, so an
+	// unauthenticated caller cannot make the runner buffer anything. (Webhook
+	// auth signs the body, so that path has to read first; it is bounded by
+	// the same ceiling.)
+	if caller == nil && ep.Auth == abi.AuthPlatform {
+		c, err := r.tokens.Verify(req.Context(), req.Header.Get("Authorization"))
+		if err != nil {
+			outcome = "unauthenticated"
+			writeError(w, http.StatusUnauthorized, "UNAUTHENTICATED", "a platform bearer token is required", 0)
+			return
+		}
+		caller = c
+	}
+
 	maxBody := settings.Limits.MaxBodyBytes
 	if maxBody <= 0 {
 		maxBody = defaultMaxBodyBytes
@@ -154,6 +181,7 @@ func (r *Runner) invoke(w http.ResponseWriter, req *http.Request, t target, path
 	if ep.MaxBodyBytes != nil {
 		maxBody = *ep.MaxBodyBytes
 	}
+	maxBody = min(maxBody, MaxRequestBodyBytes)
 	body, err := io.ReadAll(http.MaxBytesReader(w, req.Body, maxBody))
 	if err != nil {
 		outcome = "too_large"
@@ -171,13 +199,7 @@ func (r *Runner) invoke(w http.ResponseWriter, req *http.Request, t target, path
 			}
 			caller = &abi.Caller{Kind: abi.CallerWebhook}
 		case abi.AuthPlatform:
-			c, err := r.tokens.Verify(req.Context(), req.Header.Get("Authorization"))
-			if err != nil {
-				outcome = "unauthenticated"
-				writeError(w, http.StatusUnauthorized, "UNAUTHENTICATED", "a platform bearer token is required", 0)
-				return
-			}
-			caller = c
+			// Verified before the body was read; unreachable with caller nil.
 		default:
 			caller = &abi.Caller{Kind: abi.CallerAnonymous}
 		}
@@ -304,6 +326,17 @@ func (r *Runner) invoke(w http.ResponseWriter, req *http.Request, t target, path
 
 func statusClass(s int) string {
 	return strconv.Itoa(s/100) + "xx"
+}
+
+// metricAddress is the address label for a lookup miss: the function's own
+// address when it is loaded (bounded by the pool), otherwise a fixed value.
+func (r *Runner) metricAddress(address string) string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if _, ok := r.functions[address]; ok {
+		return address
+	}
+	return unknownAddress
 }
 
 // resolveError is a lookup miss with its HTTP answer.

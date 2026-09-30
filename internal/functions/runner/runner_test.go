@@ -126,7 +126,9 @@ const describeDoc = `{"abi":1,"endpoints":[
  {"path":"/trap","auth":"none"},
  {"path":"/call","auth":"none"},
  {"method":"GET","path":"/cors","auth":"none","cors":{"origins":["https://app.acme.com"]}},
- {"method":"POST","path":"/small","auth":"none","maxBodyBytes":4}
+ {"method":"POST","path":"/small","auth":"none","maxBodyBytes":4},
+ {"method":"POST","path":"/huge","auth":"none","maxBodyBytes":9000000000000},
+ {"method":"POST","path":"/secure-post","auth":"platform"}
 ],"config":["GREETING"],"secrets":["KEY"],"emits":["app:dom:agg:done"],"httpAllow":["example.com"]}`
 
 // The fixture routes by path, so /hook and /secure need fixture paths too:

@@ -7,7 +7,9 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/net/http2"
 )
@@ -65,5 +67,43 @@ func TestCleartextHTTP2Protocols(t *testing.T) {
 		if string(body) != want {
 			t.Errorf("%s: served as %q, want %q", name, body, want)
 		}
+	}
+}
+
+// A client that stalls mid-body is cut off by the server's ReadTimeout.
+func TestRunnerServerCutsOffSlowBody(t *testing.T) {
+	if s := newRunnerServer(":0", http.NewServeMux()); s.ReadTimeout != runnerReadTimeout || s.ReadTimeout <= 0 || s.IdleTimeout <= 0 {
+		t.Fatalf("timeouts not configured: read %v idle %v", s.ReadTimeout, s.IdleTimeout)
+	}
+	s := newRunnerServer("127.0.0.1:0", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := io.ReadAll(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusRequestTimeout)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	s.ReadTimeout = 300 * time.Millisecond
+	ln, err := net.Listen("tcp", s.Addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = s.Serve(ln) }()
+	t.Cleanup(func() { _ = s.Close() })
+
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	_, _ = io.WriteString(conn, "POST /x HTTP/1.1\r\nHost: a\r\nContent-Length: 1000\r\n\r\nabc")
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	start := time.Now()
+	b, _ := io.ReadAll(conn) // returns when the server closes the connection
+	if el := time.Since(start); el > 3*time.Second {
+		t.Fatalf("slow body held the connection for %v", el)
+	}
+	if strings.Contains(string(b), " 200 ") {
+		t.Fatalf("stalled body was served: %q", b)
 	}
 }

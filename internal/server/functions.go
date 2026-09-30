@@ -183,11 +183,18 @@ func StartFunctionRunner(ctx context.Context, c FunctionRunnerConfig) {
 	}
 }
 
+// runnerReadTimeout bounds reading a whole request, headers and body. The body
+// ceiling is runner.MaxRequestBodyBytes (32 MiB); two minutes lets a legitimate
+// client at roughly 280 KiB/s finish a ceiling-sized upload while cutting off a
+// slow-body client that would otherwise hold a connection and a buffer open.
+const runnerReadTimeout = 2 * time.Minute
+
 func newRunnerServer(addr string, h http.Handler) *http.Server {
 	return &http.Server{
 		Addr:              addr,
 		Handler:           h,
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       runnerReadTimeout,
 		IdleTimeout:       75 * time.Second,
 		Protocols:         cleartextHTTP2Protocols(),
 	}
