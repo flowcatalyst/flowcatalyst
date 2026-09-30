@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/netip"
 	"regexp"
 	"strings"
 
@@ -220,12 +221,46 @@ func (d *Describe) Validate() error {
 	checkList("secrets", d.Secrets, keyPattern)
 	checkList("db", d.DB, dbNamePattern)
 	checkList("httpAllow", d.HTTPAllow, hostPattern)
+	for _, h := range d.HTTPAllow {
+		if hostPattern.MatchString(h) {
+			if why := hostPatternProblem(h); why != "" {
+				add("httpAllow: %q %s", h, why)
+			}
+		}
+	}
 	checkList("emits", d.Emits, eventTypePattern)
 
 	if len(p) > 0 {
 		return &DescribeError{Problems: p}
 	}
 	return nil
+}
+
+// hostPatternProblem reports why a syntactically valid httpAllow entry is
+// still unacceptable, or "". IP literals and localhost are refused (the
+// runner's dial guard blocks those destinations anyway; failing at publish is
+// clearer), and a wildcard must sit above at least two labels so `*.com` or
+// `*.co.uk`-style sweeps cannot be declared.
+func hostPatternProblem(entry string) string {
+	host, _, _ := strings.Cut(entry, ":")
+	wild := false
+	if rest, ok := strings.CutPrefix(host, "*."); ok {
+		host, wild = rest, true
+	}
+	if _, err := netip.ParseAddr(host); err == nil {
+		return "is an IP address; declare a host name"
+	}
+	labels := strings.Split(host, ".")
+	if last := labels[len(labels)-1]; strings.Trim(last, "0123456789") == "" {
+		return "looks like an IP address; declare a host name"
+	}
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return "is a loopback name"
+	}
+	if wild && len(labels) < 2 {
+		return "is too broad; a wildcard needs at least two labels after *."
+	}
+	return ""
 }
 
 // webhookTarget reports why path cannot receive deliveries, or "" when it can:

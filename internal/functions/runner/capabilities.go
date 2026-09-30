@@ -17,6 +17,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/abi"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/control"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
 )
 
 // maxHTTPResponseBytes caps an outbound response body (plan §6.3).
@@ -106,14 +107,25 @@ func (c *capabilities) lookup(meta []byte, declared []string, values map[string]
 	return encode(abi.Found{Found: ok}), []byte(v), nil
 }
 
-// hostAllowed reports whether host (no port) matches an httpAllow entry:
-// exact, or `*.suffix` for strict subdomains. Entries with a port match only
-// that port.
+// hostAllowed reports whether u matches an httpAllow entry: exact host, or
+// `*.suffix` for strict subdomains. An entry with a port matches only that
+// port; an entry without one matches only the default web ports (80 and 443),
+// so declaring a host does not open every service on it.
 func hostAllowed(allow []string, u *url.URL) bool {
 	host, port := strings.ToLower(u.Hostname()), u.Port()
+	if port == "" {
+		port = "80"
+		if u.Scheme == "https" {
+			port = "443"
+		}
+	}
 	for _, a := range allow {
-		aHost, aPort, hasPort := strings.Cut(a, ":")
-		if hasPort && aPort != port {
+		aHost, aPort, hasPort := strings.Cut(strings.ToLower(a), ":")
+		if hasPort {
+			if aPort != port {
+				continue
+			}
+		} else if port != "80" && port != "443" {
 			continue
 		}
 		if suffix, ok := strings.CutPrefix(aHost, "*."); ok {
@@ -129,13 +141,25 @@ func hostAllowed(allow []string, u *url.URL) bool {
 	return false
 }
 
-// newHTTPClient builds the outbound client. Redirects are followed only to
-// allowlisted hosts; the allowlist travels in the request context.
-func newHTTPClient() *http.Client {
+// newHTTPClient builds the outbound client under the process-wide delivery
+// policy (netguard.Default: loopback only with FC_DELIVERY_ALLOW_LOOPBACK).
+func newHTTPClient() *http.Client { return newHTTPClientWith(netguard.Default) }
+
+// newHTTPClientWith builds the outbound client. The allowlist is a hostname
+// check; the dial guard is the authoritative one: it vets the address actually
+// connected to after DNS resolution, so an allowlisted name that resolves (or
+// rebinds) to loopback, private, link-local or metadata addresses is refused,
+// on every redirect hop too. Redirects are followed only to allowlisted hosts;
+// the allowlist travels in the request context.
+//
+// Proxy is deliberately unset: a proxy would receive the connection instead of
+// the target, so the dial-time address check would vet the proxy, not the
+// destination.
+func newHTTPClientWith(policy *netguard.Policy) *http.Client {
+	dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
 	return &http.Client{
 		Transport: &http.Transport{
-			Proxy:                 http.ProxyFromEnvironment,
-			DialContext:           (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+			DialContext:           policy.DialContext(dialer),
 			MaxIdleConns:          256,
 			MaxIdleConnsPerHost:   32,
 			IdleConnTimeout:       90 * time.Second,
@@ -195,6 +219,9 @@ func (c *capabilities) fetch(ctx context.Context, meta, body []byte) ([]byte, []
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, nil, abi.Errorf(abi.CodeDeadline, "the request did not finish before its deadline")
+		}
+		if errors.Is(err, netguard.ErrBlocked) {
+			return nil, nil, abi.Errorf(abi.CodeNotAllowed, err.Error())
 		}
 		var ue *url.Error
 		if errors.As(err, &ue) && strings.Contains(ue.Err.Error(), "httpAllow") {

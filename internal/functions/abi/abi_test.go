@@ -61,7 +61,7 @@ const validDescribe = `{
   "subscriptions": [{"eventType": "orders:order:order:created", "path": "/events/order-created", "mode": "IMMEDIATE", "maxRetries": 3}],
   "schedules": [{"cron": "*/5 * * * *", "path": "/events/order-created"}],
   "config": ["GREETING"], "secrets": ["STRIPE_KEY"], "db": ["main"],
-  "httpAllow": ["api.stripe.com", "*.acme.com", "localhost:8080"], "emits": ["orders:order:order:shipped"]
+  "httpAllow": ["api.stripe.com", "*.acme.com", "hooks.acme.com:8080"], "emits": ["orders:order:order:shipped"]
 }`
 
 func TestParseDescribeValid(t *testing.T) {
@@ -99,6 +99,13 @@ func TestParseDescribeRejects(t *testing.T) {
 		"duplicate secret":    {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"secrets":["K","K"]}`, "declared twice"},
 		"bad config key":      {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"config":["1BAD"]}`, `config: "1BAD"`},
 		"bad http host":       {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"httpAllow":["https://x.com"]}`, "httpAllow"},
+		"http IP literal":     {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"httpAllow":["169.254.169.254"]}`, "IP address"},
+		"http IP with port":   {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"httpAllow":["127.0.0.1:8080"]}`, "IP address"},
+		"http numeric tld":    {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"httpAllow":["10.1"]}`, "IP address"},
+		"http localhost":      {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"httpAllow":["localhost:8080"]}`, "loopback"},
+		"http sub localhost":  {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"httpAllow":["*.foo.localhost"]}`, "loopback"},
+		"http wildcard tld":   {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"httpAllow":["*.com"]}`, "too broad"},
+		"http wildcard stars": {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}],"httpAllow":["*.*"]}`, "httpAllow"},
 		"negative body limit": {`{"abi":1,"endpoints":[{"path":"/e","auth":"none","maxBodyBytes":-1}]}`, "maxBodyBytes"},
 		"trailing data":       {`{"abi":1,"endpoints":[{"path":"/e","auth":"none"}]} {}`, "trailing data"},
 	}

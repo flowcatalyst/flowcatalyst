@@ -355,8 +355,10 @@ Every capability receives the invocation `ctx`, so the deadline flows to pgx, `n
 emit without per-call arithmetic.
 
 - **config / secret:** declared keys only, values from desired state.
-- **http.fetch:** a runner-owned `http.Client`. The allowlist is checked against the URL host
-  *and* again at dial time on every redirect hop, to stop redirect escapes. Response body capped
+- **http.fetch:** a runner-owned `http.Client`. The allowlist (hostname; no port means 80/443 only) is checked against the URL host
+  and again on every redirect hop; separately, `netguard` vets the resolved address at dial time
+  (loopback, private, link-local and metadata are refused; `FC_DELIVERY_ALLOW_LOOPBACK` is the dev
+  exception). No proxy is used. Response body capped
   at 16 MiB (`TOO_LARGE`).
 - **event.emit:** the runner posts to a control endpoint (§8.3) as itself, naming the function.
   The platform checks the type is in describe `emits` and owned by the application, then ingests.
