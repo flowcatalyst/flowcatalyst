@@ -80,3 +80,38 @@ func TestClientAddr(t *testing.T) {
 		}
 	}
 }
+
+func TestRouteTableAliasPrefixes(t *testing.T) {
+	tbl := buildRoutes([]control.Route{
+		{Hostname: "myapp.acme.com", PathPrefix: "/", Address: "app.hello", AliasPrefixes: []string{"qa", "staging"}},
+		{Hostname: "closed.acme.com", PathPrefix: "/", Address: "app.closed"},
+		{Hostname: "qa-exact.acme.com", PathPrefix: "/", Address: "app.exact"},
+		{Hostname: "exact.acme.com", PathPrefix: "/", Address: "app.other", AliasPrefixes: []string{"qa"}},
+		{Hostname: "staging-myapp.acme.com", PathPrefix: "/only", Address: "app.staged"},
+		{Hostname: "my-app.acme.com", PathPrefix: "/", Address: "app.hyph", AliasPrefixes: []string{"qa"}},
+	})
+	cases := []struct {
+		name, host, path string
+		wantOK           bool
+		wantAddr, alias  string
+	}{
+		{"exact host is live", "myapp.acme.com", "/x", true, "app.hello", ""},
+		{"opted-in prefix serves the alias", "qa-myapp.acme.com", "/x", true, "app.hello", "qa"},
+		{"exact host with no matching path does not fall through to derivation", "staging-myapp.acme.com:443", "/x", false, "", ""},
+		{"second opted-in prefix on a path-matched base", "staging-myapp.acme.com", "/only/x", true, "app.staged", ""},
+		{"prefix not opted in", "dev-myapp.acme.com", "/x", false, "", ""},
+		{"route without prefixes is exact only", "qa-closed.acme.com", "/x", false, "", ""},
+		{"an exact route beats the derivation", "qa-exact.acme.com", "/x", true, "app.exact", ""},
+		{"hyphenated base: split at the first hyphen", "qa-my-app.acme.com", "/x", true, "app.hyph", "qa"},
+		{"one level only", "qa-staging-myapp.acme.com", "/x", false, "", ""},
+		{"no hyphen, no derivation", "unknown.acme.com", "/x", false, "", ""},
+		{"case and trailing dot", "QA-MyApp.Acme.com.", "/x", true, "app.hello", "qa"},
+	}
+	for _, c := range cases {
+		rt, _, ok := tbl.match(c.host, c.path)
+		if ok != c.wantOK || rt.Address != c.wantAddr || rt.Alias != c.alias {
+			t.Errorf("%s: match(%q) = ok %v addr %q alias %q; want ok %v addr %q alias %q",
+				c.name, c.host, ok, rt.Address, rt.Alias, c.wantOK, c.wantAddr, c.alias)
+		}
+	}
+}

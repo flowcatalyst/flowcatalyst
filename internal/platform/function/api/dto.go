@@ -242,41 +242,52 @@ func settingResponse(s function.Setting) SettingResponse {
 
 // PutRouteRequest is the wire body for PUT /api/functions/{id}/routes.
 type PutRouteRequest struct {
-	Hostname   string `json:"hostname" doc:"A lowercase DNS hostname covered by a claimed zone (no port, no wildcard)"`
-	PathPrefix string `json:"pathPrefix" doc:"The path prefix routed to this function, e.g. \"/\" or \"/webhooks\""`
-	Alias      string `json:"alias,omitempty" doc:"An existing alias name to route to; omitted routes to live"`
+	Hostname      string   `json:"hostname" doc:"A lowercase DNS hostname covered by a claimed zone (no port, no wildcard)"`
+	PathPrefix    string   `json:"pathPrefix" doc:"The path prefix routed to this function, e.g. \"/\" or \"/webhooks\""`
+	Alias         string   `json:"alias,omitempty" doc:"An existing alias name to route to; omitted routes to live"`
+	AliasPrefixes []string `json:"aliasPrefixes,omitempty" doc:"Opt-in alias prefixes: for each prefix p, \"p-<hostname>\" serves alias p (live routes only; no hyphens)"`
 }
 
 func (r PutRouteRequest) toCommand(functionID string) operations.PutRouteCommand {
 	return operations.PutRouteCommand{
-		FunctionID: functionID,
-		Hostname:   r.Hostname,
-		PathPrefix: r.PathPrefix,
-		Alias:      r.Alias,
+		FunctionID:    functionID,
+		Hostname:      r.Hostname,
+		PathPrefix:    r.PathPrefix,
+		Alias:         r.Alias,
+		AliasPrefixes: r.AliasPrefixes,
 	}
 }
 
 // RouteResponse mirrors function.Route.
 type RouteResponse struct {
-	ID         string          `json:"id"`
-	FunctionID string          `json:"functionId"`
-	Hostname   string          `json:"hostname"`
-	PathPrefix string          `json:"pathPrefix"`
-	Alias      *string         `json:"alias,omitempty"`
-	CreatedBy  *string         `json:"createdBy,omitempty"`
-	CreatedAt  httpcompat.Time `json:"createdAt"`
-	UpdatedAt  httpcompat.Time `json:"updatedAt"`
+	ID            string          `json:"id"`
+	FunctionID    string          `json:"functionId"`
+	Hostname      string          `json:"hostname"`
+	PathPrefix    string          `json:"pathPrefix"`
+	Alias         *string         `json:"alias,omitempty"`
+	AliasPrefixes []string        `json:"aliasPrefixes"`
+	CreatedBy     *string         `json:"createdBy,omitempty"`
+	CreatedAt     httpcompat.Time `json:"createdAt"`
+	UpdatedAt     httpcompat.Time `json:"updatedAt"`
 }
 
 func routeResponse(r function.Route) RouteResponse {
 	return RouteResponse{
-		ID:         r.ID,
-		FunctionID: r.FunctionID,
-		Hostname:   r.Hostname,
-		PathPrefix: r.PathPrefix,
-		Alias:      r.Alias,
-		CreatedBy:  r.CreatedBy,
-		CreatedAt:  jsontime.New(r.CreatedAt),
-		UpdatedAt:  jsontime.New(r.UpdatedAt),
+		ID:            r.ID,
+		FunctionID:    r.FunctionID,
+		Hostname:      r.Hostname,
+		PathPrefix:    r.PathPrefix,
+		Alias:         r.Alias,
+		AliasPrefixes: nonNilStrings(r.AliasPrefixes),
+		CreatedBy:     r.CreatedBy,
+		CreatedAt:     jsontime.New(r.CreatedAt),
+		UpdatedAt:     jsontime.New(r.UpdatedAt),
 	}
+}
+
+func nonNilStrings(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }

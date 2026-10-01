@@ -2257,6 +2257,10 @@ export type PutRouteRequest = {
      */
     alias?: string;
     /**
+     * Opt-in alias prefixes: for each prefix p, "p-<hostname>" serves alias p (live routes only; no hyphens)
+     */
+    aliasPrefixes?: Array<string>;
+    /**
      * A lowercase DNS hostname covered by a claimed zone (no port, no wildcard)
      */
     hostname: string;
@@ -2517,6 +2521,7 @@ export type RotateOAuthClientSecretResponse = {
 export type Route = {
     address: string;
     alias?: string;
+    aliasPrefixes?: Array<string>;
     hostname: string;
     pathPrefix: string;
 };
@@ -2527,6 +2532,7 @@ export type RouteResponse = {
      */
     readonly $schema?: string;
     alias?: string;
+    aliasPrefixes: Array<string>;
     createdAt: string;
     createdBy?: string;
     functionId: string;
@@ -4862,6 +4868,10 @@ export type PutRouteRequestWritable = {
      */
     alias?: string;
     /**
+     * Opt-in alias prefixes: for each prefix p, "p-<hostname>" serves alias p (live routes only; no hyphens)
+     */
+    aliasPrefixes?: Array<string>;
+    /**
      * A lowercase DNS hostname covered by a claimed zone (no port, no wildcard)
      */
     hostname: string;
@@ -4984,6 +4994,7 @@ export type RotateOAuthClientSecretResponseWritable = {
 
 export type RouteResponseWritable = {
     alias?: string;
+    aliasPrefixes: Array<string>;
     createdAt: string;
     createdBy?: string;
     functionId: string;

@@ -14,17 +14,18 @@ import (
 // self-contained set of columns with no shared query file to collide with
 // concurrent work on internal/sqlc/queries/function.sql.
 
-const routeColumns = `id, function_id, hostname, path_prefix, alias, created_by, created_at, updated_at`
+const routeColumns = `id, function_id, hostname, path_prefix, alias, alias_prefixes, created_by, created_at, updated_at`
 
 type routeRow struct {
-	ID         string
-	FunctionID string `db:"function_id"`
-	Hostname   string
-	PathPrefix string `db:"path_prefix"`
-	Alias      *string
-	CreatedBy  *string   `db:"created_by"`
-	CreatedAt  time.Time `db:"created_at"`
-	UpdatedAt  time.Time `db:"updated_at"`
+	ID            string
+	FunctionID    string `db:"function_id"`
+	Hostname      string
+	PathPrefix    string `db:"path_prefix"`
+	Alias         *string
+	AliasPrefixes []string  `db:"alias_prefixes"`
+	CreatedBy     *string   `db:"created_by"`
+	CreatedAt     time.Time `db:"created_at"`
+	UpdatedAt     time.Time `db:"updated_at"`
 }
 
 // rowToRoute converts routeRow to Route — a plain type conversion, not a
@@ -82,11 +83,12 @@ func (r *Repository) ListRoutesByFunction(ctx context.Context, functionID string
 func (r *Repository) UpsertRouteTx(ctx context.Context, rt *Route, tx pgx.Tx) error {
 	_, err := tx.Exec(ctx, `
 		INSERT INTO fng_routes (`+routeColumns+`)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		ON CONFLICT (id) DO UPDATE SET
 			hostname = EXCLUDED.hostname, path_prefix = EXCLUDED.path_prefix,
-			alias = EXCLUDED.alias, updated_at = EXCLUDED.updated_at`,
-		rt.ID, rt.FunctionID, rt.Hostname, rt.PathPrefix, rt.Alias, rt.CreatedBy, rt.CreatedAt, rt.UpdatedAt)
+			alias = EXCLUDED.alias, alias_prefixes = EXCLUDED.alias_prefixes,
+			updated_at = EXCLUDED.updated_at`,
+		rt.ID, rt.FunctionID, rt.Hostname, rt.PathPrefix, rt.Alias, nonNil(rt.AliasPrefixes), rt.CreatedBy, rt.CreatedAt, rt.UpdatedAt)
 	return err
 }
 
@@ -112,7 +114,7 @@ type routeWithAddressRow struct {
 func (r *Repository) ListRoutesByPool(ctx context.Context, pool string) ([]Route, []string, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT rt.id, rt.function_id, rt.hostname, rt.path_prefix, rt.alias,
-		       rt.created_by, rt.created_at, rt.updated_at, f.address AS address
+		       rt.alias_prefixes, rt.created_by, rt.created_at, rt.updated_at, f.address AS address
 		FROM fng_routes rt
 		JOIN fng_functions f ON f.id = rt.function_id
 		WHERE COALESCE(f.pool, 'default') = $1
@@ -131,4 +133,13 @@ func (r *Repository) ListRoutesByPool(ctx context.Context, pool string) ([]Route
 		addresses = append(addresses, row.Address)
 	}
 	return routes, addresses, nil
+}
+
+// nonNil keeps a nil slice from being written as SQL NULL into the NOT NULL
+// alias_prefixes column.
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }

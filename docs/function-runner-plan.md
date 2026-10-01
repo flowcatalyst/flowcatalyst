@@ -545,7 +545,17 @@ Two new aggregates, both `fng_`-prefixed (migration `062_function_routes.sql`):
   hostname must be covered by a zone claimed by the function's own client (or, for a
   platform-owned function, a platform zone) — `ROUTE_HOST_NOT_CLAIMED` otherwise. An `alias` must
   either be empty (live) or name an alias that already exists on the function —
-  `ALIAS_NOT_FOUND` otherwise. `DELETE /api/functions/{id}/routes/{routeId}` removes one route.
+  `ALIAS_NOT_FOUND` otherwise. A live route may opt into **alias prefixes** (`aliasPrefixes`,
+  migration 064, `TEXT[]`): for each prefix `p`, the host `p-<hostname>` serves alias `p` of the
+  function, so `qa-myapp.acme.com` reaches the `qa` alias of the route on `myapp.acme.com`. A
+  prefix must be a valid alias name, not `live`, with no hyphen (the runner splits the first host
+  label at its first hyphen, so a hyphenated prefix could never match) — `INVALID_ALIAS_PREFIX`;
+  a route pinned to a named alias cannot carry prefixes — `ALIAS_PREFIXES_REQUIRE_LIVE`. Derived
+  hostnames are not stored and not conflict-checked: an exact route on the derived host always
+  wins, and an exact host whose paths miss does not fall through to derivation. One level only
+  (`qa-staging-myapp.x` is prefix `qa` on base `staging-myapp.x`). A derived host is covered by
+  the same zone as its base. The load balancer must forward `*.<zone>` and hold a wildcard
+  certificate for it (`*.localhost` already resolves on macOS/Linux in dev). `DELETE /api/functions/{id}/routes/{routeId}` removes one route.
   Both writes bump the function's runner pool revision in the same transaction as settings.go's
   `PutSetting`/`DeleteSetting` do, so a route change reaches runners without waiting for a
   promote. Gated on `platform:function:route:manage`; `GET .../routes` uses the ordinary

@@ -57,10 +57,22 @@ type Route struct {
 	Hostname   string
 	PathPrefix string
 	// Alias names a non-live alias to route to; nil/"" means live.
-	Alias     *string
-	CreatedBy *string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	Alias *string
+	// AliasPrefixes opts the route into alias-prefixed hostnames: for each
+	// prefix p, `p-<hostname>` serves the alias p of this function. Empty
+	// means exact-host matching only. Only meaningful on a live route.
+	AliasPrefixes []string
+	CreatedBy     *string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+// ValidAliasPrefix reports whether p can be an alias prefix: a valid alias
+// name that is not "live" and contains no hyphen. The runner derives the
+// prefix by splitting the first hostname label at its FIRST hyphen, so a
+// hyphenated prefix could never match.
+func ValidAliasPrefix(p string) bool {
+	return ValidAliasName(p) && p != LiveAlias && !strings.Contains(p, "-")
 }
 
 // IDStr satisfies usecase.HasID.

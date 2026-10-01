@@ -46,6 +46,9 @@ type Route struct {
 	PathPrefix string `json:"pathPrefix"`
 	Address    string `json:"address"`
 	Alias      string `json:"alias,omitempty"` // "" = live
+	// AliasPrefixes opts the route into alias-prefixed hostnames: for each
+	// prefix p, host "p-<hostname>" serves alias p. Empty = exact host only.
+	AliasPrefixes []string `json:"aliasPrefixes,omitempty"`
 }
 
 // TokenAuth names the issuer and audience of the platform's access tokens.

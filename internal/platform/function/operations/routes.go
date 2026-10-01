@@ -8,6 +8,7 @@ package operations
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"time"
 
@@ -30,6 +31,9 @@ type PutRouteCommand struct {
 	PathPrefix string `json:"pathPrefix"`
 	// Alias names a non-live alias to route to; empty means live.
 	Alias string `json:"alias,omitempty"`
+	// AliasPrefixes opts the route into alias-prefixed hostnames
+	// (`qa-myapp.acme.com` serves alias `qa`). Live routes only.
+	AliasPrefixes []string `json:"aliasPrefixes,omitempty"`
 }
 
 // PutRoute upserts a route by (hostname, pathPrefix) — matching the
@@ -56,6 +60,21 @@ func PutRoute(repo *function.Repository, domains *functiondomain.Repository) use
 			if alias != "" && alias != function.LiveAlias && !function.ValidAliasName(alias) {
 				return usecase.Validation("INVALID_ALIAS_NAME",
 					"alias name must start with a lowercase letter and contain only lowercase alphanumerics and hyphens (max 31 chars)")
+			}
+			if len(cmd.AliasPrefixes) > 0 && alias != "" && alias != function.LiveAlias {
+				return usecase.Validation("ALIAS_PREFIXES_REQUIRE_LIVE",
+					"aliasPrefixes can only be set on a route that serves live")
+			}
+			seen := map[string]bool{}
+			for _, p := range cmd.AliasPrefixes {
+				if !function.ValidAliasPrefix(p) {
+					return usecase.Validation("INVALID_ALIAS_PREFIX",
+						"alias prefix '"+p+"' must be a valid alias name without hyphens, and not 'live'")
+				}
+				if seen[p] {
+					return usecase.Validation("INVALID_ALIAS_PREFIX", "duplicate alias prefix '"+p+"'")
+				}
+				seen[p] = true
 			}
 			return nil
 		},
@@ -120,10 +139,11 @@ func PutRoute(repo *function.Repository, domains *functiondomain.Repository) use
 			}
 
 			route := function.Route{
-				Hostname:   hostname,
-				PathPrefix: pathPrefix,
-				FunctionID: f.ID,
-				Alias:      aliasPtr,
+				Hostname:      hostname,
+				PathPrefix:    pathPrefix,
+				FunctionID:    f.ID,
+				Alias:         aliasPtr,
+				AliasPrefixes: slices.Sorted(slices.Values(cmd.AliasPrefixes)),
 			}
 			if existing != nil {
 				route.ID = existing.ID

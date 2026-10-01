@@ -219,3 +219,49 @@ func TestDeleteFunction_CascadesRoutes(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, got, "the route row must be gone once its function is deleted")
 }
+
+func (f *testFunctionFixture) putRouteWithPrefixes(hostname, alias string, prefixes []string) (function.Route, error) {
+	f.t.Helper()
+	return usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.PutRoute(f.repo, newDomainsRepo(f)),
+		operations.PutRouteCommand{FunctionID: f.fn.ID, Hostname: hostname, PathPrefix: "/", Alias: alias, AliasPrefixes: prefixes}, testpg.TestEC())
+}
+
+// TestPutRoute_AliasPrefixes proves prefixes persist (sorted), round-trip
+// through the pool document query, can be cleared by a later PUT, and are
+// refused when malformed or set on a route pinned to a named alias.
+func TestPutRoute_AliasPrefixes(t *testing.T) {
+	t.Parallel()
+	f := newTestFunctionFixture(t, "app_optroutesfn11", "optroutesfnapp11", "route-fn")
+	zone := "prefixes-" + short(t) + ".test"
+	f.claimZone(zone)
+	host := "myapp." + zone
+
+	rt, err := f.putRouteWithPrefixes(host, "", []string{"staging", "qa"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"qa", "staging"}, rt.AliasPrefixes)
+
+	routes, _, err := f.repo.ListRoutesByPool(context.Background(), f.fn.RunnerPool())
+	require.NoError(t, err)
+	var found bool
+	for _, r := range routes {
+		if r.ID == rt.ID {
+			found = true
+			assert.Equal(t, []string{"qa", "staging"}, r.AliasPrefixes)
+		}
+	}
+	assert.True(t, found, "route must appear in the pool's control document query")
+
+	cleared, err := f.putRouteWithPrefixes(host, "", nil)
+	require.NoError(t, err)
+	assert.Equal(t, rt.ID, cleared.ID)
+	assert.Empty(t, cleared.AliasPrefixes)
+
+	for _, bad := range [][]string{{"live"}, {"Qa"}, {"qa-x"}, {"qa", "qa"}, {""}} {
+		_, err = f.putRouteWithPrefixes(host, "", bad)
+		testpg.RequireUsecaseError(t, err, usecase.KindValidation, "INVALID_ALIAS_PREFIX")
+	}
+
+	f.seedAlias("canary")
+	_, err = f.putRouteWithPrefixes(host, "canary", []string{"qa"})
+	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "ALIAS_PREFIXES_REQUIRE_LIVE")
+}

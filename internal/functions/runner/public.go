@@ -27,12 +27,44 @@ func buildRoutes(routes []control.Route) routeTable {
 }
 
 // match finds the route for host and path and returns the path relative to
-// the route's prefix.
+// the route's prefix. An exact host match wins. Failing that, if the host's
+// first label contains a hyphen it is split at the FIRST hyphen into a
+// prefix p and the rest; the remainder (rest plus the other labels) is
+// looked up as the base host, and the matched route serves alias p only if
+// it opted in via AliasPrefixes. One level only: "qa-staging-myapp.x" is
+// prefix "qa" on base "staging-myapp.x".
 func (t routeTable) match(host, path string) (control.Route, string, bool) {
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h
 	}
-	for _, rt := range t[strings.ToLower(strings.TrimSuffix(host, "."))] {
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+	if rt, rest, ok := matchPath(t[host], path); ok {
+		return rt, rest, true
+	}
+	if _, isExact := t[host]; isExact {
+		return control.Route{}, "", false
+	}
+	first, tail, hasTail := strings.Cut(host, ".")
+	p, rest, ok := strings.Cut(first, "-")
+	if !ok || p == "" || rest == "" {
+		return control.Route{}, "", false
+	}
+	base := rest
+	if hasTail {
+		base = rest + "." + tail
+	}
+	rt, relPath, ok := matchPath(t[base], path)
+	if !ok || !slices.Contains(rt.AliasPrefixes, p) {
+		return control.Route{}, "", false
+	}
+	rt.Alias = p
+	return rt, relPath, true
+}
+
+// matchPath picks the longest whole-segment prefix among routes (sorted
+// longest first) and returns the path relative to it.
+func matchPath(routes []control.Route, path string) (control.Route, string, bool) {
+	for _, rt := range routes {
 		if rt.PathPrefix == "/" {
 			return rt, path, true
 		}

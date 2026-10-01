@@ -41,10 +41,11 @@ func (s *State) buildDesired(ctx context.Context, pool string) (*fncontrol.Desir
 			alias = *rt.Alias
 		}
 		doc.Routes = append(doc.Routes, fncontrol.Route{
-			Hostname:   rt.Hostname,
-			PathPrefix: rt.PathPrefix,
-			Address:    addresses[i],
-			Alias:      alias,
+			Hostname:      rt.Hostname,
+			PathPrefix:    rt.PathPrefix,
+			Address:       addresses[i],
+			Alias:         alias,
+			AliasPrefixes: rt.AliasPrefixes,
 		})
 	}
 	for i := range functions {
