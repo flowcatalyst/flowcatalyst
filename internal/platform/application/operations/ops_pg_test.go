@@ -307,22 +307,79 @@ func TestDeleteApplication_RefusedWhileGranted(t *testing.T) {
 	assert.Nil(t, got, "the delete goes through once nothing references the application")
 }
 
-// TestDeleteApplication_RefusedWhileClientConfigured: per-client config rows
-// count as references whether enabled or not (as in Rust, which counts every
-// app_client_configs row), and every kind of reference is named, in order.
+// TestDeleteApplication_RefusedWhileClientConfigured: an enabled per-client
+// config counts as a reference, and every kind of reference is named, in
+// order. A disabled config does not (owner decision #55): once the grants are
+// revoked and the client disabled, the delete goes through and takes the
+// disabled config row with it, leaving another application's config alone.
 func TestDeleteApplication_RefusedWhileClientConfigured(t *testing.T) {
 	t.Parallel()
+	ctx := context.Background()
 	pool := testpg.Pool(t)
 	repo := application.NewRepository(pool)
 	clients := client.NewRepository(pool)
 	configs := application.NewClientConfigRepo(pool)
 	uow := testpg.NewUoW(t)
 	app := mustCreateApp(t, repo, uow, "appdelcfg1", "Configured")
+	other := mustCreateApp(t, repo, uow, "appdelcfg1other", "Configured Other")
 	cl := mustCreateClient(t, uow, "App Delete Cfg Client", "appdelcfg-client1")
 	user1 := mustCreateUser(t, uow, "appdelcfg1a@example.com")
 	user2 := mustCreateUser(t, uow, "appdelcfg1b@example.com")
 	grantAccess(t, uow, repo, user1.UserID, app.ApplicationID)
 	grantAccess(t, uow, repo, user2.UserID, app.ApplicationID)
+
+	for _, appID := range []string{app.ApplicationID, other.ApplicationID} {
+		_, err := runAuthorized(uow, operations.EnableApplicationForClient(repo, clients, configs),
+			operations.EnableForClientCommand{ApplicationID: appID, ClientID: cl.ClientID})
+		require.NoError(t, err)
+	}
+
+	_, err := runAuthorized(uow, operations.DeleteApplication(repo),
+		operations.DeleteCommand{ID: app.ApplicationID})
+	requireHasReferences(t, err, repo, app.ApplicationID,
+		"Cannot delete application 'appdelcfg1' — 2 access grants, 1 client configs still reference it. Remove those before deleting.")
+
+	// Revoke the grants and disable the client (on both applications): the
+	// disabled config row no longer blocks the delete.
+	grantAccess(t, uow, repo, user1.UserID)
+	grantAccess(t, uow, repo, user2.UserID)
+	for _, appID := range []string{app.ApplicationID, other.ApplicationID} {
+		_, err = runAuthorized(uow, operations.DisableApplicationForClient(configs),
+			operations.DisableForClientCommand{ApplicationID: appID, ClientID: cl.ClientID})
+		require.NoError(t, err)
+	}
+
+	ev, err := runAuthorized(uow, operations.DeleteApplication(repo),
+		operations.DeleteCommand{ID: app.ApplicationID})
+	require.NoError(t, err)
+	assert.Equal(t, app.ApplicationID, ev.ApplicationID)
+	got, err := repo.FindByID(ctx, app.ApplicationID)
+	require.NoError(t, err)
+	assert.Nil(t, got, "a disabled client config does not block the delete")
+
+	left, err := configs.FindByApplication(ctx, app.ApplicationID)
+	require.NoError(t, err)
+	assert.Empty(t, left, "the disabled client config is removed with the application")
+
+	kept, err := configs.FindByApplication(ctx, other.ApplicationID)
+	require.NoError(t, err)
+	require.Len(t, kept, 1, "another application's disabled config is untouched")
+	assert.False(t, kept[0].Enabled)
+}
+
+// TestDeleteApplication_RefusedWhileEnabledForClient: an application enabled
+// for a client, with nothing else pointing at it, is refused with
+// "1 client configs", and the enabled config row survives the refusal.
+func TestDeleteApplication_RefusedWhileEnabledForClient(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := application.NewRepository(pool)
+	clients := client.NewRepository(pool)
+	configs := application.NewClientConfigRepo(pool)
+	uow := testpg.NewUoW(t)
+	app := mustCreateApp(t, repo, uow, "appdelcfg2", "Enabled For Client")
+	cl := mustCreateClient(t, uow, "App Delete Cfg Client 2", "appdelcfg-client2")
 
 	_, err := runAuthorized(uow, operations.EnableApplicationForClient(repo, clients, configs),
 		operations.EnableForClientCommand{ApplicationID: app.ApplicationID, ClientID: cl.ClientID})
@@ -331,20 +388,12 @@ func TestDeleteApplication_RefusedWhileClientConfigured(t *testing.T) {
 	_, err = runAuthorized(uow, operations.DeleteApplication(repo),
 		operations.DeleteCommand{ID: app.ApplicationID})
 	requireHasReferences(t, err, repo, app.ApplicationID,
-		"Cannot delete application 'appdelcfg1' — 2 access grants, 1 client configs still reference it. Remove those before deleting.")
+		"Cannot delete application 'appdelcfg2' — 1 client configs still reference it. Remove those before deleting.")
 
-	// Revoking the grants and disabling the client leaves the (disabled)
-	// config row, which still counts.
-	grantAccess(t, uow, repo, user1.UserID)
-	grantAccess(t, uow, repo, user2.UserID)
-	_, err = runAuthorized(uow, operations.DisableApplicationForClient(configs),
-		operations.DisableForClientCommand{ApplicationID: app.ApplicationID, ClientID: cl.ClientID})
+	left, err := configs.FindByApplication(ctx, app.ApplicationID)
 	require.NoError(t, err)
-
-	_, err = runAuthorized(uow, operations.DeleteApplication(repo),
-		operations.DeleteCommand{ID: app.ApplicationID})
-	requireHasReferences(t, err, repo, app.ApplicationID,
-		"Cannot delete application 'appdelcfg1' — 1 client configs still reference it. Remove those before deleting.")
+	require.Len(t, left, 1, "a refused delete leaves the enabled config")
+	assert.True(t, left[0].Enabled)
 }
 
 // ── Activate / Deactivate ─────────────────────────────────────────────────

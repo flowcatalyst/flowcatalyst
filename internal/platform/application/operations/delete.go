@@ -23,10 +23,12 @@ type DeleteCommand struct {
 // (auth.CanDeleteApplications) is enforced at the controller.
 //
 // The delete is refused (409 APPLICATION_HAS_REFERENCES) while anything still
-// references the application: access grants, per-client configs, service
-// accounts, application-scoped roles or principals' application refs. None of
-// those columns has a foreign key, so deleting would leave them dangling
-// (owner decision #53, matching Rust).
+// references the application: access grants, enabled per-client configs,
+// service accounts, application-scoped roles or principals' application refs.
+// None of those columns has a foreign key, so deleting would leave them
+// dangling (owner decision #53, matching Rust). A disabled client config does
+// not block the delete; the repository removes it in the same transaction as
+// the application row (owner decision #55).
 func DeleteApplication(repo *application.Repository) usecaseop.Operation[DeleteCommand, ApplicationDeleted] {
 	return usecaseop.Operation[DeleteCommand, ApplicationDeleted]{
 		Name: "DeleteApplication",

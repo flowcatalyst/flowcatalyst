@@ -21,6 +21,18 @@ func (q *Queries) ApplicationDelete(ctx context.Context, id ids.ApplicationID) e
 	return err
 }
 
+const applicationDisabledClientConfigsDelete = `-- name: ApplicationDisabledClientConfigsDelete :exec
+DELETE FROM app_client_configs WHERE application_id = $1 AND NOT enabled
+`
+
+// Removes an application's disabled client configs, in the application
+// delete's transaction (owner decision #55). Enabled configs block the
+// delete instead (ApplicationReferenceCounts), so none is left behind.
+func (q *Queries) ApplicationDisabledClientConfigsDelete(ctx context.Context, applicationID ids.ApplicationID) error {
+	_, err := q.db.Exec(ctx, applicationDisabledClientConfigsDelete, applicationID)
+	return err
+}
+
 const applicationFindByCode = `-- name: ApplicationFindByCode :one
 SELECT id, type, code, name, description, icon_url, website, logo, logo_mime_type,
        default_base_url, service_account_id, active, created_at, updated_at
@@ -84,7 +96,7 @@ func (q *Queries) ApplicationFindByID(ctx context.Context, id ids.ApplicationID)
 const applicationReferenceCounts = `-- name: ApplicationReferenceCounts :one
 SELECT
     (SELECT COUNT(*) FROM iam_principal_application_access pa WHERE pa.application_id = $1)::bigint AS access_grants,
-    (SELECT COUNT(*) FROM app_client_configs cc WHERE cc.application_id = $1)::bigint AS client_configs,
+    (SELECT COUNT(*) FROM app_client_configs cc WHERE cc.application_id = $1 AND cc.enabled)::bigint AS client_configs,
     (SELECT COUNT(*) FROM iam_service_accounts sa WHERE sa.application_id = $1)::bigint AS service_accounts,
     (SELECT COUNT(*) FROM iam_roles r WHERE r.application_id = $1)::bigint AS roles,
     (SELECT COUNT(*) FROM iam_principals p WHERE p.application_id = $1)::bigint AS principal_refs
@@ -101,7 +113,9 @@ type ApplicationReferenceCountsRow struct {
 // The delete guard's inputs (owner decision #53, matching Rust): every
 // code-enforced reference to an application. None of these columns has a
 // foreign key, so each is a place the application must be unwired from
-// before it can be deleted.
+// before it can be deleted. Only enabled client configs count (owner
+// decision #55); disabled ones are removed with the application
+// (ApplicationDisabledClientConfigsDelete).
 func (q *Queries) ApplicationReferenceCounts(ctx context.Context, applicationID ids.ApplicationID) (ApplicationReferenceCountsRow, error) {
 	row := q.db.QueryRow(ctx, applicationReferenceCounts, applicationID)
 	var i ApplicationReferenceCountsRow

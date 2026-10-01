@@ -109,13 +109,19 @@ func (r *Repository) Persist(ctx context.Context, a *Application, tx *usecasepgx
 	})
 }
 
-// Delete removes the row.
+// Delete removes the row together with the application's disabled client
+// configs (owner decision #55). Enabled configs block the delete in the use
+// case, so after the guard passes the disabled ones are all that remain.
 func (r *Repository) Delete(ctx context.Context, a *Application, tx *usecasepgx.DbTx) error {
-	return r.q.WithTx(tx.Inner()).ApplicationDelete(ctx, a.ID)
+	q := r.q.WithTx(tx.Inner())
+	if err := q.ApplicationDisabledClientConfigsDelete(ctx, a.ID); err != nil {
+		return err
+	}
+	return q.ApplicationDelete(ctx, a.ID)
 }
 
 // References counts what still points at an application: principals'
-// access grants, per-client configs, service accounts, application-scoped
+// access grants, enabled per-client configs, service accounts, application-scoped
 // roles and principals whose application ref names it. None of those
 // columns has a foreign key, so the delete use case refuses while any is
 // non-zero rather than leave them dangling.
