@@ -25,7 +25,6 @@ import (
 	"golang.org/x/net/http2"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
 )
 
 // SignatureHeader carries the webhook HMAC signature.
@@ -225,12 +224,12 @@ func newClientBuilder(cfg MediatorConfig) ClientBuilder {
 			Timeout:   cfg.ConnectTimeout,
 			KeepAlive: 30 * time.Second,
 		}
-		// The dial refuses loopback, cloud-metadata, link-local and (by default)
-		// private destinations: a delivery target is customer input. The
-		// platform's own endpoints are exempted by the server at startup.
-		guardedDial := netguard.Default.DialContext(dialer)
+		// No delivery policy here (owner decision #56, 2026-10-01): router
+		// targets are first-party (queue config, our own apps' pointers). The
+		// endpoint that receives a pointer checks its own target when it
+		// delivers, and subscriptions and jobs are validated when written.
 		transport := &http.Transport{
-			DialContext:         guardedDial,
+			DialContext:         dialer.DialContext,
 			MaxIdleConnsPerHost: 10,
 			IdleConnTimeout:     90 * time.Second,
 			TLSHandshakeTimeout: cfg.TLSHandshakeTimeout,
@@ -252,7 +251,7 @@ func newClientBuilder(cfg MediatorConfig) ClientBuilder {
 				AllowHTTP:                  true,
 				StrictMaxConcurrentStreams: true,
 				DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
-					return guardedDial(ctx, network, addr)
+					return dialer.DialContext(ctx, network, addr)
 				},
 			}
 			roundTripper = &schemeRoundTripper{h2c: h2cTransport, other: transport}

@@ -125,7 +125,12 @@ dial time after DNS resolution, so a hostname that resolves to a forbidden
 address is refused too. Cloud metadata (`169.254.169.254`, `fd00:ec2::254`),
 link-local, unspecified and multicast addresses are **always** refused.
 
-The platform's own endpoints (`FC_DISPATCH_PROCESSING_ENDPOINT`,
+The guard applies where the platform delivers to those targets: the dispatch
+processing endpoint (subscription webhooks and dispatch jobs) and the
+scheduled-job dispatcher. **The router applies none** (owner decision #56,
+2026-10-01): its targets are first-party, from the queue config and our own
+apps' message pointers, and the endpoint that receives a pointer checks its own
+target. The platform's own endpoints (`FC_DISPATCH_PROCESSING_ENDPOINT`,
 `FC_FUNCTIONS_RUNNER_URL`) are exempted automatically. `fc-dev` allows loopback
 and private targets unless the variables below are set.
 
