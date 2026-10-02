@@ -44,6 +44,17 @@ type Pool struct {
 	mu      sync.Mutex
 	groupQs map[string]*groupQueue // ordered FIFO queues per message-group
 
+	// immQ holds unordered (IMMEDIATE) messages waiting for a concurrency
+	// slot, oldest first. A message waiting here costs only its own
+	// QueuedMessage: it has no goroutine until a slot is free (see
+	// enqueueImmediate). The pool's buffer can hold concurrency*40 of them, so
+	// a goroutine per waiting message put 256,000 goroutines (1.2GB of stack)
+	// behind 100 pools of concurrency 64.
+	immMu      sync.Mutex
+	immQ       []immediateItem
+	immHead    int  // index of the oldest element of immQ
+	immRunning bool // a dispatchImmediate goroutine is alive
+
 	// Two populations describe a pool's own work, and each has exactly one
 	// owner here so nothing has to be kept in step by hand:
 	//
@@ -430,7 +441,7 @@ func (p *Pool) submit(ctx context.Context, m common.QueuedMessage) {
 		// semaphore slot, so the "queued (pre-dispatch)" gauge mirrors the
 		// ordered path.
 		p.queueInc()
-		go p.runImmediate(ctx, m)
+		p.enqueueImmediate(ctx, m)
 		return
 	}
 
@@ -443,42 +454,129 @@ func (p *Pool) submit(ctx context.Context, m common.QueuedMessage) {
 	p.tryDrainGroup(ctx, group)
 }
 
-// runImmediate dispatches a single IMMEDIATE-mode message concurrently:
-// acquire a pool semaphore slot, then process it. IMMEDIATE messages have no
-// group buffer, so a retryable failure re-dispatches the same message after the
-// backoff (one chained goroutine per failing message — sequential, not a leak),
-// keeping it in-pipeline rather than releasing it to the broker.
-func (p *Pool) runImmediate(ctx context.Context, m common.QueuedMessage) {
-	// Panic boundary. processOne recovers its own panics (the mediator is
-	// the target's code); this catches one anywhere else on this goroutine
-	// — a broker Nack, the semaphore — which would otherwise take the whole
-	// process down. The message is handed back to the broker rather than
-	// dropped: its tracker entry is released by nackMsg, so the redelivery
-	// re-enters the pipeline.
-	queued := true // m still counts in queueSize
+// immediateItem is one waiting unordered message with the context it must
+// run under — the submitting consumer's, which a reconfigure or a stalled-
+// consumer restart cancels while the pool lives on.
+type immediateItem struct {
+	ctx context.Context
+	m   common.QueuedMessage
+}
+
+// enqueueImmediate files an unordered message behind those already waiting and
+// makes sure a dispatcher is running to start them. queueSize already counts
+// m (the caller did queueInc).
+//
+// The dispatcher is not a permanent goroutine: it exits when the queue is
+// empty and the next enqueue starts it again, so an idle pool holds none and
+// there is nothing to stop.
+func (p *Pool) enqueueImmediate(ctx context.Context, m common.QueuedMessage) {
+	p.immMu.Lock()
+	p.immQ = append(p.immQ, immediateItem{ctx: ctx, m: m})
+	start := !p.immRunning
+	if start {
+		p.immRunning = true
+	}
+	p.immMu.Unlock()
+	if start {
+		go p.dispatchImmediate()
+	}
+}
+
+// nextImmediate removes and returns the oldest waiting message, or reports
+// that none is left (marking the dispatcher stopped, under the same lock, so a
+// concurrent enqueueImmediate cannot be missed).
+func (p *Pool) nextImmediate() (immediateItem, bool) {
+	p.immMu.Lock()
+	defer p.immMu.Unlock()
+	if p.immHead >= len(p.immQ) {
+		p.immQ, p.immHead = nil, 0
+		p.immRunning = false
+		return immediateItem{}, false
+	}
+	it := p.immQ[p.immHead]
+	p.immQ[p.immHead] = immediateItem{} // drop the references
+	p.immHead++
+	// Compact once the consumed prefix is both large and most of the slice, so
+	// the backing array does not grow for ever under a steady stream.
+	if p.immHead >= 4096 && p.immHead*2 >= len(p.immQ) {
+		p.immQ = append(p.immQ[:0], p.immQ[p.immHead:]...)
+		p.immHead = 0
+	}
+	return it, true
+}
+
+// dispatchImmediate starts waiting unordered messages one at a time, oldest
+// first, each as soon as a concurrency slot is free. It owns the wait for the
+// slot, so the number of goroutines is the number of messages in flight, not
+// the number buffered.
+func (p *Pool) dispatchImmediate() {
+	for {
+		it, ok := p.nextImmediate()
+		if !ok {
+			return
+		}
+		p.startImmediate(it)
+	}
+}
+
+// startImmediate waits for a slot for it, then runs the message on its own
+// goroutine. A message whose consumer context is already cancelled never takes
+// a slot: it is handed straight back, so a cancelled consumer's messages drain
+// through the head of the queue without waiting for slots they will not use.
+func (p *Pool) startImmediate(it immediateItem) {
+	queued := true // it.m still counts in queueSize
+	// Panic boundary for the dispatcher: a broker nack or the semaphore
+	// panicking must not take the process down or strand the message.
 	defer func() {
 		if r := recover(); r != nil {
-			logRecovered("pool.runImmediate", r, p.msgAttrs(m)...)
+			logRecovered("pool.startImmediate", r, p.msgAttrs(it.m)...)
 			if queued {
 				p.queueDec()
 			}
-			p.nackSafely(ctx, m, new(siblingNackDelaySeconds), "worker panicked")
+			p.nackSafely(it.ctx, it.m, new(siblingNackDelaySeconds), "dispatcher panicked")
 		}
 	}()
-	if err := p.sem.acquire(ctx); err != nil {
+	if it.ctx.Err() != nil {
+		p.queueDec()
+		queued = false
+		p.nackMsg(it.ctx, it.m, new(uint32(10)), "shutdown before dispatch")
+		return
+	}
+	if err := p.sem.acquire(it.ctx); err != nil {
 		// Shutdown before we could start. nackMsg releases the route-time
 		// tracker entry so the broker's redelivery (NACK is a no-op on SQS;
 		// the message reappears after the visibility timeout) re-enters the
 		// pipeline as a fresh copy instead of being dropped as a duplicate.
 		p.queueDec()
 		queued = false
-		p.nackMsg(ctx, m, new(uint32(10)), "shutdown before dispatch")
+		p.nackMsg(it.ctx, it.m, new(uint32(10)), "shutdown before dispatch")
 		return
 	}
 	p.queueDec() // now active, not queued
 	queued = false
+	go p.runImmediate(it.ctx, it.m)
+}
+
+// runImmediate processes one unordered message that already holds a
+// concurrency slot (startImmediate acquired it, and this releases it). IMMEDIATE
+// messages have no group buffer, so a retryable failure re-queues the same
+// message after the backoff, keeping it in-pipeline rather than releasing it to
+// the broker.
+func (p *Pool) runImmediate(ctx context.Context, m common.QueuedMessage) {
+	// Panic boundary. processOne recovers its own panics (the mediator is
+	// the target's code); this catches one anywhere else on this goroutine
+	// — a broker Nack — which would otherwise take the whole process down.
+	// The message is handed back to the broker rather than dropped: its
+	// tracker entry is released by nackMsg, so the redelivery re-enters the
+	// pipeline.
+	defer func() {
+		if r := recover(); r != nil {
+			logRecovered("pool.runImmediate", r, p.msgAttrs(m)...)
+			p.nackSafely(ctx, m, new(siblingNackDelaySeconds), "worker panicked")
+		}
+	}()
 	d := func() Disposition {
-		defer p.sem.release() // release on every exit path (acquired above)
+		defer p.sem.release() // release on every exit path (acquired by the caller)
 		return p.processOne(ctx, m)
 	}()
 	if d.Action == BrokerRelease {
@@ -495,15 +593,11 @@ func (p *Pool) runImmediate(ctx context.Context, m common.QueuedMessage) {
 	if d.Action != BrokerRetry {
 		return
 	}
-	// Retry in-pipeline: wait out the backoff, then re-dispatch. The in-flight
-	// tracker entry is kept (so redeliveries are deduped against it), and
-	// Attempts grows the backoff and tells processOne not to re-track.
+	// Retry in-pipeline: wait out the backoff, then queue it again. The
+	// in-flight tracker entry is kept (so redeliveries are deduped against it),
+	// and Attempts grows the backoff and tells processOne not to re-track.
 	m.Attempts++
 	p.queueInc() // re-queued (pre-dispatch) for the duration of the backoff
-	// The count now belongs to the retry goroutine below (it decrements it
-	// on cancellation, or the next runImmediate does after its acquire), so
-	// this goroutine's panic boundary must not decrement it too.
-	queued = false
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -519,7 +613,7 @@ func (p *Pool) runImmediate(ctx context.Context, m common.QueuedMessage) {
 			return
 		case <-time.After(d.RetryAfter):
 		}
-		p.runImmediate(ctx, m)
+		p.enqueueImmediate(ctx, m)
 	}()
 }
 
