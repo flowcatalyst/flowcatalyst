@@ -42,7 +42,7 @@ func TestAdmissionDelayReservesConsecutiveSlots(t *testing.T) {
 	p := primedPool(t, perMessage, 12, 100) // 100 buffered at 0.2/s → 500s to drain
 	now := time.Now()
 
-	first := p.admissionDelay(now, true)
+	first := p.admissionDelay(now, true, true)
 	// Buffer drain (500s) + one slot (5s). The measured rate spans
 	// completions*perMessage-ish, so allow a slot of slack either side.
 	assert.InDelta(t, (505 * time.Second).Seconds(), first.Seconds(), perMessage.Seconds(),
@@ -50,7 +50,7 @@ func TestAdmissionDelayReservesConsecutiveSlots(t *testing.T) {
 
 	prev := first
 	for i := range 5 {
-		next := p.admissionDelay(now, true)
+		next := p.admissionDelay(now, true, true)
 		assert.InDelta(t, perMessage.Seconds(), (next - prev).Seconds(), 1.0,
 			"reservation %d must be one slot (%s) after the previous one", i+2, perMessage)
 		prev = next
@@ -63,7 +63,7 @@ func TestAdmissionDelayReservesConsecutiveSlots(t *testing.T) {
 // against the broker.
 func TestAdmissionDelayFloorsAtMinimum(t *testing.T) {
 	p := primedPool(t, 10*time.Millisecond, 50, 0)
-	got := p.admissionDelay(time.Now(), true)
+	got := p.admissionDelay(time.Now(), true, true)
 	assert.Equal(t, deferralMinDelay, got)
 }
 
@@ -74,8 +74,8 @@ func TestAdmissionDelayFallsBackWithoutARate(t *testing.T) {
 	p := NewPool(common.PoolConfig{Code: "NEW", Concurrency: 1}, nil, nil,
 		func(string) queue.Consumer { return nil })
 	now := time.Now()
-	a := p.admissionDelay(now, true)
-	b := p.admissionDelay(now, true)
+	a := p.admissionDelay(now, true, true)
+	b := p.admissionDelay(now, true, true)
 	assert.Equal(t, deferralFallbackWait+deferralOrderedSpacing, a)
 	assert.Equal(t, a+deferralOrderedSpacing, b)
 }
@@ -90,10 +90,10 @@ func TestAdmissionDelayClampsToHorizonWithBackwardJitter(t *testing.T) {
 	now := time.Now()
 	// Push the cursor well past the horizon.
 	for range 200 {
-		p.admissionDelay(now, true)
+		p.admissionDelay(now, true, true)
 	}
 	for range 50 {
-		d := p.admissionDelay(now, true)
+		d := p.admissionDelay(now, true, true)
 		assert.LessOrEqual(t, d, horizon, "never past the horizon")
 		assert.GreaterOrEqual(t, d, time.Duration(float64(horizon)*(1-deferralJitterFraction)),
 			"jitter only pulls a clamped reservation BACK, within the jitter fraction")
@@ -109,15 +109,15 @@ func TestAdmissionDelaySpacesReservationsOnAnUnorderedBroker(t *testing.T) {
 
 	// Ordered broker: slots are the natural 10ms, so a run of reservations
 	// stays within the minimum-delay floor.
-	a := p.admissionDelay(now, true)
-	b := p.admissionDelay(now, true)
+	a := p.admissionDelay(now, true, true)
+	b := p.admissionDelay(now, true, true)
 	assert.Equal(t, a, b, "at 10ms slots both land on the %s floor", deferralMinDelay)
 
 	// Unordered broker: each reservation is at least a second after the last.
 	q := primedPool(t, 10*time.Millisecond, 500, 0)
-	prev := q.admissionDelay(now, false)
+	prev := q.admissionDelay(now, false, true)
 	for range 10 {
-		prev2 := q.admissionDelay(now, false)
+		prev2 := q.admissionDelay(now, false, true)
 		if prev2 > deferralMinDelay { // once past the floor the spacing shows
 			assert.GreaterOrEqual(t, prev2-prev, deferralOrderedSpacing)
 		}
@@ -298,4 +298,20 @@ func TestDeferredMessageRepublishedCopyIsDeletedNotDeferred(t *testing.T) {
 		2*time.Second, 5*time.Millisecond, "the republished copy is deleted from the broker")
 	assert.Len(t, q.deferredSnapshot(), 1, "and NOT deferred beside the first")
 	assert.Equal(t, 1, m.tracker.DeferredCount())
+}
+
+// An UNORDERED message on a broker that does not honour delayed returns (NATS)
+// has no order to protect, so it is booked at the pool's natural slot — not the
+// one-second ordered-spacing floor, which turned N deferrals on a fast pool
+// into an N-second tail.
+func TestAdmissionDelayUnorderedMessagesIgnoreTheSpacingFloor(t *testing.T) {
+	now := time.Now()
+	q := primedPool(t, 10*time.Millisecond, 500, 0)
+	first := q.admissionDelay(now, false, false)
+	last := first
+	for range 200 {
+		last = q.admissionDelay(now, false, false)
+	}
+	assert.Less(t, last-first, 10*deferralOrderedSpacing,
+		"201 unordered reservations at ~10ms slots must span far less than 201 s; got %s", last-first)
 }

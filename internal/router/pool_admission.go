@@ -61,11 +61,18 @@ const (
 	deferralRateWindow = 5 * time.Minute
 
 	// deferralOrderedSpacing is the minimum gap between consecutive
-	// reservations on a broker that does not itself keep a deferred group
-	// in order (NATS: HonoursDelayedReturn false). Redelivery timers are not
-	// sub-second precise, so two reservations a few milliseconds apart could
-	// come back swapped; a second apart they cannot. Only matters on fast
-	// pools — a slot on a 5s-per-message pool is already 5s wide.
+	// reservations for an ORDERED message on a broker that does not itself
+	// keep a deferred group in order (NATS: HonoursDelayedReturn false).
+	// Redelivery timers are not sub-second precise, so two reservations a few
+	// milliseconds apart could come back swapped; a second apart they cannot.
+	// Only matters on fast pools — a slot on a 5s-per-message pool is already
+	// 5s wide.
+	//
+	// It applies ONLY to messages whose dispatch mode requires ordering
+	// within a group. An unordered message has no order to protect, so it is
+	// booked at the pool's natural slot: applying the floor to it made N
+	// deferred messages on a fast pool return over N seconds (5,658
+	// deferrals measured as a ~94 minute tail on a pool draining 19k/s).
 	deferralOrderedSpacing = time.Second
 
 	// defaultMaxDeferral is the reservation horizon (ServerConfig
@@ -137,7 +144,8 @@ func (p *Pool) deferMsg(ctx context.Context, qm common.QueuedMessage, reason str
 		return
 	}
 	now := time.Now()
-	delay := p.admissionDelay(now, c.HonoursDelayedReturn())
+	ordered := qm.Message.DispatchMode.RequiresOrdering() && qm.Message.GroupID() != ""
+	delay := p.admissionDelay(now, c.HonoursDelayedReturn(), ordered)
 	seconds := uint32(delay / time.Second)
 	// The tracker entry is KEPT and marked, not removed: the copy is coming
 	// back, and until it does a second copy of the same message id (the
@@ -164,8 +172,10 @@ func (p *Pool) deferMsg(ctx context.Context, qm common.QueuedMessage, reason str
 }
 
 // admissionDelay books the next reservation and returns how long from now
-// it is. brokerOrders is the source's HonoursDelayedReturn: when false the
-// slot spacing is floored at deferralOrderedSpacing (see that constant).
+// it is. brokerOrders is the source's HonoursDelayedReturn; ordered is
+// whether the message belongs to an ordered group. Only when the broker does
+// not honour delayed returns AND the message is ordered is the slot spacing
+// floored at deferralOrderedSpacing (see that constant).
 //
 // Arithmetic: with the pool draining at rate r and q messages buffered,
 // the buffer needs q/r to clear, so nothing deferred can be admitted before
@@ -174,14 +184,14 @@ func (p *Pool) deferMsg(ctx context.Context, qm common.QueuedMessage, reason str
 // past is simply overtaken — no reset is needed, and none is done, because
 // the crossing back under capacity happens on every single completion of a
 // pool that is being kept full and would reset the schedule constantly.
-func (p *Pool) admissionDelay(now time.Time, brokerOrders bool) time.Duration {
+func (p *Pool) admissionDelay(now time.Time, brokerOrders, ordered bool) time.Duration {
 	wait := deferralFallbackWait
 	slot := deferralOrderedSpacing
 	if rate, ok := p.metrics.CompletionRate(deferralRateWindow); ok && rate > 0 {
 		wait = time.Duration(float64(p.queueSize.Load()) / rate * float64(time.Second))
 		slot = time.Duration(float64(time.Second) / rate)
 	}
-	if !brokerOrders {
+	if !brokerOrders && ordered {
 		slot = max(slot, deferralOrderedSpacing)
 	}
 
