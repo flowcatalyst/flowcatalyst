@@ -108,6 +108,36 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/queue"
 )
 
+// defaultPullExpiry is the pull-request lifetime used unless the URI sets
+// pull-expiry-ms. nats.go's own default is 30s, and with the permit-gated
+// Next loop (see forward) a request that goes idle while the pool is full can
+// leave Next blocked for the whole 30s once the pool drains — 26-28s of zero
+// deliveries with messages waiting on the server, reproduced with only the
+// client library. A short expiry bounds that to seconds; the cost is one
+// small re-issued pull request per idle expiry per queue.
+const defaultPullExpiry = 3 * time.Second
+
+// pullOptions are the Messages() options for a subscription of this batch
+// size and expiry. One function, used by the initial subscribe and every
+// resubscribe, so the two cannot drift.
+func pullOptions(batch, threshold int, expiry time.Duration) []jetstream.PullMessagesOpt {
+	opts := []jetstream.PullMessagesOpt{
+		jetstream.PullMaxMessages(batch),
+		jetstream.PullThresholdMessages(threshold),
+		jetstream.WithMessagesErrOnMissingHeartbeat(false),
+	}
+	if expiry >= time.Second {
+		opts = append(opts, jetstream.PullExpiry(expiry))
+		// The client requires a heartbeat of at least 500ms and under half
+		// the expiry; a third of the expiry satisfies both for any expiry
+		// from 2s up. Below that, leave the library's own derivation.
+		if hb := expiry / 3; hb >= 500*time.Millisecond {
+			opts = append(opts, jetstream.PullHeartbeat(hb))
+		}
+	}
+	return opts
+}
+
 func init() {
 	queue.RegisterConsumer("nats", consumerFactory)
 	queue.RegisterPublisher("nats", publisherFactory)
@@ -121,12 +151,17 @@ type Config struct {
 	Subject            string
 	MaxMessagesPerPoll int
 	PollTimeout        time.Duration
-	AckWait            time.Duration
-	MaxDeliver         int
-	MaxAckPending      int
-	Storage            string // "file" | "memory"
-	Replicas           int
-	MaxAge             time.Duration // 0 = unlimited
+	// PullExpiry is how long one outstanding pull request lives server-side.
+	// The subscription's recovery from a lost or idled request takes about
+	// this long, so it bounds how long a stalled pull can freeze delivery.
+	// See pullOptions.
+	PullExpiry    time.Duration
+	AckWait       time.Duration
+	MaxDeliver    int
+	MaxAckPending int
+	Storage       string // "file" | "memory"
+	Replicas      int
+	MaxAge        time.Duration // 0 = unlimited
 }
 
 // DefaultConfig returns the standard NATS defaults.
@@ -138,6 +173,7 @@ func DefaultConfig() Config {
 		Subject:            "flowcatalyst.>",
 		MaxMessagesPerPoll: 10,
 		PollTimeout:        20 * time.Second,
+		PullExpiry:         defaultPullExpiry,
 		AckWait:            120 * time.Second,
 		MaxDeliver:         -1, // unlimited; see the package doc
 		MaxAckPending:      -1, // unlimited; see the package doc
@@ -371,11 +407,7 @@ func newQueue(ctx context.Context, qc common.QueueConfig) (*Queue, error) {
 	// option (e.g. a future library version, or ReportMissingHeartbeats
 	// being reintroduced some other way).
 	q.resubscribe = func() (messagesIterator, error) {
-		return consumer.Messages(
-			jetstream.PullMaxMessages(batch),
-			jetstream.PullThresholdMessages(threshold),
-			jetstream.WithMessagesErrOnMissingHeartbeat(false),
-		)
+		return consumer.Messages(pullOptions(batch, threshold, cfg.PullExpiry)...)
 	}
 	msgsCtx, err := q.resubscribe()
 	if err != nil {
@@ -579,6 +611,11 @@ func parseURI(uri string) (Config, error) {
 	if v := q.Get("poll-timeout-ms"); v != "" {
 		if ms, err := strconv.Atoi(v); err == nil {
 			cfg.PollTimeout = time.Duration(ms) * time.Millisecond
+		}
+	}
+	if v := q.Get("pull-expiry-ms"); v != "" {
+		if ms, err := strconv.Atoi(v); err == nil && ms >= 0 {
+			cfg.PullExpiry = time.Duration(ms) * time.Millisecond
 		}
 	}
 	if v := q.Get("ack-wait-secs"); v != "" {
