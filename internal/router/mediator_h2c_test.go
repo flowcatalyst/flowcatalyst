@@ -2,6 +2,7 @@ package router_test
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/router"
@@ -132,4 +135,58 @@ func TestMediatorDevModeSpeaksHTTP1AgainstTheSameServer(t *testing.T) {
 	out := m.Mediate(context.Background(), msg)
 	require.Equal(t, common.MediationSuccess, out.Result, "expected success, got %+v", out)
 	assert.Equal(t, "HTTP/1.1", gotProto, "dev mode must still speak plain HTTP/1.1")
+}
+
+// A target that advertises a small SETTINGS_MAX_CONCURRENT_STREAMS must not be
+// able to wedge delivery when more requests are in flight than its streams.
+//
+// With StrictMaxConcurrentStreams set, the HTTP/2 client treated the server's
+// limit as a cap on total streams and queued the excess inside the transport;
+// once requests per connection passed the limit those waiters were never woken
+// and every in-flight delivery hung (reproduced with only x/net/http2 against
+// a trivial server: 2,000 concurrent requests over 8 connections completed,
+// 2,400 delivered ~1,800 and stopped for good). The router showed it as 100
+// pools of 64 workers (6,400 requests in flight) delivering nothing after ten
+// seconds. The client must instead open more connections to stay under the
+// limit.
+func TestMediatorDoesNotWedgeWhenInFlightExceedsServerStreamLimit(t *testing.T) {
+	const (
+		streamLimit = 8
+		inFlight    = 120 // 15x the server's limit on a single connection
+	)
+	// x/net's HTTP/2 server, which is what advertises and enforces the limit
+	// in the case this pins (the bench sink).
+	srv := httptest.NewUnstartedServer(h2c.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), &http2.Server{MaxConcurrentStreams: streamLimit}))
+	srv.Start()
+	defer srv.Close()
+
+	cfg := fastMediatorConfig(router.HTTPVersion2)
+	cfg.Timeout = 20 * time.Second
+	// A burst larger than the limit on a brand-new connection can have a few
+	// streams refused before the server's settings are read; that is an
+	// ordinary retryable failure, and the delivery must still complete.
+	cfg.MaxRetries = 10
+	cfg.RetryDelays = []time.Duration{5 * time.Millisecond}
+	m := router.NewHTTPMediator(cfg, router.NewBreakerRegistry(router.DefaultBreakerConfig()))
+
+	results := make(chan common.MediationResult, inFlight)
+	for i := range inFlight {
+		go func() {
+			msg := &common.Message{ID: fmt.Sprintf("msg_WEDGE%03d", i), MediationType: common.MediationTypeHTTP, MediationTarget: srv.URL}
+			results <- m.Mediate(context.Background(), msg).Result
+		}()
+	}
+
+	deadline := time.After(15 * time.Second)
+	for got := 0; got < inFlight; got++ {
+		select {
+		case r := <-results:
+			require.Equal(t, common.MediationSuccess, r)
+		case <-deadline:
+			t.Fatalf("only %d of %d deliveries completed: requests beyond the server's %d concurrent streams were never served",
+				got, inFlight, streamLimit)
+		}
+	}
 }

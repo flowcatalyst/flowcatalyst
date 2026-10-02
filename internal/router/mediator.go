@@ -135,9 +135,11 @@ func (m *HTTPMediator) ProtoCounts() map[string]uint64 {
 //   - Client.Timeout = Timeout
 //
 // HTTP/2 specifics:
-//   - http2.Transport.StrictMaxConcurrentStreams=true: honour ALB's
-//     advertised H2 stream limit instead of oversubscribing inside a
-//     single connection.
+//   - http2.Transport.StrictMaxConcurrentStreams=false: when a server's
+//     advertised stream limit is reached the client opens another
+//     connection rather than queueing inside one. (true queued the excess
+//     and, once in-flight per connection passed the limit, never served
+//     it — every delivery hung.)
 //   - Per-host pool grows additional slots (each a separate h2
 //     connection) when in-flight on every slot exceeds the high
 //     watermark, raising the effective concurrent-stream cap.
@@ -240,8 +242,17 @@ func newClientBuilder(cfg MediatorConfig) ClientBuilder {
 			transport.TLSNextProto = map[string]func(authority string, c *tls.Conn) http.RoundTripper{}
 		} else {
 			transport.ForceAttemptHTTP2 = true
+			// StrictMaxConcurrentStreams stays false (the default). With it set,
+			// the server's advertised SETTINGS_MAX_CONCURRENT_STREAMS becomes a
+			// cap on TOTAL streams: the client queues the excess inside the
+			// transport rather than opening another connection, and once the
+			// requests in flight per connection pass that limit the queued ones
+			// are never served — every delivery hangs. Left false, the client
+			// opens extra connections as needed to keep each one under the
+			// server's limit, which is what a stream limit asks for. See
+			// TestMediatorDoesNotWedgeWhenInFlightExceedsServerStreamLimit.
 			if h2, err := http2.ConfigureTransports(transport); err == nil && h2 != nil {
-				h2.StrictMaxConcurrentStreams = true
+				h2.StrictMaxConcurrentStreams = false
 			}
 			// h2c (cleartext, prior-knowledge): the transport above only
 			// ever negotiates h2 via TLS ALPN, so a plain "http://" target
@@ -249,7 +260,7 @@ func newClientBuilder(cfg MediatorConfig) ClientBuilder {
 			// speaks the HTTP/2 preface straight over a raw TCP conn.
 			h2cTransport := &http2.Transport{
 				AllowHTTP:                  true,
-				StrictMaxConcurrentStreams: true,
+				StrictMaxConcurrentStreams: false, // see the TLS transport above
 				DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
 					return dialer.DialContext(ctx, network, addr)
 				},
