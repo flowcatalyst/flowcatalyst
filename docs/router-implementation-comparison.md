@@ -622,3 +622,20 @@ strong warm and easy to read but costs the most memory and has the weakest cold 
 data does not settle what matters most for the decision: operating it at 3am, hiring and
 ecosystem, and behaviour against real SQS. A staging run of the Rust router on real traffic
 with Go as the fallback is the way to test those.
+
+### 9.12 Java collector check (G1 against serial)
+
+JDK 25 chooses the serial collector at one CPU (the benchmark default) and G1 from two; G1 is
+the default collector from Java 27. Warm protocol, 500k main phase, current build:
+
+| | Serial | G1 |
+|---|---|---|
+| 1 CPU, warm | 17.4k msg/s | 16.4k msg/s |
+| 1 CPU, cold (two runs) | 11.9k, 11.4k | 11.9k, 10.6k |
+| 2 CPUs, warm (three runs) | 19.5k, 22.9k, 18.6k | 26.7k, 18.0k, 18.8k (JVM default: 18.7k, 19.3k, 20.2k) |
+| RSS | about 1.95 GB | about 1.5-1.7 GB |
+
+No consistent throughput difference: run-to-run spread (about +-15%) is larger than the gap,
+and one 26.7k G1 run was not repeated. G1 used about 15-20% less memory. One CPU to two CPUs
+moved Java only from about 17k to about 19-20k, so a large part of its time is not CPU-bound;
+that has not been investigated.
