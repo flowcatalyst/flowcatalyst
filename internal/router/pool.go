@@ -552,6 +552,16 @@ func (p *Pool) startImmediate(it immediateItem) {
 		p.nackMsg(it.ctx, it.m, new(uint32(10)), "shutdown before dispatch")
 		return
 	}
+	// The slot can be granted in the same instant the consumer's context is
+	// cancelled (the wait's select may pick either). A message whose consumer is
+	// gone must be handed back, not run under a dead context, so check again.
+	if it.ctx.Err() != nil {
+		p.sem.release()
+		p.queueDec()
+		queued = false
+		p.nackMsg(it.ctx, it.m, new(uint32(10)), "shutdown before dispatch")
+		return
+	}
 	p.queueDec() // now active, not queued
 	queued = false
 	go p.runImmediate(it.ctx, it.m)
