@@ -567,10 +567,25 @@ map keeps its 15-minute pruning. Spec: Java `docs/spec/router.md` §7.2 (`e804ed
 
 **Performance and footprint** (1 CPU, SQS, 500k): Rust is cheapest per message and
 the most even (about 19k/s, 415 MB, no warm-up, flat latency). Go is about 25% behind once
-configured (14.7k/s, 16.1k/s with `GOMAXPROCS=1`, 311-325 MB). Java is competitive only
-when warm (17.4k/s) and costs about four times the memory, with a slow and variable cold
-start (JIT, GC, an unpaced intake flood). That cold start matters for a fleet that restarts
-and autoscales into a backlog.
+configured (14.7k/s, 16.1k/s with `GOMAXPROCS=1`, 311-325 MB). Warm, Java (17.4k/s) is
+within about 10% of Rust. Its **1.95 GB is a ceiling, not a need**: the image already runs
+`-XX:+UseCompactObjectHeaders` (confirmed in the running JVM's flags) and fences the heap
+to 1.82 GB of the 2 GB test container, with the serial collector at one CPU, so the JVM
+simply uses the heap it is allowed; the live data measured in a heap histogram was about
+320-450 MB. What a smaller container would cost in throughput has not been measured. Java's
+cold start (JIT, GC, an unpaced intake flood; about 30 s to full speed, with variable cold
+runs of 42-86 s) matters mainly for instances that restart into a backlog; a long-running
+instance does not pay it again.
+
+**Readability is a real input and this data does not measure it.** Every defect above was a
+logic or bounds defect that no compiler caught, so how easily a reader can see the rules
+(the Java code, with its spec-referenced comments, was judged the easiest to follow) is a
+direct lever on defect rate and on 3 am debugging. The efficiency gaps above (about 10% warm
+throughput, memory that can be capped) are small beside that for some teams. Where the
+remaining Java cost lies matters for what could close it: the profile showed the AWS SDK
+and JSON handling, not our own domain objects, dominating allocation (about 20 KB per SQS
+request), so value classes for our own types would help less than for a system that
+allocates mostly its own objects; that is an expectation, not a measurement.
 
 **What the languages did and did not protect against.** Every defect found was a logic,
 timing or resource-bound defect and appeared in all three: unbounded growth (the Rust
