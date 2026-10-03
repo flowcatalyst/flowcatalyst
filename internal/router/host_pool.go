@@ -26,6 +26,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -56,8 +57,8 @@ func HostKeyFromURL(target string) (HostKey, error) {
 	portStr := u.Port()
 	var port uint16
 	if portStr != "" {
-		var p uint32
-		if _, err := fmt.Sscanf(portStr, "%d", &p); err != nil || p == 0 || p > 65535 {
+		p, err := strconv.ParseUint(portStr, 10, 32)
+		if err != nil || p == 0 || p > 65535 {
 			return HostKey{}, fmt.Errorf("invalid port %q", portStr)
 		}
 		port = uint16(p)

@@ -334,3 +334,65 @@ func TestMediatorPlainSuccessDoesNotFlush(t *testing.T) {
 	assert.Equal(t, common.MediationSuccess, out.Result)
 	assert.False(t, out.FlushGroup)
 }
+
+// TestMediatorRequestTimeoutHeaders: a target that never answers must yield
+// the "Request timeout" connection error once cfg.Timeout elapses. The
+// deadline is a context deadline (Client.Timeout is 0), so this guards that
+// it is still enforced.
+func TestMediatorRequestTimeoutHeaders(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	defer srv.Close()
+	defer close(release)
+
+	cfg := router.MediatorConfig{
+		Timeout: 300 * time.Millisecond, ConnectTimeout: time.Second,
+		HTTPVersion: router.HTTPVersion1, RetryDelays: []time.Duration{},
+	}
+	m := router.NewHTTPMediator(cfg, router.NewBreakerRegistry(router.DefaultBreakerConfig()))
+	msg := &common.Message{ID: "t", MediationType: common.MediationTypeHTTP, MediationTarget: srv.URL}
+
+	start := time.Now()
+	out := m.Mediate(context.Background(), msg)
+	assert.Equal(t, common.MediationErrorConnection, out.Result)
+	assert.Equal(t, "Request timeout", out.ErrorMessage)
+	assert.Less(t, time.Since(start), 3*time.Second)
+}
+
+// TestMediatorRequestTimeoutBoundsBody: the deadline must also cover reading
+// the response body (as Client.Timeout did): headers arrive, the body stalls.
+func TestMediatorRequestTimeoutBoundsBody(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	defer srv.Close()
+	defer close(release)
+
+	cfg := router.MediatorConfig{
+		Timeout: 300 * time.Millisecond, ConnectTimeout: time.Second,
+		HTTPVersion: router.HTTPVersion1, RetryDelays: []time.Duration{},
+	}
+	m := router.NewHTTPMediator(cfg, router.NewBreakerRegistry(router.DefaultBreakerConfig()))
+	msg := &common.Message{ID: "t", MediationType: common.MediationTypeHTTP, MediationTarget: srv.URL}
+
+	done := make(chan common.MediationOutcome, 1)
+	start := time.Now()
+	go func() { done <- m.Mediate(context.Background(), msg) }()
+	select {
+	case <-done:
+		assert.Less(t, time.Since(start), 3*time.Second)
+	case <-time.After(5 * time.Second):
+		t.Fatal("stalled response body was not bounded by the request timeout")
+	}
+}

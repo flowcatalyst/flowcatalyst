@@ -132,7 +132,7 @@ func (m *HTTPMediator) ProtoCounts() map[string]uint64 {
 //   - MaxIdleConnsPerHost = 10
 //   - IdleConnTimeout = 90s
 //   - DialContext.Timeout = ConnectTimeout
-//   - Client.Timeout = Timeout
+//   - request deadline = Timeout (context deadline in mediateOnce)
 //
 // HTTP/2 specifics:
 //   - http2.Transport.StrictMaxConcurrentStreams=false: when a server's
@@ -145,8 +145,8 @@ func (m *HTTPMediator) ProtoCounts() map[string]uint64 {
 //     watermark, raising the effective concurrent-stream cap.
 //
 // `ResponseHeaderTimeout` is intentionally NOT set: it would shadow
-// Client.Timeout for the response-header phase only and obscure which
-// timeout is actually enforced. Single source of truth: Client.Timeout.
+// the request deadline for the response-header phase only and obscure which
+// timeout is actually enforced. Single source of truth: cfg.Timeout.
 func NewHTTPMediator(cfg MediatorConfig, breakers *BreakerRegistry) *HTTPMediator {
 	sizing := cfg.HostPoolSizing
 	if sizing.MaxSlotsPerHost == 0 {
@@ -269,7 +269,11 @@ func newClientBuilder(cfg MediatorConfig) ClientBuilder {
 		}
 		return &http.Client{
 			Transport: roundTripper,
-			Timeout:   cfg.Timeout,
+			// Timeout is deliberately 0: schemeRoundTripper is not a transport
+			// net/http recognises, so a non-zero Client.Timeout takes its slow
+			// path (an extra goroutine, timer, context and channels per
+			// request). mediateOnce enforces cfg.Timeout with a context
+			// deadline that also spans the response body read.
 			// Never follow a redirect. Go's default follows up to ten, and for
 			// 301/302/303 it rewrites the POST to a GET and drops the body — so
 			// the redirect target would receive an empty GET, answer 2xx, and
@@ -346,7 +350,7 @@ func breakerKey(target string) string {
 // where a single switch arm forgets to record. An open breaker short-circuits:
 // no HTTP is attempted and a circuit-open outcome is returned for the pool to DEFER.
 func (m *HTTPMediator) Mediate(ctx context.Context, msg *common.Message) common.MediationOutcome {
-	cb := m.breakers.Get(breakerKey(msg.MediationTarget))
+	cb := m.breakers.Get(cachedBreakerKey(msg.MediationTarget))
 	if err := cb.Allow(); err != nil {
 		return common.CircuitOpen(int(cb.ResetTimeout().Seconds()))
 	}
@@ -427,7 +431,17 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 		return common.PreFlightError(fmt.Sprintf("payload marshal: %v", err))
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, msg.MediationTarget, bytes.NewReader(payload))
+	// The overall request deadline (formerly Client.Timeout): covers dial,
+	// headers and the body read, so the context lives until mediateOnce
+	// returns (the body is closed by the defer below, before this cancel).
+	reqCtx := ctx
+	if m.cfg.Timeout > 0 {
+		var cancel context.CancelFunc
+		reqCtx, cancel = context.WithTimeout(ctx, m.cfg.Timeout)
+		defer cancel()
+	}
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, msg.MediationTarget, bytes.NewReader(payload))
 	if err != nil {
 		// http.NewRequestWithContext parses the target URL itself and fails
 		// here for a target string that is unparseable outright (invalid
@@ -453,7 +467,7 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 		req.Header.Set("Authorization", "Bearer "+*msg.AuthToken)
 	}
 
-	host, err := HostKeyFromURL(msg.MediationTarget)
+	host, err := cachedHostKey(msg.MediationTarget)
 	if err != nil {
 		// Same class as an unsupported mediation type: every message routed
 		// here is ACK-dropped, and the cause is a configuration mistake an
