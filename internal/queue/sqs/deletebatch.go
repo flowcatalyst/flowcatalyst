@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"strconv"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
@@ -16,13 +18,21 @@ import (
 const (
 	// deleteBatchMax is SQS's hard limit on entries per DeleteMessageBatch.
 	deleteBatchMax = 10
-	// deleteDrainers is how many long-lived drainers a queue runs, so one slow
-	// round trip does not cap the queue at deleteBatchMax deletes per round trip.
-	deleteDrainers = 4
+	// deleteMaxHelpers is how many transient helper drainers may run beside the
+	// one primary drainer, so a slow round trip does not cap a queue at
+	// deleteBatchMax deletes per round trip. Helpers exist only under load.
+	deleteMaxHelpers = 3
 	// deleteQueueDepth is how many acks may wait for a drainer before further
 	// acks block on enqueue (still honouring their context).
 	deleteQueueDepth = 1024
 )
+
+// deleteLinger is how long the primary drainer waits, in total from the first
+// ack of a batch, for more acks before sending a partial batch. Without it every
+// drainer grabs each ack the instant it arrives (the runtime runs a just-woken
+// goroutine next) and batches average 2-3 entries. It bounds the latency added
+// to an ack. A var so tests can change it.
+var deleteLinger = time.Millisecond
 
 var errBatcherStopped = errors.New("sqs consumer stopped")
 
@@ -32,16 +42,19 @@ type deleteItem struct {
 	done    chan error // buffered(1): the drainer never blocks on a gone caller
 }
 
-// deleteBatcher coalesces concurrent acks into DeleteMessageBatch calls. There
-// is no fill window: a drainer takes whatever is already waiting (up to 10) and
-// sends at once, so a lone ack deletes with no added latency. Each caller still
-// blocks until the broker answered for ITS receipt. The zero value is usable;
-// everything is created lazily.
+// deleteBatcher coalesces concurrent acks into DeleteMessageBatch calls. One
+// primary drainer per queue takes the first ack, then lingers up to
+// deleteLinger (or until 10 are waiting) before sending. When acks pile up
+// faster than that (a full batch already waiting), up to deleteMaxHelpers
+// transient helpers drain immediately-available acks and exit once the channel
+// is empty. Each caller still blocks until the broker answered for ITS receipt.
+// The zero value is usable; everything is created lazily.
 type deleteBatcher struct {
 	initOnce  sync.Once
 	startOnce sync.Once
 	stopOnce  sync.Once
 	drainers  sync.WaitGroup // lets tests wait for drainers to exit after stop
+	helpers   atomic.Int32   // running helper drainers, <= deleteMaxHelpers
 
 	items   chan *deleteItem
 	stopCh  chan struct{}
@@ -70,10 +83,8 @@ func (b *deleteBatcher) stop() {
 func (b *deleteBatcher) delete(ctx context.Context, q *Queue, receipt string) error {
 	b.init()
 	b.startOnce.Do(func() {
-		for range deleteDrainers {
-			b.drainers.Add(1)
-			go b.drain(q)
-		}
+		b.drainers.Add(1)
+		go b.drain(q)
 	})
 	it := &deleteItem{receipt: receipt, done: make(chan error, 1)}
 	select {
@@ -83,6 +94,7 @@ func (b *deleteBatcher) delete(ctx context.Context, q *Queue, receipt string) er
 	case <-b.stopCh:
 		return errBatcherStopped
 	}
+	b.maybeStartHelper(q)
 	select {
 	case err := <-it.done:
 		return err
@@ -99,33 +111,102 @@ func (b *deleteBatcher) delete(ctx context.Context, q *Queue, receipt string) er
 	}
 }
 
+// maybeStartHelper starts a transient helper when a full batch is already
+// waiting and fewer than deleteMaxHelpers are running.
+func (b *deleteBatcher) maybeStartHelper(q *Queue) {
+	if len(b.items) < deleteBatchMax {
+		return
+	}
+	select {
+	case <-b.stopCh:
+		return
+	default:
+	}
+	for {
+		n := b.helpers.Load()
+		if n >= deleteMaxHelpers {
+			return
+		}
+		if b.helpers.CompareAndSwap(n, n+1) {
+			break
+		}
+	}
+	b.drainers.Add(1)
+	go b.helper(q)
+}
+
+// failWaiting answers every queued ack with errBatcherStopped.
+func (b *deleteBatcher) failWaiting() {
+	for {
+		select {
+		case it := <-b.items:
+			it.done <- errBatcherStopped
+		default:
+			return
+		}
+	}
+}
+
+// drain is the primary drainer: block for the first ack, linger for more, send.
 func (b *deleteBatcher) drain(q *Queue) {
 	defer b.drainers.Done()
 	for {
 		select {
 		case <-b.stopCh:
-			for {
-				select {
-				case it := <-b.items:
-					it.done <- errBatcherStopped
-				default:
-					return
-				}
-			}
+			b.failWaiting()
+			return
 		case first := <-b.items:
 			batch := make([]*deleteItem, 1, deleteBatchMax)
 			batch[0] = first
+			timer := time.NewTimer(deleteLinger)
 		fill:
 			for len(batch) < deleteBatchMax {
 				select {
 				case it := <-b.items:
 					batch = append(batch, it)
-				default:
+				case <-timer.C:
 					break fill
+				case <-b.stopCh:
+					timer.Stop()
+					for _, it := range batch {
+						it.done <- errBatcherStopped
+					}
+					b.failWaiting()
+					return
 				}
 			}
+			timer.Stop()
 			q.sendDeleteBatch(b.baseCtx, batch)
 		}
+	}
+}
+
+// helper drains immediately-available acks without lingering and exits when
+// none are left (or on stop).
+func (b *deleteBatcher) helper(q *Queue) {
+	defer b.drainers.Done()
+	defer b.helpers.Add(-1)
+	for {
+		select {
+		case <-b.stopCh:
+			b.failWaiting()
+			return
+		default:
+		}
+		var batch []*deleteItem
+	fill:
+		for len(batch) < deleteBatchMax {
+			select {
+			case it := <-b.items:
+				batch = append(batch, it)
+			default:
+				break fill
+			}
+		}
+		if len(batch) == 0 {
+			return
+		}
+		q.sendDeleteBatch(b.baseCtx, batch)
 	}
 }
 

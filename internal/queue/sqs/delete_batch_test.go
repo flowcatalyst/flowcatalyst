@@ -271,3 +271,120 @@ func TestStalledBatchCallIsBoundedByTheCallTimeout(t *testing.T) {
 	require.Error(t, <-it.done)
 	assert.Less(t, time.Since(start), 5*time.Second)
 }
+
+func TestSteadyLoadFillsBatchesNearTen(t *testing.T) {
+	f := newFakeSQS(t, func([]string) (map[int]bool, int) { return nil, 0 })
+	q := f.queue()
+	defer q.Stop()
+
+	old := deleteLinger
+	deleteLinger = 5 * time.Millisecond // generous so scheduler jitter cannot split batches
+	defer func() { deleteLinger = old }()
+
+	const n = 2000
+	var wg sync.WaitGroup
+	var failures atomic.Int64
+	for i := range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := q.Ack(context.Background(), "r"+strconv.Itoa(i), "m"+strconv.Itoa(i)); err != nil {
+				failures.Add(1)
+			}
+		}()
+		// One producer, ~100us apart (busy-wait: sleeps are far coarser).
+		for end := time.Now().Add(100 * time.Microsecond); time.Now().Before(end); {
+		}
+	}
+	wg.Wait()
+
+	assert.Zero(t, failures.Load())
+	assert.EqualValues(t, n, q.acked.Load())
+	avg := float64(n) / float64(f.calls.Load())
+	assert.GreaterOrEqual(t, avg, 8.0, "average batch size, calls=%d", f.calls.Load())
+	assert.Less(t, f.calls.Load(), int64(n/4))
+}
+
+func TestLoneAckWaitsForTheLingerThenSends(t *testing.T) {
+	f := newFakeSQS(t, func([]string) (map[int]bool, int) { return nil, 0 })
+	q := f.queue()
+	defer q.Stop()
+
+	old := deleteLinger
+	deleteLinger = 40 * time.Millisecond
+	defer func() { deleteLinger = old }()
+
+	start := time.Now()
+	require.NoError(t, q.Ack(context.Background(), "r1", "m1"))
+	el := time.Since(start)
+	assert.GreaterOrEqual(t, el, 30*time.Millisecond, "must not be sent instantly")
+	assert.Less(t, el, 100*time.Millisecond, "must not be stuck")
+	assert.EqualValues(t, 1, f.calls.Load())
+}
+
+func TestBurstEngagesHelpersAndHonoursBatchAndHelperCaps(t *testing.T) {
+	var inflight, maxInflight atomic.Int64
+	f := newFakeSQS(t, func(r []string) (map[int]bool, int) {
+		cur := inflight.Add(1)
+		for {
+			m := maxInflight.Load()
+			if cur <= m || maxInflight.CompareAndSwap(m, cur) {
+				break
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+		inflight.Add(-1)
+		return nil, 0
+	})
+	q := f.queue()
+	defer q.Stop()
+
+	const n = 500
+	var wg sync.WaitGroup
+	var failures atomic.Int64
+	for i := range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := q.Ack(context.Background(), "r"+strconv.Itoa(i), "m"+strconv.Itoa(i)); err != nil {
+				failures.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+
+	assert.Zero(t, failures.Load())
+	assert.EqualValues(t, n, q.acked.Load())
+	assert.LessOrEqual(t, f.maxBatch.Load(), int64(deleteBatchMax))
+	assert.GreaterOrEqual(t, maxInflight.Load(), int64(2), "helpers must engage under a burst")
+	assert.LessOrEqual(t, maxInflight.Load(), int64(1+deleteMaxHelpers), "primary + capped helpers")
+	require.Eventually(t, func() bool { return q.del.helpers.Load() == 0 }, 2*time.Second, 5*time.Millisecond,
+		"helpers must exit when idle")
+}
+
+func TestStopWithHelpersRunningLeavesNoDrainers(t *testing.T) {
+	release := make(chan struct{})
+	f := newFakeSQS(t, func([]string) (map[int]bool, int) {
+		<-release
+		return nil, 0
+	})
+	q := f.queue()
+
+	const n = 200
+	errs := make(chan error, n)
+	for i := range n {
+		go func() { errs <- q.Ack(context.Background(), "r"+strconv.Itoa(i), "m"+strconv.Itoa(i)) }()
+	}
+	require.Eventually(t, func() bool { return q.del.helpers.Load() > 0 }, 2*time.Second, 5*time.Millisecond)
+	q.Stop()
+	close(release)
+	for range n {
+		select {
+		case <-errs:
+		case <-time.After(5 * time.Second):
+			t.Fatal("an ack hung after Stop")
+		}
+	}
+	q.del.drainers.Wait()
+	assert.Zero(t, q.del.helpers.Load())
+}
