@@ -1,0 +1,339 @@
+# What building the router in Go, Rust and Java taught us
+
+**Status:** findings from a benchmarking and hardening exercise, 2026-10-02 to
+2026-10-03. Written for the decision about which implementation to carry
+forward. It records measurements and mechanisms, and says where the evidence
+stops. It does not make the decision: the criteria that matter most (how readable
+the code is at 3am, supply chain, ecosystem momentum, the domain-modelling
+plans) are not benchmark results.
+
+## 1. The shape of the problem
+
+The router is an I/O-bound message mover:
+
+- N queues, each with a consumer on its own broker connection (NATS JetStream,
+  SQS or Postgres);
+- M processing pools, each with a configured concurrency and a buffer of
+  `concurrency × 40` waiting messages;
+- one HTTP delivery per message to a target, over HTTP/2;
+- per-message state while a message is in the router: tracking, receipt handle,
+  retry bookkeeping, metrics.
+
+What scales is not CPU per message. It is **cost per connection** (threads,
+buffers, clients), **cost per buffered message** (memory), **where back-pressure
+is applied**, and **how each HTTP and broker library behaves at its limits**.
+Most of what went wrong, in all three languages, was in those four places.
+
+## 2. How we measured
+
+The rig is `bench/router` in the Java repository (see section 8).
+
+- NATS JetStream in memory, 500,000 messages seeded before the router starts.
+- **100 queues, 100 pools of 64 workers (6,400 concurrent deliveries)** unless
+  stated. Earlier rounds used 1, 8 and 16 queues feeding one pool of 256.
+- The target is a trivial HTTP/2 (h2c) sink that answers immediately, so the
+  router's own work is what is measured.
+- The router container has a CPU **quota** (`--cpus=N`, time-sliced in 100 ms
+  periods), not a core assignment. The sink and the NATS server are pinned to
+  separate cores. Docker Desktop VM, 14 CPUs, 16 GB, macOS.
+- "Steady rate" is deliveries per second between 10% and 90% of messages
+  delivered. The whole-run average hides stalls and tails; we report both when
+  they differ.
+- Each figure is one or two runs unless a range is given. Run-to-run spread was
+  about 5% for Go and Java and as much as 15% for Rust's memory.
+
+What this does **not** tell us: latency percentiles, behaviour against slow or
+failing targets, SQS FIFO ordering under load, hours-long GC or memory behaviour,
+real disks (storage was in memory; file storage made no measurable difference up
+to 500k messages), or production traffic.
+
+## 3. Results
+
+### 3.1 Throughput by CPU quota (100 queues, 100 pools, steady rate)
+
+| CPUs | Go | Rust | Java before NATS fix | Java after NATS fix |
+|---|---|---|---|---|
+| 0.5 | – | 14.8k/s | – | – |
+| 1 | 18.0–18.6k/s | 29.3–30.6k/s | 12.5k/s | **21.5k/s** |
+| 2 | 32.3k/s | not measured | 26.3k/s | **34.1k/s** |
+| 4 | 51.5k/s | not measured | 42.2k/s | 39.4k/s |
+
+- Go scaled 1.74× at 2 CPUs and 2.8× at 4. The sink and the NATS server share the
+  machine and probably start to limit near 50k/s, so the last step is not a clean
+  measure of Go.
+- Java's fix mattered at 1 and 2 CPUs and not at 4, where something other than
+  the router limits (about 39-42k/s).
+- At 1 CPU, Rust is about 1.6× Go and about 1.4× Java after the fix. We did not
+  measure Rust at 2 or 4 CPUs.
+
+### 3.2 Memory and context switches (100 queues, 100 pools)
+
+| | Go | Rust | Java |
+|---|---|---|---|
+| Peak memory, 1 CPU | 237–289 MB | 477–658 MB | 1.9 GB (limit 2 GB), 1,024 MB at a 1 GB limit |
+| Context switches per message | 0.22–0.34 | 0.001–0.007 | 2.4 before the NATS fix, **1.2** after |
+| Threads | few | few | 837 before, **38** after |
+| Messages held in the router mid-run | 1,900–3,100 | 57,000–77,000 | not measured |
+
+The JVM sizes its heap to the container, so Java's resident memory says little
+about what it needs.
+
+### 3.3 Before the fixes
+
+At 100 queues and 100 pools the Go router delivered 92k-167k of 500k messages and
+then stopped, at both 1 GB and 2 GB. Java finished but at about a third of Rust's
+rate, with memory at its limit. Section 4 explains why.
+
+## 4. What went wrong, and why
+
+Each item: symptom, cause, fix, and which implementations it touched.
+
+### 4.1 A one-second floor on deferral spacing (Go, Java)
+
+- **Symptom:** at 16 queues, throughput ran at full speed until ~99% delivered,
+  then fell to about one message per second for the remaining ~5,600.
+- **Cause:** when a pool is full the router defers a message to a reserved return
+  slot. For brokers that do not hold delayed messages in order (NATS) the slot
+  spacing had a floor of one second, applied to every message. The floor exists to
+  stop *ordered* group messages swapping order on redelivery. Applied to unordered
+  messages it turned N deferrals into N seconds.
+- **Fix:** apply the floor to ordered messages only (Go `a93b631`, Java
+  `fcaec867`). Rust has no such floor.
+- **Lesson:** a safety rule written for one case (ordering) was applied to all.
+
+### 4.2 Over-pulling into full pools (Go, Java; design)
+
+Consumers keep polling while any pool has room, and, when all are full, until a
+deferral budget of 15,000 is spent. That was introduced to fix head-of-line
+blocking (a slow pool starving the others on a shared queue) and it does, but at
+the cost of bouncing messages through the broker. The proper fix is to park
+overflow at the platform with a `not_before` and apply back-pressure at the
+source. This is designed, not built: `docs/router-pool-backpressure-plan.md`.
+
+### 4.3 A task, goroutine or thread per buffered message (all three)
+
+- **Symptom (Go):** at 100 pools the router held 282,428 goroutines, 256,000 of
+  them parked waiting for a concurrency slot. That is 100 pools × 2,560 buffered
+  messages, about 1.2 GB of stack. It stalled and was killed at its memory limit.
+- **Cause:** every accepted unordered message started its own goroutine, which
+  parked on the semaphore. Memory scaled with the **sum of every pool's buffer**,
+  not with work in flight. Java (virtual threads) and Rust (tokio tasks) had the
+  same shape.
+- **Fix:** waiting messages are plain data in a FIFO; one dispatcher starts a
+  worker only when a slot is free, so workers track messages in flight (Go
+  `10d4b5b`, Rust `68be197d`, Java `73b32e89`).
+- **Lesson (owner's rule):** *a buffered message must not be a task; the task is
+  the worker.* This was fatal in Go, improved Java by 30-38%, and made no
+  measurable difference to Rust's memory.
+
+### 4.4 HTTP/2 streams above a server's limit (library-specific)
+
+A server advertises a maximum number of concurrent streams per connection (250
+for Go servers, commonly 128 for nginx and ALBs). What a client does beyond that
+differs completely by library:
+
+| Client | Behaviour above the limit |
+|---|---|
+| Go `x/net/http2`, `StrictMaxConcurrentStreams=true` | **Deadlocks**: requests queued beyond the limit are never served (the router delivered nothing after ~10 s). Reproduced with only the library. |
+| Go, strict off | Opens more connections; 51k/s at 6,400 in flight |
+| JDK `HttpClient` | **Fails the request** ("too many concurrent streams"): 84-86% failed at 1,600 and 6,400 in flight |
+| Vert.x `HttpClient` | Queues; no failures |
+| Apache HttpClient 5 | Queues; no failures |
+
+- **Fix (Go):** set strict off (`426851a`), with a regression test that hangs on the
+  old setting.
+- **Java:** the deployed router already uses Vert.x, so it did not have the
+  failure; the JDK client is only used in dev mode. We first assumed otherwise,
+  tested the wrong client, and corrected it. The check cost a few hours and is
+  worth recording: **find out which client runs in the configuration you are
+  measuring.**
+- **Client comparison** (1-CPU container, same sink, ok/s, one client per 50 in
+  flight unless noted):
+
+| In flight | Vert.x pooled | Vert.x one client, bigger pool | Vert.x default | Apache pooled | Apache single | JDK pooled |
+|---|---|---|---|---|---|---|
+| 1,600 | 38.8k | 41.1k | 32.2k | 15.1k | 31.5k | 15.1k |
+| 6,400 | 28.9k | 32.4k | 26.8k | 12.3k | 27.0k | 2.9k (timeouts) |
+
+  Many separate clients did not beat one client with a larger pool: each Apache or
+  JDK client brings its own threads and connections. We did not tune Vert.x
+  further.
+
+### 4.5 NATS client behaviour (each language, different)
+
+- **Go (`nats.go`):** the pull request defaults to a 30 s expiry. With the
+  router's design (take a permit, then call `Next`), a freeze of exactly that
+  length could follow a full pool draining: 26-28 s of zero deliveries, repeatedly,
+  reproduced with only the client library. A 3 s expiry (`c6b534d`) bounds it;
+  it is a mitigation, not a fix. A fetch loop that requests exactly the free room
+  avoided it in testing and is the structural fix, not yet built.
+- **Java (`jnats`):** seven platform threads per connection by default, 700 for 100
+  queues, about 90% of all context switches and the reason the container was
+  throttled in 110 of 111 CPU-quota periods. The client accepts your own executors
+  and thread factories; giving each connection a virtual-thread executor took
+  threads from 837 to 38 and switches per message from 2.4 to 1.2 (`d347a70e`).
+  The knob exists but is discoverable only by reading the options API.
+- **Rust (`async-nats`):** the reconnect-delay callback is invoked before the
+  **first** connect as well, with `attempts == 1`. A callback returning 2 s
+  delayed every consumer's first connect, and consumers were also created one at
+  a time, so 16 queues took 32 s to come online. 16-queue throughput looked like half
+  of 8-queue throughput. Fixed (`31fa2a04`).
+
+### 4.6 Rust's memory (understood, left as is)
+
+Mid-run Rust held 57,000-77,000 messages in the pipeline (52,000-72,000 queued);
+Go held 1,900-3,100 and its queues stayed empty. Rust's resident memory followed
+that count at roughly 4-5 KB per held message (386 to 611 MB as the queue built;
+Go flat at 209-236 MB). The heap profile attributes about 395 MB of live data
+roughly as: NATS forwarder's pending-message map ~100 MB, tracking maps and
+waiting queue ~80 MB, pool creation ~45 MB, in-flight deliveries ~54 MB, NATS
+client connections ~29 MB.
+
+- Go's consumers are the bottleneck on one CPU, so they never get ahead of
+  delivery; Rust's pull faster than its HTTP deliveries complete, so the pools'
+  queues fill.
+- Memory did **not** follow speed: half a CPU gave 14.8k/s and 545 MB, one CPU
+  29.3k/s and 497 MB. It did not follow buffer size either (pool concurrency 16,
+  32 and 64 gave 372, 581 and 477 MB). It was not the flight recorder, allocator
+  arenas or per-message tasks.
+- Possible reductions, not pursued (the owner is content with the current memory):
+  slim the pending map to what acknowledging needs, drop duplicate message copies
+  in the tracking maps, or pull only what pools can start soon.
+
+### 4.7 Rig and measurement traps
+
+- The rig forced `max-ack-pending=1000` and `max-deliver=10` on NATS consumers
+  while the routers' defaults had become unlimited. It also made the shared-pool
+  shape look like a queue-count cliff, because N×1000 crossed the pool's capacity
+  at 16 queues.
+- An average hid the tail: Go and Java "1,500/s at 16 queues" was ~19k/s for the
+  first 28 seconds and ~1/s after.
+- Benchmarks run while something else compiled were contaminated (a Go run took
+  53 s against 27 s clean).
+- A sampler can stop before the last data point; use the router's own summary for
+  finish times.
+- Single runs of Rust's memory ranged from 477 to 658 MB at identical settings.
+- Our first Java HTTP diagnosis measured the wrong client (4.4).
+
+## 5. The languages and ecosystems, generically
+
+These are judgements from this exercise plus general knowledge, flagged as such.
+
+### Go
+
+- **Concurrency model:** goroutines are cheap and blocking code is the norm, so
+  one connection costs a few goroutines and a few KB. That is why Go ran 100 NATS
+  connections in 0.22-0.34 context switches per message and flat memory while Java
+  needed 700 threads.
+- **Standard library:** one obvious HTTP and one obvious way to do most things.
+  Fewer choices to get wrong. The two library traps we hit were both single
+  defaults (a 30 s pull expiry, strict HTTP/2 streams), each a one-line fix once
+  found.
+- **Weaknesses:** no sum types, so state machines are enforced by convention;
+  goroutine-per-item designs are easy to write and expensive at scale (4.3); the
+  garbage collector keeps memory above live data (about 2×).
+- **Build and supply chain:** fastest builds of the three (a full build and vet in
+  seconds), small dependency graphs.
+- **Measured here:** lowest memory (237-299 MB), good scaling (1.74× at 2 CPUs),
+  slowest per CPU of the three at one core.
+
+### Rust
+
+- **Performance:** about 1.6× Go and 1.4× Java at one CPU in this workload, with
+  almost no context switching (0.001-0.007 per message). No garbage collector, so
+  no pauses (we did not measure latency percentiles).
+- **Correctness tools:** drop guards that release counters and entries on every
+  exit including panics, messages that nack themselves when dropped, sealed
+  commit types. They remove classes of leaks and lost-message bugs that Go handles
+  by discipline. They do not prevent interaction bugs (4.1, 4.2) or protocol-level
+  ones.
+- **Costs:** the concurrency core is harder to read (guards, cancellation at
+  `await`, several types per idea); builds are slow (a release image is a 15+ minute
+  compile); per-message memory was higher in our code (clones into maps and
+  queues); library semantics still surprise (4.5).
+- **Ecosystem:** strong and moving fast (runtimes, HTTP, async clients); more
+  choice of crates than Go, and a heavier supply-chain process (the Rust repository runs
+  `cargo-deny` and keeps a `supply-chain` directory).
+
+### Java
+
+- **Modern Java is much better than its reputation:** records, sealed types with
+  exhaustive switches, virtual threads (blocking-style code that scales), strong
+  diagnostics (Flight Recorder, thread dumps, per-thread counters), the largest
+  test suite of the three.
+- **Footprint:** the JVM sizes its heap to the container and fills it (1.4-1.9 GB
+  at a 2 GB limit). The JVM's default garbage collector normally depends on CPU count and memory
+  (serial on a small quota, G1 on larger ones; we did not confirm which ran), so
+  behaviour can change with the quota.
+- **Libraries are the risk:** several mature HTTP clients with very different
+  behaviour (2.9k to 41k/s at 6,400 in flight, and one that fails requests above a
+  limit); a NATS client that starts seven platform threads per connection. There is
+  usually a way to configure it, but finding it takes reading the API.
+- **Scaling:** good once the library overheads are fixed (12.5k to 42k/s from 1 to 4
+  CPUs before the fix; 21.5k to 39k/s after).
+- **Build and supply chain:** the largest dependency tree and the slowest build
+  (a container build is several minutes), though Maven is predictable.
+
+### On "one way to do things"
+
+Go had the fewest surprises per component, and two of them were still severe.
+Java had the most *choice* and so the most ways to be wrong, but each was fixable
+by configuration. Rust's surprises were mostly in how a specific library's
+semantics differ from what the name suggests. None of the three removed the need
+to test each library above its limits.
+
+## 6. For this shape of problem specifically
+
+1. **Cost per connection is the scaling dimension.** With 100 queues, anything
+   that costs threads or buffers per connection multiplies by 100. Check what each
+   broker client allocates per connection before choosing a design.
+2. **Cost per buffered message decides memory.** A pool buffer of `concurrency × 40`
+   across 100 pools is 256,000 messages. Whatever you hold per message (a task, a
+   thread, two copies of the payload) is paid 256,000 times.
+3. **Apply back-pressure at the consumer.** Go's permit-gated consumer keeps the
+   pipeline nearly empty and memory flat; consumers that pull ahead (Rust here)
+   build queues that cost memory. Over-pulling and bouncing through the broker is
+   the other failure (4.2).
+4. **Test every HTTP and broker client above its limits.** Streams per
+   connection, pull-request lifetimes, connect delays and threads per connection
+   were each the cause of a failure that looked like a language problem.
+5. **Measure with time series, at the production shape, at the production CPU
+   quota.** A quota with many threads throttles in bursts. The 100×100 shape found
+   problems that 1, 8 and 16 queues on one pool did not.
+6. **Memory per CPU matters differently per language.** Go: small and flat. Rust:
+   small to moderate, follows buffering. Java: large and elastic, needs an explicit
+   fence.
+
+## 7. What the data supports
+
+- **Raw efficiency at one CPU:** Rust > Java (after fix) > Go. At 2-4 CPUs Go and
+  Java are within about 30% of each other, Go ahead at 4 (Rust unmeasured).
+- **Memory:** Go (about 250 MB) < Rust (about 500 MB) << Java (about 1.5-1.9 GB at a
+  2 GB limit).
+- **Operational simplicity of the concurrency model:** Go and Java (virtual threads)
+  read straight-line; Rust's is more structured and more scattered.
+- **Fixes needed to reach these numbers:** Go four (floor, dispatcher, HTTP/2
+  setting, pull expiry), Rust three (connect and concurrency, buffer size,
+  dispatcher), Java three (floor, dispatcher, NATS threads). Every router needed
+  fixes at this shape.
+
+What the data does not decide: which is easier to maintain, how each behaves under
+slow targets and real latency, the supply-chain and hiring questions, or the value
+of Rust's type system for the planned domain services.
+
+## 8. Reproducing and where things are
+
+- **Rig:** `bench/router` in the Java repository. `run.sh run <label> <image>
+  "<docker cpu args>" [ENV=v ...]`. Useful knobs: `QUEUES`, `POOLS` (one pool per
+  queue), `POOL_CONCURRENCY`, `TOTAL_MESSAGES`, `BROKER=nats|sqs|postgres`,
+  `NATS_MAXPEND` and `NATS_MAXDELIVER` (default unlimited), `TIMEOUT_S`. It writes a
+  one-second delivery time series and prints steady rate and tail separately.
+- **Commits:**
+  - Go: `a93b631` floor, `10d4b5b` dispatcher, `426851a` HTTP/2, `c6b534d` pull
+    expiry, `2d191b2` back-pressure plan.
+  - Rust: `31fa2a04` connect and concurrent creation, `dca54cd4` buffer 40×,
+    `68be197d` dispatcher.
+  - Java: `fcaec867` floor, `73b32e89` dispatcher, `d347a70e` NATS virtual threads.
+- **Open work:** the platform park with `not_before` (back-pressure at the source),
+  a fetch-based NATS consumer in Go, and committing the rig changes in the Java
+  repository.
