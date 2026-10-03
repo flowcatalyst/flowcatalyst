@@ -576,8 +576,9 @@ func (p *Pool) runImmediate(ctx context.Context, m common.QueuedMessage) {
 		}
 	}()
 	d := func() Disposition {
-		defer p.sem.release() // release on every exit path (acquired by the caller)
-		return p.processOne(ctx, m)
+		slot := &slotRelease{p: p}
+		defer slot.release() // on every exit path (acquired by the caller); a no-op once released before the ack
+		return p.processOneReleasing(ctx, m, slot)
 	}()
 	if d.Action == BrokerRelease {
 		// Target unreachable, or the in-pipeline retry budget is spent.
@@ -1126,8 +1127,9 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 		// recover — a bare deferred release would accumulate across the loop, so
 		// scope it to a closure.
 		d := func() Disposition {
-			defer p.sem.release()
-			return p.processOne(ctx, msg)
+			slot := &slotRelease{p: p}
+			defer slot.release()
+			return p.processOneReleasing(ctx, msg, slot)
 		}()
 		if d.Action == BrokerAck {
 			inHand = nil // processOne has settled it at the broker
@@ -1807,7 +1809,36 @@ func (p *Pool) recordResult(success bool) {
 // The decision itself lives in DispositionOf (pure); everything here is the
 // side effects around it — tracking, rate limiting, mediating, metrics,
 // ack/flush.
-func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result Disposition) {
+func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) Disposition {
+	return p.processOneReleasing(ctx, qm, nil)
+}
+
+// slotRelease gives back a pool concurrency slot at most once, so a worker can
+// release it early (before a broker acknowledgement) and still have its
+// deferred release be a no-op. A nil *slotRelease releases nothing. Used from
+// one goroutine only.
+type slotRelease struct {
+	p    *Pool
+	done bool
+}
+
+func (s *slotRelease) release() {
+	if s == nil || s.done {
+		return
+	}
+	s.done = true
+	s.p.sem.release()
+}
+
+// processOneReleasing is processOne for a worker that holds a concurrency slot:
+// it gives the slot back just BEFORE the broker acknowledgement rather than
+// after it. The slot bounds concurrent deliveries to the target, and a broker
+// ack is not one of them. For NATS an ack is a fire-and-forget publish, so
+// holding the slot through it cost nothing; for SQS it is a network round trip
+// (DeleteMessage, ~10-30ms on real SQS), and holding a pool's slots through it
+// capped the pool near concurrency / (delivery time + ack time) however fast
+// the target was. A nil slot (callers that hold none) releases nothing.
+func (p *Pool) processOneReleasing(ctx context.Context, qm common.QueuedMessage, slot *slotRelease) (result Disposition) {
 	worker := p.beginMediating(qm)
 	defer p.endMediating(worker)
 
@@ -1865,6 +1896,7 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 			// copy with its own receipt handle — leaving it un-acked would let
 			// it redeliver forever — and leave the owner's entry alone.
 			log.Info("external requeue duplicate (process-time backstop); ACKing copy")
+			slot.release()
 			if c := p.consumerFor(qm); c != nil {
 				if err := c.Ack(ctx, qm.ReceiptHandle, qm.BrokerMessageID); err != nil {
 					log.Warn("ack (requeue duplicate) failed", "err", err)
@@ -1891,6 +1923,7 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 		// duplicate-copy path above records nothing either.
 		p.metrics.RecordSuppressed()
 		p.events.reject(RejectSuppressed, 1)
+		slot.release()
 		p.ackTracked(ctx, qm)
 		return Disposition{Action: BrokerAck, Group: GroupContinue}
 	}
@@ -1937,6 +1970,7 @@ func (p *Pool) processOne(ctx context.Context, qm common.QueuedMessage) (result 
 				log.Warn("flushGroup ignored: message has no message group")
 			}
 		}
+		slot.release()
 		p.ackTracked(ctx, qm)
 	}
 	return d
