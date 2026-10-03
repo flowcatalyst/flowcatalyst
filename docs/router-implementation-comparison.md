@@ -389,7 +389,7 @@ profiled.
 | Pending-delete map pruned from the front of a time-ordered list instead of scanning every entry | same commits | removes a per-message scan that grew with the 15-minute TTL |
 | Rust receipt map the same | Rust `8d574f4d` | no measurable change at 500k (so it was not the Rust slowdown, §9.6) |
 | Deferral fallback: spread the 30 s fallback across the queue (30 s / queued) and trust a rate only after a worker's-worth of completions | Go `bf420ef`, Java `33d39cd2` | the old 1 s-per-message fallback booked a full 2,560-message buffer 43 minutes out |
-| Hold-back: 30 s rate window, wait half the buffer's drain time, faster of a 5 s and 30 s rate, wait capped at 20 s | Java `d64c5005`, `86daa2d2` | see §9.5; the 20 s cap is wrong for genuinely slow pools and should be reverted |
+| Hold-back: 30 s rate window, wait half the buffer's drain time, faster of a 5 s and 30 s rate; the 20 s wait cap added in `86daa2d2` was **removed** in `05390e6a` | Java `d64c5005`, `86daa2d2`, `05390e6a` | see §9.5; a time cap is wrong for a genuinely slow pool, whose wait must reflect its real pace |
 | Batched, non-blocking deferral and nack (`ChangeMessageVisibilityBatch`, bounded queue) | Java `1cd8aedf`, Go `034b9fd`, Rust `7726e12d` | Java 500k backlog: deferral CPU no longer starves delivery |
 | Poll pacing: after a batch that was at least half deferred wait 50 ms, doubling to a 200 ms cap, reset on a mostly-admitted batch | Java `4b44b9c3` | 500k backlog: 93–271 s and 110–210k deferrals became 65–77 s and about 20k |
 | Mediator `Client.Timeout` moved to a context deadline, SQS MD5 validation off and no unused attributes, lazy per-message logger, cached target keys, periodic receipt prune | Go `b53b05c`, `ea53e7e`, `c7c21a2` | Go 500k: 9.6k to 11.1k msg/s and 576 to 433 MB (pprof goroutine labels are now off unless the debug endpoints are on) |
@@ -639,3 +639,58 @@ No consistent throughput difference: run-to-run spread (about +-15%) is larger t
 and one 26.7k G1 run was not repeated. G1 used about 15-20% less memory. One CPU to two CPUs
 moved Java only from about 17k to about 19-20k, so a large part of its time is not CPU-bound;
 that has not been investigated.
+
+### 9.13 NATS re-check, CPU scaling, and 1,000 queues
+
+**The 20 s wait cap was removed (`05390e6a`).** After removal a slow pool's wait is half its
+drain time at its measured rate, floored at 5 s, with consecutive deferrals spaced one
+slot (1/rate) apart and the whole schedule clamped to the one-hour horizon: a pool at
+concurrency 1 taking 2 s per message with 100 buffered waits about 100 s for the first return
+and then one message per 2 s. Java's NATS speed is not affected: the steady rate is 23.1k
+msg/s against 21.5-23.3k before, and with slow pools (2 workers, 20 ms sink delay) the
+capped image took 64 s and the uncapped one 62 s for 100k messages (ideal about 10 s; neither
+run registered deferrals in its metrics).
+
+**NATS after all of today's changes** (1 CPU, 100 queues x 100 pools, 500k, steady 10-90%):
+Go 21.3k msg/s (was 18.0-18.6k: the shared-pipeline cleanups), Rust 28.2k (was 29.3-30.6k;
+one run, possibly noise; its rate declines 32.4k to 25.2k over the run, so the decline is not
+SQS-specific), Java 23.1k (unchanged). The NATS adapters were not touched.
+
+**CPU scaling, SQS, cold 500k flood, steady rate (x of the 1-CPU rate):**
+
+| | 1 CPU | 2 CPUs | 4 CPUs |
+|---|---|---|---|
+| Java | 15.5k | 32.8k (x2.11) | 49.7k (x3.20) |
+| Go | 14.3k | 25.8k (x1.81) | 43.5k (x3.04) |
+| Rust | 18.9k | 20.7k (x1.10) | 30.1k (x1.59) |
+
+- **Java and Go scale well.** The earlier impression that Java barely scales from one CPU to two
+  came from the warm-protocol measurement, whose fixed seeding time, warm-up and 5 s ack-linger
+  tail are a larger share of a shorter run.
+- **It is not the fake SQS broker.** Fixture CPU was 17-50% of one core and the sink 26-82% of
+  one core; neither is saturated, and the routers used 53-71% of their quota at 2-4 CPUs.
+- **Rust does not scale across threads.** Both its workers are about 100% busy at 2 CPUs with
+  about 3k runnable tasks queued, yet throughput barely moves: CPU per message roughly doubles.
+  A `perf` profile at 2 CPUs shows the kernel share up from 9% to 13% led by `wake_up_q`
+  (waking another thread), plus futex lock wake-ups and atomic reference-count traffic. The
+  cause is cross-thread task wake-ups and shared-state contention in the per-message path;
+  candidate remedies are one single-threaded runtime per core with the queues sharded across
+  them, and a per-thread-cache allocator. Not yet tried. At one CPU per instance (a fleet of
+  many small instances) this does not matter, and Rust is then the most efficient of the
+  three per CPU.
+
+**1,000 queues x 1,000 pools, 500k messages, steady rate** (4 GB container):
+
+| | 2 CPUs | 4 CPUs | RSS |
+|---|---|---|---|
+| Java | 19.4k (was 32.8k at 100 queues) | 36.7k (was 49.7k) | fills the limit (4.1 and 3.8 GB) |
+| Go | 20.9k (was 25.8k) | 34.5k (was 43.5k) | 1.25 and 1.07 GB |
+| Rust | 17.2k (was 20.7k) | 24.2k (was 30.1k) | 1.17 and 1.12 GB |
+
+Width costs 15-40% of throughput and about 0.7-0.8 GB of memory in Go and Rust (their
+100-queue RSS was 0.3-0.4 GB, though that also includes the buffered messages); Java's RSS
+only shows its configured heap ceiling. Per-queue clients and drainers are the likely
+contributors in Go and Java (Rust shares one client); not isolated. Context switches per
+message rise to about 1.7-1.9 in Rust at this width.
+
+All single runs; commits as in §9.10. Not run against real SQS.
