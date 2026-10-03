@@ -455,3 +455,37 @@ in that window.
 - **Commits** (none pushed). Go: `eed51ba`, `bf420ef`, `b53b05c`, `ea53e7e`, `c7c21a2`,
   `034b9fd`. Rust: `eef9a7c7`, `8d574f4d`, `7726e12d`. Java: `25d0377f`, `33d39cd2`,
   `d64c5005`, `1cd8aedf`, `4b44b9c3`, `86daa2d2`, rig `080d83fe`, `4fc43695`.
+
+### 9.8 Pressure test: slow pools (all three defer; the hold-back policies differ)
+
+100 queues x 100 pools, **2 workers per pool**, a **20 ms sink delay** (about 100 msg/s per
+pool, about 10k/s overall, ideal drain about 10 s), a pool buffer of 100, 100k messages
+arriving at once, cold, 1 CPU.
+
+| | Time for 100k | Deferrals (ChangeMessageVisibility entries) | Receives |
+|---|---|---|---|
+| Rust (flat 5 s bounce, no reservation schedule) | 22 s | 111.7k | 211.7k |
+| Java (reservation schedule, hold-back changes of §9.3) | 94 s | 61.9k | 161.9k |
+| Go (reservation schedule, earlier rules) | 188 s | 61.7k | 161.7k |
+
+- **They do defer, and by the same gate.** Pool queues hit the 100 cap in Go and Rust
+  within the first seconds; the earlier 500k runs never deferred in Go and Rust because
+  their 64-worker pools drained as fast as they were fed (Go's pool queues stayed under
+  about 1k), not because they were blocking.
+- **The hold-back policy dominates the wall time here.** The ideal is about 10 s and a
+  pool drains its 100-message buffer in about a second. The reservation schedule books
+  the deferred messages tens of seconds out (the rate estimate is taken while the pool
+  is still cold or full), so the pools sit idle while Java and Go wait for them (Go:
+  the last 40k messages took about 60 s). Rust's flat 5 s bounce finishes in 22 s at the
+  price of about 1.1 extra receive and deferral calls per message.
+- **That does not make the flat bounce right.** For a pool at concurrency 1 taking 2 s
+  per message with 10,000 arriving at once (a real case), a flat 5 s bounce means every
+  message returns every 5 s for hours: roughly 2k broker calls a second of pure churn.
+  The schedule exists for that case. The data says the schedule's early estimate is the
+  weak part and that a block mode for dedicated queues (see the back-pressure plan §4.8)
+  is the clean answer for slow pools.
+- **Java showed the cold-start stall again** (pool queues full at 9.7k with no active
+  workers for the first 18 s) even with only 200 workers. Not explained yet.
+- **Measurement note:** Java's `fc_queue_messages_total` counters are refreshed by a
+  periodic housekeeping task (about 60 s), so `acked` and `deferred` read 0 for the first
+  minute in sampled runs; use the fixture's counters or the live gauges.
