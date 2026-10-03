@@ -489,3 +489,25 @@ arriving at once, cold, 1 CPU.
 - **Measurement note:** Java's `fc_queue_messages_total` counters are refreshed by a
   periodic housekeeping task (about 60 s), so `acked` and `deferred` read 0 for the first
   minute in sampled runs; use the fixture's counters or the live gauges.
+
+### 9.9 Re-measurement after the Rust leak fix (`1d70ac90`)
+
+- **The leak fix did not change the decline.** Warm 500k flood: 18.0k msg/s (27.7 s) against
+  16.8k (29.7 s) before, within run-to-run noise; RSS 407 MB against 458-495 MB. The delivery
+  rate still falls from about 19.8k early to 16.5k late, and the 30k/s feed shows the same
+  (19.7k to 15.6k).
+- **It is not process age.** A second 500k batch in the same process starts at 19.1k and falls
+  to 15.7k, the same shape as the first, so accumulated process state is not the cause.
+- **It is not shrinking ack batches in Rust.** Rust's `DeleteMessageBatch` averages 5.6-6.6
+  acks per call throughout; `ReceiveMessage` returns 10.
+- **Tokio runtime during a flood:** the one worker is 100% busy, about 4k runnable tasks wait
+  on the global queue, about 14-16k tasks are alive, and the pools hold only 18-28k queued
+  messages (of 256k capacity), so Rust's intake tracks its delivery as Go's does. The task
+  count and queue depth fall away in the final seconds. The decline is therefore likely a
+  drain-tail effect on each batch; the cause is still **not established** and the cost is
+  low priority at 17-18k msg/s.
+- **Go's ack batches are small:** `DeleteMessageBatch` averages 2.2-2.4 acks per call in Go
+  against about 6 in Rust and Java (messages per `ReceiveMessage` is 10 in all three), so Go
+  makes about 2.6 times the delete calls per message. With 4 drainers per queue and no fill
+  window each ack is taken as soon as it arrives. Fewer drainers or a 1-2 ms linger would
+  raise it; the saving is bounded by the delete call's share of Go's CPU (about 6.5%).
