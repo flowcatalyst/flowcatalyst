@@ -71,7 +71,8 @@ func TestNackChangesVisibilityToTheRequestedDelay(t *testing.T) {
 	require.Len(t, reappeared, 1,
 		"the message must reappear at ~2s — a no-op Nack would leave it hidden for the queue's 20s default instead")
 
-	require.Equal(t, uint64(1), q.Counters().TotalNacked, "the nacked counter still increments, same as before R3")
+	require.Eventually(t, func() bool { return q.Counters().TotalNacked == 1 }, 2*time.Second, 10*time.Millisecond,
+		"the nacked counter still increments, same as before R3")
 }
 
 // T7: the delay is clamped to SQS's 12-hour ceiling, measured from when THIS
@@ -158,7 +159,8 @@ func TestNackNeverErrorsWhenChangeMessageVisibilityFails(t *testing.T) {
 	err := q.Nack(ctx, "garbage-receipt-handle-does-not-exist", secs(30))
 	require.NoError(t, err, "Nack must swallow a ChangeMessageVisibility failure, not return it")
 
-	require.Equal(t, before+1, q.Counters().TotalNacked, "the counter increments regardless of the AWS call's outcome")
+	require.Eventually(t, func() bool { return q.Counters().TotalNacked == before+1 }, 5*time.Second, 10*time.Millisecond,
+		"the counter increments regardless of the AWS call's outcome")
 }
 
 // Defer is the same ChangeMessageVisibility as Nack (2026-09-22: the
@@ -185,6 +187,7 @@ func TestDeferChangesVisibilityToTheRequestedDelay(t *testing.T) {
 	require.Len(t, reappeared, 1,
 		"the message must reappear at ~2s — a no-op Defer would leave it hidden for the queue's 20s default instead")
 
-	require.Equal(t, uint64(1), q.Counters().TotalDeferred, "a deferral is counted as a deferral")
+	require.Eventually(t, func() bool { return q.Counters().TotalDeferred == 1 }, 2*time.Second, 10*time.Millisecond,
+		"a deferral is counted as a deferral")
 	require.Equal(t, uint64(0), q.Counters().TotalNacked, "and not as a failure")
 }

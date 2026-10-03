@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	neturl "net/url"
 	"strconv"
 	"strings"
@@ -182,6 +181,8 @@ type Queue struct {
 
 	// Delete batching (see deletebatch.go). Created lazily; zero value usable.
 	del deleteBatcher
+	// Deferral/nack batching (see visibilitybatch.go). Same laziness.
+	vis visibilityBatcher
 
 	polled   atomic.Uint64
 	acked    atomic.Uint64
@@ -330,8 +331,7 @@ func (q *Queue) Ack(ctx context.Context, receipt string, brokerMessageID string)
 // The nacked counter is incremented regardless of the AWS call's outcome,
 // same as before.
 func (q *Queue) Nack(ctx context.Context, receipt string, delaySeconds *uint32) error {
-	defer q.nacked.Add(1)
-	return q.returnAfter(ctx, receipt, delaySeconds)
+	return q.returnAfter(ctx, receipt, delaySeconds, &q.nacked)
 }
 
 // Defer is the same ChangeMessageVisibility as Nack, counted as a deferral
@@ -349,14 +349,19 @@ func (q *Queue) Nack(ctx context.Context, receipt string, delaySeconds *uint32) 
 // ApproximateReceiveCount — a redrive policy on the source queue counts
 // deferrals against maxReceiveCount exactly as it counts failures.
 func (q *Queue) Defer(ctx context.Context, receipt string, delaySeconds *uint32) error {
-	defer q.deferred.Add(1)
-	return q.returnAfter(ctx, receipt, delaySeconds)
+	return q.returnAfter(ctx, receipt, delaySeconds, &q.deferred)
 }
 
 // returnAfter is the shared body of Nack and Defer: make receipt visible
 // again after delaySeconds (clamped — see clampToRemainingVisibility), and
 // forget the receipt. Best-effort, per the queue.Consumer contract.
-func (q *Queue) returnAfter(ctx context.Context, receipt string, delaySeconds *uint32) error {
+//
+// The change is QUEUED to the visibility batcher (visibilitybatch.go) and this
+// returns without waiting for the broker: a failure is logged there, and
+// counter is incremented there once the broker has answered or failed. The
+// only error is the caller's ctx ending while the (bounded, deliberately
+// back-pressuring) queue is full.
+func (q *Queue) returnAfter(ctx context.Context, receipt string, delaySeconds *uint32, counter *atomic.Uint64) error {
 	defer q.forgetReceipt(receipt)
 
 	var seconds uint32
@@ -364,19 +369,7 @@ func (q *Queue) returnAfter(ctx context.Context, receipt string, delaySeconds *u
 		seconds = *delaySeconds
 	}
 	clamped := q.clampToRemainingVisibility(receipt, seconds)
-
-	ctx, cancel := callCtx(ctx)
-	defer cancel()
-	_, err := q.client.ChangeMessageVisibility(ctx, &sqs.ChangeMessageVisibilityInput{
-		QueueUrl:          aws.String(q.queueURL),
-		ReceiptHandle:     aws.String(receipt),
-		VisibilityTimeout: clamped,
-	})
-	if err != nil {
-		slog.Warn("sqs ChangeMessageVisibility failed; message returns at its natural visibility timeout instead",
-			"queue", q.queueName, "err", err)
-	}
-	return nil
+	return q.vis.enqueue(ctx, q, visibilityItem{receipt: receipt, seconds: clamped, counter: counter})
 }
 
 // HonoursDelayedReturn is true (R5, docs/spec/router-deferral-handback.md):
@@ -486,10 +479,13 @@ func (q *Queue) Healthy() bool { return q.running.Load() }
 // Stop marks the consumer stopped.
 //
 // It also stops the delete-batch drainers: acks still waiting for a batch fail
-// rather than hang.
+// rather than hang. Queued deferrals/nacks are flushed best-effort (the router
+// nacks buffered messages after stopping pools, i.e. around Stop), and a Defer
+// or Nack after Stop is still sent.
 func (q *Queue) Stop() {
 	q.running.Store(false)
 	q.del.stop()
+	q.vis.stop()
 }
 
 // Metrics calls GetQueueAttributes for pending + in-flight counts.
