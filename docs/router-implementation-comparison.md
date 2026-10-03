@@ -385,7 +385,7 @@ profiled.
 
 | Change | Where | Effect |
 |---|---|---|
-| `DeleteMessageBatch` (up to 10, no fill window, 4 drainers per queue, each ack still waits for its own entry) | Go `eed51ba`, Rust `eef9a7c7`, Java `25d0377f` | 100k msgs at 1 CPU: Java 4.2k to 7.0–7.6k, Go 6.3k to 9.0k, Rust 8.7k to about 20k msg/s |
+| `DeleteMessageBatch` (up to 10, no fill window, 4 drainers per queue, each ack still waits for its own entry); superseded by the linger design in §9.10 | Go `eed51ba`, Rust `eef9a7c7`, Java `25d0377f` | 100k msgs at 1 CPU: Java 4.2k to 7.0–7.6k, Go 6.3k to 9.0k, Rust 8.7k to about 20k msg/s. The Rust "before" figure came from an image that predates the pending-delete FIFO and rescanned every pending id per message (O(n²)), so part of that gain is the scan removal, not batching |
 | Pending-delete map pruned from the front of a time-ordered list instead of scanning every entry | same commits | removes a per-message scan that grew with the 15-minute TTL |
 | Rust receipt map the same | Rust `8d574f4d` | no measurable change at 500k (so it was not the Rust slowdown, §9.6) |
 | Deferral fallback: spread the 30 s fallback across the queue (30 s / queued) and trust a rate only after a worker's-worth of completions | Go `bf420ef`, Java `33d39cd2` | the old 1 s-per-message fallback booked a full 2,560-message buffer 43 minutes out |
@@ -511,3 +511,99 @@ arriving at once, cold, 1 CPU.
   makes about 2.6 times the delete calls per message. With 4 drainers per queue and no fill
   window each ack is taken as soon as it arrives. Fewer drainers or a 1-2 ms linger would
   raise it; the saving is bounded by the delete call's share of Go's CPU (about 6.5%).
+
+### 9.10 Ack batching revisited (linger, helpers, urgent acks, 5 s pending-delete memory)
+
+**Why Go's batches were small.** After the first batching change `DeleteMessageBatch`
+averaged 2.2-3.3 acks per call in Go against about 6 in Rust and Java (messages per
+`ReceiveMessage` were 10 in all three). With several drainers sharing one channel and no
+fill window, Go's scheduler runs a just-woken goroutine next, so a drainer took each ack
+the moment it arrived. Experiments (Go, cold 500k, `GOMAXPROCS=1`): one yield in the
+drainer gave 5.0 acks per call and an 11% faster drain; yielding while the batch grows gave
+6.0 and 13%; four drainers plus a 1 ms rest after a short batch gave nothing (the other
+three steal the acks); **one drainer plus the 1 ms rest gave 9.67 acks per call and a 16%
+faster drain**. Several drainers per queue split the ack stream, so batch size cannot be
+tuned by adding drainers; a single primary drainer has to collect, and extra drainers
+only help under load.
+
+**The design now in all three routers.** One primary drainer per queue takes the first ack
+and waits for a full batch of 10, up to a configurable cap (default **5 s**, measured from
+the first ack). Up to 3 helper drainers start on demand when a full batch is already
+waiting, take what is available without waiting, and exit when the queue is empty. An
+**ordered** message's ack is *urgent* and makes the primary send at once (the router waits
+for that ack before delivering the group's next message, so a linger would cap each group
+near one message per second). At this test's 110-180 acks a second per queue a batch fills
+in 55-90 ms, so the cap is only reached on slow queues.
+
+**Pending-delete memory.** The 15-minute memory of every acked id (a spec constant) is
+replaced: an id is remembered while its ack is in flight and for **5 s after its delete
+completes** (success or failure). Endpoints are idempotent, so the guard only has to cover
+the receipt-handle switch. Memory is bounded by acks in flight plus 5 s of throughput; the
+old rule held throughput x 15 minutes (about 2 GB at 20k msg/s). The separate receipt-handle
+map keeps its 15-minute pruning. Spec: Java `docs/spec/router.md` §7.2 (`e804edf0`).
+
+**Results** (cold 500k flood, 1 CPU, 100 queues x 100 pools; one or two runs each):
+
+| | Acks per call | Deliveries done | Rate | Memory |
+|---|---|---|---|---|
+| Go, default settings (was 2.3 acks/call, 11.3k/s, 522 MB) | 9.2 | 34.0 s | 14.7k/s | 311 MB |
+| Go, `GOMAXPROCS=1` (was 3.3 acks/call, 13.7k/s, 499 MB) | 8.7 | 31.0 s | 16.1k/s | 325 MB |
+| Rust (was about 6 acks/call, quarters 19.8k to 16.5k/s) | 9.2 | about 19k/s average by quarter: 19.95k, 19.85k, 19.3k, 18.2k | – | 415 MB |
+| Java cold (was 44-86 s) | 9.7 | 42 s and 44 s | 11.9k and 11.4k/s | about 1.95 GB |
+| Java warm (slow 100k first) | 9.7 | 28.7 s main phase | 17.4k/s | about 1.95 GB |
+
+- The rig's reported drain time is 5-6 s longer than the delivery time because the last acks
+  wait out the linger; the rates above are on deliveries.
+- Rust's decline across a run roughly halved (-17% to -9%). Go dropped 40% in memory and
+  now rises slightly across the run. Java's cold runs are consistent, but cold start is
+  still its weak point.
+- Commits (none pushed). Go: `315c524`, `fba2bd0`. Rust: `29692d36`, `3d85827e`. Java:
+  `3f18f22d`.
+- Not verified: behaviour against real SQS latency (about 10-20 ms a call, which makes the
+  linger matter more) and the NATS path after these changes (the NATS adapters are untouched;
+  the Go pool's earlier cheap wins are shared and NATS was not re-measured).
+
+### 9.11 What this tells us about the three languages
+
+**Performance and footprint** (1 CPU, SQS, 500k): Rust is cheapest per message and
+the most even (about 19k/s, 415 MB, no warm-up, flat latency). Go is about 25% behind once
+configured (14.7k/s, 16.1k/s with `GOMAXPROCS=1`, 311-325 MB). Java is competitive only
+when warm (17.4k/s) and costs about four times the memory, with a slow and variable cold
+start (JIT, GC, an unpaced intake flood). That cold start matters for a fleet that restarts
+and autoscales into a backlog.
+
+**What the languages did and did not protect against.** Every defect found was a logic,
+timing or resource-bound defect and appeared in all three: unbounded growth (the Rust
+receipt-map leak, the 15-minute memory), per-message scans, a stale rate estimate, a
+deferral storm, a scheduler artefact (Go's drainer hand-off), and a policy that differs
+between implementations. Rust's compiler prevented none of them, and the unit test written
+for the Rust leak asserted the buggy behaviour. Where Rust's types did help was refactors
+(a changed ack signature and a new field were caught across crates). Go's race detector
+found a real race in the batcher; a Java test hung. The type system is not a substitute for
+tests that assert bounds and timing.
+
+**Tests.** Counts are healthy in all three (Rust router 434 and queue 107, Go router 383,
+Java 812 annotations). The gaps are the adapters: Rust's real SQS senders are compile-only
+under unit tests and 25 of its queue tests are ignored (they need LocalStack, Postgres or
+NATS); only the benchmark exercised them. A small in-process SQS mock would close this in
+all three.
+
+**Observability.** Go's pprof is built in and was the easiest. Java's JFR and `jcmd` work
+well but need a raised stack depth for virtual threads. Rust needed a `perf` sidecar sharing
+the container's PID namespace, which worked in an hour with the symbols already in the binary.
+All three were observable enough.
+
+**Configuration traps.** Go needed `GOMAXPROCS` set under a CPU quota (+21%, +35% with
+`GOGC`); Java needs heap, GC and warm-up care; Rust had none of that.
+
+**Development loop.** Agent-written, bounded changes landed in all three with mutation
+checks. Time was dominated by each build and test cycle (Rust incremental builds were
+quickest; Java through Maven the slowest), not by correctness.
+
+**Does it guide the choice?** On efficiency and steadiness, yes, towards Rust: more messages
+per core and per megabyte, no warm-up, and the fewest configuration traps. Go is a
+reasonable second (25% slower, simple tooling, one runtime setting to get right). Java is
+strong warm and easy to read but costs the most memory and has the weakest cold start. The
+data does not settle what matters most for the decision: operating it at 3am, hiring and
+ecosystem, and behaviour against real SQS. A staging run of the Rust router on real traffic
+with Go as the fallback is the way to test those.
