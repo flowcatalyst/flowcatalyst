@@ -92,7 +92,7 @@ func build(ctx context.Context, cfg common.QueueConfig) (*Queue, error) {
 	if err != nil {
 		return nil, fmt.Errorf("aws config: %w", err)
 	}
-	client := sqs.NewFromConfig(awsCfg)
+	client := newSQSClient(awsCfg)
 	queueName := cfg.Name
 	if queueName == "" {
 		queueName = queueNameFromURL(cfg.URI)
@@ -129,6 +129,16 @@ func regionFromSQSURL(uri string) string {
 	return ""
 }
 
+// newSQSClient builds the SDK client. The SDK's per-message MD5 check of every
+// received body is switched off: it hashes each payload on the poll hot path
+// purely for CPU's sake of detecting corruption the TLS transport already
+// rules out, and a mismatch would only fail the poll for the whole batch.
+func newSQSClient(awsCfg aws.Config) *sqs.Client {
+	return sqs.NewFromConfig(awsCfg, func(o *sqs.Options) {
+		o.DisableMessageChecksumValidation = true
+	})
+}
+
 func queueNameFromURL(url string) string {
 	parts := strings.Split(url, "/")
 	if len(parts) == 0 {
@@ -163,6 +173,10 @@ type Queue struct {
 	// staleness on every Poll, so growth is bounded by outstanding receipts,
 	// not by every receipt ever issued.
 	receiptPolledAt map[string]time.Time
+	// lastReceiptPrune is when evictStaleReceiptTimestampsLocked last scanned
+	// receiptPolledAt; the scan is O(map) so it runs at most once per
+	// receiptPruneInterval rather than on every poll. Guarded by mu.
+	lastReceiptPrune time.Time
 
 	running atomic.Bool
 
@@ -188,12 +202,14 @@ func (q *Queue) Poll(ctx context.Context, maxMessages uint32) ([]common.QueuedMe
 		10)
 
 	out, err := q.client.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{
-		QueueUrl:                    aws.String(q.queueURL),
-		MaxNumberOfMessages:         max,
-		VisibilityTimeout:           q.visibilityTimeout,
-		WaitTimeSeconds:             q.waitSeconds,
-		MessageSystemAttributeNames: []sqstypes.MessageSystemAttributeName{sqstypes.MessageSystemAttributeNameAll},
-		MessageAttributeNames:       []string{"All"},
+		QueueUrl:            aws.String(q.queueURL),
+		MaxNumberOfMessages: max,
+		VisibilityTimeout:   q.visibilityTimeout,
+		WaitTimeSeconds:     q.waitSeconds,
+		// No system or message attributes are requested: parseMessage reads
+		// only the body, receipt handle and MessageId, and nothing else in the
+		// package consumes a received attribute. Asking for "All" made SQS
+		// build, and the SDK parse, attributes that were then discarded.
 	})
 	if err != nil {
 		return nil, fmt.Errorf("sqs ReceiveMessage: %w", err)
@@ -607,6 +623,11 @@ func (q *Queue) forgetReceipt(receipt string) {
 	q.mu.Unlock()
 }
 
+// receiptPruneInterval spaces the receiptPolledAt scans. Entries live for
+// MaxVisibility (hours), so pruning a little late changes nothing observable:
+// remainingVisibilitySeconds applies the age clamp itself.
+const receiptPruneInterval = 30 * time.Second
+
 // evictStaleReceiptTimestampsLocked prunes receiptPolledAt entries older
 // than MaxVisibility: a receipt that old is beyond SQS's own ceiling
 // regardless (remainingVisibilitySeconds would return 0 for it anyway), and
@@ -617,6 +638,10 @@ func (q *Queue) evictStaleReceiptTimestampsLocked() {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	now := time.Now()
+	if now.Sub(q.lastReceiptPrune) < receiptPruneInterval {
+		return
+	}
+	q.lastReceiptPrune = now
 	for receipt, ts := range q.receiptPolledAt {
 		if now.Sub(ts) > MaxVisibility {
 			delete(q.receiptPolledAt, receipt)
