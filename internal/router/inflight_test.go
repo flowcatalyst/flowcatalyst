@@ -261,3 +261,24 @@ func TestReapGraceOutlastsALongDelivery(t *testing.T) {
 		"a delivery still inside the mediator's own timeout must keep its entry")
 	assert.Equal(t, 1, tr.Count())
 }
+
+// The already-tracked case (the norm: route time registered it) must not
+// allocate a throwaway InFlightMessage.
+func TestEnsureTrackedMessageAllocatesOnlyWhenInserting(t *testing.T) {
+	tr := router.NewInFlightTracker()
+	msg := common.Message{ID: "app-1"}
+	require.Equal(t, router.RegisterNew, tr.Register(common.NewInFlightMessage(&msg, "b-1", "q", "", "rh")))
+
+	allocs := testing.AllocsPerRun(100, func() {
+		if !tr.EnsureTrackedMessage(&msg, "b-1", "q", "", "rh") {
+			t.Fatal("tracked message rejected")
+		}
+	})
+	assert.Zero(t, allocs, "tracked entry found: nothing should be allocated")
+
+	assert.False(t, tr.EnsureTrackedMessage(&msg, "b-other", "q", "", "rh2"), "foreign copy rejected")
+
+	fresh := common.Message{ID: "app-2"}
+	assert.True(t, tr.EnsureTrackedMessage(&fresh, "b-2", "q", "", "rh"))
+	assert.Equal(t, 2, tr.Count(), "missing entry is restored")
+}

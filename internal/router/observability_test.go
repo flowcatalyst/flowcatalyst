@@ -106,3 +106,17 @@ func TestManagerCountsConsumerPolls(t *testing.T) {
 		return false
 	}, time.Second, 5*time.Millisecond)
 }
+
+func TestProfilerLabelsCanBeSwitchedOff(t *testing.T) {
+	SetProfilerLabels(false)
+	defer SetProfilerLabels(true)
+	med := &byIDMediator{}
+	pool := NewPool(common.PoolConfig{Code: "NOLBL", Concurrency: 1}, med, nil,
+		func(string) queue.Consumer { return &cascadeConsumer{} })
+	qm := releaseMsg("nolbl-1", "grp-7", common.DispatchNextOnError)
+	pool.processOne(context.Background(), qm)
+
+	med.mu.Lock()
+	defer med.mu.Unlock()
+	assert.Empty(t, med.labels["nolbl-1"])
+}

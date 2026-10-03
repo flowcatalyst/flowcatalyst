@@ -1865,12 +1865,19 @@ func (p *Pool) processOneReleasing(ctx context.Context, qm common.QueuedMessage,
 	// restored on the way out: a drainer goroutine goes on to the next
 	// message of its group. An execution trace (/debug/pprof/trace) shows
 	// each delivery as a "router.dispatch" task.
-	labelled := pprof.WithLabels(ctx, pprof.Labels(
-		logKeyMessageID, qm.Message.ID, logKeyGroup, qm.Message.GroupID(),
-		logKeyPool, p.cfg.Code, logKeyQueue, qm.QueueIdentifier))
-	pprof.SetGoroutineLabels(labelled)
-	defer pprof.SetGoroutineLabels(ctx)
-	ctx = labelled
+	//
+	// The labels cost an allocation set plus two label swaps per message and
+	// are only ever read through the debug/pprof surface, so they are on only
+	// when ProfilerLabelsEnabled says so (default on; the server turns them
+	// off when the debug endpoints are not mounted).
+	if profilerLabels.Load() {
+		labelled := pprof.WithLabels(ctx, pprof.Labels(
+			logKeyMessageID, qm.Message.ID, logKeyGroup, qm.Message.GroupID(),
+			logKeyPool, p.cfg.Code, logKeyQueue, qm.QueueIdentifier))
+		pprof.SetGoroutineLabels(labelled)
+		defer pprof.SetGoroutineLabels(ctx)
+		ctx = labelled
+	}
 	if trace.IsEnabled() {
 		var task *trace.Task
 		ctx, task = trace.NewTask(ctx, "router.dispatch")
@@ -1899,8 +1906,7 @@ func (p *Pool) processOneReleasing(ctx context.Context, qm common.QueuedMessage,
 	// receipt handle swapped by a redelivery) and skip. EnsureTracked never
 	// swaps handles: the entry's handle may be fresher than this copy's.
 	if p.tracker != nil && qm.Attempts == 0 {
-		im := common.NewInFlightMessage(&qm.Message, qm.BrokerMessageID, qm.QueueIdentifier, qm.BatchID, qm.ReceiptHandle)
-		if !p.tracker.EnsureTracked(im) {
+		if !p.tracker.EnsureTrackedMessage(&qm.Message, qm.BrokerMessageID, qm.QueueIdentifier, qm.BatchID, qm.ReceiptHandle) {
 			// A different copy of this app message owns the pipeline (external
 			// requeue that slipped past route-time dedup). ACK-delete THIS
 			// copy with its own receipt handle — leaving it un-acked would let

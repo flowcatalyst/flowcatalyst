@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"log/slog"
+	"sync/atomic"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 )
@@ -32,8 +33,56 @@ func messageAttrs(pool string, qm common.QueuedMessage) []any {
 // messageLogger is the per-message logger: the default logger with the
 // correlation set attached, so every line about this message carries it
 // without each call site having to remember all four keys.
+//
+// The attributes are attached lazily (see lazyMessageHandler): most messages
+// never log above debug, and building the logger eagerly boxed four strings
+// and pre-formatted them for every one.
 func messageLogger(pool string, qm common.QueuedMessage) *slog.Logger {
-	return slog.Default().With(messageAttrs(pool, qm)...)
+	return slog.New(&lazyMessageHandler{
+		id: qm.Message.ID, group: qm.Message.GroupID(), pool: pool, queue: qm.QueueIdentifier,
+	})
+}
+
+// profilerLabels gates the per-message pprof labels in the pool hot path.
+var profilerLabels atomic.Bool
+
+func init() { profilerLabels.Store(true) }
+
+// SetProfilerLabels turns the per-message pprof goroutine labels on or off.
+// On by default; the server switches them off when the debug endpoints (the
+// only reader of the labels) are not mounted.
+func SetProfilerLabels(on bool) { profilerLabels.Store(on) }
+
+// lazyMessageHandler is a slog.Handler that defers building the correlated
+// logger until a record is actually handled. Enabled consults the current
+// default handler directly, so a filtered-out line costs no attribute work.
+type lazyMessageHandler struct {
+	id, group, pool, queue string
+}
+
+func (h *lazyMessageHandler) build() slog.Handler {
+	return slog.Default().With(
+		logKeyMessageID, h.id,
+		logKeyGroup, h.group,
+		logKeyPool, h.pool,
+		logKeyQueue, h.queue,
+	).Handler()
+}
+
+func (h *lazyMessageHandler) Enabled(ctx context.Context, l slog.Level) bool {
+	return slog.Default().Handler().Enabled(ctx, l)
+}
+
+func (h *lazyMessageHandler) Handle(ctx context.Context, r slog.Record) error {
+	return h.build().Handle(ctx, r)
+}
+
+func (h *lazyMessageHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return h.build().WithAttrs(attrs)
+}
+
+func (h *lazyMessageHandler) WithGroup(name string) slog.Handler {
+	return h.build().WithGroup(name)
 }
 
 type messageLoggerKey struct{}

@@ -126,23 +126,37 @@ func (t *InFlightTracker) Register(im *common.InFlightMessage) RegisterOutcome {
 // past route-time dedup, e.g. across a reap): the caller ACK-drops this copy
 // with its own receipt handle and must not touch the owner's entry.
 func (t *InFlightTracker) EnsureTracked(im *common.InFlightMessage) bool {
+	return t.ensureTracked(im.MessageID, im.BrokerMessageID, im.QueueIdentifier, func() *common.InFlightMessage { return im })
+}
+
+// EnsureTrackedMessage is EnsureTracked for a caller that has not built the
+// InFlightMessage yet: the entry is allocated only when there is none to find,
+// so the common case (route time already registered it) allocates nothing.
+func (t *InFlightTracker) EnsureTrackedMessage(m *common.Message, brokerID, queueID, batchID, receipt string) bool {
+	return t.ensureTracked(m.ID, brokerID, queueID, func() *common.InFlightMessage {
+		return common.NewInFlightMessage(m, brokerID, queueID, batchID, receipt)
+	})
+}
+
+func (t *InFlightTracker) ensureTracked(messageID, brokerID, queueID string, mk func() *common.InFlightMessage) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if im.BrokerMessageID != "" {
-		if _, ok := t.byBroker[brokerKey{im.QueueIdentifier, im.BrokerMessageID}]; ok {
+	if brokerID != "" {
+		if _, ok := t.byBroker[brokerKey{queueID, brokerID}]; ok {
 			return true
 		}
 	}
-	if prev, ok := t.byMessage[im.MessageID]; ok {
-		if im.BrokerMessageID != "" && prev.BrokerMessageID != "" && prev.BrokerMessageID != im.BrokerMessageID {
+	if prev, ok := t.byMessage[messageID]; ok {
+		if brokerID != "" && prev.BrokerMessageID != "" && prev.BrokerMessageID != brokerID {
 			return false
 		}
 		return true
 	}
-	if im.BrokerMessageID != "" {
-		t.byBroker[brokerKey{im.QueueIdentifier, im.BrokerMessageID}] = im
+	im := mk()
+	if brokerID != "" {
+		t.byBroker[brokerKey{queueID, brokerID}] = im
 	}
-	t.byMessage[im.MessageID] = im
+	t.byMessage[messageID] = im
 	return true
 }
 

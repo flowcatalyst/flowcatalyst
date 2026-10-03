@@ -108,6 +108,9 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 		}
 	}
 
+	// Per-message pprof labels are read only through the debug endpoints.
+	router.SetProfilerLabels(debugGate != nil)
+
 	var routerState *routerapi.State
 	if cfg.RouterEnabled {
 		routerSrv, routerErr = newRouterServer(cfg, pool)
