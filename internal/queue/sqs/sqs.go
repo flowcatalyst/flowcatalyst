@@ -65,6 +65,19 @@ func publisherFactory(ctx context.Context, cfg common.QueueConfig) (queue.Publis
 	return q, nil
 }
 
+// apiCallTimeout bounds every SQS call other than the long-poll receive (which
+// the router bounds itself). The SDK client has no timeout of its own, so a call
+// on a stalled connection blocked its caller for good: an acknowledgement
+// blocked a pool worker and the slot it held, and a hung call is exactly the
+// kind of unbounded wait that froze the NATS consumer. 25s matches the other
+// SQS consumers' operation timeout.
+var apiCallTimeout = 25 * time.Second // a var only so tests can shorten it
+
+// callCtx derives the context for one bounded SQS API call.
+func callCtx(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, apiCallTimeout)
+}
+
 func build(ctx context.Context, cfg common.QueueConfig) (*Queue, error) {
 	// The queue's own URL encodes its region (sqs.<region>.amazonaws.com), so
 	// use it: an SQS queue must be reached in its own region, and this works
@@ -188,10 +201,12 @@ func (q *Queue) Poll(ctx context.Context, maxMessages uint32) ([]common.QueuedMe
 			if alreadyAcked {
 				// Redelivery of an acked message — delete immediately.
 				if sm.ReceiptHandle != nil {
-					_, _ = q.client.DeleteMessage(ctx, &sqs.DeleteMessageInput{
+					dctx, cancel := callCtx(ctx)
+					_, _ = q.client.DeleteMessage(dctx, &sqs.DeleteMessageInput{
 						QueueUrl:      aws.String(q.queueURL),
 						ReceiptHandle: sm.ReceiptHandle,
 					})
+					cancel()
 				}
 				continue
 			}
@@ -254,6 +269,8 @@ func (q *Queue) Ack(ctx context.Context, receipt string, brokerMessageID string)
 	q.markDeleted(brokerMessageID)
 	q.forgetReceipt(receipt)
 
+	ctx, cancel := callCtx(ctx)
+	defer cancel()
 	_, err := q.client.DeleteMessage(ctx, &sqs.DeleteMessageInput{
 		QueueUrl:      aws.String(q.queueURL),
 		ReceiptHandle: aws.String(receipt),
@@ -327,6 +344,8 @@ func (q *Queue) returnAfter(ctx context.Context, receipt string, delaySeconds *u
 	}
 	clamped := q.clampToRemainingVisibility(receipt, seconds)
 
+	ctx, cancel := callCtx(ctx)
+	defer cancel()
 	_, err := q.client.ChangeMessageVisibility(ctx, &sqs.ChangeMessageVisibilityInput{
 		QueueUrl:          aws.String(q.queueURL),
 		ReceiptHandle:     aws.String(receipt),
@@ -448,6 +467,8 @@ func (q *Queue) Stop() { q.running.Store(false) }
 
 // Metrics calls GetQueueAttributes for pending + in-flight counts.
 func (q *Queue) Metrics(ctx context.Context) (*queue.Metrics, error) {
+	ctx, cancel := callCtx(ctx)
+	defer cancel()
 	out, err := q.client.GetQueueAttributes(ctx, &sqs.GetQueueAttributesInput{
 		QueueUrl: aws.String(q.queueURL),
 		AttributeNames: []sqstypes.QueueAttributeName{
