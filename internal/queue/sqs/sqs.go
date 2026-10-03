@@ -147,6 +147,13 @@ type Queue struct {
 
 	mu            sync.Mutex
 	pendingDelete map[string]time.Time
+	// pendingFIFO records pendingDelete insertions in time order so TTL
+	// pruning pops expired entries from the front instead of scanning the whole
+	// map on every poll. An id re-marked later has a newer map timestamp and a
+	// second FIFO entry; the older entry is skipped lazily on pop (see
+	// evictExpiredPendingDeletesLocked). Guarded by mu; the zero value is usable.
+	pendingFIFO []pendingStamp
+	pendingHead int
 	// receiptPolledAt records when THIS consumer's ReceiveMessage first
 	// handed out each currently-outstanding receipt handle — Nack's clamp
 	// (R3) measures SQS's 12-hour ceiling from here, since SQS itself counts
@@ -158,6 +165,9 @@ type Queue struct {
 	receiptPolledAt map[string]time.Time
 
 	running atomic.Bool
+
+	// Delete batching (see deletebatch.go). Created lazily; zero value usable.
+	del deleteBatcher
 
 	polled   atomic.Uint64
 	acked    atomic.Uint64
@@ -271,14 +281,9 @@ func (q *Queue) Ack(ctx context.Context, receipt string, brokerMessageID string)
 
 	ctx, cancel := callCtx(ctx)
 	defer cancel()
-	_, err := q.client.DeleteMessage(ctx, &sqs.DeleteMessageInput{
-		QueueUrl:      aws.String(q.queueURL),
-		ReceiptHandle: aws.String(receipt),
-	})
-	if err != nil {
+	if err := q.del.delete(ctx, q, receipt); err != nil {
 		return fmt.Errorf("sqs DeleteMessage: %w", err)
 	}
-	q.acked.Add(1)
 	return nil
 }
 
@@ -463,7 +468,13 @@ func (q *Queue) PublishBatch(ctx context.Context, msgs []common.Message) ([]stri
 func (q *Queue) Healthy() bool { return q.running.Load() }
 
 // Stop marks the consumer stopped.
-func (q *Queue) Stop() { q.running.Store(false) }
+//
+// It also stops the delete-batch drainers: acks still waiting for a batch fail
+// rather than hang.
+func (q *Queue) Stop() {
+	q.running.Store(false)
+	q.del.stop()
+}
 
 // Metrics calls GetQueueAttributes for pending + in-flight counts.
 func (q *Queue) Metrics(ctx context.Context) (*queue.Metrics, error) {
@@ -509,17 +520,42 @@ func (q *Queue) Counters() *queue.Metrics {
 	}
 }
 
+// pendingStamp is one pendingFIFO entry: the id and the timestamp it was
+// inserted into pendingDelete with.
+type pendingStamp struct {
+	id string
+	ts time.Time
+}
+
 // evictExpiredPendingDeletesLocked prunes acked-MessageId entries older than
 // PendingDeleteTTL, so the guard remembers recent deletes rather than every
-// delete ever. Called at the top of each poll. Holds the lock.
+// delete ever. Called at the top of each poll.
+//
+// Entries are pushed in non-decreasing time order, so only the front of
+// pendingFIFO is examined: pop while expired, stop at the first fresh entry. A
+// popped entry deletes the map entry only if the map still holds that exact
+// timestamp — if the id was re-marked since, the map holds a newer timestamp
+// (with its own later FIFO entry) and must survive.
 func (q *Queue) evictExpiredPendingDeletesLocked() {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	now := time.Now()
-	for id, ts := range q.pendingDelete {
-		if now.Sub(ts) > PendingDeleteTTL {
-			delete(q.pendingDelete, id)
+	for q.pendingHead < len(q.pendingFIFO) {
+		e := q.pendingFIFO[q.pendingHead]
+		if now.Sub(e.ts) <= PendingDeleteTTL {
+			break
 		}
+		if cur, ok := q.pendingDelete[e.id]; ok && cur.Equal(e.ts) {
+			delete(q.pendingDelete, e.id)
+		}
+		q.pendingFIFO[q.pendingHead] = pendingStamp{} // release the id string
+		q.pendingHead++
+	}
+	// Reclaim the consumed prefix once it dominates, keeping the slice bounded.
+	if q.pendingHead > 1024 && q.pendingHead*2 >= len(q.pendingFIFO) {
+		n := copy(q.pendingFIFO, q.pendingFIFO[q.pendingHead:])
+		q.pendingFIFO = q.pendingFIFO[:n]
+		q.pendingHead = 0
 	}
 }
 
@@ -530,8 +566,16 @@ func (q *Queue) markDeleted(brokerMessageID string) {
 	if brokerMessageID == "" {
 		return
 	}
+	q.markDeletedAt(brokerMessageID, time.Now())
+}
+
+// markDeletedAt is markDeleted with an explicit timestamp. Timestamps must be
+// non-decreasing across calls in production (they are time.Now()); tests
+// backdate to exercise the TTL.
+func (q *Queue) markDeletedAt(brokerMessageID string, ts time.Time) {
 	q.mu.Lock()
-	q.pendingDelete[brokerMessageID] = time.Now()
+	q.pendingDelete[brokerMessageID] = ts
+	q.pendingFIFO = append(q.pendingFIFO, pendingStamp{id: brokerMessageID, ts: ts})
 	q.mu.Unlock()
 }
 

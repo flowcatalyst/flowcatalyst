@@ -26,9 +26,9 @@ func TestAckOnAStalledConnectionReturnsAfterTheCallTimeout(t *testing.T) {
 
 	old := apiCallTimeout
 	apiCallTimeout = 200 * time.Millisecond
-	defer func() { apiCallTimeout = old }()
-
 	q := newGuardQueue()
+	// Drainers read apiCallTimeout; wait for them before restoring it.
+	defer func() { q.Stop(); q.del.drainers.Wait(); apiCallTimeout = old }()
 	q.queueURL = srv.URL + "/000000000000/q"
 	q.client = sqs.NewFromConfig(aws.Config{
 		Region:           "us-east-1",
