@@ -4,8 +4,9 @@
 //   - Visibility timeout configurable per queue.
 //   - Pending-delete guard for at-least-once redeliveries: once we
 //     successfully (or unsuccessfully) DeleteMessage for a MessageId,
-//     subsequent redeliveries within PendingDeleteTTL are deleted
-//     immediately on poll instead of being routed to the mediator.
+//     subsequent redeliveries until pendingDeleteGrace after the delete
+//     completed are deleted immediately on poll instead of being routed to
+//     the mediator.
 package sqs
 
 import (
@@ -29,10 +30,13 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/queue"
 )
 
-// PendingDeleteTTL is how long we remember an acked MessageId so
-// redeliveries (SQS standard queues are at-least-once) are
-// short-circuited to DeleteMessage. 15 minutes.
-const PendingDeleteTTL = 15 * time.Minute
+// pendingDeleteGrace is how long we keep remembering an acked MessageId AFTER
+// its DeleteMessageBatch entry completed (success or failure), so a redelivery
+// racing the delete (SQS is at-least-once) is short-circuited to DeleteMessage
+// instead of delivered again. While the delete is still in flight the id is
+// remembered however long the linger or call takes. This is a courtesy, not a
+// guarantee: delivery endpoints are idempotent.
+const pendingDeleteGrace = 5 * time.Second
 
 // MaxVisibility is SQS's own ceiling on a message's total
 // invisibility, counted from the ORIGINAL ReceiveMessage — not from any one
@@ -106,7 +110,7 @@ func build(ctx context.Context, cfg common.QueueConfig) (*Queue, error) {
 		queueName:         queueName,
 		visibilityTimeout: int32(vt),
 		waitSeconds:       DefaultWaitSeconds,
-		pendingDelete:     make(map[string]time.Time),
+		pendingDelete:     make(map[string]*pendingEntry),
 		receiptPolledAt:   make(map[string]time.Time),
 	}
 	q.running.Store(true)
@@ -155,13 +159,13 @@ type Queue struct {
 	waitSeconds       int32
 
 	mu            sync.Mutex
-	pendingDelete map[string]time.Time
-	// pendingFIFO records pendingDelete insertions in time order so TTL
-	// pruning pops expired entries from the front instead of scanning the whole
-	// map on every poll. An id re-marked later has a newer map timestamp and a
+	pendingDelete map[string]*pendingEntry
+	// pendingFIFO records pendingDelete insertions in time order so pruning
+	// pops finished, expired entries from the front instead of scanning the
+	// whole map on every poll. An id re-marked later has a new map entry and a
 	// second FIFO entry; the older entry is skipped lazily on pop (see
 	// evictExpiredPendingDeletesLocked). Guarded by mu; the zero value is usable.
-	pendingFIFO []pendingStamp
+	pendingFIFO []*pendingEntry
 	pendingHead int
 	// receiptPolledAt records when THIS consumer's ReceiveMessage first
 	// handed out each currently-outstanding receipt handle — Nack's clamp
@@ -290,15 +294,16 @@ func (q *Queue) parseMessage(sm sqstypes.Message) (common.Message, string, strin
 // recognised and got delivered to the target a second time. Passing the id in
 // removes the lookup, and with it the failure mode.
 //
-// Retention stays bounded: entries are pruned by PendingDeleteTTL on every poll,
-// so this remembers recent deletes, never all of them.
+// Retention stays bounded: an id is remembered while its delete is in flight
+// and for pendingDeleteGrace after it completes (pruned on every poll), so
+// memory is bounded by acks in flight plus a few seconds of throughput.
 func (q *Queue) Ack(ctx context.Context, receipt string, brokerMessageID string) error {
-	q.markDeleted(brokerMessageID)
+	entry := q.markDeleted(brokerMessageID)
 	q.forgetReceipt(receipt)
 
 	ctx, cancel := callCtx(ctx)
 	defer cancel()
-	if err := q.del.delete(ctx, q, receipt); err != nil {
+	if err := q.del.delete(ctx, q, receipt, entry); err != nil {
 		return fmt.Errorf("sqs DeleteMessage: %w", err)
 	}
 	return nil
@@ -532,72 +537,96 @@ func (q *Queue) Counters() *queue.Metrics {
 	}
 }
 
-// pendingStamp is one pendingFIFO entry: the id and the timestamp it was
-// inserted into pendingDelete with.
-type pendingStamp struct {
-	id string
-	ts time.Time
+// pendingEntry is one remembered MessageId. It is in flight (done=false) from
+// the moment the ack is taken until its DeleteMessageBatch entry completes
+// (success or failure), then expires pendingDeleteGrace after doneAt.
+type pendingEntry struct {
+	id     string
+	done   bool
+	doneAt time.Time
 }
 
-// evictExpiredPendingDeletesLocked prunes acked-MessageId entries older than
-// PendingDeleteTTL, so the guard remembers recent deletes rather than every
+// evictExpiredPendingDeletesLocked prunes finished entries older than
+// pendingDeleteGrace, so the guard remembers recent deletes rather than every
 // delete ever. Called at the top of each poll.
-//
-// Entries are pushed in non-decreasing time order, so only the front of
-// pendingFIFO is examined: pop while expired, stop at the first fresh entry. A
-// popped entry deletes the map entry only if the map still holds that exact
-// timestamp — if the id was re-marked since, the map holds a newer timestamp
-// (with its own later FIFO entry) and must survive.
 func (q *Queue) evictExpiredPendingDeletesLocked() {
+	q.evictExpiredPendingDeletesAt(time.Now())
+}
+
+// evictExpiredPendingDeletesAt is the pruner with an explicit clock. Only the
+// front of pendingFIFO (insertion order) is examined: pop while the entry is
+// done and its grace has passed, stop at the first in-flight or fresh entry. An
+// in-flight entry is never popped, however old. A popped entry deletes the map
+// entry only if the map still holds that exact entry (an id re-marked since has
+// a newer one with its own FIFO slot). Completion order can differ slightly from
+// insertion order, so an entry behind an older in-flight one waits for it; the
+// wait is bounded by the call timeout.
+func (q *Queue) evictExpiredPendingDeletesAt(now time.Time) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	now := time.Now()
 	for q.pendingHead < len(q.pendingFIFO) {
 		e := q.pendingFIFO[q.pendingHead]
-		if now.Sub(e.ts) <= PendingDeleteTTL {
+		if !e.done || now.Sub(e.doneAt) <= pendingDeleteGrace {
 			break
 		}
-		if cur, ok := q.pendingDelete[e.id]; ok && cur.Equal(e.ts) {
+		if q.pendingDelete[e.id] == e {
 			delete(q.pendingDelete, e.id)
 		}
-		q.pendingFIFO[q.pendingHead] = pendingStamp{} // release the id string
+		q.pendingFIFO[q.pendingHead] = nil // release the entry
 		q.pendingHead++
 	}
 	// Reclaim the consumed prefix once it dominates, keeping the slice bounded.
 	if q.pendingHead > 1024 && q.pendingHead*2 >= len(q.pendingFIFO) {
 		n := copy(q.pendingFIFO, q.pendingFIFO[q.pendingHead:])
+		clear(q.pendingFIFO[n:])
 		q.pendingFIFO = q.pendingFIFO[:n]
 		q.pendingHead = 0
 	}
 }
 
-// markDeleted records that this MessageId has been deleted, so a redelivery
-// already in flight can be short-circuited. An empty id is ignored — there is
-// nothing to key on, and inserting "" would match every id-less message.
-func (q *Queue) markDeleted(brokerMessageID string) {
+// markDeleted records, as in flight, that this MessageId is being deleted, so a
+// redelivery can be short-circuited. An empty id is ignored (nil returned) —
+// there is nothing to key on, and inserting "" would match every id-less
+// message. The caller must pass the returned entry to markDeleteDone when the
+// delete completes (a nil entry is accepted there).
+func (q *Queue) markDeleted(brokerMessageID string) *pendingEntry {
 	if brokerMessageID == "" {
-		return
+		return nil
 	}
-	q.markDeletedAt(brokerMessageID, time.Now())
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.markDeletedLocked(brokerMessageID)
 }
 
-// markDeletedAt is markDeleted with an explicit timestamp. Timestamps must be
-// non-decreasing across calls in production (they are time.Now()); tests
-// backdate to exercise the TTL.
-func (q *Queue) markDeletedAt(brokerMessageID string, ts time.Time) {
+func (q *Queue) markDeletedLocked(id string) *pendingEntry {
+	e := &pendingEntry{id: id}
+	q.pendingDelete[id] = e
+	q.pendingFIFO = append(q.pendingFIFO, e)
+	return e
+}
+
+// markDeleteDone records that e's delete finished (any outcome); it expires
+// pendingDeleteGrace later.
+func (q *Queue) markDeleteDone(e *pendingEntry) { q.markDeleteDoneAt(e, time.Now()) }
+
+func (q *Queue) markDeleteDoneAt(e *pendingEntry, at time.Time) {
+	if e == nil {
+		return
+	}
 	q.mu.Lock()
-	q.pendingDelete[brokerMessageID] = ts
-	q.pendingFIFO = append(q.pendingFIFO, pendingStamp{id: brokerMessageID, ts: ts})
+	if !e.done {
+		e.done, e.doneAt = true, at
+	}
 	q.mu.Unlock()
 }
 
-// alreadyDeleted reports whether this MessageId was deleted recently enough to
-// still be remembered (see PendingDeleteTTL).
+// alreadyDeleted reports whether this MessageId is in flight or was deleted
+// within pendingDeleteGrace.
 func (q *Queue) alreadyDeleted(brokerMessageID string) bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	_, ok := q.pendingDelete[brokerMessageID]
-	return ok
+	e, ok := q.pendingDelete[brokerMessageID]
+	return ok && (!e.done || time.Since(e.doneAt) <= pendingDeleteGrace)
 }
 
 // recordPolled remembers when THIS consumer first received receipt — Nack's

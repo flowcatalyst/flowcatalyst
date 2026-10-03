@@ -1,22 +1,20 @@
 package sqs
 
 import (
+	"strconv"
 	"testing"
 	"time"
 )
 
 func newGuardQueue() *Queue {
-	return &Queue{pendingDelete: make(map[string]time.Time)}
+	return &Queue{pendingDelete: make(map[string]*pendingEntry)}
 }
 
 // TestAckRecordsTheDeleteFromTheSuppliedID is the regression guard. The id used
 // to be recovered from a receipt→MessageId map populated at poll time; when that
 // entry had already been evicted, the lookup missed, NO pending-delete was
-// recorded, and the message was deleted anyway — silently. A redelivery of it
-// was then not recognised and got delivered to the target a second time.
-//
-// The id now comes from the caller, which holds it in BrokerMessageID, so no
-// lookup can fail and no map state can make the guard forget.
+// recorded, and the message was deleted anyway — silently. The id now comes
+// from the caller, so no lookup can fail.
 func TestAckRecordsTheDeleteFromTheSuppliedID(t *testing.T) {
 	q := newGuardQueue()
 
@@ -30,109 +28,108 @@ func TestAckRecordsTheDeleteFromTheSuppliedID(t *testing.T) {
 	}
 }
 
-// TestMarkDeletedIgnoresEmptyID: an empty id would key every id-less message to
-// the same entry and suppress messages that were never deleted.
+// An empty id would key every id-less message to the same entry.
 func TestMarkDeletedIgnoresEmptyID(t *testing.T) {
 	q := newGuardQueue()
 
-	q.markDeleted("")
-
-	if len(q.pendingDelete) != 0 {
+	if e := q.markDeleted(""); e != nil {
+		t.Error("empty id must yield no entry")
+	}
+	if len(q.pendingDelete) != 0 || q.alreadyDeleted("") {
 		t.Errorf("empty id must not be recorded; map holds %d entries", len(q.pendingDelete))
 	}
-	if q.alreadyDeleted("") {
-		t.Error("empty id must never report as already-deleted")
-	}
+	q.markDeleteDone(nil) // nil entries are accepted
 }
 
-// TestPendingDeletesAreNotRememberedForever: the guard is a short-term
-// suppression window, not a permanent ledger of every message ever handled.
-// Entries older than PendingDeleteTTL are dropped on each poll, so the map is
-// bounded by delete RATE rather than by total volume. A redelivery arriving
-// after the window is benign — the target handles it — the window only exists
-// to avoid the wasted resend.
-func TestPendingDeletesAreNotRememberedForever(t *testing.T) {
+// An entry whose delete is still in flight survives pruning however long that
+// takes, then expires pendingDeleteGrace after it completes.
+func TestInFlightEntrySurvivesPruningThenExpiresGraceAfterCompletion(t *testing.T) {
 	q := newGuardQueue()
-	q.markDeletedAt("stale", time.Now().Add(-PendingDeleteTTL-time.Minute))
-	q.markDeletedAt("fresh", time.Now())
+	e := q.markDeleted("m")
+	start := time.Now()
 
-	q.evictExpiredPendingDeletesLocked()
-
-	if q.alreadyDeleted("stale") {
-		t.Error("an entry past the TTL must be evicted — the guard must not grow without bound")
+	q.evictExpiredPendingDeletesAt(start.Add(time.Hour)) // far past any grace
+	if !q.alreadyDeleted("m") || len(q.pendingDelete) != 1 {
+		t.Fatal("an in-flight entry must never be pruned")
 	}
-	if !q.alreadyDeleted("fresh") {
-		t.Error("an entry inside the TTL must be kept — evicting it early reintroduces the duplicate")
+
+	done := start.Add(time.Hour)
+	q.markDeleteDoneAt(e, done)
+	q.evictExpiredPendingDeletesAt(done.Add(time.Second)) // well inside the grace
+	if len(q.pendingDelete) != 1 {
+		t.Fatal("entry must be kept for the grace after completion")
+	}
+	q.evictExpiredPendingDeletesAt(done.Add(pendingDeleteGrace)) // exactly at the boundary
+	if len(q.pendingDelete) != 1 {
+		t.Fatal("entry must be kept until strictly past the grace")
+	}
+	q.evictExpiredPendingDeletesAt(done.Add(pendingDeleteGrace + time.Millisecond))
+	if len(q.pendingDelete) != 0 {
+		t.Fatal("completed entry must expire pendingDeleteGrace after completion")
 	}
 }
 
-// TestEvictionKeepsAnEntryExactlyAtTheBoundary pins the comparison as strictly
-// greater-than, so an entry is not dropped a moment early.
-func TestEvictionKeepsAnEntryExactlyAtTheBoundary(t *testing.T) {
+// A failed delete completes the same way (the caller marks done on any outcome),
+// so it is forgotten after the grace too.
+func TestFailedDeleteIsForgottenAfterTheGrace(t *testing.T) {
 	q := newGuardQueue()
-	q.markDeletedAt("edge", time.Now().Add(-PendingDeleteTTL+time.Second))
-
-	q.evictExpiredPendingDeletesLocked()
-
-	if !q.alreadyDeleted("edge") {
-		t.Error("an entry still inside the TTL must survive eviction")
+	e := q.markDeleted("m")
+	now := time.Now()
+	q.markDeleteDoneAt(e, now)
+	q.markDeleteDoneAt(e, now.Add(time.Hour)) // a second completion must not extend it
+	q.evictExpiredPendingDeletesAt(now.Add(pendingDeleteGrace + time.Second))
+	if q.alreadyDeleted("m") || len(q.pendingDelete) != 0 {
+		t.Fatal("completed entry must be forgotten after the grace")
 	}
 }
 
-// Pruning pops from the FIFO front only: expired ids go, fresh ones stay, and
-// the FIFO is fully consumed up to the first fresh entry.
-func TestFIFOPruneRemovesExpiredAndKeepsFresh(t *testing.T) {
+// An in-flight entry at the FIFO front holds back later completed ones (front
+// pops only), but nothing is lost early and all go once it completes.
+func TestFIFOFrontPopsOnlyAndStopsAtInFlight(t *testing.T) {
 	q := newGuardQueue()
 	now := time.Now()
-	q.markDeletedAt("old1", now.Add(-PendingDeleteTTL-2*time.Minute))
-	q.markDeletedAt("old2", now.Add(-PendingDeleteTTL-time.Minute))
-	q.markDeletedAt("new1", now.Add(-time.Minute))
-	q.markDeletedAt("new2", now)
+	slow := q.markDeleted("slow")
+	fast := q.markDeleted("fast")
+	q.markDeleteDoneAt(fast, now)
 
-	q.evictExpiredPendingDeletesLocked()
-
-	if len(q.pendingDelete) != 2 || !q.alreadyDeleted("new1") || !q.alreadyDeleted("new2") {
-		t.Fatalf("want exactly the 2 fresh ids kept, got %v", q.pendingDelete)
+	q.evictExpiredPendingDeletesAt(now.Add(time.Minute))
+	if q.pendingHead != 0 || len(q.pendingDelete) != 2 {
+		t.Fatalf("pop must stop at the in-flight front, head=%d", q.pendingHead)
 	}
-	if q.pendingHead != 2 {
-		t.Errorf("only the 2 expired FIFO entries should have been popped, head=%d", q.pendingHead)
+	q.markDeleteDoneAt(slow, now)
+	q.evictExpiredPendingDeletesAt(now.Add(time.Minute))
+	if q.pendingHead != 2 || len(q.pendingDelete) != 0 {
+		t.Fatalf("both must be pruned once completed, head=%d", q.pendingHead)
 	}
 }
 
-// An id re-marked with a newer timestamp must survive its old FIFO entry
-// expiring: the stale entry must not delete the live map entry.
-func TestFIFOPruneKeepsReinsertedIDWithNewTimestamp(t *testing.T) {
+// An id re-marked must survive its older entry expiring.
+func TestFIFOPruneKeepsReinsertedID(t *testing.T) {
 	q := newGuardQueue()
-	q.markDeletedAt("dup", time.Now().Add(-PendingDeleteTTL-time.Minute)) // expired entry
-	q.markDeletedAt("dup", time.Now())                                    // re-inserted, fresh
+	now := time.Now()
+	old := q.markDeleted("dup")
+	q.markDeleteDoneAt(old, now)
+	q.markDeleted("dup") // re-acked, in flight
 
-	q.evictExpiredPendingDeletesLocked()
-
+	q.evictExpiredPendingDeletesAt(now.Add(time.Minute))
 	if !q.alreadyDeleted("dup") {
-		t.Fatal("re-inserted id was pruned by its stale FIFO entry")
-	}
-	// ...and once the newer stamp expires too, it goes.
-	q.pendingDelete["dup"] = time.Now().Add(-PendingDeleteTTL - time.Minute)
-	q.pendingFIFO[len(q.pendingFIFO)-1].ts = q.pendingDelete["dup"]
-	q.evictExpiredPendingDeletesLocked()
-	if q.alreadyDeleted("dup") {
-		t.Fatal("expired re-inserted id must eventually be pruned")
+		t.Fatal("re-inserted id was pruned by its stale entry")
 	}
 }
 
 // The consumed FIFO prefix is reclaimed so the slice does not grow forever.
 func TestFIFOPruneCompactsConsumedPrefix(t *testing.T) {
 	q := newGuardQueue()
-	old := time.Now().Add(-PendingDeleteTTL - time.Minute)
-	for i := 0; i < 3000; i++ {
-		q.markDeletedAt("id"+time.Duration(i).String(), old)
+	now := time.Now()
+	for i := range 3000 {
+		q.markDeleteDoneAt(q.markDeleted("id"+strconv.Itoa(i)), now)
 	}
-	q.markDeletedAt("fresh", time.Now())
-	q.evictExpiredPendingDeletesLocked()
+	q.markDeleted("fresh")
+	q.evictExpiredPendingDeletesAt(now.Add(time.Minute))
 	if len(q.pendingFIFO) != 1 || q.pendingHead != 0 {
 		t.Errorf("want compacted FIFO of 1, got len=%d head=%d", len(q.pendingFIFO), q.pendingHead)
 	}
 	if !q.alreadyDeleted("fresh") || len(q.pendingDelete) != 1 {
-		t.Errorf("unexpected map %v", q.pendingDelete)
+		t.Errorf("unexpected map size %d", len(q.pendingDelete))
 	}
 }

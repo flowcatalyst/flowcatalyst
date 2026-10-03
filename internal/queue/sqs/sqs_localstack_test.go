@@ -83,7 +83,7 @@ func newLocalstackQueueVis(t *testing.T, name string, visibilitySeconds int32) *
 		queueName:         name,
 		visibilityTimeout: visibilitySeconds,
 		waitSeconds:       0,
-		pendingDelete:     make(map[string]time.Time),
+		pendingDelete:     make(map[string]*pendingEntry),
 		receiptPolledAt:   make(map[string]time.Time),
 	}
 	q.running.Store(true) // build() does this; Poll returns ErrStopped without it

@@ -17,6 +17,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/queue"
 )
 
 // fakeSQS answers DeleteMessageBatch over the SQS JSON protocol. handler gets
@@ -95,10 +97,11 @@ func (f *fakeSQS) queue() *Queue {
 		BaseEndpoint:     aws.String(f.srv.URL),
 		RetryMaxAttempts: 1,
 	})
+	q.del.lingerMax = 20 * time.Millisecond // short default so partial-batch tests stay fast
 	return q
 }
 
-func TestLoneAckDeletesPromptlyWithNoFillWindow(t *testing.T) {
+func TestLoneAckDeletesAfterTheShortTestLinger(t *testing.T) {
 	f := newFakeSQS(t, func([]string) (map[int]bool, int) { return nil, 0 })
 	q := f.queue()
 	defer q.Stop()
@@ -277,9 +280,7 @@ func TestSteadyLoadFillsBatchesNearTen(t *testing.T) {
 	q := f.queue()
 	defer q.Stop()
 
-	old := deleteLinger
-	deleteLinger = 5 * time.Millisecond // generous so scheduler jitter cannot split batches
-	defer func() { deleteLinger = old }()
+	q.del.lingerMax = 5 * time.Second // batches must fill, never time out
 
 	const n = 2000
 	var wg sync.WaitGroup
@@ -305,14 +306,12 @@ func TestSteadyLoadFillsBatchesNearTen(t *testing.T) {
 	assert.Less(t, f.calls.Load(), int64(n/4))
 }
 
-func TestLoneAckWaitsForTheLingerThenSends(t *testing.T) {
+func TestLoneAckCompletesAtAboutTheLingerCap(t *testing.T) {
 	f := newFakeSQS(t, func([]string) (map[int]bool, int) { return nil, 0 })
 	q := f.queue()
 	defer q.Stop()
 
-	old := deleteLinger
-	deleteLinger = 40 * time.Millisecond
-	defer func() { deleteLinger = old }()
+	q.del.lingerMax = 40 * time.Millisecond
 
 	start := time.Now()
 	require.NoError(t, q.Ack(context.Background(), "r1", "m1"))
@@ -387,4 +386,87 @@ func TestStopWithHelpersRunningLeavesNoDrainers(t *testing.T) {
 	}
 	q.del.drainers.Wait()
 	assert.Zero(t, q.del.helpers.Load())
+}
+
+func TestFullBatchGoesImmediatelyWithHugeCap(t *testing.T) {
+	f := newFakeSQS(t, func([]string) (map[int]bool, int) { return nil, 0 })
+	q := f.queue()
+	defer q.Stop()
+	q.del.lingerMax = time.Hour
+
+	start := time.Now()
+	var wg sync.WaitGroup
+	for i := range deleteBatchMax {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			assert.NoError(t, q.Ack(context.Background(), "r"+strconv.Itoa(i), "m"+strconv.Itoa(i)))
+		}()
+	}
+	wg.Wait()
+	assert.Less(t, time.Since(start), 2*time.Second, "a full batch must not wait for the cap")
+	assert.EqualValues(t, 1, f.calls.Load())
+	assert.EqualValues(t, deleteBatchMax, f.maxBatch.Load())
+}
+
+func TestUrgentAckCutsTheBatchAtOnceAndIncludesCollectedAcks(t *testing.T) {
+	var mu sync.Mutex
+	var sizes []int
+	f := newFakeSQS(t, func(r []string) (map[int]bool, int) {
+		mu.Lock()
+		sizes = append(sizes, len(r))
+		mu.Unlock()
+		return nil, 0
+	})
+	q := f.queue()
+	defer q.Stop()
+	q.del.lingerMax = time.Hour
+
+	var wg sync.WaitGroup
+	for i := range 3 { // normal acks, lingering
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			assert.NoError(t, q.Ack(context.Background(), "n"+strconv.Itoa(i), "mn"+strconv.Itoa(i)))
+		}()
+	}
+	time.Sleep(100 * time.Millisecond)
+	require.EqualValues(t, 0, f.calls.Load(), "normal acks must still be lingering")
+
+	start := time.Now()
+	require.NoError(t, q.Ack(queue.WithUrgentAck(context.Background()), "u", "mu"))
+	assert.Less(t, time.Since(start), 2*time.Second, "urgent ack must not wait for the cap")
+	wg.Wait()
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, []int{4}, sizes, "the urgent ack is sent with the acks collected so far")
+}
+
+func TestPendingMarkerCompletesOnSuccessFailureAndDroppedEnqueue(t *testing.T) {
+	f := newFakeSQS(t, func(r []string) (map[int]bool, int) {
+		fail := map[int]bool{}
+		for i, x := range r {
+			if x == "bad" {
+				fail[i] = true
+			}
+		}
+		return fail, 0
+	})
+	q := f.queue()
+	defer q.Stop()
+
+	_ = q.Ack(context.Background(), "good", "m-good")
+	_ = q.Ack(context.Background(), "bad", "m-bad")
+	q.mu.Lock()
+	assert.True(t, q.pendingDelete["m-good"].done)
+	assert.True(t, q.pendingDelete["m-bad"].done, "a failed delete is also completed (forgotten after the grace)")
+	q.mu.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	q.del.stop()
+	_ = q.Ack(ctx, "x", "m-x")
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	assert.True(t, q.pendingDelete["m-x"].done, "an ack that never enqueued must not stay in flight forever")
 }

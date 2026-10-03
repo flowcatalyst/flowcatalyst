@@ -274,6 +274,12 @@ func (p *Pool) honoursDelayedReturn(qm common.QueuedMessage) bool {
 // the action must target the queue the message arrived on. A missing consumer
 // (deregistered queue) is logged and skipped.
 
+// isOrdered reports whether the message is delivered in per-group order: the
+// same rule dispatch uses to choose the group drainer over the immediate path.
+func isOrdered(qm common.QueuedMessage) bool {
+	return qm.Message.DispatchMode.RequiresOrdering() && qm.Message.GroupID() != ""
+}
+
 // ackTracked ACKs a terminally-resolved message (2xx success, or 4xx which we
 // drop to avoid an infinite client-error loop) using the FRESHEST receipt
 // handle recorded on its in-flight entry — a broker redelivery may have swapped
@@ -287,6 +293,11 @@ func (p *Pool) ackTracked(ctx context.Context, qm common.QueuedMessage) {
 		}
 	}
 	if c := p.consumerFor(qm); c != nil {
+		// An ordered message's group waits for this ack before the next
+		// message is delivered, so it must not linger in a batching backend.
+		if isOrdered(qm) {
+			ctx = queue.WithUrgentAck(ctx)
+		}
 		if err := c.Ack(ctx, receipt, qm.BrokerMessageID); err != nil {
 			p.logger(qm).Warn("ack failed", "err", err)
 		}

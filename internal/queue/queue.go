@@ -208,3 +208,19 @@ func isSQSEndpoint(uri string) bool {
 	return (strings.HasPrefix(host, "sqs.") || strings.HasPrefix(host, "sqs-fips.")) &&
 		strings.Contains(host, ".amazonaws.")
 }
+
+type urgentAckKey struct{}
+
+// WithUrgentAck marks an Ack call as urgent: the caller (the router, for an
+// ORDERED message whose group cannot proceed until the ack lands) must not be
+// held back by a backend's ack batching. Backends that do not batch acks
+// ignore it.
+func WithUrgentAck(ctx context.Context) context.Context {
+	return context.WithValue(ctx, urgentAckKey{}, true)
+}
+
+// IsUrgentAck reports whether ctx was marked by WithUrgentAck.
+func IsUrgentAck(ctx context.Context) bool {
+	v, _ := ctx.Value(urgentAckKey{}).(bool)
+	return v
+}

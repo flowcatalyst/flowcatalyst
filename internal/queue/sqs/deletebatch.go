@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/queue"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	sqstypes "github.com/aws/aws-sdk-go-v2/service/sqs/types"
@@ -27,24 +29,31 @@ const (
 	deleteQueueDepth = 1024
 )
 
-// deleteLinger is how long the primary drainer waits, in total from the first
-// ack of a batch, for more acks before sending a partial batch. Without it every
-// drainer grabs each ack the instant it arrives (the runtime runs a just-woken
-// goroutine next) and batches average 2-3 entries. It bounds the latency added
-// to an ack. A var so tests can change it.
-var deleteLinger = time.Millisecond
+// deleteLingerMax is the longest the primary drainer holds a partial batch,
+// measured from its first ack. A full batch (10) never waits, and an urgent ack
+// (ordered message) cuts the batch at once, so the cap only bites on slow
+// queues. A var so tests can change it; deleteBatcher.lingerMax overrides it
+// per queue.
+var deleteLingerMax = 5 * time.Second
 
 var errBatcherStopped = errors.New("sqs consumer stopped")
 
 // deleteItem is one ack waiting for its DeleteMessageBatch entry's outcome.
 type deleteItem struct {
 	receipt string
-	done    chan error // buffered(1): the drainer never blocks on a gone caller
+	done    chan error    // buffered(1): the drainer never blocks on a gone caller
+	pending *pendingEntry // pending-delete marker, completed when this item is answered (nil ok)
+}
+
+// finish answers the item and completes its pending-delete marker.
+func (it *deleteItem) finish(q *Queue, err error) {
+	q.markDeleteDone(it.pending)
+	it.done <- err
 }
 
 // deleteBatcher coalesces concurrent acks into DeleteMessageBatch calls. One
 // primary drainer per queue takes the first ack, then lingers up to
-// deleteLinger (or until 10 are waiting) before sending. When acks pile up
+// the linger cap (or until 10 are waiting, or an urgent ack arrives) before sending. When acks pile up
 // faster than that (a full batch already waiting), up to deleteMaxHelpers
 // transient helpers drain immediately-available acks and exit once the channel
 // is empty. Each caller still blocks until the broker answered for ITS receipt.
@@ -55,6 +64,8 @@ type deleteBatcher struct {
 	stopOnce  sync.Once
 	drainers  sync.WaitGroup // lets tests wait for drainers to exit after stop
 	helpers   atomic.Int32   // running helper drainers, <= deleteMaxHelpers
+	lingerMax time.Duration  // per-queue linger cap; zero = deleteLingerMax
+	urgent    chan struct{}  // buffered(1): an ordered ack asks the primary to cut now
 
 	items   chan *deleteItem
 	stopCh  chan struct{}
@@ -66,6 +77,7 @@ func (b *deleteBatcher) init() {
 	b.initOnce.Do(func() {
 		b.items = make(chan *deleteItem, deleteQueueDepth)
 		b.stopCh = make(chan struct{})
+		b.urgent = make(chan struct{}, 1)
 		b.baseCtx, b.cancel = context.WithCancel(context.Background())
 	})
 }
@@ -80,32 +92,46 @@ func (b *deleteBatcher) stop() {
 }
 
 // delete enqueues receipt and waits for its entry's outcome, ctx, or stop.
-func (b *deleteBatcher) delete(ctx context.Context, q *Queue, receipt string) error {
+func (b *deleteBatcher) delete(ctx context.Context, q *Queue, receipt string, pending *pendingEntry) error {
 	b.init()
 	b.startOnce.Do(func() {
 		b.drainers.Add(1)
 		go b.drain(q)
 	})
-	it := &deleteItem{receipt: receipt, done: make(chan error, 1)}
+	it := &deleteItem{receipt: receipt, done: make(chan error, 1), pending: pending}
 	select {
 	case b.items <- it:
 	case <-ctx.Done():
+		q.markDeleteDone(pending) // never enqueued: nothing will complete it
 		return ctx.Err()
 	case <-b.stopCh:
+		q.markDeleteDone(pending)
 		return errBatcherStopped
+	}
+	if queue.IsUrgentAck(ctx) {
+		select {
+		case b.urgent <- struct{}{}:
+		default: // a cut is already requested
+		}
 	}
 	b.maybeStartHelper(q)
 	select {
 	case err := <-it.done:
 		return err
 	case <-ctx.Done():
-		return ctx.Err() // the drainer still completes the item
+		select {
+		case <-b.stopCh:
+			q.markDeleteDone(pending) // drainers are gone; nothing else will (idempotent)
+		default: // the drainer still completes the item
+		}
+		return ctx.Err()
 	case <-b.stopCh:
 		// Prefer a real outcome if the drainer already answered.
 		select {
 		case err := <-it.done:
 			return err
 		default:
+			q.markDeleteDone(pending) // the drainers are gone; nothing else will (idempotent)
 			return errBatcherStopped
 		}
 	}
@@ -136,11 +162,11 @@ func (b *deleteBatcher) maybeStartHelper(q *Queue) {
 }
 
 // failWaiting answers every queued ack with errBatcherStopped.
-func (b *deleteBatcher) failWaiting() {
+func (b *deleteBatcher) failWaiting(q *Queue) {
 	for {
 		select {
 		case it := <-b.items:
-			it.done <- errBatcherStopped
+			it.finish(q, errBatcherStopped)
 		default:
 			return
 		}
@@ -153,12 +179,16 @@ func (b *deleteBatcher) drain(q *Queue) {
 	for {
 		select {
 		case <-b.stopCh:
-			b.failWaiting()
+			b.failWaiting(q)
 			return
 		case first := <-b.items:
 			batch := make([]*deleteItem, 1, deleteBatchMax)
 			batch[0] = first
-			timer := time.NewTimer(deleteLinger)
+			linger := b.lingerMax
+			if linger <= 0 {
+				linger = deleteLingerMax
+			}
+			timer := time.NewTimer(linger)
 		fill:
 			for len(batch) < deleteBatchMax {
 				select {
@@ -166,12 +196,25 @@ func (b *deleteBatcher) drain(q *Queue) {
 					batch = append(batch, it)
 				case <-timer.C:
 					break fill
+				case <-b.urgent:
+					// An ordered ack is waiting: take what is already queued
+					// (including it) and send now.
+				drain:
+					for len(batch) < deleteBatchMax {
+						select {
+						case it := <-b.items:
+							batch = append(batch, it)
+						default:
+							break drain
+						}
+					}
+					break fill
 				case <-b.stopCh:
 					timer.Stop()
 					for _, it := range batch {
-						it.done <- errBatcherStopped
+						it.finish(q, errBatcherStopped)
 					}
-					b.failWaiting()
+					b.failWaiting(q)
 					return
 				}
 			}
@@ -189,7 +232,7 @@ func (b *deleteBatcher) helper(q *Queue) {
 	for {
 		select {
 		case <-b.stopCh:
-			b.failWaiting()
+			b.failWaiting(q)
 			return
 		default:
 		}
@@ -231,7 +274,7 @@ func (q *Queue) sendDeleteBatch(parent context.Context, batch []*deleteItem) {
 		err = fmt.Errorf("DeleteMessageBatch: %w", err)
 		slog.Warn("sqs DeleteMessageBatch failed", "queue", q.queueName, "entries", len(batch), "err", err)
 		for _, it := range batch {
-			it.done <- err
+			it.finish(q, err)
 		}
 		return
 	}
@@ -245,10 +288,10 @@ func (q *Queue) sendDeleteBatch(parent context.Context, batch []*deleteItem) {
 		if f, bad := failed[strconv.Itoa(i)]; bad {
 			slog.Warn("sqs DeleteMessageBatch entry failed", "queue", q.queueName,
 				"code", aws.ToString(f.Code), "message", aws.ToString(f.Message))
-			it.done <- fmt.Errorf("DeleteMessageBatch entry: %s: %s", aws.ToString(f.Code), aws.ToString(f.Message))
+			it.finish(q, fmt.Errorf("DeleteMessageBatch entry: %s: %s", aws.ToString(f.Code), aws.ToString(f.Message)))
 			continue
 		}
 		q.acked.Add(1)
-		it.done <- nil
+		it.finish(q, nil)
 	}
 }
