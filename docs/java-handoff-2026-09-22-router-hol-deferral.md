@@ -93,9 +93,11 @@ Per pool:
   `Pool`'s buffer lock — this runs on the routing path).
 
 ```
-wait = queued / rate            (fallback 30 s when no completion in window)
-slot = 1 / rate                 (fallback 1 s)
-if (!broker.honoursDelayedReturn()) slot = max(slot, 1 s)   // NATS: keep a deferred group in order
+wait = queued / rate            (fallback 30 s without a trustworthy rate)
+slot = 1 / rate                 (fallback 30 s / max(queued, 1): the buffer is assumed to drain within the fallback wait)
+// a rate is trustworthy only once completions in the window >= the pool's concurrency; fewer
+// (the first wave, or one lone completion that reads as 1/s) takes the fallback
+if (!broker.honoursDelayedReturn() && ordered) slot = max(slot, 1 s)   // NATS: keep a deferred group in order
 earliest = max(now + wait, nextReturn)
 reserved = earliest + slot
 nextReturn = reserved

@@ -52,9 +52,10 @@ const (
 	deferralMinDelay = 5 * time.Second
 
 	// deferralFallbackWait is the buffer-drain estimate when the pool has no
-	// completion in the rate window to measure from (just created, or every
-	// delivery in it is still running). Wrong-early costs one bounce; by the
-	// time it lands there is usually a rate.
+	// trustworthy rate to measure from (just created, its first wave still
+	// running, or fewer completions than workers). Wrong-early costs one
+	// bounce; by the time it lands there is usually a rate. Its reservations
+	// are spread across the wait (wait/queued apart), not a second apart.
 	deferralFallbackWait = 30 * time.Second
 
 	// deferralRateWindow is how far back CompletionRate looks.
@@ -185,10 +186,19 @@ func (p *Pool) deferMsg(ctx context.Context, qm common.QueuedMessage, reason str
 // the crossing back under capacity happens on every single completion of a
 // pool that is being kept full and would reset the schedule constantly.
 func (p *Pool) admissionDelay(now time.Time, brokerOrders, ordered bool) time.Duration {
+	queued := float64(p.queueSize.Load())
+	// No trustworthy rate: assume the buffer drains within the fallback wait,
+	// i.e. a rate of queued/fallback. The slot is then fallback/queued — the
+	// reservations spread across the wait instead of one a second, which
+	// booked a full 2,560-message buffer's deferrals over 43 minutes.
 	wait := deferralFallbackWait
-	slot := deferralOrderedSpacing
-	if rate, ok := p.metrics.CompletionRate(deferralRateWindow); ok && rate > 0 {
-		wait = time.Duration(float64(p.queueSize.Load()) / rate * float64(time.Second))
+	slot := time.Duration(float64(deferralFallbackWait) / max(queued, 1))
+	// A rate counts only once the pool has finished at least as many
+	// deliveries as it has workers: fewer is the first wave, or a lone
+	// completion that would read as one per second whatever the pool does.
+	if n, span := p.metrics.CompletionSample(deferralRateWindow); n >= int(max(p.cfg.Concurrency, 1)) {
+		rate := float64(n) / span.Seconds()
+		wait = time.Duration(queued / rate * float64(time.Second))
 		slot = time.Duration(float64(time.Second) / rate)
 	}
 	if !brokerOrders && ordered {

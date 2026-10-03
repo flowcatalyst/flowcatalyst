@@ -223,23 +223,34 @@ func (c *PoolMetricsCollector) addSample(durationMs uint64, success bool) {
 // tenth of it. Reports ok=false with no completion in the window at all;
 // callers pick their own fallback. Feeds Pool.admissionDelay.
 func (c *PoolMetricsCollector) CompletionRate(window time.Duration) (perSec float64, ok bool) {
+	n, span := c.CompletionSample(window)
+	if n == 0 {
+		return 0, false
+	}
+	return float64(n) / span.Seconds(), true
+}
+
+// CompletionSample reports how many completions were recorded within the
+// last window and the span they cover (time since the oldest, floored at a
+// second: one completion a moment ago is one per second at most, not one per
+// nanosecond). n == 0 means nothing completed in the window. Callers that
+// need to know whether a rate is trustworthy — not just whether one exists —
+// look at n.
+func (c *PoolMetricsCollector) CompletionSample(window time.Duration) (n int, span time.Duration) {
 	now := time.Now()
 	cutoff := now.Add(-window)
 	c.mu.Lock()
 	recent := filterSamples(c.samples, cutoff)
-	n := len(recent)
+	n = len(recent)
 	var oldest time.Time
 	if n > 0 {
 		oldest = recent[0].ts
 	}
 	c.mu.Unlock()
 	if n == 0 {
-		return 0, false
+		return 0, 0
 	}
-	// Floor the span at a second: one completion a moment ago is one per
-	// second at most, not one per nanosecond.
-	span := max(now.Sub(oldest), time.Second)
-	return float64(n) / span.Seconds(), true
+	return n, max(now.Sub(oldest), time.Second)
 }
 
 // Snapshot returns the dashboard-shaped metrics. Safe to call at any

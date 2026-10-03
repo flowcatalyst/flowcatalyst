@@ -67,17 +67,53 @@ func TestAdmissionDelayFloorsAtMinimum(t *testing.T) {
 	assert.Equal(t, deferralMinDelay, got)
 }
 
-// With no completion in the rate window there is nothing to derive a slot
-// from; the fallback is a fixed wait, spaced a second apart so a burst of
-// fallbacks does not all land at once.
+// With no trustworthy rate there is nothing to derive a slot from; the
+// fallback assumes the buffer drains within the fallback wait, so the
+// reservations are spread across it (wait/queued apart) rather than a second
+// apart — a second apart booked a full buffer's deferrals over most of an hour.
 func TestAdmissionDelayFallsBackWithoutARate(t *testing.T) {
 	p := NewPool(common.PoolConfig{Code: "NEW", Concurrency: 1}, nil, nil,
 		func(string) queue.Consumer { return nil })
+	p.queueSize.Store(300) // 30s / 300 = a 100ms slot
 	now := time.Now()
 	a := p.admissionDelay(now, true, true)
 	b := p.admissionDelay(now, true, true)
-	assert.Equal(t, deferralFallbackWait+deferralOrderedSpacing, a)
-	assert.Equal(t, a+deferralOrderedSpacing, b)
+	const slot = 100 * time.Millisecond
+	assert.Equal(t, deferralFallbackWait+slot, a)
+	assert.Equal(t, a+slot, b)
+}
+
+// Fewer completions than workers is the first wave, not a rate: one
+// completion would read as one per second and book a 2,560-message buffer 43
+// minutes out. The fallback applies until the pool has done a worker's-worth.
+func TestAdmissionDelayIgnoresARateFromFewerCompletionsThanWorkers(t *testing.T) {
+	p := NewPool(common.PoolConfig{Code: "COLD", Concurrency: 64}, nil, nil,
+		func(string) queue.Consumer { return nil })
+	p.metrics.mu.Lock()
+	p.metrics.samples = append(p.metrics.samples,
+		metricSample{ts: time.Now().Add(-2 * time.Second), durationMs: 1, success: true})
+	p.metrics.mu.Unlock()
+	p.queueSize.Store(2560)
+
+	got := p.admissionDelay(time.Now(), true, false)
+	assert.InDelta(t, (deferralFallbackWait + deferralFallbackWait/2560).Seconds(), got.Seconds(), 0.1,
+		"booked within the fallback window, not 2560s at a one-completion 'rate'")
+
+	// At a worker's-worth of completions the measured rate takes over.
+	p.metrics.mu.Lock()
+	for range 63 {
+		p.metrics.samples = append(p.metrics.samples,
+			metricSample{ts: time.Now().Add(-time.Second), durationMs: 1, success: true})
+	}
+	p.metrics.mu.Unlock()
+	rated := NewPool(common.PoolConfig{Code: "WARM", Concurrency: 64}, nil, nil,
+		func(string) queue.Consumer { return nil })
+	rated.metrics.mu.Lock()
+	rated.metrics.samples = append([]metricSample(nil), p.metrics.samples...)
+	rated.metrics.mu.Unlock()
+	rated.queueSize.Store(2560)
+	got = rated.admissionDelay(time.Now(), true, false)
+	assert.Greater(t, got, 30*time.Second, "64 completions in ~2s = ~32/s; 2560 buffered needs ~80s")
 }
 
 // Past the horizon the reservation is clamped — and jittered back over the
