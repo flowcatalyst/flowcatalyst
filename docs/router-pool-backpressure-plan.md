@@ -293,3 +293,29 @@ Migration: one new table (`msg_pool_pressure`), additive. No change to
    operator sees saturation before throughput visibly drops?
 5. Which of the NATS consumer fixes in §6 item 3 the owner prefers: short
    pull expiry on the continuous subscription, or a no-wait fetch loop.
+
+### 4.8 Queue mode: block or defer (decision noted 2026-10-03, not built)
+
+Deferral (§3) exists so a slow pool on a **shared** queue cannot hold up the other
+pools' messages behind it. It is the wrong tool for a queue that feeds **one** pool: there
+is nothing to protect, and deferring a large backlog just moves it around the broker.
+
+- **Per-queue mode, `block` or `defer`.** `defer` (the default, today's behaviour):
+  a full pool defers its messages and the queue keeps being read. `block`: when the
+  queue's pool is full the consumer stops polling and the messages wait in the broker.
+- **Derive it, allow an override.** A queue that feeds exactly one pool can default to
+  `block`; a queue feeding several defaults to `defer`; an explicit setting wins.
+- **Dedicated queue per pool.** A pool may be marked as having its own queue. The
+  platform, which already knows each message's pool, publishes that pool's messages to
+  the queue named for the pool; the router reads it in `block` mode. This is the
+  worked-out form of §4.2 (parking at the platform) and needs no router-side queue
+  creation. Moving messages between queues inside the router is not proposed: send plus
+  delete is not atomic (duplicates or loss), and it affects FIFO groups and IAM.
+- **Buffer sizing in `block` mode.** Polled messages wait in the pool buffer, so for a
+  slow pool the buffer must be small, or visibility must be extended: 100 buffered
+  messages at 2 s each is 200 s, well past a 30 s visibility timeout, and would redeliver.
+- **The motivating case:** one pool at concurrency 1 taking 2 s per message, 10,000
+  arriving in one go on a shared queue. Lowering the maximum deferral is not an option
+  for it; a dedicated `block` queue removes the churn.
+- **Metrics** (needed either way): per pool, full (0/1), time at capacity, deferrals
+  total and outstanding; per queue, paused-for-capacity and its mode.

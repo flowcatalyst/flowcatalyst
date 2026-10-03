@@ -337,3 +337,121 @@ of Rust's type system for the planned domain services.
 - **Open work:** the platform park with `not_before` (back-pressure at the source),
   a fetch-based NATS consumer in Go, and committing the rig changes in the Java
   repository.
+
+## 9. The SQS round (2026-10-03)
+
+Sections 1–8 are the NATS-era findings. This section records the SQS work that
+followed. The SQS numbers in §3 and earlier notes that quote ElasticMQ were limited by
+the emulator (about 2.5k msg/s on its REST path) and should not be quoted as router
+capacity.
+
+### 9.1 The measuring instrument
+
+- **`sqsfix`** (`bench/router/sqsfix`, Java repo): a stdlib-only in-memory SQS server that
+  speaks only the AWS JSON protocol, with lazy queues, long polling and visibility
+  timeouts. It used 20–40% of a core in every run here, so results are router-bound. It
+  counts calls per operation (`/stats`), which is how batching efficiency was checked
+  (about 10 messages per `ReceiveMessage`, about 6 acks per `DeleteMessageBatch`).
+- **Rig options** (`SQS_EMULATOR=sqsfix`): `WARMUP_MESSAGES` drains a small batch first;
+  `WARMUP_CHUNK` / `WARMUP_INTERVAL_S` feed that warm-up slowly; `MAIN_RATE` feeds the
+  main backlog at a fixed messages-per-second; `ID_OFFSET` keeps message ids unique
+  across seeder invocations. Main-phase rate is `500k / (seeding wall + series length)`.
+- **Measurement traps found the hard way:** the rig's time series starts *after* the main
+  seeding finishes, so a router that is already delivering during seeding looks faster
+  than it is (Rust and Go had delivered 40k and 28k of the main messages before the
+  clock started). A router container left running by an interrupted command consumed
+  messages from the shared fixture and silently invalidated several runs (messages were
+  "acked but never delivered"). Check `docker ps` before every run, and never reuse an
+  existing label's numbers without the fixture's own counters.
+
+### 9.2 What dominated the cost, per language
+
+All three routers sent one `DeleteMessage` per message and one `ChangeMessageVisibility`
+per deferral, from the thread or goroutine doing the work.
+
+| Share of one CPU | Java (fill phase) | Go (steady) |
+|---|---|---|
+| SQS receive | 45% | 2.7% |
+| SQS delete | 23.5% | 6.5% (after batching) |
+| Delivery to the sink | 12.6% | 19.6% |
+| GC pauses | 15–25% of the window | allocation and GC about 30% |
+
+Java's HTTP delivery path is cheap (a drain of already-buffered messages reaches
+29–34k msg/s); its SQS SDK calls are the expensive part. Go's SQS calls are cheap; its
+cost is allocation, GC and one write syscall per HTTP/2 request. Rust's SQS cost was not
+profiled.
+
+### 9.3 Fixes and their effect
+
+| Change | Where | Effect |
+|---|---|---|
+| `DeleteMessageBatch` (up to 10, no fill window, 4 drainers per queue, each ack still waits for its own entry) | Go `eed51ba`, Rust `eef9a7c7`, Java `25d0377f` | 100k msgs at 1 CPU: Java 4.2k to 7.0–7.6k, Go 6.3k to 9.0k, Rust 8.7k to about 20k msg/s |
+| Pending-delete map pruned from the front of a time-ordered list instead of scanning every entry | same commits | removes a per-message scan that grew with the 15-minute TTL |
+| Rust receipt map the same | Rust `8d574f4d` | no measurable change at 500k (so it was not the Rust slowdown, §9.6) |
+| Deferral fallback: spread the 30 s fallback across the queue (30 s / queued) and trust a rate only after a worker's-worth of completions | Go `bf420ef`, Java `33d39cd2` | the old 1 s-per-message fallback booked a full 2,560-message buffer 43 minutes out |
+| Hold-back: 30 s rate window, wait half the buffer's drain time, faster of a 5 s and 30 s rate, wait capped at 20 s | Java `d64c5005`, `86daa2d2` | see §9.5; the 20 s cap is wrong for genuinely slow pools and should be reverted |
+| Batched, non-blocking deferral and nack (`ChangeMessageVisibilityBatch`, bounded queue) | Java `1cd8aedf`, Go `034b9fd`, Rust `7726e12d` | Java 500k backlog: deferral CPU no longer starves delivery |
+| Poll pacing: after a batch that was at least half deferred wait 50 ms, doubling to a 200 ms cap, reset on a mostly-admitted batch | Java `4b44b9c3` | 500k backlog: 93–271 s and 110–210k deferrals became 65–77 s and about 20k |
+| Mediator `Client.Timeout` moved to a context deadline, SQS MD5 validation off and no unused attributes, lazy per-message logger, cached target keys, periodic receipt prune | Go `b53b05c`, `ea53e7e`, `c7c21a2` | Go 500k: 9.6k to 11.1k msg/s and 576 to 433 MB (pprof goroutine labels are now off unless the debug endpoints are on) |
+| A delete batcher must keep working after `close()` (the consumer contract); drainers exit when idle | Java `1cd8aedf` | fixed a regression this work introduced |
+
+### 9.4 Java warm-up
+
+A cold JVM at one CPU delivers 1–4k msg/s for its first 30 s while JIT compilation, GC
+and SQS ingest share the CPU, then ramps to 22–28k msg/s by 45 s. Polling is not held
+back, so a restart into a large backlog fills the pools before delivery is up to speed
+and defers heavily. Restricting the JIT to C1 ramps about 10 s sooner but peaks at 14k.
+The pools are created before the consumers, but they are cold (workers, HTTP/2
+connections and JIT are all lazy). Java also fills at 12–29k msg/s against 0–5k delivered
+in that window.
+
+### 9.5 The comparison, with a warm-up
+
+500k messages, 1 CPU, 100 queues × 100 pools, same fixture.
+
+| | Cold, 500k at once | Warm (slow 100k first), 500k at once | Warm, 500k fed at 30k/s |
+|---|---|---|---|
+| Rust | 28.7 s (17.5k/s) | 29.7 s (16.8k/s, peak 1 s 20.6k) | 27.8 s: 18.2k/s during the feed, 16.5k/s after |
+| Java | 44 s and 86 s | 26.7 s (18.7k/s, peak 34k) | 24.4 s: 16k/s during, 28.9k/s after |
+| Go | 46 s (10.8k/s) | 44.7 s (11.1k/s, peak 12.9k) | 44.1 s: 11.3k/s during, 11.1k/s after |
+
+- **None keeps up with a 30k/s feed on one CPU**; backlogs reach 194k–304k.
+- **Ingest does not hurt Java more than the others in absolute terms.** Its during-feed
+  rate is within 12% of Rust's. Rust and Go are CPU-bound at a fixed rate whether or not
+  they ingest; Java's delivery alone is faster, so its ingest cost shows up as a drop.
+- **Memory:** Rust 433–495 MB, Go 470–540 MB, Java about 1.95 GB (the heap fills the
+  container).
+- **Java deferral tail:** on the gentle feed Java is bimodal: 24.7 s with no deferrals,
+  or about 36 s when about 5k messages are deferred, because they return after the
+  hold-back floor (5 s) plus the wait (up to 20 s) with the pools idle. The peak is a
+  drain of buffered messages and flatters the average.
+
+### 9.6 Go and Rust follow-ups
+
+- **Go and the CPU quota.** Run under `--cpus=1`, Go used extra scheduler threads
+  (0.5 context switches per message). `GOMAXPROCS=1` took it from 11.3k to 13.7k msg/s
+  (0.035 switches per message); `GOGC=400` gave 12.95k at 1.09 GB; `GOMAXPROCS=1` with
+  `GOGC=200` gave 15.3k at 714 MB (+35%). Why the runtime did not size itself to the
+  quota on go1.27 inside this container runtime is **not established**; production
+  containers should set `GOMAXPROCS` explicitly (or use a quota-aware setting) and the
+  deploy environment should be checked.
+- **Rust's rate declines over a run** (19.3k to 16.6k msg/s across 500k messages) and
+  does not recover while the backlog shrinks, so per-message cost grows with messages
+  processed, not with the current backlog. Earlier 100k runs reached 20k and 500k runs
+  17.8k, the same shape. Not yet explained; an accumulating structure that is only
+  pruned by age is the leading suspect.
+
+### 9.7 Decisions and open items
+
+- **Queue mode (noted, not built):** see `router-pool-backpressure-plan.md` §4.8.
+- **Revert the 20 s hold-back cap** (the faster-of-two-windows rate stays): a pool at
+  concurrency 1 taking 2 s per message with 10,000 arriving at once needs the wait to
+  reflect its real pace.
+- **Pool-full and blocked metrics** (per pool: full, time at capacity, deferrals total and
+  outstanding; per queue: paused for capacity and its mode) are cheap and not built.
+- **Java cold start:** still erratic (44–86 s) with a large backlog; pre-opening each
+  pool's HTTP/2 connections and holding polling until deliveries are flowing are
+  candidates, neither tried.
+- **Commits** (none pushed). Go: `eed51ba`, `bf420ef`, `b53b05c`, `ea53e7e`, `c7c21a2`,
+  `034b9fd`. Rust: `eef9a7c7`, `8d574f4d`, `7726e12d`. Java: `25d0377f`, `33d39cd2`,
+  `d64c5005`, `1cd8aedf`, `4b44b9c3`, `86daa2d2`, rig `080d83fe`, `4fc43695`.
