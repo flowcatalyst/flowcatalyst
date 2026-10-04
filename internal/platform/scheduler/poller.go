@@ -29,6 +29,24 @@ var pollTimeout = 2 * time.Minute
 // successful publish. They run detached from ctx (see pollOnce).
 var finishTimeout = 10 * time.Second
 
+// claimSQL is the poller's claim ($1 = batch size, $2 = paused subscription
+// ids). Its ORDER BY is exactly the key of idx_dispatch_jobs_pending_poll
+// (migration 065) and its status is a literal, so Postgres walks that partial
+// index in order — a Merge Append across the partitions — and stops at the
+// LIMIT: no sort, however many rows share a created_at and whatever the
+// statistics say. TestClaimPlan_NeedsNoSort pins that. The scheduled_for and
+// paused predicates are filters on the rows the walk visits: a row they
+// exclude that sorts ahead of the batch is visited (and skipped) on every claim.
+const claimSQL = `SELECT id, subscription_id, message_group, mode, dispatch_pool_id, client_id,
+        attempt_count, target_url, created_at, sequence, queue
+   FROM msg_dispatch_jobs
+  WHERE status = 'PENDING'
+    AND (scheduled_for IS NULL OR scheduled_for <= NOW())
+    AND (subscription_id IS NULL OR subscription_id <> ALL($2::text[]))
+  ORDER BY message_group ASC NULLS LAST, sequence ASC, created_at ASC, id ASC
+  LIMIT $1
+  FOR UPDATE SKIP LOCKED`
+
 // PausedConnectionCache caches the set of subscription IDs whose target
 // connections are PAUSED. The poller filters jobs whose subscription
 // matches; those jobs sit in PENDING until the connection is reactivated.
@@ -248,17 +266,7 @@ func (p *PendingJobPoller) claimAndPublish(ctx context.Context) (int, int, error
 	// arbitrarily. The id is a time-ordered TSID, so it both breaks the tie and
 	// breaks it chronologically. The positional hold-back below needs this
 	// total order to compare "earlier" at all.
-	rows, err := tx.Query(ctx,
-		`SELECT id, subscription_id, message_group, mode, dispatch_pool_id, client_id,
-		        attempt_count, target_url, created_at, sequence, queue
-		   FROM msg_dispatch_jobs
-		  WHERE status = 'PENDING'
-		    AND (scheduled_for IS NULL OR scheduled_for <= NOW())
-	    AND (subscription_id IS NULL OR subscription_id <> ALL($2::text[]))
-		  ORDER BY message_group ASC NULLS LAST, sequence ASC, created_at ASC, id ASC
-		  LIMIT $1
-		  FOR UPDATE SKIP LOCKED`,
-		p.cfg.BatchSize, pausedIDs)
+	rows, err := tx.Query(ctx, claimSQL, p.cfg.BatchSize, pausedIDs)
 	if err != nil {
 		return 0, 0, err
 	}
