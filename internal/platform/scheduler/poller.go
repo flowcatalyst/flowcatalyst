@@ -193,6 +193,14 @@ func (p *PendingJobPoller) drain(ctx context.Context) {
 // (marked QUEUED); the run loop uses the pair to decide whether to poll again
 // immediately.
 func (p *PendingJobPoller) pollOnce(ctx context.Context) (int, int, error) {
+	start := time.Now()
+	claimed, published, err := p.claimAndPublish(ctx)
+	schedMetrics.observePoll(start, err)
+	return claimed, published, err
+}
+
+// claimAndPublish is the body of one poll; pollOnce wraps it with metrics.
+func (p *PendingJobPoller) claimAndPublish(ctx context.Context) (int, int, error) {
 	ctx, cancel := context.WithTimeout(ctx, pollTimeout)
 	defer cancel()
 	paused, err := p.pausedCache.PausedSubscriptionIDs(ctx)
@@ -205,6 +213,7 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) (int, int, error) {
 	for id := range paused {
 		pausedIDs = append(pausedIDs, id)
 	}
+	schedMetrics.pausedSubscriptions.Set(float64(len(pausedIDs)))
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return 0, 0, err
@@ -286,6 +295,10 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) (int, int, error) {
 	rows.Close()
 	if len(claims) == 0 {
 		return 0, 0, nil
+	}
+	schedMetrics.claimed.Add(float64(len(claims)))
+	if len(claims) >= p.cfg.BatchSize {
+		schedMetrics.fullBatches.Inc()
 	}
 
 	// Filter, publish, then mark QUEUED and commit — in that order, with the
@@ -372,6 +385,7 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) (int, int, error) {
 		}
 	}
 
+	schedMetrics.skippedHeld.Add(float64(skippedBlocked))
 	if len(tokens) == 0 {
 		// Nothing dispatchable: the claim is released (rolled back by the
 		// deferred Rollback), every row still PENDING.
@@ -381,6 +395,7 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) (int, int, error) {
 
 	// Publish while the claim is still locked and uncommitted — see above.
 	unpublished := p.dispatcher.PublishClaim(ctx, tokens)
+	schedMetrics.unpublished.Add(float64(len(unpublished)))
 	notPublished := make(map[string]struct{}, len(unpublished))
 	for _, id := range unpublished {
 		notPublished[id] = struct{}{}
@@ -431,6 +446,7 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) (int, int, error) {
 			"published", len(published), "err", err)
 		return 0, 0, err
 	}
+	schedMetrics.published.Add(float64(len(published)))
 	if len(queued) > 0 || skippedBlocked > 0 {
 		slog.Debug("poll tick",
 			"queued", len(queued),

@@ -8,6 +8,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	schedulerpkg "github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduler"
 )
 
 // swaggerUIHTML is a minimal Swagger UI page (served at /swagger-ui) that
@@ -68,17 +70,22 @@ func metricsRouter(cfg EnvCfg) http.Handler {
 	// scheduler latency, CPU, RSS, open fds), for every subsystem this
 	// process runs. Router pool/queue metrics live at <prefix>/metrics on
 	// the API port.
-	r.Handle("/metrics", runtimeMetricsHandler())
+	r.Handle("/metrics", runtimeMetricsHandler(cfg.SchedulerEnabled))
 	return r
 }
 
 // runtimeMetricsHandler serves the Go runtime and process collectors from a
-// registry of their own.
-func runtimeMetricsHandler() http.Handler {
+// registry of their own, plus the dispatch scheduler's series when this process
+// runs the scheduler.
+func runtimeMetricsHandler(scheduler bool) http.Handler {
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
-	return promhttp.HandlerFor(reg, promhttp.HandlerOpts{ErrorHandling: promhttp.ContinueOnError})
+	gatherers := prometheus.Gatherers{reg}
+	if scheduler {
+		gatherers = append(gatherers, schedulerpkg.MetricsRegistry)
+	}
+	return promhttp.HandlerFor(gatherers, promhttp.HandlerOpts{ErrorHandling: promhttp.ContinueOnError})
 }
