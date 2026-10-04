@@ -317,6 +317,10 @@ flow just works (existing env values win).
 | `FC_ALB_TARGET_PORT` | `8080` | — | `internal/server/envcfg.go` | Target port registered with the ALB. |
 | `FC_ALB_REGION` | — (AWS SDK default region chain) | — | `internal/server/envcfg.go` | AWS region for the ELBv2 client. |
 | `FC_ALB_DEREGISTRATION_DELAY_SECONDS` | `0` | — | `internal/server/envcfg.go` | Wait after deregistration before shutdown proceeds. |
+| `GOMAXPROCS` | Go default | — | Go runtime; `internal/runtimetune` | Go's container-aware default never goes below 2. When this is **unset** and the cgroup CPU limit (v2 `cpu.max`, v1 `cpu.cfs_quota_us`/`cpu.cfs_period_us`) is at most 1.0 CPU, `fc-server` calls `GOMAXPROCS(1)` at start-up; with a larger or no limit (or no cgroup files, e.g. macOS) the default is left alone. Setting it explicitly disables this. |
+| `GOGC` | Go default (100) | — | Go runtime; `internal/runtimetune` | When set (non-empty), `fc-server` leaves the GC target and `FC_GC_PERCENT` entirely alone. |
+| `FC_GC_PERCENT` | unset: `200` when the router or dispatch scheduler is enabled, else Go's default | — | `internal/runtimetune` | GC target for `fc-server`, only consulted when `GOGC` is unset. A positive integer sets that target (applied whether or not the router/scheduler runs); `off` disables the percentage trigger (`-1`, so only the memory limit drives collection); any other value, including `0` and negatives, logs a warning and falls back to the default rule. Higher targets trade memory for throughput (router at 1 CPU: ~714 MB at 200 vs ~522 MB at 100). |
+| `GOMEMLIMIT` | Go default (none) | — | Go runtime; `internal/runtimetune` | When unset, and `fc-server` raised or overrode the GC target (above), a soft memory limit of 90% of the cgroup memory limit (v2 `memory.max`, v1 `memory.limit_in_bytes`; `max`/huge = none, in which case nothing is set) is applied so the collector tightens before an OOM-kill. Setting it explicitly disables this. |
 | `XDG_DATA_HOME` | OS app-data dir | — | `cmd/fcdev` | Overrides the per-user data directory that hosts fcdev's embedded-Postgres cluster, JWT key and app key. |
 
 ## 12. fcdev (local dev CLI)

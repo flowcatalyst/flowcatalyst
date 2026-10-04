@@ -26,6 +26,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/seed"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/database"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/runtimetune"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/server"
 )
 
@@ -52,6 +53,10 @@ func main() {
 	// Customer webhook targets may not reach loopback, cloud metadata or (by
 	// default) private networks; the platform's own endpoints are exempt.
 	cfg.ApplyDeliveryPolicy(netguard.Default)
+
+	// GOMAXPROCS under a 1-CPU quota, and a higher GC target (plus a soft
+	// memory limit from the cgroup) when the router or scheduler runs.
+	runtimetune.ApplyFromEnv(cfg.RouterEnabled || cfg.SchedulerEnabled)
 
 	slog.Info("starting fc-server",
 		"platform", cfg.PlatformEnabled,
