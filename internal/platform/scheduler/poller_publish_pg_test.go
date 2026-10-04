@@ -14,34 +14,41 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 )
 
-// dyingPublisher checks, while it is publishing, what another connection
-// sees of the claimed rows, then "dies" (panics) part way through the batch
-// — a worker SIGKILLed mid-publish.
-type dyingPublisher struct {
+// midPublishPublisher checks, while it is publishing, what another connection
+// sees of the claimed rows — their status and whether anything holds a lock on
+// them — and then accepts nothing, as a worker that died mid-publish would.
+type midPublishPublisher struct {
 	t        *testing.T
 	pool     *pgxpool.Pool
 	seenMid  map[string]string
+	lockErr  map[string]error
 	observed bool
 }
 
-func (d *dyingPublisher) Publish(ctx context.Context, items []PublishItem) ([]string, error) {
+func (d *midPublishPublisher) Publish(ctx context.Context, items []PublishItem) ([]string, error) {
 	d.seenMid = map[string]string{}
+	d.lockErr = map[string]error{}
 	for _, it := range items {
 		var status string
 		require.NoError(d.t, d.pool.QueryRow(ctx, `SELECT status FROM msg_dispatch_jobs WHERE id = $1`, it.JobID).Scan(&status))
 		d.seenMid[it.JobID] = status
+		// The claim holds no row lock: another connection can lock the row at once.
+		tx, err := d.pool.Begin(ctx)
+		require.NoError(d.t, err)
+		var id string
+		d.lockErr[it.JobID] = tx.QueryRow(ctx, `SELECT id FROM msg_dispatch_jobs WHERE id = $1 FOR UPDATE NOWAIT`, it.JobID).Scan(&id)
+		_ = tx.Rollback(ctx)
 	}
 	d.observed = true
-	panic("worker killed mid-publish")
+	return jobIDs(items), nil
 }
 
-// The claim used to be committed QUEUED before the batch was published, so a
-// worker killed during the publish stranded every unpublished job QUEUED,
-// with no queue message, for stale recovery's 75 minutes (the delivery
-// harness lost 2 of 40 on worker-restart). The claim now commits only after
-// the publish: a worker that dies mid-publish leaves the whole claim
-// PENDING, and the next poll publishes it.
-func TestPollOnce_WorkerDeathMidPublishLeavesTheClaimPending(t *testing.T) {
+// The claim is neither committed QUEUED before the batch is published (a worker
+// killed during the publish stranded every unpublished job QUEUED, with no
+// queue message, for stale recovery's 75 minutes) nor held under a lock or a
+// transaction while it is: a worker that dies mid-publish leaves the whole claim
+// PENDING and unlocked, and the next poll publishes it.
+func TestPollOnce_NothingIsQueuedOrLockedDuringThePublish(t *testing.T) {
 	ctx := context.Background()
 	pool := testpg.Pool(t)
 	const (
@@ -52,18 +59,17 @@ func TestPollOnce_WorkerDeathMidPublishLeavesTheClaimPending(t *testing.T) {
 	seedJob(t, pool, id1, "PENDING", group, "")
 	seedJob(t, pool, id2, "PENDING", group, "")
 
-	dying := &dyingPublisher{t: t, pool: pool}
-	dispatcher := NewMessageGroupDispatcher(pool, dying, NewDispatchAuthService("s"), "http://localhost/api/dispatch/process")
+	mid := &midPublishPublisher{t: t, pool: pool}
+	dispatcher := NewMessageGroupDispatcher(pool, mid, NewDispatchAuthService("s"), "http://localhost/api/dispatch/process")
 	poller := NewPendingJobPoller(DefaultConfig(), pool, dispatcher, NewPausedConnectionCache(pool, time.Minute))
 
-	func() {
-		defer func() { _ = recover() }()
-		_, _, _ = poller.pollOnce(ctx)
-	}()
-	require.True(t, dying.observed, "the publisher was reached")
-	assert.Equal(t, "PENDING", dying.seenMid[id1], "nothing is committed QUEUED before the publish")
-	assert.Equal(t, "PENDING", dying.seenMid[id2])
-	assert.Equal(t, "PENDING", jobStatus(t, pool, id1), "a worker that dies mid-publish strands nothing")
+	mustPoll(t, poller, ctx)
+	require.True(t, mid.observed, "the publisher was reached")
+	assert.Equal(t, "PENDING", mid.seenMid[id1], "nothing is committed QUEUED before the publish")
+	assert.Equal(t, "PENDING", mid.seenMid[id2])
+	assert.NoError(t, mid.lockErr[id1], "no row lock is held across the publish")
+	assert.NoError(t, mid.lockErr[id2])
+	assert.Equal(t, "PENDING", jobStatus(t, pool, id1), "a publish that never completed strands nothing")
 	assert.Equal(t, "PENDING", jobStatus(t, pool, id2))
 
 	// The restarted worker's poll publishes the claim again.

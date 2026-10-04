@@ -47,10 +47,10 @@ func (failPublisher) Publish(_ context.Context, items []PublishItem) ([]string, 
 	return ids, errors.New("batch publish boom")
 }
 
-// TestPollOnce_BatchPublishFailureRevertsToPending pins the batched-dispatch
-// revert: when the single PublishBatch fails, the whole claimed batch must be
-// rolled back QUEUED→PENDING so the next poll re-dispatches it (rather than
-// stranding rows in QUEUED for stale recovery).
+// TestPollOnce_BatchPublishFailureRevertsToPending pins the failed-publish path:
+// when the publish fails, no row is ever marked QUEUED, so every claimed row is
+// still PENDING for the next poll to re-dispatch (rather than stranding rows in
+// QUEUED for stale recovery).
 func TestPollOnce_BatchPublishFailureRevertsToPending(t *testing.T) {
 	ctx := context.Background()
 	pool := testpg.Pool(t)
@@ -221,10 +221,11 @@ func TestPollOnce_PausedConnectionHoldsJob(t *testing.T) {
 		"reactivated connection must release the job")
 }
 
-// mustPoll runs one pollOnce pass and fails the test on error.
-func mustPoll(t *testing.T, p *PendingJobPoller, ctx context.Context) (claimed, published int) {
+// mustPoll runs one claim, waits until the lanes have published and marked what
+// it handed them, and fails the test on error. It returns the rows claimed and
+// the jobs handed to the lanes.
+func mustPoll(t *testing.T, p *PendingJobPoller, ctx context.Context) (claimed, submitted int) {
 	t.Helper()
-	claimed, published, err := p.pollOnce(ctx)
-	require.NoError(t, err)
-	return claimed, published
+	res := settleOnce(t, p, ctx)
+	return res.claimed, res.submitted
 }

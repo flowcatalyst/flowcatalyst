@@ -12,7 +12,7 @@ import (
 // MessageGroupDispatcher publishes claimed dispatch jobs to the message queue
 // in batches (PublishBatch → one SQS SendMessageBatch per 10), so the scheduler
 // makes ceil(N/10) round trips instead of N — it never waits on a per-message
-// SQS round trip.
+// SQS round trip. The scheduler's lanes call it.
 //
 // Ordering is preserved by the caller + the queue, not by in-process
 // serialization: the poller claims tokens in (message_group, sequence,
@@ -39,18 +39,16 @@ func NewMessageGroupDispatcher(pool *pgxpool.Pool, publisher DispatchPublisher, 
 	}
 }
 
-// PublishClaim publishes a claimed batch in one Publish call and returns the
-// ids the publisher reports it did NOT publish. `toks` MUST already be in
-// dispatch order (the poller claims them ordered by message_group, sequence,
-// created_at); that order is preserved into the batch, and the SQS backend
+// PublishClaim publishes a batch in one Publish call and returns the ids the
+// publisher reports it did NOT publish. `toks` MUST already be in dispatch order
+// (the poller claims them ordered by message_group, sequence, created_at and a
+// lane keeps that order); it is preserved into the batch, and the SQS backend
 // chunks it to SendMessageBatch's limit of 10.
 //
-// The poller calls it while its claim transaction is still open, then marks
-// exactly the published ids QUEUED and commits (see pollOnce). The
-// unpublished ids need no revert: their QUEUED status is never written, so
-// they stay PENDING for the next poll. The publisher's list is trusted
-// exactly — a job the broker accepted must be marked QUEUED, or the next
-// poll publishes it again.
+// A lane calls it, then marks exactly the published ids QUEUED (see lane.go).
+// The unpublished ids need no revert: their QUEUED status is never written, so
+// they stay PENDING to be claimed again. The publisher's list is trusted exactly
+// — a job the broker accepted must be marked QUEUED, or it is published again.
 func (d *MessageGroupDispatcher) PublishClaim(ctx context.Context, toks []DispatchJobToken) (unpublished []string) {
 	if len(toks) == 0 {
 		return nil

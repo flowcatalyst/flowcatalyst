@@ -2,8 +2,10 @@ package scheduler
 
 import (
 	"context"
+	"hash/fnv"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -17,35 +19,36 @@ import (
 // message_group.
 const defaultMessageGroup = "default"
 
-// pollTimeout bounds one whole pollOnce (claim, publish, mark, commit). A stalled
-// publish must not hold the claim's row locks and a pool connection for ever: on
-// expiry the transaction rolls back and the rows stay PENDING. Generous on
-// purpose — a full claim is ~10 sequential SendMessageBatch calls per queue
-// (each separately bounded) — so it only ever fires on a genuine stall. A var
-// only so tests can shorten it.
-var pollTimeout = 2 * time.Minute
+// claimTimeout bounds one claim (the SELECT plus the hold-back lookup). The claim
+// holds no locks and no transaction any more, so this only guards a stalled
+// database. A var only so tests can shorten it.
+var claimTimeout = 30 * time.Second
 
-// finishTimeout bounds the mark-QUEUED UPDATE and COMMIT that follow a
-// successful publish. They run detached from ctx (see pollOnce).
+// finishTimeout bounds the mark-QUEUED UPDATE a lane runs after a publish. It
+// runs detached from the lane's context (see lane.process).
 var finishTimeout = 10 * time.Second
 
-// claimSQL is the poller's claim ($1 = batch size, $2 = paused subscription
-// ids). Its ORDER BY is exactly the key of idx_dispatch_jobs_pending_poll
-// (migration 065) and its status is a literal, so Postgres walks that partial
-// index in order — a Merge Append across the partitions — and stops at the
-// LIMIT: no sort, however many rows share a created_at and whatever the
-// statistics say. TestClaimPlan_NeedsNoSort pins that. The scheduled_for and
-// paused predicates are filters on the rows the walk visits: a row they
-// exclude that sorts ahead of the batch is visited (and skipped) on every claim.
+// claimSQL is the poller's claim ($1 = limit, $2 = paused subscription ids,
+// $3 = ids already in flight in this process). Its ORDER BY is exactly the key
+// of idx_dispatch_jobs_pending_poll (migration 065) and its status is a literal,
+// so Postgres walks that partial index in order — a Merge Append across the
+// partitions — and stops at the LIMIT: no sort, however many rows share a
+// created_at and whatever the statistics say. TestClaimPlan_NeedsNoSort pins
+// that, with a 1,000-element exclusion array. The scheduled_for, paused and
+// in-flight predicates are filters on the rows the walk visits.
+//
+// There is no FOR UPDATE and no transaction: a claimed row is kept out of the
+// next claim by the in-flight id set ($3), not by a lock or a status. Neither
+// array may ever be NULL: `<> ALL(NULL)` is NULL, which excludes every row.
 const claimSQL = `SELECT id, subscription_id, message_group, mode, dispatch_pool_id, client_id,
-        attempt_count, target_url, created_at, sequence, queue
+        attempt_count, target_url, created_at, sequence, queue, updated_at
    FROM msg_dispatch_jobs
   WHERE status = 'PENDING'
     AND (scheduled_for IS NULL OR scheduled_for <= NOW())
     AND (subscription_id IS NULL OR subscription_id <> ALL($2::text[]))
+    AND id <> ALL($3::text[])
   ORDER BY message_group ASC NULLS LAST, sequence ASC, created_at ASC, id ASC
-  LIMIT $1
-  FOR UPDATE SKIP LOCKED`
+  LIMIT $1`
 
 // PausedConnectionCache caches the set of subscription IDs whose target
 // connections are PAUSED. The poller filters jobs whose subscription
@@ -121,9 +124,21 @@ func (c *PausedConnectionCache) refresh(ctx context.Context) error {
 	return nil
 }
 
-// PendingJobPoller polls msg_dispatch_jobs for PENDING jobs ready to
-// dispatch (next_retry_at <= NOW or null), filters them through the
-// pause + block-on-error checks, and submits to the MessageGroupDispatcher.
+// PendingJobPoller is the claiming half of the dispatch scheduler: it claims
+// PENDING jobs ready to dispatch, applies the pause and block-on-error
+// hold-backs, and hands the rest to the lanes (lane.go), which publish them and
+// mark them QUEUED. The poller never waits for a publish; it blocks only when
+// BufferCapacity jobs are already in flight.
+//
+//	poller (leader only) --claim--> lanes[hash(group) % N] --SendMessageBatch--> broker
+//	   ^  permits (BufferCapacity)        |  bulk UPDATE status='QUEUED'
+//	   +----------- released -------------+
+//
+// There is no transaction and no row lock around the publish. A claimed row is
+// kept out of the next claim by the in-memory in-flight id set (claimSQL's
+// `id <> ALL($3)`). A double publish is acceptable — the router drops a copy
+// whose original is in its pipeline and the delivery callback is idempotent —
+// a reordering is not; lane.go holds the rule that prevents one.
 type PendingJobPoller struct {
 	cfg         Config
 	pool        *pgxpool.Pool
@@ -133,97 +148,204 @@ type PendingJobPoller struct {
 	// dispatch_pool_id + client_id. Same refresh cadence as pausedCache.
 	poolCodes *PoolCodeResolver
 	// IsLeader gates claiming: when non-nil and false, the poller idles.
-	// The per-group FIFO dispatcher is in-process only, so within-group
-	// ordering requires a single active scheduler — concurrent SKIP-LOCKED
-	// claims across replicas would dispatch a group's jobs out of order.
-	// nil = always run (standby disabled). Set by Scheduler.Run.
+	// Within-group ordering needs a single active scheduler (the in-flight set
+	// and the lanes are in-process), so concurrent claims across replicas would
+	// publish a group's jobs out of order. nil = always run (standby disabled).
+	// Set by Scheduler.Run.
 	IsLeader func() bool
 
-	// starveWarnedAt is when warnIfStarved last logged; pollOnce runs on one
-	// goroutine, so it needs no lock.
+	// starveWarnedAt is when warnIfStarved last logged; only the claiming
+	// goroutine touches it.
 	starveWarnedAt time.Time
 
-	// poll is the per-pass claim+publish; nil means pollOnce. A seam so the run
-	// loop's drain and fall-back rules can be tested without a database.
-	poll func(ctx context.Context) (claimed, published int, err error)
+	// permits bounds the jobs in the engine: one is held from just before a claim
+	// until the lane has finished with the job. Acquire = send, release = receive.
+	permits chan struct{}
+	// inflight holds the ids of every job handed to a lane and not yet finished.
+	inflight *inflightSet
+	// claimGeneration orders claims against failures; see lane.go.
+	claimGeneration atomic.Uint64
+	// rr spreads ungrouped jobs over the lanes.
+	rr atomic.Uint64
+	// laneFailed is set by a lane that left a job unpublished (or failed to mark
+	// it); the poll loop backs off once on seeing it.
+	laneFailed atomic.Bool
+	lanes      []*lane
+
+	// Seams. The defaults talk to Postgres and the dispatcher; tests replace them.
+	claimRows  func(ctx context.Context, limit int, paused, inflight []string) ([]dispatchClaim, error)
+	holdBack   func(ctx context.Context, groups []string) (map[string]jobKey, error)
+	pausedIDs  func(ctx context.Context) (map[string]struct{}, error)
+	poolCode   func(ctx context.Context, poolID, clientID string) string
+	publish    func(ctx context.Context, toks []DispatchJobToken) (unpublished []string)
+	markQueued func(ctx context.Context, ids []string, updatedAts []time.Time, minCreated, maxCreated time.Time) (int64, error)
+
+	// hookGenSnapshot, when set, runs between a claim's generation increment and
+	// its in-flight snapshot — the one window the ordering rule depends on. Tests
+	// use it to land a lane's failure handling exactly there.
+	hookGenSnapshot func()
+	// hookSettle, when set, runs in a lane between removing a batch's ids from the
+	// in-flight set and reading the generation for its poison marks — the window
+	// the second half of the ordering rule depends on.
+	hookSettle func()
 }
 
 // NewPendingJobPoller wires the poller. The pool-code resolver shares
 // pausedCache's TTL: both cache slow-moving config read on every claim.
 func NewPendingJobPoller(cfg Config, pool *pgxpool.Pool, dispatcher *MessageGroupDispatcher, pausedCache *PausedConnectionCache) *PendingJobPoller {
-	return &PendingJobPoller{
-		cfg:         cfg,
-		pool:        pool,
-		dispatcher:  dispatcher,
-		pausedCache: pausedCache,
-		poolCodes:   NewPoolCodeResolver(pool, cfg.PausedCacheTTL),
+	p := newPoller(cfg)
+	p.pool = pool
+	p.dispatcher = dispatcher
+	p.pausedCache = pausedCache
+	p.poolCodes = NewPoolCodeResolver(pool, cfg.PausedCacheTTL)
+	p.claimRows = p.queryClaim
+	p.holdBack = func(ctx context.Context, groups []string) (map[string]jobKey, error) {
+		return blockedGroups(ctx, pool, groups)
+	}
+	p.pausedIDs = pausedCache.PausedSubscriptionIDs
+	p.poolCode = p.poolCodes.Resolve
+	p.publish = dispatcher.PublishClaim
+	p.markQueued = p.updateQueued
+	return p
+}
+
+// newPoller builds the engine around a normalised config, without the
+// database-backed seams.
+func newPoller(cfg Config) *PendingJobPoller {
+	cfg = cfg.normalized()
+	p := &PendingJobPoller{
+		cfg:      cfg,
+		permits:  make(chan struct{}, cfg.BufferCapacity),
+		inflight: newInflightSet(),
+	}
+	p.lanes = make([]*lane, cfg.Dispatchers)
+	for i := range p.lanes {
+		p.lanes[i] = newLane(p, i)
+	}
+	return p
+}
+
+// batchLimit is the most rows one claim may ask for.
+func (p *PendingJobPoller) batchLimit() int {
+	return min(p.cfg.BatchSize, p.cfg.BufferCapacity)
+}
+
+// acquire takes one permit, blocking until one is free or ctx ends. This is the
+// poller's only wait besides its sleeps: it blocks here exactly when
+// BufferCapacity jobs are in the engine.
+func (p *PendingJobPoller) acquire(ctx context.Context) error {
+	select {
+	case p.permits <- struct{}{}:
+		schedMetrics.bufferInUse.Set(float64(len(p.permits)))
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
-// Run drives the poller until ctx is cancelled.
+// tryAcquire takes a permit if one is free right now.
+func (p *PendingJobPoller) tryAcquire() bool {
+	select {
+	case p.permits <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+
+// release returns n permits.
+func (p *PendingJobPoller) release(n int) {
+	for range n {
+		<-p.permits
+	}
+	schedMetrics.bufferInUse.Set(float64(len(p.permits)))
+}
+
+// Run drives the poller and its lanes until ctx is cancelled, then waits for the
+// lanes to finish the batch each is sending.
 func (p *PendingJobPoller) Run(ctx context.Context) {
-	tick := time.NewTicker(p.cfg.PollInterval)
-	defer tick.Stop()
-	slog.Info("dispatch job poller starting", "interval", p.cfg.PollInterval, "batch_size", p.cfg.BatchSize)
-	for {
-		select {
-		case <-ctx.Done():
-			slog.Info("dispatch job poller stopped")
-			return
-		case <-tick.C:
-			p.drain(ctx)
+	slog.Info("dispatch job poller starting",
+		"interval", p.cfg.PollInterval, "batch_size", p.cfg.BatchSize,
+		"buffer_capacity", p.cfg.BufferCapacity, "dispatchers", p.cfg.Dispatchers)
+	wg := p.startLanes(ctx)
+	defer func() {
+		wg.Wait()
+		slog.Info("dispatch job poller stopped")
+	}()
+	for ctx.Err() == nil {
+		if p.IsLeader != nil && !p.IsLeader() {
+			sleepCtx(ctx, p.cfg.PollInterval) // only the leader claims
+			continue
 		}
-	}
-}
-
-// drain runs poll passes for one tick. A pass that claimed a FULL batch and
-// published something means the backlog is deeper than one batch, so it polls
-// again at once rather than sleeping a PollInterval per 100 jobs (which capped
-// throughput at BatchSize/PollInterval). It falls back to the ticker on a short
-// batch (backlog drained), on published == 0 (a claim that publishes nothing
-// would otherwise spin on the same rows), and on error. The leader gate and ctx
-// are re-checked before every pass: leadership can be lost mid-drain.
-func (p *PendingJobPoller) drain(ctx context.Context) {
-	poll := p.poll
-	if poll == nil {
-		poll = p.pollOnce
-	}
-	for {
+		res := p.claimOnce(ctx)
 		if ctx.Err() != nil {
 			return
 		}
-		if p.IsLeader != nil && !p.IsLeader() {
-			return // only the leader claims
+		if res.err != nil {
+			slog.Warn("poll error", "err", res.err)
 		}
-		claimed, published, err := poll(ctx)
-		if err != nil {
-			slog.Warn("poll error", "err", err)
-			return
-		}
-		if claimed < p.cfg.BatchSize || published == 0 {
-			return
+		// Back off when looping at once would spin on the same rows: a short
+		// claim (the backlog is drained), a claim that submitted nothing (all
+		// held), an error, or a lane that could not publish — a failing broker
+		// leaves its rows PENDING, so without this it is retried in a hot loop.
+		failed := p.laneFailed.Swap(false)
+		if res.err != nil || res.claimed < res.want || res.submitted == 0 || failed {
+			sleepCtx(ctx, p.cfg.PollInterval)
 		}
 	}
 }
 
-// pollOnce claims a batch of jobs and submits them to the dispatcher. It
-// reports how many rows the claim returned and how many of them were published
-// (marked QUEUED); the run loop uses the pair to decide whether to poll again
-// immediately.
-func (p *PendingJobPoller) pollOnce(ctx context.Context) (int, int, error) {
-	start := time.Now()
-	claimed, published, err := p.claimAndPublish(ctx)
-	schedMetrics.observePoll(start, err)
-	return claimed, published, err
+// sleepCtx waits d or until ctx ends.
+func sleepCtx(ctx context.Context, d time.Duration) {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+	case <-ctx.Done():
+	}
 }
 
-// claimAndPublish is the body of one poll; pollOnce wraps it with metrics.
-func (p *PendingJobPoller) claimAndPublish(ctx context.Context) (int, int, error) {
-	ctx, cancel := context.WithTimeout(ctx, pollTimeout)
+// claimResult is what one claim did. want is the permits it held, claimed the
+// rows the query returned, submitted the jobs handed to lanes (the rest were
+// held back and stay PENDING).
+type claimResult struct {
+	want, claimed, submitted int
+	err                      error
+}
+
+// claimOnce is one pass of the poller: take permits (blocking while the buffer is
+// full), claim up to that many rows, hand the dispatchable ones to the lanes,
+// give back the permits it did not use.
+func (p *PendingJobPoller) claimOnce(ctx context.Context) claimResult {
+	if err := p.acquire(ctx); err != nil {
+		return claimResult{err: err}
+	}
+	want := 1
+	for want < p.batchLimit() && p.tryAcquire() {
+		want++
+	}
+	start := time.Now()
+	res := p.claimHeld(ctx, want)
+	p.release(want - res.submitted)
+	res.want = want
+	if res.err == nil || ctx.Err() == nil {
+		schedMetrics.observePoll(start, res.err)
+	}
+	return res
+}
+
+// claimHeld claims up to want rows while holding want permits; it submits the
+// dispatchable ones (each keeps a permit, released by its lane) and leaves the
+// caller to release the rest.
+func (p *PendingJobPoller) claimHeld(ctx context.Context, want int) claimResult {
+	if p.IsLeader != nil && !p.IsLeader() {
+		return claimResult{} // leadership lost while waiting for permits
+	}
+	ctx, cancel := context.WithTimeout(ctx, claimTimeout)
 	defer cancel()
-	paused, err := p.pausedCache.PausedSubscriptionIDs(ctx)
+	paused, err := p.pausedIDs(ctx)
 	if err != nil {
-		return 0, 0, err
+		return claimResult{err: err}
 	}
 	// The paused set goes INTO the claim query (never nil: `<> ALL(NULL)` is
 	// NULL, which would exclude every row).
@@ -232,56 +354,128 @@ func (p *PendingJobPoller) claimAndPublish(ctx context.Context) (int, int, error
 		pausedIDs = append(pausedIDs, id)
 	}
 	schedMetrics.pausedSubscriptions.Set(float64(len(pausedIDs)))
-	tx, err := p.pool.Begin(ctx)
-	if err != nil {
-		return 0, 0, err
-	}
-	// Rolled back on a detached, bounded context: ctx may already be cancelled
-	// or past its deadline (that is exactly when the rollback matters), and a
-	// rollback that cannot run would leave the connection to be torn down with
-	// the claim's locks still held.
-	defer func() {
-		rctx, rcancel := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)
-		defer rcancel()
-		_ = tx.Rollback(rctx)
-	}()
 
-	// Claim PENDING jobs ready for dispatch. SKIP LOCKED so multiple
-	// scheduler instances don't contend.
-	// Retry timing is owned by the dispatcher's backoff loop, not by a
-	// scheduled-for column on the row. The embedded schema
-	// has neither `next_retry_at` (only added in migration 011's
-	// no-op-on-embedded CREATE TABLE IF NOT EXISTS) nor a scheduled-
-	// filtered claim path.
-	// scheduled_for gates retry backoff: /api/dispatch/process reschedules a
-	// failed job to NOW()+backoff (status back to PENDING) and ACKs the queue
-	// message, so the poller is the single re-dispatch driver — no queue-NACK
-	// racing the poll. A NULL scheduled_for (every freshly-created job) is
-	// always eligible.
-	// ORDER BY ends in `id` so the claim order is TOTAL. Ties on
-	// (message_group, sequence, created_at) are common — a subscription's
-	// sequence is per-subscription, not per-message, so every job of a group
-	// bound for one subscriber shares it — and an ordering with ties leaves the
-	// rest to the plan, which across a partitioned table can interleave
-	// arbitrarily. The id is a time-ordered TSID, so it both breaks the tie and
-	// breaks it chronologically. The positional hold-back below needs this
-	// total order to compare "earlier" at all.
-	rows, err := tx.Query(ctx, claimSQL, p.cfg.BatchSize, pausedIDs)
-	if err != nil {
-		return 0, 0, err
+	// The generation is incremented BEFORE the in-flight set is snapshotted. That
+	// order is what the ordering rule in lane.go rests on: a claim whose
+	// generation exceeds a failure's poison mark read the counter after the
+	// failure's jobs left the set, so its snapshot is the one that lets them be
+	// claimed again, in order.
+	gen := p.claimGeneration.Add(1)
+	if p.hookGenSnapshot != nil {
+		p.hookGenSnapshot()
 	}
+	inflight := p.inflight.snapshot()
+
+	claimStart := time.Now()
+	claims, err := p.claimRows(ctx, want, pausedIDs, inflight)
+	schedMetrics.claimDuration.Observe(time.Since(claimStart).Seconds())
+	if err != nil {
+		return claimResult{err: err}
+	}
+	if len(claims) == 0 {
+		return claimResult{}
+	}
+	schedMetrics.claimed.Add(float64(len(claims)))
+	if len(claims) >= want {
+		schedMetrics.fullBatches.Inc()
+	}
+
+	// What stays in Go is the blocked-group / BLOCK_ON_ERROR hold-back, which is
+	// positional (a job waits behind an EARLIER failed sibling) and so stays out
+	// of SQL. Held rows are not submitted and stay PENDING; the next claim
+	// retries them. Paused subscriptions are excluded by the claim itself, so
+	// they can never fill the LIMIT window and starve the rows behind them.
+	byGroup := groupByMessageGroup(claims)
+	candidates := make([]string, 0, len(byGroup))
+	for g := range byGroup {
+		candidates = append(candidates, g)
+	}
+	blocked, err := p.holdBack(ctx, candidates)
+	if err != nil {
+		return claimResult{claimed: len(claims), err: err}
+	}
+	// A FAILED/ERROR sibling (or one sitting out a retry backoff) holds back this
+	// group's BLOCK_ON_ERROR jobs; IMMEDIATE and NEXT_ON_ERROR keep flowing.
+	dispatchable := filterByDispatchMode(claims, blocked)
+	held := len(claims) - len(dispatchable)
+	schedMetrics.skippedHeld.Add(float64(held))
+	if held > 0 {
+		slog.Debug("message group blocked, holding ordered jobs", "held", held, "dispatching", len(dispatchable))
+	}
+	if len(dispatchable) == 0 {
+		p.warnIfStarved(len(claims), want, held, len(pausedIDs))
+		return claimResult{claimed: len(claims)}
+	}
+
+	jobs := make([]laneJob, len(dispatchable))
+	ids := make([]string, len(dispatchable))
+	for i, c := range dispatchable {
+		ids[i] = c.id
+		jobs[i] = laneJob{
+			gen:       gen,
+			createdAt: c.createdAt,
+			updatedAt: c.updatedAt,
+			tok: DispatchJobToken{
+				JobID:        c.id,
+				MessageGroup: c.group,
+				TargetURL:    c.target,
+				Mode:         c.mode,
+				PoolCode:     p.poolCode(ctx, c.poolID, c.clientID),
+				// Carried unresolved: the publisher turns them into the
+				// destination queue (tenant from the client, priority from the
+				// subscription), which the pool code says nothing about.
+				ClientID:       c.clientID,
+				SubscriptionID: c.subID,
+				// The job's OWN priority claim — takes precedence over the
+				// subscription's at publish time (R4). "" when unset.
+				Queue: c.queue,
+			},
+		}
+	}
+	// In the set BEFORE the first send: a lane may finish a job (and remove it)
+	// the instant it receives it.
+	p.inflight.add(ids)
+	for _, j := range jobs {
+		// Never blocks: the permits bound the jobs in the engine to
+		// BufferCapacity, which is every lane channel's capacity.
+		p.lanes[p.laneFor(j.tok.MessageGroup)].in <- j
+	}
+	return claimResult{claimed: len(claims), submitted: len(jobs)}
+}
+
+// laneFor picks the lane for a message group: a stable hash, so one group is
+// always published by one lane, in claim order. Ungrouped jobs carry no ordering
+// and are spread round-robin.
+func (p *PendingJobPoller) laneFor(group string) int {
+	if group == "" {
+		return int(p.rr.Add(1) % uint64(len(p.lanes)))
+	}
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(group))
+	return int(h.Sum32() % uint32(len(p.lanes)))
+}
+
+// queryClaim is the default claimRows: claimSQL as one statement on a pooled
+// connection.
+func (p *PendingJobPoller) queryClaim(ctx context.Context, limit int, paused, inflight []string) ([]dispatchClaim, error) {
+	if paused == nil {
+		paused = []string{}
+	}
+	if inflight == nil {
+		inflight = []string{}
+	}
+	rows, err := p.pool.Query(ctx, claimSQL, limit, paused, inflight)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 	var claims []dispatchClaim
 	for rows.Next() {
 		var c dispatchClaim
-		var msgGroup *string
-		var subID *string
-		var poolID *string
-		var clientID *string
-		var queue *string
+		var msgGroup, subID, poolID, clientID, queue *string
 		if err := rows.Scan(&c.id, &subID, &msgGroup, &c.mode, &poolID, &clientID,
-			&c.attempt, &c.target, &c.createdAt, &c.sequence, &queue); err != nil {
-			rows.Close()
-			return 0, 0, err
+			&c.attempt, &c.target, &c.createdAt, &c.sequence, &queue, &c.updatedAt); err != nil {
+			return nil, err
 		}
 		if subID != nil {
 			c.subID = *subID
@@ -300,187 +494,51 @@ func (p *PendingJobPoller) claimAndPublish(ctx context.Context) (int, int, error
 		}
 		claims = append(claims, c)
 	}
-	rows.Close()
-	if len(claims) == 0 {
-		return 0, 0, nil
-	}
-	schedMetrics.claimed.Add(float64(len(claims)))
-	if len(claims) >= p.cfg.BatchSize {
-		schedMetrics.fullBatches.Inc()
-	}
+	return claims, rows.Err()
+}
 
-	// Filter, publish, then mark QUEUED and commit — in that order, with the
-	// claim's rows still locked while the batch is published.
-	//
-	// This used to commit the claim QUEUED first and publish afterwards. A
-	// worker that died between the two (a SIGKILL, an OOM, a deploy past its
-	// stop timeout) left every unpublished row QUEUED with no queue message,
-	// and nothing looked at them again until stale recovery's 75 minutes were
-	// up: the delivery harness lost 2 of 40 jobs to a SIGKILL that way
-	// (worker-restart, delivery runs 3 and 4). Publishing first means a worker
-	// that dies mid-publish rolls the whole claim back to PENDING, and the
-	// next poll (its own after a restart, or a standby's) publishes it again.
-	//
-	// The price is at-least-once at the queue: the jobs it did publish before
-	// dying are published a second time. That costs no second delivery —
-	// /api/dispatch/process claims a job before delivering it, and a copy
-	// that finds the job taken or finished never delivers it — only a
-	// second, redundant queue message. A commit that fails after a publish
-	// has the same effect. A /process call that arrives for a job before
-	// this commit waits on the row lock for it, then claims it QUEUED.
-	//
-	// Only the jobs the publisher reports published are marked QUEUED; the
-	// rest simply stay PENDING for the next poll (no revert needed: their
-	// QUEUED status was never written).
-	//
-	// Paused subscriptions are excluded by the claim query itself, so they can
-	// never fill the LIMIT window and starve rows behind them (the claim sorts by
-	// message_group, so a run of paused rows sorting early used to be re-claimed,
-	// dropped and left PENDING on every tick, with nothing behind them ever
-	// published). There is deliberately no second Go-side paused check: it would
-	// read the very same cache snapshot the query used, so it could never differ.
-	// A connection paused after the snapshot is picked up within the cache TTL,
-	// exactly as before.
-	//
-	// What remains in Go is the blocked-group / BLOCK_ON_ERROR hold-back, which
-	// is positional (a job waits behind an EARLIER failed sibling) and so stays
-	// out of SQL. Held rows are left PENDING — their row locks release at
-	// rollback/commit and the next poll retries them.
-	byGroup := groupByMessageGroup(claims)
-	candidates := make([]string, 0, len(byGroup))
-	for g := range byGroup {
-		candidates = append(candidates, g)
-	}
-	blocked, err := blockedGroups(ctx, tx, candidates)
+// updateQueued is the default markQueued: one bulk UPDATE on a pooled
+// connection, no transaction. It is optimistic on the row version the claim
+// read: a row is updated only if it is still PENDING AND its updated_at is the
+// one the claim saw. The status guard alone is not enough — the router can
+// deliver, and the callback process the job and reschedule it back to PENDING
+// (retry, deferral, BLOCK_ON_ERROR hold), before this runs; setting QUEUED then
+// would strand a job that has no message in the queue until the stale sweep.
+// Every status transition on the table stamps updated_at, so any move at all
+// changes the version. created_at bounds let the created_at-partitioned table
+// prune to the partitions the rows span.
+func (p *PendingJobPoller) updateQueued(ctx context.Context, ids []string, updatedAts []time.Time, minCreated, maxCreated time.Time) (int64, error) {
+	tag, err := p.pool.Exec(ctx,
+		`UPDATE msg_dispatch_jobs j SET status = 'QUEUED', queued_at = NOW(), updated_at = NOW()
+		   FROM unnest($1::text[], $2::timestamptz[]) AS c(id, claimed_updated_at)
+		  WHERE j.id = c.id
+		    AND j.updated_at = c.claimed_updated_at
+		    AND j.created_at >= $3 AND j.created_at <= $4
+		    AND j.status = 'PENDING'`,
+		ids, updatedAts, minCreated, maxCreated)
 	if err != nil {
-		return 0, 0, err
+		return 0, err
 	}
-
-	var queued []string
-	var createdAt []time.Time // createdAt[i] is queued[i]'s created_at
-	var tokens []DispatchJobToken
-	skippedBlocked := 0
-	for group, jobs := range byGroup {
-		// A FAILED/ERROR sibling holds back this group's BLOCK_ON_ERROR
-		// jobs — they must not jump past the failure, and the operator
-		// resolving it (retry/cancel/complete) releases them on the next
-		// poll. IMMEDIATE and NEXT_ON_ERROR jobs keep flowing: neither
-		// mode promises to stop for a failed sibling.
-		dispatchable := filterByDispatchMode(jobs, blocked)
-		if held := len(jobs) - len(dispatchable); held > 0 {
-			slog.Debug("message group blocked, holding ordered jobs",
-				"group", group, "held", held, "dispatching", len(dispatchable))
-			skippedBlocked += held
-		}
-		for _, c := range dispatchable {
-			queued = append(queued, c.id)
-			createdAt = append(createdAt, c.createdAt)
-			tokens = append(tokens, DispatchJobToken{
-				JobID:        c.id,
-				MessageGroup: c.group,
-				TargetURL:    c.target,
-				Mode:         c.mode,
-				PoolCode:     p.poolCodes.Resolve(ctx, c.poolID, c.clientID),
-				// Carried unresolved: the publisher turns them into the
-				// destination queue (tenant from the client, priority from the
-				// subscription), which the pool code says nothing about.
-				ClientID:       c.clientID,
-				SubscriptionID: c.subID,
-				// The job's OWN priority claim — takes precedence over the
-				// subscription's at publish time (R4). "" when unset.
-				Queue: c.queue,
-			})
-		}
-	}
-
-	schedMetrics.skippedHeld.Add(float64(skippedBlocked))
-	if len(tokens) == 0 {
-		// Nothing dispatchable: the claim is released (rolled back by the
-		// deferred Rollback), every row still PENDING.
-		p.warnIfStarved(len(claims), skippedBlocked, 0, len(pausedIDs))
-		return len(claims), 0, nil
-	}
-
-	// Publish while the claim is still locked and uncommitted — see above.
-	unpublished := p.dispatcher.PublishClaim(ctx, tokens)
-	schedMetrics.unpublished.Add(float64(len(unpublished)))
-	notPublished := make(map[string]struct{}, len(unpublished))
-	for _, id := range unpublished {
-		notPublished[id] = struct{}{}
-	}
-	published := make([]string, 0, len(queued))
-	var minCreated, maxCreated time.Time
-	for i, id := range queued {
-		if _, skip := notPublished[id]; skip {
-			continue
-		}
-		at := createdAt[i]
-		if len(published) == 0 || at.Before(minCreated) {
-			minCreated = at
-		}
-		if len(published) == 0 || at.After(maxCreated) {
-			maxCreated = at
-		}
-		published = append(published, id)
-	}
-	if len(published) == 0 {
-		// Nothing reached the broker; rolling back leaves every row PENDING
-		// for the next poll.
-		p.warnIfStarved(len(claims), skippedBlocked, len(tokens), len(pausedIDs))
-		return len(claims), 0, nil
-	}
-	// Mark + commit run detached from ctx. The jobs are already on the broker:
-	// a shutdown (or the poll deadline) cancelling ctx between the publish and
-	// the commit would roll the whole claim back to PENDING and publish every
-	// job a second time. Bounded separately so a stuck database still cannot
-	// hang the poller.
-	fctx, fcancel := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)
-	defer fcancel()
-	// created_at bounds let the created_at-partitioned table prune to the
-	// partitions the published rows actually span.
-	if _, err := tx.Exec(fctx,
-		`UPDATE msg_dispatch_jobs SET status = 'QUEUED', updated_at = NOW()
-		  WHERE id = ANY($1)
-		    AND created_at >= $2 AND created_at <= $3`,
-		published, minCreated, maxCreated); err != nil {
-		slog.Warn("marking published dispatch jobs QUEUED failed; they will be published again",
-			"published", len(published), "err", err)
-		return 0, 0, err
-	}
-	if err := tx.Commit(fctx); err != nil {
-		// Published but still PENDING: the next poll publishes them again,
-		// and /process delivers each once.
-		slog.Warn("committing published dispatch jobs failed; they will be published again",
-			"published", len(published), "err", err)
-		return 0, 0, err
-	}
-	schedMetrics.published.Add(float64(len(published)))
-	if len(queued) > 0 || skippedBlocked > 0 {
-		slog.Debug("poll tick",
-			"queued", len(queued),
-			"skipped_blocked", skippedBlocked)
-	}
-	return len(claims), len(published), nil
+	return tag.RowsAffected(), nil
 }
 
 // starveWarnEvery rate-limits the starvation warning.
 const starveWarnEvery = time.Minute
 
-// warnIfStarved logs when a FULL claim published nothing. That is the signature
-// of starvation: the LIMIT window is filled with rows that cannot be published
-// (held back behind a failed sibling, or rejected by the broker), so nothing
-// behind them is ever reached, and without this it is completely silent.
+// warnIfStarved logs when a FULL claim submitted nothing. That is the signature
+// of starvation: the LIMIT window is filled with rows that are held back behind
+// a failed sibling, so nothing behind them is ever reached, and without this it
+// is completely silent.
 // Paused-subscription rows no longer count — the claim query excludes them — so
 // the paused figure is the size of the excluded set, for context. At most once
 // per starveWarnEvery.
-func (p *PendingJobPoller) warnIfStarved(claimed, held, publishFailed, pausedSubscriptions int) {
-	if claimed < p.cfg.BatchSize || !p.starveWarnDue(time.Now()) {
+func (p *PendingJobPoller) warnIfStarved(claimed, want, held, pausedSubscriptions int) {
+	if claimed < want || !p.starveWarnDue(time.Now()) {
 		return
 	}
-	slog.Warn("dispatch poller claimed a full batch and published none of it; jobs behind it may be starved",
+	slog.Warn("dispatch poller claimed a full batch and submitted none of it; jobs behind it may be starved",
 		"claimed", claimed,
 		"held_skipped", held,
-		"publish_failed", publishFailed,
 		"paused_subscriptions_excluded", pausedSubscriptions)
 }
 
@@ -500,12 +558,12 @@ func (p *PendingJobPoller) starveWarnDue(now time.Time) bool {
 // poolID and clientID are the INPUTS to pool-code resolution, not the code
 // itself: msg_dispatch_jobs stores dispatch_pool_id, while the code lives on
 // msg_dispatch_pools and the client identifier on tnt_clients. They are
-// resolved through PoolCodeResolver rather than joined, so the claim's
-// FOR UPDATE SKIP LOCKED keeps locking msg_dispatch_jobs alone.
+// resolved through PoolCodeResolver rather than joined, so the claim stays a
+// scan of msg_dispatch_jobs alone.
 type dispatchClaim struct {
 	id, subID, group, mode, poolID, clientID, target, queue string
 	attempt, sequence                                       int32
-	createdAt                                               time.Time
+	createdAt, updatedAt                                    time.Time
 }
 
 // key is the claim's position in its group's delivery order — the same
@@ -591,20 +649,25 @@ func filterByDispatchMode(claims []dispatchClaim, holders map[string]jobKey) []d
 	return kept
 }
 
+// pgxQuerier is the one method blockedGroups needs; a pool or a transaction.
+type pgxQuerier interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
 // blockedGroups returns the subset of candidate groups that currently
 // hold a FAILED or ERROR job — one batch query per
 // poll. A NULL message_group can never
 // block: `= ANY` never matches NULL, so a failed ungrouped job does not
 // hold back the "default" bucket. Preserve that exactly — only a row
 // whose message_group is literally 'default' blocks ungrouped jobs.
-func blockedGroups(ctx context.Context, tx pgx.Tx, groups []string) (map[string]jobKey, error) {
+func blockedGroups(ctx context.Context, q pgxQuerier, groups []string) (map[string]jobKey, error) {
 	holders := make(map[string]jobKey)
 	if len(groups) == 0 {
 		return holders, nil
 	}
 	// DISTINCT ON gives the EARLIEST holder per group, which is the only one
 	// that matters: anything behind it is held by it too.
-	rows, err := tx.Query(ctx,
+	rows, err := q.Query(ctx,
 		`SELECT DISTINCT ON (message_group) message_group, sequence, created_at, id
 		   FROM msg_dispatch_jobs
 		  WHERE message_group = ANY($1)

@@ -29,12 +29,11 @@ type PublishItem struct {
 }
 
 // DispatchPublisher hands a claimed batch of dispatch jobs to the queues the
-// router consumes from. The poller calls it once per tick, while the claim
-// transaction is still open (see pollOnce): only what it reports published
-// is then marked QUEUED and committed.
+// router consumes from. A lane calls it once per batch (see lane.go): only what
+// it reports published is then marked QUEUED.
 //
 // Publishing is deliberately NOT all-or-nothing. SQS caps a batch send at 10
-// while the poller claims up to 100, so an implementation chunks internally
+// while a lane publishes up to 100, so an implementation chunks internally
 // and a partial failure is the broker's normal operating mode, not an
 // exceptional one. Publish returns the job ids it did NOT publish; the caller
 // leaves exactly those PENDING and marks the rest QUEUED, because a job the

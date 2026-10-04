@@ -13,10 +13,10 @@ import (
 // its job was marked QUEUED, the row stays QUEUED indefinitely. This loop reverts such rows to PENDING after StaleAfter elapses since the row's
 // updated_at.
 //
-// The poller publishes BEFORE it commits QUEUED (see pollOnce), so a scheduler
-// that crashes mid-publish rolls its claim back to PENDING and no longer
-// strands rows here; recovery is the backstop for messages lost after the
-// broker accepted them, and for the rare commit that fails after a publish.
+// A lane publishes BEFORE it marks QUEUED (see lane.go), so a scheduler that
+// crashes mid-publish leaves its claim PENDING and no longer strands rows here;
+// recovery is the backstop for messages lost after the broker accepted them, and
+// for the rare QUEUED update that fails after a publish.
 type StaleQueuedJobPoller struct {
 	pool         *pgxpool.Pool
 	staleAfter   time.Duration

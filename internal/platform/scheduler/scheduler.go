@@ -6,8 +6,9 @@
 //
 // Layout:
 //
-//	poller.go          — PendingJobPoller + PausedConnectionCache
-//	dispatcher.go      — MessageGroupDispatcher with per-group FIFO + semaphore
+//	poller.go          — PendingJobPoller (claims, hold-backs) + PausedConnectionCache
+//	lane.go            — the dispatcher lanes: publish, mark QUEUED, ordering under failure
+//	dispatcher.go      — MessageGroupDispatcher: renders and publishes a claimed batch
 //	stale_recovery.go  — StaleQueuedJobPoller recovers stuck QUEUED jobs
 //	auth.go            — DispatchAuthService (HMAC tokens for dispatch callbacks)
 //
@@ -27,11 +28,21 @@ type Config struct {
 	// PollInterval is how often the pending-job poller queries the DB.
 	PollInterval time.Duration
 
-	// BatchSize is the maximum number of jobs claimed per poll — and, since
-	// the dispatcher publishes the whole claim in one PublishBatch, also the
-	// upper bound on messages sent per tick (the SQS backend chunks these to
-	// SendMessageBatch's 10-per-call limit).
+	// BatchSize is the maximum number of rows one claim asks for. A claim never
+	// asks for more than the free buffer (BufferCapacity).
 	BatchSize int
+
+	// BufferCapacity bounds the jobs between a claim and a lane finishing them
+	// (published and marked QUEUED, or dropped). The poller blocks only when this
+	// many are in flight.
+	BufferCapacity int
+
+	// Dispatchers is the number of lanes: independent workers that publish and
+	// mark claimed jobs. A message group is always handled by one lane.
+	Dispatchers int
+
+	// LaneBatch is the most jobs a lane publishes (and marks QUEUED) in one go.
+	LaneBatch int
 
 	// PausedCacheTTL is how often to refresh the paused-connections set.
 	PausedCacheTTL time.Duration
@@ -51,15 +62,46 @@ type Config struct {
 	ProcessingEndpoint string
 }
 
-// DefaultConfig holds the dispatch-job scheduler defaults. The owner
-// chose fast, conventional defaults
-// (poll 1s / batch 100 / in-flight 1000 / stale 5m) over the slower
-// legacy values. These are fixed defaults: fc-server builds the scheduler from
-// DefaultConfig() and none of them is overridable from the environment.
+// Defaults for the poller/lane engine.
+const (
+	DefaultBufferCapacity = 1000
+	DefaultDispatchers    = 10
+	DefaultBatchSize      = 500
+	DefaultLaneBatch      = 100
+)
+
+// normalized fills the zero values the engine cannot run with.
+func (c Config) normalized() Config {
+	if c.PollInterval <= 0 {
+		c.PollInterval = time.Second
+	}
+	if c.BufferCapacity <= 0 {
+		c.BufferCapacity = DefaultBufferCapacity
+	}
+	if c.Dispatchers <= 0 {
+		c.Dispatchers = DefaultDispatchers
+	}
+	if c.BatchSize <= 0 {
+		c.BatchSize = DefaultBatchSize
+	}
+	if c.LaneBatch <= 0 {
+		c.LaneBatch = DefaultLaneBatch
+	}
+	return c
+}
+
+// DefaultConfig holds the dispatch-job scheduler defaults: poll 1s, claim up to
+// 500, 10 dispatchers publishing 100 at a time, 1000 jobs in flight, stale 75m.
+// fc-server overrides the buffer, dispatcher and batch sizes from
+// FC_SCHEDULER_BUFFER_CAPACITY / FC_SCHEDULER_DISPATCHERS /
+// FC_SCHEDULER_BATCH_SIZE (see docs/environment-variables.md).
 func DefaultConfig() Config {
 	return Config{
 		PollInterval:   1 * time.Second,
-		BatchSize:      100,
+		BatchSize:      DefaultBatchSize,
+		BufferCapacity: DefaultBufferCapacity,
+		Dispatchers:    DefaultDispatchers,
+		LaneBatch:      DefaultLaneBatch,
 		PausedCacheTTL: 60 * time.Second,
 		// StaleAfter must exceed the router's deferral horizon (1h,
 		// FC_ROUTER_DEFERRAL_MAX_DELAY_SECONDS): a job whose queue message

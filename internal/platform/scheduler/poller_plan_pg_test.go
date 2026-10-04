@@ -4,6 +4,7 @@ package scheduler
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -57,10 +58,18 @@ var sortNode = regexp.MustCompile(`(?m)^\s*(->\s+)?(Incremental )?Sort\s*$`)
 // it did before migration 065), every plan would need a sort on top: one that
 // reads every tied row before the LIMIT can stop.
 func TestClaimPlan_NeedsNoSort(t *testing.T) {
-	plan := explain(t, claimSQL, 100, []string{})
-	assert.Contains(t, plan, "Merge Append", "ordered index scans merged across partitions:\n%s", plan)
-	assert.NotRegexp(t, sortNode, plan, "the pending-poll index must supply the claim's whole order:\n%s", plan)
-	assert.NotContains(t, plan, "Seq Scan", "plan:\n%s", plan)
+	// An empty exclusion list and a full one: the in-flight set is a filter on the
+	// rows the index walk visits, not something that may turn it into a sort.
+	inflight := make([]string, 1000)
+	for i := range inflight {
+		inflight[i] = fmt.Sprintf("djinflight%05d", i)
+	}
+	for name, arr := range map[string][]string{"empty": {}, "1000 in flight": inflight} {
+		plan := explain(t, claimSQL, 500, []string{}, arr)
+		assert.Contains(t, plan, "Merge Append", "%s: ordered index scans merged across partitions:\n%s", name, plan)
+		assert.NotRegexp(t, sortNode, plan, "%s: the pending-poll index must supply the claim's whole order:\n%s", name, plan)
+		assert.NotContains(t, plan, "Seq Scan", "%s: plan:\n%s", name, plan)
+	}
 }
 
 // Both stale sweeps are served by idx_dispatch_jobs_in_flight (status,
