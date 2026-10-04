@@ -101,3 +101,36 @@ func TestLoadEnv_RouterIntervalAliases(t *testing.T) {
 		}
 	})
 }
+
+// The dispatch scheduler's engine sizing is overridable from the environment;
+// unset, zero, negative or unparseable values keep the defaults.
+func TestSchedulerConfig_EnvOverrides(t *testing.T) {
+	keys := []string{"FC_SCHEDULER_BUFFER_CAPACITY", "FC_SCHEDULER_DISPATCHERS", "FC_SCHEDULER_BATCH_SIZE"}
+	t.Run("defaults", func(t *testing.T) {
+		for _, k := range keys {
+			t.Setenv(k, "")
+		}
+		c := schedulerConfig(LoadEnv())
+		if c.BufferCapacity != 1000 || c.Dispatchers != 10 || c.BatchSize != 500 || c.LaneBatch != 100 {
+			t.Errorf("config = %d/%d/%d/%d, want 1000/10/500/100", c.BufferCapacity, c.Dispatchers, c.BatchSize, c.LaneBatch)
+		}
+	})
+	t.Run("overrides", func(t *testing.T) {
+		t.Setenv("FC_SCHEDULER_BUFFER_CAPACITY", "5000")
+		t.Setenv("FC_SCHEDULER_DISPATCHERS", "24")
+		t.Setenv("FC_SCHEDULER_BATCH_SIZE", "250")
+		c := schedulerConfig(LoadEnv())
+		if c.BufferCapacity != 5000 || c.Dispatchers != 24 || c.BatchSize != 250 {
+			t.Errorf("config = %d/%d/%d, want 5000/24/250", c.BufferCapacity, c.Dispatchers, c.BatchSize)
+		}
+	})
+	t.Run("bad values keep defaults", func(t *testing.T) {
+		t.Setenv("FC_SCHEDULER_BUFFER_CAPACITY", "-1")
+		t.Setenv("FC_SCHEDULER_DISPATCHERS", "0")
+		t.Setenv("FC_SCHEDULER_BATCH_SIZE", "lots")
+		c := schedulerConfig(LoadEnv())
+		if c.BufferCapacity != 1000 || c.Dispatchers != 10 || c.BatchSize != 500 {
+			t.Errorf("config = %d/%d/%d, want the defaults", c.BufferCapacity, c.Dispatchers, c.BatchSize)
+		}
+	})
+}

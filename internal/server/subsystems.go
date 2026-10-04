@@ -74,12 +74,29 @@ func StartScheduler(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, setting
 	if c, ok := pub.(interface{ Stop() }); ok {
 		defer c.Stop()
 	}
-	scfg := scheduler.DefaultConfig()
-	scfg.ProcessingEndpoint = cfg.DispatchProcessingEndpoint
+	scfg := schedulerConfig(cfg)
 	s := scheduler.New(scfg, pool, pub, secret)
 	s.IsLeader = newLeaderGate(ctx, cfg, "scheduler")
 	s.Run(ctx)
 	slog.Info("scheduler stopped")
+}
+
+// schedulerConfig is the scheduler's defaults with the environment's overrides
+// (FC_SCHEDULER_BUFFER_CAPACITY / _DISPATCHERS / _BATCH_SIZE) and the processing
+// endpoint applied. Non-positive values keep the default.
+func schedulerConfig(cfg EnvCfg) scheduler.Config {
+	scfg := scheduler.DefaultConfig()
+	scfg.ProcessingEndpoint = cfg.DispatchProcessingEndpoint
+	if cfg.SchedulerBufferCapacity > 0 {
+		scfg.BufferCapacity = cfg.SchedulerBufferCapacity
+	}
+	if cfg.SchedulerDispatchers > 0 {
+		scfg.Dispatchers = cfg.SchedulerDispatchers
+	}
+	if cfg.SchedulerBatchSize > 0 {
+		scfg.BatchSize = cfg.SchedulerBatchSize
+	}
+	return scfg
 }
 
 // schedulerPublisher builds the publisher the dispatcher hands claimed jobs to.

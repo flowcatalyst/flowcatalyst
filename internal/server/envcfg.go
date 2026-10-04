@@ -43,6 +43,14 @@ type EnvCfg struct {
 	// platform (DISPATCH_SCHEDULER_PROCESSING_ENDPOINT in the task defs).
 	DispatchProcessingEndpoint string
 
+	// Dispatch scheduler engine sizing (FC_SCHEDULER_BUFFER_CAPACITY,
+	// FC_SCHEDULER_DISPATCHERS, FC_SCHEDULER_BATCH_SIZE). 0 = the scheduler
+	// default (1000 / 10 / 500); a non-positive or unparseable value also means
+	// the default.
+	SchedulerBufferCapacity int
+	SchedulerDispatchers    int
+	SchedulerBatchSize      int
+
 	// Token and session lifetimes, in seconds. Always positive: an unset,
 	// unparseable, or non-positive value falls back to the default.
 	//   SessionTTLSecs      — session cookie + session JWT (OIDC_SESSION_TTL, default 24h)
@@ -335,6 +343,10 @@ func LoadEnv() EnvCfg {
 
 		// DISPATCH_SCHEDULER_PROCESSING_ENDPOINT is the name the ECS task
 		// definitions set (worker + platform).
+		SchedulerBufferCapacity: envInt("FC_SCHEDULER_BUFFER_CAPACITY", 0),
+		SchedulerDispatchers:    envInt("FC_SCHEDULER_DISPATCHERS", 0),
+		SchedulerBatchSize:      envInt("FC_SCHEDULER_BATCH_SIZE", 0),
+
 		DispatchProcessingEndpoint: envFirst("FC_DISPATCH_PROCESSING_ENDPOINT", "DISPATCH_SCHEDULER_PROCESSING_ENDPOINT", ""),
 
 		// OIDC_* are the names the ECS task definitions set; the FC_* name
