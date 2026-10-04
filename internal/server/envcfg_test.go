@@ -1,6 +1,15 @@
 package server
 
-import "testing"
+import (
+	"context"
+	"sync"
+	"testing"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatch"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduler"
+)
 
 // The ECS task definitions set these deployment names; LoadEnv must honour
 // them, with the FC_* name winning where one exists.
@@ -133,4 +142,67 @@ func TestSchedulerConfig_EnvOverrides(t *testing.T) {
 			t.Errorf("config = %d/%d/%d, want the defaults", c.BufferCapacity, c.Dispatchers, c.BatchSize)
 		}
 	})
+}
+
+func TestSchedulerPool_SizingAndOverride(t *testing.T) {
+	scfg := scheduler.DefaultConfig()
+	if got := schedulerPoolSize(EnvCfg{}, scfg); got != 12 {
+		t.Errorf("default pool size = %d, want dispatchers+2 = 12", got)
+	}
+	scfg.Dispatchers = 24
+	if got := schedulerPoolSize(EnvCfg{}, scfg); got != 26 {
+		t.Errorf("pool size = %d, want 26", got)
+	}
+	if got := schedulerPoolSize(EnvCfg{SchedulerDBMaxConnections: 40}, scfg); got != 40 {
+		t.Errorf("override pool size = %d, want 40", got)
+	}
+	t.Setenv("FC_SCHEDULER_DB_MAX_CONNECTIONS", "17")
+	if got := schedulerPoolSize(LoadEnv(), scfg); got != 17 {
+		t.Errorf("env override pool size = %d, want 17", got)
+	}
+	t.Setenv("FC_SCHEDULER_DB_MAX_CONNECTIONS", "-3")
+	if got := schedulerPoolSize(LoadEnv(), scfg); got != 26 {
+		t.Errorf("bad override pool size = %d, want the default 26", got)
+	}
+}
+
+// The scheduler's pool copies the shared pool's connection settings and takes its
+// own size; a disabled scheduler opens none. (pgxpool connects lazily, so no
+// database is needed.)
+func TestSchedulerPool_OwnPoolOnlyWhenEnabled(t *testing.T) {
+	ctx := context.Background()
+	shared, err := pgxpool.New(ctx, "postgres://u:p@127.0.0.1:1/db?pool_max_conns=50&pool_max_conn_lifetime=7m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer shared.Close()
+
+	before := schedulerPoolsOpened.Load()
+	var wg sync.WaitGroup
+	if startSchedulerIfEnabled(ctx, &wg, shared, EnvCfg{SchedulerEnabled: false}, dispatch.Settings{}) {
+		t.Fatal("a disabled scheduler must not start")
+	}
+	wg.Wait()
+	if schedulerPoolsOpened.Load() != before {
+		t.Error("a disabled scheduler opened a pool")
+	}
+
+	p, err := newSchedulerPool(ctx, shared, 12)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	if p == shared {
+		t.Fatal("the scheduler must get its own pool")
+	}
+	pc, sc := p.Config(), shared.Config()
+	if pc.MaxConns != 12 || sc.MaxConns != 50 {
+		t.Errorf("max conns scheduler/shared = %d/%d, want 12/50", pc.MaxConns, sc.MaxConns)
+	}
+	if pc.ConnConfig.Host != sc.ConnConfig.Host || pc.MaxConnLifetime != sc.MaxConnLifetime {
+		t.Error("the scheduler pool must carry the shared pool's connection settings")
+	}
+	if p2, err := newSchedulerPool(ctx, nil, 12); p2 != nil || err != nil {
+		t.Error("no shared pool (no database) means no scheduler pool")
+	}
 }

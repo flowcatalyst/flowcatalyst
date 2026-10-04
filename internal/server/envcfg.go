@@ -50,6 +50,9 @@ type EnvCfg struct {
 	SchedulerBufferCapacity int
 	SchedulerDispatchers    int
 	SchedulerBatchSize      int
+	// SchedulerDBMaxConnections sizes the scheduler's own connection pool
+	// (FC_SCHEDULER_DB_MAX_CONNECTIONS). 0 = dispatchers + 2.
+	SchedulerDBMaxConnections int
 
 	// Token and session lifetimes, in seconds. Always positive: an unset,
 	// unparseable, or non-positive value falls back to the default.
@@ -343,9 +346,10 @@ func LoadEnv() EnvCfg {
 
 		// DISPATCH_SCHEDULER_PROCESSING_ENDPOINT is the name the ECS task
 		// definitions set (worker + platform).
-		SchedulerBufferCapacity: envInt("FC_SCHEDULER_BUFFER_CAPACITY", 0),
-		SchedulerDispatchers:    envInt("FC_SCHEDULER_DISPATCHERS", 0),
-		SchedulerBatchSize:      envInt("FC_SCHEDULER_BATCH_SIZE", 0),
+		SchedulerBufferCapacity:   envInt("FC_SCHEDULER_BUFFER_CAPACITY", 0),
+		SchedulerDispatchers:      envInt("FC_SCHEDULER_DISPATCHERS", 0),
+		SchedulerBatchSize:        envInt("FC_SCHEDULER_BATCH_SIZE", 0),
+		SchedulerDBMaxConnections: envInt("FC_SCHEDULER_DB_MAX_CONNECTIONS", 0),
 
 		DispatchProcessingEndpoint: envFirst("FC_DISPATCH_PROCESSING_ENDPOINT", "DISPATCH_SCHEDULER_PROCESSING_ENDPOINT", ""),
 

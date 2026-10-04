@@ -217,8 +217,7 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 			go platformHandles.FunctionControlListener.Run(ctx)
 		}
 	}
-	if cfg.SchedulerEnabled {
-		wg.Go(func() { StartScheduler(ctx, pool, cfg, dispatchSettings) })
+	if startSchedulerIfEnabled(ctx, &wg, pool, cfg, dispatchSettings) {
 		slog.Info("scheduler started")
 	}
 	if cfg.ScheduledJobEnabled {

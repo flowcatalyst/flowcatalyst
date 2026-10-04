@@ -12,6 +12,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -60,11 +61,22 @@ import (
 // Fail-closed: the dispatch-auth HMAC secret is derived from
 // FLOWCATALYST_APP_KEY; without it the scheduler refuses to start rather
 // than signing with a known literal.
-func StartScheduler(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, settings dispatch.Settings) {
+func StartScheduler(ctx context.Context, sharedPool *pgxpool.Pool, cfg EnvCfg, settings dispatch.Settings) {
 	secret, err := dispatchAuthSecret()
 	if err != nil {
 		slog.Error("scheduler disabled: cannot derive dispatch-auth secret; set FLOWCATALYST_APP_KEY", "err", err)
 		return
+	}
+	scfg := schedulerConfig(cfg)
+	// The scheduler gets its own pool so it never competes with API requests for
+	// connections. Closed after the scheduler (and its publisher) have stopped.
+	pool, err := newSchedulerPool(ctx, sharedPool, schedulerPoolSize(cfg, scfg))
+	if err != nil {
+		slog.Error("scheduler disabled: cannot open its database pool", "err", err)
+		return
+	}
+	if pool != nil {
+		defer pool.Close()
 	}
 	pub, err := schedulerPublisher(ctx, pool, cfg, settings)
 	if err != nil {
@@ -74,11 +86,54 @@ func StartScheduler(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, setting
 	if c, ok := pub.(interface{ Stop() }); ok {
 		defer c.Stop()
 	}
-	scfg := schedulerConfig(cfg)
 	s := scheduler.New(scfg, pool, pub, secret)
 	s.IsLeader = newLeaderGate(ctx, cfg, "scheduler")
 	s.Run(ctx)
 	slog.Info("scheduler stopped")
+}
+
+// schedulerPoolsOpened counts the dedicated scheduler pools opened (tests).
+var schedulerPoolsOpened atomic.Int64
+
+// schedulerPoolSize is the scheduler pool's MaxConns: the override when set,
+// else one connection per dispatcher lane (its QUEUED update) plus two — the
+// poller's claim and the hold-back query.
+func schedulerPoolSize(cfg EnvCfg, scfg scheduler.Config) int {
+	if cfg.SchedulerDBMaxConnections > 0 {
+		return cfg.SchedulerDBMaxConnections
+	}
+	return scfg.Dispatchers + 2
+}
+
+// newSchedulerPool opens the scheduler's own pool with the shared pool's
+// connection settings (URL, credentials hook, lifetimes) and MaxConns = size.
+// A nil shared pool (no database) yields nil, which the scheduler already
+// handles with its noop publisher.
+func newSchedulerPool(ctx context.Context, shared *pgxpool.Pool, size int) (*pgxpool.Pool, error) {
+	if shared == nil {
+		return nil, nil
+	}
+	pc := shared.Config().Copy()
+	pc.MaxConns = int32(size) //nolint:gosec // a small configured pool size
+	if pc.MinConns > pc.MaxConns {
+		pc.MinConns = pc.MaxConns
+	}
+	p, err := pgxpool.NewWithConfig(ctx, pc)
+	if err != nil {
+		return nil, err
+	}
+	schedulerPoolsOpened.Add(1)
+	return p, nil
+}
+
+// startSchedulerIfEnabled launches the scheduler (and with it its own pool)
+// only when enabled.
+func startSchedulerIfEnabled(ctx context.Context, wg *sync.WaitGroup, pool *pgxpool.Pool, cfg EnvCfg, settings dispatch.Settings) bool {
+	if !cfg.SchedulerEnabled {
+		return false
+	}
+	wg.Go(func() { StartScheduler(ctx, pool, cfg, settings) })
+	return true
 }
 
 // schedulerConfig is the scheduler's defaults with the environment's overrides
