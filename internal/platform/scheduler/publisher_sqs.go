@@ -53,16 +53,20 @@ type sqsSendClient interface {
 // # No two jobs of one group ever share a chunk
 //
 // This is load-bearing, not defensive. The claim orders by message_group, so
-// two jobs of a group are adjacent and would routinely land in the same chunk.
+// two jobs of a group are adjacent and would routinely land in the same chunk
+// if chunks were cut from the claim in a straight line.
 // SQS reports batch failures PER ENTRY: if the earlier of the two fails and the
 // later succeeds, the later is durably QUEUED while the earlier reverts to
 // PENDING and is published again afterwards — the group is now delivered out of
 // order. Two rules together prevent it:
 //
-//  1. A candidate whose group is already in the chunk being built closes that
-//     chunk early, without being consumed. A group-less job uses its own job id
+//  1. Chunks are built round-robin by group (see chunker): a chunk takes the
+//     next unsent job of each group, so a group appears at most once per chunk
+//     and its jobs go out in successive chunks, in claim order. Chunks of one
+//     destination are sent sequentially. A group-less job uses its own job id
 //     as its group, which nothing else shares, so group-less jobs still pack
-//     fully.
+//     fully, and a claim of N groups of M costs about N*M/10 calls rather than
+//     one call per adjacent same-group pair.
 //  2. A group that fails poisons its own later jobs for the rest of the call.
 //     Any job whose group is already known to have failed is reported
 //     unpublished without ever being sent. So a group is either delivered in
@@ -126,12 +130,11 @@ func (p *SQSDispatchPublisher) Publish(ctx context.Context, items []PublishItem)
 	failedGroups := make(map[string]bool)
 
 	for _, queueName := range order {
-		queued := byQueue[queueName]
-		for i := 0; i < len(queued); {
-			chunk, next := p.nextChunk(queued, i, failedGroups, &unpublished)
-			i = next
+		chunker := newChunker(byQueue[queueName])
+		for {
+			chunk := chunker.next(failedGroups, &unpublished)
 			if len(chunk) == 0 {
-				continue
+				break // every group is sent or poisoned
 			}
 			failedIDs, err := p.sendChunk(ctx, queueName, chunk, nonce)
 			if err != nil {
@@ -185,32 +188,81 @@ func (p *SQSDispatchPublisher) partition(ctx context.Context, items []PublishIte
 	return order, byQueue, unpublished, lastErr
 }
 
-// nextChunk builds the next chunk from queued[start:], returning it and the
-// index to resume at. Poisoned jobs are appended to unpublished without being
-// sent; a repeated group closes the chunk without consuming the candidate.
-func (p *SQSDispatchPublisher) nextChunk(queued []PublishItem, start int, failedGroups map[string]bool, unpublished *[]string) ([]PublishItem, int) {
+// groupQueue is one group's not-yet-sent jobs, in claim order.
+type groupQueue struct {
+	id    string
+	items []PublishItem
+}
+
+// chunker builds one destination's chunks by round-robin over its groups.
+type chunker struct {
+	groups []*groupQueue // groups with unsent jobs, in order of first appearance
+	cursor int           // where the next chunk resumes the round-robin
+}
+
+// newChunker splits one destination's claim-ordered jobs into per-group queues.
+// A group-less job is its own singleton group (its job id).
+func newChunker(queued []PublishItem) *chunker {
+	c := &chunker{}
+	index := make(map[string]*groupQueue)
+	for _, item := range queued {
+		id := groupIDFor(item)
+		g, ok := index[id]
+		if !ok {
+			g = &groupQueue{id: id}
+			index[id] = g
+			c.groups = append(c.groups, g)
+		}
+		g.items = append(g.items, item)
+	}
+	return c
+}
+
+// next builds the next chunk: the next unsent job of each group, one group after
+// another round-robin from where the previous chunk stopped, up to the SQS cap.
+// A group therefore appears at most once per chunk and its jobs appear in
+// successive chunks in their original order — chunks of a destination are sent
+// sequentially by the caller — while chunks stay full however the claim's
+// groups are distributed (ten groups of ten cost ten calls, not ninety-one).
+// A group already known to have failed is never sent again: its remaining jobs
+// are appended to unpublished here, unsent, and it drops out. Returns an empty
+// chunk only when no group has jobs left.
+func (c *chunker) next(failedGroups map[string]bool, unpublished *[]string) []PublishItem {
 	chunk := make([]PublishItem, 0, maxSQSBatchSize)
 	inChunk := make(map[string]bool, maxSQSBatchSize)
-	i := start
-	for i < len(queued) && len(chunk) < maxSQSBatchSize {
-		candidate := queued[i]
-		group := groupIDFor(candidate)
-		if failedGroups[group] {
+	for len(chunk) < maxSQSBatchSize && len(c.groups) > 0 {
+		if c.cursor >= len(c.groups) {
+			c.cursor = 0
+		}
+		g := c.groups[c.cursor]
+		if failedGroups[g.id] {
 			// Never sent at all: it reverts alongside the sibling that
 			// actually failed, keeping the group's relative order rather than
 			// racing a later publish against whatever a real send might do.
-			*unpublished = append(*unpublished, candidate.JobID)
-			i++
+			for _, item := range g.items {
+				*unpublished = append(*unpublished, item.JobID)
+			}
+			c.remove(c.cursor)
 			continue
 		}
-		if inChunk[group] {
-			break // starts the next chunk, candidate unconsumed
+		if inChunk[g.id] {
+			break // wrapped all the way round: every remaining group is in this chunk
 		}
-		chunk = append(chunk, candidate)
-		inChunk[group] = true
-		i++
+		chunk = append(chunk, g.items[0])
+		inChunk[g.id] = true
+		g.items = g.items[1:]
+		if len(g.items) == 0 {
+			c.remove(c.cursor)
+		} else {
+			c.cursor++
+		}
 	}
-	return chunk, i
+	return chunk
+}
+
+// remove drops the group at i; the cursor then already points at its successor.
+func (c *chunker) remove(i int) {
+	c.groups = append(c.groups[:i], c.groups[i+1:]...)
 }
 
 // sendChunk sends one chunk to one queue, creating the queue and retrying once

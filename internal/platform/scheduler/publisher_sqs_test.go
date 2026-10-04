@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -362,5 +363,167 @@ func TestSQSPublish_StalledSendIsReleasedByThePerCallDeadline(t *testing.T) {
 	}
 	if err == nil || len(unpublished) != 2 {
 		t.Errorf("Publish = %v, %v; want both jobs unpublished with an error", unpublished, err)
+	}
+}
+
+// groupedItems builds groups*per claim-ordered jobs the way the claim sorts
+// them: all of group 0, then all of group 1, ... Job ids are "g<G>-<N>".
+func groupedItems(groups, per int) []PublishItem {
+	var items []PublishItem
+	for g := range groups {
+		for n := range per {
+			items = append(items, item(fmt.Sprintf("g%02d-%02d", g, n), "", fmt.Sprintf("grp%02d", g)))
+		}
+	}
+	return items
+}
+
+// assertChunkInvariants checks every send: at most 10 entries, no group twice
+// in one send, and each group's jobs spread over successive sends in order.
+func assertChunkInvariants(t *testing.T, sends []*sqs.SendMessageBatchInput) {
+	t.Helper()
+	nextSeq := map[string]int{} // group -> next expected job number
+	for i, s := range sends {
+		if len(s.Entries) > maxSQSBatchSize {
+			t.Errorf("send %d has %d entries, over the SQS cap", i, len(s.Entries))
+		}
+		seen := map[string]bool{}
+		for _, e := range s.Entries {
+			g := *e.MessageGroupId
+			if seen[g] {
+				t.Errorf("send %d carries group %q twice", i, g)
+			}
+			seen[g] = true
+			var num int
+			if _, err := fmt.Sscanf((*e.Id)[strings.LastIndex(*e.Id, "-")+1:], "%d", &num); err == nil && strings.HasPrefix(*e.Id, "g") {
+				if num != nextSeq[g] {
+					t.Errorf("group %q job %q sent out of order (want #%d)", g, *e.Id, nextSeq[g])
+				}
+				nextSeq[g]++
+			}
+		}
+	}
+}
+
+// Ten groups of ten used to cost ~91 calls (a chunk closed whenever the next
+// job's group was already in it); round-robin packs them into exactly ten full
+// chunks.
+func TestSQSPublish_TenGroupsOfTenPackIntoTenFullChunks(t *testing.T) {
+	f := &fakeSQS{}
+	p := testSQSPublisher(f, stubDestinations{})
+	unpublished, err := p.Publish(context.Background(), groupedItems(10, 10))
+	if err != nil || unpublished != nil {
+		t.Fatalf("Publish = %v, %v", unpublished, err)
+	}
+	if len(f.sends) != 10 {
+		t.Fatalf("sends = %d, want 10", len(f.sends))
+	}
+	for i, s := range f.sends {
+		if len(s.Entries) != 10 {
+			t.Errorf("send %d has %d entries, want a full chunk of 10", i, len(s.Entries))
+		}
+	}
+	assertChunkInvariants(t, f.sends)
+}
+
+// One group cannot batch with itself: 25 jobs are 25 calls of one.
+func TestSQSPublish_OneGroupOf25IsTwentyFiveChunksOfOne(t *testing.T) {
+	f := &fakeSQS{}
+	p := testSQSPublisher(f, stubDestinations{})
+	if _, err := p.Publish(context.Background(), groupedItems(1, 25)); err != nil {
+		t.Fatalf("Publish errored: %v", err)
+	}
+	if len(f.sends) != 25 {
+		t.Fatalf("sends = %d, want 25", len(f.sends))
+	}
+	for i, s := range f.sends {
+		if len(s.Entries) != 1 {
+			t.Errorf("send %d has %d entries, want 1", i, len(s.Entries))
+		}
+	}
+	assertChunkInvariants(t, f.sends)
+}
+
+// More groups than one chunk holds: the round-robin carries on across chunks,
+// so chunks stay full (12 groups of 2 = 24 jobs = 10 + 10 + 4, not 12 + 12).
+func TestSQSPublish_MoreGroupsThanAChunkStaysPacked(t *testing.T) {
+	f := &fakeSQS{}
+	p := testSQSPublisher(f, stubDestinations{})
+	if _, err := p.Publish(context.Background(), groupedItems(12, 2)); err != nil {
+		t.Fatalf("Publish errored: %v", err)
+	}
+	if len(f.sends) != 3 || len(f.sends[0].Entries) != 10 || len(f.sends[1].Entries) != 10 || len(f.sends[2].Entries) != 4 {
+		var shape []int
+		for _, s := range f.sends {
+			shape = append(shape, len(s.Entries))
+		}
+		t.Fatalf("chunk shape = %v, want [10 10 4]", shape)
+	}
+	assertChunkInvariants(t, f.sends)
+}
+
+// Grouped jobs and group-less jobs together: the group-less ones pack freely
+// into the chunks the group's successive jobs leave room in.
+func TestSQSPublish_MixedGroupedAndUngrouped(t *testing.T) {
+	f := &fakeSQS{}
+	p := testSQSPublisher(f, stubDestinations{})
+	items := groupedItems(1, 3) // grp00 x3, claim-sorted first
+	for i := range 5 {
+		items = append(items, item(fmt.Sprintf("u%d", i), "", "")) // NULL groups sort last
+	}
+	if _, err := p.Publish(context.Background(), items); err != nil {
+		t.Fatalf("Publish errored: %v", err)
+	}
+	if len(f.sends) != 3 {
+		t.Fatalf("sends = %d, want 3 (the group's three jobs one per chunk)", len(f.sends))
+	}
+	if got := len(f.sends[0].Entries); got != 6 {
+		t.Errorf("first chunk = %d entries, want group job #0 plus all 5 group-less jobs", got)
+	}
+	sent := map[string]int{}
+	for _, s := range f.sends {
+		for _, id := range entryIDs(s) {
+			sent[id]++
+		}
+	}
+	if len(sent) != 8 {
+		t.Errorf("sent %d distinct jobs, want 8", len(sent))
+	}
+	assertChunkInvariants(t, f.sends)
+}
+
+// A failed group still poisons its later jobs under round-robin packing, and an
+// unrelated group is unaffected.
+func TestSQSPublish_PoisoningSkipsAFailedGroupsLaterJobsWhenPacked(t *testing.T) {
+	f := &fakeSQS{failIDs: map[string]bool{"g00-00": true}}
+	p := testSQSPublisher(f, stubDestinations{})
+	unpublished, err := p.Publish(context.Background(), groupedItems(2, 3))
+	if err == nil {
+		t.Fatal("Publish succeeded, want an error")
+	}
+	want := map[string]bool{"g00-00": true, "g00-01": true, "g00-02": true}
+	if len(unpublished) != 3 {
+		t.Fatalf("unpublished = %v, want the failed job and its two later jobs", unpublished)
+	}
+	for _, id := range unpublished {
+		if !want[id] {
+			t.Errorf("unexpected unpublished job %q", id)
+		}
+	}
+	sent := map[string]bool{}
+	for _, s := range f.sends {
+		for _, id := range entryIDs(s) {
+			sent[id] = true
+		}
+	}
+	for _, id := range []string{"g00-01", "g00-02"} {
+		if sent[id] {
+			t.Errorf("%s was sent after its group had failed", id)
+		}
+	}
+	for _, id := range []string{"g01-00", "g01-01", "g01-02"} {
+		if !sent[id] {
+			t.Errorf("%s of the unrelated group was not sent", id)
+		}
 	}
 }
