@@ -58,7 +58,7 @@ func pollAndCapture(t *testing.T, pool *pgxpool.Pool) []common.Message {
 	poller := NewPendingJobPoller(DefaultConfig(), pool, dispatcher,
 		NewPausedConnectionCache(pool, time.Minute))
 
-	require.NoError(t, poller.pollOnce(context.Background()))
+	mustPoll(t, poller, context.Background())
 	return pub.captured()
 }
 

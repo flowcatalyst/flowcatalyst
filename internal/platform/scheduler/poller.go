@@ -108,6 +108,10 @@ type PendingJobPoller struct {
 	// claims across replicas would dispatch a group's jobs out of order.
 	// nil = always run (standby disabled). Set by Scheduler.Run.
 	IsLeader func() bool
+
+	// poll is the per-pass claim+publish; nil means pollOnce. A seam so the run
+	// loop's drain and fall-back rules can be tested without a database.
+	poll func(ctx context.Context) (claimed, published int, err error)
 }
 
 // NewPendingJobPoller wires the poller. The pool-code resolver shares
@@ -133,25 +137,53 @@ func (p *PendingJobPoller) Run(ctx context.Context) {
 			slog.Info("dispatch job poller stopped")
 			return
 		case <-tick.C:
-			if p.IsLeader != nil && !p.IsLeader() {
-				continue // only the leader claims
-			}
-			if err := p.pollOnce(ctx); err != nil {
-				slog.Warn("poll error", "err", err)
-			}
+			p.drain(ctx)
 		}
 	}
 }
 
-// pollOnce claims a batch of jobs and submits them to the dispatcher.
-func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
+// drain runs poll passes for one tick. A pass that claimed a FULL batch and
+// published something means the backlog is deeper than one batch, so it polls
+// again at once rather than sleeping a PollInterval per 100 jobs (which capped
+// throughput at BatchSize/PollInterval). It falls back to the ticker on a short
+// batch (backlog drained), on published == 0 (a claim that publishes nothing
+// would otherwise spin on the same rows), and on error. The leader gate and ctx
+// are re-checked before every pass: leadership can be lost mid-drain.
+func (p *PendingJobPoller) drain(ctx context.Context) {
+	poll := p.poll
+	if poll == nil {
+		poll = p.pollOnce
+	}
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		if p.IsLeader != nil && !p.IsLeader() {
+			return // only the leader claims
+		}
+		claimed, published, err := poll(ctx)
+		if err != nil {
+			slog.Warn("poll error", "err", err)
+			return
+		}
+		if claimed < p.cfg.BatchSize || published == 0 {
+			return
+		}
+	}
+}
+
+// pollOnce claims a batch of jobs and submits them to the dispatcher. It
+// reports how many rows the claim returned and how many of them were published
+// (marked QUEUED); the run loop uses the pair to decide whether to poll again
+// immediately.
+func (p *PendingJobPoller) pollOnce(ctx context.Context) (int, int, error) {
 	paused, err := p.pausedCache.PausedSubscriptionIDs(ctx)
 	if err != nil {
-		return err
+		return 0, 0, err
 	}
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
-		return err
+		return 0, 0, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
@@ -186,7 +218,7 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 		  FOR UPDATE SKIP LOCKED`,
 		p.cfg.BatchSize)
 	if err != nil {
-		return err
+		return 0, 0, err
 	}
 	var claims []dispatchClaim
 	for rows.Next() {
@@ -199,7 +231,7 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 		if err := rows.Scan(&c.id, &subID, &msgGroup, &c.mode, &poolID, &clientID,
 			&c.attempt, &c.target, &c.createdAt, &c.sequence, &queue); err != nil {
 			rows.Close()
-			return err
+			return 0, 0, err
 		}
 		if subID != nil {
 			c.subID = *subID
@@ -220,7 +252,7 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 	}
 	rows.Close()
 	if len(claims) == 0 {
-		return nil
+		return 0, 0, nil
 	}
 
 	// Filter, publish, then mark QUEUED and commit — in that order, with the
@@ -260,7 +292,7 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 	}
 	blocked, err := blockedGroups(ctx, tx, candidates)
 	if err != nil {
-		return err
+		return 0, 0, err
 	}
 
 	var queued []string
@@ -303,7 +335,7 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 	if len(tokens) == 0 {
 		// Nothing dispatchable: the claim is released (rolled back by the
 		// deferred Rollback), every row still PENDING.
-		return nil
+		return len(claims), 0, nil
 	}
 
 	// Publish while the claim is still locked and uncommitted — see above.
@@ -330,7 +362,7 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 	if len(published) == 0 {
 		// Nothing reached the broker; rolling back leaves every row PENDING
 		// for the next poll.
-		return nil
+		return len(claims), 0, nil
 	}
 	// created_at bounds let the created_at-partitioned table prune to the
 	// partitions the published rows actually span.
@@ -341,14 +373,14 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 		published, minCreated, maxCreated); err != nil {
 		slog.Warn("marking published dispatch jobs QUEUED failed; they will be published again",
 			"published", len(published), "err", err)
-		return err
+		return 0, 0, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		// Published but still PENDING: the next poll publishes them again,
 		// and /process delivers each once.
 		slog.Warn("committing published dispatch jobs failed; they will be published again",
 			"published", len(published), "err", err)
-		return err
+		return 0, 0, err
 	}
 	if len(queued) > 0 || skippedPaused > 0 || skippedBlocked > 0 {
 		slog.Debug("poll tick",
@@ -356,7 +388,7 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) error {
 			"skipped_paused", skippedPaused,
 			"skipped_blocked", skippedBlocked)
 	}
-	return nil
+	return len(claims), len(published), nil
 }
 
 // dispatchClaim is one PENDING row claimed by the poll query. group, subID,

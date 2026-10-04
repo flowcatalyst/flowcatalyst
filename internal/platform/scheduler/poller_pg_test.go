@@ -65,7 +65,7 @@ func TestPollOnce_BatchPublishFailureRevertsToPending(t *testing.T) {
 	dispatcher := NewMessageGroupDispatcher(pool, failPublisher{}, NewDispatchAuthService("s"), "http://localhost/api/dispatch/process")
 	poller := NewPendingJobPoller(DefaultConfig(), pool, dispatcher, NewPausedConnectionCache(pool, time.Minute))
 
-	require.NoError(t, poller.pollOnce(ctx))
+	mustPoll(t, poller, ctx)
 
 	require.Equal(t, "PENDING", jobStatus(t, pool, id1), "failed batch publish must revert to PENDING")
 	require.Equal(t, "PENDING", jobStatus(t, pool, id2), "failed batch publish must revert to PENDING")
@@ -139,7 +139,7 @@ func TestPollOnce_BlockedGroupHoldback(t *testing.T) {
 	seedModeJob(t, pool, pendingID, "PENDING", group, "BLOCK_ON_ERROR")
 	seedModeJob(t, pool, immediateID, "PENDING", group, "IMMEDIATE")
 
-	require.NoError(t, poller.pollOnce(ctx))
+	mustPoll(t, poller, ctx)
 	require.Equal(t, "PENDING", jobStatus(t, pool, pendingID),
 		"BLOCK_ON_ERROR sibling of a FAILED job must be held back, not claimed")
 	require.Equal(t, "QUEUED", jobStatus(t, pool, immediateID),
@@ -153,7 +153,7 @@ func TestPollOnce_BlockedGroupHoldback(t *testing.T) {
 		failedID)
 	require.NoError(t, err)
 
-	require.NoError(t, poller.pollOnce(ctx))
+	mustPoll(t, poller, ctx)
 	require.Equal(t, "QUEUED", jobStatus(t, pool, pendingID),
 		"resolved group must dispatch on the next poll")
 }
@@ -174,7 +174,7 @@ func TestPollOnce_NullGroupFailureDoesNotBlock(t *testing.T) {
 	seedJob(t, pool, failedID, "FAILED", "", "")
 	seedJob(t, pool, pendingID, "PENDING", "", "")
 
-	require.NoError(t, poller.pollOnce(ctx))
+	mustPoll(t, poller, ctx)
 	require.Equal(t, "QUEUED", jobStatus(t, pool, pendingID),
 		"an ungrouped FAILED job must not block other ungrouped jobs")
 }
@@ -204,7 +204,7 @@ func TestPollOnce_PausedConnectionHoldsJob(t *testing.T) {
 	seedJob(t, pool, jobID, "PENDING", "grp_paused_it01", subID)
 
 	poller := newTestPoller(pool)
-	require.NoError(t, poller.pollOnce(ctx))
+	mustPoll(t, poller, ctx)
 	require.Equal(t, "PENDING", jobStatus(t, pool, jobID),
 		"job behind a PAUSED connection must stay PENDING")
 
@@ -216,7 +216,15 @@ func TestPollOnce_PausedConnectionHoldsJob(t *testing.T) {
 	require.NoError(t, err)
 
 	poller = newTestPoller(pool)
-	require.NoError(t, poller.pollOnce(ctx))
+	mustPoll(t, poller, ctx)
 	require.Equal(t, "QUEUED", jobStatus(t, pool, jobID),
 		"reactivated connection must release the job")
+}
+
+// mustPoll runs one pollOnce pass and fails the test on error.
+func mustPoll(t *testing.T, p *PendingJobPoller, ctx context.Context) (claimed, published int) {
+	t.Helper()
+	claimed, published, err := p.pollOnce(ctx)
+	require.NoError(t, err)
+	return claimed, published
 }

@@ -58,7 +58,7 @@ func TestPollOnce_WorkerDeathMidPublishLeavesTheClaimPending(t *testing.T) {
 
 	func() {
 		defer func() { _ = recover() }()
-		_ = poller.pollOnce(ctx)
+		_, _, _ = poller.pollOnce(ctx)
 	}()
 	require.True(t, dying.observed, "the publisher was reached")
 	assert.Equal(t, "PENDING", dying.seenMid[id1], "nothing is committed QUEUED before the publish")
@@ -70,7 +70,7 @@ func TestPollOnce_WorkerDeathMidPublishLeavesTheClaimPending(t *testing.T) {
 	capture := &capturePublisher{}
 	dispatcher = NewMessageGroupDispatcher(pool, capture, NewDispatchAuthService("s"), "http://localhost/api/dispatch/process")
 	poller = NewPendingJobPoller(DefaultConfig(), pool, dispatcher, NewPausedConnectionCache(pool, time.Minute))
-	require.NoError(t, poller.pollOnce(ctx))
+	mustPoll(t, poller, ctx)
 	assert.Equal(t, "QUEUED", jobStatus(t, pool, id1))
 	assert.Equal(t, "QUEUED", jobStatus(t, pool, id2))
 	capture.mu.Lock()
@@ -106,7 +106,7 @@ func TestPollOnce_PartialPublishMarksOnlyThePublishedQueued(t *testing.T) {
 	dispatcher := NewMessageGroupDispatcher(pool, partialPublisher{}, NewDispatchAuthService("s"), "http://localhost/api/dispatch/process")
 	poller := NewPendingJobPoller(DefaultConfig(), pool, dispatcher, NewPausedConnectionCache(pool, time.Minute))
 
-	require.NoError(t, poller.pollOnce(ctx))
+	mustPoll(t, poller, ctx)
 	assert.Equal(t, "QUEUED", jobStatus(t, pool, id1), "the published job is QUEUED")
 	assert.Equal(t, "PENDING", jobStatus(t, pool, id2), "the unpublished job stays PENDING")
 }
