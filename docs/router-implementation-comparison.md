@@ -880,3 +880,55 @@ At the start of the SQS work, at 1 CPU: Rust 8.7k, Go 6.3k, Java 4.2k.
 6. **Bounded memory for bookkeeping**: the 15-minute acked-id memory became in-flight plus 5 s; a leak and two per-message scans were removed.
 
 None of the defects was caught by a compiler or by the unit tests that existed; each was found by measuring.
+
+### 10.6 Java warm, and why it defers when Go and Rust do not
+
+Java is judged warm (owner, 2026-10-04): a long-running instance does not pay the JIT and GC
+start-up again. A 100k warm-up is not enough: during the next 500k the JIT compiler still took
+33% of the one CPU. After a full 500k warm-up it takes 2%.
+
+**Fully warm, 1 CPU, second 500k fed at about 40k msg/s** (current build):
+
+| | |
+|---|---|
+| Received from SQS | 36.0k msg/s |
+| Delivered while being fed | 15.9k msg/s |
+| Delivered once the feed stops (draining its buffers) | about 28-30k msg/s |
+| 500k complete | 23.4 s |
+| Held inside the router at the end of the feed | 283k messages |
+| Deferral entries | 10.5k |
+| CPU while fed | carrier thread 56%, Vert.x event loop 15%, GC 13%, JIT 2% |
+
+So Java's warm figure is two numbers: about 16k msg/s while messages are still arriving and
+about 30k msg/s when it is only delivering. The steady rates in §10.1 for Java were cold runs.
+With a short (100k) warm-up the flood protocol measured 30.4k / 36.6k / 65.8k msg/s over the
+middle 80% of deliveries at 1 / 2 / 4 CPUs, but that phase is mostly a drain of buffered
+messages and the 1-CPU run then took 113.6 s to finish its deferred tail.
+
+**Why Java defers and the others do not: it receives faster than it delivers; they do not.**
+Under the same paced feed (30k msg/s, 1 CPU):
+
+| | Received | Delivered | Held in the router | Left in SQS |
+|---|---|---|---|---|
+| Go | 11.3k/s | 11.3k/s | about 1,100 | 303k |
+| Rust | 19.3k/s | 18.2k/s | about 19,000 | 175k |
+| Java | 28.7k/s | 16.0k/s | about 218,000 | 0 |
+
+Go and Rust leave the backlog in the broker and take it only as fast as they deliver. Java pulls
+it into its pool buffers (2,560 per pool), fills them, and then defers. None of the three has an
+explicit rule tying polling to delivery: the poll-gate logic is the same in all three (poll while
+the pool's buffer has room, or while the deferral budget lasts). In Go and Rust the coupling
+falls out of one scheduler running polling and delivery together; in Java it does not.
+
+**What was tested and ruled out as the cause in Java:**
+- JIT warm-up: fully warm it still receives 36k/s and delivers 16k/s.
+- The scheduler preferring locally woken virtual threads: two carrier threads on one CPU gave
+  26k received and 10k delivered; platform-thread socket pollers (`jdk.pollerMode=1`) gave 30k
+  and 9k. No improvement.
+- A starved delivery thread: the Vert.x event loop used 6-15% of the CPU and was not the limit.
+
+The root cause inside the JVM's scheduling is **not established**. The fix does not depend on
+it: tie intake to delivery explicitly. Either the planned block mode for a queue that feeds one
+pool (back-pressure plan §4.8), or pace a queue's polling once its pool has more than a few
+workers' worth of messages waiting, which keeps reading the queue (the head-of-line ruling)
+while stopping the buffers filling.
