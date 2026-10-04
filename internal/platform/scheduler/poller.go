@@ -121,6 +121,10 @@ type PendingJobPoller struct {
 	// nil = always run (standby disabled). Set by Scheduler.Run.
 	IsLeader func() bool
 
+	// starveWarnedAt is when warnIfStarved last logged; pollOnce runs on one
+	// goroutine, so it needs no lock.
+	starveWarnedAt time.Time
+
 	// poll is the per-pass claim+publish; nil means pollOnce. A seam so the run
 	// loop's drain and fall-back rules can be tested without a database.
 	poll func(ctx context.Context) (claimed, published int, err error)
@@ -195,6 +199,12 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) (int, int, error) {
 	if err != nil {
 		return 0, 0, err
 	}
+	// The paused set goes INTO the claim query (never nil: `<> ALL(NULL)` is
+	// NULL, which would exclude every row).
+	pausedIDs := make([]string, 0, len(paused))
+	for id := range paused {
+		pausedIDs = append(pausedIDs, id)
+	}
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return 0, 0, err
@@ -235,10 +245,11 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) (int, int, error) {
 		   FROM msg_dispatch_jobs
 		  WHERE status = 'PENDING'
 		    AND (scheduled_for IS NULL OR scheduled_for <= NOW())
+	    AND (subscription_id IS NULL OR subscription_id <> ALL($2::text[]))
 		  ORDER BY message_group ASC NULLS LAST, sequence ASC, created_at ASC, id ASC
 		  LIMIT $1
 		  FOR UPDATE SKIP LOCKED`,
-		p.cfg.BatchSize)
+		p.cfg.BatchSize, pausedIDs)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -301,13 +312,20 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) (int, int, error) {
 	// rest simply stay PENDING for the next poll (no revert needed: their
 	// QUEUED status was never written).
 	//
-	// Filter order: paused-subscription
-	// filter, then group, then the blocked-group hold-back, then the
-	// per-mode filter. Skipped claims are simply left PENDING — their row
-	// locks release at commit and the next poll retries them.
-	live, skippedPaused := filterPausedSubscriptions(claims, paused)
-
-	byGroup := groupByMessageGroup(live)
+	// Paused subscriptions are excluded by the claim query itself, so they can
+	// never fill the LIMIT window and starve rows behind them (the claim sorts by
+	// message_group, so a run of paused rows sorting early used to be re-claimed,
+	// dropped and left PENDING on every tick, with nothing behind them ever
+	// published). There is deliberately no second Go-side paused check: it would
+	// read the very same cache snapshot the query used, so it could never differ.
+	// A connection paused after the snapshot is picked up within the cache TTL,
+	// exactly as before.
+	//
+	// What remains in Go is the blocked-group / BLOCK_ON_ERROR hold-back, which
+	// is positional (a job waits behind an EARLIER failed sibling) and so stays
+	// out of SQL. Held rows are left PENDING — their row locks release at
+	// rollback/commit and the next poll retries them.
+	byGroup := groupByMessageGroup(claims)
 	candidates := make([]string, 0, len(byGroup))
 	for g := range byGroup {
 		candidates = append(candidates, g)
@@ -357,6 +375,7 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) (int, int, error) {
 	if len(tokens) == 0 {
 		// Nothing dispatchable: the claim is released (rolled back by the
 		// deferred Rollback), every row still PENDING.
+		p.warnIfStarved(len(claims), skippedBlocked, 0, len(pausedIDs))
 		return len(claims), 0, nil
 	}
 
@@ -384,6 +403,7 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) (int, int, error) {
 	if len(published) == 0 {
 		// Nothing reached the broker; rolling back leaves every row PENDING
 		// for the next poll.
+		p.warnIfStarved(len(claims), skippedBlocked, len(tokens), len(pausedIDs))
 		return len(claims), 0, nil
 	}
 	// Mark + commit run detached from ctx. The jobs are already on the broker:
@@ -411,13 +431,43 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) (int, int, error) {
 			"published", len(published), "err", err)
 		return 0, 0, err
 	}
-	if len(queued) > 0 || skippedPaused > 0 || skippedBlocked > 0 {
+	if len(queued) > 0 || skippedBlocked > 0 {
 		slog.Debug("poll tick",
 			"queued", len(queued),
-			"skipped_paused", skippedPaused,
 			"skipped_blocked", skippedBlocked)
 	}
 	return len(claims), len(published), nil
+}
+
+// starveWarnEvery rate-limits the starvation warning.
+const starveWarnEvery = time.Minute
+
+// warnIfStarved logs when a FULL claim published nothing. That is the signature
+// of starvation: the LIMIT window is filled with rows that cannot be published
+// (held back behind a failed sibling, or rejected by the broker), so nothing
+// behind them is ever reached, and without this it is completely silent.
+// Paused-subscription rows no longer count — the claim query excludes them — so
+// the paused figure is the size of the excluded set, for context. At most once
+// per starveWarnEvery.
+func (p *PendingJobPoller) warnIfStarved(claimed, held, publishFailed, pausedSubscriptions int) {
+	if claimed < p.cfg.BatchSize || !p.starveWarnDue(time.Now()) {
+		return
+	}
+	slog.Warn("dispatch poller claimed a full batch and published none of it; jobs behind it may be starved",
+		"claimed", claimed,
+		"held_skipped", held,
+		"publish_failed", publishFailed,
+		"paused_subscriptions_excluded", pausedSubscriptions)
+}
+
+// starveWarnDue reports whether a starvation warning may be logged at now, and
+// records it when so.
+func (p *PendingJobPoller) starveWarnDue(now time.Time) bool {
+	if !p.starveWarnedAt.IsZero() && now.Sub(p.starveWarnedAt) < starveWarnEvery {
+		return false
+	}
+	p.starveWarnedAt = now
+	return true
 }
 
 // dispatchClaim is one PENDING row claimed by the poll query. group, subID,
@@ -480,26 +530,6 @@ func groupByMessageGroup(claims []dispatchClaim) map[string][]dispatchClaim {
 		grouped[key] = append(grouped[key], c)
 	}
 	return grouped
-}
-
-// filterPausedSubscriptions drops claims whose subscription's connection
-// is PAUSED; they sit in PENDING until the connection is reactivated.
-// Claims without a subscription always pass. Returns the survivors and
-// the dropped count.
-func filterPausedSubscriptions(claims []dispatchClaim, paused map[string]struct{}) ([]dispatchClaim, int) {
-	if len(paused) == 0 {
-		return claims, 0
-	}
-	kept := make([]dispatchClaim, 0, len(claims))
-	for _, c := range claims {
-		if c.subID != "" {
-			if _, isPaused := paused[c.subID]; isPaused {
-				continue
-			}
-		}
-		kept = append(kept, c)
-	}
-	return kept, len(claims) - len(kept)
 }
 
 // filterByDispatchMode keeps the claims whose mode allows dispatch given

@@ -169,22 +169,3 @@ func TestJobKeyOrdering(t *testing.T) {
 	assert.False(t, jobKey{sequence: 1, createdAt: early, id: "a"}.
 		before(jobKey{sequence: 1, createdAt: early, id: "a"}), "a job is not before itself")
 }
-
-func TestFilterPausedSubscriptions(t *testing.T) {
-	paused := map[string]struct{}{"sub_paused_1": {}, "sub_paused_2": {}}
-	kept, skipped := filterPausedSubscriptions([]dispatchClaim{
-		mkClaimWithSub("j1", "g", "sub_active"),
-		mkClaimWithSub("j2", "g", "sub_paused_1"),
-		mkClaimWithSub("j3", "g", ""), // no subscription always passes
-		mkClaimWithSub("j4", "g", "sub_paused_2"),
-	}, paused)
-	assert.Equal(t, []string{"j1", "j3"}, claimIDs(kept))
-	assert.Equal(t, 2, skipped)
-}
-
-func TestFilterPausedSubscriptions_NothingPaused(t *testing.T) {
-	claims := []dispatchClaim{mkClaimWithSub("j1", "g", "sub_x")}
-	kept, skipped := filterPausedSubscriptions(claims, map[string]struct{}{})
-	assert.Equal(t, []string{"j1"}, claimIDs(kept))
-	assert.Zero(t, skipped)
-}

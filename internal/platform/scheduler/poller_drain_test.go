@@ -92,3 +92,12 @@ func TestDrain_RechecksLeaderAndContextBeforeEveryPass(t *testing.T) {
 	p.drain(ctx)
 	assert.Equal(t, 1, calls, "a cancelled ctx stops the next pass")
 }
+
+func TestStarveWarn_RateLimitedToOncePerMinute(t *testing.T) {
+	p := drainTestPoller(nil)
+	t0 := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
+	assert.True(t, p.starveWarnDue(t0), "first warning is due")
+	assert.False(t, p.starveWarnDue(t0.Add(59*time.Second)), "suppressed inside the minute")
+	assert.True(t, p.starveWarnDue(t0.Add(61*time.Second)), "due again after a minute")
+	assert.False(t, p.starveWarnDue(t0.Add(62*time.Second)))
+}
