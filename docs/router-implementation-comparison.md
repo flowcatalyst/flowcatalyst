@@ -806,3 +806,77 @@ NATS, 1 CPU: 45.5k (40.7k with mimalloc only, 28.2k before). RSS 420-490 MB with
   bodies are read as bytes with lossy UTF-8 (same as before for UTF-8); the SQS calls use a
   client derived once with the timeout rather than a per-call override (exercised by the
   benchmark: sent = received = deleted on every run; not run against real SQS).
+
+## 10. Summary: before and after, per router
+
+SQS, 100 queues x 100 pools x 64 workers, in-memory SQS fixture, router limited by a CPU quota.
+Rates are steady rates (10-90% of deliveries) unless a row says otherwise. **Read the rows as a
+sequence, not a controlled experiment**: early rows used 100k messages and the average rate,
+later rows 500k and the steady rate; every figure is one or two runs; nothing was run against
+real SQS. Sections 9.1-9.16 have the detail behind each row.
+
+### 10.1 Where they are now
+
+| Steady rate (msg/s) | Rust | Go | Java |
+|---|---|---|---|
+| SQS, 1 CPU | 32.6k | 17.9k | 17.1k |
+| SQS, 2 CPUs | 54.9k | 31.6k | 33.3k |
+| SQS, 4 CPUs | 87.3k | 50.6k | 48.6k |
+| NATS, 1 CPU | 45.5k | 26.3k | 25.2k |
+| RSS (SQS) | 420-490 MB | about 435 MB | 1.5-1.95 GB (a heap ceiling; live data about 320-450 MB) |
+
+At the start of the SQS work, at 1 CPU: Rust 8.7k, Go 6.3k, Java 4.2k.
+
+### 10.2 Go
+
+| Step | SQS, 1 CPU | Notes |
+|---|---|---|
+| Start: one `DeleteMessage` per ack | 6.3k (100k msgs) | emulator-limited ElasticMQ figures before this (3.4k) are not comparable |
+| `DeleteMessageBatch`, pending-delete pruned from a FIFO (`eed51ba`) | 9.0k (100k), 9.6k (500k) | |
+| Mediator timeout by context, no MD5 or unused attributes, lazy logger, cached target keys (`b53b05c`, `ea53e7e`, `c7c21a2`) | 11.1k | RSS 576 to 433 MB |
+| Ack batcher with a lingering primary drainer (2.3 to 9.2 acks per call), in-flight pending-delete memory (`315c524`, `fba2bd0`) | 14.3-14.7k | RSS 522 to 311 MB |
+| Runtime tuning: `GOMAXPROCS=1` when the CPU limit is at most 1, GC target 200 when the router or scheduler runs, soft memory limit; small allocation trims (`9ce087e`, `3a66362`) | **17.9k** | RSS about 435 MB; context switches per message 0.5 to 0.007 |
+
+- 2 and 4 CPUs: 25.8k and 43.5k before the last step, 31.6k and 50.6k after.
+- NATS, 1 CPU: 18.0-18.6k at the start, 21.3k after the shared-pipeline changes, 26.3k after runtime tuning.
+- Allocation per message: 49 KB and 553 objects at the start, 21 KB and 224 objects before the last step (not re-measured after it). Our own code is about 6% of it; the AWS SDK is over half.
+- Why Go needed the CPU setting: Go's default never uses fewer than two scheduler threads, so a 1-CPU container ran two on one CPU.
+
+### 10.3 Rust
+
+| Step | SQS, 1 CPU | Notes |
+|---|---|---|
+| Start: one delete per ack, pending-delete map rescanned per message | 8.7k (100k msgs) | the rescan was O(n squared) |
+| `DeleteMessageBatch`, FIFO pruning (`eef9a7c7`, `8d574f4d`) | about 18-19k | rate fell 19.8k to 16.5k within a run |
+| Batched deferral, lingering ack batcher (6 to 9.2 acks per call), in-flight pending-delete memory, receipt-map leak fixed (`7726e12d`, `1d70ac90`, `29692d36`, `3d85827e`) | 18.9k | did not scale: 20.7k at 2 CPUs, 30.1k at 4 |
+| mimalloc as the global allocator (`a9d6827b`) | 26.7k | 44.4k and 68.9k at 2 and 4 CPUs; the within-run decline went away |
+| Allocation pass: 46 to 24 allocations per message (`a388cc6e` .. `00c39f82`) | **32.6k** | 54.9k and 87.3k at 2 and 4 CPUs |
+
+- NATS, 1 CPU: 29.3-30.6k at the start, 28.2k before the allocator, 40.7k with it, 45.5k after the allocation pass.
+- The system allocator was the cause of both the poor scaling and the decline: it locks when memory is freed on a different thread from the one that allocated it. The allocation pass alone, on the system allocator, gives 21.9k / 23.9k / 33.2k.
+
+### 10.4 Java
+
+| Step | SQS, 1 CPU | Notes |
+|---|---|---|
+| Start: one delete per ack | 4.2k (100k msgs) | |
+| `DeleteMessageBatch`, FIFO pruning (`25d0377f`) | 7.0-7.6k (100k msgs) | a 500k backlog then took 93-271 s: pools filled and 110-210k messages were deferred one call at a time |
+| Deferral fallback fixed, batched non-blocking deferral, poll pacing (`33d39cd2`, `1cd8aedf`, `4b44b9c3`) | 500k in 65-77 s | deferrals about 20k |
+| Hold-back follows the pool's current pace (`d64c5005`, `86daa2d2`) | 500k in 44-86 s cold; 16.7-18.7k warm | cold start is the weak point: about 30 s of JIT and GC before full speed |
+| Lingering ack batcher (6 to 9.7 acks per call), in-flight pending-delete memory (`3f18f22d`) | 15.5k steady | 32.8k and 49.7k at 2 and 4 CPUs; cold runs consistent at 42-44 s |
+| Wait cap removed (`05390e6a`); avoidable allocations removed (`c43971b9`, `14bd9622`, `95793247`, `ea3a8033`) | **17.1k steady** | 33.3k and 48.6k at 2 and 4 CPUs |
+
+- NATS, 1 CPU: 21.5-23.3k at the start, 23.1k before the allocation fixes, 25.2k after.
+- The allocation fixes removed about 10% of Java's allocation that was ours: the completion-rate calculation copied 80 KB per call and now copies nothing; target parsing and the breaker key are cached; the pool map is no longer copied; an ack allocates one small object instead of a future.
+- **Still open:** with the wait cap removed, a cold start into a backlog can leave a long tail. In the last runs the 1-CPU run finished 500k in 48 s (18k deferral entries) and the 2-CPU run in 90 s (37k), against 13 s at 4 CPUs (none). The steady rate is unaffected. The planned block mode for dedicated queues (back-pressure plan §4.8) is the intended answer.
+
+### 10.5 What made the difference, in order of size
+
+1. **Batching the broker calls** (acks, then deferrals): fewer signed requests per message. 1.4x to 2x in every router.
+2. **Rust's allocator**: 1.4x at one CPU and the difference between not scaling and scaling.
+3. **Go's runtime settings under a CPU quota**: about 1.25x.
+4. **Not over-pulling into full pools** (Java): the difference between minutes and a minute for a backlog.
+5. **Removing our own allocations and repeated work**: 10-25% each time.
+6. **Bounded memory for bookkeeping**: the 15-minute acked-id memory became in-flight plus 5 s; a leak and two per-message scans were removed.
+
+None of the defects was caught by a compiler or by the unit tests that existed; each was found by measuring.
