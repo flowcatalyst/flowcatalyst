@@ -965,3 +965,49 @@ orders of magnitude, not to the percent. Why Java's poll loops ran ahead of its 
 before this change is still not established; the pacing makes the rule explicit instead of
 relying on the scheduler, and the same rule would protect Go and Rust when their delivery is
 slow (their pools filled and deferred in the slow-pool test of §9.8). Not yet ported to them.
+
+### 10.8 All three on one protocol (the like-for-like table)
+
+Each router first processes 500k messages (so the JVM is warm), then a second 500k is fed faster
+than it can deliver (40k / 70k / 120k msg/s at 1 / 2 / 4 CPUs). SQS, 100 queues x 100 pools,
+current builds, single runs.
+
+| | CPUs | Delivered while fed | Received | Held in the router | 500k complete | Deferrals |
+|---|---|---|---|---|---|---|
+| Rust | 1 | 29.5k/s | 31.7k/s | 30k | 16.8 s | 0 |
+| Rust | 2 | 44.5k/s | 46.9k/s | 18k | 10.3 s | 0 |
+| Rust | 4 | 78.9k/s | 79.9k/s | 6k | 6.2 s | 0 |
+| Java | 1 | 16.3k/s | 16.3k/s | 7k | 24.3 s | 0 |
+| Java | 2 | 44.1k/s | 44.5k/s | 5k | 11.1 s | 0 |
+| Java | 4 | 75.9k/s | 76.6k/s | 3k | 6.3 s | 0 |
+| Go | 1 | 17.8k/s | 17.8k/s | 2k | 27.5 s | 0 |
+| Go | 2 | 29.7k/s | 29.7k/s | 0 | 16.9 s | 0 |
+| Go | 4 | 45.6k/s | 45.3k/s | 0 | 10.3 s | 0 |
+
+- At one CPU Rust is about 1.7-1.8x Go and Java. At two and four CPUs warm Java matches Rust,
+  and Go is about 60% of them.
+- Java's figures include the delivery pacing of §10.7. The owner's preference (2026-10-04) is for
+  Java to balance as Go and Rust do without an added rule; why its poll loops run ahead without
+  the pacing is not established, so that remains open.
+
+### 10.9 Go: ReceiveMessage responses lost at 4 CPUs (fixed, `35db6f5`)
+
+At 4 CPUs Go stranded 16-24 batches of ten messages per 500k: the fixture had handed them out,
+the router never saw them, and they came back only after the 120 s visibility timeout (a 500k
+run took about 130 s instead of about 15 s). Java and Rust were unaffected.
+
+The cause is in smithy-go (the AWS SDK's HTTP layer), not our code. It closes a request body as
+soon as the response headers are back; net/http, having written Content-Length bytes, reads the
+body once more; if that read lands after the close, smithy's `WriteTo` returns `io.EOF` as an
+error (its `Read` returns a clean end), net/http treats the request write as failed and closes
+the connection while the response is still being read. The SDK reports `200 ... failed to
+decode response body ... use of closed network connection` and retries, and for
+`ReceiveMessage` the first response's messages are gone. It needs a broker that answers in
+microseconds and at least four threads truly in parallel; real SQS latency all but closes the
+window.
+
+Found by: the fixture's own counters (received above sent), then its per-operation call counts
+against the router's poll count, SDK retry logging, and a diagnostic connection wrapper that
+logged the stack of the close (`net/http.(*persistConn).writeLoop`). Fixed by hiding `WriteTo`
+on the request body (`plainBodyClient`), with a deterministic test of the closed-body copy. After
+the fix three 4-CPU runs finished in about 15 s with exactly 500,000 received.
