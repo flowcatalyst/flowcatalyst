@@ -60,10 +60,11 @@ serve only the engine.** The events repo honors this. The dispatch-job repo does
 - `UNIQUE idx_msg_events_deduplication (deduplication_id, created_at)`
 
 `msg_dispatch_jobs`
-- `idx_dispatch_jobs_pending_poll (message_group NULLS LAST, sequence, created_at) WHERE status='PENDING'` ← poller claim
-- `idx_dispatch_jobs_blocked_groups (message_group, status) WHERE status IN ('FAILED','ERROR')` ← block-on-error
-- `idx_dispatch_jobs_stale_queued (queued_at) WHERE status='QUEUED'` ← stale recovery
-- `idx_msg_dispatch_jobs_unprojected (created_at) WHERE projected_at IS NULL` ← projector claim
+(as of migration 065, which replaced the first three, and 045, which replaced the fourth)
+- `idx_dispatch_jobs_pending_poll (message_group NULLS LAST, sequence, created_at, id) WHERE status='PENDING'` ← poller claim; ends in `id` so the claim's total order needs no sort
+- `idx_dispatch_jobs_group_holders (message_group, sequence, created_at, id) WHERE message_group IS NOT NULL AND (status IN ('FAILED','ERROR') OR (status='PENDING' AND scheduled_for IS NOT NULL))` ← block-on-error hold-back (claim time, delivery time, reaper join)
+- `idx_dispatch_jobs_in_flight (status, updated_at) WHERE status IN ('QUEUED','PROCESSING')` ← stale recovery + reaper sweep
+- `idx_msg_dispatch_jobs_dirty (created_at) WHERE projected_at IS NULL OR updated_at > projected_at` ← projector claim
 
 These line up **exactly** with the hot-path SQL (verified against `poller.go`,
 `stale_recovery.go`, `fan_out.go`, `events.go`, `dispatch_jobs.go`). No action.
