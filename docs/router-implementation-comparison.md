@@ -1011,3 +1011,56 @@ against the router's poll count, SDK retry logging, and a diagnostic connection 
 logged the stack of the close (`net/http.(*persistConn).writeLoop`). Fixed by hiding `WriteTo`
 on the request body (`plainBodyClient`), with a deterministic test of the closed-body copy. After
 the fix three 4-CPU runs finished in about 15 s with exactly 500,000 received.
+
+## 11. The dispatch job scheduler (2026-10-04)
+
+The scheduler is the other producer on the same queues: it claims due `PENDING` dispatch jobs
+from Postgres and publishes them for the router. The router work pointed at the same kinds of
+fault here, and a read-only review of each implementation found them. Nothing in this section
+has been measured on the rig; it is verified by tests only.
+
+### 11.1 What was wrong (all three unless noted)
+
+| Fault | Effect |
+|---|---|
+| One claim of 100 per 1 s tick, even when the claim came back full | Throughput capped at about 100 jobs/s whatever the database and broker could do |
+| SQS chunks closed at the first repeated group, with the claim sorted by group | Ten groups of ten cost about 91 `SendMessageBatch` calls instead of 10 |
+| SQS client with no call or attempt timeout, called inside the claim transaction | A hung call held 100 row locks and stopped the poller indefinitely |
+| Go built its own SQS client | It missed the lost-response fix of §10.9 |
+| Paused-subscription rows filtered after the `LIMIT` (Go, Java) | 100 such rows sorting first were re-claimed every tick and nothing behind them was ever published, silently |
+| One hold-back query per `BLOCK_ON_ERROR` candidate (Java) | Up to 100 round trips per tick |
+| No metrics (Go); `scheduler.pending_jobs` documented as the backlog but really the claim size, at most 100 (Rust) | Backlog alerts that could never fire |
+
+### 11.2 What changed
+
+| Change | Go | Rust | Java |
+|---|---|---|---|
+| Poll again at once while the claim is full and something was published; leader and shutdown re-checked each pass | `da2f70e` | `2acd6c7f` | `56fc1d21` |
+| Bounded SQS calls; a stalled publish rolls the claim back | `d10e0b7` (25 s per call, 2 min per poll, hardened client) | `0a3c726d` (10 s attempt, 25 s operation, 2 min per claim) | `76d0e57a` (5 s attempt, 10 s call) |
+| Paused subscriptions excluded in the claim SQL; WARN when a full claim publishes nothing | `7ac896f` | already in SQL | `0cc1e24c` |
+| SQS chunks filled across groups | `5455ffb` | `dd56d3c5` | `0c44c546` |
+| Metrics | `02cb378` (`fc_scheduler_*`) | `b5de5e1c` | JFR `ClaimedBatch.pausedSkipped` only |
+| One hold-back query per tick | n/a | n/a | `344e67db` |
+
+Unchanged in all three: claim order, one job of a group per batch, a failed group poisoning its
+later jobs, the per-call dedup nonce, publish before commit, marking `QUEUED` only what the
+broker accepted, the leader gate, and the stale-recovery thresholds.
+
+Chunk packing takes the next unsent job of each group in turn, ten to a call, so a group's jobs
+go out in successive calls in their original order. Go and Rust continue the rotation from where
+the last chunk stopped; Java sends layer by layer. A single group still cannot batch (25 jobs of
+one group is 25 calls).
+
+### 11.3 Not done
+
+- Held-group (`BLOCK_ON_ERROR`) rows are still filtered after the `LIMIT` in Go and Java, so a
+  batch-full of held rows sorting first can still starve the queue. It is now logged, not fixed;
+  the fix is to move the hold-back into the claim SQL as Rust does, and it must stay identical
+  to the `/process` predicate.
+- No backlog or oldest-due-age gauge: the query needs an index decision.
+- No index for the stale-recovery `PROCESSING` sweep (Go, Rust).
+- Poll interval and batch size are still not configurable by environment.
+- Different queues are still published one after another.
+- Rust: the Postgres queue publisher still inserts one row per job. Rust's Docker integration
+  tests were not run, so its changes are covered by unit tests with fakes only.
+- Java: `PoolCodeResolver` is still built twice.
