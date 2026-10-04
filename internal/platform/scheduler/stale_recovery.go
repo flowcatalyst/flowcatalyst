@@ -9,11 +9,14 @@ import (
 )
 
 // StaleQueuedJobPoller recovers dispatch jobs stuck in QUEUED (and in
-// PROCESSING; see recoverOnce). When the
-// scheduler crashes between marking PENDING→QUEUED and successfully
-// publishing to the broker, or when the broker drops a message, the
-// row stays QUEUED indefinitely. This loop reverts such rows to PENDING
-// after StaleAfter elapses since the row's updated_at.
+// PROCESSING; see recoverOnce). When a message is lost on the queue side after
+// its job was marked QUEUED, the row stays QUEUED indefinitely. This loop reverts such rows to PENDING after StaleAfter elapses since the row's
+// updated_at.
+//
+// The poller publishes BEFORE it commits QUEUED (see pollOnce), so a scheduler
+// that crashes mid-publish rolls its claim back to PENDING and no longer
+// strands rows here; recovery is the backstop for messages lost after the
+// broker accepted them, and for the rare commit that fails after a publish.
 type StaleQueuedJobPoller struct {
 	pool         *pgxpool.Pool
 	staleAfter   time.Duration

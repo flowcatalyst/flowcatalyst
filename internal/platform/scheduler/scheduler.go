@@ -54,7 +54,8 @@ type Config struct {
 // DefaultConfig holds the dispatch-job scheduler defaults. The owner
 // chose fast, conventional defaults
 // (poll 1s / batch 100 / in-flight 1000 / stale 5m) over the slower
-// legacy values. All are env-overridable.
+// legacy values. These are fixed defaults: fc-server builds the scheduler from
+// DefaultConfig() and none of them is overridable from the environment.
 func DefaultConfig() Config {
 	return Config{
 		PollInterval:   1 * time.Second,
