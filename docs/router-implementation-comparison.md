@@ -744,3 +744,34 @@ recorded in the Rust repo's `docs/operations/supply-chain.md`. Measured on the c
   target. Go and Java are unaffected (they have their own allocators).
 - Unrelated, noticed while running the checks: `cargo deny check advisories` already fails on
   the Rust tree (Wasmtime advisories in the function host).
+
+### 9.15 Where each router allocates (SQS, 1 CPU, 500k flood)
+
+**Rust** (2-CPU `perf`, system allocator): 30.5% of CPU inside the allocator; of that, our
+router and queue code 42%, AWS SDK 32%, HTTP client 23%. By CPU overall the AWS SDK is about
+35% and reqwest/hyper/h2 about 26% (14% inside the delivery call, 12% in connection tasks).
+An allocation-reduction pass on our own code is in progress.
+
+**Go** (`pprof` allocs, current build): about 21 KB and 224 objects per message (49 KB and 553
+before this round). Objects by call tree: `ReceiveMessage` 33% (about 750 objects and 64 KB per
+call of ten messages), `DeleteMessageBatch` 20% (about 415 objects and 34 KB per call),
+delivery 24% (net/http client 17%), `encoding/json` 21% (overlaps the SDK), `context.With*` 8%
+(about 18 contexts per message, mostly inside the SDK and net/http). **Our own code allocates
+only about 6% directly** (the delete batcher's per-ack item, message parsing, the dispatcher's
+item, `mediateOnce`). There is little left to remove in Go's own code; the AWS SDK is over half.
+
+**Java** (JFR allocation samples, deep stacks): AWS SDK 38% plus its Apache client 7%;
+Vert.x/Netty delivery 32%; our router code 18%; our Jackson use 5%.
+- 14% of ALL allocation is one thing inside Vert.x: each HTTP/2 stream creates an
+  `OutboundMessageQueue` backed by a new multi-producer queue array
+  (`DefaultHttp2Stream` -> `OutboundMessageQueue` -> Netty `newMpscQueue`). It is per request
+  and not ours to change without a Vert.x setting or patch.
+- Avoidable in our own code, by share of all allocation: `DeleteBatcher.delete` 3.6% (a future
+  and an item per ack), `PoolMetricsCollector.completionCount` and `completionRate` 3.0% (each
+  call copies the whole sample deque; added with the deferral fix and called on every deferral),
+  `BreakerRegistry.keyFor` 2.0% and `HttpMediator.parseTarget` 0.5% (the target URL is parsed per
+  message; cache it), `RouterManager.pools` 0.8% (a map copy per call).
+
+In all three the AWS SDK is the largest single source (about a third to a half). A thin SQS
+client (signed HTTP plus direct JSON to our own types) is the lever that would move it; that is
+a maintenance decision, not a quick fix.
