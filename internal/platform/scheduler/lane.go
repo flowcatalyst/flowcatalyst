@@ -34,21 +34,40 @@ type laneJob struct {
 	updatedAt time.Time
 }
 
-// inflightSet is the ids of the jobs handed to lanes and not yet finished. The
-// poller excludes them from its next claim.
-type inflightSet struct {
-	mu  sync.Mutex
-	ids map[string]struct{}
+// inflightEntry is what the engine remembers of an in-flight job: its group and
+// the generation of the claim that took it.
+type inflightEntry struct {
+	group string
+	gen   uint64
 }
 
-func newInflightSet() *inflightSet { return &inflightSet{ids: make(map[string]struct{})} }
+// inflightSnapshot is the in-flight set as one claim saw it.
+type inflightSnapshot struct {
+	ids []string // never nil: it goes into `<> ALL($n)`
+	// minGen is, per group, the oldest generation among its in-flight jobs.
+	minGen map[string]uint64
+}
 
-func (s *inflightSet) add(ids []string) {
+// inflightSet is the state the poller and the lanes share: the in-flight jobs
+// (the next claim excludes their ids) and the poison marks. One mutex guards
+// both, so a claim's check against a poison mark sees a consistent view.
+type inflightSet struct {
+	mu        sync.Mutex
+	jobs      map[string]inflightEntry
+	poison    map[string]poisonEntry
+	lastEvict time.Time
+}
+
+func newInflightSet() *inflightSet {
+	return &inflightSet{jobs: make(map[string]inflightEntry), poison: make(map[string]poisonEntry)}
+}
+
+func (s *inflightSet) add(jobs []laneJob) {
 	s.mu.Lock()
-	for _, id := range ids {
-		s.ids[id] = struct{}{}
+	for _, j := range jobs {
+		s.jobs[j.tok.JobID] = inflightEntry{group: j.tok.MessageGroup, gen: j.gen}
 	}
-	n := len(s.ids)
+	n := len(s.jobs)
 	s.mu.Unlock()
 	schedMetrics.inflight.Set(float64(n))
 }
@@ -56,29 +75,90 @@ func (s *inflightSet) add(ids []string) {
 func (s *inflightSet) remove(ids []string) {
 	s.mu.Lock()
 	for _, id := range ids {
-		delete(s.ids, id)
+		delete(s.jobs, id)
 	}
-	n := len(s.ids)
+	n := len(s.jobs)
 	s.mu.Unlock()
 	schedMetrics.inflight.Set(float64(n))
 }
 
-// snapshot is a copy of the set. Never nil: it goes into `<> ALL($n)`, and a
-// NULL array excludes every row.
-func (s *inflightSet) snapshot() []string {
+// snapshot copies the set. The ids are never nil: a NULL array excludes every
+// row.
+func (s *inflightSet) snapshot() inflightSnapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := make([]string, 0, len(s.ids))
-	for id := range s.ids {
-		out = append(out, id)
+	snap := inflightSnapshot{ids: make([]string, 0, len(s.jobs)), minGen: make(map[string]uint64)}
+	for id, e := range s.jobs {
+		snap.ids = append(snap.ids, id)
+		if e.group == "" {
+			continue
+		}
+		if m, ok := snap.minGen[e.group]; !ok || e.gen < m {
+			snap.minGen[e.group] = e.gen
+		}
 	}
-	return out
+	return snap
 }
 
 func (s *inflightSet) size() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return len(s.ids)
+	return len(s.jobs)
+}
+
+// skippedADoomedJob reports whether a claim that took snap must not submit its
+// jobs of group: the snapshot held a job of the group that is doomed (its
+// generation is at or below the group's poison mark, so a lane will drop it),
+// and the claim excluded it — so any job of the group it returned is BEHIND the
+// doomed one and would be published ahead of it.
+func (s *inflightSet) skippedADoomedJob(snap inflightSnapshot, group string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, poisoned := s.poison[group]
+	min, inflight := snap.minGen[group]
+	return poisoned && inflight && min <= p.gen
+}
+
+// admit is called when a job of group with generation gen reaches a lane:
+// false when it is poisoned and must be dropped. The first job past the mark
+// clears it. A drop does NOT renew the mark.
+func (s *inflightSet) admit(group string, gen uint64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.poison[group]
+	switch {
+	case !ok:
+		return true
+	case gen <= p.gen:
+		return false
+	}
+	delete(s.poison, group)
+	return true
+}
+
+func (s *inflightSet) poisonGroups(groups map[string]struct{}, gen uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	for g := range groups {
+		s.poison[g] = poisonEntry{gen: gen, at: now}
+	}
+}
+
+// evictPoison forgets the marks of groups not seen for poisonTTL, at most once a
+// minute.
+func (s *inflightSet) evictPoison(now time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if now.Sub(s.lastEvict) < time.Minute {
+		return
+	}
+	s.lastEvict = now
+	for g, e := range s.poison {
+		if now.Sub(e.at) > poisonTTL {
+			delete(s.poison, g)
+		}
+	}
 }
 
 // poisonEntry marks a group whose jobs of generation <= gen must not be
@@ -97,9 +177,8 @@ type poisonEntry struct {
 //
 // When job j of group g is not published, later jobs of g are already claimed —
 // in this lane's channel, or in a claim the poller is running right now — and
-// must not be published ahead of j. The rule:
+// must not be published ahead of j. The rule (state in inflightSet):
 //
-//   - each lane keeps poison[g] = generation;
 //   - when a batch leaves jobs of g unpublished, AFTER removing the batch's ids
 //     from the in-flight set the lane reads the current claim generation P and
 //     sets poison[g] = P;
@@ -113,30 +192,35 @@ type poisonEntry struct {
 // This needs the poller to increment the generation BEFORE it snapshots the set
 // (claimHeld). Ungrouped jobs are never poisoned.
 //
-// A dropped job is itself an unpublished job of its group: once one is dropped
-// from a batch, every later job of that group in the batch is dropped as well
-// (without it, a newer claim's job could pass the check while an older, dropped
-// job of the same group is still waiting to be claimed again and be published
-// after it), and the group is re-poisoned at the end of the batch with a
-// generation read after the whole batch left the set.
+// # The claim must not skip a doomed job
+//
+// A job of g still waiting in a lane when g is poisoned is doomed — it will be
+// dropped — yet it is in the in-flight set, so a later claim excludes it and, if
+// that claim is newer than the poison, takes the job BEHIND it, which would then
+// be published ahead of the doomed one. So the poller checks every claim against
+// the in-flight snapshot it took: if the snapshot held a doomed job of g, the
+// claim's jobs of g are not submitted; they stay PENDING and are claimed again
+// once the doomed job has gone (inflightSet.skippedADoomedJob).
+//
+// A drop does NOT renew the poison. Doing so (poisoning again at the generation
+// read after the drop) also closes that hole, but livelocks whenever the poller
+// claims faster than a lane drains: every claim made while a batch is being
+// dropped is older than that batch's renewed mark, so it is dropped in turn,
+// without end. Within one batch, once a job of g is dropped the later jobs of g
+// in that batch are dropped with it.
 type lane struct {
-	p   *PendingJobPoller
-	idx int
-	in  chan laneJob
-	// poison is touched only by the lane's own goroutine (and by tests that call
-	// process directly, never concurrently with run).
-	poison    map[string]poisonEntry
-	lastEvict time.Time
-	label     string
+	p     *PendingJobPoller
+	idx   int
+	in    chan laneJob
+	label string
 }
 
 func newLane(p *PendingJobPoller, idx int) *lane {
 	return &lane{
-		p:      p,
-		idx:    idx,
-		in:     make(chan laneJob, p.cfg.BufferCapacity),
-		poison: make(map[string]poisonEntry),
-		label:  strconv.Itoa(idx),
+		p:     p,
+		idx:   idx,
+		in:    make(chan laneJob, p.cfg.BufferCapacity),
+		label: strconv.Itoa(idx),
 	}
 }
 
@@ -180,7 +264,7 @@ func (l *lane) run(ctx context.Context) {
 // marks and the permits — in that order.
 func (l *lane) process(ctx context.Context, batch []laneJob) {
 	p := l.p
-	l.evictPoison(time.Now())
+	p.inflight.evictPoison(time.Now())
 
 	droppedGroups := make(map[string]struct{})
 	live := make([]laneJob, 0, len(batch))
@@ -191,13 +275,12 @@ func (l *lane) process(ctx context.Context, batch []laneJob) {
 				dropped++
 				continue
 			}
-			if e, ok := l.poison[g]; ok {
-				if j.gen <= e.gen {
-					droppedGroups[g] = struct{}{}
-					dropped++
-					continue
-				}
-				delete(l.poison, g) // the first job past the mark clears it
+			if !p.inflight.admit(g, j.gen) {
+				// The mark already stands and a drop does not renew it; the
+				// rest of the group in this batch follows the dropped job.
+				droppedGroups[g] = struct{}{}
+				dropped++
+				continue
 			}
 		}
 		live = append(live, j)
@@ -205,7 +288,7 @@ func (l *lane) process(ctx context.Context, batch []laneJob) {
 	schedMetrics.droppedPoisoned.Add(float64(dropped))
 
 	failed := false
-	poisoned := droppedGroups
+	poisoned := make(map[string]struct{})
 	if len(live) > 0 {
 		toks := make([]DispatchJobToken, len(live))
 		for i, j := range live {
@@ -276,30 +359,13 @@ func (l *lane) process(ctx context.Context, batch []laneJob) {
 		p.hookSettle()
 	}
 	if len(poisoned) > 0 {
-		mark := poisonEntry{gen: p.claimGeneration.Load(), at: time.Now()}
-		for g := range poisoned {
-			l.poison[g] = mark
-		}
+		p.inflight.poisonGroups(poisoned, p.claimGeneration.Load())
 	}
 	// Before the permits: whoever the release wakes must already see the failure.
 	if failed {
 		p.laneFailed.Store(true)
 	}
 	p.release(len(batch))
-}
-
-// evictPoison forgets the marks of groups not seen for poisonTTL, at most once a
-// minute.
-func (l *lane) evictPoison(now time.Time) {
-	if now.Sub(l.lastEvict) < time.Minute {
-		return
-	}
-	l.lastEvict = now
-	for g, e := range l.poison {
-		if now.Sub(e.at) > poisonTTL {
-			delete(l.poison, g)
-		}
-	}
 }
 
 // publishContext is the context a lane publishes under: detached from ctx, so a

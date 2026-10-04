@@ -23,6 +23,7 @@ import (
 //	fc_scheduler_buffer_in_use                         permits held (jobs between claim and a lane finishing them)
 //	fc_scheduler_inflight_jobs                         size of the in-flight id set the claim excludes
 //	fc_scheduler_jobs_dropped_poisoned_total           jobs a lane dropped to keep their group in order (left PENDING)
+//	fc_scheduler_jobs_withheld_doomed_total            claimed jobs not submitted: behind a doomed in-flight job of their group (left PENDING)
 //	fc_scheduler_mark_queued_not_updated_total         published jobs the QUEUED update skipped: already past PENDING
 //	fc_scheduler_last_successful_poll_timestamp_seconds
 //	fc_scheduler_paused_subscriptions                  subscriptions excluded from the claim as paused
@@ -38,7 +39,7 @@ type schedulerMetrics struct {
 	claimed, published, unpublished, skippedHeld, fullBatches, pollErrors prometheus.Counter
 	pollDuration, claimDuration                                           prometheus.Histogram
 	lanePublish                                                           *prometheus.HistogramVec
-	droppedPoisoned, markNotUpdated                                       prometheus.Counter
+	droppedPoisoned, markNotUpdated, withheldDoomed                       prometheus.Counter
 	lastSuccess, pausedSubscriptions, bufferInUse, inflight               prometheus.Gauge
 }
 
@@ -70,6 +71,7 @@ func newSchedulerMetrics(reg prometheus.Registerer) *schedulerMetrics {
 		}, []string{"lane"}),
 		droppedPoisoned: counter("fc_scheduler_jobs_dropped_poisoned_total", "Dispatch jobs a lane dropped unpublished to keep their message group in order; left PENDING."),
 		markNotUpdated:  counter("fc_scheduler_mark_queued_not_updated_total", "Published dispatch jobs the QUEUED update skipped because the job had already moved past PENDING."),
+		withheldDoomed:  counter("fc_scheduler_jobs_withheld_doomed_total", "Claimed dispatch jobs not submitted because the claim excluded a doomed in-flight job of their group; left PENDING."),
 		bufferInUse: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "fc_scheduler_buffer_in_use",
 			Help: "Permits held: jobs between a claim and a lane finishing them.",
@@ -89,7 +91,7 @@ func newSchedulerMetrics(reg prometheus.Registerer) *schedulerMetrics {
 	}
 	reg.MustRegister(m.claimed, m.published, m.unpublished, m.skippedHeld, m.fullBatches,
 		m.pollErrors, m.pollDuration, m.lastSuccess, m.pausedSubscriptions,
-		m.claimDuration, m.lanePublish, m.droppedPoisoned, m.markNotUpdated, m.bufferInUse, m.inflight)
+		m.claimDuration, m.lanePublish, m.droppedPoisoned, m.markNotUpdated, m.withheldDoomed, m.bufferInUse, m.inflight)
 	return m
 }
 

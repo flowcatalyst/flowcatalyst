@@ -364,10 +364,10 @@ func (p *PendingJobPoller) claimHeld(ctx context.Context, want int) claimResult 
 	if p.hookGenSnapshot != nil {
 		p.hookGenSnapshot()
 	}
-	inflight := p.inflight.snapshot()
+	snap := p.inflight.snapshot()
 
 	claimStart := time.Now()
-	claims, err := p.claimRows(ctx, want, pausedIDs, inflight)
+	claims, err := p.claimRows(ctx, want, pausedIDs, snap.ids)
 	schedMetrics.claimDuration.Observe(time.Since(claimStart).Seconds())
 	if err != nil {
 		return claimResult{err: err}
@@ -397,7 +397,20 @@ func (p *PendingJobPoller) claimHeld(ctx context.Context, want int) claimResult 
 	// A FAILED/ERROR sibling (or one sitting out a retry backoff) holds back this
 	// group's BLOCK_ON_ERROR jobs; IMMEDIATE and NEXT_ON_ERROR keep flowing.
 	dispatchable := filterByDispatchMode(claims, blocked)
-	held := len(claims) - len(dispatchable)
+	// A claim that excluded a doomed in-flight job of a group must not submit the
+	// group's jobs: they are behind it (see lane.go). They stay PENDING.
+	withheld := 0
+	submit := dispatchable[:0:0]
+	for _, c := range dispatchable {
+		if c.group != "" && p.inflight.skippedADoomedJob(snap, c.group) {
+			withheld++
+			continue
+		}
+		submit = append(submit, c)
+	}
+	dispatchable = submit
+	schedMetrics.withheldDoomed.Add(float64(withheld))
+	held := len(claims) - len(dispatchable) - withheld
 	schedMetrics.skippedHeld.Add(float64(held))
 	if held > 0 {
 		slog.Debug("message group blocked, holding ordered jobs", "held", held, "dispatching", len(dispatchable))
@@ -408,9 +421,7 @@ func (p *PendingJobPoller) claimHeld(ctx context.Context, want int) claimResult 
 	}
 
 	jobs := make([]laneJob, len(dispatchable))
-	ids := make([]string, len(dispatchable))
 	for i, c := range dispatchable {
-		ids[i] = c.id
 		jobs[i] = laneJob{
 			gen:       gen,
 			createdAt: c.createdAt,
@@ -434,7 +445,7 @@ func (p *PendingJobPoller) claimHeld(ctx context.Context, want int) claimResult 
 	}
 	// In the set BEFORE the first send: a lane may finish a job (and remove it)
 	// the instant it receives it.
-	p.inflight.add(ids)
+	p.inflight.add(jobs)
 	for _, j := range jobs {
 		// Never blocks: the permits bound the jobs in the engine to
 		// BufferCapacity, which is every lane channel's capacity.

@@ -541,13 +541,32 @@ func TestShutdown_ABrokerThatHangsIsCutOffAfterTheGrace(t *testing.T) {
 func laneFixture(t *testing.T, s *fakeStore, batch []laneJob) *lane {
 	t.Helper()
 	p := newTestEngine(Config{PollInterval: time.Millisecond, Dispatchers: 1, BufferCapacity: 50}, s)
-	ids := make([]string, len(batch))
-	for i, j := range batch {
-		ids[i] = j.tok.JobID
-		p.permits <- struct{}{}
+	l := p.lanes[0]
+	track(l, batch...)
+	return l
+}
+
+// track registers jobs as a claim would have left them: a permit each, and in the
+// in-flight set.
+func track(l *lane, jobs ...laneJob) {
+	for range jobs {
+		l.p.permits <- struct{}{}
 	}
-	p.inflight.add(ids)
-	return p.lanes[0]
+	l.p.inflight.add(jobs)
+}
+
+// poisonOf reads a group's poison mark.
+func poisonOf(l *lane, group string) (uint64, bool) {
+	l.p.inflight.mu.Lock()
+	defer l.p.inflight.mu.Unlock()
+	e, ok := l.p.inflight.poison[group]
+	return e.gen, ok
+}
+
+func setPoison(l *lane, group string, gen uint64, at time.Time) {
+	l.p.inflight.mu.Lock()
+	defer l.p.inflight.mu.Unlock()
+	l.p.inflight.poison[group] = poisonEntry{gen: gen, at: at}
 }
 
 func lj(id, group string, gen uint64) laneJob {
@@ -563,12 +582,12 @@ func TestLane_UngroupedJobsAreNeverPoisoned(t *testing.T) {
 	l := laneFixture(t, s, batch)
 	l.p.claimGeneration.Store(5)
 	l.process(context.Background(), batch)
-	assert.Empty(t, l.poison, "an ungrouped job has no group to poison")
+	_, poisoned := poisonOf(l, "")
+	assert.False(t, poisoned, "an ungrouped job has no group to poison")
 
 	s.publishFn = nil
 	batch = []laneJob{lj("u01", "", 1)} // an OLD generation: would be dropped if ungrouped jobs were poisonable
-	l.p.permits <- struct{}{}
-	l.p.inflight.add([]string{"u01"})
+	track(l, batch...)
 	l.process(context.Background(), batch)
 	assert.Equal(t, []string{"u01"}, s.published())
 }
@@ -580,24 +599,23 @@ func TestLane_FirstJobPastThePoisonMarkClearsIt(t *testing.T) {
 	l := laneFixture(t, s, batch)
 	l.p.claimGeneration.Store(5)
 	l.process(context.Background(), batch)
-	require.Equal(t, uint64(5), l.poison["g"].gen, "poisoned at the generation read after the failure")
+	gen, _ := poisonOf(l, "g")
+	require.Equal(t, uint64(5), gen, "poisoned at the generation read after the failure")
 
 	s.publishFn = nil
 	older := []laneJob{lj("g-00", "g", 3)} // claimed before the failure was handled
-	l.p.permits <- struct{}{}
-	l.p.inflight.add([]string{"g-00"})
+	track(l, older...)
 	l.process(context.Background(), older)
 	assert.Empty(t, s.published(), "a job at or below the mark is dropped")
 	assert.Zero(t, l.p.inflight.size(), "a dropped job leaves the in-flight set")
 	assert.Zero(t, len(l.p.permits), "a dropped job's permit is released")
 
 	newer := []laneJob{lj("g-00", "g", 6), lj("g-01", "g", 6)}
-	l.p.permits <- struct{}{}
-	l.p.permits <- struct{}{}
-	l.p.inflight.add([]string{"g-00", "g-01"})
+	track(l, newer...)
 	l.process(context.Background(), newer)
 	assert.Equal(t, []string{"g-00", "g-01"}, s.published(), "past the mark: published in order")
-	assert.Empty(t, l.poison, "the first job past the mark cleared it")
+	_, poisoned := poisonOf(l, "g")
+	assert.False(t, poisoned, "the first job past the mark cleared it")
 }
 
 // Once a job of a group is dropped, every later job of the group in the batch is
@@ -607,21 +625,24 @@ func TestLane_ADroppedJobDropsTheRestOfItsGroupInTheBatch(t *testing.T) {
 	s := newFakeStore(groupJobs("g", 3)...)
 	batch := []laneJob{lj("g-01", "g", 1), lj("g-02", "g", 2), lj("other", "h", 2)}
 	l := laneFixture(t, s, batch)
-	l.poison["g"] = poisonEntry{gen: 1, at: time.Now()}
+	setPoison(l, "g", 1, time.Now())
 	l.p.claimGeneration.Store(2)
 	l.process(context.Background(), batch)
 	assert.Equal(t, []string{"other"}, s.published(), "only the unaffected group is published")
-	assert.Equal(t, uint64(2), l.poison["g"].gen, "the group is re-poisoned at the generation read after the batch left the set")
+	gen, _ := poisonOf(l, "g")
+	assert.Equal(t, uint64(1), gen, "a drop does not renew the mark")
 }
 
 func TestLane_StalePoisonMarksAreEvicted(t *testing.T) {
 	s := newFakeStore()
 	l := laneFixture(t, s, nil)
-	l.poison["old"] = poisonEntry{gen: 1, at: time.Now().Add(-poisonTTL - time.Minute)}
-	l.poison["recent"] = poisonEntry{gen: 1, at: time.Now()}
+	setPoison(l, "old", 1, time.Now().Add(-poisonTTL-time.Minute))
+	setPoison(l, "recent", 1, time.Now())
 	l.process(context.Background(), nil)
-	assert.NotContains(t, l.poison, "old")
-	assert.Contains(t, l.poison, "recent")
+	_, oldOK := poisonOf(l, "old")
+	_, recentOK := poisonOf(l, "recent")
+	assert.False(t, oldOK)
+	assert.True(t, recentOK)
 }
 
 // The QUEUED update skips a job that already moved on, and says so.
@@ -640,44 +661,63 @@ func TestLane_MarkQueuedSkipsAJobThatMovedOn(t *testing.T) {
 	assert.Equal(t, 1.0, value(t, MetricsRegistry, "fc_scheduler_mark_queued_not_updated_total")-before)
 }
 
-// A DROPPED job poisons its group too. j1 fails and poisons the group; a new
-// claim starts while j2 is still in flight (so j2 is excluded from its snapshot)
-// and returns j1 and j3; the lane drops j2 (generation at or below the mark).
-// If the drop did not re-poison the group, the first job past the old mark would
-// clear it and j3 would be published ahead of the dropped j2. The drop removes
-// j2 from the set and then re-poisons at the generation read after it, which the
-// new claim's generation does not exceed.
-func TestLane_ADroppedJobPoisonsItsGroupToo(t *testing.T) {
+// A drop does NOT renew the poison. Renewing it (poisoning again at the
+// generation read after a drop) livelocks when the poller claims faster than a
+// lane drains: every claim made while a batch is being dropped is older than the
+// renewed mark and is dropped in turn.
+func TestLane_ADropDoesNotRenewThePoison(t *testing.T) {
 	s := newFakeStore(groupJobs("g", 3)...)
 	l := laneFixture(t, s, []laneJob{lj("g-01", "g", 1)})
-	l.poison["g"] = poisonEntry{gen: 1, at: time.Now()} // j1 failed in generation 1
-	l.p.claimGeneration.Store(2)                        // claim X started: generation 2, snapshot had j2
+	setPoison(l, "g", 1, time.Now()) // j1 failed in generation 1
+	l.p.claimGeneration.Store(5)     // the poller has claimed on since
 
-	// Batch 1: j2 (generation 1, claimed with j1) is dropped.
-	l.process(context.Background(), []laneJob{lj("g-01", "g", 1)})
+	l.process(context.Background(), []laneJob{lj("g-01", "g", 1)}) // j2: dropped
 	assert.Empty(t, s.published())
-	require.Contains(t, l.poison, "g", "the drop keeps the group poisoned")
-	assert.Equal(t, uint64(2), l.poison["g"].gen, "re-poisoned at the generation read after the drop")
+	gen, ok := poisonOf(l, "g")
+	require.True(t, ok)
+	assert.Equal(t, uint64(1), gen, "the mark stands at the failure's generation: a drop does not move it")
 
-	// Batch 2: claim X's jobs, j1 and j3 (generation 2, snapshotted before j2 left
-	// the set): dropped, not published ahead of j2.
-	x := []laneJob{lj("g-00", "g", 2), lj("g-02", "g", 2)}
-	for range x {
-		l.p.permits <- struct{}{}
-	}
-	l.p.inflight.add([]string{"g-00", "g-02"})
+	// So a claim taken after the failure (generation 2, well below the current
+	// generation 5 a renewal would have used) is NOT dropped.
+	x := []laneJob{lj("g-00", "g", 2), lj("g-01", "g", 2), lj("g-02", "g", 2)}
+	track(l, x...)
 	l.process(context.Background(), x)
-	assert.Empty(t, s.published(), "j3 must not overtake the dropped j2")
-
-	// A claim taken after both drops (generation 3) passes, in order.
-	l.p.claimGeneration.Store(3)
-	all := []laneJob{lj("g-00", "g", 3), lj("g-01", "g", 3), lj("g-02", "g", 3)}
-	for range all {
-		l.p.permits <- struct{}{}
-	}
-	l.p.inflight.add([]string{"g-00", "g-01", "g-02"})
-	l.process(context.Background(), all)
 	assert.Equal(t, []string{"g-00", "g-01", "g-02"}, s.published())
+}
+
+// A claim that excluded a doomed in-flight job of a group must not submit the
+// group's jobs: they are behind the doomed job, and would be published ahead of
+// it. They stay PENDING, and are claimed again, in order, once the doomed job has
+// gone.
+func TestPoller_AClaimThatSawADoomedInFlightJobDoesNotSubmitTheJobsBehindIt(t *testing.T) {
+	s := newFakeStore(append(groupJobs("g", 3), groupJobs("h", 1)...)...)
+	p := newTestEngine(Config{PollInterval: time.Millisecond, Dispatchers: 1, BufferCapacity: 10, BatchSize: 10}, s)
+	l := p.lanes[0]
+	// g-01 waits in the lane (generation 1) and its group was poisoned at 1: doomed.
+	track(l, lj("g-01", "g", 1))
+	setPoison(l, "g", 1, time.Now())
+	p.claimGeneration.Store(1)
+	before := value(t, MetricsRegistry, "fc_scheduler_jobs_withheld_doomed_total")
+
+	res := p.claimOnce(context.Background())
+	require.NoError(t, res.err)
+	assert.Equal(t, 3, res.claimed, "the store returns g-00, g-02 and h-00 (g-01 is excluded as in flight)")
+	assert.Equal(t, 1, res.submitted, "only the other group's job is submitted")
+	assert.Equal(t, 1, len(l.in), "g-00 and g-02 never reached a lane")
+	assert.Equal(t, 2.0, value(t, MetricsRegistry, "fc_scheduler_jobs_withheld_doomed_total")-before)
+	assert.Equal(t, 2, p.inflight.size(), "withheld jobs are not in flight (g-01 and h-00 are)")
+
+	// The doomed job has gone (dropped by its lane): the next claim takes the
+	// whole group, in order.
+	<-l.in
+	p.inflight.remove([]string{"h-00"})
+	p.release(1)
+	l.p.inflight.remove([]string{"g-01"})
+	p.release(1)
+	require.Zero(t, len(p.permits))
+	res = settleOnce(t, p, context.Background())
+	assert.Equal(t, 4, res.submitted)
+	assert.Equal(t, []string{"g-00", "g-01", "g-02", "h-00"}, s.published())
 }
 
 // The failure's poison generation is read AFTER its ids left the in-flight set.
