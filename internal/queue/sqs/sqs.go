@@ -140,6 +140,9 @@ func regionFromSQSURL(uri string) string {
 func newSQSClient(awsCfg aws.Config) *sqs.Client {
 	return sqs.NewFromConfig(awsCfg, func(o *sqs.Options) {
 		o.DisableMessageChecksumValidation = true
+		// See plainBodyClient: works around a lost-response race in the SDK's
+		// request body handling.
+		o.HTTPClient = plainBodyClient{inner: o.HTTPClient}
 	})
 }
 
