@@ -297,6 +297,25 @@ type mediationPayload struct {
 	MessageID string `json:"messageId"`
 }
 
+// marshalMediationPayload returns json.Marshal(mediationPayload{MessageID: id})
+// byte for byte. Message ids are TSIDs / UUID-like, so the common case is
+// built directly (one exactly-sized buffer, no boxing of the struct, no
+// encoder state); an id with anything json.Marshal would escape (quotes,
+// backslash, control characters, <, >, &, non-ASCII) takes the encoder.
+func marshalMediationPayload(id string) ([]byte, error) {
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		if c < 0x20 || c > 0x7e || c == '"' || c == '\\' || c == '<' || c == '>' || c == '&' {
+			return json.Marshal(mediationPayload{MessageID: id})
+		}
+	}
+	const prefix, suffix = `{"messageId":"`, `"}`
+	b := make([]byte, 0, len(prefix)+len(id)+len(suffix))
+	b = append(b, prefix...)
+	b = append(b, id...)
+	return append(b, suffix...), nil
+}
+
 // mediationResponse is what we expect back from the target.
 type mediationResponse struct {
 	Ack          *bool   `json:"ack,omitempty"`
@@ -426,7 +445,7 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 		return common.PreFlightError(reason)
 	}
 
-	payload, err := json.Marshal(mediationPayload{MessageID: msg.ID})
+	payload, err := marshalMediationPayload(msg.ID)
 	if err != nil {
 		return common.PreFlightError(fmt.Sprintf("payload marshal: %v", err))
 	}

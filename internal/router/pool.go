@@ -618,7 +618,12 @@ func (p *Pool) runImmediate(ctx context.Context, m common.QueuedMessage) {
 	// Retry in-pipeline: wait out the backoff, then queue it again. The
 	// in-flight tracker entry is kept (so redeliveries are deduped against it),
 	// and Attempts grows the backoff and tells processOne not to re-track.
-	m.Attempts++
+	//
+	// The retry goroutine captures its own copy: capturing (and mutating) m
+	// itself would move the whole message to the heap on EVERY call, while a
+	// retry is the rare path.
+	retry := m
+	retry.Attempts++
 	p.queueInc() // re-queued (pre-dispatch) for the duration of the backoff
 	go func() {
 		select {
@@ -630,12 +635,12 @@ func (p *Pool) runImmediate(ctx context.Context, m common.QueuedMessage) {
 			// message would cycle on the broker untouchable until retention.
 			p.queueDec()
 			if p.tracker != nil {
-				p.tracker.Remove(m.Message.ID, m.BrokerMessageID)
+				p.tracker.Remove(retry.Message.ID, retry.BrokerMessageID)
 			}
 			return
 		case <-time.After(d.RetryAfter):
 		}
-		p.enqueueImmediate(ctx, m)
+		p.enqueueImmediate(ctx, retry)
 	}()
 }
 

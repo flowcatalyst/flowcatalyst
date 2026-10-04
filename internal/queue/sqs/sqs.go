@@ -20,6 +20,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -269,7 +270,9 @@ func (q *Queue) parseMessage(sm sqstypes.Message) (common.Message, string, strin
 		return common.Message{}, "", "", errors.New("empty body")
 	}
 	var m common.Message
-	if err := json.Unmarshal([]byte(*sm.Body), &m); err != nil {
+	// Unmarshal only reads its input and copies whatever it keeps, so the body
+	// is viewed as bytes rather than copied into a fresh []byte per message.
+	if err := json.Unmarshal(unsafe.Slice(unsafe.StringData(*sm.Body), len(*sm.Body)), &m); err != nil {
 		return common.Message{}, "", "", fmt.Errorf("unmarshal: %w", err)
 	}
 	if sm.ReceiptHandle == nil {

@@ -45,6 +45,29 @@ type deleteItem struct {
 	pending *pendingEntry // pending-delete marker, completed when this item is answered (nil ok)
 }
 
+// deleteItems recycles items (and their done channels), which otherwise cost
+// two allocations per ack.
+//
+// An item is returned ONLY by the caller that owns it, and only when no drainer
+// can still touch it: either it was never enqueued, or the caller has received
+// its outcome from done (the drainer's last act on an item is that send). A
+// caller that gives up early (ctx cancelled, stop) while the item may still be
+// queued or in a batch just drops it for the GC — the drainer will still finish
+// it, so done may yet receive a value and the item must not be reused.
+var deleteItems = sync.Pool{New: func() any { return &deleteItem{done: make(chan error, 1)} }}
+
+func getDeleteItem(receipt string, pending *pendingEntry) *deleteItem {
+	it := deleteItems.Get().(*deleteItem)
+	it.receipt, it.pending = receipt, pending
+	return it
+}
+
+// putDeleteItem resets it and returns it to the pool. done must be empty.
+func putDeleteItem(it *deleteItem) {
+	it.receipt, it.pending = "", nil
+	deleteItems.Put(it)
+}
+
 // finish answers the item and completes its pending-delete marker.
 func (it *deleteItem) finish(q *Queue, err error) {
 	q.markDeleteDone(it.pending)
@@ -98,14 +121,16 @@ func (b *deleteBatcher) delete(ctx context.Context, q *Queue, receipt string, pe
 		b.drainers.Add(1)
 		go b.drain(q)
 	})
-	it := &deleteItem{receipt: receipt, done: make(chan error, 1), pending: pending}
+	it := getDeleteItem(receipt, pending)
 	select {
 	case b.items <- it:
 	case <-ctx.Done():
 		q.markDeleteDone(pending) // never enqueued: nothing will complete it
+		putDeleteItem(it)
 		return ctx.Err()
 	case <-b.stopCh:
 		q.markDeleteDone(pending)
+		putDeleteItem(it)
 		return errBatcherStopped
 	}
 	if queue.IsUrgentAck(ctx) {
@@ -117,6 +142,7 @@ func (b *deleteBatcher) delete(ctx context.Context, q *Queue, receipt string, pe
 	b.maybeStartHelper(q)
 	select {
 	case err := <-it.done:
+		putDeleteItem(it) // answered: the drainer is finished with it
 		return err
 	case <-ctx.Done():
 		select {
@@ -129,6 +155,7 @@ func (b *deleteBatcher) delete(ctx context.Context, q *Queue, receipt string, pe
 		// Prefer a real outcome if the drainer already answered.
 		select {
 		case err := <-it.done:
+			putDeleteItem(it)
 			return err
 		default:
 			q.markDeleteDone(pending) // the drainers are gone; nothing else will (idempotent)
