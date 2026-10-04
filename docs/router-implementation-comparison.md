@@ -694,3 +694,28 @@ contributors in Go and Java (Rust shares one client); not isolated. Context swit
 message rise to about 1.7-1.9 in Rust at this width.
 
 All single runs; commits as in §9.10. Not run against real SQS.
+
+### 9.14 Why Rust did not scale: the system allocator (experiment, not committed)
+
+In the 2-CPU `perf` profile 7.0% of samples are `__lll_lock_wake_private` (waking a thread
+blocked on a contended lock), and every one of them is inside the allocator: `malloc` 163,
+`realloc` 75, `free` 65, `posix_memalign` 7 samples. At 1 CPU there are none. Rust builds with
+the system allocator (glibc), whose arenas are locked when memory allocated on one thread is
+freed on another, and Tokio's work-stealing moves tasks between threads constantly. Go and Java
+allocate from per-thread pools, which is why they scale.
+
+Experiment in a scratch worktree (one line plus the `mimalloc` crate as the global allocator;
+**not committed**), cold 500k SQS flood, steady rate:
+
+| CPUs | System allocator | Per-thread allocator |
+|---|---|---|
+| 1 | 18.9k msg/s | 29.2k msg/s |
+| 2 | 20.7k (x1.10) | 49.1k (x1.68) |
+| 4 | 30.1k (x1.59) | 73.6k (x2.53) |
+
+Memory is unchanged (410-450 MB). So the allocator accounts for the scaling problem and also
+for a third of Rust's single-CPU cost. With it Rust leads at every CPU count (Java 15.5k / 32.8k
+/ 49.7k, Go 14.3k / 25.8k / 43.5k). Single runs; the sink and fixture CPU were not sampled at
+these rates, so 73.6k may be near another limit. Adopting it means a new dependency that
+compiles a C library (a supply-chain decision); jemalloc is the alternative. Whether it also
+flattens Rust's within-run decline and its NATS rate has not been measured.
