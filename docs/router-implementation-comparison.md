@@ -824,6 +824,7 @@ real SQS. Sections 9.1-9.16 have the detail behind each row.
 | SQS, 4 CPUs | 87.3k | 50.6k | 48.6k |
 | NATS, 1 CPU | 45.5k | 26.3k | 25.2k |
 | RSS (SQS) | 420-490 MB | about 435 MB | 1.5-1.95 GB (a heap ceiling; live data about 320-450 MB) |
+| Java warm, while fed (§10.7) | | | 16.3k / 44.1k / 75.9k at 1 / 2 / 4 CPUs |
 
 At the start of the SQS work, at 1 CPU: Rust 8.7k, Go 6.3k, Java 4.2k.
 
@@ -932,3 +933,35 @@ it: tie intake to delivery explicitly. Either the planned block mode for a queue
 pool (back-pressure plan §4.8), or pace a queue's polling once its pool has more than a few
 workers' worth of messages waiting, which keeps reading the queue (the head-of-line ruling)
 while stopping the buffers filling.
+
+### 10.7 Java aligned with Go and Rust: polling paced to delivery (`9b5b283c`)
+
+When every pool a queue's last batch fed already has a full round of unordered work waiting (at
+least as many queued as it has workers), the consumer loop waits for the pool to drop under
+that mark, or 100 ms, before polling again. One bounded wait per iteration: a backlogged pool
+slows a queue's reads to about ten a second and never stops them, so the head-of-line ruling
+holds. Ordered-group messages are not counted.
+
+**Fully warm Java (500k first), second 500k fed faster than it can deliver:**
+
+| CPUs | Received | Delivered while fed | Held in the router | 500k complete | Deferral entries |
+|---|---|---|---|---|---|
+| 1, before pacing | 36.0k/s | 15.9k/s | 283k | 23.4 s | 10.5k |
+| 1 | 16.3k/s | 16.3k/s | 6.6k | 24.3 s (20.6k/s overall) | 0 |
+| 2 | 44.5k/s | 44.1k/s | 4.8k | 11.1 s (45.2k/s) | 0 |
+| 4 | 76.6k/s | 75.9k/s | 2.8k | 6.3 s (79.2k/s) | 0 |
+
+Received now equals delivered, the buffers stay shallow, and nothing is deferred: the same
+shape as Go (about 1,100 held) and Rust (about 19,000 held). **These are Java's warm figures**:
+about 16k msg/s at one CPU, 44k at two, 76k at four, while messages keep arriving.
+
+Cold start into a 500k backlog also improved, because the deferral tail is gone: 33 s at one
+CPU (was 48 s with 18k deferral entries) and 19 s at two (was 90 s with 37k); steady 19.8k and
+31.7k msg/s. NATS at one CPU is unchanged (25.5k).
+
+Single runs. Java's warm figures come from a paced feed after a long warm-up; the Go and Rust
+figures in §10.1 come from a cold flood (they have no warm-up effect), so compare them as
+orders of magnitude, not to the percent. Why Java's poll loops ran ahead of its deliveries
+before this change is still not established; the pacing makes the rule explicit instead of
+relying on the scheduler, and the same rule would protect Go and Rust when their delivery is
+slow (their pools filled and deferred in the slow-pool test of §9.8). Not yet ported to them.
