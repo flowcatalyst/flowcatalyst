@@ -17,6 +17,18 @@ import (
 // message_group.
 const defaultMessageGroup = "default"
 
+// pollTimeout bounds one whole pollOnce (claim, publish, mark, commit). A stalled
+// publish must not hold the claim's row locks and a pool connection for ever: on
+// expiry the transaction rolls back and the rows stay PENDING. Generous on
+// purpose — a full claim is ~10 sequential SendMessageBatch calls per queue
+// (each separately bounded) — so it only ever fires on a genuine stall. A var
+// only so tests can shorten it.
+var pollTimeout = 2 * time.Minute
+
+// finishTimeout bounds the mark-QUEUED UPDATE and COMMIT that follow a
+// successful publish. They run detached from ctx (see pollOnce).
+var finishTimeout = 10 * time.Second
+
 // PausedConnectionCache caches the set of subscription IDs whose target
 // connections are PAUSED. The poller filters jobs whose subscription
 // matches; those jobs sit in PENDING until the connection is reactivated.
@@ -177,6 +189,8 @@ func (p *PendingJobPoller) drain(ctx context.Context) {
 // (marked QUEUED); the run loop uses the pair to decide whether to poll again
 // immediately.
 func (p *PendingJobPoller) pollOnce(ctx context.Context) (int, int, error) {
+	ctx, cancel := context.WithTimeout(ctx, pollTimeout)
+	defer cancel()
 	paused, err := p.pausedCache.PausedSubscriptionIDs(ctx)
 	if err != nil {
 		return 0, 0, err
@@ -185,7 +199,15 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) (int, int, error) {
 	if err != nil {
 		return 0, 0, err
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	// Rolled back on a detached, bounded context: ctx may already be cancelled
+	// or past its deadline (that is exactly when the rollback matters), and a
+	// rollback that cannot run would leave the connection to be torn down with
+	// the claim's locks still held.
+	defer func() {
+		rctx, rcancel := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)
+		defer rcancel()
+		_ = tx.Rollback(rctx)
+	}()
 
 	// Claim PENDING jobs ready for dispatch. SKIP LOCKED so multiple
 	// scheduler instances don't contend.
@@ -364,9 +386,16 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) (int, int, error) {
 		// for the next poll.
 		return len(claims), 0, nil
 	}
+	// Mark + commit run detached from ctx. The jobs are already on the broker:
+	// a shutdown (or the poll deadline) cancelling ctx between the publish and
+	// the commit would roll the whole claim back to PENDING and publish every
+	// job a second time. Bounded separately so a stuck database still cannot
+	// hang the poller.
+	fctx, fcancel := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)
+	defer fcancel()
 	// created_at bounds let the created_at-partitioned table prune to the
 	// partitions the published rows actually span.
-	if _, err := tx.Exec(ctx,
+	if _, err := tx.Exec(fctx,
 		`UPDATE msg_dispatch_jobs SET status = 'QUEUED', updated_at = NOW()
 		  WHERE id = ANY($1)
 		    AND created_at >= $2 AND created_at <= $3`,
@@ -375,7 +404,7 @@ func (p *PendingJobPoller) pollOnce(ctx context.Context) (int, int, error) {
 			"published", len(published), "err", err)
 		return 0, 0, err
 	}
-	if err := tx.Commit(ctx); err != nil {
+	if err := tx.Commit(fctx); err != nil {
 		// Published but still PENDING: the next poll publishes them again,
 		// and /process delivers each once.
 		slog.Warn("committing published dispatch jobs failed; they will be published again",

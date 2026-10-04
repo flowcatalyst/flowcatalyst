@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	sqstypes "github.com/aws/aws-sdk-go-v2/service/sqs/types"
@@ -327,5 +328,39 @@ func TestSQSPublish_UnresolvableDestinationCostsOnlyThatJob(t *testing.T) {
 	}
 	if len(f.sends) != 1 || len(f.sends[0].Entries) != 1 {
 		t.Errorf("the resolvable job was not published on its own")
+	}
+}
+
+// blockingSQS never answers a send; it returns only when its context ends.
+type blockingSQS struct{ fakeSQS }
+
+func (b *blockingSQS) SendMessageBatch(ctx context.Context, _ *sqs.SendMessageBatchInput, _ ...func(*sqs.Options)) (*sqs.SendMessageBatchOutput, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+// A send on a stalled connection is released by its own per-call deadline, and
+// the jobs come back unpublished (so the claim is left PENDING) instead of
+// holding the poller for ever.
+func TestSQSPublish_StalledSendIsReleasedByThePerCallDeadline(t *testing.T) {
+	old := sqsCallTimeout
+	sqsCallTimeout = 100 * time.Millisecond
+	defer func() { sqsCallTimeout = old }()
+
+	p := testSQSPublisher(&blockingSQS{}, stubDestinations{})
+	done := make(chan struct{})
+	var unpublished []string
+	var err error
+	go func() {
+		defer close(done)
+		unpublished, err = p.Publish(context.Background(), []PublishItem{item("j1", "", ""), item("j2", "", "")})
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Publish was not released by the per-call deadline")
+	}
+	if err == nil || len(unpublished) != 2 {
+		t.Errorf("Publish = %v, %v; want both jobs unpublished with an error", unpublished, err)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -14,7 +15,14 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatch"
+	fcsqs "github.com/flowcatalyst/flowcatalyst-go/internal/queue/sqs"
 )
+
+// sqsCallTimeout bounds each SQS API call the publisher makes (every
+// SendMessageBatch and CreateQueue). The SDK client has no timeout of its own,
+// so a call on a stalled connection would hold the poller's claim open for ever.
+// Mirrors the 25s the SQS consumers use. A var only so tests can shorten it.
+var sqsCallTimeout = 25 * time.Second
 
 // maxSQSBatchSize is SQS's hard cap on one SendMessageBatch — well below the
 // poller's claim size, which is why publishing chunks.
@@ -94,7 +102,7 @@ func NewSQSDispatchPublisher(ctx context.Context, settings dispatch.Settings, de
 		return nil, fmt.Errorf("aws config: %w", err)
 	}
 	return &SQSDispatchPublisher{
-		client:       sqs.NewFromConfig(awsCfg),
+		client:       fcsqs.NewClient(awsCfg),
 		settings:     settings,
 		destinations: destinations,
 	}, nil
@@ -224,7 +232,7 @@ func (p *SQSDispatchPublisher) sendChunk(ctx context.Context, queueName string, 
 	}
 	in := &sqs.SendMessageBatchInput{QueueUrl: aws.String(queueURL), Entries: entries}
 
-	out, err := p.client.SendMessageBatch(ctx, in)
+	out, err := p.sendBatch(ctx, in)
 	if err != nil {
 		if !isQueueMissing(err) {
 			return nil, err
@@ -235,7 +243,7 @@ func (p *SQSDispatchPublisher) sendChunk(ctx context.Context, queueName string, 
 		// The same request, with the same dedup ids: the first attempt never
 		// reached a queue that could have deduplicated anything, so this is
 		// still the one publish attempt, not a second.
-		out, err = p.client.SendMessageBatch(ctx, in)
+		out, err = p.sendBatch(ctx, in)
 		if err != nil {
 			return nil, err
 		}
@@ -249,10 +257,19 @@ func (p *SQSDispatchPublisher) sendChunk(ctx context.Context, queueName string, 
 	return failed, nil
 }
 
+// sendBatch is one SendMessageBatch call under its own deadline.
+func (p *SQSDispatchPublisher) sendBatch(ctx context.Context, in *sqs.SendMessageBatchInput) (*sqs.SendMessageBatchOutput, error) {
+	ctx, cancel := context.WithTimeout(ctx, sqsCallTimeout)
+	defer cancel()
+	return p.client.SendMessageBatch(ctx, in)
+}
+
 // createQueue creates the FIFO queue. Content-based deduplication is OFF: this
 // publisher always supplies its own dedup id, and content hashing could not see
 // the per-attempt nonce that makes a genuine re-publish work.
 func (p *SQSDispatchPublisher) createQueue(ctx context.Context, queueName string) error {
+	ctx, cancel := context.WithTimeout(ctx, sqsCallTimeout)
+	defer cancel()
 	_, err := p.client.CreateQueue(ctx, &sqs.CreateQueueInput{
 		QueueName: aws.String(queueName),
 		Attributes: map[string]string{

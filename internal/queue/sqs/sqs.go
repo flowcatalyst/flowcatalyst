@@ -133,6 +133,12 @@ func regionFromSQSURL(uri string) string {
 	return ""
 }
 
+// NewClient builds an SQS client with the hardening every FlowCatalyst SQS
+// user needs (the request-body workaround in plainBodyClient, no per-message
+// MD5 validation). Other packages that talk to SQS directly, such as the
+// dispatch scheduler's publisher, must use it instead of sqs.NewFromConfig.
+func NewClient(awsCfg aws.Config) *sqs.Client { return newSQSClient(awsCfg) }
+
 // newSQSClient builds the SDK client. The SDK's per-message MD5 check of every
 // received body is switched off: it hashes each payload on the poll hot path
 // purely for CPU's sake of detecting corruption the TLS transport already
