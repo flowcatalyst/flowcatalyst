@@ -719,3 +719,28 @@ for a third of Rust's single-CPU cost. With it Rust leads at every CPU count (Ja
 these rates, so 73.6k may be near another limit. Adopting it means a new dependency that
 compiles a C library (a supply-chain decision); jemalloc is the alternative. Whether it also
 flattens Rust's within-run decline and its NATS rate has not been measured.
+
+**Adopted (Rust `a9d6827b`, owner decision 2026-10-04).** fc-server now uses mimalloc as its
+global allocator; the two crates are `cargo vet` exemptions (not audits) and the exception is
+recorded in the Rust repo's `docs/operations/supply-chain.md`. Measured on the committed build
+(steady rate, 100 queues x 100 pools, 500k):
+
+| | Before | With mimalloc |
+|---|---|---|
+| SQS, 1 CPU | 18.9k msg/s | 26.7k |
+| SQS, 2 CPUs | 20.7k | 44.4k |
+| SQS, 4 CPUs | 30.1k | 68.9k |
+| NATS, 1 CPU | 28.2k | 40.7k |
+
+- **The within-run decline is gone**: SQS at 1 CPU now runs 25.9k, 26.5k, 25.7k, 27.6k by
+  quarter (it was 19.8k falling to 16.5k), and NATS 39.6k, 39.9k, 41.3k (it was 32.4k falling
+  to 25.2k). The decline was the system allocator too.
+- RSS 380-490 MB on SQS and 624 MB on NATS (it was 415 and 520 MB): about the same, single runs.
+- The committed-build figures are a little under the scratch experiment (29.2k / 49.1k / 73.6k);
+  that is within run-to-run spread.
+- Downsides accepted with it: a C library under every allocation (about 51k unaudited lines,
+  built by a build script), memory return behaviour that can differ from glibc's, heap tools
+  that hook the system allocator no longer see allocations, and a C toolchain needed for every
+  target. Go and Java are unaffected (they have their own allocators).
+- Unrelated, noticed while running the checks: `cargo deny check advisories` already fails on
+  the Rust tree (Wasmtime advisories in the function host).
