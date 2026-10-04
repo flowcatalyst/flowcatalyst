@@ -775,3 +775,34 @@ Vert.x/Netty delivery 32%; our router code 18%; our Jackson use 5%.
 In all three the AWS SDK is the largest single source (about a third to a half). A thin SQS
 client (signed HTTP plus direct JSON to our own types) is the lever that would move it; that is
 a maintenance decision, not a quick fix.
+
+### 9.16 Rust allocation pass, and whether the allocator is still needed
+
+The router's own per-message allocations were cut from **46 to 24** (counted by a new test with
+a counting allocator over the real routing path; ceilings fail a regression): one shared
+`Arc` message record instead of about twenty string clones, `Arc<str>` keys in the tracker
+maps, cached breaker and host keys, a retry policy built once, the SQS timeout configured once
+instead of per call, no unused receive attributes. Rust `a388cc6e` .. `00c39f82` (seven commits).
+
+Steady rate, SQS, 100 queues x 100 pools, 500k:
+
+| CPUs | Before any of it | mimalloc only | Fewer allocations + mimalloc | Fewer allocations, system allocator |
+|---|---|---|---|---|
+| 1 | 18.9k | 26.7k | 32.6k | 21.9k |
+| 2 | 20.7k | 44.4k | 54.9k | 23.9k |
+| 4 | 30.1k | 68.9k | 87.3k | 33.2k |
+
+NATS, 1 CPU: 45.5k (40.7k with mimalloc only, 28.2k before). RSS 420-490 MB with mimalloc and
+260-400 MB with the system allocator.
+
+- **The allocator is still needed.** With fewer allocations but the system allocator Rust gains
+  10-16% and still does not scale (x1.09 and x1.51). The AWS SDK and the HTTP client allocate
+  more than our code does and we cannot change them.
+- The two changes compound: +22-27% on top of mimalloc.
+- Left alone as design changes: the `MediatingEntry` copy (about 4.5 allocations per message),
+  the per-task spawn and drop, async-trait boxes and flight-recorder events.
+- Behaviour notes from the change: two ungrouped messages with the same id in ONE polled batch
+  are now separate buckets (a submit failure on the first no longer nacks the second); response
+  bodies are read as bytes with lossy UTF-8 (same as before for UTF-8); the SQS calls use a
+  client derived once with the timeout rather than a per-call override (exercised by the
+  benchmark: sent = received = deleted on every run; not run against real SQS).
