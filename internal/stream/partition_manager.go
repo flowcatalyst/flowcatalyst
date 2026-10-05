@@ -278,9 +278,33 @@ func (m *PartitionManager) dropOld(ctx context.Context, parent string, now time.
 			}
 			slog.Info("dropped expired partition", "partition", name)
 			dropped++
+			if parent == "msg_dispatch_jobs" {
+				m.dropQueueRows(ctx, name, end.AddDate(0, -1, 0), end)
+			}
 		}
 	}
 	return dropped, nil
+}
+
+// dropQueueRows removes the msg_dispatch_queue rows of the jobs that lived in a
+// just-dropped msg_dispatch_jobs partition (job_created_at in [start, end)).
+// This is the one writer of msg_dispatch_queue outside the dispatch-job
+// lifecycle: a dropped partition takes its jobs with it, and the queue has no
+// foreign key to follow. Run AFTER the DROP, so a failure here leaves harmless
+// orphan queue rows rather than PENDING jobs with no queue row. Any row removed
+// was a PENDING job being discarded unprocessed, hence WARN.
+func (m *PartitionManager) dropQueueRows(ctx context.Context, partition string, start, end time.Time) {
+	tag, err := m.pool.Exec(ctx,
+		`DELETE FROM msg_dispatch_queue WHERE job_created_at >= $1 AND job_created_at < $2`, start, end)
+	if err != nil {
+		slog.Warn("partition manager: could not remove queue rows of dropped partition",
+			"partition", partition, "err", err)
+		return
+	}
+	if n := tag.RowsAffected(); n > 0 {
+		slog.Warn("partition manager: dropped partition held PENDING dispatch jobs; their queue rows were removed",
+			"partition", partition, "pending_jobs_discarded", n)
+	}
 }
 
 // monthStart returns the first instant of the month `offset` months from now.
