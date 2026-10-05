@@ -40,7 +40,7 @@ func seedSequencedJob(t *testing.T, pool *pgxpool.Pool, id, group, status string
 func TestPollOnce_BackedOffJobHoldsItsGroup(t *testing.T) {
 	pool := testpg.Pool(t)
 	base := time.Now().UTC().Add(-time.Hour)
-	backoff := time.Now().UTC().Add(30 * time.Second)
+	backoff := time.Now().UTC().Add(time.Hour) // far enough that no later test in this shared database sees it expire
 
 	// j1 delivered; j2 failed transiently and is backed off; j3, j4 behind it.
 	seedSequencedJob(t, pool, "djbackoff001", "grp-boff", "COMPLETED", base, nil)
@@ -82,7 +82,7 @@ func TestPollOnce_HeldJobDispatchesOnceItsBackoffExpires(t *testing.T) {
 func TestPollOnce_JobsAheadOfABackedOffSiblingStillDispatch(t *testing.T) {
 	pool := testpg.Pool(t)
 	base := time.Now().UTC().Add(-time.Hour)
-	backoff := time.Now().UTC().Add(30 * time.Second)
+	backoff := time.Now().UTC().Add(time.Hour) // far enough that no later test in this shared database sees it expire
 
 	seedSequencedJob(t, pool, "djbackoff021", "grp-ahead", "PENDING", base, nil)
 	seedSequencedJob(t, pool, "djbackoff022", "grp-ahead", "PENDING", base.Add(time.Second), &backoff)
