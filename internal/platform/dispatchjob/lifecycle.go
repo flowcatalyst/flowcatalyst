@@ -252,11 +252,20 @@ func byIDs(ids []string) selector {
 // it into a join it might run as a scan) looks each pair up by (id, created_at) alone
 // — a status test inside it lets the planner walk the status index instead — and the
 // version and status are checked on what it returns; the UPDATE joins the few matches back by the same key.
+//
+// The version is checked a second time in the UPDATE's own WHERE, on the row being
+// updated. Under READ COMMITTED an UPDATE that has to wait for a row lock (the
+// delivery callback rescheduling the job to PENDING at a NEW updated_at) re-evaluates
+// only its own WHERE against the new row version; the lateral read the old snapshot
+// and is not re-run, so without this the job would be marked QUEUED at its new
+// version with no message behind it. It is a correlated sub-query, not a join
+// clause (`j.updated_at = pk.v`): as a join clause the planner turned the join into
+// a hash join over a scan of the whole job table.
 func byClaims(ids []string, createdAts, updatedAts []time.Time) selector {
 	return func(n int) selection {
 		return selection{
 			with: fmt.Sprintf(`WITH pk AS (
-    SELECT p.id, p.created_at
+    SELECT p.id, p.created_at, c.v
       FROM unnest($%d::text[], $%d::timestamptz[], $%d::timestamptz[]) AS c(id, created_at, v)
      CROSS JOIN LATERAL (
           SELECT id, created_at, updated_at, status FROM msg_dispatch_jobs
@@ -264,8 +273,9 @@ func byClaims(ids []string, createdAts, updatedAts []time.Time) selector {
            OFFSET 0) p
      WHERE p.updated_at = c.v AND p.status = 'PENDING'
 ) `, n, n+1, n+2),
-			from:         "pk",
-			where:        "j.id = pk.id AND j.created_at = pk.created_at",
+			from: "pk",
+			where: "j.id = pk.id AND j.created_at = pk.created_at" +
+				" AND j.updated_at = (SELECT k.v FROM pk k WHERE k.id = j.id AND k.created_at = j.created_at LIMIT 1)",
 			args:         []any{ids, createdAts, updatedAts},
 			expect:       len(ids),
 			opaqueStatus: true,
@@ -305,8 +315,12 @@ func strandedSiblings(liveBefore time.Time) selector {
        AND s.status IN ('QUEUED', 'PROCESSING')
        AND (s.status <> 'PROCESSING' OR s.updated_at < $%d::timestamptz)
 ) `, n),
-			from:  "stranded st",
-			where: "j.id = st.id AND j.created_at = st.created_at",
+			from: "stranded st",
+			// The liveness test is repeated on the row being updated: a sibling that was
+			// QUEUED (exempt) when the CTE read its snapshot may be claimed for delivery
+			// while the UPDATE waits on its row lock, and READ COMMITTED re-evaluates
+			// only this WHERE against the new version.
+			where: fmt.Sprintf("j.id = st.id AND j.created_at = st.created_at AND (j.status <> 'PROCESSING' OR j.updated_at < $%d::timestamptz)", n),
 			args:  []any{liveBefore},
 		}
 	}
