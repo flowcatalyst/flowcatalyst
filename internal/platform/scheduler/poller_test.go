@@ -10,7 +10,7 @@ import (
 // These tests cover the pure filter helpers.
 
 func mkClaim(id, group, mode string) dispatchClaim {
-	return dispatchClaim{id: id, group: group, mode: mode, target: "http://target.example.com/webhook"}
+	return dispatchClaim{id: id, group: group, mode: mode}
 }
 
 func mkClaimWithSub(id, group, subID string) dispatchClaim {

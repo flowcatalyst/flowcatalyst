@@ -16,19 +16,22 @@ import (
 type fakeJob struct {
 	id, group, status, mode string
 	seq                     int32
-	ver                     int // row version: bumped by every move, as updated_at is
+	ver                     int  // row version: bumped by every move, as updated_at is
+	claimed                 bool // claimed_at IS NOT NULL on the job's queue row
 }
 
-// fakeStore stands in for msg_dispatch_jobs: it answers claims the way claimSQL
-// does (PENDING rows in (group NULLS LAST, sequence, id) order, minus the
-// exclusion list), marks rows QUEUED guarded on PENDING, and records what was
-// published, in order.
+// fakeStore stands in for msg_dispatch_queue: it answers claims the way the
+// claim statement does (unclaimed PENDING rows in (group NULLS LAST, sequence,
+// id) order, stamping them claimed), releases claims, marks rows QUEUED guarded
+// on PENDING (which leaves the queue), and records what was published, in order.
 type fakeStore struct {
 	mu         sync.Mutex
 	jobs       []*fakeJob
 	log        []string // ids published, in publish order (duplicates included)
 	claimCalls int
 	claims     [][]string // ids each claim returned
+	releases   [][]string // ids each release call named
+	releaseErr func(call int) error
 
 	// publishFn, when set, replaces the default publisher (which succeeds and
 	// logs). It must call logPublished for what it accepts.
@@ -59,17 +62,13 @@ func newFakeStore(jobs ...*fakeJob) *fakeStore {
 	return &fakeStore{jobs: jobs}
 }
 
-func (s *fakeStore) claimRows(_ context.Context, limit int, paused, inflight []string) ([]dispatchClaim, error) {
-	if paused == nil || inflight == nil {
+func (s *fakeStore) claimRows(_ context.Context, limit int, paused []string) ([]dispatchClaim, error) {
+	if paused == nil {
 		return nil, errors.New("nil exclusion array passed to the claim")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.claimCalls++
-	excluded := make(map[string]struct{}, len(inflight))
-	for _, id := range inflight {
-		excluded[id] = struct{}{}
-	}
 	var out []dispatchClaim
 	var ids []string
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -77,18 +76,16 @@ func (s *fakeStore) claimRows(_ context.Context, limit int, paused, inflight []s
 		if len(out) == limit {
 			break
 		}
-		if j.status != "PENDING" {
+		if j.status != "PENDING" || j.claimed {
 			continue
 		}
-		if _, skip := excluded[j.id]; skip {
-			continue
-		}
+		j.claimed = true
 		mode := j.mode
 		if mode == "" {
 			mode = "IMMEDIATE"
 		}
 		out = append(out, dispatchClaim{
-			id: j.id, group: j.group, mode: mode, target: "http://t.example/hook",
+			id: j.id, group: j.group, mode: mode,
 			sequence: j.seq, createdAt: base.Add(time.Duration(i) * time.Second),
 			updatedAt: base.Add(time.Duration(j.ver) * time.Minute),
 		})
@@ -96,6 +93,62 @@ func (s *fakeStore) claimRows(_ context.Context, limit int, paused, inflight []s
 	}
 	s.claims = append(s.claims, ids)
 	return out, nil
+}
+
+// releaseClaims clears the claim of the named jobs.
+func (s *fakeStore) releaseClaims(_ context.Context, ids []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.releases = append(s.releases, append([]string(nil), ids...))
+	if s.releaseErr != nil {
+		if err := s.releaseErr(len(s.releases)); err != nil {
+			return err
+		}
+	}
+	for _, id := range ids {
+		for _, j := range s.jobs {
+			if j.id == id {
+				j.claimed = false
+			}
+		}
+	}
+	return nil
+}
+
+// releaseOrphans clears every claim not in excluding.
+func (s *fakeStore) releaseOrphans(_ context.Context, excluding []string) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ex := map[string]struct{}{}
+	for _, id := range excluding {
+		ex[id] = struct{}{}
+	}
+	var n int64
+	for _, j := range s.jobs {
+		if _, keep := ex[j.id]; j.claimed && !keep {
+			j.claimed = false
+			n++
+		}
+	}
+	return n, nil
+}
+
+func (s *fakeStore) claimedCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for _, j := range s.jobs {
+		if j.claimed {
+			n++
+		}
+	}
+	return n
+}
+
+func (s *fakeStore) releaseCalls() [][]string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([][]string(nil), s.releases...)
 }
 
 func (s *fakeStore) logPublished(ids ...string) {
@@ -126,6 +179,7 @@ func (s *fakeStore) markQueued(_ context.Context, ids []string, versions []time.
 		for _, j := range s.jobs {
 			if j.id == id && j.status == "PENDING" && base.Add(time.Duration(j.ver)*time.Minute).Equal(versions[i]) {
 				j.status = "QUEUED"
+				j.claimed = false
 				j.ver++
 				rows++
 			}
@@ -179,6 +233,8 @@ func newTestEngine(cfg Config, s *fakeStore) *PendingJobPoller {
 	p.poolCode = func(context.Context, string, string) string { return "" }
 	p.publish = s.publish
 	p.markQueued = s.markQueued
+	p.releaseClaimRows = s.releaseClaims
+	p.releaseOrphans = s.releaseOrphans
 	return p
 }
 

@@ -115,6 +115,7 @@ func TestLane_DoesNotRegressAJobTheCallbackAlreadyMovedOn(t *testing.T) {
 	// by the time the publish returns the job is already PROCESSING.
 	pub := publisherFunc(func(ctx context.Context, items []PublishItem) ([]string, error) {
 		_, err := pool.Exec(ctx, `UPDATE msg_dispatch_jobs SET status = 'PROCESSING' WHERE id = ANY($1)`, jobIDs(items))
+		testpg.SyncDispatchQueue(t, pool, jobIDs(items)...) // what the callback's claim-for-delivery does to the queue row
 		return nil, err
 	})
 	poller := NewPendingJobPoller(DefaultConfig(), pool,

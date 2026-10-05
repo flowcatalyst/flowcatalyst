@@ -48,6 +48,7 @@ func seedRoutableJob(t *testing.T, pool *pgxpool.Pool, id, mode string, poolID, 
 		 VALUES ($1, 'app:evt', 'http://sub.example/hook', 'PENDING', $2, $3, $4)`,
 		id, mode, poolID, clientID)
 	require.NoError(t, err)
+	testpg.SyncDispatchQueue(t, pool, id)
 }
 
 func pollAndCapture(t *testing.T, pool *pgxpool.Pool) []common.Message {

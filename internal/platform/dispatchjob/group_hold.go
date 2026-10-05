@@ -64,8 +64,3 @@ const GroupHeldBeforeSQL = `SELECT EXISTS (
     SELECT 1 FROM msg_dispatch_queue
      WHERE message_group = $2 AND scheduled_for > NOW()
        AND (sequence, job_created_at, job_id) < ($3::int, $4::timestamptz, $5::text))`
-
-// GroupHoldingStatusSQL is the pre-067 holder predicate over msg_dispatch_jobs
-// alone. Kept only until the scheduler's hold-back moves to GroupHoldersSQL.
-const GroupHoldingStatusSQL = `status IN ('FAILED', 'ERROR') ` +
-	`OR (status = 'PENDING' AND scheduled_for IS NOT NULL AND scheduled_for > NOW())`

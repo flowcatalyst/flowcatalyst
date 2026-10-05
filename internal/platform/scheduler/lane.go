@@ -43,14 +43,14 @@ type inflightEntry struct {
 
 // inflightSnapshot is the in-flight set as one claim saw it.
 type inflightSnapshot struct {
-	ids []string // never nil: it goes into `<> ALL($n)`
 	// minGen is, per group, the oldest generation among its in-flight jobs.
 	minGen map[string]uint64
 }
 
 // inflightSet is the state the poller and the lanes share: the in-flight jobs
-// (the next claim excludes their ids) and the poison marks. One mutex guards
-// both, so a claim's check against a poison mark sees a consistent view.
+// (claimed in the queue table and not yet finished by a lane; stale-claim sweeps
+// leave them alone) and the poison marks. One mutex guards both, so a claim's
+// check against a poison mark sees a consistent view.
 type inflightSet struct {
 	mu        sync.Mutex
 	jobs      map[string]inflightEntry
@@ -82,14 +82,23 @@ func (s *inflightSet) remove(ids []string) {
 	schedMetrics.inflight.Set(float64(n))
 }
 
-// snapshot copies the set. The ids are never nil: a NULL array excludes every
-// row.
+// ids lists the in-flight job ids. Never nil: it goes into `<> ALL($n)`.
+func (s *inflightSet) ids() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]string, 0, len(s.jobs))
+	for id := range s.jobs {
+		out = append(out, id)
+	}
+	return out
+}
+
+// snapshot copies what a claim's doomed check needs from the set.
 func (s *inflightSet) snapshot() inflightSnapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	snap := inflightSnapshot{ids: make([]string, 0, len(s.jobs)), minGen: make(map[string]uint64)}
-	for id, e := range s.jobs {
-		snap.ids = append(snap.ids, id)
+	snap := inflightSnapshot{minGen: make(map[string]uint64)}
+	for _, e := range s.jobs {
 		if e.group == "" {
 			continue
 		}
@@ -179,28 +188,33 @@ type poisonEntry struct {
 // in this lane's channel, or in a claim the poller is running right now — and
 // must not be published ahead of j. The rule (state in inflightSet):
 //
-//   - when a batch leaves jobs of g unpublished, AFTER removing the batch's ids
-//     from the in-flight set the lane reads the current claim generation P and
-//     sets poison[g] = P;
+//   - when a batch leaves jobs of g unpublished, the lane first RELEASES the
+//     batch's unpublished claims in the queue table (claimed_at cleared), then
+//     removes the batch's ids from the in-flight set, and only then reads the
+//     current claim generation P and sets poison[g] = P;
 //   - a job of g whose claim generation is <= poison[g] is dropped when it
-//     reaches the lane (it stays PENDING and is claimed again);
+//     reaches the lane (it stays PENDING, its claim is released, and it is
+//     claimed again);
 //   - a claim with generation > P incremented the counter after P was read,
-//     therefore snapshotted the in-flight set after j was removed, therefore
-//     includes j again, in order. Such a job passes, and the first one that
-//     passes clears the mark.
+//     therefore ran its statement after j's claim was released, therefore
+//     returns j again, in order. Such a job passes, and the first one that
+//     passes clears the mark. A claim that skipped j (still claimed) ran its
+//     statement before the release, hence before P was read, hence its
+//     generation is <= P and its jobs of g are dropped.
 //
-// This needs the poller to increment the generation BEFORE it snapshots the set
+// This needs the poller to increment the generation BEFORE it runs the claim
 // (claimHeld). Ungrouped jobs are never poisoned.
 //
 // # The claim must not skip a doomed job
 //
 // A job of g still waiting in a lane when g is poisoned is doomed — it will be
-// dropped — yet it is in the in-flight set, so a later claim excludes it and, if
-// that claim is newer than the poison, takes the job BEHIND it, which would then
-// be published ahead of the doomed one. So the poller checks every claim against
-// the in-flight snapshot it took: if the snapshot held a doomed job of g, the
-// claim's jobs of g are not submitted; they stay PENDING and are claimed again
-// once the doomed job has gone (inflightSet.skippedADoomedJob).
+// dropped — yet it is still claimed in the queue table, so a later claim skips
+// it and, if that claim is newer than the poison, takes the job BEHIND it, which
+// would then be published ahead of the doomed one. So the poller checks every
+// claim against the in-flight snapshot it took: if the snapshot held a doomed
+// job of g, the claim's jobs of g are not submitted; their claims are released
+// and they are claimed again once the doomed job has gone
+// (inflightSet.skippedADoomedJob).
 //
 // A drop does NOT renew the poison. Doing so (poisoning again at the generation
 // read after the drop) also closes that hole, but livelocks whenever the poller
@@ -269,10 +283,14 @@ func (l *lane) process(ctx context.Context, batch []laneJob) {
 	droppedGroups := make(map[string]struct{})
 	live := make([]laneJob, 0, len(batch))
 	dropped := 0
+	// toRelease collects the claims to give back to the queue: dropped,
+	// unpublished, and published-but-not-marked jobs.
+	var toRelease []string
 	for _, j := range batch {
 		if g := j.tok.MessageGroup; g != "" {
 			if _, ok := droppedGroups[g]; ok {
 				dropped++
+				toRelease = append(toRelease, j.tok.JobID)
 				continue
 			}
 			if !p.inflight.admit(g, j.gen) {
@@ -280,6 +298,7 @@ func (l *lane) process(ctx context.Context, batch []laneJob) {
 				// rest of the group in this batch follows the dropped job.
 				droppedGroups[g] = struct{}{}
 				dropped++
+				toRelease = append(toRelease, j.tok.JobID)
 				continue
 			}
 		}
@@ -312,6 +331,7 @@ func (l *lane) process(ctx context.Context, batch []laneJob) {
 				if g := j.tok.MessageGroup; g != "" {
 					poisoned[g] = struct{}{}
 				}
+				toRelease = append(toRelease, j.tok.JobID)
 				continue
 			}
 			if len(published) == 0 || j.createdAt.Before(minCreated) {
@@ -337,6 +357,7 @@ func (l *lane) process(ctx context.Context, batch []laneJob) {
 			switch {
 			case err != nil:
 				failed = true
+				toRelease = append(toRelease, published...)
 				slog.Warn("marking published dispatch jobs QUEUED failed; they will be published again",
 					"published", len(published), "err", err)
 			case int(rows) < len(published):
@@ -347,9 +368,11 @@ func (l *lane) process(ctx context.Context, batch []laneJob) {
 		}
 	}
 
-	// Settle. The order is the ordering rule: ids leave the in-flight set FIRST,
+	// Settle. The order is the ordering rule: the claims of what was not
+	// published go back to the queue FIRST, the ids leave the in-flight set next,
 	// the generation is read AFTER, the permits go back last (a released permit
 	// lets the poller claim again).
+	l.releaseUntilDone(ctx, toRelease)
 	ids := make([]string, len(batch))
 	for i, j := range batch {
 		ids[i] = j.tok.JobID
@@ -366,6 +389,38 @@ func (l *lane) process(ctx context.Context, batch []laneJob) {
 		p.laneFailed.Store(true)
 	}
 	p.release(len(batch))
+}
+
+// releaseUntilDone gives the claims of ids back to the queue, retrying until it
+// succeeds or ctx ends. It must not give up while the process runs: a claim left
+// in place while the lane lets the job leave the in-flight set would let the
+// group's later jobs be claimed, published and delivered ahead of it. Blocking
+// here blocks only this lane (the groups hashed to it) and, through the permits,
+// the poller — which is right, since the database is not answering. On shutdown
+// it returns; the next leader's start-up pass releases the claim.
+func (l *lane) releaseUntilDone(ctx context.Context, ids []string) {
+	if len(ids) == 0 {
+		return
+	}
+	backoff := 50 * time.Millisecond
+	for {
+		rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)
+		err := l.p.releaseClaimRows(rctx, ids)
+		cancel()
+		if err == nil {
+			return
+		}
+		schedMetrics.claimReleaseFailures.Add(float64(len(ids)))
+		slog.Warn("releasing the claims of unpublished dispatch jobs failed; retrying", "jobs", len(ids), "err", err)
+		if ctx.Err() != nil {
+			return
+		}
+		sleepCtx(ctx, backoff)
+		if ctx.Err() != nil {
+			return
+		}
+		backoff = min(backoff*2, 5*time.Second)
+	}
 }
 
 // publishContext is the context a lane publishes under: detached from ctx, so a

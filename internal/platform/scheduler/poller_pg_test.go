@@ -94,6 +94,7 @@ func seedJob(t *testing.T, pool *pgxpool.Pool, id, status, group, subID string) 
 		 VALUES ($1, 'scheduler:poller:test', 'http://example.invalid/hook', $2, $3, $4)`,
 		id, status, groupPtr, subPtr)
 	require.NoError(t, err)
+	testpg.SyncDispatchQueue(t, pool, id)
 }
 
 // seedModeJob is seedJob with an explicit dispatch mode (seedJob leaves the
@@ -109,6 +110,7 @@ func seedModeJob(t *testing.T, pool *pgxpool.Pool, id, status, group, mode strin
 		 VALUES ($1, 'scheduler:poller:test', 'http://example.invalid/hook', $2, $3, $4)`,
 		id, status, groupPtr, mode)
 	require.NoError(t, err)
+	testpg.SyncDispatchQueue(t, pool, id)
 }
 
 func jobStatus(t *testing.T, pool *pgxpool.Pool, id string) string {
@@ -152,6 +154,7 @@ func TestPollOnce_BlockedGroupHoldback(t *testing.T) {
 		`UPDATE msg_dispatch_jobs SET status = 'COMPLETED', updated_at = NOW() WHERE id = $1`,
 		failedID)
 	require.NoError(t, err)
+	testpg.SyncDispatchQueue(t, pool, failedID)
 
 	mustPoll(t, poller, ctx)
 	require.Equal(t, "QUEUED", jobStatus(t, pool, pendingID),

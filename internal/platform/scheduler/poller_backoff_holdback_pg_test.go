@@ -27,6 +27,7 @@ func seedSequencedJob(t *testing.T, pool *pgxpool.Pool, id, group, status string
 		         $3, 10, $4, $4, $5)`,
 		id, status, group, createdAt, scheduledFor)
 	require.NoError(t, err)
+	testpg.SyncDispatchQueue(t, pool, id)
 }
 
 // A job sitting out a retry backoff holds its group. It is PENDING with a

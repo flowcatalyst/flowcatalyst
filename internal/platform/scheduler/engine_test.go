@@ -695,6 +695,9 @@ func TestPoller_AClaimThatSawADoomedInFlightJobDoesNotSubmitTheJobsBehindIt(t *t
 	l := p.lanes[0]
 	// g-01 waits in the lane (generation 1) and its group was poisoned at 1: doomed.
 	track(l, lj("g-01", "g", 1))
+	s.mu.Lock()
+	s.jobs[1].claimed = true // its queue row is claimed: the claim skips it
+	s.mu.Unlock()
 	setPoison(l, "g", 1, time.Now())
 	p.claimGeneration.Store(1)
 	before := value(t, MetricsRegistry, "fc_scheduler_jobs_withheld_doomed_total")
@@ -706,12 +709,15 @@ func TestPoller_AClaimThatSawADoomedInFlightJobDoesNotSubmitTheJobsBehindIt(t *t
 	assert.Equal(t, 1, len(l.in), "g-00 and g-02 never reached a lane")
 	assert.Equal(t, 2.0, value(t, MetricsRegistry, "fc_scheduler_jobs_withheld_doomed_total")-before)
 	assert.Equal(t, 2, p.inflight.size(), "withheld jobs are not in flight (g-01 and h-00 are)")
+	assert.Equal(t, 2, s.claimedCount(), "the withheld jobs' claims were released (only g-01's and h-00's remain claimed)")
+	assert.ElementsMatch(t, []string{"g-00", "g-02"}, s.releaseCalls()[0], "exactly the withheld jobs were released")
 
 	// The doomed job has gone (dropped by its lane): the next claim takes the
 	// whole group, in order.
 	<-l.in
 	p.inflight.remove([]string{"h-00"})
 	p.release(1)
+	require.NoError(t, s.releaseClaims(context.Background(), []string{"g-01", "h-00"})) // the lane releases what it drops
 	l.p.inflight.remove([]string{"g-01"})
 	p.release(1)
 	require.Zero(t, len(p.permits))
