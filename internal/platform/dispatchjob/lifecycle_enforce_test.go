@@ -34,7 +34,16 @@ func TestOnlyTheLifecycleWritesDispatchJobs(t *testing.T) {
 		"cmd/fcdev/fresh.go":                   "fc-dev fresh: TRUNCATE of the dev database",
 	}
 
+	// msg_dispatch_queue (one row per PENDING job) has the same single owner,
+	// with two named exceptions.
+	allowedQueue := map[string]string{
+		"internal/platform/dispatchjob/lifecycle.go": "the lifecycle: the one owner of the queue's writes",
+		"internal/stream/partition_manager.go":       "dropping a msg_dispatch_jobs partition removes the queue rows of the jobs it took with it (no foreign key can)",
+		"cmd/fcdev/fresh.go":                         "fc-dev fresh: TRUNCATE of the dev database",
+	}
+
 	write := regexp.MustCompile(`(?is)\b(insert\s+into|update|delete\s+from|truncate(\s+table)?|drop\s+table(\s+if\s+exists)?|alter\s+table)\s+(only\s+)?msg_dispatch_jobs\b`)
+	writeQueue := regexp.MustCompile(`(?is)\b(insert\s+into|update|delete\s+from|truncate(\s+table)?|drop\s+table(\s+if\s+exists)?|alter\s+table)\s+(only\s+)?msg_dispatch_queue\b`)
 	// sqlc accessors for the table's writers, were one ever generated again.
 	accessor := regexp.MustCompile(`\bDispatchJob(Insert|Persist|Delete|Update\w*|Mark\w+|ScheduleRetry|ClaimForDelivery|ReclaimStaleDelivery|SettleAcked|SweepStrandedSiblings)\b`)
 
@@ -59,14 +68,19 @@ func TestOnlyTheLifecycleWritesDispatchJobs(t *testing.T) {
 		if !(strings.HasSuffix(path, ".go") || strings.HasSuffix(path, ".sql")) || strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
-		if _, ok := allowed[rel]; ok {
-			return nil
-		}
 		b, err := os.ReadFile(path)
 		if err != nil {
 			return err
 		}
 		src := string(b)
+		if _, ok := allowedQueue[rel]; !ok {
+			if m := writeQueue.FindString(src); m != "" {
+				violations = append(violations, rel+": "+strings.Join(strings.Fields(m), " "))
+			}
+		}
+		if _, ok := allowed[rel]; ok {
+			return nil
+		}
 		if m := write.FindString(src); m != "" {
 			violations = append(violations, rel+": "+strings.Join(strings.Fields(m), " "))
 		}

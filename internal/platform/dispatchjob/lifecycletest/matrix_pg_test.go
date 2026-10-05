@@ -174,6 +174,7 @@ func seed(t *testing.T, pool *pgxpool.Pool, j dispatchjob.DispatchJob, status st
 	old := time.Now().Add(-time.Hour).UTC().Truncate(time.Microsecond)
 	_, err = pool.Exec(ctx, `UPDATE msg_dispatch_jobs SET status = $2, updated_at = $3 WHERE id = $1`, j.ID, status, old)
 	require.NoError(t, err)
+	syncQueueFixture(t, pool, j.ID) // the test-only write above does not maintain the queue
 	return seeded{id: j.ID, createdAt: j.CreatedAt, updatedAt: old}
 }
 
@@ -228,6 +229,8 @@ func TestLifecycleMatrix(t *testing.T) {
 				// Sequential and on a clean table: the sweeps are database-wide.
 				_, err := pool.Exec(ctx, `DELETE FROM msg_dispatch_jobs`)
 				require.NoError(t, err)
+				_, err = pool.Exec(ctx, `DELETE FROM msg_dispatch_queue`)
+				require.NoError(t, err)
 
 				group := "matrix-" + tsid.GenerateUntyped()
 				mode := common.DispatchNextOnError
@@ -237,6 +240,8 @@ func TestLifecycleMatrix(t *testing.T) {
 				}
 				j := seed(t, pool, newJob(group, mode, 2), from)
 				before := snapshot(t, pool, j.id)
+				queueBefore := queueSnapshot(t, pool, j.id)
+				assertQueueInvariant(t, pool, j.id) // the fixture itself is consistent
 				refusedBefore := refusedCount(t, tc.name)
 
 				require.NoError(t, tc.run(ctx, lc, j))
@@ -247,8 +252,10 @@ func TestLifecycleMatrix(t *testing.T) {
 					assert.Equal(t, want, after["status"], "status after %s from %s", tc.name, from)
 					assert.NotEqual(t, before["updated_at"], after["updated_at"], "%s must stamp updated_at", tc.name)
 					assert.Equal(t, refusedBefore, refusedCount(t, tc.name), "an allowed transition is not a refusal")
+					assertQueueInvariant(t, pool, j.id)
 				} else {
 					assert.Equal(t, before, after, "%s from %s must change nothing", tc.name, from)
+					assert.Equal(t, queueBefore, queueSnapshot(t, pool, j.id), "%s from %s must leave the queue row untouched", tc.name, from)
 					if tc.counted {
 						assert.Equal(t, refusedBefore+1, refusedCount(t, tc.name), "%s from %s must count a refusal", tc.name, from)
 					}
