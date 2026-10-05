@@ -60,14 +60,18 @@ serve only the engine.** The events repo honors this. The dispatch-job repo does
 - `UNIQUE idx_msg_events_deduplication (deduplication_id, created_at)`
 
 `msg_dispatch_jobs`
-(as of migration 065, which replaced the first three, and 045, which replaced the fourth)
-- `idx_dispatch_jobs_pending_poll (message_group NULLS LAST, sequence, created_at, id) WHERE status='PENDING'` ← poller claim; ends in `id` so the claim's total order needs no sort
-- `idx_dispatch_jobs_group_holders (message_group, sequence, created_at, id) WHERE message_group IS NOT NULL AND (status IN ('FAILED','ERROR') OR (status='PENDING' AND scheduled_for IS NOT NULL))` ← block-on-error hold-back (claim time, delivery time, reaper join)
-- `idx_dispatch_jobs_in_flight (status, updated_at) WHERE status IN ('QUEUED','PROCESSING')` ← stale recovery + reaper sweep
-- `idx_msg_dispatch_jobs_dirty (created_at) WHERE projected_at IS NULL OR updated_at > projected_at` ← projector claim
+(as of migration 067, which replaced the three partial indexes 065 had put on the dispatch path, and 045, which replaced the fourth)
+- `idx_dispatch_jobs_status_group (status, message_group, sequence, created_at, id)` ← every remaining status-based read, ordinary (not partial): the block-on-error hold-back for FAILED/ERROR (`status = ANY($1) AND message_group = ANY($2)`, claim time and delivery time), the stale-recovery sweeps and the reaper (QUEUED/PROCESSING by the status prefix), and the queue reconcile sweep (PENDING)
+- `idx_msg_dispatch_jobs_dirty (created_at) WHERE projected_at IS NULL OR updated_at > projected_at` ← projector claim. **The one partial index left on the dispatch tables** (it is the projector's, not the dispatch path's).
 
-These line up **exactly** with the hot-path SQL (verified against `poller.go`,
-`stale_recovery.go`, `fan_out.go`, `events.go`, `dispatch_jobs.go`). No action.
+The scheduler no longer reads PENDING jobs from this table. It claims from the queue table:
+
+`msg_dispatch_queue` (migration 066; one row per PENDING job, kept exact by the dispatch-job lifecycle in the same statement as every job change; storage options and the consistency repair in 067)
+- `PRIMARY KEY (job_id)`
+- `idx_dispatch_queue_order (message_group NULLS LAST, sequence, job_created_at, job_id)` ← the claim's exact `ORDER BY`, so the claim walks it with no sort and stops at its `LIMIT` (`claimed_at` and `scheduled_for` are filters on the rows the walk visits; `claimed_at` is in no index so claiming updates stay HOT); also the hold-back's future-`scheduled_for` lookup by `message_group`
+- `fillfactor = 70`, autovacuum by row count (`autovacuum_vacuum_threshold = 2000`, scale factor 0): the table is small and churns
+
+Migration 067 dropped `idx_dispatch_jobs_pending_poll` (the claim, now on the queue table), `idx_dispatch_jobs_group_holders` (the hold-back, now split between the status index above and the queue's order index) and `idx_dispatch_jobs_in_flight` (the sweeps, now the status prefix of `idx_dispatch_jobs_status_group`). Nothing on the dispatch path depends on a predicate the planner must prove from a literal; the statements were EXPLAINed on a 400,000-row, three-partition table with generic (bind-parameter) plans in three statistics states (freshly analysed, analysed while empty, never analysed) — `internal/platform/scheduler/poller_plan_pg_test.go` pins the result.
 
 ### Read projections — partial coverage
 

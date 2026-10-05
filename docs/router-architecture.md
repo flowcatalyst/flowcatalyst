@@ -188,7 +188,7 @@ Now (owner ruling 2026-09-22):
   copy of the same message id under a new broker id — the platform republishing a job whose
   message sat QUEUED past its stale threshold — is ACKed as a duplicate, not deferred beside
   it; the parked copy re-enters as itself when it returns. `Count()` excludes parked copies.
-  The platform side of the same bug: `scheduler.StaleAfter` is 75 min, above the horizon.
+  The platform side of the same bug was a 75-minute stale-QUEUED threshold, above the horizon; the owner ruled it down to 15 minutes (2026-10-04): the duplicates a parked job's early revert causes are ACK-dropped here or skipped by the delivery callback, and a genuinely lost message is recovered in 15 minutes (`scheduler.Config.StaleQueuedAfter`; `StaleProcessingAfter` stays 75 min).
 - **Intra-pool head-of-line** — one slow message group monopolising a shared pool's buffer —
   is *not* addressed here: that is a job that belongs in its own pool (owner ruling).
 
