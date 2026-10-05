@@ -164,8 +164,11 @@ type PendingJobPoller struct {
 	lanes      []*lane
 
 	// Seams. The defaults talk to Postgres and the dispatcher; tests replace them.
-	claimRows  func(ctx context.Context, limit int, paused, heldGroups []string) ([]dispatchClaim, error)
-	holdBack   func(ctx context.Context, groups []string) (map[string]jobKey, error)
+	claimRows func(ctx context.Context, limit int, paused, heldGroups []string) ([]dispatchClaim, error)
+	// holdBack returns each candidate group's earliest holder; last is each
+	// candidate group's LAST candidate in the claim (only a holder positioned before
+	// a candidate matters, which bounds the lookup).
+	holdBack   func(ctx context.Context, last map[string]jobKey) (map[string]jobKey, error)
 	pausedIDs  func(ctx context.Context) (map[string]struct{}, error)
 	poolCode   func(ctx context.Context, poolID, clientID string) string
 	publish    func(ctx context.Context, toks []DispatchJobToken) (unpublished []string)
@@ -211,8 +214,8 @@ func NewPendingJobPoller(cfg Config, pool *pgxpool.Pool, dispatcher *MessageGrou
 	p.claimRows = func(ctx context.Context, limit int, paused, held []string) ([]dispatchClaim, error) {
 		return queryClaim(ctx, lc, limit, paused, held)
 	}
-	p.holdBack = func(ctx context.Context, groups []string) (map[string]jobKey, error) {
-		return blockedGroups(ctx, pool, groups)
+	p.holdBack = func(ctx context.Context, last map[string]jobKey) (map[string]jobKey, error) {
+		return blockedGroups(ctx, pool, last)
 	}
 	p.restoreClaimRows = func(ctx context.Context, refs []claimRef) error {
 		ids := make([]string, len(refs))
@@ -448,12 +451,15 @@ func (p *PendingJobPoller) claimHeld(ctx context.Context, want int) claimResult 
 	// of SQL. Held rows are not submitted and stay PENDING; the next claim
 	// retries them. Paused subscriptions are excluded by the claim itself, so
 	// they can never fill the LIMIT window and starve the rows behind them.
-	byGroup := groupByMessageGroup(claims)
-	candidates := make([]string, 0, len(byGroup))
-	for g := range byGroup {
-		candidates = append(candidates, g)
+	last := make(map[string]jobKey)
+	for g, cs := range groupByMessageGroup(claims) {
+		k := cs[len(cs)-1].key() // claims arrive in position order within a group
+		if g == defaultMessageGroup {
+			k = unboundedKey // the ungrouped bucket mixes positions of unrelated rows
+		}
+		last[g] = k
 	}
-	blocked, err := p.holdBack(ctx, candidates)
+	blocked, err := p.holdBack(ctx, last)
 	if err != nil {
 		p.restoreClaims(ctx, claimRefs(claims)) // none of them will be submitted
 		return claimResult{claimed: len(claims), err: err}
@@ -799,12 +805,19 @@ type pgxQuerier interface {
 // matches NULL, so a failed ungrouped job does not hold back the "default"
 // bucket. Preserve that exactly — only a row whose message_group is literally
 // 'default' blocks ungrouped jobs.
-func blockedGroups(ctx context.Context, q pgxQuerier, groups []string) (map[string]jobKey, error) {
+func blockedGroups(ctx context.Context, q pgxQuerier, last map[string]jobKey) (map[string]jobKey, error) {
 	holders := make(map[string]jobKey)
-	if len(groups) == 0 {
+	if len(last) == 0 {
 		return holders, nil
 	}
-	rows, err := q.Query(ctx, dispatchjob.GroupHoldersSQL, dispatchjob.GroupHoldingStatuses, groups)
+	groups := make([]string, 0, len(last))
+	seqs := make([]int32, 0, len(last))
+	created := make([]time.Time, 0, len(last))
+	ids := make([]string, 0, len(last))
+	for g, k := range last {
+		groups, seqs, created, ids = append(groups, g), append(seqs, k.sequence), append(created, k.createdAt), append(ids, k.id)
+	}
+	rows, err := q.Query(ctx, dispatchjob.GroupHoldersSQL, dispatchjob.GroupHoldingStatuses, groups, seqs, created, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -822,6 +835,10 @@ func blockedGroups(ctx context.Context, q pgxQuerier, groups []string) (map[stri
 	}
 	return holders, nil
 }
+
+// unboundedKey sorts after every real job: the lookup bound for a group whose
+// candidates give no meaningful position.
+var unboundedKey = jobKey{sequence: 1<<31 - 1, createdAt: time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC), id: "~"}
 
 // DispatchJobToken is the value the poller hands the dispatcher. It
 // carries just enough to publish to the queue without re-reading the

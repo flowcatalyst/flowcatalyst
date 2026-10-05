@@ -37,21 +37,26 @@ var GroupHoldingStatuses = []string{"FAILED", "ERROR"}
 
 // GroupHoldersSQL returns, per candidate group, the EARLIEST holder as
 // (message_group, sequence, created_at, id). $1 = GroupHoldingStatuses, $2 =
-// candidate groups. DISTINCT ON keeps the earliest: anything behind it is held
+// candidate groups; $3..$5 are, per group (same order as $2), the position
+// (sequence, created_at, id) of the group's LAST candidate in the claim. DISTINCT ON keeps the earliest: anything behind it is held
 // by it too. The queue half is one ordered index probe per candidate group (the
 // first backed-off row in the group's order), so its cost does not grow with the
-// depth of the queue.
+// depth of the queue, and bounded by the group's last candidate: only a holder
+// positioned before a candidate can hold it, and the claim has just deleted the
+// candidates' own rows, so the probe reads only the rows ahead of the claim (not
+// all of a deep group's due rows looking for a future-scheduled one).
 const GroupHoldersSQL = `SELECT DISTINCT ON (message_group) message_group, sequence, created_at, id FROM (
     SELECT message_group, sequence, created_at, id
       FROM msg_dispatch_jobs
      WHERE status = ANY($1::text[]) AND message_group = ANY($2::text[])
     UNION ALL
     SELECT h.message_group, h.sequence, h.job_created_at, h.job_id
-      FROM unnest($2::text[]) AS g(grp)
+      FROM unnest($2::text[], $3::int[], $4::timestamptz[], $5::text[]) AS g(grp, seq, ca, jid)
      CROSS JOIN LATERAL (
           SELECT message_group, sequence, job_created_at, job_id
             FROM msg_dispatch_queue
            WHERE message_group = g.grp AND scheduled_for > NOW()
+             AND (sequence, job_created_at, job_id) < (g.seq, g.ca, g.jid)
            ORDER BY sequence, job_created_at, job_id
            LIMIT 1) h
 ) h2

@@ -197,6 +197,12 @@ func literal(a any) string {
 		return "'" + strings.ReplaceAll(v, "'", "''") + "'"
 	case []string:
 		return "'{" + strings.Join(v, ",") + "}'::text[]"
+	case []int32:
+		parts := make([]string, len(v))
+		for i, n := range v {
+			parts[i] = fmt.Sprint(n)
+		}
+		return "'{" + strings.Join(parts, ",") + "}'::int[]"
 	case []time.Time:
 		parts := make([]string, len(v))
 		for i, ts := range v {
@@ -263,7 +269,11 @@ func TestPlans_HoldBackUsesTheIndexesAndNeverScansATable(t *testing.T) {
 	// backlog shape, a queue of ~100,000 rows.
 	for _, shape := range []planShape{realisticShape, backlogShape} {
 		forEachState(t, shape, func(t *testing.T, p *pgxpool.Pool) {
-			holders := planOf(t, p, dispatchjob.GroupHoldersSQL, literals([]any{dispatchjob.GroupHoldingStatuses, groups}))
+			seqs, created, ids := make([]int32, len(groups)), make([]time.Time, len(groups)), make([]string, len(groups))
+			for i := range groups {
+				seqs[i], created[i], ids[i] = unboundedKey.sequence, unboundedKey.createdAt, unboundedKey.id
+			}
+			holders := planOf(t, p, dispatchjob.GroupHoldersSQL, literals([]any{dispatchjob.GroupHoldingStatuses, groups, seqs, created, ids}))
 			held := planOf(t, p, dispatchjob.GroupHeldBeforeSQL, literals([]any{
 				dispatchjob.GroupHoldingStatuses, "g7", 2, time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), "zzz"}))
 			t.Logf("TIMING hold-back %s holders %.2f ms held-before %.2f ms", shape.name, holders.ExecTime, held.ExecTime)

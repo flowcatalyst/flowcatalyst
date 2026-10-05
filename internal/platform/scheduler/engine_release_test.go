@@ -102,7 +102,7 @@ func TestRelease_HeldBackJobsAreReleased(t *testing.T) {
 	}
 	s := newFakeStore(jobs...)
 	p := newTestEngine(Config{PollInterval: time.Millisecond, Dispatchers: 1, BufferCapacity: 10, BatchSize: 10}, s)
-	p.holdBack = func(context.Context, []string) (map[string]jobKey, error) {
+	p.holdBack = func(context.Context, map[string]jobKey) (map[string]jobKey, error) {
 		return map[string]jobKey{"g": {sequence: -1, id: "holder"}}, nil
 	}
 	res := settleOnce(t, p, context.Background())
@@ -121,7 +121,7 @@ func TestRelease_OnlyTheHeldRowsOfAMixedClaimAreReleased(t *testing.T) {
 	}
 	s := newFakeStore(append(held, groupJobs("g", 2)...)...)
 	p := newTestEngine(Config{PollInterval: time.Millisecond, Dispatchers: 1, BufferCapacity: 10, BatchSize: 10}, s)
-	p.holdBack = func(context.Context, []string) (map[string]jobKey, error) {
+	p.holdBack = func(context.Context, map[string]jobKey) (map[string]jobKey, error) {
 		return map[string]jobKey{"h": {sequence: -1, id: "holder"}}, nil
 	}
 	settleOnce(t, p, context.Background())
@@ -135,7 +135,7 @@ func TestRelease_OnlyTheHeldRowsOfAMixedClaimAreReleased(t *testing.T) {
 func TestRelease_HoldBackErrorReleasesTheClaim(t *testing.T) {
 	s := newFakeStore(groupJobs("g", 3)...)
 	p := newTestEngine(Config{PollInterval: time.Millisecond, Dispatchers: 1, BufferCapacity: 10, BatchSize: 10}, s)
-	p.holdBack = func(context.Context, []string) (map[string]jobKey, error) { return nil, errors.New("db down") }
+	p.holdBack = func(context.Context, map[string]jobKey) (map[string]jobKey, error) { return nil, errors.New("db down") }
 	res := p.claimOnce(context.Background())
 	require.Error(t, res.err)
 	assert.Zero(t, s.claimedCount())
@@ -157,7 +157,7 @@ func TestRelease_PollerSideReleaseRetriesThenLeavesItToTheSweep(t *testing.T) {
 		return nil
 	}
 	p := newTestEngine(Config{PollInterval: time.Millisecond, Dispatchers: 1, BufferCapacity: 10, BatchSize: 10}, s)
-	p.holdBack = func(context.Context, []string) (map[string]jobKey, error) { return nil, errors.New("boom") }
+	p.holdBack = func(context.Context, map[string]jobKey) (map[string]jobKey, error) { return nil, errors.New("boom") }
 	_ = p.claimOnce(context.Background())
 	assert.Zero(t, s.claimedCount(), "released on the third attempt")
 	assert.Len(t, s.releaseCalls(), 3)
@@ -166,7 +166,7 @@ func TestRelease_PollerSideReleaseRetriesThenLeavesItToTheSweep(t *testing.T) {
 	s2 := newFakeStore(groupJobs("g", 2)...)
 	s2.releaseErr = func(int) error { return errors.New("down") }
 	p2 := newTestEngine(Config{PollInterval: time.Millisecond, Dispatchers: 1, BufferCapacity: 10, BatchSize: 10}, s2)
-	p2.holdBack = func(context.Context, []string) (map[string]jobKey, error) { return nil, errors.New("boom") }
+	p2.holdBack = func(context.Context, map[string]jobKey) (map[string]jobKey, error) { return nil, errors.New("boom") }
 	before := value(t, MetricsRegistry, "fc_scheduler_claim_restore_failures_total")
 	_ = p2.claimOnce(context.Background())
 	assert.Equal(t, 2, s2.claimedCount())

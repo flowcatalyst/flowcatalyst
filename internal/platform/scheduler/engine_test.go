@@ -404,7 +404,7 @@ func TestPoller_DoesNotHotLoopWhenEverythingIsHeld(t *testing.T) {
 	s := newFakeStore(jobs...)
 	p := newTestEngine(Config{PollInterval: 50 * time.Millisecond, Dispatchers: 1, BufferCapacity: 4, BatchSize: 4}, s)
 	// A holder in front of every job of the group.
-	p.holdBack = func(context.Context, []string) (map[string]jobKey, error) {
+	p.holdBack = func(context.Context, map[string]jobKey) (map[string]jobKey, error) {
 		return map[string]jobKey{"g": {sequence: -1, id: "holder"}}, nil
 	}
 	assert.LessOrEqual(t, hotLoopWindow(t, p, s), 14)

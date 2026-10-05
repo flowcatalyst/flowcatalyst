@@ -311,3 +311,70 @@ func TestPlans_PoolRuntimeParamsAreAppliedToEveryConnection(t *testing.T) {
 		}
 	}
 }
+
+// holdersUnbounded is the pre-bound holder lookup: one probe per candidate group
+// that walks the group's due rows until it finds a future-scheduled one.
+const holdersUnbounded = `SELECT DISTINCT ON (message_group) message_group, sequence, created_at, id FROM (
+    SELECT message_group, sequence, created_at, id FROM msg_dispatch_jobs
+     WHERE status = ANY($1::text[]) AND message_group = ANY($2::text[])
+    UNION ALL
+    SELECT h.message_group, h.sequence, h.job_created_at, h.job_id
+      FROM unnest($2::text[]) AS g(grp)
+     CROSS JOIN LATERAL (SELECT message_group, sequence, job_created_at, job_id FROM msg_dispatch_queue
+           WHERE message_group = g.grp AND scheduled_for > NOW()
+           ORDER BY sequence, job_created_at, job_id LIMIT 1) h
+) h2 ORDER BY message_group, sequence, created_at, id`
+
+// The hold-back's queue probe on the shape that is hard for it: a deep queue (100,000
+// rows) of 500 groups x 200 DUE rows, none scheduled for the future. Unbounded, each
+// probe walks all of its group's due rows looking for a holder that is not there;
+// bounded by the position of the group's last candidate (the claim has just deleted
+// the candidates' rows) it reads only the rows ahead of the claim.
+func TestPlans_HoldBackProbeIsBoundedByTheLastCandidate(t *testing.T) {
+	ctx := context.Background()
+	groups := make([]string, 500)
+	seqs := make([]int32, 500)
+	created := make([]time.Time, 500)
+	ids := make([]string, 500)
+	base := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	for i := range groups {
+		groups[i] = fmt.Sprintf("g%04d", i)
+	}
+	for si, st := range planStates {
+		t.Run(st.name, func(t *testing.T) {
+			p := testpg.ScratchDBWith(t, fmt.Sprintf("holdbound_%d", si), PoolRuntimeParams)
+			load := func() {
+				_, err := p.Exec(ctx, `INSERT INTO msg_dispatch_queue (job_id, job_created_at, message_group, sequence, scheduled_for, mode, version)
+				SELECT 'q' || lpad(n::text, 12, '0'), $1::timestamptz + (n * interval '1 second'), 'g' || lpad((n % 500)::text, 4, '0'), (n / 500)::int, NULL, 'BLOCK_ON_ERROR', $1::timestamptz
+				  FROM generate_series(1, 100000) n`, base)
+				require.NoError(t, err)
+			}
+			for _, tb := range []string{"msg_dispatch_queue"} {
+				_, err := p.Exec(ctx, "ALTER TABLE "+tb+" SET (autovacuum_enabled = false)")
+				require.NoError(t, err)
+			}
+			if si == 1 {
+				_, err := p.Exec(ctx, "ANALYZE msg_dispatch_queue")
+				require.NoError(t, err)
+			}
+			load()
+			if si == 2 {
+				_, err := p.Exec(ctx, "ANALYZE msg_dispatch_queue")
+				require.NoError(t, err)
+			}
+			// the claim took each group's first 3 rows (sequences 0..2): the last
+			// candidate is sequence 2; the probe need only look before it.
+			_, err := p.Exec(ctx, `DELETE FROM msg_dispatch_queue WHERE sequence < 3`)
+			require.NoError(t, err)
+			for i := range groups {
+				seqs[i], created[i], ids[i] = 2, base.Add(time.Duration(2*500+i+1)*time.Second), fmt.Sprintf("q%012d", 2*500+i+1)
+			}
+			un := planOf(t, p, holdersUnbounded, literals([]any{dispatchjob.GroupHoldingStatuses, groups}))
+			bd := planOf(t, p, dispatchjob.GroupHoldersSQL, literals([]any{dispatchjob.GroupHoldingStatuses, groups, seqs, created, ids}))
+			t.Logf("TIMING holders 100k rows, 500 groups x 200 due, %-22s unbounded %7.2f ms  bounded %7.2f ms", st.name, un.ExecTime, bd.ExecTime)
+			seq, _ := queueScans(bd)
+			assert.False(t, seq, "the bounded probe must not scan the queue")
+			assert.Less(t, bd.ExecTime, 10.0, "bounded probe stays in single-digit milliseconds")
+		})
+	}
+}

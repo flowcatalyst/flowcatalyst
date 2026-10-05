@@ -234,7 +234,7 @@ func (s *fakeStore) claimCount() int {
 func newTestEngine(cfg Config, s *fakeStore) *PendingJobPoller {
 	p := newPoller(cfg)
 	p.claimRows = s.claimRows
-	p.holdBack = func(context.Context, []string) (map[string]jobKey, error) { return map[string]jobKey{}, nil }
+	p.holdBack = func(context.Context, map[string]jobKey) (map[string]jobKey, error) { return map[string]jobKey{}, nil }
 	p.pausedIDs = func(context.Context) (map[string]struct{}, error) { return map[string]struct{}{}, nil }
 	p.poolCode = func(context.Context, string, string) string { return "" }
 	p.publish = s.publish

@@ -21,7 +21,7 @@ func TestHeld_AHeldGroupDoesNotStarveTheGroupsBehindIt(t *testing.T) {
 	}
 	s := newFakeStore(append(held, groupJobs("z", 2)...)...)
 	p := newTestEngine(Config{PollInterval: 2 * time.Millisecond, Dispatchers: 1, BufferCapacity: 10, BatchSize: 4}, s)
-	p.holdBack = func(context.Context, []string) (map[string]jobKey, error) {
+	p.holdBack = func(context.Context, map[string]jobKey) (map[string]jobKey, error) {
 		return map[string]jobKey{"a": {sequence: -1, id: "holder"}}, nil // the head of "a" has failed
 	}
 	runEngine(t, p)
@@ -46,7 +46,7 @@ func TestHeld_AHeldGroupIsTriedAgainAfterTheTTL(t *testing.T) {
 	p := newTestEngine(Config{PollInterval: 2 * time.Millisecond, Dispatchers: 1, BufferCapacity: 10, BatchSize: 4}, s)
 	var holding atomic.Bool
 	holding.Store(true)
-	p.holdBack = func(context.Context, []string) (map[string]jobKey, error) {
+	p.holdBack = func(context.Context, map[string]jobKey) (map[string]jobKey, error) {
 		if holding.Load() {
 			return map[string]jobKey{"a": {sequence: -1, id: "holder"}}, nil
 		}
