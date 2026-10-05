@@ -182,3 +182,71 @@ func freePort() (int, error) {
 	defer func() { _ = l.Close() }()
 	return l.Addr().(*net.TCPAddr).Port, nil
 }
+
+// SyncDispatchQueue makes msg_dispatch_queue agree with the CURRENT msg_dispatch_jobs
+// rows of ids, for a test that wrote the job table directly (a raw INSERT, UPDATE
+// or DELETE the dispatch-job lifecycle did not see): a PENDING job gets exactly one
+// queue row mirroring it (claimed_at NULL), any other job — or a missing one —
+// gets none. Production code never does this; the lifecycle keeps the queue exact
+// in the same statement as every job change. Call it after the raw write.
+func SyncDispatchQueue(t testing.TB, p *pgxpool.Pool, ids ...string) {
+	t.Helper()
+	if len(ids) == 0 {
+		return
+	}
+	ctx := context.Background()
+	// Not PENDING (or missing): no queue row. PENDING: exactly one, upserted — a
+	// sweep running in another test (the reaper, stale recovery) may enter the same
+	// job at the same moment.
+	if _, err := p.Exec(ctx, `
+		DELETE FROM msg_dispatch_queue q WHERE q.job_id = ANY($1::text[])
+		   AND NOT EXISTS (SELECT 1 FROM msg_dispatch_jobs j
+		                    WHERE j.id = q.job_id AND j.created_at = q.job_created_at AND j.status = 'PENDING')`, ids); err != nil {
+		t.Fatalf("testpg: sync dispatch queue (delete): %v", err)
+	}
+	if _, err := p.Exec(ctx, `
+		INSERT INTO msg_dispatch_queue (job_id, job_created_at, message_group, sequence, scheduled_for,
+		       subscription_id, dispatch_pool_id, client_id, mode, queue, version)
+		SELECT id, created_at, message_group, sequence, scheduled_for, subscription_id,
+		       dispatch_pool_id, client_id, mode, queue, updated_at
+		  FROM msg_dispatch_jobs WHERE id = ANY($1::text[]) AND status = 'PENDING'
+		ON CONFLICT (job_id) DO UPDATE SET job_created_at = EXCLUDED.job_created_at,
+		       message_group = EXCLUDED.message_group, sequence = EXCLUDED.sequence,
+		       scheduled_for = EXCLUDED.scheduled_for, subscription_id = EXCLUDED.subscription_id,
+		       dispatch_pool_id = EXCLUDED.dispatch_pool_id, client_id = EXCLUDED.client_id,
+		       mode = EXCLUDED.mode, queue = EXCLUDED.queue, version = EXCLUDED.version,
+		       claimed_at = NULL`, ids); err != nil {
+		t.Fatalf("testpg: sync dispatch queue (insert): %v", err)
+	}
+}
+
+// ScratchDB creates a fresh, fully migrated database beside the shared one and
+// returns a pool on it, dropped when the test ends. For tests that need a table
+// to themselves — plan tests that seed a few hundred thousand rows and control
+// the statistics — without disturbing the rows every other test shares.
+func ScratchDB(t *testing.T, name string) *pgxpool.Pool {
+	t.Helper()
+	ctx := context.Background()
+	base := Pool(t)
+	if _, err := base.Exec(ctx, "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)"); err != nil {
+		t.Fatalf("testpg: drop scratch database: %v", err)
+	}
+	if _, err := base.Exec(ctx, "CREATE DATABASE "+name); err != nil {
+		t.Fatalf("testpg: create scratch database: %v", err)
+	}
+	cfg := base.Config().Copy()
+	cfg.ConnConfig.Database = name
+	p, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		t.Fatalf("testpg: connect to scratch database: %v", err)
+	}
+	if err := migrate.Run(ctx, p); err != nil {
+		p.Close()
+		t.Fatalf("testpg: migrate scratch database: %v", err)
+	}
+	t.Cleanup(func() {
+		p.Close()
+		_, _ = base.Exec(context.Background(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)")
+	})
+	return p
+}

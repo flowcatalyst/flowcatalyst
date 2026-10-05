@@ -86,6 +86,7 @@ func seedJob(t *testing.T, repo *dispatchjob.Repository, code string, status com
 		`UPDATE msg_dispatch_jobs SET status = $2, completed_at = $3 WHERE id = $1`,
 		j.ID, string(status), j.CompletedAt)
 	require.NoError(t, uerr)
+	testpg.SyncDispatchQueue(t, testpg.Pool(t), j.ID)
 	return j
 }
 

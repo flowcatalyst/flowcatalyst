@@ -66,11 +66,11 @@ const reapReason = "reaper: sibling of a FAILED BLOCK_ON_ERROR head, stranded QU
 
 // SweepStrandedGroupSiblings runs one sweep: it resets to PENDING every
 // QUEUED/PROCESSING job whose message group is headed by a terminally
-// FAILED job under BLOCK_ON_ERROR (see GroupHoldingStatusSQL and
+// FAILED job under BLOCK_ON_ERROR (see GroupHoldersSQL and
 // pool.go's ackBuffered doc comment for why such rows can exist), subject to
 // the processingLiveAfter liveness cutoff on PROCESSING rows (see
 // DefaultProcessingLiveAfter for the sizing rationale — QUEUED rows have no
-// such cutoff). Once reset, GroupHoldingStatusSQL / the scheduler's
+// such cutoff). Once reset, GroupHoldersSQL / the scheduler's
 // filterByDispatchMode keep the group visibly held (last_error records why)
 // until an operator resolves the head (Cancel/Complete), at which point the
 // poller's normal claim query re-admits the group in order.

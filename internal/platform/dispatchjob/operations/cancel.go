@@ -10,7 +10,7 @@ import (
 // for a stuck/failed job that isn't worth retrying. Only valid from FAILED;
 // any other source status is a 409 (see statusFlip). Flipping the job off
 // FAILED is also what unblocks the rest of its BLOCK_ON_ERROR message group:
-// GroupHoldingStatusSQL stops holding the group the moment the head is no
+// GroupHoldersSQL stops holding the group the moment the head is no
 // longer FAILED, and the scheduler's next poll re-admits the siblings in
 // order (see docs/owner-rulings-plan.md T3).
 func CancelDispatchJob(repo *dispatchjob.Repository) usecaseop.Operation[CancelCommand, DispatchJobCancelled] {

@@ -32,8 +32,10 @@ func TestFindRecentRaw_AgreesWithFindByID(t *testing.T) {
 		 VALUES ($1, 'rawlist:test', 'http://example.invalid/hook', 'PENDING', 'HIGH_PRIORITY',
 		         '{"n":1}', '{"k":"v"}')`, id)
 	require.NoError(t, err)
+	testpg.SyncDispatchQueue(t, pool, id)
 	t.Cleanup(func() {
 		_, _ = pool.Exec(context.Background(), `DELETE FROM msg_dispatch_jobs WHERE id = $1`, id)
+		testpg.SyncDispatchQueue(t, pool, id)
 	})
 
 	byID, err := repo.FindByID(ctx, id)

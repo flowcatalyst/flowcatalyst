@@ -40,6 +40,7 @@ func TestOnlyTheLifecycleWritesDispatchJobs(t *testing.T) {
 		"internal/platform/dispatchjob/lifecycle.go": "the lifecycle: the one owner of the queue's writes",
 		"internal/stream/partition_manager.go":       "dropping a msg_dispatch_jobs partition removes the queue rows of the jobs it took with it (no foreign key can)",
 		"cmd/fcdev/fresh.go":                         "fc-dev fresh: TRUNCATE of the dev database",
+		"internal/testpg/testpg.go":                  "integration-test support (build tag integration): SyncDispatchQueue makes the queue agree with a job a test wrote directly",
 	}
 
 	write := regexp.MustCompile(`(?is)\b(insert\s+into|update|delete\s+from|truncate(\s+table)?|drop\s+table(\s+if\s+exists)?|alter\s+table)\s+(only\s+)?msg_dispatch_jobs\b`)

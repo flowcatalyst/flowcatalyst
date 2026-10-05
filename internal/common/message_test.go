@@ -105,7 +105,7 @@ func TestDispatchStatusLifecycle(t *testing.T) {
 
 // TestParseDispatchStatusStrict pins the X-06 conversion: ParseDispatchStatus
 // still accepts the legacy aliases (IN_PROGRESS/ERROR — real values
-// msg_dispatch_jobs.status has held, see GroupHoldingStatusSQL) but an
+// msg_dispatch_jobs.status has held, see GroupHoldersSQL) but an
 // actually-unrecognised value must be rejected (ok=false), never silently
 // coerced to PENDING. The PENDING default from the old lenient parser is
 // gone.

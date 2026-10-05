@@ -36,6 +36,7 @@ func seedJob(t *testing.T, pool *pgxpool.Pool, id, status string) {
 		 VALUES ($1, 'settled:test:evt', 'http://example.invalid/hook', $2, FALSE, '{}', 3)`,
 		id, status)
 	require.NoError(t, err)
+	testpg.SyncDispatchQueue(t, pool, id)
 }
 
 func statusAndLastError(t *testing.T, pool *pgxpool.Pool, id string) (string, *string) {

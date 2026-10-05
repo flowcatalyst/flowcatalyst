@@ -346,11 +346,10 @@ func (r *Repository) Hold(ctx context.Context, id string, createdAt time.Time, s
 }
 
 // GroupHeldBefore reports whether an EARLIER job in the message group is
-// holding it up — failed, or sitting out a retry backoff (see
-// GroupHoldingStatusSQL). It is the delivery-time half of the scheduler's
-// claim-time hold-back: the poller stops QUEUEING a group's jobs once one is
-// held, but messages already on the queue at that moment still arrive here and
-// would deliver past it.
+// holding it up — failed, or sitting out a retry backoff (see group_hold.go). It
+// is the delivery-time half of the scheduler's claim-time hold-back: the poller
+// stops QUEUEING a group's jobs once one is held, but messages already on the
+// queue at that moment still arrive here and would deliver past it.
 //
 // "Earlier" is positional — the (sequence, created_at, id) the poller claims
 // by. Asking merely whether the group contains a held job would also catch the
@@ -358,13 +357,7 @@ func (r *Repository) Hold(ctx context.Context, id string, createdAt time.Time, s
 // never move.
 func (r *Repository) GroupHeldBefore(ctx context.Context, group string, sequence int32, createdAt time.Time, id string) (bool, error) {
 	var held bool
-	err := r.pool.QueryRow(ctx,
-		`SELECT EXISTS (
-		     SELECT 1 FROM msg_dispatch_jobs
-		      WHERE message_group = $1
-		        AND (`+GroupHoldingStatusSQL+`)
-		        AND (sequence, created_at, id) < ($2, $3, $4))`,
-		group, sequence, createdAt, id).Scan(&held)
+	err := r.pool.QueryRow(ctx, GroupHeldBeforeSQL, GroupHoldingStatuses, group, sequence, createdAt, id).Scan(&held)
 	return held, err
 }
 

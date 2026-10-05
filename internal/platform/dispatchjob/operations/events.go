@@ -8,7 +8,7 @@
 //
 // These three ops close the platform half of T3/A-01: without Cancel and
 // Complete an operator has no way to get a FAILED BLOCK_ON_ERROR head out of
-// the way (which is what GroupHoldingStatusSQL blocks the rest of the group
+// the way (which is what GroupHoldersSQL blocks the rest of the group
 // on), and Resend is how the group's siblings actually flow again once the
 // head is resolved.
 package operations

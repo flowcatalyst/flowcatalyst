@@ -30,7 +30,7 @@ func (s DispatchStatus) IsSuccessful() bool { return s == DispatchCompleted }
 // ParseDispatchStatus parses a stored/wire status value. IN_PROGRESS and
 // ERROR are accepted legacy aliases of PROCESSING and FAILED — not just
 // wire input, but real values `msg_dispatch_jobs.status` has held (see
-// dispatchjob.GroupHoldingStatusSQL, which still matches 'ERROR' by design
+// dispatchjob.GroupHoldersSQL, which still matches 'ERROR' by design
 // so old rows keep blocking as they always did). Returns ok=false for
 // anything else — callers MUST reject on ok=false rather than coerce an
 // unrecognised value to PENDING (X-06: a loud read error, never a silent
