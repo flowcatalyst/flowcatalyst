@@ -29,6 +29,39 @@ package dispatchjob
 // with the status the job was found in, so a late callback finding a settled
 // job is visible rather than silent.
 //
+// msg_dispatch_queue (migration 066) holds exactly one row for every job whose
+// status is PENDING, mirroring the job's current values. This file is its only
+// writer (besides the partition manager's drop and fc-dev's TRUNCATE, see
+// lifecycle_enforce_test.go). Each transition is ONE statement — a
+// data-modifying CTE — so the job change and the queue change commit or fail
+// together without a new transaction or round trip:
+//
+//   - create:       WITH ins AS (INSERT jobs ... RETURNING), q AS (INSERT queue
+//                   SELECT FROM ins ON CONFLICT DO NOTHING) SELECT FROM ins
+//   - enterPending: WITH moved AS (UPDATE jobs ... RETURNING) INSERT queue
+//                   SELECT FROM moved ON CONFLICT (job_id) DO UPDATE ... (entering
+//                   or re-entering PENDING refreshes version and scheduled_for and
+//                   resets claimed_at)
+//   - leavePending: WITH moved AS (UPDATE jobs ... RETURNING), gone AS (DELETE
+//                   queue USING moved) SELECT FROM moved. Delete-if-exists: a
+//                   terminal outcome may or may not find the job PENDING.
+//   - mark-QUEUED additionally deletes the queue row of every (id, claimed
+//     version) pair of its batch whose queue version still equals the claimed
+//     one, even if the job row itself did not match (status moved on without
+//     the queue row being refreshed). A queue row of a different version (the
+//     job re-entered PENDING since the claim) is left alone.
+//
+// KNOWN, ACCEPTED ANOMALY. Under READ COMMITTED a statement's CTEs see the
+// snapshot taken when the statement started. If an enter and a leave of the
+// SAME job race and the leave blocks on the job's row lock behind the enter,
+// the leave's DELETE cannot see the queue row the enter has just inserted, so
+// a queue row can outlive a job that is no longer PENDING. The opposite error
+// (a PENDING job with no queue row: a lost job) cannot happen this way: an
+// enter that waits behind a leave re-inserts with ON CONFLICT, which does see
+// committed rows. A stale extra row is harmless and self-heals (mark-QUEUED
+// removes it; a later reconcile sweep will too). The hot paths are NOT wrapped
+// in transactions to avoid it. QueueDrift counts both directions.
+//
 // The lifecycle accepts whatever executor the caller owns: the platform pool,
 // the scheduler's own pool, or a transaction (fan-out and the operator use
 // cases run inside one with other writes). It adds and removes no transaction.
@@ -184,7 +217,7 @@ func (c *changes) has(col string) bool {
 type selector func(first int) selection
 
 type selection struct {
-	with  string // optional "WITH ... " prefix
+	cte   string // optional leading CTE definition ("name AS (...)", no WITH keyword)
 	from  string // optional FROM clause of the UPDATE
 	where string
 	args  []any
@@ -192,6 +225,9 @@ type selection struct {
 	// a sweep (matching nothing is its normal outcome). The shortfall is the
 	// refusal count.
 	expect int
+	// queueSweep, for a leave, is an extra "SELECT id ..." whose rows have their
+	// queue row deleted whether or not the job row matched.
+	queueSweep string
 	// key, when the selector names one job, lets a refusal log the status the
 	// job was found in.
 	key *jobKey
@@ -233,6 +269,8 @@ func byIDs(ids []string) selector {
 func byClaims(ids []string, updatedAts []time.Time, minCreated, maxCreated time.Time) selector {
 	return func(n int) selection {
 		return selection{
+			queueSweep: fmt.Sprintf(`SELECT c.id FROM unnest($%d::text[], $%d::timestamptz[]) AS c(id, v)
+		    JOIN msg_dispatch_queue sq ON sq.job_id = c.id AND sq.version = c.v`, n, n+1),
 			from: fmt.Sprintf("unnest($%d::text[], $%d::timestamptz[]) AS c(id, claimed_updated_at)", n, n+1),
 			where: fmt.Sprintf(`j.id = c.id
 		    AND j.updated_at = c.claimed_updated_at
@@ -258,7 +296,7 @@ func staleBefore(cutoff time.Time) selector {
 func strandedSiblings(liveBefore time.Time) selector {
 	return func(n int) selection {
 		return selection{
-			with: fmt.Sprintf(`WITH stranded AS (
+			cte: fmt.Sprintf(`stranded AS (
     SELECT s.id, s.created_at
       FROM msg_dispatch_jobs s
       JOIN msg_dispatch_jobs h
@@ -274,7 +312,7 @@ func strandedSiblings(liveBefore time.Time) selector {
        AND s.message_group IS NOT NULL
        AND s.status IN ('QUEUED', 'PROCESSING')
        AND (s.status <> 'PROCESSING' OR s.updated_at < $%d::timestamptz)
-) `, n),
+)`, n),
 			from:  "stranded st",
 			where: "j.id = st.id AND j.created_at = st.created_at",
 			args:  []any{liveBefore},
@@ -290,7 +328,36 @@ func statusList(ss []common.DispatchStatus) string {
 	return strings.Join(q, ", ")
 }
 
-// buildTransition renders the one UPDATE a transition issues.
+// The queue-table column lists. queueCols is the INSERT list; jobToQueueSelect
+// maps a job row (columns of insertReturningCols) onto it.
+const (
+	queueCols = `job_id, job_created_at, message_group, sequence, scheduled_for, subscription_id,
+		dispatch_pool_id, client_id, mode, queue, version`
+	jobToQueueSelect = `id, created_at, message_group, sequence, scheduled_for, subscription_id,
+		dispatch_pool_id, client_id, mode, queue, updated_at`
+	// queueReturning yields a JobRow (scanJobRow order) from the queue row.
+	queueReturning = ` RETURNING job_id, job_created_at, message_group, sequence, scheduled_for,
+		subscription_id, dispatch_pool_id, client_id, mode, queue, version, 'PENDING'::text`
+	queueUpsert = ` ON CONFLICT (job_id) DO UPDATE SET job_created_at = EXCLUDED.job_created_at,
+		message_group = EXCLUDED.message_group, sequence = EXCLUDED.sequence,
+		scheduled_for = EXCLUDED.scheduled_for, subscription_id = EXCLUDED.subscription_id,
+		dispatch_pool_id = EXCLUDED.dispatch_pool_id, client_id = EXCLUDED.client_id,
+		mode = EXCLUDED.mode, queue = EXCLUDED.queue, version = EXCLUDED.version,
+		claimed_at = NULL`
+)
+
+func (t Transition) leavesPending() bool {
+	for _, s := range t.From {
+		if s == common.DispatchPending {
+			return t.To != common.DispatchPending
+		}
+	}
+	return false
+}
+
+// buildTransition renders the one statement a transition issues: the UPDATE of
+// msg_dispatch_jobs, wrapped (when PENDING is on either side) in the data-
+// modifying CTE that keeps msg_dispatch_queue exact.
 func buildTransition(t Transition, sel selector, ch *changes) (string, []any, selection) {
 	if ch == nil {
 		ch = &changes{}
@@ -303,7 +370,6 @@ func buildTransition(t Transition, sel selector, ch *changes) (string, []any, se
 	}
 	s := sel(len(ch.args) + 1)
 	var b strings.Builder
-	b.WriteString(s.with)
 	b.WriteString("UPDATE msg_dispatch_jobs j SET ")
 	b.WriteString(strings.Join(sets, ", "))
 	if s.from != "" {
@@ -318,7 +384,39 @@ func buildTransition(t Transition, sel selector, ch *changes) (string, []any, se
 		b.WriteString(" AND j.status IN (" + statusList(t.From) + ")")
 	}
 	b.WriteString(returningCols)
-	return b.String(), append(append([]any(nil), ch.args...), s.args...), s
+	update := b.String()
+	args := append(append([]any(nil), ch.args...), s.args...)
+
+	ctes := []string{}
+	if s.cte != "" {
+		ctes = append(ctes, s.cte)
+	}
+	switch {
+	case t.To == common.DispatchPending:
+		// enterPending: upsert the queue row from the moved rows. DISTINCT ON
+		// keeps one row per job (an ON CONFLICT DO UPDATE may not touch a row
+		// twice in one statement).
+		ctes = append(ctes, "moved AS ("+update+")")
+		return "WITH " + strings.Join(ctes, ",\n") + "\nINSERT INTO msg_dispatch_queue (" + queueCols + ")\n" +
+			"SELECT DISTINCT ON (id) " + jobToQueueSelect + " FROM moved ORDER BY id, updated_at DESC" +
+			queueUpsert + queueReturning, args, s
+	case t.leavesPending():
+		// leavePending: delete the queue row of every moved job (if there is
+		// one), plus the optional extra ids the selector names.
+		ctes = append(ctes, "moved AS ("+update+")")
+		ids := "SELECT id FROM moved"
+		if s.queueSweep != "" {
+			ids += " UNION " + s.queueSweep
+		}
+		ctes = append(ctes, "gone AS (DELETE FROM msg_dispatch_queue q USING ("+ids+") d WHERE q.job_id = d.id)")
+		return "WITH " + strings.Join(ctes, ",\n") + "\nSELECT " + jobToQueueSelect + ", status FROM moved", args, s
+	default:
+		// passThrough: PENDING on neither side, no queue write.
+		if s.cte != "" {
+			return "WITH " + s.cte + " " + update, args, s
+		}
+		return update, args, s
+	}
 }
 
 // Statement is one transition's rendered SQL, for plan tests.
@@ -440,8 +538,13 @@ func (l *Lifecycle) insertPending(ctx context.Context, t Transition, cols []insC
 			vals[i] = fmt.Sprintf(c.expr, p)
 		}
 	}
-	sql := "INSERT INTO msg_dispatch_jobs (" + strings.Join(names, ", ") + ")\n VALUES (" +
-		strings.Join(vals, ", ") + ")\n ON CONFLICT (id, created_at) DO NOTHING" + insertReturningCols
+	// One statement: the job insert and (for the rows actually inserted) the
+	// queue insert. A skipped duplicate adds nothing to either.
+	sql := "WITH ins AS (INSERT INTO msg_dispatch_jobs (" + strings.Join(names, ", ") + ")\n VALUES (" +
+		strings.Join(vals, ", ") + ")\n ON CONFLICT (id, created_at) DO NOTHING" + insertReturningCols + "),\n" +
+		"q AS (INSERT INTO msg_dispatch_queue (" + queueCols + ")\n SELECT " + jobToQueueSelect +
+		" FROM ins ON CONFLICT (job_id) DO NOTHING)\n" +
+		"SELECT id, created_at, message_group, sequence, scheduled_for, subscription_id, dispatch_pool_id, client_id, mode, queue, updated_at, status FROM ins"
 	batch := &pgx.Batch{}
 	for _, r := range rows {
 		batch.Queue(sql, r...)
@@ -737,4 +840,42 @@ func (l *Lifecycle) OperatorComplete(ctx context.Context, id string, createdAt t
 	rows, err := l.passThrough(ctx, TOperatorComplete, byKey(id, createdAt),
 		new(changes).set("completed_at", now).set("updated_at", now))
 	return len(rows) == 1, err
+}
+
+// ── drift check ─────────────────────────────────────────────────────────
+
+// QueueDrift reports how far msg_dispatch_queue is from its invariant (one
+// exact row per PENDING job, none otherwise): missingOrStale counts PENDING
+// jobs with no queue row or whose queue row's version/scheduled_for differs;
+// orphaned counts queue rows whose job is not PENDING or does not exist. It
+// scans both tables, for tests and diagnostics only; no hot path calls it.
+func (l *Lifecycle) QueueDrift(ctx context.Context) (missingOrStale, orphaned int64, err error) {
+	err = queryOne(ctx, l.ex, &missingOrStale, `
+		SELECT count(*) FROM msg_dispatch_jobs j
+		  LEFT JOIN msg_dispatch_queue q ON q.job_id = j.id
+		 WHERE j.status = 'PENDING'
+		   AND (q.job_id IS NULL OR q.version <> j.updated_at
+		        OR q.scheduled_for IS DISTINCT FROM j.scheduled_for)`)
+	if err != nil {
+		return 0, 0, err
+	}
+	err = queryOne(ctx, l.ex, &orphaned, `
+		SELECT count(*) FROM msg_dispatch_queue q
+		 WHERE NOT EXISTS (SELECT 1 FROM msg_dispatch_jobs j
+		                    WHERE j.id = q.job_id AND j.created_at = q.job_created_at
+		                      AND j.status = 'PENDING')`)
+	return missingOrStale, orphaned, err
+}
+
+func queryOne(ctx context.Context, ex Executor, dst *int64, sql string) error {
+	rows, err := ex.Query(ctx, sql)
+	if err != nil {
+		return err
+	}
+	v, err := pgx.CollectOneRow(rows, pgx.RowTo[int64])
+	if err != nil {
+		return err
+	}
+	*dst = v
+	return nil
 }
