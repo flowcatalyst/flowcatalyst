@@ -101,7 +101,7 @@ func TestRunnerServerCutsOffSlowBody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	_, _ = io.WriteString(conn, "POST /x HTTP/1.1\r\nHost: a\r\nContent-Length: 1000\r\n\r\nabc")
 	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	start := time.Now()
@@ -129,6 +129,7 @@ func (stubControlPlane) Heartbeat(context.Context, control.Heartbeat) error { re
 func (stubControlPlane) Artifact(context.Context, string) (io.ReadCloser, error) {
 	return nil, io.EOF
 }
+
 func (stubControlPlane) Emit(context.Context, control.EmitRequest) (*control.EmitResponse, *abi.Error) {
 	return nil, &abi.Error{}
 }

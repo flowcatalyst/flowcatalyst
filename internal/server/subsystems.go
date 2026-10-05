@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"os"
 	"strings"
@@ -121,9 +122,7 @@ func newSchedulerPool(ctx context.Context, shared *pgxpool.Pool, size int) (*pgx
 	if pc.ConnConfig.RuntimeParams == nil {
 		pc.ConnConfig.RuntimeParams = map[string]string{}
 	}
-	for k, v := range scheduler.PoolRuntimeParams {
-		pc.ConnConfig.RuntimeParams[k] = v
-	}
+	maps.Copy(pc.ConnConfig.RuntimeParams, scheduler.PoolRuntimeParams)
 	pc.MaxConns = int32(size) //nolint:gosec // a small configured pool size
 	if pc.MinConns > pc.MaxConns {
 		pc.MinConns = pc.MaxConns

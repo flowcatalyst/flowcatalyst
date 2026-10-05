@@ -115,7 +115,8 @@ type logBuf struct {
 }
 
 func (l *logBuf) Write(p []byte) (int, error) { l.mu.Lock(); defer l.mu.Unlock(); return l.b.Write(p) }
-func (l *logBuf) String() string              { l.mu.Lock(); defer l.mu.Unlock(); return l.b.String() }
+
+func (l *logBuf) String() string { l.mu.Lock(); defer l.mu.Unlock(); return l.b.String() }
 
 func captureLogs(t *testing.T) *logBuf {
 	lb := &logBuf{}
@@ -135,8 +136,6 @@ func waitDrainersGone(t *testing.T, q *Queue) {
 	}
 }
 
-func u32(n uint32) *uint32 { return &n }
-
 func TestManyDefersCoalesceWithTheirOwnVisibilityTimeouts(t *testing.T) {
 	f := newFakeVisSQS(t, func([]visEntry) (map[int]bool, int) {
 		time.Sleep(20 * time.Millisecond)
@@ -147,7 +146,7 @@ func TestManyDefersCoalesceWithTheirOwnVisibilityTimeouts(t *testing.T) {
 
 	const n = 300
 	for i := range n {
-		require.NoError(t, q.Defer(context.Background(), "r"+strconv.Itoa(i), u32(uint32(i))))
+		require.NoError(t, q.Defer(context.Background(), "r"+strconv.Itoa(i), new(uint32(i))))
 	}
 	require.Eventually(t, func() bool { return q.deferred.Load() == n }, 10*time.Second, 10*time.Millisecond)
 
@@ -166,7 +165,7 @@ func TestNackWithDelayCountsAsNackedNotDeferred(t *testing.T) {
 	f := newFakeVisSQS(t, func([]visEntry) (map[int]bool, int) { return nil, 0 })
 	q := f.queue()
 	defer q.Stop()
-	require.NoError(t, q.Nack(context.Background(), "r1", u32(7)))
+	require.NoError(t, q.Nack(context.Background(), "r1", new(uint32(7))))
 	require.Eventually(t, func() bool { return q.nacked.Load() == 1 }, 5*time.Second, 5*time.Millisecond)
 	assert.Zero(t, q.deferred.Load())
 }
@@ -182,7 +181,7 @@ func TestDeferReturnsBeforeTheBrokerAnswers(t *testing.T) {
 	defer close(release)
 
 	start := time.Now()
-	require.NoError(t, q.Defer(context.Background(), "r1", u32(5)))
+	require.NoError(t, q.Defer(context.Background(), "r1", new(uint32(5))))
 	assert.Less(t, time.Since(start), 500*time.Millisecond)
 	assert.Zero(t, q.deferred.Load(), "not counted until the broker answers")
 	release <- struct{}{}
@@ -195,7 +194,7 @@ func TestWholeCallFailureLogsAndStillCounts(t *testing.T) {
 	q := f.queue()
 	defer q.Stop()
 
-	require.NoError(t, q.Defer(context.Background(), "r1", u32(5)), "the caller cannot receive a broker error")
+	require.NoError(t, q.Defer(context.Background(), "r1", new(uint32(5))), "the caller cannot receive a broker error")
 	require.Eventually(t, func() bool { return q.deferred.Load() == 1 }, 5*time.Second, 5*time.Millisecond)
 	assert.Contains(t, lb.String(), "ChangeMessageVisibilityBatch failed")
 }
@@ -215,7 +214,7 @@ func TestPerEntryFailureLogsAndStillCounts(t *testing.T) {
 	defer q.Stop()
 
 	for _, r := range []string{"a", "bad", "c"} {
-		require.NoError(t, q.Defer(context.Background(), r, u32(5)))
+		require.NoError(t, q.Defer(context.Background(), r, new(uint32(5))))
 	}
 	require.Eventually(t, func() bool { return q.deferred.Load() == 3 }, 5*time.Second, 5*time.Millisecond)
 	assert.Contains(t, lb.String(), "entry failed")
@@ -236,24 +235,24 @@ func TestFullQueueBlocksDeferUntilDrainedAndHonoursCtx(t *testing.T) {
 
 	// Wedge the drainers on the first batches, then top the channel up to capacity.
 	for i := range visibilityDrainers {
-		require.NoError(t, q.Defer(context.Background(), "w"+strconv.Itoa(i), u32(1)))
+		require.NoError(t, q.Defer(context.Background(), "w"+strconv.Itoa(i), new(uint32(1))))
 		require.Eventually(t, func() bool { return f.calls.Load() == int64(i+1) }, 5*time.Second, time.Millisecond)
 	}
 	for i := range visibilityQueueDepth {
-		require.NoError(t, q.Defer(context.Background(), "r"+strconv.Itoa(i), u32(1)))
+		require.NoError(t, q.Defer(context.Background(), "r"+strconv.Itoa(i), new(uint32(1))))
 	}
 
 	// ctx cancel while full.
 	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	err := q.Defer(ctx, "blocked", u32(1))
+	err := q.Defer(ctx, "blocked", new(uint32(1)))
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.GreaterOrEqual(t, time.Since(start), 100*time.Millisecond, "a full queue must block the caller")
 
 	// An uncancelled enqueue unblocks once the broker drains.
 	done := make(chan error, 1)
-	go func() { done <- q.Defer(context.Background(), "blocked2", u32(1)) }()
+	go func() { done <- q.Defer(context.Background(), "blocked2", new(uint32(1))) }()
 	select {
 	case <-done:
 		t.Fatal("Defer returned while the queue was full")
@@ -280,14 +279,14 @@ func TestStopDoesNotHangABlockedEnqueueAndFlushesTheQueue(t *testing.T) {
 	defer open()
 
 	for i := range visibilityDrainers {
-		require.NoError(t, q.Defer(context.Background(), "w"+strconv.Itoa(i), u32(1)))
+		require.NoError(t, q.Defer(context.Background(), "w"+strconv.Itoa(i), new(uint32(1))))
 		require.Eventually(t, func() bool { return f.calls.Load() == int64(i+1) }, 5*time.Second, time.Millisecond)
 	}
 	for i := range visibilityQueueDepth {
-		require.NoError(t, q.Defer(context.Background(), "r"+strconv.Itoa(i), u32(1)))
+		require.NoError(t, q.Defer(context.Background(), "r"+strconv.Itoa(i), new(uint32(1))))
 	}
 	done := make(chan error, 1)
-	go func() { done <- q.Defer(context.Background(), "blocked", u32(1)) }()
+	go func() { done <- q.Defer(context.Background(), "blocked", new(uint32(1))) }()
 	time.Sleep(100 * time.Millisecond)
 
 	q.Stop()
@@ -305,7 +304,7 @@ func TestStopDoesNotHangABlockedEnqueueAndFlushesTheQueue(t *testing.T) {
 
 	// A nack after Stop still reaches the broker (the router nacks buffered
 	// messages around consumer Stop).
-	require.NoError(t, q.Nack(context.Background(), "late", u32(3)))
+	require.NoError(t, q.Nack(context.Background(), "late", new(uint32(3))))
 	require.Eventually(t, func() bool { return q.nacked.Load() == 1 }, 5*time.Second, 5*time.Millisecond)
 	waitDrainersGone(t, q)
 }
@@ -319,14 +318,14 @@ func TestDrainersExitWhenIdleAndRestartOnNextDefer(t *testing.T) {
 	q := f.queue()
 	defer q.Stop()
 
-	require.NoError(t, q.Defer(context.Background(), "r1", u32(1)))
+	require.NoError(t, q.Defer(context.Background(), "r1", new(uint32(1))))
 	require.Eventually(t, func() bool { return q.deferred.Load() == 1 }, 5*time.Second, 5*time.Millisecond)
 	waitDrainersGone(t, q) // exited on their own, with no Stop
 	q.vis.mu.Lock()
 	assert.Zero(t, q.vis.live)
 	q.vis.mu.Unlock()
 
-	require.NoError(t, q.Defer(context.Background(), "r2", u32(1)))
+	require.NoError(t, q.Defer(context.Background(), "r2", new(uint32(1))))
 	require.Eventually(t, func() bool { return q.deferred.Load() == 2 }, 5*time.Second, 5*time.Millisecond)
 	waitDrainersGone(t, q)
 }

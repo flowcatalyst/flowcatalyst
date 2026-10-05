@@ -127,13 +127,11 @@ func TestConcurrentAcksCoalesceAndNeverExceedTenPerBatch(t *testing.T) {
 	var wg sync.WaitGroup
 	var failures atomic.Int64
 	for i := range n {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			if err := q.Ack(context.Background(), "r"+strconv.Itoa(i), "m"+strconv.Itoa(i)); err != nil {
 				failures.Add(1)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 
@@ -161,11 +159,9 @@ func TestPerEntryFailureFailsOnlyThatAck(t *testing.T) {
 	errs := make([]error, len(receipts))
 	var wg sync.WaitGroup
 	for i, r := range receipts {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			errs[i] = q.Ack(context.Background(), r, "m-"+r)
-		}()
+		})
 	}
 	wg.Wait()
 	for i, r := range receipts {
@@ -189,13 +185,11 @@ func TestWholeCallErrorFailsEveryAckInTheBatch(t *testing.T) {
 	var wg sync.WaitGroup
 	var okCount atomic.Int64
 	for i := range 20 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			if q.Ack(context.Background(), "r"+strconv.Itoa(i), "m"+strconv.Itoa(i)) == nil {
 				okCount.Add(1)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	assert.Zero(t, okCount.Load())
@@ -286,13 +280,11 @@ func TestSteadyLoadFillsBatchesNearTen(t *testing.T) {
 	var wg sync.WaitGroup
 	var failures atomic.Int64
 	for i := range n {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			if err := q.Ack(context.Background(), "r"+strconv.Itoa(i), "m"+strconv.Itoa(i)); err != nil {
 				failures.Add(1)
 			}
-		}()
+		})
 		// One producer, ~100us apart (busy-wait: sleeps are far coarser).
 		for end := time.Now().Add(100 * time.Microsecond); time.Now().Before(end); {
 		}
@@ -342,13 +334,11 @@ func TestBurstEngagesHelpersAndHonoursBatchAndHelperCaps(t *testing.T) {
 	var wg sync.WaitGroup
 	var failures atomic.Int64
 	for i := range n {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			if err := q.Ack(context.Background(), "r"+strconv.Itoa(i), "m"+strconv.Itoa(i)); err != nil {
 				failures.Add(1)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 
@@ -397,11 +387,9 @@ func TestFullBatchGoesImmediatelyWithHugeCap(t *testing.T) {
 	start := time.Now()
 	var wg sync.WaitGroup
 	for i := range deleteBatchMax {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			assert.NoError(t, q.Ack(context.Background(), "r"+strconv.Itoa(i), "m"+strconv.Itoa(i)))
-		}()
+		})
 	}
 	wg.Wait()
 	assert.Less(t, time.Since(start), 2*time.Second, "a full batch must not wait for the cap")
@@ -424,11 +412,9 @@ func TestUrgentAckCutsTheBatchAtOnceAndIncludesCollectedAcks(t *testing.T) {
 
 	var wg sync.WaitGroup
 	for i := range 3 { // normal acks, lingering
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			assert.NoError(t, q.Ack(context.Background(), "n"+strconv.Itoa(i), "mn"+strconv.Itoa(i)))
-		}()
+		})
 	}
 	time.Sleep(100 * time.Millisecond)
 	require.EqualValues(t, 0, f.calls.Load(), "normal acks must still be lingering")

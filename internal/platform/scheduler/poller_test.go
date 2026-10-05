@@ -13,12 +13,6 @@ func mkClaim(id, group, mode string) dispatchClaim {
 	return dispatchClaim{id: id, group: group, mode: mode}
 }
 
-func mkClaimWithSub(id, group, subID string) dispatchClaim {
-	c := mkClaim(id, group, "IMMEDIATE")
-	c.subID = subID
-	return c
-}
-
 func claimIDs(claims []dispatchClaim) []string {
 	out := make([]string, 0, len(claims))
 	for _, c := range claims {

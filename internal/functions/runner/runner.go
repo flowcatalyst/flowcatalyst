@@ -348,12 +348,10 @@ func newVersion(fn *function, dv control.Version) (*version, error) {
 
 // spawnPrepare starts v's prepare (v.work was already incremented).
 func (r *Runner) spawnPrepare(ctx context.Context, v *version) {
-	r.prepares.Add(1)
-	go func() {
-		defer r.prepares.Done()
+	r.prepares.Go(func() {
 		defer v.work.Done()
 		r.prepare(ctx, v)
-	}()
+	})
 }
 
 // tryRetry moves a failed version back to preparing when its backoff has

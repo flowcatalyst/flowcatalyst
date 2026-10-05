@@ -14,7 +14,7 @@ func TestCachedTargetKeysMatchUncached(t *testing.T) {
 		"ftp://example.com/x",
 		"http://example.com:99999/x",
 	} {
-		for i := 0; i < 2; i++ { // second pass hits the cache
+		for range 2 { // second pass hits the cache
 			if got, want := cachedBreakerKey(target), breakerKey(target); got != want {
 				t.Fatalf("breakerKey(%q) = %q, want %q", target, got, want)
 			}
@@ -29,11 +29,9 @@ func TestCachedTargetKeysMatchUncached(t *testing.T) {
 
 func TestTargetCacheBoundedAndConcurrentSafe(t *testing.T) {
 	var wg sync.WaitGroup
-	for g := 0; g < 8; g++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := 0; i < maxTargetCacheEntries; i++ {
+	for range 8 {
+		wg.Go(func() {
+			for i := range maxTargetCacheEntries {
 				target := fmt.Sprintf("http://h%d.example.com/p", i)
 				if got := cachedBreakerKey(target); got != target {
 					t.Errorf("breakerKey mismatch %q", got)
@@ -42,7 +40,7 @@ func TestTargetCacheBoundedAndConcurrentSafe(t *testing.T) {
 					t.Errorf("hostKey wrong: %v %v", k, err)
 				}
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	for _, c := range []*counterBox{&breakerKeyCount, &hostKeyCount} {

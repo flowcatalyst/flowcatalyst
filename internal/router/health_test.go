@@ -244,7 +244,7 @@ func TestPoolOutcomes_FeedHealthSuccessRate(t *testing.T) {
 	p := &Pool{cfg: common.PoolConfig{Code: "p1"}, metrics: NewPoolMetricsCollector()}
 	p.results = m.recordPoolResult
 
-	for i := 0; i < 9; i++ {
+	for range 9 {
 		p.recordMetric(MetricSuccess, 1)
 	}
 	p.recordMetric(MetricFailure, 1)

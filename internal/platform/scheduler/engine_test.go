@@ -878,7 +878,7 @@ func TestOrdering_StressFirstDeliveriesStayInOrder(t *testing.T) {
 	stop()
 
 	first := map[string]map[string]bool{}
-	var order = map[string][]string{}
+	order := map[string][]string{}
 	for _, id := range s.published() {
 		g := id[:3]
 		if first[g] == nil {

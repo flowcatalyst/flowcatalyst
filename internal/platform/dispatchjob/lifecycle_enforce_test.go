@@ -56,7 +56,7 @@ func TestOnlyTheLifecycleWritesDispatchJobs(t *testing.T) {
 			}
 			return nil
 		}
-		if !(strings.HasSuffix(path, ".go") || strings.HasSuffix(path, ".sql")) || strings.HasSuffix(path, "_test.go") {
+		if (!strings.HasSuffix(path, ".go") && !strings.HasSuffix(path, ".sql")) || strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
 		if _, ok := allowed[rel]; ok {

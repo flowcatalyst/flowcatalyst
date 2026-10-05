@@ -74,8 +74,10 @@ func TestPullExpiryDefaultsShortAndIsConfigurable(t *testing.T) {
 // Every expiry must yield options the client accepts: heartbeat at least 500ms
 // and under half the expiry, or none at all.
 func TestPullOptionsAreAlwaysAcceptedByTheClient(t *testing.T) {
-	for _, expiry := range []time.Duration{0, 500 * time.Millisecond, time.Second, 1500 * time.Millisecond,
-		2 * time.Second, 3 * time.Second, 5 * time.Second, 30 * time.Second} {
+	for _, expiry := range []time.Duration{
+		0, 500 * time.Millisecond, time.Second, 1500 * time.Millisecond,
+		2 * time.Second, 3 * time.Second, 5 * time.Second, 30 * time.Second,
+	} {
 		if got := len(pullOptions(10, 5, expiry)); got < 3 {
 			t.Fatalf("expiry %s: %d options, want at least the three base options", expiry, got)
 		}

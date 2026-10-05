@@ -43,7 +43,7 @@ func localhostURL(t *testing.T, srv *httptest.Server) (target, hostPort string) 
 }
 
 func TestFetchAllowlistedNameResolvingToLoopbackIsBlocked(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("secret")) }))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("secret")) }))
 	defer srv.Close()
 	target, hostPort := localhostURL(t, srv)
 
@@ -54,7 +54,7 @@ func TestFetchAllowlistedNameResolvingToLoopbackIsBlocked(t *testing.T) {
 }
 
 func TestFetchLoopbackOnlyWithDevPolicy(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("hi")) }))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("hi")) }))
 	defer srv.Close()
 	target, hostPort := localhostURL(t, srv)
 
@@ -92,7 +92,7 @@ func TestFetchRedirectToPrivateAddressBlocked(t *testing.T) {
 
 func TestFetchResponseCap(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Write(make([]byte, maxHTTPResponseBytes+1))
+		_, _ = w.Write(make([]byte, maxHTTPResponseBytes+1))
 	}))
 	defer srv.Close()
 	target, hostPort := localhostURL(t, srv)

@@ -281,7 +281,7 @@ func (q *Queue) parseMessage(sm sqstypes.Message) (common.Message, string, strin
 	var m common.Message
 	// Unmarshal only reads its input and copies whatever it keeps, so the body
 	// is viewed as bytes rather than copied into a fresh []byte per message.
-	if err := json.Unmarshal(unsafe.Slice(unsafe.StringData(*sm.Body), len(*sm.Body)), &m); err != nil {
+	if err := json.Unmarshal(unsafe.Slice(unsafe.StringData(*sm.Body), len(*sm.Body)), &m); err != nil { //nolint:gosec // G103: deliberate zero-copy read-only view; Unmarshal never retains or mutates its input
 		return common.Message{}, "", "", fmt.Errorf("unmarshal: %w", err)
 	}
 	if sm.ReceiptHandle == nil {

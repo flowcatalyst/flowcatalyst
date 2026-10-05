@@ -11,8 +11,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/router"
@@ -154,11 +152,15 @@ func TestMediatorDoesNotWedgeWhenInFlightExceedsServerStreamLimit(t *testing.T) 
 		streamLimit = 8
 		inFlight    = 120 // 15x the server's limit on a single connection
 	)
-	// x/net's HTTP/2 server, which is what advertises and enforces the limit
-	// in the case this pins (the bench sink).
-	srv := httptest.NewUnstartedServer(h2c.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	// net/http's unencrypted-h2 server with a MaxConcurrentStreams limit: it
+	// advertises and enforces the limit in the case this pins.
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-	}), &http2.Server{MaxConcurrentStreams: streamLimit}))
+	}))
+	protocols := new(http.Protocols)
+	protocols.SetUnencryptedHTTP2(true)
+	srv.Config.Protocols = protocols
+	srv.Config.HTTP2 = &http.HTTP2Config{MaxConcurrentStreams: streamLimit}
 	srv.Start()
 	defer srv.Close()
 
@@ -180,7 +182,7 @@ func TestMediatorDoesNotWedgeWhenInFlightExceedsServerStreamLimit(t *testing.T) 
 	}
 
 	deadline := time.After(15 * time.Second)
-	for got := 0; got < inFlight; got++ {
+	for got := range inFlight {
 		select {
 		case r := <-results:
 			require.Equal(t, common.MediationSuccess, r)

@@ -52,8 +52,8 @@ func TestSlotIsReleasedBeforeTheBrokerAck(t *testing.T) {
 
 	// Every message is delivered although no ack has completed.
 	grWaitFor(t, func() bool { return med.delivered.Load() == 3 }, 3*time.Second)
-	assert.Equal(t, int64(0), c.grConsumer.acks.Load(), "no ack has completed yet")
+	assert.Equal(t, int64(0), c.acks.Load(), "no ack has completed yet")
 
 	close(c.release)
-	grWaitFor(t, func() bool { return c.grConsumer.acks.Load() == 3 }, 3*time.Second)
+	grWaitFor(t, func() bool { return c.acks.Load() == 3 }, 3*time.Second)
 }

@@ -88,16 +88,14 @@ func TestDeleteItemReuseUnderCancellation(t *testing.T) {
 		}
 	}()
 	var wg sync.WaitGroup
-	for g := 0; g < 8; g++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := 0; i < 500; i++ {
+	for range 8 {
+		wg.Go(func() {
+			for i := range 500 {
 				ctx, cancel := context.WithTimeout(context.Background(), time.Duration(i%7)*30*time.Microsecond)
 				_ = b.delete(ctx, q, "r", nil)
 				cancel()
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	// Let the drainer finish what is queued before it is stopped.

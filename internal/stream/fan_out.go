@@ -422,14 +422,3 @@ func insertJobsInTx(ctx context.Context, tx pgx.Tx, jobs []newJob) error {
 	_, err := dispatchjob.NewLifecycle(tx).CreateFanOut(ctx, jobs)
 	return err
 }
-
-// nullableJSON passes a raw JSON document as a nullable text parameter —
-// nil, not an empty string, when there is none, so the SQL COALESCE can
-// fall back to the column default.
-func nullableJSON(raw json.RawMessage) *string {
-	if len(raw) == 0 {
-		return nil
-	}
-	s := string(raw)
-	return &s
-}

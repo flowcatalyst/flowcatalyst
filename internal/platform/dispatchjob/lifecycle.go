@@ -148,9 +148,11 @@ var (
 	TFail              = Transition{"fail", liveStatuses, common.DispatchFailed}
 	TOperatorCancel    = Transition{"operator_cancel", []common.DispatchStatus{common.DispatchFailed}, common.DispatchCancelled}
 	TOperatorComplete  = Transition{"operator_complete", []common.DispatchStatus{common.DispatchFailed}, common.DispatchCompleted}
-	allTransitionNames = []Transition{TCreate, TRetry, TDefer, THold, TSettleAcked, TSweepStranded, TStaleQueued,
+	allTransitionNames = []Transition{
+		TCreate, TRetry, TDefer, THold, TSettleAcked, TSweepStranded, TStaleQueued,
 		TStaleProcessing, TRequeue, TMarkQueued, TClaimForDelivery, TReclaimStale, TComplete, TFail,
-		TOperatorCancel, TOperatorComplete}
+		TOperatorCancel, TOperatorComplete,
+	}
 )
 
 // Transitions lists every lifecycle transition (documentation and tests).
@@ -536,15 +538,44 @@ func (l *Lifecycle) CreateBatch(ctx context.Context, jobs []DispatchJob) ([]JobR
 }
 
 var createBatchCols = []insCol{
-	{"id", ""}, {"external_id", ""}, {"source", ""}, {"kind", ""}, {"code", ""}, {"subject", ""},
-	{"event_id", ""}, {"correlation_id", ""}, {"metadata", "$%d::jsonb"}, {"target_url", ""},
-	{"protocol", ""}, {"payload", ""}, {"payload_content_type", ""}, {"data_only", ""},
-	{"service_account_id", ""}, {"client_id", ""}, {"subscription_id", ""}, {"mode", ""},
-	{"dispatch_pool_id", ""}, {"message_group", ""}, {"sequence", ""}, {"timeout_seconds", ""},
-	{"schema_id", ""}, {"status", ""}, {"max_retries", ""}, {"retry_strategy", ""},
-	{"scheduled_for", ""}, {"expires_at", ""}, {"attempt_count", ""}, {"last_attempt_at", ""},
-	{"completed_at", ""}, {"duration_millis", ""}, {"last_error", ""}, {"idempotency_key", ""},
-	{"queue", ""}, {"descriptor", ""}, {"created_at", ""}, {"updated_at", ""},
+	{"id", ""},
+	{"external_id", ""},
+	{"source", ""},
+	{"kind", ""},
+	{"code", ""},
+	{"subject", ""},
+	{"event_id", ""},
+	{"correlation_id", ""},
+	{"metadata", "$%d::jsonb"},
+	{"target_url", ""},
+	{"protocol", ""},
+	{"payload", ""},
+	{"payload_content_type", ""},
+	{"data_only", ""},
+	{"service_account_id", ""},
+	{"client_id", ""},
+	{"subscription_id", ""},
+	{"mode", ""},
+	{"dispatch_pool_id", ""},
+	{"message_group", ""},
+	{"sequence", ""},
+	{"timeout_seconds", ""},
+	{"schema_id", ""},
+	{"status", ""},
+	{"max_retries", ""},
+	{"retry_strategy", ""},
+	{"scheduled_for", ""},
+	{"expires_at", ""},
+	{"attempt_count", ""},
+	{"last_attempt_at", ""},
+	{"completed_at", ""},
+	{"duration_millis", ""},
+	{"last_error", ""},
+	{"idempotency_key", ""},
+	{"queue", ""},
+	{"descriptor", ""},
+	{"created_at", ""},
+	{"updated_at", ""},
 }
 
 // FanOutJob is the subset of columns the stream fan-out sets; everything else
@@ -602,12 +633,32 @@ func (l *Lifecycle) CreateFanOut(ctx context.Context, jobs []FanOutJob) ([]JobRo
 }
 
 var fanOutCols = []insCol{
-	{"id", ""}, {"code", ""}, {"source", ""}, {"subject", ""}, {"event_id", ""}, {"correlation_id", ""},
-	{"target_url", ""}, {"protocol", "'HTTP_WEBHOOK'"}, {"payload", ""}, {"data_only", ""},
-	{"service_account_id", ""}, {"client_id", ""}, {"subscription_id", ""}, {"mode", ""},
-	{"dispatch_pool_id", ""}, {"message_group", ""}, {"sequence", ""}, {"timeout_seconds", ""},
-	{"status", ""}, {"max_retries", ""}, {"idempotency_key", ""}, {"queue", ""}, {"descriptor", ""},
-	{"metadata", "COALESCE($%d::jsonb, '[]'::jsonb)"}, {"created_at", ""}, {"updated_at", ""},
+	{"id", ""},
+	{"code", ""},
+	{"source", ""},
+	{"subject", ""},
+	{"event_id", ""},
+	{"correlation_id", ""},
+	{"target_url", ""},
+	{"protocol", "'HTTP_WEBHOOK'"},
+	{"payload", ""},
+	{"data_only", ""},
+	{"service_account_id", ""},
+	{"client_id", ""},
+	{"subscription_id", ""},
+	{"mode", ""},
+	{"dispatch_pool_id", ""},
+	{"message_group", ""},
+	{"sequence", ""},
+	{"timeout_seconds", ""},
+	{"status", ""},
+	{"max_retries", ""},
+	{"idempotency_key", ""},
+	{"queue", ""},
+	{"descriptor", ""},
+	{"metadata", "COALESCE($%d::jsonb, '[]'::jsonb)"},
+	{"created_at", ""},
+	{"updated_at", ""},
 }
 
 // ── the delivery callback's outcomes ────────────────────────────────────
