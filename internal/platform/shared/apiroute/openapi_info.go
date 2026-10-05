@@ -15,8 +15,8 @@ func PlatformAPIConfig(title, version string) huma.Config {
 	// Identifier is an SPDX expression and is mutually exclusive with URL in
 	// OpenAPI 3.1, so set only that one.
 	cfg.Info.License = &huma.License{
-		Name:       "AGPL-3.0-or-later",
-		Identifier: "AGPL-3.0-or-later",
+		Name:       "Apache-2.0",
+		Identifier: "Apache-2.0",
 	}
 	cfg.Info.Contact = &huma.Contact{
 		Name:  "FlowCatalyst",

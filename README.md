@@ -347,15 +347,12 @@ Copyright © 2026 Belac (FlowCatalyst)
 
 | Component | License | Text |
 | --- | --- | --- |
-| Platform (`cmd/`, `internal/`, and everything not listed below) | AGPL-3.0-or-later | [`LICENSE`](LICENSE) |
+| Platform (`cmd/`, `internal/`, and everything not listed below) | Apache-2.0 | [`LICENSE`](LICENSE), [`NOTICE`](NOTICE) |
 | Go SDK (`pkg/fcsdk/`) | MPL-2.0 | [`pkg/fcsdk/LICENSE`](pkg/fcsdk/LICENSE) |
 
-The split is deliberate. The platform is the thing worth protecting, and the
-AGPL is the only common copyleft licence that reaches a **hosted** fork —
-running modified software as a service is not distribution, so the GPL alone
-would let a competitor fork FlowCatalyst, operate it, and share nothing. The
-SDK has the opposite requirement: it is imported directly into customer
-applications, so a reciprocal licence there would reach into their code.
-MPL-2.0 is file-level copyleft — changes to the SDK's own files stay open,
-while an application that merely imports it remains under whatever licence its
-authors choose.
+The platform is permissively licensed so that anyone can run it, modify it and
+build on it without a legal review standing in the way; the Apache licence also
+carries an explicit patent grant. The Go SDK is imported directly into
+applications: MPL-2.0 is file-level copyleft — changes to the SDK's own files
+stay open, while an application that merely imports it remains under whatever
+licence its authors choose.

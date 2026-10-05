@@ -8945,8 +8945,8 @@
       "name": "FlowCatalyst"
     },
     "license": {
-      "identifier": "AGPL-3.0-or-later",
-      "name": "AGPL-3.0-or-later"
+      "identifier": "Apache-2.0",
+      "name": "Apache-2.0"
     },
     "title": "FlowCatalyst Platform API",
     "version": "dev"
