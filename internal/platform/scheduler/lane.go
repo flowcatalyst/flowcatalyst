@@ -72,6 +72,25 @@ func (s *inflightSet) add(jobs []laneJob) {
 	schedMetrics.inflight.Set(float64(n))
 }
 
+// removeSettled forgets the entries of the jobs a lane has finished — but only an
+// entry still carrying the job's own claim generation. A job whose claim was
+// released (to be published again) can be claimed again by a later claim before
+// the lane gets here; that claim's entry has a newer generation, belongs to the
+// copy now waiting in a lane, and must stay: dropping it would hide a doomed job
+// from the claims that follow, which would then take the group's later jobs past
+// it.
+func (s *inflightSet) removeSettled(batch []laneJob) {
+	s.mu.Lock()
+	for _, j := range batch {
+		if e, ok := s.jobs[j.tok.JobID]; ok && e.gen == j.gen {
+			delete(s.jobs, j.tok.JobID)
+		}
+	}
+	n := len(s.jobs)
+	s.mu.Unlock()
+	schedMetrics.inflight.Set(float64(n))
+}
+
 func (s *inflightSet) remove(ids []string) {
 	s.mu.Lock()
 	for _, id := range ids {
@@ -190,7 +209,9 @@ type poisonEntry struct {
 //
 //   - when a batch leaves jobs of g unpublished, the lane first RELEASES the
 //     batch's unpublished claims in the queue table (claimed_at cleared), then
-//     removes the batch's ids from the in-flight set, and only then reads the
+//     removes the batch's jobs from the in-flight set (an entry that a newer
+//     claim has since re-added for the same id stays: removeSettled), and only
+//     then reads the
 //     current claim generation P and sets poison[g] = P;
 //   - a job of g whose claim generation is <= poison[g] is dropped when it
 //     reaches the lane (it stays PENDING, its claim is released, and it is
@@ -373,11 +394,10 @@ func (l *lane) process(ctx context.Context, batch []laneJob) {
 	// the generation is read AFTER, the permits go back last (a released permit
 	// lets the poller claim again).
 	l.releaseUntilDone(ctx, toRelease)
-	ids := make([]string, len(batch))
-	for i, j := range batch {
-		ids[i] = j.tok.JobID
+	if p.hookReleased != nil {
+		p.hookReleased()
 	}
-	p.inflight.remove(ids)
+	p.inflight.removeSettled(batch)
 	if p.hookSettle != nil {
 		p.hookSettle()
 	}

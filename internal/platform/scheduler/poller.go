@@ -179,6 +179,10 @@ type PendingJobPoller struct {
 	// its in-flight snapshot — the one window the ordering rule depends on. Tests
 	// use it to land a lane's failure handling exactly there.
 	hookGenSnapshot func()
+	// hookReleased, when set, runs in a lane between releasing a batch's claims in
+	// the queue table and removing the batch from the in-flight set — the window in
+	// which a later claim can take a released job again.
+	hookReleased func()
 	// hookSettle, when set, runs in a lane between removing a batch's ids from the
 	// in-flight set and reading the generation for its poison marks — the window
 	// the second half of the ordering rule depends on.

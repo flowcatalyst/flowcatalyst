@@ -307,3 +307,88 @@ func TestLeaderStart_ExcludesInFlightAndRetriesOnFailure(t *testing.T) {
 	assert.GreaterOrEqual(t, attempts.Load(), int32(2), "retried after the failure, before claiming")
 	assert.Equal(t, []string{"held-by-this-process"}, got)
 }
+
+// A lane forgets only the in-flight entries that are its own. A job released by a
+// failure can be claimed again by a later claim before the lane removes the batch;
+// that claim's entry has a newer generation and must survive, or the copy waiting
+// in a lane is invisible to the claims that follow and they take the group's later
+// jobs past it (found by the stress test: first deliveries out of order, one run in
+// fifteen under -race).
+func TestInflight_ASettledBatchDoesNotForgetAReclaimedJobsNewEntry(t *testing.T) {
+	set := newInflightSet()
+	set.add([]laneJob{lj("g-00", "g", 25)}) // the later claim's copy
+	set.removeSettled([]laneJob{lj("g-00", "g", 24)})
+	assert.Equal(t, 1, set.size(), "the older claim's settle leaves the newer entry")
+	set.removeSettled([]laneJob{lj("g-00", "g", 25), lj("not-there", "g", 25)})
+	assert.Zero(t, set.size(), "a settle of its own entry removes it")
+}
+
+// The scenario end to end: a claim lands between the lane's release of a failed
+// batch and its removal from the in-flight set and takes the released jobs again.
+// Its entries stay in flight, and the group is published once, in order, with
+// nothing overtaking.
+func TestOrdering_AClaimBetweenTheReleaseAndTheRemovalKeepsItsEntries(t *testing.T) {
+	s := newFakeStore(groupJobs("g", 4)...)
+	inPublish := make(chan struct{})
+	gate := make(chan struct{})
+	var calls atomic.Int32
+	s.publishFn = func(_ context.Context, toks []DispatchJobToken) []string {
+		if calls.Add(1) == 1 {
+			close(inPublish)
+			<-gate
+			return tokenIDs(toks) // the broker rejects the first batch
+		}
+		for _, tk := range toks {
+			s.logPublished(tk.JobID)
+		}
+		return nil
+	}
+	p := newTestEngine(Config{PollInterval: time.Millisecond, Dispatchers: 1, BufferCapacity: 10, BatchSize: 2, LaneBatch: 100}, s)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	wg := p.startLanes(ctx)
+	defer func() { cancel(); wg.Wait() }()
+
+	require.Equal(t, 2, p.claimOnce(ctx).submitted) // g-00, g-01 -> the lane, blocked in publish
+	<-inPublish
+
+	var mu sync.Mutex
+	var seen []string
+	var claimed int
+	var once sync.Once
+	p.hookReleased = func() {
+		once.Do(func() {
+			// the failed batch's claims are released; this claim takes them again
+			res := p.claimOnce(ctx)
+			if res.err != nil {
+				t.Error(res.err)
+			}
+			mu.Lock()
+			claimed = res.submitted
+			mu.Unlock()
+		})
+	}
+	var settleOnceHook sync.Once
+	p.hookSettle = func() { // after the old batch has been removed from the in-flight set
+		settleOnceHook.Do(func() {
+			mu.Lock()
+			seen = p.inflight.ids()
+			mu.Unlock()
+		})
+	}
+	close(gate)
+	waitIdle(t, p)
+	mu.Lock()
+	assert.Equal(t, 2, claimed, "the released jobs are claimed again")
+	assert.ElementsMatch(t, []string{"g-00", "g-01"}, seen, "the re-claim's entries are still in flight once the old batch has settled")
+	mu.Unlock()
+	for range 10 {
+		if s.pending() == 0 {
+			break
+		}
+		require.NoError(t, p.claimOnce(ctx).err)
+		waitIdle(t, p)
+	}
+	require.Equal(t, []string{"g-00", "g-01", "g-02", "g-03"}, s.published())
+	require.Zero(t, p.inflight.size())
+}
