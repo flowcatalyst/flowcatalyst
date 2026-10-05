@@ -136,14 +136,15 @@ type FngPoolRevision struct {
 }
 
 type FngRoute struct {
-	ID         string    `db:"id"`
-	FunctionID string    `db:"function_id"`
-	Hostname   string    `db:"hostname"`
-	PathPrefix string    `db:"path_prefix"`
-	Alias      *string   `db:"alias"`
-	CreatedBy  *string   `db:"created_by"`
-	CreatedAt  time.Time `db:"created_at"`
-	UpdatedAt  time.Time `db:"updated_at"`
+	ID            string    `db:"id"`
+	FunctionID    string    `db:"function_id"`
+	Hostname      string    `db:"hostname"`
+	PathPrefix    string    `db:"path_prefix"`
+	Alias         *string   `db:"alias"`
+	CreatedBy     *string   `db:"created_by"`
+	CreatedAt     time.Time `db:"created_at"`
+	UpdatedAt     time.Time `db:"updated_at"`
+	AliasPrefixes []string  `db:"alias_prefixes"`
 }
 
 type FngRunner struct {
