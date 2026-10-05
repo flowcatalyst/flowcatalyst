@@ -12,17 +12,21 @@ import (
 
 // StaleQueuedJobPoller recovers dispatch jobs stuck in QUEUED (and in
 // PROCESSING; see recoverOnce). When a message is lost on the queue side after
-// its job was marked QUEUED, the row stays QUEUED indefinitely. This loop reverts such rows to PENDING after StaleAfter elapses since the row's
-// updated_at.
+// its job was marked QUEUED, the row stays QUEUED indefinitely. This loop reverts
+// such rows to PENDING once queuedAfter has elapsed since the row's updated_at
+// (15 minutes by default: any duplicate the early revert causes is dropped by
+// the router while the original is in its pipeline, or skipped by the delivery
+// callback), and PROCESSING rows after processingAfter.
 //
 // A lane publishes BEFORE it marks QUEUED (see lane.go), so a scheduler that
 // crashes mid-publish leaves its claim PENDING and no longer strands rows here;
 // recovery is the backstop for messages lost after the broker accepted them, and
 // for the rare QUEUED update that fails after a publish.
 type StaleQueuedJobPoller struct {
-	pool         *pgxpool.Pool
-	staleAfter   time.Duration
-	scanInterval time.Duration
+	pool            *pgxpool.Pool
+	queuedAfter     time.Duration
+	processingAfter time.Duration
+	scanInterval    time.Duration
 	// IsLeader gates recovery: when non-nil and false, the loop idles so
 	// only the single active scheduler reclaims stuck QUEUED jobs. nil =
 	// always run. Set by Scheduler.Run.
@@ -30,8 +34,8 @@ type StaleQueuedJobPoller struct {
 }
 
 // NewStaleQueuedJobPoller wires the recovery loop.
-func NewStaleQueuedJobPoller(pool *pgxpool.Pool, staleAfter, scanInterval time.Duration) *StaleQueuedJobPoller {
-	return &StaleQueuedJobPoller{pool: pool, staleAfter: staleAfter, scanInterval: scanInterval}
+func NewStaleQueuedJobPoller(pool *pgxpool.Pool, queuedAfter, processingAfter, scanInterval time.Duration) *StaleQueuedJobPoller {
+	return &StaleQueuedJobPoller{pool: pool, queuedAfter: queuedAfter, processingAfter: processingAfter, scanInterval: scanInterval}
 }
 
 // Run drives the loop until ctx is cancelled.
@@ -39,7 +43,7 @@ func (p *StaleQueuedJobPoller) Run(ctx context.Context) {
 	tick := time.NewTicker(p.scanInterval)
 	defer tick.Stop()
 	slog.Info("stale-queued recovery starting",
-		"stale_after", p.staleAfter, "interval", p.scanInterval)
+		"queued_after", p.queuedAfter, "processing_after", p.processingAfter, "interval", p.scanInterval)
 	for {
 		select {
 		case <-ctx.Done():
@@ -72,17 +76,19 @@ const StaleProcessingReason = dispatchjob.StaleProcessingReason
 // lease runs out (/api/dispatch/process); but when no copy is coming — the
 // message went to the DLQ, or was acked away by an older router — nothing
 // else would ever move it, and it stayed PROCESSING for good. After
-// StaleAfter (far past any lease: the delivery client's ceiling is two
+// processingAfter (far past any lease: the delivery client's ceiling is two
 // minutes) it goes back to PENDING and the poller dispatches it again.
 // At-least-once: the dead attempt may have reached the subscriber.
 func (p *StaleQueuedJobPoller) recoverOnce(ctx context.Context) (int64, error) {
-	cutoff := time.Now().Add(-p.staleAfter).UTC()
+	now := time.Now()
 	lc := dispatchjob.NewLifecycle(p.pool)
-	queued, err := lc.RecoverStaleQueued(ctx, cutoff)
+	queued, err := lc.RecoverStaleQueued(ctx, now.Add(-p.queuedAfter).UTC())
+	schedMetrics.staleJobsRecovered.WithLabelValues("QUEUED").Add(float64(queued))
 	if err != nil {
 		return 0, err
 	}
-	processing, err := lc.RecoverStaleProcessing(ctx, cutoff)
+	processing, err := lc.RecoverStaleProcessing(ctx, now.Add(-p.processingAfter).UTC())
+	schedMetrics.staleJobsRecovered.WithLabelValues("PROCESSING").Add(float64(processing))
 	if err != nil {
 		return queued, err
 	}

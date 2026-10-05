@@ -9,7 +9,8 @@
 //	poller.go          — PendingJobPoller (claims, hold-backs) + PausedConnectionCache
 //	lane.go            — the dispatcher lanes: publish, mark QUEUED, ordering under failure
 //	dispatcher.go      — MessageGroupDispatcher: renders and publishes a claimed batch
-//	stale_recovery.go  — StaleQueuedJobPoller recovers stuck QUEUED jobs
+//	stale_recovery.go  — StaleQueuedJobPoller recovers stuck QUEUED / PROCESSING jobs
+//	queue_maintenance.go — stale-claim sweep, queue reconcile, backlog gauge (leader only)
 //	auth.go            — DispatchAuthService (HMAC tokens for dispatch callbacks)
 //
 // All long-running goroutines respect ctx.Done() for graceful shutdown.
@@ -47,9 +48,14 @@ type Config struct {
 	// PausedCacheTTL is how often to refresh the paused-connections set.
 	PausedCacheTTL time.Duration
 
-	// StaleAfter — jobs in QUEUED for longer than this are reclaimed
-	// (their visibility lease has expired or the broker dropped them).
-	StaleAfter time.Duration
+	// StaleQueuedAfter — jobs in QUEUED for longer than this are returned to
+	// PENDING (the broker dropped the message, or the QUEUED update failed
+	// after a publish).
+	StaleQueuedAfter time.Duration
+
+	// StaleProcessingAfter — jobs in PROCESSING for longer than this, with no
+	// outcome recorded, are returned to PENDING.
+	StaleProcessingAfter time.Duration
 
 	// StaleScanInterval is how often the stale-recovery loop runs.
 	StaleScanInterval time.Duration
@@ -91,7 +97,8 @@ func (c Config) normalized() Config {
 }
 
 // DefaultConfig holds the dispatch-job scheduler defaults: poll 1s, claim up to
-// 500, 10 dispatchers publishing 100 at a time, 1000 jobs in flight, stale 75m.
+// 500, 10 dispatchers publishing 100 at a time, 1000 jobs in flight, stale QUEUED
+// 15m, stale PROCESSING 75m.
 // fc-server overrides the buffer, dispatcher and batch sizes from
 // FC_SCHEDULER_BUFFER_CAPACITY / FC_SCHEDULER_DISPATCHERS /
 // FC_SCHEDULER_BATCH_SIZE (see docs/environment-variables.md).
@@ -103,21 +110,20 @@ func DefaultConfig() Config {
 		Dispatchers:    DefaultDispatchers,
 		LaneBatch:      DefaultLaneBatch,
 		PausedCacheTTL: 60 * time.Second,
-		// StaleAfter must exceed the router's deferral horizon (1h,
-		// FC_ROUTER_DEFERRAL_MAX_DELAY_SECONDS): a job whose queue message
-		// the router has parked for capacity sits QUEUED, legitimately, for
-		// up to that long. At the old 5m this loop reverted every such job to
-		// PENDING, the poller republished it with a fresh dedup id, and the
-		// broker held two (then three, four…) copies of one job — "500 in
-		// flight, 200 pending" (owner, 2026-09-22). A genuinely stranded
-		// QUEUED row (crash between commit and publish) now waits this long;
-		// that is rare and cheap next to a duplicate storm on every backlog.
-		StaleAfter:        75 * time.Minute,
-		StaleScanInterval: 60 * time.Second,
+		// A QUEUED job whose message the router has parked for capacity can sit
+		// QUEUED well past 15 minutes; reverting it republishes it, and the copy is
+		// dropped by the router (original still in its pipeline) or skipped by the
+		// delivery callback. Owner ruling 2026-10-04: that cost is acceptable and a
+		// genuinely lost message is recovered in 15 minutes rather than 75.
+		StaleQueuedAfter: 15 * time.Minute,
+		// PROCESSING stays far past every legitimate attempt (the router's mediator
+		// timeout is a 15-minute-per-attempt contract).
+		StaleProcessingAfter: 75 * time.Minute,
+		StaleScanInterval:    60 * time.Second,
 	}
 }
 
-// Scheduler bundles the four loops. Construct with New, then call
+// Scheduler bundles the loops. Construct with New, then call
 // Start(ctx) to launch all goroutines. They share the broadcast
 // shutdown signal via ctx.
 type Scheduler struct {
@@ -128,6 +134,7 @@ type Scheduler struct {
 	poller      *PendingJobPoller
 	dispatcher  *MessageGroupDispatcher
 	stale       *StaleQueuedJobPoller
+	maint       *queueMaintainer
 	pausedCache *PausedConnectionCache
 	authService *DispatchAuthService
 
@@ -147,7 +154,8 @@ func New(cfg Config, pool *pgxpool.Pool, publisher DispatchPublisher, hmacSecret
 	pausedCache := NewPausedConnectionCache(pool, cfg.PausedCacheTTL)
 	dispatcher := NewMessageGroupDispatcher(pool, publisher, authSvc, cfg.ProcessingEndpoint)
 	poller := NewPendingJobPoller(cfg, pool, dispatcher, pausedCache)
-	stale := NewStaleQueuedJobPoller(pool, cfg.StaleAfter, cfg.StaleScanInterval)
+	stale := NewStaleQueuedJobPoller(pool, cfg.StaleQueuedAfter, cfg.StaleProcessingAfter, cfg.StaleScanInterval)
+	maint := newQueueMaintainer(pool, poller.inflight.ids)
 	return &Scheduler{
 		cfg:         cfg,
 		pool:        pool,
@@ -155,6 +163,7 @@ func New(cfg Config, pool *pgxpool.Pool, publisher DispatchPublisher, hmacSecret
 		poller:      poller,
 		dispatcher:  dispatcher,
 		stale:       stale,
+		maint:       maint,
 		pausedCache: pausedCache,
 		authService: authSvc,
 	}
@@ -176,9 +185,11 @@ func (s *Scheduler) AuthService() *DispatchAuthService { return s.authService }
 func (s *Scheduler) Run(ctx context.Context) {
 	s.poller.IsLeader = s.IsLeader
 	s.stale.IsLeader = s.IsLeader
+	s.maint.IsLeader = s.IsLeader
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(3)
 	go func() { defer wg.Done(); s.poller.Run(ctx) }()
 	go func() { defer wg.Done(); s.stale.Run(ctx) }()
+	go func() { defer wg.Done(); s.maint.Run(ctx) }()
 	wg.Wait()
 }

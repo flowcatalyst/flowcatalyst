@@ -127,7 +127,7 @@ func TestStaleRecovery_ReturnsAStrandedProcessingJobToPending(t *testing.T) {
 	_, err := pool.Exec(ctx, `UPDATE msg_dispatch_jobs SET updated_at = NOW() - INTERVAL '2 hours' WHERE id = $1`, id)
 	require.NoError(t, err)
 
-	rec := NewStaleQueuedJobPoller(pool, 75*time.Minute, time.Minute)
+	rec := NewStaleQueuedJobPoller(pool, 15*time.Minute, 75*time.Minute, time.Minute)
 	n, err := rec.recoverOnce(ctx)
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, n, int64(1))
