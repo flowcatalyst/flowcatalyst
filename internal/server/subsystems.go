@@ -106,7 +106,8 @@ func schedulerPoolSize(cfg EnvCfg, scfg scheduler.Config) int {
 }
 
 // newSchedulerPool opens the scheduler's own pool with the shared pool's
-// connection settings (URL, credentials hook, lifetimes) and MaxConns = size.
+// connection settings (URL, credentials hook, lifetimes), MaxConns = size and the
+// scheduler's planner settings (scheduler.PoolRuntimeParams).
 // A nil shared pool (no database) yields nil, which the scheduler already
 // handles with its noop publisher.
 func newSchedulerPool(ctx context.Context, shared *pgxpool.Pool, size int) (*pgxpool.Pool, error) {
@@ -114,6 +115,15 @@ func newSchedulerPool(ctx context.Context, shared *pgxpool.Pool, size int) (*pgx
 		return nil, nil
 	}
 	pc := shared.Config().Copy()
+	// The scheduler's planner settings go on THIS pool's copy of the connection
+	// config only (Copy gives it its own RuntimeParams map): the shared pool and
+	// every other pool must keep Postgres's defaults.
+	if pc.ConnConfig.RuntimeParams == nil {
+		pc.ConnConfig.RuntimeParams = map[string]string{}
+	}
+	for k, v := range scheduler.PoolRuntimeParams {
+		pc.ConnConfig.RuntimeParams[k] = v
+	}
 	pc.MaxConns = int32(size) //nolint:gosec // a small configured pool size
 	if pc.MinConns > pc.MaxConns {
 		pc.MinConns = pc.MaxConns
