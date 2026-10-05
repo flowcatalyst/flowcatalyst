@@ -767,6 +767,55 @@ func TestOrdering_PoisonGenerationIsReadAfterTheIdsLeaveTheSet(t *testing.T) {
 	require.Equal(t, []string{"g-00", "g-01", "g-02"}, s.published())
 }
 
+// The same ordering rule where it is observable: with a lane batch of ONE, the
+// second job of the group (g-01) waits in the lane's channel, still in flight,
+// while g-00 fails and leaves the set. With the default lane batch both jobs
+// settle together, nothing stays in flight behind the failure, and reading the
+// generation before the removal is unobservable (the test above passes either
+// way). Here the hook's claim excludes g-01 (in flight) and re-claims g-00 and
+// g-02 under a new generation the poison must cover; read before the removal, the
+// mark sits below it, g-00 passes, and g-02 is published ahead of the dropped
+// g-01. Mutant: read claimGeneration before p.inflight.remove in lane.process.
+func TestOrdering_PoisonGenerationIsReadAfterTheIdsLeaveTheSet_SingleJobLaneBatches(t *testing.T) {
+	s := newFakeStore(groupJobs("g", 3)...)
+	inPublish := make(chan struct{})
+	gate := make(chan struct{})
+	var calls atomic.Int32
+	s.publishFn = func(_ context.Context, toks []DispatchJobToken) []string {
+		if calls.Add(1) == 1 {
+			close(inPublish)
+			<-gate
+			return tokenIDs(toks)
+		}
+		for _, tk := range toks {
+			s.logPublished(tk.JobID)
+		}
+		return nil
+	}
+	p := newTestEngine(Config{PollInterval: time.Millisecond, Dispatchers: 1, BufferCapacity: 10, BatchSize: 2, LaneBatch: 1}, s)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	wg := p.startLanes(ctx)
+	defer func() { cancel(); wg.Wait() }()
+
+	require.Equal(t, 2, p.claimOnce(ctx).submitted)
+	<-inPublish
+	var once sync.Once
+	p.hookSettle = func() {
+		once.Do(func() { _ = p.claimOnce(ctx) }) // a claim lands between the removal and the read
+	}
+	close(gate)
+	waitIdle(t, p)
+	for range 10 {
+		if s.pending() == 0 {
+			break
+		}
+		require.NoError(t, p.claimOnce(ctx).err)
+		waitIdle(t, p)
+	}
+	require.Equal(t, []string{"g-00", "g-01", "g-02"}, s.published())
+}
+
 // A job the callback has already processed and rescheduled back to PENDING
 // (retry, deferral, a BLOCK_ON_ERROR hold) between the publish and the mark has
 // a newer row version, so the optimistic QUEUED update leaves it alone — and
