@@ -191,6 +191,21 @@ func (v *version) evictLocked(ctx context.Context) {
 	v.setStateLocked(stateEvicted, "")
 }
 
+// enter registers an in-flight call, refusing once close has begun. The Add is
+// made under v.mu, the same lock close takes to set closing before it Waits,
+// so every Add happens-before close's Wait (a WaitGroup Add racing a Wait at
+// zero is a misuse) and a call is either drained or refused, never released
+// under. The caller must inflight.Done() when enter reports true.
+func (v *version) enter() bool {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.closing {
+		return false
+	}
+	v.inflight.Add(1)
+	return true
+}
+
 // close unloads the version: it stops any prepare, waits for in-flight calls
 // (up to grace), then releases the module and instances. New calls are refused
 // from the moment the grace ends or the calls finish. Nothing an in-flight call

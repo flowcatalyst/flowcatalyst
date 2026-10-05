@@ -239,7 +239,12 @@ func (r *Runner) invoke(w http.ResponseWriter, req *http.Request, t target, path
 		return
 	}
 	defer release()
-	ver.inflight.Add(1)
+	if !ver.enter() {
+		// Retired by a promotion between resolve and here.
+		outcome = "unavailable"
+		writeError(w, http.StatusServiceUnavailable, "FUNCTION_UNAVAILABLE", "the function is not available right now", time.Second)
+		return
+	}
 	defer ver.inflight.Done()
 	ver.touch()
 
