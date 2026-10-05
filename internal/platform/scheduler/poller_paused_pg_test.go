@@ -10,8 +10,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 )
 
 // Jobs of a paused subscription used to be claimed, dropped in Go and left
@@ -20,7 +18,7 @@ import (
 // them was ever published. The paused filter now lives in the claim query.
 func TestPollOnce_PausedJobsDoNotStarveTheQueue(t *testing.T) {
 	ctx := context.Background()
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 
 	const (
 		connID    = "conn_starve0001"

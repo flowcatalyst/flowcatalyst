@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 )
 
 // The QUEUED update is guarded on PENDING: the router can deliver a job and the
@@ -21,7 +20,7 @@ import (
 // regress it.
 func TestUpdateQueued_DoesNotRegressAJobThatMovedPastPending(t *testing.T) {
 	ctx := context.Background()
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 	poller := newTestPoller(pool)
 
 	ids := map[string]string{
@@ -77,7 +76,7 @@ func versionsOf(t *testing.T, pool *pgxpool.Pool, ids []string) []time.Time {
 // them stamps updated_at.
 func TestUpdateQueued_DoesNotQueueAJobTheCallbackRescheduledToPending(t *testing.T) {
 	ctx := context.Background()
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 	poller := newTestPoller(pool)
 	repo := dispatchjob.NewRepository(pool)
 
@@ -117,7 +116,7 @@ func TestUpdateQueued_DoesNotQueueAJobTheCallbackRescheduledToPending(t *testing
 // update runs is left alone, and the skip is counted.
 func TestLane_DoesNotRegressAJobTheCallbackAlreadyMovedOn(t *testing.T) {
 	ctx := context.Background()
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 	const id = "djmarkguard11"
 	seedJob(t, pool, id, "PENDING", "grp_markguard_e2e", "")
 

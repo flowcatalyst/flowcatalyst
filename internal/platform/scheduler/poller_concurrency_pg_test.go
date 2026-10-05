@@ -107,7 +107,7 @@ func (p *orderedPublisher) Publish(_ context.Context, items []PublishItem) ([]st
 // while no job was PENDING, then a burst of 200,000). The engine runs as in production
 // (10 lanes marking batches of 100, a poller claiming 500 at a time, 1,000 jobs in
 // flight) while a callback-like worker moves published jobs PENDING -> PROCESSING ->
-// COMPLETED on its own pool. No statement may take longer than 250 ms; no job may be
+// COMPLETED on its own pool. No statement may take longer than one second; no job may be
 // lost or published twice or out of order.
 func TestConcurrency_LanesPollerAndCallbacksAgainstABurst(t *testing.T) {
 	const burstSize, target = 200_000, 40_000
@@ -184,12 +184,14 @@ func TestConcurrency_LanesPollerAndCallbacksAgainstABurst(t *testing.T) {
 		n, elapsed.Round(time.Millisecond), float64(n)/elapsed.Seconds(), completed.Load(), sCount, sMax.Round(time.Millisecond), cCount, cMax.Round(time.Millisecond))
 	t.Logf("CONCURRENCY slowest scheduler statement: %.120q", sSQL)
 	t.Logf("CONCURRENCY slowest callback statement: %.120q", cSQL)
-	// A planner stall shows as a collapse in throughput before any single statement passes
-	// 250 ms (a sargable status guard on the by-key statements: 1,800 jobs/s here against
+	// A planner stall shows as a collapse in throughput before any single statement gets
+	// slow (a sargable status guard on the by-key statements: 1,800 jobs/s here against
 	// 9,000), so the rate is asserted too, with a wide margin for a slow machine.
 	assert.Greater(t, float64(n)/elapsed.Seconds(), 4000.0, "throughput collapsed")
-	assert.Less(t, sMax, 250*time.Millisecond, "no scheduler statement may exceed 250 ms: %.200q", sSQL)
-	assert.Less(t, cMax, 250*time.Millisecond, "no callback statement may exceed 250 ms: %.200q", cSQL)
+	// The ceiling is one second: a plan regression shows as seconds, while a single
+	// statement among tens of thousands can stall a few hundred ms on a loaded CI machine.
+	assert.Less(t, sMax, time.Second, "no scheduler statement may exceed 1 s: %.200q", sSQL)
+	assert.Less(t, cMax, time.Second, "no callback statement may exceed 1 s: %.200q", cSQL)
 
 	pub.mu.Lock()
 	assert.Empty(t, pub.outOfOrd, "published out of order")

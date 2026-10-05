@@ -13,7 +13,6 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatch"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 )
 
 func insertSubscriptionWithQueue(t *testing.T, pool *pgxpool.Pool, id, code string, clientIdentifier, queue *string) {
@@ -43,7 +42,7 @@ func queueNameOf(t *testing.T, pool *pgxpool.Pool, jobID string) string {
 // job where nothing is listening.
 func TestPostgresDispatchPublisher_RoutesPerTenantAndPriority(t *testing.T) {
 	ctx := context.Background()
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 
 	insertClient(t, pool, "clt_pub_acme", "pubacme")
 	hi := "HIGH_PRIORITY"
@@ -92,7 +91,7 @@ func TestPostgresDispatchPublisher_RoutesPerTenantAndPriority(t *testing.T) {
 // here is consumable there.
 func TestPostgresDispatchPublisher_WritesConsumableRows(t *testing.T) {
 	ctx := context.Background()
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 
 	settings, err := dispatch.ResolveSettings("postgres", "", "", "", "postgresql://x@localhost/fc")
 	require.NoError(t, err)
@@ -141,7 +140,7 @@ func TestPostgresDispatchPublisher_WritesConsumableRows(t *testing.T) {
 // under it (see docs/spec/dispatch-job-priority.md).
 func TestDestinationResolver_JobOwnQueueWinsOverSubscription(t *testing.T) {
 	ctx := context.Background()
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 
 	insertClient(t, pool, "clt_pri_acme", "priacme")
 	lo := "DEFAULT"
@@ -171,7 +170,7 @@ func TestDestinationResolver_JobOwnQueueWinsOverSubscription(t *testing.T) {
 // drop the subscription fallback — this must fail under it.
 func TestDestinationResolver_LegacyJobFallsBackToSubscription(t *testing.T) {
 	ctx := context.Background()
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 
 	insertClient(t, pool, "clt_pri_globex", "priglobex")
 	hi := "HIGH_PRIORITY"
@@ -201,7 +200,7 @@ func TestDestinationResolver_LegacyJobFallsBackToSubscription(t *testing.T) {
 // must fail under it (T7 and T8 both survive that mutant).
 func TestDestinationResolver_JobWithLegacyTextFallsBackToSubscription(t *testing.T) {
 	ctx := context.Background()
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 
 	insertClient(t, pool, "clt_pri_legacy", "prilegacy")
 	hi := "HIGH_PRIORITY"
@@ -229,7 +228,7 @@ func TestDestinationResolver_JobWithLegacyTextFallsBackToSubscription(t *testing
 // this must fail (as an error) under it.
 func TestDestinationResolver_UnrecognisedEverywhereReadsAsDefault(t *testing.T) {
 	ctx := context.Background()
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 
 	insertClient(t, pool, "clt_pri_legacy", "prilegacy")
 	legacy := "workers-high"
@@ -257,7 +256,7 @@ func TestDestinationResolver_UnrecognisedEverywhereReadsAsDefault(t *testing.T) 
 // R3) publishes per its own queue when set, and to DEFAULT when it isn't.
 func TestDestinationResolver_DirectJobWithNoSubscriptionUsesOwnQueue(t *testing.T) {
 	ctx := context.Background()
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 
 	insertClient(t, pool, "clt_pri_direct", "pridirect")
 

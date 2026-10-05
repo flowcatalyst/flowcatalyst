@@ -9,8 +9,6 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
-
-	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 )
 
 func insertClient(t *testing.T, pool *pgxpool.Pool, id, identifier string) {
@@ -39,7 +37,7 @@ func insertPool(t *testing.T, pool *pgxpool.Pool, id, code string, clientID, cli
 // would merge two clients' traffic into whichever config won.
 func TestPoolCodeResolutionChain(t *testing.T) {
 	ctx := context.Background()
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 
 	insertClient(t, pool, "clt_acme", "acme")
 	insertClient(t, pool, "clt_globex", "globex")
@@ -82,7 +80,7 @@ func TestPoolCodeResolutionChain(t *testing.T) {
 // publish distinct codes so the router governs them as separate pools.
 func TestSameCodeDifferentClientsDoNotCollide(t *testing.T) {
 	ctx := context.Background()
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 
 	insertClient(t, pool, "clt_a", "alpha")
 	insertClient(t, pool, "clt_b", "beta")

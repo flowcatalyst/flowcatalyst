@@ -10,8 +10,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 )
 
 // midPublishPublisher checks, while it is publishing, what another connection
@@ -50,7 +48,7 @@ func (d *midPublishPublisher) Publish(ctx context.Context, items []PublishItem) 
 // PENDING and unlocked, and the next poll publishes it.
 func TestPollOnce_NothingIsQueuedOrLockedDuringThePublish(t *testing.T) {
 	ctx := context.Background()
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 	const (
 		id1   = "djpubdie0001"
 		id2   = "djpubdie0002"
@@ -101,7 +99,7 @@ func (partialPublisher) Publish(_ context.Context, items []PublishItem) ([]strin
 // the next poll.
 func TestPollOnce_PartialPublishMarksOnlyThePublishedQueued(t *testing.T) {
 	ctx := context.Background()
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 	const (
 		id1   = "djpubpart001"
 		id2   = "djpubpart002"
@@ -121,7 +119,7 @@ func TestPollOnce_PartialPublishMarksOnlyThePublishedQueued(t *testing.T) {
 // back for is returned to PENDING once stale, with the reason recorded.
 func TestStaleRecovery_ReturnsAStrandedProcessingJobToPending(t *testing.T) {
 	ctx := context.Background()
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 	const id = "djstaleproc1"
 	seedJob(t, pool, id, "PROCESSING", "", "")
 	_, err := pool.Exec(ctx, `UPDATE msg_dispatch_jobs SET updated_at = NOW() - INTERVAL '2 hours' WHERE id = $1`, id)

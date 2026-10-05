@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 )
 
 // msgCapturePublisher keeps the whole published message, not just its id, so a
@@ -68,7 +67,7 @@ func pollAndCapture(t *testing.T, pool *pgxpool.Pool) []common.Message {
 // selected a dispatch_pool_code column that does not exist on
 // msg_dispatch_jobs, so pollOnce failed every tick and nothing was published.
 func TestPublishedMessageCarriesResolvedPoolCode(t *testing.T) {
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 
 	insertClient(t, pool, "clt_e2e_acme", "acme-e2e")
 	insertPool(t, pool, "dsp_e2e_fast", "FAST", new("clt_e2e_acme"), new("acme-e2e"))
@@ -87,7 +86,7 @@ func TestPublishedMessageCarriesResolvedPoolCode(t *testing.T) {
 // TestPublishedPoolCodeFallsBackToClientDefault: a job with no dispatch pool
 // still gets its client's own fallback pool rather than the shared global one.
 func TestPublishedPoolCodeFallsBackToClientDefault(t *testing.T) {
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 
 	insertClient(t, pool, "clt_e2e_nopool", "nopool-e2e")
 	seedRoutableJob(t, pool, "dje2epool002", "IMMEDIATE", nil, new("clt_e2e_nopool"))
@@ -104,7 +103,7 @@ func TestPublishedPoolCodeFallsBackToClientDefault(t *testing.T) {
 // -DEFAULT-POOL suffix rule exactly like any client's fallback, so the platform
 // tenant needs no row in the served document.
 func TestPublishedPoolCodeIsPlatformDefaultWithNeither(t *testing.T) {
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 
 	seedRoutableJob(t, pool, "dje2epool003", "IMMEDIATE", nil, nil)
 
@@ -121,7 +120,7 @@ func TestPublishedPoolCodeIsPlatformDefaultWithNeither(t *testing.T) {
 // would silently inherit another tenant's pool of that name — differing
 // concurrency and rate limit, with only a merge-conflict log line to show it.
 func TestPublishedPoolCodeForPlatformPoolIsPrefixed(t *testing.T) {
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 
 	insertPool(t, pool, "dsp_e2e_platform", "PLATFORM-POOL", nil, nil)
 	seedRoutableJob(t, pool, "dje2epool004", "IMMEDIATE", new("dsp_e2e_platform"), nil)
@@ -136,7 +135,7 @@ func TestPublishedPoolCodeForPlatformPoolIsPrefixed(t *testing.T) {
 // unrecognised mode string is a producer bug, and it must not silently become
 // the one mode that abandons ordering. It takes the default, which orders.
 func TestUnknownModePublishesAsTheDefault(t *testing.T) {
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 
 	seedRoutableJob(t, pool, "dje2epool005", "NOT_A_REAL_MODE", nil, nil)
 

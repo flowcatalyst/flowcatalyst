@@ -17,6 +17,24 @@ import (
 
 func TestMain(m *testing.M) { testpg.RunMain(m) }
 
+// testPool is testpg.Pool for tests that poll, claim or count dispatch jobs.
+// The package shares one database, and the poller claims any PENDING, due row
+// in it, so a job a previous test left behind would be published by this one.
+// Every test therefore starts from an empty msg_dispatch_jobs and removes what
+// it created on the way out; assertions are then about the test's own rows.
+func testPool(t *testing.T) *pgxpool.Pool {
+	t.Helper()
+	pool := testpg.Pool(t)
+	clear := func() {
+		if _, err := pool.Exec(context.Background(), `DELETE FROM msg_dispatch_jobs`); err != nil {
+			t.Errorf("clear msg_dispatch_jobs: %v", err)
+		}
+	}
+	clear()
+	t.Cleanup(clear)
+	return pool
+}
+
 // capturePublisher is a DispatchPublisher that records what it was handed.
 // Submit dispatches asynchronously, so it must be race-safe.
 type capturePublisher struct {
@@ -53,7 +71,7 @@ func (failPublisher) Publish(_ context.Context, items []PublishItem) ([]string, 
 // QUEUED for stale recovery).
 func TestPollOnce_BatchPublishFailureRevertsToPending(t *testing.T) {
 	ctx := context.Background()
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 
 	const (
 		id1 = "djbatchfail01"
@@ -126,7 +144,7 @@ func jobStatus(t *testing.T, pool *pgxpool.Pool, id string) string {
 // Jobs in other modes are NOT held — only BLOCK_ON_ERROR promises to stop.
 func TestPollOnce_BlockedGroupHoldback(t *testing.T) {
 	ctx := context.Background()
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 	poller := newTestPoller(pool)
 
 	const (
@@ -168,7 +186,7 @@ func TestPollOnce_BlockedGroupHoldback(t *testing.T) {
 // (the in-memory "default" bucket).
 func TestPollOnce_NullGroupFailureDoesNotBlock(t *testing.T) {
 	ctx := context.Background()
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 	poller := newTestPoller(pool)
 
 	const (
@@ -188,7 +206,7 @@ func TestPollOnce_NullGroupFailureDoesNotBlock(t *testing.T) {
 // PENDING, and reactivating the connection releases it.
 func TestPollOnce_PausedConnectionHoldsJob(t *testing.T) {
 	ctx := context.Background()
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 
 	const (
 		connID = "conn_pausedit001"

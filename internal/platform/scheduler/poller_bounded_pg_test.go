@@ -9,8 +9,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 )
 
 // stallPublisher blocks until its context ends, then reports everything
@@ -31,7 +29,7 @@ func TestPollOnce_StalledPublishIsBoundedAndLeavesTheClaimPending(t *testing.T) 
 	defer func() { publishTimeout = old }()
 
 	ctx := context.Background()
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 	const (
 		id1 = "djbound00001"
 		id2 = "djbound00002"
@@ -69,7 +67,7 @@ func (c cancelAfterPublish) Publish(context.Context, []PublishItem) ([]string, e
 // The mark-QUEUED UPDATE must survive that cancellation: abandoning it would
 // leave the published rows PENDING and publish every job a second time.
 func TestLane_MarkQueuedSurvivesACancelledContext(t *testing.T) {
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 	const (
 		id1 = "djcancel0001"
 		id2 = "djcancel0002"

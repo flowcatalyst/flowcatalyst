@@ -10,8 +10,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 )
 
 // seedSequencedJob inserts a PENDING job at a known position in its group,
@@ -37,7 +35,7 @@ func seedSequencedJob(t *testing.T, pool *pgxpool.Pool, id, group, status string
 // It is still the next message that must be delivered, so nothing behind it may
 // go past it.
 func TestPollOnce_BackedOffJobHoldsItsGroup(t *testing.T) {
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 	base := time.Now().UTC().Add(-time.Hour)
 	backoff := time.Now().UTC().Add(time.Hour) // far enough that no later test in this shared database sees it expire
 
@@ -59,7 +57,7 @@ func TestPollOnce_BackedOffJobHoldsItsGroup(t *testing.T) {
 // own hold — a set-membership test ("this group contains a backed-off job")
 // would wedge the group permanently at exactly this moment.
 func TestPollOnce_HeldJobDispatchesOnceItsBackoffExpires(t *testing.T) {
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 	base := time.Now().UTC().Add(-time.Hour)
 	expired := time.Now().UTC().Add(-time.Second) // backoff already elapsed
 
@@ -79,7 +77,7 @@ func TestPollOnce_HeldJobDispatchesOnceItsBackoffExpires(t *testing.T) {
 // A held job holds only what is BEHIND it. Anything in front is unaffected —
 // the old set-membership rule blocked a whole group regardless of position.
 func TestPollOnce_JobsAheadOfABackedOffSiblingStillDispatch(t *testing.T) {
-	pool := testpg.Pool(t)
+	pool := testPool(t)
 	base := time.Now().UTC().Add(-time.Hour)
 	backoff := time.Now().UTC().Add(time.Hour) // far enough that no later test in this shared database sees it expire
 
