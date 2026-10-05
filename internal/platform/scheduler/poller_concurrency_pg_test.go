@@ -5,6 +5,7 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	"os"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -186,8 +187,13 @@ func TestConcurrency_LanesPollerAndCallbacksAgainstABurst(t *testing.T) {
 	t.Logf("CONCURRENCY slowest callback statement: %.120q", cSQL)
 	// A planner stall shows as a collapse in throughput before any single statement gets
 	// slow (a sargable status guard on the by-key statements: 1,800 jobs/s here against
-	// 9,000), so the rate is asserted too, with a wide margin for a slow machine.
-	assert.Greater(t, float64(n)/elapsed.Seconds(), 4000.0, "throughput collapsed")
+	// 9,000), so the rate is asserted too — but only on request: under the race
+	// detector on this 14-core machine the healthy rate is 6,300–8,500 jobs/s, and a
+	// small CI runner would fall below any floor that still means something. Set
+	// FC_PERF_ASSERT=1 to enforce it (the benchmark rig and local runs do).
+	if os.Getenv("FC_PERF_ASSERT") == "1" {
+		assert.Greater(t, float64(n)/elapsed.Seconds(), 4000.0, "throughput collapsed")
+	}
 	// The ceiling is one second: a plan regression shows as seconds, while a single
 	// statement among tens of thousands can stall a few hundred ms on a loaded CI machine.
 	assert.Less(t, sMax, time.Second, "no scheduler statement may exceed 1 s: %.200q", sSQL)
