@@ -42,7 +42,7 @@ type seedOpts struct {
 	LastError    *string
 }
 
-// seedJob writes a dispatch job straight through the production Insert path
+// seedJob writes a dispatch job straight through the lifecycle
 // (the only way dispatch jobs are created — see entity.go's package doc) so
 // these tests exercise the same row shape the router/scheduler produce.
 func seedJob(t *testing.T, repo *dispatchjob.Repository, code string, status common.DispatchStatus, opts seedOpts) *dispatchjob.DispatchJob {
@@ -77,7 +77,15 @@ func seedJob(t *testing.T, repo *dispatchjob.Repository, code string, status com
 		now := time.Now().UTC()
 		j.CompletedAt = &now
 	}
-	require.NoError(t, repo.Insert(context.Background(), j))
+	// Born PENDING through the lifecycle (the only creator), then put into the
+	// status under test with a test-only write: the lifecycle deliberately has
+	// no way to create a job in an arbitrary status.
+	_, cerr := repo.Lifecycle().CreateBatch(context.Background(), []dispatchjob.DispatchJob{*j})
+	require.NoError(t, cerr)
+	_, uerr := testpg.Pool(t).Exec(context.Background(),
+		`UPDATE msg_dispatch_jobs SET status = $2, completed_at = $3 WHERE id = $1`,
+		j.ID, string(status), j.CompletedAt)
+	require.NoError(t, uerr)
 	return j
 }
 
@@ -269,4 +277,30 @@ func TestResendDispatchJobs_ScopeFiltering(t *testing.T) {
 	gotPlatform, err := repo.FindByID(context.Background(), platform.ID)
 	require.NoError(t, err)
 	assert.Equal(t, common.DispatchFailed, gotPlatform.Status, "platform-scoped job must be left untouched for a non-anchor")
+}
+
+// The operator's cancel/complete check "is FAILED" in the SQL, not only in
+// Execute: if the job moved between the load and the write (a delivery that
+// finished it), the persister refuses, so the use-case transaction rolls back
+// and no event or audit row is written for a change that did not happen.
+func TestOperatorPersisters_RefuseNonFailedInSQL(t *testing.T) {
+	t.Parallel()
+	pool := testpg.Pool(t)
+	repo := dispatchjob.NewRepository(pool)
+	ctx := context.Background()
+	for name, p := range map[string]usecasepgx.Persist[dispatchjob.DispatchJob]{
+		"cancel":   repo.CancelPersister(),
+		"complete": repo.CompletePersister(),
+	} {
+		j := seedJob(t, repo, "opstest:persist:"+name, common.DispatchCompleted, seedOpts{})
+		tx, err := pool.Begin(ctx)
+		require.NoError(t, err)
+		err = p.Persist(ctx, j, usecasepgx.WrapTxForBootstrap(tx))
+		require.ErrorIs(t, err, dispatchjob.ErrTransitionRefused, name)
+		require.NoError(t, tx.Rollback(ctx))
+
+		got, err := repo.FindByID(ctx, j.ID)
+		require.NoError(t, err)
+		assert.Equal(t, common.DispatchCompleted, got.Status, name)
+	}
 }

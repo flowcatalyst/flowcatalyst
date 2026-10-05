@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	schedulerpkg "github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduler"
 )
 
@@ -83,7 +84,10 @@ func runtimeMetricsHandler(scheduler bool) http.Handler {
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
-	gatherers := prometheus.Gatherers{reg}
+	// The dispatch-job lifecycle's counters: every process that can write a
+	// dispatch job (ingest, the delivery callback, fan-out, recovery) owns them,
+	// scheduler or not.
+	gatherers := prometheus.Gatherers{reg, dispatchjob.MetricsRegistry}
 	if scheduler {
 		gatherers = append(gatherers, schedulerpkg.MetricsRegistry)
 	}

@@ -13,7 +13,7 @@ import (
 // statusFlip). Like CancelDispatchJob, this also unblocks the rest of the
 // job's BLOCK_ON_ERROR message group.
 func CompleteDispatchJob(repo *dispatchjob.Repository) usecaseop.Operation[CompleteCommand, DispatchJobCompleted] {
-	return statusFlip("CompleteDispatchJob", repo,
+	return statusFlip("CompleteDispatchJob", repo, repo.CompletePersister(),
 		func(j *dispatchjob.DispatchJob) { j.Complete() },
 		func(j *dispatchjob.DispatchJob, ec usecase.ExecutionContext) DispatchJobCompleted {
 			return DispatchJobCompleted{commonEvent{

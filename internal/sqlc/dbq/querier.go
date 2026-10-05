@@ -87,84 +87,21 @@ type Querier interface {
 	// attempts are numbered from 1 again, so ordering by number interleaves
 	// runs. attempted_at is the order an operator reads them in.
 	DispatchJobAttemptsByJob(ctx context.Context, dispatchJobID string) ([]DispatchJobAttemptsByJobRow, error)
-	// Atomically claims a job for ONE delivery. Same PROCESSING flip the old
-	// (now-removed) unconditional MarkInProgress used to do, but guarded on the
-	// status it flips FROM, so the affected-row count answers "did I win this
-	// delivery?". Only PENDING/QUEUED is claimable: a row already PROCESSING
-	// belongs to a delivery still in flight, and a terminal row is finished. A
-	// concurrent redelivery therefore updates no row and its caller must not
-	// call the subscriber.
-	// A positive status list, not an exclusion list: an unrecognised stored value
-	// is then un-claimable rather than deliverable.
-	// These status flips all carry `created_at = $N` alongside the id: the
-	// table is partitioned by created_at, and without it every statement
-	// probes every partition instead of pruning to the row's own.
-	DispatchJobClaimForDelivery(ctx context.Context, arg DispatchJobClaimForDeliveryParams) (int64, error)
-	// Satisfies usecasepgx.Persist[DispatchJob], which requires both Persist
-	// and Delete. No operation in this module deletes a dispatch job today
-	// (Cancel/Complete/Resend all use Save/SaveAll), so this exists purely for
-	// interface conformance — but it's a real delete, not a stub, in case that
-	// ever changes.
-	DispatchJobDelete(ctx context.Context, arg DispatchJobDeleteParams) error
-	// Queries for msg_dispatch_jobs + msg_dispatch_job_attempts. The
-	// column set matches the post-019 (partitioned) schema. Composite PK
-	// is (id, created_at); claim queries use FOR UPDATE SKIP LOCKED so
-	// multiple scheduler nodes can run against the same DB without
-	// contention.
+	// Read queries for msg_dispatch_jobs + the attempts table. The column set
+	// matches the post-019 (partitioned) schema. Composite PK is (id, created_at).
+	//
+	// msg_dispatch_jobs is WRITTEN only by the dispatch-job lifecycle
+	// (internal/platform/dispatchjob/lifecycle.go): every insert and every status
+	// transition is hand-built there, over whatever pool or transaction the caller
+	// passes, so it carries no sqlc query. Nothing in this file may INSERT, UPDATE
+	// or DELETE msg_dispatch_jobs (lifecycle_enforce_test.go checks).
 	//
 	// FindWithFilters + DistinctValues stay hand-rolled in repository.go
-	// (dynamic WHERE + dynamic column names) — sqlc can't generate those
-	// without a query per filter combination.
-	//
-	// InsertBatch also stays in repository.go via pgx.Batch — sqlc has no
-	// batch wrapper for partial-failure-tolerant UNNEST inserts.
+	// (dynamic WHERE + dynamic column names).
 	DispatchJobFindByID(ctx context.Context, id string) (DispatchJobFindByIDRow, error)
-	// Queries below back T3/A-01 (BLOCK_ON_ERROR group recovery): the use-case
-	// envelope ops (cancel/complete/resend, internal/platform/dispatchjob/operations),
-	// the router-settled hook (internal/platform/dispatchjob/settled), and the
-	// stranded-sibling reaper (internal/platform/dispatchjob/reaper.go).
 	// Batch load by id (write table), for the Resend operation, which reloads
 	// multiple aggregates to reset via usecaseop.SaveAll.
 	DispatchJobFindByIDs(ctx context.Context, argIds []string) ([]DispatchJobFindByIDsRow, error)
-	DispatchJobInsert(ctx context.Context, arg DispatchJobInsertParams) error
-	// Status → COMPLETED. Stamps completed_at + duration_millis.
-	DispatchJobMarkCompleted(ctx context.Context, arg DispatchJobMarkCompletedParams) error
-	// Terminal failure. Stamps last_error + completed_at + duration_millis.
-	DispatchJobMarkFailed(ctx context.Context, arg DispatchJobMarkFailedParams) error
-	// Mutable-field update for human-initiated status overrides that go through
-	// the use-case envelope (cancel/complete/resend): scoped to the fields
-	// those operations ever change. payload/metadata/target_url/etc are
-	// write-once at ingest (DispatchJobInsert/InsertBatch) and never revisited
-	// by this path. created_at carries alongside id for partition pruning, like
-	// every other status-flip query in this file.
-	DispatchJobPersist(ctx context.Context, arg DispatchJobPersistParams) error
-	// Takes over a delivery whose attempt died with its process: PROCESSING →
-	// PROCESSING with a fresh claim time, only when the current claim was made
-	// before @claimed_before (the attempt's lease has run out). Like
-	// DispatchJobClaimForDelivery the affected-row count answers "did I win?":
-	// the winner's new claim time takes every other taker out of the condition.
-	DispatchJobReclaimStaleDelivery(ctx context.Context, arg DispatchJobReclaimStaleDeliveryParams) (int64, error)
-	// Bumps attempt_count + stamps scheduled_for so the next poll picks
-	// it up once due. Status stays PENDING.
-	DispatchJobScheduleRetry(ctx context.Context, arg DispatchJobScheduleRetryParams) error
-	// The router→platform settled-message hook: resets the given ids to
-	// PENDING, recording the reason in last_error. Scoped to QUEUED/PROCESSING
-	// so a row a concurrent path already advanced (to a terminal status, or
-	// already back to PENDING) is left alone — idempotent, so a duplicate hook
-	// call is harmless. No created_at is available (the router only knows job
-	// ids), so this scans by id across partitions — the same accepted exception
-	// the pre-existing operator Requeue-turned-Resend path already relies on.
-	DispatchJobSettleAcked(ctx context.Context, arg DispatchJobSettleAckedParams) ([]string, error)
-	// The reaper backstop (reaper.go): resets to PENDING any QUEUED/PROCESSING
-	// job whose message group is headed by a terminally FAILED job under
-	// BLOCK_ON_ERROR — i.e. rows the settled-message hook should have caught
-	// but didn't (a dropped call, or a router crash between ACK and the hook).
-	// A PROCESSING row updated more recently than sqlc.arg('live_before') is
-	// presumed to be a genuine in-flight delivery and is left alone; QUEUED
-	// rows have no such window (see reaper.go for why). Idempotent — a row
-	// already reset by the hook no longer matches status IN (...) and is
-	// skipped on the next sweep.
-	DispatchJobSweepStrandedSiblings(ctx context.Context, arg DispatchJobSweepStrandedSiblingsParams) ([]string, error)
 	DispatchPoolDelete(ctx context.Context, id string) error
 	DispatchPoolFindAll(ctx context.Context) ([]MsgDispatchPool, error)
 	DispatchPoolFindByCodeAnchor(ctx context.Context, code string) (MsgDispatchPool, error)

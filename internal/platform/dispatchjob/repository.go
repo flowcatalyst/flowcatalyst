@@ -16,7 +16,6 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
-	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
 // Repository owns msg_dispatch_jobs (the lean write table) plus the
@@ -28,17 +27,18 @@ import (
 // The detail view (FindByID) and the debug raw view (FindRecentRaw) stay on
 // the write table because they need the un-projected payload/metadata.
 //
-// FindWithFilters + DistinctValues + FindByEventID + FindRecentRaw +
-// InsertBatch stay hand-rolled (dynamic SQL / pgx.Batch); everything else
-// goes through *dbq.Queries.
+// FindWithFilters + DistinctValues + FindByEventID + FindRecentRaw stay
+// hand-rolled (dynamic SQL); the reads otherwise go through *dbq.Queries. Every
+// WRITE of msg_dispatch_jobs goes through the Lifecycle (lifecycle.go).
 type Repository struct {
-	pool *pgxpool.Pool // retained for FindWithFilters + DistinctValues + InsertBatch
+	pool *pgxpool.Pool // retained for FindWithFilters + DistinctValues + the reads
 	q    *dbq.Queries
+	lc   *Lifecycle // the one writer of msg_dispatch_jobs
 }
 
 // NewRepository wires a repo.
 func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{pool: pool, q: dbq.New(pool)}
+	return &Repository{pool: pool, q: dbq.New(pool), lc: NewLifecycle(pool)}
 }
 
 // FilterParams is the query DTO for /api/dispatch-jobs.
@@ -277,104 +277,17 @@ func (r *Repository) DistinctValues(ctx context.Context, column string, limit in
 	return out, rows.Err()
 }
 
-// Insert writes a brand-new dispatch job (called by ingest + stream fan-out).
-// No UoW commit — this is the infrastructure path.
-func (r *Repository) Insert(ctx context.Context, j *DispatchJob) error {
-	now := time.Now().UTC()
-	if j.CreatedAt.IsZero() {
-		j.CreatedAt = now
-	}
-	j.UpdatedAt = now
-	metaJSON, err := json.Marshal(metadataOrEmpty(j.Metadata))
-	if err != nil {
-		return fmt.Errorf("marshal metadata: %w", err)
-	}
-	retry := string(j.RetryStrategy)
-	pct := j.PayloadContentType
-	return r.q.DispatchJobInsert(ctx, dbq.DispatchJobInsertParams{
-		ID:                 j.ID,
-		ExternalID:         j.ExternalID,
-		Source:             j.Source,
-		Kind:               string(j.Kind),
-		Code:               j.Code,
-		Subject:            j.Subject,
-		EventID:            j.EventID,
-		CorrelationID:      j.CorrelationID,
-		Metadata:           metaJSON,
-		TargetUrl:          j.TargetURL,
-		Protocol:           string(j.Protocol),
-		Payload:            j.Payload,
-		PayloadContentType: &pct,
-		DataOnly:           j.DataOnly,
-		ServiceAccountID:   j.ServiceAccountID,
-		ClientID:           j.ClientID,
-		SubscriptionID:     j.SubscriptionID,
-		Mode:               string(j.Mode),
-		DispatchPoolID:     j.DispatchPoolID,
-		MessageGroup:       j.MessageGroup,
-		Sequence:           j.Sequence,
-		TimeoutSeconds:     int32(j.TimeoutSeconds),
-		SchemaID:           j.SchemaID,
-		Status:             string(j.Status),
-		MaxRetries:         int32(j.MaxRetries),
-		RetryStrategy:      &retry,
-		ScheduledFor:       j.ScheduledFor,
-		ExpiresAt:          j.ExpiresAt,
-		AttemptCount:       j.AttemptCount,
-		LastAttemptAt:      j.LastAttemptAt,
-		CompletedAt:        j.CompletedAt,
-		DurationMillis:     j.DurationMillis,
-		LastError:          j.LastError,
-		IdempotencyKey:     j.IdempotencyKey,
-		Queue:              j.Queue,
-		Descriptor:         j.Descriptor,
-		CreatedAt:          j.CreatedAt,
-		UpdatedAt:          j.UpdatedAt,
-	})
-}
+// Lifecycle returns the dispatch-job lifecycle bound to this repository's
+// pool: the one owner of msg_dispatch_jobs.status. Everything below that
+// writes a job delegates to it; callers holding a transaction use
+// Lifecycle().In(tx).
+func (r *Repository) Lifecycle() *Lifecycle { return r.lc }
 
-// InsertBatch writes many jobs in one round-trip via pgx Batch. Used by
-// the stream processor's fan-out path. `ON CONFLICT (id, created_at)`
-// matches the composite PK introduced by partitioning (migration 019).
-// Hand-rolled because sqlc has no batch wrapper.
+// InsertBatch creates jobs as PENDING (API ingest). A job whose (id,
+// created_at) already exists is skipped.
 func (r *Repository) InsertBatch(ctx context.Context, jobs []DispatchJob) error {
-	if len(jobs) == 0 {
-		return nil
-	}
-	batch := &pgx.Batch{}
-	now := time.Now().UTC()
-	for _, j := range jobs {
-		if j.CreatedAt.IsZero() {
-			j.CreatedAt = now
-		}
-		metaJSON, _ := json.Marshal(metadataOrEmpty(j.Metadata))
-		batch.Queue(
-			`INSERT INTO msg_dispatch_jobs
-			     (id, external_id, source, kind, code, subject, event_id, correlation_id,
-			      metadata, target_url, protocol, payload, payload_content_type, data_only,
-			      service_account_id, client_id, subscription_id, mode, dispatch_pool_id,
-			      message_group, sequence, timeout_seconds, schema_id, status, max_retries,
-			      retry_strategy, scheduled_for, expires_at, attempt_count, last_attempt_at,
-			      completed_at, duration_millis, last_error, idempotency_key, queue, descriptor, created_at, updated_at)
-			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38)
-			 ON CONFLICT (id, created_at) DO NOTHING`,
-			j.ID, j.ExternalID, j.Source, string(j.Kind), j.Code, j.Subject, j.EventID,
-			j.CorrelationID, metaJSON, j.TargetURL, string(j.Protocol), j.Payload,
-			j.PayloadContentType, j.DataOnly, j.ServiceAccountID, j.ClientID,
-			j.SubscriptionID, string(j.Mode), j.DispatchPoolID, j.MessageGroup,
-			j.Sequence, j.TimeoutSeconds, j.SchemaID, string(j.Status), j.MaxRetries,
-			string(j.RetryStrategy), j.ScheduledFor, j.ExpiresAt, j.AttemptCount,
-			j.LastAttemptAt, j.CompletedAt, j.DurationMillis, j.LastError,
-			j.IdempotencyKey, j.Queue, j.Descriptor, j.CreatedAt, now)
-	}
-	br := r.pool.SendBatch(ctx, batch)
-	defer br.Close()
-	for range jobs {
-		if _, err := br.Exec(); err != nil {
-			return err
-		}
-	}
-	return nil
+	_, err := r.lc.CreateBatch(ctx, jobs)
+	return err
 }
 
 // The status-flip methods all take the job's createdAt alongside its id:
@@ -387,72 +300,48 @@ func (r *Repository) InsertBatch(ctx context.Context, jobs []DispatchJob) error 
 // this job is already in flight (or the job finished), and the caller must not
 // call the subscriber.
 func (r *Repository) ClaimForDelivery(ctx context.Context, id string, createdAt time.Time) (bool, error) {
-	now := time.Now().UTC()
-	rows, err := r.q.DispatchJobClaimForDelivery(ctx, dbq.DispatchJobClaimForDeliveryParams{
-		ID: id, LastAttemptAt: &now, CreatedAt: createdAt,
-	})
-	if err != nil {
-		return false, err
-	}
-	return rows == 1, nil
+	return r.lc.ClaimForDelivery(ctx, id, createdAt)
 }
 
 // ReclaimStaleDelivery takes over a delivery whose attempt died (the process
 // was killed mid-delivery, so the job stayed PROCESSING with no outcome): it
 // re-stamps the claim time, only when the current claim was made before
-// claimedBefore. Reports whether this caller won; like ClaimForDelivery, the
-// winner's fresh claim time takes every concurrent taker out of the
-// condition, so exactly one of them delivers.
+// claimedBefore. Reports whether this caller won.
 func (r *Repository) ReclaimStaleDelivery(ctx context.Context, id string, createdAt, claimedBefore time.Time) (bool, error) {
-	now := time.Now().UTC()
-	claimedBefore = claimedBefore.UTC()
-	rows, err := r.q.DispatchJobReclaimStaleDelivery(ctx, dbq.DispatchJobReclaimStaleDeliveryParams{
-		Now: &now, ID: id, CreatedAt: createdAt, ClaimedBefore: &claimedBefore,
-	})
-	if err != nil {
-		return false, err
-	}
-	return rows == 1, nil
+	return r.lc.ReclaimStaleDelivery(ctx, id, createdAt, claimedBefore)
 }
 
-// MarkCompleted flips status to COMPLETED and stamps completed_at +
-// duration_millis (end-to-end). Called after a successful delivery.
+// MarkCompleted records a successful delivery (live -> COMPLETED). A job that
+// is already settled is left alone (counted as a refused transition).
 func (r *Repository) MarkCompleted(ctx context.Context, id string, createdAt time.Time, durationMillis int64) error {
-	now := time.Now().UTC()
-	return r.q.DispatchJobMarkCompleted(ctx, dbq.DispatchJobMarkCompletedParams{
-		ID: id, CompletedAt: &now, DurationMillis: &durationMillis, CreatedAt: createdAt,
-	})
+	_, err := r.lc.Complete(ctx, id, createdAt, durationMillis)
+	return err
 }
 
-// MarkFailed flips status to FAILED and stops retries. Terminal.
-// Stamps last_error + completed_at + duration_millis.
+// MarkFailed records a terminal failure (live -> FAILED), stamping last_error.
 func (r *Repository) MarkFailed(ctx context.Context, id string, createdAt time.Time, lastError *string, durationMillis int64) error {
-	now := time.Now().UTC()
-	return r.q.DispatchJobMarkFailed(ctx, dbq.DispatchJobMarkFailedParams{
-		ID: id, CompletedAt: &now, DurationMillis: &durationMillis, LastError: lastError,
-		CreatedAt: createdAt,
-	})
+	_, err := r.lc.Fail(ctx, id, createdAt, lastError, durationMillis)
+	return err
 }
 
-// ScheduleRetry bumps attempt_count, stamps last_error, and sets
-// scheduled_for. Status stays PENDING so the poller picks it up once
-// scheduled_for falls due.
+// ScheduleRetry bumps attempt_count, stamps last_error and scheduled_for and
+// returns a live job to PENDING for the poller.
 func (r *Repository) ScheduleRetry(ctx context.Context, id string, createdAt time.Time, scheduledFor time.Time, lastError *string) error {
-	return r.q.DispatchJobScheduleRetry(ctx, dbq.DispatchJobScheduleRetryParams{
-		ID: id, ScheduledFor: &scheduledFor, LastError: lastError, CreatedAt: createdAt,
-	})
+	_, err := r.lc.Retry(ctx, id, createdAt, scheduledFor, lastError)
+	return err
 }
 
-// Reschedule sets a job back to PENDING with a future scheduled_for WITHOUT
-// bumping attempt_count. For cooperative back-pressure — a subscriber that
-// returned ack=false, or an HTTP 429 — which are "try again later" signals,
-// not delivery failures, so they must not consume the retry budget. The
-// poller re-dispatches once scheduled_for falls due.
+// Reschedule defers a live job back to PENDING at scheduledFor WITHOUT bumping
+// attempt_count (cooperative back-pressure: ack=false, HTTP 429).
 func (r *Repository) Reschedule(ctx context.Context, id string, createdAt time.Time, scheduledFor time.Time) error {
-	_, err := r.pool.Exec(ctx,
-		`UPDATE msg_dispatch_jobs
-		    SET status = 'PENDING', scheduled_for = $2, updated_at = NOW()
-		  WHERE id = $1 AND created_at = $3`, id, scheduledFor.UTC(), createdAt)
+	_, err := r.lc.Defer(ctx, id, createdAt, scheduledFor)
+	return err
+}
+
+// Hold puts a job back to PENDING because an earlier job of its
+// BLOCK_ON_ERROR group is holding the group.
+func (r *Repository) Hold(ctx context.Context, id string, createdAt time.Time, scheduledFor time.Time) error {
+	_, err := r.lc.Hold(ctx, id, createdAt, scheduledFor)
 	return err
 }
 
@@ -506,51 +395,11 @@ func (r *Repository) FindByIDs(ctx context.Context, ids []string) ([]DispatchJob
 	return out, nil
 }
 
-// Persist implements usecasepgx.Persist[DispatchJob] for the human-initiated
-// status overrides that go through the use-case envelope (Cancel / Complete
-// / Resend — see entity.go's package doc and operations/). It only writes
-// the fields those operations ever change (status, attempt_count,
-// scheduled_for, completed_at, duration_millis, last_error, updated_at) —
-// payload/metadata/target_url/etc are write-once at ingest and never
-// revisited here. created_at is carried alongside id for partition pruning,
-// matching every other status-flip query in this file.
-func (r *Repository) Persist(ctx context.Context, j *DispatchJob, tx *usecasepgx.DbTx) error {
-	return r.q.WithTx(tx.Inner()).DispatchJobPersist(ctx, dbq.DispatchJobPersistParams{
-		ID:             j.ID,
-		Status:         string(j.Status),
-		AttemptCount:   j.AttemptCount,
-		ScheduledFor:   j.ScheduledFor,
-		CompletedAt:    j.CompletedAt,
-		DurationMillis: j.DurationMillis,
-		LastError:      j.LastError,
-		UpdatedAt:      time.Now().UTC(),
-		CreatedAt:      j.CreatedAt,
-	})
-}
-
-// Delete satisfies usecasepgx.Persist[DispatchJob], which requires both
-// Persist and Delete. No operation in this module deletes a dispatch job
-// today — Cancel/Complete/Resend all commit via Save/SaveAll, never Delete —
-// so this is currently unreachable through any use case, but it's a real
-// delete (not a stub) in case that changes.
-func (r *Repository) Delete(ctx context.Context, j *DispatchJob, tx *usecasepgx.DbTx) error {
-	return r.q.WithTx(tx.Inner()).DispatchJobDelete(ctx, dbq.DispatchJobDeleteParams{
-		ID: j.ID, CreatedAt: j.CreatedAt,
-	})
-}
-
-// SettleAcked is the router→platform settled-message hook's repo call (see
-// the settled package): resets the given ids to PENDING and records reason
-// in last_error, scoped to QUEUED/PROCESSING so a row a concurrent path
-// already advanced is left alone. Returns the ids actually reset (a subset
-// of ids: some may not exist, or may already be past QUEUED/PROCESSING).
+// SettleAcked is the router->platform settled-message hook's repo call (see
+// the settled package): resets the given ids to PENDING and records reason in
+// last_error, scoped to QUEUED/PROCESSING. Returns the ids actually reset.
 func (r *Repository) SettleAcked(ctx context.Context, ids []string, reason string) ([]string, error) {
-	if len(ids) == 0 {
-		return nil, nil
-	}
-	return r.q.DispatchJobSettleAcked(ctx, dbq.DispatchJobSettleAckedParams{
-		Ids: ids, Reason: reason,
-	})
+	return r.lc.SettleAcked(ctx, ids, reason)
 }
 
 // RecordAttempt inserts a row into msg_dispatch_job_attempts —

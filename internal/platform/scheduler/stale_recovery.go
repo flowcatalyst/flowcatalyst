@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 )
 
 // StaleQueuedJobPoller recovers dispatch jobs stuck in QUEUED (and in
@@ -56,22 +58,11 @@ func (p *StaleQueuedJobPoller) Run(ctx context.Context) {
 	}
 }
 
-// The two sweeps. Both are range scans of idx_dispatch_jobs_in_flight
-// (status, updated_at) WHERE status IN ('QUEUED', 'PROCESSING') — migration
-// 065; before it the PROCESSING sweep read every partition once a minute.
-// The status literals are what let Postgres prove the partial index usable.
-const (
-	staleQueuedSQL = `UPDATE msg_dispatch_jobs
-    SET status = 'PENDING', updated_at = NOW()
-  WHERE status = 'QUEUED' AND updated_at < $1`
-	staleProcessingSQL = `UPDATE msg_dispatch_jobs
-    SET status = 'PENDING', last_error = $2, updated_at = NOW()
-  WHERE status = 'PROCESSING' AND updated_at < $1`
-)
-
 // StaleProcessingReason is recorded in last_error on a PROCESSING job this
 // loop returns to PENDING, so an operator can tell why it was re-dispatched.
-const StaleProcessingReason = "stale recovery: PROCESSING with no outcome recorded; returned to PENDING"
+// The sweeps themselves are the dispatch-job lifecycle's (RecoverStaleQueued /
+// RecoverStaleProcessing); this loop only decides when to run them.
+const StaleProcessingReason = dispatchjob.StaleProcessingReason
 
 // recoverOnce reverts stale QUEUED and PROCESSING jobs to PENDING. Returns
 // the count.
@@ -86,13 +77,14 @@ const StaleProcessingReason = "stale recovery: PROCESSING with no outcome record
 // At-least-once: the dead attempt may have reached the subscriber.
 func (p *StaleQueuedJobPoller) recoverOnce(ctx context.Context) (int64, error) {
 	cutoff := time.Now().Add(-p.staleAfter).UTC()
-	tag, err := p.pool.Exec(ctx, staleQueuedSQL, cutoff)
+	lc := dispatchjob.NewLifecycle(p.pool)
+	queued, err := lc.RecoverStaleQueued(ctx, cutoff)
 	if err != nil {
 		return 0, err
 	}
-	processing, err := p.pool.Exec(ctx, staleProcessingSQL, cutoff, StaleProcessingReason)
+	processing, err := lc.RecoverStaleProcessing(ctx, cutoff)
 	if err != nil {
-		return tag.RowsAffected(), err
+		return queued, err
 	}
-	return tag.RowsAffected() + processing.RowsAffected(), nil
+	return queued + processing, nil
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
 // StatusFlipCommand is the shared id-only command for Cancel/Complete.
@@ -32,6 +33,7 @@ type (
 func statusFlip[E usecase.DomainEvent](
 	name string,
 	repo *dispatchjob.Repository,
+	persist usecasepgx.Persist[dispatchjob.DispatchJob],
 	apply func(*dispatchjob.DispatchJob),
 	event func(*dispatchjob.DispatchJob, usecase.ExecutionContext) E,
 ) usecaseop.Operation[StatusFlipCommand, E] {
@@ -63,7 +65,7 @@ func statusFlip[E usecase.DomainEvent](
 					"dispatch job is not FAILED (current status: "+string(j.Status)+"); only a FAILED job can be overridden")
 			}
 			apply(j)
-			return usecaseop.Save(j, repo, event(j, ec)), nil
+			return usecaseop.Save(j, persist, event(j, ec)), nil
 		},
 	}
 }

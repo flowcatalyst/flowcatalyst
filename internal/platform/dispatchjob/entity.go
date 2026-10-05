@@ -3,11 +3,15 @@
 // Per docs/conventions.md §3, this subdomain is an infrastructure-
 // processing path: dispatch jobs are written directly (via ingest +
 // router status transitions + stream fan-out) rather than through use
-// cases. We expose entity types + a repository with direct read/write
-// methods, but no UoW commits and no DomainEvent emissions.
+// cases. We expose entity types + a repository with direct read methods and
+// the Lifecycle (lifecycle.go), which is the ONLY writer of msg_dispatch_jobs
+// and its status column (enforced by lifecycle_enforce_test.go). Ingest, fan-out,
+// the delivery callback, the scheduler, stale recovery, the reaper and the
+// settled hook call the Lifecycle directly: no UoW commits, no DomainEvents.
 //
-// Human-initiated dispatch-job actions (resend, ignore, cancel) DO go
-// through use cases.
+// Human-initiated dispatch-job actions (resend, cancel, complete) DO go
+// through use cases, whose persisters (operator_persist.go) call the Lifecycle
+// inside the unit of work's transaction.
 package dispatchjob
 
 import (
@@ -277,7 +281,7 @@ func (j *DispatchJob) PayloadJSON() (json.RawMessage, error) {
 // IDStr satisfies usecase.HasID, so DispatchJob can be committed through the
 // use-case envelope (operations/) — see the package doc: human-initiated
 // actions (cancel, complete, resend) go through use cases; router-driven
-// infra writes (Insert, ClaimForDelivery, ...) stay direct repo calls.
+// infra writes (ClaimForDelivery, ...) are direct Lifecycle calls.
 func (j DispatchJob) IDStr() string { return j.ID }
 
 // Cancel flips a FAILED job to CANCELLED — an operator override for a

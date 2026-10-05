@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
@@ -331,39 +332,10 @@ func loadActiveSubscriptions(ctx context.Context, pool *pgxpool.Pool) ([]cachedS
 
 // ── Dispatch job assembly + insert ───────────────────────────────────────
 
-// newJob is the subset of msg_dispatch_jobs columns fanout sets. Other
-// columns take the table default (kind='EVENT', retry_strategy='exponential',
-// etc.).
-type newJob struct {
-	ID             string
-	Code           string
-	Source         string
-	Subject        *string
-	EventID        string
-	CorrelationID  *string
-	TargetURL      string
-	Payload        string
-	DataOnly       bool
-	ServiceAcctID  *string
-	ClientID       *string
-	SubscriptionID string
-	Mode           string
-	DispatchPoolID *string
-	MessageGroup   *string
-	Sequence       int32
-	TimeoutSeconds int32
-	Status         string
-	MaxRetries     int32
-	IdempotencyKey string
-	CreatedAt      time.Time
-	// Descriptor is the raising subscription's name; Metadata the raising
-	// event's context_data, verbatim (2026-09-22). nil when absent.
-	Descriptor *string
-	Metadata   json.RawMessage
-	// Queue is the raising subscription's queue value, copied verbatim
-	// (R2) — nil when the subscription has none set.
-	Queue *string
-}
+// newJob is the subset of msg_dispatch_jobs columns fanout sets (other columns
+// take the table default: kind='EVENT', retry_strategy='exponential', etc.). The
+// type is the dispatch-job lifecycle's: the lifecycle owns the INSERT.
+type newJob = dispatchjob.FanOutJob
 
 func buildJobs(events []claimedEvent, subs []cachedSubscription) []newJob {
 	var jobs []newJob
@@ -401,7 +373,6 @@ func buildJobs(events []claimedEvent, subs []cachedSubscription) []newJob {
 				MessageGroup:   e.MessageGroup,
 				Sequence:       s.Sequence,
 				TimeoutSeconds: s.TimeoutSeconds,
-				Status:         string(common.DispatchPending),
 				MaxRetries:     s.MaxRetries,
 				IdempotencyKey: fmt.Sprintf("%s:%s", e.ID, s.ID),
 				CreatedAt:      e.CreatedAt,
@@ -445,42 +416,11 @@ func dispatchModeStr(m common.DispatchMode) string {
 	}
 }
 
-// insertJobsInTx writes the fanout-produced jobs in the same transaction
-// that stamped fanned_out_at. Uses pgx.Batch — same shape as the
-// dispatchjob repository's InsertBatch, but scoped to the columns
-// fanout actually sets (everything else takes the table default).
+// insertJobsInTx writes the fanout-produced jobs, as PENDING through the
+// dispatch-job lifecycle, in the same transaction that stamped fanned_out_at.
 func insertJobsInTx(ctx context.Context, tx pgx.Tx, jobs []newJob) error {
-	if len(jobs) == 0 {
-		return nil
-	}
-	batch := &pgx.Batch{}
-	for _, j := range jobs {
-		batch.Queue(
-			`INSERT INTO msg_dispatch_jobs (
-			    id, code, source, subject, event_id, correlation_id,
-			    target_url, protocol, payload, data_only, service_account_id,
-			    client_id, subscription_id, mode, dispatch_pool_id, message_group,
-			    sequence, timeout_seconds, status, max_retries, idempotency_key,
-			    queue, descriptor, metadata, created_at, updated_at)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, 'HTTP_WEBHOOK', $8, $9,
-			         $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-			         $21, $22, COALESCE($23::jsonb, '[]'::jsonb), $24, $24)
-			 ON CONFLICT (id, created_at) DO NOTHING`,
-			j.ID, j.Code, j.Source, j.Subject, j.EventID, j.CorrelationID,
-			j.TargetURL, j.Payload, j.DataOnly, j.ServiceAcctID,
-			j.ClientID, j.SubscriptionID, j.Mode, j.DispatchPoolID,
-			j.MessageGroup, j.Sequence, j.TimeoutSeconds, j.Status,
-			j.MaxRetries, j.IdempotencyKey, j.Queue, j.Descriptor,
-			nullableJSON(j.Metadata), j.CreatedAt)
-	}
-	br := tx.SendBatch(ctx, batch)
-	defer br.Close()
-	for range jobs {
-		if _, err := br.Exec(); err != nil {
-			return err
-		}
-	}
-	return nil
+	_, err := dispatchjob.NewLifecycle(tx).CreateFanOut(ctx, jobs)
+	return err
 }
 
 // nullableJSON passes a raw JSON document as a nullable text parameter —

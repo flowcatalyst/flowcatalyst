@@ -8,11 +8,13 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 )
 
@@ -75,13 +77,11 @@ func TestClaimPlan_NeedsNoSort(t *testing.T) {
 // Both stale sweeps are served by idx_dispatch_jobs_in_flight (status,
 // updated_at): the partitions' copies of it are named ..._status_updated_at_idx.
 func TestStaleSweepPlans_UseTheInFlightIndex(t *testing.T) {
-	for name, sql := range map[string]string{"queued": staleQueuedSQL, "processing": staleProcessingSQL} {
-		args := []any{"2026-01-01T00:00:00Z"}
-		if name == "processing" {
-			args = append(args, "reason")
-		}
-		plan := explain(t, sql, args...)
-		assert.Contains(t, plan, "status_updated_at_idx", "%s sweep plan:\n%s", name, plan)
-		assert.NotContains(t, plan, "Seq Scan", "%s sweep plan:\n%s", name, plan)
+	// The statements are the dispatch-job lifecycle's (it owns the writes); the
+	// plan test stays here because the index they ride is the scheduler's.
+	for _, st := range dispatchjob.StaleRecoveryStatements(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)) {
+		plan := explain(t, st.SQL, st.Args...)
+		assert.Contains(t, plan, "status_updated_at_idx", "%s sweep plan:\n%s", st.Name, plan)
+		assert.NotContains(t, plan, "Seq Scan", "%s sweep plan:\n%s", st.Name, plan)
 	}
 }

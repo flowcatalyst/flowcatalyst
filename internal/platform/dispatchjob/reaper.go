@@ -25,8 +25,6 @@ import (
 	"context"
 	"log/slog"
 	"time"
-
-	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 )
 
 // DefaultReaperInterval is a reasonable sweep cadence for RunReaper. This is
@@ -81,10 +79,7 @@ const reapReason = "reaper: sibling of a FAILED BLOCK_ON_ERROR head, stranded QU
 // from multiple instances — see RunReaper's doc comment.
 func (r *Repository) SweepStrandedGroupSiblings(ctx context.Context, processingLiveAfter time.Duration) ([]string, error) {
 	cutoff := time.Now().Add(-processingLiveAfter).UTC()
-	return r.q.DispatchJobSweepStrandedSiblings(ctx, dbq.DispatchJobSweepStrandedSiblingsParams{
-		LiveBefore: cutoff,
-		Reason:     reapReason,
-	})
+	return r.lc.SweepStranded(ctx, cutoff, reapReason)
 }
 
 // RunReaper drives SweepStrandedGroupSiblings on a ticker until ctx is

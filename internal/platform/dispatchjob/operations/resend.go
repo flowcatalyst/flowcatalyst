@@ -70,7 +70,7 @@ func ResendDispatchJobs(repo *dispatchjob.Repository) usecaseop.Operation[Resend
 				Metadata: usecase.NewEventMetadata(ec, DispatchJobsResentType, Source, "platform.dispatchjobs.resent"),
 				IDs:      ids,
 			}
-			return usecaseop.SaveAll(accessible, repo, event), nil
+			return usecaseop.SaveAll(accessible, repo.RequeuePersister(), event), nil
 		},
 	}
 }

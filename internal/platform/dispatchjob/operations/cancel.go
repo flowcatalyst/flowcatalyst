@@ -14,7 +14,7 @@ import (
 // longer FAILED, and the scheduler's next poll re-admits the siblings in
 // order (see docs/owner-rulings-plan.md T3).
 func CancelDispatchJob(repo *dispatchjob.Repository) usecaseop.Operation[CancelCommand, DispatchJobCancelled] {
-	return statusFlip("CancelDispatchJob", repo,
+	return statusFlip("CancelDispatchJob", repo, repo.CancelPersister(),
 		func(j *dispatchjob.DispatchJob) { j.Cancel() },
 		func(j *dispatchjob.DispatchJob, ec usecase.ExecutionContext) DispatchJobCancelled {
 			return DispatchJobCancelled{commonEvent{

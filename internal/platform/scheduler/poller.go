@@ -508,8 +508,8 @@ func (p *PendingJobPoller) queryClaim(ctx context.Context, limit int, paused, in
 	return claims, rows.Err()
 }
 
-// updateQueued is the default markQueued: one bulk UPDATE on a pooled
-// connection, no transaction. It is optimistic on the row version the claim
+// updateQueued is the default markQueued: one bulk UPDATE (the dispatch-job
+// lifecycle's MarkQueued) on the scheduler's own pooled connection, no transaction. It is optimistic on the row version the claim
 // read: a row is updated only if it is still PENDING AND its updated_at is the
 // one the claim saw. The status guard alone is not enough — the router can
 // deliver, and the callback process the job and reschedule it back to PENDING
@@ -519,18 +519,7 @@ func (p *PendingJobPoller) queryClaim(ctx context.Context, limit int, paused, in
 // changes the version. created_at bounds let the created_at-partitioned table
 // prune to the partitions the rows span.
 func (p *PendingJobPoller) updateQueued(ctx context.Context, ids []string, updatedAts []time.Time, minCreated, maxCreated time.Time) (int64, error) {
-	tag, err := p.pool.Exec(ctx,
-		`UPDATE msg_dispatch_jobs j SET status = 'QUEUED', queued_at = NOW(), updated_at = NOW()
-		   FROM unnest($1::text[], $2::timestamptz[]) AS c(id, claimed_updated_at)
-		  WHERE j.id = c.id
-		    AND j.updated_at = c.claimed_updated_at
-		    AND j.created_at >= $3 AND j.created_at <= $4
-		    AND j.status = 'PENDING'`,
-		ids, updatedAts, minCreated, maxCreated)
-	if err != nil {
-		return 0, err
-	}
-	return tag.RowsAffected(), nil
+	return dispatchjob.NewLifecycle(p.pool).MarkQueued(ctx, ids, updatedAts, minCreated, maxCreated)
 }
 
 // starveWarnEvery rate-limits the starvation warning.

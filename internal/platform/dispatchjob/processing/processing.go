@@ -300,7 +300,7 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if blocked {
-			if err := h.repo.Reschedule(ctx, jobID, job.CreatedAt, time.Now()); err != nil {
+			if err := h.repo.Hold(ctx, jobID, job.CreatedAt, time.Now()); err != nil {
 				// Revert failed: NACK rather than ack, or the job would sit
 				// QUEUED with no queue message until stale recovery.
 				slog.Error("dispatch process: blocked-group revert failed", "job_id", jobID, "err", err)
@@ -316,8 +316,8 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 
 	// Atomically claim the job for this delivery: a conditional UPDATE
 	// guarded on the status it flips FROM (PENDING/QUEUED only), so the
-	// affected-row count answers "did I win this delivery?" — see
-	// DispatchJobClaimForDelivery. This is no longer best-effort like the old
+	// affected-row count answers "did I win this delivery?" — see the
+	// dispatch-job lifecycle's ClaimForDelivery. This is no longer best-effort like the old
 	// unconditional MarkInProgress: a claim error means ownership is unknown,
 	// and delivering anyway is exactly the duplicate the guard exists to
 	// prevent.

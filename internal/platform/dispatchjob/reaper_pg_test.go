@@ -23,7 +23,7 @@ type reapSeedOpts struct {
 	Sequence int32
 }
 
-// reapSeedJob writes a job through the production Insert path (see
+// reapSeedJob writes a job through the lifecycle (see
 // entity.go's package doc: this is the only way dispatch-job rows are
 // created) and returns its id.
 func reapSeedJob(t *testing.T, repo *dispatchjob.Repository, code, group string, status common.DispatchStatus, opts reapSeedOpts) string {
@@ -50,7 +50,15 @@ func reapSeedJob(t *testing.T, repo *dispatchjob.Repository, code, group string,
 		now := time.Now().UTC()
 		j.CompletedAt = &now
 	}
-	require.NoError(t, repo.Insert(context.Background(), j))
+	// Born PENDING through the lifecycle (the only creator), then put into the
+	// status under test with a test-only write: the lifecycle deliberately has
+	// no way to create a job in an arbitrary status.
+	_, cerr := repo.Lifecycle().CreateBatch(context.Background(), []dispatchjob.DispatchJob{*j})
+	require.NoError(t, cerr)
+	_, uerr := testpg.Pool(t).Exec(context.Background(),
+		`UPDATE msg_dispatch_jobs SET status = $2, completed_at = $3 WHERE id = $1`,
+		j.ID, string(status), j.CompletedAt)
+	require.NoError(t, uerr)
 	return j.ID
 }
 
