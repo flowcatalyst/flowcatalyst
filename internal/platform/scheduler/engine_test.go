@@ -416,7 +416,7 @@ func TestPoller_DoesNotHotLoopOnAShortClaim(t *testing.T) {
 	p := newTestEngine(Config{PollInterval: 50 * time.Millisecond, Dispatchers: 1, BufferCapacity: 100, BatchSize: 10}, s)
 	// The rows never leave PENDING, so every claim is short but non-empty and
 	// submits: only the short-claim back-off stops a spin.
-	p.markQueued = func(_ context.Context, ids []string, _ []time.Time, _, _ time.Time) (int64, error) {
+	p.markQueued = func(_ context.Context, ids []string, _, _ []time.Time) (int64, error) {
 		return int64(len(ids)), nil
 	}
 	assert.LessOrEqual(t, hotLoopWindow(t, p, s), 14)
@@ -502,7 +502,6 @@ func TestShutdown_FinishesTheBatchInFlightAndLeavesTheRestPending(t *testing.T) 
 	}
 	assert.Equal(t, 2, queued)
 	assert.Equal(t, 4, s.pending(), "buffered jobs are left PENDING")
-	assert.Zero(t, s.claimedCount(), "and restored to the queue, so the next leader finds them")
 }
 
 // A broker that has stopped answering cannot hold shutdown for ever: the publish
@@ -696,9 +695,6 @@ func TestPoller_AClaimThatSawADoomedInFlightJobDoesNotSubmitTheJobsBehindIt(t *t
 	l := p.lanes[0]
 	// g-01 waits in the lane (generation 1) and its group was poisoned at 1: doomed.
 	track(l, lj("g-01", "g", 1))
-	s.mu.Lock()
-	s.jobs[1].claimed = true // its queue row is claimed: the claim skips it
-	s.mu.Unlock()
 	setPoison(l, "g", 1, time.Now())
 	p.claimGeneration.Store(1)
 	before := value(t, MetricsRegistry, "fc_scheduler_jobs_withheld_doomed_total")
@@ -710,15 +706,12 @@ func TestPoller_AClaimThatSawADoomedInFlightJobDoesNotSubmitTheJobsBehindIt(t *t
 	assert.Equal(t, 1, len(l.in), "g-00 and g-02 never reached a lane")
 	assert.Equal(t, 2.0, value(t, MetricsRegistry, "fc_scheduler_jobs_withheld_doomed_total")-before)
 	assert.Equal(t, 2, p.inflight.size(), "withheld jobs are not in flight (g-01 and h-00 are)")
-	assert.Equal(t, 2, s.claimedCount(), "the withheld jobs' claims were released (only g-01's and h-00's remain claimed)")
-	assert.ElementsMatch(t, []string{"g-00", "g-02"}, s.releaseCalls()[0], "exactly the withheld jobs were released")
 
 	// The doomed job has gone (dropped by its lane): the next claim takes the
 	// whole group, in order.
 	<-l.in
 	p.inflight.remove([]string{"h-00"})
 	p.release(1)
-	require.NoError(t, s.releaseClaims(context.Background(), []claimRef{{id: "g-01"}, {id: "h-00"}})) // the lane releases what it drops
 	l.p.inflight.remove([]string{"g-01"})
 	p.release(1)
 	require.Zero(t, len(p.permits))
@@ -871,14 +864,14 @@ func TestOrdering_StressFirstDeliveriesStayInOrder(t *testing.T) {
 	p := newTestEngine(Config{PollInterval: time.Millisecond, Dispatchers: 6, BufferCapacity: 50, BatchSize: 7, LaneBatch: 4}, s)
 	var mmu sync.Mutex
 	mrng := rand.New(rand.NewSource(9))
-	p.markQueued = func(ctx context.Context, ids []string, v []time.Time, a, b time.Time) (int64, error) {
+	p.markQueued = func(ctx context.Context, ids []string, c, v []time.Time) (int64, error) {
 		mmu.Lock()
 		skip := mrng.Intn(15) == 0
 		mmu.Unlock()
 		if skip {
 			return 0, fmt.Errorf("mark failed")
 		}
-		return s.markQueued(ctx, ids, v, a, b)
+		return s.markQueued(ctx, ids, c, v)
 	}
 	stop := runEngine(t, p)
 	require.Eventually(t, func() bool { return s.pending() == 0 }, 60*time.Second, 5*time.Millisecond)

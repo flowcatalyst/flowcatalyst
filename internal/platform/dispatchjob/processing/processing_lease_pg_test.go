@@ -31,7 +31,6 @@ func markProcessing(t *testing.T, pool *pgxpool.Pool, id string, claimedAgo time
 		`UPDATE msg_dispatch_jobs SET status = 'PROCESSING', last_attempt_at = $2, updated_at = $2 WHERE id = $1`,
 		id, at)
 	require.NoError(t, err)
-	testpg.SyncDispatchQueue(t, pool, id)
 }
 
 // A copy of a job whose delivery is still inside its lease must not be

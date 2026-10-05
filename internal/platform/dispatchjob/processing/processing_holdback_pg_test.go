@@ -29,7 +29,6 @@ func seedPositionedJob(t *testing.T, pool *pgxpool.Pool, id, group, status, targ
 		         $4, 'BLOCK_ON_ERROR', 10, $5, $5, $6)`,
 		id, targetURL, status, group, createdAt, scheduledFor)
 	require.NoError(t, err)
-	testpg.SyncDispatchQueue(t, pool, id)
 }
 
 // The delivery-time half of the hold-back, for the case the claim-time filter
@@ -79,7 +78,6 @@ func TestProcess_HeldByABackedOffSiblingInFront(t *testing.T) {
 	_, err = pool.Exec(context.Background(),
 		`UPDATE msg_dispatch_jobs SET status = 'QUEUED' WHERE id = 'djhold000002'`)
 	require.NoError(t, err)
-	testpg.SyncDispatchQueue(t, pool, "djhold000001", "djhold000002")
 
 	code, _ = callProcess(t, base, "djhold000002", auth.Sign("djhold000002"))
 	assert.Equal(t, http.StatusOK, code)

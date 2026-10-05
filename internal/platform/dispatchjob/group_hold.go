@@ -19,11 +19,11 @@ package dispatchjob
 // the router's per-group FIFO delivers them in order. Treating them as holders
 // would reduce every ordered group to one job per poll cycle.
 //
-// The two kinds live in different tables, so the lookup has two halves:
-// FAILED/ERROR holders are read from msg_dispatch_jobs by (status, message_group)
-// — idx_dispatch_jobs_status_group, migration 067 — and PENDING-with-future-
-// scheduled_for holders from msg_dispatch_queue by message_group (the order
-// index starts with it). A NULL message_group never matches `= ANY` / `=`, so a
+// Both kinds are read from msg_dispatch_jobs through the plain index
+// idx_dispatch_jobs_status_group (status, message_group, sequence, created_at, id),
+// migration 067: FAILED/ERROR holders by (status, message_group), PENDING-with-
+// future-scheduled_for holders by (status = 'PENDING', message_group, position).
+// A NULL message_group never matches `= ANY` / `=`, so a
 // failed ungrouped job holds nothing.
 //
 // Used by the scheduler's claim-time hold-back (GroupHoldersSQL) and by the
@@ -38,26 +38,29 @@ var GroupHoldingStatuses = []string{"FAILED", "ERROR"}
 // GroupHoldersSQL returns, per candidate group, the EARLIEST holder as
 // (message_group, sequence, created_at, id). $1 = GroupHoldingStatuses, $2 =
 // candidate groups; $3..$5 are, per group (same order as $2), the position
-// (sequence, created_at, id) of the group's LAST candidate in the claim. DISTINCT ON keeps the earliest: anything behind it is held
-// by it too. The queue half is one ordered index probe per candidate group (the
-// first backed-off row in the group's order), so its cost does not grow with the
-// depth of the queue, and bounded by the group's last candidate: only a holder
-// positioned before a candidate can hold it, and the claim has just deleted the
-// candidates' own rows, so the probe reads only the rows ahead of the claim (not
-// all of a deep group's due rows looking for a future-scheduled one).
+// (sequence, created_at, id) of the group's LAST candidate in the claim. DISTINCT ON
+// keeps the earliest: anything behind it is held by it too.
+//
+// Both halves read msg_dispatch_jobs through idx_dispatch_jobs_status_group (status
+// equality prefix, then message_group, then the position): FAILED/ERROR holders by
+// `status = ANY, message_group = ANY`; PENDING-with-a-future-scheduled_for holders
+// as one ordered index probe per candidate group (the first backed-off row in the
+// group's order), bounded by the group's last candidate — only a holder positioned
+// before a candidate can hold it — so the probe reads the group's PENDING rows ahead
+// of the claim and never all of a deep group's due rows.
 const GroupHoldersSQL = `SELECT DISTINCT ON (message_group) message_group, sequence, created_at, id FROM (
     SELECT message_group, sequence, created_at, id
       FROM msg_dispatch_jobs
      WHERE status = ANY($1::text[]) AND message_group = ANY($2::text[])
     UNION ALL
-    SELECT h.message_group, h.sequence, h.job_created_at, h.job_id
+    SELECT h.message_group, h.sequence, h.created_at, h.id
       FROM unnest($2::text[], $3::int[], $4::timestamptz[], $5::text[]) AS g(grp, seq, ca, jid)
      CROSS JOIN LATERAL (
-          SELECT message_group, sequence, job_created_at, job_id
-            FROM msg_dispatch_queue
-           WHERE message_group = g.grp AND scheduled_for > NOW()
-             AND (sequence, job_created_at, job_id) < (g.seq, g.ca, g.jid)
-           ORDER BY sequence, job_created_at, job_id
+          SELECT message_group, sequence, created_at, id
+            FROM msg_dispatch_jobs
+           WHERE status = 'PENDING' AND message_group = g.grp AND scheduled_for > NOW()
+             AND (sequence, created_at, id) < (g.seq, g.ca, g.jid)
+           ORDER BY sequence, created_at, id
            LIMIT 1) h
 ) h2
 ORDER BY message_group, sequence, created_at, id`
@@ -73,6 +76,6 @@ const GroupHeldBeforeSQL = `SELECT EXISTS (
      WHERE status = ANY($1::text[]) AND message_group = $2
        AND (sequence, created_at, id) < ($3::int, $4::timestamptz, $5::text))
  OR EXISTS (
-    SELECT 1 FROM msg_dispatch_queue
-     WHERE message_group = $2 AND scheduled_for > NOW()
-       AND (sequence, job_created_at, job_id) < ($3::int, $4::timestamptz, $5::text))`
+    SELECT 1 FROM msg_dispatch_jobs
+     WHERE status = 'PENDING' AND message_group = $2 AND scheduled_for > NOW()
+       AND (sequence, created_at, id) < ($3::int, $4::timestamptz, $5::text))`

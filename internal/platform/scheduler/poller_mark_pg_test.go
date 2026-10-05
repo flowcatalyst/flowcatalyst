@@ -35,7 +35,7 @@ func TestUpdateQueued_DoesNotRegressAJobThatMovedPastPending(t *testing.T) {
 	}
 	all := []string{ids["PENDING"], ids["PROCESSING"], ids["COMPLETED"], ids["FAILED"]}
 
-	rows, err := poller.updateQueued(ctx, all, versionsOf(t, pool, all), time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	rows, err := poller.updateQueued(ctx, all, createdOf(t, pool, all), versionsOf(t, pool, all))
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), rows, "only the PENDING row is updated")
 	assert.Equal(t, "QUEUED", jobStatus(t, pool, ids["PENDING"]))
@@ -46,6 +46,16 @@ func TestUpdateQueued_DoesNotRegressAJobThatMovedPastPending(t *testing.T) {
 	var queuedAt *time.Time
 	require.NoError(t, pool.QueryRow(ctx, `SELECT queued_at FROM msg_dispatch_jobs WHERE id = $1`, ids["PENDING"]).Scan(&queuedAt))
 	assert.NotNil(t, queuedAt, "queued_at is stamped")
+}
+
+func createdOf(t *testing.T, pool *pgxpool.Pool, ids []string) []time.Time {
+	t.Helper()
+	out := make([]time.Time, len(ids))
+	for i, id := range ids {
+		require.NoError(t, pool.QueryRow(context.Background(),
+			`SELECT created_at FROM msg_dispatch_jobs WHERE id = $1`, id).Scan(&out[i]))
+	}
+	return out
 }
 
 func versionsOf(t *testing.T, pool *pgxpool.Pool, ids []string) []time.Time {
@@ -96,7 +106,7 @@ func TestUpdateQueued_DoesNotQueueAJobTheCallbackRescheduledToPending(t *testing
 		require.NoError(t, move(id, createdAt), name)
 		require.Equal(t, "PENDING", jobStatus(t, pool, id))
 
-		rows, err := poller.updateQueued(ctx, []string{id}, claimedVersion, createdAt.Add(-time.Hour), createdAt.Add(time.Hour))
+		rows, err := poller.updateQueued(ctx, []string{id}, []time.Time{createdAt}, claimedVersion)
 		require.NoError(t, err)
 		assert.Zero(t, rows, "%s: a job moved on and rescheduled is not set QUEUED", name)
 		assert.Equal(t, "PENDING", jobStatus(t, pool, id), name)
@@ -115,7 +125,6 @@ func TestLane_DoesNotRegressAJobTheCallbackAlreadyMovedOn(t *testing.T) {
 	// by the time the publish returns the job is already PROCESSING.
 	pub := publisherFunc(func(ctx context.Context, items []PublishItem) ([]string, error) {
 		_, err := pool.Exec(ctx, `UPDATE msg_dispatch_jobs SET status = 'PROCESSING' WHERE id = ANY($1)`, jobIDs(items))
-		testpg.SyncDispatchQueue(t, pool, jobIDs(items)...) // what the callback's claim-for-delivery does to the queue row
 		return nil, err
 	})
 	poller := NewPendingJobPoller(DefaultConfig(), pool,

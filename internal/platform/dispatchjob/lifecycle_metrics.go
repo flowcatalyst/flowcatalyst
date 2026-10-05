@@ -12,7 +12,6 @@ import (
 // writer of the table, scheduler or not, owns these counters).
 //
 //	fc_dispatch_job_transition_refused_total{transition}  transitions that matched no row
-//	fc_dispatch_queue_reconcile_repaired_total{kind}      queue rows the reconcile sweep repaired
 //
 // A refusal is the normal answer when a transition's guard does its job: a late
 // delivery callback finding the job already settled, a duplicate settled hook,
@@ -32,23 +31,6 @@ func newTransitionRefused(reg prometheus.Registerer) *prometheus.CounterVec {
 	// Materialise every label so a zero shows up in a scrape.
 	for _, t := range allTransitionNames {
 		v.WithLabelValues(t.Name)
-	}
-	reg.MustRegister(v)
-	return v
-}
-
-// reconcileRepaired counts what the queue reconcile sweep had to repair, by kind
-// (inserted / deleted / refreshed). Non-zero means a bug or an older binary is
-// writing msg_dispatch_queue.
-var reconcileRepaired = newReconcileRepaired(MetricsRegistry)
-
-func newReconcileRepaired(reg prometheus.Registerer) *prometheus.CounterVec {
-	v := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "fc_dispatch_queue_reconcile_repaired_total",
-		Help: "msg_dispatch_queue rows the reconcile sweep repaired, by kind (inserted: PENDING job without a row; deleted: row of a missing or non-PENDING job; refreshed: row that no longer mirrored its job).",
-	}, []string{"kind"})
-	for _, k := range []string{"inserted", "deleted", "refreshed"} {
-		v.WithLabelValues(k)
 	}
 	reg.MustRegister(v)
 	return v

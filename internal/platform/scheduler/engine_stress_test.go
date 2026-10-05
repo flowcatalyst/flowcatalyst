@@ -69,24 +69,16 @@ func TestOrdering_AdversarialStress(t *testing.T) {
 		PollInterval: time.Millisecond, Dispatchers: 4, BufferCapacity: 24, BatchSize: 8, LaneBatch: 5,
 	}, s)
 	claimRows := p.claimRows
-	p.claimRows = func(ctx context.Context, limit int, paused, held []string) ([]dispatchClaim, error) {
+	p.claimRows = func(ctx context.Context, limit int, paused, held, inflight []string) ([]dispatchClaim, error) {
 		j.sleep(100)
-		return claimRows(ctx, limit, paused, held)
+		return claimRows(ctx, limit, paused, held, inflight)
 	}
-	restoreClaims := p.restoreClaimRows
-	p.restoreClaimRows = func(ctx context.Context, refs []claimRef) error {
-		j.sleep(100)
-		if j.pct(2) {
-			return fmt.Errorf("release failed") // the lane retries until it succeeds
-		}
-		return restoreClaims(ctx, refs)
-	}
-	p.markQueued = func(ctx context.Context, ids []string, v []time.Time, a, b time.Time) (int64, error) {
+	p.markQueued = func(ctx context.Context, ids []string, c, v []time.Time) (int64, error) {
 		j.sleep(100)
 		if j.pct(1) {
 			return 0, fmt.Errorf("mark failed")
 		}
-		return s.markQueued(ctx, ids, v, a, b)
+		return s.markQueued(ctx, ids, c, v)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

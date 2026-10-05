@@ -10,7 +10,7 @@
 //	lane.go            — the dispatcher lanes: publish, mark QUEUED, ordering under failure
 //	dispatcher.go      — MessageGroupDispatcher: renders and publishes a claimed batch
 //	stale_recovery.go  — StaleQueuedJobPoller recovers stuck QUEUED / PROCESSING jobs
-//	queue_maintenance.go — queue reconcile, backlog gauge (leader only)
+//	backlog.go         — PENDING backlog gauges (leader only)
 //	auth.go            — DispatchAuthService (HMAC tokens for dispatch callbacks)
 //
 // All long-running goroutines respect ctx.Done() for graceful shutdown.
@@ -134,7 +134,7 @@ type Scheduler struct {
 	poller      *PendingJobPoller
 	dispatcher  *MessageGroupDispatcher
 	stale       *StaleQueuedJobPoller
-	maint       *queueMaintainer
+	backlog     *backlogSampler
 	pausedCache *PausedConnectionCache
 	authService *DispatchAuthService
 
@@ -155,7 +155,7 @@ func New(cfg Config, pool *pgxpool.Pool, publisher DispatchPublisher, hmacSecret
 	dispatcher := NewMessageGroupDispatcher(pool, publisher, authSvc, cfg.ProcessingEndpoint)
 	poller := NewPendingJobPoller(cfg, pool, dispatcher, pausedCache)
 	stale := NewStaleQueuedJobPoller(pool, cfg.StaleQueuedAfter, cfg.StaleProcessingAfter, cfg.StaleScanInterval)
-	maint := newQueueMaintainer(pool, poller.inflight.ids, &poller.claimMu)
+	backlog := newBacklogSampler(pool)
 	return &Scheduler{
 		cfg:         cfg,
 		pool:        pool,
@@ -163,7 +163,7 @@ func New(cfg Config, pool *pgxpool.Pool, publisher DispatchPublisher, hmacSecret
 		poller:      poller,
 		dispatcher:  dispatcher,
 		stale:       stale,
-		maint:       maint,
+		backlog:     backlog,
 		pausedCache: pausedCache,
 		authService: authSvc,
 	}
@@ -185,11 +185,11 @@ func (s *Scheduler) AuthService() *DispatchAuthService { return s.authService }
 func (s *Scheduler) Run(ctx context.Context) {
 	s.poller.IsLeader = s.IsLeader
 	s.stale.IsLeader = s.IsLeader
-	s.maint.IsLeader = s.IsLeader
+	s.backlog.IsLeader = s.IsLeader
 	var wg sync.WaitGroup
 	wg.Add(3)
 	go func() { defer wg.Done(); s.poller.Run(ctx) }()
 	go func() { defer wg.Done(); s.stale.Run(ctx) }()
-	go func() { defer wg.Done(); s.maint.Run(ctx) }()
+	go func() { defer wg.Done(); s.backlog.Run(ctx) }()
 	wg.Wait()
 }

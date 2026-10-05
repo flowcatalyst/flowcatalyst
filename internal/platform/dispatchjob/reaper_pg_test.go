@@ -59,7 +59,6 @@ func reapSeedJob(t *testing.T, repo *dispatchjob.Repository, code, group string,
 		`UPDATE msg_dispatch_jobs SET status = $2, completed_at = $3 WHERE id = $1`,
 		j.ID, string(status), j.CompletedAt)
 	require.NoError(t, uerr)
-	testpg.SyncDispatchQueue(t, testpg.Pool(t), j.ID)
 	return j.ID
 }
 
@@ -72,7 +71,6 @@ func backdateUpdatedAt(t *testing.T, pool *pgxpool.Pool, id string, age time.Dur
 		`UPDATE msg_dispatch_jobs SET updated_at = $2 WHERE id = $1`,
 		id, time.Now().Add(-age).UTC())
 	require.NoError(t, err)
-	testpg.SyncDispatchQueue(t, pool, id)
 }
 
 func statusOf(t *testing.T, repo *dispatchjob.Repository, id string) common.DispatchStatus {
@@ -190,7 +188,6 @@ func forceLegacyErrorStatus(t *testing.T, pool *pgxpool.Pool, id string) {
 	_, err := pool.Exec(context.Background(),
 		`UPDATE msg_dispatch_jobs SET status = 'ERROR' WHERE id = $1`, id)
 	require.NoError(t, err)
-	testpg.SyncDispatchQueue(t, pool, id)
 }
 
 // TestSweepStrandedGroupSiblings_LegacyErrorHead pins that the reaper

@@ -18,8 +18,7 @@ package dispatchjob
 //
 // Both are thin faces of one statement builder (transition): ONE UPDATE per
 // call, ALWAYS naming the statuses it may move FROM in its WHERE, ALWAYS
-// stamping updated_at, ALWAYS RETURNING the columns the (later) queue table
-// will need. Transitions that don't touch PENDING on either side (the
+// stamping updated_at, ALWAYS RETURNING the columns the caller needs. Transitions that don't touch PENDING on either side (the
 // PROCESSING lease takeover, operator cancel/complete from FAILED) go through
 // the same builder directly (passThrough) so the status column still has one
 // owner.
@@ -29,59 +28,22 @@ package dispatchjob
 // with the status the job was found in, so a late callback finding a settled
 // job is visible rather than silent.
 //
-// msg_dispatch_queue (migration 066) holds exactly one row for every job whose
-// status is PENDING, mirroring the job's current values. This file is its only
-// writer (besides the partition manager's drop and fc-dev's TRUNCATE, see
-// lifecycle_enforce_test.go). Each transition is ONE statement — a
-// data-modifying CTE — so the job change and the queue change commit or fail
-// together without a new transaction or round trip:
-//
-//   - create:       WITH ins AS (INSERT jobs ... RETURNING), q AS (INSERT queue
-//                   SELECT FROM ins ON CONFLICT DO NOTHING) SELECT FROM ins
-//   - enterPending: WITH moved AS (UPDATE jobs ... RETURNING) INSERT queue
-//                   SELECT FROM moved ON CONFLICT (job_id) DO UPDATE ... (entering
-//                   or re-entering PENDING refreshes version and scheduled_for)
-//   - leavePending: WITH moved AS (UPDATE jobs ... RETURNING), gone AS (DELETE
-//                   queue USING moved) SELECT FROM moved. Delete-if-exists: a
-//                   terminal outcome may or may not find the job PENDING.
-//   - mark-QUEUED additionally deletes the queue row of every (id, claimed
-//     version) pair of its batch whose queue version still equals the claimed
-//     one, even if the job row itself did not match (status moved on without
-//     the queue row being refreshed). A queue row of a different version (the
-//     job re-entered PENDING since the claim) is left alone.
-//
-// The scheduler claims from the queue table by DELETING the rows it takes (two
-// plain statements, ClaimQueue): a claimed job is PENDING with no queue row. What
-// the scheduler claims and does not publish is put back by RestoreClaims (a row
-// re-created from the job table, only while the job is still PENDING); a job
-// whose claimer died is restored by Reconcile's insert-missing pass, which a new
-// leader runs at start with no age guard. The invariant is therefore: every queue
-// row belongs to a PENDING job (same values); a PENDING job without a queue row is
-// either in the leader's in-flight set or will be restored by Reconcile. The
-// claimed_at column (migration 066) is unused and always NULL.
-//
-// KNOWN, ACCEPTED ANOMALY. Under READ COMMITTED a statement's CTEs see the
-// snapshot taken when the statement started. If an enter and a leave of the
-// SAME job race and the leave blocks on the job's row lock behind the enter,
-// the leave's DELETE cannot see the queue row the enter has just inserted, so
-// a queue row can outlive a job that is no longer PENDING. The opposite error
-// (a PENDING job with no queue row: a lost job) cannot happen this way: an
-// enter that waits behind a leave re-inserts with ON CONFLICT, which does see
-// committed rows. A stale extra row is harmless and self-heals (mark-QUEUED
-// removes it; a later reconcile sweep will too). The hot paths are NOT wrapped
-// in transactions to avoid it. QueueDrift counts both directions.
+// Every statement touches msg_dispatch_jobs ONLY. (A queue table that mirrored the
+// PENDING jobs was tried — migrations 066/067 — and retired by 068: a small table
+// that swings between empty and very full is the planner's worst case, and every
+// statement that joined to it was planned as a scan when its statistics said it
+// was empty.) The scheduler claims PENDING jobs with a plain read and keeps its own
+// claimed jobs out of the next claim with an in-memory set.
 //
 // The lifecycle accepts whatever executor the caller owns: the platform pool,
 // the scheduler's own pool, or a transaction (fan-out and the operator use
 // cases run inside one with other writes). It adds and removes no transaction.
 
 import (
-	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"slices"
 	"strings"
 	"time"
 
@@ -112,8 +74,8 @@ func NewLifecycle(ex Executor) *Lifecycle { return &Lifecycle{ex: ex} }
 // that already holds a transaction passes it in.
 func (l *Lifecycle) In(ex Executor) *Lifecycle { return &Lifecycle{ex: ex} }
 
-// JobRow is what every transition RETURNs: the columns the queue table of the
-// next step is keyed and ordered by. Status is the status the row now has.
+// JobRow is what every transition RETURNs: the columns a caller needs to
+// identify and order the job. Status is the status the row now has.
 type JobRow struct {
 	ID             string
 	CreatedAt      time.Time
@@ -229,7 +191,7 @@ func (c *changes) has(col string) bool {
 type selector func(first int) selection
 
 type selection struct {
-	cte   string // optional leading CTE definition ("name AS (...)", no WITH keyword)
+	with  string // optional "WITH ... " prefix
 	from  string // optional FROM clause of the UPDATE
 	where string
 	args  []any
@@ -237,9 +199,13 @@ type selection struct {
 	// a sweep (matching nothing is its normal outcome). The shortfall is the
 	// refusal count.
 	expect int
-	// queueSweep, for a leave, is an extra "SELECT id ..." whose rows have their
-	// queue row deleted whether or not the job row matched.
-	queueSweep string
+	// opaqueStatus writes the status guard so the planner cannot use it as an index
+	// condition (`j.status || '' = 'X'`). For a selector that already pins every row
+	// by primary key: a sargable `status = 'PENDING'` lets the planner walk the
+	// status index instead — and when the statistics say PENDING is absent (the
+	// active partition analysed before a burst) it believes that costs one row, and
+	// reads every PENDING job (6 s at 200,000).
+	opaqueStatus bool
 	// key, when the selector names one job, lets a refusal log the status the
 	// job was found in.
 	key *jobKey
@@ -255,10 +221,11 @@ type jobKey struct {
 func byKey(id string, createdAt time.Time) selector {
 	return func(n int) selection {
 		return selection{
-			where:  fmt.Sprintf("j.id = $%d AND j.created_at = $%d", n, n+1),
-			args:   []any{id, createdAt},
-			expect: 1,
-			key:    &jobKey{id, createdAt},
+			where:        fmt.Sprintf("j.id = $%d AND j.created_at = $%d", n, n+1),
+			args:         []any{id, createdAt},
+			expect:       1,
+			key:          &jobKey{id, createdAt},
+			opaqueStatus: true,
 		}
 	}
 }
@@ -268,26 +235,38 @@ func byKey(id string, createdAt time.Time) selector {
 func byIDs(ids []string) selector {
 	return func(n int) selection {
 		return selection{
-			where:  fmt.Sprintf("j.id = ANY($%d::text[])", n),
-			args:   []any{ids},
-			expect: len(ids),
+			where:        fmt.Sprintf("j.id = ANY($%d::text[])", n),
+			args:         []any{ids},
+			expect:       len(ids),
+			opaqueStatus: true,
 		}
 	}
 }
 
-// byClaims selects the rows a scheduler claim read, optimistically: each id
-// only if its updated_at is still the version the claim saw. created_at
-// bounds let the partitioned table prune to the partitions the rows span.
-func byClaims(ids []string, updatedAts []time.Time, minCreated, maxCreated time.Time) selector {
+// byClaims selects the rows a scheduler claim read, optimistically: each (id,
+// created_at) pair only while the job is still PENDING at the version (updated_at)
+// the claim saw. The access path is the primary key for every pair whatever the
+// statistics say: a LATERAL subquery (OFFSET 0 keeps the planner from flattening
+// it into a join it might run as a scan) looks each pair up by (id, created_at) alone
+// — a status test inside it lets the planner walk the status index instead — and the
+// version and status are checked on what it returns; the UPDATE joins the few matches back by the same key.
+func byClaims(ids []string, createdAts, updatedAts []time.Time) selector {
 	return func(n int) selection {
 		return selection{
-			queueSweep: fmt.Sprintf(`SELECT c.id, c.v FROM unnest($%d::text[], $%d::timestamptz[]) AS c(id, v)`, n, n+1),
-			from:       fmt.Sprintf("unnest($%d::text[], $%d::timestamptz[]) AS c(id, claimed_updated_at)", n, n+1),
-			where: fmt.Sprintf(`j.id = c.id
-		    AND j.updated_at = c.claimed_updated_at
-		    AND j.created_at >= $%d AND j.created_at <= $%d`, n+2, n+3),
-			args:   []any{ids, updatedAts, minCreated, maxCreated},
-			expect: len(ids),
+			with: fmt.Sprintf(`WITH pk AS (
+    SELECT p.id, p.created_at
+      FROM unnest($%d::text[], $%d::timestamptz[], $%d::timestamptz[]) AS c(id, created_at, v)
+     CROSS JOIN LATERAL (
+          SELECT id, created_at, updated_at, status FROM msg_dispatch_jobs
+           WHERE id = c.id AND created_at = c.created_at
+           OFFSET 0) p
+     WHERE p.updated_at = c.v AND p.status = 'PENDING'
+) `, n, n+1, n+2),
+			from:         "pk",
+			where:        "j.id = pk.id AND j.created_at = pk.created_at",
+			args:         []any{ids, createdAts, updatedAts},
+			expect:       len(ids),
+			opaqueStatus: true,
 		}
 	}
 }
@@ -307,7 +286,7 @@ func staleBefore(cutoff time.Time) selector {
 func strandedSiblings(liveBefore time.Time) selector {
 	return func(n int) selection {
 		return selection{
-			cte: fmt.Sprintf(`stranded AS (
+			with: fmt.Sprintf(`WITH stranded AS (
     SELECT s.id, s.created_at
       FROM msg_dispatch_jobs s
       JOIN msg_dispatch_jobs h
@@ -323,7 +302,7 @@ func strandedSiblings(liveBefore time.Time) selector {
        AND s.message_group IS NOT NULL
        AND s.status IN ('QUEUED', 'PROCESSING')
        AND (s.status <> 'PROCESSING' OR s.updated_at < $%d::timestamptz)
-)`, n),
+) `, n),
 			from:  "stranded st",
 			where: "j.id = st.id AND j.created_at = st.created_at",
 			args:  []any{liveBefore},
@@ -339,35 +318,7 @@ func statusList(ss []common.DispatchStatus) string {
 	return strings.Join(q, ", ")
 }
 
-// The queue-table column lists. queueCols is the INSERT list; jobToQueueSelect
-// maps a job row (columns of insertReturningCols) onto it.
-const (
-	queueCols = `job_id, job_created_at, message_group, sequence, scheduled_for, subscription_id,
-		dispatch_pool_id, client_id, mode, queue, version`
-	jobToQueueSelect = `id, created_at, message_group, sequence, scheduled_for, subscription_id,
-		dispatch_pool_id, client_id, mode, queue, updated_at`
-	// queueReturning yields a JobRow (scanJobRow order) from the queue row.
-	queueReturning = ` RETURNING job_id, job_created_at, message_group, sequence, scheduled_for,
-		subscription_id, dispatch_pool_id, client_id, mode, queue, version, 'PENDING'::text`
-	queueUpsert = ` ON CONFLICT (job_id) DO UPDATE SET job_created_at = EXCLUDED.job_created_at,
-		message_group = EXCLUDED.message_group, sequence = EXCLUDED.sequence,
-		scheduled_for = EXCLUDED.scheduled_for, subscription_id = EXCLUDED.subscription_id,
-		dispatch_pool_id = EXCLUDED.dispatch_pool_id, client_id = EXCLUDED.client_id,
-		mode = EXCLUDED.mode, queue = EXCLUDED.queue, version = EXCLUDED.version`
-)
-
-func (t Transition) leavesPending() bool {
-	for _, s := range t.From {
-		if s == common.DispatchPending {
-			return t.To != common.DispatchPending
-		}
-	}
-	return false
-}
-
-// buildTransition renders the one statement a transition issues: the UPDATE of
-// msg_dispatch_jobs, wrapped (when PENDING is on either side) in the data-
-// modifying CTE that keeps msg_dispatch_queue exact.
+// buildTransition renders the one UPDATE a transition issues.
 func buildTransition(t Transition, sel selector, ch *changes) (string, []any, selection) {
 	if ch == nil {
 		ch = &changes{}
@@ -380,6 +331,7 @@ func buildTransition(t Transition, sel selector, ch *changes) (string, []any, se
 	}
 	s := sel(len(ch.args) + 1)
 	var b strings.Builder
+	b.WriteString(s.with)
 	b.WriteString("UPDATE msg_dispatch_jobs j SET ")
 	b.WriteString(strings.Join(sets, ", "))
 	if s.from != "" {
@@ -389,44 +341,20 @@ func buildTransition(t Transition, sel selector, ch *changes) (string, []any, se
 	switch len(t.From) {
 	case 0:
 	case 1:
-		b.WriteString(" AND j.status = '" + string(t.From[0]) + "'")
+		if s.opaqueStatus {
+			b.WriteString(" AND j.status || '' = '" + string(t.From[0]) + "'")
+		} else {
+			b.WriteString(" AND j.status = '" + string(t.From[0]) + "'")
+		}
 	default:
-		b.WriteString(" AND j.status IN (" + statusList(t.From) + ")")
+		if s.opaqueStatus {
+			b.WriteString(" AND j.status || '' IN (" + statusList(t.From) + ")")
+		} else {
+			b.WriteString(" AND j.status IN (" + statusList(t.From) + ")")
+		}
 	}
 	b.WriteString(returningCols)
-	update := b.String()
-	args := append(append([]any(nil), ch.args...), s.args...)
-
-	ctes := []string{}
-	if s.cte != "" {
-		ctes = append(ctes, s.cte)
-	}
-	switch {
-	case t.To == common.DispatchPending:
-		// enterPending: upsert the queue row from the moved rows. DISTINCT ON
-		// keeps one row per job (an ON CONFLICT DO UPDATE may not touch a row
-		// twice in one statement).
-		ctes = append(ctes, "moved AS ("+update+")")
-		return "WITH " + strings.Join(ctes, ",\n") + "\nINSERT INTO msg_dispatch_queue (" + queueCols + ")\n" +
-			"SELECT DISTINCT ON (id) " + jobToQueueSelect + " FROM moved ORDER BY id, updated_at DESC" +
-			queueUpsert + queueReturning, args, s
-	case t.leavesPending():
-		// leavePending: delete the queue row of every moved job (if there is
-		// one), plus the optional extra ids the selector names.
-		ctes = append(ctes, "moved AS ("+update+")")
-		ids := "SELECT id, NULL::timestamptz AS v FROM moved"
-		if s.queueSweep != "" {
-			ids += " UNION ALL " + s.queueSweep
-		}
-		ctes = append(ctes, "gone AS (DELETE FROM msg_dispatch_queue q USING ("+ids+") d WHERE q.job_id = d.id AND (d.v IS NULL OR q.version = d.v))")
-		return "WITH " + strings.Join(ctes, ",\n") + "\nSELECT " + jobToQueueSelect + ", status FROM moved", args, s
-	default:
-		// passThrough: PENDING on neither side, no queue write.
-		if s.cte != "" {
-			return "WITH " + s.cte + " " + update, args, s
-		}
-		return update, args, s
-	}
+	return b.String(), append(append([]any(nil), ch.args...), s.args...), s
 }
 
 // Statement is one transition's rendered SQL, for plan tests.
@@ -448,6 +376,12 @@ func StaleRecoveryStatements(cutoff time.Time) []Statement {
 func StrandedStatement(liveBefore time.Time) Statement {
 	q, qa, _ := buildTransition(TSweepStranded, strandedSiblings(liveBefore), new(changes).raw("scheduled_for", "NULL").set("last_error", "reaper"))
 	return Statement{TSweepStranded.Name, q, qa}
+}
+
+// MarkQueuedStatement renders mark-QUEUED for the given claimed pairs, for plan tests.
+func MarkQueuedStatement(ids []string, createdAts, updatedAts []time.Time) Statement {
+	q, qa, _ := buildTransition(TMarkQueued, byClaims(ids, createdAts, updatedAts), new(changes).raw("queued_at", "NOW()"))
+	return Statement{TMarkQueued.Name, q, qa}
 }
 
 // run executes a built transition and does the refusal accounting.
@@ -554,13 +488,8 @@ func (l *Lifecycle) insertPending(ctx context.Context, t Transition, cols []insC
 			vals[i] = fmt.Sprintf(c.expr, p)
 		}
 	}
-	// One statement: the job insert and (for the rows actually inserted) the
-	// queue insert. A skipped duplicate adds nothing to either.
-	sql := "WITH ins AS (INSERT INTO msg_dispatch_jobs (" + strings.Join(names, ", ") + ")\n VALUES (" +
-		strings.Join(vals, ", ") + ")\n ON CONFLICT (id, created_at) DO NOTHING" + insertReturningCols + "),\n" +
-		"q AS (INSERT INTO msg_dispatch_queue (" + queueCols + ")\n SELECT " + jobToQueueSelect +
-		" FROM ins ON CONFLICT (job_id) DO NOTHING)\n" +
-		"SELECT id, created_at, message_group, sequence, scheduled_for, subscription_id, dispatch_pool_id, client_id, mode, queue, updated_at, status FROM ins"
+	sql := "INSERT INTO msg_dispatch_jobs (" + strings.Join(names, ", ") + ")\n VALUES (" +
+		strings.Join(vals, ", ") + ")\n ON CONFLICT (id, created_at) DO NOTHING" + insertReturningCols
 	batch := &pgx.Batch{}
 	for _, r := range rows {
 		batch.Queue(sql, r...)
@@ -763,8 +692,8 @@ func (l *Lifecycle) Hold(ctx context.Context, id string, createdAt, scheduledFor
 // updated_at, so any move at all changes the version; a job that was
 // delivered, processed and rescheduled before this ran is left alone rather
 // than stranded QUEUED with no message on the queue. Returns rows moved.
-func (l *Lifecycle) MarkQueued(ctx context.Context, ids []string, updatedAts []time.Time, minCreated, maxCreated time.Time) (int64, error) {
-	rows, err := l.leavePending(ctx, TMarkQueued, byClaims(ids, updatedAts, minCreated, maxCreated),
+func (l *Lifecycle) MarkQueued(ctx context.Context, ids []string, createdAts, updatedAts []time.Time) (int64, error) {
+	rows, err := l.leavePending(ctx, TMarkQueued, byClaims(ids, createdAts, updatedAts),
 		new(changes).raw("queued_at", "NOW()"))
 	return int64(len(rows)), err
 }
@@ -857,367 +786,4 @@ func (l *Lifecycle) OperatorComplete(ctx context.Context, id string, createdAt t
 	rows, err := l.passThrough(ctx, TOperatorComplete, byKey(id, createdAt),
 		new(changes).set("completed_at", now).set("updated_at", now))
 	return len(rows) == 1, err
-}
-
-// ── the queue table: claim, release, reconcile ──────────────────────────
-
-// QueueClaim is one row ClaimQueue returned: everything the scheduler needs to
-// publish the job without reading the job table.
-type QueueClaim struct {
-	JobID          string
-	JobCreatedAt   time.Time
-	MessageGroup   *string
-	Sequence       int32
-	ScheduledFor   *time.Time
-	SubscriptionID *string
-	DispatchPoolID *string
-	ClientID       *string
-	Mode           string
-	Queue          *string
-	// Version is the job's updated_at when the queue row was written; the
-	// mark-QUEUED update is optimistic on it.
-	Version time.Time
-}
-
-// The claim is two plain statements, autocommit, no transaction, no locking
-// clause. S1 walks idx_dispatch_queue_order in order (no sort) and stops at the
-// limit, skipping paused subscriptions and the groups the poller currently knows
-// to be held; S2 deletes the rows S1 named and RETURNS them — the rows S2 returns
-// ARE the claim, so two claimers can never both get a row, and a row refreshed to
-// a future scheduled_for between the two is not taken. It never reads
-// msg_dispatch_jobs. S1: $1 = limit, $2 = paused subscription ids, $3 = held
-// groups; no array may be NULL (`<> ALL(NULL)` is NULL). S2: $1 = the ids.
-// Both are planned for the scheduler's own pool (plan_cache_mode =
-// force_custom_plan, enable_sort = off), see scheduler.PoolRuntimeParams.
-const (
-	claimSelectSQL = `SELECT job_id FROM msg_dispatch_queue
- WHERE (scheduled_for IS NULL OR scheduled_for <= NOW())
-   AND (subscription_id IS NULL OR subscription_id <> ALL($2::text[]))
-   AND (message_group IS NULL OR message_group <> ALL($3::text[]))
- ORDER BY message_group NULLS LAST, sequence, job_created_at, job_id
- LIMIT $1`
-	claimDeleteSQL = `DELETE FROM msg_dispatch_queue
- WHERE job_id = ANY($1::text[])
-   AND (scheduled_for IS NULL OR scheduled_for <= NOW())
-RETURNING job_id, job_created_at, message_group, sequence, scheduled_for, subscription_id,
-          dispatch_pool_id, client_id, mode, queue, version`
-)
-
-// ClaimQueueStatements are the claim's two statements with arguments, for plan
-// tests. The delete's argument is the ids to take.
-func ClaimQueueStatements(limit int, paused, held, ids []string) (selectStmt, deleteStmt Statement) {
-	nn := func(a []string) []string {
-		if a == nil {
-			return []string{}
-		}
-		return a
-	}
-	return Statement{"claim_select", claimSelectSQL, []any{limit, nn(paused), nn(held)}},
-		Statement{"claim_delete", claimDeleteSQL, []any{nn(ids)}}
-}
-
-// ClaimSelectSQL and ClaimDeleteSQL are the claim's two statements, for plan tests
-// that PREPARE them.
-func ClaimSelectSQL() string { return claimSelectSQL }
-func ClaimDeleteSQL() string { return claimDeleteSQL }
-
-// ClaimQueue claims up to limit due queue rows (deleting them) and returns them in
-// delivery order: message_group (NULLs last), sequence, job_created_at, job_id.
-// RETURNING does not preserve the order the rows were picked in, so it is
-// restored here. pausedSubscriptionIDs and heldGroups are never claimed.
-func (l *Lifecycle) ClaimQueue(ctx context.Context, limit int, pausedSubscriptionIDs, heldGroups []string) ([]QueueClaim, error) {
-	if pausedSubscriptionIDs == nil {
-		pausedSubscriptionIDs = []string{}
-	}
-	if heldGroups == nil {
-		heldGroups = []string{}
-	}
-	rows, err := l.ex.Query(ctx, claimSelectSQL, limit, pausedSubscriptionIDs, heldGroups)
-	if err != nil {
-		return nil, err
-	}
-	ids, err := pgx.CollectRows(rows, pgx.RowTo[string])
-	if err != nil {
-		return nil, err
-	}
-	if len(ids) == 0 {
-		return nil, nil
-	}
-	rows, err = l.ex.Query(ctx, claimDeleteSQL, ids)
-	if err != nil {
-		return nil, err
-	}
-	out, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (QueueClaim, error) {
-		var c QueueClaim
-		err := r.Scan(&c.JobID, &c.JobCreatedAt, &c.MessageGroup, &c.Sequence, &c.ScheduledFor,
-			&c.SubscriptionID, &c.DispatchPoolID, &c.ClientID, &c.Mode, &c.Queue, &c.Version)
-		return c, err
-	})
-	if err != nil {
-		return nil, err
-	}
-	slices.SortFunc(out, compareQueueClaims)
-	return out, nil
-}
-
-// compareQueueClaims is the claim's ORDER BY: message_group NULLS LAST, then
-// sequence, job_created_at, job_id.
-func compareQueueClaims(a, b QueueClaim) int {
-	switch {
-	case a.MessageGroup == nil && b.MessageGroup != nil:
-		return 1
-	case a.MessageGroup != nil && b.MessageGroup == nil:
-		return -1
-	case a.MessageGroup != nil && b.MessageGroup != nil:
-		if c := strings.Compare(*a.MessageGroup, *b.MessageGroup); c != 0 {
-			return c
-		}
-	}
-	if a.Sequence != b.Sequence {
-		return cmp.Compare(a.Sequence, b.Sequence)
-	}
-	if c := a.JobCreatedAt.Compare(b.JobCreatedAt); c != 0 {
-		return c
-	}
-	return strings.Compare(a.JobID, b.JobID)
-}
-
-// restoreSQL re-creates the queue rows of jobs the scheduler claimed and did not
-// publish, from the JOB table (not from memory) so a job that has moved on is not
-// resurrected, and without overwriting a newer queue row ($1 = ids, $2 =
-// created_ats; the created_at lets the partitioned table prune). The lateral
-// subquery (OFFSET 0 keeps the planner from flattening it) makes each job a
-// primary-key lookup, whatever the statistics say; the status test stays outside
-// it, or the planner walks the status index per job.
-const restoreSQL = `INSERT INTO msg_dispatch_queue (` + queueCols + `)
-SELECT j.id, j.created_at, j.message_group, j.sequence, j.scheduled_for, j.subscription_id,
-       j.dispatch_pool_id, j.client_id, j.mode, j.queue, j.updated_at
-  FROM unnest($1::text[], $2::timestamptz[]) AS u(id, created_at)
-  CROSS JOIN LATERAL (
-       SELECT * FROM msg_dispatch_jobs
-        WHERE id = u.id AND created_at = u.created_at
-        OFFSET 0) j
- WHERE j.status = 'PENDING'
-ON CONFLICT (job_id) DO NOTHING`
-
-// RestoreStatement is the restore's SQL and arguments, for plan tests.
-func RestoreStatement(ids []string, createdAts []time.Time) Statement {
-	return Statement{"restore", restoreSQL, []any{ids, createdAts}}
-}
-
-// RestoreClaims puts claimed-and-unpublished jobs back into the queue: the
-// scheduler's answer to a publish that failed, a mark-QUEUED that failed, a job
-// dropped as poisoned, withheld behind a doomed job or held back. One bulk
-// statement. Returns the rows restored (fewer than asked when a job has moved on
-// or already has a newer queue row).
-func (l *Lifecycle) RestoreClaims(ctx context.Context, ids []string, createdAts []time.Time) (int64, error) {
-	if len(ids) == 0 {
-		return 0, nil
-	}
-	tag, err := l.ex.Exec(ctx, restoreSQL, ids, createdAts)
-	return tag.RowsAffected(), err
-}
-
-// QueueBacklog is the number of due rows in the queue and the age of
-// the oldest (by enqueued_at); zero age when there are none. A scan of the small
-// queue table, for the leader's gauge.
-func (l *Lifecycle) QueueBacklog(ctx context.Context) (rows int64, oldest time.Duration, err error) {
-	r, err := l.ex.Query(ctx, `
-		SELECT count(*), COALESCE(EXTRACT(EPOCH FROM (NOW() - min(enqueued_at))), 0)::float8
-		  FROM msg_dispatch_queue
-		 WHERE scheduled_for IS NULL OR scheduled_for <= NOW()`)
-	if err != nil {
-		return 0, 0, err
-	}
-	var secs float64
-	if _, err := pgx.ForEachRow(r, []any{&rows, &secs}, func() error { return nil }); err != nil {
-		return 0, 0, err
-	}
-	return rows, time.Duration(secs * float64(time.Second)), nil
-}
-
-// ReconcileResult is what one Reconcile pass repaired.
-type ReconcileResult struct {
-	Inserted  int64 // PENDING jobs that had no queue row
-	Deleted   int64 // queue rows whose job is missing or not PENDING
-	Refreshed int64 // queue rows that no longer mirrored their job
-}
-
-// Total is the number of repairs; anything above zero means a bug or an older
-// binary writing the table.
-func (r ReconcileResult) Total() int64 { return r.Inserted + r.Deleted + r.Refreshed }
-
-// Reconcile repairs msg_dispatch_queue against msg_dispatch_jobs, at most limit
-// rows per kind per pass. It is the safety net under the lifecycle's own
-// bookkeeping and the recovery for jobs whose claimer died (claimed jobs have no
-// queue row), normally finding nothing:
-//
-//	(a) a PENDING job with no queue row, whose updated_at is older than minAge
-//	    and whose id is not in inFlight, gets one;
-//	(b) a queue row whose job is missing or not PENDING is deleted;
-//	(c) a queue row whose version (or scheduled_for) differs from its job's is
-//	    refreshed from the job.
-//
-// inFlight is the caller's own in-flight set: those jobs are being published and
-// must not be re-queued. minAge also guards (b) and (c) on the queue row's own
-// version: a row refreshed within minAge may be mid-transition, and the
-// statement's snapshot of the job would then be older than the row. Each kind is
-// one statement. Status values are literals in the SQL.
-func (l *Lifecycle) Reconcile(ctx context.Context, minAge time.Duration, limit int, inFlight []string) (ReconcileResult, error) {
-	young := time.Now().Add(-minAge).UTC()
-	return l.reconcile(ctx, young, limit, inFlight, true)
-}
-
-// RestoreOrphans is the leader's start-up recovery: Reconcile's insert-missing
-// pass with NO age guard, repeated until it inserts nothing (each pass bounded by
-// limit). inFlight is the process's own in-flight set (empty at process start).
-// Returns the rows inserted.
-func (l *Lifecycle) RestoreOrphans(ctx context.Context, limit int, inFlight []string) (int64, error) {
-	var total int64
-	for range 10_000 {
-		res, err := l.reconcile(ctx, noAgeGuard, limit, inFlight, false)
-		if err != nil {
-			return total, err
-		}
-		total += res.Inserted
-		if res.Inserted == 0 {
-			break
-		}
-	}
-	return total, nil
-}
-
-// noAgeGuard is a cutoff after every updated_at.
-var noAgeGuard = time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC)
-
-func (l *Lifecycle) reconcile(ctx context.Context, young time.Time, limit int, inFlight []string, all bool) (ReconcileResult, error) {
-	var res ReconcileResult
-	if inFlight == nil {
-		inFlight = []string{}
-	}
-	tag, err := l.ex.Exec(ctx, reconcileInsertSQL, young, limit, inFlight)
-	if err != nil {
-		return res, fmt.Errorf("reconcile insert: %w", err)
-	}
-	res.Inserted = tag.RowsAffected()
-
-	if all {
-		tag, err = l.ex.Exec(ctx, reconcileDeleteSQL, young, limit)
-		if err != nil {
-			return res, fmt.Errorf("reconcile delete: %w", err)
-		}
-		res.Deleted = tag.RowsAffected()
-
-		tag, err = l.ex.Exec(ctx, reconcileRefreshSQL, young, limit)
-		if err != nil {
-			return res, fmt.Errorf("reconcile refresh: %w", err)
-		}
-		res.Refreshed = tag.RowsAffected()
-	}
-
-	reconcileRepaired.WithLabelValues("inserted").Add(float64(res.Inserted))
-	reconcileRepaired.WithLabelValues("deleted").Add(float64(res.Deleted))
-	reconcileRepaired.WithLabelValues("refreshed").Add(float64(res.Refreshed))
-	if res.Total() > 0 {
-		slog.Warn("dispatch queue reconcile repaired msg_dispatch_queue: jobs of a dead claimer, a bug, or an older binary writing the table",
-			"inserted", res.Inserted, "deleted", res.Deleted, "refreshed", res.Refreshed)
-	}
-	return res, nil
-}
-
-// The reconcile statements. Status values are literals: they are constants of
-// the statement, and the planner then sees them whatever the statistics say.
-const (
-	// (a) $1 = young cutoff, $2 = limit, $3 = ids in the caller's in-flight set
-	reconcileInsertSQL = `
-INSERT INTO msg_dispatch_queue (` + queueCols + `)
-SELECT j.id, j.created_at, j.message_group, j.sequence, j.scheduled_for, j.subscription_id,
-       j.dispatch_pool_id, j.client_id, j.mode, j.queue, j.updated_at
-  FROM msg_dispatch_jobs j
- WHERE j.status = 'PENDING' AND j.updated_at < $1
-   AND j.id <> ALL($3::text[])
-   AND NOT EXISTS (SELECT 1 FROM msg_dispatch_queue q WHERE q.job_id = j.id)
- LIMIT $2
-ON CONFLICT (job_id) DO NOTHING`
-
-	// (b) $1 = young cutoff, $2 = limit. The job is looked up by its primary key (a
-	// correlated subquery cannot be planned as a scan of the job table).
-	reconcileDeleteSQL = `
-DELETE FROM msg_dispatch_queue WHERE job_id IN (
-    SELECT q.job_id FROM msg_dispatch_queue q
-     WHERE q.version < $1
-       AND (SELECT j.status FROM msg_dispatch_jobs j
-             WHERE j.id = q.job_id AND j.created_at = q.job_created_at) IS DISTINCT FROM 'PENDING'
-     LIMIT $2)
-  AND version < $1`
-
-	// (c) same parameters as (b)
-	reconcileRefreshSQL = `
-WITH todo AS (
-    SELECT q.job_id, j.message_group, j.sequence, j.scheduled_for, j.subscription_id,
-           j.dispatch_pool_id, j.client_id, j.mode, j.queue, j.updated_at
-      FROM msg_dispatch_queue q
-      JOIN msg_dispatch_jobs j ON j.id = q.job_id AND j.created_at = q.job_created_at
-     WHERE j.status = 'PENDING'
-       AND (q.version <> j.updated_at OR q.scheduled_for IS DISTINCT FROM j.scheduled_for)
-       AND q.version < $1
-     LIMIT $2)
-UPDATE msg_dispatch_queue q
-   SET message_group = t.message_group, sequence = t.sequence, scheduled_for = t.scheduled_for,
-       subscription_id = t.subscription_id, dispatch_pool_id = t.dispatch_pool_id,
-       client_id = t.client_id, mode = t.mode, queue = t.queue, version = t.updated_at
-  FROM todo t WHERE q.job_id = t.job_id AND q.version < $1`
-)
-
-// ReconcileStatements renders the three reconcile statements, for plan tests.
-func ReconcileStatements(minAge time.Duration, limit int) []Statement {
-	young := time.Now().Add(-minAge).UTC()
-	return []Statement{
-		{"reconcile_insert", reconcileInsertSQL, []any{young, limit, []string{}}},
-		{"reconcile_delete", reconcileDeleteSQL, []any{young, limit}},
-		{"reconcile_refresh", reconcileRefreshSQL, []any{young, limit}},
-	}
-}
-
-// ── drift check ─────────────────────────────────────────────────────────
-
-// QueueDrift reports how far msg_dispatch_queue is from its invariant (one
-// exact row per PENDING job, none otherwise): missingOrStale counts PENDING
-// jobs with no queue row or whose queue row's version/scheduled_for differs;
-// orphaned counts queue rows whose job is not PENDING or does not exist. It
-// scans both tables, for tests and diagnostics only; no hot path calls it.
-// ignoreInFlight are the ids of jobs a scheduler holds claimed (PENDING with no
-// queue row by design); they are not counted as missing.
-func (l *Lifecycle) QueueDrift(ctx context.Context, ignoreInFlight ...string) (missingOrStale, orphaned int64, err error) {
-	if ignoreInFlight == nil {
-		ignoreInFlight = []string{}
-	}
-	err = queryOne(ctx, l.ex, &missingOrStale, `
-		SELECT count(*) FROM msg_dispatch_jobs j
-		  LEFT JOIN msg_dispatch_queue q ON q.job_id = j.id
-		 WHERE j.status = 'PENDING' AND j.id <> ALL($1::text[])
-		   AND (q.job_id IS NULL OR q.version <> j.updated_at
-		        OR q.scheduled_for IS DISTINCT FROM j.scheduled_for)`, ignoreInFlight)
-	if err != nil {
-		return 0, 0, err
-	}
-	err = queryOne(ctx, l.ex, &orphaned, `
-		SELECT count(*) FROM msg_dispatch_queue q
-		 WHERE NOT EXISTS (SELECT 1 FROM msg_dispatch_jobs j
-		                    WHERE j.id = q.job_id AND j.created_at = q.job_created_at
-		                      AND j.status = 'PENDING')`)
-	return missingOrStale, orphaned, err
-}
-
-func queryOne(ctx context.Context, ex Executor, dst *int64, sql string, args ...any) error {
-	rows, err := ex.Query(ctx, sql, args...)
-	if err != nil {
-		return err
-	}
-	v, err := pgx.CollectOneRow(rows, pgx.RowTo[int64])
-	if err != nil {
-		return err
-	}
-	*dst = v
-	return nil
 }

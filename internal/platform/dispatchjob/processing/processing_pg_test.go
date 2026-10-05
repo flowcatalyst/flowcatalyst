@@ -43,7 +43,6 @@ func seedJob(t *testing.T, pool *pgxpool.Pool, id, targetURL string, maxRetries,
 		 VALUES ($1, 'proc:test:evt', $2, 'QUEUED', FALSE, '{"hello":"world"}', $3, $4)`,
 		id, targetURL, maxRetries, attemptCount)
 	require.NoError(t, err)
-	testpg.SyncDispatchQueue(t, pool, id)
 }
 
 func jobRow(t *testing.T, pool *pgxpool.Pool, id string) (status string, attempts int32, scheduledFor *time.Time) {
@@ -285,7 +284,6 @@ func TestProcess_AlreadyTerminalAcksWithoutRedelivery(t *testing.T) {
 	_, err := pool.Exec(context.Background(),
 		`UPDATE msg_dispatch_jobs SET status = 'COMPLETED' WHERE id = 'djproc_term'`)
 	require.NoError(t, err)
-	testpg.SyncDispatchQueue(t, pool, "djproc_term")
 
 	code, out := callProcess(t, base, "djproc_term", auth.Sign("djproc_term"))
 	assert.Equal(t, http.StatusOK, code)
@@ -353,7 +351,6 @@ func seedGroupJob(t *testing.T, pool *pgxpool.Pool, id, group, status, targetURL
 		 VALUES ($1, 'proc:test:evt', $2, $3, FALSE, '{"hello":"world"}', 3, $4, 'BLOCK_ON_ERROR')`,
 		id, targetURL, status, group)
 	require.NoError(t, err)
-	testpg.SyncDispatchQueue(t, pool, id)
 }
 
 // TestProcess_BlockedGroupAcksAndRevertsToPending pins the delivery-time
@@ -395,7 +392,6 @@ func TestProcess_BlockedGroupAcksAndRevertsToPending(t *testing.T) {
 	_, err = pool.Exec(context.Background(),
 		`UPDATE msg_dispatch_jobs SET status = 'QUEUED' WHERE id = 'djblknext0001'`)
 	require.NoError(t, err)
-	testpg.SyncDispatchQueue(t, pool, "djblkfail0001", "djblknext0001")
 
 	code, out = callProcess(t, base, "djblknext0001", auth.Sign("djblknext0001"))
 	assert.Equal(t, http.StatusOK, code)

@@ -100,10 +100,8 @@ func TestFindByID_CorruptStatusFailsLoudly(t *testing.T) {
 			`INSERT INTO msg_dispatch_jobs (id, code, target_url, status)
 			 VALUES ($1, 'corrupt:status', 'http://example.invalid/hook', 'NOT_A_REAL_STATUS')`, id)
 		require.NoError(t, err)
-		testpg.SyncDispatchQueue(t, pool, id)
 		t.Cleanup(func() {
 			_, _ = pool.Exec(context.Background(), `DELETE FROM msg_dispatch_jobs WHERE id = $1`, id)
-			testpg.SyncDispatchQueue(t, pool, id)
 		})
 	})
 
@@ -125,10 +123,8 @@ func TestFindByID_CorruptKindFailsLoudly(t *testing.T) {
 			`INSERT INTO msg_dispatch_jobs (id, code, target_url, kind)
 			 VALUES ($1, 'corrupt:kind', 'http://example.invalid/hook', 'NOT_A_REAL_KIND')`, id)
 		require.NoError(t, err)
-		testpg.SyncDispatchQueue(t, pool, id)
 		t.Cleanup(func() {
 			_, _ = pool.Exec(context.Background(), `DELETE FROM msg_dispatch_jobs WHERE id = $1`, id)
-			testpg.SyncDispatchQueue(t, pool, id)
 		})
 	})
 
@@ -152,10 +148,8 @@ func TestFindByID_CorruptRetryStrategyFailsLoudly(t *testing.T) {
 			`INSERT INTO msg_dispatch_jobs (id, code, target_url, retry_strategy)
 			 VALUES ($1, 'corrupt:retrystrategy', 'http://example.invalid/hook', 'NOT_A_REAL_STRATEGY')`, id)
 		require.NoError(t, err)
-		testpg.SyncDispatchQueue(t, pool, id)
 		t.Cleanup(func() {
 			_, _ = pool.Exec(context.Background(), `DELETE FROM msg_dispatch_jobs WHERE id = $1`, id)
-			testpg.SyncDispatchQueue(t, pool, id)
 		})
 	})
 
@@ -180,10 +174,8 @@ func TestFindByID_LegacyErrorStatusReadable(t *testing.T) {
 		`INSERT INTO msg_dispatch_jobs (id, code, target_url, status)
 		 VALUES ($1, 'legacy:error:status', 'http://example.invalid/hook', 'ERROR')`, id)
 	require.NoError(t, err)
-	testpg.SyncDispatchQueue(t, pool, id)
 	t.Cleanup(func() {
 		_, _ = pool.Exec(context.Background(), `DELETE FROM msg_dispatch_jobs WHERE id = $1`, id)
-		testpg.SyncDispatchQueue(t, pool, id)
 	})
 
 	j, err := repo.FindByID(ctx, id)
@@ -249,10 +241,8 @@ func TestClaimForDelivery_WinsOnceThenLoses(t *testing.T) {
 		`INSERT INTO msg_dispatch_jobs (id, code, target_url, status)
 		 VALUES ($1, 'claim:test:pending', 'http://example.invalid/hook', 'PENDING')`, id)
 	require.NoError(t, err)
-	testpg.SyncDispatchQueue(t, pool, id)
 	t.Cleanup(func() {
 		_, _ = pool.Exec(context.Background(), `DELETE FROM msg_dispatch_jobs WHERE id = $1`, id)
-		testpg.SyncDispatchQueue(t, pool, id)
 	})
 
 	job, err := repo.FindByID(ctx, id)
@@ -293,10 +283,8 @@ func TestClaimForDelivery_TerminalRowNotClaimable(t *testing.T) {
 		`INSERT INTO msg_dispatch_jobs (id, code, target_url, status)
 		 VALUES ($1, 'claim:test:completed', 'http://example.invalid/hook', 'COMPLETED')`, id)
 	require.NoError(t, err)
-	testpg.SyncDispatchQueue(t, pool, id)
 	t.Cleanup(func() {
 		_, _ = pool.Exec(context.Background(), `DELETE FROM msg_dispatch_jobs WHERE id = $1`, id)
-		testpg.SyncDispatchQueue(t, pool, id)
 	})
 
 	job, err := repo.FindByID(ctx, id)
@@ -321,10 +309,8 @@ func TestAttemptsByJob_CorruptErrorTypeFailsLoudly(t *testing.T) {
 	_, err := pool.Exec(ctx,
 		`INSERT INTO msg_dispatch_jobs (id, code, target_url) VALUES ($1, 'corrupt:attempt:errtype', 'http://example.invalid/hook')`, jobID)
 	require.NoError(t, err)
-	testpg.SyncDispatchQueue(t, pool, jobID)
 	t.Cleanup(func() {
 		_, _ = pool.Exec(context.Background(), `DELETE FROM msg_dispatch_jobs WHERE id = $1`, jobID)
-		testpg.SyncDispatchQueue(t, pool, jobID)
 	})
 
 	attemptID := tsid.GenerateUntyped()
