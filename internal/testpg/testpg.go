@@ -186,7 +186,7 @@ func freePort() (int, error) {
 // SyncDispatchQueue makes msg_dispatch_queue agree with the CURRENT msg_dispatch_jobs
 // rows of ids, for a test that wrote the job table directly (a raw INSERT, UPDATE
 // or DELETE the dispatch-job lifecycle did not see): a PENDING job gets exactly one
-// queue row mirroring it (claimed_at NULL), any other job — or a missing one —
+// queue row mirroring it, any other job — or a missing one —
 // gets none. Production code never does this; the lifecycle keeps the queue exact
 // in the same statement as every job change. Call it after the raw write.
 func SyncDispatchQueue(t testing.TB, p *pgxpool.Pool, ids ...string) {
@@ -214,8 +214,7 @@ func SyncDispatchQueue(t testing.TB, p *pgxpool.Pool, ids ...string) {
 		       message_group = EXCLUDED.message_group, sequence = EXCLUDED.sequence,
 		       scheduled_for = EXCLUDED.scheduled_for, subscription_id = EXCLUDED.subscription_id,
 		       dispatch_pool_id = EXCLUDED.dispatch_pool_id, client_id = EXCLUDED.client_id,
-		       mode = EXCLUDED.mode, queue = EXCLUDED.queue, version = EXCLUDED.version,
-		       claimed_at = NULL`, ids); err != nil {
+		       mode = EXCLUDED.mode, queue = EXCLUDED.queue, version = EXCLUDED.version`, ids); err != nil {
 		t.Fatalf("testpg: sync dispatch queue (insert): %v", err)
 	}
 }
@@ -225,6 +224,14 @@ func SyncDispatchQueue(t testing.TB, p *pgxpool.Pool, ids ...string) {
 // to themselves — plan tests that seed a few hundred thousand rows and control
 // the statistics — without disturbing the rows every other test shares.
 func ScratchDB(t *testing.T, name string) *pgxpool.Pool {
+	t.Helper()
+	return ScratchDBWith(t, name, nil)
+}
+
+// ScratchDBWith is ScratchDB with session settings applied to every connection of
+// the returned pool (pgx RuntimeParams) — the scheduler's planner settings, for
+// plan tests. The database is migrated over an unconfigured connection first.
+func ScratchDBWith(t *testing.T, name string, runtimeParams map[string]string) *pgxpool.Pool {
 	t.Helper()
 	ctx := context.Background()
 	base := Pool(t)
@@ -236,13 +243,24 @@ func ScratchDB(t *testing.T, name string) *pgxpool.Pool {
 	}
 	cfg := base.Config().Copy()
 	cfg.ConnConfig.Database = name
-	p, err := pgxpool.NewWithConfig(ctx, cfg)
+	mp, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		t.Fatalf("testpg: connect to scratch database: %v", err)
 	}
-	if err := migrate.Run(ctx, p); err != nil {
-		p.Close()
+	if err := migrate.Run(ctx, mp); err != nil {
+		mp.Close()
 		t.Fatalf("testpg: migrate scratch database: %v", err)
+	}
+	mp.Close()
+	if cfg.ConnConfig.RuntimeParams == nil {
+		cfg.ConnConfig.RuntimeParams = map[string]string{}
+	}
+	for k, v := range runtimeParams {
+		cfg.ConnConfig.RuntimeParams[k] = v
+	}
+	p, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		t.Fatalf("testpg: connect to scratch database: %v", err)
 	}
 	t.Cleanup(func() {
 		p.Close()

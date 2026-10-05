@@ -167,10 +167,10 @@ func TestRelease_PollerSideReleaseRetriesThenLeavesItToTheSweep(t *testing.T) {
 	s2.releaseErr = func(int) error { return errors.New("down") }
 	p2 := newTestEngine(Config{PollInterval: time.Millisecond, Dispatchers: 1, BufferCapacity: 10, BatchSize: 10}, s2)
 	p2.holdBack = func(context.Context, []string) (map[string]jobKey, error) { return nil, errors.New("boom") }
-	before := value(t, MetricsRegistry, "fc_scheduler_claim_release_failures_total")
+	before := value(t, MetricsRegistry, "fc_scheduler_claim_restore_failures_total")
 	_ = p2.claimOnce(context.Background())
 	assert.Equal(t, 2, s2.claimedCount())
-	assert.Equal(t, 2.0, value(t, MetricsRegistry, "fc_scheduler_claim_release_failures_total")-before)
+	assert.Equal(t, 2.0, value(t, MetricsRegistry, "fc_scheduler_claim_restore_failures_total")-before)
 }
 
 // A lane whose release fails does not let the job leave the in-flight set (and so
@@ -235,8 +235,8 @@ func TestLeaderStart_ReleasesOrphanClaimsBeforeTheFirstClaim(t *testing.T) {
 	var mu sync.Mutex
 	var events []string
 	p := newTestEngine(Config{PollInterval: 5 * time.Millisecond, Dispatchers: 1, BufferCapacity: 10, BatchSize: 10}, s)
-	releaseOrphans := p.releaseOrphans
-	p.releaseOrphans = func(ctx context.Context, excluding []string) (int64, error) {
+	releaseOrphans := p.restoreOrphans
+	p.restoreOrphans = func(ctx context.Context, excluding []string) (int64, error) {
 		mu.Lock()
 		events = append(events, "release-orphans")
 		mu.Unlock()
@@ -244,11 +244,11 @@ func TestLeaderStart_ReleasesOrphanClaimsBeforeTheFirstClaim(t *testing.T) {
 		return releaseOrphans(ctx, excluding)
 	}
 	claimRows := p.claimRows
-	p.claimRows = func(ctx context.Context, limit int, paused []string) ([]dispatchClaim, error) {
+	p.claimRows = func(ctx context.Context, limit int, paused, held []string) ([]dispatchClaim, error) {
 		mu.Lock()
 		events = append(events, "claim")
 		mu.Unlock()
-		return claimRows(ctx, limit, paused)
+		return claimRows(ctx, limit, paused, held)
 	}
 	p.IsLeader = func() bool { return true }
 	runEngine(t, p)
@@ -273,7 +273,7 @@ func TestLeaderStart_RunsAgainWhenLeadershipIsRegained(t *testing.T) {
 	var leader atomic.Bool
 	var passes atomic.Int32
 	p := newTestEngine(Config{PollInterval: 2 * time.Millisecond, Dispatchers: 1, BufferCapacity: 10, BatchSize: 10}, s)
-	p.releaseOrphans = func(context.Context, []string) (int64, error) { passes.Add(1); return 0, nil }
+	p.restoreOrphans = func(context.Context, []string) (int64, error) { passes.Add(1); return 0, nil }
 	p.IsLeader = leader.Load
 	runEngine(t, p)
 	time.Sleep(30 * time.Millisecond)
@@ -294,7 +294,7 @@ func TestLeaderStart_ExcludesInFlightAndRetriesOnFailure(t *testing.T) {
 	p.inflight.add([]laneJob{lj("held-by-this-process", "", 1)})
 	var got []string
 	var attempts atomic.Int32
-	p.releaseOrphans = func(_ context.Context, excluding []string) (int64, error) {
+	p.restoreOrphans = func(_ context.Context, excluding []string) (int64, error) {
 		got = excluding
 		if attempts.Add(1) == 1 {
 			return 0, errors.New("db down")
@@ -323,11 +323,12 @@ func TestInflight_ASettledBatchDoesNotForgetAReclaimedJobsNewEntry(t *testing.T)
 	assert.Zero(t, set.size(), "a settle of its own entry removes it")
 }
 
-// The scenario end to end: a claim lands between the lane's release of a failed
-// batch and its removal from the in-flight set and takes the released jobs again.
-// Its entries stay in flight, and the group is published once, in order, with
-// nothing overtaking.
-func TestOrdering_AClaimBetweenTheReleaseAndTheRemovalKeepsItsEntries(t *testing.T) {
+// The scenario end to end: a claim lands between the lane's restore of a failed
+// batch and its removal from the in-flight set. It returns the restored jobs while
+// the old copies are still in flight: it must not submit them again (their old
+// copies' entries are about to be removed); it restores them and the next claim
+// takes them. Nothing overtakes: the group is published once, in order.
+func TestOrdering_AClaimBetweenTheRestoreAndTheRemovalDoesNotResubmitInFlightJobs(t *testing.T) {
 	s := newFakeStore(groupJobs("g", 4)...)
 	inPublish := make(chan struct{})
 	gate := make(chan struct{})
@@ -379,8 +380,8 @@ func TestOrdering_AClaimBetweenTheReleaseAndTheRemovalKeepsItsEntries(t *testing
 	close(gate)
 	waitIdle(t, p)
 	mu.Lock()
-	assert.Equal(t, 2, claimed, "the released jobs are claimed again")
-	assert.ElementsMatch(t, []string{"g-00", "g-01"}, seen, "the re-claim's entries are still in flight once the old batch has settled")
+	assert.Zero(t, claimed, "a restored job still in flight is not submitted a second time")
+	assert.Empty(t, seen, "the old batch's entries are gone once it has settled, and the hook claim added none")
 	mu.Unlock()
 	for range 10 {
 		if s.pending() == 0 {

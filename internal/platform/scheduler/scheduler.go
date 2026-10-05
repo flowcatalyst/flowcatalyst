@@ -10,7 +10,7 @@
 //	lane.go            — the dispatcher lanes: publish, mark QUEUED, ordering under failure
 //	dispatcher.go      — MessageGroupDispatcher: renders and publishes a claimed batch
 //	stale_recovery.go  — StaleQueuedJobPoller recovers stuck QUEUED / PROCESSING jobs
-//	queue_maintenance.go — stale-claim sweep, queue reconcile, backlog gauge (leader only)
+//	queue_maintenance.go — queue reconcile, backlog gauge (leader only)
 //	auth.go            — DispatchAuthService (HMAC tokens for dispatch callbacks)
 //
 // All long-running goroutines respect ctx.Done() for graceful shutdown.
@@ -155,7 +155,7 @@ func New(cfg Config, pool *pgxpool.Pool, publisher DispatchPublisher, hmacSecret
 	dispatcher := NewMessageGroupDispatcher(pool, publisher, authSvc, cfg.ProcessingEndpoint)
 	poller := NewPendingJobPoller(cfg, pool, dispatcher, pausedCache)
 	stale := NewStaleQueuedJobPoller(pool, cfg.StaleQueuedAfter, cfg.StaleProcessingAfter, cfg.StaleScanInterval)
-	maint := newQueueMaintainer(pool, poller.inflight.ids)
+	maint := newQueueMaintainer(pool, poller.inflight.ids, &poller.claimMu)
 	return &Scheduler{
 		cfg:         cfg,
 		pool:        pool,

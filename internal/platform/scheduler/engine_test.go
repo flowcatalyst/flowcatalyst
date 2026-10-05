@@ -502,6 +502,7 @@ func TestShutdown_FinishesTheBatchInFlightAndLeavesTheRestPending(t *testing.T) 
 	}
 	assert.Equal(t, 2, queued)
 	assert.Equal(t, 4, s.pending(), "buffered jobs are left PENDING")
+	assert.Zero(t, s.claimedCount(), "and restored to the queue, so the next leader finds them")
 }
 
 // A broker that has stopped answering cannot hold shutdown for ever: the publish
@@ -717,7 +718,7 @@ func TestPoller_AClaimThatSawADoomedInFlightJobDoesNotSubmitTheJobsBehindIt(t *t
 	<-l.in
 	p.inflight.remove([]string{"h-00"})
 	p.release(1)
-	require.NoError(t, s.releaseClaims(context.Background(), []string{"g-01", "h-00"})) // the lane releases what it drops
+	require.NoError(t, s.releaseClaims(context.Background(), []claimRef{{id: "g-01"}, {id: "h-00"}})) // the lane releases what it drops
 	l.p.inflight.remove([]string{"g-01"})
 	p.release(1)
 	require.Zero(t, len(p.permits))

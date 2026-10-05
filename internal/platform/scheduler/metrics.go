@@ -27,10 +27,10 @@ import (
 //	fc_scheduler_mark_queued_not_updated_total         published jobs the QUEUED update skipped: already past PENDING
 //	fc_scheduler_last_successful_poll_timestamp_seconds
 //	fc_scheduler_paused_subscriptions                  subscriptions excluded from the claim as paused
-//	fc_scheduler_claim_release_failures_total          claims that could not be given back to the queue (retried / swept)
-//	fc_scheduler_stale_claims_released_total{reason}   claims of dead processes released (leader_start, periodic)
+//	fc_scheduler_claim_restore_failures_total          jobs that could not be put back into the queue (retried / reconciled)
+//	fc_scheduler_held_groups                           message groups remembered as held (skipped by the claim for 5s)
 //	fc_scheduler_stale_jobs_recovered_total{status}    stale QUEUED / PROCESSING jobs returned to PENDING
-//	fc_scheduler_queue_backlog_rows                    unclaimed, due rows in msg_dispatch_queue (leader, every 15s)
+//	fc_scheduler_queue_backlog_rows                    due rows in msg_dispatch_queue (leader, every 15s)
 //	fc_scheduler_queue_oldest_enqueued_age_seconds     age of the oldest of them (0 when none)
 //
 // There is no "skipped paused" counter: paused subscriptions are excluded by
@@ -46,9 +46,9 @@ type schedulerMetrics struct {
 	lanePublish                                                           *prometheus.HistogramVec
 	droppedPoisoned, markNotUpdated, withheldDoomed                       prometheus.Counter
 	lastSuccess, pausedSubscriptions, bufferInUse, inflight               prometheus.Gauge
-	claimReleaseFailures                                                  prometheus.Counter
-	staleClaimsReleased, staleJobsRecovered                               *prometheus.CounterVec
-	queueBacklogRows, queueOldestAge                                      prometheus.Gauge
+	claimRestoreFailures                                                  prometheus.Counter
+	staleJobsRecovered                                                    *prometheus.CounterVec
+	queueBacklogRows, queueOldestAge, heldGroups                          prometheus.Gauge
 }
 
 func newSchedulerMetrics(reg prometheus.Registerer) *schedulerMetrics {
@@ -96,26 +96,23 @@ func newSchedulerMetrics(reg prometheus.Registerer) *schedulerMetrics {
 			Name: "fc_scheduler_paused_subscriptions",
 			Help: "Subscriptions whose connection is PAUSED, excluded from the claim.",
 		}),
-		claimReleaseFailures: counter("fc_scheduler_claim_release_failures_total", "Dispatch job claims that could not be given back to the queue table (a lane retries; the poller leaves them to the stale-claim sweep)."),
-		staleClaimsReleased: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "fc_scheduler_stale_claims_released_total",
-			Help: "Queue claims released because no live process held them: at the start of leadership (leader_start) or by the periodic sweep (periodic: claims older than 5 minutes).",
-		}, []string{"reason"}),
+		claimRestoreFailures: counter("fc_scheduler_claim_restore_failures_total", "Claimed dispatch jobs that could not be put back into the queue table (a lane retries; the poller leaves them to the reconcile sweep)."),
 		staleJobsRecovered: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "fc_scheduler_stale_jobs_recovered_total",
 			Help: "Stale dispatch jobs returned to PENDING by the recovery loop, by the status they were stuck in.",
 		}, []string{"status"}),
+		heldGroups: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "fc_scheduler_held_groups",
+			Help: "Message groups the claim currently skips because it just found them held back (remembered for 5 seconds).",
+		}),
 		queueBacklogRows: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "fc_scheduler_queue_backlog_rows",
-			Help: "Unclaimed, due rows in msg_dispatch_queue (jobs waiting for the scheduler), sampled by the leader every 15s.",
+			Help: "Due rows in msg_dispatch_queue (jobs waiting for the scheduler), sampled by the leader every 15s.",
 		}),
 		queueOldestAge: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "fc_scheduler_queue_oldest_enqueued_age_seconds",
-			Help: "Age of the oldest unclaimed, due row in msg_dispatch_queue; 0 when there is none.",
+			Help: "Age of the oldest due row in msg_dispatch_queue; 0 when there is none.",
 		}),
-	}
-	for _, r := range []string{"leader_start", "periodic"} {
-		m.staleClaimsReleased.WithLabelValues(r)
 	}
 	for _, st := range []string{"QUEUED", "PROCESSING"} {
 		m.staleJobsRecovered.WithLabelValues(st)
@@ -123,7 +120,7 @@ func newSchedulerMetrics(reg prometheus.Registerer) *schedulerMetrics {
 	reg.MustRegister(m.claimed, m.published, m.unpublished, m.skippedHeld, m.fullBatches,
 		m.pollErrors, m.pollDuration, m.lastSuccess, m.pausedSubscriptions,
 		m.claimDuration, m.lanePublish, m.droppedPoisoned, m.markNotUpdated, m.withheldDoomed, m.bufferInUse, m.inflight,
-		m.claimReleaseFailures, m.staleClaimsReleased, m.staleJobsRecovered, m.queueBacklogRows, m.queueOldestAge)
+		m.claimRestoreFailures, m.staleJobsRecovered, m.heldGroups, m.queueBacklogRows, m.queueOldestAge)
 	return m
 }
 

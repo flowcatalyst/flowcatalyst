@@ -156,6 +156,10 @@ func TestPollOnce_BlockedGroupHoldback(t *testing.T) {
 	require.NoError(t, err)
 	testpg.SyncDispatchQueue(t, pool, failedID)
 
+	// The poller remembers a held group for a few seconds (held-group memory), so
+	// the next poll — a fresh poller, as in the paused-connection test — sees it
+	// resolved at once; the memory's own expiry is tested in engine_held_test.go.
+	poller = newTestPoller(pool)
 	mustPoll(t, poller, ctx)
 	require.Equal(t, "QUEUED", jobStatus(t, pool, pendingID),
 		"resolved group must dispatch on the next poll")

@@ -38,16 +38,23 @@ var GroupHoldingStatuses = []string{"FAILED", "ERROR"}
 // GroupHoldersSQL returns, per candidate group, the EARLIEST holder as
 // (message_group, sequence, created_at, id). $1 = GroupHoldingStatuses, $2 =
 // candidate groups. DISTINCT ON keeps the earliest: anything behind it is held
-// by it too.
+// by it too. The queue half is one ordered index probe per candidate group (the
+// first backed-off row in the group's order), so its cost does not grow with the
+// depth of the queue.
 const GroupHoldersSQL = `SELECT DISTINCT ON (message_group) message_group, sequence, created_at, id FROM (
     SELECT message_group, sequence, created_at, id
       FROM msg_dispatch_jobs
      WHERE status = ANY($1::text[]) AND message_group = ANY($2::text[])
     UNION ALL
-    SELECT message_group, sequence, job_created_at, job_id
-      FROM msg_dispatch_queue
-     WHERE message_group = ANY($2::text[]) AND scheduled_for > NOW()
-) h
+    SELECT h.message_group, h.sequence, h.job_created_at, h.job_id
+      FROM unnest($2::text[]) AS g(grp)
+     CROSS JOIN LATERAL (
+          SELECT message_group, sequence, job_created_at, job_id
+            FROM msg_dispatch_queue
+           WHERE message_group = g.grp AND scheduled_for > NOW()
+           ORDER BY sequence, job_created_at, job_id
+           LIMIT 1) h
+) h2
 ORDER BY message_group, sequence, created_at, id`
 
 // GroupHeldBeforeSQL reports whether an EARLIER job of one group holds it up.

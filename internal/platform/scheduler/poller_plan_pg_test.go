@@ -19,18 +19,19 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 )
 
-// Plan tests for every statement the dispatch path runs against the job and
-// queue tables, on a real database with a few hundred thousand rows, in the
-// three statistics states a production table can be in:
+// Plan tests for the statements the dispatch path runs against the job and queue
+// tables, on a real database with a few hundred thousand rows, in the three
+// statistics states a production table can be in:
 //
 //	freshly analysed        ANALYZE after the data is loaded
 //	analysed while empty    ANALYZE ran on the empty tables, then the data arrived
 //	never analysed          no statistics at all (autovacuum off)
 //
-// Each statement is PREPAREd and EXECUTEd under plan_cache_mode =
-// force_generic_plan, so every parameter is an unknown bind value — the worst
-// case for the planner, and the one a prepared statement can end up in. EXPLAIN
-// ANALYZE output is read as JSON and asserted on structurally.
+// The connections are the scheduler's own: they carry PoolRuntimeParams
+// (plan_cache_mode = force_custom_plan, enable_sort = off), so every statement is
+// planned with its actual arguments, as in production. EXPLAIN ANALYZE output is
+// read as JSON and asserted on structurally. The claim's own statements, in more
+// states, are in poller_claim_plan_pg_test.go.
 
 // planShape is a seeded data set. The claim needs a deep queue (a real backlog:
 // on a few thousand rows a sequential scan and a sort is the right plan and the
@@ -99,10 +100,6 @@ func seedPlanData(t *testing.T, p *pgxpool.Pool, shape planShape) {
 	SELECT id, created_at, message_group, sequence, scheduled_for, subscription_id, dispatch_pool_id, client_id, mode, queue, updated_at
 	  FROM msg_dispatch_jobs WHERE status = 'PENDING'`)
 	require.NoError(t, err)
-	// Some claims at the front of the order, for the claim walk to skip.
-	_, err = p.Exec(ctx, `UPDATE msg_dispatch_queue SET claimed_at = NOW() WHERE job_id IN (
-	    SELECT job_id FROM msg_dispatch_queue ORDER BY message_group NULLS LAST, sequence, job_created_at, job_id LIMIT 300)`)
-	require.NoError(t, err)
 }
 
 type planState struct {
@@ -133,6 +130,7 @@ var planStates = []planState{
 
 // planNode is the part of an EXPLAIN (ANALYZE, FORMAT JSON) node the assertions read.
 type planNode struct {
+	ExecTime     float64    `json:"-"`
 	NodeType     string     `json:"Node Type"`
 	Relation     string     `json:"Relation Name"`
 	Index        string     `json:"Index Name"`
@@ -154,6 +152,13 @@ func (n planNode) walk(fn func(planNode)) {
 // transaction that is rolled back, so UPDATE/DELETE/INSERT leave nothing behind.
 func planOf(t *testing.T, p *pgxpool.Pool, sql string, argSQL string) planNode {
 	t.Helper()
+	return planOfMode(t, p, sql, argSQL, "")
+}
+
+// planOfMode is planOf with an explicit plan_cache_mode for the statement ("" =
+// the connection's own, which on the scheduler's pool is force_custom_plan).
+func planOfMode(t *testing.T, p *pgxpool.Pool, sql string, argSQL string, mode string) planNode {
+	t.Helper()
 	ctx := context.Background()
 	conn, err := p.Acquire(ctx)
 	require.NoError(t, err)
@@ -162,8 +167,10 @@ func planOf(t *testing.T, p *pgxpool.Pool, sql string, argSQL string) planNode {
 	_, err = conn.Exec(ctx, "BEGIN")
 	require.NoError(t, err)
 	defer func() { _, _ = conn.Exec(ctx, "ROLLBACK") }()
-	_, err = conn.Exec(ctx, "SET LOCAL plan_cache_mode = force_generic_plan")
-	require.NoError(t, err)
+	if mode != "" {
+		_, err = conn.Exec(ctx, "SET LOCAL plan_cache_mode = "+mode)
+		require.NoError(t, err)
+	}
 	_, err = conn.Exec(ctx, "PREPARE pv AS "+sql)
 	require.NoError(t, err, sql)
 	exec := "EXECUTE pv"
@@ -178,12 +185,7 @@ func planOf(t *testing.T, p *pgxpool.Pool, sql string, argSQL string) planNode {
 	}
 	require.NoError(t, rs.Err())
 	rs.Close()
-	var top []struct {
-		Plan planNode `json:"Plan"`
-	}
-	require.NoError(t, json.Unmarshal(raw, &top), string(raw))
-	require.Len(t, top, 1)
-	return top[0].Plan
+	return decodePlan(t, raw)
 }
 
 // literal renders a Go argument as a SQL literal for EXECUTE.
@@ -195,6 +197,12 @@ func literal(a any) string {
 		return "'" + strings.ReplaceAll(v, "'", "''") + "'"
 	case []string:
 		return "'{" + strings.Join(v, ",") + "}'::text[]"
+	case []time.Time:
+		parts := make([]string, len(v))
+		for i, ts := range v {
+			parts[i] = `"` + ts.UTC().Format("2006-01-02 15:04:05.000000") + `+00"`
+		}
+		return "'{" + strings.Join(parts, ",") + "}'::timestamptz[]"
 	default:
 		return fmt.Sprint(v)
 	}
@@ -234,43 +242,11 @@ func seqScansWithData(plan planNode, relPrefix string) []string {
 func forEachState(t *testing.T, shape planShape, fn func(t *testing.T, p *pgxpool.Pool)) {
 	for i, st := range planStates {
 		t.Run(shape.name+"/"+st.name, func(t *testing.T) {
-			p := testpg.ScratchDB(t, fmt.Sprintf("plan_%s_%d", shape.name, i))
+			p := testpg.ScratchDBWith(t, fmt.Sprintf("plan_%s_%d", shape.name, i), PoolRuntimeParams)
 			st.load(t, p, shape)
 			fn(t, p)
 		})
 	}
-}
-
-// The claim walks idx_dispatch_queue_order — the order index starts with
-// message_group and ends in job_id, so it yields the claim's exact order — and
-// stops at the limit: no sort, however deep the backlog and whatever the
-// statistics say, and the rows it reads are the limit plus the rows it skips (the
-// claimed and not-yet-due ones), not the backlog. The queue is joined back by
-// primary key; the job table is never touched.
-func TestPlans_ClaimWalksTheOrderIndexWithoutASort(t *testing.T) {
-	const limit = 500
-	forEachState(t, backlogShape, func(t *testing.T, p *pgxpool.Pool) {
-		st := dispatchjob.ClaimQueueStatement(limit, []string{})
-		plan := planOf(t, p, st.SQL, literals(st.Args))
-		assert.False(t, hasNode(plan, func(n planNode) bool { return strings.Contains(n.NodeType, "Sort") }),
-			"the order index must supply the claim's whole order")
-		var walk *planNode
-		plan.walk(func(n planNode) {
-			if n.NodeType == "Index Scan" && n.Index == "idx_dispatch_queue_order" {
-				c := n
-				walk = &c
-			}
-		})
-		if !assert.NotNil(t, walk, "the claim must walk idx_dispatch_queue_order") {
-			return
-		}
-		assert.Equal(t, float64(limit), walk.ActualRows, "it stops at the limit")
-		// 300 claimed rows sit at the front; a few hundred not-yet-due rows (every
-		// 1000th job) are scattered through the backlog.
-		assert.LessOrEqual(t, walk.ActualRows+walk.RemovedByFlt, float64(limit+300+60),
-			"rows read must be about the limit plus the rows skipped, not the backlog")
-		assert.Empty(t, seqScansWithData(plan, "msg_dispatch_jobs"), "the claim never reads the job table")
-	})
 }
 
 // The hold-back lookups at claim time and at delivery time: FAILED/ERROR holders
@@ -282,20 +258,30 @@ func TestPlans_HoldBackUsesTheIndexesAndNeverScansATable(t *testing.T) {
 	for i := range groups {
 		groups[i] = fmt.Sprintf("g%d", i*7)
 	}
-	forEachState(t, realisticShape, func(t *testing.T, p *pgxpool.Pool) {
-		holders := planOf(t, p, dispatchjob.GroupHoldersSQL, literals([]any{dispatchjob.GroupHoldingStatuses, groups}))
-		held := planOf(t, p, dispatchjob.GroupHeldBeforeSQL, literals([]any{
-			dispatchjob.GroupHoldingStatuses, "g7", 2, time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), "zzz"}))
-		for name, plan := range map[string]planNode{"holders": holders, "held-before": held} {
-			assert.Empty(t, seqScansWithData(plan, "msg_dispatch_jobs"), "%s must not scan the job table", name)
-			assert.Empty(t, seqScansWithData(plan, "msg_dispatch_queue"), "%s must not scan the queue", name)
-		}
-		assert.True(t, hasNode(holders, func(n planNode) bool {
-			return strings.Contains(n.Index, "status_message_group_sequence")
-		}), "the FAILED/ERROR half rides idx_dispatch_jobs_status_group")
-		assert.True(t, hasNode(holders, func(n planNode) bool { return n.Index == "idx_dispatch_queue_order" }),
-			"the backoff half rides the queue's order index")
-	})
+	// The queue is small in the realistic shape (a few thousand rows), where a
+	// sequential scan of it is the right plan; the queue half is asserted on the
+	// backlog shape, a queue of ~100,000 rows.
+	for _, shape := range []planShape{realisticShape, backlogShape} {
+		forEachState(t, shape, func(t *testing.T, p *pgxpool.Pool) {
+			holders := planOf(t, p, dispatchjob.GroupHoldersSQL, literals([]any{dispatchjob.GroupHoldingStatuses, groups}))
+			held := planOf(t, p, dispatchjob.GroupHeldBeforeSQL, literals([]any{
+				dispatchjob.GroupHoldingStatuses, "g7", 2, time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), "zzz"}))
+			t.Logf("TIMING hold-back %s holders %.2f ms held-before %.2f ms", shape.name, holders.ExecTime, held.ExecTime)
+			for name, plan := range map[string]planNode{"holders": holders, "held-before": held} {
+				assert.Empty(t, seqScansWithData(plan, "msg_dispatch_jobs"), "%s must not scan the job table", name)
+				if shape.name == "backlog" {
+					assert.Empty(t, seqScansWithData(plan, "msg_dispatch_queue"), "%s must not scan the queue", name)
+				}
+			}
+			assert.True(t, hasNode(holders, func(n planNode) bool {
+				return strings.Contains(n.Index, "status_message_group_sequence")
+			}), "the FAILED/ERROR half rides idx_dispatch_jobs_status_group")
+			if shape.name == "backlog" {
+				assert.True(t, hasNode(holders, func(n planNode) bool { return n.Index == "idx_dispatch_queue_order" }),
+					"the backoff half rides the queue's order index")
+			}
+		})
+	}
 }
 
 // Every sweep that used the dropped partial indexes now rides the status prefix
@@ -308,9 +294,10 @@ func TestPlans_SweepsNeverScanTheJobTable(t *testing.T) {
 		var sts []dispatchjob.Statement
 		sts = append(sts, dispatchjob.StaleRecoveryStatements(time.Now().Add(-15*time.Minute))...)
 		sts = append(sts, dispatchjob.StrandedStatement(time.Now().Add(-45*time.Minute)))
-		sts = append(sts, dispatchjob.ReconcileStatements(time.Minute, 5*time.Minute, 5000)...)
+		sts = append(sts, dispatchjob.ReconcileStatements(time.Minute, 5000)...)
 		for _, st := range sts {
 			plan := planOf(t, p, st.SQL, literals(st.Args))
+			t.Logf("TIMING sweep %-18s %8.2f ms", st.Name, plan.ExecTime)
 			assert.Empty(t, seqScansWithData(plan, "msg_dispatch_jobs"), "%s: plan scans the job table", st.Name)
 			switch st.Name {
 			case "stale_queued", "stale_processing", "sweep_stranded", "reconcile_insert", "reconcile_refresh":
@@ -320,4 +307,17 @@ func TestPlans_SweepsNeverScanTheJobTable(t *testing.T) {
 			}
 		}
 	})
+}
+
+// decodePlan reads an EXPLAIN (ANALYZE, FORMAT JSON) result.
+func decodePlan(t *testing.T, raw []byte) planNode {
+	t.Helper()
+	var top []struct {
+		Plan     planNode `json:"Plan"`
+		ExecTime float64  `json:"Execution Time"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &top), string(raw))
+	require.Len(t, top, 1)
+	top[0].Plan.ExecTime = top[0].ExecTime
+	return top[0].Plan
 }

@@ -46,7 +46,7 @@ func queueSnapshot(t *testing.T, pool *pgxpool.Pool, id string) map[string]any {
 }
 
 // assertQueueInvariant: a queue row exists iff the job is PENDING, and then it
-// mirrors the job (version = updated_at) with claimed_at NULL.
+// mirrors the job (version = updated_at).
 func assertQueueInvariant(t *testing.T, pool *pgxpool.Pool, id string) {
 	t.Helper()
 	ctx := context.Background()
@@ -72,7 +72,6 @@ func assertQueueInvariant(t *testing.T, pool *pgxpool.Pool, id string) {
 		   AND q.subscription_id IS NOT DISTINCT FROM j.subscription_id
 		   AND q.mode = j.mode
 		   AND q.queue IS NOT DISTINCT FROM j.queue
-		   AND q.claimed_at IS NULL
 		  FROM msg_dispatch_jobs j JOIN msg_dispatch_queue q ON q.job_id = j.id
 		 WHERE j.id = $1`, id).Scan(&equal))
 	assert.True(t, equal, "queue row of %s does not mirror the job: %v", id, q)

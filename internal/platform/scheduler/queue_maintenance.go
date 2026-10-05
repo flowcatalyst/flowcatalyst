@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -11,27 +12,20 @@ import (
 )
 
 // Queue maintenance, leader only. msg_dispatch_queue is kept exact by the
-// dispatch-job lifecycle and claimed by the poller; three small jobs keep it
-// honest and visible:
+// dispatch-job lifecycle and claimed (rows deleted) by the poller; two small jobs
+// keep it honest and visible:
 //
-//   - every sweepInterval, release the claims no live process holds: rows
-//     claimed longer ago than staleClaimAfter that are not in THIS process's
-//     in-flight set (a process that died between claiming and publishing). The
-//     start-of-leadership pass that releases all of them lives in the poller;
 //   - every sweepInterval, reconcile the queue against the job table (see
-//     Lifecycle.Reconcile): normally a no-op, WARN-logged and counted when not;
+//     Lifecycle.Reconcile): normally a no-op; it re-creates the row of a PENDING
+//     job that has none (the job of a claimer that died), excluding the jobs in
+//     THIS process's in-flight set (they are being published). The start-of-
+//     leadership pass, with no age guard, lives in the poller;
 //   - every backlogInterval, sample the backlog gauges.
 //
 // Tuning is in vars only so tests can shorten it.
 var (
 	sweepInterval   = 60 * time.Second
 	backlogInterval = 15 * time.Second
-	// staleClaimAfter is how old a claim must be before the periodic sweep
-	// releases it. A claim lives from the claim statement to the lane's
-	// mark-QUEUED, normally well under a second; a broker stall can stretch a
-	// publish to publishTimeout (2 minutes), so 5 minutes is a real death, not a
-	// slow publish.
-	staleClaimAfter = 5 * time.Minute
 	// reconcileMinAge is how long a job (or queue row) must have been unchanged
 	// before the reconcile sweep treats a mismatch as drift rather than a
 	// transition in progress.
@@ -42,14 +36,17 @@ var (
 
 type queueMaintainer struct {
 	lc *dispatchjob.Lifecycle
-	// inflightIDs lists the claims this process holds in memory.
+	// inflightIDs lists the jobs this process holds in flight.
 	inflightIDs func() []string
+	// gate is the poller's claim mutex: held while a claim runs, so a job that is
+	// claimed and not yet in flight is never seen by a reconcile as lost.
+	gate sync.Locker
 	// IsLeader gates every pass: nil = always run. Set by Scheduler.Run.
 	IsLeader func() bool
 }
 
-func newQueueMaintainer(pool *pgxpool.Pool, inflightIDs func() []string) *queueMaintainer {
-	return &queueMaintainer{lc: dispatchjob.NewLifecycle(pool), inflightIDs: inflightIDs}
+func newQueueMaintainer(pool *pgxpool.Pool, inflightIDs func() []string, gate sync.Locker) *queueMaintainer {
+	return &queueMaintainer{lc: dispatchjob.NewLifecycle(pool), inflightIDs: inflightIDs, gate: gate}
 }
 
 func (m *queueMaintainer) leader() bool { return m.IsLeader == nil || m.IsLeader() }
@@ -61,7 +58,7 @@ func (m *queueMaintainer) Run(ctx context.Context) {
 	defer sweep.Stop()
 	defer backlog.Stop()
 	slog.Info("dispatch queue maintenance starting",
-		"sweep_interval", sweepInterval, "backlog_interval", backlogInterval, "stale_claim_after", staleClaimAfter)
+		"sweep_interval", sweepInterval, "backlog_interval", backlogInterval)
 	for {
 		select {
 		case <-ctx.Done():
@@ -73,37 +70,19 @@ func (m *queueMaintainer) Run(ctx context.Context) {
 			}
 		case <-sweep.C:
 			if m.leader() {
-				m.sweepClaims(ctx)
 				m.reconcile(ctx)
 			}
 		}
 	}
 }
 
-// sweepClaims releases the claims older than staleClaimAfter that this process
-// does not hold. Returns how many.
-func (m *queueMaintainer) sweepClaims(ctx context.Context) int64 {
-	ctx, cancel := context.WithTimeout(ctx, claimTimeout)
-	defer cancel()
-	cutoff := time.Now().Add(-staleClaimAfter)
-	n, err := m.lc.ReleaseStaleClaims(ctx, cutoff, m.inflightIDs())
-	if err != nil {
-		slog.Warn("stale dispatch claim sweep failed", "err", err)
-		return 0
-	}
-	if n > 0 {
-		schedMetrics.staleClaimsReleased.WithLabelValues("periodic").Add(float64(n))
-		slog.Warn("released stale dispatch claims: claimed more than the stale-claim age ago by a process that no longer holds them",
-			"count", n, "older_than", staleClaimAfter)
-	}
-	return n
-}
-
 // reconcile runs one reconcile pass.
 func (m *queueMaintainer) reconcile(ctx context.Context) dispatchjob.ReconcileResult {
 	ctx, cancel := context.WithTimeout(ctx, claimTimeout)
 	defer cancel()
-	res, err := m.lc.Reconcile(ctx, reconcileMinAge, staleClaimAfter, reconcileLimit)
+	m.gate.Lock()
+	defer m.gate.Unlock()
+	res, err := m.lc.Reconcile(ctx, reconcileMinAge, reconcileLimit, m.inflightIDs())
 	if err != nil {
 		slog.Warn("dispatch queue reconcile failed", "err", err)
 	}

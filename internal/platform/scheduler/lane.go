@@ -48,8 +48,8 @@ type inflightSnapshot struct {
 }
 
 // inflightSet is the state the poller and the lanes share: the in-flight jobs
-// (claimed in the queue table and not yet finished by a lane; stale-claim sweeps
-// leave them alone) and the poison marks. One mutex guards both, so a claim's
+// (claimed from the queue table and not yet finished by a lane; the reconcile
+// sweep leaves them alone) and the poison marks. One mutex guards both, so a claim's
 // check against a poison mark sees a consistent view.
 type inflightSet struct {
 	mu        sync.Mutex
@@ -89,6 +89,14 @@ func (s *inflightSet) removeSettled(batch []laneJob) {
 	n := len(s.jobs)
 	s.mu.Unlock()
 	schedMetrics.inflight.Set(float64(n))
+}
+
+// contains reports whether a job is in flight.
+func (s *inflightSet) contains(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, ok := s.jobs[id]
+	return ok
 }
 
 func (s *inflightSet) remove(ids []string) {
@@ -207,20 +215,20 @@ type poisonEntry struct {
 // in this lane's channel, or in a claim the poller is running right now — and
 // must not be published ahead of j. The rule (state in inflightSet):
 //
-//   - when a batch leaves jobs of g unpublished, the lane first RELEASES the
-//     batch's unpublished claims in the queue table (claimed_at cleared), then
+//   - when a batch leaves jobs of g unpublished, the lane first RESTORES the
+//     batch's unpublished jobs to the queue table (their rows re-created), then
 //     removes the batch's jobs from the in-flight set (an entry that a newer
 //     claim has since re-added for the same id stays: removeSettled), and only
 //     then reads the
 //     current claim generation P and sets poison[g] = P;
 //   - a job of g whose claim generation is <= poison[g] is dropped when it
-//     reaches the lane (it stays PENDING, its claim is released, and it is
+//     reaches the lane (it stays PENDING, it is restored to the queue, and it is
 //     claimed again);
 //   - a claim with generation > P incremented the counter after P was read,
-//     therefore ran its statement after j's claim was released, therefore
+//     therefore ran its statement after j was restored, therefore
 //     returns j again, in order. Such a job passes, and the first one that
-//     passes clears the mark. A claim that skipped j (still claimed) ran its
-//     statement before the release, hence before P was read, hence its
+//     passes clears the mark. A claim that missed j (its row absent) ran its
+//     statement before the restore, hence before P was read, hence its
 //     generation is <= P and its jobs of g are dropped.
 //
 // This needs the poller to increment the generation BEFORE it runs the claim
@@ -229,11 +237,10 @@ type poisonEntry struct {
 // # The claim must not skip a doomed job
 //
 // A job of g still waiting in a lane when g is poisoned is doomed — it will be
-// dropped — yet it is still claimed in the queue table, so a later claim skips
-// it and, if that claim is newer than the poison, takes the job BEHIND it, which
+// dropped — yet it has no queue row, so a later claim cannot see it and, if that claim is newer than the poison, takes the job BEHIND it, which
 // would then be published ahead of the doomed one. So the poller checks every
 // claim against the in-flight snapshot it took: if the snapshot held a doomed
-// job of g, the claim's jobs of g are not submitted; their claims are released
+// job of g, the claim's jobs of g are not submitted; they are restored to the queue
 // and they are claimed again once the doomed job has gone
 // (inflightSet.skippedADoomedJob).
 //
@@ -271,9 +278,10 @@ func (p *PendingJobPoller) startLanes(ctx context.Context) *sync.WaitGroup {
 
 // run receives one job (blocking), drains up to LaneBatch-1 more without
 // blocking, and processes them as one batch. On shutdown whatever is still
-// buffered is left PENDING.
+// buffered is restored to the queue (restoreBuffered).
 func (l *lane) run(ctx context.Context) {
 	batch := make([]laneJob, 0, l.p.cfg.LaneBatch)
+	defer l.restoreBuffered(ctx)
 	for ctx.Err() == nil {
 		select {
 		case <-ctx.Done():
@@ -294,6 +302,24 @@ func (l *lane) run(ctx context.Context) {
 	}
 }
 
+// restoreBuffered, on shutdown, puts the jobs still waiting in the lane's channel
+// back into the queue (they were claimed — their rows deleted — and will not be
+// published by this process), so the next leader finds them without waiting for
+// its start-up reconcile. A few attempts, detached from ctx.
+func (l *lane) restoreBuffered(ctx context.Context) {
+	var refs []claimRef
+	for {
+		select {
+		case j := <-l.in:
+			refs = append(refs, claimRef{j.tok.JobID, j.createdAt})
+			continue
+		default:
+		}
+		break
+	}
+	l.p.restoreClaims(ctx, refs)
+}
+
 // process handles one batch: drop what the ordering rule drops, publish the
 // rest, mark the published QUEUED, then settle the in-flight set, the poison
 // marks and the permits — in that order.
@@ -304,14 +330,14 @@ func (l *lane) process(ctx context.Context, batch []laneJob) {
 	droppedGroups := make(map[string]struct{})
 	live := make([]laneJob, 0, len(batch))
 	dropped := 0
-	// toRelease collects the claims to give back to the queue: dropped,
+	// toRelease collects the jobs to put back into the queue (restore): dropped,
 	// unpublished, and published-but-not-marked jobs.
-	var toRelease []string
+	var toRelease []claimRef
 	for _, j := range batch {
 		if g := j.tok.MessageGroup; g != "" {
 			if _, ok := droppedGroups[g]; ok {
 				dropped++
-				toRelease = append(toRelease, j.tok.JobID)
+				toRelease = append(toRelease, claimRef{j.tok.JobID, j.createdAt})
 				continue
 			}
 			if !p.inflight.admit(g, j.gen) {
@@ -319,7 +345,7 @@ func (l *lane) process(ctx context.Context, batch []laneJob) {
 				// rest of the group in this batch follows the dropped job.
 				droppedGroups[g] = struct{}{}
 				dropped++
-				toRelease = append(toRelease, j.tok.JobID)
+				toRelease = append(toRelease, claimRef{j.tok.JobID, j.createdAt})
 				continue
 			}
 		}
@@ -345,6 +371,7 @@ func (l *lane) process(ctx context.Context, batch []laneJob) {
 			notPublished[id] = struct{}{}
 		}
 		published := make([]string, 0, len(live))
+		publishedRefs := make([]claimRef, 0, len(live))
 		publishedVersions := make([]time.Time, 0, len(live))
 		var minCreated, maxCreated time.Time
 		for _, j := range live {
@@ -352,7 +379,7 @@ func (l *lane) process(ctx context.Context, batch []laneJob) {
 				if g := j.tok.MessageGroup; g != "" {
 					poisoned[g] = struct{}{}
 				}
-				toRelease = append(toRelease, j.tok.JobID)
+				toRelease = append(toRelease, claimRef{j.tok.JobID, j.createdAt})
 				continue
 			}
 			if len(published) == 0 || j.createdAt.Before(minCreated) {
@@ -362,6 +389,7 @@ func (l *lane) process(ctx context.Context, batch []laneJob) {
 				maxCreated = j.createdAt
 			}
 			published = append(published, j.tok.JobID)
+			publishedRefs = append(publishedRefs, claimRef{j.tok.JobID, j.createdAt})
 			publishedVersions = append(publishedVersions, j.updatedAt)
 		}
 		if len(notPublished) > 0 {
@@ -378,7 +406,7 @@ func (l *lane) process(ctx context.Context, batch []laneJob) {
 			switch {
 			case err != nil:
 				failed = true
-				toRelease = append(toRelease, published...)
+				toRelease = append(toRelease, publishedRefs...)
 				slog.Warn("marking published dispatch jobs QUEUED failed; they will be published again",
 					"published", len(published), "err", err)
 			case int(rows) < len(published):
@@ -391,9 +419,9 @@ func (l *lane) process(ctx context.Context, batch []laneJob) {
 
 	// Settle. The order is the ordering rule: the claims of what was not
 	// published go back to the queue FIRST, the ids leave the in-flight set next,
-	// the generation is read AFTER, the permits go back last (a released permit
+	// the generation is read AFTER, the permits go back last (a returned permit
 	// lets the poller claim again).
-	l.releaseUntilDone(ctx, toRelease)
+	l.restoreUntilDone(ctx, toRelease)
 	if p.hookReleased != nil {
 		p.hookReleased()
 	}
@@ -411,27 +439,27 @@ func (l *lane) process(ctx context.Context, batch []laneJob) {
 	p.release(len(batch))
 }
 
-// releaseUntilDone gives the claims of ids back to the queue, retrying until it
-// succeeds or ctx ends. It must not give up while the process runs: a claim left
-// in place while the lane lets the job leave the in-flight set would let the
-// group's later jobs be claimed, published and delivered ahead of it. Blocking
-// here blocks only this lane (the groups hashed to it) and, through the permits,
-// the poller — which is right, since the database is not answering. On shutdown
-// it returns; the next leader's start-up pass releases the claim.
-func (l *lane) releaseUntilDone(ctx context.Context, ids []string) {
-	if len(ids) == 0 {
+// restoreUntilDone puts the jobs back into the queue, retrying until it succeeds
+// or ctx ends. It must not give up while the process runs: a job left without a
+// queue row while the lane lets it leave the in-flight set would let the group's
+// later jobs be claimed, published and delivered ahead of it. Blocking here blocks
+// only this lane (the groups hashed to it) and, through the permits, the poller —
+// which is right, since the database is not answering. On shutdown it returns;
+// the next leader's start-up reconcile restores the job.
+func (l *lane) restoreUntilDone(ctx context.Context, refs []claimRef) {
+	if len(refs) == 0 {
 		return
 	}
 	backoff := 50 * time.Millisecond
 	for {
 		rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)
-		err := l.p.releaseClaimRows(rctx, ids)
+		err := l.p.restoreClaimRows(rctx, refs)
 		cancel()
 		if err == nil {
 			return
 		}
-		schedMetrics.claimReleaseFailures.Add(float64(len(ids)))
-		slog.Warn("releasing the claims of unpublished dispatch jobs failed; retrying", "jobs", len(ids), "err", err)
+		schedMetrics.claimRestoreFailures.Add(float64(len(refs)))
+		slog.Warn("restoring the unpublished dispatch jobs to the queue failed; retrying", "jobs", len(refs), "err", err)
 		if ctx.Err() != nil {
 			return
 		}

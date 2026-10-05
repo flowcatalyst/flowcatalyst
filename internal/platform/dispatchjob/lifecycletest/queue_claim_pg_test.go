@@ -19,12 +19,11 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
-func claimedAtOf(t *testing.T, pool *pgxpool.Pool, id string) *time.Time {
+func inQueue(t *testing.T, pool *pgxpool.Pool, id string) bool {
 	t.Helper()
-	var at *time.Time
-	require.NoError(t, pool.QueryRow(context.Background(),
-		`SELECT claimed_at FROM msg_dispatch_queue WHERE job_id = $1`, id).Scan(&at))
-	return at
+	var n int
+	require.NoError(t, pool.QueryRow(context.Background(), `SELECT count(*) FROM msg_dispatch_queue WHERE job_id = $1`, id).Scan(&n))
+	return n == 1
 }
 
 func claimIDsOf(cs []dispatchjob.QueueClaim) []string {
@@ -42,9 +41,9 @@ func mustCreate(t *testing.T, lc *dispatchjob.Lifecycle, jobs ...dispatchjob.Dis
 	require.Len(t, rows, len(jobs))
 }
 
-// The claim returns due, unclaimed, unpaused rows in delivery order — group
-// (ungrouped last), sequence, created_at, id — up to the limit, and stamps them
-// claimed.
+// The claim returns due, unpaused rows outside the held groups in delivery order —
+// group (ungrouped last), sequence, created_at, id — up to the limit, and deletes
+// them from the queue.
 func TestQueueClaim_OrderAndFilters(t *testing.T) {
 	pool := testpg.Pool(t)
 	ctx := context.Background()
@@ -77,29 +76,31 @@ func TestQueueClaim_OrderAndFilters(t *testing.T) {
 	paused.SubscriptionID = &pausedSub
 	mustCreate(t, lc, b2, a2, b1, a1late, a1early, u1, u2, future, paused)
 
-	got, err := lc.ClaimQueue(ctx, 100, []string{pausedSub})
+	// group "b" is held: skipped by the walk
+	got, err := lc.ClaimQueue(ctx, 100, []string{pausedSub}, []string{"b"})
 	require.NoError(t, err)
-	assert.Equal(t, []string{a1early.ID, a1late.ID, a2.ID, b1.ID, b2.ID, u1.ID, u2.ID}, claimIDsOf(got),
-		"group order, then sequence, created_at; ungrouped last; the future and paused rows are left")
+	assert.Equal(t, []string{a1early.ID, a1late.ID, a2.ID, u1.ID, u2.ID}, claimIDsOf(got),
+		"group order, then sequence, created_at; ungrouped last; the future, paused and held rows are left")
 	for _, c := range got {
-		require.NotNil(t, claimedAtOf(t, pool, c.JobID), "claimed rows are stamped")
+		assert.False(t, inQueue(t, pool, c.JobID), "claimed rows are deleted from the queue")
 	}
-	assert.Nil(t, claimedAtOf(t, pool, future.ID))
-	assert.Nil(t, claimedAtOf(t, pool, paused.ID))
+	assert.True(t, inQueue(t, pool, future.ID))
+	assert.True(t, inQueue(t, pool, paused.ID))
+	assert.True(t, inQueue(t, pool, b1.ID) && inQueue(t, pool, b2.ID), "a held group's rows are untouched")
 
-	// Claimed rows are never returned again.
-	again, err := lc.ClaimQueue(ctx, 100, []string{pausedSub})
+	// Claimed rows are never returned again; the held group is claimed once it is no longer held.
+	again, err := lc.ClaimQueue(ctx, 100, []string{pausedSub}, nil)
 	require.NoError(t, err)
-	assert.Empty(t, again)
+	assert.Equal(t, []string{b1.ID, b2.ID}, claimIDsOf(again))
 
 	// The limit bounds the claim and leaves the rest unclaimed: the first two in order.
 	cleanTables(t, pool)
 	mustCreate(t, lc, mk("a", 1, time.Second), mk("a", 2, 2*time.Second), mk("a", 3, 3*time.Second), mk("a", 4, 4*time.Second))
-	two, err := lc.ClaimQueue(ctx, 2, nil) // nil paused is treated as empty
+	two, err := lc.ClaimQueue(ctx, 2, nil, nil) // nil arrays are treated as empty
 	require.NoError(t, err)
 	require.Len(t, two, 2)
 	assert.EqualValues(t, []int32{1, 2}, []int32{two[0].Sequence, two[1].Sequence})
-	rest, err := lc.ClaimQueue(ctx, 100, []string{})
+	rest, err := lc.ClaimQueue(ctx, 100, []string{}, []string{})
 	require.NoError(t, err)
 	assert.EqualValues(t, []int32{3, 4}, []int32{rest[0].Sequence, rest[1].Sequence})
 }
@@ -117,7 +118,7 @@ func TestQueueClaim_ReturnsTheRowsColumns(t *testing.T) {
 	j.SubscriptionID, j.DispatchPoolID, j.ClientID, j.Queue = &sub, &poolID, &client, &queue
 	mustCreate(t, lc, j)
 
-	got, err := lc.ClaimQueue(ctx, 10, []string{})
+	got, err := lc.ClaimQueue(ctx, 10, []string{}, []string{})
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	c := got[0]
@@ -143,7 +144,7 @@ func TestQueueClaim_ConcurrentClaimsAreDisjoint(t *testing.T) {
 	lc := dispatchjob.NewLifecycle(pool)
 	cleanTables(t, pool)
 
-	const n = 300
+	const n = 3000
 	jobs := make([]dispatchjob.DispatchJob, n)
 	for i := range jobs {
 		jobs[i] = newJob(fmt.Sprintf("g-%03d", i%20), common.DispatchNextOnError, int32(i))
@@ -153,12 +154,12 @@ func TestQueueClaim_ConcurrentClaimsAreDisjoint(t *testing.T) {
 	var mu sync.Mutex
 	seen := map[string]int{}
 	var wg sync.WaitGroup
-	for range 8 {
+	for range 16 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for range 200 { // bounded: a claim that never runs dry must fail the test, not hang it
-				got, err := lc.ClaimQueue(ctx, 7, []string{})
+			for range 400 { // bounded: a claim that never runs dry must fail the test, not hang it
+				got, err := lc.ClaimQueue(ctx, 150, []string{}, []string{})
 				if err != nil {
 					t.Error(err)
 					return
@@ -181,9 +182,9 @@ func TestQueueClaim_ConcurrentClaimsAreDisjoint(t *testing.T) {
 	}
 }
 
-// A claimed row is not claimable again until its claim is released or the job
-// re-enters PENDING.
-func TestQueueClaim_ClaimedUntilReleasedOrReentered(t *testing.T) {
+// A claimed job has no queue row; it is claimable again once RestoreClaims puts it
+// back, or when the job re-enters PENDING.
+func TestQueueClaim_GoneUntilRestoredOrReentered(t *testing.T) {
 	pool := testpg.Pool(t)
 	ctx := context.Background()
 	lc := dispatchjob.NewLifecycle(pool)
@@ -192,74 +193,100 @@ func TestQueueClaim_ClaimedUntilReleasedOrReentered(t *testing.T) {
 	j := newJob("g-"+tsid.GenerateUntyped(), common.DispatchBlockOnError, 1)
 	mustCreate(t, lc, j)
 
-	first, err := lc.ClaimQueue(ctx, 10, []string{})
+	first, err := lc.ClaimQueue(ctx, 10, []string{}, []string{})
 	require.NoError(t, err)
 	require.Len(t, first, 1)
-	second, err := lc.ClaimQueue(ctx, 10, []string{})
+	second, err := lc.ClaimQueue(ctx, 10, []string{}, []string{})
 	require.NoError(t, err)
-	assert.Empty(t, second, "a claimed row is skipped")
+	assert.Empty(t, second, "a claimed job has no queue row")
 
-	n, err := lc.ReleaseClaims(ctx, []string{j.ID})
+	n, err := lc.RestoreClaims(ctx, []string{j.ID}, []time.Time{j.CreatedAt})
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, n)
-	assert.Nil(t, claimedAtOf(t, pool, j.ID))
-	third, err := lc.ClaimQueue(ctx, 10, []string{})
+	assertQueueInvariant(t, pool, j.ID)
+	third, err := lc.ClaimQueue(ctx, 10, []string{}, []string{})
 	require.NoError(t, err)
-	require.Len(t, third, 1, "a released row is claimed again")
+	require.Len(t, third, 1, "a restored job is claimed again")
+	assert.True(t, third[0].Version.Equal(first[0].Version), "restored from the job: same version")
 
-	// Re-entering PENDING (a retry) refreshes the row and clears the claim.
+	// Re-entering PENDING (a retry) re-creates the row.
 	ok, err := lc.Retry(ctx, j.ID, j.CreatedAt, time.Now().Add(-time.Second), nil)
 	require.NoError(t, err)
 	require.True(t, ok)
-	assert.Nil(t, claimedAtOf(t, pool, j.ID), "re-entering PENDING resets the claim")
-	fourth, err := lc.ClaimQueue(ctx, 10, []string{})
+	fourth, err := lc.ClaimQueue(ctx, 10, []string{}, []string{})
 	require.NoError(t, err)
 	require.Len(t, fourth, 1)
 	assert.False(t, fourth[0].Version.Equal(first[0].Version), "the refreshed row carries the new version")
 
-	// Published and marked QUEUED: the row is gone and cannot be claimed.
+	// Published and marked QUEUED: nothing to claim, and a restore does not resurrect it.
 	moved, err := lc.MarkQueued(ctx, []string{j.ID}, []time.Time{fourth[0].Version}, j.CreatedAt, j.CreatedAt)
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, moved)
+	n, err = lc.RestoreClaims(ctx, []string{j.ID}, []time.Time{j.CreatedAt})
+	require.NoError(t, err)
+	assert.Zero(t, n, "a job that is no longer PENDING is not put back")
 	assert.Zero(t, queueCount(t, pool))
 }
 
-// ReleaseClaims is one bulk statement that clears only claims: an unclaimed or
-// missing row is a no-op, and the count says what was released.
-func TestQueueRelease_BulkAndIdempotent(t *testing.T) {
+// A row refreshed to a future scheduled_for between the claim's two statements is
+// not taken by the delete.
+func TestQueueClaim_ARowMadeNotDueBetweenTheStatementsIsNotClaimed(t *testing.T) {
 	pool := testpg.Pool(t)
 	ctx := context.Background()
 	lc := dispatchjob.NewLifecycle(pool)
 	cleanTables(t, pool)
 
-	var jobs []dispatchjob.DispatchJob
-	for i := range 5 {
-		jobs = append(jobs, newJob("g-"+tsid.GenerateUntyped(), common.DispatchNextOnError, int32(i)))
-	}
-	mustCreate(t, lc, jobs...)
-	claimed, err := lc.ClaimQueue(ctx, 3, []string{})
-	require.NoError(t, err)
-	require.Len(t, claimed, 3)
+	j := newJob("g-"+tsid.GenerateUntyped(), common.DispatchBlockOnError, 1)
+	mustCreate(t, lc, j)
+	sel, del := dispatchjob.ClaimQueueStatements(10, nil, nil, nil)
 
-	ids := make([]string, len(jobs))
-	for i, j := range jobs {
-		ids[i] = j.ID
+	rows, err := pool.Query(ctx, sel.SQL, sel.Args...)
+	require.NoError(t, err)
+	var ids []string
+	for rows.Next() {
+		var id string
+		require.NoError(t, rows.Scan(&id))
+		ids = append(ids, id)
 	}
-	n, err := lc.ReleaseClaims(ctx, append(ids, "no-such-job"))
+	rows.Close()
+	require.Equal(t, []string{j.ID}, ids)
+
+	ok, err := lc.Defer(ctx, j.ID, j.CreatedAt, time.Now().Add(time.Hour)) // the job is backed off meanwhile
 	require.NoError(t, err)
-	assert.EqualValues(t, 3, n, "only the three claimed rows had a claim")
-	n, err = lc.ReleaseClaims(ctx, ids)
+	require.True(t, ok)
+
+	tag, err := pool.Exec(ctx, del.SQL, ids)
 	require.NoError(t, err)
-	assert.Zero(t, n, "releasing again changes nothing")
-	n, err = lc.ReleaseClaims(ctx, nil)
-	require.NoError(t, err)
-	assert.Zero(t, n)
-	requireNoDrift(t, lc)
+	assert.Zero(t, tag.RowsAffected(), "the delete takes only rows still due")
+	assert.True(t, inQueue(t, pool, j.ID))
 }
 
-// Released rows are claimed again in order, behind nothing they should not be
-// behind: a group's jobs come back as a run from the first released one.
-func TestQueueRelease_ReleasedJobsAreClaimedAgainInOrder(t *testing.T) {
+// Restore does not overwrite a queue row the lifecycle wrote since.
+func TestQueueRestore_DoesNotOverwriteANewerRow(t *testing.T) {
+	pool := testpg.Pool(t)
+	ctx := context.Background()
+	lc := dispatchjob.NewLifecycle(pool)
+	cleanTables(t, pool)
+
+	j := newJob("g-"+tsid.GenerateUntyped(), common.DispatchBlockOnError, 1)
+	mustCreate(t, lc, j)
+	claimed, err := lc.ClaimQueue(ctx, 10, []string{}, []string{})
+	require.NoError(t, err)
+	require.Len(t, claimed, 1)
+	ok, err := lc.Defer(ctx, j.ID, j.CreatedAt, time.Now().Add(time.Hour)) // re-enters PENDING: a newer row
+	require.NoError(t, err)
+	require.True(t, ok)
+	before := queueSnapshot(t, pool, j.ID)
+
+	n, err := lc.RestoreClaims(ctx, []string{j.ID}, []time.Time{j.CreatedAt})
+	require.NoError(t, err)
+	assert.Zero(t, n)
+	assert.Equal(t, before, queueSnapshot(t, pool, j.ID))
+}
+
+// Restored jobs are claimed again in order, behind nothing they should not be
+// behind: a group's jobs come back as a run from the first restored one.
+func TestQueueRestore_RestoredJobsAreClaimedAgainInOrder(t *testing.T) {
 	pool := testpg.Pool(t)
 	ctx := context.Background()
 	lc := dispatchjob.NewLifecycle(pool)
@@ -271,65 +298,68 @@ func TestQueueRelease_ReleasedJobsAreClaimedAgainInOrder(t *testing.T) {
 		jobs = append(jobs, newJob(g, common.DispatchBlockOnError, int32(i)))
 	}
 	mustCreate(t, lc, jobs...)
-	first, err := lc.ClaimQueue(ctx, 6, []string{})
+	first, err := lc.ClaimQueue(ctx, 6, []string{}, []string{})
 	require.NoError(t, err)
 	require.Len(t, first, 6)
-	// jobs 1 and 2 publish (their rows leave the queue); 3..6 are released.
+	// jobs 1 and 2 publish (QUEUED); 3..6 are restored.
 	for _, c := range first[:2] {
 		_, err := lc.MarkQueued(ctx, []string{c.JobID}, []time.Time{c.Version}, c.JobCreatedAt, c.JobCreatedAt)
 		require.NoError(t, err)
 	}
-	_, err = lc.ReleaseClaims(ctx, claimIDsOf(first[2:]))
+	var ids []string
+	var created []time.Time
+	for _, c := range first[2:] {
+		ids, created = append(ids, c.JobID), append(created, c.JobCreatedAt)
+	}
+	n, err := lc.RestoreClaims(ctx, ids, created)
 	require.NoError(t, err)
+	assert.EqualValues(t, 4, n)
+	n, err = lc.RestoreClaims(ctx, ids, created)
+	require.NoError(t, err)
+	assert.Zero(t, n, "restoring again changes nothing")
 
-	again, err := lc.ClaimQueue(ctx, 10, []string{})
+	again, err := lc.ClaimQueue(ctx, 10, []string{}, []string{})
 	require.NoError(t, err)
-	assert.Equal(t, claimIDsOf(first[2:]), claimIDsOf(again), "released jobs return in order, nothing before them")
+	assert.Equal(t, claimIDsOf(first[2:]), claimIDsOf(again), "restored jobs return in order, nothing before them")
 }
 
-// ReleaseStaleClaims: a zero cutoff releases every claim the caller does not
-// hold; a cutoff releases only the older ones; the excluded ids are never touched.
-func TestQueueReleaseStaleClaims(t *testing.T) {
+// RestoreOrphans (the leader's start-up pass): every PENDING job without a queue
+// row is restored with no age guard, except the ones the caller has in flight;
+// the pass repeats in bounded batches until it inserts nothing.
+func TestQueueRestoreOrphans(t *testing.T) {
 	pool := testpg.Pool(t)
 	ctx := context.Background()
 	lc := dispatchjob.NewLifecycle(pool)
 	cleanTables(t, pool)
 
 	var jobs []dispatchjob.DispatchJob
-	for i := range 4 {
-		jobs = append(jobs, newJob("g-"+tsid.GenerateUntyped(), common.DispatchNextOnError, int32(i)))
+	for i := range 7 {
+		jobs = append(jobs, newJob(g(), common.DispatchBlockOnError, int32(i)))
 	}
-	mustCreate(t, lc, jobs...)
-	oldA, oldHeld, fresh, unclaimed := jobs[0], jobs[1], jobs[2], jobs[3]
-	_, err := pool.Exec(ctx, `UPDATE msg_dispatch_queue SET claimed_at = NOW() - interval '10 minutes' WHERE job_id = ANY($1)`,
-		[]string{oldA.ID, oldHeld.ID})
+	mustCreate(t, lc, jobs...) // created now: far inside any age guard
+	claimed, err := lc.ClaimQueue(ctx, 100, []string{}, []string{})
 	require.NoError(t, err)
-	_, err = pool.Exec(ctx, `UPDATE msg_dispatch_queue SET claimed_at = NOW() WHERE job_id = $1`, fresh.ID)
-	require.NoError(t, err)
+	require.Len(t, claimed, 7) // a process claimed them all and died
 
-	// Periodic form: older than five minutes and not held in memory.
-	n, err := lc.ReleaseStaleClaims(ctx, time.Now().Add(-5*time.Minute), []string{oldHeld.ID})
+	inFlight := []string{jobs[0].ID}
+	n, err := lc.RestoreOrphans(ctx, 3, inFlight) // batches of 3
 	require.NoError(t, err)
-	assert.EqualValues(t, 1, n)
-	assert.Nil(t, claimedAtOf(t, pool, oldA.ID), "an old claim nobody holds is released")
-	assert.NotNil(t, claimedAtOf(t, pool, oldHeld.ID), "a job in the in-flight set is not released, however old")
-	assert.NotNil(t, claimedAtOf(t, pool, fresh.ID), "a recent claim is not released")
-	assert.Nil(t, claimedAtOf(t, pool, unclaimed.ID))
+	assert.EqualValues(t, 6, n)
+	assert.False(t, inQueue(t, pool, jobs[0].ID), "the in-flight job is not re-queued")
+	for _, j := range jobs[1:] {
+		assertQueueInvariant(t, pool, j.ID)
+	}
+	missing, orphaned, err := lc.QueueDrift(ctx, jobs[0].ID)
+	require.NoError(t, err)
+	assert.Zero(t, missing)
+	assert.Zero(t, orphaned)
 
-	// Leader-start form: every claim not held in memory, however recent.
-	n, err = lc.ReleaseStaleClaims(ctx, time.Time{}, []string{oldHeld.ID})
+	n, err = lc.RestoreOrphans(ctx, 3, inFlight)
 	require.NoError(t, err)
-	assert.EqualValues(t, 1, n)
-	assert.Nil(t, claimedAtOf(t, pool, fresh.ID))
-	assert.NotNil(t, claimedAtOf(t, pool, oldHeld.ID), "still held in memory")
-
-	n, err = lc.ReleaseStaleClaims(ctx, time.Time{}, nil)
-	require.NoError(t, err)
-	assert.EqualValues(t, 1, n)
-	assert.Nil(t, claimedAtOf(t, pool, oldHeld.ID))
+	assert.Zero(t, n)
 }
 
-// The backlog is the unclaimed, due rows and the age of the oldest.
+// The backlog is the due rows and the age of the oldest.
 func TestQueueBacklog(t *testing.T) {
 	pool := testpg.Pool(t)
 	ctx := context.Background()
@@ -350,11 +380,9 @@ func TestQueueBacklog(t *testing.T) {
 	mustCreate(t, lc, jobs...)
 	_, err = pool.Exec(ctx, `UPDATE msg_dispatch_queue SET enqueued_at = NOW() - interval '90 seconds' WHERE job_id = $1`, jobs[0].ID)
 	require.NoError(t, err)
-	_, err = pool.Exec(ctx, `UPDATE msg_dispatch_queue SET claimed_at = NOW() WHERE job_id = $1`, jobs[1].ID)
-	require.NoError(t, err)
 
 	rows, oldest, err = lc.QueueBacklog(ctx)
 	require.NoError(t, err)
-	assert.EqualValues(t, 3, rows, "five rows, one claimed, one not yet due")
+	assert.EqualValues(t, 4, rows, "five rows, one not yet due")
 	assert.InDelta(t, 90, oldest.Seconds(), 5)
 }

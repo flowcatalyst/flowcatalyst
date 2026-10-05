@@ -117,15 +117,16 @@ func (c *PausedConnectionCache) refresh(ctx context.Context) error {
 //
 //	poller (leader only) --claim--> lanes[hash(group) % N] --SendMessageBatch--> broker
 //	   ^  permits (BufferCapacity)        |  bulk UPDATE status='QUEUED'
-//	   +----------- released -------------+
+//	   +----------- restored -------------+
 //
 // The claim reads msg_dispatch_queue (one row per PENDING job, kept exact by the
-// dispatch-job lifecycle), not the job table, and stamps claimed_at on the rows
-// it takes; a claimed row is skipped by every later claim. There is no
+// dispatch-job lifecycle), not the job table, and DELETES the rows it takes (two
+// plain statements); a claimed job is PENDING with no queue row. There is no
 // transaction and no row lock around the publish. Whatever the poller or a lane
-// does not publish has its claim RELEASED (claimed_at cleared) so the job is
-// claimed again, in order; a row whose process died is released by the leader's
-// start-up pass and the periodic sweep (queue_maintenance.go). A double publish
+// does not publish is RESTORED (its queue row re-created from the job table) so
+// the job is claimed again, in order; a job whose process died is restored by the
+// leader's start-up reconcile pass and the periodic one (queue_maintenance.go). A
+// double publish
 // is acceptable — the router drops a copy whose original is in its pipeline and
 // the delivery callback is idempotent — a reordering is not; lane.go holds the
 // rule that prevents one.
@@ -163,25 +164,34 @@ type PendingJobPoller struct {
 	lanes      []*lane
 
 	// Seams. The defaults talk to Postgres and the dispatcher; tests replace them.
-	claimRows  func(ctx context.Context, limit int, paused []string) ([]dispatchClaim, error)
+	claimRows  func(ctx context.Context, limit int, paused, heldGroups []string) ([]dispatchClaim, error)
 	holdBack   func(ctx context.Context, groups []string) (map[string]jobKey, error)
 	pausedIDs  func(ctx context.Context) (map[string]struct{}, error)
 	poolCode   func(ctx context.Context, poolID, clientID string) string
 	publish    func(ctx context.Context, toks []DispatchJobToken) (unpublished []string)
 	markQueued func(ctx context.Context, ids []string, updatedAts []time.Time, minCreated, maxCreated time.Time) (int64, error)
-	// releaseClaimRows clears the claim of jobs that were claimed and not
-	// published; releaseOrphans clears every claim this process does not hold
-	// (excluding = its in-flight ids), at the start of leadership.
-	releaseClaimRows func(ctx context.Context, ids []string) error
-	releaseOrphans   func(ctx context.Context, excluding []string) (int64, error)
+	// restoreClaimRows puts jobs that were claimed and not published back into
+	// the queue; restoreOrphans, at the start of leadership, restores every PENDING
+	// job that has no queue row and is not in excluding (this process's in-flight
+	// ids): the jobs of a claimer that died.
+	restoreClaimRows func(ctx context.Context, refs []claimRef) error
+	restoreOrphans   func(ctx context.Context, excluding []string) (int64, error)
+
+	// claimMu is held by a claim from its first statement to the moment its jobs
+	// are in the in-flight set (or restored), so the periodic reconcile — which
+	// would otherwise see a job that is claimed and not yet in flight as a PENDING
+	// job without a queue row — can take it to read the in-flight set and insert.
+	claimMu sync.Mutex
+	// held remembers the groups a claim recently found held back.
+	held *heldGroups
 
 	// hookGenSnapshot, when set, runs between a claim's generation increment and
 	// its in-flight snapshot — the one window the ordering rule depends on. Tests
 	// use it to land a lane's failure handling exactly there.
 	hookGenSnapshot func()
-	// hookReleased, when set, runs in a lane between releasing a batch's claims in
+	// hookReleased, when set, runs in a lane between restoring a batch's claims to
 	// the queue table and removing the batch from the in-flight set — the window in
-	// which a later claim can take a released job again.
+	// which a later claim can take a restored job again.
 	hookReleased func()
 	// hookSettle, when set, runs in a lane between removing a batch's ids from the
 	// in-flight set and reading the generation for its poison marks — the window
@@ -198,18 +208,23 @@ func NewPendingJobPoller(cfg Config, pool *pgxpool.Pool, dispatcher *MessageGrou
 	p.pausedCache = pausedCache
 	p.poolCodes = NewPoolCodeResolver(pool, cfg.PausedCacheTTL)
 	lc := dispatchjob.NewLifecycle(pool)
-	p.claimRows = func(ctx context.Context, limit int, paused []string) ([]dispatchClaim, error) {
-		return queryClaim(ctx, lc, limit, paused)
+	p.claimRows = func(ctx context.Context, limit int, paused, held []string) ([]dispatchClaim, error) {
+		return queryClaim(ctx, lc, limit, paused, held)
 	}
 	p.holdBack = func(ctx context.Context, groups []string) (map[string]jobKey, error) {
 		return blockedGroups(ctx, pool, groups)
 	}
-	p.releaseClaimRows = func(ctx context.Context, ids []string) error {
-		_, err := lc.ReleaseClaims(ctx, ids)
+	p.restoreClaimRows = func(ctx context.Context, refs []claimRef) error {
+		ids := make([]string, len(refs))
+		created := make([]time.Time, len(refs))
+		for i, r := range refs {
+			ids[i], created[i] = r.id, r.createdAt
+		}
+		_, err := lc.RestoreClaims(ctx, ids, created)
 		return err
 	}
-	p.releaseOrphans = func(ctx context.Context, excluding []string) (int64, error) {
-		return lc.ReleaseStaleClaims(ctx, time.Time{}, excluding)
+	p.restoreOrphans = func(ctx context.Context, excluding []string) (int64, error) {
+		return lc.RestoreOrphans(ctx, reconcileLimit, excluding)
 	}
 	p.pausedIDs = pausedCache.PausedSubscriptionIDs
 	p.poolCode = p.poolCodes.Resolve
@@ -226,6 +241,7 @@ func newPoller(cfg Config) *PendingJobPoller {
 		cfg:      cfg,
 		permits:  make(chan struct{}, cfg.BufferCapacity),
 		inflight: newInflightSet(),
+		held:     newHeldGroups(heldGroupTTL, heldGroupCap),
 	}
 	p.lanes = make([]*lane, cfg.Dispatchers)
 	for i := range p.lanes {
@@ -289,13 +305,12 @@ func (p *PendingJobPoller) Run(ctx context.Context) {
 			continue
 		}
 		if !wasLeader {
-			// Starting to poll as leader: every claim this process does not hold in
-			// memory is an orphan (at process start, all of them), left by a process
-			// that died between claiming and publishing. Done here, on the claiming
-			// goroutine, so no claim of ours is in flight between the claim and the
-			// in-flight set while it runs.
-			if err := p.releaseOrphanClaims(ctx); err != nil {
-				slog.Warn("releasing orphaned dispatch claims at leader start failed; will retry", "err", err)
+			// Starting to poll as leader: a job claimed by a process that died between
+			// claiming and publishing is PENDING with no queue row. Restore every such
+			// job (no age guard; the in-flight set excepted) before the first claim, on
+			// the claiming goroutine so none of our own claims is mid-flight.
+			if err := p.recoverOrphans(ctx); err != nil {
+				slog.Warn("restoring orphaned dispatch jobs at leader start failed; will retry", "err", err)
 				sleepCtx(ctx, p.cfg.PollInterval)
 				continue
 			}
@@ -359,13 +374,15 @@ func (p *PendingJobPoller) claimOnce(ctx context.Context) claimResult {
 }
 
 // claimHeld claims up to want rows while holding want permits; it submits the
-// dispatchable ones (each keeps a permit, released by its lane), releases the
-// DATABASE claim of the rest (held, withheld) so they are claimed again, and
-// leaves the caller to release the permits.
+// dispatchable ones (each keeps a permit, released by its lane), restores the
+// rest (held, withheld) to the queue so they are claimed again, and leaves the
+// caller to release the permits.
 func (p *PendingJobPoller) claimHeld(ctx context.Context, want int) claimResult {
 	if p.IsLeader != nil && !p.IsLeader() {
 		return claimResult{} // leadership lost while waiting for permits
 	}
+	p.claimMu.Lock()
+	defer p.claimMu.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, claimTimeout)
 	defer cancel()
 	paused, err := p.pausedIDs(ctx)
@@ -394,7 +411,7 @@ func (p *PendingJobPoller) claimHeld(ctx context.Context, want int) claimResult 
 	snap := p.inflight.snapshot()
 
 	claimStart := time.Now()
-	claims, err := p.claimRows(ctx, want, pausedIDs)
+	claims, err := p.claimRows(ctx, want, pausedIDs, p.held.active(time.Now()))
 	schedMetrics.claimDuration.Observe(time.Since(claimStart).Seconds())
 	if err != nil {
 		return claimResult{err: err}
@@ -405,6 +422,25 @@ func (p *PendingJobPoller) claimHeld(ctx context.Context, want int) claimResult 
 	schedMetrics.claimed.Add(float64(len(claims)))
 	if len(claims) >= want {
 		schedMetrics.fullBatches.Inc()
+	}
+
+	// A claim can return a job this process still has in flight: it was restored
+	// or refreshed after the copy in flight was claimed. Leave that copy alone.
+	var inFlightAgain []dispatchClaim
+	fresh := claims[:0:0]
+	for _, c := range claims {
+		if p.inflight.contains(c.id) {
+			inFlightAgain = append(inFlightAgain, c)
+			continue
+		}
+		fresh = append(fresh, c)
+	}
+	if len(inFlightAgain) > 0 {
+		p.restoreClaims(ctx, claimRefs(inFlightAgain))
+		claims = fresh
+		if len(claims) == 0 {
+			return claimResult{}
+		}
 	}
 
 	// What stays in Go is the blocked-group / BLOCK_ON_ERROR hold-back, which is
@@ -419,12 +455,27 @@ func (p *PendingJobPoller) claimHeld(ctx context.Context, want int) claimResult 
 	}
 	blocked, err := p.holdBack(ctx, candidates)
 	if err != nil {
-		p.releaseClaims(ctx, claimRowIDs(claims)) // none of them will be submitted
+		p.restoreClaims(ctx, claimRefs(claims)) // none of them will be submitted
 		return claimResult{claimed: len(claims), err: err}
 	}
 	// A FAILED/ERROR sibling (or one sitting out a retry backoff) holds back this
 	// group's BLOCK_ON_ERROR jobs; IMMEDIATE and NEXT_ON_ERROR keep flowing.
 	dispatchable := filterByDispatchMode(claims, blocked)
+	// Remember the groups just found held, so the next claims skip them instead of
+	// filling their batch with the same held rows over and over.
+	if len(dispatchable) < len(claims) {
+		kept := make(map[string]struct{}, len(dispatchable))
+		for _, c := range dispatchable {
+			kept[c.id] = struct{}{}
+		}
+		now := time.Now()
+		for _, c := range claims {
+			if _, ok := kept[c.id]; !ok && c.group != "" {
+				p.held.add(c.group, now)
+			}
+		}
+	}
+	schedMetrics.heldGroups.Set(float64(p.held.size()))
 	// A claim that excluded a doomed in-flight job of a group must not submit the
 	// group's jobs: they are behind it (see lane.go). They stay PENDING.
 	withheld := 0
@@ -443,13 +494,13 @@ func (p *PendingJobPoller) claimHeld(ctx context.Context, want int) claimResult 
 		for _, c := range submit {
 			sent[c.id] = struct{}{}
 		}
-		var back []string
+		var back []dispatchClaim
 		for _, c := range claims {
 			if _, ok := sent[c.id]; !ok {
-				back = append(back, c.id)
+				back = append(back, c)
 			}
 		}
-		p.releaseClaims(ctx, back)
+		p.restoreClaims(ctx, claimRefs(back))
 	}
 	dispatchable = submit
 	schedMetrics.withheldDoomed.Add(float64(withheld))
@@ -510,8 +561,8 @@ func (p *PendingJobPoller) laneFor(group string) int {
 
 // queryClaim is the default claimRows: the lifecycle's claim of the queue table
 // (one statement), in delivery order.
-func queryClaim(ctx context.Context, lc *dispatchjob.Lifecycle, limit int, paused []string) ([]dispatchClaim, error) {
-	rows, err := lc.ClaimQueue(ctx, limit, paused)
+func queryClaim(ctx context.Context, lc *dispatchjob.Lifecycle, limit int, paused, held []string) ([]dispatchClaim, error) {
+	rows, err := lc.ClaimQueue(ctx, limit, paused, held)
 	if err != nil {
 		return nil, err
 	}
@@ -541,48 +592,54 @@ func queryClaim(ctx context.Context, lc *dispatchjob.Lifecycle, limit int, pause
 	return claims, nil
 }
 
-func claimRowIDs(claims []dispatchClaim) []string {
-	ids := make([]string, len(claims))
-	for i, c := range claims {
-		ids[i] = c.id
-	}
-	return ids
+// claimRef names a claimed job: its id and created_at (which lets the
+// created_at-partitioned job table prune on the restore).
+type claimRef struct {
+	id        string
+	createdAt time.Time
 }
 
-// releaseClaims gives the claims of jobs this poller took and did not submit
-// back to the queue (claimed_at cleared). It retries a few times; a claim that
-// cannot be released stays claimed until the periodic stale-claim sweep (5
-// minutes) finds it. Detached from ctx: a shutdown must not strand claims.
-func (p *PendingJobPoller) releaseClaims(ctx context.Context, ids []string) {
-	if len(ids) == 0 {
+func claimRefs(claims []dispatchClaim) []claimRef {
+	refs := make([]claimRef, len(claims))
+	for i, c := range claims {
+		refs[i] = claimRef{c.id, c.createdAt}
+	}
+	return refs
+}
+
+// restoreClaims puts jobs this poller claimed and did not submit back into the
+// queue. It retries a few times; a job that cannot be restored stays PENDING
+// without a queue row until the periodic reconcile (age guard 60s) re-creates it.
+// Detached from ctx: a shutdown must not strand jobs.
+func (p *PendingJobPoller) restoreClaims(ctx context.Context, refs []claimRef) {
+	if len(refs) == 0 {
 		return
 	}
 	ctx = context.WithoutCancel(ctx)
 	var err error
 	for attempt := range releaseAttempts {
 		rctx, cancel := context.WithTimeout(ctx, finishTimeout)
-		err = p.releaseClaimRows(rctx, ids)
+		err = p.restoreClaimRows(rctx, refs)
 		cancel()
 		if err == nil {
 			return
 		}
 		time.Sleep(releaseBackoff * time.Duration(attempt+1))
 	}
-	schedMetrics.claimReleaseFailures.Add(float64(len(ids)))
-	slog.Warn("releasing the claims of unsubmitted dispatch jobs failed; the stale-claim sweep will release them",
-		"jobs", len(ids), "err", err)
+	schedMetrics.claimRestoreFailures.Add(float64(len(refs)))
+	slog.Warn("restoring the unsubmitted dispatch jobs failed; the reconcile sweep will re-queue them",
+		"jobs", len(refs), "err", err)
 }
 
-// releaseOrphanClaims is the start-of-leadership pass: every claim this process
-// does not hold in memory is released.
-func (p *PendingJobPoller) releaseOrphanClaims(ctx context.Context) error {
-	n, err := p.releaseOrphans(ctx, p.inflight.ids())
+// recoverOrphans is the start-of-leadership pass: restore the queue rows of the
+// jobs a dead claimer left PENDING with none.
+func (p *PendingJobPoller) recoverOrphans(ctx context.Context) error {
+	n, err := p.restoreOrphans(ctx, p.inflight.ids())
 	if err != nil {
 		return err
 	}
 	if n > 0 {
-		schedMetrics.staleClaimsReleased.WithLabelValues("leader_start").Add(float64(n))
-		slog.Warn("released dispatch claims left by a previous process", "count", n)
+		slog.Warn("restored dispatch jobs left without a queue row by a previous process", "count", n)
 	}
 	return nil
 }
@@ -797,4 +854,61 @@ type DispatchJobToken struct {
 	// raw and unresolved, "" when unset). Takes precedence over the
 	// subscription's at publish time (docs/spec/dispatch-job-priority.md R4).
 	Queue string
+}
+
+// Held-group memory (claimHeld): groups a claim just found held are skipped by the
+// next claims' walk for heldGroupTTL, so a batch-full of held rows at the head of
+// the order does not fill every claim and starve the groups behind it.
+var (
+	heldGroupTTL = 5 * time.Second
+	heldGroupCap = 10_000
+)
+
+type heldGroups struct {
+	mu     sync.Mutex
+	ttl    time.Duration
+	cap    int
+	expiry map[string]time.Time
+}
+
+func newHeldGroups(ttl time.Duration, capacity int) *heldGroups {
+	return &heldGroups{ttl: ttl, cap: capacity, expiry: make(map[string]time.Time)}
+}
+
+// add remembers group as held from now; over the cap the oldest entry is dropped.
+func (h *heldGroups) add(group string, now time.Time) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.expiry[group] = now.Add(h.ttl)
+	for len(h.expiry) > h.cap {
+		var oldest string
+		var at time.Time
+		for g, e := range h.expiry {
+			if oldest == "" || e.Before(at) {
+				oldest, at = g, e
+			}
+		}
+		delete(h.expiry, oldest)
+	}
+}
+
+// active lists the groups still remembered at now (never nil), forgetting the rest.
+func (h *heldGroups) active(now time.Time) []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	out := make([]string, 0, len(h.expiry))
+	for g, e := range h.expiry {
+		if !e.After(now) {
+			delete(h.expiry, g)
+			continue
+		}
+		out = append(out, g)
+	}
+	return out
+}
+
+func (h *heldGroups) size() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return len(h.expiry)
 }

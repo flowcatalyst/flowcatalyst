@@ -17,13 +17,15 @@ type fakeJob struct {
 	id, group, status, mode string
 	seq                     int32
 	ver                     int  // row version: bumped by every move, as updated_at is
-	claimed                 bool // claimed_at IS NOT NULL on the job's queue row
+	claimed                 bool // claimed: the job's queue row is deleted (the job is PENDING without a row)
 }
 
 // fakeStore stands in for msg_dispatch_queue: it answers claims the way the
-// claim statement does (unclaimed PENDING rows in (group NULLS LAST, sequence,
-// id) order, stamping them claimed), releases claims, marks rows QUEUED guarded
-// on PENDING (which leaves the queue), and records what was published, in order.
+// claim statements do (PENDING rows with a queue row, in (group NULLS LAST,
+// sequence, id) order, outside the held groups; the claim deletes the row, which
+// the fake models as claimed), restores claims (re-creates the row of a job that is
+// still PENDING), marks rows QUEUED guarded on PENDING, and records what was
+// published, in order.
 type fakeStore struct {
 	mu         sync.Mutex
 	jobs       []*fakeJob
@@ -62,8 +64,8 @@ func newFakeStore(jobs ...*fakeJob) *fakeStore {
 	return &fakeStore{jobs: jobs}
 }
 
-func (s *fakeStore) claimRows(_ context.Context, limit int, paused []string) ([]dispatchClaim, error) {
-	if paused == nil {
+func (s *fakeStore) claimRows(_ context.Context, limit int, paused, held []string) ([]dispatchClaim, error) {
+	if paused == nil || held == nil {
 		return nil, errors.New("nil exclusion array passed to the claim")
 	}
 	s.mu.Lock()
@@ -76,7 +78,7 @@ func (s *fakeStore) claimRows(_ context.Context, limit int, paused []string) ([]
 		if len(out) == limit {
 			break
 		}
-		if j.status != "PENDING" || j.claimed {
+		if j.status != "PENDING" || j.claimed || slices.Contains(held, j.group) {
 			continue
 		}
 		j.claimed = true
@@ -95,11 +97,15 @@ func (s *fakeStore) claimRows(_ context.Context, limit int, paused []string) ([]
 	return out, nil
 }
 
-// releaseClaims clears the claim of the named jobs.
-func (s *fakeStore) releaseClaims(_ context.Context, ids []string) error {
+// releaseClaims restores the named jobs to the queue (only a job still PENDING).
+func (s *fakeStore) releaseClaims(_ context.Context, refs []claimRef) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.releases = append(s.releases, append([]string(nil), ids...))
+	ids := make([]string, len(refs))
+	for i, r := range refs {
+		ids[i] = r.id
+	}
+	s.releases = append(s.releases, ids)
 	if s.releaseErr != nil {
 		if err := s.releaseErr(len(s.releases)); err != nil {
 			return err
@@ -107,7 +113,7 @@ func (s *fakeStore) releaseClaims(_ context.Context, ids []string) error {
 	}
 	for _, id := range ids {
 		for _, j := range s.jobs {
-			if j.id == id {
+			if j.id == id && j.status == "PENDING" {
 				j.claimed = false
 			}
 		}
@@ -115,7 +121,7 @@ func (s *fakeStore) releaseClaims(_ context.Context, ids []string) error {
 	return nil
 }
 
-// releaseOrphans clears every claim not in excluding.
+// releaseOrphans restores every PENDING job without a queue row that is not in excluding.
 func (s *fakeStore) releaseOrphans(_ context.Context, excluding []string) (int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -125,7 +131,7 @@ func (s *fakeStore) releaseOrphans(_ context.Context, excluding []string) (int64
 	}
 	var n int64
 	for _, j := range s.jobs {
-		if _, keep := ex[j.id]; j.claimed && !keep {
+		if _, keep := ex[j.id]; j.claimed && !keep && j.status == "PENDING" {
 			j.claimed = false
 			n++
 		}
@@ -233,8 +239,8 @@ func newTestEngine(cfg Config, s *fakeStore) *PendingJobPoller {
 	p.poolCode = func(context.Context, string, string) string { return "" }
 	p.publish = s.publish
 	p.markQueued = s.markQueued
-	p.releaseClaimRows = s.releaseClaims
-	p.releaseOrphans = s.releaseOrphans
+	p.restoreClaimRows = s.releaseClaims
+	p.restoreOrphans = s.releaseOrphans
 	return p
 }
 
