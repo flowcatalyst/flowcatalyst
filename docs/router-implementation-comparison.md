@@ -1064,3 +1064,94 @@ one group is 25 calls).
 - Rust: the Postgres queue publisher still inserts one row per job. Rust's Docker integration
   tests were not run, so its changes are covered by unit tests with fakes only.
 - Java: `PoolCodeResolver` is still built twice.
+
+## 12. The scheduler redesign (2026-10-04 to 2026-10-06)
+
+Section 11 lifted the scheduler from about 100 jobs/s to about 20,000. This section records what
+followed: four designs in three days, one of them built and abandoned, and the state all three
+implementations ended in. Everything was measured on `bench/router/sched.sh` (in the Java
+repository) against an in-memory SQS fake, so the figures show the scheduler and Postgres, not AWS.
+
+### 12.1 The designs, in order
+
+Ungrouped jobs per second, warm, 2 CPUs.
+
+| Design | Go | Rust | Java | Outcome |
+|---|---|---|---|---|
+| Before section 11 | 100 | 100 | 96 | one claim of 100 per second |
+| Single loop, fixed (section 11) | 17.8k | 22.3k | 23.5k | serial round trips are the limit |
+| Poller + ten dispatcher lanes, claim from the job table with an in-memory in-flight exclusion | 46.7k | 65.1k, or 1.5k on a bad plan | 56.7k | fast, but three query plans could go bad |
+| Queue table `msg_dispatch_queue` (claimed_at, then two-statement delete-at-claim) | 36.0k after a 47 s stall | hung | 9.5k, decaying | **abandoned** |
+| Final: lanes, claim from the job table, plain index, pinned plans | 42–43k | 48–50k | 50–54k | current |
+
+Grouped (1,000 groups of 100), final design: Go 17.1–17.3k, Rust 20.7–20.9k, Java 22.5–22.6k.
+Peak memory: Go 93–138 MB, Rust 112–159 MB, Java 434–929 MB. A burst of 200,000 jobs into an idle
+system whose statistics say nothing is pending: 49.2k / 49.4k / 55.1k from the first seconds.
+Latency at 2,000 jobs/s is the same in all three (median about 0.52 s, p99 about 1.0 s) because it
+is the one-second poll interval, not the implementation. Postgres is the limit for all three; none
+used a full core.
+
+### 12.2 What is in the final design
+
+- **A poller and ten dispatcher lanes.** The poller takes permits from a buffer of 1,000, claims,
+  and hands each job to a lane chosen by hashing its group, so a group lives in one lane and stays
+  in order. Lanes publish and mark `QUEUED` independently. No transaction or row lock is held
+  across a publish.
+- **The claim is one plain ordered `SELECT`** on `idx_dispatch_jobs_status_group (status,
+  message_group, sequence, created_at, id)`, excluding paused subscriptions, groups remembered as
+  held, and the in-memory in-flight ids. Nothing is written at claim time; a job that is not
+  published is simply still `PENDING`, so a crash needs no recovery.
+- **No partial index is used by the dispatch path.** The three partial indexes were replaced by
+  that one ordinary index.
+- **One lifecycle module owns `msg_dispatch_jobs.status`** in each implementation: every insert
+  and every status change goes through it, each transition names the statuses it may move from,
+  and a test fails the build if any other production file writes the table. Before this there
+  were 12–15 separate status-writing statements in 2–6 files per implementation, most with no
+  check of the current status.
+- **The scheduler has its own connection pool** (dispatchers + 2), with
+  `plan_cache_mode = force_custom_plan` and `enable_sort = off` set on that pool only.
+- **Held groups do not starve the claim**: a group found held is remembered for five seconds and
+  skipped by the claim.
+- **Stale `QUEUED` jobs are recovered after 15 minutes** in all three (Java had no such sweep).
+
+### 12.3 What went wrong, and what each failure taught
+
+| Failure | Found by | Cause | Rule taken from it |
+|---|---|---|---|
+| Java 4× slower than Go on the single loop | rig, then captured plans | the query builder sent `status` as a bind value; with stale statistics the claim read and sorted every pending row | SQL as text on hot paths; test the plan |
+| Later job of a group could overtake a dropped one; then a livelock in the first fix | Rust (reasoning, then a stress test) | faults in the ordering rule as specified | stress tests with real threads; three implementations check each other |
+| `id <> ALL($param)` quadratic (11 ms at 1,000 ids, 155 ms at 5,000) | plan experiment | a parameter array is compared linearly per row under a generic plan | fresh plans on the scheduler's pool |
+| Queue table: Go crawled, Java and Rust stopped publishing after a burst into a drained queue | rig | a small table that swings between empty and full is the planner's worst case; every statement joining to it scanned it when statistics said it was empty | do not put a small bursty table on the hot path; claim from the large table |
+| Mark-`QUEUED` took 6 s although pinned by primary key | Go's plan tests | with statistics saying no row is `PENDING`, the planner preferred the status index | on statements pinned by key the status guard is written `status \|\| '' = '…'` so it cannot be an index condition |
+| Job marked `QUEUED` with no message after a concurrent reschedule (all three) | Rust, two-connection test | the version check lived in a sub-query; after a row-lock wait Postgres re-checks only the `UPDATE`'s own `WHERE` | a guard that must hold on the current row belongs in the `UPDATE`'s `WHERE` |
+| Reaper reset a job that was being delivered (all three) | Java and Go, checking for the same class | the same, for the sibling's age test | the same |
+| Order violation after a release (Go, Java; latent in Rust) | Go's stress test | a lane removed a newer claim's in-flight entry by id | a lane removes only the entry of its own claim |
+
+Two failures were found by no implementation's tests, only by the rig: the queue-table stall and
+Rust hanging under a steady feed. Each implementation now has plan tests in the bad-statistics
+states and a concurrency test at real width (ten lanes, the poller and callback workers on 200,000
+pending rows).
+
+### 12.4 The Go router and garbage collection
+
+More GC memory does not close Go's router gap: at 1 / 2 / 4 CPUs the default (target 200) gives
+17.9k / 30.4–30.8k / 40.4–44.4k messages/s and "memory limit only" gives 19.1k / 29.8k / 45.8k, for
+three times the memory (1.8 GB against 0.6 GB). GC costs Go 4–8 % of CPU. The gap to Rust is a
+constant factor of about 1.7 at every core count; it has not been profiled.
+
+### 12.5 Commits
+
+| | Final design | Correctness fixes after it |
+|---|---|---|
+| Go | `ef5423a`, `6ed50ef` (migration 068) | `8217571` (version and liveness re-check), `4e047d4` (test isolation), `b6d2765` (function-runner race, pre-existing) |
+| Rust | `02244110`, `d6bbeca0` (migration 066) | `76f603f4` (reaper) |
+| Java | `c8adb759`..`683b43e9` (V23) | `e6e87bf3`, `19ac1ac5` |
+
+Rig: `bench/router/sched.sh` knobs `WARMUP_N`, `WARMUP_MAINT`, `PG_STAT`, `PG_EXPLAIN`,
+`LAT_RATE`, `CPUS`; results under `bench/router/results/sched-f-*` and `g-go-gc*` (not committed).
+
+### 12.6 Not measured
+
+Real SQS; router tail latency; held groups under load (nothing in the rig's workloads fails or is
+scheduled ahead); a burst that coincides with an autoanalyze; anything above about one million
+pending rows; a leader change while publishing.
