@@ -11,6 +11,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
@@ -26,6 +27,43 @@ import (
 type State struct {
 	Repo *eventtype.Repository
 	UoW  *usecasepgx.UnitOfWork
+	// Apps resolves an event type's application code to its id, for confining
+	// application service accounts to their own applications' event types.
+	Apps ApplicationLookup
+}
+
+// ApplicationLookup is the one application read the event-type handlers need.
+type ApplicationLookup interface {
+	FindByCode(ctx context.Context, code string) (*application.Application, error)
+}
+
+// appAccess reports whether the principal is bound to the application with the
+// given code. Results are remembered in seen for the life of one request, so a
+// list resolves each application once. An unknown application is not accessible.
+func (s *State) appAccess(ctx context.Context, ac *auth.AuthContext, code string, seen map[string]bool) (bool, error) {
+	if ok, done := seen[code]; done {
+		return ok, nil
+	}
+	app, err := s.Apps.FindByCode(ctx, code)
+	if err != nil {
+		return false, usecase.Internal("REPO", "find application by code failed", err)
+	}
+	ok := app != nil && ac.CanAccessApplication(string(app.ID))
+	seen[code] = ok
+	return ok, nil
+}
+
+// requireEventTypeAppAccess refuses an application-confined principal an event
+// type that belongs to an application it is not bound to.
+func (s *State) requireEventTypeAppAccess(ctx context.Context, ac *auth.AuthContext, et *eventtype.EventType) error {
+	ok, err := s.appAccess(ctx, ac, et.Application, map[string]bool{})
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return httperror.Forbidden("No access to this event type")
+	}
+	return nil
 }
 
 const tag = "event-types"
@@ -78,6 +116,21 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[EventTy
 		return nil, usecase.Internal("REPO", "find_with_filters failed", err)
 	}
 	visible := auth.FilterClientScoped(ac, rows, func(et *eventtype.EventType) *string { return ids.StringPtr(et.ClientID) })
+	if !auth.CanReadAllEventTypes(ac) {
+		// An application service account sees only its own applications' event types.
+		seen := map[string]bool{}
+		kept := visible[:0:0]
+		for i := range visible {
+			ok, err := s.appAccess(ctx, ac, visible[i].Application, seen)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
+				kept = append(kept, visible[i])
+			}
+		}
+		visible = kept
+	}
 	out := apicommon.MapSlice(visible, fromEntity)
 	return &apicommon.Out[EventTypeListResponse]{Body: EventTypeListResponse{Items: out}}, nil
 }
@@ -101,6 +154,11 @@ func (s *State) getByID(ctx context.Context, in *getByIDInput) (*apicommon.Out[E
 	if et.ClientID != nil && !ac.CanAccessClient(string(*et.ClientID)) {
 		return nil, httperror.Forbidden("No access to this event type")
 	}
+	if !auth.CanReadAllEventTypes(ac) {
+		if err := s.requireEventTypeAppAccess(ctx, ac, et); err != nil {
+			return nil, err
+		}
+	}
 	return &apicommon.Out[EventTypeResponse]{Body: fromEntity(et)}, nil
 }
 
@@ -122,6 +180,11 @@ func (s *State) getByCode(ctx context.Context, in *getByCodeInput) (*apicommon.O
 	}
 	if et.ClientID != nil && !ac.CanAccessClient(string(*et.ClientID)) {
 		return nil, httperror.Forbidden("No access to this event type")
+	}
+	if !auth.CanReadAllEventTypes(ac) {
+		if err := s.requireEventTypeAppAccess(ctx, ac, et); err != nil {
+			return nil, err
+		}
 	}
 	return &apicommon.Out[EventTypeResponse]{Body: fromEntity(et)}, nil
 }
@@ -174,8 +237,22 @@ type addSchemaInput struct {
 }
 
 func (s *State) addSchema(ctx context.Context, in *addSchemaInput) (*apicommon.Out[EventTypeResponse], error) {
-	if err := auth.CanWriteEventTypes(auth.FromContext(ctx)); err != nil {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanAddEventTypeSchema(ac); err != nil {
 		return nil, err
+	}
+	if !auth.CanWriteAllEventTypes(ac) {
+		// An application service account may version only its own applications' event types.
+		target, err := s.Repo.FindByID(ctx, in.ID)
+		if err != nil {
+			return nil, usecase.Internal("REPO", "find_by_id failed", err)
+		}
+		if target == nil {
+			return nil, httperror.NotFound("EventType", in.ID)
+		}
+		if err := s.requireEventTypeAppAccess(ctx, ac, target); err != nil {
+			return nil, err
+		}
 	}
 	ec := auth.NewExecutionContext(ctx)
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.AddSchema(s.Repo), in.Body.toCommand(in.ID), ec); err != nil {

@@ -319,6 +319,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		eventtypeapi.Register(humaAPI, &eventtypeapi.State{
 			Repo: repos.eventTypeRepo,
 			UoW:  uow,
+			Apps: repos.applicationRepo,
 		})
 
 		functionapi.Register(humaAPI, &functionapi.State{

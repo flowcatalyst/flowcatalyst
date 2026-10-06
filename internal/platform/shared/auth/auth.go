@@ -127,6 +127,7 @@ const (
 	// accounts so an application can self-register its own resources via
 	// the /api/applications/{appCode}/{resource}/sync endpoints. They sit
 	// in the dedicated application-service context (not messaging/iam).
+	permAppSvcEventTypeView      = "platform:application-service:event-type:view"
 	permAppSvcEventTypeCreate    = "platform:application-service:event-type:create"
 	permAppSvcEventTypeUpdate    = "platform:application-service:event-type:update"
 	permAppSvcEventTypeDelete    = "platform:application-service:event-type:delete"
@@ -514,7 +515,37 @@ func joinPerms(p []string) string {
 }
 
 // ── EventType permission checks ───────────────────────────────────────────
-func CanReadEventTypes(a *AuthContext) error   { return requirePermission(a, permEventTypeView) }
+// CanReadEventTypes is the coarse guard on the event-type read endpoints.
+// Admits the messaging view permission, and the application-service view an
+// SDK service account holds. A caller admitted only by the second is confined
+// by the handler to the event types of the applications it is bound to.
+func CanReadEventTypes(a *AuthContext) error {
+	return requireAny(a, permEventTypeView, permAppSvcEventTypeView)
+}
+
+// CanReadAllEventTypes reports whether the principal reads event types without
+// the per-application confinement (it holds the messaging view permission).
+func CanReadAllEventTypes(a *AuthContext) bool {
+	return a != nil && a.HasPermission(permEventTypeView)
+}
+
+// CanAddEventTypeSchema guards adding a schema version to an event type.
+// Admits the messaging write permissions, and the application-service
+// create/update an SDK service account holds (the SDK pushes its event
+// schemas this way). A caller admitted only by the latter is confined by the
+// handler to the event types of the applications it is bound to.
+func CanAddEventTypeSchema(a *AuthContext) error {
+	return requireAny(a,
+		permEventTypeCreate, permEventTypeUpdate, permEventTypeDelete,
+		permAppSvcEventTypeCreate, permAppSvcEventTypeUpdate)
+}
+
+// CanWriteAllEventTypes reports whether the principal writes event types
+// without the per-application confinement.
+func CanWriteAllEventTypes(a *AuthContext) bool {
+	return a != nil && slices.ContainsFunc(
+		[]string{permEventTypeCreate, permEventTypeUpdate, permEventTypeDelete}, a.HasPermission)
+}
 func CanCreateEventTypes(a *AuthContext) error { return requirePermission(a, permEventTypeCreate) }
 func CanUpdateEventTypes(a *AuthContext) error { return requirePermission(a, permEventTypeUpdate) }
 func CanDeleteEventTypes(a *AuthContext) error { return requirePermission(a, permEventTypeDelete) }
