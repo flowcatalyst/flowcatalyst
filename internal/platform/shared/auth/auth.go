@@ -142,6 +142,7 @@ const (
 	permAppSvcConnectionDelete   = "platform:application-service:connection:delete"
 	permAppSvcScheduledJobSync   = "platform:application-service:scheduled-job:sync"
 	permAppSvcDocsSync           = "platform:application-service:docs:sync"
+	permAppSvcApplicationView    = "platform:application-service:application:view"
 	// Developer (application OpenAPI documents)
 	permAppOpenApiSync   = "platform:developer:application-openapi:sync"
 	permAppOpenApiManage = "platform:developer:application-openapi:manage"
@@ -592,7 +593,35 @@ func CanWriteProcesses(a *AuthContext) error {
 }
 
 // ── Application permissions ──────────────────────────────────────────────
-func CanReadApplications(a *AuthContext) error { return requirePermission(a, permApplicationView) }
+// CanReadApplications is the coarse guard on the application read endpoints.
+// Admits the admin view permission, and the application-service view an SDK
+// service account holds. The second is a narrower grant: a caller admitted
+// only by it must also pass CanReadApplication for the application in hand.
+func CanReadApplications(a *AuthContext) error {
+	return requireAny(a, permApplicationView, permAppSvcApplicationView)
+}
+
+// CanReadAllApplications reports whether the principal may read applications
+// without the per-application confinement, i.e. it holds the admin view
+// permission. List endpoints use it to decide whether to filter.
+func CanReadAllApplications(a *AuthContext) bool {
+	return a != nil && a.HasPermission(permApplicationView)
+}
+
+// CanReadApplication is the resource-level rule for one application. The admin
+// view permission reads any application, exactly as before the
+// application-service grant existed. A principal that holds only the
+// application-service view may read the applications it is bound to and no
+// others (CanAccessApplication).
+func CanReadApplication(a *AuthContext, applicationID string) error {
+	if err := CanReadApplications(a); err != nil {
+		return err
+	}
+	if CanReadAllApplications(a) || a.CanAccessApplication(applicationID) {
+		return nil
+	}
+	return usecase.Authorization("APPLICATION_ACCESS_REQUIRED", "not authorised for this application")
+}
 
 func CanCreateApplications(a *AuthContext) error { return requirePermission(a, permApplicationCreate) }
 

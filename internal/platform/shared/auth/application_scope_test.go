@@ -74,3 +74,52 @@ func TestParseApplicationsClaim(t *testing.T) {
 		})
 	}
 }
+
+// The application read rule: the admin view permission reads any application;
+// the application-service view reads only the applications the principal is
+// bound to.
+func TestCanReadApplication(t *testing.T) {
+	const adminView = "platform:admin:application:view"
+	const appSvcView = "platform:application-service:application:view"
+	cases := []struct {
+		name string
+		ac   *AuthContext
+		app  string
+		ok   bool
+	}{
+		{"nil context", nil, "app_1", false},
+		{"no permission", &AuthContext{AllApplications: true}, "app_1", false},
+		{"admin view reads any, even when application-scoped",
+			&AuthContext{Permissions: []string{adminView}, Applications: []string{"app_1"}}, "app_2", true},
+		{"super-admin wildcard reads any",
+			&AuthContext{Permissions: []string{"platform:*:*:*"}}, "app_2", true},
+		{"app-service view reads its own application",
+			&AuthContext{Permissions: []string{appSvcView}, Applications: []string{"app_1"}}, "app_1", true},
+		{"app-service view is refused another application",
+			&AuthContext{Permissions: []string{appSvcView}, Applications: []string{"app_1"}}, "app_2", false},
+		{"app-service view with no binding reads nothing",
+			&AuthContext{Permissions: []string{appSvcView}}, "app_1", false},
+		{"app-service view at anchor tier is still confined",
+			&AuthContext{Scope: ScopeAnchor, Permissions: []string{appSvcView}, Applications: []string{"app_1"}}, "app_2", false},
+		{"app-service view with all-applications reads any",
+			&AuthContext{Permissions: []string{appSvcView}, AllApplications: true}, "app_9", true},
+	}
+	for _, c := range cases {
+		err := CanReadApplication(c.ac, c.app)
+		if (err == nil) != c.ok {
+			t.Errorf("%s: CanReadApplication(%q) error = %v, want ok=%v", c.name, c.app, err, c.ok)
+		}
+	}
+}
+
+func TestCanReadApplicationsCoarseGuard(t *testing.T) {
+	if err := CanReadApplications(&AuthContext{Permissions: []string{"platform:application-service:application:view"}}); err != nil {
+		t.Errorf("application-service view should pass the coarse guard: %v", err)
+	}
+	if err := CanReadApplications(&AuthContext{Permissions: []string{"platform:application-service:role:view"}}); err == nil {
+		t.Error("an unrelated application-service permission must not pass the coarse guard")
+	}
+	if CanReadAllApplications(&AuthContext{Permissions: []string{"platform:application-service:application:view"}}) {
+		t.Error("the application-service view must not count as reading all applications")
+	}
+}

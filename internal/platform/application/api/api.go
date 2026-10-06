@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"slices"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -77,13 +78,19 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[Applica
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_with_filters failed", err)
 	}
+	if !auth.CanReadAllApplications(ac) {
+		// An application service account sees only the applications it is bound to.
+		rows = slices.DeleteFunc(rows, func(a application.Application) bool {
+			return !ac.CanAccessApplication(string(a.ID))
+		})
+	}
 	out := apicommon.MapSlice(rows, fromEntity)
 	return &apicommon.Out[ApplicationListResponse]{Body: ApplicationListResponse{Applications: out, Total: len(out)}}, nil
 }
 
 func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ApplicationResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanReadApplications(ac); err != nil {
+	if err := auth.CanReadApplication(ac, in.ID); err != nil {
 		return nil, err
 	}
 	a, err := s.Repo.FindByID(ctx, in.ID)
@@ -117,6 +124,9 @@ func (s *State) getByCode(ctx context.Context, in *getByCodeInput) (*apicommon.O
 	}
 	if a == nil {
 		return nil, httperror.NotFound("Application", in.Code)
+	}
+	if err := auth.CanReadApplication(ac, string(a.ID)); err != nil {
+		return nil, err
 	}
 	return &apicommon.Out[ApplicationResponse]{Body: fromEntity(a)}, nil
 }
@@ -224,7 +234,7 @@ func (s *State) attachServiceAccount(ctx context.Context, in *attachSAInput) (*a
 
 func (s *State) listClientConfigs(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ClientConfigListResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanReadApplications(ac); err != nil {
+	if err := auth.CanReadApplication(ac, in.ID); err != nil {
 		return nil, err
 	}
 	rows, err := s.ClientConfigRepo.FindByApplication(ctx, in.ID)
@@ -377,7 +387,7 @@ func (s *State) provisionLoginClient(ctx context.Context, in *provisionLoginClie
 
 func (s *State) listApplicationRoles(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ApplicationRolesResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanReadApplications(ac); err != nil {
+	if err := auth.CanReadApplication(ac, in.ID); err != nil {
 		return nil, err
 	}
 	if s.Roles == nil {
@@ -398,7 +408,7 @@ type singleConfigInput struct {
 
 func (s *State) getClientConfig(ctx context.Context, in *singleConfigInput) (*apicommon.Out[ClientConfigResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanReadApplications(ac); err != nil {
+	if err := auth.CanReadApplication(ac, string(in.ID)); err != nil {
 		return nil, err
 	}
 	cfg, err := s.ClientConfigRepo.FindByApplicationAndClient(ctx, string(in.ID), in.ClientID)
