@@ -247,6 +247,9 @@ var permsApplicationService = []string{
 	// roles). Confined to the applications the service account is bound to by
 	// auth.CanReadApplication; it is not a grant to read every application.
 	"platform:application-service:application:view",
+	// Publish its own application's OpenAPI document (the SDK definitions
+	// sync). The handler confines it to the applications it is bound to.
+	"platform:application-service:application-openapi:sync",
 }
 
 // Wildcard.

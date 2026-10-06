@@ -123,3 +123,17 @@ func TestCanReadApplicationsCoarseGuard(t *testing.T) {
 		t.Error("the application-service view must not count as reading all applications")
 	}
 }
+
+// The SDK definitions sync publishes an application's OpenAPI document as the
+// application's own service account.
+func TestCanSyncApplicationOpenAPIAdmitsApplicationService(t *testing.T) {
+	if err := CanSyncApplicationOpenAPI(&AuthContext{Permissions: []string{"platform:application-service:application-openapi:sync"}}); err != nil {
+		t.Errorf("application-service openapi sync should pass the guard: %v", err)
+	}
+	if err := CanSyncApplicationOpenAPI(&AuthContext{Permissions: []string{"platform:developer:application-openapi:sync"}}); err != nil {
+		t.Errorf("developer openapi sync should still pass the guard: %v", err)
+	}
+	if err := CanSyncApplicationOpenAPI(&AuthContext{Permissions: []string{"platform:application-service:application:view"}}); err == nil {
+		t.Error("the application view permission must not admit an openapi sync")
+	}
+}

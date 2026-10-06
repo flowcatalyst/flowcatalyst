@@ -143,6 +143,7 @@ const (
 	permAppSvcScheduledJobSync   = "platform:application-service:scheduled-job:sync"
 	permAppSvcDocsSync           = "platform:application-service:docs:sync"
 	permAppSvcApplicationView    = "platform:application-service:application:view"
+	permAppSvcAppOpenApiSync     = "platform:application-service:application-openapi:sync"
 	// Developer (application OpenAPI documents)
 	permAppOpenApiSync   = "platform:developer:application-openapi:sync"
 	permAppOpenApiManage = "platform:developer:application-openapi:manage"
@@ -703,12 +704,13 @@ func CanSyncDispatchPools(a *AuthContext) error {
 	return requireAny(a, permDispatchPoolSync, permDispatchPoolManage)
 }
 
-// CanSyncApplicationOpenAPI guards POST /api/applications/{appCode}/openapi/sync
-// (developer sync/manage). The
-// handler additionally enforces a resource-level guard (anchor, super-admin,
-// or the application's own bound service account).
+// CanSyncApplicationOpenAPI guards POST /api/applications/{appCode}/openapi/sync.
+// Admits developer sync/manage plus the application-service sync permission an
+// SDK service account holds. Per-application scope is enforced by the handler
+// (requireAppAccess), so a service account can publish only the document of an
+// application it is bound to.
 func CanSyncApplicationOpenAPI(a *AuthContext) error {
-	return requireAny(a, permAppOpenApiSync, permAppOpenApiManage)
+	return requireAny(a, permAppOpenApiSync, permAppOpenApiManage, permAppSvcAppOpenApiSync)
 }
 
 // CanManageOwnDeveloperCredential guards the self-service developer
