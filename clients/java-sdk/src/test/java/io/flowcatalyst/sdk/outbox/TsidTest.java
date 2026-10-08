@@ -13,7 +13,6 @@ import org.junit.jupiter.api.Test;
 class TsidTest {
 
     private static final String ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-    private static final long CUSTOM_EPOCH = 1577836800000L;
 
     @Test
     void generatesThirteenCharCrockford() {
@@ -32,9 +31,10 @@ class TsidTest {
         for (char c : tsid.toCharArray()) {
             value = (value << 5) | ALPHABET.indexOf(c);
         }
-        // Small slack after: sequence borrowing can nudge the embedded
-        // millisecond ahead under bursts.
-        long timestamp = (value >>> 22) + CUSTOM_EPOCH;
+        // Upper 42 bits are milliseconds since the Unix epoch (platform Go
+        // layout). Small slack after: sequence borrowing can nudge the
+        // embedded millisecond ahead under bursts.
+        long timestamp = value >>> 22;
         assertTrue(timestamp >= before && timestamp <= after + 50,
                 "decoded " + timestamp + " outside [" + before + ", " + after + "]");
     }

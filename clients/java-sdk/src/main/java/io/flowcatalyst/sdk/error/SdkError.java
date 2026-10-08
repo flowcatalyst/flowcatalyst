@@ -1,6 +1,6 @@
 package io.flowcatalyst.sdk.error;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -77,12 +77,12 @@ public sealed interface SdkError {
     /**
      * One or more parts of a client-side, multi-step operation failed —
      * distinct from every variant above, each of which describes ONE failed
-     * HTTP call. {@code message} names every failure. Used by {@code
-     * io.flowcatalyst.sdk.sync.DefinitionSynchronizer} (via {@code
-     * DefinitionSyncException}, a {@link io.flowcatalyst.sdk.error.FlowCatalystException}
-     * subclass) when syncing several categories/scopes and some — but not
-     * necessarily all — of them failed; the exception's typed accessors
-     * carry whatever DID complete.
+     * HTTP call. {@code message} names every failure. Thrown by {@link
+     * io.flowcatalyst.sdk.sync.DefinitionSyncException} (a {@link
+     * FlowCatalystException} subclass) when {@link
+     * io.flowcatalyst.sdk.sync.DefinitionSynchronizer} syncs several
+     * categories/scopes and some — but not necessarily all — of them fail;
+     * the exception's typed accessors carry whatever DID sync.
      */
     record PartialFailure(String message) implements SdkError {}
 

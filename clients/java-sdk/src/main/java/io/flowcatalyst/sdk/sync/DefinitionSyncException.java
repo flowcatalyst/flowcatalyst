@@ -7,29 +7,28 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Thrown by {@link DefinitionSynchronizer#sync}, {@link
- * DefinitionSynchronizer#syncAll} and {@link DefinitionSynchronizer#syncGrouped}
- * when ANY category of ANY application they synced came back {@link
- * Category.Failed} — a duplicate code, an unresolvable subscription target,
- * a connection-sync failure that skipped its subscriptions, or a caught HTTP
- * failure. Before this exception existed, those cases returned normally with
- * a {@code Category.Failed} buried in the result, so a caller that doesn't
- * inspect every category (e.g. a deploy step relying on "no exception means
- * it worked") would report success while part of the sync silently did not
- * happen. This exception makes that impossible to miss, while still
- * preserving whatever DID sync: exactly one of {@link #result()}, {@link
- * #results()} or {@link #resultsByApplication()} is non-null, matching
- * whichever method threw.
- *
- * <p>Every application/scope that COULD run still ran before this is thrown
- * — {@link DefinitionSynchronizer#syncAll} and {@link
- * DefinitionSynchronizer#syncGrouped} process every set/application first and
- * throw once at the end, rather than stopping at the first one with a
- * failure (a genuinely uncaught exception from a category that does not
- * catch its own HTTP failures — e.g. roles, event types — still propagates
- * immediately and stops the run, exactly as it always has).
- */
+/// Thrown by [DefinitionSynchronizer#sync], [DefinitionSynchronizer#syncAll]
+/// and [DefinitionSynchronizer#syncGrouped] when ANY category of ANY
+/// application they synced came back [Category.Failed] — a duplicate code
+/// within one sync scope, or a connection sync failure that skipped its
+/// scope's subscriptions. Before this exception existed, that case would
+/// have returned normally with a `Category.Failed` buried in the result, so
+/// a caller that doesn't inspect every category (a deploy step relying on
+/// "no exception means it worked") would report success while part of the
+/// sync silently did not happen. This exception makes that impossible to
+/// miss, while still preserving whatever DID sync: exactly one of
+/// [#result()], [#results()] or [#resultsByApplication()] is non-null,
+/// matching whichever method threw.
+///
+/// Every application/scope that COULD run still ran before this is thrown —
+/// [DefinitionSynchronizer#syncAll] and [DefinitionSynchronizer#syncGrouped]
+/// process every set/application first and throw once at the end, rather
+/// than stopping at the first one with a failure. A genuinely uncaught
+/// exception from a category that does not catch its own HTTP failures
+/// (roles, event types, dispatch pools, principals, processes, scheduled
+/// jobs, OpenAPI) still propagates immediately and stops the run, exactly as
+/// it always has — only connections and subscriptions collect their own
+/// failures into `Category.Failed`.
 public final class DefinitionSyncException extends FlowCatalystException {
 
     private final transient SyncResult result;
@@ -45,40 +44,31 @@ public final class DefinitionSyncException extends FlowCatalystException {
         this.resultsByApplication = resultsByApplication;
     }
 
-    /**
-     * The partial result of the {@link DefinitionSynchronizer#sync} call
-     * that threw this. Null when thrown by {@code syncAll}/{@code
-     * syncGrouped} instead — see {@link #results()} / {@link
-     * #resultsByApplication()}.
-     */
+    /// The partial result of the [DefinitionSynchronizer#sync] call that
+    /// threw this. Null when thrown by `syncAll`/`syncGrouped` instead —
+    /// see [#results()] / [#resultsByApplication()].
     public SyncResult result() {
         return result;
     }
 
-    /**
-     * The partial, in-order results of the {@link
-     * DefinitionSynchronizer#syncAll} call that threw this — including
-     * every set that synced successfully before/after the failing one(s).
-     * Null when thrown by {@code sync}/{@code syncGrouped} instead.
-     */
+    /// The partial, in-order results of the [DefinitionSynchronizer#syncAll]
+    /// call that threw this — including every set that synced successfully
+    /// before/after the failing one(s). Null when thrown by `sync`/
+    /// `syncGrouped` instead.
     public List<SyncResult> results() {
         return results;
     }
 
-    /**
-     * The partial results of the {@link DefinitionSynchronizer#syncGrouped}
-     * call that threw this, keyed by application code — including every
-     * application that synced successfully. Null when thrown by {@code
-     * sync}/{@code syncAll} instead.
-     */
+    /// The partial results of the [DefinitionSynchronizer#syncGrouped] call
+    /// that threw this, keyed by application code — including every
+    /// application that synced successfully. Null when thrown by `sync`/
+    /// `syncAll` instead.
     public Map<String, SyncResult> resultsByApplication() {
         return resultsByApplication;
     }
 
-    /**
-     * Returns {@code result} unchanged if every category synced or was
-     * skipped; throws naming every failed category and its error otherwise.
-     */
+    /// Returns `result` unchanged if every category synced or was skipped;
+    /// throws naming every failed category and its error otherwise.
     static SyncResult throwIfFailed(SyncResult result) {
         List<String> failures = describeFailures(result.applicationCode(), result);
         if (!failures.isEmpty()) {
@@ -87,11 +77,9 @@ public final class DefinitionSyncException extends FlowCatalystException {
         return result;
     }
 
-    /**
-     * Returns {@code results} unchanged if every application's every
-     * category synced or was skipped; throws naming every failure across
-     * every application otherwise.
-     */
+    /// Returns `results` unchanged if every application's every category
+    /// synced or was skipped; throws naming every failure across every
+    /// application otherwise.
     static List<SyncResult> throwIfAnyFailed(List<SyncResult> results) {
         List<String> failures = new ArrayList<>();
         for (SyncResult result : results) {
@@ -103,11 +91,9 @@ public final class DefinitionSyncException extends FlowCatalystException {
         return results;
     }
 
-    /**
-     * Returns {@code results} unchanged if every application's every
-     * category synced or was skipped; throws naming every failure across
-     * every application otherwise.
-     */
+    /// Returns `results` unchanged if every application's every category
+    /// synced or was skipped; throws naming every failure across every
+    /// application otherwise.
     static Map<String, SyncResult> throwIfAnyFailed(Map<String, SyncResult> results) {
         List<String> failures = new ArrayList<>();
         results.forEach((app, result) -> failures.addAll(describeFailures(app, result)));
@@ -121,7 +107,7 @@ public final class DefinitionSyncException extends FlowCatalystException {
         return "Definition sync had failures — " + String.join("; ", failures);
     }
 
-    /** {@code "application \"<app>\" <category>: <error>"} for every failed category of one result. */
+    /// `"application "<app>" <category>: <error>"` for every failed category of one result.
     private static List<String> describeFailures(String applicationCode, SyncResult result) {
         List<String> failures = new ArrayList<>();
         describeIfFailed(failures, applicationCode, "roles", result.roles());

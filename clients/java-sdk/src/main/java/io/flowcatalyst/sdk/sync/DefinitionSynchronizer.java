@@ -28,31 +28,36 @@ import java.util.regex.Pattern;
  * category sync is an independent HTTP call; a failure in one does NOT roll
  * back earlier successes.
  *
- * <p>Connections and subscriptions are additionally scoped by client: the
- * platform treats each {@code (application, client)} sync call as the
- * COMPLETE list for that scope and, with {@code removeUnlisted}, deletes
- * everything else in it. A {@link DefinitionSet} may therefore contain rows
- * for several clients (via each row's own {@code client}, or the whole set's
- * {@link DefinitionSet#forClient}); they are grouped into one platform call
- * per distinct client — global first — connections before subscriptions
- * within each. If a scope's connection sync fails, that scope's subscription
- * sync is skipped and reported as an error rather than sent as a request
- * that cannot resolve its connections.
+ * <p>Connections and subscriptions are additionally scoped by client: a
+ * row's own {@link Definitions.Connection#withClient} / {@link
+ * Definitions.Subscription#withClient} wins, otherwise its owning {@link
+ * DefinitionSet#forClient} client applies (null = global). The platform
+ * treats each {@code (application, client)} sync call as the COMPLETE list
+ * for that scope and, with {@code removeUnlisted}, deletes everything else
+ * in it, so rows are pooled and grouped by their EFFECTIVE client — one
+ * platform call per distinct client per resource — the global scope (no
+ * client) first, then each client scope in first-seen order — connections
+ * before subscriptions within each. If a scope's connection sync fails, that
+ * scope's subscription sync is skipped and reported as a failure rather than
+ * sent as a request that cannot resolve its connections.
  *
  * <p>{@link #sync} and {@link #syncAll} keep their single-set behaviour —
  * they do NOT merge sets. {@link #syncGrouped} MERGES every set sharing an
  * application code into one combined sync before calling the platform,
- * because two sets syncing the SAME (application, client) scope separately
- * would let the second call's {@code removeUnlisted} delete what the first
- * call just created.
+ * because two sets syncing the SAME {@code (application, client)} scope
+ * separately would let the second call's {@code removeUnlisted} delete what
+ * the first call just created. The same code appearing twice in one merged
+ * scope is a configuration error: that type's sync for that scope fails
+ * LOCALLY, naming the code and the scope, and nothing is sent for it —
+ * other types and other scopes still sync.
  *
- * <p>If ANY category of ANY application ends up {@link Category.Failed},
- * the call throws {@link DefinitionSyncException} rather than returning
+ * <p>If ANY category of ANY application ends up {@link Category.Failed}, the
+ * call throws {@link DefinitionSyncException} rather than returning
  * normally — a caller that doesn't inspect every category must not be able
- * to mistake a partial failure for success. {@link #syncAll} and {@link
- * #syncGrouped} still run every set/application to completion first and
- * throw once at the end, carrying every result (including the ones that DID
- * sync); see {@link DefinitionSyncException} for how to read the partial
+ * to mistake a partial failure for success. {@link #syncAll} and
+ * {@link #syncGrouped} still run every set/application to completion first
+ * and throw once at the end, carrying every result (including the ones that
+ * DID sync); see {@link DefinitionSyncException} for how to read the partial
  * outcome.
  */
 public final class DefinitionSynchronizer {
@@ -132,8 +137,8 @@ public final class DefinitionSynchronizer {
                 ? Category.SKIPPED
                 : syncOpenapi(app, set.openapiSpec());
 
-        return new SyncResult(app, roles, eventTypes, scoped.subscriptions(), dispatchPools, principals,
-                processes, scheduledJobs, openapi, scoped.connections());
+        return new SyncResult(app, roles, eventTypes, scoped.connections(), scoped.subscriptions(),
+                dispatchPools, principals, processes, scheduledJobs, openapi);
     }
 
     /**
@@ -141,18 +146,17 @@ public final class DefinitionSynchronizer {
      * returned in the same order.
      *
      * <p>Unlike {@link #syncGrouped}, sets are NOT merged — two sets for the
-     * same application are synced as two separate calls. When they share an
-     * (application, client) scope, the second call's {@code removeUnlisted}
-     * will delete what the first just created; use {@link #syncGrouped} for
-     * several sets contributing to one application.
+     * same application are synced as two separate calls; when they share a
+     * client scope, the second call's {@code removeUnlisted} will delete
+     * what the first just created. Use {@link #syncGrouped} for several sets
+     * contributing to one application.
      *
      * <p>Every set is synced before this can throw for a {@link
      * Category.Failed} — one set's duplicate code or failed connection sync
      * does not stop the rest from being attempted. A genuinely uncaught
      * exception (e.g. a network failure from a category that does not catch
-     * its own — roles, event types, dispatch pools, principals, processes,
-     * scheduled jobs, OpenAPI) still propagates immediately and stops the
-     * run, exactly as it always has.
+     * its own) still propagates immediately and stops the run, exactly as it
+     * always has.
      *
      * @throws DefinitionSyncException if any set's any category came back
      *         {@link Category.Failed} — {@link
@@ -176,30 +180,18 @@ public final class DefinitionSynchronizer {
      * Sync multiple definition sets, grouping by application code and
      * MERGING every set that shares one into a single combined sync — then
      * issuing each category's platform call exactly ONCE per application
-     * (and, for connections/subscriptions, once per (application, client)
-     * scope within it).
+     * (and, for connections/subscriptions, once per {@code (application,
+     * client)} scope within it).
      *
      * <p>This is not an optimisation: the platform scopes {@code
-     * removeUnlisted} to one (application, client) PER CALL, so two sets for
-     * the same application (e.g. scanned annotation definitions plus a
-     * multi-tenant provider's per-tenant sets) must never become two
-     * separate calls for that scope — the second would delete what the
-     * first just created. Connections and subscriptions are stamped with
-     * their effective client (their own {@code client}, else their owning
-     * set's {@link DefinitionSet#forClient} client) before being pooled
-     * across all contributing sets and grouped by that client — the same
-     * grouping {@link #sync} already does for a single set.
-     *
-     * <p>The same code appearing twice in one (application, client) scope
-     * after merging is a configuration error: that type's sync for that
-     * scope fails LOCALLY, naming the code and the scope, and nothing is
-     * sent for it — other types and other scopes still sync.
+     * removeUnlisted} to one {@code (application, client)} PER CALL, so two
+     * sets for the same scope (e.g. a hand-built global set plus a
+     * per-tenant loop's sets) must never become two separate calls — the
+     * second would delete what the first just created.
      *
      * <p>Every application is synced before this can throw for a {@link
      * Category.Failed} — one application's failure does not stop the rest
-     * from being attempted. A genuinely uncaught exception (e.g. a network
-     * failure from a category that does not catch its own) still propagates
-     * immediately and stops the run, exactly as it always has.
+     * from being attempted.
      *
      * @return results keyed by application code
      * @throws DefinitionSyncException if any application's any category
@@ -289,9 +281,9 @@ public final class DefinitionSynchronizer {
                 ? Category.SKIPPED
                 : syncOpenapi(app, openapiSpec);
 
-        return new SyncResult(app, rolesResult, eventTypesResult, scoped.subscriptions(),
-                dispatchPoolsResult, principalsResult, processesResult, scheduledJobsResult,
-                openapiResult, scoped.connections());
+        return new SyncResult(app, rolesResult, eventTypesResult, scoped.connections(),
+                scoped.subscriptions(), dispatchPoolsResult, principalsResult, processesResult,
+                scheduledJobsResult, openapiResult);
     }
 
     // ── connections + subscriptions: client grouping ───────────────────
@@ -301,9 +293,9 @@ public final class DefinitionSynchronizer {
 
     /**
      * One subscription row plus its resolved effective client and the base
-     * URL its path-style target should resolve against — carried
-     * separately from the public {@link Definitions.Subscription} record so
-     * a merged pool of rows from several sets (each with their own {@link
+     * URL its path-style target should resolve against — carried separately
+     * from the public {@link Definitions.Subscription} record so a merged
+     * pool of rows from several sets (each with their own {@link
      * DefinitionSet#targetBaseUrl}) can each resolve correctly; this base
      * URL is never a wire field.
      */
@@ -314,7 +306,7 @@ public final class DefinitionSynchronizer {
     private static List<ConnectionRow> toConnectionRows(DefinitionSet set) {
         List<ConnectionRow> rows = new ArrayList<>(set.connections().size());
         for (Definitions.Connection connection : set.connections()) {
-            rows.add(new ConnectionRow(connection, effectiveClient(connection.client(), set.client())));
+            rows.add(new ConnectionRow(connection, effectiveClient(connection.client(), set.clientId())));
         }
         return rows;
     }
@@ -323,7 +315,7 @@ public final class DefinitionSynchronizer {
         List<SubscriptionRow> rows = new ArrayList<>(set.subscriptions().size());
         for (Definitions.Subscription subscription : set.subscriptions()) {
             rows.add(new SubscriptionRow(
-                    subscription, effectiveClient(subscription.client(), set.client()),
+                    subscription, effectiveClient(subscription.client(), set.clientId()),
                     set.targetBaseUrl()));
         }
         return rows;
@@ -461,11 +453,13 @@ public final class DefinitionSynchronizer {
     /** Sync one client-group's worth of connections. */
     private Category syncConnectionGroup(
             String app, List<ConnectionRow> rows, String clientId, boolean removeUnlisted) {
-        // Two sets contributing to the SAME (application, client) scope
-        // (most commonly after syncGrouped() merges them) defining the same
-        // connection code is a configuration error — fail locally, naming
-        // the code and scope, rather than sending a request the platform
-        // will reject or silently keeping whichever row happened to be last.
+        // Two rows contributing to the SAME (application, client) scope
+        // (most commonly after syncGrouped() merges several sets, or a
+        // row-level withClient() override lands two rows in one group)
+        // defining the same connection code is a configuration error — fail
+        // locally, naming the code and scope, rather than sending a request
+        // the platform will reject or silently keeping whichever row
+        // happened to be last.
         List<String> duplicates = findDuplicates(rows.stream().map(r -> r.connection().code()).toList());
         if (!duplicates.isEmpty()) {
             return new Category.Failed(0, 0, 0, List.of(), String.format(
@@ -485,7 +479,7 @@ public final class DefinitionSynchronizer {
     private Category syncSubscriptionGroup(
             String app, List<SubscriptionRow> rows, String clientId, boolean removeUnlisted,
             String defaultTargetBaseUrl) {
-        // Two sets contributing to the SAME (application, client) scope
+        // Two rows contributing to the SAME (application, client) scope
         // defining the same subscription code is a configuration error —
         // fail locally rather than sending a request the platform will
         // reject or silently keeping whichever row happened to be last.

@@ -1,86 +1,155 @@
 package io.flowcatalyst.sdk.tsid;
 
+import java.util.Arrays;
+import java.util.Locale;
+import java.util.OptionalLong;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicLong;
 
-/**
- * Lightweight TSID (Time-Sorted ID) generator, byte-for-byte compatible with
- * the TypeScript SDK: 13-character Crockford Base32 strings from a 64-bit
- * value composed of 42 bits of timestamp (custom epoch 2020-01-01T00:00:00Z)
- * + 22 bits of randomness.
- */
+/// Crockford Base32 TSID primitives, wire-compatible with the platform's Go
+/// generator (`pkg/fcsdk/tsid`):
+///
+/// ```
+/// bits 63..22  timestamp (42 bits, milliseconds since the Unix epoch)
+/// bits 21..10  sequence  (12 bits)
+/// bits 9..0    random    (10 bits)
+/// ```
+///
+/// **The sequence sits ABOVE the random field, and the order is the point.**
+/// Ids sort as strings and Crockford Base32 is order-preserving, so the bit
+/// order *is* the sort order. With random above the sequence — which is what
+/// this was until 2026-08-27, matching Go before `17e737a` — two ids minted
+/// in the same millisecond were ordered by **noise**: the counter that
+/// guarantees uniqueness contributed nothing to ordering, and a pair came out
+/// backwards about half the time. "Time-sorted id" was true only at
+/// millisecond granularity, which matters because these ids are the keyset
+/// pagination cursor.
+///
+/// rendered as exactly 13 Crockford Base32 characters (`0-9 A-H J-K M-N P-T V-Z`).
+/// Typed ids add a short lowercase prefix: `{prefix}_{raw}` (e.g. `aud_0HZXEQ5Y8JY5Z`).
+///
+/// Uniqueness within one process is structural: the last issued
+/// (millisecond, sequence) pair is advanced with a CAS, so two ids can never
+/// share both. A fresh millisecond restarts the sequence at a random offset;
+/// exhausting 4096 ids inside one millisecond borrows the next millisecond
+/// rather than reusing a sequence value; a wall-clock step backwards cannot
+/// cause reuse because the state only moves forward. The 10 random bits only
+/// have to defend against *other* processes minting in the same millisecond.
 public final class Tsid {
 
-    private static final String CROCKFORD_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-    private static final int TSID_LENGTH = 13;
-    private static final int RANDOM_BITS = 22;
-    private static final int RANDOM_MASK = (1 << RANDOM_BITS) - 1;
-    private static final long CUSTOM_EPOCH = 1577836800000L;
+    private static final String ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+    private static final int LENGTH = 13;
+    private static final long MS_MASK = 0x3FF_FFFF_FFFFL; // 42 bits
+    private static final int SEQ_BITS = 12;
+    private static final int SEQ_MASK = 0xFFF;
+    private static final int RANDOM_BITS = 10;
+    private static final int RANDOM_MASK = 0x3FF;
 
-    /**
-     * Packed (millis, sequence) state for collision-free generation: the
-     * sequence is randomly seeded each new millisecond and incremented within
-     * it (borrowing into the next millisecond on overflow) — same scheme as
-     * the platform's Go generator, same wire layout as the TypeScript SDK.
-     */
-    private static final java.util.concurrent.atomic.AtomicLong STATE = new java.util.concurrent.atomic.AtomicLong(0);
+    /// Bits 63..12 = last issued millisecond, bits 11..0 = last issued sequence.
+    private static final AtomicLong STATE = new AtomicLong();
+
+    private static final byte[] DECODE = buildDecodeTable();
 
     private Tsid() {}
 
-    /** Generate a new TSID as a 13-character Crockford Base32 string. */
+    /// A raw 13-character TSID with no prefix — event ids, execution ids,
+    /// outbox row ids, and other non-entity contexts.
     public static String generate() {
-        while (true) {
-            long previous = STATE.get();
-            long previousMs = previous >>> RANDOM_BITS;
-            long nowMs = System.currentTimeMillis() - CUSTOM_EPOCH;
-
-            long next;
-            if (nowMs > previousMs) {
-                next = (nowMs << RANDOM_BITS)
-                        | ThreadLocalRandom.current().nextInt(RANDOM_MASK + 1);
-            } else {
-                // Same (or clock-rewound) millisecond: increment; on sequence
-                // wrap, borrow into the next millisecond.
-                next = previous + 1;
-            }
-            if (STATE.compareAndSet(previous, next)) {
-                return encodeCrockford(next);
-            }
-        }
+        var ms = nextMsSeq();
+        long random = ThreadLocalRandom.current().nextInt(RANDOM_MASK + 1);
+        long value = ((ms.ms() & MS_MASK) << 22) | (ms.seq() << RANDOM_BITS) | random;
+        return encode(value);
     }
 
-    /**
-     * Generate a BRANDED (typed) TSID: {@code {prefix}_{raw}} — matching the
-     * FlowCatalyst platform convention (e.g. {@code aud_…}, {@code prn_…}).
-     * Use a short lowercase prefix for your own entities, e.g.
-     * {@code generateWithPrefix("cmt")} → {@code cmt_6F7JC2A6JFR7N}.
-     *
-     * @throws IllegalArgumentException if the prefix is empty or contains an underscore
-     */
+    /// A typed TSID `{prefix}_{raw}`. The prefix must be non-empty and contain
+    /// no underscore; the platform uses fixed three-letter prefixes per entity.
     public static String generateWithPrefix(String prefix) {
-        if (prefix == null || prefix.isEmpty() || prefix.contains("_")) {
-            throw new IllegalArgumentException(
-                    "TSID prefix must be non-empty and contain no underscore.");
+        if (prefix == null || prefix.isEmpty() || prefix.indexOf('_') >= 0) {
+            throw new IllegalArgumentException("TSID prefix must be non-empty and contain no underscore");
         }
         return prefix + "_" + generate();
     }
 
-    /** Validate that a string is a valid (unbranded) TSID format. */
-    public static boolean isValid(String tsid) {
-        if (tsid == null || tsid.length() != TSID_LENGTH) return false;
-        String upper = tsid.toUpperCase(java.util.Locale.ROOT);
-        for (int i = 0; i < upper.length(); i++) {
-            if (CROCKFORD_ALPHABET.indexOf(upper.charAt(i)) < 0) return false;
+    /// Numeric form of a typed or raw TSID; empty when the input is not a
+    /// valid 13-character Crockford Base32 string.
+    public static OptionalLong toLong(String tsid) {
+        if (tsid == null) return OptionalLong.empty();
+        String raw = tsid;
+        if (tsid.length() > 14 && tsid.indexOf('_') >= 0) {
+            raw = tsid.substring(tsid.indexOf('_') + 1);
         }
-        return true;
+        return decode(raw);
     }
 
-    private static String encodeCrockford(long value) {
-        char[] chars = new char[TSID_LENGTH];
-        long remaining = value;
-        for (int i = TSID_LENGTH - 1; i >= 0; i--) {
-            chars[i] = CROCKFORD_ALPHABET.charAt((int) (remaining & 31L));
-            remaining >>>= 5;
+    /// Raw string form (no prefix) of a numeric TSID.
+    public static String fromLong(long value) {
+        return encode(value);
+    }
+
+    /// True when the string is a well-formed raw (unprefixed) TSID.
+    public static boolean isValid(String tsid) {
+        return tsid != null && decode(tsid).isPresent();
+    }
+
+    private record MsSeq(long ms, long seq) {}
+
+    private static MsSeq nextMsSeq() {
+        while (true) {
+            long now = System.currentTimeMillis();
+            long old = STATE.get();
+            long lastMs = old >>> SEQ_BITS;
+            long lastSeq = old & SEQ_MASK;
+            long ms;
+            long seq;
+            if (now > lastMs) {
+                ms = now;
+                seq = randomSeq();
+            } else if (lastSeq < SEQ_MASK) {
+                ms = lastMs;
+                seq = lastSeq + 1;
+            } else {
+                ms = lastMs + 1;
+                seq = randomSeq();
+            }
+            if (STATE.compareAndSet(old, (ms << SEQ_BITS) | seq)) {
+                return new MsSeq(ms, seq);
+            }
         }
-        return new String(chars);
+    }
+
+    private static long randomSeq() {
+        return ThreadLocalRandom.current().nextInt(SEQ_MASK + 1);
+    }
+
+    private static String encode(long value) {
+        char[] out = new char[LENGTH];
+        long v = value;
+        for (int i = LENGTH - 1; i >= 0; i--) {
+            out[i] = ALPHABET.charAt((int) (v & 0x1F));
+            v >>>= 5;
+        }
+        return new String(out);
+    }
+
+    private static OptionalLong decode(String raw) {
+        if (raw.length() != LENGTH) return OptionalLong.empty();
+        String upper = raw.toUpperCase(Locale.ROOT);
+        long v = 0;
+        for (int i = 0; i < LENGTH; i++) {
+            char c = upper.charAt(i);
+            int digit = c < DECODE.length ? DECODE[c] : -1;
+            if (digit < 0) return OptionalLong.empty();
+            v = (v << 5) | digit;
+        }
+        return OptionalLong.of(v);
+    }
+
+    private static byte[] buildDecodeTable() {
+        byte[] table = new byte[128];
+        Arrays.fill(table, (byte) -1);
+        for (int i = 0; i < ALPHABET.length(); i++) {
+            table[ALPHABET.charAt(i)] = (byte) i;
+        }
+        return table;
     }
 }

@@ -4,9 +4,14 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
+  <!-- Standalone on purpose: no parent, no sibling-module dependency. This directory is
+       mirrored byte-for-byte between flowcatalyst-go (clients/java-sdk) and
+       flowcatalyst-javalin (sdk), and it must build in either. The use-case framework
+       (Operation / UnitOfWork / Result) lives in the `usecase` module and builds ON this
+       SDK, never the other way round. -->
   <groupId>io.flowcatalyst</groupId>
   <artifactId>flowcatalyst-sdk</artifactId>
-  <version>0.0.10</version>
+  <version>0.0.1-SNAPSHOT</version>
   <packaging>jar</packaging>
 
   <name>FlowCatalyst Java SDK</name>
@@ -15,20 +20,50 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.release>25</maven.compiler.release>
-    <jackson.version>2.19.0</jackson.version>
-    <junit.version>5.12.2</junit.version>
+    <!-- The generated models (openapi-generator output) use a deprecated Jackson API we
+         neither write nor can fix, so this module does not treat warnings as errors. -->
+    <maven.compiler.failOnWarning>false</maven.compiler.failOnWarning>
+    <!-- tools.jackson (3.x); jackson-annotations stays on com.fasterxml.jackson (never renamed). -->
+    <jackson.version>3.1.5</jackson.version>
+    <jackson-annotations.version>2.22.2</jackson-annotations.version>
+    <junit.version>5.13.4</junit.version>
+    <assertj.version>3.27.7</assertj.version>
+    <postgresql.version>42.7.13</postgresql.version>
+    <h2.version>2.4.240</h2.version>
   </properties>
 
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>tools.jackson</groupId>
+        <artifactId>jackson-bom</artifactId>
+        <version>${jackson.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>com.fasterxml.jackson</groupId>
+        <artifactId>jackson-bom</artifactId>
+        <version>${jackson-annotations.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.junit</groupId>
+        <artifactId>junit-bom</artifactId>
+        <version>${junit.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
   <dependencies>
+    <!-- Hand-written SDK code is Jackson 3; the generated models carry only
+         com.fasterxml.jackson.annotation.*, which Jackson 3 databind depends on itself. -->
     <dependency>
-      <groupId>com.fasterxml.jackson.core</groupId>
+      <groupId>tools.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
-      <version>${jackson.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>com.fasterxml.jackson.datatype</groupId>
-      <artifactId>jackson-datatype-jsr310</artifactId>
-      <version>${jackson.version}</version>
     </dependency>
     <!-- compile-only: generated models carry JSR-305 @Nullable/@Nonnull and @Generated -->
     <dependency>
@@ -47,20 +82,25 @@
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
-      <version>${junit.version}</version>
       <scope>test</scope>
     </dependency>
     <!-- Outbox JDBC driver tests: H2 in-memory always; real PG when FC_JAVA_SDK_TEST_PG_URL is set -->
     <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
-      <version>42.7.5</version>
+      <version>${postgresql.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>com.h2database</groupId>
       <artifactId>h2</artifactId>
-      <version>2.3.232</version>
+      <version>${h2.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <version>${assertj.version}</version>
       <scope>test</scope>
     </dependency>
   </dependencies>
@@ -85,8 +125,11 @@
               <generateApis>false</generateApis>
               <generateModelDocumentation>false</generateModelDocumentation>
               <generateApiDocumentation>false</generateApiDocumentation>
-              <generateSupportingFiles>true</generateSupportingFiles>
-              <supportingFilesToGenerate>ApiClient.java,ApiException.java,ApiResponse.java,Pair.java,RFC3339DateFormat.java,RFC3339JavaTimeModule.java,RFC3339InstantDeserializer.java</supportingFilesToGenerate>
+              <!-- Models only. The generator's own client (ApiClient, the RFC3339 date
+                   classes) is Jackson 2 by template and nothing here used it; the SDK's
+                   client is io.flowcatalyst.sdk.http on Jackson 3 (owner ruling 2026-09-06:
+                   no Jackson 2 in the SDK). -->
+              <generateSupportingFiles>false</generateSupportingFiles>
               <configOptions>
                 <dateLibrary>java8</dateLibrary>
                 <openApiNullable>false</openApiNullable>
@@ -99,8 +142,21 @@
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.15.0</version>
+        <configuration>
+          <release>25</release>
+          <failOnWarning>${maven.compiler.failOnWarning}</failOnWarning>
+          <compilerArgs>
+            <arg>-Xlint:all,-processing,-serial,-this-escape</arg>
+            <arg>-parameters</arg>
+          </compilerArgs>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
-        <version>3.5.3</version>
+        <version>3.5.6</version>
       </plugin>
     </plugins>
   </build>

@@ -6,8 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import io.flowcatalyst.sdk.tsid.Tsid;
 import java.util.ArrayList;
 import java.util.List;
@@ -100,6 +100,21 @@ class OutboxManagerTest {
         assertEquals(5, payload.get("maxRetries").asInt());
         assertEquals("BLOCK_ON_ERROR", payload.get("mode").asText());
         assertEquals("group-1", payload.get("messageGroup").asText());
+        assertFalse(payload.has("queue"), "an unset queue must be omitted, never defaulted");
+    }
+
+    @Test
+    void dispatchJobPayloadCarriesAnExplicitQueue() throws Exception {
+        CapturingDriver driver = new CapturingDriver();
+        OutboxManager outbox = new OutboxManager(driver, "clt_TEST123456789");
+
+        outbox.createDispatchJob(CreateDispatchJobDto
+                .create("svc", "app:sub:agg:act", "https://example.com/hook", "{\"k\":1}", "pool-1")
+                .withQueue("HIGH_PRIORITY"));
+
+        OutboxMessage message = driver.inserted.getFirst();
+        JsonNode payload = MAPPER.readTree(message.payload());
+        assertEquals("HIGH_PRIORITY", payload.get("queue").asText());
     }
 
     @Test

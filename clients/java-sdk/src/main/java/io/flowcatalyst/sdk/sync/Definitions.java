@@ -154,15 +154,25 @@ public final class Definitions {
     }
 
     /**
-     * A subscription declaration: where to deliver ({@code target} URL or
-     * {@code connectionCode} reference), which event types trigger it, and how
-     * to handle failures.
+     * A subscription declaration: where to deliver ({@code target} URL, or a
+     * connection reference — {@code connectionId}, or the environment-stable
+     * {@code connectionCode}), which event types trigger it, and how to
+     * handle failures.
      *
-     * <p>{@code client} and {@code sharedConnection} are resolved by {@link
-     * DefinitionSynchronizer} to pick which platform call this row belongs to
-     * and which connection namespace {@code connectionCode} resolves in —
-     * {@code client} never rides along on the wire (it is a routing field,
-     * {@link JsonIgnore}d); {@code sharedConnection} is sent only when true.
+     * <p>{@code connectionCode} names a connection owned by the same
+     * application being synced, UNLESS {@link #sharedConnection} is true, in
+     * which case it names a SHARED (application-less) connection instead —
+     * the two namespaces are distinct with no fallback between them
+     * (`code-first-connections.md`). {@code sharedConnection} normalises
+     * {@code false} to {@code null} via {@link #withSharedConnection} so it
+     * is omitted from the wire payload entirely when not true.
+     *
+     * <p>{@code client} is resolved by {@link DefinitionSynchronizer} to pick
+     * which platform call this row belongs to — it never rides along on the
+     * wire (it is a routing field, {@link JsonIgnore}d). Null means this row
+     * inherits the owning {@link DefinitionSet#forClient} client, or is
+     * global if the set doesn't set one either; a row's own {@code client}
+     * always wins over the set's.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Subscription(
@@ -181,36 +191,10 @@ public final class Definitions {
             Boolean sharedConnection,
             @JsonIgnore String client) {
 
-        /**
-         * The pre-{@code connectionCode} component list, kept so existing
-         * callers of the canonical constructor keep compiling.
-         */
-        public Subscription(
-                String code, String name, String description, String target, String connectionId,
-                List<SubscriptionEventType> eventTypes, String dispatchPoolCode, SubscriptionMode mode,
-                Integer maxRetries, Integer timeoutSeconds, Boolean dataOnly) {
-            this(code, name, description, target, connectionId, eventTypes, dispatchPoolCode, mode,
-                    maxRetries, timeoutSeconds, dataOnly, null);
-        }
-
-        /**
-         * The pre-{@code sharedConnection}/{@code client} component list,
-         * kept so existing callers of the (post-bb1b483) canonical
-         * constructor keep compiling.
-         */
-        public Subscription(
-                String code, String name, String description, String target, String connectionId,
-                List<SubscriptionEventType> eventTypes, String dispatchPoolCode, SubscriptionMode mode,
-                Integer maxRetries, Integer timeoutSeconds, Boolean dataOnly, String connectionCode) {
-            this(code, name, description, target, connectionId, eventTypes, dispatchPoolCode, mode,
-                    maxRetries, timeoutSeconds, dataOnly, connectionCode, null, null);
-        }
-
         public static Subscription of(
                 String code, String name, String target, List<SubscriptionEventType> eventTypes) {
-            return new Subscription(
-                    code, name, null, target, null, eventTypes, null, null, null, null, null, null,
-                    null, null);
+            return new Subscription(code, name, null, target, null, eventTypes, null, null, null,
+                    null, null, null, null, null);
         }
 
         public Subscription withDescription(String description) {
@@ -227,10 +211,10 @@ public final class Definitions {
 
         /**
          * Names the connection by its code — stable across environments,
-         * unlike {@link #withConnectionId}, whose id is minted per environment.
-         * A bare code names a connection owned by THIS application; combine
-         * with {@link #withSharedConnection} to name a shared one instead.
-         * There is no fallback between the two namespaces.
+         * unlike {@link #withConnectionId}, whose id is minted per
+         * environment. A bare code names a connection owned by THIS
+         * application; combine with {@link #withSharedConnection} to name a
+         * shared one instead.
          */
         public Subscription withConnectionCode(String connectionCode) {
             return new Subscription(code, name, description, target, connectionId, eventTypes,
@@ -271,10 +255,9 @@ public final class Definitions {
 
         /**
          * Marks {@link #connectionCode} as naming a SHARED (application-less)
-         * connection rather than one owned by this application — the two
-         * namespaces are distinct with no fallback between them. Normalises
-         * {@code false} to {@code null} so the field is omitted from the
-         * wire payload entirely when not true (the platform default).
+         * connection rather than one owned by this application. Normalises
+         * {@code false} to {@code null} so the field is omitted from the wire
+         * payload entirely when not true (the platform default).
          */
         public Subscription withSharedConnection(boolean sharedConnection) {
             return new Subscription(code, name, description, target, connectionId, eventTypes,
@@ -283,12 +266,9 @@ public final class Definitions {
         }
 
         /**
-         * FlowCatalyst client (identifier slug) this subscription is scoped
-         * to. Null means this row inherits the owning {@link
-         * DefinitionSet#forClient} client, or is global if the set doesn't
-         * set one either. Routing only — {@link DefinitionSynchronizer} reads
-         * it to pick which platform call the row belongs to; it never rides
-         * along in the posted entry itself.
+         * FlowCatalyst client (identifier slug or id) this subscription is
+         * scoped to — overrides the owning {@link DefinitionSet}'s own
+         * client for just this row. Routing only; see the class doc.
          */
         public Subscription withClient(String client) {
             return new Subscription(code, name, description, target, connectionId, eventTypes,
@@ -303,14 +283,19 @@ public final class Definitions {
      * provisioned account), so this definition carries nothing
      * environment-specific — no service account id, no secret. It exists
      * purely to give a subscription's {@code connectionCode} something to
-     * resolve, and is synced BEFORE subscriptions for that reason.
+     * resolve, and {@link DefinitionSynchronizer} syncs connections BEFORE
+     * subscriptions for that reason.
      *
      * <p>{@code client} is resolved by {@link DefinitionSynchronizer} to pick
      * which platform call this row belongs to; it never rides along on the
-     * wire (it is a routing field, {@link JsonIgnore}d).
+     * wire (it is a routing field, {@link JsonIgnore}d). Null means this row
+     * inherits the owning {@link DefinitionSet#forClient} client, or is
+     * global if the set doesn't set one either; a row's own {@code client}
+     * always wins over the set's.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record Connection(String code, String name, String description, String externalId,
+    public record Connection(
+            String code, String name, String description, String externalId,
             @JsonIgnore String client) {
 
         public static Connection of(String code, String name) {
@@ -327,12 +312,9 @@ public final class Definitions {
         }
 
         /**
-         * FlowCatalyst client (identifier slug) this connection is scoped
-         * to — ALWAYS the identifier, never the id (ids differ per
-         * environment). Null means this row inherits the owning {@link
-         * DefinitionSet#forClient} client, or is global if the set doesn't
-         * set one either. Routing only — never sent to the platform (it
-         * selects which sync call this row belongs to).
+         * FlowCatalyst client (identifier slug or id) this connection is
+         * scoped to — overrides the owning {@link DefinitionSet}'s own
+         * client for just this row. Routing only; see the class doc.
          */
         public Connection withClient(String client) {
             return new Connection(code, name, description, externalId, client);
@@ -516,7 +498,7 @@ public final class Definitions {
         private final List<Process> processes = new ArrayList<>();
         private final List<ScheduledJob> scheduledJobs = new ArrayList<>();
         private Map<String, Object> openapiSpec;
-        private String client;
+        private String clientId;
         private String targetBaseUrl;
 
         private DefinitionSet(String applicationCode) {
@@ -536,21 +518,43 @@ public final class Definitions {
          * {@code FLOWCATALYST_APP_CODE}, for apps that carry their code in the
          * environment rather than in source.
          *
-         * <p>A codebase that owns several applications should call
-         * {@link #define(String)} once per application and pass the sets to
-         * {@code definitions().syncAll(…)} — the set a definition belongs to
-         * <em>is</em> its application.
+         * <p>An explicit factory rather than a silent fallback inside
+         * {@link #define(String)}: both paths stay direct, and a caller reading
+         * the call site can see where the code came from.
+         *
+         * <p>There is deliberately <em>no per-definition application
+         * override</em>, unlike the Laravel SDK. There definitions are
+         * discovered by scanning the filesystem, so there is no structural
+         * place to say "this one belongs elsewhere". Here the set a definition
+         * is built into <em>is</em> its application, and a codebase owning
+         * several builds one set each for
+         * {@code definitions().syncAll(sets, options)} — an override would only
+         * add a second source of truth competing with the set's own code.
          *
          * @throws IllegalStateException if the variable is unset or blank; a
-         *     missing code would otherwise surface later as a request to
+         *     missing code would otherwise surface much later as a request to
          *     {@code /api/applications/null/…}
          */
         public static DefinitionSet defineFromEnv() {
-            String applicationCode = System.getenv(APP_CODE_ENV);
+            return defineFrom(System.getenv(APP_CODE_ENV));
+        }
+
+        /**
+         * The decision {@link #defineFromEnv()} makes, separated from the
+         * lookup that supplies it.
+         *
+         * <p>The JDK offers no supported way to mutate the process
+         * environment, so a test driving {@code defineFromEnv()} directly can
+         * only assert whichever branch the surrounding environment happens to
+         * give it — which leaves the rejection path unexercised on every
+         * machine that has the variable set, and that is the path that matters.
+         * Taking the resolved value as an argument makes both branches
+         * assertable unconditionally.
+         */
+        static DefinitionSet defineFrom(String applicationCode) {
             if (applicationCode == null || applicationCode.isBlank()) {
                 throw new IllegalStateException(
-                        APP_CODE_ENV + " is not set — pass the application code to define(…)"
-                                + " instead.");
+                        APP_CODE_ENV + " is not set — pass the application code to define(…) instead.");
             }
             return new DefinitionSet(applicationCode);
         }
@@ -580,8 +584,9 @@ public final class Definitions {
         }
 
         /**
-         * Add connections to the definition set. Synced BEFORE subscriptions
-         * — a subscription's {@code connectionCode} must resolve in the same
+         * Add connections to the definition set. {@link
+         * DefinitionSynchronizer} syncs them BEFORE subscriptions — a
+         * subscription's {@code connectionCode} must resolve in the same
          * run.
          */
         public DefinitionSet withConnections(List<Connection> connections) {
@@ -594,39 +599,42 @@ public final class Definitions {
         }
 
         /**
-         * Scope this set to a FlowCatalyst client (identifier slug — never an
-         * id; ids differ per environment). This is the multi-tenant shape:
-         * build one {@link DefinitionSet} per (application, client) — the
-         * plain {@link #define} set stays global, and one more set per
-         * tenant via {@code define(app).forClient(tenant)}. The tenant list
-         * is your own runtime data; it never belongs in an annotation.
+         * Scope this whole set's connections and subscriptions to one
+         * FlowCatalyst client (its id, or its identifier slug — the
+         * platform resolves either). This is the multi-tenant shape: build
+         * one {@link DefinitionSet} per (application, client) — the plain
+         * {@link #define} set stays global. {@link
+         * DefinitionSynchronizer#syncGrouped} merges every set sharing an
+         * application code before syncing, issuing exactly one platform call
+         * per distinct (application, client) scope — the global scope
+         * first, then each client scope in first-seen order — so that two
+         * sets contributing to the SAME scope never become two calls (the
+         * second of which would delete, under {@code removeUnlisted}, what
+         * the first just created).
          *
-         * <p>A connection or subscription row's own {@code client} (set via
-         * the annotation or {@code withClient(...)}) wins over this; this is
-         * only the fallback applied to rows that don't set one themselves.
-         *
-         * @return this set, now scoped to {@code client}
+         * @return this set, now scoped to {@code clientId}
          */
-        public DefinitionSet forClient(String client) {
-            return forClient(client, null);
+        public DefinitionSet forClient(String clientId) {
+            return forClient(clientId, null);
         }
 
         /**
          * As {@link #forClient(String)}, additionally overriding the base
          * URL a path-style subscription target ({@code /webhooks/orders})
-         * resolves against for THIS set only — a tenant often has its own
-         * host. Null keeps {@link DefinitionSynchronizer}'s configured
-         * default.
+         * in THIS set resolves against — a tenant often has its own host.
+         * Null keeps {@link DefinitionSynchronizer}'s configured default
+         * ({@code FlowCatalystClient.Builder#subscriptionTargetBaseUrl} or a
+         * directly-constructed synchronizer's own).
          */
-        public DefinitionSet forClient(String client, String targetBaseUrl) {
-            this.client = client;
+        public DefinitionSet forClient(String clientId, String targetBaseUrl) {
+            this.clientId = clientId;
             this.targetBaseUrl = targetBaseUrl;
             return this;
         }
 
-        /** The client (identifier slug) this set is scoped to, or null for global. */
-        public String client() {
-            return client;
+        /** The client this set is scoped to, or null for global. */
+        public String clientId() {
+            return clientId;
         }
 
         /** This set's subscription-target base URL override, or null. */

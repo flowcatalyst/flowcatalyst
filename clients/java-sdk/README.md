@@ -14,6 +14,15 @@ var client = FlowCatalystClient.builder()
 var eventTypes = client.eventTypes().list(null);
 ```
 
+This SDK is standalone: its `pom.xml` has no parent and no dependency on any
+other FlowCatalyst module, so the directory builds on its own
+(`mvn test` in this directory). It is mirrored byte-for-byte between
+`flowcatalyst-go` (`clients/java-sdk`) and `flowcatalyst-javalin` (`sdk`),
+apart from `openapi/openapi.json`; `tools/sdk-drift.sh` in the Javalin repo
+checks they agree. The use-case framework (`Operation`, `UnitOfWork`,
+`Result`) is a separate module, `flowcatalyst-usecase`, which builds on this
+SDK and is not part of it.
+
 ## Modules
 
 | Package | What it does |
@@ -23,8 +32,8 @@ var eventTypes = client.eventTypes().list(null);
 | `…sdk.error` | `sealed interface SdkError` + `FlowCatalystException` — handle failures with a pattern-matching `switch` |
 | `…sdk.outbox` | Transactional outbox: `OutboxManager`, DTO builders, `OutboxDriver` SPI + `JdbcOutboxDriver`, raw SQL migrations in `migrations/` |
 | `…sdk.tsid` | TSID generation (13-char Crockford Base32, platform-compatible; collision-free monotonic sequence) |
-| `…sdk.sync` | `DefinitionSynchronizer` + `DefinitionSet` — bulk-sync roles / event types / connections / subscriptions / dispatch pools / principals / processes / scheduled jobs / OpenAPI per application |
-| `…sdk.annotations` | `@AsEventType` / `@AsConnection` / `@AsSubscription` / `@AsDispatchPool` / `@AsRole` + `DefinitionScanner` (explicit class registration — no classpath scanning) |
+| `…sdk.sync` | `DefinitionSynchronizer` + `DefinitionSet` — bulk-sync roles / event types / connections / subscriptions / dispatch pools / principals / processes / scheduled jobs / OpenAPI per application, optionally scoped to one client (`forClient`) and merged across sets (`syncGrouped`) |
+| `…sdk.annotations` | `@AsEventType` / `@AsConnection` / `@AsSubscription` (with `connectionCode` / `sharedConnection` / `client`) / `@AsDispatchPool` / `@AsRole` + `DefinitionScanner` (explicit class registration — no classpath scanning) |
 | `…sdk.webhook` | `WebhookSignature.verify(...)` — HMAC-SHA256 verification of signed deliveries |
 
 ## Auth modes
@@ -78,6 +87,42 @@ driver.withTransaction(tx -> {
 Event `type`s and dispatch-job `code`s must be fully qualified
 `application:subdomain:aggregate:action` strings — the SDK rejects bare codes.
 
+## Creating users and invitations
+
+`principals().createUser(...)` accepts two optional flags that control who
+sends the "set your password" mail. Prefer pattern 1 when you want the user
+to land back inside your own application.
+
+**1. Login-detected (recommended).** Create the user with `sendInvitation:
+false` and send your own email that links to your application. The platform
+detects the passwordless account at the hosted login and handles password
+creation itself, then returns the user to your stored OAuth redirect.
+
+```java
+PrincipalResponse user = client.principals().createUser(new CreateUserRequest()
+        .email("new.user@example.com")
+        .name("New User")
+        .sendInvitation(false));
+// Send your own "welcome" email now, linking to your app.
+```
+
+**2. Embedded link.** Create the user with `returnInviteLink: true` and read
+`inviteLink` from the response to embed in your own email. The user sets a
+password on the platform and lands on the platform's own landing page.
+`returnInviteLink: true` always suppresses the platform's own invite email,
+even when `sendInvitation` is left at its default — the token can only be
+minted once, so asking for the link back means you are taking over delivery.
+
+```java
+PrincipalResponse user = client.principals().createUser(new CreateUserRequest()
+        .email("new.user@example.com")
+        .name("New User")
+        .returnInviteLink(true));
+String inviteLink = user.getInviteLink();
+// Embed inviteLink in your own email; never log it or store it in plaintext —
+// it is a live 72-hour bearer credential, exactly like a password.
+```
+
 ## Declaring definitions
 
 Programmatically:
@@ -98,205 +143,129 @@ Or with annotations and explicit registration:
 @AsEventType(code = "orders:sales:order:placed", name = "Order Placed")
 public record OrderPlaced(String orderId) {}
 
-var set = DefinitionScanner.scan("orders", List.of(OrderPlaced.class));
+@AsConnection(code = "billing-hook", name = "Billing Webhook")
+final class BillingConnection {}
+
+@AsSubscription(code = "order-placed", name = "Order Placed",
+        target = "https://billing.example.com/hook",
+        connectionCode = "billing-hook",
+        eventTypes = {"orders:sales:order:placed"})
+final class OrderPlacedHandler {}
+
+var set = DefinitionScanner.scan("orders",
+        List.of(OrderPlaced.class, BillingConnection.class, OrderPlacedHandler.class));
 client.definitions().sync(set);
 ```
 
-### The application code
+### Connections and per-client sync
 
-Pass it directly, or inherit it from `FLOWCATALYST_APP_CODE`:
-
-```java
-var set = Definitions.DefinitionSet.define("orders");   // explicit
-var set = Definitions.DefinitionSet.defineFromEnv();    // FLOWCATALYST_APP_CODE
-```
-
-`defineFromEnv()` throws `IllegalStateException` when the variable is unset or
-blank, rather than letting a missing code surface later as a request to
-`/api/applications/null/…`.
-
-There is no per-definition application override: the set a definition is built
-into *is* its application. For several applications, build one set each and
-pass them to `client.definitions().syncAll(sets, options)`.
-
-### Connections and subscriptions
-
-A connection is application-owned: the platform assigns its service account
-itself (the application's own provisioned one), so `Connection` carries
-nothing environment-specific — no service account id, no secret. Connections
-sync BEFORE subscriptions, so a subscription's `connectionCode` resolves in
-the same run:
+A connection is application-owned — the platform assigns its own service
+account, so a `Definitions.Connection` carries no credentials, only
+`code`/`name`/`description`/`externalId`. Reference it from a subscription by
+`connectionCode` rather than `connectionId`: codes are stable across
+environments, ids are not. Connections sync BEFORE subscriptions in the same
+set, so a subscription may name a connection the same sync just created.
 
 ```java
 var set = Definitions.DefinitionSet.define("orders")
-        .withConnections(List.of(
-                Definitions.Connection.of("orders-webhook", "Orders Webhook")))
+        .withConnections(List.of(Definitions.Connection.of("billing-hook", "Billing Webhook")))
         .withSubscriptions(List.of(Definitions.Subscription.of(
-                        "order-shipped-hook", "Order Shipped Hook",
-                        "https://app.example.com/webhooks/order-shipped",
-                        List.of(Definitions.SubscriptionEventType.of(
-                                "orders:fulfillment:shipment:shipped")))
-                .withConnectionCode("orders-webhook")));
+                        "order-placed", "Order Placed", "https://billing.example.com/hook",
+                        List.of(Definitions.SubscriptionEventType.of("orders:sales:order:placed")))
+                .withConnectionCode("billing-hook")));
 
 client.definitions().sync(set, SyncOptions.removingUnlisted());
 ```
 
-`connectionCode` names a connection in one of two namespaces, with **no
-fallback** between them: a bare code names a connection owned by THIS
-application; `.withSharedConnection(true)` names a shared (application-less)
-one instead. `connectionId` still works but is environment-specific (ids
-differ per environment; codes don't).
+A bare `connectionCode` names a connection owned by the SAME application; add
+`.withSharedConnection(true)` to name a shared (application-less) connection
+instead — the two namespaces never fall back to one another.
 
-A subscription's `target` may be a path (`/webhooks/orders`) instead of an
-absolute URL — it is resolved at sync time against, in order, the definition
-set's own base (see `forClient` below) then a synchronizer-level default:
+To scope a whole set of connections/subscriptions to one client (tenant),
+call `.forClient(clientIdOrIdentifier)` on the `DefinitionSet`. Sync several
+sets that may share an application (and possibly a client) with
+`syncGrouped(sets)` rather than `syncAll(sets, options)`: `syncGrouped` MERGES
+every set sharing an application code before issuing one platform call per
+`(application, client)` scope — global scope first, then each client scope in
+first-seen order — so two sets contributing to the SAME scope never become
+two separate `removeUnlisted` calls, the second of which would delete what
+the first just created.
 
 ```java
-var synchronizer = new DefinitionSynchronizer(client.transport(), "https://app.example.com");
-synchronizer.sync(set);
+var acme = Definitions.DefinitionSet.define("orders").forClient("acme")
+        .withConnections(List.of(Definitions.Connection.of("hook", "Acme Hook")));
+var beta = Definitions.DefinitionSet.define("orders").forClient("beta")
+        .withConnections(List.of(Definitions.Connection.of("hook", "Beta Hook")));
+
+Map<String, SyncResult> results = client.definitions().syncGrouped(List.of(acme, beta));
 ```
 
-or configure the default once on the client:
+A single row can override which client scope it belongs to with
+`Connection#withClient` / `Subscription#withClient` — it wins over the
+owning `DefinitionSet`'s own client, useful for one codebase-defined set that
+still needs to route a handful of rows to a specific tenant:
+
+```java
+var set = Definitions.DefinitionSet.define("orders")
+        .withConnections(List.of(
+                Definitions.Connection.of("shared-hook", "Shared Hook"),      // global
+                Definitions.Connection.of("acme-hook", "Acme Hook").withClient("acme")));
+
+client.definitions().sync(set, SyncOptions.removingUnlisted()); // two calls: global, then acme
+```
+
+### Subscription target base URL
+
+A subscription's `target` may be a path (`/webhooks/orders`) instead of a
+full URL — resolved at sync time against a base URL, so one definition
+works across every environment. An absolute target (has a scheme) is always
+sent verbatim. The base comes from, in order: the row's own `DefinitionSet`'s
+`forClient(client, targetBaseUrl)` override, then the synchronizer's own
+default (`FlowCatalystClient.Builder.subscriptionTargetBaseUrl(...)`, or the
+second argument to `new DefinitionSynchronizer(transport, baseUrl)` when
+building one directly). A path with no base available anywhere fails that
+subscription's sync locally, naming it, rather than being silently dropped —
+under `removeUnlisted` a dropped subscription would be deleted.
 
 ```java
 var client = FlowCatalystClient.builder()
-        .baseUrl("https://your-instance.flowcatalyst.io")
-        .clientCredentials("oac_your_client_id", "your_client_secret")
-        .subscriptionTargetBaseUrl("https://app.example.com")
+        .baseUrl("https://platform.flowcatalyst.io")
+        .clientCredentials(id, secret)
+        .subscriptionTargetBaseUrl("https://api.myapp.com") // the default for path-style targets
         .build();
+
+var tenantSet = Definitions.DefinitionSet.define("orders")
+        .forClient("acme", "https://acme.myapp.com") // this tenant's own host
+        .withSubscriptions(List.of(Definitions.Subscription.of(
+                        "order-placed", "Order Placed", "/webhooks/orders", // resolves per-tenant
+                        List.of(Definitions.SubscriptionEventType.of("orders:sales:order:placed")))
+                .withConnectionCode("billing-hook")));
 ```
 
-A blank target, or a path with no base available anywhere, fails that
-subscription's sync LOCALLY (naming it) and sends nothing for the whole
-group — under `removeUnlisted`, sending a partial list would delete the
-subscriptions left out.
-
-### Failure handling: `DefinitionSyncException`
-
-`sync`, `syncAll` and `syncGrouped` all **throw `DefinitionSyncException`**
-(a `FlowCatalystException`) if ANY category of ANY application they synced
-came back failed — a duplicate code, an unresolvable target, or a connection
-sync failure that skipped its subscriptions. A caller that doesn't inspect
-every category of the returned `SyncResult` (a deploy step that just calls
-`sync(set)` and relies on "no exception" to mean success, say) would
-otherwise report success while part of the sync silently did not happen.
-
-Every application/scope that COULD run still runs before the exception is
-thrown — one tenant's bad definition, or one scope's failed connection sync,
-does not stop its siblings from being attempted. What DID sync is never
-lost: it's carried on the exception via a typed accessor.
+`sync`, `syncAll` and `syncGrouped` all throw `DefinitionSyncException` (a
+`FlowCatalystException` carrying `SdkError.PartialFailure`) if any category —
+most commonly connections or subscriptions — could not be synced: a
+duplicate code within one scope, or an HTTP failure. A connection sync
+failure skips that SAME scope's subscription sync (their `connectionCode`s
+may not resolve) without stopping any *other* scope or application from
+being attempted; `syncAll`/`syncGrouped` run every set/application to
+completion before throwing once, so a caller sees every failure at once
+rather than stopping at the first. The exception carries whatever DID sync —
+`result()` (`sync`), `results()` (`syncAll`) or `resultsByApplication()`
+(`syncGrouped`) — so a deploy step can log the partial outcome instead of
+silently treating "no exception" as success:
 
 ```java
 try {
     client.definitions().sync(set, SyncOptions.removingUnlisted());
 } catch (DefinitionSyncException e) {
-    SyncResult partial = e.result();               // never null when sync() threw
-    if (partial.connections() instanceof SyncResult.Category.Failed f) {
-        log.warn("connections failed: {}", f.error());
+    log.error("definition sync had failures: {}", e.getMessage());
+    if (e.result().connections() instanceof SyncResult.Category.Synced synced) {
+        log.info("connections DID sync: {} created", synced.created());
     }
-    throw e;   // or handle/report and continue, as your deploy step needs
-}
-```
-
-`syncAll` and `syncGrouped` run every set/application to completion first,
-then throw ONCE at the end — never at the first failing one — carrying every
-result, including the ones that synced fully:
-
-```java
-try {
-    Map<String, SyncResult> results = client.definitions().syncGrouped(sets, options);
-} catch (DefinitionSyncException e) {
-    e.resultsByApplication().forEach((app, result) -> { /* inspect each */ });
     throw e;
 }
 ```
-
-| Thrown by | Partial result accessor | Type |
-|---|---|---|
-| `sync` | `e.result()` | `SyncResult` |
-| `syncAll` | `e.results()` | `List<SyncResult>`, same order as the input sets |
-| `syncGrouped` | `e.resultsByApplication()` | `Map<String, SyncResult>`, keyed by application code |
-
-Only the accessor matching the method that threw is non-null; the others are
-null. `e.getMessage()` names every failed category and its error text across
-every application, so even an uninspected `catch` block's log line is
-actionable.
-
-A genuinely uncaught exception from a category that does not catch its own
-HTTP failures (roles, event types, dispatch pools, principals, processes,
-scheduled jobs, OpenAPI — connections and subscriptions are the ones that
-catch theirs, per above) still propagates immediately and stops `syncAll`/
-`syncGrouped` at whichever set was running, exactly as it always has — that
-is a real, unrecovered failure (e.g. a network outage), not a partial result
-to collect.
-
-A pure success — no category anywhere failed — returns exactly as before;
-nothing changes on the happy path.
-
-### Client scoping and multi-tenant applications
-
-Connections and subscriptions may be scoped to a FlowCatalyst **client**,
-always by its identifier slug — never its id, since ids differ per
-environment. The platform treats each `(application, client)` sync as the
-COMPLETE list for that scope, so the SDK issues one platform call per
-distinct client (global first, connections before subscriptions within
-each) and never merges or splits a scope across calls.
-
-A single-tenant application can set a client per row:
-
-```java
-Definitions.Connection.of("orders-webhook", "Orders Webhook").withClient("acme");
-```
-
-or via the annotation:
-
-```java
-@AsConnection(code = "orders-webhook", name = "Orders Webhook", client = "acme")
-```
-
-A **multi-tenant** application should NOT do this per-row — build one
-`DefinitionSet` per `(application, client)` instead, the tenant list being
-your own runtime data (never an annotation):
-
-```java
-var tenantSet = Definitions.DefinitionSet.define("orders")
-        .forClient("acme", "https://acme.example.com")   // per-tenant target base URL, optional
-        .withConnections(...)
-        .withSubscriptions(...);
-
-client.definitions().sync(tenantSet, SyncOptions.removingUnlisted());
-```
-
-A row's own `client` wins over its set's; a scanned annotation's own
-`client()` wins over the `defaultClient` passed to `DefinitionScanner.scan`:
-
-```java
-var set = DefinitionScanner.scan("orders", classes, "acme");   // single-tenant default
-```
-
-### Syncing several sets for one application: `syncAll` vs `syncGrouped`
-
-`sync`/`syncAll` keep single-set behaviour and do **not** merge — two sets
-targeting the same `(application, client)` scope become two platform calls,
-and the second's `removeUnlisted` deletes what the first just created.
-
-`syncGrouped` MERGES every set sharing an application code into one combined
-sync before calling the platform — the safe way to combine, say, scanned
-annotation definitions with a multi-tenant provider's per-tenant sets:
-
-```java
-Map<String, SyncResult> results = client.definitions().syncGrouped(
-        List.of(scannedSet, tenantSetAcme, tenantSetBeta),
-        SyncOptions.removingUnlisted());
-```
-
-The same code appearing twice in one `(application, client)` scope after
-merging is a configuration error: that type's sync for that scope fails
-LOCALLY, naming the code and the scope, and nothing is sent for it — other
-types and other scopes still sync. As with `sync`, a failure anywhere means
-`syncGrouped` throws `DefinitionSyncException` — see [Failure
-handling](#failure-handling-definitionsyncexception) above for how to read
-`e.resultsByApplication()`.
 
 ## Webhook verification
 

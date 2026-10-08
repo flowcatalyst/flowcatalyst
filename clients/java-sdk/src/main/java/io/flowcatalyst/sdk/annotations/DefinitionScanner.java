@@ -10,8 +10,8 @@ import java.util.List;
 /**
  * Builds a {@link DefinitionSet} from explicitly registered annotated
  * classes. No classpath scanning — pass the classes carrying
- * {@link AsEventType}, {@link AsSubscription}, {@link AsDispatchPool}, and
- * {@link AsRole}:
+ * {@link AsEventType}, {@link AsConnection}, {@link AsSubscription},
+ * {@link AsDispatchPool}, and {@link AsRole}:
  *
  * <pre>{@code
  * DefinitionSet set = DefinitionScanner.scan("orders",

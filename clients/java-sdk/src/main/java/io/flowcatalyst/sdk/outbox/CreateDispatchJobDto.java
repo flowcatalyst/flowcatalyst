@@ -20,9 +20,15 @@ public final class CreateDispatchJobDto {
 
     /**
      * Ordering behavior within a message group.
-     * IMMEDIATE: no ordering, jobs dispatch concurrently (platform default).
-     * NEXT_ON_ERROR: FIFO per group; a failed job is retried later but the group moves on.
+     * IMMEDIATE: no ordering, jobs dispatch concurrently.
+     * NEXT_ON_ERROR: FIFO per group; a failed job is retried later but the group moves on
+     * (<strong>the platform default when {@code mode} is unset</strong>).
      * BLOCK_ON_ERROR: strict FIFO per group; a failed job blocks the group until resolved.
+     *
+     * <p>The default is NEXT_ON_ERROR because the two failure modes are not
+     * symmetric: wanting concurrency and getting ordering costs throughput,
+     * which is visible and cheap to fix, while needing ordering and silently
+     * getting none is invisible and lands in the target's data.
      */
     public enum DispatchMode {
         IMMEDIATE,
@@ -53,6 +59,7 @@ public final class CreateDispatchJobDto {
     private String idempotencyKey;
     private String externalId;
     private String connectionId;
+    private String queue;
 
     private CreateDispatchJobDto() {}
 
@@ -81,6 +88,7 @@ public final class CreateDispatchJobDto {
         c.idempotencyKey = idempotencyKey;
         c.externalId = externalId;
         c.connectionId = connectionId;
+        c.queue = queue;
         return c;
     }
 
@@ -157,7 +165,7 @@ public final class CreateDispatchJobDto {
         return c;
     }
 
-    /** Ordering behavior within the message group; unset defaults to IMMEDIATE on the platform. */
+    /** Ordering behavior within the message group; unset defaults to NEXT_ON_ERROR on the platform. */
     public CreateDispatchJobDto withMode(DispatchMode mode) {
         CreateDispatchJobDto c = copy();
         c.mode = mode;
@@ -218,6 +226,19 @@ public final class CreateDispatchJobDto {
         return c;
     }
 
+    /**
+     * The job's own dispatch priority: {@code DEFAULT} or {@code HIGH_PRIORITY},
+     * matched ignoring case. Unset stays absent — never silently defaulted — so
+     * "not asked for" stays distinguishable from an explicit {@code DEFAULT}
+     * (docs/spec/dispatch-job-priority.md R3). Wins over the target
+     * subscription's own priority at publish time when set.
+     */
+    public CreateDispatchJobDto withQueue(String queue) {
+        CreateDispatchJobDto c = copy();
+        c.queue = queue;
+        return c;
+    }
+
     public String messageGroup() {
         return messageGroup;
     }
@@ -248,6 +269,7 @@ public final class CreateDispatchJobDto {
         putIfNotNull(payload, "idempotencyKey", idempotencyKey);
         putIfNotNull(payload, "externalId", externalId);
         putIfNotNull(payload, "connectionId", connectionId);
+        putIfNotNull(payload, "queue", queue);
         return payload;
     }
 

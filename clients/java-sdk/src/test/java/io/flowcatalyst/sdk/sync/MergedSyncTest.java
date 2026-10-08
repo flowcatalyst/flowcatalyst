@@ -6,8 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import io.flowcatalyst.sdk.FlowCatalystClient;
 import io.flowcatalyst.sdk.StubServer;
 import io.flowcatalyst.sdk.annotations.AsConnection;
@@ -26,11 +26,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link DefinitionSynchronizer#syncGrouped} — merging every set sharing an
- * application code into ONE sync per (application, client) scope, so that
- * two sets contributing to the same scope never become two platform calls
- * (the second of which would delete what the first just created under
- * {@code removeUnlisted}).
+ * {@link DefinitionSynchronizer#syncGrouped} (Go's {@code MergedSyncTest},
+ * ported) — merging every set sharing an application code into ONE sync per
+ * {@code (application, client)} scope, so that two sets contributing to the
+ * same scope never become two platform calls (the second of which would
+ * delete what the first just created under {@code removeUnlisted}); and the
+ * throw-on-partial-failure contract of {@link DefinitionSyncException}.
  */
 class MergedSyncTest {
 
@@ -65,11 +66,11 @@ class MergedSyncTest {
 
     /**
      * THE critical regression test: two sets for the same application, both
-     * defining connections for the SAME scope (first: both global; then:
-     * both bound to the same client). removeUnlisted=true must still yield
-     * exactly ONE connections request and ONE subscriptions request per
-     * scope, containing BOTH sets' definitions — not two separate requests
-     * where the second would wipe out what the first just created.
+     * defining connections/subscriptions for the SAME (global) scope.
+     * {@code removeUnlisted=true} must still yield exactly ONE connections
+     * request and ONE subscriptions request, containing BOTH sets'
+     * definitions — not two separate requests where the second would wipe
+     * out what the first just created.
      */
     @Test
     void twoSetsForTheSameScopeMergeIntoOneCallEach() throws Exception {
@@ -97,13 +98,15 @@ class MergedSyncTest {
         assertEquals(1, subscriptionCalls.size(), "exactly one subscriptions call for the global scope");
 
         JsonNode connBody = MAPPER.readTree(connectionCalls.get(0).body());
+        assertFalse(connBody.has("clientId"), "mutant (3): global scope must OMIT clientId, never null");
         assertEquals(2, connBody.get("connections").size(), "both sets' connections in one request");
 
         JsonNode subBody = MAPPER.readTree(subscriptionCalls.get(0).body());
         assertEquals(2, subBody.get("subscriptions").size(), "both sets' subscriptions in one request");
     }
 
-    /** Same regression, but both sets bound to the SAME client via forClient(). */
+    /// Same regression, but both sets bound to the SAME client via
+    /// forClient(). Mutant (6): a per-client set synced without its clientId.
     @Test
     void twoSetsForTheSameClientScopeMergeIntoOneCallEach() throws Exception {
         server.on("POST", "/api/applications/orders/connections/sync", 200, SYNC_OK);
@@ -124,7 +127,31 @@ class MergedSyncTest {
         assertEquals(2, body.get("connections").size());
     }
 
-    /** Merging applies to every per-application type, not just connections/subscriptions. */
+    /// The SUBSCRIPTION call carries the scope's client too, not only the
+    /// connection call — the server scopes each sync by its own body, so a
+    /// subscription call that lost its clientId would sync (and, with
+    /// removeUnlisted, prune) the application's GLOBAL subscriptions instead.
+    @Test
+    void theSubscriptionCallCarriesItsScopesClientJustAsTheConnectionCallDoes() throws Exception {
+        server.on("POST", "/api/applications/orders/connections/sync", 200, SYNC_OK);
+        server.on("POST", "/api/applications/orders/subscriptions/sync", 200, SYNC_OK);
+
+        DefinitionSet set = DefinitionSet.define("orders")
+                .forClient("acme")
+                .withConnections(List.of(Connection.of("conn-a", "Connection A")))
+                .withSubscriptions(List.of(Subscription.of("sub-a", "Sub A", "https://acme.example.test/hook",
+                        List.of()).withConnectionCode("conn-a")));
+
+        client().definitions().syncGrouped(List.of(set), SyncOptions.removingUnlisted());
+
+        assertEquals("acme", MAPPER.readTree(callsTo("connections/sync").get(0).body()).get("clientId").asText());
+        List<StubServer.Recorded> subscriptionCalls = callsTo("subscriptions/sync");
+        assertEquals(1, subscriptionCalls.size());
+        JsonNode body = MAPPER.readTree(subscriptionCalls.get(0).body());
+        assertEquals("acme", body.path("clientId").asText(null), "the subscriptions body names the client");
+    }
+
+    /// Merging applies to every per-application type, not just connections/subscriptions.
     @Test
     void mergingAlsoAppliesToRolesAndEventTypes() throws Exception {
         server.on("POST", "/api/applications/orders/roles/sync", 200, SYNC_OK);
@@ -146,7 +173,7 @@ class MergedSyncTest {
         assertEquals(2, roleBody.get("roles").size());
     }
 
-    /** global set + client A set + second client A set + client B set → order global, A (merged), B. */
+    /// global set + client A set + second client A set + client B set → order global, A (merged), B.
     @Test
     void mixedSetsOrderGlobalThenEachClientMergedInFirstSeenOrder() throws Exception {
         server.on("POST", "/api/applications/orders/connections/sync", 200, SYNC_OK);
@@ -212,28 +239,7 @@ class MergedSyncTest {
         assertEquals(1, callsTo("roles/sync").size(), "other types still sync");
     }
 
-    /** Per-set targetBaseUrl wins per row after merging; connectionCode-only sets don't need one. */
-    @Test
-    void perSetTargetBaseUrlAppliesAfterMerging() throws Exception {
-        server.on("POST", "/api/applications/orders/subscriptions/sync", 200, SYNC_OK);
-
-        DefinitionSet tenantSet = DefinitionSet.define("orders")
-                .forClient("acme", "https://acme.example.com")
-                .withSubscriptions(List.of(Subscription.of(
-                        "sub-a", "Sub A", "/webhooks/orders",
-                        List.of(SubscriptionEventType.of("orders:sales:order:created")))
-                        .withConnectionCode("conn-a")));
-
-        client().definitions().syncGrouped(List.of(tenantSet));
-
-        JsonNode entry = MAPPER.readTree(callsTo("subscriptions/sync").get(0).body())
-                .get("subscriptions").get(0);
-        assertEquals("https://acme.example.com/webhooks/orders", entry.get("target").asText());
-        assertFalse(entry.has("targetBaseUrl"), "the internal per-set base carrier never reaches the wire");
-        assertFalse(entry.has("_targetBaseUrl"), "the internal per-set base carrier never reaches the wire");
-    }
-
-    /** {@code SyncOptions.skipping(CONNECTIONS)} force-skips connections even when present. */
+    /// {@code SyncOptions.skipping(CONNECTIONS)} force-skips connections even when present.
     @Test
     void skippingConnectionsCategoryForceSkipsEvenWhenPresent() {
         DefinitionSet set = DefinitionSet.define("orders")
@@ -251,7 +257,8 @@ class MergedSyncTest {
      * Two applications, the first with a failed category: the second
      * application must still be synced (its request goes out) before
      * {@code syncGrouped} throws once at the end, carrying BOTH
-     * applications' results — not stopping at the first failure.
+     * applications' results — not stopping at the first failure. Pins
+     * mutant (2): stop at the first failed category.
      */
     @Test
     void syncGroupedRunsEveryApplicationToCompletionBeforeThrowingOnce() {
@@ -280,110 +287,14 @@ class MergedSyncTest {
         assertEquals(null, ex.results());
     }
 
-    /** client never appears inside a posted entry; sharedConnection only when true. */
-    @Test
-    void clientNeverAppearsInsidePostedEntries() throws Exception {
-        server.on("POST", "/api/applications/orders/connections/sync", 200, SYNC_OK);
-        server.on("POST", "/api/applications/orders/subscriptions/sync", 200, SYNC_OK);
+    // ── connection sync failure skips subscriptions for that scope only, but throws loudly ────
 
-        DefinitionSet set = DefinitionSet.define("orders")
-                .forClient("acme")
-                .withConnections(List.of(Connection.of("conn-a", "A")))
-                .withSubscriptions(List.of(Subscription.of(
-                        "sub-a", "Sub A", "https://a.example.com/hook",
-                        List.of(SubscriptionEventType.of("orders:sales:order:created")))
-                        .withConnectionCode("conn-a")
-                        .withSharedConnection(false)));
-
-        client().definitions().sync(set, SyncOptions.removingUnlisted());
-
-        JsonNode connBody = MAPPER.readTree(callsTo("connections/sync").get(0).body());
-        assertFalse(connBody.get("connections").get(0).has("client"));
-
-        JsonNode subBody = MAPPER.readTree(callsTo("subscriptions/sync").get(0).body());
-        JsonNode subEntry = subBody.get("subscriptions").get(0);
-        assertFalse(subEntry.has("client"));
-        assertFalse(subEntry.has("sharedConnection"), "sharedConnection omitted when false");
-    }
-
-    @Test
-    void sharedConnectionSentOnlyWhenTrue() throws Exception {
-        server.on("POST", "/api/applications/orders/subscriptions/sync", 200, SYNC_OK);
-
-        DefinitionSet set = DefinitionSet.define("orders")
-                .withSubscriptions(List.of(Subscription.of(
-                        "sub-a", "Sub A", "https://a.example.com/hook",
-                        List.of(SubscriptionEventType.of("orders:sales:order:created")))
-                        .withConnectionCode("shared-conn")
-                        .withSharedConnection(true)));
-
-        client().definitions().sync(set);
-
-        JsonNode body = MAPPER.readTree(callsTo("subscriptions/sync").get(0).body());
-        assertTrue(body.get("subscriptions").get(0).get("sharedConnection").asBoolean());
-    }
-
-    // ── @AsConnection scanning + client precedence ──────────────────
-
-    @AsConnection(code = "scanned-conn", name = "Scanned Connection")
-    static final class NoClientConnection {}
-
-    @AsConnection(code = "scanned-conn-2", name = "Scanned Connection 2", client = "acme")
-    static final class AnnotatedClientConnection {}
-
-    @Test
-    void scannerBuildsConnectionsFromAnnotatedClasses() {
-        DefinitionSet set = DefinitionScanner.scan("orders", List.of(NoClientConnection.class));
-        Connection connection = set.connections().getFirst();
-        assertEquals("scanned-conn", connection.code());
-        assertEquals("Scanned Connection", connection.name());
-    }
-
-    @Test
-    void annotationClientBeatsConfiguredDefault() {
-        DefinitionSet set = DefinitionScanner.scan(
-                "orders", List.of(AnnotatedClientConnection.class), "default-client");
-        assertEquals("acme", set.connections().getFirst().client());
-    }
-
-    @Test
-    void configuredDefaultAppliesWhenAnnotationHasNoClient() {
-        DefinitionSet set = DefinitionScanner.scan(
-                "orders", List.of(NoClientConnection.class), "default-client");
-        assertEquals("default-client", set.connections().getFirst().client());
-    }
-
-    @Test
-    void noClientAtAllWhenNeitherAnnotationNorDefaultSetsOne() {
-        DefinitionSet set = DefinitionScanner.scan("orders", List.of(NoClientConnection.class));
-        assertEquals(null, set.connections().getFirst().client());
-    }
-
-    // ── source compatibility ─────────────────────────────────────────
-
-    @Test
-    void subscriptionOldConstructorsStillCompileAndWork() {
-        // The pre-connectionCode (11-arg) constructor.
-        Subscription legacy = new Subscription(
-                "code", "name", "desc", "https://example.com", "conn-id",
-                List.of(SubscriptionEventType.of("orders:sales:order:created")), "pool",
-                Definitions.SubscriptionMode.IMMEDIATE, 3, 30, true);
-        assertEquals("code", legacy.code());
-        assertEquals(null, legacy.connectionCode());
-        assertEquals(null, legacy.client());
-        assertEquals(null, legacy.sharedConnection());
-
-        // The post-bb1b483 (12-arg, with connectionCode) constructor.
-        Subscription withCode = new Subscription(
-                "code", "name", "desc", "https://example.com", "conn-id",
-                List.of(SubscriptionEventType.of("orders:sales:order:created")), "pool",
-                Definitions.SubscriptionMode.IMMEDIATE, 3, 30, true, "conn-code");
-        assertEquals("conn-code", withCode.connectionCode());
-        assertEquals(null, withCode.client());
-    }
-
-    // ── connection sync failure skips subscriptions for that scope, but throws loudly ────
-
+    /**
+     * Mutant (1): the partial result is dropped from the exception. Also
+     * covers "a failed category does not stop the remaining categories" —
+     * this scope's connections failed but the exception still carries the
+     * (Failed) subscriptions outcome, not a null/absent one.
+     */
     @Test
     void connectionSyncFailureSkipsSubscriptionsForThatScopeOnlyAndThrows() throws Exception {
         server.on("POST", "/api/applications/orders/connections/sync", 500,
@@ -411,7 +322,7 @@ class MergedSyncTest {
      * A failure in ONE client scope must not stop a SIBLING scope from being
      * attempted — its connections AND subscriptions requests still go out —
      * while the overall call still throws once, carrying both scopes'
-     * outcomes in the partial result.
+     * outcomes in the partial result. Pins mutant (2) at the scope level too.
      */
     @Test
     void failureInOneScopeDoesNotStopASiblingScopeButStillThrows() throws Exception {
@@ -423,30 +334,32 @@ class MergedSyncTest {
         });
         server.on("POST", "/api/applications/orders/subscriptions/sync", 200, SYNC_OK);
 
-        DefinitionSet set = DefinitionSet.define("orders")
-                // beta listed FIRST: its failure must not prevent acme (which
-                // comes after it) from being attempted.
-                .withConnections(List.of(
-                        Connection.of("conn-beta", "Beta").withClient("beta"),
-                        Connection.of("conn-acme", "Acme").withClient("acme")))
-                .withSubscriptions(List.of(
-                        Subscription.of("sub-beta", "Sub Beta", "https://x.example.com/hook",
-                                        List.of(SubscriptionEventType.of("orders:sales:order:created")))
-                                .withConnectionCode("conn-beta").withClient("beta"),
-                        Subscription.of("sub-acme", "Sub Acme", "https://x.example.com/hook",
-                                        List.of(SubscriptionEventType.of("orders:sales:order:created")))
-                                .withConnectionCode("conn-acme").withClient("acme")));
+        // beta listed FIRST: its failure must not prevent acme (which comes
+        // after it) from being attempted.
+        DefinitionSet betaSet = DefinitionSet.define("orders").forClient("beta")
+                .withConnections(List.of(Connection.of("conn-beta", "Beta")))
+                .withSubscriptions(List.of(Subscription.of(
+                        "sub-beta", "Sub Beta", "https://x.example.com/hook",
+                        List.of(SubscriptionEventType.of("orders:sales:order:created")))
+                        .withConnectionCode("conn-beta")));
+        DefinitionSet acmeSet = DefinitionSet.define("orders").forClient("acme")
+                .withConnections(List.of(Connection.of("conn-acme", "Acme")))
+                .withSubscriptions(List.of(Subscription.of(
+                        "sub-acme", "Sub Acme", "https://x.example.com/hook",
+                        List.of(SubscriptionEventType.of("orders:sales:order:created")))
+                        .withConnectionCode("conn-acme")));
 
         DefinitionSyncException ex = assertThrows(
                 DefinitionSyncException.class,
-                () -> client().definitions().sync(set, SyncOptions.removingUnlisted()));
+                () -> client().definitions().syncGrouped(
+                        List.of(betaSet, acmeSet), SyncOptions.removingUnlisted()));
 
         List<StubServer.Recorded> connCalls = callsTo("connections/sync");
         List<StubServer.Recorded> subCalls = callsTo("subscriptions/sync");
         assertEquals(2, connCalls.size(), "BOTH scopes' connection requests were made");
         assertEquals(1, subCalls.size(), "only acme's subscriptions were sent — beta's were skipped");
 
-        SyncResult result = ex.result();
+        SyncResult result = ex.resultsByApplication().get("orders");
         Category.Failed connections = assertInstanceOf(Category.Failed.class, result.connections());
         assertEquals(1, connections.created(), "acme's successful group still counted");
         assertTrue(connections.error().contains("beta") || connections.error().contains("boom"),
@@ -461,10 +374,10 @@ class MergedSyncTest {
 
     /**
      * {@code syncAll} must run every set to completion for a {@link
-     * Category.Failed} (a duplicate code, an unresolvable target, a caught
-     * connection HTTP failure) before throwing once at the end — the same
-     * guarantee as {@code syncGrouped}, carrying {@code results()} (a
-     * {@code List}, since {@code syncAll} never merges/keys by application).
+     * Category.Failed} (a duplicate code, a caught connection HTTP failure)
+     * before throwing once at the end — the same guarantee as {@code
+     * syncGrouped}, carrying {@code results()} (a {@code List}, since {@code
+     * syncAll} never merges/keys by application).
      */
     @Test
     void syncAllRunsEveryApplicationToCompletionForCategoryFailedThenThrowsOnce() {
@@ -517,5 +430,111 @@ class MergedSyncTest {
                 server.requests.stream()
                         .noneMatch(r -> r.pathAndQuery().contains("/applications/second/roles/sync")),
                 "the second application must NOT have been attempted — genuine exceptions still stop the run");
+    }
+
+    // ── subscription target base URL, per set ───────────────────────────
+
+    /** Per-set targetBaseUrl wins per row after merging; connectionCode-only sets don't need one. */
+    @Test
+    void perSetTargetBaseUrlAppliesAfterMerging() throws Exception {
+        server.on("POST", "/api/applications/orders/subscriptions/sync", 200, SYNC_OK);
+
+        DefinitionSet tenantSet = DefinitionSet.define("orders")
+                .forClient("acme", "https://acme.example.com")
+                .withSubscriptions(List.of(Subscription.of(
+                        "sub-a", "Sub A", "/webhooks/orders",
+                        List.of(SubscriptionEventType.of("orders:sales:order:created")))
+                        .withConnectionCode("conn-a")));
+
+        client().definitions().syncGrouped(List.of(tenantSet));
+
+        JsonNode entry = MAPPER.readTree(callsTo("subscriptions/sync").get(0).body())
+                .get("subscriptions").get(0);
+        assertEquals("https://acme.example.com/webhooks/orders", entry.get("target").asText());
+        assertFalse(entry.has("targetBaseUrl"), "the internal per-set base carrier never reaches the wire");
+    }
+
+    /** client never appears inside a posted entry; sharedConnection only when true. */
+    @Test
+    void clientNeverAppearsInsidePostedEntries() throws Exception {
+        server.on("POST", "/api/applications/orders/connections/sync", 200, SYNC_OK);
+        server.on("POST", "/api/applications/orders/subscriptions/sync", 200, SYNC_OK);
+
+        DefinitionSet set = DefinitionSet.define("orders")
+                .forClient("acme")
+                .withConnections(List.of(Connection.of("conn-a", "A")))
+                .withSubscriptions(List.of(Subscription.of(
+                        "sub-a", "Sub A", "https://a.example.com/hook",
+                        List.of(SubscriptionEventType.of("orders:sales:order:created")))
+                        .withConnectionCode("conn-a")
+                        .withSharedConnection(false)));
+
+        client().definitions().sync(set, SyncOptions.removingUnlisted());
+
+        JsonNode connBody = MAPPER.readTree(callsTo("connections/sync").get(0).body());
+        assertFalse(connBody.get("connections").get(0).has("client"));
+
+        JsonNode subBody = MAPPER.readTree(callsTo("subscriptions/sync").get(0).body());
+        JsonNode subEntry = subBody.get("subscriptions").get(0);
+        assertFalse(subEntry.has("client"));
+        assertFalse(subEntry.has("sharedConnection"), "sharedConnection omitted when false");
+    }
+
+    // ── @AsConnection scanning + client precedence ──────────────────
+
+    @AsConnection(code = "scanned-conn", name = "Scanned Connection", externalId = "ext-123")
+    static final class NoClientConnection {}
+
+    @AsConnection(code = "scanned-conn-2", name = "Scanned Connection 2", client = "acme")
+    static final class AnnotatedClientConnection {}
+
+    /**
+     * Mutant (item 1a): the scanner ignores the annotation — no connections
+     * end up in the scanned set. Mutant (item 1b): an attribute (here
+     * externalId) is not carried across the scan.
+     */
+    @Test
+    void scannerBuildsConnectionsFromAnnotatedClasses() {
+        DefinitionSet set = DefinitionScanner.scan("orders", List.of(NoClientConnection.class));
+        Connection connection = set.connections().getFirst();
+        assertEquals("scanned-conn", connection.code());
+        assertEquals("Scanned Connection", connection.name());
+        assertEquals("ext-123", connection.externalId(), "externalId must carry across the scan");
+    }
+
+    @Test
+    void annotationClientBeatsConfiguredDefault() {
+        DefinitionSet set = DefinitionScanner.scan(
+                "orders", List.of(AnnotatedClientConnection.class), "default-client");
+        assertEquals("acme", set.connections().getFirst().client());
+    }
+
+    @Test
+    void configuredDefaultAppliesWhenAnnotationHasNoClient() {
+        DefinitionSet set = DefinitionScanner.scan(
+                "orders", List.of(NoClientConnection.class), "default-client");
+        assertEquals("default-client", set.connections().getFirst().client());
+    }
+
+    @Test
+    void noClientAtAllWhenNeitherAnnotationNorDefaultSetsOne() {
+        DefinitionSet set = DefinitionScanner.scan("orders", List.of(NoClientConnection.class));
+        assertEquals(null, set.connections().getFirst().client());
+    }
+
+    /**
+     * A scanned connection is synced exactly like a hand-built one — proves
+     * the scanner path and the synchronizer's row-client grouping agree.
+     */
+    @Test
+    void scannedConnectionWithAnnotationClientSyncsIntoItsOwnScope() throws Exception {
+        server.on("POST", "/api/applications/orders/connections/sync", 200, SYNC_OK);
+
+        DefinitionSet set = DefinitionScanner.scan("orders", List.of(AnnotatedClientConnection.class));
+        client().definitions().sync(set);
+
+        JsonNode body = MAPPER.readTree(callsTo("connections/sync").get(0).body());
+        assertEquals("acme", body.get("clientId").asText());
+        assertEquals("scanned-conn-2", body.get("connections").get(0).get("code").asText());
     }
 }

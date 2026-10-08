@@ -1,9 +1,11 @@
 package io.flowcatalyst.sdk.auth;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import io.flowcatalyst.sdk.error.FlowCatalystException;
 import io.flowcatalyst.sdk.error.SdkError;
+import io.flowcatalyst.sdk.http.Json;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -28,7 +30,7 @@ public final class ClientCredentialsTokenManager implements TokenProvider {
     private final String clientId;
     private final String clientSecret;
     private final HttpClient http;
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper mapper = Json.newMapper(); // the SDK's one configured mapper
 
     private String cachedToken;
     private Instant expiresAt;
@@ -93,8 +95,12 @@ public final class ClientCredentialsTokenManager implements TokenProvider {
         try {
             response = http.send(request, HttpResponse.BodyHandlers.ofString());
         } catch (IOException e) {
+            // The JDK's ConnectException often has no message: name the class so the
+            // text never reads "null" (the cause keeps the rest).
+            String why = e.getMessage() == null ? e.getClass().getSimpleName()
+                    : e.getClass().getSimpleName() + ": " + e.getMessage();
             throw new FlowCatalystException(
-                    new SdkError.TokenFetchFailed(e.getMessage(), e));
+                    new SdkError.TokenFetchFailed("Token fetch failed: " + why, e));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new FlowCatalystException(
@@ -109,12 +115,13 @@ public final class ClientCredentialsTokenManager implements TokenProvider {
 
         JsonNode body = parseQuietly(response.body());
         if (status < 200 || status >= 300) {
-            String message = "Token fetch failed";
+            // The status leads, so a 503 from a proxy never reads like a refusal.
+            String message = "Token fetch failed (HTTP " + status + ")";
             if (body != null) {
                 if (body.hasNonNull("error_description")) {
-                    message = body.get("error_description").asText();
+                    message += ": " + body.get("error_description").asText();
                 } else if (body.hasNonNull("error")) {
-                    message = body.get("error").asText();
+                    message += ": " + body.get("error").asText();
                 }
             }
             throw new FlowCatalystException(new SdkError.TokenFetchFailed(message, null));
@@ -134,7 +141,7 @@ public final class ClientCredentialsTokenManager implements TokenProvider {
     private JsonNode parseQuietly(String body) {
         try {
             return mapper.readTree(body);
-        } catch (IOException e) {
+        } catch (JacksonException e) {
             return null;
         }
     }
