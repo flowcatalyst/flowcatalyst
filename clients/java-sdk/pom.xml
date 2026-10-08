@@ -11,7 +11,7 @@
        SDK, never the other way round. -->
   <groupId>io.flowcatalyst</groupId>
   <artifactId>flowcatalyst-sdk</artifactId>
-  <version>0.0.1-SNAPSHOT</version>
+  <version>0.0.11</version>
   <packaging>jar</packaging>
 
   <name>FlowCatalyst Java SDK</name>
