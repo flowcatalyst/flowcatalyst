@@ -92,6 +92,7 @@ func poolStatsToDashboard(s router.PoolStats, window time.Duration) DashboardPoo
 	successRate := 1.0
 	var avgMs float64
 	if s.Metrics != nil {
+		//exhaustive:ignore window is a duration value, not an enum
 		switch window {
 		case 5 * time.Minute:
 			succeeded = s.Metrics.Last5Min.SuccessCount

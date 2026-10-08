@@ -775,6 +775,8 @@ func buildClients(p *principal.Principal) []string {
 			out = append(out, clientPair(p, string(id)))
 		}
 		return out
+	case principal.ScopeClient:
+		fallthrough
 	default: // CLIENT
 		out := make([]string, 0, 1)
 		if p.ClientID != nil {

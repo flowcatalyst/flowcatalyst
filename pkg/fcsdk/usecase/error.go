@@ -49,6 +49,8 @@ func (e *Error) HTTPStatus() int {
 		return 404
 	case KindBusinessRule, KindConflict:
 		return 409
+	case KindInternal:
+		fallthrough
 	default:
 		return 500
 	}

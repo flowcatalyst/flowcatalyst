@@ -46,6 +46,8 @@ func Status(err error) int {
 		// is by far the dominant case; callers can override with a
 		// specific Kind for state errors.
 		return http.StatusConflict
+	case usecase.KindInternal:
+		fallthrough
 	default:
 		return http.StatusInternalServerError
 	}

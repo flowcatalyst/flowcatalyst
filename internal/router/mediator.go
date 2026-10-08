@@ -413,6 +413,9 @@ func (m *HTTPMediator) deliverWithRetry(ctx context.Context, msg *common.Message
 		case common.MediationSuccess, common.MediationErrorConfig,
 			common.MediationRateLimited, common.MediationDeferred:
 			return last
+		case common.MediationErrorProcess, common.MediationErrorConnection,
+			common.MediationCircuitOpen:
+			fallthrough
 		default:
 			// ErrorProcess / ErrorConnection are retryable; fall through to backoff.
 			// (CircuitOpen is returned before the retry loop, so never reaches here.)

@@ -127,6 +127,8 @@ func severityRank(s WarningSeverity) int {
 		return 2
 	case WarningWarning:
 		return 1
+	case WarningInfo:
+		fallthrough
 	default:
 		return 0
 	}

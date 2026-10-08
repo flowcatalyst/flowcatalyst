@@ -666,6 +666,8 @@ func (r *Runner) heartbeat() control.Heartbeat {
 				loaded++
 			case stateFailed:
 				rep.State, rep.Reason = control.StateFailed, reason
+			case statePreparing, stateClosed:
+				fallthrough
 			default:
 				continue // preparing or closed: nothing to report yet
 			}

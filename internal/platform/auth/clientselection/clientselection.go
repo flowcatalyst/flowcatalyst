@@ -101,6 +101,8 @@ func (s *State) accessibleClientIDs(r *http.Request, p *principal.Principal) ([]
 			ids = append(ids, string(*p.ClientID))
 		}
 		return s.appendGrants(r, ids, string(p.ID))
+	case principal.ScopePartner:
+		fallthrough
 	default: // ScopePartner
 		ids := append([]string(nil), ids.Strings(p.AssignedClients)...)
 		return s.appendGrants(r, ids, string(p.ID))

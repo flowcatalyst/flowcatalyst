@@ -110,6 +110,8 @@ func (cb *CircuitBreaker) Allow() error {
 			return nil
 		}
 		return ErrCircuitOpen
+	case CircuitClosed, CircuitHalfOpen:
+		fallthrough
 	default: // Closed, HalfOpen
 		return nil
 	}

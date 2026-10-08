@@ -77,6 +77,8 @@ func (s UserScope) CanAccessClient(clientID string, homeClientID *string, assign
 		return true
 	case ScopePartner:
 		return slices.Contains(assignedClients, clientID)
+	case ScopeClient:
+		fallthrough
 	default: // CLIENT
 		return homeClientID != nil && *homeClientID == clientID
 	}
