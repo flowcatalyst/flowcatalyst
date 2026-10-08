@@ -58,7 +58,30 @@ func consumerFactory(ctx context.Context, cfg common.QueueConfig) (queue.Consume
 	if err != nil {
 		return nil, err
 	}
+	// The platform creates a dispatch queue on its first publish, so a queue the
+	// router is told to consume may not exist yet. That is not a failure and
+	// there is nothing to poll: report it as such, and the router builds the
+	// consumer once the queue appears. Any OTHER failure of this check (network,
+	// throttling, auth) is deliberately not read as "missing" — the consumer is
+	// built as if no check had been made, so a transient AWS error can never
+	// silently stop consumption; the ordinary poll-error path covers a real
+	// outage.
+	cctx, cancel := callCtx(ctx)
+	defer cancel()
+	if _, err := q.client.GetQueueAttributes(cctx, &sqs.GetQueueAttributesInput{
+		QueueUrl:       aws.String(q.queueURL),
+		AttributeNames: []sqstypes.QueueAttributeName{sqstypes.QueueAttributeNameQueueArn},
+	}); err != nil && isQueueMissing(err) {
+		q.Stop()
+		return nil, fmt.Errorf("%s: %w", q.queueName, queue.ErrQueueMissing)
+	}
 	return q, nil
+}
+
+// isQueueMissing reports whether err is SQS's "that queue does not exist".
+func isQueueMissing(err error) bool {
+	_, ok := errors.AsType[*sqstypes.QueueDoesNotExist](err)
+	return ok
 }
 
 func publisherFactory(ctx context.Context, cfg common.QueueConfig) (queue.Publisher, error) {
@@ -227,6 +250,9 @@ func (q *Queue) Poll(ctx context.Context, maxMessages uint32) ([]common.QueuedMe
 		// build, and the SDK parse, attributes that were then discarded.
 	})
 	if err != nil {
+		if isQueueMissing(err) {
+			return nil, queue.ErrQueueMissing
+		}
 		return nil, fmt.Errorf("sqs ReceiveMessage: %w", err)
 	}
 	if len(out.Messages) == 0 {

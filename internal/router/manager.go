@@ -104,6 +104,11 @@ type Manager struct {
 	// share. Maintained in lockstep with consumers at every registration,
 	// replacement and teardown — never read or written on its own.
 	consumersByID map[string]*runningConsumer
+	// missingQueues are configured queues the broker has no queue for yet (see
+	// queue.ErrQueueMissing): no consumer, no poll loop, no warning. Guarded by
+	// consumerMu. An entry is how the INFO line is logged once per streak
+	// rather than on every recheck, and what RecheckMissingQueues walks.
+	missingQueues map[string]common.QueueConfig
 
 	// drainingMu guards drainingPools: pools this Manager removed from
 	// routing (m.pools, via Reconfigure) but which are still finishing their
@@ -1186,6 +1191,12 @@ func (m *Manager) runConsumer(ctx context.Context, rc *runningConsumer) {
 			} else {
 				counters.pollErrors.Add(1)
 			}
+			// The queue vanished under a running consumer: not a fault. Retire the
+			// consumer; RecheckMissingQueues brings it back if the queue returns.
+			if errors.Is(err, queue.ErrQueueMissing) {
+				m.detachMissingConsumer(rc)
+				return
+			}
 			// A stopped consumer never resumes: Stop() was called but this poll
 			// loop wasn't torn down (e.g. a stop path that didn't also cancel our
 			// context). Exit so the restart watchdog (RestartStalledConsumers)
@@ -1504,6 +1515,13 @@ func (m *Manager) Reconfigure(ctx context.Context, cfg common.RouterConfig) erro
 			delete(m.queues, name)
 		}
 	}
+	// A queue that left the config, or whose config changed, is no longer
+	// "missing" as it was; the loop below re-judges it against the broker.
+	for name, qc := range m.missingQueues {
+		if wq, ok := wantQueues[name]; !ok || wq != qc {
+			delete(m.missingQueues, name)
+		}
+	}
 	missing := make([]common.QueueConfig, 0, len(wantQueues))
 	for name, qc := range wantQueues {
 		if _, ok := m.consumers[name]; !ok {
@@ -1538,13 +1556,44 @@ func (m *Manager) Reconfigure(ctx context.Context, cfg common.RouterConfig) erro
 	// the failures are reported together at the end (as Java's RouterServer
 	// does). A failed queue is simply absent from m.consumers, so the next
 	// Reconfigure — the watcher retries a failed apply — builds it again.
+	failed := m.startConsumers(ctx, missing)
+	// A reconfigure can add, remove, resize or repoint any pool a parked
+	// consumer's next hasCapacityFor check depends on — wake every waiter
+	// so it re-evaluates against the new topology instead of sitting out
+	// however long is left on a queueDec that may never come from a pool
+	// that no longer exists.
+	m.capacityGate.signal()
+	if len(failed) > 0 {
+		err := &ReconfigureError{Failed: failed}
+		// Running with less than the configuration asks for is an
+		// operator-visible condition, not a log line: those queues are not
+		// being consumed at all.
+		if w := m.warnings.Load(); w != nil {
+			w.Add(WarningCategoryConfiguration, WarningError, err.Error(), "router")
+		}
+		return err
+	}
+	return nil
+}
+
+// startConsumers builds and starts a consumer for each of qcs. A queue whose
+// consumer cannot be built is returned as a failure and the rest are still
+// started. A queue the broker has no queue for yet (queue.ErrQueueMissing) is
+// not a failure: it is remembered in missingQueues, logged once per streak and
+// otherwise left alone until RecheckMissingQueues (or the next Reconfigure)
+// finds it.
+func (m *Manager) startConsumers(ctx context.Context, qcs []common.QueueConfig) []QueueFailure {
 	var failed []QueueFailure
-	for _, qc := range missing {
+	for _, qc := range qcs {
 		// ctx bounds the CONNECT only. The consumer itself lives under the
 		// manager's root — see the field comment: a caller's context is not a
 		// lifetime.
 		consumer, err := buildConsumerSafely(ctx, qc)
 		if err != nil {
+			if errors.Is(err, queue.ErrQueueMissing) {
+				m.noteQueueMissing(qc)
+				continue
+			}
 			slog.Error("manager: could not build consumer; continuing with the other queues",
 				logKeyQueue, qc.Name, "err", err)
 			failed = append(failed, QueueFailure{Queue: qc.Name, Err: err})
@@ -1564,28 +1613,89 @@ func (m *Manager) Reconfigure(ctx context.Context, cfg common.RouterConfig) erro
 		m.consumers[qc.Name] = rc
 		m.consumersByID[consumer.Identifier()] = rc
 		m.queues[qc.Name] = qc
+		wasMissing := false
+		if _, ok := m.missingQueues[qc.Name]; ok {
+			wasMissing = true
+			delete(m.missingQueues, qc.Name)
+		}
 		m.consumerMu.Unlock()
+		if wasMissing {
+			slog.Info("manager: queue now exists; consuming it", logKeyQueue, qc.Name)
+		}
 
 		m.wg.Add(1)
 		go m.runConsumer(pollCtx, rc)
 	}
-	// A reconfigure can add, remove, resize or repoint any pool a parked
-	// consumer's next hasCapacityFor check depends on — wake every waiter
-	// so it re-evaluates against the new topology instead of sitting out
-	// however long is left on a queueDec that may never come from a pool
-	// that no longer exists.
-	m.capacityGate.signal()
-	if len(failed) > 0 {
-		err := &ReconfigureError{Failed: failed}
-		// Running with less than the configuration asks for is an
-		// operator-visible condition, not a log line: those queues are not
-		// being consumed at all.
-		if w := m.warnings.Load(); w != nil {
-			w.Add(WarningCategoryConfiguration, WarningError, err.Error(), "router")
-		}
-		return err
+	return failed
+}
+
+// noteQueueMissing records qc as configured-but-absent and logs the one INFO
+// line for the transition into that state; a recheck that still finds it
+// missing is silent.
+func (m *Manager) noteQueueMissing(qc common.QueueConfig) {
+	m.consumerMu.Lock()
+	if m.missingQueues == nil {
+		m.missingQueues = make(map[string]common.QueueConfig)
 	}
-	return nil
+	_, already := m.missingQueues[qc.Name]
+	m.missingQueues[qc.Name] = qc
+	m.consumerMu.Unlock()
+	if !already {
+		slog.Info("manager: queue does not exist yet; not consuming it (rechecked periodically)",
+			logKeyQueue, qc.Name)
+	}
+}
+
+// RecheckMissingQueues starts a consumer for every configured queue that was
+// missing at the last look and has appeared since. The platform creates a
+// dispatch queue on the first message published to it, which can happen long
+// after the config naming it was applied — and an unchanged config is never
+// re-applied, so without this a queue created later would not be consumed
+// until the next config change. With nothing missing it does no work at all.
+func (m *Manager) RecheckMissingQueues(ctx context.Context) {
+	m.consumerMu.Lock()
+	qcs := make([]common.QueueConfig, 0, len(m.missingQueues))
+	for name, qc := range m.missingQueues {
+		if _, running := m.consumers[name]; !running {
+			qcs = append(qcs, qc)
+		}
+	}
+	m.consumerMu.Unlock()
+	if len(qcs) == 0 {
+		return
+	}
+	// Failures other than "missing" are logged by startConsumers; the next
+	// recheck (or a Reconfigure) tries them again.
+	m.startConsumers(ctx, qcs)
+}
+
+// detachMissingConsumer retires a consumer whose queue disappeared from under
+// it: it leaves the active maps and stops polling exactly as a queue removed by
+// Reconfigure does (messages already in flight finish and can still ack or nack
+// through the detaching list), and the queue goes back to the missing set so
+// RecheckMissingQueues brings it back when it exists again.
+func (m *Manager) detachMissingConsumer(rc *runningConsumer) {
+	name := rc.queueCfg.Name
+	m.consumerMu.Lock()
+	if cur, ok := m.consumers[name]; !ok || cur != rc {
+		m.consumerMu.Unlock()
+		return
+	}
+	delete(m.consumers, name)
+	delete(m.consumersByID, rc.consumer.Identifier())
+	delete(m.queues, name)
+	if m.missingQueues == nil {
+		m.missingQueues = make(map[string]common.QueueConfig)
+	}
+	m.missingQueues[name] = rc.queueCfg
+	m.consumerMu.Unlock()
+
+	rc.stopPoll()
+	m.detachMu.Lock()
+	rc.detachedAt = time.Now()
+	m.detaching = append(m.detaching, rc)
+	m.detachMu.Unlock()
+	slog.Info("manager: queue no longer exists; stopped consuming it (rechecked periodically)", logKeyQueue, name)
 }
 
 // QueueFailure is one queue a Reconfigure could not start a consumer for.
@@ -1884,6 +1994,11 @@ func (m *Manager) RestartStalledConsumers(ctx context.Context, threshold time.Du
 		buildCtx, cancelBuild := context.WithTimeout(ctx, m.rebuildTimeout)
 		consumer, err := buildConsumerSafely(buildCtx, c.qc)
 		cancelBuild()
+		if errors.Is(err, queue.ErrQueueMissing) {
+			// The queue is gone, not the consumer wedged: retire it quietly.
+			m.detachMissingConsumer(c.old)
+			continue
+		}
 		if err != nil {
 			// Count the failure. A rebuild that keeps failing leaves the
 			// consumer stalled, so it stays in the stalled set and its counter

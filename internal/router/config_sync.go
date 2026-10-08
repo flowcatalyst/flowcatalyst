@@ -472,6 +472,10 @@ func Watch(ctx context.Context, cs *ConfigSource, manager *Manager, interval tim
 		}()
 		cfg, err := cs.Fetch(ctx)
 		if errors.Is(err, ErrUnchanged) {
+			// An unchanged config is not re-applied, but a queue it names may
+			// have been created since (the platform makes each on its first
+			// publish). Start consumers for any that have appeared.
+			manager.RecheckMissingQueues(ctx)
 			clearWatchWarning(warnings, &watchWarnID)
 			return true
 		}

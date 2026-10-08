@@ -32,6 +32,15 @@ var ErrNotImplemented = errors.New("queue: not implemented for this backend")
 // dead one. Backends may return it wrapped; callers match with errors.Is.
 var ErrStopped = errors.New("queue: consumer stopped")
 
+// ErrQueueMissing means the broker has no such queue (yet). It is not a
+// failure: the platform creates a dispatch queue lazily, on the first message
+// published to it, so a queue the router is configured to consume can
+// legitimately not exist. A consumer factory returns it instead of a consumer;
+// a Poll returns it when the queue disappears under a running consumer. The
+// router starts no consumer for the queue, raises no warning, and builds one
+// as soon as the queue appears (Manager.RecheckMissingQueues).
+var ErrQueueMissing = errors.New("queue: does not exist")
+
 // Metrics captures queue health snapshot.
 type Metrics struct {
 	QueueIdentifier  string
