@@ -3,6 +3,7 @@ module github.com/flowcatalyst/flowcatalyst-go
 go 1.27
 
 require (
+	github.com/a-h/templ v0.3.1020
 	github.com/aws/aws-sdk-go-v2 v1.47.1
 	github.com/aws/aws-sdk-go-v2/config v1.32.18
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.17
@@ -49,7 +50,6 @@ require (
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/CAFxX/httpcompression v0.0.9 // indirect
 	github.com/a-h/parse v0.0.0-20250122154542-74294addb73e // indirect
-	github.com/a-h/templ v0.3.1020 // indirect
 	github.com/andybalholm/brotli v1.2.1 // indirect
 	github.com/antithesishq/antithesis-sdk-go v0.6.0-default-no-op // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.20 // indirect
