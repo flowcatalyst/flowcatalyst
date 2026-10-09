@@ -33,8 +33,7 @@ func (p *Principal) IsAllApplicationsAdmin() bool {
 // write funnels through it, whichever persister wraps the repository), so
 // deactivate, update, sync, scope change and assign-application-access are all
 // covered with one rule. The lock is only taken when the stored row IS an
-// administrator and the incoming state is not, so unrelated principal writes
-// never contend on it.
+// administrator and the incoming state is not, so writes to ordinary principals never contend on it.
 func (r *Repository) guardLastAdminOnPersist(ctx context.Context, p *Principal, tx *usecasepgx.DbTx) error {
 	if p.IsAllApplicationsAdmin() {
 		return nil // not a reduction
