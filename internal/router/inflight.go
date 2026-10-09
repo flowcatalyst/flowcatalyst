@@ -2,7 +2,9 @@ package router
 
 import (
 	"context"
+	"hash/maphash"
 	"log/slog"
+	"slices"
 	"sync"
 	"time"
 
@@ -14,8 +16,57 @@ import (
 //   - stall detection (force-NACK messages stuck longer than threshold)
 //   - duplicate filter (SQS at-least-once redelivery during processing)
 //   - graceful shutdown (drain to zero before exit)
+//
+// # Sharding
+//
+// Every message takes three exclusive lock acquisitions here (Register at
+// route time, EnsureTracked at dispatch, Remove at ack). With one lock for the
+// whole process that became a lock convoy once GOMAXPROCS > 1: at 4 CPUs about
+// 2,000 goroutines were measured parked on it, and the router left ~17% of its
+// CPU quota idle (docs/router-scaling-results.md). The tracker is therefore
+// split into trackerShards independent shards, each with its own lock and its
+// own pair of maps.
+//
+// INVARIANT: a message's entries in BOTH maps live in the shard chosen by its
+// application message id (shardFor(MessageID)). That is what lets Register
+// keep its single atomic check-and-insert across the two maps under one shard
+// lock:
+//
+//   - byMessage is keyed by the message id, so it is in that shard by
+//     definition.
+//   - byBroker is keyed by (queue, broker id), but a broker message has exactly
+//     one body and so exactly one application message id: every copy of the
+//     same broker message — a visibility-timeout redelivery, a deferred copy
+//     coming back — carries the same message id and lands in the same shard,
+//     where its alias already lives.
+//   - An external requeue (same message id, DIFFERENT broker id) also hashes
+//     to the owner's shard, so it is classified against the owner under the
+//     same lock exactly as before sharding.
+//
+// Two different message ids never need each other's entries: the only
+// cross-message interaction the maps ever had was the bare-broker-id
+// collision across queues, which brokerKey already scopes away.
+//
+// The whole-tracker views (Count, DeferredCount, CountForQueue*, Snapshot,
+// Reap) visit the shards one at a time. They were never point-in-time
+// consistent with concurrent route/ack traffic in any useful sense (an entry
+// can be added or removed the instant the lock is released), and every caller
+// treats them as gauges or periodic sweeps.
 type InFlightTracker struct {
-	mu sync.RWMutex
+	seed   maphash.Seed
+	shards [trackerShards]trackerShard
+}
+
+// trackerShards is the shard count: a power of two so the index is a mask.
+// 64 keeps the chance of two of a handful of concurrently-locking goroutines
+// colliding low at any plausible GOMAXPROCS, for ~8 KiB of padded shards.
+const trackerShards = 64
+
+// trackerShard is one lock and its two maps. Padded to a 128-byte boundary
+// (the arm64 cache-line pad size; two 64-byte lines on amd64) so neighbouring
+// shards' locks do not share a cache line and bounce it between cores.
+type trackerShard struct {
+	mu sync.Mutex
 	// keyed by (QueueIdentifier, BrokerMessageID); the message itself doubles
 	// as the lookup key when the broker ID is unavailable (Postgres-backed
 	// queues etc.).
@@ -30,6 +81,17 @@ type InFlightTracker struct {
 	// receipt handle (the broker rejects it, or worse, deletes something else).
 	byBroker  map[brokerKey]*common.InFlightMessage
 	byMessage map[string]*common.InFlightMessage
+	_         [trackerShardPad]byte
+}
+
+// trackerShardPad pads trackerShard (an 8-byte Mutex plus two map pointers)
+// to 128 bytes; TestTrackerShardIsCacheLinePadded pins the arithmetic.
+const trackerShardPad = 128 - 8 - 8 - 8
+
+// shardFor returns the shard owning messageID — see the sharding invariant on
+// InFlightTracker.
+func (t *InFlightTracker) shardFor(messageID string) *trackerShard {
+	return &t.shards[maphash.String(t.seed, messageID)&(trackerShards-1)]
 }
 
 // brokerKey scopes a broker message id to the queue that produced it — see
@@ -42,10 +104,12 @@ type brokerKey struct {
 
 // NewInFlightTracker constructs an empty tracker.
 func NewInFlightTracker() *InFlightTracker {
-	return &InFlightTracker{
-		byBroker:  make(map[brokerKey]*common.InFlightMessage),
-		byMessage: make(map[string]*common.InFlightMessage),
+	t := &InFlightTracker{seed: maphash.MakeSeed()}
+	for i := range t.shards {
+		t.shards[i].byBroker = make(map[brokerKey]*common.InFlightMessage)
+		t.shards[i].byMessage = make(map[string]*common.InFlightMessage)
 	}
+	return t
 }
 
 // RegisterOutcome is Register's verdict on a newly-polled copy of a message.
@@ -78,10 +142,11 @@ const (
 // group head still dedupes redeliveries and external requeues. The single
 // atomic check-and-insert replaces the old separate swap/requeue probes.
 func (t *InFlightTracker) Register(im *common.InFlightMessage) RegisterOutcome {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	s := t.shardFor(im.MessageID)
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if im.BrokerMessageID != "" {
-		if prev, ok := t.byBroker[brokerKey{im.QueueIdentifier, im.BrokerMessageID}]; ok {
+		if prev, ok := s.byBroker[brokerKey{im.QueueIdentifier, im.BrokerMessageID}]; ok {
 			if !prev.DeferredUntil.IsZero() {
 				// The copy the router deferred is back from the broker: it
 				// re-enters the pipeline as itself — fresh receipt, fresh
@@ -94,7 +159,7 @@ func (t *InFlightTracker) Register(im *common.InFlightMessage) RegisterOutcome {
 			return RegisterRedelivery
 		}
 	}
-	if prev, ok := t.byMessage[im.MessageID]; ok {
+	if prev, ok := s.byMessage[im.MessageID]; ok {
 		if im.BrokerMessageID != "" && prev.BrokerMessageID != "" && prev.BrokerMessageID != im.BrokerMessageID {
 			// Also the deferred case: a second broker copy of a message whose
 			// first copy is parked is a duplicate the platform republished.
@@ -110,9 +175,9 @@ func (t *InFlightTracker) Register(im *common.InFlightMessage) RegisterOutcome {
 		return RegisterRedelivery
 	}
 	if im.BrokerMessageID != "" {
-		t.byBroker[brokerKey{im.QueueIdentifier, im.BrokerMessageID}] = im
+		s.byBroker[brokerKey{im.QueueIdentifier, im.BrokerMessageID}] = im
 	}
-	t.byMessage[im.MessageID] = im
+	s.byMessage[im.MessageID] = im
 	return RegisterNew
 }
 
@@ -139,14 +204,15 @@ func (t *InFlightTracker) EnsureTrackedMessage(m *common.Message, brokerID, queu
 }
 
 func (t *InFlightTracker) ensureTracked(messageID, brokerID, queueID string, mk func() *common.InFlightMessage) bool {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	s := t.shardFor(messageID)
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if brokerID != "" {
-		if _, ok := t.byBroker[brokerKey{queueID, brokerID}]; ok {
+		if _, ok := s.byBroker[brokerKey{queueID, brokerID}]; ok {
 			return true
 		}
 	}
-	if prev, ok := t.byMessage[messageID]; ok {
+	if prev, ok := s.byMessage[messageID]; ok {
 		if brokerID != "" && prev.BrokerMessageID != "" && prev.BrokerMessageID != brokerID {
 			return false
 		}
@@ -154,9 +220,9 @@ func (t *InFlightTracker) ensureTracked(messageID, brokerID, queueID string, mk 
 	}
 	im := mk()
 	if brokerID != "" {
-		t.byBroker[brokerKey{queueID, brokerID}] = im
+		s.byBroker[brokerKey{queueID, brokerID}] = im
 	}
-	t.byMessage[messageID] = im
+	s.byMessage[messageID] = im
 	return true
 }
 
@@ -172,9 +238,10 @@ func (t *InFlightTracker) ensureTracked(messageID, brokerID, queueID string, mk 
 // scoping the lookup to the message's own queue — its bare broker id is not
 // globally unique (see brokerKey) — for no benefit over the message-id path.
 func (t *InFlightTracker) CurrentReceipt(messageID, _ string) (string, bool) {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	if im, ok := t.byMessage[messageID]; ok {
+	s := t.shardFor(messageID)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if im, ok := s.byMessage[messageID]; ok {
 		return im.ReceiptHandle, true
 	}
 	return "", false
@@ -193,9 +260,10 @@ func (t *InFlightTracker) CurrentReceipt(messageID, _ string) (string, bool) {
 // but not consulted) — see CurrentReceipt's doc for why byMessage always has
 // whatever byBroker would have found.
 func (t *InFlightTracker) MarkRetrying(messageID, _ string) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	im := t.byMessage[messageID]
+	s := t.shardFor(messageID)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	im := s.byMessage[messageID]
 	if im != nil {
 		im.Attempts++
 		im.LastRetryAt = time.Now()
@@ -204,9 +272,10 @@ func (t *InFlightTracker) MarkRetrying(messageID, _ string) {
 
 // Lookup returns a copy of the tracked entry for messageID (exact match).
 func (t *InFlightTracker) Lookup(messageID string) (common.InFlightMessage, bool) {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	if im, ok := t.byMessage[messageID]; ok {
+	s := t.shardFor(messageID)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if im, ok := s.byMessage[messageID]; ok {
 		return *im, true
 	}
 	return common.InFlightMessage{}, false
@@ -221,46 +290,48 @@ func (t *InFlightTracker) Lookup(messageID string) (common.InFlightMessage, bool
 // (checked by pointer identity) may be evicted — a later copy may already
 // have claimed that key, and evicting it would un-track a live delivery.
 func (t *InFlightTracker) Remove(messageID, _ string) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	im, ok := t.byMessage[messageID]
-	delete(t.byMessage, messageID)
+	s := t.shardFor(messageID)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	im, ok := s.byMessage[messageID]
+	delete(s.byMessage, messageID)
 	if ok && im.BrokerMessageID != "" {
 		key := brokerKey{im.QueueIdentifier, im.BrokerMessageID}
-		if cur, exists := t.byBroker[key]; exists && cur == im {
-			delete(t.byBroker, key)
+		if cur, exists := s.byBroker[key]; exists && cur == im {
+			delete(s.byBroker, key)
 		}
 	}
 }
 
+// countWhere counts byMessage entries matching pred, visiting the shards one
+// at a time (see the sharding note on InFlightTracker).
+func (t *InFlightTracker) countWhere(pred func(*common.InFlightMessage) bool) int {
+	n := 0
+	for i := range t.shards {
+		s := &t.shards[i]
+		s.mu.Lock()
+		for _, im := range s.byMessage {
+			if pred(im) {
+				n++
+			}
+		}
+		s.mu.Unlock()
+	}
+	return n
+}
+
 // Count returns the number of in-flight messages.
 func (t *InFlightTracker) Count() int {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
 	// Deferred copies are the broker's to hold, not this process's to
 	// finish: they must not keep a drain waiting or inflate the in-flight
 	// gauge. They are counted separately (DeferredCount).
-	n := 0
-	for _, im := range t.byMessage {
-		if im.DeferredUntil.IsZero() {
-			n++
-		}
-	}
-	return n
+	return t.countWhere(func(im *common.InFlightMessage) bool { return im.DeferredUntil.IsZero() })
 }
 
 // DeferredCount is how many tracked messages are currently parked on the
 // broker by a capacity deferral, awaiting their scheduled return.
 func (t *InFlightTracker) DeferredCount() int {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	n := 0
-	for _, im := range t.byMessage {
-		if !im.DeferredUntil.IsZero() {
-			n++
-		}
-	}
-	return n
+	return t.countWhere(func(im *common.InFlightMessage) bool { return !im.DeferredUntil.IsZero() })
 }
 
 // MarkDeferred keeps a message's entry across a capacity deferral, stamped
@@ -269,9 +340,10 @@ func (t *InFlightTracker) DeferredCount() int {
 // RegisterExternalRequeue), and the reaper leaves the entry alone. A message
 // the tracker does not know is ignored.
 func (t *InFlightTracker) MarkDeferred(messageID string, until time.Time) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if im, ok := t.byMessage[messageID]; ok {
+	s := t.shardFor(messageID)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if im, ok := s.byMessage[messageID]; ok {
 		im.DeferredUntil = until
 		im.LastSeenAt = time.Now()
 	}
@@ -294,15 +366,7 @@ const deferredReapGrace = 5 * time.Minute
 // queue's consumer stays addressable for ack/nack until nothing
 // references it any more).
 func (t *InFlightTracker) CountForQueue(queueID string) int {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	n := 0
-	for _, im := range t.byMessage {
-		if im.QueueIdentifier == queueID {
-			n++
-		}
-	}
-	return n
+	return t.countWhere(func(im *common.InFlightMessage) bool { return im.QueueIdentifier == queueID })
 }
 
 // CountForQueueBefore is CountForQueue narrowed to entries whose StartedAt
@@ -319,24 +383,24 @@ func (t *InFlightTracker) CountForQueue(queueID string) int {
 // after detachedAt, since it can only start polling once installed) never
 // holds up retirement.
 func (t *InFlightTracker) CountForQueueBefore(queueID string, cutoff time.Time) int {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	n := 0
-	for _, im := range t.byMessage {
-		if im.QueueIdentifier == queueID && im.StartedAt.Before(cutoff) {
-			n++
-		}
-	}
-	return n
+	return t.countWhere(func(im *common.InFlightMessage) bool {
+		return im.QueueIdentifier == queueID && im.StartedAt.Before(cutoff)
+	})
 }
 
-// Snapshot returns the current in-flight messages (by copy).
+// Snapshot returns the current in-flight messages (by copy). Each entry is
+// copied under its shard's lock, so no copy is torn; the set as a whole is
+// assembled shard by shard.
 func (t *InFlightTracker) Snapshot() []common.InFlightMessage {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	out := make([]common.InFlightMessage, 0, len(t.byMessage))
-	for _, im := range t.byMessage {
-		out = append(out, *im)
+	var out []common.InFlightMessage
+	for i := range t.shards {
+		s := &t.shards[i]
+		s.mu.Lock()
+		out = slices.Grow(out, len(s.byMessage))
+		for _, im := range s.byMessage {
+			out = append(out, *im)
+		}
+		s.mu.Unlock()
 	}
 	return out
 }
@@ -387,11 +451,16 @@ func (t *InFlightTracker) Reap(maxAge, absoluteMaxAge time.Duration) (reaped int
 	if absoluteMaxAge <= 0 {
 		absoluteMaxAge = defaultAbsoluteMaxAgeFactor * maxAge
 	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
 	now := time.Now()
-	for id, im := range t.byMessage {
-		if now.Sub(im.StartedAt) > absoluteMaxAge {
+	var pastCeiling []common.InFlightMessage
+	for i := range t.shards {
+		var n int
+		n, pastCeiling = t.shards[i].reap(now, maxAge, absoluteMaxAge, pastCeiling[:0])
+		reaped += n
+		// Logged after the shard's lock is released, so a burst of reaped
+		// entries never holds route and ack traffic behind the log handler.
+		for j := range pastCeiling {
+			im := &pastCeiling[j]
 			// Past the ceiling nothing exempts an entry — not a retry in
 			// progress, not a redelivery that just refreshed LastSeenAt.
 			// Reaching here always means something upstream failed to remove
@@ -401,6 +470,22 @@ func (t *InFlightTracker) Reap(maxAge, absoluteMaxAge time.Duration) (reaped int
 				"queue", im.QueueIdentifier, "group", im.MessageGroupID,
 				"attempts", im.Attempts, "elapsed_s", im.ElapsedSeconds(),
 				"ceiling", absoluteMaxAge)
+		}
+	}
+	return reaped
+}
+
+// reap applies Reap's rules to one shard under its lock. Entries reaped by the
+// absolute ceiling are appended (by copy) to pastCeiling for the caller to log.
+func (s *trackerShard) reap(now time.Time, maxAge, absoluteMaxAge time.Duration,
+	pastCeiling []common.InFlightMessage,
+) (int, []common.InFlightMessage) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	reaped := 0
+	for id, im := range s.byMessage {
+		if now.Sub(im.StartedAt) > absoluteMaxAge {
+			pastCeiling = append(pastCeiling, *im)
 		} else {
 			// A live in-pipeline retry is legitimately long-running: exempt it
 			// from the idle bound, but only while its last attempt is recent
@@ -427,20 +512,21 @@ func (t *InFlightTracker) Reap(maxAge, absoluteMaxAge time.Duration) (reaped int
 				continue
 			}
 		}
-		delete(t.byMessage, id)
+		delete(s.byMessage, id)
 		if im.BrokerMessageID != "" {
-			delete(t.byBroker, brokerKey{im.QueueIdentifier, im.BrokerMessageID})
+			delete(s.byBroker, brokerKey{im.QueueIdentifier, im.BrokerMessageID})
 		}
 		reaped++
 	}
 	// Consistency sweep: drop any byBroker alias that no longer points at a
-	// live byMessage entry (defensive — the two maps are updated together).
-	for id, im := range t.byBroker {
-		if cur, ok := t.byMessage[im.MessageID]; !ok || cur != im {
-			delete(t.byBroker, id)
+	// live byMessage entry (defensive — the two maps are updated together, and
+	// by the sharding invariant an alias lives in its message's shard).
+	for id, im := range s.byBroker {
+		if cur, ok := s.byMessage[im.MessageID]; !ok || cur != im {
+			delete(s.byBroker, id)
 		}
 	}
-	return
+	return reaped, pastCeiling
 }
 
 // StallConfig configures the stall detector.
