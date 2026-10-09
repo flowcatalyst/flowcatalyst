@@ -10,6 +10,8 @@ const popoverAnchorExpr = "evt.newState === 'open' && (el.style.top = (el.previo
 type HiddenField struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
+	// Attrs go on the <input> (e.g. data-attr:value bound to a signal).
+	Attrs templ.Attributes `json:"attrs"`
 }
 
 // ResultSize is the table toolbar's optional result-size select.
@@ -134,7 +136,7 @@ type TableToolbarStateProps struct {
 templ TableToolbarState(p TableToolbarStateProps) {
 	<div id={ ToolbarStateID(p.FormID) } class="fc-toolbar-state">
 		for _, h := range p.Hidden {
-			<input type="hidden" name={ h.Name } value={ h.Value }/>
+			<input type="hidden" name={ h.Name } value={ h.Value } { h.Attrs... }/>
 		}
 		if p.ClearHref != "" {
 			<a href={ p.ClearHref } class="fc-btn fc-btn-text" { p.ClearAttrs... }>

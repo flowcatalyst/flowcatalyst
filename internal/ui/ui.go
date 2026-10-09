@@ -36,12 +36,15 @@ type Config struct {
 	// DisplayName resolves the signed-in principal's name (optional).
 	DisplayName func(ctx context.Context, principalID string) string
 
-	DispatchPools pages.PoolFinder
+	DispatchPools   pages.PoolStore
+	DispatchPoolOps pages.PoolCommands
+	// Clients backs the client select (search and resolution).
+	Clients pages.ClientDirectory
 }
 
 // Mount registers /ui and everything under it on r.
 func Mount(r chi.Router, cfg Config) error {
-	sh := &shell.Shell{DisplayName: cfg.DisplayName, Version: cfg.Version}
+	sh := &shell.Shell{DisplayName: cfg.DisplayName, Version: cfg.Version, Flashes: pages.FlashMessages, CookieSecure: cfg.CookieSecure}
 	csrf, err := guard.CSRF(cfg.TrustedOrigins, sh.Deny)
 	if err != nil {
 		return err
@@ -65,7 +68,8 @@ func Mount(r chi.Router, cfg Config) error {
 				http.Redirect(w, r, "/ui/dispatch-pools", http.StatusFound)
 			})
 			r.Post("/logout", signOut(cfg.CookieSecure))
-			(&pages.DispatchPools{Pools: cfg.DispatchPools, Shell: sh}).Mount(r)
+			(&pages.DispatchPools{Pools: cfg.DispatchPools, Ops: cfg.DispatchPoolOps, Clients: cfg.Clients, Shell: sh}).Mount(r)
+			(&pages.ClientOptions{Clients: cfg.Clients, Shell: sh}).Mount(r)
 		})
 
 		r.NotFound(func(w http.ResponseWriter, r *http.Request) {

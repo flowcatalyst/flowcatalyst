@@ -158,7 +158,7 @@ templ ConfirmDialog(p ConfirmDialogProps) {
 				<p>{ p.Message }</p>
 			</div>
 			for _, h := range p.Hidden {
-				<input type="hidden" name={ h.Name } value={ h.Value }/>
+				<input type="hidden" name={ h.Name } value={ h.Value } { h.Attrs... }/>
 			}
 			<div class="fc-dialog-footer">
 				<button type="button" class="fc-btn fc-btn-text" autofocus data-on:click={ CloseDialog }>Cancel</button>
@@ -237,6 +237,11 @@ var drawerSizes = map[DrawerSize]string{
 
 // DrawerProps mirrors drawer.md's Props table.
 type DrawerProps struct {
+	// ID goes on the frame: a server-loaded drawer patches the frame's
+	// children (DrawerContent, mode inner, selector "#{id}"); with an ID the
+	// title is focusable ({id}-title, tabindex -1) so a handler can move focus
+	// to it after loading a record.
+	ID string `json:"id"`
 	// Signal holds the selected record id; empty = closed. Required, unique per drawer.
 	Signal string     `json:"signal"`
 	Label  string     `json:"label"`
@@ -267,6 +272,9 @@ func (p DrawerProps) closeExpr() string { return "$" + Signal(p.Signal) + " = ''
 // Drawer is drawer.md: the non-modal record drawer over a list.
 templ Drawer(p DrawerProps) {
 	<aside
+		if p.ID != "" {
+			id={ ID(p.ID) }
+		}
 		class={ cx("fc-drawer", drawerSizes[p.Size]) }
 		role="complementary"
 		aria-label={ p.Label }
@@ -275,42 +283,65 @@ templ Drawer(p DrawerProps) {
 		data-show={ p.showExpr() }
 		data-on:keydown__window={ p.escapeExpr() }
 	>
-		<button type="button" class="fc-icon-btn absolute top-[1.1rem] right-[1.1rem] z-10" aria-label="Close" data-on:click={ p.closeExpr() }>
-			@Icon(IconProps{Name: "x", Class: "size-[1.2rem]"})
-		</button>
-		<header class="fc-drawer-header pr-14">
-			<div class="fc-drawer-titles">
-				<div class="min-w-0">
-					if p.TitleSignal != "" {
-						<h2 class="fc-drawer-title" data-text={ "$" + Signal(p.TitleSignal) }></h2>
-					} else {
-						<h2 class="fc-drawer-title">{ p.Title }</h2>
-					}
-					if p.SubtitleSignal != "" {
-						<p class="fc-drawer-subtitle" data-text={ "$" + Signal(p.SubtitleSignal) }></p>
-					} else if p.Subtitle != "" {
-						<p class="fc-drawer-subtitle">{ p.Subtitle }</p>
-					}
-				</div>
-				if p.Extras != nil {
-					<div class="flex shrink-0 items-center gap-2">
-						@p.Extras
-					</div>
-				}
-			</div>
-		</header>
-		<div
-			if p.BodyID != "" {
-				id={ p.BodyID }
-			}
-			class="fc-drawer-body"
-		>
+		@DrawerContent(p) {
 			{ children... }
-		</div>
-		if p.Footer != nil {
-			<div class="fc-drawer-footer">
-				@p.Footer
-			</div>
 		}
 	</aside>
+}
+
+// DrawerContent is everything inside the drawer frame (drawer.md, part
+// drawer-content): the close button, header, body and footer. A server-loaded
+// drawer patches it into the frame with mode inner, so the frame keeps its
+// data-show binding and inline style.
+templ DrawerContent(p DrawerProps) {
+	<button type="button" class="fc-icon-btn absolute top-[1.1rem] right-[1.1rem] z-10" aria-label="Close" data-on:click={ p.closeExpr() }>
+		@Icon(IconProps{Name: "x", Class: "size-[1.2rem]"})
+	</button>
+	<header class="fc-drawer-header pr-14">
+		<div class="fc-drawer-titles">
+			<div class="min-w-0">
+				if p.TitleSignal != "" {
+					<h2
+						if p.ID != "" {
+							id={ ID(p.ID) + "-title" }
+							tabindex="-1"
+						}
+						class="fc-drawer-title"
+						data-text={ "$" + Signal(p.TitleSignal) }
+					></h2>
+				} else {
+					<h2
+						if p.ID != "" {
+							id={ ID(p.ID) + "-title" }
+							tabindex="-1"
+						}
+						class="fc-drawer-title"
+					>{ p.Title }</h2>
+				}
+				if p.SubtitleSignal != "" {
+					<p class="fc-drawer-subtitle" data-text={ "$" + Signal(p.SubtitleSignal) }></p>
+				} else if p.Subtitle != "" {
+					<p class="fc-drawer-subtitle">{ p.Subtitle }</p>
+				}
+			</div>
+			if p.Extras != nil {
+				<div class="flex shrink-0 items-center gap-2">
+					@p.Extras
+				</div>
+			}
+		</div>
+	</header>
+	<div
+		if p.BodyID != "" {
+			id={ p.BodyID }
+		}
+		class="fc-drawer-body"
+	>
+		{ children... }
+	</div>
+	if p.Footer != nil {
+		<div class="fc-drawer-footer">
+			@p.Footer
+		</div>
+	}
 }

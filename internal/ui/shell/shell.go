@@ -25,6 +25,12 @@ type Shell struct {
 	DisplayName func(ctx context.Context, principalID string) string
 	// Version is shown in the user menu.
 	Version string
+	// Flashes maps the fixed flash keys a native post/redirect/get may carry
+	// (SetFlash) to their messages. A key not in the table is ignored.
+	Flashes map[string]kit.FlashMessageProps
+	// CookieSecure is the Secure flag of the UI's own cookies (the flash
+	// cookie), matching the session cookie's.
+	CookieSecure bool
 }
 
 // Page describes the page being rendered.
@@ -44,6 +50,12 @@ func (s *Shell) Render(w http.ResponseWriter, r *http.Request, page Page, conten
 	s.render(w, r, http.StatusOK, page, content)
 }
 
+// RenderStatus writes a full page with another status (a form page
+// re-rendered with its errors after a native post: 422).
+func (s *Shell) RenderStatus(w http.ResponseWriter, r *http.Request, status int, page Page, content templ.Component) {
+	s.render(w, r, status, page, content)
+}
+
 func (s *Shell) render(w http.ResponseWriter, r *http.Request, status int, page Page, content templ.Component) {
 	ac := auth.FromContext(r.Context())
 	props := kit.AppShellProps{
@@ -58,7 +70,8 @@ func (s *Shell) render(w http.ResponseWriter, r *http.Request, status int, page 
 	if c, err := r.Cookie(kit.SidebarCookie); err == nil && c.Value == "collapsed" {
 		collapsed = true
 	}
-	writeHTML(w, r, status, document(page.Title, collapsed, props, content))
+	flashes := s.takeFlash(w, r)
+	writeHTML(w, r, status, document(page.Title, collapsed, props, flashes, content))
 }
 
 func (s *Shell) user(ctx context.Context, ac *auth.AuthContext) kit.ShellUser {
@@ -134,7 +147,7 @@ func (s *Shell) Deny(w http.ResponseWriter, r *http.Request, status int, message
 // of any non-200 answer; the real status is logged. Use FailSSE once the
 // handler has opened its stream.
 func (s *Shell) Fail(w http.ResponseWriter, r *http.Request, err error) {
-	status, message := classify(r, err)
+	status, message := Classify(r, err)
 	if ds.IsDatastar(r) {
 		flashFailure(ds.NewSSE(w, r), r, status, message)
 		return
@@ -145,7 +158,7 @@ func (s *Shell) Fail(w http.ResponseWriter, r *http.Request, err error) {
 // FailSSE answers err on a Datastar stream the handler has already opened
 // (the status line is sent, so the failure can only be a patch).
 func (s *Shell) FailSSE(sse *ds.SSE, r *http.Request, err error) {
-	status, message := classify(r, err)
+	status, message := Classify(r, err)
 	flashFailure(sse, r, status, message)
 }
 
@@ -158,9 +171,10 @@ func Flash(sse *ds.SSE, msg kit.FlashMessageProps) error {
 
 const genericFailure = "The request could not be completed. Try again, or use the current UI."
 
-// classify maps a handler error to a status and a message safe to show: a
-// use-case 4xx keeps both; anything else is logged and becomes a 500.
-func classify(r *http.Request, err error) (int, string) {
+// Classify maps a handler error to a status and a message safe to show: a
+// use-case 4xx keeps both; anything else is logged and becomes a 500 with a
+// generic message. Form handlers use it for their in-dialog error region.
+func Classify(r *http.Request, err error) (int, string) {
 	if ue, ok := errors.AsType[*usecase.Error](err); ok {
 		if status := ue.HTTPStatus(); status >= 400 && status < 500 {
 			return status, ue.Message

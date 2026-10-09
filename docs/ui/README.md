@@ -7,8 +7,9 @@ The new UI lives under `/ui` next to the SPA, which stays the default: no SPA ro
 `/ui` and no SPA code is removed without the owner's approval, area by area.
 
 Status (2026-10-09): foundations, the Phase 1 kit decisions (row actions, toolbar state part,
-flash stack and the Datastar error contract, an 86-icon sprite) and one read-only page,
-`/ui/dispatch-pools`.
+flash stack and the Datastar error contract, an 86-icon sprite) and `/ui/dispatch-pools` at
+parity with the SPA page: list, record drawer, create and edit dialogs, suspend/activate/delete
+behind confirmations.
 
 ## Architecture
 
@@ -20,7 +21,9 @@ internal/ui/
   htmlnorm/      HTML normaliser behind the conformance test
   shell/         page layout around the kit app shell; sidebar navigation; error pages
   guard/         CSRF, session negotiation, role-less gate, security headers
-  pages/         page handlers (dispatch_pools.go + dispatch_pools.templ)
+  pages/         page handlers: dispatch_pools*.go/.templ (list, drawer, form, actions),
+                 clients.go (the client select's search), forms.go (form plumbing),
+                 ops.go (PoolOps: the use cases), flash.go (the flash key table)
   assets/        embedded kit.css, icon sprite, pinned datastar.js, licences (served at /ui/assets/)
   testdata/fixtures/  the kit's conformance fixtures, vendored
 internal/server/wire_ui.go   registerUI: mounts the above with the platform's Authenticator
@@ -33,7 +36,12 @@ public and served before the guards.
 
 Handlers read repositories and run use cases directly (no HTTP hop) and make the **same
 permission check as the API handler for the resource** (`auth.CanReadDispatchPools` and the same
-`FilterClientScoped` as `GET /api/dispatch-pools`).
+`FilterClientScoped` as `GET /api/dispatch-pools`). Mutations run the API's use case through
+`usecaseop.Run` with the unit of work and `auth.NewExecutionContext` (`pages.PoolOps`), so
+validation, resource authorization (`CheckScopeAccess`), the domain event and the audit record
+are the use case's; the page adds nothing to the business rules. Pages take small interfaces
+(`PoolStore`, `PoolCommands`, `ClientDirectory`) so handler tests run on fakes and
+`*_pg_test.go` (tag `integration`) runs the same handlers on Postgres.
 
 ## Toolchain
 
@@ -95,11 +103,52 @@ one component per patch target, each with a stable id (`pools-table`, `pools-sum
 that both the page and a patch render (the toolbar) are built by one view-model method
 (`poolsView.toolbar()`), so they cannot drift.
 
-Mutations (later pages) are POST/PUT/PATCH/DELETE only (the CSRF guard relies on GET being
-safe), go through the use-case layer exactly as the API handler does, pass
-`{retryMaxCount: 0}` in their Datastar action, and answer a Datastar request with patches (the
-changed row, a closed dialog, `shell.Flash(sse, ...)` for feedback) or a native form post with a
-303 redirect. Failures follow "Datastar errors" below.
+Mutations are POST only (the CSRF guard relies on GET being safe; native forms can only POST),
+go through the use-case layer exactly as the API handler does, pass `{retryMaxCount: 0}` in
+their Datastar action, and answer a Datastar request with patches (the changed table, a closed
+dialog, `shell.Flash(sse, ...)` for feedback) or a native form post with a 303 redirect and a
+flash key. Failures follow "Datastar errors" below. POST routes are mounted behind
+`parseForm`: **read the form before opening the SSE stream**. Datastar posts forms as multipart
+(`FormData`), and once a handler has flushed its stream headers net/http may refuse further body
+reads, so a field read afterwards is silently empty (found in the browser: the drawer did not
+refresh after an action; `httptest` does not reproduce it).
+
+### Forms and actions (dispatch pools is the reference)
+
+| URL | GET (navigation) | GET (Datastar) | POST |
+|---|---|---|---|
+| `/ui/dispatch-pools/new` | the list with the create dialog open | the dialog patched into `#pool-dialog-slot` | create |
+| `/ui/dispatch-pools/{id}` | the list with the drawer open | the drawer content (`#pool-drawer`, mode inner), `selPool`, focus on the title | - |
+| `/ui/dispatch-pools/{id}/edit` | the list with the edit dialog open | the dialog patched into the slot | update |
+| `/ui/dispatch-pools/{id}/{suspend,activate,delete}` | - | - | the action |
+
+- **Form dialogs** (kit `form-dialog.md`): `kit.FormDialog` + one `kit.Field` per control whose
+  root id is `{control}-field`, rendered by one function (`poolField`) for the dialog and for the
+  error patch. A failed submit patches every field, the form error region
+  (`kit.FormDialogError`) and focus (`ds.Focus`), via `patchFormFailure`; use-case error codes map
+  to fields (`poolFieldCodes`), the rest goes to the region with `shell.Classify`'s message.
+  Success closes the dialog (`ds.CloseDialog`), re-renders the table the user is on (the view
+  comes from the `Referer`, which live filtering keeps current) and flashes.
+- **Confirmations**: one `kit.ConfirmDialog` per action, shared by the rows and the drawer
+  (`kit.OpenConfirm` sets the form's action from the trigger's `data-action`); it posts with
+  `kit.SubmitConfirm` and closes at once, the outcome is a flash. Only the dialogs the user may use
+  are rendered.
+- **Drawer state for the server**: forms carry `<input type="hidden" name="drawer"
+  data-attr:value="$selPool">`, so an action refreshes the drawer when it shows that record and
+  closes it after a delete.
+- **Client select**: `kit.Autocomplete` with `/ui/clients/options` as its source (the SPA's
+  `ClientSelect` search: `CanReadClients`, `client.Repository.Search`); the submitted identifier
+  is resolved on the server (`resolveClient`). Without `CanReadClients` the field is disabled and
+  says why.
+- **Flash after a native post** (owner ruling: fixed keys): `Shell.SetFlash(w, key)` before the
+  303 sets `fc_ui_flash` (HttpOnly, `Path=/ui`, SameSite=Lax, 60s) holding only the key; the next
+  page render maps it through `Shell.Flashes` (`pages.FlashMessages`), renders it in the flash
+  stack and clears the cookie. Unknown or malformed keys are ignored; no request text is ever
+  rendered (`TestPoolCreateNativeFlash`).
+- **Permissions** are the API handlers' checks: create, update, suspend and activate need
+  `CanWriteDispatchPools` (the API's coarse gate: any of create/update/delete), delete
+  `CanDeleteDispatchPools`; the drawer and the edit dialog also need `CanReadDispatchPools` and,
+  for a client-scoped pool, access to its client (`GET /api/dispatch-pools/{id}`).
 
 ### Row actions
 
@@ -108,8 +157,9 @@ popover menu; destructive actions last in the menu (the kit adds the separator a
 behind a confirmation; an action not allowed **on this row** is shown disabled with
 `DisabledReason`; an action the user has no **permission** for is left out (the same `auth.Can*`
 check as the API). One `ID` per row (`pool-{id}-actions`), `RowLabel` = the row's name (it goes
-into the accessible names). The pilot shows Edit inline and View details / Suspend or Activate /
-Delete in the menu; the last two are disabled ("Not in the new UI yet") until the CRUD step.
+into the accessible names). Dispatch pools show Edit inline (disabled with "Archived pools cannot
+be edited." for an archived pool) and View details / Suspend… or Activate… / Delete… in the menu
+(the drawer's actions, none for an archived pool).
 
 ### Filter bars (live)
 
@@ -209,7 +259,7 @@ rules: `ui-kit/fixtures/README.md`), vendored to `internal/ui/testdata/fixtures`
 and compares with the golden through `htmlnorm` (HTML5 fragment parse in the right context,
 comments dropped, attributes sorted, whitespace collapsed, class order kept). It fails for a
 fixture directory without a renderer, a renderer without fixtures, an unknown prop (strict
-decoding) or an unused slot. 124 fixtures pass. Run against the framework checkout directly:
+decoding) or an unused slot. 142 fixtures pass. Run against the framework checkout directly:
 `UI_KIT_FIXTURES=../flowcatalyst-framework/ui-kit/fixtures go test ./internal/ui/kit/`.
 
 Adding a component: spec + Props table + gallery example + fixtures in the framework repo
@@ -273,14 +323,14 @@ Gaps the pilot found, and their state after Phase 1 step 1 (kit commits `1317a2f
 3. **Table toolbar live updates: done.** The `{formId}-state` part (above). This also fixed a pilot
    bug: a live sort click did not update the hidden sort fields, so the next search lost the sort.
 4. **App shell on narrow screens**: open (`app-shell` has no mobile layout).
-5. **Form controls for create/edit**: open: multi-select with search, a client select/filter
-   (`ClientSelect`/`ClientFilter`), AutoComplete, number input, password with strength meter,
-   secret-reference input (`SecretRefInput`), permission-denied modal. (The notification banner
-   stack is now the kit's flash stack.)
+5. **Form controls for create/edit: partly done.** Form dialog, autocomplete/client select,
+   number input (`input` type number), form section, detail field. Open: multi-select with
+   search, password with strength meter, secret-reference input (`SecretRefInput`),
+   permission-denied modal.
 6. **Dark mode** flashes light once before Datastar loads: open (proposal: a theme cookie the server
    renders as the `dark` class).
-7. **Flash messages: done for Datastar actions** (`shell.Flash`). Not done: the flash *cookie* for a
-   native post/redirect/get (needs a decision, see the kit's PORTING-NOTES).
+7. **Flash messages: done** (`shell.Flash` for Datastar actions; the fixed-key cookie for a native
+   post/redirect/get, above).
 8. **Datastar errors: done** (the contract and fallback above).
 9. **Login `?redirect=`: done** for `/ui` targets.
 

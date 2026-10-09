@@ -21,7 +21,7 @@ const FlashStackID = "flash-stack"
 
 // document is the full HTML page: head with the hashed kit assets, the app
 // shell, and the page content in <main>.
-templ document(title string, collapsed bool, shellProps kit.AppShellProps, content templ.Component) {
+templ document(title string, collapsed bool, shellProps kit.AppShellProps, flashes []kit.FlashMessageProps, content templ.Component) {
 	<!DOCTYPE html>
 	<html lang="en" { kit.ShellHTMLAttrs(collapsed)... } data-signals:dark={ darkSignalExpr } data-class:dark="$dark">
 		<head>
@@ -34,7 +34,11 @@ templ document(title string, collapsed bool, shellProps kit.AppShellProps, conte
 		</head>
 		<body data-on:datastar-fetch={ sessionExpiredExpr }>
 			@kit.AppShell(shellProps) {
-				@kit.FlashStack(kit.FlashStackProps{ID: FlashStackID})
+				@kit.FlashStack(kit.FlashStackProps{ID: FlashStackID}) {
+					for _, f := range flashes {
+						@kit.FlashMessage(f)
+					}
+				}
 				@content
 			}
 		</body>

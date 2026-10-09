@@ -295,9 +295,12 @@ type FieldProps struct {
 	Error string `json:"error"`
 	// ErrorID is the error element id the control's aria-describedby points
 	// at; default For + "-err".
-	ErrorID string           `json:"errorId"`
-	Class   string           `json:"class"`
-	Attrs   templ.Attributes `json:"attrs"`
+	ErrorID string `json:"errorId"`
+	// Required adds the visual marker (a red "*", aria-hidden) to the label;
+	// the control itself carries the required attribute.
+	Required bool             `json:"required"`
+	Class    string           `json:"class"`
+	Attrs    templ.Attributes `json:"attrs"`
 }
 
 func (p FieldProps) errorID() string {
@@ -311,7 +314,12 @@ func (p FieldProps) errorID() string {
 templ Field(p FieldProps) {
 	<div role="group" data-slot="field" class={ cx(fieldBaseClasses, fieldOrientations[orDefault(p.Orientation, FieldVertical)], p.Class) } { p.Attrs... }>
 		if p.Label != "" {
-			<label class={ cx(labelClasses, fieldLabelExtra) } for={ p.For } data-slot="field-label">{ p.Label }</label>
+			<label class={ cx(labelClasses, fieldLabelExtra) } for={ p.For } data-slot="field-label">
+				{ p.Label }
+				if p.Required {
+					<span class="text-destructive" aria-hidden="true">*</span>
+				}
+			</label>
 		}
 		{ children... }
 		if p.Description != "" {

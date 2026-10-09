@@ -1,0 +1,110 @@
+package pages
+
+import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+
+templ poolStatusBadge(status string, variant kit.BadgeVariant) {
+	@kit.Badge(kit.BadgeProps{Variant: variant}) {
+		{ status }
+	}
+}
+
+// poolDrawer is the drawer frame, rendered with the page: empty (closed), or
+// with the record a navigation to /ui/dispatch-pools/{id} opens.
+templ poolDrawer(d *poolDetail) {
+	if d != nil {
+		@kit.Drawer(d.drawerProps()) {
+			@poolDrawerBody(*d)
+		}
+	} else {
+		@kit.Drawer(kit.DrawerProps{ID: poolDrawerID, Signal: poolDrawerSig, Label: "Dispatch pool"})
+	}
+}
+
+// poolDrawerContent is the drawer's content for one pool, patched into the
+// frame (mode inner) when a row opens it or an action changes the pool.
+templ poolDrawerContent(d poolDetail) {
+	@kit.DrawerContent(d.drawerProps()) {
+		@poolDrawerBody(d)
+	}
+}
+
+// poolDrawerBody mirrors the SPA's DispatchPoolDetailDrawer: Pool Details
+// (with Edit unless archived) and the Actions section (none when archived).
+templ poolDrawerBody(d poolDetail) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Pool Details", Actions: poolEditButton(d)}) {
+		<div class="fc-detail-grid">
+			@kit.DetailField(kit.DetailFieldProps{Label: "Code"}) {
+				<code>{ d.Code }</code>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Name", Value: d.Name})
+			if d.Description != "" {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Description", Value: d.Description, Span: true})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Rate Limit", Value: d.RateLimit})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Concurrency", Value: d.Concurrency})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Client Scope", Value: d.Scope})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Status"}) {
+				@poolStatusBadge(d.Status, d.StatusVariant)
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Created", Value: d.Created})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Updated", Value: d.Updated})
+		</div>
+	}
+	if d.showActions() {
+		@kit.FormSection(kit.FormSectionProps{Title: "Actions"}) {
+			<div class="flex flex-col gap-4">
+				if d.Perms.Write && d.RawStatus != "ACTIVE" {
+					@poolActionItem("Activate Pool", "Enable this pool for processing dispatch jobs.") {
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyPrimaryOutline, Icon: "circle-check", Attrs: confirmTrigger(poolActivateDialog, d.ActionBase+"/activate")}) {
+							Activate
+						}
+					}
+				}
+				if d.Perms.Write && d.RawStatus == "ACTIVE" {
+					@poolActionItem("Suspend Pool", "Temporarily stop processing jobs in this pool.") {
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyWarnOutline, Icon: "pause", Attrs: confirmTrigger(poolSuspendDialog, d.ActionBase+"/suspend")}) {
+							Suspend
+						}
+					}
+				}
+				if d.Perms.Delete {
+					@poolActionItem("Delete Pool", "Permanently deletes this pool. Cannot be undone.") {
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Icon: "trash-2", Attrs: confirmTrigger(poolDeleteDialog, d.ActionBase+"/delete")}) {
+							Delete
+						}
+					}
+				}
+			</div>
+		}
+	}
+}
+
+templ poolEditButton(d poolDetail) {
+	if d.canEdit() {
+		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.EditHref, Icon: "pencil", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+			Edit
+		}
+	}
+}
+
+// poolActionItem is one row of the drawer's Actions section (the SPA's
+// action-item; the kit's .fc-danger-item).
+templ poolActionItem(title, text string) {
+	<div class="fc-danger-item">
+		<div><strong>{ title }</strong><p>{ text }</p></div>
+		{ children... }
+	</div>
+}
+
+// poolConfirmDialogs are the SPA's confirmations, one per action, shared by
+// every row and the drawer (confirm-dialog.md, "One dialog for many
+// records"). Only the actions the user may run are rendered.
+templ poolConfirmDialogs(perms poolPerms) {
+	if perms.Write {
+		@kit.ConfirmDialog(poolConfirm(poolActivateDialog, "Activate Pool", "Activate this dispatch pool?", "Activate", kit.ToneDefault))
+		@kit.ConfirmDialog(poolConfirm(poolSuspendDialog, "Suspend Pool", "Suspend this dispatch pool? Jobs will not be processed.", "Suspend", kit.ToneWarn))
+	}
+	if perms.Delete {
+		@kit.ConfirmDialog(poolConfirm(poolDeleteDialog, "Delete Pool", "Delete this dispatch pool? This permanently deletes it and cannot be undone.", "Delete", kit.ToneDanger))
+	}
+}

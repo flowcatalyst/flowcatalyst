@@ -1,0 +1,87 @@
+package pages
+
+import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+
+// poolFormDialog is the create or edit dialog (kit form-dialog.md).
+templ poolFormDialog(f poolForm) {
+	@kit.FormDialog(f.dialog()) {
+		if f.Edit {
+			@poolField(f, "name")
+			@poolField(f, "description")
+			<div class="grid gap-4 sm:grid-cols-2">
+				@poolField(f, "rateLimit")
+				@poolField(f, "concurrency")
+			</div>
+		} else {
+			@kit.FormSection(kit.FormSectionProps{Title: "Basic Information"}) {
+				<div class="flex flex-col gap-4">
+					@poolField(f, "code")
+					@poolField(f, "name")
+					@poolField(f, "description")
+				</div>
+			}
+			@kit.FormSection(kit.FormSectionProps{Title: "Rate Limiting"}) {
+				<div class="grid gap-4 sm:grid-cols-2">
+					@poolField(f, "rateLimit")
+					@poolField(f, "concurrency")
+				</div>
+			}
+			@kit.FormSection(kit.FormSectionProps{Title: "Scope"}) {
+				// The client field hides while "Anchor-level" is checked (CSS
+				// :has(), no script); the server ignores it then.
+				<div class="group/scope flex flex-col gap-4">
+					<div class="flex flex-col gap-2">
+						<div class="flex items-center gap-2">
+							@kit.Checkbox(kit.CheckboxProps{ID: f.id("anchor"), Name: "anchor", Value: "true", Checked: f.Anchor, Label: "Anchor-level pool (not client-scoped)", Attrs: templ.Attributes{"aria-describedby": f.id("anchor") + "-help"}})
+						</div>
+						<p id={ f.id("anchor") + "-help" } class="text-sm leading-relaxed text-muted-foreground">Anchor-level pools are for dispatch jobs that are not scoped to a specific client.</p>
+					</div>
+					<div class="group-has-[#pool-form-anchor:checked]/scope:hidden">
+						@poolField(f, "client")
+					</div>
+				</div>
+			}
+		}
+	}
+}
+
+// poolField renders one field of the form; a failed submit patches each one
+// by its id ("{control}-field").
+templ poolField(f poolForm, key string) {
+	switch key {
+		case "code":
+			@kit.Field(f.fieldProps(key, "Code", "Unique identifier for this pool (2-100 characters)", true)) {
+				@kit.Input(f.inputProps(key, f.Code, kit.InputProps{Placeholder: "pool-code", Required: true, Attrs: templ.Attributes{"maxlength": "100", "autofocus": true, "autocomplete": "off"}}))
+			}
+		case "name":
+			@kit.Field(f.fieldProps(key, "Name", "", true)) {
+				@kit.Input(f.inputProps(key, f.Name, kit.InputProps{Placeholder: "Pool display name", Required: true, Attrs: f.nameAttrs()}))
+			}
+		case "description":
+			@kit.Field(f.fieldProps(key, "Description", "", false)) {
+				@kit.Textarea(kit.TextareaProps{ID: f.id(key), Name: key, Value: f.Description, Placeholder: "Optional description...", Rows: 3, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+			}
+		case "rateLimit":
+			@kit.Field(f.fieldProps(key, "Rate Limit (per minute)", f.rateLimitHelp(), false)) {
+				@kit.Input(f.inputProps(key, f.RateLimit, kit.InputProps{Type: "number", Placeholder: "Unlimited", Attrs: numberAttrs()}))
+			}
+		case "concurrency":
+			@kit.Field(f.fieldProps(key, "Concurrency", f.concurrencyHelp(), !f.Edit)) {
+				@kit.Input(f.inputProps(key, f.Concurrency, kit.InputProps{Type: "number", Required: !f.Edit, Attrs: numberAttrs()}))
+			}
+		case "client":
+			@kit.Field(f.fieldProps(key, "Client", f.clientHelp(), false)) {
+				@kit.Autocomplete(kit.AutocompleteProps{
+					ID:          f.id(key),
+					Name:        key,
+					Value:       f.Client,
+					Placeholder: "Search for a client (optional)",
+					Source:      clientOptionsPath,
+					Options:     f.ClientOptions,
+					Disabled:    !f.CanPickClient,
+					Invalid:     f.fieldError(key) != "",
+					DescribedBy: f.describedBy(key),
+				})
+			}
+	}
+}

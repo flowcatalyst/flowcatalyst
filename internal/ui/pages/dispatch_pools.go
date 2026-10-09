@@ -12,34 +12,53 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/ds"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/shell"
 )
 
-// PoolFinder is the slice of the dispatch-pool repository the page reads
-// (the same call GET /api/dispatch-pools makes).
-type PoolFinder interface {
+// PoolStore is the slice of the dispatch-pool repository the page reads
+// (the calls GET /api/dispatch-pools and GET /api/dispatch-pools/{id} make).
+type PoolStore interface {
 	FindWithFilters(ctx context.Context, status, clientID *string) ([]dispatchpool.DispatchPool, error)
+	FindByID(ctx context.Context, id string) (*dispatchpool.DispatchPool, error)
 }
 
-// DispatchPools is the read-only dispatch pools list (/ui/dispatch-pools).
-// Create and edit stay in the SPA for now; the page links there.
+// DispatchPools is the dispatch pools page (/ui/dispatch-pools): the list,
+// the record drawer, the create and edit dialogs and the state and delete
+// actions, mirroring the SPA's DispatchPoolListPage, DispatchPoolCreateDrawer
+// and DispatchPoolDetailDrawer. Every action makes the API handler's
+// permission check and runs the API's use case (PoolCommands).
 type DispatchPools struct {
-	Pools PoolFinder
-	Shell *shell.Shell
+	Pools   PoolStore
+	Ops     PoolCommands
+	Clients ClientDirectory
+	Shell   *shell.Shell
 }
 
 const poolsPath = "/ui/dispatch-pools"
 
-// Mount registers the page's routes.
+// Mount registers the page's routes. GET routes never change state (the
+// CSRF guard relies on it); every POST answers Datastar with patches and a
+// native post with a redirect.
 func (h *DispatchPools) Mount(r chi.Router) {
 	r.Get("/dispatch-pools", h.list)
+	r.Get("/dispatch-pools/new", h.createForm)
+	r.Get("/dispatch-pools/{id}", h.detail)
+	r.Get("/dispatch-pools/{id}/edit", h.editForm)
+	post := r.With(parseForm)
+	post.Post("/dispatch-pools/new", h.create)
+	post.Post("/dispatch-pools/{id}/edit", h.update)
+	post.Post("/dispatch-pools/{id}/suspend", h.suspend)
+	post.Post("/dispatch-pools/{id}/activate", h.activate)
+	post.Post("/dispatch-pools/{id}/delete", h.delete)
 }
 
 // list renders the page, or, for a Datastar request (the live search,
@@ -55,19 +74,11 @@ func (h *DispatchPools) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := parsePoolQuery(r.URL.Query())
-	var status *string
-	if q.Status != "" {
-		status = &q.Status
-	}
-	pools, err := h.Pools.FindWithFilters(ctx, status, nil)
+	view, err := h.listView(ctx, ac, q)
 	if err != nil {
-		h.Shell.Fail(w, r, fmt.Errorf("find dispatch pools: %w", err))
+		h.Shell.Fail(w, r, err)
 		return
 	}
-	// Same per-client visibility as the API list.
-	visible := auth.FilterClientScoped(ac, pools, func(p *dispatchpool.DispatchPool) *string { return ids.StringPtr(p.ClientID) })
-	view := buildPoolsView(ac, q, visible)
-
 	if ds.IsDatastar(r) {
 		sse := ds.NewSSE(w, r)
 		if err := errors.Join(
@@ -82,7 +93,39 @@ func (h *DispatchPools) list(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	h.Shell.Render(w, r, shell.Page{Title: "Dispatch Pools", Path: poolsPath}, poolsPage(view))
+	h.renderPage(w, r, http.StatusOK, view)
+}
+
+// listView reads the pools for q with the API list's status filter and
+// client scoping.
+func (h *DispatchPools) listView(ctx context.Context, ac *auth.AuthContext, q poolQuery) (poolsView, error) {
+	var status *string
+	if q.Status != "" {
+		status = &q.Status
+	}
+	pools, err := h.Pools.FindWithFilters(ctx, status, nil)
+	if err != nil {
+		return poolsView{}, fmt.Errorf("find dispatch pools: %w", err)
+	}
+	// Same per-client visibility as the API list.
+	visible := auth.FilterClientScoped(ac, pools, func(p *dispatchpool.DispatchPool) *string { return ids.StringPtr(p.ClientID) })
+	return buildPoolsView(ac, q, visible), nil
+}
+
+func (h *DispatchPools) renderPage(w http.ResponseWriter, r *http.Request, status int, view poolsView) {
+	h.Shell.RenderStatus(w, r, status, shell.Page{Title: "Dispatch Pools", Path: poolsPath}, poolsPage(view))
+}
+
+// refererQuery is the list view the request came from (the page's address,
+// which live filtering keeps current with ReplaceURL), so an action re-renders
+// the table the user is looking at. Only the view is taken from it; anything
+// unparseable is the default view.
+func refererQuery(r *http.Request) poolQuery {
+	ref, err := url.Parse(r.Referer())
+	if err != nil || ref.Path != poolsPath {
+		return parsePoolQuery(nil)
+	}
+	return parsePoolQuery(ref.Query())
 }
 
 // ── the URL is the list state ──────────────────────────────────────────
@@ -181,13 +224,31 @@ type poolRow struct {
 	DetailHref, EditHref   string
 }
 
+// poolPerms are the actions the caller may run, by the API handlers'
+// checks: create, update, suspend and activate need CanWriteDispatchPools
+// (any of the create/update/delete permissions, as the API's coarse gate);
+// delete needs CanDeleteDispatchPools.
+type poolPerms struct {
+	Write, Delete bool
+}
+
+func poolPermsFor(ac *auth.AuthContext) poolPerms {
+	return poolPerms{
+		Write:  auth.CanWriteDispatchPools(ac) == nil,
+		Delete: auth.CanDeleteDispatchPools(ac) == nil,
+	}
+}
+
 type poolsView struct {
-	Query     poolQuery
-	Rows      []poolRow
-	Total     int // visible pools before the search (status is filtered in SQL)
-	CanCreate bool
-	CanEdit   bool
-	CanDelete bool
+	Query poolQuery
+	Rows  []poolRow
+	Total int // visible pools before the search (status is filtered in SQL)
+	Perms poolPerms
+	// Dialog is a form dialog rendered with the page (a navigation to
+	// /new or /{id}/edit, or a native post re-rendered with errors).
+	Dialog templ.Component
+	// Drawer is the record the drawer opens with (a navigation to /{id}).
+	Drawer *poolDetail
 }
 
 // FilterCount is the number of active filters in the Filters popover.
@@ -202,13 +263,7 @@ func (v poolsView) FilterCount() int {
 func (v poolsView) Filtered() bool { return v.Query.Q != "" || v.Query.Status != "" }
 
 func buildPoolsView(ac *auth.AuthContext, q poolQuery, pools []dispatchpool.DispatchPool) poolsView {
-	v := poolsView{
-		Query:     q,
-		Total:     len(pools),
-		CanCreate: auth.CanCreateDispatchPools(ac) == nil,
-		CanEdit:   auth.CanUpdateDispatchPools(ac) == nil,
-		CanDelete: auth.CanDeleteDispatchPools(ac) == nil,
-	}
+	v := poolsView{Query: q, Total: len(pools), Perms: poolPermsFor(ac)}
 	needle := strings.ToLower(q.Q)
 	matched := make([]dispatchpool.DispatchPool, 0, len(pools))
 	for _, p := range pools {
@@ -241,6 +296,8 @@ func buildPoolsView(ac *auth.AuthContext, q poolQuery, pools []dispatchpool.Disp
 	return v
 }
 
+func poolURL(id string) string { return poolsPath + "/" + url.PathEscape(id) }
+
 func toPoolRow(p dispatchpool.DispatchPool) poolRow {
 	row := poolRow{
 		ID:            p.ID,
@@ -251,12 +308,11 @@ func toPoolRow(p dispatchpool.DispatchPool) poolRow {
 		Concurrency:   strconv.Itoa(int(p.Concurrency)),
 		Status:        string(p.Status),
 		RawStatus:     p.Status,
-		StatusVariant: kit.BadgeSecondary,
+		StatusVariant: poolStatusVariant(p.Status),
 		Created:       p.CreatedAt.UTC().Format("2006-01-02"),
 		CreatedISO:    p.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
-		// Detail and edit live in the SPA until they are ported.
-		DetailHref: "/dispatch-pools/" + url.PathEscape(p.ID),
-		EditHref:   "/dispatch-pools/" + url.PathEscape(p.ID) + "?edit=true",
+		DetailHref:    poolURL(p.ID),
+		EditHref:      poolURL(p.ID) + "/edit",
 	}
 	if p.ClientIdentifier != nil && *p.ClientIdentifier != "" {
 		row.Scope = *p.ClientIdentifier
@@ -264,15 +320,19 @@ func toPoolRow(p dispatchpool.DispatchPool) poolRow {
 	if p.RateLimit != nil {
 		row.RateLimit = strconv.Itoa(int(*p.RateLimit)) + "/min"
 	}
-	switch p.Status {
-	case dispatchpool.StatusActive:
-		row.StatusVariant = kit.BadgeSuccess
-	case dispatchpool.StatusSuspended:
-		row.StatusVariant = kit.BadgeWarn
-	case dispatchpool.StatusArchived:
-		row.StatusVariant = kit.BadgeSecondary
-	}
 	return row
+}
+
+// poolStatusVariant is the SPA's getStatusSeverity.
+func poolStatusVariant(s dispatchpool.Status) kit.BadgeVariant {
+	switch s {
+	case dispatchpool.StatusActive:
+		return kit.BadgeSuccess
+	case dispatchpool.StatusSuspended:
+		return kit.BadgeWarn
+	case dispatchpool.StatusArchived:
+	}
+	return kit.BadgeSecondary
 }
 
 func deref(s *string) string {
@@ -284,31 +344,57 @@ func deref(s *string) string {
 
 // ── row actions ────────────────────────────────────────────────────────
 
-// notPortedReason explains the pool actions that exist in the current UI
-// but not here yet (row-actions.md: shown disabled with a reason, not hidden).
-const notPortedReason = "Not in the new UI yet: open the pool with View details."
+// archivedReadOnly is why an archived pool's Edit is disabled (the SPA's
+// drawer refuses to edit an archived pool).
+const archivedReadOnly = "Archived pools cannot be edited."
 
-// rowActions mirrors the SPA: Edit inline; the detail drawer's actions
-// (Activate or Suspend, Delete; none for an archived pool) in the menu.
-// Actions the user has no permission for are left out.
+// liveLink fetches a link's URL through Datastar instead of navigating
+// (the server answers with a dialog or the drawer).
+const liveLink = "@get(el.href)"
+
+// rowActions mirrors the SPA: Edit inline (it opens the edit form); View
+// details and the detail drawer's actions in the menu (Activate or Suspend,
+// Delete; none for an archived pool). Actions the user has no permission
+// for are left out.
 func (v poolsView) rowActions(row poolRow) kit.RowActionsProps {
 	p := kit.RowActionsProps{ID: "pool-" + row.ID + "-actions", RowLabel: row.Name}
-	if v.CanEdit {
-		p.Actions = append(p.Actions, kit.RowAction{Icon: "pencil", Label: "Edit", Href: row.EditHref})
+	archived := row.RawStatus == dispatchpool.StatusArchived
+	if v.Perms.Write {
+		edit := kit.RowAction{Icon: "pencil", Label: "Edit", Href: row.EditHref, Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}
+		if archived {
+			edit.DisabledReason = archivedReadOnly
+		}
+		p.Actions = append(p.Actions, edit)
 	}
-	p.Menu = append(p.Menu, kit.RowAction{Icon: "eye", Label: "View details", Href: row.DetailHref})
-	if row.RawStatus == dispatchpool.StatusArchived {
+	p.Menu = append(p.Menu, kit.RowAction{Icon: "eye", Label: "View details", Href: row.DetailHref, Attrs: templ.Attributes{"data-on:click__prevent": liveLink}})
+	if archived {
 		return p
 	}
-	if v.CanEdit {
+	if v.Perms.Write {
 		if row.RawStatus == dispatchpool.StatusActive {
-			p.Menu = append(p.Menu, kit.RowAction{Icon: "pause", Label: "Suspend", DisabledReason: notPortedReason})
+			p.Menu = append(p.Menu, kit.RowAction{Icon: "pause", Label: "Suspend…", Attrs: confirmTrigger(poolSuspendDialog, row.DetailHref+"/suspend")})
 		} else {
-			p.Menu = append(p.Menu, kit.RowAction{Icon: "play", Label: "Activate", DisabledReason: notPortedReason})
+			p.Menu = append(p.Menu, kit.RowAction{Icon: "play", Label: "Activate…", Attrs: confirmTrigger(poolActivateDialog, row.DetailHref+"/activate")})
 		}
 	}
-	if v.CanDelete {
-		p.Menu = append(p.Menu, kit.RowAction{Icon: "trash-2", Label: "Delete…", Destructive: true, DisabledReason: notPortedReason})
+	if v.Perms.Delete {
+		p.Menu = append(p.Menu, kit.RowAction{Icon: "trash-2", Label: "Delete…", Destructive: true, Attrs: confirmTrigger(poolDeleteDialog, row.DetailHref+"/delete")})
 	}
 	return p
+}
+
+// confirmTrigger opens the shared confirm dialog for one record
+// (confirm-dialog.md, "One dialog for many records").
+func confirmTrigger(dialogID, action string) templ.Attributes {
+	return templ.Attributes{"data-on:click": kit.OpenConfirm(dialogID), "data-action": action, "aria-haspopup": "dialog"}
+}
+
+// poolID reads and checks the {id} path parameter: an id that could not be
+// an element id is not a pool (and must never reach an expression).
+func poolID(r *http.Request) (string, error) {
+	id := chi.URLParam(r, "id")
+	if !kit.ValidID(id) {
+		return "", httperror.NotFound("DispatchPool", id)
+	}
+	return id, nil
 }

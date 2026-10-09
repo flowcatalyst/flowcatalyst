@@ -65,7 +65,7 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg, dispatchSettings
 	registerPublicRoutes(r, cfg, pool, uow, repos, svcs)
 	humaAPI := registerPlatformAPI(r, cfg, pool, uow, repos, svcs, dispatchSettings)
 	registerSpecRoutes(r, humaAPI)
-	if err := registerUI(r, cfg, repos, svcs); err != nil {
+	if err := registerUI(r, cfg, uow, repos, svcs); err != nil {
 		return PlatformHandles{}, err
 	}
 	return PlatformHandles{

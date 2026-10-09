@@ -11,6 +11,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/pages"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
 // registerUI mounts the server-rendered UI under /ui (internal/ui,
@@ -19,7 +21,7 @@ import (
 // so the fc_session cookie and, in dev, the test headers behave the same) and
 // adds the UI's own CSRF, session and role guards. Handlers read the
 // repositories directly, with the API handlers' permission checks.
-func registerUI(r chi.Router, cfg EnvCfg, repos *repoSet, svcs *serviceSet) error {
+func registerUI(r chi.Router, cfg EnvCfg, uow *usecasepgx.UnitOfWork, repos *repoSet, svcs *serviceSet) error {
 	return ui.Mount(r, ui.Config{
 		Authenticate: platformmw.Authenticator(platformmw.AuthConfig{
 			Provider:         svcs.authProvider,
@@ -44,7 +46,9 @@ func registerUI(r chi.Router, cfg EnvCfg, repos *repoSet, svcs *serviceSet) erro
 			}
 			return ""
 		},
-		DispatchPools: repos.dispatchPoolRepo,
+		DispatchPools:   repos.dispatchPoolRepo,
+		DispatchPoolOps: pages.PoolOps{Repo: repos.dispatchPoolRepo, UoW: uow},
+		Clients:         repos.clientRepo,
 	})
 }
 

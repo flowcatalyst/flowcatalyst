@@ -263,7 +263,8 @@ type FlashStackProps struct {
 // FlashStack is flash-stack.md: the sticky, polite live region server
 // patches append FlashMessages to (mode append, selector "#{id}"), with the
 // fallback listener and its templates for requests that fail outside a
-// handler (guard refusals, crashes, network).
+// handler (guard refusals, crashes, network). Slot: messages rendered with
+// the page (the flash after a post/redirect/get), after the templates.
 templ FlashStack(p FlashStackProps) {
 	<div id={ ID(p.ID) } class="fc-flash-stack" aria-live="polite" data-on:datastar-fetch={ flashFallbackExpr }>
 		for _, f := range flashFallbacks {
@@ -271,6 +272,7 @@ templ FlashStack(p FlashStackProps) {
 				@FlashMessage(f.props())
 			</template>
 		}
+		{ children... }
 	</div>
 }
 

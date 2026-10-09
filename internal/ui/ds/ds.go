@@ -192,6 +192,29 @@ func (s *SSE) ReplaceURL(path string) error {
 	return s.runOnce("history.replaceState(history.state, '', ", path, "); el.remove()")
 }
 
+// Focus moves keyboard focus to the element with this id (after a patch: the
+// first invalid field of a form, a drawer's heading). Like Redirect it
+// appends a self-removing data-init element; the id is JSON-encoded, so any
+// string is safe, and a missing element is ignored.
+func (s *SSE) Focus(id string) error {
+	return s.runWithID("document.getElementById(", id, ")?.focus(); el.remove()")
+}
+
+// CloseDialog closes the <dialog> with this id (a form dialog after a
+// successful submit). Closing it natively returns focus to its opener.
+func (s *SSE) CloseDialog(id string) error {
+	return s.runWithID("document.getElementById(", id, ")?.close(); el.remove()")
+}
+
+func (s *SSE) runWithID(prefix, id, suffix string) error {
+	enc, err := json.Marshal(id)
+	if err != nil {
+		return fmt.Errorf("ds: encode id: %w", err)
+	}
+	el := `<div hidden data-init="` + html.EscapeString(prefix+string(enc)+suffix) + `"></div>`
+	return s.gen.PatchElements(el, datastar.WithSelector("body"), datastar.WithModeAppend())
+}
+
 func (s *SSE) runOnce(prefix, path, suffix string) error {
 	if !IsLocalPath(path) {
 		return ErrUnsafeRedirect

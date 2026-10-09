@@ -21,6 +21,10 @@ func (noPools) FindWithFilters(context.Context, *string, *string) ([]dispatchpoo
 	return nil, nil
 }
 
+func (noPools) FindByID(context.Context, string) (*dispatchpool.DispatchPool, error) {
+	return nil, nil
+}
+
 // fakeAuth stands in for the platform Authenticator: a "session" cookie
 // value names the principal kind.
 func fakeAuth(next http.Handler) http.Handler {

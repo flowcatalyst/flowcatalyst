@@ -95,28 +95,47 @@ func (v poolsView) summary() string {
 	}
 }
 
+// drawerSignals declares the drawer's signal: the record it opens with (a
+// navigation to /ui/dispatch-pools/{id}) or none. The id is checked by kit.ID,
+// so it is safe inside the expression.
+func (v poolsView) drawerSignals() string {
+	if v.Drawer == nil {
+		return "{" + poolDrawerSig + ": ''}"
+	}
+	return "{" + poolDrawerSig + ": '" + kit.ID(v.Drawer.ID) + "'}"
+}
+
 templ poolsPage(v poolsView) {
-	@kit.PageHeader(kit.PageHeaderProps{
-		Title:    "Dispatch Pools",
-		Subtitle: "Manage rate limiting and concurrency for dispatch jobs",
-		Actions:  poolsActions(v),
-	})
-	@kit.Alert(kit.AlertProps{
-		Icon:        "info",
-		Title:       "New UI preview",
-		Description: "This list is served by the new server-rendered UI. Creating, editing, suspending and deleting pools still happen in the current UI.",
-		Class:       "mb-4",
-	})
-	<div class="fc-card-flush">
-		@kit.TableToolbar(v.toolbar())
-		@poolsTable(v)
-		@poolsSummary(v)
+	<div data-signals={ v.drawerSignals() }>
+		@kit.PageHeader(kit.PageHeaderProps{
+			Title:    "Dispatch Pools",
+			Subtitle: "Manage rate limiting and concurrency for dispatch jobs",
+			Actions:  poolsActions(v),
+		})
+		@kit.Alert(kit.AlertProps{
+			Icon:        "info",
+			Title:       "New UI preview",
+			Description: "This page is served by the new server-rendered UI. The current UI has the same page under Dispatch Pools.",
+			Class:       "mb-4",
+		})
+		<div class="fc-card-flush">
+			@kit.TableToolbar(v.toolbar())
+			@poolsTable(v)
+			@poolsSummary(v)
+		</div>
+		<div id={ poolDialogSlot }>
+			if v.Dialog != nil {
+				@v.Dialog
+			}
+		</div>
+		@poolConfirmDialogs(v.Perms)
+		@poolDrawer(v.Drawer)
 	</div>
 }
 
 templ poolsActions(v poolsView) {
-	if v.CanCreate {
-		@kit.LegacyButton(kit.LegacyButtonProps{Href: "/dispatch-pools/new", Icon: "plus"}) {
+	if v.Perms.Write {
+		@kit.LegacyButton(kit.LegacyButtonProps{Href: poolsPath + "/new", Icon: "plus", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
 			Create Pool
 		}
 	}
@@ -143,7 +162,7 @@ templ poolsTable(v poolsView) {
 					<code class="font-mono text-[13px]">{ row.Code }</code>
 				}
 				@kit.TD(kit.TDProps{}) {
-					<a href={ row.DetailHref } class="font-medium text-foreground no-underline hover:underline">{ row.Name }</a>
+					<a href={ row.DetailHref } class="font-medium text-foreground no-underline hover:underline" data-on:click__prevent={ liveLink }>{ row.Name }</a>
 				}
 				@kit.TD(kit.TDProps{Class: "text-[13px] text-muted-foreground"}) {
 					{ row.Scope }

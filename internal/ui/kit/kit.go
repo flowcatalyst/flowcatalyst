@@ -111,6 +111,40 @@ func OpenModal(id string) templ.Attributes {
 	return templ.Attributes{"data-on:click": ShowModal(id), "aria-haspopup": "dialog"}
 }
 
+// SubmitForm is the submit handler of a form that posts through Datastar
+// (form-dialog.md, confirm-dialog.md): the form's own fields go to its own
+// action, network retries are off (a POST that reached the server must not be
+// sent twice). Reading el.action keeps the URL out of the expression.
+const SubmitForm = "@post(el.action, {contentType: 'form', retryMaxCount: 0})"
+
+// SubmitConfirm submits a confirm dialog's form and closes the dialog; the
+// outcome is reported in the page's flash stack (confirm-dialog.md).
+const SubmitConfirm = SubmitForm + "; el.closest('dialog').close()"
+
+// OpenConfirm is the trigger expression for a confirm dialog shared by many
+// records (confirm-dialog.md, "One dialog for many records"): the trigger's
+// data-action attribute (a plain attribute, so a URL never enters the
+// expression) becomes the form's action, then the dialog opens.
+func OpenConfirm(id string) string {
+	return "const d = document.getElementById('" + ID(id) + "'); d.querySelector('form').action = el.dataset.action; d.showModal()"
+}
+
+var pathPattern = regexp.MustCompile(`^/[A-Za-z0-9/_-]*$`)
+
+// Path validates a local path that a Datastar expression will contain (an
+// autocomplete's source). It panics on anything else (programming error).
+func Path(p string) string {
+	if !pathPattern.MatchString(p) {
+		panic(fmt.Sprintf("kit: invalid path %q (want /[A-Za-z0-9/_-]*)", p))
+	}
+	return p
+}
+
+// ValidID reports whether id may be used as an element id or inside a
+// Datastar expression (the rule ID enforces). Handlers check ids that come
+// from a request with it before they reach ID.
+func ValidID(id string) bool { return idPattern.MatchString(id) }
+
 // orDefault returns v, or def when v is empty.
 func orDefault[T ~string](v, def T) T {
 	if v == "" {
