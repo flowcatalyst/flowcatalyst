@@ -1,0 +1,131 @@
+name: Split function TypeScript SDK
+
+# READY BUT OFF. Fires on `fn-ts-sdk/v*` (cut via `make release-fn-ts-sdk
+# BUMP=…`), but every job is guarded by the repository variable
+# SPLIT_FN_SDKS == 'true' (Settings > Secrets and variables > Actions >
+# Variables). Until the owner sets it, a tag push runs nothing.
+#
+# When on: typecheck + test clients/fn-ts, split it out with splitsh-lite,
+# force-push it to the standalone flowcatalyst/fn-ts-sdk repo (secret
+# FN_TS_SDK_TOKEN) and re-tag plain vX.Y.Z there. The package ships TypeScript
+# source (main/types point at src/index.ts, bundled by fc-fn-build), so there
+# is no dist to build.
+#
+# The optional `publish` job pushes @flowcatalyst/fn to npm. It needs a SECOND
+# variable (PUBLISH_FN_TS_NPM == 'true'), the NPM_TOKEN secret, and the owner
+# to have flipped `"private": true` in clients/fn-ts/package.json. See
+# docs/releasing.md.
+
+on:
+  push:
+    tags:
+      - 'fn-ts-sdk/v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to create on target repo (e.g., v0.1.0). Leave empty to just sync main.'
+        required: false
+
+concurrency:
+  group: split-fn-ts-sdk
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  split:
+    if: vars.SPLIT_FN_SDKS == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Resolve version
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          # fn-ts-sdk/v0.1.0 -> v0.1.0
+          if [[ "$REF_TYPE" == "tag" ]]; then
+            VERSION="${REF_NAME#fn-ts-sdk/}"
+          else
+            VERSION="$INPUT_TAG"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Check tag matches package.json
+        if: env.VERSION != ''
+        run: |
+          PKG=$(node -p "require('./clients/fn-ts/package.json').version")
+          if [[ "v$PKG" != "$VERSION" ]]; then
+            echo "::error::tag $VERSION does not match clients/fn-ts/package.json version $PKG"
+            exit 1
+          fi
+
+      - name: Typecheck and test
+        working-directory: clients/fn-ts
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+
+      - name: Install splitsh-lite
+        run: |
+          curl -L https://github.com/splitsh/lite/releases/download/v1.0.1/lite_linux_amd64.tar.gz | tar xz
+          chmod +x splitsh-lite
+          sudo mv splitsh-lite /usr/local/bin/
+
+      - name: Split and push
+        env:
+          TARGET_REPO: https://x-access-token:${{ secrets.FN_TS_SDK_TOKEN }}@github.com/flowcatalyst/fn-ts-sdk.git
+        run: |
+          # Split the subtree (preserves per-file commit history)
+          SHA=$(splitsh-lite --prefix=clients/fn-ts)
+          echo "Split SHA: $SHA"
+
+          git remote add sdk "$TARGET_REPO" || git remote set-url sdk "$TARGET_REPO"
+          git push sdk "$SHA:refs/heads/main" --force
+
+          # Tag the split commit itself (no build output to add).
+          if [[ -n "$VERSION" ]]; then
+            git push sdk "$SHA:refs/tags/$VERSION" --force
+            echo "Tagged and pushed: $VERSION"
+          fi
+
+          echo "Successfully pushed to flowcatalyst/fn-ts-sdk"
+
+  publish:
+    # Second, independent switch: npm publish stays off even when the split is on.
+    if: vars.SPLIT_FN_SDKS == 'true' && vars.PUBLISH_FN_TS_NPM == 'true' && startsWith(github.ref, 'refs/tags/fn-ts-sdk/v')
+    needs: split
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Publish to npm
+        working-directory: clients/fn-ts
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          # npm refuses a package with "private": true; the owner flips it.
+          npm ci
+          npm publish --access public
