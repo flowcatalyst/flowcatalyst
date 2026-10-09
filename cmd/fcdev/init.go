@@ -60,6 +60,7 @@ func newInitCmd() *cobra.Command {
 		RunE:  runInit,
 	}
 	cmd.Flags().String("database-url", envStrDefault("FC_DATABASE_URL", ""), "Postgres URL (defaults to local embedded)")
+	cmd.Flags().String("embedded-db-path", envStrDefault("FC_EMBEDDED_DB_PATH", defaultEmbeddedPath()), "embedded Postgres data directory (the app key is read from / persisted beside it, as `fcdev start` does)")
 	cmd.Flags().Bool("yes", false, "non-interactive — fail if any required value is missing from flags")
 	cmd.Flags().String("root", ".", "project root for the .env write")
 
@@ -251,13 +252,11 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	// Client secrets are stored reversibly-encrypted
 	// (client_secret_ref), so an app key must exist. Generate + persist one
 	// when absent so a fresh dev box works without manual setup.
-	appKey := os.Getenv("FLOWCATALYST_APP_KEY")
-	if appKey == "" {
-		appKey, err = encryption.GenerateKey()
-		if err != nil {
-			return fmt.Errorf("generate app key: %w", err)
-		}
-		_ = os.Setenv("FLOWCATALYST_APP_KEY", appKey)
+	// Same resolution as the running fcdev (env, else the persisted key file,
+	// else generate + persist), so the credentials minted here decrypt there.
+	appKey, err := resolveAppKey(get("embedded-db-path"))
+	if err != nil {
+		return fmt.Errorf("resolve app key: %w", err)
 	}
 	enc, err := encryption.FromEnv()
 	if err != nil {

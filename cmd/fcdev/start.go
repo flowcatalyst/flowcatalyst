@@ -181,13 +181,8 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	// Persist the field-encryption key so OAuth client secrets (incl. the
 	// bootstrapped MCP client) stay decryptable across restarts. fc-server
 	// requires operators to supply FLOWCATALYST_APP_KEY via env.
-	if os.Getenv("FLOWCATALYST_APP_KEY") == "" {
-		keyPath := filepath.Join(filepath.Dir(opts.EmbeddedDBPath), "app-key")
-		if key, err := ensureAppKeyFile(keyPath); err == nil {
-			_ = os.Setenv("FLOWCATALYST_APP_KEY", key)
-		} else {
-			slog.Warn("unable to persist app encryption key — OAuth client secrets won't survive restart", "err", err)
-		}
+	if _, err := resolveAppKey(opts.EmbeddedDBPath); err != nil {
+		slog.Warn("unable to persist app encryption key — OAuth client secrets won't survive restart", "err", err)
 	}
 
 	if err := seed.NewSeeder(pool).Run(rootCtx); err != nil {

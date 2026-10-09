@@ -131,3 +131,29 @@ func ensureAppKeyFile(path string) (string, error) {
 	}
 	return key, nil
 }
+
+// appKeyPath is where fcdev persists the field-encryption key: beside the
+// embedded Postgres data directory, whichever database that instance
+// ultimately connects to.
+func appKeyPath(embeddedDBPath string) string {
+	return filepath.Join(filepath.Dir(embeddedDBPath), "app-key")
+}
+
+// resolveAppKey is the single resolution every fcdev command that encrypts or
+// decrypts client secrets must use, so `fcdev init` agrees with the running
+// instance: FLOWCATALYST_APP_KEY in the environment wins; else the persisted
+// key file; else a new key is generated and persisted (0600). The result is
+// exported to the process environment for encryption.FromEnv.
+func resolveAppKey(embeddedDBPath string) (string, error) {
+	if k := strings.TrimSpace(os.Getenv("FLOWCATALYST_APP_KEY")); k != "" {
+		return k, nil
+	}
+	key, err := ensureAppKeyFile(appKeyPath(embeddedDBPath))
+	if err != nil {
+		return "", err
+	}
+	if err := os.Setenv("FLOWCATALYST_APP_KEY", key); err != nil {
+		return "", err
+	}
+	return key, nil
+}
