@@ -797,7 +797,11 @@ func (m *Manager) routeOne(ctx context.Context, msg common.QueuedMessage, source
 			// otherwise it redelivers forever. The owner's entry (and
 			// receipt handle) was deliberately left untouched.
 			slog.Info("external requeue detected; ACKing duplicate", "message_id", msg.Message.ID, "queue", source.Identifier())
-			if err := source.Ack(ctx, msg.ReceiptHandle, msg.BrokerMessageID); err != nil {
+			// Urgent: this ack runs on the consumer's poll loop, and a batching
+			// broker (SQS) would otherwise hold it for its delete linger (up to
+			// 5 s) — so a duplicate storm would stall this queue's intake for
+			// that long per duplicate. See pollLoopAck.
+			if err := source.Ack(pollLoopAck(ctx), msg.ReceiptHandle, msg.BrokerMessageID); err != nil {
 				slog.Warn("ack (external requeue) failed", "message_id", msg.Message.ID, "err", err)
 			}
 			return ""
@@ -826,7 +830,7 @@ func (m *Manager) routeOne(ctx context.Context, msg common.QueuedMessage, source
 			if m.tracker != nil {
 				m.tracker.Remove(msg.Message.ID, msg.BrokerMessageID)
 			}
-			if err := source.Ack(ctx, msg.ReceiptHandle, msg.BrokerMessageID); err != nil {
+			if err := source.Ack(pollLoopAck(ctx), msg.ReceiptHandle, msg.BrokerMessageID); err != nil {
 				slog.Warn("ack (strict routing malformed) failed", "message_id", msg.Message.ID, "err", err)
 			}
 			return ""
@@ -1063,6 +1067,15 @@ func isSynthPoolCode(code string) bool {
 // resolution — every condition here is exactly the case non-strict routing
 // papers over with a fallback (DEFAULT-POOL, DefaultDispatchMode, the shared
 // "" group), so under strict routing none of them may be silently repaired.
+// pollLoopAck marks an ack that routeOne issues itself — on the consumer's poll
+// goroutine, before the message ever reaches a pool — as urgent. Ack blocks
+// until the broker has answered, and a batching broker holds a non-urgent ack
+// for its linger (SQS: up to 5 s, waiting for a full batch). Nothing else is
+// polled from this queue meanwhile, so without the mark a storm of external
+// requeues or malformed messages throttles the queue's intake to about one
+// message per linger.
+func pollLoopAck(ctx context.Context) context.Context { return queue.WithUrgentAck(ctx) }
+
 func malformedRoutingReason(msg *common.Message) string {
 	switch {
 	case msg.PoolCode == "":

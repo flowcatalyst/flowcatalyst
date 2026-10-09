@@ -281,9 +281,11 @@ func (q *Queue) Poll(ctx context.Context, maxMessages uint32) ([]common.QueuedMe
 
 		msg, receipt, brokerID, perr := q.parseMessage(sm)
 		if perr != nil {
-			// Malformed — ACK it so it doesn't keep coming back.
+			// Malformed — ACK it so it doesn't keep coming back. Urgent: this
+			// runs inside Poll, so a lingering delete batch would hold the
+			// whole poll (and the queue's intake) for up to the linger cap.
 			if sm.ReceiptHandle != nil {
-				_ = q.Ack(ctx, *sm.ReceiptHandle, brokerIDOf(sm))
+				_ = q.Ack(queue.WithUrgentAck(ctx), *sm.ReceiptHandle, brokerIDOf(sm))
 			}
 			continue
 		}
