@@ -63,6 +63,18 @@ fi
 
 [ -f "$version_file" ] || { echo "✗ missing version file: $version_file" >&2; exit 1; }
 
+# fn-go is consumed through the Go module proxy, which resolves the module path
+# to the repo URL: a tag on a module whose path does not match the repo is
+# permanently unfetchable (proxies cache it). Refuse until go.mod is right.
+fn_go_module="github.com/flowcatalyst/flowcatalyst/clients/fn-go"
+if [ "$kind" = "fn-go" ]; then
+	have="$(awk '/^module[[:space:]]/ {print $2; exit}' clients/fn-go/go.mod)"
+	if [ "$have" != "$fn_go_module" ]; then
+		echo "✗ clients/fn-go/go.mod declares '$have'; it must be '$fn_go_module' to be fetchable from this repo's tags. See docs/releasing.md." >&2
+		exit 1
+	fi
+fi
+
 clean_re='^[0-9]+\.[0-9]+\.[0-9]+$'
 file_version="$(tr -d '[:space:]' < "$version_file")"
 
@@ -228,7 +240,7 @@ git push origin HEAD "$prefix/v$new"
 echo ""
 echo "✓ Released $label v$new"
 if [ "$kind" = "fn-go" ]; then
-	echo "  Consume:  go get github.com/flowcatalyst/flowcatalyst-go/clients/fn-go@v$new (module proxy; no workflow)"
+	echo "  Consume:  go get $fn_go_module@v$new (module proxy; no workflow)"
 else
 	echo "  Workflow: https://github.com/flowcatalyst/flowcatalyst-go/actions/workflows/${workflow:-release-$prefix.yml}"
 fi
