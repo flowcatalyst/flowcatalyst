@@ -12,8 +12,13 @@ import type {
 	DispatchJobRead as GenDispatchJobRead,
 	DispatchJobResponse as GenDispatchJobResponse,
 	RequestSummary as GenRequestSummary,
+	RequeueByFilterPreviewRequest,
+	RequeueByFilterPreviewResponse,
+	RequeueByFilterResponse,
 	RequeueResponse,
 } from "./generated";
+
+export type { RequeueByFilterPreviewResponse, RequeueByFilterResponse };
 
 // Response types alias the generated contract (api/openapi.lock.json) so
 // `vue-tsc` fails on backend drift. Aliased under the historical names so
@@ -51,19 +56,35 @@ export interface DispatchJobsListParams {
 	sort?: "createdAt.asc" | "createdAt.desc" | undefined;
 }
 
-function buildQuery(params: DispatchJobsListParams): string {
+/**
+ * The filter part of the list params, in the wire form the server reads both
+ * as the list's query string and as the requeue-by-filter request body (same
+ * names, plural fields comma-separated). One builder, so "requeue all
+ * matching" sends exactly the filter the list was loaded with.
+ */
+export type DispatchJobFilterBody = RequeueByFilterPreviewRequest;
+
+export function filterBody(params: DispatchJobsListParams): DispatchJobFilterBody {
+	const body: DispatchJobFilterBody = {};
+	if (params.clientIds?.length) body.clientIds = params.clientIds.join(",");
+	if (params.statuses?.length) body.statuses = params.statuses.join(",");
+	if (params.applications?.length) body.applications = params.applications.join(",");
+	if (params.subdomains?.length) body.subdomains = params.subdomains.join(",");
+	if (params.aggregates?.length) body.aggregates = params.aggregates.join(",");
+	if (params.codes?.length) body.codes = params.codes.join(",");
+	if (params.source) body.source = params.source;
+	if (params.messageGroup) body.messageGroup = params.messageGroup;
+	if (params.since) body.since = params.since;
+	if (params.until) body.until = params.until;
+	return body;
+}
+
+export function buildQuery(params: DispatchJobsListParams): string {
 	const qp = new URLSearchParams();
 	if (params.size != null) qp.set("size", String(params.size));
-	if (params.clientIds?.length) qp.set("clientIds", params.clientIds.join(","));
-	if (params.statuses?.length) qp.set("statuses", params.statuses.join(","));
-	if (params.applications?.length) qp.set("applications", params.applications.join(","));
-	if (params.subdomains?.length) qp.set("subdomains", params.subdomains.join(","));
-	if (params.aggregates?.length) qp.set("aggregates", params.aggregates.join(","));
-	if (params.codes?.length) qp.set("codes", params.codes.join(","));
-	if (params.source) qp.set("source", params.source);
-	if (params.messageGroup) qp.set("messageGroup", params.messageGroup);
-	if (params.since) qp.set("since", params.since);
-	if (params.until) qp.set("until", params.until);
+	for (const [k, v] of Object.entries(filterBody(params))) {
+		if (typeof v === "string") qp.set(k, v);
+	}
 	if (params.sort) qp.set("sort", params.sort);
 	const s = qp.toString();
 	return s ? `?${s}` : "";
@@ -89,6 +110,26 @@ export const dispatchJobsApi = {
 		return apiFetch(`/dispatch-jobs/requeue`, {
 			method: "POST",
 			body: JSON.stringify({ ids }),
+		});
+	},
+	// How many jobs the filter matches (by status) and how many a requeue
+	// would reset for this caller (`eligibleCount`, tenant-scoped).
+	previewRequeueByFilter(filter: DispatchJobFilterBody): Promise<RequeueByFilterPreviewResponse> {
+		return apiFetch(`/dispatch-jobs/requeue-by-filter/preview`, {
+			method: "POST",
+			body: JSON.stringify(filter),
+		});
+	},
+	// Reset every job the filter matches to PENDING, at most `confirmCount`
+	// (the eligibleCount the user confirmed) and the server's 10,000 cap. A
+	// 409 FILTER_MATCH_CHANGED means more jobs match now: nothing was reset,
+	// re-preview and ask again. Errors are not toasted globally — the caller
+	// handles the 409 in its dialog.
+	requeueByFilter(filter: DispatchJobFilterBody, confirmCount: number): Promise<RequeueByFilterResponse> {
+		return apiFetch(`/dispatch-jobs/requeue-by-filter`, {
+			method: "POST",
+			body: JSON.stringify({ ...filter, confirmCount }),
+			suppressGlobalErrorToast: true,
 		});
 	},
 	// Dry run: which service account would sign, every header, and a real

@@ -1,15 +1,29 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useListState } from "@/composables/useListState";
 import { useTableFilters } from "@/composables/useTableFilters";
+import { useClientOptions } from "@/composables/useClientOptions";
 import ClientFilter from "@/components/ClientFilter.vue";
 import {
 	dispatchJobsApi,
+	filterBody,
+	type DispatchJobFilterBody,
 	type DispatchJobRead as DispatchJob,
 	type DispatchJobsListParams,
+	type RequeueByFilterPreviewResponse,
+	type RequeueByFilterResponse,
 } from "@/api/dispatch-jobs";
-import { toast } from "@/utils/errorBus";
+import { notify, toast } from "@/utils/errorBus";
+import RequeueByFilterDialog from "./RequeueByFilterDialog.vue";
+import {
+	ERROR_STATUSES,
+	requeueOutcome,
+	selectAllBannerState,
+	statusSeverity,
+	summarizeFilters,
+	type FilterSummaryItem,
+} from "./requeueByFilter";
 
 interface FilterOption {
 	label: string;
@@ -142,19 +156,148 @@ const loading = ref(false);
 const selectedJobs = ref<DispatchJob[]>([]);
 const requeuing = ref(false);
 
+// The filter the rows on screen were loaded with — "all matching" means
+// this, not whatever the filter popup holds while a reload is pending.
+const loadedFilter = ref<DispatchJobFilterBody>({});
+// The filter summary shown in the confirm dialog, captured with loadedFilter.
+const loadedSummary = ref<FilterSummaryItem[]>([]);
+// How many jobs loadedFilter matches (preview count); null = not counted yet.
+const matchCount = ref<number | null>(null);
+// Gmail-style "select all M matching" taken.
+const allMatchingSelected = ref(false);
+let loadSeq = 0;
+
+const { getLabel: clientLabel } = useClientOptions();
+
+function currentFilterValues() {
+	return {
+		clients: filters.clients.value,
+		applications: filters.applications.value,
+		subdomains: filters.subdomains.value,
+		aggregates: filters.aggregates.value,
+		codes: filters.codes.value,
+		statuses: filters.statuses.value,
+		search: filters.search.value,
+		messageGroup: filters.messageGroup.value,
+		from: filters.from.value,
+		to: filters.to.value,
+	};
+}
+
 async function load() {
+	const mine = ++loadSeq;
+	const params = buildParams();
 	loading.value = true;
 	try {
-		dispatchJobs.value = await dispatchJobsApi.list(buildParams());
+		const rows = await dispatchJobsApi.list(params);
+		if (mine !== loadSeq) return;
+		dispatchJobs.value = rows;
+		loadedFilter.value = filterBody(params);
+		loadedSummary.value = summarizeFilters(currentFilterValues(), clientLabel);
+		matchCount.value = null;
+		allMatchingSelected.value = false;
 		// Drop selections that are no longer in the refreshed view.
 		const visible = new Set(dispatchJobs.value.map((j) => j.id));
 		selectedJobs.value = selectedJobs.value.filter((j) => visible.has(j.id));
 	} catch (error) {
 		console.error("Failed to load dispatch jobs:", error);
 	} finally {
-		loading.value = false;
+		if (mine === loadSeq) loading.value = false;
 	}
 }
+
+const bannerState = computed(() =>
+	selectAllBannerState({
+		pageRows: dispatchJobs.value.length,
+		selectedRows: selectedJobs.value.length,
+		pageSize: pageSize.value,
+		matchCount: matchCount.value,
+		allMatchingSelected: allMatchingSelected.value,
+	}),
+);
+
+// The banner offers "select all M matching" — count M once per load, when
+// it shows. (matchCount is reset by every load, which re-triggers this.)
+let countedForLoad = -1;
+watch([bannerState, matchCount], async ([state, count]) => {
+	if (state !== "offer" || count !== null || countedForLoad === loadSeq) return;
+	const mine = (countedForLoad = loadSeq);
+	try {
+		const p = await dispatchJobsApi.previewRequeueByFilter(loadedFilter.value);
+		if (mine === loadSeq) matchCount.value = p.count;
+	} catch {
+		// apiFetch has already shown the error; the banner keeps offering.
+	}
+});
+
+function selectAllMatching() {
+	allMatchingSelected.value = true;
+}
+
+// Unticking any row leaves "all matching" mode.
+watch(
+	() => selectedJobs.value.length,
+	(n) => {
+		if (n !== dispatchJobs.value.length) allMatchingSelected.value = false;
+	},
+);
+
+function clearSelection() {
+	selectedJobs.value = [];
+	allMatchingSelected.value = false;
+}
+
+// ── requeue all matching ─────────────────────────────────────────────────
+const filterDialogVisible = ref(false);
+
+function openRequeueAllMatching() {
+	filterDialogVisible.value = true;
+}
+
+function onPreviewed(p: RequeueByFilterPreviewResponse) {
+	matchCount.value = p.count;
+}
+
+async function onFilterRequeueDone(res: RequeueByFilterResponse | null) {
+	if (res) {
+		const o = requeueOutcome(res);
+		notify({ severity: o.severity, summary: o.summary, detail: o.detail, life: o.severity === "warn" ? undefined : 5000 });
+	}
+	clearSelection();
+	await load();
+}
+
+// "Requeue everything in error": every job in an error status, whatever
+// else the view was filtered by, through the same preview + confirm.
+async function requeueEverythingInError() {
+	clearFilters();
+	dateFrom.value = null;
+	dateTo.value = null;
+	filters.statuses.value = [...ERROR_STATUSES];
+	syncToUrl();
+	await load();
+	filterDialogVisible.value = true;
+}
+
+const requeueAllMenu = [
+	{ label: "Requeue everything in error", icon: "pi pi-exclamation-circle", command: () => void requeueEverythingInError() },
+];
+
+const requeueAllLabel = computed(() =>
+	matchCount.value === null
+		? "Requeue all matching"
+		: `Requeue all matching (${matchCount.value.toLocaleString()})`,
+);
+
+// The status filter offers what exists plus whatever is selected (the error
+// preset selects ERROR, which may never have been stored).
+const statusSelectOptions = computed<FilterOption[]>(() => {
+	const known = new Set(statusOptions.value.map((o) => o.value));
+	return [
+		...statusOptions.value,
+		...filters.statuses.value.filter((s) => !known.has(s)).map((s) => ({ label: s, value: s })),
+	];
+});
 
 // Reset the given jobs to PENDING so the scheduler re-dispatches them. The
 // server tenant-scopes the reset, so `requeued` may be < ids.length.
@@ -180,10 +323,21 @@ async function requeueIds(ids: string[]) {
 }
 
 function requeueSelected() {
+	if (allMatchingSelected.value) {
+		openRequeueAllMatching();
+		return;
+	}
 	requeueIds(
 		selectedJobs.value.map((j) => j.id).filter((id): id is string => !!id),
 	);
 }
+
+const requeueSelectedLabel = computed(() => {
+	if (allMatchingSelected.value && matchCount.value !== null) {
+		return `Requeue selected (${matchCount.value.toLocaleString()})`;
+	}
+	return selectedJobs.value.length ? `Requeue selected (${selectedJobs.value.length})` : "Requeue selected";
+});
 
 function requeueOne(job: DispatchJob) {
 	if (job.id) requeueIds([job.id]);
@@ -288,37 +442,11 @@ function onAggregatesChange() {
 
 function clearAllFilters() {
 	clearFilters();
+	// The date pickers follow filters.from/to through a watcher that runs
+	// after this; load() reads them now.
+	dateFrom.value = null;
+	dateTo.value = null;
 	load();
-}
-
-function getSeverity(
-	status: string,
-):
-	| "success"
-	| "info"
-	| "warn"
-	| "danger"
-	| "secondary"
-	| "contrast"
-	| undefined {
-	switch (status) {
-		case "COMPLETED":
-			return "success";
-		case "PENDING":
-			return "info";
-		case "QUEUED":
-			return "info";
-		case "PROCESSING":
-			return "warn";
-		case "FAILED":
-			return "danger";
-		case "CANCELLED":
-			return "secondary";
-		case "EXPIRED":
-			return "secondary";
-		default:
-			return "secondary";
-	}
 }
 
 function formatDate(dateStr: string | undefined): string {
@@ -378,11 +506,7 @@ function formatCode(code: string | undefined): {
           >
             <template #actions>
               <Button
-                :label="
-                  selectedJobs.length
-                    ? `Requeue selected (${selectedJobs.length})`
-                    : 'Requeue selected'
-                "
+                :label="requeueSelectedLabel"
                 icon="pi pi-replay"
                 size="small"
                 severity="secondary"
@@ -390,6 +514,17 @@ function formatCode(code: string | undefined): {
                 :loading="requeuing"
                 @click="requeueSelected"
                 v-tooltip="'Reset the selected jobs to PENDING for re-dispatch'"
+              />
+              <SplitButton
+                :label="requeueAllLabel"
+                icon="pi pi-replay"
+                size="small"
+                severity="secondary"
+                outlined
+                :model="requeueAllMenu"
+                :disabled="loading || requeuing"
+                @click="openRequeueAllMatching"
+                v-tooltip.top="'Reset every job matching the current filters to PENDING — preview and confirm first'"
               />
               <Select
                 v-model="pageSize"
@@ -468,7 +603,7 @@ function formatCode(code: string | undefined): {
                   <MultiSelect
                     :id="fieldId"
                     v-model="filters.statuses.value"
-                    :options="statusOptions"
+                    :options="statusSelectOptions"
                     optionLabel="label"
                     optionValue="value"
                     placeholder="All Statuses"
@@ -518,6 +653,23 @@ function formatCode(code: string | undefined): {
               </FcFormField>
             </template>
           </FcTableToolbar>
+          <div v-if="bannerState !== 'hidden'" class="select-all-banner" role="status">
+            <template v-if="bannerState === 'offer'">
+              All {{ dispatchJobs.length.toLocaleString() }} jobs on this page are selected.
+              <Button
+                link
+                size="small"
+                class="banner-link"
+                :label="matchCount === null ? 'Select all matching jobs…' : `Select all ${matchCount.toLocaleString()} matching jobs`"
+                :disabled="matchCount === null"
+                @click="selectAllMatching"
+              />
+            </template>
+            <template v-else>
+              All {{ matchCount === null ? '' : matchCount.toLocaleString() + ' ' }}jobs matching the current filters are selected.
+              <Button link size="small" class="banner-link" label="Clear selection" @click="clearSelection" />
+            </template>
+          </div>
         </template>
 
         <Column selectionMode="multiple" headerStyle="width: 3rem" />
@@ -566,7 +718,7 @@ function formatCode(code: string | undefined): {
         </Column>
         <Column field="status" header="Status" style="width: 8rem">
           <template #body="{ data }">
-            <Tag :value="data.status" :severity="getSeverity(data.status)" />
+            <Tag :value="data.status" :severity="statusSeverity(data.status)" />
           </template>
         </Column>
         <Column header="Additional data" style="width: 12rem">
@@ -614,6 +766,14 @@ function formatCode(code: string | undefined): {
       </div>
     </div>
 
+    <RequeueByFilterDialog
+      v-model:visible="filterDialogVisible"
+      :filter="loadedFilter"
+      :summary="loadedSummary"
+      @previewed="onPreviewed"
+      @done="onFilterRequeueDone"
+    />
+
     <!-- Detail drawer (child route /dispatch-jobs/:id) -->
     <RouterView />
   </div>
@@ -622,6 +782,25 @@ function formatCode(code: string | undefined): {
 <style scoped>
 .size-select {
   width: 6rem;
+}
+
+.select-all-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 6px;
+  font-size: 0.875rem;
+  background: var(--surface-ground);
+  color: var(--text-color);
+}
+
+.banner-link {
+  padding: 0 0.25rem;
 }
 
 .result-summary {
