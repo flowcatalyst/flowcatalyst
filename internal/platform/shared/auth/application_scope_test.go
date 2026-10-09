@@ -89,20 +89,34 @@ func TestCanReadApplication(t *testing.T) {
 	}{
 		{"nil context", nil, "app_1", false},
 		{"no permission", &AuthContext{AllApplications: true}, "app_1", false},
-		{"admin view reads any, even when application-scoped",
-			&AuthContext{Permissions: []string{adminView}, Applications: []string{"app_1"}}, "app_2", true},
-		{"super-admin wildcard reads any",
-			&AuthContext{Permissions: []string{"platform:*:*:*"}}, "app_2", true},
-		{"app-service view reads its own application",
-			&AuthContext{Permissions: []string{appSvcView}, Applications: []string{"app_1"}}, "app_1", true},
-		{"app-service view is refused another application",
-			&AuthContext{Permissions: []string{appSvcView}, Applications: []string{"app_1"}}, "app_2", false},
-		{"app-service view with no binding reads nothing",
-			&AuthContext{Permissions: []string{appSvcView}}, "app_1", false},
-		{"app-service view at anchor tier is still confined",
-			&AuthContext{Scope: ScopeAnchor, Permissions: []string{appSvcView}, Applications: []string{"app_1"}}, "app_2", false},
-		{"app-service view with all-applications reads any",
-			&AuthContext{Permissions: []string{appSvcView}, AllApplications: true}, "app_9", true},
+		{
+			"admin view reads any, even when application-scoped",
+			&AuthContext{Permissions: []string{adminView}, Applications: []string{"app_1"}}, "app_2", true,
+		},
+		{
+			"super-admin wildcard reads any",
+			&AuthContext{Permissions: []string{"platform:*:*:*"}}, "app_2", true,
+		},
+		{
+			"app-service view reads its own application",
+			&AuthContext{Permissions: []string{appSvcView}, Applications: []string{"app_1"}}, "app_1", true,
+		},
+		{
+			"app-service view is refused another application",
+			&AuthContext{Permissions: []string{appSvcView}, Applications: []string{"app_1"}}, "app_2", false,
+		},
+		{
+			"app-service view with no binding reads nothing",
+			&AuthContext{Permissions: []string{appSvcView}}, "app_1", false,
+		},
+		{
+			"app-service view at anchor tier is still confined",
+			&AuthContext{Scope: ScopeAnchor, Permissions: []string{appSvcView}, Applications: []string{"app_1"}}, "app_2", false,
+		},
+		{
+			"app-service view with all-applications reads any",
+			&AuthContext{Permissions: []string{appSvcView}, AllApplications: true}, "app_9", true,
+		},
 	}
 	for _, c := range cases {
 		err := CanReadApplication(c.ac, c.app)
