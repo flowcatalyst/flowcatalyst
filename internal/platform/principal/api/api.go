@@ -1205,6 +1205,15 @@ func (s *State) assignApplicationAccess(ctx context.Context, in *assignAppAccess
 	if in.Body.AllApplications != nil && *in.Body.AllApplications && !ac.AllApplications {
 		return nil, httperror.Forbidden("Only an all-applications administrator may grant all-applications access")
 	}
+	// Removing your OWN all-applications flag strips your ability to grant it to
+	// anyone (including yourself back), so it needs an explicit confirmation.
+	if ac.PrincipalID == string(p.ID) && p.AllApplications &&
+		in.Body.AllApplications != nil && !*in.Body.AllApplications &&
+		(in.Body.ConfirmSelfRestriction == nil || !*in.Body.ConfirmSelfRestriction) {
+		return nil, usecase.Conflict("SELF_RESTRICTION_REQUIRES_CONFIRMATION",
+			"You are removing your own all-applications access: you will no longer be able to grant "+
+				"all-applications access to anyone (including yourself). Resend with confirmSelfRestriction=true to proceed.")
+	}
 	desiredIDs := in.Body.ApplicationIDs
 	if !ac.IsAnchor() {
 		allowed, aerr := s.clientAppIDs(ctx, clientIDOf(p))

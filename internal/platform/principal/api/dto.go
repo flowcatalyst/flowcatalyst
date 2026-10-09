@@ -157,6 +157,12 @@ type AssignApplicationAccessRequest struct {
 	// caller that only edits the explicit list never accidentally flips it. Only
 	// an assigner that itself holds all-applications access may set it true.
 	AllApplications *bool `json:"allApplications,omitempty"`
+	// ConfirmSelfRestriction must be true when the caller is removing THEIR OWN
+	// all-applications flag (allApplications=false on their own principal):
+	// afterwards they can no longer grant all-applications access. Without it the
+	// request is rejected 409 SELF_RESTRICTION_REQUIRES_CONFIRMATION. Ignored
+	// otherwise.
+	ConfirmSelfRestriction *bool `json:"confirmSelfRestriction,omitempty"`
 }
 
 // GrantClientAccessRequest is the wire body for

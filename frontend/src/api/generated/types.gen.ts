@@ -217,6 +217,7 @@ export type AssignApplicationAccessRequest = {
     readonly $schema?: string;
     allApplications?: boolean;
     applicationIds: Array<string>;
+    confirmSelfRestriction?: boolean;
     [key: string]: unknown;
 };
 
@@ -3789,6 +3790,7 @@ export type ApplicationRolesResponseWritable = {
 export type AssignApplicationAccessRequestWritable = {
     allApplications?: boolean;
     applicationIds: Array<string>;
+    confirmSelfRestriction?: boolean;
     [key: string]: unknown;
 };
 

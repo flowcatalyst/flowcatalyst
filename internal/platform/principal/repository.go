@@ -518,6 +518,11 @@ func (r *Repository) hydrateClientGrantsAll(ctx context.Context, ps []Principal)
 func (r *Repository) Persist(ctx context.Context, p *Principal, tx *usecasepgx.DbTx) error {
 	now := time.Now().UTC()
 
+	// Never demote the last all-applications administrator (see last_admin.go).
+	if err := r.guardLastAdminOnPersist(ctx, p, tx); err != nil {
+		return err
+	}
+
 	var email, emailDomain, idpType, externalIdpID, passwordHash *string
 	var lastLoginAt *time.Time
 	var devClientSecretRef *string
@@ -823,6 +828,9 @@ func (r *Repository) LowercaseEmail(ctx context.Context, p *Principal) error {
 // Delete removes the principal and the two non-FK-cascade junctions.
 // iam_principal_roles has FK ON DELETE CASCADE so it goes via the main row.
 func (r *Repository) Delete(ctx context.Context, p *Principal, tx *usecasepgx.DbTx) error {
+	if err := r.guardLastAdminOnDelete(ctx, p, tx); err != nil {
+		return err
+	}
 	q := r.q.WithTx(tx.Inner())
 	if err := q.PrincipalApplicationAccessClear(ctx, p.ID); err != nil {
 		return err

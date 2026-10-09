@@ -123,7 +123,7 @@ func CommitScoped[A usecase.HasID, E usecase.DomainEvent, C any](
 ) usecase.Result[E] {
 	dbTx := newDbTx(scoped.tx)
 	if err := repo.Persist(ctx, aggregate, dbTx); err != nil {
-		return usecase.Failure[E](usecase.Internal("PERSIST", "repository persist failed", err))
+		return usecase.Failure[E](storeFailure("PERSIST", "repository persist failed", err))
 	}
 	if err := scoped.sink.WriteEvent(ctx, dbTx, event); err != nil {
 		return usecase.Failure[E](usecase.Internal("EVENT_WRITE", "could not write domain event", err))
@@ -145,7 +145,7 @@ func CommitDeleteScoped[A usecase.HasID, E usecase.DomainEvent, C any](
 ) usecase.Result[E] {
 	dbTx := newDbTx(scoped.tx)
 	if err := repo.Delete(ctx, aggregate, dbTx); err != nil {
-		return usecase.Failure[E](usecase.Internal("DELETE", "repository delete failed", err))
+		return usecase.Failure[E](storeFailure("DELETE", "repository delete failed", err))
 	}
 	if err := scoped.sink.WriteEvent(ctx, dbTx, event); err != nil {
 		return usecase.Failure[E](usecase.Internal("EVENT_WRITE", "could not write domain event", err))

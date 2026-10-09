@@ -30,7 +30,7 @@ func Commit[A usecase.HasID, E usecase.DomainEvent, C any](
 
 	dbTx := newDbTx(tx)
 	if err := repo.Persist(ctx, aggregate, dbTx); err != nil {
-		return usecase.Failure[E](usecase.Internal("PERSIST", "repository persist failed", err))
+		return usecase.Failure[E](storeFailure("PERSIST", "repository persist failed", err))
 	}
 	if err := uow.sink.WriteEvent(ctx, dbTx, event); err != nil {
 		return usecase.Failure[E](usecase.Internal("EVENT_WRITE", "could not write domain event", err))
@@ -63,7 +63,7 @@ func CommitDelete[A usecase.HasID, E usecase.DomainEvent, C any](
 
 	dbTx := newDbTx(tx)
 	if err := repo.Delete(ctx, aggregate, dbTx); err != nil {
-		return usecase.Failure[E](usecase.Internal("DELETE", "repository delete failed", err))
+		return usecase.Failure[E](storeFailure("DELETE", "repository delete failed", err))
 	}
 	if err := uow.sink.WriteEvent(ctx, dbTx, event); err != nil {
 		return usecase.Failure[E](usecase.Internal("EVENT_WRITE", "could not write domain event", err))
@@ -128,7 +128,7 @@ func CommitAll[A usecase.HasID, E usecase.DomainEvent, C any](
 	dbTx := newDbTx(tx)
 	for i := range aggregates {
 		if err := repo.Persist(ctx, &aggregates[i], dbTx); err != nil {
-			return usecase.Failure[E](usecase.Internal("PERSIST_BATCH", fmt.Sprintf("persist failed at index %d", i), err))
+			return usecase.Failure[E](storeFailure("PERSIST_BATCH", fmt.Sprintf("persist failed at index %d", i), err))
 		}
 	}
 	if err := uow.sink.WriteEvent(ctx, dbTx, event); err != nil {
@@ -194,7 +194,7 @@ func CommitSync[A usecase.HasID, RE usecase.DomainEvent, C any](
 
 	for i := range saves {
 		if err := repo.Persist(ctx, saves[i].Aggregate, dbTx); err != nil {
-			return usecase.Failure[RE](usecase.Internal("PERSIST_BATCH", fmt.Sprintf("sync save failed at index %d", i), err))
+			return usecase.Failure[RE](storeFailure("PERSIST_BATCH", fmt.Sprintf("sync save failed at index %d", i), err))
 		}
 		if err := uow.sink.WriteEvent(ctx, dbTx, saves[i].Event); err != nil {
 			return usecase.Failure[RE](usecase.Internal("EVENT_WRITE", fmt.Sprintf("per-row save event write failed at index %d", i), err))
@@ -206,7 +206,7 @@ func CommitSync[A usecase.HasID, RE usecase.DomainEvent, C any](
 
 	for i := range deletes {
 		if err := repo.Delete(ctx, deletes[i].Aggregate, dbTx); err != nil {
-			return usecase.Failure[RE](usecase.Internal("DELETE_BATCH", fmt.Sprintf("sync delete failed at index %d", i), err))
+			return usecase.Failure[RE](storeFailure("DELETE_BATCH", fmt.Sprintf("sync delete failed at index %d", i), err))
 		}
 		if err := uow.sink.WriteEvent(ctx, dbTx, deletes[i].Event); err != nil {
 			return usecase.Failure[RE](usecase.Internal("EVENT_WRITE", fmt.Sprintf("per-row delete event write failed at index %d", i), err))
@@ -227,4 +227,17 @@ func CommitSync[A usecase.HasID, RE usecase.DomainEvent, C any](
 	}
 
 	return usecase.Success[RE](sealed.New(), rollup)
+}
+
+// storeFailure converts a repository Persist/Delete error into the Result
+// error. A repository may refuse a write on a domain invariant that can only
+// be checked inside the transaction (a validation, business-rule, conflict,
+// authorization or not-found *usecase.Error): those pass through unchanged so
+// the caller sees the real code and HTTP status. Anything else is an
+// infrastructure failure, wrapped as an Internal error with the given code.
+func storeFailure(code, message string, err error) *usecase.Error {
+	if ue := usecase.AsError(err); ue != nil && ue.Kind != usecase.KindInternal {
+		return ue
+	}
+	return usecase.Internal(code, message, err)
 }
