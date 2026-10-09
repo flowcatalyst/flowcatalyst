@@ -66,21 +66,23 @@ fcdev          # starts API on http://localhost:8080
 
 If you use the **Outbox** (outbox pattern), you also need
 `fcdev outbox` running as a sidecar — the SDK only writes rows to
-your app's `outbox_messages` table; `fcdev outbox poll` is what
+your app's `outbox_messages` table; `fcdev outbox` is what
 forwards them to the platform.
 
 ```bash
 # In your Laravel project directory:
 
-# Once: write FC_OUTBOX_DB_URL / FC_OUTBOX_API_URL / FC_OUTBOX_TOKEN
-# into ./.env (0600 perms; no secrets on argv or shell history).
-# fcdev outbox init appends to your existing .env — your other
-# FLOWCATALYST_* keys are not touched.
-fcdev outbox init
+# Once (optional): create the `outbox_messages` table. `fcdev outbox`
+# also creates it on first run for Postgres; use this for MySQL/MongoDB or
+# to provision it ahead of time. Postgres shown:
+fcdev outbox create-table --db-type pg --db-url postgres://user:pass@localhost:5432/app
 
-# Daily: reads .env, auto-creates the `outbox_messages` table on
-# first run if your outbox migration hasn't been run yet, then polls.
-fcdev outbox poll
+# Run the poller. It loads ./.env (override with --env-file) and reads
+# FC_OUTBOX_SOURCE_DB_URL (your app database), FC_OUTBOX_PLATFORM_URL and
+# the service-account credentials FLOWCATALYST_CLIENT_ID /
+# FLOWCATALYST_CLIENT_SECRET (or FC_OUTBOX_PLATFORM_AUTH_TOKEN for a static
+# token). Existing environment variables win over .env.
+fcdev outbox
 ```
 
 Complete reference: run `fcdev --help`, or see the
@@ -561,7 +563,10 @@ of it. Full walkthrough:
 
 ## Outbox (Event Creation)
 
-The outbox allows your application to create events and dispatch jobs using the outbox pattern. Events are written to a local database table and then forwarded to FlowCatalyst by a poller (`fcdev outbox poll` locally, or the standalone outbox poller in production).
+The outbox allows your application to create events and dispatch jobs using the outbox pattern. Events are written to a local database table and then forwarded to FlowCatalyst by a poller (`fcdev outbox` locally, or the standalone outbox poller in production).
+
+Event `type`s and dispatch-job `code`s must be fully qualified
+`application:subdomain:aggregate:action` strings; the SDK rejects bare codes.
 
 ### Setup
 
@@ -581,7 +586,7 @@ use FlowCatalyst\Outbox\DTOs\CreateEventDto;
 // Create a single event
 $eventId = Outbox::createEvent(
     CreateEventDto::create(
-        type: 'order.created',
+        type: 'shop:orders:order:created',
         data: ['orderId' => 'ORD-123', 'total' => 99.99, 'currency' => 'USD'],
     )->withCorrelationId('corr-abc-123')
       ->withSource('order-service')
@@ -590,9 +595,9 @@ $eventId = Outbox::createEvent(
 
 // Batch create events
 $eventIds = Outbox::createEvents([
-    CreateEventDto::create('order.created', ['orderId' => 'ORD-001']),
-    CreateEventDto::create('order.created', ['orderId' => 'ORD-002']),
-    CreateEventDto::create('order.created', ['orderId' => 'ORD-003']),
+    CreateEventDto::create('shop:orders:order:created', ['orderId' => 'ORD-001']),
+    CreateEventDto::create('shop:orders:order:created', ['orderId' => 'ORD-002']),
+    CreateEventDto::create('shop:orders:order:created', ['orderId' => 'ORD-003']),
 ]);
 ```
 
@@ -632,7 +637,7 @@ use FlowCatalyst\Outbox\DTOs\CreateDispatchJobDto;
 $jobId = Outbox::createDispatchJob(
     CreateDispatchJobDto::create(
         source: 'order-service',
-        code: 'notify-warehouse',
+        code: 'shop:orders:warehouse:notify',
         targetUrl: 'https://warehouse.example.com/webhook',
         payload: ['orderId' => 'ORD-123', 'action' => 'prepare'],
         dispatchPoolId: $warehousePoolId,

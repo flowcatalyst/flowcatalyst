@@ -34,6 +34,7 @@ func newOutboxCmd() *cobra.Command {
 			loadDotEnv(envFile)
 			return nil
 		},
+		Args: cobra.NoArgs, // `fcdev outbox poll` / `init` do not exist: fail loudly rather than run the poller
 		RunE: runOutbox,
 	}
 	cmd.PersistentFlags().String("env-file", ".env", "load environment from this dotenv file (does not override existing env)")

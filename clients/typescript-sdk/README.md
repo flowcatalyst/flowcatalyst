@@ -36,19 +36,27 @@ If you publish events via the **outbox pattern**, you also need
 ```bash
 # In your project directory (where this SDK is installed):
 
-# Once: write FC_OUTBOX_DB_URL / FC_OUTBOX_API_URL / FC_OUTBOX_TOKEN
-# into ./.env (0600 perms; no secrets on argv or shell history).
-fcdev outbox init
+# Once (optional): create the `outbox_messages` table. `fcdev outbox`
+# also creates it on first run for Postgres; use this for MySQL/MongoDB or
+# to provision it ahead of time. Postgres shown:
+fcdev outbox create-table --db-type pg --db-url postgres://user:pass@localhost:5432/app
 
-# Daily: reads .env, auto-creates the `outbox_messages` table on
-# first run, then polls.
-fcdev outbox poll
+# Run the poller. It loads ./.env (override with --env-file) and reads
+# FC_OUTBOX_SOURCE_DB_URL (your app database), FC_OUTBOX_PLATFORM_URL and
+# the service-account credentials FLOWCATALYST_CLIENT_ID /
+# FLOWCATALYST_CLIENT_SECRET (or FC_OUTBOX_PLATFORM_AUTH_TOKEN for a static
+# token). Existing environment variables win over .env.
+fcdev outbox
 ```
 
 The SDK's own migration at
 [`migrations/postgresql/001_create_outbox_messages.sql`](migrations/postgresql/001_create_outbox_messages.sql)
-and `fcdev outbox poll`'s built-in `CREATE TABLE IF NOT EXISTS`
+and `fcdev outbox`'s built-in `CREATE TABLE IF NOT EXISTS`
 produce the same schema, so it doesn't matter which one runs first.
+
+Event `type`s and dispatch-job `code`s you write to the outbox must be fully
+qualified `application:subdomain:aggregate:action` strings (for example
+`shop:orders:order:created`); the SDK rejects bare codes.
 
 Complete reference: run `fcdev --help`, or see the
 [FlowCatalyst repository](https://github.com/flowcatalyst/flowcatalyst).

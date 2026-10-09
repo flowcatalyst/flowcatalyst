@@ -6,7 +6,7 @@
  * @example
  * ```typescript
  * const job = CreateDispatchJobDto
- *   .create('order-service', 'order.process', 'https://api.example.com/webhook', '{"orderId":"123"}', 'pool-1')
+ *   .create('order-service', 'shop:orders:order:process', 'https://api.example.com/webhook', '{"orderId":"123"}', 'pool-1')
  *   .withCorrelationId('corr-789')
  *   .withTimeoutSeconds(60);
  * ```
