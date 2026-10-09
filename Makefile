@@ -152,7 +152,7 @@ ui-verify: ## Fail if generated *_templ.go files or templ formatting are stale (
 	@git diff --exit-code -- '$(UI_DIR)/*_templ.go' || \
 		(echo "templ output out of date; run 'make ui-generate' and commit the diff" && exit 1)
 	@for f in $$(find $(UI_DIR) -name '*.templ'); do \
-		$(TEMPL) fmt -stdout $$f | diff -q - $$f >/dev/null || \
+		$(TEMPL) fmt -stdout $$f 2>/dev/null | diff -q - $$f >/dev/null || \
 			{ echo "$$f is not templ-formatted; run 'make ui-fmt'"; exit 1; }; \
 	done
 

@@ -1,0 +1,240 @@
+package kit
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"testing"
+
+	"github.com/a-h/templ"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/htmlnorm"
+)
+
+// The conformance test renders every fixture in the UI kit's language-neutral
+// fixture set (flowcatalyst-framework/ui-kit/fixtures, vendored into
+// internal/ui/testdata/fixtures by scripts/ui-kit-sync.sh) and compares the
+// result with the fixture's golden HTML after normalisation (internal/ui/htmlnorm).
+// UI_KIT_FIXTURES=/path/to/ui-kit/fixtures runs it against another copy
+// (e.g. the framework checkout while editing fixtures).
+
+type fixture struct {
+	Props  json.RawMessage   `json:"props"`
+	Slots  map[string]string `json:"slots"`
+	Source string            `json:"source"`
+	Notes  string            `json:"notes"`
+
+	used map[string]bool
+}
+
+// slot returns a named slot as raw HTML (fixture content is trusted test
+// data), or nil when the fixture does not fill it.
+func (f *fixture) slot(name string) templ.Component {
+	s, ok := f.Slots[name]
+	if !ok {
+		return nil
+	}
+	f.used[name] = true
+	return templ.Raw(s)
+}
+
+// decode unmarshals the props strictly: an unknown prop name in a fixture
+// fails, so a typo cannot silently test the defaults.
+func decode[P any](f *fixture) (P, error) {
+	var p P
+	if len(f.Props) == 0 {
+		return p, nil
+	}
+	dec := json.NewDecoder(bytes.NewReader(f.Props))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&p); err != nil {
+		return p, fmt.Errorf("props: %w", err)
+	}
+	return p, nil
+}
+
+// withDefault renders c with the fixture's default slot as its children.
+func withDefault(f *fixture, c templ.Component) templ.Component {
+	children := f.slot("default")
+	if children == nil {
+		return c
+	}
+	return templ.ComponentFunc(func(ctx context.Context, w io.Writer) error {
+		return c.Render(templ.WithChildren(ctx, children), w)
+	})
+}
+
+type renderer func(f *fixture) (templ.Component, error)
+
+// simple adapts a component whose only slot is the default one.
+func simple[P any](fn func(P) templ.Component) renderer {
+	return func(f *fixture) (templ.Component, error) {
+		p, err := decode[P](f)
+		if err != nil {
+			return nil, err
+		}
+		return withDefault(f, fn(p)), nil
+	}
+}
+
+// renderers maps a fixture directory (the kit's component name) to the templ
+// implementation. Adding a fixture directory without an entry fails the test.
+var renderers = map[string]renderer{
+	"button":          simple(Button),
+	"legacy-button":   simple(LegacyButton),
+	"icon-button":     simple(IconButton),
+	"input":           simple(Input),
+	"textarea":        simple(Textarea),
+	"select":          simple(Select),
+	"checkbox":        simple(Checkbox),
+	"switch":          simple(Switch),
+	"label":           simple(Label),
+	"field":           simple(Field),
+	"field-group":     simple(FieldGroup),
+	"form-field":      simple(FormField),
+	"badge":           simple(Badge),
+	"tag":             simple(Tag),
+	"alert":           simple(Alert),
+	"flash-banner":    simple(FlashBanner),
+	"spinner":         simple(Spinner),
+	"skeleton":        simple(Skeleton),
+	"breadcrumb":      simple(Breadcrumb),
+	"empty-state":     simple(EmptyState),
+	"search-input":    simple(SearchInput),
+	"filter-select":   simple(FilterSelect),
+	"table":           simple(Table),
+	"table-row":       simple(TR),
+	"table-head":      simple(TH),
+	"table-cell":      simple(TD),
+	"data-table":      simple(DataTable),
+	"sortable-header": simple(SortableHeader),
+	"empty-row":       simple(EmptyRow),
+	"row-actions":     simple(RowActions),
+	"pagination":      simple(Pagination),
+	"cursor-pager":    simple(CursorPager),
+	"confirm-dialog":  simple(ConfirmDialog),
+	"app-sidebar":     simple(AppSidebar),
+	"user-menu":       simple(UserMenu),
+	"app-shell":       simple(AppShell),
+	"page-header": func(f *fixture) (templ.Component, error) {
+		p, err := decode[PageHeaderProps](f)
+		p.Actions = f.slot("actions")
+		return PageHeader(p), err
+	},
+	"table-toolbar": func(f *fixture) (templ.Component, error) {
+		p, err := decode[TableToolbarProps](f)
+		p.Filters = f.slot("filters")
+		return TableToolbar(p), err
+	},
+	"dialog": func(f *fixture) (templ.Component, error) {
+		p, err := decode[DialogProps](f)
+		p.Footer = f.slot("footer")
+		return withDefault(f, Dialog(p)), err
+	},
+	"sheet": func(f *fixture) (templ.Component, error) {
+		p, err := decode[SheetProps](f)
+		p.Footer = f.slot("footer")
+		return withDefault(f, Sheet(p)), err
+	},
+	"drawer": func(f *fixture) (templ.Component, error) {
+		p, err := decode[DrawerProps](f)
+		p.Extras = f.slot("extras")
+		p.Footer = f.slot("footer")
+		return withDefault(f, Drawer(p)), err
+	},
+}
+
+func fixturesDir(t *testing.T) string {
+	t.Helper()
+	if d := os.Getenv("UI_KIT_FIXTURES"); d != "" {
+		return d
+	}
+	return filepath.Join("..", "testdata", "fixtures")
+}
+
+func TestConformance(t *testing.T) {
+	root := fixturesDir(t)
+	dirs, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatalf("read fixtures (%s): %v (run scripts/ui-kit-sync.sh)", root, err)
+	}
+	seen := map[string]bool{}
+	total := 0
+	for _, d := range dirs {
+		if !d.IsDir() {
+			continue
+		}
+		component := d.Name()
+		seen[component] = true
+		render, ok := renderers[component]
+		if !ok {
+			t.Errorf("fixture component %q has no templ renderer: implement it and add it to renderers", component)
+			continue
+		}
+		cases, _ := filepath.Glob(filepath.Join(root, component, "*.json"))
+		if len(cases) == 0 {
+			t.Errorf("%s: no fixtures", component)
+		}
+		for _, jsonPath := range cases {
+			name := component + "/" + strings.TrimSuffix(filepath.Base(jsonPath), ".json")
+			total++
+			t.Run(name, func(t *testing.T) {
+				checkFixture(t, render, jsonPath)
+			})
+		}
+	}
+	var missing []string
+	for name := range renderers {
+		if !seen[name] {
+			missing = append(missing, name)
+		}
+	}
+	sort.Strings(missing)
+	if len(missing) > 0 {
+		t.Errorf("renderers without fixtures (every component needs at least one): %s", strings.Join(missing, ", "))
+	}
+	if total == 0 {
+		t.Fatal("no fixtures ran")
+	}
+}
+
+func checkFixture(t *testing.T, render renderer, jsonPath string) {
+	t.Helper()
+	raw, err := os.ReadFile(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fixture{used: map[string]bool{}}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(f); err != nil {
+		t.Fatalf("fixture %s: %v", jsonPath, err)
+	}
+	golden, err := os.ReadFile(strings.TrimSuffix(jsonPath, ".json") + ".html")
+	if err != nil {
+		t.Fatalf("golden: %v", err)
+	}
+	c, err := render(f)
+	if err != nil {
+		t.Fatalf("fixture %s: %v", jsonPath, err)
+	}
+	for name := range f.Slots {
+		if !f.used[name] {
+			t.Fatalf("fixture %s fills slot %q, which the component does not have", jsonPath, name)
+		}
+	}
+	var out strings.Builder
+	if err := c.Render(context.Background(), &out); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	want, got := htmlnorm.MustNormalize(string(golden)), htmlnorm.MustNormalize(out.String())
+	if want != got {
+		t.Errorf("%s differs from its golden (source: %s)\n%s", filepath.Base(jsonPath), f.Source, htmlnorm.Diff(want, got))
+	}
+}

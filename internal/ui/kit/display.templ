@@ -1,0 +1,274 @@
+package kit
+
+// BadgeVariant is badge.md's `variant` option.
+type BadgeVariant string
+
+// Badge variants (badge.md).
+const (
+	BadgePrimary     BadgeVariant = "primary"
+	BadgeSecondary   BadgeVariant = "secondary"
+	BadgeOutline     BadgeVariant = "outline"
+	BadgeDestructive BadgeVariant = "destructive"
+	BadgeSuccess     BadgeVariant = "success"
+	BadgeInfo        BadgeVariant = "info"
+	BadgeWarn        BadgeVariant = "warn"
+)
+
+const badgeBase = "inline-flex w-fit shrink-0 items-center justify-center gap-1 rounded-md border px-2 py-0.5 text-xs font-bold whitespace-nowrap"
+
+var badgeVariants = map[BadgeVariant]string{
+	BadgePrimary:     "border-transparent bg-primary text-primary-foreground",
+	BadgeSecondary:   "border-transparent bg-foreground/5 text-foreground",
+	BadgeOutline:     "border-border text-foreground",
+	BadgeDestructive: "border-transparent bg-destructive text-destructive-foreground",
+	BadgeSuccess:     "border-transparent bg-success text-success-foreground",
+	BadgeInfo:        "border-transparent bg-info text-info-foreground",
+	BadgeWarn:        "border-transparent bg-warning text-warning-foreground",
+}
+
+// BadgeProps mirrors badge.md's Props table.
+type BadgeProps struct {
+	Variant BadgeVariant `json:"variant"`
+	// Href renders the badge as a link.
+	Href  string           `json:"href"`
+	Class string           `json:"class"`
+	Attrs templ.Attributes `json:"attrs"`
+}
+
+// Badge is badge.md (the PrimeVue Tag equivalent). Slot: the label.
+templ Badge(p BadgeProps) {
+	if p.Href != "" {
+		<a href={ p.Href } class={ cx(badgeBase, badgeVariants[orDefault(p.Variant, BadgePrimary)], p.Class) } { p.Attrs... }>
+			{ children... }
+		</a>
+	} else {
+		<span class={ cx(badgeBase, badgeVariants[orDefault(p.Variant, BadgePrimary)], p.Class) } { p.Attrs... }>
+			{ children... }
+		</span>
+	}
+}
+
+// TagSeverity is tag.md's `severity` option.
+type TagSeverity string
+
+// Tag severities (tag.md).
+const (
+	TagSuccess   TagSeverity = "success"
+	TagInfo      TagSeverity = "info"
+	TagWarn      TagSeverity = "warn"
+	TagDanger    TagSeverity = "danger"
+	TagSecondary TagSeverity = "secondary"
+	TagPrimary   TagSeverity = "primary"
+)
+
+// TagProps mirrors tag.md's Props table.
+type TagProps struct {
+	// Severity defaults to secondary (tag.md lists no default; PrimeVue's
+	// Tag without a severity is the neutral fill).
+	Severity TagSeverity `json:"severity"`
+	Label    string      `json:"label"`
+}
+
+// Tag is tag.md (hand-built `.fc-tag`).
+templ Tag(p TagProps) {
+	<span class={ "fc-tag fc-tag-" + string(orDefault(p.Severity, TagSecondary)) }>{ p.Label }</span>
+}
+
+// AlertVariant is alert.md's `variant` option.
+type AlertVariant string
+
+// Alert variants (alert.md).
+const (
+	AlertNeutral     AlertVariant = "neutral"
+	AlertDestructive AlertVariant = "destructive"
+)
+
+const alertBase = "grid w-full grid-cols-[0_1fr] items-start gap-y-1 rounded-lg border bg-background px-4 py-3 text-sm has-[>svg]:grid-cols-[1rem_1fr] has-[>svg]:gap-x-3 [&>svg]:size-4 [&>svg]:translate-y-0.5"
+
+var alertVariants = map[AlertVariant]string{
+	AlertNeutral:     "border-border text-foreground",
+	AlertDestructive: "border-destructive/50 text-destructive",
+}
+
+// AlertProps mirrors alert.md's Props table.
+type AlertProps struct {
+	Variant AlertVariant `json:"variant"`
+	// Role is "", "alert" or "status": only for messages inserted during the visit.
+	Role        string `json:"role"`
+	Icon        string `json:"icon"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	ID          string `json:"id"`
+	Class       string `json:"class"`
+}
+
+// Alert is alert.md: an inline notice with optional icon, title and description.
+// Slot: extra content after the description.
+templ Alert(p AlertProps) {
+	<div
+		if p.ID != "" {
+			id={ p.ID }
+		}
+		class={ cx(alertBase, alertVariants[orDefault(p.Variant, AlertNeutral)], p.Class) }
+		if p.Role != "" {
+			role={ p.Role }
+		}
+	>
+		if p.Icon != "" {
+			@Icon(IconProps{Name: p.Icon})
+		}
+		if p.Title != "" {
+			<p class="col-start-2 font-medium tracking-tight">{ p.Title }</p>
+		}
+		if p.Description != "" {
+			<div class="col-start-2 text-sm text-muted-foreground">{ p.Description }</div>
+		}
+		{ children... }
+	</div>
+}
+
+// FlashKind is flash-banner.md's `kind` option.
+type FlashKind string
+
+// Flash kinds (flash-banner.md).
+const (
+	FlashSuccess FlashKind = "success"
+	FlashError   FlashKind = "error"
+)
+
+// FlashBannerProps mirrors flash-banner.md's Props table.
+type FlashBannerProps struct {
+	Kind    FlashKind `json:"kind"`
+	Message string    `json:"message"`
+	// Role defaults to "status"; use "alert" for errors needing attention.
+	Role string `json:"role"`
+	// AutoDismiss removes the banner after 5s (data-init__delay.5s).
+	AutoDismiss bool `json:"autoDismiss"`
+}
+
+// FlashBanner is flash-banner.md.
+templ FlashBanner(p FlashBannerProps) {
+	<div
+		role={ orDefault(p.Role, "status") }
+		class={ "fc-banner fc-banner-" + string(orDefault(p.Kind, FlashSuccess)) + " mb-4" }
+		if p.AutoDismiss {
+			data-init__delay.5s="el.remove()"
+		}
+	>{ p.Message }</div>
+}
+
+// SpinnerProps mirrors spinner.md's Props table.
+type SpinnerProps struct {
+	// Size is the size class; default "size-6".
+	Size string `json:"size"`
+	// Label is the accessible name (default "Loading"); Decorative makes it
+	// aria-hidden instead (inside a labelled button).
+	Label      string `json:"label"`
+	Decorative bool   `json:"decorative"`
+}
+
+// Spinner is spinner.md (Lucide loader-circle, animate-spin).
+templ Spinner(p SpinnerProps) {
+	if p.Decorative {
+		@Icon(IconProps{Name: "loader-circle", Class: cx("animate-spin", p.Size)})
+	} else {
+		@Icon(IconProps{Name: "loader-circle", Class: cx("animate-spin", orDefault(p.Size, "size-6")), Label: orDefault(p.Label, "Loading")})
+	}
+}
+
+// SkeletonProps mirrors skeleton.md's Props table.
+type SkeletonProps struct {
+	// Class is the size/shape classes, e.g. "h-4 w-3/4".
+	Class string `json:"class"`
+}
+
+// Skeleton is skeleton.md: a pulsing, decorative placeholder.
+templ Skeleton(p SkeletonProps) {
+	<div class={ cx("animate-pulse rounded-md bg-foreground/10", p.Class) } aria-hidden="true"></div>
+}
+
+// Crumb is one breadcrumb item; the last one (or one without Href) is the
+// current page.
+type Crumb struct {
+	Label string `json:"label"`
+	Href  string `json:"href"`
+}
+
+// BreadcrumbProps mirrors breadcrumb.md's Props table.
+type BreadcrumbProps struct {
+	Items []Crumb `json:"items"`
+}
+
+// Breadcrumb is breadcrumb.md.
+templ Breadcrumb(p BreadcrumbProps) {
+	<nav aria-label="breadcrumb">
+		<ol class="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+			for i, it := range p.Items {
+				if i > 0 {
+					<li aria-hidden="true">
+						@Icon(IconProps{Name: "chevron-right", Class: "size-3.5"})
+					</li>
+				}
+				<li class="inline-flex items-center gap-2">
+					if it.Href != "" && i < len(p.Items)-1 {
+						<a href={ it.Href } class="transition-colors hover:text-foreground">{ it.Label }</a>
+					} else {
+						<span aria-current="page" class="font-medium text-foreground">{ it.Label }</span>
+					}
+				</li>
+			}
+		</ol>
+	</nav>
+}
+
+// EmptyStateProps mirrors empty-state.md's Props table.
+type EmptyStateProps struct {
+	Message string `json:"message"`
+	// Icon defaults to "inbox".
+	Icon string `json:"icon"`
+	// ClearHref renders "Clear filters" (only when a filter is active).
+	ClearHref string `json:"clearHref"`
+	// Status adds role="status" (when it appears after a filter change).
+	Status bool `json:"status"`
+}
+
+// EmptyState is empty-state.md.
+templ EmptyState(p EmptyStateProps) {
+	<div
+		class="fc-empty"
+		if p.Status {
+			role="status"
+		}
+	>
+		@Icon(IconProps{Name: orDefault(p.Icon, "inbox"), Class: "size-12"})
+		<span>{ p.Message }</span>
+		if p.ClearHref != "" {
+			<a href={ p.ClearHref } class="fc-btn fc-btn-text-primary">Clear filters</a>
+		}
+	</div>
+}
+
+// PageHeaderProps mirrors page-header.md's Props table.
+type PageHeaderProps struct {
+	Title    string `json:"title"`
+	Subtitle string `json:"subtitle"`
+	// Actions is the right-aligned slot (the wrapper is always rendered).
+	Actions templ.Component `json:"-"`
+}
+
+// PageHeader is page-header.md: title, subtitle and actions.
+templ PageHeader(p PageHeaderProps) {
+	<header class="fc-page-header">
+		<div>
+			<h1 class="fc-page-title">{ p.Title }</h1>
+			if p.Subtitle != "" {
+				<p class="fc-page-subtitle">{ p.Subtitle }</p>
+			}
+		</div>
+		<div class="flex items-center gap-2">
+			if p.Actions != nil {
+				@p.Actions
+			}
+		</div>
+	</header>
+}

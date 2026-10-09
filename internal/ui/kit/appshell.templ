@@ -1,0 +1,179 @@
+package kit
+
+// NavItem is one sidebar entry: a link, or (with Children) an expandable
+// <details> group.
+type NavItem struct {
+	Label string `json:"label"`
+	Href  string `json:"href"`
+	Icon  string `json:"icon"`
+	// Current marks the page's own entry (aria-current="page").
+	Current bool `json:"current"`
+	// Open starts an expandable group expanded.
+	Open     bool      `json:"open"`
+	Children []NavItem `json:"children"`
+}
+
+// NavGroup is a labelled group of sidebar entries.
+type NavGroup struct {
+	Label string    `json:"label"`
+	Items []NavItem `json:"items"`
+}
+
+// ShellUser is the signed-in user shown in the sidebar footer and user menu.
+type ShellUser struct {
+	Name     string `json:"name"`
+	Email    string `json:"email"`
+	Initials string `json:"initials"`
+}
+
+// AppShellProps mirrors app-shell.md's Props table.
+type AppShellProps struct {
+	LogoHref string     `json:"logoHref"`
+	Nav      []NavGroup `json:"nav"`
+	User     ShellUser  `json:"user"`
+	Version  string     `json:"version"`
+	// User-menu targets. ResetPasswordHref empty hides that item (IdP-managed
+	// users); SignOutAction is the POST target of the Sign Out form.
+	ProfileHref       string `json:"profileHref"`
+	ResetPasswordHref string `json:"resetPasswordHref"`
+	SignOutAction     string `json:"signOutAction"`
+	// SignOutAttrs go on the Sign Out <form>.
+	SignOutAttrs templ.Attributes `json:"signOutAttrs"`
+}
+
+// SidebarCollapsedSignal is the app shell's collapse signal (on <html>).
+const SidebarCollapsedSignal = "sidebarCollapsed"
+
+// SidebarCookie is the cookie the collapse button writes, so the server can
+// render the next page already collapsed.
+const SidebarCookie = "fc_sidebar"
+
+const collapseClickExpr = "$sidebarCollapsed = !$sidebarCollapsed; document.cookie = 'fc_sidebar=' + ($sidebarCollapsed ? 'collapsed' : '') + ';path=/;max-age=31536000;samesite=lax'"
+
+// ShellHTMLAttrs are the attributes app-shell.md puts on <html>: the collapse
+// signal (initial value rendered from the fc_sidebar cookie) and the class it drives.
+func ShellHTMLAttrs(collapsed bool) templ.Attributes {
+	v := "false"
+	if collapsed {
+		v = "true"
+	}
+	return templ.Attributes{
+		"data-signals:sidebar-collapsed": v,
+		"data-class:fc-collapsed":        "$sidebarCollapsed",
+	}
+}
+
+// AppShell is app-shell.md: the navy sidebar, the user-menu popover and the
+// main region. Slot: the page content inside <main>.
+templ AppShell(p AppShellProps) {
+	@AppSidebar(p)
+	@UserMenu(p)
+	<div class="fc-main">
+		<main class="p-[24px]">
+			{ children... }
+		</main>
+	</div>
+}
+
+// AppSidebar is app-shell.md's <aside class="fc-sidebar">.
+templ AppSidebar(p AppShellProps) {
+	<aside class="fc-sidebar">
+		<div class="fc-sidebar-header">
+			<a href={ p.LogoHref } class="fc-sidebar-logo" style="height: 32px">
+				<span style="width: 32px; height: 32px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="100%" height="100%" aria-label="FlowCatalyst"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg></span>
+			</a>
+			<button
+				type="button"
+				class="fc-collapse-btn"
+				aria-label="Collapse sidebar"
+				aria-expanded="true"
+				data-attr:aria-expanded="$sidebarCollapsed ? 'false' : 'true'"
+				data-on:click={ collapseClickExpr }
+			>
+				@Icon(IconProps{Name: "chevron-left", Class: "size-[1rem]"})
+			</button>
+		</div>
+		<nav class="fc-sidebar-nav" aria-label="Main">
+			for _, g := range p.Nav {
+				<div class="fc-nav-group">
+					<span class="fc-nav-group-label">{ g.Label }</span>
+					for _, it := range g.Items {
+						if len(it.Children) > 0 {
+							<details open?={ it.Open }>
+								<summary class="fc-nav-item" title={ it.Label }>
+									@Icon(IconProps{Name: it.Icon})
+									<span class="fc-nav-label">{ it.Label }</span>
+									@Icon(IconProps{Name: "chevron-right", Class: "fc-nav-chevron"})
+								</summary>
+								<div class="fc-nav-children">
+									for _, c := range it.Children {
+										<a
+											href={ c.Href }
+											class="fc-nav-child"
+											if c.Current {
+												aria-current="page"
+											}
+										>
+											@Icon(IconProps{Name: c.Icon})
+											<span class="fc-nav-label">{ c.Label }</span>
+										</a>
+									}
+								</div>
+							</details>
+						} else {
+							<a
+								href={ it.Href }
+								class="fc-nav-item"
+								title={ it.Label }
+								if it.Current {
+									aria-current="page"
+								}
+							>
+								@Icon(IconProps{Name: it.Icon})
+								<span class="fc-nav-label">{ it.Label }</span>
+							</a>
+						}
+					}
+				</div>
+			}
+		</nav>
+		<div class="fc-sidebar-footer">
+			<button type="button" class="fc-user-trigger" popovertarget="fc-user-menu" aria-label="Account menu">
+				<span class="fc-avatar">{ p.User.Initials }</span>
+				<span class="fc-user-text min-w-0 flex-1"><span class="fc-user-name">{ p.User.Name }</span><span class="fc-user-email">{ p.User.Email }</span></span>
+				@Icon(IconProps{Name: "chevron-up", Class: "shrink-0 text-white/50 fc-user-text size-[11px]"})
+			</button>
+		</div>
+	</aside>
+}
+
+// UserMenu is app-shell.md's user-menu popover.
+templ UserMenu(p AppShellProps) {
+	<div id="fc-user-menu" popover class="fc-user-menu">
+		<div class="flex items-center gap-3 p-4">
+			<span class="fc-avatar fc-avatar-lg">{ p.User.Initials }</span>
+			<div class="min-w-0"><p class="truncate text-[15px] font-semibold">{ p.User.Name }</p><p class="truncate text-[13px] text-muted-foreground">{ p.User.Email }</p></div>
+		</div>
+		<div class="border-t border-border p-2">
+			<a href={ p.ProfileHref } class="fc-menu-item">
+				@Icon(IconProps{Name: "user", Class: "size-[1.1rem]"})
+				Profile
+			</a>
+			if p.ResetPasswordHref != "" {
+				<a href={ p.ResetPasswordHref } class="fc-menu-item">
+					@Icon(IconProps{Name: "key-round", Class: "size-[1.1rem]"})
+					Reset Password
+				</a>
+			}
+		</div>
+		<div class="border-t border-border p-2">
+			<form method="post" action={ p.SignOutAction } { p.SignOutAttrs... }>
+				<button type="submit" class="fc-menu-item danger">
+					@Icon(IconProps{Name: "log-out", Class: "size-[1.1rem]"})
+					Sign Out
+				</button>
+			</form>
+		</div>
+		<div class="flex justify-between border-t border-border px-4 py-2.5 text-xs text-muted-foreground"><span>Version</span><span>{ p.Version }</span></div>
+	</div>
+}
