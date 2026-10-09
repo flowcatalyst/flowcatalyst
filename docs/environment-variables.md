@@ -279,16 +279,52 @@ platform unauthenticated (local dev only — the standalone server fails fast).
 
 ### Function runner (platform side)
 
-Platform-side artifact storage for the function runner
-(`internal/platform/function/artifact`, docs/function-runner-plan.md §8.4).
-The runner subsystem's own toggles/knobs (`FC_FUNCTIONS_ENABLED`,
-`FC_FUNCTIONS_CACHE_DIR`, `FC_FUNCTIONS_MEMORY_LIMIT`, …) are a later work
-package (§12.1 WP6), not yet implemented.
+Platform-side settings for functions (`internal/platform/function/artifact`,
+docs/function-runner-plan.md §8.4), followed by the runner subsystem's own
+`FC_FUNCTIONS_*` knobs (read by `LoadFunctionRunnerEnv` in
+`internal/server/functions.go`).
 
 | Variable | Default | Aliases | Read in | Purpose |
 |---|---|---|---|---|
 | `FC_FUNCTIONS_ARTIFACT_STORE` | `` (empty → a file-store default directory) | — | `internal/server/envcfg.go` | Artifact store URL for `PUT /api/functions/{id}/artifacts/{digest}`: `file:///abs/path` or `s3://bucket/prefix`. Empty uses `file://` rooted at a fixed data directory (`internal/server/wire_services.go`'s `defaultFunctionArtifactDir`) — set this to an `s3://` URL in any deployed environment. |
 | `FC_FUNCTIONS_RUNNER_URL` | `http://127.0.0.1:8095` | — | `internal/server/envcfg.go` | The function runner's base URL, templated with `{pool}` (one platform may address several runner deployments, one per pool). `8095` is the runner's own private-listener default (`8090` is `FC_MCP_PORT`'s default, also live in fc-dev). Promote wiring (WP8, docs/function-runner-plan.md §8.5) substitutes `{pool}` and appends `/fn/<address><path>` to build each subscription/scheduled-job delivery target. |
+
+#### Function runner subsystem
+
+The runner is off unless `FC_FUNCTIONS_ENABLED` is true. When it is on, the
+runner needs a platform to fetch function versions from and a service account
+(holding `platform:function-runner`) to authenticate as; without them it logs an
+error and does not start (the rest of the process keeps running). Booleans
+accept `1/true/yes/on` and `0/false/no/off`; an unparseable integer falls back
+to the default.
+
+| Variable | Default | Aliases | Read in | Purpose |
+|---|---|---|---|---|
+| `FC_FUNCTIONS_ENABLED` | `false` | — | `internal/server/functions.go` | Run the function runner in this process. (`fcdev` defaults it to `true`, see below.) |
+| `FC_FUNCTIONS_BIND` | `0.0.0.0` | — | `internal/server/functions.go` | Listen address for both runner entries. |
+| `FC_FUNCTIONS_PORT` | `8095` | — | `internal/server/functions.go` | Private entry port (`/fn/<address><path>`, `/metrics`): where the platform's promoted subscription and schedule deliveries land. |
+| `FC_FUNCTIONS_PUBLIC_PORT` | `0` (off) | — | `internal/server/functions.go` | Public entry port (Host-header routing of `*`-auth endpoints). `0` disables it. |
+| `FC_FUNCTIONS_POOL` | `default` | — | `internal/server/functions.go` | Runner pool this process serves; it only loads functions whose `pool` matches (a function with no pool belongs to `default`). |
+| `FC_FUNCTIONS_PLATFORM_URL` | — (if the platform runs in this process: `http://127.0.0.1:<FC_API_PORT>`) | — | `internal/server/functions.go` | Platform base URL for the control plane and the token endpoint. Required for a runner-only deployment. |
+| `FC_FUNCTIONS_CLIENT_ID` | — | — | `internal/server/functions.go` | OAuth `client_credentials` client id of the runner's service account. Required. |
+| `FC_FUNCTIONS_CLIENT_SECRET` | — | — | `internal/server/functions.go` | Its client secret. Required. |
+| `FC_FUNCTIONS_MEMORY_LIMIT_MB` | `0` → detect (cgroup v2, then v1, then physical RAM) | — | `internal/server/functions.go` | Total memory the runner may use, in MiB. If `0` and no limit can be detected the runner does not start. |
+| `FC_FUNCTIONS_MEMORY_RESERVE_MB` | `0` → `max(128 MiB, 10% of the limit)`, capped at half the limit | — | `internal/server/functions.go` | Memory kept back for the runner itself; function instances are budgeted from `limit - reserve`. Must be below the limit. |
+| `FC_FUNCTIONS_CACHE_DIR` | `<user-cache-dir>/flowcatalyst/functions` | — | `internal/server/functions.go` | Local cache of downloaded function artifacts. |
+| `FC_FUNCTIONS_IDLE_EVICT_SECONDS` | `1800` | — | `internal/server/functions.go` | Seconds a lazily-loaded version may sit unused before its compiled code is dropped (`<= 0` behaves as 1800). |
+| `FC_FUNCTIONS_TRUSTED_PROXIES` | — | — | `internal/server/functions.go` | Comma-separated CIDRs or addresses allowed to set `X-Forwarded-For` on the public entry; invalid entries are logged and ignored. |
+
+When the runner is the process's only subsystem (platform, router, scheduler,
+scheduled jobs, stream, outbox and MCP all off) it also sets the Go memory
+limit to the reserve, because function guest memory lives outside the Go heap.
+
+`fcdev` builds its runner configuration itself: it is on by default
+(`--functions` / `FC_FUNCTIONS_ENABLED=true`), binds `127.0.0.1`, uses this
+instance's own platform with an auto-provisioned `fcdev-functions` credential,
+public port `8096` (`--functions-public-port`), a `256` MiB limit
+(`--functions-memory-mb` / `FC_FUNCTIONS_MEMORY_LIMIT_MB`), a `32` MiB reserve
+unless `FC_FUNCTIONS_MEMORY_RESERVE_MB` is set, and the cache under
+`<user-cache-dir>/flowcatalyst/fcdev-functions`.
 
 ## 10. Bootstrap & seeding
 

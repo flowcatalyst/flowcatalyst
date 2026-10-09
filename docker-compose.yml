@@ -55,7 +55,8 @@ services:
       # OAuth client secrets / JWTs across restarts) ──
       # FLOWCATALYST_APP_KEY: "CHANGE-ME — openssl rand -base64 32"
       # FC_JWT_SIGNING_KEY_PEM: "-----BEGIN PRIVATE KEY----- ..."
-      # FC_BOOTSTRAP_ADMIN_EMAIL / FC_BOOTSTRAP_ADMIN_PASSWORD
+      # FLOWCATALYST_BOOTSTRAP_ADMIN_EMAIL: "admin@example.com"
+      # FLOWCATALYST_BOOTSTRAP_ADMIN_PASSWORD: "CHANGE-ME"   (both are required for the seeder to create the first admin)
     ports:
       - "8080:8080"
       - "9090:9090"
