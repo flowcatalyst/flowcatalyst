@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -21,6 +20,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/migrate"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
+	appops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordhash"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
@@ -30,7 +30,9 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/seed"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/database"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/platformsink"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
 
@@ -44,20 +46,31 @@ import (
 //     role assignment).
 //  3. Resolve (or create) a Default Client.
 //  4. Create the Application (errors if the code is taken).
-//  5. Mint the service account: a SERVICE Principal, a ServiceAccount row,
-//     attach to the Application, plus a CONFIDENTIAL OAuth client with
-//     `client_credentials` grant linked to the SA.
+//  5. Provision the application's service account via the shared
+//     ProvisionServiceAccount use case: SERVICE principal with the
+//     platform:application-service role, confined to this one application
+//     (not all-applications), attached to the Application, plus a
+//     CONFIDENTIAL OAuth client with the `client_credentials` grant.
 //  6. Write `.env` with FLOWCATALYST_BASE_URL/APP_CODE/CLIENT_ID/CLIENT_SECRET,
 //     in-place for existing keys, appended otherwise.
 //
-// All writes go directly to the repositories (no UoW, no events) — this
-// is platform-infrastructure bootstrap, exactly the exception class
-// documented in docs/conventions.md §3.
+// Admin/client/application writes go directly to the repositories (no UoW,
+// no events) — platform-infrastructure bootstrap, the exception class
+// documented in docs/conventions.md §3. The service account goes through the
+// real use case so it matches a normally provisioned one.
 func newInitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Bootstrap a fresh local environment (admin user + default tenant + .env)",
-		RunE:  runInit,
+		Long: `Bootstrap a fresh local environment: admin user, default client, one
+application, and that application's service-account credentials (.env).
+
+The credentials are provisioned the same way as an application service account
+created in the admin UI: the platform:application-service role, confined to
+the one application. Event types you publish must start with
+"<application-code>:"; register event types through the SDK sync endpoint
+(POST /api/applications/{appCode}/event-types/sync).`,
+		RunE: runInit,
 	}
 	cmd.Flags().String("database-url", envStrDefault("FC_DATABASE_URL", ""), "Postgres URL (defaults to local embedded)")
 	cmd.Flags().String("embedded-db-path", envStrDefault("FC_EMBEDDED_DB_PATH", defaultEmbeddedPath()), "embedded Postgres data directory (the app key is read from / persisted beside it, as `fcdev start` does)")
@@ -204,90 +217,30 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	}
 	fmt.Printf("  → application \"%s\" created (id=%s)\n", appCode, app.ID)
 
-	// ── 4. Service account + linked Principal ──────────────────────────
-	saCode := "app:" + appCode
-	saName := appName + " Service Account"
-	sa := serviceaccount.New(saCode, saName)
-	saDesc := "Service account for application: " + appName
-	sa.Description = &saDesc
-	sa.ApplicationID = &app.ID
-
-	saPrincipal := principal.NewService(sa.ID, saName)
-	saPrincipal.ApplicationID = &app.ID
-	saPrincipal.ClientID = ids.PtrOf[ids.ClientID](&defaultClientID)
-	saPrincipal.Scope = principal.ScopeAnchor
-
-	// Attach the SA back to the application + persist all three in one tx.
-	// NOTE: app_applications.service_account_id has a FK to iam_principals.id
-	// (migration 028) — so we store the SA *principal* id, not the SA row id.
-	// This diverges from internal/platform/application/operations/attach_service_account.go
-	// which incorrectly stores sa.ID; that's a separate bug to fix (docs/wire-contract.md).
-	app.ServiceAccountID = ids.StringPtr(&saPrincipal.ID)
-	app.UpdatedAt = time.Now().UTC()
-
-	principalRepo := principal.NewRepository(pool)
-	saRepo := serviceaccount.NewRepository(pool)
-	if err := infraPersist(ctx, pool, func(tx *usecasepgx.DbTx) error {
-		if err := principalRepo.Persist(ctx, saPrincipal, tx); err != nil {
-			return fmt.Errorf("sa principal: %w", err)
-		}
-		if err := saRepo.Persist(ctx, sa, tx); err != nil {
-			return fmt.Errorf("service account: %w", err)
-		}
-		return appRepo.Persist(ctx, app, tx)
-	}); err != nil {
-		return err
-	}
-	fmt.Printf("  → service account \"%s\" attached\n", saCode)
-
-	// ── 5. OAuth client for the SA (client_credentials grant) ──────────
-	clientSecretPlain, err := generateSecret()
-	if err != nil {
-		return err
-	}
-	publicClientID, err := generateSecret() // separate value for the public-facing client_id
-	if err != nil {
-		return err
-	}
-	// Client secrets are stored reversibly-encrypted
-	// (client_secret_ref), so an app key must exist. Generate + persist one
-	// when absent so a fresh dev box works without manual setup.
+	// ── 4. Service account + linked Principal + OAuth client ───────────
+	// Provisioned through the same use case as the admin UI / API
+	// (POST /api/applications/{id}/provision-service-account) so the two
+	// cannot drift: the SERVICE principal gets the platform:application-service
+	// role (PROVISIONED), AllApplications=false and access to exactly this one
+	// application, plus a confidential client_credentials OAuth client limited
+	// to it.
+	//
+	// The client secret is stored as a keyed hash, so an app key must exist.
 	// Same resolution as the running fcdev (env, else the persisted key file,
-	// else generate + persist), so the credentials minted here decrypt there.
+	// else generate + persist), so the credentials minted here verify there.
 	appKey, err := resolveAppKey(get("embedded-db-path"))
 	if err != nil {
 		return fmt.Errorf("resolve app key: %w", err)
 	}
-	enc, err := encryption.FromEnv()
+	provisioned, err := provisionAppCredentials(ctx, pool, app.ID)
 	if err != nil {
-		return fmt.Errorf("init encryption: %w", err)
+		return fmt.Errorf("provision service account: %w", err)
 	}
-	secretRef, err := enc.Encrypt(clientSecretPlain)
-	if err != nil {
-		return fmt.Errorf("encrypt client secret: %w", err)
-	}
-	oauthClient := auth.NewOAuthClient(publicClientID, appName+" Service Account Client", auth.OAuthClientConfidential)
-	oauthClient.SecretRef = &secretRef
-	oauthClient.GrantTypes = []string{"client_credentials"}
-	oauthClient.PrincipalID = ids.StringPtr(&saPrincipal.ID)
-
-	authRepo := auth.NewRepository(pool)
-	if err := infraPersist(ctx, pool, func(tx *usecasepgx.DbTx) error {
-		if err := authRepo.OAuthClients.Persist(ctx, oauthClient, tx); err != nil {
-			return fmt.Errorf("oauth client: %w", err)
-		}
-		// oauth_client.Persist doesn't sync the application_ids junction
-		// (see docs/wire-contract.md). Write it
-		// directly here so the SA's OAuth client is linked to the app.
-		_, err := tx.Inner().Exec(ctx,
-			`INSERT INTO oauth_client_application_ids (oauth_client_id, application_id)
-			 VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-			oauthClient.ID, app.ID)
-		return err
-	}); err != nil {
-		return err
-	}
-	fmt.Printf("  → OAuth client minted (id=%s)\n", oauthClient.ID)
+	fmt.Printf("  → service account \"%s\" provisioned (role platform:application-service, confined to \"%s\")\n",
+		provisioned.ServiceAccountCode, appCode)
+	fmt.Printf("  → OAuth client minted (id=%s)\n", provisioned.OAuthClientRowID)
+	publicClientID := provisioned.OAuthClientID
+	clientSecretPlain := provisioned.OAuthClientSecret
 
 	// ── 6. Write .env ──────────────────────────────────────────────────
 	envPath := filepath.Join(get("root"), ".env")
@@ -307,14 +260,42 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	fmt.Println()
 	fmt.Println("✓ Application scaffolded.")
 	fmt.Printf("  Application:     %s (code=%s)\n", appName, appCode)
-	fmt.Printf("  Service account: %s\n", sa.ID)
-	fmt.Printf("  OAuth client:    %s (clientId=%s)\n", oauthClient.ID, publicClientID)
+	fmt.Printf("  Service account: %s\n", provisioned.ServiceAccountID)
+	fmt.Printf("  OAuth client:    %s (clientId=%s)\n", provisioned.OAuthClientRowID, publicClientID)
 	fmt.Printf("  Default client:  %s\n", defaultClientID)
 	fmt.Println()
 	fmt.Printf("  Credentials written to %s. The clientSecret is shown ONLY in\n", envPath)
 	fmt.Println("  the .env — the platform stores only the Argon2 hash and cannot")
 	fmt.Println("  return it again. Rotate via the OAuth Clients page if needed.")
+	fmt.Println()
+	fmt.Printf("  These credentials are confined to the %q application:\n", appCode)
+	fmt.Printf("    - event types you publish must start with \"%s:\" (e.g. \"%s:order:created\");\n", appCode, appCode)
+	fmt.Println("      anything else is rejected with 400 (it belongs to another application).")
+	fmt.Printf("    - register event types through the SDK sync endpoint\n")
+	fmt.Printf("      (POST /api/applications/%s/event-types/sync), not POST /api/event-types:\n", appCode)
+	fmt.Println("      the application-service role does not carry the event-type admin permissions.")
 	return nil
+}
+
+// provisionAppCredentials runs the shared ProvisionServiceAccount use case
+// against the pool (the same operation the API runs), acting as the
+// bootstrap admin so the audit trail has a real principal.
+func provisionAppCredentials(ctx context.Context, pool *pgxpool.Pool, appID ids.ApplicationID) (appops.ProvisionServiceAccountResult, error) {
+	var actor string
+	if err := pool.QueryRow(ctx,
+		`SELECT id FROM iam_principals WHERE type = 'USER' AND scope = 'ANCHOR'
+		  ORDER BY created_at LIMIT 1`).Scan(&actor); err != nil {
+		return appops.ProvisionServiceAccountResult{}, fmt.Errorf("find bootstrap admin: %w", err)
+	}
+	uow := usecasepgx.New(pool, platformsink.New())
+	return usecaseop.RunTx(ctx, uow,
+		appops.ProvisionServiceAccount(
+			application.NewRepository(pool),
+			serviceaccount.NewRepository(pool),
+			principal.NewRepository(pool),
+			auth.NewRepository(pool).OAuthClients),
+		appops.ProvisionServiceAccountCommand{ApplicationID: string(appID)},
+		usecase.NewExecutionContext(actor))
 }
 
 // ─── Admin / IDP / EDM bootstrap ───────────────────────────────────────

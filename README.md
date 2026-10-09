@@ -258,6 +258,17 @@ make fresh            # truncate every FlowCatalyst table (keeps schema)
 make db-reset         # wipe the embedded Postgres data dir and start fresh
 ```
 
+`fcdev init` also creates your application and writes its service-account
+credentials to `.env`. Those credentials are provisioned exactly like an
+application service account made in the admin UI: they carry the
+`platform:application-service` role and are confined to that one
+application. Event types you publish must therefore start with
+`<application-code>:` (anything else is rejected with 400), and event types
+are registered through the SDK sync endpoint
+(`POST /api/applications/{appCode}/event-types/sync`) rather than
+`POST /api/event-types`, which needs admin event-type permissions the
+application role does not carry.
+
 Quality gates:
 
 ```sh
