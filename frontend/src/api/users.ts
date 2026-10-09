@@ -285,14 +285,24 @@ export const usersApi = {
 		id: string,
 		applicationIds: string[],
 		allApplications?: boolean,
+		confirmSelfRestriction?: boolean,
 	): Promise<ApplicationAccessAssignedResponse> {
 		// allApplications is omitted (left unchanged) unless explicitly passed;
 		// only an all-applications administrator may set it true (backend-enforced).
-		const body: { applicationIds: string[]; allApplications?: boolean } = {
+		// confirmSelfRestriction is required by the server when the caller removes
+		// their OWN all-applications flag.
+		const body: {
+			applicationIds: string[];
+			allApplications?: boolean;
+			confirmSelfRestriction?: boolean;
+		} = {
 			applicationIds,
 		};
 		if (allApplications !== undefined) {
 			body.allApplications = allApplications;
+		}
+		if (confirmSelfRestriction) {
+			body.confirmSelfRestriction = true;
 		}
 		return apiFetch(`/principals/${id}/application-access`, {
 			method: "PUT",

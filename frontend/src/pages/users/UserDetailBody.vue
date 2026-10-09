@@ -19,6 +19,7 @@ import { passwordPolicyError } from "@/utils/passwordPolicy";
 import { useClientOptions } from "@/composables/useClientOptions";
 import { useDirtyForm } from "@/composables/useDirtyForm";
 import { useConfirm } from "primevue/useconfirm";
+import { useAuthStore } from "@/stores/auth";
 
 const props = defineProps<{
 	userId: string;
@@ -55,6 +56,7 @@ const editing = ref(false);
 const dirtyModel = defineModel<boolean>("dirty", { default: false });
 
 const confirm = useConfirm();
+const authStore = useAuthStore();
 
 // clientScoped label lookups only — the full client list stays unloaded.
 const { ensureLoaded: ensureClientOptions, getLabel: getClientOptionLabel } =
@@ -419,7 +421,31 @@ async function loadApplicationAccess() {
 // Toggle the "access to all applications" flag. Uses the existing assign
 // endpoint, preserving the current explicit grant list so flipping back off
 // restores the prior selection. One-way: on failure the switch reverts.
-async function onToggleAllApplications(value: boolean) {
+function onToggleAllApplications(value: boolean) {
+	// Removing your OWN all-applications flag strips your ability to grant it to
+	// anyone (the server also demands confirmSelfRestriction). Warn first.
+	if (!value && authStore.user?.id === props.userId) {
+		confirm.require({
+			message:
+				"You are removing your own access to all applications. You will no longer be able to grant all-applications access to anyone, including yourself, and only another all-applications administrator can restore it. Continue?",
+			header: "Restrict your own access",
+			icon: "pi pi-exclamation-triangle",
+			acceptLabel: "Restrict my access",
+			acceptClass: "p-button-danger",
+			accept: () => void saveAllApplications(false, true),
+			reject: () => {
+				allApplications.value = true;
+			},
+		});
+		return;
+	}
+	void saveAllApplications(value, false);
+}
+
+async function saveAllApplications(
+	value: boolean,
+	confirmSelfRestriction: boolean,
+) {
 	savingApps.value = true;
 	try {
 		const applicationIds = applicationAccessGrants.value.map(
@@ -429,6 +455,7 @@ async function onToggleAllApplications(value: boolean) {
 			props.userId,
 			applicationIds,
 			value,
+			confirmSelfRestriction,
 		);
 		allApplications.value = response.allApplications;
 		applicationAccessGrants.value = response.applications;
