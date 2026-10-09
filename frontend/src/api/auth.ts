@@ -2,6 +2,7 @@
 // OpenAPI spec. Revisit if these routes converge on huma.
 import { useAuthStore, type User } from "@/stores/auth";
 import { landingPath } from "@/stores/permissions";
+import { safeUiRedirect } from "./uiRedirect";
 import router from "@/router";
 import { getErrorMessage } from "@/utils/errors";
 import { authFetch } from "./client";
@@ -185,7 +186,8 @@ function consumePostAuthRedirect(): string | null {
 
 // redirectAfterLogin performs the post-login navigation: a stashed
 // server-validated portal redirect, OIDC interaction, OAuth authorize
-// round-trip, or the dashboard.
+// round-trip, a validated return to the server-rendered UI (?redirect=/ui/...),
+// or the dashboard.
 export function redirectAfterLogin(): void {
 	const portalRedirect = consumePostAuthRedirect();
 	if (portalRedirect) {
@@ -200,6 +202,16 @@ export function redirectAfterLogin(): void {
 	}
 	if (urlParams.get("oauth") === "true") {
 		window.location.href = oauthAuthorizeUrl((f) => urlParams.get(f));
+		return;
+	}
+	// Signing in from a /ui link returns to it (validated: same-origin /ui
+	// path only; see uiRedirect.ts).
+	const uiTarget = safeUiRedirect(
+		urlParams.get("redirect"),
+		window.location.origin,
+	);
+	if (uiTarget) {
+		window.location.assign(uiTarget);
 		return;
 	}
 	// The most capable page the user can reach: dashboard (anchor/admin), else a
