@@ -17,7 +17,7 @@ kind="${1:-}"
 bump="${2:-}"
 
 usage() {
-	echo "usage: scripts/release.sh <dev|ts|laravel|java> <patch|minor|major|X.Y.Z[-suffix]>" >&2
+	echo "usage: scripts/release.sh <dev|ts|laravel|java|fn-ts|fn-rust|fn-go> <patch|minor|major|X.Y.Z[-suffix]>" >&2
 	exit 2
 }
 [ -n "$kind" ] && [ -n "$bump" ] || usage
@@ -26,13 +26,29 @@ usage() {
 # TS package.json only. Laravel/composer.json and fcdev have no such field
 # (Packagist reads the tag; fcdev embeds cmd/fcdev/VERSION). manifest_pom is
 # the Java SDK's pom.xml, whose <version> element must track the tag.
+#
+# The function SDKs add: manifest_toml (Cargo.toml, first top-level
+# `version = "…"`), lock_npm (package-lock.json root version, two places) and
+# lock_cargo (Cargo.lock entry for $lock_cargo_crate). fn-go has none: a Go
+# module is versioned purely by its tag (clients/fn-go/vX.Y.Z).
+#
+# RELEASE_DRY_RUN=1 runs every check and shows the bump diff, then reverts and
+# exits without committing, tagging or pushing.
 manifest=""
 manifest_pom=""
+manifest_toml=""
+lock_npm=""
+lock_cargo=""
+lock_cargo_crate=""
+workflow=""
 case "$kind" in
 	dev)     prefix="fcdev";         version_file="cmd/fcdev/VERSION";             label="fcdev" ;;
 	ts)      prefix="typescript-sdk"; version_file="clients/typescript-sdk/VERSION"; label="typescript-sdk"; manifest="clients/typescript-sdk/package.json" ;;
 	laravel) prefix="laravel-sdk";    version_file="clients/laravel-sdk/VERSION";    label="laravel-sdk" ;;
 	java)    prefix="java-sdk";       version_file="clients/java-sdk/VERSION";       label="java-sdk"; manifest_pom="clients/java-sdk/pom.xml" ;;
+	fn-ts)   prefix="fn-ts-sdk";      version_file="clients/fn-ts/VERSION";         label="fn-ts-sdk"; manifest="clients/fn-ts/package.json"; lock_npm="clients/fn-ts/package-lock.json"; workflow="split-fn-ts-sdk.yml" ;;
+	fn-rust) prefix="fn-rust-sdk";    version_file="clients/fn-rust/VERSION";       label="fn-rust-sdk"; manifest_toml="clients/fn-rust/Cargo.toml"; lock_cargo="clients/fn-rust/Cargo.lock"; lock_cargo_crate="flowcatalyst-fn"; workflow="split-fn-rust-sdk.yml" ;;
+	fn-go)   prefix="clients/fn-go";  version_file="clients/fn-go/VERSION";         label="fn-go-sdk" ;;
 	*)       echo "✗ unknown release kind: $kind" >&2; usage ;;
 esac
 
@@ -143,20 +159,77 @@ if [ -n "$manifest_pom" ]; then
 	fi
 fi
 
-git --no-pager diff --stat -- "$version_file" $manifest $manifest_pom
+# Cargo.toml: the first top-level `version = "…"` is the [package] one.
+if [ -n "$manifest_toml" ]; then
+	awk -v new="$new" '
+		/^version[[:space:]]*=[[:space:]]*"[^"]+"/ && !done {
+			sub(/"[^"]+"/, "\"" new "\"")
+			done=1
+		}
+		{print}
+	' "$manifest_toml" > "$manifest_toml.tmp" && mv "$manifest_toml.tmp" "$manifest_toml"
+	if ! grep -q "^version = \"$new\"" "$manifest_toml"; then
+		echo "✗ Failed to update version in $manifest_toml. Reverting." >&2
+		git checkout -- "$version_file" "$manifest_toml"
+		exit 1
+	fi
+fi
+
+# package-lock.json: the root version appears twice (top level, and under
+# packages[""]); dependency entries sit deeper so the indent tells them apart.
+if [ -n "$lock_npm" ]; then
+	awk -v new="$new" '
+		/^  "version": "[^"]+",?[[:space:]]*$/ && !a { sub(/"version": "[^"]+"/, "\"version\": \"" new "\""); a=1 }
+		/^      "version": "[^"]+",?[[:space:]]*$/ && a && !b { sub(/"version": "[^"]+"/, "\"version\": \"" new "\""); b=1 }
+		{print}
+	' "$lock_npm" > "$lock_npm.tmp" && mv "$lock_npm.tmp" "$lock_npm"
+	if [ "$(grep -c "\"version\": \"$new\"" "$lock_npm")" -lt 2 ]; then
+		echo "✗ Failed to update version in $lock_npm. Reverting." >&2
+		git checkout -- "$version_file" "$manifest" "$lock_npm"
+		exit 1
+	fi
+fi
+
+# Cargo.lock: the crate's own [[package]] entry (name line, then version).
+if [ -n "$lock_cargo" ]; then
+	awk -v new="$new" -v crate="$lock_cargo_crate" '
+		$0 == "name = \"" crate "\"" { hit=1; print; next }
+		hit && /^version = "/ { print "version = \"" new "\""; hit=0; next }
+		{print}
+	' "$lock_cargo" > "$lock_cargo.tmp" && mv "$lock_cargo.tmp" "$lock_cargo"
+	if ! grep -A1 "^name = \"$lock_cargo_crate\"" "$lock_cargo" | grep -q "^version = \"$new\""; then
+		echo "✗ Failed to update version in $lock_cargo. Reverting." >&2
+		git checkout -- "$version_file" "$manifest_toml" "$lock_cargo"
+		exit 1
+	fi
+fi
+
+touched="$manifest $manifest_pom $manifest_toml $lock_npm $lock_cargo"
+
+git --no-pager diff --stat -- "$version_file" $touched
 echo ""
+if [ "${RELEASE_DRY_RUN:-}" = "1" ]; then
+	git --no-pager diff -U0 -- "$version_file" $touched
+	git checkout -- "$version_file" $touched
+	echo "Dry run: would commit '$label v$new', tag $prefix/v$new, and push. Reverted."
+	exit 0
+fi
 read -r -p "Commit '$label v$new', tag $prefix/v$new, and push? [y/N] " confirm || confirm="n"
 case "$confirm" in
 	y|Y|yes|YES) ;;
-	*) echo "Aborted. Reverting."; git checkout -- "$version_file" $manifest $manifest_pom; exit 1 ;;
+	*) echo "Aborted. Reverting."; git checkout -- "$version_file" $touched; exit 1 ;;
 esac
 
-git add -- "$version_file" $manifest $manifest_pom
+git add -- "$version_file" $touched
 git commit -m "$label v$new"
 git tag "$prefix/v$new"
 git push origin HEAD "$prefix/v$new"
 
 echo ""
 echo "✓ Released $label v$new"
-echo "  Workflow: https://github.com/flowcatalyst/flowcatalyst-go/actions/workflows/release-$prefix.yml"
+if [ "$kind" = "fn-go" ]; then
+	echo "  Consume:  go get github.com/flowcatalyst/flowcatalyst-go/clients/fn-go@v$new (module proxy; no workflow)"
+else
+	echo "  Workflow: https://github.com/flowcatalyst/flowcatalyst-go/actions/workflows/${workflow:-release-$prefix.yml}"
+fi
 echo "  Release:  https://github.com/flowcatalyst/flowcatalyst-go/releases/tag/$prefix/v$new"
