@@ -11,8 +11,8 @@
 #      standalone CLI into <kit>/.bin on first use (no Node, no npm);
 #   2. builds internal/ui/assets/static/kit.css from the kit's entry file
 #      (theme/kit.css, which scans the kit's gallery and specs) PLUS this
-#      repo's *.templ and *.go files under internal/ui, so classes used only
-#      by our pages are emitted too;
+#      repo's *.templ and *.go files under internal/ui (not tests or
+#      testdata), so classes used only by our pages are emitted too;
 #   3. copies the icon sprite and the licence notices;
 #   4. copies the conformance fixtures into internal/ui/testdata/fixtures;
 #   5. checks the vendored datastar.js against its pinned sha256 (downloads
@@ -57,6 +57,8 @@ cat > "$tmp/ui.css" <<EOF
 @import "$kit/theme/kit.css";
 @source "$repo/internal/ui/**/*.templ";
 @source "$repo/internal/ui/**/*.go";
+@source not "$repo/internal/ui/**/*_test.go";
+@source not "$repo/internal/ui/testdata";
 EOF
 "$tw" -i "$tmp/ui.css" -o "$static/kit.css" --minify >/dev/null 2>&1
 
