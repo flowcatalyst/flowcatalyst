@@ -3,9 +3,13 @@ package pages
 import (
 	"context"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
+	connops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -61,5 +65,57 @@ func (o PoolOps) Activate(ctx context.Context, id string) error {
 // Delete runs DeleteDispatchPool.
 func (o PoolOps) Delete(ctx context.Context, id string) error {
 	_, err := usecaseop.Run(ctx, o.UoW, operations.DeleteDispatchPool(o.Repo), operations.DeleteCommand{ID: id}, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// ConnectionCommands are the connection operations the connections page
+// runs; ConnectionOps runs the API's use cases.
+type ConnectionCommands interface {
+	Create(ctx context.Context, cmd connops.CreateCommand) (string, error)
+	Update(ctx context.Context, cmd connops.UpdateCommand) error
+	Pause(ctx context.Context, id string) error
+	Activate(ctx context.Context, id string) error
+	Delete(ctx context.Context, id string) error
+}
+
+// ConnectionOps runs the connection use cases through the unit of work,
+// exactly as internal/platform/connection/api does.
+type ConnectionOps struct {
+	Repo *connection.Repository
+	Apps *application.Repository
+	Subs *subscription.Repository
+	UoW  *usecasepgx.UnitOfWork
+}
+
+// Create runs CreateConnection and returns the new connection's id.
+func (o ConnectionOps) Create(ctx context.Context, cmd connops.CreateCommand) (string, error) {
+	ev, err := usecaseop.Run(ctx, o.UoW, connops.CreateConnection(o.Repo, o.Apps), cmd, auth.NewExecutionContext(ctx))
+	if err != nil {
+		return "", err
+	}
+	return ev.ConnectionID, nil
+}
+
+// Update runs UpdateConnection.
+func (o ConnectionOps) Update(ctx context.Context, cmd connops.UpdateCommand) error {
+	_, err := usecaseop.Run(ctx, o.UoW, connops.UpdateConnection(o.Repo, o.Apps), cmd, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// Pause runs PauseConnection.
+func (o ConnectionOps) Pause(ctx context.Context, id string) error {
+	_, err := usecaseop.Run(ctx, o.UoW, connops.PauseConnection(o.Repo), connops.PauseCommand{ID: id}, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// Activate runs ActivateConnection.
+func (o ConnectionOps) Activate(ctx context.Context, id string) error {
+	_, err := usecaseop.Run(ctx, o.UoW, connops.ActivateConnection(o.Repo), connops.ActivateCommand{ID: id}, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// Delete runs DeleteConnection (refused while a subscription targets it).
+func (o ConnectionOps) Delete(ctx context.Context, id string) error {
+	_, err := usecaseop.Run(ctx, o.UoW, connops.DeleteConnection(o.Repo, o.Subs), connops.DeleteCommand{ID: id}, auth.NewExecutionContext(ctx))
 	return err
 }

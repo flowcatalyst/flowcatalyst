@@ -49,6 +49,9 @@ func registerUI(r chi.Router, cfg EnvCfg, uow *usecasepgx.UnitOfWork, repos *rep
 		DispatchPools:   repos.dispatchPoolRepo,
 		DispatchPoolOps: pages.PoolOps{Repo: repos.dispatchPoolRepo, UoW: uow},
 		Clients:         repos.clientRepo,
+		Connections:     repos.connectionRepo,
+		ConnectionOps:   pages.ConnectionOps{Repo: repos.connectionRepo, Apps: repos.applicationRepo, Subs: repos.subscriptionRepo, UoW: uow},
+		ServiceAccounts: repos.serviceAccountRepo,
 	})
 }
 

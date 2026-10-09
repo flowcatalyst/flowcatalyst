@@ -40,6 +40,10 @@ type Config struct {
 	DispatchPoolOps pages.PoolCommands
 	// Clients backs the client select (search and resolution).
 	Clients pages.ClientDirectory
+
+	Connections     pages.ConnectionStore
+	ConnectionOps   pages.ConnectionCommands
+	ServiceAccounts pages.ServiceAccountDirectory
 }
 
 // Mount registers /ui and everything under it on r.
@@ -69,6 +73,7 @@ func Mount(r chi.Router, cfg Config) error {
 			})
 			r.Post("/logout", signOut(cfg.CookieSecure))
 			(&pages.DispatchPools{Pools: cfg.DispatchPools, Ops: cfg.DispatchPoolOps, Clients: cfg.Clients, Shell: sh}).Mount(r)
+			(&pages.Connections{Connections: cfg.Connections, Ops: cfg.ConnectionOps, Clients: cfg.Clients, ServiceAccounts: cfg.ServiceAccounts, Shell: sh}).Mount(r)
 			(&pages.ClientOptions{Clients: cfg.Clients, Shell: sh}).Mount(r)
 		})
 

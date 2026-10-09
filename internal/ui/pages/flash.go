@@ -10,6 +10,12 @@ const (
 	flashPoolSuspended = "pool-suspended"
 	flashPoolActivated = "pool-activated"
 	flashPoolDeleted   = "pool-deleted"
+
+	flashConnCreated   = "connection-created"
+	flashConnUpdated   = "connection-updated"
+	flashConnPaused    = "connection-paused"
+	flashConnActivated = "connection-activated"
+	flashConnDeleted   = "connection-deleted"
 )
 
 // FlashMessages is the table the shell maps flash keys through
@@ -20,6 +26,12 @@ var FlashMessages = map[string]kit.FlashMessageProps{
 	flashPoolSuspended: success("Pool suspended"),
 	flashPoolActivated: success("Pool activated"),
 	flashPoolDeleted:   success("Pool deleted"),
+
+	flashConnCreated:   success("Connection created"),
+	flashConnUpdated:   success("Connection updated"),
+	flashConnPaused:    success("Connection paused"),
+	flashConnActivated: success("Connection activated"),
+	flashConnDeleted:   success("Connection deleted"),
 }
 
 // success is the SPA's toast.success("Success", detail).

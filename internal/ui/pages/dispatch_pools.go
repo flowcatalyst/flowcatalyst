@@ -116,101 +116,25 @@ func (h *DispatchPools) renderPage(w http.ResponseWriter, r *http.Request, statu
 	h.Shell.RenderStatus(w, r, status, shell.Page{Title: "Dispatch Pools", Path: poolsPath}, poolsPage(view))
 }
 
-// refererQuery is the list view the request came from (the page's address,
-// which live filtering keeps current with ReplaceURL), so an action re-renders
-// the table the user is looking at. Only the view is taken from it; anything
-// unparseable is the default view.
-func refererQuery(r *http.Request) poolQuery {
-	ref, err := url.Parse(r.Referer())
-	if err != nil || ref.Path != poolsPath {
-		return parsePoolQuery(nil)
-	}
-	return parsePoolQuery(ref.Query())
+// poolList is the pools list's URL state (list.go).
+var poolList = &listSpec{
+	path:     poolsPath,
+	sortKeys: []string{"code", "name", "status", "created"},
+	statusOK: func(s string) bool { _, ok := dispatchpool.ParseStatus(s); return ok },
 }
 
-// ── the URL is the list state ──────────────────────────────────────────
+// poolQuery is the pools list's view state.
+type poolQuery = listQuery
 
-const (
-	poolsFormID = "pools-list"
-	maxQueryLen = 200
-)
+// parsePoolQuery reads the pools list's view from a query string.
+func parsePoolQuery(v url.Values) poolQuery { return parseListQuery(v, poolList) }
 
-var poolSortKeys = []string{"code", "name", "status", "created"}
+// refererQuery is the pools list view the request came from (list.go).
+func refererQuery(r *http.Request) poolQuery { return refererList(r, poolList) }
 
-type poolQuery struct {
-	Q      string
-	Status string
-	Sort   string
-	Dir    kit.SortDirection
-}
+const maxQueryLen = 200
 
-// parsePoolQuery reads q, status, sort and dir; anything unknown falls back
-// to the default rather than erroring (a hand-edited URL still shows a list).
-func parsePoolQuery(v url.Values) poolQuery {
-	q := poolQuery{Q: strings.TrimSpace(v.Get("q")), Sort: "code", Dir: kit.SortAsc}
-	if len(q.Q) > maxQueryLen {
-		q.Q = q.Q[:maxQueryLen]
-	}
-	if s, ok := dispatchpool.ParseStatus(v.Get("status")); ok {
-		q.Status = string(s)
-	}
-	if s := v.Get("sort"); slices.Contains(poolSortKeys, s) {
-		q.Sort = s
-	}
-	if v.Get("dir") == string(kit.SortDesc) {
-		q.Dir = kit.SortDesc
-	}
-	return q
-}
-
-// values encodes the non-default parts.
-func (q poolQuery) values() url.Values {
-	v := url.Values{}
-	if q.Q != "" {
-		v.Set("q", q.Q)
-	}
-	if q.Status != "" {
-		v.Set("status", q.Status)
-	}
-	if q.Sort != "code" || q.Dir != kit.SortAsc {
-		v.Set("sort", q.Sort)
-		v.Set("dir", string(q.Dir))
-	}
-	return v
-}
-
-// URL is the canonical URL of this view.
-func (q poolQuery) URL() string {
-	if enc := q.values().Encode(); enc != "" {
-		return poolsPath + "?" + enc
-	}
-	return poolsPath
-}
-
-// clearURL is the view without search and filters, keeping the sort
-// (table-toolbar.md: Clear All clears what the user typed and picked).
-func (q poolQuery) clearURL() string {
-	return poolQuery{Sort: q.Sort, Dir: q.Dir}.URL()
-}
-
-// sortURL is the URL a column heading links to: same filters, sorted by key,
-// toggling the direction when key is already the sort.
-func (q poolQuery) sortURL(key string) string {
-	next := q
-	next.Sort = key
-	next.Dir = kit.SortAsc
-	if q.Sort == key && q.Dir == kit.SortAsc {
-		next.Dir = kit.SortDesc
-	}
-	return next.URL()
-}
-
-func (q poolQuery) direction(key string) kit.SortDirection {
-	if q.Sort == key {
-		return q.Dir
-	}
-	return kit.SortNone
-}
+const poolsFormID = "pools-list"
 
 // ── view model ─────────────────────────────────────────────────────────
 

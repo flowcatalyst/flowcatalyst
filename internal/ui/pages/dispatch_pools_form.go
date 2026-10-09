@@ -108,15 +108,15 @@ func (f poolForm) dialog() kit.FormDialogProps {
 	if f.Edit {
 		p.Title, p.Description, p.SubmitLabel, p.RequireChange = "Edit Dispatch Pool", f.Subtitle, "Save", true
 		// Which pool the drawer shows, so a save refreshes it there too.
-		p.Hidden = []kit.HiddenField{drawerField()}
+		p.Hidden = []kit.HiddenField{drawerField(poolDrawerSig)}
 	}
 	return p
 }
 
-// drawerField is the hidden field that tells an action which pool the drawer
-// shows ($selPool), so the answer can refresh or close it.
-func drawerField() kit.HiddenField {
-	return kit.HiddenField{Name: "drawer", Attrs: templ.Attributes{"data-attr:value": "$" + poolDrawerSig}}
+// drawerField is the hidden field that tells an action which record the
+// drawer shows (the drawer's signal), so the answer can refresh or close it.
+func drawerField(signal string) kit.HiddenField {
+	return kit.HiddenField{Name: "drawer", Attrs: templ.Attributes{"data-attr:value": "$" + kit.Signal(signal)}}
 }
 
 func editForm(p *dispatchpool.DispatchPool) poolForm {

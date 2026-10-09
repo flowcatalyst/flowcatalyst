@@ -1,0 +1,320 @@
+package pages
+
+import (
+	"strconv"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+)
+
+const connsLiveGet = "@get('/ui/connections', {contentType: 'form'})"
+
+var connStatusOptions = []kit.Option{
+	{Value: "ACTIVE", Label: "Active"},
+	{Value: "PAUSED", Label: "Paused"},
+}
+
+func (v connsView) columns() []kit.DataColumn {
+	sortable := func(label, key string) kit.DataColumn {
+		return kit.DataColumn{Label: label, Href: v.Query.sortURL(key), Direction: v.Query.direction(key), LinkAttrs: templ.Attributes{"data-on:click__prevent": sortClick}}
+	}
+	return []kit.DataColumn{
+		sortable("Code", "code"),
+		sortable("Name", "name"),
+		{Label: "Scope"},
+		sortable("Status", "status"),
+		sortable("Created", "created"),
+		{Label: "Actions", Class: "w-px"},
+	}
+}
+
+func (v connsView) empty() *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	e := &kit.EmptyStateProps{Message: "No connections found", Status: true}
+	if v.Query.filtered() {
+		e.ClearHref = connsPath
+	}
+	return e
+}
+
+func (v connsView) toolbar() kit.TableToolbarProps {
+	clear := ""
+	if v.Query.filtered() {
+		clear = v.Query.clearURL()
+	}
+	return kit.TableToolbarProps{
+		ID:                connsFormID,
+		Action:            connsPath,
+		SearchPlaceholder: "Search connections...",
+		SearchValue:       v.Query.Q,
+		ClearHref:         clear,
+		ClearAttrs:        templ.Attributes{"data-on:click__prevent": kit.ClearFilters},
+		ActiveFilterCount: v.FilterCount(),
+		Hidden:            v.Query.hidden(),
+		SearchAttrs:       templ.Attributes{"data-on:input__debounce.300ms": connsLiveGet},
+		FormAttrs:         templ.Attributes{"data-on:submit": connsLiveGet},
+		Filters:           connsFilters(v),
+	}
+}
+
+func (v connsView) summary() string {
+	switch {
+	case v.Total == 1 && len(v.Rows) == 1:
+		return "1 connection"
+	case len(v.Rows) == v.Total:
+		return strconv.Itoa(v.Total) + " connections"
+	default:
+		return "Showing " + strconv.Itoa(len(v.Rows)) + " of " + strconv.Itoa(v.Total) + " connections"
+	}
+}
+
+func (v connsView) drawerSignals() string {
+	if v.Drawer == nil {
+		return "{" + connDrawerSig + ": ''}"
+	}
+	return "{" + connDrawerSig + ": '" + kit.ID(v.Drawer.ID) + "'}"
+}
+
+templ connsPage(v connsView) {
+	<div data-signals={ v.drawerSignals() }>
+		@kit.PageHeader(kit.PageHeaderProps{
+			Title:    "Connections",
+			Subtitle: "Manage webhook connections for event delivery",
+			Actions:  connsActions(v),
+		})
+		@kit.Alert(kit.AlertProps{
+			Icon:        "info",
+			Title:       "New UI preview",
+			Description: "This page is served by the new server-rendered UI. The current UI has the same page under Connections.",
+			Class:       "mb-4",
+		})
+		<div class="fc-card-flush">
+			@kit.TableToolbar(v.toolbar())
+			@connsTable(v)
+			@connsSummary(v)
+		</div>
+		<div id={ connDialogSlot }>
+			if v.Dialog != nil {
+				@v.Dialog
+			}
+		</div>
+		@connConfirmDialogs(v.Perms)
+		@connDrawer(v.Drawer)
+	</div>
+}
+
+templ connsActions(v connsView) {
+	if v.Perms.Create {
+		@kit.LegacyButton(kit.LegacyButtonProps{Href: connsPath + "/new", Icon: "plus", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+			Create Connection
+		}
+	}
+}
+
+templ connsFilters(v connsView) {
+	@kit.FilterSelect(kit.FilterSelectProps{
+		Name:        "status",
+		Label:       "Status",
+		Placeholder: "All statuses",
+		Options:     connStatusOptions,
+		Selected:    v.Query.Status,
+		Attrs:       templ.Attributes{"data-on:change": connsLiveGet},
+	})
+}
+
+templ connsTable(v connsView) {
+	@kit.DataTable(kit.DataTableProps{ID: "conns-table", BodyID: "conns-rows", Columns: v.columns(), Empty: v.empty()}) {
+		for _, row := range v.Rows {
+			@kit.TR(kit.TRProps{ID: "conn-" + row.ID}) {
+				@kit.TD(kit.TDProps{}) {
+					<code class="font-mono text-[13px]">{ row.Code }</code>
+				}
+				@kit.TD(kit.TDProps{}) {
+					<a href={ row.DetailHref } class="font-medium text-foreground no-underline hover:underline" data-on:click__prevent={ liveLink }>{ row.Name }</a>
+				}
+				@kit.TD(kit.TDProps{Class: "text-[13px] text-muted-foreground"}) {
+					{ row.Scope }
+				}
+				@kit.TD(kit.TDProps{}) {
+					@kit.Badge(kit.BadgeProps{Variant: row.StatusVariant}) {
+						{ row.Status }
+					}
+				}
+				@kit.TD(kit.TDProps{}) {
+					<time datetime={ row.CreatedISO }>{ row.Created }</time>
+				}
+				@kit.RowActions(v.rowActions(row))
+			}
+		}
+	}
+}
+
+templ connsSummary(v connsView) {
+	<div id="conns-summary" class="fc-table-footer"><span>{ v.summary() }</span></div>
+}
+
+templ connDrawer(d *connDetail) {
+	if d != nil {
+		@kit.Drawer(d.drawerProps()) {
+			@connDrawerBody(*d)
+		}
+	} else {
+		@kit.Drawer(kit.DrawerProps{ID: connDrawerID, Signal: connDrawerSig, Label: "Connection"})
+	}
+}
+
+templ connDrawerContent(d connDetail) {
+	@kit.DrawerContent(d.drawerProps()) {
+		@connDrawerBody(d)
+	}
+}
+
+// connDrawerBody mirrors the SPA's ConnectionDetailDrawer.
+templ connDrawerBody(d connDetail) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Connection Details", Actions: connEditButton(d)}) {
+		<div class="fc-detail-grid">
+			@kit.DetailField(kit.DetailFieldProps{Label: "Code"}) {
+				<code>{ d.Code }</code>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Name", Value: d.Name})
+			if d.Description != "" {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Description", Value: d.Description, Span: true})
+			}
+			if d.ExternalID != "" {
+				@kit.DetailField(kit.DetailFieldProps{Label: "External ID"}) {
+					<code>{ d.ExternalID }</code>
+				}
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Service Account", Value: d.ServiceAccount})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Scope", Value: d.Scope})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Status"}) {
+				@poolStatusBadge(d.Status, d.StatusVariant)
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Created", Value: d.Created})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Updated", Value: d.Updated})
+		</div>
+	}
+	if d.showActions() {
+		@kit.FormSection(kit.FormSectionProps{Title: "Actions"}) {
+			<div class="flex flex-col gap-4">
+				if d.Perms.Update && d.RawStatus == "PAUSED" {
+					@poolActionItem("Activate Connection", "Enable this connection for event delivery.") {
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyPrimaryOutline, Icon: "circle-check", Attrs: confirmTrigger(connActivateDialog, d.ActionBase+"/activate")}) {
+							Activate
+						}
+					}
+				}
+				if d.Perms.Update && d.RawStatus == "ACTIVE" {
+					@poolActionItem("Pause Connection", "Temporarily stop event delivery through this connection.") {
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyWarnOutline, Icon: "pause", Attrs: confirmTrigger(connPauseDialog, d.ActionBase+"/pause")}) {
+							Pause
+						}
+					}
+				}
+				if d.Perms.Delete {
+					@poolActionItem("Delete Connection", "Permanently delete this connection. Cannot be undone.") {
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Icon: "trash-2", Attrs: confirmTrigger(connDeleteDialog, d.ActionBase+"/delete")}) {
+							Delete
+						}
+					}
+				}
+			</div>
+		}
+	}
+}
+
+templ connEditButton(d connDetail) {
+	if d.Perms.Update {
+		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.EditHref, Icon: "pencil", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+			Edit
+		}
+	}
+}
+
+templ connConfirmDialogs(perms connPerms) {
+	if perms.Update {
+		@kit.ConfirmDialog(connConfirm(connActivateDialog, "Activate Connection", "Activate this connection?", "Activate", kit.ToneDefault))
+		@kit.ConfirmDialog(connConfirm(connPauseDialog, "Pause Connection", "Pause this connection? Subscriptions using it will stop dispatching.", "Pause", kit.ToneWarn))
+	}
+	if perms.Delete {
+		@kit.ConfirmDialog(connConfirm(connDeleteDialog, "Delete Connection", "Delete this connection? This action cannot be undone.", "Delete", kit.ToneDanger))
+	}
+}
+
+// connFormDialog is the create or edit dialog.
+templ connFormDialog(f connForm) {
+	@kit.FormDialog(f.dialog()) {
+		if f.Edit {
+			@connField(f, "name")
+			@connField(f, "description")
+			@connField(f, "externalId")
+		} else {
+			@kit.FormSection(kit.FormSectionProps{Title: "Basic Information"}) {
+				<div class="flex flex-col gap-4">
+					@connField(f, "code")
+					@connField(f, "name")
+					@connField(f, "description")
+				</div>
+			}
+			@kit.FormSection(kit.FormSectionProps{Title: "Additional"}) {
+				@connField(f, "externalId")
+			}
+			@kit.FormSection(kit.FormSectionProps{Title: "Service Account"}) {
+				@connField(f, "serviceAccountId")
+			}
+			@kit.FormSection(kit.FormSectionProps{Title: "Scope"}) {
+				@connField(f, "client")
+			}
+		}
+	}
+}
+
+templ connField(f connForm, key string) {
+	switch key {
+		case "code":
+			@kit.Field(f.fieldProps(key, "Code", "Unique identifier for this connection (2-100 characters)", true)) {
+				@kit.Input(f.inputProps(key, f.Code, kit.InputProps{Placeholder: "connection-code", Required: true, Attrs: templ.Attributes{"maxlength": "100", "autofocus": true, "autocomplete": "off"}}))
+			}
+		case "name":
+			@kit.Field(f.fieldProps(key, "Name", "", true)) {
+				@kit.Input(f.inputProps(key, f.Name, kit.InputProps{Placeholder: "Connection display name", Required: true, Attrs: connNameAttrs(f.Edit)}))
+			}
+		case "description":
+			@kit.Field(f.fieldProps(key, "Description", "", false)) {
+				@kit.Textarea(kit.TextareaProps{ID: f.id(key), Name: key, Value: f.Description, Placeholder: "Optional description...", Rows: 3, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+			}
+		case "externalId":
+			@kit.Field(f.fieldProps(key, "External ID", connExternalIDHelp(f.Edit), false)) {
+				@kit.Input(f.inputProps(key, f.ExternalID, kit.InputProps{Placeholder: "Optional external identifier", Attrs: templ.Attributes{"autocomplete": "off"}}))
+			}
+		case "serviceAccountId":
+			@kit.Field(f.fieldProps(key, "Service Account", f.serviceAccountHelp(), true)) {
+				@kit.Select(kit.SelectProps{
+					ID:          f.id(key),
+					Name:        key,
+					Options:     f.ServiceAccounts,
+					Selected:    f.ServiceAccountID,
+					Placeholder: "Select a service account",
+					Required:    true,
+					Disabled:    !f.CanPickServiceAccount,
+					Invalid:     f.fieldError(key) != "",
+					DescribedBy: f.describedBy(key),
+				})
+			}
+		case "client":
+			@kit.Field(f.fieldProps(key, "Client", f.clientHelp(), false)) {
+				@kit.Autocomplete(kit.AutocompleteProps{
+					ID:          f.id(key),
+					Name:        key,
+					Value:       f.Client,
+					Placeholder: "Anchor-level (leave empty) or select a client",
+					Source:      clientOptionsPath,
+					Options:     f.ClientOptions,
+					Disabled:    !f.CanPickClient,
+					Invalid:     f.fieldError(key) != "",
+					DescribedBy: f.describedBy(key),
+				})
+			}
+	}
+}

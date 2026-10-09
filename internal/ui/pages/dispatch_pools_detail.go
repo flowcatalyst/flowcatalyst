@@ -249,7 +249,7 @@ func flashKey(sse *ds.SSE, key string) error {
 func poolConfirm(id, title, message, label string, tone kit.ConfirmTone) kit.ConfirmDialogProps {
 	return kit.ConfirmDialogProps{
 		ID: id, Action: poolsPath, Title: title, Message: message, ConfirmLabel: label, Tone: tone,
-		Hidden:    []kit.HiddenField{drawerField()},
+		Hidden:    []kit.HiddenField{drawerField(poolDrawerSig)},
 		FormAttrs: templ.Attributes{"data-on:submit": kit.SubmitConfirm},
 	}
 }

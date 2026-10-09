@@ -46,7 +46,7 @@ func TestNavigationVisibility(t *testing.T) {
 
 func TestNavigationLinksAndCurrent(t *testing.T) {
 	admin := &auth.AuthContext{Scope: auth.ScopeAnchor, Permissions: []string{"platform:*:*:*"}, Roles: []string{"r"}}
-	var pools, conns kit.NavItem
+	var pools, conns, subs kit.NavItem
 	for _, g := range Navigation(admin, "/ui/dispatch-pools") {
 		for _, it := range g.Items {
 			switch it.Label {
@@ -54,6 +54,8 @@ func TestNavigationLinksAndCurrent(t *testing.T) {
 				pools = it
 			case "Connections":
 				conns = it
+			case "Subscriptions":
+				subs = it
 			}
 			if it.Current && it.Label != "Dispatch Pools" {
 				t.Errorf("%s marked current", it.Label)
@@ -63,8 +65,11 @@ func TestNavigationLinksAndCurrent(t *testing.T) {
 	if pools.Href != "/ui/dispatch-pools" || !pools.Current {
 		t.Errorf("ported entry: %+v", pools)
 	}
-	if conns.Href != "/connections" || conns.Current {
-		t.Errorf("unported entry should link to the SPA: %+v", conns)
+	if conns.Href != "/ui/connections" || conns.Current {
+		t.Errorf("ported entry, not current: %+v", conns)
+	}
+	if subs.Href != "/subscriptions" || subs.Current {
+		t.Errorf("unported entry should link to the SPA: %+v", subs)
 	}
 }
 

@@ -7,9 +7,9 @@ The new UI lives under `/ui` next to the SPA, which stays the default: no SPA ro
 `/ui` and no SPA code is removed without the owner's approval, area by area.
 
 Status (2026-10-09): foundations, the Phase 1 kit decisions (row actions, toolbar state part,
-flash stack and the Datastar error contract, an 86-icon sprite) and `/ui/dispatch-pools` at
-parity with the SPA page: list, record drawer, create and edit dialogs, suspend/activate/delete
-behind confirmations.
+flash stack and the Datastar error contract, an 86-icon sprite) `/ui/dispatch-pools` and
+`/ui/connections` at parity with the SPA pages: list, record drawer, create and edit dialogs,
+state actions and delete behind confirmations.
 
 ## Architecture
 
@@ -21,9 +21,10 @@ internal/ui/
   htmlnorm/      HTML normaliser behind the conformance test
   shell/         page layout around the kit app shell; sidebar navigation; error pages
   guard/         CSRF, session negotiation, role-less gate, security headers
-  pages/         page handlers: dispatch_pools*.go/.templ (list, drawer, form, actions),
+  pages/         page handlers: dispatch_pools*.go/.templ and connections*.go/.templ (list,
+                 drawer, form, actions), list.go (the URL as list state),
                  clients.go (the client select's search), forms.go (form plumbing),
-                 ops.go (PoolOps: the use cases), flash.go (the flash key table)
+                 ops.go (PoolOps, ConnectionOps: the use cases), flash.go (the flash key table)
   assets/        embedded kit.css, icon sprite, pinned datastar.js, licences (served at /ui/assets/)
   testdata/fixtures/  the kit's conformance fixtures, vendored
 internal/server/wire_ui.go   registerUI: mounts the above with the platform's Authenticator
@@ -113,7 +114,7 @@ flash key. Failures follow "Datastar errors" below. POST routes are mounted behi
 reads, so a field read afterwards is silently empty (found in the browser: the drawer did not
 refresh after an action; `httptest` does not reproduce it).
 
-### Forms and actions (dispatch pools is the reference)
+### Forms and actions (dispatch pools is the reference; connections follows it)
 
 | URL | GET (navigation) | GET (Datastar) | POST |
 |---|---|---|---|
@@ -145,6 +146,13 @@ refresh after an action; `httptest` does not reproduce it).
   page render maps it through `Shell.Flashes` (`pages.FlashMessages`), renders it in the flash
   stack and clears the cookie. Unknown or malformed keys are ignored; no request text is ever
   rendered (`TestPoolCreateNativeFlash`).
+- **Connections** (`/ui/connections`, same routes with `pause` instead of `suspend`): create needs
+  `CanCreateConnections`, edit/pause/activate `CanUpdateConnections`, delete
+  `CanDeleteConnections` (a connection with subscriptions is refused by the use case, 409
+  `HAS_SUBSCRIPTIONS`, shown as an error flash). The service account is a native select of
+  `serviceaccount.Repository.FindAll` (the SPA's `serviceAccountsApi.list()`, needs
+  `CanReadServiceAccounts`; disabled with the reason otherwise); the edit form sends the SPA's PUT
+  body (a blank description or external id clears it).
 - **Permissions** are the API handlers' checks: create, update, suspend and activate need
   `CanWriteDispatchPools` (the API's coarse gate: any of create/update/delete), delete
   `CanDeleteDispatchPools`; the drawer and the edit dialog also need `CanReadDispatchPools` and,

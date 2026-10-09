@@ -12,9 +12,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	clientops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 )
@@ -122,4 +125,61 @@ func doPage(t *testing.T, page *DispatchPools, clients ClientDirectory, q req) s
 		t.Logf("%s %s answered an error: %s", q.method, q.target, rec.Body.String())
 	}
 	return rec.Body.String()
+}
+
+// The connections page end to end against Postgres (the API's use cases).
+func TestConnectionsPageAgainstPostgres(t *testing.T) {
+	pool := testpg.Pool(t)
+	repo := connection.NewRepository(pool)
+	page := &Connections{
+		Connections: repo,
+		Ops:         ConnectionOps{Repo: repo, Apps: application.NewRepository(pool), Subs: subscription.NewRepository(pool), UoW: testpg.NewUoW(t)},
+		Clients:     client.NewRepository(pool),
+		Shell:       shellForTest(),
+	}
+	do := func(q req) string {
+		t.Helper()
+		rec := serveConnPage(t, page, anchorAdmin(), q)
+		if rec.Code != http.StatusOK && rec.Code != http.StatusSeeOther {
+			t.Fatalf("%s %s: status %d: %s", q.method, q.target, rec.Code, rec.Body.String())
+		}
+		return rec.Body.String()
+	}
+
+	body := do(req{
+		method: http.MethodPost, target: "/ui/connections/new", datastar: true,
+		form: connCreateForm("code", "ui-pg-hook", "name", "UI PG hook", "serviceAccountId", "sa_ui_pg", "externalId", "ext-1"),
+	})
+	require.Contains(t, body, "Connection created", body)
+	all, err := repo.FindAll(context.Background())
+	require.NoError(t, err)
+	var created *connection.Connection
+	for i := range all {
+		if all[i].Code == "ui-pg-hook" {
+			created = &all[i]
+		}
+	}
+	require.NotNil(t, created)
+	assert.Equal(t, "sa_ui_pg", created.ServiceAccountID)
+	assert.Equal(t, "ext-1", deref(created.ExternalID))
+	assert.Nil(t, created.ClientID)
+
+	do(req{
+		method: http.MethodPost, target: "/ui/connections/" + created.ID + "/edit", datastar: true,
+		form: url.Values{"name": {"UI PG hook 2"}, "description": {""}, "externalId": {""}},
+	})
+	got, err := repo.FindByID(context.Background(), created.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "UI PG hook 2", got.Name)
+	assert.Nil(t, got.ExternalID, "a blank external id clears it, as the SPA's PUT does")
+
+	do(req{method: http.MethodPost, target: "/ui/connections/" + created.ID + "/pause", datastar: true, form: url.Values{}})
+	got, _ = repo.FindByID(context.Background(), created.ID)
+	assert.Equal(t, connection.StatusPaused, got.Status)
+	do(req{method: http.MethodPost, target: "/ui/connections/" + created.ID + "/activate", datastar: true, form: url.Values{}})
+	do(req{method: http.MethodPost, target: "/ui/connections/" + created.ID + "/delete", datastar: true, form: url.Values{}})
+	gone, err := repo.FindByID(context.Background(), created.ID)
+	require.NoError(t, err)
+	assert.Nil(t, gone)
+	assert.Equal(t, 5, auditCount(t, created.ID), "create, update, pause, activate and delete are each audited")
 }
