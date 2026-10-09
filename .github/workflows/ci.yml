@@ -46,6 +46,9 @@ jobs:
           go mod tidy
           git diff --exit-code go.mod go.sum
 
+      - name: Verify templ output (internal/ui)
+        run: make ui-verify
+
       - name: Build
         run: make build
 

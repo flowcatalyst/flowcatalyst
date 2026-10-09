@@ -1,7 +1,7 @@
 .PHONY: build go-build build-release frontend frontend-install frontend-dev \
 	run run-server dev dev-debug dev-full check setup init fresh db-reset \
 	test test-unit test-integration test-platform test-verbose watch-test \
-	lint lint-fix analyze fmt fmt-check sqlc sqlc-verify ci clean \
+	lint lint-fix analyze fmt fmt-check sqlc sqlc-verify ui-generate ui-fmt ui-verify ui-kit-sync ci clean \
 	dump-spec api-bump api-diff release-dev sdk-spec sdk-generate \
 	release-ts-sdk release-laravel-sdk build-java-sdk release-java-sdk install-tools help
 
@@ -129,6 +129,35 @@ sqlc-verify: ## Verify sqlc dbq matches the queries (no diff). For CI.
 	@git diff --exit-code internal/sqlc/dbq/ || \
 		(echo "sqlc out of date; run 'make sqlc' and commit the diff" && exit 1)
 
+# ── Server-rendered UI (internal/ui, templ + Datastar) ───────────────
+# templ is pinned by the `tool` directive in go.mod, so `go tool templ` needs
+# no global install. Generated *_templ.go files are committed (like sqlc's
+# dbq); ui-verify fails CI when they are stale. See docs/ui/README.md.
+TEMPL := $(GO) tool templ
+UI_DIR := internal/ui
+
+ui-generate: ## Generate Go code from the templ components under internal/ui
+	$(TEMPL) generate -path $(UI_DIR)
+
+ui-fmt: ## Format the templ components under internal/ui
+	$(TEMPL) fmt $(UI_DIR)
+
+ui-verify: ## Fail if generated *_templ.go files or templ formatting are stale (for CI)
+	@$(TEMPL) generate -path $(UI_DIR) >/dev/null
+	@untracked=$$(git ls-files --others --exclude-standard -- '$(UI_DIR)/*_templ.go'); \
+	if [ -n "$$untracked" ]; then \
+		echo "generated templ files not committed:"; echo "$$untracked"; exit 1; \
+	fi
+	@git diff --exit-code -- '$(UI_DIR)/*_templ.go' || \
+		(echo "templ output out of date; run 'make ui-generate' and commit the diff" && exit 1)
+	@for f in $$(find $(UI_DIR) -name '*.templ'); do \
+		$(TEMPL) fmt -stdout $$f | diff -q - $$f >/dev/null || \
+			{ echo "$$f is not templ-formatted; run 'make ui-fmt'"; exit 1; }; \
+	done
+
+ui-kit-sync: ## Rebuild internal/ui/assets from ../flowcatalyst-framework/ui-kit (KIT_DIR=... to override)
+	@scripts/ui-kit-sync.sh
+
 dump-spec: ## Emit the current huma-generated OpenAPI spec to stdout
 	@$(GO) run ./tools/dump-spec
 
@@ -146,7 +175,7 @@ frontend-types-verify: ## Verify the SPA's generated API types match the lockfil
 	@git diff --exit-code frontend/src/api/generated/ || \
 		(echo "generated API types out of date; run 'pnpm api:generate' in frontend/ and commit the diff" && exit 1)
 
-ci: lint sqlc-verify test analyze api-diff frontend-types-verify ## Run everything CI runs
+ci: lint sqlc-verify ui-verify test analyze api-diff frontend-types-verify ## Run everything CI runs
 
 # ── Release ──────────────────────────────────────────────────────────
 # Version source of truth is cmd/fcdev/VERSION (seeded from the Rust
