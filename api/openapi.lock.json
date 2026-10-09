@@ -7011,6 +7011,234 @@
         ],
         "type": "object"
       },
+      "RequeueByFilterPreviewRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RequeueByFilterPreviewRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "aggregates": {
+            "description": "CSV of aggregates",
+            "type": "string"
+          },
+          "applications": {
+            "description": "CSV of application codes",
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "clientIds": {
+            "description": "CSV of client ids",
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "codes": {
+            "description": "CSV of codes",
+            "type": "string"
+          },
+          "dispatchPoolId": {
+            "type": "string"
+          },
+          "messageGroup": {
+            "description": "Exact message group",
+            "type": "string"
+          },
+          "since": {
+            "description": "RFC3339 timestamp",
+            "type": "string"
+          },
+          "source": {
+            "description": "Free-text source filter",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "statuses": {
+            "description": "CSV of statuses",
+            "type": "string"
+          },
+          "subdomains": {
+            "description": "CSV of subdomains",
+            "type": "string"
+          },
+          "subscriptionId": {
+            "type": "string"
+          },
+          "until": {
+            "description": "RFC3339 timestamp",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "RequeueByFilterPreviewResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RequeueByFilterPreviewResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "byStatus": {
+            "additionalProperties": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "description": "count broken down by status",
+            "type": "object"
+          },
+          "count": {
+            "description": "Jobs the filter matches that the caller can see",
+            "format": "int64",
+            "type": "integer"
+          },
+          "eligibleCount": {
+            "description": "How many of them a requeue would reset for this caller; send it back as confirmCount",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count",
+          "byStatus",
+          "eligibleCount"
+        ],
+        "type": "object"
+      },
+      "RequeueByFilterRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RequeueByFilterRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "aggregates": {
+            "description": "CSV of aggregates",
+            "type": "string"
+          },
+          "applications": {
+            "description": "CSV of application codes",
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "clientIds": {
+            "description": "CSV of client ids",
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "codes": {
+            "description": "CSV of codes",
+            "type": "string"
+          },
+          "confirmCount": {
+            "description": "The eligibleCount the caller was shown. If more jobs are eligible now, nothing is reset and the response is 409 FILTER_MATCH_CHANGED.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "dispatchPoolId": {
+            "type": "string"
+          },
+          "limit": {
+            "description": "Most jobs to reset in this request (default and maximum 10000)",
+            "format": "int64",
+            "maximum": 10000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "messageGroup": {
+            "description": "Exact message group",
+            "type": "string"
+          },
+          "since": {
+            "description": "RFC3339 timestamp",
+            "type": "string"
+          },
+          "source": {
+            "description": "Free-text source filter",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "statuses": {
+            "description": "CSV of statuses",
+            "type": "string"
+          },
+          "subdomains": {
+            "description": "CSV of subdomains",
+            "type": "string"
+          },
+          "subscriptionId": {
+            "type": "string"
+          },
+          "until": {
+            "description": "RFC3339 timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirmCount"
+        ],
+        "type": "object"
+      },
+      "RequeueByFilterResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RequeueByFilterResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "remaining": {
+            "description": "Eligible jobs still matching after the run; run again to continue",
+            "format": "int64",
+            "type": "integer"
+          },
+          "requeued": {
+            "description": "Jobs reset to PENDING",
+            "format": "int64",
+            "type": "integer"
+          },
+          "truncated": {
+            "description": "The run stopped at its limit (or at confirmCount) with eligible jobs left",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "requeued",
+          "truncated",
+          "remaining"
+        ],
+        "type": "object"
+      },
       "RequeueRequest": {
         "additionalProperties": true,
         "properties": {
@@ -13421,35 +13649,6 @@
             }
           },
           {
-            "explode": false,
-            "in": "query",
-            "name": "limit",
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          {
-            "explode": false,
-            "in": "query",
-            "name": "offset",
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          {
-            "description": "Max rows (default 50, max 1000)",
-            "explode": false,
-            "in": "query",
-            "name": "size",
-            "schema": {
-              "description": "Max rows (default 50, max 1000)",
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          {
             "description": "CSV of client ids",
             "explode": false,
             "in": "query",
@@ -13517,6 +13716,35 @@
             "schema": {
               "description": "Free-text source filter",
               "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Max rows (default 50, max 1000)",
+            "explode": false,
+            "in": "query",
+            "name": "size",
+            "schema": {
+              "description": "Max rows (default 50, max 1000)",
+              "format": "int64",
+              "type": "integer"
             }
           },
           {
@@ -13755,35 +13983,6 @@
             }
           },
           {
-            "explode": false,
-            "in": "query",
-            "name": "limit",
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          {
-            "explode": false,
-            "in": "query",
-            "name": "offset",
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          {
-            "description": "Max rows (default 50, max 1000)",
-            "explode": false,
-            "in": "query",
-            "name": "size",
-            "schema": {
-              "description": "Max rows (default 50, max 1000)",
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          {
             "description": "CSV of client ids",
             "explode": false,
             "in": "query",
@@ -13851,6 +14050,35 @@
             "schema": {
               "description": "Free-text source filter",
               "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Max rows (default 50, max 1000)",
+            "explode": false,
+            "in": "query",
+            "name": "size",
+            "schema": {
+              "description": "Max rows (default 50, max 1000)",
+              "format": "int64",
+              "type": "integer"
             }
           },
           {
@@ -13970,35 +14198,6 @@
             }
           },
           {
-            "explode": false,
-            "in": "query",
-            "name": "limit",
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          {
-            "explode": false,
-            "in": "query",
-            "name": "offset",
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          {
-            "description": "Max rows (default 50, max 1000)",
-            "explode": false,
-            "in": "query",
-            "name": "size",
-            "schema": {
-              "description": "Max rows (default 50, max 1000)",
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          {
             "description": "CSV of client ids",
             "explode": false,
             "in": "query",
@@ -14066,6 +14265,35 @@
             "schema": {
               "description": "Free-text source filter",
               "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Max rows (default 50, max 1000)",
+            "explode": false,
+            "in": "query",
+            "name": "size",
+            "schema": {
+              "description": "Max rows (default 50, max 1000)",
+              "format": "int64",
+              "type": "integer"
             }
           },
           {
@@ -14146,6 +14374,88 @@
           }
         },
         "summary": "Reset dispatch jobs to PENDING for re-dispatch",
+        "tags": [
+          "dispatch-jobs"
+        ]
+      }
+    },
+    "/api/dispatch-jobs/requeue-by-filter": {
+      "post": {
+        "operationId": "requeueDispatchJobsByFilter",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequeueByFilterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequeueByFilterResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Reset every dispatch job a filter matches to PENDING (confirmed count, capped)",
+        "tags": [
+          "dispatch-jobs"
+        ]
+      }
+    },
+    "/api/dispatch-jobs/requeue-by-filter/preview": {
+      "post": {
+        "operationId": "previewRequeueDispatchJobsByFilter",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequeueByFilterPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequeueByFilterPreviewResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Count the dispatch jobs a filter matches and how many a requeue would reset",
         "tags": [
           "dispatch-jobs"
         ]

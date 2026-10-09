@@ -2416,6 +2416,160 @@ export type RequestSummary = {
     unsignedReason?: string;
 };
 
+export type RequeueByFilterPreviewRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * CSV of aggregates
+     */
+    aggregates?: string;
+    /**
+     * CSV of application codes
+     */
+    applications?: string;
+    clientId?: string;
+    /**
+     * CSV of client ids
+     */
+    clientIds?: string;
+    code?: string;
+    /**
+     * CSV of codes
+     */
+    codes?: string;
+    dispatchPoolId?: string;
+    /**
+     * Exact message group
+     */
+    messageGroup?: string;
+    /**
+     * RFC3339 timestamp
+     */
+    since?: string;
+    /**
+     * Free-text source filter
+     */
+    source?: string;
+    status?: string;
+    /**
+     * CSV of statuses
+     */
+    statuses?: string;
+    /**
+     * CSV of subdomains
+     */
+    subdomains?: string;
+    subscriptionId?: string;
+    /**
+     * RFC3339 timestamp
+     */
+    until?: string;
+    [key: string]: unknown;
+};
+
+export type RequeueByFilterPreviewResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * count broken down by status
+     */
+    byStatus: {
+        [key: string]: number;
+    };
+    /**
+     * Jobs the filter matches that the caller can see
+     */
+    count: number;
+    /**
+     * How many of them a requeue would reset for this caller; send it back as confirmCount
+     */
+    eligibleCount: number;
+};
+
+export type RequeueByFilterRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * CSV of aggregates
+     */
+    aggregates?: string;
+    /**
+     * CSV of application codes
+     */
+    applications?: string;
+    clientId?: string;
+    /**
+     * CSV of client ids
+     */
+    clientIds?: string;
+    code?: string;
+    /**
+     * CSV of codes
+     */
+    codes?: string;
+    /**
+     * The eligibleCount the caller was shown. If more jobs are eligible now, nothing is reset and the response is 409 FILTER_MATCH_CHANGED.
+     */
+    confirmCount: number;
+    dispatchPoolId?: string;
+    /**
+     * Most jobs to reset in this request (default and maximum 10000)
+     */
+    limit?: number;
+    /**
+     * Exact message group
+     */
+    messageGroup?: string;
+    /**
+     * RFC3339 timestamp
+     */
+    since?: string;
+    /**
+     * Free-text source filter
+     */
+    source?: string;
+    status?: string;
+    /**
+     * CSV of statuses
+     */
+    statuses?: string;
+    /**
+     * CSV of subdomains
+     */
+    subdomains?: string;
+    subscriptionId?: string;
+    /**
+     * RFC3339 timestamp
+     */
+    until?: string;
+    [key: string]: unknown;
+};
+
+export type RequeueByFilterResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Eligible jobs still matching after the run; run again to continue
+     */
+    remaining: number;
+    /**
+     * Jobs reset to PENDING
+     */
+    requeued: number;
+    /**
+     * The run stopped at its limit (or at confirmCount) with eligible jobs left
+     */
+    truncated: boolean;
+};
+
 export type RequeueRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -4932,6 +5086,144 @@ export type RegisterCompleteRequestWritable = {
 
 export type RegisterCompleteResponseWritable = {
     credentialId: string;
+};
+
+export type RequeueByFilterPreviewRequestWritable = {
+    /**
+     * CSV of aggregates
+     */
+    aggregates?: string;
+    /**
+     * CSV of application codes
+     */
+    applications?: string;
+    clientId?: string;
+    /**
+     * CSV of client ids
+     */
+    clientIds?: string;
+    code?: string;
+    /**
+     * CSV of codes
+     */
+    codes?: string;
+    dispatchPoolId?: string;
+    /**
+     * Exact message group
+     */
+    messageGroup?: string;
+    /**
+     * RFC3339 timestamp
+     */
+    since?: string;
+    /**
+     * Free-text source filter
+     */
+    source?: string;
+    status?: string;
+    /**
+     * CSV of statuses
+     */
+    statuses?: string;
+    /**
+     * CSV of subdomains
+     */
+    subdomains?: string;
+    subscriptionId?: string;
+    /**
+     * RFC3339 timestamp
+     */
+    until?: string;
+    [key: string]: unknown;
+};
+
+export type RequeueByFilterPreviewResponseWritable = {
+    /**
+     * count broken down by status
+     */
+    byStatus: {
+        [key: string]: number;
+    };
+    /**
+     * Jobs the filter matches that the caller can see
+     */
+    count: number;
+    /**
+     * How many of them a requeue would reset for this caller; send it back as confirmCount
+     */
+    eligibleCount: number;
+};
+
+export type RequeueByFilterRequestWritable = {
+    /**
+     * CSV of aggregates
+     */
+    aggregates?: string;
+    /**
+     * CSV of application codes
+     */
+    applications?: string;
+    clientId?: string;
+    /**
+     * CSV of client ids
+     */
+    clientIds?: string;
+    code?: string;
+    /**
+     * CSV of codes
+     */
+    codes?: string;
+    /**
+     * The eligibleCount the caller was shown. If more jobs are eligible now, nothing is reset and the response is 409 FILTER_MATCH_CHANGED.
+     */
+    confirmCount: number;
+    dispatchPoolId?: string;
+    /**
+     * Most jobs to reset in this request (default and maximum 10000)
+     */
+    limit?: number;
+    /**
+     * Exact message group
+     */
+    messageGroup?: string;
+    /**
+     * RFC3339 timestamp
+     */
+    since?: string;
+    /**
+     * Free-text source filter
+     */
+    source?: string;
+    status?: string;
+    /**
+     * CSV of statuses
+     */
+    statuses?: string;
+    /**
+     * CSV of subdomains
+     */
+    subdomains?: string;
+    subscriptionId?: string;
+    /**
+     * RFC3339 timestamp
+     */
+    until?: string;
+    [key: string]: unknown;
+};
+
+export type RequeueByFilterResponseWritable = {
+    /**
+     * Eligible jobs still matching after the run; run again to continue
+     */
+    remaining: number;
+    /**
+     * Jobs reset to PENDING
+     */
+    requeued: number;
+    /**
+     * The run stopped at its limit (or at confirmCount) with eligible jobs left
+     */
+    truncated: boolean;
 };
 
 export type RequeueRequestWritable = {
@@ -7524,12 +7816,6 @@ export type ListDispatchJobsData = {
          * Exact message group
          */
         messageGroup?: string;
-        limit?: number;
-        offset?: number;
-        /**
-         * Max rows (default 50, max 1000)
-         */
-        size?: number;
         /**
          * CSV of client ids
          */
@@ -7558,6 +7844,12 @@ export type ListDispatchJobsData = {
          * Free-text source filter
          */
         source?: string;
+        limit?: number;
+        offset?: number;
+        /**
+         * Max rows (default 50, max 1000)
+         */
+        size?: number;
         /**
          * createdAt.asc | createdAt.desc (default)
          */
@@ -7684,12 +7976,6 @@ export type ListDispatchJobsRawData = {
          * Exact message group
          */
         messageGroup?: string;
-        limit?: number;
-        offset?: number;
-        /**
-         * Max rows (default 50, max 1000)
-         */
-        size?: number;
         /**
          * CSV of client ids
          */
@@ -7718,6 +8004,12 @@ export type ListDispatchJobsRawData = {
          * Free-text source filter
          */
         source?: string;
+        limit?: number;
+        offset?: number;
+        /**
+         * Max rows (default 50, max 1000)
+         */
+        size?: number;
         /**
          * createdAt.asc | createdAt.desc (default)
          */
@@ -7765,12 +8057,6 @@ export type ListDispatchJobsRawAliasData = {
          * Exact message group
          */
         messageGroup?: string;
-        limit?: number;
-        offset?: number;
-        /**
-         * Max rows (default 50, max 1000)
-         */
-        size?: number;
         /**
          * CSV of client ids
          */
@@ -7799,6 +8085,12 @@ export type ListDispatchJobsRawAliasData = {
          * Free-text source filter
          */
         source?: string;
+        limit?: number;
+        offset?: number;
+        /**
+         * Max rows (default 50, max 1000)
+         */
+        size?: number;
         /**
          * createdAt.asc | createdAt.desc (default)
          */
@@ -7849,6 +8141,56 @@ export type RequeueDispatchJobsResponses = {
 };
 
 export type RequeueDispatchJobsResponse = RequeueDispatchJobsResponses[keyof RequeueDispatchJobsResponses];
+
+export type RequeueDispatchJobsByFilterData = {
+    body: RequeueByFilterRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/dispatch-jobs/requeue-by-filter';
+};
+
+export type RequeueDispatchJobsByFilterErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type RequeueDispatchJobsByFilterError = RequeueDispatchJobsByFilterErrors[keyof RequeueDispatchJobsByFilterErrors];
+
+export type RequeueDispatchJobsByFilterResponses = {
+    /**
+     * OK
+     */
+    200: RequeueByFilterResponse;
+};
+
+export type RequeueDispatchJobsByFilterResponse = RequeueDispatchJobsByFilterResponses[keyof RequeueDispatchJobsByFilterResponses];
+
+export type PreviewRequeueDispatchJobsByFilterData = {
+    body: RequeueByFilterPreviewRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/dispatch-jobs/requeue-by-filter/preview';
+};
+
+export type PreviewRequeueDispatchJobsByFilterErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PreviewRequeueDispatchJobsByFilterError = PreviewRequeueDispatchJobsByFilterErrors[keyof PreviewRequeueDispatchJobsByFilterErrors];
+
+export type PreviewRequeueDispatchJobsByFilterResponses = {
+    /**
+     * OK
+     */
+    200: RequeueByFilterPreviewResponse;
+};
+
+export type PreviewRequeueDispatchJobsByFilterResponse = PreviewRequeueDispatchJobsByFilterResponses[keyof PreviewRequeueDispatchJobsByFilterResponses];
 
 export type GetDispatchJobData = {
     body?: never;

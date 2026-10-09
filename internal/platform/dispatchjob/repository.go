@@ -81,6 +81,105 @@ type FilterParams struct {
 	// clientId/clientIds filters can only narrow within the principal's own
 	// tenants, never reach across them.
 	AccessibleClientIDs *[]string
+
+	// ExcludePlatformScoped drops platform-scoped jobs (client_id IS NULL):
+	// the requeue-by-filter id walk sets it for a caller that may see those
+	// jobs but may not requeue them.
+	ExcludePlatformScoped bool
+	// AfterID keeps only jobs whose id sorts after it — the keyset cursor of
+	// the requeue-by-filter id walk.
+	AfterID *string
+}
+
+// where renders the filter's conditions. The list, the match count and the
+// id walk all build their WHERE here, so they cannot select different rows.
+func (p FilterParams) where() repocommon.Filter {
+	var f repocommon.Filter
+	f.EqPtr("status", p.Status)
+	f.Any("status", p.Statuses)
+	f.EqPtr("client_id", p.ClientID)
+	f.Any("client_id", p.ClientIDs)
+	if p.AccessibleClientIDs != nil {
+		// SECURITY: SQL-level tenant scoping — platform-scoped rows plus the
+		// principal's own tenants. Parenthesization matters: the OR group
+		// must AND with the caller's other filters.
+		f.Clause("(client_id IS NULL OR client_id = ANY($%d))", *p.AccessibleClientIDs)
+	}
+	if p.ExcludePlatformScoped {
+		f.Cond("client_id IS NOT NULL")
+	}
+	f.EqPtr("dispatch_pool_id", p.DispatchPoolID)
+	f.EqPtr("subscription_id", p.SubscriptionID)
+	f.EqPtr("code", p.Code)
+	f.Any("code", p.Codes)
+	f.EqPtr("source", p.Source)
+	f.EqPtr("message_group", p.MessageGroup)
+	// Facets filter the projection's real columns (split_part of code), backed
+	// by their own indexes — replacing the old leading-wildcard code LIKEs.
+	f.Any("application", p.Applications)
+	f.Any("subdomain", p.Subdomains)
+	f.Any("aggregate", p.Aggregates)
+	if p.Since != nil {
+		f.Clause("created_at >= $%d", *p.Since)
+	}
+	if p.Until != nil {
+		f.Clause("created_at <= $%d", *p.Until)
+	}
+	if p.AfterID != nil {
+		f.Clause("id > $%d", *p.AfterID)
+	}
+	return f
+}
+
+// MatchBucket is one (status, client) group of the jobs a filter matches.
+type MatchBucket struct {
+	Status   string
+	ClientID *string
+	Count    int64
+}
+
+// CountMatchesSQL renders the match count for p, for plan tests.
+func CountMatchesSQL(p FilterParams) (string, []any) {
+	f := p.where()
+	return `SELECT status, client_id, count(*) FROM msg_dispatch_jobs_read` + f.Where() +
+		` GROUP BY status, client_id`, f.Args()
+}
+
+// CountMatches counts the jobs p matches, grouped by status and client, so a
+// caller can apply its own per-client rule to each group. Reads the
+// projection, like the list.
+func (r *Repository) CountMatches(ctx context.Context, p FilterParams) ([]MatchBucket, error) {
+	q, args := CountMatchesSQL(p)
+	rows, err := r.pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (MatchBucket, error) {
+		var b MatchBucket
+		err := row.Scan(&b.Status, &b.ClientID, &b.Count)
+		return b, err
+	})
+}
+
+// MatchingIDsSQL renders one page of the id walk for p, for plan tests.
+func MatchingIDsSQL(p FilterParams, limit int) (string, []any) {
+	f := p.where()
+	q := `SELECT id FROM msg_dispatch_jobs_read` + f.Where() + ` ORDER BY id`
+	q += fmt.Sprintf(" LIMIT $%d", f.Arg(limit))
+	return q, f.Args()
+}
+
+// MatchingIDs returns up to limit ids of the jobs p matches, in id order,
+// starting after p.AfterID. Walking by id means a job that stops matching
+// while the walk runs (it was just requeued) cannot shift the next page:
+// every page starts strictly after the last id already handed out.
+func (r *Repository) MatchingIDs(ctx context.Context, p FilterParams, limit int) ([]string, error) {
+	q, args := MatchingIDsSQL(p, limit)
+	rows, err := r.pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
 
 // FindByID loads a single job (write table).
@@ -139,34 +238,7 @@ const readSelect = `SELECT id, external_id, source, kind, code, subject,
 // /api/dispatch-jobs). Reads the msg_dispatch_jobs_read projection — the write
 // table carries no query indexes (migration 015). Hand-rolled dynamic query.
 func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]DispatchJob, error) {
-	var f repocommon.Filter
-	f.EqPtr("status", p.Status)
-	f.Any("status", p.Statuses)
-	f.EqPtr("client_id", p.ClientID)
-	f.Any("client_id", p.ClientIDs)
-	if p.AccessibleClientIDs != nil {
-		// SECURITY: SQL-level tenant scoping — platform-scoped rows plus the
-		// principal's own tenants. Parenthesization matters: the OR group
-		// must AND with the caller's other filters.
-		f.Clause("(client_id IS NULL OR client_id = ANY($%d))", *p.AccessibleClientIDs)
-	}
-	f.EqPtr("dispatch_pool_id", p.DispatchPoolID)
-	f.EqPtr("subscription_id", p.SubscriptionID)
-	f.EqPtr("code", p.Code)
-	f.Any("code", p.Codes)
-	f.EqPtr("source", p.Source)
-	f.EqPtr("message_group", p.MessageGroup)
-	// Facets filter the projection's real columns (split_part of code), backed
-	// by their own indexes — replacing the old leading-wildcard code LIKEs.
-	f.Any("application", p.Applications)
-	f.Any("subdomain", p.Subdomains)
-	f.Any("aggregate", p.Aggregates)
-	if p.Since != nil {
-		f.Clause("created_at >= $%d", *p.Since)
-	}
-	if p.Until != nil {
-		f.Clause("created_at <= $%d", *p.Until)
-	}
+	f := p.where()
 	order := " ORDER BY created_at DESC"
 	if p.SortAscending {
 		order = " ORDER BY created_at ASC"

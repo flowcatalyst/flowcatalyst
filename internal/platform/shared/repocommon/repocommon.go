@@ -63,6 +63,11 @@ func (f *Filter) Clause(format string, v any) {
 	f.conds = append(f.conds, fmt.Sprintf(format, len(f.args)))
 }
 
+// Cond appends a parameter-free condition, e.g. "client_id IS NOT NULL".
+func (f *Filter) Cond(cond string) {
+	f.conds = append(f.conds, cond)
+}
+
 // Arg appends a bare argument outside the WHERE clause (LIMIT/OFFSET)
 // and returns its positional index.
 func (f *Filter) Arg(v any) int {

@@ -47,11 +47,12 @@ func TestFilter(t *testing.T) {
 	f.Any("client_id", []string{"c1", "c2"})
 	f.Any("subdomain", nil) // empty → no condition
 	f.Clause("(client_id IS NULL OR client_id = ANY($%d))", []string{"c3"})
+	f.Cond("client_id IS NOT NULL") // no argument consumed
 	if n := f.Arg(int64(20)); n != 5 {
 		t.Errorf("Arg index = %d, want 5", n)
 	}
 
-	wantWhere := " WHERE status = $1 AND source = $2 AND client_id = ANY($3) AND (client_id IS NULL OR client_id = ANY($4))"
+	wantWhere := " WHERE status = $1 AND source = $2 AND client_id = ANY($3) AND (client_id IS NULL OR client_id = ANY($4)) AND client_id IS NOT NULL"
 	if f.Where() != wantWhere {
 		t.Errorf("Where() = %q, want %q", f.Where(), wantWhere)
 	}

@@ -74,6 +74,8 @@ func Register(api huma.API, s *State) {
 	apiroute.Get(g, "getDispatchJobRaw", "/api/dispatch-jobs/{id}/raw", "Get a dispatch job (raw)", s.getRaw)
 	apiroute.Get(g, "listDispatchJobAttempts", "/api/dispatch-jobs/{id}/attempts", "List a dispatch job's attempt history", s.attempts)
 	apiroute.Post(g, "requeueDispatchJobs", "/api/dispatch-jobs/requeue", "Reset dispatch jobs to PENDING for re-dispatch", http.StatusOK, s.requeue)
+	apiroute.Post(g, "previewRequeueDispatchJobsByFilter", "/api/dispatch-jobs/requeue-by-filter/preview", "Count the dispatch jobs a filter matches and how many a requeue would reset", http.StatusOK, s.requeueByFilterPreview)
+	apiroute.Post(g, "requeueDispatchJobsByFilter", "/api/dispatch-jobs/requeue-by-filter", "Reset every dispatch job a filter matches to PENDING (confirmed count, capped)", http.StatusOK, s.requeueByFilter)
 	apiroute.Post(g, "cancelDispatchJob", "/api/dispatch-jobs/{id}/cancel", "Cancel a FAILED dispatch job", http.StatusOK, s.cancel)
 	apiroute.Post(g, "completeDispatchJob", "/api/dispatch-jobs/{id}/complete", "Mark a FAILED dispatch job COMPLETED (delivered out of band)", http.StatusOK, s.complete)
 	apiroute.Post(g, "signDispatchJob", "/api/dispatch-jobs/{id}/sign", "Build the job's delivery (signing account, headers, signature) without sending it", http.StatusOK, s.sign)
@@ -108,6 +110,8 @@ func registerBFF(api huma.API, s *State, base, opPrefix, tag string) {
 	apiroute.Get(g, "getDispatchJobRaw"+opPrefix, base+"/{id}/raw", "Get a dispatch job with raw row", s.getRaw)
 	apiroute.Get(g, "listDispatchJobAttempts"+opPrefix, base+"/{id}/attempts", "List a dispatch job's attempt history", s.attempts)
 	apiroute.Post(g, "requeueDispatchJobs"+opPrefix, base+"/requeue", "Reset dispatch jobs to PENDING for re-dispatch", http.StatusOK, s.requeue)
+	apiroute.Post(g, "previewRequeueDispatchJobsByFilter"+opPrefix, base+"/requeue-by-filter/preview", "Count the dispatch jobs a filter matches and how many a requeue would reset", http.StatusOK, s.requeueByFilterPreview)
+	apiroute.Post(g, "requeueDispatchJobsByFilter"+opPrefix, base+"/requeue-by-filter", "Reset every dispatch job a filter matches to PENDING (confirmed count, capped)", http.StatusOK, s.requeueByFilter)
 	apiroute.Post(g, "cancelDispatchJob"+opPrefix, base+"/{id}/cancel", "Cancel a FAILED dispatch job", http.StatusOK, s.cancel)
 	apiroute.Post(g, "completeDispatchJob"+opPrefix, base+"/{id}/complete", "Mark a FAILED dispatch job COMPLETED (delivered out of band)", http.StatusOK, s.complete)
 	apiroute.Post(g, "signDispatchJob"+opPrefix, base+"/{id}/sign", "Build the job's delivery (signing account, headers, signature) without sending it", http.StatusOK, s.sign)
@@ -143,29 +147,36 @@ func (s *State) sign(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out
 	return &apicommon.Out[dispatchprocessing.DeliveryPlan]{Body: *plan}, nil
 }
 
-type listInput struct {
-	Status         string `query:"status"`
-	ClientID       string `query:"clientId"`
-	DispatchPoolID string `query:"dispatchPoolId"`
-	SubscriptionID string `query:"subscriptionId"`
-	Code           string `query:"code"`
-	Since          string `query:"since" doc:"RFC3339 timestamp"`
-	Until          string `query:"until" doc:"RFC3339 timestamp"`
-	MessageGroup   string `query:"messageGroup" doc:"Exact message group"`
-	Limit          int    `query:"limit"`
-	Offset         int    `query:"offset"`
+// DispatchJobFilter is the dispatch-job filter: the list's query parameters
+// and, under the same names, the requeue-by-filter request bodies. One struct
+// and one conversion (toParams) so the list and a bulk requeue of "what the
+// list shows" cannot select different jobs. The plural fields are
+// comma-separated multi-filters in both places.
+type DispatchJobFilter struct {
+	Status         string `query:"status" json:"status,omitempty"`
+	ClientID       string `query:"clientId" json:"clientId,omitempty"`
+	DispatchPoolID string `query:"dispatchPoolId" json:"dispatchPoolId,omitempty"`
+	SubscriptionID string `query:"subscriptionId" json:"subscriptionId,omitempty"`
+	Code           string `query:"code" json:"code,omitempty"`
+	Since          string `query:"since" json:"since,omitempty" doc:"RFC3339 timestamp"`
+	Until          string `query:"until" json:"until,omitempty" doc:"RFC3339 timestamp"`
+	MessageGroup   string `query:"messageGroup" json:"messageGroup,omitempty" doc:"Exact message group"`
+	ClientIDs      string `query:"clientIds" json:"clientIds,omitempty" doc:"CSV of client ids"`
+	Statuses       string `query:"statuses" json:"statuses,omitempty" doc:"CSV of statuses"`
+	Applications   string `query:"applications" json:"applications,omitempty" doc:"CSV of application codes"`
+	Subdomains     string `query:"subdomains" json:"subdomains,omitempty" doc:"CSV of subdomains"`
+	Aggregates     string `query:"aggregates" json:"aggregates,omitempty" doc:"CSV of aggregates"`
+	Codes          string `query:"codes" json:"codes,omitempty" doc:"CSV of codes"`
+	Source         string `query:"source" json:"source,omitempty" doc:"Free-text source filter"`
+}
 
-	// SPA params (dispatch-jobs.ts:35-44). `size` caps rows; the plural
-	// params are comma-separated multi-filters.
-	Size         int    `query:"size" doc:"Max rows (default 50, max 1000)"`
-	ClientIDs    string `query:"clientIds" doc:"CSV of client ids"`
-	Statuses     string `query:"statuses" doc:"CSV of statuses"`
-	Applications string `query:"applications" doc:"CSV of application codes"`
-	Subdomains   string `query:"subdomains" doc:"CSV of subdomains"`
-	Aggregates   string `query:"aggregates" doc:"CSV of aggregates"`
-	Codes        string `query:"codes" doc:"CSV of codes"`
-	Source       string `query:"source" doc:"Free-text source filter"`
-	Sort         string `query:"sort" doc:"createdAt.asc | createdAt.desc (default)"`
+type listInput struct {
+	DispatchJobFilter
+	Limit  int `query:"limit"`
+	Offset int `query:"offset"`
+	// `size` (SPA) caps rows like `limit` (SDK).
+	Size int    `query:"size" doc:"Max rows (default 50, max 1000)"`
+	Sort string `query:"sort" doc:"createdAt.asc | createdAt.desc (default)"`
 }
 
 // splitCSV splits a comma-separated query value: trim, drop empties.
@@ -183,43 +194,57 @@ func splitCSV(s string) []string {
 	return out
 }
 
-func (in *listInput) toFilters() dispatchjob.FilterParams {
-	ts := func(v string) *time.Time {
+// toParams converts the filter. With strict, an unparseable since/until is a
+// 400: the list ignores one (and shows more rows), but a bulk requeue that
+// silently dropped a bound would reset more jobs than the caller asked for.
+func (in *DispatchJobFilter) toParams(strict bool) (dispatchjob.FilterParams, error) {
+	var bad error
+	ts := func(name, v string) *time.Time {
 		if v == "" {
 			return nil
 		}
-		if t, err := time.Parse(time.RFC3339, v); err == nil {
-			return &t
+		t, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			if bad == nil {
+				bad = usecase.Validation("INVALID_TIMESTAMP", name+" must be an RFC3339 timestamp")
+			}
+			return nil
 		}
-		return nil
+		return &t
 	}
-	// `size` (SPA) and `limit` (SDK) both cap rows; size wins when set.
-	limit := in.Limit
-	if in.Size > 0 {
-		limit = in.Size
-	}
-	// `source` free-text reuses the singular Source filter.
-	src := apicommon.OptStr(in.Source)
-	return dispatchjob.FilterParams{
+	p := dispatchjob.FilterParams{
 		Status:         apicommon.OptStr(in.Status),
 		ClientID:       apicommon.OptStr(in.ClientID),
 		DispatchPoolID: apicommon.OptStr(in.DispatchPoolID),
 		SubscriptionID: apicommon.OptStr(in.SubscriptionID),
 		Code:           apicommon.OptStr(in.Code),
-		Source:         src,
+		Source:         apicommon.OptStr(in.Source),
 		MessageGroup:   apicommon.OptStr(in.MessageGroup),
-		Since:          ts(in.Since),
-		Until:          ts(in.Until),
-		Limit:          limit,
-		Offset:         in.Offset,
+		Since:          ts("since", in.Since),
+		Until:          ts("until", in.Until),
 		ClientIDs:      splitCSV(in.ClientIDs),
 		Statuses:       splitCSV(in.Statuses),
 		Applications:   splitCSV(in.Applications),
 		Subdomains:     splitCSV(in.Subdomains),
 		Aggregates:     splitCSV(in.Aggregates),
 		Codes:          splitCSV(in.Codes),
-		SortAscending:  in.Sort == "createdAt.asc",
 	}
+	if strict && bad != nil {
+		return dispatchjob.FilterParams{}, bad
+	}
+	return p, nil
+}
+
+func (in *listInput) toFilters() dispatchjob.FilterParams {
+	p, _ := in.toParams(false)
+	// `size` (SPA) and `limit` (SDK) both cap rows; size wins when set.
+	p.Limit = in.Limit
+	if in.Size > 0 {
+		p.Limit = in.Size
+	}
+	p.Offset = in.Offset
+	p.SortAscending = in.Sort == "createdAt.asc"
+	return p
 }
 
 // scopeFilters applies SQL-side tenant scoping (anchor sees all → no
@@ -228,11 +253,7 @@ func (in *listInput) toFilters() dispatchjob.FilterParams {
 // caller-controlled filters must only narrow within the principal's own
 // tenants. Same pattern as scheduledjob's and event's list.
 func scopeFilters(ac *auth.AuthContext, f dispatchjob.FilterParams) dispatchjob.FilterParams {
-	if !ac.IsAnchor() {
-		clients := ac.Clients
-		f.AccessibleClientIDs = &clients
-	}
-	return f
+	return operations.VisibleTo(ac, f)
 }
 
 // list's Body is a bare JSON array — the SPA's DispatchJobListPage binds
@@ -418,6 +439,76 @@ func (s *State) requeue(ctx context.Context, in *apicommon.In[RequeueRequest]) (
 		return nil, err
 	}
 	return &apicommon.Out[RequeueResponse]{Body: RequeueResponse{Requeued: int64(len(event.IDs))}}, nil
+}
+
+// RequeueByFilterPreviewRequest is the body of POST
+// /dispatch-jobs/requeue-by-filter/preview: the list's filter.
+type RequeueByFilterPreviewRequest struct {
+	DispatchJobFilter
+}
+
+// RequeueByFilterPreviewResponse describes the jobs a filter matches.
+type RequeueByFilterPreviewResponse struct {
+	Count         int64            `json:"count" doc:"Jobs the filter matches that the caller can see"`
+	ByStatus      map[string]int64 `json:"byStatus" doc:"count broken down by status"`
+	EligibleCount int64            `json:"eligibleCount" doc:"How many of them a requeue would reset for this caller; send it back as confirmCount"`
+}
+
+// RequeueByFilterRequest is the body of POST /dispatch-jobs/requeue-by-filter:
+// the list's filter, the eligible count the caller confirmed, and a cap.
+type RequeueByFilterRequest struct {
+	DispatchJobFilter
+	ConfirmCount int64 `json:"confirmCount" minimum:"0" doc:"The eligibleCount the caller was shown. If more jobs are eligible now, nothing is reset and the response is 409 FILTER_MATCH_CHANGED."`
+	Limit        int   `json:"limit,omitempty" minimum:"0" maximum:"10000" doc:"Most jobs to reset in this request (default and maximum 10000)"`
+}
+
+// RequeueByFilterResponse reports a requeue-by-filter run.
+type RequeueByFilterResponse struct {
+	Requeued  int64 `json:"requeued" doc:"Jobs reset to PENDING"`
+	Truncated bool  `json:"truncated" doc:"The run stopped at its limit (or at confirmCount) with eligible jobs left"`
+	Remaining int64 `json:"remaining" doc:"Eligible jobs still matching after the run; run again to continue"`
+}
+
+// requeueByFilterPreview counts what a requeue-by-filter would touch. Same
+// gate and visibility as the list.
+func (s *State) requeueByFilterPreview(ctx context.Context, in *apicommon.In[RequeueByFilterPreviewRequest]) (*apicommon.Out[RequeueByFilterPreviewResponse], error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
+		return nil, err
+	}
+	f, err := in.Body.toParams(true)
+	if err != nil {
+		return nil, err
+	}
+	sum, err := operations.SummarizeMatches(ctx, s.Repo, f)
+	if err != nil {
+		return nil, err
+	}
+	return &apicommon.Out[RequeueByFilterPreviewResponse]{Body: RequeueByFilterPreviewResponse{
+		Count: sum.Count, ByStatus: sum.ByStatus, EligibleCount: sum.Eligible,
+	}}, nil
+}
+
+// requeueByFilter resets every job the filter matches — up to limit and never
+// more than confirmCount — through ResendDispatchJobs, ResendBatchSize ids per
+// transaction. Same gate as requeue; tenant scoping stays in the use case.
+func (s *State) requeueByFilter(ctx context.Context, in *apicommon.In[RequeueByFilterRequest]) (*apicommon.Out[RequeueByFilterResponse], error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
+		return nil, err
+	}
+	f, err := in.Body.toParams(true)
+	if err != nil {
+		return nil, err
+	}
+	ec := auth.NewExecutionContext(ctx)
+	res, err := operations.ResendByFilter(ctx, s.UoW, s.Repo, f, in.Body.ConfirmCount, in.Body.Limit, ec)
+	if err != nil {
+		return nil, err
+	}
+	return &apicommon.Out[RequeueByFilterResponse]{Body: RequeueByFilterResponse{
+		Requeued: res.Requeued, Truncated: res.Remaining > 0, Remaining: res.Remaining,
+	}}, nil
 }
 
 // cancel overrides a FAILED job to CANCELLED. Gated on the same
