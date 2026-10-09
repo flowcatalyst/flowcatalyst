@@ -7,9 +7,10 @@ The new UI lives under `/ui` next to the SPA, which stays the default: no SPA ro
 `/ui` and no SPA code is removed without the owner's approval, area by area.
 
 Status (2026-10-09): foundations, the Phase 1 kit decisions (row actions, toolbar state part,
-flash stack and the Datastar error contract, an 86-icon sprite) `/ui/dispatch-pools` and
+flash stack and the Datastar error contract, an icon sprite, now 90 icons), and `/ui/dispatch-pools` and
 `/ui/connections` at parity with the SPA pages: list, record drawer, create and edit dialogs,
-state actions and delete behind confirmations.
+state actions and delete behind confirmations; the app shell works at phone width and dark mode is
+rendered by the server from a theme cookie.
 
 ## Architecture
 
@@ -219,6 +220,21 @@ dismissed and are `role="alert"`. The fallback shows at most one message of each
 - A 401 from any action navigates to the login page (one `data-on:datastar-fetch` listener on
   `<body>` in the layout); every other failure is the flash stack's (above).
 
+### Theme and narrow screens
+
+- **Theme** (kit `app-shell.md`, Theme): `shell.resolveTheme` reads `fc_theme` (the user's choice,
+  `light`/`dark`, absent = system) and `fc_scheme` (the system scheme the page last observed) and
+  renders `<html class="dark">` plus the `theme`/`dark` signals (`kit.ThemeHTMLAttrs`), so a dark
+  page is dark on first paint. `?theme=light|dark` overrides one page (screenshots) and stores
+  nothing. The user menu has a System/Light/Dark picker (`kit.ThemeChoices`). Limit, no inline
+  script being allowed: in system mode a browser's first page (and the first page after the OS
+  scheme changes) renders light and turns dark when Datastar runs; every later page is right on
+  first paint (`TestResolveTheme`, `TestPageRendersTheThemeAndTheMobileShell`).
+- **Narrow screens** (< 768px): the kit's top bar and off-canvas sidebar (`$sidebarMobileOpen`, always
+  closed on load); collapse applies only on wide screens. Tables scroll inside their card; the
+  page itself has no horizontal scroll at 390px (checked in headless Chrome, both pages, light and
+  dark, dialog and drawer open).
+
 ## CSRF
 
 Sessions are the `fc_session` cookie (HttpOnly, `SameSite=Lax`, Secure outside dev), so
@@ -325,24 +341,52 @@ Recorded, not changed:
 - Gallery screenshots predate the fixes above (the file input now renders as one).
 
 Gaps the pilot found, and their state after Phase 1 step 1 (kit commits `1317a2f`, `2dd6ff6`):
-1. **Icons: done.** 86 icons (was 38), built by the kit's `icons/build-sprite.sh`; the sidebar
+1. **Icons: done.** 86 icons (was 38; 90 since the theme picker and the phone top bar), built by the kit's `icons/build-sprite.sh`; the sidebar
    uses the Lucide counterparts of the SPA's PrimeIcons (no approximations); Create Pool has `plus`.
 2. **Row actions: done.** Kit spec `row-actions.md`; the proposed part is gone.
 3. **Table toolbar live updates: done.** The `{formId}-state` part (above). This also fixed a pilot
    bug: a live sort click did not update the hidden sort fields, so the next search lost the sort.
-4. **App shell on narrow screens**: open (`app-shell` has no mobile layout).
+4. **App shell on narrow screens: done** (above).
 5. **Form controls for create/edit: partly done.** Form dialog, autocomplete/client select,
    number input (`input` type number), form section, detail field. Open: multi-select with
    search, password with strength meter, secret-reference input (`SecretRefInput`),
    permission-denied modal.
-6. **Dark mode** flashes light once before Datastar loads: open (proposal: a theme cookie the server
-   renders as the `dark` class).
+6. **Dark mode without the light flash: done, with one limit** (system mode's first page in a
+   browser; above).
 7. **Flash messages: done** (`shell.Flash` for Datastar actions; the fixed-key cookie for a native
    post/redirect/get, above).
 8. **Datastar errors: done** (the contract and fallback above).
 9. **Login `?redirect=`: done** for `/ui` targets.
 
-## Not verified
+## Phase 1 CRUD (dispatch pools, connections, shell): verification
+
+Isolated instance (own embedded Postgres on 25432 with a temp data dir, API on 18080, metrics on
+19090, `HOME`/`XDG_*` in a temp dir; the user's instance untouched), Chrome:
+- Pools, desktop, light and dark: create dialog (native `required` first, then the use case's
+  "already exists" patched onto Code with focus there; the dirty state survived the error patch);
+  Escape on a changed form asks to discard; the client select narrowed by the server search;
+  success closed the dialog, flashed, re-rendered the table and opened the new pool in the drawer;
+  deep link `/ui/dispatch-pools/{id}` opens the drawer; Suspend from the drawer and from the row
+  menu (drawer closed) through the shared confirmation; edit from the drawer (Save disabled until a
+  change, focus back on Edit after saving, drawer refreshed); Delete closed the drawer. No console
+  messages.
+- Connections, desktop: create with the service account select and the client select; flash,
+  table, drawer.
+- Phone width (390×844, headless Chrome over CDP with the dev test headers): both pages, light and
+  dark, menu open/Escape (focus to the close button and back), create dialog, drawer; no
+  horizontal page scroll, no console errors or warnings.
+- Theme: Dark in the picker → the next server response has `class="dark"`; System with a light OS →
+  no class.
+- Found in the browser and fixed: a form read after the SSE headers were flushed came back empty
+  (multipart from Datastar), so the drawer did not refresh; `.fc-main`'s base rule overrode the
+  phone layout.
+
+**Not exercised in a browser**: the 403 "refused" fallback from a real guard refusal (only the
+listener, with a dispatched `datastar-fetch` error event; a same-origin page cannot fail CSRF), the
+native (no-JavaScript) post/redirect/get path (unit tests cover it), system mode with a dark OS
+(unit test), Firefox/Safari, screen readers, touch.
+
+## Not verified (earlier phases)
 
 - Browsers other than Chrome (headless, via the DevTools protocol), screen readers, touch.
 - The visual check ran against an isolated instance (own Postgres on a temp data dir, own ports,

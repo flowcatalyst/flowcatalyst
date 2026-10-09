@@ -71,7 +71,9 @@ func (s *Shell) render(w http.ResponseWriter, r *http.Request, status int, page 
 		collapsed = true
 	}
 	flashes := s.takeFlash(w, r)
-	writeHTML(w, r, status, document(page.Title, collapsed, props, flashes, content))
+	theme := resolveTheme(r)
+	props.Theme = theme.choice
+	writeHTML(w, r, status, document(page.Title, collapsed, theme, props, flashes, content))
 }
 
 func (s *Shell) user(ctx context.Context, ac *auth.AuthContext) kit.ShellUser {
@@ -131,7 +133,7 @@ func (s *Shell) Deny(w http.ResponseWriter, r *http.Request, status int, message
 		return
 	}
 	if ac := auth.FromContext(r.Context()); ac == nil || ac.IsRoleless() {
-		writeHTML(w, r, status, bareDocument(title, problem(title, message)))
+		writeHTML(w, r, status, bareDocument(title, resolveTheme(r), problem(title, message)))
 		return
 	}
 	s.render(w, r, status, Page{Title: title, Path: r.URL.Path}, problem(title, message))

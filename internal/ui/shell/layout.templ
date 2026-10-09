@@ -5,10 +5,6 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
 )
 
-// darkSignalExpr starts dark mode from the OS preference; ?theme=dark or
-// ?theme=light overrides it (as the kit gallery does), which screenshots use.
-const darkSignalExpr = "new URLSearchParams(location.search).get('theme') === 'dark' || (new URLSearchParams(location.search).get('theme') !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)"
-
 // sessionExpiredExpr: a Datastar action answered 401 (the session expired
 // while the page was open) navigates to the login page, returning here after.
 // Every other failed request is the flash stack's fallback (kit.FlashStack).
@@ -21,9 +17,9 @@ const FlashStackID = "flash-stack"
 
 // document is the full HTML page: head with the hashed kit assets, the app
 // shell, and the page content in <main>.
-templ document(title string, collapsed bool, shellProps kit.AppShellProps, flashes []kit.FlashMessageProps, content templ.Component) {
+templ document(title string, collapsed bool, theme pageTheme, shellProps kit.AppShellProps, flashes []kit.FlashMessageProps, content templ.Component) {
 	<!DOCTYPE html>
-	<html lang="en" { kit.ShellHTMLAttrs(collapsed)... } data-signals:dark={ darkSignalExpr } data-class:dark="$dark">
+	<html lang="en" { kit.ShellHTMLAttrs(collapsed)... } { kit.ThemeHTMLAttrs(theme.choice, theme.dark)... }>
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -46,9 +42,9 @@ templ document(title string, collapsed bool, shellProps kit.AppShellProps, flash
 }
 
 // bareDocument is a page without the app shell (errors before a session exists).
-templ bareDocument(title string, content templ.Component) {
+templ bareDocument(title string, theme pageTheme, content templ.Component) {
 	<!DOCTYPE html>
-	<html lang="en" data-signals:dark={ darkSignalExpr } data-class:dark="$dark">
+	<html lang="en" { kit.ThemeHTMLAttrs(theme.choice, theme.dark)... }>
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>

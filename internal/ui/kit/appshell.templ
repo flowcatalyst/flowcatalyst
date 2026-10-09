@@ -39,6 +39,9 @@ type AppShellProps struct {
 	SignOutAction     string `json:"signOutAction"`
 	// SignOutAttrs go on the Sign Out <form>.
 	SignOutAttrs templ.Attributes `json:"signOutAttrs"`
+	// Theme is the user's theme choice (ThemeSystem, ThemeLight, ThemeDark);
+	// non-empty renders the theme picker in the user menu.
+	Theme ThemeChoice `json:"theme"`
 }
 
 // SidebarCollapsedSignal is the app shell's collapse signal (on <html>).
@@ -50,17 +53,37 @@ const SidebarCookie = "fc_sidebar"
 
 const collapseClickExpr = "$sidebarCollapsed = !$sidebarCollapsed; document.cookie = 'fc_sidebar=' + ($sidebarCollapsed ? 'collapsed' : '') + ';path=/;max-age=31536000;samesite=lax'"
 
+// SidebarMobileOpenSignal is the narrow-screen sidebar's open state (on <html>).
+const SidebarMobileOpenSignal = "sidebarMobileOpen"
+
 // ShellHTMLAttrs are the attributes app-shell.md puts on <html>: the collapse
-// signal (initial value rendered from the fc_sidebar cookie) and the class it drives.
+// signal (initial value rendered from the fc_sidebar cookie) and the class it
+// drives, and the narrow-screen sidebar's signal and class (closed on load).
 func ShellHTMLAttrs(collapsed bool) templ.Attributes {
 	v := "false"
 	if collapsed {
 		v = "true"
 	}
 	return templ.Attributes{
-		"data-signals:sidebar-collapsed": v,
-		"data-class:fc-collapsed":        "$sidebarCollapsed",
+		"data-signals:sidebar-collapsed":   v,
+		"data-class:fc-collapsed":          "$sidebarCollapsed",
+		"data-signals:sidebar-mobile-open": "false",
+		"data-class:fc-mobile-open":        "$sidebarMobileOpen",
 	}
+}
+
+// Narrow-screen sidebar: the top bar's menu button opens it and moves focus
+// to its close button; the close button, the backdrop and Escape close it and
+// return focus to the menu button.
+const (
+	mobileOpenExpr   = "$sidebarMobileOpen = true; setTimeout(() => document.getElementById('fc-sidebar-close').focus())"
+	mobileCloseExpr  = "$sidebarMobileOpen = false; document.getElementById('fc-topbar-menu').focus()"
+	mobileEscapeExpr = "evt.key === 'Escape' && $sidebarMobileOpen && !document.querySelector('dialog[open], [popover]:popover-open') && ($sidebarMobileOpen = false, document.getElementById('fc-topbar-menu').focus())"
+)
+
+// logoSVG is the FlowCatalyst bolt (app-shell.md).
+templ logoSVG() {
+	<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="100%" height="100%" aria-label="FlowCatalyst"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
 }
 
 // AppShell is app-shell.md: the navy sidebar, the user-menu popover and the
@@ -68,7 +91,16 @@ func ShellHTMLAttrs(collapsed bool) templ.Attributes {
 templ AppShell(p AppShellProps) {
 	@AppSidebar(p)
 	@UserMenu(p)
+	<div class="fc-sidebar-backdrop" aria-hidden="true" data-on:click={ mobileCloseExpr } data-on:keydown__window={ mobileEscapeExpr }></div>
 	<div class="fc-main">
+		<header class="fc-topbar">
+			<button type="button" id="fc-topbar-menu" class="fc-topbar-menu" aria-label="Open navigation" aria-controls="fc-sidebar" aria-expanded="false" data-attr:aria-expanded="$sidebarMobileOpen ? 'true' : 'false'" data-on:click={ mobileOpenExpr }>
+				@Icon(IconProps{Name: "menu", Class: "size-[1.25rem]"})
+			</button>
+			<a href={ p.LogoHref } class="fc-topbar-logo">
+				@logoSVG()
+			</a>
+		</header>
 		<main class="p-[24px]">
 			{ children... }
 		</main>
@@ -77,11 +109,16 @@ templ AppShell(p AppShellProps) {
 
 // AppSidebar is app-shell.md's <aside class="fc-sidebar">.
 templ AppSidebar(p AppShellProps) {
-	<aside class="fc-sidebar">
+	<aside id="fc-sidebar" class="fc-sidebar">
 		<div class="fc-sidebar-header">
 			<a href={ p.LogoHref } class="fc-sidebar-logo" style="height: 32px">
-				<span style="width: 32px; height: 32px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="100%" height="100%" aria-label="FlowCatalyst"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg></span>
+				<span style="width: 32px; height: 32px">
+					@logoSVG()
+				</span>
 			</a>
+			<button type="button" id="fc-sidebar-close" class="fc-sidebar-close" aria-label="Close navigation" data-on:click={ mobileCloseExpr }>
+				@Icon(IconProps{Name: "x", Class: "size-[1.25rem]"})
+			</button>
 			<button
 				type="button"
 				class="fc-collapse-btn"
@@ -166,6 +203,11 @@ templ UserMenu(p AppShellProps) {
 				</a>
 			}
 		</div>
+		if p.Theme != "" {
+			<div class="border-t border-border p-2">
+				@ThemeChoices(p.Theme)
+			</div>
+		}
 		<div class="border-t border-border p-2">
 			<form method="post" action={ p.SignOutAction } { p.SignOutAttrs... }>
 				<button type="submit" class="fc-menu-item danger">
