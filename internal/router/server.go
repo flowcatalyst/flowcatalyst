@@ -119,6 +119,14 @@ type ServerConfig struct {
 	// of applying the usual fallback. Off by default.
 	StrictRouting bool
 
+	// HTTP2ReadIdleTimeout / HTTP2PingTimeout override the delivery client's
+	// HTTP/2 connection health check (MediatorConfig: ping after this much
+	// read silence, close the connection if the ping is not acked in time).
+	// Zero keeps the defaults, 30s / 15s.
+	// FC_ROUTER_HTTP2_READ_IDLE_TIMEOUT_SECONDS / FC_ROUTER_HTTP2_PING_TIMEOUT_SECONDS.
+	HTTP2ReadIdleTimeout time.Duration
+	HTTP2PingTimeout     time.Duration
+
 	// Standby (Redis leader election). When enabled the pool config
 	// watcher only runs while this instance holds the lock.
 	StandbyEnabled  bool
@@ -232,7 +240,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	s := &Server{
 		Cfg:        cfg,
 		Notifier:   NewNotifier(cfg.NotifyWebhookURL, defaultNotifyBatchSize, cfg.NotifyBatchInterval),
-		Mediator:   pickMediator(cfg.DevMode, breakers),
+		Mediator:   pickMediator(cfg, breakers),
 		Breakers:   breakers,
 		Tracker:    NewInFlightTracker(),
 		instanceID: uuid.NewString(),
@@ -504,11 +512,24 @@ func (s *Server) reapOnce(ctx context.Context) {
 	}
 }
 
-func pickMediator(devMode bool, breakers *BreakerRegistry) Mediator {
-	if devMode {
-		return NewHTTPMediator(DevMediatorConfig(), breakers)
+func pickMediator(cfg ServerConfig, breakers *BreakerRegistry) Mediator {
+	return NewHTTPMediator(mediatorConfigFor(cfg), breakers)
+}
+
+// mediatorConfigFor is the mediator configuration for a server: the dev or
+// production defaults, with the HTTP/2 health-check overrides applied.
+func mediatorConfigFor(cfg ServerConfig) MediatorConfig {
+	mc := DefaultMediatorConfig()
+	if cfg.DevMode {
+		mc = DevMediatorConfig()
 	}
-	return NewHTTPMediator(DefaultMediatorConfig(), breakers)
+	if cfg.HTTP2ReadIdleTimeout > 0 {
+		mc.HTTP2ReadIdleTimeout = cfg.HTTP2ReadIdleTimeout
+	}
+	if cfg.HTTP2PingTimeout > 0 {
+		mc.HTTP2PingTimeout = cfg.HTTP2PingTimeout
+	}
+	return mc
 }
 
 // gateOnLeadership starts the pool config watcher only when this

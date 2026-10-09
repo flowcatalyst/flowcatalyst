@@ -156,6 +156,13 @@ type EnvCfg struct {
 	// mode with no message_group_id is malformed — ACKed instead of falling
 	// back to DEFAULT-POOL / DefaultDispatchMode / the shared "" group.
 	RouterStrictRouting bool
+	// RouterHTTP2ReadIdleSecs / RouterHTTP2PingTimeoutSecs tune the delivery
+	// client's HTTP/2 connection health check
+	// (router.ServerConfig.HTTP2ReadIdleTimeout / HTTP2PingTimeout): ping a
+	// connection after this much read silence, close it if the ping goes
+	// unanswered. 0 → the router package's defaults (30s / 15s).
+	RouterHTTP2ReadIdleSecs    int
+	RouterHTTP2PingTimeoutSecs int
 
 	// RouterNotifyMinSeverity is FC_NOTIFY_MIN_SEVERITY (X-04): the floor
 	// below which the notifier drops a warning instead of webhooking it —
@@ -316,6 +323,8 @@ func LoadEnv() EnvCfg {
 		RouterDeferralMaxDelaySecs:   envInt("FC_ROUTER_DEFERRAL_MAX_DELAY_SECONDS", 0),
 		RouterDeferralBudget:         envInt("FC_ROUTER_DEFERRAL_BUDGET", 0),
 		RouterStrictRouting:          envBool("FC_ROUTER_STRICT_ROUTING", false),
+		RouterHTTP2ReadIdleSecs:      envInt("FC_ROUTER_HTTP2_READ_IDLE_TIMEOUT_SECONDS", 0),
+		RouterHTTP2PingTimeoutSecs:   envInt("FC_ROUTER_HTTP2_PING_TIMEOUT_SECONDS", 0),
 		RouterNotifyMinSeverity:      envOr("FC_NOTIFY_MIN_SEVERITY", ""),
 		RouterNotifyBatchIntervalSec: envIntAlias("FC_NOTIFY_BATCH_INTERVAL_SECONDS", "NOTIFICATION_BATCH_INTERVAL", 0),
 		RouterConfigIntervalSec:      envIntAlias("FC_ROUTER_CONFIG_INTERVAL_SECONDS", "FLOWCATALYST_CONFIG_INTERVAL", 0),

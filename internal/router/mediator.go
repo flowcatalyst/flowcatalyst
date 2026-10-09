@@ -61,7 +61,34 @@ type MediatorConfig struct {
 	// version" — DefaultHostPoolSizing for HTTP/2, HTTP1HostPoolSizing
 	// for HTTP/1.1.
 	HostPoolSizing HostPoolSizing
+	// HTTP2ReadIdleTimeout and HTTP2PingTimeout are the HTTP/2 connection
+	// health check: once a connection has received no frame for
+	// HTTP2ReadIdleTimeout the client sends a PING, and if no PING ack arrives
+	// within HTTP2PingTimeout it closes the connection, failing every request
+	// on it with a retryable connection error.
+	//
+	// Without it a half-open connection (a NAT or load-balancer idle drop, a
+	// peer that vanished without a FIN or RST) is noticed only when each
+	// request's own deadline expires — Timeout, 15 minutes by contract — and
+	// all of that host's deliveries share a handful of connections, so they
+	// all stall together, holding their pool slots. The PING is answered by
+	// the peer's HTTP/2 layer, not its handler, so a healthy connection
+	// carrying a legitimately long request is never closed by it. Zero
+	// disables the health check (the x/net default).
+	HTTP2ReadIdleTimeout time.Duration
+	HTTP2PingTimeout     time.Duration
 }
+
+// Defaults for the HTTP/2 connection health check (MediatorConfig). 30 s of
+// read silence is long enough that a busy connection never pings (any
+// response frame resets it) and an idle one costs one 8-byte PING per 30 s;
+// 15 s for the ack is several orders of magnitude above any real round trip.
+// A dead connection is therefore found and closed within ~45 s instead of
+// ~15 minutes.
+const (
+	defaultHTTP2ReadIdleTimeout = 30 * time.Second
+	defaultHTTP2PingTimeout     = 15 * time.Second
+)
 
 // DefaultMediatorConfig returns the production defaults (15min timeout, HTTP/2).
 func DefaultMediatorConfig() MediatorConfig {
@@ -73,6 +100,9 @@ func DefaultMediatorConfig() MediatorConfig {
 		MaxRetries:          3,
 		RetryDelays:         []time.Duration{1 * time.Second, 2 * time.Second, 3 * time.Second},
 		HostPoolSizing:      DefaultHostPoolSizing(),
+
+		HTTP2ReadIdleTimeout: defaultHTTP2ReadIdleTimeout,
+		HTTP2PingTimeout:     defaultHTTP2PingTimeout,
 	}
 }
 
@@ -253,6 +283,8 @@ func newClientBuilder(cfg MediatorConfig) ClientBuilder {
 			// TestMediatorDoesNotWedgeWhenInFlightExceedsServerStreamLimit.
 			if h2, err := http2.ConfigureTransports(transport); err == nil && h2 != nil {
 				h2.StrictMaxConcurrentStreams = false
+				h2.ReadIdleTimeout = cfg.HTTP2ReadIdleTimeout
+				h2.PingTimeout = cfg.HTTP2PingTimeout
 			}
 			// h2c (cleartext, prior-knowledge): the transport above only
 			// ever negotiates h2 via TLS ALPN, so a plain "http://" target
@@ -261,6 +293,8 @@ func newClientBuilder(cfg MediatorConfig) ClientBuilder {
 			h2cTransport := &http2.Transport{
 				AllowHTTP:                  true,
 				StrictMaxConcurrentStreams: false, // see the TLS transport above
+				ReadIdleTimeout:            cfg.HTTP2ReadIdleTimeout,
+				PingTimeout:                cfg.HTTP2PingTimeout,
 				DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
 					return dialer.DialContext(ctx, network, addr)
 				},
