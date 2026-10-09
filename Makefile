@@ -3,7 +3,8 @@
 	test test-unit test-integration test-platform test-verbose watch-test \
 	lint lint-fix analyze fmt fmt-check sqlc sqlc-verify ui-generate ui-fmt ui-verify ui-kit-sync ci clean \
 	dump-spec api-bump api-diff release-dev sdk-spec sdk-generate \
-	release-ts-sdk release-laravel-sdk build-java-sdk release-java-sdk install-tools help
+	release-ts-sdk release-laravel-sdk build-java-sdk release-java-sdk \
+	release-fn-ts-sdk release-fn-rust-sdk release-fn-go-sdk install-tools help
 
 GO ?= go
 PNPM ?= pnpm
@@ -218,6 +219,18 @@ release-laravel-sdk: ## Cut a Laravel SDK release: BUMP=… (tags laravel-sdk/vX
 
 release-java-sdk: ## Cut a Java SDK release: BUMP=… (bumps pom.xml, tags java-sdk/vX.Y.Z)
 	@scripts/release.sh java "$(BUMP)"
+
+# Function-runner SDKs (docs/releasing.md). fn-go is consumed straight from
+# this repo via the Go module proxy; fn-ts / fn-rust are split to standalone
+# repos by workflows that are OFF until the SPLIT_FN_SDKS repo variable is set.
+release-fn-ts-sdk: ## Cut a function TS SDK release: BUMP=… (bumps package.json, tags fn-ts-sdk/vX.Y.Z)
+	@scripts/release.sh fn-ts "$(BUMP)"
+
+release-fn-rust-sdk: ## Cut a function Rust SDK release: BUMP=… (bumps Cargo.toml, tags fn-rust-sdk/vX.Y.Z)
+	@scripts/release.sh fn-rust "$(BUMP)"
+
+release-fn-go-sdk: ## Cut a function Go SDK release: BUMP=… (tags clients/fn-go/vX.Y.Z)
+	@scripts/release.sh fn-go "$(BUMP)"
 
 install-tools: ## Install dev tools (air, gotestsum, golangci-lint, sqlc)
 	$(GO) install github.com/air-verse/air@latest
