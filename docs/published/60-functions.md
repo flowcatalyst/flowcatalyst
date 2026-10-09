@@ -66,7 +66,7 @@ Everything a function needs is declared **in its code**, and the platform
 reads the declarations from the built artifact. There is no separate manifest
 file to keep in step.
 
-Go (`github.com/flowcatalyst/flowcatalyst-go/clients/fn-go`) — handlers are
+Go (`github.com/flowcatalyst/flowcatalyst/clients/fn-go`) — handlers are
 plain `net/http` handlers:
 
 ```go

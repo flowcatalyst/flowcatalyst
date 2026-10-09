@@ -22,9 +22,9 @@ var fnTemplates = map[string]map[string]string{
 
 go 1.24
 
-require github.com/flowcatalyst/flowcatalyst-go/clients/fn-go v0.0.0
+require github.com/flowcatalyst/flowcatalyst/clients/fn-go v0.0.0
 {{if .SDK}}
-replace github.com/flowcatalyst/flowcatalyst-go/clients/fn-go => {{.SDK}}/fn-go
+replace github.com/flowcatalyst/flowcatalyst/clients/fn-go => {{.SDK}}/fn-go
 {{end}}`,
 		"main.go": `// Command {{.Name}} is a FlowCatalyst function. Build and check it with
 // ` + "`fcdev fn build`" + `, then ` + "`fcdev fn deploy {{.App}}.{{.Name}}`" + `.
@@ -33,7 +33,7 @@ package main
 import (
 	"net/http"
 
-	fn "github.com/flowcatalyst/flowcatalyst-go/clients/fn-go"
+	fn "github.com/flowcatalyst/flowcatalyst/clients/fn-go"
 )
 
 var greeting = fn.Config("GREETING")

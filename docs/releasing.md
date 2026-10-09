@@ -40,21 +40,19 @@ add a second source of truth. The module has zero third-party dependencies and
 no `replace` directives (the only `replace` is the one `fcdev fn init
 --sdk-path` writes into a user's project).
 
-**What must change first.** `clients/fn-go/go.mod` declares
-`github.com/flowcatalyst/flowcatalyst-go/clients/fn-go`, but the GitHub repo is
-`flowcatalyst/flowcatalyst`. The proxy resolves the module path to a repo URL,
-so as it stands no tag can ever be fetched, and a bad tag is cached forever.
-Before the first release:
+**Module path (done).** `clients/fn-go/go.mod` declares
+`github.com/flowcatalyst/flowcatalyst/clients/fn-go`, matching the GitHub repo
+`flowcatalyst/flowcatalyst`; the proxy resolves the module path to a repo URL,
+so a tag `clients/fn-go/vX.Y.Z` is fetchable. Every importer was updated
+(`examples/hello/main.go`, the README, `docs/published/60-functions.md`, and
+the Go template plus `replace` line in `cmd/fcdev/fn_init.go`). Still to do
+with the first release:
 
-1. change the `module` line to `github.com/flowcatalyst/flowcatalyst/clients/fn-go`;
-2. update every importer: `clients/fn-go/examples/hello/main.go`,
-   `clients/fn-go/README.md`, `docs/published/60-functions.md`, and the Go
-   template plus `replace` line in `cmd/fcdev/fn_init.go`;
-3. change the template's `require … v0.0.0` to the released version (v0.0.0
-   does not resolve without the `replace`);
-4. the repo must be public (or consumers set `GOPRIVATE` and have access).
+1. change the template's `require … v0.0.0` to the released version (v0.0.0
+   does not resolve without the `replace` that `--sdk-path` writes);
+2. the repo must be public (or consumers set `GOPRIVATE` and have access).
 
-`scripts/release.sh fn-go` enforces step 1: it refuses while the module path is
+`scripts/release.sh fn-go` guards the module path: it refuses if the module path is
 not the expected one. (The root module `github.com/flowcatalyst/flowcatalyst-go`
 is unaffected: nothing imports it externally.)
 
@@ -113,8 +111,9 @@ fcdev release. No release target, no split, no publish.
 
 All of this is currently **not done; every function-SDK automation is OFF**.
 
-1. **fn-go**: do the four module-path steps above, commit, then
-   `make release-fn-go-sdk BUMP=0.1.0`. Nothing else is needed.
+1. **fn-go**: the module path is fixed. Make sure the repo is public, then
+   `make release-fn-go-sdk BUMP=0.1.0`, and afterwards bump the template's
+   `require … v0.0.0` in `cmd/fcdev/fn_init.go` to the released version.
 2. **Create the target repos** (empty, default branch `main`):
    `flowcatalyst/fn-ts-sdk` and `flowcatalyst/fn-rust-sdk`.
 3. **Create tokens and store them as repository secrets** on
@@ -140,5 +139,5 @@ Do not enable the split while another source repo force-pushes the same target
 | `make release-fn-{go,ts,rust}-sdk`, `RELEASE_DRY_RUN` | working |
 | `split-fn-ts-sdk.yml`, `split-fn-rust-sdk.yml` | in repo, **off** (`SPLIT_FN_SDKS` unset) |
 | npm publish, crates.io publish | **off** (second variables unset, metadata missing) |
-| fn-go module path | **blocks release** until changed |
+| fn-go module path | fixed (`github.com/flowcatalyst/flowcatalyst/clients/fn-go`); release guard passes |
 | target repos, tokens | not created |

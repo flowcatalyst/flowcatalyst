@@ -11,7 +11,7 @@ package main
 import (
 	"net/http"
 
-	fn "github.com/flowcatalyst/flowcatalyst-go/clients/fn-go"
+	fn "github.com/flowcatalyst/flowcatalyst/clients/fn-go"
 )
 
 var greeting = fn.Config("GREETING")
