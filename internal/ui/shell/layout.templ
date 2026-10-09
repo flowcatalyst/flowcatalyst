@@ -11,9 +11,12 @@ const darkSignalExpr = "new URLSearchParams(location.search).get('theme') === 'd
 
 // sessionExpiredExpr: a Datastar action answered 401 (the session expired
 // while the page was open) navigates to the login page, returning here after.
+// Every other failed request is the flash stack's fallback (kit.FlashStack).
 const sessionExpiredExpr = "evt.detail.type === 'error' && evt.detail.argsRaw.status === '401' && window.location.assign('/auth/login?redirect=' + encodeURIComponent(location.pathname + location.search))"
 
-// FlashStackID is the container server patches append flash banners to.
+// FlashStackID is the flash stack (kit flash-stack.md) server patches append
+// flash messages to; its listener also shows the generic message for a
+// Datastar request that failed outside a handler.
 const FlashStackID = "flash-stack"
 
 // document is the full HTML page: head with the hashed kit assets, the app
@@ -31,7 +34,7 @@ templ document(title string, collapsed bool, shellProps kit.AppShellProps, conte
 		</head>
 		<body data-on:datastar-fetch={ sessionExpiredExpr }>
 			@kit.AppShell(shellProps) {
-				<div id={ FlashStackID } class="flex flex-col"></div>
+				@kit.FlashStack(kit.FlashStackProps{ID: FlashStackID})
 				@content
 			}
 		</body>

@@ -204,13 +204,16 @@ func TestPoolsDatastarPatches(t *testing.T) {
 	body := rec.Body.String()
 	events := strings.Count(body, "event: datastar-patch-elements\n")
 	if events != 4 {
-		t.Fatalf("%d patch events, want 4 (table, summary, filters button, url):\n%s", events, body)
+		t.Fatalf("%d patch events, want 4 (table, summary, toolbar state, url):\n%s", events, body)
 	}
 	for _, want := range []string{
 		`data: elements <div id="pools-table"`,
 		`data: elements <div id="pools-summary"`,
-		"data: selector #pools-list [popovertarget]\n",
+		// The toolbar's state part, patched by its own id: Clear All and the
+		// badge follow the live filter (table-toolbar.md, Live).
+		`data: elements <div id="pools-list-state" class="fc-toolbar-state">`,
 		`<span class="fc-badge">1</span>`,
+		`Clear All</a>`,
 		`history.replaceState(history.state, &#39;&#39;, &#34;/ui/dispatch-pools?q=acme\u0026status=SUSPENDED&#34;)`,
 	} {
 		if !strings.Contains(body, want) {
@@ -220,8 +223,68 @@ func TestPoolsDatastarPatches(t *testing.T) {
 	if strings.Contains(body, "fc-sidebar") {
 		t.Error("a live update must not resend the shell")
 	}
+	if strings.Contains(body, `name="q"`) || strings.Contains(body, `popover class="fc-filter-popover"`) {
+		t.Error("a live update must not patch the search box or the filters popover")
+	}
 	if got := rowOrder(body); strings.Join(got, ",") != "dpl_2" {
 		t.Errorf("rows = %v", got)
+	}
+}
+
+// A sort link answered live re-renders the state part with the new hidden
+// sort fields, so the next search keeps the sort; Clear All keeps it too.
+// Cleared (no q, no status), the state part has no Clear All and no badge.
+func TestPoolsToolbarStateFollowsSortAndClear(t *testing.T) {
+	body := serve(t, fixturePools(), anchorAdmin(), "/ui/dispatch-pools?sort=name&dir=desc&q=o", true).Body.String()
+	for _, want := range []string{
+		`<input type="hidden" name="sort" value="name">`,
+		`<input type="hidden" name="dir" value="desc">`,
+		`<a href="/ui/dispatch-pools?dir=desc&amp;sort=name" class="fc-btn fc-btn-text"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("state patch lacks %s", want)
+		}
+	}
+	cleared := serve(t, fixturePools(), anchorAdmin(), "/ui/dispatch-pools?q=&status=&sort=name&dir=desc", true).Body.String()
+	if !strings.Contains(cleared, `data: elements <div id="pools-list-state"`) || strings.Contains(cleared, "Clear All") || strings.Contains(cleared, "fc-badge") {
+		t.Errorf("cleared state patch wrong:\n%s", cleared)
+	}
+	if !strings.Contains(cleared, `/ui/dispatch-pools?dir=desc\u0026sort=name`) {
+		t.Error("cleared view should replace the URL with the sorted, unfiltered one")
+	}
+	page := serve(t, fixturePools(), anchorAdmin(), "/ui/dispatch-pools?status=ACTIVE", false).Body.String()
+	if !strings.Contains(page, `data-on:click__prevent="const f = el.closest(&#39;form&#39;);`) {
+		t.Error("Clear All lacks the live clear handler")
+	}
+}
+
+func TestPoolsRowActions(t *testing.T) {
+	body := serve(t, fixturePools(), anchorAdmin(), "/ui/dispatch-pools", false).Body.String()
+	for _, want := range []string{
+		// inline Edit names the row; the menu trigger too
+		`aria-label="Edit Billing"`,
+		`aria-label="More actions for Billing" popovertarget="pool-dpl_1-actions-menu"`,
+		`<div id="pool-dpl_1-actions-menu" popover class="fc-row-menu"`,
+		`<a href="/dispatch-pools/dpl_1" class="fc-menu-item"`,
+		// state-dependent action, disabled with its reason (not ported yet)
+		`aria-label="Suspend" aria-describedby="pool-dpl_1-actions-m1"`,
+		`aria-label="Activate" aria-describedby="pool-dpl_2-actions-m1"`,
+		`class="fc-menu-hint">Not in the new UI yet`,
+		// destructive, last, after a separator
+		`<div role="separator" class="fc-menu-separator"></div> <button type="button" class="fc-menu-item danger" aria-disabled="true"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("page lacks %s", want)
+		}
+	}
+	// An archived pool has no actions but View details (as the SPA's drawer).
+	_, archived, ok := strings.Cut(body, `id="pool-dpl_3-actions-menu"`)
+	archived, _, _ = strings.Cut(archived, "</div>")
+	if !ok {
+		t.Fatal("archived pool has no menu")
+	}
+	if strings.Contains(archived, "Delete") || strings.Contains(archived, "Activate") || !strings.Contains(archived, "View details") {
+		t.Errorf("archived pool menu = %s", archived)
 	}
 }
 
@@ -240,10 +303,20 @@ func TestPoolsPermissions(t *testing.T) {
 			t.Error("403 page should render in the shell")
 		}
 	})
-	t.Run("Datastar request without permission gets a bare 403", func(t *testing.T) {
-		rec := serve(t, fixturePools(), noPerm, "/ui/dispatch-pools", true)
-		if rec.Code != http.StatusForbidden || strings.Contains(rec.Body.String(), "<html") {
-			t.Fatalf("status %d body %q", rec.Code, rec.Body.String())
+	t.Run("Datastar request without permission gets 200 and an error flash, no rows", func(t *testing.T) {
+		f := fixturePools()
+		rec := serve(t, f, noPerm, "/ui/dispatch-pools", true)
+		body := rec.Body.String()
+		if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "text/event-stream" || f.calls != 0 {
+			t.Fatalf("status %d, Content-Type %q, repository calls %d", rec.Code, rec.Header().Get("Content-Type"), f.calls)
+		}
+		for _, want := range []string{"data: selector #flash-stack\n", "data: mode append\n", `class="fc-flash fc-flash-error" role="alert"`, "Access denied."} {
+			if !strings.Contains(body, want) {
+				t.Errorf("SSE lacks %q:\n%s", want, body)
+			}
+		}
+		if strings.Contains(body, "pools-table") || strings.Contains(body, "<html") {
+			t.Error("a refused live request must not patch the table or send a page")
 		}
 	})
 	t.Run("client-scoped viewer sees platform pools and their own client's only", func(t *testing.T) {
@@ -258,6 +331,9 @@ func TestPoolsPermissions(t *testing.T) {
 		if strings.Contains(body, `href="/dispatch-pools/new"`) || strings.Contains(body, `aria-label="Edit `) {
 			t.Error("a viewer without create/update must not get Create or Edit")
 		}
+		if strings.Contains(body, `aria-label="Suspend"`) || strings.Contains(body, `aria-label="Activate"`) || strings.Contains(body, `aria-label="Delete…"`) || !strings.Contains(body, "View details") {
+			t.Error("a viewer gets only View details in the row menu (no actions without permission)")
+		}
 		if strings.Contains(body, `title="Dashboard"`) {
 			t.Error("anchor-only nav entry shown to a client user")
 		}
@@ -266,6 +342,13 @@ func TestPoolsPermissions(t *testing.T) {
 		rec := serve(t, &fakePools{err: errors.New("pg: connection refused")}, anchorAdmin(), "/ui/dispatch-pools", false)
 		if rec.Code != http.StatusInternalServerError || strings.Contains(rec.Body.String(), "connection refused") {
 			t.Fatalf("status %d, leaked: %v", rec.Code, strings.Contains(rec.Body.String(), "connection refused"))
+		}
+	})
+	t.Run("repository failure on a live request is an error flash without details", func(t *testing.T) {
+		rec := serve(t, &fakePools{err: errors.New("pg: connection refused")}, anchorAdmin(), "/ui/dispatch-pools", true)
+		body := rec.Body.String()
+		if rec.Code != http.StatusOK || !strings.Contains(body, "Something went wrong.") || strings.Contains(body, "connection refused") {
+			t.Fatalf("status %d body %s", rec.Code, body)
 		}
 	})
 }

@@ -54,9 +54,27 @@ func (v poolsView) empty() *kit.EmptyStateProps {
 
 func (v poolsView) clearHref() string {
 	if v.Filtered() {
-		return poolsPath
+		return v.Query.clearURL()
 	}
 	return ""
+}
+
+// toolbar is the list's toolbar; the page renders it and a live update
+// patches its state part (toolbar().State()), so both come from one place.
+func (v poolsView) toolbar() kit.TableToolbarProps {
+	return kit.TableToolbarProps{
+		ID:                poolsFormID,
+		Action:            poolsPath,
+		SearchPlaceholder: "Search pools...",
+		SearchValue:       v.Query.Q,
+		ClearHref:         v.clearHref(),
+		ClearAttrs:        templ.Attributes{"data-on:click__prevent": kit.ClearFilters},
+		ActiveFilterCount: v.FilterCount(),
+		Hidden:            v.hidden(),
+		SearchAttrs:       templ.Attributes{"data-on:input__debounce.300ms": liveGet},
+		FormAttrs:         templ.Attributes{"data-on:submit": liveGet},
+		Filters:           poolsFilters(v),
+	}
 }
 
 func (v poolsView) hidden() []kit.HiddenField {
@@ -86,22 +104,11 @@ templ poolsPage(v poolsView) {
 	@kit.Alert(kit.AlertProps{
 		Icon:        "info",
 		Title:       "New UI preview",
-		Description: "This list is served by the new server-rendered UI. Creating and editing pools still opens the current UI.",
+		Description: "This list is served by the new server-rendered UI. Creating, editing, suspending and deleting pools still happen in the current UI.",
 		Class:       "mb-4",
 	})
 	<div class="fc-card-flush">
-		@kit.TableToolbar(kit.TableToolbarProps{
-			ID:                poolsFormID,
-			Action:            poolsPath,
-			SearchPlaceholder: "Search pools...",
-			SearchValue:       v.Query.Q,
-			ClearHref:         v.clearHref(),
-			ActiveFilterCount: v.FilterCount(),
-			Hidden:            v.hidden(),
-			SearchAttrs:       templ.Attributes{"data-on:input__debounce.300ms": liveGet},
-			FormAttrs:         templ.Attributes{"data-on:submit": liveGet},
-			Filters:           poolsFilters(v),
-		})
+		@kit.TableToolbar(v.toolbar())
 		@poolsTable(v)
 		@poolsSummary(v)
 	</div>
@@ -109,7 +116,7 @@ templ poolsPage(v poolsView) {
 
 templ poolsActions(v poolsView) {
 	if v.CanCreate {
-		@kit.LegacyButton(kit.LegacyButtonProps{Href: "/dispatch-pools/new"}) {
+		@kit.LegacyButton(kit.LegacyButtonProps{Href: "/dispatch-pools/new", Icon: "plus"}) {
 			Create Pool
 		}
 	}
@@ -155,11 +162,7 @@ templ poolsTable(v poolsView) {
 				@kit.TD(kit.TDProps{}) {
 					<time datetime={ row.CreatedISO }>{ row.Created }</time>
 				}
-				if v.CanEdit {
-					@kit.RowActions(kit.RowActionsProps{Actions: []kit.RowAction{{Icon: "pencil", Label: "Edit " + row.Name, Href: row.EditHref}}})
-				} else {
-					@kit.TD(kit.TDProps{})
-				}
+				@kit.RowActions(v.rowActions(row))
 			}
 		}
 	}

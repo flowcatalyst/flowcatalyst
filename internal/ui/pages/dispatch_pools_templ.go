@@ -62,9 +62,27 @@ func (v poolsView) empty() *kit.EmptyStateProps {
 
 func (v poolsView) clearHref() string {
 	if v.Filtered() {
-		return poolsPath
+		return v.Query.clearURL()
 	}
 	return ""
+}
+
+// toolbar is the list's toolbar; the page renders it and a live update
+// patches its state part (toolbar().State()), so both come from one place.
+func (v poolsView) toolbar() kit.TableToolbarProps {
+	return kit.TableToolbarProps{
+		ID:                poolsFormID,
+		Action:            poolsPath,
+		SearchPlaceholder: "Search pools...",
+		SearchValue:       v.Query.Q,
+		ClearHref:         v.clearHref(),
+		ClearAttrs:        templ.Attributes{"data-on:click__prevent": kit.ClearFilters},
+		ActiveFilterCount: v.FilterCount(),
+		Hidden:            v.hidden(),
+		SearchAttrs:       templ.Attributes{"data-on:input__debounce.300ms": liveGet},
+		FormAttrs:         templ.Attributes{"data-on:submit": liveGet},
+		Filters:           poolsFilters(v),
+	}
 }
 
 func (v poolsView) hidden() []kit.HiddenField {
@@ -117,7 +135,7 @@ func poolsPage(v poolsView) templ.Component {
 		templ_7745c5c3_Err = kit.Alert(kit.AlertProps{
 			Icon:        "info",
 			Title:       "New UI preview",
-			Description: "This list is served by the new server-rendered UI. Creating and editing pools still opens the current UI.",
+			Description: "This list is served by the new server-rendered UI. Creating, editing, suspending and deleting pools still happen in the current UI.",
 			Class:       "mb-4",
 		}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
@@ -127,18 +145,7 @@ func poolsPage(v poolsView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = kit.TableToolbar(kit.TableToolbarProps{
-			ID:                poolsFormID,
-			Action:            poolsPath,
-			SearchPlaceholder: "Search pools...",
-			SearchValue:       v.Query.Q,
-			ClearHref:         v.clearHref(),
-			ActiveFilterCount: v.FilterCount(),
-			Hidden:            v.hidden(),
-			SearchAttrs:       templ.Attributes{"data-on:input__debounce.300ms": liveGet},
-			FormAttrs:         templ.Attributes{"data-on:submit": liveGet},
-			Filters:           poolsFilters(v),
-		}).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = kit.TableToolbar(v.toolbar()).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -198,7 +205,7 @@ func poolsActions(v poolsView) templ.Component {
 				}
 				return nil
 			})
-			templ_7745c5c3_Err = kit.LegacyButton(kit.LegacyButtonProps{Href: "/dispatch-pools/new"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var3), templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = kit.LegacyButton(kit.LegacyButtonProps{Href: "/dispatch-pools/new", Icon: "plus"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var3), templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -310,7 +317,7 @@ func poolsTable(v poolsView) templ.Component {
 						var templ_7745c5c3_Var9 string
 						templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(row.Code)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dispatch_pools.templ`, Line: 136, Col: 51}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dispatch_pools.templ`, Line: 143, Col: 51}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 						if templ_7745c5c3_Err != nil {
@@ -349,7 +356,7 @@ func poolsTable(v poolsView) templ.Component {
 						var templ_7745c5c3_Var11 templ.SafeURL
 						templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinURLErrs(row.DetailHref)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dispatch_pools.templ`, Line: 139, Col: 29}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dispatch_pools.templ`, Line: 146, Col: 29}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 						if templ_7745c5c3_Err != nil {
@@ -362,7 +369,7 @@ func poolsTable(v poolsView) templ.Component {
 						var templ_7745c5c3_Var12 string
 						templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(row.Name)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dispatch_pools.templ`, Line: 139, Col: 107}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dispatch_pools.templ`, Line: 146, Col: 107}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 						if templ_7745c5c3_Err != nil {
@@ -397,7 +404,7 @@ func poolsTable(v poolsView) templ.Component {
 						var templ_7745c5c3_Var14 string
 						templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(row.Scope)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dispatch_pools.templ`, Line: 142, Col: 16}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dispatch_pools.templ`, Line: 149, Col: 16}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 						if templ_7745c5c3_Err != nil {
@@ -428,7 +435,7 @@ func poolsTable(v poolsView) templ.Component {
 						var templ_7745c5c3_Var16 string
 						templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(row.RateLimit)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dispatch_pools.templ`, Line: 145, Col: 20}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dispatch_pools.templ`, Line: 152, Col: 20}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 						if templ_7745c5c3_Err != nil {
@@ -459,7 +466,7 @@ func poolsTable(v poolsView) templ.Component {
 						var templ_7745c5c3_Var18 string
 						templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(row.Concurrency)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dispatch_pools.templ`, Line: 148, Col: 22}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dispatch_pools.templ`, Line: 155, Col: 22}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 						if templ_7745c5c3_Err != nil {
@@ -502,7 +509,7 @@ func poolsTable(v poolsView) templ.Component {
 							var templ_7745c5c3_Var21 string
 							templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(row.Status)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dispatch_pools.templ`, Line: 152, Col: 18}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dispatch_pools.templ`, Line: 159, Col: 18}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 							if templ_7745c5c3_Err != nil {
@@ -543,7 +550,7 @@ func poolsTable(v poolsView) templ.Component {
 						var templ_7745c5c3_Var23 string
 						templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.ResolveAttributeValue(row.CreatedISO)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dispatch_pools.templ`, Line: 156, Col: 36}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dispatch_pools.templ`, Line: 163, Col: 36}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var23)
 						if templ_7745c5c3_Err != nil {
@@ -556,7 +563,7 @@ func poolsTable(v poolsView) templ.Component {
 						var templ_7745c5c3_Var24 string
 						templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(row.Created)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dispatch_pools.templ`, Line: 156, Col: 52}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dispatch_pools.templ`, Line: 163, Col: 52}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 						if templ_7745c5c3_Err != nil {
@@ -576,16 +583,9 @@ func poolsTable(v poolsView) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					if v.CanEdit {
-						templ_7745c5c3_Err = kit.RowActions(kit.RowActionsProps{Actions: []kit.RowAction{{Icon: "pencil", Label: "Edit " + row.Name, Href: row.EditHref}}}).Render(ctx, templ_7745c5c3_Buffer)
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-					} else {
-						templ_7745c5c3_Err = kit.TD(kit.TDProps{}).Render(ctx, templ_7745c5c3_Buffer)
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
+					templ_7745c5c3_Err = kit.RowActions(v.rowActions(row)).Render(ctx, templ_7745c5c3_Buffer)
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
 					}
 					return nil
 				})
@@ -632,7 +632,7 @@ func poolsSummary(v poolsView) templ.Component {
 		var templ_7745c5c3_Var26 string
 		templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(v.summary())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dispatch_pools.templ`, Line: 169, Col: 68}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dispatch_pools.templ`, Line: 172, Col: 68}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 		if templ_7745c5c3_Err != nil {

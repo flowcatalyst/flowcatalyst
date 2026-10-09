@@ -106,13 +106,11 @@ func writeHTML(w http.ResponseWriter, r *http.Request, status int, c templ.Compo
 
 // Deny is the guard.Denier for UI requests: an HTML page when the browser
 // asked for HTML (inside the shell when signed in), a bare status otherwise.
-// Datastar shows nothing for a non-2xx answer; the shell's datastar-fetch
-// listener turns a 401 into a navigation to the login page.
+// A Datastar request gets the bare status: Datastar ignores the body of a
+// non-200 answer, and the flash stack's fallback shows a generic message
+// (the shell's listener turns a 401 into a navigation to the login page).
 func (s *Shell) Deny(w http.ResponseWriter, r *http.Request, status int, message string) {
-	title := http.StatusText(status)
-	if status == http.StatusForbidden {
-		title = "Access denied"
-	}
+	title := failureTitle(status)
 	if ds.IsDatastar(r) || !strings.Contains(r.Header.Get("Accept"), "text/html") {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(status)
@@ -128,14 +126,69 @@ func (s *Shell) Deny(w http.ResponseWriter, r *http.Request, status int, message
 
 // Fail answers a handler error. A use-case error with a 4xx status (an
 // authorization check, not found, validation) is shown with its message;
-// anything else is logged and answered 500 without details.
+// anything else is logged and answered as a 500 without details.
+//
+// For a page request that is an error page with that status. For a Datastar
+// request it is the error contract (docs/ui/README.md, "Datastar errors"):
+// status 200 and an error flash message, because Datastar discards the body
+// of any non-200 answer; the real status is logged. Use FailSSE once the
+// handler has opened its stream.
 func (s *Shell) Fail(w http.ResponseWriter, r *http.Request, err error) {
+	status, message := classify(r, err)
+	if ds.IsDatastar(r) {
+		flashFailure(ds.NewSSE(w, r), r, status, message)
+		return
+	}
+	s.Deny(w, r, status, message)
+}
+
+// FailSSE answers err on a Datastar stream the handler has already opened
+// (the status line is sent, so the failure can only be a patch).
+func (s *Shell) FailSSE(sse *ds.SSE, r *http.Request, err error) {
+	status, message := classify(r, err)
+	flashFailure(sse, r, status, message)
+}
+
+// Flash appends a flash message to the page's flash stack (flash-stack.md):
+// the feedback after a Datastar action. Success and info messages remove
+// themselves after 3s and 5s; warnings and errors stay until dismissed.
+func Flash(sse *ds.SSE, msg kit.FlashMessageProps) error {
+	return sse.Patch(kit.FlashMessage(msg), ds.Append("#"+FlashStackID))
+}
+
+const genericFailure = "The request could not be completed. Try again, or use the current UI."
+
+// classify maps a handler error to a status and a message safe to show: a
+// use-case 4xx keeps both; anything else is logged and becomes a 500.
+func classify(r *http.Request, err error) (int, string) {
 	if ue, ok := errors.AsType[*usecase.Error](err); ok {
 		if status := ue.HTTPStatus(); status >= 400 && status < 500 {
-			s.Deny(w, r, status, ue.Message)
-			return
+			return status, ue.Message
 		}
 	}
 	slog.ErrorContext(r.Context(), "ui: handler failed", "path", r.URL.Path, "err", err)
-	s.Deny(w, r, http.StatusInternalServerError, "Something went wrong. Try again, or use the current UI.")
+	return http.StatusInternalServerError, genericFailure
+}
+
+func flashFailure(sse *ds.SSE, r *http.Request, status int, message string) {
+	if status < http.StatusInternalServerError {
+		slog.InfoContext(r.Context(), "ui: action refused", "path", r.URL.Path, "status", status, "message", message)
+	}
+	if err := Flash(sse, kit.FlashMessageProps{Kind: kit.FlashError, Summary: failureTitle(status) + ".", Detail: message}); err != nil {
+		slog.DebugContext(r.Context(), "ui: failure patch not delivered", "err", err)
+	}
+}
+
+// failureTitle is the heading of an error page or message.
+func failureTitle(status int) string {
+	switch status {
+	case http.StatusForbidden:
+		return "Access denied"
+	case http.StatusInternalServerError:
+		return "Something went wrong"
+	}
+	if t := http.StatusText(status); t != "" {
+		return t
+	}
+	return "Request failed"
 }

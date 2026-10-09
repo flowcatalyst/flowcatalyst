@@ -43,8 +43,9 @@ func (h *DispatchPools) Mount(r chi.Router) {
 }
 
 // list renders the page, or, for a Datastar request (the live search,
-// status filter and sort links), patches the table, the summary and the
-// Filters button and replaces the address bar URL so the view stays shareable.
+// status filter, Clear All and sort links), patches the table, the summary
+// and the toolbar's state part and replaces the address bar URL so the view
+// stays shareable.
 func (h *DispatchPools) list(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
@@ -72,8 +73,9 @@ func (h *DispatchPools) list(w http.ResponseWriter, r *http.Request) {
 		if err := errors.Join(
 			sse.Patch(poolsTable(view)),
 			sse.Patch(poolsSummary(view)),
-			sse.Patch(kit.FiltersButton(kit.FiltersButtonProps{FormID: poolsFormID, ActiveFilterCount: view.FilterCount()}),
-				ds.WithSelector("#"+poolsFormID+" [popovertarget]")),
+			// The toolbar's state part (hidden sort, Clear All, Filters badge),
+			// never the search box or the open filters popover.
+			sse.Patch(kit.TableToolbarState(view.toolbar().State())),
 			sse.ReplaceURL(q.URL()),
 		); err != nil {
 			slog.DebugContext(ctx, "ui: dispatch pools patch not delivered", "err", err)
@@ -142,6 +144,12 @@ func (q poolQuery) URL() string {
 	return poolsPath
 }
 
+// clearURL is the view without search and filters, keeping the sort
+// (table-toolbar.md: Clear All clears what the user typed and picked).
+func (q poolQuery) clearURL() string {
+	return poolQuery{Sort: q.Sort, Dir: q.Dir}.URL()
+}
+
 // sortURL is the URL a column heading links to: same filters, sorted by key,
 // toggling the direction when key is already the sort.
 func (q poolQuery) sortURL(key string) string {
@@ -167,6 +175,7 @@ type poolRow struct {
 	ID, Code, Name, Scope  string
 	RateLimit, Concurrency string
 	Status                 string
+	RawStatus              dispatchpool.Status
 	StatusVariant          kit.BadgeVariant
 	Created, CreatedISO    string
 	DetailHref, EditHref   string
@@ -178,6 +187,7 @@ type poolsView struct {
 	Total     int // visible pools before the search (status is filtered in SQL)
 	CanCreate bool
 	CanEdit   bool
+	CanDelete bool
 }
 
 // FilterCount is the number of active filters in the Filters popover.
@@ -197,6 +207,7 @@ func buildPoolsView(ac *auth.AuthContext, q poolQuery, pools []dispatchpool.Disp
 		Total:     len(pools),
 		CanCreate: auth.CanCreateDispatchPools(ac) == nil,
 		CanEdit:   auth.CanUpdateDispatchPools(ac) == nil,
+		CanDelete: auth.CanDeleteDispatchPools(ac) == nil,
 	}
 	needle := strings.ToLower(q.Q)
 	matched := make([]dispatchpool.DispatchPool, 0, len(pools))
@@ -239,6 +250,7 @@ func toPoolRow(p dispatchpool.DispatchPool) poolRow {
 		RateLimit:     "—",
 		Concurrency:   strconv.Itoa(int(p.Concurrency)),
 		Status:        string(p.Status),
+		RawStatus:     p.Status,
 		StatusVariant: kit.BadgeSecondary,
 		Created:       p.CreatedAt.UTC().Format("2006-01-02"),
 		CreatedISO:    p.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
@@ -268,4 +280,35 @@ func deref(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// ── row actions ────────────────────────────────────────────────────────
+
+// notPortedReason explains the pool actions that exist in the current UI
+// but not here yet (row-actions.md: shown disabled with a reason, not hidden).
+const notPortedReason = "Not in the new UI yet: open the pool with View details."
+
+// rowActions mirrors the SPA: Edit inline; the detail drawer's actions
+// (Activate or Suspend, Delete; none for an archived pool) in the menu.
+// Actions the user has no permission for are left out.
+func (v poolsView) rowActions(row poolRow) kit.RowActionsProps {
+	p := kit.RowActionsProps{ID: "pool-" + row.ID + "-actions", RowLabel: row.Name}
+	if v.CanEdit {
+		p.Actions = append(p.Actions, kit.RowAction{Icon: "pencil", Label: "Edit", Href: row.EditHref})
+	}
+	p.Menu = append(p.Menu, kit.RowAction{Icon: "eye", Label: "View details", Href: row.DetailHref})
+	if row.RawStatus == dispatchpool.StatusArchived {
+		return p
+	}
+	if v.CanEdit {
+		if row.RawStatus == dispatchpool.StatusActive {
+			p.Menu = append(p.Menu, kit.RowAction{Icon: "pause", Label: "Suspend", DisabledReason: notPortedReason})
+		} else {
+			p.Menu = append(p.Menu, kit.RowAction{Icon: "play", Label: "Activate", DisabledReason: notPortedReason})
+		}
+	}
+	if v.CanDelete {
+		p.Menu = append(p.Menu, kit.RowAction{Icon: "trash-2", Label: "Delete…", Destructive: true, DisabledReason: notPortedReason})
+	}
+	return p
 }

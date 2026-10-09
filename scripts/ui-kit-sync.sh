@@ -17,7 +17,8 @@
 #   4. copies the conformance fixtures into internal/ui/testdata/fixtures;
 #   5. checks the vendored datastar.js against its pinned sha256 (downloads
 #      it from the pinned URL when missing);
-#   6. records the kit commit and Tailwind version in internal/ui/assets/KIT_SOURCE.
+#   6. records the kit commit, Tailwind version and the sprite's icon count and
+#      sha256 in internal/ui/assets/KIT_SOURCE (assets_test checks the sprite).
 #
 # POSIX sh; needs git, curl (only when datastar.js is missing) and shasum or sha256sum.
 set -eu
@@ -94,11 +95,14 @@ if [ -n "$(git -C "$kit" status --porcelain -- . 2>/dev/null)" ]; then
   dirty=" (uncommitted kit changes present)"
   echo "warning: $kit has uncommitted changes; commit them in the framework repo before committing this output" >&2
 fi
+sprite_icons=$(grep -c '<symbol id="i-' "$static/lucide-sprite.svg")
+sprite_sha=$(sha256 "$static/lucide-sprite.svg")
 cat > "$repo/internal/ui/assets/KIT_SOURCE" <<EOF
 kit-repo: flowcatalyst-framework (ui-kit/)
 kit-commit: $commit$dirty
 tailwind: $tw_version
 datastar: $DATASTAR_VERSION sha256 $DATASTAR_SHA256
+sprite: $sprite_icons icons sha256 $sprite_sha
 EOF
 
 echo "ui-kit synced from $kit @ $commit$dirty (tailwind $tw_version)"

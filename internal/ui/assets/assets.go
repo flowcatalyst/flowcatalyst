@@ -21,6 +21,7 @@ import (
 	"mime"
 	"net/http"
 	"path"
+	"regexp"
 	"strings"
 )
 
@@ -82,6 +83,19 @@ func init() {
 	if err != nil {
 		panic(fmt.Sprintf("assets: walk embedded files: %v", err))
 	}
+}
+
+var symbolID = regexp.MustCompile(`<symbol id="i-([a-z0-9-]+)"`)
+
+// HasIcon reports whether the embedded sprite has the Lucide icon name
+// (the symbol "i-"+name). Tests use it to check every icon the UI names.
+func HasIcon(name string) bool {
+	for _, m := range symbolID.FindAllStringSubmatch(string(byName["lucide-sprite.svg"].body), -1) {
+		if m[1] == name {
+			return true
+		}
+	}
+	return false
 }
 
 func contentType(ext string) string {

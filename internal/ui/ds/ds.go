@@ -10,6 +10,17 @@
 // body on every other method (`{contentType: 'form'}` actions send the form
 // instead and no signals).
 //
+// Error contract (docs/ui/README.md, "Datastar errors"): Datastar 1.0.4
+// applies a response body only when the status is 200; for any other status
+// it fires a `datastar-fetch` "error" event and drops the body. So a handler
+// that reached its own logic answers every outcome, failures included, with
+// 200 and patches (field errors, a dialog's error region, a flash message
+// via shell.Flash / shell.Fail), never with an empty body. Non-200 answers
+// are left to the guards (CSRF 403, no session 401, role-less 403), crashes
+// and proxies; the page's flash stack turns those, and network failures,
+// into a generic message. Mutating actions pass {retryMaxCount: 0}, because
+// Datastar retries a failed connection up to 10 times otherwise.
+//
 // Typical handler:
 //
 //	if ds.IsDatastar(r) {

@@ -127,12 +127,15 @@ templ Alert(p AlertProps) {
 	</div>
 }
 
-// FlashKind is flash-banner.md's `kind` option.
+// FlashKind is the `kind` option of flash-banner.md (success, error) and of
+// flash-stack.md's flash message (all four).
 type FlashKind string
 
-// Flash kinds (flash-banner.md).
+// Flash kinds. FlashBanner supports success and error only.
 const (
 	FlashSuccess FlashKind = "success"
+	FlashInfo    FlashKind = "info"
+	FlashWarn    FlashKind = "warn"
 	FlashError   FlashKind = "error"
 )
 
@@ -155,6 +158,120 @@ templ FlashBanner(p FlashBannerProps) {
 			data-init__delay.5s="el.remove()"
 		}
 	>{ p.Message }</div>
+}
+
+// FlashMessageProps mirrors flash-stack.md's flash-message Props table.
+type FlashMessageProps struct {
+	Kind    FlashKind `json:"kind"`
+	Summary string    `json:"summary"`
+	Detail  string    `json:"detail"`
+	// Persistent keeps a success or info message (warn and error always stay).
+	Persistent bool             `json:"persistent"`
+	Attrs      templ.Attributes `json:"attrs"`
+}
+
+func (p FlashMessageProps) kind() FlashKind { return orDefault(p.Kind, FlashSuccess) }
+
+func (p FlashMessageProps) icon() string {
+	switch p.kind() {
+	case FlashInfo:
+		return "info"
+	case FlashWarn:
+		return "triangle-alert"
+	case FlashError:
+		return "circle-x"
+	case FlashSuccess:
+	}
+	return "circle-check"
+}
+
+// lifetime is the auto-dismiss delay ("" = stays): the SPA's 3s for
+// success and 5s for info.
+func (p FlashMessageProps) lifetime() string {
+	switch {
+	case p.alert() || p.Persistent:
+		return ""
+	case p.kind() == FlashInfo:
+		return "5s"
+	}
+	return "3s"
+}
+
+// alert reports whether the message is role="alert" (warn and error).
+func (p FlashMessageProps) alert() bool { return p.kind() == FlashWarn || p.kind() == FlashError }
+
+// FlashMessage is one banner of flash-stack.md (the SPA's notification
+// banner): success and info remove themselves after 3s and 5s unless
+// persistent; warn and error stay until dismissed and are role="alert".
+templ FlashMessage(p FlashMessageProps) {
+	<div
+		class={ "fc-flash fc-flash-" + string(p.kind()) }
+		if p.alert() {
+			role="alert"
+		}
+		if p.lifetime() == "3s" {
+			data-init__delay.3s="el.remove()"
+		}
+		if p.lifetime() == "5s" {
+			data-init__delay.5s="el.remove()"
+		}
+		{ p.Attrs... }
+	>
+		@Icon(IconProps{Name: p.icon(), Class: "fc-flash-icon"})
+		<div class="fc-flash-body">
+			<span class="fc-flash-summary">{ p.Summary }</span>
+			if p.Detail != "" {
+				<span class="fc-flash-detail">{ p.Detail }</span>
+			}
+		</div>
+		<button type="button" class="fc-flash-dismiss" aria-label="Dismiss notification" data-on:click="el.parentElement.remove()">
+			@Icon(IconProps{Name: "x", Class: "size-[0.9rem]"})
+		</button>
+	</div>
+}
+
+// flashFallbackExpr is flash-stack.md's datastar-fetch listener: a non-2xx
+// answer (except 401, which the application handles) or a network failure
+// appends one generic message from the stack's templates.
+const flashFallbackExpr = "const t = evt.detail.type, s = evt.detail.argsRaw.status; " +
+	"const k = t === 'retrying' || t === 'retries-failed' ? 'offline' : t === 'error' && s !== '401' ? (s === '403' ? 'refused' : 'failed') : ''; " +
+	"k && !el.querySelector(':scope > [data-flash-fallback=' + k + ']') && el.append(el.querySelector(':scope > template[data-flash-template=' + k + ']').content.cloneNode(true))"
+
+// flashFallback is one of the stack's generic messages for failed requests.
+type flashFallback struct {
+	key string
+	msg FlashMessageProps
+}
+
+var flashFallbacks = []flashFallback{
+	{"refused", FlashMessageProps{Kind: FlashError, Summary: "The request was refused.", Detail: "Reload the page and try again."}},
+	{"failed", FlashMessageProps{Kind: FlashError, Summary: "Something went wrong.", Detail: "The request failed. Try again, or reload the page."}},
+	{"offline", FlashMessageProps{Kind: FlashWarn, Summary: "The server could not be reached.", Detail: "Check your connection and try again. A change you just made may not have been saved."}},
+}
+
+func (f flashFallback) props() FlashMessageProps {
+	p := f.msg
+	p.Attrs = templ.Attributes{"data-flash-fallback": f.key}
+	return p
+}
+
+// FlashStackProps mirrors flash-stack.md's flash-stack Props table.
+type FlashStackProps struct {
+	ID string `json:"id"`
+}
+
+// FlashStack is flash-stack.md: the sticky, polite live region server
+// patches append FlashMessages to (mode append, selector "#{id}"), with the
+// fallback listener and its templates for requests that fail outside a
+// handler (guard refusals, crashes, network).
+templ FlashStack(p FlashStackProps) {
+	<div id={ ID(p.ID) } class="fc-flash-stack" aria-live="polite" data-on:datastar-fetch={ flashFallbackExpr }>
+		for _, f := range flashFallbacks {
+			<template data-flash-template={ f.key }>
+				@FlashMessage(f.props())
+			</template>
+		}
+	</div>
 }
 
 // SpinnerProps mirrors spinner.md's Props table.

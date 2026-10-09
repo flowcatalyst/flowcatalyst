@@ -249,37 +249,141 @@ templ EmptyRow(p EmptyRowProps) {
 	</tr>
 }
 
-// RowAction is one icon action in a row (PROPOSED: the kit has no row-actions
-// spec yet; see docs/ui/README.md "Kit gaps").
+// RowAction is one action of a row (row-actions.md, "action").
 type RowAction struct {
+	// Icon is the Lucide icon name; Label the visible menu text and the
+	// inline button's tooltip.
 	Icon  string `json:"icon"`
 	Label string `json:"label"`
 	// Href makes the action a link; without it the action is a button and
-	// Attrs carry its Datastar handler.
+	// Attrs carry its handler (a Datastar action or a dialog opener).
 	Href  string           `json:"href"`
+	Attrs templ.Attributes `json:"attrs"`
+	// Destructive puts a menu item in red after a separator (and an inline
+	// icon in red on hover). Destructive actions must ask for confirmation.
+	Destructive bool `json:"destructive"`
+	// DisabledReason, when set, renders the action disabled (aria-disabled,
+	// focusable, no href or handlers) with this reason as its description.
+	DisabledReason string `json:"disabledReason"`
+}
+
+// RowActionsProps mirrors row-actions.md's Props table: the trailing cell of
+// a data-table row, with up to two inline icon actions and an overflow menu.
+type RowActionsProps struct {
+	// ID prefixes the generated ids ({id}-menu, {id}-a{i}, {id}-m{i}); it is
+	// required when there is a menu or a disabled action.
+	ID string `json:"id"`
+	// RowLabel is the row's name, appended to accessible names.
+	RowLabel string      `json:"rowLabel"`
+	Actions  []RowAction `json:"actions"`
+	Menu     []RowAction `json:"menu"`
+	// Attrs go on the <td> (e.g. data-on:click__stop in a clickable row).
 	Attrs templ.Attributes `json:"attrs"`
 }
 
-// RowActionsProps is the trailing actions cell of a data-table row (PROPOSED).
-type RowActionsProps struct {
-	Actions []RowAction `json:"actions"`
+// CloseMenu closes the popover menu containing the element; row-action menu
+// items run it in a capture listener before their own handler.
+const CloseMenu = "el.closest('[popover]').hidePopover()"
+
+func (p RowActionsProps) withRow(label string) string {
+	if p.RowLabel == "" {
+		return label
+	}
+	return label + " " + p.RowLabel
 }
 
-// RowActions renders a right-aligned cell of .fc-icon-btn actions. A click
-// inside must not trigger a clickable row: the handlers stop propagation.
+func (p RowActionsProps) moreLabel() string {
+	if p.RowLabel == "" {
+		return "More actions"
+	}
+	return "More actions for " + p.RowLabel
+}
+
+func (p RowActionsProps) partID(kind string, i int) string {
+	return ID(p.ID) + "-" + kind + strconv.Itoa(i)
+}
+
+func (p RowActionsProps) menuID() string { return ID(p.ID) + "-menu" }
+
+// separatorBefore reports whether menu item i is the first destructive item
+// with a non-destructive item before it.
+func (p RowActionsProps) separatorBefore(i int) bool {
+	if !p.Menu[i].Destructive {
+		return false
+	}
+	plain := false
+	for _, m := range p.Menu[:i] {
+		if m.Destructive {
+			return false
+		}
+		plain = true
+	}
+	return plain
+}
+
+func inlineClasses(a RowAction) string {
+	if a.Destructive {
+		return "fc-icon-btn fc-icon-btn-danger"
+	}
+	return "fc-icon-btn"
+}
+
+func menuItemClasses(a RowAction) string {
+	if a.Destructive {
+		return "fc-menu-item danger"
+	}
+	return "fc-menu-item"
+}
+
+// RowActions is row-actions.md: inline .fc-icon-btn actions, then a
+// "More actions" button with a native popover menu (a disclosure, not an
+// ARIA menu: Tab moves through the items, Escape closes it).
 templ RowActions(p RowActionsProps) {
-	<td class={ cx(tdClasses, "w-px text-right") }>
+	<td class={ cx(tdClasses, "w-px text-right") } { p.Attrs... }>
 		<div class="flex items-center justify-end gap-1">
-			for _, a := range p.Actions {
-				if a.Href != "" {
-					<a href={ a.Href } class="fc-icon-btn" title={ a.Label } aria-label={ a.Label } { a.Attrs... }>
+			for i, a := range p.Actions {
+				if a.DisabledReason != "" {
+					<button type="button" class={ inlineClasses(a) } title={ a.Label + ": " + a.DisabledReason } aria-label={ p.withRow(a.Label) } aria-disabled="true" aria-describedby={ p.partID("a", i) }>
+						@Icon(IconProps{Name: a.Icon, Class: "size-[1rem]"})
+					</button>
+					<span id={ p.partID("a", i) } hidden>{ a.DisabledReason }</span>
+				} else if a.Href != "" {
+					<a href={ a.Href } class={ inlineClasses(a) } title={ a.Label } aria-label={ p.withRow(a.Label) } { a.Attrs... }>
 						@Icon(IconProps{Name: a.Icon, Class: "size-[1rem]"})
 					</a>
 				} else {
-					<button type="button" class="fc-icon-btn" title={ a.Label } aria-label={ a.Label } { a.Attrs... }>
+					<button type="button" class={ inlineClasses(a) } title={ a.Label } aria-label={ p.withRow(a.Label) } { a.Attrs... }>
 						@Icon(IconProps{Name: a.Icon, Class: "size-[1rem]"})
 					</button>
 				}
+			}
+			if len(p.Menu) > 0 {
+				<button type="button" class="fc-icon-btn" title="More actions" aria-label={ p.moreLabel() } popovertarget={ p.menuID() }>
+					@Icon(IconProps{Name: "ellipsis", Class: "size-[1rem]"})
+				</button>
+				<div id={ p.menuID() } popover class="fc-row-menu" data-on:toggle__capture={ popoverAnchorExpr }>
+					for i, a := range p.Menu {
+						if p.separatorBefore(i) {
+							<div role="separator" class="fc-menu-separator"></div>
+						}
+						if a.DisabledReason != "" {
+							<button type="button" class={ menuItemClasses(a) } aria-disabled="true" aria-label={ a.Label } aria-describedby={ p.partID("m", i) }>
+								@Icon(IconProps{Name: a.Icon, Class: "size-[1rem]"})
+								<span>{ a.Label }<span id={ p.partID("m", i) } class="fc-menu-hint">{ a.DisabledReason }</span></span>
+							</button>
+						} else if a.Href != "" {
+							<a href={ a.Href } class={ menuItemClasses(a) } data-on:click__capture={ CloseMenu } { a.Attrs... }>
+								@Icon(IconProps{Name: a.Icon, Class: "size-[1rem]"})
+								<span>{ a.Label }</span>
+							</a>
+						} else {
+							<button type="button" class={ menuItemClasses(a) } data-on:click__capture={ CloseMenu } { a.Attrs... }>
+								@Icon(IconProps{Name: a.Icon, Class: "size-[1rem]"})
+								<span>{ a.Label }</span>
+							</button>
+						}
+					}
+				</div>
 			}
 		</div>
 	</td>

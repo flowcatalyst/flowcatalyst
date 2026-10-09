@@ -13,9 +13,10 @@ import (
 // route; a ported entry links to its /ui page (Ported). Keep this list in
 // step with navigation.ts until the SPA is retired.
 //
-// Icons: the kit sprite has 38 Lucide icons; PrimeIcons the SPA uses that
-// have no counterpart are approximated (recorded as a kit gap in
-// docs/ui/README.md).
+// Icons: the Lucide counterpart of each PrimeIcon in navigation.ts (pi-home →
+// house, pi-th-large → layout-grid, pi-sitemap → network, pi-bolt → zap, ...).
+// Every name must be in the kit sprite (assets_test.go checks every icon
+// the UI names).
 
 type navEntry struct {
 	label string
@@ -41,55 +42,55 @@ const (
 
 var navigation = []navSection{
 	{"Overview", []navEntry{
-		{label: "Dashboard", icon: "layout-dashboard", spa: "/dashboard", permission: "platform:*:*:*", scope: scopeAnchor},
+		{label: "Dashboard", icon: "house", spa: "/dashboard", permission: "platform:*:*:*", scope: scopeAnchor},
 	}},
 	{"Identity & Access", []navEntry{
 		{label: "User Management", icon: "users", spa: "/users", permission: "platform:iam:user:view", scope: scopeAnchor},
-		{label: "Service Accounts", icon: "terminal", spa: "/identity/service-accounts", permission: "platform:iam:service-account:view"},
-		{label: "Developer Users", icon: "terminal", spa: "/identity/developer-users", scope: scopeAnchor},
-		{label: "Identity Providers", icon: "user", spa: "/authentication/identity-providers", permission: "platform:iam:identity-provider:view"},
-		{label: "Email Domains", icon: "list", spa: "/authentication/email-domain-mappings", permission: "platform:iam:email-domain-mapping:view"},
+		{label: "Service Accounts", icon: "server", spa: "/identity/service-accounts", permission: "platform:iam:service-account:view"},
+		{label: "Developer Users", icon: "code", spa: "/identity/developer-users", scope: scopeAnchor},
+		{label: "Identity Providers", icon: "id-card", spa: "/authentication/identity-providers", permission: "platform:iam:identity-provider:view"},
+		{label: "Email Domains", icon: "mail", spa: "/authentication/email-domain-mappings", permission: "platform:iam:email-domain-mapping:view"},
 		{label: "OAuth Clients", icon: "key-round", spa: "/authentication/oauth-clients", permission: "platform:iam:oauth-client:view"},
-		{label: "Roles", icon: "shield-check", spa: "/authorization/roles", permission: "platform:iam:role:view", scope: scopeAnchor},
-		{label: "Permissions", icon: "key-round", spa: "/authorization/permissions", permission: "platform:iam:permission:view", scope: scopeAnchor},
+		{label: "Roles", icon: "shield", spa: "/authorization/roles", permission: "platform:iam:role:view", scope: scopeAnchor},
+		{label: "Permissions", icon: "lock", spa: "/authorization/permissions", permission: "platform:iam:permission:view", scope: scopeAnchor},
 	}},
 	{"Client Administration", []navEntry{
 		{label: "User Management", icon: "users", spa: "/client-administration/users", permission: "platform:iam:user:view", scope: scopeClient},
-		{label: "Reset Approvals", icon: "shield-check", spa: "/authentication/reset-approvals", permission: "platform:iam:user:update"},
+		{label: "Reset Approvals", icon: "shield", spa: "/authentication/reset-approvals", permission: "platform:iam:user:update"},
 	}},
 	{"Portal", []navEntry{
-		{label: "Portal Apps", icon: "panel-left", spa: "/identity/portal-apps", permission: "platform:iam:portal-user:view"},
-		{label: "Portal Users", icon: "users", spa: "/identity/portal-users", permission: "platform:iam:portal-user:view"},
+		{label: "Portal Apps", icon: "app-window", spa: "/identity/portal-apps", permission: "platform:iam:portal-user:view"},
+		{label: "Portal Users", icon: "globe", spa: "/identity/portal-users", permission: "platform:iam:portal-user:view"},
 	}},
 	{"Platform", []navEntry{
-		{label: "Applications", icon: "layout-dashboard", spa: "/applications", permission: "platform:admin:application:view"},
-		{label: "Clients", icon: "list", spa: "/clients", permission: "platform:admin:client:view"},
-		{label: "CORS Origins", icon: "workflow", spa: "/platform/cors", permission: "platform:admin:cors:view"},
-		{label: "Audit Log", icon: "list", spa: "/platform/audit-log", permission: "platform:admin:audit:view"},
-		{label: "Documentation", icon: "list", spa: "/platform/docs", scope: scopeAnchor},
-		{label: "Login Attempts", icon: "user", spa: "/platform/login-attempts", permission: "platform:admin:login-attempt:view"},
+		{label: "Applications", icon: "layout-grid", spa: "/applications", permission: "platform:admin:application:view"},
+		{label: "Clients", icon: "building-2", spa: "/clients", permission: "platform:admin:client:view"},
+		{label: "CORS Origins", icon: "link", spa: "/platform/cors", permission: "platform:admin:cors:view"},
+		{label: "Audit Log", icon: "history", spa: "/platform/audit-log", permission: "platform:admin:audit:view"},
+		{label: "Documentation", icon: "book-open", spa: "/platform/docs", scope: scopeAnchor},
+		{label: "Login Attempts", icon: "log-in", spa: "/platform/login-attempts", permission: "platform:admin:login-attempt:view"},
 		{label: "Settings", icon: "settings", children: []navEntry{
-			{label: "Theme", icon: "settings", spa: "/platform/settings/theme", permission: "platform:admin:settings:view"},
-			{label: "Names", icon: "list", spa: "/platform/settings/names", permission: "platform:admin:settings:view"},
+			{label: "Theme", icon: "palette", spa: "/platform/settings/theme", permission: "platform:admin:settings:view"},
+			{label: "Names", icon: "tag", spa: "/platform/settings/names", permission: "platform:admin:settings:view"},
 		}},
-		{label: "Debug", icon: "terminal", children: []navEntry{
-			{label: "Raw Events", icon: "list", spa: "/platform/debug/events", permission: "platform:messaging:event:view-raw"},
-			{label: "Raw Dispatch Jobs", icon: "list", spa: "/platform/debug/dispatch-jobs", permission: "platform:messaging:dispatch-job:view"},
+		{label: "Debug", icon: "wrench", children: []navEntry{
+			{label: "Raw Events", icon: "database", spa: "/platform/debug/events", permission: "platform:messaging:event:view-raw"},
+			{label: "Raw Dispatch Jobs", icon: "database", spa: "/platform/debug/dispatch-jobs", permission: "platform:messaging:dispatch-job:view"},
 		}},
 	}},
 	{"Messaging", []navEntry{
 		{label: "Events", icon: "inbox", spa: "/events", permission: "platform:messaging:event:view"},
-		{label: "Event Types", icon: "workflow", spa: "/event-types", permission: "platform:messaging:event-type:view"},
-		{label: "Subscriptions", icon: "info", spa: "/subscriptions", permission: "platform:messaging:subscription:view"},
-		{label: "Connections", icon: "workflow", spa: "/connections", permission: "platform:messaging:connection:view"},
-		{label: "Dispatch Pools", icon: "list", spa: "/dispatch-pools", ui: "/ui/dispatch-pools", permission: "platform:messaging:dispatch-pool:view"},
-		{label: "Functions", icon: "terminal", spa: "/functions", permission: "platform:function:function:view"},
-		{label: "Dispatch Jobs", icon: "refresh-cw", spa: "/dispatch-jobs", permission: "platform:messaging:dispatch-job:view"},
-		{label: "Scheduled Jobs", icon: "refresh-cw", spa: "/scheduled-jobs", permission: "platform:messaging:scheduled-job:view"},
+		{label: "Event Types", icon: "zap", spa: "/event-types", permission: "platform:messaging:event-type:view"},
+		{label: "Subscriptions", icon: "bell", spa: "/subscriptions", permission: "platform:messaging:subscription:view"},
+		{label: "Connections", icon: "link", spa: "/connections", permission: "platform:messaging:connection:view"},
+		{label: "Dispatch Pools", icon: "database", spa: "/dispatch-pools", ui: "/ui/dispatch-pools", permission: "platform:messaging:dispatch-pool:view"},
+		{label: "Functions", icon: "box", spa: "/functions", permission: "platform:function:function:view"},
+		{label: "Dispatch Jobs", icon: "send", spa: "/dispatch-jobs", permission: "platform:messaging:dispatch-job:view"},
+		{label: "Scheduled Jobs", icon: "clock", spa: "/scheduled-jobs", permission: "platform:messaging:scheduled-job:view"},
 	}},
 	{"Developer", []navEntry{
-		{label: "Applications", icon: "list", spa: "/developer", permission: "platform:developer:application-openapi:view"},
-		{label: "Processes", icon: "workflow", spa: "/processes", permission: "platform:messaging:process:view"},
+		{label: "Applications", icon: "book-open", spa: "/developer", permission: "platform:developer:application-openapi:view"},
+		{label: "Processes", icon: "network", spa: "/processes", permission: "platform:messaging:process:view"},
 	}},
 }
 

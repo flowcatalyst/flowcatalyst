@@ -6,7 +6,9 @@ FlowCatalyst UI kit (`flowcatalyst-framework/ui-kit`: HTML + Tailwind + Datastar
 The new UI lives under `/ui` next to the SPA, which stays the default: no SPA route redirects to
 `/ui` and no SPA code is removed without the owner's approval, area by area.
 
-Status (2026-10-09): foundations plus one read-only page, `/ui/dispatch-pools`.
+Status (2026-10-09): foundations, the Phase 1 kit decisions (row actions, toolbar state part,
+flash stack and the Datastar error contract, an 86-icon sprite) and one read-only page,
+`/ui/dispatch-pools`.
 
 ## Architecture
 
@@ -84,16 +86,61 @@ A page is a struct with its dependencies (repository interfaces + `*shell.Shell`
 3. Read through the repository / use case; apply the API's client scoping.
 4. Build a **view model** (strings ready to render; links computed in Go).
 5. If `ds.IsDatastar(r)`: open `ds.NewSSE`, patch the regions that changed by id
-   (`sse.Patch(poolsTable(view))`), and `sse.ReplaceURL(q.URL())`; otherwise
-   `h.Shell.Render(w, r, shell.Page{Title, Path}, poolsPage(view))`.
+   (`sse.Patch(poolsTable(view))`, the toolbar's state part
+   `sse.Patch(kit.TableToolbarState(view.toolbar().State()))`), and `sse.ReplaceURL(q.URL())`;
+   otherwise `h.Shell.Render(w, r, shell.Page{Title, Path}, poolsPage(view))`.
 
 Templates live next to the handler (`dispatch_pools.templ`): one top-level page component and
-one component per patch target, each with a stable id (`pools-table`, `pools-summary`).
+one component per patch target, each with a stable id (`pools-table`, `pools-summary`). Props
+that both the page and a patch render (the toolbar) are built by one view-model method
+(`poolsView.toolbar()`), so they cannot drift.
 
 Mutations (later pages) are POST/PUT/PATCH/DELETE only (the CSRF guard relies on GET being
-safe), go through the use-case layer exactly as the API handler does, and answer a Datastar
-request with patches (`ds.Append("#flash-stack")` for a banner, the changed row, a closed dialog)
-or a native form post with a 303 redirect.
+safe), go through the use-case layer exactly as the API handler does, pass
+`{retryMaxCount: 0}` in their Datastar action, and answer a Datastar request with patches (the
+changed row, a closed dialog, `shell.Flash(sse, ...)` for feedback) or a native form post with a
+303 redirect. Failures follow "Datastar errors" below.
+
+### Row actions
+
+`kit.RowActions` (kit `row-actions.md`): at most two inline icon actions, the rest in a native
+popover menu; destructive actions last in the menu (the kit adds the separator and the red),
+behind a confirmation; an action not allowed **on this row** is shown disabled with
+`DisabledReason`; an action the user has no **permission** for is left out (the same `auth.Can*`
+check as the API). One `ID` per row (`pool-{id}-actions`), `RowLabel` = the row's name (it goes
+into the accessible names). The pilot shows Edit inline and View details / Suspend or Activate /
+Delete in the menu; the last two are disabled ("Not in the new UI yet") until the CRUD step.
+
+### Filter bars (live)
+
+The toolbar's server-rendered state (hidden sort fields, Clear All, the Filters badge) is one
+part, `#{formId}-state` (`kit.TableToolbarState`, id from `kit.ToolbarStateID`). A live answer
+patches that part, the table and the URL; never the search box (the user may be typing) or the
+filters popover (it may be open). Clear All carries `ClearAttrs: {"data-on:click__prevent":
+kit.ClearFilters}`: it empties the search box and the popover's fields, focuses the search box
+and submits the form, so the server sees an ordinary request; without Datastar it is a link to
+`clearHref` (the view without filters, sort kept).
+
+### Datastar errors
+
+Datastar 1.0.4 applies a response body **only for status 200**; any other status fires the
+`datastar-fetch` `error` event and the body is dropped. So:
+
+| Outcome | Who | Answer | The user sees |
+|---|---|---|---|
+| Success | handler | 200, patches (+ `shell.Flash` success/info) | the change, "Saved." |
+| Validation, business rule, not found, permission check | handler | **200**: field errors patched into the form, the dialog's error region, or `shell.Fail` (an error flash with the use-case message; the real status is logged) | the message |
+| Unexpected handler error | handler | `shell.Fail`: 200 + "Something went wrong." (logged, no details) | generic message |
+| CSRF refusal, no access, role-less (403) | guards | bare 403 | flash stack fallback "The request was refused." |
+| No session (401) | guard | bare 401 | navigation to the login page (listener on `<body>`), back to the page after sign-in |
+| Panic, 404/405, proxy 5xx | router, proxy | non-200 | fallback "Something went wrong." |
+| Network failure | - | none | fallback "The server could not be reached." |
+
+A handler that reached its own logic never returns an empty body or a non-200 to Datastar. Once
+it has opened its stream it reports with `Shell.FailSSE(sse, r, err)`. The flash stack
+(`kit.FlashStack`, id `flash-stack`, sticky at the top of `<main>`) is a polite live region;
+success and info messages remove themselves after 3s/5s, warnings and errors stay until
+dismissed and are `role="alert"`. The fallback shows at most one message of each kind.
 
 ### Datastar interactions
 
@@ -112,7 +159,7 @@ or a native form post with a 303 redirect.
   `<script>` because the CSP forbids inline scripts.
 - Signals are page-global: name per instance (`selPool`, not `sel`).
 - A 401 from any action navigates to the login page (one `data-on:datastar-fetch` listener on
-  `<body>` in the layout).
+  `<body>` in the layout); every other failure is the flash stack's (above).
 
 ## CSRF
 
@@ -147,6 +194,13 @@ navigation accepting HTML without a session is redirected (302) to
 gets 403 (same rule as the API's `ProfileOnlyWithoutRole`). Sign-out is `POST /ui/logout`
 (clears the cookie like `/auth/logout`, then 303 to the login page).
 
+After signing in, the SPA's login returns to the `/ui` page in `?redirect=`
+(`frontend/src/api/auth.ts` `redirectAfterLogin` → `safeUiRedirect` in `api/uiRedirect.ts`): the
+value is parsed against the page's origin and followed only when it stays same-origin and its
+normalised path is `/ui` or under `/ui/` (no open redirect; `..`, `//host`, backslashes and
+encoded dots are refused; `frontend/tests/ui-redirect.test.ts`). OIDC interaction and OAuth
+round-trips keep precedence. SPA routes in `?redirect=` are still ignored, as before.
+
 ## Conformance fixtures
 
 `flowcatalyst-framework/ui-kit/fixtures/<component>/<case>.{json,html}` (format and normalisation
@@ -155,7 +209,7 @@ rules: `ui-kit/fixtures/README.md`), vendored to `internal/ui/testdata/fixtures`
 and compares with the golden through `htmlnorm` (HTML5 fragment parse in the right context,
 comments dropped, attributes sorted, whitespace collapsed, class order kept). It fails for a
 fixture directory without a renderer, a renderer without fixtures, an unknown prop (strict
-decoding) or an unused slot. 112 fixtures pass. Run against the framework checkout directly:
+decoding) or an unused slot. 124 fixtures pass. Run against the framework checkout directly:
 `UI_KIT_FIXTURES=../flowcatalyst-framework/ui-kit/fixtures go test ./internal/ui/kit/`.
 
 Adding a component: spec + Props table + gallery example + fixtures in the framework repo
@@ -182,7 +236,12 @@ tests green.
 `internal/ui/**/*.{templ,go}`, copies the sprite, the Lucide licence and the kit's
 third-party notices, copies `fixtures/` to `internal/ui/testdata/fixtures`, checks
 `datastar.js` against its sha256 and writes `internal/ui/assets/KIT_SOURCE` (kit commit,
-Tailwind and Datastar versions). Commit the kit change first (the script warns when the kit has
+Tailwind and Datastar versions, the sprite's icon count and sha256).
+
+Icons: a new icon is a line in the kit's `icons/sprite-icons.txt` and `icons/build-sprite.sh`
+(pinned lucide-static 1.52.0), committed in the kit, then the sync. `TestSpriteMatchesKitSource`
+fails when the embedded sprite is not the synced one; `TestEveryIconUsedIsInTheSprite` fails
+when a `.templ`/`.go` file under `internal/ui` names an icon the sprite lacks. Commit the kit change first (the script warns when the kit has
 uncommitted changes), then commit the synced files with `KIT_SOURCE`.
 
 Classes used only in Go templates exist in the stylesheet only after a sync, so run it after
@@ -207,35 +266,23 @@ Recorded, not changed:
   (native POST) is what the port implements.
 - Gallery screenshots predate the fixes above (the file input now renders as one).
 
-Gaps the pilot needs (not invented silently):
-1. **Icons**: the sprite has 38 icons. Missing for the navigation and the pilot pages: plus,
-   trash, external-link, eye, server, database, bell, send, clock, box, building, globe, mail,
-   lock, link, history, book, log-in, palette, tag, wrench, network/sitemap, zap, house. The
-   sidebar uses approximations (`shell/nav.go`); "Create Pool" has no icon.
-2. **Row actions**: no spec. Implemented as a PROPOSED part (`kit.RowActions`: a right-aligned
-   cell of `.fc-icon-btn` links/buttons, fixture `row-actions/proposed`); needs a spec decision
-   (plus a menu variant for more than two actions).
-3. **Table toolbar live updates**: no stable patch targets. The Filters button is now its own part
-   (`FiltersButton`, re-rendered via the selector `#{formId} [popovertarget]`; patching the
-   popover would reset its position while open), but **Clear All** appears/disappears
-   conditionally, so after a live filter it is stale until the next navigation. Proposal: an
-   always-present `#{formId}-clear` container.
-4. **App shell on narrow screens**: `app-shell` has no mobile layout (the SPA has a top bar and an
-   off-canvas nav; the Topcoat `sidebar` has a mobile sheet, but it is not the FlowCatalyst shell).
-5. **Form controls for the pilot's create/edit**: multi-select with search, a client
-   select/filter (the SPA's `ClientSelect`/`ClientFilter`), AutoComplete, number input,
-   password with strength meter, secret-reference input (`SecretRefInput`), notification banner
-   stack, permission-denied modal. Connections needs the client select and the secret-ref input.
-6. **Dark mode** starts from `prefers-color-scheme` via a signal, so a dark-mode user sees one
-   light frame before Datastar loads (no inline script is allowed). Proposal: a theme cookie the
-   server renders as the `dark` class.
-7. **Flash messages**: the kit ported the banner markup but not the flash-cookie plumbing (NP);
-   the first page with a mutation needs a small flash helper (cookie set on redirect, read once).
-8. **Datastar errors**: the kit has no convention for non-2xx answers. The shell turns 401 into a
-   navigation to login; a 403/500 on an action currently shows nothing (proposal: a shell-level
-   listener that appends an error banner to `#flash-stack`).
-9. Platform, not kit: the SPA login ignores `?redirect=`, so after signing in from a `/ui` link the
-   user lands on the SPA's start page, not back on `/ui`.
+Gaps the pilot found, and their state after Phase 1 step 1 (kit commits `1317a2f`, `2dd6ff6`):
+1. **Icons: done.** 86 icons (was 38), built by the kit's `icons/build-sprite.sh`; the sidebar
+   uses the Lucide counterparts of the SPA's PrimeIcons (no approximations); Create Pool has `plus`.
+2. **Row actions: done.** Kit spec `row-actions.md`; the proposed part is gone.
+3. **Table toolbar live updates: done.** The `{formId}-state` part (above). This also fixed a pilot
+   bug: a live sort click did not update the hidden sort fields, so the next search lost the sort.
+4. **App shell on narrow screens**: open (`app-shell` has no mobile layout).
+5. **Form controls for create/edit**: open: multi-select with search, a client select/filter
+   (`ClientSelect`/`ClientFilter`), AutoComplete, number input, password with strength meter,
+   secret-reference input (`SecretRefInput`), permission-denied modal. (The notification banner
+   stack is now the kit's flash stack.)
+6. **Dark mode** flashes light once before Datastar loads: open (proposal: a theme cookie the server
+   renders as the `dark` class).
+7. **Flash messages: done for Datastar actions** (`shell.Flash`). Not done: the flash *cookie* for a
+   native post/redirect/get (needs a decision, see the kit's PORTING-NOTES).
+8. **Datastar errors: done** (the contract and fallback above).
+9. **Login `?redirect=`: done** for `/ui` targets.
 
 ## Not verified
 
@@ -244,3 +291,12 @@ Gaps the pilot needs (not invented silently):
   `HOME` pointed at a temp dir so no credential files were written to the user's cache): login
   with the dev bootstrap admin, the pools page in light and dark, live search, the status filter
   in the popover, sort, sidebar collapse and the sign-out CSRF check. No console or CSP errors.
+- Phase 1 step 1, same kind of instance, Chrome, light and dark: signing in from
+  `/ui/dispatch-pools?status=ACTIVE` returned to that URL; live Clear All (filter cleared, sort
+  kept, Clear All and badge gone, URL replaced, focus in the search box); Clear All appearing while
+  typing; row menus (position, disabled reasons, separator); the fallback for a 404/405 Datastar
+  request (one "failed" message for two failures) and for a stopped server (offline). In the kit
+  gallery: menu keyboard use (Tab into the items, Escape and dialog close return focus to the
+  trigger). **Not exercised in a browser**: the 403 "refused" fallback (no way to make a
+  same-origin Datastar request fail CSRF from the page), a server-patched success flash (the
+  pilot has no mutation yet), screen readers.
