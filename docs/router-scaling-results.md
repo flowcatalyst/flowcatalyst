@@ -375,6 +375,64 @@ that one slot's pool lock convoys?_
   which opens more connections to every target. That is not a clearly-correct change for a
   2% effect, so **no change was made.**
 
+## Result: F6 (IMMEDIATE deliveries on reused workers), measured
+
+_Build `bench-real-go:f6-v3` against `f98209b` (`bench-real-go:scale-f98209b`, current
+`main`) re-run as a control in the same session, interleaved run by run. Same protocol,
+placement and per-run record as above. 5 runs per point; medians [min–max]._
+
+**Change.** `go p.runImmediate(...)` per message became a hand-off to a per-pool worker set
+(`internal/router/immediate_workers.go`):
+- The dispatcher still acquires the pool slot first. It then gives the message to the
+  most recently idle worker, or starts a worker if none is idle. So concurrency and rate
+  limits are exactly as before, and the worker count never exceeds the old goroutine count
+  at that moment.
+- Idle workers exit after 2 s, and at once on `Pool.Stop`. A quiet pool holds no goroutine
+  after 2 s; before, it held none at once.
+- A 4 KB stack reserve in the worker's frame stops the GC from halving the 16 KB worker
+  stacks while the worker waits shallow (idle, or waiting for its ack). The first build
+  without the reserve kept only a third of the saving, because almost every GC shrank every
+  worker and the next delivery grew it back.
+- Ordered groups (`drainGroup`) are unchanged.
+- `startImmediate` now also releases its slot if it panics after the slot was granted.
+  That leak was the audit's theoretical finding in §8, and it is now tested.
+
+| CPUs | Steady, control | Steady, F6 | Δ | CPU % of quota (ctl → F6) | CPU µs/msg (ctl → F6) | Throttled periods (ctl → F6) | Tail 99→100% / rig drain (F6) |
+|---|---|---|---|---|---|---|---|
+| 1 | 18,656 [18,388–18,970] | **19,886** [19,404–19,945] | **+6.6%** | 99.9 → 100 | 53.6 → **50.3** (−6.2%) | 7.7% → 7.6% | ≤0.5 s / 18.0 s |
+| 2 | 32,262 [31,446–32,694] | **34,778** [34,244–34,888] | **+7.8%** | 98.1 → 98.2 | 61.0 → **56.6** (−7.2%) | 6.5% → 5.0% | ≤0.5 s / 12.6 s |
+| 4 | 57,130 [56,764–57,593] | **59,737** [57,982–61,286] | **+4.6%** | 94.4 → 95.5 | 66.1 → **64.1** (−3.0%) | 2.8% → 1.5% | ≤0.5 s / 9.0 s |
+
+There was no overlap between the control and F6 ranges at 1 and 2 CPUs. Context switches
+per message fell at 4 CPUs (0.041 → 0.033).
+
+**CPU profile, 1 CPU (10 s, debug endpoints on):** `runtime.newstack` went from 7.0% to
+0.7% of CPU, and `copystack` from 7.3% to 0.9%. `scanstack` was unchanged (4.4% → 3.6%).
+There were fewer GCs over a comparable window (70 → 47), because the GC goal counts stacks
+(next paragraph).
+
+**Memory, bench shape (100 pools × 64 workers), mid-run snapshot:**
+
+| | Goroutines (idle workers) | Stack in use | Heap in use | Max RSS (median of 5) |
+|---|---|---|---|---|
+| 1 CPU, control | 4,631 | 88 MB | 258 MB | 507 MB |
+| 1 CPU, F6 | 11,314 (4,577) | 167 MB | 364 MB | 652 MB |
+| 4 CPUs, control | 9,842 | 89 MB | 224 MB | 537 MB |
+| 4 CPUs, F6 | 10,274 (3,564) | 158 MB | 307 MB | 737 MB |
+
+- The stack cost is about **+70–80 MB**: 16 KB per worker.
+  - About 3.5–4.6k idle workers exist at any moment. Each of the 100 pools keeps the
+    workers its own load peak needed within the last 2 s.
+  - Busy workers start at 16 KB instead of growing to it.
+- Heap in use and RSS rise more (**+145–200 MB RSS**, +29–37%). Since Go 1.18 the GC
+  target counts stack memory, so the larger stacks also raise the heap goal. That is part
+  of where the fewer GCs come from.
+- An idle pool sheds all of its workers within 2 s (`TestIdleWorkersExitAfterTheIdleTimeout`).
+
+**Against the criteria:**
+- No slower at any CPU count: met.
+- +6–8% at 1 CPU: met (+6.6% steady, −6.2% CPU per message).
+
 ## Options not taken
 
 - **A thin SQS client** in place of the AWS SDK.

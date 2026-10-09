@@ -55,6 +55,17 @@ type Pool struct {
 	immHead    int  // index of the oldest element of immQ
 	immRunning bool // a dispatchImmediate goroutine is alive
 
+	// workers runs the IMMEDIATE deliveries that hold a slot (see
+	// immediate_workers.go). It reuses goroutines across messages instead of
+	// starting one per message, and lets them go when they sit idle.
+	workers immediateWorkers
+
+	// stopCh is closed by the first Stop, so idle workers leave at once
+	// instead of waiting out their idle timeout. nil on a Pool built as a bare
+	// struct literal: a nil channel never fires, and those workers just time out.
+	stopCh   chan struct{}
+	stopOnce sync.Once
+
 	// Two populations describe a pool's own work, and each has exactly one
 	// owner here so nothing has to be kept in step by hand:
 	//
@@ -194,6 +205,7 @@ func NewPool(cfg common.PoolConfig, mediator Mediator, tracker *InFlightTracker,
 		sem:             newSemaphore(concurrency),
 		groupQs:         make(map[string]*groupQueue),
 		mediating:       make(map[uint64]MediatingEntry),
+		stopCh:          make(chan struct{}),
 	}
 }
 
@@ -403,8 +415,8 @@ func (p *Pool) Metrics() *PoolMetricsCollector { return p.metrics }
 
 // submit routes one polled message. It runs capacity backpressure, then
 // branches on DispatchMode: IMMEDIATE-mode messages (the default,
-// RequiresOrdering()==false) dispatch concurrently via runImmediate (one worker
-// per message, bounded only by the pool semaphore), while ordered modes enqueue
+// RequiresOrdering()==false) dispatch concurrently via runImmediate (one
+// delivery per worker at a time, bounded only by the pool semaphore), while ordered modes enqueue
 // into the per-group FIFO buffer and drain serially. Retryable failures are
 // retried in-pipeline (see processOne / drainGroup / runImmediate), so ordering
 // is preserved by re-inserting a failed message at the FRONT of its group
@@ -530,26 +542,34 @@ func (p *Pool) dispatchImmediate() {
 	}
 }
 
-// startImmediate waits for a slot for it, then runs the message on its own
-// goroutine. A message whose consumer context is already cancelled never takes
-// a slot: it is handed straight back, so a cancelled consumer's messages drain
-// through the head of the queue without waiting for slots they will not use.
+// startImmediate waits for a slot for it, then hands the message to a worker
+// (workers.run). A message whose consumer context is already cancelled never
+// takes a slot: it is handed straight back, so a cancelled consumer's messages
+// drain through the head of the queue without waiting for slots they will not
+// use.
 func (p *Pool) startImmediate(it immediateItem) {
 	queued := true // it.m still counts in queueSize
-	// Panic boundary for the dispatcher: a broker nack or the semaphore
-	// panicking must not take the process down or strand the message.
+	held := false  // this goroutine holds a slot nobody else will release
+	// Panic boundary for the dispatcher: a broker nack, the semaphore or the
+	// capacity callback panicking must not take the process down, strand the
+	// message or leak the slot it was granted.
 	defer func() {
 		if r := recover(); r != nil {
 			logRecovered("pool.startImmediate", r, p.msgAttrs(it.m)...)
+			if held {
+				p.sem.release()
+			}
 			if queued {
 				p.queueDec()
 			}
 			p.nackSafely(it.ctx, it.m, new(siblingNackDelaySeconds), "dispatcher panicked")
 		}
 	}()
+	// Each flag is cleared BEFORE the call that settles it, so a panic inside
+	// that call (queueDec runs the capacity callback) cannot undo it twice.
 	if it.ctx.Err() != nil {
-		p.queueDec()
 		queued = false
+		p.queueDec()
 		p.nackMsg(it.ctx, it.m, new(uint32(10)), "shutdown before dispatch")
 		return
 	}
@@ -558,24 +578,30 @@ func (p *Pool) startImmediate(it immediateItem) {
 		// tracker entry so the broker's redelivery (NACK is a no-op on SQS;
 		// the message reappears after the visibility timeout) re-enters the
 		// pipeline as a fresh copy instead of being dropped as a duplicate.
-		p.queueDec()
 		queued = false
+		p.queueDec()
 		p.nackMsg(it.ctx, it.m, new(uint32(10)), "shutdown before dispatch")
 		return
 	}
+	held = true
 	// The slot can be granted in the same instant the consumer's context is
 	// cancelled (the wait's select may pick either). A message whose consumer is
 	// gone must be handed back, not run under a dead context, so check again.
 	if it.ctx.Err() != nil {
+		held = false
 		p.sem.release()
-		p.queueDec()
 		queued = false
+		p.queueDec()
 		p.nackMsg(it.ctx, it.m, new(uint32(10)), "shutdown before dispatch")
 		return
 	}
-	p.queueDec() // now active, not queued
 	queued = false
-	go p.runImmediate(it.ctx, it.m)
+	p.queueDec() // now active, not queued
+	// The worker owns the slot from here: runImmediate releases it on every
+	// path. The hand-off cannot fail (a buffered send to a worker that is
+	// waiting for exactly this, or a go statement).
+	held = false
+	p.workers.run(p, it)
 }
 
 // runImmediate processes one unordered message that already holds a
@@ -663,6 +689,11 @@ func (p *Pool) runImmediate(ctx context.Context, m common.QueuedMessage) {
 // stops pools before it tears consumers down, so the nacks still reach them.
 func (p *Pool) Stop() {
 	p.stopped.Store(true)
+	p.stopOnce.Do(func() {
+		if p.stopCh != nil {
+			close(p.stopCh) // idle IMMEDIATE workers exit now
+		}
+	})
 	type flushedGroup struct {
 		msgs    []common.QueuedMessage
 		working bool
