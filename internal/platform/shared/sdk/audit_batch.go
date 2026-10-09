@@ -82,9 +82,31 @@ func (s *AuditBatchState) batchIngest(w http.ResponseWriter, r *http.Request) {
 	// instead of one per item.
 	appByCode := map[string]*string{}
 	clientByCode := map[string]*string{}
+	scope := NewAppScope(s.Apps)
 
 	for i := range body.Items {
 		it := &body.Items[i]
+
+		// Application confinement: an application-scoped caller may only write
+		// audit rows attributed to an application it can access, and may not
+		// omit the application (an unattributed row would escape the
+		// confinement). Refused per item.
+		hasApp := it.ApplicationCode != nil && *it.ApplicationCode != ""
+		if ac.IsApplicationScoped() {
+			if !hasApp {
+				results = append(results, BatchResultItem{Status: "BAD_REQUEST", Error: "applicationCode is required for an application-scoped credential"})
+				continue
+			}
+			ok, err := scope.CanAccessCode(r.Context(), ac, *it.ApplicationCode)
+			if err != nil {
+				httperror.Write(w, err)
+				return
+			}
+			if !ok {
+				results = append(results, BatchResultItem{Status: "BAD_REQUEST", Error: "audit entry belongs to an application this credential cannot write for"})
+				continue
+			}
+		}
 
 		// Resolve application_code → application_id.
 		var applicationID *string

@@ -25,9 +25,10 @@ func TestMain(m *testing.M) { testpg.RunMain(m) }
 
 func anchorCtx() context.Context {
 	return auth.WithContext(context.Background(), &auth.AuthContext{
-		PrincipalID: "p_evt_test",
-		Scope:       auth.ScopeAnchor,
-		Permissions: []string{"platform:*:*:*"},
+		PrincipalID:     "p_evt_test",
+		Scope:           auth.ScopeAnchor,
+		Permissions:     []string{"platform:*:*:*"},
+		AllApplications: true,
 	})
 }
 
@@ -161,10 +162,11 @@ func TestCreateEvent_ClientDefaultingAndTenantGuard(t *testing.T) {
 	pool := testpg.Pool(t)
 	s := &State{Repo: event.NewRepository(pool)}
 	ctx := auth.WithContext(context.Background(), &auth.AuthContext{
-		PrincipalID: "p_evt_client",
-		Scope:       auth.ScopeClient,
-		Clients:     []string{"clt_evtsingle1"},
-		Permissions: []string{"platform:messaging:batch:events-write"},
+		PrincipalID:     "p_evt_client",
+		Scope:           auth.ScopeClient,
+		Clients:         []string{"clt_evtsingle1"},
+		Permissions:     []string{"platform:messaging:batch:events-write"},
+		AllApplications: true,
 	})
 
 	out, err := s.create(ctx, &apicommon.In[CreateEventRequest]{Body: CreateEventRequest{

@@ -10,12 +10,14 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/event"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/sdk"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 )
 
@@ -25,6 +27,11 @@ type State struct {
 	// Clients resolves a clientCode → client_id on ingest (client-centric
 	// linkage). Optional: when nil, clientCode is ignored.
 	Clients *client.Repository
+	// Apps resolves an event type's application code → application on ingest,
+	// to confine application-scoped callers to their own applications.
+	// Optional only in tests: nil means every application code is unknown, so
+	// an application-scoped caller is refused outright.
+	Apps *application.Repository
 }
 
 const tag = "events"
@@ -99,6 +106,14 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreateEventRequest]
 		return nil, httperror.BadRequest("VALIDATION", "data is required")
 	}
 
+	// Application confinement: an application-scoped caller may only ingest
+	// events of its own applications (first segment of the event type).
+	if ok, err := sdk.NewAppScope(s.Apps).CanAccessCode(ctx, ac, sdk.FirstSegment(req.EventType)); err != nil {
+		return nil, err
+	} else if !ok {
+		return nil, httperror.Forbidden(eventTypeAppRefused)
+	}
+
 	// Client ID: explicit value wins; otherwise non-anchor callers default
 	// to their first accessible client.
 	clientID := req.ClientID
@@ -150,9 +165,21 @@ func (s *State) batchIngest(ctx context.Context, in *apicommon.In[BatchRequest])
 	// Per-batch cache of clientCode → client_id (a batch usually shares one
 	// client). A nil entry means "looked up, not found" so we don't re-query.
 	clientByCode := map[string]*string{}
+	appScope := sdk.NewAppScope(s.Apps)
 	for i, it := range in.Body.Items {
 		if msg := validateBatchItem(&it); msg != "" {
 			results[i] = BatchResultItem{ID: it.ID, Status: "BAD_REQUEST", Error: msg}
+			continue
+		}
+		// Application confinement (application-scoped callers only): the
+		// event's application is the first segment of its type. Refused per
+		// item; the rest of the batch still lands.
+		ok, err := appScope.CanAccessCode(ctx, ac, sdk.FirstSegment(it.Type))
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			results[i] = BatchResultItem{ID: it.ID, Status: "BAD_REQUEST", Error: eventTypeAppRefused}
 			continue
 		}
 		ev := event.New(it.Type, it.Source, it.Subject, it.Data)
@@ -207,6 +234,11 @@ func (s *State) batchIngest(ctx context.Context, in *apicommon.In[BatchRequest])
 	}
 	return &apicommon.Out[BatchResponse]{Body: BatchResponse{Results: results}}, nil
 }
+
+// eventTypeAppRefused is the message for an event whose application the
+// (application-scoped) caller may not ingest for — unknown application code
+// and inaccessible application are deliberately indistinguishable.
+const eventTypeAppRefused = "event type belongs to an application this credential cannot ingest for"
 
 // validateBatchItem mirrors the singular create's schema-required fields
 // (type, source, data) for a batch item, whose wire type keeps every field

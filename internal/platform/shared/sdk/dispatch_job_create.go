@@ -158,6 +158,17 @@ func (s *DispatchJobsBatchState) createOne(w http.ResponseWriter, r *http.Reques
 	j.IdempotencyKey = req.IdempotencyKey
 	j.Metadata = metadataFromMap(req.Metadata)
 
+	// Application confinement (application-scoped callers only).
+	msg, err := s.checkJobApplication(r.Context(), ac, NewAppScope(s.Apps), map[string]string{}, &j)
+	if err != nil {
+		httperror.Write(w, err)
+		return
+	}
+	if msg != "" {
+		httperror.Write(w, httperror.Forbidden(msg))
+		return
+	}
+
 	if err := s.Repo.InsertBatch(r.Context(), []dispatchjob.DispatchJob{j}); err != nil {
 		httperror.Write(w, usecase.Internal("REPO", "insert failed", err))
 		return

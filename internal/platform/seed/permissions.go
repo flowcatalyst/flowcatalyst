@@ -250,6 +250,13 @@ var permsApplicationService = []string{
 	// Publish its own application's OpenAPI document (the SDK definitions
 	// sync). The handler confines it to the applications it is bound to.
 	"platform:application-service:application-openapi:sync",
+	// Each application delivers its own outbox with its own service-account
+	// credentials. The batch endpoints confine an application-scoped caller to
+	// items belonging to its own applications (sdk.AppScope), so these grants
+	// do not widen reach.
+	permAdminBatchEventsWrite,
+	permAdminBatchDispatchJobsWrite,
+	permAdminBatchAuditLogsWrite,
 }
 
 // Wildcard.

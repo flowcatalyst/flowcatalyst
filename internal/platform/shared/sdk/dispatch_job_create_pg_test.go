@@ -41,7 +41,7 @@ func newIngestServer(t *testing.T, ac *auth.AuthContext) (*httptest.Server, *dis
 }
 
 func anchorAC() *auth.AuthContext {
-	return &auth.AuthContext{PrincipalID: "p_dj_test", Scope: auth.ScopeAnchor, Permissions: []string{"platform:*:*:*"}}
+	return &auth.AuthContext{PrincipalID: "p_dj_test", Scope: auth.ScopeAnchor, AllApplications: true, Permissions: []string{"platform:*:*:*"}}
 }
 
 func postJSON(t *testing.T, url, body string) (*http.Response, string) {
@@ -208,10 +208,11 @@ func TestCreateDispatchJob_BadPayloadEnvelopeMatchesBatch(t *testing.T) {
 // the caller's tenants — the same guard the batch loop applies.
 func TestCreateDispatchJob_TenantGuard(t *testing.T) {
 	srv, _ := newIngestServer(t, &auth.AuthContext{
-		PrincipalID: "p_dj_client",
-		Scope:       auth.ScopeClient,
-		Clients:     []string{"clt_djmine"},
-		Permissions: []string{"platform:messaging:batch:dispatch-jobs-write"},
+		PrincipalID:     "p_dj_client",
+		Scope:           auth.ScopeClient,
+		Clients:         []string{"clt_djmine"},
+		Permissions:     []string{"platform:messaging:batch:dispatch-jobs-write"},
+		AllApplications: true,
 	})
 
 	resp, body := postJSON(t, srv.URL+"/api/dispatch-jobs", `{

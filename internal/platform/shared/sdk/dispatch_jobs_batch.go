@@ -10,6 +10,7 @@
 package sdk
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -18,10 +19,12 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/dispatchqueue"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 )
@@ -29,6 +32,64 @@ import (
 // DispatchJobsBatchState bundles deps.
 type DispatchJobsBatchState struct {
 	Repo *dispatchjob.Repository
+	// Apps and Subs back the application confinement of application-scoped
+	// callers (see checkJobApplication). Nil means every application code /
+	// subscription is unknown, so a scoped caller is refused outright;
+	// callers with all-applications access never consult them.
+	Apps *application.Repository
+	Subs *subscription.Repository
+}
+
+// checkJobApplication enforces application confinement for an
+// application-scoped caller (ac.IsApplicationScoped()); a no-op for callers
+// with all-applications access. Returns a non-empty message when the job must
+// be refused. The rule, both of which must hold:
+//
+//  1. the application named by the first segment of the job's `code`
+//     (`{application}:...` — the same split_part(code, ':', 1) the platform
+//     uses as the job's application facet) exists and the caller can access it;
+//  2. if the job carries a subscriptionId, that subscription exists, has an
+//     application_code, and the caller can access that application — a job
+//     cannot be routed through another application's subscription.
+//
+// An unknown application or subscription is refused (indistinguishable from an
+// inaccessible one).
+func (s *DispatchJobsBatchState) checkJobApplication(ctx context.Context, ac *auth.AuthContext, scope *AppScope, subApp map[string]string, j *dispatchjob.DispatchJob) (string, error) {
+	if !ac.IsApplicationScoped() {
+		return "", nil
+	}
+	ok, err := scope.CanAccessCode(ctx, ac, FirstSegment(j.Code))
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "dispatch job code belongs to an application this credential cannot ingest for", nil
+	}
+	if j.SubscriptionID == nil || *j.SubscriptionID == "" {
+		return "", nil
+	}
+	subID := *j.SubscriptionID
+	appCode, seen := subApp[subID]
+	if !seen {
+		if s.Subs != nil {
+			sub, err := s.Subs.FindByID(ctx, subID)
+			if err != nil {
+				return "", usecase.Internal("REPO", "subscription find_by_id failed", err)
+			}
+			if sub != nil && sub.ApplicationCode != nil {
+				appCode = *sub.ApplicationCode
+			}
+		}
+		subApp[subID] = appCode
+	}
+	ok, err = scope.CanAccessCode(ctx, ac, appCode)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "subscription belongs to an application this credential cannot ingest for", nil
+	}
+	return "", nil
 }
 
 // BatchItem is one row in the inbound batch.
@@ -196,7 +257,9 @@ func (s *DispatchJobsBatchState) batchIngest(w http.ResponseWriter, r *http.Requ
 	}
 
 	jobs := make([]dispatchjob.DispatchJob, 0, len(body.Items))
-	for _, it := range body.Items {
+	scope := NewAppScope(s.Apps)
+	subApp := map[string]string{}
+	for idx, it := range body.Items {
 		j, err := jobFromItem(it)
 		if err != nil {
 			// An unrecognised kind is a whole-batch rejection (400), same as
@@ -210,6 +273,17 @@ func (s *DispatchJobsBatchState) batchIngest(w http.ResponseWriter, r *http.Requ
 		// they have access to.
 		if j.ClientID != nil && !ac.CanAccessClient(string(*j.ClientID)) {
 			httperror.Write(w, httperror.Forbidden("No access to client: "+string(*j.ClientID)))
+			return
+		}
+		// Application confinement (application-scoped callers only): any
+		// offending item rejects the whole batch, like the client guard above.
+		msg, err := s.checkJobApplication(r.Context(), ac, scope, subApp, &j)
+		if err != nil {
+			httperror.Write(w, err)
+			return
+		}
+		if msg != "" {
+			httperror.Write(w, httperror.Forbidden(fmt.Sprintf("items[%d]: %s", idx, msg)))
 			return
 		}
 		jobs = append(jobs, j)
