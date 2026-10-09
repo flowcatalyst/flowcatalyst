@@ -63,6 +63,14 @@ func (s *AuditBatchState) batchIngest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Permission: same posture as the events and dispatch-jobs batch endpoints.
+	// Held by the built-in application-service role (migration 069) and by
+	// platform:*:*:* wildcards.
+	if err := auth.CanWritePermission(ac, "platform:admin:batch:audit-logs-write"); err != nil {
+		httperror.Write(w, err)
+		return
+	}
+
 	var body AuditBatchRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))

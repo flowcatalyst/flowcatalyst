@@ -110,3 +110,31 @@ func TestAuditBatchIngest_ExplicitPrincipalIDIsNotOverridden(t *testing.T) {
 	require.NotNil(t, logs[0].PrincipalID)
 	assert.Equal(t, "prn_explicit_actor", *logs[0].PrincipalID)
 }
+
+// TestAuditBatchIngest_RequiresPermission pins the authorization gate: 403
+// without platform:admin:batch:audit-logs-write (before any body decoding),
+// success with the exact permission, success with a wildcard holder.
+func TestAuditBatchIngest_RequiresPermission(t *testing.T) {
+	post := func(ac *auth.AuthContext, body string) int {
+		srv, _ := newAuditBatchServer(t, ac)
+		resp, err := http.Post(srv.URL+"/api/audit-logs/batch", "application/json", strings.NewReader(body))
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		return resp.StatusCode
+	}
+	valid := `{"items":[{"entityType":"widget","entityId":"w_perm_1","operation":"CREATE","principalId":"prn_x"}]}`
+
+	none := &auth.AuthContext{PrincipalID: "prn_perm_none", Scope: auth.ScopeAnchor, AllApplications: true,
+		Permissions: []string{"platform:messaging:batch:events-write"}}
+	assert.Equal(t, http.StatusForbidden, post(none, valid))
+	// Gate runs before body decoding: malformed JSON is still 403, not 400.
+	assert.Equal(t, http.StatusForbidden, post(none, `{not json`))
+
+	exact := &auth.AuthContext{PrincipalID: "prn_perm_exact", Scope: auth.ScopeAnchor, AllApplications: true,
+		Permissions: []string{"platform:admin:batch:audit-logs-write"}}
+	assert.Equal(t, http.StatusOK, post(exact, valid))
+
+	wild := &auth.AuthContext{PrincipalID: "prn_perm_wild", Scope: auth.ScopeAnchor, AllApplications: true,
+		Permissions: []string{"platform:*:*:*"}}
+	assert.Equal(t, http.StatusOK, post(wild, valid))
+}
