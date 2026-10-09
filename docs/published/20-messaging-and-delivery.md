@@ -8,7 +8,7 @@ ordering within a group, and operator visibility at every hop.
 
 ```mermaid
 flowchart LR
-    A[Producer app] -->|"POST /api/events (single or batch)"| V[validate against event type + schema]
+    A[Producer app] -->|"POST /api/events (single or batch)"| V[authorize + sanity-check\ntype, source, data]
     V --> OB[(outbox)]
     OB --> ST[stream processor]
     ST --> RT[router]
@@ -20,8 +20,15 @@ flowchart LR
 ```
 
 - **Event types** (`evt_…`) are registered per application (usually synced
-  from the SDK) and may carry JSON schemas; ingestion validates against
-  them.
+  from the SDK) and may carry JSON schemas. The schemas are
+  documentation for consumers: ingestion does **not** check an event
+  against its registered event type or schema. It checks the caller's
+  permission, that `type`, `source` and `data` are present, that an
+  application-scoped credential only publishes types belonging to its own
+  application (`<application-code>:` prefix) and that the caller has
+  access to the client. An event whose type is not registered is still
+  stored as a fact; it simply matches no subscription, so nothing is
+  delivered for it.
 - **The outbox** decouples ingestion from processing: accepting an event
   and processing it are separate, restart-safe steps. Producer apps using
   the SDKs get the same pattern on their side — events are written with

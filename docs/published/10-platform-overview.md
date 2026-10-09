@@ -2,7 +2,7 @@
 
 FlowCatalyst is an event-driven integration platform: applications publish
 business events into it, and it takes responsibility for everything that
-should happen next — validating them against their event types, routing
+should happen next — recording them, routing
 them through subscriptions, delivering them to consumers as signed
 webhooks with retries and rate limits, and giving operators one place to
 see, audit, and intervene in all of it. Around that messaging core it
@@ -14,7 +14,7 @@ and customer-portal identities.
 
 | Capability | In short |
 |---|---|
-| **Event ingestion** | Applications POST events (singly or in batches) against registered **event types** with optional JSON schemas. |
+| **Event ingestion** | Applications POST events (singly or in batches) labelled with an event type (registered event types carry optional JSON schemas that document the payload; ingestion does not enforce them). |
 | **Routing** | **Subscriptions** bind event types to consumers; the router turns matched events into **dispatch jobs**. |
 | **Delivery** | Dispatch jobs deliver as HMAC-signed webhooks with retries, backoff, and per-pool rate limiting (**dispatch pools**). |
 | **Scheduling** | **Scheduled jobs** fire on cron expressions with locking, retention, and instance tracking. |
