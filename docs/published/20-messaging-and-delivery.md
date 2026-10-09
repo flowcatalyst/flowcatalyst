@@ -51,8 +51,8 @@ flowchart LR
 
 ## Scheduled jobs
 
-Cron-driven work lives in **scheduled jobs** (`sjb_…`): standard cron
-expressions, locking so exactly one instance fires per tick even in HA,
+Cron-driven work lives in **scheduled jobs** (`sjb_…`): 6-field cron
+expressions (seconds first: `sec min hour day-of-month month day-of-week`), locking so exactly one instance fires per tick even in HA,
 signed delivery to the target (bearer + HMAC, like webhooks), instance
 tracking with logs, and retention policies. Applications register their
 own scheduled jobs through the SDK; the admin UI can pause, fire manually,

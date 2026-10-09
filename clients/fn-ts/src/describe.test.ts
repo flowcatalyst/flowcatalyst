@@ -30,7 +30,7 @@ test("describe: full shape, matching plan §5.4's field names exactly", () => {
   platform("GET /hello/{name}", ok);
   open("GET /healthz", ok);
   subscribe("orders:order:order:created", "/events/order-created", { mode: "IMMEDIATE", maxRetries: 3, dataOnly: true });
-  schedule("*/5 * * * *", "/events/tick", { timezone: "UTC" });
+  schedule("0 */5 * * * *", "/events/tick", { timezone: "UTC" });
   config("GREETING");
   secret("STRIPE_KEY");
   db("main");
@@ -48,7 +48,7 @@ test("describe: full shape, matching plan §5.4's field names exactly", () => {
   assert.equal(doc.subscriptions[0].mode, "IMMEDIATE");
   assert.equal(doc.subscriptions[0].maxRetries, 3);
   assert.equal(doc.subscriptions[0].dataOnly, true);
-  assert.equal(doc.schedules[0].cron, "*/5 * * * *");
+  assert.equal(doc.schedules[0].cron, "0 */5 * * * *");
   assert.equal(doc.schedules[0].timezone, "UTC");
   assert.deepEqual(doc.config, ["GREETING"]);
   assert.deepEqual(doc.secrets, ["STRIPE_KEY"]);

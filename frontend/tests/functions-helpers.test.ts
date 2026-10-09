@@ -67,7 +67,7 @@ describe("parseDescribe", () => {
 			subscriptions: [
 				{ eventType: "orders:order:order:created", path: "/events/order-created", mode: "IMMEDIATE" },
 			],
-			schedules: [{ cron: "*/5 * * * *", path: "/events/tick" }],
+			schedules: [{ cron: "0 */5 * * * *", path: "/events/tick" }],
 			config: ["GREETING"],
 			secrets: ["STRIPE_KEY"],
 			db: ["main"],
@@ -84,7 +84,7 @@ describe("parseDescribe", () => {
 			maxBodyBytes: undefined,
 		});
 		expect(d.subscriptions[0]?.eventType).toBe("orders:order:order:created");
-		expect(d.schedules[0]?.cron).toBe("*/5 * * * *");
+		expect(d.schedules[0]?.cron).toBe("0 */5 * * * *");
 		expect(d.config).toEqual(["GREETING"]);
 		expect(d.secrets).toEqual(["STRIPE_KEY"]);
 		expect(d.db).toEqual(["main"]);

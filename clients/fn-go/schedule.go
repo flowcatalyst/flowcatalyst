@@ -16,7 +16,9 @@ func Payload(p json.RawMessage) SchedOption {
 }
 
 // Schedule declares a cron-triggered firing at path, which must name a
-// webhook endpoint (plan §5.4).
+// webhook endpoint (plan §5.4). cron is 6-field, seconds first
+// ("sec min hour dom month dow", e.g. "0 */5 * * * *"); publish rejects a
+// 5-field expression.
 func Schedule(cron, path string, opts ...SchedOption) {
 	s := schedDef{Cron: cron, Path: path}
 	for _, o := range opts {

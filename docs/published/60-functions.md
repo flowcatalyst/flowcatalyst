@@ -79,7 +79,7 @@ func init() {
 	fn.Open("GET /healthz", health)
 
 	fn.Subscribe("shop:orders:order:created", "/events/order-created")
-	fn.Schedule("*/15 * * * *", "/events/order-created")
+	fn.Schedule("0 */15 * * * *", "/events/order-created")
 	fn.HTTPAllow("api.stripe.com")
 	fn.Emits("shop:orders:order:invoiced")
 }
@@ -106,7 +106,10 @@ A webhook endpoint accepts `POST` only. Paths use Go's routing patterns:
 ### Subscriptions and schedules
 
 `Subscribe(eventType, path)` asks for an event type to be delivered to one of
-your webhook endpoints; `Schedule(cron, path)` asks for a cron firing to be.
+your webhook endpoints; `Schedule(cron, path)` asks for a cron firing to be. The cron expression is
+6-field, seconds first (`sec min hour day-of-month month day-of-week`, so
+`0 */15 * * * *` is every 15 minutes); a 5-field expression is rejected at
+publish.
 The path must be a literal path that lands on a webhook endpoint. A
 subscription without a mode keeps each message group in order and moves on
 past a failure (`NEXT_ON_ERROR`), like every other subscription; ask for

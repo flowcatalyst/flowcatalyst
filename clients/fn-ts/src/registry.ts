@@ -126,7 +126,8 @@ export function subscribe(eventType: string, path: string, options: SubOptions =
 }
 
 /** Declares a cron-triggered firing at path, which must name a webhook
- * endpoint. */
+ * endpoint. `cron` is 6-field, seconds first ("sec min hour dom month dow",
+ * e.g. "0 0 * * * *" for hourly); publish rejects a 5-field expression. */
 export function schedule(cron: string, path: string, options: SchedOptions = {}): void {
   registry.scheds.push({ cron, path, options });
 }

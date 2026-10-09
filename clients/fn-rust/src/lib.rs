@@ -11,7 +11,7 @@
 //!        .platform("GET /hello/{name}", hello)
 //!        .open("GET /healthz", health)
 //!        .subscribe("t:y:z:w", "/events/x")
-//!        .schedule("*/5 * * * *", "/events/x")
+//!        .schedule("0 */5 * * * *", "/events/x")
 //!        .config("GREETING")
 //!        .secret("K")
 //!        .db("main")

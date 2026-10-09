@@ -107,7 +107,9 @@ impl App {
         self
     }
 
-    /// Declares a cron-triggered firing at `path`.
+    /// Declares a cron-triggered firing at `path`. `cron` is 6-field, seconds
+    /// first (`sec min hour dom month dow`, e.g. `0 */5 * * * *`); publish
+    /// rejects a 5-field expression.
     pub fn schedule(&mut self, cron: &str, path: &str) -> &mut Self {
         self.scheds.push(Sched {
             cron: cron.to_string(),
@@ -285,7 +287,7 @@ mod tests {
             .platform("GET /hello/{name}", ok)
             .open("GET /healthz", ok)
             .subscribe("orders:order:order:created", "/events/order-created")
-            .schedule("*/5 * * * *", "/events/tick")
+            .schedule("0 */5 * * * *", "/events/tick")
             .config("GREETING")
             .secret("STRIPE_KEY")
             .db("main")
@@ -296,7 +298,7 @@ mod tests {
         assert_eq!(doc["abi"], 1);
         assert_eq!(doc["endpoints"].as_array().unwrap().len(), 3);
         assert_eq!(doc["subscriptions"][0]["eventType"], "orders:order:order:created");
-        assert_eq!(doc["schedules"][0]["cron"], "*/5 * * * *");
+        assert_eq!(doc["schedules"][0]["cron"], "0 */5 * * * *");
         assert_eq!(doc["config"][0], "GREETING");
         assert_eq!(doc["secrets"][0], "STRIPE_KEY");
         assert_eq!(doc["db"][0], "main");

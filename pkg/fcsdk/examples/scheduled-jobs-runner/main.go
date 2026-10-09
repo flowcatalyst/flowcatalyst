@@ -24,7 +24,7 @@
 // Then on the platform:
 //
 //	POST /api/scheduled-jobs
-//	{ "code": "daily-rollup", "name": "...", "crons": ["0 0 * * *"],
+//	{ "code": "daily-rollup", "name": "...", "crons": ["0 0 0 * * *"],
 //	  "tracksCompletion": true,
 //	  "targetUrl": "http://localhost:8080/webhooks/scheduled-job" }
 package main

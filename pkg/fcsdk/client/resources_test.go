@@ -180,17 +180,17 @@ func TestScheduledJobsCreateAndFire(t *testing.T) {
 	c := client.New(srv.URL)
 
 	_, err := c.ScheduledJobs().Create(context.Background(), &client.CreateScheduledJobRequest{
-		Code: "daily-sync", Name: "Daily Sync", Crons: []string{"0 0 * * *"},
+		Code: "daily-sync", Name: "Daily Sync", Crons: []string{"0 0 0 * * *"},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "/api/scheduled-jobs", seen.path)
 	var body client.CreateScheduledJobRequest
 	require.NoError(t, json.Unmarshal([]byte(seen.body), &body))
-	assert.Equal(t, []string{"0 0 * * *"}, body.Crons)
+	assert.Equal(t, []string{"0 0 0 * * *"}, body.Crons)
 }
 
 func TestScheduledJobsListPaginatedShape(t *testing.T) {
-	srv, _ := newMockSrv(t, `{"data":[{"id":"sjb_1","code":"x","name":"X","status":"ACTIVE","crons":["0 * * * *"],"timezone":"UTC","concurrent":false,"tracksCompletion":false,"deliveryMaxAttempts":3,"createdAt":"","updatedAt":"","version":1}],"page":1,"size":50,"total":1,"totalPages":1}`)
+	srv, _ := newMockSrv(t, `{"data":[{"id":"sjb_1","code":"x","name":"X","status":"ACTIVE","crons":["0 0 * * * *"],"timezone":"UTC","concurrent":false,"tracksCompletion":false,"deliveryMaxAttempts":3,"createdAt":"","updatedAt":"","version":1}],"page":1,"size":50,"total":1,"totalPages":1}`)
 	c := client.New(srv.URL)
 
 	r, err := c.ScheduledJobs().List(context.Background(), nil)

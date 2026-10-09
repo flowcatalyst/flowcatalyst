@@ -19,7 +19,7 @@ func TestDescribeGolden(t *testing.T) {
 	Open("GET /healthz", noopHandler, MaxBody(0))
 
 	Subscribe("orders:order:order:created", "/events/order-created", Mode("IMMEDIATE"), MaxRetries(3))
-	Schedule("*/5 * * * *", "/events/tick", Timezone("UTC"))
+	Schedule("0 */5 * * * *", "/events/tick", Timezone("UTC"))
 
 	Config("GREETING")
 	Secret("STRIPE_KEY")
@@ -41,7 +41,7 @@ func TestDescribeGolden(t *testing.T) {
 	    {"eventType": "orders:order:order:created", "path": "/events/order-created",
 	     "mode": "IMMEDIATE", "maxRetries": 3}
 	  ],
-	  "schedules": [{"cron": "*/5 * * * *", "timezone": "UTC", "path": "/events/tick"}],
+	  "schedules": [{"cron": "0 */5 * * * *", "timezone": "UTC", "path": "/events/tick"}],
 	  "config": ["GREETING"], "secrets": ["STRIPE_KEY"], "db": ["main"],
 	  "httpAllow": ["api.stripe.com", "*.acme.com"], "emits": ["orders:order:order:shipped"]
 	}`

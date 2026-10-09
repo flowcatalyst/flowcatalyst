@@ -275,7 +275,7 @@ function's log at INFO/WARN.
     {"eventType": "orders:order:order:created", "path": "/events/order-created",
      "mode": "IMMEDIATE", "maxRetries": 3, "dataOnly": false}
   ],
-  "schedules": [{"cron": "*/5 * * * *", "timezone": "UTC", "path": "/events/tick"}],
+  "schedules": [{"cron": "0 */5 * * * *", "timezone": "UTC", "path": "/events/tick"}],
   "config": ["GREETING"], "secrets": ["STRIPE_KEY"], "db": ["main"],
   "httpAllow": ["api.stripe.com", "*.acme.com"], "emits": ["orders:order:order:shipped"]
 }
@@ -579,7 +579,7 @@ func init() {
     fn.Platform("GET /api/orders/{id}", getOrder)
     fn.Open("GET /healthz", health)
     fn.Subscribe("orders:order:order:created", "/events/order-created")
-    fn.Schedule("*/5 * * * *", "/events/tick")
+    fn.Schedule("0 */5 * * * *", "/events/tick")
     fn.Config("GREETING"); fn.Secret("STRIPE_KEY"); fn.DB("main")
     fn.HTTPAllow("api.stripe.com"); fn.Emits("orders:order:order:shipped")
 }

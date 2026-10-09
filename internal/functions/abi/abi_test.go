@@ -59,7 +59,7 @@ const validDescribe = `{
     {"path": "/healthz", "auth": "none", "maxBodyBytes": 0}
   ],
   "subscriptions": [{"eventType": "orders:order:order:created", "path": "/events/order-created", "mode": "IMMEDIATE", "maxRetries": 3}],
-  "schedules": [{"cron": "*/5 * * * *", "path": "/events/order-created"}],
+  "schedules": [{"cron": "0 */5 * * * *", "path": "/events/order-created"}],
   "config": ["GREETING"], "secrets": ["STRIPE_KEY"], "db": ["main"],
   "httpAllow": ["api.stripe.com", "*.acme.com", "hooks.acme.com:8080"], "emits": ["orders:order:order:shipped"]
 }`
