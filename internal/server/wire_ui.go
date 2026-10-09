@@ -34,10 +34,15 @@ func registerUI(r chi.Router, cfg EnvCfg, repos *repoSet, svcs *serviceSet) erro
 			if err != nil || p == nil {
 				return ""
 			}
+			// The principal's name (what /auth/login returns), then the
+			// identity's first/last name (which falls back to the email).
+			if p.Name != "" {
+				return p.Name
+			}
 			if p.UserIdentity != nil {
 				return p.UserIdentity.DisplayName()
 			}
-			return p.Name
+			return ""
 		},
 		DispatchPools: repos.dispatchPoolRepo,
 	})
