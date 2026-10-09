@@ -86,13 +86,7 @@ templ TableToolbar(p TableToolbarProps) {
 				</a>
 			}
 			if p.Filters != nil {
-				<button type="button" class="fc-btn fc-btn-primary-outline" popovertarget={ p.ID + "-filters" }>
-					@Icon(IconProps{Name: "funnel", Class: "size-[1rem]"})
-					Filters
-					if p.ActiveFilterCount > 0 {
-						<span class="fc-badge">{ strconv.Itoa(p.ActiveFilterCount) }</span>
-					}
-				</button>
+				@FiltersButton(FiltersButtonProps{FormID: p.ID, ActiveFilterCount: p.ActiveFilterCount})
 				<div id={ p.ID + "-filters" } popover class="fc-filter-popover" data-on:toggle__capture={ popoverAnchorExpr }>
 					<div class="fc-filter-popover-body">
 						@p.Filters
@@ -101,6 +95,26 @@ templ TableToolbar(p TableToolbarProps) {
 			}
 		</div>
 	</form>
+}
+
+// FiltersButtonProps is the toolbar's Filters button (table-toolbar.md).
+type FiltersButtonProps struct {
+	FormID            string `json:"formId"`
+	ActiveFilterCount int    `json:"activeFilterCount"`
+}
+
+// FiltersButton opens the toolbar's filters popover and shows the active
+// filter count. It is a separate part so a live (c) update can re-render it
+// alone (selector "#{formId} [popovertarget]"): patching the popover would
+// reset its position while it is open.
+templ FiltersButton(p FiltersButtonProps) {
+	<button type="button" class="fc-btn fc-btn-primary-outline" popovertarget={ ID(p.FormID) + "-filters" }>
+		@Icon(IconProps{Name: "funnel", Class: "size-[1rem]"})
+		Filters
+		if p.ActiveFilterCount > 0 {
+			<span class="fc-badge">{ strconv.Itoa(p.ActiveFilterCount) }</span>
+		}
+	</button>
 }
 
 // PageItem is one entry of a Pagination: a page link or an ellipsis.

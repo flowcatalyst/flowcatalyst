@@ -94,6 +94,12 @@ func TestPatchElementsBytes(t *testing.T) {
 				"event: datastar-patch-signals\ndata: signals {\"open\":true}\n\n\n",
 		},
 		{
+			name: "replace the address bar URL",
+			fn:   func(s *SSE) error { return s.ReplaceURL("/ui/dispatch-pools?q=a%20b&status=ACTIVE") },
+			want: "event: datastar-patch-elements\ndata: selector body\ndata: mode append\n" +
+				"data: elements <div hidden data-init=\"history.replaceState(history.state, &#39;&#39;, &#34;/ui/dispatch-pools?q=a%20b\\u0026status=ACTIVE&#34;); el.remove()\"></div>\n\n\n",
+		},
+		{
 			name: "redirect to a local path",
 			fn:   func(s *SSE) error { return s.Redirect("/auth/login?redirect=/ui/x&a=<b>") },
 			want: "event: datastar-patch-elements\ndata: selector body\ndata: mode append\n" +
@@ -133,6 +139,9 @@ func TestRedirectRefusesOtherOrigins(t *testing.T) {
 		s := NewSSE(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 		if err := s.Redirect(target); !errors.Is(err, ErrUnsafeRedirect) {
 			t.Errorf("Redirect(%q) err = %v, want ErrUnsafeRedirect", target, err)
+		}
+		if err := s.ReplaceURL(target); !errors.Is(err, ErrUnsafeRedirect) {
+			t.Errorf("ReplaceURL(%q) err = %v, want ErrUnsafeRedirect", target, err)
 		}
 		if rec.Body.Len() != 0 {
 			t.Errorf("Redirect(%q) wrote %q", target, rec.Body.String())

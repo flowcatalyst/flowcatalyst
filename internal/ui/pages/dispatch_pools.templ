@@ -1,0 +1,170 @@
+package pages
+
+import (
+	"strconv"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+)
+
+// liveGet re-runs the list request through Datastar with the toolbar form's
+// fields as query parameters (search, status, hidden sort/dir), so the server
+// reads one set of parameters for both the full page and the live update.
+const liveGet = "@get('/ui/dispatch-pools', {contentType: 'form'})"
+
+// sortClick fetches a sort link's URL through Datastar instead of navigating.
+const sortClick = "@get(el.href)"
+
+var poolStatusOptions = []kit.Option{
+	{Value: "ACTIVE", Label: "Active"},
+	{Value: "SUSPENDED", Label: "Suspended"},
+	{Value: "ARCHIVED", Label: "Archived"},
+}
+
+func (v poolsView) columns() []kit.DataColumn {
+	sortable := func(label, key string) kit.DataColumn {
+		return kit.DataColumn{
+			Label:     label,
+			Href:      v.Query.sortURL(key),
+			Direction: v.Query.direction(key),
+			LinkAttrs: templ.Attributes{"data-on:click__prevent": sortClick},
+		}
+	}
+	return []kit.DataColumn{
+		sortable("Code", "code"),
+		sortable("Name", "name"),
+		{Label: "Client Scope"},
+		{Label: "Rate Limit"},
+		{Label: "Concurrency"},
+		sortable("Status", "status"),
+		sortable("Created", "created"),
+		{Label: "Actions", Class: "w-px"},
+	}
+}
+
+func (v poolsView) empty() *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	e := &kit.EmptyStateProps{Message: "No dispatch pools found", Status: true}
+	if v.Filtered() {
+		e.ClearHref = poolsPath
+	}
+	return e
+}
+
+func (v poolsView) clearHref() string {
+	if v.Filtered() {
+		return poolsPath
+	}
+	return ""
+}
+
+func (v poolsView) hidden() []kit.HiddenField {
+	if v.Query.Sort == "code" && v.Query.Dir == kit.SortAsc {
+		return nil
+	}
+	return []kit.HiddenField{{Name: "sort", Value: v.Query.Sort}, {Name: "dir", Value: string(v.Query.Dir)}}
+}
+
+func (v poolsView) summary() string {
+	switch {
+	case v.Total == 1 && len(v.Rows) == 1:
+		return "1 dispatch pool"
+	case len(v.Rows) == v.Total:
+		return strconv.Itoa(v.Total) + " dispatch pools"
+	default:
+		return "Showing " + strconv.Itoa(len(v.Rows)) + " of " + strconv.Itoa(v.Total) + " dispatch pools"
+	}
+}
+
+templ poolsPage(v poolsView) {
+	@kit.PageHeader(kit.PageHeaderProps{
+		Title:    "Dispatch Pools",
+		Subtitle: "Manage rate limiting and concurrency for dispatch jobs",
+		Actions:  poolsActions(v),
+	})
+	@kit.Alert(kit.AlertProps{
+		Icon:        "info",
+		Title:       "New UI preview",
+		Description: "This list is served by the new server-rendered UI. Creating and editing pools still opens the current UI.",
+		Class:       "mb-4",
+	})
+	<div class="fc-card-flush">
+		@kit.TableToolbar(kit.TableToolbarProps{
+			ID:                poolsFormID,
+			Action:            poolsPath,
+			SearchPlaceholder: "Search pools...",
+			SearchValue:       v.Query.Q,
+			ClearHref:         v.clearHref(),
+			ActiveFilterCount: v.FilterCount(),
+			Hidden:            v.hidden(),
+			SearchAttrs:       templ.Attributes{"data-on:input__debounce.300ms": liveGet},
+			FormAttrs:         templ.Attributes{"data-on:submit": liveGet},
+			Filters:           poolsFilters(v),
+		})
+		@poolsTable(v)
+		@poolsSummary(v)
+	</div>
+}
+
+templ poolsActions(v poolsView) {
+	if v.CanCreate {
+		@kit.LegacyButton(kit.LegacyButtonProps{Href: "/dispatch-pools/new"}) {
+			Create Pool
+		}
+	}
+}
+
+templ poolsFilters(v poolsView) {
+	@kit.FilterSelect(kit.FilterSelectProps{
+		Name:        "status",
+		Label:       "Status",
+		Placeholder: "All statuses",
+		Options:     poolStatusOptions,
+		Selected:    v.Query.Status,
+		Attrs:       templ.Attributes{"data-on:change": liveGet},
+	})
+}
+
+// poolsTable is the patch target for live updates (id "pools-table": the
+// headings move aria-sort and their links carry the current filters).
+templ poolsTable(v poolsView) {
+	@kit.DataTable(kit.DataTableProps{ID: "pools-table", BodyID: "pools-rows", Columns: v.columns(), Empty: v.empty()}) {
+		for _, row := range v.Rows {
+			@kit.TR(kit.TRProps{ID: "pool-" + row.ID}) {
+				@kit.TD(kit.TDProps{}) {
+					<code class="font-mono text-[13px]">{ row.Code }</code>
+				}
+				@kit.TD(kit.TDProps{}) {
+					<a href={ row.DetailHref } class="font-medium text-foreground no-underline hover:underline">{ row.Name }</a>
+				}
+				@kit.TD(kit.TDProps{Class: "text-[13px] text-muted-foreground"}) {
+					{ row.Scope }
+				}
+				@kit.TD(kit.TDProps{}) {
+					{ row.RateLimit }
+				}
+				@kit.TD(kit.TDProps{}) {
+					{ row.Concurrency }
+				}
+				@kit.TD(kit.TDProps{}) {
+					@kit.Badge(kit.BadgeProps{Variant: row.StatusVariant}) {
+						{ row.Status }
+					}
+				}
+				@kit.TD(kit.TDProps{}) {
+					<time datetime={ row.CreatedISO }>{ row.Created }</time>
+				}
+				if v.CanEdit {
+					@kit.RowActions(kit.RowActionsProps{Actions: []kit.RowAction{{Icon: "pencil", Label: "Edit " + row.Name, Href: row.EditHref}}})
+				} else {
+					@kit.TD(kit.TDProps{})
+				}
+			}
+		}
+	}
+}
+
+templ poolsSummary(v poolsView) {
+	<div id="pools-summary" class="fc-table-footer"><span>{ v.summary() }</span></div>
+}

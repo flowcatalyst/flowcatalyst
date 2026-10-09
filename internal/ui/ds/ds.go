@@ -170,14 +170,26 @@ var ErrUnsafeRedirect = errors.New("ds: redirect target must be a local path")
 // evaluates attribute expressions itself. The path is JSON-encoded (which
 // escapes <, > and &) and then attribute-escaped.
 func (s *SSE) Redirect(path string) error {
+	return s.runOnce("window.location.assign(", path, ")")
+}
+
+// ReplaceURL sets the address bar to path (history.replaceState, no
+// navigation and no new history entry), so a view filtered or sorted through
+// Datastar keeps a URL that reloads to the same view. The appended element
+// removes itself. path must be local, as for Redirect.
+func (s *SSE) ReplaceURL(path string) error {
+	return s.runOnce("history.replaceState(history.state, '', ", path, "); el.remove()")
+}
+
+func (s *SSE) runOnce(prefix, path, suffix string) error {
 	if !IsLocalPath(path) {
 		return ErrUnsafeRedirect
 	}
 	target, err := json.Marshal(path)
 	if err != nil {
-		return fmt.Errorf("ds: encode redirect: %w", err)
+		return fmt.Errorf("ds: encode url: %w", err)
 	}
-	el := `<div hidden data-init="window.location.assign(` + html.EscapeString(string(target)) + `)"></div>`
+	el := `<div hidden data-init="` + html.EscapeString(prefix+string(target)+suffix) + `"></div>`
 	return s.gen.PatchElements(el, datastar.WithSelector("body"), datastar.WithModeAppend())
 }
 
