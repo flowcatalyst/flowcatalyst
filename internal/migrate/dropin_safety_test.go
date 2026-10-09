@@ -19,6 +19,7 @@ import (
 
 	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
 )
 
 func TestDropInSafety(t *testing.T) {
@@ -78,10 +79,13 @@ func TestDropInSafety(t *testing.T) {
 		migration_id VARCHAR(100) PRIMARY KEY,
 		applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		duration_ms INTEGER, checksum TEXT)`)
-	for _, v := range []int{
-		1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
-		21, 22, 24, 25, 26, 27, 28, 29, 30,
-	} {
+	// The previous platform had applied everything this binary ships (the
+	// database is fully migrated), so its tracker lists every shipped version.
+	shipped, err := shippedVersions()
+	if err != nil {
+		t.Fatalf("shipped versions: %v", err)
+	}
+	for _, v := range shipped {
 		mustExec(`INSERT INTO _schema_migrations (migration_id) VALUES ($1)`,
 			fmt.Sprintf("%03d_rust_migration", v))
 	}
@@ -118,4 +122,33 @@ func TestDropInSafety(t *testing.T) {
 		t.Fatalf("scenario B: msg_events was recreated — DATA LOSS (sentinel count=%d)", got)
 	}
 	t.Log("scenario B (no tracker, populated schema): sentinel survived via tnt_clients baseline")
+
+	// ── Scenario C: goose already tracks the database, and another
+	//    implementation's tracker has advanced past goose's ledger. The legacy
+	//    tracker must not add rows: goose's ledger is the only truth. ───────
+	if err := Run(ctx, pool); err != nil {
+		t.Fatalf("scenario C re-migrate: %v", err)
+	}
+	mustExec(`DELETE FROM goose_db_version WHERE version_id > 30`)
+	mustExec(`CREATE TABLE _schema_migrations (
+		migration_id VARCHAR(100) PRIMARY KEY,
+		applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		duration_ms INTEGER, checksum TEXT)`)
+	for v := 1; v <= 61; v++ {
+		mustExec(`INSERT INTO _schema_migrations (migration_id) VALUES ($1)`,
+			fmt.Sprintf("%03d_other_implementation", v))
+	}
+	db := stdlib.OpenDBFromPool(pool)
+	defer db.Close()
+	if err := bootstrap(ctx, db); err != nil {
+		t.Fatalf("scenario C bootstrap: %v", err)
+	}
+	var late int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM goose_db_version WHERE version_id > 30`).Scan(&late); err != nil {
+		t.Fatalf("scenario C count: %v", err)
+	}
+	if late != 0 {
+		t.Fatalf("scenario C: the legacy tracker seeded %d goose rows beyond goose's own ledger", late)
+	}
+	t.Log("scenario C (goose ledger present, legacy tracker ahead): nothing seeded")
 }

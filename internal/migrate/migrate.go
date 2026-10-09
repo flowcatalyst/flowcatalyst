@@ -50,8 +50,9 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 
 // bootstrap seeds goose_db_version so an existing, already-migrated database
 // is never re-migrated on the cutover — which matters because migrations
-// 019/022 DROP and recreate the messaging tables. It recognises, in priority
-// order:
+// 019/022 DROP and recreate the messaging tables. It does nothing once goose
+// has recorded any migration of its own (see step 0 in the body). It
+// recognises, in priority order:
 //
 //  1. `_fc_migrations` — Go's own pre-goose tracker (a `name` column). Seed
 //     goose from it, then drop it: it's ours and goose supersedes it.
@@ -67,6 +68,18 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 // A genuinely fresh database matches none of these and is left untouched, so
 // goose applies every migration normally. Safe + idempotent on every boot.
 func bootstrap(ctx context.Context, db *sql.DB) error {
+	// (0) Goose already tracks this database: its ledger is the only truth.
+	// A legacy tracker must never add to it. Other implementations of the
+	// platform number their migrations differently (the numbering diverges
+	// from 031), and one of them may have advanced its own tracker past
+	// goose's; seeding by number would then mark migrations goose never ran
+	// as applied, and a later migration fails on a table that does not exist.
+	if hasGoose, err := gooseHasMigrations(ctx, db); err != nil {
+		return err
+	} else if hasGoose {
+		return nil
+	}
+
 	// (1) Go's own pre-goose tracker.
 	if ok, err := tableExists(ctx, db, "_fc_migrations"); err != nil {
 		return err
