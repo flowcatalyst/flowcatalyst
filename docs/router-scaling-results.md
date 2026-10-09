@@ -344,3 +344,47 @@ Against the confirm criteria:
   (`sqs.(*deleteItem).finish` → `chansend1`, 30%) and the HTTP/2 `readLoop` waking request
   goroutines (`processHeaders` 26%, `endStream` 22%). With the router at 94% of its quota
   these are mostly goroutines waiting for a P, not a serial stage.
+
+---
+
+## Check: the HTTP/2 client's connection-pool lock (after F4)
+
+_Build `f98209b`. Question: does traffic pile onto one or two of the 8 per-host slots, so
+that one slot's pool lock convoys?_
+
+- **Traffic spreads evenly.** A throwaway build logged each slot's acquire count and
+  in-flight count every 0.5 s through a 4-CPU run. At the end of the run the 8 slots had
+  taken 67.4k–70.5k requests each (within ±4%). In-flight per slot moved together, for
+  example 154/154/154/154/154/154/153/153 or 191–197 across all 8. `selectLeastLoaded`
+  works as intended.
+- **Where the lock is.** Each slot has its own `http2.Transport`, and that has its own
+  standard-library `http.Transport` (x/net v0.54 wraps the one in `net/http`). So the lock
+  in the trace, `net/http/internal/http2.(*clientConnPool).mu`, is one lock **per slot**,
+  not one shared lock. `getClientConn` holds it while it calls `ReserveNewRequest` on each
+  of the slot's connections, and that call takes the connection's own `mu`, which the
+  connection's `readLoop` also takes for every frame.
+- **Why it convoys.** In-flight per slot runs at 100–250, which is the sink's 250-stream
+  limit. So a slot often has a second connection, and the scan under the pool lock takes
+  two contended connection locks. With the router at about 94% of its quota, a woken waiter
+  also waits for a P. That turns about 7k acquisitions per second per lock into a short
+  convoy: 108–636 goroutines parked across 2–4 slot locks in three snapshots. It is still
+  about 2.4% of blocked time (F4 trace).
+- **Verdict:** the cause is inside the standard library's HTTP/2 client: a pool lock held
+  across per-connection locks. Our slot selection is not at fault, and nothing in
+  `host_pool.go` fixes it. The only lever on our side is more slots (`MaxSlotsPerHost`),
+  which opens more connections to every target. That is not a clearly-correct change for a
+  2% effect, so **no change was made.**
+
+## Options not taken
+
+- **A thin SQS client** in place of the AWS SDK.
+  - The SDK is about 21% of CPU at 1 CPU and over half of all allocations: the
+    `map[string]any` decode of every `ReceiveMessage` and the middleware stack per call.
+  - Estimated gain: +10–15% at 1 CPU.
+  - The owner decided on 2026-10-09 not to take on the maintenance burden of SigV4, JSON
+    protocol and error-handling code. It stays an option if per-message cost matters more
+    later.
+- **The per-request HTTP/2 write syscall.** The client does one `write` per request
+  (`bw.Flush` under `wmu`), which is 9–13% of CPU. Removing it means replacing the
+  standard HTTP/2 client with one that batches frame writes across streams. Not pursued:
+  the owner prefers the standard client.
