@@ -129,6 +129,18 @@ var renderers = map[string]renderer{
 	"detail-field":         simple(DetailField),
 	"autocomplete":         simple(Autocomplete),
 	"autocomplete-options": simple(AutocompleteOptions),
+	"code-chips":           simple(CodeChips),
+	"code-block":           simple(CodeBlock),
+	"paginator":            simple(Paginator),
+	"multi-select":         simple(MultiSelect),
+	"tabs": func(f *fixture) (templ.Component, error) {
+		p, err := decode[TabsProps](f)
+		p.Panels = map[string]templ.Component{}
+		for _, t := range p.Tabs {
+			p.Panels[t.Value] = f.slot(t.Value)
+		}
+		return Tabs(p), err
+	},
 	"form-section": func(f *fixture) (templ.Component, error) {
 		p, err := decode[FormSectionProps](f)
 		p.Actions = f.slot("actions")

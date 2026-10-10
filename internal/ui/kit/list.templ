@@ -1,6 +1,9 @@
 package kit
 
-import "strconv"
+import (
+	"strconv"
+	"strings"
+)
 
 // popoverAnchorExpr is table-toolbar.md's positioning expression: the popover
 // opens 6px under its trigger (the element right before it), right-aligned.
@@ -283,4 +286,121 @@ templ CursorPager(p CursorPagerProps) {
 			}
 		</nav>
 	</div>
+}
+
+// PaginatorProps mirrors paginator.md's Props table (PrimeVue's paginator:
+// first/previous, a five-page window, next/last, rows per page, report).
+type PaginatorProps struct {
+	// ID goes on the <nav> (the patch target of a live list).
+	ID    string `json:"id"`
+	Page  int    `json:"page"`
+	Pages int    `json:"pages"`
+	Total int    `json:"total"`
+	Rows  int    `json:"rows"`
+	// RowsOptions default to 50, 100, 250, 500.
+	RowsOptions []int  `json:"rowsOptions"`
+	Noun        string `json:"noun"`
+	// HrefPattern is a page link's URL with the literal placeholder {page}.
+	HrefPattern string `json:"hrefPattern"`
+	// FormID associates the rows select with the list's GET form; empty
+	// renders no rows select.
+	FormID    string           `json:"formId"`
+	LinkAttrs templ.Attributes `json:"linkAttrs"`
+}
+
+var defaultRowsOptions = []int{50, 100, 250, 500}
+
+func (p PaginatorProps) pages() int { return max(p.Pages, 1) }
+func (p PaginatorProps) page() int  { return min(max(p.Page, 1), p.pages()) }
+func (p PaginatorProps) rows() int {
+	if p.Rows <= 0 {
+		return defaultRowsOptions[0]
+	}
+	return p.Rows
+}
+
+func (p PaginatorProps) rowsOptions() []int {
+	if len(p.RowsOptions) == 0 {
+		return defaultRowsOptions
+	}
+	return p.RowsOptions
+}
+
+func (p PaginatorProps) href(page int) string {
+	return strings.ReplaceAll(p.HrefPattern, "{page}", strconv.Itoa(page))
+}
+
+// window is the five page numbers around the current page (paginator.md,
+// Behaviour).
+func (p PaginatorProps) window() []int {
+	pages, page := p.pages(), p.page()
+	start := max(1, min(max(page-2, 1), max(pages-4, 1)))
+	end := min(start+4, pages)
+	out := make([]int, 0, end-start+1)
+	for n := start; n <= end; n++ {
+		out = append(out, n)
+	}
+	return out
+}
+
+func (p PaginatorProps) report() string {
+	first, last := 0, 0
+	if p.Total > 0 {
+		first = (p.page()-1)*p.rows() + 1
+		last = min(p.page()*p.rows(), p.Total)
+	}
+	return "Showing " + strconv.Itoa(first) + " to " + strconv.Itoa(last) + " of " + strconv.Itoa(p.Total) + " " + p.Noun
+}
+
+// Paginator is paginator.md.
+templ Paginator(p PaginatorProps) {
+	<nav
+		if p.ID != "" {
+			id={ p.ID }
+		}
+		class="fc-paginator"
+		aria-label="Pagination"
+	>
+		if p.page() > 1 {
+			@paginatorLink(p, 1, "First", "chevrons-left")
+			@paginatorLink(p, p.page()-1, "Previous", "chevron-left")
+		} else {
+			@paginatorDisabled("First", "chevrons-left")
+			@paginatorDisabled("Previous", "chevron-left")
+		}
+		for _, n := range p.window() {
+			if n == p.page() {
+				<span class="fc-page-link" aria-current="page">{ strconv.Itoa(n) }</span>
+			} else {
+				<a class="fc-page-link" href={ p.href(n) } { p.LinkAttrs... }>{ strconv.Itoa(n) }</a>
+			}
+		}
+		if p.page() < p.pages() {
+			@paginatorLink(p, p.page()+1, "Next", "chevron-right")
+			@paginatorLink(p, p.pages(), "Last", "chevrons-right")
+		} else {
+			@paginatorDisabled("Next", "chevron-right")
+			@paginatorDisabled("Last", "chevrons-right")
+		}
+		if p.FormID != "" {
+			<select name="rows" form={ p.FormID } class="fc-select ml-2" aria-label="Rows per page" data-on:change="el.form.requestSubmit()">
+				for _, n := range p.rowsOptions() {
+					<option value={ strconv.Itoa(n) } selected?={ n == p.rows() }>{ strconv.Itoa(n) }</option>
+				}
+			</select>
+		}
+		<span class="fc-page-report">{ p.report() }</span>
+	</nav>
+}
+
+templ paginatorLink(p PaginatorProps, page int, label, icon string) {
+	<a class="fc-page-link" href={ p.href(page) } aria-label={ label } { p.LinkAttrs... }>
+		@Icon(IconProps{Name: icon, Class: "size-[1rem]"})
+	</a>
+}
+
+templ paginatorDisabled(label, icon string) {
+	<span class="fc-page-link" aria-disabled="true" aria-label={ label }>
+		@Icon(IconProps{Name: icon, Class: "size-[1rem]"})
+	</span>
 }
