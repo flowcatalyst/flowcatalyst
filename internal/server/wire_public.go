@@ -10,6 +10,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	dispatchprocessing "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/processing"
 	dispatchsettled "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/settled"
 	passwordresetapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/passwordreset/api"
@@ -148,6 +149,16 @@ func registerPublicRoutes(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *use
 	} else {
 		slog.Warn("dispatch-processing callback not mounted: cannot derive dispatch-auth secret", "err", err)
 	}
+}
+
+// dispatchPlanner is the "sign" action's planner (the API's and the /ui
+// page's): it builds a delivery exactly as /api/dispatch/process would (same
+// resolvers), minus the send — no verifier needed.
+func dispatchPlanner(repos *repoSet) func(ctx context.Context, job *dispatchjob.DispatchJob) (*dispatchprocessing.DeliveryPlan, error) {
+	return dispatchprocessing.New(repos.dispatchJobRepo, nil).
+		WithDeliveryCredsResolver(dispatchDeliveryCredsResolver(repos)).
+		WithClientCodeResolver(client.NewCachedIdentifierResolver(repos.clientRepo, time.Minute)).
+		Plan
 }
 
 // dispatchDeliveryCredsResolver wires newDeliveryCredsResolver (see its doc

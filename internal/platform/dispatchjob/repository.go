@@ -89,6 +89,33 @@ type FilterParams struct {
 	// AfterID keeps only jobs whose id sorts after it — the keyset cursor of
 	// the requeue-by-filter id walk.
 	AfterID *string
+	// Cursor keeps only jobs after it in the list's order (created_at, then
+	// id; newest first unless SortAscending) — the keyset cursor of a paged
+	// list (the /ui dispatch-jobs page's "Older"). Not part of the match
+	// count or the requeue-by-filter walk, which ignore paging.
+	Cursor *ListCursor
+}
+
+// ListCursor is a position in the list's (created_at, id) order: the last
+// row of the page before.
+type ListCursor struct {
+	CreatedAt time.Time
+	ID        string
+}
+
+// cursorCond renders the keyset condition for p.Cursor. The plain range on
+// created_at comes first so the created_at index and partition pruning
+// apply; the OR breaks ties at the same instant by id.
+func (p FilterParams) cursorCond(f *repocommon.Filter) {
+	if p.Cursor == nil {
+		return
+	}
+	at, id := f.Arg(p.Cursor.CreatedAt), f.Arg(p.Cursor.ID)
+	if p.SortAscending {
+		f.Cond(fmt.Sprintf("created_at >= $%d AND (created_at > $%d OR id > $%d)", at, at, id))
+		return
+	}
+	f.Cond(fmt.Sprintf("created_at <= $%d AND (created_at < $%d OR id < $%d)", at, at, id))
 }
 
 // where renders the filter's conditions. The list, the match count and the
@@ -239,9 +266,12 @@ const readSelect = `SELECT id, external_id, source, kind, code, subject,
 // table carries no query indexes (migration 015). Hand-rolled dynamic query.
 func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]DispatchJob, error) {
 	f := p.where()
-	order := " ORDER BY created_at DESC"
+	p.cursorCond(&f)
+	// id breaks ties at the same instant, so the order is total and a
+	// keyset cursor (Cursor) neither skips nor repeats a row.
+	order := " ORDER BY created_at DESC, id DESC"
 	if p.SortAscending {
-		order = " ORDER BY created_at ASC"
+		order = " ORDER BY created_at ASC, id ASC"
 	}
 	q := readSelect + f.Where() + order
 	limit := p.Limit

@@ -4,7 +4,10 @@ package dispatchjob_test
 
 import (
 	"context"
+	"fmt"
+	"slices"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -77,6 +80,55 @@ func TestFindWithFilters_TenantScoping(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Empty(t, ids(rows), "cross-tenant filter must not leak another tenant's jobs")
+}
+
+// TestFindWithFilters_CursorPages pins the keyset cursor: pages of the
+// (created_at, id) order neither skip nor repeat a row, ties at the same
+// instant included, in both directions.
+func TestFindWithFilters_CursorPages(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := dispatchjob.NewRepository(pool)
+
+	const code = "cursortest:jobs:list"
+	base := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	// Seven jobs; djcur02..04 share one instant (the tie the id breaks).
+	at := []time.Duration{0, time.Second, 2 * time.Second, 2 * time.Second, 2 * time.Second, 3 * time.Second, 4 * time.Second}
+	var want []string
+	for i, d := range at {
+		id := fmt.Sprintf("djcur%02d", i)
+		_, err := pool.Exec(ctx,
+			`INSERT INTO msg_dispatch_jobs_read
+			     (id, code, target_url, kind, protocol, mode, status, max_retries, created_at, updated_at)
+			 VALUES ($1, $2, 'http://example.invalid/hook', 'EVENT', 'HTTP_WEBHOOK', 'IMMEDIATE', 'PENDING', 3, $3, NOW())`,
+			id, code, base.Add(d))
+		require.NoError(t, err)
+		want = append(want, id)
+	}
+
+	walk := func(asc bool) []string {
+		var got []string
+		var cur *dispatchjob.ListCursor
+		for range 10 {
+			rows, err := repo.FindWithFilters(ctx, dispatchjob.FilterParams{Codes: []string{code}, Limit: 2, SortAscending: asc, Cursor: cur})
+			require.NoError(t, err)
+			if len(rows) == 0 {
+				return got
+			}
+			for i := range rows {
+				got = append(got, rows[i].ID)
+			}
+			last := rows[len(rows)-1]
+			cur = &dispatchjob.ListCursor{CreatedAt: last.CreatedAt, ID: last.ID}
+		}
+		t.Fatal("cursor walk did not end")
+		return nil
+	}
+
+	assert.Equal(t, want, walk(true), "oldest first")
+	desc := slices.Clone(want)
+	slices.Reverse(desc)
+	assert.Equal(t, desc, walk(false), "newest first")
 }
 
 // ── X-06: strict enum reads on msg_dispatch_jobs ──────────────────────────

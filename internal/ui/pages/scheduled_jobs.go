@@ -21,6 +21,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/schemacodegen"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/ds"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/shell"
@@ -433,20 +434,16 @@ func yesNo(b bool) string {
 }
 
 // prettyJSON indents a stored JSON document (the SPA's JSON.stringify(x,
-// null, 2)); a value that is not JSON is shown as stored.
+// null, 2): key order kept, < > & not escaped); a value that is not JSON is
+// shown as stored.
 func prettyJSON(raw json.RawMessage) string {
 	if len(raw) == 0 || string(raw) == "null" {
 		return ""
 	}
-	var v any
-	if err := json.Unmarshal(raw, &v); err != nil {
-		return string(raw)
+	if p, ok := schemacodegen.PrettyJSON(string(raw)); ok {
+		return p
 	}
-	b, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return string(raw)
-	}
-	return string(b)
+	return string(raw)
 }
 
 // instanceVariant is the SPA's instanceStatusSeverity.

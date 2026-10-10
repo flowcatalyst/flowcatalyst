@@ -5,12 +5,14 @@ import (
 	"log/slog"
 	"net/url"
 	"runtime/debug"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/appdocs"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui"
@@ -76,6 +78,9 @@ func registerUI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usecasepgx.Un
 		ScheduledJobs:         repos.scheduledJobRepo,
 		ScheduledJobInstances: sjInstances,
 		ScheduledJobOps:       pages.ScheduledJobOps{Repo: repos.scheduledJobRepo, Instances: sjInstances, UoW: uow},
+		DispatchJobs:          repos.dispatchJobRepo,
+		DispatchJobOps:        pages.DispatchJobOps{Repo: repos.dispatchJobRepo, UoW: uow, Planner: dispatchPlanner(repos)},
+		ClientIdentifier:      client.NewCachedIdentifierResolver(repos.clientRepo, time.Minute),
 	})
 }
 

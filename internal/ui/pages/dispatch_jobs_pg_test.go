@@ -1,0 +1,90 @@
+//go:build integration
+
+package pages
+
+import (
+	"context"
+	"net/http"
+	"net/url"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
+)
+
+// The dispatch jobs page end to end against Postgres (the API's reads and
+// use cases): the filtered list, the drawer, requeue of ticked rows, and
+// requeue-by-filter's preview, changed-count refusal and run.
+func TestDispatchJobsPageAgainstPostgres(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := dispatchjob.NewRepository(pool)
+	page := &DispatchJobs{
+		Jobs: repo, Ops: DispatchJobOps{Repo: repo, UoW: testpg.NewUoW(t)},
+		Clients: client.NewRepository(pool), Shell: shellForTest(),
+	}
+	// The write table and the read projection (no projector runs here).
+	seed := func(id, code, status string) {
+		t.Helper()
+		_, err := pool.Exec(ctx, `INSERT INTO msg_dispatch_jobs (id, code, target_url, status, attempt_count, last_error, payload, created_at, updated_at)
+			VALUES ($1, $2, 'http://example.invalid/hook', $3, 3, 'HTTP 500', '{"n":1,"a":"<x>"}', NOW(), NOW())`, id, code, status)
+		require.NoError(t, err)
+		_, err = pool.Exec(ctx, `INSERT INTO msg_dispatch_jobs_read
+			(id, code, application, subdomain, aggregate, target_url, kind, protocol, mode, status, max_retries, attempt_count, created_at, updated_at)
+			VALUES ($1, $2::text, split_part($2::text, ':', 1), split_part($2::text, ':', 2), split_part($2::text, ':', 3), 'http://example.invalid/hook',
+			        'EVENT', 'HTTP_WEBHOOK', 'IMMEDIATE', $3, 3, 3, NOW(), NOW())`, id, code, status)
+		require.NoError(t, err)
+	}
+	seed("djbuipg000001", "uipg:sales:order:created", "FAILED")
+	seed("djbuipg000002", "uipg:sales:order:paid", "FAILED")
+	seed("djbuipg000003", "uipg:sales:order:paid", "COMPLETED")
+	status := func(id string) common.DispatchStatus {
+		t.Helper()
+		j, err := repo.FindByID(ctx, id)
+		require.NoError(t, err)
+		require.NotNil(t, j)
+		return j.Status
+	}
+	do := func(q req) string {
+		t.Helper()
+		rec := serveMounted(t, anchorAdmin(), q, page)
+		if rec.Code != http.StatusOK && rec.Code != http.StatusSeeOther {
+			t.Fatalf("%s %s: status %d: %s", q.method, q.target, rec.Code, rec.Body.String())
+		}
+		if q.datastar {
+			require.NotContains(t, rec.Body.String(), "fc-flash-error", "%s %s", q.method, q.target)
+		}
+		return rec.Body.String()
+	}
+
+	list := do(req{target: "/ui/dispatch-jobs?applications=uipg&statuses=FAILED"})
+	assert.Contains(t, list, "djbuipg000001")
+	assert.Contains(t, list, "djbuipg000002")
+	assert.NotContains(t, list, "djbuipg000003")
+	assert.Contains(t, list, `value="uipg" checked`)
+
+	drawer := do(req{target: "/ui/dispatch-jobs/djbuipg000001", datastar: true})
+	assert.Contains(t, drawer, "HTTP 500")
+	assert.Contains(t, drawer, "&#34;a&#34;: &#34;&lt;x&gt;&#34;")
+
+	do(req{method: http.MethodPost, target: "/ui/dispatch-jobs/requeue", datastar: true, form: url.Values{"ids": {"djbuipg000003"}}})
+	assert.Equal(t, common.DispatchPending, status("djbuipg000003"))
+
+	preview := do(req{target: "/ui/dispatch-jobs/requeue-by-filter?applications=uipg&statuses=FAILED", datastar: true})
+	assert.Contains(t, preview, "2 jobs</strong> match")
+	assert.Contains(t, preview, `name="confirmCount" value="2"`)
+
+	changed := do(req{method: http.MethodPost, target: "/ui/dispatch-jobs/requeue-by-filter?applications=uipg&statuses=FAILED", datastar: true, form: url.Values{"confirmCount": {"1"}}})
+	assert.Contains(t, changed, "More jobs match than when you looked")
+	assert.Equal(t, common.DispatchFailed, status("djbuipg000001"), "a changed count resets nothing")
+
+	run := do(req{method: http.MethodPost, target: "/ui/dispatch-jobs/requeue-by-filter?applications=uipg&statuses=FAILED", datastar: true, form: url.Values{"confirmCount": {"2"}}})
+	assert.Contains(t, run, "Requeued 2 jobs")
+	assert.Equal(t, common.DispatchPending, status("djbuipg000001"))
+	assert.Equal(t, common.DispatchPending, status("djbuipg000002"))
+}

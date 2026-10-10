@@ -11,8 +11,8 @@ flash stack and the Datastar error contract, an icon sprite, now 90 icons), and 
 `/ui/connections` at parity with the SPA pages: list, record drawer, create and edit dialogs,
 state actions and delete behind confirmations; the app shell works at phone width and dark mode is
 rendered by the server from a theme cookie. Phase 3 (core operations): `/ui/event-types` and
-`/ui/subscriptions`, `/ui/applications`, `/ui/clients` and `/ui/scheduled-jobs` at parity
-(sections below); the other core areas are not ported yet.
+`/ui/subscriptions`, `/ui/applications`, `/ui/clients`, `/ui/scheduled-jobs` and
+`/ui/dispatch-jobs` at parity (sections below); the other core areas are not ported yet.
 
 ## Architecture
 
@@ -390,6 +390,56 @@ Differences from the SPA: dialogs for create/edit; **cron expressions are a text
 (the SPA adds and removes rows); the firings and firing pages are server pages linked from the drawer
 (as in the SPA), with the paginator.
 
+### Dispatch jobs (`/ui/dispatch-jobs`)
+
+Mirrors `DispatchJobListPage`, `DispatchJobDetailDrawer` and `RequeueByFilterDialog`. Routes: the list
+(`?clients&applications&subdomains&aggregates&codes&statuses` (repeated), `q` (source), `group`,
+`from`/`to` (YYYY-MM-DD), `dir=asc`, `size`, `after` (keyset position)), `/{id}` (drawer),
+`/{id}/sign`, `/{id}/requeue`, `/requeue` (ticked ids), `/requeue-by-filter` (GET: the confirm step,
+POST: the run; the filter is the URL's query), `/requeue-errors` (the error preset).
+
+- Every route makes the API's checks (`internal/platform/dispatchjob/api`): `dispatch-job:view`, SQL
+  tenant scoping (`operations.VisibleTo`), per-job client scope on the drawer; **Sign needs
+  `dispatch-job:view-raw`** and is omitted without it (the SPA shows it to everyone and the API answers
+  403). Requeue (row, drawer, selection, by filter) runs `ResendDispatchJobs` / `ResendByFilter` as the
+  API does, with the API's gate (`dispatch-job:view`).
+- **The filtered view's URL is what "Requeue all matching" acts on**: its link carries the view's
+  filter (not size, sort or position) to `/requeue-by-filter?…`; the confirm step previews that filter
+  (`SummarizeMatches`: count, by status, eligible, out of scope, the 10,000 cap) and its form posts to
+  the same query with `confirmCount` = the eligible count shown. `FILTER_MATCH_CHANGED` re-renders the
+  step with the new counts and the SPA's warning (HTTP 200 for Datastar, 409 natively); a run's outcome
+  is the SPA's toast (requeued / remaining / nothing).
+- Selection: native checkboxes associated with the `#dj-selection` POST form; one Datastar expression
+  on the `<tbody>` counts them into `$djSel` (the "Requeue selected (n)" label) and sets the header
+  box. A full page whose rows are all ticked shows the select-all banner, which leads to the
+  requeue-by-filter step.
+- Live filtering as the other lists; changing the applications, subdomains or aggregates patches the
+  dependent multi-selects' options. Links that change the filters (a row's group, the error preset)
+  send `X-FC-Toolbar: full` and get the whole toolbar back, so the popover's fields follow; a typed
+  search never does (it would drop keystrokes in flight).
+- **Paging**: the SPA has none ("most recent N", size 50–1000). The page keeps the size select and
+  adds keyset paging over (created_at, id): **Older** carries `after=<unix µs>.<id>` of the last row,
+  **Newest** returns to the first page (kit `cursor-pager`). `FilterParams.Cursor` was added to the
+  repository for it (the list's ORDER BY gained `id` as a tie-breaker); the match count and the
+  requeue walk ignore it.
+- The table is patched in **replace** mode (not morph): a morph resets each `<time>` to its UTC
+  fallback without re-running the localisation (kit `local-time.md`); the drawer's body likewise.
+- The distinct statuses and codes (the API's filter-options) are cached for 30 s per process: the SPA
+  reads them once per visit, the live list on every request, and the two `DISTINCT`s cost ~10 ms each
+  over 100k jobs.
+
+Differences from the SPA:
+- The application, subdomain and aggregate filters have options (the segments of the distinct codes,
+  each narrowed by the levels chosen above it); the SPA's are always empty. A parent change keeps the
+  children that still apply instead of clearing them.
+- Created from/to are **UTC days** (the SPA uses the browser's time zone); the label says so. Times
+  are shown in the viewer's locale and zone (kit `local-time`), as the SPA does.
+- Selection is cleared by every list refresh (the SPA keeps the ticked rows still visible). The
+  select-all banner offers "Requeue all matching jobs…" (the confirm step shows the count) rather than
+  first counting and "selecting" all matching jobs.
+- "Requeue everything in error" is a button beside "Requeue all matching" (the SPA's split-button menu).
+- URL arrays are repeated parameters (`statuses=FAILED&statuses=ERROR`), not the SPA's comma list.
+
 ## CSRF
 
 Sessions are the `fc_session` cookie (HttpOnly, `SameSite=Lax`, Secure outside dev), so
@@ -631,6 +681,16 @@ native (no-JavaScript) post/redirect/get path (unit tests cover it), system mode
 17. **Scheduled-job writes use the any-of gate**: create, update, pause, resume and archive check
     `CanWriteScheduledJobs` (create, update or delete).
 
+18. **`GET /api/dispatch-jobs/filter-options` is not tenant-scoped**: `DistinctValues` reads the whole
+    projection, so a client user with `dispatch-job:view` sees every tenant's codes, client ids, pool
+    ids and subscription ids. The /ui page uses the statuses and codes the same way (for parity) and
+    shows only accessible clients.
+19. The SPA's application, subdomain and aggregate filters never have options: the filter-options
+    endpoint does not return those facets and the SPA sets them to `[]` (its own comment says so).
+20. The SPA shows **Sign** to every viewer; the API requires `dispatch-job:view-raw` (403 otherwise).
+21. `FindWithFilters` caps `size` at 1,000 by falling back to **100** for anything larger (`limit > 1000
+    → 100`), so `size=1001` returns fewer rows than `size=1000`.
+
 ### Subscriptions: verification (2026-10-10)
 
 Unit tests (`subscriptions_test.go`: list, filters, sort, permissions per operation incl. a delete-only
@@ -674,6 +734,41 @@ instance: create (drawer opened), Fire Now (flash with the instance, recent firi
 page, firing page (the delivery error). Headless Chrome 390×844, light and dark: list, drawer, create,
 firings; no horizontal scroll, no console problems.
 
+### Dispatch jobs: verification and measurements (2026-10-10)
+
+Unit tests (`dispatch_jobs_test.go`: URL round trip incl. cursor and junk values, list with
+client/identifier/platform cells, group link, metadata preview, a user without the permission refused,
+a client user scoped in SQL, live patches incl. dependent options and the full-toolbar header, cursor
+paging, drawer with attempts latest-first and the payload formatted as `formatJson` does, Sign only
+with view-raw, another tenant's job refused, requeue of ticked rows (deduplicated), one row, natively;
+requeue-by-filter preview/run/cap/changed/bad count, the error preset, no-filter warning) and
+`internal/platform/dispatchjob` `TestFindWithFilters_CursorPages` (both directions, ties at one instant).
+Chrome on the isolated instance with **100,000 seeded jobs** (`msg_dispatch_jobs`, projected):
+selection count and header state, Requeue selected (flash, rows reset), row requeue, status / group /
+date filters (URL follows, popover fields, bound on focus), Clear All, the group link (toolbar
+re-rendered, other filters kept), Requeue all matching (16 jobs, through `ResendByFilter`), the error
+preset (24,982 matching, 10,000 cap message), Older/Newest, the created sort, drawer open/switch/
+requeue (times stay localised), Sign (plan, headers, verify command). Headless Chrome 1440×900 and
+390×844, light and dark: list, filters, drawer, sign, selection, confirm step; no horizontal page
+scroll, no console problems.
+
+Measured on an Apple M4 Pro, loopback, 100k jobs in the projection:
+
+| | 200 rows | 1,000 rows |
+|---|---|---|
+| templ render of the table (`BenchmarkDispatchJobsTable`) | 1.8 ms, 2.4 MB allocated | 8.4 ms, 11.9 MB allocated |
+| server time, live list request (Datastar, incl. query) | 4.7 ms | 18 ms |
+| response size (uncompressed / gzip) | 576 KB / 18 KB | 2.8 MB / 71 KB |
+| browser: filter click → rows localised (median) | 78 ms (response 17 ms, apply ~60 ms) | 280 ms (response 45 ms, apply ~235 ms) |
+| full page load (DCL / load) | 27 ms / 44 ms | 180 ms / 320 ms |
+
+For comparison the SPA's `GET /api/dispatch-jobs` answers 200 rows in 1.8 ms (110 KB JSON, 5 KB
+gzip) and 1,000 in 4.5 ms (512 KB). Before the cache, the two `DISTINCT` queries made a live request
+13 ms (200 rows). **`/ui` responses are not compressed**: a 200-row list is 600 KB on the wire where
+gzip would send 24 KB (brotli 13 KB); see owner decisions. Most of the browser's apply time at 1,000
+rows is Datastar scanning the new rows' attributes (each row carries a `data-init` for its time, two
+links' `data-on:click` and the row requeue's).
+
 ### Owner decisions needed
 
 - **Add schema** sends the document (refusing text that is not JSON) instead of the SPA's JSON
@@ -689,3 +784,13 @@ firings; no horizontal scroll, no console problems.
   page states what happens today.
 - **Subscription create body** (bug 9): should the API accept `clientScoped` (and `sequence`), or should
   the SPA stop sending them?
+- **Dispatch jobs paging**: the page adds keyset paging (Older/Newest) that the SPA does not have, with a
+  `Cursor` field and an `id` tie-breaker in the repository's list query. Keep?
+- **Dispatch jobs date range in UTC days** (the SPA: the browser's zone). Pass the viewer's zone (a
+  hidden field or cookie) instead?
+- **Compression for `/ui`**: HTML pages and Datastar streams go out uncompressed (600 KB for a
+  200-row dispatch-job list; 24 KB gzipped). The Datastar Go SDK can compress its streams
+  (`datastar.WithCompression`) and chi has `middleware.Compress` for pages, both already in the module
+  graph. Turn it on for `/ui` (or rely on the proxy)?
+- **Filter-options scoping** (bug 18): scope `DistinctValues` to the caller's tenants?
+- **Dispatch Jobs sidebar entry** now links to `/ui/dispatch-jobs` in the `/ui` sidebar.

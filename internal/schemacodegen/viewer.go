@@ -34,6 +34,17 @@ func FormatSchema(src string) string {
 	return scrub(Stringify(v, "  "))
 }
 
+// PrettyJSON is the SPA's formatJson: JSON.stringify(JSON.parse(src), null,
+// 2), key order kept and < > & left as they are; ok is false when src is not
+// JSON.
+func PrettyJSON(src string) (string, bool) {
+	v, err := Parse(src)
+	if err != nil {
+		return "", false
+	}
+	return scrub(Stringify(v, "  ")), true
+}
+
 // ExampleJSON is the Example tab: a generated sample payload as indented
 // JSON, or "// Unable to generate example".
 func ExampleJSON(src string) string {

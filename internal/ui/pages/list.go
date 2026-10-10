@@ -20,6 +20,8 @@ type listSpec struct {
 	path string
 	// sortKeys are the sortable columns; the first is the default sort.
 	sortKeys []string
+	// defaultDir is the default sort's direction (ascending when empty).
+	defaultDir kit.SortDirection
 	// statusOK accepts a status filter value (the entity's ParseStatus).
 	statusOK func(string) bool
 	// facets are multi-valued filters: each is a query parameter that may
@@ -51,7 +53,7 @@ type listQuery struct {
 // parseListQuery reads q, status, sort and dir; anything unknown falls back
 // to the default rather than erroring (a hand-edited URL still shows a list).
 func parseListQuery(v url.Values, spec *listSpec) listQuery {
-	q := listQuery{spec: spec, Q: strings.TrimSpace(v.Get("q")), Sort: spec.sortKeys[0], Dir: kit.SortAsc}
+	q := listQuery{spec: spec, Q: strings.TrimSpace(v.Get("q")), Sort: spec.sortKeys[0], Dir: spec.dir()}
 	if len(q.Q) > maxQueryLen {
 		q.Q = q.Q[:maxQueryLen]
 	}
@@ -61,8 +63,8 @@ func parseListQuery(v url.Values, spec *listSpec) listQuery {
 	if s := v.Get("sort"); slices.Contains(spec.sortKeys, s) {
 		q.Sort = s
 	}
-	if v.Get("dir") == string(kit.SortDesc) {
-		q.Dir = kit.SortDesc
+	if d := kit.SortDirection(v.Get("dir")); d == kit.SortAsc || d == kit.SortDesc {
+		q.Dir = d
 	}
 	for _, name := range spec.facets {
 		if vals := facetValues(v[name]); len(vals) > 0 {
@@ -85,6 +87,14 @@ func parseListQuery(v url.Values, spec *listSpec) listQuery {
 }
 
 func (s *listSpec) paged() bool { return len(s.rows) > 0 }
+
+// dir is the default sort's direction.
+func (s *listSpec) dir() kit.SortDirection {
+	if s.defaultDir == "" {
+		return kit.SortAsc
+	}
+	return s.defaultDir
+}
 
 // facetValues trims, de-duplicates and caps a facet's values.
 func facetValues(raw []string) []string {
@@ -130,7 +140,7 @@ func refererList(r *http.Request, spec *listSpec) listQuery {
 	return parseListQuery(ref.Query(), spec)
 }
 
-func (q listQuery) defaultSort() bool { return q.Sort == q.spec.sortKeys[0] && q.Dir == kit.SortAsc }
+func (q listQuery) defaultSort() bool { return q.Sort == q.spec.sortKeys[0] && q.Dir == q.spec.dir() }
 
 // values encodes the non-default parts.
 func (q listQuery) values() url.Values {

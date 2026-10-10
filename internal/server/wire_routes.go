@@ -26,7 +26,6 @@ import (
 	corsapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/cors/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatch"
 	dispatchjobapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/api"
-	dispatchprocessing "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/processing"
 	dispatchpoolapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/docsapi"
 	emaildomainapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping/api"
@@ -395,10 +394,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			ClientIdentifier: client.NewCachedIdentifierResolver(repos.clientRepo, time.Minute),
 			// The sign action builds a delivery exactly as /api/dispatch/process
 			// would (same resolvers), minus the send — no verifier needed.
-			Plan: dispatchprocessing.New(repos.dispatchJobRepo, nil).
-				WithDeliveryCredsResolver(dispatchDeliveryCredsResolver(repos)).
-				WithClientCodeResolver(client.NewCachedIdentifierResolver(repos.clientRepo, time.Minute)).
-				Plan,
+			Plan: dispatchPlanner(repos),
 		})
 
 		// The router's own configuration document. An ordinary authenticated

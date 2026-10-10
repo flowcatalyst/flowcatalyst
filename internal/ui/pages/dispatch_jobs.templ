@@ -1,0 +1,564 @@
+package pages
+
+import (
+	"strconv"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+)
+
+const (
+	// djCountExpr counts the ticked rows into $djSel and sets the header
+	// box to checked / mixed / clear. It sits on the <tbody> (change
+	// bubbles), not on every row's box.
+	djCountExpr = "const b = [...document.querySelectorAll('#dj-rows input[name=ids]')]; const n = b.filter(c => c.checked).length; $djSel = n; const h = document.getElementById('dj-select-all'); h.checked = n > 0 && n === b.length; h.indeterminate = n > 0 && n < b.length"
+	// djAllExpr is the header box: tick or clear every row on the page.
+	djAllExpr = "document.querySelectorAll('#dj-rows input[name=ids]').forEach(c => c.checked = el.checked); " + djCountExpr
+	// djRowRequeue posts one row's requeue with the drawer's id (the hidden
+	// #dj-row-form), so an open drawer on that job refreshes.
+	djRowRequeue  = "@post(el.dataset.action, {contentType: 'form', selector: '#dj-row-form', retryMaxCount: 0})"
+	djCopyPayload = "navigator.clipboard.writeText(document.getElementById('dj-payload').textContent)"
+)
+
+var djFacetLabels = map[string][3]string{
+	djFacetClients:  {"Client", "All Clients", "{0} clients selected"},
+	djFacetApps:     {"Application", "All Applications", "{0} applications selected"},
+	djFacetSubs:     {"Subdomain", "All Subdomains", "{0} subdomains selected"},
+	djFacetAggs:     {"Aggregate", "All Aggregates", "{0} aggregates selected"},
+	djFacetCodes:    {"Code", "All Codes", "{0} codes selected"},
+	djFacetStatuses: {"Status", "All Statuses", "{0} statuses selected"},
+}
+
+func (v djView) facetProps(name string) kit.MultiSelectProps {
+	l := djFacetLabels[name]
+	p := kit.MultiSelectProps{
+		ID: "dj-filter-" + name, Name: name, Label: l[0], Options: v.Facets[name], Selected: v.Query.facet(name),
+		Placeholder: l[1], ManyLabel: l[2], EmptyText: "No options", OptionAttrs: templ.Attributes{"data-on:change": djLiveGet},
+	}
+	if name == djFacetClients || name == djFacetCodes {
+		p.Search, p.Signal = true, "djQ"+name
+	}
+	return p
+}
+
+func (v djView) toolbar() kit.TableToolbarProps {
+	clear := ""
+	if v.Query.filtered() {
+		clear = v.Query.clearURL()
+	}
+	return kit.TableToolbarProps{
+		ID: djFormID, Action: djPath, SearchPlaceholder: "Search by source...", SearchValue: v.Query.Q,
+		Size:      &kit.ResultSize{Options: djSizes, Selected: v.Query.Size},
+		ClearHref: clear, ClearAttrs: templ.Attributes{"data-on:click__prevent": kit.ClearFilters},
+		ActiveFilterCount: v.Query.activeFilters(), Hidden: v.Query.hidden(),
+		SearchAttrs: templ.Attributes{"data-on:input__debounce.400ms": djLiveGet},
+		FormAttrs:   templ.Attributes{"data-on:submit": djLiveGet},
+		Filters:     djFilters(v),
+	}
+}
+
+func (v djView) pager() kit.CursorPagerProps {
+	order := "newest first"
+	if v.Query.Dir == kit.SortAsc {
+		order = "oldest first"
+	}
+	p := kit.CursorPagerProps{
+		ID: "dj-pager", Summary: "Showing " + thousands(int64(len(v.Rows))) + " dispatch jobs (" + order + ")",
+		OlderHref: v.OlderHref, LinkAttrs: templ.Attributes{"data-on:click__prevent": liveLink},
+	}
+	if v.Query.After != nil {
+		p.NewestHref = v.Query.first().URL()
+		p.Summary += ", an older page"
+	}
+	return p
+}
+
+func (v djView) signals() string {
+	sel := ""
+	if v.Drawer != nil {
+		sel = kit.ID(v.Drawer.ID)
+	}
+	return "{" + djDrawerSig + ": '" + sel + "', " + djSelSig + ": 0}"
+}
+
+// fullPage reports whether every row the size allows is shown (so more may
+// match: the select-all banner's offer).
+func (v djView) fullPage() bool { return len(v.Rows) > 0 && len(v.Rows) == v.Query.Size }
+
+func (v djView) rbfHref() string {
+	return encodeURL(djPath+"/requeue-by-filter", v.Query.filterValues())
+}
+
+func (v djView) errorsHref() string {
+	return encodeURL(djPath+"/requeue-errors", v.Query.first().sizeOnly())
+}
+
+func (v djView) empty() *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	e := &kit.EmptyStateProps{Message: "No dispatch jobs found", Status: true}
+	if v.Query.filtered() {
+		e.ClearHref = v.Query.clearURL()
+	}
+	return e
+}
+
+templ djPage(v djView) {
+	<div data-signals={ v.signals() }>
+		@kit.PageHeader(kit.PageHeaderProps{Title: "Dispatch Jobs", Subtitle: "Monitor webhook dispatch jobs and delivery status"})
+		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Dispatch Jobs.", Class: "mb-4"})
+		<div class="fc-card-flush">
+			@kit.TableToolbar(v.toolbar())
+			@djBulkBar(v)
+			@djTable(v)
+			@kit.CursorPager(v.pager())
+		</div>
+		<form id="dj-row-form" method="post" hidden>
+			<input type="hidden" name="drawer" data-attr:value={ "$" + djDrawerSig }/>
+		</form>
+		<div id={ djDialogSlot }>
+			if v.Dialog != nil {
+				@v.Dialog
+			}
+		</div>
+		@djDrawer(v.Drawer)
+	</div>
+}
+
+templ djFilters(v djView) {
+	@kit.MultiSelect(v.facetProps(djFacetClients))
+	@kit.MultiSelect(v.facetProps(djFacetApps))
+	@kit.MultiSelect(v.facetProps(djFacetSubs))
+	@kit.MultiSelect(v.facetProps(djFacetAggs))
+	@kit.MultiSelect(v.facetProps(djFacetCodes))
+	@kit.MultiSelect(v.facetProps(djFacetStatuses))
+	@kit.FormField(kit.FormFieldProps{Label: "Message group", For: "dj-group"}) {
+		<input
+			type="text"
+			id="dj-group"
+			name="group"
+			class="fc-input"
+			placeholder="Exact message group"
+			autocomplete="off"
+			if v.Query.Group != "" {
+				value={ v.Query.Group }
+			}
+			data-on:input__debounce.400ms={ djLiveGet }
+		/>
+	}
+	@kit.DateRange(kit.DateRangeProps{
+		ID: "dj-created", Label: "Created (UTC days)", From: v.Query.From, To: v.Query.To,
+		FromLabel: "Created from", ToLabel: "Created to",
+		Attrs: templ.Attributes{"data-on:change": djLiveGet},
+	})
+}
+
+// djBulkBar is the SPA's toolbar actions: requeue the ticked rows, requeue
+// everything the view matches (preview and confirm first), the error preset,
+// and the select-all banner.
+templ djBulkBar(v djView) {
+	<div id="dj-bulk" class="flex flex-col gap-2 border-b border-border px-3 py-2">
+		<div class="flex flex-wrap items-center gap-2">
+			<form id="dj-selection" method="post" action={ djPath + "/requeue" } data-on:submit={ kit.SubmitForm }>
+				<input type="hidden" name="drawer" data-attr:value={ "$" + djDrawerSig }/>
+				<button type="submit" class="fc-btn fc-btn-secondary fc-btn-sm" disabled data-attr:disabled={ "$" + djSelSig + " === 0" } title="Reset the selected jobs to PENDING for re-dispatch">
+					@kit.Icon(kit.IconProps{Name: "rotate-ccw", Class: "size-[1rem]"})
+					<span data-text={ "$" + djSelSig + " > 0 ? 'Requeue selected (' + $" + djSelSig + " + ')' : 'Requeue selected'" }>Requeue selected</span>
+				</button>
+			</form>
+			<a href={ v.rbfHref() } class="fc-btn fc-btn-outline fc-btn-sm" aria-haspopup="dialog" title="Reset every job matching the current filters to PENDING — preview and confirm first" data-on:click__prevent={ liveLink }>
+				@kit.Icon(kit.IconProps{Name: "rotate-ccw", Class: "size-[1rem]"})
+				Requeue all matching
+			</a>
+			<a href={ v.errorsHref() } class="fc-btn fc-btn-text fc-btn-sm" aria-haspopup="dialog" title="Every job in an error status, whatever else the view is filtered by — preview and confirm first" data-on:click__prevent={ djNavLink }>
+				@kit.Icon(kit.IconProps{Name: "circle-alert", Class: "size-[1rem]"})
+				Requeue everything in error
+			</a>
+		</div>
+		if v.fullPage() {
+			<div class="text-sm" role="status" data-show={ "$" + djSelSig + " === " + strconv.Itoa(len(v.Rows)) } style="display: none">
+				All { thousands(int64(len(v.Rows))) } jobs on this page are selected.
+				<a href={ v.rbfHref() } class="font-medium text-primary" aria-haspopup="dialog" data-on:click__prevent={ liveLink }>Requeue all matching jobs…</a>
+			</div>
+		}
+	</div>
+}
+
+templ djTable(v djView) {
+	@kit.Table(kit.TableProps{ID: "dj-table", Dense: true, Class: "min-w-[56rem]"}) {
+		@kit.THead(kit.THeadProps{Caps: true}) {
+			@kit.TR(kit.TRProps{Static: true}) {
+				@kit.TH(kit.THProps{Class: "w-10"}) {
+					<input type="checkbox" id="dj-select-all" class="accent-primary" aria-label="Select all jobs on this page" data-on:change={ djAllExpr }/>
+				}
+				@kit.TH(kit.THProps{}) {
+					Job ID
+				}
+				@kit.TH(kit.THProps{}) {
+					Descriptor
+				}
+				@kit.TH(kit.THProps{}) {
+					Code
+				}
+				@kit.TH(kit.THProps{}) {
+					Client
+				}
+				@kit.TH(kit.THProps{}) {
+					Group
+				}
+				@kit.TH(kit.THProps{}) {
+					Status
+				}
+				@kit.TH(kit.THProps{}) {
+					Additional data
+				}
+				@kit.SortableHeader(kit.SortableHeaderProps{Label: "Created", Href: v.Query.sortURL(), Direction: v.Query.Dir, LinkAttrs: templ.Attributes{"data-on:click__prevent": liveLink}})
+				@kit.TH(kit.THProps{Class: "w-px"}) {
+					Actions
+				}
+			}
+		}
+		@kit.TBody(kit.TBodyProps{ID: "dj-rows", Striped: true, Attrs: templ.Attributes{"data-on:change": djCountExpr}}) {
+			if e := v.empty(); e != nil {
+				@kit.EmptyRow(kit.EmptyRowProps{Colspan: 10, Empty: *e})
+			}
+			for _, row := range v.Rows {
+				@djRowC(row)
+			}
+		}
+	}
+}
+
+templ djRowC(row djRow) {
+	@kit.TR(kit.TRProps{}) {
+		@kit.TD(kit.TDProps{}) {
+			<input type="checkbox" name="ids" value={ row.ID } form="dj-selection" class="accent-primary" aria-label={ "Select " + row.ID }/>
+		}
+		@kit.TD(kit.TDProps{}) {
+			if row.ValidID {
+				<a href={ row.Href } class="font-mono text-sm" data-on:click__prevent={ liveLink }>{ row.ID }</a>
+			} else {
+				<span class="font-mono text-sm">{ row.ID }</span>
+			}
+		}
+		@kit.TD(kit.TDProps{Class: "whitespace-normal!"}) {
+			if row.Descriptor != "" {
+				<span class="text-sm">{ row.Descriptor }</span>
+			} else {
+				<span class="text-sm text-muted-foreground">-</span>
+			}
+		}
+		@kit.TD(kit.TDProps{Class: "whitespace-normal!"}) {
+			@kit.CodeChips(kit.CodeChipsProps{Code: row.Code, Class: "whitespace-normal"})
+		}
+		@kit.TD(kit.TDProps{}) {
+			if row.Platform {
+				<span class="text-sm text-muted-foreground">platform</span>
+			} else if row.ClientIsID {
+				<span class="font-mono text-sm" title="Client id (identifier not resolved)">{ row.Client }</span>
+			} else {
+				<span class="text-sm">{ row.Client }</span>
+			}
+		}
+		@kit.TD(kit.TDProps{}) {
+			if row.Group != "" {
+				<a href={ row.GroupHref } class="inline-block max-w-32 truncate align-bottom font-mono text-sm" title={ "Filter by group " + row.Group } data-on:click__prevent={ djNavLink }>{ row.Group }</a>
+			} else {
+				<span class="text-sm text-muted-foreground">-</span>
+			}
+		}
+		@kit.TD(kit.TDProps{}) {
+			@kit.Tag(kit.TagProps{Severity: row.Severity, Label: row.Status})
+		}
+		@kit.TD(kit.TDProps{Class: "whitespace-normal!"}) {
+			if row.Meta != "" {
+				<span class="font-mono text-sm" title={ row.MetaFull }>{ row.Meta }</span>
+			} else {
+				<span class="text-sm text-muted-foreground">-</span>
+			}
+		}
+		@kit.TD(kit.TDProps{Class: "text-sm whitespace-nowrap"}) {
+			@kit.LocalTime(kit.LocalTimeProps{At: row.Created})
+		}
+		@kit.RowActions(djRowActions(row))
+	}
+}
+
+func djRowActions(row djRow) kit.RowActionsProps {
+	p := kit.RowActionsProps{RowLabel: row.ID}
+	if row.ValidID {
+		p.ID = "dj-" + row.ID + "-actions"
+		p.Actions = append(p.Actions, kit.RowAction{Icon: "eye", Label: "View payload and attempts", Href: row.Href, Attrs: templ.Attributes{"data-on:click__prevent": liveLink}})
+	}
+	p.Actions = append(p.Actions, kit.RowAction{Icon: "rotate-ccw", Label: "Requeue — reset to PENDING for re-dispatch", Attrs: templ.Attributes{"data-on:click": djRowRequeue, "data-action": row.RequeueAction}})
+	return p
+}
+
+// ── drawer ─────────────────────────────────────────────────────────────
+templ djDrawer(d *djDetail) {
+	if d != nil {
+		@kit.Drawer(d.drawerProps()) {
+			@djDrawerBody(*d)
+		}
+	} else {
+		@kit.Drawer(kit.DrawerProps{ID: djDrawerID, Signal: djDrawerSig, Label: "Dispatch job", Size: kit.DrawerTwoThirds})
+	}
+}
+
+templ djDrawerContent(d djDetail) {
+	@kit.DrawerContent(d.drawerProps()) {
+		@djDrawerBody(d)
+	}
+}
+
+// djDrawerBody mirrors the SPA's DispatchJobDetailDrawer: the job and its
+// payload beside every attempt, what was sent and what came back.
+templ djDrawerBody(d djDetail) {
+	<div id={ djDrawerID + "-body" } class="flex flex-col gap-4">
+		<div class="flex flex-wrap items-center gap-2">
+			@kit.Tag(kit.TagProps{Severity: d.StatusSeverity, Label: d.Status})
+			<span class="flex-1"></span>
+			if d.CanSign {
+				<form method="post" action={ d.ActionBase + "/sign" } data-on:submit={ kit.SubmitForm }>
+					@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Variant: kit.LegacySecondary, Icon: "key-round", Attrs: templ.Attributes{"title": "Build this delivery as it would go out now — signing account, headers, a real signature — without sending it"}}) {
+						Sign
+					}
+				</form>
+			}
+			<form method="post" action={ d.ActionBase + "/requeue" } data-on:submit={ kit.SubmitForm }>
+				<input type="hidden" name="drawer" data-attr:value={ "$" + djDrawerSig }/>
+				@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Variant: kit.LegacySecondary, Icon: "rotate-ccw", Attrs: templ.Attributes{"title": "Reset to PENDING for re-dispatch"}}) {
+					Requeue
+				}
+			</form>
+		</div>
+		<div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+			<section class="flex min-w-0 flex-col gap-3">
+				<h3 class="fc-section-title">Job</h3>
+				<div class="fc-detail-grid">
+					@kit.DetailField(kit.DetailFieldProps{Label: "Descriptor", Value: d.Descriptor})
+					@kit.DetailField(kit.DetailFieldProps{Label: "Code"}) {
+						<span class="font-mono">{ d.Code }</span>
+					}
+					@kit.DetailField(kit.DetailFieldProps{Label: "Client"}) {
+						<span class="font-mono">{ d.ClientID }</span>
+					}
+					@kit.DetailField(kit.DetailFieldProps{Label: "Message group"}) {
+						<span class="font-mono">{ d.Group }</span>
+					}
+					@kit.DetailField(kit.DetailFieldProps{Label: "Mode", Value: d.Mode})
+					@kit.DetailField(kit.DetailFieldProps{Label: "Attempts", Value: d.Attempts})
+					@kit.DetailField(kit.DetailFieldProps{Label: "Target", Span: true}) {
+						<span class="font-mono wrap-anywhere">{ d.Target }</span>
+					}
+					@kit.DetailField(kit.DetailFieldProps{Label: "Subscription"}) {
+						<span class="font-mono">{ d.Subscription }</span>
+					}
+					@kit.DetailField(kit.DetailFieldProps{Label: "Event"}) {
+						<span class="font-mono">{ d.Event }</span>
+					}
+					@kit.DetailField(kit.DetailFieldProps{Label: "Scheduled for"}) {
+						@kit.LocalTime(kit.LocalTimeProps{At: d.ScheduledFor})
+					}
+					@kit.DetailField(kit.DetailFieldProps{Label: "Created"}) {
+						@kit.LocalTime(kit.LocalTimeProps{At: d.Created})
+					}
+					@kit.DetailField(kit.DetailFieldProps{Label: "Completed"}) {
+						@kit.LocalTime(kit.LocalTimeProps{At: d.Completed})
+					}
+					if d.LastError != "" {
+						@kit.DetailField(kit.DetailFieldProps{Label: "Last error", Span: true}) {
+							<span class="wrap-anywhere text-destructive">{ d.LastError }</span>
+						}
+					}
+				</div>
+				if len(d.Metadata) > 0 {
+					<div>
+						<h4 class="fc-field-label mb-1">Additional data</h4>
+						@djKVList(d.Metadata, "")
+					</div>
+				}
+				<div>
+					<div class="mb-1 flex items-center justify-between">
+						<h4 class="fc-field-label">Payload</h4>
+						@kit.IconButton(kit.IconButtonProps{Icon: "copy", Label: "Copy payload", Attrs: templ.Attributes{"title": "Copy payload", "data-on:click": djCopyPayload}})
+					</div>
+					<pre id="dj-payload" class="fc-json whitespace-pre-wrap break-all" tabindex="0" aria-label="Payload">{ d.Payload }</pre>
+				</div>
+			</section>
+			<section class="flex min-w-0 flex-col gap-3">
+				<h3 class="fc-section-title">Attempts</h3>
+				if len(d.History) == 0 {
+					<p class="text-sm text-muted-foreground">No attempts yet.</p>
+				}
+				for _, a := range d.History {
+					@djAttemptC(a)
+				}
+				<div id={ djDrawerID + "-plan" }>
+					if d.Plan != nil {
+						@djPlanSection(*d.Plan)
+					}
+				</div>
+			</section>
+		</div>
+	</div>
+}
+
+templ djAttemptC(a djAttempt) {
+	<div class="flex flex-col gap-1.5 rounded-lg border border-border p-3">
+		<div class="flex flex-wrap items-center gap-2">
+			<span title={ a.AttemptOfTheRun }>
+				@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: a.Label})
+			</span>
+			@kit.Tag(kit.TagProps{Severity: a.OutcomeSeverity, Label: a.Outcome})
+			<span class="text-sm">
+				@kit.LocalTime(kit.LocalTimeProps{At: a.At})
+			</span>
+			if a.Duration != "" {
+				<span class="text-sm text-muted-foreground">{ a.Duration }</span>
+			}
+		</div>
+		@djLine("Sent", a.Sent, false)
+		if a.Timestamp != "" {
+			@djLine("Timestamp", a.Timestamp, true)
+		}
+		if a.Headers != "" {
+			@djLine("Headers", a.Headers, true)
+		}
+		if a.Error != "" {
+			<div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-2 text-sm">
+				<span class="text-muted-foreground">Error</span>
+				<span class="wrap-anywhere text-destructive">{ a.Error }</span>
+			</div>
+		}
+		if a.Response != "" {
+			<div>
+				<h4 class="fc-field-label mb-1">Response</h4>
+				<pre class="fc-json text-xs whitespace-pre-wrap break-all" tabindex="0" aria-label="Response body">{ a.Response }</pre>
+			</div>
+		}
+	</div>
+}
+
+templ djLine(label, value string, mono bool) {
+	<div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-2 text-sm">
+		<span class="text-muted-foreground">{ label }</span>
+		<span class={ "wrap-anywhere", templ.KV("font-mono text-xs", mono) }>{ value }</span>
+	</div>
+}
+
+// djKVList lists key/value pairs; with copyPrefix, each value has a copy
+// button (the plan's headers, except Authorization).
+templ djKVList(items []djKV, copyPrefix string) {
+	<dl class="flex flex-col gap-1 rounded-md border border-border p-2 text-sm">
+		for i, kv := range items {
+			<div class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 sm:grid-cols-[max-content_minmax(0,1fr)_auto]">
+				<dt class="col-span-2 font-mono text-xs text-muted-foreground sm:col-span-1">{ kv.Key }</dt>
+				<dd
+					class="font-mono text-xs wrap-anywhere"
+					if copyPrefix != "" {
+						id={ copyPrefix + strconv.Itoa(i) }
+					}
+				>{ kv.Value }</dd>
+				if copyPrefix != "" && kv.Key != "Authorization" {
+					@kit.IconButton(kit.IconButtonProps{Icon: "copy", Label: "Copy " + kv.Key, Attrs: templ.Attributes{"title": "Copy", "data-on:click": kit.CopyText(copyPrefix + strconv.Itoa(i))}})
+				} else {
+					<span></span>
+				}
+			</div>
+		}
+	</dl>
+}
+
+// djPlanSection is the sign action's answer: the delivery as it would go
+// out now.
+templ djPlanSection(p djPlan) {
+	<div class="flex flex-col gap-3 rounded-lg border border-dashed border-border p-3">
+		<h3 class="fc-section-title">Delivery as it would go out now</h3>
+		@djLine("Sent", p.Sent, false)
+		@djLine("Target", p.Target, true)
+		<div>
+			<h4 class="fc-field-label mb-1">Headers</h4>
+			@djKVList(p.Headers, "dj-plan-h-")
+		</div>
+		<div>
+			<div class="mb-1 flex items-center justify-between">
+				<h4 class="fc-field-label">Verify on the subscriber</h4>
+				@kit.IconButton(kit.IconButtonProps{Icon: "copy", Label: "Copy command", Attrs: templ.Attributes{"title": "Copy command", "data-on:click": kit.CopyText("dj-plan-verify")}})
+			</div>
+			<p class="mb-1 text-sm text-muted-foreground">Save the body below as <code>body.json</code>, then in the Laravel app:</p>
+			<pre id="dj-plan-verify" class="fc-json text-xs whitespace-pre-wrap break-all" tabindex="0" aria-label="Verify command">{ p.Verify }</pre>
+		</div>
+		<div>
+			<div class="mb-1 flex items-center justify-between">
+				<h4 class="fc-field-label">Body (exactly as signed)</h4>
+				@kit.IconButton(kit.IconButtonProps{Icon: "copy", Label: "Copy body", Attrs: templ.Attributes{"title": "Copy body — byte-for-byte, the signature covers it", "data-on:click": kit.CopyText("dj-plan-body")}})
+			</div>
+			<pre id="dj-plan-body" class="fc-json text-xs whitespace-pre-wrap break-all" tabindex="0" aria-label="Body as signed">{ p.Body }</pre>
+		</div>
+	</div>
+}
+
+// ── requeue by filter ──────────────────────────────────────────────────
+
+// djRequeueDialog is the SPA's RequeueByFilterDialog. Its form posts to the
+// filter's own URL with the eligible count the user was shown.
+templ djRequeueDialog(p djPreview) {
+	@kit.Dialog(kit.DialogProps{
+		ID: djRBFDialog, Title: "Requeue all matching jobs", Width: kit.WidthWide, Closable: true,
+		Attrs:  templ.Attributes{"open": true, "data-init": "el.open && el.close(); el.showModal()"},
+		Footer: djRequeueFooter(p),
+	}) {
+		<form id={ djRBFDialog + "-form" } method="post" action={ p.Action } class="flex flex-col gap-4" data-on:submit={ kit.SubmitForm }>
+			<input type="hidden" name="confirmCount" value={ strconv.FormatInt(p.Eligible, 10) }/>
+			<section>
+				<h4 class="fc-field-label mb-1.5 uppercase">Filters</h4>
+				if len(p.Summary) > 0 {
+					<dl class="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">
+						for _, kv := range p.Summary {
+							<dt class="text-muted-foreground">{ kv.Key }</dt>
+							<dd class="break-all">{ kv.Value }</dd>
+						}
+					</dl>
+				} else {
+					<p class="flex items-center gap-1.5 text-sm text-orange-600">
+						@kit.Icon(kit.IconProps{Name: "triangle-alert", Class: "size-[1rem]"})
+						No filters — this matches every dispatch job you can see.
+					</p>
+				}
+			</section>
+			<section class="flex flex-col gap-2 text-sm">
+				<h4 class="fc-field-label uppercase">Matching jobs</h4>
+				<p><strong>{ counted(p.Count, "job") }</strong> match.</p>
+				if len(p.ByStatus) > 0 {
+					<div class="flex flex-wrap gap-1.5">
+						for _, s := range p.ByStatus {
+							@kit.Tag(kit.TagProps{Severity: s.Severity, Label: s.Status + " · " + thousands(s.Count)})
+						}
+					</div>
+				}
+				<p>
+					<strong>{ counted(p.Eligible, "job") }</strong> can be requeued.
+					if p.OutOfScope > 0 {
+						<span class="text-muted-foreground">{ thousands(p.OutOfScope) } platform-scoped or outside your client access will be left alone.</span>
+					}
+				</p>
+				if p.OverCap {
+					<p class="text-muted-foreground">At most { thousands(djMaxRequeue) } are requeued per run; run it again for the rest.</p>
+				}
+			</section>
+			if p.Changed {
+				@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Description: "More jobs match than when you looked, so nothing was requeued. The counts above are current — review them and confirm again."})
+			}
+			@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Description: "Requeue resets each job to PENDING — clearing its attempt count, schedule and last error — and the scheduler delivers it again. Jobs that already completed are delivered again too if they match."})
+		</form>
+	}
+}
+
+templ djRequeueFooter(p djPreview) {
+	<button type="button" class="fc-btn fc-btn-text" data-on:click={ kit.CloseDialog }>Cancel</button>
+	<button type="submit" form={ djRBFDialog + "-form" } class="fc-btn fc-btn-danger" disabled?={ p.Eligible == 0 }>
+		@kit.Icon(kit.IconProps{Name: "rotate-ccw", Class: "size-[1rem]"})
+		{ "Requeue " + counted(p.ToRequeue, "job") }
+	</button>
+}

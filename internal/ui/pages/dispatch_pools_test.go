@@ -195,6 +195,8 @@ type req struct {
 	// multipart sends the form as Datastar does ({contentType: 'form'}
 	// posts FormData), instead of urlencoded as a native form.
 	multipart bool
+	// headers are extra request headers.
+	headers map[string]string
 }
 
 // do serves one request through the page built from the fakes.
@@ -258,6 +260,9 @@ func serveMounted(t *testing.T, ac *auth.AuthContext, q req, pages ...mounter) *
 	if q.referer != "" {
 		r.Header.Set("Referer", q.referer)
 	}
+	for k, v := range q.headers {
+		r.Header.Set(k, v)
+	}
 	if q.cookie != nil {
 		r.AddCookie(q.cookie)
 	}
@@ -320,7 +325,7 @@ func TestPoolsPageRendersInsideTheShell(t *testing.T) {
 		`class="fc-sidebar"`,
 		`href="/ui/dispatch-pools" class="fc-nav-item" title="Dispatch Pools" aria-current="page"`, // ported entry, current
 		`href="/ui/connections" class="fc-nav-item"`,                                               // ported entry
-		`href="/dispatch-jobs" class="fc-nav-item"`,                                                // unported entry → SPA
+		`href="/processes" class="fc-nav-item"`,                                                    // unported entry → SPA
 		`<h1 class="fc-page-title">Dispatch Pools</h1>`,
 		`href="/ui/dispatch-pools/new"`, // Create opens the form dialog
 		`id="pools-list"`, `id="pools-table"`, `id="pools-rows"`, `id="pools-summary"`,

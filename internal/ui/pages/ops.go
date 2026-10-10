@@ -10,6 +10,9 @@ import (
 	clientops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	connops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
+	djops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/operations"
+	dispatchprocessing "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/processing"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
@@ -22,6 +25,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
 	subops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -469,4 +473,58 @@ func (o ScheduledJobOps) Fire(ctx context.Context, id string) (string, error) {
 		return "", err
 	}
 	return ev.InstanceID, nil
+}
+
+// DispatchJobCommands are the dispatch-job operations the dispatch jobs page
+// runs; DispatchJobOps runs what internal/platform/dispatchjob/api runs.
+type DispatchJobCommands interface {
+	// Requeue runs ResendDispatchJobs and returns how many jobs were reset
+	// (ids outside the caller's tenants are dropped by the use case).
+	Requeue(ctx context.Context, ids []string) (int, error)
+	// Preview counts what a requeue-by-filter would touch (SummarizeMatches).
+	Preview(ctx context.Context, f dispatchjob.FilterParams) (djops.MatchSummary, error)
+	// RequeueByFilter runs ResendByFilter with the confirmed eligible count
+	// and the default (maximum) limit.
+	RequeueByFilter(ctx context.Context, f dispatchjob.FilterParams, confirmCount int64) (djops.ResendByFilterResult, error)
+	// Plan builds the job's delivery without sending it (the "sign" action);
+	// ErrPlanUnavailable when the server has no planner wired.
+	Plan(ctx context.Context, j *dispatchjob.DispatchJob) (*dispatchprocessing.DeliveryPlan, error)
+}
+
+// ErrPlanUnavailable is DispatchJobOps.Plan without a planner (the API's 501).
+var ErrPlanUnavailable = usecase.Internal("PLAN_UNAVAILABLE", "delivery planning is not wired on this server", nil)
+
+// DispatchJobOps runs the dispatch-job operations exactly as the API does.
+type DispatchJobOps struct {
+	Repo *dispatchjob.Repository
+	UoW  *usecasepgx.UnitOfWork
+	// Planner is processing.Handler.Plan (the API's State.Plan).
+	Planner func(ctx context.Context, j *dispatchjob.DispatchJob) (*dispatchprocessing.DeliveryPlan, error)
+}
+
+// Requeue runs ResendDispatchJobs.
+func (o DispatchJobOps) Requeue(ctx context.Context, ids []string) (int, error) {
+	ev, err := usecaseop.Run(ctx, o.UoW, djops.ResendDispatchJobs(o.Repo), djops.ResendCommand{IDs: ids}, auth.NewExecutionContext(ctx))
+	if err != nil {
+		return 0, err
+	}
+	return len(ev.IDs), nil
+}
+
+// Preview runs SummarizeMatches.
+func (o DispatchJobOps) Preview(ctx context.Context, f dispatchjob.FilterParams) (djops.MatchSummary, error) {
+	return djops.SummarizeMatches(ctx, o.Repo, f)
+}
+
+// RequeueByFilter runs ResendByFilter (limit 0: the default, which is the cap).
+func (o DispatchJobOps) RequeueByFilter(ctx context.Context, f dispatchjob.FilterParams, confirmCount int64) (djops.ResendByFilterResult, error) {
+	return djops.ResendByFilter(ctx, o.UoW, o.Repo, f, confirmCount, 0, auth.NewExecutionContext(ctx))
+}
+
+// Plan runs the planner.
+func (o DispatchJobOps) Plan(ctx context.Context, j *dispatchjob.DispatchJob) (*dispatchprocessing.DeliveryPlan, error) {
+	if o.Planner == nil {
+		return nil, ErrPlanUnavailable
+	}
+	return o.Planner(ctx, j)
 }

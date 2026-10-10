@@ -85,7 +85,7 @@ var navigation = []navSection{
 		{label: "Connections", icon: "link", spa: "/connections", ui: "/ui/connections", permission: "platform:messaging:connection:view"},
 		{label: "Dispatch Pools", icon: "database", spa: "/dispatch-pools", ui: "/ui/dispatch-pools", permission: "platform:messaging:dispatch-pool:view"},
 		{label: "Functions", icon: "box", spa: "/functions", permission: "platform:function:function:view"},
-		{label: "Dispatch Jobs", icon: "send", spa: "/dispatch-jobs", permission: "platform:messaging:dispatch-job:view"},
+		{label: "Dispatch Jobs", icon: "send", spa: "/dispatch-jobs", ui: "/ui/dispatch-jobs", permission: "platform:messaging:dispatch-job:view"},
 		{label: "Scheduled Jobs", icon: "clock", spa: "/scheduled-jobs", ui: "/ui/scheduled-jobs", permission: "platform:messaging:scheduled-job:view"},
 	}},
 	{"Developer", []navEntry{

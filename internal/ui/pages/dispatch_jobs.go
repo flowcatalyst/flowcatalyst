@@ -1,0 +1,1248 @@
+package pages
+
+import (
+	"cmp"
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"maps"
+	"net/http"
+	"net/url"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/a-h/templ"
+	"github.com/go-chi/chi/v5"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
+	djops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/schemacodegen"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/ds"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/shell"
+	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
+)
+
+// DispatchJobStore is the slice of the dispatch-job repository the page
+// reads (the SPA's GET /api/dispatch-jobs, /{id}, /{id}/attempts and
+// /filter-options).
+type DispatchJobStore interface {
+	FindWithFilters(ctx context.Context, p dispatchjob.FilterParams) ([]dispatchjob.DispatchJob, error)
+	FindByID(ctx context.Context, id string) (*dispatchjob.DispatchJob, error)
+	AttemptsByJob(ctx context.Context, jobID string) ([]dispatchjob.Attempt, error)
+	DistinctValues(ctx context.Context, column string, limit int) ([]string, error)
+}
+
+// DispatchJobs is the dispatch jobs page (/ui/dispatch-jobs), mirroring the
+// SPA's DispatchJobListPage, DispatchJobDetailDrawer and
+// RequeueByFilterDialog. Every route makes the API's checks: the
+// dispatch-job view permission, SQL tenant scoping (operations.VisibleTo)
+// and per-job client scope; "sign" needs the raw-view permission.
+type DispatchJobs struct {
+	Jobs    DispatchJobStore
+	Ops     DispatchJobCommands
+	Clients ClientStore
+	// ClientIdentifier resolves a job's client id to the client's
+	// identifier for the grid (the API's cached resolver); nil shows ids.
+	ClientIdentifier func(ctx context.Context, clientID string) (string, bool)
+	Shell            *shell.Shell
+
+	// facetCache holds the distinct statuses and codes for djFacetTTL: the
+	// SPA reads them once per visit, the live list on every request, and a
+	// DISTINCT over the projection is the costliest query of a request.
+	facetCache djFacetCache
+}
+
+// djFacetTTL is how long the distinct statuses and codes are reused.
+const djFacetTTL = 30 * time.Second
+
+type djFacetCache struct {
+	mu              sync.Mutex
+	at              time.Time
+	statuses, codes []string
+}
+
+// distinct is the API's filter-options statuses and codes, cached.
+func (h *DispatchJobs) distinct(ctx context.Context) (statuses, codes []string, err error) {
+	c := &h.facetCache
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.at.IsZero() && time.Since(c.at) < djFacetTTL {
+		return c.statuses, c.codes, nil
+	}
+	if statuses, err = h.Jobs.DistinctValues(ctx, "status", djDistinctLimit); err != nil {
+		return nil, nil, usecase.Internal("REPO", "distinct statuses failed", err)
+	}
+	if codes, err = h.Jobs.DistinctValues(ctx, "code", djDistinctLimit); err != nil {
+		return nil, nil, usecase.Internal("REPO", "distinct codes failed", err)
+	}
+	c.at, c.statuses, c.codes = time.Now(), statuses, codes
+	return statuses, codes, nil
+}
+
+const (
+	djPath   = "/ui/dispatch-jobs"
+	djFormID = "dj-list"
+
+	djDrawerID   = "dj-drawer"
+	djDrawerSig  = "selDj"
+	djDialogSlot = "dj-dialog-slot"
+	djRBFDialog  = "dj-rbf"
+
+	// djSelSig counts the ticked rows (the "Requeue selected" label).
+	djSelSig = "djSel"
+
+	djViewPerm = "platform:messaging:dispatch-job:view"
+	djRawPerm  = "platform:messaging:dispatch-job:view-raw"
+
+	djLiveGet = "@get('/ui/dispatch-jobs', {contentType: 'form'})"
+	// djNavLink is a link that changes the filters (the group link, the
+	// error preset): its answer re-renders the whole toolbar, which a typed
+	// search must never be (it would drop keystrokes made in flight).
+	djNavLink = "@get(el.href, {headers: {'" + djToolbarHeader + "': 'full'}})"
+
+	djToolbarHeader = "X-FC-Toolbar"
+
+	// Facets: the SPA's URL keys.
+	djFacetClients  = "clients"
+	djFacetApps     = "applications"
+	djFacetSubs     = "subdomains"
+	djFacetAggs     = "aggregates"
+	djFacetCodes    = "codes"
+	djFacetStatuses = "statuses"
+
+	djDefaultSize = 200
+	// djMaxRequeue is ResendByFilterMaxLimit: one requeue-by-filter run's cap.
+	djMaxRequeue = djops.ResendByFilterMaxLimit
+	// djDistinctLimit is the API's filter-options cap per facet.
+	djDistinctLimit = 200
+)
+
+var (
+	djFacets = []string{djFacetClients, djFacetApps, djFacetSubs, djFacetAggs, djFacetCodes, djFacetStatuses}
+	djSizes  = []int{50, 100, 200, 500, 1000}
+
+	djList = &listSpec{
+		path: djPath, sortKeys: []string{"createdAt"}, defaultDir: kit.SortDesc,
+		statusOK: func(string) bool { return false }, facets: djFacets,
+	}
+
+	// djErrorStatuses are the "in error" statuses: FAILED and its legacy
+	// alias ERROR (requeueByFilter.ts ERROR_STATUSES).
+	djErrorStatuses = []string{"FAILED", "ERROR"}
+)
+
+// Mount registers the page's routes (POSTs behind parseForm).
+func (h *DispatchJobs) Mount(r chi.Router) {
+	r.Get("/dispatch-jobs", h.list)
+	r.Get("/dispatch-jobs/requeue-by-filter", h.requeueByFilterDialog)
+	r.Get("/dispatch-jobs/requeue-errors", h.requeueErrors)
+	r.Get("/dispatch-jobs/{id}", h.detail)
+	post := r.With(parseForm)
+	post.Post("/dispatch-jobs/requeue", h.requeueSelected)
+	post.Post("/dispatch-jobs/requeue-by-filter", h.requeueByFilter)
+	post.Post("/dispatch-jobs/{id}/requeue", h.requeueOne)
+	post.Post("/dispatch-jobs/{id}/sign", h.sign)
+}
+
+// ── URL state ──────────────────────────────────────────────────────────
+
+// djQuery is one view of the list: the facets, the source search (q), the
+// message group, the created-at day range, the sort, the result size and
+// the keyset position. Everything but the size, sort and position is the
+// filter a requeue-by-filter acts on.
+type djQuery struct {
+	listQuery
+	Group    string
+	From, To string // YYYY-MM-DD, UTC days
+	Size     int
+	// After is the page's keyset position: rows after this one in the
+	// list's order ("Older"). Nil is the first page.
+	After *dispatchjob.ListCursor
+}
+
+func parseDJQuery(v url.Values) djQuery {
+	q := djQuery{listQuery: parseListQuery(v, djList), Size: djDefaultSize}
+	q.Group = strings.TrimSpace(v.Get("group"))
+	if len(q.Group) > maxQueryLen {
+		q.Group = q.Group[:maxQueryLen]
+	}
+	q.From, q.To = validDay(v.Get("from")), validDay(v.Get("to"))
+	if n, err := strconv.Atoi(v.Get("size")); err == nil && slices.Contains(djSizes, n) {
+		q.Size = n
+	}
+	q.After = parseCursor(v.Get("after"))
+	return q
+}
+
+// validDay keeps a YYYY-MM-DD day; anything else is no bound (a hand-edited
+// URL still shows a list).
+func validDay(s string) string {
+	if _, err := time.Parse(time.DateOnly, s); err != nil {
+		return ""
+	}
+	return s
+}
+
+// Cursors are "<created_at in unix microseconds>.<id>" (Postgres keeps
+// microseconds, so the position is exact).
+func formatCursor(c dispatchjob.ListCursor) string {
+	return strconv.FormatInt(c.CreatedAt.UnixMicro(), 10) + "." + c.ID
+}
+
+func parseCursor(s string) *dispatchjob.ListCursor {
+	micros, id, ok := strings.Cut(s, ".")
+	if !ok || id == "" || len(id) > maxQueryLen {
+		return nil
+	}
+	n, err := strconv.ParseInt(micros, 10, 64)
+	if err != nil {
+		return nil
+	}
+	return &dispatchjob.ListCursor{CreatedAt: time.UnixMicro(n).UTC(), ID: id}
+}
+
+// filterValues is the filter alone: what "requeue all matching" acts on.
+func (q djQuery) filterValues() url.Values {
+	v := url.Values{}
+	for _, name := range djFacets {
+		for _, val := range q.Facets[name] {
+			v.Add(name, val)
+		}
+	}
+	if q.Q != "" {
+		v.Set("q", q.Q)
+	}
+	if q.Group != "" {
+		v.Set("group", q.Group)
+	}
+	if q.From != "" {
+		v.Set("from", q.From)
+	}
+	if q.To != "" {
+		v.Set("to", q.To)
+	}
+	return v
+}
+
+func (q djQuery) values() url.Values {
+	v := q.listQuery.values()
+	maps.Copy(v, q.filterValues())
+	if q.Size != djDefaultSize {
+		v.Set("size", strconv.Itoa(q.Size))
+	}
+	if q.After != nil {
+		v.Set("after", formatCursor(*q.After))
+	}
+	return v
+}
+
+func encodeURL(path string, v url.Values) string {
+	if enc := v.Encode(); enc != "" {
+		return path + "?" + enc
+	}
+	return path
+}
+
+// sizeOnly keeps only a non-default result size (the error preset's URL).
+func (q djQuery) sizeOnly() url.Values {
+	v := url.Values{}
+	if q.Size != djDefaultSize {
+		v.Set("size", strconv.Itoa(q.Size))
+	}
+	return v
+}
+
+// URL is the canonical URL of this view.
+func (q djQuery) URL() string { return encodeURL(djPath, q.values()) }
+
+// first is this view's first page.
+func (q djQuery) first() djQuery {
+	q.After = nil
+	return q
+}
+
+// clearURL keeps the sort and the size (table-toolbar.md: Clear All clears
+// what the user typed and picked).
+func (q djQuery) clearURL() string {
+	clear := djQuery{Size: q.Size}
+	clear.spec, clear.Sort, clear.Dir = djList, q.Sort, q.Dir
+	return clear.URL()
+}
+
+// sortURL flips the created-at order, from the first page.
+func (q djQuery) sortURL() string {
+	next := q.first()
+	next.Sort = djList.sortKeys[0]
+	next.Dir = kit.SortAsc
+	if q.Dir == kit.SortAsc {
+		next.Dir = kit.SortDesc
+	}
+	return next.URL()
+}
+
+// withGroup is the first page of this view narrowed to one message group.
+func (q djQuery) withGroup(group string) djQuery {
+	next := q.first()
+	next.Group = group
+	return next
+}
+
+func (q djQuery) filtered() bool {
+	return q.listQuery.filtered() || q.Group != "" || q.From != "" || q.To != ""
+}
+
+// activeFilters is the Filters badge: the facets in use plus the group and
+// each end of the date range (the SPA's count).
+func (q djQuery) activeFilters() int {
+	n := len(q.Facets)
+	for _, s := range []string{q.Group, q.From, q.To} {
+		if s != "" {
+			n++
+		}
+	}
+	return n
+}
+
+// filterParams converts the filter: since is the start of the "from" day,
+// until the start of the day after "to" (the SPA's whole-day bounds, here
+// in UTC).
+func (q djQuery) filterParams() dispatchjob.FilterParams {
+	p := dispatchjob.FilterParams{
+		ClientIDs: q.facet(djFacetClients), Statuses: q.facet(djFacetStatuses),
+		Applications: q.facet(djFacetApps), Subdomains: q.facet(djFacetSubs),
+		Aggregates: q.facet(djFacetAggs), Codes: q.facet(djFacetCodes),
+	}
+	if q.Q != "" {
+		source := q.Q
+		p.Source = &source
+	}
+	if q.Group != "" {
+		group := q.Group
+		p.MessageGroup = &group
+	}
+	if t, err := time.Parse(time.DateOnly, q.From); err == nil {
+		p.Since = &t
+	}
+	if t, err := time.Parse(time.DateOnly, q.To); err == nil {
+		until := t.AddDate(0, 0, 1)
+		p.Until = &until
+	}
+	return p
+}
+
+// djReferer is the list view the request came from (see refererList).
+func djReferer(r *http.Request) djQuery {
+	ref, err := url.Parse(r.Referer())
+	if err != nil || ref.Path != djPath {
+		return parseDJQuery(nil)
+	}
+	return parseDJQuery(ref.Query())
+}
+
+// ── list ───────────────────────────────────────────────────────────────
+
+type djRow struct {
+	ID, Href         string
+	Descriptor, Code string
+	Client           string
+	ClientIsID       bool
+	Platform         bool
+	Group, GroupHref string
+	Status           string
+	Severity         kit.TagSeverity
+	Meta, MetaFull   string
+	Created          time.Time
+	RequeueAction    string
+	ValidID          bool
+}
+
+type djView struct {
+	Query  djQuery
+	Rows   []djRow
+	Facets map[string][]kit.Option
+	// ClientNames labels the client filter in the confirm summary.
+	ClientNames map[string]string
+	// OlderHref is the next page (empty on the last).
+	OlderHref string
+	CanSign   bool
+	Dialog    templ.Component
+	Drawer    *djDetail
+}
+
+func (h *DispatchJobs) list(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, djViewPerm); err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	view, err := h.listView(ctx, ac, parseDJQuery(r.URL.Query()))
+	if err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	if ds.IsDatastar(r) {
+		sse := ds.NewSSE(w, r)
+		if err := view.patchList(sse, r.Header.Get(djToolbarHeader) == "full"); err != nil {
+			slog.DebugContext(ctx, "ui: dispatch jobs patch not delivered", "err", err)
+		}
+		return
+	}
+	h.renderPage(w, r, http.StatusOK, view)
+}
+
+func (h *DispatchJobs) renderPage(w http.ResponseWriter, r *http.Request, status int, view djView) {
+	h.Shell.RenderStatus(w, r, status, shell.Page{Title: "Dispatch Jobs", Path: djPath}, djPage(view))
+}
+
+// patchList patches the table, the pager, the requeue bar and the
+// toolbar's live parts (or, with full, the whole toolbar), resets the
+// selection and replaces the address.
+func (v djView) patchList(sse *ds.SSE, full bool) error {
+	errs := []error{
+		patchDjTable(sse, v), sse.Patch(kit.CursorPager(v.pager())), sse.Patch(djBulkBar(v)),
+		sse.PatchSignals(map[string]any{djSelSig: 0}),
+	}
+	if full {
+		errs = append(errs, sse.Patch(kit.TableToolbar(v.toolbar())))
+	} else {
+		errs = append(errs, sse.Patch(kit.TableToolbarState(v.toolbar().State())))
+		for _, f := range djFacets {
+			p := v.facetProps(f)
+			errs = append(errs, sse.Patch(kit.MultiSelectSummary(p)))
+			if f != djFacetClients && f != djFacetStatuses && f != djFacetApps {
+				// The cascading facets' options follow the parents' choice.
+				errs = append(errs, sse.Patch(kit.MultiSelectOptions(p)))
+			}
+		}
+	}
+	errs = append(errs, sse.ReplaceURL(v.Query.URL()))
+	return errors.Join(errs...)
+}
+
+func (h *DispatchJobs) listView(ctx context.Context, ac *auth.AuthContext, q djQuery) (djView, error) {
+	v := djView{Query: q, CanSign: auth.CanWritePermission(ac, djRawPerm) == nil}
+	facets, names, err := h.filterOptions(ctx, ac, q)
+	if err != nil {
+		return djView{}, err
+	}
+	v.Facets, v.ClientNames = facets, names
+	p := djops.VisibleTo(ac, q.filterParams())
+	p.Limit, p.SortAscending, p.Cursor = q.Size, q.Dir == kit.SortAsc, q.After
+	jobs, err := h.Jobs.FindWithFilters(ctx, p)
+	if err != nil {
+		return djView{}, usecase.Internal("REPO", "find_with_filters failed", err)
+	}
+	for i := range jobs {
+		v.Rows = append(v.Rows, h.toRow(ctx, q, &jobs[i]))
+	}
+	// A full page may have an older one; a short page is the last.
+	if len(jobs) == q.Size {
+		last := jobs[len(jobs)-1]
+		next := q
+		next.After = &dispatchjob.ListCursor{CreatedAt: last.CreatedAt, ID: last.ID}
+		v.OlderHref = next.URL()
+	}
+	return v, nil
+}
+
+// filterOptions are the SPA's: the clients the caller can see (active,
+// sorted by name), the distinct statuses and codes the API's filter-options
+// returns, and (new: the SPA leaves them empty, see docs/ui/README.md) the
+// application, subdomain and aggregate segments of those codes, each
+// narrowed by the levels chosen above it. A chosen value that is not among
+// the options is kept as an option, so a URL never silently loses a filter.
+func (h *DispatchJobs) filterOptions(ctx context.Context, ac *auth.AuthContext, q djQuery) (map[string][]kit.Option, map[string]string, error) {
+	out := map[string][]kit.Option{}
+	cs, err := h.clients(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	names := clientNames(cs)
+	var opts []kit.Option
+	for _, c := range cs {
+		if c.Status != client.StatusActive || (!ac.IsAnchor() && !ac.CanAccessClient(string(c.ID))) {
+			continue
+		}
+		opts = append(opts, kit.Option{Value: string(c.ID), Label: c.Name})
+	}
+	slices.SortFunc(opts, func(a, b kit.Option) int { return strings.Compare(a.Label, b.Label) })
+	out[djFacetClients] = opts
+	statuses, codes, err := h.distinct(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	out[djFacetStatuses] = plainOptions(statuses)
+	apps, subs, aggs := q.facet(djFacetApps), q.facet(djFacetSubs), q.facet(djFacetAggs)
+	under := func(seg []string, level int) bool {
+		chosen := [][]string{apps, subs, aggs}
+		for i := range level {
+			if len(chosen[i]) > 0 && (len(seg) <= i || !slices.Contains(chosen[i], seg[i])) {
+				return false
+			}
+		}
+		return true
+	}
+	levels := make([][]string, 4)
+	for _, code := range codes {
+		seg := strings.Split(code, ":")
+		for level := range 3 {
+			if len(seg) > level && under(seg, level) {
+				levels[level] = append(levels[level], seg[level])
+			}
+		}
+		if under(seg, 3) {
+			levels[3] = append(levels[3], code)
+		}
+	}
+	for i, f := range []string{djFacetApps, djFacetSubs, djFacetAggs, djFacetCodes} {
+		vals := levels[i]
+		slices.Sort(vals)
+		out[f] = plainOptions(slices.Compact(vals))
+	}
+	for _, f := range djFacets {
+		out[f] = withChosen(out[f], q.facet(f), names)
+	}
+	return out, names, nil
+}
+
+func (h *DispatchJobs) clients(ctx context.Context) ([]client.Client, error) {
+	if h.Clients == nil {
+		return nil, nil
+	}
+	cs, err := h.Clients.FindAll(ctx)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "list clients failed", err)
+	}
+	return cs, nil
+}
+
+func clientNames(cs []client.Client) map[string]string {
+	names := make(map[string]string, len(cs))
+	for _, c := range cs {
+		names[string(c.ID)] = c.Name
+	}
+	return names
+}
+
+func plainOptions(vals []string) []kit.Option {
+	out := make([]kit.Option, 0, len(vals))
+	for _, v := range vals {
+		out = append(out, kit.Option{Value: v, Label: v})
+	}
+	return out
+}
+
+// withChosen appends the chosen values that are not options (labelled by
+// labels when known, else the value itself).
+func withChosen(opts []kit.Option, chosen []string, labels map[string]string) []kit.Option {
+	for _, c := range chosen {
+		if !slices.ContainsFunc(opts, func(o kit.Option) bool { return o.Value == c }) {
+			opts = append(opts, kit.Option{Value: c, Label: cmp.Or(labels[c], c)})
+		}
+	}
+	return opts
+}
+
+func djURL(id string) string { return djPath + "/" + url.PathEscape(id) }
+
+// djSeverity is the list's statusSeverity (requeueByFilter.ts).
+func djSeverity(status string) kit.TagSeverity {
+	switch status {
+	case "COMPLETED":
+		return kit.TagSuccess
+	case "PENDING", "QUEUED":
+		return kit.TagInfo
+	case "PROCESSING":
+		return kit.TagWarn
+	case "FAILED", "ERROR":
+		return kit.TagDanger
+	}
+	return kit.TagSecondary
+}
+
+// metadataPreview is the SPA's: key=value pairs, clipped at 20 characters.
+func metadataPreview(meta []dispatchjob.Metadata) (preview, full string) {
+	if len(meta) == 0 {
+		return "", ""
+	}
+	pairs, lines := make([]string, 0, len(meta)), make([]string, 0, len(meta))
+	for _, m := range meta {
+		pairs = append(pairs, m.Key+"="+m.Value)
+		lines = append(lines, m.Key+": "+m.Value)
+	}
+	preview = strings.Join(pairs, ", ")
+	if r := []rune(preview); len(r) > 20 {
+		preview = string(r[:20]) + "…"
+	}
+	return preview, strings.Join(lines, "\n")
+}
+
+func (h *DispatchJobs) toRow(ctx context.Context, q djQuery, j *dispatchjob.DispatchJob) djRow {
+	row := djRow{
+		ID: j.ID, Href: djURL(j.ID), Descriptor: deref(j.Descriptor), Code: j.Code,
+		Status: string(j.Status), Severity: djSeverity(string(j.Status)), Created: j.CreatedAt,
+		RequeueAction: djURL(j.ID) + "/requeue", ValidID: kit.ValidID(j.ID),
+	}
+	row.Meta, row.MetaFull = metadataPreview(j.Metadata)
+	switch {
+	case j.ClientID == nil || *j.ClientID == "":
+		row.Platform = true
+	case h.ClientIdentifier != nil:
+		if ident, ok := h.ClientIdentifier(ctx, *j.ClientID); ok {
+			row.Client = ident
+		} else {
+			row.Client, row.ClientIsID = *j.ClientID, true
+		}
+	default:
+		row.Client, row.ClientIsID = *j.ClientID, true
+	}
+	if j.MessageGroup != nil && *j.MessageGroup != "" {
+		row.Group = *j.MessageGroup
+		row.GroupHref = q.withGroup(row.Group).URL()
+	}
+	return row
+}
+
+// ── drawer ─────────────────────────────────────────────────────────────
+
+type djKV struct{ Key, Value string }
+
+type djAttempt struct {
+	Label           string
+	Outcome         string
+	OutcomeSeverity kit.TagSeverity
+	At              time.Time
+	Duration        string
+	Sent, Timestamp string
+	Headers, Error  string
+	Response        string
+	AttemptOfTheRun string
+}
+
+type djDetail struct {
+	ID, Title                  string
+	Status                     string
+	StatusSeverity             kit.TagSeverity
+	Descriptor, Code, ClientID string
+	Group, Mode, Target        string
+	Subscription, Event        string
+	Attempts                   string
+	ScheduledFor, Created      time.Time
+	Completed                  time.Time
+	LastError                  string
+	Metadata                   []djKV
+	Payload                    string
+	History                    []djAttempt
+	ActionBase                 string
+	CanSign                    bool
+	// Plan is the sign action's answer, when the page renders it (without
+	// Datastar); a live drawer patches it into its slot instead.
+	Plan *djPlan
+}
+
+func (d djDetail) drawerProps() kit.DrawerProps {
+	return kit.DrawerProps{ID: djDrawerID, Signal: djDrawerSig, Label: "Dispatch job", Size: kit.DrawerTwoThirds, Title: d.Title, Subtitle: d.ID}
+}
+
+// djDrawerSeverity is the drawer's statusSeverity (it differs from the
+// list's: CANCELLED and EXPIRED are secondary, anything else not named is
+// info).
+func djDrawerSeverity(status string) kit.TagSeverity {
+	switch status {
+	case "COMPLETED":
+		return kit.TagSuccess
+	case "FAILED":
+		return kit.TagDanger
+	case "PROCESSING":
+		return kit.TagWarn
+	case "CANCELLED", "EXPIRED":
+		return kit.TagSecondary
+	}
+	return kit.TagInfo
+}
+
+// attemptSeverity is the SPA's: success, a deferral (429 or a 2xx that was
+// not acknowledged) is a warning, anything else danger.
+func attemptSeverity(a *dispatchjob.Attempt) kit.TagSeverity {
+	if a.Success {
+		return kit.TagSuccess
+	}
+	code := 0
+	if a.ResponseCode != nil {
+		code = *a.ResponseCode
+	}
+	if code == http.StatusTooManyRequests || (code >= 200 && code < 300) {
+		return kit.TagWarn
+	}
+	return kit.TagDanger
+}
+
+// requestLine is the SPA's summary of what was sent.
+func requestLine(r *dispatchjob.RequestSummary) string {
+	if r == nil {
+		return "not recorded"
+	}
+	if r.UnsignedReason != "" {
+		return "UNSIGNED — " + r.UnsignedReason
+	}
+	var parts []string
+	if r.Signature {
+		parts = append(parts, "signed by "+cmp.Or(r.SignedBy, "?"))
+	}
+	if r.Bearer {
+		parts = append(parts, "bearer")
+	}
+	if len(parts) == 0 {
+		return "no credentials"
+	}
+	return strings.Join(parts, " + ")
+}
+
+// prettyText indents a JSON document (the SPA's formatJson); anything else
+// is shown as stored, and nothing as "-".
+func prettyText(s *string) string {
+	if s == nil || *s == "" {
+		return "-"
+	}
+	if p, ok := schemacodegen.PrettyJSON(*s); ok {
+		return p
+	}
+	return *s
+}
+
+func toAttempts(rows []dispatchjob.Attempt) []djAttempt {
+	out := make([]djAttempt, 0, len(rows))
+	// Latest first; the position, not the stored number, is the label
+	// (every requeue starts a new run numbered from 1).
+	for i := len(rows) - 1; i >= 0; i-- {
+		a := &rows[i]
+		at := djAttempt{
+			Label: "#" + strconv.Itoa(i+1), At: a.AttemptedAt, OutcomeSeverity: attemptSeverity(a),
+			Sent:            requestLine(a.Request),
+			AttemptOfTheRun: "Attempt " + strconv.Itoa(int(a.AttemptNumber)) + " of its run — a requeue starts a new run numbered from 1",
+		}
+		switch {
+		case a.ResponseCode != nil && *a.ResponseCode != 0:
+			at.Outcome = strconv.Itoa(*a.ResponseCode)
+		case a.ErrorType != nil && *a.ErrorType != "":
+			at.Outcome = string(*a.ErrorType)
+		default:
+			at.Outcome = "no response"
+		}
+		if a.DurationMillis != nil {
+			at.Duration = strconv.FormatInt(*a.DurationMillis, 10) + "ms"
+		}
+		if a.Request != nil {
+			at.Timestamp = a.Request.Timestamp
+			at.Headers = strings.Join(a.Request.Headers, ", ")
+		}
+		at.Error = deref(a.ErrorMessage)
+		if a.ResponseBody != nil && *a.ResponseBody != "" {
+			at.Response = prettyText(a.ResponseBody)
+		}
+		out = append(out, at)
+	}
+	return out
+}
+
+func timeOr(t *time.Time) time.Time {
+	if t == nil {
+		return time.Time{}
+	}
+	return *t
+}
+
+// loadJob reads a job with the API's checks: not found, then the job's
+// client scope.
+func (h *DispatchJobs) loadJob(ctx context.Context, ac *auth.AuthContext, id string) (*dispatchjob.DispatchJob, error) {
+	j, err := h.Jobs.FindByID(ctx, id)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
+	}
+	if j == nil {
+		return nil, httperror.NotFound("DispatchJob", id)
+	}
+	if err := auth.CheckScopeAccess(ac, ids.StringPtr(j.ClientID)); err != nil {
+		return nil, err
+	}
+	return j, nil
+}
+
+func (h *DispatchJobs) detailOf(ctx context.Context, ac *auth.AuthContext, j *dispatchjob.DispatchJob) (djDetail, error) {
+	attempts, err := h.Jobs.AttemptsByJob(ctx, j.ID)
+	if err != nil {
+		return djDetail{}, usecase.Internal("REPO", "attempts failed", err)
+	}
+	d := djDetail{
+		ID: j.ID, Title: cmp.Or(deref(j.Descriptor), j.Code, "Dispatch job"),
+		Status: string(j.Status), StatusSeverity: djDrawerSeverity(string(j.Status)),
+		Descriptor: cmp.Or(deref(j.Descriptor), "-"), Code: j.Code, ClientID: cmp.Or(deref(j.ClientID), "-"),
+		Group: cmp.Or(deref(j.MessageGroup), "-"), Mode: string(j.Mode), Target: j.TargetURL,
+		Subscription: cmp.Or(deref(j.SubscriptionID), "-"), Event: cmp.Or(deref(j.EventID), "-"),
+		Attempts:     fmt.Sprintf("%d / %d", j.AttemptCount, j.MaxRetries),
+		ScheduledFor: timeOr(j.ScheduledFor), Created: j.CreatedAt, Completed: timeOr(j.CompletedAt),
+		LastError: deref(j.LastError), Payload: prettyText(j.Payload),
+		History: toAttempts(attempts), ActionBase: djURL(j.ID),
+		CanSign: auth.CanWritePermission(ac, djRawPerm) == nil,
+	}
+	for _, m := range j.Metadata {
+		d.Metadata = append(d.Metadata, djKV{Key: m.Key, Value: m.Value})
+	}
+	return d, nil
+}
+
+func djID(r *http.Request) (string, error) {
+	id := chi.URLParam(r, "id")
+	if !kit.ValidID(id) {
+		return "", httperror.NotFound("DispatchJob", id)
+	}
+	return id, nil
+}
+
+func (h *DispatchJobs) detail(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, djViewPerm); err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	id, err := djID(r)
+	if err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	j, err := h.loadJob(ctx, ac, id)
+	if err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	d, err := h.detailOf(ctx, ac, j)
+	if err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	if ds.IsDatastar(r) {
+		if err := openDjDrawer(ds.NewSSE(w, r), d); err != nil {
+			slog.DebugContext(ctx, "ui: dispatch job drawer patch not delivered", "err", err)
+		}
+		return
+	}
+	view, err := h.listView(ctx, ac, parseDJQuery(nil))
+	if err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	view.Drawer = &d
+	h.renderPage(w, r, http.StatusOK, view)
+}
+
+// patchDjTable replaces the table rather than morphing it: a morph keeps
+// each row's <time> and resets its text to the UTC fallback without
+// re-running the localisation (local-time.md, Behaviour), and replacing
+// 1,000 rows is cheaper than diffing them.
+func patchDjTable(sse *ds.SSE, v djView) error {
+	return sse.Patch(djTable(v), ds.WithMode(ds.ModeReplace))
+}
+
+// patchDjDrawer fills the drawer: the content morphs in (header, focus
+// target), then the body is replaced so its local times are localised again.
+func patchDjDrawer(sse *ds.SSE, d djDetail) error {
+	return errors.Join(
+		sse.Patch(djDrawerContent(d), ds.Inner("#"+djDrawerID)),
+		sse.Patch(djDrawerBody(d), ds.WithMode(ds.ModeReplace)),
+	)
+}
+
+func openDjDrawer(sse *ds.SSE, d djDetail) error {
+	return errors.Join(
+		patchDjDrawer(sse, d),
+		sse.PatchSignals(map[string]any{djDrawerSig: d.ID}),
+		sse.Focus(djDrawerID+"-title"),
+	)
+}
+
+// ── sign ───────────────────────────────────────────────────────────────
+
+type djPlan struct {
+	Sent, Target string
+	Headers      []djKV
+	Verify, Body string
+}
+
+// verifyCommand is the subscriber-side check, as one paste (the SPA's).
+func verifyCommand(headers map[string]string) string {
+	return "php artisan flowcatalyst:verify-signature --timestamp='" + headers["X-FlowCatalyst-Timestamp"] +
+		"' --signature='" + headers["X-FlowCatalyst-Signature"] + "' --body-file=body.json"
+}
+
+// sign is the dry run: the delivery as it would go out now, with a real
+// signature, without sending it. Gated on the raw-view permission (the API's).
+func (h *DispatchJobs) sign(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, djRawPerm); err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	id, err := djID(r)
+	if err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	j, err := h.loadJob(ctx, ac, id)
+	if err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	plan, err := h.Ops.Plan(ctx, j)
+	if err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	p := djPlan{Sent: requestLine(plan.Request), Verify: verifyCommand(plan.Headers), Body: plan.Body}
+	if plan.Request != nil {
+		p.Target = plan.Request.Target
+	}
+	for _, k := range slices.Sorted(maps.Keys(plan.Headers)) {
+		p.Headers = append(p.Headers, djKV{Key: k, Value: plan.Headers[k]})
+	}
+	if !ds.IsDatastar(r) {
+		// The plan exists only as an answer: without Datastar, show the
+		// drawer page with it.
+		d, err := h.detailOf(ctx, ac, j)
+		if err != nil {
+			h.Shell.Fail(w, r, err)
+			return
+		}
+		view, err := h.listView(ctx, ac, parseDJQuery(nil))
+		if err != nil {
+			h.Shell.Fail(w, r, err)
+			return
+		}
+		d.Plan = &p
+		view.Drawer = &d
+		h.renderPage(w, r, http.StatusOK, view)
+		return
+	}
+	if err := ds.NewSSE(w, r).Patch(djPlanSection(p), ds.Inner("#"+djDrawerID+"-plan")); err != nil {
+		slog.DebugContext(ctx, "ui: delivery plan patch not delivered", "err", err)
+	}
+}
+
+// ── requeue (ids) ──────────────────────────────────────────────────────
+
+// requeueOne is the row's and the drawer's Requeue.
+func (h *DispatchJobs) requeueOne(w http.ResponseWriter, r *http.Request) {
+	id, err := djID(r)
+	if err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	h.requeue(w, r, []string{id})
+}
+
+// requeueSelected is "Requeue selected": the ticked rows' ids.
+func (h *DispatchJobs) requeueSelected(w http.ResponseWriter, r *http.Request) {
+	var picked []string
+	for _, id := range r.PostForm["ids"] {
+		if id = strings.TrimSpace(id); id != "" && !slices.Contains(picked, id) {
+			picked = append(picked, id)
+		}
+	}
+	h.requeue(w, r, picked)
+}
+
+func (h *DispatchJobs) requeue(w http.ResponseWriter, r *http.Request, picked []string) {
+	ctx := r.Context()
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, djViewPerm); err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	n := 0
+	if len(picked) > 0 {
+		var err error
+		if n, err = h.Ops.Requeue(ctx, picked); err != nil {
+			h.Shell.Fail(w, r, err)
+			return
+		}
+	}
+	if !ds.IsDatastar(r) {
+		h.Shell.SetFlash(w, flashDjRequeued)
+		http.Redirect(w, r, djReferer(r).URL(), http.StatusSeeOther) //nolint:gosec // G710: djPath plus a query re-encoded from parsed list state
+		return
+	}
+	sse := ds.NewSSE(w, r)
+	h.refreshList(sse, r, ac)
+	if drawer := r.PostFormValue("drawer"); drawer != "" && slices.Contains(picked, drawer) {
+		h.refreshDrawer(sse, r, ac, drawer)
+	}
+	noun := "dispatch jobs"
+	if n == 1 {
+		noun = "dispatch job"
+	}
+	msg := kit.FlashMessageProps{Kind: kit.FlashSuccess, Summary: "Requeued", Detail: strconv.Itoa(n) + " " + noun + " reset to PENDING"}
+	if err := shell.Flash(sse, msg); err != nil {
+		slog.DebugContext(ctx, "ui: requeue flash not delivered", "err", err)
+	}
+}
+
+// refreshList re-renders the list view the request came from.
+func (h *DispatchJobs) refreshList(sse *ds.SSE, r *http.Request, ac *auth.AuthContext) {
+	ctx := r.Context()
+	view, err := h.listView(ctx, ac, djReferer(r))
+	if err != nil {
+		h.Shell.FailSSE(sse, r, err)
+		return
+	}
+	if err := errors.Join(patchDjTable(sse, view), sse.Patch(kit.CursorPager(view.pager())), sse.Patch(djBulkBar(view)), sse.PatchSignals(map[string]any{djSelSig: 0})); err != nil {
+		slog.DebugContext(ctx, "ui: dispatch jobs table patch not delivered", "err", err)
+	}
+}
+
+func (h *DispatchJobs) refreshDrawer(sse *ds.SSE, r *http.Request, ac *auth.AuthContext, id string) {
+	ctx := r.Context()
+	if !kit.ValidID(id) {
+		return
+	}
+	j, err := h.loadJob(ctx, ac, id)
+	if err != nil {
+		h.Shell.FailSSE(sse, r, err)
+		return
+	}
+	d, err := h.detailOf(ctx, ac, j)
+	if err != nil {
+		h.Shell.FailSSE(sse, r, err)
+		return
+	}
+	if err := patchDjDrawer(sse, d); err != nil {
+		slog.DebugContext(ctx, "ui: dispatch job drawer patch not delivered", "err", err)
+	}
+}
+
+// ── requeue by filter ──────────────────────────────────────────────────
+
+type djStatusCount struct {
+	Status   string
+	Count    int64
+	Severity kit.TagSeverity
+}
+
+// djPreview is the RequeueByFilterDialog: the filter in words, what it
+// matches, what this caller may requeue, and the form that acts on exactly
+// that filter (its URL carries it).
+type djPreview struct {
+	Summary          []djKV
+	Count, Eligible  int64
+	OutOfScope       int64
+	ToRequeue        int64
+	OverCap, Changed bool
+	ByStatus         []djStatusCount
+	Action           string
+}
+
+// summary is summarizeFilters: the active filters as label/value lines.
+func (q djQuery) summary(clientNames map[string]string) []djKV {
+	var out []djKV
+	add := func(label string, vals []string, labels map[string]string) {
+		if len(vals) == 0 {
+			return
+		}
+		shown := make([]string, 0, len(vals))
+		for _, v := range vals {
+			shown = append(shown, cmp.Or(labels[v], v))
+		}
+		out = append(out, djKV{Key: label, Value: strings.Join(shown, ", ")})
+	}
+	add("Client", q.facet(djFacetClients), clientNames)
+	add("Application", q.facet(djFacetApps), nil)
+	add("Subdomain", q.facet(djFacetSubs), nil)
+	add("Aggregate", q.facet(djFacetAggs), nil)
+	add("Code", q.facet(djFacetCodes), nil)
+	add("Status", q.facet(djFacetStatuses), nil)
+	for _, kv := range []djKV{{"Source", q.Q}, {"Message group", q.Group}, {"Created from", q.From}, {"Created to", q.To}} {
+		if kv.Value != "" {
+			out = append(out, kv)
+		}
+	}
+	return out
+}
+
+func (h *DispatchJobs) preview(ctx context.Context, q djQuery, names map[string]string, changed bool) (djPreview, error) {
+	sum, err := h.Ops.Preview(ctx, q.filterParams())
+	if err != nil {
+		return djPreview{}, err
+	}
+	p := djPreview{
+		Summary: q.summary(names), Count: sum.Count, Eligible: sum.Eligible, OutOfScope: sum.Count - sum.Eligible,
+		ToRequeue: min(sum.Eligible, int64(djMaxRequeue)), OverCap: sum.Eligible > int64(djMaxRequeue), Changed: changed,
+		Action: encodeURL(djPath+"/requeue-by-filter", q.filterValues()),
+	}
+	for status, n := range sum.ByStatus {
+		p.ByStatus = append(p.ByStatus, djStatusCount{Status: status, Count: n, Severity: djSeverity(status)})
+	}
+	slices.SortFunc(p.ByStatus, func(a, b djStatusCount) int {
+		return cmp.Or(cmp.Compare(b.Count, a.Count), strings.Compare(a.Status, b.Status))
+	})
+	return p, nil
+}
+
+// requeueByFilterDialog opens the confirm step for the view in the query.
+func (h *DispatchJobs) requeueByFilterDialog(w http.ResponseWriter, r *http.Request) {
+	h.openRequeueByFilter(w, r, parseDJQuery(r.URL.Query()), false)
+}
+
+// requeueErrors is "Requeue everything in error": the list switches to every
+// job in an error status (whatever else it was filtered by) and the same
+// confirm step opens for that view.
+func (h *DispatchJobs) requeueErrors(w http.ResponseWriter, r *http.Request) {
+	q := parseDJQuery(url.Values{djFacetStatuses: djErrorStatuses})
+	q.Size = parseDJQuery(r.URL.Query()).Size
+	h.openRequeueByFilter(w, r, q, true)
+}
+
+func (h *DispatchJobs) openRequeueByFilter(w http.ResponseWriter, r *http.Request, q djQuery, switchList bool) {
+	ctx := r.Context()
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, djViewPerm); err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	h.showRequeueDialog(w, r, ac, q, switchList, false)
+}
+
+// showRequeueDialog answers with the confirm step for q: patched into the
+// dialog slot (with the list switched to q when switchList), or, without
+// Datastar, the page at q with the dialog open.
+func (h *DispatchJobs) showRequeueDialog(w http.ResponseWriter, r *http.Request, ac *auth.AuthContext, q djQuery, switchList, changed bool) {
+	ctx := r.Context()
+	live := ds.IsDatastar(r)
+	var view djView
+	var names map[string]string
+	if !live || switchList {
+		v, err := h.listView(ctx, ac, q.first())
+		if err != nil {
+			h.Shell.Fail(w, r, err)
+			return
+		}
+		view, names = v, v.ClientNames
+	} else {
+		cs, err := h.clients(ctx)
+		if err != nil {
+			h.Shell.Fail(w, r, err)
+			return
+		}
+		names = clientNames(cs)
+	}
+	p, err := h.preview(ctx, q, names, changed)
+	if err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	if !live {
+		view.Dialog = djRequeueDialog(p)
+		status := http.StatusOK
+		if changed {
+			status = http.StatusConflict
+		}
+		h.renderPage(w, r, status, view)
+		return
+	}
+	sse := ds.NewSSE(w, r)
+	var errs []error
+	if switchList {
+		errs = append(errs, view.patchList(sse, true))
+	}
+	errs = append(errs, sse.Patch(djRequeueDialog(p), ds.Inner("#"+djDialogSlot)))
+	if err := errors.Join(errs...); err != nil {
+		slog.DebugContext(ctx, "ui: requeue-by-filter dialog not delivered", "err", err)
+	}
+}
+
+// requeueByFilter runs the confirmed requeue on the filter in its URL. More
+// eligible jobs than confirmed (FILTER_MATCH_CHANGED): nothing was reset, so
+// the dialog shows the new counts and asks again.
+func (h *DispatchJobs) requeueByFilter(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, djViewPerm); err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	q := parseDJQuery(r.URL.Query())
+	confirm, err := strconv.ParseInt(r.PostFormValue("confirmCount"), 10, 64)
+	if err != nil || confirm < 0 {
+		h.Shell.Fail(w, r, usecase.Validation("INVALID_CONFIRM_COUNT", "confirmCount must be a whole number, not negative"))
+		return
+	}
+	res, err := h.Ops.RequeueByFilter(ctx, q.filterParams(), confirm)
+	if ue := usecase.AsError(err); ue != nil && ue.Code == "FILTER_MATCH_CHANGED" {
+		h.showRequeueDialog(w, r, ac, q, false, true)
+		return
+	}
+	if err != nil {
+		if ds.IsDatastar(r) {
+			// Batches before a failure stay committed: the list is stale
+			// either way (the SPA reloads it too).
+			sse := ds.NewSSE(w, r)
+			h.Shell.FailSSE(sse, r, err)
+			h.refreshList(sse, r, ac)
+			return
+		}
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	if !ds.IsDatastar(r) {
+		h.Shell.SetFlash(w, flashDjRequeuedByFilter)
+		http.Redirect(w, r, q.URL(), http.StatusSeeOther) //nolint:gosec // G710: djPath plus a query re-encoded from parsed list state
+		return
+	}
+	sse := ds.NewSSE(w, r)
+	h.refreshList(sse, r, ac)
+	if err := errors.Join(sse.CloseDialog(djRBFDialog), shell.Flash(sse, requeueOutcome(res))); err != nil {
+		slog.DebugContext(ctx, "ui: requeue-by-filter outcome not delivered", "err", err)
+	}
+}
+
+// thousands is n with the SPA's toLocaleString() separators (en).
+func thousands(n int64) string {
+	s := strconv.FormatInt(n, 10)
+	neg := strings.HasPrefix(s, "-")
+	s = strings.TrimPrefix(s, "-")
+	for i := len(s) - 3; i > 0; i -= 3 {
+		s = s[:i] + "," + s[i:]
+	}
+	if neg {
+		return "-" + s
+	}
+	return s
+}
+
+// counted is plural with thousands separators ("10,000 jobs").
+func counted(n int64, word string) string {
+	if n == 1 {
+		return "1 " + word
+	}
+	return thousands(n) + " " + word + "s"
+}
+
+// requeueOutcome is the SPA's toast for a finished run.
+func requeueOutcome(res djops.ResendByFilterResult) kit.FlashMessageProps {
+	switch {
+	case res.Remaining > 0:
+		return kit.FlashMessageProps{Kind: kit.FlashWarn, Summary: "Requeued " + counted(res.Requeued, "job"), Detail: thousands(res.Remaining) + " remain — run it again to continue."}
+	case res.Requeued == 0:
+		return kit.FlashMessageProps{Kind: kit.FlashInfo, Summary: "Nothing requeued", Detail: "No matching job could be requeued."}
+	}
+	return kit.FlashMessageProps{Kind: kit.FlashSuccess, Summary: "Requeued " + counted(res.Requeued, "job"), Detail: counted(res.Requeued, "dispatch job") + " reset to PENDING."}
+}

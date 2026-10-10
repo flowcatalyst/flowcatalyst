@@ -53,6 +53,9 @@ const (
 	flashSjArchived = "scheduled-job-archived"
 	flashSjDeleted  = "scheduled-job-deleted"
 	flashSjFired    = "scheduled-job-fired"
+
+	flashDjRequeued         = "dispatch-jobs-requeued"
+	flashDjRequeuedByFilter = "dispatch-jobs-requeued-by-filter"
 )
 
 // FlashMessages is the table the shell maps flash keys through
@@ -107,6 +110,9 @@ var FlashMessages = map[string]kit.FlashMessageProps{
 	flashSjArchived: {Kind: kit.FlashSuccess, Summary: "Archived", Detail: "Scheduled job archived"},
 	flashSjDeleted:  {Kind: kit.FlashSuccess, Summary: "Deleted", Detail: "Scheduled job deleted"},
 	flashSjFired:    {Kind: kit.FlashSuccess, Summary: "Fired", Detail: "An instance was created"},
+
+	flashDjRequeued:         {Kind: kit.FlashSuccess, Summary: "Requeued", Detail: "The dispatch jobs were reset to PENDING"},
+	flashDjRequeuedByFilter: {Kind: kit.FlashSuccess, Summary: "Requeued", Detail: "The matching dispatch jobs were reset to PENDING"},
 }
 
 // success is the SPA's toast.success("Success", detail).
