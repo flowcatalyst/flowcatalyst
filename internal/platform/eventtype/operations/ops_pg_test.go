@@ -126,39 +126,25 @@ func TestCreateEventType_DuplicateCode_Conflict(t *testing.T) {
 
 // TestCreateEventType_ResourceScope proves the use case's per-resource
 // authorization: the coarse "may create event types" permission is the
-// controller's job, but the use case enforces that you can only bind an
-// event type to a client you can access (and that platform-wide event types
-// require anchor). A client-scoped principal is denied a platform-wide and an
-// other-client event type, but allowed one for its own client.
+// controller's job, but every event type is platform-wide, so the use case
+// requires anchor reach. A client-scoped principal is denied, with or without
+// a client in the request (a wire clientId is ignored, see
+// client_ignored_pg_test.go).
 func TestCreateEventType_ResourceScope(t *testing.T) {
 	t.Parallel()
 	repo := eventtype.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 
-	ownClient := "cli_etscope_own"
 	clientCtx := testpg.WithAuth(context.Background(), &auth.AuthContext{
 		PrincipalID: "prn_etscope1",
 		Scope:       auth.ScopeClient,
-		Clients:     []string{ownClient},
+		Clients:     []string{"cli_etscope_own"},
 		Permissions: []string{"platform:messaging:event-type:create"},
 	})
 
-	// Platform-wide (nil ClientID) → cross-client → anchor required → denied.
 	_, err := usecaseop.Run(clientCtx, uow, operations.CreateEventType(repo),
 		operations.CreateCommand{Code: "etscope:orders:order:platform", Name: "X"}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "SCOPE_FORBIDDEN")
-
-	// Bound to a client the principal cannot access → denied.
-	other := "cli_etscope_other"
-	_, err = usecaseop.Run(clientCtx, uow, operations.CreateEventType(repo),
-		operations.CreateCommand{Code: "etscope:orders:order:other", Name: "X", ClientID: &other}, testpg.TestEC())
-	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "SCOPE_FORBIDDEN")
-
-	// Bound to the principal's own client → allowed.
-	ev, err := usecaseop.Run(clientCtx, uow, operations.CreateEventType(repo),
-		operations.CreateCommand{Code: "etscope:orders:order:own", Name: "Mine", ClientID: &ownClient}, testpg.TestEC())
-	require.NoError(t, err)
-	assert.Equal(t, "etscope:orders:order:own", ev.Code)
 }
 
 // ── Update ────────────────────────────────────────────────────────────────

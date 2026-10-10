@@ -103,7 +103,9 @@ type bffCreateEventTypeRequest struct {
 	Name        string          `json:"name"`
 	Description *string         `json:"description,omitempty"`
 	Schema      json.RawMessage `json:"schema,omitempty"`
-	ClientID    *string         `json:"clientId,omitempty"`
+	// ClientID is accepted and ignored: event types are platform-wide (see
+	// operations.CreateCommand).
+	ClientID *string `json:"clientId,omitempty"`
 	// ClientScoped marks events of this type as carried per client. Honoured
 	// on create (ruling 2026-09-06 #7) exactly as /api/event-types does.
 	ClientScoped bool `json:"clientScoped,omitempty"`
@@ -216,7 +218,6 @@ func (s *EventTypesState) create(w http.ResponseWriter, r *http.Request) {
 		Code:         body.Code,
 		Name:         body.Name,
 		Description:  body.Description,
-		ClientID:     body.ClientID,
 		ClientScoped: body.ClientScoped,
 		Schema:       body.Schema,
 	}

@@ -18,7 +18,11 @@ type CreateCommand struct {
 	Code        string  `json:"code"`
 	Name        string  `json:"name"`
 	Description *string `json:"description,omitempty"`
-	ClientID    *string `json:"clientId,omitempty"`
+	// An event type has no client: event types are platform-wide
+	// (msg_event_types has no client column). The wire bodies still accept a
+	// clientId for compatibility and ignore it; ClientScoped is what marks
+	// events of a type as carried per client.
+	//
 	// ClientScoped: events of this type are carried per client.
 	ClientScoped bool            `json:"clientScoped,omitempty"`
 	Schema       json.RawMessage `json:"schema,omitempty"`
@@ -52,13 +56,13 @@ func CreateEventType(repo *eventtype.Repository) usecaseop.Operation[CreateComma
 			return nil
 		},
 		// Resource-level authorization (the coarse "may create event types"
-		// permission is enforced at the controller). Client-scope on the
-		// requested clientId (a cmd field, so it lives here): a non-anchor
-		// principal may only create event types within a client it can
-		// access, and anchor-level (nil clientId) creates are anchor-only.
-		// This is exactly auth.CheckScopeAccess on the target client.
-		Authorize: func(ctx context.Context, cmd CreateCommand) error {
-			return auth.CheckScopeAccess(auth.FromContext(ctx), cmd.ClientID)
+		// permission is enforced at the controller). Every event type is
+		// platform-wide, so creating one is a platform-level act: anchor (or
+		// super-admin) reach, auth.CheckScopeAccess on no client. A clientId
+		// sent on the wire used to pass this check for the caller's own client
+		// and then be dropped, creating a platform-wide type.
+		Authorize: func(ctx context.Context, _ CreateCommand) error {
+			return auth.CheckScopeAccess(auth.FromContext(ctx), nil)
 		},
 		Execute: func(ctx context.Context, cmd CreateCommand, ec usecase.ExecutionContext) (usecaseop.Plan[EventTypeCreated], error) {
 			existing, err := repo.FindByCode(ctx, cmd.Code)
@@ -75,7 +79,6 @@ func CreateEventType(repo *eventtype.Repository) usecaseop.Operation[CreateComma
 				return nil, usecase.Validation("INVALID_CODE_FORMAT", err.Error())
 			}
 			et.Description = cmd.Description
-			et.ClientID = ids.PtrOf[ids.ClientID](cmd.ClientID)
 			et.ClientScoped = cmd.ClientScoped
 			et.CreatedBy = &ec.PrincipalID
 			if len(cmd.Schema) > 0 {

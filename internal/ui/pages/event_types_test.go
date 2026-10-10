@@ -301,7 +301,7 @@ func TestEventTypeCreate(t *testing.T) {
 	if len(h.ops.created) != 1 {
 		t.Fatalf("creates %d", len(h.ops.created))
 	}
-	if c := h.ops.created[0]; c.Code != "orders:sales:order:shipped" || !c.ClientScoped || c.Description != nil || c.ClientID != nil || c.Schema != nil {
+	if c := h.ops.created[0]; c.Code != "orders:sales:order:shipped" || !c.ClientScoped || c.Description != nil || c.Schema != nil {
 		t.Errorf("command = %+v", c)
 	}
 	mustContain(t, body, `document.getElementById(&#34;et-form&#34;)?.close()`, `"selEt":"evt_9"`, "Event type created")

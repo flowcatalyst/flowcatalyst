@@ -191,8 +191,8 @@ func (s *State) getByCode(ctx context.Context, in *getByCodeInput) (*apicommon.O
 
 func (s *State) create(ctx context.Context, in *apicommon.In[CreateEventTypeRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
 	// The permission for the operation at the controller; the use case
-	// enforces per-client resource access (you may only bind an event type to a
-	// client you can access; platform-wide requires anchor).
+	// requires anchor reach (every event type is platform-wide; a clientId in
+	// the body is ignored).
 	if err := auth.CanCreateEventTypes(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}

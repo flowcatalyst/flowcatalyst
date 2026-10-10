@@ -19,7 +19,7 @@ type CreateEventTypeRequest struct {
 	Code        string  `json:"code" doc:"Event type code in application:subdomain:aggregate:event format" example:"platform:iam:user:created"`
 	Name        string  `json:"name" doc:"Human-readable event type name"`
 	Description *string `json:"description,omitempty"`
-	ClientID    *string `json:"clientId,omitempty" doc:"Optional client scope; absent means anchor-level"`
+	ClientID    *string `json:"clientId,omitempty" doc:"Ignored. Event types are platform-wide and have no client; a value is accepted for compatibility and not stored (creating an event type needs anchor scope). Use clientScoped to mark events of this type as carried per client."`
 	// ClientScoped marks events of this type as carried per client (the
 	// subscription editor only offers client-scoped types to client-scoped
 	// subscriptions). Distinct from ClientID, which scopes the row itself.
@@ -32,7 +32,6 @@ func (r CreateEventTypeRequest) toCommand() operations.CreateCommand {
 		Code:         r.Code,
 		Name:         r.Name,
 		Description:  r.Description,
-		ClientID:     r.ClientID,
 		ClientScoped: r.ClientScoped,
 		Schema:       r.Schema,
 	}
