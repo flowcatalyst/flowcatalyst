@@ -90,9 +90,11 @@ func UpdateSubscription(repo *subscription.Repository) usecaseop.Operation[Updat
 			}
 			// Set-if-provided: a nil/omitted value
 			// leaves the existing binding, so connectionId can be re-pointed but not
-			// cleared via this endpoint.
-			if cmd.ConnectionID != nil {
-				s.ConnectionID = cmd.ConnectionID
+			// cleared via this endpoint. A blank value (the SPA's edit sends "" for
+			// an empty field) is treated as omitted rather than stored as "".
+			if cmd.ConnectionID != nil && strings.TrimSpace(*cmd.ConnectionID) != "" {
+				id := strings.TrimSpace(*cmd.ConnectionID)
+				s.ConnectionID = &id
 			}
 			if cmd.EventTypes != nil {
 				s.EventTypes = cmd.EventTypes
