@@ -131,7 +131,7 @@ func (s *State) getByCode(ctx context.Context, in *getByCodeInput) (*apicommon.O
 
 func (s *State) create(ctx context.Context, in *apicommon.In[CreateApplicationRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteApplications(ac); err != nil {
+	if err := auth.CanCreateApplications(ac); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -149,7 +149,7 @@ type updateInput struct {
 
 func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteApplications(ac); err != nil {
+	if err := auth.CanUpdateApplications(ac); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -161,7 +161,7 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, 
 
 func (s *State) activate(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ApplicationResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteApplications(ac); err != nil {
+	if err := auth.CanUpdateApplications(ac); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -173,7 +173,7 @@ func (s *State) activate(ctx context.Context, in *apicommon.IDInput) (*apicommon
 
 func (s *State) deactivate(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ApplicationResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteApplications(ac); err != nil {
+	if err := auth.CanUpdateApplications(ac); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)

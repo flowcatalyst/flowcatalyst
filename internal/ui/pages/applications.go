@@ -151,9 +151,9 @@ func (h *Applications) renderPage(w http.ResponseWriter, r *http.Request, status
 	h.Shell.RenderStatus(w, r, status, shell.Page{Title: "Applications", Path: appsPath}, appsPage(view))
 }
 
-// appPerms: the API admits any of create/update/delete for create, update,
-// activate and deactivate (CanWriteApplications); the page checks the
-// permission for the operation. Provisioning is anchor-only, as the API.
+// appPerms are the API's checks, the permission for the operation: create
+// CanCreateApplications; edit, activate and deactivate CanUpdateApplications;
+// delete CanDeleteApplications. Provisioning is anchor-only, as the API.
 type appPerms struct {
 	Create, Update, Delete, Provision bool
 }
