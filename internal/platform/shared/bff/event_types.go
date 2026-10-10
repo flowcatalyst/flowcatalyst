@@ -535,7 +535,7 @@ type bffSyncPlatformSchemas struct {
 // application get dropped.
 func (s *EventTypesState) syncPlatform(w http.ResponseWriter, r *http.Request) {
 	ac := auth.FromContext(r.Context())
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanSyncPlatformEventTypes(ac); err != nil {
 		httperror.Write(w, err)
 		return
 	}

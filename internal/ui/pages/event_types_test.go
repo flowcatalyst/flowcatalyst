@@ -212,7 +212,11 @@ func TestEventTypesPermissions(t *testing.T) {
 	}
 	viewer := h.do(t, etUser(etViewPerm), req{target: "/ui/event-types"})
 	mustNotContain(t, viewer, "Create Event Type", `aria-label="Edit `, `<dialog id="et-delete"`, `<dialog id="et-finalise"`)
-	mustContain(t, viewer, "Export Schemas", "Sync Platform Events") // anchor: sync is the BFF's anchor check
+	// Sync needs anchor scope and the sync permission (CanSyncPlatformEventTypes).
+	mustContain(t, viewer, "Export Schemas")
+	mustNotContain(t, viewer, "Sync Platform Events")
+	mustContain(t, h.do(t, etUser(etViewPerm, "platform:messaging:event-type:sync"), req{target: "/ui/event-types"}), "Sync Platform Events")
+	h.do(t, etUser(etViewPerm), req{method: http.MethodPost, target: "/ui/event-types/sync-platform", datastar: true, form: url.Values{}})
 	drawer := h.do(t, etUser(etViewPerm), req{target: "/ui/event-types/evt_1", datastar: true})
 	mustNotContain(t, drawer, "Danger Zone", "Add Schema", `title="Finalise"`, ">Edit<")
 	mustContain(t, drawer, `title="View Schema"`)

@@ -268,7 +268,8 @@ func (h *EventTypes) renderPage(w http.ResponseWriter, r *http.Request, status i
 // etPerms are the checks of the endpoints the SPA calls: create
 // (POST /bff/event-types) CanCreateEventTypes; edit, archive, add schema,
 // finalise and deprecate CanUpdateEventTypes; delete CanDeleteEventTypes;
-// "Sync Platform Events" anchor scope (POST /bff/event-types/sync-platform).
+// "Sync Platform Events" anchor scope and the event-type sync permission
+// (POST /bff/event-types/sync-platform: CanSyncPlatformEventTypes).
 type etPerms struct {
 	Create, Update, Delete, Sync bool
 }
@@ -278,7 +279,7 @@ func etPermsFor(ac *auth.AuthContext) etPerms {
 		Create: auth.CanCreateEventTypes(ac) == nil,
 		Update: auth.CanUpdateEventTypes(ac) == nil,
 		Delete: auth.CanDeleteEventTypes(ac) == nil,
-		Sync:   auth.RequireAnchor(ac) == nil,
+		Sync:   auth.CanSyncPlatformEventTypes(ac) == nil,
 	}
 }
 

@@ -561,6 +561,17 @@ func CanSyncEventTypes(a *AuthContext) error {
 		permAppSvcEventTypeCreate, permAppSvcEventTypeUpdate, permAppSvcEventTypeDelete)
 }
 
+// CanSyncPlatformEventTypes guards the anchor-only "Sync Platform Events"
+// (POST /bff/event-types/sync-platform), which rewrites the platform's own
+// event-type catalogue: anchor reach, then the event-type sync (or manage)
+// permission. Anchor scope alone is reach, not authority.
+func CanSyncPlatformEventTypes(a *AuthContext) error {
+	if err := RequireAnchor(a); err != nil {
+		return err
+	}
+	return requireAny(a, permEventTypeSync, permEventTypeManage)
+}
+
 func CanWriteEventTypes(a *AuthContext) error {
 	return requireAny(a, permEventTypeCreate, permEventTypeUpdate, permEventTypeDelete)
 }

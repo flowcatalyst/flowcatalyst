@@ -383,12 +383,13 @@ func (h *EventTypes) afterChange(sse *ds.SSE, r *http.Request, ac *auth.AuthCont
 	}
 }
 
-// syncPlatform is the SPA's "Sync Platform Events" (anchor only, as
-// POST /bff/event-types/sync-platform): a flash with the tally.
+// syncPlatform is the SPA's "Sync Platform Events" (anchor scope and the
+// sync permission, as POST /bff/event-types/sync-platform): a flash with the
+// tally.
 func (h *EventTypes) syncPlatform(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanSyncPlatformEventTypes(ac); err != nil {
 		h.Shell.Fail(w, r, err)
 		return
 	}
