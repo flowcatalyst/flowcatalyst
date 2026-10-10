@@ -133,6 +133,7 @@ var renderers = map[string]renderer{
 	"code-block":           simple(CodeBlock),
 	"paginator":            simple(Paginator),
 	"multi-select":         simple(MultiSelect),
+	"toggle-group":         simple(ToggleGroup),
 	"tabs": func(f *fixture) (templ.Component, error) {
 		p, err := decode[TabsProps](f)
 		p.Panels = map[string]templ.Component{}

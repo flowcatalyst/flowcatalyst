@@ -1,5 +1,5 @@
 kit-repo: flowcatalyst-framework (ui-kit/)
-kit-commit: a8bfcf14f06a1d87ff560958e49101710d9c5e35
+kit-commit: 699afc3120f8ec198d8e41e02a01d4815b085f32
 tailwind: v4.3.2
 datastar: 1.0.4 sha256 727844adfc825ee651fb93c544a2a739986f9a21820a94524b35f0cac470cf91
 sprite: 90 icons sha256 f7a48d09882a3435ef1c39a8f1acae73972554208c11766494863ebde4bba1a5

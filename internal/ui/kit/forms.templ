@@ -1,5 +1,7 @@
 package kit
 
+import "slices"
+
 // Class lists from the specs (input.md, textarea.md, select.md, checkbox.md,
 // switch.md, label.md, field.md).
 const (
@@ -448,5 +450,60 @@ templ FilterSelect(p FilterSelectProps) {
 				<option value={ o.Value } selected?={ o.Value == p.Selected }>{ o.Label }</option>
 			}
 		</select>
+	</div>
+}
+
+// ToggleKind is toggle.md's `kind`.
+type ToggleKind string
+
+// Toggle kinds (toggle.md).
+const (
+	ToggleIndependent ToggleKind = "independent"
+	ToggleExclusive   ToggleKind = "exclusive"
+)
+
+// ToggleSize is toggle.md's `size`.
+type ToggleSize string
+
+// Toggle sizes (toggle.md).
+const (
+	ToggleSm ToggleSize = "sm"
+	ToggleMd ToggleSize = "md"
+	ToggleLg ToggleSize = "lg"
+)
+
+const toggleBase = "inline-flex shrink-0 cursor-pointer items-center justify-center border border-transparent text-sm font-medium whitespace-nowrap transition-colors select-none text-muted-foreground hover:bg-foreground/5 hover:text-foreground has-[:checked]:bg-foreground/10 has-[:checked]:text-foreground has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background has-[:disabled]:pointer-events-none has-[:disabled]:opacity-50"
+
+var toggleSizes = map[ToggleSize]string{
+	ToggleSm: "h-8 gap-1.5 rounded-md px-2",
+	ToggleMd: "h-9 gap-2 rounded-lg px-3",
+	ToggleLg: "h-10 gap-2 rounded-lg px-4",
+}
+
+// ToggleGroupProps mirrors toggle.md's Props table (the SPA's SelectButton
+// is the exclusive group).
+type ToggleGroupProps struct {
+	Kind       ToggleKind       `json:"kind"`
+	Size       ToggleSize       `json:"size"`
+	Name       string           `json:"name"`
+	Options    []Option         `json:"options"`
+	Selected   []string         `json:"selected"`
+	Attrs      templ.Attributes `json:"attrs"`
+	InputAttrs templ.Attributes `json:"inputAttrs"`
+}
+
+func (p ToggleGroupProps) inputType() string {
+	if p.Kind == ToggleExclusive {
+		return "radio"
+	}
+	return "checkbox"
+}
+
+// ToggleGroup is toggle.md's group of toggles.
+templ ToggleGroup(p ToggleGroupProps) {
+	<div class="inline-flex w-fit items-center gap-1 rounded-lg border border-border p-1" { p.Attrs... }>
+		for _, o := range p.Options {
+			<label class={ cx(toggleBase, toggleSizes[orDefault(p.Size, ToggleMd)]) }><input type={ p.inputType() } name={ p.Name } value={ o.Value } class="sr-only" checked?={ slices.Contains(p.Selected, o.Value) } { p.InputAttrs... }/>{ o.Label }</label>
+		}
 	</div>
 }
