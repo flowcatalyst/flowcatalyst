@@ -79,7 +79,7 @@ var navigation = []navSection{
 		}},
 	}},
 	{"Messaging", []navEntry{
-		{label: "Events", icon: "inbox", spa: "/events", permission: "platform:messaging:event:view"},
+		{label: "Events", icon: "inbox", spa: "/events", ui: "/ui/events", permission: "platform:messaging:event:view"},
 		{label: "Event Types", icon: "zap", spa: "/event-types", ui: "/ui/event-types", permission: "platform:messaging:event-type:view"},
 		{label: "Subscriptions", icon: "bell", spa: "/subscriptions", ui: "/ui/subscriptions", permission: "platform:messaging:subscription:view"},
 		{label: "Connections", icon: "link", spa: "/connections", ui: "/ui/connections", permission: "platform:messaging:connection:view"},

@@ -4,6 +4,8 @@ package event_test
 
 import (
 	"context"
+	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -78,6 +80,41 @@ func TestFindWithFilters_TenantScoping(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{"evtscopetest1"}, ids(rows))
+}
+
+// TestFindWithFilters_CursorPages pins the keyset cursor: pages of the
+// (created_at, id) order neither skip nor repeat a row, ties at the same
+// instant included.
+func TestFindWithFilters_CursorPages(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := event.NewRepository(pool)
+	const typ = "cursortest:events:list:made"
+	base := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	at := []time.Duration{0, time.Second, 2 * time.Second, 2 * time.Second, 2 * time.Second, 3 * time.Second, 4 * time.Second}
+	var want []string
+	for i, d := range at {
+		id := fmt.Sprintf("evcur%02d", i)
+		_, err := pool.Exec(ctx, `INSERT INTO msg_events_read (id, type, source, time, created_at) VALUES ($1, $2, 'test://cursor', NOW(), $3)`, id, typ, base.Add(d))
+		require.NoError(t, err)
+		want = append(want, id)
+	}
+	slices.Reverse(want)
+	var got []string
+	var cur *event.ListCursor
+	for range 10 {
+		rows, err := repo.FindWithFilters(ctx, event.FilterParams{Types: []string{typ}, Limit: 2, Cursor: cur})
+		require.NoError(t, err)
+		if len(rows) == 0 {
+			break
+		}
+		for i := range rows {
+			got = append(got, rows[i].ID)
+		}
+		last := rows[len(rows)-1]
+		cur = &event.ListCursor{CreatedAt: last.CreatedAt, ID: last.ID}
+	}
+	assert.Equal(t, want, got)
 }
 
 // TestFindRawByID pins the detail counterpart of FindRecentRaw (backs GET

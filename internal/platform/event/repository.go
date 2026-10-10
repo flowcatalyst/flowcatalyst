@@ -178,6 +178,18 @@ type FilterParams struct {
 	// clientId/clientIds filters can only ever narrow within the
 	// principal's tenants, never reach across them.
 	AccessibleClientIDs *[]string
+
+	// Cursor keeps only events after it in the list's order (created_at,
+	// then id, newest first) — the keyset cursor of a paged list (the /ui
+	// events page's "Older").
+	Cursor *ListCursor
+}
+
+// ListCursor is a position in the list's (created_at, id) order: the last
+// row of the page before.
+type ListCursor struct {
+	CreatedAt time.Time
+	ID        string
 }
 
 // FindWithFilters returns events from the read table matching non-nil
@@ -204,11 +216,19 @@ func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Eve
 	if p.Until != nil {
 		f.Clause("created_at <= $%d", *p.Until)
 	}
+	if p.Cursor != nil {
+		// The plain range first, so the created_at index and partition
+		// pruning apply; the OR breaks ties at the same instant by id.
+		at, id := f.Arg(p.Cursor.CreatedAt), f.Arg(p.Cursor.ID)
+		f.Cond(fmt.Sprintf("created_at <= $%d AND (created_at < $%d OR id < $%d)", at, at, id))
+	}
+	// id breaks ties at the same instant, so the order is total and a
+	// keyset cursor neither skips nor repeats a row.
 	q := `SELECT id, spec_version, type, source, subject, time, data,
 		     deduplication_id, client_id, message_group, correlation_id,
 		     causation_id, created_at, application, subdomain, aggregate,
 		     projected_at
-		  FROM msg_events_read` + f.Where() + " ORDER BY created_at DESC"
+		  FROM msg_events_read` + f.Where() + " ORDER BY created_at DESC, id DESC"
 	limit := p.Limit
 	if limit <= 0 || limit > 1000 {
 		limit = 100

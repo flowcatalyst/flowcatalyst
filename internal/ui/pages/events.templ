@@ -1,0 +1,220 @@
+package pages
+
+import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+
+// evRowClick opens a row's drawer from anywhere on the row (the SPA's
+// row-click), through the row's Event ID link; one handler on the <tbody>.
+const evRowClick = "const r = evt.target.closest('tr'); r && !evt.target.closest('a') && r.querySelector('a')?.click()"
+
+var evFacetLabels = map[string][3]string{
+	evFacetClients: {"Client", "All Clients", "{0} clients selected"},
+	evFacetApps:    {"Application", "All Applications", "{0} applications selected"},
+	evFacetSubs:    {"Subdomain", "All Subdomains", "{0} subdomains selected"},
+	evFacetAggs:    {"Aggregate", "All Aggregates", "{0} aggregates selected"},
+	evFacetTypes:   {"Event Type", "All Types", "{0} types selected"},
+}
+
+func (v evView) facetProps(name string) kit.MultiSelectProps {
+	l := evFacetLabels[name]
+	p := kit.MultiSelectProps{
+		ID: "ev-filter-" + name, Name: name, Label: l[0], Options: v.Facets[name], Selected: v.Query.facet(name),
+		Placeholder: l[1], ManyLabel: l[2], EmptyText: "No options", Search: true, Signal: "evQ" + name,
+		OptionAttrs: templ.Attributes{"data-on:change": evLiveGet},
+	}
+	if name == evFacetTypes {
+		p.MaxLabels = 1
+	}
+	return p
+}
+
+func (v evView) toolbar() kit.TableToolbarProps {
+	clear := ""
+	if v.Query.filtered() {
+		clear = v.Query.clearURL()
+	}
+	return kit.TableToolbarProps{
+		ID: evFormID, Action: evPath, SearchPlaceholder: "Search by source...", SearchValue: v.Query.Q,
+		Size:      &kit.ResultSize{Options: evSizes, Selected: v.Query.Size},
+		ClearHref: clear, ClearAttrs: templ.Attributes{"data-on:click__prevent": kit.ClearFilters},
+		ActiveFilterCount: len(v.Query.Facets), Hidden: v.Query.hidden(),
+		SearchAttrs: templ.Attributes{"data-on:input__debounce.400ms": evLiveGet},
+		FormAttrs:   templ.Attributes{"data-on:submit": evLiveGet},
+		Filters:     evFilters(v),
+	}
+}
+
+func (v evView) pager() kit.CursorPagerProps {
+	p := kit.CursorPagerProps{
+		ID: "ev-pager", Summary: "Showing the " + thousands(int64(len(v.Rows))) + " most recent events",
+		OlderHref: v.OlderHref, LinkAttrs: templ.Attributes{"data-on:click__prevent": liveLink},
+	}
+	if v.Query.After != nil {
+		p.NewestHref = v.Query.first().URL()
+		p.Summary = "Showing " + thousands(int64(len(v.Rows))) + " older events"
+	}
+	return p
+}
+
+func (v evView) signals() string {
+	sel := ""
+	if v.Drawer != nil {
+		sel = v.Drawer.ID // matched eventIDPattern: no quote can occur
+	}
+	return "{" + evDrawerSig + ": '" + sel + "'}"
+}
+
+func (v evView) empty() *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	e := &kit.EmptyStateProps{Message: "No events found", Status: true}
+	if v.Query.filtered() {
+		e.ClearHref = v.Query.clearURL()
+	}
+	return e
+}
+
+templ evPage(v evView) {
+	<div data-signals={ v.signals() }>
+		@kit.PageHeader(kit.PageHeaderProps{Title: "Events", Subtitle: "Browse events from the event store"})
+		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Events.", Class: "mb-4"})
+		<div class="fc-card-flush">
+			@kit.TableToolbar(v.toolbar())
+			@evTable(v)
+			@kit.CursorPager(v.pager())
+		</div>
+		@evDrawer(v.Drawer)
+	</div>
+}
+
+templ evFilters(v evView) {
+	for _, f := range evFacets {
+		@kit.MultiSelect(v.facetProps(f))
+	}
+}
+
+templ evTable(v evView) {
+	@kit.Table(kit.TableProps{ID: "ev-table", Dense: true, Class: "min-w-[48rem]"}) {
+		@kit.THead(kit.THeadProps{Caps: true}) {
+			@kit.TR(kit.TRProps{Static: true}) {
+				@kit.TH(kit.THProps{}) {
+					Event ID
+				}
+				@kit.TH(kit.THProps{}) {
+					Type
+				}
+				@kit.TH(kit.THProps{}) {
+					Source
+				}
+				@kit.TH(kit.THProps{}) {
+					Subject
+				}
+				@kit.TH(kit.THProps{}) {
+					Client
+				}
+				@kit.TH(kit.THProps{}) {
+					Time
+				}
+			}
+		}
+		@kit.TBody(kit.TBodyProps{ID: "ev-rows", Striped: true, Attrs: templ.Attributes{"data-on:click": evRowClick}}) {
+			if e := v.empty(); e != nil {
+				@kit.EmptyRow(kit.EmptyRowProps{Colspan: 6, Empty: *e})
+			}
+			for _, row := range v.Rows {
+				@kit.TR(kit.TRProps{Clickable: true}) {
+					@kit.TD(kit.TDProps{}) {
+						<a href={ row.Href } class="font-mono text-sm" title={ row.ID } data-on:click__prevent={ liveLink }>{ row.ShortID }</a>
+					}
+					@kit.TD(kit.TDProps{Class: "whitespace-normal!"}) {
+						@kit.Tag(kit.TagProps{Severity: kit.TagInfo, Label: row.Type})
+					}
+					@kit.TD(kit.TDProps{Class: "whitespace-normal! wrap-anywhere"}) {
+						{ row.Source }
+					}
+					@kit.TD(kit.TDProps{Class: "max-w-56"}) {
+						<span class="block truncate text-sm" title={ row.Subject }>{ row.Subject }</span>
+					}
+					@kit.TD(kit.TDProps{}) {
+						if row.Client != "" {
+							<span class="font-mono text-sm" title={ row.Client }>{ row.ClientShort }</span>
+						} else {
+							<span class="text-muted-foreground">-</span>
+						}
+					}
+					@kit.TD(kit.TDProps{Class: "text-sm"}) {
+						@kit.LocalTime(kit.LocalTimeProps{At: row.Time})
+					}
+				}
+			}
+		}
+	}
+}
+
+templ evDrawer(d *evDetail) {
+	if d != nil {
+		@kit.Drawer(d.drawerProps()) {
+			@evDrawerBody(*d)
+		}
+	} else {
+		@kit.Drawer(kit.DrawerProps{ID: evDrawerID, Signal: evDrawerSig, Label: "Event", Size: kit.DrawerWide})
+	}
+}
+
+templ evDrawerContent(d evDetail) {
+	@kit.DrawerContent(d.drawerProps()) {
+		@evDrawerBody(d)
+	}
+}
+
+// evDrawerBody mirrors the SPA's EventDetailDrawer (read-only).
+templ evDrawerBody(d evDetail) {
+	<div id={ evDrawerID + "-body" } class="flex flex-col gap-4">
+		<div class="fc-detail-grid">
+			@kit.DetailField(kit.DetailFieldProps{Label: "ID", Span: true}) {
+				<span class="font-mono">{ d.ID }</span>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Type", Span: true}) {
+				@kit.Tag(kit.TagProps{Severity: kit.TagInfo, Label: d.Type})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Application", Value: d.Application})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Subdomain", Value: d.Subdomain})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Aggregate", Value: d.Aggregate})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Source", Value: d.Source})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Subject", Value: d.Subject})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Time"}) {
+				@kit.LocalTime(kit.LocalTimeProps{At: d.Time})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Client ID"}) {
+				if d.ClientID != "" {
+					<span class="font-mono">{ d.ClientID }</span>
+				} else {
+					<span class="text-muted-foreground">-</span>
+				}
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Message Group", Value: d.MessageGroup})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Correlation ID"}) {
+				<span class="font-mono wrap-anywhere">{ d.Correlation }</span>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Causation ID"}) {
+				<span class="font-mono wrap-anywhere">{ d.Causation }</span>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Deduplication ID"}) {
+				<span class="font-mono wrap-anywhere">{ d.Deduplication }</span>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Projected At"}) {
+				@kit.LocalTime(kit.LocalTimeProps{At: d.ProjectedAt})
+			}
+		</div>
+		<div>
+			<h4 class="fc-field-label mb-1">Data</h4>
+			<pre class="fc-json whitespace-pre-wrap break-all" tabindex="0" aria-label="Event data">{ d.Data }</pre>
+		</div>
+		if len(d.Context) > 0 {
+			<div>
+				<h4 class="fc-field-label mb-1">Context Data</h4>
+				@djKVList(d.Context, "")
+			</div>
+		}
+	</div>
+}

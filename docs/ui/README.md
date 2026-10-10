@@ -11,8 +11,8 @@ flash stack and the Datastar error contract, an icon sprite, now 90 icons), and 
 `/ui/connections` at parity with the SPA pages: list, record drawer, create and edit dialogs,
 state actions and delete behind confirmations; the app shell works at phone width and dark mode is
 rendered by the server from a theme cookie. Phase 3 (core operations): `/ui/event-types` and
-`/ui/subscriptions`, `/ui/applications`, `/ui/clients`, `/ui/scheduled-jobs` and
-`/ui/dispatch-jobs` at parity (sections below); the other core areas are not ported yet.
+`/ui/subscriptions`, `/ui/applications`, `/ui/clients`, `/ui/scheduled-jobs`, `/ui/dispatch-jobs`
+and `/ui/events` at parity (sections below); Processes is not ported (owner decision below).
 
 ## Architecture
 
@@ -440,6 +440,25 @@ Differences from the SPA:
 - "Requeue everything in error" is a button beside "Requeue all matching" (the SPA's split-button menu).
 - URL arrays are repeated parameters (`statuses=FAILED&statuses=ERROR`), not the SPA's comma list.
 
+### Events (`/ui/events`)
+
+Mirrors `EventListPage` and `EventDetailDrawer` (read-only). Routes: the list
+(`?clients&applications&subdomains&aggregates&types` (repeated), `q` (source), `size`, `after`) and
+`/{id}` (drawer). The API's checks (`internal/platform/event/api`): `event:view`, SQL tenant scoping
+(platform events plus the caller's clients), per-event client access on the drawer (403 otherwise).
+Event ids are untyped TSIDs and may start with a digit, so the path parameter is checked against its
+own pattern (`[A-Za-z0-9_-]{1,64}`) and never enters an expression. The whole row opens the drawer
+(one delegated handler on the `<tbody>` clicks the row's Event ID link).
+
+Shared with dispatch jobs (`pages/firehose.go`): result size, keyset paging (Older/Newest;
+`event.FilterParams.Cursor` added, `id` tie-breaker in the order), facets derived from the distinct
+event types (cached 30 s), the replace-mode table patch and local times.
+
+Differences from the SPA: the aggregate filter has options and the subdomain, aggregate and type
+options follow the levels chosen above them (the SPA's lists are static and its aggregates empty); the
+filters have search boxes (the SPA's have `filter`) ; paging as above; the Context Data section shows
+the event's context when the read model has it (it never does: bug 22).
+
 ## CSRF
 
 Sessions are the `fc_session` cookie (HttpOnly, `SameSite=Lax`, Secure outside dev), so
@@ -690,6 +709,9 @@ native (no-JavaScript) post/redirect/get path (unit tests cover it), system mode
 20. The SPA shows **Sign** to every viewer; the API requires `dispatch-job:view-raw` (403 otherwise).
 21. `FindWithFilters` caps `size` at 1,000 by falling back to **100** for anything larger (`limit > 1000
     → 100`), so `size=1001` returns fewer rows than `size=1000`.
+22. **The SPA's event drawer never shows Context Data**: it reads `event.contextData`, the API sends
+    `context`; and `GET /api/events/{id}` reads `msg_events_read`, which has no context column, so the
+    field is always empty anyway (the debug raw view reads the write table and has it).
 
 ### Subscriptions: verification (2026-10-10)
 
@@ -769,6 +791,30 @@ gzip would send 24 KB (brotli 13 KB); see owner decisions. Most of the browser's
 rows is Datastar scanning the new rows' attributes (each row carries a `data-init` for its time, two
 links' `data-on:click` and the row requeue's).
 
+### Events: verification and measurements (2026-10-10)
+
+Unit tests (`events_test.go`: list cells, a user without the permission refused, a client user scoped
+and refused another tenant's event, live patch with the dependent options, URL round trip, cursor
+paging, drawer, payload formatting incl. a JSON string holding JSON, a bad id) and
+`events_pg_test.go` (facets from the distinct types narrowed by the chosen subdomain, the list, the
+drawer); `TestFindWithFilters_CursorPages` in `internal/platform/event`. Chrome on the isolated
+instance with **100,000 seeded events**: size change, application filter on/off, Older, row click
+opening the drawer; headless Chrome 1440×900 and 390×844, light and dark (list, filters, drawer), no
+horizontal page scroll, no console problems.
+
+| | 200 rows | 1,000 rows |
+|---|---|---|
+| templ render of the table (`BenchmarkEventsTable`) | 0.8 ms | 4.0 ms |
+| server time, live list request (incl. query) | 2.1 ms | 7.0 ms |
+| response size (uncompressed / gzip) | 225 KB / 8 KB | 1.0 MB / 27 KB |
+| browser: filter click → rows localised | 38 ms (apply ~28 ms) | 112 ms (apply ~90 ms) |
+| full page load (DCL / load) | 12 ms / 19 ms | 19 ms / 99 ms |
+
+The SPA's `GET /api/events` answers in 0.9 ms (200 rows, 67 KB) and 2.2 ms (1,000 rows, 339 KB). An
+event row costs ~1 KB of HTML and ~0.09 ms to apply; a dispatch-job row ~2.9 KB and ~0.23 ms (its
+checkbox, two live links and the requeue button each carry Datastar attributes; delegating them to the
+`<tbody>` as the selection count already is would cut both, not done).
+
 ### Owner decisions needed
 
 - **Add schema** sends the document (refusing text that is not JSON) instead of the SPA's JSON
@@ -793,4 +839,10 @@ links' `data-on:click` and the row requeue's).
   (`datastar.WithCompression`) and chi has `middleware.Compress` for pages, both already in the module
   graph. Turn it on for `/ui` (or rely on the proxy)?
 - **Filter-options scoping** (bug 18): scope `DistinctValues` to the caller's tenants?
-- **Dispatch Jobs sidebar entry** now links to `/ui/dispatch-jobs` in the `/ui` sidebar.
+- **Dispatch Jobs and Events sidebar entries** now link to their `/ui` pages in the `/ui` sidebar.
+- **Processes (not ported)**: the drawer's main content is the process diagram rendered by Mermaid in
+  the browser (`ProcessDetailDrawer.vue`, lazy `import("mermaid")`); the create page links to Mermaid
+  syntax. A server-rendered page needs either a vendored Mermaid bundle served from `/ui/assets` and
+  started by a small island (a new dependency of a few MB minified, and the kit's first script beyond
+  Datastar) or a server-side renderer (none in Go). The list, create, edit, archive and delete could be
+  ported now with the diagram shown as its source text. Which?

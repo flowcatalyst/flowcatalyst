@@ -81,6 +81,7 @@ func registerUI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usecasepgx.Un
 		DispatchJobs:          repos.dispatchJobRepo,
 		DispatchJobOps:        pages.DispatchJobOps{Repo: repos.dispatchJobRepo, UoW: uow, Planner: dispatchPlanner(repos)},
 		ClientIdentifier:      client.NewCachedIdentifierResolver(repos.clientRepo, time.Minute),
+		Events:                repos.eventRepo,
 	})
 }
 

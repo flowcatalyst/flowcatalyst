@@ -12,14 +12,12 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	djops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -55,37 +53,10 @@ type DispatchJobs struct {
 	ClientIdentifier func(ctx context.Context, clientID string) (string, bool)
 	Shell            *shell.Shell
 
-	// facetCache holds the distinct statuses and codes for djFacetTTL: the
+	// facetCache holds the distinct statuses and codes (firehose.go): the
 	// SPA reads them once per visit, the live list on every request, and a
 	// DISTINCT over the projection is the costliest query of a request.
-	facetCache djFacetCache
-}
-
-// djFacetTTL is how long the distinct statuses and codes are reused.
-const djFacetTTL = 30 * time.Second
-
-type djFacetCache struct {
-	mu              sync.Mutex
-	at              time.Time
-	statuses, codes []string
-}
-
-// distinct is the API's filter-options statuses and codes, cached.
-func (h *DispatchJobs) distinct(ctx context.Context) (statuses, codes []string, err error) {
-	c := &h.facetCache
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if !c.at.IsZero() && time.Since(c.at) < djFacetTTL {
-		return c.statuses, c.codes, nil
-	}
-	if statuses, err = h.Jobs.DistinctValues(ctx, "status", djDistinctLimit); err != nil {
-		return nil, nil, usecase.Internal("REPO", "distinct statuses failed", err)
-	}
-	if codes, err = h.Jobs.DistinctValues(ctx, "code", djDistinctLimit); err != nil {
-		return nil, nil, usecase.Internal("REPO", "distinct codes failed", err)
-	}
-	c.at, c.statuses, c.codes = time.Now(), statuses, codes
-	return statuses, codes, nil
+	facetCache distinctCache
 }
 
 const (
@@ -122,8 +93,6 @@ const (
 	djDefaultSize = 200
 	// djMaxRequeue is ResendByFilterMaxLimit: one requeue-by-filter run's cap.
 	djMaxRequeue = djops.ResendByFilterMaxLimit
-	// djDistinctLimit is the API's filter-options cap per facet.
-	djDistinctLimit = 200
 )
 
 var (
@@ -179,35 +148,10 @@ func parseDJQuery(v url.Values) djQuery {
 	if n, err := strconv.Atoi(v.Get("size")); err == nil && slices.Contains(djSizes, n) {
 		q.Size = n
 	}
-	q.After = parseCursor(v.Get("after"))
+	if at, id, ok := parseCursor(v.Get("after")); ok {
+		q.After = &dispatchjob.ListCursor{CreatedAt: at, ID: id}
+	}
 	return q
-}
-
-// validDay keeps a YYYY-MM-DD day; anything else is no bound (a hand-edited
-// URL still shows a list).
-func validDay(s string) string {
-	if _, err := time.Parse(time.DateOnly, s); err != nil {
-		return ""
-	}
-	return s
-}
-
-// Cursors are "<created_at in unix microseconds>.<id>" (Postgres keeps
-// microseconds, so the position is exact).
-func formatCursor(c dispatchjob.ListCursor) string {
-	return strconv.FormatInt(c.CreatedAt.UnixMicro(), 10) + "." + c.ID
-}
-
-func parseCursor(s string) *dispatchjob.ListCursor {
-	micros, id, ok := strings.Cut(s, ".")
-	if !ok || id == "" || len(id) > maxQueryLen {
-		return nil
-	}
-	n, err := strconv.ParseInt(micros, 10, 64)
-	if err != nil {
-		return nil
-	}
-	return &dispatchjob.ListCursor{CreatedAt: time.UnixMicro(n).UTC(), ID: id}
 }
 
 // filterValues is the filter alone: what "requeue all matching" acts on.
@@ -240,7 +184,7 @@ func (q djQuery) values() url.Values {
 		v.Set("size", strconv.Itoa(q.Size))
 	}
 	if q.After != nil {
-		v.Set("after", formatCursor(*q.After))
+		v.Set("after", formatCursor(q.After.CreatedAt, q.After.ID))
 	}
 	return v
 }
@@ -329,13 +273,7 @@ func (q djQuery) filterParams() dispatchjob.FilterParams {
 		group := q.Group
 		p.MessageGroup = &group
 	}
-	if t, err := time.Parse(time.DateOnly, q.From); err == nil {
-		p.Since = &t
-	}
-	if t, err := time.Parse(time.DateOnly, q.To); err == nil {
-		until := t.AddDate(0, 0, 1)
-		p.Until = &until
-	}
+	p.Since, p.Until = dayBounds(q.From, q.To)
 	return p
 }
 
@@ -463,94 +401,25 @@ func (h *DispatchJobs) listView(ctx context.Context, ac *auth.AuthContext, q djQ
 // the options is kept as an option, so a URL never silently loses a filter.
 func (h *DispatchJobs) filterOptions(ctx context.Context, ac *auth.AuthContext, q djQuery) (map[string][]kit.Option, map[string]string, error) {
 	out := map[string][]kit.Option{}
-	cs, err := h.clients(ctx)
+	cs, err := allClients(ctx, h.Clients)
 	if err != nil {
 		return nil, nil, err
 	}
 	names := clientNames(cs)
-	var opts []kit.Option
-	for _, c := range cs {
-		if c.Status != client.StatusActive || (!ac.IsAnchor() && !ac.CanAccessClient(string(c.ID))) {
-			continue
-		}
-		opts = append(opts, kit.Option{Value: string(c.ID), Label: c.Name})
-	}
-	slices.SortFunc(opts, func(a, b kit.Option) int { return strings.Compare(a.Label, b.Label) })
-	out[djFacetClients] = opts
-	statuses, codes, err := h.distinct(ctx)
+	out[djFacetClients] = clientFilterOptions(cs, ac)
+	distinct, err := h.facetCache.get(ctx, h.Jobs.DistinctValues, "status", "code")
 	if err != nil {
 		return nil, nil, err
 	}
-	out[djFacetStatuses] = plainOptions(statuses)
-	apps, subs, aggs := q.facet(djFacetApps), q.facet(djFacetSubs), q.facet(djFacetAggs)
-	under := func(seg []string, level int) bool {
-		chosen := [][]string{apps, subs, aggs}
-		for i := range level {
-			if len(chosen[i]) > 0 && (len(seg) <= i || !slices.Contains(chosen[i], seg[i])) {
-				return false
-			}
-		}
-		return true
-	}
-	levels := make([][]string, 4)
-	for _, code := range codes {
-		seg := strings.Split(code, ":")
-		for level := range 3 {
-			if len(seg) > level && under(seg, level) {
-				levels[level] = append(levels[level], seg[level])
-			}
-		}
-		if under(seg, 3) {
-			levels[3] = append(levels[3], code)
-		}
-	}
+	out[djFacetStatuses] = plainOptions(distinct["status"])
+	levels := codeLevels(distinct["code"], q.facet(djFacetApps), q.facet(djFacetSubs), q.facet(djFacetAggs))
 	for i, f := range []string{djFacetApps, djFacetSubs, djFacetAggs, djFacetCodes} {
-		vals := levels[i]
-		slices.Sort(vals)
-		out[f] = plainOptions(slices.Compact(vals))
+		out[f] = plainOptions(levels[i])
 	}
 	for _, f := range djFacets {
 		out[f] = withChosen(out[f], q.facet(f), names)
 	}
 	return out, names, nil
-}
-
-func (h *DispatchJobs) clients(ctx context.Context) ([]client.Client, error) {
-	if h.Clients == nil {
-		return nil, nil
-	}
-	cs, err := h.Clients.FindAll(ctx)
-	if err != nil {
-		return nil, usecase.Internal("REPO", "list clients failed", err)
-	}
-	return cs, nil
-}
-
-func clientNames(cs []client.Client) map[string]string {
-	names := make(map[string]string, len(cs))
-	for _, c := range cs {
-		names[string(c.ID)] = c.Name
-	}
-	return names
-}
-
-func plainOptions(vals []string) []kit.Option {
-	out := make([]kit.Option, 0, len(vals))
-	for _, v := range vals {
-		out = append(out, kit.Option{Value: v, Label: v})
-	}
-	return out
-}
-
-// withChosen appends the chosen values that are not options (labelled by
-// labels when known, else the value itself).
-func withChosen(opts []kit.Option, chosen []string, labels map[string]string) []kit.Option {
-	for _, c := range chosen {
-		if !slices.ContainsFunc(opts, func(o kit.Option) bool { return o.Value == c }) {
-			opts = append(opts, kit.Option{Value: c, Label: cmp.Or(labels[c], c)})
-		}
-	}
-	return opts
 }
 
 func djURL(id string) string { return djPath + "/" + url.PathEscape(id) }
@@ -1137,7 +1006,7 @@ func (h *DispatchJobs) showRequeueDialog(w http.ResponseWriter, r *http.Request,
 		}
 		view, names = v, v.ClientNames
 	} else {
-		cs, err := h.clients(ctx)
+		cs, err := allClients(ctx, h.Clients)
 		if err != nil {
 			h.Shell.Fail(w, r, err)
 			return
@@ -1212,28 +1081,6 @@ func (h *DispatchJobs) requeueByFilter(w http.ResponseWriter, r *http.Request) {
 	if err := errors.Join(sse.CloseDialog(djRBFDialog), shell.Flash(sse, requeueOutcome(res))); err != nil {
 		slog.DebugContext(ctx, "ui: requeue-by-filter outcome not delivered", "err", err)
 	}
-}
-
-// thousands is n with the SPA's toLocaleString() separators (en).
-func thousands(n int64) string {
-	s := strconv.FormatInt(n, 10)
-	neg := strings.HasPrefix(s, "-")
-	s = strings.TrimPrefix(s, "-")
-	for i := len(s) - 3; i > 0; i -= 3 {
-		s = s[:i] + "," + s[i:]
-	}
-	if neg {
-		return "-" + s
-	}
-	return s
-}
-
-// counted is plural with thousands separators ("10,000 jobs").
-func counted(n int64, word string) string {
-	if n == 1 {
-		return "1 " + word
-	}
-	return thousands(n) + " " + word + "s"
 }
 
 // requeueOutcome is the SPA's toast for a finished run.
