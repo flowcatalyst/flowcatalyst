@@ -27,7 +27,7 @@ import (
 //     PrincipalResponse for any tenant's principal.
 //
 // permUserView ("platform:iam:user:view", auth.CanReadPrincipals) and
-// permUserUpdate ("platform:iam:user:update", auth.CanWritePrincipals) are
+// permUserUpdate ("platform:iam:user:update", auth.CanUpdatePrincipals) are
 // unexported in the auth package, so the literal strings are used directly —
 // matching the pattern in connection/dispatchpool/eventtype's ops_pg_test.go.
 const (

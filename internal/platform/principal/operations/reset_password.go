@@ -29,7 +29,7 @@ type ResetPasswordCommand struct {
 // [UserPasswordReset].
 //
 // Authorize is intentionally Public: this op is invoked by TWO entry points
-// with DIFFERENT gating — the admin controller (coarse CanWritePrincipals +
+// with DIFFERENT gating — the admin controller (CanUpdatePrincipals +
 // per-resource requireScopeByID, done in the handler) AND the UNAUTHENTICATED
 // token-gated password-reset confirm flow (passwordreset/api, gated by a valid
 // single-use reset token). Baking an admin check in here would break the

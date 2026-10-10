@@ -371,7 +371,7 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreatePrincipalRequ
 	if !ac.IsAnchor() && in.Body.Scope != "CLIENT" {
 		return nil, httperror.Forbidden("Client administrators can only create client-scope users")
 	}
-	if err := auth.RequireUserAdmin(ac, in.Body.ClientID); err != nil {
+	if err := auth.RequireUserAdmin(ac, in.Body.ClientID, auth.CanCreatePrincipals); err != nil {
 		return nil, err
 	}
 	inviteRedirect, err := resolveInviteRedirect(in.Body.InviteRedirectURI)
@@ -404,7 +404,7 @@ func (s *State) bulkImport(ctx context.Context, in *apicommon.In[BulkImportReque
 	}
 	// Non-anchor administrators create only CLIENT-scope users in a client they
 	// can access; RequireUserAdmin enforces both.
-	if err := auth.RequireUserAdmin(ac, &clientID); err != nil {
+	if err := auth.RequireUserAdmin(ac, &clientID, auth.CanCreatePrincipals); err != nil {
 		return nil, err
 	}
 	if len(in.Body.Users) == 0 {
@@ -613,7 +613,7 @@ func (s *State) createUser(ctx context.Context, in *apicommon.In[CreateUserReque
 	if !ac.IsAnchor() && scope != "CLIENT" {
 		return nil, httperror.Forbidden("Client administrators can only create client-scope users")
 	}
-	if err := auth.RequireUserAdmin(ac, clientID); err != nil {
+	if err := auth.RequireUserAdmin(ac, clientID, auth.CanCreatePrincipals); err != nil {
 		return nil, err
 	}
 	// Validated before anything is written: a rejected redirect must not
@@ -1028,7 +1028,7 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Out[Pri
 	ac := auth.FromContext(ctx)
 	// Coarse permission at the controller; the use case enforces the per-resource
 	// scope check (blockNonClientTarget + CheckScopeAccess) post-load.
-	if err := auth.CanWritePrincipals(ac); err != nil {
+	if err := auth.CanUpdatePrincipals(ac); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -1048,7 +1048,7 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Out[Pri
 func (s *State) activate(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[apicommon.StatusChangeResponse], error) {
 	// Coarse permission at the controller; the use case enforces the per-resource
 	// scope check post-load.
-	if err := auth.CanWritePrincipals(auth.FromContext(ctx)); err != nil {
+	if err := auth.CanUpdatePrincipals(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -1061,7 +1061,7 @@ func (s *State) activate(ctx context.Context, in *apicommon.IDInput) (*apicommon
 func (s *State) deactivate(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[apicommon.StatusChangeResponse], error) {
 	// Coarse permission at the controller; the use case enforces the per-resource
 	// scope check post-load.
-	if err := auth.CanWritePrincipals(auth.FromContext(ctx)); err != nil {
+	if err := auth.CanUpdatePrincipals(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -1078,7 +1078,7 @@ type resetPasswordInput struct {
 
 func (s *State) resetPassword(ctx context.Context, in *resetPasswordInput) (*apicommon.Out[apicommon.StatusChangeResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanWritePrincipals(ac); err != nil {
+	if err := auth.CanUpdatePrincipals(ac); err != nil {
 		return nil, err
 	}
 	if err := s.requireScopeByID(ctx, ac, in.ID); err != nil {
@@ -1119,7 +1119,7 @@ func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*apicomm
 	// Coarse permission gate BEFORE any load (PR-3(a)): no permission means
 	// nothing is touched, so an unauthorized caller can't distinguish a real id
 	// from an invented one via this route's response.
-	if err := auth.CanWritePrincipals(ac); err != nil {
+	if err := auth.CanUpdatePrincipals(ac); err != nil {
 		return nil, err
 	}
 	// Load the target to shape the desired role set for non-anchor admins; the
@@ -1186,7 +1186,7 @@ func (s *State) assignApplicationAccess(ctx context.Context, in *assignAppAccess
 	// Coarse permission gate BEFORE any load (PR-3(a)): no permission means
 	// nothing is touched, so an unauthorized caller can't distinguish a real id
 	// from an invented one via this route's response.
-	if err := auth.CanWritePrincipals(ac); err != nil {
+	if err := auth.CanUpdatePrincipals(ac); err != nil {
 		return nil, err
 	}
 	// Load the target to bound the desired application set for non-anchor admins;
@@ -1432,7 +1432,7 @@ func requireDeveloperCredentialAccess(ac *auth.AuthContext, targetID string) err
 	if ac != nil && ac.PrincipalID == targetID {
 		return auth.CanManageOwnDeveloperCredential(ac)
 	}
-	return auth.CanWritePrincipals(ac)
+	return auth.CanUpdatePrincipals(ac)
 }
 
 // ── send-password-reset (admin trigger) ──────────────────────────────────
@@ -1452,7 +1452,7 @@ type sendPasswordResetInput struct {
 func (s *State) sendPasswordReset(ctx context.Context, in *sendPasswordResetInput) (*apicommon.Out[apicommon.StatusChangeResponse], error) {
 	ac := auth.FromContext(ctx)
 	// Coarse permission gate BEFORE any load (PR-3(a)).
-	if err := auth.CanWritePrincipals(ac); err != nil {
+	if err := auth.CanUpdatePrincipals(ac); err != nil {
 		return nil, err
 	}
 	p, err := s.Repo.FindByID(ctx, in.ID)
@@ -1490,7 +1490,7 @@ func (s *State) resetTwoFactor(ctx context.Context, in *apicommon.IDInput) (*api
 		return nil, usecase.Internal("MFA_NOT_CONFIGURED", "Two-factor service not configured", nil)
 	}
 	// Coarse permission gate BEFORE any load (PR-3(a)).
-	if err := auth.CanWritePrincipals(ac); err != nil {
+	if err := auth.CanUpdatePrincipals(ac); err != nil {
 		return nil, err
 	}
 	p, err := s.Repo.FindByID(ctx, ids.PrincipalID(in.ID))
@@ -1716,7 +1716,7 @@ func (s *State) addRole(ctx context.Context, in *addRoleInput) (*apicommon.Out[P
 	// Coarse permission gate BEFORE any load (PR-3(a)): no permission means
 	// nothing is touched, so an unauthorized caller can't distinguish a real id
 	// from an invented one via this route's response.
-	if err := auth.CanWritePrincipals(ac); err != nil {
+	if err := auth.CanUpdatePrincipals(ac); err != nil {
 		return nil, err
 	}
 	// Load the target to bound the role for non-anchor admins and to apply the
@@ -1779,7 +1779,7 @@ func (s *State) removeRole(ctx context.Context, in *removeRoleInput) (*apicommon
 	// Coarse permission gate BEFORE any load (PR-3(a)): no permission means
 	// nothing is touched, so an unauthorized caller can't distinguish a real id
 	// from an invented one via this route's response.
-	if err := auth.CanWritePrincipals(ac); err != nil {
+	if err := auth.CanUpdatePrincipals(ac); err != nil {
 		return nil, err
 	}
 	// Load the target to bound the role for non-anchor admins and to apply the

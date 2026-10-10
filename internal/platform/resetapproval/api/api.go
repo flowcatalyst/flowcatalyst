@@ -63,8 +63,9 @@ type listOutput struct {
 
 func (s *State) list(ctx context.Context, _ *struct{}) (*listOutput, error) {
 	ac := auth.FromContext(ctx)
-	// Client-admins (and anchors) only — they hold a user-write permission.
-	if err := auth.CanWritePrincipals(ac); err != nil {
+	// Client-admins (and anchors) only: the queue is what an administrator
+	// holding user:update may approve or deny.
+	if err := auth.CanUpdatePrincipals(ac); err != nil {
 		return nil, err
 	}
 	// Scope to the caller's clients; anchors see all (nil).
@@ -117,7 +118,7 @@ func (s *State) approve(ctx context.Context, in *idInput) (*messageOutput, error
 	if req == nil {
 		return nil, httperror.NotFound("ResetApprovalRequest", in.ID)
 	}
-	if err := auth.RequireUserAdmin(ac, ids.StringPtr(req.ClientID)); err != nil {
+	if err := auth.RequireUserAdmin(ac, ids.StringPtr(req.ClientID), auth.CanUpdatePrincipals); err != nil {
 		return nil, err
 	}
 	ok, err := s.Approvals.Decide(ctx, req.ID, resetapproval.StatusApproved, ac.PrincipalID)
@@ -149,7 +150,7 @@ func (s *State) deny(ctx context.Context, in *idInput) (*messageOutput, error) {
 	if req == nil {
 		return nil, httperror.NotFound("ResetApprovalRequest", in.ID)
 	}
-	if err := auth.RequireUserAdmin(ac, ids.StringPtr(req.ClientID)); err != nil {
+	if err := auth.RequireUserAdmin(ac, ids.StringPtr(req.ClientID), auth.CanUpdatePrincipals); err != nil {
 		return nil, err
 	}
 	ok, err := s.Approvals.Decide(ctx, req.ID, resetapproval.StatusDenied, ac.PrincipalID)

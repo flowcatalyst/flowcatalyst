@@ -383,20 +383,22 @@ func RequireAnchor(a *AuthContext) error {
 }
 
 // RequireUserAdmin authorizes a user-management action on a principal owned by
-// targetClientID. Anchors pass for any target. A non-anchor caller (e.g. a
-// client-administrator) must both hold a user-write permission AND be able to
-// access the target user's client — so a CLIENT/PARTNER-scoped admin is confined
-// to their own client(s) by CanAccessClient. A nil targetClientID means a
-// platform/no-client user, which only an anchor may manage (matching the rule
-// that platform admins are OIDC-federated and not client-administered).
-func RequireUserAdmin(a *AuthContext, targetClientID *string) error {
+// targetClientID. can is the permission check for the operation
+// (CanCreatePrincipals, CanUpdatePrincipals, ...). Anchors pass for any target.
+// A non-anchor caller (e.g. a client-administrator) must both hold that
+// permission AND be able to access the target user's client — so a
+// CLIENT/PARTNER-scoped admin is confined to their own client(s) by
+// CanAccessClient. A nil targetClientID means a platform/no-client user, which
+// only an anchor may manage (matching the rule that platform admins are
+// OIDC-federated and not client-administered).
+func RequireUserAdmin(a *AuthContext, targetClientID *string, can func(*AuthContext) error) error {
 	if a == nil {
 		return usecase.Authorization("UNAUTHENTICATED", "authentication required")
 	}
-	// An anchor's reach covers every target, but it still needs a user-write
+	// An anchor's reach covers every target, but it still needs the
 	// permission from its roles — reach is not authority.
 	if a.IsAnchor() {
-		return CanWritePrincipals(a)
+		return can(a)
 	}
 	if targetClientID == nil {
 		return usecase.Authorization("ANCHOR_REQUIRED", "anchor scope required for platform users")
@@ -404,7 +406,7 @@ func RequireUserAdmin(a *AuthContext, targetClientID *string) error {
 	if !a.CanAccessClient(*targetClientID) {
 		return usecase.Authorization("SCOPE_FORBIDDEN", "no access to this user's client")
 	}
-	return CanWritePrincipals(a)
+	return can(a)
 }
 
 // CanViewDashboardStats gates the dashboard's aggregate counts: a view over

@@ -81,15 +81,27 @@ func TestAnchorScopeIsReachNotAuthority(t *testing.T) {
 }
 
 // The user-admin check: an anchor's reach covers any target, but it must still
-// hold a user-write permission.
+// hold the permission for the operation.
 func TestRequireUserAdmin_AnchorStillNeedsAUserWritePermission(t *testing.T) {
 	bare := &AuthContext{Scope: ScopeAnchor}
-	assert.Error(t, RequireUserAdmin(bare, nil))
+	assert.Error(t, RequireUserAdmin(bare, nil, CanUpdatePrincipals))
 
 	writer := &AuthContext{Scope: ScopeAnchor, Permissions: []string{"platform:iam:user:update"}}
-	assert.NoError(t, RequireUserAdmin(writer, nil), "a platform user is an anchor-only target")
+	assert.NoError(t, RequireUserAdmin(writer, nil, CanUpdatePrincipals), "a platform user is an anchor-only target")
 	other := "clt_other"
-	assert.NoError(t, RequireUserAdmin(writer, &other), "an anchor reaches every client")
+	assert.NoError(t, RequireUserAdmin(writer, &other, CanUpdatePrincipals), "an anchor reaches every client")
+}
+
+// The user-admin check is the permission for the operation, not any user write
+// (docs/platform-bug-fixes.md): an update-only administrator cannot create.
+func TestRequireUserAdmin_ChecksTheOperationsPermission(t *testing.T) {
+	client := "clt_mine"
+	updater := &AuthContext{Scope: ScopeClient, Clients: []string{client}, Permissions: []string{"platform:iam:user:update"}}
+	assert.Error(t, RequireUserAdmin(updater, &client, CanCreatePrincipals))
+	assert.NoError(t, RequireUserAdmin(updater, &client, CanUpdatePrincipals))
+	deleter := &AuthContext{Scope: ScopeAnchor, Permissions: []string{"platform:iam:user:delete"}}
+	assert.Error(t, RequireUserAdmin(deleter, nil, CanCreatePrincipals))
+	assert.Error(t, RequireUserAdmin(deleter, nil, CanUpdatePrincipals))
 }
 
 func TestNonAnchorWithoutPermissionDenied(t *testing.T) {
