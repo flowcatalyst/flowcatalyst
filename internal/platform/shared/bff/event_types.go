@@ -24,6 +24,9 @@ import (
 type EventTypesState struct {
 	Repo *eventtype.Repository
 	UoW  *usecasepgx.UnitOfWork
+	// Apps resolves an event type's application code, for confining an
+	// application service account to its own applications' event types.
+	Apps eventtype.ApplicationLookup
 }
 
 // RegisterEventTypes mounts the dashboard's `/bff/event-types/*`
@@ -125,21 +128,23 @@ type bffAddSchemaRequest struct {
 
 // GET /bff/event-types
 //
-// Filters: status, application, subdomain, aggregate. All optional.
-// Returns `{items, total}` rather than `{items}` so the frontend can
-// render a count without a separate roundtrip.
+// Filters: status, application, subdomain, aggregate. All optional; the
+// facets may repeat (the SPA's multi-selects send `application=a&application=b`)
+// and match any of their values. Returns `{items, total}` rather than
+// `{items}` so the frontend can render a count without a separate roundtrip.
+//
+// Reads make GET /api/event-types's checks: the read permission, client
+// scoping and, without the messaging view permission, only the caller's own
+// applications' event types (eventtype.VisibleTo).
 func (s *EventTypesState) list(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	status := strPtr(q.Get("status"))
-	application := strPtr(q.Get("application"))
-	subdomain := strPtr(q.Get("subdomain"))
-	aggregate := strPtr(q.Get("aggregate"))
-
-	rows, err := s.Repo.FindWithFilters(r.Context(), application, nil, status, subdomain, aggregate)
+	rows, err := s.visible(r, status)
 	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "list event types failed", err))
+		httperror.Write(w, err)
 		return
 	}
+	rows = eventtype.MatchAny(rows, q["application"], q["subdomain"], q["aggregate"])
 	out := make([]bffEventTypeResponse, 0, len(rows))
 	for _, et := range rows {
 		out = append(out, toBffEventType(et))
@@ -149,6 +154,11 @@ func (s *EventTypesState) list(w http.ResponseWriter, r *http.Request) {
 
 // GET /bff/event-types/{id}
 func (s *EventTypesState) getByID(w http.ResponseWriter, r *http.Request) {
+	ac := auth.FromContext(r.Context())
+	if err := auth.CanReadEventTypes(ac); err != nil {
+		httperror.Write(w, err)
+		return
+	}
 	id := chi.URLParam(r, "id")
 	et, err := s.Repo.FindByID(r.Context(), id)
 	if err != nil {
@@ -159,7 +169,29 @@ func (s *EventTypesState) getByID(w http.ResponseWriter, r *http.Request) {
 		httperror.Write(w, httperror.NotFound("EventType", id))
 		return
 	}
+	if err := eventtype.CheckReadable(r.Context(), ac, s.Apps, et); err != nil {
+		httperror.Write(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, toBffEventType(*et))
+}
+
+// visible is every event type the caller may read, of the given status (nil:
+// any), after the read permission check.
+func (s *EventTypesState) visible(r *http.Request, status *string) ([]eventtype.EventType, error) {
+	return visibleEventTypes(r, s.Repo, s.Apps, status)
+}
+
+func visibleEventTypes(r *http.Request, repo *eventtype.Repository, apps eventtype.ApplicationLookup, status *string) ([]eventtype.EventType, error) {
+	ac := auth.FromContext(r.Context())
+	if err := auth.CanReadEventTypes(ac); err != nil {
+		return nil, err
+	}
+	rows, err := repo.FindWithFilters(r.Context(), nil, nil, status, nil, nil)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "list event types failed", err)
+	}
+	return eventtype.VisibleTo(r.Context(), ac, apps, rows)
 }
 
 // POST /bff/event-types
@@ -291,31 +323,31 @@ func (s *EventTypesState) addSchema(w http.ResponseWriter, r *http.Request) {
 
 // GET /bff/event-types/filters/subdomains[?application=...]
 //
-// Cascading filter — subdomains scoped to the supplied application.
-// Returns the filter-options envelope: `{"options": [...]}` of
-// distinct subdomain strings.
+// Cascading filter — subdomains of the event types the caller may read, of
+// any of the supplied applications (repeatable). Returns the filter-options
+// envelope: `{"options": [...]}` of distinct subdomain strings.
 func (s *EventTypesState) filterSubdomains(w http.ResponseWriter, r *http.Request) {
-	app := strPtr(r.URL.Query().Get("application"))
-	rows, err := s.Repo.FindWithFilters(r.Context(), app, nil, nil, nil, nil)
+	rows, err := s.visible(r, nil)
 	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "list event types failed", err))
+		httperror.Write(w, err)
 		return
 	}
+	rows = eventtype.MatchAny(rows, r.URL.Query()["application"], nil, nil)
 	writeJSON(w, http.StatusOK, distinctOptions(rows, func(et eventtype.EventType) string { return et.Subdomain }))
 }
 
 // GET /bff/event-types/filters/aggregates[?application=...&subdomain=...]
 //
-// Cascading filter — aggregates scoped to application + subdomain.
+// Cascading filter — aggregates of the visible event types of any of the
+// supplied applications and subdomains (both repeatable).
 func (s *EventTypesState) filterAggregates(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	app := strPtr(q.Get("application"))
-	sub := strPtr(q.Get("subdomain"))
-	rows, err := s.Repo.FindWithFilters(r.Context(), app, nil, nil, sub, nil)
+	rows, err := s.visible(r, nil)
 	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "list event types failed", err))
+		httperror.Write(w, err)
 		return
 	}
+	q := r.URL.Query()
+	rows = eventtype.MatchAny(rows, q["application"], q["subdomain"], nil)
 	writeJSON(w, http.StatusOK, distinctOptions(rows, func(et eventtype.EventType) string { return et.Aggregate }))
 }
 

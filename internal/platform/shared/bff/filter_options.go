@@ -28,6 +28,9 @@ type FilterOption struct {
 type FilterOptionsState struct {
 	Clients    *client.Repository
 	EventTypes *eventtype.Repository
+	// Apps confines an application service account's event-type options to
+	// its own applications (eventtype.VisibleTo).
+	Apps eventtype.ApplicationLookup
 }
 
 // RegisterFilterOptions mounts the most-called BFF dropdown endpoints:
@@ -84,12 +87,13 @@ func (s *FilterOptionsState) clientOptions(w http.ResponseWriter, r *http.Reques
 // Extracted from the `application:subdomain:aggregate:event` event-type
 // codes by splitting on `:` and taking the first segment.
 func (s *FilterOptionsState) eventTypeApplications(w http.ResponseWriter, r *http.Request) {
-	// Empty filters → all event types. Status is intentionally
-	// unconstrained: the goal is "give me every application that has
-	// at least one event type," for which CURRENT+ARCHIVED is fine.
-	rows, err := s.EventTypes.FindWithFilters(r.Context(), nil, nil, nil, nil, nil)
+	// Every event type the caller may read (GET /api/event-types's checks).
+	// Status is intentionally unconstrained: the goal is "give me every
+	// application that has at least one event type," for which
+	// CURRENT+ARCHIVED is fine.
+	rows, err := visibleEventTypes(r, s.EventTypes, s.Apps, nil)
 	if err != nil {
-		httperror.Write(w, usecase.Internal("REPO", "list event types failed", err))
+		httperror.Write(w, err)
 		return
 	}
 	seen := map[string]struct{}{}

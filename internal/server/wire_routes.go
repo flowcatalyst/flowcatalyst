@@ -458,10 +458,12 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		bff.RegisterFilterOptions(r, &bff.FilterOptionsState{
 			Clients:    repos.clientRepo,
 			EventTypes: repos.eventTypeRepo,
+			Apps:       repos.applicationRepo,
 		})
 		bff.RegisterEventTypes(r, &bff.EventTypesState{
 			Repo: repos.eventTypeRepo,
 			UoW:  uow,
+			Apps: repos.applicationRepo,
 		})
 		bff.RegisterRoles(r, &bff.RolesState{
 			Roles:        repos.roleRepo,
