@@ -189,6 +189,8 @@ func TestProcessDrawer(t *testing.T) {
 func TestProcessCreateAndEdit(t *testing.T) {
 	h := newProcHarness()
 	dlg := h.do(t, anchorAdmin(), req{target: "/ui/processes/new", datastar: true})
+	// The slot is replaced, not morphed, so a second dialog opens as a modal too.
+	mustContain(t, dlg, "data: mode replace\n", `data: elements <div id="proc-dialog-slot"><dialog id="proc-form"`)
 	mustContain(t, dlg, "New process", `name="code"`, "Format: application:subdomain:process-name", "mermaid.js.org", "Comma-separated.")
 
 	// The SPA's own check: code and name are required.

@@ -210,7 +210,7 @@ templ procDrawerBody(d procDetail) {
 			@procTagList(d.Tags)
 		}
 		@kit.Alert(kit.AlertProps{Icon: "info", Title: "Diagram rendering is not in the new UI yet", Description: procRenderNote(d)}) {
-			<a href={ d.SPAHref } class="mt-2 inline-flex items-center gap-1 text-sm text-primary">
+			<a href={ d.SPAHref } class="col-start-2 mt-1 inline-flex w-fit items-center gap-1 text-sm text-primary">
 				@kit.Icon(kit.IconProps{Name: "external-link", Class: "size-[1rem]"})
 				Open in the current UI
 			</a>
@@ -276,7 +276,7 @@ templ procField(f procForm, key string) {
 			}
 		case "body":
 			@kit.Field(f.fieldProps(key, "Mermaid source", "", false)) {
-				@kit.Textarea(kit.TextareaProps{ID: f.id(key), Name: key, Value: f.Body, Placeholder: procBodyPlaceholder, Rows: 14, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Class: "font-mono text-[13px]", Attrs: templ.Attributes{"spellcheck": "false"}})
+				@kit.Textarea(kit.TextareaProps{ID: f.id(key), Name: key, Value: f.Body, Placeholder: procBodyPlaceholder, Rows: 14, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Class: "font-mono text-[13px] [&]:min-h-60", Attrs: templ.Attributes{"spellcheck": "false"}})
 				<p class="text-sm text-muted-foreground">
 					Anything <a href="https://mermaid.js.org/syntax/flowchart.html" target="_blank" rel="noopener noreferrer" class="text-primary">Mermaid</a> supports — flowcharts, sequence diagrams, state machines.
 				</p>

@@ -237,7 +237,7 @@ func (h *Processes) update(w http.ResponseWriter, r *http.Request) {
 
 func (h *Processes) showForm(w http.ResponseWriter, r *http.Request, ac *auth.AuthContext, f procForm) {
 	if ds.IsDatastar(r) {
-		if err := ds.NewSSE(w, r).Patch(procFormDialogC(f), ds.Inner("#"+procDialogSlot)); err != nil {
+		if err := patchDialogSlot(ds.NewSSE(w, r), procDialogSlot, procFormDialogC(f)); err != nil {
 			slog.DebugContext(r.Context(), "ui: process form patch not delivered", "err", err)
 		}
 		return

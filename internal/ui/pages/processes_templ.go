@@ -1026,7 +1026,7 @@ func procDrawerBody(d procDetail) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "\" class=\"mt-2 inline-flex items-center gap-1 text-sm text-primary\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "\" class=\"col-start-2 mt-1 inline-flex w-fit items-center gap-1 text-sm text-primary\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1345,7 +1345,7 @@ func procField(f procForm, key string) templ.Component {
 					}()
 				}
 				ctx = templ.InitializeContext(ctx)
-				templ_7745c5c3_Err = kit.Textarea(kit.TextareaProps{ID: f.id(key), Name: key, Value: f.Body, Placeholder: procBodyPlaceholder, Rows: 14, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Class: "font-mono text-[13px]", Attrs: templ.Attributes{"spellcheck": "false"}}).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = kit.Textarea(kit.TextareaProps{ID: f.id(key), Name: key, Value: f.Body, Placeholder: procBodyPlaceholder, Rows: 14, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Class: "font-mono text-[13px] [&]:min-h-60", Attrs: templ.Attributes{"spellcheck": "false"}}).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

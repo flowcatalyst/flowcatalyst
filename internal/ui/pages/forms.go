@@ -1,7 +1,9 @@
 package pages
 
 import (
+	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -157,4 +159,25 @@ func parseForm(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// patchDialogSlot puts a form dialog into its slot by replacing the slot
+// element (Datastar replace mode), not by morphing the slot's children. A
+// morph keeps the <dialog> already there when the new one has the same id (a
+// create dialog, closed, then an edit dialog): its data-init is unchanged,
+// so Datastar does not run it again, the dialog is only `open` (non-modal,
+// below the drawer, no focus trap). Replaced nodes are new, so data-init
+// reopens the dialog as a modal every time.
+func patchDialogSlot(sse *ds.SSE, slotID string, dialog templ.Component) error {
+	slot := templ.ComponentFunc(func(ctx context.Context, w io.Writer) error {
+		if _, err := io.WriteString(w, `<div id="`+kit.ID(slotID)+`">`); err != nil {
+			return err
+		}
+		if err := dialog.Render(ctx, w); err != nil {
+			return err
+		}
+		_, err := io.WriteString(w, `</div>`)
+		return err
+	})
+	return sse.Patch(slot, ds.WithMode(ds.ModeReplace))
 }
