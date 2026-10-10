@@ -61,7 +61,9 @@ func TestClientsPageAgainstPostgres(t *testing.T) {
 	assert.Contains(t, do(req{target: base, datastar: true}), `value="`+ev.ApplicationID+`" checked`)
 
 	do(req{method: http.MethodPost, target: base + "/deactivate", datastar: true, form: url.Values{}})
-	gone, err := clients.FindByID(context.Background(), string(c.ID))
+	inactive, err := clients.FindByID(context.Background(), string(c.ID))
 	require.NoError(t, err)
-	assert.Nil(t, gone, "deactivate runs DeleteClient, as the API: the row is gone")
+	require.NotNil(t, inactive, "deactivate is a soft delete: the row is kept")
+	assert.Equal(t, client.StatusInactive, inactive.Status)
+	assert.Equal(t, "Manual deactivation", deref(inactive.StatusReason))
 }

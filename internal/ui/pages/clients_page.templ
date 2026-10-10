@@ -195,7 +195,7 @@ templ cliDrawerBody(d cliDetail) {
 					}
 				}
 				if d.Perms.Deactivate && d.RawStatus != "INACTIVE" {
-					@poolActionItem("Deactivate Client", "Remove this client. The platform deletes the client record; it cannot be reactivated.") {
+					@poolActionItem("Deactivate Client", "Soft delete this client. Can be reactivated later.") {
 						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Icon: "trash-2", Attrs: confirmTrigger(cliDeactivateDialog, d.ActionBase+"/deactivate")}) {
 							Deactivate
 						}
@@ -222,7 +222,7 @@ templ cliConfirmDialogs(perms cliPerms) {
 		@kit.ConfirmDialog(cliConfirm(cliSuspendDialog, "Suspend Client", "Suspend this client? Users will not be able to access it.", "Suspend", kit.ToneWarn))
 	}
 	if perms.Deactivate {
-		@kit.ConfirmDialog(cliConfirm(cliDeactivateDialog, "Deactivate Client", "Deactivate this client? The platform deletes the client record; this cannot be undone.", "Deactivate", kit.ToneDanger))
+		@kit.ConfirmDialog(cliConfirm(cliDeactivateDialog, "Deactivate Client", "Deactivate this client? This is a soft delete.", "Deactivate", kit.ToneDanger))
 	}
 }
 

@@ -73,8 +73,8 @@ func (o *fakeClientOps) Suspend(_ context.Context, id, reason string) error {
 	return o.act("suspend:" + id + ":" + reason)
 }
 
-func (o *fakeClientOps) Deactivate(_ context.Context, id string) error {
-	return o.act("deactivate:" + id)
+func (o *fakeClientOps) Deactivate(_ context.Context, id, reason string) error {
+	return o.act("deactivate:" + id + ":" + reason)
 }
 
 func (o *fakeClientOps) UpdateApplications(_ context.Context, id string, enabled []string) error {
@@ -149,7 +149,7 @@ func TestClientsActions(t *testing.T) {
 	}
 	out := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/clients/clt_1/applications", datastar: true, multipart: true, form: url.Values{"applicationIds": {"app_1", "app_2"}, "drawer": {"clt_1"}}})
 	mustContain(t, out, "Applications updated", "data: selector #cli-drawer\n")
-	if got := strings.Join(h.ops.actions, ","); got != "activate:clt_2,suspend:clt_1:Manual suspension,deactivate:clt_1,apps:clt_1" {
+	if got := strings.Join(h.ops.actions, ","); got != "activate:clt_2,suspend:clt_1:Manual suspension,deactivate:clt_1:Manual deactivation,apps:clt_1" {
 		t.Errorf("actions = %s", got)
 	}
 	if strings.Join(h.ops.apps[0], ",") != "app_1,app_2" {

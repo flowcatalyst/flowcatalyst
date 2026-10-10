@@ -378,7 +378,12 @@ var (
 			return o.Suspend(ctx, id, "Manual suspension")
 		},
 	}
-	deactivateCliAction = cliAction{check: auth.CanDeactivateClients, run: ClientCommands.Deactivate, flash: flashCliDeactivated, removed: true}
+	deactivateCliAction = cliAction{
+		check: auth.CanDeactivateClients, flash: flashCliDeactivated,
+		run: func(o ClientCommands, ctx context.Context, id string) error {
+			return o.Deactivate(ctx, id, "Manual deactivation")
+		},
+	}
 )
 
 func (h *ClientsPage) activate(w http.ResponseWriter, r *http.Request) {

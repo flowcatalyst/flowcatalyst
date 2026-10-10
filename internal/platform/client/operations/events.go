@@ -12,9 +12,11 @@ const (
 	ClientUpdatedType   = "platform:admin:client:updated"
 	ClientActivatedType = "platform:admin:client:activated"
 	ClientSuspendedType = "platform:admin:client:suspended"
-	ClientNoteAddedType = "platform:admin:client:note-added"
-	ClientDeletedType   = "platform:admin:client:deleted"
-	Source              = "platform:admin"
+	// ClientDeactivatedType: the client was set INACTIVE (a soft delete).
+	ClientDeactivatedType = "platform:admin:client:deactivated"
+	ClientNoteAddedType   = "platform:admin:client:note-added"
+	ClientDeletedType     = "platform:admin:client:deleted"
+	Source                = "platform:admin"
 )
 
 func subjectFor(id string) string { return "platform.client." + id }
@@ -113,6 +115,31 @@ func (e ClientSuspended) ToDataJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		ClientID string `json:"clientId"`
 		Reason   string `json:"reason"`
+	}{e.ClientID, e.Reason})
+}
+
+// ClientDeactivated is emitted when a client is set INACTIVE.
+type ClientDeactivated struct {
+	Metadata usecase.EventMetadata
+	ClientID string
+	Reason   string
+}
+
+func (e ClientDeactivated) EventID() string       { return e.Metadata.EventID }
+func (e ClientDeactivated) EventType() string     { return ClientDeactivatedType }
+func (e ClientDeactivated) SpecVersion() string   { return "1.0" }
+func (e ClientDeactivated) Source() string        { return Source }
+func (e ClientDeactivated) Subject() string       { return subjectFor(e.ClientID) }
+func (e ClientDeactivated) Time() time.Time       { return e.Metadata.OccurredAt }
+func (e ClientDeactivated) PrincipalID() string   { return e.Metadata.PrincipalID }
+func (e ClientDeactivated) CorrelationID() string { return e.Metadata.CorrelationID }
+func (e ClientDeactivated) CausationID() string   { return e.Metadata.CausationID }
+func (e ClientDeactivated) ExecutionID() string   { return e.Metadata.ExecutionID }
+func (e ClientDeactivated) MessageGroup() string  { return groupFor(e.ClientID) }
+func (e ClientDeactivated) ToDataJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		ClientID string `json:"clientId"`
+		Reason   string `json:"reason,omitempty"`
 	}{e.ClientID, e.Reason})
 }
 

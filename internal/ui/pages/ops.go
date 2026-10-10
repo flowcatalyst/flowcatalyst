@@ -352,8 +352,9 @@ type ClientCommands interface {
 	Update(ctx context.Context, cmd clientops.UpdateCommand) error
 	Activate(ctx context.Context, id string) error
 	Suspend(ctx context.Context, id, reason string) error
-	// Deactivate runs what POST /api/clients/{id}/deactivate runs (DeleteClient).
-	Deactivate(ctx context.Context, id string) error
+	// Deactivate runs what POST /api/clients/{id}/deactivate runs
+	// (DeactivateClient: INACTIVE with the reason).
+	Deactivate(ctx context.Context, id, reason string) error
 	UpdateApplications(ctx context.Context, id string, enabledApplicationIDs []string) error
 }
 
@@ -393,9 +394,9 @@ func (o ClientOps) Suspend(ctx context.Context, id, reason string) error {
 	return err
 }
 
-// Deactivate runs DeleteClient, as the API's deactivate does.
-func (o ClientOps) Deactivate(ctx context.Context, id string) error {
-	_, err := usecaseop.Run(ctx, o.UoW, clientops.DeleteClient(o.Repo), clientops.DeleteCommand{ID: id}, auth.NewExecutionContext(ctx))
+// Deactivate runs DeactivateClient, as the API's deactivate does.
+func (o ClientOps) Deactivate(ctx context.Context, id, reason string) error {
+	_, err := usecaseop.Run(ctx, o.UoW, clientops.DeactivateClient(o.Repo), clientops.DeactivateCommand{ID: id, Reason: reason}, auth.NewExecutionContext(ctx))
 	return err
 }
 

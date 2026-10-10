@@ -48,8 +48,8 @@ func Register(api huma.API, s *State) {
 	apiroute.Post(g, "suspendClient", "/api/clients/{id}/suspend", "Suspend a client", http.StatusOK, s.suspend)
 	apiroute.Post(g, "addClientNote", "/api/clients/{id}/notes", "Add a note to a client", http.StatusOK, s.addNote)
 	apiroute.Delete(g, "deleteClient", "/api/clients/{id}", "Delete a client", http.StatusNoContent, s.delete)
-	// Deactivate is an alias for delete (soft-delete with a reason for
-	// the audit log).
+	// Deactivate is the soft delete: the client is set INACTIVE with the
+	// reason and can be reactivated (DELETE removes it).
 	apiroute.Post(g, "deactivateClient", "/api/clients/{id}/deactivate", "Deactivate a client (soft delete)", http.StatusOK, s.deactivate)
 	apiroute.Get(g, "getClientApplications", "/api/clients/{id}/applications", "List applications and their enabled state for the client", s.getApplications)
 	apiroute.Put(g, "updateClientApplications", "/api/clients/{id}/applications", "Replace the client's enabled applications (bulk)", http.StatusNoContent, s.updateApplications)
@@ -225,7 +225,7 @@ func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.E
 	return &apicommon.Empty{}, nil
 }
 
-// ── deactivate (alias for delete with a reason) ──────────────────────────
+// ── deactivate (soft delete: INACTIVE with a reason) ─────────────────────
 
 type deactivateInput struct {
 	ID   ids.ClientID `path:"id"`
@@ -240,7 +240,7 @@ func (s *State) deactivate(ctx context.Context, in *deactivateInput) (*apicommon
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
-	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeleteClient(s.Repo), operations.DeleteCommand{ID: string(in.ID)}, ec); err != nil {
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeactivateClient(s.Repo), operations.DeactivateCommand{ID: string(in.ID), Reason: in.Body.Reason}, ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Out[apicommon.StatusChangeResponse]{Body: apicommon.StatusChangeResponse{Message: "Client deactivated"}}, nil

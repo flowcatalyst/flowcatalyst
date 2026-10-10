@@ -1037,7 +1037,7 @@ func cliDrawerBody(d cliDetail) templ.Component {
 						}
 						return nil
 					})
-					templ_7745c5c3_Err = poolActionItem("Deactivate Client", "Remove this client. The platform deletes the client record; it cannot be reactivated.").Render(templ.WithChildren(ctx, templ_7745c5c3_Var43), templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = poolActionItem("Deactivate Client", "Soft delete this client. Can be reactivated later.").Render(templ.WithChildren(ctx, templ_7745c5c3_Var43), templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -1140,7 +1140,7 @@ func cliConfirmDialogs(perms cliPerms) templ.Component {
 			}
 		}
 		if perms.Deactivate {
-			templ_7745c5c3_Err = kit.ConfirmDialog(cliConfirm(cliDeactivateDialog, "Deactivate Client", "Deactivate this client? The platform deletes the client record; this cannot be undone.", "Deactivate", kit.ToneDanger)).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = kit.ConfirmDialog(cliConfirm(cliDeactivateDialog, "Deactivate Client", "Deactivate this client? This is a soft delete.", "Deactivate", kit.ToneDanger)).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
