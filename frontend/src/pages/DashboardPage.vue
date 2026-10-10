@@ -1,13 +1,22 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useAuthStore } from "@/stores/auth";
 import { eventTypesApi } from "@/api/event-types";
 import { rolesApi } from "@/api/roles";
 import { developerApi } from "@/api/developer";
 import { dashboardApi, type DashboardStats } from "@/api/dashboard";
 import { toast } from "@/utils/errorBus";
+import {
+	canSyncPlatformEventTypes,
+	canSyncPlatformRoles,
+} from "@/utils/admin-permissions";
 
 const authStore = useAuthStore();
+
+// The event-type and role syncs are offered only to those the BFF lets run
+// them (anchor and the sync permissions); Sync All runs the ones offered.
+const canSyncEvents = computed(() => canSyncPlatformEventTypes(authStore.user));
+const canSyncRoles = computed(() => canSyncPlatformRoles(authStore.user));
 
 const syncingEvents = ref(false);
 const syncingRoles = ref(false);
@@ -108,8 +117,8 @@ async function syncPlatformOpenApi() {
 
 async function syncAllPlatform() {
 	await Promise.all([
-		syncPlatformEvents(),
-		syncPlatformRoles(),
+		canSyncEvents.value ? syncPlatformEvents() : Promise.resolve(),
+		canSyncRoles.value ? syncPlatformRoles() : Promise.resolve(),
 		syncPlatformOpenApi(),
 	]);
 }
@@ -212,7 +221,7 @@ const dashboardCards = [
         />
       </div>
       <div class="sync-grid">
-        <div class="sync-card">
+        <div v-if="canSyncEvents" class="sync-card">
           <div class="sync-icon bg-amber"><i class="pi pi-bolt text-amber"></i></div>
           <div class="sync-info">
             <h3 class="sync-title">Event Types</h3>
@@ -227,7 +236,7 @@ const dashboardCards = [
             @click="syncPlatformEvents"
           />
         </div>
-        <div class="sync-card">
+        <div v-if="canSyncRoles" class="sync-card">
           <div class="sync-icon bg-purple"><i class="pi pi-shield text-purple"></i></div>
           <div class="sync-info">
             <h3 class="sync-title">Roles</h3>
