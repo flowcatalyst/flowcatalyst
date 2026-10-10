@@ -39,7 +39,8 @@ func TestMain(m *testing.M) {
 	testpg.RunMain(m)
 }
 
-// TestMintServiceAccountToken pins the admin token mint: anchor-gated, the
+// TestMintServiceAccountToken pins the admin token mint: anchor-gated (with
+// the service-account update permission), the
 // minted bearer is an authority-bearing (token_use=api) token whose subject
 // is the linked SERVICE principal, scope = the flattened ceiling, and a
 // deactivated account refuses.
@@ -70,7 +71,8 @@ func TestMintServiceAccountToken(t *testing.T) {
 		},
 	}
 	anchorCtx := auth.WithContext(context.Background(), &auth.AuthContext{
-		PrincipalID: "prn_minttest_admin", Scope: auth.ScopeAnchor,
+		PrincipalID: "prn_minttest_admin", Scope: auth.ScopeAnchor, AllApplications: true,
+		Permissions: []string{"platform:iam:service-account:update"},
 	})
 
 	out, err := s.mintToken(anchorCtx, &apicommon.IDInput{ID: res.ServiceAccount.ID})
@@ -146,7 +148,8 @@ func TestMintServiceAccountTokenCarriesApplicationScope(t *testing.T) {
 		},
 	}
 	anchorCtx := auth.WithContext(context.Background(), &auth.AuthContext{
-		PrincipalID: "prn_scopedmint_admin", Scope: auth.ScopeAnchor,
+		PrincipalID: "prn_scopedmint_admin", Scope: auth.ScopeAnchor, AllApplications: true,
+		Permissions: []string{"platform:iam:service-account:update"},
 	})
 
 	out, err := s.mintToken(anchorCtx, &apicommon.IDInput{ID: res.ServiceAccount.ID})
@@ -238,7 +241,8 @@ func TestMintStampsLastUsedAt(t *testing.T) {
 		},
 	}
 	anchorCtx := auth.WithContext(context.Background(), &auth.AuthContext{
-		PrincipalID: "prn_lastused_admin", Scope: auth.ScopeAnchor,
+		PrincipalID: "prn_lastused_admin", Scope: auth.ScopeAnchor, AllApplications: true,
+		Permissions: []string{"platform:iam:service-account:update"},
 	})
 
 	_, err = s.mintToken(anchorCtx, &apicommon.IDInput{ID: res.ServiceAccount.ID})

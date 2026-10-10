@@ -150,13 +150,51 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 // delete: the permission, and anchor scope on top of it (owner decision #19).
 // A service account's SERVICE principal is anchor-tier, so with the
 // permission alone a non-anchor administrator could mint an anchor-tier
-// credential for itself — an escalation. The other credential writes
-// (assign roles, regenerate, mint) already required anchor.
+// credential for itself — an escalation. Deactivate, assign roles, the
+// regenerations and the mint follow the same rule (authorizeWrite).
 func requireAnchorWriter(ac *auth.AuthContext, can func(*auth.AuthContext) error) error {
 	if err := can(ac); err != nil {
 		return err
 	}
 	return auth.RequireAnchor(ac)
+}
+
+// requireApplicationReach confines an application-scoped caller (one without
+// all-applications access, such as an application's own service account) to
+// service accounts bound to an application it can access, the rule
+// sdksync's requireAppAccess applies to its syncs: it must not manage a
+// platform-wide service account or another application's. A caller with
+// all-applications access is not confined.
+func requireApplicationReach(ac *auth.AuthContext, applicationID *string) error {
+	if !ac.IsApplicationScoped() {
+		return nil
+	}
+	if applicationID != nil && ac.CanAccessApplication(*applicationID) {
+		return nil
+	}
+	return usecase.Authorization("APPLICATION_ACCESS_REQUIRED",
+		"not authorised for this service account's application")
+}
+
+// authorizeWrite is the gate on every write to an existing service account:
+// the permission for the operation, anchor reach (owner decision #19), and
+// the application confinement above against the account's application.
+func (s *State) authorizeWrite(ctx context.Context, id string, can func(*auth.AuthContext) error) error {
+	ac := auth.FromContext(ctx)
+	if err := requireAnchorWriter(ac, can); err != nil {
+		return err
+	}
+	if !ac.IsApplicationScoped() {
+		return nil
+	}
+	sa, err := s.Repo.FindByID(ctx, id)
+	if err != nil {
+		return usecase.Internal("REPO", "find_by_id failed", err)
+	}
+	if sa == nil {
+		return httperror.NotFound("ServiceAccount", id)
+	}
+	return requireApplicationReach(ac, ids.StringPtr(sa.ApplicationID))
 }
 
 func (s *State) create(ctx context.Context, in *apicommon.In[CreateServiceAccountRequest]) (*apicommon.Out[CreateServiceAccountResponse], error) {
@@ -171,6 +209,9 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreateServiceAccoun
 	// holds all-applications access may grant it.
 	if in.Body.AllApplications != nil && *in.Body.AllApplications && !ac.AllApplications {
 		return nil, httperror.Forbidden("Only an all-applications administrator may grant all-applications access")
+	}
+	if err := requireApplicationReach(ac, in.Body.ApplicationID); err != nil {
+		return nil, err
 	}
 	cmd, err := in.Body.toCommand()
 	if err != nil {
@@ -197,7 +238,7 @@ type updateInput struct {
 }
 
 func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, error) {
-	if err := requireAnchorWriter(auth.FromContext(ctx), auth.CanUpdateServiceAccounts); err != nil {
+	if err := s.authorizeWrite(ctx, in.ID, auth.CanUpdateServiceAccounts); err != nil {
 		return nil, err
 	}
 	cmd, err := in.Body.toCommand(in.ID)
@@ -212,7 +253,7 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, 
 }
 
 func (s *State) deactivate(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	if err := auth.CanUpdateServiceAccounts(auth.FromContext(ctx)); err != nil {
+	if err := s.authorizeWrite(ctx, in.ID, auth.CanUpdateServiceAccounts); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -223,7 +264,7 @@ func (s *State) deactivate(ctx context.Context, in *apicommon.IDInput) (*apicomm
 }
 
 func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	if err := requireAnchorWriter(auth.FromContext(ctx), auth.CanDeleteServiceAccounts); err != nil {
+	if err := s.authorizeWrite(ctx, in.ID, auth.CanDeleteServiceAccounts); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -273,8 +314,13 @@ type assignRolesInput struct {
 	Body AssignRolesRequest
 }
 
+// assignRoles, the two regenerations and mintToken change or hand out the
+// account's credentials or authority: the update permission, anchor reach and
+// the application confinement (authorizeWrite). They checked anchor scope
+// only, so any anchor principal, an application's own service account
+// included, could re-role any account or mint its token.
 func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*apicommon.Out[ServiceAccountRolesAssignedResponse], error) {
-	if err := auth.RequireAnchor(auth.FromContext(ctx)); err != nil {
+	if err := s.authorizeWrite(ctx, in.ID, auth.CanUpdateServiceAccounts); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -298,7 +344,7 @@ func (s *State) assignRoles(ctx context.Context, in *assignRolesInput) (*apicomm
 }
 
 func (s *State) regenerateAuthToken(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[RegenerateAuthTokenResponse], error) {
-	if err := auth.RequireAnchor(auth.FromContext(ctx)); err != nil {
+	if err := s.authorizeWrite(ctx, in.ID, auth.CanUpdateServiceAccounts); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -322,12 +368,13 @@ func (s *State) regenerateAuthToken(ctx context.Context, in *apicommon.IDInput) 
 // mintToken is POST /api/service-accounts/{id}/token: mints the same
 // short-lived, authority-bearing bearer the account would obtain from the
 // client_credentials grant — scope = the linked principal's full permission
-// ceiling — WITHOUT exposing the client secret. Anchor-only (this hands out
-// the service account's live authority) and recorded in the audit trail.
+// ceiling — WITHOUT exposing the client secret. It hands out the service
+// account's live authority: the update permission, anchor reach and the
+// application confinement (authorizeWrite), and recorded in the audit trail.
 // Nothing is persisted; the token simply expires.
 func (s *State) mintToken(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ServiceAccountTokenResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := s.authorizeWrite(ctx, in.ID, auth.CanUpdateServiceAccounts); err != nil {
 		return nil, err
 	}
 	if s.Auth == nil {
@@ -405,7 +452,7 @@ func (s *State) mintToken(ctx context.Context, in *apicommon.IDInput) (*apicommo
 }
 
 func (s *State) regenerateSigningSecret(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[RegenerateSigningSecretResponse], error) {
-	if err := auth.RequireAnchor(auth.FromContext(ctx)); err != nil {
+	if err := s.authorizeWrite(ctx, in.ID, auth.CanUpdateServiceAccounts); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)

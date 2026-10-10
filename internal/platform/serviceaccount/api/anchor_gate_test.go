@@ -42,6 +42,19 @@ func TestServiceAccountWritesRequireAnchor(t *testing.T) {
 	forbidden(t, err)
 	_, err = s.delete(nonAnchor, &apicommon.IDInput{ID: "sac_x"})
 	forbidden(t, err)
+	// Deactivate, assigning roles, the regenerations and the mint follow the
+	// same rule (deactivate checked the permission only).
+	id := &apicommon.IDInput{ID: "sac_x"}
+	_, err = s.deactivate(nonAnchor, id)
+	forbidden(t, err)
+	_, err = s.assignRoles(nonAnchor, &assignRolesInput{ID: "sac_x"})
+	forbidden(t, err)
+	_, err = s.regenerateAuthToken(nonAnchor, id)
+	forbidden(t, err)
+	_, err = s.regenerateSigningSecret(nonAnchor, id)
+	forbidden(t, err)
+	_, err = s.mintToken(nonAnchor, id)
+	forbidden(t, err)
 
 	assert.NoError(t, requireAnchorWriter(&auth.AuthContext{
 		Scope: auth.ScopeAnchor, Permissions: []string{"platform:iam:service-account:delete"},

@@ -31,8 +31,9 @@ func gateRefuses(t *testing.T, perm string, call func(ctx context.Context) error
 }
 
 // Each write needs the permission for its operation, not any of the three
-// (docs/platform-bug-fixes.md): create needs create; update and deactivate
-// need update; delete needs delete.
+// (docs/platform-bug-fixes.md): create needs create; update, deactivate,
+// assigning roles, both regenerations and the token mint need update; delete
+// needs delete. The last four checked anchor scope only.
 func TestWriteGatesCheckTheOperationsPermission(t *testing.T) {
 	s := &State{}
 	const (
@@ -55,6 +56,13 @@ func TestWriteGatesCheckTheOperationsPermission(t *testing.T) {
 		}},
 		"deactivate": {update, func(ctx context.Context) error { _, err := s.deactivate(ctx, id); return err }},
 		"delete":     {del, func(ctx context.Context) error { _, err := s.delete(ctx, id); return err }},
+		"assign roles": {update, func(ctx context.Context) error {
+			_, err := s.assignRoles(ctx, &assignRolesInput{ID: "sac_x"})
+			return err
+		}},
+		"regenerate token":  {update, func(ctx context.Context) error { _, err := s.regenerateAuthToken(ctx, id); return err }},
+		"regenerate secret": {update, func(ctx context.Context) error { _, err := s.regenerateSigningSecret(ctx, id); return err }},
+		"mint token":        {update, func(ctx context.Context) error { _, err := s.mintToken(ctx, id); return err }},
 	}
 	for name, op := range ops {
 		for _, held := range []string{create, update, del} {
