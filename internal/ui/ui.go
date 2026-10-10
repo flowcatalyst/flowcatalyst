@@ -13,6 +13,7 @@ import (
 
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/assets"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/compress"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/ds"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/guard"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
@@ -89,6 +90,9 @@ func Mount(r chi.Router, cfg Config) error {
 
 		r.Group(func(r chi.Router) {
 			r.Use(
+				// Pages and Datastar streams go out compressed (Brotli or
+				// gzip); every guard's own answer too.
+				compress.Handler,
 				platformmw.CorrelationID,
 				cfg.Authenticate,
 				guard.SecurityHeaders,

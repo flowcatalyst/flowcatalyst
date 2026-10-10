@@ -21,6 +21,12 @@
 // into a generic message. Mutating actions pass {retryMaxCount: 0}, because
 // Datastar retries a failed connection up to 10 times otherwise.
 //
+// Compression: the /ui group's middleware (internal/ui/compress) compresses
+// the stream (Brotli or gzip) and flushes its encoder on every event that
+// NewSSE's generator flushes. The SDK's datastar.WithCompression is not used:
+// it never closes its encoder (the stream ends without the gzip trailer or
+// the final Brotli block), sets no Vary and builds its encoders per request.
+//
 // Typical handler:
 //
 //	if ds.IsDatastar(r) {

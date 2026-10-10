@@ -8,6 +8,13 @@
 // name with `no-cache` + ETag revalidation. Pages always link the hashed URL
 // (URL("kit.css")), so a deploy busts caches without any build step.
 //
+// Text assets (CSS, JavaScript, SVG, notices) are also served compressed:
+// each is compressed once, at the best Brotli and gzip levels, on its first
+// request in that coding, and the variant is chosen from Accept-Encoding
+// (Vary: Accept-Encoding, an ETag per variant). They are mounted outside the
+// page group, so the page compression (internal/ui/compress) never sees
+// them.
+//
 // Provenance (kit commit, Tailwind version, Datastar version and hash) is in
 // KIT_SOURCE next to this file; the refresh procedure is in docs/ui/README.md.
 package assets
@@ -23,6 +30,9 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	"sync"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/compress"
 )
 
 // Prefix is the URL path the assets are served under.
@@ -46,6 +56,28 @@ type file struct {
 	etag   string
 	ctype  string
 	body   []byte
+	// text files are served compressed too; variants holds one encoding per
+	// coding, made on first use.
+	text     bool
+	variants map[string]*variant
+}
+
+type variant struct {
+	once sync.Once
+	body []byte
+}
+
+// encoded is the body in coding (compressed once).
+func (f *file) encoded(coding string) []byte {
+	v := f.variants[coding]
+	v.once.Do(func() { v.body = compress.Encode(coding, f.body) })
+	return v.body
+}
+
+// variantETag is the ETag of the body in coding (a representation of its
+// own, RFC 9110 8.8.3).
+func (f *file) variantETag(coding string) string {
+	return strings.TrimSuffix(f.etag, `"`) + "-" + coding + `"`
 }
 
 var (
@@ -75,6 +107,10 @@ func init() {
 			etag:   `"` + h[:16] + `"`,
 			ctype:  contentType(ext),
 			body:   body,
+		}
+		if strings.HasPrefix(f.ctype, "text/") || f.ctype == "image/svg+xml" {
+			f.text = true
+			f.variants = map[string]*variant{compress.Brotli: {}, compress.Gzip: {}}
 		}
 		byName[f.name] = f
 		byHashed[f.hashed] = f
@@ -145,22 +181,33 @@ func Handler() http.Handler {
 			return
 		}
 		h := w.Header()
+		body, etag, coding := f.body, f.etag, ""
+		if f.text {
+			compress.AddVary(h)
+			if coding = compress.Negotiate(r.Header.Get("Accept-Encoding")); coding != "" {
+				etag = f.variantETag(coding)
+			}
+		}
 		h.Set("Content-Type", f.ctype)
 		h.Set("X-Content-Type-Options", "nosniff")
-		h.Set("ETag", f.etag)
+		h.Set("ETag", etag)
 		if immutable {
 			h.Set("Cache-Control", "public, max-age=31536000, immutable")
 		} else {
 			h.Set("Cache-Control", "no-cache")
 		}
-		if match := r.Header.Get("If-None-Match"); match != "" && strings.Contains(match, f.etag) {
+		if match := r.Header.Get("If-None-Match"); match != "" && strings.Contains(match, etag) {
 			w.WriteHeader(http.StatusNotModified)
 			return
 		}
-		h.Set("Content-Length", fmt.Sprint(len(f.body)))
+		if coding != "" {
+			body = f.encoded(coding)
+			h.Set("Content-Encoding", coding)
+		}
+		h.Set("Content-Length", fmt.Sprint(len(body)))
 		if r.Method == http.MethodHead {
 			return
 		}
-		_, _ = w.Write(f.body)
+		_, _ = w.Write(body)
 	})
 }

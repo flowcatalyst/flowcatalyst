@@ -2,16 +2,20 @@ package ui
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/andybalholm/brotli"
 	"github.com/go-chi/chi/v5"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/assets"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/compress"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/ds"
 )
 
@@ -170,6 +174,64 @@ func TestUIRouteGroup(t *testing.T) {
 			if !strings.Contains(c, want) {
 				t.Errorf("Set-Cookie %q lacks %s", c, want)
 			}
+		}
+	})
+	t.Run("pages are compressed and keep the security headers", func(t *testing.T) {
+		const chrome = "gzip, deflate, br, zstd"
+		rec := do(t, h, req{method: http.MethodGet, target: "/ui/dispatch-pools", session: "admin", headers: map[string]string{"Accept-Encoding": chrome}})
+		hdr := rec.Header()
+		if rec.Code != http.StatusOK || hdr.Get("Content-Encoding") != compress.Brotli || hdr.Get("Vary") != "Accept-Encoding" {
+			t.Fatalf("status %d headers %v", rec.Code, hdr)
+		}
+		if hdr.Get("Content-Security-Policy") == "" || hdr.Get("Cache-Control") != "no-store" || hdr.Get("X-Frame-Options") != "DENY" {
+			t.Errorf("security headers missing: %v", hdr)
+		}
+		html, err := io.ReadAll(brotli.NewReader(rec.Body))
+		if err != nil || !strings.Contains(string(html), `<span class="fc-user-name">Ada Lovelace</span>`) {
+			t.Errorf("decoded page: %v", err)
+		}
+		live := do(t, h, req{method: http.MethodGet, target: "/ui/dispatch-pools", session: "admin", headers: map[string]string{"Accept-Encoding": "gzip", ds.RequestHeader: "true"}})
+		if live.Header().Get("Content-Encoding") != compress.Gzip || live.Header().Get("Content-Type") != "text/event-stream" || live.Header().Get("Content-Security-Policy") == "" {
+			t.Errorf("live headers %v", live.Header())
+		}
+		// The CSRF guard still refuses a cross-site post (compressed or not).
+		refused := do(t, h, req{
+			method: http.MethodPost, target: "/ui/logout", session: "admin",
+			headers: map[string]string{"Sec-Fetch-Site": "cross-site", "Origin": "https://evil.example", "Accept-Encoding": chrome},
+		})
+		if refused.Code != http.StatusForbidden || refused.Header().Get("Set-Cookie") != "" {
+			t.Errorf("cross-site post: %d", refused.Code)
+		}
+	})
+	t.Run("text assets are served pre-compressed, once per variant", func(t *testing.T) {
+		url := assets.URL("kit.css")
+		plain := do(t, h, req{method: http.MethodGet, target: url})
+		br := do(t, h, req{method: http.MethodGet, target: url, headers: map[string]string{"Accept-Encoding": "gzip, br"}})
+		gz := do(t, h, req{method: http.MethodGet, target: url, headers: map[string]string{"Accept-Encoding": "gzip"}})
+		if plain.Header().Get("Content-Encoding") != "" || plain.Header().Get("Vary") != "Accept-Encoding" {
+			t.Errorf("plain: %v", plain.Header())
+		}
+		for coding, rec := range map[string]*httptest.ResponseRecorder{compress.Brotli: br, compress.Gzip: gz} {
+			hdr := rec.Header()
+			if hdr.Get("Content-Encoding") != coding || hdr.Get("Vary") != "Accept-Encoding" || hdr.Get("ETag") == plain.Header().Get("ETag") ||
+				!strings.Contains(hdr.Get("Cache-Control"), "immutable") || hdr.Get("Content-Length") != strconv.Itoa(rec.Body.Len()) || rec.Body.Len() >= plain.Body.Len()/3 {
+				t.Errorf("%s: %v (%d bytes, plain %d)", coding, hdr, rec.Body.Len(), plain.Body.Len())
+			}
+		}
+		if got, err := io.ReadAll(brotli.NewReader(br.Body)); err != nil || string(got) != plain.Body.String() {
+			t.Errorf("brotli variant does not decode to the file: %v", err)
+		}
+		again := do(t, h, req{method: http.MethodGet, target: url, headers: map[string]string{"Accept-Encoding": "br", "If-None-Match": br.Header().Get("ETag")}})
+		if again.Code != http.StatusNotModified {
+			t.Errorf("revalidation of the br variant: %d", again.Code)
+		}
+		other := do(t, h, req{method: http.MethodGet, target: url, headers: map[string]string{"Accept-Encoding": "gzip", "If-None-Match": br.Header().Get("ETag")}})
+		if other.Code != http.StatusOK || other.Header().Get("Content-Encoding") != compress.Gzip {
+			t.Errorf("the br ETag must not validate the gzip variant: %d", other.Code)
+		}
+		js := do(t, h, req{method: http.MethodGet, target: assets.URL("datastar.js"), headers: map[string]string{"Accept-Encoding": "br"}})
+		if js.Header().Get("Content-Encoding") != compress.Brotli {
+			t.Errorf("datastar.js: %v", js.Header())
 		}
 	})
 	t.Run("GET cannot sign out", func(t *testing.T) {
