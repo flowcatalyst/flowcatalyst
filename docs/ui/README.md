@@ -11,8 +11,10 @@ flash stack and the Datastar error contract, an icon sprite, now 90 icons), and 
 `/ui/connections` at parity with the SPA pages: list, record drawer, create and edit dialogs,
 state actions and delete behind confirmations; the app shell works at phone width and dark mode is
 rendered by the server from a theme cookie. Phase 3 (core operations): `/ui/event-types` and
-`/ui/subscriptions`, `/ui/applications`, `/ui/clients`, `/ui/scheduled-jobs`, `/ui/dispatch-jobs`
-and `/ui/events` at parity (sections below); Processes is not ported (owner decision below).
+`/ui/subscriptions`, `/ui/applications`, `/ui/clients`, `/ui/scheduled-jobs`, `/ui/dispatch-jobs`,
+`/ui/events` and `/ui/processes` at parity (sections below; Processes shows the diagram's source, not
+the rendered diagram, by owner ruling). Pages, Datastar streams and assets are compressed
+("Compression" below).
 
 ## Architecture
 
@@ -24,6 +26,7 @@ internal/ui/
   htmlnorm/      HTML normaliser behind the conformance test
   shell/         page layout around the kit app shell; sidebar navigation; error pages
   guard/         CSRF, session negotiation, role-less gate, security headers
+  compress/      Brotli/gzip for pages and Datastar streams (middleware), Accept-Encoding negotiation
   pages/         page handlers: dispatch_pools*.go/.templ, connections*.go/.templ and
                  event_types*.go/.templ (list, drawer, form, actions), list.go (the URL as
                  list state: search, status, multi-valued facets, sort, page and rows),
@@ -37,7 +40,7 @@ internal/schemacodegen/      Go port of the SPA's schema code generator, highlig
                              utils/schema-export.ts), byte-identical to the TS on 47 golden inputs
 ```
 
-Request path: `CorrelationID` → the platform `Authenticator` (same configuration as the `/api`
+Request path: `compress.Handler` → `CorrelationID` → the platform `Authenticator` (same configuration as the `/api`
 group, so the `fc_session` cookie is read and resolved the same way) → `SecurityHeaders` → `CSRF`
 → `RequireSession` → `ProfileOnly` → sprite context → page handler. Assets (`/ui/assets/*`) are
 public and served before the guards.
@@ -137,6 +140,13 @@ refresh after an action; `httptest` does not reproduce it).
   to fields (`poolFieldCodes`), the rest goes to the region with `shell.Classify`'s message.
   Success closes the dialog (`ds.CloseDialog`), re-renders the table the user is on (the view
   comes from the `Referer`, which live filtering keeps current) and flashes.
+- **Dialog slot: replace, do not morph** (found on the processes page): patching a form dialog into
+  its slot with `ds.Inner` morphs the slot's children, so a second dialog on the same page (create,
+  closed, then edit: the same `<dialog id>`, the same `data-init`) is morphed in place and its
+  `data-init` (`showModal()`) does not run again: it opens non-modal, below the drawer, without the
+  focus trap. `patchDialogSlot` (`forms.go`) replaces the slot element, so the dialog is new every
+  time. Only `/ui/processes` uses it so far; the other pages' `showForm` should switch (open item
+  below).
 - **Confirmations**: one `kit.ConfirmDialog` per action, shared by the rows and the drawer
   (`kit.OpenConfirm` sets the form's action from the trigger's `data-action`); it posts with
   `kit.SubmitConfirm` and closes at once, the outcome is a flash. Only the dialogs the user may use
@@ -459,6 +469,73 @@ options follow the levels chosen above them (the SPA's lists are static and its 
 filters have search boxes (the SPA's have `filter`) ; paging as above; the Context Data section shows
 the event's context when the read model has it (it never does: bug 22).
 
+### Processes (`/ui/processes`)
+
+Mirrors `ProcessListPage`, `ProcessDetailDrawer`, `ProcessCreatePage` and `ProcessEditPage`. Routes as
+connections: the list (`?q&app&subdomain&status&page&rows`, the SPA's URL keys), `/new`, `/{id}`,
+`/{id}/edit`, `/{id}/{archive,delete}` (POST).
+
+- Every check is the API's, per operation (`internal/platform/process/api`, per-operation since
+  `1f83887`): `CanReadProcesses` for the list and the drawer, create `CanCreateProcesses`, edit and
+  archive `CanUpdateProcesses`, delete `CanDeleteProcesses`. Each runs the API's use case
+  (`pages.ProcessOps`). Processes are global (no client scoping, as the API).
+- List: as the SPA, every process of both statuses is read once and filtered on the server: search
+  over code and name, Application, Subdomain (options follow the chosen application; a live answer
+  patches them) and Status selects, 50-row pages (25/50/100/250). No sortable columns (the SPA has
+  none; the order is by code). A chosen application or subdomain that is not an option is dropped
+  from the canonical URL.
+- Drawer: description, Edit and Archive for a CURRENT process, Delete for an ARCHIVED one (the SPA's
+  guards; the use cases do not enforce them, bug 23), tags. **The diagram is shown as its source**
+  (kit code block, escaped) under a notice that rendering is not in the new UI yet, with a link to the
+  process in the current UI (`/processes/{id}`), which renders it and has the SVG/PNG downloads
+  (owner ruling: Mermaid is not vendored). A non-Mermaid diagram type is named in the notice.
+- Create and edit are form dialogs with the SPA's fields: code (create only), name, description, tags
+  (comma-separated: trimmed, blanks dropped; an emptied field clears them, as the SPA sends `[]`) and
+  the Mermaid source (verbatim). The SPA's own check (code and name required) is a field error; the use
+  case's code errors (`INVALID_CODE_FORMAT`, `CODE_EXISTS`) land on Code. Create opens the new process
+  in the drawer, as the SPA navigates to it.
+
+Differences from the SPA: dialogs instead of full-page editors; **Archive asks for confirmation** (the
+SPA archives at once; owner ruling: archive and delete go through the shared confirmation); the row
+Edit is disabled with "Archived processes cannot be edited." for an archived process (the SPA's pencil
+opens its editor, bug 24); no rendered diagram, no SVG/PNG download (link to the current UI instead);
+the flash says "Process created" etc. without the code (flash keys carry no request text).
+
+## Compression
+
+`internal/ui/compress` (the first middleware of the page group) compresses `text/html` and
+`text/event-stream` with Brotli (level 5) or gzip (level 6), whichever `Accept-Encoding` prefers
+(q-values honoured, `q=0` refuses, Brotli on a tie). Every response of those types gets `Vary:
+Accept-Encoding`, compressed or not; anything else passes untouched (a response that already has a
+`Content-Encoding`, the event-type zip export, plain-text refusals, 204/304). The decision is taken
+when the header is committed, including by the first `Flush` (how the Datastar SDK starts a
+stream). Every `Flush` flushes the encoder and then the connection, so Datastar events still arrive
+one at a time (`TestStreamFlushesEachEvent` sends an event, waits until the client has decoded it,
+then sends the next; it fails, mutation-tested, when the encoder is not flushed). The encoder is
+closed (gzip trailer, last Brotli block) and pooled when the handler returns. Security headers, the
+CSRF guard and session negotiation are unchanged (`ui_test.go`: a compressed page keeps CSP,
+`no-store` and `X-Frame-Options`; a cross-site post is still refused).
+
+Not used, and why:
+- **The Datastar SDK's `datastar.WithCompression`** (the owner's first suggestion for streams): it
+  never closes its encoder, so every stream ends without the gzip trailer or the final Brotli block (a
+  strict decoder reports `unexpected EOF`; checked with the SDK 1.2.2), sets no `Vary`, and builds all
+  four encoders (zstd included) on every request. `ds.NewSSE` is unchanged; the middleware compresses
+  its stream.
+- **chi's `middleware.Compress`**: when a handler flushes before writing (the Datastar SDK does), the
+  header goes out without `Content-Encoding` and the body is then gzipped anyway (checked: the client
+  received gzip bytes with no encoding header, plus a "superfluous WriteHeader" log). It also matches
+  `gzip;q=0` as accepting gzip and sets `Vary` only on compressed responses.
+
+**Assets** (`/ui/assets/`, outside the page group, so never compressed twice): text files (CSS, JS,
+SVG, notices) are compressed once per coding at the best level on their first request in it and served
+by `Accept-Encoding`, with `Vary`, the right `Content-Length` and their own ETag per variant (a
+Brotli ETag does not validate the gzip variant). kit.css 105 KB → 16.6 KB, datastar.js 34 KB → 12.2 KB,
+the sprite 25 KB → 3.5 KB (Brotli).
+
+Levels: on the 1,000-row dispatch-jobs stream (2.9 MB, seeded data), Brotli 4 → 49 KB in 5.9 ms,
+5 → 38 KB in 7.7 ms, 6 → 37 KB in 7.8 ms; gzip 5 → 91 KB in 2.9 ms, 6 → 83 KB in 3.8 ms (Apple M4 Pro).
+
 ## CSRF
 
 Sessions are the `fc_session` cookie (HttpOnly, `SameSite=Lax`, Secure outside dev), so
@@ -713,6 +790,39 @@ native (no-JavaScript) post/redirect/get path (unit tests cover it), system mode
     `context`; and `GET /api/events/{id}` reads `msg_events_read`, which has no context column, so the
     field is always empty anyway (the debug raw view reads the write table and has it).
 
+23. **Process edit/delete rules live only in the SPA**: the drawer offers Edit and Archive for a CURRENT
+    process and Delete for an ARCHIVED one, but `UpdateProcess` edits an archived process and
+    `DeleteProcess` deletes a current one (the API, and so the SDK, can do both).
+24. The SPA's row pencil opens the full-page editor for an archived process, although its drawer hides
+    Edit for archived processes (as bug 7 for event types).
+25. The SPA's process edit sends `description: ""` for a blank field, which stores an empty string, not
+    NULL (the use case sets any provided value; both UIs show "—" for either). The /ui page sends the
+    same body.
+
+### Processes and compression: verification (2026-10-10)
+
+- Unit tests (`processes_test.go`: list, facets with the dependent subdomain options and pruning, the
+  search fields, empty states, permissions per operation incl. delete-only and update-only users, the
+  drawer for current/archived/non-Mermaid processes with the source escaped, create and edit bodies
+  (tags parsing, description clearing, verbatim source), field errors, the replace-mode dialog patch,
+  archive/delete with drawer refresh/close, an internal error, the native post's flash) and
+  `processes_pg_test.go` (embedded Postgres: create with tags and source, duplicate code on its field,
+  facets, drawer, edit clearing tags and description, archive, delete; 4 audit rows).
+  `internal/ui/compress` (negotiation table, pages, pass-through cases, the event-by-event stream over
+  a real connection for Brotli and gzip) and `ui_test.go` (compressed page with the security headers,
+  live stream, CSRF refusal, the asset variants and their ETags).
+- Chrome on the isolated instance (ports 18080/19090, embedded PG 25432, own data dir and `HOME`):
+  live application filter (subdomain options patched, popover open, URL replaced), drawer, Archive and
+  Delete through the confirmations (flash, drawer refreshed / closed, table re-rendered), create with a
+  bad code (error on Code, focus there) then a good one (dialog closed, drawer opened, tags parsed,
+  markup in the source escaped), edit clearing the tags, "Open in the current UI" (the SPA's drawer
+  renders the diagram). Dark mode on desktop. Headless Chrome at 390×844, light and dark: list,
+  filters, drawer, create and edit dialogs; no horizontal page scroll, no console problems. Found and
+  fixed in the browser: the second dialog of a visit opened non-modal (above, "Dialog slot"), the
+  link in the drawer's notice wrapped one word per line.
+- Not exercised in a browser: the native (no-JavaScript) posts (unit tests cover them), Firefox/Safari
+  (their decoding of the compressed streams in particular), screen readers.
+
 ### Subscriptions: verification (2026-10-10)
 
 Unit tests (`subscriptions_test.go`: list, filters, sort, permissions per operation incl. a delete-only
@@ -786,8 +896,32 @@ Measured on an Apple M4 Pro, loopback, 100k jobs in the projection:
 
 For comparison the SPA's `GET /api/dispatch-jobs` answers 200 rows in 1.8 ms (110 KB JSON, 5 KB
 gzip) and 1,000 in 4.5 ms (512 KB). Before the cache, the two `DISTINCT` queries made a live request
-13 ms (200 rows). **`/ui` responses are not compressed**: a 200-row list is 600 KB on the wire where
-gzip would send 24 KB (brotli 13 KB); see owner decisions. Most of the browser's apply time at 1,000
+13 ms (200 rows). The sizes above are uncompressed; `/ui` is compressed since 2026-10-10 (below).
+
+**With compression** (re-measured 2026-10-10, same machine, 100,000 seeded jobs; curl medians of 10,
+headless Chrome medians of 6 page loads and 10 live filter changes; Chrome negotiates Brotli):
+
+| 1,000 rows | before (uncompressed) | Brotli | gzip |
+|---|---|---|---|
+| full page on the wire (decoded 2.93 MB) | 2.93 MB | 43 KB | 88 KB |
+| live patch on the wire (decoded 2.90 MB) | 2.90 MB | 39 KB | 84 KB |
+| server, full page (curl, loopback) | 19.7 ms | 21.8 ms | 20.5 ms |
+| server, live request (curl, loopback) | 20.4 ms | 22.4 ms | 21.3 ms |
+| Chrome, loopback: page response / DCL | 33–38 ms / 146–210 ms | 44–59 ms / 171–178 ms | 29–35 ms / 196–220 ms |
+| Chrome, loopback: filter click → rows applied | 249–274 ms | 297–300 ms | 264–270 ms |
+| Chrome, 50 Mbit/s + 20 ms: page response / DCL | 495 ms / 550 ms | 52 ms / 257 ms | - |
+| Chrome, 50 Mbit/s + 20 ms: filter click → rows applied | 722 ms | 327 ms | - |
+
+| 200 rows | before | Brotli | gzip |
+|---|---|---|---|
+| full page / live patch on the wire | 633 KB / 603 KB | 16 KB / 12 KB | 25 KB / 20 KB |
+| server, live request (curl, loopback) | 4.6 ms | 5.4 ms | 5.3 ms |
+| Chrome, 50 Mbit/s + 20 ms: filter click → rows applied | 198 ms | 82 ms | - |
+
+On loopback Brotli costs time at 1,000 rows: ~2 ms of server time by curl (the encoder runs while the
+stream is written), but 25–50 ms more from click to applied rows in Chrome (the browser's decode of
+2.9 MB; gzip is within the ±25 ms run-to-run noise). At 200 rows the difference is lost in the noise.
+On any real link the transfer it saves dominates (50 Mbit/s: 722 → 327 ms). The seeded rows are regular, so real data compresses somewhat less. Most of the browser's apply time at 1,000
 rows is Datastar scanning the new rows' attributes (each row carries a `data-init` for its time, two
 links' `data-on:click` and the row requeue's).
 
@@ -834,15 +968,18 @@ checkbox, two live links and the requeue button each carry Datastar attributes; 
   `Cursor` field and an `id` tie-breaker in the repository's list query. Keep?
 - **Dispatch jobs date range in UTC days** (the SPA: the browser's zone). Pass the viewer's zone (a
   hidden field or cookie) instead?
-- **Compression for `/ui`**: HTML pages and Datastar streams go out uncompressed (600 KB for a
-  200-row dispatch-job list; 24 KB gzipped). The Datastar Go SDK can compress its streams
-  (`datastar.WithCompression`) and chi has `middleware.Compress` for pages, both already in the module
-  graph. Turn it on for `/ui` (or rely on the proxy)?
+- **Compression for `/ui`: done** (owner ruling 2026-10-10), but **not with the two components the
+  ruling named**: the Datastar SDK's stream compression leaves every stream unterminated and chi's
+  middleware sends gzip bytes without `Content-Encoding` after an early flush (both checked; "Compression"
+  above), so one small middleware on the standard library and `andybalholm/brotli` (already in the module
+  graph through the Datastar SDK; now a direct requirement) compresses pages and streams. Keep, or should
+  streams be left to the SDK once it closes its encoder?
 - **Filter-options scoping** (bug 18): scope `DistinctValues` to the caller's tenants?
 - **Dispatch Jobs and Events sidebar entries** now link to their `/ui` pages in the `/ui` sidebar.
-- **Processes (not ported)**: the drawer's main content is the process diagram rendered by Mermaid in
-  the browser (`ProcessDetailDrawer.vue`, lazy `import("mermaid")`); the create page links to Mermaid
-  syntax. A server-rendered page needs either a vendored Mermaid bundle served from `/ui/assets` and
-  started by a small island (a new dependency of a few MB minified, and the kit's first script beyond
-  Datastar) or a server-side renderer (none in Go). The list, create, edit, archive and delete could be
-  ported now with the diagram shown as its source text. Which?
+- **Processes: ported with the diagram as source** (owner ruling 2026-10-10: no vendored Mermaid; a
+  link to the current UI for the rendered diagram). The sidebar entry links to `/ui/processes`. Open:
+  render the diagram later (vendored Mermaid island or a server-side renderer)?
+- **Process guards** (bug 23): should `UpdateProcess` refuse an archived process and `DeleteProcess` a
+  current one, as the SPA's buttons imply?
+- **Dialog slot morph** (found on processes, affects every ported page with form dialogs): switch the
+  other pages' `showForm` to `patchDialogSlot`? Not done here (those pages are another session's).
