@@ -4,13 +4,17 @@ import (
 	"context"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
+	appops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/operations"
+	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	connops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	etops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/seed"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
 	subops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription/operations"
@@ -265,4 +269,70 @@ func (o SubscriptionOps) Resume(ctx context.Context, id string) error {
 func (o SubscriptionOps) Delete(ctx context.Context, id string) error {
 	_, err := usecaseop.Run(ctx, o.UoW, subops.DeleteSubscription(o.Repo), subops.DeleteCommand{ID: id}, auth.NewExecutionContext(ctx))
 	return err
+}
+
+// ApplicationCommands are the application operations the applications page
+// runs; ApplicationOps runs the API's use cases.
+type ApplicationCommands interface {
+	Create(ctx context.Context, cmd appops.CreateCommand) (string, error)
+	Update(ctx context.Context, cmd appops.UpdateCommand) error
+	Activate(ctx context.Context, id string) error
+	Deactivate(ctx context.Context, id string) error
+	Delete(ctx context.Context, id string) error
+	ProvisionServiceAccount(ctx context.Context, id string) (appops.ProvisionServiceAccountResult, error)
+	ProvisionLoginClient(ctx context.Context, cmd appops.ProvisionLoginClientCommand) (appops.ProvisionLoginClientResult, error)
+}
+
+// ApplicationOps runs the application use cases through the unit of work,
+// exactly as internal/platform/application/api does.
+type ApplicationOps struct {
+	Repo            *application.Repository
+	ServiceAccounts *serviceaccount.Repository
+	Principals      *principal.Repository
+	OAuthClients    *platformauth.OAuthClientRepo
+	UoW             *usecasepgx.UnitOfWork
+}
+
+// Create runs CreateApplication and returns the new application's id.
+func (o ApplicationOps) Create(ctx context.Context, cmd appops.CreateCommand) (string, error) {
+	ev, err := usecaseop.Run(ctx, o.UoW, appops.CreateApplication(o.Repo), cmd, auth.NewExecutionContext(ctx))
+	if err != nil {
+		return "", err
+	}
+	return ev.ApplicationID, nil
+}
+
+// Update runs UpdateApplication.
+func (o ApplicationOps) Update(ctx context.Context, cmd appops.UpdateCommand) error {
+	_, err := usecaseop.Run(ctx, o.UoW, appops.UpdateApplication(o.Repo), cmd, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// Activate runs ActivateApplication.
+func (o ApplicationOps) Activate(ctx context.Context, id string) error {
+	_, err := usecaseop.Run(ctx, o.UoW, appops.ActivateApplication(o.Repo), appops.ActivateCommand{ID: id}, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// Deactivate runs DeactivateApplication.
+func (o ApplicationOps) Deactivate(ctx context.Context, id string) error {
+	_, err := usecaseop.Run(ctx, o.UoW, appops.DeactivateApplication(o.Repo), appops.DeactivateCommand{ID: id}, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// Delete runs DeleteApplication (refused while references remain).
+func (o ApplicationOps) Delete(ctx context.Context, id string) error {
+	_, err := usecaseop.Run(ctx, o.UoW, appops.DeleteApplication(o.Repo), appops.DeleteCommand{ID: id}, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// ProvisionServiceAccount runs ProvisionServiceAccount (one transaction).
+func (o ApplicationOps) ProvisionServiceAccount(ctx context.Context, id string) (appops.ProvisionServiceAccountResult, error) {
+	return usecaseop.RunTx(ctx, o.UoW, appops.ProvisionServiceAccount(o.Repo, o.ServiceAccounts, o.Principals, o.OAuthClients),
+		appops.ProvisionServiceAccountCommand{ApplicationID: id}, auth.NewExecutionContext(ctx))
+}
+
+// ProvisionLoginClient runs operations.ProvisionLoginClient.
+func (o ApplicationOps) ProvisionLoginClient(ctx context.Context, cmd appops.ProvisionLoginClientCommand) (appops.ProvisionLoginClientResult, error) {
+	return appops.ProvisionLoginClient(ctx, o.UoW, o.Repo, o.OAuthClients, cmd, auth.NewExecutionContext(ctx))
 }

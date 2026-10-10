@@ -32,6 +32,12 @@ const (
 	flashSubPaused  = "subscription-paused"
 	flashSubResumed = "subscription-resumed"
 	flashSubDeleted = "subscription-deleted"
+
+	flashAppCreated     = "application-created"
+	flashAppUpdated     = "application-updated"
+	flashAppActivated   = "application-activated"
+	flashAppDeactivated = "application-deactivated"
+	flashAppDeleted     = "application-deleted"
 )
 
 // FlashMessages is the table the shell maps flash keys through
@@ -64,6 +70,12 @@ var FlashMessages = map[string]kit.FlashMessageProps{
 	flashSubPaused:  success("Subscription paused"),
 	flashSubResumed: success("Subscription resumed"),
 	flashSubDeleted: success("Subscription deleted"),
+
+	flashAppCreated:     success("Application created"),
+	flashAppUpdated:     success("Application updated"),
+	flashAppActivated:   success("Application activated"),
+	flashAppDeactivated: success("Application deactivated"),
+	flashAppDeleted:     success("Application deleted"),
 }
 
 // success is the SPA's toast.success("Success", detail).

@@ -7,8 +7,10 @@ import (
 	"runtime/debug"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/appdocs"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/pages"
@@ -21,7 +23,7 @@ import (
 // so the fc_session cookie and, in dev, the test headers behave the same) and
 // adds the UI's own CSRF, session and role guards. Handlers read the
 // repositories directly, with the API handlers' permission checks.
-func registerUI(r chi.Router, cfg EnvCfg, uow *usecasepgx.UnitOfWork, repos *repoSet, svcs *serviceSet) error {
+func registerUI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usecasepgx.UnitOfWork, repos *repoSet, svcs *serviceSet) error {
 	return ui.Mount(r, ui.Config{
 		Authenticate: platformmw.Authenticator(platformmw.AuthConfig{
 			Provider:         svcs.authProvider,
@@ -46,17 +48,24 @@ func registerUI(r chi.Router, cfg EnvCfg, uow *usecasepgx.UnitOfWork, repos *rep
 			}
 			return ""
 		},
-		DispatchPools:   repos.dispatchPoolRepo,
-		DispatchPoolOps: pages.PoolOps{Repo: repos.dispatchPoolRepo, UoW: uow},
-		Clients:         repos.clientRepo,
-		Connections:     repos.connectionRepo,
-		ConnectionOps:   pages.ConnectionOps{Repo: repos.connectionRepo, Apps: repos.applicationRepo, Subs: repos.subscriptionRepo, UoW: uow},
-		ServiceAccounts: repos.serviceAccountRepo,
-		EventTypes:      repos.eventTypeRepo,
-		EventTypeOps:    pages.EventTypeOps{Repo: repos.eventTypeRepo, UoW: uow},
-		Applications:    repos.applicationRepo,
-		Subscriptions:   repos.subscriptionRepo,
-		SubscriptionOps: pages.SubscriptionOps{Repo: repos.subscriptionRepo, UoW: uow},
+		DispatchPools:    repos.dispatchPoolRepo,
+		DispatchPoolOps:  pages.PoolOps{Repo: repos.dispatchPoolRepo, UoW: uow},
+		Clients:          repos.clientRepo,
+		Connections:      repos.connectionRepo,
+		ConnectionOps:    pages.ConnectionOps{Repo: repos.connectionRepo, Apps: repos.applicationRepo, Subs: repos.subscriptionRepo, UoW: uow},
+		ServiceAccounts:  repos.serviceAccountRepo,
+		EventTypes:       repos.eventTypeRepo,
+		EventTypeOps:     pages.EventTypeOps{Repo: repos.eventTypeRepo, UoW: uow},
+		Applications:     repos.applicationRepo,
+		Subscriptions:    repos.subscriptionRepo,
+		SubscriptionOps:  pages.SubscriptionOps{Repo: repos.subscriptionRepo, UoW: uow},
+		ApplicationStore: repos.applicationRepo,
+		ApplicationOps: pages.ApplicationOps{
+			Repo: repos.applicationRepo, ServiceAccounts: repos.serviceAccountRepo, Principals: repos.principalRepo,
+			OAuthClients: repos.authRepo.OAuthClients, UoW: uow,
+		},
+		LoginClients: repos.authRepo.OAuthClients,
+		AppDocs:      appdocs.NewRepository(pool),
 	})
 }
 

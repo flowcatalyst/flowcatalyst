@@ -11,7 +11,8 @@ flash stack and the Datastar error contract, an icon sprite, now 90 icons), and 
 `/ui/connections` at parity with the SPA pages: list, record drawer, create and edit dialogs,
 state actions and delete behind confirmations; the app shell works at phone width and dark mode is
 rendered by the server from a theme cookie. Phase 3 (core operations): `/ui/event-types` and
-`/ui/subscriptions` at parity (sections below); the other core areas are not ported yet.
+`/ui/subscriptions` and `/ui/applications` at parity (sections below); the other core areas are not
+ported yet.
 
 ## Architecture
 
@@ -315,6 +316,32 @@ dialog is not ported (create the connection on the Connections page first); the 
 is a select of active connections (the SPA's is a free-text id) and a blank choice leaves the
 connection unchanged (the SPA stores an empty id, bug 12).
 
+### Applications (`/ui/applications`)
+
+Mirrors `ApplicationListPage`, `ApplicationCreateDrawer` and `ApplicationDetailDrawer`. Routes as
+connections (`activate`/`deactivate`/`delete`), plus `/{id}/provision-service-account` and
+`/{id}/provision-login-client` (POST).
+
+- Reads: `GET /api/applications`'s checks (`CanReadApplications`, application confinement for an
+  application service account; the drawer `CanReadApplication`). Actions check the permission for the
+  operation (create, update for edit/activate/deactivate, delete; the API admits any of the three for
+  create, update, activate and deactivate: bug 13); provisioning is anchor-only, as the API.
+- Login-client provisioning runs `operations.ProvisionLoginClient`, the API handler's code moved into
+  the operations package (`d5fdf43`) so both run the same thing.
+- **Shown-once credentials**: the provisioning answer patches a dialog carrying the client id and
+  secret (never a URL, a redirect or a flash; a native post gets the page itself, responses are
+  `no-store`). It cannot be dismissed except by "I've saved the credentials", which removes it from
+  the page; Chrome lets a second Escape through a prevented `cancel`, so a close that was not the button
+  reopens it.
+- The drawer's Documentation section lists the pages the application synced (`appdocs`, when the user
+  may read platform documentation, as the SPA's `GET /api/docs`), linking to the SPA's documentation
+  pages (not ported).
+
+Differences from the SPA: dialogs for create/edit; the type is a kit toggle group (the SPA's
+SelectButton); **redirect URIs are a textarea, one per line** (the SPA adds and removes chips; blank
+lines and repeats are dropped); Delete is disabled with the reason "Deactivate the application first."
+while active (the SPA only disables it; the use case does not require it: bug 14).
+
 ## CSRF
 
 Sessions are the `fc_session` cookie (HttpOnly, `SameSite=Lax`, Secure outside dev), so
@@ -542,6 +569,11 @@ native (no-JavaScript) post/redirect/get path (unit tests cover it), system mode
 12. The SPA's edit sends `connectionId: ""` when the field is blank, which stores an empty string (the
     use case sets any provided value; it cannot clear the connection).
 
+13. **Application writes use the any-of gate**: create, update, activate and deactivate check
+    `CanWriteApplications` (create, update or delete).
+14. Deleting an active application is blocked only by the SPA (the button is disabled);
+    `DeleteApplication` refuses only applications still referenced.
+
 ### Subscriptions: verification (2026-10-10)
 
 Unit tests (`subscriptions_test.go`: list, filters, sort, permissions per operation incl. a delete-only
@@ -552,6 +584,18 @@ re-fetching the event types and showing the client field, create through the rea
 opened, flash), edit (queue to High priority), pause from the drawer. Headless Chrome at 390×844, light
 and dark: list, drawer, create (multi-select open, summary updated in the browser), edit; no horizontal
 scroll, no console problems.
+
+### Applications: verification (2026-10-10)
+
+Unit tests (`applications_test.go`: list with type/status/search, permissions per operation incl.
+delete-only and client users, drawer sections, create/edit bodies, actions, provisioning of both
+credentials incl. the native post answering with the page, redirect-URI parsing) and
+`applications_pg_test.go` (create, edit, deactivate/activate, service account provisioned and
+attached, CONFIDENTIAL login client with its secret shown, delete refused while referenced). Chrome on
+the isolated instance: create with the type toggle (help text follows it) and the logo MIME field
+appearing with a logo; service account and login client provisioning (dialog, Escape does not dismiss
+it, the button removes it, drawer shows Provisioned). Headless Chrome 390×844, light and dark: list,
+drawer, create dialog; no horizontal scroll, no console problems.
 
 ### Owner decisions needed
 

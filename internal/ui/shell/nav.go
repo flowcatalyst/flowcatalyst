@@ -63,7 +63,7 @@ var navigation = []navSection{
 		{label: "Portal Users", icon: "globe", spa: "/identity/portal-users", permission: "platform:iam:portal-user:view"},
 	}},
 	{"Platform", []navEntry{
-		{label: "Applications", icon: "layout-grid", spa: "/applications", permission: "platform:admin:application:view"},
+		{label: "Applications", icon: "layout-grid", spa: "/applications", ui: "/ui/applications", permission: "platform:admin:application:view"},
 		{label: "Clients", icon: "building-2", spa: "/clients", permission: "platform:admin:client:view"},
 		{label: "CORS Origins", icon: "link", spa: "/platform/cors", permission: "platform:admin:cors:view"},
 		{label: "Audit Log", icon: "history", spa: "/platform/audit-log", permission: "platform:admin:audit:view"},

@@ -1,0 +1,454 @@
+package pages
+
+import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+
+var appStatusOptions = []kit.Option{
+	{Value: "ACTIVE", Label: "Active"},
+	{Value: "INACTIVE", Label: "Inactive"},
+}
+
+func (v appsView) FilterCount() int {
+	n := len(v.Query.Facets)
+	if v.Query.Status != "" {
+		n++
+	}
+	return n
+}
+
+func (v appsView) toolbar() kit.TableToolbarProps {
+	clear := ""
+	if v.Query.filtered() {
+		clear = v.Query.clearURL()
+	}
+	return kit.TableToolbarProps{
+		ID: appsFormID, Action: appsPath, SearchPlaceholder: "Search applications...", SearchValue: v.Query.Q,
+		ClearHref: clear, ClearAttrs: templ.Attributes{"data-on:click__prevent": kit.ClearFilters},
+		ActiveFilterCount: v.FilterCount(), Hidden: v.Query.hidden(),
+		SearchAttrs: templ.Attributes{"data-on:input__debounce.300ms": appsLiveGet},
+		FormAttrs:   templ.Attributes{"data-on:submit": appsLiveGet},
+		Filters:     appsFilters(v),
+	}
+}
+
+func (v appsView) pager() kit.PaginatorProps {
+	return kit.PaginatorProps{
+		ID: "apps-pager", Page: v.Page, Pages: v.Pages, Total: v.Total, Rows: v.Query.Rows, RowsOptions: appList.rows,
+		Noun: "applications", HrefPattern: v.Query.pagePattern(), FormID: appsFormID,
+		LinkAttrs: templ.Attributes{"data-on:click__prevent": liveLink},
+	}
+}
+
+func (v appsView) columns() []kit.DataColumn {
+	sortable := func(label, key string) kit.DataColumn {
+		return kit.DataColumn{Label: label, Href: v.Query.sortURL(key), Direction: v.Query.direction(key), LinkAttrs: templ.Attributes{"data-on:click__prevent": sortClick}}
+	}
+	return []kit.DataColumn{
+		sortable("Code", "code"), sortable("Name", "name"), sortable("Type", "type"), {Label: "Description"},
+		sortable("Status", "status"), sortable("Created", "created"), {Label: "Actions", Class: "w-px"},
+	}
+}
+
+func (v appsView) empty() *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	e := &kit.EmptyStateProps{Message: "No applications found", Status: true}
+	if v.Query.filtered() {
+		e.ClearHref = v.Query.clearURL()
+	}
+	return e
+}
+
+func (v appsView) drawerSignals() string {
+	if v.Drawer == nil {
+		return "{" + appDrawerSig + ": ''}"
+	}
+	return "{" + appDrawerSig + ": '" + kit.ID(v.Drawer.ID) + "'}"
+}
+
+func appTypeSelected(q listQuery) string {
+	return appTypeFilter(q)
+}
+
+templ appActiveTag(active bool) {
+	if active {
+		@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "Active"})
+	} else {
+		@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: "Inactive"})
+	}
+}
+
+templ appsPage(v appsView) {
+	<div data-signals={ v.drawerSignals() }>
+		@kit.PageHeader(kit.PageHeaderProps{Title: "Applications", Subtitle: "Manage applications in the platform ecosystem", Actions: appsActions(v)})
+		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Applications.", Class: "mb-4"})
+		<div class="fc-card-flush">
+			@kit.TableToolbar(v.toolbar())
+			@appsTable(v)
+			@kit.Paginator(v.pager())
+		</div>
+		<div id={ appDialogSlot }>
+			if v.Dialog != nil {
+				@v.Dialog
+			}
+		</div>
+		@appConfirmDialogs(v.Perms)
+		@appDrawer(v.Drawer)
+	</div>
+}
+
+templ appsActions(v appsView) {
+	if v.Perms.Create {
+		@kit.LegacyButton(kit.LegacyButtonProps{Href: appsPath + "/new", Icon: "plus", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+			Create Application
+		}
+	}
+}
+
+templ appsFilters(v appsView) {
+	@kit.FilterSelect(kit.FilterSelectProps{Name: appTypeFacet, Label: "Type", Placeholder: "All types", Options: appTypeOptions, Selected: appTypeSelected(v.Query), Attrs: templ.Attributes{"data-on:change": appsLiveGet}})
+	@kit.FilterSelect(kit.FilterSelectProps{Name: "status", Label: "Status", Placeholder: "All statuses", Options: appStatusOptions, Selected: v.Query.Status, Attrs: templ.Attributes{"data-on:change": appsLiveGet}})
+}
+
+templ appsTable(v appsView) {
+	@kit.DataTable(kit.DataTableProps{ID: "apps-table", BodyID: "apps-rows", Columns: v.columns(), Empty: v.empty()}) {
+		for _, row := range v.Rows {
+			@kit.TR(kit.TRProps{ID: "app-" + row.ID}) {
+				@kit.TD(kit.TDProps{}) {
+					<a href={ row.DetailHref } class="no-underline" data-on:click__prevent={ liveLink }><code class="font-mono text-[13px]">{ row.Code }</code></a>
+				}
+				@kit.TD(kit.TDProps{}) {
+					<a href={ row.DetailHref } class="font-medium text-foreground no-underline hover:underline" data-on:click__prevent={ liveLink }>{ row.Name }</a>
+				}
+				@kit.TD(kit.TDProps{}) {
+					@kit.Tag(kit.TagProps{Severity: row.TypeSeverity, Label: row.Type})
+				}
+				@kit.TD(kit.TDProps{Class: "text-[13px] text-muted-foreground"}) {
+					if row.Description != "" {
+						<span class="block max-w-[300px] truncate" title={ row.Description }>{ row.Description }</span>
+					} else {
+						—
+					}
+				}
+				@kit.TD(kit.TDProps{}) {
+					@appActiveTag(row.Active)
+				}
+				@kit.TD(kit.TDProps{}) {
+					<time datetime={ row.CreatedISO }>{ row.Created }</time>
+				}
+				@kit.RowActions(v.rowActions(row))
+			}
+		}
+	}
+}
+
+templ appDrawer(d *appDetail) {
+	if d != nil {
+		@kit.Drawer(d.drawerProps()) {
+			@appDrawerBody(*d)
+		}
+	} else {
+		@kit.Drawer(kit.DrawerProps{ID: appDrawerID, Signal: appDrawerSig, Label: "Application", Size: kit.DrawerWide})
+	}
+}
+
+templ appDrawerContent(d appDetail) {
+	@kit.DrawerContent(d.drawerProps()) {
+		@appDrawerBody(d)
+	}
+}
+
+// appDrawerBody mirrors the SPA's ApplicationDetailDrawer.
+templ appDrawerBody(d appDetail) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Application Details", Actions: appEditButton(d)}) {
+		<div class="fc-detail-grid">
+			@kit.DetailField(kit.DetailFieldProps{Label: "Code"}) {
+				<code>{ d.Code }</code>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Name", Value: d.Name})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Type"}) {
+				@kit.Tag(kit.TagProps{Severity: d.TypeSeverity, Label: d.Type})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Description", Value: d.Description, Span: true})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Default Base URL", Value: d.BaseURL})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Icon URL", Value: d.IconURL})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Website", Value: d.Website})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Logo", Value: d.Logo})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Created", Value: d.Created})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Updated", Value: d.Updated})
+		</div>
+	}
+	@kit.FormSection(kit.FormSectionProps{Title: "Service Account"}) {
+		if d.ServiceAccountID != "" {
+			<div class="fc-detail-grid">
+				@kit.DetailField(kit.DetailFieldProps{Label: "Status"}) {
+					@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "Provisioned"})
+				}
+				@kit.DetailField(kit.DetailFieldProps{Label: "Principal ID"}) {
+					<code>{ d.ServiceAccountID }</code>
+				}
+			</div>
+			@kit.Alert(kit.AlertProps{Icon: "info", Description: "Service account credentials are managed in the OAuth Clients section. The client secret can only be viewed at creation time or when rotated.", Class: "mt-3"})
+		} else if d.Perms.Provision {
+			<form method="post" action={ d.ActionBase + "/provision-service-account" } data-on:submit={ kit.SubmitForm } data-indicator="appSaBusy">
+				<input type="hidden" name="drawer" data-attr:value={ "$" + appDrawerSig }/>
+				@poolActionItem("Provision Service Account", "Create a service account with OAuth credentials for machine-to-machine authentication.") {
+					@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Icon: "plus", Attrs: templ.Attributes{"data-attr:disabled": "$appSaBusy"}}) {
+						Provision
+					}
+				}
+			</form>
+		} else {
+			<p class="text-sm text-muted-foreground">No service account. Provisioning one needs the anchor scope.</p>
+		}
+	}
+	@kit.FormSection(kit.FormSectionProps{Title: "Documentation"}) {
+		if len(d.Docs) > 0 {
+			<ul class="flex flex-col gap-1">
+				for _, doc := range d.Docs {
+					<li>
+						<a href={ "/platform/docs/" + d.Code + "/" + doc.Slug } class="inline-flex items-center gap-2 text-sm text-primary no-underline hover:underline">
+							@kit.Icon(kit.IconProps{Name: "book-open", Class: "size-[1rem]"})
+							{ doc.Title }
+						</a>
+					</li>
+				}
+			</ul>
+		} else if d.DocsVisible {
+			<p class="text-sm text-muted-foreground">No documentation synced. The application can publish pages with <code>{ "POST /api/applications/" + d.Code + "/docs/sync" }</code>; they render under Platform → Documentation.</p>
+		} else {
+			<p class="text-sm text-muted-foreground">Viewing the documentation needs permission to view platform documentation.</p>
+		}
+	}
+	@kit.FormSection(kit.FormSectionProps{Title: "Login Client"}) {
+		if d.HasLoginClient {
+			<div class="fc-detail-grid">
+				@kit.DetailField(kit.DetailFieldProps{Label: "Status"}) {
+					@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "Provisioned"})
+				}
+			</div>
+			@kit.Alert(kit.AlertProps{Icon: "info", Description: "Login client settings (redirect URIs, allowed origins, secret rotation) are managed in the OAuth Clients section.", Class: "mt-3"})
+		} else if d.Perms.Provision {
+			<form id={ appLoginID + "-form" } method="post" action={ d.ActionBase + "/provision-login-client" } class="flex flex-col gap-4" data-on:submit={ kit.SubmitForm } data-indicator="appLoginBusy">
+				<input type="hidden" name="drawer" data-attr:value={ "$" + appDrawerSig }/>
+				<div>
+					<strong class="block">Provision Login Client</strong>
+					<p class="text-sm text-muted-foreground">Create an OAuth client for user authentication via OIDC (authorization_code grant). Required if your application has a UI that users log into.</p>
+				</div>
+				@kit.FormDialogError(appLoginID, d.LoginForm.Errs.Form)
+				@appLoginField(d.LoginForm, "clientType")
+				@appLoginField(d.LoginForm, "redirectUris")
+				<div>
+					@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Icon: "plus", Attrs: templ.Attributes{"data-attr:disabled": "$appLoginBusy"}}) {
+						Provision Login Client
+					}
+				</div>
+			</form>
+		} else {
+			<p class="text-sm text-muted-foreground">No login client. Provisioning one needs the anchor scope.</p>
+		}
+	}
+	if d.Perms.Update || d.Perms.Delete {
+		@kit.FormSection(kit.FormSectionProps{Title: "Actions"}) {
+			<div class="flex flex-col gap-4">
+				if d.Perms.Update && !d.Active {
+					@poolActionItem("Activate Application", "Make this application available for use.") {
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyPrimaryOutline, Icon: "circle-check", Attrs: confirmTrigger(appActivateDialog, d.ActionBase+"/activate")}) {
+							Activate
+						}
+					}
+				}
+				if d.Perms.Update && d.Active {
+					@poolActionItem("Deactivate Application", "Prevent new event types from using this application.") {
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyWarnOutline, Icon: "ban", Attrs: confirmTrigger(appDeactivateDialog, d.ActionBase+"/deactivate")}) {
+							Deactivate
+						}
+					}
+				}
+				if d.Perms.Delete {
+					@etDangerItem("Delete Application", "Permanently delete this application. Cannot be undone.", etWhy(!d.Active, "Deactivate the application first."), "app-delete-why") {
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Icon: "trash-2", Disabled: d.Active, Attrs: etDangerAttrs(!d.Active, appDeleteDialog, d.ActionBase+"/delete", "app-delete-why")}) {
+							Delete
+						}
+					}
+				}
+			</div>
+		}
+	}
+}
+
+templ appEditButton(d appDetail) {
+	if d.Perms.Update {
+		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.EditHref, Icon: "pencil", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+			Edit
+		}
+	}
+}
+
+templ appLoginField(f appLoginForm, key string) {
+	switch key {
+		case "clientType":
+			@kit.Field(kit.FieldProps{Label: "Client Type", For: f.id(key), Attrs: templ.Attributes{"id": f.id(key) + "-field"}}) {
+				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: appClientTypes, Selected: cmpOrString(f.ClientType, "PUBLIC")})
+			}
+		case "redirectUris":
+			@kit.Field(kit.FieldProps{Label: "Redirect URIs", For: f.id(key), Required: true, Description: "Allowed callback URLs for OAuth redirects, one per line. Add at least one to provision.", Error: f.Errs.Fields[key], Attrs: templ.Attributes{"id": f.id(key) + "-field"}}) {
+				@kit.Textarea(kit.TextareaProps{ID: f.id(key), Name: key, Value: f.RedirectURIs, Placeholder: "https://app.example.com/callback", Rows: 3, Required: true, Invalid: f.Errs.Fields[key] != "", DescribedBy: loginDescribedBy(f, key), Class: "font-mono text-[13px]", Attrs: templ.Attributes{"spellcheck": "false"}})
+			}
+	}
+}
+
+templ appConfirmDialogs(perms appPerms) {
+	if perms.Update {
+		@kit.ConfirmDialog(appConfirm(appActivateDialog, "Activate Application", "Activate this application?", "Activate", kit.ToneDefault))
+		@kit.ConfirmDialog(appConfirm(appDeactivateDialog, "Deactivate Application", "Deactivate this application? It will no longer be available for new event types.", "Deactivate", kit.ToneWarn))
+	}
+	if perms.Delete {
+		@kit.ConfirmDialog(appConfirm(appDeleteDialog, "Delete Application", "Delete this application? This cannot be undone.", "Delete", kit.ToneDanger))
+	}
+}
+
+// appCredentialsDialog shows provisioned credentials once. It cannot be
+// dismissed by Escape or the mask (the SPA's closable=false): Chrome lets a
+// second Escape through a prevented cancel, so a close that was not the
+// button reopens it. The button closes it and removes it from the page, so
+// the secret does not linger.
+templ appCredentialsDialog(c appCredentials) {
+	@kit.Dialog(kit.DialogProps{
+		ID:         appCredsID,
+		Title:      c.Title,
+		Persistent: true,
+		Attrs:      templ.Attributes{"open": true, "data-init": "el.open && el.close(); el.showModal()", "data-on:cancel": "evt.preventDefault()", "data-on:close": "el.dataset.saved || el.showModal()", "data-signals": "{appCopied: ''}"},
+		Footer:     appCredentialsFooter(),
+	}) {
+		<div class="flex flex-col gap-4">
+			if c.Confidential {
+				@kit.Alert(kit.AlertProps{Icon: "triangle-alert", Variant: kit.AlertDestructive, Description: "Save these credentials now. The client secret will not be shown again."})
+			} else {
+				@kit.Alert(kit.AlertProps{Icon: "info", Description: "PUBLIC clients use PKCE; there is no client secret. Configure your app with the client ID below."})
+			}
+			@appCredential("app-cred-client-id", "Client ID", c.ClientID)
+			if c.ClientSecret != "" {
+				@appCredential("app-cred-secret", "Client Secret", c.ClientSecret)
+			}
+			if c.ServiceAccount != "" {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Service Account", Value: c.ServiceAccount})
+			}
+			if c.LoginClient {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Client Type", Value: c.ClientType})
+				@kit.DetailField(kit.DetailFieldProps{Label: "Redirect URIs"}) {
+					<code class="break-all">{ c.RedirectURIs }</code>
+				}
+			}
+			<p class="text-xs text-muted-foreground" role="status" data-text="$appCopied"></p>
+		</div>
+	}
+}
+
+templ appCredential(id, label, value string) {
+	<div class="fc-detail-field">
+		<span class="fc-field-label">{ label }</span>
+		<div class="flex items-center gap-2">
+			<code id={ id } class="fc-mono-chip break-all">{ value }</code>
+			@kit.IconButton(kit.IconButtonProps{Icon: "copy", Label: "Copy " + label, Attrs: templ.Attributes{"title": "Copy", "data-on:click": appCopyExpr(id, label)}})
+		</div>
+	</div>
+}
+
+templ appCredentialsFooter() {
+	@kit.Button(kit.ButtonProps{Icon: "check", Attrs: templ.Attributes{"data-on:click": "const d = el.closest('dialog'); d.dataset.saved = '1'; d.close(); d.remove()"}}) {
+		I've saved the credentials
+	}
+}
+
+// appFormDialogC is the create or edit dialog.
+templ appFormDialogC(f appForm) {
+	@kit.FormDialog(f.dialog()) {
+		<div class="flex flex-col gap-4" data-signals={ f.signals() }>
+			if f.Edit {
+				@appField(f, "name")
+				@appField(f, "description")
+				@appField(f, "defaultBaseUrl")
+				<div class="grid gap-4 sm:grid-cols-2">
+					@appField(f, "iconUrl")
+					@appField(f, "website")
+				</div>
+				@appField(f, "logo")
+				@appField(f, "logoMimeType")
+			} else {
+				@kit.FormSection(kit.FormSectionProps{Title: "Application Identity"}) {
+					<div class="flex flex-col gap-4">
+						@appField(f, "type")
+						@appField(f, "code")
+						@appField(f, "name")
+						@appField(f, "description")
+					</div>
+				}
+				@kit.FormSection(kit.FormSectionProps{Title: "Configuration"}) {
+					<div class="flex flex-col gap-4">
+						@appField(f, "defaultBaseUrl")
+						@appField(f, "iconUrl")
+						@appField(f, "website")
+						@appField(f, "logo")
+						@appField(f, "logoMimeType")
+					</div>
+				}
+			}
+		</div>
+	}
+}
+
+templ appField(f appForm, key string) {
+	switch key {
+		case "type":
+			<div id={ f.id(key) + "-field" } class="flex flex-col gap-2">
+				<span id={ f.id(key) + "-label" } class="text-sm font-medium">Type <span class="text-destructive" aria-hidden="true">*</span></span>
+				@kit.ToggleGroup(kit.ToggleGroupProps{
+					Kind: kit.ToggleExclusive, Name: key, Options: appTypeOptions, Selected: []string{f.Type},
+					Attrs:      templ.Attributes{"role": "radiogroup", "aria-labelledby": f.id(key) + "-label", "aria-describedby": f.id(key) + "-help"},
+					InputAttrs: templ.Attributes{"required": true, "data-bind:app-form-type": true},
+				})
+				<p id={ f.id(key) + "-help" } class="text-sm text-muted-foreground" data-text={ f.typeHelpExpr() }>{ f.typeHelp() }</p>
+			</div>
+		case "code":
+			@kit.Field(f.fieldProps(key, "Code", "Unique identifier for the application. Cannot be changed after creation.", true)) {
+				@kit.Input(f.inputProps(key, f.Code, "e.g., operant", templ.Attributes{"required": true, "pattern": "[a-z][a-z0-9\\-]*", "title": "Must start with a letter, use only lowercase letters, numbers, and hyphens", "autocomplete": "off", "autofocus": true}))
+			}
+		case "name":
+			@kit.Field(f.fieldProps(key, "Name", "", true)) {
+				@kit.Input(f.inputProps(key, f.Name, "Human-friendly name", appNameAttrs(f.Edit)))
+			}
+		case "description":
+			@kit.Field(f.fieldProps(key, "Description", "", false)) {
+				@kit.Textarea(kit.TextareaProps{ID: f.id(key), Name: key, Value: f.Description, Placeholder: "Optional description", Rows: 3, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+			}
+		case "defaultBaseUrl":
+			@kit.Field(f.fieldProps(key, "Default Base URL", "Base URL for API calls to this application", false)) {
+				@kit.Input(f.inputProps(key, f.BaseURL, "https://example.com", templ.Attributes{"autocomplete": "off"}))
+			}
+		case "iconUrl":
+			@kit.Field(f.fieldProps(key, "Icon URL", "URL to the application's icon image", false)) {
+				@kit.Input(f.inputProps(key, f.IconURL, "https://example.com/icon.png", templ.Attributes{"autocomplete": "off"}))
+			}
+		case "website":
+			@kit.Field(f.fieldProps(key, "Website", "Public website URL for this application", false)) {
+				@kit.Input(f.inputProps(key, f.Website, "https://www.example.com", templ.Attributes{"autocomplete": "off"}))
+			}
+		case "logo":
+			@kit.Field(f.fieldProps(key, "Logo (SVG)", "SVG logo content to embed in the platform", false)) {
+				@kit.Textarea(kit.TextareaProps{ID: f.id(key), Name: key, Value: f.Logo, Placeholder: "Paste SVG content here", Rows: 4, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Class: "font-mono text-[13px]", Attrs: templ.Attributes{"spellcheck": "false", "data-bind:app-form-logo": true}})
+			}
+		case "logoMimeType":
+			<div
+				id={ f.id(key) + "-wrap" }
+				data-show="$appFormLogo"
+				if f.Logo == "" {
+					style="display: none"
+				}
+			>
+				@kit.Field(f.fieldProps(key, "Logo MIME Type", "MIME type of the logo (e.g., image/svg+xml)", false)) {
+					@kit.Input(f.inputProps(key, f.LogoMimeType, "image/svg+xml", templ.Attributes{"autocomplete": "off"}))
+				}
+			</div>
+	}
+}
