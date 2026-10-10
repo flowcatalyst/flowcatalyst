@@ -217,8 +217,13 @@ func TestSubscriptionCreate(t *testing.T) {
 	}
 	mustContain(t, body, `"selSub":"sub_9"`, "Subscription created")
 
-	scoped := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/subscriptions/new", datastar: true, form: subCreateForm("eventTypes", "evt_c", "clientScoped", "true", "client", "acme")})
-	if c := h.ops.created[1]; deref(c.ClientID) != "clt_acme" || c.EventTypes[0].EventTypeCode != "orders:sales:order:scoped" {
+	if c.ClientScoped == nil || *c.ClientScoped || c.Sequence != nil {
+		t.Errorf("clientScoped/sequence = %v/%v", c.ClientScoped, c.Sequence)
+	}
+	mustContain(t, dlg, `name="sequence"`, `value="99"`)
+	scoped := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/subscriptions/new", datastar: true, form: subCreateForm("eventTypes", "evt_c", "clientScoped", "true", "client", "acme", "sequence", "5")})
+	if c := h.ops.created[1]; deref(c.ClientID) != "clt_acme" || c.EventTypes[0].EventTypeCode != "orders:sales:order:scoped" ||
+		c.ClientScoped == nil || !*c.ClientScoped || c.Sequence == nil || *c.Sequence != 5 {
 		t.Errorf("scoped command = %+v %s", c, scoped)
 	}
 	wrongScope := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/subscriptions/new", datastar: true, form: subCreateForm("eventTypes", "evt_c")})

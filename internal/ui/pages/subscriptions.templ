@@ -328,6 +328,7 @@ templ subFormDialogC(f subForm) {
 						@subField(f, "maxAgeSeconds")
 						@subField(f, "timeoutSeconds")
 						@subField(f, "delaySeconds")
+						@subField(f, "sequence")
 					</div>
 				}
 				@kit.FormSection(kit.FormSectionProps{Title: "Scope"}) {
@@ -395,6 +396,10 @@ templ subField(f subForm, key string) {
 		case "delaySeconds":
 			@kit.Field(f.fieldProps(key, "Delay (seconds)", "Delay before dispatching", false)) {
 				@kit.Input(f.inputProps(key, f.Delay, kit.InputProps{Type: "number", Attrs: subNumberAttrs("0")}))
+			}
+		case "sequence":
+			@kit.Field(f.fieldProps(key, "Sequence", "Processing order (lower = earlier)", false)) {
+				@kit.Input(f.inputProps(key, f.Sequence, kit.InputProps{Type: "number", Attrs: subNumberAttrs("0")}))
 			}
 		case "scope":
 			<div id={ f.id(key) + "-field" } class="flex flex-col gap-4">

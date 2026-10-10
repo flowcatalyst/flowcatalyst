@@ -68,6 +68,8 @@ type CreateSubscriptionRequest struct {
 	MaxAgeSeconds    *int32                `json:"maxAgeSeconds,omitempty"`
 	DataOnly         *bool                 `json:"dataOnly,omitempty"`
 	Queue            *string               `json:"queue,omitempty" doc:"Dispatch priority: DEFAULT or HIGH_PRIORITY (matched ignoring case). Selects which of the client's two dispatch queues jobs raised from this subscription publish to. Omitted or blank leaves it unset, which publishes as DEFAULT."`
+	ClientScoped     *bool                 `json:"clientScoped,omitempty" doc:"Subscribes to client-scoped event types. Omitted means false."`
+	Sequence         *int32                `json:"sequence,omitempty" doc:"Orders this subscription's dispatch jobs within a message group, lower first. Omitted means 99. Not negative."`
 }
 
 func (r CreateSubscriptionRequest) toCommand() operations.CreateCommand {
@@ -100,13 +102,15 @@ func (r CreateSubscriptionRequest) toCommand() operations.CreateCommand {
 		MaxAgeSeconds:    r.MaxAgeSeconds,
 		DataOnly:         r.DataOnly,
 		Queue:            r.Queue,
+		ClientScoped:     r.ClientScoped,
+		Sequence:         r.Sequence,
 	}
 }
 
 // UpdateSubscriptionRequest is the wire body for PUT /api/subscriptions/{id}.
 //
-// sequence is intentionally absent: it is server-derived and dropped on input
-// (the leniency net accepts it without persisting). connectionId IS accepted +
+// sequence and clientScoped are set at create only (CreateSubscriptionRequest);
+// an update body carrying them has them dropped by the leniency net. connectionId IS accepted +
 // persisted. queue IS now accepted and persisted — it carries the dispatch
 // priority; until then the SPA sent it on every create and both servers
 // discarded it silently.

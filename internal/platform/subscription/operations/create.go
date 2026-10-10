@@ -38,6 +38,12 @@ type CreateCommand struct {
 	// job raised from this subscription publishes to. Omitted or blank leaves
 	// it unset, which the publish path reads as DEFAULT.
 	Queue *string `json:"queue,omitempty"`
+	// ClientScoped marks a subscription to client-scoped event types (the
+	// SPA's Client Scoped switch). Omitted: false.
+	ClientScoped *bool `json:"clientScoped,omitempty"`
+	// Sequence orders this subscription's dispatch jobs within a message
+	// group (lower first). Omitted: the default, 99.
+	Sequence *int32 `json:"sequence,omitempty"`
 }
 
 // CreateSubscription validates cmd, enforces code uniqueness within the
@@ -67,6 +73,9 @@ func CreateSubscription(repo *subscription.Repository) usecaseop.Operation[Creat
 				if _, err := dispatchqueue.Parse(*cmd.Queue); err != nil {
 					return err
 				}
+			}
+			if cmd.Sequence != nil && *cmd.Sequence < 0 {
+				return usecase.Validation("INVALID_SEQUENCE", "sequence must not be negative")
 			}
 			return nil
 		},
@@ -122,6 +131,12 @@ func CreateSubscription(repo *subscription.Repository) usecaseop.Operation[Creat
 			}
 			if cmd.DataOnly != nil {
 				s.DataOnly = *cmd.DataOnly
+			}
+			if cmd.ClientScoped != nil {
+				s.ClientScoped = *cmd.ClientScoped
+			}
+			if cmd.Sequence != nil {
+				s.Sequence = *cmd.Sequence
 			}
 			// Stored in its canonical upper-case form, so the publish path and
 			// the served router-config document read one spelling however the

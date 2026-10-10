@@ -44,6 +44,7 @@ var subFieldCodes = map[string]string{
 	"INVALID_ENDPOINT":     "endpoint",
 	"EVENT_TYPES_REQUIRED": "eventTypes",
 	"INVALID_QUEUE":        "queue",
+	"INVALID_SEQUENCE":     "sequence",
 }
 
 var subModeOptions = []kit.Option{
@@ -66,7 +67,7 @@ type subForm struct {
 
 	Code, Name, Description, Endpoint string
 	ConnectionID, Queue, PoolID, Mode string
-	MaxAge, Timeout, Delay            string
+	MaxAge, Timeout, Delay, Sequence  string
 	ClientScoped                      bool
 	Client                            string
 	EventTypeIDs                      []string
@@ -87,7 +88,7 @@ func (f subForm) keys() []string {
 	if f.Edit {
 		return []string{"name", "description", "endpoint", "connectionId", "queue", "maxAgeSeconds", "timeoutSeconds", "delaySeconds", "mode"}
 	}
-	return []string{"code", "name", "description", "eventTypes", "endpoint", "connectionId", "queue", "dispatchPoolId", "mode", "maxAgeSeconds", "timeoutSeconds", "delaySeconds", "scope"}
+	return []string{"code", "name", "description", "eventTypes", "endpoint", "connectionId", "queue", "dispatchPoolId", "mode", "maxAgeSeconds", "timeoutSeconds", "delaySeconds", "sequence", "scope"}
 }
 
 // focusID is the control a field's error focuses (the scope group's client).
@@ -145,6 +146,7 @@ func submittedSubForm(r *http.Request, edit bool) subForm {
 		MaxAge:       r.PostFormValue("maxAgeSeconds"),
 		Timeout:      r.PostFormValue("timeoutSeconds"),
 		Delay:        r.PostFormValue("delaySeconds"),
+		Sequence:     r.PostFormValue("sequence"),
 		ClientScoped: r.PostFormValue("clientScoped") != "",
 		Client:       strings.TrimSpace(r.PostFormValue("client")),
 		EventTypeIDs: facetValues(r.PostForm["eventTypes"]),
@@ -172,7 +174,7 @@ func (h *Subscriptions) createForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The SPA's defaults.
-	f := subForm{Open: true, Queue: "DEFAULT", Mode: string(common.DispatchNextOnError), MaxAge: "86400", Timeout: "30", Delay: "0"}
+	f := subForm{Open: true, Queue: "DEFAULT", Mode: string(common.DispatchNextOnError), MaxAge: "86400", Timeout: "30", Delay: "0", Sequence: "99"}
 	h.showForm(w, r, ac, f)
 }
 
@@ -186,10 +188,16 @@ func (h *Subscriptions) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	maxAge, timeout, delay := f.numbers()
+	sequence, ok := optionalInt32(f.Sequence)
+	if !ok {
+		f.Errs.field("sequence", notWholeNumber)
+	}
+	clientScoped := f.ClientScoped
 	cmd := subops.CreateCommand{
 		Code: f.Code, Name: f.Name, Endpoint: f.Endpoint, Description: optionalText(f.Description),
 		ConnectionID: optionalText(f.ConnectionID), DispatchPoolID: optionalText(f.PoolID),
 		Mode: f.Mode, Queue: &f.Queue, MaxAgeSeconds: maxAge, TimeoutSeconds: timeout, DelaySeconds: delay,
+		ClientScoped: &clientScoped, Sequence: sequence,
 	}
 	bindings, msg, err := h.bindings(r, ac, f.EventTypeIDs, f.ClientScoped)
 	switch {

@@ -1222,6 +1222,10 @@ export type CreateSubscriptionRequest = {
      */
     readonly $schema?: string;
     clientId?: string;
+    /**
+     * Subscribes to client-scoped event types. Omitted means false.
+     */
+    clientScoped?: boolean;
     code: string;
     connectionId?: string;
     customConfig?: Array<ConfigEntryDto>;
@@ -1245,6 +1249,10 @@ export type CreateSubscriptionRequest = {
      * Dispatch priority: DEFAULT or HIGH_PRIORITY (matched ignoring case). Selects which of the client's two dispatch queues jobs raised from this subscription publish to. Omitted or blank leaves it unset, which publishes as DEFAULT.
      */
     queue?: string;
+    /**
+     * Orders this subscription's dispatch jobs within a message group, lower first. Omitted means 99. Not negative.
+     */
+    sequence?: number;
     serviceAccountId?: string;
     timeoutSeconds?: number;
     [key: string]: unknown;
@@ -4452,6 +4460,10 @@ export type CreateServiceAccountResponseWritable = {
 
 export type CreateSubscriptionRequestWritable = {
     clientId?: string;
+    /**
+     * Subscribes to client-scoped event types. Omitted means false.
+     */
+    clientScoped?: boolean;
     code: string;
     connectionId?: string;
     customConfig?: Array<ConfigEntryDto>;
@@ -4475,6 +4487,10 @@ export type CreateSubscriptionRequestWritable = {
      * Dispatch priority: DEFAULT or HIGH_PRIORITY (matched ignoring case). Selects which of the client's two dispatch queues jobs raised from this subscription publish to. Omitted or blank leaves it unset, which publishes as DEFAULT.
      */
     queue?: string;
+    /**
+     * Orders this subscription's dispatch jobs within a message group, lower first. Omitted means 99. Not negative.
+     */
+    sequence?: number;
     serviceAccountId?: string;
     timeoutSeconds?: number;
     [key: string]: unknown;
