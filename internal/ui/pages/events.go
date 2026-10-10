@@ -31,7 +31,7 @@ import (
 type EventStore interface {
 	FindWithFilters(ctx context.Context, p event.FilterParams) ([]event.Event, error)
 	FindByID(ctx context.Context, id string) (*event.Event, error)
-	DistinctValues(ctx context.Context, column string, limit int) ([]string, error)
+	DistinctValues(ctx context.Context, column string, limit int, accessibleClientIDs *[]string) ([]string, error)
 }
 
 // Events is the events page (/ui/events), mirroring the SPA's EventListPage
@@ -230,7 +230,7 @@ func (h *Events) listView(ctx context.Context, ac *auth.AuthContext, q evQuery) 
 	// API's filter-options (aggregates it leaves empty); here every level
 	// comes from the distinct event types, narrowed by the levels chosen
 	// above it, as on the dispatch jobs page.
-	distinct, err := h.facetCache.get(ctx, h.Events.DistinctValues, "type")
+	distinct, err := h.facetCache.get(ctx, h.Events.DistinctValues, distinctScope(ac), "type")
 	if err != nil {
 		return evView{}, err
 	}

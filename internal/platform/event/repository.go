@@ -380,10 +380,11 @@ func (r *Repository) FindByDeduplicationID(ctx context.Context, deduplicationID 
 }
 
 // DistinctValues lists up to `limit` distinct non-null values for the
-// given column. Used to populate the frontend's filter-options dropdowns
+// given column, of the events a caller with accessibleClientIDs can see
+// (nil: every event, for an anchor). Used to populate the frontend's filter-options dropdowns
 // (event types, sources, client IDs). The column name is hardcoded by
 // the caller — no untrusted SQL.
-func (r *Repository) DistinctValues(ctx context.Context, column string, limit int) ([]string, error) {
+func (r *Repository) DistinctValues(ctx context.Context, column string, limit int, accessibleClientIDs *[]string) ([]string, error) {
 	allowed := map[string]bool{
 		"type": true, "source": true, "subject": true,
 		"client_id": true, "correlation_id": true,
@@ -396,10 +397,18 @@ func (r *Repository) DistinctValues(ctx context.Context, column string, limit in
 	if limit <= 0 || limit > 1000 {
 		limit = 200
 	}
+	// SECURITY: tenant scoping as the list's (FilterParams.AccessibleClientIDs):
+	// a non-nil set keeps platform-scoped rows plus the caller's own tenants,
+	// so a client user never sees another tenant's values.
+	scope, args := "", []any{limit}
+	if accessibleClientIDs != nil {
+		scope = " AND (client_id IS NULL OR client_id = ANY($2))"
+		args = append(args, *accessibleClientIDs)
+	}
 	rows, err := r.pool.Query(ctx,
 		fmt.Sprintf(`SELECT DISTINCT %s FROM msg_events_read
-		              WHERE %s IS NOT NULL ORDER BY 1 LIMIT $1`, column, column),
-		limit)
+		              WHERE %s IS NOT NULL%s ORDER BY 1 LIMIT $1`, column, column, scope),
+		args...)
 	if err != nil {
 		return nil, err
 	}

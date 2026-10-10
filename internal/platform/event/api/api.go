@@ -454,8 +454,10 @@ func (s *State) filterOptions(ctx context.Context, _ *apicommon.Empty) (*apicomm
 	if err := auth.CanWritePermission(ac, "platform:messaging:event:view"); err != nil {
 		return nil, err
 	}
+	// Scoped as the list is: platform events plus the caller's own tenants.
+	scope := scopeFilters(ac, event.FilterParams{}).AccessibleClientIDs
 	q := func(col string) []EventFilterOption {
-		out, _ := s.Repo.DistinctValues(ctx, col, 200)
+		out, _ := s.Repo.DistinctValues(ctx, col, 200, scope)
 		return toFilterOptions(out)
 	}
 	return &apicommon.Out[EventFilterOptionsResponse]{Body: EventFilterOptionsResponse{

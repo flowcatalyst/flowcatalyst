@@ -346,10 +346,11 @@ func (r *Repository) FindRecentRaw(ctx context.Context, limit int) ([]DispatchJo
 	return out, nil
 }
 
-// DistinctValues lists distinct non-null values for a whitelisted column.
-// Powers GET /api/dispatch-jobs/filter-options. Dynamic column name —
+// DistinctValues lists distinct non-null values for a whitelisted column, of
+// the jobs a caller with accessibleClientIDs can see (nil: every job, for an
+// anchor). Powers GET /api/dispatch-jobs/filter-options. Dynamic column name —
 // stays hand-rolled (sqlc can't parameterise identifiers).
-func (r *Repository) DistinctValues(ctx context.Context, column string, limit int) ([]string, error) {
+func (r *Repository) DistinctValues(ctx context.Context, column string, limit int, accessibleClientIDs *[]string) ([]string, error) {
 	allowed := map[string]bool{
 		"status": true, "code": true, "client_id": true,
 		"dispatch_pool_id": true, "subscription_id": true, "kind": true,
@@ -360,10 +361,18 @@ func (r *Repository) DistinctValues(ctx context.Context, column string, limit in
 	if limit <= 0 || limit > 1000 {
 		limit = 200
 	}
+	// SECURITY: tenant scoping as the list's (FilterParams.AccessibleClientIDs):
+	// a non-nil set keeps platform-scoped rows plus the caller's own tenants,
+	// so a client user never sees another tenant's values.
+	scope, args := "", []any{limit}
+	if accessibleClientIDs != nil {
+		scope = " AND (client_id IS NULL OR client_id = ANY($2))"
+		args = append(args, *accessibleClientIDs)
+	}
 	rows, err := r.pool.Query(ctx,
 		fmt.Sprintf(`SELECT DISTINCT %s FROM msg_dispatch_jobs_read
-		              WHERE %s IS NOT NULL ORDER BY 1 LIMIT $1`, column, column),
-		limit)
+		              WHERE %s IS NOT NULL%s ORDER BY 1 LIMIT $1`, column, column, scope),
+		args...)
 	if err != nil {
 		return nil, err
 	}

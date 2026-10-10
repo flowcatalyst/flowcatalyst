@@ -25,6 +25,8 @@ type fakeDJStore struct {
 	jobs     []dispatchjob.DispatchJob
 	attempts map[string][]dispatchjob.Attempt
 	params   []dispatchjob.FilterParams
+	// scopes records each DistinctValues tenant scope ("*" for none).
+	scopes []string
 }
 
 func (f *fakeDJStore) FindWithFilters(_ context.Context, p dispatchjob.FilterParams) ([]dispatchjob.DispatchJob, error) {
@@ -62,7 +64,8 @@ func (f *fakeDJStore) AttemptsByJob(_ context.Context, id string) ([]dispatchjob
 	return f.attempts[id], nil
 }
 
-func (f *fakeDJStore) DistinctValues(_ context.Context, column string, _ int) ([]string, error) {
+func (f *fakeDJStore) DistinctValues(_ context.Context, column string, _ int, scope *[]string) ([]string, error) {
+	f.scopes = append(f.scopes, distinctScopeKey(scope))
 	switch column {
 	case "status":
 		return []string{"COMPLETED", "FAILED", "PENDING"}, nil
@@ -220,6 +223,10 @@ func TestDispatchJobsList(t *testing.T) {
 	mustNotContain(t, own, "djb_3", ">Globex<")
 	if p := h.store.params[len(h.store.params)-1]; p.AccessibleClientIDs == nil || strings.Join(*p.AccessibleClientIDs, ",") != "clt_1" {
 		t.Errorf("scoping %+v", p.AccessibleClientIDs)
+	}
+	// The facet values are scoped the same way (bug 18), cached per scope.
+	if !slices.Contains(h.store.scopes, "c:clt_1") {
+		t.Errorf("facet scopes %v: the client user's statuses and codes were not scoped", h.store.scopes)
 	}
 
 	// Live filter: table, pager, summaries and the dependent options; the URL.

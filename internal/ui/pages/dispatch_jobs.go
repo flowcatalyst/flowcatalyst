@@ -36,7 +36,7 @@ type DispatchJobStore interface {
 	FindWithFilters(ctx context.Context, p dispatchjob.FilterParams) ([]dispatchjob.DispatchJob, error)
 	FindByID(ctx context.Context, id string) (*dispatchjob.DispatchJob, error)
 	AttemptsByJob(ctx context.Context, jobID string) ([]dispatchjob.Attempt, error)
-	DistinctValues(ctx context.Context, column string, limit int) ([]string, error)
+	DistinctValues(ctx context.Context, column string, limit int, accessibleClientIDs *[]string) ([]string, error)
 }
 
 // DispatchJobs is the dispatch jobs page (/ui/dispatch-jobs), mirroring the
@@ -395,7 +395,7 @@ func (h *DispatchJobs) listView(ctx context.Context, ac *auth.AuthContext, q djQ
 
 // filterOptions are the SPA's: the clients the caller can see (active,
 // sorted by name), the distinct statuses and codes the API's filter-options
-// returns, and (new: the SPA leaves them empty, see docs/ui/README.md) the
+// returns (scoped to the caller's tenants, as the list), and (new: the SPA leaves them empty, see docs/ui/README.md) the
 // application, subdomain and aggregate segments of those codes, each
 // narrowed by the levels chosen above it. A chosen value that is not among
 // the options is kept as an option, so a URL never silently loses a filter.
@@ -407,7 +407,7 @@ func (h *DispatchJobs) filterOptions(ctx context.Context, ac *auth.AuthContext, 
 	}
 	names := clientNames(cs)
 	out[djFacetClients] = clientFilterOptions(cs, ac)
-	distinct, err := h.facetCache.get(ctx, h.Jobs.DistinctValues, "status", "code")
+	distinct, err := h.facetCache.get(ctx, h.Jobs.DistinctValues, distinctScope(ac), "status", "code")
 	if err != nil {
 		return nil, nil, err
 	}

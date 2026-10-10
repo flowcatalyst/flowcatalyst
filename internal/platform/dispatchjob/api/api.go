@@ -560,8 +560,11 @@ func (s *State) filterOptions(ctx context.Context, _ *apicommon.Empty) (*apicomm
 	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
 		return nil, err
 	}
+	// Scoped as the list is: a client user sees the values of platform jobs
+	// and its own tenants' jobs only.
+	scope := operations.VisibleTo(ac, dispatchjob.FilterParams{}).AccessibleClientIDs
 	q := func(col string) []string {
-		out, _ := s.Repo.DistinctValues(ctx, col, 200)
+		out, _ := s.Repo.DistinctValues(ctx, col, 200, scope)
 		return out
 	}
 	return &apicommon.Out[DispatchJobFilterOptionsResponse]{Body: DispatchJobFilterOptionsResponse{

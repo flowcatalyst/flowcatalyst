@@ -65,32 +65,68 @@ const distinctTTL = 30 * time.Second
 // distinctLimit is the API's filter-options cap per facet.
 const distinctLimit = 200
 
-// distinctCache keeps a list's distinct facet values for distinctTTL: the
-// SPA reads them once per visit, a live list on every request, and a
-// DISTINCT over a projection is the costliest query of a request.
+// distinctFetch reads one column's distinct values for a tenant scope (the
+// repositories' DistinctValues: nil scope = every tenant, for an anchor).
+type distinctFetch func(ctx context.Context, column string, limit int, accessibleClientIDs *[]string) ([]string, error)
+
+// distinctCache keeps a list's distinct facet values for distinctTTL, per
+// tenant scope (the values are scoped as the list is: docs/platform-bug-fixes.md
+// bug 18): the SPA reads them once per visit, a live list on every request,
+// and a DISTINCT over a projection is the costliest query of a request.
 type distinctCache struct {
-	mu   sync.Mutex
+	mu      sync.Mutex
+	entries map[string]distinctEntry
+}
+
+type distinctEntry struct {
 	at   time.Time
 	vals map[string][]string
 }
 
-// get returns the distinct values of each column (fetched together when
-// the cache is cold or stale).
-func (c *distinctCache) get(ctx context.Context, fetch func(ctx context.Context, column string, limit int) ([]string, error), columns ...string) (map[string][]string, error) {
+// distinctScope is the tenant scope of a caller's facet values: nil (every
+// tenant) for an anchor, else its own clients (platform rows are always in).
+func distinctScope(ac *auth.AuthContext) *[]string {
+	if ac.IsAnchor() {
+		return nil
+	}
+	clients := slices.Clone(ac.Clients)
+	slices.Sort(clients)
+	return &clients
+}
+
+func distinctScopeKey(scope *[]string) string {
+	if scope == nil {
+		return "*"
+	}
+	return "c:" + strings.Join(*scope, ",")
+}
+
+// get returns the distinct values of each column for the scope (fetched
+// together when that scope's entry is cold or stale).
+func (c *distinctCache) get(ctx context.Context, fetch distinctFetch, scope *[]string, columns ...string) (map[string][]string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.vals != nil && time.Since(c.at) < distinctTTL {
-		return c.vals, nil
+	key := distinctScopeKey(scope)
+	if e, ok := c.entries[key]; ok && time.Since(e.at) < distinctTTL {
+		return e.vals, nil
 	}
 	vals := make(map[string][]string, len(columns))
 	for _, col := range columns {
-		v, err := fetch(ctx, col, distinctLimit)
+		v, err := fetch(ctx, col, distinctLimit, scope)
 		if err != nil {
 			return nil, usecase.Internal("REPO", "distinct "+col+" failed", err)
 		}
 		vals[col] = v
 	}
-	c.at, c.vals = time.Now(), vals
+	if c.entries == nil {
+		c.entries = map[string]distinctEntry{}
+	}
+	for k, e := range c.entries { // drop stale scopes so the map stays small
+		if time.Since(e.at) >= distinctTTL {
+			delete(c.entries, k)
+		}
+	}
+	c.entries[key] = distinctEntry{at: time.Now(), vals: vals}
 	return vals, nil
 }
 

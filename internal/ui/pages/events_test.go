@@ -21,6 +21,7 @@ import (
 type fakeEventStore struct {
 	events []event.Event
 	params []event.FilterParams
+	scopes []string
 }
 
 func (f *fakeEventStore) FindWithFilters(_ context.Context, p event.FilterParams) ([]event.Event, error) {
@@ -54,7 +55,8 @@ func (f *fakeEventStore) FindByID(_ context.Context, id string) (*event.Event, e
 	return nil, nil
 }
 
-func (f *fakeEventStore) DistinctValues(_ context.Context, column string, _ int) ([]string, error) {
+func (f *fakeEventStore) DistinctValues(_ context.Context, column string, _ int, scope *[]string) ([]string, error) {
+	f.scopes = append(f.scopes, distinctScopeKey(scope))
 	if column == "type" {
 		return []string{"orders:sales:order:created", "orders:billing:invoice:paid", "crm:contacts:person:updated"}, nil
 	}
@@ -106,6 +108,9 @@ func TestEventsList(t *testing.T) {
 	own := evRec(t, store, scoped, req{target: "/ui/events"}).Body.String()
 	mustContain(t, own, "0EVENTID0000001", "0EVENTID0000002")
 	mustNotContain(t, own, "0EVENTID0000003")
+	if !slices.Contains(store.scopes, "c:clt_1") {
+		t.Errorf("facet scopes %v: the client user's event types were not scoped", store.scopes)
+	}
 	if rec := evRec(t, store, scoped, req{target: "/ui/events/0EVENTID0000003"}); rec.Code != http.StatusForbidden {
 		t.Errorf("another tenant's event: %d", rec.Code)
 	}
