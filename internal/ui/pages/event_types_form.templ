@@ -50,29 +50,29 @@ templ etField(f etForm, key string) {
 			@kit.Field(f.fieldProps(key, "", "Format: app:subdomain:aggregate:event. Each part starts with a lowercase letter, then lowercase letters, numbers, hyphens or dots.", true)) {
 				<div class="flex flex-col gap-3">
 					<div class="flex flex-col gap-2 sm:flex-row sm:items-start">
-							<div class="flex min-w-[120px] flex-1 flex-col gap-1.5">
-								<label for={ f.id("application") } class="text-[13px] font-medium text-subtle-foreground">Application</label>
-								@kit.Autocomplete(kit.AutocompleteProps{
-									ID:          f.id("application"),
-									Name:        "application",
-									Value:       f.App,
-									Placeholder: "e.g., operant",
-									Options:     f.AppCodes,
-									Required:    true,
-									Invalid:     f.fieldError(key) != "",
-									DescribedBy: f.describedBy(key),
-									Attrs: templ.Attributes{
-										"pattern": etCodePattern, "title": "Lowercase letters, numbers, hyphens, dots only",
-										"data-bind:et-app": true, "autofocus": true,
-									},
-								})
-							</div>
-							@etCodeSep()
-							@etSegment(f, "subdomain", "Subdomain", "e.g., execution", "etSub", f.Subdomain)
-							@etCodeSep()
-							@etSegment(f, "aggregate", "Aggregate", "e.g., trip", "etAgg", f.Aggregate)
-							@etCodeSep()
-							@etSegment(f, "event", "Event", "e.g., started", "etEvent", f.Event)
+						<div class="flex min-w-[120px] flex-1 flex-col gap-1.5">
+							<label for={ f.id("application") } class="text-[13px] font-medium text-subtle-foreground">Application</label>
+							@kit.Autocomplete(kit.AutocompleteProps{
+								ID:          f.id("application"),
+								Name:        "application",
+								Value:       f.App,
+								Placeholder: "e.g., operant",
+								Options:     f.AppCodes,
+								Required:    true,
+								Invalid:     f.fieldError(key) != "",
+								DescribedBy: f.describedBy(key),
+								Attrs: templ.Attributes{
+									"pattern": etCodePattern, "title": "Lowercase letters, numbers, hyphens, dots only",
+									"data-bind:et-app": true, "autofocus": true,
+								},
+							})
+						</div>
+						@etCodeSep()
+						@etSegment(f, "subdomain", "Subdomain", "e.g., execution", "etSub", f.Subdomain)
+						@etCodeSep()
+						@etSegment(f, "aggregate", "Aggregate", "e.g., trip", "etAgg", f.Aggregate)
+						@etCodeSep()
+						@etSegment(f, "event", "Event", "e.g., started", "etEvent", f.Event)
 					</div>
 					<div class="rounded-lg border border-border bg-subtle p-4">
 						<span class="mb-2 block text-xs font-medium text-muted-foreground uppercase">Generated Code</span>

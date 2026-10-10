@@ -45,7 +45,7 @@ func (p TabsProps) is(value string) string {
 
 func (p TabsProps) triggerAttrs(value string) templ.Attributes {
 	return templ.Attributes{
-		"data-attr:aria-current":  p.is(value) + " && 'page'",
+		"data-attr:aria-current": p.is(value) + " && 'page'",
 		"data-on:click__prevent": "$" + Signal(p.Signal) + " = '" + ID(value) + "'",
 	}
 }
