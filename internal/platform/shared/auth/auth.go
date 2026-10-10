@@ -530,21 +530,20 @@ func CanReadAllEventTypes(a *AuthContext) bool {
 }
 
 // CanAddEventTypeSchema guards adding a schema version to an event type.
-// Admits the messaging write permissions, and the application-service
-// create/update an SDK service account holds (the SDK pushes its event
+// Adding a version updates the event type, so the messaging grant is update
+// (not any of create/update/delete). The application-service create/update an
+// SDK service account holds are kept as they were (the SDK pushes its event
 // schemas this way). A caller admitted only by the latter is confined by the
 // handler to the event types of the applications it is bound to.
 func CanAddEventTypeSchema(a *AuthContext) error {
-	return requireAny(a,
-		permEventTypeCreate, permEventTypeUpdate, permEventTypeDelete,
-		permAppSvcEventTypeCreate, permAppSvcEventTypeUpdate)
+	return requireAny(a, permEventTypeUpdate, permAppSvcEventTypeCreate, permAppSvcEventTypeUpdate)
 }
 
-// CanWriteAllEventTypes reports whether the principal writes event types
-// without the per-application confinement.
+// CanWriteAllEventTypes reports whether the principal versions event types
+// without the per-application confinement: it holds the messaging update
+// permission.
 func CanWriteAllEventTypes(a *AuthContext) bool {
-	return a != nil && slices.ContainsFunc(
-		[]string{permEventTypeCreate, permEventTypeUpdate, permEventTypeDelete}, a.HasPermission)
+	return a != nil && a.HasPermission(permEventTypeUpdate)
 }
 func CanCreateEventTypes(a *AuthContext) error { return requirePermission(a, permEventTypeCreate) }
 func CanUpdateEventTypes(a *AuthContext) error { return requirePermission(a, permEventTypeUpdate) }

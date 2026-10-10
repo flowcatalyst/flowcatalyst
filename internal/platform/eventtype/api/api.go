@@ -190,10 +190,10 @@ func (s *State) getByCode(ctx context.Context, in *getByCodeInput) (*apicommon.O
 }
 
 func (s *State) create(ctx context.Context, in *apicommon.In[CreateEventTypeRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
-	// Coarse permission at the controller; the use case enforces per-client
-	// resource access (you may only bind an event type to a client you can
-	// access; platform-wide requires anchor).
-	if err := auth.CanWriteEventTypes(auth.FromContext(ctx)); err != nil {
+	// The permission for the operation at the controller; the use case
+	// enforces per-client resource access (you may only bind an event type to a
+	// client you can access; platform-wide requires anchor).
+	if err := auth.CanCreateEventTypes(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -210,7 +210,7 @@ type updateInput struct {
 }
 
 func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, error) {
-	if err := auth.CanWriteEventTypes(auth.FromContext(ctx)); err != nil {
+	if err := auth.CanUpdateEventTypes(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
