@@ -286,8 +286,10 @@ func (s *EventTypesState) delete(w http.ResponseWriter, r *http.Request) {
 
 // POST /bff/event-types/{id}/schemas
 //
-// Adds a new spec version. Returns the full BFF response (with the
-// new version included in spec_versions).
+// Adds a new spec version with the body's MIME type and schema type. The SPA
+// sends the schema as its textarea's text (a JSON string); AddSchema stores a
+// JSON Schema as the document that text holds. Returns the full BFF response
+// (with the new version included in spec_versions).
 func (s *EventTypesState) addSchema(w http.ResponseWriter, r *http.Request) {
 	ac := auth.FromContext(r.Context())
 	if err := auth.CanUpdateEventTypes(ac); err != nil {
@@ -307,6 +309,10 @@ func (s *EventTypesState) addSchema(w http.ResponseWriter, r *http.Request) {
 		EventTypeID: chi.URLParam(r, "id"),
 		Version:     body.Version,
 		Schema:      body.Schema,
+		MimeType:    body.MimeType,
+	}
+	if body.SchemaType != nil {
+		cmd.SchemaType = *body.SchemaType
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
 	if _, err := usecaseop.Run(r.Context(), s.UoW, operations.AddSchema(s.Repo), cmd, ec); err != nil {

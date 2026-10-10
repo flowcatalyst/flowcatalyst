@@ -50,7 +50,7 @@ func TestEventTypesPageAgainstPostgres(t *testing.T) {
 
 	do(req{method: http.MethodPost, target: base + "/edit", datastar: true, form: url.Values{"name": {"UI PG order placed 2"}, "description": {""}}})
 	schema := `{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}`
-	do(req{method: http.MethodPost, target: base + "/add-schema", datastar: true, form: url.Values{"version": {"1.0"}, "schema": {schema}}})
+	do(req{method: http.MethodPost, target: base + "/add-schema", datastar: true, form: url.Values{"version": {"1.0"}, "mimeType": {"application/schema+json"}, "schema": {schema}}})
 	got, err := repo.FindByID(context.Background(), et.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "UI PG order placed 2", got.Name)

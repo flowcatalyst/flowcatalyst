@@ -3,9 +3,12 @@
 package bff
 
 import (
+	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -132,3 +135,33 @@ func TestBffEventTypeReads_AuthorizedScopedAndMultiValued(t *testing.T) {
 	})
 
 }
+
+// The SPA's add-schema body (the textarea's text as a JSON string, with its
+// MIME type and schema type) stores the document with those types (bug 3).
+func TestBffAddSchema_StoresTheSPAsSchemaAsTheDocument(t *testing.T) {
+	ctx := testpg.AnchorCtx()
+	pool := testpg.Pool(t)
+	uow := testpg.NewUoW(t)
+	repo := eventtype.NewRepository(pool)
+	ev, err := usecaseop.Run(ctx, uow, etops.CreateEventType(repo), etops.CreateCommand{Code: "bffschema:orders:order:created", Name: "S"}, testpg.TestEC())
+	require.NoError(t, err)
+
+	r := chi.NewRouter()
+	RegisterEventTypes(r, &EventTypesState{Repo: repo, UoW: uow, Apps: application.NewRepository(pool)})
+	body := `{"version":"1.0","mimeType":"application/json","schemaType":"JSON_SCHEMA","schema":"{\n  \"type\": \"object\"\n}"}`
+	req := httptest.NewRequest(http.MethodPost, "/bff/event-types/"+ev.EventTypeID+"/schemas", stringsReader(body))
+	req = req.WithContext(auth.WithContext(req.Context(), &auth.AuthContext{
+		PrincipalID: "prn_bffschema", Scope: auth.ScopeAnchor, Permissions: []string{"platform:messaging:event-type:update"},
+	}))
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	got, err := repo.FindByID(context.Background(), ev.EventTypeID)
+	require.NoError(t, err)
+	require.Len(t, got.SpecVersions, 1)
+	assert.JSONEq(t, `{"type":"object"}`, string(got.SpecVersions[0].SchemaContent))
+	assert.Equal(t, "application/json", got.SpecVersions[0].MimeType)
+}
+
+func stringsReader(s string) io.Reader { return strings.NewReader(s) }

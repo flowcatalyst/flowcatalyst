@@ -127,7 +127,8 @@ templ etSchemaPage(f etSchemaForm) {
 			@kit.FormDialogError(etSchemaFormID, f.Errs.Form)
 			@kit.FormSection(kit.FormSectionProps{Title: "Version Information"}) {
 				@etSchemaField(f, "version")
-				<p class="text-sm text-muted-foreground">Stored as JSON Schema (<code class="fc-mono-chip">application/schema+json</code>), as every schema version is.</p>
+				@etSchemaField(f, "mimeType")
+				@etSchemaField(f, "schemaType")
 			}
 			@kit.FormSection(kit.FormSectionProps{Title: "Schema Definition"}) {
 				@etSchemaField(f, "schema")
@@ -150,6 +151,14 @@ templ etSchemaField(f etSchemaForm, key string) {
 		case "version":
 			@kit.Field(f.fieldProps(key, "Version")) {
 				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Value: f.Version, Placeholder: "e.g., 1.0", Required: true, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"pattern": `\d+\.\d+`, "title": "Format: MAJOR.MINOR (e.g., 1.0)", "autocomplete": "off"}, Class: "max-w-xs"})
+			}
+		case "mimeType":
+			@kit.Field(f.fieldProps(key, "MIME Type")) {
+				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Value: f.MimeType, Placeholder: "e.g., application/json", Required: true, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"maxlength": "100", "autocomplete": "off"}, Class: "max-w-md"})
+			}
+		case "schemaType":
+			@kit.Field(f.fieldProps(key, "Schema Type")) {
+				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: etSchemaTypes, Selected: cmpOrString(f.SchemaType, "JSON_SCHEMA"), Required: true, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key), Class: "max-w-xs"})
 			}
 		case "schema":
 			@kit.Field(f.fieldProps(key, "Schema")) {

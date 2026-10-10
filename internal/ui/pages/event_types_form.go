@@ -356,8 +356,17 @@ func (f etForm) previewCode() string {
 type etSchemaForm struct {
 	ETID, ETName string
 	Version      string
+	MimeType     string
+	SchemaType   string
 	Schema       string
 	Errs         formErrors
+}
+
+// etSchemaTypes are the SPA's schema type choices.
+var etSchemaTypes = []kit.Option{
+	{Value: "JSON_SCHEMA", Label: "JSON Schema"},
+	{Value: "PROTO", Label: "Protocol Buffers"},
+	{Value: "XSD", Label: "XML Schema (XSD)"},
 }
 
 func (f etSchemaForm) id(key string) string { return fieldID(etSchemaFormID, key) }
@@ -375,10 +384,16 @@ func (f etSchemaForm) describedBy(key string) string {
 
 func (f etSchemaForm) action() string { return etURL(f.ETID) + "/add-schema" }
 
+// etSchemaFields are the add-schema form's fields, in order.
+var etSchemaFields = []string{"version", "mimeType", "schemaType", "schema"}
+
 var etSchemaFieldCodes = map[string]string{
-	"VERSION_REQUIRED": "version",
-	"VERSION_EXISTS":   "version",
-	"SCHEMA_REQUIRED":  "schema",
+	"VERSION_REQUIRED":    "version",
+	"VERSION_EXISTS":      "version",
+	"SCHEMA_REQUIRED":     "schema",
+	"INVALID_SCHEMA":      "schema",
+	"INVALID_SCHEMA_TYPE": "schemaType",
+	"INVALID_MIME_TYPE":   "mimeType",
 }
 
 // suggestNextVersion is the SPA's: 1.0 for the first, else the highest
@@ -431,33 +446,44 @@ func (h *EventTypes) addSchemaPage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	f := etSchemaForm{ETID: et.ID, ETName: et.Name, Version: suggestNextVersion(et)}
+	f := etSchemaForm{ETID: et.ID, ETName: et.Name, Version: suggestNextVersion(et), MimeType: "application/json", SchemaType: "JSON_SCHEMA"}
 	h.Shell.Render(w, r, shell.Page{Title: "Add Schema Version", Path: etPath}, etSchemaPage(f))
 }
 
-// addSchema adds a schema version. The schema must be a JSON document (the
-// use case stores every version as JSON Schema, application/schema+json);
-// it is sent as that document. (The SPA sends the textarea's text as a JSON
-// string, which stores the schema double-encoded; recorded in
-// docs/ui/README.md.)
+// addSchema adds a schema version with the SPA's fields: version, MIME type,
+// schema type and the schema. A JSON Schema must be a JSON document and is
+// sent as one; an XSD or PROTO schema is text, sent as a JSON string (the use
+// case stores each that way, with the MIME type and schema type given).
 func (h *EventTypes) addSchema(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	et, ok := h.addSchemaTarget(w, r)
 	if !ok {
 		return
 	}
-	f := etSchemaForm{ETID: et.ID, ETName: et.Name, Version: strings.TrimSpace(r.PostFormValue("version")), Schema: r.PostFormValue("schema")}
+	f := etSchemaForm{
+		ETID: et.ID, ETName: et.Name,
+		Version:    strings.TrimSpace(r.PostFormValue("version")),
+		MimeType:   strings.TrimSpace(r.PostFormValue("mimeType")),
+		SchemaType: cmpOrString(strings.TrimSpace(r.PostFormValue("schemaType")), "JSON_SCHEMA"),
+		Schema:     r.PostFormValue("schema"),
+	}
 	var raw json.RawMessage
 	switch {
 	case strings.TrimSpace(f.Schema) == "":
 		f.Errs.field("schema", "Enter the schema.")
+	case f.SchemaType != "JSON_SCHEMA":
+		raw, _ = json.Marshal(f.Schema)
 	case !json.Valid([]byte(f.Schema)):
 		f.Errs.field("schema", "Enter a valid JSON document.")
 	default:
 		raw = json.RawMessage(f.Schema)
 	}
+	if f.MimeType == "" {
+		f.Errs.field("mimeType", "Enter the MIME type.")
+	}
 	if !f.Errs.any() {
-		if err := h.Ops.AddSchema(ctx, etops.AddSchemaCommand{EventTypeID: et.ID, Version: f.Version, Schema: raw}); err != nil {
+		cmd := etops.AddSchemaCommand{EventTypeID: et.ID, Version: f.Version, Schema: raw, MimeType: f.MimeType, SchemaType: f.SchemaType}
+		if err := h.Ops.AddSchema(ctx, cmd); err != nil {
 			f.Errs.apply(r, err, etSchemaFieldCodes)
 		}
 	}
@@ -478,13 +504,17 @@ func (h *EventTypes) addSchema(w http.ResponseWriter, r *http.Request) {
 func (h *EventTypes) schemaFailed(w http.ResponseWriter, r *http.Request, f etSchemaForm) {
 	if ds.IsDatastar(r) {
 		focus := ""
-		for _, k := range []string{"version", "schema"} {
+		for _, k := range etSchemaFields {
 			if f.Errs.Fields[k] != "" {
 				focus = f.id(k)
 				break
 			}
 		}
-		patchFormFailure(ds.NewSSE(w, r), r, etSchemaFormID, []templ.Component{etSchemaField(f, "version"), etSchemaField(f, "schema")}, f.Errs.Form, focus)
+		fields := make([]templ.Component, 0, len(etSchemaFields))
+		for _, k := range etSchemaFields {
+			fields = append(fields, etSchemaField(f, k))
+		}
+		patchFormFailure(ds.NewSSE(w, r), r, etSchemaFormID, fields, f.Errs.Form, focus)
 		return
 	}
 	h.Shell.RenderStatus(w, r, cmpOr(f.Errs.Status, http.StatusUnprocessableEntity), shell.Page{Title: "Add Schema Version", Path: etPath}, etSchemaPage(f))

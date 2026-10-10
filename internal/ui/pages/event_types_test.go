@@ -348,24 +348,34 @@ func TestEventTypeEditAndActions(t *testing.T) {
 func TestEventTypeAddSchema(t *testing.T) {
 	h := newETHarness()
 	page := h.do(t, anchorAdmin(), req{target: "/ui/event-types/evt_1/add-schema"})
-	mustContain(t, page, "Add Schema Version", "Add a new schema to <strong>Order placed</strong>", `name="version" value="1.2"`, `pattern="\d+\.\d+"`)
+	mustContain(t, page, "Add Schema Version", "Add a new schema to <strong>Order placed</strong>", `name="version" value="1.2"`, `pattern="\d+\.\d+"`,
+		`name="mimeType" value="application/json"`, `name="schemaType"`, `<option value="XSD"`)
 	first := h.do(t, anchorAdmin(), req{target: "/ui/event-types/evt_2/add-schema"})
 	mustContain(t, first, `value="1.0"`)
 
-	bad := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/event-types/evt_1/add-schema", datastar: true, form: url.Values{"version": {"2.0"}, "schema": {"{not json"}}})
+	bad := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/event-types/evt_1/add-schema", datastar: true, form: url.Values{"version": {"2.0"}, "mimeType": {"application/json"}, "schema": {"{not json"}}})
 	mustContain(t, bad, "Enter a valid JSON document.", `id="et-schema-schema-err"`)
 	if len(h.ops.schemas) != 0 {
 		t.Fatal("invalid JSON reached the use case")
 	}
-	rec := h.rec(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/event-types/evt_1/add-schema", datastar: true, form: url.Values{"version": {"2.0"}, "schema": {orderSchema}}})
-	if s := h.ops.schemas[0]; s.EventTypeID != "evt_1" || s.Version != "2.0" || string(s.Schema) != orderSchema {
+	rec := h.rec(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/event-types/evt_1/add-schema", datastar: true, form: url.Values{"version": {"2.0"}, "mimeType": {"application/json"}, "schemaType": {"JSON_SCHEMA"}, "schema": {orderSchema}}})
+	if s := h.ops.schemas[0]; s.EventTypeID != "evt_1" || s.Version != "2.0" || string(s.Schema) != orderSchema || s.MimeType != "application/json" || s.SchemaType != "JSON_SCHEMA" {
 		t.Errorf("add schema = %+v", s)
 	}
 	if !strings.Contains(rec.Body.String(), "/ui/event-types/evt_1") || !strings.Contains(rec.Header().Get("Set-Cookie"), "fc_ui_flash=schema-added") {
 		t.Errorf("redirect: %s %q", rec.Body.String(), rec.Header().Get("Set-Cookie"))
 	}
+	// An XSD is text: sent as a JSON string with its type (the use case stores it so).
+	xsd := `<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"/>`
+	h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/event-types/evt_1/add-schema", datastar: true, form: url.Values{"version": {"2.1"}, "mimeType": {"application/xml"}, "schemaType": {"XSD"}, "schema": {xsd}}})
+	var sentXSD string
+	if s := h.ops.schemas[1]; s.SchemaType != "XSD" || s.MimeType != "application/xml" || json.Unmarshal(s.Schema, &sentXSD) != nil || sentXSD != xsd {
+		t.Errorf("add XSD schema = %+v (%s)", s, s.Schema)
+	}
+	noMime := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/event-types/evt_1/add-schema", datastar: true, form: url.Values{"version": {"2.2"}, "schema": {orderSchema}}})
+	mustContain(t, noMime, `id="et-schema-mime-type-err"`, "Enter the MIME type.")
 	h.ops.err = usecase.Conflict("VERSION_EXISTS", "Schema version '2.0' already exists for this event type")
-	dup := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/event-types/evt_1/add-schema", datastar: true, form: url.Values{"version": {"2.0"}, "schema": {orderSchema}}})
+	dup := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/event-types/evt_1/add-schema", datastar: true, form: url.Values{"version": {"2.0"}, "mimeType": {"application/json"}, "schema": {orderSchema}}})
 	mustContain(t, dup, `id="et-schema-version-err"`, "already exists")
 }
 

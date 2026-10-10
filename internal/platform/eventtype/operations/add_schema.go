@@ -14,11 +14,23 @@ import (
 )
 
 // AddSchemaCommand is the input DTO for AddSchema.
+//
+// SchemaType (JSON_SCHEMA, XSD, PROTO; legacy XML_SCHEMA and PROTOBUF accepted)
+// and MimeType are optional: empty means JSON_SCHEMA and the schema type's
+// default MIME type. A JSON Schema is stored as the JSON document; a schema
+// sent as a JSON string holding the document (the SPA sends its textarea's
+// text this way) is stored as the document it holds. XSD and PROTO schemas are
+// text, stored as a JSON string.
 type AddSchemaCommand struct {
 	EventTypeID string          `json:"eventTypeId"`
 	Version     string          `json:"version"`
 	Schema      json.RawMessage `json:"schema"`
+	MimeType    string          `json:"mimeType,omitempty"`
+	SchemaType  string          `json:"schemaType,omitempty"`
 }
+
+// maxMimeTypeLen is msg_event_type_spec_versions.mime_type's width.
+const maxMimeTypeLen = 100
 
 // AddSchema appends a new schema version to an event type and atomically
 // emits an [EventTypeSchemaAdded] event. The (id, version) pair must be
@@ -35,6 +47,16 @@ func AddSchema(repo *eventtype.Repository) usecaseop.Operation[AddSchemaCommand,
 			}
 			if len(cmd.Schema) == 0 {
 				return usecase.Validation("SCHEMA_REQUIRED", "schema payload is required")
+			}
+			if len(strings.TrimSpace(cmd.MimeType)) > maxMimeTypeLen {
+				return usecase.Validation("INVALID_MIME_TYPE", "mimeType is longer than 100 characters")
+			}
+			st, err := schemaTypeOf(cmd.SchemaType)
+			if err != nil {
+				return err
+			}
+			if _, err := eventtype.NormaliseSchemaContent(st, cmd.Schema); err != nil {
+				return usecase.Validation("INVALID_SCHEMA", err.Error())
 			}
 			return nil
 		},
@@ -60,7 +82,20 @@ func AddSchema(repo *eventtype.Repository) usecaseop.Operation[AddSchemaCommand,
 				}
 			}
 
-			sv := eventtype.NewSpecVersion(et.ID, cmd.Version, cmd.Schema)
+			st, err := schemaTypeOf(cmd.SchemaType)
+			if err != nil {
+				return nil, err
+			}
+			content, err := eventtype.NormaliseSchemaContent(st, cmd.Schema)
+			if err != nil {
+				return nil, usecase.Validation("INVALID_SCHEMA", err.Error())
+			}
+			sv := eventtype.NewSpecVersion(et.ID, cmd.Version, content)
+			sv.SchemaType = st
+			sv.MimeType = eventtype.DefaultMimeType(st)
+			if m := strings.TrimSpace(cmd.MimeType); m != "" {
+				sv.MimeType = m
+			}
 			et.AddSchemaVersion(sv)
 
 			event := EventTypeSchemaAdded{
@@ -71,4 +106,17 @@ func AddSchema(repo *eventtype.Repository) usecaseop.Operation[AddSchemaCommand,
 			return usecaseop.Save(et, repo, event), nil
 		},
 	}
+}
+
+// schemaTypeOf parses the command's schema type; empty is JSON_SCHEMA.
+func schemaTypeOf(v string) (eventtype.SchemaType, error) {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return eventtype.SchemaJSON, nil
+	}
+	st, ok := eventtype.ParseSchemaType(strings.ToUpper(v))
+	if !ok {
+		return "", usecase.Validation("INVALID_SCHEMA_TYPE", "schemaType must be JSON_SCHEMA, XSD or PROTO")
+	}
+	return st, nil
 }

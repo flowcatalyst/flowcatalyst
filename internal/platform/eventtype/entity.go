@@ -4,6 +4,7 @@
 package eventtype
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -105,6 +106,52 @@ func ParseSchemaType(s string) (SchemaType, bool) {
 	default:
 		return "", false
 	}
+}
+
+// DefaultMimeType is the MIME type a schema version of type t gets when none
+// is given.
+func DefaultMimeType(t SchemaType) string {
+	switch t {
+	case SchemaXSD:
+		return "application/xml"
+	case SchemaProto:
+		return "application/x-protobuf"
+	case SchemaJSON:
+		return "application/schema+json"
+	default:
+		return "application/schema+json"
+	}
+}
+
+// NormaliseSchemaContent returns the stored form of a schema of type t. A JSON
+// Schema is the JSON document itself: a JSON string holding a document (an
+// object or an array) is unwrapped, so a schema typed into a text field is
+// not stored double-encoded; any other string is refused. XSD and PROTO
+// schemas are text and must arrive as a JSON string.
+func NormaliseSchemaContent(t SchemaType, raw json.RawMessage) (json.RawMessage, error) {
+	trimmed := bytes.TrimSpace(raw)
+	if !json.Valid(trimmed) {
+		return nil, errors.New("schema is not valid JSON")
+	}
+	isString := len(trimmed) > 0 && trimmed[0] == '"'
+	if t != SchemaJSON {
+		if !isString {
+			return nil, errors.New("an XSD or PROTO schema is text: send it as a JSON string")
+		}
+		return trimmed, nil
+	}
+	if !isString {
+		return trimmed, nil
+	}
+	var text string
+	if err := json.Unmarshal(trimmed, &text); err != nil {
+		return nil, errors.New("schema is not valid JSON")
+	}
+	inner := bytes.TrimSpace([]byte(text))
+	if len(inner) == 0 || (inner[0] != '{' && inner[0] != '[') || !json.Valid(inner) {
+		return nil, errors.New("a JSON Schema must be a JSON document")
+	}
+	return json.RawMessage(inner), nil
 }
 
 // SpecVersion is a schema version row.
