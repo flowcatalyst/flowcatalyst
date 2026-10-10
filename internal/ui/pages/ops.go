@@ -8,6 +8,9 @@ import (
 	connops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
+	etops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/seed"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
@@ -118,4 +121,97 @@ func (o ConnectionOps) Activate(ctx context.Context, id string) error {
 func (o ConnectionOps) Delete(ctx context.Context, id string) error {
 	_, err := usecaseop.Run(ctx, o.UoW, connops.DeleteConnection(o.Repo, o.Subs), connops.DeleteCommand{ID: id}, auth.NewExecutionContext(ctx))
 	return err
+}
+
+// EventTypeCommands are the event-type operations the event types page runs;
+// EventTypeOps runs the use cases the SPA's BFF endpoints run.
+type EventTypeCommands interface {
+	Create(ctx context.Context, cmd etops.CreateCommand) (string, error)
+	Update(ctx context.Context, cmd etops.UpdateCommand) error
+	Archive(ctx context.Context, id string) error
+	Delete(ctx context.Context, id string) error
+	AddSchema(ctx context.Context, cmd etops.AddSchemaCommand) error
+	FinaliseSchema(ctx context.Context, id, version string) error
+	DeprecateSchema(ctx context.Context, id, version string) error
+	// SyncPlatform re-runs the platform event-type catalogue sync (the SPA's
+	// "Sync Platform Events").
+	SyncPlatform(ctx context.Context) (EventTypeSyncResult, error)
+}
+
+// EventTypeSyncResult is the sync's tally (the BFF's sync-platform answer).
+type EventTypeSyncResult struct {
+	Created, Updated, Deleted, Total            int
+	SchemasCreated, SchemasUpdated, SchemasSame int
+}
+
+// EventTypeOps runs the event-type use cases through the unit of work,
+// exactly as internal/platform/shared/bff/event_types.go does.
+type EventTypeOps struct {
+	Repo *eventtype.Repository
+	UoW  *usecasepgx.UnitOfWork
+}
+
+// Create runs CreateEventType and returns the new event type's id.
+func (o EventTypeOps) Create(ctx context.Context, cmd etops.CreateCommand) (string, error) {
+	ev, err := usecaseop.Run(ctx, o.UoW, etops.CreateEventType(o.Repo), cmd, auth.NewExecutionContext(ctx))
+	if err != nil {
+		return "", err
+	}
+	return ev.EventTypeID, nil
+}
+
+// Update runs UpdateEventType.
+func (o EventTypeOps) Update(ctx context.Context, cmd etops.UpdateCommand) error {
+	_, err := usecaseop.Run(ctx, o.UoW, etops.UpdateEventType(o.Repo), cmd, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// Archive runs ArchiveEventType.
+func (o EventTypeOps) Archive(ctx context.Context, id string) error {
+	_, err := usecaseop.Run(ctx, o.UoW, etops.ArchiveEventType(o.Repo), etops.ArchiveCommand{ID: id}, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// Delete runs DeleteEventType.
+func (o EventTypeOps) Delete(ctx context.Context, id string) error {
+	_, err := usecaseop.Run(ctx, o.UoW, etops.DeleteEventType(o.Repo), etops.DeleteCommand{ID: id}, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// AddSchema runs AddSchema.
+func (o EventTypeOps) AddSchema(ctx context.Context, cmd etops.AddSchemaCommand) error {
+	_, err := usecaseop.Run(ctx, o.UoW, etops.AddSchema(o.Repo), cmd, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// FinaliseSchema runs FinaliseEventTypeSchema.
+func (o EventTypeOps) FinaliseSchema(ctx context.Context, id, version string) error {
+	_, err := usecaseop.Run(ctx, o.UoW, etops.FinaliseEventTypeSchema(o.Repo), etops.FinaliseSchemaCommand{EventTypeID: id, Version: version}, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// DeprecateSchema runs DeprecateEventTypeSchema.
+func (o EventTypeOps) DeprecateSchema(ctx context.Context, id, version string) error {
+	_, err := usecaseop.Run(ctx, o.UoW, etops.DeprecateEventTypeSchema(o.Repo), etops.DeprecateSchemaCommand{EventTypeID: id, Version: version}, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// SyncPlatform syncs the platform's code-defined event types into the
+// "platform" application, removing unlisted ones (the BFF's sync-platform
+// with its default application code).
+func (o EventTypeOps) SyncPlatform(ctx context.Context) (EventTypeSyncResult, error) {
+	defs := seed.PlatformEventTypes()
+	inputs := make([]etops.SyncEventTypeInput, 0, len(defs))
+	for _, d := range defs {
+		inputs = append(inputs, etops.SyncEventTypeInput{Code: d.Code, Name: d.Name, Schema: d.Schema})
+	}
+	cmd := etops.SyncEventTypesCommand{ApplicationCode: "platform", EventTypes: inputs, RemoveUnlisted: true}
+	ev, err := usecaseop.Run(ctx, o.UoW, etops.SyncEventTypes(o.Repo), cmd, auth.NewExecutionContext(ctx))
+	if err != nil {
+		return EventTypeSyncResult{}, err
+	}
+	return EventTypeSyncResult{
+		Created: int(ev.Created), Updated: int(ev.Updated), Deleted: int(ev.Deleted), Total: len(defs),
+		SchemasCreated: int(ev.SchemasCreated), SchemasUpdated: int(ev.SchemasUpdated), SchemasSame: int(ev.SchemasUnchanged),
+	}, nil
 }

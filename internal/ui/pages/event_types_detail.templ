@@ -1,0 +1,204 @@
+package pages
+
+import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+
+templ etTag(label string, severity kit.TagSeverity) {
+	@kit.Tag(kit.TagProps{Severity: severity, Label: label})
+}
+
+templ etDrawer(d *etDetail) {
+	if d != nil {
+		@kit.Drawer(d.drawerProps()) {
+			@etDrawerBody(*d)
+		}
+	} else {
+		@kit.Drawer(kit.DrawerProps{ID: etDrawerID, Signal: etDrawerSig, Label: "Event type", Size: kit.DrawerWide})
+	}
+}
+
+templ etDrawerContent(d etDetail) {
+	@kit.DrawerContent(d.drawerProps()) {
+		@etDrawerBody(d)
+	}
+}
+
+// etDrawerBody mirrors the SPA's EventTypeDetailDrawer: details, schema
+// versions and the danger zone.
+templ etDrawerBody(d etDetail) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Event Type Details", Actions: etEditButton(d)}) {
+		<div class="fc-detail-grid">
+			@kit.DetailField(kit.DetailFieldProps{Label: "Code", Span: true}) {
+				@kit.CodeChips(kit.CodeChipsProps{Code: d.Code})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Name", Value: d.Name})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Description", Value: d.Description})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Client Scoped"}) {
+				if d.ClientScoped {
+					@etTag("Yes", kit.TagInfo)
+				} else {
+					@etTag("No", kit.TagSecondary)
+				}
+			}
+		</div>
+	}
+	@kit.FormSection(kit.FormSectionProps{Title: "Schema Versions", Actions: etAddSchemaButton(d, false)}) {
+		if len(d.Specs) == 0 {
+			<div class="fc-empty">
+				@kit.Icon(kit.IconProps{Name: "file", Class: "size-12"})
+				<span>No schema versions defined yet.</span>
+				@etAddSchemaButton(d, true)
+			</div>
+		} else {
+			@kit.Table(kit.TableProps{Dense: true}) {
+				@kit.THead(kit.THeadProps{Caps: true}) {
+					@kit.TR(kit.TRProps{Static: true}) {
+						@kit.TH(kit.THProps{}) {
+							Version
+						}
+						@kit.TH(kit.THProps{}) {
+							MIME Type
+						}
+						@kit.TH(kit.THProps{}) {
+							Schema Type
+						}
+						@kit.TH(kit.THProps{}) {
+							Status
+						}
+						@kit.TH(kit.THProps{}) {
+							Actions
+						}
+					}
+				}
+				@kit.TBody(kit.TBodyProps{}) {
+					for _, sv := range d.Specs {
+						@kit.TR(kit.TRProps{Static: true}) {
+							@kit.TD(kit.TDProps{}) {
+								<span class="font-mono font-medium">{ sv.Version }</span>
+							}
+							@kit.TD(kit.TDProps{}) {
+								<code class="fc-mono-chip">{ sv.MimeType }</code>
+							}
+							@kit.TD(kit.TDProps{}) {
+								{ sv.SchemaType }
+							}
+							@kit.TD(kit.TDProps{}) {
+								@etTag(sv.Status, sv.Severity)
+							}
+							@kit.TD(kit.TDProps{}) {
+								<div class="flex gap-1">
+									if sv.HasSchema {
+										<a href={ sv.ViewHref } class="fc-icon-btn" title="View Schema" aria-label={ "View schema " + sv.Version } aria-haspopup="dialog" data-on:click__prevent={ liveLink }>
+											@kit.Icon(kit.IconProps{Name: "eye", Class: "size-[1rem]"})
+										</a>
+									}
+									if d.Perms.Update && sv.Finalising {
+										<button type="button" class="fc-icon-btn text-green-600" title="Finalise" aria-label={ "Finalise schema " + sv.Version } { confirmTrigger(etFinaliseDialog, sv.ActionBase+"/finalise")... }>
+											@kit.Icon(kit.IconProps{Name: "check", Class: "size-[1rem]"})
+										</button>
+									}
+									if d.Perms.Update && sv.Current {
+										<button type="button" class="fc-icon-btn text-orange-600" title="Deprecate" aria-label={ "Deprecate schema " + sv.Version } { confirmTrigger(etDeprecateDialog, sv.ActionBase+"/deprecate")... }>
+											@kit.Icon(kit.IconProps{Name: "ban", Class: "size-[1rem]"})
+										</button>
+									}
+								</div>
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	if (d.Perms.Update && d.IsCurrent) || d.Perms.Delete {
+		@kit.FormSection(kit.FormSectionProps{Title: "Danger Zone", Danger: true}) {
+			<div class="flex flex-col gap-4">
+				if d.Perms.Update && d.IsCurrent {
+					@etDangerItem("Archive Event Type", "Requires all schemas to be deprecated first.", etWhy(d.CanArchive, cannotArchive), "et-archive-why") {
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyWarnOutline, Icon: "archive", Disabled: !d.CanArchive, Attrs: etDangerAttrs(d.CanArchive, etArchiveDialog, d.ActionBase+"/archive", "et-archive-why")}) {
+							Archive
+						}
+					}
+				}
+				if d.Perms.Delete {
+					@etDangerItem("Delete Event Type", "Permanently delete this event type.", etWhy(d.CanDelete, cannotDelete), "et-delete-why") {
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Icon: "trash-2", Disabled: !d.CanDelete, Attrs: etDangerAttrs(d.CanDelete, etDeleteDialog, d.ActionBase+"/delete", "et-delete-why")}) {
+							Delete
+						}
+					}
+				}
+			</div>
+		}
+	}
+}
+
+templ etEditButton(d etDetail) {
+	if d.canEdit() {
+		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.EditHref, Icon: "pencil", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+			Edit
+		}
+	}
+}
+
+// etAddSchemaButton is the SPA's Add Schema (section header, text) and Add
+// First Schema (empty state, primary): a link to the add-schema page, only
+// for a CURRENT event type and a user who may update event types.
+templ etAddSchemaButton(d etDetail, first bool) {
+	if d.Perms.Update && d.IsCurrent {
+		if first {
+			@kit.LegacyButton(kit.LegacyButtonProps{Href: d.AddSchemaHref, Icon: "plus"}) {
+				Add First Schema
+			}
+		} else {
+			@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.AddSchemaHref, Icon: "plus"}) {
+				Add Schema
+			}
+		}
+	}
+}
+
+templ etConfirmDialogs(perms etPerms) {
+	if perms.Update {
+		@kit.ConfirmDialog(etConfirm(etFinaliseDialog, "Finalise Schema", "Finalise this schema version? This makes it the current version.", "Finalise", kit.ToneDefault))
+		@kit.ConfirmDialog(etConfirm(etDeprecateDialog, "Deprecate Schema", "Deprecate this schema version?", "Deprecate", kit.ToneWarn))
+		@kit.ConfirmDialog(etConfirm(etArchiveDialog, "Archive Event Type", "Archive this event type? No new events can be created for archived types.", "Archive", kit.ToneWarn))
+	}
+	if perms.Delete {
+		@kit.ConfirmDialog(etConfirm(etDeleteDialog, "Delete Event Type", "Delete this event type? This cannot be undone.", "Delete", kit.ToneDanger))
+	}
+}
+
+// etViewerDialog is the SPA's SchemaViewerDialog: tabs for the schema, an
+// example and generated types, the version's status and a copy button.
+templ etViewerDialog(v etViewer) {
+	@kit.Dialog(kit.DialogProps{
+		ID:       etViewerID,
+		Title:    v.Title,
+		Width:    kit.WidthWide,
+		Closable: true,
+		Attrs:    templ.Attributes{"open": true, "data-init": "el.open && el.close(); el.showModal()", "data-signals": "{etCopied: false}"},
+	}) {
+		<div class="flex flex-col gap-3">
+			<div class="flex flex-wrap items-center justify-end gap-2">
+				@etTag(v.Status, v.StatusSeverity)
+				<span class="text-xs text-muted-foreground" role="status" data-show="$etCopied" style="display: none">Copied</span>
+				@kit.IconButton(kit.IconButtonProps{Icon: "copy", Label: "Copy", Attrs: templ.Attributes{"title": "Copy", "data-on:click": etCopyExpr}})
+			</div>
+			@kit.Tabs(v.tabsWithPanels())
+		</div>
+	}
+}
+
+// etDangerItem is a danger-zone row; a disabled action's reason is shown
+// under its text and referenced by the button (aria-describedby).
+templ etDangerItem(title, text, why, whyID string) {
+	<div class="fc-danger-item">
+		<div>
+			<strong>{ title }</strong>
+			<p>{ text }</p>
+			if why != "" {
+				<p id={ whyID } class="mt-1 italic">{ why }</p>
+			}
+		</div>
+		{ children... }
+	</div>
+}

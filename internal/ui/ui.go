@@ -44,6 +44,10 @@ type Config struct {
 	Connections     pages.ConnectionStore
 	ConnectionOps   pages.ConnectionCommands
 	ServiceAccounts pages.ServiceAccountDirectory
+
+	EventTypes   pages.EventTypeStore
+	EventTypeOps pages.EventTypeCommands
+	Applications pages.EventTypeApps
 }
 
 // Mount registers /ui and everything under it on r.
@@ -74,6 +78,7 @@ func Mount(r chi.Router, cfg Config) error {
 			r.Post("/logout", signOut(cfg.CookieSecure))
 			(&pages.DispatchPools{Pools: cfg.DispatchPools, Ops: cfg.DispatchPoolOps, Clients: cfg.Clients, Shell: sh}).Mount(r)
 			(&pages.Connections{Connections: cfg.Connections, Ops: cfg.ConnectionOps, Clients: cfg.Clients, ServiceAccounts: cfg.ServiceAccounts, Shell: sh}).Mount(r)
+			(&pages.EventTypes{Store: cfg.EventTypes, Ops: cfg.EventTypeOps, Apps: cfg.Applications, Shell: sh}).Mount(r)
 			(&pages.ClientOptions{Clients: cfg.Clients, Shell: sh}).Mount(r)
 		})
 

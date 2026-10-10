@@ -1,0 +1,159 @@
+package pages
+
+import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+
+const etSchemaPlaceholder = `{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "id": { "type": "string" }
+  }
+}`
+
+// etFormDialogC is the create or edit dialog.
+templ etFormDialogC(f etForm) {
+	@kit.FormDialog(f.dialog()) {
+		<div class="flex flex-col gap-4" data-signals={ f.signals() }>
+			if f.Edit {
+				@etField(f, "name")
+				@etField(f, "description")
+			} else {
+				@kit.FormSection(kit.FormSectionProps{Title: "Event Type Code"}) {
+					@etField(f, "code")
+				}
+				@kit.FormSection(kit.FormSectionProps{Title: "Metadata"}) {
+					<div class="flex flex-col gap-4">
+						@etField(f, "name")
+						@etField(f, "description")
+						@etField(f, "clientScoped")
+					</div>
+				}
+			}
+		</div>
+	}
+}
+
+templ etSegment(f etForm, key, label, placeholder, signal string, value string) {
+	<div class="flex min-w-[120px] flex-1 flex-col gap-1.5">
+		<label for={ f.id(key) } class="text-[13px] font-medium text-subtle-foreground">{ label }</label>
+		@kit.Input(f.segmentInput(key, value, placeholder, signal))
+	</div>
+}
+
+templ etCodeSep() {
+	<span class="hidden pt-7 text-2xl text-muted-foreground sm:block" aria-hidden="true">:</span>
+}
+
+templ etField(f etForm, key string) {
+	switch key {
+		case "code":
+			@kit.Field(f.fieldProps(key, "", "Format: app:subdomain:aggregate:event. Each part starts with a lowercase letter, then lowercase letters, numbers, hyphens or dots.", true)) {
+				<div class="flex flex-col gap-3">
+					<div class="flex flex-col gap-2 sm:flex-row sm:items-start">
+							<div class="flex min-w-[120px] flex-1 flex-col gap-1.5">
+								<label for={ f.id("application") } class="text-[13px] font-medium text-subtle-foreground">Application</label>
+								@kit.Autocomplete(kit.AutocompleteProps{
+									ID:          f.id("application"),
+									Name:        "application",
+									Value:       f.App,
+									Placeholder: "e.g., operant",
+									Options:     f.AppCodes,
+									Required:    true,
+									Invalid:     f.fieldError(key) != "",
+									DescribedBy: f.describedBy(key),
+									Attrs: templ.Attributes{
+										"pattern": etCodePattern, "title": "Lowercase letters, numbers, hyphens, dots only",
+										"data-bind:et-app": true, "autofocus": true,
+									},
+								})
+							</div>
+							@etCodeSep()
+							@etSegment(f, "subdomain", "Subdomain", "e.g., execution", "etSub", f.Subdomain)
+							@etCodeSep()
+							@etSegment(f, "aggregate", "Aggregate", "e.g., trip", "etAgg", f.Aggregate)
+							@etCodeSep()
+							@etSegment(f, "event", "Event", "e.g., started", "etEvent", f.Event)
+					</div>
+					<div class="rounded-lg border border-border bg-subtle p-4">
+						<span class="mb-2 block text-xs font-medium text-muted-foreground uppercase">Generated Code</span>
+						@kit.CodeChips(kit.CodeChipsProps{Code: f.previewCode(), SegmentAttrs: etPreviewAttrs})
+					</div>
+				</div>
+			}
+		case "name":
+			@kit.Field(f.fieldProps(key, "Name", "", true)) {
+				@kit.Input(kit.InputProps{
+					ID: f.id(key), Name: key, Value: f.Name, Placeholder: "Human-friendly name", Required: true,
+					Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key),
+					Attrs: etNameAttrs(f.Edit),
+				})
+				<small class="block text-right text-xs text-muted-foreground" aria-hidden="true" data-text="$etName.length + ' / 100'">{ etCount(f.Name, 100) }</small>
+			}
+		case "description":
+			@kit.Field(f.fieldProps(key, "Description", "", false)) {
+				@kit.Textarea(kit.TextareaProps{ID: f.id(key), Name: key, Value: f.Description, Placeholder: "Optional description", Rows: 3, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"maxlength": "255", "data-bind:et-desc": true}})
+				<small class="block text-right text-xs text-muted-foreground" aria-hidden="true" data-text="$etDesc.length + ' / 255'">{ etCount(f.Description, 255) }</small>
+			}
+		case "clientScoped":
+			<div id={ f.id(key) + "-field" } class="flex flex-col gap-2">
+				<div class="flex items-center gap-3">
+					@kit.Switch(kit.SwitchProps{ID: f.id(key), Name: key, Value: "true", Checked: f.ClientScoped, Label: "Client Scoped", Attrs: templ.Attributes{"aria-describedby": f.id(key) + "-help"}})
+				</div>
+				<p id={ f.id(key) + "-help" } class="text-sm text-muted-foreground">Enable if events of this type are specific to individual clients. Client-scoped event types can only be used with client-scoped subscriptions.</p>
+			</div>
+	}
+}
+
+// etSchemaPage is the SPA's EventTypeAddSchemaPage.
+templ etSchemaPage(f etSchemaForm) {
+	<div class="max-w-[900px]">
+		<header class="mb-6 flex items-start gap-4">
+			<a href={ etURL(f.ETID) } class="fc-icon-btn" title="Back" aria-label="Back to the event type">
+				@kit.Icon(kit.IconProps{Name: "arrow-left", Class: "size-[1rem]"})
+			</a>
+			<div>
+				<h1 class="fc-page-title">Add Schema Version</h1>
+				<p class="fc-page-subtitle">Add a new schema to <strong>{ f.ETName }</strong></p>
+			</div>
+		</header>
+		<form
+			id={ etSchemaFormID + "-form" }
+			method="post"
+			action={ f.action() }
+			class="fc-card flex flex-col gap-6 p-6"
+			data-indicator="etSchemaBusy"
+			data-on:submit={ kit.SubmitForm }
+		>
+			@kit.FormDialogError(etSchemaFormID, f.Errs.Form)
+			@kit.FormSection(kit.FormSectionProps{Title: "Version Information"}) {
+				@etSchemaField(f, "version")
+				<p class="text-sm text-muted-foreground">Stored as JSON Schema (<code class="fc-mono-chip">application/schema+json</code>), as every schema version is.</p>
+			}
+			@kit.FormSection(kit.FormSectionProps{Title: "Schema Definition"}) {
+				@etSchemaField(f, "schema")
+			}
+			@kit.Alert(kit.AlertProps{Icon: "info", Title: "New schemas start in FINALISING status", Description: "Finalise a version when it is ready for production use."})
+			<div class="flex justify-end gap-3 border-t border-border pt-4">
+				@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyOutline, Href: etURL(f.ETID), Icon: "x"}) {
+					Cancel
+				}
+				@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Icon: "check", Attrs: templ.Attributes{"data-attr:disabled": "$etSchemaBusy"}}) {
+					Add Schema
+				}
+			</div>
+		</form>
+	</div>
+}
+
+templ etSchemaField(f etSchemaForm, key string) {
+	switch key {
+		case "version":
+			@kit.Field(f.fieldProps(key, "Version")) {
+				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Value: f.Version, Placeholder: "e.g., 1.0", Required: true, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"pattern": `\d+\.\d+`, "title": "Format: MAJOR.MINOR (e.g., 1.0)", "autocomplete": "off"}, Class: "max-w-xs"})
+			}
+		case "schema":
+			@kit.Field(f.fieldProps(key, "Schema")) {
+				@kit.Textarea(kit.TextareaProps{ID: f.id(key), Name: key, Value: f.Schema, Placeholder: etSchemaPlaceholder, Rows: 15, Required: true, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key), Class: "font-mono text-[13px]", Attrs: templ.Attributes{"spellcheck": "false"}})
+			}
+	}
+}

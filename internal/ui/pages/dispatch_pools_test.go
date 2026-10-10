@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -206,10 +207,21 @@ func (h *harness) do(t *testing.T, ac *auth.AuthContext, q req) *httptest.Respon
 // endpoint) mounted under /ui, as ui.Mount does (without the guards).
 func (h *harness) serveWith(t *testing.T, page *DispatchPools, ac *auth.AuthContext, q req) *httptest.ResponseRecorder {
 	t.Helper()
+	return serveMounted(t, ac, q, page, &ClientOptions{Clients: h.clients, Shell: page.Shell})
+}
+
+// mounter is a page (or endpoint) that mounts its routes under /ui.
+type mounter interface{ Mount(chi.Router) }
+
+// serveMounted serves one request through pages mounted under /ui, as
+// ui.Mount does (without the guards).
+func serveMounted(t *testing.T, ac *auth.AuthContext, q req, pages ...mounter) *httptest.ResponseRecorder {
+	t.Helper()
 	mux := chi.NewRouter()
 	mux.Route("/ui", func(r chi.Router) {
-		page.Mount(r)
-		(&ClientOptions{Clients: h.clients, Shell: page.Shell}).Mount(r)
+		for _, p := range pages {
+			p.Mount(r)
+		}
 	})
 	method := q.method
 	if method == "" {
@@ -507,7 +519,7 @@ func TestPoolQueryURLRoundTrip(t *testing.T) {
 	if q.URL() != "/ui/dispatch-pools?dir=desc&q=a%26b&sort=name&status=ARCHIVED" {
 		t.Fatalf("URL = %s", q.URL())
 	}
-	if again := parsePoolQuery(mustQuery(t, q.URL())); again != q {
+	if again := parsePoolQuery(mustQuery(t, q.URL())); !reflect.DeepEqual(again, q) {
 		t.Fatalf("round trip: %+v != %+v", again, q)
 	}
 	if def := parsePoolQuery(url.Values{"sort": {"evil"}, "dir": {"sideways"}}); def.URL() != "/ui/dispatch-pools" {

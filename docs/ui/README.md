@@ -6,11 +6,12 @@ FlowCatalyst UI kit (`flowcatalyst-framework/ui-kit`: HTML + Tailwind + Datastar
 The new UI lives under `/ui` next to the SPA, which stays the default: no SPA route redirects to
 `/ui` and no SPA code is removed without the owner's approval, area by area.
 
-Status (2026-10-09): foundations, the Phase 1 kit decisions (row actions, toolbar state part,
+Status (2026-10-10): foundations, the Phase 1 kit decisions (row actions, toolbar state part,
 flash stack and the Datastar error contract, an icon sprite, now 90 icons), and `/ui/dispatch-pools` and
 `/ui/connections` at parity with the SPA pages: list, record drawer, create and edit dialogs,
 state actions and delete behind confirmations; the app shell works at phone width and dark mode is
-rendered by the server from a theme cookie.
+rendered by the server from a theme cookie. Phase 3 (core operations): `/ui/event-types` at parity
+(section "Event types" below); the other core areas are not ported yet.
 
 ## Architecture
 
@@ -22,13 +23,17 @@ internal/ui/
   htmlnorm/      HTML normaliser behind the conformance test
   shell/         page layout around the kit app shell; sidebar navigation; error pages
   guard/         CSRF, session negotiation, role-less gate, security headers
-  pages/         page handlers: dispatch_pools*.go/.templ and connections*.go/.templ (list,
-                 drawer, form, actions), list.go (the URL as list state),
+  pages/         page handlers: dispatch_pools*.go/.templ, connections*.go/.templ and
+                 event_types*.go/.templ (list, drawer, form, actions), list.go (the URL as
+                 list state: search, status, multi-valued facets, sort, page and rows),
                  clients.go (the client select's search), forms.go (form plumbing),
                  ops.go (PoolOps, ConnectionOps: the use cases), flash.go (the flash key table)
   assets/        embedded kit.css, icon sprite, pinned datastar.js, licences (served at /ui/assets/)
   testdata/fixtures/  the kit's conformance fixtures, vendored
 internal/server/wire_ui.go   registerUI: mounts the above with the platform's Authenticator
+internal/schemacodegen/      Go port of the SPA's schema code generator, highlighter and zip
+                             export (frontend/packages/schema-codegen, utils/schema-highlight.ts,
+                             utils/schema-export.ts), byte-identical to the TS on 47 golden inputs
 ```
 
 Request path: `CorrelationID` → the platform `Authenticator` (same configuration as the `/api`
@@ -235,6 +240,54 @@ dismissed and are `role="alert"`. The fallback shows at most one message of each
   page itself has no horizontal scroll at 390px (checked in headless Chrome, both pages, light and
   dark, dialog and drawer open).
 
+### Event types (`/ui/event-types`)
+
+Mirrors `EventTypeListPage`, `EventTypeCreateDrawer`, `EventTypeDetailDrawer`, `SchemaViewerDialog`
+and `EventTypeAddSchemaPage`.
+
+| URL | GET (navigation) | GET (Datastar) | POST |
+|---|---|---|---|
+| `/ui/event-types` (`?q&app&sub&agg&status&page&rows`) | the list | table, pager, toolbar state, facet summaries, dependent facet options, header actions, URL | - |
+| `/ui/event-types/new` | list + create dialog | the dialog | create |
+| `/ui/event-types/{id}` | list + drawer | drawer content | - |
+| `/ui/event-types/{id}/edit` | list + edit dialog | the dialog | update (name, description) |
+| `/ui/event-types/{id}/schemas/{version}` | list + drawer + schema viewer | the viewer dialog | - |
+| `/ui/event-types/{id}/add-schema` | the add-schema page | - | add schema (then the drawer) |
+| `/ui/event-types/{id}/{archive,delete}`, `.../schemas/{version}/{finalise,deprecate}` | - | - | the action |
+| `/ui/event-types/sync-platform` | - | - | Sync Platform Events |
+| `/ui/event-types/export` (`?` the view) | the zip download | - | - |
+
+- **Reads** make `GET /api/event-types`'s checks: `CanReadEventTypes`, client scoping, and for a
+  principal without the messaging view permission only its own applications' event types (the SPA's
+  BFF list has none of these, see "Platform bugs found"). **Actions** make the check of the BFF
+  endpoint the SPA calls: create `CanCreateEventTypes`; edit, archive, add schema, finalise and
+  deprecate `CanUpdateEventTypes`; delete `CanDeleteEventTypes`; sync anchor scope (`RequireAnchor`).
+  Each runs the BFF's use case through `pages.EventTypeOps`.
+- **Filters**: the facets are kit `multi-select`s (repeated `app`/`sub`/`agg` parameters, the SPA's URL
+  keys); options come from every visible event type of any status, cascade (subdomains of the chosen
+  applications, aggregates of both) and chosen values that stop being options are pruned from the
+  canonical URL, as the SPA prunes them. A live answer patches each facet's summary and the dependent
+  options parts, never the open disclosure. Paging is the SPA's: 100 rows, 50/100/250/500
+  (`kit.Paginator`, rows select associated with the toolbar form).
+- **Drawer**: the SPA's guards for Archive (CURRENT, every version deprecated) and Delete (ARCHIVED, or
+  CURRENT with every version finalising) are kept as disabled buttons with the reason written under
+  them; the use cases do not enforce them (owner decision below). Edit and Add Schema are hidden for an
+  archived event type, as in the SPA.
+- **Schema viewer**: `schemacodegen` renders the six tabs (schema, example, TypeScript, PHP, Python,
+  Java) on the server, highlighted with escaped text; copy uses the clipboard (`Copied` beside the
+  button for 2s instead of a toast).
+- **Export Schemas** downloads the zip the SPA builds in the browser, for the view the user is on
+  (filters **and** search, all pages); with nothing to export it redirects with the warn flash.
+- **Add schema**: version (suggested as the SPA does) and the schema. The schema must be a JSON
+  document and is sent as one; the SPA's MIME type and schema type fields are not shown because the
+  use case ignores them (every version is stored as JSON Schema, `application/schema+json`).
+
+Differences from the SPA: the create and edit forms are dialogs (the SPA uses the drawer: the
+pattern ruled for pools); confirmations use one message per action without the version number;
+the sync result flash shows the SPA's two lines as one; the export applies the search too (the SPA
+exported the facet-filtered list, ignoring the search box); facet options come from the event types
+the user may see (the SPA's filter endpoints list every application).
+
 ## CSRF
 
 Sessions are the `fc_session` cookie (HttpOnly, `SameSite=Lax`, Secure outside dev), so
@@ -283,7 +336,7 @@ rules: `ui-kit/fixtures/README.md`), vendored to `internal/ui/testdata/fixtures`
 and compares with the golden through `htmlnorm` (HTML5 fragment parse in the right context,
 comments dropped, attributes sorted, whitespace collapsed, class order kept). It fails for a
 fixture directory without a renderer, a renderer without fixtures, an unknown prop (strict
-decoding) or an unused slot. 142 fixtures pass. Run against the framework checkout directly:
+decoding) or an unused slot. 158 fixtures pass. Run against the framework checkout directly:
 `UI_KIT_FIXTURES=../flowcatalyst-framework/ui-kit/fixtures go test ./internal/ui/kit/`.
 
 Adding a component: spec + Props table + gallery example + fixtures in the framework repo
@@ -402,3 +455,60 @@ native (no-JavaScript) post/redirect/get path (unit tests cover it), system mode
   trigger). **Not exercised in a browser**: the 403 "refused" fallback (no way to make a
   same-origin Datastar request fail CSRF from the page), a server-patched success flash (the
   pilot has no mutation yet), screen readers.
+
+## Phase 3 (core operations): verification, platform bugs, owner decisions
+
+### Event types: verification (2026-10-10)
+
+- Unit tests (`event_types_test.go`, fakes): list, facets cascading and pruning, paging, permissions
+  per action, application confinement, drawer guards, schema viewer, create/edit/add-schema with
+  use-case errors on fields, every action, sync tally, export zip contents.
+  `event_types_pg_test.go` (tag `integration`, embedded Postgres): create → edit → add schema →
+  finalise → export → viewer → deprecate → archive → delete through the real use cases, 7 audit rows.
+- Chrome, isolated instance (ports 18080/19090, embedded PG 25432, own data dir and `HOME`), desktop:
+  live facets (summary patched, popover and disclosure stay open, URL replaced), Clear All, drawer,
+  schema viewer tabs, create with a duplicate code (error on the code group, focus on Application)
+  then a new code (dialog closed, drawer opened, flash), add-schema page, finalise / deprecate /
+  archive / delete from the drawer through the confirmations, sync (tally flash), export (zip).
+  Dark mode on desktop. Headless Chrome over CDP at 390×844, light and dark: list, filters open,
+  drawer, viewer, create dialog; no horizontal page scroll, no console errors or warnings.
+- Not exercised in a browser: the native (no-JavaScript) posts (unit tests cover them), the copy
+  button (clipboard permission in automation), Firefox/Safari, screen readers.
+
+### Platform bugs found (recorded, not fixed)
+
+1. **`/bff/event-types` reads have no authorization**: `GET /bff/event-types`, `GET /bff/event-types/{id}`
+   and the filter endpoints (`filters/applications|subdomains|aggregates`) check no permission and
+   apply neither client scoping nor application confinement (`GET /api/event-types` does all three).
+   The UI uses the API's checks.
+2. **Multi-value facets filter by the first value only**: the SPA sends repeated `application=`,
+   `subdomain=`, `aggregate=` parameters; the BFF list and filter endpoints read `q.Get` (one value),
+   and `FindWithFilters` takes one value per facet. Choosing two applications in the SPA shows the
+   first one's event types. The UI filters in memory with set semantics.
+3. **Add schema stores the schema double-encoded, and ignores MIME and schema type**: the SPA sends the
+   textarea's text as a JSON string (`"schema": "{...}"`), `json.RawMessage` keeps the quotes, so
+   the version holds a JSON string, not the document (the viewer and the export then see a string).
+   `bffAddSchemaRequest.MimeType`/`SchemaType` are never passed on: every version is
+   `application/schema+json`/`JSON_SCHEMA` whatever the user chose.
+4. **Stored XSS in the SPA's schema viewer**: `highlightJson` (`frontend/src/utils/schema-highlight.ts`)
+   does not escape before inserting into `v-html`; a schema containing markup in a string (anyone who
+   can add a schema version, including SDK service accounts) runs in the viewer's page. The Go port
+   escapes.
+5. **Archive and delete rules live only in the SPA**: `canArchive` (every version deprecated) and
+   `canDelete` (archived, or every version finalising) are checks in `EventTypeDetailDrawer.vue`;
+   `ArchiveEventType` and `DeleteEventType` accept any event type.
+6. Sync Platform Events reports every catalogue type as "updated" on each run when nothing changed
+   (seen: "73 updated (73 total)"; the schema tally says 73 unchanged).
+7. The SPA's row pencil opens an archived event type in edit mode although its drawer hides Edit for
+   archived types.
+
+### Owner decisions needed
+
+- **Add schema** sends the document (refusing text that is not JSON) instead of the SPA's JSON
+  string, and omits the MIME/schema type fields the server ignores (bug 3). Keep, or mirror the SPA?
+- **Archive/delete guards** are shown as disabled buttons with reasons, as in the SPA, though the
+  server does not enforce them (bug 5). Should the use cases enforce them?
+- **Sync Platform Events** is allowed to any anchor user (the BFF's `RequireAnchor`), with no
+  event-type permission. Should it need `event-type:sync` or `:manage`?
+- **Event types sidebar entry** now links to `/ui/event-types` in the `/ui` sidebar (the SPA's own
+  navigation is unchanged).

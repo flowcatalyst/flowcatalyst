@@ -1,9 +1,11 @@
 package pages
 
 import (
+	"maps"
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
@@ -20,7 +22,17 @@ type listSpec struct {
 	sortKeys []string
 	// statusOK accepts a status filter value (the entity's ParseStatus).
 	statusOK func(string) bool
+	// facets are multi-valued filters: each is a query parameter that may
+	// repeat (?app=a&app=b), e.g. a multi-select's checkboxes.
+	facets []string
+	// rows enables paging: the rows-per-page choices; defaultRows is the
+	// default (one of them).
+	rows        []int
+	defaultRows int
 }
+
+// maxFacetValues caps the values a facet accepts from a URL.
+const maxFacetValues = 100
 
 // listQuery is one view of a list.
 type listQuery struct {
@@ -29,6 +41,11 @@ type listQuery struct {
 	Status string
 	Sort   string
 	Dir    kit.SortDirection
+	// Facets holds the chosen values of each facet (spec.facets).
+	Facets map[string][]string
+	// Page (1-based) and Rows apply when the spec pages.
+	Page int
+	Rows int
 }
 
 // parseListQuery reads q, status, sort and dir; anything unknown falls back
@@ -47,7 +64,58 @@ func parseListQuery(v url.Values, spec *listSpec) listQuery {
 	if v.Get("dir") == string(kit.SortDesc) {
 		q.Dir = kit.SortDesc
 	}
+	for _, name := range spec.facets {
+		if vals := facetValues(v[name]); len(vals) > 0 {
+			if q.Facets == nil {
+				q.Facets = map[string][]string{}
+			}
+			q.Facets[name] = vals
+		}
+	}
+	if spec.paged() {
+		q.Page, q.Rows = 1, spec.defaultRows
+		if n, err := strconv.Atoi(v.Get("page")); err == nil && n > 1 {
+			q.Page = n
+		}
+		if n, err := strconv.Atoi(v.Get("rows")); err == nil && slices.Contains(spec.rows, n) {
+			q.Rows = n
+		}
+	}
 	return q
+}
+
+func (s *listSpec) paged() bool { return len(s.rows) > 0 }
+
+// facetValues trims, de-duplicates and caps a facet's values.
+func facetValues(raw []string) []string {
+	var out []string
+	for _, v := range raw {
+		v = strings.TrimSpace(v)
+		if v == "" || len(v) > maxQueryLen || slices.Contains(out, v) {
+			continue
+		}
+		out = append(out, v)
+		if len(out) == maxFacetValues {
+			break
+		}
+	}
+	return out
+}
+
+// facet is the chosen values of one facet.
+func (q listQuery) facet(name string) []string { return q.Facets[name] }
+
+// withFacet is q with a facet's values replaced (pruned to the options).
+func (q listQuery) withFacet(name string, vals []string) listQuery {
+	next := q
+	next.Facets = make(map[string][]string, len(q.Facets))
+	maps.Copy(next.Facets, q.Facets)
+	if len(vals) == 0 {
+		delete(next.Facets, name)
+	} else {
+		next.Facets[name] = vals
+	}
+	return next
 }
 
 // refererList is the list view the request came from (the page's address,
@@ -77,6 +145,19 @@ func (q listQuery) values() url.Values {
 		v.Set("sort", q.Sort)
 		v.Set("dir", string(q.Dir))
 	}
+	for _, name := range q.spec.facets {
+		for _, val := range q.Facets[name] {
+			v.Add(name, val)
+		}
+	}
+	if q.spec.paged() {
+		if q.Page > 1 {
+			v.Set("page", strconv.Itoa(q.Page))
+		}
+		if q.Rows != q.spec.defaultRows {
+			v.Set("rows", strconv.Itoa(q.Rows))
+		}
+	}
 	return v
 }
 
@@ -91,7 +172,21 @@ func (q listQuery) URL() string {
 // clearURL is the view without search and filters, keeping the sort
 // (table-toolbar.md: Clear All clears what the user typed and picked).
 func (q listQuery) clearURL() string {
-	return listQuery{spec: q.spec, Sort: q.Sort, Dir: q.Dir}.URL()
+	return listQuery{spec: q.spec, Sort: q.Sort, Dir: q.Dir, Page: 1, Rows: q.Rows}.URL()
+}
+
+// pageURL is this view on page n.
+func (q listQuery) pageURL(n int) string {
+	next := q
+	next.Page = n
+	return next.URL()
+}
+
+// pagePattern is this view's URL with the paginator's {page} placeholder
+// (kit paginator.md, hrefPattern).
+func (q listQuery) pagePattern() string {
+	const marker = 999999937
+	return strings.Replace(q.pageURL(marker), "page="+strconv.Itoa(marker), "page={page}", 1)
 }
 
 // sortURL is the URL a column heading links to: same filters, sorted by key,
@@ -100,6 +195,7 @@ func (q listQuery) sortURL(key string) string {
 	next := q
 	next.Sort = key
 	next.Dir = kit.SortAsc
+	next.Page = 1
 	if q.Sort == key && q.Dir == kit.SortAsc {
 		next.Dir = kit.SortDesc
 	}
@@ -122,4 +218,15 @@ func (q listQuery) hidden() []kit.HiddenField {
 }
 
 // filtered reports whether search or a filter narrows the list.
-func (q listQuery) filtered() bool { return q.Q != "" || q.Status != "" }
+func (q listQuery) filtered() bool { return q.Q != "" || q.Status != "" || len(q.Facets) > 0 }
+
+// pageBounds clamps q's page to a list of total rows and returns the page,
+// the page count and the slice bounds [lo, hi) of the rows shown.
+func (q listQuery) pageBounds(total int) (page, pages, lo, hi int) {
+	rows := max(q.Rows, 1)
+	pages = max((total+rows-1)/rows, 1)
+	page = min(max(q.Page, 1), pages)
+	lo = min((page-1)*rows, total)
+	hi = min(lo+rows, total)
+	return page, pages, lo, hi
+}
