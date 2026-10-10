@@ -263,6 +263,46 @@ func New(code, name string) (*EventType, error) {
 	}, nil
 }
 
+// Lifecycle rules (the SPA drawer's guards, enforced by the archive and
+// delete use cases). The messages are the ones the UIs show beside the
+// disabled actions.
+const (
+	CannotArchiveReason = "Deprecate every schema version first."
+	CannotDeleteReason  = "Only an archived event type, or one whose schema versions are all still finalising, can be deleted."
+)
+
+// CanArchive reports whether the event type may be archived: it is CURRENT
+// and every schema version (if any) is DEPRECATED.
+func (e *EventType) CanArchive() bool {
+	if e.Status != StatusCurrent {
+		return false
+	}
+	for _, sv := range e.SpecVersions {
+		if sv.Status != SpecDeprecated {
+			return false
+		}
+	}
+	return true
+}
+
+// CanDelete reports whether the event type may be deleted: it is ARCHIVED,
+// or CURRENT with every schema version (if any) still FINALISING (never
+// published).
+func (e *EventType) CanDelete() bool {
+	if e.Status == StatusArchived {
+		return true
+	}
+	if e.Status != StatusCurrent {
+		return false
+	}
+	for _, sv := range e.SpecVersions {
+		if sv.Status != SpecFinalising {
+			return false
+		}
+	}
+	return true
+}
+
 // Archive flips status to ARCHIVED and bumps UpdatedAt.
 func (e *EventType) Archive() {
 	e.Status = StatusArchived

@@ -18,7 +18,8 @@ type DeleteCommand struct {
 }
 
 // DeleteEventType removes an event type and atomically emits an
-// [EventTypeDeleted] event.
+// [EventTypeDeleted] event. Only an archived event type, or one whose schema
+// versions are all still finalising, may be deleted (DELETE_NOT_ALLOWED).
 func DeleteEventType(repo *eventtype.Repository) usecaseop.Operation[DeleteCommand, EventTypeDeleted] {
 	return usecaseop.Operation[DeleteCommand, EventTypeDeleted]{
 		Name: "DeleteEventType",
@@ -41,6 +42,9 @@ func DeleteEventType(repo *eventtype.Repository) usecaseop.Operation[DeleteComma
 			}
 			if err := auth.CheckScopeAccess(auth.FromContext(ctx), ids.StringPtr(et.ClientID)); err != nil {
 				return nil, err
+			}
+			if !et.CanDelete() {
+				return nil, usecase.BusinessRule("DELETE_NOT_ALLOWED", eventtype.CannotDeleteReason)
 			}
 
 			event := EventTypeDeleted{

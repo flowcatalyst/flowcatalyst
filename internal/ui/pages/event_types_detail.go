@@ -40,7 +40,7 @@ type etDetail struct {
 	Archived, IsCurrent         bool
 	Specs                       []etSpecRow
 	// CanArchive/CanDelete are the SPA drawer's guards (its buttons are
-	// disabled otherwise); the use cases do not enforce them.
+	// disabled otherwise), the rules the use cases enforce.
 	CanArchive, CanDelete   bool
 	EditHref, AddSchemaHref string
 	ActionBase              string
@@ -68,10 +68,7 @@ func toETDetail(et *eventtype.EventType, perms etPerms) etDetail {
 		EditHref: etURL(et.ID) + "/edit", AddSchemaHref: etURL(et.ID) + "/add-schema", ActionBase: etURL(et.ID),
 		Perms: perms,
 	}
-	allDeprecated, allFinalising := true, true
 	for _, sv := range et.SpecVersions {
-		allDeprecated = allDeprecated && sv.Status == eventtype.SpecDeprecated
-		allFinalising = allFinalising && sv.Status == eventtype.SpecFinalising
 		d.Specs = append(d.Specs, etSpecRow{
 			Version: sv.Version, MimeType: sv.MimeType, SchemaType: schemaTypeLabel(sv.SchemaType),
 			Status: string(sv.Status), Severity: specSeverity(sv.Status),
@@ -80,16 +77,15 @@ func toETDetail(et *eventtype.EventType, perms etPerms) etDetail {
 			Finalising: sv.Status == eventtype.SpecFinalising, Current: sv.Status == eventtype.SpecCurrent,
 		})
 	}
-	// The SPA's canArchive: CURRENT and every version deprecated (or none);
-	// canDelete: ARCHIVED, or CURRENT with every version still finalising.
-	d.CanArchive = d.IsCurrent && allDeprecated
-	d.CanDelete = d.Archived || (d.IsCurrent && allFinalising)
+	// The SPA's canArchive and canDelete, which the use cases enforce.
+	d.CanArchive = et.CanArchive()
+	d.CanDelete = et.CanDelete()
 	return d
 }
 
 const (
-	cannotArchive = "Deprecate every schema version first."
-	cannotDelete  = "Only an archived event type, or one whose schema versions are all still finalising, can be deleted."
+	cannotArchive = eventtype.CannotArchiveReason
+	cannotDelete  = eventtype.CannotDeleteReason
 )
 
 // etWhy is a disabled action's reason ("" when the action is allowed).

@@ -19,7 +19,8 @@ type ArchiveCommand struct {
 
 // ArchiveEventType transitions an event type from CURRENT → ARCHIVED
 // and atomically emits an [EventTypeArchived] event. Re-archiving an
-// already-archived event type is rejected with a conflict.
+// already-archived event type is rejected with a conflict; an event type with
+// a schema version that is not deprecated is refused (SCHEMAS_NOT_DEPRECATED).
 func ArchiveEventType(repo *eventtype.Repository) usecaseop.Operation[ArchiveCommand, EventTypeArchived] {
 	return usecaseop.Operation[ArchiveCommand, EventTypeArchived]{
 		Name: "ArchiveEventType",
@@ -46,6 +47,9 @@ func ArchiveEventType(repo *eventtype.Repository) usecaseop.Operation[ArchiveCom
 			if et.Status == eventtype.StatusArchived {
 				return nil, usecase.Conflict("ALREADY_ARCHIVED",
 					"Event type '"+et.Code+"' is already archived")
+			}
+			if !et.CanArchive() {
+				return nil, usecase.BusinessRule("SCHEMAS_NOT_DEPRECATED", eventtype.CannotArchiveReason)
 			}
 
 			et.Archive()
