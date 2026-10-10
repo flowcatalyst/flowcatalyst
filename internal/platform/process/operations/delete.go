@@ -15,7 +15,8 @@ type DeleteCommand struct {
 	ID string `json:"id"`
 }
 
-// DeleteProcess removes a process and emits [ProcessDeleted].
+// DeleteProcess removes an archived process and emits [ProcessDeleted]; a
+// current one is refused (PROCESS_NOT_ARCHIVED).
 func DeleteProcess(repo *process.Repository) usecaseop.Operation[DeleteCommand, ProcessDeleted] {
 	return usecaseop.Operation[DeleteCommand, ProcessDeleted]{
 		Name: "DeleteProcess",
@@ -36,6 +37,10 @@ func DeleteProcess(repo *process.Repository) usecaseop.Operation[DeleteCommand, 
 			}
 			if p == nil {
 				return nil, httperror.NotFound("Process", cmd.ID)
+			}
+			// Only an archived process is deleted (the SPA drawer's rule).
+			if p.Status != process.StatusArchived {
+				return nil, usecase.BusinessRule("PROCESS_NOT_ARCHIVED", process.CannotDeleteReason)
 			}
 			event := ProcessDeleted{
 				Metadata:  usecase.NewEventMetadata(ec, ProcessDeletedType, Source, subjectFor(p.ID)),

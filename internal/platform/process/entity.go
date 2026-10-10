@@ -19,6 +19,13 @@ const (
 	StatusArchived Status = "ARCHIVED"
 )
 
+// The lifecycle rules' messages (UpdateProcess, DeleteProcess), shown by
+// the UIs beside the disabled actions.
+const (
+	CannotEditReason   = "Archived processes cannot be edited."
+	CannotDeleteReason = "Archive the process before deleting it."
+)
+
 // ParseStatus parses a stored status value. Returns ok=false for anything
 // other than CURRENT or ARCHIVED — callers MUST reject on ok=false rather
 // than coerce an unrecognised value to CURRENT (X-06: a loud read error,

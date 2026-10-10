@@ -61,7 +61,7 @@ func CreateProcess(repo *process.Repository) usecaseop.Operation[CreateCommand, 
 			if err != nil {
 				return nil, usecase.Validation("INVALID_CODE_FORMAT", err.Error())
 			}
-			p.Description = cmd.Description
+			p.Description = optionalDescription(cmd.Description)
 			p.Body = cmd.Body
 			if cmd.DiagramType != "" {
 				p.DiagramType = cmd.DiagramType

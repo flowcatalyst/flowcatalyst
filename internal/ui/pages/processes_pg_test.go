@@ -64,7 +64,7 @@ func TestProcessesPageAgainstPostgres(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "Shipment v2", got.Name)
 	assert.Empty(t, got.Tags)
-	assert.Empty(t, deref(got.Description))
+	assert.Nil(t, got.Description, "a blank description is stored as none (bug 25)")
 	assert.Equal(t, "graph LR\n  X --> Y", got.Body)
 
 	do(req{method: http.MethodPost, target: base + "/archive", datastar: true, form: url.Values{"drawer": {p.ID}}})

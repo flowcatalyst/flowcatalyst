@@ -103,7 +103,7 @@ const (
 
 	procsLiveGet = "@get('/ui/processes', {contentType: 'form'})"
 
-	procArchivedNoEdit = "Archived processes cannot be edited."
+	procArchivedNoEdit = process.CannotEditReason
 )
 
 // The SPA's URL keys: q, app, subdomain, status. Its table is not sortable

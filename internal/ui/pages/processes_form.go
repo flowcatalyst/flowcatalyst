@@ -213,7 +213,8 @@ func (h *Processes) update(w http.ResponseWriter, r *http.Request) {
 	}
 	f.ProcessID, f.Subtitle = p.ID, p.Name+" ("+p.Code+")"
 	// The SPA's PUT body: name and description trimmed (a blank description
-	// is sent as "" and clears it), the source verbatim, the tags.
+	// is sent as "" and clears it: stored as none), the source verbatim, the
+	// tags. UpdateProcess refuses an archived process (PROCESS_ARCHIVED).
 	name, desc := strings.TrimSpace(f.Name), strings.TrimSpace(f.Description)
 	if err := h.Ops.Update(ctx, procops.UpdateCommand{ID: id, Name: &name, Description: &desc, Body: &f.Body, Tags: procTags(f.Tags)}); err != nil {
 		f.Errs.apply(r, err, procFieldCodes)

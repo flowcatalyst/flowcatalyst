@@ -192,6 +192,8 @@ func TestDeleteProcess_HappyPath(t *testing.T) {
 	repo := process.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 	seeded := mustCreate(t, repo, uow, "prdel:orders:flow", "Doomed")
+	_, err := runAuthorized(uow, operations.ArchiveProcess(repo), operations.ArchiveCommand{ID: seeded.ProcessID})
+	require.NoError(t, err)
 
 	ev, err := runAuthorized(uow, operations.DeleteProcess(repo),
 		operations.DeleteCommand{ID: seeded.ProcessID})
