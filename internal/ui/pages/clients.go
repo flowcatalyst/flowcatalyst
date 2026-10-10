@@ -46,9 +46,10 @@ func (h *ClientOptions) search(w http.ResponseWriter, r *http.Request) {
 		h.Shell.Fail(w, r, usecase.Validation("INVALID_LIST", "Unknown suggestion list."))
 		return
 	}
-	// The SPA's search needs the same permission (GET /api/clients/search:
-	// CanReadClients). Without it the answer is an empty list, not an error
-	// flash on every keystroke (autocomplete.md, Behaviour).
+	// With CanReadClients (the SPA's GET /api/clients/search) every client
+	// matches; a client-scoped user's matches are the clients it can access
+	// (as /bff/filter-options/clients); anyone else gets an empty list, not
+	// an error flash on every keystroke (autocomplete.md, Behaviour).
 	opts, err := clientSuggestions(r.Context(), h.Clients, auth.FromContext(r.Context()), r.URL.Query().Get("q"))
 	if err != nil {
 		h.Shell.Fail(w, r, err)
@@ -60,12 +61,15 @@ func (h *ClientOptions) search(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// clientSuggestions searches clients by name or identifier (empty for a
-// caller who may not read clients).
+// clientSuggestions searches clients by name or identifier: every client
+// for a caller who may read clients, the active clients it can access for a
+// client-scoped caller (it may bind a resource only to those), none for
+// anyone else.
 func clientSuggestions(ctx context.Context, dir ClientDirectory, ac *auth.AuthContext, term string) ([]kit.Option, error) {
-	if dir == nil || auth.CanReadClients(ac) != nil {
+	if !canPickClient(dir, ac) {
 		return nil, nil
 	}
+	all := auth.CanReadClients(ac) == nil
 	term = strings.TrimSpace(term)
 	if len(term) > maxQueryLen {
 		term = term[:maxQueryLen]
@@ -76,15 +80,31 @@ func clientSuggestions(ctx context.Context, dir ClientDirectory, ac *auth.AuthCo
 	}
 	opts := make([]kit.Option, 0, len(found))
 	for _, c := range found {
+		if !all && !ownClient(ac, &c) {
+			continue
+		}
 		opts = append(opts, kit.Option{Value: c.Identifier, Label: c.Name})
 	}
 	return opts, nil
 }
 
-// canPickClient reports whether the caller may choose a client in a form
-// (the search and the lookup both need CanReadClients, as in the SPA).
+// canPickClient reports whether the caller may choose a client in a form:
+// with CanReadClients any client; a client-scoped caller (not an anchor)
+// one of the clients it can access. Without this a client user could not
+// create a pool, connection or subscription at all: the client field was
+// disabled and a platform-wide resource needs anchor scope
+// (docs/platform-bug-fixes.md).
 func canPickClient(dir ClientDirectory, ac *auth.AuthContext) bool {
-	return dir != nil && auth.CanReadClients(ac) == nil
+	if dir == nil {
+		return false
+	}
+	return auth.CanReadClients(ac) == nil || (ac != nil && !ac.IsAnchor() && len(ac.Clients) > 0)
+}
+
+// ownClient reports whether a client-scoped caller may choose c: an active
+// client it can access.
+func ownClient(ac *auth.AuthContext, c *client.Client) bool {
+	return c.Status == client.StatusActive && ac.CanAccessClient(string(c.ID))
 }
 
 const noSuchClient = "No client with this identifier."
@@ -104,7 +124,9 @@ func resolveClient(ctx context.Context, dir ClientDirectory, ac *auth.AuthContex
 	if err != nil {
 		return nil, "", usecase.Internal("REPO", "client lookup failed", err)
 	}
-	if c == nil {
+	// A client-scoped caller is told the same for a client it may not use as
+	// for one that does not exist.
+	if c == nil || (auth.CanReadClients(ac) != nil && !ownClient(ac, c)) {
 		return nil, noSuchClient, nil
 	}
 	cid := string(c.ID)
