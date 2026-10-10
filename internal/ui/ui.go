@@ -70,6 +70,9 @@ type Config struct {
 	ClientIdentifier func(ctx context.Context, clientID string) (string, bool)
 
 	Events pages.EventStore
+
+	Processes  pages.ProcessStore
+	ProcessOps pages.ProcessCommands
 }
 
 // Mount registers /ui and everything under it on r.
@@ -107,6 +110,7 @@ func Mount(r chi.Router, cfg Config) error {
 			(&pages.ScheduledJobs{Jobs: cfg.ScheduledJobs, Instances: cfg.ScheduledJobInstances, Ops: cfg.ScheduledJobOps, Clients: cfg.ClientStore, Apps: cfg.ApplicationStore, Shell: sh}).Mount(r)
 			(&pages.DispatchJobs{Jobs: cfg.DispatchJobs, Ops: cfg.DispatchJobOps, Clients: cfg.ClientStore, ClientIdentifier: cfg.ClientIdentifier, Shell: sh}).Mount(r)
 			(&pages.Events{Events: cfg.Events, Clients: cfg.ClientStore, Shell: sh}).Mount(r)
+			(&pages.Processes{Store: cfg.Processes, Ops: cfg.ProcessOps, Shell: sh}).Mount(r)
 			(&pages.ClientOptions{Clients: cfg.Clients, Shell: sh}).Mount(r)
 		})
 

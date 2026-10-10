@@ -56,6 +56,11 @@ const (
 
 	flashDjRequeued         = "dispatch-jobs-requeued"
 	flashDjRequeuedByFilter = "dispatch-jobs-requeued-by-filter"
+
+	flashProcCreated  = "process-created"
+	flashProcUpdated  = "process-updated"
+	flashProcArchived = "process-archived"
+	flashProcDeleted  = "process-deleted"
 )
 
 // FlashMessages is the table the shell maps flash keys through
@@ -113,6 +118,13 @@ var FlashMessages = map[string]kit.FlashMessageProps{
 
 	flashDjRequeued:         {Kind: kit.FlashSuccess, Summary: "Requeued", Detail: "The dispatch jobs were reset to PENDING"},
 	flashDjRequeuedByFilter: {Kind: kit.FlashSuccess, Summary: "Requeued", Detail: "The matching dispatch jobs were reset to PENDING"},
+
+	// The SPA's process toasts carry the code as their detail; a flash key
+	// carries no request text, so the summary stands alone.
+	flashProcCreated:  {Kind: kit.FlashSuccess, Summary: "Process created"},
+	flashProcUpdated:  {Kind: kit.FlashSuccess, Summary: "Process updated"},
+	flashProcArchived: {Kind: kit.FlashSuccess, Summary: "Process archived"},
+	flashProcDeleted:  {Kind: kit.FlashSuccess, Summary: "Process deleted"},
 }
 
 // success is the SPA's toast.success("Success", detail).

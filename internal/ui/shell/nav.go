@@ -90,7 +90,7 @@ var navigation = []navSection{
 	}},
 	{"Developer", []navEntry{
 		{label: "Applications", icon: "book-open", spa: "/developer", permission: "platform:developer:application-openapi:view"},
-		{label: "Processes", icon: "network", spa: "/processes", permission: "platform:messaging:process:view"},
+		{label: "Processes", icon: "network", spa: "/processes", ui: "/ui/processes", permission: "platform:messaging:process:view"},
 	}},
 }
 

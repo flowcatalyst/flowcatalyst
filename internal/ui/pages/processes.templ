@@ -1,0 +1,285 @@
+package pages
+
+import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+
+var procStatusOptions = []kit.Option{
+	{Value: "CURRENT", Label: "Current"},
+	{Value: "ARCHIVED", Label: "Archived"},
+}
+
+func (v procsView) FilterCount() int {
+	n := len(v.Query.Facets)
+	if v.Query.Status != "" {
+		n++
+	}
+	return n
+}
+
+func (v procsView) toolbar() kit.TableToolbarProps {
+	clear := ""
+	if v.Query.filtered() {
+		clear = v.Query.clearURL()
+	}
+	return kit.TableToolbarProps{
+		ID: procsFormID, Action: procsPath, SearchPlaceholder: "Search processes...", SearchValue: v.Query.Q,
+		ClearHref: clear, ClearAttrs: templ.Attributes{"data-on:click__prevent": kit.ClearFilters},
+		ActiveFilterCount: v.FilterCount(), Hidden: v.Query.hidden(),
+		SearchAttrs: templ.Attributes{"data-on:input__debounce.300ms": procsLiveGet},
+		FormAttrs:   templ.Attributes{"data-on:submit": procsLiveGet},
+		Filters:     procsFilters(v),
+	}
+}
+
+func (v procsView) pager() kit.PaginatorProps {
+	return kit.PaginatorProps{
+		ID: "procs-pager", Page: v.Page, Pages: v.Pages, Total: v.Total, Rows: v.Query.Rows, RowsOptions: procList.rows,
+		Noun: "processes", HrefPattern: v.Query.pagePattern(), FormID: procsFormID,
+		LinkAttrs: templ.Attributes{"data-on:click__prevent": liveLink},
+	}
+}
+
+func (v procsView) columns() []kit.DataColumn {
+	return []kit.DataColumn{
+		{Label: "Code"}, {Label: "Name"}, {Label: "Description"}, {Label: "Tags"}, {Label: "Status"}, {Label: "Actions", Class: "w-px"},
+	}
+}
+
+func (v procsView) empty() *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	if v.Query.filtered() {
+		return &kit.EmptyStateProps{Message: "No processes found", Status: true, ClearHref: v.Query.clearURL()}
+	}
+	return &kit.EmptyStateProps{Message: "No processes yet", Status: true}
+}
+
+func (v procsView) drawerSignals() string {
+	if v.Drawer == nil {
+		return "{" + procDrawerSig + ": ''}"
+	}
+	return "{" + procDrawerSig + ": '" + kit.ID(v.Drawer.ID) + "'}"
+}
+
+templ procStatusTag(archived bool) {
+	if archived {
+		@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: "ARCHIVED"})
+	} else {
+		@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "CURRENT"})
+	}
+}
+
+templ procTagList(tags []string) {
+	if len(tags) == 0 {
+		<span class="text-xs text-muted-foreground">—</span>
+	} else {
+		<div class="flex flex-wrap gap-1">
+			for _, t := range tags {
+				@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: t})
+			}
+		</div>
+	}
+}
+
+templ procsPage(v procsView) {
+	<div data-signals={ v.drawerSignals() }>
+		@kit.PageHeader(kit.PageHeaderProps{Title: "Processes", Subtitle: "Workflow documentation — how events, dispatch jobs, and reactive aggregates compose into a business process.", Actions: procsActions(v)})
+		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Processes, with the rendered diagrams.", Class: "mb-4"})
+		<div class="fc-card-flush">
+			@kit.TableToolbar(v.toolbar())
+			@procsTable(v)
+			@kit.Paginator(v.pager())
+		</div>
+		<div id={ procDialogSlot }>
+			if v.Dialog != nil {
+				@v.Dialog
+			}
+		</div>
+		@procConfirmDialogs(v.Perms)
+		@procDrawer(v.Drawer)
+	</div>
+}
+
+templ procsActions(v procsView) {
+	if v.Perms.Create {
+		@kit.LegacyButton(kit.LegacyButtonProps{Href: procsPath + "/new", Icon: "plus", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+			Create Process
+		}
+	}
+}
+
+templ procsFilters(v procsView) {
+	@procAppFilter(v)
+	@procSubdomainFilter(v)
+	@kit.FilterSelect(kit.FilterSelectProps{Name: "status", Label: "Status", Placeholder: "All statuses", Options: procStatusOptions, Selected: v.Query.Status, Attrs: templ.Attributes{"data-on:change": procsLiveGet}})
+}
+
+// procAppFilter and procSubdomainFilter are patch targets: the subdomain
+// options follow the chosen application; both follow a create or delete.
+templ procAppFilter(v procsView) {
+	<div id="procs-app-filter">
+		@kit.FilterSelect(kit.FilterSelectProps{Name: procAppFacet, Label: "Application", Placeholder: "All applications", Options: v.AppOptions, Selected: v.App, Attrs: templ.Attributes{"data-on:change": procsLiveGet}})
+	</div>
+}
+
+templ procSubdomainFilter(v procsView) {
+	<div id={ procSubdomainSlot }>
+		@kit.FilterSelect(kit.FilterSelectProps{Name: procSubFacet, Label: "Subdomain", Placeholder: "All subdomains", Options: v.SubOptions, Selected: v.Sub, Attrs: templ.Attributes{"data-on:change": procsLiveGet}})
+	</div>
+}
+
+templ procsTable(v procsView) {
+	@kit.DataTable(kit.DataTableProps{ID: "procs-table", BodyID: "procs-rows", Columns: v.columns(), Empty: v.empty()}) {
+		for _, row := range v.Rows {
+			@kit.TR(kit.TRProps{ID: "proc-" + row.ID}) {
+				@kit.TD(kit.TDProps{}) {
+					<a href={ row.DetailHref } class="no-underline" data-on:click__prevent={ liveLink }>
+						@kit.CodeChips(kit.CodeChipsProps{Code: row.Code})
+					</a>
+				}
+				@kit.TD(kit.TDProps{}) {
+					<a href={ row.DetailHref } class="font-medium text-foreground no-underline hover:underline" data-on:click__prevent={ liveLink }>{ row.Name }</a>
+				}
+				@kit.TD(kit.TDProps{Class: "text-[13px] text-muted-foreground"}) {
+					if row.Description != "" {
+						<span class="block max-w-[320px] truncate" title={ row.Description }>{ row.Description }</span>
+					} else {
+						—
+					}
+				}
+				@kit.TD(kit.TDProps{}) {
+					@procTagList(row.Tags)
+				}
+				@kit.TD(kit.TDProps{}) {
+					@procStatusTag(row.Archived)
+				}
+				@kit.RowActions(v.rowActions(row))
+			}
+		}
+	}
+	if len(v.Rows) == 0 && !v.Query.filtered() && v.Perms.Create {
+		<p id="procs-first" class="-mt-6 pb-6 text-center">
+			<a href={ procsPath + "/new" } class="text-sm text-primary" data-on:click__prevent={ liveLink } aria-haspopup="dialog">Create your first process</a>
+		</p>
+	}
+}
+
+templ procDrawer(d *procDetail) {
+	if d != nil {
+		@kit.Drawer(d.drawerProps()) {
+			@procDrawerBody(*d)
+		}
+	} else {
+		@kit.Drawer(kit.DrawerProps{ID: procDrawerID, Signal: procDrawerSig, Label: "Process", Size: kit.DrawerWide})
+	}
+}
+
+templ procDrawerContent(d procDetail) {
+	@kit.DrawerContent(d.drawerProps()) {
+		@procDrawerBody(d)
+	}
+}
+
+// procDrawerBody mirrors the SPA's ProcessDetailDrawer, with the diagram's
+// source in place of the rendered diagram (and its SVG/PNG downloads).
+templ procDrawerBody(d procDetail) {
+	<div class="flex flex-col gap-4">
+		if d.Description != "" {
+			<p class="text-muted-foreground">{ d.Description }</p>
+		}
+		if d.canEdit() || d.canArchive() || d.canDelete() {
+			<div class="flex flex-wrap gap-2">
+				if d.canEdit() {
+					@kit.LegacyButton(kit.LegacyButtonProps{Href: d.EditHref, Icon: "pencil", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+						Edit
+					}
+				}
+				if d.canArchive() {
+					@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyWarnOutline, Icon: "archive", Attrs: confirmTrigger(procArchiveDialog, d.ActionBase+"/archive")}) {
+						Archive
+					}
+				}
+				if d.canDelete() {
+					@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Icon: "trash-2", Attrs: confirmTrigger(procDeleteDialog, d.ActionBase+"/delete")}) {
+						Delete
+					}
+				}
+			</div>
+		}
+		if len(d.Tags) > 0 {
+			@procTagList(d.Tags)
+		}
+		@kit.Alert(kit.AlertProps{Icon: "info", Title: "Diagram rendering is not in the new UI yet", Description: procRenderNote(d)}) {
+			<a href={ d.SPAHref } class="mt-2 inline-flex items-center gap-1 text-sm text-primary">
+				@kit.Icon(kit.IconProps{Name: "external-link", Class: "size-[1rem]"})
+				Open in the current UI
+			</a>
+		}
+		if d.Body == "" {
+			<div class="fc-empty">
+				@kit.Icon(kit.IconProps{Name: "network", Class: "size-8"})
+				<p>No diagram body yet. Edit this process to add Mermaid source.</p>
+			</div>
+		} else {
+			@kit.CodeBlock(kit.CodeBlockProps{ID: "proc-source", Label: "Diagram source (" + d.DiagramType + ")"}) {
+				{ d.Body }
+			}
+		}
+	</div>
+}
+
+templ procConfirmDialogs(perms procPerms) {
+	if perms.Update {
+		@kit.ConfirmDialog(procConfirm(procArchiveDialog, "Archive Process", "Archive this process? It stays listed as archived and can then be deleted.", "Archive", kit.ToneWarn))
+	}
+	if perms.Delete {
+		@kit.ConfirmDialog(procConfirm(procDeleteDialog, "Delete Process", "Delete this process? This cannot be undone.", "Delete", kit.ToneDanger))
+	}
+}
+
+// procFormDialogC is the create or edit dialog.
+templ procFormDialogC(f procForm) {
+	@kit.FormDialog(f.dialog()) {
+		<div class="flex flex-col gap-4">
+			if !f.Edit {
+				<div class="grid gap-4 sm:grid-cols-2">
+					@procField(f, "code")
+					@procField(f, "name")
+				</div>
+			} else {
+				@procField(f, "name")
+			}
+			@procField(f, "description")
+			@procField(f, "tags")
+			@procField(f, "body")
+		</div>
+	}
+}
+
+templ procField(f procForm, key string) {
+	switch key {
+		case "code":
+			@kit.Field(f.fieldProps(key, "Code", "Format: application:subdomain:process-name", true)) {
+				@kit.Input(f.inputProps(key, f.Code, "orders:fulfilment:shipment-flow", templ.Attributes{"required": true, "autocomplete": "off", "spellcheck": "false", "autofocus": true}))
+			}
+		case "name":
+			@kit.Field(f.fieldProps(key, "Name", "", true)) {
+				@kit.Input(f.inputProps(key, f.Name, "Shipment Flow", procNameAttrs(f.Edit)))
+			}
+		case "description":
+			@kit.Field(f.fieldProps(key, "Description", "", false)) {
+				@kit.Textarea(kit.TextareaProps{ID: f.id(key), Name: key, Value: f.Description, Placeholder: "One-line summary of what this process documents", Rows: 2, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+			}
+		case "tags":
+			@kit.Field(f.fieldProps(key, "Tags", "Comma-separated.", false)) {
+				@kit.Input(f.inputProps(key, f.Tags, "fulfilment, billing", templ.Attributes{"autocomplete": "off"}))
+			}
+		case "body":
+			@kit.Field(f.fieldProps(key, "Mermaid source", "", false)) {
+				@kit.Textarea(kit.TextareaProps{ID: f.id(key), Name: key, Value: f.Body, Placeholder: procBodyPlaceholder, Rows: 14, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Class: "font-mono text-[13px]", Attrs: templ.Attributes{"spellcheck": "false"}})
+				<p class="text-sm text-muted-foreground">
+					Anything <a href="https://mermaid.js.org/syntax/flowchart.html" target="_blank" rel="noopener noreferrer" class="text-primary">Mermaid</a> supports — flowcharts, sequence diagrams, state machines.
+				</p>
+			}
+	}
+}
