@@ -135,6 +135,8 @@ var renderers = map[string]renderer{
 	"multi-select":         simple(MultiSelect),
 	"toggle-group":         simple(ToggleGroup),
 	"pick-list":            simple(PickList),
+	"local-time":           simple(LocalTime),
+	"date-range":           simple(DateRange),
 	"tabs": func(f *fixture) (templ.Component, error) {
 		p, err := decode[TabsProps](f)
 		p.Panels = map[string]templ.Component{}
