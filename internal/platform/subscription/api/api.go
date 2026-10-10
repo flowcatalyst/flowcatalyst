@@ -79,10 +79,10 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 }
 
 func (s *State) create(ctx context.Context, in *apicommon.In[CreateSubscriptionRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
-	// Coarse write permission at the controller; the use case enforces per-client
-	// resource access on the requested clientId (you may only bind a subscription
-	// to a client you can access; platform-wide requires anchor).
-	if err := auth.CanWriteSubscriptions(auth.FromContext(ctx)); err != nil {
+	// The permission for the operation at the controller; the use case enforces
+	// per-client resource access on the requested clientId (you may only bind a
+	// subscription to a client you can access; platform-wide requires anchor).
+	if err := auth.CanCreateSubscriptions(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -99,7 +99,7 @@ type updateInput struct {
 }
 
 func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, error) {
-	if err := auth.CanWriteSubscriptions(auth.FromContext(ctx)); err != nil {
+	if err := auth.CanUpdateSubscriptions(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -121,7 +121,7 @@ func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.E
 }
 
 func (s *State) pause(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	if err := auth.CanWriteSubscriptions(auth.FromContext(ctx)); err != nil {
+	if err := auth.CanUpdateSubscriptions(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -132,7 +132,7 @@ func (s *State) pause(ctx context.Context, in *apicommon.IDInput) (*apicommon.Em
 }
 
 func (s *State) resume(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	if err := auth.CanWriteSubscriptions(auth.FromContext(ctx)); err != nil {
+	if err := auth.CanUpdateSubscriptions(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)

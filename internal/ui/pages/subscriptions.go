@@ -171,9 +171,8 @@ func (h *Subscriptions) renderPage(w http.ResponseWriter, r *http.Request, statu
 	h.Shell.RenderStatus(w, r, status, shell.Page{Title: "Subscriptions", Path: subsPath}, subsPage(view))
 }
 
-// subPerms are the actions the user may run. The API's coarse gate is any of
-// create/update/delete (CanWriteSubscriptions); the page checks the
-// permission for the operation: create CanCreateSubscriptions; edit, pause
+// subPerms are the actions the user may run, by the API's checks (the
+// permission for the operation): create CanCreateSubscriptions; edit, pause
 // and resume CanUpdateSubscriptions; delete CanDeleteSubscriptions.
 type subPerms struct {
 	Create, Update, Delete bool
