@@ -18,8 +18,8 @@ type ActivateCommand struct {
 // ActivateApplication marks an application active and emits [ApplicationActivated].
 //
 // An application is platform-level (no tenant ClientID), so there is no
-// resource-level access check; the coarse "may write applications" permission
-// (auth.CanWriteApplications) is enforced at the controller.
+// resource-level access check; the "may update applications" permission
+// (auth.CanUpdateApplications) is enforced at the controller.
 func ActivateApplication(repo *application.Repository) usecaseop.Operation[ActivateCommand, ApplicationActivated] {
 	return usecaseop.Operation[ActivateCommand, ApplicationActivated]{
 		Name: "ActivateApplication",

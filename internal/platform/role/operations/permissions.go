@@ -35,8 +35,8 @@ func GrantPermission(repo *role.Repository) usecaseop.Operation[GrantPermissionC
 			return nil
 		},
 		// Roles are global (no per-client resource dimension), so there is no
-		// use-case-level authz; the coarse CanWriteRoles permission is enforced
-		// at the controller.
+		// use-case-level authz; the permission for the operation (CanCreateRoles,
+		// CanUpdateRoles) is enforced at the controller.
 		Authorize: usecaseop.Public[GrantPermissionCommand],
 		Execute: func(ctx context.Context, cmd GrantPermissionCommand, ec usecase.ExecutionContext) (usecaseop.Plan[RolePermissionGranted], error) {
 			r, err := repo.FindByName(ctx, cmd.RoleName)
@@ -78,8 +78,8 @@ func RevokePermission(repo *role.Repository) usecaseop.Operation[RevokePermissio
 			return nil
 		},
 		// Roles are global (no per-client resource dimension), so there is no
-		// use-case-level authz; the coarse CanWriteRoles permission is enforced
-		// at the controller.
+		// use-case-level authz; the permission for the operation (CanCreateRoles,
+		// CanUpdateRoles) is enforced at the controller.
 		Authorize: usecaseop.Public[RevokePermissionCommand],
 		Execute: func(ctx context.Context, cmd RevokePermissionCommand, ec usecase.ExecutionContext) (usecaseop.Plan[RolePermissionRevoked], error) {
 			r, err := repo.FindByName(ctx, cmd.RoleName)

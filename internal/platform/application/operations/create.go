@@ -27,8 +27,8 @@ type CreateCommand struct {
 // the application, and atomically emits an [ApplicationCreated] event.
 //
 // An application is platform-level (no tenant ClientID), so the use case has
-// no resource-level access check — the coarse "may create applications"
-// permission (auth.CanWriteApplications) is enforced at the controller.
+// no resource-level access check — the "may create applications"
+// permission (auth.CanCreateApplications) is enforced at the controller.
 func CreateApplication(repo *application.Repository) usecaseop.Operation[CreateCommand, ApplicationCreated] {
 	return usecaseop.Operation[CreateCommand, ApplicationCreated]{
 		Name: "CreateApplication",

@@ -25,7 +25,7 @@ func TestMain(m *testing.M) { testpg.RunMain(m) }
 // Authorize → Execute → atomic commit) as an anchor principal — the common
 // case for these tests, which exercise validation, invariants, and
 // persistence. Roles are global, so the operations carry no use-case-level
-// authorization (the coarse CanWriteRoles/CanDeleteRoles permission lives on
+// authorization (the per-operation CanCreate/Update/DeleteRoles permission lives on
 // the controller); the Authorize phase here is Public. This mirrors how the
 // HTTP handler runs the operation.
 func runAuthorized[C any, E usecase.DomainEvent](

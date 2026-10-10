@@ -18,8 +18,8 @@ type DeactivateCommand struct {
 // DeactivateApplication marks an application inactive and emits [ApplicationDeactivated].
 //
 // An application is platform-level (no tenant ClientID), so there is no
-// resource-level access check; the coarse "may write applications" permission
-// (auth.CanWriteApplications) is enforced at the controller.
+// resource-level access check; the "may update applications" permission
+// (auth.CanUpdateApplications) is enforced at the controller.
 func DeactivateApplication(repo *application.Repository) usecaseop.Operation[DeactivateCommand, ApplicationDeactivated] {
 	return usecaseop.Operation[DeactivateCommand, ApplicationDeactivated]{
 		Name: "DeactivateApplication",

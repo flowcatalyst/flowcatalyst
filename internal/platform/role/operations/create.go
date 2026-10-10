@@ -36,8 +36,8 @@ func CreateRole(repo *role.Repository) usecaseop.Operation[CreateCommand, RoleCr
 			return nil
 		},
 		// Roles are global (no per-client resource dimension), so there is no
-		// use-case-level authz; the coarse CanWriteRoles permission is enforced
-		// at the controller.
+		// use-case-level authz; the permission for the operation (CanCreateRoles,
+		// CanUpdateRoles) is enforced at the controller.
 		Authorize: usecaseop.Public[CreateCommand],
 		Execute: func(ctx context.Context, cmd CreateCommand, ec usecase.ExecutionContext) (usecaseop.Plan[RoleCreated], error) {
 			fullName := cmd.ApplicationCode + ":" + cmd.RoleName

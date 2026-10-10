@@ -25,8 +25,8 @@ type UpdateCommand struct {
 // UpdateApplication mutates mutable fields and emits [ApplicationUpdated].
 //
 // An application is platform-level (no tenant ClientID), so there is no
-// resource-level access check; the coarse "may write applications" permission
-// (auth.CanWriteApplications) is enforced at the controller.
+// resource-level access check; the "may update applications" permission
+// (auth.CanUpdateApplications) is enforced at the controller.
 func UpdateApplication(repo *application.Repository) usecaseop.Operation[UpdateCommand, ApplicationUpdated] {
 	return usecaseop.Operation[UpdateCommand, ApplicationUpdated]{
 		Name: "UpdateApplication",
