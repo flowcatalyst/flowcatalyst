@@ -128,7 +128,7 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 
 func (s *State) create(ctx context.Context, in *apicommon.In[CreateScheduledJobRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteScheduledJobs(ac); err != nil {
+	if err := auth.CanCreateScheduledJobs(ac); err != nil {
 		return nil, err
 	}
 	// The client-scope check (client-scoped job → access that client; platform-
@@ -155,7 +155,7 @@ type updateInput struct {
 
 func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteScheduledJobs(ac); err != nil {
+	if err := auth.CanUpdateScheduledJobs(ac); err != nil {
 		return nil, err
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
@@ -167,7 +167,7 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, 
 
 func (s *State) pause(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteScheduledJobs(ac); err != nil {
+	if err := auth.CanUpdateScheduledJobs(ac); err != nil {
 		return nil, err
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
@@ -179,7 +179,7 @@ func (s *State) pause(ctx context.Context, in *apicommon.IDInput) (*apicommon.Em
 
 func (s *State) resume(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteScheduledJobs(ac); err != nil {
+	if err := auth.CanUpdateScheduledJobs(ac); err != nil {
 		return nil, err
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
@@ -191,7 +191,7 @@ func (s *State) resume(ctx context.Context, in *apicommon.IDInput) (*apicommon.E
 
 func (s *State) archive(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteScheduledJobs(ac); err != nil {
+	if err := auth.CanUpdateScheduledJobs(ac); err != nil {
 		return nil, err
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)

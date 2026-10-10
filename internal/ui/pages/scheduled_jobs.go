@@ -143,9 +143,10 @@ func (h *ScheduledJobs) renderPage(w http.ResponseWriter, r *http.Request, statu
 	h.Shell.RenderStatus(w, r, status, shell.Page{Title: "Scheduled Jobs", Path: sjPath}, sjPage(view))
 }
 
-// sjPerms: the API's coarse gate for create, update, pause, resume and
-// archive is any of create/update/delete (CanWriteScheduledJobs); the page
-// checks the permission for the operation. Fire and delete have their own.
+// sjPerms are the API's checks, the permission for the operation: create
+// CanCreateScheduledJobs; edit, pause, resume and archive
+// CanUpdateScheduledJobs; fire CanFireScheduledJobs; delete
+// CanDeleteScheduledJobs.
 type sjPerms struct {
 	Create, Update, Fire, Delete bool
 }
