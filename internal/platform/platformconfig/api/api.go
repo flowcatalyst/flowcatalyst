@@ -7,6 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
@@ -22,6 +23,37 @@ import (
 type State struct {
 	Repo *platformconfig.Repository
 	UoW  *usecasepgx.UnitOfWork
+	// Apps resolves the {app} path code to an application, for confining
+	// application-scoped principals (see confineApp).
+	Apps AppLookup
+}
+
+// AppLookup is the slice of the application repository the confinement needs.
+type AppLookup interface {
+	FindByCode(ctx context.Context, code string) (*application.Application, error)
+}
+
+// confineApp keeps an application-scoped principal (one that does not hold
+// all-applications access, e.g. an application's service account) to its own
+// application's config. Anchor tier alone is not enough: every application's
+// service account is anchor tier, and without this it could read (secret
+// values included), write, delete or grant access to any other application's
+// config. An application code that names no application is refused for such a
+// principal, so it cannot probe or squat codes it does not own.
+func (s *State) confineApp(ctx context.Context, ac *auth.AuthContext, appCode string) error {
+	// Non-anchor callers are already gated by the role-based access grants and
+	// see secrets masked; the gap is anchor tier, which skips both.
+	if !ac.IsAnchor() || !ac.IsApplicationScoped() {
+		return nil
+	}
+	app, err := s.Apps.FindByCode(ctx, appCode)
+	if err != nil {
+		return usecase.Internal("REPO", "find application failed", err)
+	}
+	if app == nil || !ac.CanAccessApplication(string(app.ID)) {
+		return httperror.Forbidden("Not authorised for application '" + appCode + "'")
+	}
+	return nil
 }
 
 const tag = "platform-config"
@@ -46,6 +78,9 @@ type listPropsInput struct {
 
 func (s *State) listProperties(ctx context.Context, in *listPropsInput) (*apicommon.Out[ConfigListResponse], error) {
 	ac := auth.FromContext(ctx)
+	if err := s.confineApp(ctx, ac, in.App); err != nil {
+		return nil, err
+	}
 	if !ac.IsAnchor() {
 		ok, err := s.Repo.HasAccess(ctx, in.App, ac.Roles, false)
 		if err != nil {
@@ -89,6 +124,9 @@ type propertyInput struct {
 
 func (s *State) getProperty(ctx context.Context, in *propertyInput) (*apicommon.Out[ConfigResponse], error) {
 	ac := auth.FromContext(ctx)
+	if err := s.confineApp(ctx, ac, in.App); err != nil {
+		return nil, err
+	}
 	if !ac.IsAnchor() {
 		ok, err := s.Repo.HasAccess(ctx, in.App, ac.Roles, false)
 		if err != nil {
@@ -121,6 +159,10 @@ type setPropertyInput struct {
 }
 
 func (s *State) setProperty(ctx context.Context, in *setPropertyInput) (*apicommon.Out[ConfigResponse], error) {
+	ac := auth.FromContext(ctx)
+	if err := s.confineApp(ctx, ac, in.App); err != nil {
+		return nil, err
+	}
 	// The SPA passes clientId as a query param; the body carries only
 	// value/valueType/description. Fold the query value into the command.
 	if in.ClientID != "" {
@@ -146,6 +188,9 @@ func (s *State) setProperty(ctx context.Context, in *setPropertyInput) (*apicomm
 
 func (s *State) deleteProperty(ctx context.Context, in *propertyInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
+	if err := s.confineApp(ctx, ac, in.App); err != nil {
+		return nil, err
+	}
 	if !ac.IsAnchor() {
 		ok, err := s.Repo.HasAccess(ctx, in.App, ac.Roles, true)
 		if err != nil {
@@ -186,6 +231,9 @@ func (s *State) listAccess(ctx context.Context, in *listAccessInput) (*apicommon
 	if err := auth.CanReadPlatformConfig(ac); err != nil {
 		return nil, err
 	}
+	if err := s.confineApp(ctx, ac, in.App); err != nil {
+		return nil, err
+	}
 	rows, err := s.Repo.FindAccessByApplication(ctx, in.App)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_access_by_application failed", err)
@@ -204,6 +252,9 @@ func (s *State) grantAccess(ctx context.Context, in *grantAccessInput) (*apicomm
 	if err := auth.CanUpdatePlatformConfig(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
+	if err := s.confineApp(ctx, auth.FromContext(ctx), in.App); err != nil {
+		return nil, err
+	}
 	ec := auth.NewExecutionContext(ctx)
 	event, err := usecaseop.Run(ctx, s.UoW, operations.GrantAccess(s.Repo), in.Body.toCommand(in.App), ec)
 	if err != nil {
@@ -216,6 +267,11 @@ func (s *State) revokeAccess(ctx context.Context, in *apicommon.IDInput) (*apico
 	// Coarse anchor-only authorization at the controller.
 	if err := auth.CanUpdatePlatformConfig(auth.FromContext(ctx)); err != nil {
 		return nil, err
+	}
+	// A grant names no application in the request, so an application-scoped
+	// principal (which may grant only for its own application) may not revoke.
+	if ac := auth.FromContext(ctx); ac.IsAnchor() && ac.IsApplicationScoped() {
+		return nil, httperror.Forbidden("Not authorised to revoke platform config access")
 	}
 	ec := auth.NewExecutionContext(ctx)
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.RevokeAccess(s.Repo), operations.RevokeAccessCommand{ID: in.ID}, ec); err != nil {

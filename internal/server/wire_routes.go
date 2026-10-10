@@ -424,6 +424,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		platformconfigapi.Register(humaAPI, &platformconfigapi.State{
 			Repo: repos.platformConfigRepo,
 			UoW:  uow,
+			Apps: repos.applicationRepo,
 		})
 
 		processapi.Register(humaAPI, &processapi.State{
