@@ -109,11 +109,16 @@ func (h *EventTypes) Mount(r chi.Router) {
 
 // ── reading ────────────────────────────────────────────────────────────
 
-// visible is every event type the caller may read: GET /api/event-types's
-// client scoping and, without the messaging view permission, only the
-// event types of applications the principal is bound to.
+// visible is every event type the caller may read (visibleEventTypes).
 func (h *EventTypes) visible(ctx context.Context, ac *auth.AuthContext) ([]eventtype.EventType, error) {
-	all, err := h.Store.FindWithFilters(ctx, nil, nil, nil, nil, nil)
+	return visibleEventTypes(ctx, h.Store, h.Apps, ac)
+}
+
+// visibleEventTypes is every event type the caller may read: GET
+// /api/event-types's client scoping and, without the messaging view
+// permission, only the event types of applications the principal is bound to.
+func visibleEventTypes(ctx context.Context, store EventTypeStore, apps EventTypeApps, ac *auth.AuthContext) ([]eventtype.EventType, error) {
+	all, err := store.FindWithFilters(ctx, nil, nil, nil, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("find event types: %w", err)
 	}
@@ -124,7 +129,7 @@ func (h *EventTypes) visible(ctx context.Context, ac *auth.AuthContext) ([]event
 	seen := map[string]bool{}
 	kept := vis[:0:0]
 	for _, et := range vis {
-		ok, err := h.appAccess(ctx, ac, et.Application, seen)
+		ok, err := appAccess(ctx, apps, ac, et.Application, seen)
 		if err != nil {
 			return nil, err
 		}
@@ -135,11 +140,13 @@ func (h *EventTypes) visible(ctx context.Context, ac *auth.AuthContext) ([]event
 	return kept, nil
 }
 
-func (h *EventTypes) appAccess(ctx context.Context, ac *auth.AuthContext, code string, seen map[string]bool) (bool, error) {
+// appAccess reports whether the principal is bound to the application with
+// this code (remembered in seen for one request).
+func appAccess(ctx context.Context, apps EventTypeApps, ac *auth.AuthContext, code string, seen map[string]bool) (bool, error) {
 	if ok, done := seen[code]; done {
 		return ok, nil
 	}
-	app, err := h.Apps.FindByCode(ctx, code)
+	app, err := apps.FindByCode(ctx, code)
 	if err != nil {
 		return false, usecase.Internal("REPO", "find application by code failed", err)
 	}
@@ -162,7 +169,7 @@ func (h *EventTypes) loadEventType(ctx context.Context, ac *auth.AuthContext, id
 		return nil, httperror.Forbidden("No access to this event type")
 	}
 	if !auth.CanReadAllEventTypes(ac) {
-		ok, err := h.appAccess(ctx, ac, et.Application, map[string]bool{})
+		ok, err := appAccess(ctx, h.Apps, ac, et.Application, map[string]bool{})
 		if err != nil {
 			return nil, err
 		}

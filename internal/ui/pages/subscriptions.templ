@@ -1,0 +1,427 @@
+package pages
+
+import (
+	"strconv"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+)
+
+var subStatusOptions = []kit.Option{
+	{Value: "ACTIVE", Label: "Active"},
+	{Value: "PAUSED", Label: "Paused"},
+}
+
+func (v subsView) appFacet() kit.MultiSelectProps {
+	return kit.MultiSelectProps{
+		ID: subAppFilter, Name: subFacetApp, Label: "Application", Options: v.Apps, Selected: v.Query.facet(subFacetApp),
+		Placeholder: "All applications", ManyLabel: "{0} applications selected", EmptyText: "No applications",
+		OptionAttrs: templ.Attributes{"data-on:change": subsLiveGet},
+	}
+}
+
+func (v subsView) FilterCount() int {
+	n := len(v.Query.Facets)
+	if v.Query.Status != "" {
+		n++
+	}
+	return n
+}
+
+func (v subsView) toolbar() kit.TableToolbarProps {
+	clear := ""
+	if v.Query.filtered() {
+		clear = v.Query.clearURL()
+	}
+	return kit.TableToolbarProps{
+		ID: subsFormID, Action: subsPath, SearchPlaceholder: "Search subscriptions...", SearchValue: v.Query.Q,
+		ClearHref: clear, ClearAttrs: templ.Attributes{"data-on:click__prevent": kit.ClearFilters},
+		ActiveFilterCount: v.FilterCount(), Hidden: v.Query.hidden(),
+		SearchAttrs: templ.Attributes{"data-on:input__debounce.300ms": subsLiveGet},
+		FormAttrs:   templ.Attributes{"data-on:submit": subsLiveGet},
+		Filters:     subsFilters(v),
+	}
+}
+
+func (v subsView) pager() kit.PaginatorProps {
+	return kit.PaginatorProps{
+		ID: "subs-pager", Page: v.Page, Pages: v.Pages, Total: v.Total, Rows: v.Query.Rows, RowsOptions: subList.rows,
+		Noun: "subscriptions", HrefPattern: v.Query.pagePattern(), FormID: subsFormID,
+		LinkAttrs: templ.Attributes{"data-on:click__prevent": liveLink},
+	}
+}
+
+func (v subsView) columns() []kit.DataColumn {
+	sortable := func(label, key string) kit.DataColumn {
+		return kit.DataColumn{Label: label, Href: v.Query.sortURL(key), Direction: v.Query.direction(key), LinkAttrs: templ.Attributes{"data-on:click__prevent": sortClick}}
+	}
+	return []kit.DataColumn{
+		sortable("Code", "code"), sortable("Application", "application"), sortable("Name", "name"),
+		{Label: "Scope"}, {Label: "Event Types"}, sortable("Pool", "pool"), {Label: "Mode"},
+		sortable("Status", "status"), sortable("Created", "created"), {Label: "Actions", Class: "w-px"},
+	}
+}
+
+func (v subsView) empty() *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	e := &kit.EmptyStateProps{Message: "No subscriptions found", Status: true}
+	if v.Query.filtered() {
+		e.ClearHref = v.Query.clearURL()
+	}
+	return e
+}
+
+func (v subsView) drawerSignals() string {
+	if v.Drawer == nil {
+		return "{" + subDrawerSig + ": ''}"
+	}
+	return "{" + subDrawerSig + ": '" + kit.ID(v.Drawer.ID) + "'}"
+}
+
+templ subsPage(v subsView) {
+	<div data-signals={ v.drawerSignals() }>
+		@kit.PageHeader(kit.PageHeaderProps{Title: "Subscriptions", Subtitle: "Manage event subscriptions and webhook routing", Actions: subsActions(v)})
+		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Subscriptions.", Class: "mb-4"})
+		<div class="fc-card-flush">
+			@kit.TableToolbar(v.toolbar())
+			@subsTable(v)
+			@kit.Paginator(v.pager())
+		</div>
+		<div id={ subDialogSlot }>
+			if v.Dialog != nil {
+				@v.Dialog
+			}
+		</div>
+		@subConfirmDialogs(v.Perms)
+		@subDrawer(v.Drawer)
+	</div>
+}
+
+templ subsActions(v subsView) {
+	if v.Perms.Create {
+		@kit.LegacyButton(kit.LegacyButtonProps{Href: subsPath + "/new", Icon: "plus", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+			Create Subscription
+		}
+	}
+}
+
+templ subsFilters(v subsView) {
+	@kit.MultiSelect(v.appFacet())
+	@kit.FilterSelect(kit.FilterSelectProps{Name: "status", Label: "Status", Placeholder: "All statuses", Options: subStatusOptions, Selected: v.Query.Status, Attrs: templ.Attributes{"data-on:change": subsLiveGet}})
+}
+
+templ subsTable(v subsView) {
+	@kit.DataTable(kit.DataTableProps{ID: "subs-table", BodyID: "subs-rows", Columns: v.columns(), Empty: v.empty()}) {
+		for _, row := range v.Rows {
+			@kit.TR(kit.TRProps{ID: "sub-" + row.ID}) {
+				@kit.TD(kit.TDProps{}) {
+					<a href={ row.DetailHref } class="no-underline" data-on:click__prevent={ liveLink }><code class="font-mono text-[13px]">{ row.Code }</code></a>
+				}
+				@kit.TD(kit.TDProps{}) {
+					if row.Application != "" {
+						<code class="fc-mono-chip">{ row.Application }</code>
+					} else {
+						<span class="text-muted-foreground">—</span>
+					}
+				}
+				@kit.TD(kit.TDProps{}) {
+					<a href={ row.DetailHref } class="font-medium text-foreground no-underline hover:underline" data-on:click__prevent={ liveLink }>{ row.Name }</a>
+				}
+				@kit.TD(kit.TDProps{Class: "text-[13px] text-muted-foreground"}) {
+					{ row.Scope }
+				}
+				@kit.TD(kit.TDProps{Class: "text-[13px]"}) {
+					{ row.EventTypes }
+				}
+				@kit.TD(kit.TDProps{}) {
+					<code class="fc-mono-chip">{ row.Pool }</code>
+				}
+				@kit.TD(kit.TDProps{Class: "text-[13px]"}) {
+					{ row.Mode }
+				}
+				@kit.TD(kit.TDProps{}) {
+					@poolStatusBadge(row.Status, row.StatusVariant)
+				}
+				@kit.TD(kit.TDProps{}) {
+					<time datetime={ row.CreatedISO }>{ row.Created }</time>
+				}
+				@kit.RowActions(v.rowActions(row))
+			}
+		}
+	}
+}
+
+templ subDrawer(d *subDetail) {
+	if d != nil {
+		@kit.Drawer(d.drawerProps()) {
+			@subDrawerBody(*d)
+		}
+	} else {
+		@kit.Drawer(kit.DrawerProps{ID: subDrawerID, Signal: subDrawerSig, Label: "Subscription", Size: kit.DrawerWide})
+	}
+}
+
+templ subDrawerContent(d subDetail) {
+	@kit.DrawerContent(d.drawerProps()) {
+		@subDrawerBody(d)
+	}
+}
+
+// subDrawerBody mirrors the SPA's SubscriptionDetailDrawer.
+templ subDrawerBody(d subDetail) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Subscription Details", Actions: subEditButton(d)}) {
+		<div class="fc-detail-grid">
+			@kit.DetailField(kit.DetailFieldProps{Label: "Code"}) {
+				<code>{ d.Code }</code>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Name", Value: d.Name})
+			if d.Description != "" {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Description", Value: d.Description, Span: true})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Client Scope", Value: d.Scope})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Source", Value: d.Source})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Endpoint", Span: true}) {
+				<code class="break-all">{ d.Endpoint }</code>
+			}
+			if d.Connection != "" {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Connection", Span: true}) {
+					<code>{ d.Connection }</code>
+				}
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Queue"}) {
+				if d.Queue != "" {
+					<code>{ d.Queue }</code>
+				}
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Dispatch Pool"}) {
+				if d.Pool != "" {
+					<code>{ d.Pool }</code>
+				}
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Mode", Value: d.Mode})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Max Age", Value: d.MaxAge})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Delay", Value: d.Delay})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Timeout", Value: d.Timeout})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Sequence", Value: d.Sequence})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Status"}) {
+				@poolStatusBadge(d.Status, d.StatusVariant)
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Created", Value: d.Created})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Updated", Value: d.Updated})
+		</div>
+	}
+	@kit.FormSection(kit.FormSectionProps{Title: "Event Types (" + strconv.Itoa(len(d.Bindings)) + ")"}) {
+		@kit.Table(kit.TableProps{Dense: true}) {
+			@kit.THead(kit.THeadProps{Caps: true}) {
+				@kit.TR(kit.TRProps{Static: true}) {
+					@kit.TH(kit.THProps{}) {
+						Event Type Code
+					}
+					@kit.TH(kit.THProps{}) {
+						Spec Version
+					}
+				}
+			}
+			@kit.TBody(kit.TBodyProps{Striped: true}) {
+				if len(d.Bindings) == 0 {
+					@kit.EmptyRow(kit.EmptyRowProps{Colspan: 2, Empty: kit.EmptyStateProps{Message: "No event types configured"}})
+				}
+				for _, b := range d.Bindings {
+					@kit.TR(kit.TRProps{Static: true}) {
+						@kit.TD(kit.TDProps{}) {
+							@kit.CodeChips(kit.CodeChipsProps{Code: b.Code})
+						}
+						@kit.TD(kit.TDProps{}) {
+							{ b.Version }
+						}
+					}
+				}
+			}
+		}
+	}
+	if d.showActions() {
+		@kit.FormSection(kit.FormSectionProps{Title: "Actions"}) {
+			<div class="flex flex-col gap-4">
+				if d.Perms.Update && d.RawStatus == "ACTIVE" {
+					@poolActionItem("Pause Subscription", "Stop creating dispatch jobs for this subscription.") {
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyWarnOutline, Icon: "pause", Attrs: confirmTrigger(subPauseDialog, d.ActionBase+"/pause")}) {
+							Pause
+						}
+					}
+				}
+				if d.Perms.Update && d.RawStatus == "PAUSED" {
+					@poolActionItem("Resume Subscription", "Re-enable dispatch job creation.") {
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyPrimaryOutline, Icon: "play", Attrs: confirmTrigger(subResumeDialog, d.ActionBase+"/resume")}) {
+							Resume
+						}
+					}
+				}
+				if d.Perms.Delete {
+					@poolActionItem("Delete Subscription", "Permanently delete this subscription. Cannot be undone.") {
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Icon: "trash-2", Attrs: confirmTrigger(subDeleteDialog, d.ActionBase+"/delete")}) {
+							Delete
+						}
+					}
+				}
+			</div>
+		}
+	}
+}
+
+templ subEditButton(d subDetail) {
+	if d.Perms.Update {
+		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.EditHref, Icon: "pencil", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+			Edit
+		}
+	}
+}
+
+templ subConfirmDialogs(perms subPerms) {
+	if perms.Update {
+		@kit.ConfirmDialog(subConfirm(subPauseDialog, "Pause Subscription", "Pause this subscription? It will stop creating dispatch jobs.", "Pause", kit.ToneWarn))
+		@kit.ConfirmDialog(subConfirm(subResumeDialog, "Resume Subscription", "Resume this subscription?", "Resume", kit.ToneDefault))
+	}
+	if perms.Delete {
+		@kit.ConfirmDialog(subConfirm(subDeleteDialog, "Delete Subscription", "Delete this subscription? This action cannot be undone.", "Delete", kit.ToneDanger))
+	}
+}
+
+// subFormDialogC is the create or edit dialog.
+templ subFormDialogC(f subForm) {
+	@kit.FormDialog(f.dialog()) {
+		if f.Edit {
+			@subField(f, "name")
+			@subField(f, "description")
+			@subField(f, "endpoint")
+			<div class="grid gap-4 sm:grid-cols-2">
+				@subField(f, "connectionId")
+				@subField(f, "queue")
+				@subField(f, "maxAgeSeconds")
+				@subField(f, "timeoutSeconds")
+				@subField(f, "delaySeconds")
+				@subField(f, "mode")
+			</div>
+		} else {
+			<div class="flex flex-col gap-4" data-signals={ f.scopeSignals() }>
+				@kit.FormSection(kit.FormSectionProps{Title: "Basic Information"}) {
+					<div class="flex flex-col gap-4">
+						@subField(f, "code")
+						@subField(f, "name")
+						@subField(f, "description")
+					</div>
+				}
+				@kit.FormSection(kit.FormSectionProps{Title: "Event Types"}) {
+					@subField(f, "eventTypes")
+				}
+				@kit.FormSection(kit.FormSectionProps{Title: "Delivery Configuration"}) {
+					<div class="flex flex-col gap-4">
+						@subField(f, "endpoint")
+						@subField(f, "connectionId")
+						@subField(f, "queue")
+						@subField(f, "dispatchPoolId")
+						@subField(f, "mode")
+					</div>
+				}
+				@kit.FormSection(kit.FormSectionProps{Title: "Timing"}) {
+					<div class="grid gap-4 sm:grid-cols-2">
+						@subField(f, "maxAgeSeconds")
+						@subField(f, "timeoutSeconds")
+						@subField(f, "delaySeconds")
+					</div>
+				}
+				@kit.FormSection(kit.FormSectionProps{Title: "Scope"}) {
+					@subField(f, "scope")
+				}
+			</div>
+		}
+	}
+}
+
+templ subEventTypesHelp(f subForm) {
+	<p id={ f.id("eventTypes") + "-help" } class="mt-1 text-sm text-muted-foreground">{ f.eventTypesHelp() }</p>
+}
+
+templ subField(f subForm, key string) {
+	switch key {
+		case "code":
+			@kit.Field(f.fieldProps(key, "Code", "Unique identifier for this subscription (2-100 characters). Lowercase letters, numbers, hyphens; starts with a letter.", true)) {
+				@kit.Input(f.inputProps(key, f.Code, kit.InputProps{Placeholder: "subscription-code", Required: true, Attrs: templ.Attributes{"pattern": "[a-z][a-z0-9\\-]*", "minlength": "2", "maxlength": "100", "autofocus": true, "autocomplete": "off"}}))
+			}
+		case "name":
+			@kit.Field(f.fieldProps(key, "Name", "", true)) {
+				@kit.Input(f.inputProps(key, f.Name, kit.InputProps{Placeholder: "Subscription display name", Required: true, Attrs: subNameAttrs(f.Edit)}))
+			}
+		case "description":
+			@kit.Field(f.fieldProps(key, "Description", "", false)) {
+				@kit.Textarea(kit.TextareaProps{ID: f.id(key), Name: key, Value: f.Description, Placeholder: "Optional description...", Rows: 3, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+			}
+		case "eventTypes":
+			<div id={ f.focusID(key) } tabindex="-1">
+				@kit.MultiSelect(f.eventTypesProps())
+				@subEventTypesHelp(f)
+				if f.fieldError(key) != "" {
+					<div id={ f.focusID(key) + "-err" } role="alert" class="mt-1 text-sm text-destructive">{ f.fieldError(key) }</div>
+				}
+			</div>
+		case "endpoint":
+			@kit.Field(f.fieldProps(key, "Endpoint URL", "The webhook URL where events will be delivered", true)) {
+				@kit.Input(f.inputProps(key, f.Endpoint, kit.InputProps{Type: "url", Placeholder: "https://example.com/webhook", Required: true, Attrs: templ.Attributes{"autocomplete": "off"}}))
+			}
+		case "connectionId":
+			@kit.Field(f.fieldProps(key, "Connection", f.connectionHelp(), false)) {
+				@kit.Select(f.selectProps(key, f.ConnectionID, "Select a connection", f.Connections, f.CanPickConnection, false))
+			}
+		case "queue":
+			@kit.Field(f.fieldProps(key, "Queue", "Dispatch priority: which of the client's queues jobs from this subscription use", !f.Edit)) {
+				@kit.Select(f.selectProps(key, f.Queue, f.queuePlaceholder(), subQueueOptions, true, !f.Edit))
+			}
+		case "dispatchPoolId":
+			@kit.Field(f.fieldProps(key, "Dispatch Pool", f.poolHelp(), true)) {
+				@kit.Select(f.selectProps(key, f.PoolID, "Select a dispatch pool", f.Pools, f.CanPickPool, true))
+			}
+		case "mode":
+			@kit.Field(f.fieldProps(key, "Mode", "How to handle dispatch failures", false)) {
+				@kit.Select(f.selectProps(key, f.Mode, "", subModeOptions, true, false))
+			}
+		case "maxAgeSeconds":
+			@kit.Field(f.fieldProps(key, "Max Age (seconds)", "Maximum age before events expire", false)) {
+				@kit.Input(f.inputProps(key, f.MaxAge, kit.InputProps{Type: "number", Attrs: subNumberAttrs("1")}))
+			}
+		case "timeoutSeconds":
+			@kit.Field(f.fieldProps(key, "Timeout (seconds)", "Request timeout for webhook calls", false)) {
+				@kit.Input(f.inputProps(key, f.Timeout, kit.InputProps{Type: "number", Attrs: subNumberAttrs("1")}))
+			}
+		case "delaySeconds":
+			@kit.Field(f.fieldProps(key, "Delay (seconds)", "Delay before dispatching", false)) {
+				@kit.Input(f.inputProps(key, f.Delay, kit.InputProps{Type: "number", Attrs: subNumberAttrs("0")}))
+			}
+		case "scope":
+			<div id={ f.id(key) + "-field" } class="flex flex-col gap-4">
+				<div class="flex flex-col gap-2">
+					<div class="flex items-center gap-3">
+						@kit.Switch(kit.SwitchProps{ID: f.id("clientScoped"), Name: "clientScoped", Value: "true", Checked: f.ClientScoped, Label: "Client Scoped", Attrs: templ.Attributes{
+							"aria-describedby":            f.id("clientScoped") + "-help",
+							"data-bind:sub-client-scoped": true,
+							"data-on:change":              subScopeChange,
+						}})
+					</div>
+					<p id={ f.id("clientScoped") + "-help" } class="text-sm text-muted-foreground">Client-scoped subscriptions receive events that are specific to individual clients. Non-client-scoped subscriptions receive platform-wide events.</p>
+				</div>
+				<div
+					data-show="$subClientScoped"
+					if !f.ClientScoped {
+						style="display: none"
+					}
+				>
+					@kit.Field(kit.FieldProps{Label: "Client", For: f.id("client"), Description: f.clientHelp(), Error: f.fieldError(key)}) {
+						@kit.Autocomplete(kit.AutocompleteProps{
+							ID: f.id("client"), Name: "client", Value: f.Client, Placeholder: "All clients (leave empty) or select specific client",
+							Source: clientOptionsPath, Options: f.ClientOptions, Disabled: !f.CanPickClient,
+							Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key),
+						})
+					}
+				</div>
+			</div>
+	}
+}

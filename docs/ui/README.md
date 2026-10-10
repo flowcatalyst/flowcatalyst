@@ -10,8 +10,8 @@ Status (2026-10-10): foundations, the Phase 1 kit decisions (row actions, toolba
 flash stack and the Datastar error contract, an icon sprite, now 90 icons), and `/ui/dispatch-pools` and
 `/ui/connections` at parity with the SPA pages: list, record drawer, create and edit dialogs,
 state actions and delete behind confirmations; the app shell works at phone width and dark mode is
-rendered by the server from a theme cookie. Phase 3 (core operations): `/ui/event-types` at parity
-(section "Event types" below); the other core areas are not ported yet.
+rendered by the server from a theme cookie. Phase 3 (core operations): `/ui/event-types` and
+`/ui/subscriptions` at parity (sections below); the other core areas are not ported yet.
 
 ## Architecture
 
@@ -288,6 +288,33 @@ the sync result flash shows the SPA's two lines as one; the export applies the s
 exported the facet-filtered list, ignoring the search box); facet options come from the event types
 the user may see (the SPA's filter endpoints list every application).
 
+### Subscriptions (`/ui/subscriptions`)
+
+Mirrors `SubscriptionListPage`, `SubscriptionCreateDrawer` and `SubscriptionDetailDrawer`. Same routes
+as connections (`/new`, `/{id}`, `/{id}/edit`, `/{id}/{pause,resume,delete}`), plus
+`/ui/subscriptions/event-type-options?clientScoped=` (the event type list for the Client Scoped switch).
+
+- Reads: `GET /api/subscriptions`'s checks (`CanReadSubscriptions`, client scoping). Actions check the
+  permission for the operation: create `CanCreateSubscriptions`; edit, pause, resume
+  `CanUpdateSubscriptions`; delete `CanDeleteSubscriptions` (the API itself still admits any of the three
+  for every write: bug 8). Each runs the API's use case (`pages.SubscriptionOps`).
+- List: search (code, name, connection id, application, client), Application multi-select (options from
+  the subscriptions, pruned), status, sortable columns, 100-row pages.
+- Create: the SPA's sections; event types are a searchable multi-select of CURRENT event types with a
+  CURRENT schema matching the Client Scoped switch (the switch re-fetches the list and clears the
+  choice, as the SPA does; the client field shows only for a client-scoped subscription). The bindings
+  (id, code, current version) are built from the event types offered. Connection, dispatch pool and the
+  event types are offered only to users who may read them (disabled with the reason otherwise).
+- The pool code is looked up by id when a subscription has none stored (bug 11), so the Pool column and
+  the drawer are not empty for subscriptions created in a UI.
+
+Differences from the SPA: dialogs instead of drawer forms; **Queue** is a select of the two values the
+use case accepts (Default, High priority; the SPA's free text fails for anything else, bug 10);
+**Sequence** is not offered (the API drops it, bug 9); the create form's "+ create connection" nested
+dialog is not ported (create the connection on the Connections page first); the edit form's connection
+is a select of active connections (the SPA's is a free-text id) and a blank choice leaves the
+connection unchanged (the SPA stores an empty id, bug 12).
+
 ## CSRF
 
 Sessions are the `fc_session` cookie (HttpOnly, `SameSite=Lax`, Secure outside dev), so
@@ -502,6 +529,30 @@ native (no-JavaScript) post/redirect/get path (unit tests cover it), system mode
 7. The SPA's row pencil opens an archived event type in edit mode although its drawer hides Edit for
    archived types.
 
+8. **Subscription writes use the any-of gate**: `POST/PUT /api/subscriptions`, pause and resume check
+   `CanWriteSubscriptions` (create, update or delete), so a delete-only role can create, edit, pause
+   and resume (the dispatch pool API was fixed for the same in `c59e246`; connections already split).
+9. The SPA's create body sends `clientScoped` and `sequence`; `CreateSubscriptionRequest` has neither,
+   so the leniency net drops them: no subscription created through the SPA or the API is ever
+   client-scoped, and its sequence is always 99.
+10. The SPA's Queue field is free text (placeholder "default"); the use case accepts only
+    DEFAULT/HIGH_PRIORITY (ignoring case) and answers 400 `INVALID_QUEUE` otherwise.
+11. `dispatchPoolCode` is stored only by the SDK sync: a subscription created in the SPA or through
+    `POST /api/subscriptions` has `dispatchPoolId` and no code, so the SPA's Pool column is empty for it.
+12. The SPA's edit sends `connectionId: ""` when the field is blank, which stores an empty string (the
+    use case sets any provided value; it cannot clear the connection).
+
+### Subscriptions: verification (2026-10-10)
+
+Unit tests (`subscriptions_test.go`: list, filters, sort, permissions per operation incl. a delete-only
+user, client scoping, drawer, actions, create with scope switching, bindings, field errors, edit body)
+and `subscriptions_pg_test.go` (create with a real pool and finalised event type, edit, pause, resume,
+delete; 5 audit rows; pool code shown). Chrome on the isolated instance: Client Scoped switch
+re-fetching the event types and showing the client field, create through the real use case (drawer
+opened, flash), edit (queue to High priority), pause from the drawer. Headless Chrome at 390×844, light
+and dark: list, drawer, create (multi-select open, summary updated in the browser), edit; no horizontal
+scroll, no console problems.
+
 ### Owner decisions needed
 
 - **Add schema** sends the document (refusing text that is not JSON) instead of the SPA's JSON
@@ -510,5 +561,8 @@ native (no-JavaScript) post/redirect/get path (unit tests cover it), system mode
   server does not enforce them (bug 5). Should the use cases enforce them?
 - **Sync Platform Events** is allowed to any anchor user (the BFF's `RequireAnchor`), with no
   event-type permission. Should it need `event-type:sync` or `:manage`?
-- **Event types sidebar entry** now links to `/ui/event-types` in the `/ui` sidebar (the SPA's own
-  navigation is unchanged).
+- **Event types and Subscriptions sidebar entries** now link to their `/ui` pages in the `/ui` sidebar
+  (the SPA's own navigation is unchanged).
+- **Subscription API permissions** (bug 8): split the any-of gate per operation as for dispatch pools?
+- **Subscription create body** (bug 9): should the API accept `clientScoped` (and `sequence`), or should
+  the SPA stop sending them?

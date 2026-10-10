@@ -13,6 +13,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/seed"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
+	subops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
 )
@@ -214,4 +215,54 @@ func (o EventTypeOps) SyncPlatform(ctx context.Context) (EventTypeSyncResult, er
 		Created: int(ev.Created), Updated: int(ev.Updated), Deleted: int(ev.Deleted), Total: len(defs),
 		SchemasCreated: int(ev.SchemasCreated), SchemasUpdated: int(ev.SchemasUpdated), SchemasSame: int(ev.SchemasUnchanged),
 	}, nil
+}
+
+// SubscriptionCommands are the subscription operations the subscriptions
+// page runs; SubscriptionOps runs the API's use cases.
+type SubscriptionCommands interface {
+	Create(ctx context.Context, cmd subops.CreateCommand) (string, error)
+	Update(ctx context.Context, cmd subops.UpdateCommand) error
+	Pause(ctx context.Context, id string) error
+	Resume(ctx context.Context, id string) error
+	Delete(ctx context.Context, id string) error
+}
+
+// SubscriptionOps runs the subscription use cases through the unit of work,
+// exactly as internal/platform/subscription/api does.
+type SubscriptionOps struct {
+	Repo *subscription.Repository
+	UoW  *usecasepgx.UnitOfWork
+}
+
+// Create runs CreateSubscription and returns the new subscription's id.
+func (o SubscriptionOps) Create(ctx context.Context, cmd subops.CreateCommand) (string, error) {
+	ev, err := usecaseop.Run(ctx, o.UoW, subops.CreateSubscription(o.Repo), cmd, auth.NewExecutionContext(ctx))
+	if err != nil {
+		return "", err
+	}
+	return ev.SubscriptionID, nil
+}
+
+// Update runs UpdateSubscription.
+func (o SubscriptionOps) Update(ctx context.Context, cmd subops.UpdateCommand) error {
+	_, err := usecaseop.Run(ctx, o.UoW, subops.UpdateSubscription(o.Repo), cmd, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// Pause runs PauseSubscription.
+func (o SubscriptionOps) Pause(ctx context.Context, id string) error {
+	_, err := usecaseop.Run(ctx, o.UoW, subops.PauseSubscription(o.Repo), subops.PauseCommand{ID: id}, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// Resume runs ResumeSubscription.
+func (o SubscriptionOps) Resume(ctx context.Context, id string) error {
+	_, err := usecaseop.Run(ctx, o.UoW, subops.ResumeSubscription(o.Repo), subops.ResumeCommand{ID: id}, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// Delete runs DeleteSubscription.
+func (o SubscriptionOps) Delete(ctx context.Context, id string) error {
+	_, err := usecaseop.Run(ctx, o.UoW, subops.DeleteSubscription(o.Repo), subops.DeleteCommand{ID: id}, auth.NewExecutionContext(ctx))
+	return err
 }

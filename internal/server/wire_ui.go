@@ -55,6 +55,8 @@ func registerUI(r chi.Router, cfg EnvCfg, uow *usecasepgx.UnitOfWork, repos *rep
 		EventTypes:      repos.eventTypeRepo,
 		EventTypeOps:    pages.EventTypeOps{Repo: repos.eventTypeRepo, UoW: uow},
 		Applications:    repos.applicationRepo,
+		Subscriptions:   repos.subscriptionRepo,
+		SubscriptionOps: pages.SubscriptionOps{Repo: repos.subscriptionRepo, UoW: uow},
 	})
 }
 

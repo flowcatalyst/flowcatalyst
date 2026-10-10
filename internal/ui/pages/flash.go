@@ -26,6 +26,12 @@ const (
 	flashSchemaFinalised  = "schema-finalised"
 	flashSchemaDeprecated = "schema-deprecated"
 	flashExportEmpty      = "schema-export-empty"
+
+	flashSubCreated = "subscription-created"
+	flashSubUpdated = "subscription-updated"
+	flashSubPaused  = "subscription-paused"
+	flashSubResumed = "subscription-resumed"
+	flashSubDeleted = "subscription-deleted"
 )
 
 // FlashMessages is the table the shell maps flash keys through
@@ -52,6 +58,12 @@ var FlashMessages = map[string]kit.FlashMessageProps{
 	flashSchemaFinalised:  success("Schema finalised"),
 	flashSchemaDeprecated: success("Schema deprecated"),
 	flashExportEmpty:      {Kind: kit.FlashWarn, Summary: "Nothing to Export", Detail: "No event types with a CURRENT schema in the current view"},
+
+	flashSubCreated: success("Subscription created"),
+	flashSubUpdated: success("Subscription updated"),
+	flashSubPaused:  success("Subscription paused"),
+	flashSubResumed: success("Subscription resumed"),
+	flashSubDeleted: success("Subscription deleted"),
 }
 
 // success is the SPA's toast.success("Success", detail).
