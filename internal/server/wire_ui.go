@@ -66,6 +66,11 @@ func registerUI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usecasepgx.Un
 		},
 		LoginClients: repos.authRepo.OAuthClients,
 		AppDocs:      appdocs.NewRepository(pool),
+		ClientStore:  repos.clientRepo,
+		ClientOps: pages.ClientOps{
+			Repo: repos.clientRepo, Apps: repos.applicationRepo, Configs: repos.applicationClientConfigRepo, UoW: uow,
+		},
+		ClientConfigs: repos.applicationClientConfigRepo,
 	})
 }
 

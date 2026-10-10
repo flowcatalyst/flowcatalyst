@@ -6,6 +6,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	appops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/operations"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	clientops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	connops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
@@ -335,4 +337,65 @@ func (o ApplicationOps) ProvisionServiceAccount(ctx context.Context, id string) 
 // ProvisionLoginClient runs operations.ProvisionLoginClient.
 func (o ApplicationOps) ProvisionLoginClient(ctx context.Context, cmd appops.ProvisionLoginClientCommand) (appops.ProvisionLoginClientResult, error) {
 	return appops.ProvisionLoginClient(ctx, o.UoW, o.Repo, o.OAuthClients, cmd, auth.NewExecutionContext(ctx))
+}
+
+// ClientCommands are the client operations the clients page runs;
+// ClientOps runs the API's use cases.
+type ClientCommands interface {
+	Create(ctx context.Context, cmd clientops.CreateCommand) (string, error)
+	Update(ctx context.Context, cmd clientops.UpdateCommand) error
+	Activate(ctx context.Context, id string) error
+	Suspend(ctx context.Context, id, reason string) error
+	// Deactivate runs what POST /api/clients/{id}/deactivate runs (DeleteClient).
+	Deactivate(ctx context.Context, id string) error
+	UpdateApplications(ctx context.Context, id string, enabledApplicationIDs []string) error
+}
+
+// ClientOps runs the client use cases through the unit of work, exactly as
+// internal/platform/client/api does.
+type ClientOps struct {
+	Repo    *client.Repository
+	Apps    *application.Repository
+	Configs *application.ClientConfigRepo
+	UoW     *usecasepgx.UnitOfWork
+}
+
+// Create runs CreateClient and returns the new client's id.
+func (o ClientOps) Create(ctx context.Context, cmd clientops.CreateCommand) (string, error) {
+	ev, err := usecaseop.Run(ctx, o.UoW, clientops.CreateClient(o.Repo), cmd, auth.NewExecutionContext(ctx))
+	if err != nil {
+		return "", err
+	}
+	return ev.ClientID, nil
+}
+
+// Update runs UpdateClient.
+func (o ClientOps) Update(ctx context.Context, cmd clientops.UpdateCommand) error {
+	_, err := usecaseop.Run(ctx, o.UoW, clientops.UpdateClient(o.Repo), cmd, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// Activate runs ActivateClient.
+func (o ClientOps) Activate(ctx context.Context, id string) error {
+	_, err := usecaseop.Run(ctx, o.UoW, clientops.ActivateClient(o.Repo), clientops.ActivateCommand{ID: id}, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// Suspend runs SuspendClient.
+func (o ClientOps) Suspend(ctx context.Context, id, reason string) error {
+	_, err := usecaseop.Run(ctx, o.UoW, clientops.SuspendClient(o.Repo), clientops.SuspendCommand{ID: id, Reason: reason}, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// Deactivate runs DeleteClient, as the API's deactivate does.
+func (o ClientOps) Deactivate(ctx context.Context, id string) error {
+	_, err := usecaseop.Run(ctx, o.UoW, clientops.DeleteClient(o.Repo), clientops.DeleteCommand{ID: id}, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// UpdateApplications runs UpdateClientApplications.
+func (o ClientOps) UpdateApplications(ctx context.Context, id string, enabled []string) error {
+	_, err := usecaseop.Run(ctx, o.UoW, appops.UpdateClientApplications(o.Apps, o.Repo, o.Configs),
+		appops.UpdateClientApplicationsCommand{ClientID: id, EnabledApplicationIDs: enabled}, auth.NewExecutionContext(ctx))
+	return err
 }

@@ -11,8 +11,8 @@ flash stack and the Datastar error contract, an icon sprite, now 90 icons), and 
 `/ui/connections` at parity with the SPA pages: list, record drawer, create and edit dialogs,
 state actions and delete behind confirmations; the app shell works at phone width and dark mode is
 rendered by the server from a theme cookie. Phase 3 (core operations): `/ui/event-types` and
-`/ui/subscriptions` and `/ui/applications` at parity (sections below); the other core areas are not
-ported yet.
+`/ui/subscriptions`, `/ui/applications` and `/ui/clients` at parity (sections below); the other
+core areas are not ported yet.
 
 ## Architecture
 
@@ -342,6 +342,32 @@ SelectButton); **redirect URIs are a textarea, one per line** (the SPA adds and 
 lines and repeats are dropped); Delete is disabled with the reason "Deactivate the application first."
 while active (the SPA only disables it; the use case does not require it: bug 14).
 
+### Clients (`/ui/clients`)
+
+Mirrors `ClientListPage`, `ClientCreateDrawer` and `ClientDetailDrawer`. Routes as connections
+(`activate`/`suspend`/`deactivate`), plus `POST /ui/clients/{id}/applications` (the picker's Save).
+
+- Every check is the API's, per operation and anchor-only (`CanReadClients`, `CanCreateClients`,
+  `CanUpdateClients`, `CanActivateClients`, `CanSuspendClients`, `CanDeactivateClients`); the
+  applications picker is the anchor-only `PUT /api/clients/{id}/applications` (`UpdateClientApplications`);
+  without it the drawer lists the enabled applications read-only.
+- The list is the SPA's: search over identifier and name, no filters; here the search covers every
+  client and pages 100 rows (the SPA asks for server pages the API ignores: bug 16).
+- The applications picker is the kit pick list (`pick-list.md`): ticked applications are posted as a
+  list; Save stays disabled until the choice changes.
+- **Login Branding** links to the SPA's page (`/clients/{id}/theme`): its theme editor is shared with
+  the platform settings and moves with them (Phase 5).
+- Suspend sends the SPA's fixed reason ("Manual suspension").
+
+Differences from the SPA: dialogs for create/edit; the picker is the kit's dual pane (checkboxes and a
+mirrored list) rather than PrimeVue's move-between-lists; the Deactivate texts say what the platform
+does (bug 15) instead of "Soft delete ... Can be reactivated later".
+
+Templ gotcha found here: `{ attrs... }` writes a `templ.Attributes` map in **sorted** order, and Datastar
+applies attributes in document order, so a `data-init` that reads a signal declared by `data-signals` in
+the same map runs first and sees nothing (the picker's Save was enabled on load). Write such pairs as
+explicit attributes, in order, before the spread.
+
 ## CSRF
 
 Sessions are the `fc_session` cookie (HttpOnly, `SameSite=Lax`, Secure outside dev), so
@@ -574,6 +600,12 @@ native (no-JavaScript) post/redirect/get path (unit tests cover it), system mode
 14. Deleting an active application is blocked only by the SPA (the button is disabled);
     `DeleteApplication` refuses only applications still referenced.
 
+15. **Client "Deactivate" deletes the client**: `POST /api/clients/{id}/deactivate` ("soft delete")
+    runs `DeleteClient`, which removes the row (`ClientDelete`); the SPA promises "Soft delete this
+    client. Can be reactivated later."
+16. The SPA's client list sends `page`/`pageSize` to `GET /api/clients`, which ignores them and returns
+    every client; "Next" shows the same list again (and the search filters only what was loaded).
+
 ### Subscriptions: verification (2026-10-10)
 
 Unit tests (`subscriptions_test.go`: list, filters, sort, permissions per operation incl. a delete-only
@@ -597,6 +629,16 @@ appearing with a logo; service account and login client provisioning (dialog, Es
 it, the button removes it, drawer shows Provisioned). Headless Chrome 390×844, light and dark: list,
 drawer, create dialog; no horizontal scroll, no console problems.
 
+### Clients: verification (2026-10-10)
+
+Unit tests (`clients_page_test.go`: list and search, a client user refused, per-operation permissions,
+the picker's posted list, every action with the fixed suspend reason, create/edit with the identifier
+error on its field) and `clients_page_pg_test.go` (create, edit, suspend with reason, activate, enable
+an application, deactivate deleting the row). Chrome on the isolated instance: create (drawer opened),
+picker (Save disabled until a change, back to disabled when undone, filter, count, mirrored list),
+Save through the use case. Headless Chrome 390×844, light and dark: list, drawer, create; no
+horizontal scroll, no console problems.
+
 ### Owner decisions needed
 
 - **Add schema** sends the document (refusing text that is not JSON) instead of the SPA's JSON
@@ -608,5 +650,7 @@ drawer, create dialog; no horizontal scroll, no console problems.
 - **Event types and Subscriptions sidebar entries** now link to their `/ui` pages in the `/ui` sidebar
   (the SPA's own navigation is unchanged).
 - **Subscription API permissions** (bug 8): split the any-of gate per operation as for dispatch pools?
+- **Client deactivate** (bug 15): should it set INACTIVE (as the SPA says) instead of deleting? The /ui
+  page states what happens today.
 - **Subscription create body** (bug 9): should the API accept `clientScoped` (and `sequence`), or should
   the SPA stop sending them?

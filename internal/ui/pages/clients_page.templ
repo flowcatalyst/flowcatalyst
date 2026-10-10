@@ -1,0 +1,248 @@
+package pages
+
+import (
+	"strconv"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+)
+
+// toolbar is the SPA's: a search box, no filters.
+func (v clientsView) toolbar() kit.TableToolbarProps {
+	clear := ""
+	if v.Query.filtered() {
+		clear = v.Query.clearURL()
+	}
+	return kit.TableToolbarProps{
+		ID: clientsFormID, Action: clientsPath, SearchPlaceholder: "Search clients...", SearchValue: v.Query.Q,
+		ClearHref: clear, ClearAttrs: templ.Attributes{"data-on:click__prevent": kit.ClearFilters},
+		Hidden:      v.Query.hidden(),
+		SearchAttrs: templ.Attributes{"data-on:input__debounce.300ms": clientsLiveGet},
+		FormAttrs:   templ.Attributes{"data-on:submit": clientsLiveGet},
+	}
+}
+
+func (v clientsView) pager() kit.PaginatorProps {
+	return kit.PaginatorProps{
+		ID: "clients-pager", Page: v.Page, Pages: v.Pages, Total: v.Total, Rows: v.Query.Rows, RowsOptions: clientList.rows,
+		Noun: "clients", HrefPattern: v.Query.pagePattern(), FormID: clientsFormID,
+		LinkAttrs: templ.Attributes{"data-on:click__prevent": liveLink},
+	}
+}
+
+func (v clientsView) columns() []kit.DataColumn {
+	sortable := func(label, key string) kit.DataColumn {
+		return kit.DataColumn{Label: label, Href: v.Query.sortURL(key), Direction: v.Query.direction(key), LinkAttrs: templ.Attributes{"data-on:click__prevent": sortClick}}
+	}
+	return []kit.DataColumn{
+		sortable("Identifier", "identifier"), sortable("Name", "name"), sortable("Status", "status"),
+		sortable("Created", "created"), {Label: "Actions", Class: "w-px"},
+	}
+}
+
+func (v clientsView) empty() *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	e := &kit.EmptyStateProps{Message: "No clients found", Status: true}
+	if v.Query.filtered() {
+		e.ClearHref = v.Query.clearURL()
+	}
+	return e
+}
+
+func (v clientsView) drawerSignals() string {
+	if v.Drawer == nil {
+		return "{" + cliDrawerSig + ": ''}"
+	}
+	return "{" + cliDrawerSig + ": '" + kit.ID(v.Drawer.ID) + "'}"
+}
+
+func (d cliDetail) appsPicker() kit.PickListProps {
+	return kit.PickListProps{
+		ID: "cli-apps", Signal: "cliApps", FilterSignal: "cliAppsQ", Name: "applicationIds", ItemIDPrefix: "cli-app-",
+		Items: d.Apps, AvailableTitle: "Available (" + strconv.Itoa(d.AppsAvailable) + ")", SelectedTitle: "Enabled",
+		FilterPlaceholder: "Filter applications", EmptyText: "No applications enabled", SaveLabel: "Save",
+		Action: d.ActionBase + "/applications", FormAttrs: templ.Attributes{"data-on:submit": kit.SubmitForm},
+	}
+}
+
+templ clientsPage(v clientsView) {
+	<div data-signals={ v.drawerSignals() }>
+		@kit.PageHeader(kit.PageHeaderProps{Title: "Clients", Subtitle: "Manage customer clients and their configurations", Actions: clientsActions(v)})
+		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Clients.", Class: "mb-4"})
+		<div class="fc-card-flush">
+			@kit.TableToolbar(v.toolbar())
+			@clientsTable(v)
+			@kit.Paginator(v.pager())
+		</div>
+		<div id={ cliDialogSlot }>
+			if v.Dialog != nil {
+				@v.Dialog
+			}
+		</div>
+		@cliConfirmDialogs(v.Perms)
+		@cliDrawer(v.Drawer)
+	</div>
+}
+
+templ clientsActions(v clientsView) {
+	if v.Perms.Create {
+		@kit.LegacyButton(kit.LegacyButtonProps{Href: clientsPath + "/new", Icon: "plus", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+			Create Client
+		}
+	}
+}
+
+templ clientsTable(v clientsView) {
+	@kit.DataTable(kit.DataTableProps{ID: "clients-table", BodyID: "clients-rows", Columns: v.columns(), Empty: v.empty()}) {
+		for _, row := range v.Rows {
+			@kit.TR(kit.TRProps{ID: "cli-" + row.ID}) {
+				@kit.TD(kit.TDProps{}) {
+					<a href={ row.DetailHref } class="no-underline" data-on:click__prevent={ liveLink }><code class="font-mono text-[13px]">{ row.Identifier }</code></a>
+				}
+				@kit.TD(kit.TDProps{}) {
+					<a href={ row.DetailHref } class="font-medium text-foreground no-underline hover:underline" data-on:click__prevent={ liveLink }>{ row.Name }</a>
+				}
+				@kit.TD(kit.TDProps{}) {
+					@poolStatusBadge(row.Status, row.StatusVariant)
+				}
+				@kit.TD(kit.TDProps{}) {
+					<time datetime={ row.CreatedISO }>{ row.Created }</time>
+				}
+				@kit.RowActions(v.rowActions(row))
+			}
+		}
+	}
+}
+
+templ cliDrawer(d *cliDetail) {
+	if d != nil {
+		@kit.Drawer(d.drawerProps()) {
+			@cliDrawerBody(*d)
+		}
+	} else {
+		@kit.Drawer(kit.DrawerProps{ID: cliDrawerID, Signal: cliDrawerSig, Label: "Client", Size: kit.DrawerWide})
+	}
+}
+
+templ cliDrawerContent(d cliDetail) {
+	@kit.DrawerContent(d.drawerProps()) {
+		@cliDrawerBody(d)
+	}
+}
+
+// cliDrawerBody mirrors the SPA's ClientDetailDrawer.
+templ cliDrawerBody(d cliDetail) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Client Details", Actions: cliEditButton(d)}) {
+		<div class="fc-detail-grid" data-signals="{cliCopied: false}">
+			@kit.DetailField(kit.DetailFieldProps{Label: "Client ID"}) {
+				<span class="inline-flex items-center gap-1">
+					<code id="cli-id-value">{ d.ID }</code>
+					@kit.IconButton(kit.IconButtonProps{Icon: "copy", Label: "Copy client ID", Attrs: templ.Attributes{"title": "Copy client ID", "data-on:click": kit.CopyText("cli-id-value") + ".then(() => { $cliCopied = true; setTimeout(() => $cliCopied = false, 2000) })"}})
+					<span class="text-xs text-muted-foreground" role="status" data-show="$cliCopied" style="display: none">Copied</span>
+				</span>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Identifier"}) {
+				<code>{ d.Identifier }</code>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Name", Value: d.Name})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Status"}) {
+				@poolStatusBadge(d.Status, d.StatusVariant)
+			}
+			if d.StatusReason != "" {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Status Reason", Value: d.StatusReason})
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Created", Value: d.Created})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Updated", Value: d.Updated})
+		</div>
+	}
+	@kit.FormSection(kit.FormSectionProps{Title: "Applications"}) {
+		if d.Perms.Applications {
+			@kit.PickList(d.appsPicker())
+			<p class="mt-2 text-sm text-muted-foreground">Tick applications to enable them for this client. Click Save to apply changes.</p>
+		} else {
+			<ul class="flex flex-col gap-1 text-sm">
+				for _, a := range d.Apps {
+					if a.Checked {
+						<li><span class="font-medium">{ a.Name }</span> <code class="text-muted-foreground">{ a.Code }</code></li>
+					}
+				}
+			</ul>
+		}
+	}
+	@kit.FormSection(kit.FormSectionProps{Title: "Login Branding"}) {
+		@poolActionItem("Login Branding", "Customize the sign-in, forgot-password and reset-password pages for this client.") {
+			@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyOutline, Icon: "palette", Href: "/clients/" + d.ID + "/theme"}) {
+				Edit Branding
+			}
+		}
+	}
+	if d.Perms.Activate || d.Perms.Suspend || d.Perms.Deactivate {
+		@kit.FormSection(kit.FormSectionProps{Title: "Actions"}) {
+			<div class="flex flex-col gap-4">
+				if d.Perms.Activate && d.RawStatus != "ACTIVE" {
+					@poolActionItem("Activate Client", "Make this client active and accessible.") {
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyPrimaryOutline, Icon: "circle-check", Attrs: confirmTrigger(cliActivateDialog, d.ActionBase+"/activate")}) {
+							Activate
+						}
+					}
+				}
+				if d.Perms.Suspend && d.RawStatus == "ACTIVE" {
+					@poolActionItem("Suspend Client", "Temporarily disable access to this client.") {
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyWarnOutline, Icon: "pause", Attrs: confirmTrigger(cliSuspendDialog, d.ActionBase+"/suspend")}) {
+							Suspend
+						}
+					}
+				}
+				if d.Perms.Deactivate && d.RawStatus != "INACTIVE" {
+					@poolActionItem("Deactivate Client", "Remove this client. The platform deletes the client record; it cannot be reactivated.") {
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Icon: "trash-2", Attrs: confirmTrigger(cliDeactivateDialog, d.ActionBase+"/deactivate")}) {
+							Deactivate
+						}
+					}
+				}
+			</div>
+		}
+	}
+}
+
+templ cliEditButton(d cliDetail) {
+	if d.Perms.Update {
+		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.EditHref, Icon: "pencil", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+			Edit
+		}
+	}
+}
+
+templ cliConfirmDialogs(perms cliPerms) {
+	if perms.Activate {
+		@kit.ConfirmDialog(cliConfirm(cliActivateDialog, "Activate Client", "Activate this client?", "Activate", kit.ToneDefault))
+	}
+	if perms.Suspend {
+		@kit.ConfirmDialog(cliConfirm(cliSuspendDialog, "Suspend Client", "Suspend this client? Users will not be able to access it.", "Suspend", kit.ToneWarn))
+	}
+	if perms.Deactivate {
+		@kit.ConfirmDialog(cliConfirm(cliDeactivateDialog, "Deactivate Client", "Deactivate this client? The platform deletes the client record; this cannot be undone.", "Deactivate", kit.ToneDanger))
+	}
+}
+
+templ cliFormDialogC(f cliForm) {
+	@kit.FormDialog(f.dialog()) {
+		for _, c := range f.fields() {
+			@c
+		}
+	}
+}
+
+templ cliField(f cliForm, key string) {
+	switch key {
+		case "name":
+			@kit.Field(f.fieldProps(key, "Name", "")) {
+				@kit.Input(f.inputProps(key, f.Name, "Client display name", templ.Attributes{"maxlength": "255", "autocomplete": "off", "autofocus": true}))
+			}
+		case "identifier":
+			@kit.Field(f.fieldProps(key, "Identifier", "Unique identifier used in URLs and configurations (2-100 characters). Lowercase letters, numbers, hyphens; starts with a letter.")) {
+				@kit.Input(f.inputProps(key, f.Identifier, "client-slug", templ.Attributes{"pattern": "[a-z][a-z0-9\\-]*", "minlength": "2", "maxlength": "100", "autocomplete": "off"}))
+			}
+	}
+}

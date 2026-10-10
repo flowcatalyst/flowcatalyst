@@ -64,7 +64,7 @@ var navigation = []navSection{
 	}},
 	{"Platform", []navEntry{
 		{label: "Applications", icon: "layout-grid", spa: "/applications", ui: "/ui/applications", permission: "platform:admin:application:view"},
-		{label: "Clients", icon: "building-2", spa: "/clients", permission: "platform:admin:client:view"},
+		{label: "Clients", icon: "building-2", spa: "/clients", ui: "/ui/clients", permission: "platform:admin:client:view"},
 		{label: "CORS Origins", icon: "link", spa: "/platform/cors", permission: "platform:admin:cors:view"},
 		{label: "Audit Log", icon: "history", spa: "/platform/audit-log", permission: "platform:admin:audit:view"},
 		{label: "Documentation", icon: "book-open", spa: "/platform/docs", scope: scopeAnchor},
