@@ -5,12 +5,38 @@
 package repocommon
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
 )
+
+// RowQuerier is the single-row read a pool (or transaction) offers.
+type RowQuerier interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+// ClientIdentifier is the identifier of the client with this id, or nil for
+// no client (a platform-wide resource) or an id that names no client.
+// Client-scoped pools, connections and subscriptions store it beside the
+// client id: the SPA shows it as their scope, and the router's queue and
+// pool names are built from it.
+func ClientIdentifier(ctx context.Context, db RowQuerier, clientID *string) (*string, error) {
+	if clientID == nil || *clientID == "" {
+		return nil, nil
+	}
+	var identifier string
+	err := db.QueryRow(ctx, `SELECT identifier FROM tnt_clients WHERE id = $1`, *clientID).Scan(&identifier)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("client identifier: %w", err)
+	}
+	return &identifier, nil
+}
 
 // One adapts a single-row sqlc lookup to the repo convention: a missing
 // row is (nil, nil), not an error; other errors wrap as "<label>: %w".

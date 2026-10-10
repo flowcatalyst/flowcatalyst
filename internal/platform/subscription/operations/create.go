@@ -107,6 +107,9 @@ func CreateSubscription(repo *subscription.Repository) usecaseop.Operation[Creat
 			s := subscription.New(code, strings.TrimSpace(cmd.Name), cmd.Endpoint)
 			s.Description = cmd.Description
 			s.ClientID = ids.PtrOf[ids.ClientID](cmd.ClientID)
+			if s.ClientIdentifier, err = repo.ClientIdentifier(ctx, cmd.ClientID); err != nil {
+				return nil, usecase.Internal("REPO", "client identifier lookup failed", err)
+			}
 			s.ConnectionID = cmd.ConnectionID
 			s.DispatchPoolID = cmd.DispatchPoolID
 			if s.DispatchPoolCode, err = poolCode(ctx, repo, cmd.DispatchPoolID); err != nil {

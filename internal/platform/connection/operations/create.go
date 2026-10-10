@@ -93,6 +93,9 @@ func CreateConnection(repo *connection.Repository, apps *application.Repository)
 			c.Description = cmd.Description
 			c.ExternalID = cmd.ExternalID
 			c.ClientID = ids.PtrOf[ids.ClientID](cmd.ClientID)
+			if c.ClientIdentifier, err = repo.ClientIdentifier(ctx, cmd.ClientID); err != nil {
+				return nil, usecase.Internal("REPO", "client identifier lookup failed", err)
+			}
 
 			event := ConnectionCreated{
 				Metadata:     usecase.NewEventMetadata(ec, ConnectionCreatedType, Source, subjectFor(c.ID)),

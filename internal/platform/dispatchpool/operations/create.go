@@ -76,6 +76,9 @@ func CreateDispatchPool(repo *dispatchpool.Repository) usecaseop.Operation[Creat
 				p.Concurrency = *cmd.Concurrency
 			}
 			p.ClientID = ids.PtrOf[ids.ClientID](cmd.ClientID)
+			if p.ClientIdentifier, err = repo.ClientIdentifier(ctx, cmd.ClientID); err != nil {
+				return nil, usecase.Internal("REPO", "client identifier lookup failed", err)
+			}
 
 			event := DispatchPoolCreated{
 				Metadata: usecase.NewEventMetadata(ec, DispatchPoolCreatedType, Source, subjectFor(p.ID)),

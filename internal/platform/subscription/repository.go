@@ -31,6 +31,12 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool, q: dbq.New(pool)}
 }
 
+// ClientIdentifier is the identifier of the client with this id (nil for no
+// client, or an id that names no client); create stores it beside the id.
+func (r *Repository) ClientIdentifier(ctx context.Context, clientID *string) (*string, error) {
+	return repocommon.ClientIdentifier(ctx, r.pool, clientID)
+}
+
 // FindByID loads a subscription with hydrated junction tables.
 // DispatchPoolCode is the code of the dispatch pool with this id, or nil
 // when no pool has it. Create and update store it beside the pool id, as the
