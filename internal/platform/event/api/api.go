@@ -441,6 +441,12 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	if ev.ClientID != nil && !ac.CanAccessClient(string(*ev.ClientID)) {
 		return nil, httperror.Forbidden("No access to this event")
 	}
+	// The projection has no context column; the write table has it.
+	if len(ev.Context) == 0 {
+		if ev.Context, err = s.Repo.ContextByID(ctx, ev.ID); err != nil {
+			return nil, usecase.Internal("REPO", "context_by_id failed", err)
+		}
+	}
 	return &apicommon.Out[EventResponse]{Body: fromEntity(ev)}, nil
 }
 

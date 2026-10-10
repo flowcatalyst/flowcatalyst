@@ -347,6 +347,29 @@ func scanRawRow(rows pgx.Rows) (*Event, error) {
 	return &e, nil
 }
 
+// ContextByID returns an event's context data from the write-side msg_events
+// table (msg_events_read has no context column): empty when the row has none
+// or is no longer there (pruned partitions). The detail view fills it in
+// after reading the projection.
+func (r *Repository) ContextByID(ctx context.Context, id string) ([]ContextEntry, error) {
+	var raw []byte
+	err := r.pool.QueryRow(ctx, `SELECT context_data FROM msg_events WHERE id = $1 LIMIT 1`, id).Scan(&raw)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return []ContextEntry{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("event repo: context_by_id: %w", err)
+	}
+	out := []ContextEntry{}
+	if len(raw) > 0 {
+		_ = json.Unmarshal(raw, &out)
+		if out == nil {
+			out = []ContextEntry{}
+		}
+	}
+	return out, nil
+}
+
 // FindByDeduplicationID returns the most recently stored msg_events row
 // carrying deduplicationID, or nil if none exists. Used by callers that
 // need to report back an idempotent write's existing id — the function

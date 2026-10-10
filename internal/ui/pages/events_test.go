@@ -55,6 +55,13 @@ func (f *fakeEventStore) FindByID(_ context.Context, id string) (*event.Event, e
 	return nil, nil
 }
 
+func (f *fakeEventStore) ContextByID(_ context.Context, id string) ([]event.ContextEntry, error) {
+	if id == "0EVENTID0000001" {
+		return []event.ContextEntry{{Key: "tenant", Value: "acme <x>"}}, nil
+	}
+	return []event.ContextEntry{}, nil
+}
+
 func (f *fakeEventStore) DistinctValues(_ context.Context, column string, _ int, scope *[]string) ([]string, error) {
 	f.scopes = append(f.scopes, distinctScopeKey(scope))
 	if column == "type" {
@@ -144,7 +151,7 @@ func TestEventDrawer(t *testing.T) {
 	store := newEvStore()
 	body := evRec(t, store, anchorAdmin(), req{target: "/ui/events/0EVENTID0000001", datastar: true}).Body.String()
 	mustContain(t, body, "orders:sales:order:created", "0EVENTID0000001", ">orders<", "order-42", "corr-1", "dedup-0EVENTID0000001",
-		"data: selector #ev-drawer\n", `id="ev-drawer-body"`)
+		"data: selector #ev-drawer\n", `id="ev-drawer-body"`, "Context Data", "tenant", "acme &lt;x&gt;")
 	page := evRec(t, store, anchorAdmin(), req{target: "/ui/events/0EVENTID0000001"}).Body.String()
 	mustContain(t, page, "&#34;z&#34;: 1,\n  &#34;orderId&#34;: 42,\n  &#34;note&#34;: &#34;&lt;b&gt;&#34;", `<aside id="ev-drawer"`)
 	if rec := evRec(t, store, anchorAdmin(), req{target: "/ui/events/nope'quote"}); rec.Code != http.StatusNotFound {

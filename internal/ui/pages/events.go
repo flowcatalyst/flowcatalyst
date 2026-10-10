@@ -32,6 +32,9 @@ type EventStore interface {
 	FindWithFilters(ctx context.Context, p event.FilterParams) ([]event.Event, error)
 	FindByID(ctx context.Context, id string) (*event.Event, error)
 	DistinctValues(ctx context.Context, column string, limit int, accessibleClientIDs *[]string) ([]string, error)
+	// ContextByID reads the context data from the write table (the
+	// projection has none), as GET /api/events/{id} does.
+	ContextByID(ctx context.Context, id string) ([]event.ContextEntry, error)
 }
 
 // Events is the events page (/ui/events), mirroring the SPA's EventListPage
@@ -366,6 +369,12 @@ func (h *Events) detail(w http.ResponseWriter, r *http.Request) {
 	if c := ids.StringPtr(e.ClientID); c != nil && !ac.CanAccessClient(*c) {
 		h.Shell.Fail(w, r, httperror.Forbidden("No access to this event"))
 		return
+	}
+	if len(e.Context) == 0 {
+		if e.Context, err = h.Events.ContextByID(ctx, e.ID); err != nil {
+			h.Shell.Fail(w, r, usecase.Internal("REPO", "context_by_id failed", err))
+			return
+		}
 	}
 	d := toEvDetail(e)
 	if ds.IsDatastar(r) {
