@@ -229,8 +229,9 @@ func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Eve
 		     causation_id, created_at, application, subdomain, aggregate,
 		     projected_at
 		  FROM msg_events_read` + f.Where() + " ORDER BY created_at DESC, id DESC"
-	limit := p.Limit
-	if limit <= 0 || limit > 1000 {
+	// A size above the cap is clamped to it; no size is the default 100.
+	limit := min(p.Limit, 1000)
+	if limit <= 0 {
 		limit = 100
 	}
 	q += fmt.Sprintf(" LIMIT $%d", f.Arg(limit))
@@ -258,7 +259,8 @@ func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Eve
 // view (GET /bff/debug/events) which needs the un-projected envelope —
 // the read table drops context_data. Ordered most-recent first.
 func (r *Repository) FindRecentRaw(ctx context.Context, limit int) ([]Event, error) {
-	if limit <= 0 || limit > 1000 {
+	limit = min(limit, 1000)
+	if limit <= 0 {
 		limit = 100
 	}
 	rows, err := r.pool.Query(ctx,
@@ -394,7 +396,8 @@ func (r *Repository) DistinctValues(ctx context.Context, column string, limit in
 	if !allowed[column] {
 		return nil, fmt.Errorf("event repo: column %q not allowed for DistinctValues", column)
 	}
-	if limit <= 0 || limit > 1000 {
+	limit = min(limit, 1000)
+	if limit <= 0 {
 		limit = 200
 	}
 	// SECURITY: tenant scoping as the list's (FilterParams.AccessibleClientIDs):

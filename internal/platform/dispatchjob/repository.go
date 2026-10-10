@@ -274,8 +274,9 @@ func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Dis
 		order = " ORDER BY created_at ASC, id ASC"
 	}
 	q := readSelect + f.Where() + order
-	limit := p.Limit
-	if limit <= 0 || limit > 1000 {
+	// A size above the cap is clamped to it; no size is the default 100.
+	limit := min(p.Limit, 1000)
+	if limit <= 0 {
 		limit = 100
 	}
 	q += fmt.Sprintf(" LIMIT $%d", f.Arg(limit))
@@ -310,7 +311,8 @@ func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Dis
 // un-projected envelope the read projection drops. Mirrors the events repo's
 // FindRecentRaw. Ordered most-recent first.
 func (r *Repository) FindRecentRaw(ctx context.Context, limit int) ([]DispatchJob, error) {
-	if limit <= 0 || limit > 1000 {
+	limit = min(limit, 1000)
+	if limit <= 0 {
 		limit = 100
 	}
 	rows, err := r.pool.Query(ctx,
@@ -358,7 +360,8 @@ func (r *Repository) DistinctValues(ctx context.Context, column string, limit in
 	if !allowed[column] {
 		return nil, fmt.Errorf("dispatch_job repo: column %q not allowed", column)
 	}
-	if limit <= 0 || limit > 1000 {
+	limit = min(limit, 1000)
+	if limit <= 0 {
 		limit = 200
 	}
 	// SECURITY: tenant scoping as the list's (FilterParams.AccessibleClientIDs):
