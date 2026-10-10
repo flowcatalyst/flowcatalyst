@@ -1,0 +1,164 @@
+package kit
+
+import (
+	"strconv"
+	"strings"
+)
+
+// PickItem is one entry of a PickList.
+type PickItem struct {
+	// Value is submitted and is part of the checkbox id, so it must be
+	// id-safe ([A-Za-z][A-Za-z0-9_-]*); it never enters an expression.
+	Value   string `json:"value"`
+	Name    string `json:"name"`
+	Code    string `json:"code"`
+	Note    string `json:"note"`
+	Checked bool   `json:"checked"`
+}
+
+// PickListProps mirrors pick-list.md's Props table: the dual-pane picker
+// (checkboxes on the left, filtered as you type; the picked ones mirrored
+// on the right with a count) that posts the picked values under one name.
+type PickListProps struct {
+	ID                string           `json:"id"`
+	Signal            string           `json:"signal"`
+	FilterSignal      string           `json:"filterSignal"`
+	Name              string           `json:"name"`
+	ItemIDPrefix      string           `json:"itemIdPrefix"`
+	Items             []PickItem       `json:"items"`
+	AvailableTitle    string           `json:"availableTitle"`
+	SelectedTitle     string           `json:"selectedTitle"`
+	FilterPlaceholder string           `json:"filterPlaceholder"`
+	EmptyText         string           `json:"emptyText"`
+	SaveLabel         string           `json:"saveLabel"`
+	Action            string           `json:"action"`
+	FormAttrs         templ.Attributes `json:"formAttrs"`
+}
+
+const (
+	pickPane      = "flex min-w-0 flex-col overflow-hidden rounded-lg border border-border"
+	pickHeading   = "text-[12px] font-semibold tracking-wider text-subtle-foreground uppercase"
+	pickRowLeft   = "flex cursor-pointer items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-foreground/5 has-[:checked]:bg-primary/10"
+	pickRowRight  = "flex items-center justify-between gap-3 rounded-md px-2 py-1.5"
+	pickRemoveExt = "[&]:size-7 [&]:rounded-full cursor-pointer text-destructive"
+)
+
+func (p PickListProps) itemID(v string) string { return ID(p.ItemIDPrefix + v) }
+
+// signals declares the positional initial value of the picked signal: one
+// slot per checkbox in DOM order, the value when picked, ” when not
+// (pick-list.md, Behaviour), JSON-encoded.
+func (p PickListProps) signals() string {
+	slots := make([]string, len(p.Items))
+	for i, it := range p.Items {
+		if it.Checked {
+			// Values are id-safe (itemID checks them), so they cannot break
+			// out of the quoted literal.
+			slots[i] = ID(it.Value)
+		}
+	}
+	arr := "[]"
+	if len(slots) > 0 {
+		arr = "['" + strings.Join(slots, "', '") + "']"
+	}
+	return "{" + Signal(p.Signal) + ": " + arr + ", " + Signal(p.FilterSignal) + ": ''}"
+}
+
+// formAttrs are the form's other attributes. data-signals and data-init are
+// written before them, in that order: Datastar applies attributes in
+// document order, and the snapshot must see the declared array (a spread
+// map would be written in sorted order, data-init first).
+func (p PickListProps) formAttrs() templ.Attributes {
+	a := templ.Attributes{}
+	if p.Action != "" {
+		a["method"] = "post"
+		a["action"] = p.Action
+	}
+	for k, v := range p.FormAttrs {
+		a[k] = v
+	}
+	return a
+}
+
+func (p PickListProps) filterExpr() string {
+	q := "$" + Signal(p.FilterSignal)
+	return "!" + q + ".trim() || el.dataset.filterText.includes(" + q + ".trim().toLowerCase())"
+}
+
+func (p PickListProps) picked() int {
+	n := 0
+	for _, it := range p.Items {
+		if it.Checked {
+			n++
+		}
+	}
+	return n
+}
+
+func pickFilterText(it PickItem) string { return strings.ToLower(it.Name + " " + it.Code) }
+
+// PickList is pick-list.md.
+templ PickList(p PickListProps) {
+	<form id={ ID(p.ID) } class="grid grid-cols-1 gap-4 sm:grid-cols-2" data-signals={ p.signals() } data-init={ "el.dataset.snapshot = JSON.stringify($" + Signal(p.Signal) + ")" } { p.formAttrs()... }>
+		<div class={ pickPane }>
+			<div class="flex flex-col gap-2 border-b border-border bg-subtle p-3">
+				<h4 class={ pickHeading }>{ p.AvailableTitle }</h4>
+				<input class={ inputClasses } type="search" placeholder={ p.FilterPlaceholder } aria-label={ p.FilterPlaceholder } { templ.Attributes{"data-bind:" + SignalAttr(p.FilterSignal): true}... }/>
+			</div>
+			<div class="h-[200px] overflow-y-auto p-1">
+				for _, it := range p.Items {
+					<label for={ p.itemID(it.Value) } data-show={ p.filterExpr() } data-filter-text={ pickFilterText(it) } class={ pickRowLeft }>
+						@pickText(it)
+						<span class={ controlWrapClasses }>
+							<input type="checkbox" class={ checkboxClasses } id={ p.itemID(it.Value) } name={ p.Name } value={ it.Value } checked?={ it.Checked } { templ.Attributes{"data-bind:" + SignalAttr(p.Signal): true}... }/>
+							@Icon(IconProps{Name: "check", Class: checkboxMarkClass})
+						</span>
+					</label>
+				}
+			</div>
+		</div>
+		<div class={ pickPane }>
+			<div class="border-b border-border bg-subtle p-3"><h4 class={ pickHeading }>{ orDefault(p.SelectedTitle, "Selected") } (<span data-text={ "$" + Signal(p.Signal) + ".filter(Boolean).length" }>{ strconv.Itoa(p.picked()) }</span>)</h4></div>
+			<div class="h-[200px] overflow-y-auto p-1">
+				for _, it := range p.Items {
+					<div
+						data-value={ it.Value }
+						data-show={ "$" + Signal(p.Signal) + ".includes(el.dataset.value)" }
+						if !it.Checked {
+							style="display: none"
+						}
+						class={ pickRowRight }
+					>
+						@pickText(it)
+						<label for={ p.itemID(it.Value) } title="Remove" aria-label={ "Remove " + it.Name } class={ cx(ButtonClasses(ButtonGhost, ButtonIcon), pickRemoveExt) }>
+							@Icon(IconProps{Name: "x", Class: "size-[0.9rem]"})
+						</label>
+					</div>
+				}
+				<p
+					data-show={ "$" + Signal(p.Signal) + ".filter(Boolean).length === 0" }
+					if p.picked() > 0 {
+						style="display: none"
+					}
+					class="p-3 text-center text-muted-foreground"
+				>{ p.EmptyText }</p>
+			</div>
+		</div>
+		<div class="sm:col-span-2 flex justify-end gap-2">
+			<button type="submit" disabled data-attr:disabled={ "JSON.stringify($" + Signal(p.Signal) + ") === el.form.dataset.snapshot" } class={ ButtonClasses(ButtonPrimary, ButtonMd) }>
+				@Icon(IconProps{Name: "check"})
+				{ p.SaveLabel }
+			</button>
+		</div>
+	</form>
+}
+
+templ pickText(it PickItem) {
+	<span class="flex min-w-0 flex-col">
+		<span class="truncate font-medium">{ it.Name }</span>
+		<span class="truncate font-mono text-[12px] text-muted-foreground">{ it.Code }</span>
+		if it.Note != "" {
+			<span class="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">{ it.Note }</span>
+		}
+	</span>
+}

@@ -134,6 +134,7 @@ var renderers = map[string]renderer{
 	"paginator":            simple(Paginator),
 	"multi-select":         simple(MultiSelect),
 	"toggle-group":         simple(ToggleGroup),
+	"pick-list":            simple(PickList),
 	"tabs": func(f *fixture) (templ.Component, error) {
 		p, err := decode[TabsProps](f)
 		p.Panels = map[string]templ.Component{}
