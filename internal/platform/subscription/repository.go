@@ -2,6 +2,7 @@ package subscription
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -31,6 +32,21 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 }
 
 // FindByID loads a subscription with hydrated junction tables.
+// DispatchPoolCode is the code of the dispatch pool with this id, or nil
+// when no pool has it. Create and update store it beside the pool id, as the
+// SDK sync does, so the pool shows by code.
+func (r *Repository) DispatchPoolCode(ctx context.Context, poolID string) (*string, error) {
+	var code string
+	err := r.pool.QueryRow(ctx, `SELECT code FROM msg_dispatch_pools WHERE id = $1`, poolID).Scan(&code)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("subscription repo: dispatch pool code: %w", err)
+	}
+	return &code, nil
+}
+
 func (r *Repository) FindByID(ctx context.Context, id string) (*Subscription, error) {
 	res, err := r.q.SubscriptionFindByID(ctx, id)
 	row, err := repocommon.One(res, err, "subscription repo")

@@ -109,6 +109,9 @@ func CreateSubscription(repo *subscription.Repository) usecaseop.Operation[Creat
 			s.ClientID = ids.PtrOf[ids.ClientID](cmd.ClientID)
 			s.ConnectionID = cmd.ConnectionID
 			s.DispatchPoolID = cmd.DispatchPoolID
+			if s.DispatchPoolCode, err = poolCode(ctx, repo, cmd.DispatchPoolID); err != nil {
+				return nil, err
+			}
 			s.ServiceAccountID = cmd.ServiceAccountID
 			s.EventTypes = cmd.EventTypes
 			if cmd.CustomConfig != nil {
@@ -158,4 +161,18 @@ func CreateSubscription(repo *subscription.Repository) usecaseop.Operation[Creat
 			return usecaseop.Save(s, repo, event), nil
 		},
 	}
+}
+
+// poolCode is the code of the dispatch pool a create or update points at (nil
+// for no pool, or an id that names no pool): stored beside the id as the SDK
+// sync stores it.
+func poolCode(ctx context.Context, repo *subscription.Repository, poolID *string) (*string, error) {
+	if poolID == nil || *poolID == "" {
+		return nil, nil
+	}
+	code, err := repo.DispatchPoolCode(ctx, *poolID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "dispatch pool lookup failed", err)
+	}
+	return code, nil
 }

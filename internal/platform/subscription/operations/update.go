@@ -117,6 +117,9 @@ func UpdateSubscription(repo *subscription.Repository) usecaseop.Operation[Updat
 			}
 			if cmd.DispatchPoolID != nil {
 				s.DispatchPoolID = cmd.DispatchPoolID
+				if s.DispatchPoolCode, err = poolCode(ctx, repo, cmd.DispatchPoolID); err != nil {
+					return nil, err
+				}
 			}
 			if cmd.ServiceAccountID != nil {
 				s.ServiceAccountID = cmd.ServiceAccountID

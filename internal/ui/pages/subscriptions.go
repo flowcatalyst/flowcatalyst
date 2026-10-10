@@ -138,9 +138,8 @@ func (h *Subscriptions) listView(ctx context.Context, ac *auth.AuthContext, q li
 }
 
 // withPoolCodes fills the pool code of subscriptions that reference a pool
-// by id only. The stored code is set by the SDK sync alone; a subscription
-// created in the UI or through the API has the id and no code (recorded in
-// docs/ui/README.md), and both lists would show an empty Pool column.
+// without storing its code: rows created in a UI or through the API before
+// create and update stored the code (docs/platform-bug-fixes.md, bug 11).
 func (h *Subscriptions) withPoolCodes(ctx context.Context, subs []subscription.Subscription) error {
 	if h.Pools == nil || !slices.ContainsFunc(subs, needsPoolCode) {
 		return nil
