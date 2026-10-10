@@ -54,7 +54,7 @@ func TestNavigationLinksAndCurrent(t *testing.T) {
 				pools = it
 			case "Connections":
 				conns = it
-			case "Subscriptions":
+			case "Dispatch Jobs":
 				subs = it
 			}
 			if it.Current && it.Label != "Dispatch Pools" {
@@ -68,7 +68,7 @@ func TestNavigationLinksAndCurrent(t *testing.T) {
 	if conns.Href != "/ui/connections" || conns.Current {
 		t.Errorf("ported entry, not current: %+v", conns)
 	}
-	if subs.Href != "/subscriptions" || subs.Current {
+	if subs.Href != "/dispatch-jobs" || subs.Current {
 		t.Errorf("unported entry should link to the SPA: %+v", subs)
 	}
 }

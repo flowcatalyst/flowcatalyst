@@ -320,7 +320,7 @@ func TestPoolsPageRendersInsideTheShell(t *testing.T) {
 		`class="fc-sidebar"`,
 		`href="/ui/dispatch-pools" class="fc-nav-item" title="Dispatch Pools" aria-current="page"`, // ported entry, current
 		`href="/ui/connections" class="fc-nav-item"`,                                               // ported entry
-		`href="/subscriptions" class="fc-nav-item"`,                                                // unported entry → SPA
+		`href="/dispatch-jobs" class="fc-nav-item"`,                                                // unported entry → SPA
 		`<h1 class="fc-page-title">Dispatch Pools</h1>`,
 		`href="/ui/dispatch-pools/new"`, // Create opens the form dialog
 		`id="pools-list"`, `id="pools-table"`, `id="pools-rows"`, `id="pools-summary"`,
