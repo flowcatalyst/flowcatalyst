@@ -145,8 +145,7 @@ refresh after an action; `httptest` does not reproduce it).
   closed, then edit: the same `<dialog id>`, the same `data-init`) is morphed in place and its
   `data-init` (`showModal()`) does not run again: it opens non-modal, below the drawer, without the
   focus trap. `patchDialogSlot` (`forms.go`) replaces the slot element, so the dialog is new every
-  time. Only `/ui/processes` uses it so far; the other pages' `showForm` should switch (open item
-  below).
+  time. Every page's dialogs go through it (`8b8322e`).
 - **Confirmations**: one `kit.ConfirmDialog` per action, shared by the rows and the drawer
   (`kit.OpenConfirm` sets the form's action from the trigger's `data-action`); it posts with
   `kit.SubmitConfirm` and closes at once, the outcome is a flash. Only the dialogs the user may use
@@ -154,10 +153,13 @@ refresh after an action; `httptest` does not reproduce it).
 - **Drawer state for the server**: forms carry `<input type="hidden" name="drawer"
   data-attr:value="$selPool">`, so an action refreshes the drawer when it shows that record and
   closes it after a delete.
-- **Client select**: `kit.Autocomplete` with `/ui/clients/options` as its source (the SPA's
-  `ClientSelect` search: `CanReadClients`, `client.Repository.Search`); the submitted identifier
-  is resolved on the server (`resolveClient`). Without `CanReadClients` the field is disabled and
-  says why.
+- **Client select**: `kit.Autocomplete` with `/ui/clients/options` as its source
+  (`client.Repository.Search`); the submitted identifier is resolved on the server
+  (`resolveClient`). With `CanReadClients` every client is offered; a client-scoped user is offered
+  the active clients it can access (another tenant's identifier is "No client with this
+  identifier."), as the SPA's `ClientSelect` now is (`/bff/filter-options/clients`); anyone else
+  (an anchor without `CanReadClients`) gets a disabled field that says why
+  (`docs/platform-bug-fixes.md`).
 - **Flash after a native post** (owner ruling: fixed keys): `Shell.SetFlash(w, key)` before the
   303 sets `fc_ui_flash` (HttpOnly, `Path=/ui`, SameSite=Lax, 60s) holding only the key; the next
   page render maps it through `Shell.Flashes` (`pages.FlashMessages`), renders it in the flash
@@ -170,9 +172,9 @@ refresh after an action; `httptest` does not reproduce it).
   `serviceaccount.Repository.FindAll` (the SPA's `serviceAccountsApi.list()`, needs
   `CanReadServiceAccounts`; disabled with the reason otherwise); the edit form sends the SPA's PUT
   body (a blank description or external id clears it).
-- **Permissions** are the API handlers' checks: create, update, suspend and activate need
-  `CanWriteDispatchPools` (the API's coarse gate: any of create/update/delete), delete
-  `CanDeleteDispatchPools`; the drawer and the edit dialog also need `CanReadDispatchPools` and,
+- **Permissions** are the API handlers' checks: create `CanCreateDispatchPools`; update, suspend
+  and activate `CanUpdateDispatchPools`; delete `CanDeleteDispatchPools` (`c59e246`); the edit form
+  sends a blank description and rate limit as "" and 0, which clear them (`d1158fa`); the drawer and the edit dialog also need `CanReadDispatchPools` and,
   for a client-scoped pool, access to its client (`GET /api/dispatch-pools/{id}`).
 
 ### Row actions
@@ -269,10 +271,11 @@ and `EventTypeAddSchemaPage`.
 | `/ui/event-types/export` (`?` the view) | the zip download | - | - |
 
 - **Reads** make `GET /api/event-types`'s checks: `CanReadEventTypes`, client scoping, and for a
-  principal without the messaging view permission only its own applications' event types (the SPA's
-  BFF list has none of these, see "Platform bugs found"). **Actions** make the check of the BFF
-  endpoint the SPA calls: create `CanCreateEventTypes`; edit, archive, add schema, finalise and
-  deprecate `CanUpdateEventTypes`; delete `CanDeleteEventTypes`; sync anchor scope (`RequireAnchor`).
+  principal without the messaging view permission only its own applications' event types (the BFF
+  makes the same checks since bug 1's fix). **Actions** make the check of the BFF endpoint the SPA
+  calls: create `CanCreateEventTypes`; edit, archive, add schema, finalise and deprecate
+  `CanUpdateEventTypes`; delete `CanDeleteEventTypes`; sync anchor scope and the event-type sync
+  permission (`CanSyncPlatformEventTypes`).
   Each runs the BFF's use case through `pages.EventTypeOps`.
 - **Filters**: the facets are kit `multi-select`s (repeated `app`/`sub`/`agg` parameters, the SPA's URL
   keys); options come from every visible event type of any status, cascade (subdomains of the chosen
@@ -282,22 +285,21 @@ and `EventTypeAddSchemaPage`.
   (`kit.Paginator`, rows select associated with the toolbar form).
 - **Drawer**: the SPA's guards for Archive (CURRENT, every version deprecated) and Delete (ARCHIVED, or
   CURRENT with every version finalising) are kept as disabled buttons with the reason written under
-  them; the use cases do not enforce them (owner decision below). Edit and Add Schema are hidden for an
-  archived event type, as in the SPA.
+  them; the use cases enforce the same rules (`EventType.CanArchive`/`CanDelete`, bug 5). Edit and Add
+  Schema are hidden for an archived event type, as in the SPA.
 - **Schema viewer**: `schemacodegen` renders the six tabs (schema, example, TypeScript, PHP, Python,
   Java) on the server, highlighted with escaped text; copy uses the clipboard (`Copied` beside the
   button for 2s instead of a toast).
 - **Export Schemas** downloads the zip the SPA builds in the browser, for the view the user is on
   (filters **and** search, all pages); with nothing to export it redirects with the warn flash.
-- **Add schema**: version (suggested as the SPA does) and the schema. The schema must be a JSON
-  document and is sent as one; the SPA's MIME type and schema type fields are not shown because the
-  use case ignores them (every version is stored as JSON Schema, `application/schema+json`).
+- **Add schema**: the SPA's fields: version (suggested as the SPA does), MIME type, schema type and the
+  schema. A JSON Schema must be a JSON document and is sent as one; an XSD or PROTO schema is text,
+  sent as a JSON string; the use case stores each with the MIME and schema type given (bug 3).
 
 Differences from the SPA: the create and edit forms are dialogs (the SPA uses the drawer: the
 pattern ruled for pools); confirmations use one message per action without the version number;
 the sync result flash shows the SPA's two lines as one; the export applies the search too (the SPA
-exported the facet-filtered list, ignoring the search box); facet options come from the event types
-the user may see (the SPA's filter endpoints list every application).
+exported the facet-filtered list, ignoring the search box).
 
 ### Subscriptions (`/ui/subscriptions`)
 
@@ -307,8 +309,8 @@ as connections (`/new`, `/{id}`, `/{id}/edit`, `/{id}/{pause,resume,delete}`), p
 
 - Reads: `GET /api/subscriptions`'s checks (`CanReadSubscriptions`, client scoping). Actions check the
   permission for the operation: create `CanCreateSubscriptions`; edit, pause, resume
-  `CanUpdateSubscriptions`; delete `CanDeleteSubscriptions` (the API itself still admits any of the three
-  for every write: bug 8). Each runs the API's use case (`pages.SubscriptionOps`).
+  `CanUpdateSubscriptions`; delete `CanDeleteSubscriptions` (the API's checks since bug 8's fix). Each
+  runs the API's use case (`pages.SubscriptionOps`).
 - List: search (code, name, connection id, application, client), Application multi-select (options from
   the subscriptions, pruned), status, sortable columns, 100-row pages.
 - Create: the SPA's sections; event types are a searchable multi-select of CURRENT event types with a
@@ -316,15 +318,15 @@ as connections (`/new`, `/{id}`, `/{id}/edit`, `/{id}/{pause,resume,delete}`), p
   choice, as the SPA does; the client field shows only for a client-scoped subscription). The bindings
   (id, code, current version) are built from the event types offered. Connection, dispatch pool and the
   event types are offered only to users who may read them (disabled with the reason otherwise).
-- The pool code is looked up by id when a subscription has none stored (bug 11), so the Pool column and
-  the drawer are not empty for subscriptions created in a UI.
+- The pool code is looked up by id when a subscription has none stored (rows created before bug 11's
+  fix; create and update store it now), so the Pool column and the drawer are not empty.
 
 Differences from the SPA: dialogs instead of drawer forms; **Queue** is a select of the two values the
-use case accepts (Default, High priority; the SPA's free text fails for anything else, bug 10);
-**Sequence** is not offered (the API drops it, bug 9); the create form's "+ create connection" nested
+use case accepts (as the SPA now offers, bug 10); the create form sends the Client Scoped switch and
+the Sequence (the API takes both on create, bug 9); the create form's "+ create connection" nested
 dialog is not ported (create the connection on the Connections page first); the edit form's connection
 is a select of active connections (the SPA's is a free-text id) and a blank choice leaves the
-connection unchanged (the SPA stores an empty id, bug 12).
+connection unchanged (the API now treats the SPA's blank id the same way, bug 12).
 
 ### Applications (`/ui/applications`)
 
@@ -334,8 +336,8 @@ connections (`activate`/`deactivate`/`delete`), plus `/{id}/provision-service-ac
 
 - Reads: `GET /api/applications`'s checks (`CanReadApplications`, application confinement for an
   application service account; the drawer `CanReadApplication`). Actions check the permission for the
-  operation (create, update for edit/activate/deactivate, delete; the API admits any of the three for
-  create, update, activate and deactivate: bug 13); provisioning is anchor-only, as the API.
+  operation (create, update for edit/activate/deactivate, delete; the API's checks since bug 13's
+  fix); provisioning is anchor-only, as the API.
 - Login-client provisioning runs `operations.ProvisionLoginClient`, the API handler's code moved into
   the operations package (`d5fdf43`) so both run the same thing.
 - **Shown-once credentials**: the provisioning answer patches a dialog carrying the client id and
@@ -350,7 +352,7 @@ connections (`activate`/`deactivate`/`delete`), plus `/{id}/provision-service-ac
 Differences from the SPA: dialogs for create/edit; the type is a kit toggle group (the SPA's
 SelectButton); **redirect URIs are a textarea, one per line** (the SPA adds and removes chips; blank
 lines and repeats are dropped); Delete is disabled with the reason "Deactivate the application first."
-while active (the SPA only disables it; the use case does not require it: bug 14).
+while active (the use case refuses it too, `APPLICATION_ACTIVE`, bug 14).
 
 ### Clients (`/ui/clients`)
 
@@ -362,16 +364,16 @@ Mirrors `ClientListPage`, `ClientCreateDrawer` and `ClientDetailDrawer`. Routes 
   applications picker is the anchor-only `PUT /api/clients/{id}/applications` (`UpdateClientApplications`);
   without it the drawer lists the enabled applications read-only.
 - The list is the SPA's: search over identifier and name, no filters; here the search covers every
-  client and pages 100 rows (the SPA asks for server pages the API ignores: bug 16).
+  client and pages 100 rows (the SPA now does the same in the browser; the API is not paged, bug 16).
 - The applications picker is the kit pick list (`pick-list.md`): ticked applications are posted as a
   list; Save stays disabled until the choice changes.
 - **Login Branding** links to the SPA's page (`/clients/{id}/theme`): its theme editor is shared with
   the platform settings and moves with them (Phase 5).
-- Suspend sends the SPA's fixed reason ("Manual suspension").
+- Suspend and Deactivate send the SPA's fixed reasons ("Manual suspension", "Manual deactivation").
+  Deactivate sets the client INACTIVE and keeps it (bug 15); Activate reactivates it.
 
 Differences from the SPA: dialogs for create/edit; the picker is the kit's dual pane (checkboxes and a
-mirrored list) rather than PrimeVue's move-between-lists; the Deactivate texts say what the platform
-does (bug 15) instead of "Soft delete ... Can be reactivated later".
+mirrored list) rather than PrimeVue's move-between-lists.
 
 Templ gotcha found here: `{ attrs... }` writes a `templ.Attributes` map in **sorted** order, and Datastar
 applies attributes in document order, so a `data-init` that reads a signal declared by `data-signals` in
@@ -390,7 +392,7 @@ Mirrors `ScheduledJobListPage`, the create and detail drawers, `ScheduledJobInst
   (not found otherwise), the "running" flag per row, client and application names. The filter options
   are the BFF's (Platform-scoped for anchors, active clients the user can access, active applications).
 - Actions check the permission for the operation: create `CanCreateScheduledJobs`; edit, pause,
-  resume, archive `CanUpdateScheduledJobs` (the API admits any of create/update/delete: bug 17); fire
+  resume, archive `CanUpdateScheduledJobs` (the API's checks since bug 17's fix); fire
   `CanFireScheduledJobs`; delete `CanDeleteScheduledJobs`. Pause, resume and Fire Now are immediate
   (as the SPA); archive and delete ask first; archive and delete close the drawer.
 - The form keeps the SPA's client-side checks as field errors (code, name, a scope, at least one cron,
@@ -410,8 +412,7 @@ POST: the run; the filter is the URL's query), `/requeue-errors` (the error pres
 
 - Every route makes the API's checks (`internal/platform/dispatchjob/api`): `dispatch-job:view`, SQL
   tenant scoping (`operations.VisibleTo`), per-job client scope on the drawer; **Sign needs
-  `dispatch-job:view-raw`** and is omitted without it (the SPA shows it to everyone and the API answers
-  403). Requeue (row, drawer, selection, by filter) runs `ResendDispatchJobs` / `ResendByFilter` as the
+  `dispatch-job:view-raw`** and is omitted without it (as the SPA now does, bug 20). Requeue (row, drawer, selection, by filter) runs `ResendDispatchJobs` / `ResendByFilter` as the
   API does, with the API's gate (`dispatch-job:view`).
 - **The filtered view's URL is what "Requeue all matching" acts on**: its link carries the view's
   filter (not size, sort or position) to `/requeue-by-filter?…`; the confirm step previews that filter
@@ -434,13 +435,13 @@ POST: the run; the filter is the URL's query), `/requeue-errors` (the error pres
   requeue walk ignore it.
 - The table is patched in **replace** mode (not morph): a morph resets each `<time>` to its UTC
   fallback without re-running the localisation (kit `local-time.md`); the drawer's body likewise.
-- The distinct statuses and codes (the API's filter-options) are cached for 30 s per process: the SPA
-  reads them once per visit, the live list on every request, and the two `DISTINCT`s cost ~10 ms each
-  over 100k jobs.
+- The distinct statuses and codes (the API's filter-options, scoped to the caller's tenants since bug
+  18's fix) are cached for 30 s per process and tenant scope: the SPA reads them once per visit, the
+  live list on every request, and the two `DISTINCT`s cost ~10 ms each over 100k jobs.
 
 Differences from the SPA:
 - The application, subdomain and aggregate filters have options (the segments of the distinct codes,
-  each narrowed by the levels chosen above it); the SPA's are always empty. A parent change keeps the
+  each narrowed by the levels chosen above it), as the SPA's now are (bug 19). A parent change keeps the
   children that still apply instead of clearing them.
 - Created from/to are **UTC days** (the SPA uses the browser's time zone); the label says so. Times
   are shown in the viewer's locale and zone (kit `local-time`), as the SPA does.
@@ -467,7 +468,7 @@ event types (cached 30 s), the replace-mode table patch and local times.
 Differences from the SPA: the aggregate filter has options and the subdomain, aggregate and type
 options follow the levels chosen above them (the SPA's lists are static and its aggregates empty); the
 filters have search boxes (the SPA's have `filter`) ; paging as above; the Context Data section shows
-the event's context when the read model has it (it never does: bug 22).
+the event's context, read from the write table as `GET /api/events/{id}` now does (bug 22).
 
 ### Processes (`/ui/processes`)
 
@@ -485,7 +486,7 @@ connections: the list (`?q&app&subdomain&status&page&rows`, the SPA's URL keys),
   none; the order is by code). A chosen application or subdomain that is not an option is dropped
   from the canonical URL.
 - Drawer: description, Edit and Archive for a CURRENT process, Delete for an ARCHIVED one (the SPA's
-  guards; the use cases do not enforce them, bug 23), tags. **The diagram is shown as its source**
+  guards, which the use cases enforce since bug 23's fix), tags. **The diagram is shown as its source**
   (kit code block, escaped) under a notice that rendering is not in the new UI yet, with a link to the
   process in the current UI (`/processes/{id}`), which renders it and has the SVG/PNG downloads
   (owner ruling: Mermaid is not vendored). A non-Mermaid diagram type is named in the notice.
@@ -723,7 +724,11 @@ native (no-JavaScript) post/redirect/get path (unit tests cover it), system mode
 - Not exercised in a browser: the native (no-JavaScript) posts (unit tests cover them), the copy
   button (clipboard permission in automation), Firefox/Safari, screen readers.
 
-### Platform bugs found (recorded, not fixed)
+### Platform bugs found
+
+All fixed on 2026-10-10; each entry's fix, commit, wire impact, tests and the Java/Rust mirror notes
+are in `docs/platform-bug-fixes.md` (with the decisions taken conservatively and the further
+findings). The descriptions below are as found.
 
 1. **`/bff/event-types` reads have no authorization**: `GET /bff/event-types`, `GET /bff/event-types/{id}`
    and the filter endpoints (`filters/applications|subdomains|aggregates`) check no permission and
@@ -951,19 +956,11 @@ checkbox, two live links and the requeue button each carry Datastar attributes; 
 
 ### Owner decisions needed
 
-- **Add schema** sends the document (refusing text that is not JSON) instead of the SPA's JSON
-  string, and omits the MIME/schema type fields the server ignores (bug 3). Keep, or mirror the SPA?
-- **Archive/delete guards** are shown as disabled buttons with reasons, as in the SPA, though the
-  server does not enforce them (bug 5). Should the use cases enforce them?
-- **Sync Platform Events** is allowed to any anchor user (the BFF's `RequireAnchor`), with no
-  event-type permission. Should it need `event-type:sync` or `:manage`?
+- **Add schema, archive/delete guards, Sync Platform Events, subscription permissions and create
+  body, client deactivate, filter-options scoping, process guards, dialog slot morph**: decided and
+  done 2026-10-10 (`docs/platform-bug-fixes.md`, including the choices taken conservatively there).
 - **Event types and Subscriptions sidebar entries** now link to their `/ui` pages in the `/ui` sidebar
   (the SPA's own navigation is unchanged).
-- **Subscription API permissions** (bug 8): split the any-of gate per operation as for dispatch pools?
-- **Client deactivate** (bug 15): should it set INACTIVE (as the SPA says) instead of deleting? The /ui
-  page states what happens today.
-- **Subscription create body** (bug 9): should the API accept `clientScoped` (and `sequence`), or should
-  the SPA stop sending them?
 - **Dispatch jobs paging**: the page adds keyset paging (Older/Newest) that the SPA does not have, with a
   `Cursor` field and an `id` tie-breaker in the repository's list query. Keep?
 - **Dispatch jobs date range in UTC days** (the SPA: the browser's zone). Pass the viewer's zone (a
@@ -974,12 +971,7 @@ checkbox, two live links and the requeue button each carry Datastar attributes; 
   above), so one small middleware on the standard library and `andybalholm/brotli` (already in the module
   graph through the Datastar SDK; now a direct requirement) compresses pages and streams. Keep, or should
   streams be left to the SDK once it closes its encoder?
-- **Filter-options scoping** (bug 18): scope `DistinctValues` to the caller's tenants?
 - **Dispatch Jobs and Events sidebar entries** now link to their `/ui` pages in the `/ui` sidebar.
 - **Processes: ported with the diagram as source** (owner ruling 2026-10-10: no vendored Mermaid; a
   link to the current UI for the rendered diagram). The sidebar entry links to `/ui/processes`. Open:
   render the diagram later (vendored Mermaid island or a server-side renderer)?
-- **Process guards** (bug 23): should `UpdateProcess` refuse an archived process and `DeleteProcess` a
-  current one, as the SPA's buttons imply?
-- **Dialog slot morph** (found on processes, affects every ported page with form dialogs): switch the
-  other pages' `showForm` to `patchDialogSlot`? Not done here (those pages are another session's).
