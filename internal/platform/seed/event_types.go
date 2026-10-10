@@ -56,8 +56,11 @@ func PlatformEventTypes() []PlatformEventTypeDef {
 		"created", "updated", "deleted", "roles-assigned",
 		"token-regenerated", "secret-regenerated")
 
-	group("platform:iam:client",
-		"created", "updated", "activated", "suspended", "deleted", "note-added")
+	// Client lifecycle events are emitted under platform:admin (the client
+	// use cases, internal/platform/client/operations); enabling applications
+	// for a client is emitted under platform:iam by the application use case.
+	// Migration 070 renamed the platform:iam:client:* rows an older seed wrote.
+	group("platform:iam:client", "applications-updated")
 
 	group("platform:iam:role", "created", "updated", "deleted")
 	push("platform:iam:roles:synced", "Roles Synced")
@@ -71,6 +74,9 @@ func PlatformEventTypes() []PlatformEventTypeDef {
 	group("platform:iam:auth-config", "created", "updated", "deleted")
 
 	// ── platform:admin ──────────────────────────────────────────────────
+	group("platform:admin:client",
+		"created", "updated", "activated", "suspended", "deactivated", "deleted", "note-added")
+
 	group("platform:admin:cors", "origin-added", "origin-deleted")
 
 	group("platform:admin:idp", "created", "updated", "deleted")
