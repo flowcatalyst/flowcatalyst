@@ -73,9 +73,9 @@ func toPoolDetail(p *dispatchpool.DispatchPool, perms poolPerms) poolDetail {
 
 // Archived pools are read-only in the SPA's drawer: no Edit, no Actions.
 func (d poolDetail) archived() bool { return d.RawStatus == dispatchpool.StatusArchived }
-func (d poolDetail) canEdit() bool  { return d.Perms.Write && !d.archived() }
+func (d poolDetail) canEdit() bool  { return d.Perms.Update && !d.archived() }
 func (d poolDetail) showActions() bool {
-	return !d.archived() && (d.Perms.Write || d.Perms.Delete)
+	return !d.archived() && (d.Perms.Update || d.Perms.Delete)
 }
 
 func (d poolDetail) drawerProps() kit.DrawerProps {
@@ -155,8 +155,8 @@ type poolAction struct {
 }
 
 var (
-	suspendAction  = poolAction{check: auth.CanWriteDispatchPools, run: PoolCommands.Suspend, flash: flashPoolSuspended}
-	activateAction = poolAction{check: auth.CanWriteDispatchPools, run: PoolCommands.Activate, flash: flashPoolActivated}
+	suspendAction  = poolAction{check: auth.CanUpdateDispatchPools, run: PoolCommands.Suspend, flash: flashPoolSuspended}
+	activateAction = poolAction{check: auth.CanUpdateDispatchPools, run: PoolCommands.Activate, flash: flashPoolActivated}
 	deleteAction   = poolAction{check: auth.CanDeleteDispatchPools, run: PoolCommands.Delete, flash: flashPoolDeleted, deleted: true}
 )
 

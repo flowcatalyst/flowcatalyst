@@ -134,7 +134,7 @@ templ poolsPage(v poolsView) {
 }
 
 templ poolsActions(v poolsView) {
-	if v.Perms.Write {
+	if v.Perms.Create {
 		@kit.LegacyButton(kit.LegacyButtonProps{Href: poolsPath + "/new", Icon: "plus", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
 			Create Pool
 		}

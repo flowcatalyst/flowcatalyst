@@ -53,14 +53,14 @@ templ poolDrawerBody(d poolDetail) {
 	if d.showActions() {
 		@kit.FormSection(kit.FormSectionProps{Title: "Actions"}) {
 			<div class="flex flex-col gap-4">
-				if d.Perms.Write && d.RawStatus != "ACTIVE" {
+				if d.Perms.Update && d.RawStatus != "ACTIVE" {
 					@poolActionItem("Activate Pool", "Enable this pool for processing dispatch jobs.") {
 						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyPrimaryOutline, Icon: "circle-check", Attrs: confirmTrigger(poolActivateDialog, d.ActionBase+"/activate")}) {
 							Activate
 						}
 					}
 				}
-				if d.Perms.Write && d.RawStatus == "ACTIVE" {
+				if d.Perms.Update && d.RawStatus == "ACTIVE" {
 					@poolActionItem("Suspend Pool", "Temporarily stop processing jobs in this pool.") {
 						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyWarnOutline, Icon: "pause", Attrs: confirmTrigger(poolSuspendDialog, d.ActionBase+"/suspend")}) {
 							Suspend
@@ -100,7 +100,7 @@ templ poolActionItem(title, text string) {
 // every row and the drawer (confirm-dialog.md, "One dialog for many
 // records"). Only the actions the user may run are rendered.
 templ poolConfirmDialogs(perms poolPerms) {
-	if perms.Write {
+	if perms.Update {
 		@kit.ConfirmDialog(poolConfirm(poolActivateDialog, "Activate Pool", "Activate this dispatch pool?", "Activate", kit.ToneDefault))
 		@kit.ConfirmDialog(poolConfirm(poolSuspendDialog, "Suspend Pool", "Suspend this dispatch pool? Jobs will not be processed.", "Suspend", kit.ToneWarn))
 	}

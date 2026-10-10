@@ -149,16 +149,16 @@ type poolRow struct {
 }
 
 // poolPerms are the actions the caller may run, by the API handlers'
-// checks: create, update, suspend and activate need CanWriteDispatchPools
-// (any of the create/update/delete permissions, as the API's coarse gate);
-// delete needs CanDeleteDispatchPools.
+// checks: create needs CanCreateDispatchPools; edit, suspend and activate
+// need CanUpdateDispatchPools; delete needs CanDeleteDispatchPools.
 type poolPerms struct {
-	Write, Delete bool
+	Create, Update, Delete bool
 }
 
 func poolPermsFor(ac *auth.AuthContext) poolPerms {
 	return poolPerms{
-		Write:  auth.CanWriteDispatchPools(ac) == nil,
+		Create: auth.CanCreateDispatchPools(ac) == nil,
+		Update: auth.CanUpdateDispatchPools(ac) == nil,
 		Delete: auth.CanDeleteDispatchPools(ac) == nil,
 	}
 }
@@ -283,7 +283,7 @@ const liveLink = "@get(el.href)"
 func (v poolsView) rowActions(row poolRow) kit.RowActionsProps {
 	p := kit.RowActionsProps{ID: "pool-" + row.ID + "-actions", RowLabel: row.Name}
 	archived := row.RawStatus == dispatchpool.StatusArchived
-	if v.Perms.Write {
+	if v.Perms.Update {
 		edit := kit.RowAction{Icon: "pencil", Label: "Edit", Href: row.EditHref, Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}
 		if archived {
 			edit.DisabledReason = archivedReadOnly
@@ -294,7 +294,7 @@ func (v poolsView) rowActions(row poolRow) kit.RowActionsProps {
 	if archived {
 		return p
 	}
-	if v.Perms.Write {
+	if v.Perms.Update {
 		if row.RawStatus == dispatchpool.StatusActive {
 			p.Menu = append(p.Menu, kit.RowAction{Icon: "pause", Label: "Suspend…", Attrs: confirmTrigger(poolSuspendDialog, row.DetailHref+"/suspend")})
 		} else {

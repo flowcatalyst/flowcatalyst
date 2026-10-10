@@ -160,7 +160,7 @@ func (f *poolForm) numbers() (rateLimit, concurrency *int32) {
 func (h *DispatchPools) createForm(w http.ResponseWriter, r *http.Request) {
 	ac := auth.FromContext(r.Context())
 	// POST /api/dispatch-pools's check.
-	if err := auth.CanWriteDispatchPools(ac); err != nil {
+	if err := auth.CanCreateDispatchPools(ac); err != nil {
 		h.Shell.Fail(w, r, err)
 		return
 	}
@@ -173,7 +173,7 @@ func (h *DispatchPools) create(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
 	f := submittedForm(r, false)
-	if err := auth.CanWriteDispatchPools(ac); err != nil {
+	if err := auth.CanCreateDispatchPools(ac); err != nil {
 		f.Errs.apply(r, err, nil)
 		h.formFailed(w, r, ac, f)
 		return
@@ -245,7 +245,7 @@ func (h *DispatchPools) editForm(w http.ResponseWriter, r *http.Request) {
 	ac := auth.FromContext(ctx)
 	// The SPA loads the pool (GET, read permission) and saves it with PUT
 	// (write permission).
-	if err := firstError(auth.CanReadDispatchPools(ac), auth.CanWriteDispatchPools(ac)); err != nil {
+	if err := firstError(auth.CanReadDispatchPools(ac), auth.CanUpdateDispatchPools(ac)); err != nil {
 		h.Shell.Fail(w, r, err)
 		return
 	}
@@ -272,7 +272,7 @@ func (h *DispatchPools) update(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
 	f := submittedForm(r, true)
-	if err := firstError(auth.CanReadDispatchPools(ac), auth.CanWriteDispatchPools(ac)); err != nil {
+	if err := firstError(auth.CanReadDispatchPools(ac), auth.CanUpdateDispatchPools(ac)); err != nil {
 		f.Errs.apply(r, err, nil)
 		h.formFailed(w, r, ac, f)
 		return

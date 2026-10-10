@@ -320,7 +320,7 @@ func poolDrawerBody(d poolDetail) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				if d.Perms.Write && d.RawStatus != "ACTIVE" {
+				if d.Perms.Update && d.RawStatus != "ACTIVE" {
 					templ_7745c5c3_Var14 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 						templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 						templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
@@ -362,7 +362,7 @@ func poolDrawerBody(d poolDetail) templ.Component {
 						return templ_7745c5c3_Err
 					}
 				}
-				if d.Perms.Write && d.RawStatus == "ACTIVE" {
+				if d.Perms.Update && d.RawStatus == "ACTIVE" {
 					templ_7745c5c3_Var16 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 						templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 						templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
@@ -599,7 +599,7 @@ func poolConfirmDialogs(perms poolPerms) templ.Component {
 			templ_7745c5c3_Var25 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		if perms.Write {
+		if perms.Update {
 			templ_7745c5c3_Err = kit.ConfirmDialog(poolConfirm(poolActivateDialog, "Activate Pool", "Activate this dispatch pool?", "Activate", kit.ToneDefault)).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
