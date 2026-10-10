@@ -109,9 +109,9 @@ func (s *State) resolveRole(ctx context.Context, idOrName string) (*role.Role, e
 }
 
 func (s *State) create(ctx context.Context, in *apicommon.In[CreateRoleRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
-	// Coarse permission at the controller; roles are global, so the use case
-	// has no per-resource authz.
-	if err := auth.CanWriteRoles(auth.FromContext(ctx)); err != nil {
+	// The permission for the operation at the controller; roles are global,
+	// so the use case has no per-resource authz.
+	if err := auth.CanCreateRoles(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -128,9 +128,9 @@ type updateInput struct {
 }
 
 func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, error) {
-	// Coarse permission at the controller; roles are global, so the use case
-	// has no per-resource authz.
-	if err := auth.CanWriteRoles(auth.FromContext(ctx)); err != nil {
+	// The permission for the operation at the controller; roles are global,
+	// so the use case has no per-resource authz.
+	if err := auth.CanUpdateRoles(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	r, err := s.resolveRole(ctx, in.ID)
@@ -145,8 +145,8 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, 
 }
 
 func (s *State) delete(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	// Coarse permission at the controller; roles are global, so the use case
-	// has no per-resource authz.
+	// The permission for the operation at the controller; roles are global,
+	// so the use case has no per-resource authz.
 	if err := auth.CanDeleteRoles(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
@@ -262,9 +262,9 @@ type rolePermissionGrantInput struct {
 }
 
 func (s *State) grantPermission(ctx context.Context, in *rolePermissionGrantInput) (*apicommon.Out[RoleResponse], error) {
-	// Coarse permission at the controller; roles are global, so the use case
-	// has no per-resource authz.
-	if err := auth.CanWriteRoles(auth.FromContext(ctx)); err != nil {
+	// The permission for the operation at the controller; roles are global,
+	// so the use case has no per-resource authz.
+	if err := auth.CanUpdateRoles(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -290,9 +290,9 @@ type rolePermissionGrantBodyInput struct {
 // permission in the body (SDK shape). Delegates to the same grant operation as
 // the path-param variant.
 func (s *State) grantPermissionByBody(ctx context.Context, in *rolePermissionGrantBodyInput) (*apicommon.Out[RoleResponse], error) {
-	// Coarse permission at the controller; roles are global, so the use case
-	// has no per-resource authz.
-	if err := auth.CanWriteRoles(auth.FromContext(ctx)); err != nil {
+	// The permission for the operation at the controller; roles are global,
+	// so the use case has no per-resource authz.
+	if err := auth.CanUpdateRoles(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -309,9 +309,9 @@ func (s *State) grantPermissionByBody(ctx context.Context, in *rolePermissionGra
 }
 
 func (s *State) revokePermission(ctx context.Context, in *rolePermissionGrantInput) (*apicommon.Out[RoleResponse], error) {
-	// Coarse permission at the controller; roles are global, so the use case
-	// has no per-resource authz.
-	if err := auth.CanWriteRoles(auth.FromContext(ctx)); err != nil {
+	// The permission for the operation at the controller; roles are global,
+	// so the use case has no per-resource authz.
+	if err := auth.CanUpdateRoles(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
