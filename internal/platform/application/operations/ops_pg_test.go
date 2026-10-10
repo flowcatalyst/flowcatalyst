@@ -62,6 +62,24 @@ func mustCreateApp(t *testing.T, repo *application.Repository, uow *usecasepgx.U
 	return ev
 }
 
+// deactivateApp deactivates an application (only an inactive one may be
+// deleted).
+func deactivateApp(t *testing.T, uow *usecasepgx.UnitOfWork, repo *application.Repository, id string) {
+	t.Helper()
+	_, err := runAuthorized(uow, operations.DeactivateApplication(repo), operations.DeactivateCommand{ID: id})
+	require.NoError(t, err)
+}
+
+// mustCreateInactiveApp seeds a deactivated application: only an inactive
+// application may be deleted.
+func mustCreateInactiveApp(t *testing.T, repo *application.Repository, uow *usecasepgx.UnitOfWork, code, name string) operations.ApplicationCreated {
+	t.Helper()
+	ev := mustCreateApp(t, repo, uow, code, name)
+	_, err := runAuthorized(uow, operations.DeactivateApplication(repo), operations.DeactivateCommand{ID: ev.ApplicationID})
+	require.NoError(t, err)
+	return ev
+}
+
 // mustCreateClient seeds a real client via client/operations — the
 // enable/disable ops verify the client row exists, so a fabricated id
 // won't do.
@@ -217,7 +235,7 @@ func TestDeleteApplication_HappyPath(t *testing.T) {
 	ctx := context.Background()
 	repo := application.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
-	seeded := mustCreateApp(t, repo, uow, "appdel1", "Doomed")
+	seeded := mustCreateInactiveApp(t, repo, uow, "appdel1", "Doomed")
 
 	ev, err := runAuthorized(uow, operations.DeleteApplication(repo),
 		operations.DeleteCommand{ID: seeded.ApplicationID})
@@ -228,6 +246,27 @@ func TestDeleteApplication_HappyPath(t *testing.T) {
 	got, err := repo.FindByID(ctx, seeded.ApplicationID)
 	require.NoError(t, err)
 	assert.Nil(t, got, "deleted row must be gone")
+}
+
+// An active application is not deleted (bug 14 in docs/ui/README.md;
+// docs/platform-bug-fixes.md): the SPA only disabled the button.
+func TestDeleteApplication_RefusedWhileActive(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := application.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+	app := mustCreateApp(t, repo, uow, "appdelactive1", "Active")
+
+	_, err := runAuthorized(uow, operations.DeleteApplication(repo), operations.DeleteCommand{ID: app.ApplicationID})
+	testpg.RequireUsecaseError(t, err, usecase.KindBusinessRule, "APPLICATION_ACTIVE")
+	got, err := repo.FindByID(ctx, app.ApplicationID)
+	require.NoError(t, err)
+	assert.NotNil(t, got, "a refused delete must leave the application")
+
+	_, err = runAuthorized(uow, operations.DeactivateApplication(repo), operations.DeactivateCommand{ID: app.ApplicationID})
+	require.NoError(t, err)
+	_, err = runAuthorized(uow, operations.DeleteApplication(repo), operations.DeleteCommand{ID: app.ApplicationID})
+	require.NoError(t, err)
 }
 
 func TestDeleteApplication_Errors(t *testing.T) {
@@ -291,6 +330,7 @@ func TestDeleteApplication_RefusedWhileGranted(t *testing.T) {
 	user := mustCreateUser(t, uow, "appdelgrant1@example.com")
 	grantAccess(t, uow, repo, user.UserID, app.ApplicationID)
 
+	deactivateApp(t, uow, repo, app.ApplicationID)
 	_, err := runAuthorized(uow, operations.DeleteApplication(repo),
 		operations.DeleteCommand{ID: app.ApplicationID})
 	requireHasReferences(t, err, repo, app.ApplicationID,
@@ -334,6 +374,7 @@ func TestDeleteApplication_RefusedWhileClientConfigured(t *testing.T) {
 		require.NoError(t, err)
 	}
 
+	deactivateApp(t, uow, repo, app.ApplicationID)
 	_, err := runAuthorized(uow, operations.DeleteApplication(repo),
 		operations.DeleteCommand{ID: app.ApplicationID})
 	requireHasReferences(t, err, repo, app.ApplicationID,
@@ -385,6 +426,7 @@ func TestDeleteApplication_RefusedWhileEnabledForClient(t *testing.T) {
 		operations.EnableForClientCommand{ApplicationID: app.ApplicationID, ClientID: cl.ClientID})
 	require.NoError(t, err)
 
+	deactivateApp(t, uow, repo, app.ApplicationID)
 	_, err = runAuthorized(uow, operations.DeleteApplication(repo),
 		operations.DeleteCommand{ID: app.ApplicationID})
 	requireHasReferences(t, err, repo, app.ApplicationID,

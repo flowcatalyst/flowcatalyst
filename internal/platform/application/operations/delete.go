@@ -22,7 +22,10 @@ type DeleteCommand struct {
 // resource-level access check; the coarse "may delete applications" permission
 // (auth.CanDeleteApplications) is enforced at the controller.
 //
-// The delete is refused (409 APPLICATION_HAS_REFERENCES) while anything still
+// An active application is refused (409 APPLICATION_ACTIVE): deactivate it
+// first (the SPA's rule, enforced here since docs/platform-bug-fixes.md bug 14).
+//
+// The delete is also refused (409 APPLICATION_HAS_REFERENCES) while anything still
 // references the application: access grants, enabled per-client configs,
 // service accounts, application-scoped roles or principals' application refs.
 // None of those columns has a foreign key, so deleting would leave them
@@ -46,6 +49,9 @@ func DeleteApplication(repo *application.Repository) usecaseop.Operation[DeleteC
 			}
 			if a == nil {
 				return nil, httperror.NotFound("Application", cmd.ID)
+			}
+			if a.Active {
+				return nil, usecase.BusinessRule("APPLICATION_ACTIVE", "Deactivate the application first.")
 			}
 			refs, err := repo.CountReferences(ctx, a.ID)
 			if err != nil {
