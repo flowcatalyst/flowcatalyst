@@ -11,8 +11,8 @@ flash stack and the Datastar error contract, an icon sprite, now 90 icons), and 
 `/ui/connections` at parity with the SPA pages: list, record drawer, create and edit dialogs,
 state actions and delete behind confirmations; the app shell works at phone width and dark mode is
 rendered by the server from a theme cookie. Phase 3 (core operations): `/ui/event-types` and
-`/ui/subscriptions`, `/ui/applications` and `/ui/clients` at parity (sections below); the other
-core areas are not ported yet.
+`/ui/subscriptions`, `/ui/applications`, `/ui/clients` and `/ui/scheduled-jobs` at parity
+(sections below); the other core areas are not ported yet.
 
 ## Architecture
 
@@ -368,6 +368,28 @@ applies attributes in document order, so a `data-init` that reads a signal decla
 the same map runs first and sees nothing (the picker's Save was enabled on load). Write such pairs as
 explicit attributes, in order, before the spread.
 
+### Scheduled jobs (`/ui/scheduled-jobs`)
+
+Mirrors `ScheduledJobListPage`, the create and detail drawers, `ScheduledJobInstanceListPage` and
+`ScheduledJobInstanceDetailPage`. Routes: the list (`?q&clients&applications&statuses&page&rows`),
+`/new`, `/{id}`, `/{id}/edit`, `/{id}/{pause,resume,fire,archive,delete}` (POST), the firings page
+`/{id}/instances?status&trigger&page&rows` and one firing `/instances/{instanceId}`.
+
+- Reads are the BFF's (`/bff/scheduled-jobs`): `CanReadScheduledJobs`, filters in SQL with paging (20
+  rows by default), a non-anchor user confined to their clients, platform jobs and firings anchor-only
+  (not found otherwise), the "running" flag per row, client and application names. The filter options
+  are the BFF's (Platform-scoped for anchors, active clients the user can access, active applications).
+- Actions check the permission for the operation: create `CanCreateScheduledJobs`; edit, pause,
+  resume, archive `CanUpdateScheduledJobs` (the API admits any of create/update/delete: bug 17); fire
+  `CanFireScheduledJobs`; delete `CanDeleteScheduledJobs`. Pause, resume and Fire Now are immediate
+  (as the SPA); archive and delete ask first; archive and delete close the drawer.
+- The form keeps the SPA's client-side checks as field errors (code, name, a scope, at least one cron,
+  JSON payload); the use case's cron and URL errors land on their fields.
+
+Differences from the SPA: dialogs for create/edit; **cron expressions are a textarea, one per line**
+(the SPA adds and removes rows); the firings and firing pages are server pages linked from the drawer
+(as in the SPA), with the paginator.
+
 ## CSRF
 
 Sessions are the `fc_session` cookie (HttpOnly, `SameSite=Lax`, Secure outside dev), so
@@ -606,6 +628,9 @@ native (no-JavaScript) post/redirect/get path (unit tests cover it), system mode
 16. The SPA's client list sends `page`/`pageSize` to `GET /api/clients`, which ignores them and returns
     every client; "Next" shows the same list again (and the search filters only what was loaded).
 
+17. **Scheduled-job writes use the any-of gate**: create, update, pause, resume and archive check
+    `CanWriteScheduledJobs` (create, update or delete).
+
 ### Subscriptions: verification (2026-10-10)
 
 Unit tests (`subscriptions_test.go`: list, filters, sort, permissions per operation incl. a delete-only
@@ -638,6 +663,16 @@ an application, deactivate deleting the row). Chrome on the isolated instance: c
 picker (Save disabled until a change, back to disabled when undone, filter, count, mirrored list),
 Save through the use case. Headless Chrome 390×844, light and dark: list, drawer, create; no
 horizontal scroll, no console problems.
+
+### Scheduled jobs: verification (2026-10-10)
+
+Unit tests (`scheduled_jobs_test.go`: facets, paging, a client user confined and refused platform
+jobs and firings, drawer, every action and the fire flash, per-operation permissions, create and edit
+bodies and errors, the firings list and one firing with its logs) and `scheduled_jobs_pg_test.go`
+(create, edit, pause, resume, fire, the firing listed, archive, delete). Chrome on the isolated
+instance: create (drawer opened), Fire Now (flash with the instance, recent firings updated), firings
+page, firing page (the delivery error). Headless Chrome 390×844, light and dark: list, drawer, create,
+firings; no horizontal scroll, no console problems.
 
 ### Owner decisions needed
 

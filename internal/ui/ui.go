@@ -60,6 +60,10 @@ type Config struct {
 	ClientStore   pages.ClientStore
 	ClientOps     pages.ClientCommands
 	ClientConfigs pages.ClientConfigReader
+
+	ScheduledJobs         pages.ScheduledJobStore
+	ScheduledJobInstances pages.ScheduledJobInstanceStore
+	ScheduledJobOps       pages.ScheduledJobCommands
 }
 
 // Mount registers /ui and everything under it on r.
@@ -94,6 +98,7 @@ func Mount(r chi.Router, cfg Config) error {
 			(&pages.Subscriptions{Subs: cfg.Subscriptions, Ops: cfg.SubscriptionOps, Pools: cfg.DispatchPools, Connections: cfg.Connections, EventTypes: cfg.EventTypes, Apps: cfg.Applications, Clients: cfg.Clients, Shell: sh}).Mount(r)
 			(&pages.Applications{Apps: cfg.ApplicationStore, Ops: cfg.ApplicationOps, Logins: cfg.LoginClients, Docs: cfg.AppDocs, Shell: sh}).Mount(r)
 			(&pages.ClientsPage{Clients: cfg.ClientStore, Ops: cfg.ClientOps, Apps: cfg.ApplicationStore, Configs: cfg.ClientConfigs, Shell: sh}).Mount(r)
+			(&pages.ScheduledJobs{Jobs: cfg.ScheduledJobs, Instances: cfg.ScheduledJobInstances, Ops: cfg.ScheduledJobOps, Clients: cfg.ClientStore, Apps: cfg.ApplicationStore, Shell: sh}).Mount(r)
 			(&pages.ClientOptions{Clients: cfg.Clients, Shell: sh}).Mount(r)
 		})
 

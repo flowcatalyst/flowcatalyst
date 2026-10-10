@@ -45,6 +45,14 @@ const (
 	flashCliSuspended   = "client-suspended"
 	flashCliDeactivated = "client-deactivated"
 	flashCliApps        = "client-applications-updated"
+
+	flashSjCreated  = "scheduled-job-created"
+	flashSjUpdated  = "scheduled-job-updated"
+	flashSjPaused   = "scheduled-job-paused"
+	flashSjResumed  = "scheduled-job-resumed"
+	flashSjArchived = "scheduled-job-archived"
+	flashSjDeleted  = "scheduled-job-deleted"
+	flashSjFired    = "scheduled-job-fired"
 )
 
 // FlashMessages is the table the shell maps flash keys through
@@ -90,6 +98,15 @@ var FlashMessages = map[string]kit.FlashMessageProps{
 	flashCliSuspended:   success("Client suspended"),
 	flashCliDeactivated: success("Client deactivated"),
 	flashCliApps:        success("Applications updated"),
+
+	// The SPA's scheduled-job toasts carry their own summaries.
+	flashSjCreated:  {Kind: kit.FlashSuccess, Summary: "Created", Detail: "Scheduled job created"},
+	flashSjUpdated:  success("Scheduled job updated"),
+	flashSjPaused:   {Kind: kit.FlashSuccess, Summary: "Paused", Detail: "Scheduled job paused"},
+	flashSjResumed:  {Kind: kit.FlashSuccess, Summary: "Resumed", Detail: "Scheduled job resumed"},
+	flashSjArchived: {Kind: kit.FlashSuccess, Summary: "Archived", Detail: "Scheduled job archived"},
+	flashSjDeleted:  {Kind: kit.FlashSuccess, Summary: "Deleted", Detail: "Scheduled job deleted"},
+	flashSjFired:    {Kind: kit.FlashSuccess, Summary: "Fired", Detail: "An instance was created"},
 }
 
 // success is the SPA's toast.success("Success", detail).

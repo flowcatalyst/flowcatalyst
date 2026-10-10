@@ -15,6 +15,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	etops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
+	sjops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/seed"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -398,4 +400,73 @@ func (o ClientOps) UpdateApplications(ctx context.Context, id string, enabled []
 	_, err := usecaseop.Run(ctx, o.UoW, appops.UpdateClientApplications(o.Apps, o.Repo, o.Configs),
 		appops.UpdateClientApplicationsCommand{ClientID: id, EnabledApplicationIDs: enabled}, auth.NewExecutionContext(ctx))
 	return err
+}
+
+// ScheduledJobCommands are the scheduled-job operations the scheduled jobs
+// page runs; ScheduledJobOps runs the API's use cases.
+type ScheduledJobCommands interface {
+	Create(ctx context.Context, cmd sjops.CreateCommand) (string, error)
+	Update(ctx context.Context, cmd sjops.UpdateCommand) error
+	Pause(ctx context.Context, id string) error
+	Resume(ctx context.Context, id string) error
+	Archive(ctx context.Context, id string) error
+	Delete(ctx context.Context, id string) error
+	// Fire runs FireNow and returns the new instance's id.
+	Fire(ctx context.Context, id string) (string, error)
+}
+
+// ScheduledJobOps runs the scheduled-job use cases through the unit of
+// work, exactly as internal/platform/scheduledjob/api does.
+type ScheduledJobOps struct {
+	Repo      *scheduledjob.Repository
+	Instances *scheduledjob.InstanceRepository
+	UoW       *usecasepgx.UnitOfWork
+}
+
+// Create runs CreateScheduledJob and returns the new job's id.
+func (o ScheduledJobOps) Create(ctx context.Context, cmd sjops.CreateCommand) (string, error) {
+	ev, err := usecaseop.Run(ctx, o.UoW, sjops.CreateScheduledJob(o.Repo), cmd, auth.NewExecutionContext(ctx))
+	if err != nil {
+		return "", err
+	}
+	return ev.ScheduledJobID, nil
+}
+
+// Update runs UpdateScheduledJob.
+func (o ScheduledJobOps) Update(ctx context.Context, cmd sjops.UpdateCommand) error {
+	_, err := usecaseop.Run(ctx, o.UoW, sjops.UpdateScheduledJob(o.Repo), cmd, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// Pause runs PauseScheduledJob.
+func (o ScheduledJobOps) Pause(ctx context.Context, id string) error {
+	_, err := usecaseop.Run(ctx, o.UoW, sjops.PauseScheduledJob(o.Repo), sjops.PauseCommand{ID: id}, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// Resume runs ResumeScheduledJob.
+func (o ScheduledJobOps) Resume(ctx context.Context, id string) error {
+	_, err := usecaseop.Run(ctx, o.UoW, sjops.ResumeScheduledJob(o.Repo), sjops.ResumeCommand{ID: id}, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// Archive runs ArchiveScheduledJob.
+func (o ScheduledJobOps) Archive(ctx context.Context, id string) error {
+	_, err := usecaseop.Run(ctx, o.UoW, sjops.ArchiveScheduledJob(o.Repo), sjops.ArchiveCommand{ID: id}, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// Delete runs DeleteScheduledJob.
+func (o ScheduledJobOps) Delete(ctx context.Context, id string) error {
+	_, err := usecaseop.Run(ctx, o.UoW, sjops.DeleteScheduledJob(o.Repo), sjops.DeleteCommand{ID: id}, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// Fire runs FireNow.
+func (o ScheduledJobOps) Fire(ctx context.Context, id string) (string, error) {
+	ev, err := usecaseop.Run(ctx, o.UoW, sjops.FireNow(o.Repo, o.Instances), sjops.FireNowCommand{ID: id}, auth.NewExecutionContext(ctx))
+	if err != nil {
+		return "", err
+	}
+	return ev.InstanceID, nil
 }

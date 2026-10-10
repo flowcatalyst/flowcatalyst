@@ -11,6 +11,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/appdocs"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/pages"
@@ -24,6 +25,7 @@ import (
 // adds the UI's own CSRF, session and role guards. Handlers read the
 // repositories directly, with the API handlers' permission checks.
 func registerUI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usecasepgx.UnitOfWork, repos *repoSet, svcs *serviceSet) error {
+	sjInstances := scheduledjob.NewInstanceRepository(pool)
 	return ui.Mount(r, ui.Config{
 		Authenticate: platformmw.Authenticator(platformmw.AuthConfig{
 			Provider:         svcs.authProvider,
@@ -70,7 +72,10 @@ func registerUI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usecasepgx.Un
 		ClientOps: pages.ClientOps{
 			Repo: repos.clientRepo, Apps: repos.applicationRepo, Configs: repos.applicationClientConfigRepo, UoW: uow,
 		},
-		ClientConfigs: repos.applicationClientConfigRepo,
+		ClientConfigs:         repos.applicationClientConfigRepo,
+		ScheduledJobs:         repos.scheduledJobRepo,
+		ScheduledJobInstances: sjInstances,
+		ScheduledJobOps:       pages.ScheduledJobOps{Repo: repos.scheduledJobRepo, Instances: sjInstances, UoW: uow},
 	})
 }
 

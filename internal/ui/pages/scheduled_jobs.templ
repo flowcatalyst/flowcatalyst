@@ -1,0 +1,614 @@
+package pages
+
+import "github.com/flowcatalyst/flowcatalyst-go/internal/ui/kit"
+
+var sjFacetLabels = map[string][3]string{
+	sjFacetClients:  {"Client", "All clients", "{0} clients selected"},
+	sjFacetApps:     {"Application", "All applications", "{0} applications selected"},
+	sjFacetStatuses: {"Status", "All statuses", "{0} statuses selected"},
+}
+
+func (v sjView) facetProps(name string) kit.MultiSelectProps {
+	l := sjFacetLabels[name]
+	return kit.MultiSelectProps{
+		ID: "sj-filter-" + name, Name: name, Label: l[0], Options: v.Facets[name], Selected: v.Query.facet(name),
+		Placeholder: l[1], ManyLabel: l[2], EmptyText: "No options", OptionAttrs: templ.Attributes{"data-on:change": sjLiveGet},
+	}
+}
+
+func (v sjView) toolbar() kit.TableToolbarProps {
+	clear := ""
+	if v.Query.filtered() {
+		clear = v.Query.clearURL()
+	}
+	return kit.TableToolbarProps{
+		ID: sjFormID, Action: sjPath, SearchPlaceholder: "Code or name…", SearchValue: v.Query.Q,
+		ClearHref: clear, ClearAttrs: templ.Attributes{"data-on:click__prevent": kit.ClearFilters},
+		ActiveFilterCount: len(v.Query.Facets), Hidden: v.Query.hidden(),
+		SearchAttrs: templ.Attributes{"data-on:input__debounce.300ms": sjLiveGet},
+		FormAttrs:   templ.Attributes{"data-on:submit": sjLiveGet},
+		Filters:     sjFilters(v),
+	}
+}
+
+func (v sjView) pager() kit.PaginatorProps {
+	return kit.PaginatorProps{
+		ID: "sj-pager", Page: v.Page, Pages: v.Pages, Total: v.Total, Rows: v.Query.Rows, RowsOptions: sjList.rows,
+		Noun: "scheduled jobs", HrefPattern: v.Query.pagePattern(), FormID: sjFormID,
+		LinkAttrs: templ.Attributes{"data-on:click__prevent": liveLink},
+	}
+}
+
+func sjColumns() []kit.DataColumn {
+	return []kit.DataColumn{
+		{Label: "Code"}, {Label: "Name"}, {Label: "Client"}, {Label: "Application"}, {Label: "Crons"},
+		{Label: "Status"}, {Label: "Last Fired"}, {Label: "Actions", Class: "w-px"},
+	}
+}
+
+func (v sjView) empty() *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	e := &kit.EmptyStateProps{Message: "No scheduled jobs found", Status: true}
+	if v.Query.filtered() {
+		e.ClearHref = v.Query.clearURL()
+	}
+	return e
+}
+
+func (v sjView) drawerSignals() string {
+	if v.Drawer == nil {
+		return "{" + sjDrawerSig + ": ''}"
+	}
+	return "{" + sjDrawerSig + ": '" + kit.ID(v.Drawer.ID) + "'}"
+}
+
+templ sjTags(status string, variant kit.BadgeVariant, running bool) {
+	@poolStatusBadge(status, variant)
+	if running {
+		@kit.Badge(kit.BadgeProps{Variant: kit.BadgeWarn}) {
+			Running
+		}
+	}
+}
+
+templ sjPage(v sjView) {
+	<div data-signals={ v.drawerSignals() }>
+		@kit.PageHeader(kit.PageHeaderProps{Title: "Scheduled Jobs", Subtitle: "Cron-triggered webhook jobs", Actions: sjActions(v)})
+		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Scheduled Jobs.", Class: "mb-4"})
+		<div class="fc-card-flush">
+			@kit.TableToolbar(v.toolbar())
+			@sjTable(v)
+			@kit.Paginator(v.pager())
+		</div>
+		<div id={ sjDialogSlot }>
+			if v.Dialog != nil {
+				@v.Dialog
+			}
+		</div>
+		@sjConfirmDialogs(v.Perms)
+		@sjDrawer(v.Drawer)
+	</div>
+}
+
+templ sjActions(v sjView) {
+	if v.Perms.Create {
+		@kit.LegacyButton(kit.LegacyButtonProps{Href: sjPath + "/new", Icon: "plus", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+			New Scheduled Job
+		}
+	}
+}
+
+templ sjFilters(v sjView) {
+	@kit.MultiSelect(v.facetProps(sjFacetClients))
+	@kit.MultiSelect(v.facetProps(sjFacetApps))
+	@kit.MultiSelect(v.facetProps(sjFacetStatuses))
+}
+
+templ sjTable(v sjView) {
+	@kit.DataTable(kit.DataTableProps{ID: "sj-table", BodyID: "sj-rows", Columns: sjColumns(), Empty: v.empty()}) {
+		for _, row := range v.Rows {
+			@kit.TR(kit.TRProps{ID: "sj-" + row.ID}) {
+				@kit.TD(kit.TDProps{}) {
+					<a href={ row.DetailHref } class="no-underline" data-on:click__prevent={ liveLink }><span class="font-mono text-sm">{ row.Code }</span></a>
+					if row.Running {
+						<div class="mt-1 flex items-center gap-1 text-xs text-orange-500">
+							@kit.Icon(kit.IconProps{Name: "loader-circle", Class: "size-3 animate-spin"})
+							running
+						</div>
+					}
+				}
+				@kit.TD(kit.TDProps{}) {
+					<a href={ row.DetailHref } class="font-medium text-foreground no-underline hover:underline" data-on:click__prevent={ liveLink }>{ row.Name }</a>
+				}
+				@kit.TD(kit.TDProps{}) {
+					<span class={ templ.KV("text-muted-foreground italic", row.PlatformScope) }>{ row.Client }</span>
+				}
+				@kit.TD(kit.TDProps{}) {
+					<span class={ templ.KV("text-muted-foreground", row.NoApplication) }>{ row.Application }</span>
+				}
+				@kit.TD(kit.TDProps{}) {
+					<span class="font-mono text-sm">{ row.Crons }</span>
+					<div class="text-xs text-muted-foreground">{ row.Timezone }</div>
+				}
+				@kit.TD(kit.TDProps{}) {
+					@poolStatusBadge(row.Status, row.StatusVariant)
+				}
+				@kit.TD(kit.TDProps{Class: "text-sm"}) {
+					{ row.LastFired }
+				}
+				@kit.RowActions(v.rowActions(row))
+			}
+		}
+	}
+}
+
+templ sjDrawer(d *sjDetail) {
+	if d != nil {
+		@kit.Drawer(d.drawerProps()) {
+			@sjDrawerBody(*d)
+		}
+	} else {
+		@kit.Drawer(kit.DrawerProps{ID: sjDrawerID, Signal: sjDrawerSig, Label: "Scheduled job", Size: kit.DrawerWide})
+	}
+}
+
+templ sjDrawerContent(d sjDetail) {
+	@kit.DrawerContent(d.drawerProps()) {
+		@sjDrawerBody(d)
+	}
+}
+
+// sjDrawerBody mirrors the SPA's ScheduledJobDetailDrawer.
+templ sjDrawerBody(d sjDetail) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Definition", Actions: sjEditButton(d)}) {
+		<div class="fc-detail-grid">
+			@kit.DetailField(kit.DetailFieldProps{Label: "Code"}) {
+				<code>{ d.Code }</code>
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Scope", Value: d.Scope})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Application", Value: d.Application})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Timezone", Value: d.Timezone})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Last Fired", Value: d.LastFired})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Created", Value: d.Created})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Updated", Value: d.Updated})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Delivery Max Attempts", Value: d.MaxAttempts})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Timeout Seconds", Value: d.Timeout})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Concurrent", Value: d.Concurrent})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Tracks Completion", Value: d.Tracks})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Target URL", Span: true}) {
+				if d.TargetURL != "" {
+					<code class="break-all">{ d.TargetURL }</code>
+				} else {
+					<span class="text-destructive italic">— not configured (firings will fail)</span>
+				}
+			}
+			@kit.DetailField(kit.DetailFieldProps{Label: "Cron Expressions", Span: true}) {
+				<ul class="flex flex-col gap-1">
+					for _, c := range d.Crons {
+						<li><code>{ c }</code></li>
+					}
+				</ul>
+			}
+			if d.Description != "" {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Description", Value: d.Description, Span: true})
+			}
+			if d.Payload != "" {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Payload", Span: true}) {
+					<pre class="fc-json" tabindex="0" aria-label="Payload">{ d.Payload }</pre>
+				}
+			}
+		</div>
+	}
+	@kit.FormSection(kit.FormSectionProps{Title: "Recent Firings", Actions: sjViewAll(d)}) {
+		@sjInstanceTable("sj-recent", d.Recent, "No firings yet.", false)
+	}
+	if d.Perms.Update || d.Perms.Fire || d.Perms.Delete {
+		@kit.FormSection(kit.FormSectionProps{Title: "Actions"}) {
+			<div class="flex flex-wrap gap-2">
+				if d.Perms.Update && d.RawStatus == "ACTIVE" {
+					@sjActionButton(d.ActionBase+"/pause", "pause", "Pause", kit.LegacyWarn)
+				}
+				if d.Perms.Update && d.RawStatus == "PAUSED" {
+					@sjActionButton(d.ActionBase+"/resume", "play", "Resume", kit.LegacyPrimaryOutline)
+				}
+				if d.Perms.Fire {
+					if d.RawStatus == "ARCHIVED" {
+						@kit.LegacyButton(kit.LegacyButtonProps{Icon: "zap", Disabled: true, Attrs: templ.Attributes{"title": "Archived jobs cannot be fired"}}) {
+							Fire Now
+						}
+					} else {
+						@sjActionButton(d.ActionBase+"/fire", "zap", "Fire Now", kit.LegacyPrimary)
+					}
+				}
+				if d.Perms.Update && d.RawStatus != "ARCHIVED" {
+					@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacySecondary, Icon: "archive", Attrs: confirmTrigger(sjArchiveDialog, d.ActionBase+"/archive")}) {
+						Archive
+					}
+				}
+				if d.Perms.Delete {
+					@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Icon: "trash-2", Attrs: confirmTrigger(sjDeleteDialog, d.ActionBase+"/delete")}) {
+						Delete
+					}
+				}
+			</div>
+		}
+	}
+}
+
+// sjActionButton is an unconfirmed action (the SPA's Pause, Resume, Fire
+// Now): a small POST form that refreshes the drawer.
+templ sjActionButton(action, icon, label string, variant kit.LegacyVariant) {
+	<form method="post" action={ action } data-on:submit={ kit.SubmitForm }>
+		<input type="hidden" name="drawer" data-attr:value={ "$" + sjDrawerSig }/>
+		@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Variant: variant, Icon: icon}) {
+			{ label }
+		}
+	</form>
+}
+
+templ sjEditButton(d sjDetail) {
+	if d.Perms.Update && d.RawStatus != "ARCHIVED" {
+		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.EditHref, Icon: "pencil", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+			Edit
+		}
+	}
+}
+
+templ sjViewAll(d sjDetail) {
+	@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.InstancesHref, Icon: "arrow-right"}) {
+		View all
+	}
+}
+
+templ sjInstanceTable(id string, rows []sjInstanceRow, empty string, full bool) {
+	@kit.Table(kit.TableProps{ID: id, Dense: true}) {
+		@kit.THead(kit.THeadProps{Caps: true}) {
+			@kit.TR(kit.TRProps{Static: true}) {
+				@kit.TH(kit.THProps{}) {
+					Fired At
+				}
+				if full {
+					@kit.TH(kit.THProps{}) {
+						Scheduled For
+					}
+				}
+				@kit.TH(kit.THProps{}) {
+					Trigger
+				}
+				@kit.TH(kit.THProps{}) {
+					Status
+				}
+				@kit.TH(kit.THProps{}) {
+					Attempts
+				}
+				@kit.TH(kit.THProps{}) {
+					Delivered
+				}
+				@kit.TH(kit.THProps{}) {
+					Completed
+				}
+				if full {
+					@kit.TH(kit.THProps{}) {
+						Error
+					}
+				}
+			}
+		}
+		@kit.TBody(kit.TBodyProps{Striped: true}) {
+			if len(rows) == 0 {
+				@kit.EmptyRow(kit.EmptyRowProps{Colspan: sjInstanceCols(full), Empty: kit.EmptyStateProps{Message: empty}})
+			}
+			for _, in := range rows {
+				@kit.TR(kit.TRProps{Static: true}) {
+					@kit.TD(kit.TDProps{Class: "text-sm"}) {
+						<a href={ in.Href } class="text-primary no-underline hover:underline">{ in.FiredAt }</a>
+					}
+					if full {
+						@kit.TD(kit.TDProps{Class: "text-sm"}) {
+							{ in.ScheduledFor }
+						}
+					}
+					@kit.TD(kit.TDProps{}) {
+						{ in.Trigger }
+					}
+					@kit.TD(kit.TDProps{}) {
+						@poolStatusBadge(in.Status, in.StatusVariant)
+					}
+					@kit.TD(kit.TDProps{}) {
+						{ in.Attempts }
+					}
+					@kit.TD(kit.TDProps{Class: "text-sm"}) {
+						{ in.Delivered }
+					}
+					@kit.TD(kit.TDProps{Class: "text-sm"}) {
+						{ in.Completed }
+					}
+					if full {
+						@kit.TD(kit.TDProps{Class: "max-w-[200px]"}) {
+							if in.Error != "" {
+								<span class="block truncate text-xs text-destructive" title={ in.Error }>{ in.Error }</span>
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func sjInstanceCols(full bool) int {
+	if full {
+		return 8
+	}
+	return 6
+}
+
+templ sjConfirmDialogs(perms sjPerms) {
+	if perms.Update {
+		@kit.ConfirmDialog(sjConfirm(sjArchiveDialog, "Confirm Archive", "Archive this scheduled job? It will stop firing but its history is preserved.", "Archive", kit.ToneWarn))
+	}
+	if perms.Delete {
+		@kit.ConfirmDialog(sjConfirm(sjDeleteDialog, "Confirm Delete", "DELETE this scheduled job? Definition is removed permanently. Instance history is retained until partition retention drops it.", "Delete", kit.ToneDanger))
+	}
+}
+
+// ── firings page ──────────────────────────────────────────────────────
+
+func (v sjInstancesView) pager() kit.PaginatorProps {
+	return kit.PaginatorProps{
+		ID: "sj-firings-pager", Page: v.Page, Pages: v.Pages, Total: v.Total, Rows: v.Query.Rows, RowsOptions: []int{20, 50, 100, 200},
+		Noun: "firings", HrefPattern: v.Query.pagePattern(), FormID: "sj-firings-filters",
+		LinkAttrs: templ.Attributes{"data-on:click__prevent": liveLink},
+	}
+}
+
+func (v sjInstancesView) live() string {
+	return "@get('" + kit.Path(sjURL(v.JobID)+"/instances") + "', {contentType: 'form'})"
+}
+
+templ sjInstancesPage(v sjInstancesView) {
+	<nav class="mb-1 text-sm text-muted-foreground" aria-label="Breadcrumb">
+		<a href={ sjPath } class="hover:underline">Scheduled Jobs</a> /
+		<a href={ sjURL(v.JobID) } class="hover:underline">{ v.JobCode }</a> / Firings
+	</nav>
+	<h1 class="fc-page-title mb-4">Firings: { v.JobName }</h1>
+	<div class="fc-card-flush">
+		<form id="sj-firings-filters" method="get" action={ sjURL(v.JobID) + "/instances" } class="grid grid-cols-1 gap-3 p-3 md:grid-cols-3" data-on:submit={ v.live() }>
+			@kit.FilterSelect(kit.FilterSelectProps{Name: "status", Label: "Status", Placeholder: "All statuses", Options: instanceStatusOptions, Selected: v.Status, Attrs: templ.Attributes{"data-on:change": v.live()}})
+			@kit.FilterSelect(kit.FilterSelectProps{Name: "trigger", Label: "Trigger", Placeholder: "All triggers", Options: triggerOptions, Selected: v.Trigger, Attrs: templ.Attributes{"data-on:change": v.live()}})
+			@sjInstancesClear(v)
+		</form>
+		@sjInstancesTable(v)
+		@kit.Paginator(v.pager())
+	</div>
+}
+
+templ sjInstancesClear(v sjInstancesView) {
+	<div id="sj-firings-clear" class="flex items-end">
+		if v.Status != "" || v.Trigger != "" {
+			<a href={ sjURL(v.JobID) + "/instances" } class="fc-btn fc-btn-text">
+				@kit.Icon(kit.IconProps{Name: "funnel-x", Class: "size-[1rem]"})
+				Clear
+			</a>
+		}
+	</div>
+}
+
+templ sjInstancesTable(v sjInstancesView) {
+	<div id="sj-firings-table" class="overflow-x-auto">
+		@sjInstanceTable("sj-firings", v.Rows, "No firings found.", true)
+	</div>
+}
+
+// ── one firing ─────────────────────────────────────────────────────────
+templ sjInstancePage(v sjInstanceView) {
+	<nav class="mb-1 text-sm text-muted-foreground" aria-label="Breadcrumb">
+		<a href={ sjPath } class="hover:underline">Scheduled Jobs</a> /
+		<a href={ sjURL(v.JobID) } class="hover:underline">{ v.JobCode }</a> / Instance
+	</nav>
+	<div class="fc-card mb-4 p-5">
+		<h1 class="fc-page-title">Firing { v.In.ID }</h1>
+		<div class="mt-2 flex flex-wrap gap-2">
+			@poolStatusBadge(v.In.Status, v.In.StatusVariant)
+			@kit.Badge(kit.BadgeProps{Variant: kit.BadgeSecondary}) {
+				{ v.In.Trigger }
+			}
+			if v.CompletionStatus != "" {
+				if v.CompletionOK {
+					@kit.Badge(kit.BadgeProps{Variant: kit.BadgeSuccess}) {
+						{ v.CompletionStatus }
+					}
+				} else {
+					@kit.Badge(kit.BadgeProps{Variant: kit.BadgeDestructive}) {
+						{ v.CompletionStatus }
+					}
+				}
+			}
+		</div>
+		<div class="fc-detail-grid mt-4">
+			@kit.DetailField(kit.DetailFieldProps{Label: "Fired At", Value: v.In.FiredAt})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Scheduled For", Value: v.In.ScheduledFor})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Delivered At", Value: v.In.Delivered})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Completed At", Value: v.In.Completed})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Delivery Attempts", Value: v.In.Attempts})
+			@kit.DetailField(kit.DetailFieldProps{Label: "Correlation Id", Value: v.Correlation})
+			if v.In.Error != "" {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Delivery Error", Span: true}) {
+					<pre class="fc-json text-destructive" tabindex="0" aria-label="Delivery error">{ v.In.Error }</pre>
+				}
+			}
+			if v.CompletionText != "" {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Completion Result", Span: true}) {
+					<pre class="fc-json" tabindex="0" aria-label="Completion result">{ v.CompletionText }</pre>
+				}
+			}
+		</div>
+	</div>
+	<div class="fc-card p-5">
+		<h2 class="fc-section-title mb-3">Logs</h2>
+		if len(v.Logs) == 0 {
+			<p class="text-muted-foreground">No log entries.</p>
+		} else {
+			<div class="overflow-x-auto">
+				@kit.Table(kit.TableProps{Dense: true}) {
+					@kit.THead(kit.THeadProps{Caps: true}) {
+						@kit.TR(kit.TRProps{Static: true}) {
+							@kit.TH(kit.THProps{}) {
+								Time
+							}
+							@kit.TH(kit.THProps{}) {
+								Level
+							}
+							@kit.TH(kit.THProps{}) {
+								Message
+							}
+							@kit.TH(kit.THProps{}) {
+								Metadata
+							}
+						}
+					}
+					@kit.TBody(kit.TBodyProps{Striped: true}) {
+						for _, l := range v.Logs {
+							@kit.TR(kit.TRProps{Static: true}) {
+								@kit.TD(kit.TDProps{Class: "text-xs whitespace-nowrap"}) {
+									{ l.Time }
+								}
+								@kit.TD(kit.TDProps{}) {
+									@poolStatusBadge(l.Level, l.LevelVariant)
+								}
+								@kit.TD(kit.TDProps{}) {
+									{ l.Message }
+								}
+								@kit.TD(kit.TDProps{}) {
+									if l.Metadata != "" {
+										<pre class="text-xs whitespace-pre-wrap break-all">{ l.Metadata }</pre>
+									}
+								}
+							}
+						}
+					}
+				}
+			</div>
+		}
+	</div>
+}
+
+// ── form ───────────────────────────────────────────────────────────────
+templ sjFormDialogC(f sjForm) {
+	@kit.FormDialog(f.dialog()) {
+		if f.Edit {
+			<div class="grid gap-4 sm:grid-cols-2">
+				<div class="sm:col-span-2">
+					@sjField(f, "name")
+				</div>
+				<div class="sm:col-span-2">
+					@sjField(f, "description")
+				</div>
+				@sjField(f, "timezone")
+				@sjField(f, "deliveryMaxAttempts")
+				@sjField(f, "timeoutSeconds")
+				<div class="sm:col-span-2">
+					@sjField(f, "targetUrl")
+				</div>
+				<div class="sm:col-span-2">
+					@sjField(f, "crons")
+				</div>
+				<div class="sm:col-span-2">
+					@sjField(f, "payload")
+				</div>
+				<div class="sm:col-span-2">
+					@sjField(f, "options")
+				</div>
+			</div>
+		} else {
+			@kit.FormSection(kit.FormSectionProps{Title: "Identity"}) {
+				<div class="grid gap-4 sm:grid-cols-2">
+					@sjField(f, "code")
+					@sjField(f, "name")
+					<div class="sm:col-span-2">
+						@sjField(f, "description")
+					</div>
+					@sjField(f, "scope")
+					@sjField(f, "applicationId")
+					@sjField(f, "timezone")
+				</div>
+			}
+			@kit.FormSection(kit.FormSectionProps{Title: "Schedule"}) {
+				@sjField(f, "crons")
+			}
+			@kit.FormSection(kit.FormSectionProps{Title: "Delivery"}) {
+				<div class="flex flex-col gap-4">
+					@sjField(f, "targetUrl")
+					<div class="grid gap-4 sm:grid-cols-2">
+						@sjField(f, "deliveryMaxAttempts")
+						@sjField(f, "timeoutSeconds")
+					</div>
+					@sjField(f, "options")
+				</div>
+			}
+			@kit.FormSection(kit.FormSectionProps{Title: "Payload"}) {
+				@sjField(f, "payload")
+			}
+		}
+	}
+}
+
+templ sjField(f sjForm, key string) {
+	switch key {
+		case "code":
+			@kit.Field(f.fieldProps(key, "Code", "Routing key the SDK uses to find the registered handler.", true)) {
+				@kit.Input(f.inputProps(key, f.Code, "daily-cleanup", templ.Attributes{"required": true, "autocomplete": "off", "autofocus": true}))
+			}
+		case "name":
+			@kit.Field(f.fieldProps(key, "Name", "", true)) {
+				@kit.Input(f.inputProps(key, f.Name, "Daily cleanup job", sjNameAttrs(f.Edit)))
+			}
+		case "description":
+			@kit.Field(f.fieldProps(key, "Description", "", false)) {
+				@kit.Textarea(kit.TextareaProps{ID: f.id(key), Name: key, Value: f.Description, Rows: 2, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key)})
+			}
+		case "scope":
+			@kit.Field(f.fieldProps(key, "Scope", "Who owns this job: cannot be changed after creation.", true)) {
+				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.ScopeOptions, Selected: f.Scope, Placeholder: "Select a client or platform", Required: true, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key)})
+			}
+		case "applicationId":
+			@kit.Field(f.fieldProps(key, "Application", "Optional: for filtering and display only.", false)) {
+				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.AppOptions, Selected: f.ApplicationID, Placeholder: "None"})
+			}
+		case "timezone":
+			@kit.Field(f.fieldProps(key, "Timezone", "IANA name (e.g. Europe/London).", false)) {
+				@kit.Input(f.inputProps(key, f.Timezone, "UTC", templ.Attributes{"autocomplete": "off"}))
+			}
+		case "crons":
+			@kit.Field(f.fieldProps(key, "Cron Expressions", "One per line. 6-field cron syntax (sec min hour day month dow). Multiple expressions are unioned at fire time.", true)) {
+				@kit.Textarea(kit.TextareaProps{ID: f.id(key), Name: key, Value: f.Crons, Placeholder: "0 0 * * * *", Rows: 3, Required: true, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key), Class: "font-mono text-[13px]", Attrs: templ.Attributes{"spellcheck": "false"}})
+			}
+		case "targetUrl":
+			@kit.Field(f.fieldProps(key, "Target URL", "The platform POSTs the firing envelope here. Without it, instances will be marked DELIVERY_FAILED on every fire.", false)) {
+				@kit.Input(f.inputProps(key, f.TargetURL, "https://app.example.com/_fc/scheduled-jobs/process", templ.Attributes{"autocomplete": "off"}))
+			}
+		case "deliveryMaxAttempts":
+			@kit.Field(f.fieldProps(key, "Delivery Max Attempts", "", false)) {
+				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Type: "number", Value: f.MaxAttempts, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"min": "1", "max": "20", "step": "1", "inputmode": "numeric"}})
+			}
+		case "timeoutSeconds":
+			@kit.Field(f.fieldProps(key, "Timeout Seconds (hint)", "Hint passed to the SDK; not enforced by the platform.", false)) {
+				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Type: "number", Value: f.Timeout, Placeholder: "—", Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"min": "1", "step": "1", "inputmode": "numeric"}})
+			}
+		case "options":
+			<div id={ f.id(key) + "-field" } class="flex flex-col gap-2">
+				<div class="flex items-center gap-2">
+					@kit.Checkbox(kit.CheckboxProps{ID: f.id("concurrent"), Name: "concurrent", Value: "true", Checked: f.Concurrent, Label: "Allow concurrent firings"})
+				</div>
+				<div class="flex items-center gap-2">
+					@kit.Checkbox(kit.CheckboxProps{ID: f.id("tracksCompletion"), Name: "tracksCompletion", Value: "true", Checked: f.Tracks, Label: "SDK reports completion"})
+				</div>
+			</div>
+		case "payload":
+			@kit.Field(f.fieldProps(key, "Payload (JSON)", "", false)) {
+				@kit.Textarea(kit.TextareaProps{ID: f.id(key), Name: key, Value: f.Payload, Placeholder: "{}", Rows: 5, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key), Class: "font-mono text-[13px]", Attrs: templ.Attributes{"spellcheck": "false"}})
+			}
+	}
+}
