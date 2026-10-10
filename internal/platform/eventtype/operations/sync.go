@@ -81,9 +81,17 @@ func SyncEventTypes(repo *eventtype.Repository) usecaseop.Operation[SyncEventTyp
 			for _, in := range cmd.EventTypes {
 				syncedCodes = append(syncedCodes, in.Code)
 				if cur, ok := existingByCode[in.Code]; ok {
+					changed := cur.Name != in.Name || !sameText(cur.Description, in.Description)
 					cur.Name = in.Name
 					cur.Description = in.Description
-					schemas.apply(cur, in.Schema)
+					if schemas.apply(cur, in.Schema) {
+						changed = true
+					}
+					if !changed {
+						// Unchanged: neither written nor counted as updated.
+						continue
+					}
+					cur.UpdatedAt = time.Now().UTC()
 					saves = append(saves, usecasepgx.SyncSaveItem[eventtype.EventType]{
 						Aggregate: cur,
 						Event: EventTypeUpdated{
@@ -174,11 +182,11 @@ type schemaTally struct {
 
 // apply sets et's spec version 1.0 to schema: minted when absent (as create
 // mints it), rewritten when its content differs, left alone when the same. A
-// type sent without a schema is unchanged.
-func (t *schemaTally) apply(et *eventtype.EventType, schema json.RawMessage) {
+// type sent without a schema is unchanged. Reports whether it changed et.
+func (t *schemaTally) apply(et *eventtype.EventType, schema json.RawMessage) bool {
 	if len(schema) == 0 || string(schema) == "null" {
 		t.unchanged++
-		return
+		return false
 	}
 	for i := range et.SpecVersions {
 		sv := &et.SpecVersions[i]
@@ -187,15 +195,24 @@ func (t *schemaTally) apply(et *eventtype.EventType, schema json.RawMessage) {
 		}
 		if sameJSON(sv.SchemaContent, schema) {
 			t.unchanged++
-			return
+			return false
 		}
 		sv.SchemaContent = schema
 		sv.UpdatedAt = time.Now().UTC()
 		t.updated++
-		return
+		return true
 	}
 	et.SpecVersions = append(et.SpecVersions, eventtype.NewSpecVersion(et.ID, syncSchemaVersion, schema))
 	t.created++
+	return true
+}
+
+// sameText compares two optional texts by value (nil equals nil only).
+func sameText(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 // sameJSON compares two JSON documents by value: the stored copy comes back
