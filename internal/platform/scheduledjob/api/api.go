@@ -352,27 +352,51 @@ func (s *State) listInstanceLogs(ctx context.Context, in *instanceInput) (*apico
 	return &apicommon.Out[[]ScheduledJobInstanceLogResponse]{Body: out}, nil
 }
 
+// reportableInstance loads the firing a runner reports on (a log line or its
+// completion) and authorizes the report. The messaging scheduled-job write
+// grants report on any firing; an SDK service account holding the
+// application-service scheduled-job-instance:write reports only on firings of
+// its own applications' jobs (auth.CanReportScheduledJobInstance). The
+// per-instance client scope (A2) applies to both.
+func (s *State) reportableInstance(ctx context.Context, instanceID string) (*scheduledjob.ScheduledJobInstance, error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanReportScheduledJobInstances(ac); err != nil {
+		return nil, err
+	}
+	if s.Instances == nil {
+		return nil, usecase.Internal("WIRING", "instances repo not configured", nil)
+	}
+	inst, err := s.Instances.FindByID(ctx, instanceID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_instance failed", err)
+	}
+	if inst == nil {
+		return nil, httperror.NotFound("ScheduledJobInstance", instanceID)
+	}
+	var applicationID *string
+	if job, err := s.Repo.FindByID(ctx, inst.ScheduledJobID); err != nil {
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
+	} else if job != nil && job.ApplicationID != nil {
+		id := string(*job.ApplicationID)
+		applicationID = &id
+	}
+	if err := auth.CanReportScheduledJobInstance(ac, applicationID); err != nil {
+		return nil, err
+	}
+	if err := auth.CheckScopeAccess(ac, ids.StringPtr(inst.ClientID)); err != nil { // A2: per-instance client scope
+		return nil, err
+	}
+	return inst, nil
+}
+
 type writeLogInput struct {
 	InstanceID string `path:"instanceId"`
 	Body       WriteInstanceLogRequest
 }
 
 func (s *State) writeInstanceLog(ctx context.Context, in *writeLogInput) (*apicommon.Empty, error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteScheduledJobs(ac); err != nil {
-		return nil, err
-	}
-	if s.Instances == nil {
-		return nil, usecase.Internal("WIRING", "instances repo not configured", nil)
-	}
-	inst, err := s.Instances.FindByID(ctx, in.InstanceID)
+	inst, err := s.reportableInstance(ctx, in.InstanceID)
 	if err != nil {
-		return nil, usecase.Internal("REPO", "find_instance failed", err)
-	}
-	if inst == nil {
-		return nil, httperror.NotFound("ScheduledJobInstance", in.InstanceID)
-	}
-	if err := auth.CheckScopeAccess(ac, ids.StringPtr(inst.ClientID)); err != nil { // A2: per-instance client scope
 		return nil, err
 	}
 	log := &scheduledjob.ScheduledJobInstanceLog{
@@ -396,21 +420,7 @@ type completeInstanceInput struct {
 }
 
 func (s *State) completeInstance(ctx context.Context, in *completeInstanceInput) (*apicommon.Empty, error) {
-	ac := auth.FromContext(ctx)
-	if err := auth.CanWriteScheduledJobs(ac); err != nil {
-		return nil, err
-	}
-	if s.Instances == nil {
-		return nil, usecase.Internal("WIRING", "instances repo not configured", nil)
-	}
-	inst, err := s.Instances.FindByID(ctx, in.InstanceID)
-	if err != nil {
-		return nil, usecase.Internal("REPO", "find_instance failed", err)
-	}
-	if inst == nil {
-		return nil, httperror.NotFound("ScheduledJobInstance", in.InstanceID)
-	}
-	if err := auth.CheckScopeAccess(ac, ids.StringPtr(inst.ClientID)); err != nil { // A2: per-instance client scope
+	if _, err := s.reportableInstance(ctx, in.InstanceID); err != nil {
 		return nil, err
 	}
 	status, completion, ok := resolveInstanceCompletion(in.Body.Status, in.Body.CompletionStatus)

@@ -142,9 +142,12 @@ const (
 	permAppSvcConnectionUpdate   = "platform:application-service:connection:update"
 	permAppSvcConnectionDelete   = "platform:application-service:connection:delete"
 	permAppSvcScheduledJobSync   = "platform:application-service:scheduled-job:sync"
-	permAppSvcDocsSync           = "platform:application-service:docs:sync"
-	permAppSvcApplicationView    = "platform:application-service:application:view"
-	permAppSvcAppOpenApiSync     = "platform:application-service:application-openapi:sync"
+	// permAppSvcScheduledJobInstanceWrite is the SDK's report on a firing it
+	// received (log line, completion), confined to its own applications' jobs.
+	permAppSvcScheduledJobInstanceWrite = "platform:application-service:scheduled-job-instance:write"
+	permAppSvcDocsSync                  = "platform:application-service:docs:sync"
+	permAppSvcApplicationView           = "platform:application-service:application:view"
+	permAppSvcAppOpenApiSync            = "platform:application-service:application-openapi:sync"
 	// Developer (application OpenAPI documents)
 	permAppOpenApiSync   = "platform:developer:application-openapi:sync"
 	permAppOpenApiManage = "platform:developer:application-openapi:manage"
@@ -731,6 +734,38 @@ func CanSyncPrincipals(a *AuthContext) error {
 func CanSyncScheduledJobs(a *AuthContext) error {
 	return requireAny(a,
 		permAppSvcScheduledJobSync, permScheduledJobSync, permScheduledJobManage)
+}
+
+// CanReportScheduledJobInstances guards the runner's reports on a firing:
+// POST /api/scheduled-jobs/instances/{instanceId}/log and /complete. Admits the
+// messaging scheduled-job create/update/delete grants (as before), and the
+// application-service scheduled-job-instance:write an SDK service account
+// holds. A caller admitted only by the latter is confined by the handler to the
+// instances of its own applications' jobs (CanReportScheduledJobInstance).
+func CanReportScheduledJobInstances(a *AuthContext) error {
+	return requireAny(a,
+		permScheduledJobCreate, permScheduledJobUpdate, permScheduledJobDelete,
+		permAppSvcScheduledJobInstanceWrite)
+}
+
+// CanReportScheduledJobInstance is the resource-level rule for one firing of a
+// job owned by applicationID (nil: a job of no application). A holder of a
+// messaging scheduled-job write grant reports on any firing, as before. A
+// caller holding only the application-service grant reports only on firings of
+// jobs of an application it is bound to (CanAccessApplication), the rule
+// sdksync's requireAppAccess applies to the SDK's syncs.
+func CanReportScheduledJobInstance(a *AuthContext, applicationID *string) error {
+	if err := CanReportScheduledJobInstances(a); err != nil {
+		return err
+	}
+	if a.HasPermission(permScheduledJobCreate) || a.HasPermission(permScheduledJobUpdate) ||
+		a.HasPermission(permScheduledJobDelete) {
+		return nil
+	}
+	if applicationID != nil && a.CanAccessApplication(*applicationID) {
+		return nil
+	}
+	return usecase.Authorization("APPLICATION_ACCESS_REQUIRED", "not authorised for this scheduled job's application")
 }
 
 // CanSyncProcesses guards POST /api/applications/{appCode}/processes/sync.
