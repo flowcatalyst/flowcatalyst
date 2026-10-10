@@ -14,9 +14,9 @@ package schemacodegen
 // (the output is never meant for an attribute value). Do not place the
 // result inside an attribute.
 //
-// Differences from the TS: highlightJson in the TS does not escape its input
-// at all (an XSS in the SPA); here JSON input is escaped for & < > first.
-// That is invisible for input without those characters. Go's RE2 has no
+// JSON input is escaped for & < > before tokenising, in both (the TS did not
+// escape at all until the stored-XSS fix, docs/platform-bug-fixes.md bug 4;
+// TestHighlightHostile covers this port). Go's RE2 has no
 // lookahead, so the post-escape string alternative
 // `&quot;(?:[^&]|&(?!quot;))*?&quot;` is written as the equivalent lazy
 // `&quot;(?s:.*?)&quot;` (a lazy match can never run past the first &quot;
