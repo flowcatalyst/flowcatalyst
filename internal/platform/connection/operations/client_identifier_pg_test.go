@@ -10,9 +10,10 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	clientops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection/operations"
-	clientops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 )
 
@@ -39,4 +40,25 @@ func TestCreateConnection_StoresTheClientIdentifier(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got.ClientIdentifier)
 	require.Equal(t, "con-ident-acme", *got.ClientIdentifier)
+}
+
+// The code-first sync stores it too: a client-scoped sync creates its
+// connections with the client's identifier, as create does.
+func TestSyncConnections_StoresTheClientIdentifier(t *testing.T) {
+	pool := testpg.Pool(t)
+	repo := connection.NewRepository(pool)
+	uow := testpg.NewUoW(t)
+	clientID := seedClientIdentifier(t, "con-sync-ident")
+	app := mustCreateApplicationWithServiceAccount(t, pool, uow, "consyncident", "Con Sync Ident", "sva_consyncid01")
+	_, err := runConnSync(t, uow, repo, application.NewRepository(pool), subscription.NewRepository(pool),
+		operations.SyncConnectionsCommand{
+			ApplicationID: app.ApplicationID, ApplicationCode: app.Code, ClientID: &clientID,
+			Connections: []operations.SyncConnectionEntry{{Code: "syncident", Name: "Ident"}},
+		})
+	require.NoError(t, err)
+	got, err := repo.FindByCode(context.Background(), "syncident", &app.Code, &clientID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.NotNil(t, got.ClientIdentifier)
+	require.Equal(t, "con-sync-ident", *got.ClientIdentifier)
 }

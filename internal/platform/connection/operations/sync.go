@@ -147,6 +147,12 @@ func SyncConnections(
 			if err != nil {
 				return nil, usecase.Internal("REPO", "find_by_application_and_client failed", err)
 			}
+			// A connection the sync creates stores its client's identifier, as
+			// CreateConnection does (existing rows are not backfilled).
+			clientIdentifier, err := connRepo.ClientIdentifier(ctx, cmd.ClientID)
+			if err != nil {
+				return nil, usecase.Internal("REPO", "client identifier lookup failed", err)
+			}
 			existingByCode := make(map[string]*connection.Connection, len(existing))
 			for i := range existing {
 				existingByCode[existing[i].Code] = &existing[i]
@@ -189,6 +195,7 @@ func SyncConnections(
 				appCode := cmd.ApplicationCode
 				c.ApplicationCode = &appCode
 				c.ClientID = ids.PtrOf[ids.ClientID](cmd.ClientID)
+				c.ClientIdentifier = clientIdentifier
 				c.Source = connection.SourceAPI
 				c.Description = in.Description
 				c.ExternalID = in.ExternalID

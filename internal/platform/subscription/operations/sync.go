@@ -252,6 +252,12 @@ func SyncSubscriptions(
 			if err != nil {
 				return nil, usecase.Internal("REPO", "find_by_application_and_client failed", err)
 			}
+			// A subscription the sync creates stores its client's identifier, as
+			// CreateSubscription does (existing rows are not backfilled).
+			clientIdentifier, err := subRepo.ClientIdentifier(ctx, cmd.ClientID)
+			if err != nil {
+				return nil, usecase.Internal("REPO", "client identifier lookup failed", err)
+			}
 			existingByCode := make(map[string]*subscription.Subscription, len(existing))
 			for i := range existing {
 				existingByCode[existing[i].Code] = &existing[i]
@@ -312,6 +318,7 @@ func SyncSubscriptions(
 				appCode := cmd.ApplicationCode
 				sub.ApplicationCode = &appCode
 				sub.ClientID = ids.PtrOf[ids.ClientID](cmd.ClientID)
+				sub.ClientIdentifier = clientIdentifier
 				sub.Source = subscription.SourceAPI
 				sub.Description = in.Description
 				sub.EventTypes = bindings
