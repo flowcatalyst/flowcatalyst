@@ -12,7 +12,6 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/operations"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
-	authops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
@@ -21,7 +20,6 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecase"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecaseop"
 	"github.com/flowcatalyst/flowcatalyst-go/pkg/fcsdk/usecasepgx"
@@ -323,61 +321,24 @@ func (s *State) provisionLoginClient(ctx context.Context, in *provisionLoginClie
 	if err := auth.RequireAnchor(ac); err != nil {
 		return nil, err
 	}
-	if len(in.Body.RedirectURIs) == 0 {
-		return nil, usecase.Validation("REDIRECT_URIS_REQUIRED", "At least one redirect URI is required")
-	}
-	app, err := s.Repo.FindByID(ctx, string(in.ID))
-	if err != nil {
-		return nil, usecase.Internal("REPO", "find_by_id failed", err)
-	}
-	if app == nil {
-		return nil, httperror.NotFound("Application", string(in.ID))
-	}
-
-	clientType := "PUBLIC"
-	if in.Body.ClientType == "CONFIDENTIAL" {
-		clientType = "CONFIDENTIAL"
-	}
-
-	ec := auth.NewExecutionContext(ctx)
-	publicClientID := tsid.Generate(tsid.OAuthClient)
-	cmd := authops.CreateOAuthClientCommand{
-		ClientID:     publicClientID,
-		ClientName:   app.Name + " Login",
-		ClientType:   clientType,
-		RedirectURIs: in.Body.RedirectURIs,
-		GrantTypes:   []string{"authorization_code", "refresh_token"},
-		Scopes:       []string{"openid", "profile", "email"},
-		// Link the login client to the application it was provisioned under
-		// (oauth_client_application_ids), so it surfaces "under" the app in the
-		// OAuth-client UI — mirroring the service-account client's app scoping.
-		ApplicationIDs: []string{string(app.ID)},
-	}
-	event, err := usecaseop.Run(ctx, s.UoW, authops.CreateOAuthClient(s.OAuthClients), cmd, ec)
+	res, err := operations.ProvisionLoginClient(ctx, s.UoW, s.Repo, s.OAuthClients, operations.ProvisionLoginClientCommand{
+		ApplicationID: string(in.ID),
+		ClientType:    in.Body.ClientType,
+		RedirectURIs:  in.Body.RedirectURIs,
+	}, auth.NewExecutionContext(ctx))
 	if err != nil {
 		return nil, err
-	}
-
-	// CreateOAuthClient generates the internal row id (`oac_…`) on the
-	// entity; the created event carries it. CONFIDENTIAL clients stash a
-	// once-readable plaintext secret.
-	rowID := event.OAuthClientID
-	var secret string
-	if clientType == "CONFIDENTIAL" {
-		if s, ok := authops.PopStashedSecret(rowID); ok {
-			secret = s
-		}
 	}
 
 	return &apicommon.Out[ApplicationProvisionLoginClientResponse]{Body: ApplicationProvisionLoginClientResponse{
 		Message: "Login client provisioned",
 		LoginClient: ApplicationLoginClientCredentials{
-			ClientType:   clientType,
-			RedirectURIs: in.Body.RedirectURIs,
+			ClientType:   res.ClientType,
+			RedirectURIs: res.RedirectURIs,
 			OAuthClient: ApplicationOAuthClientCredentials{
-				ID:           rowID,
-				ClientID:     publicClientID,
-				ClientSecret: secret,
+				ID:           res.OAuthClientRowID,
+				ClientID:     res.ClientID,
+				ClientSecret: res.ClientSecret,
 			},
 		},
 	}}, nil
