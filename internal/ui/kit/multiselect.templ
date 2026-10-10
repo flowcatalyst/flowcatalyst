@@ -50,10 +50,7 @@ func (p MultiSelectProps) Summary() string {
 			labels = append(labels, o.Label)
 		}
 	}
-	maxLabels := p.MaxLabels
-	if maxLabels <= 0 {
-		maxLabels = 2
-	}
+	maxLabels := p.maxLabels()
 	switch {
 	case len(labels) == 0:
 		return p.Placeholder
@@ -61,6 +58,27 @@ func (p MultiSelectProps) Summary() string {
 		return strings.Join(labels, ", ")
 	default:
 		return strings.ReplaceAll(orDefault(p.ManyLabel, "{0} selected"), "{0}", strconv.Itoa(len(labels)))
+	}
+}
+
+// summaryExpr recomputes the summary in the browser after any change
+// (multi-select.md, Behaviour): the same rule as Summary, reading the
+// labels of the checked options and the rule's data attributes.
+const summaryExpr = "const c = [...el.querySelectorAll('.fc-multiselect-option input:checked')].map(i => i.nextElementSibling.textContent); el.querySelector('.fc-multiselect-summary').textContent = c.length === 0 ? el.dataset.placeholder : c.length <= +el.dataset.maxLabels ? c.join(', ') : el.dataset.manyLabel.replace('{0}', c.length)"
+
+func (p MultiSelectProps) maxLabels() int {
+	if p.MaxLabels <= 0 {
+		return 2
+	}
+	return p.MaxLabels
+}
+
+func (p MultiSelectProps) detailsAttrs() templ.Attributes {
+	return templ.Attributes{
+		"data-placeholder": p.Placeholder,
+		"data-max-labels":  strconv.Itoa(p.maxLabels()),
+		"data-many-label":  orDefault(p.ManyLabel, "{0} selected"),
+		"data-on:change":   summaryExpr,
 	}
 }
 
@@ -87,7 +105,7 @@ func (p MultiSelectProps) optionAttrs(o Option) templ.Attributes {
 templ MultiSelect(p MultiSelectProps) {
 	<div id={ ID(p.ID) + "-field" } class={ cx("fc-form-field", p.Class) }>
 		<span id={ p.ID + "-label" } class="fc-field-label">{ p.Label }</span>
-		<details class="fc-multiselect" open?={ p.Open }>
+		<details class="fc-multiselect" open?={ p.Open } { p.detailsAttrs()... }>
 			<summary class="fc-select fc-multiselect-trigger" aria-labelledby={ p.ID + "-label " + p.ID + "-summary" }>
 				@MultiSelectSummary(p)
 			</summary>
