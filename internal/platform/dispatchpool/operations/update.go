@@ -60,11 +60,22 @@ func UpdateDispatchPool(repo *dispatchpool.Repository) usecaseop.Operation[Updat
 			if cmd.Name != nil {
 				p.Name = strings.TrimSpace(*cmd.Name)
 			}
+			// Set-if-provided, and a provided blank description or a zero rate
+			// limit CLEARS the value (NULL: no description, no limit — the
+			// router treats 0 and NULL alike), so an edit can remove either.
 			if cmd.Description != nil {
-				p.Description = cmd.Description
+				if strings.TrimSpace(*cmd.Description) == "" {
+					p.Description = nil
+				} else {
+					p.Description = cmd.Description
+				}
 			}
 			if cmd.RateLimit != nil {
-				p.RateLimit = cmd.RateLimit
+				if *cmd.RateLimit == 0 {
+					p.RateLimit = nil
+				} else {
+					p.RateLimit = cmd.RateLimit
+				}
 			}
 			if cmd.Concurrency != nil {
 				p.Concurrency = *cmd.Concurrency

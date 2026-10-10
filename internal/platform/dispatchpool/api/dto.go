@@ -33,8 +33,8 @@ func (r CreateDispatchPoolRequest) toCommand() operations.CreateCommand {
 // UpdateDispatchPoolRequest is the wire body for PUT /api/dispatch-pools/{id}.
 type UpdateDispatchPoolRequest struct {
 	Name        *string `json:"name,omitempty"`
-	Description *string `json:"description,omitempty"`
-	RateLimit   *int32  `json:"rateLimit,omitempty"`
+	Description *string `json:"description,omitempty" doc:"Omitted leaves it; blank clears it."`
+	RateLimit   *int32  `json:"rateLimit,omitempty" doc:"Messages per minute. Omitted leaves it; 0 clears it (no limit)."`
 	Concurrency *int32  `json:"concurrency,omitempty"`
 }
 

@@ -75,10 +75,10 @@ func TestDispatchPoolsPageAgainstPostgres(t *testing.T) {
 	assert.Contains(t, dup, `id="pool-form-code-err"`)
 	assert.Contains(t, dup, "already exists")
 
-	// Edit: name and concurrency; a blank rate limit keeps the stored one (the SPA's PUT).
+	// Edit: name and concurrency, the rate limit kept as shown.
 	do(req{
 		method: http.MethodPost, target: "/ui/dispatch-pools/" + created.ID + "/edit", datastar: true,
-		form: url.Values{"name": {"UI PG Orders 2"}, "description": {""}, "rateLimit": {""}, "concurrency": {"6"}, "drawer": {created.ID}},
+		form: url.Values{"name": {"UI PG Orders 2"}, "description": {"Busy"}, "rateLimit": {"90"}, "concurrency": {"6"}, "drawer": {created.ID}},
 	})
 	edited, err := repo.FindByID(context.Background(), created.ID)
 	require.NoError(t, err)
@@ -86,6 +86,17 @@ func TestDispatchPoolsPageAgainstPostgres(t *testing.T) {
 	assert.Equal(t, int32(6), edited.Concurrency)
 	require.NotNil(t, edited.RateLimit)
 	assert.Equal(t, int32(90), *edited.RateLimit)
+	assert.Equal(t, "Busy", deref(edited.Description))
+
+	// A blank description and rate limit clear them (docs/platform-bug-fixes.md).
+	do(req{
+		method: http.MethodPost, target: "/ui/dispatch-pools/" + created.ID + "/edit", datastar: true,
+		form: url.Values{"name": {"UI PG Orders 2"}, "description": {""}, "rateLimit": {""}, "concurrency": {"6"}, "drawer": {created.ID}},
+	})
+	cleared, err := repo.FindByID(context.Background(), created.ID)
+	require.NoError(t, err)
+	assert.Nil(t, cleared.RateLimit)
+	assert.Nil(t, cleared.Description)
 
 	// Suspend, then activate.
 	do(req{method: http.MethodPost, target: "/ui/dispatch-pools/" + created.ID + "/suspend", datastar: true, form: url.Values{}})
@@ -101,7 +112,7 @@ func TestDispatchPoolsPageAgainstPostgres(t *testing.T) {
 	gone, err := repo.FindByID(context.Background(), created.ID)
 	require.NoError(t, err)
 	assert.Nil(t, gone)
-	assert.Equal(t, 5, auditCount(t, created.ID), "create, update, suspend, activate and delete are each audited")
+	assert.Equal(t, 6, auditCount(t, created.ID), "create, two updates, suspend, activate and delete are each audited")
 }
 
 func clientIDOf(t *testing.T, repo *client.Repository, identifier string) *string {

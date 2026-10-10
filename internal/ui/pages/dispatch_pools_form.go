@@ -298,15 +298,19 @@ func (h *DispatchPools) update(w http.ResponseWriter, r *http.Request) {
 		h.formFailed(w, r, ac, f)
 		return
 	}
-	// The SPA's PUT body: the name always; description, rate limit and
-	// concurrency only when set (`value || undefined`), so a blank field
-	// keeps the stored value (the use case has no way to clear them).
-	name := f.Name
+	// The SPA's PUT body: the name and description always (a blank
+	// description clears it), the rate limit always (blank sends 0, which
+	// clears it: no limit), the concurrency only when set.
+	name, description := f.Name, f.Description
+	clearRate := int32(0)
+	if rateLimit == nil {
+		rateLimit = &clearRate
+	}
 	err = h.Ops.Update(ctx, operations.UpdateCommand{
 		ID:          id,
 		Name:        &name,
-		Description: optionalText(f.Description),
-		RateLimit:   positive(rateLimit),
+		Description: &description,
+		RateLimit:   rateLimit,
 		Concurrency: positive(concurrency),
 	})
 	if err != nil {

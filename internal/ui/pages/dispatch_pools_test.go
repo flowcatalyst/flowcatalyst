@@ -804,7 +804,7 @@ func TestPoolEdit(t *testing.T) {
 			t.Fatal("an archived pool was updated")
 		}
 	})
-	t.Run("save: the SPA's PUT body, the dialog closes, the drawer refreshes when it shows the pool", func(t *testing.T) {
+	t.Run("save: the SPA's PUT body (blanks clear), the dialog closes, the drawer refreshes when it shows the pool", func(t *testing.T) {
 		h := newHarness()
 		body := h.do(t, anchorAdmin(), req{
 			method: http.MethodPost, target: "/ui/dispatch-pools/dpl_1/edit", datastar: true,
@@ -814,7 +814,10 @@ func TestPoolEdit(t *testing.T) {
 			t.Fatalf("update calls %d", len(h.ops.updated))
 		}
 		cmd := h.ops.updated[0]
-		if cmd.ID != "dpl_1" || deref(cmd.Name) != "Billing 2" || cmd.Description != nil || cmd.RateLimit != nil || cmd.Concurrency != nil {
+		// A blank description and rate limit clear them ("" and 0); a blank
+		// concurrency keeps it.
+		if cmd.ID != "dpl_1" || deref(cmd.Name) != "Billing 2" || cmd.Description == nil || *cmd.Description != "" ||
+			cmd.RateLimit == nil || *cmd.RateLimit != 0 || cmd.Concurrency != nil {
 			t.Errorf("command = %+v", cmd)
 		}
 		mustContain(t, body, `document.getElementById(&#34;pool-form&#34;)?.close()`, `data: elements <div id="pools-table"`,
