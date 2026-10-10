@@ -160,10 +160,11 @@ func requireAnchorWriter(ac *auth.AuthContext, can func(*auth.AuthContext) error
 }
 
 func (s *State) create(ctx context.Context, in *apicommon.In[CreateServiceAccountRequest]) (*apicommon.Out[CreateServiceAccountResponse], error) {
-	// Coarse permission at the controller; the orchestration runs inside one
-	// transaction and has no per-client resource check (admin-managed create).
+	// The permission for the operation at the controller; the orchestration
+	// runs inside one transaction and has no per-client resource check
+	// (admin-managed create).
 	ac := auth.FromContext(ctx)
-	if err := requireAnchorWriter(ac, auth.CanWriteServiceAccounts); err != nil {
+	if err := requireAnchorWriter(ac, auth.CanCreateServiceAccounts); err != nil {
 		return nil, err
 	}
 	// Same rule as assigning application access: only a caller that itself
@@ -196,7 +197,7 @@ type updateInput struct {
 }
 
 func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, error) {
-	if err := requireAnchorWriter(auth.FromContext(ctx), auth.CanWriteServiceAccounts); err != nil {
+	if err := requireAnchorWriter(auth.FromContext(ctx), auth.CanUpdateServiceAccounts); err != nil {
 		return nil, err
 	}
 	cmd, err := in.Body.toCommand(in.ID)
@@ -211,7 +212,7 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, 
 }
 
 func (s *State) deactivate(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	if err := auth.CanWriteServiceAccounts(auth.FromContext(ctx)); err != nil {
+	if err := auth.CanUpdateServiceAccounts(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
