@@ -1032,7 +1032,7 @@ func (h *DispatchJobs) showRequeueDialog(w http.ResponseWriter, r *http.Request,
 	if switchList {
 		errs = append(errs, view.patchList(sse, true))
 	}
-	errs = append(errs, sse.Patch(djRequeueDialog(p), ds.Inner("#"+djDialogSlot)))
+	errs = append(errs, patchDialogSlot(sse, djDialogSlot, djRequeueDialog(p)))
 	if err := errors.Join(errs...); err != nil {
 		slog.DebugContext(ctx, "ui: requeue-by-filter dialog not delivered", "err", err)
 	}

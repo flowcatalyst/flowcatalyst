@@ -371,7 +371,7 @@ func (h *DispatchPools) withClients(r *http.Request, ac *auth.AuthContext, f *po
 // dialog slot for Datastar, or the list page with the dialog open.
 func (h *DispatchPools) showForm(w http.ResponseWriter, r *http.Request, ac *auth.AuthContext, f poolForm) {
 	if ds.IsDatastar(r) {
-		if err := ds.NewSSE(w, r).Patch(poolFormDialog(f), ds.Inner("#"+poolDialogSlot)); err != nil {
+		if err := patchDialogSlot(ds.NewSSE(w, r), poolDialogSlot, poolFormDialog(f)); err != nil {
 			slog.DebugContext(r.Context(), "ui: pool form patch not delivered", "err", err)
 		}
 		return

@@ -254,7 +254,7 @@ func (h *EventTypes) schemaViewer(w http.ResponseWriter, r *http.Request) {
 	}
 	viewer := etViewerDialog(toETViewer(et, *sv))
 	if ds.IsDatastar(r) {
-		if err := ds.NewSSE(w, r).Patch(viewer, ds.Inner("#"+etDialogSlot)); err != nil {
+		if err := patchDialogSlot(ds.NewSSE(w, r), etDialogSlot, viewer); err != nil {
 			slog.DebugContext(ctx, "ui: schema viewer patch not delivered", "err", err)
 		}
 		return

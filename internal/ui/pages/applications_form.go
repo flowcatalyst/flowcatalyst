@@ -224,7 +224,7 @@ func (h *Applications) update(w http.ResponseWriter, r *http.Request) {
 
 func (h *Applications) showForm(w http.ResponseWriter, r *http.Request, ac *auth.AuthContext, f appForm) {
 	if ds.IsDatastar(r) {
-		if err := ds.NewSSE(w, r).Patch(appFormDialogC(f), ds.Inner("#"+appDialogSlot)); err != nil {
+		if err := patchDialogSlot(ds.NewSSE(w, r), appDialogSlot, appFormDialogC(f)); err != nil {
 			slog.DebugContext(r.Context(), "ui: application form patch not delivered", "err", err)
 		}
 		return
@@ -401,7 +401,7 @@ func (h *Applications) showCredentials(w http.ResponseWriter, r *http.Request, a
 		return
 	}
 	sse := ds.NewSSE(w, r)
-	if err := sse.Patch(appCredentialsDialog(c), ds.Inner("#"+appDialogSlot)); err != nil {
+	if err := patchDialogSlot(sse, appDialogSlot, appCredentialsDialog(c)); err != nil {
 		slog.DebugContext(ctx, "ui: credentials dialog not delivered", "err", err)
 	}
 	if view, err := h.listView(ctx, ac, refererList(r, appList)); err == nil {

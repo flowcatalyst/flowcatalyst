@@ -313,6 +313,7 @@ func TestDispatchJobsRequeue(t *testing.T) {
 func TestDispatchJobsRequeueByFilter(t *testing.T) {
 	h := newDJHarness()
 	dlg := h.do(t, anchorAdmin(), req{target: "/ui/dispatch-jobs/requeue-by-filter?statuses=FAILED&clients=clt_1&group=order-42&from=2026-10-01&size=50", datastar: true})
+	mustContain(t, dlg, "data: mode replace\n", `data: elements <div id="dj-dialog-slot">`)
 	mustContain(t, dlg, "Requeue all matching jobs", ">Client<", "Acme &lt;Corp&gt;", ">Status<", "FAILED", ">Message group<", "order-42", "2026-10-01",
 		"12 jobs</strong> match", "FAILED · 10", "ERROR · 2", "9 jobs</strong> can be requeued", "3 platform-scoped or outside your client access",
 		`name="confirmCount" value="9"`, "Requeue 9 jobs",

@@ -213,7 +213,7 @@ func TestApplicationActionsAndProvisioning(t *testing.T) {
 	h.ops.err = nil
 
 	sa := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/applications/app_2/provision-service-account", datastar: true, form: url.Values{"drawer": {"app_2"}}})
-	mustContain(t, sa, "data: selector #app-dialog-slot\n", "Service Account Provisioned", "s3cr3t-value", "oauth_client_1", "Orders service", "will not be shown again")
+	mustContain(t, sa, "data: mode replace\n", `data: elements <div id="app-dialog-slot">`, "Service Account Provisioned", "s3cr3t-value", "oauth_client_1", "Orders service", "will not be shown again")
 	native := h.rec(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/applications/app_2/provision-service-account", form: url.Values{}})
 	if native.Code != http.StatusOK || !strings.Contains(native.Body.String(), "s3cr3t-value") || native.Header().Get("Location") != "" {
 		t.Errorf("native provisioning: %d", native.Code)

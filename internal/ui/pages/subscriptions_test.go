@@ -197,7 +197,7 @@ func subCreateForm(kv ...string) url.Values {
 func TestSubscriptionCreate(t *testing.T) {
 	h := newSubHarness()
 	dlg := h.do(t, anchorAdmin(), req{target: "/ui/subscriptions/new", datastar: true})
-	mustContain(t, dlg, "Create Subscription", `name="eventTypes" value="evt_1"`, "Order placed — orders:sales:order:placed (v1.0)",
+	mustContain(t, dlg, "data: mode replace\n", `data: elements <div id="sub-dialog-slot">`, "Create Subscription", `name="eventTypes" value="evt_1"`, "Order placed — orders:sales:order:placed (v1.0)",
 		`<option value="HIGH_PRIORITY">High priority</option>`, `<option value="NEXT_ON_ERROR" selected>`, `value="86400"`,
 		"Only non-client-scoped event types are shown.", `data-show="$subClientScoped"`)
 	mustNotContain(t, dlg, `value="evt_c"`, `value="evt_3"`, `value="evt_5"`)

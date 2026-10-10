@@ -293,7 +293,7 @@ func (h *Connections) withChoices(r *http.Request, ac *auth.AuthContext, f *conn
 
 func (h *Connections) showForm(w http.ResponseWriter, r *http.Request, ac *auth.AuthContext, f connForm) {
 	if ds.IsDatastar(r) {
-		if err := ds.NewSSE(w, r).Patch(connFormDialog(f), ds.Inner("#"+connDialogSlot)); err != nil {
+		if err := patchDialogSlot(ds.NewSSE(w, r), connDialogSlot, connFormDialog(f)); err != nil {
 			slog.DebugContext(r.Context(), "ui: connection form patch not delivered", "err", err)
 		}
 		return

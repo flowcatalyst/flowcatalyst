@@ -319,7 +319,7 @@ func (h *ScheduledJobs) withChoices(r *http.Request, ac *auth.AuthContext, f *sj
 func (h *ScheduledJobs) showForm(w http.ResponseWriter, r *http.Request, ac *auth.AuthContext, f sjForm) {
 	h.withChoices(r, ac, &f)
 	if ds.IsDatastar(r) {
-		if err := ds.NewSSE(w, r).Patch(sjFormDialogC(f), ds.Inner("#"+sjDialogSlot)); err != nil {
+		if err := patchDialogSlot(ds.NewSSE(w, r), sjDialogSlot, sjFormDialogC(f)); err != nil {
 			slog.DebugContext(r.Context(), "ui: scheduled job form patch not delivered", "err", err)
 		}
 		return

@@ -232,7 +232,7 @@ func TestScheduledJobDrawerAndActions(t *testing.T) {
 func TestScheduledJobForms(t *testing.T) {
 	h := newSjHarness()
 	dlg := h.do(t, anchorAdmin(), req{target: "/ui/scheduled-jobs/new", datastar: true})
-	mustContain(t, dlg, "New Scheduled Job", "Platform-scoped (anchor only)", `value="UTC"`, `name="deliveryMaxAttempts" value="3"`, `name="crons"`)
+	mustContain(t, dlg, "data: mode replace\n", `data: elements <div id="sj-dialog-slot">`, "New Scheduled Job", "Platform-scoped (anchor only)", `value="UTC"`, `name="deliveryMaxAttempts" value="3"`, `name="crons"`)
 	body := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/scheduled-jobs/new", datastar: true, form: url.Values{
 		"code": {"nightly"}, "name": {"Nightly"}, "scope": {"platform"}, "applicationId": {""}, "timezone": {"Europe/London"},
 		"crons": {" 0 0 2 * * *\n\n0 0 3 * * * "}, "targetUrl": {""}, "deliveryMaxAttempts": {"5"}, "timeoutSeconds": {""}, "payload": {`{"x":true}`}, "concurrent": {"true"},

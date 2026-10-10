@@ -157,7 +157,7 @@ func TestClientsActions(t *testing.T) {
 	}
 
 	dlg := h.do(t, anchorAdmin(), req{target: "/ui/clients/new", datastar: true})
-	mustContain(t, dlg, "Create Client", `name="identifier"`)
+	mustContain(t, dlg, "Create Client", `name="identifier"`, "data: mode replace\n", `data: elements <div id="cli-dialog-slot">`)
 	created := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/clients/new", datastar: true, form: url.Values{"name": {"Initech"}, "identifier": {"initech"}}})
 	mustContain(t, created, `"selCli":"clt_9"`, "Client created")
 	h.ops.err = usecase.Conflict("IDENTIFIER_EXISTS", "Client with identifier 'initech' already exists")

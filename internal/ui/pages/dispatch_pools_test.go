@@ -613,7 +613,7 @@ func TestPoolCreateDialog(t *testing.T) {
 	t.Run("Datastar: the dialog is patched into the slot, open, with client suggestions", func(t *testing.T) {
 		body := h.do(t, anchorAdmin(), req{target: "/ui/dispatch-pools/new", datastar: true}).Body.String()
 		mustContain(t, body,
-			"data: selector #pool-dialog-slot\n", "data: mode inner\n",
+			"data: mode replace\n", `data: elements <div id="pool-dialog-slot"><dialog id="pool-form"`,
 			`<dialog id="pool-form"`, ` open>`, `data-init="el.open &amp;&amp; el.close(); el.showModal()"`,
 			`<form id="pool-form-form" method="post" action="/ui/dispatch-pools/new"`,
 			`id="pool-form-code-field"`, `id="pool-form-concurrency" name="concurrency" value="10"`,

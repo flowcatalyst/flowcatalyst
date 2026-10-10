@@ -675,7 +675,7 @@ func (h *ClientsPage) update(w http.ResponseWriter, r *http.Request) {
 
 func (h *ClientsPage) showForm(w http.ResponseWriter, r *http.Request, ac *auth.AuthContext, f cliForm) {
 	if ds.IsDatastar(r) {
-		if err := ds.NewSSE(w, r).Patch(cliFormDialogC(f), ds.Inner("#"+cliDialogSlot)); err != nil {
+		if err := patchDialogSlot(ds.NewSSE(w, r), cliDialogSlot, cliFormDialogC(f)); err != nil {
 			slog.DebugContext(r.Context(), "ui: client form patch not delivered", "err", err)
 		}
 		return

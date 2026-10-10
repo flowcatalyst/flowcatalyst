@@ -275,7 +275,7 @@ func TestEventTypeDrawer(t *testing.T) {
 func TestEventTypeSchemaViewer(t *testing.T) {
 	h := newETHarness()
 	body := h.do(t, anchorAdmin(), req{target: "/ui/event-types/evt_1/schemas/1.0", datastar: true})
-	mustContain(t, body, "data: selector #et-dialog-slot\n", "orders:sales:order:placed — v1.0",
+	mustContain(t, body, "data: mode replace\n", `data: elements <div id="et-dialog-slot">`, "orders:sales:order:placed — v1.0",
 		`id="et-code-schema"`, `<span class="hl-key">`, `id="et-code-typescript"`, "interface", `id="et-code-java"`,
 		`data-signals:et-schema-tab="&#39;schema&#39;"`, `aria-label="Copy"`)
 	if rec := h.rec(t, anchorAdmin(), req{target: "/ui/event-types/evt_2/schemas/1.0", datastar: true}); !strings.Contains(rec.Body.String(), "fc-flash-error") {
@@ -289,7 +289,7 @@ func TestEventTypeSchemaViewer(t *testing.T) {
 func TestEventTypeCreate(t *testing.T) {
 	h := newETHarness()
 	dlg := h.do(t, anchorAdmin(), req{target: "/ui/event-types/new", datastar: true})
-	mustContain(t, dlg, "data: selector #et-dialog-slot\n", "Create Event Type", `<option value="billing"></option>`,
+	mustContain(t, dlg, "data: mode replace\n", `data: elements <div id="et-dialog-slot">`, "Create Event Type", `<option value="billing"></option>`,
 		`pattern="[a-z][a-z0-9.\-]*"`, "Generated Code", `data-text="$etApp || &#39;app&#39;"`, "Client Scoped")
 
 	form := url.Values{"application": {"orders"}, "subdomain": {"sales"}, "aggregate": {"order"}, "event": {"shipped"}, "name": {"Order shipped"}, "description": {""}, "clientScoped": {"true"}}

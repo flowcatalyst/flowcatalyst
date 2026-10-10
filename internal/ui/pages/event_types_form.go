@@ -268,7 +268,7 @@ func (h *EventTypes) withChoices(r *http.Request, ac *auth.AuthContext, f *etFor
 func (h *EventTypes) showForm(w http.ResponseWriter, r *http.Request, ac *auth.AuthContext, f etForm) {
 	h.withChoices(r, ac, &f)
 	if ds.IsDatastar(r) {
-		if err := ds.NewSSE(w, r).Patch(etFormDialogC(f), ds.Inner("#"+etDialogSlot)); err != nil {
+		if err := patchDialogSlot(ds.NewSSE(w, r), etDialogSlot, etFormDialogC(f)); err != nil {
 			slog.DebugContext(r.Context(), "ui: event type form patch not delivered", "err", err)
 		}
 		return

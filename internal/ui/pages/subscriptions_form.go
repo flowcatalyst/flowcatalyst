@@ -473,7 +473,7 @@ func poolChoiceLabel(p dispatchpool.DispatchPool) string {
 func (h *Subscriptions) showForm(w http.ResponseWriter, r *http.Request, ac *auth.AuthContext, f subForm) {
 	h.withChoices(r, ac, &f)
 	if ds.IsDatastar(r) {
-		if err := ds.NewSSE(w, r).Patch(subFormDialogC(f), ds.Inner("#"+subDialogSlot)); err != nil {
+		if err := patchDialogSlot(ds.NewSSE(w, r), subDialogSlot, subFormDialogC(f)); err != nil {
 			slog.DebugContext(r.Context(), "ui: subscription form patch not delivered", "err", err)
 		}
 		return
