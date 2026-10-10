@@ -41,19 +41,39 @@ type RolesState struct {
 // Response shapes are part of the frontend contract:
 // camelCase fields, ISO-8601 timestamps as strings, items wrapped in
 // `{items, total}`.
+//
+// Every route checks the role permission for its operation (the writes keep
+// their anchor check on top): reads need role:view; create and defining a
+// permission role:create; update role:update; delete role:delete; the
+// platform sync, which creates, updates and removes platform roles, all
+// three.
 func RegisterRoles(r chi.Router, s *RolesState) {
 	r.Route("/bff/roles", func(r chi.Router) {
-		r.Get("/", s.list)
-		r.Post("/", s.create)
-		r.Post("/sync-platform", s.syncPlatform)
-		r.Get("/filters/applications", s.filterApplications)
-		r.Get("/permissions", s.listPermissions)
-		r.Post("/permissions", s.createPermission)
-		r.Get("/permissions/{permission}", s.getPermission)
-		r.Get("/{roleName}", s.get)
-		r.Put("/{roleName}", s.update)
-		r.Delete("/{roleName}", s.delete)
+		r.Get("/", roleGate(s.list, auth.CanReadRoles))
+		r.Post("/", roleGate(s.create, auth.CanCreateRoles))
+		r.Post("/sync-platform", roleGate(s.syncPlatform, auth.CanCreateRoles, auth.CanUpdateRoles, auth.CanDeleteRoles))
+		r.Get("/filters/applications", roleGate(s.filterApplications, auth.CanReadRoles))
+		r.Get("/permissions", roleGate(s.listPermissions, auth.CanReadRoles))
+		r.Post("/permissions", roleGate(s.createPermission, auth.CanCreateRoles))
+		r.Get("/permissions/{permission}", roleGate(s.getPermission, auth.CanReadRoles))
+		r.Get("/{roleName}", roleGate(s.get, auth.CanReadRoles))
+		r.Put("/{roleName}", roleGate(s.update, auth.CanUpdateRoles))
+		r.Delete("/{roleName}", roleGate(s.delete, auth.CanDeleteRoles))
 	})
+}
+
+// roleGate runs h only for a caller passing every check.
+func roleGate(h http.HandlerFunc, checks ...func(*auth.AuthContext) error) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ac := auth.FromContext(r.Context())
+		for _, check := range checks {
+			if err := check(ac); err != nil {
+				httperror.Write(w, err)
+				return
+			}
+		}
+		h(w, r)
+	}
 }
 
 // ── Wire DTOs ────────────────────────────────────────────────────────────
