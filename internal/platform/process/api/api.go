@@ -101,10 +101,10 @@ func (s *State) getByCode(ctx context.Context, in *getByCodeInput) (*apicommon.O
 }
 
 func (s *State) create(ctx context.Context, in *apicommon.In[CreateProcessRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
-	// Coarse write permission at the controller. Process is global (no
-	// per-client resource dimension), so the use case carries no
+	// The permission for the operation at the controller. Process is global
+	// (no per-client resource dimension), so the use case carries no
 	// resource-level authz.
-	if err := auth.CanWriteProcesses(auth.FromContext(ctx)); err != nil {
+	if err := auth.CanCreateProcesses(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -121,7 +121,7 @@ type updateInput struct {
 }
 
 func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, error) {
-	if err := auth.CanWriteProcesses(auth.FromContext(ctx)); err != nil {
+	if err := auth.CanUpdateProcesses(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -132,7 +132,7 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, 
 }
 
 func (s *State) archive(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
-	if err := auth.CanWriteProcesses(auth.FromContext(ctx)); err != nil {
+	if err := auth.CanUpdateProcesses(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
