@@ -270,9 +270,10 @@ and `EventTypeAddSchemaPage`.
 | `/ui/event-types/sync-platform` | - | - | Sync Platform Events |
 | `/ui/event-types/export` (`?` the view) | the zip download | - | - |
 
-- **Reads** make `GET /api/event-types`'s checks: `CanReadEventTypes`, client scoping, and for a
-  principal without the messaging view permission only its own applications' event types (the BFF
-  makes the same checks since bug 1's fix). **Actions** make the check of the BFF endpoint the SPA
+- **Reads** make `GET /api/event-types`'s checks: `CanReadEventTypes`, client scoping (event types
+  have no client, so it never narrows; F2 in `docs/platform-bug-fixes.md`), and for a principal
+  without the messaging view permission only its own applications' event types (the BFF makes the
+  same checks since bug 1's fix). **Actions** make the check of the BFF endpoint the SPA
   calls: create `CanCreateEventTypes`; edit, archive, add schema, finalise and deprecate
   `CanUpdateEventTypes`; delete `CanDeleteEventTypes`; sync anchor scope and the event-type sync
   permission (`CanSyncPlatformEventTypes`).
@@ -959,6 +960,14 @@ checkbox, two live links and the requeue button each carry Datastar attributes; 
 - **Add schema, archive/delete guards, Sync Platform Events, subscription permissions and create
   body, client deactivate, filter-options scoping, process guards, dialog slot morph**: decided and
   done 2026-10-10 (`docs/platform-bug-fixes.md`, including the choices taken conservatively there).
+- **Findings of the first batch, second batch**: done 2026-10-10 (F1 to F6 in
+  `docs/platform-bug-fixes.md`, with the choices taken conservatively). For the UIs: the SPA now
+  shows Sync Platform Events, the role sync and the role editors only to users the BFF admits
+  (`frontend/src/utils/admin-permissions.ts`); `/ui` needed no change (its sync button already
+  follows `CanSyncPlatformEventTypes`, and it has no role pages; the nav's Roles and Permissions
+  entries link to the SPA under the view permissions the reads need). New findings there: the SPA's
+  route permissions and this nav use several codes no role grants (identity providers, OAuth
+  clients, audit log, CORS, settings), and the SPA's dashboard OpenAPI sync is shown to everyone.
 - **Event types and Subscriptions sidebar entries** now link to their `/ui` pages in the `/ui` sidebar
   (the SPA's own navigation is unchanged).
 - **Dispatch jobs paging**: the page adds keyset paging (Older/Newest) that the SPA does not have, with a
